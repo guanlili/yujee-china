@@ -16,3 +16,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+
+# Local SQLite dev DB
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

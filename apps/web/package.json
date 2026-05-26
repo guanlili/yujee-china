@@ -8,18 +8,29 @@
     "build": "next build",
     "start": "next start",
     "test": "tsx --test src/**/*.test.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
+    "@libsql/client": "^0.14.0",
     "@yujee/contracts": "workspace:*",
+    "drizzle-orm": "^0.36.4",
     "next": "15.5.9",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "20.12.12",
     "@types/react": "19.0.7",
     "@types/react-dom": "19.0.3",
+    "drizzle-kit": "^0.28.1",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^4.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.4.5"
   }

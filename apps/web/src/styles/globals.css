@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #fafaf7;
+  --color-fg: #1a1a1a;
+  --color-fg-muted: #555;
+  --color-accent: #b34a2d;
+  --color-accent-soft: #f4dccd;
+  --color-border: #e6e2d6;
+  --font-serif: "Cormorant Garamond", "Source Han Serif", Georgia, serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+}
+
+html, body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .serif {
+  font-family: var(--font-serif);
+}

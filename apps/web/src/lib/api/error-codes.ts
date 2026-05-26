@@ -1,0 +1,43 @@
+export class AppError extends Error {
+  constructor(
+    public code: string,
+    message: string,
+    public status: number = 400,
+  ) {
+    super(message);
+    this.name = 'AppError';
+  }
+}
+
+export const ERRORS = {
+  UNAUTHORIZED:          () => new AppError('UNAUTHORIZED',          'Login required',              401),
+  FORBIDDEN:             () => new AppError('FORBIDDEN',             'Forbidden',                   403),
+
+  ALBUM_NOT_FOUND:       () => new AppError('ALBUM_NOT_FOUND',       'Album not found',             404),
+  ALBUM_NOT_OWNED:       () => new AppError('ALBUM_NOT_OWNED',       'Album not owned by user',     403),
+  JOB_NOT_FOUND:         () => new AppError('JOB_NOT_FOUND',         'Job not found',               404),
+  JOB_NOT_OWNED:         () => new AppError('JOB_NOT_OWNED',         'Job not owned by user',       403),
+  PAGE_NOT_FOUND:        () => new AppError('PAGE_NOT_FOUND',        'Page not found',              404),
+
+  CREDIT_INSUFFICIENT:   () => new AppError('CREDIT_INSUFFICIENT',   'Not enough credits',          402),
+  CREDIT_HOLD_FAILED:    () => new AppError('CREDIT_HOLD_FAILED',    'Failed to hold credits',      500),
+
+  PHOTO_TOO_MANY:        () => new AppError('PHOTO_TOO_MANY',        'Max 30 photos per album',     400),
+  PHOTO_TOO_FEW:         () => new AppError('PHOTO_TOO_FEW',         'Need at least 3 photos',      400),
+  PHOTO_TOO_LARGE:       () => new AppError('PHOTO_TOO_LARGE',       'Each photo > 800KB',          413),
+  PROMPT_TOO_LONG:       () => new AppError('PROMPT_TOO_LONG',       'Prompt > 500 chars',          400),
+  VALIDATION_FAILED:     (m: string) => new AppError('VALIDATION_FAILED', m,                        400),
+
+  AGENT_TIMEOUT:         () => new AppError('AGENT_TIMEOUT',         'Agent timed out',             504),
+  AGENT_VISION_FAILED:   () => new AppError('AGENT_VISION_FAILED',   'Vision API failed',           502),
+  AGENT_PLANNING_FAILED: () => new AppError('AGENT_PLANNING_FAILED', 'Planning failed',             502),
+  AGENT_INVALID_OUTPUT:  () => new AppError('AGENT_INVALID_OUTPUT',  'Agent output schema invalid', 502),
+  AGENT_UNAUTHORIZED:    () => new AppError('AGENT_UNAUTHORIZED',    'Agent shared secret invalid', 401),
+  AGENT_INTERNAL_ERROR:  () => new AppError('AGENT_INTERNAL_ERROR',  'Agent internal error',        502),
+
+  PDF_UPLOAD_FAILED:     () => new AppError('PDF_UPLOAD_FAILED',     'PDF upload failed',           500),
+  R2_SIGN_FAILED:        () => new AppError('R2_SIGN_FAILED',        'R2 presign failed',           500),
+
+  RATE_LIMITED:          () => new AppError('RATE_LIMITED',          'Too many requests',           429),
+  INTERNAL_ERROR:        () => new AppError('INTERNAL_ERROR',        'Internal server error',       500),
+} as const;

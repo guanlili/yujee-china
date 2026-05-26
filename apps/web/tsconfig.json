@@ -1,12 +1,32 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "plugins": [{ "name": "next" }],
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@yujee/contracts": ["../../packages/contracts/src/index.ts"]
-    }
+      "@/*": [
+        "./src/*"
+      ],
+      "@yujee/contracts": [
+        "../../packages/contracts/src/index.ts"
+      ],
+      "@yujee/contracts/*": [
+        "../../packages/contracts/src/*"
+      ]
+    },
+    "incremental": true
   },
-  "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
