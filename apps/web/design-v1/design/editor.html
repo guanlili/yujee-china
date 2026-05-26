@@ -1,0 +1,1445 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- refresh:2026-05-18T13:30 -->
+<title data-i18n="pageTitle">Yujee — 编辑你的纪念册</title>
+<style>
+  :root{
+    --bg: #f5f5f5;
+    --surface: #ffffff;
+    --fg: #111111;
+    --fg-2: #333333;
+    --muted: #888888;
+    --meta: #aaaaaa;
+    --border: #e0e0e0;
+    --border-soft: #ebebeb;
+    --accent: #8C5EF4;
+    --grad-green: #17E187;
+    --grad-purple: #8C5EF4;
+    --grad-lime: #DAF45E;
+    --font-display: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-body: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: ui-monospace, 'JetBrains Mono', Menlo, monospace;
+    --motion-fast: 180ms;
+    --motion-base: 300ms;
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06);
+    --shadow-card-hover: 0 2px 6px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.08);
+    --radius-pill: 9999px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html, body{height:100%;}
+  body{
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--fg);
+    -webkit-font-smoothing:antialiased;
+    line-height:1.6;
+    overflow:hidden;
+  }
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;}
+
+  /* ─── TOP BAR ─── */
+  .topbar{
+    height: 52px;
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 0 24px;
+    background: var(--surface);
+    box-shadow: none;
+    border-bottom: 1px solid var(--border-soft);
+    margin: 0;
+    flex-shrink:0;
+  }
+  .top-left{display:flex; align-items:center; gap:16px;}
+  .brand{
+    font-family: var(--font-display);
+    font-weight:800; font-size:18px;
+    display:flex; align-items:center; gap:9px;
+    letter-spacing:-0.02em;
+  }
+  .back-btn{
+    display:flex; align-items:center; justify-content:center;
+    width:32px; height:32px;
+    border-radius:var(--radius-pill);
+    color:var(--muted);
+    text-decoration:none;
+    transition:background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+  }
+  .back-btn:hover{background:var(--bg); color:var(--fg);}
+  .back-btn svg{width:18px; height:18px;}
+  .brand{text-decoration:none; color:inherit;}
+  .brand-mark{
+    width:18px; height:18px;
+    border-radius: 5px;
+    background: radial-gradient(circle at 30% 30%, var(--grad-green), var(--grad-purple) 50%, var(--grad-lime) 80%);
+    opacity: 0.8;
+  }
+  .crumb{color:var(--meta); font-size:13px;}
+  .album-title{
+    font-family: var(--font-display);
+    font-weight:700; font-size:14px;
+    color:var(--fg);
+    padding: 4px 8px;
+    border-radius: var(--radius-pill);
+    border: 1px solid transparent;
+    transition: all var(--motion-fast) var(--ease);
+    cursor: text;
+  }
+  .album-title:hover{background: var(--bg);}
+  .album-title:focus{
+    outline:none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(140,94,244,0.12);
+  }
+  .save-badge{
+    font-size:11px; color:var(--muted);
+    display:flex; align-items:center; gap:6px;
+    padding:4px 10px;
+    background: var(--bg);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    border-radius: var(--radius-pill);
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
+  }
+  .save-badge .pulse{
+    width:6px; height:6px;
+    border-radius: 50%;
+    background:var(--grad-green);
+  }
+  .top-right{display:flex; align-items:center; gap:8px;}
+  .top-sep{width:1px; height:20px; background:var(--border-soft); margin:0 4px;}
+
+  /* ─── LANGUAGE SELECTOR ─── */
+  .lang-select{position:relative;}
+  .lang-trigger{
+    display:flex; align-items:center; gap:6px;
+    padding:6px 14px 6px 12px;
+    background:transparent; border:none;
+    border-radius:9999px;
+    font-size:13px; font-weight:500; color:var(--muted);
+    transition: background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+  }
+  .lang-trigger:hover{background:rgba(0,0,0,0.04); color:var(--fg);}
+  .lang-trigger .lang-icon{width:16px;height:16px;color:var(--muted);flex-shrink:0;}
+  .lang-trigger .lang-chevron{width:14px;height:14px;color:var(--meta);transition:transform var(--motion-fast) var(--ease);}
+  .lang-select.open .lang-chevron{transform:rotate(180deg);}
+  .lang-dropdown{
+    position:absolute; top:calc(100% + 8px); right:0;
+    min-width:140px; background:var(--surface);
+    border-radius:var(--radius-md); box-shadow:var(--shadow-card-hover);
+    padding:6px; opacity:0; visibility:hidden;
+    transform:translateY(-4px);
+    transition:all var(--motion-fast) var(--ease); z-index:200;
+  }
+  .lang-select.open .lang-dropdown{opacity:1;visibility:visible;transform:translateY(0);}
+  .lang-option{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 12px; border-radius:var(--radius-md);
+    font-size:13px; color:var(--fg-2);
+    width:100%; text-align:left;
+    transition:background var(--motion-fast) var(--ease);
+  }
+  .lang-option:hover{background:var(--bg);}
+  .lang-option.active{font-weight:600; color:var(--surface); background:var(--fg);}
+
+  /* ─── CREDITS PILL ─── */
+  .credits-pill{
+    display:flex; align-items:center; gap:6px;
+    padding:6px 14px;
+    background:var(--surface);
+    border:1px solid var(--border-soft);
+    border-radius:9999px;
+    font-size:13px; font-weight:500; color:var(--fg-2);
+    cursor:pointer;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    transition:background var(--motion-fast) var(--ease);
+  }
+  .credits-pill:hover{background:var(--bg);}
+  .credits-dot{width:8px;height:8px;border-radius:50%;background:var(--grad-green);flex-shrink:0;}
+  .credits-sep{color:var(--border); margin:0 1px;}
+
+  /* ─── USER MENU ─── */
+  .user-menu{position:relative;}
+  .user-trigger{
+    display:flex; align-items:center;
+    padding:4px; border-radius:9999px;
+    transition:background var(--motion-fast) var(--ease);
+  }
+  .user-trigger:hover{background:rgba(0,0,0,0.04);}
+  .user-avatar{
+    width:36px; height:36px; border-radius:50%;
+    background:var(--accent); color:var(--surface);
+    display:flex; align-items:center; justify-content:center;
+    font-size:13px; font-weight:700; flex-shrink:0;
+  }
+  .user-dropdown{
+    position:absolute; top:calc(100% + 8px); right:0;
+    min-width:200px; background:var(--surface);
+    border-radius:16px; box-shadow:var(--shadow-card-hover);
+    padding:8px; opacity:0; visibility:hidden;
+    transform:translateY(-4px);
+    transition:all var(--motion-fast) var(--ease); z-index:200;
+  }
+  .user-menu.open .user-dropdown{opacity:1;visibility:visible;transform:translateY(0);}
+  .dropdown-header{padding:12px; border-bottom:1px solid var(--border-soft); margin-bottom:4px;}
+  .dropdown-header-name{font-size:15px; font-weight:600;}
+  .dropdown-header-email{font-size:12px; color:var(--meta); margin-top:2px;}
+  .dropdown-plan-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 12px; margin-bottom:4px;
+  }
+  .dropdown-plan-label{font-size:13px; font-weight:500; color:var(--fg-2);}
+  .btn-upgrade{
+    padding:3px 10px; font-size:11px; font-weight:600;
+    color:var(--accent); background:rgba(140,94,244,0.08);
+    border-radius:9999px;
+    transition:background var(--motion-fast) var(--ease);
+  }
+  .btn-upgrade:hover{background:rgba(140,94,244,0.16);}
+  .dropdown-item{
+    display:flex; align-items:center; gap:10px;
+    padding:10px 12px; border-radius:var(--radius-md);
+    font-size:13px; color:var(--fg-2);
+    width:100%; text-align:left;
+    transition:background var(--motion-fast) var(--ease);
+  }
+  .dropdown-item:hover{background:var(--bg);}
+  .dropdown-icon{width:18px;height:18px;display:flex;align-items:center;justify-content:center;color:var(--muted);}
+  .dropdown-icon svg{width:16px;height:16px;}
+  .dropdown-sep{height:1px;background:var(--border-soft);margin:4px 0;}
+  .dropdown-item.danger{color:#c44;}
+  .dropdown-item.danger:hover{background:#fef2f2;}
+
+  .icon-btn{
+    width:34px; height:34px;
+    display:flex; align-items:center; justify-content:center;
+    color:var(--muted);
+    border-radius: 50%;
+    transition: all var(--motion-fast) var(--ease);
+  }
+  .icon-btn:hover{background: var(--bg); color: var(--fg);}
+  .icon-btn svg{width:16px;height:16px;}
+  .btn-primary{
+    background: var(--fg); color:#fff;
+    padding:10px 28px;
+    border-radius: var(--radius-pill);
+    font-size:13px; font-weight:600;
+    display:flex; align-items:center; gap:7px;
+    transition: all var(--motion-fast) var(--ease);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  }
+  .btn-primary:hover{
+    background: var(--fg-2);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+    transform: translateY(-1px);
+  }
+  .btn-primary svg{width:14px;height:14px;}
+
+  /* ─── WORKSPACE 3 columns ─── */
+  .workspace{
+    flex:1; display:grid;
+    grid-template-columns: 1fr 340px;
+    height: calc(100vh - 53px);
+    overflow:hidden;
+    padding: 0;
+    gap: 0px;
+  }
+  .pane{
+    display:flex; flex-direction:column;
+    overflow:hidden;
+    border-radius: 0;
+  }
+
+  /* ─── CENTER — PREVIEW ─── */
+  .pane-center{
+    background: var(--bg);
+    align-items:center;
+    justify-content:center;
+    position:relative;
+    border-radius: 0;
+  }
+
+  .book-stage{
+    width: 100%; height: 100%;
+    display:flex; align-items:center; justify-content:center;
+    padding: 32px 24px 64px;
+    overflow:auto;
+    perspective: 2400px;
+    background: var(--bg);
+    border-radius: 0;
+    position: relative;
+  }
+  .book{
+    background: var(--surface);
+    border-radius: 2px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.08);
+    height: min(82vh, 720px);
+    aspect-ratio: 1.414 / 1;
+    display:flex;
+    position:relative;
+    transform-style: preserve-3d;
+    overflow: hidden;
+  }
+  .book::before{
+    content:''; position:absolute;
+    top:0; bottom:0; left:50%;
+    width: 1px; transform: translateX(-50%);
+    background: var(--border-soft);
+    z-index:5; pointer-events:none;
+  }
+  .page{
+    flex:1; padding: 5.5% 5.5%;
+    display:flex; flex-direction:column;
+    background: var(--surface);
+    position:relative;
+    overflow:hidden;
+    backface-visibility: hidden;
+  }
+  .page-left{background: var(--surface);}
+  .page-right{background: var(--surface);}
+
+  /* Flipping leaf */
+  .flipper{
+    position:absolute; top:0; bottom:0;
+    width:50%; left:50%;
+    transform-style: preserve-3d;
+    transform-origin: left center;
+    z-index: 6;
+    pointer-events:none;
+    transition: transform .9s cubic-bezier(.45,.05,.2,1);
+    transform: rotateY(0deg);
+  }
+  .flipper.flip-next{transform: rotateY(-180deg);}
+  .flipper.flip-prev{
+    left:0; transform-origin: right center;
+    transform: rotateY(180deg);
+  }
+  .flipper.flip-prev.animate{transform: rotateY(0deg);}
+  .leaf{
+    position:absolute; inset:0;
+    background: var(--surface);
+    padding: 5.5%;
+    overflow:hidden;
+    backface-visibility: hidden;
+  }
+  .leaf.front{transform: rotateY(0deg);}
+  .leaf.back{transform: rotateY(180deg);}
+  .flipper::after{
+    content:''; position:absolute; inset:0;
+    background: linear-gradient(90deg, rgba(0,0,0,.08), transparent 30%);
+    opacity: 0; transition: opacity .4s;
+    pointer-events:none;
+  }
+  .flipper.flipping::after{opacity: 1;}
+  .page-num{
+    display: none;
+  }
+  .page-left .page-num, .leaf .page-num.left{left:5.5%;}
+  .page-right .page-num, .leaf .page-num.right{right:5.5%;}
+
+  /* ─── Thumbnail Strip ─── */
+  .thumb-strip{
+    position: absolute;
+    bottom: 12px; left: 50%; transform: translateX(-50%);
+    background: rgba(255,255,255,0.8);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    z-index: 6;
+    border-radius: var(--radius-pill);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    width: auto;
+  }
+  .thumb-nav{
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .thumb-nav-btn{
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted);
+    transition: all var(--motion-fast) var(--ease);
+  }
+  .thumb-nav-btn:hover{ color: var(--fg); background: var(--bg); }
+  .thumb-nav-btn svg{ width: 10px; height: 10px; }
+  .thumb-page-ind{
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--fg-2);
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+    min-width: 36px;
+    text-align: center;
+  }
+  .thumb-row{
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    max-width: 100%;
+    padding: 2px;
+    scrollbar-width: none;
+  }
+  .thumb-row::-webkit-scrollbar{ display: none; }
+  .thumb-item{
+    flex-shrink: 0;
+    width: 52px;
+    cursor: pointer;
+    transition: transform var(--motion-fast) var(--ease);
+  }
+  .thumb-item:hover{ transform: translateY(-1px); }
+  .thumb-img{
+    width: 52px;
+    height: 34px;
+    border-radius: 3px;
+    background: var(--bg);
+    border: 1.5px solid transparent;
+    overflow: hidden;
+    transition: border-color var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease);
+    position: relative;
+    display: flex;
+  }
+  .thumb-img::after{
+    content:'';
+    position: absolute;
+    top: 4px; bottom: 4px; left: 50%;
+    width: 1px;
+    background: var(--border-soft);
+    transform: translateX(-50%);
+    z-index: 1;
+  }
+  .thumb-item.active .thumb-img{
+    border-color: var(--fg);
+    box-shadow: 0 0 0 1.5px rgba(0,0,0,0.08);
+  }
+  .thumb-img-left, .thumb-img-right{
+    flex: 1; height: 100%;
+    background-size: cover;
+    background-position: center;
+    background-color: var(--surface);
+  }
+  .thumb-label{ display: none;
+    font-size: 9px;
+    color: var(--meta);
+    text-align: center;
+    margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+  }
+  .thumb-item.active .thumb-label{
+    color: var(--fg);
+    font-weight: 600;
+  }
+
+  /* Left page content (chapter cover) */
+  .ch-eyebrow{
+    font-family: var(--font-mono);
+    font-size:11px; letter-spacing:.08em;
+    color:var(--meta); margin-bottom: 14px;
+    text-transform: uppercase;
+  }
+  .ch-mark{
+    font-family: var(--font-display);
+    font-size:38px; line-height:1.05;
+    color:var(--fg);
+    font-weight:800;
+    letter-spacing:-0.02em;
+    margin-bottom: 18px;
+  }
+  .ch-meta-line{
+    font-size:11px; color:var(--meta);
+    letter-spacing:.08em;
+    margin-bottom: 22px;
+    font-family: var(--font-mono);
+  }
+  .ch-narrative{
+    font-family: var(--font-body);
+    font-size: 13.5px;
+    color:var(--fg-2);
+    line-height: 2;
+    text-indent: 2em;
+    flex:1;
+    overflow:hidden;
+  }
+  .ch-narrative .hl{
+    border-bottom: 1px solid var(--fg);
+    padding-bottom: 1px;
+  }
+
+  /* Right page — photo collage */
+  .photo-grid{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap:6px;
+    flex:1;
+  }
+  .photo{
+    background-size:cover; background-position:center;
+    position:relative;
+    overflow:hidden;
+    border-radius: var(--radius-md);
+  }
+  .photo.span-2{grid-row: span 2;}
+  .photo .cap{
+    position:absolute; bottom:0; left:0; right:0;
+    padding: 14px 12px 8px;
+    background: linear-gradient(180deg, transparent, rgba(0,0,0,.45));
+    color:#fff;
+    font-size:10px;
+    letter-spacing:.06em;
+    font-family: var(--font-mono);
+  }
+  .photo-foot{
+    margin-top: 10px;
+    display:flex; justify-content:space-between;
+    font-size:10px; color:var(--meta);
+    font-family: var(--font-mono);
+    letter-spacing:.08em;
+  }
+
+  /* ─── RIGHT — CHAT ─── */
+  .pane-right{
+    background: var(--surface);
+    border-radius: 0;
+    border-left: 1px solid var(--border-soft);
+  }
+  .chat-head{
+    padding: 18px 20px;
+    display:flex; align-items:center; gap:12px;
+    flex-shrink:0;
+  }
+  .ai-avatar{
+    width:36px; height:36px;
+    background: var(--accent);
+    color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-family: var(--font-display);
+    font-weight:700; font-size:13px;
+    border-radius: 50%;
+  }
+  .chat-head h3{
+    font-family: var(--font-display);
+    font-size:14px; font-weight:700;
+    letter-spacing: -0.01em;
+  }
+  .chat-head .sub{font-size:11px; color:var(--muted);}
+  .chat-context{
+    margin-left:auto;
+    font-size:11px; color: var(--fg-2);
+    background: var(--bg);
+    padding: 3px 10px;
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
+    border-radius: var(--radius-pill);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+
+  .chat-body{
+    flex:1; overflow-y:auto;
+    padding: 18px 20px;
+    display:flex; flex-direction:column; gap: 24px;
+  }
+  .msg{max-width: 100%;}
+  .msg.user{display:flex; justify-content:flex-end;}
+  .msg.user .bubble{
+    background: var(--bg);
+    color: var(--fg);
+    border-radius: 16px 4px 16px 16px;
+    padding: 10px 16px;
+    font-size: 13.5px;
+    line-height:1.7;
+    max-width: 80%;
+  }
+  /* AI messages: no bubble, direct text */
+  .msg.ai .ai-text{
+    font-size: 13.5px;
+    line-height:1.8;
+    color: var(--fg-2);
+  }
+  .msg .name-time{
+    font-size:10px; color:var(--meta);
+    margin: 6px 0 0;
+    font-family: var(--font-mono);
+  }
+  .msg.ai .name-time{margin-top:10px;}
+
+  /* ─── Thinking indicator — simple one-liner ─── */
+  .thinking-block{
+    margin-bottom: 8px;
+    display:flex; align-items:center; gap:8px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .thinking-icon{
+    width:14px; height:14px;
+    border-radius:50%;
+    border: 1.5px solid var(--grad-purple);
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+    position:relative;
+  }
+  .thinking-icon::after{
+    content:'';
+    width:5px; height:5px;
+    border-radius:50%;
+    background: linear-gradient(135deg, var(--grad-green), var(--grad-purple));
+  }
+  .thinking-label{
+    font-family: var(--font-mono);
+    font-size:12px;
+    letter-spacing:0.01em;
+  }
+  .thinking-arrow{
+    font-size:9px;
+    opacity:0.4;
+    margin-left:2px;
+    transition: transform var(--motion-fast) var(--ease);
+  }
+  /* Active thinking animation */
+  .thinking-block.active .thinking-icon{
+    animation: think-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes think-pulse{
+    0%{border-color: var(--grad-green); opacity:1;}
+    33%{border-color: var(--grad-purple); opacity:0.7;}
+    66%{border-color: var(--grad-lime); opacity:0.7;}
+    100%{border-color: var(--grad-green); opacity:1;}
+  }
+  .thinking-dots{
+    display:inline-flex; gap:3px; margin-left:2px; align-items:center;
+  }
+  .thinking-dots span{
+    width:3.5px; height:3.5px;
+    border-radius:50%;
+    animation: dot-bounce 1.4s ease-in-out infinite;
+  }
+  .thinking-dots span:nth-child(1){background: var(--grad-green);}
+  .thinking-dots span:nth-child(2){background: var(--grad-purple); animation-delay:0.16s;}
+  .thinking-dots span:nth-child(3){background: var(--grad-lime); animation-delay:0.32s;}
+  @keyframes dot-bounce{
+    0%,80%,100%{opacity:0.3; transform:translateY(0);}
+    40%{opacity:1; transform:translateY(-3px);}
+  }
+
+  .ai-actions{
+    display:flex; gap:8px; margin-top:14px;
+    flex-wrap:wrap;
+  }
+  .chip{
+    font-size:13px;
+    font-weight: 500;
+    padding: 6px 14px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--fg-2);
+    cursor:pointer;
+    transition: all var(--motion-fast) var(--ease);
+    border-radius: 9999px;
+  }
+  .chip:hover{
+    background: #ebebeb;
+    border-color: var(--fg-2);
+    color: var(--fg);
+  }
+  .chip:active{
+    background: #ddd;
+    border-color: var(--fg-2);
+    color: var(--fg);
+  }
+  .chip-select{
+    font-size:13px;
+    font-weight: 500;
+    padding: 8px 16px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--fg);
+    cursor:pointer;
+    transition: all var(--motion-fast) var(--ease);
+    border-radius: 9999px;
+  }
+  .chip-select:hover{
+    background: #ebebeb;
+  }
+  .chip-select.selected{
+    background: var(--fg);
+    color: #fff;
+    border-color: var(--fg);
+  }
+  .ai-quote{
+    margin-top:10px;
+    padding: 14px 18px;
+    background: var(--bg);
+    border-radius: var(--radius-lg);
+    font-family: var(--font-body);
+    font-size: 13px;
+    color: var(--fg-2);
+    line-height:1.9;
+    font-style: italic;
+  }
+
+  /* ─── Chat input — per spec ─── */
+  .chat-input{
+    margin: 10px 12px 12px;
+    flex-shrink:0;
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: 9999px;
+    display:flex; align-items:flex-end;
+    transition: all var(--motion-base) var(--ease);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .chat-input:focus-within{
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(140,94,244,0.12);
+  }
+  .chat-input textarea{
+    flex:1; outline:none; resize:none;
+    font-family: var(--font-body); font-size:13.5px;
+    background: transparent; color: var(--fg);
+    line-height: 1.6;
+    max-height: 100px;
+    padding: 12px 0 12px 18px;
+    border: none;
+  }
+  .chat-input textarea::placeholder{color: var(--meta);}
+  .send-btn{
+    width:32px; height:32px; flex-shrink:0;
+    border-radius: 50%;
+    background: var(--fg);
+    color: #fff;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+    transition: all var(--motion-fast) var(--ease);
+    margin: 0 8px 8px 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  }
+  .send-btn:hover{
+    background: var(--fg-2);
+    transform:translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+  }
+  .send-btn svg{width:16px;height:16px;}
+
+  /* ─── SCROLLBARS ─── */
+  .chat-body::-webkit-scrollbar{width:4px;}
+  .chat-body::-webkit-scrollbar-thumb{
+    background: var(--border); border-radius: 4px;
+  }
+</style>
+</head>
+<body data-screen-label="02 Yujee Editor">
+
+<div class="topbar">
+  <div class="top-left">
+    <a href="../yujee-home2.html#projects" class="back-btn" data-i18n-title="backToProjects" title="返回我的项目">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </a>
+    <a href="../yujee-home2.html" class="brand"><span class="brand-mark"></span>Yujee</a>
+    <span class="crumb">/</span>
+    <span class="album-title" contenteditable="true" data-i18n="albumTitle">2024 厦门三日游</span>
+    <span class="save-badge"><span class="pulse"></span><span data-i18n="saved">已保存</span></span>
+  </div>
+  <div class="top-right">
+    <button class="btn-primary" onclick="alert(t('alertExportPdf'))">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      <span data-i18n="exportPdf">导出 PDF</span>
+    </button>
+
+    <!-- Credits pill -->
+    <div class="credits-pill" onclick="window.location.href='pricing.html'" title="查看定价方案">
+      <span class="credits-dot"></span>
+      <span>552</span>
+      <span class="credits-sep">|</span>
+      <span>Free</span>
+    </div>
+
+    <!-- User avatar + dropdown -->
+    <div class="user-menu" id="userMenu">
+      <button class="user-trigger" onclick="toggleUserMenu()">
+        <span class="user-avatar">L</span>
+      </button>
+      <div class="user-dropdown">
+        <div class="dropdown-header">
+          <div class="dropdown-header-name">Liam Chen</div>
+          <div class="dropdown-header-email">liam@example.com</div>
+        </div>
+        <div class="dropdown-plan-row">
+          <span class="dropdown-plan-label">Free</span>
+          <button class="btn-upgrade" onclick="window.location.href='pricing.html';document.getElementById('userMenu').classList.remove('open');">升级</button>
+        </div>
+        <button class="dropdown-item" onclick="window.location.href='pricing.html';document.getElementById('userMenu').classList.remove('open');"><span class="dropdown-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><span>管理订阅</span></button>
+        <button class="dropdown-item" onclick="window.location.href='mailto:feedback@yujee.com';document.getElementById('userMenu').classList.remove('open');"><span class="dropdown-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span><span>反馈与问题</span></button>
+        <div class="dropdown-sep"></div>
+        <button class="dropdown-item danger" onclick="window.location.href='../yujee-home2.html'"><span class="dropdown-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></span><span>退出登录</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="workspace">
+
+  <!-- CENTER: PREVIEW -->
+  <main class="pane pane-center">
+
+    <div class="book-stage">
+      <div class="book" id="book">
+        <div class="page page-left" id="pageLeft"></div>
+        <div class="page page-right" id="pageRight"></div>
+        <div class="flipper" id="flipper">
+          <div class="leaf front" id="leafFront"></div>
+          <div class="leaf back" id="leafBack"></div>
+        </div>
+      </div>
+
+      <!-- Thumbnail strip -->
+      <div class="thumb-strip">
+        <div class="thumb-nav">
+          <button class="thumb-nav-btn" onclick="thumbNav(-1)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <span class="thumb-page-ind" id="thumbInd">1 / 3</span>
+          <button class="thumb-nav-btn" onclick="thumbNav(1)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+        <div class="thumb-row" id="thumbRow">
+          <div class="thumb-item active" onclick="goToSpread(0)">
+            <div class="thumb-img"><div class="thumb-img-left" style="background:linear-gradient(180deg, #e8e8e8 40%, #d0d0d0 100%)"></div><div class="thumb-img-right" style="background:linear-gradient(135deg, #ddd 30%, #c8c8c8 100%)"></div></div>
+          </div>
+          <div class="thumb-item" onclick="goToSpread(1)">
+            <div class="thumb-img"><div class="thumb-img-left" style="background:linear-gradient(180deg, #e2e2e2 50%, #ccc 100%)"></div><div class="thumb-img-right" style="background:linear-gradient(90deg, #e5e5e5, #d5d5d5)"></div></div>
+          </div>
+          <div class="thumb-item" onclick="goToSpread(2)">
+            <div class="thumb-img"><div class="thumb-img-left" style="background:linear-gradient(180deg, #e0e0e0 40%, #d2d2d2 100%)"></div><div class="thumb-img-right" style="background:linear-gradient(135deg, #e8e8e8, #d8d8d8)"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: CHAT -->
+  <aside class="pane pane-right">
+    <div class="chat-head">
+      <div class="ai-avatar" data-i18n="aiAvatarChar">己</div>
+      <div>
+        <h3>Yujee AI</h3>
+        <div class="sub" data-i18n="chatSubtitle">和我聊聊这段回忆</div>
+      </div>
+      <span class="chat-context" data-i18n="chatCtxCh1">第 1 章</span>
+    </div>
+
+    <div class="chat-body" id="chatBody">
+      <!-- AI message 1 -->
+      <div class="msg ai">
+        <div class="thinking-block">
+          <span class="thinking-icon"></span>
+          <span class="thinking-label" data-i18n="thinkingAnalyzed">分析了 6 张照片和地点信息</span>
+          <span class="thinking-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+        </div>
+        <div class="ai-text" data-i18n="aiMsg1">
+          我已经为「海边时光」这一章写好了叙事文案。如果你想分享更多记忆，比如那天的天气、和谁同行、当时的心情，我可以把这些融进文字里。
+        </div>
+        <div class="name-time">10:41</div>
+      </div>
+
+      <!-- User message 1 -->
+      <div class="msg user">
+        <div class="bubble" data-i18n="userMsg1">那天其实下午起风了，我还差点把帽子吹丢，能加进去吗？</div>
+      </div>
+
+      <!-- AI message 2: with quote result -->
+      <div class="msg ai">
+        <div class="thinking-block">
+          <span class="thinking-icon"></span>
+          <span class="thinking-label" data-i18n="thinkingReorg">重新组织第二段，融入风和帽子的细节</span>
+          <span class="thinking-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+        </div>
+        <div class="ai-text" data-i18n="aiMsg2">好的，我把这个细节融进了第二段。你看看这版：</div>
+        <div class="ai-quote" data-i18n="aiQuote1">
+          那天午后风忽然大了起来，差点把帽子从你头顶卷走。我们笑着追了几步，又坐回沙滩——海浪一遍又一遍地把脚印抹平，又一遍又一遍地让我们重新走过。
+        </div>
+        <div class="ai-actions">
+          <button class="chip" data-i18n="chipAccept" onclick="alert(t('alertAccepted'))">采纳</button>
+          <button class="chip" data-i18n="chipRewrite" onclick="alert(t('alertRewrite'))">再写一版</button>
+          <button class="chip" data-i18n="chipEditMyself" onclick="this.closest('.msg').querySelector('.ai-quote').setAttribute('contenteditable','true');this.closest('.msg').querySelector('.ai-quote').focus();alert(t('alertEditMyself'))">我来改</button>
+        </div>
+        <div class="name-time">10:42</div>
+      </div>
+
+      <!-- User message 2 -->
+      <div class="msg user">
+        <div class="bubble" data-i18n="userMsg2">很好。再帮我想个更有诗意的章节名？</div>
+      </div>
+
+      <!-- AI message 3: active thinking -->
+      <div class="msg ai">
+        <div class="thinking-block active">
+          <span class="thinking-icon"></span>
+          <span class="thinking-label" data-i18n="thinkingChapterName">正在构思章节名<span class="thinking-dots"><span></span><span></span><span></span></span></span>
+        </div>
+        <div class="ai-text" data-i18n="aiMsg3">几个备选，挑一个或告诉我感觉：</div>
+        <div class="ai-actions">
+          <button class="chip-select" data-i18n="chipName1" onclick="this.parentNode.querySelectorAll('.chip-select').forEach(c=>c.classList.remove('selected'));this.classList.add('selected');document.querySelector('.ch-title').textContent=this.textContent;document.querySelector('.ch-mark').textContent=this.textContent;alert(t('alertChapterUpdated')+this.textContent)">浪把时间洗薄了</button>
+          <button class="chip-select" data-i18n="chipName2" onclick="this.parentNode.querySelectorAll('.chip-select').forEach(c=>c.classList.remove('selected'));this.classList.add('selected');document.querySelector('.ch-title').textContent=this.textContent;document.querySelector('.ch-mark').textContent=this.textContent;alert(t('alertChapterUpdated')+this.textContent)">风从海上来</button>
+          <button class="chip-select" data-i18n="chipName3" onclick="this.parentNode.querySelectorAll('.chip-select').forEach(c=>c.classList.remove('selected'));this.classList.add('selected');document.querySelector('.ch-title').textContent=this.textContent;document.querySelector('.ch-mark').textContent=this.textContent;alert(t('alertChapterUpdated')+this.textContent)">咸味的下午</button>
+          <button class="chip-select" data-i18n="chipName4" onclick="this.parentNode.querySelectorAll('.chip-select').forEach(c=>c.classList.remove('selected'));this.classList.add('selected');document.querySelector('.ch-title').textContent=this.textContent;document.querySelector('.ch-mark').textContent=this.textContent;alert(t('alertChapterUpdated')+this.textContent)">那只差点飞走的帽子</button>
+        </div>
+        <div class="name-time">10:43</div>
+      </div>
+    </div>
+
+    <div class="chat-input">
+      <textarea data-i18n-placeholder="inputPlaceholder" placeholder="输入消息..." rows="1" id="msgInput"></textarea>
+      <button class="send-btn" id="sendBtn" data-i18n-title="send" title="发送">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+      </button>
+    </div>
+  </aside>
+</div>
+
+<script>
+  /* ─── i18n translations ─── */
+  const i18n = {
+    zh: {
+      // Page title
+      pageTitle: 'Yujee — 编辑你的纪念册',
+      // Top bar
+      backToProjects: '返回我的项目',
+      albumTitle: '2024 厦门三日游',
+      saved: '已保存',
+      undo: '撤销',
+      redo: '重做',
+      share: '分享',
+      exportPdf: '导出 PDF',
+      // Alerts (top bar)
+      alertUndo: '撤销上一步操作',
+      alertRedo: '重做已撤销的操作',
+      alertLinkCopied: '链接已复制到剪贴板！',
+      alertExportPdf: 'PDF 导出中…\n\n杂志「2024 厦门三日游」正在生成高清 PDF，完成后将自动下载。',
+      // Left panel
+      chapters: '章节',
+      newChapter: '新增章节',
+      alertNewChapter: '新增章节 — 请输入章节标题',
+      ch1Title: '海边时光',
+      ch1Desc: '6 张照片 · 沙滩、日出、海浪',
+      ch2Title: '古街探味',
+      ch2Desc: '7 张照片 · 小巷、美食、灯笼',
+      ch3Title: '日落归途',
+      ch3Desc: '4 张照片 · 山路、晚霞、剪影',
+      // Preview toolbar
+      prevPage: '上一页',
+      nextPage: '下一页',
+      zoomOut: '缩小',
+      zoomIn: '放大',
+      fullscreen: '全屏预览',
+      // Chat head
+      aiAvatarChar: '己',
+      chatSubtitle: '和我聊聊这段回忆',
+      chatCtxCh1: '第 1 章',
+      // Chat messages
+      thinkingAnalyzed: '分析了 6 张照片和地点信息',
+      aiMsg1: '我已经为「海边时光」这一章写好了叙事文案。如果你想分享更多记忆，比如那天的天气、和谁同行、当时的心情，我可以把这些融进文字里。',
+      userMsg1: '那天其实下午起风了，我还差点把帽子吹丢，能加进去吗？',
+      thinkingReorg: '重新组织第二段，融入风和帽子的细节',
+      aiMsg2: '好的，我把这个细节融进了第二段。你看看这版：',
+      aiQuote1: '那天午后风忽然大了起来，差点把帽子从你头顶卷走。我们笑着追了几步，又坐回沙滩——海浪一遍又一遍地把脚印抹平，又一遍又一遍地让我们重新走过。',
+      chipAccept: '采纳',
+      chipRewrite: '再写一版',
+      chipEditMyself: '我来改',
+      alertAccepted: '已采纳这个版本！文案已更新到杂志预览中。',
+      alertRewrite: '好的，我重新写一版...',
+      alertEditMyself: '你可以直接编辑上方文案了',
+      userMsg2: '很好。再帮我想个更有诗意的章节名？',
+      thinkingChapterName: '正在构思章节名',
+      aiMsg3: '几个备选，挑一个或告诉我感觉：',
+      chipName1: '浪把时间洗薄了',
+      chipName2: '风从海上来',
+      chipName3: '咸味的下午',
+      chipName4: '那只差点飞走的帽子',
+      alertChapterUpdated: '章节名已更新为「',
+      // Chat input
+      inputPlaceholder: '输入消息...',
+      send: '发送',
+      // Dynamic JS strings
+      thinking: '正在思考',
+      analyzedFeedback: '分析了你的反馈',
+      aiReplyDefault: '收到，我重新写一版给你看看…',
+      justNow: '刚刚',
+      thinkingComplete: '构思了 4 个章节名方案',
+      // CHAPTERS data
+      ch1TitleBook: '海边时光',
+      ch1Meta: '2024.04.06 · 厦门 · 6 张照片',
+      ch1Narrative: '那天的<span class="hl">风很轻</span>，沙子是温热的。我们沿着环岛路一直走，海浪一遍又一遍地把脚印抹平，又一遍又一遍地让我们重新走过。你说想看一次完整的潮起潮落，于是我们坐了整个下午，看远处的船像一只被慢慢拉远的风筝。后来才知道，<span class="hl">那种叫不出名字的安静</span>，就是旅行最珍贵的部分。',
+      ch1PhotoCap: '环岛路 · 上午十点',
+      ch1PageNum: '02 · 海边时光',
+      ch1Footer: '厦门 · 鼓浪屿',
+      ch1CtxTag: '第 1 章',
+      ch2TitleBook: '古街探味',
+      ch2Meta: '2024.04.07 · 中山路 · 7 张照片',
+      ch2Narrative: '老巷子里有<span class="hl">沙茶面的烟火气</span>，墙根贴着早褪色的招牌。卖花生汤的阿姨说，她在这条街做了三十二年了，她记得每一个常客的口味。我们点了一碗最老派的，她笑着多舀了一勺。<span class="hl">所谓人情味</span>，大概就是这样的一勺。',
+      ch2PhotoCap: '中山路 · 黄昏',
+      ch2PageNum: '08 · 古街探味',
+      ch2Footer: '厦门 · 中山路',
+      ch2CtxTag: '第 2 章',
+      ch3TitleBook: '日落归途',
+      ch3Meta: '2024.04.08 · 演武大桥 · 4 张照片',
+      ch3Narrative: '回程的车上，<span class="hl">夕阳把云烧成橘子味</span>。你靠在窗边睡着了，我没忍心叫你。高铁穿过一段又一段海岸，每一次海面被切开，光就跟着碎一次。我想，这趟旅行最完整的画面，<span class="hl">大概不在相机里</span>，在你睡着时窗外那片橘色里。',
+      ch3PhotoCap: '演武大桥 · 17:42',
+      ch3PageNum: '14 · 日落归途',
+      ch3Footer: '厦门 · 演武大桥',
+      ch3CtxTag: '第 3 章',
+    },
+    en: {
+      // Page title
+      pageTitle: 'Yujee — Edit Your Album',
+      // Top bar
+      backToProjects: 'Back to projects',
+      albumTitle: '2024 Xiamen 3-Day Trip',
+      saved: 'Saved',
+      undo: 'Undo',
+      redo: 'Redo',
+      share: 'Share',
+      exportPdf: 'Export PDF',
+      // Alerts (top bar)
+      alertUndo: 'Undo last action',
+      alertRedo: 'Redo undone action',
+      alertLinkCopied: 'Link copied to clipboard!',
+      alertExportPdf: 'Exporting PDF...\n\nGenerating high-resolution PDF for "2024 Xiamen 3-Day Trip". It will download automatically when ready.',
+      // Left panel
+      chapters: 'Chapters',
+      newChapter: '+ New chapter',
+      alertNewChapter: 'New chapter — Enter a chapter title',
+      ch1Title: 'By the Sea',
+      ch1Desc: '6 photos · beach, sunrise, waves',
+      ch2Title: 'Old Town Flavors',
+      ch2Desc: '7 photos · alleys, food, lanterns',
+      ch3Title: 'Sunset Return',
+      ch3Desc: '4 photos · mountain road, sunset, silhouettes',
+      // Preview toolbar
+      prevPage: 'Previous page',
+      nextPage: 'Next page',
+      zoomOut: 'Zoom out',
+      zoomIn: 'Zoom in',
+      fullscreen: 'Fullscreen preview',
+      // Chat head
+      aiAvatarChar: 'Y',
+      chatSubtitle: 'Tell me about this memory',
+      chatCtxCh1: 'Ch. 1',
+      // Chat messages
+      thinkingAnalyzed: 'Analyzed 6 photos and location info',
+      aiMsg1: 'I\'ve written the narrative for the "By the Sea" chapter. If you\'d like to share more memories — the weather that day, who you were with, how you felt — I can weave those details into the text.',
+      userMsg1: 'Actually it got windy that afternoon and I almost lost my hat — can you add that?',
+      thinkingReorg: 'Reorganizing paragraph two, adding wind and hat details',
+      aiMsg2: 'Done — I wove that detail into the second paragraph. Take a look:',
+      aiQuote1: 'That afternoon the wind picked up suddenly, nearly snatching the hat right off your head. We laughed and chased it a few steps, then sat back down on the sand — the waves erasing our footprints over and over, and over and over we walked them again.',
+      chipAccept: 'Accept',
+      chipRewrite: 'Rewrite',
+      chipEditMyself: 'Edit myself',
+      alertAccepted: 'Accepted! The copy has been updated in the magazine preview.',
+      alertRewrite: 'OK, let me rewrite a new version...',
+      alertEditMyself: 'You can now edit the text above directly',
+      userMsg2: 'Great. Can you come up with a more poetic chapter title?',
+      thinkingChapterName: 'Brainstorming chapter names',
+      aiMsg3: 'Here are some options — pick one or tell me what feels right:',
+      chipName1: 'Waves Thinning Time',
+      chipName2: 'Wind from the Sea',
+      chipName3: 'A Salty Afternoon',
+      chipName4: 'The Hat That Almost Flew Away',
+      alertChapterUpdated: 'Chapter title updated to "',
+      // Chat input
+      inputPlaceholder: 'Type a message...',
+      send: 'Send',
+      // Dynamic JS strings
+      thinking: 'Thinking',
+      analyzedFeedback: 'Analyzed your feedback',
+      aiReplyDefault: 'Got it, let me rewrite a new version for you...',
+      justNow: 'Just now',
+      thinkingComplete: 'Brainstormed 4 chapter name ideas',
+      // CHAPTERS data
+      ch1TitleBook: 'By the Sea',
+      ch1Meta: '2024.04.06 · Xiamen · 6 photos',
+      ch1Narrative: 'The <span class="hl">breeze was gentle</span> that day, the sand warm underfoot. We walked along the coastal road as waves erased our footprints over and over, and over and over we walked them again. You said you wanted to watch a full tide come and go, so we sat the whole afternoon, watching the boats in the distance drift like kites slowly pulled away. Only later did we realize that <span class="hl">the nameless quiet</span> was the most precious part of any journey.',
+      ch1PhotoCap: 'Coastal Road · 10 AM',
+      ch1PageNum: '02 · By the Sea',
+      ch1Footer: 'Xiamen · Gulangyu',
+      ch1CtxTag: 'Ch. 1',
+      ch2TitleBook: 'Old Town Flavors',
+      ch2Meta: '2024.04.07 · Zhongshan Rd · 7 photos',
+      ch2Narrative: 'The old alleys smelled of <span class="hl">satay noodle smoke</span>, faded signs clinging to the walls. The peanut-soup auntie said she\'d been on this street for thirty-two years; she remembered every regular\'s taste. We ordered the most old-school bowl, and she smiled, ladling an extra scoop. <span class="hl">The flavor of kindness</span> — that\'s roughly what one extra scoop tastes like.',
+      ch2PhotoCap: 'Zhongshan Rd · Dusk',
+      ch2PageNum: '08 · Old Town Flavors',
+      ch2Footer: 'Xiamen · Zhongshan Rd',
+      ch2CtxTag: 'Ch. 2',
+      ch3TitleBook: 'Sunset Return',
+      ch3Meta: '2024.04.08 · Yanwu Bridge · 4 photos',
+      ch3Narrative: 'On the ride back, the <span class="hl">sunset burned the clouds tangerine</span>. You fell asleep against the window; I didn\'t have the heart to wake you. The high-speed train cut through stretch after stretch of coast, and every time the sea was sliced open, the light shattered with it. I think the most complete picture from this trip <span class="hl">isn\'t in any camera</span> — it\'s in that tangerine glow outside the window while you slept.',
+      ch3PhotoCap: 'Yanwu Bridge · 17:42',
+      ch3PageNum: '14 · Sunset Return',
+      ch3Footer: 'Xiamen · Yanwu Bridge',
+      ch3CtxTag: 'Ch. 3',
+    }
+  };
+
+  let currentLang = 'zh';
+
+  /** Get a translated string by key */
+  function t(key) {
+    return (i18n[currentLang] && i18n[currentLang][key]) || (i18n.zh[key]) || key;
+  }
+
+  /** Apply language to all data-i18n, data-i18n-title, data-i18n-placeholder elements */
+  function setLang(lang) {
+    if (!i18n[lang]) return;
+    currentLang = lang;
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+
+    // Text content
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      const val = t(key);
+      if (val) {
+        // Special: the thinkingChapterName label keeps its dots span when active
+        if (key === 'thinkingChapterName' && el.closest('.thinking-block.active')) {
+          el.innerHTML = val + '<span class="thinking-dots"><span></span><span></span><span></span></span>';
+        } else {
+          el.textContent = val;
+        }
+      }
+    });
+
+    // Title attributes
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+      const key = el.getAttribute('data-i18n-title');
+      const val = t(key);
+      if (val) el.setAttribute('title', val);
+    });
+
+    // Placeholder attributes
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      const key = el.getAttribute('data-i18n-placeholder');
+      const val = t(key);
+      if (val) el.setAttribute('placeholder', val);
+    });
+
+    // Rebuild CHAPTERS data from translations
+    rebuildChapters();
+
+    // Repaint current spread to reflect new language
+    paintSpread(currentCh);
+  }
+
+  /* ─── Nav interaction helpers ─── */
+  function toggleLang() {
+    document.getElementById('langSelect').classList.toggle('open');
+    document.getElementById('userMenu').classList.remove('open');
+  }
+  function selectLang(btn) {
+    var lang = btn.getAttribute('data-lang');
+    document.querySelectorAll('.lang-option').forEach(o => o.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelector('.lang-label').textContent = lang;
+    document.getElementById('langSelect').classList.remove('open');
+    // Apply i18n
+    if (lang === 'English') setLang('en');
+    else setLang('zh');
+  }
+  function toggleUserMenu() {
+    document.getElementById('userMenu').classList.toggle('open');
+    document.getElementById('langSelect').classList.remove('open');
+  }
+  // Click outside to close dropdowns
+  document.addEventListener('click', function(e) {
+    var ls = document.getElementById('langSelect');
+    var um = document.getElementById('userMenu');
+    if (ls && !ls.contains(e.target)) ls.classList.remove('open');
+    if (um && !um.contains(e.target)) um.classList.remove('open');
+  });
+
+  /** Build CHAPTERS array from current language translations */
+  function rebuildChapters() {
+    CHAPTERS[0].title    = t('ch1TitleBook');
+    CHAPTERS[0].meta     = t('ch1Meta');
+    CHAPTERS[0].narrative = t('ch1Narrative');
+    CHAPTERS[0].photos[0].cap = t('ch1PhotoCap');
+    CHAPTERS[0].pageNum  = t('ch1PageNum');
+    CHAPTERS[0].footer   = t('ch1Footer');
+    CHAPTERS[0].ctxTag   = t('ch1CtxTag');
+
+    CHAPTERS[1].title    = t('ch2TitleBook');
+    CHAPTERS[1].meta     = t('ch2Meta');
+    CHAPTERS[1].narrative = t('ch2Narrative');
+    CHAPTERS[1].photos[0].cap = t('ch2PhotoCap');
+    CHAPTERS[1].pageNum  = t('ch2PageNum');
+    CHAPTERS[1].footer   = t('ch2Footer');
+    CHAPTERS[1].ctxTag   = t('ch2CtxTag');
+
+    CHAPTERS[2].title    = t('ch3TitleBook');
+    CHAPTERS[2].meta     = t('ch3Meta');
+    CHAPTERS[2].narrative = t('ch3Narrative');
+    CHAPTERS[2].photos[0].cap = t('ch3PhotoCap');
+    CHAPTERS[2].pageNum  = t('ch3PageNum');
+    CHAPTERS[2].footer   = t('ch3Footer');
+    CHAPTERS[2].ctxTag   = t('ch3CtxTag');
+  }
+
+  const $ = s => document.querySelector(s);
+  function photoGridHTML(photos){
+    return `<div class="photo-grid">` + photos.map(p=>
+      `<div class="photo${p.span?' span-2':''}" style="background-image:url('${p.url}')">${p.cap?`<div class="cap">${p.cap}</div>`:''}</div>`
+    ).join('') + `</div>`;
+  }
+  function coverHTML(c){
+    return `
+      <div class="ch-eyebrow">${c.eyebrow}</div>
+      <div class="ch-mark">${c.title}</div>
+      <div class="ch-meta-line">${c.meta}</div>
+      <p class="ch-narrative">${c.narrative}</p>
+      <div class="page-num left">${c.pageNum}</div>`;
+  }
+  function photoSideHTML(c){
+    return `${photoGridHTML(c.photos)}
+      <div class="photo-foot"><span>${c.footer}</span><span>${c.pageRightNum}</span></div>`;
+  }
+
+  const CHAPTERS = [
+    {
+      eyebrow:'CHAPTER 01',
+      title:'海边时光',
+      meta:'2024.04.06 · 厦门 · 6 张照片',
+      pages:'P. 2–3 / 17',
+      footer:'厦门 · 鼓浪屿',
+      narrative: `那天的<span class="hl">风很轻</span>，沙子是温热的。我们沿着环岛路一直走，海浪一遍又一遍地把脚印抹平，又一遍又一遍地让我们重新走过。
+        你说想看一次完整的潮起潮落，于是我们坐了整个下午，看远处的船像一只被慢慢拉远的风筝。
+        后来才知道，<span class="hl">那种叫不出名字的安静</span>，就是旅行最珍贵的部分。`,
+      photos:[
+        {url:'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600&q=80', cap:'环岛路 · 上午十点', span:true},
+        {url:'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=400&q=80'},
+        {url:'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80'},
+      ],
+      pageNum:'02 · 海边时光',
+      pageRightNum:'03',
+      ctxTag: '第 1 章',
+    },
+    {
+      eyebrow:'CHAPTER 02',
+      title:'古街探味',
+      meta:'2024.04.07 · 中山路 · 7 张照片',
+      pages:'P. 8–9 / 17',
+      footer:'厦门 · 中山路',
+      narrative: `老巷子里有<span class="hl">沙茶面的烟火气</span>，墙根贴着早褪色的招牌。
+        卖花生汤的阿姨说，她在这条街做了三十二年了，她记得每一个常客的口味。
+        我们点了一碗最老派的，她笑着多舀了一勺。<span class="hl">所谓人情味</span>，大概就是这样的一勺。`,
+      photos:[
+        {url:'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600&q=80', cap:'中山路 · 黄昏', span:true},
+        {url:'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400&q=80'},
+        {url:'https://images.unsplash.com/photo-1559339352-11d035aa65de?w=400&q=80'},
+      ],
+      pageNum:'08 · 古街探味',
+      pageRightNum:'09',
+      ctxTag: '第 2 章',
+    },
+    {
+      eyebrow:'CHAPTER 03',
+      title:'日落归途',
+      meta:'2024.04.08 · 演武大桥 · 4 张照片',
+      pages:'P. 14–15 / 17',
+      footer:'厦门 · 演武大桥',
+      narrative: `回程的车上，<span class="hl">夕阳把云烧成橘子味</span>。
+        你靠在窗边睡着了，我没忍心叫你。
+        高铁穿过一段又一段海岸，每一次海面被切开，光就跟着碎一次。
+        我想，这趟旅行最完整的画面，<span class="hl">大概不在相机里</span>，在你睡着时窗外那片橘色里。`,
+      photos:[
+        {url:'https://images.unsplash.com/photo-1495567720989-cebdbdd97913?w=600&q=80', cap:'演武大桥 · 17:42', span:true},
+        {url:'https://images.unsplash.com/photo-1502635385003-ee1e6a1a742d?w=400&q=80'},
+        {url:'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=400&q=80'},
+      ],
+      pageNum:'14 · 日落归途',
+      pageRightNum:'15',
+      ctxTag: '第 3 章',
+    }
+  ];
+
+  const chapEls = document.querySelectorAll('.chapter');
+  const ctxBadge = document.querySelector('.chat-context');
+  const pageInd = document.getElementById('pageInd');
+  const pageLeft = $('#pageLeft');
+  const pageRight = $('#pageRight');
+  const flipper = $('#flipper');
+  const leafFront = $('#leafFront');
+  const leafBack = $('#leafBack');
+  let currentCh = 0;
+  let flipping = false;
+
+  function paintSpread(i){
+    const c = CHAPTERS[i];
+    pageLeft.innerHTML = coverHTML(c);
+    pageRight.innerHTML = photoSideHTML(c);
+    if(pageInd) pageInd.textContent = c.pages;
+    ctxBadge.textContent = c.ctxTag;
+    chapEls.forEach((el,j) => el.classList.toggle('active', j===i));
+    // Sync thumbnail strip
+    if (typeof updateThumbUI === 'function') updateThumbUI(i);
+  }
+
+  function flipTo(nextIdx, dir){
+    if(flipping || nextIdx === currentCh) return;
+    flipping = true;
+    const cur = CHAPTERS[currentCh];
+    const nxt = CHAPTERS[nextIdx];
+
+    if(dir === 'next'){
+      leafFront.innerHTML = photoSideHTML(cur);
+      leafBack.innerHTML  = coverHTML(nxt);
+      pageRight.innerHTML = photoSideHTML(nxt);
+      flipper.classList.remove('flip-prev');
+      flipper.style.left = '50%';
+      flipper.style.transformOrigin = 'left center';
+      flipper.style.transform = 'rotateY(0deg)';
+      requestAnimationFrame(()=>{
+        flipper.classList.add('flipping');
+        flipper.style.transform = 'rotateY(-180deg)';
+      });
+      setTimeout(()=>{
+        currentCh = nextIdx;
+        paintSpread(nextIdx);
+        flipper.classList.remove('flipping');
+        flipper.style.transform = 'rotateY(0deg)';
+        flipping = false;
+      }, 920);
+    } else {
+      leafFront.innerHTML = coverHTML(cur);
+      leafBack.innerHTML  = photoSideHTML(nxt);
+      pageLeft.innerHTML = coverHTML(nxt);
+      flipper.style.left = '0%';
+      flipper.style.transformOrigin = 'right center';
+      flipper.style.transform = 'rotateY(0deg)';
+      requestAnimationFrame(()=>{
+        flipper.classList.add('flipping');
+        flipper.style.transform = 'rotateY(180deg)';
+      });
+      setTimeout(()=>{
+        currentCh = nextIdx;
+        paintSpread(nextIdx);
+        flipper.classList.remove('flipping');
+        flipper.style.left = '50%';
+        flipper.style.transformOrigin = 'left center';
+        flipper.style.transform = 'rotateY(0deg)';
+        flipping = false;
+      }, 920);
+    }
+  }
+
+  // Read saved language preference and apply (setLang also calls paintSpread)
+  (function initLang() {
+    const saved = localStorage.getItem('yujee-lang');
+    if (saved && i18n[saved]) {
+      currentLang = saved;
+    }
+    rebuildChapters();
+    setLang(currentLang);
+  })();
+
+  chapEls.forEach((el,i)=>{
+    el.addEventListener('click', ()=>{
+      if(i === currentCh) return;
+      flipTo(i, i > currentCh ? 'next' : 'prev');
+    });
+  });
+  // Thumbnail strip — connected to book flipTo
+  function updateThumbUI(chIdx) {
+    document.querySelectorAll('.thumb-item').forEach((el, i) => {
+      el.classList.toggle('active', i === chIdx);
+    });
+    document.getElementById('thumbInd').textContent = (chIdx + 1) + ' / ' + CHAPTERS.length;
+  }
+  function goToSpread(chIdx) {
+    if (chIdx === currentCh || chIdx < 0 || chIdx >= CHAPTERS.length) return;
+    flipTo(chIdx, chIdx > currentCh ? 'next' : 'prev');
+    updateThumbUI(chIdx);
+  }
+  function thumbNav(dir) {
+    let next = currentCh + dir;
+    if (next < 0) next = CHAPTERS.length - 1;
+    if (next >= CHAPTERS.length) next = 0;
+    goToSpread(next);
+  }
+
+  // Chat send
+  const chatBody = $('#chatBody');
+  const input = $('#msgInput');
+  const sendBtnEl = $('#sendBtn');
+  function send(){
+    const txt = input.value.trim();
+    if(!txt) return;
+    const u = document.createElement('div');
+    u.className = 'msg user';
+    u.innerHTML = `<div class="bubble"></div>`;
+    u.querySelector('.bubble').textContent = txt;
+    chatBody.appendChild(u);
+    input.value=''; input.style.height='auto';
+    chatBody.scrollTop = chatBody.scrollHeight;
+    // Show thinking state first
+    setTimeout(()=>{
+      const a = document.createElement('div');
+      a.className = 'msg ai';
+      a.innerHTML = `
+        <div class="thinking-block active">
+          <span class="thinking-icon"></span>
+          <span class="thinking-label">${t('thinking')}<span class="thinking-dots"><span></span><span></span><span></span></span></span>
+        </div>`;
+      chatBody.appendChild(a);
+      chatBody.scrollTop = chatBody.scrollHeight;
+      // Then show response
+      setTimeout(()=>{
+        a.querySelector('.thinking-block').classList.remove('active');
+        a.querySelector('.thinking-label').textContent = t('analyzedFeedback');
+        const textEl = document.createElement('div');
+        textEl.className = 'ai-text';
+        textEl.textContent = t('aiReplyDefault');
+        const time = document.createElement('div');
+        time.className = 'name-time';
+        time.textContent = t('justNow');
+        a.appendChild(textEl);
+        a.appendChild(time);
+        chatBody.scrollTop = chatBody.scrollHeight;
+      }, 1500);
+    }, 400);
+  }
+  sendBtnEl.addEventListener('click', send);
+  input.addEventListener('keydown', e=>{
+    if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }
+  });
+  input.addEventListener('input', ()=>{
+    input.style.height='auto';
+    input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+  });
+
+  // Auto-complete the last "active" thinking block after 3s
+  setTimeout(()=>{
+    const active = document.querySelector('.thinking-block.active');
+    if(active){
+      active.classList.remove('active');
+      const label = active.querySelector('.thinking-label');
+      if(label) label.textContent = t('thinkingComplete');
+    }
+  }, 3000);
+
+  // Listen for storage changes from other pages (e.g., home page language toggle)
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'yujee-lang' && e.newValue && i18n[e.newValue]) {
+      setLang(e.newValue);
+    }
+  });
+</script>
+
+
+</body></html>

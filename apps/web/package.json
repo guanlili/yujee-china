@@ -1,0 +1,26 @@
+{
+  "name": "@yujee/web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "tsx --test src/**/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@yujee/contracts": "workspace:*",
+    "next": "15.5.9",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "20.12.12",
+    "@types/react": "19.0.7",
+    "@types/react-dom": "19.0.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.4.5"
+  }
+}

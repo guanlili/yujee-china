@@ -1,0 +1,19 @@
+[project]
+name = "yujee-agent"
+version = "0.0.1"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "python-multipart>=0.0.9",
+  "uvicorn>=0.30.0",
+  "pydantic>=2.7.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
