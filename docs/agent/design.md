@@ -1,5 +1,7 @@
 # Agent 内部 Pipeline 设计
 
+> Agent design reviewed by Claude Opus (B0 window) on 2026-05-27.
+>
 > **前置阅读**: `CLAUDE.md` → `docs/architecture.md` → `docs/agent/contract.md`
 >
 > 谁读这份: 写 `apps/agent/src/services/*` 真实 pipeline 的人。
