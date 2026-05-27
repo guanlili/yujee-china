@@ -1,23 +1,30 @@
 @import "tailwindcss";
 
-@theme {
-  --color-bg: #fafaf7;
-  --color-fg: #1a1a1a;
-  --color-fg-muted: #555;
-  --color-accent: #b34a2d;
-  --color-accent-soft: #f4dccd;
-  --color-border: #e6e2d6;
-  --font-serif: "Cormorant Garamond", "Source Han Serif", Georgia, serif;
-  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+/* Yujee design tokens — single source of truth, mirrors apps/web/design-v1/yujee-home2.html :root.
+   Pages outside the marketing surface (/create, /album/*) also read these. */
+:root {
+  --bg: #f5f5f5;
+  --surface: #ffffff;
+  --fg: #111111;
+  --fg-2: #333333;
+  --muted: #888888;
+  --meta: #aaaaaa;
+  --border: #e0e0e0;
+  --border-soft: #ebebeb;
+  --accent: #8C5EF4;
+  --grad-green: #17E187;
+  --grad-lime: #DAF45E;
+  --grad-purple: #8C5EF4;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 9999px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06);
 }
 
-html, body {
-  background: var(--color-bg);
-  color: var(--color-fg);
-  font-family: var(--font-sans);
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
-}
-
-h1, h2, h3, .serif {
-  font-family: var(--font-serif);
 }

@@ -99,24 +99,24 @@ export default function AlbumPage({ params }: { params: Promise<{ uuid: string }
       return (
         <div className="text-center py-20">
           <p className="serif text-3xl text-red-700">Something went wrong</p>
-          <p className="mt-3 text-[var(--color-fg-muted)]">{job.error?.message ?? 'Unknown error'}</p>
+          <p className="mt-3 text-[var(--muted)]">{job.error?.message ?? 'Unknown error'}</p>
         </div>
       );
     }
     const label = job.stage ? STAGE_LABEL[job.stage] ?? job.stage : 'Starting…';
     return (
       <div className="text-center py-20">
-        <p className="uppercase tracking-[0.3em] text-xs text-[var(--color-fg-muted)] mb-4">
+        <p className="uppercase tracking-[0.3em] text-xs text-[var(--muted)] mb-4">
           {job.status}
         </p>
         <p className="serif text-3xl mb-6">{label}</p>
-        <div className="max-w-md mx-auto h-1.5 rounded-full bg-[var(--color-border)] overflow-hidden">
+        <div className="max-w-md mx-auto h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
           <div
-            className="h-full bg-[var(--color-accent)] transition-all duration-700"
+            className="h-full bg-[var(--accent)] transition-all duration-700"
             style={{ width: `${job.progress}%` }}
           />
         </div>
-        <p className="mt-2 text-xs text-[var(--color-fg-muted)]">{job.progress}%</p>
+        <p className="mt-2 text-xs text-[var(--muted)]">{job.progress}%</p>
       </div>
     );
   };
@@ -125,12 +125,12 @@ export default function AlbumPage({ params }: { params: Promise<{ uuid: string }
     if (!detail) return null;
     return (
       <div>
-        <header className="text-center py-12 border-b border-[var(--color-border)]">
-          <p className="uppercase tracking-[0.3em] text-xs text-[var(--color-fg-muted)] mb-3">
+        <header className="text-center py-12 border-b border-[var(--border)]">
+          <p className="uppercase tracking-[0.3em] text-xs text-[var(--muted)] mb-3">
             Your memoir
           </p>
           <h1 className="serif text-5xl">{detail.album.title}</h1>
-          <p className="mt-3 text-[var(--color-fg-muted)] italic">{detail.album.prompt}</p>
+          <p className="mt-3 text-[var(--muted)] italic">{detail.album.prompt}</p>
         </header>
 
         <div className="py-12 space-y-16">
@@ -139,7 +139,7 @@ export default function AlbumPage({ params }: { params: Promise<{ uuid: string }
           ))}
         </div>
 
-        <footer className="border-t border-[var(--color-border)] py-10 text-center text-sm text-[var(--color-fg-muted)]">
+        <footer className="border-t border-[var(--border)] py-10 text-center text-sm text-[var(--muted)]">
           <p>PDF export coming soon. (This is a demo build — Agent runs in mock mode.)</p>
         </footer>
       </div>
@@ -158,8 +158,8 @@ function PageView({ page, photoMap }: { page: Page; photoMap: Record<string, str
   const imageEntries = Object.entries(page.imagesJson);
   const textEntries = Object.entries(page.textsJson);
   return (
-    <section className="bg-white rounded-lg p-8 shadow-sm border border-[var(--color-border)]">
-      <p className="uppercase tracking-[0.2em] text-[10px] text-[var(--color-fg-muted)] mb-4">
+    <section className="bg-white rounded-lg p-8 shadow-sm border border-[var(--border)]">
+      <p className="uppercase tracking-[0.2em] text-[10px] text-[var(--muted)] mb-4">
         Page {page.pageIndex + 1} · {page.templateId}
       </p>
       <div className="grid grid-cols-2 gap-4 mb-6">
@@ -171,11 +171,11 @@ function PageView({ page, photoMap }: { page: Page; photoMap: Record<string, str
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={src} alt={slot} className="w-full aspect-[4/3] object-cover rounded" />
               ) : (
-                <div className="w-full aspect-[4/3] rounded bg-[var(--color-accent-soft)] flex items-center justify-center text-xs text-[var(--color-fg-muted)]">
+                <div className="w-full aspect-[4/3] rounded bg-[var(--grad-lime)] flex items-center justify-center text-xs text-[var(--muted)]">
                   {photoId} (original not in this browser session)
                 </div>
               )}
-              <p className="mt-1 text-[10px] text-[var(--color-fg-muted)] uppercase">{slot}</p>
+              <p className="mt-1 text-[10px] text-[var(--muted)] uppercase">{slot}</p>
             </div>
           );
         })}

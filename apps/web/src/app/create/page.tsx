@@ -83,7 +83,7 @@ export default function CreatePage() {
 
   return (
     <main className="min-h-screen max-w-3xl mx-auto px-6 py-16">
-      <p className="uppercase tracking-[0.3em] text-xs text-[var(--color-fg-muted)] mb-4">Step 1</p>
+      <p className="uppercase tracking-[0.3em] text-xs text-[var(--muted)] mb-4">Step 1</p>
       <h1 className="serif text-4xl mb-8">Start a memoir</h1>
 
       <label className="block">
@@ -94,14 +94,14 @@ export default function CreatePage() {
           maxLength={500}
           rows={3}
           placeholder="e.g. A spring trip to Kyoto with my mother"
-          className="mt-2 w-full p-4 rounded-lg border border-[var(--color-border)] bg-white text-base"
+          className="mt-2 w-full p-4 rounded-lg border border-[var(--border)] bg-white text-base"
         />
-        <span className="text-xs text-[var(--color-fg-muted)]">{prompt.length}/500</span>
+        <span className="text-xs text-[var(--muted)]">{prompt.length}/500</span>
       </label>
 
       <div className="mt-10">
         <p className="text-sm font-medium mb-2">Photos ({photos.length}/30, min 3)</p>
-        <label className="block border-2 border-dashed border-[var(--color-border)] rounded-lg p-10 text-center cursor-pointer hover:bg-white">
+        <label className="block border-2 border-dashed border-[var(--border)] rounded-lg p-10 text-center cursor-pointer hover:bg-white">
           <input
             type="file"
             accept="image/*"
@@ -110,7 +110,7 @@ export default function CreatePage() {
             disabled={busy}
             onChange={(e) => onFiles(e.target.files)}
           />
-          <span className="text-sm text-[var(--color-fg-muted)]">
+          <span className="text-sm text-[var(--muted)]">
             {busy ? 'Compressing…' : 'Click to upload (3–30 images)'}
           </span>
         </label>
@@ -140,7 +140,7 @@ export default function CreatePage() {
           type="button"
           onClick={submit}
           disabled={busy || photos.length < 3 || !prompt.trim()}
-          className="px-8 py-3 rounded-full bg-[var(--color-accent)] text-white text-sm tracking-wide disabled:opacity-40"
+          className="px-8 py-3 rounded-full bg-[var(--accent)] text-white text-sm tracking-wide disabled:opacity-40"
         >
           {busy ? 'Working…' : 'Generate my memoir'}
         </button>
