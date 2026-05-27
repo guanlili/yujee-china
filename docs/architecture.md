@@ -28,8 +28,9 @@
 │ • 选照片            │        │ • 页面/登录/积分/支付 │         │ • 调火山识图     │
 │ • 浏览器压缩 base64 │ ─────► │ • 转发图片到 Agent   │ ──────► │ • 调 DeepSeek 排版│
 │ • 轮询 job 状态     │ ◄───── │ • 保存排版 JSON      │ ◄────── │ • 推 progress    │
-│ • 本地渲染 PDF      │        │ • PDF 上传/分发      │         │ • 推终态 callback│
-│ • PDF 上传 R2       │ ─────► │                      │         │ • 不存任何数据   │
+│ • 编辑/Chat 修改    │ ─────► │ • Chat 转发 Agent    │ ──────► │ • Chat-Edit 同步 │
+│ • 本地渲染 PDF      │ ◄───── │ • 写 album_messages  │ ◄────── │ • 推终态 callback│
+│ • PDF 上传 R2       │ ─────► │ • PDF 上传/分发      │         │ • 不存任何数据   │
 └─────────────────────┘        └──────────────────────┘         │ • 无状态         │
                                          │                       └──────────────────┘
                                          ▼
@@ -45,16 +46,21 @@
 - 唯一拥有原图的地方。原图永远不出浏览器。
 - Canvas 压缩到 800px、quality 0.6 → base64 data URL 作为"特征载体"。
 - 拿到排版 JSON 后用 React 模板渲染预览。
+- 编辑 / Chat 修改时,把当前 layout 摘要 + 用户消息发给 Web。
 - 用户点导出 → 浏览器本地用 `@react-pdf/renderer` 生成 PDF → 直传 R2。
 
 **Web (Next.js)**
 - 唯一与用户、数据库、支付打交道的组件。
 - 收到 base64 后**不落盘、不存 R2、不写日志**,直接转发给 Agent。
-- 保存的是排版 JSON,不是图片。
+- 保存的是排版 JSON + Chat 对话历史(`album_messages`),不是图片。
+- Chat 编辑请求转发给 Agent(同步),拿到 layout patch 后写回 DB。
 - PDF 上传走 R2 presigned PUT,Web 不过 PDF 流量。
 
 **Agent (FastAPI)**
 - 无状态服务。无数据库连接。无文件系统持久化。
+- 两个端点:
+  - `POST /v1/layout` — 异步(BackgroundTask + callback),首次生成,见 §2
+  - `POST /v1/chat-edit` — 同步(用户在等回复),基于当前 layout + 对话历史出 patch
 - 接收 base64 数组 + 用户文本 → 火山识图 → DeepSeek 排版 → 返回 JSON。
 - 不直接被浏览器调用,只被 Web 调用。
 
@@ -69,12 +75,28 @@
 
 ## 2. Web ↔ Agent 协议(骨架)
 
+Agent 暴露**两个端点**,工作模式不同:
+
+### 2.1 首次生成 — `POST /v1/layout`(异步)
+
 - **传输模式**:异步 HTTP(Web 立刻返回,Agent 后台跑,浏览器轮询拿状态)
 - **入口**:`POST https://agent.yujeeai.com/v1/layout` — Agent 接单后立刻 `202 Accepted` 返回,在后台 task 里跑
 - **进度 / 终态回推**:Agent → Web `POST /api/v1/internal/job-progress`,事件类型 `progress` / `completed` / `failed`
 - **浏览器侧**:不开长连接、不开 SSE。每 2 秒轮询 `GET /api/v1/jobs/[requestId]` 拿 `stage` / `progress` / `status`,看到 `COMPLETED` / `FAILED` 停轮询
-- **鉴权**:Bearer Token,共享密钥 `AGENT_SHARED_SECRET`
-- **超时**:Web → Agent 接单 5 秒;Agent → 外部模型 30 秒,重试 1 次;Agent → Web callback 10 秒,重试 2 次
+
+### 2.2 Chat 编辑 — `POST /v1/chat-edit`(同步)
+
+- **传输模式**:同步 HTTP(用户在 chat 里等回复,无需轮询)
+- **入口**:`POST https://agent.yujeeai.com/v1/chat-edit`
+- **入参**:当前 `layoutJson` + 对话历史(最近 N 条)+ 用户新消息 + language
+- **出参**:`{ newLayout 或 layoutPatch, assistantReply, usage }`
+- **浏览器侧**:用户发消息 → 转 Web → Web 转 Agent → 拿到 patch 后 Web 写 `album_messages` + 更新 `album_pages`,返回给浏览器渲染
+- **超时**:60 秒(同步要等)
+
+### 2.3 共通
+
+- **鉴权**:Bearer Token,共享密钥 `AGENT_SHARED_SECRET`,两个端点都用
+- **超时**:Web → Agent `/v1/layout` 接单 5 秒;`/v1/chat-edit` 60 秒;Agent → 外部模型 30 秒,重试 1 次;Agent → Web callback 10 秒,重试 2 次
 
 **为什么不用 SSE**:Vercel serverless 多 lambda 实例,进程内 EventEmitter 无法跨实例,SSE 接收端和回调接收端不在同一进程,**1 个用户就不通**。轮询零依赖、零运维、Vercel 上必然工作,1000 用户阶段足够。
 

@@ -17,6 +17,8 @@
 | PATCH  | `/api/v1/albums/[uuid]` | user | 改标题等基础字段 |
 | DELETE | `/api/v1/albums/[uuid]` | user | 删除相册 |
 | PATCH  | `/api/v1/albums/[uuid]/pages/[idx]` | user | 编辑器保存单页 |
+| POST   | `/api/v1/albums/[uuid]/chat` | user | Chat 编辑(同步,Web 转 Agent /v1/chat-edit) |
+| GET    | `/api/v1/albums/[uuid]/messages` | user | 拉对话历史 |
 | POST   | `/api/v1/albums/[uuid]/pdf-upload-url` | user | 签 R2 PUT URL |
 | PUT    | `/api/v1/albums/[uuid]/pdf` | user | 上传完成后通知服务端 |
 | GET    | `/api/v1/albums/[uuid]/pdf` | user | 拿当前 PDF 下载 URL |
@@ -198,6 +200,81 @@ Header: `Authorization: Bearer ${AGENT_SHARED_SECRET}`
 1. 校验归属
 2. `albumPageRepo.update(tx, ...)`
 
+### 3.5a `POST /api/v1/albums/[uuid]/chat`
+
+Chat 编辑入口。**同步**:用户在 chat 框里等 AI 回复,不轮询。
+
+请求:
+```json
+{
+  "message": "把第二页副标题改得更感性一些",
+  "language": "zh"
+}
+```
+
+约束:
+- `message` ≤ 500 字
+- 同一相册并发 chat → 后到的 409 `CHAT_BUSY`(防止 patch 互相覆盖)
+
+服务端流程(`route.ts` ≤ 40 行,业务全在 `chatService`):
+
+1. `requireAuth`
+2. `albumService.findOwned(user.id, uuid)` —— 校验归属;`album.status === 'EDITING'` 才允许 chat,否则 409
+3. **不**再 precheck 积分(生成时一次 hold 已包编辑期)
+4. `albumMessageRepo.findRecent(albumId, limit=20)` —— 拉最近对话
+5. `chatService.edit(user.id, albumId, message)`,内部:
+   - 拼 Agent 入参:`{ albumId, currentLayout: albums.layout_json, history, userMessage: message, language }`
+   - 调 `agentClient.chatEdit(payload)`(60s 超时,见 `docs/agent/contract.md §2.3`)
+   - 事务里:
+     - `albumMessageRepo.insert({ role: 'user', content: message })`
+     - 把 `layoutPatch` apply 到 `album_pages`(只 PATCH 受影响的行)
+     - 把 patch 写回 `albums.layout_json`
+     - `albumMessageRepo.insert({ role: 'assistant', content: assistantReply, layoutPatch, usage })`
+6. 返回:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "assistantReply": "已经把第二页副标题改成「春天总是来得太早」。",
+    "layoutPatch": [
+      { "pageIndex": 1, "textsJson": { "subtitle": "春天总是来得太早" } }
+    ],
+    "messageId": "msg_xxx"
+  }
+}
+```
+
+> 浏览器拿到 `layoutPatch` 后**就地更新本地 store**,不需要刷整本 album。
+
+错误码:
+- `CHAT_BUSY`(409)—— 同 album 还有在跑的 chat
+- `AGENT_CHAT_FAILED`(502)—— Agent 调 DeepSeek 失败 / repair 失败
+- `ALBUM_NOT_EDITABLE`(409)—— album.status 不是 EDITING
+
+### 3.5b `GET /api/v1/albums/[uuid]/messages`
+
+拉对话历史,供编辑器 chat 面板渲染。
+
+Query: `?limit=50&before=msg_xxx`(分页,默认 50,按 `created_at desc`)
+
+响应:
+```json
+{
+  "ok": true,
+  "data": {
+    "messages": [
+      { "id": "msg_001", "role": "user", "content": "...", "createdAt": "..." },
+      { "id": "msg_002", "role": "assistant", "content": "...", "layoutPatch": [...], "createdAt": "..." }
+    ]
+  }
+}
+```
+
+实现要点:
+- 校验归属
+- 仅查不写
+
 ### 3.6 `POST /api/v1/albums/[uuid]/pdf-upload-url`
 
 签一个 R2 presigned PUT URL,浏览器拿来直传。
@@ -272,21 +349,33 @@ Header: `Authorization: Bearer ${AGENT_SHARED_SECRET}`
 
 ### 4.2 编辑流程
 
+编辑分两种入口:**直接 PATCH**(精确改) vs **Chat 对话**(自然语言改)。
+
 ```
 1. 编辑页加载
    → GET /api/v1/albums/[uuid]
-   → 拿到 layoutJson + pages
+   → GET /api/v1/albums/[uuid]/messages (拉对话历史,渲染 chat 面板)
+   → 拿到 layoutJson + pages + messages[]
 
 2. 从 IndexedDB 按 photoId 加载原图 blob URL
    → photosStore 提供 blob URL 缓存
 
-3. 用户改文案
-   → PATCH /api/v1/albums/[uuid]/pages/0 { textsJson: { title: "新" } }
-   → 乐观更新本地 store,失败回滚
+3a. 用户直接改文案(双击就地编辑)
+    → PATCH /api/v1/albums/[uuid]/pages/0 { textsJson: { title: "新" } }
+    → 乐观更新本地 store,失败回滚
 
-4. 用户改图位置
-   → PATCH /api/v1/albums/[uuid]/pages/0 { imagesJson: { hero: "p3" } }
+3b. 用户拖图换位置
+    → PATCH /api/v1/albums/[uuid]/pages/0 { imagesJson: { hero: "p3" } }
+
+4. 用户在 Chat 面板里说"把第二页副标题改感性点"
+   → POST /api/v1/albums/[uuid]/chat { message }
+   → 等(loading)~5-20s
+   → 拿到 { assistantReply, layoutPatch }
+   → 本地按 patch 就地更新 album_pages store(不需要刷全 album)
+   → chat 面板追加 user + assistant 两条
 ```
+
+> 编辑期间(`album.status === 'EDITING'`)**不再扣积分**,生成时那一笔 hold 包了。
 
 ### 4.3 PDF 导出
 
@@ -316,7 +405,7 @@ Header: `Authorization: Bearer ${AGENT_SHARED_SECRET}`
 - 间隔:固定 2 秒(`setInterval(2000)`)。不做指数退避——简单优先。
 - 终态条件:`status` ∈ `{COMPLETED, FAILED}` 时 `clearInterval` 并卸载 hook。
 - 兜底超时:浏览器侧 3 分钟还没拿到终态 → 主动停止 + 显示"任务可能失败,请刷新查看"。
-- 服务端兜底:`jobService` 定时任务(后续 cron)扫 `agent_jobs.status='RUNNING' AND created_at < now()-5min` → 强制标 FAILED + 释放积分。这步**第一版不实施**,等真出现僵尸 job 再加。
+- **服务端 zombie sweeper(第一版做)**:`apps/web/src/lib/zombie-sweeper.ts`,启动时 setInterval(60s) 扫 `agent_jobs.status='RUNNING' AND created_at < now()-5min` → 标 FAILED + 释放积分。挂在 `instrumentation.ts`。完整设计见 [`docs/agent/design.md §7`](../agent/design.md)。
 - **不**用 Node runtime 的任何流式特性;`GET /api/v1/jobs/[requestId]` 是普通 Route Handler。
 
 ---

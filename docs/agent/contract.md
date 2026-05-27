@@ -4,7 +4,7 @@
 >
 > 谁读这份: 写 Agent 接入层(Web 这边),或写 Agent 服务本身的人。
 >
-> 这份文档**只定义对外协议**。内部 pipeline 实现(怎么调火山、怎么写 prompt、怎么匹配模板)在 `docs/agent/design.md`(后续写)。
+> 这份文档**只定义对外协议**。内部 pipeline 实现(阶段边界、Prompt、火山/DeepSeek 调用、校验/repair、模板注册表、日志红线、mock/real 边界)在 [`docs/agent/design.md`](./design.md)。
 
 ---
 
@@ -22,6 +22,14 @@
 ---
 
 ## 2. 暴露的接口
+
+Agent **两个**业务端点 + 1 个健康检查。模式不同:
+
+| 端点 | 模式 | 用途 |
+|---|---|---|
+| `POST /v1/layout` | 异步(202 + callback) | 首次生成,跑 vision → writing → composing |
+| `POST /v1/chat-edit` | 同步(60s 超时) | Chat 修改已有 layout,跑单次 DeepSeek |
+| `GET /health` | — | 健康检查 |
 
 ### 2.1 `POST /v1/layout` —— 主接口
 
@@ -95,27 +103,113 @@ Web ◄──202 + {requestId}──┘   (立刻返回,Web HTTP 调用 ≤ 5 �
 }
 ```
 
-**callback 请求体(Agent → Web `callbackUrl`,统一信封)**:
+**callback 请求体(Agent → Web `callbackUrl`,discriminated union by `event`)**:
+
+三种事件**字段不互通**(`extra: forbid`,见 [`design.md §8`](./design.md)):
 
 ```json
-{
-  "requestId": "req_xxx",
-  "event": "progress" | "completed" | "failed",
-  "stage": "vision" | "writing" | "composing",   // progress 必填,其他可空
-  "progress": 30,                                  // progress 必填(0-100)
-  "message": "已看完 5/15 张",                      // 可选
-  "layout": { ... AlbumLayoutPlan ... },           // completed 必填
-  "error": { "code": "AGENT_VISION_FAILED",
-             "message": "..." },                   // failed 必填
-  "usage": { "visionTokens": 12000,
-             "planningTokens": 4000,
-             "durationMs": 38000 }                 // completed 时携带
-}
+// event=progress
+{ "requestId": "req_xxx", "event": "progress",
+  "stage": "vision" | "writing" | "composing", "progress": 0-100, "message"?: "..." }
+
+// event=completed
+{ "requestId": "req_xxx", "event": "completed",
+  "layout": { ... AlbumLayoutPlan ... },
+  "usage": { ... see §4 ... } }
+
+// event=failed
+{ "requestId": "req_xxx", "event": "failed",
+  "error": { "code": "AGENT_VISION_FAILED", "message": "..." },
+  "stage"?: "vision" | "writing" | "composing",   // 失败时所在阶段
+  "progress"?: 0-100 }                              // 失败时已跑到的进度
 ```
+
+**进度语义**(design.md §6):每阶段至少发 2 次(开始 0、完成 100)。失败前必须先发一次 `progress`,再发 `failed` —— 前端 progress bar 不会从 50% 跳到失败。
 
 > 为什么这样选:Vercel serverless 不能跨 lambda 共享 SSE 通道(见 `architecture.md §2`);改"Web fire-and-forget + Agent 回调推终态 + 浏览器轮询"后,Web 函数执行时长降到秒级,不存在 idle timeout 风险。1000 用户阶段轮询 QPS ≈ 总并发任务数 × 0.5,完全可承。
 
-### 2.2 `GET /health`
+### 2.2 `POST /v1/chat-edit` —— Chat 编辑
+
+请求头:
+```
+Authorization: Bearer <AGENT_SHARED_SECRET>
+Content-Type:  application/json
+X-Request-Id:  <uuid>
+```
+
+请求体:
+```json
+{
+  "albumId": "alb_xxx",
+  "currentLayout": { ... AlbumLayoutPlan ... },
+  "history": [
+    { "role": "user",      "content": "封面再大胆一点" },
+    { "role": "assistant", "content": "好的,我把封面字号放大,加了一行副标题。" }
+  ],
+  "userMessage": "把第二页副标题改感性点",
+  "language": "zh"
+}
+```
+
+约束:
+- `currentLayout` 必须通过 `AlbumLayoutPlan` zod 校验
+- `history.length` ≤ 20(只送最近 N 条,Web 侧裁剪)
+- `userMessage.length` ≤ 500
+- **请求体不含**:`userId` / `email` / 原图 base64(全部隐私字段 Web 已剥)
+
+**工作模式**:
+
+```
+Web ──POST /v1/chat-edit──► Agent  (单次 DeepSeek 调用)
+                            │
+                            ├─ 拼 system prompt:layout schema + TemplateRegistry + 业务规则
+                            ├─ 拼 user prompt:currentLayout + history + userMessage
+                            ├─ 调 DeepSeek(结构化 JSON 输出)
+                            ├─ 解析 + 校验 layoutPatch
+                            │   → 失败 → repair 1 次
+                            │   → repair 仍失败 → 502 AGENT_CHAT_FAILED
+                            └─ 200 + { layoutPatch, assistantReply, usage }
+```
+
+**成功响应**(HTTP 200):
+```json
+{
+  "ok": true,
+  "data": {
+    "layoutPatch": [
+      {
+        "pageIndex": 1,
+        "textsJson": { "subtitle": "春天总是来得太早" }
+      }
+    ],
+    "assistantReply": "已经把第二页副标题改成「春天总是来得太早」,语气更感性。",
+    "usage": {
+      "durationMs": 4200,
+      "planningInputTokens": 1820,
+      "planningOutputTokens": 142,
+      "repairAttempts": 0,
+      "model": "deepseek-chat"
+    }
+  }
+}
+```
+
+**失败响应**:
+```json
+{
+  "ok": false,
+  "error": { "code": "AGENT_CHAT_FAILED", "message": "..." }
+}
+```
+
+**约束**:
+- `layoutPatch` 是 `Page` 的**部分字段**数组,每项必须有 `pageIndex`,其他字段(`templateId` / `images` / `texts`)按需出现
+- patch 不允许新增/删除页(只改字段);需要换模板时,assistant 在 reply 里说明并按整页替换 `templateId` + `images` + `texts`
+- patch apply 后 layout 必须**仍然通过** §4 全量 schema 校验(Agent 端校验通过才发出来,Web 端 apply 后再校验一次兜底)
+
+**错误码**:见 §8。
+
+### 2.3 `GET /health`
 
 ```json
 { "ok": true, "version": "1.0.0", "timestamp": "2026-05-27T12:00:00Z" }
@@ -164,6 +258,12 @@ export const PhotoAnalysis = z.object({
   tags: z.array(z.string()),
   quality: PhotoQuality,
   orientation: PhotoOrientation,
+  // ↓ design.md §2.3 扩充,vision 阶段输出
+  peopleCount: z.enum(['0', '1', '2-3', '4+']),
+  scene: z.enum(['indoor', 'outdoor', 'nature', 'city', 'interior']),
+  mood: z.enum(['warm', 'cool', 'sentimental', 'energetic', 'quiet']),
+  timeOfDay: z.enum(['morning', 'day', 'evening', 'night']).nullable().optional(),
+  location: z.string().nullable().optional(),
 });
 
 export const Page = z.object({
@@ -198,12 +298,14 @@ Agent 在每个阶段开始时 POST 一次 progress=0,中途可以 POST 多次,�
 
 | 场景 | 策略 |
 |---|---|
-| Web → Agent(接单) | 5 秒。超时后 Web 标记 job=FAILED,**不自动重试**。 |
-| Agent 后台 task 总时长 | 软上限 180 秒。超时 Agent 自己 POST `event=failed` callback,code=`AGENT_TIMEOUT`。 |
+| Web → Agent `/v1/layout`(接单) | 5 秒。超时后 Web 标记 job=FAILED,**不自动重试**。 |
+| Web → Agent `/v1/chat-edit`(同步) | 60 秒。超时返回 504 `AGENT_CHAT_FAILED`,**不自动重试**(用户在等)。 |
+| Agent 后台 task 总时长(layout) | 软上限 180 秒。超时 Agent 自己 POST `event=failed` callback,code=`AGENT_TIMEOUT`。 |
 | Agent → 火山 | 30 秒。Agent 内部重试 1 次。 |
 | Agent → DeepSeek | 30 秒。Agent 内部重试 1 次。 |
-| Agent → callbackUrl | 10 秒。失败重试 2 次(指数退避 1s / 4s)。所有重试都失败后,任务在 Agent 侧就**丢失了** —— Web 仅靠 `agent_jobs.created_at + 5 分钟` 兜底扫描标 FAILED。 |
+| Agent → callbackUrl | 10 秒。失败重试 2 次(指数退避 1s / 4s)。所有重试都失败后,任务在 Agent 侧就**丢失了** —— Web 侧 zombie sweeper(每 60s 扫,阈值 5min)会兜底标 FAILED 并释放积分,见 [`design.md §7`](./design.md)。 |
 | 浏览器 → Web (轮询) | 不需要超时配置,失败重试下一次。 |
+| 浏览器 → Web (chat) | 65 秒(Agent 60 + 缓冲 5)。超时显示"AI 没回话,请重试"。 |
 
 ---
 
@@ -232,8 +334,9 @@ Agent 失败时通过 `POST /v1/layout` 的 **HTTP 非 2xx 响应** 返回这些
 | `AGENT_INVALID_INPUT` | 400 | 请求体不合法 |
 | `AGENT_UNAUTHORIZED` | 401 | Bearer 校验失败 |
 | `AGENT_VISION_FAILED` | 502 | 火山识图调用失败/超时 |
-| `AGENT_PLANNING_FAILED` | 502 | DeepSeek 排版调用失败/超时 |
+| `AGENT_PLANNING_FAILED` | 502 | DeepSeek 排版调用失败/超时(layout 阶段) |
 | `AGENT_OUTPUT_VALIDATION` | 502 | 内部生成的 layout 校验未通过 |
+| `AGENT_CHAT_FAILED` | 502 / 504 | Chat-edit 调用失败 / patch 校验失败 / 60s 超时 |
 | `AGENT_INTERNAL_ERROR` | 500 | 其他未知 |
 
 Web 收到后会映射到自己的错误码体系(`docs/web/errors.md`)。
@@ -264,6 +367,24 @@ export const agentClient = {
     if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected');
     if (!res.ok) throw ERRORS.AGENT_INTERNAL_ERROR();
     return { requestId: payload.requestId };
+  },
+
+  // 同步:用户在等。返回 layoutPatch + assistantReply。
+  async chatEdit(payload: ChatEditRequest): Promise<ChatEditResponse> {
+    const res = await fetch(`${env.AGENT_BASE_URL}/v1/chat-edit`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.AGENT_SHARED_SECRET}`,
+        'Content-Type': 'application/json',
+        'X-Request-Id': crypto.randomUUID(),
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
+    if (!res.ok) throw ERRORS.AGENT_CHAT_FAILED();
+    const json = await res.json();
+    return json.data;
   },
 };
 ```
