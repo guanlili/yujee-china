@@ -1,7 +1,10 @@
 import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
+import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
+
+const PDF_MAX_BYTES = 50 * 1024 * 1024; // 50MB — docs/web/api.md §3.6
 
 export const albumService = {
   async create(tx: DbOrTx, input: {
@@ -64,6 +67,25 @@ export const albumService = {
       pdfUrl: a.pdfUrl,
       createdAt: a.createdAt,
     }));
+  },
+
+  // Returns { putUrl, r2Key, publicUrl } so the browser can PUT a PDF directly
+  // to R2. Web never touches the bytes — invariant 4.
+  async signPdfUpload(
+    userId: string,
+    albumId: string,
+    input: { contentType: string; size: number },
+  ): Promise<{ putUrl: string; r2Key: string; publicUrl: string }> {
+    if (input.contentType !== 'application/pdf') {
+      throw ERRORS.VALIDATION_FAILED('contentType must be application/pdf');
+    }
+    if (input.size <= 0 || input.size > PDF_MAX_BYTES) throw ERRORS.PDF_TOO_LARGE();
+
+    await this.findOwned(userId, albumId);
+
+    const r2Key = `pdfs/${userId}/${albumId}.pdf`;
+    const putUrl = await r2.signPutUrl(r2Key, input.contentType, 300);
+    return { putUrl, r2Key, publicUrl: r2.publicUrl(r2Key) };
   },
 };
 

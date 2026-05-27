@@ -16,6 +16,22 @@ const EnvSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   DEMO_USER_ID: z.string().default('demo-user-001'),
   DEMO_USER_EMAIL: z.string().default('demo@yujee.local'),
+
+  // Payment · Stripe (test keys in dev, missing => Stripe disabled)
+  STRIPE_API_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+
+  // Payment · Creem (海外主通道)
+  CREEM_API_KEY: z.string().optional(),
+  CREEM_API_BASE_URL: z.string().url().default('https://api.creem.io'),
+  CREEM_WEBHOOK_SECRET: z.string().optional(),
+
+  // Cloudflare R2 (S3-compatible). PDF upload-url uses presigned PUT.
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET: z.string().default('yujee-pdfs'),
+  R2_PUBLIC_BASE_URL: z.string().url().default('https://cdn.yujeeai.com'),
 });
 
 export const env = EnvSchema.parse(process.env);

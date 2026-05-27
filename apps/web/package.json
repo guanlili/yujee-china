@@ -17,6 +17,8 @@
     "db:seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.682.0",
+    "@aws-sdk/s3-request-presigner": "^3.682.0",
     "@yujee/contracts": "workspace:*",
     "better-auth": "1.4.17",
     "dotenv": "^16.4.5",
@@ -26,6 +28,7 @@
     "postgres": "^3.4.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "stripe": "^17.4.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

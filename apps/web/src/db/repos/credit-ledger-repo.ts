@@ -24,6 +24,16 @@ export const creditLedgerRepo = {
     return rows[0]?.total ?? 0;
   },
 
+  // Webhook idempotency probe (Stripe / Creem event id stored in meta).
+  findByExternalEventId: async (eventId: string): Promise<CreditLedger | undefined> => {
+    const rows = await db
+      .select()
+      .from(creditLedger)
+      .where(sql`${creditLedger.meta}->>'external_event_id' = ${eventId}`)
+      .limit(1);
+    return rows[0];
+  },
+
   create: async (tx: DbOrTx, data: NewCreditLedger): Promise<CreditLedger> => {
     const rows = await tx.insert(creditLedger).values(data).returning();
     return rows[0]!;

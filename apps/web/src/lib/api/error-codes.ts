@@ -37,6 +37,11 @@ export const ERRORS = {
 
   PDF_UPLOAD_FAILED:     () => new AppError('PDF_UPLOAD_FAILED',     'PDF upload failed',           500),
   R2_SIGN_FAILED:        () => new AppError('R2_SIGN_FAILED',        'R2 presign failed',           500),
+  PDF_TOO_LARGE:         () => new AppError('PDF_TOO_LARGE',         'PDF exceeds 50MB',            413),
+
+  WEBHOOK_SIGNATURE_INVALID: () => new AppError('WEBHOOK_SIGNATURE_INVALID', 'Webhook signature invalid', 400),
+  WEBHOOK_NOT_CONFIGURED:    () => new AppError('WEBHOOK_NOT_CONFIGURED',    'Webhook secret not configured', 500),
+  BILLING_NOT_CONFIGURED:    () => new AppError('BILLING_NOT_CONFIGURED',    'Billing provider not configured', 503),
 
   RATE_LIMITED:          () => new AppError('RATE_LIMITED',          'Too many requests',           429),
   INTERNAL_ERROR:        () => new AppError('INTERNAL_ERROR',        'Internal server error',       500),

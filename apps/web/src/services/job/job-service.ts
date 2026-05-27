@@ -71,34 +71,38 @@ export const jobService = {
       return;
     }
 
-    await albumRepo.update(db, job.albumId, {
-      title: layout.magazine.title,
-      status: 'EDITING',
-      layoutJson: layout,
-      pageCount: layout.pages.length,
-    });
+    // Invariant 8: layout write + page bulk insert + credit settle + job marker
+    // commit together so partial failure cannot leave the user charged-but-no-album.
+    await db.transaction(async (tx) => {
+      await albumRepo.update(tx, job.albumId, {
+        title: layout.magazine.title,
+        status: 'EDITING',
+        layoutJson: layout,
+        pageCount: layout.pages.length,
+      });
 
-    await albumPageRepo.bulkInsert(
-      db,
-      layout.pages.map((p) => ({
-        albumId: job.albumId,
-        pageIndex: p.pageIndex,
-        templateId: p.templateId,
-        imagesJson: p.images,
-        textsJson: p.texts,
-      })),
-    );
+      await albumPageRepo.bulkInsert(
+        tx,
+        layout.pages.map((p) => ({
+          albumId: job.albumId,
+          pageIndex: p.pageIndex,
+          templateId: p.templateId,
+          imagesJson: p.images,
+          textsJson: p.texts,
+        })),
+      );
 
-    if (album.creditHoldId) {
-      await creditService.settle(db, job.userId, album.creditHoldId);
-    }
+      if (album.creditHoldId) {
+        await creditService.settle(tx, job.userId, album.creditHoldId);
+      }
 
-    await agentJobRepo.update(db, job.id, {
-      status: 'COMPLETED',
-      progress: 100,
-      stage: 'composing',
-      usage: (usage as Record<string, unknown> | null) ?? null,
-      completedAt: new Date(),
+      await agentJobRepo.update(tx, job.id, {
+        status: 'COMPLETED',
+        progress: 100,
+        stage: 'composing',
+        usage: (usage as Record<string, unknown> | null) ?? null,
+        completedAt: new Date(),
+      });
     });
   },
 
@@ -107,17 +111,19 @@ export const jobService = {
     if (!job) return;
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return; // idempotent
 
-    await albumRepo.update(db, job.albumId, {
-      status: 'FAILED',
-      errorMessage: error.message,
-    });
+    await db.transaction(async (tx) => {
+      await albumRepo.update(tx, job.albumId, {
+        status: 'FAILED',
+        errorMessage: error.message,
+      });
 
-    await creditService.releaseByAlbum(db, job.albumId);
+      await creditService.releaseByAlbum(tx, job.albumId);
 
-    await agentJobRepo.update(db, job.id, {
-      status: 'FAILED',
-      error,
-      completedAt: new Date(),
+      await agentJobRepo.update(tx, job.id, {
+        status: 'FAILED',
+        error,
+        completedAt: new Date(),
+      });
     });
   },
 };

@@ -41,7 +41,9 @@ export const customerProviderEnum = pgEnum('customer_provider', ['stripe', 'cree
 
 export const creditLedgerReasonEnum = pgEnum('credit_ledger_reason', [
   'SIGNUP_BONUS',
+  'GENERATION_HOLD',
   'GENERATION_SETTLE',
+  'GENERATION_RELEASE',
   'PURCHASE',
   'REFUND',
   'ADMIN_ADJUST',

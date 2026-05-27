@@ -16,19 +16,25 @@ type GenerationInput = {
 
 export const generationService = {
   async submit(userId: string, input: GenerationInput) {
-    await creditService.precheck(userId);
+    const amount = creditService.cost();
+    await creditService.precheck(userId, amount);
 
     const placeholderTitle =
       input.prompt.trim().slice(0, 40) || (input.language === 'zh' ? '我的故事' : 'My Memoir');
 
-    const { albumId } = await albumService.create(db, {
-      userId,
-      prompt: input.prompt,
-      photoCount: input.photos.length,
-      title: placeholderTitle,
+    // Album + job + hold must commit together (invariant 8: credit reservation
+    // and the work it reserves for share a transaction).
+    const { albumId } = await db.transaction(async (tx) => {
+      const album = await albumService.create(tx, {
+        userId,
+        prompt: input.prompt,
+        photoCount: input.photos.length,
+        title: placeholderTitle,
+      });
+      await jobService.create(tx, { userId, albumId: album.albumId, requestId: input.requestId });
+      await creditService.hold(tx, userId, amount, album.albumId);
+      return album;
     });
-    await jobService.create(db, { userId, albumId, requestId: input.requestId });
-    await creditService.hold(db, userId, albumId);
 
     try {
       await agentClient.submitLayout({
