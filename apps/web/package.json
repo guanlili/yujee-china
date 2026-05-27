@@ -18,9 +18,11 @@
   },
   "dependencies": {
     "@yujee/contracts": "workspace:*",
+    "better-auth": "1.4.17",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.36.4",
     "next": "15.5.9",
+    "next-intl": "4.7.0",
     "postgres": "^3.4.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",

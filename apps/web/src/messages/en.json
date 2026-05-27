@@ -1,0 +1,32 @@
+{
+  "auth": {
+    "loginTitle": "Log in to Yujee",
+    "registerTitle": "Create your Yujee account",
+    "email": "Email",
+    "password": "Password",
+    "name": "Name",
+    "loginAction": "Log in",
+    "registerAction": "Create account",
+    "switchToRegister": "Need an account?",
+    "switchToLogin": "Already have an account?"
+  },
+  "errors": {
+    "UNAUTHORIZED": "Login required",
+    "FORBIDDEN": "Forbidden",
+    "ALBUM_NOT_FOUND": "Album not found",
+    "ALBUM_NOT_OWNED": "Album not owned by user",
+    "JOB_NOT_FOUND": "Job not found",
+    "PAGE_NOT_FOUND": "Page not found",
+    "CREDIT_INSUFFICIENT": "Not enough credits",
+    "VALIDATION_FAILED": "Validation failed",
+    "INTERNAL_ERROR": "Internal server error"
+  },
+  "mail": {
+    "verification": {
+      "subject": "Verify your Yujee email"
+    },
+    "order": {
+      "subject": "Yujee order confirmation"
+    }
+  }
+}

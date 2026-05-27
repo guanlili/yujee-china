@@ -1,0 +1,32 @@
+{
+  "auth": {
+    "loginTitle": "登录 Yujee",
+    "registerTitle": "创建你的 Yujee 账户",
+    "email": "邮箱",
+    "password": "密码",
+    "name": "姓名",
+    "loginAction": "登录",
+    "registerAction": "创建账户",
+    "switchToRegister": "还没有账户？",
+    "switchToLogin": "已有账户？"
+  },
+  "errors": {
+    "UNAUTHORIZED": "需要登录",
+    "FORBIDDEN": "无权访问",
+    "ALBUM_NOT_FOUND": "相册不存在",
+    "ALBUM_NOT_OWNED": "相册不属于当前用户",
+    "JOB_NOT_FOUND": "任务不存在",
+    "PAGE_NOT_FOUND": "页面不存在",
+    "CREDIT_INSUFFICIENT": "积分不足",
+    "VALIDATION_FAILED": "校验失败",
+    "INTERNAL_ERROR": "服务器内部错误"
+  },
+  "mail": {
+    "verification": {
+      "subject": "验证你的 Yujee 邮箱"
+    },
+    "order": {
+      "subject": "Yujee 订单确认"
+    }
+  }
+}

@@ -1,7 +1,13 @@
-import { env } from '@/lib/env';
+import { ERRORS } from '@/lib/api/error-codes';
 
 export type AuthUser = { id: string; email: string };
 
-export async function requireAuth(_req: Request): Promise<AuthUser> {
-  return { id: env.DEMO_USER_ID, email: env.DEMO_USER_EMAIL };
+export async function requireAuth(req: Request): Promise<AuthUser> {
+  const { getAuth } = await import('./better-auth');
+  const session = await getAuth().api.getSession({ headers: req.headers });
+  if (!session?.user?.id || !session.user.email) {
+    throw ERRORS.UNAUTHORIZED();
+  }
+
+  return { id: session.user.id, email: session.user.email };
 }
