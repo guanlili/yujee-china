@@ -258,6 +258,37 @@ User 段必须传达:
 - 每个模板必须给出:`imageSlots`(每个 slot 的 orientation / quality 约束)、`textSlots`(可填的 key 列表)、`category`(`cover` / `spread` / `single` / `grid` / `closing`)
 - TS 类型定义和占位骨架以 `packages/contracts/src/templates.ts` 实际代码为准
 
+### 5.1 quality enum 语义(`hero` / `detail` / `fill`)
+
+`TemplateSlotConstraint.quality` 是 `('hero' | 'detail' | 'fill')[]`,表示**该 slot 适合放什么"画面分量"的图**。这套 enum **不在** `yvaineyu9/memoir` 老仓库的 `schema.js` / `meta.json` 里 —— 是迁移到 `packages/contracts/src/templates.ts` 时按每个模板的视觉 desc 推导的,**B-1 之后已稳定写进 21 个模板约束**,Agent composing 阶段必须严格按这套语义选图。
+
+| 值 | 含义 | 占版面比例 | 典型 slot |
+|---|---|---|---|
+| `hero` | 大图主视觉、叙事担当、跨页大图 | 约满版 ~ 60% | `mag-05.image`、`mag-13.image`、`mag-08.image`、`mag-15.imagePerson` |
+| `detail` | 中等细节图、辅助叙事、栏内主图 | 约 30% ~ 50% | `mag-07.imageMain`、`mag-09.imageMain`、`mag-04.image2` |
+| `fill` | 小图、远景、网格填充、呼吸 / 氛围 | 约 ≤ 25% | `mag-16.imageTiny`、`mag-10.cells[*]`、`mag-12.imageTop` |
+
+**constraint 是"可接受集合",不是"单一类型"**:`quality: ['hero', 'detail']` 意为"hero 或 detail 都接受,planning 阶段按手上的照片质量选最匹配的"。21 个模板里只有一个 slot 是单值集合(见下方边界 case)。
+
+#### 5.1.1 planning 阶段如何用这套 enum
+
+1. **Stage 1(vision,§2.6 扩充字段)**:火山给每张 `PhotoAnalysis` 推导 `quality`(单值 `'hero' | 'detail' | 'fill'`)。判断依据:主体是否清晰、是否有故事性、构图是否能撑大、是否只能当配菜。
+2. **Stage 3(composing,§4.3)**:DeepSeek 选图填 slot 时:
+   - 先取 `imageSlots[slot].quality` 这个**可接受集合**
+   - 候选 = `PhotoAnalysis` 里 `quality` 落在集合内的照片
+   - 在候选里,按 §4.3 第 5 条硬规则"hero slot 优先 `quality=hero` 的图"挑
+   - 同时满足 `orientation` 约束
+3. **composing prompt(§4.4)**:必须把每个 slot 的"可接受 quality 集合"逐字列入 system prompt,**不要假设模型能从 templateId 反推语义**。
+
+#### 5.1.2 边界 case
+
+- **`mag-16.imageTiny: { quality: ['fill'] }`** —— 21 个模板里**唯一**只接受 `fill` 的 image slot。视觉上是配菜级小图(thumbnail / 远景 / 留白填充),给 hero 级照片硬塞进去就是"放炮打蚊子",撑不开版面。Agent 选图时遇到这个 slot 必须从 `quality=fill` 的图里选,**没有 fill 级照片就让这个 slot 空**(slot key 是 optional)。
+- **`mag-09.imageMain: { quality: ['hero', 'detail'] }`** —— 命名是 `imageMain`,但**接受 detail**,因为该模板另有 `imageTop`(landscape)占了上方互补位,主图不必是 hero 级。这是模板的视觉冗余设计,planning 时不要看到 `imageMain` 就强制塞 hero。
+- **`mag-09.imageTop: { quality: ['detail', 'fill'] }`** —— 配图位,**不接受 hero**:同页已有 imageMain,再放 hero 会"两个主视觉撕架"。Agent 不要为了用光 hero 图把它塞进辅助位。
+- **`mag-02 / mag-14 / mag-20`(`imageSlots = {}`)** —— 纯文字版面,quality enum 不参与;选模板时只看文本需求。
+
+> issue #7 提到"mag-09 imageMain `['fill']`",对照 `templates.ts:166` 实际是 `['hero','detail']`,issue 里是笔误。真正的 fill-only slot 是 `mag-16.imageTiny`(`templates.ts:277`)。
+
 ---
 
 ## 6. 进度语义

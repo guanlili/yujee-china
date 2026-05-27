@@ -72,6 +72,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     category: 'spread',
     imageSlots: {},
     textSlots: {
+      // mag-02 是纯文字目录页,items 是字符串数组。
+      // maxChars 在 'array' 类型下表示**单条**条目的字符上限(非合计),
+      // 推断自 memoir 老仓库视觉密度:目录条目 ≤ 240 字符可容纳一段
+      // 短描述。条目总数由排版引擎按版面溢出截断,不在 schema 里限。
       items: { type: 'array', maxChars: 240 },
       folio: { type: 'meta', minChars: 2, maxChars: 2 },
     },
@@ -196,6 +200,11 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       },
     },
     textSlots: {
+      // mag-10 是 2x2 grid 模板,cells 是每格的小标题/说明字符串数组,
+      // 与 imageSlots cells[0..3].image 一一对应(4 格)。
+      // maxChars 在 'array' 类型下表示**单格**文本上限(非合计),
+      // 推断 160 字符:grid 格子小,文本量比 mag-02 目录条目低一档。
+      // 数组长度逻辑上 = 4(由 cells image slot 数对齐),schema 不强制。
       cells: { type: 'array', maxChars: 160 },
       folio: { type: 'meta', minChars: 2, maxChars: 2 },
     },
