@@ -8,17 +8,20 @@
     "build": "next build",
     "start": "next start",
     "test": "tsx --test src/**/*.test.ts",
+    "test:repos": "tsx --test src/db/repos/*.test.ts src/services/job/zombie-sweeper.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
-    "@libsql/client": "^0.14.0",
     "@yujee/contracts": "workspace:*",
+    "dotenv": "^16.4.5",
     "drizzle-orm": "^0.36.4",
     "next": "15.5.9",
+    "postgres": "^3.4.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "zod": "^3.23.8"

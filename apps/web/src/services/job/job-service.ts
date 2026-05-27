@@ -1,4 +1,4 @@
-import { db, type DB } from '@/db/client';
+import { db, type DbOrTx } from '@/db/client';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
@@ -8,7 +8,7 @@ import { AlbumLayoutPlan, type AlbumLayoutPlanT } from '@/lib/agent/layout-schem
 import { logger } from '@/lib/log/logger';
 
 export const jobService = {
-  async create(tx: DB, input: { userId: string; albumId: string; requestId: string }) {
+  async create(tx: DbOrTx, input: { userId: string; albumId: string; requestId: string }) {
     const job = await agentJobRepo.create(tx, {
       userId: input.userId,
       albumId: input.albumId,
@@ -19,7 +19,7 @@ export const jobService = {
     return job;
   },
 
-  async markRunning(tx: DB, jobId: string) {
+  async markRunning(tx: DbOrTx, jobId: string) {
     await agentJobRepo.update(tx, jobId, { status: 'RUNNING', startedAt: new Date() });
   },
 
@@ -33,7 +33,7 @@ export const jobService = {
       status: job.status,
       stage: job.stage,
       progress: job.progress,
-      error: job.error ? JSON.parse(job.error) : null,
+      error: job.error ?? null,
     };
   },
 
@@ -74,7 +74,7 @@ export const jobService = {
     await albumRepo.update(db, job.albumId, {
       title: layout.magazine.title,
       status: 'EDITING',
-      layoutJson: JSON.stringify(layout),
+      layoutJson: layout,
       pageCount: layout.pages.length,
     });
 
@@ -84,8 +84,8 @@ export const jobService = {
         albumId: job.albumId,
         pageIndex: p.pageIndex,
         templateId: p.templateId,
-        imagesJson: JSON.stringify(p.images),
-        textsJson: JSON.stringify(p.texts),
+        imagesJson: p.images,
+        textsJson: p.texts,
       })),
     );
 
@@ -97,7 +97,7 @@ export const jobService = {
       status: 'COMPLETED',
       progress: 100,
       stage: 'composing',
-      usage: usage ? JSON.stringify(usage) : null,
+      usage: (usage as Record<string, unknown> | null) ?? null,
       completedAt: new Date(),
     });
   },
@@ -116,7 +116,7 @@ export const jobService = {
 
     await agentJobRepo.update(db, job.id, {
       status: 'FAILED',
-      error: JSON.stringify(error),
+      error,
       completedAt: new Date(),
     });
   },

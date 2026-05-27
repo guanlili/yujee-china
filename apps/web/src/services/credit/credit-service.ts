@@ -1,9 +1,8 @@
-import type { DB } from '@/db/client';
+import type { DbOrTx } from '@/db/client';
 import { creditHoldRepo } from '@/db/repos/credit-hold-repo';
 import { userRepo } from '@/db/repos/user-repo';
 import { albumRepo } from '@/db/repos/album-repo';
 import { ERRORS } from '@/lib/api/error-codes';
-import { db } from '@/db/client';
 
 const COST_PER_ALBUM = 10;
 
@@ -16,7 +15,7 @@ export const creditService = {
     if (user.creditBalance < COST_PER_ALBUM) throw ERRORS.CREDIT_INSUFFICIENT();
   },
 
-  async hold(tx: DB, userId: string, albumId: string): Promise<string> {
+  async hold(tx: DbOrTx, userId: string, albumId: string): Promise<string> {
     const hold = await creditHoldRepo.create(tx, {
       userId,
       albumId,
@@ -27,25 +26,25 @@ export const creditService = {
     return hold.id;
   },
 
-  async settle(tx: DB, userId: string, holdId: string): Promise<void> {
+  // TODO(B4): when wiring real payment, settle must also write credit_ledger
+  // (delta = -amount, reason = 'GENERATION_SETTLE'). users.credit_balance is
+  // a cache; the ledger is source of truth. Tracked in docs/migration-plan.md.
+  async settle(tx: DbOrTx, userId: string, holdId: string): Promise<void> {
     const hold = await creditHoldRepo.findById(holdId);
     if (!hold || hold.status !== 'HOLDING') return;
     await creditHoldRepo.update(tx, holdId, { status: 'SETTLED', settledAt: new Date() });
     await userRepo.updateCredit(tx, userId, -hold.amount);
   },
 
-  async release(tx: DB, holdId: string): Promise<void> {
+  async release(tx: DbOrTx, holdId: string): Promise<void> {
     const hold = await creditHoldRepo.findById(holdId);
     if (!hold || hold.status !== 'HOLDING') return;
     await creditHoldRepo.update(tx, holdId, { status: 'RELEASED' });
   },
 
-  async releaseByAlbum(tx: DB, albumId: string): Promise<void> {
+  async releaseByAlbum(tx: DbOrTx, albumId: string): Promise<void> {
     const album = await albumRepo.findById(albumId);
     if (!album?.creditHoldId) return;
     await this.release(tx, album.creditHoldId);
   },
 };
-
-// Helper that wraps single-tx convenience for callers
-export const creditTx = db;

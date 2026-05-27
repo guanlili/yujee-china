@@ -1,10 +1,10 @@
-import { db, type DB } from '@/db/client';
+import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
 import { ERRORS } from '@/lib/api/error-codes';
 
 export const albumService = {
-  async create(tx: DB, input: {
+  async create(tx: DbOrTx, input: {
     userId: string;
     prompt: string;
     photoCount: number;
@@ -37,7 +37,7 @@ export const albumService = {
         title: album.title,
         status: album.status,
         prompt: album.prompt,
-        layoutJson: album.layoutJson ? JSON.parse(album.layoutJson) : null,
+        layoutJson: album.layoutJson ?? null,
         photoCount: album.photoCount,
         pageCount: album.pageCount,
         pdfUrl: album.pdfUrl,
@@ -47,8 +47,8 @@ export const albumService = {
       pages: pages.map((p) => ({
         pageIndex: p.pageIndex,
         templateId: p.templateId,
-        imagesJson: JSON.parse(p.imagesJson),
-        textsJson: JSON.parse(p.textsJson),
+        imagesJson: p.imagesJson,
+        textsJson: p.textsJson,
       })),
     };
   },

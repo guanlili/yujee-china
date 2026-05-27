@@ -207,6 +207,17 @@ B8 等 B-1;B9 等 B-1;B3 等 B1+B2+B-1+B8。
 
 ---
 
+## 8.1 跨批次 TODO
+
+| 来源 | 项 | 责任批次 |
+|---|---|---|
+| B2 review (PR #8) | `creditService.settle / hold` 必须同步写 `credit_ledger`(`delta` + `reason='GENERATION_SETTLE'` / `'PURCHASE'`),并把 `userRepo.updateCredit` 封到一个 `creditService.applyDelta(tx, userId, delta, reason)` 里,确保 balance 和 ledger 双写。当前 B2 只建表,没接入。 | B4(付费/积分) |
+| B2 review (PR #8) | `db/repos/*` 的 `DbOrTx` 收紧为只接 `Tx`(transaction handle),让类型系统强制所有写都在事务里。需要同步重写 `job-service` 几个 handler。 | B5 / B6(job 与生成流) |
+| B2 review (PR #8) | `docs/web/database.md §1` 写"主键 id uuid",实际实现用 `text` + `default gen_random_uuid()`(better-auth 兼容)。文档同步,或迁到真正的 `uuid` 类型 + 改 better-auth adapter。 | 架构师同步 |
+| B2 review (PR #8) | `albums.credit_hold_id` 没加 FK(避免 albums ↔ credit_holds 循环)。若决定加,Postgres `ALTER TABLE ... DEFERRABLE INITIALLY DEFERRED` 可破环,但要评估迁移代价。 | 架构师拍板 |
+
+---
+
 ## 9. 状态(由 PM 维护)
 
 | 批次 | Owner | Branch | PR | 状态 |

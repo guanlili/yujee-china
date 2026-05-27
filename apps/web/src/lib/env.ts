@@ -2,7 +2,10 @@ import { z } from 'zod';
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  DATABASE_URL: z.string().default('file:./yujee-dev.db'),
+  DATABASE_URL: z
+    .string()
+    .min(1)
+    .default('postgresql://yujee:yujee@localhost:5432/yujee_dev'),
   AGENT_BASE_URL: z.string().url().default('http://localhost:8001'),
   AGENT_SHARED_SECRET: z.string().min(8).default('dev_secret_replace_me'),
   WEB_BASE_URL: z.string().url().default('http://localhost:3000'),
