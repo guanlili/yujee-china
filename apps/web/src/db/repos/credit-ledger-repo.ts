@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { db, type DbOrTx } from '../client';
 import {
   creditLedger,
@@ -6,8 +6,19 @@ import {
   type NewCreditLedger,
 } from '../schema';
 
+type LedgerReason = CreditLedger['reason'];
 
 export const creditLedgerRepo = {
+  // Sum of deltas for one reason since a cutoff. Caller decides sign handling
+  // (e.g. GENERATION_SETTLE deltas are negative).
+  sumByReasonSince: async (reason: LedgerReason, since: Date): Promise<number> => {
+    const rows = await db
+      .select({ total: sql<number>`coalesce(sum(${creditLedger.delta}), 0)::int` })
+      .from(creditLedger)
+      .where(and(eq(creditLedger.reason, reason), gte(creditLedger.createdAt, since)));
+    return rows[0]?.total ?? 0;
+  },
+
   findByUser: async (userId: string, limit = 50): Promise<CreditLedger[]> =>
     db
       .select()

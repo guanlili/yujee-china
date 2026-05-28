@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { desc, eq, gte, sql } from 'drizzle-orm';
 import { db, type DbOrTx } from '../client';
 import { users, type NewUser, type User } from '../schema';
 
@@ -8,6 +8,29 @@ export const userRepo = {
     const rows = await db.select().from(users).where(eq(users.id, id)).limit(1);
     return rows[0];
   },
+
+  count: async (): Promise<number> => {
+    const rows = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(users);
+    return rows[0]?.total ?? 0;
+  },
+
+  countCreatedSince: async (since: Date): Promise<number> => {
+    const rows = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(users)
+      .where(gte(users.createdAt, since));
+    return rows[0]?.total ?? 0;
+  },
+
+  listRecent: async (limit = 50, offset = 0): Promise<User[]> =>
+    db
+      .select()
+      .from(users)
+      .orderBy(desc(users.createdAt))
+      .limit(limit)
+      .offset(offset),
 
   findByEmail: async (email: string): Promise<User | undefined> => {
     const rows = await db.select().from(users).where(eq(users.email, email)).limit(1);

@@ -94,5 +94,91 @@
       "passwordChanged": "Password updated.",
       "signOut": "Sign out"
     }
+  },
+  "admin": {
+    "nav": {
+      "overview": "Overview",
+      "users": "Users",
+      "analytics": "Analytics",
+      "settings": "Settings",
+      "backToApp": "Back to app"
+    },
+    "forbidden": {
+      "title": "Admin only",
+      "body": "You don't have access to this area.",
+      "home": "Go home"
+    },
+    "overview": {
+      "title": "Overview",
+      "totalUsers": "Total users",
+      "totalAlbums": "Total albums",
+      "newUsers7d": "New users (7d)",
+      "newAlbums7d": "New albums (7d)",
+      "stuckJobs": "Stuck jobs",
+      "byStatus": "Albums by status",
+      "status": {
+        "AGENT_RUNNING": "Generating",
+        "EDITING": "Editing",
+        "COMPLETED": "Completed",
+        "FAILED": "Failed"
+      }
+    },
+    "users": {
+      "title": "Users",
+      "email": "Email",
+      "name": "Name",
+      "role": "Role",
+      "credits": "Credits",
+      "albums": "Albums",
+      "joined": "Joined",
+      "admin": "Admin",
+      "member": "Member",
+      "noName": "—",
+      "empty": "No users yet."
+    },
+    "analytics": {
+      "title": "Analytics",
+      "users": "Users",
+      "albums": "Albums",
+      "total": "Total",
+      "last7d": "Last 7 days",
+      "last30d": "Last 30 days",
+      "albumsByStatus": "Albums by status",
+      "jobsByStatus": "Jobs by status",
+      "credits": "Credits (30 days)",
+      "purchased": "Purchased",
+      "consumed": "Consumed",
+      "albumStatus": {
+        "AGENT_RUNNING": "Generating",
+        "EDITING": "Editing",
+        "COMPLETED": "Completed",
+        "FAILED": "Failed"
+      },
+      "jobStatus": {
+        "QUEUED": "Queued",
+        "RUNNING": "Running",
+        "COMPLETED": "Completed",
+        "FAILED": "Failed"
+      }
+    },
+    "settings": {
+      "title": "Settings",
+      "config": "Configuration",
+      "creditCost": "Credits per album",
+      "agent": "Agent endpoint",
+      "providers": "Payment providers",
+      "configured": "on",
+      "disabled": "off",
+      "maintenance": "Maintenance",
+      "recoverStuck": "Recover stuck jobs",
+      "recoverStuckDesc": "Fail generations stuck over 5 minutes and release their credit holds.",
+      "cleanup": "Clean up abandoned albums",
+      "cleanupDesc": "Delete failed albums older than 30 days.",
+      "run": "Run",
+      "running": "Running…",
+      "recoverResult": "Scanned {scanned} · failed {failed} · released {released} holds",
+      "cleanupResult": "Scanned {scanned} · deleted {deleted}",
+      "error": "Action failed."
+    }
   }
 }

@@ -94,5 +94,91 @@
       "passwordChanged": "密码已更新。",
       "signOut": "退出登录"
     }
+  },
+  "admin": {
+    "nav": {
+      "overview": "概览",
+      "users": "用户",
+      "analytics": "数据",
+      "settings": "设置",
+      "backToApp": "返回应用"
+    },
+    "forbidden": {
+      "title": "仅限管理员",
+      "body": "你没有访问此区域的权限。",
+      "home": "返回首页"
+    },
+    "overview": {
+      "title": "概览",
+      "totalUsers": "用户总数",
+      "totalAlbums": "相册总数",
+      "newUsers7d": "新增用户(7天)",
+      "newAlbums7d": "新增相册(7天)",
+      "stuckJobs": "卡住的任务",
+      "byStatus": "相册状态分布",
+      "status": {
+        "AGENT_RUNNING": "生成中",
+        "EDITING": "编辑中",
+        "COMPLETED": "已完成",
+        "FAILED": "失败"
+      }
+    },
+    "users": {
+      "title": "用户",
+      "email": "邮箱",
+      "name": "姓名",
+      "role": "角色",
+      "credits": "积分",
+      "albums": "相册",
+      "joined": "注册时间",
+      "admin": "管理员",
+      "member": "普通用户",
+      "noName": "—",
+      "empty": "暂无用户。"
+    },
+    "analytics": {
+      "title": "数据",
+      "users": "用户",
+      "albums": "相册",
+      "total": "总计",
+      "last7d": "近 7 天",
+      "last30d": "近 30 天",
+      "albumsByStatus": "相册状态分布",
+      "jobsByStatus": "任务状态分布",
+      "credits": "积分(30 天)",
+      "purchased": "充值",
+      "consumed": "消耗",
+      "albumStatus": {
+        "AGENT_RUNNING": "生成中",
+        "EDITING": "编辑中",
+        "COMPLETED": "已完成",
+        "FAILED": "失败"
+      },
+      "jobStatus": {
+        "QUEUED": "排队中",
+        "RUNNING": "运行中",
+        "COMPLETED": "已完成",
+        "FAILED": "失败"
+      }
+    },
+    "settings": {
+      "title": "设置",
+      "config": "配置",
+      "creditCost": "每本相册积分",
+      "agent": "Agent 端点",
+      "providers": "支付通道",
+      "configured": "已配置",
+      "disabled": "未配置",
+      "maintenance": "运维操作",
+      "recoverStuck": "恢复卡住的任务",
+      "recoverStuckDesc": "将超过 5 分钟仍未结束的生成标记为失败并释放冻结积分。",
+      "cleanup": "清理废弃相册",
+      "cleanupDesc": "删除超过 30 天的失败相册。",
+      "run": "执行",
+      "running": "执行中…",
+      "recoverResult": "扫描 {scanned} · 失败 {failed} · 释放 {released} 笔冻结",
+      "cleanupResult": "扫描 {scanned} · 删除 {deleted}",
+      "error": "操作失败。"
+    }
   }
 }
