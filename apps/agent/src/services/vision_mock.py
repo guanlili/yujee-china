@@ -15,14 +15,22 @@ def _orientation(width: int, height: int) -> str:
 def analyze(req: LayoutRequest) -> list[PhotoAnalysis]:
     results: list[PhotoAnalysis] = []
     for idx, photo in enumerate(req.photos):
-        quality = "hero" if idx == 0 else _QUALITY_CYCLE[1 + ((idx - 1) % 2)]
+        if idx == 0:
+            quality = "hero"
+        else:
+            quality = _QUALITY_CYCLE[1 + ((idx - 1) % 2)]
         results.append(
             PhotoAnalysis(
                 photoId=photo.photoId,
                 description="A moment from your story",
                 tags=["family", "warm"],
-                quality=quality,
-                orientation=_orientation(photo.width, photo.height),
+                quality=quality,  # type: ignore[arg-type]
+                orientation=_orientation(photo.width, photo.height),  # type: ignore[arg-type]
+                peopleCount="1",
+                scene="outdoor",
+                mood="warm",
+                timeOfDay="day",
+                location=None,
             )
         )
     return results
