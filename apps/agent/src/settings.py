@@ -27,12 +27,26 @@ class Settings(BaseSettings):
     ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
     ark_vision_model: str = "doubao-seed-1-6-vision-250815"
     ark_timeout_seconds: int = 30
+    # doubao-seed-* are reasoning models: reasoning_tokens share the max_tokens
+    # budget and can truncate the JSON content (intermittent AGENT_VISION_FAILED,
+    # worsening as photo count grows). Disable thinking for this structured
+    # extraction. Ignored by non-doubao providers that don't accept `thinking`.
+    ark_disable_thinking: bool = True
 
-    # planning + chat-edit (DeepSeek)
+    # planning + chat-edit (DeepSeek slot; in prod points at Volcano Ark doubao)
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"
     deepseek_timeout_seconds: int = 30
+    # doubao-seed text models reject response_format=json_object (400
+    # InvalidParameter); DeepSeek supports it. Default off so the configured
+    # doubao planning model works; flip on only for a provider that supports it.
+    deepseek_use_json_object: bool = False
+    # Planning/chat-edit are combinatorial constraint satisfaction (slot
+    # orientation+quality fit, photo reuse, page count): doubao's thinking
+    # materially improves rule compliance here, so keep it ON by default
+    # (unlike vision). Set True only for a non-reasoning planning provider.
+    deepseek_disable_thinking: bool = False
 
 
 _settings: Settings | None = None

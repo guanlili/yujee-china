@@ -14,6 +14,50 @@ def _expected_page_count(photo_count: int) -> int:
     return min(16, max(3, raw))
 
 
+def clamp_text(text: str, max_chars: int) -> str:
+    """Trim text to <= max_chars, preferring the last word boundary within the
+    limit (falling back to a hard cut). Only ever shortens."""
+    if len(text) <= max_chars:
+        return text
+    hard = text[:max_chars].rstrip()
+    space = hard.rfind(" ")
+    if space >= max(1, int(max_chars * 0.6)):
+        hard = hard[:space].rstrip()
+    return hard
+
+
+def clamp_texts_for_template(template_id: str, texts: dict[str, str]) -> dict[str, str]:
+    """Return a copy of `texts` with each slot trimmed to the template's
+    maxChars. Unknown template / slots pass through unchanged."""
+    tpl = registry.get(template_id)
+    if not tpl:
+        return dict(texts)
+    out = dict(texts)
+    for slot, text in texts.items():
+        cons = tpl["textSlots"].get(slot)
+        if not cons:
+            continue
+        max_chars = cons.get("maxChars")
+        if isinstance(max_chars, int):
+            out[slot] = clamp_text(text, max_chars)
+    return out
+
+
+def clamp_page_texts(pages: list[Page]) -> list[Page]:
+    """Deterministically trim each text slot to its template's maxChars.
+
+    Real planning models (e.g. doubao-seed-lite) routinely overshoot a slot's
+    maxChars by a few characters and ignore the repair feedback, which would
+    otherwise fail Rule 9 and sink the whole generation over a purely cosmetic
+    limit. This only ever shortens text and layout_rules enforces no minChars,
+    so it can never introduce a new violation."""
+    out: list[Page] = []
+    for page in pages:
+        new_texts = clamp_texts_for_template(page.templateId, page.texts)
+        out.append(page.model_copy(update={"texts": new_texts}) if new_texts != page.texts else page)
+    return out
+
+
 def violation(layout: AlbumLayoutPlan) -> str | None:
     pages = layout.pages
     photos = layout.photos

@@ -154,6 +154,29 @@ def _apply_patch(
         raise ChatEditError(f"patched layout schema failed: {exc.errors()[:1]}") from exc
 
 
+def _clamp_patch(
+    current: AlbumLayoutPlan,
+    patch: list[LayoutPatchEntry],
+) -> list[LayoutPatchEntry]:
+    """Trim each patch entry's texts to the effective template's maxChars so the
+    returned patch matches the validated layout. The effective template is the
+    entry's templateId if it changes one, else the current page's template."""
+    by_index = {p.pageIndex: p for p in current.pages}
+    out: list[LayoutPatchEntry] = []
+    for entry in patch:
+        if not entry.texts:
+            out.append(entry)
+            continue
+        current_page = by_index.get(entry.pageIndex)
+        template_id = entry.templateId or (current_page.templateId if current_page else None)
+        if not template_id:
+            out.append(entry)
+            continue
+        clamped = layout_rules.clamp_texts_for_template(template_id, entry.texts)
+        out.append(entry.model_copy(update={"texts": clamped}) if clamped != entry.texts else entry)
+    return out
+
+
 def _mock_chat_edit(req: ChatEditRequest, started: float) -> ChatEditResponse:
     """Deterministic, rules-safe stub used when AGENT_PIPELINE_MODE=mock, so the
     chat round-trip (Web → Agent → apply → persist → re-validate) is testable
@@ -233,9 +256,16 @@ async def run(req: ChatEditRequest) -> ChatEditResponse:
                 model=settings.deepseek_model,
                 messages=messages,
                 timeout_seconds=settings.deepseek_timeout_seconds,
-                response_format={"type": "json_object"},
+                response_format=(
+                    {"type": "json_object"} if settings.deepseek_use_json_object else None
+                ),
                 temperature=0.3,
-                max_tokens=2048,
+                max_tokens=4096,
+                extra_body=(
+                    {"thinking": {"type": "disabled"}}
+                    if settings.deepseek_disable_thinking
+                    else None
+                ),
             )
         except ai_client.AIRequestError as exc:
             # Network exhausted both internal attempts — surface as AGENT_CHAT_FAILED.
@@ -248,6 +278,7 @@ async def run(req: ChatEditRequest) -> ChatEditResponse:
             raw_text = ai_client.extract_text(response)
             parsed = ai_client.parse_json_loose(raw_text)
             reply, patch = _coerce_patch(parsed)
+            patch = _clamp_patch(req.currentLayout, patch)
             patched = _apply_patch(req.currentLayout, patch)
         except (ValueError, ChatEditError, ValidationError) as exc:
             last_error = str(exc)[:300]

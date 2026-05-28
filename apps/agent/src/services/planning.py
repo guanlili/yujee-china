@@ -150,9 +150,16 @@ async def write_magazine(
                 model=settings.deepseek_model,
                 messages=messages,
                 timeout_seconds=settings.deepseek_timeout_seconds,
-                response_format={"type": "json_object"},
+                response_format=(
+                    {"type": "json_object"} if settings.deepseek_use_json_object else None
+                ),
                 temperature=0.4,
-                max_tokens=512,
+                max_tokens=2048,
+                extra_body=(
+                    {"thinking": {"type": "disabled"}}
+                    if settings.deepseek_disable_thinking
+                    else None
+                ),
             )
         except ai_client.AIRequestError as exc:
             # Network exhausted both internal attempts — terminal for this stage.
@@ -306,9 +313,16 @@ async def compose_pages(
                 model=settings.deepseek_model,
                 messages=messages,
                 timeout_seconds=settings.deepseek_timeout_seconds,
-                response_format={"type": "json_object"},
+                response_format=(
+                    {"type": "json_object"} if settings.deepseek_use_json_object else None
+                ),
                 temperature=0.3,
-                max_tokens=4096,
+                max_tokens=8192,
+                extra_body=(
+                    {"thinking": {"type": "disabled"}}
+                    if settings.deepseek_disable_thinking
+                    else None
+                ),
             )
         except ai_client.AIRequestError as exc:
             # Network exhausted both internal attempts — terminal for this stage.
@@ -322,6 +336,7 @@ async def compose_pages(
             raw_text = ai_client.extract_text(response)
             parsed = ai_client.parse_json_loose(raw_text)
             pages = _coerce_pages(parsed)
+            pages = layout_rules.clamp_page_texts(pages)
             layout = AlbumLayoutPlan(magazine=magazine, photos=photos, pages=pages)
         except (ValueError, ComposingError, ValidationError) as exc:
             last_error = str(exc)[:300]

@@ -178,7 +178,10 @@ async def analyze(req: LayoutRequest) -> tuple[list[PhotoAnalysis], int]:
             messages=messages,
             timeout_seconds=settings.ark_timeout_seconds,
             temperature=0.2,
-            max_tokens=4096,
+            max_tokens=8192,
+            extra_body=(
+                {"thinking": {"type": "disabled"}} if settings.ark_disable_thinking else None
+            ),
         )
     except ai_client.AIRequestError as exc:
         raise VisionError(f"vision upstream call failed: {exc}") from exc

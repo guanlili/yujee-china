@@ -1,5 +1,5 @@
 from src.schemas import AlbumLayoutPlan, Magazine, Page, PhotoAnalysis
-from src.services.layout_rules import violation
+from src.services.layout_rules import clamp_page_texts, clamp_text, violation
 
 
 def _photo(pid: str, *, quality: str, orientation: str) -> PhotoAnalysis:
@@ -96,3 +96,30 @@ class TestRules:
         )
         msg = violation(layout) or ""
         assert "twice on same page" in msg
+
+
+class TestClamp:
+    def test_clamp_text_trims_to_word_boundary(self):
+        out = clamp_text("Snow Light Mountain Days", 20)
+        assert len(out) <= 20
+        assert out == "Snow Light Mountain"
+
+    def test_clamp_text_hard_cut_when_no_boundary(self):
+        assert clamp_text("supercalifragilistic", 10) == "supercalif"
+
+    def test_clamp_text_noop_under_limit(self):
+        assert clamp_text("short", 20) == "short"
+
+    def test_clamp_page_texts_makes_over_length_title_pass(self):
+        layout = _good_layout()
+        # mag-13.title maxChars=30 — overshoot it (mirrors what doubao-lite does)
+        layout.pages[0] = Page(
+            pageIndex=0, templateId="mag-13", images={"image": "p1"},
+            texts={"title": "A spring trip to Kyoto in the early cherry season",
+                   "intro": "x" * 45, "issue": "YUJEE · 01",
+                   "credit": "AI ARRANGED · YUJEE"},
+        )
+        assert "title" in (violation(layout) or "")  # fails rule 9 before clamp
+        layout.pages = clamp_page_texts(layout.pages)
+        assert len(layout.pages[0].texts["title"]) <= 30
+        assert violation(layout) is None  # passes after clamp

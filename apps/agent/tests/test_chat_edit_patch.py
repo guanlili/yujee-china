@@ -107,6 +107,26 @@ class TestApplyPatch:
         assert v is not None and ("unused" in v or "imageTop" in v or "slot" in v)
 
 
+class TestClampPatch:
+    def test_patch_text_clamped_to_template_maxchars(self):
+        # doubao-lite overshoots maxChars; the returned patch must be clamped so
+        # it equals the layout that was validated.
+        layout = _layout()
+        _, patch = chat_edit._coerce_patch(
+            {
+                "assistantReply": "longer title",
+                "layoutPatch": [
+                    {"pageIndex": 0,
+                     "texts": {"title": "A spring trip to Kyoto in the early cherry season"}},
+                ],
+            }
+        )
+        clamped = chat_edit._clamp_patch(layout, patch)
+        assert len(clamped[0].texts["title"]) <= 30  # mag-13.title cap
+        patched = chat_edit._apply_patch(layout, clamped)
+        assert violation(patched) is None
+
+
 class TestCoercePatch:
     def test_missing_reply_rejected(self):
         with pytest.raises(chat_edit.ChatEditError):
