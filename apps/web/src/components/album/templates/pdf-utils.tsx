@@ -1,6 +1,35 @@
 import type { ReactNode } from 'react';
-import { Image, Page, Text, View } from '@react-pdf/renderer';
+import { Font, Image, Page, Text, View } from '@react-pdf/renderer';
 import { COLORS, PAGE, PDF_FONTS } from './constants';
+
+// Register the bundled Noto SC subsets (Latin + 全部 CJK 基本区, public/fonts/).
+// Fetched by @react-pdf only at PDF-render time (browser), not on page load.
+// CJK has no real italic/bold cut, so map every style/weight a template might
+// ask for (17× italic, 1× medium across templates) to the one Regular file —
+// keeps glyphs correct and stops @react-pdf throwing on an unregistered variant.
+function registerCjk(family: string, src: string): void {
+  Font.register({
+    family,
+    fonts: [
+      { src },
+      { src, fontStyle: 'italic' },
+      { src, fontWeight: 'medium' },
+      { src, fontWeight: 'bold' },
+      { src, fontWeight: 'bold', fontStyle: 'italic' },
+    ],
+  });
+}
+
+registerCjk('NotoSerifSC', '/fonts/NotoSerifSC-Regular.ttf');
+registerCjk('NotoSansSC', '/fonts/NotoSansSC-Regular.ttf');
+
+// CJK lines have no spaces; @react-pdf won't wrap them on its own. Treat each
+// CJK char as its own break opportunity while keeping Latin runs intact, so
+// long Chinese paragraphs wrap instead of overflowing the page.
+Font.registerHyphenationCallback((word) => {
+  const parts = word.match(/[　-鿿＀-￯]|[^　-鿿＀-￯]+/g);
+  return parts && parts.length > 1 ? parts : [word];
+});
 
 // @react-pdf/types 不直接装,Style 用宽松类型避免类型链问题。
 export type PdfStyle = Record<string, string | number | undefined>;

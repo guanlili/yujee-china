@@ -96,6 +96,29 @@ def test_chat_edit_network_failure_maps_to_chat_error(monkeypatch):
         asyncio.run(chat_edit.run(_chat_request()))
 
 
+def test_chat_edit_route_upstream_failure_returns_502_contract(monkeypatch):
+    """Route-level: AIRequestError → ChatEditError → HTTP 502 with the
+    {ok:false,error:{code:AGENT_CHAT_FAILED}} body (contract §2.2). The service
+    unit test above proves the raise; this proves the route's contract shape."""
+    from fastapi.testclient import TestClient
+
+    from src.main import app
+
+    monkeypatch.setattr(ai_client, "chat_completion", _boom)
+
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.post(
+        "/v1/chat-edit",
+        headers={"Authorization": "Bearer test_secret"},
+        json=_chat_request().model_dump(mode="json"),
+    )
+
+    assert resp.status_code == 502
+    body = resp.json()
+    assert body["ok"] is False
+    assert body["error"]["code"] == "AGENT_CHAT_FAILED"
+
+
 def test_pipeline_real_vision_failure_emits_vision_failed_code(monkeypatch):
     """End-to-end: AIRequestError in the first stage → failed callback with
     code AGENT_VISION_FAILED (not AGENT_INTERNAL_ERROR)."""

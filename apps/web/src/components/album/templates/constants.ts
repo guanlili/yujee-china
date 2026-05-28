@@ -21,13 +21,16 @@ export const WEB_FONTS = {
   mono: '"JetBrains Mono", "SF Mono", "Menlo", monospace',
 } as const;
 
-// @react-pdf/renderer 内置字体: Helvetica / Times-Roman / Courier
-// 中文需要后续注册字体文件;一期 PDF 字体回退到拉丁字体,版式不变。
+// 字体在 pdf-utils.tsx 用 Font.register 注册(public/fonts/ 下的 Noto SC 子集)。
+// 模板里 serif* / sans* 槽位承载动态文案,语言不固定(中/英都可能),而
+// @react-pdf 没有逐字回退 —— 所以 serif/sans 一律指向覆盖拉丁+中文的 Noto SC,
+// 任何槽位收到中文都不再回退成「口口」。Noto SC 自带高质量拉丁字形,英文版式不受损。
+// mono 只用于 VOL/日期/「MEMOIR」等拉丁装饰标签,保留内置 Courier。
 export const PDF_FONTS = {
-  serifCn: 'Times-Roman',
-  sansCn: 'Helvetica',
-  serifEn: 'Times-Roman',
-  sansEn: 'Helvetica',
+  serifCn: 'NotoSerifSC',
+  sansCn: 'NotoSansSC',
+  serifEn: 'NotoSerifSC',
+  sansEn: 'NotoSansSC',
   mono: 'Courier',
 } as const;
 

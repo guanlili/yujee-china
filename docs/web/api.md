@@ -82,6 +82,7 @@
 4. 事务里:
    - `albumService.create({ userId, status: 'AGENT_RUNNING', prompt, photoCount })` → 拿 `albumId`
    - `jobService.create({ albumId, userId, requestId, status: 'QUEUED' })`
+   - `creditService.hold(tx, userId, cost, albumId)` —— 预留积分:写 `credit_holds`(HOLDING)+ 0-delta `GENERATION_HOLD` ledger,**余额此刻不变**,生成完成时才 settle 扣费(见 §3.3)
 5. `agentClient.submitLayout(...)`,Agent 5 秒内 202 接单(不等结果)
 6. 把 `agent_jobs.status` 标 `RUNNING`,返回 `{ albumId, requestId }` 给浏览器
 7. **本次 HTTP 请求到此结束**。Web 函数在 ≤ 8 秒内退出。终态由 Agent 后续 callback 写入,见 §3.3。
@@ -153,11 +154,11 @@ Header: `Authorization: Bearer ${AGENT_SHARED_SECRET}`
      - zod 校验 `layout`(`AlbumLayoutPlan`)
      - `albumRepo.update(albumId, { layoutJson, title, status: 'EDITING' })`
      - `albumPageRepo.bulkInsert(albumId, layout.pages)`
-     - `creditService.hold(tx, userId, albumId, cost)`
+     - `creditService.settle(tx, userId, album.creditHoldId)` —— 结算 §3.1 建立的 hold,**此刻才扣减积分**(写负向 `GENERATION_SETTLE` ledger;对已 SETTLED 的 hold 幂等)
      - `jobRepo.update(jobId, { status: 'COMPLETED', usage, completedAt: now })`
    - `failed`:事务里 ——
      - `albumRepo.update(albumId, { status: 'FAILED', errorMessage: error.message })`
-     - `creditService.release(tx, userId, albumId)`
+     - `creditService.releaseByAlbum(tx, albumId)` —— 按 album 找到 hold 释放,**不扣费**(写 0-delta `GENERATION_RELEASE` ledger)
      - `jobRepo.update(jobId, { status: 'FAILED', error, completedAt: now })`
 6. 返回 `{ ok: true }`
 
@@ -245,6 +246,8 @@ Chat 编辑入口。**同步**:用户在 chat 框里等 AI 回复,不轮询。
 }
 ```
 
+> `layoutPatch` 字段用**浏览器侧**命名 `imagesJson` / `textsJson`(与 §3.4 GET detail、§3.5 PATCH pages 一致)。Agent↔Web 契约内部用 `images` / `texts`;Web 在 `chatService.toBrowserPatch()` 翻译成 `imagesJson` / `textsJson` 后才返回浏览器、落 `album_messages.layoutPatch`。
+
 > 浏览器拿到 `layoutPatch` 后**就地更新本地 store**,不需要刷整本 album。
 
 错误码:
@@ -312,7 +315,7 @@ Query: `?limit=50&before=msg_xxx`(分页,默认 50,按 `created_at desc`)
 服务端:
 1. 校验归属
 2. 校验 r2Key 是否真的存在(HEAD 一次 R2)
-3. 事务: `albums.pdf_r2_key` 写入 + `status='COMPLETED'` + `creditService.settle`
+3. 事务: `albums.pdf_r2_key` 写入 + `status='COMPLETED'`(**不动积分**——积分已在生成完成时 settle,见 §3.3;PDF confirm 不再 settle)
 
 ---
 
