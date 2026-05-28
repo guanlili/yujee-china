@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "github": {
+    "silent": true
+  },
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm build",
+  "crons": [
+    {
+      "path": "/api/v1/admin/recover-stuck",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/v1/admin/cleanup-photos",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}

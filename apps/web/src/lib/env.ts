@@ -17,6 +17,11 @@ const EnvSchema = z.object({
   DEMO_USER_ID: z.string().default('demo-user-001'),
   DEMO_USER_EMAIL: z.string().default('demo@yujee.local'),
 
+  // Vercel cron auth bypass for admin routes (recover-stuck / cleanup-photos).
+  // Vercel injects `Authorization: Bearer <CRON_SECRET>` on cron invocations.
+  // Unset in dev => cron bypass disabled, so those routes still require admin.
+  CRON_SECRET: z.string().optional(),
+
   // Payment · Stripe (test keys in dev, missing => Stripe disabled)
   STRIPE_API_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
