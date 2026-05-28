@@ -154,12 +154,45 @@ def _apply_patch(
         raise ChatEditError(f"patched layout schema failed: {exc.errors()[:1]}") from exc
 
 
+def _mock_chat_edit(req: ChatEditRequest, started: float) -> ChatEditResponse:
+    """Deterministic, rules-safe stub used when AGENT_PIPELINE_MODE=mock, so the
+    chat round-trip (Web → Agent → apply → persist → re-validate) is testable
+    without a DeepSeek key — mirroring vision_mock / planning_mock for layout.
+    It echoes the first page's existing texts as a no-op patch; it does NOT do
+    real editing, which needs the live model (verified at deploy).
+
+    Business rules (layout_rules) are intentionally NOT enforced here: mock
+    layouts from planning_mock are smoke fixtures that don't satisfy every rule
+    (e.g. unused photos, over-length text), so enforcing them would make the
+    seam untestable. _apply_patch still guarantees a structurally valid layout
+    (AlbumLayoutPlan); the real chat-edit path keeps full rule enforcement."""
+    if not req.currentLayout.pages:
+        raise ChatEditError("mock chat-edit: layout has no pages")
+    target = req.currentLayout.pages[0]
+    patch = [LayoutPatchEntry(pageIndex=target.pageIndex, texts=dict(target.texts))]
+    _apply_patch(req.currentLayout, patch)  # structural validation only
+    duration_ms = int((time.monotonic() - started) * 1000)
+    log.info("chat_edit.mock.ok", album_id=req.albumId, patch_size=len(patch))
+    return ChatEditResponse(
+        layoutPatch=patch,
+        assistantReply=(
+            f'(mock) Got it — "{req.userMessage[:120]}". '
+            "Real edits apply once the model is connected."
+        ),
+        usage=ChatEditUsage(durationMs=duration_ms, model="mock-chat-edit"),
+    )
+
+
 async def run(req: ChatEditRequest) -> ChatEditResponse:
     settings = get_settings()
+    started = time.monotonic()
+
+    if settings.agent_pipeline_mode == "mock":
+        return _mock_chat_edit(req, started)
+
     if not settings.deepseek_api_key:
         raise ChatEditError("DEEPSEEK_API_KEY missing; cannot run chat-edit")
 
-    started = time.monotonic()
     log.info(
         "chat_edit.call.start",
         album_id=req.albumId,

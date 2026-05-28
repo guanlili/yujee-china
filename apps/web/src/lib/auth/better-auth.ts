@@ -6,6 +6,7 @@ import * as schema from '@/db/schema';
 import { sendEmail } from '@/lib/email/send-email';
 import { renderVerificationEmail } from '@/lib/email/templates';
 import { env } from '@/lib/env';
+import { FREE_PLAN_CREDITS } from '@/config/pricing';
 
 type SchemaModule = Record<string, unknown>;
 type BetterAuthSchema = {
@@ -71,7 +72,12 @@ export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAu
         creditBalance: {
           type: 'number',
           required: false,
-          defaultValue: 100,
+          // New users get the free-plan welcome credits. The old hard-coded 100
+          // was below CREDIT_COST_PER_ALBUM (200), so a new user could not
+          // generate a single album. (Recording this as a SIGNUP_BONUS ledger
+          // row is a follow-up — it needs the user committed, which conflicts
+          // with the adapter's create transaction.)
+          defaultValue: FREE_PLAN_CREDITS,
           input: false,
         },
       },

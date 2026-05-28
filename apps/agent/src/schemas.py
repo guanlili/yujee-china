@@ -57,17 +57,20 @@ class Magazine(_Strict):
 
 class PhotoAnalysis(_Strict):
     """Vision output. Carries the 5 design.md §2.6 extension fields used as
-    composing hints. Web-side zod drops unknown keys, so these flow through
-    the layout callback harmlessly."""
+    composing hints. Web-side zod (the canonical @yujee/contracts PhotoAnalysis)
+    keeps only photoId/description/tags/quality/orientation and drops the rest,
+    so on the chat-edit round-trip the Web sends back a layout without these
+    fields. They must therefore be optional on input — vision still populates
+    them on output; the contract never requires them."""
 
     photoId: str = Field(min_length=1)
     description: str
     tags: list[str]
     quality: PhotoQuality
     orientation: PhotoOrientation
-    peopleCount: PeopleCount
-    scene: Scene
-    mood: Mood
+    peopleCount: PeopleCount | None = None
+    scene: Scene | None = None
+    mood: Mood | None = None
     timeOfDay: TimeOfDay | None = None
     location: str | None = None
 

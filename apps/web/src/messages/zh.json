@@ -8,7 +8,11 @@
     "loginAction": "登录",
     "registerAction": "创建账户",
     "switchToRegister": "还没有账户？",
-    "switchToLogin": "已有账户？"
+    "switchToLogin": "已有账户？",
+    "loading": "请稍候…",
+    "loginError": "无法登录，请检查邮箱和密码。",
+    "registerError": "无法创建账户。",
+    "verifyEmailSent": "请查收邮件——我们已发送验证链接，点击即可完成注册。"
   },
   "errors": {
     "UNAUTHORIZED": "需要登录",

@@ -8,7 +8,11 @@
     "loginAction": "Log in",
     "registerAction": "Create account",
     "switchToRegister": "Need an account?",
-    "switchToLogin": "Already have an account?"
+    "switchToLogin": "Already have an account?",
+    "loading": "Please wait…",
+    "loginError": "Could not log in. Check your email and password.",
+    "registerError": "Could not create your account.",
+    "verifyEmailSent": "Check your inbox — we sent a link to verify your email. Click it to finish signing up."
   },
   "errors": {
     "UNAUTHORIZED": "Login required",

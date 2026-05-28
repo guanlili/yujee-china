@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { createAuthOptions, getBetterAuthSchema } from './better-auth';
+import { FREE_PLAN_CREDITS } from '@/config/pricing';
 
 describe('better-auth schema bridge', () => {
   it('maps B2 plural table exports to better-auth singular model names', () => {
@@ -46,7 +47,7 @@ describe('better-auth schema bridge', () => {
       creditBalance: {
         type: 'number',
         required: false,
-        defaultValue: 100,
+        defaultValue: FREE_PLAN_CREDITS,
         input: false,
       },
     });
