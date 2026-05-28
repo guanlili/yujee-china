@@ -69,6 +69,15 @@ export const albumService = {
     }));
   },
 
+  // Hard delete. FK ON DELETE CASCADE drops pages / messages / jobs / holds in
+  // the same statement; credit_ledger.related_album_id is set null so the audit
+  // trail survives. A still-HOLDING hold never debited the balance, so removing
+  // it strands no credit.
+  async delete(userId: string, albumId: string): Promise<void> {
+    await this.findOwned(userId, albumId);
+    await albumRepo.delete(db, albumId);
+  },
+
   // Returns { putUrl, r2Key, publicUrl } so the browser can PUT a PDF directly
   // to R2. Web never touches the bytes — invariant 4.
   async signPdfUpload(

@@ -27,4 +27,8 @@ export const albumRepo = {
       .set({ ...patch, updatedAt: new Date() })
       .where(eq(albums.id, id));
   },
+
+  delete: async (tx: DbOrTx, id: string): Promise<void> => {
+    await tx.delete(albums).where(eq(albums.id, id));
+  },
 };

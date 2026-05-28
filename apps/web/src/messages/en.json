@@ -28,5 +28,71 @@
     "order": {
       "subject": "Yujee order confirmation"
     }
+  },
+  "dashboard": {
+    "common": {
+      "loading": "Loading…",
+      "error": "Something went wrong.",
+      "retry": "Retry"
+    },
+    "nav": {
+      "myAlbums": "My albums",
+      "credits": "Credits",
+      "settings": "Settings"
+    },
+    "myAlbums": {
+      "title": "My albums",
+      "empty": "No albums yet.",
+      "startFirst": "Start your first one",
+      "create": "New album",
+      "open": "Open",
+      "delete": "Delete",
+      "deleting": "Deleting…",
+      "confirmDelete": "Delete this album? This can't be undone.",
+      "meta": "{photos} photos · {pages} pages",
+      "status": {
+        "AGENT_RUNNING": "Generating",
+        "EDITING": "Editing",
+        "COMPLETED": "Completed",
+        "FAILED": "Failed"
+      }
+    },
+    "credits": {
+      "title": "Credits",
+      "balance": "Current balance",
+      "unit": "credits",
+      "rechargeTitle": "Add credits",
+      "rechargeSub": "Top up to keep creating memoirs.",
+      "buy": "Buy",
+      "redirecting": "Redirecting…",
+      "history": "Transaction history",
+      "noHistory": "No transactions yet.",
+      "checkoutSuccess": "Payment received — your credits will appear here shortly.",
+      "checkoutCancel": "Checkout was canceled.",
+      "reason": {
+        "SIGNUP_BONUS": "Signup bonus",
+        "GENERATION_HOLD": "Generation reserved",
+        "GENERATION_SETTLE": "Album generated",
+        "GENERATION_RELEASE": "Generation refunded",
+        "PURCHASE": "Credit purchase",
+        "REFUND": "Refund",
+        "ADMIN_ADJUST": "Adjustment"
+      }
+    },
+    "settings": {
+      "title": "Settings",
+      "profile": "Profile",
+      "email": "Email",
+      "name": "Name",
+      "noName": "Not set",
+      "memberSince": "Member since",
+      "changePassword": "Change password",
+      "currentPassword": "Current password",
+      "newPassword": "New password",
+      "save": "Save",
+      "saving": "Saving…",
+      "passwordChanged": "Password updated.",
+      "signOut": "Sign out"
+    }
   }
 }

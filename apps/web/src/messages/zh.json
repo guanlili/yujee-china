@@ -28,5 +28,71 @@
     "order": {
       "subject": "Yujee 订单确认"
     }
+  },
+  "dashboard": {
+    "common": {
+      "loading": "加载中…",
+      "error": "出错了。",
+      "retry": "重试"
+    },
+    "nav": {
+      "myAlbums": "我的相册",
+      "credits": "积分",
+      "settings": "设置"
+    },
+    "myAlbums": {
+      "title": "我的相册",
+      "empty": "还没有相册。",
+      "startFirst": "创建第一本",
+      "create": "新建相册",
+      "open": "打开",
+      "delete": "删除",
+      "deleting": "删除中…",
+      "confirmDelete": "确定删除这本相册？此操作无法撤销。",
+      "meta": "{photos} 张照片 · {pages} 页",
+      "status": {
+        "AGENT_RUNNING": "生成中",
+        "EDITING": "编辑中",
+        "COMPLETED": "已完成",
+        "FAILED": "失败"
+      }
+    },
+    "credits": {
+      "title": "积分",
+      "balance": "当前余额",
+      "unit": "积分",
+      "rechargeTitle": "充值积分",
+      "rechargeSub": "充值后继续制作纪念册。",
+      "buy": "购买",
+      "redirecting": "跳转中…",
+      "history": "积分流水",
+      "noHistory": "暂无流水。",
+      "checkoutSuccess": "支付已收到 —— 积分稍后会显示在这里。",
+      "checkoutCancel": "已取消支付。",
+      "reason": {
+        "SIGNUP_BONUS": "注册奖励",
+        "GENERATION_HOLD": "生成冻结",
+        "GENERATION_SETTLE": "相册已生成",
+        "GENERATION_RELEASE": "生成已退回",
+        "PURCHASE": "积分购买",
+        "REFUND": "退款",
+        "ADMIN_ADJUST": "调整"
+      }
+    },
+    "settings": {
+      "title": "设置",
+      "profile": "个人资料",
+      "email": "邮箱",
+      "name": "姓名",
+      "noName": "未设置",
+      "memberSince": "注册于",
+      "changePassword": "修改密码",
+      "currentPassword": "当前密码",
+      "newPassword": "新密码",
+      "save": "保存",
+      "saving": "保存中…",
+      "passwordChanged": "密码已更新。",
+      "signOut": "退出登录"
+    }
   }
 }

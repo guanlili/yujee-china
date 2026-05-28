@@ -27,6 +27,24 @@ type ApplyDeltaRefs = {
 export const creditService = {
   cost: (): number => CREDIT_COST_PER_ALBUM,
 
+  async getBalance(userId: string): Promise<number> {
+    const user = await userRepo.findById(userId);
+    if (!user) throw ERRORS.UNAUTHORIZED();
+    return user.creditBalance;
+  },
+
+  async listHistory(userId: string, limit = 50) {
+    const rows = await creditLedgerRepo.findByUser(userId, limit);
+    return rows.map((r) => ({
+      id: r.id,
+      delta: r.delta,
+      reason: r.reason,
+      balanceAfter: r.balanceAfter,
+      relatedAlbumId: r.relatedAlbumId,
+      createdAt: r.createdAt,
+    }));
+  },
+
   async precheck(userId: string, amount: number = CREDIT_COST_PER_ALBUM): Promise<void> {
     const user = await userRepo.findById(userId);
     if (!user) throw ERRORS.UNAUTHORIZED();

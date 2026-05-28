@@ -13,3 +13,14 @@ export async function GET(req: Request, ctx: { params: Promise<{ uuid: string }>
     return fromException(e);
   }
 }
+
+export async function DELETE(req: Request, ctx: { params: Promise<{ uuid: string }> }) {
+  try {
+    const user = await requireAuth(req);
+    const { uuid } = await ctx.params;
+    await albumService.delete(user.id, uuid);
+    return ok({ deleted: true });
+  } catch (e) {
+    return fromException(e);
+  }
+}
