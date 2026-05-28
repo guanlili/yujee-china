@@ -34,6 +34,10 @@ export const ERRORS = {
   AGENT_INVALID_OUTPUT:  () => new AppError('AGENT_INVALID_OUTPUT',  'Agent output schema invalid', 502),
   AGENT_UNAUTHORIZED:    () => new AppError('AGENT_UNAUTHORIZED',    'Agent shared secret invalid', 401),
   AGENT_INTERNAL_ERROR:  () => new AppError('AGENT_INTERNAL_ERROR',  'Agent internal error',        502),
+  AGENT_CHAT_FAILED:     () => new AppError('AGENT_CHAT_FAILED',     'Chat edit failed',            502),
+
+  CHAT_BUSY:             () => new AppError('CHAT_BUSY',             'Another edit is in progress', 409),
+  ALBUM_NOT_EDITABLE:    () => new AppError('ALBUM_NOT_EDITABLE',    'Album is not in editing state', 409),
 
   PDF_UPLOAD_FAILED:     () => new AppError('PDF_UPLOAD_FAILED',     'PDF upload failed',           500),
   R2_SIGN_FAILED:        () => new AppError('R2_SIGN_FAILED',        'R2 presign failed',           500),

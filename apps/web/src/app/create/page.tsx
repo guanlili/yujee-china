@@ -2,11 +2,20 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
+import { compressFile } from '@/lib/photo/compress';
+import { photoStore } from '@/lib/photo/store';
+
+type LocalPhoto = {
+  photoId: string;
+  base64: string;
+  width: number;
+  height: number;
+  file: File;
+};
 
 export default function CreatePage() {
   const router = useRouter();
-  const [photos, setPhotos] = useState<CompressedPhoto[]>([]);
+  const [photos, setPhotos] = useState<LocalPhoto[]>([]);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -16,13 +25,12 @@ export default function CreatePage() {
     setBusy(true);
     setErr(null);
     try {
-      const next: CompressedPhoto[] = [];
-      let i = photos.length;
+      const next: LocalPhoto[] = [];
       for (const f of Array.from(files)) {
         if (photos.length + next.length >= 30) break;
-        i += 1;
-        const photo = await compressFile(f, `p${i}`);
-        next.push(photo);
+        const photoId = crypto.randomUUID();
+        const compressed = await compressFile(f, photoId);
+        next.push({ ...compressed, file: f });
       }
       setPhotos((prev) => [...prev, ...next]);
     } catch (e) {
@@ -32,7 +40,8 @@ export default function CreatePage() {
     }
   };
 
-  const remove = (photoId: string) => setPhotos((prev) => prev.filter((p) => p.photoId !== photoId));
+  const remove = (photoId: string) =>
+    setPhotos((prev) => prev.filter((p) => p.photoId !== photoId));
 
   const submit = async () => {
     if (photos.length < 3) {
@@ -47,6 +56,10 @@ export default function CreatePage() {
     setErr(null);
     const requestId = crypto.randomUUID();
     try {
+      // Keep the originals in the browser only (invariant 1). The editor and PDF
+      // export read them back from IndexedDB by photoId.
+      await photoStore.putMany(photos.map((p) => ({ photoId: p.photoId, blob: p.file })));
+
       const res = await fetch('/api/v1/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -68,12 +81,6 @@ export default function CreatePage() {
         setBusy(false);
         return;
       }
-      try {
-        sessionStorage.setItem(
-          `photos:${json.data.albumId}`,
-          JSON.stringify(photos),
-        );
-      } catch {}
       router.push(`/album/${json.data.albumId}?job=${json.data.requestId}`);
     } catch (e) {
       setErr(String(e));
@@ -119,7 +126,11 @@ export default function CreatePage() {
             {photos.map((p) => (
               <div key={p.photoId} className="relative group">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.base64} alt={p.photoId} className="w-full aspect-square object-cover rounded" />
+                <img
+                  src={p.base64}
+                  alt=""
+                  className="w-full aspect-square object-cover rounded"
+                />
                 <button
                   type="button"
                   onClick={() => remove(p.photoId)}

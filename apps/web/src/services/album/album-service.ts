@@ -78,6 +78,21 @@ export const albumService = {
     await albumRepo.delete(db, albumId);
   },
 
+  // Editor saves a single page (docs/web/api.md §3.5). The whole layout_json is
+  // owned by generation/chat; direct edits only touch the per-page row.
+  async updatePage(
+    userId: string,
+    albumId: string,
+    pageIndex: number,
+    patch: { imagesJson?: Record<string, string>; textsJson?: Record<string, string> },
+  ): Promise<{ updated: true }> {
+    await this.findOwned(userId, albumId);
+    await db.transaction(async (tx) => {
+      await albumPageRepo.updateOne(tx, albumId, pageIndex, patch);
+    });
+    return { updated: true };
+  },
+
   // Returns { putUrl, r2Key, publicUrl } so the browser can PUT a PDF directly
   // to R2. Web never touches the bytes — invariant 4.
   async signPdfUpload(
@@ -95,6 +110,31 @@ export const albumService = {
     const r2Key = `pdfs/${userId}/${albumId}.pdf`;
     const putUrl = await r2.signPutUrl(r2Key, input.contentType, 300);
     return { putUrl, r2Key, publicUrl: r2.publicUrl(r2Key) };
+  },
+
+  // Browser has finished the direct R2 PUT; record metadata + mark COMPLETED
+  // (docs/web/api.md §3.7). Credit was already settled at generation completion,
+  // so no settle here. The r2Key is bound to the {userId}/{albumId} namespace
+  // signPdfUpload issued, so a forged key for another album is rejected.
+  async confirmPdf(
+    userId: string,
+    albumId: string,
+    r2Key: string,
+  ): Promise<{ pdfUrl: string }> {
+    await this.findOwned(userId, albumId);
+    const expected = `pdfs/${userId}/${albumId}.pdf`;
+    if (r2Key !== expected) throw ERRORS.VALIDATION_FAILED('r2Key does not match album');
+
+    const pdfUrl = r2.publicUrl(r2Key);
+    await db.transaction(async (tx) => {
+      await albumRepo.update(tx, albumId, { pdfR2Key: r2Key, pdfUrl, status: 'COMPLETED' });
+    });
+    return { pdfUrl };
+  },
+
+  async getPdfUrl(userId: string, albumId: string): Promise<{ pdfUrl: string | null }> {
+    const album = await this.findOwned(userId, albumId);
+    return { pdfUrl: album.pdfUrl ?? null };
   },
 };
 
