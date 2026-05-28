@@ -19,6 +19,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.682.0",
     "@aws-sdk/s3-request-presigner": "^3.682.0",
+    "@react-pdf/renderer": "^4.5.1",
     "@yujee/contracts": "workspace:*",
     "better-auth": "1.4.17",
     "dotenv": "^16.4.5",

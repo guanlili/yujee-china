@@ -10,7 +10,8 @@
     "./layout": "./src/layout.ts",
     "./agent": "./src/agent.ts",
     "./api": "./src/api.ts",
-    "./enums": "./src/enums.ts"
+    "./enums": "./src/enums.ts",
+    "./templates": "./src/templates.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
