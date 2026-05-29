@@ -73,10 +73,11 @@
 - **真火山规模未验** —— >10 张照片 / 16 页路径没端到端测过。
 - **密钥位置** —— ARK / R2 / Creem / Resend 在老 `memoir-web/.env.local`;AGENT_SHARED_SECRET / CRON_SECRET 在 `docs/deploy/secrets.local.env`。
 
-## 迁移过程留档
+## 现存文档(产品/架构)
 
-- 策略:`migration-plan.md`(B0-B9 + B-1 批次 + 跨批次 TODO §8.1)
-- 路由对照:`migration-routes.md`(老 → 新)
-- Agent 设计:`agent/design.md`(pipeline / prompt / 9 规则 / quality enum §5.1)
-- 部署证据:`evidence/`(b2-migrate / derisk-real-ai / t-integration)
+- 架构 + 十条不变式:`architecture.md`
+- Agent 设计:`agent/design.md`(pipeline / prompt / 9 规则 / quality enum §5.1)、`agent/contract.md`
+- Web 规范:`web/{api,database,layering,directory,conventions,errors}.md`
 - 部署变量:`deploy/env.production.md`
+
+> 迁移过程脚手架(migration-plan / migration-routes / evidence / RUN_DEMO)已于上线后清理,需要可查 git 历史。
