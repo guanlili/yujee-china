@@ -1,5 +1,10 @@
 from src.schemas import AlbumLayoutPlan, Magazine, Page, PhotoAnalysis
-from src.services.layout_rules import clamp_page_texts, clamp_text, violation
+from src.services.layout_rules import (
+    clamp_page_texts,
+    clamp_text,
+    coerce_image_slots,
+    violation,
+)
 
 
 def _photo(pid: str, *, quality: str, orientation: str) -> PhotoAnalysis:
@@ -96,6 +101,107 @@ class TestRules:
         )
         msg = violation(layout) or ""
         assert "twice on same page" in msg
+
+
+class TestCoerce:
+    def _magazine(self) -> Magazine:
+        return Magazine(title="Trip", style="warm-film", language="en")
+
+    def test_fully_scrambled_layout_passes_after_coerce(self):
+        # Every photo is mis-assigned, yet each has a compatible slot somewhere.
+        # coerce must clear all violations and re-home everyone — no drops.
+        photos = [
+            _photo("p1", quality="hero",   orientation="landscape"),
+            _photo("p2", quality="hero",   orientation="portrait"),
+            _photo("p3", quality="detail", orientation="portrait"),
+            _photo("p4", quality="fill",   orientation="square"),
+            _photo("p5", quality="detail", orientation="landscape"),
+            _photo("p6", quality="detail", orientation="square"),
+        ]
+        layout = AlbumLayoutPlan(
+            magazine=self._magazine(),
+            photos=photos,
+            pages=[
+                # cover slot wants landscape — gets a square/fill
+                Page(pageIndex=0, templateId="mag-13", images={"image": "p4"},
+                     texts={}),
+                # mag-04: image1=landscape, image2=portrait, image3=square — all wrong
+                Page(pageIndex=1, templateId="mag-04",
+                     images={"image1": "p2", "image2": "p1", "image3": "p5"},
+                     texts={}),
+                # mag-12: imageTop=square, imageBottom=portrait — both wrong
+                Page(pageIndex=2, templateId="mag-12",
+                     images={"imageTop": "p3", "imageBottom": "p6"},
+                     texts={}),
+            ],
+        )
+        assert violation(layout) is not None  # scrambled → fails before coerce
+
+        coerced = coerce_image_slots(layout)
+        assert violation(coerced) is None
+        # every photo still present and used at least once
+        assert {p.photoId for p in coerced.photos} == {"p1", "p2", "p3", "p4", "p5", "p6"}
+
+    def test_unplaceable_photo_is_dropped(self):
+        # p3 (square/fill) has no compatible slot in this template set → coerce
+        # drops it from photos[] so Rule 3 still holds, keeping the album shippable.
+        photos = [
+            _photo("p1", quality="hero", orientation="landscape"),
+            _photo("p2", quality="hero", orientation="portrait"),
+            _photo("p3", quality="fill", orientation="square"),
+        ]
+        layout = AlbumLayoutPlan(
+            magazine=self._magazine(),
+            photos=photos,
+            pages=[
+                Page(pageIndex=0, templateId="mag-13", images={"image": "p1"},
+                     texts={}),
+                Page(pageIndex=1, templateId="mag-08", images={"image": "p2"},
+                     texts={}),
+                Page(pageIndex=2, templateId="mag-02", images={}, texts={}),
+            ],
+        )
+        # p3 is unused from the start → fails Rule 3 before coerce
+        assert "unused" in (violation(layout) or "")
+
+        coerced = coerce_image_slots(layout)
+        assert violation(coerced) is None
+        assert {p.photoId for p in coerced.photos} == {"p1", "p2"}
+
+    def test_valid_placements_preserved(self):
+        layout = _good_layout()
+        coerced = coerce_image_slots(layout)
+        assert violation(coerced) is None
+        assert len(coerced.photos) == 3
+        # the model's correct assignments are left untouched
+        assert coerced.pages[0].images == {"image": "p1"}
+        assert coerced.pages[2].images == {"imageTop": "p3", "imageBottom": "p2"}
+
+    def test_quality_mismatch_coerced(self):
+        # mag-18 imageLeft accepts only detail/fill — a hero photo there is the
+        # exact prod failure (requestId 22998fe0). coerce swaps in a fitting photo.
+        photos = [
+            _photo("p1", quality="hero",   orientation="landscape"),
+            _photo("p2", quality="detail", orientation="portrait"),
+            _photo("p3", quality="fill",   orientation="portrait"),
+        ]
+        layout = AlbumLayoutPlan(
+            magazine=self._magazine(),
+            photos=photos,
+            pages=[
+                Page(pageIndex=0, templateId="mag-13", images={"image": "p1"},
+                     texts={}),
+                Page(pageIndex=1, templateId="mag-02", images={}, texts={}),
+                # imageLeft/imageRight want detail|fill portraits; p1 is hero/landscape
+                Page(pageIndex=2, templateId="mag-18",
+                     images={"imageLeft": "p1", "imageRight": "p2"}, texts={}),
+            ],
+        )
+        msg = violation(layout) or ""
+        assert "quality" in msg or "orientation" in msg
+
+        coerced = coerce_image_slots(layout)
+        assert violation(coerced) is None
 
 
 class TestClamp:

@@ -289,6 +289,7 @@ async def compose_pages(
     last_error: str | None = None
     total_prompt = 0
     total_completion = 0
+    layout: AlbumLayoutPlan | None = None
 
     for attempt in range(2):  # initial + 1 repair
         messages = list(base_messages)
@@ -349,6 +350,9 @@ async def compose_pages(
         if rule_violation:
             last_error = f"business rule violation: {rule_violation}"
             log.warning("composing.rules_failed", attempt=attempt, error=last_error)
+            # Final attempt still failing → deterministic coerce instead of dying.
+            if attempt == 1:
+                break
             continue
 
         log.info(
@@ -361,4 +365,27 @@ async def compose_pages(
         )
         return layout, total_prompt, total_completion, repair_attempts
 
-    raise ComposingError(f"composing failed after repair: {last_error}")
+    # Repair budget exhausted with a layout still violating orientation/quality
+    # (or the consequent photo-usage rules). doubao-lite can't reliably satisfy
+    # the slot constraints on 7-8 photos, so we deterministically coerce the
+    # last layout into compliance rather than fail the whole job (§4.3 fallback,
+    # mirroring clamp_text for text). Versions without a parsed layout still die.
+    if layout is None:
+        raise ComposingError(f"composing failed before producing a layout: {last_error}")
+
+    coerced = layout_rules.coerce_image_slots(layout)
+    residual = layout_rules.violation(coerced)
+    if residual:
+        # coerce only guarantees the slot/usage rules; a structural violation
+        # (page count / cover / pageIndex) is the model's job and unrecoverable.
+        raise ComposingError(f"composing failed after coerce: {residual}")
+
+    log.warning(
+        "composing.coerced",
+        last_error=last_error,
+        page_count=len(coerced.pages),
+        photo_count=len(coerced.photos),
+        dropped_photos=len(layout.photos) - len(coerced.photos),
+        repair_attempts=repair_attempts,
+    )
+    return coerced, total_prompt, total_completion, repair_attempts

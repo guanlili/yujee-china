@@ -5,8 +5,11 @@ as a human-readable string for the repair prompt, or None if all pass."""
 from collections import Counter
 from math import ceil
 
+from ..logging_config import get_logger
 from ..schemas import AlbumLayoutPlan, Page, PhotoAnalysis
 from .. import templates as registry
+
+log = get_logger("layout_rules")
 
 
 def _expected_page_count(photo_count: int) -> int:
@@ -56,6 +59,104 @@ def clamp_page_texts(pages: list[Page]) -> list[Page]:
         new_texts = clamp_texts_for_template(page.templateId, page.texts)
         out.append(page.model_copy(update={"texts": new_texts}) if new_texts != page.texts else page)
     return out
+
+
+def _photo_fits(photo: PhotoAnalysis, constraint: dict) -> bool:
+    return (
+        photo.orientation in constraint["orientation"]
+        and photo.quality in constraint["quality"]
+    )
+
+
+def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
+    """Deterministically force every image slot to satisfy its template's
+    orientation/quality constraint — the photo-slot analogue of clamp_text.
+
+    Runs ONLY after the model's repair budget is exhausted: a bottom-line, not
+    a replacement for sound assignment. doubao-seed-lite reliably matches
+    orientation+quality on 3 photos but mis-assigns on 7-8, and a single repair
+    can't recover it, sinking the whole job over a cosmetic mismatch. This makes
+    the layout pass §4.3 unconditionally so the album always ships.
+
+    Strategy (only touches placements the model got wrong):
+      1. Clear every placement that breaks a per-slot rule — bad slot key,
+         dangling photoId, orientation/quality mismatch, same-page duplicate,
+         or reuse beyond twice. Valid placements are left exactly as the model
+         arranged them.
+      2. Re-home each now-unused photo into an empty, compatible slot on a page
+         that doesn't already show it (Rule 3: every photo used at least once).
+      3. Last resort: a photo with no compatible slot anywhere is dropped from
+         photos[] (the album omits it) — it is unused, so nothing references it,
+         and a smaller photo set only lowers the Rule 1 page target.
+
+    After coerce, violation() returns None for any structurally sound layout
+    (valid page count / cover-first / sequential pageIndex / known templates) —
+    the structural rules are the model's job and are left untouched here."""
+    by_id: dict[str, PhotoAnalysis] = {p.photoId: p for p in layout.photos}
+    page_tpls = [registry.get(page.templateId) for page in layout.pages]
+    page_images: list[dict[str, str]] = [dict(page.images) for page in layout.pages]
+
+    used: Counter[str] = Counter()
+    on_page: list[set[str]] = [set() for _ in layout.pages]
+
+    # Phase 1 — keep only placements that satisfy every per-slot rule.
+    for i, (imgs, tpl) in enumerate(zip(page_images, page_tpls)):
+        if tpl is None:
+            continue
+        for slot in list(imgs.keys()):
+            pid = imgs[slot]
+            cons = tpl["imageSlots"].get(slot)
+            photo = by_id.get(pid)
+            keep = (
+                cons is not None
+                and photo is not None
+                and _photo_fits(photo, cons)
+                and pid not in on_page[i]
+                and used[pid] < 2
+            )
+            if keep:
+                used[pid] += 1
+                on_page[i].add(pid)
+            else:
+                del imgs[slot]
+
+    # Phase 2 — re-home unused photos into empty, compatible slots (Rule 3).
+    for pid in [p.photoId for p in layout.photos]:
+        if used[pid] > 0:
+            continue
+        photo = by_id[pid]
+        for i, (imgs, tpl) in enumerate(zip(page_images, page_tpls)):
+            if tpl is None or pid in on_page[i]:
+                continue
+            empty = next(
+                (
+                    s
+                    for s, c in tpl["imageSlots"].items()
+                    if s not in imgs and _photo_fits(photo, c)
+                ),
+                None,
+            )
+            if empty is not None:
+                imgs[empty] = pid
+                used[pid] += 1
+                on_page[i].add(pid)
+                break
+
+    # Phase 3 — drop photos that have no compatible slot anywhere.
+    survivors = [p for p in layout.photos if used[p.photoId] > 0]
+    dropped = [p.photoId for p in layout.photos if used[p.photoId] == 0]
+    if dropped:
+        log.warning(
+            "composing.coerce.dropped_photos",
+            photo_ids=dropped[:5],
+            count=len(dropped),
+        )
+
+    new_pages = [
+        page.model_copy(update={"images": imgs}) if imgs != page.images else page
+        for page, imgs in zip(layout.pages, page_images)
+    ]
+    return layout.model_copy(update={"pages": new_pages, "photos": survivors})
 
 
 def violation(layout: AlbumLayoutPlan) -> str | None:
