@@ -9,7 +9,7 @@
   "crons": [
     {
       "path": "/api/v1/admin/recover-stuck",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 4 * * *"
     },
     {
       "path": "/api/v1/admin/cleanup-photos",
