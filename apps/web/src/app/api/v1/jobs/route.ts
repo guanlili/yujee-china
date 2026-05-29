@@ -19,6 +19,11 @@ const BodySchema = z.object({
   photos: z.array(PhotoSchema).min(3).max(30),
 });
 
+// Forwards a multi-MB base64 payload to the Fly agent and waits for its 202.
+// Vercel's default function cap can abort before the 30s agentClient timeout;
+// 60s gives the cross-region submit room (Hobby allows up to 60).
+export const maxDuration = 60;
+
 export async function POST(req: Request) {
   try {
     const user = await requireAuth(req);
