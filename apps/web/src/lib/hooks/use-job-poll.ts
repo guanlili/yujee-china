@@ -12,8 +12,14 @@ export interface JobPollState {
   albumId: string | null;
 }
 
-const POLL_MS = 2000;
-const FALLBACK_TIMEOUT_MS = 3 * 60 * 1000;
+// 15s, not 2s: the browser only polls Web's own DB — the Agent runs the
+// pipeline and callbacks when each stage lands, so tight polling just adds load
+// without making the album arrive sooner.
+const POLL_MS = 15000;
+// 3.5 min, just above the Agent's background_task_timeout_seconds=180 so a slow
+// run (composing up to 60s/call + a repair) has time to finish and the browser
+// still polls once more to catch the Agent's terminal callback before giving up.
+const FALLBACK_TIMEOUT_MS = 3.5 * 60 * 1000;
 
 const INITIAL: JobPollState = {
   status: 'QUEUED',
@@ -23,8 +29,8 @@ const INITIAL: JobPollState = {
   albumId: null,
 };
 
-// Polls GET /api/v1/jobs/[requestId] every 2s (docs/web/api.md §5). Stops on a
-// terminal status or after a 3-minute fallback so a lost job can't spin forever.
+// Polls GET /api/v1/jobs/[requestId] every 15s (docs/web/api.md §5). Stops on a
+// terminal status or after a 3.5-minute fallback so a lost job can't spin forever.
 export function useJobPoll(requestId: string | null): JobPollState {
   const [state, setState] = useState<JobPollState>(INITIAL);
 

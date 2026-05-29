@@ -318,9 +318,11 @@ async def compose_pages(
                 ),
                 temperature=0.3,
                 max_tokens=8192,
+                # Composing-specific thinking switch (not the shared planning
+                # one): thinking ON here blew past the 60s timeout on prod.
                 extra_body=(
                     {"thinking": {"type": "disabled"}}
-                    if settings.deepseek_disable_thinking
+                    if settings.composing_disable_thinking
                     else None
                 ),
             )
