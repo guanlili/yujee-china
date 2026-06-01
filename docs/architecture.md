@@ -169,6 +169,28 @@ memoir-agent-rebuild/
 
 ---
 
+## 6.5 二期决策记录(2026-06-01 · 架构拍板)
+
+> 二期两块需求(UI 还原 `docs/product/ui-restore-gap.md` + 生成积分 `docs/product/credit-hold-on-generation.md`)的架构定调。**执行窗口动手前必读本节** —— 它覆盖/修正产品文档里的部分前提。
+
+1. **计费现状澄清**:`generation-service.ts:20/35` + `job-service.ts:112/193/218` 已接 precheck/hold/settle/release/zombie。`credit-hold-on-generation.md` 的「现状」节(称"完全没接")**已过时**,以本节为准。`settle` 只在成功发生 → "失败不扣、成功扣一次、重试不重复计费"**现已满足**。
+
+2. **余额不足接回 = 前端保留 + 购后重提(否决服务端占位任务)**。理由:不变式 1 下原图只在浏览器,付款接回时 base64 必须浏览器从 IndexedDB 重传,服务端占位任务的"持久性"是假的(换设备/清缓存即僵尸),不值得新增 `PENDING_PAYMENT` 状态 + schema 迁移。流程:precheck 不足 → 抛 `CREDIT_INSUFFICIENT` → 前端跳 `/pricing`(prompt+照片留 IndexedDB)→ 充值 → 前端重提交 `POST /api/v1/jobs`。**不加 album 状态,不改 generation-service 主流程。**
+
+3. **失败重试 = 复用同一 album 重跑**(`FAILED→AGENT_RUNNING`),浏览器重传 base64,新 precheck+hold(D1 已退旧 hold),**不孤儿化失败卡**。需要一个 retry 路径复用 albumId。
+
+4. **失败结算 = 失败即退 hold(不改现状)**;settle 只在成功;zombie sweeper 兜底不变。
+
+5. **编辑器拆分**:**UI-1a 功能版**(准确平铺预览 + 编辑 + Chat + 导出 + 顶栏 chrome)= **P0 先上**;**UI-1b 3D 翻书 + 缩略图条**= **P1 polish 跟进**。理由:翻书是表现层,且与导出的 `@react-pdf` 平铺页不一致,不该拖住核心编辑功能上线。
+
+6. **照片下限 ≥3 → ≥1(CT-1,跨 Web↔Agent,架构协调)**:web 路由 schema + `create/page.tsx` + agent `schemas.py:45`(`min_length` 3→1)+ composing 对 1-2 图用纯文字版面(mag-02/14/20)兜底。**验收必须含 1 图 fixture 跑通**,不许只改下限就宣布完成,不许某窗口单边改一半。
+
+7. **路由结构统一**:`/create`、`/album/[uuid]` 现在 `[locale]` 段**外**(故无 i18n、文案硬编码英文)。目标收进 `[locale]` 做 2 语(中/英)。各屏 owner(UI-2 / UI-1a)在**自己 PR 里**迁移本屏路由,不单开任务。
+
+8. **依赖**:① 统一 chrome(UI-0)是 UI-1a/UI-2/UI-4/UI-6/UI-9 的地基,**先定组件 props 接口再并行**。② BILL 语义(本节 2/3)先于 UI-2(/create)、UI-4(/my-albums)实现,因为这两屏要渲染"不足跳转/失败重试"态。
+
+---
+
 ## 7. 怎么读这份文档系列
 
 不要从头到尾读 `docs/`。按角色加载:
