@@ -168,21 +168,28 @@ Header: `Authorization: Bearer ${AGENT_SHARED_SECRET}`
 
 ### 3.4 `GET /api/v1/albums/[uuid]`
 
-服务端:
+**这是生成进度的真相源**:浏览器按 album uuid 轮询此接口(不再按 job requestId)。`album.status`(`AGENT_RUNNING` / `EDITING` / `COMPLETED` / `FAILED`)驱动整个界面。
+
+服务端(`albumService.getDetail`):
 1. `requireAuth`
-2. `albumService.findOwned(user.id, uuid)` → 自动校验归属
-3. 查 `album_pages`(按 `page_index asc`)
-4. 返回:
+2. `albumService.findOwned(user.id, uuid)` → 自动校验归属(归属不符 → 403 `ALBUM_NOT_OWNED`,不存在 → 404 `ALBUM_NOT_FOUND`)
+3. 若 `status === 'AGENT_RUNNING'`:`jobService.resolveGeneration(albumId)` 取该 album **最新 job** 的 `stage`/`progress`;同时做**读时机会式收尸**——最新 job 距上次进度/启动 > 5 分钟仍无终态,当场标 album `FAILED` + 释放积分(复用 `handleFailed`),返回的 `status` 即为 `FAILED`。见 [`docs/agent/design.md §7`](../agent/design.md)。
+4. 查 `album_pages`(按 `page_index asc`)
+5. 返回:
 
 ```json
 {
   "ok": true,
   "data": {
-    "album": { "id": "...", "title": "...", "status": "EDITING", "layoutJson": {...} },
-    "pages": [ { "pageIndex": 0, "templateId": "cover-01", "imagesJson": {...}, "textsJson": {...} } ]
+    "album": { "id": "...", "title": "...", "status": "EDITING", "layoutJson": {...}, "errorMessage": null },
+    "pages": [ { "pageIndex": 0, "templateId": "cover-01", "imagesJson": {...}, "textsJson": {...} } ],
+    "generation": { "stage": "composing", "progress": 80 }
   }
 }
 ```
+
+- `generation`:仅 `status === 'AGENT_RUNNING'` 且最新 job 仍在跑时为 `{ stage, progress }`;其余情况(已终态 / 被收尸 / 无 job)为 `null`。
+- `generation` 是 additive 字段,join 自最新 job;**不**落 album 表(无 migration),也**不**改 web↔agent callback 契约。
 
 ### 3.5 `PATCH /api/v1/albums/[uuid]/pages/[idx]`
 
@@ -338,17 +345,18 @@ Query: `?limit=50&before=msg_xxx`(分页,默认 50,按 `created_at desc`)
        → Agent 已经在后台开始跑了
 
 4. POST 响应回来:
-   → router.push(`/album/${albumId}?job=${requestId}`)
+   → router.push(`/album/${albumId}`)   // 只带 uuid,不带 job id
 
-5. 编辑页 mount:
-   5a. useJobPoll(requestId) — 每 2 秒 GET /api/v1/jobs/[requestId]
-       → 拿 stage / progress,渲染"AI 在看图/写文/排版"
-       → status === 'COMPLETED' → 停轮询,刷新 album
-       → status === 'FAILED' → 停轮询,显示错误 + 重试 CTA
-   5b. status === COMPLETED 后 GET /api/v1/albums/[uuid] 拿 layout + pages 渲染
+5. 相册页 mount:
+   useAlbumPoll(uuid) — 每 15 秒 GET /api/v1/albums/[uuid]
+       → album.status 驱动界面(单一真相源):
+         · AGENT_RUNNING → 用 data.generation.{stage,progress} 渲染"AI 在看图/写文/排版"
+         · EDITING / COMPLETED → 用同一份 data.{album,pages} 直接渲染编辑器(无需二次拉取)
+         · FAILED → 显示 album.errorMessage + 重试 CTA
+       → 终止语义见 §5
 ```
 
-> 浏览器**不**开 SSE/WebSocket。轮询接口完全无状态,可以无限重试,断网恢复也自动续上。1000 用户阶段最坏情况:1000 人同时生成 → 500 QPS 轮询,Vercel + Neon 都扛得住。
+> 浏览器**不**开 SSE/WebSocket。真相源是 album(按 uuid 寻址、带归属校验、自带 4 态 status、扛 job 清理),**不是** URL 里的 job requestId。一份响应同时带 `album`/`pages`/`generation`,生成完成即就地渲染,不再二次 `GET`。1000 用户阶段最坏:1000 人同时生成 → ~70 QPS 轮询(15s 间隔),Vercel + Neon 都扛得住。
 
 ### 4.2 编辑流程
 
@@ -405,11 +413,22 @@ Query: `?limit=50&before=msg_xxx`(分页,默认 50,按 `created_at desc`)
 
 ## 5. 轮询实现注意点
 
-- 间隔:固定 2 秒(`setInterval(2000)`)。不做指数退避——简单优先。
-- 终态条件:`status` ∈ `{COMPLETED, FAILED}` 时 `clearInterval` 并卸载 hook。
-- 兜底超时:浏览器侧 3 分钟还没拿到终态 → 主动停止 + 显示"任务可能失败,请刷新查看"。
-- **服务端 zombie sweeper(第一版做)**:`apps/web/src/lib/zombie-sweeper.ts`,启动时 setInterval(60s) 扫 `agent_jobs.status='RUNNING' AND created_at < now()-5min` → 标 FAILED + 释放积分。挂在 `instrumentation.ts`。完整设计见 [`docs/agent/design.md §7`](../agent/design.md)。
-- **不**用 Node runtime 的任何流式特性;`GET /api/v1/jobs/[requestId]` 是普通 Route Handler。
+轮询对象是 `GET /api/v1/albums/[uuid]`(`useAlbumPoll`),**不是** `/api/v1/jobs/[requestId]`。
+
+- 间隔:固定 15 秒。不做指数退避——简单优先。生成期间用户在等,15s 足够跟手;终态立即停。
+- **终止语义**(确定性错误必须暴露,不再静默无限重试):
+  - 200 + `AGENT_RUNNING` → 继续轮询
+  - 200 + `EDITING` / `COMPLETED` → 停,渲染编辑器
+  - 200 + `FAILED` → 停,显示 `album.errorMessage`
+  - **401** → 致命:停,跳 `/login?from=/album/[uuid]`
+  - **403 / 404** → 致命:停,报错(别人的 / 已删)
+  - **5xx / fetch 异常** → 临时:有限重试(连续 4 次封顶)→ 仍失败才报错
+- 软上限:仍 `AGENT_RUNNING` 超过 6 分钟(已过服务端 5 分钟收尸窗口)→ 停轮询 + "还在生成,刷新查看",**绝不写失败**。
+- **服务端收尸双保险**(完整设计见 [`docs/agent/design.md §7`](../agent/design.md)):
+  - 读时机会式:`GET /api/v1/albums/[uuid]` 与 `listByUser` 发现 `AGENT_RUNNING` 且最新 job > 5 分钟无终态 → 当场标 FAILED + 退积分。服务在线用户。
+  - 每日 `recover-stuck` cron(`zombieSweeper`,10 分钟阈值):兜底"用户一去不回"的相册,保证积分最终释放。
+- **不**用 Node runtime 的任何流式特性;都是普通 Route Handler。
+- `GET /api/v1/jobs/[requestId]` 仍保留(后台 / 调试可用),但**不再是浏览器轮询路径**。
 
 ---
 

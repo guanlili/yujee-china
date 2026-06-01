@@ -81,7 +81,9 @@ export default function CreatePage() {
         setBusy(false);
         return;
       }
-      router.push(`/album/${json.data.albumId}?job=${json.data.requestId}`);
+      // Address the album by uuid — it polls itself by status. No job id in the
+      // URL: a stale/cleaned-up requestId must never gate whether the album opens.
+      router.push(`/album/${json.data.albumId}`);
     } catch (e) {
       setErr(String(e));
       setBusy(false);

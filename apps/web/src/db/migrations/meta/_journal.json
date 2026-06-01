@@ -15,6 +15,13 @@
       "when": 1780372800000,
       "tag": "0001_b4_billing",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780315626414,
+      "tag": "0002_wise_namor",
+      "breakpoints": true
     }
   ]
 }

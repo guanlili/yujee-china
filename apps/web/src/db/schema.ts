@@ -242,6 +242,9 @@ export const agentJobs = pgTable(
     usage: jsonb('usage'),
     error: jsonb('error'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    // Set when QUEUED→RUNNING, then refreshed on every progress callback — it is
+    // a last-activity heartbeat, not a fixed start time. Zombie staleness checks
+    // (read-path sweep + daily cron) measure "no progress since startedAt".
     startedAt: timestamp('started_at', { withTimezone: true }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
   },
@@ -250,6 +253,9 @@ export const agentJobs = pgTable(
     runningStartedAt: index('idx_agent_jobs_running_started')
       .on(t.startedAt)
       .where(sql`${t.status} = 'RUNNING'`),
+    // Supports findLatestByAlbum: the album-uuid read path looks up the newest
+    // job per album on every 15s poll while AGENT_RUNNING (docs/web/api.md §3.4).
+    albumCreated: index('idx_agent_jobs_album_created').on(t.albumId, t.createdAt.desc()),
   }),
 );
 

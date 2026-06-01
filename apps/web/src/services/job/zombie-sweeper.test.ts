@@ -61,3 +61,41 @@ test('zombieSweeper: stale RUNNING job → job/album FAILED + hold RELEASED in o
     await cleanupUser(user.id);
   }
 });
+
+test('zombieSweeper: stale QUEUED job (Agent never accepted) is also swept + credit released', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping zombie-sweeper integration test');
+    return;
+  }
+  const user = await makeUser('sweeper-queued');
+  try {
+    const album = await makeAlbum(user.id);
+    const hold = await creditHoldRepo.create(db, {
+      userId: user.id,
+      albumId: album.id,
+      amount: 10,
+      status: 'HOLDING',
+    });
+    await albumRepo.update(db, album.id, { creditHoldId: hold.id });
+
+    // QUEUED forever, no startedAt — Agent never accepted it. Aged out via createdAt.
+    const job = await agentJobRepo.create(db, {
+      userId: user.id,
+      albumId: album.id,
+      requestId: `sweeper-q-${Date.now()}`,
+      status: 'QUEUED',
+      progress: 0,
+      createdAt: new Date(Date.now() - 60 * 60 * 1000),
+    });
+
+    const result = await zombieSweeper.sweep('system', { timeoutMs: 30 * 60 * 1000 });
+    assert.ok(result.scanned >= 1);
+
+    const reloaded = await agentJobRepo.findByRequestId(job.requestId);
+    assert.equal(reloaded?.status, 'FAILED');
+    const holdAfter = await creditHoldRepo.findById(hold.id);
+    assert.equal(holdAfter?.status, 'RELEASED');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});

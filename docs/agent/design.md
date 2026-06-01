@@ -321,16 +321,20 @@ contract.md §6 之前写"5 分钟兜底扫描,第一版不实施"。**design �
 
 1. 把对应 album 标 `FAILED`,`error.code = AGENT_TIMEOUT`
 2. 释放对应的 `credit_hold`(status: HOLDING → RELEASED,不扣积分)
-3. 让浏览器下一次轮询 `GET /api/v1/jobs/[requestId]` 拿到 `status=FAILED`
+3. 让浏览器下一次轮询 `GET /api/v1/albums/[uuid]` 拿到 `status=FAILED`
 
 ### 约束
 
 - 由 **Web 侧**承担(Agent 是无状态的,挂掉就没了)
 - 必须在 **Web 部署形态**下都能工作(本地 dev / Vercel / Fly.io 都行)
 
-### 实现方式不锁
+### 实现方式(已落地:读时机会式 + 每日 cron 双保险)
 
-具体选 Vercel Cron(每分钟跑一次清扫接口)、opportunistic sweep(每次 `GET /jobs/[id]` 顺手检查老 job)、还是长跑 server timer(用 Fly.io 时可行,Vercel serverless 不行) —— 由 Web 基建轨道(T6 / T-Deploy)评估部署环境后定,并在 PR 描述里说明选择理由。
+> 历史:本节原文"实现方式不锁",并由 Web 基建轨道临时落成 **Vercel 每日 `recover-stuck` cron**(Hobby 套餐限制)。每日 cron 最坏 24h 才翻 FAILED,把"5 分钟"硬目标放水了。issue #48 把目标补回,定为双保险:
+
+1. **读时机会式收尸(响应层,5 分钟)** —— `albumService.getDetail` / `listByUser` 在 `status=AGENT_RUNNING` 时调 `jobService.resolveGeneration(albumId)`:最新 job 距 `startedAt`(QUEUED 回退 `createdAt`)> 5 分钟无终态,**当场**复用 `handleFailed` 标 FAILED + 释放积分。利用"浏览器本就在按 uuid 轮询 album"这个动作驱动,服务**在线**用户 ≤5 分钟见结果,无需 sub-daily cron / 常驻进程。
+2. **每日 `recover-stuck` cron(兜底层,10 分钟阈值)** —— `zombieSweeper.sweep`,扫 `findStaleRunning`,专收"用户一去不回"的相册,保证积分最终释放。**不可删**:读时收尸只在有人访问时触发,弃用相册的积分要靠它退。
+3. 两层做**同一个 FAILED 转换**(album FAILED + hold RELEASED + job FAILED 原子事务,不变式 8),用户可见错误文案统一为 `"Generation timed out. No credit was charged."`。
 
 ### 同步改文档
 
@@ -532,7 +536,7 @@ export const ChatEditResponse = z.object({
 | D-7 | `apps/agent/src/schemas.py` 镜像 TS contracts(discriminated union + extra='forbid') | T3 | ✅ `_Strict(extra='forbid')` + progress/completed/failed 三 variant |
 | D-8 | `apps/agent/src/services/pipeline.py` 把 mock 换成真实 vision + writing + composing | T3 | ✅ real 分支已落(`_run_real`),mock 保留给 CI |
 | D-9 | `apps/agent/src/logging_config.py` 加 redact processor | T3 | ✅ `_REDACT_KEY_*` + `test_logging_redact.py` |
-| D-10 | Web 侧 zombie sweeper(目标见 §7,实现方式由轨道评估)| T6 / T-Deploy | ⚠️ 换形态:用 **Vercel 每日 `recover-stuck` cron**(Hobby 套餐限制),不是 §7/api.md §5 写的 60s `setInterval` + `instrumentation.ts`。文档待同步。 |
+| D-10 | Web 侧 zombie sweeper(目标见 §7,实现方式由轨道评估)| T6 / T-Deploy | ✅ 双保险(issue #48):**读时机会式收尸**(`getDetail`/`listByUser` → `jobService.resolveGeneration`,5 分钟,响应层)+ **每日 `recover-stuck` cron**(`zombieSweeper`,10 分钟,兜底层)。§7/api.md §5 已同步。 |
 | D-11 | `AGENT_PIPELINE_MODE` 启动检查 | T3 | ✅ `main.py:21-34`(production 必须 real,real 必须配齐 key) |
 | D-12 | Agent fixtures(§11) | T3 | ⚠️ 换形态:没建 §11 那批独立 fixtures JSON,改用 `conftest.py` + `test_pipeline_mock.py` / `test_chat_edit_patch.py` 等。§11 列表已 stale。 |
 | D-13 | `packages/contracts/src/chat.ts`:`ChatEditRequest` / `ChatEditResponse` / `LayoutPatchEntry` zod | T0 | ⛔ **未做** —— TS 无 `chat.ts`,chat 契约只活在 Python `schemas.py:140-176`。**契约漂移**,见表下注。 |

@@ -129,21 +129,26 @@ export const creditService = {
   async settle(tx: DbOrTx, userId: string, holdId: string): Promise<void> {
     const hold = await creditHoldRepo.findById(holdId);
     if (!hold || hold.status !== 'HOLDING') return;
-    await creditHoldRepo.update(tx, holdId, {
-      status: 'SETTLED',
+    // Conditional transition gates the debit: if a concurrent caller already
+    // settled/released this hold, we don't win the UPDATE and skip applyDelta —
+    // no double-debit even under a callback race.
+    const won = await creditHoldRepo.transitionFromHolding(tx, holdId, 'SETTLED', {
       settledAt: new Date(),
     });
+    if (!won) return;
     await this.applyDelta(tx, userId, -hold.amount, 'GENERATION_SETTLE', {
       albumId: hold.albumId,
       holdId,
     });
   },
 
-  // Generation failed: drop the reservation without debiting. Idempotent.
+  // Generation failed: drop the reservation without debiting. Idempotent even
+  // under concurrent callers (sweep + cron) — only the winner writes the crumb.
   async release(tx: DbOrTx, holdId: string): Promise<void> {
     const hold = await creditHoldRepo.findById(holdId);
     if (!hold || hold.status !== 'HOLDING') return;
-    await creditHoldRepo.update(tx, holdId, { status: 'RELEASED' });
+    const won = await creditHoldRepo.transitionFromHolding(tx, holdId, 'RELEASED');
+    if (!won) return;
     await this.applyDelta(tx, hold.userId, 0, 'GENERATION_RELEASE', {
       albumId: hold.albumId,
       holdId,

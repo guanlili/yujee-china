@@ -1,7 +1,5 @@
-import { db } from '@/db/client';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
-import { albumRepo } from '@/db/repos/album-repo';
-import { creditService } from '@/services/credit/credit-service';
+import { jobService } from '@/services/job/job-service';
 import { logger } from '@/lib/log/logger';
 
 const DEFAULT_RUNNING_TIMEOUT_MS = 10 * 60 * 1000; // 10 min
@@ -23,6 +21,10 @@ export const zombieSweeper = {
     const timeoutMs = opts.timeoutMs ?? DEFAULT_RUNNING_TIMEOUT_MS;
     const cutoff = new Date(now.getTime() - timeoutMs);
 
+    // Candidates from a snapshot; jobService.sweepStaleJob re-validates each under
+    // a row lock (so a heartbeat/callback that landed in between is respected) and
+    // does the atomic job+album+credit transition. Same code path as the read-path
+    // sweep — one definition of "fail a zombie", no duplication or divergence.
     const stale = await agentJobRepo.findStaleRunning(cutoff);
 
     let failed = 0;
@@ -30,33 +32,11 @@ export const zombieSweeper = {
 
     for (const job of stale) {
       try {
-        const album = await albumRepo.findById(job.albumId);
-        const holdId = album?.creditHoldId ?? null;
-
-        // Invariant 8: job FAILED + album FAILED + hold RELEASED must
-        // commit together or not at all, otherwise credit stays HOLDING.
-        await db.transaction(async (tx) => {
-          await agentJobRepo.update(tx, job.id, {
-            status: 'FAILED',
-            error: {
-              code: 'AGENT_TIMEOUT',
-              message: `RUNNING > ${timeoutMs}ms without callback`,
-            },
-            completedAt: now,
-          });
-
-          await albumRepo.update(tx, job.albumId, {
-            status: 'FAILED',
-            errorMessage: 'Generation timed out. No credit was charged.',
-          });
-
-          if (holdId) {
-            await creditService.release(tx, holdId);
-          }
-        });
-
-        failed += 1;
-        if (holdId) releasedHolds += 1;
+        const { swept, releasedHold } = await jobService.sweepStaleJob(job.id, now, timeoutMs);
+        if (swept) {
+          failed += 1;
+          if (releasedHold) releasedHolds += 1;
+        }
       } catch (err) {
         logger.error(
           { jobId: job.id, requestId: job.requestId, err },

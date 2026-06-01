@@ -1,6 +1,7 @@
 import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
+import { jobService } from '@/services/job/job-service';
 import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
 
@@ -31,8 +32,23 @@ export const albumService = {
     return album;
   },
 
+  // The browser polls this by album uuid — album is the source of truth. While
+  // status is AGENT_RUNNING we resolve the latest job for live stage/progress,
+  // which also opportunistically sweeps a zombie (dead job → FAILED + credit
+  // release) so a stuck album self-heals on the next look instead of spinning.
   async getDetail(userId: string, albumId: string) {
-    const album = await this.findOwned(userId, albumId);
+    let album = await this.findOwned(userId, albumId);
+
+    let generation: { stage: string | null; progress: number } | null = null;
+    if (album.status === 'AGENT_RUNNING') {
+      const resolved = await jobService.resolveGeneration(albumId);
+      if (resolved?.kind === 'swept') {
+        album = (await albumRepo.findById(albumId)) ?? album; // now FAILED
+      } else if (resolved?.kind === 'progress') {
+        generation = { stage: resolved.stage, progress: resolved.progress };
+      }
+    }
+
     const pages = await albumPageRepo.findByAlbum(albumId);
     return {
       album: {
@@ -53,20 +69,32 @@ export const albumService = {
         imagesJson: p.imagesJson,
         textsJson: p.textsJson,
       })),
+      generation,
     };
   },
 
   async listByUser(userId: string) {
     const rows = await albumRepo.findByUser(userId);
-    return rows.map((a) => ({
-      id: a.id,
-      title: a.title,
-      status: a.status,
-      photoCount: a.photoCount,
-      pageCount: a.pageCount,
-      pdfUrl: a.pdfUrl,
-      createdAt: a.createdAt,
-    }));
+    // Sweep any zombie on the list path too: landing on /my-albums alone is
+    // enough to flip a dead generation to FAILED and release its credit hold.
+    const out = [];
+    for (const a of rows) {
+      let status = a.status;
+      if (status === 'AGENT_RUNNING') {
+        const resolved = await jobService.resolveGeneration(a.id);
+        if (resolved?.kind === 'swept') status = 'FAILED';
+      }
+      out.push({
+        id: a.id,
+        title: a.title,
+        status,
+        photoCount: a.photoCount,
+        pageCount: a.pageCount,
+        pdfUrl: a.pdfUrl,
+        createdAt: a.createdAt,
+      });
+    }
+    return out;
   },
 
   // Hard delete. FK ON DELETE CASCADE drops pages / messages / jobs / holds in
