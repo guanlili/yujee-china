@@ -21,7 +21,8 @@ export const WEB_FONTS = {
   mono: '"JetBrains Mono", "SF Mono", "Menlo", monospace',
 } as const;
 
-// 字体在 pdf-utils.tsx 用 Font.register 注册(public/fonts/ 下的 Noto SC 子集)。
+// 字体在导出时由 pdf-utils.tsx 的 registerPdfFonts 动态注册(POST /api/v1/fonts/subset
+// 按本册实际用字现切的 Noto SC subset,见 #31)。
 // 模板里 serif* / sans* 槽位承载动态文案,语言不固定(中/英都可能),而
 // @react-pdf 没有逐字回退 —— 所以 serif/sans 一律指向覆盖拉丁+中文的 Noto SC,
 // 任何槽位收到中文都不再回退成「口口」。Noto SC 自带高质量拉丁字形,英文版式不受损。

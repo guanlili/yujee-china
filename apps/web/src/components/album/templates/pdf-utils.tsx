@@ -2,10 +2,11 @@ import type { ReactNode } from 'react';
 import { Font, Image, Page, Text, View } from '@react-pdf/renderer';
 import { COLORS, PAGE, PDF_FONTS } from './constants';
 
-// Register the bundled Noto SC subsets (Latin + 全部 CJK 基本区, public/fonts/).
-// Fetched by @react-pdf only at PDF-render time (browser), not on page load.
+// Per-album subset TTFs come from POST /api/v1/fonts/subset (~17MB full fonts
+// → typically <100KB), so registration happens at export time with the freshly
+// cut bytes — not at module load (the full fonts no longer live in public/).
 // CJK has no real italic/bold cut, so map every style/weight a template might
-// ask for (17× italic, 1× medium across templates) to the one Regular file —
+// ask for (17× italic, 1× medium across templates) to the one Regular cut —
 // keeps glyphs correct and stops @react-pdf throwing on an unregistered variant.
 function registerCjk(family: string, src: string): void {
   Font.register({
@@ -20,8 +21,12 @@ function registerCjk(family: string, src: string): void {
   });
 }
 
-registerCjk('NotoSerifSC', '/fonts/NotoSerifSC-Regular.ttf');
-registerCjk('NotoSansSC', '/fonts/NotoSansSC-Regular.ttf');
+// Called by lib/pdf/render.ts right before pdf().toBlob(). Re-registering a
+// family replaces its sources, so each export uses that album's own subset.
+export function registerPdfFonts(subset: { sans: string; serif: string }): void {
+  registerCjk('NotoSerifSC', `data:font/ttf;base64,${subset.serif}`);
+  registerCjk('NotoSansSC', `data:font/ttf;base64,${subset.sans}`);
+}
 
 // CJK lines have no spaces; @react-pdf won't wrap them on its own. Treat each
 // CJK char as its own break opportunity while keeping Latin runs intact, so

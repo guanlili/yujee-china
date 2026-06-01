@@ -126,10 +126,12 @@ export function AlbumEditor({ detail }: Props) {
         const notifyJson = await notifyRes.json();
         if (notifyJson.ok) setDownloadUrl(notifyJson.data.pdfUrl ?? publicUrl);
       } catch (uploadErr) {
-        setExportErr(`PDF rendered locally, but cloud upload failed: ${String(uploadErr)}`);
+        console.error('PDF cloud upload failed', uploadErr);
+        setExportErr('Your PDF is ready to download below, but saving it to the cloud failed. Please try again later.');
       }
     } catch (e) {
-      setExportErr(String(e));
+      console.error('PDF export failed', e);
+      setExportErr('Something went wrong while preparing your PDF. Please check your connection and try again.');
     } finally {
       setExporting(false);
     }

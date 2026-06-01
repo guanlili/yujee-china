@@ -126,6 +126,7 @@ memoir-agent-rebuild/
 ├── apps/
 │   ├── web/
 │   │   ├── src/              # Next.js 源码       → docs/web/*
+│   │   ├── fonts/            # 全量 Noto SC TTF(server-only,非公开)— PDF subset 源,见 #31
 │   │   └── design-v1/        # V1 UI 实现稿(HTML),React 化前的视觉权威源
 │   └── agent/                # FastAPI 服务       → docs/agent/*
 ├── packages/
