@@ -71,7 +71,7 @@ Agent 收到 `POST /v1/layout` 后**立刻 202 接单**,把 layout 任务挂到 
 ```
 Web ──POST /v1/layout──► Agent  (后台 task 开始跑)
                           │
-Web ◄──202 + {requestId}──┘   (立刻返回,Web HTTP 调用 ≤ 5 秒)
+Web ◄──202 + {requestId}──┘   (立刻返回,Web HTTP 调用 ≤ 30 秒)
 
       [Agent 后台 task 期间]
                           ├─► POST callbackUrl  (event=progress, stage=vision,    progress=30)
@@ -298,11 +298,11 @@ Agent 在每个阶段开始时 POST 一次 progress=0,中途可以 POST 多次,�
 
 | 场景 | 策略 |
 |---|---|
-| Web → Agent `/v1/layout`(接单) | 5 秒。超时后 Web 标记 job=FAILED,**不自动重试**。 |
+| Web → Agent `/v1/layout`(接单) | 30 秒。超时后 Web 标记 job=FAILED,**不自动重试**。 |
 | Web → Agent `/v1/chat-edit`(同步) | 60 秒。超时返回 504 `AGENT_CHAT_FAILED`,**不自动重试**(用户在等)。 |
 | Agent 后台 task 总时长(layout) | 软上限 180 秒。超时 Agent 自己 POST `event=failed` callback,code=`AGENT_TIMEOUT`。 |
 | Agent → 火山 | 30 秒。Agent 内部重试 1 次。 |
-| Agent → DeepSeek | 30 秒。Agent 内部重试 1 次。 |
+| Agent → DeepSeek(planning / writing / chat-edit / composing) | 60 秒。Agent 内部重试 1 次。(composing 同一 slot,见 [`design.md`](./design.md))|
 | Agent → callbackUrl | 10 秒。失败重试 2 次(指数退避 1s / 4s)。所有重试都失败后,任务在 Agent 侧就**丢失了** —— Web 侧 zombie sweeper(每 60s 扫,阈值 5min)会兜底标 FAILED 并释放积分,见 [`design.md §7`](./design.md)。 |
 | 浏览器 → Web (轮询) | 不需要超时配置,失败重试下一次。 |
 | 浏览器 → Web (chat) | 65 秒(Agent 60 + 缓冲 5)。超时显示"AI 没回话,请重试"。 |
@@ -361,7 +361,7 @@ export const agentClient = {
         'X-Request-Id': payload.requestId,
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(30_000),
     });
     if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
     if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected');
