@@ -39,6 +39,16 @@
       "error": "出错了。",
       "retry": "重试"
     },
+    "chrome": {
+      "navHome": "主页",
+      "navProjects": "我的项目",
+      "creditsPillTitle": "查看定价方案",
+      "upgrade": "升级",
+      "manageSubscription": "管理订阅",
+      "feedback": "反馈与问题",
+      "logout": "退出登录",
+      "accountMenu": "账户菜单"
+    },
     "nav": {
       "myAlbums": "我的相册",
       "credits": "积分",

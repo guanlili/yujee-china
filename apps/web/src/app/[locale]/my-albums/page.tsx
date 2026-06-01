@@ -4,6 +4,7 @@ import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
+import { AppChrome } from '@/components/app/AppChrome';
 
 type Album = {
   id: string;
@@ -72,7 +73,8 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
   };
 
   return (
-    <main className="min-h-screen max-w-4xl mx-auto px-6 py-16">
+    <AppChrome locale={locale} activeNav="projects">
+      <div className="max-w-4xl mx-auto px-6 py-16">
       <div className="flex items-center justify-between mb-10">
         <h1 className="serif text-4xl">{t.myAlbums.title}</h1>
         <Link
@@ -135,6 +137,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           </li>
         ))}
       </ul>
-    </main>
+      </div>
+    </AppChrome>
   );
 }

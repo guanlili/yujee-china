@@ -4,6 +4,7 @@ import { use, useEffect, useState } from 'react';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 import { authClient, signOut } from '@/lib/auth/client';
+import { AppChrome } from '@/components/app/AppChrome';
 
 type Me = {
   id: string;
@@ -70,7 +71,8 @@ export default function SettingsPage({ params }: { params: Promise<{ locale: Loc
   };
 
   return (
-    <main className="min-h-screen max-w-2xl mx-auto px-6 py-16">
+    <AppChrome locale={locale} activeNav="home">
+      <div className="max-w-2xl mx-auto px-6 py-16">
       <h1 className="serif text-4xl mb-10">{t.title}</h1>
 
       {err && <p className="mb-6 text-sm text-red-600">{err}</p>}
@@ -140,6 +142,7 @@ export default function SettingsPage({ params }: { params: Promise<{ locale: Loc
       >
         {t.signOut}
       </button>
-    </main>
+      </div>
+    </AppChrome>
   );
 }

@@ -39,6 +39,16 @@
       "error": "Something went wrong.",
       "retry": "Retry"
     },
+    "chrome": {
+      "navHome": "Home",
+      "navProjects": "My projects",
+      "creditsPillTitle": "View pricing plans",
+      "upgrade": "Upgrade",
+      "manageSubscription": "Manage subscription",
+      "feedback": "Feedback & issues",
+      "logout": "Sign out",
+      "accountMenu": "Account menu"
+    },
     "nav": {
       "myAlbums": "My albums",
       "credits": "Credits",

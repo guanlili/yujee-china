@@ -20,6 +20,17 @@
   --radius-lg: 16px;
   --radius-pill: 9999px;
   --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06);
+  --shadow-card-hover: 0 2px 8px rgba(0,0,0,0.06), 0 8px 28px rgba(0,0,0,0.1);
+
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+
+  --motion-fast: 180ms;
+  --motion-base: 300ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 body {
