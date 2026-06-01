@@ -660,6 +660,80 @@ body:not(.logged-in) .logged-in-group { display: none; }
 }
 .card-action-btn:hover { background: var(--surface); }
 
+/* ─── Cover status states: 生成中 / 失败 ──────────────────────── */
+/* Corner badge */
+.card-badge {
+  position: absolute; top: 8px; left: 8px;
+  display: none; align-items: center; gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 11px; font-weight: 600; line-height: 1;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  z-index: 4;
+}
+.badge-spin {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--grad-green), var(--grad-purple), var(--grad-lime), var(--grad-green));
+  -webkit-mask: radial-gradient(farthest-side, transparent 40%, #000 42%);
+          mask: radial-gradient(farthest-side, transparent 40%, #000 42%);
+  animation: cover-spin 0.9s linear infinite;
+}
+.badge-dot { width: 7px; height: 7px; border-radius: 50%; background: #E5484D; }
+
+/* Centered overlay */
+.card-status {
+  position: absolute; inset: 0;
+  display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; text-align: center;
+  z-index: 3;
+}
+.card-cover.is-generating { pointer-events: none; }
+.card-cover.is-generating::after,
+.card-cover.is-failed::after {
+  content: ''; position: absolute; inset: 0; z-index: 2;
+  backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+}
+.card-cover.is-generating::after { background: rgba(245,245,245,0.62); }
+.card-cover.is-failed::after { background: rgba(17,17,17,0.55); }
+
+.card-cover.is-generating .card-status,
+.card-cover.is-generating .badge-generating { display: flex; }
+.card-cover.is-failed .card-status,
+.card-cover.is-failed .badge-failed { display: flex; }
+.card-cover.is-generating .badge-generating,
+.card-cover.is-failed .badge-failed { display: inline-flex; }
+
+.gen-ring {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--grad-green), var(--grad-purple), var(--grad-lime), var(--grad-green));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  animation: cover-spin 0.9s linear infinite;
+}
+@keyframes cover-spin { to { transform: rotate(360deg); } }
+
+.status-label { font-size: 13px; font-weight: 600; }
+.card-cover.is-generating .status-label { color: var(--fg-2); }
+.card-cover.is-failed .status-label { color: #fff; }
+.status-sub { font-size: 11px; color: var(--muted); margin-top: -4px; }
+
+.status-fail-icon { width: 30px; height: 30px; color: rgba(255,255,255,0.9); }
+.retry-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin-top: 2px;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  background: rgba(255,255,255,0.95);
+  color: var(--fg); font-size: 12px; font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+  transition: transform var(--motion-fast) var(--ease);
+}
+.retry-btn:hover { transform: translateY(-1px); }
+.retry-btn svg { width: 13px; height: 13px; }
+
 /* ═══════════════════════════════════════════════════════════════════
    VIEW: PROJECTS — my assets
    ═══════════════════════════════════════════════════════════════════ */
@@ -1118,12 +1192,14 @@ body:not(.logged-in) .logged-in-group { display: none; }
           </div>
         </a>
 
-        <a class="project-card" href="design/editor.html" data-i18n-title="openEditor" title="打开编辑器">
-          <div class="card-cover">
+        <a class="project-card" href="#" onclick="event.preventDefault()" data-i18n-title="statusGeneratingTip" title="正在生成，请稍候…">
+          <div class="card-cover is-generating">
             <div class="cover-decor"><div class="cover-inner cover-b"></div></div>
-            <div class="card-actions">
-              <button class="card-action-btn" onclick="event.preventDefault();event.stopPropagation();var s=this.querySelector('svg');if(s.getAttribute('fill')==='currentColor'){s.setAttribute('fill','none');this.classList.remove('starred')}else{s.setAttribute('fill','currentColor');this.classList.add('starred')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
-              <button class="card-action-btn" onclick="event.preventDefault();event.stopPropagation();showMoreActions()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+            <div class="card-badge badge-generating"><span class="badge-spin"></span><span data-i18n="statusGenerating">生成中</span></div>
+            <div class="card-status">
+              <div class="gen-ring"></div>
+              <div class="status-label" data-i18n="statusGeneratingLabel">正在排版…</div>
+              <div class="status-sub" data-i18n="statusGeneratingSub">第 3 / 8 页</div>
             </div>
           </div>
           <div class="card-info">
@@ -1146,12 +1222,14 @@ body:not(.logged-in) .logged-in-group { display: none; }
           </div>
         </a>
 
-        <a class="project-card" href="design/editor.html" data-i18n-title="openEditor" title="打开编辑器">
-          <div class="card-cover">
+        <a class="project-card" href="#" onclick="event.preventDefault()" data-i18n-title="statusFailedTip" title="生成失败">
+          <div class="card-cover is-failed">
             <div class="cover-decor"><div class="cover-inner cover-d"></div></div>
-            <div class="card-actions">
-              <button class="card-action-btn" onclick="event.preventDefault();event.stopPropagation();var s=this.querySelector('svg');if(s.getAttribute('fill')==='currentColor'){s.setAttribute('fill','none');this.classList.remove('starred')}else{s.setAttribute('fill','currentColor');this.classList.add('starred')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
-              <button class="card-action-btn" onclick="event.preventDefault();event.stopPropagation();showMoreActions()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+            <div class="card-badge badge-failed"><span class="badge-dot"></span><span data-i18n="statusFailed">失败</span></div>
+            <div class="card-status">
+              <svg class="status-fail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <div class="status-label" data-i18n="statusFailedLabel">生成失败</div>
+              <button class="retry-btn" onclick="event.preventDefault();event.stopPropagation();alert(i18n[document.documentElement.lang==='en'?'en':'zh'].retryAlert)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg><span data-i18n="statusRetry">重试</span></button>
             </div>
           </div>
           <div class="card-info">
@@ -1330,6 +1408,17 @@ var i18n = {
     proj5Title: '猫咪日常',
     proj5Date: '最近修改 May 10, 2026',
 
+    /* Card status */
+    statusGenerating: '生成中',
+    statusGeneratingLabel: '正在排版…',
+    statusGeneratingSub: '第 3 / 8 页',
+    statusGeneratingTip: '正在生成，请稍候…',
+    statusFailed: '失败',
+    statusFailedLabel: '生成失败',
+    statusFailedTip: '生成失败',
+    statusRetry: '重试',
+    retryAlert: '正在重新生成这本杂志…',
+
     /* Dynamic JS alerts */
     feedbackAlert: '感谢反馈！请发送邮件到 feedback@yujee.com',
     moreActionsAlert: '更多操作：重命名 / 复制 / 删除',
@@ -1448,6 +1537,17 @@ var i18n = {
     proj4Date: 'Modified May 14, 2026',
     proj5Title: 'Cat Life',
     proj5Date: 'Modified May 10, 2026',
+
+    /* Card status */
+    statusGenerating: 'Generating',
+    statusGeneratingLabel: 'Laying out…',
+    statusGeneratingSub: 'Page 3 / 8',
+    statusGeneratingTip: 'Generating, please wait…',
+    statusFailed: 'Failed',
+    statusFailedLabel: 'Generation failed',
+    statusFailedTip: 'Generation failed',
+    statusRetry: 'Retry',
+    retryAlert: 'Regenerating this magazine…',
 
     /* Dynamic JS alerts */
     feedbackAlert: 'Thanks for the feedback! Please email feedback@yujee.com',
@@ -1614,7 +1714,7 @@ document.addEventListener('click', function(e) {
 
 /* ─── Login/Logout toggle ────────────────────────────────────── */
 function doLogin() {
-  document.body.classList.add('logged-in');
+  window.location.href = 'design/login.html';
 }
 function doLogout() {
   document.body.classList.remove('logged-in');
