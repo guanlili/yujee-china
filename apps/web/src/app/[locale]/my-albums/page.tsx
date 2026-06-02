@@ -254,7 +254,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         <div className="mb-7 flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight">{t.myAlbums.title}</h1>
           <Link
-            href={`/${locale}`}
+            href={`/${locale}#homepage-composer`}
             className="rounded-full bg-[var(--accent)] px-5 py-2.5 text-sm text-white"
           >
             {t.myAlbums.create}
@@ -268,7 +268,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         {albums !== null && albums.length === 0 && !err && (
           <div className="text-[var(--muted)]">
             <p>{t.myAlbums.empty}</p>
-            <Link href={`/${locale}`} className="underline">
+            <Link href={`/${locale}#homepage-composer`} className="underline">
               {t.myAlbums.startFirst}
             </Link>
           </div>

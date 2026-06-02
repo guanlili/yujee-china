@@ -19,6 +19,7 @@ export function HeroComposer({ locale, placeholder, uploadLabel, hints }: Props)
 
   return (
     <div
+      id="homepage-composer"
       className="relative z-[1] w-full max-w-[720px] rounded-2xl p-[2px] transition-shadow"
       style={{
         background: 'linear-gradient(135deg, var(--grad-green), var(--grad-purple), var(--grad-lime))',
