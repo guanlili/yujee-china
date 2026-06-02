@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { db } from '../../db/client';
 import { agentJobRepo } from '../../db/repos/agent-job-repo';
+import { albumPageRepo } from '../../db/repos/album-page-repo';
 import { albumRepo } from '../../db/repos/album-repo';
 import { creditHoldRepo } from '../../db/repos/credit-hold-repo';
 import {
@@ -140,6 +141,46 @@ test('listByUser: stale RUNNING album is swept to FAILED on the list path too', 
 
     const holdAfter = await creditHoldRepo.findById(hold.id);
     assert.equal(holdAfter?.status, 'RELEASED');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('listByUser: includes only the first page cover data for card previews', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('list-cover-page');
+  try {
+    const album = await makeAlbum(user.id, { title: 'Cover Album' });
+    await albumRepo.update(db, album.id, { status: 'EDITING', pageCount: 2 });
+    await albumPageRepo.bulkInsert(db, [
+      {
+        albumId: album.id,
+        pageIndex: 0,
+        templateId: 'mag-01',
+        imagesJson: { hero: 'photo-cover' },
+        textsJson: { title: 'Cover Title' },
+      },
+      {
+        albumId: album.id,
+        pageIndex: 1,
+        templateId: 'mag-02',
+        imagesJson: { hero: 'photo-second' },
+        textsJson: { title: 'Second Page' },
+      },
+    ]);
+
+    const rows = await albumService.listByUser(user.id);
+    const row = rows.find((r) => r.id === album.id);
+
+    assert.deepEqual(row?.coverPage, {
+      pageIndex: 0,
+      templateId: 'mag-01',
+      imagesJson: { hero: 'photo-cover' },
+      textsJson: { title: 'Cover Title' },
+    });
   } finally {
     await cleanupUser(user.id);
   }

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 import { AppChrome } from '@/components/app/AppChrome';
+import { AlbumCoverPreview, type AlbumCoverPage } from '@/components/album/AlbumCoverPreview';
 import { RetryFailedButton } from '@/components/album/RetryFailedButton';
 
 type Album = {
@@ -15,6 +16,7 @@ type Album = {
   pageCount: number;
   pdfUrl: string | null;
   createdAt: string;
+  coverPage: AlbumCoverPage | null;
 };
 
 // Decorative cover tints cycled by index — albums have no cover image yet, so
@@ -158,7 +160,11 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         >
           <Link href={`/${locale}/album/${a.id}`} className="block">
             <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg)]">
-              {coverDecor(i)}
+              <AlbumCoverPreview
+                coverPage={a.coverPage}
+                pageCount={a.pageCount}
+                fallback={coverDecor(i)}
+              />
               <div className="absolute inset-0 z-[2] bg-[rgba(245,245,245,0.62)] backdrop-blur-[2px]" />
               <div className="absolute left-2 top-2 z-[4] inline-flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold leading-none shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur">
                 <span className="badge-spin" />
@@ -185,7 +191,11 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         >
           {deleteButton(a)}
           <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg)]">
-            {coverDecor(i)}
+            <AlbumCoverPreview
+              coverPage={a.coverPage}
+              pageCount={a.pageCount}
+              fallback={coverDecor(i)}
+            />
             <div className="absolute inset-0 z-[2] bg-[rgba(17,17,17,0.55)] backdrop-blur-[2px]" />
             <div className="absolute left-2 top-2 z-[4] inline-flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold leading-none shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur">
               <span className="h-[7px] w-[7px] rounded-full bg-[#E5484D]" />
@@ -224,7 +234,11 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         {deleteButton(a)}
         <Link href={`/${locale}/album/${a.id}`} className="block">
           <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg)]">
-            {coverDecor(i)}
+            <AlbumCoverPreview
+              coverPage={a.coverPage}
+              pageCount={a.pageCount}
+              fallback={coverDecor(i)}
+            />
           </div>
         </Link>
         <Link href={`/${locale}/album/${a.id}`} className="block px-3.5 py-3 text-inherit">

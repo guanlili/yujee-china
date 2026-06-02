@@ -1,4 +1,4 @@
-import { eq, asc, and } from 'drizzle-orm';
+import { eq, asc, and, inArray } from 'drizzle-orm';
 import { db, type DbOrTx } from '../client';
 import { albumPages, type NewAlbumPage, type AlbumPage } from '../schema';
 
@@ -10,6 +10,22 @@ export const albumPageRepo = {
       .from(albumPages)
       .where(eq(albumPages.albumId, albumId))
       .orderBy(asc(albumPages.pageIndex)),
+
+  findFirstByAlbumIds: async (
+    albumIds: string[],
+  ): Promise<Pick<AlbumPage, 'albumId' | 'pageIndex' | 'templateId' | 'imagesJson' | 'textsJson'>[]> => {
+    if (albumIds.length === 0) return [];
+    return db
+      .select({
+        albumId: albumPages.albumId,
+        pageIndex: albumPages.pageIndex,
+        templateId: albumPages.templateId,
+        imagesJson: albumPages.imagesJson,
+        textsJson: albumPages.textsJson,
+      })
+      .from(albumPages)
+      .where(and(inArray(albumPages.albumId, albumIds), eq(albumPages.pageIndex, 0)));
+  },
 
   bulkInsert: async (tx: DbOrTx, rows: NewAlbumPage[]): Promise<void> => {
     if (rows.length === 0) return;
