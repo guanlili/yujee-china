@@ -135,6 +135,19 @@ export const albumService = {
     return { updated: true };
   },
 
+  // Editor renames the album from the topbar (docs/web/api.md §1 — PATCH base
+  // fields). Only the title is mutable here; layout/status are owned by
+  // generation/chat/pdf flows. Ownership is enforced before the write.
+  async updateTitle(userId: string, albumId: string, title: string): Promise<{ title: string }> {
+    await this.findOwned(userId, albumId);
+    const trimmed = title.trim();
+    if (!trimmed) throw ERRORS.VALIDATION_FAILED('title must not be empty');
+    await db.transaction(async (tx) => {
+      await albumRepo.update(tx, albumId, { title: trimmed });
+    });
+    return { title: trimmed };
+  },
+
   // Returns { putUrl, r2Key, publicUrl } so the browser can PUT a PDF directly
   // to R2. Web never touches the bytes — invariant 4.
   async signPdfUpload(

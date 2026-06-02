@@ -144,3 +144,64 @@ test('listByUser: stale RUNNING album is swept to FAILED on the list path too', 
     await cleanupUser(user.id);
   }
 });
+
+test('updateTitle: renames an owned album (trimmed)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('title-rename');
+  try {
+    const album = await makeAlbum(user.id, { title: 'Old Title' });
+
+    const result = await albumService.updateTitle(user.id, album.id, '  New Title  ');
+    assert.equal(result.title, 'New Title');
+
+    const after = await albumRepo.findById(album.id);
+    assert.equal(after?.title, 'New Title');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('updateTitle: rejects a blank title', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('title-blank');
+  try {
+    const album = await makeAlbum(user.id, { title: 'Keep Me' });
+
+    await assert.rejects(
+      () => albumService.updateTitle(user.id, album.id, '   '),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+    const after = await albumRepo.findById(album.id);
+    assert.equal(after?.title, 'Keep Me'); // unchanged
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('updateTitle: rejects a non-owner with ALBUM_NOT_OWNED', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const owner = await makeUser('title-owner');
+  const intruder = await makeUser('title-intruder');
+  try {
+    const album = await makeAlbum(owner.id, { title: 'Owned' });
+
+    await assert.rejects(
+      () => albumService.updateTitle(intruder.id, album.id, 'Hijacked'),
+      (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
+    );
+    const after = await albumRepo.findById(album.id);
+    assert.equal(after?.title, 'Owned'); // unchanged
+  } finally {
+    await cleanupUser(owner.id);
+    await cleanupUser(intruder.id);
+  }
+});

@@ -39,3 +39,15 @@ body {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Editor chat — AI thinking indicator (design-v1 editor.html). */
+@keyframes yujee-dot-bounce {
+  0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-3px); }
+}
+@keyframes yujee-think-pulse {
+  0% { border-color: var(--grad-green); opacity: 1; }
+  33% { border-color: var(--grad-purple); opacity: 0.7; }
+  66% { border-color: var(--grad-lime); opacity: 0.7; }
+  100% { border-color: var(--grad-green); opacity: 1; }
+}

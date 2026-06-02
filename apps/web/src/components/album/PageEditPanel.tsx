@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { Locale } from '@/lib/i18n/routing';
+import { getMessages } from '@/lib/i18n/messages';
 import type { EditorPage } from './types';
 
 interface Props {
   page: EditorPage;
+  locale: Locale;
   availablePhotoIds: string[];
   imageUrls: Record<string, string>;
   onSaveText: (slot: string, value: string) => void;
@@ -16,11 +19,13 @@ interface Props {
 // v1 — same PATCH /pages/[idx] contract, simpler to ship.
 export function PageEditPanel({
   page,
+  locale,
   availablePhotoIds,
   imageUrls,
   onSaveText,
   onSaveImage,
 }: Props) {
+  const t = getMessages(locale).dashboard.editor;
   const [drafts, setDrafts] = useState<Record<string, string>>(page.textsJson);
 
   useEffect(() => {
@@ -33,12 +38,12 @@ export function PageEditPanel({
   return (
     <div className="space-y-6">
       <p className="uppercase tracking-[0.2em] text-[10px] text-[var(--muted)]">
-        Page {page.pageIndex + 1} · {page.templateId}
+        {t.editPageTitle.replace('{n}', String(page.pageIndex + 1))} · {page.templateId}
       </p>
 
       {imageSlots.length > 0 && (
         <div className="space-y-3">
-          <p className="text-sm font-medium">Photos</p>
+          <p className="text-sm font-medium">{t.photos}</p>
           {imageSlots.map((slot) => {
             const photoId = page.imagesJson[slot] ?? '';
             const url = imageUrls[photoId];
@@ -75,7 +80,7 @@ export function PageEditPanel({
 
       {textSlots.length > 0 && (
         <div className="space-y-3">
-          <p className="text-sm font-medium">Text</p>
+          <p className="text-sm font-medium">{t.text}</p>
           {textSlots.map((slot) => (
             <label key={slot} className="block">
               <span className="text-[10px] uppercase tracking-wide text-[var(--muted)]">{slot}</span>
