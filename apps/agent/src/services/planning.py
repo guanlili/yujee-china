@@ -296,6 +296,9 @@ async def compose_pages(
 
     repair_attempts = 0
     last_error: str | None = None
+    # Targeted, rule-specific directive for the repair turn (#42): a business-rule
+    # failure carries the broken rule + offending page/slot, not a generic retry.
+    repair_directive: str | None = None
     total_prompt = 0
     total_completion = 0
     layout: AlbumLayoutPlan | None = None
@@ -307,10 +310,11 @@ async def compose_pages(
                 {
                     "role": "user",
                     "content": (
-                        "Your previous composing JSON failed validation:\n"
-                        f"{last_error}\n"
-                        "Re-issue the FULL pages JSON (not a patch), correcting the issue. "
-                        "Re-verify every HARD RULE before responding."
+                        "Your previous composing JSON failed validation. Fix THIS "
+                        "specific problem:\n"
+                        f"{repair_directive or last_error}\n"
+                        "Re-issue the FULL pages JSON (not a patch), correcting the "
+                        "issue. Re-verify every HARD RULE before responding."
                     ),
                 }
             )
@@ -352,12 +356,14 @@ async def compose_pages(
             layout = AlbumLayoutPlan(magazine=magazine, photos=photos, pages=pages)
         except (ValueError, ComposingError, ValidationError) as exc:
             last_error = str(exc)[:300]
+            repair_directive = None  # parse/schema error: no rule-specific hint
             log.warning("composing.parse_failed", attempt=attempt, error=last_error)
             continue
 
         rule_violation = layout_rules.violation(layout)
         if rule_violation:
             last_error = f"business rule violation: {rule_violation}"
+            repair_directive = layout_rules.repair_instruction(rule_violation)
             log.warning("composing.rules_failed", attempt=attempt, error=last_error)
             # Final attempt still failing → deterministic coerce instead of dying.
             if attempt == 1:

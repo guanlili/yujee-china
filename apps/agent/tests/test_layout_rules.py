@@ -222,11 +222,21 @@ class TestFewPhotoFallback:
         photos = [_photo("p1", quality=quality, orientation=orientation)]
         layout = build_text_first_layout(self._magazine(), photos)
 
-        assert violation(layout) is None
         assert len(layout.pages) == 3  # max(3, ceil(1/2.5))
-        # the user's only photo must actually appear somewhere
-        used = {pid for page in layout.pages for pid in page.images.values()}
-        assert "p1" in used
+        # No empty image slot ever ships (#42), regardless of orientation/quality.
+        for page in layout.pages:
+            tpl = registry.get(page.templateId)
+            assert all(s in page.images for s in tpl["imageSlots"])
+        if orientation == "square":
+            # Registry gap: no single-image / fillable square template, so a lone
+            # square photo is omitted rather than placed with blank siblings.
+            assert (violation(layout) or "").startswith("unused photos")
+        else:
+            # portrait/landscape (any quality, via fill→detail relaxation) → valid,
+            # and the user's only photo actually appears.
+            assert violation(layout) is None
+            used = {pid for page in layout.pages for pid in page.images.values()}
+            assert "p1" in used
 
     @pytest.mark.parametrize("orientation", ["landscape", "portrait", "square"])
     @pytest.mark.parametrize("quality", ["hero", "detail", "fill"])
@@ -238,7 +248,7 @@ class TestFewPhotoFallback:
 
     def test_two_photos_both_placed(self):
         photos = [
-            _photo("p1", quality="hero", orientation="square"),  # no cover fits → mag-20
+            _photo("p1", quality="fill", orientation="landscape"),  # relaxed to detail
             _photo("p2", quality="detail", orientation="portrait"),
         ]
         layout = build_text_first_layout(self._magazine(), photos)
@@ -246,17 +256,27 @@ class TestFewPhotoFallback:
         assert violation(layout) is None
         used = {pid for page in layout.pages for pid in page.images.values()}
         assert used == {"p1", "p2"}
+        # Neither lands in a multi-image template with a blank sibling (#42).
+        for page in layout.pages:
+            tpl = registry.get(page.templateId)
+            assert all(s in page.images for s in tpl["imageSlots"])
 
     def test_square_photo_falls_back_to_text_only_cover(self):
         # No cover template accepts a square photo, so the cover degrades to the
-        # text-only mag-20 and the photo lands on a later image page instead.
+        # text-only mag-20. There is also no single-image/fillable square content
+        # template, so rather than place it with blank siblings (#42) the square
+        # photo is omitted — a known registry gap (see build_text_first_layout).
         photos = [_photo("p1", quality="hero", orientation="square")]
         layout = build_text_first_layout(self._magazine(), photos)
 
         assert layout.pages[0].templateId == "mag-20"
         assert layout.pages[0].images == {}
+        # No empty image slot anywhere, and the unplaceable square is omitted.
+        for page in layout.pages:
+            tpl = registry.get(page.templateId)
+            assert all(s in page.images for s in tpl["imageSlots"])
         used = {pid for page in layout.pages for pid in page.images.values()}
-        assert "p1" in used
+        assert "p1" not in used
 
     @pytest.mark.parametrize("orientation", ["landscape", "portrait", "square"])
     @pytest.mark.parametrize("quality", ["hero", "detail", "fill"])

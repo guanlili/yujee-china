@@ -65,7 +65,7 @@ def test_two_photos_invalid_model_output_falls_back(monkeypatch):
 
     mag = Magazine(title="Two moments", style="warm-film", language="en")
     photos = [
-        _photo("p1", quality="hero", orientation="square"),  # no cover fits → text-only cover
+        _photo("p1", quality="fill", orientation="landscape"),  # relaxed to detail
         _photo("p2", quality="detail", orientation="portrait"),
     ]
     layout, _, _, _ = asyncio.run(planning.compose_pages(magazine=mag, photos=photos))
