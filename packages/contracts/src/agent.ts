@@ -15,7 +15,7 @@ export const AgentLayoutRequest = z.object({
   prompt: z.string().min(1).max(500),
   language: z.enum(['zh', 'en']),
   callbackUrl: z.string().url(),
-  photos: z.array(AgentPhoto).min(3).max(30),
+  photos: z.array(AgentPhoto).min(1).max(30),
 });
 export type AgentLayoutRequest = z.infer<typeof AgentLayoutRequest>;
 

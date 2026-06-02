@@ -55,7 +55,7 @@ export const agentClient = {
           'X-Request-Id': payload.requestId,
         },
         body: JSON.stringify(payload),
-        // 30s, not 8s: the body carries 3-30 base64 photos (~2MB) forwarded
+        // 30s, not 8s: the body carries 1-30 base64 photos (~2MB) forwarded
         // Vercel→Fly cross-region. 8s aborted before the agent's fast 202 came
         // back (agent had already accepted + started the bg task), so web
         // wrongly marked the job FAILED while the agent kept running.

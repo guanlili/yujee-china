@@ -1,5 +1,9 @@
+import pytest
+
+from src import templates as registry
 from src.schemas import AlbumLayoutPlan, Magazine, Page, PhotoAnalysis
 from src.services.layout_rules import (
+    build_text_first_layout,
     clamp_page_texts,
     clamp_text,
     coerce_image_slots,
@@ -202,6 +206,74 @@ class TestCoerce:
 
         coerced = coerce_image_slots(layout)
         assert violation(coerced) is None
+
+
+class TestFewPhotoFallback:
+    """architecture §6.5 decision 6 — photo floor ≥1. The deterministic
+    text-first builder must produce a §4.3-valid album for 1-2 photos of any
+    orientation/quality, and every photo must appear at least once."""
+
+    def _magazine(self) -> Magazine:
+        return Magazine(title="A spring trip to Kyoto", style="warm-film", language="en")
+
+    @pytest.mark.parametrize("orientation", ["landscape", "portrait", "square"])
+    @pytest.mark.parametrize("quality", ["hero", "detail", "fill"])
+    def test_single_photo_layout_is_valid(self, orientation, quality):
+        photos = [_photo("p1", quality=quality, orientation=orientation)]
+        layout = build_text_first_layout(self._magazine(), photos)
+
+        assert violation(layout) is None
+        assert len(layout.pages) == 3  # max(3, ceil(1/2.5))
+        # the user's only photo must actually appear somewhere
+        used = {pid for page in layout.pages for pid in page.images.values()}
+        assert "p1" in used
+
+    @pytest.mark.parametrize("orientation", ["landscape", "portrait", "square"])
+    @pytest.mark.parametrize("quality", ["hero", "detail", "fill"])
+    def test_single_photo_first_page_is_cover(self, orientation, quality):
+        photos = [_photo("p1", quality=quality, orientation=orientation)]
+        layout = build_text_first_layout(self._magazine(), photos)
+        # violation() already enforces cover-category page 0; assert explicitly too
+        assert layout.pages[0].templateId in {"mag-01", "mag-13", "mag-20", "p01"}
+
+    def test_two_photos_both_placed(self):
+        photos = [
+            _photo("p1", quality="hero", orientation="square"),  # no cover fits → mag-20
+            _photo("p2", quality="detail", orientation="portrait"),
+        ]
+        layout = build_text_first_layout(self._magazine(), photos)
+
+        assert violation(layout) is None
+        used = {pid for page in layout.pages for pid in page.images.values()}
+        assert used == {"p1", "p2"}
+
+    def test_square_photo_falls_back_to_text_only_cover(self):
+        # No cover template accepts a square photo, so the cover degrades to the
+        # text-only mag-20 and the photo lands on a later image page instead.
+        photos = [_photo("p1", quality="hero", orientation="square")]
+        layout = build_text_first_layout(self._magazine(), photos)
+
+        assert layout.pages[0].templateId == "mag-20"
+        assert layout.pages[0].images == {}
+        used = {pid for page in layout.pages for pid in page.images.values()}
+        assert "p1" in used
+
+    @pytest.mark.parametrize("orientation", ["landscape", "portrait", "square"])
+    @pytest.mark.parametrize("quality", ["hero", "detail", "fill"])
+    @pytest.mark.parametrize("n", [1, 2])
+    def test_fallback_fills_every_text_slot(self, n, quality, orientation):
+        # Every web/PDF template renders a built-in placeholder ("MASASHI WAKUI",
+        # "Title/Description", "11/33", …) for an unfilled text slot. The fallback
+        # must leave no slot empty, or that placeholder ships into the PDF
+        # (architecture review §6.5 + codex P2). Assert full coverage + non-empty.
+        photos = [_photo(f"p{i}", quality=quality, orientation=orientation) for i in range(n)]
+        layout = build_text_first_layout(self._magazine(), photos)
+        for page in layout.pages:
+            tpl = registry.get(page.templateId)
+            assert tpl is not None
+            for slot in tpl["textSlots"]:
+                assert slot in page.texts, f"{page.templateId} slot '{slot}' missing → placeholder"
+                assert page.texts[slot].strip(), f"{page.templateId} slot '{slot}' empty → placeholder"
 
 
 class TestClamp:

@@ -70,7 +70,7 @@
 
 约束:
 - `requestId` 由**浏览器生成**(UUID v4),用于轮询 key 和全链路追踪。服务端校验格式后透传给 Agent。
-- `photos.length` ∈ [3, 30]
+- `photos.length` ∈ [1, 30](架构 §6.5 决策 6:下限 3→1)
 - 每张 base64 ≤ 800KB
 - `prompt` ≤ 500 字
 
@@ -331,7 +331,7 @@ Query: `?limit=50&before=msg_xxx`(分页,默认 50,按 `created_at desc`)
 ### 4.1 生成流程
 
 ```
-1. 用户在 /create 选 3-30 张照片
+1. 用户在 /create 选 1-30 张照片
    → photosStore.add(File)
 
 2. 浏览器压缩 → base64

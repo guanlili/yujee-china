@@ -59,7 +59,7 @@ X-Request-Id:  <uuid>
 ```
 
 约束:
-- `photos.length` ∈ [3, 30]
+- `photos.length` ∈ [1, 30](架构 §6.5 决策 6:下限 3→1;1-2 图 composing 用纯文字版面兜底)
 - 每张 base64 ≤ 800KB
 - 总请求体 ≤ 25MB
 - `prompt` ≤ 500 字
@@ -99,7 +99,7 @@ Web ◄──202 + {requestId}──┘   (立刻返回,Web HTTP 调用 ≤ 30 �
 ```json
 {
   "ok": false,
-  "error": { "code": "AGENT_INVALID_INPUT", "message": "photos.length must be 3-30" }
+  "error": { "code": "AGENT_INVALID_INPUT", "message": "photos.length must be 1-30" }
 }
 ```
 

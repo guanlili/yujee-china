@@ -16,7 +16,7 @@ const BodySchema = z.object({
   requestId: z.string().uuid(),
   prompt: z.string().min(1).max(500),
   language: z.enum(['zh', 'en']),
-  photos: z.array(PhotoSchema).min(3).max(30),
+  photos: z.array(PhotoSchema).min(1).max(30),
 });
 
 // Forwards a multi-MB base64 payload to the Fly agent and waits for its 202.

@@ -79,3 +79,34 @@ def test_completed_layout_serializable(captured_callbacks):
     completed = next(c for c in captured_callbacks if c["event"] == "completed")
     # Round-trip must produce valid JSON (no exotic types from Pydantic).
     json.dumps(completed)
+
+
+def _req_single(prompt: str = "A quiet afternoon") -> LayoutRequest:
+    """architecture §6.5 decision 6 — a single-photo request must run end to end."""
+    return LayoutRequest(
+        requestId="req_single",
+        prompt=prompt,
+        language="en",
+        callbackUrl="http://example.com/cb",
+        photos=[
+            PhotoIn(photoId="p1", base64="data:image/jpeg;base64,AAA", width=800, height=600),
+        ],
+    )
+
+
+def test_single_photo_pipeline_completes_with_valid_layout(captured_callbacks):
+    from src.schemas import AlbumLayoutPlan
+    from src.services import layout_rules
+
+    asyncio.run(pipeline.run(_req_single()))
+
+    events = [c["event"] for c in captured_callbacks]
+    assert events.count("completed") == 1
+    assert events.count("failed") == 0
+
+    completed = next(c for c in captured_callbacks if c["event"] == "completed")
+    layout = AlbumLayoutPlan.model_validate(completed["layout"])
+    assert layout_rules.violation(layout) is None
+    # the user's only photo must appear in the album
+    used = {pid for page in layout.pages for pid in page.images.values()}
+    assert "p1" in used

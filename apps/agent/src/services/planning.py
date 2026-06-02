@@ -226,7 +226,16 @@ def _composing_system_prompt(photo_count: int) -> str:
         "  7. templateId MUST be one of the registry IDs below; slot keys MUST be from that template.\n"
         "  8. Text content stays within the maxChars hint for each text slot.\n"
         "  9. Prefer using each template at most once; vary visual rhythm.\n\n"
-        "TemplateRegistry (id [category] images / texts):\n"
+        + (
+            "FEW-PHOTO GUIDANCE: you have very few photos for "
+            f"{expected_pages} pages. Place each photo once (twice at most, never "
+            "on the same page), and fill the remaining pages with TEXT-ONLY "
+            "templates (mag-02, mag-14, mag-20) rather than leaving image slots "
+            "empty or reusing a photo a third time. A 1-2 photo album is valid.\n\n"
+            if photo_count <= 2
+            else ""
+        )
+        + "TemplateRegistry (id [category] images / texts):\n"
         f"{registry.summarize_for_prompt()}\n"
     )
 
@@ -365,11 +374,28 @@ async def compose_pages(
         )
         return layout, total_prompt, total_completion, repair_attempts
 
-    # Repair budget exhausted with a layout still violating orientation/quality
-    # (or the consequent photo-usage rules). doubao-lite can't reliably satisfy
-    # the slot constraints on 7-8 photos, so we deterministically coerce the
-    # last layout into compliance rather than fail the whole job (§4.3 fallback,
-    # mirroring clamp_text for text). Versions without a parsed layout still die.
+    # Repair budget exhausted. Two deterministic last resorts before we fail:
+    #  - ≤2 photos (architecture §6.5 decision 6): build a guaranteed-valid
+    #    text-first album (cover + each photo once + text-only padding). The tiny
+    #    photo set is exactly where the model is least reliable, and this never
+    #    drops the user's only photo, so it always wins over coerce here.
+    #  - >2 photos: coerce the model's layout into slot/usage compliance
+    #    (doubao-lite mis-assigns on 7-8 photos and a single repair can't recover),
+    #    mirroring clamp_text for text. Structural violations stay unrecoverable.
+    if len(photos) <= layout_rules.FEW_PHOTO_MAX:
+        fallback = layout_rules.build_text_first_layout(magazine, photos)
+        residual = layout_rules.violation(fallback)
+        if residual:
+            raise ComposingError(f"few-photo fallback still invalid: {residual}")
+        log.warning(
+            "composing.few_photo_fallback",
+            last_error=last_error,
+            page_count=len(fallback.pages),
+            photo_count=len(photos),
+            repair_attempts=repair_attempts,
+        )
+        return fallback, total_prompt, total_completion, repair_attempts
+
     if layout is None:
         raise ComposingError(f"composing failed before producing a layout: {last_error}")
 

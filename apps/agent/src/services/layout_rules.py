@@ -6,10 +6,18 @@ from collections import Counter
 from math import ceil
 
 from ..logging_config import get_logger
-from ..schemas import AlbumLayoutPlan, Page, PhotoAnalysis
+from ..schemas import AlbumLayoutPlan, Magazine, Page, PhotoAnalysis
 from .. import templates as registry
 
 log = get_logger("layout_rules")
+
+# Architecture §6.5 decision 6: photo floor is ≥1. With ≤2 photos the page-count
+# target (3) outruns what the photos can fill, so the extra pages use text-only
+# templates. Builds bottom out in build_text_first_layout when the model can't.
+FEW_PHOTO_MAX = 2
+
+# Text-only spreads used to pad a few-photo album to the page-count target.
+_TEXT_ONLY_PAD = ("mag-02", "mag-14")
 
 
 def _expected_page_count(photo_count: int) -> int:
@@ -165,12 +173,12 @@ def violation(layout: AlbumLayoutPlan) -> str | None:
     photo_ids = {p.photoId for p in photos}
     by_id: dict[str, PhotoAnalysis] = {p.photoId: p for p in photos}
 
-    # Rule 1: page count
+    # Rule 1: page count — §4.3 requires pages.length == max(3, ceil(n/2.5))
+    # (capped at 16). Strict equality, so too MANY pages is a violation too: a
+    # model that pads past the target must hit fallback/repair, not slip through.
     expected = _expected_page_count(len(photos))
-    if not (3 <= len(pages) <= 16):
-        return f"pages count {len(pages)} outside [3, 16]"
-    if len(pages) < expected:
-        return f"pages count {len(pages)} below target {expected} for {len(photos)} photos"
+    if len(pages) != expected:
+        return f"pages count {len(pages)} != required {expected} for {len(photos)} photos"
 
     # Rule 2: first page must be a cover-category template
     first_tpl = registry.get(pages[0].templateId)
@@ -244,3 +252,136 @@ def violation(layout: AlbumLayoutPlan) -> str | None:
         return f"photos reused more than 2 times: {overused[:3]}"
 
     return None
+
+
+# --- few-photo deterministic fallback (architecture §6.5 decision 6) ----------
+
+
+def _cover_for_photo(photo: PhotoAnalysis | None) -> tuple[str, str]:
+    """Return (templateId, imageSlot) for a cover that can hold `photo`. Falls
+    back to the text-only cover (mag-20, empty slot) when no image cover fits its
+    orientation/quality (e.g. a square or fill-grade photo — no cover accepts
+    those)."""
+    if photo is not None:
+        for tid in registry.COVER_TEMPLATE_IDS:
+            tpl = registry.TEMPLATES[tid]
+            for slot, cons in tpl["imageSlots"].items():
+                if _photo_fits(photo, cons):
+                    return tid, slot
+    return "mag-20", ""
+
+
+def _page_slot_for_photo(photo: PhotoAnalysis) -> tuple[str, str] | None:
+    """First non-cover (templateId, imageSlot) whose constraint accepts `photo`.
+    Across the 21-template registry every orientation×quality combo has at least
+    one home, so this only returns None for a photo no template can place."""
+    for tid in registry.TEMPLATE_IDS:
+        tpl = registry.TEMPLATES[tid]
+        if tpl["category"] == "cover":
+            continue
+        for slot, cons in tpl["imageSlots"].items():
+            if _photo_fits(photo, cons):
+                return tid, slot
+    return None
+
+
+def _real_texts(
+    template_id: str,
+    magazine: Magazine,
+    page_index: int,
+    total_pages: int,
+    photo: PhotoAnalysis | None = None,
+) -> dict[str, str]:
+    """Fill every text slot of `template_id` with real, clamped copy.
+
+    Each web/PDF template renders a built-in placeholder string for any unfilled
+    text slot (mag-20's "MASASHI WAKUI", mag-02's "Title/Description", mag-14's
+    "11/33", mag-03's "Portrait", …). The few-photo fallback has no model-authored
+    copy, so leaving texts={} would ship those placeholders into the finished PDF
+    (architecture review §6.5 + codex P2). The agent registry can't tell which
+    slots default safely, so we fill them all from real data: the magazine title
+    for headings, the subtitle (or title) for body copy, the photo's own
+    description for captions, and the page's real folio number for numeric slots.
+    """
+    tpl = registry.get(template_id)
+    if not tpl:
+        return {}
+    title = magazine.title
+    body = magazine.subtitle or magazine.title
+    caption = photo.description if photo and photo.description else body
+    out: dict[str, str] = {}
+    for slot, cons in tpl["textSlots"].items():
+        max_chars = cons.get("maxChars", 60)
+        s = slot.lower()
+        if any(tok in s for tok in ("num", "folio", "vol", "date")):
+            # decorative index/folio numbers — use the page's real position
+            value = str(total_pages) if "total" in s else str(page_index + 1)
+        elif "caption" in s or s in ("intro", "credit"):
+            value = caption
+        elif (
+            any(tok in s for tok in ("title", "heading", "name", "issue", "category"))
+            or s in ("plate", "topright", "sidetext")
+        ):
+            value = title
+        else:  # body, quote, subtitle, boxText, items, cells, footnote, …
+            value = body
+        out[slot] = clamp_text(value, max_chars)
+    return out
+
+
+def build_text_first_layout(magazine: Magazine, photos: list[PhotoAnalysis]) -> AlbumLayoutPlan:
+    """Deterministic, §4.3-valid album for the 1-2 photo case (architecture §6.5
+    decision 6). Used as the composing fallback when the model can't arrange so
+    few photos: a cover, each photo placed exactly once in a constraint-matching
+    slot, then padded to the page-count target with text-only spreads. Unlike the
+    coerce path, this never drops the user's photo — every photo still appears."""
+    pages: list[Page] = []
+    placed: set[str] = set()
+    expected = _expected_page_count(len(photos))
+
+    cover_photo = photos[0] if photos else None
+    cover_id, cover_slot = _cover_for_photo(cover_photo)
+    cover_images: dict[str, str] = {}
+    if cover_slot and cover_photo is not None:
+        cover_images = {cover_slot: cover_photo.photoId}
+        placed.add(cover_photo.photoId)
+    pages.append(
+        Page(
+            pageIndex=0,
+            templateId=cover_id,
+            images=cover_images,
+            texts=_real_texts(cover_id, magazine, 0, expected, cover_photo),
+        )
+    )
+
+    # One page per still-unplaced photo, in a slot matching its constraints.
+    for photo in photos:
+        if photo.photoId in placed:
+            continue
+        found = _page_slot_for_photo(photo)
+        if found is None:
+            continue  # no compatible slot anywhere — leave unused (won't happen for 21 templates)
+        tid, slot = found
+        pages.append(
+            Page(
+                pageIndex=len(pages),
+                templateId=tid,
+                images={slot: photo.photoId},
+                texts=_real_texts(tid, magazine, len(pages), expected, photo),
+            )
+        )
+        placed.add(photo.photoId)
+
+    # Pad to the page-count target with text-only spreads.
+    while len(pages) < expected:
+        tid = _TEXT_ONLY_PAD[len(pages) % len(_TEXT_ONLY_PAD)]
+        pages.append(
+            Page(
+                pageIndex=len(pages),
+                templateId=tid,
+                images={},
+                texts=_real_texts(tid, magazine, len(pages), expected),
+            )
+        )
+
+    return AlbumLayoutPlan(magazine=magazine, photos=photos, pages=pages)

@@ -40,6 +40,30 @@ def _layout() -> AlbumLayoutPlan:
     )
 
 
+class TestPhotoFloor:
+    """architecture §6.5 decision 6 — photo floor lowered 3 → 1."""
+
+    def test_single_photo_request_accepted(self):
+        req = LayoutRequest(
+            requestId="r1",
+            prompt="a quiet afternoon",
+            language="en",
+            callbackUrl="http://example.com/cb",
+            photos=[PhotoIn(photoId="p1", base64="data:image/jpeg;base64,A", width=800, height=600)],
+        )
+        assert len(req.photos) == 1
+
+    def test_zero_photos_still_rejected(self):
+        with pytest.raises(ValidationError):
+            LayoutRequest(
+                requestId="r1",
+                prompt="hi",
+                language="en",
+                callbackUrl="http://example.com/cb",
+                photos=[],
+            )
+
+
 class TestExtraForbid:
     def test_layout_request_rejects_unknown(self):
         with pytest.raises(ValidationError):

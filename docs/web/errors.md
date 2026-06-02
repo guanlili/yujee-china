@@ -45,7 +45,7 @@ export const ERRORS = {
 
   // 输入校验
   PHOTO_TOO_MANY:         () => new AppError('PHOTO_TOO_MANY',         'Max 30 photos per album',     400),
-  PHOTO_TOO_FEW:          () => new AppError('PHOTO_TOO_FEW',          'Need at least 3 photos',      400),
+  PHOTO_TOO_FEW:          () => new AppError('PHOTO_TOO_FEW',          'Need at least 1 photo',       400),
   PHOTO_TOO_LARGE:        () => new AppError('PHOTO_TOO_LARGE',        'Each photo > 800KB',          413),
   PROMPT_TOO_LONG:        () => new AppError('PROMPT_TOO_LONG',        'Prompt > 500 chars',          400),
   VALIDATION_FAILED:      (m: string) => new AppError('VALIDATION_FAILED', m,                          400),

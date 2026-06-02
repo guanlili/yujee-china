@@ -42,7 +42,7 @@ class LayoutRequest(_Strict):
     prompt: str = Field(min_length=1, max_length=500)
     language: Language
     callbackUrl: HttpUrl
-    photos: list[PhotoIn] = Field(min_length=3, max_length=30)
+    photos: list[PhotoIn] = Field(min_length=1, max_length=30)
 
 
 # ---------- domain ------------------------------------------------------------

@@ -95,7 +95,7 @@ Web ──POST /v1/layout──► Agent (202 accepted, BackgroundTask)
 
 - 每张照片的 base64 必须是 `data:image/jpeg` 或 `data:image/png` data URL
 - 单张去掉 data URL 头后,原始字节 ≤ 800KB
-- `photos.length ∈ [3, 30]`(已由 Pydantic 在反序列化时强制)
+- `photos.length ∈ [1, 30]`(已由 Pydantic 在反序列化时强制;架构 §6.5 决策 6)
 - `prompt.length ≤ 500`
 - 鉴权 Bearer 失败 → 401 `AGENT_UNAUTHORIZED`
 
@@ -241,7 +241,11 @@ User 段必须传达:
 2. schema 校验(`AlbumLayoutPlan` Python 镜像)失败 → 进 repair
 3. **业务规则校验**(§4.3 全部 9 条)失败 → 进 repair
 4. **repair 1 次**:把违反的规则原文 + 上次输出回灌,要求重新输出**完整** JSON(不是 patch)
-5. repair 仍失败 → `AGENT_OUTPUT_VALIDATION`,**不走 fallback layout**,直接告知用户
+5. repair 仍失败:
+   - **>2 张照片**:`coerce_image_slots` 兜底(强制 slot 合规,实在塞不下的图丢弃),仍结构违规才 `AGENT_OUTPUT_VALIDATION`,**不走整套 fallback layout**。
+   - **≤2 张照片**(架构 §6.5 决策 6):走 `layout_rules.build_text_first_layout` 确定性兜底——cover + 每张图按约束放一次 + 纯文字版面(mag-02/14/20)补齐页数。**这是唯一允许的 fallback layout**,因为 1-2 图的版面空间太小、模型最不可靠,且确定性兜底**不会丢用户的唯一一张图**。
+
+> `build_text_first_layout`(`services/layout_rules.py`)对每张图按 orientation×quality 在 21 模板里找首个匹配 slot;square / fill 级图进不了任何 cover 时,cover 退化为纯文字的 mag-20,图放到后续页。产出必过 §4.3 全量校验。
 
 ---
 

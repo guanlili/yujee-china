@@ -44,8 +44,8 @@ export default function CreatePage() {
     setPhotos((prev) => prev.filter((p) => p.photoId !== photoId));
 
   const submit = async () => {
-    if (photos.length < 3) {
-      setErr('Need at least 3 photos.');
+    if (photos.length < 1) {
+      setErr('Add at least 1 photo.');
       return;
     }
     if (!prompt.trim()) {
@@ -109,7 +109,7 @@ export default function CreatePage() {
       </label>
 
       <div className="mt-10">
-        <p className="text-sm font-medium mb-2">Photos ({photos.length}/30, min 3)</p>
+        <p className="text-sm font-medium mb-2">Photos ({photos.length}/30, min 1)</p>
         <label className="block border-2 border-dashed border-[var(--border)] rounded-lg p-10 text-center cursor-pointer hover:bg-white">
           <input
             type="file"
@@ -120,7 +120,7 @@ export default function CreatePage() {
             onChange={(e) => onFiles(e.target.files)}
           />
           <span className="text-sm text-[var(--muted)]">
-            {busy ? 'Compressing…' : 'Click to upload (3–30 images)'}
+            {busy ? 'Compressing…' : 'Click to upload (1–30 images)'}
           </span>
         </label>
         {photos.length > 0 && (
@@ -152,7 +152,7 @@ export default function CreatePage() {
         <button
           type="button"
           onClick={submit}
-          disabled={busy || photos.length < 3 || !prompt.trim()}
+          disabled={busy || photos.length < 1 || !prompt.trim()}
           className="px-8 py-3 rounded-full bg-[var(--accent)] text-white text-sm tracking-wide disabled:opacity-40"
         >
           {busy ? 'Working…' : 'Generate my memoir'}
