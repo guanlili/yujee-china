@@ -8,6 +8,7 @@ when the model output is adversarially wrong.
 """
 
 import itertools
+from collections import Counter
 from math import ceil
 
 import pytest
@@ -261,13 +262,16 @@ def test_few_photo_fallback_has_no_empty_slots(count):
 
 
 @pytest.mark.parametrize("count", [1, 2])
-def test_few_photo_square_is_registry_gap_not_empty_slot(count):
-    """KNOWN GAP: a square-only ≤2-photo album has no single-image / fully-fillable
-    square template, so it can't be both empty-slot-free AND §4.3-valid from the
-    21 templates. The fallback chooses no empty slots over a blank PDF: the square
-    photo is left unplaced (a Rule-3 'unused' residual that compose_pages raises),
-    NOT placed into a multi-image template with blank siblings. Pins the chosen
-    trade-off; closing it needs a new square template (architect decision)."""
+def test_few_photo_square_only_is_registry_gap_not_empty_slot(count):
+    """REMAINING GAP (narrowed by the #82 review fix): a SQUARE-ONLY ≤2-photo
+    album has no non-square companion to share a two-image square spread (mag-09/
+    mag-12), and no single-image or 1-2-up all-square template exists, so it can't
+    be both empty-slot-free AND §4.3-valid from the 21 templates. The fallback
+    chooses no empty slots over a blank PDF: the square photo is left unplaced (a
+    Rule-3 'unused' residual that compose_pages raises), NOT placed into a
+    multi-image template with blank siblings. (A square WITH a landscape/portrait
+    companion IS now placed — see test_few_photo_square_with_companion_*.) Closing
+    this needs a single-image square template (architect decision)."""
     mag = Magazine(title="A quiet afternoon", style="warm-film", language="en")
     photos = [_photo(f"p{i}", quality="detail", orientation="square")
               for i in range(count)]
@@ -276,6 +280,51 @@ def test_few_photo_square_is_registry_gap_not_empty_slot(count):
     assert _no_empty_image_slots(layout) == []
     # And the trade-off: the square photo is omitted, surfaced as 'unused'.
     assert (violation(layout) or "").startswith("unused photos")
+
+
+@pytest.mark.parametrize(
+    "non_square_orientation, expected_template",
+    [("landscape", "mag-09"), ("portrait", "mag-12")],
+)
+@pytest.mark.parametrize("square_first", [False, True])
+def test_few_photo_square_with_companion_keeps_both_photos(
+    non_square_orientation, expected_template, square_first
+):
+    """#82 review fix 1: a 2-photo set containing a SQUARE photo must keep BOTH
+    photos in a blank-free, §4.3-valid layout — the square goes into a two-image
+    square spread (landscape+square → mag-09, portrait+square → mag-12), reusing
+    the non-square photo once for the sibling slot. Previously the square was
+    dropped (only single-image templates were tried), which then tripped Rule 3.
+
+    Parametrized on photo order so the square being photos[0] (a text-only cover,
+    since no cover accepts square) is covered too."""
+    mag = Magazine(title="A quiet afternoon", style="warm-film", language="en")
+    sq = _photo("sq", quality="detail", orientation="square")
+    other = _photo("o1", quality="detail", orientation=non_square_orientation)
+    photos = [sq, other] if square_first else [other, sq]
+
+    layout = build_text_first_layout(mag, photos)
+
+    # Both photos are used (no drop), no empty slot, fully §4.3-valid.
+    assert _no_empty_image_slots(layout) == []
+    assert violation(layout) is None, violation(layout)
+    used_ids = {pid for page in layout.pages for pid in page.images.values()}
+    assert used_ids == {"sq", "o1"}, f"a photo was dropped: {used_ids}"
+
+    # The square landed on the expected square-capable two-image spread,
+    # alongside the non-square companion, with no same-page duplicate.
+    square_pages = [
+        p for p in layout.pages if "sq" in p.images.values()
+    ]
+    assert len(square_pages) == 1
+    sp = square_pages[0]
+    assert sp.templateId == expected_template
+    assert "o1" in sp.images.values()  # companion fills the sibling slot
+    assert len(set(sp.images.values())) == len(sp.images)  # no same-page dup
+
+    # Reuse stays within the ≤2 cap.
+    counts = Counter(pid for page in layout.pages for pid in page.images.values())
+    assert all(c <= 2 for c in counts.values()), counts
 
 
 def test_reuse_within_limit_fills_slot_before_dropping():
@@ -308,6 +357,47 @@ def test_reuse_within_limit_fills_slot_before_dropping():
     assert violation(coerced) is None
 
 
+def test_retemplate_prefers_keeping_unused_photo_over_reused():
+    """#82 review fix 2: when a page's image slot can't be filled and the page is
+    re-templated, the tie-break among equal-size candidate templates must keep the
+    MOST still-UNUSED photos — never drop an unused photo to keep an already-reused
+    one. Reproduces the reported bug: a mag-04 page holds a REUSED landscape (also
+    on the cover) and an UNUSED portrait; its square slot can't be filled, so the
+    page downsizes to a single-image template. The old tie-break picked by registry
+    order (mag-01, keeping the reused landscape) and dropped the unused portrait —
+    and violation() returned None because the survivor set merely shrank to a still-
+    legal page count. The fix keeps the portrait (its only appearance)."""
+    landscape = _photo("L", quality="hero", orientation="landscape")  # reused
+    portrait = _photo("P", quality="detail", orientation="portrait")  # only here
+    photos = [landscape, portrait]
+    pages = [
+        # Cover holds the landscape (so L is used twice once the interior page
+        # below also references it — making P, not L, the photo we must preserve).
+        Page(pageIndex=0, templateId="mag-13", images={"image": "L"},
+             texts={"title": "x" * 10, "intro": "y" * 30,
+                    "issue": "YUJEE · 01", "credit": "AI ARRANGED · YUJEE"}),
+        # mag-04 = landscape + portrait + SQUARE; no square photo, so image3 can't
+        # be filled and the page must be re-templated. L here is the 2nd use.
+        Page(pageIndex=1, templateId="mag-04",
+             images={"image1": "L", "image2": "P"}, texts={}),
+        Page(pageIndex=2, templateId="mag-02", images={}, texts={"items": "kept"}),
+    ]
+    layout = AlbumLayoutPlan(
+        magazine=Magazine(title="Trip", style="warm-film", language="en"),
+        photos=photos, pages=pages,
+    )
+
+    coerced = coerce_image_slots(layout)
+
+    assert _no_empty_image_slots(coerced) == []
+    assert violation(coerced) is None, violation(coerced)
+    # The unused portrait survives — it is NOT dropped to keep the reused landscape.
+    survivors = {p.photoId for p in coerced.photos}
+    assert "P" in survivors, f"unused portrait was dropped: {survivors}"
+    placed = {pid for page in coerced.pages for pid in page.images.values()}
+    assert "P" in placed, f"portrait left unplaced: {placed}"
+
+
 class TestRepairInstruction:
     """The repair turn must feed back the SPECIFIC violated rule + page/slot (#42),
     not a generic 'try again'."""
@@ -336,3 +426,69 @@ class TestRepairInstruction:
     def test_unknown_violation_falls_back_but_keeps_detail(self):
         out = repair_instruction("some brand new check failed at page 9")
         assert "page 9" in out  # raw violation always appended
+
+    # #82 review fix 3: the repair-hint rule numbers must match the numbering the
+    # model was shown in the composing prompt (planning._composing_system_prompt),
+    # where 4=reuse cap, 6=pageIndex, 8=text length — NOT the §4.3 table order.
+    def test_reuse_cap_names_rule_4(self):
+        out = repair_instruction("photos reused more than 2 times: ['p1']")
+        assert "RULE 4" in out and "RULE 6" not in out
+
+    def test_pageindex_names_rule_6(self):
+        out = repair_instruction("pageIndex 5 at position 2 (must be sequential)")
+        assert "RULE 6" in out and "RULE 8" not in out
+
+    def test_text_length_names_rule_8(self):
+        out = repair_instruction("page 1 text 'title' length 70 > maxChars 60")
+        assert "RULE 8" in out and "RULE 9" not in out
+
+    def test_same_page_duplicate_names_rule_4(self):
+        out = repair_instruction("page 1: photoId p1 used twice on same page")
+        assert "RULE 4" in out
+
+    def test_template_unknown_names_rule_7(self):
+        out = repair_instruction("page 1: templateId mag-99 not in TemplateRegistry")
+        assert "RULE 7" in out
+
+
+def test_repair_rule_numbers_match_composing_prompt():
+    """Cross-check (#82 review fix 3): every rule number repair_instruction emits
+    must be the rule number the composing prompt assigned to that same concept, so
+    the repair turn points the model at the rule it just read. Parses the live
+    prompt's numbered HARD RULES and asserts each hint's number agrees."""
+    import re
+
+    from src.services.planning import _composing_system_prompt
+
+    prompt = _composing_system_prompt(8)
+    # Sanity: the prompt really lists 9 numbered rules.
+    rule_lines = re.findall(r"^\s*(\d+)\.\s+(.*)$", prompt, flags=re.MULTILINE)
+    text_by_num = {int(n): t for n, t in rule_lines}
+    assert set(text_by_num) >= set(range(1, 10)), text_by_num
+
+    def prompt_num(substr: str) -> int:
+        hits = [n for n, t in text_by_num.items() if substr in t.lower()]
+        assert len(hits) == 1, f"{substr!r} -> {hits}"
+        return hits[0]
+
+    # (violation string, concept keyword as worded in the prompt)
+    cases = [
+        ("pages count 4 != required 3 for 3 photos", "pages.length"),
+        ("page 0 templateId mag-04 category=spread (must be cover)", "cover-category"),
+        ("unused photos: ['p1']", "must appear in at least one"),
+        ("photos reused more than 2 times: ['p1']", "at most twice"),
+        ("page 1: photoId p1 used twice on same page", "at most twice"),
+        ("page 1 slot 'i': photo p1 orientation=square not in ['portrait']",
+         "orientation"),
+        ("pageIndex 5 at position 2 (must be sequential)", "strictly sequential"),
+        ("page 1: templateId mag-99 not in TemplateRegistry", "registry ids"),
+        ("page 1 text 'title' length 70 > maxChars 60", "maxchars"),
+    ]
+    for violation_text, prompt_kw in cases:
+        hint = repair_instruction(violation_text)
+        m = re.search(r"RULE (\d+)", hint)
+        assert m, f"no RULE number in hint for {violation_text!r}"
+        assert int(m.group(1)) == prompt_num(prompt_kw), (
+            f"{violation_text!r}: repair says RULE {m.group(1)} but prompt numbers "
+            f"that concept as RULE {prompt_num(prompt_kw)}"
+        )
