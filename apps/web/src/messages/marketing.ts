@@ -16,10 +16,16 @@ export interface MarketingMessages {
     heroSub: string;
     heroCta: string;
     heroTip: string;
+    composerPlaceholder: string;
+    composerUploadLabel: string;
+    composerHints: { label: string; fill: string }[];
     featuresLabel: string;
     featuresTitle: string;
     featuresSub: string;
     features: { num: string; title: string; desc: string }[];
+    casesTitle: string;
+    casesMore: string;
+    cases: { title: string; desc: string }[];
     ctaTitle: string;
     ctaSub: string;
     ctaButton: string;
@@ -91,7 +97,15 @@ const en: MarketingMessages = {
     heroSub:
       'Yujee turns your scattered photos and memories into a magazine you’ll want to keep.',
     heroCta: 'Start your memoir',
-    heroTip: 'Upload photos, AI lays out your magazine in a minute.',
+    heroTip: 'Upload photos and let AI lay out a beautiful magazine.',
+    composerPlaceholder: 'Describe the magazine you want, e.g. “A photo album of my trip to Bali with friends”...',
+    composerUploadLabel: 'Upload photos',
+    composerHints: [
+      { label: 'Travel Album', fill: 'Make me a photo album of my trip to Bali last week — I have lots of beach and temple photos.' },
+      { label: 'Baby Milestones', fill: 'I want a growth journal for my daughter, with photos from birth to her first birthday.' },
+      { label: 'Graduation', fill: 'A high school graduation yearbook with class photos and everyone’s farewell messages.' },
+      { label: 'Food Journal', fill: 'Compile my restaurant photos from the past six months into a food magazine.' },
+    ],
     featuresLabel: 'How it works',
     featuresTitle: 'AI handles the busy work.',
     featuresSub: 'From chaptering to layout, all in one pass.',
@@ -102,6 +116,16 @@ const en: MarketingMessages = {
       { num: '04', title: 'Edit by chatting', desc: 'Tell the AI what to change. The copy rewrites itself in seconds.' },
       { num: '05', title: 'WYSIWYG spread', desc: 'Live magazine preview. Text and photos compose as you go.' },
       { num: '06', title: 'Print-ready PDF', desc: 'One click. Hi-res PDF you can bind into a real book.' },
+    ],
+    casesTitle: 'Inspiration',
+    casesMore: 'View more',
+    cases: [
+      { title: 'Travel Album', desc: 'Arrange scattered travel moments into a story with a timeline.' },
+      { title: 'Baby Milestones', desc: 'From birth to first birthday, capture every milestone in photos and words.' },
+      { title: 'Graduation', desc: 'Turn four years of group photos, ticket stubs, and chats into a yearbook.' },
+      { title: 'Family Stories', desc: 'Digitize old photos and let AI write down your elders’ stories and family memories.' },
+      { title: 'Pet Diary', desc: 'Make a dedicated photo book for your furry friend, capturing daily life and funny moments.' },
+      { title: 'Food Journal', desc: 'Organize restaurant photos into a story-driven food guide.' },
     ],
     ctaTitle: 'Your story deserves a real book.',
     ctaSub: 'Free credits on signup. No card required.',
@@ -298,7 +322,15 @@ const zh: MarketingMessages = {
     heroTitle: '写下你的故事。',
     heroSub: '把散落的照片和记忆，变成一本可以收藏的杂志。',
     heroCta: '开始创作',
-    heroTip: '上传照片，AI 一分钟生成杂志排版。',
+    heroTip: '支持上传照片，AI 自动生成图文杂志。',
+    composerPlaceholder: '描述你想做的杂志，比如「一本记录我和闺蜜大理旅行的影集」...',
+    composerUploadLabel: '上传照片',
+    composerHints: [
+      { label: '旅行纪念册', fill: '帮我做一本记录上周去大理旅行的影集，我有很多洱海和古城的照片。' },
+      { label: '宝宝成长记录', fill: '我想给女儿做一本成长记录，从出生到一岁的照片都有。' },
+      { label: '毕业纪念', fill: '高中毕业纪念册，想放班级合照和每个人的毕业感言。' },
+      { label: '美食手帐', fill: '记录我这半年探店的美食照片，做成一本美食杂志。' },
+    ],
     featuresLabel: '工作流程',
     featuresTitle: 'AI 替你做完所有杂活。',
     featuresSub: '从分章节到排版，一气呵成。',
@@ -309,6 +341,16 @@ const zh: MarketingMessages = {
       { num: '04', title: '对话式编辑', desc: '一句话告诉 AI 想改什么，文案立刻重写。' },
       { num: '05', title: '所见即所得', desc: '跨页杂志预览，文字与照片实时排版。' },
       { num: '06', title: '导出印刷', desc: '一键导出高清 PDF，可直接打印装订成册。' },
+    ],
+    casesTitle: '灵感库',
+    casesMore: '查看更多',
+    cases: [
+      { title: '旅行纪念册', desc: '把散落在相册里的旅途瞬间，编排成一本有时间线的旅行故事。' },
+      { title: '宝宝成长记录', desc: '从出生到周岁，用照片和文字记录每一个里程碑。' },
+      { title: '毕业纪念', desc: '把四年的合影、票根、聊天记录做成一本青春杂志。' },
+      { title: '家庭故事', desc: '翻拍老照片，让 AI 帮你写下长辈的故事和家族记忆。' },
+      { title: '宠物日记', desc: '给毛孩子做一本专属写真集，记录它的日常和表情包。' },
+      { title: '美食手帐', desc: '把探店照片整理成一本有故事的美食指南。' },
     ],
     ctaTitle: '你的故事，值得一本真正的书。',
     ctaSub: '注册即赠免费积分，无需信用卡。',

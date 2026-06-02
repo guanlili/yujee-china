@@ -78,3 +78,18 @@ body {
   mask: radial-gradient(farthest-side, transparent 40%, #000 42%);
   animation: cover-spin 0.9s linear infinite;
 }
+
+/* Inspiration marquee — track holds two copies of the list, so -50% loops seamlessly. */
+@keyframes yujee-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.yujee-marquee {
+  animation: yujee-marquee 36s linear infinite;
+}
+.yujee-marquee:hover {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .yujee-marquee { animation: none; }
+}

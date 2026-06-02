@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { type Locale, locales } from '@/lib/i18n/routing';
 import { getMarketingMessages } from '@/messages/marketing';
+import { Sidebar } from '@/components/app/Sidebar';
 
 interface Props {
   locale: Locale;
@@ -16,6 +17,7 @@ export function MarketingChrome({ locale, pathname, children }: Props) {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <Sidebar locale={locale} activeNav={pathname === '/' ? 'home' : null} />
       <nav className="sticky top-0 z-50 backdrop-blur-md bg-[rgba(245,245,245,0.6)] border-b border-[var(--border-soft)]">
         <div className="max-w-[1320px] mx-auto px-6 md:px-8 py-3 flex items-center justify-between">
           <Link href={`/${locale}`} className="flex items-center gap-2.5 font-extrabold text-xl tracking-tight">

@@ -6,7 +6,9 @@ export type AppNav = 'home' | 'projects';
 
 interface Props {
   locale: Locale;
-  activeNav: AppNav;
+  // null highlights nothing — used on marketing surfaces (e.g. /pricing) that
+  // aren't one of the app nav destinations.
+  activeNav: AppNav | null;
 }
 
 const ITEMS: { key: AppNav; href: (l: Locale) => string; labelKey: 'navHome' | 'navProjects'; icon: React.ReactNode }[] = [
