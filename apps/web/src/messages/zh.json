@@ -68,6 +68,28 @@
       "credits": "积分",
       "settings": "设置"
     },
+    "create": {
+      "heroTitle": "开始你的纪念册",
+      "heroSub": "上传照片，描述你的故事，AI 为你排版成杂志。",
+      "placeholder": "描述你想做的纪念册，比如「一本记录我和妈妈京都春日旅行的影集」",
+      "uploadTitle": "上传照片",
+      "compressing": "压缩中…",
+      "photoCount": "{count}/30",
+      "minPhotos": "至少 1 张",
+      "removePhoto": "移除照片",
+      "send": "生成我的纪念册",
+      "tip": "至少添加 1 张照片，AI 约一分钟为你排版成杂志。",
+      "resumeBanner": "欢迎回来 —— 你的照片和故事已就绪，点击发送即可继续。",
+      "errPhotoMin": "请至少添加 1 张照片。",
+      "errPromptEmpty": "请输入一句故事描述。",
+      "errPhotosUnavailable": "部分照片在此设备上已不可用，请重新添加。",
+      "hints": [
+        { "label": "旅行纪念册", "prompt": "一本记录我和妈妈京都春日旅行的影集" },
+        { "label": "宝宝成长记录", "prompt": "女儿的第一年，按月记录的成长点滴" },
+        { "label": "毕业纪念", "prompt": "四年大学时光，定格在毕业那天" },
+        { "label": "美食手帐", "prompt": "一个夏天的家常菜和小馆子" }
+      ]
+    },
     "myAlbums": {
       "title": "我的相册",
       "empty": "还没有相册。",

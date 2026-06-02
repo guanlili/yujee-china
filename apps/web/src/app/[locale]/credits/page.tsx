@@ -103,7 +103,7 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
         <div className="mb-8 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-5 py-4">
           <p className="text-sm mb-3">{t.resumeBanner}</p>
           <a
-            href="/create"
+            href={`/${locale}/create`}
             className="inline-block px-6 py-2.5 rounded-full bg-[var(--accent)] text-white text-sm tracking-wide"
           >
             {t.resumeCta}

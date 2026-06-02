@@ -80,7 +80,7 @@ export function RetryFailedButton({ albumId }: { albumId: string }) {
     return (
       <p className="mt-6 text-sm text-[var(--muted)]">
         These photos are no longer on this device.{' '}
-        <a href="/create" className="underline">
+        <a href={`/${detectLocale(pathname)}/create`} className="underline">
           Start a new memoir
         </a>
         .

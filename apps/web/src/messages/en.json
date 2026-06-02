@@ -68,6 +68,28 @@
       "credits": "Credits",
       "settings": "Settings"
     },
+    "create": {
+      "heroTitle": "Start your memoir",
+      "heroSub": "Upload your photos, describe the story — AI lays out your magazine.",
+      "placeholder": "Describe the memoir you want — e.g. “A spring trip to Kyoto with my mother”",
+      "uploadTitle": "Upload photos",
+      "compressing": "Compressing…",
+      "photoCount": "{count}/30",
+      "minPhotos": "min 1 photo",
+      "removePhoto": "Remove photo",
+      "send": "Generate my memoir",
+      "tip": "Add at least 1 photo. AI lays out your magazine in about a minute.",
+      "resumeBanner": "Welcome back — your photos and story are ready. Tap send to continue.",
+      "errPhotoMin": "Add at least 1 photo.",
+      "errPromptEmpty": "Add a short story prompt.",
+      "errPhotosUnavailable": "Some photos are no longer available on this device. Please re-add them.",
+      "hints": [
+        { "label": "Travel album", "prompt": "A spring trip to Kyoto with my mother" },
+        { "label": "Baby’s first year", "prompt": "My daughter’s first year, month by month" },
+        { "label": "Graduation", "prompt": "Four years of college, ending at graduation day" },
+        { "label": "Food diary", "prompt": "A summer of home cooking and little restaurants" }
+      ]
+    },
     "myAlbums": {
       "title": "My albums",
       "empty": "No albums yet.",
