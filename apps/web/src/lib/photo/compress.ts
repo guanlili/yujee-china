@@ -7,7 +7,10 @@ export type CompressedPhoto = {
   height: number;
 };
 
-export async function compressFile(file: File, photoId: string): Promise<CompressedPhoto> {
+// Accepts a Blob (File is a Blob) so we can re-compress originals read back from
+// IndexedDB — the resume-after-purchase and failed-album retry flows rebuild the
+// 800px base64 from the stored original instead of persisting the base64 itself.
+export async function compressFile(file: Blob, photoId: string): Promise<CompressedPhoto> {
   const dataUrl = await readAsDataUrl(file);
   const img = await loadImage(dataUrl);
   const { canvas, w, h } = drawScaled(img, 800);
@@ -15,7 +18,7 @@ export async function compressFile(file: File, photoId: string): Promise<Compres
   return { photoId, base64, width: w, height: h };
 }
 
-function readAsDataUrl(file: File): Promise<string> {
+function readAsDataUrl(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const fr = new FileReader();
     fr.onload = () => resolve(fr.result as string);

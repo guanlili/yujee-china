@@ -14,6 +14,12 @@ type GenerationInput = {
   photos: AgentPhotoInput[];
 };
 
+type RetryInput = {
+  requestId: string;
+  language: 'zh' | 'en';
+  photos: AgentPhotoInput[];
+};
+
 export const generationService = {
   async submit(userId: string, input: GenerationInput) {
     const amount = creditService.cost();
@@ -36,26 +42,74 @@ export const generationService = {
       return album;
     });
 
-    try {
-      await agentClient.submitLayout({
-        requestId: input.requestId,
-        prompt: input.prompt,
-        language: input.language,
-        callbackUrl: `${env.WEB_BASE_URL}/api/v1/internal/job-progress`,
-        photos: input.photos,
-      });
-    } catch (e) {
-      logger.error({ err: String(e), requestId: input.requestId }, 'agent submit failed, marking job FAILED');
-      await jobService.handleFailed(input.requestId, {
-        code: 'AGENT_INTERNAL_ERROR',
-        message: 'Failed to submit to agent',
-      });
-      throw e;
-    }
+    return dispatch(albumId, {
+      requestId: input.requestId,
+      prompt: input.prompt,
+      language: input.language,
+      photos: input.photos,
+    });
+  },
 
-    const job = await agentJobRepo.findByRequestId(input.requestId);
-    if (job) await jobService.markRunning(db, job.id);
+  // Retry a FAILED album by reusing the SAME albumId (§6.5.3): no new album, the
+  // failed card just reruns. The old hold was already released on failure, so we
+  // run a fresh precheck + hold under a new requestId; the browser resends the
+  // base64 (invariant 1 — originals never persisted server-side). prompt comes
+  // from the stored album so the rerun stays faithful to the original story.
+  async retry(userId: string, albumId: string, input: RetryInput) {
+    const album = await albumService.findOwned(userId, albumId);
+    const amount = creditService.cost();
+    await creditService.precheck(userId, amount);
 
-    return { albumId, requestId: input.requestId };
+    // Claim FAILED → AGENT_RUNNING, create the new job, and hold credit together
+    // (invariant 8). setRetrying throws ALBUM_NOT_RETRIABLE if the album isn't
+    // FAILED (already running / lost a concurrent retry), rolling the tx back
+    // before any hold is taken.
+    await db.transaction(async (tx) => {
+      await albumService.setRetrying(tx, albumId);
+      await jobService.create(tx, { userId, albumId, requestId: input.requestId });
+      await creditService.hold(tx, userId, amount, albumId);
+    });
+
+    return dispatch(albumId, {
+      requestId: input.requestId,
+      prompt: album.prompt,
+      language: input.language,
+      photos: input.photos,
+    });
   },
 };
+
+// Shared tail of submit/retry (non-exported — it's an internal helper, not a
+// public service method): fire the layout request at the Agent and flip the job
+// QUEUED → RUNNING. On submit failure, fail the job — handleFailed marks the
+// album FAILED and releases the hold — then return the albumId WITHOUT throwing
+// (§6.5.3, don't orphan the failed card): the album already exists, so the
+// browser must learn its id to store the recipe and open the retriable failed
+// card. Throwing here would lose the albumId and strand a FAILED album the user
+// can never reach.
+async function dispatch(
+  albumId: string,
+  payload: { requestId: string; prompt: string; language: 'zh' | 'en'; photos: AgentPhotoInput[] },
+): Promise<{ albumId: string; requestId: string }> {
+  try {
+    await agentClient.submitLayout({
+      requestId: payload.requestId,
+      prompt: payload.prompt,
+      language: payload.language,
+      callbackUrl: `${env.WEB_BASE_URL}/api/v1/internal/job-progress`,
+      photos: payload.photos,
+    });
+  } catch (e) {
+    logger.error({ err: String(e), requestId: payload.requestId }, 'agent submit failed, marking job FAILED');
+    await jobService.handleFailed(payload.requestId, {
+      code: 'AGENT_INTERNAL_ERROR',
+      message: 'Failed to submit to agent',
+    });
+    return { albumId, requestId: payload.requestId };
+  }
+
+  const job = await agentJobRepo.findByRequestId(payload.requestId);
+  if (job) await jobService.markRunning(db, job.id);
+
+  return { albumId, requestId: payload.requestId };
+}

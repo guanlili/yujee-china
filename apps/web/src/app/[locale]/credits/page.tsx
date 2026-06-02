@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 import { ADDON_PACKS } from '@/config/pricing';
+import { generationDraft } from '@/lib/generation/draft';
 
 type LedgerReason =
   | 'SIGNUP_BONUS'
@@ -34,6 +35,14 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [buying, setBuying] = useState<string | null>(null);
+  // A pending /create draft means the user detoured here to top up mid-generation
+  // (§6.5.2). Offer a "continue" CTA so the loop closes back to /create on return
+  // — surviving the external checkout redirect because the draft is in localStorage.
+  const [hasDraft, setHasDraft] = useState(false);
+
+  useEffect(() => {
+    setHasDraft(!!generationDraft.load());
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -89,6 +98,18 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
         </p>
       )}
       {err && <p className="mb-6 text-sm text-red-600">{err}</p>}
+
+      {hasDraft && (
+        <div className="mb-8 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-5 py-4">
+          <p className="text-sm mb-3">{t.resumeBanner}</p>
+          <a
+            href="/create"
+            className="inline-block px-6 py-2.5 rounded-full bg-[var(--accent)] text-white text-sm tracking-wide"
+          >
+            {t.resumeCta}
+          </a>
+        </div>
+      )}
 
       <section className="rounded-xl border border-[var(--border)] bg-white p-6 mb-10">
         <p className="text-xs uppercase tracking-widest text-[var(--muted)]">{t.balance}</p>

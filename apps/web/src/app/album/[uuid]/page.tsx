@@ -4,6 +4,7 @@ import { use, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAlbumPoll } from '@/lib/hooks/use-album-poll';
 import { AlbumEditor } from '@/components/album/AlbumEditor';
+import { RetryFailedButton } from '@/components/album/RetryFailedButton';
 import { detectLocale, localizePath } from '@/lib/i18n/routing';
 
 const STAGE_LABEL: Record<string, string> = {
@@ -46,6 +47,10 @@ export default function AlbumPage({ params }: { params: Promise<{ uuid: string }
         <div className="text-center py-24">
           <p className="serif text-3xl text-red-700">Something went wrong</p>
           <p className="mt-3 text-[var(--muted)]">{error ?? 'Generation failed.'}</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">No credit was charged.</p>
+          <div className="flex justify-center">
+            <RetryFailedButton albumId={uuid} />
+          </div>
         </div>
       ) : phase === 'gone' ? (
         <div className="text-center py-24">

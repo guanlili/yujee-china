@@ -24,6 +24,18 @@ export const CreateJobResponse = z.object({
 });
 export type CreateJobResponse = z.infer<typeof CreateJobResponse>;
 
+// Retry a FAILED album by reusing the same albumId (§6.5.3). No prompt: the
+// rerun reuses the stored album.prompt. The browser resends base64 under a fresh
+// requestId. Response shape matches CreateJobResponse (same albumId echoed back).
+// Min 1 photo, aligned with CT-1 (§6.5.6) — the Agent renders 1–2 photos with
+// text-only layouts.
+export const RetryJobRequest = z.object({
+  requestId: z.string().uuid(),
+  language: z.enum(['zh', 'en']),
+  photos: z.array(BrowserPhoto).min(1).max(30),
+});
+export type RetryJobRequest = z.infer<typeof RetryJobRequest>;
+
 export const JobStatusResponse = z.object({
   requestId: z.string().min(1),
   albumId: z.string().min(1),

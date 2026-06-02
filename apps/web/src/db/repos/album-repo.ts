@@ -66,6 +66,26 @@ export const albumRepo = {
       .where(eq(albums.id, id));
   },
 
+  // Conditional status transition, mirroring agentJobRepo.transitionStatus: flip
+  // status to `to` only if it is currently one of `from`, and report whether
+  // *this* call won. Retry uses it to claim FAILED → AGENT_RUNNING exactly once —
+  // two concurrent retries (or a retry racing a stale-job sweep) serialize on the
+  // row lock; the loser gets 0 rows and must abort before holding credit again.
+  transitionStatus: async (
+    tx: DbOrTx,
+    id: string,
+    to: AlbumStatus,
+    from: AlbumStatus[],
+    patch: Partial<NewAlbum> = {},
+  ): Promise<boolean> => {
+    const rows = await tx
+      .update(albums)
+      .set({ ...patch, status: to, updatedAt: new Date() })
+      .where(and(eq(albums.id, id), inArray(albums.status, from)))
+      .returning({ id: albums.id });
+    return rows.length > 0;
+  },
+
   delete: async (tx: DbOrTx, id: string): Promise<void> => {
     await tx.delete(albums).where(eq(albums.id, id));
   },

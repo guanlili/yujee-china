@@ -32,6 +32,20 @@ export const albumService = {
     return album;
   },
 
+  // Retry transition (§6.5.3): claim a FAILED album back to AGENT_RUNNING so the
+  // SAME album is reused for a rerun — no new album, no orphaned failed card. The
+  // transition is conditional (only wins from FAILED), so a double-click or a
+  // retry racing the stale-job sweep can't start two generations or double-hold
+  // credit; the loser throws ALBUM_NOT_RETRIABLE and generationService.retry
+  // aborts before the hold. errorMessage is cleared so the album reads clean.
+  // Caller must hold ownership (findOwned) before invoking inside its tx.
+  async setRetrying(tx: DbOrTx, albumId: string): Promise<void> {
+    const won = await albumRepo.transitionStatus(tx, albumId, 'AGENT_RUNNING', ['FAILED'], {
+      errorMessage: null,
+    });
+    if (!won) throw ERRORS.ALBUM_NOT_RETRIABLE();
+  },
+
   // The browser polls this by album uuid — album is the source of truth. While
   // status is AGENT_RUNNING we resolve the latest job for live stage/progress,
   // which also opportunistically sweeps a zombie (dead job → FAILED + credit

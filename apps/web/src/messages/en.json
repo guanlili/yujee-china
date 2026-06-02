@@ -83,6 +83,8 @@
       "noHistory": "No transactions yet.",
       "checkoutSuccess": "Payment received — your credits will appear here shortly.",
       "checkoutCancel": "Checkout was canceled.",
+      "resumeBanner": "Your memoir is waiting. Once your credits land, pick up right where you left off.",
+      "resumeCta": "Continue generating",
       "reason": {
         "SIGNUP_BONUS": "Signup bonus",
         "GENERATION_HOLD": "Generation reserved",

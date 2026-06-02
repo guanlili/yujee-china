@@ -12,6 +12,7 @@
 |---|---|---|---|
 | POST   | `/api/v1/jobs` | user | 提交 prompt + base64,触发生成,立刻返回 requestId |
 | GET    | `/api/v1/jobs/[requestId]` | user | 轮询任务状态(stage / progress / status) |
+| POST   | `/api/v1/albums/[uuid]/retry` | user | 失败相册复用同一 albumId 重跑(浏览器重传 base64)|
 | GET    | `/api/v1/albums` | user | 我的相册列表 |
 | GET    | `/api/v1/albums/[uuid]` | user | 单个相册详情(含所有页)|
 | PATCH  | `/api/v1/albums/[uuid]` | user | 改标题等基础字段 |
@@ -83,7 +84,7 @@
    - `albumService.create({ userId, status: 'AGENT_RUNNING', prompt, photoCount })` → 拿 `albumId`
    - `jobService.create({ albumId, userId, requestId, status: 'QUEUED' })`
    - `creditService.hold(tx, userId, cost, albumId)` —— 预留积分:写 `credit_holds`(HOLDING)+ 0-delta `GENERATION_HOLD` ledger,**余额此刻不变**,生成完成时才 settle 扣费(见 §3.3)
-5. `agentClient.submitLayout(...)`,Agent 5 秒内 202 接单(不等结果)
+5. `agentClient.submitLayout(...)`,Agent 5 秒内 202 接单(不等结果)。**提交失败不抛错**:`handleFailed`(退 hold + album 回 `FAILED`)后仍返回 `albumId`(§6.5.3 不孤儿化),浏览器跳 `/album/{albumId}` 即见可重试的失败卡
 6. 把 `agent_jobs.status` 标 `RUNNING`,返回 `{ albumId, requestId }` 给浏览器
 7. **本次 HTTP 请求到此结束**。Web 函数在 ≤ 8 秒内退出。终态由 Agent 后续 callback 写入,见 §3.3。
 
@@ -97,6 +98,32 @@
 ```json
 { "ok": true, "data": { "albumId": "alb_xxx", "requestId": "req_xxx" } }
 ```
+
+### 3.1a `POST /api/v1/albums/[uuid]/retry`
+
+失败相册重试(§6.5.3):**复用同一 albumId 重跑**,不新建 album、不孤儿化失败卡。
+
+请求(无 `prompt` —— 复用 album 里存的 prompt;浏览器从 IndexedDB 重传 base64,守不变式 1;`photos` ≥1 张,对齐 CT-1 §6.5.6,1–2 图走纯文字版面):
+```json
+{
+  "requestId": "req_yyy",
+  "language": "zh",
+  "photos": [ { "photoId": "p1", "base64": "data:image/jpeg;base64,...", "width": 800, "height": 600 } ]
+}
+```
+
+服务端流程(`generationService.retry`,与 §3.1 `submit` 共用 `dispatch` 尾段):
+1. `requireAuth` + `albumService.findOwned`(归属校验 + 取 `prompt`)
+2. `creditService.precheck`,不足 → `CREDIT_INSUFFICIENT`(前端跳 `/credits` 充值后回来再点重试 —— `/credits` 才是充值入口,非 `/pricing`)
+3. 事务里(守不变式 8):
+   - `albumService.setRetrying(tx, albumId)` —— 条件转移 `FAILED → AGENT_RUNNING` 并清空 `errorMessage`;非 FAILED(已在跑 / 输掉并发重试)→ `ALBUM_NOT_RETRIABLE`(409),回滚不占 hold
+   - `jobService.create` —— **新 requestId 的新 job**(旧 FAILED job 保留;`findLatestByAlbum` 取新的)
+   - `creditService.hold` —— **新 hold**(旧 hold 在失败时已 release)
+4. `dispatch`:提交 Agent → job `QUEUED → RUNNING`;提交失败则 `handleFailed`(退 hold + album 回 FAILED)后**返回 `albumId` 不抛错**(§6.5.3 不孤儿化)—— album 已存在,前端拿到 id 重载即见可重试的失败卡
+
+响应:`{ ok: true, data: { albumId, requestId } }`(同 §3.1)。即使 Agent 提交失败也返回 `albumId`(此时 album 已是 `FAILED`),浏览器据此打开失败卡。
+
+> 浏览器侧:重试成功后 album 已回 `AGENT_RUNNING`,重新进入 §4.1 的轮询。哪些 photoId 属于这本相册由浏览器在创建时记下(`albumRecipe`),原图仍只在 IndexedDB;换设备 / 清缓存导致原图丢失时,前端提示"重新开始"而非提交残缺集(`photosFromStore` 任一原图缺失即 `PhotosUnavailableError` 中止,绝不提交残缺集)。
 
 ### 3.2 `GET /api/v1/jobs/[requestId]` (轮询)
 

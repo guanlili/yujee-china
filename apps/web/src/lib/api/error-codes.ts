@@ -38,6 +38,7 @@ export const ERRORS = {
 
   CHAT_BUSY:             () => new AppError('CHAT_BUSY',             'Another edit is in progress', 409),
   ALBUM_NOT_EDITABLE:    () => new AppError('ALBUM_NOT_EDITABLE',    'Album is not in editing state', 409),
+  ALBUM_NOT_RETRIABLE:   () => new AppError('ALBUM_NOT_RETRIABLE',   'Album is not in a failed state', 409),
 
   PDF_UPLOAD_FAILED:     () => new AppError('PDF_UPLOAD_FAILED',     'PDF upload failed',           500),
   R2_SIGN_FAILED:        () => new AppError('R2_SIGN_FAILED',        'R2 presign failed',           500),

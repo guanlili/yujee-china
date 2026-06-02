@@ -1,24 +1,64 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { compressFile } from '@/lib/photo/compress';
 import { photoStore } from '@/lib/photo/store';
+import {
+  submitGeneration,
+  photosFromStore,
+  CreditInsufficientError,
+  PhotosUnavailableError,
+} from '@/lib/generation/client';
+import { generationDraft, albumRecipe } from '@/lib/generation/draft';
+import { detectLocale } from '@/lib/i18n/routing';
 
 type LocalPhoto = {
   photoId: string;
-  base64: string;
+  previewUrl: string;
   width: number;
   height: number;
-  file: File;
 };
+
+function inferLanguage(prompt: string): 'zh' | 'en' {
+  return /[一-龥]/.test(prompt) ? 'zh' : 'en';
+}
 
 export default function CreatePage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [photos, setPhotos] = useState<LocalPhoto[]>([]);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
+  const [resumed, setResumed] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Coming back from /pricing after topping up (§6.5.2): rebuild the form from
+  // the saved draft + the originals still in IndexedDB so the user resubmits the
+  // exact same memoir. If the originals are gone (cleared cache / other device)
+  // we drop the draft and start clean rather than submit a partial set.
+  useEffect(() => {
+    const draft = generationDraft.load();
+    if (!draft) return;
+    let cancelled = false;
+    (async () => {
+      const urls = await photoStore.getObjectUrls(draft.photoIds);
+      const restored = draft.photoIds
+        .filter((id) => urls[id])
+        .map((id) => ({ photoId: id, previewUrl: urls[id]!, width: 0, height: 0 }));
+      if (cancelled) return;
+      if (restored.length < 3) {
+        generationDraft.clear();
+        return;
+      }
+      setPrompt(draft.prompt);
+      setPhotos(restored);
+      setResumed(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const onFiles = async (files: FileList | null) => {
     if (!files) return;
@@ -29,8 +69,12 @@ export default function CreatePage() {
       for (const f of Array.from(files)) {
         if (photos.length + next.length >= 30) break;
         const photoId = crypto.randomUUID();
-        const compressed = await compressFile(f, photoId);
-        next.push({ ...compressed, file: f });
+        const { width, height } = await compressFile(f, photoId);
+        // Originals live in IndexedDB only (invariant 1); base64 is rebuilt from
+        // them at submit time, so a /pricing detour can resume without re-upload.
+        await photoStore.put(photoId, f);
+        const previewUrl = (await photoStore.getObjectUrl(photoId)) ?? '';
+        next.push({ photoId, previewUrl, width, height });
       }
       setPhotos((prev) => [...prev, ...next]);
     } catch (e) {
@@ -54,38 +98,39 @@ export default function CreatePage() {
     }
     setBusy(true);
     setErr(null);
-    const requestId = crypto.randomUUID();
+    const language = inferLanguage(prompt);
+    const photoIds = photos.map((p) => p.photoId);
     try {
-      // Keep the originals in the browser only (invariant 1). The editor and PDF
-      // export read them back from IndexedDB by photoId.
-      await photoStore.putMany(photos.map((p) => ({ photoId: p.photoId, blob: p.file })));
-
-      const res = await fetch('/api/v1/jobs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requestId,
-          prompt: prompt.trim(),
-          language: /[一-龥]/.test(prompt) ? 'zh' : 'en',
-          photos: photos.map((p) => ({
-            photoId: p.photoId,
-            base64: p.base64,
-            width: p.width,
-            height: p.height,
-          })),
-        }),
+      const builtPhotos = await photosFromStore(photoIds);
+      const { albumId } = await submitGeneration({
+        requestId: crypto.randomUUID(),
+        prompt: prompt.trim(),
+        language,
+        photos: builtPhotos,
       });
-      const json = await res.json();
-      if (!json.ok) {
-        setErr(json.error?.message ?? 'Submit failed');
+      // Submitted — the draft has served its purpose. Persist the per-album
+      // recipe so a later FAILED → retry knows which originals to resend (§6.5.3).
+      generationDraft.clear();
+      albumRecipe.save(albumId, { language, photoIds });
+      // Address the album by uuid — it polls itself by status. No job id in the
+      // URL: a stale/cleaned-up requestId must never gate whether the album opens.
+      router.push(`/album/${albumId}`);
+    } catch (e) {
+      if (e instanceof CreditInsufficientError) {
+        // Short on credits: stash the draft (originals already in IndexedDB),
+        // send the user to /credits to top up — that's the real checkout entry,
+        // not /pricing — then resume here on return (§6.5.2).
+        generationDraft.save({ prompt: prompt.trim(), language, photoIds });
+        const locale = detectLocale(pathname);
+        router.push(`/${locale}/credits?from=create`);
+        return;
+      }
+      if (e instanceof PhotosUnavailableError) {
+        setErr('Some photos are no longer available on this device. Please re-add them.');
         setBusy(false);
         return;
       }
-      // Address the album by uuid — it polls itself by status. No job id in the
-      // URL: a stale/cleaned-up requestId must never gate whether the album opens.
-      router.push(`/album/${json.data.albumId}`);
-    } catch (e) {
-      setErr(String(e));
+      setErr(e instanceof Error ? e.message : String(e));
       setBusy(false);
     }
   };
@@ -94,6 +139,12 @@ export default function CreatePage() {
     <main className="min-h-screen max-w-3xl mx-auto px-6 py-16">
       <p className="uppercase tracking-[0.3em] text-xs text-[var(--muted)] mb-4">Step 1</p>
       <h1 className="serif text-4xl mb-8">Start a memoir</h1>
+
+      {resumed && (
+        <p className="mb-8 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/30 px-4 py-3 text-sm">
+          Welcome back — your photos and story are ready. Tap “Generate my memoir” to continue.
+        </p>
+      )}
 
       <label className="block">
         <span className="text-sm font-medium">Your story prompt</span>
@@ -129,7 +180,7 @@ export default function CreatePage() {
               <div key={p.photoId} className="relative group">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={p.base64}
+                  src={p.previewUrl}
                   alt=""
                   className="w-full aspect-square object-cover rounded"
                 />
