@@ -156,10 +156,24 @@ export function FlipBook({
 
   const halfW = book.w / 2;
 
+  // Sync the parent selection to a page belonging to the given spread so the
+  // active-thumbnail highlight (and any selection-driven UI) tracks the book.
+  const syncSelectionToSpread = useCallback(
+    (s: number) => {
+      const idx = pages[s * 2] != null ? s * 2 : pages[s * 2 + 1] != null ? s * 2 + 1 : -1;
+      if (idx >= 0 && idx !== selected) onSelect(idx);
+    },
+    [pages, selected, onSelect],
+  );
+
   const goToSpread = useCallback(
     (to: number) => {
       if (to < 0 || to >= spreadCount || to === spread || anim) return;
       const dir: 'next' | 'prev' = to > spread ? 'next' : 'prev';
+
+      // Turning the page is navigation: keep the parent selection in step so the
+      // active thumbnail and selection-driven UI follow the visible spread.
+      syncSelectionToSpread(to);
 
       // Reduced motion: jump straight to the target spread, no leaf animation.
       if (reducedMotion) {
@@ -180,16 +194,18 @@ export function FlipBook({
         timerRef.current = null;
       }, FLIP_MS + 40);
     },
-    [spread, spreadCount, anim, reducedMotion],
+    [spread, spreadCount, anim, reducedMotion, syncSelectionToSpread],
   );
 
   // prev/next on the strip move one spread at a time.
   const step = (dir: -1 | 1) => goToSpread(spread + dir);
 
-  // Selecting a page from outside (or clicking a face) navigates by spread.
-  const selectPage = (arrayIndex: number) => {
+  // Clicking a page face selects it AND opens the edit drawer (the primary
+  // UI-1a affordance), then turns the book to that page's spread if needed.
+  const editPage = (arrayIndex: number) => {
     if (arrayIndex < 0 || arrayIndex >= pages.length) return;
     onSelect(arrayIndex);
+    onEditPage(arrayIndex);
     goToSpread(spreadOf(arrayIndex));
   };
 
@@ -215,7 +231,6 @@ export function FlipBook({
     }
   }
 
-  const selectedSpread = spreadOf(selected);
   const onLeftHalf = selected === spread * 2;
   const onRightHalf = selected === spread * 2 + 1;
 
@@ -254,11 +269,8 @@ export function FlipBook({
         <>
           <button
             type="button"
-            onClick={() => selectPage(pageArrayIndex)}
-            onDoubleClick={() => {
-              onSelect(pageArrayIndex);
-              onEditPage(pageArrayIndex);
-            }}
+            onClick={() => editPage(pageArrayIndex)}
+            onDoubleClick={() => editPage(pageArrayIndex)}
             className="absolute inset-0 cursor-pointer"
             style={active ? { boxShadow: 'inset 0 0 0 2px var(--fg)' } : undefined}
             title={t.editPage}
@@ -266,10 +278,7 @@ export function FlipBook({
           />
           <button
             type="button"
-            onClick={() => {
-              onSelect(pageArrayIndex);
-              onEditPage(pageArrayIndex);
-            }}
+            onClick={() => editPage(pageArrayIndex)}
             title={t.editPage}
             aria-label={t.editPage}
             className={`absolute top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--fg-2)] opacity-0 shadow-[var(--shadow-card)] transition-opacity hover:text-[var(--fg)] group-hover/half:opacity-100 ${
@@ -405,7 +414,9 @@ export function FlipBook({
         <div className="flex gap-1.5 overflow-x-auto p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {Array.from({ length: spreadCount }, (_, s) => {
             const [tl, tr] = pagesOfSpread(s);
-            const active = s === selectedSpread;
+            // Highlight the spread currently shown in the book, not a stale
+            // selection — turning the page keeps the two in lockstep.
+            const active = s === spread;
             return (
               <button
                 key={s}
