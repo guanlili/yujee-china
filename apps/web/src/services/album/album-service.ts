@@ -7,6 +7,13 @@ import { ERRORS } from '@/lib/api/error-codes';
 
 const PDF_MAX_BYTES = 50 * 1024 * 1024; // 50MB — docs/web/api.md §3.6
 
+type AlbumCoverPage = {
+  pageIndex: number;
+  templateId: string;
+  imagesJson: Record<string, string>;
+  textsJson: Record<string, string>;
+};
+
 export const albumService = {
   async create(tx: DbOrTx, input: {
     userId: string;
@@ -89,6 +96,18 @@ export const albumService = {
 
   async listByUser(userId: string) {
     const rows = await albumRepo.findByUser(userId);
+    const coverRows = await albumPageRepo.findFirstByAlbumIds(rows.map((a) => a.id));
+    const coverByAlbumId = new Map(
+      coverRows.map((p) => [
+        p.albumId,
+        {
+          pageIndex: p.pageIndex,
+          templateId: p.templateId,
+          imagesJson: p.imagesJson as Record<string, string>,
+          textsJson: p.textsJson as Record<string, string>,
+        } satisfies AlbumCoverPage,
+      ]),
+    );
     // Sweep any zombie on the list path too: landing on /my-albums alone is
     // enough to flip a dead generation to FAILED and release its credit hold.
     const out = [];
@@ -106,6 +125,7 @@ export const albumService = {
         pageCount: a.pageCount,
         pdfUrl: a.pdfUrl,
         createdAt: a.createdAt,
+        coverPage: coverByAlbumId.get(a.id) ?? null,
       });
     }
     return out;
