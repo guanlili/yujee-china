@@ -4,6 +4,7 @@
     "registerTitle": "创建你的 Yujee 账户",
     "loginWelcome": "欢迎回来",
     "loginSubtitle": "登录以继续创作你的杂志",
+    "registerSubtitle": "开始把你的照片做成一本纪念杂志。",
     "email": "邮箱",
     "password": "密码",
     "name": "姓名",
@@ -23,10 +24,18 @@
     "googleError": "无法启动 Google 登录，请重试。",
     "registerError": "无法创建账户。",
     "verifyEmailSent": "请查收邮件——我们已发送验证链接，点击即可完成注册。",
+    "verifyEmailTitle": "请查收邮件",
+    "verifyEmailLead": "我们已将验证链接发送至",
+    "verifyEmailBody": "打开链接确认邮箱，即可完成注册。",
+    "verifyEmailHint": "没收到？请检查垃圾邮件箱——链接可能需要一两分钟才送达。",
+    "backToLogin": "返回登录",
     "legalPrefix": "登录即表示你同意我们的",
     "legalAnd": "与",
     "terms": "服务条款",
-    "privacy": "隐私政策"
+    "privacy": "隐私政策",
+    "legalPre": "创建账户即表示你同意我们的",
+    "legalTerms": "服务条款",
+    "legalPrivacy": "隐私政策"
   },
   "errors": {
     "UNAUTHORIZED": "需要登录",

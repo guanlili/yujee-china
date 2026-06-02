@@ -3,20 +3,35 @@ import { getMessages } from '@/lib/i18n/messages';
 import { type Locale } from '@/lib/i18n/routing';
 import { RegisterForm } from './register-form';
 
+// Layered radial wash mirrors design-v1/design/login.html so /register and
+// /login share one auth surface.
+const authBackground =
+  'radial-gradient(ellipse 80% 60% at 0% 0%, rgba(23,225,135,0.07) 0%, transparent 70%),' +
+  'radial-gradient(ellipse 60% 70% at 50% 100%, rgba(140,94,244,0.06) 0%, transparent 70%),' +
+  'radial-gradient(ellipse 70% 50% at 100% 20%, rgba(218,244,94,0.06) 0%, transparent 70%),' +
+  'var(--bg)';
+
 export default async function RegisterPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = await params;
   const messages = getMessages(locale).auth;
 
   return (
-    <main className="min-h-screen max-w-md mx-auto px-6 py-16">
-      <h1 className="serif text-4xl mb-8">{messages.registerTitle}</h1>
-      <RegisterForm messages={messages} />
-      <p className="mt-6 text-sm text-[var(--muted)]">
-        {messages.switchToLogin}{' '}
-        <Link className="underline" href={`/${locale}/login`}>
-          {messages.loginAction}
+    <div className="flex min-h-screen flex-col" style={{ background: authBackground }}>
+      <header className="flex items-center justify-between px-7 py-5">
+        <Link
+          href={`/${locale}`}
+          className="flex items-center gap-2.5 text-[var(--text-xl)] font-extrabold tracking-[-0.01em]"
+        >
+          <span className="h-6 w-6 rounded-md bg-[linear-gradient(135deg,var(--grad-green),var(--grad-purple),var(--grad-lime))]" />
+          Yujee
         </Link>
-      </p>
-    </main>
+      </header>
+
+      <main className="flex flex-1 items-center justify-center px-5 pb-16 pt-6">
+        <div className="w-full max-w-[420px] rounded-[var(--radius-lg)] bg-[var(--surface)] px-9 pb-8 pt-10 shadow-[var(--shadow-card)]">
+          <RegisterForm messages={messages} locale={locale} />
+        </div>
+      </main>
+    </div>
   );
 }
