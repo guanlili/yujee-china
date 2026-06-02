@@ -21,7 +21,16 @@ import { detectLocale } from '@/lib/i18n/routing';
 //   • not enough credits — route to /credits (the checkout entry), then the user
 //     comes back and the still-FAILED card lets them retry again (originals +
 //     recipe persisted).
-export function RetryFailedButton({ albumId }: { albumId: string }) {
+// `variant` lets callers reuse the exact retry logic in two skins:
+//   • 'default' — the full-width pill on the /album failed screen (unchanged).
+//   • 'card'    — the compact icon button inside a /my-albums failed cover.
+export function RetryFailedButton({
+  albumId,
+  variant = 'default',
+}: {
+  albumId: string;
+  variant?: 'default' | 'card';
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const [busy, setBusy] = useState(false);
@@ -77,6 +86,16 @@ export function RetryFailedButton({ albumId }: { albumId: string }) {
   };
 
   if (unavailable) {
+    if (variant === 'card') {
+      return (
+        <p className="px-3 text-center text-[11px] leading-snug text-white/85">
+          Photos no longer on this device.{' '}
+          <a href="/create" className="underline">
+            Start new
+          </a>
+        </p>
+      );
+    }
     return (
       <p className="mt-6 text-sm text-[var(--muted)]">
         These photos are no longer on this device.{' '}
@@ -85,6 +104,35 @@ export function RetryFailedButton({ albumId }: { albumId: string }) {
         </a>
         .
       </p>
+    );
+  }
+
+  if (variant === 'card') {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={retry}
+          disabled={busy}
+          className="mt-0.5 inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3.5 py-1.5 text-xs font-semibold text-[var(--fg)] shadow-[0_1px_4px_rgba(0,0,0,0.18)] transition-transform hover:-translate-y-px disabled:opacity-50"
+        >
+          <svg
+            className="h-3.5 w-3.5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+          {busy ? 'Retrying…' : 'Try again'}
+        </button>
+        {error && <p className="mt-1.5 px-3 text-center text-[11px] text-red-200">{error}</p>}
+      </>
     );
   }
 

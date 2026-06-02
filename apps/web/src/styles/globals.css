@@ -51,3 +51,30 @@ body {
   66% { border-color: var(--grad-lime); opacity: 0.7; }
   100% { border-color: var(--grad-green); opacity: 1; }
 }
+
+/* Album cover status spinners (/my-albums) — conic-gradient rings the design
+   draws with mask + keyframes, which Tailwind utilities can't express inline.
+   Mirrors design-v1/yujee-home2.html .gen-ring / .badge-spin. */
+@keyframes cover-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.gen-ring {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--grad-green), var(--grad-purple), var(--grad-lime), var(--grad-green));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  animation: cover-spin 0.9s linear infinite;
+}
+.badge-spin {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--grad-green), var(--grad-purple), var(--grad-lime), var(--grad-green));
+  -webkit-mask: radial-gradient(farthest-side, transparent 40%, #000 42%);
+  mask: radial-gradient(farthest-side, transparent 40%, #000 42%);
+  animation: cover-spin 0.9s linear infinite;
+}

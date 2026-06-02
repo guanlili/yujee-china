@@ -109,6 +109,9 @@
       "deleting": "Deleting…",
       "confirmDelete": "Delete this album? This can't be undone.",
       "meta": "{photos} photos · {pages} pages",
+      "createdOn": "Created {date}",
+      "generatingLabel": "Laying out your pages…",
+      "failedLabel": "Generation failed",
       "status": {
         "AGENT_RUNNING": "Generating",
         "EDITING": "Editing",
