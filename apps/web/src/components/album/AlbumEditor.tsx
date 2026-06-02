@@ -1,15 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Locale } from '@/lib/i18n/routing';
 import { getMessages } from '@/lib/i18n/messages';
 import { photoStore } from '@/lib/photo/store';
 import { collectPhotoIds } from './adapt-layout';
-import { PagePreview } from './PagePreview';
+import { FlipBook } from './FlipBook';
 import { PageEditPanel } from './PageEditPanel';
 import { ChatPanel } from './ChatPanel';
 import { EditorTopbar, type SaveState } from './EditorTopbar';
-import { PAGE } from './templates/constants';
 import {
   applyPatchToPages,
   extractPhotoIds,
@@ -23,10 +22,11 @@ interface Props {
   locale: Locale;
 }
 
-// UI-1a functional editor (design-v1 editor.html, minus the 3D book → UI-1b):
-// solid topbar + accurate flat single-page preview + per-page edit drawer + rich
-// AI chat + browser-side PDF export. Center renders the real web template at the
-// canonical 794×1123 canvas, scaled to fit the pane.
+// Album editor (design-v1 editor.html): solid topbar + 3D perspective flipbook
+// preview (UI-1b) + per-page edit drawer + rich AI chat + browser-side PDF
+// export. The flipbook is the preview/navigation layer only — all UI-1a
+// functionality (editing, chat, export, topbar, retry) is unchanged; pages
+// still render through the real web templates at the canonical 794×1123 canvas.
 export function AlbumEditor({ detail, locale }: Props) {
   const t = getMessages(locale).dashboard.editor;
   const albumId = detail.album.id;
@@ -188,30 +188,6 @@ export function AlbumEditor({ detail, locale }: Props) {
   const clampedSelected = Math.min(selected, Math.max(0, total - 1));
   const selectedPage = pages[clampedSelected];
 
-  // Fit one canonical page into the available preview area.
-  const stageRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(0.5);
-  useLayoutEffect(() => {
-    const el = stageRef.current;
-    if (!el) return;
-    const fit = () => {
-      const padX = 64;
-      const padY = 96; // room for the bottom nav pill
-      const sx = (el.clientWidth - padX) / PAGE.width;
-      const sy = (el.clientHeight - padY) / PAGE.height;
-      setScale(Math.max(0.25, Math.min(0.85, Math.min(sx, sy))));
-    };
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const goTo = (i: number) => {
-    if (i < 0 || i >= total) return;
-    setSelected(i);
-  };
-
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg)]">
       <EditorTopbar
@@ -229,67 +205,26 @@ export function AlbumEditor({ detail, locale }: Props) {
       )}
 
       <div className="relative grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[1fr_340px]">
-        {/* CENTER — flat preview */}
-        <main ref={stageRef} className="relative flex items-center justify-center overflow-auto bg-[var(--bg)] p-8">
-          {selectedPage ? (
-            <div className="group relative">
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(true)}
-                title={t.editPage}
-                aria-label={t.editPage}
-                className="absolute -right-3 -top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--fg-2)] opacity-0 shadow-[var(--shadow-card)] transition-opacity hover:text-[var(--fg)] group-hover:opacity-100"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-                  <path d="M12 20h9" />
-                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(true)}
-                className="block cursor-pointer"
-                title={t.editPage}
-              >
-                <PagePreview page={selectedPage} totalPages={total} resolveImage={resolveImage} scale={scale} />
-              </button>
-            </div>
-          ) : (
-            <p className="text-[var(--text-sm)] text-[var(--muted)]">{t.noPages}</p>
-          )}
-
-          {/* bottom nav pill */}
-          {total > 0 && (
-            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[rgba(255,255,255,0.85)] px-3 py-1.5 shadow-[0_2px_12px_rgba(0,0,0,0.08)] backdrop-blur-md">
-              <button
-                type="button"
-                onClick={() => goTo(clampedSelected - 1)}
-                disabled={clampedSelected === 0}
-                title={t.prevPage}
-                aria-label={t.prevPage}
-                className="flex h-5 w-5 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--bg)] hover:text-[var(--fg)] disabled:opacity-30"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-2.5 w-2.5">
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
-              </button>
-              <span className="min-w-[36px] text-center font-mono text-[10px] font-medium tabular-nums text-[var(--fg-2)]">
-                {t.pageIndicator.replace('{current}', String(clampedSelected + 1)).replace('{total}', String(total))}
-              </span>
-              <button
-                type="button"
-                onClick={() => goTo(clampedSelected + 1)}
-                disabled={clampedSelected >= total - 1}
-                title={t.nextPage}
-                aria-label={t.nextPage}
-                className="flex h-5 w-5 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--bg)] hover:text-[var(--fg)] disabled:opacity-30"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-2.5 w-2.5">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </button>
-            </div>
-          )}
+        {/* CENTER — 3D flipbook preview + thumbnail strip (UI-1b) */}
+        <main className="relative overflow-hidden bg-[var(--bg)] p-8">
+          <FlipBook
+            pages={pages}
+            totalPages={total}
+            resolveImage={resolveImage}
+            selected={clampedSelected}
+            onSelect={setSelected}
+            onEditPage={(i) => {
+              setSelected(i);
+              setDrawerOpen(true);
+            }}
+            t={{
+              prevPage: t.prevPage,
+              nextPage: t.nextPage,
+              noPages: t.noPages,
+              editPage: t.editPage,
+              pageIndicator: t.pageIndicator,
+            }}
+          />
         </main>
 
         {/* RIGHT — chat */}
