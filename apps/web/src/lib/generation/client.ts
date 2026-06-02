@@ -28,6 +28,14 @@ export class CreditInsufficientError extends Error {
   }
 }
 
+export class UnauthorizedError extends Error {
+  readonly code = 'UNAUTHORIZED';
+  constructor() {
+    super('Login required');
+    this.name = 'UnauthorizedError';
+  }
+}
+
 // Thrown when one or more originals can't be rebuilt from IndexedDB (cache
 // cleared / different device). Carries the missing ids so the caller can react
 // without re-deriving them.
@@ -71,6 +79,7 @@ async function postJobs(path: string, body: unknown): Promise<SubmitResult> {
   });
   const json = await res.json();
   if (!json.ok) {
+    if (res.status === 401 || json.error?.code === 'UNAUTHORIZED') throw new UnauthorizedError();
     if (json.error?.code === 'CREDIT_INSUFFICIENT') throw new CreditInsufficientError();
     throw new Error(json.error?.message ?? 'Request failed');
   }

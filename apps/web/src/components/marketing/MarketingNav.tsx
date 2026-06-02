@@ -38,7 +38,7 @@ export function MarketingNav({ locale, otherLocale, altPath, m }: Props) {
         <div className="flex items-center gap-2 md:gap-3">
           <Link
             href={`/${locale}/pricing`}
-            className="hidden sm:inline-flex px-3 py-1.5 text-sm text-[var(--fg-2)] hover:text-[var(--fg)]"
+            className="hidden items-center rounded-full bg-[#ececec] px-3 py-1.5 text-sm text-[var(--muted)] transition-colors hover:bg-[#e2e2e2] hover:text-[var(--fg)] sm:inline-flex"
           >
             {m.nav.pricing}
           </Link>
@@ -56,15 +56,9 @@ export function MarketingNav({ locale, otherLocale, altPath, m }: Props) {
           </Link>
           <Link
             href={`/${locale}/login`}
-            className="hidden sm:inline-flex px-3 py-1.5 text-sm text-[var(--fg-2)] hover:text-[var(--fg)]"
-          >
-            {m.nav.login}
-          </Link>
-          <Link
-            href={`/${locale}/create`}
             className="inline-flex px-5 py-2 rounded-full bg-[var(--fg)] text-white text-sm font-semibold shadow-sm hover:-translate-y-0.5 transition-transform"
           >
-            {m.nav.getStarted}
+            {m.nav.login}
           </Link>
         </div>
       </div>
