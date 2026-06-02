@@ -295,7 +295,7 @@ const en: MarketingMessages = {
     tagline: 'Turn scattered photos into a magazine worth keeping.',
     productHead: 'Product',
     productItems: [
-      { label: 'Create a memoir', href: '/create' },
+      { label: 'Create a memoir', href: '#homepage-composer' },
       { label: 'Pricing', href: '/pricing' },
     ],
     legalHead: 'Legal',
@@ -520,7 +520,7 @@ const zh: MarketingMessages = {
     tagline: '把散落的照片，变成一本可以收藏的杂志。',
     productHead: '产品',
     productItems: [
-      { label: '创建纪念册', href: '/create' },
+      { label: '创建纪念册', href: '#homepage-composer' },
       { label: '定价', href: '/pricing' },
     ],
     legalHead: '法律',
