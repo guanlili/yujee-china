@@ -32,7 +32,7 @@ export function InspirationMarquee({ locale, title, more, cases }: Props) {
       <div className="mb-12 flex items-end justify-between">
         <h2 className="text-2xl font-bold tracking-tight md:text-[32px]">{title}</h2>
         <Link
-          href={`/${locale}/create`}
+          href={`/${locale}#homepage-composer`}
           className="group inline-flex items-center gap-1 text-sm text-[var(--muted)] transition-colors hover:text-[var(--fg)]"
         >
           <span>{more}</span>
@@ -45,7 +45,7 @@ export function InspirationMarquee({ locale, title, more, cases }: Props) {
           {track.map((c, i) => (
             <Link
               key={`${c.copy}-${c.title}`}
-              href={`/${locale}/create`}
+              href={`/${locale}#homepage-composer`}
               aria-hidden={c.copy === 1}
               tabIndex={c.copy === 1 ? -1 : undefined}
               className="group block w-[220px] flex-shrink-0"

@@ -4,12 +4,14 @@ import { MarketingChrome } from '@/components/marketing/MarketingChrome';
 import { FingerprintArt } from '@/components/landing/FingerprintArt';
 import { HeroComposer } from '@/components/landing/HeroComposer';
 import { InspirationMarquee } from '@/components/landing/InspirationMarquee';
+import { getMessages } from '@/lib/i18n/messages';
 import { isLocale, type Locale } from '@/lib/i18n/routing';
 import { getMarketingMessages } from '@/messages/marketing';
 import { notFound } from 'next/navigation';
 
 interface Props {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ resumeGeneration?: string }>;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -19,11 +21,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: m.landing.metaTitle, description: m.landing.metaDesc };
 }
 
-export default async function LandingPage({ params }: Props) {
+export default async function LandingPage({ params, searchParams }: Props) {
   const { locale } = await params;
+  const { resumeGeneration } = await searchParams;
   if (!isLocale(locale)) notFound();
   const loc = locale as Locale;
   const m = getMarketingMessages(loc).landing;
+  const createMessages = getMessages(loc).dashboard.create;
 
   return (
     <MarketingChrome locale={loc} pathname="/">
@@ -42,6 +46,8 @@ export default async function LandingPage({ params }: Props) {
           placeholder={m.composerPlaceholder}
           uploadLabel={m.composerUploadLabel}
           hints={m.composerHints}
+          createMessages={createMessages}
+          resumeGeneration={resumeGeneration === '1'}
         />
 
         <p className="z-[1] mt-4 text-[var(--text-xs)] text-[var(--meta)]">{m.heroTip}</p>
@@ -73,7 +79,7 @@ export default async function LandingPage({ params }: Props) {
           <h2 className="mb-4 font-extrabold tracking-tight text-[clamp(28px,4vw,40px)]">{m.ctaTitle}</h2>
           <p className="mb-8 text-base text-[var(--muted)]">{m.ctaSub}</p>
           <Link
-            href={`/${loc}/create`}
+            href={`/${loc}#homepage-composer`}
             className="inline-flex items-center gap-2 rounded-full bg-[var(--fg)] px-8 py-3.5 text-sm font-semibold text-white shadow-md transition-transform hover:-translate-y-0.5"
           >
             <span>{m.ctaButton}</span>
