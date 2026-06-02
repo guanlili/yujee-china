@@ -90,7 +90,7 @@ export function RetryFailedButton({
       return (
         <p className="px-3 text-center text-[11px] leading-snug text-white/85">
           Photos no longer on this device.{' '}
-          <a href="/create" className="underline">
+          <a href={`/${detectLocale(pathname)}#homepage-composer`} className="underline">
             Start new
           </a>
         </p>
@@ -99,7 +99,7 @@ export function RetryFailedButton({
     return (
       <p className="mt-6 text-sm text-[var(--muted)]">
         These photos are no longer on this device.{' '}
-        <a href={`/${detectLocale(pathname)}/create`} className="underline">
+        <a href={`/${detectLocale(pathname)}#homepage-composer`} className="underline">
           Start a new memoir
         </a>
         .

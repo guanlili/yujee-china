@@ -114,7 +114,7 @@ export function HeroComposer({
       } catch (e) {
         if (cancelled) return;
         if (e instanceof CreditInsufficientError) {
-          router.push(`/${locale}/credits?from=create`);
+          router.push(`/${locale}/credits?from=home`);
           return;
         }
         if (e instanceof UnauthorizedError) {
@@ -184,7 +184,7 @@ export function HeroComposer({
     } catch (e) {
       if (e instanceof CreditInsufficientError) {
         generationDraft.save(draft);
-        router.push(`/${locale}/credits?from=create`);
+        router.push(`/${locale}/credits?from=home`);
         return;
       }
       if (e instanceof UnauthorizedError) {

@@ -36,8 +36,9 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [buying, setBuying] = useState<string | null>(null);
-  // A pending /create draft means the user detoured here to top up mid-generation
-  // (§6.5.2). Offer a "continue" CTA so the loop closes back to /create on return
+  // A pending generation draft means the user detoured here to top up mid-generation
+  // (§6.5.2). Offer a "continue" CTA so the loop closes back through the
+  // homepage composer on return.
   // — surviving the external checkout redirect because the draft is in localStorage.
   const [hasDraft, setHasDraft] = useState(false);
 
@@ -101,13 +102,13 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
         )}
         {err && <p className="mb-6 text-sm text-red-600">{err}</p>}
 
-        {/* BILL-1 resume CTA — a pending /create draft means the user detoured here to
+        {/* BILL-1 resume CTA — a pending draft means the user detoured here to
             top up mid-generation (§6.5.2). Must survive the UI restore. */}
         {hasDraft && (
           <div className="mb-8 rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/[0.08] px-5 py-4">
             <p className="text-sm mb-3">{t.resumeBanner}</p>
             <a
-              href={`/${locale}/create`}
+              href={`/${locale}?resumeGeneration=1`}
               className="inline-block px-6 py-2.5 rounded-full bg-[var(--accent)] text-white text-sm tracking-wide"
             >
               {t.resumeCta}
