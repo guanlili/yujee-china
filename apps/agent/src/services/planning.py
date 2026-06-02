@@ -223,9 +223,10 @@ def _composing_system_prompt(photo_count: int) -> str:
         "  5. For each image slot you fill, the assigned photo MUST satisfy the slot's "
         "orientation AND quality constraints from the TemplateRegistry below.\n"
         "  6. pageIndex must be 0, 1, 2, ... strictly sequential.\n"
-        "  7. templateId MUST be one of the registry IDs below; slot keys MUST be from that template.\n"
-        "  8. Text content stays within the maxChars hint for each text slot.\n"
-        "  9. Prefer using each template at most once; vary visual rhythm.\n\n"
+        "  7. templateId MUST be one of the registry IDs below.\n"
+        "  8. Every key in images and texts MUST be from that page's template slots.\n"
+        "  9. Text content stays within the maxChars hint for each text slot.\n\n"
+        "STYLE GUIDANCE: prefer using each template at most once; vary visual rhythm.\n\n"
         + (
             "FEW-PHOTO GUIDANCE: you have very few photos for "
             f"{expected_pages} pages. Place each photo once (twice at most, never "

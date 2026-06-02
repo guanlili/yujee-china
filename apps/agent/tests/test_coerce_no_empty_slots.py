@@ -14,6 +14,7 @@ import pytest
 
 from src import templates as registry
 from src.schemas import AlbumLayoutPlan, Magazine, Page, PhotoAnalysis
+from src.services import planning
 from src.services.layout_rules import (
     build_text_first_layout,
     coerce_image_slots,
@@ -327,12 +328,38 @@ class TestRepairInstruction:
         out = repair_instruction("pages count 4 != required 3 for 3 photos")
         assert "RULE 1" in out
 
+    def test_reuse_violation_names_rule_4(self):
+        out = repair_instruction("photos reused more than 2 times: ['p1']")
+        assert "RULE 4" in out and "p1" in out
+
+    def test_page_index_violation_names_rule_6(self):
+        out = repair_instruction("pageIndex 4 at position 2 (must be sequential)")
+        assert "RULE 6" in out and "pageIndex 4" in out
+
     def test_quality_violation_names_rule_5(self):
         v = ("page 2 slot 'image': photo p2 quality=fill not acceptable "
              "(slot accepts ['hero', 'detail'])")
         out = repair_instruction(v)
         assert "RULE 5" in out and "p2" in out
 
+    def test_missing_image_slot_names_no_empty_requirement(self):
+        out = repair_instruction("page 2: missing image slot 'imageRight' in template mag-18")
+        assert "NO EMPTY IMAGE SLOT" in out
+        assert "imageRight" in out and "mag-18" in out
+
+    def test_text_violation_names_rule_9(self):
+        out = repair_instruction("page 2 text 'title' length 63 > maxChars 30")
+        assert "RULE 9" in out and "title" in out
+
     def test_unknown_violation_falls_back_but_keeps_detail(self):
         out = repair_instruction("some brand new check failed at page 9")
         assert "page 9" in out  # raw violation always appended
+
+
+def test_composing_prompt_rule_numbers_match_design_section_4_3():
+    prompt = planning._composing_system_prompt(3)
+
+    assert "  6. pageIndex must be 0, 1, 2, ... strictly sequential." in prompt
+    assert "  8. Every key in images and texts MUST be from that page's template slots." in prompt
+    assert "  9. Text content stays within the maxChars hint for each text slot." in prompt
+    assert "  9. Prefer using each template at most once" not in prompt

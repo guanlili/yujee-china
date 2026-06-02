@@ -82,6 +82,32 @@ class TestRules:
                                texts={"items": "x"})
         assert "unused" in (violation(layout) or "")
 
+    def test_missing_image_slot_caught(self):
+        photos = [
+            _photo("p1", quality="hero", orientation="landscape"),
+            _photo("p2", quality="detail", orientation="portrait"),
+            _photo("p3", quality="detail", orientation="landscape"),
+        ]
+        layout = AlbumLayoutPlan(
+            magazine=Magazine(title="x", style="warm-film", language="en"),
+            photos=photos,
+            pages=[
+                Page(pageIndex=0, templateId="mag-13", images={"image": "p1"},
+                     texts={"title": "Trip to Tokyo", "intro": "y" * 45,
+                            "issue": "YUJEE · 01", "credit": "AI ARRANGED · YUJEE"}),
+                Page(pageIndex=1, templateId="mag-05", images={"image": "p3"},
+                     texts={"title": "A quiet day", "topRight": "Kyoto spring",
+                            "caption": "x" * 70, "folio": "02"}),
+                Page(pageIndex=2, templateId="mag-18",
+                     images={"imageLeft": "p2"},
+                     texts={"numLeft": "01", "numRight": "02",
+                            "captionLeft": "x" * 45, "captionRight": "y" * 45,
+                            "subtitle": "z" * 35}),
+            ],
+        )
+        msg = violation(layout) or ""
+        assert "missing image slot" in msg
+
     def test_dup_on_same_page_caught(self):
         # mag-18 has two portrait slots — give it the same photoId twice
         photos = [
@@ -207,6 +233,116 @@ class TestCoerce:
         coerced = coerce_image_slots(layout)
         assert violation(coerced) is None
 
+    def test_retemplate_prefers_photo_that_would_otherwise_be_dropped(self):
+        # Page 1 cannot keep mag-04 because its square slot is unfillable. The
+        # replacement must keep p2 (its only home), not p1 (already used on the
+        # cover), even though both one-slot templates tie on image-slot count.
+        photos = [
+            _photo("p1", quality="hero", orientation="landscape"),
+            _photo("p2", quality="detail", orientation="portrait"),
+            _photo("p3", quality="detail", orientation="landscape"),
+        ]
+        layout = AlbumLayoutPlan(
+            magazine=self._magazine(),
+            photos=photos,
+            pages=[
+                Page(pageIndex=0, templateId="mag-13", images={"image": "p1"},
+                     texts={}),
+                Page(pageIndex=1, templateId="mag-04",
+                     images={"image1": "p1", "image2": "p2"}, texts={}),
+                Page(pageIndex=2, templateId="mag-05", images={"image": "p3"},
+                     texts={}),
+            ],
+        )
+
+        coerced = coerce_image_slots(layout)
+
+        assert violation(coerced) is None
+        assert {p.photoId for p in coerced.photos} == {"p1", "p2", "p3"}
+        used = {pid for page in coerced.pages for pid in page.images.values()}
+        assert "p2" in used
+
+    def test_coerce_uses_unused_photos_to_complete_current_template_before_retemplate(self):
+        # mag-16 can be fully assigned with p3 tiny + p2 person + p1 harbor. A
+        # greedy fill may choose p1 for imagePerson first, but coerce must then
+        # reconsider unused p2 before downsizing/text-only swapping the page.
+        photos = [
+            _photo("p1", quality="detail", orientation="landscape"),
+            _photo("p2", quality="hero", orientation="landscape"),
+            _photo("p3", quality="fill", orientation="portrait"),
+        ]
+        layout = AlbumLayoutPlan(
+            magazine=self._magazine(),
+            photos=photos,
+            pages=[
+                Page(pageIndex=0, templateId="mag-20", images={}, texts={}),
+                Page(pageIndex=1, templateId="mag-16",
+                     images={"imageTiny": "p3"}, texts={}),
+                Page(pageIndex=2, templateId="mag-02", images={}, texts={}),
+            ],
+        )
+
+        coerced = coerce_image_slots(layout)
+
+        assert violation(coerced) is None
+        assert {p.photoId for p in coerced.photos} == {"p1", "p2", "p3"}
+        assert coerced.pages[1].templateId == "mag-16"
+        assert coerced.pages[1].images == {
+            "imageTiny": "p3",
+            "imagePerson": "p2",
+            "imageHarbor": "p1",
+        }
+
+    def test_coerce_does_not_pass_by_dropping_every_photo(self):
+        photos = [
+            _photo("p1", quality="fill", orientation="square"),
+            _photo("p2", quality="fill", orientation="square"),
+            _photo("p3", quality="fill", orientation="square"),
+        ]
+        layout = AlbumLayoutPlan(
+            magazine=self._magazine(),
+            photos=photos,
+            pages=[
+                Page(pageIndex=0, templateId="mag-20", images={}, texts={}),
+                Page(pageIndex=1, templateId="mag-04",
+                     images={"image3": "p1"}, texts={}),
+                Page(pageIndex=2, templateId="mag-02", images={}, texts={}),
+            ],
+        )
+
+        coerced = coerce_image_slots(layout)
+
+        assert coerced.photos
+        assert violation(coerced) is not None
+
+    def test_square_heroes_relax_to_fill_existing_grid(self):
+        photos = [
+            _photo(f"p{i}", quality="hero", orientation="square")
+            for i in range(4)
+        ]
+        layout = AlbumLayoutPlan(
+            magazine=self._magazine(),
+            photos=photos,
+            pages=[
+                Page(pageIndex=0, templateId="mag-20", images={}, texts={}),
+                Page(
+                    pageIndex=1,
+                    templateId="mag-10",
+                    images={f"cells[{i}].image": f"p{i}" for i in range(4)},
+                    texts={},
+                ),
+                Page(pageIndex=2, templateId="mag-02", images={}, texts={}),
+            ],
+        )
+
+        coerced = coerce_image_slots(layout)
+
+        assert violation(coerced) is None
+        assert {p.photoId for p in coerced.photos} == {"p0", "p1", "p2", "p3"}
+        assert {p.quality for p in coerced.photos} == {"detail"}
+        assert coerced.pages[1].templateId == "mag-10"
+        assert set(coerced.pages[1].images.values()) == {"p0", "p1", "p2", "p3"}
+
 
 class TestFewPhotoFallback:
     """architecture §6.5 decision 6 — photo floor ≥1. The deterministic
@@ -277,6 +413,34 @@ class TestFewPhotoFallback:
             assert all(s in page.images for s in tpl["imageSlots"])
         used = {pid for page in layout.pages for pid in page.images.values()}
         assert "p1" not in used
+
+    @pytest.mark.parametrize(
+        "partner",
+        [
+            _photo("p1", quality="detail", orientation="landscape"),
+            _photo("p1", quality="detail", orientation="portrait"),
+        ],
+    )
+    def test_two_photo_square_with_compatible_partner_is_not_dropped(self, partner):
+        # Mixed square albums can be valid with existing two-slot templates:
+        # landscape+square -> mag-09, portrait+square -> mag-12. The known gap is
+        # square-only, not every ≤2-photo album containing a square.
+        photos = [
+            partner,
+            _photo("p2", quality="detail", orientation="square"),
+        ]
+        layout = build_text_first_layout(self._magazine(), photos)
+
+        assert violation(layout) is None
+        used_counts = {
+            pid: sum(1 for page in layout.pages for used in page.images.values() if used == pid)
+            for pid in {p.photoId for p in photos}
+        }
+        assert used_counts["p2"] == 1
+        assert used_counts["p1"] <= 2
+        for page in layout.pages:
+            tpl = registry.get(page.templateId)
+            assert all(s in page.images for s in tpl["imageSlots"])
 
     @pytest.mark.parametrize("orientation", ["landscape", "portrait", "square"])
     @pytest.mark.parametrize("quality", ["hero", "detail", "fill"])
