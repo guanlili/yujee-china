@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { type Locale, locales } from '@/lib/i18n/routing';
 import { getMarketingMessages } from '@/messages/marketing';
 import { Sidebar } from '@/components/app/Sidebar';
+import { MarketingNav } from './MarketingNav';
+import { MarketingSocials } from './MarketingSocials';
 
 interface Props {
   locale: Locale;
@@ -18,46 +20,7 @@ export function MarketingChrome({ locale, pathname, children }: Props) {
   return (
     <div className="min-h-screen flex flex-col">
       <Sidebar locale={locale} activeNav={pathname === '/' ? 'home' : null} />
-      <nav className="sticky top-0 z-50 backdrop-blur-md bg-[rgba(245,245,245,0.6)] border-b border-[var(--border-soft)]">
-        <div className="max-w-[1320px] mx-auto px-6 md:px-8 py-3 flex items-center justify-between">
-          <Link href={`/${locale}`} className="flex items-center gap-2.5 font-extrabold text-xl tracking-tight">
-            <span className="w-6 h-6 rounded-md bg-gradient-to-br from-[var(--grad-green)] via-[var(--grad-purple)] to-[var(--grad-lime)] opacity-90" />
-            <span>{m.nav.brand}</span>
-          </Link>
-          <div className="flex items-center gap-2 md:gap-3">
-            <Link
-              href={`/${locale}/pricing`}
-              className="hidden sm:inline-flex px-3 py-1.5 text-sm text-[var(--fg-2)] hover:text-[var(--fg)]"
-            >
-              {m.nav.pricing}
-            </Link>
-            <Link
-              href={altPath}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#ececec] hover:bg-[#e2e2e2] text-sm text-[var(--muted)] hover:text-[var(--fg)] transition-colors"
-              aria-label={`Switch language to ${otherLocale}`}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="2" y1="12" x2="22" y2="12" />
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-              </svg>
-              <span>{otherLocale === 'zh' ? '中文' : 'English'}</span>
-            </Link>
-            <Link
-              href={`/${locale}/login`}
-              className="hidden sm:inline-flex px-3 py-1.5 text-sm text-[var(--fg-2)] hover:text-[var(--fg)]"
-            >
-              {m.nav.login}
-            </Link>
-            <Link
-              href={`/${locale}/create`}
-              className="inline-flex px-5 py-2 rounded-full bg-[var(--fg)] text-white text-sm font-semibold shadow-sm hover:-translate-y-0.5 transition-transform"
-            >
-              {m.nav.getStarted}
-            </Link>
-          </div>
-        </div>
-      </nav>
+      <MarketingNav locale={locale} otherLocale={otherLocale} altPath={altPath} m={m} />
 
       <main className="flex-1">{children}</main>
 
@@ -69,6 +32,7 @@ export function MarketingChrome({ locale, pathname, children }: Props) {
               <span>Yujee</span>
             </div>
             <p className="text-sm leading-relaxed text-[var(--meta)]">{m.footer.tagline}</p>
+            <MarketingSocials />
           </div>
           <div className="flex gap-14">
             <div>

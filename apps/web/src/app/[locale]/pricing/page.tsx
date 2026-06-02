@@ -23,6 +23,14 @@ export default async function PricingPage({ params }: Props) {
 
   return (
     <MarketingChrome locale={locale as Locale} pathname="/pricing">
+      <div
+        aria-hidden
+        className="fixed inset-0 -z-10 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(ellipse 80% 60% at 0% 0%, rgba(23,225,135,0.07) 0%, transparent 70%), radial-gradient(ellipse 60% 70% at 50% 100%, rgba(140,94,244,0.06) 0%, transparent 70%), radial-gradient(ellipse 70% 50% at 100% 20%, rgba(218,244,94,0.06) 0%, transparent 70%)',
+        }}
+      />
       <section className="max-w-[1100px] mx-auto px-6 md:px-8 pt-16 md:pt-20 pb-16">
         <header className="text-center mb-12">
           <h1 className="font-bold text-3xl md:text-[32px] tracking-tight mb-2">{m.heading}</h1>
