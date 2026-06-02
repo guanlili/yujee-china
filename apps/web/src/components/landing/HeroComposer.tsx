@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getSession } from '@/lib/auth/client';
 import { compressFile } from '@/lib/photo/compress';
 import { photoStore } from '@/lib/photo/store';
 import {
@@ -50,6 +51,23 @@ export function HeroComposer({
   const [err, setErr] = useState<string | null>(null);
   const resumeAttempted = useRef(false);
 
+  const loginResumePath = `/${locale}?resumeGeneration=1`;
+  const loginPath = `/${locale}/login?from=${encodeURIComponent(loginResumePath)}`;
+
+  const hasActiveSession = async () => {
+    try {
+      const { data } = await getSession();
+      return !!data?.session;
+    } catch {
+      return false;
+    }
+  };
+
+  const saveDraftAndLogin = (draft: GenerationDraft) => {
+    generationDraft.save(draft);
+    router.push(loginPath);
+  };
+
   const submitDraft = async (draft: GenerationDraft) => {
     const photoIds = draft.photoIds;
     const builtPhotos = await photosFromStore(photoIds);
@@ -87,6 +105,11 @@ export function HeroComposer({
         return;
       }
       try {
+        const hasSession = await hasActiveSession();
+        if (!hasSession) {
+          saveDraftAndLogin(draft);
+          return;
+        }
         await submitDraft(draft);
       } catch (e) {
         if (cancelled) return;
@@ -95,7 +118,7 @@ export function HeroComposer({
           return;
         }
         if (e instanceof UnauthorizedError) {
-          router.push(`/${locale}/login?from=${encodeURIComponent(`/${locale}?resumeGeneration=1`)}`);
+          saveDraftAndLogin(draft);
           return;
         }
         if (e instanceof PhotosUnavailableError) {
@@ -150,17 +173,22 @@ export function HeroComposer({
     setErr(null);
     const language = inferLanguage(value);
     const photoIds = photos.map((p) => p.photoId);
+    const draft = { prompt: value.trim(), language, photoIds };
     try {
-      await submitDraft({ prompt: value.trim(), language, photoIds });
+      const hasSession = await hasActiveSession();
+      if (!hasSession) {
+        saveDraftAndLogin(draft);
+        return;
+      }
+      await submitDraft(draft);
     } catch (e) {
       if (e instanceof CreditInsufficientError) {
-        generationDraft.save({ prompt: value.trim(), language, photoIds });
+        generationDraft.save(draft);
         router.push(`/${locale}/credits?from=create`);
         return;
       }
       if (e instanceof UnauthorizedError) {
-        generationDraft.save({ prompt: value.trim(), language, photoIds });
-        router.push(`/${locale}/login?from=${encodeURIComponent(`/${locale}?resumeGeneration=1`)}`);
+        saveDraftAndLogin(draft);
         return;
       }
       if (e instanceof PhotosUnavailableError) {
