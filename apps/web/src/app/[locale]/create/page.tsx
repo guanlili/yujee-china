@@ -50,7 +50,7 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
         .filter((id) => urls[id])
         .map((id) => ({ photoId: id, previewUrl: urls[id]!, width: 0, height: 0 }));
       if (cancelled) return;
-      if (restored.length < 3) {
+      if (restored.length < 1) {
         generationDraft.clear();
         return;
       }
