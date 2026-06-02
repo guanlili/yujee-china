@@ -156,7 +156,12 @@
       "save": "Save",
       "saving": "Saving…",
       "passwordChanged": "Password updated.",
-      "signOut": "Sign out"
+      "account": "Account",
+      "signOut": "Sign out",
+      "deleteAccount": "Delete account",
+      "deleteAccountBody": "Deleting your account permanently removes your profile, every memoir you've created, and any remaining credits. This can't be undone. We handle deletion requests by email — write to us from the address on this account and we'll process it.",
+      "deleteAccountCta": "Request account deletion",
+      "deleteAccountSubject": "Account deletion request"
     },
     "editor": {
       "backToProjects": "Back to projects",

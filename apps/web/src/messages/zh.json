@@ -156,7 +156,12 @@
       "save": "保存",
       "saving": "保存中…",
       "passwordChanged": "密码已更新。",
-      "signOut": "退出登录"
+      "account": "账号",
+      "signOut": "退出登录",
+      "deleteAccount": "注销账号",
+      "deleteAccountBody": "注销账号将永久删除你的个人资料、你创建的全部纪念册以及剩余积分,且无法恢复。我们通过邮件处理注销申请——请用本账号的邮箱来信,我们会为你处理。",
+      "deleteAccountCta": "申请注销账号",
+      "deleteAccountSubject": "账号注销申请"
     },
     "editor": {
       "backToProjects": "返回我的项目",
