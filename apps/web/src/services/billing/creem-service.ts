@@ -4,7 +4,12 @@ import { customerRepo } from '@/db/repos/customer-repo';
 import { userRepo } from '@/db/repos/user-repo';
 import { creditLedgerRepo } from '@/db/repos/credit-ledger-repo';
 import { creditService } from '@/services/credit/credit-service';
-import { ADDON_PACKS } from '@/config/pricing';
+import {
+  ADDON_PACKS,
+  CREEM_PRODUCT_ENV_BY_PACK_ID,
+  buildCheckoutReturnUrls,
+  type CheckoutReturnContext,
+} from '@/config/pricing';
 import { env } from '@/lib/env';
 import { ERRORS } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
@@ -17,13 +22,12 @@ import { logger } from '@/lib/log/logger';
 type CreemEvent = {
   id: string;
   type: string; // e.g. 'checkout.completed'
-  data: {
-    object: {
-      id: string;
-      customer?: { id?: string; email?: string };
-      metadata?: Record<string, string>;
-      amount?: number; // cents
-    };
+  object?: {
+    id?: string;
+    customer?: { id?: string; email?: string };
+    metadata?: Record<string, string>;
+    amount?: number; // cents
+    order?: { amount?: number }; // cents, Creem's real checkout payload
   };
 };
 
@@ -32,7 +36,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${env.CREEM_API_BASE_URL}${path}`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${env.CREEM_API_KEY}`,
+      'x-api-key': env.CREEM_API_KEY,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
@@ -49,6 +53,7 @@ export const creemService = {
   async createPackCheckout(
     userId: string,
     packId: string,
+    context: CheckoutReturnContext = {},
   ): Promise<{ url: string }> {
     const pack = ADDON_PACKS.find((p) => p.id === packId);
     if (!pack) throw ERRORS.VALIDATION_FAILED(`Unknown pack: ${packId}`);
@@ -56,6 +61,11 @@ export const creemService = {
     if (!user) throw ERRORS.UNAUTHORIZED();
 
     const existing = await customerRepo.findByUserAndProvider(userId, 'creem');
+    const { successUrl, cancelUrl } = buildCheckoutReturnUrls(
+      env.WEB_BASE_URL,
+      'creem',
+      context,
+    );
 
     // Creem checkout payload. The exact field names mirror Creem's REST API
     // (see https://docs.creem.io/api-reference/checkout-sessions/create-checkout-session).
@@ -63,12 +73,12 @@ export const creemService = {
     const session = await postJson<{ id: string; checkout_url: string }>(
       '/v1/checkouts',
       {
-        product_id: pack.id,
+        product_id: resolveCreemProductId(pack.id),
         customer: existing
           ? { id: existing.externalCustomerId }
           : { email: user.email },
-        success_url: `${env.WEB_BASE_URL}/credits?checkout=success`,
-        cancel_url: `${env.WEB_BASE_URL}/pricing?checkout=cancel`,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
         metadata: { userId, kind: 'pack', packId },
       },
     );
@@ -85,13 +95,14 @@ export const creemService = {
       throw ERRORS.WEBHOOK_SIGNATURE_INVALID();
     }
 
-    let event: CreemEvent;
+    let payload: unknown;
     try {
-      event = JSON.parse(rawBody) as CreemEvent;
+      payload = JSON.parse(rawBody);
     } catch {
       throw ERRORS.VALIDATION_FAILED('creem payload not json');
     }
-    if (!event.id || !event.type) {
+    const event = normalizeCreemEvent(payload);
+    if (!event) {
       throw ERRORS.VALIDATION_FAILED('creem payload missing id/type');
     }
 
@@ -109,6 +120,16 @@ export const creemService = {
   },
 };
 
+function resolveCreemProductId(packId: keyof typeof CREEM_PRODUCT_ENV_BY_PACK_ID): string {
+  const envKey = CREEM_PRODUCT_ENV_BY_PACK_ID[packId];
+  const productId = env[envKey];
+  if (!productId) {
+    logger.warn({ packId, envKey }, 'creem product id missing');
+    throw ERRORS.BILLING_NOT_CONFIGURED();
+  }
+  return productId;
+}
+
 function verifyHmac(body: string, signature: string, secret: string): boolean {
   const expected = createHmac('sha256', secret).update(body).digest('hex');
   if (expected.length !== signature.length) return false;
@@ -121,8 +142,32 @@ function verifyHmac(body: string, signature: string, secret: string): boolean {
   }
 }
 
+function normalizeCreemEvent(payload: unknown): CreemEvent | null {
+  if (!isRecord(payload)) return null;
+  const id = typeof payload.id === 'string' ? payload.id : null;
+  const type =
+    typeof payload.type === 'string'
+      ? payload.type
+      : typeof payload.eventType === 'string'
+        ? payload.eventType
+        : null;
+  if (!id || !type) return null;
+
+  const dataObject = isRecord(payload.data) ? payload.data.object : undefined;
+  const object = isRecord(dataObject)
+    ? dataObject
+    : isRecord(payload.object)
+      ? payload.object
+      : undefined;
+  return { id, type, object: object as CreemEvent['object'] };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 async function applyCheckoutCompleted(event: CreemEvent): Promise<void> {
-  const obj = event.data?.object;
+  const obj = event.object;
   const meta = obj?.metadata ?? {};
   const userId = meta.userId;
   const packId = meta.packId;
@@ -154,7 +199,7 @@ async function applyCheckoutCompleted(event: CreemEvent): Promise<void> {
         provider: 'creem',
         session_id: obj?.id ?? null,
         pack_id: pack.id,
-        amount_cents: obj?.amount ?? Math.round(pack.priceUsd * 100),
+        amount_cents: obj?.amount ?? obj?.order?.amount ?? Math.round(pack.priceUsd * 100),
       },
     });
   });

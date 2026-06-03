@@ -34,6 +34,20 @@ export interface CreditPack {
   priceUsd: number;
 }
 
+export type CheckoutProvider = 'stripe' | 'creem';
+export type CheckoutLocale = 'en' | 'zh';
+export type CheckoutSource = 'album' | 'create' | 'home';
+export type CheckoutReturnContext = {
+  locale?: CheckoutLocale;
+  from?: CheckoutSource;
+};
+
+export type CreemProductEnvKey =
+  | 'CREEM_PRODUCT_ID_PACK_2400'
+  | 'CREEM_PRODUCT_ID_PACK_4800'
+  | 'CREEM_PRODUCT_ID_PACK_8000'
+  | 'CREEM_PRODUCT_ID_PACK_16000';
+
 export const CREDIT_COST_PER_ALBUM = 200;
 
 export const FREE_PLAN_CREDITS = 1000;
@@ -87,12 +101,41 @@ export const PLANS: readonly Plan[] = [
   },
 ] as const;
 
-export const ADDON_PACKS: readonly CreditPack[] = [
+export const ADDON_PACKS = [
   { id: 'pack-2400', credits: 2400, priceUsd: 3 },
   { id: 'pack-4800', credits: 4800, priceUsd: 6 },
   { id: 'pack-8000', credits: 8000, priceUsd: 10 },
   { id: 'pack-16000', credits: 16000, priceUsd: 18 },
-] as const;
+] as const satisfies readonly CreditPack[];
+
+export type AddonPackId = (typeof ADDON_PACKS)[number]['id'];
+
+export const CREEM_PRODUCT_ENV_BY_PACK_ID: Record<AddonPackId, CreemProductEnvKey> = {
+  'pack-2400': 'CREEM_PRODUCT_ID_PACK_2400',
+  'pack-4800': 'CREEM_PRODUCT_ID_PACK_4800',
+  'pack-8000': 'CREEM_PRODUCT_ID_PACK_8000',
+  'pack-16000': 'CREEM_PRODUCT_ID_PACK_16000',
+};
+
+export function buildCheckoutReturnUrls(
+  baseUrl: string,
+  provider: CheckoutProvider,
+  context: CheckoutReturnContext = {},
+): { successUrl: string; cancelUrl: string } {
+  const locale = context.locale ?? 'en';
+  const build = (checkout: 'success' | 'cancel') => {
+    const url = new URL(`/${locale}/credits`, baseUrl);
+    url.searchParams.set('checkout', checkout);
+    url.searchParams.set('provider', provider);
+    if (context.from) url.searchParams.set('from', context.from);
+    return url.toString();
+  };
+
+  return {
+    successUrl: build('success'),
+    cancelUrl: build('cancel'),
+  };
+}
 
 export function getPlan(id: PlanId): Plan {
   const plan = PLANS.find((p) => p.id === id);

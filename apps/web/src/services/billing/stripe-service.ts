@@ -4,7 +4,11 @@ import { customerRepo } from '@/db/repos/customer-repo';
 import { userRepo } from '@/db/repos/user-repo';
 import { creditLedgerRepo } from '@/db/repos/credit-ledger-repo';
 import { creditService } from '@/services/credit/credit-service';
-import { ADDON_PACKS } from '@/config/pricing';
+import {
+  ADDON_PACKS,
+  buildCheckoutReturnUrls,
+  type CheckoutReturnContext,
+} from '@/config/pricing';
 import { env } from '@/lib/env';
 import { ERRORS } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
@@ -20,7 +24,11 @@ export const stripeService = {
   // One-shot credit pack purchase via Stripe Checkout. Returns the hosted URL
   // for the client to redirect to. Subscription support is intentionally out
   // of scope for B4; see PR description.
-  async createPackCheckout(userId: string, packId: string): Promise<{ url: string }> {
+  async createPackCheckout(
+    userId: string,
+    packId: string,
+    context: CheckoutReturnContext = {},
+  ): Promise<{ url: string }> {
     const pack = ADDON_PACKS.find((p) => p.id === packId);
     if (!pack) throw ERRORS.VALIDATION_FAILED(`Unknown pack: ${packId}`);
 
@@ -29,6 +37,11 @@ export const stripeService = {
 
     const customerId = await ensureCustomer(userId, user.email);
     const stripe = client();
+    const { successUrl, cancelUrl } = buildCheckoutReturnUrls(
+      env.WEB_BASE_URL,
+      'stripe',
+      context,
+    );
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer: customerId,
@@ -44,8 +57,8 @@ export const stripeService = {
       ],
       // Webhook keys off this metadata to credit the right user.
       metadata: { userId, kind: 'pack', packId },
-      success_url: `${env.WEB_BASE_URL}/credits?checkout=success`,
-      cancel_url: `${env.WEB_BASE_URL}/pricing?checkout=cancel`,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
     });
     if (!session.url) throw ERRORS.INTERNAL_ERROR();
     return { url: session.url };

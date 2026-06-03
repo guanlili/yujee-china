@@ -6,12 +6,110 @@ import { createHmac } from 'node:crypto';
 // the HMAC verifier is private, so the test exercises the webhook entry
 // point (handleWebhook) against the real env.CREEM_WEBHOOK_SECRET dev default.
 import { creemService } from './creem-service';
+import { db } from '@/db/client';
+import { customerRepo } from '@/db/repos/customer-repo';
+import { creditLedgerRepo } from '@/db/repos/credit-ledger-repo';
+import { userRepo } from '@/db/repos/user-repo';
 import { env } from '@/lib/env';
 import { isDbReachable } from '@/db/repos/__test__/setup';
+import { creditService } from '@/services/credit/credit-service';
 
 function sign(body: string, secret: string): string {
   return createHmac('sha256', secret).update(body).digest('hex');
 }
+
+function useEnvPatch(t: { after(callback: () => void): void }, patch: Record<string, string | undefined>): void {
+  const previous = new Map<string, unknown>();
+  for (const [key, value] of Object.entries(patch)) {
+    previous.set(key, (env as any)[key]);
+    (env as any)[key] = value;
+  }
+  t.after(() => {
+    for (const [key, value] of previous.entries()) {
+      (env as any)[key] = value;
+    }
+  });
+}
+
+function useWebhookSecret(t: { after(callback: () => void): void }, secret: string): void {
+  const previous = env.CREEM_WEBHOOK_SECRET;
+  (env as any).CREEM_WEBHOOK_SECRET = secret;
+  t.after(() => {
+    (env as any).CREEM_WEBHOOK_SECRET = previous;
+  });
+}
+
+function mockCheckoutDependencies(t: any) {
+  const requests: Array<{ url: string; init: RequestInit }> = [];
+
+  useEnvPatch(t, {
+    CREEM_API_KEY: 'creem-api-key-test',
+    CREEM_API_BASE_URL: 'https://api.creem.test',
+    WEB_BASE_URL: 'https://app.yujee.test',
+    CREEM_PRODUCT_ID_PACK_2400: 'prod_creem_pack_2400',
+  });
+
+  t.mock.method(userRepo, 'findById', async (userId: string) => ({
+    id: userId,
+    email: 'buyer@yujee.test',
+  }) as any);
+  t.mock.method(customerRepo, 'findByUserAndProvider', async () => undefined);
+  t.mock.method(globalThis, 'fetch', (async (input: RequestInfo | URL, init?: RequestInit) => {
+    requests.push({ url: String(input), init: init ?? {} });
+    return new Response(JSON.stringify({
+      id: 'checkout_123',
+      checkout_url: 'https://checkout.creem.test/checkout_123',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch);
+
+  return requests;
+}
+
+test('creemService.createPackCheckout: authenticates with x-api-key', async (t) => {
+  const requests = mockCheckoutDependencies(t);
+
+  await creemService.createPackCheckout('user_checkout_1', 'pack-2400');
+
+  const headers = new Headers(requests[0]?.init.headers);
+  assert.equal(headers.get('x-api-key'), 'creem-api-key-test');
+  assert.equal(headers.has('authorization'), false);
+});
+
+test('creemService.createPackCheckout: sends configured product id and keeps internal pack metadata', async (t) => {
+  const requests = mockCheckoutDependencies(t);
+
+  await creemService.createPackCheckout('user_checkout_2', 'pack-2400');
+
+  const body = JSON.parse(String(requests[0]?.init.body));
+  assert.equal(body.product_id, 'prod_creem_pack_2400');
+  assert.deepEqual(body.metadata, {
+    userId: 'user_checkout_2',
+    kind: 'pack',
+    packId: 'pack-2400',
+  });
+});
+
+test('creemService.createPackCheckout: builds return URLs with locale and source context', async (t) => {
+  const requests = mockCheckoutDependencies(t);
+
+  await creemService.createPackCheckout('user_checkout_3', 'pack-2400', {
+    locale: 'zh',
+    from: 'create',
+  });
+
+  const body = JSON.parse(String(requests[0]?.init.body));
+  assert.equal(
+    body.success_url,
+    'https://app.yujee.test/zh/credits?checkout=success&provider=creem&from=create',
+  );
+  assert.equal(
+    body.cancel_url,
+    'https://app.yujee.test/zh/credits?checkout=cancel&provider=creem&from=create',
+  );
+});
 
 test('creemService.handleWebhook: rejects when signature missing', async () => {
   process.env.CREEM_WEBHOOK_SECRET = 'unit-test-secret';
@@ -43,6 +141,107 @@ test('creemService.handleWebhook: rejects on bad signature', async () => {
     () => creemService.handleWebhook(body, 'deadbeef'),
     (err: any) => err.code === 'WEBHOOK_SIGNATURE_INVALID',
   );
+});
+
+test('creemService.handleWebhook: settles real checkout.completed eventType/object payload', async (t) => {
+  const secret = 'unit-test-secret';
+  useWebhookSecret(t, secret);
+
+  const eventId = 'evt_5WHHcZPv7VS0YUsberIuOz';
+  const userId = 'user_creem_checkout_completed';
+  const body = JSON.stringify({
+    id: eventId,
+    eventType: 'checkout.completed',
+    created_at: 1728734325927,
+    object: {
+      id: 'ch_4l0N34kxo16AhRKUHFUuXr',
+      object: 'checkout',
+      request_id: 'my-request-id',
+      status: 'completed',
+      order: {
+        id: 'ord_4aDwWXjMLpes4Kj4XqNnUA',
+        customer: 'cust_1OcIK1GEuVvXZwD19tjq2z',
+        product: 'pack-2400',
+        amount: 300,
+        currency: 'USD',
+        status: 'paid',
+      },
+      customer: {
+        id: 'cust_1OcIK1GEuVvXZwD19tjq2z',
+        object: 'customer',
+        email: 'customer@example.com',
+      },
+      metadata: {
+        userId,
+        kind: 'pack',
+        packId: 'pack-2400',
+      },
+      mode: 'test',
+    },
+  });
+  const tx = { kind: 'mock-tx' };
+  const createdCustomers: unknown[] = [];
+  const appliedDeltas: unknown[] = [];
+
+  t.mock.method(creditLedgerRepo, 'findByExternalEventId', async (actualEventId: string) => {
+    assert.equal(actualEventId, eventId);
+    return undefined;
+  });
+  t.mock.method(db, 'transaction', async (callback: (txArg: unknown) => Promise<unknown>) =>
+    callback(tx),
+  );
+  t.mock.method(customerRepo, 'findByUserAndProvider', async (actualUserId: string, provider: string) => {
+    assert.equal(actualUserId, userId);
+    assert.equal(provider, 'creem');
+    return undefined;
+  });
+  t.mock.method(customerRepo, 'create', async (txArg: unknown, data: unknown) => {
+    assert.equal(txArg, tx);
+    createdCustomers.push(data);
+    return { id: 'customer-row', ...(data as Record<string, unknown>) };
+  });
+  t.mock.method(
+    creditService,
+    'applyDelta',
+    async (
+      txArg: unknown,
+      actualUserId: string,
+      delta: number,
+      reason: string,
+      refs: unknown,
+    ) => {
+      appliedDeltas.push({ txArg, userId: actualUserId, delta, reason, refs });
+      return {} as any;
+    },
+  );
+
+  await creemService.handleWebhook(body, sign(body, secret));
+
+  assert.deepEqual(createdCustomers, [
+    {
+      userId,
+      provider: 'creem',
+      externalCustomerId: 'cust_1OcIK1GEuVvXZwD19tjq2z',
+      email: 'customer@example.com',
+    },
+  ]);
+  assert.deepEqual(appliedDeltas, [
+    {
+      txArg: tx,
+      userId,
+      delta: 2400,
+      reason: 'PURCHASE',
+      refs: {
+        externalEventId: eventId,
+        meta: {
+          provider: 'creem',
+          session_id: 'ch_4l0N34kxo16AhRKUHFUuXr',
+          pack_id: 'pack-2400',
+          amount_cents: 300,
+        },
+      },
+    },
+  ]);
 });
 
 test('creemService.handleWebhook: accepts valid signature + ignores unknown event', async (t) => {

@@ -30,6 +30,10 @@
 | `CREEM_API_KEY` | 复制 | Creem 支付(海外主通道) |
 | `CREEM_API_BASE_URL` | 复制 | 默认 `https://api.creem.io`,通常不用设 |
 | `CREEM_WEBHOOK_SECRET` | 复制 | Creem webhook 验签 |
+| `CREEM_PRODUCT_ID_PACK_2400` | Creem dashboard | 2400 积分包对应的 Creem 产品 ID(`prod_...`) |
+| `CREEM_PRODUCT_ID_PACK_4800` | Creem dashboard | 4800 积分包对应的 Creem 产品 ID(`prod_...`) |
+| `CREEM_PRODUCT_ID_PACK_8000` | Creem dashboard | 8000 积分包对应的 Creem 产品 ID(`prod_...`) |
+| `CREEM_PRODUCT_ID_PACK_16000` | Creem dashboard | 16000 积分包对应的 Creem 产品 ID(`prod_...`) |
 | `STRIPE_API_KEY` | 复制 / 可空 | Stripe 备用通道,缺省即关闭 Stripe |
 | `STRIPE_WEBHOOK_SECRET` | 复制 / 可空 | 同上 |
 | `R2_ACCOUNT_ID` | 复制(映射) | 见 §3 |
