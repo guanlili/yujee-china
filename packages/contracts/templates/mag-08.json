@@ -1,0 +1,41 @@
+{
+  "id": "mag-08",
+  "category": "single",
+  "imageSlots": {
+    "image": {
+      "orientation": [
+        "portrait"
+      ],
+      "quality": [
+        "hero",
+        "detail"
+      ]
+    }
+  },
+  "textSlots": {
+    "dateNum": {
+      "type": "meta",
+      "recommendedMaxChars": 5
+    },
+    "caption1": {
+      "type": "caption",
+      "recommendedMaxChars": 80
+    },
+    "caption2": {
+      "type": "caption",
+      "recommendedMaxChars": 80
+    },
+    "title": {
+      "type": "heading",
+      "recommendedMaxChars": 10
+    },
+    "subtitle": {
+      "type": "label",
+      "recommendedMaxChars": 25
+    },
+    "folio": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    }
+  }
+}

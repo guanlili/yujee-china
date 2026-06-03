@@ -1,0 +1,15 @@
+{
+  "id": "mag-02",
+  "category": "spread",
+  "imageSlots": {},
+  "textSlots": {
+    "items": {
+      "type": "array",
+      "recommendedMaxChars": 240
+    },
+    "folio": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    }
+  }
+}

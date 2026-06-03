@@ -1,0 +1,25 @@
+{
+  "id": "mag-06",
+  "category": "single",
+  "imageSlots": {
+    "image": {
+      "orientation": [
+        "portrait"
+      ],
+      "quality": [
+        "hero",
+        "detail"
+      ]
+    }
+  },
+  "textSlots": {
+    "category": {
+      "type": "label",
+      "recommendedMaxChars": 15
+    },
+    "folio": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    }
+  }
+}

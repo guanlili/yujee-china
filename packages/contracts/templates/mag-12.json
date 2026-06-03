@@ -1,0 +1,38 @@
+{
+  "id": "mag-12",
+  "category": "spread",
+  "imageSlots": {
+    "imageTop": {
+      "orientation": [
+        "square"
+      ],
+      "quality": [
+        "detail",
+        "fill"
+      ]
+    },
+    "imageBottom": {
+      "orientation": [
+        "portrait"
+      ],
+      "quality": [
+        "hero",
+        "detail"
+      ]
+    }
+  },
+  "textSlots": {
+    "num1": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    },
+    "num2": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    },
+    "folio": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    }
+  }
+}

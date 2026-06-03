@@ -1,0 +1,52 @@
+{
+  "id": "mag-10",
+  "category": "grid",
+  "imageSlots": {
+    "cells[0].image": {
+      "orientation": [
+        "square"
+      ],
+      "quality": [
+        "detail",
+        "fill"
+      ]
+    },
+    "cells[1].image": {
+      "orientation": [
+        "square"
+      ],
+      "quality": [
+        "detail",
+        "fill"
+      ]
+    },
+    "cells[2].image": {
+      "orientation": [
+        "square"
+      ],
+      "quality": [
+        "detail",
+        "fill"
+      ]
+    },
+    "cells[3].image": {
+      "orientation": [
+        "square"
+      ],
+      "quality": [
+        "detail",
+        "fill"
+      ]
+    }
+  },
+  "textSlots": {
+    "cells": {
+      "type": "array",
+      "recommendedMaxChars": 160
+    },
+    "folio": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    }
+  }
+}

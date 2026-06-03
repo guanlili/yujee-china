@@ -1,0 +1,23 @@
+{
+  "id": "mag-20",
+  "category": "cover",
+  "imageSlots": {},
+  "textSlots": {
+    "boxText": {
+      "type": "paragraph",
+      "recommendedMaxChars": 40
+    },
+    "title": {
+      "type": "heading",
+      "recommendedMaxChars": 30
+    },
+    "plate": {
+      "type": "label",
+      "recommendedMaxChars": 25
+    },
+    "folio": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    }
+  }
+}
