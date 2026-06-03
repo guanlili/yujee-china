@@ -35,6 +35,7 @@ export interface CreditPack {
 }
 
 export type CheckoutProvider = 'stripe' | 'creem';
+export const ACTIVE_CHECKOUT_PROVIDER = 'creem' satisfies CheckoutProvider;
 export type CheckoutLocale = 'en' | 'zh';
 export type CheckoutSource = 'album' | 'create' | 'home';
 export type CheckoutReturnContext = {

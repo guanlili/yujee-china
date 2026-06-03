@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "test:repos": "tsx --test src/db/repos/*.test.ts src/services/job/zombie-sweeper.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:push": "drizzle-kit push",
