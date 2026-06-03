@@ -131,6 +131,7 @@ memoir-agent-rebuild/
 │   └── agent/                # FastAPI 服务       → docs/agent/*
 ├── packages/
 │   └── contracts/            # 跨服务 zod schema + TS 类型
+│       └── templates/        # 相册模板 JSON 单一真相源
 ├── docs/                     # 所有架构文档
 └── CLAUDE.md                 # 工程入口,所有 agent 必读
 ```
@@ -188,6 +189,17 @@ memoir-agent-rebuild/
 7. **路由结构统一**:`/create`、`/album/[uuid]` 现在 `[locale]` 段**外**(故无 i18n、文案硬编码英文)。目标收进 `[locale]` 做 2 语(中/英)。各屏 owner(UI-2 / UI-1a)在**自己 PR 里**迁移本屏路由,不单开任务。
 
 8. **依赖**:① 统一 chrome(UI-0)是 UI-1a/UI-2/UI-4/UI-6/UI-9 的地基,**先定组件 props 接口再并行**。② BILL 语义(本节 2/3)先于 UI-2(/create)、UI-4(/my-albums)实现,因为这两屏要渲染"不足跳转/失败重试"态。
+
+### 6.6 Composing 重设计决策(2026-06-04 · 架构闸门)
+
+本节只登记架构语义,施工细节见 `docs/agent/composing-redesign.md` / `docs/agent/composing-rebuild-tech-plan.md`。
+
+1. **D-A cover 语义**:图片槽渲染采用 `object-fit: cover` 等价语义,保持比例、铺满槽位、超出裁切;裁切发生在浏览器渲染原图时。当前决策是 **center-cover**,不引入 face/focal point 字段,不承诺人脸避让。
+2. **D-B orientation 软化**:`PhotoAnalysis.orientation` 继续产出并喂给 composing prompt,但不再作为确定性 layout 硬校验;错配由 cover 渲染兜底。
+3. **页数公式移除**:废弃 `max(3, ceil(photos.length / 2.5))` 严格页数公式;页数按实际内容排出,但 `pages` 仍保留 **1..16** 硬边界。
+4. **文案长度软化**:模板只给推荐长度;超推荐长度不作为 Agent 输出违规。渲染层负责文本适配,Agent 端可保留只缩短的安全网。
+5. **模板 JSON 单一真相源**:`packages/contracts/templates/` 登记为模板定义源;Web / Agent 从该目录派生模板约束,不再维护多份手工模板约束副本。
+6. **对外契约不变**:不新增 `AlbumLayoutPlan` 字段,`Page.images` 继续只输出 `{slot: photoId}`;不改 Web↔Agent callback envelope,不新增 external AlbumLayoutPlan contract。
 
 ---
 

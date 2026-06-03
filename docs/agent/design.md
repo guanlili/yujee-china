@@ -24,7 +24,7 @@
 | repair loop 上限 | 每阶段 1 次,失败即映射对应错误码 |
 | Agent 端 schema 校验 | **必做**(Python schema 镜像 TS contracts,discriminated union + 拒未知字段) |
 | zombie sweeper | **第一版必须有**:5min 内 `RUNNING` 没终态 → 标 FAILED + 释放积分。实现方式(Vercel Cron / opportunistic sweep / 长跑 server timer)由 Web 基建轨道(T6 / T-Deploy)评估后定 |
-| TemplateRegistry 位置 | `packages/contracts/src/templates.ts`(21 模板,从 yvaineyu9/memoir 抽)。**21 个全部填齐是真实 composing + chat-edit 的硬前置** |
+| TemplateRegistry 位置 | `packages/contracts/templates/` JSON 单一真相源;TS / Python loader 从这里派生模板约束。**模板库填齐是真实 composing + chat-edit 的硬前置** |
 | 模型版本号 / API 参数 | 不在本文档锁死。环境变量 + 实施时查官方文档为准,见 §2.5 |
 | Mock pipeline | 仅 `AGENT_PIPELINE_MODE=mock` 启用,生产环境若不是 `real` 必须启动失败 |
 
@@ -109,7 +109,7 @@ System 段必须传达:
 - 任务:对一批输入图片做结构化描述
 - 严格 JSON 输出,数组形式,长度等于输入图片数,**顺序与输入对齐**(因为模型不知道我们的 photoId,Agent 按顺序回填)
 - 每对象字段(见 §2.6 PhotoAnalysis 扩充字段)
-- 业务硬规则:整组里 `quality=hero` 的最多 `ceil(N/3)` 张
+- 质量标注指导:`quality=hero` 只给主体清晰、故事性强、能撑大图的照片;数量不套硬公式。确定性硬规则只有 composing 阶段的 fill 图禁止进入 hero 槽。
 
 User 段必须传达:
 - 输入图片(按 §2.1 决策:一次多图)
@@ -201,24 +201,26 @@ User 段必须传达:
 ### 4.2 输入上下文(全部塞 system prompt)
 
 - 完整 `AlbumLayoutPlan` JSON Schema(从 `packages/contracts` 导出)
-- `TemplateRegistry`(`packages/contracts/src/templates.ts`)
+- `TemplateRegistry`(目标单一真相源为 `packages/contracts/templates/` JSON;TS generated loader / Python loader 从这里派生,当前代码仍待 Task A 切换)
 - `Magazine`(stage 2 输出)
 - `PhotoAnalysis[]`(stage 1 输出)
 - **业务规则**(下面 §4.3)
 
-### 4.3 业务规则(硬编码进 prompt + 校验)
+### 4.3 业务规则(prompt + 确定性校验)
 
 | 规则 | 规则文本 | 校验时机 |
 |---|---|---|
-| 页数 | `pages.length = max(3, ceil(photos.length / 2.5))`,最多 16 页 | Agent 端硬校验 |
+| 页数 | 按实际内容排出,不再套 `ceil` 公式;最终 `pages.length` 必须 ∈ **[1, 16]** | Agent 端硬校验 |
 | 第 1 页 | 必须是 cover 类模板(templateId 前缀 `cover-`) | Agent 端硬校验 |
 | 照片利用 | 每张 photoId 至少出现一次 | Agent 端硬校验 |
 | 重复使用 | 单张图可重复 ≤ 2 次,且不能在同一页 | Agent 端硬校验 |
-| hero slot | 优先 `quality=hero` 的图;且 `orientation` 满足该 slot 要求 | Agent 端硬校验 |
+| hero 保护 | fill 级照片禁止进入 hero 槽;其他 quality 匹配是软偏好 | Agent 端硬校验 |
+| orientation | 横/竖/方图匹配 slot 只作为模型软偏好,错配由 center-cover 渲染兜底 | 只进 prompt,不硬校验 |
 | pageIndex | 0..N-1 严格连续 | Agent 端硬校验 |
 | 模板 | `templateId` 必须在 TemplateRegistry 里 | Agent 端硬校验 |
 | slot | 每页 `images` / `texts` 的 key 必须在该模板 slot 列表里 | Agent 端硬校验 |
-| 文案长度 | title ≤ 60、caption ≤ 120、body ≤ 280(字符) | Agent 端硬校验 |
+| 文案长度 | 使用模板推荐长度引导模型;超推荐长度不单独构成违规 | 只进 prompt / 渲染适配 |
+| 图片缩放 | 图片槽采用 center-cover:铺满、不变形、超出裁切;不做 face/focal point 避让 | Web/PDF 渲染语义 |
 
 ### 4.4 Prompt 信息架构
 
@@ -227,8 +229,8 @@ User 段必须传达:
 System 段必须传达(分块,模型才能稳定遵守):
 - 任务:把 photos 排成 pages
 - 完整 `AlbumLayoutPlan` JSON Schema(从 contracts 包导出,序列化喂入)
-- TemplateRegistry(`templates.ts` 21 条)的 ID + slot + 约束,序列化喂入
-- §4.3 全部 9 条业务规则(原文列举,不要让模型"理解"规则,要让它"逐条遵守")
+- TemplateRegistry(JSON 模板库)的 ID + slot + 约束,序列化喂入
+- §4.3 全部业务规则(原文列举,同时标明硬校验 / 软偏好,不要让模型"理解"规则,要让它"逐条遵守")
 
 User 段必须传达:
 - §3 输出的 Magazine
@@ -239,19 +241,19 @@ User 段必须传达:
 
 1. JSON 解析失败 → 实施层 retry 1 次
 2. schema 校验(`AlbumLayoutPlan` Python 镜像)失败 → 进 repair
-3. **业务规则校验**(§4.3 全部 9 条)失败 → 进 repair
+3. **业务规则校验**(§4.3 的硬校验规则)失败 → 进 repair
 4. **repair 1 次**:把违反的规则原文 + 上次输出回灌,要求重新输出**完整** JSON(不是 patch)
 5. repair 仍失败:
    - **>2 张照片**:`coerce_image_slots` 兜底(强制 slot 合规,实在塞不下的图丢弃),仍结构违规才 `AGENT_OUTPUT_VALIDATION`,**不走整套 fallback layout**。
-   - **≤2 张照片**(架构 §6.5 决策 6):走 `layout_rules.build_text_first_layout` 确定性兜底——cover + 每张图按约束放一次 + 纯文字版面(mag-02/14/20)补齐页数。**这是唯一允许的 fallback layout**,因为 1-2 图的版面空间太小、模型最不可靠,且确定性兜底**不会丢用户的唯一一张图**。
+   - **≤2 张照片**(架构 §6.5 决策 6):走 `layout_rules.build_text_first_layout` 确定性兜底——cover + 每张图按硬约束放一次 + 必要时用纯文字版面(mag-02/14/20)补足叙事。**这是唯一允许的 fallback layout**,因为 1-2 图的版面空间太小、模型最不可靠,且确定性兜底**不会丢用户的唯一一张图**。
 
-> `build_text_first_layout`(`services/layout_rules.py`)对每张图按 orientation×quality 在 21 模板里找首个匹配 slot;square / fill 级图进不了任何 cover 时,cover 退化为纯文字的 mag-20,图放到后续页。产出必过 §4.3 全量校验。
+> `build_text_first_layout`(`services/layout_rules.py`)按 hero 保护、覆盖、重复、slot key 等硬约束找可用 slot;orientation 只作排序偏好。center-cover 负责吸收横竖错配。产出必过 §4.3 硬校验。
 
 ---
 
 ## 5. TemplateRegistry —— 硬阻塞前置
 
-`packages/contracts/src/templates.ts` 定义 21 个模板的 ID + slot + 约束。这是 Agent composing 阶段的**唯一可选集合**。
+`packages/contracts/templates/` 定义模板 JSON,包含模板 ID + slot + 约束。这是 Agent composing 阶段的**唯一可选集合**,TS / Python 侧只从这份 JSON 派生。
 
 **当前状态**(2026-05-30 核对):21 个模板已全部填齐(`mag-01`~`mag-20` + `p01`),从 `https://github.com/yvaineyu9/memoir/blob/main/frontend/schema.js` 抽取完成,§5.1 的 quality enum 约束也已写进每个 slot。硬阻塞已解除。
 
@@ -260,13 +262,13 @@ User 段必须传达:
 **硬阻塞规则**:
 
 - **21 个模板未全部填齐前**,Agent 真实 composing(T3 验收)**不允许声明完成**;真实 pipeline 在生产模式下选择超出可用集的 templateId → 应 `AGENT_OUTPUT_VALIDATION`
-- 模板数据**单向**从 `templates.ts` 流向 Agent;不允许 Agent 自由生成 templateId
-- 每个模板必须给出:`imageSlots`(每个 slot 的 orientation / quality 约束)、`textSlots`(可填的 key 列表)、`category`(`cover` / `spread` / `single` / `grid` / `closing`)
-- TS 类型定义和占位骨架以 `packages/contracts/src/templates.ts` 实际代码为准
+- 模板数据**单向**从 `packages/contracts/templates/` 流向 Web / Agent;不允许 Agent 自由生成 templateId
+- 每个模板必须给出:`imageSlots`(每个 slot 的 orientation / quality 软偏好,可省略表示任意)、`textSlots`(可填的 key 列表)、`category`(`cover` / `spread` / `single` / `grid` / `closing`)
+- TS 类型定义 / Python 镜像 / prompt 摘要都以 `packages/contracts/templates/` JSON 实际内容为准
 
 ### 5.1 quality enum 语义(`hero` / `detail` / `fill`)
 
-`TemplateSlotConstraint.quality` 是 `('hero' | 'detail' | 'fill')[]`,表示**该 slot 适合放什么"画面分量"的图**。这套 enum **不在** `yvaineyu9/memoir` 老仓库的 `schema.js` / `meta.json` 里 —— 是迁移到 `packages/contracts/src/templates.ts` 时按每个模板的视觉 desc 推导的,**B-1 之后已稳定写进 21 个模板约束**,Agent composing 阶段必须严格按这套语义选图。
+`TemplateSlotConstraint.quality` 是 `('hero' | 'detail' | 'fill')[]`,表示**该 slot 适合放什么"画面分量"的图**。这套 enum **不在** `yvaineyu9/memoir` 老仓库的 `schema.js` / `meta.json` 里 —— 是迁移模板时按每个模板的视觉 desc 推导的。二期 composing 重设计后,quality 在确定性侧只保留 **hero 保护**:fill 级照片禁止进入包含 `hero` 的主视觉槽;其他匹配关系是 prompt 软偏好。
 
 | 值 | 含义 | 占版面比例 | 典型 slot |
 |---|---|---|---|
@@ -280,17 +282,18 @@ User 段必须传达:
 
 1. **Stage 1(vision,§2.6 扩充字段)**:火山给每张 `PhotoAnalysis` 推导 `quality`(单值 `'hero' | 'detail' | 'fill'`)。判断依据:主体是否清晰、是否有故事性、构图是否能撑大、是否只能当配菜。
 2. **Stage 3(composing,§4.3)**:DeepSeek 选图填 slot 时:
-   - 先取 `imageSlots[slot].quality` 这个**可接受集合**
-   - 候选 = `PhotoAnalysis` 里 `quality` 落在集合内的照片
-   - 在候选里,按 §4.3 第 5 条硬规则"hero slot 优先 `quality=hero` 的图"挑
-   - 同时满足 `orientation` 约束
+   - 先取 `imageSlots[slot].quality` 这个**推荐集合**
+   - 优先候选 = `PhotoAnalysis` 里 `quality` 落在集合内的照片
+   - hero 槽优先选 `quality=hero` / `detail` 的图,避免 fill 级图撑满版面
+   - `orientation` 只作为软偏好:优先匹配,但不匹配也不触发确定性违规
+   - 确定性校验只拦截 fill 级照片进入 hero 槽
 3. **composing prompt(§4.4)**:必须把每个 slot 的"可接受 quality 集合"逐字列入 system prompt,**不要假设模型能从 templateId 反推语义**。
 
 #### 5.1.2 边界 case
 
-- **`mag-16.imageTiny: { quality: ['fill'] }`** —— 21 个模板里**唯一**只接受 `fill` 的 image slot。视觉上是配菜级小图(thumbnail / 远景 / 留白填充),给 hero 级照片硬塞进去就是"放炮打蚊子",撑不开版面。Agent 选图时遇到这个 slot 必须从 `quality=fill` 的图里选,**没有 fill 级照片就让这个 slot 空**(slot key 是 optional)。
+- **`mag-16.imageTiny: { quality: ['fill'] }`** —— 小图位视觉上更适合 thumbnail / 远景 / 留白填充。Agent 应优先放 `quality=fill` 的图;没有 fill 级照片时可放其它可用照片,image slot 仍必须填图。
 - **`mag-09.imageMain: { quality: ['hero', 'detail'] }`** —— 命名是 `imageMain`,但**接受 detail**,因为该模板另有 `imageTop`(landscape)占了上方互补位,主图不必是 hero 级。这是模板的视觉冗余设计,planning 时不要看到 `imageMain` 就强制塞 hero。
-- **`mag-09.imageTop: { quality: ['detail', 'fill'] }`** —— 配图位,**不接受 hero**:同页已有 imageMain,再放 hero 会"两个主视觉撕架"。Agent 不要为了用光 hero 图把它塞进辅助位。
+- **`mag-09.imageTop: { quality: ['detail', 'fill'] }`** —— 配图位,软偏好 detail / fill。hero 图放进这个小位是允许的但不优先,不要为了用光 hero 图主动牺牲主次关系。
 - **`mag-02 / mag-14 / mag-20`(`imageSlots = {}`)** —— 纯文字版面,quality enum 不参与;选模板时只看文本需求。
 
 > issue #7 提到"mag-09 imageMain `['fill']`",对照 `templates.ts:166` 实际是 `['hero','detail']`,issue 里是笔误。真正的 fill-only slot 是 `mag-16.imageTiny`(`templates.ts:277`)。
@@ -412,7 +415,7 @@ export const Usage = z.object({
 });
 ```
 
-`visionCostCents` / `planningCostCents` 可选 — Agent 端如果不知道单价就留空,Web 侧定时跑成本归集。
+`visionCostCents` / `planningCostCents` 可选 — Agent 端如果不知道单价就省略,Web 侧定时跑成本归集。
 
 ---
 

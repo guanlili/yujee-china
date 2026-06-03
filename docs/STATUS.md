@@ -56,13 +56,13 @@
 
 1. **AI 全走火山,没用 DeepSeek** —— agent 的 `DEEPSEEK_*` 槽位 base_url 指向火山 ark,一个 ARK key 同时跑 vision 和 planning。
 2. **积分制**,不是早期设想的"按本收费"。
-3. **composing 确定性兜底** —— doubao-lite 不可靠满足槽位 orientation/quality 约束,模型 repair 用尽后跑 `coerce_image_slots`(违规槽留空/换图),保证 layout 过校验、album 必出片。
+3. **#42 composing 重设计方向** —— orientation 改为模型软偏好;确定性硬规则只保留 fill 图不进 hero 槽等出片安全线。废页数公式但保留 1..16 边界;渲染采用 center-cover、不做人脸避让;模板约束收敛到 `packages/contracts/templates/` JSON 单一真相源。
 4. **submit 超时 30s** —— web→agent `/v1/layout` 转发 ~2MB base64,跨区 + 冷启动需要 >8s;`jobs/route.ts` `maxDuration=60`。
 5. **AGENT_SHARED_SECRET** —— fly 与 Vercel 必须同值,存本地 gitignored `docs/deploy/secrets.local.env`(在主仓库,勿提交)。
 
 ## 二期 backlog(open issue,已明确推迟)
 
-- **#42 composing 版面质量** —— doubao-lite 兜底能出片但不完美(可能空槽)。要更高质量:换更强 planning 模型(火山方舟 DeepSeek-V3 接入点)或改成更结构化"工作流"。**核心二期方向。**
+- **#42 composing 版面质量** —— 新方向:不允许空 image slot;orientation 改软偏好;quality 硬规则只保留 fill 图不进 hero 槽;比例错配由 center-cover 吸收;模板约束收敛到 `packages/contracts/templates/` JSON 单一真相源。
 - **#31 PDF 中文字体** —— Noto Serif/Sans SC 全量 ~18MB,客户端导出需下载,待 subset 或只留 Sans。
 
 ## 已知风险 / 运维要点
