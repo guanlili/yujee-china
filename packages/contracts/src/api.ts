@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { AlbumStatus, JobStage, JobStatus } from './enums.js';
-import { AlbumLayoutPlan } from './layout.js';
+import { AlbumStatus, JobStage, JobStatus } from './enums';
+import { AlbumLayoutPlan } from './layout';
 
 const BrowserPhoto = z.object({
   photoId: z.string().min(1),

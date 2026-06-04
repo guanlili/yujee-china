@@ -3,7 +3,7 @@ import { PhotoOrientation, PhotoQuality } from './layout';
 import {
   TEMPLATE_IDS as GENERATED_TEMPLATE_IDS,
   TEMPLATES as GENERATED_TEMPLATES,
-} from './templates.generated.js';
+} from './templates.generated';
 
 export const TemplateSlotConstraint = z
   .object({

@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { JobStage } from './enums.js';
-import { AlbumLayoutPlan } from './layout.js';
+import { JobStage } from './enums';
+import { AlbumLayoutPlan } from './layout';
 
 const AgentPhoto = z.object({
   photoId: z.string().min(1),
