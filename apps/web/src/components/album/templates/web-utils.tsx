@@ -40,7 +40,12 @@ export function WebImage({ src, placeholder, style }: WebImageProps) {
       <img
         src={src}
         alt=""
-        style={{ objectFit: 'cover', display: 'block', ...style }}
+        style={{
+          display: 'block',
+          ...style,
+          objectFit: 'cover',
+          objectPosition: '50% 50%',
+        }}
       />
     );
   }

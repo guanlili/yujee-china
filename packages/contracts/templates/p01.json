@@ -1,0 +1,37 @@
+{
+  "id": "p01",
+  "category": "cover",
+  "imageSlots": {
+    "image": {
+      "orientation": [
+        "portrait"
+      ],
+      "quality": [
+        "hero",
+        "detail"
+      ]
+    }
+  },
+  "textSlots": {
+    "title": {
+      "type": "heading",
+      "recommendedMaxChars": 20
+    },
+    "body": {
+      "type": "paragraph",
+      "recommendedMaxChars": 80
+    },
+    "category": {
+      "type": "label",
+      "recommendedMaxChars": 20
+    },
+    "vol": {
+      "type": "meta",
+      "recommendedMaxChars": 4
+    },
+    "date": {
+      "type": "meta",
+      "recommendedMaxChars": 10
+    }
+  }
+}

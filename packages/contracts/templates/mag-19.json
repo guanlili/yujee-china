@@ -1,0 +1,37 @@
+{
+  "id": "mag-19",
+  "category": "single",
+  "imageSlots": {
+    "image": {
+      "orientation": [
+        "landscape"
+      ],
+      "quality": [
+        "detail",
+        "fill"
+      ]
+    }
+  },
+  "textSlots": {
+    "intro": {
+      "type": "paragraph",
+      "recommendedMaxChars": 80
+    },
+    "captionLeft": {
+      "type": "caption",
+      "recommendedMaxChars": 80
+    },
+    "captionRight": {
+      "type": "caption",
+      "recommendedMaxChars": 80
+    },
+    "quote": {
+      "type": "quote",
+      "recommendedMaxChars": 60
+    },
+    "folio": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    }
+  }
+}

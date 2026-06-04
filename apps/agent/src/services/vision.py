@@ -6,12 +6,13 @@ Privacy: photo base64 is passed into the upstream HTTP body and then the
 local reference is dropped; we never log it or hand it back to the caller."""
 
 from math import ceil
+import re
 from typing import Any
 
 from pydantic import ValidationError
 
 from ..logging_config import get_logger
-from ..schemas import LayoutRequest, PhotoAnalysis
+from ..schemas import LayoutRequest, PhotoAnalysis, PhotoGroup, VisionResult
 from ..settings import get_settings
 from . import ai_client
 
@@ -42,10 +43,11 @@ def _build_system_prompt(photo_count: int) -> str:
     hero_cap = max(1, ceil(photo_count / 3))
     return (
         "You analyze a batch of memoir photos for an AI-curated photo album. "
-        "Output STRICT JSON only: a JSON array of length equal to the number "
-        "of input images, in the SAME ORDER as the inputs. Do not wrap with "
-        "code fences or commentary.\n\n"
-        "Each array element must be an object with EXACTLY these keys:\n"
+        "Output STRICT JSON only: a JSON object with keys photos and groups. "
+        "photos must be a JSON array of length equal to the number of input "
+        "images, in the SAME ORDER as the inputs. Do not wrap with code fences "
+        "or commentary.\n\n"
+        "Each photos[] element must be an object with EXACTLY these keys:\n"
         '  "description": one short English sentence (<=120 chars) about what is visible. '
         "Describe only what is visible. Do not invent people, places, or events.\n"
         '  "tags": 3-6 short English keywords (lowercase words or hyphenated phrases).\n'
@@ -58,12 +60,21 @@ def _build_system_prompt(photo_count: int) -> str:
         '  "mood": one of "warm" | "cool" | "sentimental" | "energetic" | "quiet".\n'
         '  "timeOfDay": one of "morning" | "day" | "evening" | "night", or null if uncertain.\n'
         '  "location": a short free-text guess (e.g. "Kyoto street", "kitchen") or null.\n\n'
+        "groups must be an array of 1-5 objects that cluster adjacent narrative moments:\n"
+        '  "groupId": short stable id such as "g1".\n'
+        '  "label": short English theme label.\n'
+        '  "photoIds": photo ids from the input batch only.\n'
+        '  "role": one of "opening" | "body" | "closing", or null.\n\n'
         f"HARD RULE: at most {hero_cap} of the {photo_count} photos may have quality=\"hero\". "
         "If you would exceed the cap, downgrade the weaker ones to \"detail\"."
     )
 
 
 def _build_user_content(req: LayoutRequest) -> list[dict[str, Any]]:
+    photo_manifest = "\n".join(
+        f"{idx + 1}. photoId={photo.photoId} width={photo.width} height={photo.height}"
+        for idx, photo in enumerate(req.photos)
+    )
     parts: list[dict[str, Any]] = [
         {
             "type": "text",
@@ -71,7 +82,9 @@ def _build_user_content(req: LayoutRequest) -> list[dict[str, Any]]:
                 "User memoir prompt (context only, do not re-emit verbatim):\n"
                 f"{req.prompt}\n\n"
                 f"Photos follow in order (count={len(req.photos)}). "
-                "Return a JSON array of analyses in the same order."
+                "Use these exact photoId values in groups[].photoIds:\n"
+                f"{photo_manifest}\n\n"
+                'Return {"photos":[...], "groups":[...]} with photos in the same order.'
             ),
         }
     ]
@@ -152,9 +165,89 @@ def _enforce_hero_cap(items: list[PhotoAnalysis]) -> list[PhotoAnalysis]:
     return items
 
 
-async def analyze(req: LayoutRequest) -> tuple[list[PhotoAnalysis], int]:
+def _normalize_group_id(raw: Any, fallback: str) -> str:
+    candidate = str(raw or "").strip().lower()
+    candidate = re.sub(r"[^a-z0-9]+", "-", candidate).strip("-")
+    return candidate or fallback
+
+
+def _unique_group_id(base: str, used: set[str]) -> str:
+    if base not in used:
+        used.add(base)
+        return base
+    suffix = 2
+    while f"{base}-{suffix}" in used:
+        suffix += 1
+    unique = f"{base}-{suffix}"
+    used.add(unique)
+    return unique
+
+
+def _fallback_groups(photo_ids: list[str]) -> list[PhotoGroup]:
+    if len(photo_ids) == 1:
+        return [
+            PhotoGroup(groupId="g1", label="Closing", photoIds=[photo_ids[0]], role="closing")
+        ]
+    if len(photo_ids) == 2:
+        return [
+            PhotoGroup(groupId="g1", label="Opening", photoIds=[photo_ids[0]], role="opening"),
+            PhotoGroup(groupId="g2", label="Closing", photoIds=[photo_ids[1]], role="closing"),
+        ]
+
+    return [
+        PhotoGroup(groupId="g1", label="Opening", photoIds=[photo_ids[0]], role="opening"),
+        PhotoGroup(groupId="g2", label="Body", photoIds=photo_ids[1:-1], role="body"),
+        PhotoGroup(groupId="g3", label="Closing", photoIds=[photo_ids[-1]], role="closing"),
+    ]
+
+
+def _sanitize_groups(raw_groups: Any, photo_ids: list[str]) -> list[PhotoGroup]:
+    if not isinstance(raw_groups, list):
+        return _fallback_groups(photo_ids)
+
+    allowed_ids = set(photo_ids)
+    allowed_roles = {"opening", "body", "closing"}
+    used_group_ids: set[str] = set()
+    groups: list[PhotoGroup] = []
+
+    for item in raw_groups:
+        if not isinstance(item, dict):
+            continue
+
+        seen_photo_ids: set[str] = set()
+        group_photo_ids: list[str] = []
+        raw_photo_ids = item.get("photoIds") if isinstance(item.get("photoIds"), list) else []
+        for raw_pid in raw_photo_ids:
+            pid = str(raw_pid)
+            if pid in allowed_ids and pid not in seen_photo_ids:
+                seen_photo_ids.add(pid)
+                group_photo_ids.append(pid)
+        if not group_photo_ids:
+            continue
+
+        idx = len(groups) + 1
+        group_id = _unique_group_id(
+            _normalize_group_id(item.get("groupId"), f"g{idx}"),
+            used_group_ids,
+        )
+        label = str(item.get("label") or "").strip() or f"Group {idx}"
+        raw_role = item.get("role")
+        role = raw_role if isinstance(raw_role, str) and raw_role in allowed_roles else None
+        groups.append(
+            PhotoGroup(
+                groupId=group_id,
+                label=label[:80],
+                photoIds=group_photo_ids,
+                role=role,  # type: ignore[arg-type]
+            )
+        )
+
+    return groups or _fallback_groups(photo_ids)
+
+
+async def analyze(req: LayoutRequest) -> tuple[VisionResult, int]:
     """Run vision on all photos in one batched call. Returns
-    (analyses, total_tokens_billed_to_vision). Raises VisionError on any
+    (vision_result, total_tokens_billed_to_vision). Raises VisionError on any
     failure that should map to AGENT_VISION_FAILED."""
     settings = get_settings()
     if not settings.ark_api_key:
@@ -197,23 +290,38 @@ async def analyze(req: LayoutRequest) -> tuple[list[PhotoAnalysis], int]:
 
     prompt_tokens, completion_tokens = ai_client.extract_usage(response)
 
-    if not isinstance(parsed, list):
-        raise VisionError(f"vision response is not a JSON array (got {type(parsed).__name__})")
-    if len(parsed) != photo_count:
+    raw_groups: Any = []
+    if isinstance(parsed, dict):
+        photos_raw = parsed.get("photos")
+        raw_groups = parsed.get("groups", [])
+    elif isinstance(parsed, list):
+        photos_raw = parsed
+    else:
         raise VisionError(
-            f"vision response length {len(parsed)} != photo count {photo_count}"
+            f"vision response is not a JSON object or array (got {type(parsed).__name__})"
+        )
+
+    if not isinstance(photos_raw, list):
+        raise VisionError(
+            f"vision response photos is not a JSON array (got {type(photos_raw).__name__})"
+        )
+    if len(photos_raw) != photo_count:
+        raise VisionError(
+            f"vision response length {len(photos_raw)} != photo count {photo_count}"
         )
 
     analyses = [
         _coerce_one(item, photo_id=photo_ids[i], fallback_orient=fallback_orients[i])
-        for i, item in enumerate(parsed)
+        for i, item in enumerate(photos_raw)
     ]
     analyses = _enforce_hero_cap(analyses)
+    groups = _sanitize_groups(raw_groups, photo_ids)
 
     log.info(
         "vision.call.ok",
         photo_count=photo_count,
+        group_count=len(groups),
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
     )
-    return analyses, prompt_tokens + completion_tokens
+    return VisionResult(photos=analyses, groups=groups), prompt_tokens + completion_tokens

@@ -1,0 +1,42 @@
+{
+  "id": "mag-15",
+  "category": "spread",
+  "imageSlots": {
+    "imagePerson": {
+      "orientation": [
+        "portrait"
+      ],
+      "quality": [
+        "hero",
+        "detail"
+      ]
+    },
+    "imageRoad": {
+      "orientation": [
+        "landscape"
+      ],
+      "quality": [
+        "detail",
+        "fill"
+      ]
+    }
+  },
+  "textSlots": {
+    "body": {
+      "type": "paragraph",
+      "recommendedMaxChars": 60
+    },
+    "title": {
+      "type": "heading",
+      "recommendedMaxChars": 16
+    },
+    "date": {
+      "type": "label",
+      "recommendedMaxChars": 20
+    },
+    "folio": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    }
+  }
+}

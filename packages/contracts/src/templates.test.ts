@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import test from 'node:test';
 
 import {
   TEMPLATE_IDS,
   TEMPLATES,
   TemplateDef,
+  TemplateSlotConstraint,
+  TemplateTextSlotConstraint,
   getTemplate,
   validateSlotsForTemplate,
 } from './templates';
@@ -39,7 +42,24 @@ test('registry contains the 21 templates imported from memoir', () => {
   assert.equal(INDEX_TEMPLATES, TEMPLATES);
 });
 
-test('every template parses, mirrors its id, and exposes concrete slot constraints', () => {
+test('template schemas accept soft optional image and text recommendations', () => {
+  assert.deepEqual(TemplateSlotConstraint.parse({}), {});
+  assert.deepEqual(TemplateSlotConstraint.parse({ orientation: ['portrait'] }), {
+    orientation: ['portrait'],
+  });
+  assert.deepEqual(TemplateSlotConstraint.parse({ quality: ['hero'] }), {
+    quality: ['hero'],
+  });
+  assert.deepEqual(TemplateTextSlotConstraint.parse({ type: 'caption' }), {
+    type: 'caption',
+  });
+  assert.deepEqual(
+    TemplateTextSlotConstraint.parse({ type: 'caption', recommendedMaxChars: 80 }),
+    { type: 'caption', recommendedMaxChars: 80 },
+  );
+});
+
+test('every template parses, mirrors its id, and exposes soft slot constraints', () => {
   for (const id of EXPECTED_TEMPLATE_IDS) {
     const template = TEMPLATES[id];
 
@@ -48,23 +68,37 @@ test('every template parses, mirrors its id, and exposes concrete slot constrain
     assert.equal(template.id, id);
 
     for (const [slotName, constraint] of Object.entries(template.imageSlots)) {
-      assert.ok(
-        constraint.orientation && constraint.orientation.length > 0,
-        `${id}.${slotName} should constrain photo orientation`,
-      );
-      assert.ok(
-        constraint.quality && constraint.quality.length > 0,
-        `${id}.${slotName} should constrain photo quality`,
-      );
+      if (constraint.orientation) {
+        assert.ok(
+          constraint.orientation.length > 0,
+          `${id}.${slotName} orientation hint should not be empty`,
+        );
+      }
+      if (constraint.quality) {
+        assert.ok(
+          constraint.quality.length > 0,
+          `${id}.${slotName} quality hint should not be empty`,
+        );
+      }
     }
 
     for (const [slotName, constraint] of Object.entries(template.textSlots)) {
       assert.equal(
-        typeof constraint.maxChars,
-        'number',
-        `${id}.${slotName} should expose maxChars`,
+        'minChars' in constraint,
+        false,
+        `${id}.${slotName} should not expose migrated minChars`,
       );
-      assert.ok(constraint.maxChars > 0, `${id}.${slotName} maxChars should be positive`);
+      assert.equal(
+        'maxChars' in constraint,
+        false,
+        `${id}.${slotName} should not expose migrated maxChars`,
+      );
+      if (constraint.recommendedMaxChars !== undefined) {
+        assert.ok(
+          constraint.recommendedMaxChars > 0,
+          `${id}.${slotName} recommendedMaxChars should be positive`,
+        );
+      }
     }
   }
 });
@@ -77,18 +111,22 @@ test('selected template metadata matches the source schema semantics', () => {
   });
   assert.deepEqual(getTemplate('mag-05')?.textSlots.caption, {
     type: 'paragraph',
-    minChars: 60,
-    maxChars: 120,
+    recommendedMaxChars: 120,
   });
   assert.deepEqual(getTemplate('mag-03')?.textSlots.caption, {
     type: 'caption',
-    minChars: 0,
-    maxChars: 60,
+    recommendedMaxChars: 60,
   });
   assert.deepEqual(getTemplate('p01')?.textSlots.vol, {
     type: 'meta',
-    minChars: 2,
-    maxChars: 4,
+    recommendedMaxChars: 4,
+  });
+});
+
+test('generated templates are synchronized with template JSON files', () => {
+  execFileSync('pnpm', ['--filter', '@yujee/contracts', 'templates:check'], {
+    cwd: new URL('../../..', import.meta.url),
+    stdio: 'pipe',
   });
 });
 

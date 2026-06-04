@@ -1,0 +1,37 @@
+{
+  "id": "mag-01",
+  "category": "cover",
+  "imageSlots": {
+    "image": {
+      "orientation": [
+        "landscape"
+      ],
+      "quality": [
+        "hero",
+        "detail"
+      ]
+    }
+  },
+  "textSlots": {
+    "heading": {
+      "type": "heading",
+      "recommendedMaxChars": 12
+    },
+    "sideText": {
+      "type": "label",
+      "recommendedMaxChars": 30
+    },
+    "caption1": {
+      "type": "caption",
+      "recommendedMaxChars": 80
+    },
+    "caption2": {
+      "type": "caption",
+      "recommendedMaxChars": 80
+    },
+    "folio": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    }
+  }
+}

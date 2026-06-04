@@ -47,9 +47,11 @@ def _system_prompt() -> str:
         "  4. If you change templateId for a page, the patch MUST replace ALL images and texts for that page\n"
         "     (omit fields you want unchanged ONLY if templateId stays the same).\n"
         "  5. After applying your patch, every business rule (cover-first, sequential pageIndex,\n"
-        "     orientation+quality slot fit, every photoId used, no >2 reuse, slot keys exist on the chosen\n"
-        "     template, text fits maxChars) must still hold.\n"
+        "     every photoId used, no >2 reuse, no same-page duplicate, no fill-grade photo in a hero slot,\n"
+        "     slot keys exist on the chosen template, and every declared image slot is filled) must still hold.\n"
         "  6. Use templateIds and slot keys from the TemplateRegistry only.\n\n"
+        "SOFT GUIDANCE: orientation is preferred, not required; the renderer center-covers mismatches. "
+        "Keep text near each slot's recommended length, but length is not a hard rule.\n\n"
         "TemplateRegistry (id [category] images / texts):\n"
         f"{registry.summarize_for_prompt()}\n"
     )

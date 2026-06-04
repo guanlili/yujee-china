@@ -1,0 +1,54 @@
+{
+  "id": "mag-16",
+  "category": "spread",
+  "imageSlots": {
+    "imageTiny": {
+      "orientation": [
+        "portrait"
+      ],
+      "quality": [
+        "fill"
+      ]
+    },
+    "imagePerson": {
+      "orientation": [
+        "landscape"
+      ],
+      "quality": [
+        "hero",
+        "detail"
+      ]
+    },
+    "imageHarbor": {
+      "orientation": [
+        "landscape"
+      ],
+      "quality": [
+        "detail",
+        "fill"
+      ]
+    }
+  },
+  "textSlots": {
+    "caption1": {
+      "type": "caption",
+      "recommendedMaxChars": 80
+    },
+    "caption2": {
+      "type": "caption",
+      "recommendedMaxChars": 80
+    },
+    "caption3": {
+      "type": "caption",
+      "recommendedMaxChars": 80
+    },
+    "quote": {
+      "type": "quote",
+      "recommendedMaxChars": 60
+    },
+    "folio": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    }
+  }
+}

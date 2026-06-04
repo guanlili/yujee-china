@@ -15,8 +15,10 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
+    "templates:generate": "tsx scripts/gen-templates.ts",
+    "templates:check": "tsx scripts/gen-templates.ts --check",
     "test": "tsx --test src/*.test.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "pnpm templates:check && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "zod": "^3.23.0"

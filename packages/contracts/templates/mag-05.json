@@ -1,0 +1,33 @@
+{
+  "id": "mag-05",
+  "category": "single",
+  "imageSlots": {
+    "image": {
+      "orientation": [
+        "landscape"
+      ],
+      "quality": [
+        "hero",
+        "detail"
+      ]
+    }
+  },
+  "textSlots": {
+    "title": {
+      "type": "heading",
+      "recommendedMaxChars": 25
+    },
+    "topRight": {
+      "type": "label",
+      "recommendedMaxChars": 20
+    },
+    "caption": {
+      "type": "paragraph",
+      "recommendedMaxChars": 120
+    },
+    "folio": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    }
+  }
+}

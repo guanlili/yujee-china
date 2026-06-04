@@ -75,6 +75,18 @@ class PhotoAnalysis(_Strict):
     location: str | None = None
 
 
+class PhotoGroup(_Strict):
+    groupId: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    photoIds: list[str] = Field(min_length=1)
+    role: Literal["opening", "body", "closing"] | None = None
+
+
+class VisionResult(_Strict):
+    photos: list[PhotoAnalysis]
+    groups: list[PhotoGroup]
+
+
 class Page(_Strict):
     pageIndex: int = Field(ge=0)
     templateId: str = Field(min_length=1)

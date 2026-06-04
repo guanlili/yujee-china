@@ -12,8 +12,10 @@ from src.schemas import (
     Magazine,
     Page,
     PhotoAnalysis,
+    PhotoGroup,
     PhotoIn,
     ProgressCallback,
+    VisionResult,
 )
 
 
@@ -144,4 +146,28 @@ class TestPagesBound:
                     Page(pageIndex=i, templateId="mag-13", images={"image": "p1"}, texts={})
                     for i in range(17)
                 ],
+            )
+
+
+class TestVisionGroups:
+    def test_photo_group_and_vision_result_construct(self):
+        group = PhotoGroup(
+            groupId="g1",
+            label="Opening moments",
+            photoIds=["p1", "p2"],
+            role="opening",
+        )
+        result = VisionResult(photos=[_photo_analysis("p1")], groups=[group])
+
+        assert result.groups[0].role == "opening"
+        assert result.groups[0].photoIds == ["p1", "p2"]
+
+    def test_photo_group_rejects_unknown_key(self):
+        with pytest.raises(ValidationError):
+            PhotoGroup(
+                groupId="g1",
+                label="Opening moments",
+                photoIds=["p1"],
+                role="body",
+                unexpected="x",  # type: ignore[call-arg]
             )

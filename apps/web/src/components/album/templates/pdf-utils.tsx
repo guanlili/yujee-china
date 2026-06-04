@@ -69,7 +69,16 @@ interface PdfImageProps {
 export function PdfImage({ src, style }: PdfImageProps) {
   if (src) {
     // @react-pdf/renderer 的 Image objectFit 通过 style 的 objectFit 控制
-    return <Image src={src} style={{ objectFit: 'cover', ...style }} />;
+    return (
+      <Image
+        src={src}
+        style={{
+          ...style,
+          objectFit: 'cover',
+          objectPosition: '50% 50%',
+        }}
+      />
+    );
   }
   return <View style={{ backgroundColor: '#e8e4db', ...style }} />;
 }

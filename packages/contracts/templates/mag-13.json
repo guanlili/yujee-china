@@ -1,0 +1,45 @@
+{
+  "id": "mag-13",
+  "category": "cover",
+  "imageSlots": {
+    "image": {
+      "orientation": [
+        "landscape"
+      ],
+      "quality": [
+        "hero",
+        "detail"
+      ]
+    }
+  },
+  "textSlots": {
+    "title": {
+      "type": "heading",
+      "recommendedMaxChars": 30
+    },
+    "intro": {
+      "type": "paragraph",
+      "recommendedMaxChars": 80
+    },
+    "caption1": {
+      "type": "caption",
+      "recommendedMaxChars": 80
+    },
+    "caption2": {
+      "type": "caption",
+      "recommendedMaxChars": 80
+    },
+    "issue": {
+      "type": "label",
+      "recommendedMaxChars": 15
+    },
+    "credit": {
+      "type": "label",
+      "recommendedMaxChars": 30
+    },
+    "folio": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    }
+  }
+}

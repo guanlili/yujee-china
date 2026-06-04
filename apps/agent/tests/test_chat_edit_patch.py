@@ -106,6 +106,48 @@ class TestApplyPatch:
         v = violation(patched)
         assert v is not None and ("unused" in v or "imageTop" in v or "slot" in v)
 
+    def test_patch_with_orientation_mismatch_still_valid(self):
+        layout = _layout()
+        _, patch = chat_edit._coerce_patch(
+            {
+                "assistantReply": "swap crop",
+                "layoutPatch": [
+                    {
+                        "pageIndex": 0,
+                        "images": {"image": "p2"},
+                    },
+                    {
+                        "pageIndex": 2,
+                        "images": {"imageTop": "p3", "imageBottom": "p1"},
+                    },
+                ],
+            }
+        )
+
+        patched = chat_edit._apply_patch(layout, patch)
+
+        assert violation(patched) is None
+
+    def test_patch_putting_fill_photo_in_hero_slot_is_invalid(self):
+        layout = _layout()
+        _, patch = chat_edit._coerce_patch(
+            {
+                "assistantReply": "make it cover",
+                "layoutPatch": [
+                    {"pageIndex": 0, "images": {"image": "p3"}},
+                    {
+                        "pageIndex": 2,
+                        "images": {"imageTop": "p1", "imageBottom": "p2"},
+                    },
+                ],
+            }
+        )
+
+        patched = chat_edit._apply_patch(layout, patch)
+        v = violation(patched) or ""
+
+        assert "fill" in v and "hero" in v
+
 
 class TestClampPatch:
     def test_patch_text_clamped_to_template_maxchars(self):

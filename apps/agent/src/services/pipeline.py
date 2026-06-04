@@ -83,7 +83,7 @@ async def _run_mock(req: LayoutRequest) -> tuple[AlbumLayoutPlan, int]:
         await _emit_progress(req, stage, 50)
         await asyncio.sleep(_MOCK_STEP_SECONDS)
         if stage == "vision":
-            photos = vision_mock.analyze(req)
+            photos = vision_mock.analyze(req).photos
         await _emit_progress(req, stage, 100)
 
     layout = planning_mock.plan(req, photos)
@@ -99,10 +99,11 @@ async def _run_real(req: LayoutRequest) -> tuple[AlbumLayoutPlan, dict[str, int]
     # Stage 1: vision
     await _emit_progress(req, "vision", 0)
     try:
-        photos, vision_tokens = await vision_analyze(req)
+        vision_result, vision_tokens = await vision_analyze(req)
     except VisionError as exc:
         log.warning("pipeline.vision_failed", error=str(exc))
         raise _StageError(stage="vision", code="AGENT_VISION_FAILED", message=str(exc)) from exc
+    photos = vision_result.photos
     usage_counters["vision_tokens"] = vision_tokens
     await _emit_progress(req, "vision", 100)
 
@@ -121,7 +122,11 @@ async def _run_real(req: LayoutRequest) -> tuple[AlbumLayoutPlan, dict[str, int]
     # Stage 3: composing
     await _emit_progress(req, "composing", 0)
     try:
-        layout, c_pt, c_ct, _ = await compose_pages(magazine=magazine, photos=photos)
+        layout, c_pt, c_ct, _ = await compose_pages(
+            magazine=magazine,
+            photos=photos,
+            groups=vision_result.groups,
+        )
     except ComposingError as exc:
         log.warning("pipeline.composing_failed", error=str(exc))
         raise _StageError(stage="composing", code="AGENT_OUTPUT_VALIDATION", message=str(exc)) from exc

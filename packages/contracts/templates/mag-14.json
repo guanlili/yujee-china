@@ -1,0 +1,35 @@
+{
+  "id": "mag-14",
+  "category": "spread",
+  "imageSlots": {},
+  "textSlots": {
+    "bigNum": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    },
+    "bigNumTotal": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    },
+    "body": {
+      "type": "paragraph",
+      "recommendedMaxChars": 80
+    },
+    "subtitleQuote": {
+      "type": "quote",
+      "recommendedMaxChars": 50
+    },
+    "bracketQuote": {
+      "type": "quote",
+      "recommendedMaxChars": 80
+    },
+    "footnote": {
+      "type": "caption",
+      "recommendedMaxChars": 60
+    },
+    "folio": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    }
+  }
+}

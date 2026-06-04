@@ -280,6 +280,15 @@ export const AlbumLayoutPlan = z.object({
 });
 ```
 
+### 4.1 Composing 二期语义(文档说明,非 schema 变更)
+
+本节只说明 layout 规则语义,**不新增协议字段、不改 zod schema**:
+
+- `PhotoAnalysis.orientation` 仍然保留在输出里,供模型做软偏好与渲染调试参考;但它不再是确定性 layout validation 的硬规则。orientation 错配不应单独触发 repair / failed。
+- 页数不再按 `max(3, ceil(photos.length / 2.5))` 公式强制相等;Agent 可按实际内容排页,但最终 `pages` 仍必须落在 **1..16** 边界内。
+- `Page.images` 的 value 仍然只能是 `photoId`,不得输出 URL / 原图地址 / 临时图片地址。`photoId → 原图` 的映射只在浏览器本地完成。
+- callback envelope 不变:仍然只有 `progress` / `completed` / `failed` 三个 variant,字段集按 §2.1,不新增包裹层或额外事件类型。
+
 ---
 
 ## 5. 进度 stage 枚举

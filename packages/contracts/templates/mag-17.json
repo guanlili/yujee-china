@@ -1,0 +1,29 @@
+{
+  "id": "mag-17",
+  "category": "closing",
+  "imageSlots": {
+    "image": {
+      "orientation": [
+        "portrait"
+      ],
+      "quality": [
+        "hero",
+        "detail"
+      ]
+    }
+  },
+  "textSlots": {
+    "name1": {
+      "type": "label",
+      "recommendedMaxChars": 20
+    },
+    "name2": {
+      "type": "label",
+      "recommendedMaxChars": 20
+    },
+    "folio": {
+      "type": "meta",
+      "recommendedMaxChars": 2
+    }
+  }
+}
