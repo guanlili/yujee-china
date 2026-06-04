@@ -97,3 +97,69 @@ def test_prompt_summary_handles_optional_constraints(tmp_path):
     assert "thumb(quality~detail)" in summary
     assert "caption<=?c" in summary
     assert "title<=24c" in summary
+
+
+def test_layout_rules_treat_optional_image_slot_hints_as_any(monkeypatch, tmp_path):
+    def write_template(template_id: str, category: str, image_slots: dict, text_slots: dict):
+        (tmp_path / f"{template_id}.json").write_text(
+            json.dumps(
+                {
+                    "id": template_id,
+                    "category": category,
+                    "imageSlots": image_slots,
+                    "textSlots": text_slots,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    write_template("mag-01", "cover", {"image": {}}, {"title": {"type": "heading"}})
+    write_template("mag-02", "spread", {}, {"items": {"type": "paragraph"}})
+    write_template("mag-14", "spread", {}, {"folio": {"type": "meta"}})
+    write_template("mag-20", "cover", {}, {"title": {"type": "heading"}})
+    write_template("optional-01", "single", {"image": {}}, {"caption": {"type": "caption"}})
+
+    monkeypatch.setenv("YUJEE_TEMPLATE_DIR", str(tmp_path))
+    sys.modules.pop("src.templates", None)
+    sys.modules.pop("src.services.layout_rules", None)
+
+    try:
+        templates = importlib.import_module("src.templates")
+        layout_rules = importlib.import_module("src.services.layout_rules")
+
+        from src.schemas import AlbumLayoutPlan, Magazine, Page, PhotoAnalysis
+
+        magazine = Magazine(title="Optional hints", style="warm-film", language="en")
+        fill_photo = PhotoAnalysis(
+            photoId="p1",
+            description="d",
+            tags=["t"],
+            quality="fill",
+            orientation="square",
+        )
+        layout = AlbumLayoutPlan(
+            magazine=magazine,
+            photos=[fill_photo],
+            pages=[
+                Page(pageIndex=0, templateId="mag-01", images={"image": "p1"}, texts={"title": "x"}),
+                Page(pageIndex=1, templateId="optional-01", images={}, texts={"caption": "x"}),
+            ],
+        )
+
+        assert templates.TEMPLATES["optional-01"]["imageSlots"]["image"] == {}
+        assert layout_rules.violation(layout) == "page 1: missing image slot 'image' in template optional-01"
+
+        coerced = layout_rules.coerce_image_slots(layout)
+        assert coerced.pages[1].images == {"image": "p1"}
+        assert layout_rules.violation(coerced) is None
+
+        fallback = layout_rules.build_text_first_layout(magazine, [fill_photo])
+        assert fallback.pages[0].templateId == "mag-01"
+        assert fallback.pages[0].images == {"image": "p1"}
+        assert layout_rules.violation(fallback) is None
+    finally:
+        monkeypatch.delenv("YUJEE_TEMPLATE_DIR", raising=False)
+        sys.modules.pop("src.templates", None)
+        sys.modules.pop("src.services.layout_rules", None)
+        importlib.import_module("src.templates")
+        importlib.import_module("src.services.layout_rules")

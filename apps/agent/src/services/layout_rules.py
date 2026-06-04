@@ -25,6 +25,9 @@ _TEXT_ONLY_PAD = ("mag-02", "mag-14")
 _TEXT_ONLY_COVER = "mag-20"
 _TEXT_ONLY_SPREAD = "mag-02"
 
+_ALL_ORIENTATIONS = ("portrait", "landscape", "square")
+_ALL_QUALITIES = ("hero", "detail", "fill")
+
 
 def clamp_text(text: str, max_chars: int) -> str:
     """Trim text to <= max_chars, preferring the last word boundary within the
@@ -78,10 +81,19 @@ def _quality_ok(photo: PhotoAnalysis, constraint: dict) -> bool:
     return True
 
 
+def _slot_orientations(constraint: dict) -> tuple[str, ...]:
+    """Missing orientation hints mean the slot can accept any orientation."""
+    return tuple(constraint.get("orientation") or _ALL_ORIENTATIONS)
+
+
+def _slot_qualities(constraint: dict) -> tuple[str, ...]:
+    """Missing quality hints mean the slot can accept any quality."""
+    return tuple(constraint.get("quality") or _ALL_QUALITIES)
+
+
 def _orientation_prefers(photo: PhotoAnalysis, constraint: dict) -> bool:
     """Soft preference used for deterministic tie-breaking, never validation."""
-    orientations = constraint.get("orientation")
-    return (not orientations) or (photo.orientation in orientations)
+    return photo.orientation in _slot_orientations(constraint)
 
 
 def _quality_prefers(photo: PhotoAnalysis, constraint: dict) -> bool:
@@ -104,8 +116,8 @@ def _photo_placeable(photo: PhotoAnalysis, constraint: dict) -> bool:
 _PLACEABLE_QUALITIES: dict[str, set[str]] = {}
 for _tpl in registry.TEMPLATES.values():
     for _cons in _tpl["imageSlots"].values():
-        for _o in _cons["orientation"]:
-            _PLACEABLE_QUALITIES.setdefault(_o, set()).update(_cons["quality"])
+        for _o in _slot_orientations(_cons):
+            _PLACEABLE_QUALITIES.setdefault(_o, set()).update(_slot_qualities(_cons))
 
 # Preference order when we must demote a photo's quality to make it placeable:
 # keep it as prominent as the registry allows.
@@ -132,8 +144,8 @@ for _tpl in registry.TEMPLATES.values():
     if _tpl["category"] == "cover" or len(_tpl["imageSlots"]) != 1:
         continue
     (_cons,) = _tpl["imageSlots"].values()
-    for _o in _cons["orientation"]:
-        _SINGLE_IMAGE_QUALITIES.setdefault(_o, set()).update(_cons["quality"])
+    for _o in _slot_orientations(_cons):
+        _SINGLE_IMAGE_QUALITIES.setdefault(_o, set()).update(_slot_qualities(_cons))
 
 
 def _relax_for_single_image(photo: PhotoAnalysis) -> PhotoAnalysis:
