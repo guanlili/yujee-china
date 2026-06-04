@@ -60,9 +60,12 @@
 4. **submit 超时 30s** —— web→agent `/v1/layout` 转发 ~2MB base64,跨区 + 冷启动需要 >8s;`jobs/route.ts` `maxDuration=60`。
 5. **AGENT_SHARED_SECRET** —— fly 与 Vercel 必须同值,存本地 gitignored `docs/deploy/secrets.local.env`(在主仓库,勿提交)。
 
+## Feature branch 已落地
+
+- **#42 composing 版面质量** —— 本 feature branch 已实现 composing redesign:不允许空 image slot;orientation 改软偏好;quality 硬规则只保留 fill 图不进 hero 槽;比例错配由 center-cover 吸收;模板约束收敛到 `packages/contracts/templates/` JSON 单一真相源。
+
 ## 二期 backlog(open issue,已明确推迟)
 
-- **#42 composing 版面质量** —— 新方向:不允许空 image slot;orientation 改软偏好;quality 硬规则只保留 fill 图不进 hero 槽;比例错配由 center-cover 吸收;模板约束收敛到 `packages/contracts/templates/` JSON 单一真相源。
 - **#31 PDF 中文字体** —— Noto Serif/Sans SC 全量 ~18MB,客户端导出需下载,待 subset 或只留 Sans。
 
 ## 已知风险 / 运维要点

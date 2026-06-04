@@ -30,7 +30,7 @@
   - Agent / pipeline 全程只看**预览图(降采样编码,≤800KB,`contract.md §2.1`)**——用于 vision 识别与编辑期预览。
   - **最终渲染(出片 / 导出)在浏览器上用「原图」**。原图**只在浏览器**(架构不变式 1 / `§6.5-2`),始终不离开浏览器、不进 Agent。
   - 二者靠 **photoId** 串联:Agent 输出 `{slot: photoId}`(只认编码,绝不 URL · D-E),浏览器拿 photoId 去本地(IndexedDB)取原图渲染。
-  - 推论:**`object-fit: cover` 的裁切(D-A)作用在「原图」上,发生在浏览器**;预览图只是排版近似,清晰度/裁切以原图为准 → §3 web 待办据此。
+  - 推论:**`object-fit: cover` 的裁切(D-A)作用在「原图」上,发生在浏览器**;预览图只是排版近似,清晰度/裁切以原图为准 → §3 web 落地记录据此。
 
 ---
 
@@ -80,14 +80,14 @@
 2. **导出**(`@react-pdf`):`apps/web/src/components/album/templates/pdf-utils.tsx`
 （模板组件经 `web-registry.ts` / `pdf-registry.ts` 按 templateId 取;每模板有 `web.tsx` / `pdf.tsx`）
 
-> **✅ 现状(核对核心仓库 `memoir-agent-rebuild`,2026-06-03)**:两条路径**都已用 `object-fit: cover`** —— `web-utils.tsx:43`、`pdf-utils.tsx:72`。即 **D-A 在渲染层基本已满足、两端一致**(不是 showcase 里以为的"withheld/待从零做")。
+> **✅ 现状(本 feature branch,2026-06-04)**:两条路径**都已显式 center-cover** —— `web-utils` 与 `pdf-utils` 均写入 `objectFit:'cover'` + `objectPosition:'50% 50%'`,预览 / PDF 导出保持同语义。
 >
-> **⚠️ 剩余待办(web 轨道,务必随本需求交付 —— 用户明确点名)**
-> 1. **显式 center-cover**:现状默认 center-crop(无 `objectPosition`),需在 `web-utils` 与 `pdf-utils` 两端显式写出等价语义,保证预览 / PDF 一致。
+> **已落地语义(web / pdf 轨道)**
+> 1. **显式 center-cover**:`web-utils` 与 `pdf-utils` 两端均显式写出 `objectFit:'cover'` + `objectPosition:'50% 50%'`,保证预览 / PDF 一致。
 > 2. **比例差不设硬容差**:不因图片/slot 比例差换槽或拒绝,统一由 center-cover 吸收。
 > 3. 渲染用「原图」(§1 铁律),裁切作用于原图;预览图只是排版近似。本期不做人脸避让。
 >
-> 此项归 **web**,但属于本需求不可分割的一部分。
+> 此项归 **web**,已随本 feature branch 的 composing redesign 落地。
 
 ---
 
@@ -200,8 +200,8 @@
 - 共享模板库位置 = `packages/contracts/templates/`。
 - 渲染层 cover **两端已就位**(`web-utils.tsx:43` / `pdf-utils.tsx:72`),本期只显式 center-cover;不做焦点 / 人脸避让,不设比例硬容差(归 web)。
 
-### 9.3 技术方案窗口**必须补全**的(本文档缺的后半段)
-1. **执行顺序 + 任务拆分 + 依赖图**:loader / `violation` 改写 / 模板迁移 / prompt 改 / web center-cover 显式化,谁先谁后。
+### 9.3 技术方案窗口**已补全 / 已落地**的(本文档缺的后半段)
+1. **执行顺序 + 任务拆分 + 依赖图**已落地:loader / `violation` 改写 / 模板迁移 / prompt 改 / web center-cover 已显式化。
 2. **数据形态完整规格**:
    - `groups` 在 vision→composing 怎么表达与流动(**内部结构,不进对外 `AlbumLayoutPlan`**)。
    - **模板 JSON schema 定稿**(把 `templates/README.md` 草案钉死:`styles` / `recommendedMaxChars` 语义、可选约束默认值)。
