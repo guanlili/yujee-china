@@ -78,7 +78,7 @@ export const creemService = {
     if (!user) throw ERRORS.UNAUTHORIZED();
 
     const existing = await customerRepo.findByUserAndProvider(userId, 'creem');
-    const { successUrl, cancelUrl } = buildCheckoutReturnUrls(
+    const { successUrl } = buildCheckoutReturnUrls(
       env.WEB_BASE_URL,
       'creem',
       context,
@@ -95,7 +95,6 @@ export const creemService = {
           ? { id: existing.externalCustomerId }
           : { email: user.email },
         success_url: successUrl,
-        cancel_url: cancelUrl,
         metadata: { userId, kind: 'pack', packId },
       },
     );
@@ -116,7 +115,7 @@ export const creemService = {
     if (!user) throw ERRORS.UNAUTHORIZED();
 
     const existing = await customerRepo.findByUserAndProvider(userId, 'creem');
-    const { successUrl, cancelUrl } = buildSubscriptionReturnUrls(
+    const { successUrl } = buildSubscriptionReturnUrls(
       env.WEB_BASE_URL,
       'creem',
       context,
@@ -130,7 +129,6 @@ export const creemService = {
           ? { id: existing.externalCustomerId }
           : { email: user.email },
         success_url: successUrl,
-        cancel_url: cancelUrl,
         metadata: { userId, kind: 'subscription', planId, cycle },
       },
     );

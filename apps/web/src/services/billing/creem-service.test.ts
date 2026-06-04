@@ -48,6 +48,7 @@ function mockCheckoutDependencies(t: any) {
     CREEM_API_BASE_URL: 'https://api.creem.test',
     WEB_BASE_URL: 'https://app.yujee.test',
     CREEM_PRODUCT_ID_PACK_2400: 'prod_creem_pack_2400',
+    CREEM_PRODUCT_ID_PRO_MONTHLY: 'prod_creem_pro_monthly',
   });
 
   t.mock.method(userRepo, 'findById', async (userId: string) => ({
@@ -93,7 +94,7 @@ test('creemService.createPackCheckout: sends configured product id and keeps int
   });
 });
 
-test('creemService.createPackCheckout: builds return URLs with locale and source context', async (t) => {
+test('creemService.createPackCheckout: sends Creem-supported success URL without cancel_url', async (t) => {
   const requests = mockCheckoutDependencies(t);
 
   await creemService.createPackCheckout('user_checkout_3', 'pack-2400', {
@@ -106,10 +107,23 @@ test('creemService.createPackCheckout: builds return URLs with locale and source
     body.success_url,
     'https://app.yujee.test/zh/credits?checkout=success&provider=creem&from=create',
   );
+  assert.equal('cancel_url' in body, false);
+});
+
+test('creemService.createSubscriptionCheckout: sends Creem-supported success URL without cancel_url', async (t) => {
+  const requests = mockCheckoutDependencies(t);
+
+  await creemService.createSubscriptionCheckout('user_checkout_4', 'pro', 'monthly', {
+    locale: 'zh',
+  });
+
+  const body = JSON.parse(String(requests[0]?.init.body));
+  assert.equal(body.product_id, 'prod_creem_pro_monthly');
   assert.equal(
-    body.cancel_url,
-    'https://app.yujee.test/zh/credits?checkout=cancel&provider=creem&from=create',
+    body.success_url,
+    'https://app.yujee.test/zh/pricing?checkout=success&kind=subscription&provider=creem',
   );
+  assert.equal('cancel_url' in body, false);
 });
 
 test('creemService.handleWebhook: rejects when signature missing', async () => {
