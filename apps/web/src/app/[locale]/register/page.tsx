@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { Brand } from '@/components/app/Brand';
 import { getMessages } from '@/lib/i18n/messages';
 import { type Locale } from '@/lib/i18n/routing';
 import { RegisterForm } from './register-form';
@@ -18,13 +18,7 @@ export default async function RegisterPage({ params }: { params: Promise<{ local
   return (
     <div className="flex min-h-screen flex-col" style={{ background: authBackground }}>
       <header className="flex items-center justify-between px-7 py-5">
-        <Link
-          href={`/${locale}`}
-          className="flex items-center gap-2.5 text-[var(--text-xl)] font-extrabold tracking-[-0.01em]"
-        >
-          <span className="h-6 w-6 rounded-md bg-[linear-gradient(135deg,var(--grad-green),var(--grad-purple),var(--grad-lime))]" />
-          Yujee
-        </Link>
+        <Brand href={`/${locale}`} />
       </header>
 
       <main className="flex flex-1 items-center justify-center px-5 pb-16 pt-6">

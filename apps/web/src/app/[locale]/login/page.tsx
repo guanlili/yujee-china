@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Brand } from '@/components/app/Brand';
+import { Brand, BrandMark } from '@/components/app/Brand';
 import { LanguageSwitcher } from '@/components/app/LanguageSwitcher';
 import { getMessages } from '@/lib/i18n/messages';
 import { type Locale } from '@/lib/i18n/routing';
@@ -32,7 +32,7 @@ export default async function LoginPage({
       <main className="flex flex-1 items-center justify-center px-5 pb-16 pt-6">
         <div className="w-full max-w-[420px] rounded-[var(--radius-lg)] bg-[var(--surface)] px-9 pb-8 pt-10 shadow-[var(--shadow-card)]">
           <div className="mb-7 text-center">
-            <div className="mx-auto mb-[18px] h-12 w-12 rounded-xl bg-gradient-to-br from-[var(--grad-green)] via-[var(--grad-purple)] to-[var(--grad-lime)]" />
+            <BrandMark size={48} className="mx-auto mb-[18px] rounded-xl" />
             <h1 className="mb-2 text-[32px] font-extrabold tracking-tight text-[var(--fg)]">
               {messages.loginWelcome}
             </h1>

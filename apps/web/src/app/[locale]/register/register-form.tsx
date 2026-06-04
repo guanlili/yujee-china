@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
+import { BrandMark } from '@/components/app/Brand';
 import { authClient } from '@/lib/auth/client';
 import type { AppMessages } from '@/lib/i18n/messages';
 
@@ -38,7 +39,7 @@ export function RegisterForm({ messages, locale }: { messages: AuthMessages; loc
   if (sentTo) {
     return (
       <div className="text-center">
-        <div className="mx-auto mb-[18px] h-12 w-12 rounded-xl bg-[linear-gradient(135deg,var(--grad-green),var(--grad-purple),var(--grad-lime))]" />
+        <BrandMark size={48} className="mx-auto mb-[18px] rounded-xl" />
         <h1 className="mb-2 text-[32px] font-extrabold tracking-[-0.02em]">
           {messages.verifyEmailTitle}
         </h1>
@@ -61,7 +62,7 @@ export function RegisterForm({ messages, locale }: { messages: AuthMessages; loc
   return (
     <>
       <div className="mb-7 text-center">
-        <div className="mx-auto mb-[18px] h-12 w-12 rounded-xl bg-[linear-gradient(135deg,var(--grad-green),var(--grad-purple),var(--grad-lime))]" />
+        <BrandMark size={48} className="mx-auto mb-[18px] rounded-xl" />
         <h1 className="mb-2 text-[32px] font-extrabold tracking-[-0.02em]">
           {messages.registerTitle}
         </h1>

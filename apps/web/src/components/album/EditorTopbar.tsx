@@ -5,10 +5,7 @@ import Link from 'next/link';
 import type { Locale } from '@/lib/i18n/routing';
 import { getMessages } from '@/lib/i18n/messages';
 import { Brand } from '@/components/app/Brand';
-import { LanguageSwitcher } from '@/components/app/LanguageSwitcher';
-import { CreditsPill } from '@/components/app/CreditsPill';
-import { UserMenu } from '@/components/app/UserMenu';
-import { useChromeSession } from '@/components/app/useChromeSession';
+import { ChromeStatusBar } from '@/components/app/ChromeStatusBar';
 
 export type SaveState = 'saved' | 'saving' | 'error';
 
@@ -36,7 +33,6 @@ export function EditorTopbar({
   onExport,
 }: Props) {
   const t = getMessages(locale).dashboard.editor;
-  const { user, balance, plan } = useChromeSession();
   const titleRef = useRef<HTMLSpanElement>(null);
 
   // Keep the contenteditable text in sync when the title changes from elsewhere
@@ -125,9 +121,7 @@ export function EditorTopbar({
           </a>
         )}
         <span className="mx-1 h-5 w-px bg-[var(--border-soft)]" />
-        <LanguageSwitcher locale={locale} />
-        <CreditsPill balance={balance} plan={plan} locale={locale} />
-        <UserMenu user={user} plan={plan} locale={locale} />
+        <ChromeStatusBar locale={locale} />
       </div>
     </header>
   );

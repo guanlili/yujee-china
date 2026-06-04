@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { type Locale, locales, localizePath } from '@/lib/i18n/routing';
+import { CHROME_PILL_BUTTON_CLASS } from './chromeStyles';
 
 interface Props {
   locale: Locale;
@@ -30,7 +31,7 @@ export function LanguageSwitcher({ locale }: Props) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded-full bg-[#ececec] hover:bg-[#e2e2e2] py-1.5 pl-3 pr-3.5 text-[var(--text-sm)] font-medium text-[var(--muted)] hover:text-[var(--fg)] transition-colors"
+        className={`flex ${CHROME_PILL_BUTTON_CLASS} pr-3.5`}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
           <circle cx="12" cy="12" r="10" />
@@ -50,7 +51,7 @@ export function LanguageSwitcher({ locale }: Props) {
               href={localizePath(pathname, l)}
               onClick={() => setOpen(false)}
               className={`flex items-center justify-between rounded-[var(--radius-md)] px-3 py-2 text-[var(--text-sm)] transition-colors ${
-                l === locale ? 'font-semibold text-[var(--surface)] bg-[var(--fg)]' : 'text-[var(--fg-2)] hover:bg-[var(--bg)]'
+                l === locale ? 'font-semibold text-white bg-[var(--fg)]' : 'text-[var(--fg-2)] hover:bg-[var(--bg)]'
               }`}
             >
               {LABELS[l]}
