@@ -8,15 +8,16 @@ interface Props {
   cases: { title: string; desc: string }[];
 }
 
-// Soft brand-tinted cover fills so each card reads as a distinct keepsake
-// rather than an empty gray box. Cycled by index.
 const COVERS = [
-  'linear-gradient(135deg, rgba(23,225,135,0.18), rgba(140,94,244,0.12))',
-  'linear-gradient(135deg, rgba(218,244,94,0.22), rgba(23,225,135,0.12))',
-  'linear-gradient(135deg, rgba(140,94,244,0.18), rgba(218,244,94,0.12))',
-  'linear-gradient(135deg, rgba(23,225,135,0.14), rgba(218,244,94,0.18))',
-  'linear-gradient(135deg, rgba(140,94,244,0.16), rgba(23,225,135,0.12))',
-  'linear-gradient(135deg, rgba(218,244,94,0.18), rgba(140,94,244,0.14))',
+  '/samples/layouts/graduation.webp',
+  '/samples/layouts/wedding.webp',
+  '/samples/layouts/baby-milestones.webp',
+  '/samples/layouts/travel-memoir.webp',
+  '/samples/layouts/girls-trip.webp',
+  '/samples/layouts/pet-diary.webp',
+  '/samples/layouts/life-memories.webp',
+  '/samples/layouts/food-notes.webp',
+  '/samples/layouts/love-diary.webp',
 ];
 
 export function InspirationMarquee({ locale, title, more, cases }: Props) {
@@ -50,10 +51,17 @@ export function InspirationMarquee({ locale, title, more, cases }: Props) {
               tabIndex={c.copy === 1 ? -1 : undefined}
               className="group block w-[220px] flex-shrink-0"
             >
-              <div
-                className="mb-3.5 aspect-[3/4] overflow-hidden rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06),0_8px_24px_rgba(0,0,0,0.04)] transition-shadow group-hover:shadow-[0_4px_12px_rgba(0,0,0,0.1),0_12px_32px_rgba(0,0,0,0.08)]"
-                style={{ background: COVERS[i % COVERS.length] }}
-              />
+              <div className="mb-3.5 aspect-[3/4] overflow-hidden rounded-2xl bg-[var(--surface)] shadow-[0_2px_8px_rgba(0,0,0,0.06),0_8px_24px_rgba(0,0,0,0.04)] transition-shadow group-hover:shadow-[0_4px_12px_rgba(0,0,0,0.1),0_12px_32px_rgba(0,0,0,0.08)]">
+                <img
+                  src={COVERS[i % COVERS.length]}
+                  alt={c.title}
+                  width={637}
+                  height={900}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.015]"
+                />
+              </div>
               <div className="text-base font-bold tracking-tight">{c.title}</div>
               <div className="mt-1 text-sm leading-snug text-[var(--muted)]">{c.desc}</div>
             </Link>

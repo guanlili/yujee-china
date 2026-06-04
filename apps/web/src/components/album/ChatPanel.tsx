@@ -107,7 +107,7 @@ export function ChatPanel({ albumId, locale, language, onPatch }: Props) {
   };
 
   return (
-    <div className="flex h-full flex-col bg-[var(--surface)]">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--surface)]">
       {/* head */}
       <div className="flex flex-shrink-0 items-center gap-3 px-5 py-4">
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--text-sm)] font-bold text-white">
@@ -123,7 +123,7 @@ export function ChatPanel({ albumId, locale, language, onPatch }: Props) {
       </div>
 
       {/* body */}
-      <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-5 py-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-4">
         {messages.length === 0 && !busy && (
           <p className="text-[var(--text-xs)] leading-relaxed text-[var(--muted)]">{t.chatEmpty}</p>
         )}

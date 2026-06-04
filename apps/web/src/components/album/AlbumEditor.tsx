@@ -189,7 +189,7 @@ export function AlbumEditor({ detail, locale }: Props) {
   const selectedPage = pages[clampedSelected];
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg)]">
+    <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-[var(--bg)]">
       <EditorTopbar
         locale={locale}
         title={title}
@@ -204,9 +204,9 @@ export function AlbumEditor({ detail, locale }: Props) {
         <p className="flex-shrink-0 bg-[#fff7ed] px-6 py-2 text-[var(--text-xs)] text-[#b45309]">{exportErr}</p>
       )}
 
-      <div className="relative grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[1fr_340px]">
+      <div className="relative grid flex-1 min-h-0 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* CENTER — 3D flipbook preview + thumbnail strip (UI-1b) */}
-        <main className="relative overflow-hidden bg-[var(--bg)] p-8">
+        <main className="relative min-h-0 min-w-0 overflow-hidden bg-[var(--bg)] p-8">
           <FlipBook
             pages={pages}
             totalPages={total}
@@ -228,7 +228,7 @@ export function AlbumEditor({ detail, locale }: Props) {
         </main>
 
         {/* RIGHT — chat */}
-        <aside className="hidden border-l border-[var(--border-soft)] lg:block">
+        <aside className="hidden h-full min-h-0 min-w-0 overflow-hidden border-l border-[var(--border-soft)] lg:block">
           <ChatPanel albumId={albumId} locale={locale} language={language} onPatch={onChatPatch} />
         </aside>
 
@@ -240,7 +240,7 @@ export function AlbumEditor({ detail, locale }: Props) {
               onClick={() => setDrawerOpen(false)}
               aria-hidden
             />
-            <div className="absolute inset-y-0 right-0 z-30 flex w-full max-w-[400px] flex-col bg-[var(--surface)] shadow-[var(--shadow-card-hover)]">
+            <div className="absolute inset-y-0 right-0 z-30 flex min-h-0 w-full max-w-[400px] flex-col bg-[var(--surface)] shadow-[var(--shadow-card-hover)]">
               <div className="flex flex-shrink-0 items-center justify-between border-b border-[var(--border-soft)] px-5 py-4">
                 <h3 className="text-[var(--text-sm)] font-bold">
                   {t.editPageTitle.replace('{n}', String(clampedSelected + 1))}
@@ -253,7 +253,7 @@ export function AlbumEditor({ detail, locale }: Props) {
                   {t.done}
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto p-5">
+              <div className="min-h-0 flex-1 overflow-y-auto p-5">
                 <PageEditPanel
                   page={selectedPage}
                   locale={locale}
