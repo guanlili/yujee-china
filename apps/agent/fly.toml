@@ -5,6 +5,9 @@ app = "yujee-agent"
 primary_region = "nrt"
 
 [build]
+  # Deploy from repo root so the Dockerfile can COPY apps/agent and
+  # packages/contracts/templates:
+  #   fly deploy -c apps/agent/fly.toml --dockerfile apps/agent/Dockerfile .
 
 # Non-secret config only. Secrets are set out-of-band and never committed:
 #   fly secrets set AGENT_SHARED_SECRET=... ARK_API_KEY=... DEEPSEEK_API_KEY=...

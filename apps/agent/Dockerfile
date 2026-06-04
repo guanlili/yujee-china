@@ -9,8 +9,11 @@ WORKDIR /app
 
 # Install runtime deps from pyproject. Source is needed at build time because the
 # package (src/) is built and installed; deps come from [project.dependencies].
-COPY pyproject.toml ./
-COPY src ./src
+# Build from repo root:
+#   docker build -f apps/agent/Dockerfile .
+COPY apps/agent/pyproject.toml ./
+COPY apps/agent/src ./src
+COPY packages/contracts/templates ./packages/contracts/templates
 RUN pip install .
 
 EXPOSE 8001
