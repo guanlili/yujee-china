@@ -52,7 +52,6 @@ app/
     ├── auth/[...all]/route.ts         # better-auth
     ├── health/route.ts
     ├── webhooks/
-    │   ├── stripe/route.ts
     │   └── creem/route.ts
     └── v1/
         ├── jobs/
@@ -92,7 +91,6 @@ services/
 ├── pdf/
 │   └── pdf-service.ts                 # PDF 签 URL / 记录 / 分发
 ├── billing/
-│   ├── stripe-service.ts
 │   └── creem-service.ts
 └── notification/
     └── email-service.ts

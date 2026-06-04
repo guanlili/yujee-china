@@ -8,19 +8,19 @@ import {
   buildSubscriptionReturnUrls,
 } from './pricing';
 
-test('credit checkout can explicitly route through Creem or Stripe', () => {
+test('credit checkout routes through Creem only', () => {
   assert.equal(ACTIVE_CHECKOUT_PROVIDER, 'creem');
-  assert.deepEqual(CHECKOUT_PROVIDERS, ['creem', 'stripe']);
+  assert.deepEqual(CHECKOUT_PROVIDERS, ['creem']);
 
   const urls = buildCheckoutReturnUrls(
     'https://app.yujee.test',
-    'stripe',
+    'creem',
     { locale: 'en', from: 'create' },
   );
 
   assert.equal(
     urls.successUrl,
-    'https://app.yujee.test/en/credits?checkout=success&provider=stripe&from=create',
+    'https://app.yujee.test/en/credits?checkout=success&provider=creem&from=create',
   );
 });
 

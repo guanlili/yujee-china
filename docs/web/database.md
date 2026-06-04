@@ -26,7 +26,7 @@
 | `accounts` | 第三方登录 | ✅ |
 | `sessions` | 会话 | ✅ |
 | `verifications` | 邮箱验证 | ✅ |
-| `customers` | 用户 → Stripe / Creem 客户号映射 | |
+| `customers` | 用户 → Creem 客户号映射 | |
 | `albums` | 相册主表 | |
 | `album_pages` | 相册单页 | |
 | `album_messages` | Chat 对话历史 + AI 修改痕迹 | |
@@ -65,14 +65,14 @@
 
 ## 3.1 `customers`
 
-把内部 `user_id` 映射到外部支付平台的客户号。一个用户在 Stripe / Creem 各自有一行(或 null)。
+把内部 `user_id` 映射到外部支付平台的客户号。当前应用层只写入 Creem；数据库 enum 保留旧 `stripe` 值用于历史行兼容。
 
 | 字段 | 类型 | 约束 | 说明 |
 |---|---|---|---|
 | id | uuid PK | default `gen_random_uuid()` | |
 | user_id | uuid FK users(id) | NOT NULL | |
-| provider | enum | NOT NULL | `stripe` / `creem` |
-| external_customer_id | text | NOT NULL | Stripe 的 `cus_xxx` / Creem 的客户 ID |
+| provider | enum | NOT NULL | 当前写入 `creem`；旧 `stripe` 值仅兼容历史数据 |
+| external_customer_id | text | NOT NULL | Creem 的客户 ID |
 | email | text | NULL | 冗余,方便查 |
 | created_at | timestamptz | NOT NULL default now() | |
 | updated_at | timestamptz | NOT NULL default now() | |

@@ -162,7 +162,7 @@ test('creditService: applyDelta with externalEventId is idempotent across concur
     await db.transaction((tx) =>
       creditService.applyDelta(tx, user.id, 2400, 'PURCHASE', {
         externalEventId: eventId,
-        meta: { provider: 'stripe' },
+        meta: { provider: 'creem' },
       }),
     );
 
@@ -172,7 +172,7 @@ test('creditService: applyDelta with externalEventId is idempotent across concur
       db.transaction((tx) =>
         creditService.applyDelta(tx, user.id, 2400, 'PURCHASE', {
           externalEventId: eventId,
-          meta: { provider: 'stripe' },
+          meta: { provider: 'creem' },
         }),
       ),
     );
@@ -189,4 +189,3 @@ test('creditService: applyDelta with externalEventId is idempotent across concur
     await cleanupUser(user.id);
   }
 });
-

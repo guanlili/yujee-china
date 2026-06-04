@@ -20,10 +20,10 @@ import { env } from '@/lib/env';
 import { ERRORS } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
 
-// Creem.io — hosted checkout for international markets. Mirrors stripe-service:
-// same applyDelta + external_event_id idempotency contract. Creem product mapping
+// Creem.io — hosted checkout for international markets. Uses the shared
+// applyDelta + external_event_id idempotency contract. Creem product mapping
 // (Creem requires products created in their dashboard) is intentionally
-// pack-id-keyed so the same client code can address either provider.
+// is pack-id-keyed so the client can stay provider-agnostic.
 
 type CreemEvent = {
   id: string;

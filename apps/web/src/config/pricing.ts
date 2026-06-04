@@ -34,8 +34,8 @@ export interface CreditPack {
   priceUsd: number;
 }
 
-export type CheckoutProvider = 'stripe' | 'creem';
-export const CHECKOUT_PROVIDERS = ['creem', 'stripe'] as const satisfies readonly CheckoutProvider[];
+export type CheckoutProvider = 'creem';
+export const CHECKOUT_PROVIDERS = ['creem'] as const satisfies readonly CheckoutProvider[];
 export const ACTIVE_CHECKOUT_PROVIDER = 'creem' satisfies CheckoutProvider;
 export type CheckoutLocale = 'en' | 'zh';
 export type CheckoutSource = 'album' | 'create' | 'home';

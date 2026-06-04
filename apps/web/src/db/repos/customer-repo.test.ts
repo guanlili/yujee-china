@@ -14,15 +14,15 @@ test('customerRepo: create + findByUserAndProvider + findByProviderExternalId', 
     const externalId = `cus_test_${Date.now()}`;
     const cust = await customerRepo.create(db, {
       userId: user.id,
-      provider: 'stripe',
+      provider: 'creem',
       externalCustomerId: externalId,
       email: 'cust@yujee.test',
     });
 
-    const byUser = await customerRepo.findByUserAndProvider(user.id, 'stripe');
+    const byUser = await customerRepo.findByUserAndProvider(user.id, 'creem');
     assert.equal(byUser?.id, cust.id);
 
-    const byExternal = await customerRepo.findByProviderExternalId('stripe', externalId);
+    const byExternal = await customerRepo.findByProviderExternalId('creem', externalId);
     assert.equal(byExternal?.userId, user.id);
   } finally {
     await cleanupUser(user.id);

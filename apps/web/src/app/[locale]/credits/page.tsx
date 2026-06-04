@@ -5,10 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 import {
-  ACTIVE_CHECKOUT_PROVIDER,
   ADDON_PACKS,
-  CHECKOUT_PROVIDERS,
-  type CheckoutProvider,
   type CheckoutSource,
 } from '@/config/pricing';
 import { generationDraft } from '@/lib/generation/draft';
@@ -49,7 +46,6 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [buying, setBuying] = useState<string | null>(null);
-  const [provider, setProvider] = useState<CheckoutProvider>(ACTIVE_CHECKOUT_PROVIDER);
   // A pending generation draft means the user detoured here to top up mid-generation
   // (§6.5.2). Offer a "continue" CTA so the loop closes back through the
   // homepage composer on return.
@@ -108,7 +104,7 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
       const res = await fetch('/api/v1/billing/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packId, provider, locale, from }),
+        body: JSON.stringify({ packId, locale, from }),
       });
       const json = await res.json();
       if (json.ok && json.data?.url) {
@@ -167,22 +163,6 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
         <section className="mb-12">
           <h2 className="text-xl font-bold tracking-tight mb-1">{t.rechargeTitle}</h2>
           <p className="text-sm text-[var(--muted)] mb-7">{t.rechargeSub}</p>
-          <div className="mb-5 inline-flex rounded-full border border-[var(--border-soft)] bg-[var(--surface)] p-1">
-            {CHECKOUT_PROVIDERS.map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setProvider(p)}
-                className={`rounded-full px-4 py-1.5 text-xs font-semibold capitalize transition-colors ${
-                  provider === p
-                    ? 'bg-[var(--fg)] text-white'
-                    : 'text-[var(--muted)] hover:text-[var(--fg)]'
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {ADDON_PACKS.map((pack) => (
               <div

@@ -37,6 +37,8 @@ export const creditHoldStatusEnum = pgEnum('credit_hold_status', [
 
 export const messageRoleEnum = pgEnum('message_role', ['user', 'assistant']);
 
+// Keep the legacy `stripe` enum value for existing production rows and Drizzle
+// migration compatibility. New application code writes `creem` only.
 export const customerProviderEnum = pgEnum('customer_provider', ['stripe', 'creem']);
 
 export const creditLedgerReasonEnum = pgEnum('credit_ledger_reason', [

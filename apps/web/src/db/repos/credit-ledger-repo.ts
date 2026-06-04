@@ -35,7 +35,7 @@ export const creditLedgerRepo = {
     return rows[0]?.total ?? 0;
   },
 
-  // Webhook idempotency probe (Stripe / Creem event id stored in meta).
+  // Webhook idempotency probe (provider event id stored in meta).
   findByExternalEventId: async (eventId: string): Promise<CreditLedger | undefined> => {
     const rows = await db
       .select()

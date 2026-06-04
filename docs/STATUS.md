@@ -37,7 +37,7 @@
 | DB | Neon Postgres,库名 **`yujee`**(11 表) | 老 memoir-web 库(53 albums 实数据)另存,未触碰 |
 | 对象存储 | Cloudflare R2 | 只存 PDF;env 变量名用 `R2_*`(老项目是 `STORAGE_*`) |
 | AI | 火山方舟 doubao(单个 ARK key) | vision = `doubao-seed-1-6-vision-250815`;planning = `doubao-seed-2-0-lite-260428` |
-| 支付 | Creem(海外主通道) | Stripe 代码已写,未接 live |
+| 支付 | Creem(海外主通道) | 仅保留当前支持的 Creem 支付入口 |
 | 邮件 | Resend | `EMAIL_DELIVERY=resend` |
 | 域名 | Cloudflare DNS,A 记录 → Vercel `76.76.21.21` | DNS-only(灰云),Vercel 自签 SSL |
 

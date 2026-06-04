@@ -27,7 +27,6 @@
 | GET    | `/api/v1/credit/history` | user | 积分流水 |
 | POST   | `/api/v1/internal/job-progress` | agent | Agent 进度回调 |
 | GET    | `/api/v1/health` | none | 健康检查 |
-| POST   | `/api/webhooks/stripe` | sig | Stripe 回调 |
 | POST   | `/api/webhooks/creem` | sig | Creem 回调 |
 
 ---

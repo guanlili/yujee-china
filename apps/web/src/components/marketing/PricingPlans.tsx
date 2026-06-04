@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import {
-  ACTIVE_CHECKOUT_PROVIDER,
   PLANS,
   planPriceFor,
   type BillingCycle,
@@ -32,7 +31,6 @@ export function PricingPlans({ messages: m, locale }: Props) {
           kind: 'subscription',
           planId,
           cycle,
-          provider: ACTIVE_CHECKOUT_PROVIDER,
           locale,
         }),
       });

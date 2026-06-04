@@ -38,8 +38,6 @@
 | `CREEM_PRODUCT_ID_PRO_YEARLY` | Creem dashboard | Pro 年付订阅对应的 Creem 产品 ID(`prod_...`) |
 | `CREEM_PRODUCT_ID_STUDIO_MONTHLY` | Creem dashboard | Studio 月付订阅对应的 Creem 产品 ID(`prod_...`) |
 | `CREEM_PRODUCT_ID_STUDIO_YEARLY` | Creem dashboard | Studio 年付订阅对应的 Creem 产品 ID(`prod_...`) |
-| `STRIPE_API_KEY` | 复制 / 可空 | Stripe 备用通道,缺省即关闭 Stripe |
-| `STRIPE_WEBHOOK_SECRET` | 复制 / 可空 | 同上 |
 | `R2_ACCOUNT_ID` | 复制(映射) | 见 §3 |
 | `R2_ACCESS_KEY_ID` | 复制(映射) | 见 §3 |
 | `R2_SECRET_ACCESS_KEY` | 复制(映射) | 见 §3 |
@@ -47,7 +45,7 @@
 | `R2_PUBLIC_BASE_URL` | 复制(映射) | 见 §3,如 `https://cdn.yujeeai.com` |
 
 > 权威清单:`apps/web/src/lib/env.ts`。带 `.default()` 的变量缺省也能 build;
-> `.optional()` 的(Resend/Creem/Stripe/R2)缺省即关闭对应能力。
+> `.optional()` 的(Resend/Creem/R2)缺省即关闭对应能力。
 
 ---
 

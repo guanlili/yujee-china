@@ -7,7 +7,7 @@ import { ERRORS } from '@/lib/api/error-codes';
 // Read-only billing overview for the dashboard. The old `/order` endpoint is
 // gone (migration §8) — purchase history is reconstructed from PURCHASE rows in
 // credit_ledger, whose meta carries provider / pack / amount written by the
-// Stripe & Creem webhooks.
+// Creem webhook.
 export const billingService = {
   async getOverview(userId: string) {
     const user = await userRepo.findById(userId);

@@ -2,7 +2,7 @@
 -- 1. Extend credit_ledger_reason enum with HOLD / RELEASE so credit
 --    reservations and releases leave an auditable trail next to SETTLE.
 -- 2. Add a partial UNIQUE index on credit_ledger((meta->>'external_event_id'))
---    so the same Stripe / Creem webhook event can never insert two PURCHASE rows.
+--    so the same provider webhook event can never insert two PURCHASE rows.
 --    Partial: only enforced when the key is present (internal entries like
 --    GENERATION_SETTLE leave meta NULL and stay unconstrained).
 

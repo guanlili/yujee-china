@@ -62,7 +62,7 @@
 
 1. **跳转目标付不了款**:create 和 retry 都跳 `/pricing`(`create/page.tsx:124` → `/pricing?from=create`;`RetryFailedButton.tsx:48` → `/pricing?from=album`),但 **`/pricing` 整页没有 checkout**——加购按钮无 handler(`pricing/page.tsx:51` 的 `<button>` 无 onClick),订阅套餐按钮也只有月/年切换、无 checkout(`PricingPlans.tsx`)。**用户跳过去后点哪都付不了。**
 2. **真正能付的只有买积分,没有开会员**:唯一可用的 checkout 是 `/credits` 的 `buy(packId)`(`credits/page.tsx:59` → `POST /api/v1/billing/checkout`),且**只支持买积分(addon 包)**;"开会员/订阅"的支付**全栈都不存在**。
-3. **付完款回不到任务**:支付成功 URL 硬编码回 `/credits?checkout=success`(`creem-service.ts:70`、`stripe-service.ts:47`),用户**停在 /credits**,不会回到 `/create` 或 `/album`——尽管 create 已经 `generationDraft.save` 暂存了草稿,但人没回来,resume 触发不了。
+3. **付完款回不到任务**:支付成功 URL 硬编码回 `/credits?checkout=success`(`creem-service.ts:70`),用户**停在 /credits**,不会回到 `/create` 或 `/album`——尽管 create 已经 `generationDraft.save` 暂存了草稿,但人没回来,resume 触发不了。
 
 **要"打通"必须满足(产品验收点)**:
 - a) 余额不足的引导,落到一个**真能完成付款**的入口(买积分**至少**要通)。

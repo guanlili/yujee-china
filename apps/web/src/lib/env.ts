@@ -27,10 +27,6 @@ const EnvSchema = z.object({
   // Unset in dev => cron bypass disabled, so those routes still require admin.
   CRON_SECRET: z.string().optional(),
 
-  // Payment · Stripe (test keys in dev, missing => Stripe disabled)
-  STRIPE_API_KEY: z.string().optional(),
-  STRIPE_WEBHOOK_SECRET: z.string().optional(),
-
   // Payment · Creem (海外主通道)
   CREEM_API_KEY: z.string().optional(),
   CREEM_API_BASE_URL: z.string().url().default('https://api.creem.io'),
