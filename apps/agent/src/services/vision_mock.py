@@ -1,4 +1,4 @@
-from ..schemas import LayoutRequest, PhotoAnalysis
+from ..schemas import LayoutRequest, PhotoAnalysis, PhotoGroup, VisionResult
 
 
 _QUALITY_CYCLE = ("hero", "detail", "fill")
@@ -12,7 +12,22 @@ def _orientation(width: int, height: int) -> str:
     return "square"
 
 
-def analyze(req: LayoutRequest) -> list[PhotoAnalysis]:
+def _groups(photo_ids: list[str]) -> list[PhotoGroup]:
+    if len(photo_ids) == 1:
+        return [PhotoGroup(groupId="g1", label="Closing", photoIds=photo_ids, role="closing")]
+    if len(photo_ids) == 2:
+        return [
+            PhotoGroup(groupId="g1", label="Opening", photoIds=[photo_ids[0]], role="opening"),
+            PhotoGroup(groupId="g2", label="Closing", photoIds=[photo_ids[1]], role="closing"),
+        ]
+    return [
+        PhotoGroup(groupId="g1", label="Opening", photoIds=[photo_ids[0]], role="opening"),
+        PhotoGroup(groupId="g2", label="Body", photoIds=photo_ids[1:-1], role="body"),
+        PhotoGroup(groupId="g3", label="Closing", photoIds=[photo_ids[-1]], role="closing"),
+    ]
+
+
+def analyze(req: LayoutRequest) -> VisionResult:
     results: list[PhotoAnalysis] = []
     for idx, photo in enumerate(req.photos):
         if idx == 0:
@@ -33,4 +48,4 @@ def analyze(req: LayoutRequest) -> list[PhotoAnalysis]:
                 location=None,
             )
         )
-    return results
+    return VisionResult(photos=results, groups=_groups([p.photoId for p in req.photos]))

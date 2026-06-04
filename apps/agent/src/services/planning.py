@@ -13,7 +13,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from ..logging_config import get_logger
-from ..schemas import AlbumLayoutPlan, Magazine, Page, PhotoAnalysis
+from ..schemas import AlbumLayoutPlan, Magazine, Page, PhotoAnalysis, PhotoGroup
 from ..settings import get_settings
 from .. import templates as registry
 from . import ai_client, layout_rules
@@ -227,6 +227,9 @@ def _composing_system_prompt(photo_count: int) -> str:
         "  8. Every key in images and texts MUST be from that page's template slots.\n"
         "  9. Text should stay near each slot's recommended length; length is guidance, not a hard rule.\n\n"
         "STYLE GUIDANCE: prefer using each template at most once; vary visual rhythm.\n\n"
+        "GROUP GUIDANCE: photos in the same group should usually appear on adjacent "
+        "pages or in a close narrative run. A group with role=closing can be used as "
+        "a tail-page or closing beat hint; this is guidance only, not a hard rule.\n\n"
         + (
             "FEW-PHOTO GUIDANCE: you have very few photos. Place each photo once "
             "(twice at most, never on the same page), and use TEXT-ONLY "
@@ -240,11 +243,16 @@ def _composing_system_prompt(photo_count: int) -> str:
     )
 
 
-def _composing_user_payload(magazine: Magazine, photos: list[PhotoAnalysis]) -> str:
+def _composing_user_payload(
+    magazine: Magazine,
+    photos: list[PhotoAnalysis],
+    groups: list[PhotoGroup] | None = None,
+) -> str:
     return json.dumps(
         {
             "magazine": magazine.model_dump(),
             "photos": _photo_digest_for_composing(photos),
+            "groups": [group.model_dump() for group in (groups or [])],
         },
         ensure_ascii=False,
     )
@@ -328,6 +336,7 @@ async def compose_pages(
     *,
     magazine: Magazine,
     photos: list[PhotoAnalysis],
+    groups: list[PhotoGroup] | None = None,
 ) -> tuple[AlbumLayoutPlan, int, int, int]:
     """Returns (layout, prompt_tokens, completion_tokens, repair_attempts)."""
     settings = get_settings()
@@ -338,7 +347,7 @@ async def compose_pages(
 
     base_messages = [
         {"role": "system", "content": _composing_system_prompt(len(photos))},
-        {"role": "user", "content": _composing_user_payload(magazine, photos)},
+        {"role": "user", "content": _composing_user_payload(magazine, photos, groups=groups)},
     ]
 
     repair_attempts = 0
