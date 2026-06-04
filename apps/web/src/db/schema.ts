@@ -146,6 +146,37 @@ export const customers = pgTable(
   }),
 );
 
+export const subscriptions = pgTable(
+  'subscriptions',
+  {
+    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: customerProviderEnum('provider').notNull(),
+    externalCustomerId: text('external_customer_id'),
+    externalSubscriptionId: text('external_subscription_id').notNull(),
+    planId: text('plan_id').notNull(),
+    billingCycle: text('billing_cycle').notNull(),
+    status: text('status').notNull(),
+    currentPeriodStart: timestamp('current_period_start', { withTimezone: true }).notNull(),
+    currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }).notNull(),
+    cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userPeriodEnd: index('idx_subscriptions_user_period_end').on(
+      t.userId,
+      t.currentPeriodEnd.desc(),
+    ),
+    providerSubscription: uniqueIndex('uq_subscriptions_provider_external').on(
+      t.provider,
+      t.externalSubscriptionId,
+    ),
+  }),
+);
+
 // ============================================
 // Album core — docs/web/database.md §3 / §4 / §4.1
 // `albums.creditHoldId` intentionally has no FK to break the
@@ -327,6 +358,9 @@ export type NewVerification = typeof verifications.$inferInsert;
 
 export type Customer = typeof customers.$inferSelect;
 export type NewCustomer = typeof customers.$inferInsert;
+
+export type Subscription = typeof subscriptions.$inferSelect;
+export type NewSubscription = typeof subscriptions.$inferInsert;
 
 export type Album = typeof albums.$inferSelect;
 export type NewAlbum = typeof albums.$inferInsert;

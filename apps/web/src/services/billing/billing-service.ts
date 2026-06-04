@@ -1,6 +1,7 @@
 import { userRepo } from '@/db/repos/user-repo';
 import { customerRepo } from '@/db/repos/customer-repo';
 import { creditLedgerRepo } from '@/db/repos/credit-ledger-repo';
+import { planLabel, subscriptionService } from '@/services/billing/subscription-service';
 import { ERRORS } from '@/lib/api/error-codes';
 
 // Read-only billing overview for the dashboard. The old `/order` endpoint is
@@ -14,6 +15,7 @@ export const billingService = {
 
     const customers = await customerRepo.findAllByUser(userId);
     const ledger = await creditLedgerRepo.findByUser(userId, 100);
+    const subscription = await subscriptionService.getCurrent(userId);
 
     const purchases = ledger
       .filter((r) => r.reason === 'PURCHASE')
@@ -32,6 +34,21 @@ export const billingService = {
     return {
       balance: user.creditBalance,
       providers: customers.map((c) => c.provider),
+      subscription: subscription
+        ? {
+            planId: subscription.planId,
+            label: planLabel(subscription.planId as any),
+            cycle: subscription.billingCycle,
+            status: subscription.status,
+            currentPeriodEnd: subscription.currentPeriodEnd,
+          }
+        : {
+            planId: 'free',
+            label: 'Free',
+            cycle: null,
+            status: 'free',
+            currentPeriodEnd: null,
+          },
       purchases,
     };
   },

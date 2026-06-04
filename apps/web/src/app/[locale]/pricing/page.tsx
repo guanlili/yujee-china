@@ -37,7 +37,7 @@ export default async function PricingPage({ params }: Props) {
           <p className="text-base text-[var(--muted)]">{m.sub}</p>
         </header>
 
-        <PricingPlans messages={m} />
+        <PricingPlans messages={m} locale={locale as Locale} />
 
         <div className="mb-20">
           <h2 className="text-xl font-bold tracking-tight mb-2">{m.addonsTitle}</h2>
@@ -56,12 +56,12 @@ export default async function PricingPage({ params }: Props) {
                 <div className="text-xs text-[var(--meta)] mb-4">
                   ${(pack.priceUsd / pack.credits).toFixed(4)} / credit
                 </div>
-                <button
-                  type="button"
+                <a
+                  href={`/${locale}/credits?from=home`}
                   className="w-full py-2.5 text-sm font-semibold rounded-full border border-[var(--fg)] text-[var(--fg)] hover:bg-[var(--fg)] hover:text-white transition-colors"
                 >
                   {m.addonBuy}
-                </button>
+                </a>
               </div>
             ))}
           </div>

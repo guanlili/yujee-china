@@ -1,10 +1,16 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
-import { ADDON_PACKS } from '@/config/pricing';
+import {
+  ACTIVE_CHECKOUT_PROVIDER,
+  ADDON_PACKS,
+  CHECKOUT_PROVIDERS,
+  type CheckoutProvider,
+  type CheckoutSource,
+} from '@/config/pricing';
 import { generationDraft } from '@/lib/generation/draft';
 import { AppChrome } from '@/components/app/AppChrome';
 
@@ -26,16 +32,24 @@ type Entry = {
   createdAt: string;
 };
 
+function checkoutSource(value: string | null): CheckoutSource | undefined {
+  if (value === 'album' || value === 'create' || value === 'home') return value;
+  return undefined;
+}
+
 export default function CreditsPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = use(params);
   const t = getMessages(locale).dashboard.credits;
   const tc = getMessages(locale).dashboard.common;
-  const checkout = useSearchParams().get('checkout');
+  const searchParams = useSearchParams();
+  const checkout = searchParams.get('checkout');
+  const from = checkoutSource(searchParams.get('from'));
 
   const [balance, setBalance] = useState<number | null>(null);
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [buying, setBuying] = useState<string | null>(null);
+  const [provider, setProvider] = useState<CheckoutProvider>(ACTIVE_CHECKOUT_PROVIDER);
   // A pending generation draft means the user detoured here to top up mid-generation
   // (§6.5.2). Offer a "continue" CTA so the loop closes back through the
   // homepage composer on return.
@@ -46,22 +60,46 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
     setHasDraft(!!generationDraft.load());
   }, []);
 
+  const loadCreditData = useCallback(async () => {
+    try {
+      const [b, h] = await Promise.all([
+        fetch('/api/v1/credit/balance').then((r) => r.json()),
+        fetch('/api/v1/credit/history').then((r) => r.json()),
+      ]);
+      if (b.ok) setBalance(b.data.balance);
+      if (h.ok) setEntries(h.data.entries);
+      if (!b.ok || !h.ok) setErr(b.error?.message ?? h.error?.message ?? tc.error);
+    } catch {
+      setErr(tc.error);
+    }
+  }, [tc.error]);
+
   useEffect(() => {
-    (async () => {
-      try {
-        const [b, h] = await Promise.all([
-          fetch('/api/v1/credit/balance').then((r) => r.json()),
-          fetch('/api/v1/credit/history').then((r) => r.json()),
-        ]);
-        if (b.ok) setBalance(b.data.balance);
-        if (h.ok) setEntries(h.data.entries);
-        if (!b.ok || !h.ok) setErr(b.error?.message ?? h.error?.message ?? tc.error);
-      } catch {
-        setErr(tc.error);
+    void loadCreditData();
+  }, [loadCreditData]);
+
+  useEffect(() => {
+    if (checkout !== 'success') return;
+
+    let cancelled = false;
+    let timer: number | null = null;
+    let remaining = 5;
+
+    const poll = async () => {
+      if (cancelled) return;
+      await loadCreditData();
+      remaining -= 1;
+      if (!cancelled && remaining > 0) {
+        timer = window.setTimeout(poll, 1500);
       }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    };
+
+    timer = window.setTimeout(poll, 1200);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [checkout, loadCreditData]);
 
   const buy = async (packId: string) => {
     setBuying(packId);
@@ -70,7 +108,7 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
       const res = await fetch('/api/v1/billing/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packId }),
+        body: JSON.stringify({ packId, provider, locale, from }),
       });
       const json = await res.json();
       if (json.ok && json.data?.url) {
@@ -129,6 +167,22 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
         <section className="mb-12">
           <h2 className="text-xl font-bold tracking-tight mb-1">{t.rechargeTitle}</h2>
           <p className="text-sm text-[var(--muted)] mb-7">{t.rechargeSub}</p>
+          <div className="mb-5 inline-flex rounded-full border border-[var(--border-soft)] bg-[var(--surface)] p-1">
+            {CHECKOUT_PROVIDERS.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setProvider(p)}
+                className={`rounded-full px-4 py-1.5 text-xs font-semibold capitalize transition-colors ${
+                  provider === p
+                    ? 'bg-[var(--fg)] text-white'
+                    : 'text-[var(--muted)] hover:text-[var(--fg)]'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {ADDON_PACKS.map((pack) => (
               <div
