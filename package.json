@@ -6,8 +6,10 @@
     "dev": "pnpm -r --parallel dev",
     "web:dev": "pnpm --filter @yujee/web dev",
     "agent:dev": "cd apps/agent && uvicorn src.main:app --reload --port 8001",
+    "templates:generate": "pnpm --filter @yujee/contracts templates:generate",
+    "templates:check": "pnpm --filter @yujee/contracts templates:check",
     "test": "pnpm -r test",
-    "typecheck": "pnpm --filter @yujee/contracts typecheck && pnpm --filter @yujee/web typecheck"
+    "typecheck": "pnpm templates:check && pnpm --filter @yujee/contracts typecheck && pnpm --filter @yujee/web typecheck"
   },
   "devDependencies": {
     "tsx": "^4.19.2",
