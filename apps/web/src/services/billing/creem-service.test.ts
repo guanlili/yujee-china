@@ -13,6 +13,7 @@ import { userRepo } from '@/db/repos/user-repo';
 import { env } from '@/lib/env';
 import { isDbReachable } from '@/db/repos/__test__/setup';
 import { creditService } from '@/services/credit/credit-service';
+import { subscriptionService } from '@/services/billing/subscription-service';
 
 function sign(body: string, secret: string): string {
   return createHmac('sha256', secret).update(body).digest('hex');
@@ -239,6 +240,69 @@ test('creemService.handleWebhook: settles real checkout.completed eventType/obje
           pack_id: 'pack-2400',
           amount_cents: 300,
         },
+      },
+    },
+  ]);
+});
+
+test('creemService.handleWebhook: records subscription entitlement from checkout.completed', async (t) => {
+  const secret = 'unit-test-secret';
+  useWebhookSecret(t, secret);
+
+  const eventId = 'evt_subscription_completed';
+  const userId = 'user_creem_subscription_completed';
+  const body = JSON.stringify({
+    id: eventId,
+    eventType: 'checkout.completed',
+    created_at: '2026-06-04T10:30:15.000Z',
+    object: {
+      id: 'ch_subscription_123',
+      status: 'completed',
+      customer: {
+        id: 'cust_subscription_123',
+        email: 'subscriber@example.com',
+      },
+      subscription: {
+        id: 'sub_creem_123',
+        status: 'active',
+        current_period_start_date: '2026-06-04T10:30:15.000Z',
+      },
+      metadata: {
+        userId,
+        kind: 'subscription',
+        planId: 'pro',
+        cycle: 'monthly',
+      },
+    },
+  });
+  const tx = { kind: 'mock-tx' };
+  const recorded: unknown[] = [];
+
+  t.mock.method(creditLedgerRepo, 'findByExternalEventId', async () => undefined);
+  t.mock.method(db, 'transaction', async (callback: (txArg: unknown) => Promise<unknown>) =>
+    callback(tx),
+  );
+  t.mock.method(subscriptionService, 'recordProviderSubscription', async (txArg: unknown, data: unknown) => {
+    recorded.push({ txArg, data });
+    return {} as any;
+  });
+
+  await creemService.handleWebhook(body, sign(body, secret));
+
+  assert.deepEqual(recorded, [
+    {
+      txArg: tx,
+      data: {
+        userId,
+        provider: 'creem',
+        externalCustomerId: 'cust_subscription_123',
+        externalSubscriptionId: 'sub_creem_123',
+        planId: 'pro',
+        cycle: 'monthly',
+        status: 'active',
+        currentPeriodStart: new Date('2026-06-04T10:30:15.000Z'),
+        currentPeriodEnd: new Date('2026-07-04T10:30:15.000Z'),
+        cancelAtPeriodEnd: false,
       },
     },
   ]);

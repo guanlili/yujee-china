@@ -35,6 +35,7 @@ export interface CreditPack {
 }
 
 export type CheckoutProvider = 'stripe' | 'creem';
+export const CHECKOUT_PROVIDERS = ['creem', 'stripe'] as const satisfies readonly CheckoutProvider[];
 export const ACTIVE_CHECKOUT_PROVIDER = 'creem' satisfies CheckoutProvider;
 export type CheckoutLocale = 'en' | 'zh';
 export type CheckoutSource = 'album' | 'create' | 'home';
@@ -48,6 +49,12 @@ export type CreemProductEnvKey =
   | 'CREEM_PRODUCT_ID_PACK_4800'
   | 'CREEM_PRODUCT_ID_PACK_8000'
   | 'CREEM_PRODUCT_ID_PACK_16000';
+
+export type CreemSubscriptionProductEnvKey =
+  | 'CREEM_PRODUCT_ID_PRO_MONTHLY'
+  | 'CREEM_PRODUCT_ID_PRO_YEARLY'
+  | 'CREEM_PRODUCT_ID_STUDIO_MONTHLY'
+  | 'CREEM_PRODUCT_ID_STUDIO_YEARLY';
 
 export const CREDIT_COST_PER_ALBUM = 200;
 
@@ -118,6 +125,20 @@ export const CREEM_PRODUCT_ENV_BY_PACK_ID: Record<AddonPackId, CreemProductEnvKe
   'pack-16000': 'CREEM_PRODUCT_ID_PACK_16000',
 };
 
+export const CREEM_PRODUCT_ENV_BY_PLAN_CYCLE: Record<
+  Exclude<PlanId, 'free'>,
+  Record<BillingCycle, CreemSubscriptionProductEnvKey>
+> = {
+  pro: {
+    monthly: 'CREEM_PRODUCT_ID_PRO_MONTHLY',
+    yearly: 'CREEM_PRODUCT_ID_PRO_YEARLY',
+  },
+  studio: {
+    monthly: 'CREEM_PRODUCT_ID_STUDIO_MONTHLY',
+    yearly: 'CREEM_PRODUCT_ID_STUDIO_YEARLY',
+  },
+};
+
 export function buildCheckoutReturnUrls(
   baseUrl: string,
   provider: CheckoutProvider,
@@ -129,6 +150,26 @@ export function buildCheckoutReturnUrls(
     url.searchParams.set('checkout', checkout);
     url.searchParams.set('provider', provider);
     if (context.from) url.searchParams.set('from', context.from);
+    return url.toString();
+  };
+
+  return {
+    successUrl: build('success'),
+    cancelUrl: build('cancel'),
+  };
+}
+
+export function buildSubscriptionReturnUrls(
+  baseUrl: string,
+  provider: CheckoutProvider,
+  context: Pick<CheckoutReturnContext, 'locale'> = {},
+): { successUrl: string; cancelUrl: string } {
+  const locale = context.locale ?? 'en';
+  const build = (checkout: 'success' | 'cancel') => {
+    const url = new URL(`/${locale}/pricing`, baseUrl);
+    url.searchParams.set('checkout', checkout);
+    url.searchParams.set('kind', 'subscription');
+    url.searchParams.set('provider', provider);
     return url.toString();
   };
 

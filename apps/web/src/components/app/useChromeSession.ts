@@ -6,6 +6,7 @@ export interface ChromeUser {
   name: string | null;
   email: string;
   avatarInitial: string;
+  planLabel: string;
 }
 
 export interface ChromeSession {
@@ -14,10 +15,6 @@ export interface ChromeSession {
   plan: string;
   loading: boolean;
 }
-
-// No subscription/tier concept exists yet (credit-pack model, architecture §6.5 BILL),
-// so the plan label is a constant until that lands.
-const PLAN_LABEL = 'Free';
 
 function initialFor(user: { name: string | null; email: string }): string {
   const source = user.name?.trim() || user.email;
@@ -45,6 +42,7 @@ export function useChromeSession(): ChromeSession {
             name: meJson.data.name,
             email: meJson.data.email,
             avatarInitial: initialFor(meJson.data),
+            planLabel: meJson.data.plan?.label ?? 'Free',
           });
         }
         if (balanceJson.ok) setBalance(balanceJson.data.balance);
@@ -57,5 +55,5 @@ export function useChromeSession(): ChromeSession {
     };
   }, []);
 
-  return { user, balance, plan: PLAN_LABEL, loading };
+  return { user, balance, plan: user?.planLabel ?? 'Free', loading };
 }

@@ -9,6 +9,7 @@ import {
   albums,
   creditHolds,
   creditLedger,
+  subscriptions,
   customers,
   users,
 } from '../../schema';
@@ -56,6 +57,7 @@ export async function cleanupUser(userId: string) {
   );
   await db.delete(creditHolds).where(sql`${creditHolds.userId} = ${userId}`);
   await db.delete(albums).where(sql`${albums.userId} = ${userId}`);
+  await db.delete(subscriptions).where(sql`${subscriptions.userId} = ${userId}`);
   await db.delete(customers).where(sql`${customers.userId} = ${userId}`);
   await db.delete(users).where(sql`${users.id} = ${userId}`);
 }

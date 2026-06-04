@@ -7,9 +7,15 @@ import { creditService } from '@/services/credit/credit-service';
 import {
   ADDON_PACKS,
   CREEM_PRODUCT_ENV_BY_PACK_ID,
+  CREEM_PRODUCT_ENV_BY_PLAN_CYCLE,
   buildCheckoutReturnUrls,
+  buildSubscriptionReturnUrls,
+  getPlan,
+  type BillingCycle,
   type CheckoutReturnContext,
+  type PlanId,
 } from '@/config/pricing';
+import { addBillingPeriod, subscriptionService, type PaidPlanId } from '@/services/billing/subscription-service';
 import { env } from '@/lib/env';
 import { ERRORS } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
@@ -22,12 +28,23 @@ import { logger } from '@/lib/log/logger';
 type CreemEvent = {
   id: string;
   type: string; // e.g. 'checkout.completed'
+  createdAt?: unknown;
   object?: {
     id?: string;
+    status?: string;
     customer?: { id?: string; email?: string };
     metadata?: Record<string, string>;
     amount?: number; // cents
     order?: { amount?: number }; // cents, Creem's real checkout payload
+    subscription?: {
+      id?: string;
+      status?: string;
+      current_period_start?: unknown;
+      current_period_start_date?: unknown;
+      current_period_end?: unknown;
+      current_period_end_date?: unknown;
+      cancel_at_period_end?: boolean;
+    };
   };
 };
 
@@ -80,6 +97,41 @@ export const creemService = {
         success_url: successUrl,
         cancel_url: cancelUrl,
         metadata: { userId, kind: 'pack', packId },
+      },
+    );
+
+    if (!session.checkout_url) throw ERRORS.INTERNAL_ERROR();
+    return { url: session.checkout_url };
+  },
+
+  async createSubscriptionCheckout(
+    userId: string,
+    planId: PaidPlanId,
+    cycle: BillingCycle,
+    context: Pick<CheckoutReturnContext, 'locale'> = {},
+  ): Promise<{ url: string }> {
+    const plan = getPlan(planId);
+    if (plan.id === 'free') throw ERRORS.VALIDATION_FAILED('free plan is not subscribable');
+    const user = await userRepo.findById(userId);
+    if (!user) throw ERRORS.UNAUTHORIZED();
+
+    const existing = await customerRepo.findByUserAndProvider(userId, 'creem');
+    const { successUrl, cancelUrl } = buildSubscriptionReturnUrls(
+      env.WEB_BASE_URL,
+      'creem',
+      context,
+    );
+
+    const session = await postJson<{ id: string; checkout_url: string }>(
+      '/v1/checkouts',
+      {
+        product_id: resolveCreemSubscriptionProductId(planId, cycle),
+        customer: existing
+          ? { id: existing.externalCustomerId }
+          : { email: user.email },
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        metadata: { userId, kind: 'subscription', planId, cycle },
       },
     );
 
@@ -159,7 +211,7 @@ function normalizeCreemEvent(payload: unknown): CreemEvent | null {
     : isRecord(payload.object)
       ? payload.object
       : undefined;
-  return { id, type, object: object as CreemEvent['object'] };
+  return { id, type, createdAt: payload.created_at ?? payload.createdAt, object: object as CreemEvent['object'] };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -169,6 +221,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function applyCheckoutCompleted(event: CreemEvent): Promise<void> {
   const obj = event.object;
   const meta = obj?.metadata ?? {};
+  if (meta.kind === 'subscription') {
+    await applySubscriptionCompleted(event);
+    return;
+  }
+
   const userId = meta.userId;
   const packId = meta.packId;
   if (!userId || meta.kind !== 'pack' || !packId) {
@@ -208,4 +265,78 @@ async function applyCheckoutCompleted(event: CreemEvent): Promise<void> {
     { userId, packId, credits: pack.credits, eventId: event.id },
     'creem purchase credited',
   );
+}
+
+function resolveCreemSubscriptionProductId(planId: PaidPlanId, cycle: BillingCycle): string {
+  const envKey = CREEM_PRODUCT_ENV_BY_PLAN_CYCLE[planId]?.[cycle];
+  const productId = envKey ? env[envKey] : undefined;
+  if (!productId) {
+    logger.warn({ planId, cycle, envKey }, 'creem subscription product id missing');
+    throw ERRORS.BILLING_NOT_CONFIGURED();
+  }
+  return productId;
+}
+
+async function applySubscriptionCompleted(event: CreemEvent): Promise<void> {
+  const obj = event.object;
+  const meta = obj?.metadata ?? {};
+  const userId = meta.userId;
+  const planId = meta.planId as PlanId | undefined;
+  const cycle = meta.cycle as BillingCycle | undefined;
+  if (!userId || !isPaidPlanId(planId) || !isBillingCycle(cycle)) {
+    logger.warn({ eventId: event.id }, 'creem subscription metadata incomplete');
+    return;
+  }
+
+  const subscription = obj?.subscription;
+  const currentPeriodStart =
+    parseCreemDate(subscription?.current_period_start_date) ??
+    parseCreemDate(subscription?.current_period_start) ??
+    parseCreemDate(event.createdAt) ??
+    new Date();
+  const currentPeriodEnd =
+    parseCreemDate(subscription?.current_period_end_date) ??
+    parseCreemDate(subscription?.current_period_end) ??
+    addBillingPeriod(currentPeriodStart, cycle);
+
+  await db.transaction(async (tx) => {
+    await subscriptionService.recordProviderSubscription(tx, {
+      userId,
+      provider: 'creem',
+      externalCustomerId: obj?.customer?.id ?? null,
+      externalSubscriptionId: subscription?.id ?? obj?.id ?? event.id,
+      planId,
+      cycle,
+      status: subscription?.status ?? obj?.status ?? 'active',
+      currentPeriodStart,
+      currentPeriodEnd,
+      cancelAtPeriodEnd: subscription?.cancel_at_period_end ?? false,
+    });
+  });
+
+  logger.info(
+    { userId, planId, cycle, eventId: event.id },
+    'creem subscription entitlement recorded',
+  );
+}
+
+function parseCreemDate(value: unknown): Date | null {
+  if (value instanceof Date) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const ms = value < 10_000_000_000 ? value * 1000 : value;
+    return new Date(ms);
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+function isPaidPlanId(value: unknown): value is PaidPlanId {
+  return value === 'pro' || value === 'studio';
+}
+
+function isBillingCycle(value: unknown): value is BillingCycle {
+  return value === 'monthly' || value === 'yearly';
 }

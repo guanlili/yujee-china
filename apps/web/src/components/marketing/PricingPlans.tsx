@@ -1,18 +1,57 @@
 'use client';
 
 import { useState } from 'react';
-import { PLANS, planPriceFor, type BillingCycle } from '@/config/pricing';
+import {
+  ACTIVE_CHECKOUT_PROVIDER,
+  PLANS,
+  planPriceFor,
+  type BillingCycle,
+  type PlanId,
+} from '@/config/pricing';
 import type { MarketingMessages } from '@/messages/marketing';
+import type { Locale } from '@/lib/i18n/routing';
 
 interface Props {
   messages: MarketingMessages['pricing'];
+  locale: Locale;
 }
 
-export function PricingPlans({ messages: m }: Props) {
+export function PricingPlans({ messages: m, locale }: Props) {
   const [cycle, setCycle] = useState<BillingCycle>('yearly');
+  const [busy, setBusy] = useState<PlanId | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const subscribe = async (planId: Exclude<PlanId, 'free'>) => {
+    setBusy(planId);
+    setErr(null);
+    try {
+      const res = await fetch('/api/v1/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'subscription',
+          planId,
+          cycle,
+          provider: ACTIVE_CHECKOUT_PROVIDER,
+          locale,
+        }),
+      });
+      const json = await res.json();
+      if (json.ok && json.data?.url) {
+        window.location.href = json.data.url;
+        return;
+      }
+      setErr(json.error?.message ?? 'Checkout failed');
+    } catch {
+      setErr('Checkout failed');
+    } finally {
+      setBusy(null);
+    }
+  };
 
   return (
     <>
+      {err && <p className="mb-6 text-center text-sm text-red-600">{err}</p>}
       <div className="flex justify-center mb-12">
         <div className="inline-flex items-center gap-1 p-1 rounded-full bg-[var(--bg)] border border-[var(--border-soft)]">
           <button
@@ -100,10 +139,13 @@ export function PricingPlans({ messages: m }: Props) {
 
               <button
                 type="button"
+                onClick={() => {
+                  if (plan.id === 'pro' || plan.id === 'studio') void subscribe(plan.id);
+                }}
                 className={`w-full py-3 rounded-full text-sm font-semibold transition-all order-5 mb-5 ${buttonClass}`}
-                disabled={isFree}
+                disabled={isFree || busy !== null}
               >
-                {ctaLabel}
+                {busy === plan.id ? 'Redirecting...' : ctaLabel}
               </button>
             </div>
           );

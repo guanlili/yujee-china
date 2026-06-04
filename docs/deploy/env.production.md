@@ -34,6 +34,10 @@
 | `CREEM_PRODUCT_ID_PACK_4800` | Creem dashboard | 4800 积分包对应的 Creem 产品 ID(`prod_...`) |
 | `CREEM_PRODUCT_ID_PACK_8000` | Creem dashboard | 8000 积分包对应的 Creem 产品 ID(`prod_...`) |
 | `CREEM_PRODUCT_ID_PACK_16000` | Creem dashboard | 16000 积分包对应的 Creem 产品 ID(`prod_...`) |
+| `CREEM_PRODUCT_ID_PRO_MONTHLY` | Creem dashboard | Pro 月付订阅对应的 Creem 产品 ID(`prod_...`) |
+| `CREEM_PRODUCT_ID_PRO_YEARLY` | Creem dashboard | Pro 年付订阅对应的 Creem 产品 ID(`prod_...`) |
+| `CREEM_PRODUCT_ID_STUDIO_MONTHLY` | Creem dashboard | Studio 月付订阅对应的 Creem 产品 ID(`prod_...`) |
+| `CREEM_PRODUCT_ID_STUDIO_YEARLY` | Creem dashboard | Studio 年付订阅对应的 Creem 产品 ID(`prod_...`) |
 | `STRIPE_API_KEY` | 复制 / 可空 | Stripe 备用通道,缺省即关闭 Stripe |
 | `STRIPE_WEBHOOK_SECRET` | 复制 / 可空 | 同上 |
 | `R2_ACCOUNT_ID` | 复制(映射) | 见 §3 |
