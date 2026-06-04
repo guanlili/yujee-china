@@ -1,12 +1,12 @@
 # Composing 重设计 · 施工技术方案
 
-> 状态:**技术方案(可施工),待架构师 + 用户过闸**。本文是 [`composing-redesign.md`](./composing-redesign.md) §9 点名的「技术方案窗口」交付物 —— 它把那份文档的**决策/契约/影响面地图**推进成**能直接照着开工的施工方案**。
+> 状态:**实现已落地,架构闸门已过;本文保留为施工记录**。本文是 [`composing-redesign.md`](./composing-redesign.md) §9 点名的「技术方案窗口」交付物 —— 它把那份文档的**决策/契约/影响面地图**推进成**施工方案与落地记录**。
 >
 > 前置阅读:`composing-redesign.md`(决策基线,D-A~D-E 已锁,本文**直接采用不重议**)→ 本文。
 >
 > **铁律(沿用 redesign §1)**:Agent 对外 I/O 一字不动(`AlbumLayoutPlan` 契约不变);模板单向流向 Agent;预览图≠原图,最终渲染用浏览器本地原图;LLM 只输出 photoId 绝不 URL;页数公式废除但 `pages` 仍受 1..16 schema 硬边界约束。
 >
-> **工作纪律**:先把方案 + 架构图全部写进本文,过架构师闸门(§11),再写任何代码。
+> **工作纪律**:方案 + 架构图已先写入本文并完成架构闸门;后续实现按本文拆分落地。
 >
 > 行号核对于 2026-06-03,对齐核心仓库 `memoir-agent-rebuild`(非 showcase)。
 
@@ -95,7 +95,7 @@
 ┌─ WEB 渲染(React 预览 + @react-pdf 导出,两端一致)───────────────┐
 │ 按 templateId 读共享模板库 JSON;photoId → IndexedDB 取「原图」      │
 │ object-fit: cover 作用于原图(web-utils:43 / pdf-utils:72 已就位)   │
-│ [TODO·web] center-cover 裁切(不做人脸避让,§7)                      │
+│ [已落地·web] center-cover 裁切(不做人脸避让,§7)                    │
 └───────────────────────────────────────────────────────────────────┘
         ▲读                                            ▲读
         └────────── 共享模板库 packages/contracts/templates/<id>.json ─┘
@@ -327,17 +327,16 @@ def _normalize_page_count(pages: list[Page], photos: list[PhotoAnalysis]) -> lis
 
 ---
 
-## 7. Web 渲染调整(本次执行内,我负责改 · 用户已定)
+## 7. Web 渲染调整(已落地 · 用户已定)
 
 > 用户已定:本期采用 **center-cover 裁切**。以图片中心为原点,按能填满 slot 边界的尺寸裁切;不做人脸检测,不新增 focal point 字段,不改 `images:{slot:photoId}` 契约。
 
-**现状核实(2026-06-03)**:`web-utils.tsx:43` / `pdf-utils.tsx:72` 两端都是 `objectFit:'cover'`。两端未显式写 `objectPosition`,浏览器语义等价 center;本期把它显式化并审计 `@react-pdf` 是否同语义。注意:center-cover 只能保证不留白、不变形、中心裁切一致;它**不能**保证人脸避让,人脸偏上/偏边仍可能被裁。
+**现状核实(2026-06-04)**:`web-utils` / `pdf-utils` 两端均已显式写入 `objectFit:'cover'` + `objectPosition:'50% 50%'`,预览与 PDF 导出保持 center-cover 同语义。center-cover 只能保证不留白、不变形、中心裁切一致;它**不能**保证人脸避让,人脸偏上/偏边仍可能被裁。
 
-待改(我执行):
-1. **显式 center-cover**:`web-utils`(`WebImage`)+ `pdf-utils`(`PdfImage`)两端都写成 `objectFit:'cover'` + `objectPosition:'50% 50%'`(或 React PDF 等价写法),**两端同语义**(否则预览与导出裁得不一样)。
-2. **resize / cover 正确性审计(用户点名:不对的地方也要改)**:全量过一遍两端 cover 缩放——确认 `object-fit:cover` 在所有 image slot(含 grid `cells[*]`、bracket-path 槽)行为一致、不变形、不留白;`@react-pdf` 的 `objectFit` 对各 slot 尺寸是否真生效(它的支持有坑)。发现不对当场修。
-3. **比例容差本期不设硬规则**:不因图片/slot 比例差触发换槽或拒绝。任何比例差都由 center-cover 吸收;后续如果要做人脸/主体避让,另起浏览器侧焦点识别或用户手动调焦点方案。
-4. 渲染用「原图」(铁律),裁切作用于原图,预览图只是排版近似。
+已落地:
+1. **显式 center-cover**:`web-utils`(`WebImage`)+ `pdf-utils`(`PdfImage`)两端均已写入 `objectFit:'cover'` + `objectPosition:'50% 50%'`,**两端同语义**。
+2. **比例容差本期不设硬规则**:不因图片/slot 比例差触发换槽或拒绝。任何比例差都由 center-cover 吸收;后续如果要做人脸/主体避让,另起浏览器侧焦点识别或用户手动调焦点方案。
+3. 渲染用「原图」(铁律),裁切作用于原图,预览图只是排版近似。
 
 > **强依赖**:Agent orientation 一旦降软,显式 center-cover + 两端一致审计**必须同窗口上线**(§8 的 E 与 D 同步),否则横竖错配时会出现预览/PDF 不一致、留白或变形风险。它是本期可靠兜底,但不是人脸避让方案。
 
@@ -428,7 +427,7 @@ G. 新增模板入库(用户正在做,独立项)— 见下
 
 ## 11. 架构师闸门 + 文档同步(CLAUDE.md 硬要求)
 
-本次动到 **模板 schema / 确定性校验语义 / 新增 `packages/contracts/templates/` 子结构** → 触发 CLAUDE.md「必须先问架构师」。本文即闸门材料。Worker 0 已完成架构闸门的文档登记,实现 / 代码项仍待后续任务:
+本次动到 **模板 schema / 确定性校验语义 / 新增 `packages/contracts/templates/` 子结构** → 触发 CLAUDE.md「必须先问架构师」。本文即闸门材料。架构闸门、文档登记、README 与实现任务均已在 feature 分支 commits 中完成:
 
 - [x] `architecture.md`:已在 §6.6 增补二期决策记录(cover 缩放 D-A、orientation 软化 D-B、页数实际化、文案软化、模板 JSON 单一真相源 `templates/`),并在 §4 目录登记 `packages/contracts/templates/`。
 - [x] `architecture.md §3 十条不变式`:已复核——本次不破任何一条(契约不动、photoId 不变、必出片保留);第 9 条"写库前 zod 校验"仍成立,无需改不变式。
@@ -436,9 +435,9 @@ G. 新增模板入库(用户正在做,独立项)— 见下
 - [x] `design.md §4.2 / §4.3 / §5.1`:已改写 TemplateRegistry 来源、orientation/quality 约束语义、页数公式废除但保留 1..16、文案长度软化、center-cover 语义。
 - [x] `composing-redesign.md §5/§8`:已标记 Q1/Q4/Q5 等 review-resolved 状态,同步清单已勾掉;未重开 D-A~D-E。
 - [x] `docs/STATUS.md`:已把 #42 二期方向更新为 orientation 软化、fill→hero 保护、1..16 页边界、center-cover 无人脸避让、模板 JSON 单一真相源。
-- [ ] `packages/contracts/templates/README.md`:Worker 0 不处理 package 级模板 README;该目录已从本 doc-gate worktree 移除,后续 Task A 随 loader / 模板 JSON 实施再建。
+- [x] `packages/contracts/templates/README.md`:已随模板 JSON 单一真相源落地,记录模板录入契约与同步流程。
 
-> **当前闸门状态**:架构文档登记已完成;仍禁止在本阶段写业务代码。后续实现任务按 §8 拆分执行。
+> **当前闸门状态**:架构闸门已完成,§8 拆分任务已在 feature 分支 commits 中落地。本文保留为施工记录,不表示已 push / merged。
 
 ---
 

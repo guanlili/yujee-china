@@ -201,7 +201,7 @@ User 段必须传达:
 ### 4.2 输入上下文(全部塞 system prompt)
 
 - 完整 `AlbumLayoutPlan` JSON Schema(从 `packages/contracts` 导出)
-- `TemplateRegistry`(目标单一真相源为 `packages/contracts/templates/` JSON;TS generated loader / Python loader 从这里派生,当前代码仍待 Task A 切换)
+- `TemplateRegistry`(当前单一真相源为 `packages/contracts/templates/` JSON;TS generated loader / Python loader 均从这里派生)
 - `Magazine`(stage 2 输出)
 - `PhotoAnalysis[]`(stage 1 输出)
 - **业务规则**(下面 §4.3)
