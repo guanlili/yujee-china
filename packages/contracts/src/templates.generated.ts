@@ -746,8 +746,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "landscape"
         ],
         "quality": [
-          "hero",
-          "detail"
+          "detail",
+          "fill"
         ]
       }
     },

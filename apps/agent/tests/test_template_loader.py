@@ -94,6 +94,6 @@ def test_prompt_summary_handles_optional_constraints(tmp_path):
 
     assert "optional-01 [single]" in summary
     assert "image(any)" in summary
-    assert "thumb(quality=detail)" in summary
+    assert "thumb(quality~detail)" in summary
     assert "caption<=?c" in summary
     assert "title<=24c" in summary

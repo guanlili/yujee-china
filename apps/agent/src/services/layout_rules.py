@@ -3,7 +3,6 @@ composing and after applying a chat-edit patch. Returns the first violation
 as a human-readable string for the repair prompt, or None if all pass."""
 
 from collections import Counter
-from math import ceil
 
 from ..logging_config import get_logger
 from ..schemas import AlbumLayoutPlan, Magazine, Page, PhotoAnalysis
@@ -11,12 +10,11 @@ from .. import templates as registry
 
 log = get_logger("layout_rules")
 
-# Architecture §6.5 decision 6: photo floor is ≥1. With ≤2 photos the page-count
-# target (3) outruns what the photos can fill, so the extra pages use text-only
-# templates. Builds bottom out in build_text_first_layout when the model can't.
+# Architecture §6.5 decision 6: photo floor is ≥1. With ≤2 photos, builds bottom
+# out in build_text_first_layout when the model can't compose a usable album.
 FEW_PHOTO_MAX = 2
 
-# Text-only spreads used to pad a few-photo album to the page-count target.
+# Text-only spreads used to pad a few-photo album to the sanity floor.
 _TEXT_ONLY_PAD = ("mag-02", "mag-14")
 
 # Text-only templates that carry NO image slots, used by coerce as the last
@@ -26,11 +24,6 @@ _TEXT_ONLY_PAD = ("mag-02", "mag-14")
 # (index 0) must remain a cover, so it swaps to the text-only cover.
 _TEXT_ONLY_COVER = "mag-20"
 _TEXT_ONLY_SPREAD = "mag-02"
-
-
-def _expected_page_count(photo_count: int) -> int:
-    raw = ceil(photo_count / 2.5)
-    return min(16, max(3, raw))
 
 
 def clamp_text(text: str, max_chars: int) -> str:
@@ -77,17 +70,37 @@ def clamp_page_texts(pages: list[Page]) -> list[Page]:
     return out
 
 
-def _photo_fits(photo: PhotoAnalysis, constraint: dict) -> bool:
-    return (
-        photo.orientation in constraint["orientation"]
-        and photo.quality in constraint["quality"]
-    )
+def _quality_ok(photo: PhotoAnalysis, constraint: dict) -> bool:
+    """Only hard slot quality rule: fill photos cannot occupy hero slots."""
+    qualities = constraint.get("quality")
+    if qualities and "hero" in qualities and photo.quality == "fill":
+        return False
+    return True
+
+
+def _orientation_prefers(photo: PhotoAnalysis, constraint: dict) -> bool:
+    """Soft preference used for deterministic tie-breaking, never validation."""
+    orientations = constraint.get("orientation")
+    return (not orientations) or (photo.orientation in orientations)
+
+
+def _quality_prefers(photo: PhotoAnalysis, constraint: dict) -> bool:
+    """Soft quality preference after hero protection has passed."""
+    qualities = constraint.get("quality")
+    if not qualities:
+        return True
+    if "hero" in qualities:
+        return photo.quality == "hero"
+    return photo.quality in qualities
+
+
+def _photo_placeable(photo: PhotoAnalysis, constraint: dict) -> bool:
+    return _quality_ok(photo, constraint)
 
 
 # For each orientation, the qualities the 21-template registry can actually hold
 # in SOME image slot. Computed once from the registry so it tracks template
-# edits; coerce may still relax quality further when a denser filled template
-# needs it (for example square hero → detail for mag-10).
+# edits; few-photo fallback still uses it for the known square-only gap.
 _PLACEABLE_QUALITIES: dict[str, set[str]] = {}
 for _tpl in registry.TEMPLATES.values():
     for _cons in _tpl["imageSlots"].values():
@@ -100,27 +113,20 @@ _QUALITY_RANK = ("hero", "detail", "fill")
 
 
 def _relax_to_placeable(photo: PhotoAnalysis) -> PhotoAnalysis:
-    """Return `photo` unchanged if its orientation+quality fits some slot; else
-    demote its quality to the most prominent value its orientation CAN occupy.
+    """Return `photo`, preserving hard fill→hero protection.
 
-    Square hero is also relaxed to detail: mag-09 can still hold it, and mag-10
-    grids then become fillable. Demoting quality keeps the photo and a filled
-    slot. Orientation is never changed (it reflects the real crop)."""
+    Square hero is relaxed to detail: mag-09 can still hold it, and mag-10 grids
+    then become fillable. Orientation is never changed (it reflects the real
+    crop), and fill photos are not demoted to bypass hero-slot protection."""
     if photo.orientation == "square" and photo.quality == "hero":
         return photo.model_copy(update={"quality": "detail"})
-    placeable = _PLACEABLE_QUALITIES.get(photo.orientation, set())
-    if photo.quality in placeable or not placeable:
-        return photo
-    for q in _QUALITY_RANK:
-        if q in placeable:
-            return photo.model_copy(update={"quality": q})
     return photo
 
 
 # Qualities a SINGLE-image (one-slot) non-cover template accepts, per orientation.
 # The few-photo fallback places one photo per page in such a template (so no
-# sibling slot is left empty), but those templates only accept hero/detail — a
-# fill-grade photo must be demoted to detail to get an empty-slot-free home.
+# sibling slot is left empty). At least one single-image slot must remain
+# non-hero detail/fill so a lone fill-grade photo has a legal home.
 _SINGLE_IMAGE_QUALITIES: dict[str, set[str]] = {}
 for _tpl in registry.TEMPLATES.values():
     if _tpl["category"] == "cover" or len(_tpl["imageSlots"]) != 1:
@@ -132,11 +138,11 @@ for _tpl in registry.TEMPLATES.values():
 
 def _relax_for_single_image(photo: PhotoAnalysis) -> PhotoAnalysis:
     """Demote `photo`'s quality to the most prominent value a single-image
-    template accepts for its orientation (e.g. fill→detail for portrait). Returns
+    template accepts for its orientation. Returns
     the photo unchanged when it already has a single-image home, or when its
     orientation has none at all (square — the known registry gap)."""
     accepts = _SINGLE_IMAGE_QUALITIES.get(photo.orientation, set())
-    if not accepts or photo.quality in accepts:
+    if photo.quality == "fill" or not accepts or photo.quality in accepts:
         return photo
     for q in _QUALITY_RANK:
         if q in accepts:
@@ -150,9 +156,9 @@ def _relax_for_few_photo(photo: PhotoAnalysis) -> PhotoAnalysis:
     The fallback must prefer a filled legal page over preserving the exact model
     quality label. `detail` is the broadest shared quality for landscape,
     portrait, and square pair templates, so it lets mixed square albums use the
-    existing mag-09/mag-12 templates while still satisfying slot constraints.
+    existing mag-09/mag-12 templates while still satisfying hero protection.
     """
-    if "detail" in _PLACEABLE_QUALITIES.get(photo.orientation, set()):
+    if photo.quality != "fill" and "detail" in _PLACEABLE_QUALITIES.get(photo.orientation, set()):
         return photo.model_copy(update={"quality": "detail"})
     return _relax_for_single_image(photo)
 
@@ -183,9 +189,16 @@ def _template_assignment(
         candidates = [
             (idx, photo)
             for idx, photo in remaining
-            if _photo_fits(photo, cons)
+            if _photo_placeable(photo, cons)
         ]
-        candidates.sort(key=lambda item: (used_counts[item[1].photoId], item[0]))
+        candidates.sort(
+            key=lambda item: (
+                not _orientation_prefers(item[1], cons),
+                not _quality_prefers(item[1], cons),
+                used_counts[item[1].photoId],
+                item[0],
+            )
+        )
 
         for idx, photo in candidates:
             tail = search(
@@ -248,47 +261,43 @@ def _retemplate_page(
 
 
 def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
-    """Deterministically force every image slot to satisfy its template's
-    orientation/quality constraint — the photo-slot analogue of clamp_text.
+    """Deterministically force every image slot to satisfy hard slot rules.
 
     Runs ONLY after the model's repair budget is exhausted: a bottom-line, not
-    a replacement for sound assignment. doubao-seed-lite reliably matches
-    orientation+quality on 3 photos but mis-assigns on 7-8, and a single repair
-    can't recover it, sinking the whole job over a cosmetic mismatch. This makes
-    the layout pass §4.3 unconditionally so the album always ships.
+    a replacement for sound assignment. doubao-seed-lite can mis-assign on 7-8
+    photos and a single repair can't always recover it. This keeps the layout
+    structurally shippable where deterministic repair can do so.
 
     Strategy (only touches placements the model got wrong):
       0. Relax photo quality when needed to make filled templates possible (for
          example square hero → detail so mag-10 can hold a full square grid).
-         Without this such a photo could only be dropped, shrinking photos[] and
-         breaking Rule 1.
-      1. Clear every placement that breaks a per-slot rule — bad slot key,
-         dangling photoId, orientation/quality mismatch, same-page duplicate,
-         or reuse beyond twice. Valid placements are left exactly as the model
-         arranged them.
+         Without this such a photo may be harder to use in existing square grids.
+      1. Clear every placement that breaks a hard per-slot rule — bad slot key,
+         dangling photoId, fill photo in a hero slot, same-page duplicate, or
+         reuse beyond twice. Valid placements are left exactly as arranged.
       2. Re-home each now-unused photo into an empty, compatible slot on a page
          that doesn't already show it (Rule 3: every photo used at least once).
       3. Fill EVERY still-empty image slot so the final layout never renders a
          blank/placeholder slot (#42). For each empty slot, place the best
-         available photo whose orientation+quality satisfy the slot, preferring
-         an unused photo, then a photo used fewer times, never exceeding the
-         twice-reuse cap (Rule 4) or duplicating on the same page (Rule 4). A
-         slot with no compatible photo anywhere triggers step 4.
+         available photo whose quality satisfies the hard slot rule, preferring
+         orientation matches, then an unused photo, then a photo used fewer
+         times, never exceeding the twice-reuse cap (Rule 4) or duplicating on
+         the same page (Rule 4). A slot with no compatible photo anywhere
+         triggers step 4.
       4. Any page that still has an unfilled image slot is swapped to a
          text-only template (cover page → mag-20, otherwise → mag-02), dropping
          all its image slots so no empty slot ships. Photos that were on that
          page are re-homed (step 2 logic) or, if they have no other home, kept
          for step 5.
       5. Last resort: a photo with no compatible slot anywhere is dropped from
-         photos[] (the album omits it) — it is unused, so nothing references it,
-         and a smaller photo set only lowers the Rule 1 page target.
+         photos[] (the album omits it) — it is unused, so nothing references it.
 
     After coerce, violation() returns None for structurally sound layouts that
     can be made no-empty; otherwise the residual violation is surfaced upstream.
     Crucially, every image slot present in the returned layout is filled — there
     are no empty image slots."""
-    # Phase 0 — demote unplaceable photos (square+hero etc.) so every photo can
-    # occupy some slot; otherwise it could only be dropped, breaking Rule 1.
+    # Phase 0 — demote square+hero so existing square grids can hold it. Do not
+    # demote fill photos; fill→hero is the one remaining hard quality guard.
     layout = layout.model_copy(
         update={"photos": [_relax_to_placeable(p) for p in layout.photos]}
     )
@@ -311,7 +320,7 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
             keep = (
                 cons is not None
                 and photo is not None
-                and _photo_fits(photo, cons)
+                and _photo_placeable(photo, cons)
                 and pid not in on_page[i]
                 and used[pid] < 2
             )
@@ -325,28 +334,76 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
         """Place an unused photo into an empty compatible slot on a page that
         doesn't already show it. Returns True if placed (Rule 3)."""
         photo = by_id[pid]
+        candidates: list[tuple[bool, bool, int, str]] = []
         for i, (imgs, tpl) in enumerate(zip(page_images, page_tpls)):
             if tpl is None or pid in on_page[i]:
                 continue
-            empty = next(
-                (
-                    s
-                    for s, c in tpl["imageSlots"].items()
-                    if s not in imgs and _photo_fits(photo, c)
-                ),
-                None,
-            )
-            if empty is not None:
-                imgs[empty] = pid
-                used[pid] += 1
-                on_page[i].add(pid)
-                return True
-        return False
+            for slot, cons in tpl["imageSlots"].items():
+                if slot not in imgs and _photo_placeable(photo, cons):
+                    candidates.append((
+                        _orientation_prefers(photo, cons),
+                        _quality_prefers(photo, cons),
+                        -i,
+                        slot,
+                    ))
+        if not candidates:
+            return False
+        _, _, neg_i, slot = max(candidates)
+        i = -neg_i
+        page_images[i][slot] = pid
+        used[pid] += 1
+        on_page[i].add(pid)
+        return True
+
+    def _swap_in(pid: str) -> bool:
+        """Place an unused photo by replacing a soft-worse occupant."""
+        photo = by_id[pid]
+        candidates: list[tuple[int, bool, bool, int, str, str]] = []
+        for i, (imgs, tpl) in enumerate(zip(page_images, page_tpls)):
+            if tpl is None or pid in on_page[i]:
+                continue
+            for slot, current_pid in imgs.items():
+                cons = tpl["imageSlots"].get(slot)
+                if cons is None or not _photo_placeable(photo, cons):
+                    continue
+                current = by_id.get(current_pid)
+                if current is None:
+                    continue
+                orientation_gain = (
+                    _orientation_prefers(photo, cons)
+                    and not _orientation_prefers(current, cons)
+                )
+                quality_gain = (
+                    _quality_prefers(photo, cons)
+                    and not _quality_prefers(current, cons)
+                )
+                if used[current_pid] <= 1 and not orientation_gain and not quality_gain:
+                    continue
+                candidates.append((used[current_pid], orientation_gain, quality_gain, -i, slot, current_pid))
+
+        if not candidates:
+            return False
+        _, _, _, neg_i, slot, current_pid = max(candidates)
+        i = -neg_i
+        page_images[i][slot] = pid
+        used[current_pid] -= 1
+        on_page[i].discard(current_pid)
+        used[pid] += 1
+        on_page[i].add(pid)
+        return True
 
     # Phase 2 — re-home unused photos into empty, compatible slots (Rule 3).
     for pid in [p.photoId for p in layout.photos]:
         if used[pid] == 0:
             _rehome(pid)
+
+    for _ in range(len(layout.photos)):
+        changed = False
+        for pid in [p.photoId for p in layout.photos]:
+            if used[pid] == 0:
+                changed = _rehome(pid) or _swap_in(pid) or changed
+        if not changed:
+            break
 
     # Phase 3 — fill every still-empty image slot so nothing renders blank (#42).
     # For each empty slot, pick the best compatible photo: prefer one not yet
@@ -361,11 +418,15 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
                 (
                     p.photoId
                     for p in layout.photos
-                    if _photo_fits(p, cons)
+                    if _photo_placeable(p, cons)
                     and p.photoId not in on_page[i]
                     and used[p.photoId] < 2
                 ),
-                key=lambda pid: used[pid],
+                key=lambda pid: (
+                    not _orientation_prefers(by_id[pid], cons),
+                    not _quality_prefers(by_id[pid], cons),
+                    used[pid],
+                ),
                 default=None,
             )
             if candidate is not None:
@@ -430,14 +491,12 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
         if used[pid] == 0:
             _rehome(pid)
 
-    # Phase 5 — drop photos that have no compatible slot anywhere.
+    # Phase 5 — drop photos that have no hard-rule-compatible slot anywhere.
     survivors = [p for p in layout.photos if used[p.photoId] > 0]
     dropped = [p.photoId for p in layout.photos if used[p.photoId] == 0]
     if not survivors and layout.photos:
-        # Dropping every input photo can make Rule 1 accidentally pass for a
-        # three-page album (expected count is still 3 for zero photos). Preserve
-        # the original photos so violation() surfaces unused photos upstream
-        # instead of returning a successful empty album.
+        # Preserve the original photos so violation() surfaces unused photos
+        # upstream instead of returning a successful empty album.
         survivors = list(layout.photos)
     if dropped:
         log.warning(
@@ -476,12 +535,9 @@ def violation(layout: AlbumLayoutPlan) -> str | None:
     photo_ids = {p.photoId for p in photos}
     by_id: dict[str, PhotoAnalysis] = {p.photoId: p for p in photos}
 
-    # Rule 1: page count — §4.3 requires pages.length == max(3, ceil(n/2.5))
-    # (capped at 16). Strict equality, so too MANY pages is a violation too: a
-    # model that pads past the target must hit fallback/repair, not slip through.
-    expected = _expected_page_count(len(photos))
-    if len(pages) != expected:
-        return f"pages count {len(pages)} != required {expected} for {len(photos)} photos"
+    # Rule 1: page count sanity — actual layout length, bounded by schema.
+    if not (1 <= len(pages) <= 16):
+        return f"pages count {len(pages)} outside supported range 1..16"
 
     # Rule 2: first page must be a cover-category template
     first_tpl = registry.get(pages[0].templateId)
@@ -524,27 +580,11 @@ def violation(layout: AlbumLayoutPlan) -> str | None:
 
             constraint = tpl["imageSlots"][slot]
             photo = by_id[pid]
-            if photo.orientation not in constraint["orientation"]:
+            if not _quality_ok(photo, constraint):
                 return (
                     f"page {page.pageIndex} slot '{slot}': "
-                    f"photo {pid} orientation={photo.orientation} not in "
-                    f"{constraint['orientation']}"
-                )
-            if photo.quality not in constraint["quality"]:
-                return (
-                    f"page {page.pageIndex} slot '{slot}': "
-                    f"photo {pid} quality={photo.quality} not acceptable "
-                    f"(slot accepts {constraint['quality']})"
-                )
-
-        # Rule 9: text length (we keep it lenient: only the explicit maxChars)
-        for slot, text in page.texts.items():
-            cons = tpl["textSlots"][slot]
-            max_chars = cons.get("maxChars")
-            if isinstance(max_chars, int) and len(text) > max_chars:
-                return (
-                    f"page {page.pageIndex} text '{slot}' length {len(text)} > "
-                    f"maxChars {max_chars}"
+                    f"fill photo {pid} cannot be placed in hero slot "
+                    f"(slot quality {constraint.get('quality')})"
                 )
 
     # Rule 3: every photoId referenced at least once
@@ -570,23 +610,16 @@ def repair_instruction(violation_text: str) -> str:
     so no detail is lost if the heuristic mis-classifies."""
     v = violation_text
     hint: str
-    if "orientation=" in v:
+    if "fill photo" in v and "hero slot" in v:
         hint = (
-            "RULE 5 (slot constraints) — the photo at this slot has the wrong "
-            "orientation. Move it to a slot/template whose orientation list "
-            "includes that photo's orientation, and put a correctly-oriented "
-            "photo in this slot. Do NOT leave the slot empty."
-        )
-    elif "quality" in v and "acceptable" in v:
-        hint = (
-            "RULE 5 (slot constraints) — the photo's quality is not accepted by "
-            "this slot. Use a photo whose quality is in the slot's quality list, "
-            "or move this photo to a slot that accepts its quality."
+            "RULE 5 (hero protection) — fill-grade photos must not be placed in "
+            "hero slots. Move this fill photo to a non-hero image slot, or put a "
+            "hero/detail photo in the hero slot."
         )
     elif v.startswith("unused photos"):
         hint = (
             "RULE 3 (photo utilization) — these photoIds appear in NO page. Add "
-            "each of them to an image slot whose orientation+quality they satisfy. "
+            "each of them to an image slot without breaking hero protection. "
             "Every input photo must be used at least once."
         )
     elif v.startswith("photos reused"):
@@ -607,9 +640,9 @@ def repair_instruction(violation_text: str) -> str:
         )
     elif "pages count" in v:
         hint = (
-            "RULE 1 (page count) — the number of pages is wrong. Output EXACTLY "
-            "the required page count shown; add or remove pages (use text-only "
-            "templates mag-02/mag-14/mag-20 to pad) so the total matches."
+            "RULE 1 (page count) — page count is flexible, but the layout must "
+            "contain 1..16 pages. Keep page 0 as the cover, use sequential "
+            "pageIndex values from 0, and fill every declared image slot."
         )
     elif "category" in v and "must be cover" in v:
         hint = (
@@ -631,11 +664,6 @@ def repair_instruction(violation_text: str) -> str:
             "RULE 8 (slot keys) — an unknown slot key was used. Use only that "
             "template's exact image/text slot keys."
         )
-    elif "maxChars" in v:
-        hint = (
-            "RULE 9 (text length) — a text slot exceeds its maxChars. Shorten that "
-            "slot's text to within the limit."
-        )
     else:
         hint = "Fix the exact page/slot named below; re-verify every HARD RULE."
     return f"{hint}\nOffending check: {violation_text}"
@@ -646,33 +674,40 @@ def repair_instruction(violation_text: str) -> str:
 
 def _cover_for_photo(photo: PhotoAnalysis | None) -> tuple[str, str]:
     """Return (templateId, imageSlot) for a cover that can hold `photo`. Falls
-    back to the text-only cover (mag-20, empty slot) when no image cover fits its
-    orientation/quality (e.g. a square or fill-grade photo — no cover accepts
-    those)."""
+    back to the text-only cover (mag-20, empty slot) when no image cover satisfies
+    hero protection."""
     if photo is not None:
+        options: list[tuple[bool, str, str]] = []
         for tid in registry.COVER_TEMPLATE_IDS:
             tpl = registry.TEMPLATES[tid]
             for slot, cons in tpl["imageSlots"].items():
-                if _photo_fits(photo, cons):
-                    return tid, slot
+                if _photo_placeable(photo, cons):
+                    options.append((_orientation_prefers(photo, cons), tid, slot))
+        if options:
+            _, tid, slot = max(options, key=lambda item: (item[0], -registry.TEMPLATE_IDS.index(item[1])))
+            return tid, slot
     return "mag-20", ""
 
 
 def _page_slot_for_photo(photo: PhotoAnalysis) -> tuple[str, str] | None:
     """First non-cover SINGLE-image (templateId, imageSlot) whose constraint
-    accepts `photo`. Restricting to one-image templates is what guarantees no
+    can place `photo`. Restricting to one-image templates is what guarantees no
     empty slot (#42): placing one photo into a multi-image template (e.g. mag-04)
     would leave its other slots blank in the PDF. Landscape/portrait photos have
     single-image homes; square photos do not and are handled by paired/grid
     fallback paths."""
-    for tid in registry.TEMPLATE_IDS:
+    options: list[tuple[bool, int, str, str]] = []
+    for order, tid in enumerate(registry.TEMPLATE_IDS):
         tpl = registry.TEMPLATES[tid]
         if tpl["category"] == "cover" or len(tpl["imageSlots"]) != 1:
             continue
         slot, cons = next(iter(tpl["imageSlots"].items()))
-        if _photo_fits(photo, cons):
-            return tid, slot
-    return None
+        if _photo_placeable(photo, cons):
+            options.append((_orientation_prefers(photo, cons), -order, tid, slot))
+    if not options:
+        return None
+    _, _, tid, slot = max(options)
+    return tid, slot
 
 
 def _filled_content_page_for_photo(
@@ -757,7 +792,7 @@ def build_text_first_layout(magazine: Magazine, photos: list[PhotoAnalysis]) -> 
     """Deterministic, §4.3-valid album for the 1-2 photo case (architecture §6.5
     decision 6). Used as the composing fallback when the model can't arrange so
     few photos: a cover, each photo placed in a constraint-matching slot, then
-    padded to the page-count target with text-only spreads. Unlike the coerce
+    padded at most to the sanity floor with text-only spreads. Unlike the coerce
     path, this never drops the user's photo — every photo still appears, and
     every image slot it uses is filled (no blanks, #42).
 
@@ -776,7 +811,7 @@ def build_text_first_layout(magazine: Magazine, photos: list[PhotoAnalysis]) -> 
     photos = [_relax_for_few_photo(p) for p in photos]
     pages: list[Page] = []
     used: Counter[str] = Counter()
-    expected = _expected_page_count(len(photos))
+    target_pages = min(16, max(3, 1 + len(photos)))
 
     cover_photo = photos[0] if photos else None
     cover_id, cover_slot = _cover_for_photo(cover_photo)
@@ -789,7 +824,7 @@ def build_text_first_layout(magazine: Magazine, photos: list[PhotoAnalysis]) -> 
             pageIndex=0,
             templateId=cover_id,
             images=cover_images,
-            texts=_real_texts(cover_id, magazine, 0, expected, cover_photo),
+            texts=_real_texts(cover_id, magazine, 0, target_pages, cover_photo),
         )
     )
 
@@ -813,21 +848,21 @@ def build_text_first_layout(magazine: Magazine, photos: list[PhotoAnalysis]) -> 
                 pageIndex=len(pages),
                 templateId=tid,
                 images=images,
-                texts=_real_texts(tid, magazine, len(pages), expected, photo),
+                texts=_real_texts(tid, magazine, len(pages), target_pages, photo),
             )
         )
         for pid in images.values():
             used[pid] += 1
 
-    # Pad to the page-count target with text-only spreads.
-    while len(pages) < expected:
+    # Pad only to the few-photo sanity floor, never beyond 16.
+    while len(pages) < target_pages and len(pages) < 16:
         tid = _TEXT_ONLY_PAD[len(pages) % len(_TEXT_ONLY_PAD)]
         pages.append(
             Page(
                 pageIndex=len(pages),
                 templateId=tid,
                 images={},
-                texts=_real_texts(tid, magazine, len(pages), expected),
+                texts=_real_texts(tid, magazine, len(pages), target_pages),
             )
         )
 

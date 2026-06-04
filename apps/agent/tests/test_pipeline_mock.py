@@ -7,7 +7,8 @@ from typing import Any
 
 import pytest
 
-from src.schemas import LayoutRequest, PhotoIn
+from src.schemas import LayoutRequest, Magazine, PhotoAnalysis, PhotoIn
+from src.services import ai_client, planning
 from src.services import callback as cb_mod
 from src.services import pipeline
 
@@ -110,3 +111,60 @@ def test_single_photo_pipeline_completes_with_valid_layout(captured_callbacks):
     # the user's only photo must appear in the album
     used = {pid for page in layout.pages for pid in page.images.values()}
     assert "p1" in used
+
+
+def _photo(pid: str, *, quality: str = "detail", orientation: str = "landscape") -> PhotoAnalysis:
+    return PhotoAnalysis(
+        photoId=pid,
+        description="d",
+        tags=["t"],
+        quality=quality,  # type: ignore[arg-type]
+        orientation=orientation,  # type: ignore[arg-type]
+        peopleCount="1",
+        scene="outdoor",
+        mood="warm",
+    )
+
+
+def test_composing_normalizes_17_pages_before_album_schema(monkeypatch):
+    monkeypatch.setenv("AGENT_PIPELINE_MODE", "real")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "fake_deepseek")
+    from src import settings as s
+
+    s.reset_settings_cache()
+
+    pages = [
+        {"pageIndex": i, "templateId": "mag-02", "images": {}, "texts": {"items": f"page {i}"}}
+        for i in range(17)
+    ]
+    pages[0] = {
+        "pageIndex": 0,
+        "templateId": "mag-13",
+        "images": {"image": "p1"},
+        "texts": {
+            "title": "Trip",
+            "intro": "d",
+            "issue": "YUJEE 01",
+            "credit": "AI ARRANGED",
+        },
+    }
+    pages[1] = {"pageIndex": 1, "templateId": "mag-05", "images": {"image": "p2"}, "texts": {}}
+    pages[2] = {"pageIndex": 2, "templateId": "mag-05", "images": {"image": "p3"}, "texts": {}}
+
+    async def fake_completion(*args, **kwargs):
+        return {"choices": [{"message": {"content": json.dumps({"pages": pages})}}], "usage": {}}
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
+
+    mag = Magazine(title="Trip", style="warm-film", language="en")
+    photos = [
+        _photo("p1", quality="hero", orientation="landscape"),
+        _photo("p2", quality="detail", orientation="landscape"),
+        _photo("p3", quality="detail", orientation="landscape"),
+    ]
+    layout, _, _, _ = asyncio.run(planning.compose_pages(magazine=mag, photos=photos))
+
+    assert len(layout.pages) == 16
+    assert [page.pageIndex for page in layout.pages] == list(range(16))
+
+    s.reset_settings_cache()

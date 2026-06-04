@@ -254,29 +254,21 @@ def test_few_photo_fallback_has_no_empty_slots(count):
             f"count={count} {orientation}/{quality} empty: "
             f"{_no_empty_image_slots(layout)}"
         )
-        if orientation != "square":
-            # portrait/landscape (any quality, via relaxation) → fully valid album.
-            assert violation(layout) is None, (
-                f"count={count} {orientation}/{quality}: {violation(layout)}"
-            )
+        assert violation(layout) is None, (
+            f"count={count} {orientation}/{quality}: {violation(layout)}"
+        )
 
 
 @pytest.mark.parametrize("count", [1, 2])
-def test_few_photo_square_is_registry_gap_not_empty_slot(count):
-    """KNOWN GAP: a square-only ≤2-photo album has no single-image / fully-fillable
-    square template, so it can't be both empty-slot-free AND §4.3-valid from the
-    21 templates. The fallback chooses no empty slots over a blank PDF: the square
-    photo is left unplaced (a Rule-3 'unused' residual that compose_pages raises),
-    NOT placed into a multi-image template with blank siblings. Pins the chosen
-    trade-off; closing it needs a new square template (architect decision)."""
+def test_few_photo_square_detail_uses_orientation_soft_slots(count):
+    """Square is no longer a deterministic hard mismatch. Existing one-image
+    templates can host square detail photos and center-cover handles the crop."""
     mag = Magazine(title="A quiet afternoon", style="warm-film", language="en")
     photos = [_photo(f"p{i}", quality="detail", orientation="square")
               for i in range(count)]
     layout = build_text_first_layout(mag, photos)
-    # The non-negotiable guarantee still holds: zero empty image slots.
     assert _no_empty_image_slots(layout) == []
-    # And the trade-off: the square photo is omitted, surfaced as 'unused'.
-    assert (violation(layout) or "").startswith("unused photos")
+    assert violation(layout) is None
 
 
 def test_reuse_within_limit_fills_slot_before_dropping():
@@ -313,20 +305,20 @@ class TestRepairInstruction:
     """The repair turn must feed back the SPECIFIC violated rule + page/slot (#42),
     not a generic 'try again'."""
 
-    def test_orientation_violation_names_rule_5_and_keeps_detail(self):
-        v = "page 1 slot 'image2': photo p3 orientation=landscape not in ['portrait']"
+    def test_fill_in_hero_violation_names_rule_5_and_keeps_detail(self):
+        v = "page 1 slot 'image2': fill photo p3 cannot be placed in hero slot"
         out = repair_instruction(v)
         assert "RULE 5" in out
         assert "image2" in out and "p3" in out  # original page/slot preserved
-        assert "empty" in out.lower()  # tells the model not to blank the slot
+        assert "fill" in out and "hero" in out
 
     def test_unused_photos_names_rule_3(self):
         out = repair_instruction("unused photos: ['p1']")
         assert "RULE 3" in out and "p1" in out
 
     def test_page_count_names_rule_1(self):
-        out = repair_instruction("pages count 4 != required 3 for 3 photos")
-        assert "RULE 1" in out
+        out = repair_instruction("pages count 17 outside supported range 1..16")
+        assert "RULE 1" in out and "1..16" in out
 
     def test_reuse_violation_names_rule_4(self):
         out = repair_instruction("photos reused more than 2 times: ['p1']")
@@ -337,8 +329,7 @@ class TestRepairInstruction:
         assert "RULE 6" in out and "pageIndex 4" in out
 
     def test_quality_violation_names_rule_5(self):
-        v = ("page 2 slot 'image': photo p2 quality=fill not acceptable "
-             "(slot accepts ['hero', 'detail'])")
+        v = "page 2 slot 'image': fill photo p2 cannot be placed in hero slot"
         out = repair_instruction(v)
         assert "RULE 5" in out and "p2" in out
 
@@ -346,10 +337,6 @@ class TestRepairInstruction:
         out = repair_instruction("page 2: missing image slot 'imageRight' in template mag-18")
         assert "NO EMPTY IMAGE SLOT" in out
         assert "imageRight" in out and "mag-18" in out
-
-    def test_text_violation_names_rule_9(self):
-        out = repair_instruction("page 2 text 'title' length 63 > maxChars 30")
-        assert "RULE 9" in out and "title" in out
 
     def test_unknown_violation_falls_back_but_keeps_detail(self):
         out = repair_instruction("some brand new check failed at page 9")
@@ -361,5 +348,7 @@ def test_composing_prompt_rule_numbers_match_design_section_4_3():
 
     assert "  6. pageIndex must be 0, 1, 2, ... strictly sequential." in prompt
     assert "  8. Every key in images and texts MUST be from that page's template slots." in prompt
-    assert "  9. Text content stays within the maxChars hint for each text slot." in prompt
-    assert "  9. Prefer using each template at most once" not in prompt
+    assert "1..16" in prompt
+    assert "orientation AND quality" not in prompt
+    assert "fill-grade photos must not be placed in hero slots" in prompt
+    assert "recommended length" in prompt

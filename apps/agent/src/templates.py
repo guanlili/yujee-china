@@ -237,9 +237,10 @@ def _load_default_templates() -> dict[str, TemplateDef]:
 def _summarize_image_slot(slot_name: str, slot: ImageSlot) -> str:
     parts: list[str] = []
     if slot.get("orientation"):
-        parts.append(f"orient={'|'.join(slot['orientation'])}")
+        parts.append(f"orient~{'|'.join(slot['orientation'])}")
     if slot.get("quality"):
-        parts.append(f"quality={'|'.join(slot['quality'])}")
+        prefix = "heroSlot=" if "hero" in slot["quality"] else "quality~"
+        parts.append(f"{prefix}{'|'.join(slot['quality'])}")
     body = ",".join(parts) if parts else "any"
     return f"{slot_name}({body})"
 

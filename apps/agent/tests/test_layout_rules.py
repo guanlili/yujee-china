@@ -63,7 +63,49 @@ class TestRules:
         assert "cover" in msg
 
     def test_quality_mismatch_caught(self):
-        # mag-16.imageTiny requires quality=['fill'] — putting a hero there fails.
+        # Only fill-grade photos are barred from hero slots. Other quality
+        # mismatches are soft preferences under the composing redesign.
+        layout = _good_layout()
+        layout.photos[0] = _photo("p1", quality="fill", orientation="landscape")
+        msg = violation(layout) or ""
+        assert "fill" in msg and "hero" in msg
+
+    def test_orientation_mismatch_is_soft_preference(self):
+        layout = _good_layout()
+        layout.photos[0] = _photo("p1", quality="hero", orientation="portrait")
+
+        assert violation(layout) is None
+
+    def test_non_formula_page_count_within_bounds_passes(self):
+        layout = _good_layout()
+        layout.pages.append(
+            Page(
+                pageIndex=3,
+                templateId="mag-02",
+                images={},
+                texts={"items": "An extra actual page is allowed."},
+            )
+        )
+
+        assert violation(layout) is None
+
+    def test_more_than_16_pages_caught(self):
+        layout = _good_layout()
+        pages = [
+            Page(pageIndex=i, templateId="mag-02", images={}, texts={"items": f"page {i}"})
+            for i in range(17)
+        ]
+        pages[0] = layout.pages[0]
+        oversized = AlbumLayoutPlan.model_construct(
+            magazine=layout.magazine,
+            photos=layout.photos,
+            pages=pages,
+        )
+
+        msg = violation(oversized) or ""
+        assert "1..16" in msg
+
+    def test_non_hero_quality_mismatch_is_soft_preference(self):
         layout = _good_layout()
         layout.pages[2] = Page(
             pageIndex=2,
@@ -72,9 +114,7 @@ class TestRules:
             texts={"caption1": "x" * 45, "caption2": "y" * 45,
                    "caption3": "z" * 45, "quote": "q" * 35},
         )
-        msg = violation(layout) or ""
-        # p1 is landscape but imageTiny requires portrait → orientation hits first
-        assert "orientation" in msg or "quality" in msg
+        assert "twice on same page" in (violation(layout) or "")
 
     def test_unused_photo_caught(self):
         layout = _good_layout()
@@ -228,7 +268,7 @@ class TestCoerce:
             ],
         )
         msg = violation(layout) or ""
-        assert "quality" in msg or "orientation" in msg
+        assert "unused" in msg
 
         coerced = coerce_image_slots(layout)
         assert violation(coerced) is None
@@ -293,7 +333,7 @@ class TestCoerce:
             "imageHarbor": "p1",
         }
 
-    def test_coerce_does_not_pass_by_dropping_every_photo(self):
+    def test_coerce_can_use_orientation_soft_slots_for_square_fill_photos(self):
         photos = [
             _photo("p1", quality="fill", orientation="square"),
             _photo("p2", quality="fill", orientation="square"),
@@ -312,8 +352,8 @@ class TestCoerce:
 
         coerced = coerce_image_slots(layout)
 
+        assert violation(coerced) is None
         assert coerced.photos
-        assert violation(coerced) is not None
 
     def test_square_heroes_relax_to_fill_existing_grid(self):
         photos = [
@@ -358,21 +398,16 @@ class TestFewPhotoFallback:
         photos = [_photo("p1", quality=quality, orientation=orientation)]
         layout = build_text_first_layout(self._magazine(), photos)
 
-        assert len(layout.pages) == 3  # max(3, ceil(1/2.5))
+        assert len(layout.pages) == 3
         # No empty image slot ever ships (#42), regardless of orientation/quality.
         for page in layout.pages:
             tpl = registry.get(page.templateId)
             assert all(s in page.images for s in tpl["imageSlots"])
-        if orientation == "square":
-            # Registry gap: no single-image / fillable square template, so a lone
-            # square photo is omitted rather than placed with blank siblings.
-            assert (violation(layout) or "").startswith("unused photos")
-        else:
-            # portrait/landscape (any quality, via fill→detail relaxation) → valid,
-            # and the user's only photo actually appears.
-            assert violation(layout) is None
-            used = {pid for page in layout.pages for pid in page.images.values()}
-            assert "p1" in used
+        # Orientation is soft, and fill-grade singles must have a non-hero image
+        # home instead of being dropped or placed into a hero slot.
+        assert violation(layout) is None
+        used = {pid for page in layout.pages for pid in page.images.values()}
+        assert "p1" in used
 
     @pytest.mark.parametrize("orientation", ["landscape", "portrait", "square"])
     @pytest.mark.parametrize("quality", ["hero", "detail", "fill"])
@@ -397,22 +432,19 @@ class TestFewPhotoFallback:
             tpl = registry.get(page.templateId)
             assert all(s in page.images for s in tpl["imageSlots"])
 
-    def test_square_photo_falls_back_to_text_only_cover(self):
-        # No cover template accepts a square photo, so the cover degrades to the
-        # text-only mag-20. There is also no single-image/fillable square content
-        # template, so rather than place it with blank siblings (#42) the square
-        # photo is omitted — a known registry gap (see build_text_first_layout).
+    def test_square_photo_can_use_image_cover_with_orientation_soft(self):
+        # Orientation is now soft, so square hero/detail photos can use an image
+        # cover and center-cover rendering absorbs the crop mismatch.
         photos = [_photo("p1", quality="hero", orientation="square")]
         layout = build_text_first_layout(self._magazine(), photos)
 
-        assert layout.pages[0].templateId == "mag-20"
-        assert layout.pages[0].images == {}
-        # No empty image slot anywhere, and the unplaceable square is omitted.
+        assert layout.pages[0].templateId != "mag-20"
+        assert "p1" in layout.pages[0].images.values()
+        assert violation(layout) is None
+        # No empty image slot anywhere.
         for page in layout.pages:
             tpl = registry.get(page.templateId)
             assert all(s in page.images for s in tpl["imageSlots"])
-        used = {pid for page in layout.pages for pid in page.images.values()}
-        assert "p1" not in used
 
     @pytest.mark.parametrize(
         "partner",
@@ -472,16 +504,18 @@ class TestClamp:
     def test_clamp_text_noop_under_limit(self):
         assert clamp_text("short", 20) == "short"
 
-    def test_clamp_page_texts_makes_over_length_title_pass(self):
+    def test_over_recommended_text_length_is_not_a_violation(self):
         layout = _good_layout()
-        # mag-13.title maxChars=30 — overshoot it (mirrors what doubao-lite does)
+        # mag-13.title recommendedMaxChars=30 — overshoot it (mirrors what
+        # doubao-lite does). Length is now a soft prompt preference, not a hard
+        # violation; clamp still shortens for compatibility.
         layout.pages[0] = Page(
             pageIndex=0, templateId="mag-13", images={"image": "p1"},
             texts={"title": "A spring trip to Kyoto in the early cherry season",
                    "intro": "x" * 45, "issue": "YUJEE · 01",
                    "credit": "AI ARRANGED · YUJEE"},
         )
-        assert "title" in (violation(layout) or "")  # fails rule 9 before clamp
+        assert violation(layout) is None
         layout.pages = clamp_page_texts(layout.pages)
         assert len(layout.pages[0].texts["title"]) <= 30
-        assert violation(layout) is None  # passes after clamp
+        assert violation(layout) is None

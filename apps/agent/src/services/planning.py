@@ -8,7 +8,6 @@ runs at most one schema/rules-aware repair before surfacing the appropriate
 AGENT_* error code."""
 
 import json
-from math import ceil
 from typing import Any
 
 from pydantic import ValidationError
@@ -21,6 +20,7 @@ from . import ai_client, layout_rules
 
 log = get_logger("planning")
 
+MAX_PAGES = 16
 
 _ALLOWED_STYLES = (
     "warm-film",
@@ -208,29 +208,28 @@ def _photo_digest_for_composing(photos: list[PhotoAnalysis]) -> list[dict[str, A
 
 
 def _composing_system_prompt(photo_count: int) -> str:
-    expected_pages = min(16, max(3, ceil(photo_count / 2.5)))
     return (
         "You compose a memoir photo album from analyzed photos. Output STRICT JSON only "
         "(no code fences, no prose), matching:\n"
         '{ "pages": [ { "pageIndex": int>=0, "templateId": string, '
         '"images": { slotKey: photoId }, "texts": { slotKey: string } } ] }\n\n'
         f"HARD RULES (follow EACH one — your output is validated programmatically):\n"
-        f"  1. pages.length must equal max(3, ceil({photo_count}/2.5))={expected_pages}, capped at 16.\n"
+        "  1. Choose the page count by narrative rhythm, but output 1..16 pages only.\n"
         "  2. pages[0].templateId MUST be a cover-category template (one of: "
         f"{registry.COVER_TEMPLATE_IDS}).\n"
         "  3. Every photoId in the photos[] input must appear in at least one page's images.\n"
         "  4. A single photoId may appear at most twice across all pages, and never twice on the same page.\n"
-        "  5. For each image slot you fill, the assigned photo MUST satisfy the slot's "
-        "orientation AND quality constraints from the TemplateRegistry below.\n"
+        "  5. Hard hero protection: fill-grade photos must not be placed in hero slots. "
+        "Orientation is a soft preference: try to place landscape photos in landscape slots "
+        "and portrait photos in portrait slots, but the renderer will center-cover mismatches.\n"
         "  6. pageIndex must be 0, 1, 2, ... strictly sequential.\n"
         "  7. templateId MUST be one of the registry IDs below.\n"
         "  8. Every key in images and texts MUST be from that page's template slots.\n"
-        "  9. Text content stays within the maxChars hint for each text slot.\n\n"
+        "  9. Text should stay near each slot's recommended length; length is guidance, not a hard rule.\n\n"
         "STYLE GUIDANCE: prefer using each template at most once; vary visual rhythm.\n\n"
         + (
-            "FEW-PHOTO GUIDANCE: you have very few photos for "
-            f"{expected_pages} pages. Place each photo once (twice at most, never "
-            "on the same page), and fill the remaining pages with TEXT-ONLY "
+            "FEW-PHOTO GUIDANCE: you have very few photos. Place each photo once "
+            "(twice at most, never on the same page), and use TEXT-ONLY "
             "templates (mag-02, mag-14, mag-20) rather than leaving image slots "
             "empty or reusing a photo a third time. A 1-2 photo album is valid.\n\n"
             if photo_count <= 2
@@ -276,6 +275,53 @@ def _coerce_pages(parsed: Any) -> list[Page]:
             raise ComposingError(f"page {idx} failed schema: {exc}") from exc
         pages.append(page)
     return pages
+
+
+def _normalize_page_count(pages: list[Page], photos: list[PhotoAnalysis]) -> list[Page]:
+    """Trim overlong model output before AlbumLayoutPlan enforces max_length=16."""
+    if not pages:
+        raise ComposingError("composing response missing pages[]")
+    if len(pages) <= MAX_PAGES:
+        return [page.model_copy(update={"pageIndex": idx}) for idx, page in enumerate(pages)]
+
+    keep: set[int] = set(range(len(pages)))
+
+    def page_photo_ids(idx: int) -> set[str]:
+        return set(pages[idx].images.values())
+
+    def is_text_only(idx: int) -> bool:
+        tpl = registry.get(pages[idx].templateId)
+        if tpl is None:
+            return not pages[idx].images
+        return not tpl["imageSlots"]
+
+    while len(keep) > MAX_PAGES:
+        counts: dict[str, int] = {}
+        for idx in keep:
+            for pid in page_photo_ids(idx):
+                counts[pid] = counts.get(pid, 0) + 1
+
+        candidates: list[tuple[bool, int, int]] = []
+        for idx in keep:
+            if idx == 0:
+                continue
+            pids = page_photo_ids(idx)
+            loses_unique = any(counts.get(pid, 0) <= 1 for pid in pids)
+            if is_text_only(idx):
+                kind = 0
+            elif pids and all(counts.get(pid, 0) > 1 for pid in pids):
+                kind = 1
+            else:
+                kind = 2
+            candidates.append((loses_unique, kind, -idx))
+
+        if not candidates:
+            break
+        _, _, neg_idx = min(candidates)
+        keep.remove(-neg_idx)
+
+    trimmed = [page for idx, page in enumerate(pages) if idx in keep]
+    return [page.model_copy(update={"pageIndex": idx}) for idx, page in enumerate(trimmed)]
 
 
 async def compose_pages(
@@ -353,6 +399,7 @@ async def compose_pages(
             raw_text = ai_client.extract_text(response)
             parsed = ai_client.parse_json_loose(raw_text)
             pages = _coerce_pages(parsed)
+            pages = _normalize_page_count(pages, photos)
             pages = layout_rules.clamp_page_texts(pages)
             layout = AlbumLayoutPlan(magazine=magazine, photos=photos, pages=pages)
         except (ValueError, ComposingError, ValidationError) as exc:

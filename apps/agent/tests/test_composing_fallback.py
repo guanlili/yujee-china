@@ -59,6 +59,36 @@ def test_single_photo_invalid_model_output_falls_back(monkeypatch):
     assert "p1" in used
 
 
+def test_single_fill_photo_invalid_model_output_falls_back_to_valid_non_hero_slot(monkeypatch):
+    bad = json.dumps(
+        {"pages": [{"pageIndex": 0, "templateId": "mag-02", "images": {}, "texts": {"items": "x"}}]}
+    )
+    monkeypatch.setattr(ai_client, "chat_completion", _fake_completion(bad))
+
+    mag = Magazine(title="A quiet afternoon", style="warm-film", language="en")
+    layout, _, _, _ = asyncio.run(
+        planning.compose_pages(
+            magazine=mag,
+            photos=[_photo("p1", quality="fill", orientation="landscape")],
+        )
+    )
+
+    assert violation(layout) is None
+    fill_photo = next(p for p in layout.photos if p.photoId == "p1")
+    assert fill_photo.quality == "fill"
+    used_slots = [
+        (page.templateId, slot)
+        for page in layout.pages
+        for slot, pid in page.images.items()
+        if pid == "p1"
+    ]
+    assert used_slots
+    for template_id, slot in used_slots:
+        from src import templates as registry
+
+        assert "hero" not in registry.TEMPLATES[template_id]["imageSlots"][slot]["quality"]
+
+
 def test_two_photos_invalid_model_output_falls_back(monkeypatch):
     bad = json.dumps({"pages": [{"pageIndex": 0, "templateId": "not-a-template", "images": {}, "texts": {}}]})
     monkeypatch.setattr(ai_client, "chat_completion", _fake_completion(bad))
