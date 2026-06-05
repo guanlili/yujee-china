@@ -56,6 +56,23 @@
       "subject": "Yujee order confirmation"
     }
   },
+  "pricing": {
+    "title": "Simple per-book pricing",
+    "subtitle": "Pay only for the books you make. No subscription.",
+    "unit": "books",
+    "unitSingular": "book",
+    "perBook": "/ book",
+    "buy": "Buy",
+    "redirecting": "Redirecting…",
+    "includesTitle": "Every book includes",
+    "includes": [
+      "AI layout across all 21 magazine spreads",
+      "Edit by chatting — rewrite text and reshuffle pages",
+      "Hi-res, print-ready PDF export — no watermark",
+      "Your original photos never leave your browser"
+    ],
+    "loginHint": "Pick a pack and sign in to check out — you'll come right back here."
+  },
   "dashboard": {
     "common": {
       "loading": "Loading…",

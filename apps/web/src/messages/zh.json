@@ -56,6 +56,23 @@
       "subject": "Yujee 订单确认"
     }
   },
+  "pricing": {
+    "title": "按本计费,简单透明",
+    "subtitle": "只为你做的本数付费,无需订阅。",
+    "unit": "本",
+    "unitSingular": "本",
+    "perBook": "/ 本",
+    "buy": "购买",
+    "redirecting": "跳转中…",
+    "includesTitle": "每一本都包含",
+    "includes": [
+      "AI 排版,覆盖全部 21 种杂志版式",
+      "对话式编辑 —— 重写文案、重排页面",
+      "导出高清可印刷 PDF —— 无水印",
+      "原图始终留在你的浏览器,绝不上传服务器"
+    ],
+    "loginHint": "选好套餐后登录即可结账,登录后会自动回到本页。"
+  },
   "dashboard": {
     "common": {
       "loading": "加载中…",
