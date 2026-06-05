@@ -3,9 +3,12 @@ import { test } from 'node:test';
 
 import {
   ACTIVE_CHECKOUT_PROVIDER,
+  ADDON_PACKS,
   CHECKOUT_PROVIDERS,
+  CREDIT_COST_PER_ALBUM,
+  FREE_PLAN_CREDITS,
+  PLANS,
   buildCheckoutReturnUrls,
-  buildSubscriptionReturnUrls,
 } from './pricing';
 
 test('credit checkout routes through Creem only', () => {
@@ -24,19 +27,25 @@ test('credit checkout routes through Creem only', () => {
   );
 });
 
-test('subscription checkout returns to localized pricing with provider context', () => {
-  const urls = buildSubscriptionReturnUrls(
-    'https://app.yujee.test',
-    'creem',
-    { locale: 'zh' },
-  );
+test('per-book billing: one book per album, one free welcome book, packs grant whole books', () => {
+  assert.equal(CREDIT_COST_PER_ALBUM, 1);
+  assert.equal(FREE_PLAN_CREDITS, 1);
 
-  assert.equal(
-    urls.successUrl,
-    'https://app.yujee.test/zh/pricing?checkout=success&kind=subscription&provider=creem',
+  // Pack ids + prices are fixed Creem products; only the granted book count changed.
+  assert.deepEqual(
+    ADDON_PACKS.map((p) => ({ id: p.id, priceUsd: p.priceUsd, books: p.books })),
+    [
+      { id: 'pack-2400', priceUsd: 3, books: 1 },
+      { id: 'pack-4800', priceUsd: 6, books: 2 },
+      { id: 'pack-8000', priceUsd: 10, books: 4 },
+      { id: 'pack-16000', priceUsd: 18, books: 8 },
+    ],
   );
-  assert.equal(
-    urls.cancelUrl,
-    'https://app.yujee.test/zh/pricing?checkout=cancel&kind=subscription&provider=creem',
+});
+
+test('subscription plans are removed — only the free plan remains', () => {
+  assert.deepEqual(
+    PLANS.map((p) => p.id),
+    ['free'],
   );
 });

@@ -44,7 +44,7 @@
     "ALBUM_NOT_OWNED": "Album not owned by user",
     "JOB_NOT_FOUND": "Job not found",
     "PAGE_NOT_FOUND": "Page not found",
-    "CREDIT_INSUFFICIENT": "Not enough credits",
+    "CREDIT_INSUFFICIENT": "No books left",
     "VALIDATION_FAILED": "Validation failed",
     "INTERNAL_ERROR": "Internal server error"
   },
@@ -65,16 +65,16 @@
     "chrome": {
       "navHome": "Home",
       "navProjects": "My projects",
-      "creditsPillTitle": "View pricing plans",
-      "upgrade": "Upgrade",
-      "manageSubscription": "Manage subscription",
+      "creditsPillTitle": "Buy more books",
+      "upgrade": "Buy books",
+      "manageSubscription": "Books & billing",
       "feedback": "Feedback & issues",
       "logout": "Sign out",
       "accountMenu": "Account menu"
     },
     "nav": {
       "myAlbums": "My albums",
-      "credits": "Credits",
+      "credits": "Books",
       "settings": "Settings"
     },
     "create": {
@@ -120,25 +120,26 @@
       }
     },
     "credits": {
-      "title": "Credits",
-      "balance": "Current balance",
-      "unit": "credits",
-      "rechargeTitle": "Add credits",
-      "rechargeSub": "Top up to keep creating memoirs.",
+      "title": "Books",
+      "balance": "Books remaining",
+      "unit": "books",
+      "unitSingular": "book",
+      "rechargeTitle": "Buy more books",
+      "rechargeSub": "One book makes one full memoir — AI layout, editing, chat, and free PDF export.",
       "buy": "Buy",
       "redirecting": "Redirecting…",
       "history": "Transaction history",
       "noHistory": "No transactions yet.",
-      "checkoutSuccess": "Payment received — your credits will appear here shortly.",
+      "checkoutSuccess": "Payment received — your books will appear here shortly.",
       "checkoutCancel": "Checkout was canceled.",
-      "resumeBanner": "Your memoir is waiting. Once your credits land, pick up right where you left off.",
+      "resumeBanner": "Your memoir is waiting. Once your books land, pick up right where you left off.",
       "resumeCta": "Continue generating",
       "reason": {
-        "SIGNUP_BONUS": "Signup bonus",
+        "SIGNUP_BONUS": "Welcome book",
         "GENERATION_HOLD": "Generation reserved",
-        "GENERATION_SETTLE": "Album generated",
+        "GENERATION_SETTLE": "Book generated",
         "GENERATION_RELEASE": "Generation refunded",
-        "PURCHASE": "Credit purchase",
+        "PURCHASE": "Books purchased",
         "REFUND": "Refund",
         "ADMIN_ADJUST": "Adjustment"
       }
@@ -207,7 +208,7 @@
       "stateGenerating": "GENERATING",
       "failedTitle": "Something went wrong",
       "failedBodyDefault": "Generation failed.",
-      "failedNoCharge": "No credit was charged.",
+      "failedNoCharge": "No book was charged.",
       "goneTitle": "Couldn't open this album",
       "goneBody": "It may have been removed, or it isn't available on this account.",
       "slowTitle": "This is taking longer than expected",
@@ -247,7 +248,7 @@
       "email": "Email",
       "name": "Name",
       "role": "Role",
-      "credits": "Credits",
+      "credits": "Books",
       "albums": "Albums",
       "joined": "Joined",
       "admin": "Admin",
@@ -264,7 +265,7 @@
       "last30d": "Last 30 days",
       "albumsByStatus": "Albums by status",
       "jobsByStatus": "Jobs by status",
-      "credits": "Credits (30 days)",
+      "credits": "Books (30 days)",
       "purchased": "Purchased",
       "consumed": "Consumed",
       "albumStatus": {
@@ -283,7 +284,7 @@
     "settings": {
       "title": "Settings",
       "config": "Configuration",
-      "creditCost": "Credits per album",
+      "creditCost": "Books per album",
       "agent": "Agent endpoint",
       "providers": "Payment providers",
       "configured": "on",

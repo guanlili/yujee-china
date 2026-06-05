@@ -17,7 +17,7 @@ export function CreditsPill({ balance, plan, locale }: Props) {
     <button
       type="button"
       title={c.creditsPillTitle}
-      onClick={() => router.push(`/${locale}/pricing`)}
+      onClick={() => router.push(`/${locale}/credits`)}
       className="flex items-center gap-1.5 rounded-full bg-[#ececec] hover:bg-[#e2e2e2] px-3.5 py-1.5 text-[var(--text-sm)] font-medium text-[var(--fg-2)] transition-colors"
     >
       <span className="w-2 h-2 rounded-full bg-[var(--grad-green)] shrink-0" />

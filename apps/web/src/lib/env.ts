@@ -35,10 +35,6 @@ const EnvSchema = z.object({
   CREEM_PRODUCT_ID_PACK_4800: z.string().optional(),
   CREEM_PRODUCT_ID_PACK_8000: z.string().optional(),
   CREEM_PRODUCT_ID_PACK_16000: z.string().optional(),
-  CREEM_PRODUCT_ID_PRO_MONTHLY: z.string().optional(),
-  CREEM_PRODUCT_ID_PRO_YEARLY: z.string().optional(),
-  CREEM_PRODUCT_ID_STUDIO_MONTHLY: z.string().optional(),
-  CREEM_PRODUCT_ID_STUDIO_YEARLY: z.string().optional(),
 
   // Cloudflare R2 (S3-compatible). PDF upload-url uses presigned PUT.
   R2_ACCOUNT_ID: z.string().optional(),

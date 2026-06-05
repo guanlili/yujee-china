@@ -16,7 +16,7 @@ test('marketing nav delegates the full right status cluster to ChromeStatusBar',
   const marketingNav = source('marketing/MarketingNav.tsx');
 
   assert.match(statusBar, /showPricing\??: boolean/, 'ChromeStatusBar owns pricing visibility');
-  assert.match(statusBar, /href=\{`\/\$\{locale\}\/pricing`\}/, 'ChromeStatusBar owns the pricing link');
+  assert.match(statusBar, /href=\{`\/\$\{locale\}\/credits`\}/, 'ChromeStatusBar owns the credits link');
   assert.match(marketingNav, /<ChromeStatusBar locale=\{locale\} showPricing \/>/, 'MarketingNav should request the fixed status cluster variant');
   assert.doesNotMatch(marketingNav, /\/pricing/, 'MarketingNav must not hand-assemble a pricing link');
   assert.doesNotMatch(marketingNav, /m\.nav\.pricing/, 'MarketingNav must not own pricing copy');

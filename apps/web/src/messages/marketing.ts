@@ -1,4 +1,3 @@
-import { CREDIT_COST_PER_ALBUM } from '@/config/pricing';
 import type { Locale } from '@/lib/i18n/routing';
 
 export interface MarketingMessages {
@@ -29,33 +28,6 @@ export interface MarketingMessages {
     ctaTitle: string;
     ctaSub: string;
     ctaButton: string;
-  };
-  pricing: {
-    metaTitle: string;
-    heading: string;
-    sub: string;
-    monthly: string;
-    yearly: string;
-    save: string;
-    perMonth: string;
-    free: string;
-    creditsPerMonth: string;
-    creditsOneTime: string;
-    recommended: string;
-    feat: Record<string, string>;
-    plan: {
-      free: { name: string; desc: string };
-      pro: { name: string; desc: string };
-      studio: { name: string; desc: string };
-    };
-    cta: { current: string; pro: string; studio: string };
-    addonsTitle: string;
-    addonsSub: string;
-    addonsNote: string;
-    addonCreditsLabel: string;
-    addonBuy: string;
-    faqTitle: string;
-    faq: { q: string; a: string }[];
   };
   privacy: {
     metaTitle: string;
@@ -133,74 +105,6 @@ const en: MarketingMessages = {
     ctaTitle: 'Your story deserves a real book.',
     ctaSub: 'Free credits on signup. No card required.',
     ctaButton: 'Start your memoir',
-  },
-  pricing: {
-    metaTitle: 'Yujee — Pricing',
-    heading: 'Choose your plan',
-    sub: 'Start free. Upgrade whenever your story grows.',
-    monthly: 'Monthly',
-    yearly: 'Yearly',
-    save: 'Save 25%',
-    perMonth: '/mo',
-    free: 'Free',
-    creditsPerMonth: 'credits / month',
-    creditsOneTime: 'credits (one-time)',
-    recommended: 'Most popular',
-    feat: {
-      'feat.unlimitedChat': 'Unlimited AI chats',
-      'feat.unlimitedAi': 'Unlimited AI usage',
-      'feat.standard720p': 'Standard quality 720P',
-      'feat.hd1080p': 'HD quality 1080P',
-      'feat.watermark': 'With watermark',
-      'feat.noWatermark': 'No watermark',
-      'feat.commercial': 'Commercial license',
-      'feat.prioritySupport': 'Priority support',
-      'feat.support3day': 'Support within 3 days',
-      'feat.support1v1': 'Dedicated 1-on-1 support',
-      'feat.earlyAccess': 'Early access to new features',
-    },
-    plan: {
-      free: { name: 'Free', desc: 'For curious creators trying Yujee out.' },
-      pro: { name: 'Pro', desc: 'For creators and small commercial projects.' },
-      studio: { name: 'Studio', desc: 'For studios and scaling teams.' },
-    },
-    cta: { current: 'Current plan', pro: 'Get Pro', studio: 'Get Studio' },
-    addonsTitle: 'Need more credits?',
-    addonsSub: 'Top-up credit packs — buy once, use anytime.',
-    addonsNote: 'Add-on credit packs are one-time purchases, valid for 12 months.',
-    addonCreditsLabel: 'credits',
-    addonBuy: 'Buy',
-    faqTitle: 'Frequently asked questions',
-    faq: [
-      {
-        q: 'Does the subscription auto-renew? Can I cancel?',
-        a: 'Yes — subscriptions renew at the end of each billing cycle. You can cancel anytime in account settings and keep using your plan until the cycle ends.',
-      },
-      {
-        q: 'Can I switch plans?',
-        a: 'Upgrades take effect immediately and remaining credits are prorated. Downgrades take effect at the end of the current cycle.',
-      },
-      {
-        q: 'What are credits? How are they used?',
-        a: `Credits are Yujee’s generation currency. Different AI actions (vision, writing, layout, PDF) consume different amounts. Generating one full memoir costs ~${CREDIT_COST_PER_ALBUM} credits.`,
-      },
-      {
-        q: 'Can I use the output commercially?',
-        a: 'Pro and Studio include a worldwide commercial license. Free is for personal use only.',
-      },
-      {
-        q: 'Who owns the generated content?',
-        a: 'You do. Yujee does not claim any ownership over your input photos or generated memoir.',
-      },
-      {
-        q: 'What are add-on credit packs?',
-        a: 'One-time top-ups for when your monthly credits run out. Valid for 12 months from purchase.',
-      },
-      {
-        q: 'Can I get a refund?',
-        a: 'Subscription fees for the current cycle and one-time credit packs are non-refundable. Cancel renewal anytime to avoid future charges.',
-      },
-    ],
   },
   privacy: {
     metaTitle: 'Yujee — Privacy Policy',
@@ -299,7 +203,7 @@ const en: MarketingMessages = {
     productHead: 'Product',
     productItems: [
       { label: 'Create a memoir', href: '#homepage-composer' },
-      { label: 'Pricing', href: '/pricing' },
+      { label: 'Pricing', href: '/credits' },
     ],
     legalHead: 'Legal',
     legalItems: [
@@ -361,74 +265,6 @@ const zh: MarketingMessages = {
     ctaTitle: '你的故事，值得一本真正的书。',
     ctaSub: '注册即赠免费积分，无需信用卡。',
     ctaButton: '开始创作',
-  },
-  pricing: {
-    metaTitle: 'Yujee — 定价方案',
-    heading: '选择适合你的方案',
-    sub: '从免费开始，随时升级。',
-    monthly: '月付',
-    yearly: '年付',
-    save: '省 25%',
-    perMonth: '/月',
-    free: '免费',
-    creditsPerMonth: '积分 / 月',
-    creditsOneTime: '积分（一次性）',
-    recommended: '最受欢迎',
-    feat: {
-      'feat.unlimitedChat': 'AI 对话无限次',
-      'feat.unlimitedAi': 'AI 无限使用',
-      'feat.standard720p': '标准画质 720P',
-      'feat.hd1080p': '高清画质 1080P',
-      'feat.watermark': '含水印',
-      'feat.noWatermark': '无水印',
-      'feat.commercial': '商用授权',
-      'feat.prioritySupport': '优先客服',
-      'feat.support3day': '3 日内客服响应',
-      'feat.support1v1': '1V1 专属客服',
-      'feat.earlyAccess': '新功能优先体验',
-    },
-    plan: {
-      free: { name: 'Free', desc: '刚开始探索的个人用户。' },
-      pro: { name: 'Pro', desc: '个人创作者和小型商业项目。' },
-      studio: { name: 'Studio', desc: '创意工作室和规模化团队。' },
-    },
-    cta: { current: '当前方案', pro: '开通 Pro', studio: '开通 Studio' },
-    addonsTitle: '需要更多积分？',
-    addonsSub: '购买附加积分包，随买随用。',
-    addonsNote: '附加积分包为一次性购买，有效期 12 个月。',
-    addonCreditsLabel: '积分',
-    addonBuy: '购买',
-    faqTitle: '常见问题',
-    faq: [
-      {
-        q: '订阅会自动续费吗？如何取消？',
-        a: '订阅会在每个周期结束时自动续费。你可以随时在账户设置中取消，取消后当前周期内仍可正常使用。',
-      },
-      {
-        q: '可以更换套餐吗？',
-        a: '升级即刻生效，剩余积分按比例折算。降级会在当前周期结束后生效。',
-      },
-      {
-        q: '积分是什么？怎么消耗？',
-        a: `积分是 Yujee 的核心生成单位。不同的 AI 操作（识图、写作、排版、导出）消耗不同数量的积分。生成一本完整纪念册约消耗 ${CREDIT_COST_PER_ALBUM} 积分。`,
-      },
-      {
-        q: '可以商用吗？',
-        a: 'Pro 和 Studio 包含全球商用授权，可自由用于商业用途。Free 仅限个人使用。',
-      },
-      {
-        q: '生成的内容版权归谁？',
-        a: '归你所有。Yujee 不对你的输入素材或生成结果主张任何所有权。',
-      },
-      {
-        q: '附加积分包是什么？',
-        a: '一次性购买的额外积分，自购买日起有效期 12 个月。当月度积分用完时，可以购买附加包来继续创作。',
-      },
-      {
-        q: '可以退款吗？',
-        a: '当前周期的订阅费和已购买的附加积分包不支持退款。你可以随时取消续费以避免后续扣费。',
-      },
-    ],
   },
   privacy: {
     metaTitle: 'Yujee — 隐私政策',
@@ -527,7 +363,7 @@ const zh: MarketingMessages = {
     productHead: '产品',
     productItems: [
       { label: '创建纪念册', href: '#homepage-composer' },
-      { label: '定价', href: '/pricing' },
+      { label: '定价', href: '/credits' },
     ],
     legalHead: '法律',
     legalItems: [

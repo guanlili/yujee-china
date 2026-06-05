@@ -170,12 +170,12 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
                 className="bg-[var(--surface)] rounded-2xl p-6 text-center shadow-[var(--shadow-card)] hover:-translate-y-0.5 transition-all"
               >
                 <div className="text-3xl font-extrabold tracking-tight tabular-nums mb-1">
-                  {pack.credits.toLocaleString(locale)}
+                  {pack.books.toLocaleString(locale)}
                 </div>
                 <div className="text-xs text-[var(--muted)] mb-4">{t.unit}</div>
                 <div className="text-xl font-bold mb-1">${pack.priceUsd}</div>
                 <div className="text-xs text-[var(--meta)] mb-4">
-                  ${(pack.priceUsd / pack.credits).toFixed(4)} / credit
+                  ${(pack.priceUsd / pack.books).toFixed(2)} / {t.unitSingular}
                 </div>
                 <button
                   type="button"
