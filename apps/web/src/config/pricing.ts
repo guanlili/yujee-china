@@ -2,35 +2,29 @@
  * Single price source for marketing + billing.
  * B4 (billing) imports plans / addons / creditCostPerAlbum from here.
  *
- * Prices are USD (海外市场, yujeeai.com). CNY values from design-v1/design/pricing.html
- * were treated as placeholders. yearly amount is per-month when billed annually.
+ * Per-book pricing (#97): one internal credit unit = one book. Each addon pack
+ * grants whole books; one memoir costs CREDIT_COST_PER_ALBUM = 1 unit. The
+ * internal `credit_*` identifiers stay for migration safety — only the unit
+ * semantics changed.
+ *
+ * Prices are USD (海外市场, yujeeai.com).
  */
 
-export type PlanId = 'free' | 'pro' | 'studio';
-export type BillingCycle = 'monthly' | 'yearly';
-
-export interface PlanPrice {
-  monthly: number;
-  yearly: number;
-}
+export type PlanId = 'free';
 
 export interface Plan {
   id: PlanId;
   nameKey: string;
   descKey: string;
-  price: PlanPrice;
   currency: 'USD';
-  creditsPerMonth: number;
   oneTimeCredits?: number;
   featureKeys: readonly string[];
-  disabledFeatureKeys?: readonly string[];
   ctaKey: string;
-  recommended?: boolean;
 }
 
 export interface CreditPack {
   id: string;
-  credits: number;
+  books: number;
   priceUsd: number;
 }
 
@@ -50,70 +44,31 @@ export type CreemProductEnvKey =
   | 'CREEM_PRODUCT_ID_PACK_8000'
   | 'CREEM_PRODUCT_ID_PACK_16000';
 
-export type CreemSubscriptionProductEnvKey =
-  | 'CREEM_PRODUCT_ID_PRO_MONTHLY'
-  | 'CREEM_PRODUCT_ID_PRO_YEARLY'
-  | 'CREEM_PRODUCT_ID_STUDIO_MONTHLY'
-  | 'CREEM_PRODUCT_ID_STUDIO_YEARLY';
+// One memoir = one book = one internal credit unit.
+export const CREDIT_COST_PER_ALBUM = 1;
 
-export const CREDIT_COST_PER_ALBUM = 200;
-
-export const FREE_PLAN_CREDITS = 1000;
+// New users get one free book.
+export const FREE_PLAN_CREDITS = 1;
 
 export const PLANS: readonly Plan[] = [
   {
     id: 'free',
     nameKey: 'plan.free.name',
     descKey: 'plan.free.desc',
-    price: { monthly: 0, yearly: 0 },
     currency: 'USD',
-    creditsPerMonth: 0,
     oneTimeCredits: FREE_PLAN_CREDITS,
-    featureKeys: ['feat.unlimitedChat', 'feat.standard720p', 'feat.watermark'],
-    disabledFeatureKeys: ['feat.commercial', 'feat.prioritySupport'],
+    featureKeys: ['feat.unlimitedChat', 'feat.export'],
     ctaKey: 'plan.cta.current',
-  },
-  {
-    id: 'pro',
-    nameKey: 'plan.pro.name',
-    descKey: 'plan.pro.desc',
-    price: { monthly: 12, yearly: 9 },
-    currency: 'USD',
-    creditsPerMonth: 4000,
-    featureKeys: [
-      'feat.unlimitedAi',
-      'feat.hd1080p',
-      'feat.noWatermark',
-      'feat.commercial',
-      'feat.support3day',
-    ],
-    ctaKey: 'plan.cta.pro',
-    recommended: true,
-  },
-  {
-    id: 'studio',
-    nameKey: 'plan.studio.name',
-    descKey: 'plan.studio.desc',
-    price: { monthly: 39, yearly: 29 },
-    currency: 'USD',
-    creditsPerMonth: 18000,
-    featureKeys: [
-      'feat.unlimitedAi',
-      'feat.hd1080p',
-      'feat.noWatermark',
-      'feat.commercial',
-      'feat.support1v1',
-      'feat.earlyAccess',
-    ],
-    ctaKey: 'plan.cta.studio',
   },
 ] as const;
 
+// Pack ids and prices are fixed Creem products — never change them. Only the
+// granted book count changed from the old credit amounts (#97).
 export const ADDON_PACKS = [
-  { id: 'pack-2400', credits: 2400, priceUsd: 3 },
-  { id: 'pack-4800', credits: 4800, priceUsd: 6 },
-  { id: 'pack-8000', credits: 8000, priceUsd: 10 },
-  { id: 'pack-16000', credits: 16000, priceUsd: 18 },
+  { id: 'pack-2400', books: 1, priceUsd: 3 },
+  { id: 'pack-4800', books: 2, priceUsd: 6 },
+  { id: 'pack-8000', books: 4, priceUsd: 10 },
+  { id: 'pack-16000', books: 8, priceUsd: 18 },
 ] as const satisfies readonly CreditPack[];
 
 export type AddonPackId = (typeof ADDON_PACKS)[number]['id'];
@@ -123,20 +78,6 @@ export const CREEM_PRODUCT_ENV_BY_PACK_ID: Record<AddonPackId, CreemProductEnvKe
   'pack-4800': 'CREEM_PRODUCT_ID_PACK_4800',
   'pack-8000': 'CREEM_PRODUCT_ID_PACK_8000',
   'pack-16000': 'CREEM_PRODUCT_ID_PACK_16000',
-};
-
-export const CREEM_PRODUCT_ENV_BY_PLAN_CYCLE: Record<
-  Exclude<PlanId, 'free'>,
-  Record<BillingCycle, CreemSubscriptionProductEnvKey>
-> = {
-  pro: {
-    monthly: 'CREEM_PRODUCT_ID_PRO_MONTHLY',
-    yearly: 'CREEM_PRODUCT_ID_PRO_YEARLY',
-  },
-  studio: {
-    monthly: 'CREEM_PRODUCT_ID_STUDIO_MONTHLY',
-    yearly: 'CREEM_PRODUCT_ID_STUDIO_YEARLY',
-  },
 };
 
 export function buildCheckoutReturnUrls(
@@ -157,39 +98,4 @@ export function buildCheckoutReturnUrls(
     successUrl: build('success'),
     cancelUrl: build('cancel'),
   };
-}
-
-export function buildSubscriptionReturnUrls(
-  baseUrl: string,
-  provider: CheckoutProvider,
-  context: Pick<CheckoutReturnContext, 'locale'> = {},
-): { successUrl: string; cancelUrl: string } {
-  const locale = context.locale ?? 'en';
-  const build = (checkout: 'success' | 'cancel') => {
-    const url = new URL(`/${locale}/pricing`, baseUrl);
-    url.searchParams.set('checkout', checkout);
-    url.searchParams.set('kind', 'subscription');
-    url.searchParams.set('provider', provider);
-    return url.toString();
-  };
-
-  return {
-    successUrl: build('success'),
-    cancelUrl: build('cancel'),
-  };
-}
-
-export function getPlan(id: PlanId): Plan {
-  const plan = PLANS.find((p) => p.id === id);
-  if (!plan) throw new Error(`Unknown plan: ${id}`);
-  return plan;
-}
-
-export function planPriceFor(plan: Plan, cycle: BillingCycle): number {
-  return cycle === 'yearly' ? plan.price.yearly : plan.price.monthly;
-}
-
-export function yearlyDiscountPercent(plan: Plan): number {
-  if (plan.price.monthly === 0) return 0;
-  return Math.round((1 - plan.price.yearly / plan.price.monthly) * 100);
 }

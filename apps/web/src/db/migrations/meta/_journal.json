@@ -29,6 +29,13 @@
       "when": 1780540800000,
       "tag": "0003_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1780627200000,
+      "tag": "0004_per_book_balance",
+      "breakpoints": true
     }
   ]
 }

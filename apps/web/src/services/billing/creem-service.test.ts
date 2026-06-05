@@ -13,7 +13,6 @@ import { userRepo } from '@/db/repos/user-repo';
 import { env } from '@/lib/env';
 import { isDbReachable } from '@/db/repos/__test__/setup';
 import { creditService } from '@/services/credit/credit-service';
-import { subscriptionService } from '@/services/billing/subscription-service';
 
 function sign(body: string, secret: string): string {
   return createHmac('sha256', secret).update(body).digest('hex');
@@ -48,7 +47,6 @@ function mockCheckoutDependencies(t: any) {
     CREEM_API_BASE_URL: 'https://api.creem.test',
     WEB_BASE_URL: 'https://app.yujee.test',
     CREEM_PRODUCT_ID_PACK_2400: 'prod_creem_pack_2400',
-    CREEM_PRODUCT_ID_PRO_MONTHLY: 'prod_creem_pro_monthly',
   });
 
   t.mock.method(userRepo, 'findById', async (userId: string) => ({
@@ -110,20 +108,12 @@ test('creemService.createPackCheckout: sends Creem-supported success URL without
   assert.equal('cancel_url' in body, false);
 });
 
-test('creemService.createSubscriptionCheckout: sends Creem-supported success URL without cancel_url', async (t) => {
-  const requests = mockCheckoutDependencies(t);
-
-  await creemService.createSubscriptionCheckout('user_checkout_4', 'pro', 'monthly', {
-    locale: 'zh',
-  });
-
-  const body = JSON.parse(String(requests[0]?.init.body));
-  assert.equal(body.product_id, 'prod_creem_pro_monthly');
+test('creemService: subscription checkout entry is removed (per-book billing #97)', () => {
   assert.equal(
-    body.success_url,
-    'https://app.yujee.test/zh/pricing?checkout=success&kind=subscription&provider=creem',
+    (creemService as Record<string, unknown>).createSubscriptionCheckout,
+    undefined,
+    'subscriptions are gone — only pack checkout remains',
   );
-  assert.equal('cancel_url' in body, false);
 });
 
 test('creemService.handleWebhook: rejects when signature missing', async () => {
@@ -244,7 +234,7 @@ test('creemService.handleWebhook: settles real checkout.completed eventType/obje
     {
       txArg: tx,
       userId,
-      delta: 2400,
+      delta: 1,
       reason: 'PURCHASE',
       refs: {
         externalEventId: eventId,
@@ -259,12 +249,11 @@ test('creemService.handleWebhook: settles real checkout.completed eventType/obje
   ]);
 });
 
-test('creemService.handleWebhook: records subscription entitlement from checkout.completed', async (t) => {
+test('creemService.handleWebhook: ignores legacy subscription-kind checkout without crediting (per-book billing #97)', async (t) => {
   const secret = 'unit-test-secret';
   useWebhookSecret(t, secret);
 
-  const eventId = 'evt_subscription_completed';
-  const userId = 'user_creem_subscription_completed';
+  const eventId = 'evt_subscription_ignored';
   const body = JSON.stringify({
     id: eventId,
     eventType: 'checkout.completed',
@@ -272,54 +261,31 @@ test('creemService.handleWebhook: records subscription entitlement from checkout
     object: {
       id: 'ch_subscription_123',
       status: 'completed',
-      customer: {
-        id: 'cust_subscription_123',
-        email: 'subscriber@example.com',
-      },
-      subscription: {
-        id: 'sub_creem_123',
-        status: 'active',
-        current_period_start_date: '2026-06-04T10:30:15.000Z',
-      },
+      customer: { id: 'cust_subscription_123', email: 'subscriber@example.com' },
       metadata: {
-        userId,
+        userId: 'user_legacy_subscription',
         kind: 'subscription',
         planId: 'pro',
         cycle: 'monthly',
       },
     },
   });
-  const tx = { kind: 'mock-tx' };
-  const recorded: unknown[] = [];
+  const appliedDeltas: unknown[] = [];
 
   t.mock.method(creditLedgerRepo, 'findByExternalEventId', async () => undefined);
   t.mock.method(db, 'transaction', async (callback: (txArg: unknown) => Promise<unknown>) =>
-    callback(tx),
+    callback({ kind: 'mock-tx' }),
   );
-  t.mock.method(subscriptionService, 'recordProviderSubscription', async (txArg: unknown, data: unknown) => {
-    recorded.push({ txArg, data });
+  t.mock.method(creditService, 'applyDelta', async (..._args: unknown[]) => {
+    appliedDeltas.push(_args);
     return {} as any;
   });
 
+  // A subscription-kind payload has no pack id, so it falls through the "metadata
+  // incomplete" guard and is ignored — no balance change.
   await creemService.handleWebhook(body, sign(body, secret));
 
-  assert.deepEqual(recorded, [
-    {
-      txArg: tx,
-      data: {
-        userId,
-        provider: 'creem',
-        externalCustomerId: 'cust_subscription_123',
-        externalSubscriptionId: 'sub_creem_123',
-        planId: 'pro',
-        cycle: 'monthly',
-        status: 'active',
-        currentPeriodStart: new Date('2026-06-04T10:30:15.000Z'),
-        currentPeriodEnd: new Date('2026-07-04T10:30:15.000Z'),
-        cancelAtPeriodEnd: false,
-      },
-    },
-  ]);
+  assert.equal(appliedDeltas.length, 0, 'subscription payloads must not credit any books');
 });
 
 test('creemService.handleWebhook: accepts valid signature + ignores unknown event', async (t) => {

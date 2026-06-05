@@ -81,11 +81,11 @@ export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAu
         creditBalance: {
           type: 'number',
           required: false,
-          // New users get the free-plan welcome credits. The old hard-coded 100
-          // was below CREDIT_COST_PER_ALBUM (200), so a new user could not
-          // generate a single album. (Recording this as a SIGNUP_BONUS ledger
-          // row is a follow-up — it needs the user committed, which conflicts
-          // with the adapter's create transaction.)
+          // New users get the free-plan welcome credits. With the per-book
+          // model, CREDIT_COST_PER_ALBUM is 1, so a new user starts with
+          // enough to generate a single album. (Recording this as a
+          // SIGNUP_BONUS ledger row is a follow-up — it needs the user
+          // committed, which conflicts with the adapter's create transaction.)
           defaultValue: FREE_PLAN_CREDITS,
           input: false,
         },

@@ -31,7 +31,7 @@ export function UserMenu({ user, plan, locale, onSignOut }: Props) {
 
   const goPricing = () => {
     setOpen(false);
-    router.push(`/${locale}/pricing`);
+    router.push(`/${locale}/credits`);
   };
 
   const handleSignOut = async () => {
