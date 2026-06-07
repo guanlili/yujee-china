@@ -11,23 +11,38 @@ export interface MarketingMessages {
   landing: {
     metaTitle: string;
     metaDesc: string;
-    heroTitle: string;
+    // Hero (title split into three parts; the highlight gets the brand gradient)
+    heroTitlePre: string;
+    heroTitleHighlight: string;
+    heroTitlePost: string;
     heroSub: string;
-    heroCta: string;
-    heroTip: string;
     composerPlaceholder: string;
     composerUploadLabel: string;
     composerHints: { label: string; fill: string }[];
-    featuresLabel: string;
-    featuresTitle: string;
-    featuresSub: string;
-    features: { num: string; title: string; desc: string }[];
+    // How it works · three steps
+    howTitle: string;
+    howSteps: { num: string; title: string; desc: string }[];
+    // What you get
+    whatYouGetTitle: string;
+    whatYouGetSub: string;
+    whatYouGetPlaceholder: string;
+    whatYouGetItems: { title: string; desc: string }[];
+    // Demo video
+    demoTitle: string;
+    demoSub: string;
+    demoPlaceholder: string;
+    // Inspiration marquee (kept)
     casesTitle: string;
     casesMore: string;
     cases: { title: string; desc: string }[];
+    // FAQ
+    faqTitle: string;
+    faq: { q: string; a: string }[];
+    // End CTA
     ctaTitle: string;
     ctaSub: string;
     ctaButton: string;
+    ctaNote: string;
   };
   privacy: {
     metaTitle: string;
@@ -65,11 +80,11 @@ const en: MarketingMessages = {
     metaTitle: 'Yujee — Turn your photos into an AI-crafted memoir',
     metaDesc:
       'Yujee turns your scattered photos and stories into a magazine-style keepsake. AI lays it out, you edit in chat, export to PDF.',
-    heroTitle: 'Write your story.',
+    heroTitlePre: 'Turn your scattered photos into a magazine you can ',
+    heroTitleHighlight: 'read, touch, and keep',
+    heroTitlePost: '',
     heroSub:
-      'Yujee turns your scattered photos and memories into a magazine you’ll want to keep.',
-    heroCta: 'Start your memoir',
-    heroTip: 'Upload photos and let AI lay out a beautiful magazine.',
+      'YUJEE AI turns your photos, stories, memories and ideas into a beautiful magazine, made just for you.',
     composerPlaceholder: 'Describe the magazine you want, e.g. “A photo album of my trip to Bali with friends”...',
     composerUploadLabel: 'Upload photos',
     composerHints: [
@@ -78,17 +93,24 @@ const en: MarketingMessages = {
       { label: 'Graduation', fill: 'A high school graduation yearbook with class photos and everyone’s farewell messages.' },
       { label: 'Food Journal', fill: 'Compile my restaurant photos from the past six months into a food magazine.' },
     ],
-    featuresLabel: 'How it works',
-    featuresTitle: 'AI handles the busy work.',
-    featuresSub: 'From chaptering to layout, all in one pass.',
-    features: [
-      { num: '01', title: 'Reads every photo', desc: 'AI recognizes scenes, faces, and mood — and understands the story behind each frame.' },
-      { num: '02', title: 'Chapters automatically', desc: 'Groups photos by scene and theme. Each chapter gets a name worth keeping.' },
-      { num: '03', title: 'Writes the story', desc: 'Warm, careful prose — like a letter you’d write to your future self.' },
-      { num: '04', title: 'Edit by chatting', desc: 'Tell the AI what to change. The copy rewrites itself in seconds.' },
-      { num: '05', title: 'WYSIWYG spread', desc: 'Live magazine preview. Text and photos compose as you go.' },
-      { num: '06', title: 'Print-ready PDF', desc: 'One click. Hi-res PDF you can bind into a real book.' },
+    howTitle: 'Three steps to your own magazine',
+    howSteps: [
+      { num: '01', title: 'Choose photos', desc: 'Pick the photos worth keeping — a few or a few hundred. Just drag them in.' },
+      { num: '02', title: 'AI lays out, writes & tells the story', desc: 'It reads your photos, auto-chapters them, writes copy and builds magazine-grade spreads.' },
+      { num: '03', title: 'You polish & adjust', desc: 'One sentence to AI rewrites copy, swaps photos or tweaks layout. Then export.' },
     ],
+    whatYouGetTitle: 'Not just an album — a real magazine',
+    whatYouGetSub: 'From cover to inside pages, every detail looks like a pro editor made it.',
+    whatYouGetPlaceholder: 'Product preview · image coming',
+    whatYouGetItems: [
+      { title: 'Magazine-grade spreads', desc: 'Whitespace, image ratios and spread rhythm — refined and easy on the eye.' },
+      { title: 'Copy with warmth', desc: 'Heartfelt titles and body text for every memory — not just stacked pictures.' },
+      { title: 'Edit by chatting', desc: 'No tools to learn — just say it to swap photos, change text or layout.' },
+      { title: 'Export & keep', desc: 'Crisp PDF or share link — print it as a real magazine anytime.' },
+    ],
+    demoTitle: 'See how Yujee turns photos into a magazine',
+    demoSub: 'The whole flow in 90 seconds.',
+    demoPlaceholder: 'Demo video · coming',
     casesTitle: 'Inspiration',
     casesMore: 'View more',
     cases: [
@@ -102,9 +124,17 @@ const en: MarketingMessages = {
       { title: 'Food Notes', desc: 'Organize restaurant photos into a story-driven food guide.' },
       { title: 'Love Diary', desc: 'Collect quiet dates, small notes, and everyday romance in one keepsake.' },
     ],
-    ctaTitle: 'Your story deserves a real book.',
-    ctaSub: 'Free credits on signup. No card required.',
-    ctaButton: 'Start your memoir',
+    faqTitle: 'FAQ',
+    faq: [
+      { q: 'How much is one magazine?', a: 'Pay per book: 1 book is $3, and it gets cheaper the more you buy — as low as $2.25 / book. No subscription, no monthly fee.' },
+      { q: 'Do I keep it forever?', a: 'Yes. Pay once and it’s yours forever — reopen, export and download the magazine anytime.' },
+      { q: 'Can I print a physical copy?', a: 'Yes. Export a high-resolution PDF and send it to a print shop or print it yourself as a real magazine.' },
+      { q: 'Do the books I buy expire?', a: 'Never. The books you buy stay valid for good — make them whenever you like, nothing resets or expires.' },
+    ],
+    ctaTitle: 'Your magazine is waiting.',
+    ctaSub: 'Start with a single photo. We’ll take it from there.',
+    ctaButton: 'Make your first one free →',
+    ctaNote: 'Free to start — see the finished magazine before you decide to buy.',
   },
   privacy: {
     metaTitle: 'Yujee — Privacy Policy',
@@ -226,10 +256,10 @@ const zh: MarketingMessages = {
     metaTitle: 'Yujee — 用 AI 把照片做成纪念册',
     metaDesc:
       'Yujee 把你散落的照片和故事，做成可以收藏的杂志风格纪念册。AI 自动排版，你用对话编辑，一键导出 PDF。',
-    heroTitle: '写下你的故事。',
-    heroSub: '把散落的照片和记忆，变成一本可以收藏的杂志。',
-    heroCta: '开始创作',
-    heroTip: '支持上传照片，AI 自动生成图文杂志。',
+    heroTitlePre: '你散落的照片，变成一本能',
+    heroTitleHighlight: '阅读、触摸、收藏',
+    heroTitlePost: '的杂志',
+    heroSub: 'YUJEE AI 将你的照片、故事、记忆和想法，转化为一本专属于你的精美杂志。',
     composerPlaceholder: '描述你想做的杂志，比如「一本记录我和闺蜜大理旅行的影集」...',
     composerUploadLabel: '上传照片',
     composerHints: [
@@ -238,17 +268,24 @@ const zh: MarketingMessages = {
       { label: '毕业纪念', fill: '高中毕业纪念册，想放班级合照和每个人的毕业感言。' },
       { label: '美食手帐', fill: '记录我这半年探店的美食照片，做成一本美食杂志。' },
     ],
-    featuresLabel: '工作流程',
-    featuresTitle: 'AI 替你做完所有杂活。',
-    featuresSub: '从分章节到排版，一气呵成。',
-    features: [
-      { num: '01', title: '看懂每张照片', desc: 'AI 识别场景、人物、氛围，理解每张照片背后的故事。' },
-      { num: '02', title: '自动分章节', desc: '按场景与主题归类，每章一个有诗意的名字。' },
-      { num: '03', title: '替你写故事', desc: '温柔细腻的叙事文字，像写给未来自己的一封信。' },
-      { num: '04', title: '对话式编辑', desc: '一句话告诉 AI 想改什么，文案立刻重写。' },
-      { num: '05', title: '所见即所得', desc: '跨页杂志预览，文字与照片实时排版。' },
-      { num: '06', title: '导出印刷', desc: '一键导出高清 PDF，可直接打印装订成册。' },
+    howTitle: '三步，做出一本你的杂志',
+    howSteps: [
+      { num: '01', title: '选择照片', desc: '挑出想收藏的照片，几张到几百张都行，拖进来就好。' },
+      { num: '02', title: 'AI 排版、写文案、编故事', desc: '读懂照片，自动分章、配文、做杂志级跨页排版，一气呵成。' },
+      { num: '03', title: '你来润色调整', desc: '跟 AI 说一句话就能改文案、换图、调布局，满意了就导出。' },
     ],
+    whatYouGetTitle: '不只是相册，是一本真正的杂志',
+    whatYouGetSub: '从封面到内页，每一处细节都像专业编辑亲手做过。',
+    whatYouGetPlaceholder: '产品界面预览 · 待补图',
+    whatYouGetItems: [
+      { title: '杂志级跨页排版', desc: '留白、图文比例、跨页节奏，专业又耐看。' },
+      { title: '有温度的文案', desc: '为每段记忆写出贴心的标题与正文，而不是堆砌图片。' },
+      { title: '对话式随手改', desc: '不用学任何工具，说句话就能换图、改字、调版式。' },
+      { title: '导出即可收藏', desc: '高清 PDF 或分享链接，随时打印成实体杂志。' },
+    ],
+    demoTitle: '看 Yujee 如何把照片变成杂志',
+    demoSub: '90 秒，看完整个流程。',
+    demoPlaceholder: '演示视频 · 待补',
     casesTitle: '灵感库',
     casesMore: '查看更多',
     cases: [
@@ -262,9 +299,17 @@ const zh: MarketingMessages = {
       { title: '美食手札', desc: '把探店照片整理成一本有故事的美食指南。' },
       { title: '爱情日记', desc: '收藏约会、手写小纸条和日常里的温柔瞬间。' },
     ],
-    ctaTitle: '你的故事，值得一本真正的书。',
-    ctaSub: '注册即赠免费积分，无需信用卡。',
-    ctaButton: '开始创作',
+    faqTitle: '常见问题',
+    faq: [
+      { q: '做一本杂志多少钱？', a: '按本付费：1 本 $3，买得越多越便宜，最低 $2.25 / 本。没有订阅、没有月费。' },
+      { q: '买了之后可以永久保存吗？', a: '可以。一次付费永久拥有，随时都能重新打开、导出、下载这本杂志。' },
+      { q: '导出的杂志能打印成实体吗？', a: '可以。支持高清 PDF 导出，可直接送印刷厂或自助打印成一本实体杂志。' },
+      { q: '买的本数会过期吗？', a: '不会。购买的本数长期有效，什么时候想做都可以，不清零、不过期。' },
+    ],
+    ctaTitle: '你的杂志，正在等你。',
+    ctaSub: '从一张照片开始，剩下的交给我们。',
+    ctaButton: '免费生成第一本 →',
+    ctaNote: '免费开始 —— 先看到成品，再决定要不要买。',
   },
   privacy: {
     metaTitle: 'Yujee — 隐私政策',
