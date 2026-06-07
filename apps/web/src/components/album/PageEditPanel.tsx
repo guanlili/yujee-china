@@ -37,13 +37,13 @@ export function PageEditPanel({
 
   return (
     <div className="space-y-6">
-      <p className="uppercase tracking-[0.2em] text-[10px] text-[var(--muted)]">
+      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--meta)]">
         {t.editPageTitle.replace('{n}', String(page.pageIndex + 1))} · {page.templateId}
       </p>
 
       {imageSlots.length > 0 && (
         <div className="space-y-3">
-          <p className="text-sm font-medium">{t.photos}</p>
+          <p className="text-[var(--text-sm)] font-semibold text-[var(--fg)]">{t.photos}</p>
           {imageSlots.map((slot) => {
             const photoId = page.imagesJson[slot] ?? '';
             const url = imageUrls[photoId];
@@ -51,16 +51,20 @@ export function PageEditPanel({
               <div key={slot} className="flex items-center gap-3">
                 {url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={url} alt={slot} className="w-12 h-12 object-cover rounded" />
+                  <img
+                    src={url}
+                    alt={slot}
+                    className="h-12 w-12 shrink-0 rounded-[var(--radius-md)] object-cover shadow-[var(--shadow-card)]"
+                  />
                 ) : (
-                  <div className="w-12 h-12 rounded bg-[var(--border)] shrink-0" />
+                  <div className="h-12 w-12 shrink-0 rounded-[var(--radius-md)] bg-[var(--bg)] shadow-[var(--shadow-card)]" />
                 )}
                 <div className="flex-1">
-                  <p className="text-[10px] uppercase tracking-wide text-[var(--muted)]">{slot}</p>
+                  <p className="font-mono text-[10px] uppercase tracking-wide text-[var(--meta)]">{slot}</p>
                   <select
                     value={photoId}
                     onChange={(e) => onSaveImage(slot, e.target.value)}
-                    className="mt-1 w-full text-sm border border-[var(--border)] rounded px-2 py-1 bg-white"
+                    className="mt-1 w-full rounded-full border border-[var(--border-soft)] bg-[var(--surface)] px-3.5 py-2 text-[var(--text-sm)] text-[var(--fg)] shadow-[0_1px_3px_rgba(0,0,0,0.04)] outline-none transition-all focus:border-[var(--accent)] focus:shadow-[var(--focus-ring)]"
                   >
                     {!availablePhotoIds.includes(photoId) && photoId && (
                       <option value={photoId}>{photoId}</option>
@@ -80,10 +84,10 @@ export function PageEditPanel({
 
       {textSlots.length > 0 && (
         <div className="space-y-3">
-          <p className="text-sm font-medium">{t.text}</p>
+          <p className="text-[var(--text-sm)] font-semibold text-[var(--fg)]">{t.text}</p>
           {textSlots.map((slot) => (
             <label key={slot} className="block">
-              <span className="text-[10px] uppercase tracking-wide text-[var(--muted)]">{slot}</span>
+              <span className="font-mono text-[10px] uppercase tracking-wide text-[var(--meta)]">{slot}</span>
               <textarea
                 value={drafts[slot] ?? ''}
                 rows={Math.max(1, Math.ceil((drafts[slot] ?? '').length / 40))}
@@ -91,7 +95,7 @@ export function PageEditPanel({
                 onBlur={() => {
                   if (drafts[slot] !== page.textsJson[slot]) onSaveText(slot, drafts[slot] ?? '');
                 }}
-                className="mt-1 w-full text-sm border border-[var(--border)] rounded px-2 py-1.5 bg-white"
+                className="mt-1 w-full resize-none rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface)] px-3.5 py-2.5 text-[var(--text-sm)] leading-relaxed text-[var(--fg)] shadow-[0_1px_3px_rgba(0,0,0,0.04)] outline-none transition-all placeholder:text-[var(--meta)] focus:border-[var(--accent)] focus:shadow-[var(--focus-ring)]"
               />
             </label>
           ))}

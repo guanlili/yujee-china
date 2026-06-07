@@ -181,7 +181,7 @@ export function ChatPanel({ albumId, locale, language, onPatch }: Props) {
       </div>
 
       {/* input */}
-      <div className="m-3 flex flex-shrink-0 items-end rounded-full border border-[var(--border-soft)] bg-[var(--surface)] shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_3px_rgba(140,94,244,0.12)]">
+      <div className="m-3 flex flex-shrink-0 items-end rounded-full border border-[var(--border-soft)] bg-[var(--surface)] shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all focus-within:border-[var(--accent)] focus-within:shadow-[var(--focus-ring)]">
         <textarea
           ref={inputRef}
           value={input}
@@ -207,8 +207,17 @@ export function ChatPanel({ albumId, locale, language, onPatch }: Props) {
           disabled={busy || !input.trim()}
           title={t.send}
           aria-label={t.send}
-          className="m-2 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--fg)] text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-all hover:-translate-y-px hover:bg-[var(--fg-2)] disabled:translate-y-0 disabled:opacity-40"
+          className="yujee-send-glow group relative m-2 flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--fg)] text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-all hover:-translate-y-px disabled:translate-y-0 disabled:opacity-40"
         >
+          <style>{`
+            .yujee-send-glow::after{
+              content:''; position:absolute; inset:0; border-radius:9999px; z-index:0;
+              background:linear-gradient(135deg, var(--grad-green), var(--grad-purple) 55%, var(--grad-lime));
+              opacity:0; transition:opacity var(--motion-fast, 180ms) var(--ease, cubic-bezier(0.4,0,0.2,1));
+            }
+            .yujee-send-glow:not(:disabled):hover::after{ opacity:1; }
+            .yujee-send-glow > svg{ position:relative; z-index:1; }
+          `}</style>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
             <line x1="22" y1="2" x2="11" y2="13" />
             <polygon points="22 2 15 22 11 13 2 9 22 2" />

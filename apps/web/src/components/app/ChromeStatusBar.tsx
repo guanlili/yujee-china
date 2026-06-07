@@ -29,8 +29,12 @@ export function ChromeStatusBar({ locale, className = '', showPricing = false }:
   return (
     <div className={`flex shrink-0 items-center gap-2 ${className}`}>
       {showPricing && (
+        // Same-page anchor: both surfaces that opt into showPricing (the landing
+        // home and the logged-in /create home) render the #pricing section, so a
+        // relative hash scrolls within the current page instead of bouncing to
+        // the landing.
         <Link
-          href={`/${locale}/pricing`}
+          href="#pricing"
           className={`hidden sm:inline-flex ${CHROME_PILL_BUTTON_CLASS}`}
         >
           {PRICING_LABELS[locale]}

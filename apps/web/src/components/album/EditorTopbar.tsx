@@ -80,7 +80,7 @@ export function EditorTopbar({
               (e.target as HTMLElement).blur();
             }
           }}
-          className="max-w-[40vw] cursor-text truncate rounded-full border border-transparent px-2 py-1 font-bold text-[var(--text-sm)] text-[var(--fg)] outline-none transition-colors hover:bg-[var(--bg)] focus:border-[var(--accent)] focus:bg-[var(--surface)] focus:shadow-[0_0_0_3px_rgba(140,94,244,0.12)]"
+          className="max-w-[40vw] cursor-text truncate rounded-full border border-transparent px-2 py-1 font-bold text-[var(--text-sm)] text-[var(--fg)] outline-none transition-colors hover:bg-[var(--bg)] focus:border-[var(--accent)] focus:bg-[var(--surface)] focus:shadow-[var(--focus-ring)]"
         />
         <span className="flex items-center gap-1.5 rounded-full bg-[var(--bg)] px-2.5 py-1 text-[var(--text-xs)] text-[var(--muted)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
           <span

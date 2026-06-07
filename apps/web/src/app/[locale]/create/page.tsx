@@ -14,6 +14,7 @@ import { generationDraft, albumRecipe } from '@/lib/generation/draft';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 import { AppChrome } from '@/components/app/AppChrome';
+import { PricingSection } from '@/components/marketing/PricingSection';
 
 type LocalPhoto = {
   photoId: string;
@@ -140,43 +141,65 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
   const canSubmit = !busy && photos.length >= 1 && prompt.trim().length > 0;
 
   return (
-    <AppChrome locale={locale} activeNav="home">
-      <section className="relative flex flex-col items-center justify-center overflow-hidden px-4 pb-20 pt-20 md:px-8 md:pt-28 min-h-[78vh]">
+    <AppChrome locale={locale} activeNav="home" showPricing showFooter>
+      {/* Brand glow CTA (DESIGN.md §4): black pill on top, ::after linear-gradient
+          (green→purple→lime) + blur underneath. Scoped to this page only — does
+          not touch globals.css. This is the composer's primary CTA glow; the
+          embedded PricingSection carries its own glow on the best-value pack. */}
+      <style>{`
+        .yj-btn-glow { position: relative; }
+        .yj-btn-glow > button { position: relative; z-index: 1; }
+        .yj-btn-glow::after {
+          content: ''; position: absolute; z-index: 0; pointer-events: none;
+          left: -14%; right: -14%; bottom: -3px; height: 100%;
+          background: linear-gradient(90deg, var(--grad-green), var(--grad-purple), var(--grad-lime));
+          filter: blur(10px); opacity: .6; border-radius: 9999px;
+          transition: filter .3s ease, opacity .3s ease, bottom .3s ease;
+        }
+        .yj-btn-glow:hover:not(.is-disabled) > button { transform: translateY(-1px); }
+        .yj-btn-glow:hover:not(.is-disabled)::after { filter: blur(13px); opacity: .8; bottom: -4px; }
+        .yj-btn-glow.is-disabled::after { opacity: 0; }
+      `}</style>
+      <section className="relative flex flex-col items-center justify-center overflow-hidden px-5 pb-20 pt-20 sm:px-8 md:pt-28 min-h-[78vh]">
+        {/* Hero ambient glow — one per page (DESIGN.md §5): three-colour mirrored
+            diffuse halo. rgba is allowed for ambient gradients per the brief. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10 opacity-60"
+          className="pointer-events-none absolute inset-0 -z-10"
           style={{
             background:
-              'radial-gradient(ellipse 60% 50% at 50% 25%, rgba(140,94,244,0.15) 0%, transparent 70%), radial-gradient(ellipse 50% 40% at 18% 80%, rgba(23,225,135,0.15) 0%, transparent 70%), radial-gradient(ellipse 50% 40% at 82% 18%, rgba(218,244,94,0.12) 0%, transparent 70%)',
+              'radial-gradient(ellipse 80% 60% at 0% 0%, rgba(19,184,166,0.07) 0%, transparent 70%), radial-gradient(ellipse 60% 70% at 50% 100%, rgba(140,94,244,0.06) 0%, transparent 70%), radial-gradient(ellipse 70% 50% at 100% 18%, rgba(218,244,94,0.06) 0%, transparent 70%)',
           }}
         />
 
-        <h1 className="mb-3 max-w-2xl text-center text-[clamp(32px,5vw,48px)] font-extrabold leading-[1.1] tracking-[-0.03em] text-[var(--fg)]">
+        <h1
+          className="m-0 max-w-[720px] text-center text-[clamp(30px,5.4vw,52px)] font-extrabold leading-[1.14] tracking-[-0.02em] text-[var(--fg)]"
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
           {t.heroTitle}
         </h1>
-        <p className="mb-9 max-w-md text-center text-lg leading-relaxed text-[var(--muted)]">
+        <p className="mt-3.5 mb-9 max-w-[520px] text-center text-[clamp(15px,2.2vw,19px)] leading-[1.55] text-[var(--muted)]">
           {t.heroSub}
         </p>
 
         {resumed && (
-          <div className="mb-7 w-full max-w-[720px] rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-5 py-3.5 text-sm">
+          <div className="mb-7 w-full max-w-[720px] rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-5 py-3.5 text-sm">
             {t.resumeBanner}
           </div>
         )}
 
+        {/* Composer: 2px brand gradient border, 22px radius, teal focus ring */}
         <div
-          className="relative w-full max-w-[720px] rounded-2xl p-[2px] transition-shadow duration-300 focus-within:shadow-[0_0_30px_rgba(23,225,135,0.25),0_0_60px_rgba(140,94,244,0.18),0_0_90px_rgba(218,244,94,0.12)]"
+          className="relative w-full max-w-[720px] rounded-[22px] p-[2px] transition-shadow duration-300 focus-within:shadow-[0_0_0_4px_rgba(19,184,166,0.18)]"
           style={{
-            background: 'linear-gradient(135deg, var(--grad-green), var(--grad-purple), var(--grad-lime))',
-            boxShadow:
-              '0 0 20px rgba(23,225,135,0.15), 0 0 40px rgba(140,94,244,0.1), 0 0 60px rgba(218,244,94,0.08)',
+            background: 'linear-gradient(135deg, var(--grad-green), var(--grad-purple) 55%, var(--grad-lime))',
           }}
         >
-          <div className="rounded-2xl bg-[var(--surface)] p-5">
-            <div className="flex items-start gap-3.5">
+          <div className="rounded-[20px] bg-[var(--surface)] p-4 sm:p-5">
+            <div className="flex items-start gap-3 sm:gap-4">
               <label
                 title={t.uploadTitle}
-                className="flex h-[78px] w-[52px] flex-shrink-0 -rotate-[15deg] cursor-pointer items-center justify-center rounded-2xl bg-[var(--bg)] text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--fg)] aria-disabled:opacity-50"
+                className="flex h-[78px] w-[52px] flex-shrink-0 -rotate-[15deg] cursor-pointer items-center justify-center rounded-lg bg-[var(--bg)] text-[var(--muted)] transition-transform duration-200 hover:scale-[1.04] hover:text-[var(--fg-2)] aria-disabled:opacity-50"
                 aria-disabled={busy}
               >
                 <input
@@ -188,8 +211,8 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
                   onChange={(e) => onFiles(e.target.files)}
                 />
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-[22px] w-[22px]">
-                  <line x1="12" y1="6" x2="12" y2="18" />
-                  <line x1="6" y1="12" x2="18" y2="12" />
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
               </label>
               <textarea
@@ -198,7 +221,7 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
                 maxLength={500}
                 rows={3}
                 placeholder={t.placeholder}
-                className="min-h-[72px] flex-1 resize-none border-none bg-transparent text-base leading-relaxed text-[var(--fg)] outline-none placeholder:text-[var(--meta)]"
+                className="min-h-[72px] flex-1 resize-none border-none bg-transparent pt-1 text-base leading-relaxed text-[var(--fg)] outline-none placeholder:text-[var(--meta)]"
               />
             </div>
 
@@ -217,9 +240,12 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
                         type="button"
                         aria-label={t.removePhoto}
                         onClick={() => remove(p.photoId)}
-                        className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
+                        className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100"
                       >
-                        ×
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
                       </button>
                     </div>
                   ))}
@@ -230,40 +256,40 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
               </div>
             )}
 
-            <div className="mt-3.5 flex items-center justify-between gap-3">
-              <div className="flex flex-1 flex-wrap gap-1.5">
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
                 {t.hints.map((h) => (
                   <button
                     key={h.label}
                     type="button"
                     onClick={() => setPrompt(h.prompt)}
-                    className="rounded-full bg-[var(--bg)] px-2.5 py-1 text-xs text-[var(--meta)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors hover:bg-[var(--border-soft)] hover:text-[var(--fg-2)]"
+                    className="rounded-full bg-[var(--bg)] px-2.5 py-1 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--border-soft)] hover:text-[var(--fg-2)]"
                   >
                     {h.label}
                   </button>
                 ))}
               </div>
-              <button
-                type="button"
-                onClick={submit}
-                disabled={!canSubmit}
-                aria-label={t.send}
-                title={t.send}
-                className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-full bg-[var(--fg)] text-[var(--surface)] transition-all duration-200 hover:enabled:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40"
-                style={{
-                  boxShadow:
-                    '-6px 4px 8px -4px rgba(23,225,135,0.5), -3px 4px 8px -4px rgba(218,244,94,0.45), 0px 4px 8px -4px rgba(140,94,244,0.5), 3px 4px 8px -4px rgba(218,244,94,0.45), 6px 4px 8px -4px rgba(23,225,135,0.5)',
-                }}
+              <div
+                className={`yj-btn-glow flex-shrink-0${canSubmit ? '' : ' is-disabled'}`}
               >
-                {busy ? (
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                ) : (
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]">
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                    <polyline points="12 5 19 12 12 19" />
-                  </svg>
-                )}
-              </button>
+                <button
+                  type="button"
+                  onClick={submit}
+                  disabled={!canSubmit}
+                  aria-label={t.send}
+                  title={t.send}
+                  className="grid h-10 w-10 place-items-center rounded-full bg-[var(--fg)] text-[var(--surface)] transition-transform duration-200 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {busy ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]">
+                      <line x1="12" y1="19" x2="12" y2="5" />
+                      <polyline points="5 12 12 5 19 12" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -271,6 +297,8 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
         {err && <p className="mt-5 text-sm text-red-600">{err}</p>}
         <p className="mt-4 text-xs text-[var(--meta)]">{busy ? t.compressing : t.tip}</p>
       </section>
+
+      <PricingSection locale={locale} />
     </AppChrome>
   );
 }

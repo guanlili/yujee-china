@@ -9,7 +9,7 @@ import type { AppMessages } from '@/lib/i18n/messages';
 type AuthMessages = AppMessages['auth'];
 
 const fieldClass =
-  'w-full rounded-[var(--radius-pill)] border border-[var(--border-soft)] bg-[var(--surface)] px-[18px] py-3 text-[var(--text-base)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-color,box-shadow] duration-[var(--motion-fast)] placeholder:text-[var(--meta)] focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_rgba(140,94,244,0.12)] focus:outline-none';
+  'w-full rounded-[var(--radius-pill)] border border-[var(--border-soft)] bg-[var(--surface)] px-[18px] py-3 text-[var(--text-base)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-color,box-shadow] duration-[var(--motion-fast)] placeholder:text-[var(--meta)] focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_rgba(19,184,166,0.12)] focus:outline-none';
 
 // /sign-up/email returns JSON, not a redirect. With requireEmailVerification the
 // signup creates no session, so on success we show a "check your email" panel
@@ -39,8 +39,11 @@ export function RegisterForm({ messages, locale }: { messages: AuthMessages; loc
   if (sentTo) {
     return (
       <div className="text-center">
-        <BrandMark size={48} className="mx-auto mb-[18px] rounded-xl" />
-        <h1 className="mb-2 text-[32px] font-extrabold tracking-[-0.02em]">
+        <BrandMark size={34} alt="Yujee" className="mx-auto mb-[18px]" />
+        <h1
+          className="mb-2 text-[32px] font-extrabold tracking-[-0.02em] text-[var(--fg)]"
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
           {messages.verifyEmailTitle}
         </h1>
         <p className="text-[var(--text-base)] text-[var(--muted)]">
@@ -62,8 +65,11 @@ export function RegisterForm({ messages, locale }: { messages: AuthMessages; loc
   return (
     <>
       <div className="mb-7 text-center">
-        <BrandMark size={48} className="mx-auto mb-[18px] rounded-xl" />
-        <h1 className="mb-2 text-[32px] font-extrabold tracking-[-0.02em]">
+        <BrandMark size={34} alt="Yujee" className="mx-auto mb-[18px]" />
+        <h1
+          className="mb-2 text-[32px] font-extrabold tracking-[-0.02em] text-[var(--fg)]"
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
           {messages.registerTitle}
         </h1>
         <p className="text-[var(--text-base)] text-[var(--muted)]">{messages.registerSubtitle}</p>
