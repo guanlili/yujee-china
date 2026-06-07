@@ -142,8 +142,21 @@ export function RetryFailedButton({
         type="button"
         onClick={retry}
         disabled={busy}
-        className="px-8 py-3 rounded-full bg-[var(--accent)] text-white text-sm tracking-wide disabled:opacity-40"
+        className="inline-flex items-center gap-2 rounded-full bg-[var(--fg)] px-8 py-3 text-[var(--text-sm)] font-semibold text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-all hover:-translate-y-px hover:bg-[var(--fg-2)] disabled:translate-y-0 disabled:opacity-40"
       >
+        <svg
+          className="h-3.5 w-3.5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <polyline points="23 4 23 10 17 10" />
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+        </svg>
         {busy ? 'Retrying…' : 'Try again'}
       </button>
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}

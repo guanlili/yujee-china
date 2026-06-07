@@ -9,35 +9,38 @@ interface Props {
 
 interface BrandMarkProps {
   className?: string;
+  /** Rendered height in px; the SVG wordmark scales its width automatically. */
   size?: number;
+  /** Accessible name. Empty string keeps the mark decorative (aria-hidden). */
+  alt?: string;
 }
 
-export const BRAND_LOGO_SRC = '/brand/yujee-logo.webp';
+export const BRAND_LOGO_SRC = '/brand/yujee-logo.svg';
 
-export function BrandMark({ className = '', size = 24 }: BrandMarkProps) {
-  const classes = className || 'rounded-md';
-
+// The brand asset is the full "Yujee" wordmark (wide SVG lockup), used standalone
+// per the v1 design — render it at a fixed height with auto width, never boxed
+// into a square. See design-v1/design-systems/yujee/DESIGN.md.
+export function BrandMark({ className = '', size = 30, alt = '' }: BrandMarkProps) {
   return (
     <img
       src={BRAND_LOGO_SRC}
-      alt=""
-      aria-hidden="true"
-      width={size}
+      alt={alt}
+      aria-hidden={alt ? undefined : 'true'}
       height={size}
-      className={`block shrink-0 object-cover ${classes}`}
-      style={{ width: size, height: size }}
+      className={`block w-auto shrink-0 object-contain ${className}`}
+      style={{ height: size }}
     />
   );
 }
 
-export function Brand({ href, className = '', label = 'Yujee', markSize = 24 }: Props) {
+export function Brand({ href, className = '', label = 'Yujee', markSize = 30 }: Props) {
   return (
     <Link
       href={href}
-      className={`flex items-center gap-2.5 font-extrabold text-[var(--text-xl)] tracking-tight text-[var(--fg)] ${className}`}
+      className={`flex items-center tracking-tight ${className}`}
+      aria-label={label}
     >
-      <BrandMark size={markSize} />
-      <span>{label}</span>
+      <BrandMark size={markSize} alt={label} />
     </Link>
   );
 }

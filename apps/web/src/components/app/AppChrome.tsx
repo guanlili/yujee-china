@@ -4,14 +4,26 @@ import type { Locale } from '@/lib/i18n/routing';
 import { Brand } from './Brand';
 import { Sidebar, type AppNav } from './Sidebar';
 import { ChromeStatusBar } from './ChromeStatusBar';
+import { MarketingFooter } from '@/components/marketing/MarketingFooter';
 
 interface Props {
   locale: Locale;
   activeNav: AppNav;
+  // Logged-in home (/create) opts into the marketing menu link + footer so it
+  // reads as a complete surface. Other app pages (my-albums, settings, credits)
+  // keep the bare chrome by leaving these false.
+  showPricing?: boolean;
+  showFooter?: boolean;
   children: React.ReactNode;
 }
 
-export function AppChrome({ locale, activeNav, children }: Props) {
+export function AppChrome({
+  locale,
+  activeNav,
+  showPricing = false,
+  showFooter = false,
+  children,
+}: Props) {
   return (
     <div className="flex min-h-screen">
       <Sidebar locale={locale} activeNav={activeNav} />
@@ -19,10 +31,11 @@ export function AppChrome({ locale, activeNav, children }: Props) {
         <nav className="sticky top-0 z-[100] backdrop-blur-xl bg-[rgba(245,245,245,0.55)]">
           <div className="mx-auto flex max-w-[1320px] items-center justify-between px-8 py-3">
             <Brand href={`/${locale}`} />
-            <ChromeStatusBar locale={locale} />
+            <ChromeStatusBar locale={locale} showPricing={showPricing} />
           </div>
         </nav>
         <main className="flex-1">{children}</main>
+        {showFooter && <MarketingFooter locale={locale} />}
       </div>
     </div>
   );

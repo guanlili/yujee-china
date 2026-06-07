@@ -61,8 +61,8 @@ function PageSkeleton({ progress }: { progress: number }) {
         style={{ width: PAGE.width * scale, height: PAGE.height * scale }}
         aria-hidden
       >
-        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-[#ffffff] via-[#f6f2ea] to-[#ece7df]" />
-        <div className="absolute inset-x-10 top-10 h-28 rounded bg-[rgba(235,235,235,0.8)]" />
+        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-[var(--surface)] via-[var(--bg)] to-[var(--border-soft)]" />
+        <div className="absolute inset-x-10 top-10 h-28 rounded-[var(--radius-md)] bg-[rgba(235,235,235,0.8)]" />
         <div className="absolute left-10 top-44 h-5 w-32 rounded-full bg-[var(--border)]" />
         <div className="absolute left-10 right-10 top-56 space-y-3">
           <div className="h-3 rounded-full bg-[var(--border-soft)]" />
@@ -70,8 +70,8 @@ function PageSkeleton({ progress }: { progress: number }) {
           <div className="h-3 w-3/4 rounded-full bg-[var(--border-soft)]" />
         </div>
         <div className="absolute bottom-14 left-10 right-10 grid grid-cols-2 gap-4">
-          <div className="h-24 rounded bg-[rgba(235,235,235,0.8)]" />
-          <div className="h-24 rounded bg-[rgba(235,235,235,0.8)]" />
+          <div className="h-24 rounded-[var(--radius-md)] bg-[rgba(235,235,235,0.8)]" />
+          <div className="h-24 rounded-[var(--radius-md)] bg-[rgba(235,235,235,0.8)]" />
         </div>
       </div>
       <div className="absolute -bottom-9 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[rgba(255,255,255,0.85)] px-3 py-1.5 shadow-[0_2px_12px_rgba(0,0,0,0.08)] backdrop-blur-md">

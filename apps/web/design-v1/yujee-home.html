@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yujee — 首页</title>
+
+<!-- Tailwind (Play CDN) — 提供响应式断点 md:/lg: 等 -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Bricolage Grotesque — 标题 / 字标（正文仍用 system-ui） -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          bg:'#f5f5f5', surface:'#ffffff', fg:'#111111', fg2:'#333333',
+          muted:'#888888', meta:'#aaaaaa', bd:'#e0e0e0', bdsoft:'#ebebeb',
+          accent:'#13B8A6', gg:'#13B8A6', gl:'#DAF45E', gp:'#8C5EF4'
+        },
+        fontFamily: { sans:['system-ui','-apple-system','"Segoe UI"','sans-serif'], display:['"Bricolage Grotesque"','system-ui','sans-serif'] },
+        borderRadius: { pill:'9999px' },
+        maxWidth: { wrap:'1320px' },
+        boxShadow: {
+          card:'0 1px 3px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06)',
+          cardh:'0 2px 8px rgba(0,0,0,.06), 0 8px 28px rgba(0,0,0,.1)'
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  /* ── 页面底色：极淡品牌彩色渐变（固定，不随滚动） ── */
+  html{
+    background:
+      radial-gradient(ellipse 80% 60% at 0% 0%, rgba(19,184,166,.07) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 70% at 50% 100%, rgba(140,94,244,.06) 0%, transparent 70%),
+      radial-gradient(ellipse 70% 50% at 100% 18%, rgba(218,244,94,.06) 0%, transparent 70%),
+      #f5f5f5;
+    background-attachment:fixed;
+    -webkit-font-smoothing:antialiased;
+    scroll-behavior:smooth;
+  }
+
+  /* ── 标题 / 字标：Bricolage Grotesque（正文保持 system-ui） ── */
+  h1,h2,h3,.font-display{ font-family:'Bricolage Grotesque',system-ui,-apple-system,sans-serif; }
+
+  /* ── 顶部导航：默认透明，滚动后毛玻璃 ── */
+  .nav-shell{transition:background .3s ease, box-shadow .3s ease, border-color .3s ease;border-bottom:1px solid transparent;}
+  .nav-shell.scrolled{
+    background:rgba(255,255,255,.55);
+    backdrop-filter:blur(24px) saturate(180%); -webkit-backdrop-filter:blur(24px) saturate(180%);
+    border-bottom-color:rgba(0,0,0,.06);
+    box-shadow:0 1px 14px rgba(0,0,0,.05);
+  }
+
+  /* ── 指纹动效背景 ── */
+  .fp-wrap{position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0;}
+  #fpArt{position:absolute; left:50%; top:42%; transform:translate(-50%,-50%); opacity:.32;}
+  @keyframes fpDraw{ to{ stroke-dashoffset:0; } }
+  @keyframes fpDrift{ from{ transform:translate(-4px,-2px) rotate(-.4deg);} to{ transform:translate(4px,2px) rotate(.4deg);} }
+
+  /* ── 渐变重点文字 ── */
+  .text-grad{
+    background:linear-gradient(115deg, var(--gg,#13B8A6), var(--gp,#8C5EF4) 50%, var(--gl,#DAF45E));
+    -webkit-background-clip:text; background-clip:text;
+    -webkit-text-fill-color:transparent; color:transparent;
+  }
+
+  /* ── 创作框：2px 品牌渐变描边 ── */
+  .composer-grad{
+    background:linear-gradient(135deg, var(--gg,#13B8A6), var(--gp,#8C5EF4) 55%, var(--gl,#DAF45E));
+    padding:2px; border-radius:22px;
+    transition:box-shadow .3s ease;
+  }
+  .composer-grad:focus-within{ box-shadow:0 0 0 4px rgba(19,184,166,.18); }
+
+  /* ── 上传按钮：2:3 竖版、旋转 -15° ── */
+  .upload-card{ transform:rotate(-15deg); }
+  .upload-card:hover{ transform:rotate(-15deg) scale(1.04); }
+
+  /* ── 普通黑色按钮（无光晕，规范 Primary 朴素版） ── */
+  .btn-plain{ transition:transform .2s ease, background .2s ease; }
+  .btn-plain:hover{ transform:translateY(-1px); background:#000; }
+
+  /* ── btn-glow：规范做法的品牌光晕（包裹容器 + ::after linear-gradient + blur，非 box-shadow） ── */
+  .btn-glow{ position:relative; }
+  .btn-glow > button{ position:relative; z-index:1; }
+  .btn-glow::after{
+    content:''; position:absolute; z-index:0; pointer-events:none;
+    left:6%; right:6%; bottom:-3px; height:72%;
+    background:linear-gradient(90deg,#13B8A6,#8C5EF4,#DAF45E);
+    filter:blur(13px); opacity:.6; border-radius:9999px;
+    transition:filter .3s ease, opacity .3s ease, bottom .3s ease;
+  }
+  .btn-glow:hover > button{ transform:translateY(-2px); }
+  .btn-glow:hover::after{ filter:blur(17px); opacity:.78; bottom:-5px; }
+  /* 圆形小按钮变体（用于对话框内的发送按钮）：光晕居中、收敛 */
+  .btn-glow-round::after{ left:-14%; right:-14%; bottom:-3px; height:100%; filter:blur(10px); opacity:.6; }
+  .btn-glow-round:hover > button{ transform:translateY(-1px); }
+  .btn-glow-round:hover::after{ filter:blur(13px); opacity:.8; bottom:-4px; }
+
+  .no-sb::-webkit-scrollbar{ display:none; }
+  .no-sb{ scrollbar-width:none; }
+
+  /* 下拉菜单动效 */
+  .menu-pop{ opacity:0; visibility:hidden; transform:translateY(-4px); transition:all .18s ease; }
+  .menu-open .menu-pop{ opacity:1; visibility:visible; transform:translateY(0); }
+  .menu-open .chev{ transform:rotate(180deg); }
+
+  /* ── 关键排版兜底：用真实 CSS 锁定字号/行高，避免 Tailwind CDN 加载前后
+     字号跳变在预览面板里造成“大字小字重影叠在一起”的现象 ── */
+  .hero-title{ font-size:clamp(30px,5.4vw,52px); line-height:1.14; font-weight:800; letter-spacing:-.02em; margin:0; }
+  .hero-sub{ margin:.9rem 0 0; font-size:clamp(15px,2.2vw,19px); line-height:1.55; }
+
+  /* 区块标题兜底 */
+  .sec-title{ font-size:clamp(22px,3.4vw,30px); line-height:1.25; font-weight:800; letter-spacing:-.02em; margin:0; }
+
+  details.faq{ border-bottom:1px solid #ebebeb; }
+  details.faq summary{ list-style:none; cursor:pointer; padding:18px 0; display:flex; align-items:center; justify-content:space-between; gap:16px; font-weight:600; font-size:15px; }
+  details.faq summary::-webkit-details-marker{ display:none; }
+  details.faq .faq-ico{ flex-shrink:0; transition:transform .2s ease; color:#888; }
+  details.faq[open] .faq-ico{ transform:rotate(45deg); }
+  details.faq .faq-a{ padding:0 0 18px; font-size:14px; line-height:1.7; color:#888; max-width:60ch; }
+
+  /* ── 项目视图：排序下拉箭头 ── */
+  .sort-select.open .sort-trigger svg{ transform:rotate(180deg); }
+
+  /* ── 收藏开关 ── */
+  .toggle::after{ content:''; position:absolute; width:16px; height:16px; border-radius:50%; background:#fff; top:2px; left:2px; box-shadow:0 1px 3px rgba(0,0,0,.15); transition:transform .18s ease; }
+  .toggle.on{ background:#13B8A6; }
+  .toggle.on::after{ transform:translateX(16px); }
+
+  /* ── 项目卡灰底装饰封面 ── */
+  .cover-inner::before, .cover-inner::after{ content:''; position:absolute; border-radius:4px; }
+  .cover-a{ background:#e8e8e8; }
+  .cover-a::before{ width:55%; height:8px; background:#d0d0d0; top:22%; left:18%; }
+  .cover-a::after{ width:70%; height:5px; background:#ddd; top:34%; left:18%; }
+  .cover-b{ background:#eaeaea; }
+  .cover-b::before{ width:70%; height:40%; background:#d8d8d8; top:14%; left:15%; border-radius:6px; }
+  .cover-b::after{ width:45%; height:5px; background:#ccc; bottom:18%; left:15%; }
+  .cover-c{ background:#e5e5e5; }
+  .cover-c::before{ width:80%; height:45%; background:#dadada; top:12%; left:10%; border-radius:6px; }
+  .cover-c::after{ width:35%; height:35%; background:#d0d0d0; bottom:8%; right:10%; border-radius:50%; }
+  .cover-d{ background:#ececec; }
+  .cover-d::before{ width:60%; height:6px; background:#d5d5d5; top:26%; left:20%; }
+  .cover-d::after{ width:48%; height:6px; background:#ddd; top:38%; left:20%; }
+  .cover-e{ background:#e7e7e7; }
+  .cover-e::before{ width:42%; height:55%; background:#d4d4d4; top:15%; left:12%; border-radius:6px; }
+  .cover-e::after{ width:42%; height:55%; background:#ddd; top:15%; right:12%; border-radius:6px; }
+
+  /* ── 卡片悬浮显示操作按钮 ── */
+  .card-actions{ opacity:0; transition:opacity .18s ease; }
+  .project-card:hover .card-actions{ opacity:1; }
+
+  /* ── 封面状态：生成中 / 失败 ── */
+  .card-badge{ display:none; }
+  .card-status{ display:none; }
+  .card-cover.is-generating{ pointer-events:none; }
+  .card-cover.is-generating::after,
+  .card-cover.is-failed::after{ content:''; position:absolute; inset:0; z-index:2; backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px); }
+  .card-cover.is-generating::after{ background:rgba(245,245,245,.62); }
+  .card-cover.is-failed::after{ background:rgba(17,17,17,.55); }
+  .card-cover.is-generating .card-status,
+  .card-cover.is-failed .card-status{ display:flex; }
+  .card-cover.is-generating .badge-generating,
+  .card-cover.is-failed .badge-failed{ display:inline-flex; }
+  .badge-spin{ width:9px; height:9px; border-radius:50%; background:conic-gradient(from 0deg, #13B8A6, #8C5EF4, #DAF45E, #13B8A6); -webkit-mask:radial-gradient(farthest-side, transparent 40%, #000 42%); mask:radial-gradient(farthest-side, transparent 40%, #000 42%); animation:cover-spin .9s linear infinite; }
+  .gen-ring{ width:40px; height:40px; border-radius:50%; background:conic-gradient(from 0deg, #13B8A6, #8C5EF4, #DAF45E, #13B8A6); -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px)); mask:radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px)); animation:cover-spin .9s linear infinite; }
+  @keyframes cover-spin{ to{ transform:rotate(360deg); } }
+  .card-cover.is-generating .status-label{ color:#333; }
+  .card-cover.is-failed .status-label{ color:#fff; }
+</style>
+</head>
+
+<body class="font-sans text-fg min-h-screen flex flex-col">
+
+<!-- ═══════════════ 左侧浮动圆胶囊侧栏 ═══════════════ -->
+<aside class="fixed left-3 sm:left-4 top-1/2 -translate-y-1/2 z-[60] flex flex-col items-center gap-1 p-1.5 rounded-pill bg-white/45 backdrop-blur-xl shadow-[0_1px_4px_rgba(0,0,0,.06),0_4px_12px_rgba(0,0,0,.04)]">
+  <button class="side-btn group relative grid place-items-center w-9 h-9 sm:w-[38px] sm:h-[38px] rounded-full text-fg bg-black/[.08] transition" data-view="home" onclick="switchView('home')">
+    <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    <span class="pointer-events-none absolute left-[calc(100%+10px)] whitespace-nowrap text-xs font-medium bg-fg text-white px-2.5 py-1 rounded-pill opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition" data-i18n="nav_home">主页</span>
+  </button>
+  <button class="side-btn group relative grid place-items-center w-9 h-9 sm:w-[38px] sm:h-[38px] rounded-full text-muted hover:text-fg hover:bg-black/[.06] transition" data-view="projects" onclick="switchView('projects')">
+    <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+    <span class="pointer-events-none absolute left-[calc(100%+10px)] whitespace-nowrap text-xs font-medium bg-fg text-white px-2.5 py-1 rounded-pill opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition" data-i18n="nav_proj">我的项目</span>
+  </button>
+</aside>
+
+<!-- ═══════════════ 顶部导航 ═══════════════ -->
+<nav id="nav" class="nav-shell sticky top-0 z-50">
+  <div class="max-w-wrap mx-auto px-5 sm:px-8 h-16 flex items-center justify-between gap-4">
+
+    <!-- 品牌 -->
+    <a href="#" class="flex items-center shrink-0">
+      <img src="logo-yujee.svg" alt="Yujee" class="h-[30px] w-auto">
+    </a>
+
+    <!-- 桌面菜单（居中） -->
+    <div class="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
+      <a href="#home" data-view="home" onclick="switchView('home');return false;" data-i18n="nav_home"  class="nav-link px-4 py-2 text-sm font-semibold text-fg rounded-lg hover:bg-black/5 transition">主页</a>
+      <a href="#projects" data-view="projects" onclick="switchView('projects');return false;" data-i18n="nav_proj"  class="nav-link px-4 py-2 text-sm font-medium text-muted rounded-lg hover:bg-black/5 hover:text-fg transition">我的项目</a>
+      <a href="#how" onclick="goSection('how');return false;" data-i18n="nav_how" class="px-4 py-2 text-sm font-medium text-muted rounded-lg hover:bg-black/5 hover:text-fg transition">玩法</a>
+      <a href="#pricing" onclick="goSection('pricing');return false;" data-i18n="nav_price" class="px-4 py-2 text-sm font-medium text-muted rounded-lg hover:bg-black/5 hover:text-fg transition">定价</a>
+    </div>
+
+    <!-- 右侧操作 -->
+    <div class="flex items-center gap-2 shrink-0">
+
+      <!-- 语言切换 -->
+      <div id="langSel" class="relative hidden sm:block">
+        <button onclick="toggleMenu('langSel')" class="flex items-center gap-1 px-2.5 py-1 rounded-pill text-xs font-medium text-muted bg-black/[.06] hover:bg-black/[.1] hover:text-fg2 transition">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          <span id="langLabel">中文</span>
+          <svg class="chev w-3 h-3 transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="menu-pop absolute top-[calc(100%+6px)] right-0 min-w-[140px] bg-surface rounded-xl border border-bdsoft shadow-cardh p-1.5 z-20">
+          <button onclick="setLang('zh')" class="lang-opt flex items-center justify-between w-full text-left px-3 py-2 rounded-lg text-sm text-fg2 hover:bg-bg transition" data-l="zh">中文 <span class="tick w-4 h-4 text-fg opacity-0">✓</span></button>
+          <button onclick="setLang('en')" class="lang-opt flex items-center justify-between w-full text-left px-3 py-2 rounded-lg text-sm text-fg2 hover:bg-bg transition" data-l="en">English <span class="tick w-4 h-4 text-fg opacity-0">✓</span></button>
+        </div>
+      </div>
+
+      <!-- 用户头像 -->
+      <div id="userSel" class="relative">
+        <button onclick="toggleMenu('userSel')" class="flex items-center gap-2 pl-1 pr-1 sm:pr-2 py-1 rounded-pill hover:bg-black/5 transition">
+          <span class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold text-white" style="background:#13B8A6">L</span>
+          <svg class="chev hidden sm:block w-4 h-4 text-meta transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="menu-pop absolute top-[calc(100%+8px)] right-0 min-w-[208px] bg-surface rounded-2xl shadow-cardh p-2 z-20">
+          <div class="px-3 py-2.5 border-b border-bdsoft mb-1">
+            <div class="text-sm font-semibold">Liam Chen</div>
+            <div class="text-xs text-meta mt-0.5">liam@yujee.app</div>
+          </div>
+          <a href="#" class="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-fg2 hover:bg-bg transition">
+            <svg class="w-[18px] h-[18px] text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span data-i18n="menu_feedback">反馈与问题</span>
+          </a>
+          <div class="h-px bg-bdsoft my-1"></div>
+          <a href="#" class="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-fg2 hover:bg-bg transition">
+            <svg class="w-[18px] h-[18px] text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <span data-i18n="menu_logout">退出登录</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- 移动端汉堡 -->
+      <button onclick="toggleMobile()" class="md:hidden w-9 h-9 grid place-items-center rounded-lg hover:bg-black/5 transition">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- 移动端菜单 -->
+  <div id="mobileMenu" class="hidden md:hidden border-t border-bdsoft bg-surface/95 backdrop-blur px-5 py-3">
+    <a href="#home" data-i18n="nav_home"  class="block px-3 py-2.5 rounded-lg text-base font-semibold hover:bg-bg" onclick="switchView('home');return false;">主页</a>
+    <a href="#projects" data-i18n="nav_proj"  class="block px-3 py-2.5 rounded-lg text-base text-fg2 hover:bg-bg" onclick="switchView('projects');return false;">我的项目</a>
+    <a href="#how" data-i18n="nav_how" class="block px-3 py-2.5 rounded-lg text-base text-fg2 hover:bg-bg" onclick="goSection('how');return false;">玩法</a>
+    <a href="#pricing" data-i18n="nav_price" class="block px-3 py-2.5 rounded-lg text-base text-fg2 hover:bg-bg" onclick="goSection('pricing');return false;">定价</a>
+    <div class="border-t border-bdsoft mt-2 pt-3 flex gap-2">
+      <button onclick="setLang('zh');toggleMobile()" class="lang-m flex-1 py-2 rounded-pill text-sm font-medium bg-bg text-fg2 hover:bg-bdsoft transition" data-l="zh">中文</button>
+      <button onclick="setLang('en');toggleMobile()" class="lang-m flex-1 py-2 rounded-pill text-sm font-medium bg-bg text-fg2 hover:bg-bdsoft transition" data-l="en">English</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ═══════════════ 视图：主页 ═══════════════ -->
+<div id="view-home">
+
+<!-- ═══════════════ HERO 创作区（视觉冻结，文案动人） ═══════════════ -->
+<header class="relative px-5 sm:px-8 pt-20 sm:pt-28 pb-16 sm:pb-20 overflow-hidden">
+  <!-- 品牌三色弥散光晕（规范第5条：blur + mix-blend-mode:multiply） -->
+  <!-- 指纹动效背景 -->
+  <div class="fp-wrap"><svg id="fpArt" width="900" height="700" viewBox="0 0 900 700">
+    <defs>
+      <linearGradient id="fpGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%"  stop-color="#13B8A6"/>
+        <stop offset="50%" stop-color="#8C5EF4"/>
+        <stop offset="100%" stop-color="#DAF45E"/>
+      </linearGradient>
+    </defs>
+  </svg></div>
+
+  <div class="relative z-10 max-w-[720px] mx-auto text-center">
+    <h1 data-i18n="hero_title" data-i18n-html class="hero-title tracking-tight">你散落的照片，<br>变成一本能<span class="text-grad">阅读、触摸、收藏</span>的杂志</h1>
+    <p data-i18n="hero_sub" class="hero-sub text-muted">YUJEE AI 将你的照片、故事、记忆和想法，转化为一本专属于你的精美杂志。</p>
+
+    <!-- 创作框 -->
+    <div id="heroComposer" class="composer-grad mt-9 text-left">
+      <div class="bg-surface rounded-[20px] p-4 sm:p-5">
+        <div class="flex items-start gap-3 sm:gap-4">
+          <!-- 上传按钮：2:3 竖版旋转 -->
+          <button onclick="document.getElementById('fileInput').click()" class="upload-card shrink-0 w-[52px] h-[78px] rounded-lg bg-bg grid place-items-center text-muted hover:text-fg2 transition" title="添加照片">
+            <svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <input id="fileInput" type="file" accept="image/*" multiple class="hidden">
+
+          <textarea id="prompt" data-i18n-ph="composer_ph" rows="2" placeholder="说说这本杂志想讲的故事，或者直接上传照片让 AI 来写…"
+            class="flex-1 resize-none border-0 outline-none bg-transparent text-base leading-relaxed placeholder:text-meta pt-1"></textarea>
+        </div>
+
+        <div class="flex items-center justify-between gap-3 mt-3">
+          <!-- 快捷提示 -->
+          <div class="flex gap-1.5 flex-wrap min-w-0">
+            <button onclick="fillHint(this)" class="text-xs text-muted bg-bg rounded-pill px-2.5 py-1 hover:text-fg2 hover:bg-bdsoft transition" data-i18n="chip_travel">旅行纪念册</button>
+            <button onclick="fillHint(this)" class="hidden sm:inline text-xs text-muted bg-bg rounded-pill px-2.5 py-1 hover:text-fg2 hover:bg-bdsoft transition" data-i18n="chip_baby">宝宝成长记录</button>
+            <button onclick="fillHint(this)" class="hidden sm:inline text-xs text-muted bg-bg rounded-pill px-2.5 py-1 hover:text-fg2 hover:bg-bdsoft transition" data-i18n="chip_grad">毕业纪念</button>
+          </div>
+          <!-- Brand CTA 发送（规范品牌光晕） -->
+          <div class="btn-glow btn-glow-round shrink-0">
+            <button class="w-10 h-10 rounded-pill bg-fg text-white grid place-items-center">
+              <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════ How it works · 三步 ═══════════════ -->
+<section id="how" class="px-5 sm:px-8 py-12 sm:py-16 scroll-mt-20">
+  <div class="max-w-wrap mx-auto">
+    <h2 data-i18n="how_title" class="sec-title text-center mb-12 sm:mb-16">三步，做出一本你的杂志</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6">
+      <!-- 步骤 1 -->
+      <div class="bg-surface rounded-2xl shadow-card p-7 sm:p-8">
+        <div class="text-meta text-sm font-bold tabular-nums mb-5">01</div>
+        <div class="w-11 h-11 rounded-xl bg-bg grid place-items-center mb-4 text-fg">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+        </div>
+        <h3 data-i18n="how_1_t" class="text-lg font-bold mb-2">选择照片</h3>
+        <p data-i18n="how_1_d" class="text-sm text-muted leading-relaxed">挑出想收藏的照片，几张到几百张都行，拖进来就好。</p>
+      </div>
+      <!-- 步骤 2 -->
+      <div class="bg-surface rounded-2xl shadow-card p-7 sm:p-8">
+        <div class="text-meta text-sm font-bold tabular-nums mb-5">02</div>
+        <div class="w-11 h-11 rounded-xl bg-bg grid place-items-center mb-4 text-fg">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2m0 14v2M5.6 5.6l1.4 1.4m10 10 1.4 1.4M3 12h2m14 0h2M5.6 18.4 7 17m10-10 1.4-1.4"/><circle cx="12" cy="12" r="4"/></svg>
+        </div>
+        <h3 data-i18n="how_2_t" class="text-lg font-bold mb-2">AI 排版、写文案、编故事</h3>
+        <p data-i18n="how_2_d" class="text-sm text-muted leading-relaxed">读懂照片，自动分章、配文、做杂志级跨页排版，一气呵成。</p>
+      </div>
+      <!-- 步骤 3 -->
+      <div class="bg-surface rounded-2xl shadow-card p-7 sm:p-8">
+        <div class="text-meta text-sm font-bold tabular-nums mb-5">03</div>
+        <div class="w-11 h-11 rounded-xl bg-bg grid place-items-center mb-4 text-fg">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </div>
+        <h3 data-i18n="how_3_t" class="text-lg font-bold mb-2">你来润色调整</h3>
+        <p data-i18n="how_3_d" class="text-sm text-muted leading-relaxed">跟 AI 说一句话就能改文案、换图、调布局，满意了就导出。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ What you get · 截图占位 ═══════════════ -->
+<section class="px-5 sm:px-8 py-12 sm:py-16">
+  <div class="max-w-wrap mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-14 items-center">
+    <!-- 左：产品截图占位框 -->
+    <div class="order-2 lg:order-1">
+      <div class="aspect-[4/3] rounded-2xl bg-surface shadow-card border border-dashed border-bd grid place-items-center text-center">
+        <div class="text-meta">
+          <svg class="w-8 h-8 mx-auto mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+          <div data-i18n="get_ph" class="text-sm">产品界面预览 · 待补图</div>
+        </div>
+      </div>
+    </div>
+    <!-- 右：你能得到什么 -->
+    <div class="order-1 lg:order-2">
+      <h2 data-i18n="get_title" class="sec-title mb-3">不只是相册，是一本真正的杂志</h2>
+      <p data-i18n="get_sub" class="text-muted leading-relaxed mb-7">从封面到内页，每一处细节都像专业编辑亲手做过。</p>
+      <ul class="space-y-5">
+        <li class="flex gap-3.5">
+          <span class="shrink-0 w-6 h-6 rounded-full bg-bg grid place-items-center text-fg mt-0.5"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <div><div data-i18n="get_1_t" class="font-semibold mb-0.5">杂志级跨页排版</div><div data-i18n="get_1_d" class="text-sm text-muted leading-relaxed">留白、图文比例、跨页节奏，专业又耐看。</div></div>
+        </li>
+        <li class="flex gap-3.5">
+          <span class="shrink-0 w-6 h-6 rounded-full bg-bg grid place-items-center text-fg mt-0.5"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <div><div data-i18n="get_2_t" class="font-semibold mb-0.5">有温度的文案</div><div data-i18n="get_2_d" class="text-sm text-muted leading-relaxed">为每段记忆写出贴心的标题与正文，而不是堆砌图片。</div></div>
+        </li>
+        <li class="flex gap-3.5">
+          <span class="shrink-0 w-6 h-6 rounded-full bg-bg grid place-items-center text-fg mt-0.5"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <div><div data-i18n="get_3_t" class="font-semibold mb-0.5">对话式随手改</div><div data-i18n="get_3_d" class="text-sm text-muted leading-relaxed">不用学任何工具，说句话就能换图、改字、调版式。</div></div>
+        </li>
+        <li class="flex gap-3.5">
+          <span class="shrink-0 w-6 h-6 rounded-full bg-bg grid place-items-center text-fg mt-0.5"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <div><div data-i18n="get_4_t" class="font-semibold mb-0.5">导出即可收藏</div><div data-i18n="get_4_d" class="text-sm text-muted leading-relaxed">高清 PDF 或分享链接，随时打印成实体杂志。</div></div>
+        </li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 演示视频占位 ═══════════════ -->
+<section class="px-5 sm:px-8 py-12 sm:py-16">
+  <div class="max-w-[900px] mx-auto text-center">
+    <h2 data-i18n="demo_title" class="sec-title mb-3">看 Yujee 如何把照片变成杂志</h2>
+    <p data-i18n="demo_sub" class="text-muted mb-8">90 秒，看完整个流程。</p>
+    <div class="aspect-video rounded-2xl bg-surface shadow-card border border-dashed border-bd grid place-items-center">
+      <div class="text-meta text-center">
+        <span class="w-16 h-16 rounded-full bg-bg grid place-items-center mx-auto mb-3 text-fg">
+          <svg class="w-6 h-6 ml-0.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </span>
+        <div data-i18n="demo_ph" class="text-sm">演示视频 · 待补</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 定价（合并自 pricing 模板） ═══════════════ -->
+<section id="pricing" class="px-5 sm:px-8 py-14 sm:py-20 scroll-mt-20">
+  <div class="max-w-wrap mx-auto">
+    <h2 data-i18n="price_title" class="sec-title text-center mb-3">按本购买，做几本买几本</h2>
+    <p data-i18n="price_sub" class="text-muted text-center mb-10 sm:mb-12">没有订阅，没有月费。一次付费，永久拥有，买得越多每本越便宜。</p>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 max-w-[1040px] mx-auto items-stretch">
+      <!-- 1 本 -->
+      <div class="bg-surface rounded-2xl shadow-card p-6 sm:p-7 flex flex-col">
+        <div class="text-sm font-semibold text-fg2">1 <span data-i18n="bk_l1">本杂志</span></div>
+        <div class="mt-3 text-5xl sm:text-6xl font-extrabold tracking-tight leading-none">$3</div>
+        <div class="text-xs text-meta mt-2.5">$3.00 / <span data-i18n="bk_per">本</span></div>
+        <div class="w-full h-px bg-bdsoft my-5"></div>
+        <ul class="space-y-2.5 text-sm text-fg2 mb-6">
+          <li class="flex gap-2"><svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#13B8A6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="feat_own">一次付费，永久拥有</span></li>
+          <li class="flex gap-2"><svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#13B8A6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="feat_pdf">高清 PDF 导出</span></li>
+          <li class="flex gap-2"><svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#13B8A6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="feat_print">可实体打印成册</span></li>
+        </ul>
+        <button data-i18n="bk_buy" class="mt-auto w-full py-2.5 rounded-pill bg-transparent border border-fg text-fg text-sm font-semibold transition hover:bg-fg hover:text-white">购买</button>
+      </div>
+
+      <!-- 2 本 -->
+      <div class="bg-surface rounded-2xl shadow-card p-6 sm:p-7 flex flex-col">
+        <div class="text-sm font-semibold text-fg2">2 <span data-i18n="bk_lp">本杂志</span></div>
+        <div class="mt-3 text-5xl sm:text-6xl font-extrabold tracking-tight leading-none">$6</div>
+        <div class="text-xs text-meta mt-2.5">$3.00 / <span data-i18n="bk_per">本</span></div>
+        <div class="w-full h-px bg-bdsoft my-5"></div>
+        <ul class="space-y-2.5 text-sm text-fg2 mb-6">
+          <li class="flex gap-2"><svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#13B8A6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="feat_own">一次付费，永久拥有</span></li>
+          <li class="flex gap-2"><svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#13B8A6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="feat_pdf">高清 PDF 导出</span></li>
+          <li class="flex gap-2"><svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#13B8A6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="feat_print">可实体打印成册</span></li>
+        </ul>
+        <button data-i18n="bk_buy" class="mt-auto w-full py-2.5 rounded-pill bg-transparent border border-fg text-fg text-sm font-semibold transition hover:bg-fg hover:text-white">购买</button>
+      </div>
+
+      <!-- 4 本 -->
+      <div class="bg-surface rounded-2xl shadow-card p-6 sm:p-7 flex flex-col">
+        <div class="text-sm font-semibold text-fg2">4 <span data-i18n="bk_lp">本杂志</span></div>
+        <div class="mt-3 text-5xl sm:text-6xl font-extrabold tracking-tight leading-none">$10</div>
+        <div class="text-xs mt-2.5">$2.50 / <span data-i18n="bk_per">本</span> · <span class="font-semibold" style="color:#11a86a"><span data-i18n="bk_save">省</span> 17%</span></div>
+        <div class="w-full h-px bg-bdsoft my-5"></div>
+        <ul class="space-y-2.5 text-sm text-fg2 mb-6">
+          <li class="flex gap-2"><svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#13B8A6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="feat_own">一次付费，永久拥有</span></li>
+          <li class="flex gap-2"><svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#13B8A6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="feat_pdf">高清 PDF 导出</span></li>
+          <li class="flex gap-2"><svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#13B8A6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="feat_print">可实体打印成册</span></li>
+        </ul>
+        <button data-i18n="bk_buy" class="mt-auto w-full py-2.5 rounded-pill bg-transparent border border-fg text-fg text-sm font-semibold transition hover:bg-fg hover:text-white">购买</button>
+      </div>
+
+      <!-- 8 本（最划算） -->
+      <div class="bg-surface rounded-2xl shadow-cardh p-6 sm:p-7 flex flex-col relative ring-1 ring-accent/30">
+        <span data-i18n="bk_best" class="absolute -top-3 left-6 text-xs font-bold text-white bg-accent px-3 py-1 rounded-pill whitespace-nowrap">最划算</span>
+        <div class="text-sm font-semibold text-fg2">8 <span data-i18n="bk_lp">本杂志</span></div>
+        <div class="mt-3 text-5xl sm:text-6xl font-extrabold tracking-tight leading-none">$18</div>
+        <div class="text-xs mt-2.5">$2.25 / <span data-i18n="bk_per">本</span> · <span class="font-semibold" style="color:#11a86a"><span data-i18n="bk_save">省</span> 25%</span></div>
+        <div class="w-full h-px bg-bdsoft my-5"></div>
+        <ul class="space-y-2.5 text-sm text-fg2 mb-6">
+          <li class="flex gap-2"><svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#13B8A6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="feat_own">一次付费，永久拥有</span></li>
+          <li class="flex gap-2"><svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#13B8A6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="feat_pdf">高清 PDF 导出</span></li>
+          <li class="flex gap-2"><svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="#13B8A6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="feat_print">可实体打印成册</span></li>
+        </ul>
+        <div class="btn-glow w-full mt-auto">
+          <button data-i18n="bk_buy" class="w-full py-2.5 rounded-pill bg-fg text-white text-sm font-semibold">购买</button>
+        </div>
+      </div>
+    </div>
+
+    <p data-i18n="price_note" class="text-center text-xs text-meta mt-8">一次付费，永久拥有 · 支持高清 PDF 导出与实体打印 · 本数长期有效不过期</p>
+
+    <!-- FAQ -->
+    <div class="max-w-[720px] mx-auto mt-14 sm:mt-16">
+      <h3 data-i18n="faq_title" class="sec-title text-center mb-6">常见问题</h3>
+      <details class="faq">
+        <summary><span data-i18n="faq_q1">做一本杂志多少钱？</span><svg class="faq-ico w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></summary>
+        <div data-i18n="faq_a1" class="faq-a">按本付费：1 本 $3，买得越多越便宜，最低 $2.25 / 本。没有订阅、没有月费。</div>
+      </details>
+      <details class="faq">
+        <summary><span data-i18n="faq_q2">买了之后可以永久保存吗？</span><svg class="faq-ico w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></summary>
+        <div data-i18n="faq_a2" class="faq-a">可以。一次付费永久拥有，随时都能重新打开、导出、下载这本杂志。</div>
+      </details>
+      <details class="faq">
+        <summary><span data-i18n="faq_q3">导出的杂志能打印成实体吗？</span><svg class="faq-ico w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></summary>
+        <div data-i18n="faq_a3" class="faq-a">可以。支持高清 PDF 导出，可直接送印刷厂或自助打印成一本实体杂志。</div>
+      </details>
+      <details class="faq">
+        <summary><span data-i18n="faq_q4">买的本数会过期吗？</span><svg class="faq-ico w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></summary>
+        <div data-i18n="faq_a4" class="faq-a">不会。购买的本数长期有效，什么时候想做都可以，不清零、不过期。</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 尾部购买引导 ═══════════════ -->
+<section class="px-5 sm:px-8 py-20 sm:py-28 text-center">
+  <div class="max-w-2xl mx-auto">
+    <h2 data-i18n="end_title" class="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4">你的杂志，正在等你。</h2>
+    <p data-i18n="end_sub" class="text-lg text-muted mb-8">从一张照片开始，剩下的交给我们。</p>
+    <div class="btn-glow inline-block">
+      <button data-i18n="end_btn" onclick="document.getElementById('heroComposer')?.scrollIntoView({behavior:'smooth',block:'center'})" class="px-8 py-3.5 rounded-pill bg-fg text-white text-base font-semibold">免费生成第一本 →</button>
+    </div>
+    <p data-i18n="end_note" class="text-xs text-meta mt-5">免费开始 —— 先看到成品，再决定要不要买。</p>
+  </div>
+</section>
+
+</div><!-- /view-home -->
+
+<!-- ═══════════════ 视图：我的项目 ═══════════════ -->
+<div id="view-projects" class="hidden">
+  <div class="w-full max-w-[1200px] mx-auto px-5 sm:px-8 pt-24 sm:pt-28 pb-12 sm:pb-16">
+
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-7">
+      <h1 class="text-xl font-bold tracking-[-0.01em]" data-i18n="projectsTitle">项目</h1>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3 sm:gap-4 mb-7">
+      <span class="text-[13px] text-muted shrink-0" data-i18n="sortBy">排序方式：</span>
+      <div class="sort-select relative" id="sortSelect">
+        <button class="sort-trigger flex items-center gap-1.5 px-4 py-2 bg-surface border border-bdsoft rounded-pill text-[13px] font-medium text-fg shadow-card hover:shadow-cardh transition" onclick="toggleSort()">
+          <span id="sortLabel" data-i18n="sortRecent">最近修改</span>
+          <svg class="w-3.5 h-3.5 text-meta transition-transform" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="sort-dropdown absolute top-[calc(100%+6px)] left-0 min-w-[140px] bg-surface rounded-xl shadow-cardh p-1 z-20">
+          <button class="sort-option active block w-full text-left px-3 py-2 text-[13px] text-fg2 rounded-lg hover:bg-bg transition" onclick="pickSort(this)" data-i18n="sortRecent">最近修改</button>
+          <button class="sort-option block w-full text-left px-3 py-2 text-[13px] text-fg2 rounded-lg hover:bg-bg transition" onclick="pickSort(this)" data-i18n="sortCreated">创建时间</button>
+          <button class="sort-option block w-full text-left px-3 py-2 text-[13px] text-fg2 rounded-lg hover:bg-bg transition" onclick="pickSort(this)" data-i18n="sortName">名称</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-[13px] text-fg2" data-i18n="favoritesOnly">仅显示收藏</span>
+        <div class="toggle relative w-9 h-5 rounded-pill bg-bd cursor-pointer transition-colors" id="favToggle" onclick="this.classList.toggle('on')"></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3.5 sm:gap-5">
+
+      <button onclick="newAlbum()" class="group grid h-full min-h-full w-full place-items-center rounded-2xl bg-surface border-2 border-solid border-border text-muted cursor-pointer shadow-card transition hover:shadow-cardh hover:-translate-y-0.5 hover:border-accent hover:text-accent" data-i18n-title="newAlbumTitle" title="新建相册" aria-label="新建相册">
+        <svg class="w-12 h-12 transition-transform group-hover:scale-110" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+
+      <a class="project-card block bg-surface rounded-2xl shadow-card hover:shadow-cardh hover:-translate-y-0.5 overflow-hidden cursor-pointer transition" href="design/editor.html" data-i18n-title="openEditor" title="打开编辑器">
+        <div class="card-cover relative aspect-[4/3] bg-bg overflow-hidden">
+          <div class="cover-decor w-full h-full grid place-items-center"><div class="cover-inner cover-a relative w-[55%] h-[65%] rounded-lg"></div></div>
+          <div class="card-actions absolute top-2 right-2 flex gap-1">
+            <button class="card-action-btn grid place-items-center w-[26px] h-[26px] rounded-full bg-white/85 backdrop-blur text-fg2 shadow-[0_1px_4px_rgba(0,0,0,.08)] hover:bg-surface transition" onclick="event.preventDefault();event.stopPropagation();var s=this.querySelector('svg');if(s.getAttribute('fill')==='currentColor'){s.setAttribute('fill','none');this.classList.remove('starred')}else{s.setAttribute('fill','currentColor');this.classList.add('starred')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+            <button class="card-action-btn grid place-items-center w-[26px] h-[26px] rounded-full bg-white/85 backdrop-blur text-fg2 shadow-[0_1px_4px_rgba(0,0,0,.08)] hover:bg-surface transition" onclick="event.preventDefault();event.stopPropagation();showMoreActions()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          </div>
+        </div>
+        <div class="px-3.5 py-3">
+          <div class="text-[15px] font-semibold mb-1 whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="proj1Title">大理的七天六夜</div>
+          <div class="text-xs text-meta mt-0.5" data-i18n="proj1Date">最近修改 May 21, 2026</div>
+        </div>
+      </a>
+
+      <a class="project-card block bg-surface rounded-2xl shadow-card hover:shadow-cardh hover:-translate-y-0.5 overflow-hidden cursor-pointer transition" href="#" onclick="event.preventDefault()" data-i18n-title="statusGeneratingTip" title="正在生成，请稍候…">
+        <div class="card-cover is-generating relative aspect-[4/3] bg-bg overflow-hidden">
+          <div class="cover-decor w-full h-full grid place-items-center"><div class="cover-inner cover-b relative w-[55%] h-[65%] rounded-lg"></div></div>
+          <div class="card-badge badge-generating absolute top-2 left-2 items-center gap-1.5 px-2.5 py-1 rounded-pill text-[11px] font-semibold leading-none bg-white/90 backdrop-blur shadow-[0_1px_4px_rgba(0,0,0,.1)] z-[4]"><span class="badge-spin"></span><span data-i18n="statusGenerating">生成中</span></div>
+          <div class="card-status absolute inset-0 flex-col items-center justify-center gap-2.5 text-center z-[3]">
+            <div class="gen-ring"></div>
+            <div class="status-label text-[13px] font-semibold" data-i18n="statusGeneratingLabel">正在排版…</div>
+            <div class="status-sub text-[11px] text-muted -mt-1" data-i18n="statusGeneratingSub">第 3 / 8 页</div>
+          </div>
+        </div>
+        <div class="px-3.5 py-3">
+          <div class="text-[15px] font-semibold mb-1 whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="proj2Title">小石头的第一年</div>
+          <div class="text-xs text-meta mt-0.5" data-i18n="proj2Date">最近修改 May 20, 2026</div>
+        </div>
+      </a>
+
+      <a class="project-card block bg-surface rounded-2xl shadow-card hover:shadow-cardh hover:-translate-y-0.5 overflow-hidden cursor-pointer transition" href="design/editor.html" data-i18n-title="openEditor" title="打开编辑器">
+        <div class="card-cover relative aspect-[4/3] bg-bg overflow-hidden">
+          <div class="cover-decor w-full h-full grid place-items-center"><div class="cover-inner cover-c relative w-[55%] h-[65%] rounded-lg"></div></div>
+          <div class="card-actions absolute top-2 right-2 flex gap-1">
+            <button class="card-action-btn grid place-items-center w-[26px] h-[26px] rounded-full bg-white/85 backdrop-blur text-fg2 shadow-[0_1px_4px_rgba(0,0,0,.08)] hover:bg-surface transition" onclick="event.preventDefault();event.stopPropagation();var s=this.querySelector('svg');if(s.getAttribute('fill')==='currentColor'){s.setAttribute('fill','none');this.classList.remove('starred')}else{s.setAttribute('fill','currentColor');this.classList.add('starred')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+            <button class="card-action-btn grid place-items-center w-[26px] h-[26px] rounded-full bg-white/85 backdrop-blur text-fg2 shadow-[0_1px_4px_rgba(0,0,0,.08)] hover:bg-surface transition" onclick="event.preventDefault();event.stopPropagation();showMoreActions()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          </div>
+        </div>
+        <div class="px-3.5 py-3">
+          <div class="text-[15px] font-semibold mb-1 whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="proj3Title">京都散策</div>
+          <div class="text-xs text-meta mt-0.5" data-i18n="proj3Date">最近修改 May 19, 2026</div>
+        </div>
+      </a>
+
+      <a class="project-card block bg-surface rounded-2xl shadow-card hover:shadow-cardh hover:-translate-y-0.5 overflow-hidden cursor-pointer transition" href="#" onclick="event.preventDefault()" data-i18n-title="statusFailedTip" title="生成失败">
+        <div class="card-cover is-failed relative aspect-[4/3] bg-bg overflow-hidden">
+          <div class="cover-decor w-full h-full grid place-items-center"><div class="cover-inner cover-d relative w-[55%] h-[65%] rounded-lg"></div></div>
+          <div class="card-badge badge-failed absolute top-2 left-2 items-center gap-1.5 px-2.5 py-1 rounded-pill text-[11px] font-semibold leading-none bg-white/90 backdrop-blur shadow-[0_1px_4px_rgba(0,0,0,.1)] z-[4]"><span class="w-[7px] h-[7px] rounded-full bg-[#E5484D]"></span><span data-i18n="statusFailed">失败</span></div>
+          <div class="card-status absolute inset-0 flex-col items-center justify-center gap-2.5 text-center z-[3]">
+            <svg class="status-fail-icon w-[30px] h-[30px] text-white/90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <div class="status-label text-[13px] font-semibold" data-i18n="statusFailedLabel">生成失败</div>
+            <button class="retry-btn inline-flex items-center gap-1.5 mt-0.5 px-3.5 py-1.5 rounded-pill bg-white/95 text-fg text-xs font-semibold shadow-[0_1px_4px_rgba(0,0,0,.18)] hover:-translate-y-px transition" onclick="event.preventDefault();event.stopPropagation();alert(I18N[LANG].retryAlert)"><svg class="w-[13px] h-[13px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg><span data-i18n="statusRetry">重试</span></button>
+          </div>
+        </div>
+        <div class="px-3.5 py-3">
+          <div class="text-[15px] font-semibold mb-1 whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="proj4Title">毕业那些事儿</div>
+          <div class="text-xs text-meta mt-0.5" data-i18n="proj4Date">最近修改 May 14, 2026</div>
+        </div>
+      </a>
+
+      <a class="project-card block bg-surface rounded-2xl shadow-card hover:shadow-cardh hover:-translate-y-0.5 overflow-hidden cursor-pointer transition" href="design/editor.html" data-i18n-title="openEditor" title="打开编辑器">
+        <div class="card-cover relative aspect-[4/3] bg-bg overflow-hidden">
+          <div class="cover-decor w-full h-full grid place-items-center"><div class="cover-inner cover-e relative w-[55%] h-[65%] rounded-lg"></div></div>
+          <div class="card-actions absolute top-2 right-2 flex gap-1">
+            <button class="card-action-btn grid place-items-center w-[26px] h-[26px] rounded-full bg-white/85 backdrop-blur text-fg2 shadow-[0_1px_4px_rgba(0,0,0,.08)] hover:bg-surface transition" onclick="event.preventDefault();event.stopPropagation();var s=this.querySelector('svg');if(s.getAttribute('fill')==='currentColor'){s.setAttribute('fill','none');this.classList.remove('starred')}else{s.setAttribute('fill','currentColor');this.classList.add('starred')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+            <button class="card-action-btn grid place-items-center w-[26px] h-[26px] rounded-full bg-white/85 backdrop-blur text-fg2 shadow-[0_1px_4px_rgba(0,0,0,.08)] hover:bg-surface transition" onclick="event.preventDefault();event.stopPropagation();showMoreActions()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          </div>
+        </div>
+        <div class="px-3.5 py-3">
+          <div class="text-[15px] font-semibold mb-1 whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="proj5Title">猫咪日常</div>
+          <div class="text-xs text-meta mt-0.5" data-i18n="proj5Date">最近修改 May 10, 2026</div>
+        </div>
+      </a>
+
+    </div>
+  </div>
+</div><!-- /view-projects -->
+
+<!-- ═══════════════ 页脚 ═══════════════ -->
+<footer class="mt-auto px-5 sm:px-8 pt-14 pb-8">
+  <div class="max-w-wrap mx-auto">
+    <div class="grid grid-cols-2 md:grid-cols-[1.5fr_1fr_1fr_1fr] gap-8 md:gap-6">
+      <!-- 品牌列 -->
+      <div class="col-span-2 md:col-span-1">
+        <div class="flex items-center mb-3">
+          <img src="logo-yujee.svg" alt="Yujee" class="h-7 w-auto">
+        </div>
+        <p data-i18n="foot_tag" class="text-sm text-meta leading-relaxed max-w-[260px]">把散落的照片和记忆，变成一本可以收藏的杂志。</p>
+        <div class="flex items-center gap-2 mt-4 text-meta">
+          <a href="#" class="w-9 h-9 grid place-items-center rounded-lg hover:text-fg hover:bg-black/5 transition"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg></a>
+          <a href="#" class="w-9 h-9 grid place-items-center rounded-lg hover:text-fg hover:bg-black/5 transition"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.332.014 7.052.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg></a>
+          <a href="#" class="w-9 h-9 grid place-items-center rounded-lg hover:text-fg hover:bg-black/5 transition"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg></a>
+          <a href="#" class="w-9 h-9 grid place-items-center rounded-lg hover:text-fg hover:bg-black/5 transition"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="currentColor"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg></a>
+          <a href="#" class="w-9 h-9 grid place-items-center rounded-lg hover:text-fg hover:bg-black/5 transition"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></a>
+        </div>
+      </div>
+
+      <!-- 产品 -->
+      <div>
+        <h4 data-i18n="foot_product" class="text-sm font-semibold mb-3">产品</h4>
+        <ul class="space-y-2.5 text-sm text-meta">
+          <li><a href="#" data-i18n="fp_1" class="hover:text-fg transition">AI 杂志生成</a></li>
+          <li><a href="#" data-i18n="fp_2" class="hover:text-fg transition">照片排版</a></li>
+          <li><a href="#" data-i18n="fp_3" class="hover:text-fg transition">文案润色</a></li>
+          <li><a href="#" data-i18n="fp_4" class="hover:text-fg transition">导出 PDF</a></li>
+        </ul>
+      </div>
+
+      <!-- 资源 -->
+      <div>
+        <h4 data-i18n="foot_res" class="text-sm font-semibold mb-3">资源</h4>
+        <ul class="space-y-2.5 text-sm text-meta">
+          <li><a href="#" data-i18n="fr_1" class="hover:text-fg transition">用户指南</a></li>
+          <li><a href="#pricing" data-i18n="fr_2" class="hover:text-fg transition">价格 FAQ</a></li>
+          <li><a href="#pricing" data-i18n="fr_3" class="hover:text-fg transition">定价方案</a></li>
+          <li><a href="#" data-i18n="fr_4" class="hover:text-fg transition">博客</a></li>
+        </ul>
+      </div>
+
+      <!-- 法律 -->
+      <div>
+        <h4 data-i18n="foot_legal" class="text-sm font-semibold mb-3">法律</h4>
+        <ul class="space-y-2.5 text-sm text-meta">
+          <li><a href="#" data-i18n="fl_1" class="hover:text-fg transition">隐私政策</a></li>
+          <li><a href="#" data-i18n="fl_2" class="hover:text-fg transition">服务条款</a></li>
+          <li><a href="#" data-i18n="fl_3" class="hover:text-fg transition">授权许可</a></li>
+          <li><a href="#" data-i18n="fl_4" class="hover:text-fg transition">使用政策</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="border-t border-bdsoft mt-10 pt-6 text-sm text-meta">
+      <span data-i18n="foot_copy">© 2026 Yujee. 保留所有权利。</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ─── i18n ─────────────────────────────────────── */
+const I18N = {
+  zh: {
+    nav_home:'主页', nav_proj:'我的项目', nav_how:'玩法', nav_price:'定价',
+    menu_feedback:'反馈与问题', menu_logout:'退出登录',
+    projectsTitle:'我的项目', sortBy:'排序方式：', sortRecent:'最近修改', sortCreated:'创建时间', sortName:'名称', favoritesOnly:'仅显示收藏', openEditor:'打开编辑器', newAlbumTitle:'新建相册', newAlbumSub:'上传照片，AI 帮你成册',
+    proj1Title:'大理的七天六夜', proj1Date:'最近修改 May 21, 2026', proj2Title:'小石头的第一年', proj2Date:'最近修改 May 20, 2026', proj3Title:'京都散策', proj3Date:'最近修改 May 19, 2026', proj4Title:'毕业那些事儿', proj4Date:'最近修改 May 14, 2026', proj5Title:'猫咪日常', proj5Date:'最近修改 May 10, 2026',
+    statusGenerating:'生成中', statusGeneratingLabel:'正在排版…', statusGeneratingSub:'第 3 / 8 页', statusGeneratingTip:'正在生成，请稍候…', statusFailed:'失败', statusFailedLabel:'生成失败', statusFailedTip:'生成失败', statusRetry:'重试', retryAlert:'正在重新生成这本杂志…',
+    hero_title:'你散落的照片，<br>变成一本能<span class="text-grad">阅读、触摸、收藏</span>的杂志',
+    hero_sub:'YUJEE AI 将你的照片、故事、记忆和想法，转化为一本专属于你的精美杂志。',
+    composer_ph:'说说这本杂志想讲的故事，或者直接上传照片让 AI 来写…',
+    chip_travel:'旅行纪念册', chip_baby:'宝宝成长记录', chip_grad:'毕业纪念',
+
+    how_title:'三步，做出一本你的杂志',
+    how_1_t:'选择照片', how_1_d:'挑出想收藏的照片，几张到几百张都行，拖进来就好。',
+    how_2_t:'AI 排版、写文案、编故事', how_2_d:'读懂照片，自动分章、配文、做杂志级跨页排版，一气呵成。',
+    how_3_t:'你来润色调整', how_3_d:'跟 AI 说一句话就能改文案、换图、调布局，满意了就导出。',
+
+    get_title:'不只是相册，是一本真正的杂志',
+    get_sub:'从封面到内页，每一处细节都像专业编辑亲手做过。',
+    get_ph:'产品界面预览 · 待补图',
+    get_1_t:'杂志级跨页排版', get_1_d:'留白、图文比例、跨页节奏，专业又耐看。',
+    get_2_t:'有温度的文案', get_2_d:'为每段记忆写出贴心的标题与正文，而不是堆砌图片。',
+    get_3_t:'对话式随手改', get_3_d:'不用学任何工具，说句话就能换图、改字、调版式。',
+    get_4_t:'导出即可收藏', get_4_d:'高清 PDF 或分享链接，随时打印成实体杂志。',
+
+    demo_title:'看 Yujee 如何把照片变成杂志', demo_sub:'90 秒，看完整个流程。', demo_ph:'演示视频 · 待补',
+
+    price_title:'按本购买，做几本买几本', price_sub:'没有订阅，没有月费。一次付费，永久拥有，买得越多每本越便宜。',
+    bk_sing:'本', bk_plur:'本', bk_per:'本', bk_buy:'购买', bk_best:'最划算',
+    bk_l1:'本杂志', bk_lp:'本杂志', bk_save:'省',
+    feat_own:'一次付费，永久拥有', feat_pdf:'高清 PDF 导出', feat_print:'可实体打印成册',
+    price_note:'一次付费，永久拥有 · 支持高清 PDF 导出与实体打印 · 本数长期有效不过期',
+    end_title:'你的杂志，正在等你。', end_sub:'从一张照片开始，剩下的交给我们。', end_btn:'免费生成第一本 →', end_note:'免费开始 —— 先看到成品，再决定要不要买。',
+    faq_title:'常见问题',
+    faq_q1:'做一本杂志多少钱？', faq_a1:'按本付费：1 本 $3，买得越多越便宜，最低 $2.25 / 本。没有订阅、没有月费。',
+    faq_q2:'买了之后可以永久保存吗？', faq_a2:'可以。一次付费永久拥有，随时都能重新打开、导出、下载这本杂志。',
+    faq_q3:'导出的杂志能打印成实体吗？', faq_a3:'可以。支持高清 PDF 导出，可直接送印刷厂或自助打印成一本实体杂志。',
+    faq_q4:'买的本数会过期吗？', faq_a4:'不会。购买的本数长期有效，什么时候想做都可以，不清零、不过期。',
+
+    foot_tag:'把散落的照片和记忆，变成一本可以收藏的杂志。',
+    foot_product:'产品', fp_1:'AI 杂志生成', fp_2:'照片排版', fp_3:'文案润色', fp_4:'导出 PDF',
+    foot_res:'资源', fr_1:'用户指南', fr_2:'价格 FAQ', fr_3:'定价方案', fr_4:'博客',
+    foot_legal:'法律', fl_1:'隐私政策', fl_2:'服务条款', fl_3:'授权许可', fl_4:'使用政策',
+    foot_copy:'© 2026 Yujee. 保留所有权利。'
+  },
+  en: {
+    nav_home:'Home', nav_proj:'My Projects', nav_how:'How it works', nav_price:'Pricing',
+    menu_feedback:'Feedback', menu_logout:'Log out',
+    projectsTitle:'My Projects', sortBy:'Sort by:', sortRecent:'Recently Modified', sortCreated:'Date Created', sortName:'Name', favoritesOnly:'Favorites only', openEditor:'Open editor', newAlbumTitle:'New Album', newAlbumSub:'Upload photos, let AI build it',
+    proj1Title:'Seven Days in Dali', proj1Date:'Modified May 21, 2026', proj2Title:'Little Stone’s First Year', proj2Date:'Modified May 20, 2026', proj3Title:'Strolling Kyoto', proj3Date:'Modified May 19, 2026', proj4Title:'Graduation Days', proj4Date:'Modified May 14, 2026', proj5Title:'Everyday Cat', proj5Date:'Modified May 10, 2026',
+    statusGenerating:'Generating', statusGeneratingLabel:'Laying out…', statusGeneratingSub:'Page 3 / 8', statusGeneratingTip:'Generating, please wait…', statusFailed:'Failed', statusFailedLabel:'Generation failed', statusFailedTip:'Generation failed', statusRetry:'Retry', retryAlert:'Regenerating this magazine…',
+    hero_title:'Turn your scattered photos into a magazine you can <span class="text-grad">read, touch, and keep</span>',
+    hero_sub:'YUJEE AI turns your photos, stories, memories and ideas into a beautiful magazine, made just for you.',
+    composer_ph:'Tell us the story behind this magazine, or just upload photos and let AI write…',
+    chip_travel:'Travel album', chip_baby:'Baby milestones', chip_grad:'Graduation',
+
+    how_title:'Three steps to your own magazine',
+    how_1_t:'Choose photos', how_1_d:'Pick the photos worth keeping — a few or a few hundred. Just drag them in.',
+    how_2_t:'AI lays out, writes & tells the story', how_2_d:'It reads your photos, auto-chapters them, writes copy and builds magazine-grade spreads.',
+    how_3_t:'You polish & adjust', how_3_d:'One sentence to AI rewrites copy, swaps photos or tweaks layout. Then export.',
+
+    get_title:'Not just an album — a real magazine',
+    get_sub:'From cover to inside pages, every detail looks like a pro editor made it.',
+    get_ph:'Product preview · image coming',
+    get_1_t:'Magazine-grade spreads', get_1_d:'Whitespace, image ratios and spread rhythm — refined and easy on the eye.',
+    get_2_t:'Copy with warmth', get_2_d:'Heartfelt titles and body text for every memory — not just stacked pictures.',
+    get_3_t:'Edit by chatting', get_3_d:'No tools to learn — just say it to swap photos, change text or layout.',
+    get_4_t:'Export & keep', get_4_d:'Crisp PDF or share link — print it as a real magazine anytime.',
+
+    demo_title:'See how Yujee turns photos into a magazine', demo_sub:'The whole flow in 90 seconds.', demo_ph:'Demo video · coming',
+
+    price_title:'Buy by the book', price_sub:'No subscription, no monthly fee. Pay once, keep it forever — the more you buy, the less each book costs.',
+    bk_sing:'book', bk_plur:'books', bk_per:'book', bk_buy:'Buy', bk_best:'Best value',
+    bk_l1:'magazine', bk_lp:'magazines', bk_save:'Save',
+    feat_own:'Pay once, yours forever', feat_pdf:'HD PDF export', feat_print:'Print-ready',
+    price_note:'Pay once, yours forever · HD PDF export & real printing · books never expire',
+    end_title:'Your magazine is waiting.', end_sub:'Start with a single photo. We\'ll take it from there.', end_btn:'Make your first one free →', end_note:'Free to start — see the finished magazine before you decide to buy.',
+    faq_title:'FAQ',
+    faq_q1:'How much is one magazine?', faq_a1:'Pay per book: 1 book is $3, and it gets cheaper the more you buy — as low as $2.25 / book. No subscription, no monthly fee.',
+    faq_q2:'Do I keep it forever?', faq_a2:'Yes. Pay once and it’s yours forever — reopen, export and download the magazine anytime.',
+    faq_q3:'Can I print a physical copy?', faq_a3:'Yes. Export a high-resolution PDF and send it to a print shop or print it yourself as a real magazine.',
+    faq_q4:'Do the books I buy expire?', faq_a4:'Never. The books you buy stay valid for good — make them whenever you like, nothing resets or expires.',
+
+    foot_tag:'Turn scattered photos and memories into a magazine worth keeping.',
+    foot_product:'Product', fp_1:'AI magazine', fp_2:'Photo layout', fp_3:'Copy polish', fp_4:'Export PDF',
+    foot_res:'Resources', fr_1:'User guide', fr_2:'Pricing FAQ', fr_3:'Plans', fr_4:'Blog',
+    foot_legal:'Legal', fl_1:'Privacy', fl_2:'Terms', fl_3:'License', fl_4:'Usage policy',
+    foot_copy:'© 2026 Yujee. All rights reserved.'
+  }
+};
+let LANG = localStorage.getItem('yujee-lang') || 'zh';
+
+function applyLang(){
+  const d = I18N[LANG];
+  document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : 'en';
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    const k = el.getAttribute('data-i18n'); if(d[k]==null) return;
+    if(el.hasAttribute('data-i18n-html')) el.innerHTML = d[k]; else el.textContent = d[k];
+  });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el=>{
+    const k = el.getAttribute('data-i18n-ph'); if(d[k]!=null) el.setAttribute('placeholder', d[k]);
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el=>{
+    const k = el.getAttribute('data-i18n-title'); if(d[k]!=null) el.setAttribute('title', d[k]);
+  });
+  document.getElementById('langLabel').textContent = LANG==='zh'?'中文':'English';
+  document.querySelectorAll('.lang-opt').forEach(b=>{
+    b.querySelector('.tick').style.opacity = b.dataset.l===LANG ? '1':'0';
+  });
+  document.querySelectorAll('.lang-m').forEach(b=>{
+    const on = b.dataset.l===LANG;
+    b.classList.toggle('bg-fg', on); b.classList.toggle('text-white', on);
+    b.classList.toggle('bg-bg', !on); b.classList.toggle('text-fg2', !on);
+  });
+}
+function setLang(l){ LANG=l; localStorage.setItem('yujee-lang',l); applyLang(); closeMenus(); }
+
+/* ─── 菜单开关 ─────────────────────────────────── */
+function toggleMenu(id){
+  const el=document.getElementById(id);
+  const wasOpen=el.classList.contains('menu-open');
+  closeMenus();
+  if(!wasOpen) el.classList.add('menu-open');
+}
+function closeMenus(){ document.querySelectorAll('.menu-open').forEach(e=>e.classList.remove('menu-open')); }
+document.addEventListener('click',e=>{ if(!e.target.closest('#langSel,#userSel')) closeMenus(); });
+
+function toggleMobile(){ document.getElementById('mobileMenu').classList.toggle('hidden'); }
+
+/* ─── 视图切换（本页内：主页 ⇄ 我的项目） ─────────── */
+function switchView(id, noScroll){
+  // 侧栏选中态
+  document.querySelectorAll('.side-btn').forEach(function(b){
+    var on = b.getAttribute('data-view')===id;
+    b.classList.toggle('bg-black/[.08]', on);
+    b.classList.toggle('text-fg', on);
+    b.classList.toggle('text-muted', !on);
+  });
+  // 顶部菜单选中态
+  document.querySelectorAll('.nav-link').forEach(function(a){
+    var on = a.getAttribute('data-view')===id;
+    a.classList.toggle('text-fg', on); a.classList.toggle('font-semibold', on);
+    a.classList.toggle('text-muted', !on); a.classList.toggle('font-medium', !on);
+  });
+  // 视图显隐
+  var vh=document.getElementById('view-home'), vp=document.getElementById('view-projects');
+  if(vh&&vp){ vh.classList.toggle('hidden', id!=='home'); vp.classList.toggle('hidden', id==='projects'?false:true); }
+  try{ history.replaceState(null,'',id==='projects'?'#projects':'#home'); }catch(e){}
+  if(!noScroll) window.scrollTo({top:0,behavior:'smooth'});
+  document.getElementById('mobileMenu').classList.add('hidden');
+}
+
+/* ─── 项目视图：排序下拉 / 更多操作 ───────────────── */
+function toggleSort(){ document.getElementById('sortSelect').classList.toggle('open'); }
+function pickSort(el){
+  document.querySelectorAll('.sort-option').forEach(o=>o.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('sortLabel').textContent = el.textContent;
+  document.getElementById('sortSelect').classList.remove('open');
+}
+function showMoreActions(){ alert(LANG==='en'?'More actions: rename · duplicate · delete':'更多操作：重命名 · 复制 · 删除'); }
+/* 新建相册：切回主页并聚焦创作框 */
+function newAlbum(){
+  switchView('home', true);
+  setTimeout(function(){
+    var el=document.getElementById('heroComposer'); if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
+    var p=document.getElementById('prompt'); if(p) p.focus();
+  },80);
+}
+/* 顶部锚点（玩法/定价）：若在项目视图先切回主页再滚动 */
+function goSection(id){
+  switchView('home', true);
+  document.getElementById('mobileMenu').classList.add('hidden');
+  setTimeout(function(){ var el=document.getElementById(id); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); },60);
+}
+document.addEventListener('click',e=>{ if(!e.target.closest('#sortSelect')){ var s=document.getElementById('sortSelect'); if(s) s.classList.remove('open'); } });
+
+/* ─── 快捷提示填充 ─────────────────────────────── */
+function fillHint(btn){
+  const t=document.getElementById('prompt');
+  t.value = (LANG==='zh'?'帮我做一本':'Make me a ') + btn.textContent.trim();
+  t.focus();
+}
+
+/* ─── 指纹动效背景 ─────────────────────────────── */
+function buildFingerprint(){
+  const NS='http://www.w3.org/2000/svg';
+  const svg=document.getElementById('fpArt');
+  const cx=450, cy=350, rings=26;
+  for(let i=0;i<rings;i++){
+    const r=18+i*14, pts=64; let dd='';
+    for(let j=0;j<=pts;j++){
+      const a=(j/pts)*Math.PI*2;
+      const warp=Math.sin(a*3+i*0.5)*9 + Math.cos(a*2-i*0.35)*7;
+      const rr=r+warp;
+      const x=cx+Math.cos(a)*rr*1.12, y=cy+Math.sin(a)*rr;
+      dd+=(j===0?'M':'L')+x.toFixed(1)+' '+y.toFixed(1)+' ';
+    }
+    const p=document.createElementNS(NS,'path');
+    p.setAttribute('d',dd); p.setAttribute('fill','none');
+    p.setAttribute('stroke','url(#fpGrad)'); p.setAttribute('stroke-width','1.1');
+    p.setAttribute('stroke-linecap','round');
+    const len=2400;
+    p.style.strokeDasharray=len; p.style.strokeDashoffset=len;
+    p.style.animation=`fpDraw 2.8s cubic-bezier(.4,0,.2,1) forwards ${(i*0.07).toFixed(2)}s, fpDrift ${ (18+i%6).toFixed(0) }s ease-in-out ${(i*0.07).toFixed(2)}s infinite alternate`;
+    svg.appendChild(p);
+  }
+}
+
+/* ─── 滚动毛玻璃 ───────────────────────────────── */
+const nav=document.getElementById('nav');
+window.addEventListener('scroll',()=>{ nav.classList.toggle('scrolled', window.scrollY>20); });
+
+/* ─── init ─────────────────────────────────────── */
+buildFingerprint();
+applyLang();
+if(location.hash==='#projects') switchView('projects', true);
+</script>
+</body>
+</html>

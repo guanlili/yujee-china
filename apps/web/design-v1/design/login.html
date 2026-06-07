@@ -4,297 +4,104 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Yujee — 登录</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      colors: {
+        bg:'#f5f5f5', surface:'#ffffff', fg:'#111111', fg2:'#333333',
+        muted:'#888888', meta:'#aaaaaa', bd:'#e0e0e0', bdsoft:'#ebebeb',
+        accent:'#13B8A6', gg:'#13B8A6', gl:'#DAF45E', gp:'#8C5EF4'
+      },
+      fontFamily: { sans:['system-ui','-apple-system','"Segoe UI"','sans-serif'], display:['"Bricolage Grotesque"','system-ui','sans-serif'] },
+      borderRadius: { pill:'9999px' },
+      maxWidth: { wrap:'1320px' },
+      boxShadow: { card:'0 1px 3px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06)', cardh:'0 2px 8px rgba(0,0,0,.06), 0 8px 28px rgba(0,0,0,.1)' }
+    }}
+  }
+</script>
 <style>
-/* ─── Yujee Tokens ─────────────────────────────────────────────── */
-:root {
-  --bg: #f5f5f5;
-  --surface: #ffffff;
-  --fg: #111111;
-  --fg-2: #333333;
-  --muted: #888888;
-  --meta: #aaaaaa;
-  --border: #e0e0e0;
-  --border-soft: #ebebeb;
-  --accent: #8C5EF4;
+  /* Page background — signature Yujee teal/lime radial gradients (utilities can't express layered radials) */
+  html {
+    background:
+      radial-gradient(ellipse 80% 60% at 0% 0%, rgba(19,184,166,0.07) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 70% at 50% 100%, rgba(19,184,166,0.06) 0%, transparent 70%),
+      radial-gradient(ellipse 70% 50% at 100% 20%, rgba(218,244,94,0.06) 0%, transparent 70%),
+      #f5f5f5;
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: 'Bricolage Grotesque', system-ui, sans-serif; }
 
-  --grad-green: #17E187;
-  --grad-lime: #DAF45E;
-  --grad-purple: #8C5EF4;
+  /* Brand mark — signature teal→purple→lime gradient swatch */
+  .brand-mark { background: linear-gradient(135deg, #13B8A6, #8C5EF4, #DAF45E); }
 
-  --font-display: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-body: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Language dropdown menu visibility (JS toggles .open on #langSelect) */
+  .lang-menu {
+    opacity: 0; visibility: hidden; transform: translateY(-4px);
+    transition: opacity 180ms cubic-bezier(.4,0,.2,1), visibility 180ms cubic-bezier(.4,0,.2,1), transform 180ms cubic-bezier(.4,0,.2,1);
+  }
+  .lang-select.open .lang-menu { opacity: 1; visibility: visible; transform: translateY(0); }
+  .lang-select.open .chev { transform: rotate(180deg); }
+  .chev { transition: transform 180ms cubic-bezier(.4,0,.2,1); }
 
-  --text-xs: 12px;
-  --text-sm: 13px;
-  --text-base: 15px;
-  --text-lg: 18px;
-  --text-xl: 20px;
-  --text-2xl: 32px;
+  /* Active language tick (JS toggles .active on .lang-option) */
+  .lang-option .tick { opacity: 0; }
+  .lang-option.active .tick { opacity: 1; }
+  .lang-option.active { color: #111111; font-weight: 600; }
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-pill: 9999px;
+  /* Email form reveal (JS adds .show to #emailForm) */
+  .email-form { display: none; }
+  .email-form.show { display: flex; }
 
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06);
-  --shadow-card-hover: 0 2px 8px rgba(0,0,0,0.06), 0 8px 28px rgba(0,0,0,0.1);
-
-  --motion-fast: 180ms;
-  --motion-base: 300ms;
-  --ease: cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* ─── Reset ────────────────────────────────────────────────────── */
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-html {
-  font-family: var(--font-body); font-size: var(--text-base); color: var(--fg);
-  background:
-    radial-gradient(ellipse 80% 60% at 0% 0%, rgba(23,225,135,0.07) 0%, transparent 70%),
-    radial-gradient(ellipse 60% 70% at 50% 100%, rgba(140,94,244,0.06) 0%, transparent 70%),
-    radial-gradient(ellipse 70% 50% at 100% 20%, rgba(218,244,94,0.06) 0%, transparent 70%),
-    #f5f5f5;
-  background-attachment: fixed;
-  -webkit-font-smoothing: antialiased;
-}
-body { min-height: 100vh; display: flex; flex-direction: column; }
-a { color: inherit; text-decoration: none; }
-button { font: inherit; cursor: pointer; border: none; background: none; }
-input { font: inherit; }
-
-/* ═══════════════════════════════════════════════════════════════════
-   TOP BAR — brand + language
-   ═══════════════════════════════════════════════════════════════════ */
-.topbar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 20px 28px;
-}
-.brand {
-  display: flex; align-items: center; gap: 10px;
-  font-family: var(--font-display);
-  font-weight: 800; font-size: var(--text-xl);
-  letter-spacing: -0.01em;
-}
-.brand-mark {
-  width: 24px; height: 24px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--grad-green), var(--grad-purple), var(--grad-lime));
-}
-
-/* Language selector — matches Yujee Nav Pill */
-.lang-select { position: relative; }
-.lang-trigger {
-  display: flex; align-items: center; gap: 6px;
-  padding: 7px 12px;
-  border-radius: var(--radius-pill);
-  background: #ececec;
-  color: var(--fg-2);
-  font-size: var(--text-sm); font-weight: 500;
-  transition: background var(--motion-fast) var(--ease);
-}
-.lang-trigger:hover { background: #e2e2e2; }
-.lang-trigger svg { width: 15px; height: 15px; color: var(--muted); }
-.lang-trigger .chev { width: 13px; height: 13px; transition: transform var(--motion-fast) var(--ease); }
-.lang-select.open .chev { transform: rotate(180deg); }
-.lang-menu {
-  position: absolute; top: calc(100% + 6px); right: 0;
-  min-width: 132px;
-  background: var(--surface);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-card-hover);
-  padding: 6px;
-  opacity: 0; visibility: hidden; transform: translateY(-4px);
-  transition: all var(--motion-fast) var(--ease);
-  z-index: 20;
-}
-.lang-select.open .lang-menu { opacity: 1; visibility: visible; transform: translateY(0); }
-.lang-option {
-  display: flex; align-items: center; justify-content: space-between;
-  width: 100%; text-align: left;
-  padding: 9px 12px;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm); color: var(--fg-2);
-  transition: background var(--motion-fast) var(--ease);
-}
-.lang-option:hover { background: var(--bg); }
-.lang-option.active { color: var(--fg); font-weight: 600; }
-.lang-option .tick { width: 15px; height: 15px; color: var(--fg); opacity: 0; }
-.lang-option.active .tick { opacity: 1; }
-
-/* ═══════════════════════════════════════════════════════════════════
-   AUTH CARD
-   ═══════════════════════════════════════════════════════════════════ */
-.auth-wrap {
-  flex: 1;
-  display: flex; align-items: center; justify-content: center;
-  padding: 24px 20px 64px;
-}
-.auth-card {
-  width: 100%; max-width: 420px;
-  background: var(--surface);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: 40px 36px 32px;
-}
-
-.auth-head { text-align: center; margin-bottom: 28px; }
-.auth-mark {
-  width: 48px; height: 48px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--grad-green), var(--grad-purple), var(--grad-lime));
-  margin: 0 auto 18px;
-}
-.auth-title {
-  font-family: var(--font-display);
-  font-size: var(--text-2xl);
-  font-weight: 800; letter-spacing: -0.02em;
-  margin-bottom: 8px;
-}
-.auth-sub { font-size: var(--text-base); color: var(--muted); }
-
-/* Google button — the default / primary action */
-.btn-google {
-  display: flex; align-items: center; justify-content: center; gap: 12px;
-  width: 100%;
-  padding: 13px 20px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-base); font-weight: 600; color: var(--fg);
-  box-shadow: var(--shadow-card);
-  transition: transform var(--motion-fast) var(--ease), box-shadow var(--motion-base) var(--ease);
-}
-.btn-google:hover { transform: translateY(-1px); box-shadow: var(--shadow-card-hover); }
-.btn-google svg { width: 20px; height: 20px; flex-shrink: 0; }
-
-/* Divider */
-.divider {
-  display: flex; align-items: center; gap: 14px;
-  margin: 22px 0;
-  color: var(--meta); font-size: var(--text-xs);
-}
-.divider::before, .divider::after {
-  content: ''; flex: 1; height: 1px; background: var(--border-soft);
-}
-
-/* Email toggle (secondary) */
-.btn-email-toggle {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  width: 100%;
-  padding: 12px 20px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-base); font-weight: 500; color: var(--fg-2);
-  transition: background var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
-}
-.btn-email-toggle:hover { background: var(--bg); border-color: var(--muted); }
-.btn-email-toggle svg { width: 18px; height: 18px; }
-
-/* Email form */
-.email-form {
-  display: none;
-  flex-direction: column; gap: 14px;
-}
-.email-form.show { display: flex; }
-.field { display: flex; flex-direction: column; gap: 7px; }
-.field-label {
-  display: flex; align-items: baseline; justify-content: space-between;
-  font-size: var(--text-sm); font-weight: 500; color: var(--fg-2);
-}
-.field-label .forgot { font-size: var(--text-xs); font-weight: 400; color: var(--accent); }
-.field-label .forgot:hover { text-decoration: underline; }
-.field input {
-  width: 100%;
-  padding: 12px 18px;
-  background: var(--surface);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-base); color: var(--fg);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-  transition: border-color var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease);
-}
-.field input::placeholder { color: var(--meta); }
-.field input:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(140,94,244,0.12);
-}
-
-/* Primary submit — black pill */
-.btn-submit {
-  width: 100%;
-  padding: 13px 20px;
-  margin-top: 2px;
-  background: var(--fg);
-  color: var(--surface);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-base); font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-  transition: transform var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease);
-}
-.btn-submit:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,0.18); }
-
-/* Footer of card */
-.auth-foot {
-  margin-top: 24px; text-align: center;
-  font-size: var(--text-sm); color: var(--muted);
-}
-.auth-foot .link { color: var(--fg); font-weight: 600; }
-.auth-foot .link:hover { text-decoration: underline; }
-
-.legal {
-  margin-top: 22px; text-align: center;
-  font-size: var(--text-xs); color: var(--meta); line-height: 1.6;
-}
-.legal a { color: var(--muted); text-decoration: underline; }
-.legal a:hover { color: var(--fg-2); }
-
-@media (max-width: 480px) {
-  .auth-card { padding: 32px 22px 26px; }
-  .topbar { padding: 16px 18px; }
-}
+  /* Input focus ring — teal glow */
+  .field-input:focus {
+    outline: none;
+    border-color: #13B8A6;
+    box-shadow: 0 0 0 3px rgba(19,184,166,0.12);
+  }
 </style>
 </head>
-<body>
+<body class="font-sans text-[15px] text-fg min-h-screen flex flex-col">
 
   <!-- Top bar -->
-  <header class="topbar">
-    <a class="brand" href="../yujee-home2.html">
-      <span class="brand-mark"></span>
-      <span>Yujee</span>
-    </a>
+  <header class="flex items-center justify-between px-4 py-4 sm:px-7 sm:py-5">
+    <a class="flex items-center gap-2.5 font-display font-extrabold text-lg sm:text-xl tracking-tight" href="../yujee-home.html"><img src="../logo-yujee.svg" alt="Yujee" class="h-7 sm:h-[30px] w-auto block"></a>
 
-    <div class="lang-select" id="langSelect">
-      <button class="lang-trigger" onclick="toggleLang()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+    <div class="lang-select relative" id="langSelect">
+      <button class="lang-trigger flex items-center gap-1.5 px-3 py-1.5 rounded-pill bg-[#ececec] hover:bg-[#e2e2e2] text-fg2 text-[13px] font-medium transition-colors" onclick="toggleLang()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-[15px] h-[15px] text-muted"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
         <span class="lang-label">中文</span>
-        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        <svg class="chev w-[13px] h-[13px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
-      <div class="lang-menu">
-        <button class="lang-option active" data-lang="中文" onclick="selectLang(this)">
+      <div class="lang-menu absolute top-[calc(100%+6px)] right-0 min-w-[132px] bg-surface rounded-xl shadow-cardh p-1.5 z-20">
+        <button class="lang-option active flex items-center justify-between w-full text-left px-3 py-2.5 rounded-lg text-[13px] text-fg2 hover:bg-bg transition-colors" data-lang="中文" onclick="selectLang(this)">
           <span>中文</span>
-          <svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <svg class="tick w-[15px] h-[15px] text-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         </button>
-        <button class="lang-option" data-lang="English" onclick="selectLang(this)">
+        <button class="lang-option flex items-center justify-between w-full text-left px-3 py-2.5 rounded-lg text-[13px] text-fg2 hover:bg-bg transition-colors" data-lang="English" onclick="selectLang(this)">
           <span>English</span>
-          <svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <svg class="tick w-[15px] h-[15px] text-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         </button>
       </div>
     </div>
   </header>
 
   <!-- Auth card -->
-  <main class="auth-wrap">
-    <div class="auth-card">
-      <div class="auth-head">
-        <div class="auth-mark"></div>
-        <h1 class="auth-title" data-i18n="title">欢迎回来</h1>
-        <p class="auth-sub" data-i18n="sub">登录以继续创作你的杂志</p>
+  <main class="flex-1 flex items-center justify-center px-5 pt-6 pb-16">
+    <div class="w-full max-w-[420px] bg-surface rounded-2xl shadow-card p-6 pb-7 sm:px-9 sm:pt-10 sm:pb-8">
+      <div class="text-center mb-7">
+        <img class="h-[34px] w-auto block mx-auto mb-[18px]" src="../logo-yujee.svg" alt="Yujee">
+        <h1 class="font-display text-2xl sm:text-[32px] font-extrabold tracking-[-0.02em] mb-2" data-i18n="title">欢迎回来</h1>
+        <p class="text-[15px] text-muted" data-i18n="sub">登录以继续创作你的杂志</p>
       </div>
 
       <!-- Default: Google login -->
-      <button class="btn-google" onclick="finishLogin()">
-        <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+      <button class="flex items-center justify-center gap-3 w-full px-5 py-3.5 bg-surface border border-bd rounded-pill text-[15px] font-semibold text-fg shadow-card transition hover:-translate-y-px hover:shadow-cardh" onclick="finishLogin()">
+        <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0">
           <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
           <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
           <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
@@ -303,39 +110,39 @@ input { font: inherit; }
         <span data-i18n="googleBtn">使用 Google 账号登录</span>
       </button>
 
-      <div class="divider"><span data-i18n="or">或</span></div>
+      <div class="flex items-center gap-3.5 my-[22px] text-meta text-xs before:content-[''] before:flex-1 before:h-px before:bg-bdsoft after:content-[''] after:flex-1 after:h-px after:bg-bdsoft"><span data-i18n="or">或</span></div>
 
       <!-- Secondary: email login -->
-      <button class="btn-email-toggle" id="emailToggle" onclick="showEmailForm()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg>
+      <button class="flex items-center justify-center gap-2.5 w-full px-5 py-3 bg-transparent border border-bd rounded-pill text-[15px] font-medium text-fg2 transition-colors hover:bg-bg hover:border-muted" id="emailToggle" onclick="showEmailForm()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg>
         <span data-i18n="emailBtn">使用邮箱登录</span>
       </button>
 
-      <form class="email-form" id="emailForm" onsubmit="return finishLogin();">
-        <div class="field">
-          <label class="field-label" for="email" data-i18n="emailLabel">邮箱</label>
-          <input type="email" id="email" placeholder="you@example.com" required autocomplete="email">
+      <form class="email-form flex-col gap-3.5 mt-3.5" id="emailForm" onsubmit="return finishLogin();">
+        <div class="flex flex-col gap-[7px]">
+          <label class="flex items-baseline justify-between text-[13px] font-medium text-fg2" for="email" data-i18n="emailLabel">邮箱</label>
+          <input class="field-input w-full px-[18px] py-3 bg-surface border border-bdsoft rounded-pill text-[15px] text-fg placeholder:text-meta shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition" type="email" id="email" placeholder="you@example.com" required autocomplete="email">
         </div>
-        <div class="field">
-          <label class="field-label" for="password">
+        <div class="flex flex-col gap-[7px]">
+          <label class="flex items-baseline justify-between text-[13px] font-medium text-fg2" for="password">
             <span data-i18n="pwLabel">密码</span>
-            <a href="#" class="forgot" data-i18n="forgot">忘记密码？</a>
+            <a href="#" class="text-xs font-normal text-accent hover:underline" data-i18n="forgot">忘记密码？</a>
           </label>
-          <input type="password" id="password" data-i18n-placeholder="pwPlaceholder" placeholder="输入密码" required autocomplete="current-password">
+          <input class="field-input w-full px-[18px] py-3 bg-surface border border-bdsoft rounded-pill text-[15px] text-fg placeholder:text-meta shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition" type="password" id="password" data-i18n-placeholder="pwPlaceholder" placeholder="输入密码" required autocomplete="current-password">
         </div>
-        <button type="submit" class="btn-submit" data-i18n="signIn">登录</button>
+        <button type="submit" class="w-full px-5 py-3.5 mt-0.5 bg-fg text-surface rounded-pill text-[15px] font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition hover:-translate-y-px hover:shadow-[0_3px_10px_rgba(0,0,0,0.18)]" data-i18n="signIn">登录</button>
       </form>
 
-      <p class="auth-foot">
+      <p class="mt-6 text-center text-[13px] text-muted">
         <span data-i18n="noAccount">还没有账号？</span>
-        <a href="#" class="link" data-i18n="signUp">免费注册</a>
+        <a href="#" class="text-fg font-semibold hover:underline" data-i18n="signUp">免费注册</a>
       </p>
 
-      <p class="legal">
+      <p class="mt-[22px] text-center text-xs text-meta leading-relaxed">
         <span data-i18n="legalPre">登录即表示你同意我们的</span>
-        <a href="#" data-i18n="terms">服务条款</a>
+        <a href="#" class="text-muted underline hover:text-fg2" data-i18n="terms">服务条款</a>
         <span data-i18n="legalAnd">与</span>
-        <a href="#" data-i18n="privacy">隐私政策</a>
+        <a href="#" class="text-muted underline hover:text-fg2" data-i18n="privacy">隐私政策</a>
       </p>
     </div>
   </main>
@@ -433,7 +240,7 @@ function showEmailForm() {
 /* ─── Finish login → mark logged in, return to app ───────────── */
 function finishLogin() {
   localStorage.setItem('yujee-logged-in', '1');
-  window.location.href = '../yujee-home2.html';
+  window.location.href = '../yujee-home.html';
   return false;
 }
 

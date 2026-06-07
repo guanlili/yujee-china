@@ -12,8 +12,8 @@ function source(path: string): string {
   return readFileSync(join(components, path), 'utf8');
 }
 
-test('brand mark uses the final jellyfish logo asset', () => {
-  const logoPath = join(webRoot, 'public', 'brand', 'yujee-logo.webp');
+test('brand mark uses the final yujee wordmark logo asset', () => {
+  const logoPath = join(webRoot, 'public', 'brand', 'yujee-logo.svg');
   const appIconPath = join(webRoot, 'src', 'app', 'icon.png');
   const appleIconPath = join(webRoot, 'src', 'app', 'apple-icon.png');
 

@@ -21,7 +21,7 @@ export default async function LoginPage({
       className="flex min-h-screen flex-col"
       style={{
         background:
-          'radial-gradient(ellipse 80% 60% at 0% 0%, rgba(23,225,135,0.07) 0%, transparent 70%), radial-gradient(ellipse 60% 70% at 50% 100%, rgba(140,94,244,0.06) 0%, transparent 70%), radial-gradient(ellipse 70% 50% at 100% 20%, rgba(218,244,94,0.06) 0%, transparent 70%), var(--bg)',
+          'radial-gradient(ellipse 80% 60% at 0% 0%, rgba(19,184,166,0.07) 0%, transparent 70%), radial-gradient(ellipse 60% 70% at 50% 100%, rgba(19,184,166,0.06) 0%, transparent 70%), radial-gradient(ellipse 70% 50% at 100% 20%, rgba(218,244,94,0.06) 0%, transparent 70%), var(--bg)',
       }}
     >
       <header className="flex items-center justify-between px-7 py-5">
@@ -30,10 +30,13 @@ export default async function LoginPage({
       </header>
 
       <main className="flex flex-1 items-center justify-center px-5 pb-16 pt-6">
-        <div className="w-full max-w-[420px] rounded-[var(--radius-lg)] bg-[var(--surface)] px-9 pb-8 pt-10 shadow-[var(--shadow-card)]">
+        <div className="w-full max-w-[420px] rounded-[var(--radius-lg)] bg-[var(--surface)] p-6 pb-7 shadow-[var(--shadow-card)] sm:px-9 sm:pb-8 sm:pt-10">
           <div className="mb-7 text-center">
-            <BrandMark size={48} className="mx-auto mb-[18px] rounded-xl" />
-            <h1 className="mb-2 text-[32px] font-extrabold tracking-tight text-[var(--fg)]">
+            <BrandMark size={34} alt="Yujee" className="mx-auto mb-[18px]" />
+            <h1
+              className="mb-2 text-[32px] font-extrabold tracking-[-0.02em] text-[var(--fg)]"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
               {messages.loginWelcome}
             </h1>
             <p className="text-[15px] text-[var(--muted)]">{messages.loginSubtitle}</p>
