@@ -30,7 +30,7 @@ export function ChromeStatusBar({ locale, className = '', showPricing = false }:
     <div className={`flex shrink-0 items-center gap-2 ${className}`}>
       {showPricing && (
         <Link
-          href={`/${locale}/pricing`}
+          href={`/${locale}#pricing`}
           className={`hidden sm:inline-flex ${CHROME_PILL_BUTTON_CLASS}`}
         >
           {PRICING_LABELS[locale]}

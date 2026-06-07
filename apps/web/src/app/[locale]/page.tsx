@@ -4,6 +4,7 @@ import { MarketingChrome } from '@/components/marketing/MarketingChrome';
 import { FingerprintArt } from '@/components/landing/FingerprintArt';
 import { HeroComposer } from '@/components/landing/HeroComposer';
 import { InspirationMarquee } from '@/components/landing/InspirationMarquee';
+import { PricingSection } from '@/components/marketing/PricingSection';
 import { getMessages } from '@/lib/i18n/messages';
 import { isLocale, type Locale } from '@/lib/i18n/routing';
 import { getMarketingMessages } from '@/messages/marketing';
@@ -74,6 +75,8 @@ export default async function LandingPage({ params, searchParams }: Props) {
         </section>
 
         <InspirationMarquee locale={loc} title={m.casesTitle} more={m.casesMore} cases={m.cases} />
+
+        <PricingSection locale={loc} />
 
         <section className="py-20 text-center md:py-24">
           <h2 className="mb-4 font-extrabold tracking-tight text-[clamp(28px,4vw,40px)]">{m.ctaTitle}</h2>

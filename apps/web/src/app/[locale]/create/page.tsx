@@ -14,6 +14,7 @@ import { generationDraft, albumRecipe } from '@/lib/generation/draft';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 import { AppChrome } from '@/components/app/AppChrome';
+import { PricingSection } from '@/components/marketing/PricingSection';
 
 type LocalPhoto = {
   photoId: string;
@@ -295,6 +296,8 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
         {err && <p className="mt-5 text-sm text-red-600">{err}</p>}
         <p className="mt-4 text-xs text-[var(--meta)]">{busy ? t.compressing : t.tip}</p>
       </section>
+
+      <PricingSection locale={locale} />
     </AppChrome>
   );
 }

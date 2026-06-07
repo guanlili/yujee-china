@@ -203,7 +203,7 @@ const en: MarketingMessages = {
     productHead: 'Product',
     productItems: [
       { label: 'Create a memoir', href: '#homepage-composer' },
-      { label: 'Pricing', href: '/pricing' },
+      { label: 'Pricing', href: '#pricing' },
     ],
     legalHead: 'Legal',
     legalItems: [
@@ -363,7 +363,7 @@ const zh: MarketingMessages = {
     productHead: '产品',
     productItems: [
       { label: '创建纪念册', href: '#homepage-composer' },
-      { label: '定价', href: '/pricing' },
+      { label: '定价', href: '#pricing' },
     ],
     legalHead: '法律',
     legalItems: [
