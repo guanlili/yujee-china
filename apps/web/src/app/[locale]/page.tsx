@@ -75,9 +75,14 @@ export default async function LandingPage({ params, searchParams }: Props) {
         </section>
 
         <InspirationMarquee locale={loc} title={m.casesTitle} more={m.casesMore} cases={m.cases} />
+      </div>
 
-        <PricingSection locale={loc} />
+      {/* Full-width: PricingSection carries its own gutters + inner max-width,
+          so it must not sit inside the 1100px content container (would double the
+          horizontal padding). */}
+      <PricingSection locale={loc} />
 
+      <div className="relative z-[1] mx-auto w-full max-w-[1100px] px-6 md:px-8">
         <section className="py-20 text-center md:py-24">
           <h2 className="mb-4 font-extrabold tracking-tight text-[clamp(28px,4vw,40px)]">{m.ctaTitle}</h2>
           <p className="mb-8 text-base text-[var(--muted)]">{m.ctaSub}</p>

@@ -96,6 +96,11 @@ export function PricingSection({ locale }: { locale: Locale }) {
                   isBest ? ' ring-1 ring-[var(--accent)]/30' : ''
                 }`}
               >
+                {isBest && (
+                  <span className="absolute -top-3 left-6 whitespace-nowrap rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-bold text-[var(--accent-on)]">
+                    {t.bestValue}
+                  </span>
+                )}
                 <div className="text-sm font-semibold text-[var(--fg-2)] tabular-nums">
                   {pack.books.toLocaleString(locale)}{' '}
                   {pack.books === 1 ? t.unitSingular : t.unit}

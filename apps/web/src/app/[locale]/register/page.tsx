@@ -6,8 +6,8 @@ import { RegisterForm } from './register-form';
 // Layered radial wash mirrors design-v1/design/login.html so /register and
 // /login share one auth surface.
 const authBackground =
-  'radial-gradient(ellipse 80% 60% at 0% 0%, rgba(23,225,135,0.07) 0%, transparent 70%),' +
-  'radial-gradient(ellipse 60% 70% at 50% 100%, rgba(140,94,244,0.06) 0%, transparent 70%),' +
+  'radial-gradient(ellipse 80% 60% at 0% 0%, rgba(19,184,166,0.07) 0%, transparent 70%),' +
+  'radial-gradient(ellipse 60% 70% at 50% 100%, rgba(19,184,166,0.06) 0%, transparent 70%),' +
   'radial-gradient(ellipse 70% 50% at 100% 20%, rgba(218,244,94,0.06) 0%, transparent 70%),' +
   'var(--bg)';
 
@@ -22,7 +22,7 @@ export default async function RegisterPage({ params }: { params: Promise<{ local
       </header>
 
       <main className="flex flex-1 items-center justify-center px-5 pb-16 pt-6">
-        <div className="w-full max-w-[420px] rounded-[var(--radius-lg)] bg-[var(--surface)] px-9 pb-8 pt-10 shadow-[var(--shadow-card)]">
+        <div className="w-full max-w-[420px] rounded-[var(--radius-lg)] bg-[var(--surface)] p-6 pb-7 shadow-[var(--shadow-card)] sm:px-9 sm:pb-8 sm:pt-10">
           <RegisterForm messages={messages} locale={locale} />
         </div>
       </main>

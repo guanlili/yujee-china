@@ -144,7 +144,8 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
     <AppChrome locale={locale} activeNav="home" showPricing showFooter>
       {/* Brand glow CTA (DESIGN.md §4): black pill on top, ::after linear-gradient
           (green→purple→lime) + blur underneath. Scoped to this page only — does
-          not touch globals.css. One brand glow per page (the send button). */}
+          not touch globals.css. This is the composer's primary CTA glow; the
+          embedded PricingSection carries its own glow on the best-value pack. */}
       <style>{`
         .yj-btn-glow { position: relative; }
         .yj-btn-glow > button { position: relative; z-index: 1; }

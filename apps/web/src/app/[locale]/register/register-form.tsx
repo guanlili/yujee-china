@@ -40,7 +40,10 @@ export function RegisterForm({ messages, locale }: { messages: AuthMessages; loc
     return (
       <div className="text-center">
         <BrandMark size={34} alt="Yujee" className="mx-auto mb-[18px]" />
-        <h1 className="mb-2 text-[32px] font-extrabold tracking-[-0.02em]">
+        <h1
+          className="mb-2 text-[32px] font-extrabold tracking-[-0.02em] text-[var(--fg)]"
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
           {messages.verifyEmailTitle}
         </h1>
         <p className="text-[var(--text-base)] text-[var(--muted)]">
@@ -63,7 +66,10 @@ export function RegisterForm({ messages, locale }: { messages: AuthMessages; loc
     <>
       <div className="mb-7 text-center">
         <BrandMark size={34} alt="Yujee" className="mx-auto mb-[18px]" />
-        <h1 className="mb-2 text-[32px] font-extrabold tracking-[-0.02em]">
+        <h1
+          className="mb-2 text-[32px] font-extrabold tracking-[-0.02em] text-[var(--fg)]"
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
           {messages.registerTitle}
         </h1>
         <p className="text-[var(--text-base)] text-[var(--muted)]">{messages.registerSubtitle}</p>

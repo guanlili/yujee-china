@@ -18,6 +18,13 @@ test('brand mark uses the final yujee wordmark logo asset', () => {
   const appleIconPath = join(webRoot, 'src', 'app', 'apple-icon.png');
 
   assert.equal(existsSync(logoPath), true, 'optimized public logo asset should exist');
+
+  // Guard the asset's content, not just its presence: the v1 wordmark must keep
+  // the teal brand color and its wide aspect, so a stray re-export (or a revert
+  // to the old purple mark) fails loudly instead of passing on file existence.
+  const logoSvg = readFileSync(logoPath, 'utf8');
+  assert.match(logoSvg, /#13B8A6/i, 'logo should keep the teal brand color');
+  assert.match(logoSvg, /viewBox="0 0 2824 1180"/, 'logo should keep the wordmark viewBox');
   assert.equal(existsSync(appIconPath), true, 'app icon should use the final logo');
   assert.equal(existsSync(appleIconPath), true, 'apple touch icon should use the final logo');
   assert.ok(statSync(logoPath).size < 250_000, 'public logo should be optimized for repeated chrome use');
