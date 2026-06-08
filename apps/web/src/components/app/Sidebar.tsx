@@ -35,7 +35,7 @@ export function Sidebar({ locale, activeNav }: Props) {
   const c = getMessages(locale).dashboard.chrome;
   return (
     <aside
-      className="fixed left-4 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-1 p-1.5 rounded-full backdrop-blur-xl bg-[rgba(255,255,255,0.45)]"
+      className="fixed z-50 flex items-center gap-1 p-1.5 rounded-full backdrop-blur-xl bg-[rgba(255,255,255,0.45)] bottom-4 left-1/2 -translate-x-1/2 flex-row md:bottom-auto md:left-4 md:top-1/2 md:translate-x-0 md:-translate-y-1/2 md:flex-col"
       style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04)' }}
     >
       {ITEMS.map((item) => {
@@ -53,7 +53,7 @@ export function Sidebar({ locale, activeNav }: Props) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
               {item.icon}
             </svg>
-            <span className="pointer-events-none absolute left-[calc(100%+10px)] whitespace-nowrap rounded-full bg-[var(--fg)] px-2.5 py-1 text-[var(--text-xs)] font-medium text-white opacity-0 -translate-x-1 transition-all group-hover:opacity-100 group-hover:translate-x-0">
+            <span className="pointer-events-none absolute left-[calc(100%+10px)] whitespace-nowrap rounded-full bg-[var(--fg)] px-2.5 py-1 text-[var(--text-xs)] font-medium text-white opacity-0 -translate-x-1 transition-all group-hover:opacity-100 group-hover:translate-x-0 hidden md:block">
               {c[item.labelKey]}
             </span>
           </Link>
