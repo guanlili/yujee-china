@@ -10,6 +10,9 @@ interface Props {
   locale: Locale;
   loginLabel: string;
   loginClassName: string;
+  // Hide the credits pill while keeping login / user menu intact (used by
+  // /create). Defaults to true.
+  showCredits?: boolean;
   creditsClassName?: string;
   loadingClassName?: string;
 }
@@ -18,6 +21,7 @@ export function SessionControls({
   locale,
   loginLabel,
   loginClassName,
+  showCredits = true,
   creditsClassName = 'contents',
   loadingClassName = 'h-9 w-[142px] rounded-full bg-[#ececec]',
 }: Props) {
@@ -37,9 +41,11 @@ export function SessionControls({
 
   return (
     <>
-      <span className={creditsClassName}>
-        <CreditsPill balance={balance} plan={plan} locale={locale} />
-      </span>
+      {showCredits && (
+        <span className={creditsClassName}>
+          <CreditsPill balance={balance} plan={plan} locale={locale} />
+        </span>
+      )}
       <UserMenu user={user} plan={plan} locale={locale} />
     </>
   );
