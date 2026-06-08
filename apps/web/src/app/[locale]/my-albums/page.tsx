@@ -251,14 +251,27 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
   return (
     <AppChrome locale={locale} activeNav="projects">
       <div className="mx-auto w-full max-w-[1200px] px-10 py-8">
-        <div className="mb-7 flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">{t.myAlbums.title}</h1>
+        <div className="mb-7 flex items-center gap-5">
           <Link
             href={`/${locale}#homepage-composer`}
-            className="rounded-full bg-[var(--accent)] px-5 py-2.5 text-sm text-white"
+            className="inline-flex shrink-0 items-center gap-2 rounded-full bg-[var(--fg)] px-7 py-3.5 text-base font-semibold text-white shadow-[var(--shadow-card)] transition-transform duration-200 hover:-translate-y-0.5"
           >
+            <svg
+              className="h-5 w-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
             {t.myAlbums.create}
           </Link>
+          <h1 className="text-2xl font-bold tracking-tight">{t.myAlbums.title}</h1>
         </div>
 
         {err && <p className="mb-6 text-sm text-red-600">{err}</p>}
