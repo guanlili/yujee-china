@@ -61,15 +61,16 @@ export function PricingSection({ locale }: { locale: Locale }) {
           touch globals.css. */}
       <style>{`
         .yj-price-glow { position: relative; }
-        .yj-price-glow > button { position: relative; z-index: 1; }
+        .yj-price-glow > button { position: relative; z-index: 1; transition: transform .3s ease, opacity .3s ease; }
         .yj-price-glow::after {
           content: ''; position: absolute; z-index: 0; pointer-events: none;
-          left: -10%; right: -10%; bottom: -3px; height: 100%;
+          left: 6%; right: 6%; bottom: -3px; height: 72%;
           background: linear-gradient(90deg, var(--grad-green), var(--grad-purple), var(--grad-lime));
-          filter: blur(10px); opacity: .55; border-radius: 9999px;
+          filter: blur(13px); opacity: .6; border-radius: 9999px;
           transition: filter .3s ease, opacity .3s ease, bottom .3s ease;
         }
-        .yj-price-glow:hover:not(.is-disabled)::after { filter: blur(13px); opacity: .75; bottom: -4px; }
+        .yj-price-glow:hover:not(.is-disabled) > button { transform: translateY(-2px); }
+        .yj-price-glow:hover:not(.is-disabled)::after { filter: blur(17px); opacity: .78; bottom: -5px; }
         .yj-price-glow.is-disabled::after { opacity: 0; }
       `}</style>
 
