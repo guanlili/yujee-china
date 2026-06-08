@@ -13,12 +13,6 @@ export const userService = {
       isAdmin: user.isAdmin,
       creditBalance: user.creditBalance,
       createdAt: user.createdAt,
-      plan: {
-        id: 'free' as const,
-        label: 'Free',
-        cycle: null,
-        currentPeriodEnd: null,
-      },
     };
   },
 };

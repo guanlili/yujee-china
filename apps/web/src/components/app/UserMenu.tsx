@@ -9,14 +9,18 @@ import type { ChromeUser } from './useChromeSession';
 
 interface Props {
   user: ChromeUser | null;
-  plan: string;
   locale: Locale;
   onSignOut?: () => void;
 }
 
-export function UserMenu({ user, plan, locale, onSignOut }: Props) {
+export function UserMenu({ user, locale, onSignOut }: Props) {
   const router = useRouter();
-  const c = getMessages(locale).dashboard.chrome;
+  const m = getMessages(locale).dashboard;
+  const c = m.chrome;
+  const balance = user?.creditBalance ?? 0;
+  const balanceLabel = `${balance.toLocaleString(locale)} ${
+    balance === 1 ? m.credits.unitSingular : m.credits.unit
+  }`;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -60,7 +64,7 @@ export function UserMenu({ user, plan, locale, onSignOut }: Props) {
             <div className="mt-0.5 text-[var(--text-xs)] text-[var(--meta)]">{user?.email ?? ''}</div>
           </div>
           <div className="mb-1 flex items-center justify-between px-3 py-2.5">
-            <span className="text-[var(--text-sm)] font-medium text-[var(--fg-2)]">{plan}</span>
+            <span className="text-[var(--text-sm)] font-medium text-[var(--fg-2)]">{balanceLabel}</span>
             <button
               type="button"
               onClick={goPricing}

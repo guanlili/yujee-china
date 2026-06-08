@@ -6,12 +6,11 @@ export interface ChromeUser {
   name: string | null;
   email: string;
   avatarInitial: string;
-  planLabel: string;
+  creditBalance: number;
 }
 
 export interface ChromeSession {
   user: ChromeUser | null;
-  plan: string;
   loading: boolean;
 }
 
@@ -36,7 +35,7 @@ export function useChromeSession(): ChromeSession {
             name: meJson.data.name,
             email: meJson.data.email,
             avatarInitial: initialFor(meJson.data),
-            planLabel: meJson.data.plan?.label ?? 'Free',
+            creditBalance: meJson.data.creditBalance ?? 0,
           });
         }
       } finally {
@@ -48,5 +47,5 @@ export function useChromeSession(): ChromeSession {
     };
   }, []);
 
-  return { user, plan: user?.planLabel ?? 'Free', loading };
+  return { user, loading };
 }

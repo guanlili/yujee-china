@@ -83,7 +83,7 @@
       "navHome": "Home",
       "navProjects": "My projects",
       "creditsPillTitle": "Buy more books",
-      "upgrade": "Buy books",
+      "upgrade": "Buy",
       "manageSubscription": "Books & billing",
       "feedback": "Feedback & issues",
       "logout": "Sign out",
@@ -147,8 +147,6 @@
       "noHistory": "No transactions yet.",
       "checkoutSuccess": "Payment received — your books will appear here shortly.",
       "checkoutCancel": "Checkout was canceled.",
-      "resumeBanner": "Your memoir is waiting. Once your books land, pick up right where you left off.",
-      "resumeCta": "Continue generating",
       "reason": {
         "SIGNUP_BONUS": "Welcome book",
         "GENERATION_HOLD": "Generation reserved",

@@ -40,7 +40,7 @@ export function SessionControlsView({
   loadingClassName = 'h-9 w-[142px] rounded-full bg-[#ececec]',
   session,
 }: SessionControlsViewProps) {
-  const { user, plan, loading } = session;
+  const { user, loading } = session;
 
   if (loading) {
     return <span aria-hidden="true" className={`inline-flex animate-pulse ${loadingClassName}`} />;
@@ -54,5 +54,5 @@ export function SessionControlsView({
     );
   }
 
-  return <UserMenu user={user} plan={plan} locale={locale} />;
+  return <UserMenu user={user} locale={locale} />;
 }
