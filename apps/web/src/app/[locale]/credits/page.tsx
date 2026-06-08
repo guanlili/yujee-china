@@ -8,7 +8,6 @@ import {
   ADDON_PACKS,
   type CheckoutSource,
 } from '@/config/pricing';
-import { generationDraft } from '@/lib/generation/draft';
 import { AppChrome } from '@/components/app/AppChrome';
 
 type LedgerReason =
@@ -46,15 +45,6 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [buying, setBuying] = useState<string | null>(null);
-  // A pending generation draft means the user detoured here to top up mid-generation
-  // (§6.5.2). Offer a "continue" CTA so the loop closes back through the
-  // homepage composer on return.
-  // — surviving the external checkout redirect because the draft is in localStorage.
-  const [hasDraft, setHasDraft] = useState(false);
-
-  useEffect(() => {
-    setHasDraft(!!generationDraft.load());
-  }, []);
 
   const loadCreditData = useCallback(async () => {
     try {
@@ -135,20 +125,6 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
           </p>
         )}
         {err && <p className="mb-6 text-sm text-red-600">{err}</p>}
-
-        {/* BILL-1 resume CTA — a pending draft means the user detoured here to
-            top up mid-generation (§6.5.2). Must survive the UI restore. */}
-        {hasDraft && (
-          <div className="mb-8 rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/[0.08] px-5 py-4">
-            <p className="text-sm mb-3">{t.resumeBanner}</p>
-            <a
-              href={`/${locale}?resumeGeneration=1`}
-              className="inline-block px-6 py-2.5 rounded-full bg-[var(--accent)] text-white text-sm tracking-wide"
-            >
-              {t.resumeCta}
-            </a>
-          </div>
-        )}
 
         {/* 1 — Balance */}
         <section className="rounded-2xl bg-[var(--surface)] shadow-[var(--shadow-card)] p-6 mb-10">

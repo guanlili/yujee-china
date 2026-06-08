@@ -147,8 +147,6 @@
       "noHistory": "暂无记录。",
       "checkoutSuccess": "支付已收到 —— 本数稍后会显示在这里。",
       "checkoutCancel": "已取消支付。",
-      "resumeBanner": "你的纪念册还在等着你。本数到账后,从上次中断的地方继续。",
-      "resumeCta": "继续生成",
       "reason": {
         "SIGNUP_BONUS": "新人赠送",
         "GENERATION_HOLD": "生成冻结",
