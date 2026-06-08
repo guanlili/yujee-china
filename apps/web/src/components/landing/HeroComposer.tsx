@@ -208,10 +208,27 @@ export function HeroComposer({
       style={{
         background: 'linear-gradient(135deg, var(--grad-green), var(--grad-purple), var(--grad-lime))',
         boxShadow:
-          '0 0 20px rgba(23,225,135,0.15), 0 0 40px rgba(140,94,244,0.1), 0 0 60px rgba(218,244,94,0.08)',
+          '0 0 20px rgba(19,184,166,0.15), 0 0 40px rgba(140,94,244,0.1), 0 0 60px rgba(218,244,94,0.08)',
       }}
     >
       <div className="rounded-2xl bg-[var(--surface)] p-5">
+        {/* Brand glow on the send button — design's .btn-glow-round: a black pill
+            with a blurred green→purple→lime gradient halo underneath (::after),
+            not a multi-color box-shadow. Scoped here; no globals.css change. */}
+        <style>{`
+          .yj-send-glow { position: relative; }
+          .yj-send-glow > button { position: relative; z-index: 1; transition: transform .3s ease; }
+          .yj-send-glow::after {
+            content: ''; position: absolute; z-index: 0; pointer-events: none;
+            left: -14%; right: -14%; bottom: -3px; height: 100%;
+            background: linear-gradient(90deg, var(--grad-green), var(--grad-purple), var(--grad-lime));
+            filter: blur(10px); opacity: .6; border-radius: 9999px;
+            transition: filter .3s ease, opacity .3s ease, bottom .3s ease;
+          }
+          .yj-send-glow:hover:not(.is-disabled) > button { transform: translateY(-1px); }
+          .yj-send-glow:hover:not(.is-disabled)::after { filter: blur(13px); opacity: .8; bottom: -4px; }
+          .yj-send-glow.is-disabled::after { opacity: 0; }
+        `}</style>
         <div className="flex items-start gap-3.5">
           <label
             title={uploadLabel}
@@ -287,27 +304,25 @@ export function HeroComposer({
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={busy}
-            aria-label={t.send}
-            title={t.send}
-            className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-full bg-[var(--fg)] text-[var(--surface)] transition-all duration-200 hover:enabled:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40"
-            style={{
-              boxShadow:
-                '-6px 4px 8px -4px rgba(23,225,135,0.5), -3px 4px 8px -4px rgba(218,244,94,0.45), 0px 4px 8px -4px rgba(140,94,244,0.5), 3px 4px 8px -4px rgba(218,244,94,0.45), 6px 4px 8px -4px rgba(23,225,135,0.5)',
-            }}
-          >
-            {busy ? (
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            ) : (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]">
-                <line x1="5" y1="12" x2="19" y2="12" />
-                <polyline points="12 5 19 12 12 19" />
-              </svg>
-            )}
-          </button>
+          <div className={`yj-send-glow flex-shrink-0${busy ? ' is-disabled' : ''}`}>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={busy}
+              aria-label={t.send}
+              title={t.send}
+              className="flex h-[42px] w-[42px] items-center justify-center rounded-full bg-[var(--fg)] text-[var(--surface)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {busy ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]">
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                  <polyline points="12 5 19 12 12 19" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
         {err && <p className="mt-4 text-sm text-red-600">{err}</p>}
         <p className="mt-4 text-xs text-[var(--meta)]">{busy ? t.compressing : t.tip}</p>
