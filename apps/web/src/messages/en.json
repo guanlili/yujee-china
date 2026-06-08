@@ -118,8 +118,6 @@
     },
     "myAlbums": {
       "title": "My albums",
-      "empty": "No albums yet.",
-      "startFirst": "Start your first one",
       "create": "New album",
       "open": "Open",
       "delete": "Delete",

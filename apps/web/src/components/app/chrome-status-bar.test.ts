@@ -27,17 +27,41 @@ test('marketing nav delegates the right status cluster to ChromeStatusBar', () =
   assert.match(marketingNav, /homeSectionHref\('pricing'\)/, 'MarketingNav pricing should target the landing pricing section');
 });
 
-test('pricing uses the same chrome pill style source as the language switcher', () => {
+test('pricing uses the shared chrome pill style', () => {
   const statusBar = source('app/ChromeStatusBar.tsx');
-  const languageSwitcher = source('app/LanguageSwitcher.tsx');
 
   assert.match(statusBar, /CHROME_PILL_BUTTON_CLASS/, 'Pricing should use the shared chrome pill class');
-  assert.match(languageSwitcher, /CHROME_PILL_BUTTON_CLASS/, 'LanguageSwitcher should use the shared chrome pill class');
   assert.doesNotMatch(
     statusBar,
     /className="hidden items-center rounded-full bg-\[#ececec\] px-3 py-1\.5 text-sm/,
     'Pricing must not keep a separate, smaller pill class',
   );
+});
+
+test('language switcher matches the Home 1 nav pill (ghost pill + dropdown with tick)', () => {
+  const languageSwitcher = source('app/LanguageSwitcher.tsx');
+
+  // Home 1 trigger is a ghost pill, not the shared solid chrome pill.
+  assert.doesNotMatch(
+    languageSwitcher,
+    /CHROME_PILL_BUTTON_CLASS/,
+    'LanguageSwitcher should not reuse the shared solid chrome pill',
+  );
+  assert.match(languageSwitcher, /bg-black\/\[0\.06\]/, 'Trigger should use the Home 1 ghost pill background');
+  // Current locale is marked with a right-aligned tick, not a full black row.
+  assert.match(languageSwitcher, /✓/, 'Active locale should be marked with a tick');
+  assert.doesNotMatch(languageSwitcher, /bg-\[var\(--fg\)\]/, 'Active locale must not be a full black row');
+});
+
+test('top chrome no longer renders a credits pill', () => {
+  const sessionControls = source('app/SessionControls.tsx');
+  const chromeStatusBar = source('app/ChromeStatusBar.tsx');
+  const appChrome = source('app/AppChrome.tsx');
+
+  assert.doesNotMatch(sessionControls, /CreditsPill/, 'SessionControls must not render the credits pill');
+  assert.doesNotMatch(sessionControls, /showCredits/, 'SessionControls must drop the showCredits prop');
+  assert.doesNotMatch(chromeStatusBar, /showCredits/, 'ChromeStatusBar must drop the showCredits prop');
+  assert.doesNotMatch(appChrome, /showCredits/, 'AppChrome must drop the showCredits prop');
 });
 
 test('marketing chrome keeps a single black login action instead of a separate get-started button', () => {

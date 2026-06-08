@@ -13,10 +13,6 @@ interface Props {
   // surface. Other app pages (my-albums, settings, credits) keep the bare
   // chrome by leaving this false.
   showFooter?: boolean;
-  // The credits pill is shown by default on every app page. /create hides it
-  // (showCredits={false}) so its home surface stays focused on the composer;
-  // login / language switch / user menu are unaffected.
-  showCredits?: boolean;
   children: React.ReactNode;
 }
 
@@ -24,7 +20,6 @@ export function AppChrome({
   locale,
   activeNav,
   showFooter = false,
-  showCredits = true,
   children,
 }: Props) {
   return (
@@ -34,7 +29,7 @@ export function AppChrome({
         <nav className="sticky top-0 z-[100] backdrop-blur-xl bg-[rgba(245,245,245,0.55)]">
           <div className="mx-auto flex max-w-[1320px] items-center justify-between px-8 py-3">
             <Brand href={`/${locale}`} />
-            <ChromeStatusBar locale={locale} showCredits={showCredits} />
+            <ChromeStatusBar locale={locale} />
           </div>
         </nav>
         <main className="flex-1">{children}</main>

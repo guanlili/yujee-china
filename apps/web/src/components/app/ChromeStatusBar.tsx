@@ -11,9 +11,6 @@ interface Props {
   locale: Locale;
   className?: string;
   showPricing?: boolean;
-  // Whether to render the credits pill (logged-in only). Defaults to true;
-  // /create passes false to hide it via AppChrome.
-  showCredits?: boolean;
   languageClassName?: string;
   session?: ChromeSession;
 }
@@ -35,7 +32,6 @@ export function ChromeStatusBar({
   locale,
   className = '',
   showPricing = false,
-  showCredits = true,
   languageClassName = '',
   session,
 }: Props) {
@@ -43,8 +39,6 @@ export function ChromeStatusBar({
     locale,
     loginLabel: LOGIN_LABELS[locale],
     loginClassName: LOGIN_BUTTON_CLASS,
-    showCredits,
-    creditsClassName: 'hidden sm:contents',
     loadingClassName: 'h-9 w-[82px] rounded-full bg-[#ececec] sm:w-[142px]',
   };
 

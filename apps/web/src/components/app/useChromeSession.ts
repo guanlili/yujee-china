@@ -11,7 +11,6 @@ export interface ChromeUser {
 
 export interface ChromeSession {
   user: ChromeUser | null;
-  balance: number | null;
   plan: string;
   loading: boolean;
 }
@@ -23,19 +22,14 @@ function initialFor(user: { name: string | null; email: string }): string {
 
 export function useChromeSession(): ChromeSession {
   const [user, setUser] = useState<ChromeUser | null>(null);
-  const [balance, setBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const [meRes, balanceRes] = await Promise.all([
-          fetch('/api/v1/user/me'),
-          fetch('/api/v1/credit/balance'),
-        ]);
+        const meRes = await fetch('/api/v1/user/me');
         const meJson = await meRes.json();
-        const balanceJson = await balanceRes.json();
         if (!active) return;
         if (meJson.ok) {
           setUser({
@@ -45,7 +39,6 @@ export function useChromeSession(): ChromeSession {
             planLabel: meJson.data.plan?.label ?? 'Free',
           });
         }
-        if (balanceJson.ok) setBalance(balanceJson.data.balance);
       } finally {
         if (active) setLoading(false);
       }
@@ -55,5 +48,5 @@ export function useChromeSession(): ChromeSession {
     };
   }, []);
 
-  return { user, balance, plan: user?.planLabel ?? 'Free', loading };
+  return { user, plan: user?.planLabel ?? 'Free', loading };
 }

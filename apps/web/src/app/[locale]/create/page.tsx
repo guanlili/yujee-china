@@ -140,7 +140,7 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
   const canSubmit = !busy && photos.length >= 1 && prompt.trim().length > 0;
 
   return (
-    <AppChrome locale={locale} activeNav="home" showCredits={false} showFooter>
+    <AppChrome locale={locale} activeNav="home" showFooter>
       {/* Brand glow CTA (DESIGN.md §4): black pill on top, ::after linear-gradient
           (green→purple→lime) + blur underneath. Scoped to this page only — does
           not touch globals.css. This is the composer's primary CTA glow. */}

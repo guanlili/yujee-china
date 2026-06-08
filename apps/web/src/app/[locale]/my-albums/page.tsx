@@ -248,29 +248,36 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
     );
   };
 
+  // Grid-first "+" entry that opens the homepage composer. Sized h-full so it
+  // stays the same height as the album cards beside it (design-v1 Home 1).
+  const newCard = (
+    <Link
+      key="__new__"
+      href={`/${locale}#homepage-composer`}
+      title={t.myAlbums.create}
+      aria-label={t.myAlbums.create}
+      className="group grid h-full place-items-center rounded-[var(--radius-lg)] bg-[var(--surface)] border-2 border-solid border-[var(--border)] text-[var(--muted)] shadow-[var(--shadow-card)] transition hover:shadow-[var(--shadow-card-hover)] hover:-translate-y-0.5 hover:border-[var(--grad-green)] hover:text-[var(--grad-green)]"
+    >
+      <svg
+        className="w-12 h-12 transition-transform group-hover:scale-110"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <line x1="5" y1="12" x2="19" y2="12" />
+        <line x1="12" y1="5" x2="12" y2="19" />
+      </svg>
+    </Link>
+  );
+
   return (
     <AppChrome locale={locale} activeNav="projects">
       <div className="mx-auto w-full max-w-[1200px] px-10 py-8">
-        <div className="mb-7 flex items-center gap-5">
-          <Link
-            href={`/${locale}#homepage-composer`}
-            className="inline-flex shrink-0 items-center gap-2 rounded-full bg-[var(--fg)] px-7 py-3.5 text-base font-semibold text-white shadow-[var(--shadow-card)] transition-transform duration-200 hover:-translate-y-0.5"
-          >
-            <svg
-              className="h-5 w-5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            {t.myAlbums.create}
-          </Link>
+        <div className="mb-7">
           <h1 className="text-2xl font-bold tracking-tight">{t.myAlbums.title}</h1>
         </div>
 
@@ -278,17 +285,9 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
 
         {albums === null && <p className="text-[var(--muted)]">{t.common.loading}</p>}
 
-        {albums !== null && albums.length === 0 && !err && (
-          <div className="text-[var(--muted)]">
-            <p>{t.myAlbums.empty}</p>
-            <Link href={`/${locale}#homepage-composer`} className="underline">
-              {t.myAlbums.startFirst}
-            </Link>
-          </div>
-        )}
-
-        {albums !== null && albums.length > 0 && (
+        {albums !== null && (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-5">
+            {newCard}
             {albums.map((a, i) => card(a, i))}
           </div>
         )}

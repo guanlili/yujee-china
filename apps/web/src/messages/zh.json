@@ -118,8 +118,6 @@
     },
     "myAlbums": {
       "title": "我的相册",
-      "empty": "还没有相册。",
-      "startFirst": "创建第一本",
       "create": "新建相册",
       "open": "打开",
       "delete": "删除",
