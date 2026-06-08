@@ -11,15 +11,20 @@ function source(path: string): string {
   return readFileSync(join(components, path), 'utf8');
 }
 
-test('marketing nav delegates the full right status cluster to ChromeStatusBar', () => {
+test('marketing nav delegates the right status cluster to ChromeStatusBar', () => {
   const statusBar = source('app/ChromeStatusBar.tsx');
   const marketingNav = source('marketing/MarketingNav.tsx');
 
   assert.match(statusBar, /showPricing\??: boolean/, 'ChromeStatusBar owns pricing visibility');
   assert.match(statusBar, /href="#pricing"/, 'ChromeStatusBar owns the public pricing link (same-page #pricing anchor)');
-  assert.match(marketingNav, /<ChromeStatusBar locale=\{locale\} showPricing \/>/, 'MarketingNav should request the fixed status cluster variant');
-  assert.doesNotMatch(marketingNav, /#pricing/, 'MarketingNav must not hand-assemble a pricing link');
-  assert.doesNotMatch(marketingNav, /m\.nav\.pricing/, 'MarketingNav must not own pricing copy');
+  assert.match(
+    marketingNav,
+    /<ChromeStatusBar locale=\{locale\} languageClassName="hidden sm:block" session=\{session\} \/>/,
+    'MarketingNav should reuse the chrome status cluster for language/login/user controls',
+  );
+  assert.doesNotMatch(marketingNav, /showPricing/, 'MarketingNav should not duplicate pricing in the right status cluster');
+  assert.match(marketingNav, /m\.nav\.pricing/, 'MarketingNav owns the Home 1 centered pricing link');
+  assert.match(marketingNav, /homeSectionHref\('pricing'\)/, 'MarketingNav pricing should target the landing pricing section');
 });
 
 test('pricing uses the same chrome pill style source as the language switcher', () => {

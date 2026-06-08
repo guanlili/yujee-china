@@ -4,7 +4,8 @@ import Link from 'next/link';
 import type { Locale } from '@/lib/i18n/routing';
 import { CHROME_PILL_BUTTON_CLASS } from './chromeStyles';
 import { LanguageSwitcher } from './LanguageSwitcher';
-import { SessionControls } from './SessionControls';
+import { SessionControls, SessionControlsView } from './SessionControls';
+import type { ChromeSession } from './useChromeSession';
 
 interface Props {
   locale: Locale;
@@ -13,6 +14,8 @@ interface Props {
   // Whether to render the credits pill (logged-in only). Defaults to true;
   // /create passes false to hide it via AppChrome.
   showCredits?: boolean;
+  languageClassName?: string;
+  session?: ChromeSession;
 }
 
 const LOGIN_LABELS: Record<Locale, string> = {
@@ -33,7 +36,18 @@ export function ChromeStatusBar({
   className = '',
   showPricing = false,
   showCredits = true,
+  languageClassName = '',
+  session,
 }: Props) {
+  const sessionControlsProps = {
+    locale,
+    loginLabel: LOGIN_LABELS[locale],
+    loginClassName: LOGIN_BUTTON_CLASS,
+    showCredits,
+    creditsClassName: 'hidden sm:contents',
+    loadingClassName: 'h-9 w-[82px] rounded-full bg-[#ececec] sm:w-[142px]',
+  };
+
   return (
     <div className={`flex shrink-0 items-center gap-2 ${className}`}>
       {showPricing && (
@@ -48,15 +62,12 @@ export function ChromeStatusBar({
           {PRICING_LABELS[locale]}
         </Link>
       )}
-      <LanguageSwitcher locale={locale} />
-      <SessionControls
-        locale={locale}
-        loginLabel={LOGIN_LABELS[locale]}
-        loginClassName={LOGIN_BUTTON_CLASS}
-        showCredits={showCredits}
-        creditsClassName="hidden sm:contents"
-        loadingClassName="h-9 w-[82px] rounded-full bg-[#ececec] sm:w-[142px]"
-      />
+      <LanguageSwitcher locale={locale} className={languageClassName} />
+      {session ? (
+        <SessionControlsView {...sessionControlsProps} session={session} />
+      ) : (
+        <SessionControls {...sessionControlsProps} />
+      )}
     </div>
   );
 }

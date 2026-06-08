@@ -17,6 +17,10 @@ interface Props {
   loadingClassName?: string;
 }
 
+interface SessionControlsViewProps extends Props {
+  session: ReturnType<typeof useChromeSession>;
+}
+
 export function SessionControls({
   locale,
   loginLabel,
@@ -25,7 +29,29 @@ export function SessionControls({
   creditsClassName = 'contents',
   loadingClassName = 'h-9 w-[142px] rounded-full bg-[#ececec]',
 }: Props) {
-  const { user, balance, plan, loading } = useChromeSession();
+  return (
+    <SessionControlsView
+      locale={locale}
+      loginLabel={loginLabel}
+      loginClassName={loginClassName}
+      showCredits={showCredits}
+      creditsClassName={creditsClassName}
+      loadingClassName={loadingClassName}
+      session={useChromeSession()}
+    />
+  );
+}
+
+export function SessionControlsView({
+  locale,
+  loginLabel,
+  loginClassName,
+  showCredits = true,
+  creditsClassName = 'contents',
+  loadingClassName = 'h-9 w-[142px] rounded-full bg-[#ececec]',
+  session,
+}: SessionControlsViewProps) {
+  const { user, balance, plan, loading } = session;
 
   if (loading) {
     return <span aria-hidden="true" className={`inline-flex animate-pulse ${loadingClassName}`} />;

@@ -58,7 +58,7 @@ export default async function LandingPage({ params, searchParams }: Props) {
       <style>{`html { scroll-behavior: smooth; }`}</style>
 
       {/* ═══════════ 1 · HERO ═══════════ */}
-      <section className="relative flex flex-col items-center justify-center overflow-hidden px-6 pt-32 pb-20 text-center md:px-8">
+      <section className="relative flex flex-col items-center justify-center overflow-hidden px-5 pt-32 pb-20 text-center sm:px-8">
         <FingerprintArt />
 
         <h1

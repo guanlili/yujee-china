@@ -8,11 +8,12 @@ import { CHROME_PILL_BUTTON_CLASS } from './chromeStyles';
 
 interface Props {
   locale: Locale;
+  className?: string;
 }
 
 const LABELS: Record<Locale, string> = { en: 'English', zh: '中文' };
 
-export function LanguageSwitcher({ locale }: Props) {
+export function LanguageSwitcher({ locale, className = '' }: Props) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -27,7 +28,7 @@ export function LanguageSwitcher({ locale }: Props) {
   }, [open]);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className={`relative ${className}`}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

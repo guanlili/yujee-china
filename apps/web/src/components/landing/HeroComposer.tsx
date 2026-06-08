@@ -202,131 +202,130 @@ export function HeroComposer({
   };
 
   return (
-    <div
-      id="homepage-composer"
-      className="relative z-[1] w-full max-w-[720px] rounded-2xl p-[2px] transition-shadow"
-      style={{
-        background: 'linear-gradient(135deg, var(--grad-green), var(--grad-purple), var(--grad-lime))',
-        boxShadow:
-          '0 0 20px rgba(19,184,166,0.15), 0 0 40px rgba(140,94,244,0.1), 0 0 60px rgba(218,244,94,0.08)',
-      }}
-    >
-      <div className="rounded-2xl bg-[var(--surface)] p-5">
-        {/* Brand glow on the send button — design's .btn-glow-round: a black pill
-            with a blurred green→purple→lime gradient halo underneath (::after),
-            not a multi-color box-shadow. Scoped here; no globals.css change. */}
-        <style>{`
-          .yj-send-glow { position: relative; }
-          .yj-send-glow > button { position: relative; z-index: 1; transition: transform .3s ease; }
-          .yj-send-glow::after {
-            content: ''; position: absolute; z-index: 0; pointer-events: none;
-            left: -14%; right: -14%; bottom: -3px; height: 100%;
-            background: linear-gradient(90deg, var(--grad-green), var(--grad-purple), var(--grad-lime));
-            filter: blur(10px); opacity: .6; border-radius: 9999px;
-            transition: filter .3s ease, opacity .3s ease, bottom .3s ease;
-          }
-          .yj-send-glow:hover:not(.is-disabled) > button { transform: translateY(-1px); }
-          .yj-send-glow:hover:not(.is-disabled)::after { filter: blur(13px); opacity: .8; bottom: -4px; }
-          .yj-send-glow.is-disabled::after { opacity: 0; }
-        `}</style>
-        <div className="flex items-start gap-3.5">
-          <label
-            title={uploadLabel}
-            aria-disabled={busy}
-            className="flex h-[78px] w-[52px] flex-shrink-0 -rotate-[15deg] cursor-pointer items-center justify-center rounded-2xl bg-[var(--bg)] text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--fg)] aria-disabled:opacity-50"
-          >
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              disabled={busy}
-              aria-label={uploadLabel}
-              onChange={(e) => onFiles(e.target.files)}
+    <>
+      <style>{`
+        #homepage-composer .btn-glow { position: relative; }
+        #homepage-composer .btn-glow > button { position: relative; z-index: 1; }
+        #homepage-composer .btn-glow::after {
+          content: ''; position: absolute; z-index: 0; pointer-events: none;
+          left: 6%; right: 6%; bottom: -3px; height: 72%;
+          background: linear-gradient(90deg, var(--grad-green), var(--grad-purple), var(--grad-lime));
+          filter: blur(13px); opacity: .6; border-radius: 9999px;
+          transition: filter .3s ease, opacity .3s ease, bottom .3s ease;
+        }
+        #homepage-composer .btn-glow:not(.btn-glow-disabled):hover > button { transform: translateY(-2px); }
+        #homepage-composer .btn-glow:not(.btn-glow-disabled):hover::after { filter: blur(17px); opacity: .78; bottom: -5px; }
+        #homepage-composer .btn-glow-round::after { left: -14%; right: -14%; bottom: -3px; height: 100%; filter: blur(10px); opacity: .6; }
+        #homepage-composer .btn-glow-round:not(.btn-glow-disabled):hover > button { transform: translateY(-1px); }
+        #homepage-composer .btn-glow-round:not(.btn-glow-disabled):hover::after { filter: blur(13px); opacity: .8; bottom: -4px; }
+      `}</style>
+      <div
+        id="homepage-composer"
+        className="relative z-[1] w-full max-w-[720px] rounded-[22px] p-[2px] text-left transition-shadow focus-within:shadow-[0_0_0_4px_rgba(19,184,166,0.18)]"
+        style={{
+          background: 'linear-gradient(135deg, var(--grad-green), var(--grad-purple) 55%, var(--grad-lime))',
+        }}
+      >
+        <div className="rounded-[20px] bg-[var(--surface)] p-4 sm:p-5">
+          <div className="flex items-start gap-3 sm:gap-4">
+            <label
+              title={uploadLabel}
+              aria-disabled={busy}
+              className="flex h-[78px] w-[52px] flex-shrink-0 -rotate-[15deg] cursor-pointer items-center justify-center rounded-lg bg-[var(--bg)] text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--fg)] aria-disabled:opacity-50"
+            >
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                disabled={busy}
+                aria-label={uploadLabel}
+                onChange={(e) => onFiles(e.target.files)}
+              />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-[22px] w-[22px]">
+                <line x1="12" y1="6" x2="12" y2="18" />
+                <line x1="6" y1="12" x2="18" y2="12" />
+              </svg>
+            </label>
+            <textarea
+              rows={2}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              maxLength={500}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void submit();
+                }
+              }}
+              placeholder={placeholder}
+              className="flex-1 resize-none border-none bg-transparent pt-1 text-[var(--text-base)] leading-relaxed text-[var(--fg)] outline-none placeholder:text-[var(--meta)]"
             />
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-[22px] w-[22px]">
-              <line x1="12" y1="6" x2="12" y2="18" />
-              <line x1="6" y1="12" x2="18" y2="12" />
-            </svg>
-          </label>
-          <textarea
-            rows={3}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            maxLength={500}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                void submit();
-              }
-            }}
-            placeholder={placeholder}
-            className="min-h-[72px] flex-1 resize-none border-none bg-transparent text-[var(--text-base)] leading-relaxed text-[var(--fg)] outline-none placeholder:text-[var(--meta)]"
-          />
-        </div>
-        {photos.length > 0 && (
-          <div className="mt-4">
-            <div className="grid grid-cols-6 gap-2 md:grid-cols-8">
-              {photos.map((p) => (
-                <div key={p.photoId} className="group relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={p.previewUrl}
-                    alt=""
-                    className="aspect-square w-full rounded-lg object-cover"
-                  />
-                  <button
-                    type="button"
-                    aria-label={t.removePhoto}
-                    onClick={() => remove(p.photoId)}
-                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
-                  >
-                    ×
-                  </button>
-                </div>
+          </div>
+          {photos.length > 0 && (
+            <div className="mt-4">
+              <div className="grid grid-cols-6 gap-2 md:grid-cols-8">
+                {photos.map((p) => (
+                  <div key={p.photoId} className="group relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.previewUrl}
+                      alt=""
+                      className="aspect-square w-full rounded-lg object-cover"
+                    />
+                    <button
+                      type="button"
+                      aria-label={t.removePhoto}
+                      onClick={() => remove(p.photoId)}
+                      className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-[var(--meta)]">
+                {t.photoCount.replace('{count}', String(photos.length))} · {t.minPhotos}
+              </p>
+            </div>
+          )}
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+              {hints.map((hint) => (
+                <button
+                  key={hint.label}
+                  type="button"
+                  onClick={() => setValue(hint.fill)}
+                  className="rounded-full bg-[var(--bg)] px-2.5 py-1 text-[var(--text-xs)] text-[var(--meta)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors hover:bg-[var(--border-soft)] hover:text-[var(--fg-2)]"
+                >
+                  {hint.label}
+                </button>
               ))}
             </div>
-            <p className="mt-2 text-xs text-[var(--meta)]">
-              {t.photoCount.replace('{count}', String(photos.length))} · {t.minPhotos}
-            </p>
-          </div>
-        )}
-        <div className="mt-3.5 flex items-center justify-between gap-3">
-          <div className="hidden flex-1 flex-wrap gap-1.5 sm:flex">
-            {hints.map((hint) => (
+            <div className={`btn-glow btn-glow-round flex-shrink-0 ${busy ? 'btn-glow-disabled' : ''}`}>
               <button
-                key={hint.label}
                 type="button"
-                onClick={() => setValue(hint.fill)}
-                className="rounded-full bg-[var(--bg)] px-2.5 py-1 text-[var(--text-xs)] text-[var(--meta)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors hover:bg-[var(--border-soft)] hover:text-[var(--fg-2)]"
+                onClick={submit}
+                disabled={busy}
+                aria-label={t.send}
+                title={t.send}
+                className="grid h-10 w-10 place-items-center rounded-full bg-[var(--fg)] text-white transition-transform duration-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {hint.label}
+                {busy ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]">
+                    <line x1="12" y1="19" x2="12" y2="5" />
+                    <polyline points="5 12 12 5 19 12" />
+                  </svg>
+                )}
               </button>
-            ))}
+            </div>
           </div>
-          <div className={`yj-send-glow flex-shrink-0${busy ? ' is-disabled' : ''}`}>
-            <button
-              type="button"
-              onClick={submit}
-              disabled={busy}
-              aria-label={t.send}
-              title={t.send}
-              className="flex h-[42px] w-[42px] items-center justify-center rounded-full bg-[var(--fg)] text-[var(--surface)] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {busy ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-              ) : (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]">
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                  <polyline points="12 5 19 12 12 19" />
-                </svg>
-              )}
-            </button>
-          </div>
+          {err && <p className="mt-4 text-sm text-red-600">{err}</p>}
+          <p className="mt-4 text-xs text-[var(--meta)]">{busy ? t.compressing : t.tip}</p>
         </div>
-        {err && <p className="mt-4 text-sm text-red-600">{err}</p>}
-        <p className="mt-4 text-xs text-[var(--meta)]">{busy ? t.compressing : t.tip}</p>
       </div>
-    </div>
+    </>
   );
 }

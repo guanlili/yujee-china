@@ -3,7 +3,11 @@ import type { Locale } from '@/lib/i18n/routing';
 export interface MarketingMessages {
   nav: {
     brand: string;
+    home: string;
+    myProjects: string;
+    howItWorks: string;
     pricing: string;
+    menuToggle: string;
     login: string;
     getStarted: string;
     languageLabel: string;
@@ -71,7 +75,11 @@ export interface MarketingMessages {
 const en: MarketingMessages = {
   nav: {
     brand: 'Yujee',
+    home: 'Home',
+    myProjects: 'My Projects',
+    howItWorks: 'How it works',
     pricing: 'Pricing',
+    menuToggle: 'Toggle navigation menu',
     login: 'Log in',
     getStarted: 'Get started',
     languageLabel: 'English',
@@ -247,7 +255,11 @@ const en: MarketingMessages = {
 const zh: MarketingMessages = {
   nav: {
     brand: 'Yujee',
+    home: '主页',
+    myProjects: '我的项目',
+    howItWorks: '玩法',
     pricing: '定价',
+    menuToggle: '打开导航菜单',
     login: '登录',
     getStarted: '开始创作',
     languageLabel: '中文',
