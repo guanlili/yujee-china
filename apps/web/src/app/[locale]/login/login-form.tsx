@@ -126,7 +126,7 @@ export function LoginForm({
           <button
             type="submit"
             disabled={busy}
-            className="mt-0.5 w-full rounded-full bg-[var(--fg)] px-5 py-3.5 text-[15px] font-semibold text-[var(--surface)] shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-[transform,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-px hover:shadow-[0_3px_10px_rgba(0,0,0,0.18)] disabled:opacity-50"
+            className="mt-0.5 w-full rounded-full bg-[var(--fg)] px-5 py-3.5 text-[15px] font-semibold text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-[transform,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-px hover:shadow-[0_3px_10px_rgba(0,0,0,0.18)] disabled:opacity-50"
           >
             {busy ? messages.loading : messages.loginAction}
           </button>

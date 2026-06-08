@@ -53,7 +53,7 @@ export function Sidebar({ locale, activeNav }: Props) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
               {item.icon}
             </svg>
-            <span className="pointer-events-none absolute left-[calc(100%+10px)] whitespace-nowrap rounded-full bg-[var(--fg)] px-2.5 py-1 text-[var(--text-xs)] font-medium text-[var(--surface)] opacity-0 -translate-x-1 transition-all group-hover:opacity-100 group-hover:translate-x-0">
+            <span className="pointer-events-none absolute left-[calc(100%+10px)] whitespace-nowrap rounded-full bg-[var(--fg)] px-2.5 py-1 text-[var(--text-xs)] font-medium text-white opacity-0 -translate-x-1 transition-all group-hover:opacity-100 group-hover:translate-x-0">
               {c[item.labelKey]}
             </span>
           </Link>

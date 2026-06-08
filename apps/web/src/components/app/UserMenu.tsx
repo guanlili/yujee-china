@@ -64,7 +64,7 @@ export function UserMenu({ user, plan, locale, onSignOut }: Props) {
             <button
               type="button"
               onClick={goPricing}
-              className="rounded-full bg-[var(--fg)] px-3.5 py-1 text-[var(--text-xs)] font-semibold text-[var(--surface)] shadow-sm transition-transform hover:-translate-y-px"
+              className="rounded-full bg-[var(--fg)] px-3.5 py-1 text-[var(--text-xs)] font-semibold text-white shadow-sm transition-transform hover:-translate-y-px"
             >
               {c.upgrade}
             </button>

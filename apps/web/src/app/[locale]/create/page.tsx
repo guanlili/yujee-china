@@ -276,7 +276,7 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
                   disabled={!canSubmit}
                   aria-label={t.send}
                   title={t.send}
-                  className="grid h-10 w-10 place-items-center rounded-full bg-[var(--fg)] text-[var(--surface)] transition-transform duration-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="grid h-10 w-10 place-items-center rounded-full bg-[var(--fg)] text-white transition-transform duration-200 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {busy ? (
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
