@@ -14,7 +14,6 @@ import { generationDraft, albumRecipe } from '@/lib/generation/draft';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 import { AppChrome } from '@/components/app/AppChrome';
-import { PricingSection } from '@/components/marketing/PricingSection';
 
 type LocalPhoto = {
   photoId: string;
@@ -141,11 +140,10 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
   const canSubmit = !busy && photos.length >= 1 && prompt.trim().length > 0;
 
   return (
-    <AppChrome locale={locale} activeNav="home" showPricing showFooter>
+    <AppChrome locale={locale} activeNav="home" showCredits={false} showFooter>
       {/* Brand glow CTA (DESIGN.md §4): black pill on top, ::after linear-gradient
           (green→purple→lime) + blur underneath. Scoped to this page only — does
-          not touch globals.css. This is the composer's primary CTA glow; the
-          embedded PricingSection carries its own glow on the best-value pack. */}
+          not touch globals.css. This is the composer's primary CTA glow. */}
       <style>{`
         .yj-btn-glow { position: relative; }
         .yj-btn-glow > button { position: relative; z-index: 1; }
@@ -297,8 +295,6 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
         {err && <p className="mt-5 text-sm text-red-600">{err}</p>}
         <p className="mt-4 text-xs text-[var(--meta)]">{busy ? t.compressing : t.tip}</p>
       </section>
-
-      <PricingSection locale={locale} />
     </AppChrome>
   );
 }
