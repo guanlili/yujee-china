@@ -11,7 +11,8 @@
     "./agent": "./src/agent.ts",
     "./api": "./src/api.ts",
     "./enums": "./src/enums.ts",
-    "./templates": "./src/templates.ts"
+    "./templates": "./src/templates.ts",
+    "./v2": "./src/v2.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",

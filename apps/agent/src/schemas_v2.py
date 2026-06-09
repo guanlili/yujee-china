@@ -1,0 +1,351 @@
+"""Pydantic mirror of @yujee/contracts `v2.ts` — authoring tree + /v2/album/*
+endpoints + v2 callback.
+
+Mirrors packages/contracts/src/v2.ts 1:1. Every model is `_Strict`
+(extra='forbid'), so unknown keys are rejected, never stripped. This is the
+enforcement point for D-GPS privacy: `V2InitExif` has only `takenAt`, so any
+lat/lng in the payload is rejected at parse time (tech-plan §3.1 / P0-2).
+
+Callback completed has two mutually-exclusive shapes (init→draftTree,
+finalize→layout); they are discriminated on `jobKind`, not `event`
+(tech-plan §1.1 / P0-1).
+"""
+
+from typing import Annotated, Literal, Union
+
+from pydantic import Field, HttpUrl
+
+from .schemas import (
+    Language,
+    Magazine,
+    Page,
+    PhotoAnalysis,
+    PhotoOrientation,
+    PhotoQuality,
+    PeopleCount,
+    Scene,
+    Mood,
+    TimeOfDay,
+    JobError,
+    _Strict,
+)
+
+# ---------- shared enums ------------------------------------------------------
+
+V2Style = Literal[
+    "warm-film", "editorial-mono", "soft-pastel", "bold-contrast", "vintage-print"
+]
+V2JobKind = Literal["init", "finalize"]
+V2JobStage = Literal["vision", "grouping", "skeleton", "finalize"]
+V2ChapterState = Literal[
+    "empty", "asking", "brief_ready", "generated", "skipped", "finalized"
+]
+V2ChapterRole = Literal["opening", "body", "closing"]
+ChatRole = Literal["user", "assistant"]
+
+# ---------- usage -------------------------------------------------------------
+
+
+class V2Models(_Strict):
+    vision: str | None = None
+    planning: str | None = None
+
+
+class Usage(_Strict):
+    durationMs: int = Field(ge=0)
+    visionCallCount: int = Field(ge=0, default=0)
+    planningInputTokens: int = Field(ge=0, default=0)
+    planningOutputTokens: int = Field(ge=0, default=0)
+    repairAttempts: int = Field(ge=0, default=0)
+    models: V2Models
+
+
+# ---------- theme / brief -----------------------------------------------------
+
+
+class V2Theme(_Strict):
+    subject: str
+    occasion: str | None = None
+    timeframe: str | None = None
+    tone: str
+    style: V2Style
+
+
+class V2ThemePartial(_Strict):
+    """`V2Theme.partial()` — all optional (draft phase before /theme)."""
+
+    subject: str | None = None
+    occasion: str | None = None
+    timeframe: str | None = None
+    tone: str | None = None
+    style: V2Style | None = None
+
+
+class V2Brief(_Strict):
+    userWords: str | None = None
+    factNote: str | None = None
+    mood: str | None = None
+
+
+# ---------- authoring tree ----------------------------------------------------
+
+
+class V2PhotoAnalysis(_Strict):
+    """Internal analysis. Extension fields (peopleCount/scene/mood/timeOfDay) are
+    composing/grouping hints; finalize strips them — they never reach the flat
+    AlbumLayoutPlan.photos."""
+
+    photoId: str = Field(min_length=1)
+    description: str
+    tags: list[str]
+    quality: PhotoQuality
+    orientation: PhotoOrientation
+    peopleCount: PeopleCount
+    scene: Scene
+    mood: Mood
+    timeOfDay: TimeOfDay | None = None
+
+
+class V2Exif(_Strict):
+    takenAt: str | None = None  # low-sensitivity, stored
+    place: str | None = None  # v1 always null (D-GPS); kept for v2 reuse
+    order: int = Field(ge=0)  # upload order, sort fallback when EXIF missing
+
+
+class V2Photo(_Strict):
+    photoId: str = Field(min_length=1)
+    analysis: V2PhotoAnalysis
+    exif: V2Exif
+    duplicateOf: str | None = None
+    used: bool
+
+
+class V2Cluster(_Strict):
+    label: str
+    timeRange: str | None = None
+    place: str | None = None
+    role: V2ChapterRole
+
+
+class V2Chapter(_Strict):
+    chapterId: str = Field(min_length=1)
+    state: V2ChapterState
+    cluster: V2Cluster
+    photoIds: list[str]
+    brief: V2Brief | None = None
+    askCount: int = Field(ge=0, default=0)
+    pages: list[Page]
+
+
+class V2Meta(_Strict):
+    theme: V2ThemePartial | None = None
+    style: V2Style = "warm-film"
+    language: Language
+    promptHint: str | None = Field(default=None, max_length=500)
+
+
+class V2BasePages(_Strict):
+    cover: Page
+    toc: Page | None = None
+    ending: Page
+
+
+class AlbumDraft(_Strict):
+    version: Literal["v2"]
+    meta: V2Meta
+    photoPool: list[V2Photo]
+    basePages: V2BasePages
+    chapters: list[V2Chapter]
+
+
+# ---------- v2 flat layout (finalize output; pages bound 1..48) ---------------
+
+
+class LayoutV2(_Strict):
+    """Same shape as AlbumLayoutPlan but pages bound is [1, 48] for v2 (tech-plan
+    §5.2 / M2). The external TS contract (layout.ts) has no upper bound, so Web
+    accepts it; the 48 cap is the Agent-side safety net."""
+
+    magazine: Magazine
+    photos: list[PhotoAnalysis]
+    pages: list[Page] = Field(min_length=1, max_length=48)
+
+
+# ---------- endpoint requests / responses -------------------------------------
+
+
+class V2AcceptedData(_Strict):
+    requestId: str = Field(min_length=1)
+    accepted: Literal[True]
+
+
+class V2AcceptedResponse(_Strict):
+    ok: Literal[True]
+    data: V2AcceptedData
+
+
+class V2InitExif(_Strict):
+    """★ Only `takenAt`. lat/lng are rejected here (extra='forbid') — the D-GPS
+    privacy enforcement point."""
+
+    takenAt: str | None = None
+
+
+class V2InitPhoto(_Strict):
+    photoId: str = Field(min_length=1)
+    base64: str = Field(min_length=1)
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+    exif: V2InitExif | None = None
+
+
+class V2InitMeta(_Strict):
+    promptHint: str | None = Field(default=None, max_length=500)
+
+
+class V2InitRequest(_Strict):
+    requestId: str = Field(min_length=1)
+    albumId: str = Field(min_length=1)
+    callbackUrl: HttpUrl
+    language: Language
+    meta: V2InitMeta | None = None
+    photos: list[V2InitPhoto] = Field(min_length=1, max_length=30)
+
+
+class V2ClusterOverview(_Strict):
+    chapterId: str
+    label: str
+    place: str | None = None
+    timeRange: str | None = None
+    photoDescs: list[str] = Field(max_length=8)
+
+
+class V2ThemeRequest(_Strict):
+    albumId: str = Field(min_length=1)
+    language: Language
+    clustersOverview: list[V2ClusterOverview] = Field(min_length=1)
+    currentTheme: V2Theme | None = None
+    userMessage: str | None = Field(default=None, max_length=500)
+
+
+class V2CoverDraft(_Strict):
+    templateId: str
+    texts: dict[str, str]
+    heroPhotoId: str | None = None
+
+
+class V2ThemeResponse(_Strict):
+    theme: V2Theme
+    cover: V2CoverDraft | None = None
+    assistantReply: str = Field(max_length=500)
+    usage: Usage
+
+
+class V2ChatTurn(_Strict):
+    role: ChatRole
+    content: str
+
+
+class V2ChapterIn(_Strict):
+    chapterId: str
+    state: V2ChapterState
+    cluster: V2Cluster
+    photos: list[V2PhotoAnalysis]
+    brief: V2Brief | None = None
+    pages: list[Page]
+
+
+class V2ChapterChatRequest(_Strict):
+    albumId: str = Field(min_length=1)
+    language: Language
+    theme: V2Theme | None = None
+    chapter: V2ChapterIn
+    history: list[V2ChatTurn] = Field(default_factory=list, max_length=20)
+    userMessage: str = Field(max_length=500)
+
+
+class V2PageTexts(_Strict):
+    pageIndex: int = Field(ge=0)
+    texts: dict[str, str]
+
+
+class V2ChapterChatResponse(_Strict):
+    assistantReply: str = Field(min_length=1, max_length=500)
+    chapterBrief: V2Brief | None = None
+    state: V2ChapterState
+    pagesTexts: list[V2PageTexts] | None = None
+    usage: Usage
+
+
+class V2FinalizeRequest(_Strict):
+    requestId: str = Field(min_length=1)
+    albumId: str = Field(min_length=1)
+    callbackUrl: HttpUrl
+    draftTree: AlbumDraft
+
+
+class V2LayoutPatchEntry(_Strict):
+    pageIndex: int = Field(ge=0)
+    templateId: str | None = None
+    images: dict[str, str] | None = None
+    texts: dict[str, str] | None = None
+
+
+class V2EditRequest(_Strict):
+    albumId: str = Field(min_length=1)
+    currentLayout: LayoutV2
+    history: list[V2ChatTurn] = Field(default_factory=list, max_length=20)
+    userMessage: str = Field(max_length=500)
+    language: Language
+
+
+class V2EditResponse(_Strict):
+    layoutPatch: list[V2LayoutPatchEntry] = Field(min_length=1, max_length=48)
+    assistantReply: str = Field(min_length=1, max_length=500)
+    usage: Usage
+
+
+# ---------- v2 callback envelope ----------------------------------------------
+# completed has two shapes discriminated by jobKind (NOT event) — P0-1.
+
+
+class V2ProgressCallback(_Strict):
+    event: Literal["progress"]
+    jobKind: V2JobKind
+    requestId: str = Field(min_length=1)
+    stage: V2JobStage
+    progress: int = Field(ge=0, le=100)
+    message: str | None = None
+
+
+class V2InitCompletedCallback(_Strict):
+    event: Literal["completed"]
+    jobKind: Literal["init"]
+    requestId: str = Field(min_length=1)
+    draftTree: AlbumDraft
+    usage: Usage
+
+
+class V2FinalizeCompletedCallback(_Strict):
+    event: Literal["completed"]
+    jobKind: Literal["finalize"]
+    requestId: str = Field(min_length=1)
+    layout: LayoutV2
+    usage: Usage
+
+
+class V2FailedCallback(_Strict):
+    event: Literal["failed"]
+    jobKind: V2JobKind
+    requestId: str = Field(min_length=1)
+    error: JobError
+    stage: V2JobStage | None = None
+    progress: int | None = Field(default=None, ge=0, le=100)
+
+
+V2CompletedCallback = Annotated[
+    Union[V2InitCompletedCallback, V2FinalizeCompletedCallback],
+    Field(discriminator="jobKind"),
+]
+
+V2Callback = Union[V2ProgressCallback, V2FailedCallback, V2CompletedCallback]
