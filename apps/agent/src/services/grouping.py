@@ -207,7 +207,7 @@ def _tag_jaccard(left: list[str], right: list[str]) -> float:
     left_set = {tag.strip().casefold() for tag in left if tag.strip()}
     right_set = {tag.strip().casefold() for tag in right if tag.strip()}
     if not left_set or not right_set:
-        return 0
+        return 0.0
     return len(left_set & right_set) / len(left_set | right_set)
 
 

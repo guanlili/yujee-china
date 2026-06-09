@@ -1,5 +1,5 @@
 from src.schemas_v2 import V2PhotoAnalysis
-from src.services.grouping import GroupingPhoto, build_photo_pool_and_chapters
+from src.services.grouping import GroupingPhoto, _tag_jaccard, build_photo_pool_and_chapters
 
 
 def _analysis(photo_id: str, *, tags: list[str] | None = None, quality: str = "detail") -> V2PhotoAnalysis:
@@ -130,6 +130,105 @@ def test_batch_duplicateof_and_cross_batch_deterministic_dedupe_mark_non_represe
     assert by_id["p5"].used is True
     assert by_id["p5"].duplicateOf is None
     assert [chapter.photoIds for chapter in chapters] == [["p1"], ["p3"], ["p5"]]
+
+
+def test_untimed_same_tags_across_batches_are_not_cross_batch_deduped():
+    shared_tags = ["garden", "family", "lunch", "sun", "portrait"]
+
+    photo_pool, chapters = build_photo_pool_and_chapters(
+        [
+            _photo(
+                "p1",
+                order=0,
+                batch_id=1,
+                group_hint="untimed",
+                tags=shared_tags,
+            ),
+            _photo(
+                "p2",
+                order=1,
+                batch_id=2,
+                group_hint="untimed",
+                tags=shared_tags,
+            ),
+        ]
+    )
+
+    by_id = {photo.photoId: photo for photo in photo_pool}
+    assert by_id["p1"].used is True
+    assert by_id["p1"].duplicateOf is None
+    assert by_id["p2"].used is True
+    assert by_id["p2"].duplicateOf is None
+    assert [chapter.photoIds for chapter in chapters] == [["p1"], ["p2"]]
+
+
+def test_cross_batch_dedupe_does_not_trigger_at_exact_three_second_boundary():
+    shared_tags = ["cake", "family", "table", "party", "smile"]
+
+    photo_pool, chapters = build_photo_pool_and_chapters(
+        [
+            _photo(
+                "p1",
+                order=0,
+                batch_id=1,
+                taken_at="2026-06-01T09:00:00Z",
+                group_hint="scan",
+                tags=shared_tags,
+            ),
+            _photo(
+                "p2",
+                order=1,
+                batch_id=2,
+                taken_at="2026-06-01T09:00:03Z",
+                group_hint="scan",
+                tags=shared_tags,
+            ),
+        ]
+    )
+
+    by_id = {photo.photoId: photo for photo in photo_pool}
+    assert by_id["p1"].used is True
+    assert by_id["p1"].duplicateOf is None
+    assert by_id["p2"].used is True
+    assert by_id["p2"].duplicateOf is None
+    assert [chapter.photoIds for chapter in chapters] == [["p1"], ["p2"]]
+
+
+def test_cross_batch_dedupe_does_not_trigger_at_exact_jaccard_overlap_boundary():
+    photo_pool, chapters = build_photo_pool_and_chapters(
+        [
+            _photo(
+                "p1",
+                order=0,
+                batch_id=1,
+                taken_at="2026-06-01T09:00:00Z",
+                group_hint="scan",
+                tags=["album", "cake", "family", "table"],
+            ),
+            _photo(
+                "p2",
+                order=1,
+                batch_id=2,
+                taken_at="2026-06-01T09:00:02Z",
+                group_hint="scan",
+                tags=["album", "cake", "family", "table", "garden"],
+            ),
+        ]
+    )
+
+    by_id = {photo.photoId: photo for photo in photo_pool}
+    assert by_id["p1"].used is True
+    assert by_id["p1"].duplicateOf is None
+    assert by_id["p2"].used is True
+    assert by_id["p2"].duplicateOf is None
+    assert [chapter.photoIds for chapter in chapters] == [["p1"], ["p2"]]
+
+
+def test_tag_jaccard_empty_sets_returns_float_zero():
+    assert type(_tag_jaccard([], [])) is float
+    assert _tag_jaccard([], []) == 0.0
+    assert type(_tag_jaccard([" "], ["album"])) is float
+    assert _tag_jaccard([" "], ["album"]) == 0.0
 
 
 def test_empty_chapters_are_removed_after_dedupe_and_roles_are_relabelled_after_cleanup():
