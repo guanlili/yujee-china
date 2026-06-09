@@ -3,7 +3,7 @@ import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
 import { creditService } from '@/services/credit/credit-service';
-import { ERRORS } from '@/lib/api/error-codes';
+import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { AlbumLayoutPlan, type AlbumLayoutPlanT } from '@/lib/agent/layout-schema';
 import { logger } from '@/lib/log/logger';
 
@@ -363,9 +363,15 @@ export const jobService = {
     if (!job) return;
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return; // idempotent
 
+    // Inbound boundary for agent-reported codes (rebuild-tech-plan §1.6, P2-8):
+    // normalize the contract.md §8 namespace to error-codes.ts before persisting,
+    // so AGENT_OUTPUT_VALIDATION lands as AGENT_INVALID_OUTPUT in agent_jobs.error
+    // and albums.error_message. Pass-through for codes shared by both sides.
+    const mapped = { code: mapAgentErrorCode(error.code), message: error.message };
+
     await db.transaction(async (tx) => {
       const won = await agentJobRepo.transitionStatus(tx, job.id, 'FAILED', ['QUEUED', 'RUNNING'], {
-        error,
+        error: mapped,
         completedAt: new Date(),
       });
       if (!won) return;

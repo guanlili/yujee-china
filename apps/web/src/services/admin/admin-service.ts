@@ -4,6 +4,7 @@ import { albumRepo } from '@/db/repos/album-repo';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { creditLedgerRepo } from '@/db/repos/credit-ledger-repo';
 import { zombieSweeper } from '@/services/job/zombie-sweeper';
+import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
 import { logger } from '@/lib/log/logger';
 
 const STUCK_CUTOFF_MS = 5 * 60 * 1000;
@@ -116,11 +117,16 @@ export const adminService = {
     };
   },
 
-  // Manual trigger for the same safety net cron would run. Delegates entirely
-  // to the zombie sweeper — no duplicate cleanup logic here.
+  // Manual trigger for the same safety net cron would run. The daily cron does
+  // two independent cleanups (rebuild-tech-plan §12): the zombie sweeper releases
+  // stale RUNNING agent_jobs, and the draft-expiry sweeper releases the holds of
+  // idle drafts past 24h (EDITING + draft_json, never finalized). Both delegate
+  // to their own sweeper — no duplicate cleanup logic here.
   async recoverStuck(actorId: string) {
     logger.info({ actorId, action: 'admin.recoverStuck' });
-    return zombieSweeper.sweep('system');
+    const zombies = await zombieSweeper.sweep('system');
+    const expiredDrafts = await draftExpirySweeper.sweep('system');
+    return { ...zombies, expiredDrafts };
   },
 
   // Janitorial purge of dead FAILED albums. Invariant 1 means there are no
