@@ -51,3 +51,19 @@ export const ERRORS = {
   RATE_LIMITED:          () => new AppError('RATE_LIMITED',          'Too many requests',           429),
   INTERNAL_ERROR:        () => new AppError('INTERNAL_ERROR',        'Internal server error',       500),
 } as const;
+
+// Agent → Web error-code alignment (rebuild-tech-plan §1.6, fix P2-8). The agent
+// emits the contract.md §8 namespace (e.g. AGENT_OUTPUT_VALIDATION); Web persists
+// the error-codes.ts namespace. Map at the inbound callback boundary so a single
+// canonical code lands in agent_jobs.error / albums.error_message. Codes already
+// shared by both sides (AGENT_VISION_FAILED, AGENT_PLANNING_FAILED, AGENT_TIMEOUT,
+// AGENT_CHAT_FAILED) pass through unchanged. No ALBUM_BUSY is introduced — v2
+// concurrency / non-EDITING conflicts reuse ALBUM_NOT_EDITABLE (decided locally
+// in generationService, not in this map).
+const AGENT_ERROR_CODE_MAP: Record<string, string> = {
+  AGENT_OUTPUT_VALIDATION: 'AGENT_INVALID_OUTPUT',
+};
+
+export function mapAgentErrorCode(code: string): string {
+  return AGENT_ERROR_CODE_MAP[code] ?? code;
+}

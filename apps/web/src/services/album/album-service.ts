@@ -2,6 +2,7 @@ import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
 import { jobService } from '@/services/job/job-service';
+import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
 import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
 
@@ -68,6 +69,12 @@ export const albumService = {
       } else if (resolved?.kind === 'progress') {
         generation = { stage: resolved.stage, progress: resolved.progress };
       }
+    } else if (album.status === 'EDITING') {
+      // Read-time draft-expiry sweep (rebuild-tech-plan §12), the credit twin of
+      // the zombie sweep above: an idle draft past 24h releases its hold on the
+      // next look. The album stays EDITING with its draft_json intact (no status
+      // change, nothing to reload here) — finalize re-holds via ensureHold (§12.1).
+      await draftExpirySweeper.sweepAlbumOnRead(albumId);
     }
 
     const pages = await albumPageRepo.findByAlbum(albumId);
@@ -122,6 +129,11 @@ export const albumService = {
           const reloaded = await albumRepo.findById(a.id);
           status = reloaded?.status ?? status;
         }
+      } else if (status === 'EDITING') {
+        // Read-time draft-expiry sweep (§12): landing on /my-albums is enough to
+        // release an idle draft's hold past 24h. The album stays EDITING (the
+        // draft is kept), so status is unaffected — only the credit hold moves.
+        await draftExpirySweeper.sweepAlbumOnRead(a.id);
       }
       out.push({
         id: a.id,

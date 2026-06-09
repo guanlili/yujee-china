@@ -1,6 +1,6 @@
-import { and, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { db, type DbOrTx } from '../client';
-import { albums, type NewAlbum, type Album } from '../schema';
+import { albums, creditHolds, type NewAlbum, type Album } from '../schema';
 
 type AlbumStatus = Album['status'];
 
@@ -46,6 +46,60 @@ export const albumRepo = {
       .select()
       .from(albums)
       .where(and(eq(albums.status, 'FAILED'), lt(albums.createdAt, cutoff))),
+
+  // draft-expiry sweep (rebuild-tech-plan §12): an init succeeded (album EDITING,
+  // draft_json written, NOT yet finalized so layout_json is null) but the user
+  // never came back to finalize — its credit hold is still HOLDING and the album
+  // has been idle (updated_at) past the cutoff. Returns the (albumId, holdId)
+  // pairs whose hold should be released. layout_json IS NULL is the key guard: a
+  // finalized album is not an idle draft. Joining HOLDING holds keeps already
+  // released/settled drafts out, so the sweep is naturally idempotent.
+  findExpiredDrafts: async (
+    cutoff: Date,
+  ): Promise<{ albumId: string; holdId: string }[]> =>
+    db
+      .select({ albumId: albums.id, holdId: creditHolds.id })
+      .from(albums)
+      .innerJoin(
+        creditHolds,
+        and(eq(creditHolds.albumId, albums.id), eq(creditHolds.status, 'HOLDING')),
+      )
+      .where(
+        and(
+          eq(albums.status, 'EDITING'),
+          isNotNull(albums.draftJson),
+          isNull(albums.layoutJson),
+          lt(albums.updatedAt, cutoff),
+        ),
+      ),
+
+  // Per-album variant of findExpiredDrafts for the read-time opportunistic sweep
+  // (albumService.getDetail / listByUser): is THIS album an expired idle draft?
+  // Returns the HOLDING hold id to release, or null. Same predicate as the cron
+  // query, scoped to one album.
+  findExpiredDraftHold: async (
+    albumId: string,
+    cutoff: Date,
+  ): Promise<string | null> => {
+    const rows = await db
+      .select({ holdId: creditHolds.id })
+      .from(albums)
+      .innerJoin(
+        creditHolds,
+        and(eq(creditHolds.albumId, albums.id), eq(creditHolds.status, 'HOLDING')),
+      )
+      .where(
+        and(
+          eq(albums.id, albumId),
+          eq(albums.status, 'EDITING'),
+          isNotNull(albums.draftJson),
+          isNull(albums.layoutJson),
+          lt(albums.updatedAt, cutoff),
+        ),
+      )
+      .limit(1);
+    return rows[0]?.holdId ?? null;
+  },
 
   findByUser: async (userId: string): Promise<Album[]> =>
     db
