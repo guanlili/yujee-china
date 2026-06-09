@@ -5,6 +5,12 @@ import httpx
 
 from ..logging_config import get_logger
 from ..schemas import CompletedCallback, FailedCallback, ProgressCallback
+from ..schemas_v2 import (
+    V2FailedCallback,
+    V2FinalizeCompletedCallback,
+    V2InitCompletedCallback,
+    V2ProgressCallback,
+)
 from ..settings import get_settings
 
 log = get_logger("callback")
@@ -12,7 +18,19 @@ log = get_logger("callback")
 _TIMEOUT_SECONDS = 10
 _RETRY_BACKOFFS = (1, 4)
 
-Envelope = Union[ProgressCallback, CompletedCallback, FailedCallback]
+# v1 and v2 envelopes share the duck-typed contract this poster relies on:
+# `.event` (for logging), `.requestId` (for the giveup log), and a pydantic
+# `model_dump`. v2 callbacks go to a separate Web route (`/api/v2/internal/
+# job-progress`); the URL is the caller's choice, the wire mechanics are shared.
+Envelope = Union[
+    ProgressCallback,
+    CompletedCallback,
+    FailedCallback,
+    V2ProgressCallback,
+    V2InitCompletedCallback,
+    V2FinalizeCompletedCallback,
+    V2FailedCallback,
+]
 
 
 async def post(callback_url: str, envelope: Envelope) -> bool:

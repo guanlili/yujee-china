@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .logging_config import configure_logging, get_logger, request_id_var
-from .routes import chat_edit, health, layout
+from .routes import chat_edit, health, layout, v2_album
 from .settings import get_settings
 
 
@@ -44,6 +44,7 @@ app = FastAPI(title="Yujee Agent", version="1.0.0")
 app.include_router(health.router)
 app.include_router(layout.router)
 app.include_router(chat_edit.router)
+app.include_router(v2_album.router)
 
 
 @app.middleware("http")
