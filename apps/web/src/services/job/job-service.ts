@@ -97,14 +97,26 @@ export const jobService = {
         return { swept: false, releasedHold: false }; // a heartbeat refreshed it — still alive
       }
 
-      const album = await albumRepo.findById(job.albumId);
-      const holdId = album?.creditHoldId ?? null;
-
+      // The job is dead regardless of kind → mark it FAILED. The album/credit
+      // fork is OPPOSITE per agent_jobs.kind (rebuild-architecture.md §5):
       await agentJobRepo.update(tx, job.id, {
         status: 'FAILED',
         error: { code: 'AGENT_TIMEOUT', message: `${job.status} > ${timeoutMs}ms without callback` },
         completedAt: now,
       });
+
+      if (job.kind === 'finalize') {
+        // finalize zombie: the draft is still intact, so the album returns to
+        // EDITING and the hold stays HOLDING — the user can just retry finalize.
+        // NOT FAILED, NOT released (unlike init).
+        await albumRepo.update(tx, job.albumId, { status: 'EDITING' });
+        return { swept: true, releasedHold: false };
+      }
+
+      // init zombie (and legacy v1 jobs, which default to kind='init'): no draft
+      // to fall back to, so the album fails and the reservation is released.
+      const album = await albumRepo.findById(job.albumId);
+      const holdId = album?.creditHoldId ?? null;
       await albumRepo.update(tx, job.albumId, {
         status: 'FAILED',
         errorMessage: 'Generation timed out. No credit was charged.',
@@ -215,6 +227,158 @@ export const jobService = {
         errorMessage: error.message,
       });
 
+      await creditService.releaseByAlbum(tx, job.albumId);
+    });
+  },
+
+  // ──────────────────────────── v2 (agent rebuild) ────────────────────────────
+  // Two async jobs share an album lifecycle, discriminated by agent_jobs.kind:
+  // init (Stage 1+3 → draft tree) and finalize (Stage 5 → flat layout). Their
+  // failure semantics are OPPOSITE, so every terminal handler branches on kind.
+  // The v2 callback envelope (V2Callback) is parsed + kind-cross-checked by the
+  // route before these run. rebuild-architecture.md §5 / rebuild-tech-plan §1.1/§1.4.
+
+  // init/finalize both create a QUEUED job; kind is explicit (no DB default).
+  async createV2(
+    tx: DbOrTx,
+    input: { userId: string; albumId: string; requestId: string; kind: 'init' | 'finalize' },
+  ) {
+    return agentJobRepo.create(tx, {
+      userId: input.userId,
+      albumId: input.albumId,
+      requestId: input.requestId,
+      kind: input.kind,
+      status: 'QUEUED',
+      progress: 0,
+    });
+  },
+
+  // init/completed → write the authoring tree to draft_json + album EDITING
+  // ("draft ready"). layout_json stays null (the draft-vs-finalized discriminator)
+  // and the hold stays HOLDING — settle is deferred to finalize (§5). NOT settled.
+  // draftTree is already V2Callback-validated by the route; it lands as-is in the
+  // draft_json jsonb column (typed unknown — the route is the single validation).
+  async handleInitCompleted(requestId: string, draftTree: unknown, usage: unknown) {
+    const job = await agentJobRepo.findByRequestId(requestId);
+    if (!job) return; // idempotent: late callback after the row is gone
+    if (job.kind !== 'init') {
+      logger.error({ requestId, kind: job.kind }, 'init-completed callback on non-init job');
+      return;
+    }
+    if (job.status === 'COMPLETED' || job.status === 'FAILED') return; // idempotent
+
+    await db.transaction(async (tx) => {
+      // Win the terminal transition first; a concurrent failed/sweep that already
+      // moved it off QUEUED/RUNNING means we bail before touching the album, and
+      // the row lock blocks a double-delivered callback from writing twice.
+      const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
+        progress: 100,
+        stage: 'skeleton',
+        usage: (usage as Record<string, unknown> | null) ?? null,
+        completedAt: new Date(),
+      });
+      if (!won) return;
+
+      await albumRepo.update(tx, job.albumId, {
+        status: 'EDITING',
+        draftJson: draftTree,
+      });
+    });
+  },
+
+  // finalize/completed → flatten into album_pages + layout_json + settle the hold,
+  // all in one tx (invariant 8). album → EDITING (finalized: editable/exportable),
+  // NOT COMPLETED — that stays with PDF upload confirmation (§1.4). Opposite of
+  // init: this is where the single charge lands.
+  async handleFinalizeCompleted(requestId: string, rawLayout: unknown, usage: unknown) {
+    const job = await agentJobRepo.findByRequestId(requestId);
+    if (!job) return;
+    if (job.kind !== 'finalize') {
+      logger.error({ requestId, kind: job.kind }, 'finalize-completed callback on non-finalize job');
+      return;
+    }
+    if (job.status === 'COMPLETED' || job.status === 'FAILED') return; // idempotent
+
+    // Defence in depth: re-validate against the flat contract before persisting,
+    // mirroring v1 handleCompleted (the route already parsed V2Callback, but the
+    // flat layout is what hits album_pages — keep the same guard the v1 path has).
+    const parsed = AlbumLayoutPlan.safeParse(rawLayout);
+    if (!parsed.success) {
+      logger.error({ requestId, issues: parsed.error.issues }, 'v2 finalize layout invalid');
+      await this.handleV2Failed(requestId, {
+        code: 'AGENT_INVALID_OUTPUT',
+        message: parsed.error.issues.map((i) => i.message).join('; '),
+      });
+      return;
+    }
+    const layout: AlbumLayoutPlanT = parsed.data;
+
+    const album = await albumRepo.findById(job.albumId);
+    if (!album) {
+      logger.warn({ requestId, albumId: job.albumId }, 'album missing on finalize completed');
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
+        progress: 100,
+        stage: 'finalize',
+        usage: (usage as Record<string, unknown> | null) ?? null,
+        completedAt: new Date(),
+      });
+      if (!won) return;
+
+      await albumRepo.update(tx, job.albumId, {
+        title: layout.magazine.title,
+        status: 'EDITING',
+        layoutJson: layout,
+        pageCount: layout.pages.length,
+      });
+
+      await albumPageRepo.bulkInsert(
+        tx,
+        layout.pages.map((p) => ({
+          albumId: job.albumId,
+          pageIndex: p.pageIndex,
+          templateId: p.templateId,
+          imagesJson: p.images,
+          textsJson: p.texts,
+        })),
+      );
+
+      // settle whatever credit_hold_id currently points at (W7b guarantees it is
+      // a HOLDING hold at this point via finalize intake; settle is a no-op on a
+      // null/already-settled hold, so this is safe before W7b lands).
+      if (album.creditHoldId) {
+        await creditService.settle(tx, job.userId, album.creditHoldId);
+      }
+    });
+  },
+
+  // */failed → fork on kind. init: album FAILED + release (no draft to keep).
+  // finalize: album back to EDITING + hold stays HOLDING (retry-able) — the draft
+  // is untouched, so we never FAILED it nor release the reservation (§5).
+  async handleV2Failed(requestId: string, error: { code: string; message: string }) {
+    const job = await agentJobRepo.findByRequestId(requestId);
+    if (!job) return;
+    if (job.status === 'COMPLETED' || job.status === 'FAILED') return; // idempotent
+
+    await db.transaction(async (tx) => {
+      const won = await agentJobRepo.transitionStatus(tx, job.id, 'FAILED', ['QUEUED', 'RUNNING'], {
+        error,
+        completedAt: new Date(),
+      });
+      if (!won) return;
+
+      if (job.kind === 'finalize') {
+        await albumRepo.update(tx, job.albumId, { status: 'EDITING' });
+        return; // keep the hold; do not release
+      }
+
+      await albumRepo.update(tx, job.albumId, {
+        status: 'FAILED',
+        errorMessage: error.message,
+      });
       await creditService.releaseByAlbum(tx, job.albumId);
     });
   },
