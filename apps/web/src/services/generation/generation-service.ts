@@ -103,10 +103,16 @@ export const generationService = {
   // (AGENT_RUNNING) + the kind=init job, then forwards the base64 to the agent.
   // The completed callback writes draft_json (jobService.handleInitCompleted).
   //
-  // W7b (#123) owns credit: precheck + hold belong INSIDE this transaction (the
-  // album + job + reservation must commit atomically, invariant 8). Until then the
-  // init job runs without a hold — finalize-time settle no-ops on the null hold.
+  // W7b (#123): credit precheck + hold live INSIDE this transaction (album + job +
+  // reservation commit atomically, invariant 8). precheck runs first so an
+  // insufficient balance throws CREDIT_INSUFFICIENT and rolls the whole tx back
+  // before any album/job row is written (§6.5 decision 2 → front-end /pricing).
+  // The single charge lands at finalize-settle; the init hold is what 24h sweep
+  // releases and what finalize either reuses (≤24h re-entry) or re-holds (§12.1).
   async submitInitV2(userId: string, input: V2InitInput) {
+    const amount = creditService.cost();
+    await creditService.precheck(userId, amount);
+
     const placeholderTitle =
       input.promptHint?.trim().slice(0, 40) || (input.language === 'zh' ? '我的故事' : 'My Memoir');
 
@@ -117,13 +123,15 @@ export const generationService = {
         photoCount: input.photos.length,
         title: placeholderTitle,
       });
-      // W7b: creditService.precheck(userId, N) + creditService.hold(...) go here.
       await jobService.createV2(tx, {
         userId,
         albumId: album.albumId,
         requestId: input.requestId,
         kind: 'init',
       });
+      // hold creates the credit_holds row (HOLDING) and points albums.credit_hold_id
+      // at it — the same pointer finalize-settle later resolves (invariant 8).
+      await creditService.hold(tx, userId, amount, album.albumId);
       return album;
     });
 
@@ -148,12 +156,19 @@ export const generationService = {
     if (!parsed.success) throw ERRORS.ALBUM_NOT_EDITABLE(); // no/invalid draft to finalize
     const draftTree = parsed.data;
 
+    const amount = creditService.cost();
     const requestId = crypto.randomUUID();
     await db.transaction(async (tx) => {
       // EDITING → AGENT_RUNNING claims the album so a double-click can't start two
       // finalize jobs (W7b hardens the WHERE with the draft/layout conditions).
       const won = await albumRepo.transitionStatus(tx, albumId, 'AGENT_RUNNING', ['EDITING']);
       if (!won) throw ERRORS.ALBUM_NOT_EDITABLE();
+      // 补 hold (§12.1, invariant 8): if the init hold was released by the 24h
+      // draft-expiry sweep, re-hold so settle has a HOLDING hold to charge; if it's
+      // still HOLDING (≤24h re-entry) this no-ops — no second charge (§10.5). A
+      // precheck failure here throws CREDIT_INSUFFICIENT and rolls the lock back to
+      // EDITING (§6.5 decision 2 → /pricing); the draft is untouched.
+      await creditService.ensureHold(tx, userId, albumId, amount);
       await jobService.createV2(tx, { userId, albumId, requestId, kind: 'finalize' });
     });
 
