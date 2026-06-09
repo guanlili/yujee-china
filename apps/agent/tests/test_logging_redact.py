@@ -82,3 +82,50 @@ class TestRedaction:
         # promptLength is explicitly an allowed field in design.md §9.
         out = _run({"event": "evt", "promptLength": 42})
         assert out["promptLength"] == 42
+
+    # ── invariant 11 / D-GPS: coordinate + EXIF keys are a pre-set red line ──
+
+    @pytest.mark.parametrize(
+        "key,value",
+        [
+            ("lat", 37.7749),
+            ("lng", -122.4194),
+            ("latitude", 37.7749),
+            ("longitude", -122.4194),
+            ("gps", "37.7749,-122.4194"),
+            ("coordinates", [37.7749, -122.4194]),
+            ("place", "San Francisco, CA"),
+            ("LAT", 37.7749),  # case-insensitive
+            ("Coordinates", {"lat": 1, "lng": 2}),
+        ],
+    )
+    def test_geo_keys_redacted(self, key, value):
+        out = _run({"event": "evt", key: value})
+        assert out[key] == "<redacted>", f"{key} must be redacted (invariant 11)"
+
+    def test_exif_block_redacted(self):
+        # The raw EXIF block may carry an embedded GPS structure — never log it.
+        out = _run({"event": "evt", "exif": {"takenAt": "2020-01-01", "gps": [1, 2]}})
+        assert out["exif"] == "<redacted>"
+
+    def test_taken_at_not_redacted(self):
+        # takenAt is low-sensitivity time used for ordering/grouping — allowed.
+        out = _run({"event": "evt", "takenAt": "2020-01-01T00:00:00Z"})
+        assert out["takenAt"] == "2020-01-01T00:00:00Z"
+
+    def test_geo_substrings_do_not_overmatch(self):
+        # The short geo keys are EXACT-match, so benign fields that merely contain
+        # "lat"/"place" as a substring must pass through untouched.
+        out = _run(
+            {
+                "event": "evt",
+                "latency_ms": 12,
+                "translated": True,
+                "placeholder_count": 3,
+                "template_id": "mag-02",
+            }
+        )
+        assert out["latency_ms"] == 12
+        assert out["translated"] is True
+        assert out["placeholder_count"] == 3
+        assert out["template_id"] == "mag-02"

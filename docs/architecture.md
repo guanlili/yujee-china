@@ -104,7 +104,7 @@ Agent 暴露**两个端点**,工作模式不同:
 
 ---
 
-## 3. 十条不变式(违反 = bug)
+## 3. 十二条不变式(违反 = bug)
 
 1. 浏览器原图**永远不写入数据库,不存 R2**(只 base64 临时穿过 Web)。
 2. Web 收到 base64 后**只转发给 Agent**,不写日志、不落盘。
@@ -116,6 +116,8 @@ Agent 暴露**两个端点**,工作模式不同:
 8. 所有积分变更必须在 DB 事务里,和 album 状态变更原子。
 9. Agent 输出的 layout 写库前必须 zod 校验。
 10. `AGENT_SHARED_SECRET` 不允许出现在任何 client bundle 里。
+11. **隐私 · GPS/EXIF**:v1 **完全不抽取 GPS**(决策 D-GPS,rebuild-architecture §8.1)——浏览器 Stage 0 只读 `takenAt`,坐标根本不进入系统;故无地点分组、`place` 恒为 null、无创建页"包含地点信息"开关。`takenAt`(时间)低敏,可入 `draft_json`(排序/分组需要)。原始经纬度 = base64 同级机密:即便未来启用 GPS,也只反查一次粗地名当场丢弃,**绝不入库 / 日志 / `draft_json`**;入库的只有城市/地标级 `place`。redact 列表(`design.md §9`、`logging_config.py`)含 `lat/lng/latitude/longitude/gps/coordinates/place/exif` 作为预置红线,即便 v1 不抽 GPS 也保留,防回归/误传。
+12. **authoring 树边界**:authoring 树(`albums.draft_json` + 交互期请求体)**永不进渲染器 / PDF / 对外契约 / callback 的 `layout` 字段**。finalize 时拍平成扁平 `AlbumLayoutPlan` 写 `album_pages`;对外渲染契约恒为扁平 `magazine + photos + pages[]`。
 
 ---
 

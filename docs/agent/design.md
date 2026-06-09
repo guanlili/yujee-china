@@ -382,11 +382,12 @@ contract.md §6 之前写"5 分钟兜底扫描,第一版不实施"。**design �
 - `prompt`(用户原文)
 - 模型 raw response(只允许打**长度** + **是否解析成功**)
 - 用户邮箱 / userId(只打 requestId,Web 侧需要时自己 join)
+- **GPS / 坐标 / 反查地名(不变式 11,rebuild-architecture §6)**:`lat` / `lng` / `latitude` / `longitude` / `gps` / `coordinates` / `place`、以及 EXIF 原始块(`exif`)。**防御性保留**——即便 v1 不抽 GPS(D-GPS,坐标本不应出现),redact 列表仍含上述键,防未来启用 GPS 时回归或上游误传把坐标/粗地名打进日志。`takenAt` 例外(低敏时间,排序/分组用,可打)。
 
 ### 实施约束
 
 - Agent 日志库(当前是 structlog)在 processor 链最后加一道 redact,把上面列出的"禁止打的字段"统一改成 `<redacted>`,不依赖每个 caller 自觉
-- redact 列表至少包含 `base64`、`prompt`、`raw_response`、`email`,可继续加
+- redact 列表至少包含 `base64`、`prompt`、`raw_response`、`email`,以及坐标/EXIF 键 `lat`/`lng`/`latitude`/`longitude`/`gps`/`coordinates`/`place`/`exif`,可继续加
 - redact 不通过的字段 → 测试里**断言**不出现在日志输出
 
 ---
