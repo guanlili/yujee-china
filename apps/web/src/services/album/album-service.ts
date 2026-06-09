@@ -115,7 +115,13 @@ export const albumService = {
       let status = a.status;
       if (status === 'AGENT_RUNNING') {
         const resolved = await jobService.resolveGeneration(a.id);
-        if (resolved?.kind === 'swept') status = 'FAILED';
+        // A swept zombie is no longer AGENT_RUNNING, but its new status depends on
+        // kind (init→FAILED, finalize→back to EDITING), so reload rather than
+        // assume FAILED. See jobService.sweepStaleJob.
+        if (resolved?.kind === 'swept') {
+          const reloaded = await albumRepo.findById(a.id);
+          status = reloaded?.status ?? status;
+        }
       }
       out.push({
         id: a.id,

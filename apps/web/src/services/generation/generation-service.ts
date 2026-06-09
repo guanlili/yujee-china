@@ -5,7 +5,26 @@ import { creditService } from '@/services/credit/credit-service';
 import { agentClient, type AgentPhotoInput } from '@/lib/agent/agent-client';
 import { env } from '@/lib/env';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
+import { albumRepo } from '@/db/repos/album-repo';
+import { ERRORS } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
+import { AlbumDraft, type V2InitRequest } from '@yujee/contracts';
+
+// Browser → /api/v2/albums init payload (originals as base64, invariant 1). The
+// route generates nothing the browser owns except photo bytes; requestId is the
+// client's idempotency key, same as v1 /api/v1/jobs.
+type V2InitInput = {
+  requestId: string;
+  language: 'zh' | 'en';
+  promptHint?: string;
+  photos: Array<{
+    photoId: string;
+    base64: string;
+    width: number;
+    height: number;
+    takenAt?: string | null;
+  }>;
+};
 
 type GenerationInput = {
   requestId: string;
@@ -77,6 +96,69 @@ export const generationService = {
       photos: input.photos,
     });
   },
+
+  // ──────────────────────────── v2 (agent rebuild) ────────────────────────────
+
+  // POST /api/v2/albums — start the init job (Stage 1+3). Creates the album
+  // (AGENT_RUNNING) + the kind=init job, then forwards the base64 to the agent.
+  // The completed callback writes draft_json (jobService.handleInitCompleted).
+  //
+  // W7b (#123) owns credit: precheck + hold belong INSIDE this transaction (the
+  // album + job + reservation must commit atomically, invariant 8). Until then the
+  // init job runs without a hold — finalize-time settle no-ops on the null hold.
+  async submitInitV2(userId: string, input: V2InitInput) {
+    const placeholderTitle =
+      input.promptHint?.trim().slice(0, 40) || (input.language === 'zh' ? '我的故事' : 'My Memoir');
+
+    const { albumId } = await db.transaction(async (tx) => {
+      const album = await albumService.create(tx, {
+        userId,
+        prompt: input.promptHint ?? '',
+        photoCount: input.photos.length,
+        title: placeholderTitle,
+      });
+      // W7b: creditService.precheck(userId, N) + creditService.hold(...) go here.
+      await jobService.createV2(tx, {
+        userId,
+        albumId: album.albumId,
+        requestId: input.requestId,
+        kind: 'init',
+      });
+      return album;
+    });
+
+    return dispatchInitV2(albumId, input);
+  },
+
+  // POST /api/v2/albums/[uuid]/finalize — start the finalize job (Stage 5). Reads
+  // the authoring tree from draft_json, flips the album to AGENT_RUNNING
+  // ("completing"), creates the kind=finalize job, and forwards the tree. The
+  // completed callback flattens it (jobService.handleFinalizeCompleted).
+  //
+  // W7b (#123) owns the HARD intake: the compare-and-swap lock (EDITING AND
+  // draft_json IS NOT NULL AND layout_json IS NULL → AGENT_RUNNING) and the
+  // 补hold (re-hold if the draft's reservation was released by the 24h sweep).
+  // W7a does the app-level conditional flip below; the partial unique index on
+  // (album_id, kind) is the DB backstop against a concurrent double-finalize.
+  async submitFinalizeV2(userId: string, albumId: string) {
+    const album = await albumService.findOwned(userId, albumId);
+    if (album.layoutJson) throw ERRORS.ALBUM_NOT_EDITABLE(); // already finalized
+
+    const parsed = AlbumDraft.safeParse(album.draftJson);
+    if (!parsed.success) throw ERRORS.ALBUM_NOT_EDITABLE(); // no/invalid draft to finalize
+    const draftTree = parsed.data;
+
+    const requestId = crypto.randomUUID();
+    await db.transaction(async (tx) => {
+      // EDITING → AGENT_RUNNING claims the album so a double-click can't start two
+      // finalize jobs (W7b hardens the WHERE with the draft/layout conditions).
+      const won = await albumRepo.transitionStatus(tx, albumId, 'AGENT_RUNNING', ['EDITING']);
+      if (!won) throw ERRORS.ALBUM_NOT_EDITABLE();
+      await jobService.createV2(tx, { userId, albumId, requestId, kind: 'finalize' });
+    });
+
+    return dispatchFinalizeV2(albumId, requestId, draftTree);
+  },
 };
 
 // Shared tail of submit/retry (non-exported — it's an internal helper, not a
@@ -112,4 +194,80 @@ async function dispatch(
   if (job) await jobService.markRunning(db, job.id);
 
   return { albumId, requestId: payload.requestId };
+}
+
+// v2 init dispatch tail (mirrors `dispatch`): forward to the agent, flip the job
+// RUNNING. On submit failure, fail the job (kind=init → album FAILED + release)
+// and still return the albumId without throwing — the album exists, the browser
+// must learn its id (the failed card stays reachable). §6.5.3.
+async function dispatchInitV2(
+  albumId: string,
+  input: V2InitInput,
+): Promise<{ albumId: string; requestId: string; accepted: true }> {
+  const photos: V2InitRequest['photos'] = input.photos.map((p) => ({
+    photoId: p.photoId,
+    base64: p.base64,
+    width: p.width,
+    height: p.height,
+    ...(p.takenAt !== undefined ? { exif: { takenAt: p.takenAt } } : {}),
+  }));
+
+  try {
+    await agentClient.submitInitV2({
+      requestId: input.requestId,
+      albumId,
+      callbackUrl: `${env.WEB_BASE_URL}/api/v2/internal/job-progress`,
+      language: input.language,
+      ...(input.promptHint ? { meta: { promptHint: input.promptHint } } : {}),
+      photos,
+    });
+  } catch (e) {
+    logger.error(
+      { err: String(e), requestId: input.requestId },
+      'agent v2 init submit failed, marking job FAILED',
+    );
+    await jobService.handleV2Failed(input.requestId, {
+      code: 'AGENT_INTERNAL_ERROR',
+      message: 'Failed to submit to agent',
+    });
+    return { albumId, requestId: input.requestId, accepted: true };
+  }
+
+  const job = await agentJobRepo.findByRequestId(input.requestId);
+  if (job) await jobService.markRunning(db, job.id);
+
+  return { albumId, requestId: input.requestId, accepted: true };
+}
+
+// v2 finalize dispatch tail. On submit failure, fail the job (kind=finalize →
+// album back to EDITING + hold kept), so the user can simply retry finalize. The
+// draft is untouched; we never strand a charged-but-no-album state.
+async function dispatchFinalizeV2(
+  albumId: string,
+  requestId: string,
+  draftTree: AlbumDraft,
+): Promise<{ albumId: string; requestId: string; accepted: true }> {
+  try {
+    await agentClient.submitFinalizeV2({
+      requestId,
+      albumId,
+      callbackUrl: `${env.WEB_BASE_URL}/api/v2/internal/job-progress`,
+      draftTree,
+    });
+  } catch (e) {
+    logger.error(
+      { err: String(e), requestId },
+      'agent v2 finalize submit failed, marking job FAILED',
+    );
+    await jobService.handleV2Failed(requestId, {
+      code: 'AGENT_INTERNAL_ERROR',
+      message: 'Failed to submit to agent',
+    });
+    return { albumId, requestId, accepted: true };
+  }
+
+  const job = await agentJobRepo.findByRequestId(requestId);
+  if (job) await jobService.markRunning(db, job.id);
+
+  return { albumId, requestId, accepted: true };
 }
