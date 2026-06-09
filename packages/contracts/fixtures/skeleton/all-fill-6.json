@@ -1,0 +1,143 @@
+{
+  "name": "all-fill-six-splits-each-3-fill-page",
+  "input": {
+    "albumId": "album-all-fill-6",
+    "chapters": [
+      {
+        "chapterId": "chapter-fill",
+        "cluster": { "label": "Fill", "role": "body" },
+        "photoIds": ["p001", "p002", "p003", "p004", "p005", "p006"]
+      }
+    ],
+    "photos": [
+      { "photoId": "p001", "analysis": { "photoId": "p001", "description": "fill photo 1", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 0 }, "used": true },
+      { "photoId": "p002", "analysis": { "photoId": "p002", "description": "fill photo 2", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 1 }, "used": true },
+      { "photoId": "p003", "analysis": { "photoId": "p003", "description": "fill photo 3", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 2 }, "used": true },
+      { "photoId": "p004", "analysis": { "photoId": "p004", "description": "fill photo 4", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 3 }, "used": true },
+      { "photoId": "p005", "analysis": { "photoId": "p005", "description": "fill photo 5", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 4 }, "used": true },
+      { "photoId": "p006", "analysis": { "photoId": "p006", "description": "fill photo 6", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 5 }, "used": true }
+    ]
+  },
+  "expected": {
+    "basePages": {
+      "cover": {
+        "pageIndex": 0,
+        "templateId": "mag-20",
+        "images": {},
+        "texts": {}
+      },
+      "toc": null,
+      "ending": {
+        "pageIndex": 5,
+        "templateId": "mag-17",
+        "images": {
+          "image": "p001"
+        },
+        "texts": {}
+      }
+    },
+    "chapters": [
+      {
+        "chapterId": "chapter-fill",
+        "cluster": {
+          "label": "Fill",
+          "role": "body"
+        },
+        "photoIds": [
+          "p001",
+          "p002",
+          "p003",
+          "p004",
+          "p005",
+          "p006"
+        ],
+        "pages": [
+          {
+            "pageIndex": 1,
+            "templateId": "mag-18",
+            "images": {
+              "imageLeft": "p001",
+              "imageRight": "p002"
+            },
+            "texts": {}
+          },
+          {
+            "pageIndex": 2,
+            "templateId": "mag-19",
+            "images": {
+              "image": "p003"
+            },
+            "texts": {}
+          },
+          {
+            "pageIndex": 3,
+            "templateId": "mag-18",
+            "images": {
+              "imageLeft": "p004",
+              "imageRight": "p005"
+            },
+            "texts": {}
+          },
+          {
+            "pageIndex": 4,
+            "templateId": "mag-19",
+            "images": {
+              "image": "p006"
+            },
+            "texts": {}
+          }
+        ]
+      }
+    ],
+    "pages": [
+      {
+        "pageIndex": 0,
+        "templateId": "mag-20",
+        "images": {},
+        "texts": {}
+      },
+      {
+        "pageIndex": 1,
+        "templateId": "mag-18",
+        "images": {
+          "imageLeft": "p001",
+          "imageRight": "p002"
+        },
+        "texts": {}
+      },
+      {
+        "pageIndex": 2,
+        "templateId": "mag-19",
+        "images": {
+          "image": "p003"
+        },
+        "texts": {}
+      },
+      {
+        "pageIndex": 3,
+        "templateId": "mag-18",
+        "images": {
+          "imageLeft": "p004",
+          "imageRight": "p005"
+        },
+        "texts": {}
+      },
+      {
+        "pageIndex": 4,
+        "templateId": "mag-19",
+        "images": {
+          "image": "p006"
+        },
+        "texts": {}
+      },
+      {
+        "pageIndex": 5,
+        "templateId": "mag-17",
+        "images": {
+          "image": "p001"
+        },
+        "texts": {}
+      }
+    ]
+  }
+}
