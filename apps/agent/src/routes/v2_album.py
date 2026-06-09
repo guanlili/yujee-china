@@ -29,7 +29,11 @@ from ..schemas_v2 import (
     V2Chapter,
     V2ChapterChatRequest,
     V2ChapterChatResponse,
+    V2EditRequest,
+    V2EditResponse,
     V2FailedCallback,
+    V2FinalizeCompletedCallback,
+    V2FinalizeRequest,
     V2InitCompletedCallback,
     V2InitRequest,
     V2JobStage,
@@ -41,8 +45,19 @@ from ..schemas_v2 import (
     V2ThemeRequest,
     V2ThemeResponse,
 )
-from ..services import callback, chapter_chat, grouping, skeleton, theme, vision_mock
+from ..services import (
+    callback,
+    chapter_chat,
+    chat_edit_v2,
+    finalize as finalize_service,
+    grouping,
+    skeleton,
+    theme,
+    vision_mock,
+)
 from ..services.chapter_chat import ChapterChatError
+from ..services.chat_edit_v2 import V2EditError
+from ..services.finalize import FinalizeError
 from ..services.grouping import GroupingPhoto
 from ..services.theme import ThemeError
 from ..services.vision import VisionError
@@ -381,6 +396,198 @@ async def submit_theme(req: V2ThemeRequest) -> dict:
         ) from exc
     except Exception as exc:  # noqa: BLE001 — must answer in contract shape
         log.exception("v2_theme.unhandled", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
+            },
+        ) from exc
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
+
+
+# ============================================================================
+# finalize (W6c) — async 202 + v2 callback job. Mirrors init's BackgroundTask +
+# callback shape (W6a), but runs Stage 5 (services/finalize.py): the
+# deterministic AlbumDraft → flat LayoutV2 flatten. The draftTree carries no
+# base64 — Agent stays stateless and never sees the originals (invariant 1).
+# completed carries `jobKind='finalize'` + the flat `layout`; failures carry
+# `jobKind='finalize'`. progress uses stage='finalize' throughout (tech-plan
+# §1.4 / §5.2). Flatten validation failure → AGENT_OUTPUT_VALIDATION (§1.6).
+# ============================================================================
+
+
+async def _emit_finalize_progress(req: V2FinalizeRequest, progress: int) -> None:
+    envelope = V2ProgressCallback(
+        event="progress",
+        jobKind="finalize",
+        requestId=req.requestId,
+        stage="finalize",
+        progress=progress,
+    )
+    await callback.post(str(req.callbackUrl), envelope)
+
+
+async def _emit_finalize_failure(
+    req: V2FinalizeRequest,
+    *,
+    code: str,
+    message: str,
+    stage: V2JobStage | None = None,
+) -> None:
+    if stage is not None:
+        # Reset the bar on the failing stage before failing (mirrors init / the
+        # v1 P0-7 behaviour); best-effort so we never crash the fail path.
+        try:
+            await _emit_finalize_progress(req, 0)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("v2_finalize.pre_fail_progress_error", error=str(exc))
+
+    envelope = V2FailedCallback(
+        event="failed",
+        jobKind="finalize",
+        requestId=req.requestId,
+        error=JobError(code=code, message=message[:500]),
+        stage=stage,
+    )
+    await callback.post(str(req.callbackUrl), envelope)
+
+
+async def _run_finalize(req: V2FinalizeRequest) -> None:
+    started = time.monotonic()
+
+    # Single deterministic stage (no LLM, no network): flatten the tree into the
+    # external flat LayoutV2 and hard-validate it (finalize.validate_v2).
+    await _emit_finalize_progress(req, 0)
+    try:
+        layout = finalize_service.finalize(req.draftTree)
+    except FinalizeError as exc:
+        # The flattened layout failed validate_v2 — surface as AGENT_OUTPUT_
+        # VALIDATION (§1.6; theory: deterministic, should not happen).
+        log.warning("v2_finalize.validation_failed", error=str(exc))
+        await _emit_finalize_failure(
+            req, code="AGENT_OUTPUT_VALIDATION", message=str(exc), stage="finalize"
+        )
+        return
+    except Exception as exc:  # noqa: BLE001  (deterministic; should not happen)
+        log.exception("v2_finalize.flatten_failed", error=str(exc))
+        await _emit_finalize_failure(
+            req, code="AGENT_OUTPUT_VALIDATION", message=str(exc), stage="finalize"
+        )
+        return
+    await _emit_finalize_progress(req, 100)
+
+    duration_ms = int((time.monotonic() - started) * 1000)
+    envelope = V2FinalizeCompletedCallback(
+        event="completed",
+        jobKind="finalize",
+        requestId=req.requestId,
+        layout=layout,
+        usage=Usage(
+            durationMs=duration_ms,
+            # Stage 5 core is deterministic — no vision/planning calls here
+            # (the §5.2 LLM niceties are deferred, see services/finalize.py).
+            models=V2Models(vision=None, planning=None),
+        ),
+    )
+    await callback.post(str(req.callbackUrl), envelope)
+    log.info(
+        "v2_finalize.completed",
+        duration_ms=duration_ms,
+        pages=len(layout.pages),
+        photos=len(layout.photos),
+    )
+
+
+async def _run_finalize_with_timeout(req: V2FinalizeRequest) -> None:
+    settings = get_settings()
+    token = request_id_var.set(req.requestId)
+    try:
+        try:
+            await asyncio.wait_for(
+                _run_finalize(req), timeout=settings.background_task_timeout_seconds
+            )
+        except asyncio.TimeoutError:
+            log.error("v2_finalize.timeout")
+            await _emit_finalize_failure(
+                req, code="AGENT_TIMEOUT", message="background task exceeded timeout"
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.exception("v2_finalize.unhandled", error=str(exc))
+            await _emit_finalize_failure(req, code="AGENT_INTERNAL_ERROR", message=str(exc))
+    finally:
+        request_id_var.reset(token)
+
+
+@router.post("/v2/album/finalize", status_code=202, dependencies=[Depends(require_bearer)])
+async def submit_finalize(req: V2FinalizeRequest, background_tasks: BackgroundTasks) -> dict:
+    log.info(
+        "v2_finalize.accepted",
+        album_id=req.albumId,
+        chapters=len(req.draftTree.chapters),
+        photos=len(req.draftTree.photoPool),
+    )
+    background_tasks.add_task(_run_finalize_with_timeout, req)
+    return {"ok": True, "data": {"requestId": req.requestId, "accepted": True}}
+
+
+# ============================================================================
+# edit (W6c) — synchronous endpoint wiring the W5 service (services/
+# chat_edit_v2.py). Operates on the finalized flat `currentLayout`, returns a
+# `layoutPatch` the Web side applies. Stateless: Agent never persists the
+# layout (tech-plan §1.5). DeepSeek/patch failure → AGENT_CHAT_FAILED/502
+# (§1.6). Mirrors the W6b theme/chapter-chat synchronous shape.
+# ============================================================================
+
+
+def _mock_edit_complete(req: V2EditRequest) -> Any:
+    """Deterministic injected `complete` returning a single no-op text edit so
+    the Web→Agent round-trip is testable without a DeepSeek key. Re-write one of
+    the cover's existing text slots back to itself: the service still runs all
+    coercion / re-template / clamp / validate_v2 on top, and the resulting patch
+    always re-validates because nothing actually changed (mirrors the W6b mocks).
+    """
+    cover = req.currentLayout.pages[0]
+    if cover.texts:
+        slot, value = next(iter(cover.texts.items()))
+        texts = {slot: value}
+    else:
+        texts = {}
+    return _mock_complete(
+        {
+            "assistantReply": (
+                f'(mock) Noted — "{req.userMessage[:120]}". '
+                "Real editing runs once the model is connected."
+            ),
+            "layoutPatch": [{"pageIndex": cover.pageIndex, "texts": texts}],
+        }
+    )
+
+
+@router.post("/v2/album/edit", dependencies=[Depends(require_bearer)])
+async def submit_edit(req: V2EditRequest) -> dict:
+    settings = get_settings()
+    log.info(
+        "v2_edit.accepted",
+        album_id=req.albumId,
+        pages=len(req.currentLayout.pages),
+        history_len=len(req.history),
+        language=req.language,
+    )
+    complete = _mock_edit_complete(req) if settings.agent_pipeline_mode == "mock" else None
+    try:
+        response: V2EditResponse = await chat_edit_v2.run(req, complete=complete)
+    except V2EditError as exc:
+        log.warning("v2_edit.failed", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_CHAT_FAILED", "message": str(exc)[:300]},
+            },
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
+        log.exception("v2_edit.unhandled", error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
