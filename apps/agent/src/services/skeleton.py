@@ -303,13 +303,13 @@ def needs_toc(chapters: Sequence[Mapping[str, Any]], total_pages: int) -> bool:
     return len(chapters) >= 4 and total_pages >= 8
 
 
-def _best_photo(photos: Sequence[Photo]) -> Photo | None:
+def best_photo(photos: Sequence[Photo]) -> Photo | None:
     if not photos:
         return None
     return min(photos, key=lambda photo: (_QUALITY_RANK[_quality(photo)], _order(photo), _photo_id(photo)))
 
 
-def _build_toc(chapters: Sequence[Mapping[str, Any]]) -> Page:
+def build_toc(chapters: Sequence[Mapping[str, Any]]) -> Page:
     texts: dict[str, str] = {}
     for idx, chapter in enumerate(chapters):
         cluster = chapter.get("cluster")
@@ -318,7 +318,7 @@ def _build_toc(chapters: Sequence[Mapping[str, Any]]) -> Page:
     return {"pageIndex": 0, "templateId": "mag-02", "images": {}, "texts": texts}
 
 
-def _build_base_pages(
+def build_base_pages(
     album_id: str,
     used_photos: Sequence[Photo],
     chapter_pages: Sequence[Page],
@@ -339,9 +339,9 @@ def _build_base_pages(
         if _quality(photo) in ("hero", "detail") and budget_ok(photo)
     ]
     ending_pick = (
-        _best_photo(ending_candidates)
-        or _best_photo([photo for photo in used_photos if budget_ok(photo)])
-        or _best_photo(used_photos)
+        best_photo(ending_candidates)
+        or best_photo([photo for photo in used_photos if budget_ok(photo)])
+        or best_photo(used_photos)
     )
     if ending_pick is None:
         raise ValueError("cannot build ending without at least one used photo")
@@ -359,7 +359,7 @@ def _build_base_pages(
         for photo in used_photos
         if _quality(photo) in ("hero", "detail") and budget_ok(photo)
     ]
-    cover_pick = _best_photo(cover_candidates)
+    cover_pick = best_photo(cover_candidates)
     if cover_pick is None:
         cover = {"pageIndex": 0, "templateId": "mag-20", "images": {}, "texts": {}}
     else:
@@ -409,9 +409,9 @@ def build_skeleton(input_data: Mapping[str, Any]) -> SkeletonResult:
         output_chapters.append(output_chapter)
         body_pages.extend(pages)
 
-    cover, ending = _build_base_pages(album_id, used_photos, body_pages)
+    cover, ending = build_base_pages(album_id, used_photos, body_pages)
     total_without_toc = 1 + len(body_pages) + 1
-    toc = _build_toc(output_chapters) if needs_toc(output_chapters, total_without_toc) else None
+    toc = build_toc(output_chapters) if needs_toc(output_chapters, total_without_toc) else None
 
     flat_pages = [cover]
     if toc is not None:
