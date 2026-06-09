@@ -1,0 +1,71 @@
+{
+  "name": "all-fill-thirty-full-skeleton",
+  "input": {
+    "albumId": "album-all-fill-30",
+    "chapters": [
+      {
+        "chapterId": "chapter-fill",
+        "cluster": { "label": "Fill", "role": "body" },
+        "photoIds": ["p001", "p002", "p003", "p004", "p005", "p006", "p007", "p008", "p009", "p010", "p011", "p012", "p013", "p014", "p015", "p016", "p017", "p018", "p019", "p020", "p021", "p022", "p023", "p024", "p025", "p026", "p027", "p028", "p029", "p030"]
+      }
+    ],
+    "photos": [
+      { "photoId": "p001", "analysis": { "photoId": "p001", "description": "fill photo 1", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 0 }, "used": true },
+      { "photoId": "p002", "analysis": { "photoId": "p002", "description": "fill photo 2", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 1 }, "used": true },
+      { "photoId": "p003", "analysis": { "photoId": "p003", "description": "fill photo 3", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 2 }, "used": true },
+      { "photoId": "p004", "analysis": { "photoId": "p004", "description": "fill photo 4", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 3 }, "used": true },
+      { "photoId": "p005", "analysis": { "photoId": "p005", "description": "fill photo 5", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 4 }, "used": true },
+      { "photoId": "p006", "analysis": { "photoId": "p006", "description": "fill photo 6", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 5 }, "used": true },
+      { "photoId": "p007", "analysis": { "photoId": "p007", "description": "fill photo 7", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 6 }, "used": true },
+      { "photoId": "p008", "analysis": { "photoId": "p008", "description": "fill photo 8", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 7 }, "used": true },
+      { "photoId": "p009", "analysis": { "photoId": "p009", "description": "fill photo 9", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 8 }, "used": true },
+      { "photoId": "p010", "analysis": { "photoId": "p010", "description": "fill photo 10", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 9 }, "used": true },
+      { "photoId": "p011", "analysis": { "photoId": "p011", "description": "fill photo 11", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 10 }, "used": true },
+      { "photoId": "p012", "analysis": { "photoId": "p012", "description": "fill photo 12", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 11 }, "used": true },
+      { "photoId": "p013", "analysis": { "photoId": "p013", "description": "fill photo 13", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 12 }, "used": true },
+      { "photoId": "p014", "analysis": { "photoId": "p014", "description": "fill photo 14", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 13 }, "used": true },
+      { "photoId": "p015", "analysis": { "photoId": "p015", "description": "fill photo 15", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 14 }, "used": true },
+      { "photoId": "p016", "analysis": { "photoId": "p016", "description": "fill photo 16", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 15 }, "used": true },
+      { "photoId": "p017", "analysis": { "photoId": "p017", "description": "fill photo 17", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 16 }, "used": true },
+      { "photoId": "p018", "analysis": { "photoId": "p018", "description": "fill photo 18", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 17 }, "used": true },
+      { "photoId": "p019", "analysis": { "photoId": "p019", "description": "fill photo 19", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 18 }, "used": true },
+      { "photoId": "p020", "analysis": { "photoId": "p020", "description": "fill photo 20", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 19 }, "used": true },
+      { "photoId": "p021", "analysis": { "photoId": "p021", "description": "fill photo 21", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 20 }, "used": true },
+      { "photoId": "p022", "analysis": { "photoId": "p022", "description": "fill photo 22", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 21 }, "used": true },
+      { "photoId": "p023", "analysis": { "photoId": "p023", "description": "fill photo 23", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 22 }, "used": true },
+      { "photoId": "p024", "analysis": { "photoId": "p024", "description": "fill photo 24", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 23 }, "used": true },
+      { "photoId": "p025", "analysis": { "photoId": "p025", "description": "fill photo 25", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 24 }, "used": true },
+      { "photoId": "p026", "analysis": { "photoId": "p026", "description": "fill photo 26", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 25 }, "used": true },
+      { "photoId": "p027", "analysis": { "photoId": "p027", "description": "fill photo 27", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 26 }, "used": true },
+      { "photoId": "p028", "analysis": { "photoId": "p028", "description": "fill photo 28", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 27 }, "used": true },
+      { "photoId": "p029", "analysis": { "photoId": "p029", "description": "fill photo 29", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 28 }, "used": true },
+      { "photoId": "p030", "analysis": { "photoId": "p030", "description": "fill photo 30", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 29 }, "used": true }
+    ]
+  },
+  "expected": {
+    "pages": [
+      { "pageIndex": 0, "templateId": "mag-20", "images": {}, "texts": {} },
+      { "pageIndex": 1, "templateId": "mag-18", "images": { "imageLeft": "p001", "imageRight": "p002" }, "texts": {} },
+      { "pageIndex": 2, "templateId": "mag-19", "images": { "image": "p003" }, "texts": {} },
+      { "pageIndex": 3, "templateId": "mag-18", "images": { "imageLeft": "p004", "imageRight": "p005" }, "texts": {} },
+      { "pageIndex": 4, "templateId": "mag-19", "images": { "image": "p006" }, "texts": {} },
+      { "pageIndex": 5, "templateId": "mag-18", "images": { "imageLeft": "p007", "imageRight": "p008" }, "texts": {} },
+      { "pageIndex": 6, "templateId": "mag-19", "images": { "image": "p009" }, "texts": {} },
+      { "pageIndex": 7, "templateId": "mag-18", "images": { "imageLeft": "p010", "imageRight": "p011" }, "texts": {} },
+      { "pageIndex": 8, "templateId": "mag-19", "images": { "image": "p012" }, "texts": {} },
+      { "pageIndex": 9, "templateId": "mag-18", "images": { "imageLeft": "p013", "imageRight": "p014" }, "texts": {} },
+      { "pageIndex": 10, "templateId": "mag-19", "images": { "image": "p015" }, "texts": {} },
+      { "pageIndex": 11, "templateId": "mag-18", "images": { "imageLeft": "p016", "imageRight": "p017" }, "texts": {} },
+      { "pageIndex": 12, "templateId": "mag-19", "images": { "image": "p018" }, "texts": {} },
+      { "pageIndex": 13, "templateId": "mag-18", "images": { "imageLeft": "p019", "imageRight": "p020" }, "texts": {} },
+      { "pageIndex": 14, "templateId": "mag-19", "images": { "image": "p021" }, "texts": {} },
+      { "pageIndex": 15, "templateId": "mag-18", "images": { "imageLeft": "p022", "imageRight": "p023" }, "texts": {} },
+      { "pageIndex": 16, "templateId": "mag-19", "images": { "image": "p024" }, "texts": {} },
+      { "pageIndex": 17, "templateId": "mag-18", "images": { "imageLeft": "p025", "imageRight": "p026" }, "texts": {} },
+      { "pageIndex": 18, "templateId": "mag-19", "images": { "image": "p027" }, "texts": {} },
+      { "pageIndex": 19, "templateId": "mag-18", "images": { "imageLeft": "p028", "imageRight": "p029" }, "texts": {} },
+      { "pageIndex": 20, "templateId": "mag-19", "images": { "image": "p030" }, "texts": {} },
+      { "pageIndex": 21, "templateId": "mag-17", "images": { "image": "p001" }, "texts": {} }
+    ]
+  }
+}

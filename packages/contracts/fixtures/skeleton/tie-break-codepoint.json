@@ -1,0 +1,24 @@
+{
+  "name": "codepoint-tie-break-matches-python",
+  "input": {
+    "albumId": "album-tie",
+    "chapters": [
+      {
+        "chapterId": "chapter-tie",
+        "cluster": { "label": "Tie", "role": "body" },
+        "photoIds": ["A", "a"]
+      }
+    ],
+    "photos": [
+      { "photoId": "A", "analysis": { "photoId": "A", "description": "upper", "tags": ["fixture"], "quality": "detail", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 0 }, "used": true },
+      { "photoId": "a", "analysis": { "photoId": "a", "description": "lower", "tags": ["fixture"], "quality": "detail", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 0 }, "used": true }
+    ]
+  },
+  "expected": {
+    "pages": [
+      { "pageIndex": 0, "templateId": "p01", "images": { "image": "a" }, "texts": {} },
+      { "pageIndex": 1, "templateId": "mag-15", "images": { "imagePerson": "A", "imageRoad": "a" }, "texts": {} },
+      { "pageIndex": 2, "templateId": "mag-17", "images": { "image": "A" }, "texts": {} }
+    ]
+  }
+}

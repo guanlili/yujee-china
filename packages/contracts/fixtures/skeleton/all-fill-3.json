@@ -1,0 +1,68 @@
+{
+  "name": "all-fill-three-splits-2-plus-1",
+  "input": {
+    "albumId": "album-all-fill-3",
+    "chapters": [
+      {
+        "chapterId": "chapter-fill",
+        "cluster": { "label": "Fill", "role": "body" },
+        "photoIds": ["p001", "p002", "p003"]
+      }
+    ],
+    "photos": [
+      {
+        "photoId": "p001",
+        "analysis": {
+          "photoId": "p001",
+          "description": "fill photo 1",
+          "tags": ["fixture"],
+          "quality": "fill",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": { "takenAt": null, "order": 0 },
+        "used": true
+      },
+      {
+        "photoId": "p002",
+        "analysis": {
+          "photoId": "p002",
+          "description": "fill photo 2",
+          "tags": ["fixture"],
+          "quality": "fill",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": { "takenAt": null, "order": 1 },
+        "used": true
+      },
+      {
+        "photoId": "p003",
+        "analysis": {
+          "photoId": "p003",
+          "description": "fill photo 3",
+          "tags": ["fixture"],
+          "quality": "fill",
+          "orientation": "landscape",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": { "takenAt": null, "order": 2 },
+        "used": true
+      }
+    ]
+  },
+  "expected": {
+    "pages": [
+      { "pageIndex": 0, "templateId": "mag-20", "images": {}, "texts": {} },
+      { "pageIndex": 1, "templateId": "mag-18", "images": { "imageLeft": "p001", "imageRight": "p002" }, "texts": {} },
+      { "pageIndex": 2, "templateId": "mag-19", "images": { "image": "p003" }, "texts": {} },
+      { "pageIndex": 3, "templateId": "mag-17", "images": { "image": "p001" }, "texts": {} }
+    ]
+  }
+}
