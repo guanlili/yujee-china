@@ -160,4 +160,29 @@ export const creditService = {
     if (!album?.creditHoldId) return;
     await this.release(tx, album.creditHoldId);
   },
+
+  // W7b (#123) 补 hold (rebuild-tech-plan §12.1): guarantee albums.credit_hold_id
+  // points at a HOLDING hold for the finalize that settle will later resolve.
+  // Called from the finalize intake tx (after the EDITING→AGENT_RUNNING lock win).
+  //  - ≤24h re-entry: the init hold is still HOLDING → reuse it, no second charge
+  //    (requirements §10.5). No-op.
+  //  - after the 24h draft-expiry sweep released it (W7c) — or no hold ever — the
+  //    pointer is null/RELEASED/SETTLED → precheck (insufficient throws
+  //    CREDIT_INSUFFICIENT and rolls the lock back to EDITING, §6.5 decision 2) +
+  //    new HOLDING hold, which re-points credit_hold_id at the fresh hold.
+  // The single charge still lands once, at finalize-settle on the current pointer.
+  async ensureHold(
+    tx: DbOrTx,
+    userId: string,
+    albumId: string,
+    amount: number = CREDIT_COST_PER_ALBUM,
+  ): Promise<string> {
+    const album = await albumRepo.findById(albumId);
+    if (album?.creditHoldId) {
+      const existing = await creditHoldRepo.findById(album.creditHoldId);
+      if (existing?.status === 'HOLDING') return existing.id; // reuse — no double-charge
+    }
+    await this.precheck(userId, amount);
+    return this.hold(tx, userId, amount, albumId);
+  },
 };
