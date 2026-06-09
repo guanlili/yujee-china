@@ -314,3 +314,33 @@ async def test_non_affirmative_skip_message_does_not_generate_chapter(message: s
 
     assert res.state == "asking"
     assert res.pagesTexts is None
+
+
+@pytest.mark.asyncio
+async def test_substantive_answer_containing_skip_does_not_enter_skipped_path():
+    async def fake_complete(**_kwargs):
+        return _usage_response(
+            {
+                "assistantReply": "I have enough to write this chapter.",
+                "chapterBrief": {
+                    "userWords": "We decided to skip the crowded cafe and kept walking in the rain.",
+                    "factNote": "decided to skip a crowded cafe before the rainy walk",
+                    "mood": "gentle",
+                },
+                "state": "asking",
+            }
+        )
+
+    res = await chapter_chat.run(
+        _req(
+            "asking",
+            "We decided to skip the crowded cafe and kept walking in the rain.",
+        ),
+        ask_count=1,
+        complete=fake_complete,
+    )
+
+    assert res.state == "brief_ready"
+    assert res.pagesTexts is None
+    assert res.chapterBrief is not None
+    assert res.chapterBrief.factNote == "decided to skip a crowded cafe before the rainy walk"

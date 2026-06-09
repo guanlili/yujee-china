@@ -49,7 +49,7 @@ _NEGATED_SKIP_RE = re.compile(
     r"|不要跳过|别跳过|不跳过"
 )
 _EXPLICIT_SKIP_RE = re.compile(
-    r"\bskip(?:\s+(?:this|the|current))?(?:\s+chapter)?\b"
+    r"^\s*(?:please\s+)?skip(?:\s+(?:this|the|current))?(?:\s+chapter)?\s*[.!。]?\s*$"
 )
 class ChapterChatError(Exception):
     """Raised when the chapter-chat model call or JSON response is unusable."""
@@ -232,11 +232,13 @@ def _mode(
         return "generated_passthrough"
     if state == "brief_ready":
         return "brief_generate"
-    if state == "skipped" or _skip_requested(req.userMessage):
+    if state == "skipped":
         return "skipped_generate"
     if state in ("empty", "asking"):
+        if _skip_requested(req.userMessage):
+            return "skipped_generate"
         return "ask"
-    return "ask" if ask_count + 1 < auto_advance_after else "brief_generate"
+    raise ChapterChatError(f"unsupported chapter state: {state}")
 
 
 def _dialog_state_after_turn(
@@ -258,7 +260,7 @@ def _skip_requested(message: str) -> bool:
     if "skip" in lowered and "?" in lowered:
         return False
     return bool(_EXPLICIT_SKIP_RE.search(lowered)) or any(
-        marker in lowered for marker in _SKIP_MARKERS
+        lowered.strip(" .!。").startswith(marker) for marker in _SKIP_MARKERS
     )
 
 
@@ -297,11 +299,10 @@ def _coerce_pages_texts(
                     if isinstance(k, str) and str(v).strip()
                 }
 
-    allowed_sources = _allowed_sources(req)
     out: list[V2PageTexts] = []
     for page in req.chapter.pages:
         if skipped:
-            texts = _skipped_texts(page, req, allowed_sources)
+            texts = _skipped_texts(page, req)
         else:
             texts = _normalize_page_texts(page, raw_by_index.get(page.pageIndex, {}), req)
         out.append(V2PageTexts(pageIndex=page.pageIndex, texts=texts))
@@ -361,12 +362,14 @@ def _fallback_texts(page: Page, req: V2ChapterChatRequest) -> dict[str, str]:
 def _skipped_texts(
     page: Page,
     req: V2ChapterChatRequest,
-    allowed_sources: str,
 ) -> dict[str, str]:
     tpl = registry.get(page.templateId)
     text_slots = (tpl or {}).get("textSlots", {})
-    place = _allowed_phrase(req.chapter.cluster.place, allowed_sources)
-    time_range = _allowed_phrase(req.chapter.cluster.timeRange, allowed_sources)
+    # cluster.place/timeRange are the only concrete names/dates allowed in
+    # skipped copy: they come from Web's chapter slice (EXIF/grouping metadata),
+    # not from the model's generated text.
+    place = _cluster_phrase(req.chapter.cluster.place)
+    time_range = _cluster_phrase(req.chapter.cluster.timeRange)
     photo_summary = _page_photo_summary(page, req)
     heading = (
         _join_nonempty(place, "atmosphere")
@@ -422,17 +425,8 @@ def _page_photo_summary(page: Page, req: V2ChapterChatRequest) -> str:
     return f"A {parts[0]} {parts[1]} page shaped by light, texture, and small gestures."
 
 
-def _allowed_sources(req: V2ChapterChatRequest) -> str:
-    parts: list[str] = [req.userMessage]
-    parts.extend(turn.content for turn in req.history if turn.role == "user")
-    cluster = req.chapter.cluster
-    parts.extend(v for v in (cluster.place, cluster.timeRange) if v)
-    return "\n".join(parts).lower()
-
-
-def _allowed_phrase(value: str | None, allowed_sources: str) -> str:
-    text = value.strip() if isinstance(value, str) else ""
-    return text if text and text.lower() in allowed_sources else ""
+def _cluster_phrase(value: str | None) -> str:
+    return value.strip() if isinstance(value, str) and value.strip() else ""
 
 
 def _join_nonempty(*parts: str) -> str:

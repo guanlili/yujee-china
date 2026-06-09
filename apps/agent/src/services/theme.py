@@ -189,10 +189,6 @@ def _first_cluster_label(req: V2ThemeRequest) -> str:
 
 def _coerce_cover(raw: Any, theme: V2Theme) -> V2CoverDraft:
     data = raw if isinstance(raw, dict) else {}
-    template_id = _text(data.get("templateId")) or "mag-20"
-    if template_id not in registry.COVER_TEMPLATE_IDS:
-        template_id = "mag-20"
-
     # V2ThemeRequest carries cluster summaries, not photoIds. Without a truth
     # source to validate a model-supplied heroPhotoId, keep the cover text-only.
     template_id = "mag-20"
