@@ -13,9 +13,11 @@ self-contained here.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
+from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from ..auth import require_bearer
 from ..logging_config import get_logger, request_id_var
@@ -25,6 +27,8 @@ from ..schemas_v2 import (
     Usage,
     V2BasePages,
     V2Chapter,
+    V2ChapterChatRequest,
+    V2ChapterChatResponse,
     V2FailedCallback,
     V2InitCompletedCallback,
     V2InitRequest,
@@ -34,9 +38,13 @@ from ..schemas_v2 import (
     V2Photo,
     V2PhotoAnalysis,
     V2ProgressCallback,
+    V2ThemeRequest,
+    V2ThemeResponse,
 )
-from ..services import callback, grouping, skeleton, vision_mock
+from ..services import callback, chapter_chat, grouping, skeleton, theme, vision_mock
+from ..services.chapter_chat import ChapterChatError
 from ..services.grouping import GroupingPhoto
+from ..services.theme import ThemeError
 from ..services.vision import VisionError
 from ..services.vision import analyze as vision_analyze
 from ..settings import get_settings
@@ -294,3 +302,139 @@ async def submit_init(req: V2InitRequest, background_tasks: BackgroundTasks) -> 
     log.info("v2_init.accepted", photo_count=len(req.photos), language=req.language)
     background_tasks.add_task(_run_init_with_timeout, req)
     return {"ok": True, "data": {"requestId": req.requestId, "accepted": True}}
+
+
+# ============================================================================
+# theme + chapter-chat (W6b) — synchronous endpoints wiring the W3 pure
+# services (services/theme.py, services/chapter_chat.py). Stateless: Agent
+# never persists the draft; Web owns the tree and merges the response back
+# (tech-plan §1.2/§1.3). DeepSeek failure → AGENT_PLANNING_FAILED/502 (§1.6).
+# ============================================================================
+
+
+def _mock_complete(payload: dict[str, Any]) -> Any:
+    """Build a deterministic injected `complete` fn returning a single chat
+    completion whose JSON content the W3 service then coerces — mirroring
+    vision_mock / planning_mock / _mock_chat_edit so the Web→Agent round-trip
+    is testable without a DeepSeek key. The service still applies all coercion,
+    state-machine, and layout-rule clamping on top of this raw payload."""
+
+    async def complete(**_kwargs: Any) -> dict[str, Any]:
+        return {
+            "choices": [{"message": {"content": json.dumps(payload, ensure_ascii=False)}}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+        }
+
+    return complete
+
+
+def _mock_theme_complete(req: V2ThemeRequest) -> Any:
+    """A neutral theme proposal derived only from the supplied overview — the
+    service coerces it into V2Theme + cover and never invents people/places."""
+    subject = req.currentTheme.subject if req.currentTheme else req.clustersOverview[0].label
+    return _mock_complete(
+        {
+            "theme": {"subject": subject, "tone": "warm", "style": "warm-film"},
+            "assistantReply": (
+                f'(mock) I set a warm direction around "{subject}". '
+                "Real proposals arrive once the model is connected."
+            ),
+        }
+    )
+
+
+def _mock_chapter_chat_complete(req: V2ChapterChatRequest) -> Any:
+    """A deterministic chat turn. The service decides the actual mode/state from
+    `chapter.state` + ask_count; in generate modes it falls back to its own
+    rules-safe page texts when the model omits pagesTexts (we omit them here)."""
+    return _mock_complete(
+        {
+            "assistantReply": (
+                f'(mock) Noted — "{req.userMessage[:120]}". '
+                "Real authoring runs once the model is connected."
+            )
+        }
+    )
+
+
+@router.post("/v2/album/theme", dependencies=[Depends(require_bearer)])
+async def submit_theme(req: V2ThemeRequest) -> dict:
+    settings = get_settings()
+    log.info(
+        "v2_theme.accepted",
+        album_id=req.albumId,
+        clusters=len(req.clustersOverview),
+        language=req.language,
+        has_current_theme=req.currentTheme is not None,
+    )
+    complete = _mock_theme_complete(req) if settings.agent_pipeline_mode == "mock" else None
+    try:
+        response: V2ThemeResponse = await theme.run(req, complete=complete)
+    except ThemeError as exc:
+        log.warning("v2_theme.failed", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_PLANNING_FAILED", "message": str(exc)[:300]},
+            },
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
+        log.exception("v2_theme.unhandled", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
+            },
+        ) from exc
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
+
+
+def _ask_count_from_history(req: V2ChapterChatRequest) -> int:
+    """Derive askCount (rounds already asked) from the chapter slice. The request
+    contract carries no askCount field (Web keeps it in the tree but doesn't send
+    it), so reconstruct it from prior assistant turns in this chapter's history —
+    each chat round writes one assistant reply (tech-plan §1.3 / §5)."""
+    return sum(1 for turn in req.history if turn.role == "assistant")
+
+
+@router.post("/v2/album/chapter-chat", dependencies=[Depends(require_bearer)])
+async def submit_chapter_chat(req: V2ChapterChatRequest) -> dict:
+    settings = get_settings()
+    ask_count = _ask_count_from_history(req)
+    log.info(
+        "v2_chapter_chat.accepted",
+        album_id=req.albumId,
+        chapter_id=req.chapter.chapterId,
+        state=req.chapter.state,
+        ask_count=ask_count,
+        history_len=len(req.history),
+        language=req.language,
+    )
+    complete = (
+        _mock_chapter_chat_complete(req) if settings.agent_pipeline_mode == "mock" else None
+    )
+    try:
+        response: V2ChapterChatResponse = await chapter_chat.run(
+            req, ask_count=ask_count, complete=complete
+        )
+    except ChapterChatError as exc:
+        log.warning("v2_chapter_chat.failed", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_PLANNING_FAILED", "message": str(exc)[:300]},
+            },
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
+        log.exception("v2_chapter_chat.unhandled", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
+            },
+        ) from exc
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
