@@ -149,17 +149,12 @@ CallbackEnvelope = Annotated[
 # ---------- /v1/chat-edit -----------------------------------------------------
 
 
-class ChatHistoryItem(_Strict):
-    role: ChatRole
-    content: str = Field(min_length=1, max_length=2000)
-
-
-class ChatEditRequest(_Strict):
-    albumId: str = Field(min_length=1)
-    currentLayout: AlbumLayoutPlan
-    history: list[ChatHistoryItem] = Field(default_factory=list, max_length=20)
-    userMessage: str = Field(min_length=1, max_length=500)
-    language: Language
+# NB. The v1 /v1/chat-edit request/response schemas (ChatEditRequest /
+# ChatEditResponse / ChatEditUsage / ChatHistoryItem) were removed in the v2
+# cutover (D-V1Kill): the editor now goes through /v2/album/edit, whose contract
+# lives in schemas_v2.py (V2EditRequest / V2EditResponse / V2LayoutPatchEntry).
+# LayoutPatchEntry below is retained — it is the standalone partial-Page shape
+# still exercised by the schema tests and shared in spirit with the v2 patch.
 
 
 class LayoutPatchEntry(_Strict):
@@ -167,20 +162,3 @@ class LayoutPatchEntry(_Strict):
     templateId: str | None = None
     images: dict[str, str] | None = None
     texts: dict[str, str] | None = None
-
-
-class ChatEditUsage(_Strict):
-    """Richer usage schema per design.md §10 / §13.4. Used only by chat-edit
-    (no Web consumer yet, free to evolve)."""
-
-    durationMs: int = Field(ge=0)
-    planningInputTokens: int = Field(ge=0, default=0)
-    planningOutputTokens: int = Field(ge=0, default=0)
-    repairAttempts: int = Field(ge=0, default=0)
-    model: str
-
-
-class ChatEditResponse(_Strict):
-    layoutPatch: list[LayoutPatchEntry] = Field(min_length=1, max_length=16)
-    assistantReply: str = Field(min_length=1, max_length=500)
-    usage: ChatEditUsage

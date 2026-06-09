@@ -15,7 +15,7 @@ const HISTORY_LIMIT = 20;
 // the 1000-user, single-region target; not a cross-instance guarantee.
 const inFlight = new Set<string>();
 
-// Mirror the agent's apply semantics (apps/agent/src/services/chat_edit.py):
+// Mirror the agent's apply semantics (apps/agent/src/services/chat_edit_v2.py):
 // templateId change → full replace; otherwise images replace wholesale, texts merge.
 function applyPatch(layout: AlbumLayoutPlanT, patch: LayoutPatchEntry[]): AlbumLayoutPlanT {
   const pages: PageT[] = layout.pages.map((p) => ({
@@ -89,7 +89,12 @@ export const chatService = {
       const history = recent.map((m) => ({ role: m.role, content: m.content }));
 
       logger.info({ userId, albumId, action: 'chat.edit' });
-      const result = await agentClient.chatEdit({
+      // v2 cutover (D-V1Kill): the editor — for BOTH new v2 albums and legacy v1
+      // albums — goes through /v2/album/edit, the superset of the deleted
+      // /v1/chat-edit (+ pickTemplate Tool). Both kinds store a flat
+      // AlbumLayoutPlan in layout_json, which is exactly editV2's `currentLayout`,
+      // so this is one editing path for all works (rebuild-architecture §7).
+      const result = await agentClient.editV2({
         albumId,
         currentLayout: parsedCurrent.data,
         history,

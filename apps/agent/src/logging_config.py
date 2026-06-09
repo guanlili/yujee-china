@@ -26,6 +26,20 @@ _REDACT_KEY_EXACT = frozenset(
         "systemprompt",
         "history_content",
         "content",
+        # Geo / GPS coordinates (invariant 11 / rebuild-architecture §6,
+        # design.md §9). v1 never extracts GPS (D-GPS) so these should never
+        # appear — they're kept here as a defensive pre-set red line so a future
+        # GPS feature, or an accidental upstream leak / regression, can never
+        # spill raw coordinates or a reverse-geocoded place into logs. Exact-match
+        # because the names are short and unambiguous (a substring rule on "lat"
+        # would wrongly catch "latency", "translate", "related", etc.).
+        "lat",
+        "lng",
+        "latitude",
+        "longitude",
+        "gps",
+        "coordinates",
+        "place",
     }
 )
 
@@ -44,6 +58,10 @@ _REDACT_KEY_SUBSTRINGS = (
     "email",
     "user_id",
     "userid",
+    # EXIF raw block — may carry an embedded GPS structure; never log it whole
+    # (invariant 11 / design.md §9). takenAt alone is low-sensitivity, but the
+    # raw block is redacted defensively.
+    "exif",
 )
 
 # Inside string values, scrub data URLs and bearer tokens even when the key

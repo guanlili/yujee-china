@@ -8,16 +8,12 @@ import asyncio
 import pytest
 
 from src.schemas import (
-    AlbumLayoutPlan,
-    ChatEditRequest,
     LayoutRequest,
     Magazine,
-    Page,
     PhotoAnalysis,
     PhotoIn,
 )
-from src.services import ai_client, chat_edit, planning, vision
-from src.services.chat_edit import ChatEditError
+from src.services import ai_client, planning, vision
 from src.services.planning import ComposingError, WritingError
 from src.services.vision import VisionError
 
@@ -57,18 +53,6 @@ def _layout_request() -> LayoutRequest:
     )
 
 
-def _chat_request() -> ChatEditRequest:
-    layout = AlbumLayoutPlan(
-        magazine=Magazine(title="T", style="warm-film", language="en"),
-        photos=[_photo("p1")],
-        pages=[Page(pageIndex=0, templateId="mag-13", images={"image": "p1"}, texts={})],
-    )
-    return ChatEditRequest(
-        albumId="alb1", currentLayout=layout, history=[],
-        userMessage="make it warmer", language="en",
-    )
-
-
 def test_vision_network_failure_maps_to_vision_error(monkeypatch):
     monkeypatch.setattr(ai_client, "chat_completion", _boom)
     with pytest.raises(VisionError):
@@ -88,35 +72,6 @@ def test_composing_network_failure_maps_to_composing_error(monkeypatch):
     mag = Magazine(title="T", style="warm-film", language="en")
     with pytest.raises(ComposingError):
         asyncio.run(planning.compose_pages(magazine=mag, photos=[_photo("p1")]))
-
-
-def test_chat_edit_network_failure_maps_to_chat_error(monkeypatch):
-    monkeypatch.setattr(ai_client, "chat_completion", _boom)
-    with pytest.raises(ChatEditError):
-        asyncio.run(chat_edit.run(_chat_request()))
-
-
-def test_chat_edit_route_upstream_failure_returns_502_contract(monkeypatch):
-    """Route-level: AIRequestError → ChatEditError → HTTP 502 with the
-    {ok:false,error:{code:AGENT_CHAT_FAILED}} body (contract §2.2). The service
-    unit test above proves the raise; this proves the route's contract shape."""
-    from fastapi.testclient import TestClient
-
-    from src.main import app
-
-    monkeypatch.setattr(ai_client, "chat_completion", _boom)
-
-    client = TestClient(app, raise_server_exceptions=False)
-    resp = client.post(
-        "/v1/chat-edit",
-        headers={"Authorization": "Bearer test_secret"},
-        json=_chat_request().model_dump(mode="json"),
-    )
-
-    assert resp.status_code == 502
-    body = resp.json()
-    assert body["ok"] is False
-    assert body["error"]["code"] == "AGENT_CHAT_FAILED"
 
 
 def test_pipeline_real_vision_failure_emits_vision_failed_code(monkeypatch):
