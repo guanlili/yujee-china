@@ -29,6 +29,12 @@ export const agentJobStatusEnum = pgEnum('agent_job_status', [
   'FAILED',
 ]);
 
+// v2 rebuild: distinguishes the two async jobs of an album's lifecycle. Their
+// failure/zombie semantics are OPPOSITE (init failure → FAILED + release;
+// finalize failure → back to EDITING + keep hold), so sweeper/callback branch
+// on this. See docs/agent/rebuild-architecture.md §5.
+export const agentJobKindEnum = pgEnum('agent_job_kind', ['init', 'finalize']);
+
 export const creditHoldStatusEnum = pgEnum('credit_hold_status', [
   'HOLDING',
   'SETTLED',
@@ -196,6 +202,10 @@ export const albums = pgTable(
     status: albumStatusEnum('status').notNull().default('AGENT_RUNNING'),
     prompt: text('prompt').notNull(),
     layoutJson: jsonb('layout_json'),
+    // v2 rebuild: authoring tree (AlbumDraft), lives only during the draft phase.
+    // null = v1 album. Discriminator draft vs finalized = layoutJson IS NULL.
+    // See docs/agent/rebuild-architecture.md §4.1 / §5.
+    draftJson: jsonb('draft_json'),
     photoCount: integer('photo_count').notNull(),
     pageCount: integer('page_count').notNull().default(0),
     pdfR2Key: text('pdf_r2_key'),
@@ -246,11 +256,18 @@ export const albumMessages = pgTable(
     content: text('content').notNull(),
     layoutPatch: jsonb('layout_patch'),
     usage: jsonb('usage'),
+    // v2 rebuild: groups per-chapter (Stage 4) dialogue. null = v1 chat-edit message.
+    chapterId: text('chapter_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     albumCreated: index('idx_album_messages_album_created').on(t.albumId, t.createdAt),
     userCreated: index('idx_album_messages_user_created').on(t.userId, t.createdAt.desc()),
+    albumChapterCreated: index('idx_album_messages_album_chapter_created').on(
+      t.albumId,
+      t.chapterId,
+      t.createdAt,
+    ),
   }),
 );
 
@@ -270,6 +287,9 @@ export const agentJobs = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     status: agentJobStatusEnum('status').notNull().default('QUEUED'),
+    // v2 rebuild: init vs finalize. Existing rows default to 'init'. Drives the
+    // failed/zombie branch (init→FAILED+release, finalize→EDITING+keep hold).
+    kind: agentJobKindEnum('kind').notNull().default('init'),
     stage: text('stage'),
     progress: integer('progress').notNull().default(0),
     usage: jsonb('usage'),
@@ -286,6 +306,13 @@ export const agentJobs = pgTable(
     runningStartedAt: index('idx_agent_jobs_running_started')
       .on(t.startedAt)
       .where(sql`${t.status} = 'RUNNING'`),
+    // v2 rebuild: DB backstop for "one active job per (album, kind)". The app
+    // also uses a compare-and-swap on albums.status as the primary lock; this
+    // index makes a concurrent double-click physically impossible to commit.
+    // See docs/agent/rebuild-tech-plan.md §11.
+    albumKindActive: uniqueIndex('uq_agent_jobs_album_kind_active')
+      .on(t.albumId, t.kind)
+      .where(sql`${t.status} in ('QUEUED', 'RUNNING')`),
     // Supports findLatestByAlbum: the album-uuid read path looks up the newest
     // job per album on every 15s poll while AGENT_RUNNING (docs/web/api.md §3.4).
     albumCreated: index('idx_agent_jobs_album_created').on(t.albumId, t.createdAt.desc()),
