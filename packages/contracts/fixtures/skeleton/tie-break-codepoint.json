@@ -15,10 +15,75 @@
     ]
   },
   "expected": {
+    "basePages": {
+      "cover": {
+        "pageIndex": 0,
+        "templateId": "p01",
+        "images": {
+          "image": "a"
+        },
+        "texts": {}
+      },
+      "toc": null,
+      "ending": {
+        "pageIndex": 2,
+        "templateId": "mag-17",
+        "images": {
+          "image": "A"
+        },
+        "texts": {}
+      }
+    },
+    "chapters": [
+      {
+        "chapterId": "chapter-tie",
+        "cluster": {
+          "label": "Tie",
+          "role": "body"
+        },
+        "photoIds": [
+          "A",
+          "a"
+        ],
+        "pages": [
+          {
+            "pageIndex": 1,
+            "templateId": "mag-15",
+            "images": {
+              "imagePerson": "A",
+              "imageRoad": "a"
+            },
+            "texts": {}
+          }
+        ]
+      }
+    ],
     "pages": [
-      { "pageIndex": 0, "templateId": "p01", "images": { "image": "a" }, "texts": {} },
-      { "pageIndex": 1, "templateId": "mag-15", "images": { "imagePerson": "A", "imageRoad": "a" }, "texts": {} },
-      { "pageIndex": 2, "templateId": "mag-17", "images": { "image": "A" }, "texts": {} }
+      {
+        "pageIndex": 0,
+        "templateId": "p01",
+        "images": {
+          "image": "a"
+        },
+        "texts": {}
+      },
+      {
+        "pageIndex": 1,
+        "templateId": "mag-15",
+        "images": {
+          "imagePerson": "A",
+          "imageRoad": "a"
+        },
+        "texts": {}
+      },
+      {
+        "pageIndex": 2,
+        "templateId": "mag-17",
+        "images": {
+          "image": "A"
+        },
+        "texts": {}
+      }
     ]
   }
 }

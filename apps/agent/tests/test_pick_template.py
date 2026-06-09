@@ -130,8 +130,8 @@ def test_shared_golden_fixtures_match_python_output():
         fixture = json.loads(path.read_text(encoding="utf-8"))
         result = build_skeleton(fixture["input"])
 
-        assert json.dumps(result["pages"], ensure_ascii=False, separators=(",", ":")) == json.dumps(
-            fixture["expected"]["pages"],
+        assert json.dumps(result, ensure_ascii=False, separators=(",", ":")) == json.dumps(
+            fixture["expected"],
             ensure_ascii=False,
             separators=(",", ":"),
         ), path.name

@@ -1,0 +1,195 @@
+{
+  "name": "hero-solo-with-hero-cover-and-ending",
+  "input": {
+    "albumId": "album-hero-cover-ending",
+    "chapters": [
+      {
+        "chapterId": "chapter-hero",
+        "cluster": {
+          "label": "Hero",
+          "role": "opening"
+        },
+        "photoIds": [
+          "h001",
+          "h002",
+          "d001",
+          "f001"
+        ]
+      }
+    ],
+    "photos": [
+      {
+        "photoId": "h001",
+        "analysis": {
+          "photoId": "h001",
+          "description": "hero photo 1",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "hero",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 0
+        },
+        "used": true
+      },
+      {
+        "photoId": "h002",
+        "analysis": {
+          "photoId": "h002",
+          "description": "hero photo 2",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "hero",
+          "orientation": "landscape",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 1
+        },
+        "used": true
+      },
+      {
+        "photoId": "d001",
+        "analysis": {
+          "photoId": "d001",
+          "description": "detail photo 1",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "detail",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 2
+        },
+        "used": true
+      },
+      {
+        "photoId": "f001",
+        "analysis": {
+          "photoId": "f001",
+          "description": "fill photo 1",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "fill",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 3
+        },
+        "used": true
+      }
+    ]
+  },
+  "expected": {
+    "basePages": {
+      "cover": {
+        "pageIndex": 0,
+        "templateId": "mag-13",
+        "images": {
+          "image": "h002"
+        },
+        "texts": {}
+      },
+      "toc": null,
+      "ending": {
+        "pageIndex": 3,
+        "templateId": "mag-17",
+        "images": {
+          "image": "h001"
+        },
+        "texts": {}
+      }
+    },
+    "chapters": [
+      {
+        "chapterId": "chapter-hero",
+        "cluster": {
+          "label": "Hero",
+          "role": "opening"
+        },
+        "photoIds": [
+          "h001",
+          "h002",
+          "d001",
+          "f001"
+        ],
+        "pages": [
+          {
+            "pageIndex": 1,
+            "templateId": "mag-05",
+            "images": {
+              "image": "h001"
+            },
+            "texts": {}
+          },
+          {
+            "pageIndex": 2,
+            "templateId": "mag-04",
+            "images": {
+              "image1": "h002",
+              "image2": "d001",
+              "image3": "f001"
+            },
+            "texts": {}
+          }
+        ]
+      }
+    ],
+    "pages": [
+      {
+        "pageIndex": 0,
+        "templateId": "mag-13",
+        "images": {
+          "image": "h002"
+        },
+        "texts": {}
+      },
+      {
+        "pageIndex": 1,
+        "templateId": "mag-05",
+        "images": {
+          "image": "h001"
+        },
+        "texts": {}
+      },
+      {
+        "pageIndex": 2,
+        "templateId": "mag-04",
+        "images": {
+          "image1": "h002",
+          "image2": "d001",
+          "image3": "f001"
+        },
+        "texts": {}
+      },
+      {
+        "pageIndex": 3,
+        "templateId": "mag-17",
+        "images": {
+          "image": "h001"
+        },
+        "texts": {}
+      }
+    ]
+  }
+}

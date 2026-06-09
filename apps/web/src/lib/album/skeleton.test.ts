@@ -135,8 +135,8 @@ test('shared golden fixtures match TypeScript output byte-for-byte', () => {
     const result = buildSkeleton(fixture.input);
 
     assert.equal(
-      JSON.stringify(result.pages),
-      JSON.stringify(fixture.expected.pages),
+      JSON.stringify(result),
+      JSON.stringify(fixture.expected),
       fileName,
     );
   }

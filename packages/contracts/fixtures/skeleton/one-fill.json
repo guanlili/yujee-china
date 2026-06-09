@@ -28,10 +28,68 @@
     ]
   },
   "expected": {
+    "basePages": {
+      "cover": {
+        "pageIndex": 0,
+        "templateId": "mag-20",
+        "images": {},
+        "texts": {}
+      },
+      "toc": null,
+      "ending": {
+        "pageIndex": 2,
+        "templateId": "mag-17",
+        "images": {
+          "image": "p001"
+        },
+        "texts": {}
+      }
+    },
+    "chapters": [
+      {
+        "chapterId": "chapter-one",
+        "cluster": {
+          "label": "One",
+          "role": "opening"
+        },
+        "photoIds": [
+          "p001"
+        ],
+        "pages": [
+          {
+            "pageIndex": 1,
+            "templateId": "mag-19",
+            "images": {
+              "image": "p001"
+            },
+            "texts": {}
+          }
+        ]
+      }
+    ],
     "pages": [
-      { "pageIndex": 0, "templateId": "mag-20", "images": {}, "texts": {} },
-      { "pageIndex": 1, "templateId": "mag-19", "images": { "image": "p001" }, "texts": {} },
-      { "pageIndex": 2, "templateId": "mag-17", "images": { "image": "p001" }, "texts": {} }
+      {
+        "pageIndex": 0,
+        "templateId": "mag-20",
+        "images": {},
+        "texts": {}
+      },
+      {
+        "pageIndex": 1,
+        "templateId": "mag-19",
+        "images": {
+          "image": "p001"
+        },
+        "texts": {}
+      },
+      {
+        "pageIndex": 2,
+        "templateId": "mag-17",
+        "images": {
+          "image": "p001"
+        },
+        "texts": {}
+      }
     ]
   }
 }
