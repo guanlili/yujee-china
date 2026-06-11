@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { compressFile } from '@/lib/photo/compress';
 import { photoStore } from '@/lib/photo/store';
 import {
-  submitGeneration,
+  submitInitV2,
   photosFromStore,
   CreditInsufficientError,
   PhotosUnavailableError,
@@ -105,10 +105,10 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
     const photoIds = photos.map((p) => p.photoId);
     try {
       const builtPhotos = await photosFromStore(photoIds);
-      const { albumId } = await submitGeneration({
+      const { albumId } = await submitInitV2({
         requestId: crypto.randomUUID(),
-        prompt: prompt.trim(),
         language,
+        promptHint: prompt.trim(),
         photos: builtPhotos,
       });
       // Submitted — the draft has served its purpose. Persist the per-album

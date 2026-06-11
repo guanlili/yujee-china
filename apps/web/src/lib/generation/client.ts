@@ -95,6 +95,20 @@ export function submitGeneration(input: {
   return postJobs('/api/v1/jobs', input);
 }
 
+// v2 init (agent rebuild, W10 #140). POST /api/v2/albums starts the init job
+// (Stage 1+3) and returns { albumId, requestId } once the agent accepts (202).
+// Same billing-aware contract as submitGeneration — CREDIT_INSUFFICIENT routes
+// the caller to top up. The prompt is a promptHint here (optional — the
+// storytelling happens later in the authoring flow); language is explicit.
+export function submitInitV2(input: {
+  requestId: string;
+  language: 'zh' | 'en';
+  promptHint?: string;
+  photos: GenerationPhoto[];
+}): Promise<SubmitResult> {
+  return postJobs('/api/v2/albums', input);
+}
+
 // Reuses albumId — no prompt (the server reuses the stored album.prompt).
 export function retryGeneration(
   albumId: string,

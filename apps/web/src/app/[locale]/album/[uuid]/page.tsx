@@ -4,6 +4,7 @@ import { use, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAlbumPoll } from '@/lib/hooks/use-album-poll';
 import { EditorPort } from '@/components/album/editor-v2/EditorPort';
+import { AuthoringPort } from '@/components/album/v2/AuthoringPort';
 import { AlbumGeneratingShell } from '@/components/album/AlbumGeneratingShell';
 import { defaultLocale, isLocale, type Locale } from '@/lib/i18n/routing';
 
@@ -33,12 +34,15 @@ export default function AlbumPage({
     }
   }, [phase, router, locale, uuid]);
 
-  const showEditor =
-    phase === 'ready' &&
-    detail &&
-    (detail.album.status === 'EDITING' || detail.album.status === 'COMPLETED');
-
-  if (showEditor) {
+  // EDITING is two distinct product states that share one status: the DRAFT phase
+  // (draft_json written, layout_json still null → the v2 authoring flow) and the
+  // FINALIZED phase (layout_json set → the editor). layoutJson is the
+  // discriminator (mirrors albumAuthoringService.loadDraftAlbum server-side).
+  if (phase === 'ready' && detail) {
+    const { status, layoutJson } = detail.album;
+    if (status === 'EDITING' && layoutJson == null) {
+      return <AuthoringPort albumId={uuid} locale={locale} />;
+    }
     return <EditorPort detail={detail} locale={locale} />;
   }
 
