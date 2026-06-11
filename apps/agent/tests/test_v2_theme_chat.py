@@ -100,6 +100,10 @@ def test_theme_mock_returns_valid_response(client):
         "vintage-print",
     }
     assert out.assistantReply
+    # No currentTheme → still proposing → mock supplies 2-3 pickable options.
+    assert out.themeOptions is not None
+    assert 2 <= len(out.themeOptions) <= 3
+    assert all(o.subject and o.label for o in out.themeOptions)
     # mock injects zero-token usage; the planning model name still surfaces.
     assert out.usage.durationMs >= 0
 
@@ -156,6 +160,9 @@ def test_chapter_chat_mock_returns_valid_response(client):
     # empty + askCount 0 → still in the asking dialog, no page texts yet.
     assert out.state == "asking"
     assert out.pagesTexts is None
+    # mock supplies chapter-title candidates (chipName1-4) grounded in the label.
+    assert out.nameOptions is not None
+    assert len(out.nameOptions) >= 1
 
 
 def test_chapter_chat_brief_ready_generates_page_texts(client):

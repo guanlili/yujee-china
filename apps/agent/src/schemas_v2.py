@@ -234,9 +234,23 @@ class V2CoverDraft(_Strict):
     heroPhotoId: str | None = None
 
 
+class V2ThemeOption(_Strict):
+    """A proposed theme choice for the user to pick (editor.html themeOpt1-3).
+    `subject` is the option title, `label` a short user-facing line; tone/style
+    hint the option's mood/template. Display-only — never merged into the tree."""
+
+    subject: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    tone: str | None = None
+    style: V2Style | None = None
+
+
 class V2ThemeResponse(_Strict):
     theme: V2Theme
     cover: V2CoverDraft | None = None
+    # 2-3 theme candidates proposed before a theme is fixed; absent once decided.
+    # Display-only (invariant 12) — Web passes them through, never into draft_json.
+    themeOptions: list[V2ThemeOption] | None = Field(default=None, min_length=2, max_length=3)
     assistantReply: str = Field(max_length=500)
     usage: Usage
 
@@ -274,6 +288,9 @@ class V2ChapterChatResponse(_Strict):
     chapterBrief: V2Brief | None = None
     state: V2ChapterState
     pagesTexts: list[V2PageTexts] | None = None
+    # ≤4 chapter-title candidates (editor.html chipName1-4) from this chapter's
+    # photo analysis + user input. Display-only (invariant 12); no invented facts.
+    nameOptions: list[str] | None = Field(default=None, max_length=4)
     usage: Usage
 
 

@@ -347,27 +347,42 @@ def _mock_theme_complete(req: V2ThemeRequest) -> Any:
     """A neutral theme proposal derived only from the supplied overview — the
     service coerces it into V2Theme + cover and never invents people/places."""
     subject = req.currentTheme.subject if req.currentTheme else req.clustersOverview[0].label
-    return _mock_complete(
-        {
-            "theme": {"subject": subject, "tone": "warm", "style": "warm-film"},
-            "assistantReply": (
-                f'(mock) I set a warm direction around "{subject}". '
-                "Real proposals arrive once the model is connected."
-            ),
-        }
-    )
+    payload: dict[str, Any] = {
+        "theme": {"subject": subject, "tone": "warm", "style": "warm-film"},
+        "assistantReply": (
+            f'(mock) I set a warm direction around "{subject}". '
+            "Real proposals arrive once the model is connected."
+        ),
+    }
+    # Still proposing (no fixed theme) → offer pickable candidates derived only
+    # from the supplied overview labels (mirrors editor.html themeOpt1-3).
+    if req.currentTheme is None:
+        labels = [c.label.strip() for c in req.clustersOverview if c.label.strip()]
+        # Pad to at least two so the optional 2-3 bound holds.
+        while len(labels) < 2:
+            labels.append(f"{subject} {len(labels) + 1}")
+        payload["themeOptions"] = [
+            {"subject": label, "label": label, "tone": "warm", "style": "warm-film"}
+            for label in labels[:3]
+        ]
+    return _mock_complete(payload)
 
 
 def _mock_chapter_chat_complete(req: V2ChapterChatRequest) -> Any:
     """A deterministic chat turn. The service decides the actual mode/state from
     `chapter.state` + ask_count; in generate modes it falls back to its own
     rules-safe page texts when the model omits pagesTexts (we omit them here)."""
+    # Chapter-title candidates (editor.html chipName1-4) grounded in the cluster
+    # label only — no invented names/dates. The service trims/de-dupes these.
+    label = req.chapter.cluster.label.strip() or req.chapter.chapterId
+    name_options = [label, f"{label} —", f"{label} ·"][:3]
     return _mock_complete(
         {
             "assistantReply": (
                 f'(mock) Noted — "{req.userMessage[:120]}". '
                 "Real authoring runs once the model is connected."
-            )
+            ),
+            "nameOptions": name_options,
         }
     )
 

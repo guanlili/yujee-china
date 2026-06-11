@@ -243,6 +243,21 @@ export const V2ThemeRequest = z
   .strict();
 export type V2ThemeRequest = z.infer<typeof V2ThemeRequest>;
 
+/**
+ * 主题候选(editor.html「确定主题」阶段:themeAsk + themeOpt1-3 让用户挑)。
+ * 至少含 `subject`(选项主标题)+ 简短 `label`(给用户看的一行字,如 海边漫步);
+ * 可附 tone/style 暗示该选项的基调与版式。纯展示用,浏览器只读不回灌树(不变式 12)。
+ */
+export const V2ThemeOption = z
+  .object({
+    subject: z.string().min(1),
+    label: z.string().min(1),
+    tone: z.string().optional(),
+    style: V2Style.optional(),
+  })
+  .strict();
+export type V2ThemeOption = z.infer<typeof V2ThemeOption>;
+
 export const V2ThemeResponse = z
   .object({
     theme: V2Theme,
@@ -254,6 +269,9 @@ export const V2ThemeResponse = z
       })
       .strict()
       .optional(),
+    // 主题候选(2-3 个):还没定主题时 Agent 提议这些让用户挑;已定主题时可不返回。
+    // 仅供前端展示挑选,不进 draft_json(不变式 12)。
+    themeOptions: z.array(V2ThemeOption).min(2).max(3).optional(),
     assistantReply: z.string().max(500),
     usage: Usage,
   })
@@ -297,6 +315,10 @@ export const V2ChapterChatResponse = z
           .strict(),
       )
       .optional(),
+    // 本章标题候选(editor.html「章节故事」阶段:chipName1-4 让用户挑章节名)。
+    // ≤4 个,基于本章照片 analysis + 用户输入,不胡编人名地名事件日期。
+    // 仅供前端展示挑选,浏览器只读不回灌树(不变式 12)。
+    nameOptions: z.array(z.string().min(1)).max(4).optional(),
     usage: Usage,
   })
   .strict();

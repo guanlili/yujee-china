@@ -70,9 +70,13 @@ def build_messages(
         '{"assistantReply":string,"chapterBrief"?:{"userWords"?:string,'
         '"factNote"?:string,"mood"?:string},"state":"empty|asking|brief_ready|'
         'generated|skipped|finalized","pagesTexts"?:[{"pageIndex":number,'
-        '"texts":object}]}. '
+        '"texts":object}],"nameOptions"?:[string]}. '
         "Only use the supplied chapter slice; never output another chapter or "
         "the whole album. Do not mention base64 or hidden image data. "
+        "You may also return `nameOptions`: up to 4 short chapter-title "
+        "candidates (editor.html chipName1-4) grounded only in this chapter's "
+        "photo analysis and the user's words — evocative but never inventing "
+        "people, places, events, or dates. "
         f"Current mode: {mode}. "
         f"askCount will be {ask_count + 1}; at {auto_advance_after} you must "
         "stop asking and move forward."
@@ -182,6 +186,7 @@ def _coerce_response(
 ) -> V2ChapterChatResponse:
     mode = _mode(req, ask_count=ask_count, auto_advance_after=auto_advance_after)
     brief = _coerce_brief(req.chapter.brief, parsed.get("chapterBrief"))
+    name_options = _coerce_name_options(parsed.get("nameOptions"))
     if mode == "generated_passthrough":
         state: V2ChapterState = req.chapter.state
         reply = _text(parsed.get("assistantReply")) or _default_reply(req.language, state)
@@ -189,6 +194,7 @@ def _coerce_response(
             assistantReply=reply[:500],
             chapterBrief=brief,
             state=state,
+            nameOptions=name_options,
             usage=usage,
         )
 
@@ -206,6 +212,7 @@ def _coerce_response(
             assistantReply=reply[:500],
             chapterBrief=brief,
             state=state,
+            nameOptions=name_options,
             usage=usage,
         )
 
@@ -217,8 +224,27 @@ def _coerce_response(
         chapterBrief=brief,
         state="generated",
         pagesTexts=pages_texts,
+        nameOptions=name_options,
         usage=usage,
     )
+
+
+def _coerce_name_options(raw: Any) -> list[str] | None:
+    """Tolerant parse of model `nameOptions`: keep up to 4 non-empty, de-duped
+    title strings. Returns None when none survive (the field stays optional)."""
+    if not isinstance(raw, list):
+        return None
+    seen: set[str] = set()
+    names: list[str] = []
+    for item in raw:
+        name = _text(item)
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name[:120])
+        if len(names) == 4:
+            break
+    return names or None
 
 
 def _mode(

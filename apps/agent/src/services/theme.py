@@ -20,6 +20,7 @@ from ..schemas_v2 import (
     V2Models,
     V2Style,
     V2Theme,
+    V2ThemeOption,
     V2ThemeRequest,
     V2ThemeResponse,
 )
@@ -45,18 +46,39 @@ class ThemeError(Exception):
 def build_messages(req: V2ThemeRequest) -> list[dict[str, str]]:
     """Build the minimal DeepSeek prompt for /v2/album/theme."""
 
+    # When no theme is fixed yet (no currentTheme), the user is still choosing —
+    # offer 2-3 candidates (editor.html themeAsk + themeOpt1-3) so the front-end
+    # can render pickable options. Once a theme is set, just refine it.
+    proposing = req.currentTheme is None
     system = (
         "You are setting the global creative direction for a memoir photo album. "
         "Return STRICT JSON only, matching V2ThemeResponse: "
         '{"theme":{"subject":string,"occasion"?:string,"timeframe"?:string,'
         '"tone":string,"style":"warm-film|editorial-mono|soft-pastel|'
         'bold-contrast|vintage-print"},"cover"?:{"templateId":string,'
-        '"texts":object,"heroPhotoId":string|null},"assistantReply":string}. '
+        '"texts":object,"heroPhotoId":string|null},'
+        '"themeOptions"?:[{"subject":string,"label":string,"tone"?:string,'
+        '"style"?:"warm-film|editorial-mono|soft-pastel|bold-contrast|'
+        'vintage-print"}],"assistantReply":string}. '
         "Use only the supplied cluster overview and optional user direction. "
         "Do not invent people, locations, events, or dates. "
         f"Cover template ids: {', '.join(registry.COVER_TEMPLATE_IDS)}. "
         "Prefer mag-20 when no verified hero photo id is supplied."
     )
+    if proposing:
+        system += (
+            " No theme is fixed yet — the user is still choosing. ALSO return "
+            "`themeOptions`: 2-3 distinct theme candidates grounded only in the "
+            "supplied overview. Each option needs a `subject` (its title) and a "
+            'short `label` (one user-facing line, e.g. "Seaside Walk"); tone/style '
+            "are optional hints. Set `theme` to your single best default; "
+            "themeOptions are alternatives the user may pick instead."
+        )
+    else:
+        system += (
+            " A theme is already chosen; refine it in `theme` and do not return "
+            "themeOptions."
+        )
     payload = {
         "language": req.language,
         "clustersOverview": [c.model_dump(exclude_none=True) for c in req.clustersOverview],
@@ -142,13 +164,42 @@ def _coerce_response(
     raw_theme = parsed.get("theme") if isinstance(parsed.get("theme"), dict) else {}
     theme = _coerce_theme(req, raw_theme)
     cover = _coerce_cover(parsed.get("cover"), theme)
+    # themeOptions only meaningful while still proposing (no currentTheme); when a
+    # theme is already fixed we drop any options the model may have echoed back.
+    theme_options = (
+        _coerce_theme_options(parsed.get("themeOptions")) if req.currentTheme is None else None
+    )
     assistant_reply = _text(parsed.get("assistantReply")) or _default_reply(req.language)
     return V2ThemeResponse(
         theme=theme,
         cover=cover,
+        themeOptions=theme_options,
         assistantReply=assistant_reply[:500],
         usage=usage,
     )
+
+
+def _coerce_theme_options(raw: Any) -> list[V2ThemeOption] | None:
+    """Tolerant parse of model `themeOptions`: keep 2-3 well-formed candidates
+    (subject + label both present), drop anything malformed. Returns None when
+    fewer than 2 usable options survive (the field stays optional/absent)."""
+    if not isinstance(raw, list):
+        return None
+    options: list[V2ThemeOption] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        subject = _text(item.get("subject"))
+        label = _text(item.get("label")) or subject
+        if not subject:
+            continue
+        tone = _text(item.get("tone")) or None
+        style = item.get("style")
+        style = style if isinstance(style, str) and style in _STYLE_IDS else None
+        options.append(V2ThemeOption(subject=subject, label=label, tone=tone, style=style))
+        if len(options) == 3:
+            break
+    return options if len(options) >= 2 else None
 
 
 def _coerce_theme(req: V2ThemeRequest, raw: dict[str, Any]) -> V2Theme:

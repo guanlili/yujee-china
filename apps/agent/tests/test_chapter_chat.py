@@ -344,3 +344,57 @@ async def test_substantive_answer_containing_skip_does_not_enter_skipped_path():
     assert res.pagesTexts is None
     assert res.chapterBrief is not None
     assert res.chapterBrief.factNote == "decided to skip a crowded cafe before the rainy walk"
+
+
+def test_chapter_prompt_offers_name_options():
+    messages = chapter_chat.build_messages(_req("empty", "Tell me?"), ask_count=0)
+    assert "nameOptions" in messages[0]["content"]
+    assert "chipName1-4" in messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_chapter_chat_returns_name_options_in_ask_mode():
+    async def fake_complete(**_kwargs):
+        return _usage_response(
+            {
+                "assistantReply": "What detail should this chapter remember?",
+                "state": "asking",
+                "nameOptions": ["Rain on the Pavement", "Lantern Light", "A Quiet Walk"],
+            }
+        )
+
+    res = await chapter_chat.run(_req("empty", "Start"), ask_count=0, complete=fake_complete)
+
+    assert res.state == "asking"
+    assert res.nameOptions == ["Rain on the Pavement", "Lantern Light", "A Quiet Walk"]
+
+
+@pytest.mark.asyncio
+async def test_chapter_chat_name_options_in_generate_mode():
+    async def fake_complete(**_kwargs):
+        return _usage_response(
+            {
+                "assistantReply": "Wrote it.",
+                "pagesTexts": [{"pageIndex": 2, "texts": {"title": "rain"}}],
+                "nameOptions": ["Wet Streets", "Wet Streets", "  ", "Evening Glow", "Umbrella Day", "Extra"],
+            }
+        )
+
+    res = await chapter_chat.run(
+        _req("brief_ready", "Generate", brief={"factNote": "walk"}),
+        ask_count=2,
+        complete=fake_complete,
+    )
+
+    assert res.state == "generated"
+    # de-duped, blanks dropped, capped at 4.
+    assert res.nameOptions == ["Wet Streets", "Evening Glow", "Umbrella Day", "Extra"]
+
+
+@pytest.mark.asyncio
+async def test_chapter_chat_name_options_absent_when_model_omits():
+    async def fake_complete(**_kwargs):
+        return _usage_response({"assistantReply": "Noted.", "state": "asking"})
+
+    res = await chapter_chat.run(_req("empty", "Start"), ask_count=0, complete=fake_complete)
+    assert res.nameOptions is None

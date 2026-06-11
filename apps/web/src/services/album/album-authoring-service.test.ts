@@ -116,6 +116,10 @@ test('theme → merges agent theme into draft_json.meta.theme + cover', async (t
           style: 'vintage-print' as const,
         },
         cover: { templateId: 'mag-cover-A', texts: { title: 'Our Trip' }, heroPhotoId: 'p1' },
+        themeOptions: [
+          { subject: 'A Summer Road Trip', label: 'Summer Road Trip' },
+          { subject: 'City Nights', label: 'City Nights', style: 'bold-contrast' as const },
+        ],
         assistantReply: 'How about a nostalgic vintage feel?',
         usage: USAGE,
       };
@@ -125,6 +129,9 @@ test('theme → merges agent theme into draft_json.meta.theme + cover', async (t
       userMessage: 'make it warm',
     });
     assert.equal(res.theme?.subject, 'A Summer Road Trip');
+    // themeOptions pass straight through to the browser…
+    assert.equal(res.themeOptions?.length, 2);
+    assert.equal(res.themeOptions?.[1]?.label, 'City Nights');
 
     // overview built from the tree, no base64, photo descs sliced in.
     const sent = captured as { clustersOverview: Array<{ chapterId: string; photoDescs: string[] }> };
@@ -139,6 +146,8 @@ test('theme → merges agent theme into draft_json.meta.theme + cover', async (t
     assert.equal(draft.basePages.cover.templateId, 'mag-cover-A');
     assert.equal(draft.basePages.cover.texts.title, 'Our Trip');
     assert.equal(draft.basePages.cover.images.hero, 'p1');
+    // …but are NOT persisted into draft_json (invariant 12 — display-only).
+    assert.equal('themeOptions' in (draft.meta as Record<string, unknown>), false);
   } finally {
     await cleanupUser(user.id);
   }
@@ -159,6 +168,7 @@ test('chapter-chat → merges into the named chapter, writes 2 album_messages wi
       chapterBrief: { userWords: 'we watched the sunset', mood: 'calm' },
       state: 'brief_ready' as const,
       pagesTexts: [{ pageIndex: 1, texts: { body: 'The sun melted into the sea.' } }],
+      nameOptions: ['Waves Thinning Time', 'Wind from the Sea'],
       usage: USAGE,
     }));
 
@@ -168,6 +178,8 @@ test('chapter-chat → merges into the named chapter, writes 2 album_messages wi
     });
     assert.equal(res.state, 'brief_ready');
     assert.equal(res.chapterId, 'ch1');
+    // nameOptions pass straight through to the browser.
+    assert.deepEqual(res.nameOptions, ['Waves Thinning Time', 'Wind from the Sea']);
 
     const album = await albumRepo.findById(albumId);
     const draft = reloadDraft(album!.draftJson);
@@ -179,6 +191,9 @@ test('chapter-chat → merges into the named chapter, writes 2 album_messages wi
     assert.equal(ch1.brief?.userWords, 'we watched the sunset');
     assert.equal(ch1.state, 'brief_ready');
     assert.equal(ch1.askCount, 1);
+    // nameOptions are display-only: NOT persisted into the chapter (invariant 12).
+    assert.equal('nameOptions' in (ch1 as Record<string, unknown>), false);
+    assert.equal(ch1.cluster.label, 'The Coast'); // chapter title (cluster label) unchanged.
     // ch2 untouched.
     assert.equal(ch2.state, 'empty');
     assert.equal(ch2.askCount, 0);

@@ -135,3 +135,87 @@ async def test_theme_cover_uses_text_only_when_hero_photo_id_cannot_be_verified(
     assert res.cover is not None
     assert res.cover.templateId == "mag-20"
     assert res.cover.heroPhotoId is None
+
+
+def test_theme_prompt_requests_options_while_proposing():
+    # No currentTheme → still choosing → prompt must request themeOptions.
+    messages = theme.build_messages(_theme_req())
+    assert "themeOptions" in messages[0]["content"]
+
+
+def test_theme_prompt_omits_options_once_theme_fixed():
+    req = V2ThemeRequest(
+        albumId="alb_1",
+        language="en",
+        clustersOverview=_theme_req().clustersOverview,
+        currentTheme={"subject": "Set theme", "tone": "warm", "style": "warm-film"},
+    )
+    messages = theme.build_messages(req)
+    assert "do not return themeOptions" in messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_theme_run_returns_theme_options_when_proposing():
+    async def fake_complete(**_kwargs):
+        return _usage_response(
+            {
+                "theme": {"subject": "Seaside Walk", "tone": "warm", "style": "warm-film"},
+                "themeOptions": [
+                    {"subject": "Seaside Walk", "label": "Seaside Walk", "tone": "warm"},
+                    {"subject": "City Nights", "label": "City Nights", "style": "bold-contrast"},
+                    {"subject": "Mountain Morning", "label": "Mountain Morning"},
+                ],
+                "assistantReply": "Which one would you like?",
+            }
+        )
+
+    res = await theme.run(_theme_req(), complete=fake_complete)
+
+    assert res.themeOptions is not None
+    assert [o.label for o in res.themeOptions] == ["Seaside Walk", "City Nights", "Mountain Morning"]
+    assert res.themeOptions[1].style == "bold-contrast"
+
+
+@pytest.mark.asyncio
+async def test_theme_options_dropped_when_theme_already_fixed():
+    req = V2ThemeRequest(
+        albumId="alb_1",
+        language="en",
+        clustersOverview=_theme_req().clustersOverview,
+        currentTheme={"subject": "Set theme", "tone": "warm", "style": "warm-film"},
+    )
+
+    async def fake_complete(**_kwargs):
+        return _usage_response(
+            {
+                "theme": {"subject": "Set theme", "tone": "warm", "style": "warm-film"},
+                "themeOptions": [
+                    {"subject": "A", "label": "A"},
+                    {"subject": "B", "label": "B"},
+                ],
+                "assistantReply": "Refined.",
+            }
+        )
+
+    res = await theme.run(req, complete=fake_complete)
+    assert res.themeOptions is None
+
+
+@pytest.mark.asyncio
+async def test_theme_options_tolerant_drops_malformed_and_requires_two():
+    async def fake_complete(**_kwargs):
+        return _usage_response(
+            {
+                "theme": {"subject": "X", "tone": "warm", "style": "warm-film"},
+                # only one usable option (others malformed) → field omitted.
+                "themeOptions": [
+                    {"subject": "Only One", "label": "Only One"},
+                    {"label": "no subject"},
+                    "not-an-object",
+                ],
+                "assistantReply": "ok",
+            }
+        )
+
+    res = await theme.run(_theme_req(), complete=fake_complete)
+    assert res.themeOptions is None

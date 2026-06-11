@@ -7,7 +7,9 @@ import { ERRORS } from '@/lib/api/error-codes';
 import {
   AlbumDraft,
   type V2ThemeRequest,
+  type V2ThemeResponse,
   type V2ChapterChatRequest,
+  type V2ChapterChatResponse,
 } from '@yujee/contracts';
 
 // The chat-turn shape isn't exported from the contract (it's a local const there);
@@ -49,7 +51,13 @@ export const albumAuthoringService = {
     userId: string,
     albumId: string,
     input: { userMessage?: string },
-  ): Promise<{ theme: V2ThemeRequest['currentTheme']; assistantReply: string }> {
+  ): Promise<{
+    theme: V2ThemeRequest['currentTheme'];
+    assistantReply: string;
+    // Pass-through for the browser to render pickable theme options (editor.html
+    // themeOpt1-3). Display-only — NOT merged into draft_json (invariant 12).
+    themeOptions?: V2ThemeResponse['themeOptions'];
+  }> {
     const { draft } = await loadDraftAlbum(userId, albumId);
 
     // descByPhotoId: map used photo ids → their analysis description, so each
@@ -106,7 +114,13 @@ export const albumAuthoringService = {
       await albumRepo.update(tx, albumId, { draftJson: next });
     });
 
-    return { theme: result.theme, assistantReply: result.assistantReply };
+    // themeOptions: pass straight through to the browser (display-only, never
+    // written into the merged draft above — invariant 12).
+    return {
+      theme: result.theme,
+      assistantReply: result.assistantReply,
+      ...(result.themeOptions ? { themeOptions: result.themeOptions } : {}),
+    };
   },
 
   // POST /api/v2/albums/[uuid]/chapter-chat — synchronous (Stage 4). Slice ONLY
@@ -120,7 +134,15 @@ export const albumAuthoringService = {
     userId: string,
     albumId: string,
     input: { chapterId: string; userMessage: string },
-  ): Promise<{ assistantReply: string; state: string; chapterId: string }> {
+  ): Promise<{
+    assistantReply: string;
+    state: string;
+    chapterId: string;
+    // Pass-through for the browser to render pickable chapter-title chips
+    // (editor.html chipName1-4). Display-only — NOT merged into the chapter
+    // (invariant 12); the chosen title is applied via a later user action.
+    nameOptions?: V2ChapterChatResponse['nameOptions'];
+  }> {
     const { draft } = await loadDraftAlbum(userId, albumId);
 
     const chapterIdx = draft.chapters.findIndex((c) => c.chapterId === input.chapterId);
@@ -210,6 +232,8 @@ export const albumAuthoringService = {
       assistantReply: result.assistantReply,
       state: result.state,
       chapterId: input.chapterId,
+      // nameOptions: display-only pass-through (not merged into the chapter above).
+      ...(result.nameOptions ? { nameOptions: result.nameOptions } : {}),
     };
   },
 };
