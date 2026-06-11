@@ -6,21 +6,13 @@ import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
 import { PAGE } from './templates/constants';
 import type { EditorPage } from './types';
 
-// v2 editor preview canvas (design-v1 editor.html, issue #143). A 1.414:1
-// two-page spread rendered in 3D perspective with a page-turn flip animation,
-// plus the surrounding canvas chrome the redesign introduces:
-//   • bottom glassmorphism thumbnail strip (prev/next + indicator + per-spread thumbs)
-//   • a zoom control (zoom out past min → whole-magazine overview grid)
-//   • a floating, collapsible spread rail on the left of the canvas
-//   • an overview grid showing every spread at once
-// This is the preview/navigation layer only — editing, chat, export, and the
-// topbar stay in AlbumEditor. Pages still render through the real web templates
-// at the canonical 794×1123 canvas, so visuals are honest.
+// UI-1b 3D flipbook (design-v1 editor.html): a 1.414:1 two-page spread with a
+// center-spine shadow, perspective transform, and a page-turn animation between
+// spreads. A bottom glassmorphism thumbnail strip (prev/next + indicator +
+// per-spread thumbnails) drives navigation. This is the preview/navigation
+// layer only — editing, chat, export, and the topbar stay in AlbumEditor.
 
 const FLIP_MS = 900; // matches .flipper transition in editor.html
-const ZMIN = 0.5;
-const ZMAX = 2;
-const ZSTEP = 0.25;
 
 interface Strings {
   prevPage: string;
@@ -29,15 +21,6 @@ interface Strings {
   editPage: string;
   // "{current} / {total}"
   pageIndicator: string;
-  overview: string;
-  zoomIn: string;
-  zoomOut: string;
-  resetZoom: string;
-  chaptersLabel: string;
-  collapseChapters: string;
-  expandChapters: string;
-  // "Spread {n}"
-  spreadLabel: string;
 }
 
 interface Props {
@@ -54,7 +37,7 @@ interface Props {
 }
 
 // One album page rendered through its real web template, scaled to fill a half
-// of the spread (or a thumbnail). `width`/`height` is the rendered pixel size.
+// of the spread (or a thumbnail). `box` is the rendered pixel size of the page.
 function PageFace({
   page,
   totalPages,
@@ -148,14 +131,6 @@ export function FlipBook({
   const timerRef = useRef<number | null>(null);
   useEffect(() => () => { if (timerRef.current) window.clearTimeout(timerRef.current); }, []);
 
-  // Zoom + overview state. Zooming out past ZMIN drops into the whole-magazine
-  // overview grid; zooming back in (or picking a spread) returns to the book.
-  const [zoom, setZoom] = useState(1);
-  const [overview, setOverview] = useState(false);
-
-  // Collapsible floating spread rail (design .chapter-card / rail-collapsed).
-  const [railCollapsed, setRailCollapsed] = useState(false);
-
   // Fit the book into the stage: height drives the size, width follows 1.414:1.
   const stageRef = useRef<HTMLDivElement>(null);
   const [book, setBook] = useState({ w: 0, h: 0 });
@@ -234,54 +209,6 @@ export function FlipBook({
     goToSpread(spreadOf(arrayIndex));
   };
 
-  // ─── Zoom + overview controls (design zoom-ctrl + book-overview) ───
-  const enterOverview = () => setOverview(true);
-  const exitOverview = useCallback(() => {
-    setOverview(false);
-    setZoom(1);
-  }, []);
-  const zoomBy = useCallback(
-    (d: number) => {
-      if (overview) {
-        if (d > 0) exitOverview(); // zoom in from overview returns to the book
-        return;
-      }
-      const nz = Math.round((zoom + d) * 100) / 100;
-      if (nz < ZMIN) {
-        enterOverview(); // zoom out past min → see the whole magazine
-        return;
-      }
-      setZoom(Math.min(ZMAX, nz));
-    },
-    [overview, zoom, exitOverview],
-  );
-  const resetZoom = () => {
-    if (overview) {
-      exitOverview();
-      return;
-    }
-    setZoom(1);
-  };
-  const toggleOverview = () => (overview ? exitOverview() : enterOverview());
-  const openSpreadFromOverview = (s: number) => {
-    exitOverview();
-    goToSpread(s);
-  };
-
-  // Cmd/Ctrl + wheel zoom over the canvas (design wheel handler).
-  useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    const onWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        zoomBy(e.deltaY < 0 ? ZSTEP : -ZSTEP);
-      }
-    };
-    stage.addEventListener('wheel', onWheel, { passive: false });
-    return () => stage.removeEventListener('wheel', onWheel);
-  }, [zoomBy]);
-
   const [curLeft, curRight] = pagesOfSpread(spread);
 
   // Leaf faces depend on flip direction. Forward: the current right page is the
@@ -311,7 +238,6 @@ export function FlipBook({
     () => t.pageIndicator.replace('{current}', String(spread + 1)).replace('{total}', String(spreadCount)),
     [t.pageIndicator, spread, spreadCount],
   );
-  const zoomPctLabel = overview ? t.overview : `${Math.round(zoom * 100)}%`;
 
   if (pages.length === 0) {
     return (
@@ -369,64 +295,6 @@ export function FlipBook({
     </div>
   );
 
-  // ─── Whole-magazine overview grid (design book-overview / ov-grid) ───
-  if (overview) {
-    return (
-      <div ref={stageRef} className="relative flex h-full w-full overflow-hidden">
-        <div className="absolute inset-0 overflow-y-auto px-7 pb-20 pt-10 [scrollbar-width:thin]">
-          <div className="mx-auto grid max-w-[1100px] grid-cols-[repeat(auto-fill,minmax(300px,1fr))] content-start gap-6">
-            {Array.from({ length: spreadCount }, (_, s) => {
-              const [ol, or] = pagesOfSpread(s);
-              const active = s === spread;
-              return (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => openSpreadFromOverview(s)}
-                  className="group/ov block text-left transition-transform hover:-translate-y-[3px]"
-                >
-                  <div
-                    className="relative flex aspect-[1.414/1] overflow-hidden rounded-[3px] bg-[var(--surface)]"
-                    style={{
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.06), 0 10px 26px rgba(0,0,0,0.10)',
-                      outline: active ? '2px solid var(--accent)' : undefined,
-                      outlineOffset: active ? 2 : undefined,
-                    }}
-                  >
-                    <div className="flex-1 overflow-hidden">
-                      <PageFace page={ol} totalPages={totalPages} resolveImage={resolveImage} width={150} height={106} />
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                      <PageFace page={or} totalPages={totalPages} resolveImage={resolveImage} width={150} height={106} />
-                    </div>
-                    <div
-                      aria-hidden
-                      className="pointer-events-none absolute inset-y-0 left-1/2 z-[2] w-px -translate-x-1/2"
-                      style={{ background: 'var(--border-soft)' }}
-                    />
-                  </div>
-                  <div className="mt-2.5 text-center font-mono text-[11px] tracking-[0.04em] text-[var(--fg-2)]">
-                    {t.spreadLabel.replace('{n}', String(s + 1))}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <ZoomControl
-          zoomPctLabel={zoomPctLabel}
-          overview={overview}
-          t={t}
-          onZoomOut={() => zoomBy(-ZSTEP)}
-          onZoomIn={() => zoomBy(ZSTEP)}
-          onReset={resetZoom}
-          onToggleOverview={toggleOverview}
-        />
-      </div>
-    );
-  }
-
   return (
     <div
       ref={stageRef}
@@ -444,9 +312,6 @@ export function FlipBook({
             boxShadow: '0 2px 8px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.08)',
             transformStyle: 'preserve-3d',
             overflow: 'hidden',
-            transform: `scale(${zoom})`,
-            transformOrigin: 'center center',
-            transition: 'transform var(--motion-base) var(--ease)',
           }}
         >
           {/* under layer: the resting spread (target pages slot in beneath the leaf during a flip) */}
@@ -505,74 +370,6 @@ export function FlipBook({
         </div>
       )}
 
-      {/* ─── Floating, collapsible spread rail (design .chapter-card) ─── */}
-      {spreadCount > 1 && (
-        <div
-          className="absolute left-5 top-1/2 z-[7] hidden -translate-y-1/2 flex-col items-stretch gap-0.5 overflow-y-auto rounded-[20px] border border-white/60 p-1.5 lg:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          style={{
-            width: railCollapsed ? 'auto' : 84,
-            maxHeight: '70%',
-            background: 'rgba(255,255,255,0.8)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-            transition: 'width var(--motion-base) var(--ease), padding var(--motion-base) var(--ease)',
-          }}
-        >
-          {!railCollapsed && (
-            <>
-              <div className="px-2 pb-1.5 pt-0.5 text-center text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--meta)]">
-                {t.chaptersLabel}
-              </div>
-              <div className="flex flex-col gap-0.5">
-                {Array.from({ length: spreadCount }, (_, s) => {
-                  const active = s === spread;
-                  return (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => goToSpread(s)}
-                      disabled={!!anim}
-                      title={t.spreadLabel.replace('{n}', String(s + 1))}
-                      className={`flex flex-col gap-px rounded-[13px] px-2.5 py-1.5 text-left transition-colors ${
-                        active ? 'bg-black/[0.06]' : 'hover:bg-black/[0.05]'
-                      }`}
-                    >
-                      <span className={`font-mono text-[9.5px] font-semibold tracking-[0.04em] ${active ? 'text-[var(--fg)]' : 'text-[var(--meta)]'}`}>
-                        {String(s + 1).padStart(2, '0')}
-                      </span>
-                      <span className={`truncate text-[12px] font-semibold leading-tight ${active ? 'text-[var(--fg)]' : 'text-[var(--fg-2)]'}`}>
-                        {t.spreadLabel.replace('{n}', String(s + 1))}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => setRailCollapsed((v) => !v)}
-            title={railCollapsed ? t.expandChapters : t.collapseChapters}
-            aria-label={railCollapsed ? t.expandChapters : t.collapseChapters}
-            className={`flex h-[18px] w-[30px] items-center justify-center self-center rounded-full text-[var(--muted)] transition-colors hover:bg-black/[0.06] hover:text-[var(--fg)] ${railCollapsed ? '' : 'mt-0.5'}`}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-[13px] w-[13px] transition-transform"
-              style={{ transform: railCollapsed ? 'rotate(180deg)' : undefined }}
-            >
-              <polyline points="18 15 12 9 6 15" />
-            </svg>
-          </button>
-        </div>
-      )}
-
       {/* ─── Bottom glassmorphism thumbnail strip ─── */}
       <div
         className="absolute bottom-3 left-1/2 z-[6] flex max-w-[calc(100%-32px)] -translate-x-1/2 items-center gap-2 rounded-full px-3 py-1.5"
@@ -626,7 +423,7 @@ export function FlipBook({
                 type="button"
                 onClick={() => goToSpread(s)}
                 disabled={!!anim}
-                title={t.spreadLabel.replace('{n}', String(s + 1))}
+                title={`${s + 1}`}
                 className="flex-shrink-0 transition-transform hover:-translate-y-px"
               >
                 <div
@@ -654,85 +451,6 @@ export function FlipBook({
           })}
         </div>
       </div>
-
-      {/* ─── Zoom control (zoom out past min → overview) ─── */}
-      <ZoomControl
-        zoomPctLabel={zoomPctLabel}
-        overview={overview}
-        t={t}
-        onZoomOut={() => zoomBy(-ZSTEP)}
-        onZoomIn={() => zoomBy(ZSTEP)}
-        onReset={resetZoom}
-        onToggleOverview={toggleOverview}
-      />
-    </div>
-  );
-}
-
-// Glass zoom pill (design .zoom-ctrl): −  100%  +  | overview-toggle.
-function ZoomControl({
-  zoomPctLabel,
-  overview,
-  t,
-  onZoomOut,
-  onZoomIn,
-  onReset,
-  onToggleOverview,
-}: {
-  zoomPctLabel: string;
-  overview: boolean;
-  t: Pick<Strings, 'zoomIn' | 'zoomOut' | 'resetZoom' | 'overview'>;
-  onZoomOut: () => void;
-  onZoomIn: () => void;
-  onReset: () => void;
-  onToggleOverview: () => void;
-}) {
-  const btn =
-    'flex h-7 w-7 items-center justify-center rounded-full text-[var(--fg-2)] transition-colors hover:bg-[var(--bg)] hover:text-[var(--fg)]';
-  return (
-    <div
-      className="absolute bottom-3.5 right-4 z-[8] flex items-center gap-px rounded-full border border-[var(--border-soft)] p-1"
-      style={{
-        background: 'rgba(255,255,255,0.86)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
-        boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-      }}
-    >
-      <button type="button" onClick={onZoomOut} title={t.zoomOut} aria-label={t.zoomOut} className={btn}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        onClick={onReset}
-        title={t.resetZoom}
-        className="min-w-[46px] cursor-pointer select-none text-center font-mono text-[11px] text-[var(--fg-2)]"
-      >
-        {zoomPctLabel}
-      </button>
-      <button type="button" onClick={onZoomIn} title={t.zoomIn} aria-label={t.zoomIn} className={btn}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-          <line x1="12" y1="5" x2="12" y2="19" />
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-      </button>
-      <span className="mx-[3px] h-4 w-px bg-[var(--border-soft)]" />
-      <button
-        type="button"
-        onClick={onToggleOverview}
-        title={t.overview}
-        aria-label={t.overview}
-        className={`${btn} ${overview ? 'bg-[var(--bg)] text-[var(--fg)]' : ''}`}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-          <rect x="3" y="3" width="7" height="7" rx="1" />
-          <rect x="14" y="3" width="7" height="7" rx="1" />
-          <rect x="3" y="14" width="7" height="7" rx="1" />
-          <rect x="14" y="14" width="7" height="7" rx="1" />
-        </svg>
-      </button>
     </div>
   );
 }

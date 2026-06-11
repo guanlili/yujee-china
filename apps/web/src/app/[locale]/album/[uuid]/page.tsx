@@ -3,7 +3,7 @@
 import { use, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAlbumPoll } from '@/lib/hooks/use-album-poll';
-import { AlbumEditor } from '@/components/album/AlbumEditor';
+import { EditorPort } from '@/components/album/editor-v2/EditorPort';
 import { AlbumGeneratingShell } from '@/components/album/AlbumGeneratingShell';
 import { defaultLocale, isLocale, type Locale } from '@/lib/i18n/routing';
 
@@ -39,7 +39,7 @@ export default function AlbumPage({
     (detail.album.status === 'EDITING' || detail.album.status === 'COMPLETED');
 
   if (showEditor) {
-    return <AlbumEditor detail={detail} locale={locale} />;
+    return <EditorPort detail={detail} locale={locale} />;
   }
 
   return (

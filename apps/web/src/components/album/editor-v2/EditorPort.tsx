@@ -16,9 +16,23 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 import { useEffect, useRef } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { localizePath, type Locale } from '@/lib/i18n/routing';
+import { signOut } from '@/lib/auth/client';
+import { photoStore } from '@/lib/photo/store';
+import { getWebTemplate } from '../web-registry';
+import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
+import { PAGE } from '../templates/constants';
+import {
+  applyPatchToPages,
+  extractPhotoIds,
+  type AlbumDetail,
+  type EditorPage,
+  type LayoutPatchEntry,
+} from '../types';
 import './editor-port.css';
 
-export function EditorPort() {
+export function EditorPort({ detail, locale }: { detail: AlbumDetail; locale: Locale }) {
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -283,119 +297,86 @@ export function EditorPort() {
       },
     };
 
-    let currentLang = 'zh';
+    let currentLang = locale === 'zh' ? 'zh' : 'en';
     const t = (key: string) =>
       (i18n[currentLang] && i18n[currentLang][key]) || i18n.zh[key] || key;
 
     // expose alert hooks (original uses inline onclick="alert(t('...'))")
     (root as unknown as { __t: (k: string) => string }).__t = t;
 
-    /* ─── CHAPTERS data (verbatim) ─── */
-    interface Photo { url: string; cap?: string; span?: boolean }
-    interface Chapter {
-      eyebrow: string; title: string; meta: string; pages: string; footer: string;
-      narrative: string; photos: Photo[]; pageNum: string; pageRightNum: string; ctxTag: string;
-    }
-    const CHAPTERS: Chapter[] = [
-      {
-        eyebrow: 'CHAPTER 01',
-        title: '海边时光',
-        meta: '2024.04.06 · 厦门 · 6 张照片',
-        pages: 'P. 2–3 / 17',
-        footer: '厦门 · 鼓浪屿',
-        narrative: `那天的<span class="hl">风很轻</span>，沙子是温热的。我们沿着环岛路一直走，海浪一遍又一遍地把脚印抹平，又一遍又一遍地让我们重新走过。
-          你说想看一次完整的潮起潮落，于是我们坐了整个下午，看远处的船像一只被慢慢拉远的风筝。
-          后来才知道，<span class="hl">那种叫不出名字的安静</span>，就是旅行最珍贵的部分。`,
-        photos: [
-          { url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600&q=80', cap: '环岛路 · 上午十点', span: true },
-          { url: 'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=400&q=80' },
-          { url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80' },
-        ],
-        pageNum: '02 · 海边时光',
-        pageRightNum: '03',
-        ctxTag: '第 1 章',
-      },
-      {
-        eyebrow: 'CHAPTER 02',
-        title: '古街探味',
-        meta: '2024.04.07 · 中山路 · 7 张照片',
-        pages: 'P. 8–9 / 17',
-        footer: '厦门 · 中山路',
-        narrative: `老巷子里有<span class="hl">沙茶面的烟火气</span>，墙根贴着早褪色的招牌。
-          卖花生汤的阿姨说，她在这条街做了三十二年了，她记得每一个常客的口味。
-          我们点了一碗最老派的，她笑着多舀了一勺。<span class="hl">所谓人情味</span>，大概就是这样的一勺。`,
-        photos: [
-          { url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600&q=80', cap: '中山路 · 黄昏', span: true },
-          { url: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400&q=80' },
-          { url: 'https://images.unsplash.com/photo-1559339352-11d035aa65de?w=400&q=80' },
-        ],
-        pageNum: '08 · 古街探味',
-        pageRightNum: '09',
-        ctxTag: '第 2 章',
-      },
-      {
-        eyebrow: 'CHAPTER 03',
-        title: '日落归途',
-        meta: '2024.04.08 · 演武大桥 · 4 张照片',
-        pages: 'P. 14–15 / 17',
-        footer: '厦门 · 演武大桥',
-        narrative: `回程的车上，<span class="hl">夕阳把云烧成橘子味</span>。
-          你靠在窗边睡着了，我没忍心叫你。
-          高铁穿过一段又一段海岸，每一次海面被切开，光就跟着碎一次。
-          我想，这趟旅行最完整的画面，<span class="hl">大概不在相机里</span>，在你睡着时窗外那片橘色里。`,
-        photos: [
-          { url: 'https://images.unsplash.com/photo-1495567720989-cebdbdd97913?w=600&q=80', cap: '演武大桥 · 17:42', span: true },
-          { url: 'https://images.unsplash.com/photo-1502635385003-ee1e6a1a742d?w=400&q=80' },
-          { url: 'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=400&q=80' },
-        ],
-        pageNum: '14 · 日落归途',
-        pageRightNum: '15',
-        ctxTag: '第 3 章',
-      },
+    /* ─── Real pages → spreads (cover alone on the right-hand page) ─── */
+    const albumId = detail.album.id;
+    // The album's *content* language (what the agent writes in) is fixed at
+    // generation time and read from the layout — distinct from the UI locale.
+    const contentLang: 'zh' | 'en' =
+      (detail.album.layoutJson as { magazine?: { language?: string } } | null)?.magazine?.language === 'zh'
+        ? 'zh'
+        : 'en';
+    // Mutable working copy: chat and inline edits patch this in place and repaint
+    // without remounting the effect.
+    let pagesState: EditorPage[] = detail.pages.map((p) => ({
+      ...p,
+      imagesJson: { ...p.imagesJson },
+      textsJson: { ...p.textsJson },
+    }));
+    const total = detail.pages.length;
+    // Lead with a blank slot so the cover (page 0) sits on the right of the first
+    // spread (book-opening convention); the rest pair up two-per-spread.
+    const spreadCount = Math.max(1, Math.ceil((pagesState.length + 1) / 2));
+    const slotAt = (k: number): EditorPage | null => (k === 0 ? null : pagesState[k - 1] ?? null);
+    const spreadPages = (s: number): [EditorPage | null, EditorPage | null] => [
+      slotAt(s * 2),
+      slotAt(s * 2 + 1),
     ];
-
-    function rebuildChapters() {
-      CHAPTERS[0].title = t('ch1TitleBook');
-      CHAPTERS[0].meta = t('ch1Meta');
-      CHAPTERS[0].narrative = t('ch1Narrative');
-      CHAPTERS[0].photos[0].cap = t('ch1PhotoCap');
-      CHAPTERS[0].pageNum = t('ch1PageNum');
-      CHAPTERS[0].footer = t('ch1Footer');
-      CHAPTERS[0].ctxTag = t('ch1CtxTag');
-
-      CHAPTERS[1].title = t('ch2TitleBook');
-      CHAPTERS[1].meta = t('ch2Meta');
-      CHAPTERS[1].narrative = t('ch2Narrative');
-      CHAPTERS[1].photos[0].cap = t('ch2PhotoCap');
-      CHAPTERS[1].pageNum = t('ch2PageNum');
-      CHAPTERS[1].footer = t('ch2Footer');
-      CHAPTERS[1].ctxTag = t('ch2CtxTag');
-
-      CHAPTERS[2].title = t('ch3TitleBook');
-      CHAPTERS[2].meta = t('ch3Meta');
-      CHAPTERS[2].narrative = t('ch3Narrative');
-      CHAPTERS[2].photos[0].cap = t('ch3PhotoCap');
-      CHAPTERS[2].pageNum = t('ch3PageNum');
-      CHAPTERS[2].footer = t('ch3Footer');
-      CHAPTERS[2].ctxTag = t('ch3CtxTag');
+    function pageByIndex(idx: number): EditorPage | undefined {
+      return pagesState.find((p) => p.pageIndex === idx);
     }
+    const spreadLabel = (i: number) =>
+      currentLang === 'zh' ? '跨页 ' + (i + 1) : 'Spread ' + (i + 1);
 
-    function photoGridHTML(photos: Photo[]) {
-      return `<div class="photo-grid">` + photos.map((p) =>
-        `<div class="photo${p.span ? ' span-2' : ''}" style="background-image:url('${p.url}')">${p.cap ? `<div class="cap">${p.cap}</div>` : ''}</div>`,
-      ).join('') + `</div>`;
+    // Original photos live only in the browser (invariant 1). Resolve photoId →
+    // blob: URL from IndexedDB; URLs load async, so we repaint once they arrive.
+    let imageUrls: Record<string, string> = {};
+    const resolveImage: ResolveImage = (id) => imageUrls[id];
+
+    // Render a real album page through its web template (the same path the live
+    // editor/PDF use) as static markup we can drop into the imperative book.
+    function faceInner(page: EditorPage | null): string {
+      if (!page) return '';
+      const Template = getWebTemplate(page.templateId);
+      if (!Template) {
+        return `<div style="padding:24px;font-size:14px">Unknown template: ${page.templateId}</div>`;
+      }
+      const data = adaptPageToTemplateData(
+        { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson },
+        resolveImage,
+      );
+      return renderToStaticMarkup(<Template data={data} totalPages={total} />);
     }
-    function coverHTML(c: Chapter) {
-      return `
-        <div class="ch-eyebrow">${c.eyebrow}</div>
-        <div class="ch-mark">${c.title}</div>
-        <div class="ch-meta-line">${c.meta}</div>
-        <p class="ch-narrative">${c.narrative}</p>
-        <div class="page-num left">${c.pageNum}</div>`;
+    // The 794×1123 page scaled to fill the given box (matches FlipBook PageFace).
+    function faceHTML(page: EditorPage | null, boxW: number, boxH: number): string {
+      const scale = Math.min(boxW / PAGE.width, boxH / PAGE.height) || 1;
+      return (
+        `<div style="width:${boxW}px;height:${boxH}px;overflow:hidden;background:#fff">` +
+        `<div style="transform:scale(${scale});transform-origin:top left;width:${PAGE.width}px;height:${PAGE.height}px">` +
+        faceInner(page) +
+        `</div></div>`
+      );
     }
-    function photoSideHTML(c: Chapter) {
-      return `${photoGridHTML(c.photos)}
-        <div class="photo-foot"><span>${c.footer}</span><span>${c.pageRightNum}</span></div>`;
+    function paintEl(el: HTMLElement | null, page: EditorPage | null) {
+      if (!el) return;
+      el.innerHTML = faceHTML(page, el.clientWidth || 1, el.clientHeight || 1);
+    }
+    // Repaint every surface that shows page content after an edit.
+    function repaintBook() {
+      paintSpread(currentCh);
+      buildThumbs();
+      if (bodyEl.classList.contains('overview-on')) renderOverview();
+    }
+    // Mirror a layout patch (already persisted server-side) into the preview.
+    function applyLocalPatch(patch: LayoutPatchEntry[]) {
+      pagesState = applyPatchToPages(pagesState, patch);
+      repaintBook();
     }
 
     /* ─── apply language ─── */
@@ -425,8 +406,8 @@ export function EditorPort() {
         if (val) (el as HTMLElement).innerHTML = val;
       });
 
-      rebuildChapters();
       renderRail();
+      buildThumbs();
       paintSpread(currentCh);
     }
 
@@ -453,29 +434,30 @@ export function EditorPort() {
     const leafBack = byId('leafBack')!;
     let currentCh = 0;
     let flipping = false;
-    let lastCardedCh = 0;
 
     function paintSpread(i: number) {
-      const c = CHAPTERS[i];
-      pageLeft.innerHTML = coverHTML(c);
-      pageRight.innerHTML = photoSideHTML(c);
-      if (pageInd) pageInd.textContent = c.pages;
-      if (ctxBadge) ctxBadge.textContent = c.ctxTag;
-      $$('.chapter').forEach((el, j) => el.classList.toggle('active', j === i));
-      $$('.m-chapter-chip').forEach((el, j) => el.classList.toggle('active', j === i));
+      const [lp, rp] = spreadPages(i);
+      paintEl(pageLeft, lp);
+      paintEl(pageRight, rp);
+      if (pageInd) pageInd.textContent = (i + 1) + ' / ' + spreadCount;
+      if (ctxBadge) ctxBadge.textContent = spreadLabel(i);
+      // Rail items key off their target spread (data-ch), which for AI chapters is
+      // a non-contiguous spread index — compare by that, not by list position.
+      $$('.chapter').forEach((el) => el.classList.toggle('active', +el.getAttribute('data-ch')! === i));
+      $$('.m-chapter-chip').forEach((el) => el.classList.toggle('active', +el.getAttribute('data-ch')! === i));
       updateThumbUI(i);
     }
 
     function flipTo(nextIdx: number, dir: 'next' | 'prev') {
-      if (flipping || nextIdx === currentCh) return;
+      if (flipping || nextIdx === currentCh || nextIdx < 0 || nextIdx >= spreadCount) return;
       flipping = true;
-      const cur = CHAPTERS[currentCh];
-      const nxt = CHAPTERS[nextIdx];
+      const [curLeft, curRight] = spreadPages(currentCh);
+      const [nxtLeft, nxtRight] = spreadPages(nextIdx);
 
       if (dir === 'next') {
-        leafFront.innerHTML = photoSideHTML(cur);
-        leafBack.innerHTML = coverHTML(nxt);
-        pageRight.innerHTML = photoSideHTML(nxt);
+        paintEl(leafFront, curRight);
+        paintEl(leafBack, nxtLeft);
+        paintEl(pageRight, nxtRight);
         flipper.classList.remove('flip-prev');
         flipper.style.left = '50%';
         flipper.style.transformOrigin = 'left center';
@@ -492,9 +474,9 @@ export function EditorPort() {
           flipping = false;
         }, 920);
       } else {
-        leafFront.innerHTML = coverHTML(cur);
-        leafBack.innerHTML = photoSideHTML(nxt);
-        pageLeft.innerHTML = coverHTML(nxt);
+        paintEl(leafFront, curLeft);
+        paintEl(leafBack, nxtRight);
+        paintEl(pageLeft, nxtLeft);
         flipper.style.left = '0%';
         flipper.style.transformOrigin = 'right center';
         flipper.style.transform = 'rotateY(0deg)';
@@ -515,38 +497,61 @@ export function EditorPort() {
     }
 
     /* ─── Left chapter rail + mobile chips ─── */
+    // Rail shows the AI's image-cluster chapters (fetched from the read-only
+    // chapter summary) once loaded; until then — or for a finalized album with no
+    // draft — it falls back to listing spreads.
+    const esc = (s: string) =>
+      s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
+    let chapters: { label: string; spread: number }[] = [];
+    // A chapter "starts" at the spread holding the first page that uses any of its
+    // clustered photos (chapter→pages is recovered via photoIds; the flat layout
+    // carries no chapter boundary).
+    function computeChapterSpread(photoIds: string[]): number {
+      const set = new Set(photoIds);
+      let minI = Infinity;
+      pagesState.forEach((p, i) => {
+        if (Object.values(p.imagesJson).some((pid) => set.has(pid))) minI = Math.min(minI, i);
+      });
+      return minI === Infinity ? 0 : Math.floor((minI + 1) / 2);
+    }
     function renderRail() {
+      const useCh = chapters.length > 0;
+      const items = useCh
+        ? chapters.map((c, i) => ({ idx: c.spread, num: String(i + 1).padStart(2, '0'), label: c.label }))
+        : Array.from({ length: spreadCount }, (_, i) => ({ idx: i, num: String(i + 1).padStart(2, '0'), label: spreadLabel(i) }));
+      const shortOf = (it: { num: string; label: string }) =>
+        useCh ? [...it.label].slice(0, 2).join('') || it.num : it.num;
+
       const list = byId('chapterList');
       if (list) {
-        list.innerHTML = CHAPTERS.map((c, i) => {
-          const photoN = c.photos ? c.photos.length : 0;
-          const numStr = String(i + 1).padStart(2, '0');
-          const shortTitle = [...c.title].length > 2 ? [...c.title].slice(0, 2).join('') + '…' : c.title;
-          return `<div class="chapter${i === currentCh ? ' active' : ''}" data-ch="${i}" title="${c.title}">
-            <span class="chapter-num">${numStr}</span>
-            <span class="chapter-title">${shortTitle}</span>
-            <span class="chapter-meta">${photoN} ${t('photosWord')}</span>
-          </div>`;
-        }).join('');
+        list.innerHTML = items
+          .map(
+            (it) => `<div class="chapter${it.idx === currentCh ? ' active' : ''}" data-ch="${it.idx}" title="${esc(it.label)}">
+            <span class="chapter-num">${it.num}</span>
+            <span class="chapter-title">${esc(shortOf(it))}</span>
+          </div>`,
+          )
+          .join('');
         list.querySelectorAll('.chapter').forEach((el) => {
           el.addEventListener('click', () => {
             const i = +el.getAttribute('data-ch')!;
             if (i !== currentCh) flipTo(i, i > currentCh ? 'next' : 'prev');
-            selectChapterStory(i);
           });
         });
       }
 
       const mbar = byId('mobileChapterBar');
       if (mbar) {
-        mbar.innerHTML = CHAPTERS.map((c, i) =>
-          `<button class="m-chapter-chip${i === currentCh ? ' active' : ''}" data-ch="${i}">${c.ctxTag} · ${c.title}</button>`,
-        ).join('');
+        mbar.innerHTML = items
+          .map(
+            (it) =>
+              `<button class="m-chapter-chip${it.idx === currentCh ? ' active' : ''}" data-ch="${it.idx}">${esc(it.label)}</button>`,
+          )
+          .join('');
         mbar.querySelectorAll('.m-chapter-chip').forEach((el) => {
           el.addEventListener('click', () => {
             const i = +el.getAttribute('data-ch')!;
             if (i !== currentCh) flipTo(i, i > currentCh ? 'next' : 'prev');
-            selectChapterStory(i);
           });
         });
       }
@@ -558,20 +563,39 @@ export function EditorPort() {
     const toggleRail = () => bodyEl.classList.toggle('rail-collapsed');
 
     /* ─── Thumbnail strip ─── */
+    // Build the bottom thumbnail strip from real spreads (replaces the design's
+    // three hardcoded placeholder thumbs).
+    function buildThumbs() {
+      const row = byId('thumbRow');
+      if (!row) return;
+      row.innerHTML = Array.from({ length: spreadCount }, (_, i) =>
+        `<div class="thumb-item${i === currentCh ? ' active' : ''} shrink-0 w-[52px] cursor-pointer" data-gospread="${i}">
+          <div class="thumb-img"><div class="thumb-img-left" data-tface="${i}-l"></div><div class="thumb-img-right" data-tface="${i}-r"></div></div>
+        </div>`,
+      ).join('');
+      for (let i = 0; i < spreadCount; i++) {
+        const [lp, rp] = spreadPages(i);
+        paintEl(row.querySelector(`[data-tface="${i}-l"]`) as HTMLElement | null, lp);
+        paintEl(row.querySelector(`[data-tface="${i}-r"]`) as HTMLElement | null, rp);
+      }
+      row.querySelectorAll('[data-gospread]').forEach((el) => {
+        el.addEventListener('click', () => goToSpread(parseInt(el.getAttribute('data-gospread')!, 10)));
+      });
+    }
     function updateThumbUI(chIdx: number) {
       $$('.thumb-item').forEach((el, i) => el.classList.toggle('active', i === chIdx));
       const ti = byId('thumbInd');
-      if (ti) ti.textContent = (chIdx + 1) + ' / ' + CHAPTERS.length;
+      if (ti) ti.textContent = (chIdx + 1) + ' / ' + spreadCount;
     }
     function goToSpread(chIdx: number) {
-      if (chIdx === currentCh || chIdx < 0 || chIdx >= CHAPTERS.length) return;
+      if (chIdx === currentCh || chIdx < 0 || chIdx >= spreadCount) return;
       flipTo(chIdx, chIdx > currentCh ? 'next' : 'prev');
       updateThumbUI(chIdx);
     }
     function thumbNav(dir: number) {
       let next = currentCh + dir;
-      if (next < 0) next = CHAPTERS.length - 1;
-      if (next >= CHAPTERS.length) next = 0;
+      if (next < 0) next = spreadCount - 1;
+      if (next >= spreadCount) next = 0;
       goToSpread(next);
     }
 
@@ -598,24 +622,19 @@ export function EditorPort() {
       if (bodyEl.classList.contains('overview-on')) { exitOverview(); return; }
       zoom = 1; applyZoom();
     }
-    function miniSpreadHTML(c: Chapter) {
-      const photos = (c.photos || []).slice(0, 4);
-      const cells = photos.map((p) => `<div class="ov-photo${p.span ? ' span2' : ''}" style="background-image:url('${p.url}')"></div>`).join('');
-      return `<div class="ov-page ov-left">
-          <div class="ov-eyebrow">${c.eyebrow}</div>
-          <div class="ov-title">${c.title}</div>
-          <div class="ov-meta">${c.meta}</div>
-        </div>
-        <div class="ov-page ov-right"><div class="ov-photos">${cells}</div></div>`;
-    }
     function renderOverview() {
       const g = byId('ovGrid');
       if (!g) return;
-      g.innerHTML = CHAPTERS.map((c, i) =>
+      g.innerHTML = Array.from({ length: spreadCount }, (_, i) =>
         `<div class="ov-spread${i === currentCh ? ' ov-current' : ''}" data-ovidx="${i}">
-          <div class="ov-book">${miniSpreadHTML(c)}</div>
-          <div class="ov-cap">${c.ctxTag} · ${c.title}</div>
+          <div class="ov-book"><div class="ov-page ov-left" data-oface="${i}-l"></div><div class="ov-page ov-right" data-oface="${i}-r"></div></div>
+          <div class="ov-cap">${spreadLabel(i)}</div>
         </div>`).join('');
+      for (let i = 0; i < spreadCount; i++) {
+        const [lp, rp] = spreadPages(i);
+        paintEl(g.querySelector(`[data-oface="${i}-l"]`) as HTMLElement | null, lp);
+        paintEl(g.querySelector(`[data-oface="${i}-r"]`) as HTMLElement | null, rp);
+      }
       g.querySelectorAll('.ov-spread').forEach((el) => {
         el.addEventListener('click', () => openSpreadFromOverview(+el.getAttribute('data-ovidx')!));
       });
@@ -637,7 +656,6 @@ export function EditorPort() {
     function openSpreadFromOverview(i: number) {
       exitOverview();
       if (i !== currentCh) flipTo(i, i > currentCh ? 'next' : 'prev');
-      selectChapterStory(i);
     }
     const stage = $('.book-stage');
     const onWheel = (e: WheelEvent) => {
@@ -696,168 +714,200 @@ export function EditorPort() {
       byId('photoModal')?.classList.remove('open');
     }
 
-    /* ─── New-chapter flow ─── */
-    let pendingPhotoCount = 0;
+    /* ─── New-chapter flow is creation-phase only (theme/chapter-chat routes),
+       not part of the editor — the add-chapter affordance is cut for this pass.
+       The picker modal stays dormant; confirm just closes it. ─── */
     function confirmNewChapter() {
-      pendingPhotoCount = $$('#pickGrid .pick-photo.sel').length;
-      if (pendingPhotoCount === 0) return;
       closePhotoPicker();
-
-      setChatState(1);
-      hideAwait();
-      const load = document.createElement('div');
-      load.className = 'msg ai';
-      load.innerHTML = `<div class="load-block"><div class="load-spinner"></div><span class="load-label">${t('loadingNewChapter')}</span></div>`;
-      chatBody!.appendChild(load); scrollChat();
-
-      setTimeout(() => {
-        load.remove();
-        setChatState(2);
-        const a = document.createElement('div');
-        a.className = 'msg ai';
-        a.innerHTML = `
-          <div class="thinking-block"><span class="thinking-label">${t('themeThinking').replace('{n}', String(pendingPhotoCount))}</span></div>
-          <div class="ai-text">${t('themeAsk')}</div>
-          <div class="ai-actions flex gap-2 mt-3.5 flex-wrap">
-            <button class="chip-select" data-theme>${t('themeOpt1')}</button>
-            <button class="chip-select" data-theme>${t('themeOpt2')}</button>
-            <button class="chip-select" data-theme>${t('themeOpt3')}</button>
-          </div>
-          <div class="name-time">${t('justNow')}</div>`;
-        a.querySelectorAll('[data-theme]').forEach((b) =>
-          b.addEventListener('click', () => pickTheme(b as HTMLElement)));
-        chatBody!.appendChild(a); restAwait(); scrollChat();
-      }, 1800);
-    }
-
-    function pickTheme(btn: HTMLElement) {
-      btn.parentNode!.querySelectorAll('.chip-select').forEach((c) => c.classList.remove('selected'));
-      btn.classList.add('selected');
-      const theme = btn.textContent!;
-
-      const n = CHAPTERS.length + 1;
-      const photos: Photo[] = PICK_PHOTOS.slice(0, Math.max(1, Math.min(pendingPhotoCount, 3))).map((url, k) => (
-        k === 0 ? { url: url.replace('w=300', 'w=600'), cap: theme, span: true } : { url }
-      ));
-      CHAPTERS.push({
-        eyebrow: 'CHAPTER ' + String(n).padStart(2, '0'),
-        title: theme,
-        meta: t('newChapterMeta').replace('{n}', String(pendingPhotoCount)),
-        pages: 'P. ' + (n * 2) + '–' + (n * 2 + 1) + ' / ' + (n * 2 + 1),
-        footer: theme,
-        narrative: t('newChapterNarrative'),
-        photos,
-        pageNum: String(n * 2).padStart(2, '0') + ' · ' + theme,
-        pageRightNum: String(n * 2 + 1).padStart(2, '0'),
-        ctxTag: (currentLang === 'zh' ? '第 ' + n + ' 章' : 'Ch. ' + n),
-      });
-      renderRail();
-      const newIdx = CHAPTERS.length - 1;
-      goToSpread(newIdx);
-
-      setTimeout(() => {
-        setChatState(3);
-        const a = document.createElement('div');
-        a.className = 'msg ai';
-        a.innerHTML = `
-          <div class="thinking-block"><span class="thinking-label">${t('themeConfirmed').replace('{theme}', theme)}</span></div>
-          <div class="ai-text">${t('storyStart')}</div>
-          <div class="name-time">${t('justNow')}</div>`;
-        chatBody!.appendChild(a); restAwait(); scrollChat();
-        lastCardedCh = newIdx;
-        input?.focus();
-      }, 480);
-    }
-
-    function selectChapterStory(i: number) {
-      setChatState(3);
-      if (ctxBadge) ctxBadge.textContent = CHAPTERS[i].ctxTag;
-      if (i !== lastCardedCh) pushChapterCard(i);
-      lastCardedCh = i;
-    }
-
-    /* ─── Chapter card in conversation ─── */
-    function chapterCardHTML(i: number) {
-      const c = CHAPTERS[i];
-      const ps = (c.photos || []).slice(0, 4);
-      const thumbs = ps.map((p) => `<div class="cc-thumb" style="background-image:url('${p.url}')"></div>`).join('');
-      const photoN = c.photos ? c.photos.length : 0;
-      return `<div class="chap-card" data-ch="${i}">
-        <div class="cc-thumbs">${thumbs}</div>
-        <div class="cc-foot">
-          <div class="cc-info">
-            <div class="cc-title-row"><span class="cc-title">${c.title}</span><span class="cc-tag">${c.ctxTag}</span></div>
-            <div class="cc-meta">${photoN} ${t('photosWord')} · ${t('justEdited')}</div>
-          </div>
-          <button class="cc-view" data-viewch="${i}">${t('viewLayout')}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
-        </div>
-      </div>`;
-    }
-    function bindViewChapter(scope: HTMLElement) {
-      scope.querySelectorAll('[data-viewch]').forEach((b) => {
-        if ((b as HTMLElement).dataset.bound) return;
-        (b as HTMLElement).dataset.bound = '1';
-        b.addEventListener('click', () => viewChapter(+b.getAttribute('data-viewch')!));
-      });
-    }
-    function pushChapterCard(i: number) {
-      const d = document.createElement('div');
-      d.className = 'msg ai';
-      d.innerHTML = chapterCardHTML(i);
-      chatBody!.appendChild(d); bindViewChapter(d); scrollChat();
-    }
-    function viewChapter(i: number) {
-      if (i !== currentCh) flipTo(i, i > currentCh ? 'next' : 'prev');
-      if (window.matchMedia('(max-width:767px)').matches) {
-        openDetail();
-      } else {
-        const b = byId('book');
-        if (b) { b.classList.remove('book-flash'); void b.offsetWidth; b.classList.add('book-flash'); }
-      }
     }
 
     /* ─── Chat send ─── */
     const chatBody = byId('chatBody');
     const input = byId('msgInput') as HTMLTextAreaElement | null;
     const sendBtnEl = byId('sendBtn');
-    function send() {
-      if (!input) return;
+    let sending = false;
+    let lastUserMessage = '';
+
+    async function send() {
+      if (!input || sending) return;
       const txt = input.value.trim();
       if (!txt) return;
+      sending = true;
       const u = document.createElement('div');
-      u.className = 'msg user';
+      u.className = 'msg user max-w-full';
       u.innerHTML = `<div class="bubble"></div>`;
       u.querySelector('.bubble')!.textContent = txt;
       chatBody!.appendChild(u);
       input.value = ''; input.style.height = 'auto';
       hideAwait();
-      chatBody!.scrollTop = chatBody!.scrollHeight;
-      setTimeout(() => {
-        const a = document.createElement('div');
-        a.className = 'msg ai';
-        a.innerHTML = `
-          <div class="thinking-block active">
-            <img class="think-jelly" src="/jellyfish-loop.png" alt="">
-            <span class="thinking-label">${t('thinking')}</span>
-            <span class="thinking-dots"><span></span><span></span><span></span></span>
-          </div>`;
-        chatBody!.appendChild(a);
-        chatBody!.scrollTop = chatBody!.scrollHeight;
-        setTimeout(() => {
-          a.querySelector('.thinking-block')!.classList.remove('active');
-          a.querySelector('.thinking-label')!.textContent = t('analyzedFeedback');
-          const textEl = document.createElement('div');
-          textEl.className = 'ai-text';
-          textEl.textContent = t('aiReplyDefault');
-          const time = document.createElement('div');
-          time.className = 'name-time';
-          time.textContent = t('justNow');
-          a.appendChild(textEl);
-          a.appendChild(time);
-          restAwait();
-          chatBody!.scrollTop = chatBody!.scrollHeight;
-        }, 1500);
-      }, 400);
+      scrollChat();
+      await runEdit(txt);
+      sending = false;
+    }
+
+    // One chat-edit round trip: POST the message, mirror the returned layout
+    // patch into the book (the server already persisted it), then offer the
+    // accept / rewrite / edit-myself chips on the assistant reply.
+    async function runEdit(message: string) {
+      lastUserMessage = message;
+      const a = document.createElement('div');
+      a.className = 'msg ai max-w-full';
+      a.innerHTML =
+        `<div class="thinking-block active">` +
+        `<img class="think-jelly" src="/jellyfish-loop.png" alt="">` +
+        `<span class="thinking-label">${t('thinking')}</span>` +
+        `<span class="thinking-dots"><span></span><span></span><span></span></span>` +
+        `</div>`;
+      chatBody!.appendChild(a);
+      scrollChat();
+      try {
+        const res = await fetch(`/api/v1/albums/${albumId}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message, language: contentLang }),
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error?.message ?? 'chat failed');
+        const patch: LayoutPatchEntry[] = json.data.layoutPatch ?? [];
+        const reply: string = json.data.assistantReply ?? '';
+        applyLocalPatch(patch); // reflect the server-applied edit in the preview
+        a.querySelector('.thinking-block')!.classList.remove('active');
+        (a.querySelector('.thinking-label') as HTMLElement).textContent = t('analyzedFeedback');
+        renderProposal(a, reply, patch);
+      } catch {
+        a.querySelector('.thinking-block')?.classList.remove('active');
+        const err = document.createElement('div');
+        err.className = 'ai-text';
+        err.textContent = t('aiReplyDefault');
+        a.appendChild(err);
+      }
+      restAwait();
+      scrollChat();
+    }
+
+    function renderProposal(host: HTMLElement, reply: string, patch: LayoutPatchEntry[]) {
+      if (reply) {
+        const textEl = document.createElement('div');
+        textEl.className = 'ai-text';
+        textEl.textContent = reply;
+        host.appendChild(textEl);
+      }
+      // First changed text slot — the target "我来改" lets the user edit by hand.
+      const textEntry = patch.find((e) => e.textsJson && Object.keys(e.textsJson).length > 0);
+      const editTarget = textEntry
+        ? { pageIndex: textEntry.pageIndex, slot: Object.keys(textEntry.textsJson!)[0] }
+        : null;
+
+      const actionsEl = document.createElement('div');
+      actionsEl.className = 'ai-actions flex gap-2 mt-3.5 flex-wrap';
+      const mkChip = (label: string) => {
+        const b = document.createElement('button');
+        b.className = 'chip';
+        b.textContent = label;
+        actionsEl.appendChild(b);
+        return b;
+      };
+      const disable = () =>
+        actionsEl.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
+
+      const acceptBtn = mkChip(t('chipAccept'));
+      acceptBtn.addEventListener('click', () => { disable(); acceptBtn.classList.add('selected'); });
+
+      const rewriteBtn = mkChip(t('chipRewrite'));
+      rewriteBtn.addEventListener('click', () => { disable(); void runEdit(lastUserMessage); });
+
+      if (editTarget) {
+        const editBtn = mkChip(t('chipEditMyself'));
+        editBtn.addEventListener('click', () => { disable(); openInlineEdit(host, editTarget); });
+      }
+      host.appendChild(actionsEl);
+
+      const time = document.createElement('div');
+      time.className = 'name-time';
+      time.textContent = t('justNow');
+      host.appendChild(time);
+    }
+
+    // "我来改": edit the changed text in place and persist via the single-page
+    // PATCH (the existing slot-edit endpoint), then repaint the book.
+    function openInlineEdit(host: HTMLElement, target: { pageIndex: number; slot: string }) {
+      const page = pageByIndex(target.pageIndex);
+      if (!page) return;
+      const box = document.createElement('div');
+      box.className = 'ai-quote';
+      box.setAttribute('contenteditable', 'true');
+      box.textContent = page.textsJson[target.slot] ?? '';
+      host.appendChild(box);
+      box.focus();
+      box.addEventListener('blur', () => {
+        const val = box.textContent ?? '';
+        const cur = pageByIndex(target.pageIndex);
+        if (!cur || val === (cur.textsJson[target.slot] ?? '')) return;
+        cur.textsJson = { ...cur.textsJson, [target.slot]: val };
+        repaintBook();
+        void fetch(`/api/v1/albums/${albumId}/pages/${target.pageIndex}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ textsJson: cur.textsJson }),
+        });
+      });
+    }
+    // Export: render the PDF in the browser (@react-pdf), download it locally,
+    // and upload straight to R2 (bytes never touch the Web tier — invariant 4).
+    let exportingPdf = false;
+    async function exportPdf() {
+      if (exportingPdf) return;
+      exportingPdf = true;
+      const btn = $('[data-action="exportPdf"]') as HTMLButtonElement | null;
+      if (btn) btn.style.opacity = '0.6';
+      try {
+        const adaptable = pagesState.map((p) => ({
+          templateId: p.templateId, images: p.imagesJson, texts: p.textsJson,
+        }));
+        const ids = collectPhotoIds(adaptable);
+        const dataUrls = await photoStore.getDataUrls(ids);
+        const { renderAlbumPdf } = await import('@/lib/pdf/render');
+        const blob = await renderAlbumPdf(adaptable, (id) => dataUrls[id]);
+
+        // Local download — useful even if R2 isn't configured (e.g. mock runs).
+        const url = URL.createObjectURL(blob);
+        const aEl = document.createElement('a');
+        aEl.href = url;
+        aEl.download = (currentTitle || 'album') + '.pdf';
+        document.body.appendChild(aEl);
+        aEl.click();
+        aEl.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+
+        try {
+          const signRes = await fetch(`/api/v1/albums/${albumId}/pdf-upload-url`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contentType: 'application/pdf', size: blob.size }),
+          });
+          const signJson = await signRes.json();
+          if (!signJson.ok) throw new Error(signJson.error?.message ?? 'sign failed');
+          const { putUrl, r2Key } = signJson.data;
+          const putRes = await fetch(putUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/pdf' },
+            body: blob,
+          });
+          if (!putRes.ok) throw new Error(`R2 PUT ${putRes.status}`);
+          await fetch(`/api/v1/albums/${albumId}/pdf`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ r2Key }),
+          });
+        } catch (uploadErr) {
+          console.error('PDF cloud upload failed', uploadErr);
+        }
+      } catch (e) {
+        console.error('PDF export failed', e);
+      } finally {
+        exportingPdf = false;
+        if (btn) btn.style.opacity = '';
+      }
     }
     function hideAwait() { const w = byId('awaitUser'); if (w) w.style.display = 'none'; }
     function restAwait() { const w = byId('awaitUser'); if (w) { chatBody!.appendChild(w); w.style.display = 'flex'; } }
@@ -875,7 +925,7 @@ export function EditorPort() {
 
     /* ─── Wire the static onclick handlers transcribed as data-action ─── */
     const actions: Record<string, () => void> = {
-      exportPdf: () => alert(t('alertExportPdf')),
+      exportPdf,
       toggleUserMenu,
       toggleChat,
       toggleRail,
@@ -887,7 +937,7 @@ export function EditorPort() {
       closePhotoPicker,
       uploadStub: () => alert(t('alertUploadStub')),
       confirmNewChapter,
-      buyShells: () => { window.location.href = 'pricing.html'; },
+      buyShells: () => { window.location.href = `/${locale}/credits`; },
     };
     const actionHandlers: { el: Element; fn: EventListener }[] = [];
     $$('[data-action]').forEach((el) => {
@@ -920,59 +970,131 @@ export function EditorPort() {
       el.addEventListener('click', fn);
       actionHandlers.push({ el, fn });
     });
-    // thumb items go to spread
-    $$('[data-gospread]').forEach((el) => {
-      const idx = parseInt(el.getAttribute('data-gospread')!, 10);
-      const fn = () => goToSpread(idx);
-      el.addEventListener('click', fn);
-      actionHandlers.push({ el, fn });
-    });
+    // (thumb items: buildThumbs() rebuilds #thumbRow from real spreads and binds
+    // their data-gospread clicks there, so no static binding is needed here.)
 
-    /* ─── seeded chat chips (採納 / 再寫一版 / 我來改 / 章節名) ─── */
-    $$('[data-chip]').forEach((el) => {
-      const which = el.getAttribute('data-chip')!;
-      const fn = () => {
-        if (which === 'accept') alert(t('alertAccepted'));
-        else if (which === 'rewrite') alert(t('alertRewrite'));
-        else if (which === 'editMyself') {
-          const q = el.closest('.msg')!.querySelector('.ai-quote') as HTMLElement;
-          q.setAttribute('contenteditable', 'true');
-          q.focus();
-          alert(t('alertEditMyself'));
+    /* Chat chips (accept / rewrite / edit-myself) are built per assistant reply
+       in renderProposal; the design's demo seed messages are cleared on init.
+       Chapter-name suggestion chips need a creation-phase source and are deferred. */
+
+    /* ─── Topbar links → real routes ─── */
+    $('.back-btn')?.setAttribute('href', `/${locale}/my-albums`);
+    $('.brand')?.setAttribute('href', `/${locale}/my-albums`);
+
+    // Logout (better-auth): sign out, then to the login page.
+    const logoutBtn = $('.dropdown-item.danger');
+    if (logoutBtn) {
+      const fn = (e: Event) => {
+        e.preventDefault();
+        void signOut().finally(() => { window.location.href = `/${locale}/login`; });
+      };
+      logoutBtn.addEventListener('click', fn);
+      actionHandlers.push({ el: logoutBtn, fn });
+    }
+
+    // Language switch (decision: in the user menu). Inject EN / 中文 links; going
+    // to the other locale re-renders the whole editor in that language.
+    const dropdown = $('.user-dropdown');
+    const header = dropdown?.querySelector('.dropdown-header');
+    if (dropdown && header) {
+      const row = document.createElement('div');
+      row.className = 'flex gap-1 px-3 py-2';
+      (['en', 'zh'] as const).forEach((l) => {
+        const a = document.createElement('a');
+        a.href = localizePath(window.location.pathname, l);
+        a.textContent = l === 'zh' ? '中文' : 'EN';
+        a.className =
+          'flex-1 text-center px-2 py-1 rounded-lg text-[12px] no-underline ' +
+          (l === locale ? 'bg-bg font-semibold text-fg' : 'text-fg2 hover:bg-bg');
+        row.appendChild(a);
+      });
+      header.after(row);
+    }
+
+    /* ─── Init: clear the design's demo chat, paint the book, load originals ─── */
+    chatBody?.querySelectorAll('.msg').forEach((n) => n.remove());
+    const balanceAlert = byId('balanceAlert');
+    if (balanceAlert) balanceAlert.style.display = 'none';
+    // Surface the buy-shells card only when the shell balance is running low.
+    void fetch('/api/v1/credit/balance')
+      .then((r) => r.json())
+      .then((j) => {
+        if (j?.ok && typeof j.data?.balance === 'number' && j.data.balance <= 1 && balanceAlert) {
+          balanceAlert.style.display = '';
         }
-      };
-      el.addEventListener('click', fn);
-      actionHandlers.push({ el, fn });
-    });
-    $$('[data-name-chip]').forEach((el) => {
-      const fn = () => {
-        el.parentNode!.querySelectorAll('.chip-select').forEach((c) => c.classList.remove('selected'));
-        el.classList.add('selected');
-        const m = $('.ch-mark');
-        if (m) m.textContent = el.textContent;
-        alert(t('alertChapterUpdated') + el.textContent);
-      };
-      el.addEventListener('click', fn);
-      actionHandlers.push({ el, fn });
-    });
+      })
+      .catch(() => {});
+    // Real account identity in the user menu (design ships demo placeholders).
+    void fetch('/api/v1/user/me')
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j?.ok) return;
+        const u = j.data ?? {};
+        const nameEl = $('.dropdown-header-name');
+        if (nameEl && u.name) nameEl.textContent = u.name;
+        const emailEl = $('.dropdown-header-email');
+        if (emailEl && u.email) emailEl.textContent = u.email;
+        const av = $('.user-avatar');
+        if (av) av.textContent = String(u.name?.[0] ?? u.email?.[0] ?? 'U').toUpperCase();
+      })
+      .catch(() => {});
 
-    /* ─── Init: language → rail → seed conversation card ─── */
-    rebuildChapters();
-    setLang(currentLang);
-    renderRail();
+    // Editable album title: show the real title (not the demo i18n string) and
+    // persist renames via PATCH /albums/:id.
+    let currentTitle = detail.album.title;
+    const titleEl = $('.album-title');
+    if (titleEl) {
+      titleEl.removeAttribute('data-i18n');
+      titleEl.textContent = currentTitle;
+      titleEl.addEventListener('blur', () => {
+        const next = (titleEl.textContent ?? '').trim();
+        if (!next || next === currentTitle) {
+          titleEl.textContent = currentTitle;
+          return;
+        }
+        const prevTitle = currentTitle;
+        currentTitle = next;
+        void fetch(`/api/v1/albums/${albumId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: next }),
+        })
+          .then((r) => r.json())
+          .then((j) => { if (!j?.ok) throw new Error('rename failed'); })
+          .catch(() => { currentTitle = prevTitle; titleEl.textContent = prevTitle; });
+      });
+    }
+
+    // Chapter rail from the AI's image clusters (read-only summary; invariant 12).
+    void fetch(`/api/v1/albums/${albumId}/chapters`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j?.ok || !Array.isArray(j.data?.chapters) || j.data.chapters.length === 0) return;
+        chapters = j.data.chapters.map((c: { label: string; photoIds: string[] }) => ({
+          label: c.label,
+          spread: computeChapterSpread(c.photoIds),
+        }));
+        renderRail();
+      })
+      .catch(() => {});
+
+    setLang(currentLang); // also runs renderRail + buildThumbs + paintSpread
     setChatState(3);
 
-    // bind seeded chapter card (the JS seedChapterCard inserted after first AI msg)
-    (function seedChapterCard() {
-      const firstAi = chatBody!.querySelector('.msg.ai');
-      const card = document.createElement('div');
-      card.className = 'msg ai max-w-full';
-      card.innerHTML = chapterCardHTML(currentCh);
-      bindViewChapter(card);
-      if (firstAi && firstAi.nextSibling) chatBody!.insertBefore(card, firstAi.nextSibling);
-      else chatBody!.appendChild(card);
-    })();
-    lastCardedCh = currentCh;
+    const photoIds = [
+      ...new Set([
+        ...extractPhotoIds(detail.album.layoutJson),
+        ...collectPhotoIds(
+          detail.pages.map((p) => ({ templateId: p.templateId, images: p.imagesJson, texts: p.textsJson })),
+        ),
+      ]),
+    ];
+    void photoStore.getObjectUrls(photoIds).then((urls) => {
+      imageUrls = urls;
+      paintSpread(currentCh);
+      buildThumbs();
+      if (bodyEl.classList.contains('overview-on')) renderOverview();
+    });
 
     const completeTimer = setTimeout(() => {
       const active = $('.thinking-block.active');

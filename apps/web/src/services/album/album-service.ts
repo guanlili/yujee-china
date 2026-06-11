@@ -5,6 +5,7 @@ import { jobService } from '@/services/job/job-service';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
 import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
+import { AlbumDraft } from '@yujee/contracts';
 
 const PDF_MAX_BYTES = 50 * 1024 * 1024; // 50MB — docs/web/api.md §3.6
 
@@ -98,6 +99,26 @@ export const albumService = {
         textsJson: p.textsJson,
       })),
       generation,
+    };
+  },
+
+  // Read-only chapter summary for the editor rail. Chapters are the AI's image
+  // clusters from the authoring tree (draft_json); we expose only a derived
+  // summary (label / role / photoIds) — never the editable tree, so invariant 12
+  // holds. Returns [] when there's no draft (e.g. a finalized album).
+  async getChapterSummary(userId: string, albumId: string): Promise<{
+    chapters: { chapterId: string; label: string; role: string; photoIds: string[] }[];
+  }> {
+    const album = await this.findOwned(userId, albumId);
+    const parsed = AlbumDraft.safeParse(album.draftJson);
+    if (!parsed.success) return { chapters: [] };
+    return {
+      chapters: parsed.data.chapters.map((ch) => ({
+        chapterId: ch.chapterId,
+        label: ch.cluster.label,
+        role: ch.cluster.role,
+        photoIds: ch.photoIds,
+      })),
     };
   },
 

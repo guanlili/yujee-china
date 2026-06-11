@@ -5,9 +5,7 @@ import Link from 'next/link';
 import type { Locale } from '@/lib/i18n/routing';
 import { getMessages } from '@/lib/i18n/messages';
 import { Brand } from '@/components/app/Brand';
-import { LanguageSwitcher } from '@/components/app/LanguageSwitcher';
-import { UserMenu } from '@/components/app/UserMenu';
-import { useChromeSession } from '@/components/app/useChromeSession';
+import { ChromeStatusBar } from '@/components/app/ChromeStatusBar';
 
 export type SaveState = 'saved' | 'saving' | 'error';
 
@@ -21,11 +19,10 @@ interface Props {
   onExport: () => void;
 }
 
-// Editor-specific solid topbar (design-v1 editor.html .topbar, v2 redesign).
-// NOT the app-wide AppChrome (sidebar + blurred nav); it self-assembles from
-// the UI-0 atoms (Brand / LanguageSwitcher / UserMenu) plus editor-only chrome:
-// back button, contenteditable album title, autosave badge, and a brand-glow
-// "Export PDF" button.
+// Editor-specific solid topbar (design-v1 editor.html .topbar). It is NOT the
+// app-wide AppChrome (sidebar + blurred nav); it self-assembles from the UI-0
+// atoms (Brand / LanguageSwitcher / UserMenu) plus editor-only
+// chrome: back button, contenteditable title, autosave badge, export button.
 export function EditorTopbar({
   locale,
   title,
@@ -36,7 +33,6 @@ export function EditorTopbar({
   onExport,
 }: Props) {
   const t = getMessages(locale).dashboard.editor;
-  const session = useChromeSession();
   const titleRef = useRef<HTMLSpanElement>(null);
 
   // Keep the contenteditable text in sync when the title changes from elsewhere
@@ -56,20 +52,20 @@ export function EditorTopbar({
   };
 
   return (
-    <header className="flex h-[52px] flex-shrink-0 items-center justify-between border-b border-[var(--border-soft)] bg-[var(--surface)] px-3 sm:px-6">
-      <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+    <header className="flex h-[52px] flex-shrink-0 items-center justify-between border-b border-[var(--border-soft)] bg-[var(--surface)] px-6">
+      <div className="flex min-w-0 items-center gap-4">
         <Link
           href={`/${locale}/my-albums`}
           title={t.backToProjects}
           aria-label={t.backToProjects}
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--bg)] hover:text-[var(--fg)]"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--bg)] hover:text-[var(--fg)]"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </Link>
-        <Brand href={`/${locale}`} className="flex-shrink-0" />
-        <span className="hidden text-[var(--meta)] text-[var(--text-sm)] sm:inline">/</span>
+        <Brand href={`/${locale}`} />
+        <span className="text-[var(--meta)] text-[var(--text-sm)]">/</span>
         <span
           ref={titleRef}
           role="textbox"
@@ -84,9 +80,9 @@ export function EditorTopbar({
               (e.target as HTMLElement).blur();
             }
           }}
-          className="max-w-[34vw] cursor-text truncate rounded-full border border-transparent px-2 py-1 font-display font-bold text-[var(--text-sm)] text-[var(--fg)] outline-none transition-colors hover:bg-[var(--bg)] focus:border-[var(--accent)] focus:bg-[var(--surface)] focus:shadow-[var(--focus-ring)]"
+          className="max-w-[40vw] cursor-text truncate rounded-full border border-transparent px-2 py-1 font-bold text-[var(--text-sm)] text-[var(--fg)] outline-none transition-colors hover:bg-[var(--bg)] focus:border-[var(--accent)] focus:bg-[var(--surface)] focus:shadow-[var(--focus-ring)]"
         />
-        <span className="hidden items-center gap-1.5 rounded-full bg-[var(--bg)] px-2.5 py-1 font-mono text-[11px] tracking-[0.02em] text-[var(--muted)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] md:flex">
+        <span className="flex items-center gap-1.5 rounded-full bg-[var(--bg)] px-2.5 py-1 text-[var(--text-xs)] text-[var(--muted)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
           <span
             className={`h-1.5 w-1.5 rounded-full ${
               saveState === 'error'
@@ -100,47 +96,32 @@ export function EditorTopbar({
         </span>
       </div>
 
-      <div className="flex flex-shrink-0 items-center gap-1 sm:gap-2">
-        {/* Export PDF — brand-glow wrapper (design .btn-glow) behind a black pill */}
-        <span className="yujee-export-glow relative inline-flex">
-          <style>{`
-            .yujee-export-glow::after{
-              content:''; position:absolute; z-index:0; pointer-events:none;
-              left:10%; right:10%; top:45%; bottom:-6px; border-radius:9999px;
-              background:linear-gradient(90deg, var(--grad-green), var(--grad-purple), var(--grad-lime));
-              filter:blur(13px); opacity:.55;
-              transition:all var(--motion-base) var(--ease);
-            }
-            .yujee-export-glow:hover::after{ opacity:.78; filter:blur(17px); bottom:-9px; }
-            .yujee-export-glow:has(button:disabled)::after{ opacity:0; }
-            .yujee-export-glow > *{ position:relative; z-index:1; }
-          `}</style>
-          <button
-            type="button"
-            onClick={onExport}
-            disabled={exporting}
-            className="flex items-center gap-1.5 rounded-full bg-[var(--fg)] px-4 py-2.5 text-[var(--text-sm)] font-semibold text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-transform hover:-translate-y-px disabled:translate-y-0 disabled:opacity-40 sm:px-7"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            <span className="hidden sm:inline">{exporting ? t.exporting : t.exportPdf}</span>
-          </button>
-        </span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onExport}
+          disabled={exporting}
+          className="flex items-center gap-1.5 rounded-full bg-[var(--fg)] px-6 py-2.5 text-[var(--text-sm)] font-semibold text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-all hover:-translate-y-px hover:bg-[var(--fg-2)] disabled:translate-y-0 disabled:opacity-40"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          <span>{exporting ? t.exporting : t.exportPdf}</span>
+        </button>
         {downloadUrl && (
           <a
             href={downloadUrl}
             target="_blank"
             rel="noreferrer"
-            className="hidden text-[var(--text-sm)] text-[var(--accent)] underline underline-offset-2 sm:inline"
+            className="text-[var(--text-sm)] text-[var(--accent)] underline underline-offset-2"
           >
             {t.downloadPdf}
           </a>
         )}
-        <LanguageSwitcher locale={locale} />
-        <UserMenu user={session.user} locale={locale} />
+        <span className="mx-1 h-5 w-px bg-[var(--border-soft)]" />
+        <ChromeStatusBar locale={locale} />
       </div>
     </header>
   );

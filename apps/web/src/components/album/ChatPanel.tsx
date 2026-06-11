@@ -10,8 +10,6 @@ interface Props {
   locale: Locale;
   language: 'zh' | 'en';
   onPatch: (patch: LayoutPatchEntry[]) => void;
-  /** Collapse the chat card (design body.chat-collapsed). */
-  onCollapse?: () => void;
 }
 
 // Pull the text the AI changed out of a patch so it can be shown back as a
@@ -36,13 +34,11 @@ function ThinkingDots() {
   );
 }
 
-// Natural-language editing (design-v1 editor.html chat pane, v2 redesign). POST
-// /chat is synchronous (the user waits); on success we append both turns,
-// surface the AI reply as plain text, cite any text it changed in a quote card,
-// and hand the patch up so the preview updates in place. The redesign drops the
-// avatar header and instead leans on the inline jellyfish thinking / resting
-// states plus a plain collapse affordance.
-export function ChatPanel({ albumId, locale, language, onPatch, onCollapse }: Props) {
+// Natural-language editing (design-v1 editor.html chat pane). POST /chat is
+// synchronous (the user waits); on success we append both turns, surface the AI
+// reply as plain text, cite any text it changed in a quote card, and hand the
+// patch up so the preview updates in place.
+export function ChatPanel({ albumId, locale, language, onPatch }: Props) {
   const t = getMessages(locale).dashboard.editor;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -110,27 +106,24 @@ export function ChatPanel({ albumId, locale, language, onPatch, onCollapse }: Pr
     el.style.height = `${Math.min(el.scrollHeight, 100)}px`;
   };
 
-  const idle = !busy && !err;
-
   return (
-    <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--surface)]">
-      {/* Desktop collapse: plain icon inside the panel, top-right (design .chat-fold-collapse) */}
-      {onCollapse && (
-        <button
-          type="button"
-          onClick={onCollapse}
-          title={t.collapseChat}
-          aria-label={t.collapseChat}
-          className="absolute right-2.5 top-2.5 z-30 hidden h-7 w-7 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--bg)] hover:text-[var(--fg)] lg:flex"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-      )}
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--surface)]">
+      {/* head */}
+      <div className="flex flex-shrink-0 items-center gap-3 px-5 py-4">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--text-sm)] font-bold text-white">
+          {t.aiAvatarChar}
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-[var(--text-sm)] font-bold tracking-tight">{t.aiName}</h3>
+          <div className="text-[var(--text-xs)] text-[var(--muted)]">{t.chatSubtitle}</div>
+        </div>
+        <span className="ml-auto rounded-full bg-[var(--bg)] px-2.5 py-0.5 text-[var(--text-xs)] text-[var(--fg-2)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          {t.chatContext}
+        </span>
+      </div>
 
       {/* body */}
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-4">
         {messages.length === 0 && !busy && (
           <p className="text-[var(--text-xs)] leading-relaxed text-[var(--muted)]">{t.chatEmpty}</p>
         )}
@@ -174,28 +167,16 @@ export function ChatPanel({ albumId, locale, language, onPatch, onCollapse }: Pr
             </div>
           );
         })}
-        {/* Active thinking — jellyfish loop replaces the pulsing dot (design .thinking-block.active) */}
         {busy && (
           <div className="flex items-center gap-2 text-[var(--muted)]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/jellyfish-loop.png" alt="" className="h-[42px] w-[42px] flex-shrink-0 object-contain" />
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full border-[1.5px] border-[var(--grad-purple)] [animation:yujee-think-pulse_1.5s_ease-in-out_infinite]">
+              <span className="h-[5px] w-[5px] rounded-full bg-gradient-to-br from-[var(--grad-green)] to-[var(--grad-purple)]" />
+            </span>
             <span className="font-mono text-[var(--text-xs)]">{t.thinking}</span>
             <ThinkingDots />
           </div>
         )}
         {err && <p className="text-[var(--text-xs)] text-[#c44]">{err}</p>}
-        {/* Resting state: jellyfish waiting for the user (design .await-user) */}
-        {idle && (
-          <div className="flex items-center gap-[9px] px-0.5 pb-1 pt-0.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/jellyfish-icon.png"
-              alt=""
-              className="h-[30px] w-[30px] flex-shrink-0 object-contain [animation:yujee-jelly-float_3.2s_ease-in-out_infinite] [mix-blend-mode:multiply]"
-            />
-            <span className="font-mono text-[var(--text-xs)] tracking-[0.01em] text-[var(--meta)]">{t.awaitUser}</span>
-          </div>
-        )}
         <div ref={endRef} />
       </div>
 
