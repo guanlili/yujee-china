@@ -34,6 +34,17 @@ export default function AlbumPage({
     }
   }, [phase, router, locale, uuid]);
 
+  // While the init pipeline runs (album AGENT_RUNNING), we no longer show a
+  // separate "generating" page. Instead we render the edit-style AuthoringPort in
+  // its loading state: skeleton preview + a non-interactive "tidying your photos…"
+  // chat rail. When useAlbumPoll flips running → ready, this re-renders the same
+  // AuthoringPort in its ready state, and only then does it fetch the draft
+  // skeleton (single poll source — approach (a)). Leaving and returning via the
+  // URL naturally resumes: a fresh useAlbumPoll re-derives running → ready.
+  if (phase === 'loading' || phase === 'running') {
+    return <AuthoringPort albumId={uuid} locale={locale} phase="building" />;
+  }
+
   // EDITING is two distinct product states that share one status: the DRAFT phase
   // (draft_json written, layout_json still null → the v2 authoring flow) and the
   // FINALIZED phase (layout_json set → the editor). layoutJson is the
@@ -41,16 +52,23 @@ export default function AlbumPage({
   if (phase === 'ready' && detail) {
     const { status, layoutJson } = detail.album;
     if (status === 'EDITING' && layoutJson == null) {
-      return <AuthoringPort albumId={uuid} locale={locale} />;
+      return <AuthoringPort albumId={uuid} locale={locale} phase="ready" />;
     }
     return <EditorPort detail={detail} locale={locale} />;
   }
 
+  // Terminal error states (failed / gone / error / unauthorized) still reuse the
+  // generating shell — it's now only an error/terminal surface, never the
+  // "processing" page. (unauthorized also triggers the redirect effect above.)
+  // Only failed / gone / error remain as real shell states. unauthorized (handled
+  // by the redirect effect above) and the rare ready-without-detail fall back to a
+  // neutral loading shell for the frame before navigation/re-render resolves.
+  const shellPhase = phase === 'failed' || phase === 'gone' || phase === 'error' ? phase : 'loading';
   return (
     <AlbumGeneratingShell
       locale={locale}
       albumId={uuid}
-      phase={phase === 'unauthorized' || phase === 'ready' ? 'loading' : phase}
+      phase={shellPhase}
       generation={generation}
       error={error}
     />

@@ -12,11 +12,28 @@ import {
   postFinalize,
   type DraftSkeleton,
   type DraftSkeletonChapter,
+  type DraftTheme,
   type ChapterState,
 } from '@/lib/album/authoring-client';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { PagePreview } from '../PagePreview';
+import { PAGE } from '../templates/constants';
 import type { ResolveImage } from '../adapt-layout';
+
+// While the album is still AGENT_RUNNING (init pipeline, or finalize re-running),
+// page.tsx renders this port with phase="building": no draft exists yet, so we
+// show a skeleton placeholder + a non-interactive "tidying up" rail. phase flips
+// to "ready" only when useAlbumPoll sees EDITING — then the draft fetch runs.
+type PortPhase = 'building' | 'ready';
+
+// A theme is "set" once the agent has populated any of its fields — either the
+// user wrote a promptHint at creation (Stage 2 ran on init) or they already
+// answered the theme question. Empty object / all-blank values count as no theme,
+// so the first AI message asks "what does this set express?" (the theme step).
+function hasTheme(theme: DraftTheme | null): boolean {
+  if (!theme) return false;
+  return Object.values(theme).some((v) => typeof v === 'string' && v.trim().length > 0);
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // AuthoringPort — the v2 "authoring flow" (W10 #140). Shown for an album in the
@@ -50,7 +67,14 @@ const COPY = {
     subtitle: '和我聊聊这段回忆',
     statusDraft: '草稿就绪',
     statusFinishing: '完成中',
-    draftReady: '草稿已就绪 — 继续讲故事,或直接完成。先帮这本册子定个主题吧:它讲的是谁、什么场合?',
+    statusBuilding: '整理中',
+    // Loading-state rail copy while the init pipeline runs (album AGENT_RUNNING).
+    buildingTitle: '正在整理你的照片…',
+    buildingHint: '这通常需要 2-3 分钟。你可以先离开,稍后回来刷新这个页面就能接着看 —— 进度会自动恢复到当前状态。',
+    // No theme yet → the very first question asks what the photos express (theme step).
+    askTheme: '草稿已就绪 — 这组照片主要想表达什么?(比如它讲的是谁、什么场合)告诉我,我来帮你定个主题。',
+    // Theme already set (user wrote a prompt at creation) → confirm and move on.
+    themeReady: '草稿已就绪,我已经按你写的定好了主题。接下来我们一章一章把故事聊清楚吧,你也可以随时直接完成。',
     themeStage: '主题',
     chapterStage: '逐章',
     enterChapters: '开始逐章讲述',
@@ -85,8 +109,17 @@ const COPY = {
     subtitle: 'Tell me about this memory',
     statusDraft: 'Draft ready',
     statusFinishing: 'Finishing',
-    draftReady:
-      "Your draft is ready — keep telling the story, or finish now. Let's set a theme first: who is this book about, and what's the occasion?",
+    statusBuilding: 'Tidying up',
+    // Loading-state rail copy while the init pipeline runs (album AGENT_RUNNING).
+    buildingTitle: 'Tidying up your photos…',
+    buildingHint:
+      'This usually takes 2-3 minutes. Feel free to leave — come back and refresh this page anytime, and it picks up right where it left off.',
+    // No theme yet → the very first question asks what the photos express (theme step).
+    askTheme:
+      "Your draft is ready — what does this set of photos mainly express? (Who is it about, and what's the occasion?) Tell me and I'll set the theme.",
+    // Theme already set (user wrote a prompt at creation) → confirm and move on.
+    themeReady:
+      "Your draft is ready, and I've set the theme from what you wrote. Let's go chapter by chapter to flesh out the story — or finish the whole book anytime.",
     themeStage: 'Theme',
     chapterStage: 'Chapters',
     enterChapters: 'Start chapter by chapter',
@@ -117,8 +150,17 @@ const COPY = {
   },
 } as const;
 
-export function AuthoringPort({ albumId, locale }: { albumId: string; locale: Locale }) {
+export function AuthoringPort({
+  albumId,
+  locale,
+  phase = 'ready',
+}: {
+  albumId: string;
+  locale: Locale;
+  phase?: PortPhase;
+}) {
   const t = COPY[locale === 'zh' ? 'zh' : 'en'];
+  const building = phase === 'building';
   const [skeleton, setSkeleton] = useState<DraftSkeleton | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error' | 'gone'>('loading');
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
@@ -151,8 +193,22 @@ export function AuthoringPort({ albumId, locale }: { albumId: string; locale: Lo
     return draft;
   }, [albumId, loadImages]);
 
-  // First load: pull the skeleton, seed the chat with the draft-ready greeting.
+  // First load: pull the skeleton, then branch on whether a theme already exists
+  // (owner's 3-step flow, step 2):
+  //   • no theme  → first AI message asks "what does this set express?" and we
+  //                 stay on the theme stage until the user answers (→ postTheme).
+  //   • has theme → the user wrote a prompt at creation; confirm it and jump
+  //                 straight into the chapter-by-chapter stage.
   useEffect(() => {
+    // Approach (a): the draft only exists once the album reaches EDITING, which
+    // page.tsx surfaces by flipping phase building → ready. Until then there's
+    // nothing to fetch (/draft returns null mid-AGENT_RUNNING), so we skip the
+    // request entirely and stay in the loading UI. When phase becomes ready this
+    // effect re-runs and pulls the now-ready skeleton — no second poll loop here.
+    if (building) {
+      setLoadState('loading');
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -164,7 +220,13 @@ export function AuthoringPort({ albumId, locale }: { albumId: string; locale: Lo
         }
         setSkeleton(draft);
         void loadImages(draft);
-        setMessages([{ role: 'assistant', content: t.draftReady }]);
+        if (hasTheme(draft.theme)) {
+          setMessages([{ role: 'assistant', content: t.themeReady }]);
+          setStage('chapter');
+          setChapterIdx(0);
+        } else {
+          setMessages([{ role: 'assistant', content: t.askTheme }]);
+        }
         setLoadState('ready');
       } catch {
         if (!cancelled) setLoadState('error');
@@ -173,7 +235,7 @@ export function AuthoringPort({ albumId, locale }: { albumId: string; locale: Lo
     return () => {
       cancelled = true;
     };
-  }, [albumId, loadImages, t.draftReady]);
+  }, [albumId, building, loadImages, t.askTheme, t.themeReady]);
 
   // Keep the transcript pinned to the latest message.
   useEffect(() => {
@@ -249,7 +311,7 @@ export function AuthoringPort({ albumId, locale }: { albumId: string; locale: Lo
     }
   }, [albumId, busy, finishing, locale]);
 
-  const statusLabel = finishing ? t.statusFinishing : t.statusDraft;
+  const statusLabel = building ? t.statusBuilding : finishing ? t.statusFinishing : t.statusDraft;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg)]">
@@ -274,9 +336,15 @@ export function AuthoringPort({ albumId, locale }: { albumId: string; locale: Lo
           </span>
         </div>
         <div className="hidden items-center gap-2 text-[var(--text-xs)] text-[var(--muted)] sm:flex">
-          <span>{stage === 'theme' ? t.themeStage : t.chapterStage}</span>
-          {stage === 'chapter' && chapters.length > 0 && (
-            <span className="font-mono tabular-nums">{t.chapterOf(chapterIdx + 1, chapters.length)}</span>
+          {building ? (
+            <span>{t.statusBuilding}</span>
+          ) : (
+            <>
+              <span>{stage === 'theme' ? t.themeStage : t.chapterStage}</span>
+              {stage === 'chapter' && chapters.length > 0 && (
+                <span className="font-mono tabular-nums">{t.chapterOf(chapterIdx + 1, chapters.length)}</span>
+              )}
+            </>
           )}
         </div>
       </header>
@@ -284,7 +352,11 @@ export function AuthoringPort({ albumId, locale }: { albumId: string; locale: Lo
       <div className="relative grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[1fr_360px]">
         {/* ── Left: skeleton preview ── */}
         <main className="relative overflow-auto bg-[var(--bg)] p-8">
-          {loadState === 'error' ? (
+          {building ? (
+            <div className="flex h-full items-center justify-center">
+              <PagePlaceholder />
+            </div>
+          ) : loadState === 'error' ? (
             <Centered>{t.loadError}</Centered>
           ) : loadState === 'gone' ? (
             <Centered>{t.noDraft}</Centered>
@@ -339,6 +411,25 @@ export function AuthoringPort({ albumId, locale }: { albumId: string; locale: Lo
               </div>
             </div>
 
+            {building ? (
+              /* Loading rail: no input, just reassurance that work is in progress
+                 and that leaving/returning is safe (the URL resumes the poll). */
+              <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-6">
+                <div className="flex items-start gap-2.5">
+                  <span className="mt-0.5 flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded-full border-[1.5px] border-[var(--grad-purple)] [animation:yujee-think-pulse_1.5s_ease-in-out_infinite]">
+                    <span className="h-[5px] w-[5px] rounded-full bg-gradient-to-br from-[var(--grad-green)] to-[var(--grad-purple)]" />
+                  </span>
+                  <div className="flex items-center gap-1 text-[13.5px] font-medium text-[var(--fg-2)]">
+                    <span>{t.buildingTitle}</span>
+                    <BuildingDots />
+                  </div>
+                </div>
+                <p className="rounded-2xl rounded-bl-sm bg-[var(--bg)] px-3.5 py-2.5 text-[13px] leading-relaxed text-[var(--muted)]">
+                  {t.buildingHint}
+                </p>
+              </div>
+            ) : (
+              <>
             {/* Current-chapter banner + stepper (chapter stage only) */}
             {stage === 'chapter' && currentChapter && (
               <div className="flex flex-shrink-0 items-center justify-between gap-2 border-y border-[var(--border-soft)] bg-[var(--bg)] px-5 py-2.5">
@@ -446,10 +537,52 @@ export function AuthoringPort({ albumId, locale }: { albumId: string; locale: Lo
                 </svg>
               </button>
             </div>
+              </>
+            )}
           </div>
         </aside>
       </div>
     </div>
+  );
+}
+
+// Skeleton page placeholder shown in the preview while the init pipeline runs —
+// same visual language as AlbumGeneratingShell.PageSkeleton (pulsing card with
+// faux image/text blocks), minus the progress pill (we don't surface progress%
+// in the authoring loading state).
+function PagePlaceholder() {
+  const scale = 0.42;
+  return (
+    <div
+      className="relative overflow-hidden bg-[var(--surface)] shadow-[var(--shadow-card)]"
+      style={{ width: PAGE.width * scale, height: PAGE.height * scale }}
+      aria-hidden
+    >
+      <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-[var(--surface)] via-[var(--bg)] to-[var(--border-soft)]" />
+      <div className="absolute inset-x-10 top-10 h-28 rounded-[var(--radius-md)] bg-[var(--border-soft)]" />
+      <div className="absolute left-10 top-44 h-5 w-32 rounded-full bg-[var(--border)]" />
+      <div className="absolute left-10 right-10 top-56 space-y-3">
+        <div className="h-3 rounded-full bg-[var(--border-soft)]" />
+        <div className="h-3 rounded-full bg-[var(--border-soft)]" />
+        <div className="h-3 w-3/4 rounded-full bg-[var(--border-soft)]" />
+      </div>
+      <div className="absolute bottom-14 left-10 right-10 grid grid-cols-2 gap-4">
+        <div className="h-24 rounded-[var(--radius-md)] bg-[var(--border-soft)]" />
+        <div className="h-24 rounded-[var(--radius-md)] bg-[var(--border-soft)]" />
+      </div>
+    </div>
+  );
+}
+
+// Animated thinking dots for the loading rail (mirrors AlbumGeneratingShell).
+function BuildingDots() {
+  const base = 'h-[3.5px] w-[3.5px] rounded-full [animation:yujee-dot-bounce_1.4s_ease-in-out_infinite]';
+  return (
+    <span className="ml-0.5 inline-flex items-center gap-[3px]">
+      <span className={`${base} bg-[var(--grad-green)]`} />
+      <span className={`${base} bg-[var(--grad-purple)] [animation-delay:0.16s]`} />
+      <span className={`${base} bg-[var(--grad-lime)] [animation-delay:0.32s]`} />
+    </span>
   );
 }
 

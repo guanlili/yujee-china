@@ -14,7 +14,14 @@ class Settings(BaseSettings):
     # core
     agent_shared_secret: str = Field(..., min_length=1)
     web_base_url: str = "http://localhost:3000"
-    background_task_timeout_seconds: int = 180
+    # Total budget for an init/finalize/layout background task. Must cover the
+    # worst case of its only network stage(s) including ai_client's one retry
+    # (each call can take up to 2× its per-call timeout):
+    #   init: vision only → 2 × ark_timeout_seconds (2 × 120 = 240s).
+    #   layout/planning: writing (2 × 60) + composing (2 × 60) = 240s.
+    #   finalize: deterministic, no network.
+    # 600s leaves headroom over the ~240s worst case on real models.
+    background_task_timeout_seconds: int = 600
     port: int = 8001
     log_level: str = "info"
 
@@ -26,7 +33,12 @@ class Settings(BaseSettings):
     ark_api_key: str | None = None
     ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
     ark_vision_model: str = "doubao-seed-1-6-vision-250815"
-    ark_timeout_seconds: int = 30
+    # 6-image batched vision + structured JSON on the real doubao-seed-1-6
+    # reasoning model exceeds 30s even with thinking disabled (observed: two
+    # ReadTimeouts at ~30s → pipeline.vision_failed). 120s covers a slow single
+    # attempt; ai_client still retries once, so worst case = 2 × 120s, which
+    # fits inside background_task_timeout_seconds=600.
+    ark_timeout_seconds: int = 120
     # doubao-seed-* are reasoning models: reasoning_tokens share the max_tokens
     # budget and can truncate the JSON content (intermittent AGENT_VISION_FAILED,
     # worsening as photo count grows). Disable thinking for this structured

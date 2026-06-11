@@ -95,20 +95,22 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
       setErr(t.errPhotoMin);
       return;
     }
-    if (!prompt.trim()) {
-      setErr(t.errPromptEmpty);
-      return;
-    }
+    // The story prompt is optional in v2 (promptHint, contracts/v2.ts): selecting
+    // photos is the only required step. If the user wrote nothing, the authoring
+    // flow asks "what does this set express?" as its first question (theme step).
     setBusy(true);
     setErr(null);
-    const language = inferLanguage(prompt);
+    const trimmedPrompt = prompt.trim();
+    // No prompt to infer from → fall back to the page locale rather than guessing.
+    const language = trimmedPrompt ? inferLanguage(trimmedPrompt) : locale === 'zh' ? 'zh' : 'en';
     const photoIds = photos.map((p) => p.photoId);
     try {
       const builtPhotos = await photosFromStore(photoIds);
       const { albumId } = await submitInitV2({
         requestId: crypto.randomUUID(),
         language,
-        promptHint: prompt.trim(),
+        // Omit promptHint entirely when blank — it's optional in the v2 contract.
+        ...(trimmedPrompt ? { promptHint: trimmedPrompt } : {}),
         photos: builtPhotos,
       });
       // Submitted — the draft has served its purpose. Persist the per-album
@@ -123,7 +125,7 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
         // Short on credits: stash the draft (originals already in IndexedDB),
         // send the user to /credits to top up — that's the real checkout entry,
         // not /pricing — then resume here on return (§6.5.2).
-        generationDraft.save({ prompt: prompt.trim(), language, photoIds });
+        generationDraft.save({ prompt: trimmedPrompt, language, photoIds });
         router.push(`/${locale}/credits?from=create`);
         return;
       }
@@ -137,7 +139,9 @@ export default function CreatePage({ params }: { params: Promise<{ locale: Local
     }
   };
 
-  const canSubmit = !busy && photos.length >= 1 && prompt.trim().length > 0;
+  // Photos are the only requirement — the prompt is optional (owner: never force
+  // the user to write copy before they can create).
+  const canSubmit = !busy && photos.length >= 1;
 
   return (
     <AppChrome locale={locale} activeNav="home" showFooter>

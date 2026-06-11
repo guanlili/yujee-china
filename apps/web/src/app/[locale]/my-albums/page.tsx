@@ -2,11 +2,20 @@
 
 import { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 import { AppChrome } from '@/components/app/AppChrome';
 import { AlbumCoverPreview, type AlbumCoverPage } from '@/components/album/AlbumCoverPreview';
 import { RetryFailedButton } from '@/components/album/RetryFailedButton';
+import { photoStore } from '@/lib/photo/store';
+import {
+  submitInitV2,
+  photosFromStore,
+  CreditInsufficientError,
+  PhotosUnavailableError,
+} from '@/lib/generation/client';
+import { generationDraft, albumRecipe } from '@/lib/generation/draft';
 
 type Album = {
   id: string;
@@ -31,9 +40,11 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
   const { locale } = use(params);
   const t = getMessages(locale).dashboard;
 
+  const router = useRouter();
   const [albums, setAlbums] = useState<Album[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const load = async () => {
     setErr(null);
@@ -248,30 +259,83 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
     );
   };
 
-  // Grid-first "+" entry that opens the homepage composer. Sized h-full so it
-  // stays the same height as the album cards beside it (design-v1 Home 1).
+  // New-album entry: pick photos directly (no intermediate /create composer),
+  // then create the album and jump straight to the authoring page, which shows
+  // the loading state while the AI runs. The theme is asked there in the chat —
+  // nothing to type up front. Originals live in IndexedDB (invariant 1); base64
+  // is rebuilt at submit. CREDIT_INSUFFICIENT stashes a draft and routes to top
+  // up, resuming on /create (which still serves that recovery path).
+  const startNewAlbum = async (files: FileList | null) => {
+    if (!files || files.length === 0 || creating) return;
+    setCreating(true);
+    setErr(null);
+    const language: 'zh' | 'en' = locale === 'zh' ? 'zh' : 'en';
+    const photoIds: string[] = [];
+    try {
+      for (const f of Array.from(files).slice(0, 30)) {
+        const photoId = crypto.randomUUID();
+        await photoStore.put(photoId, f);
+        photoIds.push(photoId);
+      }
+      const builtPhotos = await photosFromStore(photoIds);
+      const { albumId } = await submitInitV2({
+        requestId: crypto.randomUUID(),
+        language,
+        photos: builtPhotos,
+      });
+      albumRecipe.save(albumId, { language, photoIds });
+      router.push(`/${locale}/album/${albumId}`);
+    } catch (e) {
+      if (e instanceof CreditInsufficientError) {
+        generationDraft.save({ prompt: '', language, photoIds });
+        router.push(`/${locale}/credits?from=create`);
+        return;
+      }
+      setErr(e instanceof PhotosUnavailableError ? t.create.errPhotosUnavailable : e instanceof Error ? e.message : t.common.error);
+      setCreating(false);
+    }
+  };
+
+  // Grid-first "+" entry. Clicking opens the OS photo picker directly; selecting
+  // photos starts the album and navigates away. Sized h-full to match the album
+  // cards beside it (design-v1 Home 1).
   const newCard = (
-    <Link
+    <label
       key="__new__"
-      href={`/${locale}#homepage-composer`}
       title={t.myAlbums.create}
       aria-label={t.myAlbums.create}
-      className="group grid h-full place-items-center rounded-[var(--radius-lg)] bg-[var(--surface)] border-2 border-solid border-[var(--border)] text-[var(--muted)] shadow-[var(--shadow-card)] transition hover:shadow-[var(--shadow-card-hover)] hover:-translate-y-0.5 hover:border-[var(--grad-green)] hover:text-[var(--grad-green)]"
+      aria-busy={creating}
+      className={`group grid h-full cursor-pointer place-items-center rounded-[var(--radius-lg)] bg-[var(--surface)] border-2 border-solid border-[var(--border)] text-[var(--muted)] shadow-[var(--shadow-card)] transition hover:shadow-[var(--shadow-card-hover)] hover:-translate-y-0.5 hover:border-[var(--grad-green)] hover:text-[var(--grad-green)] ${creating ? 'pointer-events-none opacity-60' : ''}`}
     >
-      <svg
-        className="w-12 h-12 transition-transform group-hover:scale-110"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <line x1="5" y1="12" x2="19" y2="12" />
-        <line x1="12" y1="5" x2="12" y2="19" />
-      </svg>
-    </Link>
+      <input
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        disabled={creating}
+        onChange={(e) => {
+          void startNewAlbum(e.target.files);
+          e.target.value = '';
+        }}
+      />
+      {creating ? (
+        <span className="h-10 w-10 animate-spin rounded-full border-[3px] border-[var(--border)] border-t-[var(--grad-green)]" />
+      ) : (
+        <svg
+          className="w-12 h-12 transition-transform group-hover:scale-110"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <line x1="5" y1="12" x2="19" y2="12" />
+          <line x1="12" y1="5" x2="12" y2="19" />
+        </svg>
+      )}
+    </label>
   );
 
   return (

@@ -129,7 +129,13 @@
   pointer-events:none;
   transition: transform .9s cubic-bezier(.45,.05,.2,1);
   transform: rotateY(0deg);
+  /* The flipper is a transient flip-animation overlay. At rest its blank white
+     front leaf sits over the right-hand page (left:50%, width:50%) and would
+     occlude whatever real page renders there — which is exactly where the cover
+     lands on the first spread. Keep it hidden except while a flip is running. */
+  visibility: hidden;
 }
+.editor-port .flipper.flipping{ visibility: visible; }
 .editor-port .flipper.flip-next{transform: rotateY(-180deg);}
 .editor-port .flipper.flip-prev{
   left:0; transform-origin: right center;
