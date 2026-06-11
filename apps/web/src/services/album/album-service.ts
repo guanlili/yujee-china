@@ -122,6 +122,77 @@ export const albumService = {
     };
   },
 
+  // Read-only RENDER projection of the authoring tree (draft_json) for the v2
+  // authoring flow's skeleton preview (W10 #140). Unlike getChapterSummary this
+  // includes pages (templateId/images/texts) because the skeleton must show the
+  // actual layout — but it stays consistent with invariant 12: this is a one-way
+  // READ for rendering only; the tree is NEVER edited in the browser and never
+  // round-trips back. Edits go through theme/chapter-chat, which re-slice
+  // draft_json server-side. Returns null when there's no draft to render (not in
+  // the draft phase, or already finalized — layout_json set).
+  //
+  // Pages are flattened into one ordered, re-indexed list (cover → toc? →
+  // chapter pages in order → ending) so the browser renderer/flipbook can address
+  // them sequentially; each chapter carries the [pageStart, pageEnd) slice into
+  // that list. The browser only ever sends a chapterId back (chapter-chat), so the
+  // original per-page indexes are deliberately dropped.
+  async getDraftSkeleton(userId: string, albumId: string) {
+    const album = await this.findOwned(userId, albumId);
+    if (album.status !== 'EDITING' || album.layoutJson) return null;
+    const parsed = AlbumDraft.safeParse(album.draftJson);
+    if (!parsed.success) return null;
+    const draft = parsed.data;
+
+    type SkeletonPage = {
+      pageIndex: number;
+      templateId: string;
+      imagesJson: Record<string, string>;
+      textsJson: Record<string, string>;
+      kind: 'cover' | 'toc' | 'chapter' | 'ending';
+      chapterId: string | null;
+    };
+    const pages: SkeletonPage[] = [];
+    const push = (
+      p: { templateId: string; images: Record<string, string>; texts: Record<string, string> },
+      kind: SkeletonPage['kind'],
+      chapterId: string | null,
+    ) => {
+      pages.push({
+        pageIndex: pages.length,
+        templateId: p.templateId,
+        imagesJson: p.images,
+        textsJson: p.texts,
+        kind,
+        chapterId,
+      });
+    };
+
+    push(draft.basePages.cover, 'cover', null);
+    if (draft.basePages.toc) push(draft.basePages.toc, 'toc', null);
+    const chapters = draft.chapters.map((ch) => {
+      const pageStart = pages.length;
+      for (const pg of ch.pages) push(pg, 'chapter', ch.chapterId);
+      return {
+        chapterId: ch.chapterId,
+        label: ch.cluster.label,
+        role: ch.cluster.role,
+        state: ch.state,
+        askCount: ch.askCount,
+        pageStart,
+        pageEnd: pages.length,
+      };
+    });
+    push(draft.basePages.ending, 'ending', null);
+
+    return {
+      theme: draft.meta.theme ?? null,
+      style: draft.meta.style,
+      language: draft.meta.language,
+      pages,
+      chapters,
+    };
+  },
+
   async listByUser(userId: string) {
     const rows = await albumRepo.findByUser(userId);
     const coverRows = await albumPageRepo.findFirstByAlbumIds(rows.map((a) => a.id));
