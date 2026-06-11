@@ -6,8 +6,8 @@
 <title data-i18n="pageTitle">Yujee — 编辑你的纪念册</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&amp;display=swap" rel="stylesheet">
 <script>
   tailwind.config = {
     theme: { extend: {
@@ -65,7 +65,7 @@
   .lang-dropdown{
     position:absolute; top:calc(100% + 8px); right:0;
     min-width:140px; background:var(--surface);
-    border-radius:var(--radius-md); box-shadow:var(--shadow-card-hover);
+    border-radius:var(--radius-lg); box-shadow:var(--shadow-card-hover);
     padding:6px; opacity:0; visibility:hidden;
     transform:translateY(-4px);
     transition:all var(--motion-fast) var(--ease); z-index:200;
@@ -89,7 +89,7 @@
   .book{
     border-radius: 2px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.08);
-    height: min(82vh, 720px);
+    width: min(94%, calc(80vh * 1.414), 1010px);
     aspect-ratio: 1.414 / 1;
     transform-style: preserve-3d;
   }
@@ -145,6 +145,48 @@
   .page-num{ display:none; }
   .page-left .page-num, .leaf .page-num.left{left:5.5%;}
   .page-right .page-num, .leaf .page-num.right{right:5.5%;}
+
+  /* ─── Zoomable free canvas ─── */
+  .book{ transform-origin:center center; transition: transform var(--motion-base) var(--ease); }
+  .zoom-ctrl{
+    position:absolute; bottom:14px; right:16px; z-index:8;
+    display:flex; align-items:center; gap:1px;
+    background:rgba(255,255,255,0.86);
+    backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    border:1px solid var(--border-soft); border-radius:9999px;
+    padding:4px; box-shadow:0 2px 12px rgba(0,0,0,0.08);
+  }
+  .zoom-btn{ width:28px; height:28px; border-radius:9999px; display:flex; align-items:center; justify-content:center; color:var(--fg-2); cursor:pointer; transition:background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease); }
+  .zoom-btn:hover{ background:var(--bg); color:var(--fg); }
+  .zoom-btn.active{ background:var(--bg); color:var(--fg); }
+  .zoom-pct{ min-width:46px; text-align:center; font-size:11px; font-family:var(--font-mono); color:var(--fg-2); cursor:pointer; user-select:none; }
+  .zoom-sep{ width:1px; height:16px; background:var(--border-soft); margin:0 3px; }
+
+  /* ─── Overview: the whole magazine at once ─── */
+  .book-overview{ display:none; position:absolute; inset:0; overflow-y:auto; padding:40px 28px 80px; }
+  .book-overview::-webkit-scrollbar{ width:6px; }
+  .book-overview::-webkit-scrollbar-thumb{ background:var(--border); border-radius:6px; }
+  body.overview-on .book{ display:none; }
+  body.overview-on .book-overview{ display:block; }
+  body.overview-on .thumb-strip{ display:none; }
+  .ov-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:24px; align-content:start; max-width:1100px; margin:0 auto; }
+  .ov-spread{ cursor:pointer; transition:transform var(--motion-fast) var(--ease); }
+  .ov-spread:hover{ transform:translateY(-3px); }
+  .ov-book{ aspect-ratio:1.414/1; display:flex; background:var(--surface); border-radius:3px; overflow:hidden;
+    box-shadow:0 2px 8px rgba(0,0,0,0.06), 0 10px 26px rgba(0,0,0,0.10); position:relative; }
+  .ov-book::before{ content:''; position:absolute; top:0; bottom:0; left:50%; width:1px; transform:translateX(-50%); background:var(--border-soft); z-index:2; }
+  .ov-spread:hover .ov-book{ box-shadow:0 4px 14px rgba(0,0,0,0.08), 0 14px 36px rgba(0,0,0,0.14); }
+  .ov-page{ flex:1; overflow:hidden; }
+  .ov-left{ padding:9% 8%; display:flex; flex-direction:column; }
+  .ov-eyebrow{ font-family:var(--font-mono); font-size:8px; letter-spacing:.1em; color:var(--meta); text-transform:uppercase; margin-bottom:8px; }
+  .ov-title{ font-family:var(--font-display); font-weight:800; font-size:18px; line-height:1.1; letter-spacing:-0.02em; color:var(--fg); margin-bottom:7px; }
+  .ov-meta{ font-family:var(--font-mono); font-size:8px; letter-spacing:.06em; color:var(--meta); }
+  .ov-right{ padding:7%; }
+  .ov-photos{ width:100%; height:100%; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:4px; }
+  .ov-photo{ background-size:cover; background-position:center; border-radius:4px; background-color:var(--bg); }
+  .ov-photo.span2{ grid-row:span 2; }
+  .ov-cap{ margin-top:10px; text-align:center; font-size:11px; font-family:var(--font-mono); letter-spacing:.04em; color:var(--fg-2); }
+  .ov-current .ov-book{ outline:2px solid var(--accent); outline-offset:2px; }
 
   /* ─── Thumbnail Strip glass ─── */
   .thumb-strip{
@@ -260,17 +302,17 @@
   }
   .thinking-icon::after{
     content:''; width:5px; height:5px; border-radius:50%;
-    background: linear-gradient(135deg, var(--grad-green), var(--grad-purple));
+    background: linear-gradient(135deg, var(--grad-green), var(--grad-purple) 50%, var(--grad-lime));
   }
   .thinking-label{ font-family:var(--font-mono); font-size:12px; letter-spacing:0.01em; }
   .thinking-arrow{ font-size:9px; opacity:0.4; margin-left:2px; transition: transform var(--motion-fast) var(--ease); }
-  .thinking-block.active .thinking-icon{ animation: think-pulse 1.5s ease-in-out infinite; }
-  @keyframes think-pulse{
-    0%{border-color: var(--grad-green); opacity:1;}
-    33%{border-color: var(--grad-purple); opacity:0.7;}
-    66%{border-color: var(--grad-lime); opacity:0.7;}
-    100%{border-color: var(--grad-green); opacity:1;}
-  }
+  /* Finished thoughts: drop the little dot icon entirely */
+  .thinking-block:not(.active) .thinking-icon{ display:none; }
+  /* Active thinking: jellyfish video loop replaces the pulsing dot */
+  .thinking-block.active .thinking-icon{ display:none; }
+  .think-jelly{ width:42px; height:42px; object-fit:contain; flex-shrink:0; }
+  .thinking-block:not(.active) .think-jelly{ display:none; }
+  .thinking-block:not(.active) .thinking-dots{ display:none; }
   .thinking-dots{ display:inline-flex; gap:3px; margin-left:2px; align-items:center; }
   .thinking-dots span{ width:3.5px; height:3.5px; border-radius:50%; animation: dot-bounce 1.4s ease-in-out infinite; }
   .thinking-dots span:nth-child(1){background: var(--grad-green);}
@@ -281,6 +323,13 @@
     40%{opacity:1; transform:translateY(-3px);}
   }
 
+  /* ─── Resting "waiting for you" state (jellyfish icon) ─── */
+  .await-user{ display:flex; align-items:center; gap:9px; padding:2px 2px 4px; }
+  .await-jelly{ width:30px; height:30px; object-fit:contain; flex-shrink:0; mix-blend-mode:multiply;
+    animation: jelly-float 3.2s ease-in-out infinite; }
+  .await-label{ font-family:var(--font-mono); font-size:12px; color:var(--meta); letter-spacing:0.01em; }
+  @keyframes jelly-float{ 0%,100%{transform:translateY(0);} 50%{transform:translateY(-3px);} }
+
   /* ─── Action chips (JS toggles .selected) ─── */
   .chip{
     font-size:13px; font-weight:500; padding:6px 14px;
@@ -288,7 +337,8 @@
     cursor:pointer; transition: all var(--motion-fast) var(--ease); border-radius:9999px;
   }
   .chip:hover{ background:#ebebeb; border-color:var(--fg-2); color:var(--fg); }
-  .chip:active{ background:#ddd; border-color:var(--fg-2); color:var(--fg); }
+  .chip:active{ background:#e0e0e0; border-color:var(--fg-2); color:var(--fg); }
+  .chip-select:active{ background:#e0e0e0; }
   .chip-select{
     font-size:13px; font-weight:500; padding:8px 16px;
     background: transparent; border:1px solid var(--border); color:var(--fg);
@@ -303,6 +353,48 @@
     line-height:1.9; font-style:italic;
   }
 
+  /* ─── Chapter card (in conversation flow) — tells the user which chapter is being edited ─── */
+  .chap-card{
+    border:1px solid var(--border); border-radius:16px;
+    background:var(--surface); box-shadow:var(--shadow-card); max-width:100%;
+    display:flex; flex-direction:column; gap:12px; padding:14px;
+  }
+  .cc-thumbs{ display:flex; gap:8px; }
+  .cc-thumb{
+    flex:1; aspect-ratio:1; min-width:0; border-radius:10px;
+    background-size:cover; background-position:center; background-color:var(--bg);
+  }
+  .cc-foot{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .cc-info{ flex:1; min-width:0; }
+  .cc-title-row{ display:flex; align-items:center; gap:8px; }
+  .cc-title{
+    font-family:var(--font-display); font-size:15px; font-weight:700; color:var(--fg);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .cc-tag{
+    flex-shrink:0; font-size:11px; font-weight:600; color:var(--grad-purple);
+    background:linear-gradient(115deg, rgba(19,184,166,0.18) 0%, rgba(140,94,244,0.15) 50%, rgba(218,244,94,0.18) 100%); padding:2px 9px; border-radius:9999px;
+  }
+  .cc-meta{ font-size:12px; color:var(--muted); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cc-view{
+    flex-shrink:0; font-size:13px; font-weight:600; color:var(--grad-purple);
+    background:transparent; border:none; cursor:pointer;
+    display:inline-flex; align-items:center; gap:4px;
+    padding:4px 2px; transition:gap var(--motion-fast) var(--ease);
+  }
+  .cc-view:hover{ gap:7px; }
+  .cc-view svg{ width:14px; height:14px; }
+
+  /* Desktop: flash the book when "view chapter" is clicked */
+  .book-flash{ animation: bookFlash 0.7s var(--ease); }
+  @keyframes bookFlash{
+    0%,100%{ box-shadow:0 10px 40px rgba(0,0,0,0.10); }
+    35%{ box-shadow:0 0 0 3px var(--accent), 0 12px 44px rgba(19,184,166,0.32); }
+  }
+
+  /* Composer add-chapter button */
+  .add-ch-btn{ transition: all var(--motion-fast) var(--ease); }
+
   /* ─── Chat input focus (teal) + send button ─── */
   .chat-input:focus-within{
     border-color: var(--accent);
@@ -310,40 +402,245 @@
   }
   .chat-input textarea{ max-height:100px; }
   .chat-input textarea::placeholder{ color: var(--meta); }
-  /* Brand-gradient glow send button */
-  .btn-glow{ position:relative; overflow:hidden; }
+  /* ─── Brand glow (spec §4): .btn-glow WRAPPER + ::after blurred horizontal
+     linear-gradient behind the black button. Button sits at z-index:1, glow
+     at z-index:0. NOT box-shadow, NOT ::after directly on the button. ─── */
+  .btn-glow{ position:relative; display:inline-flex; }
   .btn-glow::after{
-    content:''; position:absolute; inset:0; border-radius:50%;
-    background: linear-gradient(135deg, var(--grad-green), var(--grad-purple) 55%, var(--grad-lime));
-    opacity:0; transition: opacity var(--motion-fast) var(--ease); z-index:0;
+    content:''; position:absolute; z-index:0; pointer-events:none;
+    left:10%; right:10%; top:45%; bottom:-6px; border-radius:9999px;
+    background: linear-gradient(90deg, var(--grad-green), var(--grad-purple), var(--grad-lime));
+    filter: blur(13px); opacity:.55;
+    transition: all var(--motion-base) var(--ease);
   }
-  .btn-glow:hover::after{ opacity:1; }
-  .btn-glow svg{ position:relative; z-index:1; }
+  .btn-glow:hover::after{ opacity:.78; filter:blur(17px); bottom:-9px; }
+  .btn-glow > *{ position:relative; z-index:1; }
+  /* round halo variant — for the circular send button */
+  .btn-glow-round::after{ left:-3px; right:-3px; top:-3px; bottom:-3px; filter:blur(8px); opacity:.6; }
+  .btn-glow-round:hover::after{ left:-6px; right:-6px; top:-6px; bottom:-6px; filter:blur(12px); opacity:.85; }
+  /* full-width variant — for the purchase button */
+  .btn-glow-block{ display:flex; width:100%; }
+  /* no glow while the wrapped button is disabled (e.g. create-chapter) */
+  .btn-glow:has(button:disabled)::after{ opacity:0; }
 
   /* ─── Scrollbars ─── */
-  .chat-body::-webkit-scrollbar{width:4px;}
-  .chat-body::-webkit-scrollbar-thumb{ background: var(--border); border-radius:4px; }
+  .chat-body{ scrollbar-width:none; }
+  .chat-body::-webkit-scrollbar{ width:0; display:none; }
 
-  /* ─── Mobile chat bottom-sheet open state (JS toggles .chat-open on body) ─── */
-  @media (max-width:1023px){
+  /* Mobile layout model lives in the consolidated @media block below
+     (chat = full-screen base surface, preview = on-demand overlay). */
+
+  /* ─── Floating chapter card on the canvas (desktop) — glass pill, references bottom thumb-strip ─── */
+  .chapter-card{
+    position:absolute; left:20px; top:50%; transform:translateY(-50%);
+    z-index:7; flex-direction:column; align-items:stretch; gap:2px;
+    width:84px; max-height:70%; overflow-y:auto;
+    padding:6px 6px 3px; border-radius:20px;
+    background:rgba(255,255,255,0.8);
+    backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    border:1px solid rgba(255,255,255,0.6);
+    box-shadow:0 2px 12px rgba(0,0,0,0.08);
+    transition: width var(--motion-base) var(--ease), padding var(--motion-base) var(--ease);
+  }
+  .chapter-card::-webkit-scrollbar{ width:0; display:none; }
+  .chapter-card{ scrollbar-width:none; }
+  .chapter-card-head{
+    font-size:10px; font-weight:700; color:var(--meta);
+    letter-spacing:.08em; text-transform:uppercase;
+    padding:3px 8px 5px; text-align:center;
+  }
+  .chapter-list{ display:flex; flex-direction:column; gap:2px; }
+  .chapter{
+    position:relative; cursor:pointer;
+    padding:6px 9px; border-radius:13px;
+    display:flex; flex-direction:column; gap:1px;
+    transition: all var(--motion-fast) var(--ease);
+  }
+  .chapter:hover{ background:rgba(0,0,0,0.05); }
+  .chapter.active{ background:rgba(0,0,0,0.06); }
+  .chapter-num{ font-family:var(--font-mono); font-size:9.5px; font-weight:600; color:var(--meta); letter-spacing:.04em; }
+  .chapter.active .chapter-num{ color:var(--fg); }
+  .chapter-title{ font-size:12px; font-weight:600; color:var(--fg-2); line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chapter.active .chapter-title{ color:var(--fg); }
+  .chapter-meta{ display:none; }
+  /* bottom collapse button */
+  .chapter-toggle{
+    margin-top:3px; align-self:center;
+    width:30px; height:18px; border-radius:9999px;
+    border:none; background:transparent; cursor:pointer; color:var(--muted);
+    display:flex; align-items:center; justify-content:center;
+    transition: all var(--motion-fast) var(--ease);
+  }
+  .chapter-toggle:hover{ background:rgba(0,0,0,0.06); color:var(--fg); }
+  .chapter-toggle svg{ width:13px; height:13px; transition: transform var(--motion-base) var(--ease); }
+  /* collapsed → shrink to just the toggle blob */
+  body.rail-collapsed #chapterCard{ width:auto; padding:4px; }
+  body.rail-collapsed #chapterCard .chapter-card-head,
+  body.rail-collapsed #chapterCard .chapter-list{ display:none; }
+  body.rail-collapsed #chapterCard .chapter-toggle{ margin-top:0; }
+  body.rail-collapsed #chapterCard .chapter-toggle svg{ transform:rotate(180deg); }
+
+  /* ─── Photo picker modal ─── */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.45);
+    display:flex; align-items:center; justify-content:center;
+    z-index:300; padding:20px; opacity:0; visibility:hidden;
+    transition: opacity var(--motion-base) var(--ease);
+  }
+  .modal-overlay.open{ opacity:1; visibility:visible; }
+  .modal-card{
+    background:var(--surface); border-radius:20px;
+    width:min(580px,100%); max-height:88vh;
+    display:flex; flex-direction:column; overflow:hidden;
+    box-shadow:0 24px 70px rgba(0,0,0,.32);
+    transform:translateY(10px) scale(.985);
+    transition: transform var(--motion-base) var(--ease);
+  }
+  .modal-overlay.open .modal-card{ transform:none; }
+  .pick-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  @media (max-width:520px){ .pick-grid{ grid-template-columns:repeat(3,1fr); } }
+  .pick-photo{
+    aspect-ratio:1; border-radius:12px; position:relative; cursor:pointer;
+    background-size:cover; background-position:center; overflow:hidden;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.04);
+  }
+  .pick-photo::after{
+    content:''; position:absolute; inset:0; border-radius:12px;
+    box-shadow: inset 0 0 0 0 var(--fg); background:rgba(0,0,0,0);
+    transition: background var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease);
+  }
+  .pick-photo.sel::after{ background:rgba(0,0,0,.10); box-shadow: inset 0 0 0 2.5px var(--fg); }
+  .pick-check{
+    position:absolute; top:6px; right:6px; width:20px; height:20px; border-radius:50%;
+    background:var(--fg); color:#fff; display:none; align-items:center; justify-content:center;
+    z-index:2; box-shadow:0 1px 4px rgba(0,0,0,.25);
+  }
+  .pick-photo.sel .pick-check{ display:flex; }
+  .pick-upload{
+    aspect-ratio:1; border-radius:12px; cursor:pointer;
+    border:1.5px dashed var(--border); color:var(--muted);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+    transition: all var(--motion-fast) var(--ease); text-align:center;
+  }
+  .pick-upload:hover{ border-color:var(--fg); color:var(--fg); }
+
+  /* ─── Chat: 3-state stepper ─── */
+  .state-stepper{ display:flex; align-items:center; gap:5px; padding:13px 16px; border-bottom:1px solid var(--border-soft); flex-shrink:0; }
+  .state-pill{
+    display:flex; align-items:center; gap:5px; font-size:11px;
+    font-family:var(--font-mono); color:var(--meta);
+    padding:3px 9px; border-radius:9999px; transition: all var(--motion-fast) var(--ease);
+  }
+  .state-pill .state-dot{ width:6px; height:6px; border-radius:50%; background:currentColor; flex-shrink:0; }
+  .state-pill.done{ color:var(--muted); }
+  .state-pill.active{ color:var(--fg); background:var(--bg); font-weight:600; }
+  .state-arrow{ color:var(--meta); opacity:.5; }
+
+  /* ─── Chat: unified loading block ─── */
+  .load-block{ display:flex; align-items:center; gap:11px; padding:13px 15px; background:var(--bg); border-radius:16px; }
+  .load-spinner{
+    width:20px; height:20px; border-radius:50%; flex-shrink:0;
+    border:2.5px solid var(--border-soft); border-top-color:var(--accent);
+    animation: spin .75s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .load-label{ font-size:13px; color:var(--fg-2); font-family:var(--font-mono); }
+
+  /* ─── Chat: select-chapter hint (state 3 requires a chapter) ─── */
+  .chapter-hint{
+    display:flex; align-items:center; gap:8px; padding:11px 14px;
+    background:linear-gradient(115deg, rgba(19,184,166,0.10) 0%, rgba(140,94,244,0.08) 50%, rgba(218,244,94,0.10) 100%); border-radius:16px;
+    font-size:12px; color:var(--fg-2);
+  }
+  .chapter-hint svg{ color:var(--fg-2); flex-shrink:0; }
+
+  /* ─── Mobile: chat is the default full view; preview/chapters live behind 详细章节 ─── */
+  /* ─── Chat Purchase Card (贝壳不足引导卡) — 产品按次消耗贝壳，无积分/订阅。
+     彩色品牌渐变底卡片 · 紫色球体图标 · 横向布局 · 黑色 pill 去购买按钮。 ─── */
+  .balance-alert{ display:block; }
+  .balance-alert.hidden{ display:none; }
+  .bp-lead{ font-size:12.5px; color:var(--fg-2); line-height:1.5; margin-bottom:8px; }
+  .bp-card{
+    position:relative;
+    background:linear-gradient(115deg, rgba(19,184,166,0.16) 0%, rgba(140,94,244,0.13) 48%, rgba(218,244,94,0.16) 100%);
+    border-radius:var(--radius-lg); padding:15px 16px;
+    display:flex; align-items:center; gap:13px;
+  }
+  .bp-ic{
+    width:40px; height:40px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    color:var(--grad-purple);
+  }
+  .bp-title{ font-family:var(--font-display); font-size:16px; font-weight:700; color:var(--fg); line-height:1.2; }
+  .bp-sub{ font-size:13px; color:var(--muted); line-height:1.5; margin-top:3px; }
+  .bp-sub b{ color:var(--grad-purple); font-weight:700; }
+  .bp-buy{
+    flex-shrink:0; padding:0 22px; height:44px; border-radius:9999px;
+    background:var(--fg); color:#fff; font-size:14px; font-weight:600;
+    display:flex; align-items:center; justify-content:center;
+    transition:transform var(--motion-fast) var(--ease);
+  }
+  .bp-buy:hover{ transform:translateY(-1px); }
+
+  .detail-mobile-bar{ display:none; }
+  /* Chapter selector bar — mobile-only (inside the preview overlay); hidden on desktop */
+  .mobile-chapter-bar{ display:none; }
+  .m-chapter-chip{
+    flex-shrink:0; padding:6px 13px; border-radius:9999px;
+    background:var(--bg); font-size:12.5px; font-weight:600; color:var(--fg-2);
+    white-space:nowrap; cursor:pointer; transition: all var(--motion-fast) var(--ease);
+  }
+  .m-chapter-chip:hover{ background:var(--border-soft); color:var(--fg); }
+  .m-chapter-chip.active{ background:var(--fg); color:#fff; }
+  @media (max-width:767px){
+    /* Chat is the primary mobile surface — fills the screen as the base layer */
     .pane-right{
-      position:fixed; left:0; right:0; bottom:0;
-      height:72vh; max-height:72vh;
+      position:fixed; left:0; right:0; top:52px; bottom:0;
+      border:none; border-radius:0; z-index:60;
+    }
+    /* Preview + chapters become an on-demand fullscreen overlay above the chat */
+    .pane-center{
+      position:fixed; left:0; right:0; top:52px; bottom:0;
       transform: translateY(100%);
       transition: transform var(--motion-base) var(--ease);
-      border-left:none; border-top:1px solid var(--border-soft);
-      border-radius:16px 16px 0 0;
-      box-shadow: 0 -8px 28px rgba(0,0,0,.12);
       z-index:120;
     }
-    body.chat-open .pane-right{ transform: translateY(0); }
-    body.chat-open .chat-backdrop{ opacity:1; visibility:visible; }
+    body.detail-open .pane-center{ transform: translateY(0); }
+    .detail-mobile-bar{ display:flex; }
+    .mobile-chapter-bar{ display:flex; }
   }
-  .chat-backdrop{
-    position:fixed; inset:0; background:rgba(0,0,0,.32);
-    opacity:0; visibility:hidden;
-    transition: opacity var(--motion-base) var(--ease);
-    z-index:110;
+
+  /* ─── Desktop 3-column workspace: thin rail | floating chat card | canvas ─── */
+  .pane-chat-col{ transition: width var(--motion-base) var(--ease), padding var(--motion-base) var(--ease); }
+  @media (min-width:768px){
+    /* Chat = card flush to the left edge, floating on top & bottom */
+    .pane-chat-col{ padding:14px 0; }
+    .chat-card{
+      border:1px solid var(--border-soft); border-left:none;
+      border-radius:0 18px 18px 0;
+      box-shadow:0 8px 30px rgba(0,0,0,.10);
+    }
+    body.chat-collapsed .pane-chat-col{ width:0 !important; padding:0 !important; overflow:hidden; }
+  }
+  /* Collapse toggle — plain ghost icon INSIDE the chat panel (no bubble) */
+  .chat-fold-btn{
+    width:28px; height:28px; border-radius:9999px;
+    display:none; align-items:center; justify-content:center;
+    color:var(--muted); cursor:pointer;
+    transition:color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
+  }
+  .chat-fold-btn:hover{ color:var(--fg); background:var(--bg); }
+  @media (min-width:768px){
+    /* collapse: sits inside the card, top-right, plain icon */
+    .chat-fold-collapse{ display:flex; position:absolute; top:11px; right:11px; z-index:30; }
+    body.chat-collapsed .chat-fold-collapse{ display:none; }
+    /* expand: minimal edge tab, only when panel is fully collapsed */
+    .chat-fold-expand{
+      display:none; position:absolute; top:50%; left:8px; transform:translateY(-50%);
+      width:24px; height:40px; border-radius:9999px;
+      background:var(--surface); border:1px solid var(--border-soft); z-index:45;
+    }
+    body.chat-collapsed .chat-fold-expand{ display:flex; }
   }
 </style>
 </head>
@@ -352,26 +649,20 @@
 <div class="topbar h-[52px] flex items-center justify-between px-3 sm:px-6 bg-surface border-b border-bdsoft shrink-0">
   <div class="top-left flex items-center gap-2 sm:gap-4 min-w-0">
     <a href="../yujee-home.html#projects" class="back-btn flex items-center justify-center w-8 h-8 rounded-pill text-muted no-underline transition-colors hover:bg-bg hover:text-fg shrink-0" data-i18n-title="backToProjects" title="返回我的项目">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]"><polyline points="15 18 9 12 15 6"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]"><polyline points="15 18 9 12 15 6"></polyline></svg>
     </a>
-    <a href="../yujee-home.html" class="brand no-underline text-inherit shrink-0"><img src="../logo-yujee.svg" alt="Yujee" style="height:30px;width:auto;display:block;"></a>
+    <a href="../yujee-home.html" class="brand no-underline text-inherit shrink-0"><img src="logo-yujee.svg" alt="Yujee" style="height:30px;width:auto;display:block;"></a>
     <span class="crumb text-meta text-[13px] hidden sm:inline">/</span>
     <span class="album-title font-display font-bold text-[14px] text-fg px-2 py-1 rounded-pill border border-transparent transition-colors hover:bg-bg cursor-text truncate" contenteditable="true" data-i18n="albumTitle">2024 厦门三日游</span>
     <span class="save-badge text-[11px] text-muted hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-bg rounded-pill" style="box-shadow:0 1px 2px rgba(0,0,0,0.04);font-family:var(--font-mono);letter-spacing:0.02em;"><span class="pulse w-1.5 h-1.5 rounded-full bg-gg"></span><span data-i18n="saved">已保存</span></span>
   </div>
   <div class="top-right flex items-center gap-1 sm:gap-2 shrink-0">
-    <button class="btn-primary bg-fg text-white px-4 sm:px-7 py-2.5 rounded-pill text-[13px] font-semibold flex items-center gap-1.5 transition-all hover:bg-fg2 hover:-translate-y-px" style="box-shadow:0 1px 3px rgba(0,0,0,0.12);" onclick="alert(t('alertExportPdf'))">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-      <span class="hidden sm:inline" data-i18n="exportPdf">导出 PDF</span>
-    </button>
-
-    <!-- Credits pill -->
-    <div class="credits-pill hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 bg-surface border border-bdsoft rounded-pill text-[13px] font-medium text-fg2 cursor-pointer transition-colors hover:bg-bg" style="box-shadow:0 1px 2px rgba(0,0,0,0.04);" onclick="window.location.href='pricing.html'" title="查看定价方案">
-      <span class="credits-dot w-2 h-2 rounded-full bg-gg shrink-0"></span>
-      <span>552</span>
-      <span class="credits-sep text-bd mx-px">|</span>
-      <span>Free</span>
-    </div>
+    <span class="btn-glow">
+      <button class="btn-primary bg-fg text-white px-4 sm:px-7 py-2.5 rounded-pill text-[13px] font-semibold flex items-center gap-1.5 transition-transform hover:-translate-y-px" style="box-shadow:0 1px 3px rgba(0,0,0,0.12);" onclick="alert(t('alertExportPdf'))">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        <span class="hidden sm:inline" data-i18n="exportPdf">导出 PDF</span>
+      </button>
+    </span>
 
     <!-- User avatar + dropdown -->
     <div class="user-menu" id="userMenu">
@@ -383,25 +674,35 @@
           <div class="dropdown-header-name text-[15px] font-semibold">Liam Chen</div>
           <div class="dropdown-header-email text-[12px] text-meta mt-0.5">liam@example.com</div>
         </div>
-        <div class="dropdown-plan-row flex items-center justify-between px-3 py-2 mb-1">
-          <span class="dropdown-plan-label text-[13px] font-medium text-fg2">Free</span>
-          <button class="btn-upgrade px-2.5 py-[3px] text-[11px] font-semibold text-accent rounded-pill transition-colors hover:bg-accent/15" style="background:rgba(19,184,166,0.08);" onclick="window.location.href='pricing.html';document.getElementById('userMenu').classList.remove('open');">升级</button>
-        </div>
-        <button class="dropdown-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] text-fg2 w-full text-left transition-colors hover:bg-bg" onclick="window.location.href='pricing.html';document.getElementById('userMenu').classList.remove('open');"><span class="dropdown-icon w-[18px] h-[18px] flex items-center justify-center text-muted"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><span>管理订阅</span></button>
-        <button class="dropdown-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] text-fg2 w-full text-left transition-colors hover:bg-bg" onclick="window.location.href='mailto:feedback@yujee.com';document.getElementById('userMenu').classList.remove('open');"><span class="dropdown-icon w-[18px] h-[18px] flex items-center justify-center text-muted"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span><span>反馈与问题</span></button>
+        <button class="dropdown-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] text-fg2 w-full text-left transition-colors hover:bg-bg" onclick="window.location.href='mailto:feedback@yujee.com';document.getElementById('userMenu').classList.remove('open');"><span class="dropdown-icon w-[18px] h-[18px] flex items-center justify-center text-muted"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></span><span>反馈与问题</span></button>
         <div class="dropdown-sep h-px bg-bdsoft my-1"></div>
-        <button class="dropdown-item danger flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] w-full text-left transition-colors text-[#c44] hover:bg-[#fef2f2]" onclick="window.location.href='../yujee-home.html'"><span class="dropdown-icon w-[18px] h-[18px] flex items-center justify-center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></span><span>退出登录</span></button>
+        <button class="dropdown-item danger flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] w-full text-left transition-colors text-[#c44] hover:bg-[#fef2f2]" onclick="window.location.href='../yujee-home.html'"><span class="dropdown-icon w-[18px] h-[18px] flex items-center justify-center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg></span><span>退出登录</span></button>
       </div>
     </div>
   </div>
 </div>
 
-<div class="workspace flex-1 grid grid-cols-1 lg:grid-cols-[1fr_340px] overflow-hidden" style="height:calc(100vh - 53px);">
+<div class="workspace flex-1 overflow-hidden relative md:flex" style="height:calc(100vh - 53px);">
+
+  <!-- Chat expand tab: only shown when the chat panel is fully collapsed -->
+  <button class="chat-fold-btn chat-fold-expand" onclick="toggleChat()" data-i18n-title="expandChat" title="展开对话" aria-label="展开对话">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+  </button>
 
   <!-- CENTER: PREVIEW -->
-  <main class="pane pane-center flex flex-col overflow-hidden bg-bg items-center justify-center relative">
+  <main class="pane pane-center flex flex-col overflow-hidden bg-bg relative md:order-3 md:flex-1" id="paneCenter">
 
-    <div class="book-stage w-full h-full flex items-center justify-center px-4 pt-8 pb-16 overflow-auto bg-bg relative">
+    <!-- Mobile-only: detail overlay header -->
+    <div class="detail-mobile-bar items-center justify-between px-4 h-12 bg-surface border-b border-bdsoft shrink-0">
+      <span class="font-display text-[14px] font-bold" data-i18n="detailChapters">详细章节</span>
+      <button onclick="closeDetail()" class="w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg transition-colors" aria-label="close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <!-- Mobile-only: horizontal chapter chips -->
+    <div class="mobile-chapter-bar gap-2 px-4 py-2.5 overflow-x-auto bg-surface border-b border-bdsoft shrink-0" id="mobileChapterBar"></div>
+
+    <div class="book-stage w-full flex-1 flex items-center justify-center px-4 pt-8 pb-16 overflow-auto bg-bg relative">
       <div class="book bg-surface flex relative overflow-hidden" id="book">
         <div class="page page-left bg-surface" id="pageLeft"></div>
         <div class="page page-right bg-surface" id="pageRight"></div>
@@ -434,40 +735,61 @@
           </div>
         </div>
       </div>
+
+      <!-- Overview: the whole magazine at once -->
+      <div class="book-overview" id="bookOverview">
+        <div class="ov-grid" id="ovGrid"></div>
+      </div>
+
+      <!-- Zoom control -->
+      <div class="zoom-ctrl">
+        <button class="zoom-btn" onclick="zoomBy(-0.25)" data-i18n-title="zoomOut" title="缩小" aria-label="缩小">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <span class="zoom-pct" id="zoomPct" onclick="resetZoom()" title="100%">100%</span>
+        <button class="zoom-btn" onclick="zoomBy(0.25)" data-i18n-title="zoomIn" title="放大" aria-label="放大">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <span class="zoom-sep"></span>
+        <button class="zoom-btn" id="ovBtn" onclick="toggleOverview()" data-i18n-title="overview" title="整本杂志" aria-label="整本杂志">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>
+        </button>
+      </div>
+
+      <!-- Floating chapter card on the canvas (desktop) -->
+      <div class="chapter-card hidden md:flex" id="chapterCard" style="width: 62px; gap: 2px; margin-right: 0px; margin-left: -16px;">
+        <div class="chapter-card-head" data-i18n="chaptersLabel" style="margin-top: 0px; margin-right: 2px;">章节</div>
+        <div class="chapter-list" id="chapterList" style="width: 53px; margin: 0px 0px -1px -3px; gap: 2px; font-size: 14px; padding-top: 0px;"></div>
+        <button class="chapter-toggle" onclick="toggleRail()" data-i18n-title="collapseChapters" title="收起章节" aria-label="收起章节">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+        </button>
+      </div>
     </div>
 
-    <!-- Mobile-only: open AI chat (bottom sheet trigger) -->
-    <button class="chat-fab lg:hidden fixed right-4 bottom-4 z-[100] flex items-center gap-2 pl-4 pr-5 py-3 rounded-pill bg-fg text-white text-[13px] font-semibold btn-glow" style="box-shadow:0 4px 16px rgba(0,0,0,.18);" onclick="openChat()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-      <span data-i18n="aiAvatarChar">己</span>
-    </button>
   </main>
 
-  <!-- Mobile backdrop for chat bottom-sheet -->
-  <div class="chat-backdrop lg:hidden" onclick="closeChat()"></div>
-
-  <!-- RIGHT: CHAT -->
-  <aside class="pane pane-right flex flex-col overflow-hidden bg-surface lg:border-l lg:border-bdsoft">
-    <div class="chat-head px-5 py-4 flex items-center gap-3 shrink-0">
-      <div class="ai-avatar w-9 h-9 bg-accent text-white flex items-center justify-center font-display font-bold text-[13px] rounded-full" data-i18n="aiAvatarChar">己</div>
-      <div>
-        <h3 class="font-display text-[14px] font-bold">Yujee AI</h3>
-        <div class="sub text-[11px] text-muted" data-i18n="chatSubtitle">和我聊聊这段回忆</div>
-      </div>
-      <span class="chat-context ml-auto text-[11px] text-fg2 bg-bg px-2.5 py-0.5 rounded-pill" style="font-family:var(--font-mono);letter-spacing:0.02em;box-shadow:0 1px 2px rgba(0,0,0,0.04);" data-i18n="chatCtxCh1">第 1 章</span>
-      <!-- Mobile-only close -->
-      <button class="lg:hidden ml-2 w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg transition-colors" onclick="closeChat()" aria-label="close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  <!-- CHAT: flush-left full-height panel (desktop) -->
+  <div class="pane-chat-col md:order-1 md:w-[360px] shrink-0 md:flex">
+  <aside class="pane pane-right chat-card relative flex flex-col overflow-hidden bg-surface md:flex-1">
+    <!-- Desktop collapse: plain icon inside the panel, top-right -->
+    <button class="chat-fold-btn chat-fold-collapse" onclick="toggleChat()" data-i18n-title="collapseChat" title="折叠对话" aria-label="折叠对话">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+    </button>
+    <!-- Mobile-only header: open the preview / chapters detail overlay (desktop has no chat header) -->
+    <div class="md:hidden flex items-center px-4 py-3 border-b border-bdsoft flex-shrink-0">
+      <button class="ml-auto flex items-center gap-1.5 pl-3 pr-3.5 py-1.5 rounded-pill bg-bg text-fg2 text-[12.5px] font-semibold hover:bg-border-soft transition-colors shrink-0" onclick="openDetail()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-[15px] h-[15px]"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>
+        <span data-i18n="detailChapters">详细章节</span>
       </button>
     </div>
 
-    <div class="chat-body flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-6" id="chatBody">
+    <div class="chat-body flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-6" id="chatBody" style="gap: 24px; border-color: rgb(255, 255, 255);">
       <!-- AI message 1 -->
       <div class="msg ai max-w-full">
         <div class="thinking-block">
           <span class="thinking-icon"></span>
           <span class="thinking-label" data-i18n="thinkingAnalyzed">分析了 6 张照片和地点信息</span>
-          <span class="thinking-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+          <span class="thinking-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></span>
         </div>
         <div class="ai-text" data-i18n="aiMsg1">
           我已经为「海边时光」这一章写好了叙事文案。如果你想分享更多记忆，比如那天的天气、和谁同行、当时的心情，我可以把这些融进文字里。
@@ -485,10 +807,10 @@
         <div class="thinking-block">
           <span class="thinking-icon"></span>
           <span class="thinking-label" data-i18n="thinkingReorg">重新组织第二段，融入风和帽子的细节</span>
-          <span class="thinking-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+          <span class="thinking-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></span>
         </div>
         <div class="ai-text" data-i18n="aiMsg2">好的，我把这个细节融进了第二段。你看看这版：</div>
-        <div class="ai-quote" data-i18n="aiQuote1">
+        <div class="ai-quote" data-i18n="aiQuote1" style="background-color: rgb(255, 255, 255);">
           那天午后风忽然大了起来，差点把帽子从你头顶卷走。我们笑着追了几步，又坐回沙滩——海浪一遍又一遍地把脚印抹平，又一遍又一遍地让我们重新走过。
         </div>
         <div class="ai-actions flex gap-2 mt-3.5 flex-wrap">
@@ -507,27 +829,87 @@
       <!-- AI message 3: active thinking -->
       <div class="msg ai max-w-full">
         <div class="thinking-block active">
-          <span class="thinking-icon"></span>
-          <span class="thinking-label" data-i18n="thinkingChapterName">正在构思章节名<span class="thinking-dots"><span></span><span></span><span></span></span></span>
+          <img class="think-jelly" src="jellyfish-loop.png" alt="">
+          <span class="thinking-label" data-i18n="thinkingChapterName">正在构思章节名</span>
+          <span class="thinking-dots"><span></span><span></span><span></span></span>
         </div>
         <div class="ai-text" data-i18n="aiMsg3">几个备选，挑一个或告诉我感觉：</div>
         <div class="ai-actions flex gap-2 mt-3.5 flex-wrap">
-          <button class="chip-select" data-i18n="chipName1" onclick="this.parentNode.querySelectorAll('.chip-select').forEach(c=>c.classList.remove('selected'));this.classList.add('selected');document.querySelector('.ch-title').textContent=this.textContent;document.querySelector('.ch-mark').textContent=this.textContent;alert(t('alertChapterUpdated')+this.textContent)">浪把时间洗薄了</button>
-          <button class="chip-select" data-i18n="chipName2" onclick="this.parentNode.querySelectorAll('.chip-select').forEach(c=>c.classList.remove('selected'));this.classList.add('selected');document.querySelector('.ch-title').textContent=this.textContent;document.querySelector('.ch-mark').textContent=this.textContent;alert(t('alertChapterUpdated')+this.textContent)">风从海上来</button>
-          <button class="chip-select" data-i18n="chipName3" onclick="this.parentNode.querySelectorAll('.chip-select').forEach(c=>c.classList.remove('selected'));this.classList.add('selected');document.querySelector('.ch-title').textContent=this.textContent;document.querySelector('.ch-mark').textContent=this.textContent;alert(t('alertChapterUpdated')+this.textContent)">咸味的下午</button>
-          <button class="chip-select" data-i18n="chipName4" onclick="this.parentNode.querySelectorAll('.chip-select').forEach(c=>c.classList.remove('selected'));this.classList.add('selected');document.querySelector('.ch-title').textContent=this.textContent;document.querySelector('.ch-mark').textContent=this.textContent;alert(t('alertChapterUpdated')+this.textContent)">那只差点飞走的帽子</button>
+          <button class="chip-select" data-i18n="chipName1" onclick="this.parentNode.querySelectorAll('.chip-select').forEach(c=&gt;c.classList.remove('selected'));this.classList.add('selected');var _m=document.querySelector('.ch-mark');if(_m)_m.textContent=this.textContent;alert(t('alertChapterUpdated')+this.textContent)">浪把时间洗薄了</button>
+          <button class="chip-select" data-i18n="chipName2" onclick="this.parentNode.querySelectorAll('.chip-select').forEach(c=&gt;c.classList.remove('selected'));this.classList.add('selected');var _m=document.querySelector('.ch-mark');if(_m)_m.textContent=this.textContent;alert(t('alertChapterUpdated')+this.textContent)">风从海上来</button>
+          <button class="chip-select" data-i18n="chipName3" onclick="this.parentNode.querySelectorAll('.chip-select').forEach(c=&gt;c.classList.remove('selected'));this.classList.add('selected');var _m=document.querySelector('.ch-mark');if(_m)_m.textContent=this.textContent;alert(t('alertChapterUpdated')+this.textContent)">咸味的下午</button>
+          <button class="chip-select" data-i18n="chipName4" onclick="this.parentNode.querySelectorAll('.chip-select').forEach(c=&gt;c.classList.remove('selected'));this.classList.add('selected');var _m=document.querySelector('.ch-mark');if(_m)_m.textContent=this.textContent;alert(t('alertChapterUpdated')+this.textContent)">那只差点飞走的帽子</button>
         </div>
         <div class="name-time">10:43</div>
+      </div>
+      <!-- Chat Purchase Card — 贝壳不足引导（随对话滚动，非固定） -->
+      <div class="balance-alert" id="balanceAlert">
+        <div class="bp-lead" data-i18n="bpLead">哎呀，贝壳不够啦，再添几枚贝壳继续生成你的纪念册～</div>
+        <div class="bp-card">
+          <span class="bp-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-[26px] h-[26px]"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path><line x1="2" y1="12" x2="22" y2="12"></line></svg>
+          </span>
+          <div class="flex-1 min-w-0">
+            <div class="bp-title" data-i18n="bpTitle">购买贝壳</div>
+            <div class="bp-sub" data-i18n-html="bpSub"><b>1 个贝壳</b>，可处理 10 张照片</div>
+          </div>
+          <button class="bp-buy" onclick="location.href='pricing.html'" data-i18n="bpBuy">去购买</button>
+        </div>
+      </div>
+      <!-- Resting state: jellyfish waiting for the user to speak -->
+      <div class="await-user" id="awaitUser">
+        <img class="await-jelly" src="jellyfish-icon.png" alt="" style="width: 40px; height: 40px;">
+        <span class="await-label" data-i18n="awaitUser">在听，随时和我说～</span>
       </div>
     </div>
 
     <div class="chat-input m-3 shrink-0 bg-surface border border-bdsoft rounded-pill flex items-end transition-all" style="box-shadow:0 1px 3px rgba(0,0,0,0.04);">
-      <textarea class="flex-1 outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none pl-[18px] py-3" style="font-family:var(--font-body);" data-i18n-placeholder="inputPlaceholder" placeholder="输入消息..." rows="1" id="msgInput"></textarea>
-      <button class="send-btn btn-glow w-8 h-8 shrink-0 rounded-full bg-fg text-white flex items-center justify-center cursor-pointer transition-all hover:-translate-y-px m-2" style="box-shadow:0 1px 3px rgba(0,0,0,0.12);" id="sendBtn" data-i18n-title="send" title="发送">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+      <button class="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg m-2" onclick="openPhotoPicker()" data-i18n-title="addChapter" title="新增章节" aria-label="新增章节">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
       </button>
+      <textarea class="flex-1 outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none pl-1 py-3" style="font-family:var(--font-body);" data-i18n-placeholder="inputPlaceholder" placeholder="输入消息..." rows="1" id="msgInput"></textarea>
+      <span class="btn-glow btn-glow-round shrink-0 m-2">
+        <button class="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center cursor-pointer transition-transform hover:-translate-y-px" style="box-shadow:0 1px 3px rgba(0,0,0,0.12);" id="sendBtn" data-i18n-title="send" title="发送">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+        </button>
+      </span>
     </div>
   </aside>
+  </div>
+</div>
+
+<!-- ─── Photo picker modal (新增章节 → 选照片) ─── -->
+<div class="modal-overlay" id="photoModal" onclick="if(event.target===this)closePhotoPicker()">
+  <div class="modal-card">
+    <div class="px-6 pt-5 pb-4 border-b border-bdsoft shrink-0">
+      <div class="flex items-center justify-between">
+        <h3 class="font-display text-[17px] font-bold" data-i18n="modalTitle">选择照片</h3>
+        <button class="w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg transition-colors" onclick="closePhotoPicker()" aria-label="close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <p class="text-[12.5px] text-muted mt-1" data-i18n="modalSub">挑选这一章要用的照片，AI 会据此排版并撰写故事。</p>
+    </div>
+    <div class="px-6 py-5 overflow-y-auto flex-1">
+      <div class="pick-grid" id="pickGrid">
+        <div class="pick-upload" onclick="alert(t('alertUploadStub'))">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          <span class="text-[10.5px] leading-tight" data-i18n="modalUpload">上传照片</span>
+        </div>
+      </div>
+    </div>
+    <div class="px-6 py-4 border-t border-bdsoft shrink-0 flex items-center justify-between gap-3">
+      <span class="text-[12.5px] text-muted"><span data-i18n="modalSelected">已选</span> <span id="pickCount" class="font-semibold text-fg">0</span></span>
+      <div class="flex items-center gap-2">
+        <button class="px-5 py-2.5 rounded-pill text-[13px] font-medium text-fg2 border border-bd transition-colors hover:bg-bg" onclick="closePhotoPicker()" data-i18n="modalCancel">取消</button>
+        <span class="btn-glow">
+          <button class="btn-create-ch px-5 py-2.5 rounded-pill text-[13px] font-semibold bg-fg text-white transition-transform hover:-translate-y-px disabled:opacity-40 disabled:cursor-not-allowed disabled:translate-y-0" id="createChBtn" style="box-shadow:0 1px 3px rgba(0,0,0,.12);" onclick="confirmNewChapter()" disabled="">
+            <span data-i18n="modalCreate">创建章节</span>
+          </button>
+        </span>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -564,6 +946,8 @@
       nextPage: '下一页',
       zoomOut: '缩小',
       zoomIn: '放大',
+      overview: '整本',
+      toggleChapters: '收起 / 展开章节',
       fullscreen: '全屏预览',
       // Chat head
       aiAvatarChar: '己',
@@ -597,8 +981,56 @@
       thinking: '正在思考',
       analyzedFeedback: '分析了你的反馈',
       aiReplyDefault: '收到，我重新写一版给你看看…',
+      awaitUser: '在听，随时和我说～',
       justNow: '刚刚',
       thinkingComplete: '构思了 4 个章节名方案',
+      // Left chapter rail
+      railChapters: '章节',
+      addChapter: '新增章节',
+      detailChapters: '详细章节',
+      balLow: '余额不足',
+      balDesc: '当前余额不足以生成新章节，充值后即可继续创作',
+      balRecharge: '去充值',
+      // Chat purchase card (贝壳不足引导卡)
+      bpLead: '哎呀，贝壳不够啦，再添几枚贝壳继续生成你的纪念册～',
+      bpTitle: '购买贝壳',
+      bpSub: '<b>1 个贝壳</b>，可处理 10 张照片',
+      bpBuy: '去购买',
+      editingNow: '正在编辑',
+      chapterWord: '第',
+      photosWord: '张照片',
+      viewChapter: '查看章节',
+      viewLayout: '查看排版',
+      justEdited: '刚刚编辑',
+      nowEditing: '正在编辑',
+      chaptersLabel: '章节',
+      collapseChapters: '收起章节',
+      chatPanel: '对话',
+      collapseChat: '折叠对话',
+      expandChat: '展开对话',
+      // Photo picker modal
+      modalTitle: '选择照片',
+      modalSub: '挑选这一章要用的照片，AI 会据此排版并撰写故事。',
+      modalUpload: '上传照片',
+      modalSelected: '已选',
+      modalCancel: '取消',
+      modalCreate: '创建章节',
+      alertUploadStub: '上传照片 — 选择本地图片（演示占位）',
+      // 3-state stepper
+      stateLoading: '加载',
+      stateTheme: '确定主题',
+      stateStory: '章节故事',
+      // New-chapter conversation flow
+      loadingNewChapter: '正在创建新章节…',
+      themeThinking: '分析了这 {n} 张照片的场景与情绪',
+      themeAsk: '我从这组照片里看到几个可能的主题，你想用哪一个？',
+      themeOpt1: '海边漫步',
+      themeOpt2: '城市夜色',
+      themeOpt3: '山间清晨',
+      themeConfirmed: '好的，就用「{theme}」作为这一章的主题',
+      storyStart: '现在我们来聊聊这一章的故事吧——那天发生了什么？和谁一起？当时的心情是怎样的？',
+      newChapterMeta: '新章节 · {n} 张照片',
+      newChapterNarrative: '这一章的故事还没写。和右侧的 Yujee AI 聊聊那天的细节，我就把它写成文字。',
       // CHAPTERS data
       ch1TitleBook: '海边时光',
       ch1Meta: '2024.04.06 · 厦门 · 6 张照片',
@@ -653,6 +1085,8 @@
       nextPage: 'Next page',
       zoomOut: 'Zoom out',
       zoomIn: 'Zoom in',
+      overview: 'All',
+      toggleChapters: 'Collapse / expand chapters',
       fullscreen: 'Fullscreen preview',
       // Chat head
       aiAvatarChar: 'Y',
@@ -686,8 +1120,56 @@
       thinking: 'Thinking',
       analyzedFeedback: 'Analyzed your feedback',
       aiReplyDefault: 'Got it, let me rewrite a new version for you...',
+      awaitUser: "I'm listening — talk to me anytime",
       justNow: 'Just now',
       thinkingComplete: 'Brainstormed 4 chapter name ideas',
+      // Left chapter rail
+      railChapters: 'Chapters',
+      addChapter: 'New chapter',
+      detailChapters: 'Chapter details',
+      balLow: 'Balance running low',
+      balDesc: 'Not enough balance to generate a new chapter — top up to keep creating',
+      balRecharge: 'Top up',
+      // Chat purchase card (low shells)
+      bpLead: 'Oops, you\'re running low on shells. Add a few more to keep creating your album.',
+      bpTitle: 'Buy shells',
+      bpSub: '<b>1 shell</b> processes 10 photos',
+      bpBuy: 'Buy shells',
+      editingNow: 'Editing',
+      chapterWord: 'Ch.',
+      photosWord: 'photos',
+      viewChapter: 'View chapter',
+      viewLayout: 'View layout',
+      justEdited: 'Just edited',
+      nowEditing: 'Editing',
+      chaptersLabel: 'Chapters',
+      collapseChapters: 'Collapse chapters',
+      chatPanel: 'Chat',
+      collapseChat: 'Collapse',
+      expandChat: 'Chat',
+      // Photo picker modal
+      modalTitle: 'Select photos',
+      modalSub: 'Pick the photos for this chapter — AI will lay them out and write the story.',
+      modalUpload: 'Upload',
+      modalSelected: 'Selected',
+      modalCancel: 'Cancel',
+      modalCreate: 'Create chapter',
+      alertUploadStub: 'Upload — choose local images (demo placeholder)',
+      // 3-state stepper
+      stateLoading: 'Loading',
+      stateTheme: 'Theme',
+      stateStory: 'Story',
+      // New-chapter conversation flow
+      loadingNewChapter: 'Creating new chapter…',
+      themeThinking: 'Analyzed the scenes and mood across these {n} photos',
+      themeAsk: 'I see a few possible themes in these photos — which one would you like?',
+      themeOpt1: 'Seaside Walk',
+      themeOpt2: 'City Nights',
+      themeOpt3: 'Mountain Morning',
+      themeConfirmed: 'Great — using "{theme}" as this chapter\'s theme',
+      storyStart: 'Now let\'s talk about this chapter\'s story — what happened that day? Who were you with? How did it feel?',
+      newChapterMeta: 'New chapter · {n} photos',
+      newChapterNarrative: 'This chapter\'s story isn\'t written yet. Tell Yujee AI on the right about that day, and I\'ll turn it into words.',
       // CHAPTERS data
       ch1TitleBook: 'By the Sea',
       ch1Meta: '2024.04.06 · Xiamen · 6 photos',
@@ -731,10 +1213,7 @@
       const key = el.getAttribute('data-i18n');
       const val = t(key);
       if (val) {
-        // Special: the thinkingChapterName label keeps its dots span when active
-        if (key === 'thinkingChapterName' && el.closest('.thinking-block.active')) {
-          el.innerHTML = val + '<span class="thinking-dots"><span></span><span></span><span></span></span>';
-        } else {
+        {
           el.textContent = val;
         }
       }
@@ -754,8 +1233,18 @@
       if (val) el.setAttribute('placeholder', val);
     });
 
+    // HTML content (allows inline <b> emphasis, e.g. purchase card subcopy)
+    document.querySelectorAll('[data-i18n-html]').forEach(el => {
+      const key = el.getAttribute('data-i18n-html');
+      const val = t(key);
+      if (val) el.innerHTML = val;
+    });
+
     // Rebuild CHAPTERS data from translations
     rebuildChapters();
+
+    // Refresh the left chapter rail labels
+    if (typeof renderRail === 'function') renderRail();
 
     // Repaint current spread to reflect new language
     paintSpread(currentCh);
@@ -777,8 +1266,10 @@
     else setLang('zh');
   }
   function toggleUserMenu() {
-    document.getElementById('userMenu').classList.toggle('open');
-    document.getElementById('langSelect').classList.remove('open');
+    var um = document.getElementById('userMenu');
+    if (um) um.classList.toggle('open');
+    var ls = document.getElementById('langSelect');
+    if (ls) ls.classList.remove('open');
   }
   // Click outside to close dropdowns
   document.addEventListener('click', function(e) {
@@ -789,8 +1280,6 @@
   });
 
   /* ─── Mobile AI chat bottom-sheet ─── */
-  function openChat(){ document.body.classList.add('chat-open'); }
-  function closeChat(){ document.body.classList.remove('chat-open'); }
 
   /** Build CHAPTERS array from current language translations */
   function rebuildChapters() {
@@ -896,7 +1385,6 @@
     }
   ];
 
-  const chapEls = document.querySelectorAll('.chapter');
   const ctxBadge = document.querySelector('.chat-context');
   const pageInd = document.getElementById('pageInd');
   const pageLeft = $('#pageLeft');
@@ -906,14 +1394,17 @@
   const leafBack = $('#leafBack');
   let currentCh = 0;
   let flipping = false;
+  let lastCardedCh = 0;   // last chapter that pushed a card into the chat
 
   function paintSpread(i){
     const c = CHAPTERS[i];
     pageLeft.innerHTML = coverHTML(c);
     pageRight.innerHTML = photoSideHTML(c);
     if(pageInd) pageInd.textContent = c.pages;
-    ctxBadge.textContent = c.ctxTag;
-    chapEls.forEach((el,j) => el.classList.toggle('active', j===i));
+    if(ctxBadge) ctxBadge.textContent = c.ctxTag;
+    document.querySelectorAll('.chapter').forEach((el,j) => el.classList.toggle('active', j===i));
+    // Mobile chapter chips active state
+    document.querySelectorAll('.m-chapter-chip').forEach((el,j) => el.classList.toggle('active', j===i));
     // Sync thumbnail strip
     if (typeof updateThumbUI === 'function') updateThumbUI(i);
   }
@@ -976,12 +1467,56 @@
     setLang(currentLang);
   })();
 
-  chapEls.forEach((el,i)=>{
-    el.addEventListener('click', ()=>{
-      if(i === currentCh) return;
-      flipTo(i, i > currentCh ? 'next' : 'prev');
-    });
-  });
+  /** Render the left chapter rail from CHAPTERS, binding click → navigate + enter story state */
+  function renderRail(){
+    const list = document.getElementById('chapterList');
+    if(list){
+      list.innerHTML = CHAPTERS.map((c,i)=>{
+        const photoN = (c.photos ? c.photos.length : 0);
+        const numStr = String(i+1).padStart(2,'0');
+        const shortTitle = [...c.title].length > 2 ? [...c.title].slice(0,2).join('') + '…' : c.title;
+        return `<div class="chapter${i===currentCh?' active':''}" data-ch="${i}" title="${c.title}">
+          <span class="chapter-num">${numStr}</span>
+          <span class="chapter-title">${shortTitle}</span>
+          <span class="chapter-meta">${photoN} ${t('photosWord')}</span>
+        </div>`;
+      }).join('');
+      list.querySelectorAll('.chapter').forEach((el)=>{
+        el.addEventListener('click', ()=>{
+          const i = +el.getAttribute('data-ch');
+          if(i !== currentCh) flipTo(i, i > currentCh ? 'next' : 'prev');
+          selectChapterStory(i);
+        });
+      });
+      const rc = document.getElementById('railCount');
+      if(rc) rc.textContent = CHAPTERS.length;
+    }
+
+    // Horizontal chapter chips — the primary chapter selector (desktop + mobile)
+    const mbar = document.getElementById('mobileChapterBar');
+    if(mbar){
+      mbar.innerHTML = CHAPTERS.map((c,i)=>
+        `<button class="m-chapter-chip${i===currentCh?' active':''}" data-ch="${i}">${c.ctxTag} · ${c.title}</button>`
+      ).join('');
+      mbar.querySelectorAll('.m-chapter-chip').forEach((el)=>{
+        el.addEventListener('click', ()=>{
+          const i = +el.getAttribute('data-ch');
+          if(i !== currentCh) flipTo(i, i > currentCh ? 'next' : 'prev');
+          selectChapterStory(i);
+        });
+      });
+    }
+  }
+  // Mobile detail overlay (preview + chapters) toggles
+  function openDetail(){ document.body.classList.add('detail-open'); }
+  function closeDetail(){ document.body.classList.remove('detail-open'); }
+  // Desktop: collapse / expand the floating chat card
+  function toggleChat(){ document.body.classList.toggle('chat-collapsed'); }
+  // Desktop: collapse / expand the floating chapter card
+  function toggleRail(){ document.body.classList.toggle('rail-collapsed'); }
+  renderRail();
+  setChatState(3);   // seeded conversation is a chapter-story chat (states 1 & 2 done)
+
   // Thumbnail strip — connected to book flipTo
   function updateThumbUI(chIdx) {
     document.querySelectorAll('.thumb-item').forEach((el, i) => {
@@ -1001,6 +1536,256 @@
     goToSpread(next);
   }
 
+  /* ─── Zoomable free canvas + whole-magazine overview ─── */
+  let zoom = 1;
+  const ZMIN = 0.5, ZMAX = 2, ZSTEP = 0.25;
+  function applyZoom(){
+    const bk = document.getElementById('book');
+    if(bk) bk.style.transform = 'scale(' + zoom + ')';
+    const p = document.getElementById('zoomPct');
+    if(p) p.textContent = Math.round(zoom * 100) + '%';
+  }
+  function zoomBy(d){
+    // In overview: zooming in returns to the single spread, zooming out does nothing
+    if(document.body.classList.contains('overview-on')){
+      if(d > 0) exitOverview();
+      return;
+    }
+    const nz = Math.round((zoom + d) * 100) / 100;
+    if(nz < ZMIN){ enterOverview(); return; }   // zoom out past min → see the whole magazine
+    zoom = Math.min(ZMAX, nz);
+    applyZoom();
+  }
+  function resetZoom(){
+    if(document.body.classList.contains('overview-on')){ exitOverview(); return; }
+    zoom = 1; applyZoom();
+  }
+  function miniSpreadHTML(c){
+    const photos = (c.photos || []).slice(0,4);
+    const cells = photos.map(p => `<div class="ov-photo${p.span?' span2':''}" style="background-image:url('${p.url}')"></div>`).join('');
+    return `<div class="ov-page ov-left">
+        <div class="ov-eyebrow">${c.eyebrow}</div>
+        <div class="ov-title">${c.title}</div>
+        <div class="ov-meta">${c.meta}</div>
+      </div>
+      <div class="ov-page ov-right"><div class="ov-photos">${cells}</div></div>`;
+  }
+  function renderOverview(){
+    const g = document.getElementById('ovGrid');
+    if(!g) return;
+    g.innerHTML = CHAPTERS.map((c,i)=>
+      `<div class="ov-spread${i===currentCh?' ov-current':''}" onclick="openSpreadFromOverview(${i})">
+        <div class="ov-book">${miniSpreadHTML(c)}</div>
+        <div class="ov-cap">${c.ctxTag} · ${c.title}</div>
+      </div>`).join('');
+  }
+  function enterOverview(){
+    renderOverview();
+    document.body.classList.add('overview-on');
+    const b = document.getElementById('ovBtn'); if(b) b.classList.add('active');
+    const p = document.getElementById('zoomPct'); if(p) p.textContent = t('overview');
+  }
+  function exitOverview(){
+    document.body.classList.remove('overview-on');
+    const b = document.getElementById('ovBtn'); if(b) b.classList.remove('active');
+    zoom = 1; applyZoom();
+  }
+  function toggleOverview(){
+    document.body.classList.contains('overview-on') ? exitOverview() : enterOverview();
+  }
+  function openSpreadFromOverview(i){
+    exitOverview();
+    if(i !== currentCh) flipTo(i, i > currentCh ? 'next' : 'prev');
+    selectChapterStory(i);
+  }
+  // Cmd/Ctrl + wheel to zoom over the canvas
+  (function(){
+    const stage = document.querySelector('.book-stage');
+    if(!stage) return;
+    stage.addEventListener('wheel', (e)=>{
+      if(e.ctrlKey || e.metaKey){ e.preventDefault(); zoomBy(e.deltaY < 0 ? ZSTEP : -ZSTEP); }
+    }, { passive:false });
+  })();
+
+  /* ════════════════════════════════════════════════════════════
+     Conversation states: 1 加载 → 2 确定主题 → 3 章节故事
+     ════════════════════════════════════════════════════════════ */
+  /** Highlight the stepper: states < n = done, n = active */
+  function setChatState(n){
+    document.querySelectorAll('#stateStepper .state-pill').forEach(p=>{
+      const s = +p.getAttribute('data-state');
+      p.classList.toggle('done', s < n);
+      p.classList.toggle('active', s === n);
+    });
+  }
+
+  function scrollChat(){ const b=$('#chatBody'); b.scrollTop=b.scrollHeight; }
+
+  /* ─── Photo picker modal ─── */
+  const PICK_PHOTOS = [
+    'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=300&q=70',
+    'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=300&q=70',
+    'https://images.unsplash.com/photo-1505228395891-9a51e7e86bf6?w=300&q=70',
+    'https://images.unsplash.com/photo-1473116763249-2faaef81ccda?w=300&q=70',
+    'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=300&q=70',
+    'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=300&q=70',
+    'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=300&q=70',
+    'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=300&q=70',
+    'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=300&q=70',
+    'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=300&q=70',
+    'https://images.unsplash.com/photo-1530789253388-582c481c54b0?w=300&q=70',
+  ];
+  function buildPickGrid(){
+    const grid = document.getElementById('pickGrid');
+    // keep the upload tile (first child), append photo tiles after it
+    grid.querySelectorAll('.pick-photo').forEach(n=>n.remove());
+    PICK_PHOTOS.forEach((url,i)=>{
+      const d = document.createElement('div');
+      d.className = 'pick-photo';
+      d.style.backgroundImage = `url('${url}')`;
+      d.innerHTML = `<span class="pick-check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>`;
+      d.addEventListener('click', ()=>{ d.classList.toggle('sel'); updatePickCount(); });
+      grid.appendChild(d);
+    });
+  }
+  function updatePickCount(){
+    const n = document.querySelectorAll('#pickGrid .pick-photo.sel').length;
+    document.getElementById('pickCount').textContent = n;
+    document.getElementById('createChBtn').disabled = (n === 0);
+  }
+  function openPhotoPicker(){
+    buildPickGrid(); updatePickCount();
+    document.getElementById('photoModal').classList.add('open');
+  }
+  function closePhotoPicker(){
+    document.getElementById('photoModal').classList.remove('open');
+  }
+
+  /* ─── New-chapter flow: loading → theme → story ─── */
+  let pendingPhotoCount = 0;
+  function confirmNewChapter(){
+    pendingPhotoCount = document.querySelectorAll('#pickGrid .pick-photo.sel').length;
+    if(pendingPhotoCount === 0) return;
+    closePhotoPicker();
+
+    // STATE 1 — unified loading
+    setChatState(1);
+    hideAwait();
+    const load = document.createElement('div');
+    load.className = 'msg ai';
+    load.innerHTML = `<div class="load-block"><div class="load-spinner"></div><span class="load-label">${t('loadingNewChapter')}</span></div>`;
+    chatBody.appendChild(load); scrollChat();
+
+    // STATE 2 — confirm theme
+    setTimeout(()=>{
+      load.remove();
+      setChatState(2);
+      const a = document.createElement('div');
+      a.className = 'msg ai';
+      a.innerHTML = `
+        <div class="thinking-block"><span class="thinking-label">${t('themeThinking').replace('{n}', pendingPhotoCount)}</span></div>
+        <div class="ai-text">${t('themeAsk')}</div>
+        <div class="ai-actions flex gap-2 mt-3.5 flex-wrap">
+          <button class="chip-select" onclick="pickTheme(this)">${t('themeOpt1')}</button>
+          <button class="chip-select" onclick="pickTheme(this)">${t('themeOpt2')}</button>
+          <button class="chip-select" onclick="pickTheme(this)">${t('themeOpt3')}</button>
+        </div>
+        <div class="name-time">${t('justNow')}</div>`;
+      chatBody.appendChild(a); restAwait(); scrollChat();
+    }, 1800);
+  }
+
+  /** User picked a theme → create the chapter, jump to it, enter story state */
+  function pickTheme(btn){
+    btn.parentNode.querySelectorAll('.chip-select').forEach(c=>c.classList.remove('selected'));
+    btn.classList.add('selected');
+    const theme = btn.textContent;
+
+    // Build a new chapter from the chosen theme + picked photos
+    const n = CHAPTERS.length + 1;
+    const photos = PICK_PHOTOS.slice(0, Math.max(1, Math.min(pendingPhotoCount, 3))).map((url,k)=>(
+      k===0 ? {url:url.replace('w=300','w=600'), cap:theme, span:true} : {url}
+    ));
+    CHAPTERS.push({
+      eyebrow:'CHAPTER ' + String(n).padStart(2,'0'),
+      title: theme,
+      meta: t('newChapterMeta').replace('{n}', pendingPhotoCount),
+      pages:'P. ' + (n*2) + '–' + (n*2+1) + ' / ' + (n*2+1),
+      footer: theme,
+      narrative: t('newChapterNarrative'),
+      photos,
+      pageNum: String(n*2).padStart(2,'0') + ' · ' + theme,
+      pageRightNum: String(n*2+1).padStart(2,'0'),
+      ctxTag: (currentLang === 'zh' ? '第 ' + n + ' 章' : 'Ch. ' + n),
+    });
+    renderRail();
+    const newIdx = CHAPTERS.length - 1;
+    goToSpread(newIdx);
+
+    // STATE 3 — story chat for the now-selected chapter
+    setTimeout(()=>{
+      setChatState(3);
+      const a = document.createElement('div');
+      a.className = 'msg ai';
+      a.innerHTML = `
+        <div class="thinking-block"><span class="thinking-label">${t('themeConfirmed').replace('{theme}', theme)}</span></div>
+        <div class="ai-text">${t('storyStart')}</div>
+        <div class="name-time">${t('justNow')}</div>`;
+      chatBody.appendChild(a); restAwait(); scrollChat();
+      // Chapter now appears in the left rail (renderRail already ran); no in-chat card
+      lastCardedCh = newIdx;
+      input.focus();
+    }, 480);
+  }
+
+  /** Clicking a chapter in the rail = chatting about that chapter's story (state 3) */
+  function selectChapterStory(i){
+    setChatState(3);
+    if(ctxBadge) ctxBadge.textContent = CHAPTERS[i].ctxTag;
+    // Switching chapters drops a card into the conversation so the user always sees
+    // which chapter they're editing. History is append-only — earlier cards stay put.
+    if(i !== lastCardedCh) pushChapterCard(i);
+    lastCardedCh = i;
+  }
+
+  /* ─── Chapter card in the conversation flow ───
+     Static, generation-time preview thumbnails (no live render) + a "view chapter" button.
+     Lets the user see/jump to the chapter being edited — crucial on mobile when the
+     canvas & chapter rail are collapsed. */
+  function chapterCardHTML(i){
+    const c = CHAPTERS[i];
+    const ps = (c.photos || []).slice(0, 4);
+    const thumbs = ps.map(p => `<div class="cc-thumb" style="background-image:url('${p.url}')"></div>`).join('');
+    const photoN = c.photos ? c.photos.length : 0;
+    return `<div class="chap-card" data-ch="${i}">
+      <div class="cc-thumbs">${thumbs}</div>
+      <div class="cc-foot">
+        <div class="cc-info">
+          <div class="cc-title-row"><span class="cc-title">${c.title}</span><span class="cc-tag">${c.ctxTag}</span></div>
+          <div class="cc-meta">${photoN} ${t('photosWord')} · ${t('justEdited')}</div>
+        </div>
+        <button class="cc-view" onclick="viewChapter(${i})">${t('viewLayout')}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
+      </div>
+    </div>`;
+  }
+  function pushChapterCard(i){
+    const d = document.createElement('div');
+    d.className = 'msg ai';
+    d.innerHTML = chapterCardHTML(i);
+    chatBody.appendChild(d); scrollChat();
+  }
+  /** "查看章节" → select & show the chapter. Desktop: flip + flash the book.
+      Mobile (canvas folded): slide open the detail overlay. */
+  function viewChapter(i){
+    if(i !== currentCh) flipTo(i, i > currentCh ? 'next' : 'prev');
+    if(window.matchMedia('(max-width:767px)').matches){
+      openDetail();
+    } else {
+      const b = document.getElementById('book');
+      if(b){ b.classList.remove('book-flash'); void b.offsetWidth; b.classList.add('book-flash'); }
+    }
+  }
+
   // Chat send
   const chatBody = $('#chatBody');
   const input = $('#msgInput');
@@ -1014,6 +1799,7 @@
     u.querySelector('.bubble').textContent = txt;
     chatBody.appendChild(u);
     input.value=''; input.style.height='auto';
+    hideAwait();
     chatBody.scrollTop = chatBody.scrollHeight;
     // Show thinking state first
     setTimeout(()=>{
@@ -1021,8 +1807,9 @@
       a.className = 'msg ai';
       a.innerHTML = `
         <div class="thinking-block active">
-          <span class="thinking-icon"></span>
-          <span class="thinking-label">${t('thinking')}<span class="thinking-dots"><span></span><span></span><span></span></span></span>
+          <img class="think-jelly" src="jellyfish-loop.png" alt="">
+          <span class="thinking-label">${t('thinking')}</span>
+          <span class="thinking-dots"><span></span><span></span><span></span></span>
         </div>`;
       chatBody.appendChild(a);
       chatBody.scrollTop = chatBody.scrollHeight;
@@ -1038,10 +1825,14 @@
         time.textContent = t('justNow');
         a.appendChild(textEl);
         a.appendChild(time);
+        restAwait();
         chatBody.scrollTop = chatBody.scrollHeight;
       }, 1500);
     }, 400);
   }
+  /** Resting jellyfish helpers — hide while AI works, return to bottom when idle */
+  function hideAwait(){ const w=document.getElementById('awaitUser'); if(w) w.style.display='none'; }
+  function restAwait(){ const w=document.getElementById('awaitUser'); if(w){ chatBody.appendChild(w); w.style.display='flex'; } }
   sendBtnEl.addEventListener('click', send);
   input.addEventListener('keydown', e=>{
     if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }
@@ -1050,6 +1841,18 @@
     input.style.height='auto';
     input.style.height = Math.min(input.scrollHeight, 100) + 'px';
   });
+
+  // Seed a chapter card into the middle of the conversation so the "which chapter
+  // am I editing" style is visible on load (inserted right after the first AI message).
+  (function seedChapterCard(){
+    const firstAi = chatBody.querySelector('.msg.ai');
+    const card = document.createElement('div');
+    card.className = 'msg ai max-w-full';
+    card.innerHTML = chapterCardHTML(currentCh);
+    if(firstAi && firstAi.nextSibling) chatBody.insertBefore(card, firstAi.nextSibling);
+    else chatBody.appendChild(card);
+  })();
+  lastCardedCh = currentCh;
 
   // Auto-complete the last "active" thinking block after 3s
   setTimeout(()=>{
@@ -1068,6 +1871,7 @@
     }
   });
 </script>
+
 
 
 </body></html>

@@ -8,9 +8,22 @@
 |---|---|---|
 | [`yujee-home2.html`](./yujee-home2.html) | `/[locale]/(tool)/create/page.tsx` + `/[locale]/(dashboard)/my-albums/page.tsx` | 首页 = 创建入口 + 已有作品列表 |
 | [`design/pricing.html`](./design/pricing.html) | `/[locale]/(marketing)/pricing/page.tsx` | 定价页 |
-| [`design/editor.html`](./design/editor.html) | `/[locale]/(tool)/album/[uuid]/page.tsx` | 相册编辑器 |
+| [`design/editor.html`](./design/editor.html) | `/[locale]/(tool)/album/[uuid]/page.tsx` | 相册编辑器(**v2 重设计版**,见下) |
 
 > 路由归属见 [`../../../docs/web/directory.md`](../../../docs/web/directory.md) §2。
+
+### 编辑器 v2 重设计(issue #143)
+
+`design/editor.html` 已替换为 **v2 重设计稿**:topbar(logo + 可编辑相册标题 + 语言/用户下拉)、中央 **3D 翻书预览**(page-left/page-right/flipper 翻页动画)、玻璃态**缩略图条**、整本**总览网格**(book-overview)、**缩放控件**(缩小到极限进入总览)、画布上的**浮动章节卡**(可折叠)、**可折叠对话区**(chat panel,带 jellyfish 思考态)。配套资源:
+
+| 资源 | 用途 |
+|---|---|
+| [`design/jellyfish-icon.png`](./design/jellyfish-icon.png) | 对话区静默「在听」态图标(运行时见 `public/jellyfish-icon.png`) |
+| [`design/jellyfish-loop.png`](./design/jellyfish-loop.png) | 对话区 AI 思考中循环图(运行时见 `public/jellyfish-loop.png`) |
+| `design/logo-yujee.svg` | 已有,对应运行时 `public/brand/yujee-logo.svg` |
+
+> jellyfish 资源同时拷入 `apps/web/public/`,React 编辑器以 `/jellyfish-*.png` 引用(Next 静态服务)。
+> token / 配色权威值见 §硬约束 2 —— 已抽到 `apps/web/src/styles/globals.css :root`,与本稿 `:root` 一致(accent `#13B8A6`、gg/gl/gp 渐变、Bricolage Grotesque、圆角/阴影),**值不许改**。
 
 ## 给 React 化工程师的硬约束
 

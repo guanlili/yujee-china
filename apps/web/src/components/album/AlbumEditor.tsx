@@ -36,6 +36,7 @@ export function AlbumEditor({ detail, locale }: Props) {
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
   const [title, setTitle] = useState(detail.album.title);
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [exporting, setExporting] = useState(false);
@@ -204,9 +205,55 @@ export function AlbumEditor({ detail, locale }: Props) {
         <p className="flex-shrink-0 bg-[#fff7ed] px-6 py-2 text-[var(--text-xs)] text-[#b45309]">{exportErr}</p>
       )}
 
-      <div className="relative grid flex-1 min-h-0 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_340px]">
-        {/* CENTER — 3D flipbook preview + thumbnail strip (UI-1b) */}
-        <main className="relative min-h-0 min-w-0 overflow-hidden bg-[var(--bg)] p-8">
+      {/* v2 layout (design-v1 editor.html): chat = flush-left collapsible card,
+          preview = central canvas. The grid keeps the test's scroll-isolation
+          contract (flex-1 min-h-0 overflow-hidden) while column-ordering puts
+          chat on the left on desktop. */}
+      <style>{`
+        /* Chat is a desktop-only flush-left card; the editor stays preview-first
+           on mobile (matches UI-1a). Collapse swaps the grid to a single track. */
+        [data-chat-aside]{ display:none; }
+        @media (min-width:1024px){
+          [data-editor-grid][data-chat-collapsed="false"]{ grid-template-columns:360px minmax(0,1fr); }
+          [data-editor-grid][data-chat-collapsed="true"]{ grid-template-columns:minmax(0,1fr); }
+          [data-editor-grid][data-chat-collapsed="false"] [data-chat-aside]{ display:block; }
+        }
+      `}</style>
+      <div
+        data-editor-grid
+        data-chat-collapsed={chatCollapsed}
+        className="relative grid flex-1 min-h-0 grid-cols-1 overflow-hidden"
+      >
+        {/* LEFT — chat card (collapsible). Desktop-only flush-left card; on
+            mobile the editor stays preview-first (matches UI-1a behaviour). */}
+        <aside className="order-1 h-full min-h-0 min-w-0 overflow-hidden" data-chat-aside style={{ transition: 'width var(--motion-base) var(--ease)' }}>
+          <div className="h-full overflow-hidden border-[var(--border-soft)] lg:rounded-r-[18px] lg:border lg:border-l-0 lg:shadow-[0_8px_30px_rgba(0,0,0,0.10)]">
+            <ChatPanel
+              albumId={albumId}
+              locale={locale}
+              language={language}
+              onPatch={onChatPatch}
+              onCollapse={() => setChatCollapsed(true)}
+            />
+          </div>
+        </aside>
+
+        {/* CENTER — 3D flipbook preview + canvas chrome (thumbnail strip, zoom, overview, spread rail) */}
+        <main className="relative order-2 min-h-0 min-w-0 overflow-hidden bg-[var(--bg)] p-8">
+          {/* Expand tab — only when the chat card is fully collapsed (design .chat-fold-expand) */}
+          {chatCollapsed && (
+            <button
+              type="button"
+              onClick={() => setChatCollapsed(false)}
+              title={t.expandChat}
+              aria-label={t.expandChat}
+              className="absolute left-2 top-1/2 z-[45] hidden h-10 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border-soft)] bg-[var(--surface)] text-[var(--muted)] transition-colors hover:text-[var(--fg)] lg:flex"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          )}
           <FlipBook
             pages={pages}
             totalPages={total}
@@ -223,14 +270,17 @@ export function AlbumEditor({ detail, locale }: Props) {
               noPages: t.noPages,
               editPage: t.editPage,
               pageIndicator: t.pageIndicator,
+              overview: t.overview,
+              zoomIn: t.zoomIn,
+              zoomOut: t.zoomOut,
+              resetZoom: t.resetZoom,
+              chaptersLabel: t.chaptersLabel,
+              collapseChapters: t.collapseChapters,
+              expandChapters: t.expandChapters,
+              spreadLabel: t.spreadLabel,
             }}
           />
         </main>
-
-        {/* RIGHT — chat */}
-        <aside className="hidden h-full min-h-0 min-w-0 overflow-hidden border-l border-[var(--border-soft)] lg:block">
-          <ChatPanel albumId={albumId} locale={locale} language={language} onPatch={onChatPatch} />
-        </aside>
 
         {/* EDIT DRAWER */}
         {drawerOpen && selectedPage && (

@@ -225,7 +225,18 @@
       "goneTitle": "Couldn't open this album",
       "goneBody": "It may have been removed, or it isn't available on this account.",
       "slowTitle": "This is taking longer than expected",
-      "slowBody": "Still working on it — refresh to check back."
+      "slowBody": "Still working on it — refresh to check back.",
+      "overview": "All",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "resetZoom": "Reset to 100%",
+      "chaptersLabel": "Spreads",
+      "collapseChapters": "Collapse spreads",
+      "expandChapters": "Expand spreads",
+      "collapseChat": "Collapse",
+      "expandChat": "Chat",
+      "spreadLabel": "Spread {n}",
+      "awaitUser": "I'm listening — talk to me anytime"
     }
   },
   "admin": {
