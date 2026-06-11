@@ -124,6 +124,12 @@ body {
   100% { border-color: var(--grad-green); opacity: 1; }
 }
 
+/* Editor chat — resting jellyfish gentle float (design-v1 editor.html .await-jelly). */
+@keyframes yujee-jelly-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
 /* Album cover status spinners (/my-albums) — conic-gradient rings the design
    draws with mask + keyframes, which Tailwind utilities can't express inline.
    Mirrors design-v1/yujee-home2.html .gen-ring / .badge-spin. */

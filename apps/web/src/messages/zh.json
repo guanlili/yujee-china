@@ -225,7 +225,18 @@
       "goneTitle": "无法打开这本相册",
       "goneBody": "它可能已被删除,或不在当前账户下。",
       "slowTitle": "这比预期的时间长一些",
-      "slowBody": "仍在处理中 —— 刷新页面再看看。"
+      "slowBody": "仍在处理中 —— 刷新页面再看看。",
+      "overview": "整本",
+      "zoomIn": "放大",
+      "zoomOut": "缩小",
+      "resetZoom": "恢复 100%",
+      "chaptersLabel": "章节",
+      "collapseChapters": "收起章节",
+      "expandChapters": "展开章节",
+      "collapseChat": "折叠对话",
+      "expandChat": "展开对话",
+      "spreadLabel": "第 {n} 跨页",
+      "awaitUser": "在听,随时和我说～"
     }
   },
   "admin": {
