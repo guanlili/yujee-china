@@ -4,9 +4,27 @@ import { use, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAlbumPoll } from '@/lib/hooks/use-album-poll';
 import { EditorPort } from '@/components/album/editor-v2/EditorPort';
-import { AuthoringPort } from '@/components/album/v2/AuthoringPort';
 import { AlbumGeneratingShell } from '@/components/album/AlbumGeneratingShell';
+import type { AlbumDetail } from '@/components/album/types';
 import { defaultLocale, isLocale, type Locale } from '@/lib/i18n/routing';
+
+// building mode renders the editor chrome + a loading book and never reads page
+// content, so the first (pre-detail) poll frame can hand it this minimal stub.
+const STUB_DETAIL = (uuid: string): AlbumDetail => ({
+  album: {
+    id: uuid,
+    title: '',
+    status: 'AGENT_RUNNING',
+    prompt: '',
+    layoutJson: null,
+    photoCount: 0,
+    pageCount: 0,
+    pdfUrl: null,
+    errorMessage: null,
+    createdAt: new Date(0).toISOString(),
+  },
+  pages: [],
+});
 
 // Editor lives under [locale] for 2-language support (architecture §6.5.7). The
 // create flow still pushes the unprefixed /album/<uuid>; next-intl middleware
@@ -34,27 +52,31 @@ export default function AlbumPage({
     }
   }, [phase, router, locale, uuid]);
 
-  // While the init pipeline runs (album AGENT_RUNNING), we no longer show a
-  // separate "generating" page. Instead we render the edit-style AuthoringPort in
-  // its loading state: skeleton preview + a non-interactive "tidying your photos…"
-  // chat rail. When useAlbumPoll flips running → ready, this re-renders the same
-  // AuthoringPort in its ready state, and only then does it fetch the draft
-  // skeleton (single poll source — approach (a)). Leaving and returning via the
-  // URL naturally resumes: a fresh useAlbumPoll re-derives running → ready.
+  // The editor is now the single page across the whole album lifecycle (W10 flow
+  // unification): EditorPort renders for every non-terminal phase, switching mode
+  // internally. We no longer route to the standalone AuthoringPort (kept only as a
+  // fallback). page.tsx owns just the mode decision:
+  //   • loading / running (AGENT_RUNNING) → building: loading book + "tidying up".
+  //   • EDITING & layoutJson == null      → authoring: draft skeleton + agent chat.
+  //   • layoutJson set (EDITING/COMPLETED)→ editing: the finalized editor.
+  // layoutJson is the draft↔finalized discriminator (mirrors the server's
+  // albumAuthoringService.loadDraftAlbum). Leaving and returning via the URL
+  // resumes naturally: a fresh useAlbumPoll re-derives the phase.
   if (phase === 'loading' || phase === 'running') {
-    return <AuthoringPort albumId={uuid} locale={locale} phase="building" />;
+    // First frame has no detail yet; building mode ignores it, so a stub is fine.
+    return (
+      <EditorPort
+        detail={detail ?? STUB_DETAIL(uuid)}
+        locale={locale}
+        mode="building"
+      />
+    );
   }
 
-  // EDITING is two distinct product states that share one status: the DRAFT phase
-  // (draft_json written, layout_json still null → the v2 authoring flow) and the
-  // FINALIZED phase (layout_json set → the editor). layoutJson is the
-  // discriminator (mirrors albumAuthoringService.loadDraftAlbum server-side).
   if (phase === 'ready' && detail) {
     const { status, layoutJson } = detail.album;
-    if (status === 'EDITING' && layoutJson == null) {
-      return <AuthoringPort albumId={uuid} locale={locale} phase="ready" />;
-    }
-    return <EditorPort detail={detail} locale={locale} />;
+    const mode = status === 'EDITING' && layoutJson == null ? 'authoring' : 'editing';
+    return <EditorPort detail={detail} locale={locale} mode={mode} />;
   }
 
   // Terminal error states (failed / gone / error / unauthorized) still reuse the

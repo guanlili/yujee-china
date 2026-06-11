@@ -15,7 +15,7 @@
    Styling lives in ./editor-port.css (the HTML <style> block, values unchanged).
    ════════════════════════════════════════════════════════════════════════════ */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
@@ -30,9 +30,229 @@ import {
   type EditorPage,
   type LayoutPatchEntry,
 } from '../types';
+import {
+  fetchDraftSkeleton,
+  postTheme,
+  postChapterChat,
+  postFinalize,
+  type DraftSkeleton,
+  type DraftSkeletonChapter,
+  type DraftTheme,
+} from '@/lib/album/authoring-client';
+import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/client';
 import './editor-port.css';
 
-export function EditorPort({ detail, locale }: { detail: AlbumDetail; locale: Locale }) {
+// The editor now spans the whole album lifecycle (W10 flow unification): the same
+// EditorPort chrome renders for a still-generating album (building), a draft being
+// authored (authoring), and a finalized album being edited (editing). page.tsx
+// derives the mode from album.status + layoutJson and always mounts EditorPort —
+// the standalone AuthoringPort is no longer routed to (kept only as a fallback).
+//   • building  → AGENT_RUNNING / first load: flipbook shows a loading placeholder,
+//                 chat rail is a non-interactive "tidying up" notice.
+//   • authoring → EDITING & layoutJson==null: draft skeleton (read-only, invariant
+//                 12) feeds the flipbook + rail; the chat rail drives the agent
+//                 single-thread theme→chapter creation flow + "finish the book".
+//   • editing   → layoutJson set: the original finalized editor, untouched.
+export type EditorMode = 'building' | 'authoring' | 'editing';
+
+// A theme counts as "set" once the agent populated any field (the user wrote a
+// prompt at creation, or already answered the theme question). Mirrors
+// AuthoringPort.hasTheme — used to decide whether the chat opens on the theme step.
+function hasTheme(theme: DraftTheme | null): boolean {
+  if (!theme) return false;
+  return Object.values(theme).some((v) => typeof v === 'string' && v.trim().length > 0);
+}
+
+export function EditorPort({
+  detail,
+  locale,
+  mode = 'editing',
+}: {
+  detail: AlbumDetail;
+  locale: Locale;
+  mode?: EditorMode;
+}) {
+  // building: nothing to render yet — show the editor chrome with a loading book
+  // and a reassuring chat rail. The poll in page.tsx flips us to authoring/editing.
+  if (mode === 'building') {
+    return <EditorLoading locale={locale} />;
+  }
+  // authoring: the draft skeleton is async (GET /draft) and the originals resolve
+  // from IndexedDB, so we resolve everything first, then mount the same book the
+  // editing path uses. EditorBook keeps its single mount-time effect ([] deps).
+  if (mode === 'authoring') {
+    return <EditorAuthoring detail={detail} locale={locale} />;
+  }
+  // editing: the original finalized editor, fed straight from detail.pages.
+  return (
+    <EditorBook
+      mode="editing"
+      detail={detail}
+      locale={locale}
+      initialPages={detail.pages}
+      draftChapters={null}
+      initialImageUrls={{}}
+    />
+  );
+}
+
+// ── building: editor chrome + loading book + non-interactive rail ──
+function EditorLoading({ locale }: { locale: Locale }) {
+  const zh = locale === 'zh';
+  const title = zh ? '正在整理你的照片…' : 'Tidying up your photos…';
+  const hint = zh
+    ? '这通常需要 2-3 分钟。你可以先离开，稍后回来刷新这个页面就能接着看 —— 进度会自动恢复到当前状态。'
+    : 'This usually takes 2-3 minutes. Feel free to leave — come back and refresh this page anytime, and it picks up right where it left off.';
+  return (
+    <div className="editor-port font-sans antialiased leading-relaxed flex h-screen flex-col overflow-hidden bg-bg">
+      <div className="topbar h-[52px] flex items-center justify-between px-3 sm:px-6 bg-surface border-b border-bdsoft shrink-0">
+        <div className="top-left flex items-center gap-2 sm:gap-4 min-w-0">
+          <a href={`/${locale}/my-albums`} className="back-btn flex items-center justify-center w-8 h-8 rounded-pill text-muted no-underline transition-colors hover:bg-bg hover:text-fg shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><polyline points="15 18 9 12 15 6" /></svg>
+          </a>
+          <a href={`/${locale}/my-albums`} className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '30px', width: 'auto', display: 'block' }} /></a>
+          <span className="crumb text-meta text-[13px] hidden sm:inline">/</span>
+          <span className="flex items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-[11px] text-muted" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+            <span className="w-1.5 h-1.5 rounded-full bg-gg animate-pulse" />
+            <span>{zh ? '整理中' : 'Tidying up'}</span>
+          </span>
+        </div>
+      </div>
+      <div className="workspace flex-1 overflow-hidden relative md:flex" style={{ height: 'calc(100vh - 53px)' }}>
+        <main className="pane pane-center flex flex-col overflow-hidden bg-bg relative md:order-3 md:flex-1">
+          <div className="book-stage w-full flex-1 flex items-center justify-center px-4 pt-8 pb-16 overflow-auto bg-bg relative">
+            <BookLoadingPlaceholder />
+          </div>
+        </main>
+        <div className="pane-chat-col md:order-1 md:w-[360px] shrink-0 md:flex">
+          <aside className="pane pane-right chat-card relative flex flex-col overflow-hidden bg-surface md:flex-1">
+            <div className="flex flex-shrink-0 items-center gap-3 px-5 py-4">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-[13px] font-bold text-white">{zh ? '己' : 'Y'}</span>
+              <div className="min-w-0">
+                <h3 className="text-[14px] font-bold tracking-tight">{zh ? '遇己' : 'Yujee'}</h3>
+                <div className="text-[12px] text-muted">{zh ? '和我聊聊这段回忆' : 'Tell me about this memory'}</div>
+              </div>
+            </div>
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-6">
+              <div className="flex items-center gap-1 text-[13.5px] font-medium text-fg2">
+                <span>{title}</span>
+                <span className="inline-flex items-center gap-[3px] ml-0.5">
+                  <span className="h-[3.5px] w-[3.5px] rounded-full animate-pulse" style={{ backgroundColor: 'var(--grad-green)' }} />
+                  <span className="h-[3.5px] w-[3.5px] rounded-full animate-pulse" style={{ backgroundColor: 'var(--grad-purple)', animationDelay: '0.16s' }} />
+                  <span className="h-[3.5px] w-[3.5px] rounded-full animate-pulse" style={{ backgroundColor: 'var(--grad-lime)', animationDelay: '0.32s' }} />
+                </span>
+              </div>
+              <p className="rounded-2xl rounded-bl-sm bg-bg px-3.5 py-2.5 text-[13px] leading-relaxed text-muted">{hint}</p>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BookLoadingPlaceholder() {
+  const scale = 0.5;
+  return (
+    <div
+      className="relative overflow-hidden bg-surface"
+      style={{ width: PAGE.width * scale, height: PAGE.height * scale, boxShadow: '0 4px 30px rgba(0,0,0,0.10)' }}
+      aria-hidden
+    >
+      <div className="absolute inset-0 animate-pulse" style={{ background: 'linear-gradient(135deg, var(--surface), var(--bg) 50%, var(--border-soft))' }} />
+      <div className="absolute inset-x-10 top-10 h-28 rounded-md bg-bdsoft" />
+      <div className="absolute left-10 top-44 h-5 w-32 rounded-full" style={{ backgroundColor: 'var(--border)' }} />
+      <div className="absolute left-10 right-10 top-56 space-y-3">
+        <div className="h-3 rounded-full bg-bdsoft" />
+        <div className="h-3 rounded-full bg-bdsoft" />
+        <div className="h-3 w-3/4 rounded-full bg-bdsoft" />
+      </div>
+    </div>
+  );
+}
+
+// ── authoring: resolve the draft skeleton + originals, then mount EditorBook ──
+function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Locale }) {
+  const [skeleton, setSkeleton] = useState<DraftSkeleton | null>(null);
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error' | 'gone'>('loading');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { draft } = await fetchDraftSkeleton(detail.album.id);
+        if (cancelled) return;
+        if (!draft) {
+          setLoadState('gone');
+          return;
+        }
+        // Resolve originals (invariant 1: photos live only in the browser). Missing
+        // ids render as empty slots — fine.
+        const ids = new Set<string>();
+        for (const p of draft.pages) for (const id of Object.values(p.imagesJson)) if (id) ids.add(id);
+        const urls = await photoStore.getObjectUrls([...ids]);
+        if (cancelled) return;
+        setImageUrls(urls);
+        setSkeleton(draft);
+        setLoadState('ready');
+      } catch {
+        if (!cancelled) setLoadState('error');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [detail.album.id]);
+
+  if (loadState !== 'ready' || !skeleton) {
+    // Reuse the building chrome while the draft fetch is in flight. A gone/error
+    // draft is rare (album flipped state mid-fetch); the next poll re-derives mode.
+    return <EditorLoading locale={locale} />;
+  }
+
+  // Feed the skeleton's flattened page list straight into the flipbook (its shape
+  // already matches EditorPage). draftChapters drives the rail with real labels.
+  const pages: EditorPage[] = skeleton.pages.map((p) => ({
+    pageIndex: p.pageIndex,
+    templateId: p.templateId,
+    imagesJson: { ...p.imagesJson },
+    textsJson: { ...p.textsJson },
+  }));
+  return (
+    <EditorBook
+      key={skeleton.pages.length}
+      mode="authoring"
+      detail={detail}
+      locale={locale}
+      initialPages={pages}
+      draftChapters={skeleton}
+      initialImageUrls={imageUrls}
+    />
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// EditorBook — the faithful editor.html port. Mounts once with already-resolved
+// pages/chapters/originals; its single mount-time effect runs the imperative
+// flipbook/zoom/overview/thumbnail/chat logic. `mode` selects the chat behaviour:
+// editing → /chat (applyPatch); authoring → agent theme/chapter flow + finalize.
+// ════════════════════════════════════════════════════════════════════════════
+function EditorBook({
+  detail,
+  locale,
+  mode,
+  initialPages,
+  draftChapters,
+  initialImageUrls,
+}: {
+  detail: AlbumDetail;
+  locale: Locale;
+  mode: 'authoring' | 'editing';
+  initialPages: EditorPage[];
+  draftChapters: DraftSkeleton | null;
+  initialImageUrls: Record<string, string>;
+}) {
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -312,14 +532,31 @@ export function EditorPort({ detail, locale }: { detail: AlbumDetail; locale: Lo
       (detail.album.layoutJson as { magazine?: { language?: string } } | null)?.magazine?.language === 'zh'
         ? 'zh'
         : 'en';
+
+    /* ─── Authoring (draft) chat state — single-thread cursor over theme + chapters.
+       Empty in editing mode; in authoring mode it drives the agent creation flow
+       (postTheme / postChapterChat / postFinalize) instead of the /chat editor. ─── */
+    const isAuthoring = mode === 'authoring';
+    // ASK_LIMIT mirrors the contract's askCount>=2 auto-advance rule (AuthoringPort).
+    const ASK_LIMIT = 2;
+    const MESSAGE_MAX = 500; // v2 theme/chapter-chat body schemas cap free text at 500.
+    // Mutable working copy of the draft chapters; refetched after each turn.
+    let draftSkel: DraftSkeleton | null = draftChapters;
+    // Cursor: 'theme' until a theme is set, then walks the chapter list. We never
+    // expose theme/prev/next buttons — the cursor advances on its own.
+    let authStage: 'theme' | 'chapter' = draftSkel && hasTheme(draftSkel.theme) ? 'chapter' : 'theme';
+    let authChapterIdx = 0;
+    let finishing = false;
+    const aT = (zh: string, en: string) => (currentLang === 'zh' ? zh : en);
     // Mutable working copy: chat and inline edits patch this in place and repaint
-    // without remounting the effect.
-    let pagesState: EditorPage[] = detail.pages.map((p) => ({
+    // without remounting the effect. Sourced from detail.pages (editing) or the
+    // draft skeleton (authoring) — both are EditorPage-shaped.
+    let pagesState: EditorPage[] = initialPages.map((p) => ({
       ...p,
       imagesJson: { ...p.imagesJson },
       textsJson: { ...p.textsJson },
     }));
-    const total = detail.pages.length;
+    const total = initialPages.length;
     // Lead with a blank slot so the cover (page 0) sits on the right of the first
     // spread (book-opening convention); the rest pair up two-per-spread.
     const spreadCount = Math.max(1, Math.ceil((pagesState.length + 1) / 2));
@@ -336,7 +573,8 @@ export function EditorPort({ detail, locale }: { detail: AlbumDetail; locale: Lo
 
     // Original photos live only in the browser (invariant 1). Resolve photoId →
     // blob: URL from IndexedDB; URLs load async, so we repaint once they arrive.
-    let imageUrls: Record<string, string> = {};
+    // Authoring pre-resolves them (passed in); editing fetches them below.
+    let imageUrls: Record<string, string> = { ...initialImageUrls };
     const resolveImage: ResolveImage = (id) => imageUrls[id];
 
     // Render a real album page through its web template (the same path the live
@@ -741,8 +979,162 @@ export function EditorPort({ detail, locale }: { detail: AlbumDetail; locale: Lo
       input.value = ''; input.style.height = 'auto';
       hideAwait();
       scrollChat();
-      await runEdit(txt);
+      if (isAuthoring) {
+        await runAuthoringTurn(txt);
+      } else {
+        await runEdit(txt);
+      }
       sending = false;
+    }
+
+    /* ─── Authoring chat round-trip (draft creation flow) ───
+       Single thread, agent-driven: postTheme while no theme, then postChapterChat
+       for the current chapter. After each turn refetch the skeleton (read-only;
+       invariant 12), repaint the book + rail, and auto-advance the cursor when the
+       agent marks the chapter done (state generated/skipped/finalized or askCount
+       hit the limit). No theme/prev/next buttons are exposed. */
+    function appendAiText(text: string) {
+      const a = document.createElement('div');
+      a.className = 'msg ai max-w-full';
+      const body = document.createElement('div');
+      body.className = 'ai-text';
+      body.textContent = text;
+      a.appendChild(body);
+      const time = document.createElement('div');
+      time.className = 'name-time';
+      time.textContent = t('justNow');
+      a.appendChild(time);
+      chatBody!.appendChild(a);
+      scrollChat();
+    }
+    function chapterDone(c: DraftSkeletonChapter | undefined): boolean {
+      if (!c) return true;
+      return (
+        c.state === 'generated' ||
+        c.state === 'skipped' ||
+        c.state === 'finalized' ||
+        c.state === 'brief_ready' ||
+        c.askCount >= ASK_LIMIT
+      );
+    }
+    async function refreshDraft() {
+      try {
+        const { draft } = await fetchDraftSkeleton(albumId);
+        if (!draft) return;
+        draftSkel = draft;
+        // Repaint the book from the refreshed skeleton (agent may have rewritten
+        // text/captions for this chapter).
+        pagesState = draft.pages.map((p) => ({
+          pageIndex: p.pageIndex,
+          templateId: p.templateId,
+          imagesJson: { ...p.imagesJson },
+          textsJson: { ...p.textsJson },
+        }));
+        // Re-resolve any newly referenced originals, then repaint.
+        const ids = new Set<string>();
+        for (const p of draft.pages) for (const id of Object.values(p.imagesJson)) if (id) ids.add(id);
+        const urls = await photoStore.getObjectUrls([...ids]);
+        imageUrls = { ...imageUrls, ...urls };
+        repaintBook();
+        railFromDraft();
+      } catch {
+        /* keep the current view; the next turn retries */
+      }
+    }
+    async function runAuthoringTurn(message: string) {
+      const a = document.createElement('div');
+      a.className = 'msg ai max-w-full';
+      a.innerHTML =
+        `<div class="thinking-block active">` +
+        `<img class="think-jelly" src="/jellyfish-loop.png" alt="">` +
+        `<span class="thinking-label">${t('thinking')}</span>` +
+        `<span class="thinking-dots"><span></span><span></span><span></span></span>` +
+        `</div>`;
+      chatBody!.appendChild(a);
+      scrollChat();
+      try {
+        let reply = '';
+        if (authStage === 'theme') {
+          const r = await postTheme(albumId, message.slice(0, MESSAGE_MAX));
+          reply = r.assistantReply;
+        } else {
+          const cur = draftSkel?.chapters[authChapterIdx];
+          if (!cur) {
+            authStage = 'theme';
+            const r = await postTheme(albumId, message.slice(0, MESSAGE_MAX));
+            reply = r.assistantReply;
+          } else {
+            const r = await postChapterChat(albumId, cur.chapterId, message.slice(0, MESSAGE_MAX));
+            reply = r.assistantReply;
+          }
+        }
+        a.querySelector('.thinking-block')?.classList.remove('active');
+        const label = a.querySelector('.thinking-label') as HTMLElement | null;
+        if (label) label.textContent = t('analyzedFeedback');
+        const body = document.createElement('div');
+        body.className = 'ai-text';
+        body.textContent = reply;
+        a.appendChild(body);
+        const time = document.createElement('div');
+        time.className = 'name-time';
+        time.textContent = t('justNow');
+        a.appendChild(time);
+
+        await refreshDraft();
+
+        // Advance the cursor. From theme → first chapter (once a theme exists);
+        // within chapters → next undone chapter when the current one is done.
+        if (authStage === 'theme') {
+          if (draftSkel && hasTheme(draftSkel.theme)) {
+            authStage = 'chapter';
+            authChapterIdx = 0;
+            const first = draftSkel.chapters[0];
+            if (first) {
+              flipTo(spreadOfFlatPage(first.pageStart), spreadOfFlatPage(first.pageStart) > currentCh ? 'next' : 'prev');
+            }
+          }
+        } else {
+          const cur = draftSkel?.chapters[authChapterIdx];
+          if (chapterDone(cur) && draftSkel && authChapterIdx < draftSkel.chapters.length - 1) {
+            authChapterIdx += 1;
+            const next = draftSkel.chapters[authChapterIdx];
+            if (next) {
+              const sp = spreadOfFlatPage(next.pageStart);
+              flipTo(sp, sp > currentCh ? 'next' : 'prev');
+              appendAiText(
+                aT(
+                  `进入下一章「${next.label}」——聊聊这一章发生了什么吧。`,
+                  `Moving on to "${next.label}" — tell me what happened in this chapter.`,
+                ),
+              );
+            }
+          }
+        }
+        updateAuthInputPlaceholder();
+      } catch (e) {
+        a.querySelector('.thinking-block')?.classList.remove('active');
+        if (e instanceof UnauthorizedError) {
+          window.location.assign(localizePath(`/login?from=/album/${albumId}`, locale));
+          return;
+        }
+        if (e instanceof CreditInsufficientError) {
+          appendAiText(aT('积分不足，正在带你去充值…', 'Not enough credits — taking you to top up…'));
+          window.setTimeout(() => window.location.assign(localizePath('/credits?from=authoring', locale)), 900);
+          return;
+        }
+        appendAiText(e instanceof Error ? e.message : String(e));
+      }
+      restAwait();
+      scrollChat();
+    }
+    function updateAuthInputPlaceholder() {
+      if (!isAuthoring || !input) return;
+      input.setAttribute(
+        'placeholder',
+        authStage === 'theme'
+          ? aT('一句话说说这本册子的主题…', 'Describe this book in a sentence…')
+          : aT('聊聊这一章发生了什么…', 'Tell me what happened in this chapter…'),
+      );
     }
 
     // One chat-edit round trip: POST the message, mirror the returned layout
@@ -1013,6 +1405,81 @@ export function EditorPort({ detail, locale }: { detail: AlbumDetail; locale: Lo
 
     /* ─── Init: clear the design's demo chat, paint the book, load originals ─── */
     chatBody?.querySelectorAll('.msg').forEach((n) => n.remove());
+
+    /* ─── Authoring init: seed the opening message, expose the single "finish the
+       whole book" action, hide the editing-only add-chapter affordance. ─── */
+    let finishBar: HTMLElement | null = null;
+    async function finalizeBook() {
+      if (finishing || sending) return;
+      finishing = true;
+      const fb = finishBar?.querySelector('.finish-btn') as HTMLButtonElement | null;
+      if (fb) {
+        fb.disabled = true;
+        fb.textContent = aT('正在生成你的纪念册…', 'Creating your memoir…');
+      }
+      try {
+        await postFinalize(albumId);
+        // Album is now AGENT_RUNNING ("completing"). Reload hands control back to
+        // page.tsx's poll → building shell → editor once layout_json lands.
+        window.location.reload();
+      } catch (e) {
+        finishing = false;
+        if (fb) {
+          fb.disabled = false;
+          fb.textContent = aT('完成全书', 'Finish the whole book');
+        }
+        if (e instanceof UnauthorizedError) {
+          window.location.assign(localizePath(`/login?from=/album/${albumId}`, locale));
+          return;
+        }
+        if (e instanceof CreditInsufficientError) {
+          window.location.assign(localizePath('/credits?from=authoring', locale));
+          return;
+        }
+        appendAiText(e instanceof Error ? e.message : String(e));
+      }
+    }
+    if (isAuthoring) {
+      // Seed opening message: ask for the theme, or (theme already set) confirm and
+      // move into chapters.
+      const opener =
+        draftSkel && hasTheme(draftSkel.theme)
+          ? aT(
+              '草稿已就绪，我已经按你写的定好了主题。接下来我们一章一章把故事聊清楚吧，你也可以随时直接完成全书。',
+              "Your draft is ready, and I've set the theme from what you wrote. Let's go chapter by chapter to flesh out the story — or finish the whole book anytime.",
+            )
+          : aT(
+              '草稿已就绪 — 这组照片主要想表达什么？(比如它讲的是谁、什么场合)告诉我，我来帮你定个主题。',
+              "Your draft is ready — what does this set of photos mainly express? (Who is it about, and what's the occasion?) Tell me and I'll set the theme.",
+            );
+      appendAiText(opener);
+      updateAuthInputPlaceholder();
+      // Hide the editing-only add-chapter button (creation has no manual add).
+      const addBtn = $('.add-ch-btn') as HTMLElement | null;
+      if (addBtn) addBtn.style.display = 'none';
+      // Insert the single "finish the whole book" action just above the input.
+      // Strict Mode runs the effect twice in dev; clear any prior bar first so we
+      // never stack two.
+      $('.authoring-finish-bar')?.remove();
+      const chatInput = $('.chat-input');
+      if (chatInput && chatInput.parentElement) {
+        finishBar = document.createElement('div');
+        finishBar.className = 'authoring-finish-bar flex flex-col gap-1.5 px-3 pb-1 shrink-0';
+        finishBar.innerHTML =
+          `<button type="button" class="finish-btn w-full rounded-full bg-fg text-white px-4 py-2 text-[13px] font-semibold transition-colors hover:bg-black disabled:opacity-40"></button>` +
+          `<p class="px-1 text-[11px] leading-snug text-meta"></p>`;
+        (finishBar.querySelector('.finish-btn') as HTMLElement).textContent = aT('完成全书', 'Finish the whole book');
+        (finishBar.querySelector('p') as HTMLElement).textContent = aT(
+          '没聊到的章节，会只用照片里看得到的氛围来配文，不编造具体的人事地。',
+          'Chapters you skip get captions written only from what the photos show — no invented names, places, or events.',
+        );
+        chatInput.parentElement.insertBefore(finishBar, chatInput);
+        const fbBtn = finishBar.querySelector('.finish-btn') as HTMLButtonElement;
+        const fbFn = () => void finalizeBook();
+        fbBtn.addEventListener('click', fbFn);
+      }
+    }
+
     const balanceAlert = byId('balanceAlert');
     if (balanceAlert) balanceAlert.style.display = 'none';
     // Surface the buy-shells card only when the shell balance is running low.
@@ -1065,36 +1532,60 @@ export function EditorPort({ detail, locale }: { detail: AlbumDetail; locale: Lo
       });
     }
 
-    // Chapter rail from the AI's image clusters (read-only summary; invariant 12).
-    void fetch(`/api/v1/albums/${albumId}/chapters`)
-      .then((r) => r.json())
-      .then((j) => {
-        if (!j?.ok || !Array.isArray(j.data?.chapters) || j.data.chapters.length === 0) return;
-        chapters = j.data.chapters.map((c: { label: string; photoIds: string[] }) => ({
-          label: c.label,
-          spread: computeChapterSpread(c.photoIds),
-        }));
-        renderRail();
-      })
-      .catch(() => {});
+    // Chapter rail. Authoring reads it straight from the draft skeleton's chapters
+    // (real labels/state, mapped to the spread holding their first page); editing
+    // fetches the AI's image-cluster summary (read-only; invariant 12).
+    const spreadOfFlatPage = (i: number) => Math.floor((i + 1) / 2);
+    function railFromDraft() {
+      if (!draftSkel) return;
+      chapters = draftSkel.chapters.map((c) => ({
+        label: c.label,
+        spread: spreadOfFlatPage(c.pageStart),
+      }));
+      renderRail();
+    }
+    if (isAuthoring) {
+      railFromDraft();
+    } else {
+      void fetch(`/api/v1/albums/${albumId}/chapters`)
+        .then((r) => r.json())
+        .then((j) => {
+          if (!j?.ok || !Array.isArray(j.data?.chapters) || j.data.chapters.length === 0) return;
+          chapters = j.data.chapters.map((c: { label: string; photoIds: string[] }) => ({
+            label: c.label,
+            spread: computeChapterSpread(c.photoIds),
+          }));
+          renderRail();
+        })
+        .catch(() => {});
+    }
 
     setLang(currentLang); // also runs renderRail + buildThumbs + paintSpread
     setChatState(3);
 
-    const photoIds = [
-      ...new Set([
-        ...extractPhotoIds(detail.album.layoutJson),
-        ...collectPhotoIds(
-          detail.pages.map((p) => ({ templateId: p.templateId, images: p.imagesJson, texts: p.textsJson })),
-        ),
-      ]),
-    ];
-    void photoStore.getObjectUrls(photoIds).then((urls) => {
-      imageUrls = urls;
+    if (isAuthoring) {
+      // Authoring pre-resolved originals from the draft skeleton (passed in as
+      // initialImageUrls) — repaint with those rather than re-fetching from an
+      // empty detail.pages / null layoutJson.
       paintSpread(currentCh);
       buildThumbs();
       if (bodyEl.classList.contains('overview-on')) renderOverview();
-    });
+    } else {
+      const photoIds = [
+        ...new Set([
+          ...extractPhotoIds(detail.album.layoutJson),
+          ...collectPhotoIds(
+            detail.pages.map((p) => ({ templateId: p.templateId, images: p.imagesJson, texts: p.textsJson })),
+          ),
+        ]),
+      ];
+      void photoStore.getObjectUrls(photoIds).then((urls) => {
+        imageUrls = urls;
+        paintSpread(currentCh);
+        buildThumbs();
+        if (bodyEl.classList.contains('overview-on')) renderOverview();
+      });
+    }
 
     const completeTimer = setTimeout(() => {
       const active = $('.thinking-block.active');
@@ -1113,6 +1604,7 @@ export function EditorPort({ detail, locale }: { detail: AlbumDetail; locale: Lo
       input?.removeEventListener('input', onInput);
       actionHandlers.forEach(({ el, fn }) => el.removeEventListener('click', fn));
       clearTimeout(completeTimer);
+      finishBar?.remove();
     };
   }, []);
 
