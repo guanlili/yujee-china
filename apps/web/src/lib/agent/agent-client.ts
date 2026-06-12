@@ -11,6 +11,7 @@ import {
 import type {
   V2InitRequest,
   V2FinalizeRequest,
+  V2AddPhotosRequest,
   V2ThemeRequest,
   V2ChapterChatRequest,
   V2EditRequest,
@@ -102,6 +103,35 @@ export const agentClient = {
     if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected init payload');
     if (!res.ok) {
       logger.error({ status: res.status, requestId: payload.requestId }, 'agent v2 init non-2xx');
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+    return { requestId: payload.requestId };
+  },
+
+  // POST /v2/album/add-photos — async 202 (W11 mid-edit add). Carries base64 for the
+  // NEW photos only, so the same 30s window as init. Completed callback carries the
+  // new pages + photo analyses to splice before the existing ending.
+  async submitAddPhotosV2(payload: V2AddPhotosRequest): Promise<{ requestId: string }> {
+    let res: Response;
+    try {
+      res = await fetch(`${env.AGENT_BASE_URL}/v2/album/add-photos`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': payload.requestId,
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (e) {
+      logger.error({ err: String(e), requestId: payload.requestId }, 'agent v2 add-photos submit failed');
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+    if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
+    if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected add-photos payload');
+    if (!res.ok) {
+      logger.error({ status: res.status, requestId: payload.requestId }, 'agent v2 add-photos non-2xx');
       throw ERRORS.AGENT_INTERNAL_ERROR();
     }
     return { requestId: payload.requestId };

@@ -1,1 +1,4 @@
 .vercel
+
+# Local dev runtime artifacts (e.g. landing-page email capture)
+.tmp/

@@ -10,7 +10,7 @@
 // 不改 `layout.ts`:对外扁平 `AlbumLayoutPlan` 保持 5 字段;v2 扩充字段只活在
 //   `V2PhotoAnalysis`,finalize 时 strip。
 import { z } from 'zod';
-import { Page, AlbumLayoutPlan } from './layout';
+import { Page, PhotoAnalysis, AlbumLayoutPlan } from './layout';
 
 // ────────────────────────────── 共享枚举 ──────────────────────────────
 
@@ -27,7 +27,8 @@ export const V2Style = z.enum([
 export type V2Style = z.infer<typeof V2Style>;
 
 /** 两类异步 job;失败/收尸语义相反(architecture §5)。 */
-export const V2JobKind = z.enum(['init', 'finalize']);
+// 'add' = mid-edit add-photos (W11): append new pages to a finalized album.
+export const V2JobKind = z.enum(['init', 'finalize', 'add']);
 export type V2JobKind = z.infer<typeof V2JobKind>;
 
 /** init 三子阶段 + finalize 单阶段(进度语义,contract.md §5 沿用)。 */
@@ -265,7 +266,11 @@ export const V2ThemeResponse = z
       .object({
         templateId: z.string(),
         texts: z.record(z.string(), z.string()),
-        heroPhotoId: z.string().nullable(),
+        // Optional: at theme time there's no verified hero photo id, and the agent
+        // serializes None out (exclude_none), so the field is simply absent. Keep it
+        // optional so a text-only cover passes (was a required-nullable mismatch that
+        // made every /theme response fail off-contract → AGENT_INVALID_OUTPUT).
+        heroPhotoId: z.string().nullable().optional(),
       })
       .strict()
       .optional(),
@@ -335,6 +340,22 @@ export const V2FinalizeRequest = z
   .strict();
 export type V2FinalizeRequest = z.infer<typeof V2FinalizeRequest>;
 
+// ── POST /v2/album/add-photos(异步 202 + callback;带 base64)──
+// 中途加图(W11):只处理新照片(独立 vision+group+skeleton 成新章节页),不动现有
+// 封面/目录/尾页。agent 无需现有 layout —— 模板按新 chapterId 的 stable_hash 选,
+// 与现有页无关;Web 侧把返回的新页重排、插到尾页之前。
+export const V2AddPhotosRequest = z
+  .object({
+    requestId: z.string().min(1),
+    albumId: z.string().min(1),
+    callbackUrl: z.string().url(),
+    language: V2Language,
+    meta: z.object({ promptHint: z.string().max(500).optional() }).strict().optional(),
+    newPhotos: z.array(V2InitPhoto).min(1).max(30),
+  })
+  .strict();
+export type V2AddPhotosRequest = z.infer<typeof V2AddPhotosRequest>;
+
 // ── POST /v2/album/edit(同步;chat-edit 超集 + pickTemplate Tool)──
 export const LayoutPatchEntry = z
   .object({
@@ -353,6 +374,8 @@ export const V2EditRequest = z
     history: z.array(V2ChatTurn).max(20),
     userMessage: z.string().max(500),
     language: V2Language,
+    // 用户在编辑器里选中的那一页(W11):有它时,"改这里/这一页"指向该页。
+    focusedPageIndex: z.number().int().nonnegative().optional(),
   })
   .strict();
 export type V2EditRequest = z.infer<typeof V2EditRequest>;
@@ -406,6 +429,18 @@ const V2FinalizeCompleted = z
   })
   .strict();
 
+// 中途加图完成:只返回新照片分析 + 新页(pageIndex 局部 0..k,Web 侧重排插入尾页前)。
+const V2AddCompleted = z
+  .object({
+    requestId: z.string().min(1),
+    jobKind: z.literal('add'),
+    event: z.literal('completed'),
+    newPhotos: z.array(PhotoAnalysis), // 5 字段,并入 layoutJson.photos
+    newPages: z.array(Page).min(1), // 追加的内容页(不含封面/目录/尾页)
+    usage: Usage,
+  })
+  .strict();
+
 const V2FailedEvent = z
   .object({
     requestId: z.string().min(1),
@@ -421,6 +456,7 @@ const V2FailedEvent = z
 export const V2CompletedCallback = z.discriminatedUnion('jobKind', [
   V2InitCompleted,
   V2FinalizeCompleted,
+  V2AddCompleted,
 ]);
 export type V2CompletedCallback = z.infer<typeof V2CompletedCallback>;
 

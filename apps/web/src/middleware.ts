@@ -4,7 +4,7 @@ import { detectLocale, localizePath, routing, stripLocale } from '@/lib/i18n/rou
 
 const intlMiddleware = createMiddleware(routing);
 
-const protectedPaths = ['/create', '/album', '/my-albums', '/credits', '/settings', '/admin'];
+const protectedPaths = ['/album', '/my-albums', '/credits', '/settings', '/admin'];
 
 export type AuthRedirect = {
   pathname: string;

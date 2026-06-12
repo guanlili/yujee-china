@@ -43,6 +43,13 @@
       "when": 1780976135662,
       "tag": "0005_v2_authoring",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781256061826,
+      "tag": "0006_add_job_kind",
+      "breakpoints": true
     }
   ]
 }

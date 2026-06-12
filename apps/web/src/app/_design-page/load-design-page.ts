@@ -9,7 +9,7 @@ export type DesignPageSlices = {
 
 const LINK_REWRITES: Array<[RegExp, string]> = [
   [/design\/pricing\.html/g, '/pricing'],
-  [/design\/editor\.html/g, '/create'],
+  [/design\/editor\.html/g, '/'],
   [/href="#home"/g, 'href="/"'],
 ];
 

@@ -20,6 +20,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore } from '@/lib/photo/store';
+import { compressFile } from '@/lib/photo/compress';
 import { getWebTemplate } from '../web-registry';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
 import { PAGE } from '../templates/constants';
@@ -38,6 +39,7 @@ import {
   type DraftSkeleton,
   type DraftSkeletonChapter,
   type DraftTheme,
+  type ThemeOption,
 } from '@/lib/album/authoring-client';
 import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/client';
 import './editor-port.css';
@@ -45,8 +47,7 @@ import './editor-port.css';
 // The editor now spans the whole album lifecycle (W10 flow unification): the same
 // EditorPort chrome renders for a still-generating album (building), a draft being
 // authored (authoring), and a finalized album being edited (editing). page.tsx
-// derives the mode from album.status + layoutJson and always mounts EditorPort —
-// the standalone AuthoringPort is no longer routed to (kept only as a fallback).
+// derives the mode from album.status + layoutJson and always mounts EditorPort.
 //   • building  → AGENT_RUNNING / first load: flipbook shows a loading placeholder,
 //                 chat rail is a non-interactive "tidying up" notice.
 //   • authoring → EDITING & layoutJson==null: draft skeleton (read-only, invariant
@@ -56,8 +57,8 @@ import './editor-port.css';
 export type EditorMode = 'building' | 'authoring' | 'editing';
 
 // A theme counts as "set" once the agent populated any field (the user wrote a
-// prompt at creation, or already answered the theme question). Mirrors
-// AuthoringPort.hasTheme — used to decide whether the chat opens on the theme step.
+// prompt at creation, or already answered the theme question) — decides whether
+// the chat opens on the theme step or jumps straight into chapters.
 function hasTheme(theme: DraftTheme | null): boolean {
   if (!theme) return false;
   return Object.values(theme).some((v) => typeof v === 'string' && v.trim().length > 0);
@@ -72,10 +73,20 @@ export function EditorPort({
   locale: Locale;
   mode?: EditorMode;
 }) {
-  // building: nothing to render yet — show the editor chrome with a loading book
-  // and a reassuring chat rail. The poll in page.tsx flips us to authoring/editing.
+  // building: nothing to render yet — same editor chrome (EditorBook) in its
+  // building state: cover skeleton + unified loading chat. The poll in page.tsx
+  // flips us to authoring/editing, which remounts EditorBook with real pages.
   if (mode === 'building') {
-    return <EditorLoading locale={locale} />;
+    return (
+      <EditorBook
+        mode="building"
+        detail={detail}
+        locale={locale}
+        initialPages={[]}
+        draftChapters={null}
+        initialImageUrls={{}}
+      />
+    );
   }
   // authoring: the draft skeleton is async (GET /draft) and the originals resolve
   // from IndexedDB, so we resolve everything first, then mount the same book the
@@ -96,77 +107,28 @@ export function EditorPort({
   );
 }
 
-// ── building: editor chrome + loading book + non-interactive rail ──
-function EditorLoading({ locale }: { locale: Locale }) {
-  const zh = locale === 'zh';
-  const title = zh ? '正在整理你的照片…' : 'Tidying up your photos…';
-  const hint = zh
-    ? '这通常需要 2-3 分钟。你可以先离开，稍后回来刷新这个页面就能接着看 —— 进度会自动恢复到当前状态。'
-    : 'This usually takes 2-3 minutes. Feel free to leave — come back and refresh this page anytime, and it picks up right where it left off.';
-  return (
-    <div className="editor-port font-sans antialiased leading-relaxed flex h-screen flex-col overflow-hidden bg-bg">
-      <div className="topbar h-[52px] flex items-center justify-between px-3 sm:px-6 bg-surface border-b border-bdsoft shrink-0">
-        <div className="top-left flex items-center gap-2 sm:gap-4 min-w-0">
-          <a href={`/${locale}/my-albums`} className="back-btn flex items-center justify-center w-8 h-8 rounded-pill text-muted no-underline transition-colors hover:bg-bg hover:text-fg shrink-0">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><polyline points="15 18 9 12 15 6" /></svg>
-          </a>
-          <a href={`/${locale}/my-albums`} className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '30px', width: 'auto', display: 'block' }} /></a>
-          <span className="crumb text-meta text-[13px] hidden sm:inline">/</span>
-          <span className="flex items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-[11px] text-muted" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-gg animate-pulse" />
-            <span>{zh ? '整理中' : 'Tidying up'}</span>
-          </span>
-        </div>
-      </div>
-      <div className="workspace flex-1 overflow-hidden relative md:flex" style={{ height: 'calc(100vh - 53px)' }}>
-        <main className="pane pane-center flex flex-col overflow-hidden bg-bg relative md:order-3 md:flex-1">
-          <div className="book-stage w-full flex-1 flex items-center justify-center px-4 pt-8 pb-16 overflow-auto bg-bg relative">
-            <BookLoadingPlaceholder />
-          </div>
-        </main>
-        <div className="pane-chat-col md:order-1 md:w-[360px] shrink-0 md:flex">
-          <aside className="pane pane-right chat-card relative flex flex-col overflow-hidden bg-surface md:flex-1">
-            <div className="flex flex-shrink-0 items-center gap-3 px-5 py-4">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-[13px] font-bold text-white">{zh ? '己' : 'Y'}</span>
-              <div className="min-w-0">
-                <h3 className="text-[14px] font-bold tracking-tight">{zh ? '遇己' : 'Yujee'}</h3>
-                <div className="text-[12px] text-muted">{zh ? '和我聊聊这段回忆' : 'Tell me about this memory'}</div>
-              </div>
-            </div>
-            <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-6">
-              <div className="flex items-center gap-1 text-[13.5px] font-medium text-fg2">
-                <span>{title}</span>
-                <span className="inline-flex items-center gap-[3px] ml-0.5">
-                  <span className="h-[3.5px] w-[3.5px] rounded-full animate-pulse" style={{ backgroundColor: 'var(--grad-green)' }} />
-                  <span className="h-[3.5px] w-[3.5px] rounded-full animate-pulse" style={{ backgroundColor: 'var(--grad-purple)', animationDelay: '0.16s' }} />
-                  <span className="h-[3.5px] w-[3.5px] rounded-full animate-pulse" style={{ backgroundColor: 'var(--grad-lime)', animationDelay: '0.32s' }} />
-                </span>
-              </div>
-              <p className="rounded-2xl rounded-bl-sm bg-bg px-3.5 py-2.5 text-[13px] leading-relaxed text-muted">{hint}</p>
-            </div>
-          </aside>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BookLoadingPlaceholder() {
+// building: a single magazine-cover page rendered as a skeleton screen (shimmer +
+// placeholder blocks). It mirrors the editor's page surface (radius/shadow) so the
+// loading canvas reads as the same book — just not painted yet. No spread,
+// thumbnails, zoom or chapter rail: the cover is the whole canvas while we wait.
+function CoverSkeleton({ locale }: { locale: Locale }) {
   const scale = 0.5;
   return (
     <div
       className="relative overflow-hidden bg-surface"
-      style={{ width: PAGE.width * scale, height: PAGE.height * scale, boxShadow: '0 4px 30px rgba(0,0,0,0.10)' }}
-      aria-hidden
+      style={{ width: PAGE.width * scale, height: PAGE.height * scale, borderRadius: '2px', boxShadow: '0 2px 8px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.08)' }}
+      role="img"
+      aria-label={locale === 'zh' ? '正在加载封面' : 'Loading cover'}
+      aria-busy="true"
     >
       <div className="absolute inset-0 animate-pulse" style={{ background: 'linear-gradient(135deg, var(--surface), var(--bg) 50%, var(--border-soft))' }} />
-      <div className="absolute inset-x-10 top-10 h-28 rounded-md bg-bdsoft" />
-      <div className="absolute left-10 top-44 h-5 w-32 rounded-full" style={{ backgroundColor: 'var(--border)' }} />
-      <div className="absolute left-10 right-10 top-56 space-y-3">
-        <div className="h-3 rounded-full bg-bdsoft" />
-        <div className="h-3 rounded-full bg-bdsoft" />
-        <div className="h-3 w-3/4 rounded-full bg-bdsoft" />
-      </div>
+      {/* hero image */}
+      <div className="absolute inset-x-8 top-8 rounded-md bg-bdsoft" style={{ height: '46%' }} />
+      {/* title + subtitle */}
+      <div className="absolute left-8 right-16 rounded-full" style={{ top: '64%', height: '22px', backgroundColor: 'var(--border)' }} />
+      <div className="absolute left-8 right-28 rounded-full bg-bdsoft" style={{ top: '71%', height: '14px' }} />
+      {/* byline */}
+      <div className="absolute left-8 rounded-full bg-bdsoft" style={{ bottom: '7%', height: '10px', width: '42%' }} />
     </div>
   );
 }
@@ -205,10 +167,38 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
     };
   }, [detail.album.id]);
 
+  if (loadState === 'error' || loadState === 'gone') {
+    // Don't sit on the "tidying up" screen forever — surface the real dead-end and
+    // let the user refresh (a fresh load re-polls and re-derives the mode).
+    const zh = locale === 'zh';
+    return (
+      <div className="editor-port flex h-screen flex-col items-center justify-center gap-3 bg-bg text-center">
+        <p className="text-muted text-[14px]">
+          {loadState === 'gone'
+            ? zh ? '这本相册还没有草稿，或已经完成。' : 'This album has no draft yet, or it is already finished.'
+            : zh ? '草稿加载失败。' : 'Failed to load the draft.'}
+        </p>
+        <button onClick={() => window.location.reload()} className="text-accent underline underline-offset-2 text-[13px]">
+          {zh ? '刷新重试' : 'Refresh'}
+        </button>
+      </div>
+    );
+  }
   if (loadState !== 'ready' || !skeleton) {
-    // Reuse the building chrome while the draft fetch is in flight. A gone/error
-    // draft is rare (album flipped state mid-fetch); the next poll re-derives mode.
-    return <EditorLoading locale={locale} />;
+    // A READY draft's skeleton fetch is sub-second — reuse the building state so the
+    // chrome is identical. key="building" forces a remount into the authoring book
+    // (key=pages.length) once the skeleton resolves, so its mount effect runs.
+    return (
+      <EditorBook
+        key="building"
+        mode="building"
+        detail={detail}
+        locale={locale}
+        initialPages={[]}
+        draftChapters={null}
+        initialImageUrls={{}}
+      />
+    );
   }
 
   // Feed the skeleton's flattened page list straight into the flipbook (its shape
@@ -248,16 +238,22 @@ function EditorBook({
 }: {
   detail: AlbumDetail;
   locale: Locale;
-  mode: 'authoring' | 'editing';
+  mode: EditorMode;
   initialPages: EditorPage[];
   draftChapters: DraftSkeleton | null;
   initialImageUrls: Record<string, string>;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  // building: the album is still generating (AGENT_RUNNING) — same editor chrome,
+  // but the canvas shows a single cover skeleton and the chat shows the unified
+  // loading state with the input disabled. The imperative flipbook/chat engine
+  // below has no pages to drive yet, so it short-circuits.
+  const building = mode === 'building';
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
+    if (building) return;
 
     // ── scoped equivalents of document.* / body.* from the original script ──
     const $ = (s: string) => root.querySelector(s) as HTMLElement | null;
@@ -329,6 +325,7 @@ function EditorBook({
         thinkingComplete: '构思了 4 个章节名方案',
         railChapters: '章节',
         addChapter: '新增章节',
+        addPhoto: '添加图片',
         detailChapters: '详细章节',
         balLow: '余额不足',
         balDesc: '当前余额不足以生成新章节，充值后即可继续创作',
@@ -453,6 +450,7 @@ function EditorBook({
         thinkingComplete: 'Brainstormed 4 chapter name ideas',
         railChapters: 'Chapters',
         addChapter: 'New chapter',
+        addPhoto: 'Add photos',
         detailChapters: 'Chapter details',
         balLow: 'Balance running low',
         balDesc: 'Not enough balance to generate a new chapter — top up to keep creating',
@@ -537,7 +535,7 @@ function EditorBook({
        Empty in editing mode; in authoring mode it drives the agent creation flow
        (postTheme / postChapterChat / postFinalize) instead of the /chat editor. ─── */
     const isAuthoring = mode === 'authoring';
-    // ASK_LIMIT mirrors the contract's askCount>=2 auto-advance rule (AuthoringPort).
+    // ASK_LIMIT mirrors the contract's askCount>=2 auto-advance rule.
     const ASK_LIMIT = 2;
     const MESSAGE_MAX = 500; // v2 theme/chapter-chat body schemas cap free text at 500.
     // Mutable working copy of the draft chapters; refetched after each turn.
@@ -673,10 +671,36 @@ function EditorBook({
     let currentCh = 0;
     let flipping = false;
 
+    // ── Page selection (W11): click a page to select it; its index is sent with the
+    // next edit message so "change this / this page" targets it. Click again to
+    // deselect. The highlight rides on #pageLeft/#pageRight, which carry the painted
+    // page's index in data-page-index (set by paintSpread).
+    let selectedPageIndex: number | null = null;
+    function updateSelectionHighlight() {
+      for (const el of [pageLeft, pageRight]) {
+        const pi = el.dataset.pageIndex;
+        el.classList.toggle('page-selected', pi !== undefined && Number(pi) === selectedPageIndex);
+      }
+    }
+    const onPageSelect = (el: HTMLElement) => {
+      const pi = el.dataset.pageIndex;
+      if (pi === undefined) return;
+      const idx = Number(pi);
+      selectedPageIndex = selectedPageIndex === idx ? null : idx;
+      updateSelectionHighlight();
+    };
+    pageLeft.addEventListener('click', () => onPageSelect(pageLeft));
+    pageRight.addEventListener('click', () => onPageSelect(pageRight));
+
     function paintSpread(i: number) {
       const [lp, rp] = spreadPages(i);
       paintEl(pageLeft, lp);
       paintEl(pageRight, rp);
+      if (lp) pageLeft.dataset.pageIndex = String(lp.pageIndex);
+      else delete pageLeft.dataset.pageIndex;
+      if (rp) pageRight.dataset.pageIndex = String(rp.pageIndex);
+      else delete pageRight.dataset.pageIndex;
+      updateSelectionHighlight();
       if (pageInd) pageInd.textContent = (i + 1) + ' / ' + spreadCount;
       if (ctxBadge) ctxBadge.textContent = spreadLabel(i);
       // Rail items key off their target spread (data-ch), which for AI chapters is
@@ -1007,6 +1031,60 @@ function EditorBook({
       chatBody!.appendChild(a);
       scrollChat();
     }
+    // A fresh AI message shell with an active "thinking" block — the caller fills
+    // in the reply (and chips) once the round-trip resolves. Mirrors the design's
+    // jellyfish-loop thinking spinner.
+    function appendThinkingShell(): HTMLElement {
+      const a = document.createElement('div');
+      a.className = 'msg ai max-w-full';
+      a.innerHTML =
+        `<div class="thinking-block active">` +
+        `<img class="think-jelly" src="/jellyfish-loop.png" alt="">` +
+        `<span class="thinking-label">${t('thinking')}</span>` +
+        `<span class="thinking-dots"><span></span><span></span><span></span></span>` +
+        `</div>`;
+      chatBody!.appendChild(a);
+      scrollChat();
+      return a;
+    }
+    function settleThinking(host: HTMLElement, labelKey: string) {
+      host.querySelector('.thinking-block')?.classList.remove('active');
+      const label = host.querySelector('.thinking-label') as HTMLElement | null;
+      if (label) label.textContent = t(labelKey);
+    }
+    function appendReplyBody(host: HTMLElement, reply: string): HTMLElement {
+      const body = document.createElement('div');
+      body.className = 'ai-text';
+      body.textContent = reply;
+      host.appendChild(body);
+      return body;
+    }
+    function appendTime(host: HTMLElement) {
+      const time = document.createElement('div');
+      time.className = 'name-time';
+      time.textContent = t('justNow');
+      host.appendChild(time);
+    }
+    function authErr(host: HTMLElement, e: unknown): boolean {
+      host.querySelector('.thinking-block')?.classList.remove('active');
+      if (e instanceof UnauthorizedError) {
+        window.location.assign(localizePath(`/login?from=/album/${albumId}`, locale));
+        return true;
+      }
+      if (e instanceof CreditInsufficientError) {
+        showPurchaseCard();
+        return true;
+      }
+      appendAiText(e instanceof Error ? e.message : String(e));
+      return false;
+    }
+
+    // ── Stepper helper: highlight the right pill for the current cursor. ──
+    function syncStepper() {
+      if (!isAuthoring) return;
+      setChatState(authStage === 'theme' ? 2 : 3);
+    }
+
     function chapterDone(c: DraftSkeletonChapter | undefined): boolean {
       if (!c) return true;
       return (
@@ -1041,100 +1119,331 @@ function EditorBook({
         /* keep the current view; the next turn retries */
       }
     }
-    async function runAuthoringTurn(message: string) {
-      const a = document.createElement('div');
-      a.className = 'msg ai max-w-full';
-      a.innerHTML =
-        `<div class="thinking-block active">` +
-        `<img class="think-jelly" src="/jellyfish-loop.png" alt="">` +
-        `<span class="thinking-label">${t('thinking')}</span>` +
-        `<span class="thinking-dots"><span></span><span></span><span></span></span>` +
+
+    // ── Chapter card (in conversation flow) — tells the user which chapter the
+    // story chat is about. Read from the draft skeleton: label + photo count + a
+    // "view layout" button that flips the book to the chapter's first spread. ──
+    function chapterPhotoCount(c: DraftSkeletonChapter): number {
+      const ids = new Set<string>();
+      for (let i = c.pageStart; i < c.pageEnd; i++) {
+        const p = draftSkel?.pages[i];
+        if (!p) continue;
+        for (const id of Object.values(p.imagesJson)) if (id) ids.add(id);
+      }
+      return ids.size;
+    }
+    // Up to 4 resolved thumbnail URLs for a chapter (page order), for the design's
+    // .cc-thumbs row. Returns [] when no originals are resolved yet (graceful: the
+    // card then renders foot-only, same as before).
+    function chapterThumbUrls(c: DraftSkeletonChapter): string[] {
+      const urls: string[] = [];
+      const seen = new Set<string>();
+      for (let i = c.pageStart; i < c.pageEnd && urls.length < 4; i++) {
+        const p = draftSkel?.pages[i];
+        if (!p) continue;
+        for (const id of Object.values(p.imagesJson)) {
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          const u = imageUrls[id];
+          if (u) urls.push(u);
+          if (urls.length >= 4) break;
+        }
+      }
+      return urls;
+    }
+    function pushChapterCard(idx: number) {
+      const c = draftSkel?.chapters[idx];
+      if (!c) return;
+      const sp = spreadOfFlatPage(c.pageStart);
+      const tag = currentLang === 'zh' ? `第 ${idx + 1} 章` : `Ch. ${idx + 1}`;
+      const d = document.createElement('div');
+      d.className = 'msg ai max-w-full';
+      const card = document.createElement('div');
+      card.className = 'chap-card';
+      // Design's .cc-thumbs row — a strip of the chapter's photos above the foot.
+      const thumbs = chapterThumbUrls(c)
+        .map((u) => `<div class="cc-thumb" style="background-image:url('${u.replace(/'/g, "\\'")}')"></div>`)
+        .join('');
+      card.innerHTML =
+        (thumbs ? `<div class="cc-thumbs">${thumbs}</div>` : '') +
+        `<div class="cc-foot"><div class="cc-info">` +
+        `<div class="cc-title-row"><span class="cc-title"></span><span class="cc-tag"></span></div>` +
+        `<div class="cc-meta"></div></div>` +
+        `<button class="cc-view" type="button">${esc(t('viewLayout'))}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>` +
         `</div>`;
-      chatBody!.appendChild(a);
+      (card.querySelector('.cc-title') as HTMLElement).textContent = c.label;
+      (card.querySelector('.cc-tag') as HTMLElement).textContent = tag;
+      (card.querySelector('.cc-meta') as HTMLElement).textContent =
+        `${chapterPhotoCount(c)} ${t('photosWord')}`;
+      card.querySelector('.cc-view')?.addEventListener('click', () => {
+        if (sp !== currentCh) flipTo(sp, sp > currentCh ? 'next' : 'prev');
+      });
+      d.appendChild(card);
+      chatBody!.appendChild(d);
       scrollChat();
+    }
+
+    // ── Theme stage: postTheme. If the agent hasn't fixed a theme yet it returns
+    // themeOptions → render them as pickable chip-selects (the user can also free-
+    // type). Once a theme is set, advance the cursor to the first chapter. ──
+    async function runThemeTurn(message?: string) {
+      const host = appendThinkingShell();
       try {
-        let reply = '';
-        if (authStage === 'theme') {
-          const r = await postTheme(albumId, message.slice(0, MESSAGE_MAX));
-          reply = r.assistantReply;
-        } else {
-          const cur = draftSkel?.chapters[authChapterIdx];
-          if (!cur) {
-            authStage = 'theme';
-            const r = await postTheme(albumId, message.slice(0, MESSAGE_MAX));
-            reply = r.assistantReply;
-          } else {
-            const r = await postChapterChat(albumId, cur.chapterId, message.slice(0, MESSAGE_MAX));
-            reply = r.assistantReply;
-          }
-        }
-        a.querySelector('.thinking-block')?.classList.remove('active');
-        const label = a.querySelector('.thinking-label') as HTMLElement | null;
-        if (label) label.textContent = t('analyzedFeedback');
-        const body = document.createElement('div');
-        body.className = 'ai-text';
-        body.textContent = reply;
-        a.appendChild(body);
-        const time = document.createElement('div');
-        time.className = 'name-time';
-        time.textContent = t('justNow');
-        a.appendChild(time);
-
+        const r = await postTheme(albumId, message ? message.slice(0, MESSAGE_MAX) : undefined);
+        settleThinking(host, 'analyzedFeedback');
+        appendReplyBody(host, r.assistantReply);
         await refreshDraft();
-
-        // Advance the cursor. From theme → first chapter (once a theme exists);
-        // within chapters → next undone chapter when the current one is done.
-        if (authStage === 'theme') {
-          if (draftSkel && hasTheme(draftSkel.theme)) {
-            authStage = 'chapter';
-            authChapterIdx = 0;
-            const first = draftSkel.chapters[0];
-            if (first) {
-              flipTo(spreadOfFlatPage(first.pageStart), spreadOfFlatPage(first.pageStart) > currentCh ? 'next' : 'prev');
-            }
-          }
+        if (draftSkel && hasTheme(draftSkel.theme) && (!r.themeOptions || r.themeOptions.length === 0)) {
+          // Theme decided → confirm + move into the story stage on the first chapter.
+          appendTime(host);
+          enterStoryStage(0, /*announce*/ true);
+        } else if (r.themeOptions && r.themeOptions.length > 0) {
+          renderThemeOptions(host, r.themeOptions);
+          appendTime(host);
         } else {
-          const cur = draftSkel?.chapters[authChapterIdx];
-          if (chapterDone(cur) && draftSkel && authChapterIdx < draftSkel.chapters.length - 1) {
-            authChapterIdx += 1;
-            const next = draftSkel.chapters[authChapterIdx];
-            if (next) {
-              const sp = spreadOfFlatPage(next.pageStart);
-              flipTo(sp, sp > currentCh ? 'next' : 'prev');
-              appendAiText(
-                aT(
-                  `进入下一章「${next.label}」——聊聊这一章发生了什么吧。`,
-                  `Moving on to "${next.label}" — tell me what happened in this chapter.`,
-                ),
-              );
-            }
-          }
+          appendTime(host);
         }
-        updateAuthInputPlaceholder();
       } catch (e) {
-        a.querySelector('.thinking-block')?.classList.remove('active');
-        if (e instanceof UnauthorizedError) {
-          window.location.assign(localizePath(`/login?from=/album/${albumId}`, locale));
-          return;
-        }
-        if (e instanceof CreditInsufficientError) {
-          appendAiText(aT('积分不足，正在带你去充值…', 'Not enough credits — taking you to top up…'));
-          window.setTimeout(() => window.location.assign(localizePath('/credits?from=authoring', locale)), 900);
-          return;
-        }
-        appendAiText(e instanceof Error ? e.message : String(e));
+        if (authErr(host, e)) return;
       }
       restAwait();
       scrollChat();
+      updateAuthInputPlaceholder();
+    }
+    function renderThemeOptions(host: HTMLElement, options: ThemeOption[]) {
+      const wrap = document.createElement('div');
+      wrap.className = 'ai-actions flex gap-2 mt-3.5 flex-wrap';
+      options.forEach((opt) => {
+        const b = document.createElement('button');
+        b.className = 'chip-select';
+        b.type = 'button';
+        b.textContent = opt.label || opt.subject;
+        b.addEventListener('click', () => {
+          if (sending) return;
+          wrap.querySelectorAll('.chip-select').forEach((c) => c.classList.remove('selected'));
+          b.classList.add('selected');
+          wrap.querySelectorAll('button').forEach((x) => ((x as HTMLButtonElement).disabled = true));
+          // Echo the pick as a user turn, then send it back as the /theme nudge.
+          appendUserBubble(b.textContent || '');
+          hideAwait();
+          void (async () => {
+            sending = true;
+            await runThemeTurn(opt.subject || opt.label);
+            sending = false;
+          })();
+        });
+        wrap.appendChild(b);
+      });
+      host.appendChild(wrap);
+    }
+
+    // ── Story stage: chat about the current chapter. postChapterChat returns the
+    // updated state (+ optional nameOptions). Render the AI copy with accept /
+    // rewrite / edit-myself chips and (when present) chapter-name chips. ──
+    async function runStoryTurn(message: string) {
+      const cur = draftSkel?.chapters[authChapterIdx];
+      if (!cur) {
+        // No chapter to talk to (theme not yet decided) — fall back to theme.
+        authStage = 'theme';
+        syncStepper();
+        await runThemeTurn(message);
+        return;
+      }
+      lastStoryMessage = message;
+      const host = appendThinkingShell();
+      try {
+        const r = await postChapterChat(albumId, cur.chapterId, message.slice(0, MESSAGE_MAX));
+        settleThinking(host, 'analyzedFeedback');
+        appendReplyBody(host, r.assistantReply);
+        await refreshDraft();
+        renderStoryActions(host, cur.chapterId);
+        if (r.nameOptions && r.nameOptions.length > 0) {
+          renderNameOptions(host, cur.chapterId, r.nameOptions);
+        }
+        appendTime(host);
+        maybeAdvanceChapter();
+      } catch (e) {
+        if (authErr(host, e)) return;
+      }
+      restAwait();
+      scrollChat();
+      updateAuthInputPlaceholder();
+    }
+    // 采纳 / 再写一版 / 我来改 on the story copy.
+    function renderStoryActions(host: HTMLElement, chapterId: string) {
+      const wrap = document.createElement('div');
+      wrap.className = 'ai-actions flex gap-2 mt-3.5 flex-wrap';
+      const mkChip = (label: string) => {
+        const b = document.createElement('button');
+        b.className = 'chip';
+        b.type = 'button';
+        b.textContent = label;
+        wrap.appendChild(b);
+        return b;
+      };
+      const disable = () =>
+        wrap.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
+      // 采纳 = keep this version and move forward (advance if the chapter is done).
+      const acceptBtn = mkChip(t('chipAccept'));
+      acceptBtn.addEventListener('click', () => {
+        disable();
+        acceptBtn.classList.add('selected');
+        maybeAdvanceChapter(/*force*/ true);
+      });
+      // 再写一版 = ask the agent for another take on the same story beat.
+      const rewriteBtn = mkChip(t('chipRewrite'));
+      rewriteBtn.addEventListener('click', () => {
+        if (sending) return;
+        disable();
+        const nudge = aT('再写一版，换个角度。', 'Rewrite this — try another angle.');
+        appendUserBubble(nudge);
+        hideAwait();
+        void (async () => {
+          sending = true;
+          await runStoryTurn(lastStoryMessage ? `${lastStoryMessage}\n\n${nudge}` : nudge);
+          sending = false;
+        })();
+      });
+      // 我来改 = edit the chapter's story text in place (local, persisted via the
+      // single-page PATCH the editing path already uses).
+      const editTarget = firstStoryTextSlot(chapterId);
+      if (editTarget) {
+        const editBtn = mkChip(t('chipEditMyself'));
+        editBtn.addEventListener('click', () => {
+          disable();
+          openInlineEdit(host, editTarget);
+        });
+      }
+      host.appendChild(wrap);
+    }
+    // Locate the first text slot in this chapter's pages (the narrative the user
+    // would hand-edit). Returns null if the chapter has no editable text yet.
+    function firstStoryTextSlot(chapterId: string): { pageIndex: number; slot: string } | null {
+      if (!draftSkel) return null;
+      const ch = draftSkel.chapters.find((c) => c.chapterId === chapterId);
+      if (!ch) return null;
+      for (let i = ch.pageStart; i < ch.pageEnd; i++) {
+        const sp = draftSkel.pages[i];
+        if (!sp) continue;
+        const slots = Object.keys(sp.textsJson).filter((k) => (sp.textsJson[k] ?? '').trim().length > 0);
+        if (slots.length > 0) return { pageIndex: sp.pageIndex, slot: slots[0] };
+      }
+      return null;
+    }
+    // Chapter-name candidate chips. Picking one sends it back through chapter-chat
+    // as the user's chosen title (display-only options never touch draft_json —
+    // invariant 12; the agent applies the rename and we refetch the skeleton).
+    function renderNameOptions(host: HTMLElement, chapterId: string, names: string[]) {
+      const wrap = document.createElement('div');
+      wrap.className = 'ai-actions flex gap-2 mt-3.5 flex-wrap';
+      names.forEach((name) => {
+        const b = document.createElement('button');
+        b.className = 'chip-select';
+        b.type = 'button';
+        b.textContent = name;
+        b.addEventListener('click', () => {
+          if (sending) return;
+          wrap.querySelectorAll('.chip-select').forEach((c) => c.classList.remove('selected'));
+          b.classList.add('selected');
+          wrap.querySelectorAll('button').forEach((x) => ((x as HTMLButtonElement).disabled = true));
+          const pick = aT(`用这个章节名：${name}`, `Use this chapter title: ${name}`);
+          appendUserBubble(pick);
+          hideAwait();
+          void (async () => {
+            sending = true;
+            const shell = appendThinkingShell();
+            try {
+              const r = await postChapterChat(albumId, chapterId, pick.slice(0, MESSAGE_MAX));
+              settleThinking(shell, 'analyzedFeedback');
+              appendReplyBody(shell, r.assistantReply);
+              await refreshDraft();
+              appendTime(shell);
+            } catch (e) {
+              authErr(shell, e);
+            }
+            restAwait();
+            scrollChat();
+            sending = false;
+          })();
+        });
+        wrap.appendChild(b);
+      });
+      host.appendChild(wrap);
+    }
+
+    // Enter the story stage on chapter `idx`: flip the book to it, flip the
+    // stepper to 章节故事, drop a chapter card + the storyStart prompt.
+    function enterStoryStage(idx: number, announce: boolean) {
+      authStage = 'chapter';
+      authChapterIdx = idx;
+      syncStepper();
+      showFinishBar(); // "完成全书" appears only once we're in the story stage
+      const ch = draftSkel?.chapters[idx];
+      if (ch) {
+        const sp = spreadOfFlatPage(ch.pageStart);
+        if (sp !== currentCh) flipTo(sp, sp > currentCh ? 'next' : 'prev');
+        pushChapterCard(idx);
+        if (announce) appendAiText(t('storyStart'));
+      }
+      updateAuthInputPlaceholder();
+    }
+    // Advance to the next undone chapter when the current one is done (or when the
+    // user hit 采纳). At the last chapter, stay put — the finish bar takes over.
+    function maybeAdvanceChapter(force = false) {
+      if (!draftSkel) return;
+      const cur = draftSkel.chapters[authChapterIdx];
+      if (!force && !chapterDone(cur)) return;
+      const nextIdx = authChapterIdx + 1;
+      if (nextIdx < draftSkel.chapters.length) {
+        enterStoryStage(nextIdx, /*announce*/ true);
+      }
+    }
+    function appendUserBubble(text: string) {
+      const u = document.createElement('div');
+      u.className = 'msg user max-w-full';
+      u.innerHTML = `<div class="bubble"></div>`;
+      u.querySelector('.bubble')!.textContent = text;
+      chatBody!.appendChild(u);
+      scrollChat();
+    }
+    let lastStoryMessage = '';
+
+    // ── Finish bar visibility (red line: "完成全书" exists ONLY in the story
+    // stage — never while still picking the theme). Created once during init;
+    // these toggles flip it as the cursor crosses theme → story. ──
+    let finishBar: HTMLElement | null = null;
+    function showFinishBar() {
+      if (finishBar) finishBar.style.display = '';
+    }
+    function hideFinishBar() {
+      if (finishBar) finishBar.style.display = 'none';
+    }
+
+    // ── Purchase card (贝壳不足引导卡): on CreditInsufficientError, surface the
+    // design's buy-shells card at the bottom of the conversation (it carries its
+    // own "去购买" button → /credits) instead of hard-redirecting. ──
+    function showPurchaseCard() {
+      const card = byId('balanceAlert');
+      if (card) {
+        card.style.display = '';
+        chatBody!.appendChild(card); // float to the end of the thread
+      } else {
+        appendAiText(aT('贝壳不足，去充值后即可继续。', 'Out of shells — top up to keep creating.'));
+      }
+      scrollChat();
+    }
+
+    async function runAuthoringTurn(message: string) {
+      if (authStage === 'theme') {
+        await runThemeTurn(message);
+      } else {
+        await runStoryTurn(message);
+      }
     }
     function updateAuthInputPlaceholder() {
-      if (!isAuthoring || !input) return;
-      input.setAttribute(
-        'placeholder',
-        authStage === 'theme'
-          ? aT('一句话说说这本册子的主题…', 'Describe this book in a sentence…')
-          : aT('聊聊这一章发生了什么…', 'Tell me what happened in this chapter…'),
-      );
+      // Input stays blank by design (no prompt text in the box).
+      if (!input) return;
+      input.setAttribute('placeholder', '');
     }
 
     // One chat-edit round trip: POST the message, mirror the returned layout
@@ -1156,7 +1465,11 @@ function EditorBook({
         const res = await fetch(`/api/v1/albums/${albumId}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, language: contentLang }),
+          body: JSON.stringify({
+            message,
+            language: contentLang,
+            ...(selectedPageIndex != null ? { pageIndex: selectedPageIndex } : {}),
+          }),
         });
         const json = await res.json();
         if (!json.ok) throw new Error(json.error?.message ?? 'chat failed');
@@ -1316,6 +1629,82 @@ function EditorBook({
     input?.addEventListener('input', onInput);
 
     /* ─── Wire the static onclick handlers transcribed as data-action ─── */
+    // ── Mid-edit add-photos (W11): finalized albums only. Compress + store the new
+    // photos, POST them, show a processing bubble, poll the add job, then reload to
+    // render the appended pages (in-place injection is a future refinement).
+    const addPhotoInput = byId('addPhotoInput') as HTMLInputElement | null;
+    async function runAddPhotos(files: FileList) {
+      if (isAuthoring || sending || !files.length) return;
+      sending = true;
+      hideAwait();
+      const bubble = document.createElement('div');
+      bubble.className = 'msg ai max-w-full';
+      bubble.innerHTML =
+        '<div class="thinking-block active"><img class="think-jelly" src="/jellyfish-loop.png" alt="" />' +
+        '<span class="thinking-label"></span><span class="thinking-dots"><span></span><span></span><span></span></span></div>';
+      (bubble.querySelector('.thinking-label') as HTMLElement).textContent = aT(
+        '正在分析新照片，整合进画册…',
+        'Analyzing the new photos and weaving them in…',
+      );
+      chatBody!.appendChild(bubble);
+      scrollChat();
+      const fail = (msg: string) => {
+        bubble.querySelector('.thinking-block')?.classList.remove('active');
+        (bubble.querySelector('.thinking-label') as HTMLElement).textContent = msg;
+        sending = false;
+        restAwait();
+      };
+      try {
+        const photos: { photoId: string; base64: string; width: number; height: number }[] = [];
+        for (const f of Array.from(files).slice(0, 30)) {
+          const photoId = crypto.randomUUID();
+          const c = await compressFile(f, photoId);
+          await photoStore.put(photoId, f);
+          photos.push({ photoId, base64: c.base64, width: c.width, height: c.height });
+        }
+        const requestId = crypto.randomUUID();
+        const res = await fetch(`/api/v2/albums/${albumId}/add-photos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requestId, language: currentLang, photos }),
+        });
+        const json = await res.json();
+        if (!json.ok) {
+          if (json.error?.code === 'CREDIT_INSUFFICIENT') {
+            window.location.assign(localizePath('/credits?from=album', locale));
+            return;
+          }
+          fail(json.error?.message ?? aT('加图失败，请重试。', 'Add failed — please try again.'));
+          return;
+        }
+        const reqId: string = json.data.requestId;
+        // Poll the add job; on completion reload to paint the appended pages.
+        for (let i = 0; i < 160; i++) {
+          await new Promise((r) => setTimeout(r, 1500));
+          const sres = await fetch(`/api/v2/albums/${albumId}/add-photos?requestId=${reqId}`);
+          const sjson = await sres.json();
+          const status = sjson.data?.status;
+          if (status === 'completed') {
+            window.location.reload();
+            return;
+          }
+          if (status === 'failed') {
+            fail(sjson.data?.error ?? aT('加图失败，请重试。', 'Add failed — please try again.'));
+            return;
+          }
+        }
+        fail(aT('处理超时，请稍后刷新查看。', 'Timed out — refresh later to check.'));
+      } catch (e) {
+        fail(e instanceof Error ? e.message : String(e));
+      }
+    }
+    const onAddPhotoChange = () => {
+      const files = addPhotoInput?.files;
+      if (files && files.length) void runAddPhotos(files);
+      if (addPhotoInput) addPhotoInput.value = ''; // allow re-selecting the same file
+    };
+    addPhotoInput?.addEventListener('change', onAddPhotoChange);
+
     const actions: Record<string, () => void> = {
       exportPdf,
       toggleUserMenu,
@@ -1327,6 +1716,10 @@ function EditorBook({
       resetZoom,
       openPhotoPicker,
       closePhotoPicker,
+      // The "+" in the input: finalized albums → real add-photos flow; while still
+      // authoring there's no finalized layout to append to, so fall back to the
+      // (dormant) picker rather than erroring.
+      pickAddPhotos: () => (isAuthoring ? openPhotoPicker() : addPhotoInput?.click()),
       uploadStub: () => alert(t('alertUploadStub')),
       confirmNewChapter,
       buyShells: () => { window.location.href = `/${locale}/credits`; },
@@ -1405,10 +1798,15 @@ function EditorBook({
 
     /* ─── Init: clear the design's demo chat, paint the book, load originals ─── */
     chatBody?.querySelectorAll('.msg').forEach((n) => n.remove());
+    // The "await" jellyfish is a persistent (non-.msg) node, so clearing the demo
+    // strands it at the TOP of the thread. It belongs at the END when idle: editing
+    // has no opening turn (idle immediately) → float + show it now; authoring hides
+    // it until the opening turn finishes, where restAwait() floats it to the bottom.
+    if (isAuthoring) hideAwait();
+    else restAwait();
 
     /* ─── Authoring init: seed the opening message, expose the single "finish the
        whole book" action, hide the editing-only add-chapter affordance. ─── */
-    let finishBar: HTMLElement | null = null;
     async function finalizeBook() {
       if (finishing || sending) return;
       finishing = true;
@@ -1440,43 +1838,38 @@ function EditorBook({
       }
     }
     if (isAuthoring) {
-      // Seed opening message: ask for the theme, or (theme already set) confirm and
-      // move into chapters.
-      const opener =
-        draftSkel && hasTheme(draftSkel.theme)
-          ? aT(
-              '草稿已就绪，我已经按你写的定好了主题。接下来我们一章一章把故事聊清楚吧，你也可以随时直接完成全书。',
-              "Your draft is ready, and I've set the theme from what you wrote. Let's go chapter by chapter to flesh out the story — or finish the whole book anytime.",
-            )
-          : aT(
-              '草稿已就绪 — 这组照片主要想表达什么？(比如它讲的是谁、什么场合)告诉我，我来帮你定个主题。',
-              "Your draft is ready — what does this set of photos mainly express? (Who is it about, and what's the occasion?) Tell me and I'll set the theme.",
-            );
-      appendAiText(opener);
-      updateAuthInputPlaceholder();
-      // Hide the editing-only add-chapter button (creation has no manual add).
-      const addBtn = $('.add-ch-btn') as HTMLElement | null;
-      if (addBtn) addBtn.style.display = 'none';
-      // Insert the single "finish the whole book" action just above the input.
-      // Strict Mode runs the effect twice in dev; clear any prior bar first so we
-      // never stack two.
+      // The add-photo "+" in the input stays visible during authoring too (its real
+      // "append photos to this album" flow is the mid-edit add feature — still WIP
+      // server-side; for now it opens the dormant picker like editing does).
+      // (Removed) The "完成全书" finish bar + disclaimer used to live above the input
+      // here. Per product decision it's gone entirely — no finalize CTA in this
+      // surface anymore (showFinishBar/hideFinishBar are now no-ops).
       $('.authoring-finish-bar')?.remove();
-      const chatInput = $('.chat-input');
-      if (chatInput && chatInput.parentElement) {
-        finishBar = document.createElement('div');
-        finishBar.className = 'authoring-finish-bar flex flex-col gap-1.5 px-3 pb-1 shrink-0';
-        finishBar.innerHTML =
-          `<button type="button" class="finish-btn w-full rounded-full bg-fg text-white px-4 py-2 text-[13px] font-semibold transition-colors hover:bg-black disabled:opacity-40"></button>` +
-          `<p class="px-1 text-[11px] leading-snug text-meta"></p>`;
-        (finishBar.querySelector('.finish-btn') as HTMLElement).textContent = aT('完成全书', 'Finish the whole book');
-        (finishBar.querySelector('p') as HTMLElement).textContent = aT(
-          '没聊到的章节，会只用照片里看得到的氛围来配文，不编造具体的人事地。',
-          'Chapters you skip get captions written only from what the photos show — no invented names, places, or events.',
+
+      // Drive the opening of the 3-state flow.
+      if (draftSkel && hasTheme(draftSkel.theme)) {
+        // Theme already fixed (the user wrote a prompt at creation) → skip straight
+        // into the story stage on the first chapter. Finish bar shows here.
+        appendAiText(
+          aT(
+            '草稿已就绪，我已经按你写的定好了主题。接下来我们一章一章把故事聊清楚吧，你也可以随时直接完成全书。',
+            "Your draft is ready, and I've set the theme from what you wrote. Let's go chapter by chapter to flesh out the story — or finish the whole book anytime.",
+          ),
         );
-        chatInput.parentElement.insertBefore(finishBar, chatInput);
-        const fbBtn = finishBar.querySelector('.finish-btn') as HTMLButtonElement;
-        const fbFn = () => void finalizeBook();
-        fbBtn.addEventListener('click', fbFn);
+        enterStoryStage(0, /*announce*/ true);
+      } else {
+        // Theme stage: stepper on 确定主题, no finish bar. Open with themeAsk, then
+        // fetch the candidate themes (postTheme) and render them as pickable chips.
+        authStage = 'theme';
+        setChatState(2);
+        hideFinishBar();
+        appendAiText(t('themeAsk'));
+        updateAuthInputPlaceholder();
+        void (async () => {
+          sending = true;
+          await runThemeTurn();
+          sending = false;
+        })();
       }
     }
 
@@ -1535,7 +1928,10 @@ function EditorBook({
     // Chapter rail. Authoring reads it straight from the draft skeleton's chapters
     // (real labels/state, mapped to the spread holding their first page); editing
     // fetches the AI's image-cluster summary (read-only; invariant 12).
-    const spreadOfFlatPage = (i: number) => Math.floor((i + 1) / 2);
+    // Declared as a hoisted function (not a const arrow) so the authoring init
+    // block above — which may call enterStoryStage(0) immediately when a theme is
+    // pre-set — can reference it without hitting the temporal dead zone.
+    function spreadOfFlatPage(i: number) { return Math.floor((i + 1) / 2); }
     function railFromDraft() {
       if (!draftSkel) return;
       chapters = draftSkel.chapters.map((c) => ({
@@ -1561,7 +1957,12 @@ function EditorBook({
     }
 
     setLang(currentLang); // also runs renderRail + buildThumbs + paintSpread
-    setChatState(3);
+    // Stepper: editing (finalized album) has no creation flow — hide it. Authoring
+    // is driven by the opener block above (theme → 2, story → 3); don't override.
+    if (!isAuthoring) {
+      const stepperEl = byId('stateStepper');
+      if (stepperEl) stepperEl.style.display = 'none';
+    }
 
     if (isAuthoring) {
       // Authoring pre-resolved originals from the draft skeleton (passed in as
@@ -1587,14 +1988,19 @@ function EditorBook({
       });
     }
 
-    const completeTimer = setTimeout(() => {
-      const active = $('.thinking-block.active');
-      if (active) {
-        active.classList.remove('active');
-        const label = active.querySelector('.thinking-label');
-        if (label) label.textContent = t('thinkingComplete');
-      }
-    }, 3000);
+    // Demo-seed safety net (editing only): the seeded chat had a perpetually
+    // "active" thinking block. Authoring manages its own thinking lifecycle, so
+    // skip this there (it would otherwise stomp an in-flight theme/story call).
+    const completeTimer = isAuthoring
+      ? (undefined as unknown as ReturnType<typeof setTimeout>)
+      : setTimeout(() => {
+          const active = $('.thinking-block.active');
+          if (active) {
+            active.classList.remove('active');
+            const label = active.querySelector('.thinking-label');
+            if (label) label.textContent = t('thinkingComplete');
+          }
+        }, 3000);
 
     return () => {
       document.removeEventListener('click', onDocClick);
@@ -1603,8 +2009,8 @@ function EditorBook({
       input?.removeEventListener('keydown', onKeydown);
       input?.removeEventListener('input', onInput);
       actionHandlers.forEach(({ el, fn }) => el.removeEventListener('click', fn));
+      addPhotoInput?.removeEventListener('change', onAddPhotoChange);
       clearTimeout(completeTimer);
-      finishBar?.remove();
     };
   }, []);
 
@@ -1622,10 +2028,19 @@ function EditorBook({
           </a>
           <a href="#" className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '30px', width: 'auto', display: 'block' }} /></a>
           <span className="crumb text-meta text-[13px] hidden sm:inline">/</span>
-          <span className="album-title font-display font-bold text-[14px] text-fg px-2 py-1 rounded-pill border border-transparent transition-colors hover:bg-bg cursor-text truncate" contentEditable suppressContentEditableWarning data-i18n="albumTitle">2024 厦门三日游</span>
-          <span className="save-badge text-[11px] text-muted hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-bg rounded-pill" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)', fontFamily: 'var(--font-mono)', letterSpacing: '0.02em' }}><span className="pulse w-1.5 h-1.5 rounded-full bg-gg" /><span data-i18n="saved">已保存</span></span>
+          {building ? (
+            <span className="flex items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-[11px] text-muted" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+              <span className="w-1.5 h-1.5 rounded-full bg-gg animate-pulse" />
+              <span>{locale === 'zh' ? '整理中' : 'Tidying up'}</span>
+            </span>
+          ) : (
+            <>
+              <span className="album-title font-display font-bold text-[14px] text-fg px-2 py-1 rounded-pill border border-transparent transition-colors hover:bg-bg cursor-text truncate" contentEditable suppressContentEditableWarning data-i18n="albumTitle">2024 厦门三日游</span>
+              <span className="save-badge text-[11px] text-muted hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-bg rounded-pill" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)', fontFamily: 'var(--font-mono)', letterSpacing: '0.02em' }}><span className="pulse w-1.5 h-1.5 rounded-full bg-gg" /><span data-i18n="saved">已保存</span></span>
+            </>
+          )}
         </div>
-        <div className="top-right flex items-center gap-1 sm:gap-2 shrink-0">
+        {!building && <div className="top-right flex items-center gap-1 sm:gap-2 shrink-0">
           <span className="btn-glow">
             <button className="btn-primary bg-fg text-white px-4 sm:px-7 py-2.5 rounded-pill text-[13px] font-semibold flex items-center gap-1.5 transition-transform hover:-translate-y-px" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} data-action="exportPdf">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
@@ -1647,13 +2062,13 @@ function EditorBook({
               <button className="dropdown-item danger flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] w-full text-left transition-colors text-[#c44] hover:bg-[#fef2f2]"><span className="dropdown-icon w-[18px] h-[18px] flex items-center justify-center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg></span><span>退出登录</span></button>
             </div>
           </div>
-        </div>
+        </div>}
       </div>
 
       <div className="workspace flex-1 overflow-hidden relative md:flex" style={{ height: 'calc(100vh - 53px)' }}>
 
         <button className="chat-fold-btn chat-fold-expand" data-action="toggleChat" data-i18n-title="expandChat" title="展开对话" aria-label="展开对话">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="9 18 15 12 9 6" /></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="m6 17 5-5-5-5" /><path d="m13 17 5-5-5-5" /></svg>
         </button>
 
         <main className="pane pane-center flex flex-col overflow-hidden bg-bg relative md:order-3 md:flex-1" id="paneCenter">
@@ -1667,6 +2082,10 @@ function EditorBook({
           <div className="mobile-chapter-bar gap-2 px-4 py-2.5 overflow-x-auto bg-surface border-b border-bdsoft shrink-0" id="mobileChapterBar" />
 
           <div className="book-stage w-full flex-1 flex items-center justify-center px-4 pt-8 pb-16 overflow-auto bg-bg relative">
+            {building ? (
+              <CoverSkeleton locale={locale} />
+            ) : (
+            <>
             <div className="book bg-surface flex relative overflow-hidden" id="book">
               <div className="page page-left bg-surface" id="pageLeft" />
               <div className="page page-right bg-surface" id="pageRight" />
@@ -1717,13 +2136,11 @@ function EditorBook({
               </button>
             </div>
 
-            <div className="chapter-card hidden md:flex" id="chapterCard" style={{ width: '62px', gap: '2px', marginRight: '0px', marginLeft: '-16px' }}>
-              <div className="chapter-card-head" data-i18n="chaptersLabel" style={{ marginTop: '0px', marginRight: '2px' }}>章节</div>
-              <div className="chapter-list" id="chapterList" style={{ width: '53px', margin: '0px 0px -1px -3px', gap: '2px', fontSize: '14px', paddingTop: '0px' }} />
-              <button className="chapter-toggle" data-action="toggleRail" data-i18n-title="collapseChapters" title="收起章节" aria-label="收起章节">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
-              </button>
-            </div>
+            {/* (Removed) The floating chapter rail (章节浮标) used to sit here as an
+                absolute-positioned frosted panel over the canvas. Cut per design —
+                renderRail() is null-safe on the absent #chapterList. */}
+            </>
+            )}
           </div>
 
         </main>
@@ -1731,7 +2148,7 @@ function EditorBook({
         <div className="pane-chat-col md:order-1 md:w-[360px] shrink-0 md:flex">
           <aside className="pane pane-right chat-card relative flex flex-col overflow-hidden bg-surface md:flex-1">
             <button className="chat-fold-btn chat-fold-collapse" data-action="toggleChat" data-i18n-title="collapseChat" title="折叠对话" aria-label="折叠对话">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="15 18 9 12 9 6" /></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="m18 17-5-5 5-5" /><path d="m11 17-5-5 5-5" /></svg>
             </button>
             <div className="md:hidden flex items-center px-4 py-3 border-b border-bdsoft flex-shrink-0">
               <button className="ml-auto flex items-center gap-1.5 pl-3 pr-3.5 py-1.5 rounded-pill bg-bg text-fg2 text-[12.5px] font-semibold hover:bg-border-soft transition-colors shrink-0" data-action="openDetail">
@@ -1740,7 +2157,28 @@ function EditorBook({
               </button>
             </div>
 
+            {/* 3-state stepper: 加载 → 确定主题 → 章节故事. Hidden in editing mode
+                (the finalized editor has no creation flow); building highlights
+                "加载", authoring tracks the cursor (theme / story). */}
+            <div className="state-stepper" id="stateStepper">
+              <span className={`state-pill${building ? ' active' : ''}`} data-state="1"><span className="state-dot" /><span data-i18n="stateLoading">加载</span></span>
+              <span className="state-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><polyline points="9 18 15 12 9 6" /></svg></span>
+              <span className="state-pill" data-state="2"><span className="state-dot" /><span data-i18n="stateTheme">确定主题</span></span>
+              <span className="state-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><polyline points="9 18 15 12 9 6" /></svg></span>
+              <span className="state-pill" data-state="3"><span className="state-dot" /><span data-i18n="stateStory">章节故事</span></span>
+            </div>
+
             <div className="chat-body flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-6" id="chatBody" style={{ gap: '24px' }}>
+              {building ? (
+                <div className="msg ai max-w-full">
+                  <div className="thinking-block active">
+                    <img className="think-jelly" src="/jellyfish-loop.png" alt="" />
+                    <span className="thinking-label">{locale === 'zh' ? '正在加载…' : 'Loading…'}</span>
+                    <span className="thinking-dots"><span /><span /><span /></span>
+                  </div>
+                </div>
+              ) : (
+              <>
               <div className="msg ai max-w-full">
                 <div className="thinking-block">
                   <span className="thinking-icon" />
@@ -1812,15 +2250,20 @@ function EditorBook({
                 <img className="await-jelly" src="/jellyfish-icon.png" alt="" style={{ width: '40px', height: '40px' }} />
                 <span className="await-label" data-i18n="awaitUser">在听，随时和我说～</span>
               </div>
+              </>
+              )}
             </div>
 
-            <div className="chat-input m-3 shrink-0 bg-surface border border-bdsoft rounded-pill flex items-end transition-all" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-              <button className="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg m-2" data-action="openPhotoPicker" data-i18n-title="addChapter" title="新增章节" aria-label="新增章节">
+            <div className="chat-input m-3 shrink-0 bg-surface border border-bdsoft rounded-pill flex items-end transition-all" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)', opacity: building ? 0.6 : undefined }}>
+              <button className="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg m-2 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted" data-action="pickAddPhotos" data-i18n-title="addPhoto" title="添加图片" aria-label="添加图片" disabled={building}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
               </button>
-              <textarea className="flex-1 outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none pl-1 py-3" style={{ fontFamily: 'var(--font-body)' }} data-i18n-placeholder="inputPlaceholder" placeholder="输入消息..." rows={1} id="msgInput" />
+              {/* Mid-edit add-photos (W11): the "+" opens this hidden picker; the
+                  selection runs the add flow (compress → POST → poll → reload). */}
+              <input type="file" id="addPhotoInput" accept="image/*" multiple className="hidden" />
+              <textarea className="flex-1 outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none pl-1 py-3 disabled:cursor-not-allowed" style={{ fontFamily: 'var(--font-body)' }} placeholder="" rows={1} id="msgInput" disabled={building} />
               <span className="btn-glow btn-glow-round shrink-0 m-2">
-                <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center cursor-pointer transition-transform hover:-translate-y-px" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} id="sendBtn" data-i18n-title="send" title="发送">
+                <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center cursor-pointer transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} id="sendBtn" data-i18n-title="send" title="发送" disabled={building}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
                 </button>
               </span>

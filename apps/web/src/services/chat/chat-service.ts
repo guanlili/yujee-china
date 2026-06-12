@@ -75,7 +75,13 @@ export const chatService = {
     };
   },
 
-  async edit(userId: string, albumId: string, message: string, language: 'zh' | 'en') {
+  async edit(
+    userId: string,
+    albumId: string,
+    message: string,
+    language: 'zh' | 'en',
+    focusedPageIndex?: number,
+  ) {
     const album = await albumService.findOwned(userId, albumId);
     if (album.status !== 'EDITING') throw ERRORS.ALBUM_NOT_EDITABLE();
 
@@ -100,6 +106,12 @@ export const chatService = {
         history,
         userMessage: message,
         language,
+        // Only forward a focus that actually exists in the current layout — a stale
+        // index (page removed/reordered) is dropped rather than misdirecting the AI.
+        ...(focusedPageIndex !== undefined &&
+        parsedCurrent.data.pages.some((p) => p.pageIndex === focusedPageIndex)
+          ? { focusedPageIndex }
+          : {}),
       });
 
       // Invariant 9: apply + re-validate before persisting the layout.

@@ -52,6 +52,16 @@ export interface DraftTheme {
   style?: string;
 }
 
+// A pickable theme candidate proposed before a theme is fixed (editor.html
+// themeOpt1-3). Display-only (invariant 12) — the server never merges these into
+// draft_json; picking one just sends its label back as the next /theme nudge.
+export interface ThemeOption {
+  subject: string;
+  label: string;
+  tone?: string;
+  style?: string;
+}
+
 export interface DraftSkeleton {
   theme: DraftTheme | null;
   style: string;
@@ -96,7 +106,7 @@ export function fetchDraftSkeleton(albumId: string): Promise<{ draft: DraftSkele
 export function postTheme(
   albumId: string,
   userMessage?: string,
-): Promise<{ theme: unknown; assistantReply: string }> {
+): Promise<{ theme: unknown; assistantReply: string; themeOptions?: ThemeOption[] }> {
   return postJson(`/api/v2/albums/${albumId}/theme`, userMessage ? { userMessage } : {});
 }
 
@@ -106,7 +116,7 @@ export function postChapterChat(
   albumId: string,
   chapterId: string,
   userMessage: string,
-): Promise<{ assistantReply: string; state: ChapterState; chapterId: string }> {
+): Promise<{ assistantReply: string; state: ChapterState; chapterId: string; nameOptions?: string[] }> {
   return postJson(`/api/v2/albums/${albumId}/chapter-chat`, { chapterId, userMessage });
 }
 

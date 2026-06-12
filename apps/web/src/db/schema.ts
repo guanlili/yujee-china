@@ -33,7 +33,7 @@ export const agentJobStatusEnum = pgEnum('agent_job_status', [
 // failure/zombie semantics are OPPOSITE (init failure → FAILED + release;
 // finalize failure → back to EDITING + keep hold), so sweeper/callback branch
 // on this. See docs/agent/rebuild-architecture.md §5.
-export const agentJobKindEnum = pgEnum('agent_job_kind', ['init', 'finalize']);
+export const agentJobKindEnum = pgEnum('agent_job_kind', ['init', 'finalize', 'add']);
 
 export const creditHoldStatusEnum = pgEnum('credit_hold_status', [
   'HOLDING',

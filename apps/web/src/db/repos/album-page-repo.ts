@@ -32,6 +32,13 @@ export const albumPageRepo = {
     await tx.insert(albumPages).values(rows);
   },
 
+  // Wipe an album's pages so the caller can rebuild the full set (W11 add-photos:
+  // new pages slot before the ending, shifting the ending's pageIndex — a
+  // delete-then-bulkInsert avoids juggling the unique(albumId, pageIndex) index).
+  deleteByAlbum: async (tx: DbOrTx, albumId: string): Promise<void> => {
+    await tx.delete(albumPages).where(eq(albumPages.albumId, albumId));
+  },
+
   updateOne: async (
     tx: DbOrTx,
     albumId: string,

@@ -1,15 +1,12 @@
 import type { Metadata } from 'next';
-import { Bricolage_Grotesque } from 'next/font/google';
 import '@/styles/globals.css';
 
-// Display / heading typeface (DESIGN.md §3). Bound to --font-display; body stays
-// system-ui (globals.css `body` rule) so this only loads where headings opt in.
-const bricolageGrotesque = Bricolage_Grotesque({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800'],
-  display: 'swap',
-  variable: '--font-bricolage',
-});
+// Display / heading typeface (DESIGN.md §3) was loaded via next/font/google
+// (Bricolage Grotesque). That fetches from fonts.googleapis.com at compile time,
+// which is unreachable behind the GFW and hangs every first compile. Disabled for
+// local dev; --font-display in globals.css already falls back to system-ui.
+// TODO: self-host the woff2 via next/font/local (download through a proxy) to
+// restore the brand font without the network fetch.
 
 export const metadata: Metadata = {
   title: 'Yujee — Your AI Memoir',
@@ -18,7 +15,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={bricolageGrotesque.variable}>
+    <html lang="en">
       <body>{children}</body>
     </html>
   );

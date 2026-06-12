@@ -10,7 +10,7 @@ import {
   PhotosUnavailableError,
   UnauthorizedError,
   photosFromStore,
-  submitGeneration,
+  submitInitV2,
 } from '@/lib/generation/client';
 import { albumRecipe, generationDraft, type GenerationDraft } from '@/lib/generation/draft';
 import type { AppMessages } from '@/lib/i18n/messages';
@@ -70,11 +70,20 @@ export function HeroComposer({
 
   const submitDraft = async (draft: GenerationDraft) => {
     const photoIds = draft.photoIds;
+    // No client-side balance pre-check here on purpose: selecting/uploading photos
+    // is cheap (compressed, client-side) and is exactly the investment we WANT the
+    // user to make before any paywall (sunk-cost — once they've done the work they
+    // don't want to abandon). The only billing gate lives server-side, right before
+    // the AI runs: submitInitV2 → precheck + hold inside the album tx, which throws
+    // CREDIT_INSUFFICIENT before the agent is ever called (no wasted AI spend). The
+    // catch below routes that to /credits.
     const builtPhotos = await photosFromStore(photoIds);
-    const { albumId } = await submitGeneration({
+    const trimmed = draft.prompt.trim();
+    const { albumId } = await submitInitV2({
       requestId: crypto.randomUUID(),
-      prompt: draft.prompt.trim(),
       language: draft.language,
+      // promptHint is optional in v2 — omit when blank (the theme step asks first).
+      ...(trimmed ? { promptHint: trimmed } : {}),
       photos: builtPhotos,
     });
     generationDraft.clear();
@@ -165,10 +174,8 @@ export function HeroComposer({
       setErr(t.errPhotoMin);
       return;
     }
-    if (!value.trim()) {
-      setErr(t.errPromptEmpty);
-      return;
-    }
+    // The story prompt is optional in v2 (promptHint): photos are the only required
+    // step. If blank, the authoring flow asks the theme question first.
     setBusy(true);
     setErr(null);
     const language = inferLanguage(value);

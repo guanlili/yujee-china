@@ -5,21 +5,24 @@ import { getAuthRedirect, isProtectedPath } from './middleware';
 
 describe('middleware routing decisions', () => {
   it('protects localized tool and dashboard routes', () => {
-    assert.equal(isProtectedPath('/create'), true);
     assert.equal(isProtectedPath('/album/demo'), true);
     assert.equal(isProtectedPath('/my-albums'), true);
+    assert.equal(isProtectedPath('/credits'), true);
     assert.equal(isProtectedPath('/login'), false);
   });
 
   it('redirects anonymous protected requests to the locale login page', () => {
-    assert.deepEqual(getAuthRedirect('/zh/create', false), {
+    assert.deepEqual(getAuthRedirect('/zh/my-albums', false), {
       pathname: '/zh/login',
-      from: '/zh/create',
+      from: '/zh/my-albums',
     });
   });
 
   it('does not redirect removed legacy routes', () => {
     assert.equal(getAuthRedirect('/text-to-video', false), null);
     assert.equal(getAuthRedirect('/dashboard', false), null);
+    // /create was removed — creation now funnels straight into /album.
+    assert.equal(getAuthRedirect('/create', false), null);
+    assert.equal(isProtectedPath('/create'), false);
   });
 });

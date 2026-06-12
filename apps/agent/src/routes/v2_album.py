@@ -25,6 +25,8 @@ from ..schemas import JobError, LayoutRequest, Page, PhotoAnalysis, PhotoIn
 from ..schemas_v2 import (
     AlbumDraft,
     Usage,
+    V2AddCompletedCallback,
+    V2AddPhotosRequest,
     V2BasePages,
     V2Chapter,
     V2ChapterChatRequest,
@@ -316,6 +318,188 @@ async def _run_init_with_timeout(req: V2InitRequest) -> None:
 async def submit_init(req: V2InitRequest, background_tasks: BackgroundTasks) -> dict:
     log.info("v2_init.accepted", photo_count=len(req.photos), language=req.language)
     background_tasks.add_task(_run_init_with_timeout, req)
+    return {"ok": True, "data": {"requestId": req.requestId, "accepted": True}}
+
+
+# ---------- add-photos job (W11: mid-edit append) -----------------------------
+#
+# Same async 202 + callback shape as init, but it processes the NEW photos ALONE:
+# vision → grouping → skeleton chapter pages only. No cover/toc/ending — those stay
+# fixed on the existing album; the Web side inserts the returned pages just before
+# the (untouched) ending page. Templates are seeded by new chapterIds, so this is
+# fully independent of the existing layout (no need to pass it in).
+
+
+async def _emit_add_progress(req: V2AddPhotosRequest, stage: V2JobStage, progress: int) -> None:
+    envelope = V2ProgressCallback(
+        event="progress", jobKind="add", requestId=req.requestId, stage=stage, progress=progress
+    )
+    await callback.post(str(req.callbackUrl), envelope)
+
+
+async def _emit_add_failure(
+    req: V2AddPhotosRequest, *, code: str, message: str, stage: V2JobStage | None = None
+) -> None:
+    if stage is not None:
+        try:
+            await _emit_add_progress(req, stage, 0)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("v2_add.pre_fail_progress_error", error=str(exc))
+    envelope = V2FailedCallback(
+        event="failed",
+        jobKind="add",
+        requestId=req.requestId,
+        error=JobError(code=code, message=message[:500]),
+        stage=stage,
+    )
+    await callback.post(str(req.callbackUrl), envelope)
+
+
+def _layout_request_from_add(req: V2AddPhotosRequest) -> LayoutRequest:
+    prompt = req.meta.promptHint if (req.meta and req.meta.promptHint) else _DEFAULT_PROMPT
+    return LayoutRequest(
+        requestId=req.requestId,
+        prompt=prompt,
+        language=req.language,
+        callbackUrl=req.callbackUrl,
+        photos=[
+            PhotoIn(photoId=p.photoId, base64=p.base64, width=p.width, height=p.height)
+            for p in req.newPhotos
+        ],
+    )
+
+
+def _grouping_photos_add(req: V2AddPhotosRequest, photos, groups) -> list[GroupingPhoto]:
+    order_by_id = {p.photoId: idx for idx, p in enumerate(req.newPhotos)}
+    taken_at_by_id = {p.photoId: (p.exif.takenAt if p.exif else None) for p in req.newPhotos}
+    hint_by_id: dict[str, str] = {}
+    for group in groups:
+        for photo_id in group.photoIds:
+            hint_by_id.setdefault(photo_id, group.label)
+    return [
+        GroupingPhoto(
+            photo_id=analysis.photoId,
+            analysis=_to_v2_analysis(analysis),
+            order=order_by_id.get(analysis.photoId, 0),
+            batch_id=0,
+            taken_at=taken_at_by_id.get(analysis.photoId),
+            group_hint=hint_by_id.get(analysis.photoId),
+            duplicate_of=None,
+        )
+        for analysis in photos
+    ]
+
+
+async def _run_add_photos(req: V2AddPhotosRequest) -> None:
+    settings = get_settings()
+    started = time.monotonic()
+
+    # Stage 1a — vision on the new photos only.
+    await _emit_add_progress(req, "vision", 0)
+    layout_req = _layout_request_from_add(req)
+    vision_call_count = 0
+    vision_model: str | None = None
+    if settings.agent_pipeline_mode == "mock":
+        vision_result = vision_mock.analyze(layout_req)
+    else:
+        try:
+            vision_result, _tokens = await vision_analyze(layout_req)
+        except VisionError as exc:
+            log.warning("v2_add.vision_failed", error=str(exc))
+            await _emit_add_failure(req, code="AGENT_VISION_FAILED", message=str(exc), stage="vision")
+            return
+        vision_call_count = 1
+        vision_model = settings.ark_vision_model
+    await _emit_add_progress(req, "vision", 100)
+
+    # Stage 1b — grouping the new photos standalone → new chapters.
+    await _emit_add_progress(req, "grouping", 0)
+    try:
+        photo_pool, chapters = grouping.build_photo_pool_and_chapters(
+            _grouping_photos_add(req, vision_result.photos, vision_result.groups)
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.exception("v2_add.grouping_failed", error=str(exc))
+        await _emit_add_failure(req, code="AGENT_OUTPUT_VALIDATION", message=str(exc), stage="grouping")
+        return
+    await _emit_add_progress(req, "grouping", 100)
+
+    # Stage 3 — skeleton chapter pages only (mirrors build_skeleton's body_pages
+    # loop; cover/toc/ending are skipped — the existing album keeps its own).
+    await _emit_add_progress(req, "skeleton", 0)
+    try:
+        photos_by_id = {photo.photoId: photo.model_dump(mode="json") for photo in photo_pool}
+        new_pages: list[Page] = []
+        for chapter in chapters:
+            chapter_photos = [
+                photos_by_id[pid]
+                for pid in chapter.photoIds
+                if pid in photos_by_id and photos_by_id[pid].get("used")
+            ]
+            new_pages.extend(skeleton.build_chapter_pages(req.albumId, chapter.chapterId, chapter_photos))
+        if not new_pages:
+            raise ValueError("no pages produced for the new photos")
+        # Local reindex 0..k; the Web side re-slots them before the ending page.
+        for page_index, page in enumerate(new_pages):
+            page["pageIndex"] = page_index
+    except Exception as exc:  # noqa: BLE001
+        log.exception("v2_add.skeleton_failed", error=str(exc))
+        await _emit_add_failure(req, code="AGENT_OUTPUT_VALIDATION", message=str(exc), stage="skeleton")
+        return
+    await _emit_add_progress(req, "skeleton", 100)
+
+    # Strip the new photos to the 5 outward-facing fields (invariant 12).
+    new_photos = [
+        PhotoAnalysis(
+            photoId=photo.analysis.photoId,
+            description=photo.analysis.description,
+            tags=list(photo.analysis.tags),
+            quality=photo.analysis.quality,
+            orientation=photo.analysis.orientation,
+        )
+        for photo in photo_pool
+        if photo.used
+    ]
+
+    duration_ms = int((time.monotonic() - started) * 1000)
+    envelope = V2AddCompletedCallback(
+        event="completed",
+        jobKind="add",
+        requestId=req.requestId,
+        newPhotos=new_photos,
+        newPages=[Page(**page) for page in new_pages],
+        usage=Usage(
+            durationMs=duration_ms,
+            visionCallCount=vision_call_count,
+            models=V2Models(vision=vision_model, planning=None),
+        ),
+    )
+    await callback.post(str(req.callbackUrl), envelope)
+    log.info("v2_add.completed", duration_ms=duration_ms, new_pages=len(new_pages), new_photos=len(new_photos))
+
+
+async def _run_add_with_timeout(req: V2AddPhotosRequest) -> None:
+    settings = get_settings()
+    token = request_id_var.set(req.requestId)
+    try:
+        try:
+            await asyncio.wait_for(
+                _run_add_photos(req), timeout=settings.background_task_timeout_seconds
+            )
+        except asyncio.TimeoutError:
+            log.error("v2_add.timeout")
+            await _emit_add_failure(req, code="AGENT_TIMEOUT", message="background task exceeded timeout")
+        except Exception as exc:  # noqa: BLE001
+            log.exception("v2_add.unhandled", error=str(exc))
+            await _emit_add_failure(req, code="AGENT_INTERNAL_ERROR", message=str(exc))
+    finally:
+        request_id_var.reset(token)
+
+
+@router.post("/v2/album/add-photos", status_code=202, dependencies=[Depends(require_bearer)])
+async def submit_add_photos(req: V2AddPhotosRequest, background_tasks: BackgroundTasks) -> dict:
+    log.info("v2_add.accepted", photo_count=len(req.newPhotos), language=req.language)
+    background_tasks.add_task(_run_add_with_timeout, req)
     return {"ok": True, "data": {"requestId": req.requestId, "accepted": True}}
 
 

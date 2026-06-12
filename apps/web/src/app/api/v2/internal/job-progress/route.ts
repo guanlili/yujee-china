@@ -42,6 +42,13 @@ export async function POST(req: Request) {
       case 'completed':
         if (payload.jobKind === 'init') {
           await jobService.handleInitCompleted(payload.requestId, payload.draftTree, payload.usage);
+        } else if (payload.jobKind === 'add') {
+          await jobService.handleAddCompleted(
+            payload.requestId,
+            payload.newPhotos,
+            payload.newPages,
+            payload.usage,
+          );
         } else {
           await jobService.handleFinalizeCompleted(payload.requestId, payload.layout, payload.usage);
         }

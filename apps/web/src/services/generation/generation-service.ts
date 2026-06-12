@@ -8,7 +8,7 @@ import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { albumRepo } from '@/db/repos/album-repo';
 import { ERRORS } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
-import { AlbumDraft, type V2InitRequest } from '@yujee/contracts';
+import { AlbumDraft, type V2InitRequest, type V2AddPhotosRequest } from '@yujee/contracts';
 
 // Browser → /api/v2/albums init payload (originals as base64, invariant 1). The
 // route generates nothing the browser owns except photo bytes; requestId is the
@@ -31,6 +31,21 @@ type GenerationInput = {
   prompt: string;
   language: 'zh' | 'en';
   photos: AgentPhotoInput[];
+};
+
+// Browser → /api/v2/albums/[uuid]/add-photos. The NEW photos only (base64); the
+// album is identified by the URL. Same per-book gate as creation (a fresh hold).
+type V2AddPhotosInput = {
+  requestId: string;
+  language: 'zh' | 'en';
+  promptHint?: string;
+  photos: Array<{
+    photoId: string;
+    base64: string;
+    width: number;
+    height: number;
+    takenAt?: string | null;
+  }>;
 };
 
 type RetryInput = {
@@ -174,6 +189,45 @@ export const generationService = {
 
     return dispatchFinalizeV2(albumId, requestId, draftTree);
   },
+
+  // POST /api/v2/albums/[uuid]/add-photos (W11 mid-edit add) — append new pages to a
+  // FINALIZED album. A fresh per-book hold (the prior init/finalize hold is already
+  // settled), a kind=add job, then dispatch. The album stays EDITING the whole time
+  // (the editor stays mounted and injects the new pages when the job completes); the
+  // partial unique index on (album_id, kind) blocks a concurrent double-add.
+  async submitAddPhotosV2(userId: string, albumId: string, input: V2AddPhotosInput) {
+    const album = await albumService.findOwned(userId, albumId);
+    if (!album.layoutJson) throw ERRORS.ALBUM_NOT_EDITABLE(); // only finalized albums take new pages
+
+    const amount = creditService.cost();
+    await creditService.precheck(userId, amount);
+
+    await db.transaction(async (tx) => {
+      await jobService.createV2(tx, { userId, albumId, requestId: input.requestId, kind: 'add' });
+      // A new HOLDING hold for this add; settle lands at add-completion. Overwrites
+      // albums.credit_hold_id (the prior hold is already settled, so it's free).
+      await creditService.hold(tx, userId, amount, albumId);
+    });
+
+    return dispatchAddPhotosV2(albumId, input);
+  },
+
+  // GET /api/v2/albums/[uuid]/add-photos?requestId= — the editor polls this after
+  // submitting an add. 'completed' → re-fetch the album pages and inject; 'failed' →
+  // surface the error (the hold was refunded); 'running' → keep polling.
+  async getAddStatus(userId: string, albumId: string, requestId: string) {
+    await albumService.findOwned(userId, albumId); // ownership gate (throws if not owned)
+    const job = await agentJobRepo.findByRequestId(requestId);
+    if (!job || job.albumId !== albumId || job.kind !== 'add') {
+      return { status: 'unknown' as const };
+    }
+    if (job.status === 'COMPLETED') return { status: 'completed' as const };
+    if (job.status === 'FAILED') {
+      const err = (job.error as { message?: string } | null) ?? null;
+      return { status: 'failed' as const, error: err?.message ?? null };
+    }
+    return { status: 'running' as const, stage: job.stage, progress: job.progress };
+  },
 };
 
 // Shared tail of submit/retry (non-exported — it's an internal helper, not a
@@ -240,6 +294,48 @@ async function dispatchInitV2(
     logger.error(
       { err: String(e), requestId: input.requestId },
       'agent v2 init submit failed, marking job FAILED',
+    );
+    await jobService.handleV2Failed(input.requestId, {
+      code: 'AGENT_INTERNAL_ERROR',
+      message: 'Failed to submit to agent',
+    });
+    return { albumId, requestId: input.requestId, accepted: true };
+  }
+
+  const job = await agentJobRepo.findByRequestId(input.requestId);
+  if (job) await jobService.markRunning(db, job.id);
+
+  return { albumId, requestId: input.requestId, accepted: true };
+}
+
+// v2 add-photos dispatch tail (mirrors dispatchInitV2). On submit failure, fail the
+// job (kind=add → album stays EDITING, the add hold is refunded) and still return
+// the requestId without throwing — the editor needs it to poll the add status.
+async function dispatchAddPhotosV2(
+  albumId: string,
+  input: V2AddPhotosInput,
+): Promise<{ albumId: string; requestId: string; accepted: true }> {
+  const newPhotos: V2AddPhotosRequest['newPhotos'] = input.photos.map((p) => ({
+    photoId: p.photoId,
+    base64: p.base64,
+    width: p.width,
+    height: p.height,
+    ...(p.takenAt !== undefined ? { exif: { takenAt: p.takenAt } } : {}),
+  }));
+
+  try {
+    await agentClient.submitAddPhotosV2({
+      requestId: input.requestId,
+      albumId,
+      callbackUrl: `${env.WEB_BASE_URL}/api/v2/internal/job-progress`,
+      language: input.language,
+      ...(input.promptHint ? { meta: { promptHint: input.promptHint } } : {}),
+      newPhotos,
+    });
+  } catch (e) {
+    logger.error(
+      { err: String(e), requestId: input.requestId },
+      'agent v2 add-photos submit failed, marking job FAILED',
     );
     await jobService.handleV2Failed(input.requestId, {
       code: 'AGENT_INTERNAL_ERROR',

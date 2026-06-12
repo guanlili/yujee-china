@@ -8,6 +8,8 @@ import { chatService } from '@/services/chat/chat-service';
 const BodySchema = z.object({
   message: z.string().min(1).max(500),
   language: z.enum(['zh', 'en']),
+  // The page the user has selected in the editor (W11) — "change this" targets it.
+  pageIndex: z.number().int().nonnegative().optional(),
 });
 
 export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }> }) {
@@ -15,7 +17,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
     const user = await requireAuth(req);
     const { uuid } = await ctx.params;
     const body = await parseBody(BodySchema, req);
-    const data = await chatService.edit(user.id, uuid, body.message, body.language);
+    const data = await chatService.edit(user.id, uuid, body.message, body.language, body.pageIndex);
     return ok(data);
   } catch (e) {
     return fromException(e);

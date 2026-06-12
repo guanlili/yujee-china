@@ -35,7 +35,7 @@ from .schemas import (
 V2Style = Literal[
     "warm-film", "editorial-mono", "soft-pastel", "bold-contrast", "vintage-print"
 ]
-V2JobKind = Literal["init", "finalize"]
+V2JobKind = Literal["init", "finalize", "add"]
 V2JobStage = Literal["vision", "grouping", "skeleton", "finalize"]
 V2ChapterState = Literal[
     "empty", "asking", "brief_ready", "generated", "skipped", "finalized"
@@ -212,6 +212,20 @@ class V2InitRequest(_Strict):
     photos: list[V2InitPhoto] = Field(min_length=1, max_length=30)
 
 
+class V2AddPhotosRequest(_Strict):
+    """Mid-edit add-photos (W11). Only the NEW photos: the agent runs vision +
+    grouping + skeleton on them alone to produce new chapter pages. It does not
+    need the existing layout — templates are seeded by new chapterIds, and the Web
+    side appends the returned pages before the (untouched) ending page."""
+
+    requestId: str = Field(min_length=1)
+    albumId: str = Field(min_length=1)
+    callbackUrl: HttpUrl
+    language: Language
+    meta: V2InitMeta | None = None
+    newPhotos: list[V2InitPhoto] = Field(min_length=1, max_length=30)
+
+
 class V2ClusterOverview(_Strict):
     chapterId: str
     label: str
@@ -314,6 +328,9 @@ class V2EditRequest(_Strict):
     history: list[V2ChatTurn] = Field(default_factory=list, max_length=20)
     userMessage: str = Field(max_length=500)
     language: Language
+    # The page the user selected in the editor (W11): when set, "change this / this
+    # page" refers to it.
+    focusedPageIndex: int | None = Field(default=None, ge=0)
 
 
 class V2EditResponse(_Strict):
@@ -351,6 +368,15 @@ class V2FinalizeCompletedCallback(_Strict):
     usage: Usage
 
 
+class V2AddCompletedCallback(_Strict):
+    event: Literal["completed"]
+    jobKind: Literal["add"]
+    requestId: str = Field(min_length=1)
+    newPhotos: list[PhotoAnalysis]
+    newPages: list[Page] = Field(min_length=1)
+    usage: Usage
+
+
 class V2FailedCallback(_Strict):
     event: Literal["failed"]
     jobKind: V2JobKind
@@ -361,7 +387,7 @@ class V2FailedCallback(_Strict):
 
 
 V2CompletedCallback = Annotated[
-    Union[V2InitCompletedCallback, V2FinalizeCompletedCallback],
+    Union[V2InitCompletedCallback, V2FinalizeCompletedCallback, V2AddCompletedCallback],
     Field(discriminator="jobKind"),
 ]
 

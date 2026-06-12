@@ -259,12 +259,12 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
     );
   };
 
-  // New-album entry: pick photos directly (no intermediate /create composer),
-  // then create the album and jump straight to the authoring page, which shows
-  // the loading state while the AI runs. The theme is asked there in the chat —
-  // nothing to type up front. Originals live in IndexedDB (invariant 1); base64
-  // is rebuilt at submit. CREDIT_INSUFFICIENT stashes a draft and routes to top
-  // up, resuming on /create (which still serves that recovery path).
+  // New-album entry: pick photos directly, then create the album and jump straight
+  // to the authoring page, which shows the loading placeholder while the AI runs.
+  // The theme is asked there in the chat — nothing to type up front. Originals live
+  // in IndexedDB (invariant 1); base64 is rebuilt at submit. The balance gate runs
+  // on the click (before any upload); 0 books stashes a draft and routes to top up,
+  // resuming on the home composer.
   const startNewAlbum = async (files: FileList | null) => {
     if (!files || files.length === 0 || creating) return;
     setCreating(true);
@@ -277,6 +277,10 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         await photoStore.put(photoId, f);
         photoIds.push(photoId);
       }
+      // No client-side balance pre-check: uploading photos is cheap and is the
+      // investment we want before any paywall. The billing gate is server-side,
+      // right before the AI runs — submitInitV2 throws CREDIT_INSUFFICIENT (caught
+      // below) before the agent is called.
       const builtPhotos = await photosFromStore(photoIds);
       const { albumId } = await submitInitV2({
         requestId: crypto.randomUUID(),
@@ -288,7 +292,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
     } catch (e) {
       if (e instanceof CreditInsufficientError) {
         generationDraft.save({ prompt: '', language, photoIds });
-        router.push(`/${locale}/credits?from=create`);
+        router.push(`/${locale}/credits?from=home`);
         return;
       }
       setErr(e instanceof PhotosUnavailableError ? t.create.errPhotosUnavailable : e instanceof Error ? e.message : t.common.error);

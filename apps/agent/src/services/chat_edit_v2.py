@@ -91,22 +91,28 @@ def _system_prompt() -> str:
         "     keys exist on the chosen template, and every image slot is filled.\n"
         "  7. Use templateIds and slot keys from the TemplateRegistry only.\n\n"
         "SOFT GUIDANCE: orientation is preferred, not required; the renderer center-covers mismatches. "
-        "Keep text near each slot's recommended length, but length is not a hard rule.\n\n"
+        "Keep text near each slot's recommended length, but length is not a hard rule.\n"
+        "FOCUS: if the payload has \"focusedPageIndex\", the user has SELECTED that page in the editor — a "
+        "deictic request (\"change this\", \"this page\", \"改这里/这一页\") targets that page. Patch it unless "
+        "the user clearly names a different page.\n\n"
         "TemplateRegistry (id [category] images / texts):\n"
         f"{registry.summarize_for_prompt()}\n"
     )
 
 
 def _user_payload(req: V2EditRequest) -> str:
-    return json.dumps(
-        {
-            "language": req.language,
-            "currentLayout": req.currentLayout.model_dump(),
-            "history": [h.model_dump() for h in req.history],
-            "userMessage": req.userMessage,
-        },
-        ensure_ascii=False,
-    )
+    payload: dict[str, Any] = {
+        "language": req.language,
+        "currentLayout": req.currentLayout.model_dump(),
+        "history": [h.model_dump() for h in req.history],
+        "userMessage": req.userMessage,
+    }
+    # The page the user has selected in the editor. When present, a deictic message
+    # ("change this", "make this bigger", "改这里/改这一页") refers to this page —
+    # default the patch to it unless the user names another page explicitly.
+    if req.focusedPageIndex is not None:
+        payload["focusedPageIndex"] = req.focusedPageIndex
+    return json.dumps(payload, ensure_ascii=False)
 
 
 # --------------------------------------------------------------------------- #

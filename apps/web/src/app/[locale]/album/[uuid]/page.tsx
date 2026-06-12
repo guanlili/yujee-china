@@ -52,10 +52,9 @@ export default function AlbumPage({
     }
   }, [phase, router, locale, uuid]);
 
-  // The editor is now the single page across the whole album lifecycle (W10 flow
+  // The editor is the single page across the whole album lifecycle (W10 flow
   // unification): EditorPort renders for every non-terminal phase, switching mode
-  // internally. We no longer route to the standalone AuthoringPort (kept only as a
-  // fallback). page.tsx owns just the mode decision:
+  // internally. page.tsx owns just the mode decision:
   //   • loading / running (AGENT_RUNNING) → building: loading book + "tidying up".
   //   • EDITING & layoutJson == null      → authoring: draft skeleton + agent chat.
   //   • layoutJson set (EDITING/COMPLETED)→ editing: the finalized editor.

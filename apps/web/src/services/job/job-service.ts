@@ -4,7 +4,35 @@ import { albumRepo } from '@/db/repos/album-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
 import { creditService } from '@/services/credit/credit-service';
 import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
-import { AlbumLayoutPlan, type AlbumLayoutPlanT } from '@/lib/agent/layout-schema';
+import {
+  AlbumLayoutPlan,
+  type AlbumLayoutPlanT,
+  Page,
+  type PageT,
+  PhotoAnalysis,
+  type PhotoAnalysisT,
+} from '@/lib/agent/layout-schema';
+import { z } from 'zod';
+
+// Splice mid-edit-added content pages into a finalized layout, just before the
+// ending (the last page), then re-index the ending. Cover/toc and the new pages
+// keep their order; only the ending shifts. Photos append (new ids are fresh).
+// Pure + exported so the page-ordering invariant is unit-tested without a DB.
+export function spliceAddedPages(
+  layout: AlbumLayoutPlanT,
+  newPhotos: PhotoAnalysisT[],
+  newPages: PageT[],
+): AlbumLayoutPlanT {
+  const ending = layout.pages[layout.pages.length - 1];
+  const prefix = layout.pages.slice(0, layout.pages.length - 1);
+  const inserted = newPages.map((p, i) => ({ ...p, pageIndex: prefix.length + i }));
+  const endingReindexed = { ...ending, pageIndex: prefix.length + inserted.length };
+  return {
+    ...layout,
+    photos: [...layout.photos, ...newPhotos],
+    pages: [...prefix, ...inserted, endingReindexed],
+  };
+}
 import { logger } from '@/lib/log/logger';
 
 // Just over the Agent's background_task_timeout_seconds=180 (docs/agent/design.md
@@ -241,7 +269,7 @@ export const jobService = {
   // init/finalize both create a QUEUED job; kind is explicit (no DB default).
   async createV2(
     tx: DbOrTx,
-    input: { userId: string; albumId: string; requestId: string; kind: 'init' | 'finalize' },
+    input: { userId: string; albumId: string; requestId: string; kind: 'init' | 'finalize' | 'add' },
   ) {
     return agentJobRepo.create(tx, {
       userId: input.userId,
@@ -355,6 +383,92 @@ export const jobService = {
     });
   },
 
+  // add/completed (W11 mid-edit add-photos) → splice the new pages in before the
+  // ending, rebuild album_pages + layout_json, settle the add hold. The album never
+  // left EDITING (the editor stays mounted and injects the pages live), so there's
+  // no status flip here — only the page set + the single add charge land.
+  async handleAddCompleted(
+    requestId: string,
+    rawNewPhotos: unknown,
+    rawNewPages: unknown,
+    usage: unknown,
+  ) {
+    const job = await agentJobRepo.findByRequestId(requestId);
+    if (!job) return;
+    if (job.kind !== 'add') {
+      logger.error({ requestId, kind: job.kind }, 'add-completed callback on non-add job');
+      return;
+    }
+    if (job.status === 'COMPLETED' || job.status === 'FAILED') return; // idempotent
+
+    // Defence in depth (mirrors handleFinalizeCompleted): re-validate the appended
+    // photos/pages before they hit album_pages, even though the route parsed them.
+    const photosParsed = z.array(PhotoAnalysis).safeParse(rawNewPhotos);
+    const pagesParsed = z.array(Page).min(1).safeParse(rawNewPages);
+    if (!photosParsed.success || !pagesParsed.success) {
+      const issues = [...(photosParsed.success ? [] : photosParsed.error.issues), ...(pagesParsed.success ? [] : pagesParsed.error.issues)];
+      logger.error({ requestId, issues }, 'v2 add-photos output invalid');
+      await this.handleV2Failed(requestId, {
+        code: 'AGENT_INVALID_OUTPUT',
+        message: issues.map((i) => i.message).join('; '),
+      });
+      return;
+    }
+
+    const album = await albumRepo.findById(job.albumId);
+    if (!album) {
+      logger.warn({ requestId, albumId: job.albumId }, 'album missing on add completed');
+      return;
+    }
+    const layoutParsed = AlbumLayoutPlan.safeParse(album.layoutJson);
+    if (!layoutParsed.success) {
+      // add-photos only runs on a finalized album; a missing/invalid layout means
+      // the album changed under us — fail the add (refunds the hold) and bail.
+      logger.error({ requestId, albumId: job.albumId }, 'add-photos on album without valid layout');
+      await this.handleV2Failed(requestId, { code: 'ALBUM_NOT_EDITABLE', message: 'Album is not finalized' });
+      return;
+    }
+    const layout = layoutParsed.data;
+
+    // Splice the new content pages in before the ending and re-index (pure helper,
+    // unit-tested for the page-ordering invariant).
+    const newLayout = spliceAddedPages(layout, photosParsed.data, pagesParsed.data);
+    const mergedPages = newLayout.pages;
+
+    await db.transaction(async (tx) => {
+      const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
+        progress: 100,
+        stage: 'skeleton',
+        usage: (usage as Record<string, unknown> | null) ?? null,
+        completedAt: new Date(),
+      });
+      if (!won) return;
+
+      await albumRepo.update(tx, job.albumId, {
+        layoutJson: newLayout,
+        pageCount: mergedPages.length,
+      });
+      // Pages slot before the ending → its pageIndex shifts; rebuild the whole set
+      // to dodge the unique(albumId, pageIndex) index (deleteByAlbum + bulkInsert).
+      await albumPageRepo.deleteByAlbum(tx, job.albumId);
+      await albumPageRepo.bulkInsert(
+        tx,
+        mergedPages.map((p) => ({
+          albumId: job.albumId,
+          pageIndex: p.pageIndex,
+          templateId: p.templateId,
+          imagesJson: p.images,
+          textsJson: p.texts,
+        })),
+      );
+
+      // The single add charge lands here (the add hold created at submit time).
+      if (album.creditHoldId) {
+        await creditService.settle(tx, job.userId, album.creditHoldId);
+      }
+    });
+  },
+
   // */failed → fork on kind. init: album FAILED + release (no draft to keep).
   // finalize: album back to EDITING + hold stays HOLDING (retry-able) — the draft
   // is untouched, so we never FAILED it nor release the reservation (§5).
@@ -379,6 +493,14 @@ export const jobService = {
       if (job.kind === 'finalize') {
         await albumRepo.update(tx, job.albumId, { status: 'EDITING' });
         return; // keep the hold; do not release
+      }
+
+      if (job.kind === 'add') {
+        // The album never left EDITING (it's a finalized album the user is editing);
+        // a failed add must not destroy it. Just refund the add hold — no charge for
+        // work that didn't land.
+        await creditService.releaseByAlbum(tx, job.albumId);
+        return;
       }
 
       await albumRepo.update(tx, job.albumId, {
