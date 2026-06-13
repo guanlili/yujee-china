@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getWebTemplate } from './web-registry';
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
+import { buildSpreads, spreadIndexOfPage } from './spreads';
 import { PAGE } from './templates/constants';
 import type { EditorPage } from './types';
 
@@ -104,13 +105,26 @@ export function FlipBook({
 }: Props) {
   const reducedMotion = usePrefersReducedMotion();
 
-  // Spreads of two pages: spread s -> array indices [2s, 2s+1]. Odd last page
-  // gets a blank facing page so the book always shows a full spread.
-  const spreadCount = Math.max(1, Math.ceil(pages.length / 2));
-  const spreadOf = (arrayIndex: number) => Math.floor(arrayIndex / 2);
+  // Canvas model: cover/ending sit on their own solo spread; interior pages pair
+  // two-up. `spreads` holds the array indices on each spread (null = blank half).
+  const spreads = useMemo(() => buildSpreads(pages), [pages]);
+  const spreadCount = Math.max(1, spreads.length);
+  const spreadOf = useCallback(
+    (arrayIndex: number) => {
+      const s = spreadIndexOfPage(spreads, arrayIndex);
+      return s >= 0 ? s : 0;
+    },
+    [spreads],
+  );
   const pagesOfSpread = useCallback(
-    (s: number): [EditorPage | null, EditorPage | null] => [pages[s * 2] ?? null, pages[s * 2 + 1] ?? null],
-    [pages],
+    (s: number): [EditorPage | null, EditorPage | null] => {
+      const sp = spreads[s];
+      return [
+        sp?.left != null ? pages[sp.left] ?? null : null,
+        sp?.right != null ? pages[sp.right] ?? null : null,
+      ];
+    },
+    [pages, spreads],
   );
 
   const [spread, setSpread] = useState(() => spreadOf(selected));
@@ -160,10 +174,11 @@ export function FlipBook({
   // active-thumbnail highlight (and any selection-driven UI) tracks the book.
   const syncSelectionToSpread = useCallback(
     (s: number) => {
-      const idx = pages[s * 2] != null ? s * 2 : pages[s * 2 + 1] != null ? s * 2 + 1 : -1;
+      const sp = spreads[s];
+      const idx = sp?.left ?? sp?.right ?? -1;
       if (idx >= 0 && idx !== selected) onSelect(idx);
     },
-    [pages, selected, onSelect],
+    [spreads, selected, onSelect],
   );
 
   const goToSpread = useCallback(
@@ -231,8 +246,8 @@ export function FlipBook({
     }
   }
 
-  const onLeftHalf = selected === spread * 2;
-  const onRightHalf = selected === spread * 2 + 1;
+  const onLeftHalf = selected === spreads[spread]?.left;
+  const onRightHalf = selected === spreads[spread]?.right;
 
   const indicator = useMemo(
     () => t.pageIndicator.replace('{current}', String(spread + 1)).replace('{total}', String(spreadCount)),
@@ -315,8 +330,8 @@ export function FlipBook({
           }}
         >
           {/* under layer: the resting spread (target pages slot in beneath the leaf during a flip) */}
-          <Half page={underLeft} pageArrayIndex={spread * 2} side="left" active={onLeftHalf} />
-          <Half page={underRight} pageArrayIndex={spread * 2 + 1} side="right" active={onRightHalf} />
+          <Half page={underLeft} pageArrayIndex={spreads[spread]?.left ?? -1} side="left" active={onLeftHalf} />
+          <Half page={underRight} pageArrayIndex={spreads[spread]?.right ?? -1} side="right" active={onRightHalf} />
 
           {/* center spine shadow */}
           <div
