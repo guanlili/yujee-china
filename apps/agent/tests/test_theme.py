@@ -48,6 +48,20 @@ def test_theme_prompt_uses_cluster_overview_and_json_contract():
     assert "base64" not in messages[1]["content"].lower()
 
 
+def test_theme_prompt_carries_role_guides_and_cover_slot_roles():
+    messages = theme.build_messages(_theme_req())
+    system = messages[0]["content"]
+    payload = json.loads(messages[1]["content"])
+
+    assert "Write each text slot to its role" in system
+    # every cover template's writable slots are described with roles
+    cover_slots = payload["coverSlots"]
+    assert set(cover_slots) >= {"mag-01", "p01"}
+    roles = {s["role"] for specs in cover_slots.values() for s in specs}
+    assert "title" in roles
+    assert "decoration" not in roles  # decoration is auto-filled, not offered
+
+
 @pytest.mark.asyncio
 async def test_theme_run_returns_valid_theme_and_cover_draft():
     async def fake_complete(**_kwargs):

@@ -82,6 +82,29 @@ def test_chapter_prompt_scopes_to_one_chapter_without_base64():
     assert "albumId" not in messages[1]["content"]
 
 
+def test_chapter_prompt_carries_role_writing_guides_and_slot_roles():
+    messages = chapter_chat.build_messages(_req("empty", "Tell me?"), ask_count=0)
+    system = messages[0]["content"]
+    payload = json.loads(messages[1]["content"])
+
+    # The role-writing guidance is injected (the core of authoring).
+    assert "Write each text slot to its role" in system
+    for role in ("title", "body", "explain"):
+        assert f"- {role}:" in system
+
+    # Per-page slot roles reach the model so it can write by role; mag-13's
+    # decoration slots (issue/credit/folio) are auto-filled and must be omitted.
+    slots_p2 = payload["pageSlots"]["2"]  # page 2 is mag-13
+    roles = {s["role"] for s in slots_p2}
+    ids = {s["id"] for s in slots_p2}
+    assert "body" in roles and "title" in roles
+    assert "decoration" not in roles
+    assert {"issue", "credit", "folio"}.isdisjoint(ids)
+    # mag-02 (page 3) carries the repeat flag on its authored slot.
+    slots_p3 = payload["pageSlots"]["3"]
+    assert any(s.get("repeat") for s in slots_p3)
+
+
 @pytest.mark.asyncio
 async def test_chapter_state_machine_empty_to_asking_then_auto_brief_ready():
     async def first_complete(**_kwargs):

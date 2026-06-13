@@ -27,7 +27,7 @@ from ..schemas_v2 import (
     V2PageTexts,
 )
 from ..settings import get_settings
-from . import ai_client, layout_rules
+from . import ai_client, layout_rules, writing_guides
 
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
@@ -88,10 +88,18 @@ def build_messages(
             "relationships, or dates."
         )
 
+    # The core of authoring: tell the model how to write each slot by its role.
+    system += "\n\n" + writing_guides.guides_block()
+
     payload = {
         "language": req.language,
         "theme": req.theme.model_dump(exclude_none=True) if req.theme else None,
         "chapter": req.chapter.model_dump(exclude_none=True),
+        # Per page, the role/lang/maxChars of each slot the model must write.
+        "pageSlots": {
+            str(page.pageIndex): writing_guides.page_slot_specs(page.templateId)
+            for page in req.chapter.pages
+        },
         "history": [h.model_dump() for h in req.history],
         "userMessage": req.userMessage,
         "askCount": ask_count,

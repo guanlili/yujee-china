@@ -25,7 +25,7 @@ from ..schemas_v2 import (
     V2ThemeResponse,
 )
 from ..settings import get_settings
-from . import ai_client, layout_rules
+from . import ai_client, layout_rules, writing_guides
 
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
@@ -79,6 +79,10 @@ def build_messages(req: V2ThemeRequest) -> list[dict[str, str]]:
             " A theme is already chosen; refine it in `theme` and do not return "
             "themeOptions."
         )
+
+    # Write cover texts to each slot's role, whichever cover template is chosen.
+    system += "\n\n" + writing_guides.guides_block()
+
     payload = {
         "language": req.language,
         "clustersOverview": [c.model_dump(exclude_none=True) for c in req.clustersOverview],
@@ -86,6 +90,11 @@ def build_messages(req: V2ThemeRequest) -> list[dict[str, str]]:
         if req.currentTheme
         else None,
         "userMessage": req.userMessage,
+        # role/lang/maxChars of each writable slot, per cover template.
+        "coverSlots": {
+            tid: writing_guides.page_slot_specs(tid)
+            for tid in registry.COVER_TEMPLATE_IDS
+        },
     }
     return [
         {"role": "system", "content": system},
