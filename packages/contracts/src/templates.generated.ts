@@ -30,9 +30,11 @@ export const TEMPLATE_IDS = [
 export const TEMPLATES: Record<string, TemplateDef> = {
   "mag-01": {
     "id": "mag-01",
-    "category": "cover",
-    "imageSlots": {
-      "image": {
+    "slot": "cover",
+    "scene": "opening",
+    "images": [
+      {
+        "id": "image",
         "orientation": [
           "landscape"
         ],
@@ -41,50 +43,68 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       }
-    },
-    "textSlots": {
-      "heading": {
-        "type": "heading",
-        "recommendedMaxChars": 12
+    ],
+    "texts": [
+      {
+        "id": "heading",
+        "role": "title",
+        "maxChars": 12,
+        "lang": "user"
       },
-      "sideText": {
-        "type": "label",
-        "recommendedMaxChars": 30
+      {
+        "id": "sideText",
+        "role": "decoration",
+        "maxChars": 30,
+        "lang": "en"
       },
-      "caption1": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption1",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "caption2": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption2",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-02": {
     "id": "mag-02",
-    "category": "spread",
-    "imageSlots": {},
-    "textSlots": {
-      "items": {
-        "type": "array",
-        "recommendedMaxChars": 240
+    "slot": "interior",
+    "scene": "textOnly",
+    "images": [],
+    "texts": [
+      {
+        "id": "items",
+        "role": "title",
+        "maxChars": 240,
+        "lang": "user",
+        "repeat": true
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-03": {
     "id": "mag-03",
-    "category": "single",
-    "imageSlots": {
-      "image": {
+    "slot": "interior",
+    "scene": "scenery",
+    "images": [
+      {
+        "id": "image",
         "orientation": [
           "portrait"
         ],
@@ -93,31 +113,41 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       }
-    },
-    "textSlots": {
-      "category": {
-        "type": "label",
-        "recommendedMaxChars": 15
+    ],
+    "texts": [
+      {
+        "id": "category",
+        "role": "decoration",
+        "maxChars": 15,
+        "lang": "en"
       },
-      "location": {
-        "type": "label",
-        "recommendedMaxChars": 20
+      {
+        "id": "location",
+        "role": "decoration",
+        "maxChars": 20,
+        "lang": "en"
       },
-      "caption": {
-        "type": "caption",
-        "recommendedMaxChars": 60
+      {
+        "id": "caption",
+        "role": "explain",
+        "maxChars": 60,
+        "lang": "user"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-04": {
     "id": "mag-04",
-    "category": "spread",
-    "imageSlots": {
-      "image1": {
+    "slot": "interior",
+    "scene": "record",
+    "images": [
+      {
+        "id": "image1",
         "orientation": [
           "landscape"
         ],
@@ -126,7 +156,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       },
-      "image2": {
+      {
+        "id": "image2",
         "orientation": [
           "portrait"
         ],
@@ -135,7 +166,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       },
-      "image3": {
+      {
+        "id": "image3",
         "orientation": [
           "square"
         ],
@@ -144,31 +176,41 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       }
-    },
-    "textSlots": {
-      "caption1": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+    ],
+    "texts": [
+      {
+        "id": "caption1",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "caption2": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption2",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "dateNum": {
-        "type": "meta",
-        "recommendedMaxChars": 5
+      {
+        "id": "dateNum",
+        "role": "decoration",
+        "maxChars": 5,
+        "lang": "en"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-05": {
     "id": "mag-05",
-    "category": "single",
-    "imageSlots": {
-      "image": {
+    "slot": "interior",
+    "scene": "scenery",
+    "images": [
+      {
+        "id": "image",
         "orientation": [
           "landscape"
         ],
@@ -177,31 +219,41 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       }
-    },
-    "textSlots": {
-      "title": {
-        "type": "heading",
-        "recommendedMaxChars": 25
+    ],
+    "texts": [
+      {
+        "id": "title",
+        "role": "title",
+        "maxChars": 25,
+        "lang": "user"
       },
-      "topRight": {
-        "type": "label",
-        "recommendedMaxChars": 20
+      {
+        "id": "topRight",
+        "role": "decoration",
+        "maxChars": 20,
+        "lang": "en"
       },
-      "caption": {
-        "type": "paragraph",
-        "recommendedMaxChars": 120
+      {
+        "id": "caption",
+        "role": "body",
+        "maxChars": 120,
+        "lang": "user"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-06": {
     "id": "mag-06",
-    "category": "single",
-    "imageSlots": {
-      "image": {
+    "slot": "interior",
+    "scene": "scenery",
+    "images": [
+      {
+        "id": "image",
         "orientation": [
           "portrait"
         ],
@@ -210,23 +262,29 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       }
-    },
-    "textSlots": {
-      "category": {
-        "type": "label",
-        "recommendedMaxChars": 15
+    ],
+    "texts": [
+      {
+        "id": "category",
+        "role": "decoration",
+        "maxChars": 15,
+        "lang": "en"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-07": {
     "id": "mag-07",
-    "category": "spread",
-    "imageSlots": {
-      "imageTop": {
+    "slot": "interior",
+    "scene": "record",
+    "images": [
+      {
+        "id": "imageTop",
         "orientation": [
           "landscape"
         ],
@@ -235,7 +293,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       },
-      "imageMain": {
+      {
+        "id": "imageMain",
         "orientation": [
           "portrait"
         ],
@@ -244,35 +303,47 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       }
-    },
-    "textSlots": {
-      "caption1": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+    ],
+    "texts": [
+      {
+        "id": "caption1",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "caption2": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption2",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "caption3": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption3",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "title": {
-        "type": "heading",
-        "recommendedMaxChars": 16
+      {
+        "id": "title",
+        "role": "title",
+        "maxChars": 16,
+        "lang": "user"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-08": {
     "id": "mag-08",
-    "category": "single",
-    "imageSlots": {
-      "image": {
+    "slot": "interior",
+    "scene": "portrait",
+    "images": [
+      {
+        "id": "image",
         "orientation": [
           "portrait"
         ],
@@ -281,39 +352,53 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       }
-    },
-    "textSlots": {
-      "dateNum": {
-        "type": "meta",
-        "recommendedMaxChars": 5
+    ],
+    "texts": [
+      {
+        "id": "dateNum",
+        "role": "decoration",
+        "maxChars": 5,
+        "lang": "en"
       },
-      "caption1": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption1",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "caption2": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption2",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "title": {
-        "type": "heading",
-        "recommendedMaxChars": 10
+      {
+        "id": "title",
+        "role": "title",
+        "maxChars": 10,
+        "lang": "user"
       },
-      "subtitle": {
-        "type": "label",
-        "recommendedMaxChars": 25
+      {
+        "id": "subtitle",
+        "role": "decoration",
+        "maxChars": 25,
+        "lang": "en"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-09": {
     "id": "mag-09",
-    "category": "spread",
-    "imageSlots": {
-      "imageTop": {
+    "slot": "interior",
+    "scene": "interlude",
+    "images": [
+      {
+        "id": "imageTop",
         "orientation": [
           "landscape"
         ],
@@ -322,7 +407,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       },
-      "imageMain": {
+      {
+        "id": "imageMain",
         "orientation": [
           "square"
         ],
@@ -331,39 +417,53 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       }
-    },
-    "textSlots": {
-      "quote": {
-        "type": "quote",
-        "recommendedMaxChars": 60
+    ],
+    "texts": [
+      {
+        "id": "quote",
+        "role": "body",
+        "maxChars": 60,
+        "lang": "user"
       },
-      "caption1": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption1",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "title": {
-        "type": "heading",
-        "recommendedMaxChars": 16
+      {
+        "id": "title",
+        "role": "title",
+        "maxChars": 16,
+        "lang": "user"
       },
-      "caption2": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption2",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "caption3": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption3",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-10": {
     "id": "mag-10",
-    "category": "grid",
-    "imageSlots": {
-      "cells[0].image": {
+    "slot": "interior",
+    "scene": "record",
+    "images": [
+      {
+        "id": "cells[0].image",
         "orientation": [
           "square"
         ],
@@ -372,7 +472,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       },
-      "cells[1].image": {
+      {
+        "id": "cells[1].image",
         "orientation": [
           "square"
         ],
@@ -381,7 +482,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       },
-      "cells[2].image": {
+      {
+        "id": "cells[2].image",
         "orientation": [
           "square"
         ],
@@ -390,7 +492,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       },
-      "cells[3].image": {
+      {
+        "id": "cells[3].image",
         "orientation": [
           "square"
         ],
@@ -399,23 +502,30 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       }
-    },
-    "textSlots": {
-      "cells": {
-        "type": "array",
-        "recommendedMaxChars": 160
+    ],
+    "texts": [
+      {
+        "id": "cells",
+        "role": "explain",
+        "maxChars": 160,
+        "lang": "user",
+        "repeat": true
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-11": {
     "id": "mag-11",
-    "category": "single",
-    "imageSlots": {
-      "image": {
+    "slot": "interior",
+    "scene": "portrait",
+    "images": [
+      {
+        "id": "image",
         "orientation": [
           "portrait"
         ],
@@ -424,31 +534,41 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       }
-    },
-    "textSlots": {
-      "title": {
-        "type": "heading",
-        "recommendedMaxChars": 16
+    ],
+    "texts": [
+      {
+        "id": "title",
+        "role": "title",
+        "maxChars": 16,
+        "lang": "user"
       },
-      "plate": {
-        "type": "label",
-        "recommendedMaxChars": 20
+      {
+        "id": "plate",
+        "role": "decoration",
+        "maxChars": 20,
+        "lang": "en"
       },
-      "caption2": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption2",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-12": {
     "id": "mag-12",
-    "category": "spread",
-    "imageSlots": {
-      "imageTop": {
+    "slot": "interior",
+    "scene": "record",
+    "images": [
+      {
+        "id": "imageTop",
         "orientation": [
           "square"
         ],
@@ -457,7 +577,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       },
-      "imageBottom": {
+      {
+        "id": "imageBottom",
         "orientation": [
           "portrait"
         ],
@@ -466,27 +587,35 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       }
-    },
-    "textSlots": {
-      "num1": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+    ],
+    "texts": [
+      {
+        "id": "num1",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       },
-      "num2": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "num2",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-13": {
     "id": "mag-13",
-    "category": "cover",
-    "imageSlots": {
-      "image": {
+    "slot": "cover",
+    "scene": "opening",
+    "images": [
+      {
+        "id": "image",
         "orientation": [
           "landscape"
         ],
@@ -495,78 +624,109 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       }
-    },
-    "textSlots": {
-      "title": {
-        "type": "heading",
-        "recommendedMaxChars": 30
+    ],
+    "texts": [
+      {
+        "id": "title",
+        "role": "title",
+        "maxChars": 30,
+        "lang": "user"
       },
-      "intro": {
-        "type": "paragraph",
-        "recommendedMaxChars": 80
+      {
+        "id": "intro",
+        "role": "body",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "caption1": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption1",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "caption2": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption2",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "issue": {
-        "type": "label",
-        "recommendedMaxChars": 15
+      {
+        "id": "issue",
+        "role": "decoration",
+        "maxChars": 15,
+        "lang": "en"
       },
-      "credit": {
-        "type": "label",
-        "recommendedMaxChars": 30
+      {
+        "id": "credit",
+        "role": "decoration",
+        "maxChars": 30,
+        "lang": "en"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-14": {
     "id": "mag-14",
-    "category": "spread",
-    "imageSlots": {},
-    "textSlots": {
-      "bigNum": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+    "slot": "interior",
+    "scene": "textOnly",
+    "images": [],
+    "texts": [
+      {
+        "id": "bigNum",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       },
-      "bigNumTotal": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "bigNumTotal",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       },
-      "body": {
-        "type": "paragraph",
-        "recommendedMaxChars": 80
+      {
+        "id": "body",
+        "role": "body",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "subtitleQuote": {
-        "type": "quote",
-        "recommendedMaxChars": 50
+      {
+        "id": "subtitleQuote",
+        "role": "body",
+        "maxChars": 50,
+        "lang": "user"
       },
-      "bracketQuote": {
-        "type": "quote",
-        "recommendedMaxChars": 80
+      {
+        "id": "bracketQuote",
+        "role": "body",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "footnote": {
-        "type": "caption",
-        "recommendedMaxChars": 60
+      {
+        "id": "footnote",
+        "role": "explain",
+        "maxChars": 60,
+        "lang": "user"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-15": {
     "id": "mag-15",
-    "category": "spread",
-    "imageSlots": {
-      "imagePerson": {
+    "slot": "interior",
+    "scene": "record",
+    "images": [
+      {
+        "id": "imagePerson",
         "orientation": [
           "portrait"
         ],
@@ -575,7 +735,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       },
-      "imageRoad": {
+      {
+        "id": "imageRoad",
         "orientation": [
           "landscape"
         ],
@@ -584,31 +745,41 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       }
-    },
-    "textSlots": {
-      "body": {
-        "type": "paragraph",
-        "recommendedMaxChars": 60
+    ],
+    "texts": [
+      {
+        "id": "body",
+        "role": "body",
+        "maxChars": 60,
+        "lang": "user"
       },
-      "title": {
-        "type": "heading",
-        "recommendedMaxChars": 16
+      {
+        "id": "title",
+        "role": "title",
+        "maxChars": 16,
+        "lang": "user"
       },
-      "date": {
-        "type": "label",
-        "recommendedMaxChars": 20
+      {
+        "id": "date",
+        "role": "decoration",
+        "maxChars": 20,
+        "lang": "en"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-16": {
     "id": "mag-16",
-    "category": "spread",
-    "imageSlots": {
-      "imageTiny": {
+    "slot": "interior",
+    "scene": "record",
+    "images": [
+      {
+        "id": "imageTiny",
         "orientation": [
           "portrait"
         ],
@@ -616,7 +787,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       },
-      "imagePerson": {
+      {
+        "id": "imagePerson",
         "orientation": [
           "landscape"
         ],
@@ -625,7 +797,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       },
-      "imageHarbor": {
+      {
+        "id": "imageHarbor",
         "orientation": [
           "landscape"
         ],
@@ -634,35 +807,47 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       }
-    },
-    "textSlots": {
-      "caption1": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+    ],
+    "texts": [
+      {
+        "id": "caption1",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "caption2": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption2",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "caption3": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "caption3",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "quote": {
-        "type": "quote",
-        "recommendedMaxChars": 60
+      {
+        "id": "quote",
+        "role": "body",
+        "maxChars": 60,
+        "lang": "user"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-17": {
     "id": "mag-17",
-    "category": "closing",
-    "imageSlots": {
-      "image": {
+    "slot": "ending",
+    "scene": "ending",
+    "images": [
+      {
+        "id": "image",
         "orientation": [
           "portrait"
         ],
@@ -671,27 +856,35 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       }
-    },
-    "textSlots": {
-      "name1": {
-        "type": "label",
-        "recommendedMaxChars": 20
+    ],
+    "texts": [
+      {
+        "id": "name1",
+        "role": "decoration",
+        "maxChars": 20,
+        "lang": "en"
       },
-      "name2": {
-        "type": "label",
-        "recommendedMaxChars": 20
+      {
+        "id": "name2",
+        "role": "decoration",
+        "maxChars": 20,
+        "lang": "en"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-18": {
     "id": "mag-18",
-    "category": "spread",
-    "imageSlots": {
-      "imageLeft": {
+    "slot": "interior",
+    "scene": "record",
+    "images": [
+      {
+        "id": "imageLeft",
         "orientation": [
           "portrait"
         ],
@@ -700,7 +893,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       },
-      "imageRight": {
+      {
+        "id": "imageRight",
         "orientation": [
           "portrait"
         ],
@@ -709,39 +903,53 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       }
-    },
-    "textSlots": {
-      "numLeft": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+    ],
+    "texts": [
+      {
+        "id": "numLeft",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       },
-      "numRight": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "numRight",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       },
-      "captionLeft": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "captionLeft",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "captionRight": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "captionRight",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "subtitle": {
-        "type": "quote",
-        "recommendedMaxChars": 60
+      {
+        "id": "subtitle",
+        "role": "body",
+        "maxChars": 60,
+        "lang": "user"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-19": {
     "id": "mag-19",
-    "category": "single",
-    "imageSlots": {
-      "image": {
+    "slot": "interior",
+    "scene": "scenery",
+    "images": [
+      {
+        "id": "image",
         "orientation": [
           "landscape"
         ],
@@ -750,58 +958,79 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "fill"
         ]
       }
-    },
-    "textSlots": {
-      "intro": {
-        "type": "paragraph",
-        "recommendedMaxChars": 80
+    ],
+    "texts": [
+      {
+        "id": "intro",
+        "role": "body",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "captionLeft": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "captionLeft",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "captionRight": {
-        "type": "caption",
-        "recommendedMaxChars": 80
+      {
+        "id": "captionRight",
+        "role": "explain",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "quote": {
-        "type": "quote",
-        "recommendedMaxChars": 60
+      {
+        "id": "quote",
+        "role": "body",
+        "maxChars": 60,
+        "lang": "user"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "mag-20": {
     "id": "mag-20",
-    "category": "cover",
-    "imageSlots": {},
-    "textSlots": {
-      "boxText": {
-        "type": "paragraph",
-        "recommendedMaxChars": 40
+    "slot": "cover",
+    "scene": "opening",
+    "images": [],
+    "texts": [
+      {
+        "id": "boxText",
+        "role": "body",
+        "maxChars": 40,
+        "lang": "user"
       },
-      "title": {
-        "type": "heading",
-        "recommendedMaxChars": 30
+      {
+        "id": "title",
+        "role": "title",
+        "maxChars": 30,
+        "lang": "user"
       },
-      "plate": {
-        "type": "label",
-        "recommendedMaxChars": 25
+      {
+        "id": "plate",
+        "role": "decoration",
+        "maxChars": 25,
+        "lang": "en"
       },
-      "folio": {
-        "type": "meta",
-        "recommendedMaxChars": 2
+      {
+        "id": "folio",
+        "role": "decoration",
+        "maxChars": 2,
+        "lang": "en"
       }
-    }
+    ]
   },
   "p01": {
     "id": "p01",
-    "category": "cover",
-    "imageSlots": {
-      "image": {
+    "slot": "cover",
+    "scene": "opening",
+    "images": [
+      {
+        "id": "image",
         "orientation": [
           "portrait"
         ],
@@ -810,28 +1039,38 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail"
         ]
       }
-    },
-    "textSlots": {
-      "title": {
-        "type": "heading",
-        "recommendedMaxChars": 20
+    ],
+    "texts": [
+      {
+        "id": "title",
+        "role": "title",
+        "maxChars": 20,
+        "lang": "user"
       },
-      "body": {
-        "type": "paragraph",
-        "recommendedMaxChars": 80
+      {
+        "id": "body",
+        "role": "body",
+        "maxChars": 80,
+        "lang": "user"
       },
-      "category": {
-        "type": "label",
-        "recommendedMaxChars": 20
+      {
+        "id": "category",
+        "role": "decoration",
+        "maxChars": 20,
+        "lang": "en"
       },
-      "vol": {
-        "type": "meta",
-        "recommendedMaxChars": 4
+      {
+        "id": "vol",
+        "role": "decoration",
+        "maxChars": 4,
+        "lang": "en"
       },
-      "date": {
-        "type": "meta",
-        "recommendedMaxChars": 10
+      {
+        "id": "date",
+        "role": "decoration",
+        "maxChars": 10,
+        "lang": "en"
       }
-    }
+    ]
   }
 };

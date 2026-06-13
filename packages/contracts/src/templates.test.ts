@@ -6,8 +6,8 @@ import {
   TEMPLATE_IDS,
   TEMPLATES,
   TemplateDef,
-  TemplateSlotConstraint,
-  TemplateTextSlotConstraint,
+  TemplateImageSlot,
+  TemplateTextSlot,
   getTemplate,
   validateSlotsForTemplate,
 } from './templates';
@@ -37,90 +37,99 @@ const EXPECTED_TEMPLATE_IDS = [
   'p01',
 ];
 
+const VALID_SLOTS = new Set(['cover', 'interior', 'ending']);
+const VALID_SCENES = new Set([
+  'opening',
+  'portrait',
+  'scenery',
+  'record',
+  'interlude',
+  'textOnly',
+  'ending',
+]);
+const VALID_ROLES = new Set(['title', 'body', 'explain', 'decoration']);
+
 test('registry contains the 21 templates imported from memoir', () => {
   assert.deepEqual(TEMPLATE_IDS, EXPECTED_TEMPLATE_IDS);
   assert.equal(INDEX_TEMPLATES, TEMPLATES);
 });
 
-test('template schemas accept soft optional image and text recommendations', () => {
-  assert.deepEqual(TemplateSlotConstraint.parse({}), {});
-  assert.deepEqual(TemplateSlotConstraint.parse({ orientation: ['portrait'] }), {
-    orientation: ['portrait'],
-  });
-  assert.deepEqual(TemplateSlotConstraint.parse({ quality: ['hero'] }), {
-    quality: ['hero'],
-  });
-  assert.deepEqual(TemplateTextSlotConstraint.parse({ type: 'caption' }), {
-    type: 'caption',
-  });
+test('image and text slot schemas accept the new id-keyed shape', () => {
+  assert.deepEqual(TemplateImageSlot.parse({ id: 'image' }), { id: 'image' });
   assert.deepEqual(
-    TemplateTextSlotConstraint.parse({ type: 'caption', recommendedMaxChars: 80 }),
-    { type: 'caption', recommendedMaxChars: 80 },
+    TemplateImageSlot.parse({ id: 'image', orientation: ['portrait'] }),
+    { id: 'image', orientation: ['portrait'] },
+  );
+  assert.deepEqual(
+    TemplateTextSlot.parse({ id: 'caption', role: 'explain', lang: 'user' }),
+    { id: 'caption', role: 'explain', lang: 'user' },
+  );
+  assert.deepEqual(
+    TemplateTextSlot.parse({
+      id: 'caption',
+      role: 'explain',
+      maxChars: 80,
+      lang: 'user',
+    }),
+    { id: 'caption', role: 'explain', maxChars: 80, lang: 'user' },
   );
 });
 
-test('every template parses, mirrors its id, and exposes soft slot constraints', () => {
+test('every template parses, mirrors its id, and uses valid slot/scene/role', () => {
   for (const id of EXPECTED_TEMPLATE_IDS) {
     const template = TEMPLATES[id];
 
     assert.ok(template, `${id} should be registered`);
     assert.deepEqual(TemplateDef.parse(template), template);
     assert.equal(template.id, id);
+    assert.ok(VALID_SLOTS.has(template.slot), `${id} slot should be valid`);
+    assert.ok(VALID_SCENES.has(template.scene), `${id} scene should be valid`);
+    // pairing only allowed on interior pages
+    if (template.pairing) {
+      assert.equal(template.slot, 'interior', `${id} pairing requires interior`);
+    }
 
-    for (const [slotName, constraint] of Object.entries(template.imageSlots)) {
-      if (constraint.orientation) {
-        assert.ok(
-          constraint.orientation.length > 0,
-          `${id}.${slotName} orientation hint should not be empty`,
-        );
+    for (const slot of template.images) {
+      assert.ok(slot.id, `${id} image slot needs an id`);
+      if (slot.orientation) {
+        assert.ok(slot.orientation.length > 0, `${id}.${slot.id} orientation hint should not be empty`);
       }
-      if (constraint.quality) {
-        assert.ok(
-          constraint.quality.length > 0,
-          `${id}.${slotName} quality hint should not be empty`,
-        );
+      if (slot.quality) {
+        assert.ok(slot.quality.length > 0, `${id}.${slot.id} quality hint should not be empty`);
       }
     }
 
-    for (const [slotName, constraint] of Object.entries(template.textSlots)) {
-      assert.equal(
-        'minChars' in constraint,
-        false,
-        `${id}.${slotName} should not expose migrated minChars`,
-      );
-      assert.equal(
-        'maxChars' in constraint,
-        false,
-        `${id}.${slotName} should not expose migrated maxChars`,
-      );
-      if (constraint.recommendedMaxChars !== undefined) {
-        assert.ok(
-          constraint.recommendedMaxChars > 0,
-          `${id}.${slotName} recommendedMaxChars should be positive`,
-        );
+    for (const slot of template.texts) {
+      assert.ok(slot.id, `${id} text slot needs an id`);
+      assert.ok(VALID_ROLES.has(slot.role), `${id}.${slot.id} role should be valid`);
+      assert.ok(slot.lang === 'user' || slot.lang === 'en', `${id}.${slot.id} lang should be valid`);
+      if (slot.maxChars !== undefined) {
+        assert.ok(slot.maxChars > 0, `${id}.${slot.id} maxChars should be positive`);
       }
     }
   }
 });
 
-test('selected template metadata matches the source schema semantics', () => {
-  assert.deepEqual(getTemplate('mag-04')?.imageSlots, {
-    image1: { orientation: ['landscape'], quality: ['hero', 'detail'] },
-    image2: { orientation: ['portrait'], quality: ['detail', 'fill'] },
-    image3: { orientation: ['square'], quality: ['detail', 'fill'] },
-  });
-  assert.deepEqual(getTemplate('mag-05')?.textSlots.caption, {
-    type: 'paragraph',
-    recommendedMaxChars: 120,
-  });
-  assert.deepEqual(getTemplate('mag-03')?.textSlots.caption, {
-    type: 'caption',
-    recommendedMaxChars: 60,
-  });
-  assert.deepEqual(getTemplate('p01')?.textSlots.vol, {
-    type: 'meta',
-    recommendedMaxChars: 4,
-  });
+test('selected template metadata matches the new schema semantics', () => {
+  assert.deepEqual(getTemplate('mag-04')?.images, [
+    { id: 'image1', orientation: ['landscape'], quality: ['hero', 'detail'] },
+    { id: 'image2', orientation: ['portrait'], quality: ['detail', 'fill'] },
+    { id: 'image3', orientation: ['square'], quality: ['detail', 'fill'] },
+  ]);
+  assert.deepEqual(
+    getTemplate('mag-05')?.texts.find((t) => t.id === 'caption'),
+    { id: 'caption', role: 'body', maxChars: 120, lang: 'user' },
+  );
+  assert.deepEqual(
+    getTemplate('mag-03')?.texts.find((t) => t.id === 'caption'),
+    { id: 'caption', role: 'explain', maxChars: 60, lang: 'user' },
+  );
+  assert.deepEqual(
+    getTemplate('p01')?.texts.find((t) => t.id === 'vol'),
+    { id: 'vol', role: 'decoration', maxChars: 4, lang: 'en' },
+  );
+  // repeat slots carry the flag the renderer keys off
+  assert.equal(getTemplate('mag-02')?.texts.find((t) => t.id === 'items')?.repeat, true);
 });
 
 test('generated templates are synchronized with template JSON files', () => {

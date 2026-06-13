@@ -50,7 +50,7 @@ def _no_empty_image_slots(layout: AlbumLayoutPlan) -> list[str]:
     for page in layout.pages:
         tpl = registry.get(page.templateId)
         assert tpl is not None, f"unknown template {page.templateId}"
-        for slot in tpl["imageSlots"]:
+        for slot in registry.image_slot_ids(tpl):
             if slot not in page.images:
                 empties.append(f"{page.pageIndex}/{slot}")
     return empties
@@ -61,7 +61,7 @@ def _no_empty_image_slots(layout: AlbumLayoutPlan) -> list[str]:
 # photos in deliberately, often violating the slot constraints.
 _MULTI_IMAGE_TEMPLATES = [
     tid for tid in registry.TEMPLATE_IDS
-    if len(registry.TEMPLATES[tid]["imageSlots"]) >= 2
+    if len(registry.TEMPLATES[tid]["images"]) >= 2
 ]
 
 
@@ -79,7 +79,7 @@ def _adversarial_layout(photos: list[PhotoAnalysis]) -> AlbumLayoutPlan:
     pid_cycle = itertools.cycle([p.photoId for p in photos])
     for idx in range(1, expected):
         tid = _MULTI_IMAGE_TEMPLATES[(idx - 1) % len(_MULTI_IMAGE_TEMPLATES)]
-        slots = list(registry.TEMPLATES[tid]["imageSlots"].keys())
+        slots = registry.image_slot_ids(registry.TEMPLATES[tid])
         # Jam a (likely wrong) photo into each slot.
         imgs = {slot: next(pid_cycle) for slot in slots}
         pages.append(Page(pageIndex=idx, templateId=tid, images=imgs, texts={}))

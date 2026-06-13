@@ -1,8 +1,10 @@
 {
   "id": "mag-08",
-  "category": "single",
-  "imageSlots": {
-    "image": {
+  "slot": "interior",
+  "scene": "portrait",
+  "images": [
+    {
+      "id": "image",
       "orientation": [
         "portrait"
       ],
@@ -11,31 +13,43 @@
         "detail"
       ]
     }
-  },
-  "textSlots": {
-    "dateNum": {
-      "type": "meta",
-      "recommendedMaxChars": 5
+  ],
+  "texts": [
+    {
+      "id": "dateNum",
+      "role": "decoration",
+      "maxChars": 5,
+      "lang": "en"
     },
-    "caption1": {
-      "type": "caption",
-      "recommendedMaxChars": 80
+    {
+      "id": "caption1",
+      "role": "explain",
+      "maxChars": 80,
+      "lang": "user"
     },
-    "caption2": {
-      "type": "caption",
-      "recommendedMaxChars": 80
+    {
+      "id": "caption2",
+      "role": "explain",
+      "maxChars": 80,
+      "lang": "user"
     },
-    "title": {
-      "type": "heading",
-      "recommendedMaxChars": 10
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 10,
+      "lang": "user"
     },
-    "subtitle": {
-      "type": "label",
-      "recommendedMaxChars": 25
+    {
+      "id": "subtitle",
+      "role": "decoration",
+      "maxChars": 25,
+      "lang": "en"
     },
-    "folio": {
-      "type": "meta",
-      "recommendedMaxChars": 2
+    {
+      "id": "folio",
+      "role": "decoration",
+      "maxChars": 2,
+      "lang": "en"
     }
-  }
+  ]
 }

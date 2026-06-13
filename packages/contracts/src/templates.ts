@@ -5,51 +5,82 @@ import {
   TEMPLATES as GENERATED_TEMPLATES,
 } from './templates.generated';
 
-export const TemplateSlotConstraint = z
+// Image slot: an addressable image position inside a template. `id` may be a
+// bracket path ("cells[0].image") for repeat/grid layouts.
+export const TemplateImageSlot = z
   .object({
+    id: z.string().min(1),
     orientation: z.array(PhotoOrientation).nonempty().optional(),
     quality: z.array(PhotoQuality).nonempty().optional(),
   })
   .strict();
-export type TemplateSlotConstraint = z.infer<typeof TemplateSlotConstraint>;
+export type TemplateImageSlot = z.infer<typeof TemplateImageSlot>;
 
-export const TemplateTextSlotType = z.enum([
-  'array',
-  'caption',
-  'heading',
-  'label',
-  'meta',
-  'paragraph',
-  'quote',
+// What kind of text this slot holds — drives how the LLM writes it. Writing
+// guidance itself lives outside the template, keyed by this role.
+export const TemplateTextRole = z.enum([
+  'title',
+  'body',
+  'explain',
+  'decoration',
 ]);
-export type TemplateTextSlotType = z.infer<typeof TemplateTextSlotType>;
+export type TemplateTextRole = z.infer<typeof TemplateTextRole>;
 
-export const TemplateTextSlotConstraint = z
+// Whether the text must be in the user's language or stays universal English
+// (decoration like dates/numbers/labels defaults to en).
+export const TemplateTextLang = z.enum(['user', 'en']);
+export type TemplateTextLang = z.infer<typeof TemplateTextLang>;
+
+export const TemplateTextSlot = z
   .object({
-    type: TemplateTextSlotType,
-    recommendedMaxChars: z.number().int().positive().optional(),
+    id: z.string().min(1),
+    role: TemplateTextRole,
+    maxChars: z.number().int().positive().optional(),
+    lang: TemplateTextLang,
+    // Repeat slots ("items", "cells") hold an array of sub-items; the renderer
+    // (adapt-layout) rebuilds them into a real array.
+    repeat: z.boolean().optional(),
   })
   .strict();
-export type TemplateTextSlotConstraint = z.infer<
-  typeof TemplateTextSlotConstraint
->;
+export type TemplateTextSlot = z.infer<typeof TemplateTextSlot>;
 
-export const TemplateCategory = z.enum([
-  'cover',
-  'spread',
-  'single',
-  'grid',
-  'closing',
+// Where a template sits on the canvas. cover = head solo page, ending = tail
+// solo page (both outside the spread system), interior = pages that pair.
+export const TemplateSlotKind = z.enum(['cover', 'interior', 'ending']);
+export type TemplateSlotKind = z.infer<typeof TemplateSlotKind>;
+
+// Content scenario, used to match a template to what it should hold.
+export const TemplateScene = z.enum([
+  'opening',
+  'portrait',
+  'scenery',
+  'record',
+  'interlude',
+  'textOnly',
+  'ending',
 ]);
-export type TemplateCategory = z.infer<typeof TemplateCategory>;
+export type TemplateScene = z.infer<typeof TemplateScene>;
+
+// Forced spread pairing (print): this interior template must share a spread with
+// `with`, sitting on `side`. Only valid when slot === 'interior'.
+export const TemplatePairing = z
+  .object({
+    forced: z.boolean(),
+    with: z.string().min(1),
+    side: z.enum(['left', 'right']),
+  })
+  .strict();
+export type TemplatePairing = z.infer<typeof TemplatePairing>;
 
 export const TemplateDef = z
   .object({
     id: z.string().min(1),
-    category: TemplateCategory,
+    slot: TemplateSlotKind,
+    scene: TemplateScene,
+    pairing: TemplatePairing.nullable().optional(),
     styles: z.array(z.string().min(1)).optional(),
-    imageSlots: z.record(z.string().min(1), TemplateSlotConstraint),
-    textSlots: z.record(z.string().min(1), TemplateTextSlotConstraint),
+    images: z.array(TemplateImageSlot),
+    texts: z.array(TemplateTextSlot),
   })
   .strict();
 export type TemplateDef = z.infer<typeof TemplateDef>;
@@ -76,8 +107,11 @@ export function validateSlotsForTemplate(
   const tpl = TEMPLATES[templateId];
   if (!tpl) return { ok: false, reason: `unknown templateId: ${templateId}` };
 
+  const imageIds = new Set(tpl.images.map((slot) => slot.id));
+  const textIds = new Set(tpl.texts.map((slot) => slot.id));
+
   for (const k of imageSlotKeys) {
-    if (!(k in tpl.imageSlots)) {
+    if (!imageIds.has(k)) {
       return {
         ok: false,
         reason: `image slot "${k}" not in template ${templateId}`,
@@ -86,7 +120,7 @@ export function validateSlotsForTemplate(
   }
 
   for (const k of textSlotKeys) {
-    if (!(k in tpl.textSlots)) {
+    if (!textIds.has(k)) {
       return {
         ok: false,
         reason: `text slot "${k}" not in template ${templateId}`,

@@ -86,7 +86,7 @@ def test_single_fill_photo_invalid_model_output_falls_back_to_valid_non_hero_slo
     for template_id, slot in used_slots:
         from src import templates as registry
 
-        assert "hero" not in registry.TEMPLATES[template_id]["imageSlots"][slot]["quality"]
+        assert "hero" not in registry.image_slot_map(registry.TEMPLATES[template_id])[slot]["quality"]
 
 
 def test_two_photos_invalid_model_output_falls_back(monkeypatch):

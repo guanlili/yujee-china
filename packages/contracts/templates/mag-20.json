@@ -1,23 +1,32 @@
 {
   "id": "mag-20",
-  "category": "cover",
-  "imageSlots": {},
-  "textSlots": {
-    "boxText": {
-      "type": "paragraph",
-      "recommendedMaxChars": 40
+  "slot": "cover",
+  "scene": "opening",
+  "images": [],
+  "texts": [
+    {
+      "id": "boxText",
+      "role": "body",
+      "maxChars": 40,
+      "lang": "user"
     },
-    "title": {
-      "type": "heading",
-      "recommendedMaxChars": 30
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 30,
+      "lang": "user"
     },
-    "plate": {
-      "type": "label",
-      "recommendedMaxChars": 25
+    {
+      "id": "plate",
+      "role": "decoration",
+      "maxChars": 25,
+      "lang": "en"
     },
-    "folio": {
-      "type": "meta",
-      "recommendedMaxChars": 2
+    {
+      "id": "folio",
+      "role": "decoration",
+      "maxChars": 2,
+      "lang": "en"
     }
-  }
+  ]
 }

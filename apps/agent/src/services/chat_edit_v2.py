@@ -175,9 +175,9 @@ def _use_case_for_page(template_id: str) -> str:
     tpl = registry.get(template_id)
     if template_id == "mag-02":
         return "toc"
-    if tpl and tpl["category"] == "cover":
+    if tpl and tpl["slot"] == "cover":
         return "cover"
-    if tpl and tpl["category"] == "closing":
+    if tpl and tpl["slot"] == "ending":
         return "closing"
     return "chapter"
 
@@ -192,7 +192,7 @@ def _reflow_texts(old_texts: dict[str, str], new_template_id: str) -> dict[str, 
         return {}
     reflowed = {
         slot: value
-        for slot, value in zip(tpl["textSlots"].keys(), old_texts.values())
+        for slot, value in zip(registry.text_slot_ids(tpl), old_texts.values())
     }
     return layout_rules.clamp_texts_for_template(new_template_id, reflowed)
 
@@ -400,9 +400,9 @@ def validate_v2(layout: LayoutV2) -> str | None:
     first_tpl = registry.get(pages[0].templateId)
     if not first_tpl:
         return f"page 0 templateId {pages[0].templateId} not in TemplateRegistry"
-    if first_tpl["category"] != "cover":
+    if first_tpl["slot"] != "cover":
         return (
-            f"page 0 templateId {pages[0].templateId} category={first_tpl['category']} "
+            f"page 0 templateId {pages[0].templateId} category={first_tpl['slot']} "
             "(must be cover)"
         )
 
@@ -416,13 +416,15 @@ def validate_v2(layout: LayoutV2) -> str | None:
         if not tpl:
             return f"page {page.pageIndex}: templateId {page.templateId} not in TemplateRegistry"
 
+        image_by_id = registry.image_slot_map(tpl)
+        text_slot_ids = registry.text_slot_ids(tpl)
         for slot in page.images.keys():
-            if slot not in tpl["imageSlots"]:
+            if slot not in image_by_id:
                 return f"page {page.pageIndex}: image slot '{slot}' not in template {page.templateId}"
         for slot in page.texts.keys():
-            if slot not in tpl["textSlots"]:
+            if slot not in text_slot_ids:
                 return f"page {page.pageIndex}: text slot '{slot}' not in template {page.templateId}"
-        for slot in tpl["imageSlots"]:
+        for slot in image_by_id:
             if slot not in page.images:
                 return f"page {page.pageIndex}: missing image slot '{slot}' in template {page.templateId}"
 
@@ -437,7 +439,7 @@ def validate_v2(layout: LayoutV2) -> str | None:
             used_counts[pid] += 1
 
             if not hero_exempt:
-                constraint = tpl["imageSlots"][slot]
+                constraint = image_by_id[slot]
                 if not layout_rules._quality_ok(by_id[pid], constraint):
                     return (
                         f"page {page.pageIndex} slot '{slot}': "

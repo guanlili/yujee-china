@@ -1,8 +1,10 @@
 {
   "id": "mag-13",
-  "category": "cover",
-  "imageSlots": {
-    "image": {
+  "slot": "cover",
+  "scene": "opening",
+  "images": [
+    {
+      "id": "image",
       "orientation": [
         "landscape"
       ],
@@ -11,35 +13,49 @@
         "detail"
       ]
     }
-  },
-  "textSlots": {
-    "title": {
-      "type": "heading",
-      "recommendedMaxChars": 30
+  ],
+  "texts": [
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 30,
+      "lang": "user"
     },
-    "intro": {
-      "type": "paragraph",
-      "recommendedMaxChars": 80
+    {
+      "id": "intro",
+      "role": "body",
+      "maxChars": 80,
+      "lang": "user"
     },
-    "caption1": {
-      "type": "caption",
-      "recommendedMaxChars": 80
+    {
+      "id": "caption1",
+      "role": "explain",
+      "maxChars": 80,
+      "lang": "user"
     },
-    "caption2": {
-      "type": "caption",
-      "recommendedMaxChars": 80
+    {
+      "id": "caption2",
+      "role": "explain",
+      "maxChars": 80,
+      "lang": "user"
     },
-    "issue": {
-      "type": "label",
-      "recommendedMaxChars": 15
+    {
+      "id": "issue",
+      "role": "decoration",
+      "maxChars": 15,
+      "lang": "en"
     },
-    "credit": {
-      "type": "label",
-      "recommendedMaxChars": 30
+    {
+      "id": "credit",
+      "role": "decoration",
+      "maxChars": 30,
+      "lang": "en"
     },
-    "folio": {
-      "type": "meta",
-      "recommendedMaxChars": 2
+    {
+      "id": "folio",
+      "role": "decoration",
+      "maxChars": 2,
+      "lang": "en"
     }
-  }
+  ]
 }

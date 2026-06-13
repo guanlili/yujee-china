@@ -341,8 +341,8 @@ def _normalize_page_texts(
     req: V2ChapterChatRequest,
 ) -> dict[str, str]:
     tpl = registry.get(page.templateId)
-    text_slots = (tpl or {}).get("textSlots", {})
-    allowed_slots = {slot for slot, meta in text_slots.items() if meta.get("type") != "meta"}
+    text_slots = tpl["texts"] if tpl else []
+    allowed_slots = {meta["id"] for meta in text_slots if meta["role"] != "decoration"}
     texts = {
         slot: value
         for slot, value in raw_texts.items()
@@ -361,24 +361,25 @@ def _normalize_page_texts(
 
 def _fallback_texts(page: Page, req: V2ChapterChatRequest) -> dict[str, str]:
     tpl = registry.get(page.templateId)
-    text_slots = (tpl or {}).get("textSlots", {})
+    text_slots = tpl["texts"] if tpl else []
     photo_text = _page_photo_summary(page, req)
     texts: dict[str, str] = {}
-    for slot, meta in text_slots.items():
-        if meta.get("type") == "meta":
+    for meta in text_slots:
+        slot = meta["id"]
+        role = meta["role"]
+        if role == "decoration":  # was 'meta' (and now folds in the old 'label')
             continue
-        slot_type = meta.get("type")
-        if slot_type == "heading":
-            texts[slot] = "quiet moments" if req.language == "en" else "安静片刻"
-        elif slot_type == "array":
+        if meta.get("repeat") is True:  # was type=='array'
             texts[slot] = (
                 "soft light, small details, quiet atmosphere"
                 if req.language == "en"
                 else "柔和光线、细节、安静氛围"
             )
-        elif slot_type in ("caption", "label", "quote"):
+        elif role == "title":  # was 'heading'
+            texts[slot] = "quiet moments" if req.language == "en" else "安静片刻"
+        elif role == "explain":  # was 'caption' (old 'quote' now maps to 'body')
             texts[slot] = "from the visible scene" if req.language == "en" else "来自照片里的画面"
-        else:
+        else:  # body (was 'paragraph'/'quote') and any other copy
             texts[slot] = photo_text
     if not texts:
         texts["body"] = photo_text
@@ -390,7 +391,7 @@ def _skipped_texts(
     req: V2ChapterChatRequest,
 ) -> dict[str, str]:
     tpl = registry.get(page.templateId)
-    text_slots = (tpl or {}).get("textSlots", {})
+    text_slots = tpl["texts"] if tpl else []
     # cluster.place/timeRange are the only concrete names/dates allowed in
     # skipped copy: they come from Web's chapter slice (EXIF/grouping metadata),
     # not from the model's generated text.
@@ -409,25 +410,26 @@ def _skipped_texts(
         detail = photo_summary
 
     texts: dict[str, str] = {}
-    for slot, meta in text_slots.items():
-        if meta.get("type") == "meta":
+    for meta in text_slots:
+        slot = meta["id"]
+        role = meta["role"]
+        if role == "decoration":  # was 'meta' (and now folds in the old 'label')
             continue
-        slot_type = meta.get("type")
-        if slot_type == "heading":
-            texts[slot] = heading
-        elif slot_type == "array":
+        if meta.get("repeat") is True:  # was type=='array'
             texts[slot] = (
                 _join_nonempty(place, time_range, "soft light, quiet details")
                 if req.language == "en"
                 else _join_nonempty(place, time_range, "柔和光线、安静细节")
             )
-        elif slot_type in ("caption", "label", "quote"):
+        elif role == "title":  # was 'heading'
+            texts[slot] = heading
+        elif role == "explain":  # was 'caption' (old 'quote' now maps to 'body')
             texts[slot] = (
                 _join_nonempty(place, time_range) or "visible details"
                 if req.language == "en"
                 else _join_nonempty(place, time_range) or "照片细节"
             )
-        else:
+        else:  # body (was 'paragraph'/'quote') and any other copy
             texts[slot] = detail
     if not texts:
         texts["body"] = detail

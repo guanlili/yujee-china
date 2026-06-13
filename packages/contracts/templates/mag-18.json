@@ -1,8 +1,10 @@
 {
   "id": "mag-18",
-  "category": "spread",
-  "imageSlots": {
-    "imageLeft": {
+  "slot": "interior",
+  "scene": "record",
+  "images": [
+    {
+      "id": "imageLeft",
       "orientation": [
         "portrait"
       ],
@@ -11,7 +13,8 @@
         "fill"
       ]
     },
-    "imageRight": {
+    {
+      "id": "imageRight",
       "orientation": [
         "portrait"
       ],
@@ -20,31 +23,43 @@
         "fill"
       ]
     }
-  },
-  "textSlots": {
-    "numLeft": {
-      "type": "meta",
-      "recommendedMaxChars": 2
+  ],
+  "texts": [
+    {
+      "id": "numLeft",
+      "role": "decoration",
+      "maxChars": 2,
+      "lang": "en"
     },
-    "numRight": {
-      "type": "meta",
-      "recommendedMaxChars": 2
+    {
+      "id": "numRight",
+      "role": "decoration",
+      "maxChars": 2,
+      "lang": "en"
     },
-    "captionLeft": {
-      "type": "caption",
-      "recommendedMaxChars": 80
+    {
+      "id": "captionLeft",
+      "role": "explain",
+      "maxChars": 80,
+      "lang": "user"
     },
-    "captionRight": {
-      "type": "caption",
-      "recommendedMaxChars": 80
+    {
+      "id": "captionRight",
+      "role": "explain",
+      "maxChars": 80,
+      "lang": "user"
     },
-    "subtitle": {
-      "type": "quote",
-      "recommendedMaxChars": 60
+    {
+      "id": "subtitle",
+      "role": "body",
+      "maxChars": 60,
+      "lang": "user"
     },
-    "folio": {
-      "type": "meta",
-      "recommendedMaxChars": 2
+    {
+      "id": "folio",
+      "role": "decoration",
+      "maxChars": 2,
+      "lang": "en"
     }
-  }
+  ]
 }

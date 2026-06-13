@@ -251,7 +251,7 @@ def _coerce_cover(raw: Any, theme: V2Theme) -> V2CoverDraft:
 
 def _normalize_texts(template_id: str, raw_texts: dict[Any, Any], theme: V2Theme) -> dict[str, str]:
     tpl = registry.get(template_id)
-    known_slots = set((tpl or {}).get("textSlots", {}))
+    known_slots = set(registry.text_slot_ids(tpl)) if tpl else set()
     texts = {
         str(k): str(v).strip()
         for k, v in raw_texts.items()

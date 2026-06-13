@@ -74,16 +74,17 @@ def test_prompt_summary_handles_optional_constraints(tmp_path):
         json.dumps(
             {
                 "id": "optional-01",
-                "category": "single",
-                "imageSlots": {
-                    "image": {},
-                    "thumb": {"quality": ["detail"]},
-                },
-                "textSlots": {
-                    "caption": {"type": "caption"},
-                    "title": {"type": "heading", "recommendedMaxChars": 24},
-                    "folio": {"type": "meta", "recommendedMaxChars": 2},
-                },
+                "slot": "interior",
+                "scene": "portrait",
+                "images": [
+                    {"id": "image"},
+                    {"id": "thumb", "quality": ["detail"]},
+                ],
+                "texts": [
+                    {"id": "caption", "role": "explain", "lang": "user"},
+                    {"id": "title", "role": "title", "lang": "user", "maxChars": 24},
+                    {"id": "folio", "role": "decoration", "lang": "en", "maxChars": 2},
+                ],
             }
         ),
         encoding="utf-8",
@@ -92,7 +93,7 @@ def test_prompt_summary_handles_optional_constraints(tmp_path):
     loaded = templates._load_templates_from_dir(tmp_path)
     summary = templates._summarize_templates_for_prompt(loaded)
 
-    assert "optional-01 [single]" in summary
+    assert "optional-01 [interior]" in summary
     assert "image(any)" in summary
     assert "thumb(quality~detail)" in summary
     assert "caption<=?c" in summary
@@ -100,24 +101,40 @@ def test_prompt_summary_handles_optional_constraints(tmp_path):
 
 
 def test_layout_rules_treat_optional_image_slot_hints_as_any(monkeypatch, tmp_path):
-    def write_template(template_id: str, category: str, image_slots: dict, text_slots: dict):
+    def write_template(template_id: str, slot: str, scene: str, images: list, texts: list):
         (tmp_path / f"{template_id}.json").write_text(
             json.dumps(
                 {
                     "id": template_id,
-                    "category": category,
-                    "imageSlots": image_slots,
-                    "textSlots": text_slots,
+                    "slot": slot,
+                    "scene": scene,
+                    "images": images,
+                    "texts": texts,
                 }
             ),
             encoding="utf-8",
         )
 
-    write_template("mag-01", "cover", {"image": {}}, {"title": {"type": "heading"}})
-    write_template("mag-02", "spread", {}, {"items": {"type": "paragraph"}})
-    write_template("mag-14", "spread", {}, {"folio": {"type": "meta"}})
-    write_template("mag-20", "cover", {}, {"title": {"type": "heading"}})
-    write_template("optional-01", "single", {"image": {}}, {"caption": {"type": "caption"}})
+    write_template(
+        "mag-01", "cover", "opening",
+        [{"id": "image"}], [{"id": "title", "role": "title", "lang": "user"}],
+    )
+    write_template(
+        "mag-02", "interior", "textOnly",
+        [], [{"id": "items", "role": "body", "lang": "user"}],
+    )
+    write_template(
+        "mag-14", "interior", "textOnly",
+        [], [{"id": "folio", "role": "decoration", "lang": "en"}],
+    )
+    write_template(
+        "mag-20", "cover", "opening",
+        [], [{"id": "title", "role": "title", "lang": "user"}],
+    )
+    write_template(
+        "optional-01", "interior", "portrait",
+        [{"id": "image"}], [{"id": "caption", "role": "explain", "lang": "user"}],
+    )
 
     monkeypatch.setenv("YUJEE_TEMPLATE_DIR", str(tmp_path))
     sys.modules.pop("src.templates", None)
@@ -146,7 +163,7 @@ def test_layout_rules_treat_optional_image_slot_hints_as_any(monkeypatch, tmp_pa
             ],
         )
 
-        assert templates.TEMPLATES["optional-01"]["imageSlots"]["image"] == {}
+        assert templates.image_slot_map(templates.TEMPLATES["optional-01"])["image"] == {"id": "image"}
         assert layout_rules.violation(layout) == "page 1: missing image slot 'image' in template optional-01"
 
         coerced = layout_rules.coerce_image_slots(layout)

@@ -1,8 +1,10 @@
 {
   "id": "mag-06",
-  "category": "single",
-  "imageSlots": {
-    "image": {
+  "slot": "interior",
+  "scene": "scenery",
+  "images": [
+    {
+      "id": "image",
       "orientation": [
         "portrait"
       ],
@@ -11,15 +13,19 @@
         "detail"
       ]
     }
-  },
-  "textSlots": {
-    "category": {
-      "type": "label",
-      "recommendedMaxChars": 15
+  ],
+  "texts": [
+    {
+      "id": "category",
+      "role": "decoration",
+      "maxChars": 15,
+      "lang": "en"
     },
-    "folio": {
-      "type": "meta",
-      "recommendedMaxChars": 2
+    {
+      "id": "folio",
+      "role": "decoration",
+      "maxChars": 2,
+      "lang": "en"
     }
-  }
+  ]
 }

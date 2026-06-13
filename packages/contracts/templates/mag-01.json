@@ -1,8 +1,10 @@
 {
   "id": "mag-01",
-  "category": "cover",
-  "imageSlots": {
-    "image": {
+  "slot": "cover",
+  "scene": "opening",
+  "images": [
+    {
+      "id": "image",
       "orientation": [
         "landscape"
       ],
@@ -11,27 +13,37 @@
         "detail"
       ]
     }
-  },
-  "textSlots": {
-    "heading": {
-      "type": "heading",
-      "recommendedMaxChars": 12
+  ],
+  "texts": [
+    {
+      "id": "heading",
+      "role": "title",
+      "maxChars": 12,
+      "lang": "user"
     },
-    "sideText": {
-      "type": "label",
-      "recommendedMaxChars": 30
+    {
+      "id": "sideText",
+      "role": "decoration",
+      "maxChars": 30,
+      "lang": "en"
     },
-    "caption1": {
-      "type": "caption",
-      "recommendedMaxChars": 80
+    {
+      "id": "caption1",
+      "role": "explain",
+      "maxChars": 80,
+      "lang": "user"
     },
-    "caption2": {
-      "type": "caption",
-      "recommendedMaxChars": 80
+    {
+      "id": "caption2",
+      "role": "explain",
+      "maxChars": 80,
+      "lang": "user"
     },
-    "folio": {
-      "type": "meta",
-      "recommendedMaxChars": 2
+    {
+      "id": "folio",
+      "role": "decoration",
+      "maxChars": 2,
+      "lang": "en"
     }
-  }
+  ]
 }

@@ -3,6 +3,13 @@
 The template source of truth lives in packages/contracts/templates/*.json.
 This module keeps the Agent-side public API stable while loading those files
 directly at process startup.
+
+Phase 1 of the schema rebuild: the source JSON moved from dict-keyed
+``imageSlots``/``textSlots`` + ``category`` to array-shaped ``images``/``texts``
++ ``slot``/``scene``/``pairing``. This module loads the new shape and exposes it
+to the rest of the Agent; the new ``scene``/``pairing``/``lang`` fields are
+carried through but not yet consumed (no scene-driven template selection, no
+forced-pairing logic, no role-driven writing guidance in this phase).
 """
 
 from __future__ import annotations
@@ -13,42 +20,65 @@ from pathlib import Path
 from typing import Any, Literal, NotRequired, TypedDict, cast
 
 
-TemplateCategory = Literal["cover", "spread", "single", "grid", "closing"]
+TemplateSlot = Literal["cover", "interior", "ending"]
+TemplateScene = Literal[
+    "opening", "portrait", "scenery", "record", "interlude", "textOnly", "ending"
+]
 PhotoOrientation = Literal["portrait", "landscape", "square"]
 PhotoQuality = Literal["hero", "detail", "fill"]
-TextSlotType = Literal["array", "caption", "heading", "label", "meta", "paragraph", "quote"]
+TextRole = Literal["title", "body", "explain", "decoration"]
+TextLang = Literal["user", "en"]
+PairingSide = Literal["left", "right"]
 
 
-class ImageSlot(TypedDict, total=False):
-    orientation: list[PhotoOrientation]
-    quality: list[PhotoQuality]
+class ImageSlot(TypedDict):
+    id: str
+    orientation: NotRequired[list[PhotoOrientation]]
+    quality: NotRequired[list[PhotoQuality]]
 
 
 class TextSlot(TypedDict):
-    type: TextSlotType
-    recommendedMaxChars: NotRequired[int]
-    # Compatibility for existing Agent rules until their text-length pass moves
-    # from maxChars to recommendedMaxChars. Source JSON may not contain this.
+    id: str
+    role: TextRole
+    lang: TextLang
     maxChars: NotRequired[int]
+    repeat: NotRequired[bool]
+
+
+class Pairing(TypedDict):
+    forced: bool
+    with_: NotRequired[str]
+    side: NotRequired[PairingSide]
 
 
 class TemplateDef(TypedDict):
     id: str
-    category: TemplateCategory
-    imageSlots: dict[str, ImageSlot]
-    textSlots: dict[str, TextSlot]
+    slot: TemplateSlot
+    scene: TemplateScene
+    images: list[ImageSlot]
+    texts: list[TextSlot]
+    pairing: NotRequired[dict[str, Any] | None]
     styles: NotRequired[list[str]]
 
 
-_CATEGORIES = {"cover", "spread", "single", "grid", "closing"}
+_SLOTS = {"cover", "interior", "ending"}
+_SCENES = {
+    "opening",
+    "portrait",
+    "scenery",
+    "record",
+    "interlude",
+    "textOnly",
+    "ending",
+}
 _ORIENTATIONS = {"portrait", "landscape", "square"}
 _QUALITIES = {"hero", "detail", "fill"}
-_TEXT_SLOT_TYPES = {"array", "caption", "heading", "label", "meta", "paragraph", "quote"}
+_TEXT_ROLES = {"title", "body", "explain", "decoration"}
+_TEXT_LANGS = {"user", "en"}
 
-_TEMPLATE_KEYS = {"id", "category", "styles", "imageSlots", "textSlots"}
-_IMAGE_SLOT_KEYS = {"orientation", "quality"}
-_TEXT_SLOT_KEYS = {"type", "recommendedMaxChars"}
-_LEGACY_TEXT_KEYS = {"minChars", "maxChars"}
+_TEMPLATE_KEYS = {"id", "slot", "scene", "pairing", "styles", "images", "texts"}
+_IMAGE_SLOT_KEYS = {"id", "orientation", "quality"}
+_TEXT_SLOT_KEYS = {"id", "role", "lang", "maxChars", "repeat"}
 
 
 def _fail(message: str) -> RuntimeError:
@@ -61,12 +91,10 @@ def _require_dict(value: Any, label: str) -> dict[str, Any]:
     return value
 
 
-def _require_str_keyed_dict(value: Any, label: str) -> dict[str, Any]:
-    data = _require_dict(value, label)
-    for key in data:
-        if not isinstance(key, str) or not key:
-            raise _fail(f"{label} keys must be non-empty strings")
-    return data
+def _require_list(value: Any, label: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise _fail(f"{label} must be an array")
+    return value
 
 
 def _optional_nonempty_string_array(value: Any, label: str) -> list[str]:
@@ -86,7 +114,11 @@ def _validate_image_slot(value: Any, label: str) -> ImageSlot:
     if extra:
         raise _fail(f"{label} has unsupported fields: {sorted(extra)}")
 
-    out: ImageSlot = {}
+    slot_id = data.get("id")
+    if not isinstance(slot_id, str) or not slot_id:
+        raise _fail(f"{label}.id must be a non-empty string")
+
+    out: ImageSlot = {"id": slot_id}
     if "orientation" in data:
         orientations = _optional_nonempty_string_array(data["orientation"], f"{label}.orientation")
         invalid = sorted(set(orientations) - _ORIENTATIONS)
@@ -106,30 +138,43 @@ def _validate_image_slot(value: Any, label: str) -> ImageSlot:
 
 def _validate_text_slot(value: Any, label: str) -> TextSlot:
     data = _require_dict(value, label)
-    legacy = sorted(set(data) & _LEGACY_TEXT_KEYS)
-    if legacy:
-        raise _fail(f"{label} uses legacy fields: {legacy}")
     extra = set(data) - _TEXT_SLOT_KEYS
     if extra:
         raise _fail(f"{label} has unsupported fields: {sorted(extra)}")
 
-    slot_type = data.get("type")
-    if slot_type not in _TEXT_SLOT_TYPES:
-        raise _fail(f"{label}.type must be one of {sorted(_TEXT_SLOT_TYPES)}")
+    slot_id = data.get("id")
+    if not isinstance(slot_id, str) or not slot_id:
+        raise _fail(f"{label}.id must be a non-empty string")
 
-    out: TextSlot = {"type": cast(TextSlotType, slot_type)}
-    if "recommendedMaxChars" in data:
-        recommended = data["recommendedMaxChars"]
-        if isinstance(recommended, bool) or not isinstance(recommended, int) or recommended <= 0:
-            raise _fail(f"{label}.recommendedMaxChars must be a positive integer")
-        out["recommendedMaxChars"] = recommended
-        out["maxChars"] = recommended
+    role = data.get("role")
+    if role not in _TEXT_ROLES:
+        raise _fail(f"{label}.role must be one of {sorted(_TEXT_ROLES)}")
+
+    lang = data.get("lang")
+    if lang not in _TEXT_LANGS:
+        raise _fail(f"{label}.lang must be one of {sorted(_TEXT_LANGS)}")
+
+    out: TextSlot = {
+        "id": slot_id,
+        "role": cast(TextRole, role),
+        "lang": cast(TextLang, lang),
+    }
+    if "maxChars" in data:
+        max_chars = data["maxChars"]
+        if isinstance(max_chars, bool) or not isinstance(max_chars, int) or max_chars <= 0:
+            raise _fail(f"{label}.maxChars must be a positive integer")
+        out["maxChars"] = max_chars
+    if "repeat" in data:
+        repeat = data["repeat"]
+        if not isinstance(repeat, bool):
+            raise _fail(f"{label}.repeat must be a boolean")
+        out["repeat"] = repeat
     return out
 
 
 def _validate_template(value: Any, source: Path) -> TemplateDef:
     data = _require_dict(value, str(source))
-    missing = {"id", "category", "imageSlots", "textSlots"} - set(data)
+    missing = {"id", "slot", "scene", "images", "texts"} - set(data)
     if missing:
         raise _fail(f"{source} missing required fields: {sorted(missing)}")
     extra = set(data) - _TEMPLATE_KEYS
@@ -142,25 +187,33 @@ def _validate_template(value: Any, source: Path) -> TemplateDef:
     if source.stem != template_id:
         raise _fail(f"{source} id must match file name")
 
-    category = data["category"]
-    if category not in _CATEGORIES:
-        raise _fail(f"{source}.category must be one of {sorted(_CATEGORIES)}")
+    slot = data["slot"]
+    if slot not in _SLOTS:
+        raise _fail(f"{source}.slot must be one of {sorted(_SLOTS)}")
 
-    image_slots = {
-        key: _validate_image_slot(slot, f"{source}.imageSlots.{key}")
-        for key, slot in _require_str_keyed_dict(data["imageSlots"], f"{source}.imageSlots").items()
-    }
-    text_slots = {
-        key: _validate_text_slot(slot, f"{source}.textSlots.{key}")
-        for key, slot in _require_str_keyed_dict(data["textSlots"], f"{source}.textSlots").items()
-    }
+    scene = data["scene"]
+    if scene not in _SCENES:
+        raise _fail(f"{source}.scene must be one of {sorted(_SCENES)}")
+
+    images = [
+        _validate_image_slot(slot_def, f"{source}.images[{idx}]")
+        for idx, slot_def in enumerate(_require_list(data["images"], f"{source}.images"))
+    ]
+    texts = [
+        _validate_text_slot(slot_def, f"{source}.texts[{idx}]")
+        for idx, slot_def in enumerate(_require_list(data["texts"], f"{source}.texts"))
+    ]
 
     out: TemplateDef = {
         "id": template_id,
-        "category": cast(TemplateCategory, category),
-        "imageSlots": image_slots,
-        "textSlots": text_slots,
+        "slot": cast(TemplateSlot, slot),
+        "scene": cast(TemplateScene, scene),
+        "images": images,
+        "texts": texts,
     }
+    # scene/pairing/lang are carried through but not consumed in Phase 1.
+    if "pairing" in data:
+        out["pairing"] = data["pairing"]
     if "styles" in data:
         out["styles"] = _optional_nonempty_string_array(data["styles"], f"{source}.styles")
     return out
@@ -234,7 +287,39 @@ def _load_default_templates() -> dict[str, TemplateDef]:
         raise
 
 
-def _summarize_image_slot(slot_name: str, slot: ImageSlot) -> str:
+# ---------- read helpers (dict→array adaptation) ------------------------------
+
+
+def image_slots(template: TemplateDef) -> list[ImageSlot]:
+    """All image slots of a template, in declaration order."""
+    return template["images"]
+
+
+def text_slots(template: TemplateDef) -> list[TextSlot]:
+    """All text slots of a template, in declaration order."""
+    return template["texts"]
+
+
+def image_slot_ids(template: TemplateDef) -> list[str]:
+    return [slot["id"] for slot in template["images"]]
+
+
+def text_slot_ids(template: TemplateDef) -> list[str]:
+    return [slot["id"] for slot in template["texts"]]
+
+
+def image_slot_map(template: TemplateDef) -> dict[str, ImageSlot]:
+    """Image slots keyed by id for by-name lookup."""
+    return {slot["id"]: slot for slot in template["images"]}
+
+
+def text_slot_map(template: TemplateDef) -> dict[str, TextSlot]:
+    """Text slots keyed by id for by-name lookup."""
+    return {slot["id"]: slot for slot in template["texts"]}
+
+
+def _summarize_image_slot(slot: ImageSlot) -> str:
+    slot_name = slot["id"]
     parts: list[str] = []
     if slot.get("orientation"):
         parts.append(f"orient~{'|'.join(slot['orientation'])}")
@@ -250,24 +335,24 @@ def _summarize_templates_for_prompt(templates: dict[str, TemplateDef]) -> str:
     lines: list[str] = []
     for tid in sorted(templates):
         tpl = templates[tid]
-        if tpl["imageSlots"]:
-            img = "; ".join(
-                _summarize_image_slot(slot_name, slot)
-                for slot_name, slot in tpl["imageSlots"].items()
-            )
+        if tpl["images"]:
+            img = "; ".join(_summarize_image_slot(slot) for slot in tpl["images"])
         else:
             img = "(text-only)"
+        # role=='decoration' folds in the former 'meta' (page numbers) and 'label'
+        # (English sub-labels); both are excluded from the prompt's text summary,
+        # matching the prior `type != 'meta'` exclusion of page-number slots.
         txt = ", ".join(
-            f"{slot_name}<={slot.get('recommendedMaxChars', '?')}c"
-            for slot_name, slot in tpl["textSlots"].items()
-            if slot.get("type") != "meta"
+            f"{slot['id']}<={slot.get('maxChars', '?')}c"
+            for slot in tpl["texts"]
+            if slot["role"] != "decoration"
         )
-        lines.append(f"- {tid} [{tpl['category']}] images: {img} | texts: {txt}")
+        lines.append(f"- {tid} [{tpl['slot']}] images: {img} | texts: {txt}")
     return "\n".join(lines)
 
 
 TEMPLATES: dict[str, TemplateDef] = _load_default_templates()
-COVER_TEMPLATE_IDS = sorted(tid for tid, t in TEMPLATES.items() if t["category"] == "cover")
+COVER_TEMPLATE_IDS = sorted(tid for tid, t in TEMPLATES.items() if t["slot"] == "cover")
 TEMPLATE_IDS = sorted(TEMPLATES.keys())
 
 

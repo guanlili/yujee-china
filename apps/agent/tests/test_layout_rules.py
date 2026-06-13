@@ -402,7 +402,7 @@ class TestFewPhotoFallback:
         # No empty image slot ever ships (#42), regardless of orientation/quality.
         for page in layout.pages:
             tpl = registry.get(page.templateId)
-            assert all(s in page.images for s in tpl["imageSlots"])
+            assert all(s in page.images for s in registry.image_slot_ids(tpl))
         # Orientation is soft, and fill-grade singles must have a non-hero image
         # home instead of being dropped or placed into a hero slot.
         assert violation(layout) is None
@@ -430,7 +430,7 @@ class TestFewPhotoFallback:
         # Neither lands in a multi-image template with a blank sibling (#42).
         for page in layout.pages:
             tpl = registry.get(page.templateId)
-            assert all(s in page.images for s in tpl["imageSlots"])
+            assert all(s in page.images for s in registry.image_slot_ids(tpl))
 
     def test_square_photo_can_use_image_cover_with_orientation_soft(self):
         # Orientation is now soft, so square hero/detail photos can use an image
@@ -444,7 +444,7 @@ class TestFewPhotoFallback:
         # No empty image slot anywhere.
         for page in layout.pages:
             tpl = registry.get(page.templateId)
-            assert all(s in page.images for s in tpl["imageSlots"])
+            assert all(s in page.images for s in registry.image_slot_ids(tpl))
 
     @pytest.mark.parametrize(
         "partner",
@@ -472,7 +472,7 @@ class TestFewPhotoFallback:
         assert used_counts["p1"] <= 2
         for page in layout.pages:
             tpl = registry.get(page.templateId)
-            assert all(s in page.images for s in tpl["imageSlots"])
+            assert all(s in page.images for s in registry.image_slot_ids(tpl))
 
     @pytest.mark.parametrize("orientation", ["landscape", "portrait", "square"])
     @pytest.mark.parametrize("quality", ["hero", "detail", "fill"])
@@ -487,7 +487,7 @@ class TestFewPhotoFallback:
         for page in layout.pages:
             tpl = registry.get(page.templateId)
             assert tpl is not None
-            for slot in tpl["textSlots"]:
+            for slot in registry.text_slot_ids(tpl):
                 assert slot in page.texts, f"{page.templateId} slot '{slot}' missing → placeholder"
                 assert page.texts[slot].strip(), f"{page.templateId} slot '{slot}' empty → placeholder"
 

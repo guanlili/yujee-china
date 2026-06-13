@@ -117,7 +117,7 @@ def _assert_well_formed(layout: LayoutV2) -> None:
     # first is a cover-category template, last is the closing template
     from src import templates as registry
 
-    assert registry.get(layout.pages[0].templateId)["category"] == "cover"
+    assert registry.get(layout.pages[0].templateId)["slot"] == "cover"
     assert layout.pages[-1].templateId == "mag-17"
 
 
@@ -351,8 +351,8 @@ def test_generated_chapter_keeps_authored_text_untouched():
     chapter = _chapter("c1", photos, state="generated")
     # authored copy on the body page
     body = chapter.pages[0]
-    authored = {slot: "user authored copy" for slot, meta in
-                _text_slots(body.templateId).items() if meta.get("type") != "meta"}
+    authored = {meta["id"]: "user authored copy" for meta in
+                _text_slots(body.templateId) if meta["role"] != "decoration"}
     chapter.pages[0] = body.model_copy(update={"texts": authored})
     draft = _draft(photos, [chapter])
 
@@ -400,7 +400,7 @@ def _pa(pid: str, quality: str = "detail", orientation: str = "portrait") -> Pho
 def _text_slots(template_id: str):
     from src import templates as registry
 
-    return registry.get(template_id)["textSlots"]
+    return registry.get(template_id)["texts"]
 
 
 def test_validate_rejects_first_page_not_cover():

@@ -1,8 +1,10 @@
 {
   "id": "p01",
-  "category": "cover",
-  "imageSlots": {
-    "image": {
+  "slot": "cover",
+  "scene": "opening",
+  "images": [
+    {
+      "id": "image",
       "orientation": [
         "portrait"
       ],
@@ -11,27 +13,37 @@
         "detail"
       ]
     }
-  },
-  "textSlots": {
-    "title": {
-      "type": "heading",
-      "recommendedMaxChars": 20
+  ],
+  "texts": [
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 20,
+      "lang": "user"
     },
-    "body": {
-      "type": "paragraph",
-      "recommendedMaxChars": 80
+    {
+      "id": "body",
+      "role": "body",
+      "maxChars": 80,
+      "lang": "user"
     },
-    "category": {
-      "type": "label",
-      "recommendedMaxChars": 20
+    {
+      "id": "category",
+      "role": "decoration",
+      "maxChars": 20,
+      "lang": "en"
     },
-    "vol": {
-      "type": "meta",
-      "recommendedMaxChars": 4
+    {
+      "id": "vol",
+      "role": "decoration",
+      "maxChars": 4,
+      "lang": "en"
     },
-    "date": {
-      "type": "meta",
-      "recommendedMaxChars": 10
+    {
+      "id": "date",
+      "role": "decoration",
+      "maxChars": 10,
+      "lang": "en"
     }
-  }
+  ]
 }

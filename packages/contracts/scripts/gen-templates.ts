@@ -11,45 +11,55 @@ const GENERATED_PATH = path.join(PACKAGE_DIR, 'src', 'templates.generated.ts');
 const PhotoOrientation = z.enum(['portrait', 'landscape', 'square']);
 const PhotoQuality = z.enum(['hero', 'detail', 'fill']);
 
-const TemplateSlotConstraint = z
+const TemplateImageSlot = z
   .object({
+    id: z.string().min(1),
     orientation: z.array(PhotoOrientation).nonempty().optional(),
     quality: z.array(PhotoQuality).nonempty().optional(),
   })
   .strict();
 
-const TemplateTextSlotType = z.enum([
-  'array',
-  'caption',
-  'heading',
-  'label',
-  'meta',
-  'paragraph',
-  'quote',
-]);
+const TemplateTextRole = z.enum(['title', 'body', 'explain', 'decoration']);
+const TemplateTextLang = z.enum(['user', 'en']);
 
-const TemplateTextSlotConstraint = z
+const TemplateTextSlot = z
   .object({
-    type: TemplateTextSlotType,
-    recommendedMaxChars: z.number().int().positive().optional(),
+    id: z.string().min(1),
+    role: TemplateTextRole,
+    maxChars: z.number().int().positive().optional(),
+    lang: TemplateTextLang,
+    repeat: z.boolean().optional(),
   })
   .strict();
 
-const TemplateCategory = z.enum([
-  'cover',
-  'spread',
-  'single',
-  'grid',
-  'closing',
+const TemplateSlotKind = z.enum(['cover', 'interior', 'ending']);
+const TemplateScene = z.enum([
+  'opening',
+  'portrait',
+  'scenery',
+  'record',
+  'interlude',
+  'textOnly',
+  'ending',
 ]);
+
+const TemplatePairing = z
+  .object({
+    forced: z.boolean(),
+    with: z.string().min(1),
+    side: z.enum(['left', 'right']),
+  })
+  .strict();
 
 const TemplateDef = z
   .object({
     id: z.string().min(1),
-    category: TemplateCategory,
+    slot: TemplateSlotKind,
+    scene: TemplateScene,
+    pairing: TemplatePairing.nullable().optional(),
     styles: z.array(z.string().min(1)).optional(),
-    imageSlots: z.record(z.string().min(1), TemplateSlotConstraint),
-    textSlots: z.record(z.string().min(1), TemplateTextSlotConstraint),
+    images: z.array(TemplateImageSlot),
+    texts: z.array(TemplateTextSlot),
   })
   .strict();
 

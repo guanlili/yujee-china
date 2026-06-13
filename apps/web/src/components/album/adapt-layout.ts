@@ -80,9 +80,9 @@ export function adaptPageToTemplateData(
 
   const tpl = getTemplate(page.templateId);
   if (tpl) {
-    for (const [slot, constraint] of Object.entries(tpl.textSlots)) {
-      if (constraint.type === 'array' && result[slot] !== undefined) {
-        result[slot] = toArrayItems(result[slot]);
+    for (const s of tpl.texts) {
+      if (s.repeat === true && result[s.id] !== undefined) {
+        result[s.id] = toArrayItems(result[s.id]);
       }
     }
   }

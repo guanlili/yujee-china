@@ -1,15 +1,21 @@
 {
   "id": "mag-02",
-  "category": "spread",
-  "imageSlots": {},
-  "textSlots": {
-    "items": {
-      "type": "array",
-      "recommendedMaxChars": 240
+  "slot": "interior",
+  "scene": "textOnly",
+  "images": [],
+  "texts": [
+    {
+      "id": "items",
+      "role": "title",
+      "maxChars": 240,
+      "lang": "user",
+      "repeat": true
     },
-    "folio": {
-      "type": "meta",
-      "recommendedMaxChars": 2
+    {
+      "id": "folio",
+      "role": "decoration",
+      "maxChars": 2,
+      "lang": "en"
     }
-  }
+  ]
 }

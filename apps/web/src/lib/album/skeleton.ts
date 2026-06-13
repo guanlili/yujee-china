@@ -98,15 +98,15 @@ function isUsed(photo: SkeletonPhoto): boolean {
   return photo.used ?? true;
 }
 
-function isHeroSlot(slot: TemplateDef['imageSlots'][string]): boolean {
+function isHeroSlot(slot: TemplateDef['images'][number]): boolean {
   const qualities: readonly string[] = slot.quality ?? [];
   return qualities.includes('hero') && !qualities.includes('fill');
 }
 
 function useCaseForTemplate(templateId: string, template: TemplateDef): SkeletonUseCase {
   if (templateId === 'mag-02') return 'toc';
-  if (template.category === 'cover') return 'cover';
-  if (template.category === 'closing') return 'closing';
+  if (template.slot === 'cover') return 'cover';
+  if (template.slot === 'ending') return 'closing';
   return 'chapter';
 }
 
@@ -121,7 +121,7 @@ function buildTemplatesBy(): Record<SkeletonUseCase, Record<number, string[]>> {
   for (const templateId of [...TEMPLATE_IDS].sort()) {
     const template = TEMPLATES[templateId];
     const useCase = useCaseForTemplate(templateId, template);
-    const imageCount = Object.keys(template.imageSlots).length;
+    const imageCount = template.images.length;
     out[useCase][imageCount] ??= [];
     out[useCase][imageCount].push(templateId);
   }
@@ -136,7 +136,7 @@ export function fillCapacity(useCase: SkeletonUseCase, imageCount: number): numb
   let max = 0;
   for (const templateId of candidates) {
     const template = TEMPLATES[templateId];
-    const capacity = Object.values(template.imageSlots).filter((slot) => !isHeroSlot(slot)).length;
+    const capacity = template.images.filter((slot) => !isHeroSlot(slot)).length;
     max = Math.max(max, capacity);
   }
   return max;
@@ -183,10 +183,10 @@ export function partitionChapterPhotos(chapterPhotos: SkeletonPhoto[]): Skeleton
 export function canPlace(templateId: string, photos: SkeletonPhoto[]): boolean {
   const template = TEMPLATES[templateId];
   if (!template) return false;
-  if (Object.keys(template.imageSlots).length !== photos.length) return false;
+  if (template.images.length !== photos.length) return false;
 
   const fillCount = photos.filter((photo) => quality(photo) === 'fill').length;
-  const fillOk = Object.values(template.imageSlots).filter((slot) => !isHeroSlot(slot)).length;
+  const fillOk = template.images.filter((slot) => !isHeroSlot(slot)).length;
   return fillCount <= fillOk;
 }
 
@@ -229,7 +229,7 @@ export function pickTemplate({
   return finalPool[seed % finalPool.length];
 }
 
-function imageScore(slot: TemplateDef['imageSlots'][string], photo: SkeletonPhoto): number {
+function imageScore(slot: TemplateDef['images'][number], photo: SkeletonPhoto): number {
   let score = 0;
   if (slot.quality?.includes(quality(photo))) score += 10;
   if (slot.orientation?.includes(orientation(photo) as never)) score += 2;
@@ -255,7 +255,7 @@ export function assignImages(
   options: { allowFillInHero?: boolean } = {},
 ): Record<string, string> {
   const template = TEMPLATES[templateId];
-  const slotEntries = Object.entries(template.imageSlots);
+  const slotEntries = template.images;
   if (slotEntries.length !== photos.length) {
     throw new Error(`template ${templateId} expects ${slotEntries.length} images, got ${photos.length}`);
   }
@@ -271,7 +271,8 @@ export function assignImages(
     let valid = true;
 
     for (let i = 0; i < slotEntries.length; i += 1) {
-      const [slotName, slot] = slotEntries[i];
+      const slot = slotEntries[i];
+      const slotName = slot.id;
       const photo = orderedPhotos[i];
       if (quality(photo) === 'fill' && isHeroSlot(slot) && !options.allowFillInHero) {
         valid = false;
@@ -283,7 +284,7 @@ export function assignImages(
 
     if (!valid) continue;
 
-    const ids = slotEntries.map(([slotName]) => mapping[slotName]);
+    const ids = slotEntries.map((slot) => mapping[slot.id]);
     const tieBreaksEarlier = bestIds === undefined || compareStringArrays(ids, bestIds) < 0;
     if (bestScore === undefined || score > bestScore || (score === bestScore && tieBreaksEarlier)) {
       bestScore = score;

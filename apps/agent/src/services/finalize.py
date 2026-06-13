@@ -176,9 +176,9 @@ def _theme_authored(theme: Any) -> bool:
 
 def _is_valid_cover(cover: Page) -> bool:
     tpl = registry.get(cover.templateId)
-    if tpl is None or tpl["category"] != "cover":
+    if tpl is None or tpl["slot"] != "cover":
         return False
-    return all(slot in cover.images for slot in tpl["imageSlots"])
+    return all(slot in cover.images for slot in registry.image_slot_ids(tpl))
 
 
 # ---------- ① chapter ambiance copy ------------------------------------------
@@ -231,26 +231,27 @@ def _ambiance_texts(
     detail = _join(place, time_range, summary) or summary
 
     texts: dict[str, str] = {}
-    for slot, meta in tpl["textSlots"].items():
-        slot_type = meta.get("type")
-        if slot_type == "meta":
+    for meta in tpl["texts"]:
+        slot = meta["id"]
+        role = meta["role"]
+        if role == "decoration":  # was 'meta' (and now folds in the old 'label')
             continue
-        if slot_type == "heading":
-            texts[slot] = (
-                _join(place, "moments") if language == "en" else _join(place, "时光")
-            ) or ("quiet moments" if language == "en" else "安静片刻")
-        elif slot_type == "array":
+        if meta.get("repeat") is True:  # was type=='array'
             texts[slot] = (
                 _join(place, time_range, "soft light, quiet details")
                 if language == "en"
                 else _join(place, time_range, "柔和光线、安静细节")
             )
-        elif slot_type in ("caption", "label", "quote"):
+        elif role == "title":  # was 'heading'
+            texts[slot] = (
+                _join(place, "moments") if language == "en" else _join(place, "时光")
+            ) or ("quiet moments" if language == "en" else "安静片刻")
+        elif role == "explain":  # was 'caption' (old 'quote' now maps to 'body')
             texts[slot] = (
                 _join(place, time_range)
                 or ("visible details" if language == "en" else "照片细节")
             )
-        else:  # paragraph and any other body copy
+        else:  # body (was 'paragraph'/'quote') and any other copy
             texts[slot] = detail
     return layout_rules.clamp_texts_for_template(page.templateId, texts)
 
@@ -328,8 +329,11 @@ def _frame_texts(template_id: str, values: list[str]) -> dict[str, str]:
     fallback = values[0] if values else ""
     texts: dict[str, str] = {}
     index = 0
-    for slot, meta in tpl["textSlots"].items():
-        if meta.get("type") == "meta":
+    for meta in tpl["texts"]:
+        slot = meta["id"]
+        # role=='decoration' folds in the former 'meta' (page numbers); skip it,
+        # matching the prior `type == 'meta'` exclusion of decorative slots.
+        if meta["role"] == "decoration":
             continue
         value = values[index] if index < len(values) else fallback
         index += 1
@@ -348,9 +352,10 @@ def _clamp_array_texts(template_id: str, texts: dict[str, str]) -> dict[str, str
     tpl = registry.get(template_id)
     if not tpl:
         return dict(texts)
+    text_by_id = registry.text_slot_map(tpl)
     out: dict[str, str] = {}
     for key, value in texts.items():
-        cons = tpl["textSlots"].get(key.split("[", 1)[0])
+        cons = text_by_id.get(key.split("[", 1)[0])
         max_chars = cons.get("maxChars") if cons else None
         out[key] = (
             layout_rules.clamp_text(value, max_chars)
@@ -434,10 +439,10 @@ def validate_v2(layout: LayoutV2) -> str | None:
     first_tpl = registry.get(pages[0].templateId)
     if not first_tpl:
         return f"page 0 templateId {pages[0].templateId} not in TemplateRegistry"
-    if first_tpl["category"] != "cover":
+    if first_tpl["slot"] != "cover":
         return (
             f"page 0 templateId {pages[0].templateId} "
-            f"category={first_tpl['category']} (must be cover)"
+            f"category={first_tpl['slot']} (must be cover)"
         )
 
     for expected_idx, page in enumerate(pages):
@@ -451,23 +456,25 @@ def validate_v2(layout: LayoutV2) -> str | None:
         if not tpl:
             return f"page {page.pageIndex}: templateId {page.templateId} not in TemplateRegistry"
 
+        image_by_id = registry.image_slot_map(tpl)
+        text_by_id = registry.text_slot_map(tpl)
         for slot in page.images:
-            if slot not in tpl["imageSlots"]:
+            if slot not in image_by_id:
                 return f"page {page.pageIndex}: image slot '{slot}' not in template {page.templateId}"
         for slot in page.texts:
-            # Array slots are written as flat bracket-path keys (`items[i].title`)
+            # Repeat slots are written as flat bracket-path keys (`items[i].title`)
             # that the Web adapter rebuilds into an array; validate the base slot
-            # and require it to be an `array` slot (P0-3).
+            # and require it to be a `repeat` slot (P0-3).
             base = slot.split("[", 1)[0]
-            cons = tpl["textSlots"].get(base)
+            cons = text_by_id.get(base)
             if cons is None:
                 return f"page {page.pageIndex}: text slot '{slot}' not in template {page.templateId}"
-            if base != slot and cons.get("type") != "array":
+            if base != slot and cons.get("repeat") is not True:
                 return (
                     f"page {page.pageIndex}: bracket-path key '{slot}' on non-array "
                     f"slot '{base}' in template {page.templateId}"
                 )
-        for slot in tpl["imageSlots"]:
+        for slot in image_by_id:
             if slot not in page.images:
                 return f"page {page.pageIndex}: missing image slot '{slot}' in template {page.templateId}"
 
@@ -481,7 +488,7 @@ def validate_v2(layout: LayoutV2) -> str | None:
             seen_on_page.add(pid)
             used_counts[pid] += 1
 
-            if not hero_exempt and _fill_in_hero(by_id[pid], tpl["imageSlots"][slot]):
+            if not hero_exempt and _fill_in_hero(by_id[pid], image_by_id[slot]):
                 return (
                     f"page {page.pageIndex} slot '{slot}': fill photo {pid} "
                     f"cannot be placed in hero slot"

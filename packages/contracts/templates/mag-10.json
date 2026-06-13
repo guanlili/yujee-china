@@ -1,8 +1,10 @@
 {
   "id": "mag-10",
-  "category": "grid",
-  "imageSlots": {
-    "cells[0].image": {
+  "slot": "interior",
+  "scene": "record",
+  "images": [
+    {
+      "id": "cells[0].image",
       "orientation": [
         "square"
       ],
@@ -11,7 +13,8 @@
         "fill"
       ]
     },
-    "cells[1].image": {
+    {
+      "id": "cells[1].image",
       "orientation": [
         "square"
       ],
@@ -20,7 +23,8 @@
         "fill"
       ]
     },
-    "cells[2].image": {
+    {
+      "id": "cells[2].image",
       "orientation": [
         "square"
       ],
@@ -29,7 +33,8 @@
         "fill"
       ]
     },
-    "cells[3].image": {
+    {
+      "id": "cells[3].image",
       "orientation": [
         "square"
       ],
@@ -38,15 +43,20 @@
         "fill"
       ]
     }
-  },
-  "textSlots": {
-    "cells": {
-      "type": "array",
-      "recommendedMaxChars": 160
+  ],
+  "texts": [
+    {
+      "id": "cells",
+      "role": "explain",
+      "maxChars": 160,
+      "lang": "user",
+      "repeat": true
     },
-    "folio": {
-      "type": "meta",
-      "recommendedMaxChars": 2
+    {
+      "id": "folio",
+      "role": "decoration",
+      "maxChars": 2,
+      "lang": "en"
     }
-  }
+  ]
 }

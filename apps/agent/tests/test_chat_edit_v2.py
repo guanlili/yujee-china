@@ -289,7 +289,7 @@ class TestRetemplate:
         entry = patch[0]
         assert entry.templateId != "mag-13"
         from src import templates as registry
-        assert registry.get(entry.templateId)["category"] == "cover"
+        assert registry.get(entry.templateId)["slot"] == "cover"
         patched = chat_edit_v2._apply_patch(layout, patch)
         assert chat_edit_v2.validate_v2(patched) is None
 

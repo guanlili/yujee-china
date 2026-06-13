@@ -1,8 +1,10 @@
 {
   "id": "mag-17",
-  "category": "closing",
-  "imageSlots": {
-    "image": {
+  "slot": "ending",
+  "scene": "ending",
+  "images": [
+    {
+      "id": "image",
       "orientation": [
         "portrait"
       ],
@@ -11,19 +13,25 @@
         "detail"
       ]
     }
-  },
-  "textSlots": {
-    "name1": {
-      "type": "label",
-      "recommendedMaxChars": 20
+  ],
+  "texts": [
+    {
+      "id": "name1",
+      "role": "decoration",
+      "maxChars": 20,
+      "lang": "en"
     },
-    "name2": {
-      "type": "label",
-      "recommendedMaxChars": 20
+    {
+      "id": "name2",
+      "role": "decoration",
+      "maxChars": 20,
+      "lang": "en"
     },
-    "folio": {
-      "type": "meta",
-      "recommendedMaxChars": 2
+    {
+      "id": "folio",
+      "role": "decoration",
+      "maxChars": 2,
+      "lang": "en"
     }
-  }
+  ]
 }

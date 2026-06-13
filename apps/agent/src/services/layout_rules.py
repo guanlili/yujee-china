@@ -48,8 +48,9 @@ def clamp_texts_for_template(template_id: str, texts: dict[str, str]) -> dict[st
     if not tpl:
         return dict(texts)
     out = dict(texts)
+    text_by_id = registry.text_slot_map(tpl)
     for slot, text in texts.items():
-        cons = tpl["textSlots"].get(slot)
+        cons = text_by_id.get(slot)
         if not cons:
             continue
         max_chars = cons.get("maxChars")
@@ -115,7 +116,7 @@ def _photo_placeable(photo: PhotoAnalysis, constraint: dict) -> bool:
 # edits; few-photo fallback still uses it for the known square-only gap.
 _PLACEABLE_QUALITIES: dict[str, set[str]] = {}
 for _tpl in registry.TEMPLATES.values():
-    for _cons in _tpl["imageSlots"].values():
+    for _cons in _tpl["images"]:
         for _o in _slot_orientations(_cons):
             _PLACEABLE_QUALITIES.setdefault(_o, set()).update(_slot_qualities(_cons))
 
@@ -141,9 +142,9 @@ def _relax_to_placeable(photo: PhotoAnalysis) -> PhotoAnalysis:
 # non-hero detail/fill so a lone fill-grade photo has a legal home.
 _SINGLE_IMAGE_QUALITIES: dict[str, set[str]] = {}
 for _tpl in registry.TEMPLATES.values():
-    if _tpl["category"] == "cover" or len(_tpl["imageSlots"]) != 1:
+    if _tpl["slot"] == "cover" or len(_tpl["images"]) != 1:
         continue
-    (_cons,) = _tpl["imageSlots"].values()
+    (_cons,) = _tpl["images"]
     for _o in _slot_orientations(_cons):
         _SINGLE_IMAGE_QUALITIES.setdefault(_o, set()).update(_slot_qualities(_cons))
 
@@ -186,7 +187,7 @@ def _template_assignment(
     same slot, prefer the one with the lower global use count so re-templating
     preserves photos that would otherwise lose their only home.
     """
-    slots = list(tpl["imageSlots"].items())
+    slots = [(slot["id"], slot) for slot in tpl["images"]]
     indexed_photos = list(enumerate(photos))
     used_counts: Counter[str] = used or Counter()
 
@@ -248,10 +249,10 @@ def _retemplate_page(
     def candidates(only_category: bool):
         for order, tid in enumerate(registry.TEMPLATE_IDS):
             tpl = registry.TEMPLATES[tid]
-            slots = tpl["imageSlots"]
+            slots = tpl["images"]
             if not slots:
                 continue
-            if only_category and tpl["category"] != category:
+            if only_category and tpl["slot"] != category:
                 continue
             if len(slots) > len(photos):
                 continue  # can't fill every slot from this set
@@ -325,9 +326,10 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
     for i, (imgs, tpl) in enumerate(zip(page_images, page_tpls)):
         if tpl is None:
             continue
+        img_by_id = registry.image_slot_map(tpl)
         for slot in list(imgs.keys()):
             pid = imgs[slot]
-            cons = tpl["imageSlots"].get(slot)
+            cons = img_by_id.get(slot)
             photo = by_id.get(pid)
             keep = (
                 cons is not None
@@ -350,7 +352,8 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
         for i, (imgs, tpl) in enumerate(zip(page_images, page_tpls)):
             if tpl is None or pid in on_page[i]:
                 continue
-            for slot, cons in tpl["imageSlots"].items():
+            for cons in tpl["images"]:
+                slot = cons["id"]
                 if slot not in imgs and _photo_placeable(photo, cons):
                     candidates.append((
                         _orientation_prefers(photo, cons),
@@ -374,8 +377,9 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
         for i, (imgs, tpl) in enumerate(zip(page_images, page_tpls)):
             if tpl is None or pid in on_page[i]:
                 continue
+            img_by_id = registry.image_slot_map(tpl)
             for slot, current_pid in imgs.items():
-                cons = tpl["imageSlots"].get(slot)
+                cons = img_by_id.get(slot)
                 if cons is None or not _photo_placeable(photo, cons):
                     continue
                 current = by_id.get(current_pid)
@@ -423,7 +427,8 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
     for i, (imgs, tpl) in enumerate(zip(page_images, page_tpls)):
         if tpl is None:
             continue
-        for slot, cons in tpl["imageSlots"].items():
+        for cons in tpl["images"]:
+            slot = cons["id"]
             if slot in imgs:
                 continue
             candidate = min(
@@ -457,7 +462,7 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
     for i, (imgs, tpl) in enumerate(zip(page_images, page_tpls)):
         if tpl is None:
             continue
-        if not any(slot not in imgs for slot in tpl["imageSlots"]):
+        if not any(slot not in imgs for slot in registry.image_slot_ids(tpl)):
             continue  # already full
 
         current_ids = set(imgs.values())
@@ -478,7 +483,7 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
 
         page_photo_ids = list(imgs.values())
         page_photos = [by_id[pid] for pid in page_photo_ids]
-        replacement = _retemplate_page(tpl["category"], page_photos, used)
+        replacement = _retemplate_page(tpl["slot"], page_photos, used)
         if replacement is None:
             # No image template fits these photos as a whole-page set; go
             # text-only and release the photos for re-homing.
@@ -555,8 +560,8 @@ def violation(layout: AlbumLayoutPlan) -> str | None:
     first_tpl = registry.get(pages[0].templateId)
     if not first_tpl:
         return f"page 0 templateId {pages[0].templateId} not in TemplateRegistry"
-    if first_tpl["category"] != "cover":
-        return f"page 0 templateId {pages[0].templateId} category={first_tpl['category']} (must be cover)"
+    if first_tpl["slot"] != "cover":
+        return f"page 0 templateId {pages[0].templateId} category={first_tpl['slot']} (must be cover)"
 
     # Rule 6: pageIndex strictly 0..N-1
     for expected_idx, page in enumerate(pages):
@@ -569,14 +574,17 @@ def violation(layout: AlbumLayoutPlan) -> str | None:
         if not tpl:
             return f"page {page.pageIndex}: templateId {page.templateId} not in TemplateRegistry"
 
+        image_slot_ids = registry.image_slot_ids(tpl)
+        image_by_id = registry.image_slot_map(tpl)
+        text_slot_ids = registry.text_slot_ids(tpl)
         # Rule 8: slot keys subset of template
         for slot in page.images.keys():
-            if slot not in tpl["imageSlots"]:
+            if slot not in image_by_id:
                 return f"page {page.pageIndex}: image slot '{slot}' not in template {page.templateId}"
         for slot in page.texts.keys():
-            if slot not in tpl["textSlots"]:
+            if slot not in text_slot_ids:
                 return f"page {page.pageIndex}: text slot '{slot}' not in template {page.templateId}"
-        for slot in tpl["imageSlots"]:
+        for slot in image_slot_ids:
             if slot not in page.images:
                 return f"page {page.pageIndex}: missing image slot '{slot}' in template {page.templateId}"
 
@@ -590,7 +598,7 @@ def violation(layout: AlbumLayoutPlan) -> str | None:
             seen_on_page.add(pid)
             used_counts[pid] += 1
 
-            constraint = tpl["imageSlots"][slot]
+            constraint = image_by_id[slot]
             photo = by_id[pid]
             if not _quality_ok(photo, constraint):
                 return (
@@ -692,9 +700,9 @@ def _cover_for_photo(photo: PhotoAnalysis | None) -> tuple[str, str]:
         options: list[tuple[bool, str, str]] = []
         for tid in registry.COVER_TEMPLATE_IDS:
             tpl = registry.TEMPLATES[tid]
-            for slot, cons in tpl["imageSlots"].items():
+            for cons in tpl["images"]:
                 if _photo_placeable(photo, cons):
-                    options.append((_orientation_prefers(photo, cons), tid, slot))
+                    options.append((_orientation_prefers(photo, cons), tid, cons["id"]))
         if options:
             _, tid, slot = max(options, key=lambda item: (item[0], -registry.TEMPLATE_IDS.index(item[1])))
             return tid, slot
@@ -711,11 +719,11 @@ def _page_slot_for_photo(photo: PhotoAnalysis) -> tuple[str, str] | None:
     options: list[tuple[bool, int, str, str]] = []
     for order, tid in enumerate(registry.TEMPLATE_IDS):
         tpl = registry.TEMPLATES[tid]
-        if tpl["category"] == "cover" or len(tpl["imageSlots"]) != 1:
+        if tpl["slot"] == "cover" or len(tpl["images"]) != 1:
             continue
-        slot, cons = next(iter(tpl["imageSlots"].items()))
+        cons = tpl["images"][0]
         if _photo_placeable(photo, cons):
-            options.append((_orientation_prefers(photo, cons), -order, tid, slot))
+            options.append((_orientation_prefers(photo, cons), -order, tid, cons["id"]))
     if not options:
         return None
     _, _, tid, slot = max(options)
@@ -739,8 +747,8 @@ def _filled_content_page_for_photo(
     def candidates():
         for order, tid in enumerate(registry.TEMPLATE_IDS):
             tpl = registry.TEMPLATES[tid]
-            slots = tpl["imageSlots"]
-            if tpl["category"] == "cover" or not slots:
+            slots = tpl["images"]
+            if tpl["slot"] == "cover" or not slots:
                 continue
             if len(slots) > len(available):
                 continue
@@ -781,7 +789,8 @@ def _real_texts(
     body = magazine.subtitle or magazine.title
     caption = photo.description if photo and photo.description else body
     out: dict[str, str] = {}
-    for slot, cons in tpl["textSlots"].items():
+    for cons in tpl["texts"]:
+        slot = cons["id"]
         max_chars = cons.get("maxChars", 60)
         s = slot.lower()
         if any(tok in s for tok in ("num", "folio", "vol", "date")):

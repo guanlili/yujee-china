@@ -301,7 +301,7 @@ def _normalize_page_count(pages: list[Page], photos: list[PhotoAnalysis]) -> lis
         tpl = registry.get(pages[idx].templateId)
         if tpl is None:
             return not pages[idx].images
-        return not tpl["imageSlots"]
+        return not tpl["images"]
 
     while len(keep) > MAX_PAGES:
         counts: dict[str, int] = {}

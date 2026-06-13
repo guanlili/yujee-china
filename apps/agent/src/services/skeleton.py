@@ -75,7 +75,7 @@ def _is_used(photo: Photo) -> bool:
 
 
 def _image_slot_count(template: templates.TemplateDef) -> int:
-    return len(template["imageSlots"])
+    return len(template["images"])
 
 
 def _is_hero_slot(slot: templates.ImageSlot) -> bool:
@@ -86,9 +86,9 @@ def _is_hero_slot(slot: templates.ImageSlot) -> bool:
 def _use_case_for_template(template_id: str, template: templates.TemplateDef) -> UseCase:
     if template_id == "mag-02":
         return "toc"
-    if template["category"] == "cover":
+    if template["slot"] == "cover":
         return "cover"
-    if template["category"] == "closing":
+    if template["slot"] == "ending":
         return "closing"
     return "chapter"
 
@@ -116,7 +116,7 @@ def fill_capacity(use_case: UseCase, image_count: int) -> int:
         (
             sum(
                 1
-                for slot in templates.TEMPLATES[template_id]["imageSlots"].values()
+                for slot in templates.TEMPLATES[template_id]["images"]
                 if not _is_hero_slot(slot)
             )
             for template_id in TEMPLATES_BY.get(use_case, {}).get(image_count, [])
@@ -174,7 +174,7 @@ def can_place(template_id: str, photos: Sequence[Photo]) -> bool:
     if _image_slot_count(template) != len(photos):
         return False
     fill_count = sum(1 for photo in photos if _quality(photo) == "fill")
-    fill_ok = sum(1 for slot in template["imageSlots"].values() if not _is_hero_slot(slot))
+    fill_ok = sum(1 for slot in template["images"] if not _is_hero_slot(slot))
     return fill_count <= fill_ok
 
 
@@ -222,7 +222,7 @@ def assign_images(
     allow_fill_in_hero: bool = False,
 ) -> dict[str, str]:
     template = templates.TEMPLATES[template_id]
-    slot_items = list(template["imageSlots"].items())
+    slot_items = list(template["images"])
     if len(slot_items) != len(photos):
         raise ValueError(
             f"template {template_id} expects {len(slot_items)} images, got {len(photos)}"
@@ -239,7 +239,7 @@ def assign_images(
         valid = True
         mapping: dict[str, str] = {}
 
-        for (slot_name, slot), photo in zip(slot_items, ordered_photos, strict=True):
+        for slot, photo in zip(slot_items, ordered_photos, strict=True):
             if _quality(photo) == "fill" and _is_hero_slot(slot) and not allow_fill_in_hero:
                 valid = False
                 break
@@ -250,12 +250,12 @@ def assign_images(
                 score += 10
             if orientations and _orientation(photo) in orientations:
                 score += 2
-            mapping[slot_name] = _photo_id(photo)
+            mapping[slot["id"]] = _photo_id(photo)
 
         if not valid:
             continue
 
-        ids = tuple(mapping[slot_name] for slot_name, _slot in slot_items)
+        ids = tuple(mapping[slot["id"]] for slot in slot_items)
         if best_score is None or score > best_score or (score == best_score and ids < best_ids):
             best_score = score
             best_ids = ids

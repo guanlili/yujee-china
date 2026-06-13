@@ -1,8 +1,10 @@
 {
   "id": "mag-15",
-  "category": "spread",
-  "imageSlots": {
-    "imagePerson": {
+  "slot": "interior",
+  "scene": "record",
+  "images": [
+    {
+      "id": "imagePerson",
       "orientation": [
         "portrait"
       ],
@@ -11,7 +13,8 @@
         "detail"
       ]
     },
-    "imageRoad": {
+    {
+      "id": "imageRoad",
       "orientation": [
         "landscape"
       ],
@@ -20,23 +23,31 @@
         "fill"
       ]
     }
-  },
-  "textSlots": {
-    "body": {
-      "type": "paragraph",
-      "recommendedMaxChars": 60
+  ],
+  "texts": [
+    {
+      "id": "body",
+      "role": "body",
+      "maxChars": 60,
+      "lang": "user"
     },
-    "title": {
-      "type": "heading",
-      "recommendedMaxChars": 16
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 16,
+      "lang": "user"
     },
-    "date": {
-      "type": "label",
-      "recommendedMaxChars": 20
+    {
+      "id": "date",
+      "role": "decoration",
+      "maxChars": 20,
+      "lang": "en"
     },
-    "folio": {
-      "type": "meta",
-      "recommendedMaxChars": 2
+    {
+      "id": "folio",
+      "role": "decoration",
+      "maxChars": 2,
+      "lang": "en"
     }
-  }
+  ]
 }
