@@ -7,9 +7,10 @@ directly at process startup.
 Phase 1 of the schema rebuild: the source JSON moved from dict-keyed
 ``imageSlots``/``textSlots`` + ``category`` to array-shaped ``images``/``texts``
 + ``slot``/``scene``/``pairing``. This module loads the new shape and exposes it
-to the rest of the Agent; the new ``scene``/``pairing``/``lang`` fields are
-carried through but not yet consumed (no scene-driven template selection, no
-forced-pairing logic, no role-driven writing guidance in this phase).
+to the rest of the Agent. ``scene`` now drives chapter template selection
+(see ``skeleton.page_scene``) and ``lang``/role drives writing guidance
+(``writing_guides``). ``pairing`` is carried through but not yet consumed —
+forced-pairing logic is still pending product input on which templates pair.
 """
 
 from __future__ import annotations

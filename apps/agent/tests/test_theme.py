@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from src.settings import get_settings
 from src.schemas_v2 import V2ThemeRequest
 from src.services import theme
 
@@ -93,7 +94,10 @@ async def test_theme_run_returns_valid_theme_and_cover_draft():
     assert res.cover.heroPhotoId is None
     assert res.usage.planningInputTokens == 11
     assert res.usage.planningOutputTokens == 7
-    assert res.usage.models.planning == "deepseek-chat"
+    # planning model name is echoed from config (the DEEPSEEK_* slot points at
+    # Volcano Ark doubao in prod), so assert propagation, not a literal that
+    # would flip depending on whether a local .env override is present.
+    assert res.usage.models.planning == get_settings().deepseek_model
 
 
 @pytest.mark.asyncio

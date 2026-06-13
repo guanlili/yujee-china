@@ -53,6 +53,7 @@ type PickTemplateArgs = {
   chapterId?: string;
   pageOrdinal?: number;
   attempt?: number;
+  scene?: string;
 };
 
 const QUALITY_RANK: Record<PhotoQuality, number> = {
@@ -87,6 +88,23 @@ function quality(photo: SkeletonPhoto): PhotoQuality {
 
 function orientation(photo: SkeletonPhoto): string | undefined {
   return photo.analysis.orientation;
+}
+
+function peopleCount(photo: SkeletonPhoto): string {
+  const value = photo.analysis.peopleCount;
+  return typeof value === 'string' ? value : '0';
+}
+
+// Target template scene for a chapter page (mirror of skeleton.py page_scene):
+// multi-photo → record; single photo → portrait when it has people, else
+// scenery. Returns undefined when no scene preference applies.
+export function pageScene(pagePhotos: SkeletonPhoto[]): string | undefined {
+  if (pagePhotos.length >= 2) return 'record';
+  if (pagePhotos.length === 1) {
+    const hasPeople = ['1', '2-3', '4+'].includes(peopleCount(pagePhotos[0]));
+    return hasPeople ? 'portrait' : 'scenery';
+  }
+  return undefined;
 }
 
 function photoOrder(photo: SkeletonPhoto): number {
@@ -208,6 +226,7 @@ export function pickTemplate({
   chapterId = '',
   pageOrdinal = 0,
   attempt = 0,
+  scene,
 }: PickTemplateArgs): string {
   const candidates = [...(TEMPLATES_BY[useCase][imageCount] ?? [])];
   if (candidates.length === 0) {
@@ -222,9 +241,18 @@ export function pickTemplate({
     );
   }
 
+  // Narrow to the page's target scene when one applies (mirror of skeleton.py):
+  // splits the 1-image pool into portrait vs scenery and keeps interlude /
+  // textOnly out of auto-selection. Fall back to scene-agnostic legal if empty.
+  let scoped = legal;
+  if (scene !== undefined) {
+    const sceneLegal = legal.filter((templateId) => TEMPLATES[templateId].scene === scene);
+    if (sceneLegal.length > 0) scoped = sceneLegal;
+  }
+
   const excluded = new Set(exclude);
-  const pool = legal.filter((templateId) => !excluded.has(templateId));
-  const finalPool = pool.length > 0 ? pool : legal;
+  const pool = scoped.filter((templateId) => !excluded.has(templateId));
+  const finalPool = pool.length > 0 ? pool : scoped;
   const seed = stableHash(`${albumId}:${chapterId}:${pageOrdinal}:${attempt}`);
   return finalPool[seed % finalPool.length];
 }
@@ -316,6 +344,7 @@ export function buildChapterPages(
       chapterId,
       pageOrdinal: ordinal,
       attempt,
+      scene: pageScene(pagePhotos),
     });
 
     pages.push({

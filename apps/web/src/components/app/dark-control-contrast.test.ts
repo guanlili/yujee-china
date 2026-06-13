@@ -8,7 +8,8 @@ const root = join(import.meta.dirname, '..', '..');
 const DARK_CONTROL_FILES = [
   'components/app/Sidebar.tsx',
   'components/app/UserMenu.tsx',
-  'app/[locale]/create/page.tsx',
+  // create/page.tsx was removed in the v2 authoring-flow redesign (the create
+  // step now lives in the landing HeroComposer + editor authoring mode).
   'app/[locale]/login/login-form.tsx',
   'app/[locale]/register/register-form.tsx',
 ];

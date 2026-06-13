@@ -61,6 +61,28 @@ def _orientation(photo: Photo) -> str | None:
     return value if isinstance(value, str) else None
 
 
+def _people_count(photo: Photo) -> str:
+    value = _analysis(photo).get("peopleCount")
+    return value if isinstance(value, str) else "0"
+
+
+def page_scene(page_photos: Sequence[Photo]) -> str | None:
+    """Target template scene for a chapter page.
+
+    Mirrors the product-approved mapping: a multi-photo page is a `record`; a
+    single-photo page is a `portrait` when it actually has people, otherwise
+    `scenery`. Used to narrow chapter template selection by scene (which also
+    keeps interlude/textOnly templates out of the auto pool). Returns None when
+    no scene preference applies (caller then picks scene-agnostically).
+    """
+    if len(page_photos) >= 2:
+        return "record"
+    if len(page_photos) == 1:
+        has_people = _people_count(page_photos[0]) in ("1", "2-3", "4+")
+        return "portrait" if has_people else "scenery"
+    return None
+
+
 def _order(photo: Photo) -> int:
     exif = photo.get("exif")
     if isinstance(exif, Mapping):
@@ -197,6 +219,7 @@ def pick_template(
     chapter_id: str = "",
     page_ordinal: int = 0,
     attempt: int = 0,
+    scene: str | None = None,
 ) -> str:
     candidates = list(TEMPLATES_BY.get(use_case, {}).get(image_count, []))
     if not candidates:
@@ -209,8 +232,22 @@ def pick_template(
             f"fillCount={sum(1 for photo in photos if _quality(photo) == 'fill')}"
         )
 
+    # Narrow to the page's target scene when one applies (chapter pages). This
+    # splits the 1-image pool into portrait vs scenery and keeps interlude /
+    # textOnly templates out of auto-selection. Fall back to the scene-agnostic
+    # legal pool if no template of that scene can take these photos.
+    scoped = legal
+    if scene is not None:
+        scene_legal = [
+            template_id
+            for template_id in legal
+            if templates.TEMPLATES[template_id].get("scene") == scene
+        ]
+        if scene_legal:
+            scoped = scene_legal
+
     excluded = set(exclude or ())
-    pool = [template_id for template_id in legal if template_id not in excluded] or legal
+    pool = [template_id for template_id in scoped if template_id not in excluded] or scoped
     seed = stable_hash(f"{album_id}:{chapter_id}:{page_ordinal}:{attempt}")
     return pool[seed % len(pool)]
 
@@ -285,6 +322,7 @@ def build_chapter_pages(
             chapter_id=chapter_id,
             page_ordinal=ordinal,
             attempt=attempt,
+            scene=page_scene(page_photos),
         )
         pages.append(
             {

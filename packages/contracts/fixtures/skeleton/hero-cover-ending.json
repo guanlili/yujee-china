@@ -136,7 +136,7 @@
         "pages": [
           {
             "pageIndex": 1,
-            "templateId": "mag-05",
+            "templateId": "mag-11",
             "images": {
               "image": "h001"
             },
@@ -166,7 +166,7 @@
       },
       {
         "pageIndex": 1,
-        "templateId": "mag-05",
+        "templateId": "mag-11",
         "images": {
           "image": "h001"
         },
