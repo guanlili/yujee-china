@@ -25,6 +25,7 @@ import { PdfMag17 } from './templates/mag-17/pdf';
 import { PdfMag18 } from './templates/mag-18/pdf';
 import { PdfMag19 } from './templates/mag-19/pdf';
 import { PdfMag20 } from './templates/mag-20/pdf';
+import { PdfMag21 } from './templates/mag-21/pdf';
 import { PdfP01 } from './templates/p01/pdf';
 
 export const PDF_TEMPLATE_REGISTRY: Record<string, ComponentType<TemplateRenderProps>> = {
@@ -48,6 +49,7 @@ export const PDF_TEMPLATE_REGISTRY: Record<string, ComponentType<TemplateRenderP
   'mag-18': PdfMag18,
   'mag-19': PdfMag19,
   'mag-20': PdfMag20,
+  'mag-21': PdfMag21,
   p01: PdfP01,
 };
 

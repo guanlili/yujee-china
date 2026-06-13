@@ -48,7 +48,7 @@
     {
       "id": "cells",
       "role": "explain",
-      "maxChars": 160,
+      "maxChars": 70,
       "lang": "user",
       "repeat": true
     },

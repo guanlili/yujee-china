@@ -115,9 +115,20 @@ def _use_case_for_template(template_id: str, template: templates.TemplateDef) ->
     return "chapter"
 
 
+# Templates reachable only via the deterministic few-photo fallback
+# (layout_rules._page_slot_for_photo) and manual editor selection — never the
+# scene-driven auto rotation. mag-21 is the square single-image home: a lone
+# square photo with no other home lands there, but it must NOT win general
+# 1-image pages (its frame is square and would crop a portrait/landscape photo),
+# so it stays out of the auto-selection pool. Mirrored in web skeleton.ts.
+_FALLBACK_ONLY_TEMPLATE_IDS = frozenset({"mag-21"})
+
+
 def _build_templates_by() -> dict[UseCase, dict[int, list[str]]]:
     out: dict[UseCase, dict[int, list[str]]] = {use_case: {} for use_case in _USE_CASES}
     for template_id in templates.TEMPLATE_IDS:
+        if template_id in _FALLBACK_ONLY_TEMPLATE_IDS:
+            continue
         template = templates.TEMPLATES[template_id]
         use_case = _use_case_for_template(template_id, template)
         count = _image_slot_count(template)

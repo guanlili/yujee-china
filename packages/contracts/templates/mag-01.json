@@ -6,7 +6,8 @@
     {
       "id": "image",
       "orientation": [
-        "landscape"
+        "landscape",
+        "square"
       ],
       "quality": [
         "hero",

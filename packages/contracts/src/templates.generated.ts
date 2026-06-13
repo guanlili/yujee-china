@@ -24,6 +24,7 @@ export const TEMPLATE_IDS = [
   "mag-18",
   "mag-19",
   "mag-20",
+  "mag-21",
   "p01"
 ] as const;
 
@@ -36,7 +37,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "image",
         "orientation": [
-          "landscape"
+          "landscape",
+          "square"
         ],
         "quality": [
           "hero",
@@ -507,7 +509,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "cells",
         "role": "explain",
-        "maxChars": 160,
+        "maxChars": 70,
         "lang": "user",
         "repeat": true
       },
@@ -1021,6 +1023,31 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "decoration",
         "maxChars": 2,
         "lang": "en"
+      }
+    ]
+  },
+  "mag-21": {
+    "id": "mag-21",
+    "slot": "interior",
+    "scene": "record",
+    "images": [
+      {
+        "id": "image1",
+        "orientation": [
+          "square"
+        ],
+        "quality": [
+          "detail",
+          "fill"
+        ]
+      }
+    ],
+    "texts": [
+      {
+        "id": "title",
+        "role": "title",
+        "maxChars": 20,
+        "lang": "user"
       }
     ]
   },

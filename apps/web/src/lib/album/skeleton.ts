@@ -128,6 +128,13 @@ function useCaseForTemplate(templateId: string, template: TemplateDef): Skeleton
   return 'chapter';
 }
 
+// Reachable only via the deterministic few-photo fallback and manual editor
+// selection — never the scene-driven auto rotation. mag-21 is the square
+// single-image home: a lone square photo with no other home lands there, but it
+// must NOT win general 1-image pages (its frame is square and would crop a
+// portrait/landscape photo). Mirrored in agent skeleton.py.
+const FALLBACK_ONLY_TEMPLATE_IDS = new Set<string>(['mag-21']);
+
 function buildTemplatesBy(): Record<SkeletonUseCase, Record<number, string[]>> {
   const out: Record<SkeletonUseCase, Record<number, string[]>> = {
     chapter: {},
@@ -137,6 +144,7 @@ function buildTemplatesBy(): Record<SkeletonUseCase, Record<number, string[]>> {
   };
 
   for (const templateId of [...TEMPLATE_IDS].sort()) {
+    if (FALLBACK_ONLY_TEMPLATE_IDS.has(templateId)) continue;
     const template = TEMPLATES[templateId];
     const useCase = useCaseForTemplate(templateId, template);
     const imageCount = template.images.length;

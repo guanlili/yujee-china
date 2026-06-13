@@ -42,19 +42,23 @@ export function PdfMag01({ data, totalPages }: TemplateRenderProps) {
           <Text style={{ fontFamily: PDF_FONTS.mono, fontSize: 14, color: COLORS.ink }}>N</Text>
         </View>
       </View>
+      {/* @react-pdf 不支持 writingMode:vertical-rl,且断字回调把拉丁串当整体不换行,
+          直接给 width:14 会横向溢出压到右侧图片(web 端竖排正常)。逐字符插换行,
+          手动竖排,与 web 的 vertical-rl 外观对齐。 */}
       <Text
         style={{
           position: 'absolute',
           top: 280,
           left: 56,
-          letterSpacing: 4,
           color: COLORS.ink2,
           fontSize: 14,
           textTransform: 'uppercase',
+          textAlign: 'center',
+          lineHeight: 1.05,
           width: 14,
         }}
       >
-        {d.sideText || ''}
+        {(d.sideText || '').split('').join('\n')}
       </Text>
       <PdfImage
         src={d.image}

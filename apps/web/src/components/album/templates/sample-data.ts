@@ -3,16 +3,19 @@ import type { TemplateData } from './types';
 const SAMPLE_PORTRAIT =
   'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600&h=800&fit=crop';
 const SAMPLE_LANDSCAPE =
-  'https://images.unsplash.com/photo-1505765050516-f72dcac9c60a?w=900&h=600&fit=crop';
+  'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=900&h=600&fit=crop';
 const SAMPLE_SQUARE =
   'https://images.unsplash.com/photo-1500964757637-c85e8a162699?w=600&h=600&fit=crop';
 
+// Sample copy is kept within the slots' maxChars so the showcase shows real
+// layout behaviour, not false-positive overflow (the live pipeline clamps text
+// to maxChars; only this preview renders sample strings raw).
 const LOREM_CAPTION =
-  'In the early morning light the harbor felt unchanged — a place returning to itself between tides, between travelers, between the small moments worth recording.';
+  'Morning light over the harbor, between the tides.';
 const LOREM_BODY =
-  '一段关于光线与时间的简短记录。我们坐在窗边,看着雨水画过玻璃,像在写一封不会寄出的信。';
+  '一段关于光线与时间的简短记录。我们坐在窗边,看着雨水画过玻璃,像在写信。';
 const LOREM_PARAGRAPH =
-  'A long-form paragraph that fills the column with text, showing how the design holds up under realistic copy length and varied punctuation marks.';
+  'A long-form paragraph that fills the column, showing how the design holds up under realistic copy length.';
 
 export const SAMPLE_DATA: Record<string, TemplateData> = {
   'mag-01': {
@@ -173,10 +176,14 @@ export const SAMPLE_DATA: Record<string, TemplateData> = {
     folio: '19',
   },
   'mag-20': {
-    boxText: LOREM_CAPTION,
+    boxText: 'A quiet box of text at the page edge.',
     title: 'MASASHI WAKUI\nAT NIGHT',
     plate: 'Portfolio · 20 / 30',
     folio: '20',
+  },
+  'mag-21': {
+    image1: SAMPLE_SQUARE,
+    title: 'A Square Record',
   },
   p01: {
     image: SAMPLE_PORTRAIT,

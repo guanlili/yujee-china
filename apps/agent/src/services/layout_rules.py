@@ -111,9 +111,9 @@ def _photo_placeable(photo: PhotoAnalysis, constraint: dict) -> bool:
     return _quality_ok(photo, constraint)
 
 
-# For each orientation, the qualities the 21-template registry can actually hold
-# in SOME image slot. Computed once from the registry so it tracks template
-# edits; few-photo fallback still uses it for the known square-only gap.
+# For each orientation, the qualities the registry can actually hold in SOME
+# image slot. Computed once from the registry so it tracks template edits; the
+# few-photo fallback uses it to relax a photo's quality before placing.
 _PLACEABLE_QUALITIES: dict[str, set[str]] = {}
 for _tpl in registry.TEMPLATES.values():
     for _cons in _tpl["images"]:
@@ -151,9 +151,10 @@ for _tpl in registry.TEMPLATES.values():
 
 def _relax_for_single_image(photo: PhotoAnalysis) -> PhotoAnalysis:
     """Demote `photo`'s quality to the most prominent value a single-image
-    template accepts for its orientation. Returns
-    the photo unchanged when it already has a single-image home, or when its
-    orientation has none at all (square — the known registry gap)."""
+    template accepts for its orientation. Returns the photo unchanged when it
+    already has a single-image home for its quality (every orientation now has
+    one — square via mag-21), or, defensively, when no single-image template
+    accepts that orientation at all."""
     accepts = _SINGLE_IMAGE_QUALITIES.get(photo.orientation, set())
     if photo.quality == "fill" or not accepts or photo.quality in accepts:
         return photo
@@ -713,9 +714,9 @@ def _page_slot_for_photo(photo: PhotoAnalysis) -> tuple[str, str] | None:
     """First non-cover SINGLE-image (templateId, imageSlot) whose constraint
     can place `photo`. Restricting to one-image templates is what guarantees no
     empty slot (#42): placing one photo into a multi-image template (e.g. mag-04)
-    would leave its other slots blank in the PDF. Landscape/portrait photos have
-    single-image homes; square photos do not and are handled by paired/grid
-    fallback paths."""
+    would leave its other slots blank in the PDF. Every orientation has a
+    single-image home: landscape/portrait via the constrained templates, square
+    via mag-21 (square/[detail,fill] image slot)."""
     options: list[tuple[bool, int, str, str]] = []
     for order, tid in enumerate(registry.TEMPLATE_IDS):
         tpl = registry.TEMPLATES[tid]
@@ -737,10 +738,10 @@ def _filled_content_page_for_photo(
 ) -> tuple[str, dict[str, str]] | None:
     """Find a non-cover image page that includes `target` and has no empty slot.
 
-    This closes the mixed-square few-photo case: a square has no single-image
-    home, but can legally sit in mag-09 with a landscape photo or mag-12 with a
-    portrait photo. Partner photos may be reused once, never beyond the global
-    reuse cap.
+    Paired fallback for a photo with no usable single-image home of its own (or
+    whose home is already taken): it can legally sit in mag-09 with a landscape
+    photo or mag-12 with a portrait photo. Partner photos may be reused once,
+    never beyond the global reuse cap.
     """
     available = [p for p in photos if used[p.photoId] < 2]
 
@@ -823,12 +824,12 @@ def build_text_first_layout(magazine: Magazine, photos: list[PhotoAnalysis]) -> 
     Quality is relaxed up front so fallback uses the broadest legal slots before
     dropping a photo.
 
-    KNOWN GAP (registry coverage, needs an architect template decision): SQUARE
-    photos have NO single-image template, and a square-only ≤2-photo album cannot
-    fill any current square template without either an empty slot or a same-page
-    duplicate (Rule 4). Such a photo is left unplaced here and compose_pages
-    surfaces the residual violation rather than shipping a blank slot. Adding a
-    single-image square template (or a 1-2-up square template) would close this."""
+    SQUARE coverage: mag-21 is the single-image home for square photos (its image
+    slot is square/[detail,fill], so a lone square fills the page with no empty
+    sibling slot; a square hero relaxes to detail to fit), and mag-01 accepts a
+    square cover. A square-only ≤2-photo album is therefore placeable end to end
+    — no photo is left unplaced for orientation reasons. (Phase 2: mag-21 is
+    title-only; a richer square record layout with a caption would improve it.)"""
     photos = [_relax_for_few_photo(p) for p in photos]
     pages: list[Page] = []
     used: Counter[str] = Counter()
@@ -849,9 +850,9 @@ def build_text_first_layout(magazine: Magazine, photos: list[PhotoAnalysis]) -> 
         )
     )
 
-    # One page per still-unplaced photo. Prefer a single-image template; if the
-    # photo has no single-image home (square), try a fully-filled paired template
-    # using a partner photo at most one additional time.
+    # One page per still-unplaced photo. Prefer a single-image template (every
+    # orientation has one — square via mag-21); only if none is usable, try a
+    # fully-filled paired template using a partner photo at most one more time.
     for photo in photos:
         if used[photo.photoId] > 0:
             continue
@@ -862,7 +863,7 @@ def build_text_first_layout(magazine: Magazine, photos: list[PhotoAnalysis]) -> 
         else:
             paired = _filled_content_page_for_photo(photo, photos, used)
             if paired is None:
-                continue  # square-only registry gap — reported upstream
+                continue  # no legal page for this photo — reported upstream
             tid, images = paired
         pages.append(
             Page(

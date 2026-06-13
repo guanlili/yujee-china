@@ -25,6 +25,7 @@ import { WebMag17 } from './templates/mag-17';
 import { WebMag18 } from './templates/mag-18';
 import { WebMag19 } from './templates/mag-19';
 import { WebMag20 } from './templates/mag-20';
+import { WebMag21 } from './templates/mag-21';
 import { WebP01 } from './templates/p01';
 
 export const WEB_TEMPLATE_REGISTRY: Record<string, ComponentType<TemplateRenderProps>> = {
@@ -48,6 +49,7 @@ export const WEB_TEMPLATE_REGISTRY: Record<string, ComponentType<TemplateRenderP
   'mag-18': WebMag18,
   'mag-19': WebMag19,
   'mag-20': WebMag20,
+  'mag-21': WebMag21,
   p01: WebP01,
 };
 

@@ -27,6 +27,7 @@ EXPECTED_TEMPLATE_IDS = [
     "mag-18",
     "mag-19",
     "mag-20",
+    "mag-21",
     "p01",
 ]
 
@@ -41,7 +42,7 @@ def test_loader_reads_shared_template_json_count():
     template_dir = _repo_root() / "packages" / "contracts" / "templates"
     json_files = sorted(template_dir.glob("*.json"))
 
-    assert len(json_files) == 21
+    assert len(json_files) == 22
     assert templates.TEMPLATE_IDS == EXPECTED_TEMPLATE_IDS
     assert len(templates.TEMPLATES) == len(json_files)
 

@@ -34,6 +34,7 @@ const EXPECTED_TEMPLATE_IDS = [
   'mag-18',
   'mag-19',
   'mag-20',
+  'mag-21',
   'p01',
 ];
 
@@ -49,7 +50,7 @@ const VALID_SCENES = new Set([
 ]);
 const VALID_ROLES = new Set(['title', 'body', 'explain', 'decoration']);
 
-test('registry contains the 21 templates imported from memoir', () => {
+test('registry contains the 22 templates (memoir 21 + square home mag-21)', () => {
   assert.deepEqual(TEMPLATE_IDS, EXPECTED_TEMPLATE_IDS);
   assert.equal(INDEX_TEMPLATES, TEMPLATES);
 });
