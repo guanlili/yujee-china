@@ -5,8 +5,13 @@
     "chapters": [
       {
         "chapterId": "chapter-one",
-        "cluster": { "label": "One", "role": "opening" },
-        "photoIds": ["p001"]
+        "cluster": {
+          "label": "One",
+          "role": "opening"
+        },
+        "photoIds": [
+          "p001"
+        ]
       }
     ],
     "photos": [
@@ -15,14 +20,19 @@
         "analysis": {
           "photoId": "p001",
           "description": "detail photo 1",
-          "tags": ["fixture"],
+          "tags": [
+            "fixture"
+          ],
           "quality": "detail",
           "orientation": "portrait",
           "peopleCount": "1",
           "scene": "indoor",
           "mood": "quiet"
         },
-        "exif": { "takenAt": null, "order": 0 },
+        "exif": {
+          "takenAt": null,
+          "order": 0
+        },
         "used": true
       }
     ]
@@ -31,16 +41,18 @@
     "basePages": {
       "cover": {
         "pageIndex": 0,
-        "templateId": "mag-20",
-        "images": {},
+        "templateId": "mag-01",
+        "images": {
+          "image": "p001"
+        },
         "texts": {}
       },
       "toc": null,
       "ending": {
         "pageIndex": 2,
-        "templateId": "mag-17",
+        "templateId": "mag-20",
         "images": {
-          "image": "p001"
+          "image1": "p001"
         },
         "texts": {}
       }
@@ -70,8 +82,10 @@
     "pages": [
       {
         "pageIndex": 0,
-        "templateId": "mag-20",
-        "images": {},
+        "templateId": "mag-01",
+        "images": {
+          "image": "p001"
+        },
         "texts": {}
       },
       {
@@ -84,9 +98,9 @@
       },
       {
         "pageIndex": 2,
-        "templateId": "mag-17",
+        "templateId": "mag-20",
         "images": {
-          "image": "p001"
+          "image1": "p001"
         },
         "texts": {}
       }

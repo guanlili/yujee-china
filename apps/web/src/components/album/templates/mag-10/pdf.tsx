@@ -34,7 +34,7 @@ export function PdfMag10({ data, totalPages }: TemplateRenderProps) {
                 marginBottom: 12,
               }}
             >
-              {c.n || ''}
+              {i + 1}
             </Text>
             <PdfImage src={c.image} style={{ width: cellW, height: 280 }} />
             <Text
@@ -43,7 +43,7 @@ export function PdfMag10({ data, totalPages }: TemplateRenderProps) {
                 lineHeight: 1.7,
                 color: COLORS.ink2,
                 textAlign: 'justify',
-                fontSize: 16,
+                fontSize: 18,
               }}
             >
               {c.caption || ''}

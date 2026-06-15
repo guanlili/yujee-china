@@ -6,7 +6,7 @@
     {
       "id": "image1",
       "orientation": [
-        "landscape"
+        "square"
       ],
       "quality": [
         "hero",
@@ -16,7 +16,7 @@
     {
       "id": "image2",
       "orientation": [
-        "portrait"
+        "square"
       ],
       "quality": [
         "detail",
@@ -38,13 +38,13 @@
     {
       "id": "caption1",
       "role": "explain",
-      "maxChars": 80,
+      "maxChars": 60,
       "lang": "user"
     },
     {
       "id": "caption2",
       "role": "explain",
-      "maxChars": 80,
+      "maxChars": 100,
       "lang": "user"
     },
     {

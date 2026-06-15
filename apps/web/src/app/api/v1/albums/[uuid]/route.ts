@@ -6,37 +6,35 @@ import { fromException } from '@/lib/api/from-exception';
 import { albumService } from '@/services/album/album-service';
 
 const PatchSchema = z.object({ title: z.string().min(1).max(120) });
-
-export async function GET(req: Request, ctx: { params: Promise<{ uuid: string }> }) {
+type RouteCtx = { params: Promise<{ uuid: string }> };
+async function withAlbum<T>(
+  req: Request,
+  ctx: RouteCtx,
+  action: (userId: string, uuid: string) => Promise<T>,
+) {
   try {
     const user = await requireAuth(req);
     const { uuid } = await ctx.params;
-    const data = await albumService.getDetail(user.id, uuid);
-    return ok(data);
+    return ok(await action(user.id, uuid));
   } catch (e) {
     return fromException(e);
   }
 }
 
-export async function PATCH(req: Request, ctx: { params: Promise<{ uuid: string }> }) {
-  try {
-    const user = await requireAuth(req);
-    const { uuid } = await ctx.params;
+export function GET(req: Request, ctx: RouteCtx) {
+  return withAlbum(req, ctx, (userId, uuid) => albumService.getDetail(userId, uuid));
+}
+
+export function PATCH(req: Request, ctx: RouteCtx) {
+  return withAlbum(req, ctx, async (userId, uuid) => {
     const body = await parseBody(PatchSchema, req);
-    const data = await albumService.updateTitle(user.id, uuid, body.title);
-    return ok(data);
-  } catch (e) {
-    return fromException(e);
-  }
+    return albumService.updateTitle(userId, uuid, body.title);
+  });
 }
 
-export async function DELETE(req: Request, ctx: { params: Promise<{ uuid: string }> }) {
-  try {
-    const user = await requireAuth(req);
-    const { uuid } = await ctx.params;
-    await albumService.delete(user.id, uuid);
-    return ok({ deleted: true });
-  } catch (e) {
-    return fromException(e);
-  }
+export function DELETE(req: Request, ctx: RouteCtx) {
+  return withAlbum(req, ctx, async (userId, uuid) => {
+    await albumService.delete(userId, uuid);
+    return { deleted: true };
+  });
 }

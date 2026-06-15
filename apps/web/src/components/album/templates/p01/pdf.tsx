@@ -9,6 +9,7 @@ export function PdfP01({ data }: TemplateRenderProps) {
     title?: string;
     body?: string;
     category?: string;
+    categoryColor?: string;
     vol?: string;
     date?: string;
   };
@@ -80,7 +81,7 @@ export function PdfP01({ data }: TemplateRenderProps) {
           style={{
             fontFamily: PDF_FONTS.serifEn,
             fontStyle: 'italic',
-            color: COLORS.vermilionSoft,
+            color: d.categoryColor || COLORS.vermilionSoft,
             fontSize: 16,
           }}
         >

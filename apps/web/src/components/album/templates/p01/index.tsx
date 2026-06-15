@@ -8,6 +8,7 @@ export function WebP01({ data }: TemplateRenderProps) {
     title?: string;
     body?: string;
     category?: string;
+    categoryColor?: string;
     vol?: string;
     date?: string;
   };
@@ -15,8 +16,8 @@ export function WebP01({ data }: TemplateRenderProps) {
     <WebPage dark fontFamily={WEB_FONTS.serifCn}>
       <WebImage
         src={d.image}
-        placeholder="4:5"
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 320 }}
+        placeholder="1:1"
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 320, objectFit: 'cover' }}
       />
       <div
         style={{
@@ -70,7 +71,7 @@ export function WebP01({ data }: TemplateRenderProps) {
             fontFamily: WEB_FONTS.serifEn,
             fontStyle: 'italic',
             letterSpacing: '0.04em',
-            color: COLORS.vermilionSoft,
+            color: d.categoryColor || COLORS.vermilionSoft,
             fontSize: 16,
           }}
         >

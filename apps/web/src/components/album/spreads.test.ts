@@ -4,30 +4,29 @@ import test from 'node:test';
 import { buildSpreads, spreadIndexOfPage } from './spreads';
 import type { EditorPage } from './types';
 
-// Real template ids carry the slot we group by: mag-01/p01 = cover,
-// mag-17 = ending, everything else (mag-03/05/06...) = interior.
+// Real template ids carry the slot we group by: mag-01/p01 = cover, current
+// non-cover templates (mag-03/05/06...) = interior.
 function page(templateId: string, pageIndex: number): EditorPage {
   return { pageIndex, templateId, imagesJson: {}, textsJson: {} };
 }
 
-test('cover opens recto, ending closes verso, interior pairs in between', () => {
+test('cover opens recto, interior pages pair in between', () => {
   const pages = [
     page('mag-01', 0), // cover
     page('mag-03', 1), // interior
     page('mag-05', 2), // interior
     page('mag-06', 3), // interior
-    page('mag-17', 4), // ending
+    page('mag-19', 4), // interior
   ];
   assert.deepEqual(buildSpreads(pages), [
     { left: null, right: 0 }, // cover solo (recto)
     { left: 1, right: 2 }, // interior pair
-    { left: 3, right: null }, // odd trailing interior gets a blank half
-    { left: 4, right: null }, // ending solo (verso)
+    { left: 3, right: 4 }, // interior pair
   ]);
 });
 
-test('cover + ending with no interior are each solo', () => {
-  const pages = [page('p01', 0), page('mag-17', 1)];
+test('cover + one interior leaves the interior with a blank facing half', () => {
+  const pages = [page('p01', 0), page('mag-03', 1)];
   assert.deepEqual(buildSpreads(pages), [
     { left: null, right: 0 },
     { left: 1, right: null },

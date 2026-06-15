@@ -66,7 +66,7 @@ function makeDraft(): AlbumDraft {
     ],
     basePages: {
       cover: { pageIndex: 0, templateId: 'mag-01', images: {}, texts: {} },
-      ending: { pageIndex: 99, templateId: 'mag-17', images: {}, texts: {} },
+      ending: { pageIndex: 99, templateId: 'mag-03', images: {}, texts: {} },
     },
     chapters: [
       {

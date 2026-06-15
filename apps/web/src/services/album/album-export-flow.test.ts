@@ -38,16 +38,16 @@ const LAYOUT = {
     { photoId: 'ph_2', description: 'a quiet street', tags: ['trip'], quality: 'detail' as const, orientation: 'portrait' as const },
   ],
   pages: [
-    { pageIndex: 0, templateId: 'mag-20', images: { hero: 'ph_1' }, texts: { title: 'A Spring Trip' } },
-    { pageIndex: 1, templateId: 'mag-02', images: { left: 'ph_1', right: 'ph_2' }, texts: { caption: 'Day one' } },
-    { pageIndex: 2, templateId: 'mag-17', images: { closing: 'ph_2' }, texts: {} },
+    { pageIndex: 0, templateId: 'mag-01', images: { image: 'ph_1' }, texts: { heading: 'Spring Trip' } },
+    { pageIndex: 1, templateId: 'mag-02', images: {}, texts: { heading: 'CONTENTS', 'titles[0]': 'Day one' } },
+    { pageIndex: 2, templateId: 'mag-03', images: { image: 'ph_2' }, texts: {} },
   ],
 };
 
 async function seedFinalizeJob(userId: string) {
   const album = await makeAlbum(userId, { photoCount: 2 });
   await albumRepo.update(db, album.id, {
-    draftJson: { version: 'v2', meta: { style: 'warm-film', language: 'en' }, photoPool: [], basePages: { cover: { pageIndex: 0, templateId: 'mag-20', images: {}, texts: {} }, ending: { pageIndex: 1, templateId: 'mag-17', images: {}, texts: {} } }, chapters: [] },
+    draftJson: { version: 'v2', meta: { style: 'warm-film', language: 'en' }, photoPool: [], basePages: { cover: { pageIndex: 0, templateId: 'mag-01', images: {}, texts: {} }, ending: { pageIndex: 1, templateId: 'mag-03', images: {}, texts: {} } }, chapters: [] },
   });
   const hold = await creditHoldRepo.create(db, {
     userId,

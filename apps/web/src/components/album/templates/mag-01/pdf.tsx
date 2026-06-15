@@ -24,7 +24,7 @@ export function PdfMag01({ data, totalPages }: TemplateRenderProps) {
           alignItems: 'center',
         }}
       >
-        <Text style={{ letterSpacing: 8, fontSize: 24, color: COLORS.ink }}>
+        <Text style={{ letterSpacing: 11, fontSize: 34, color: COLORS.ink }}>
           {d.heading || 'VENUES'}
         </Text>
         <View style={{ flexGrow: 1, height: 1, backgroundColor: COLORS.ink, marginHorizontal: 16 }} />
@@ -39,7 +39,7 @@ export function PdfMag01({ data, totalPages }: TemplateRenderProps) {
             justifyContent: 'center',
           }}
         >
-          <Text style={{ fontFamily: PDF_FONTS.mono, fontSize: 14, color: COLORS.ink }}>N</Text>
+          <Text style={{ fontFamily: PDF_FONTS.mono, fontSize: 16, color: COLORS.ink }}>N</Text>
         </View>
       </View>
       {/* @react-pdf 不支持 writingMode:vertical-rl,且断字回调把拉丁串当整体不换行,
@@ -51,11 +51,11 @@ export function PdfMag01({ data, totalPages }: TemplateRenderProps) {
           top: 280,
           left: 56,
           color: COLORS.ink2,
-          fontSize: 14,
+          fontSize: 17,
           textTransform: 'uppercase',
           textAlign: 'center',
           lineHeight: 1.05,
-          width: 14,
+          width: 17,
         }}
       >
         {(d.sideText || '').split('').join('\n')}
@@ -71,8 +71,8 @@ export function PdfMag01({ data, totalPages }: TemplateRenderProps) {
           top: 760,
           lineHeight: 1.7,
           color: COLORS.ink2,
-          fontSize: 16,
-          width: 264,
+          fontSize: 18,
+          width: 360,
         }}
       >
         {d.caption1 || ''}
@@ -85,22 +85,12 @@ export function PdfMag01({ data, totalPages }: TemplateRenderProps) {
           lineHeight: 1.7,
           color: COLORS.ink2,
           textAlign: 'justify',
-          fontSize: 16,
-          width: 264,
+          fontSize: 18,
+          width: 360,
         }}
       >
         {d.caption2 || ''}
       </Text>
-      <View
-        style={{
-          position: 'absolute',
-          bottom: 90,
-          left: 130,
-          right: 130,
-          height: 1,
-          backgroundColor: COLORS.ruleLight,
-        }}
-      />
       <PdfFolio folio={d.folio} totalPages={totalPages} fallback="01" />
     </PdfPageShell>
   );

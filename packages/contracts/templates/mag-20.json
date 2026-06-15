@@ -1,32 +1,18 @@
 {
   "id": "mag-20",
-  "slot": "cover",
-  "scene": "opening",
-  "images": [],
+  "slot": "ending",
+  "scene": "ending",
+  "images": [
+    {
+      "id": "image1"
+    }
+  ],
   "texts": [
     {
-      "id": "boxText",
-      "role": "body",
-      "maxChars": 40,
-      "lang": "user"
-    },
-    {
       "id": "title",
-      "role": "title",
-      "maxChars": 30,
+      "role": "body",
+      "maxChars": 60,
       "lang": "user"
-    },
-    {
-      "id": "plate",
-      "role": "decoration",
-      "maxChars": 25,
-      "lang": "en"
-    },
-    {
-      "id": "folio",
-      "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
     }
   ]
 }

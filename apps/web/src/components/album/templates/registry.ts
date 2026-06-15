@@ -23,18 +23,10 @@ import { WebMag10 } from './mag-10';
 import { PdfMag10 } from './mag-10/pdf';
 import { WebMag11 } from './mag-11';
 import { PdfMag11 } from './mag-11/pdf';
-import { WebMag12 } from './mag-12';
-import { PdfMag12 } from './mag-12/pdf';
 import { WebMag13 } from './mag-13';
 import { PdfMag13 } from './mag-13/pdf';
-import { WebMag14 } from './mag-14';
-import { PdfMag14 } from './mag-14/pdf';
 import { WebMag15 } from './mag-15';
 import { PdfMag15 } from './mag-15/pdf';
-import { WebMag16 } from './mag-16';
-import { PdfMag16 } from './mag-16/pdf';
-import { WebMag17 } from './mag-17';
-import { PdfMag17 } from './mag-17/pdf';
 import { WebMag18 } from './mag-18';
 import { PdfMag18 } from './mag-18/pdf';
 import { WebMag19 } from './mag-19';
@@ -56,19 +48,15 @@ export const TEMPLATE_REGISTRY: Record<string, TemplateEntry> = {
   'mag-09': { id: 'mag-09', label: 'M-09 · 双图+引文', WebTemplate: WebMag09, PdfTemplate: PdfMag09 },
   'mag-10': { id: 'mag-10', label: 'M-10 · 四宫格', WebTemplate: WebMag10, PdfTemplate: PdfMag10 },
   'mag-11': { id: 'mag-11', label: 'M-11 · 照片+侧栏', WebTemplate: WebMag11, PdfTemplate: PdfMag11 },
-  'mag-12': { id: 'mag-12', label: 'M-12 · 双编号照片', WebTemplate: WebMag12, PdfTemplate: PdfMag12 },
   'mag-13': { id: 'mag-13', label: 'M-13 · 摄影师扉页', WebTemplate: WebMag13, PdfTemplate: PdfMag13 },
-  'mag-14': { id: 'mag-14', label: 'M-14 · 纯文字章节', WebTemplate: WebMag14, PdfTemplate: PdfMag14 },
   'mag-15': { id: 'mag-15', label: 'M-15 · 双图错位', WebTemplate: WebMag15, PdfTemplate: PdfMag15 },
-  'mag-16': { id: 'mag-16', label: 'M-16 · 三图+引文', WebTemplate: WebMag16, PdfTemplate: PdfMag16 },
-  'mag-17': { id: 'mag-17', label: 'M-17 · 大图+双人署名', WebTemplate: WebMag17, PdfTemplate: PdfMag17 },
   'mag-18': { id: 'mag-18', label: 'M-18 · 并排双图', WebTemplate: WebMag18, PdfTemplate: PdfMag18 },
   'mag-19': { id: 'mag-19', label: 'M-19 · 居中大图', WebTemplate: WebMag19, PdfTemplate: PdfMag19 },
-  'mag-20': { id: 'mag-20', label: 'M-20 · 留白文字页', WebTemplate: WebMag20, PdfTemplate: PdfMag20 },
+  'mag-20': { id: 'mag-20', label: 'M-20 · 单图记录', WebTemplate: WebMag20, PdfTemplate: PdfMag20 },
   p01: { id: 'p01', label: 'P01 · 暗色满版人像', WebTemplate: WebP01, PdfTemplate: PdfP01 },
 };
 
-// 一致性自检:registry 必须覆盖 contracts 里登记的所有 21 个 templateId
+// 一致性自检:registry 必须覆盖 contracts 里登记的所有 templateId
 const missing = TEMPLATE_IDS.filter((id) => !(id in TEMPLATE_REGISTRY));
 if (missing.length > 0) {
   throw new Error(`templates/registry: 缺少模板 ${missing.join(', ')}`);

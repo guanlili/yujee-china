@@ -102,7 +102,7 @@ def test_init_mock_emits_stages_and_draft_tree(captured_callbacks, count):
     assert draft.meta.language == "en"
     assert len(draft.photoPool) == count
     assert draft.basePages.cover.templateId
-    assert draft.basePages.ending.templateId == "mag-17"
+    assert draft.basePages.ending.templateId
     assert draft.chapters, "expected at least one chapter"
     for chapter in draft.chapters:
         assert chapter.photoIds, chapter.chapterId

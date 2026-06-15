@@ -15,7 +15,7 @@ export function PdfMag11({ data, totalPages }: TemplateRenderProps) {
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage
         src={d.image}
-        style={{ position: 'absolute', top: 120, left: 50, right: 50, height: 640 }}
+        style={{ position: 'absolute', top: 120, left: 25, right: 25, height: 640 }}
       />
       <Text
         style={{
@@ -53,7 +53,7 @@ export function PdfMag11({ data, totalPages }: TemplateRenderProps) {
           lineHeight: 1.75,
           color: COLORS.ink2,
           textAlign: 'justify',
-          fontSize: 16,
+          fontSize: 18,
         }}
       >
         {d.caption2 || ''}

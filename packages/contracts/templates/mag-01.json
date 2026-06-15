@@ -25,19 +25,19 @@
     {
       "id": "sideText",
       "role": "decoration",
-      "maxChars": 30,
+      "maxChars": 20,
       "lang": "en"
     },
     {
       "id": "caption1",
       "role": "explain",
-      "maxChars": 80,
+      "maxChars": 30,
       "lang": "user"
     },
     {
       "id": "caption2",
       "role": "explain",
-      "maxChars": 80,
+      "maxChars": 30,
       "lang": "user"
     },
     {

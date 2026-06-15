@@ -17,8 +17,8 @@ _DRAFT = dict(
     meta=dict(style="warm-film", language="en"),
     photoPool=[],
     basePages=dict(
-        cover=dict(pageIndex=0, templateId="mag-20", images={}, texts={}),
-        ending=dict(pageIndex=1, templateId="mag-17", images={"image": "p1"}, texts={}),
+        cover=dict(pageIndex=0, templateId="mag-01", images={}, texts={}),
+        ending=dict(pageIndex=1, templateId="mag-03", images={"image": "p1"}, texts={}),
     ),
     chapters=[],
 )
@@ -71,7 +71,7 @@ def test_finalize_completed_carries_layout():
     parsed = _CALLBACK.validate_python(
         dict(event="completed", jobKind="finalize", requestId="r",
              layout=dict(magazine=dict(title="t", style="s", language="en"), photos=[],
-                         pages=[dict(pageIndex=0, templateId="mag-20", images={}, texts={})]),
+                         pages=[dict(pageIndex=0, templateId="mag-01", images={}, texts={})]),
              usage=dict(durationMs=1, models={}))
     )
     assert type(parsed).__name__ == "V2FinalizeCompletedCallback"

@@ -3,32 +3,306 @@
   "input": {
     "albumId": "album-toc-all-fill",
     "chapters": [
-      { "chapterId": "c1", "cluster": { "label": "Chapter 1", "role": "opening" }, "photoIds": ["c1p1", "c1p2", "c1p3"] },
-      { "chapterId": "c2", "cluster": { "label": "Chapter 2", "role": "body" }, "photoIds": ["c2p1", "c2p2", "c2p3"] },
-      { "chapterId": "c3", "cluster": { "label": "Chapter 3", "role": "body" }, "photoIds": ["c3p1", "c3p2", "c3p3"] },
-      { "chapterId": "c4", "cluster": { "label": "Chapter 4", "role": "closing" }, "photoIds": ["c4p1", "c4p2", "c4p3"] }
+      {
+        "chapterId": "c1",
+        "cluster": {
+          "label": "Chapter 1",
+          "role": "opening"
+        },
+        "photoIds": [
+          "c1p1",
+          "c1p2",
+          "c1p3"
+        ]
+      },
+      {
+        "chapterId": "c2",
+        "cluster": {
+          "label": "Chapter 2",
+          "role": "body"
+        },
+        "photoIds": [
+          "c2p1",
+          "c2p2",
+          "c2p3"
+        ]
+      },
+      {
+        "chapterId": "c3",
+        "cluster": {
+          "label": "Chapter 3",
+          "role": "body"
+        },
+        "photoIds": [
+          "c3p1",
+          "c3p2",
+          "c3p3"
+        ]
+      },
+      {
+        "chapterId": "c4",
+        "cluster": {
+          "label": "Chapter 4",
+          "role": "closing"
+        },
+        "photoIds": [
+          "c4p1",
+          "c4p2",
+          "c4p3"
+        ]
+      }
     ],
     "photos": [
-      { "photoId": "c1p1", "analysis": { "photoId": "c1p1", "description": "chapter 1 photo 1", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 0 }, "used": true },
-      { "photoId": "c1p2", "analysis": { "photoId": "c1p2", "description": "chapter 1 photo 2", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 1 }, "used": true },
-      { "photoId": "c1p3", "analysis": { "photoId": "c1p3", "description": "chapter 1 photo 3", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 2 }, "used": true },
-      { "photoId": "c2p1", "analysis": { "photoId": "c2p1", "description": "chapter 2 photo 1", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 3 }, "used": true },
-      { "photoId": "c2p2", "analysis": { "photoId": "c2p2", "description": "chapter 2 photo 2", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 4 }, "used": true },
-      { "photoId": "c2p3", "analysis": { "photoId": "c2p3", "description": "chapter 2 photo 3", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 5 }, "used": true },
-      { "photoId": "c3p1", "analysis": { "photoId": "c3p1", "description": "chapter 3 photo 1", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 6 }, "used": true },
-      { "photoId": "c3p2", "analysis": { "photoId": "c3p2", "description": "chapter 3 photo 2", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 7 }, "used": true },
-      { "photoId": "c3p3", "analysis": { "photoId": "c3p3", "description": "chapter 3 photo 3", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 8 }, "used": true },
-      { "photoId": "c4p1", "analysis": { "photoId": "c4p1", "description": "chapter 4 photo 1", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 9 }, "used": true },
-      { "photoId": "c4p2", "analysis": { "photoId": "c4p2", "description": "chapter 4 photo 2", "tags": ["fixture"], "quality": "fill", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 10 }, "used": true },
-      { "photoId": "c4p3", "analysis": { "photoId": "c4p3", "description": "chapter 4 photo 3", "tags": ["fixture"], "quality": "fill", "orientation": "landscape", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 11 }, "used": true }
+      {
+        "photoId": "c1p1",
+        "analysis": {
+          "photoId": "c1p1",
+          "description": "chapter 1 photo 1",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "fill",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 0
+        },
+        "used": true
+      },
+      {
+        "photoId": "c1p2",
+        "analysis": {
+          "photoId": "c1p2",
+          "description": "chapter 1 photo 2",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "fill",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 1
+        },
+        "used": true
+      },
+      {
+        "photoId": "c1p3",
+        "analysis": {
+          "photoId": "c1p3",
+          "description": "chapter 1 photo 3",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "fill",
+          "orientation": "landscape",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 2
+        },
+        "used": true
+      },
+      {
+        "photoId": "c2p1",
+        "analysis": {
+          "photoId": "c2p1",
+          "description": "chapter 2 photo 1",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "fill",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 3
+        },
+        "used": true
+      },
+      {
+        "photoId": "c2p2",
+        "analysis": {
+          "photoId": "c2p2",
+          "description": "chapter 2 photo 2",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "fill",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 4
+        },
+        "used": true
+      },
+      {
+        "photoId": "c2p3",
+        "analysis": {
+          "photoId": "c2p3",
+          "description": "chapter 2 photo 3",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "fill",
+          "orientation": "landscape",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 5
+        },
+        "used": true
+      },
+      {
+        "photoId": "c3p1",
+        "analysis": {
+          "photoId": "c3p1",
+          "description": "chapter 3 photo 1",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "fill",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 6
+        },
+        "used": true
+      },
+      {
+        "photoId": "c3p2",
+        "analysis": {
+          "photoId": "c3p2",
+          "description": "chapter 3 photo 2",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "fill",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 7
+        },
+        "used": true
+      },
+      {
+        "photoId": "c3p3",
+        "analysis": {
+          "photoId": "c3p3",
+          "description": "chapter 3 photo 3",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "fill",
+          "orientation": "landscape",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 8
+        },
+        "used": true
+      },
+      {
+        "photoId": "c4p1",
+        "analysis": {
+          "photoId": "c4p1",
+          "description": "chapter 4 photo 1",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "fill",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 9
+        },
+        "used": true
+      },
+      {
+        "photoId": "c4p2",
+        "analysis": {
+          "photoId": "c4p2",
+          "description": "chapter 4 photo 2",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "fill",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 10
+        },
+        "used": true
+      },
+      {
+        "photoId": "c4p3",
+        "analysis": {
+          "photoId": "c4p3",
+          "description": "chapter 4 photo 3",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "fill",
+          "orientation": "landscape",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 11
+        },
+        "used": true
+      }
     ]
   },
   "expected": {
     "basePages": {
       "cover": {
         "pageIndex": 0,
-        "templateId": "mag-20",
-        "images": {},
+        "templateId": "mag-13",
+        "images": {
+          "image": "c1p2"
+        },
         "texts": {}
       },
       "toc": {
@@ -36,17 +310,23 @@
         "templateId": "mag-02",
         "images": {},
         "texts": {
-          "items[0].title": "Chapter 1",
-          "items[1].title": "Chapter 2",
-          "items[2].title": "Chapter 3",
-          "items[3].title": "Chapter 4"
+          "heading": "CONTENTS",
+          "folio": "02",
+          "numbers[0]": "01",
+          "titles[0]": "Chapter 1",
+          "numbers[1]": "02",
+          "titles[1]": "Chapter 2",
+          "numbers[2]": "03",
+          "titles[2]": "Chapter 3",
+          "numbers[3]": "04",
+          "titles[3]": "Chapter 4"
         }
       },
       "ending": {
         "pageIndex": 10,
-        "templateId": "mag-17",
+        "templateId": "mag-20",
         "images": {
-          "image": "c1p1"
+          "image1": "c1p1"
         },
         "texts": {}
       }
@@ -180,8 +460,10 @@
     "pages": [
       {
         "pageIndex": 0,
-        "templateId": "mag-20",
-        "images": {},
+        "templateId": "mag-13",
+        "images": {
+          "image": "c1p2"
+        },
         "texts": {}
       },
       {
@@ -189,10 +471,16 @@
         "templateId": "mag-02",
         "images": {},
         "texts": {
-          "items[0].title": "Chapter 1",
-          "items[1].title": "Chapter 2",
-          "items[2].title": "Chapter 3",
-          "items[3].title": "Chapter 4"
+          "heading": "CONTENTS",
+          "folio": "02",
+          "numbers[0]": "01",
+          "titles[0]": "Chapter 1",
+          "numbers[1]": "02",
+          "titles[1]": "Chapter 2",
+          "numbers[2]": "03",
+          "titles[2]": "Chapter 3",
+          "numbers[3]": "04",
+          "titles[3]": "Chapter 4"
         }
       },
       {
@@ -265,9 +553,9 @@
       },
       {
         "pageIndex": 10,
-        "templateId": "mag-17",
+        "templateId": "mag-20",
         "images": {
-          "image": "c1p1"
+          "image1": "c1p1"
         },
         "texts": {}
       }

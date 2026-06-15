@@ -6,41 +6,53 @@
     {
       "id": "cells[0].image",
       "orientation": [
-        "square"
+        "square",
+        "portrait",
+        "landscape"
       ],
       "quality": [
         "detail",
-        "fill"
+        "fill",
+        "hero"
       ]
     },
     {
       "id": "cells[1].image",
       "orientation": [
-        "square"
+        "square",
+        "landscape",
+        "portrait"
       ],
       "quality": [
         "detail",
-        "fill"
+        "fill",
+        "hero"
       ]
     },
     {
       "id": "cells[2].image",
       "orientation": [
-        "square"
+        "square",
+        "portrait",
+        "landscape"
       ],
       "quality": [
         "detail",
-        "fill"
+        "fill",
+        "hero"
       ]
     },
     {
       "id": "cells[3].image",
       "orientation": [
-        "square"
+        "square",
+        "portrait",
+        "landscape"
       ],
       "quality": [
         "detail",
-        "fill"
+        "fill",
+        "hero"
       ]
     }
   ],

@@ -109,6 +109,7 @@ export function validateSlotsForTemplate(
 
   const imageIds = new Set(tpl.images.map((slot) => slot.id));
   const textIds = new Set(tpl.texts.map((slot) => slot.id));
+  const repeatTextIds = new Set(tpl.texts.filter((slot) => slot.repeat).map((slot) => slot.id));
 
   for (const k of imageSlotKeys) {
     if (!imageIds.has(k)) {
@@ -120,7 +121,8 @@ export function validateSlotsForTemplate(
   }
 
   for (const k of textSlotKeys) {
-    if (!textIds.has(k)) {
+    const repeatBase = k.match(/^([A-Za-z0-9_-]+)\[\d+\]$/)?.[1];
+    if (!textIds.has(k) && !(repeatBase && repeatTextIds.has(repeatBase))) {
       return {
         ok: false,
         reason: `text slot "${k}" not in template ${templateId}`,

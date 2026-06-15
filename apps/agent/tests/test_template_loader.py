@@ -18,16 +18,11 @@ EXPECTED_TEMPLATE_IDS = [
     "mag-09",
     "mag-10",
     "mag-11",
-    "mag-12",
     "mag-13",
-    "mag-14",
     "mag-15",
-    "mag-16",
-    "mag-17",
     "mag-18",
     "mag-19",
     "mag-20",
-    "mag-21",
     "p01",
 ]
 
@@ -42,7 +37,7 @@ def test_loader_reads_shared_template_json_count():
     template_dir = _repo_root() / "packages" / "contracts" / "templates"
     json_files = sorted(template_dir.glob("*.json"))
 
-    assert len(json_files) == 22
+    assert len(json_files) == 17
     assert templates.TEMPLATE_IDS == EXPECTED_TEMPLATE_IDS
     assert len(templates.TEMPLATES) == len(json_files)
 
@@ -64,7 +59,7 @@ def test_loader_fail_fast_when_explicit_template_path_is_missing(monkeypatch, tm
 def test_cover_ids_are_derived_from_template_json():
     from src import templates
 
-    assert templates.COVER_TEMPLATE_IDS == ["mag-01", "mag-13", "mag-20", "p01"]
+    assert templates.COVER_TEMPLATE_IDS == ["mag-01", "mag-13", "p01"]
 
 
 def test_prompt_summary_handles_optional_constraints(tmp_path):
@@ -123,14 +118,6 @@ def test_layout_rules_treat_optional_image_slot_hints_as_any(monkeypatch, tmp_pa
     write_template(
         "mag-02", "interior", "textOnly",
         [], [{"id": "items", "role": "body", "lang": "user"}],
-    )
-    write_template(
-        "mag-14", "interior", "textOnly",
-        [], [{"id": "folio", "role": "decoration", "lang": "en"}],
-    )
-    write_template(
-        "mag-20", "cover", "opening",
-        [], [{"id": "title", "role": "title", "lang": "user"}],
     )
     write_template(
         "optional-01", "interior", "portrait",

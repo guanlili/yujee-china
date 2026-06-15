@@ -257,11 +257,11 @@ def _edit_layout() -> LayoutV2:
     ]
     pages = [
         Page(pageIndex=0, templateId="mag-13", images={"image": "p1"},
-             texts={"title": "Kyoto", "issue": "YUJEE · 01"}),
+             texts={"title": "Kyoto", "caption": "A quiet cover.", "folio": "01"}),
         Page(pageIndex=1, templateId="mag-19", images={"image": "p4"}, texts={"intro": "A quiet street."}),
-        Page(pageIndex=2, templateId="mag-12",
-             images={"imageTop": "p3", "imageBottom": "p2"}, texts={"num1": "02", "num2": "03"}),
-        Page(pageIndex=3, templateId="mag-17", images={"image": "p2"}, texts={"name1": "The End"}),
+        Page(pageIndex=2, templateId="mag-19",
+             images={"image": "p3"}, texts={"intro": "Square note"}),
+        Page(pageIndex=3, templateId="mag-03", images={"image": "p2"}, texts={"location": "The End"}),
     ]
     return LayoutV2(
         magazine=Magazine(title="Trip", style="warm-film", language="en"),

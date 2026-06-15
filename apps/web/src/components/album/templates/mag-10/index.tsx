@@ -41,7 +41,7 @@ export function WebMag10({ data, totalPages }: TemplateRenderProps) {
                 marginBottom: 12,
               }}
             >
-              {c.n}
+              {i + 1}
             </div>
             <WebImage
               src={c.image}
@@ -55,7 +55,7 @@ export function WebMag10({ data, totalPages }: TemplateRenderProps) {
                 color: COLORS.ink2,
                 letterSpacing: '0.02em',
                 textAlign: 'justify',
-                fontSize: 16,
+                fontSize: 18,
               }}
             >
               {c.caption}

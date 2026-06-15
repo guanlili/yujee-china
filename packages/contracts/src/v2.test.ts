@@ -59,8 +59,8 @@ const draftTree = {
   meta: { style: 'warm-film', language: 'en' },
   photoPool: [],
   basePages: {
-    cover: { pageIndex: 0, templateId: 'mag-20', images: {}, texts: {} },
-    ending: { pageIndex: 1, templateId: 'mag-17', images: { image: 'p1' }, texts: {} },
+    cover: { pageIndex: 0, templateId: 'mag-01', images: {}, texts: {} },
+    ending: { pageIndex: 1, templateId: 'mag-03', images: { image: 'p1' }, texts: {} },
   },
   chapters: [],
 };

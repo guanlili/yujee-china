@@ -24,6 +24,15 @@ def _photo(pid: str, *, quality: str, orientation: str) -> PhotoAnalysis:
     )
 
 
+def _toc_texts(line: str = "A small page of entries kept from the trip.") -> dict[str, str]:
+    return {
+        "heading": "CONTENTS",
+        "numbers[0]": "01",
+        "titles[0]": line,
+        "folio": "02",
+    }
+
+
 def _good_layout() -> AlbumLayoutPlan:
     photos = [
         _photo("p1", quality="hero", orientation="landscape"),
@@ -32,13 +41,12 @@ def _good_layout() -> AlbumLayoutPlan:
     ]
     pages = [
         Page(pageIndex=0, templateId="mag-13", images={"image": "p1"},
-             texts={"title": "A spring trip to Kyoto", "intro": "x" * 45,
-                    "issue": "YUJEE · 01", "credit": "AI ARRANGED · YUJEE"}),
+             texts={"title": "A spring trip to Kyoto", "caption": "x" * 45, "folio": "01"}),
         Page(pageIndex=1, templateId="mag-02", images={},
-             texts={"items": "A small page of entries kept from the trip."}),
-        Page(pageIndex=2, templateId="mag-12",
-             images={"imageTop": "p3", "imageBottom": "p2"},
-             texts={"num1": "02", "num2": "03"}),
+             texts=_toc_texts()),
+        Page(pageIndex=2, templateId="mag-04",
+             images={"image1": "p1", "image2": "p2", "image3": "p3"},
+             texts={"caption1": "Square record", "caption2": "Portrait note"}),
     ]
     return AlbumLayoutPlan(
         magazine=Magazine(title="Trip", style="warm-film", language="en"),
@@ -58,7 +66,7 @@ class TestRules:
 
     def test_non_cover_first_page_caught(self):
         layout = _good_layout()
-        layout.pages[0] = Page(pageIndex=0, templateId="mag-02", images={}, texts={"items": "x"})
+        layout.pages[0] = Page(pageIndex=0, templateId="mag-02", images={}, texts=_toc_texts("x"))
         msg = violation(layout) or ""
         assert "cover" in msg
 
@@ -67,6 +75,8 @@ class TestRules:
         # mismatches are soft preferences under the composing redesign.
         layout = _good_layout()
         layout.photos[0] = _photo("p1", quality="fill", orientation="landscape")
+        layout.pages[2] = Page(pageIndex=2, templateId="mag-05", images={"image": "p1"}, texts={})
+        layout.pages.append(Page(pageIndex=3, templateId="mag-02", images={}, texts=_toc_texts("ending")))
         msg = violation(layout) or ""
         assert "fill" in msg and "hero" in msg
 
@@ -83,7 +93,7 @@ class TestRules:
                 pageIndex=3,
                 templateId="mag-02",
                 images={},
-                texts={"items": "An extra actual page is allowed."},
+                texts=_toc_texts("An extra actual page is allowed."),
             )
         )
 
@@ -92,7 +102,7 @@ class TestRules:
     def test_more_than_16_pages_caught(self):
         layout = _good_layout()
         pages = [
-            Page(pageIndex=i, templateId="mag-02", images={}, texts={"items": f"page {i}"})
+            Page(pageIndex=i, templateId="mag-02", images={}, texts=_toc_texts(f"page {i}"))
             for i in range(17)
         ]
         pages[0] = layout.pages[0]
@@ -109,17 +119,16 @@ class TestRules:
         layout = _good_layout()
         layout.pages[2] = Page(
             pageIndex=2,
-            templateId="mag-16",
-            images={"imageTiny": "p1", "imagePerson": "p1", "imageHarbor": "p1"},
-            texts={"caption1": "x" * 45, "caption2": "y" * 45,
-                   "caption3": "z" * 45, "quote": "q" * 35},
+            templateId="mag-04",
+            images={"image1": "p1", "image2": "p1", "image3": "p1"},
+            texts={"caption1": "x" * 45, "caption2": "y" * 45},
         )
         assert "twice on same page" in (violation(layout) or "")
 
     def test_unused_photo_caught(self):
         layout = _good_layout()
         layout.pages[2] = Page(pageIndex=2, templateId="mag-02", images={},
-                               texts={"items": "x"})
+                               texts=_toc_texts("x"))
         assert "unused" in (violation(layout) or "")
 
     def test_missing_image_slot_caught(self):
@@ -133,16 +142,14 @@ class TestRules:
             photos=photos,
             pages=[
                 Page(pageIndex=0, templateId="mag-13", images={"image": "p1"},
-                     texts={"title": "Trip to Tokyo", "intro": "y" * 45,
-                            "issue": "YUJEE · 01", "credit": "AI ARRANGED · YUJEE"}),
+                     texts={"title": "Trip to Tokyo", "caption": "y" * 45, "folio": "01"}),
                 Page(pageIndex=1, templateId="mag-05", images={"image": "p3"},
                      texts={"title": "A quiet day", "topRight": "Kyoto spring",
                             "caption": "x" * 70, "folio": "02"}),
                 Page(pageIndex=2, templateId="mag-18",
                      images={"imageLeft": "p2"},
-                     texts={"numLeft": "01", "numRight": "02",
-                            "captionLeft": "x" * 45, "captionRight": "y" * 45,
-                            "subtitle": "z" * 35}),
+                     texts={"captionLeft": "x" * 45, "captionRight": "y" * 45,
+                            "folio": "03"}),
             ],
         )
         msg = violation(layout) or ""
@@ -159,14 +166,12 @@ class TestRules:
             photos=photos,
             pages=[
                 Page(pageIndex=0, templateId="mag-13", images={"image": "p1"},
-                     texts={"title": "Trip to Tokyo", "intro": "y" * 45,
-                            "issue": "YUJEE · 01", "credit": "AI ARRANGED · YUJEE"}),
-                Page(pageIndex=1, templateId="mag-02", images={}, texts={"items": "x"}),
+                     texts={"title": "Trip to Tokyo", "caption": "y" * 45, "folio": "01"}),
+                Page(pageIndex=1, templateId="mag-02", images={}, texts=_toc_texts("x")),
                 Page(pageIndex=2, templateId="mag-18",
                      images={"imageLeft": "p2", "imageRight": "p2"},
-                     texts={"numLeft": "01", "numRight": "02",
-                            "captionLeft": "x" * 45, "captionRight": "y" * 45,
-                            "subtitle": "z" * 35}),
+                     texts={"captionLeft": "x" * 45, "captionRight": "y" * 45,
+                            "folio": "03"}),
             ],
         )
         msg = violation(layout) or ""
@@ -197,11 +202,11 @@ class TestCoerce:
                      texts={}),
                 # mag-04: image1=landscape, image2=portrait, image3=square — all wrong
                 Page(pageIndex=1, templateId="mag-04",
-                     images={"image1": "p2", "image2": "p1", "image3": "p5"},
+                     images={"image1": "p2", "image2": "p1"},
                      texts={}),
-                # mag-12: imageTop=square, imageBottom=portrait — both wrong
-                Page(pageIndex=2, templateId="mag-12",
-                     images={"imageTop": "p3", "imageBottom": "p6"},
+                # mag-09 is filled with a soft orientation mismatch.
+                Page(pageIndex=2, templateId="mag-09",
+                     images={"imageTop": "p3", "imageMain": "p6"},
                      texts={}),
             ],
         )
@@ -245,7 +250,7 @@ class TestCoerce:
         assert len(coerced.photos) == 3
         # the model's correct assignments are left untouched
         assert coerced.pages[0].images == {"image": "p1"}
-        assert coerced.pages[2].images == {"imageTop": "p3", "imageBottom": "p2"}
+        assert coerced.pages[2].images == {"image1": "p1", "image2": "p2", "image3": "p3"}
 
     def test_quality_mismatch_coerced(self):
         # mag-18 imageLeft accepts only detail/fill — a hero photo there is the
@@ -303,8 +308,8 @@ class TestCoerce:
         assert "p2" in used
 
     def test_coerce_uses_unused_photos_to_complete_current_template_before_retemplate(self):
-        # mag-16 can be fully assigned with p3 tiny + p2 person + p1 harbor. A
-        # greedy fill may choose p1 for imagePerson first, but coerce must then
+        # mag-04 can be fully assigned with p2 image1 + p1 image2 + p3 image3. A
+        # greedy fill may choose p1 for image1 first, but coerce must then
         # reconsider unused p2 before downsizing/text-only swapping the page.
         photos = [
             _photo("p1", quality="detail", orientation="landscape"),
@@ -315,9 +320,9 @@ class TestCoerce:
             magazine=self._magazine(),
             photos=photos,
             pages=[
-                Page(pageIndex=0, templateId="mag-20", images={}, texts={}),
-                Page(pageIndex=1, templateId="mag-16",
-                     images={"imageTiny": "p3"}, texts={}),
+                Page(pageIndex=0, templateId="mag-13", images={"image": "p1"}, texts={}),
+                Page(pageIndex=1, templateId="mag-04",
+                     images={"image3": "p3"}, texts={}),
                 Page(pageIndex=2, templateId="mag-02", images={}, texts={}),
             ],
         )
@@ -326,11 +331,11 @@ class TestCoerce:
 
         assert violation(coerced) is None
         assert {p.photoId for p in coerced.photos} == {"p1", "p2", "p3"}
-        assert coerced.pages[1].templateId == "mag-16"
+        assert coerced.pages[1].templateId == "mag-04"
         assert coerced.pages[1].images == {
-            "imageTiny": "p3",
-            "imagePerson": "p2",
-            "imageHarbor": "p1",
+            "image1": "p2",
+            "image2": "p1",
+            "image3": "p3",
         }
 
     def test_coerce_can_use_orientation_soft_slots_for_square_fill_photos(self):
@@ -343,7 +348,7 @@ class TestCoerce:
             magazine=self._magazine(),
             photos=photos,
             pages=[
-                Page(pageIndex=0, templateId="mag-20", images={}, texts={}),
+                Page(pageIndex=0, templateId="mag-01", images={"image": "p1"}, texts={}),
                 Page(pageIndex=1, templateId="mag-04",
                      images={"image3": "p1"}, texts={}),
                 Page(pageIndex=2, templateId="mag-02", images={}, texts={}),
@@ -364,7 +369,7 @@ class TestCoerce:
             magazine=self._magazine(),
             photos=photos,
             pages=[
-                Page(pageIndex=0, templateId="mag-20", images={}, texts={}),
+                Page(pageIndex=0, templateId="mag-01", images={"image": "p0"}, texts={}),
                 Page(
                     pageIndex=1,
                     templateId="mag-10",
@@ -415,7 +420,7 @@ class TestFewPhotoFallback:
         photos = [_photo("p1", quality=quality, orientation=orientation)]
         layout = build_text_first_layout(self._magazine(), photos)
         # violation() already enforces cover-category page 0; assert explicitly too
-        assert layout.pages[0].templateId in {"mag-01", "mag-13", "mag-20", "p01"}
+        assert layout.pages[0].templateId in set(registry.COVER_TEMPLATE_IDS)
 
     def test_two_photos_both_placed(self):
         photos = [
@@ -438,7 +443,7 @@ class TestFewPhotoFallback:
         photos = [_photo("p1", quality="hero", orientation="square")]
         layout = build_text_first_layout(self._magazine(), photos)
 
-        assert layout.pages[0].templateId != "mag-20"
+        assert layout.pages[0].templateId in set(registry.COVER_TEMPLATE_IDS)
         assert "p1" in layout.pages[0].images.values()
         assert violation(layout) is None
         # No empty image slot anywhere.
@@ -454,9 +459,8 @@ class TestFewPhotoFallback:
         ],
     )
     def test_two_photo_square_with_compatible_partner_is_not_dropped(self, partner):
-        # Mixed square albums can be valid with existing two-slot templates:
-        # landscape+square -> mag-09, portrait+square -> mag-12. The known gap is
-        # square-only, not every ≤2-photo album containing a square.
+        # Mixed square albums remain valid because square photos have an active
+        # single-image home (mag-19), so the square is not dropped.
         photos = [
             partner,
             _photo("p2", quality="detail", orientation="square"),
@@ -512,8 +516,7 @@ class TestClamp:
         layout.pages[0] = Page(
             pageIndex=0, templateId="mag-13", images={"image": "p1"},
             texts={"title": "A spring trip to Kyoto in the early cherry season",
-                   "intro": "x" * 45, "issue": "YUJEE · 01",
-                   "credit": "AI ARRANGED · YUJEE"},
+                   "caption": "x" * 45, "folio": "01"},
         )
         assert violation(layout) is None
         layout.pages = clamp_page_texts(layout.pages)

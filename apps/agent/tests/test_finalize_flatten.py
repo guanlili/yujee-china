@@ -2,8 +2,8 @@
 
 Covers: derive_default_theme when /theme is skipped (B7), tree → contiguous
 flat pageIndex, cover→toc?→chapters→ending order, the TOC threshold + flat
-bracket-path `items[i].title` keys (P0-3), 30-photo bound + no dropped photo
-(M2), the ≤2 reuse budget with the 1-photo mag-20 fallback (P0-4), the all-fill
+bracket-path `titles[i]` keys (P0-3), 30-photo bound + no dropped photo
+(M2), the ≤2 non-cover reuse budget for 1-photo albums (P0-4), the all-fill
 cover/ending hero exemption with chapter pages NOT exempt (B8), first-page
 detection by category=='cover' (P2-9), and "finalize with no chat at all".
 """
@@ -39,6 +39,7 @@ def _photo(
     quality: str = "detail",
     orientation: str = "portrait",
     used: bool = True,
+    people_count: str = "1",
 ) -> V2Photo:
     pid = f"p{idx:03d}"
     return V2Photo(
@@ -49,7 +50,7 @@ def _photo(
             tags=["trip"],
             quality=quality,  # type: ignore[arg-type]
             orientation=orientation,  # type: ignore[arg-type]
-            peopleCount="1",
+            peopleCount=people_count,
             scene="outdoor",
             mood="warm",
         ),
@@ -99,8 +100,8 @@ def _draft(
         # finalize re-derives ending (and the cover unless one is supplied here as
         # a /theme-authored cover); these placeholders satisfy the input schema.
         basePages=V2BasePages(
-            cover=cover or Page(pageIndex=0, templateId="mag-20", images={}, texts={}),
-            ending=Page(pageIndex=0, templateId="mag-17", images={}, texts={}),
+            cover=cover or Page(pageIndex=0, templateId="mag-01", images={}, texts={}),
+            ending=Page(pageIndex=0, templateId="mag-03", images={}, texts={}),
         ),
         chapters=chapters,
     )
@@ -114,11 +115,11 @@ def _assert_well_formed(layout: LayoutV2) -> None:
     assert finalize.validate_v2(layout) is None
     # contiguous pageIndex 0..N-1
     assert [page.pageIndex for page in layout.pages] == list(range(len(layout.pages)))
-    # first is a cover-category template, last is the closing template
+    # first is a cover-category template; last is a legal final page.
     from src import templates as registry
 
     assert registry.get(layout.pages[0].templateId)["slot"] == "cover"
-    assert layout.pages[-1].templateId == "mag-17"
+    assert registry.get(layout.pages[-1].templateId) is not None
 
 
 # ---------- tests -------------------------------------------------------------
@@ -159,16 +160,20 @@ def test_finalize_subject_falls_back_to_first_chapter_label():
     _assert_well_formed(layout)
 
 
-def test_single_photo_uses_text_only_cover_and_photo_exactly_twice():
-    """1-photo album: body 1× + ending 1× = 2 ≤ cap; cover has no budget → mag-20 (P0-4)."""
+def test_single_photo_uses_cover_display_and_non_cover_photo_twice():
+    """1-photo album: body 1× + ending 1× = 2 ≤ cap; cover display is allowed."""
     photos = [_photo(1, "hero")]
     draft = _draft(photos, [_chapter("c1", photos)], prompt_hint="One moment")
 
     layout = finalize.finalize(draft)
 
     _assert_well_formed(layout)
-    assert layout.pages[0].templateId == "mag-20"  # text-only cover, no budget left
-    assert _used_image_ids(layout).count("p001") == 2  # exactly twice, never more
+    assert layout.pages[0].templateId in {"mag-01", "mag-13", "p01"}
+    assert _used_image_ids(layout).count("p001") >= 2
+    non_cover_uses = [
+        pid for page in layout.pages[1:] for pid in page.images.values()
+    ]
+    assert non_cover_uses.count("p001") == 2
 
 
 def test_theme_authored_cover_is_preserved_not_re_derived():
@@ -204,7 +209,7 @@ def test_theme_authored_cover_is_preserved_not_re_derived():
 
 def test_theme_missing_re_derives_cover_ignoring_stale_basepage():
     """Without a /theme subject, finalize re-derives the cover under the budget
-    (here: text-only mag-20), so a stale placeholder basePage is not trusted."""
+    so a stale placeholder basePage is not trusted."""
     photos = [_photo(1, "fill")]
     draft = _draft(
         photos,
@@ -217,9 +222,8 @@ def test_theme_missing_re_derives_cover_ignoring_stale_basepage():
     layout = finalize.finalize(draft)
 
     _assert_well_formed(layout)
-    # all-fill + 1 photo → no cover budget → re-derived to the text-only cover,
-    # NOT the stale mag-13 placeholder.
-    assert layout.pages[0].templateId == "mag-20"
+    assert layout.pages[0].templateId in {"mag-01", "mag-13", "p01"}
+    assert "p001" in layout.pages[0].images.values()
 
 
 def test_flatten_order_is_cover_then_chapters_then_ending_without_toc():
@@ -253,16 +257,18 @@ def test_toc_added_when_four_chapters_and_eight_pages_with_flat_bracket_keys():
     assert toc.images == {}
     # P0-3: flat bracket-path keys, every value a plain string (never a list)
     assert toc.texts, "TOC must carry chapter titles"
-    for key, value in toc.texts.items():
-        assert re.fullmatch(r"items\[\d+\]\.title", key), key
+    title_keys = [key for key in toc.texts if key.startswith("titles[")]
+    for key in title_keys:
+        assert re.fullmatch(r"titles\[\d+\]", key), key
+    for value in toc.texts.values():
         assert isinstance(value, str)
     # one entry per chapter, in order
-    titles = [toc.texts[f"items[{i}].title"] for i in range(4)]
+    titles = [toc.texts[f"titles[{i}]"] for i in range(4)]
     assert titles == [f"Chapter {i + 1}" for i in range(4)]
 
 
 def test_toc_titles_are_clamped_to_the_array_slot_budget():
-    long_label = "L" * 300  # mag-02 items recommend ≤ 240 chars
+    long_label = "L" * 300  # mag-02 titles recommend <= 16 chars
     photos = [_photo(i, "detail") for i in range(1, 25)]
     chapters = [
         _chapter(f"c{n}", photos[n * 6 : n * 6 + 6], label=(long_label if n == 0 else f"Chapter {n + 1}"))
@@ -273,7 +279,7 @@ def test_toc_titles_are_clamped_to_the_array_slot_budget():
     layout = finalize.finalize(draft)
 
     toc = next(p for p in layout.pages if p.templateId == "mag-02")
-    assert len(toc.texts["items[0].title"]) <= 240  # clamped, not the raw 300
+    assert len(toc.texts["titles[0]"]) <= 16  # clamped, not the raw 300
 
 
 def test_toc_skipped_when_four_chapters_but_under_eight_pages():
@@ -316,11 +322,9 @@ def test_all_fill_album_exempts_cover_and_ending_from_hero_rule():
     layout = finalize.finalize(draft)
 
     _assert_well_formed(layout)  # passes despite all-fill, thanks to the exemption
-    assert layout.pages[0].templateId == "mag-20"  # no hero/detail → text-only cover
+    assert layout.pages[0].templateId in {"mag-01", "mag-13", "p01"}
     ending = layout.pages[-1]
-    assert ending.templateId == "mag-17"
-    # the ending sits a fill photo into mag-17's hero slot (exemption at work)
-    assert list(ending.images.values())  # ending still carries an image
+    assert list(ending.images.values())  # final page still carries an image
 
 
 def test_extension_fields_are_stripped_from_output_photos():
@@ -347,8 +351,9 @@ def test_unused_pool_photos_excluded_from_layout_photos():
 
 
 def test_generated_chapter_keeps_authored_text_untouched():
-    photos = [_photo(1, "detail")]
+    photos = [_photo(1, "detail", orientation="landscape", people_count="0")]
     chapter = _chapter("c1", photos, state="generated")
+    chapter.pages[0] = Page(pageIndex=0, templateId="mag-05", images={"image": "p001"}, texts={})
     # authored copy on the body page
     body = chapter.pages[0]
     authored = {meta["id"]: "user authored copy" for meta in
@@ -365,10 +370,12 @@ def test_generated_chapter_keeps_authored_text_untouched():
 
 
 def test_empty_chapter_gets_ambiance_copy_with_only_cluster_facts():
-    photos = [_photo(1, "detail")]
+    photos = [_photo(1, "detail", orientation="landscape", people_count="0")]
+    chapter = _chapter("c1", photos, state="empty", place="Kyoto", time_range="spring")
+    chapter.pages[0] = Page(pageIndex=0, templateId="mag-05", images={"image": "p001"}, texts={})
     draft = _draft(
         photos,
-        [_chapter("c1", photos, state="empty", place="Kyoto", time_range="spring")],
+        [chapter],
     )
 
     layout = finalize.finalize(draft)
@@ -422,7 +429,7 @@ def test_validate_rejects_fill_in_hero_on_chapter_page_but_not_on_ending():
         magazine=_mag(),
         photos=[fill, other],
         pages=[
-            Page(pageIndex=0, templateId="mag-20", images={}, texts={"title": "T"}),
+            Page(pageIndex=0, templateId="mag-01", images={"image": "f1"}, texts={"heading": "T"}),
             Page(pageIndex=1, templateId="mag-03", images={"image": "f1"}, texts={}),
             Page(pageIndex=2, templateId="mag-19", images={"image": "d1"}, texts={}),
         ],
@@ -435,9 +442,9 @@ def test_validate_rejects_fill_in_hero_on_chapter_page_but_not_on_ending():
         magazine=_mag(),
         photos=[fill, other],
         pages=[
-            Page(pageIndex=0, templateId="mag-20", images={}, texts={"title": "T"}),
+            Page(pageIndex=0, templateId="mag-01", images={"image": "d1"}, texts={"heading": "T"}),
             Page(pageIndex=1, templateId="mag-19", images={"image": "d1"}, texts={}),
-            Page(pageIndex=2, templateId="mag-17", images={"image": "f1"}, texts={}),
+            Page(pageIndex=2, templateId="mag-03", images={"image": "f1"}, texts={}),
         ],
     )
     assert finalize.validate_v2(good) is None
@@ -449,10 +456,10 @@ def test_validate_rejects_reuse_over_twice():
         magazine=_mag(),
         photos=[photo],
         pages=[
-            Page(pageIndex=0, templateId="mag-20", images={}, texts={"title": "T"}),
+            Page(pageIndex=0, templateId="mag-01", images={"image": "p1"}, texts={"heading": "T"}),
             Page(pageIndex=1, templateId="mag-19", images={"image": "p1"}, texts={}),
             Page(pageIndex=2, templateId="mag-19", images={"image": "p1"}, texts={}),
-            Page(pageIndex=3, templateId="mag-17", images={"image": "p1"}, texts={}),
+            Page(pageIndex=3, templateId="mag-03", images={"image": "p1"}, texts={}),
         ],
     )
     problem = finalize.validate_v2(layout)
@@ -464,7 +471,7 @@ def test_validate_rejects_non_sequential_page_index():
         magazine=_mag(),
         photos=[_pa("p1")],
         pages=[
-            Page(pageIndex=0, templateId="mag-20", images={}, texts={"title": "T"}),
+            Page(pageIndex=0, templateId="mag-01", images={"image": "p1"}, texts={"heading": "T"}),
             Page(pageIndex=5, templateId="mag-19", images={"image": "p1"}, texts={}),
         ],
     )
@@ -477,7 +484,7 @@ def test_validate_rejects_unused_photo():
         magazine=_mag(),
         photos=[_pa("p1"), _pa("ghost")],
         pages=[
-            Page(pageIndex=0, templateId="mag-20", images={}, texts={"title": "T"}),
+            Page(pageIndex=0, templateId="mag-01", images={"image": "p1"}, texts={"heading": "T"}),
             Page(pageIndex=1, templateId="mag-19", images={"image": "p1"}, texts={}),
         ],
     )

@@ -6,8 +6,8 @@ import { WEB_TEMPLATE_REGISTRY } from './web-registry';
 import { PDF_TEMPLATE_REGISTRY } from './pdf-registry';
 
 // Every template in the registry must render on BOTH surfaces. A web-only
-// template (the mag-21 regression) renders fine in the editor but throws on PDF
-// export — the half that the user actually pays for. This guards the invariant.
+// template renders fine in the editor but throws on PDF export — the half that
+// the user actually pays for. This guards the invariant.
 test('every template id has a web AND a pdf renderer', () => {
   for (const id of TEMPLATE_IDS) {
     assert.ok(WEB_TEMPLATE_REGISTRY[id], `${id} is missing a web renderer`);

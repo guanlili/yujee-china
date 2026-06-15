@@ -8,7 +8,6 @@ export function WebMag19({ data, totalPages }: TemplateRenderProps) {
     intro?: string;
     captionLeft?: string;
     captionRight?: string;
-    quote?: string;
     folio?: string;
   };
   return (
@@ -16,36 +15,37 @@ export function WebMag19({ data, totalPages }: TemplateRenderProps) {
       <p
         style={{
           position: 'absolute',
-          top: 230,
-          left: 200,
-          right: 200,
+          top: 100,
+          left: 70,
+          right: 70,
           margin: 0,
           textAlign: 'center',
-          lineHeight: 1.7,
-          color: COLORS.ink2,
+          lineHeight: 1.4,
+          color: COLORS.ink,
           letterSpacing: '0.02em',
-          fontSize: 16,
+          fontSize: 45,
+          whiteSpace: 'nowrap',
         }}
       >
         {d.intro || ''}
       </p>
       <WebImage
         src={d.image}
-        placeholder="3:2"
-        style={{ position: 'absolute', top: 340, left: 70, right: 70, height: 460 }}
+        placeholder="1:1"
+        style={{ position: 'absolute', top: 170, left: 60, width: 674, height: 674 }}
       />
       <p
         style={{
           position: 'absolute',
-          top: 815,
-          left: 70,
-          width: 280,
+          top: 868,
+          left: 60,
+          width: 300,
           margin: 0,
           lineHeight: 1.7,
           color: COLORS.ink2,
           letterSpacing: '0.02em',
           textAlign: 'left',
-          fontSize: 16,
+          fontSize: 18,
         }}
       >
         {d.captionLeft || ''}
@@ -53,15 +53,15 @@ export function WebMag19({ data, totalPages }: TemplateRenderProps) {
       <p
         style={{
           position: 'absolute',
-          top: 815,
-          right: 70,
-          width: 280,
+          top: 868,
+          right: 60,
+          width: 300,
           margin: 0,
           lineHeight: 1.7,
           color: COLORS.ink2,
           letterSpacing: '0.02em',
           textAlign: 'right',
-          fontSize: 16,
+          fontSize: 18,
         }}
       >
         {d.captionRight || ''}
@@ -69,8 +69,8 @@ export function WebMag19({ data, totalPages }: TemplateRenderProps) {
       <div
         style={{
           position: 'absolute',
-          top: 340,
-          right: 90,
+          top: 420,
+          right: 80,
           fontSize: 10,
           letterSpacing: '0.32em',
           color: COLORS.ink3,
@@ -80,23 +80,6 @@ export function WebMag19({ data, totalPages }: TemplateRenderProps) {
       >
         Frame {d.folio || '19'} / 30
       </div>
-      <p
-        style={{
-          position: 'absolute',
-          bottom: 95,
-          left: 70,
-          right: 70,
-          margin: 0,
-          textAlign: 'center',
-          fontFamily: WEB_FONTS.serifEn,
-          fontStyle: 'italic',
-          color: COLORS.ink,
-          letterSpacing: '0.02em',
-          fontSize: 16,
-        }}
-      >
-        {d.quote || ''}
-      </p>
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="19" />
     </WebPage>
   );

@@ -14,6 +14,11 @@ import {
 } from '@/db/repos/__test__/setup';
 import { CREDIT_COST_PER_ALBUM } from '@/config/pricing';
 
+test('creditService.cost defaults legacy callers to one generation credit', () => {
+  assert.equal(creditService.cost(), CREDIT_COST_PER_ALBUM);
+  assert.equal(Number.isNaN(creditService.cost()), false);
+});
+
 test('creditService: precheck rejects when balance < amount', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL not reachable');

@@ -16,12 +16,6 @@
   ],
   "texts": [
     {
-      "id": "category",
-      "role": "decoration",
-      "maxChars": 15,
-      "lang": "en"
-    },
-    {
       "id": "folio",
       "role": "decoration",
       "maxChars": 2,

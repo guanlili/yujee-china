@@ -1,76 +1,27 @@
 import { Text, View } from '@react-pdf/renderer';
-import { COLORS, PDF_FONTS } from '../constants';
-import { PdfFolio, PdfPageShell } from '../pdf-utils';
+import { PDF_FONTS } from '../constants';
+import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function PdfMag20({ data, totalPages }: TemplateRenderProps) {
-  const d = data as {
-    boxText?: string;
-    title?: string;
-    plate?: string;
-    folio?: string;
-  };
+// 杂志尾页（PDF 端，与 index.tsx 同一版面）。Logo 字标与设计师署名为固定品牌元素。
+
+export function PdfMag20({ data }: TemplateRenderProps) {
+  const d = data as Record<string, string>;
   return (
-    <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
-      <View
-        style={{
-          position: 'absolute',
-          top: 220,
-          left: 120,
-          width: 260,
-          borderWidth: 1,
-          borderColor: COLORS.ruleLight,
-          paddingVertical: 16,
-          paddingHorizontal: 18,
-        }}
-      >
-        <Text
-          style={{
-            lineHeight: 1.7,
-            color: COLORS.ink2,
-            fontSize: 16,
-          }}
-        >
-          {d.boxText || ''}
-        </Text>
-      </View>
-      <Text
-        style={{
-          position: 'absolute',
-          top: 620,
-          left: 120,
-          fontFamily: PDF_FONTS.serifEn,
-          fontSize: 38,
-          letterSpacing: 8,
-          lineHeight: 1.4,
-          color: COLORS.ink,
-        }}
-      >
-        {d.title || 'MASASHI WAKUI\nAT NIGHT'}
-      </Text>
-      <View
-        style={{
-          position: 'absolute',
-          top: 770,
-          left: 120,
-          width: 60,
-          height: 1,
-          backgroundColor: COLORS.ink,
-        }}
-      />
-      <Text
-        style={{
-          position: 'absolute',
-          top: 790,
-          left: 120,
-          letterSpacing: 4,
-          color: COLORS.ink3,
-          fontSize: 16,
-        }}
-      >
-        {(d.plate || '').toUpperCase()}
-      </Text>
-      <PdfFolio folio={d.folio} totalPages={totalPages} fallback="20" />
+    <PdfPageShell>
+      {/* Logo 品牌字标（固定） */}
+      <Text style={{ position: 'absolute', left: 197, top: 100, width: 400, fontSize: 30, fontFamily: PDF_FONTS.serifCn, color: '#1c1b18', textAlign: 'center', letterSpacing: 12, lineHeight: 1 }}>遇己</Text>
+      <Text style={{ position: 'absolute', left: 197, top: 150, width: 400, fontSize: 10, fontFamily: PDF_FONTS.garamond, color: '#a09b8e', textAlign: 'center', letterSpacing: 5 }}>YUJEE</Text>
+
+      {/* 收尾图片 */}
+      <PdfImage src={d['image1']} style={{ position: 'absolute', left: 197, top: 212, width: 400, height: 460 }} />
+
+      {/* 尾页文案（可编辑槽位） */}
+      <Text style={{ position: 'absolute', left: 137, top: 720, width: 520, fontSize: 16, fontFamily: /[一-鿿]/.test(d['title'] || '') ? PDF_FONTS.serifCn : PDF_FONTS.garamond, color: '#5a574f', textAlign: 'center', lineHeight: 1.7 }}>{d['title']}</Text>
+
+      {/* 分隔细线 + 设计师署名（固定） */}
+      <View style={{ position: 'absolute', left: 377, top: 980, width: 40, height: 1, backgroundColor: '#a09b8e' }} />
+      <Text style={{ position: 'absolute', left: 197, top: 1000, width: 400, fontSize: 13, fontFamily: PDF_FONTS.serifCn, color: '#a09b8e', textAlign: 'center', letterSpacing: 3 }}>设计 · 玉几</Text>
     </PdfPageShell>
   );
 }

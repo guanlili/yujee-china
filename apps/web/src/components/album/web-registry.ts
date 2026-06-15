@@ -16,16 +16,11 @@ import { WebMag08 } from './templates/mag-08';
 import { WebMag09 } from './templates/mag-09';
 import { WebMag10 } from './templates/mag-10';
 import { WebMag11 } from './templates/mag-11';
-import { WebMag12 } from './templates/mag-12';
 import { WebMag13 } from './templates/mag-13';
-import { WebMag14 } from './templates/mag-14';
 import { WebMag15 } from './templates/mag-15';
-import { WebMag16 } from './templates/mag-16';
-import { WebMag17 } from './templates/mag-17';
 import { WebMag18 } from './templates/mag-18';
 import { WebMag19 } from './templates/mag-19';
 import { WebMag20 } from './templates/mag-20';
-import { WebMag21 } from './templates/mag-21';
 import { WebP01 } from './templates/p01';
 
 export const WEB_TEMPLATE_REGISTRY: Record<string, ComponentType<TemplateRenderProps>> = {
@@ -40,16 +35,11 @@ export const WEB_TEMPLATE_REGISTRY: Record<string, ComponentType<TemplateRenderP
   'mag-09': WebMag09,
   'mag-10': WebMag10,
   'mag-11': WebMag11,
-  'mag-12': WebMag12,
   'mag-13': WebMag13,
-  'mag-14': WebMag14,
   'mag-15': WebMag15,
-  'mag-16': WebMag16,
-  'mag-17': WebMag17,
   'mag-18': WebMag18,
   'mag-19': WebMag19,
   'mag-20': WebMag20,
-  'mag-21': WebMag21,
   p01: WebP01,
 };
 

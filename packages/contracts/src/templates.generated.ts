@@ -15,16 +15,11 @@ export const TEMPLATE_IDS = [
   "mag-09",
   "mag-10",
   "mag-11",
-  "mag-12",
   "mag-13",
-  "mag-14",
   "mag-15",
-  "mag-16",
-  "mag-17",
   "mag-18",
   "mag-19",
   "mag-20",
-  "mag-21",
   "p01"
 ] as const;
 
@@ -56,19 +51,19 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "sideText",
         "role": "decoration",
-        "maxChars": 30,
+        "maxChars": 20,
         "lang": "en"
       },
       {
         "id": "caption1",
         "role": "explain",
-        "maxChars": 80,
+        "maxChars": 30,
         "lang": "user"
       },
       {
         "id": "caption2",
         "role": "explain",
-        "maxChars": 80,
+        "maxChars": 30,
         "lang": "user"
       },
       {
@@ -86,9 +81,29 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     "images": [],
     "texts": [
       {
-        "id": "items",
+        "id": "heading",
         "role": "title",
-        "maxChars": 240,
+        "maxChars": 16,
+        "lang": "user"
+      },
+      {
+        "id": "numbers",
+        "role": "decoration",
+        "maxChars": 3,
+        "lang": "en",
+        "repeat": true
+      },
+      {
+        "id": "titles",
+        "role": "title",
+        "maxChars": 16,
+        "lang": "user",
+        "repeat": true
+      },
+      {
+        "id": "descriptions",
+        "role": "explain",
+        "maxChars": 80,
         "lang": "user",
         "repeat": true
       },
@@ -118,22 +133,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     ],
     "texts": [
       {
-        "id": "category",
-        "role": "decoration",
-        "maxChars": 15,
-        "lang": "en"
-      },
-      {
         "id": "location",
         "role": "decoration",
         "maxChars": 20,
         "lang": "en"
-      },
-      {
-        "id": "caption",
-        "role": "explain",
-        "maxChars": 60,
-        "lang": "user"
       },
       {
         "id": "folio",
@@ -151,7 +154,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "image1",
         "orientation": [
-          "landscape"
+          "square"
         ],
         "quality": [
           "hero",
@@ -161,7 +164,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "image2",
         "orientation": [
-          "portrait"
+          "square"
         ],
         "quality": [
           "detail",
@@ -183,13 +186,13 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "caption1",
         "role": "explain",
-        "maxChars": 80,
+        "maxChars": 60,
         "lang": "user"
       },
       {
         "id": "caption2",
         "role": "explain",
-        "maxChars": 80,
+        "maxChars": 100,
         "lang": "user"
       },
       {
@@ -267,12 +270,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     ],
     "texts": [
       {
-        "id": "category",
-        "role": "decoration",
-        "maxChars": 15,
-        "lang": "en"
-      },
-      {
         "id": "folio",
         "role": "decoration",
         "maxChars": 2,
@@ -310,25 +307,19 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "caption1",
         "role": "explain",
-        "maxChars": 80,
+        "maxChars": 120,
         "lang": "user"
       },
       {
         "id": "caption2",
         "role": "explain",
-        "maxChars": 80,
-        "lang": "user"
-      },
-      {
-        "id": "caption3",
-        "role": "explain",
-        "maxChars": 80,
+        "maxChars": 120,
         "lang": "user"
       },
       {
         "id": "title",
         "role": "title",
-        "maxChars": 16,
+        "maxChars": 20,
         "lang": "user"
       },
       {
@@ -365,13 +356,13 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "caption1",
         "role": "explain",
-        "maxChars": 80,
+        "maxChars": 70,
         "lang": "user"
       },
       {
         "id": "caption2",
         "role": "explain",
-        "maxChars": 80,
+        "maxChars": 160,
         "lang": "user"
       },
       {
@@ -381,10 +372,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "lang": "user"
       },
       {
-        "id": "subtitle",
-        "role": "decoration",
-        "maxChars": 25,
-        "lang": "en"
+        "id": "body",
+        "role": "body",
+        "maxChars": 180,
+        "lang": "user"
       },
       {
         "id": "folio",
@@ -467,41 +458,53 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "cells[0].image",
         "orientation": [
-          "square"
+          "square",
+          "portrait",
+          "landscape"
         ],
         "quality": [
           "detail",
-          "fill"
+          "fill",
+          "hero"
         ]
       },
       {
         "id": "cells[1].image",
         "orientation": [
-          "square"
+          "square",
+          "landscape",
+          "portrait"
         ],
         "quality": [
           "detail",
-          "fill"
+          "fill",
+          "hero"
         ]
       },
       {
         "id": "cells[2].image",
         "orientation": [
-          "square"
+          "square",
+          "portrait",
+          "landscape"
         ],
         "quality": [
           "detail",
-          "fill"
+          "fill",
+          "hero"
         ]
       },
       {
         "id": "cells[3].image",
         "orientation": [
-          "square"
+          "square",
+          "portrait",
+          "landscape"
         ],
         "quality": [
           "detail",
-          "fill"
+          "fill",
+          "hero"
         ]
       }
     ],
@@ -564,53 +567,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       }
     ]
   },
-  "mag-12": {
-    "id": "mag-12",
-    "slot": "interior",
-    "scene": "record",
-    "images": [
-      {
-        "id": "imageTop",
-        "orientation": [
-          "square"
-        ],
-        "quality": [
-          "detail",
-          "fill"
-        ]
-      },
-      {
-        "id": "imageBottom",
-        "orientation": [
-          "portrait"
-        ],
-        "quality": [
-          "hero",
-          "detail"
-        ]
-      }
-    ],
-    "texts": [
-      {
-        "id": "num1",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
-      },
-      {
-        "id": "num2",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
-      }
-    ]
-  },
   "mag-13": {
     "id": "mag-13",
     "slot": "cover",
@@ -635,83 +591,9 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "lang": "user"
       },
       {
-        "id": "intro",
+        "id": "caption",
         "role": "body",
-        "maxChars": 80,
-        "lang": "user"
-      },
-      {
-        "id": "caption1",
-        "role": "explain",
-        "maxChars": 80,
-        "lang": "user"
-      },
-      {
-        "id": "caption2",
-        "role": "explain",
-        "maxChars": 80,
-        "lang": "user"
-      },
-      {
-        "id": "issue",
-        "role": "decoration",
-        "maxChars": 15,
-        "lang": "en"
-      },
-      {
-        "id": "credit",
-        "role": "decoration",
-        "maxChars": 30,
-        "lang": "en"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
-      }
-    ]
-  },
-  "mag-14": {
-    "id": "mag-14",
-    "slot": "interior",
-    "scene": "textOnly",
-    "images": [],
-    "texts": [
-      {
-        "id": "bigNum",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
-      },
-      {
-        "id": "bigNumTotal",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
-      },
-      {
-        "id": "body",
-        "role": "body",
-        "maxChars": 80,
-        "lang": "user"
-      },
-      {
-        "id": "subtitleQuote",
-        "role": "body",
-        "maxChars": 50,
-        "lang": "user"
-      },
-      {
-        "id": "bracketQuote",
-        "role": "body",
-        "maxChars": 80,
-        "lang": "user"
-      },
-      {
-        "id": "footnote",
-        "role": "explain",
-        "maxChars": 60,
+        "maxChars": 165,
         "lang": "user"
       },
       {
@@ -775,111 +657,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       }
     ]
   },
-  "mag-16": {
-    "id": "mag-16",
-    "slot": "interior",
-    "scene": "record",
-    "images": [
-      {
-        "id": "imageTiny",
-        "orientation": [
-          "portrait"
-        ],
-        "quality": [
-          "fill"
-        ]
-      },
-      {
-        "id": "imagePerson",
-        "orientation": [
-          "landscape"
-        ],
-        "quality": [
-          "hero",
-          "detail"
-        ]
-      },
-      {
-        "id": "imageHarbor",
-        "orientation": [
-          "landscape"
-        ],
-        "quality": [
-          "detail",
-          "fill"
-        ]
-      }
-    ],
-    "texts": [
-      {
-        "id": "caption1",
-        "role": "explain",
-        "maxChars": 80,
-        "lang": "user"
-      },
-      {
-        "id": "caption2",
-        "role": "explain",
-        "maxChars": 80,
-        "lang": "user"
-      },
-      {
-        "id": "caption3",
-        "role": "explain",
-        "maxChars": 80,
-        "lang": "user"
-      },
-      {
-        "id": "quote",
-        "role": "body",
-        "maxChars": 60,
-        "lang": "user"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
-      }
-    ]
-  },
-  "mag-17": {
-    "id": "mag-17",
-    "slot": "ending",
-    "scene": "ending",
-    "images": [
-      {
-        "id": "image",
-        "orientation": [
-          "portrait"
-        ],
-        "quality": [
-          "hero",
-          "detail"
-        ]
-      }
-    ],
-    "texts": [
-      {
-        "id": "name1",
-        "role": "decoration",
-        "maxChars": 20,
-        "lang": "en"
-      },
-      {
-        "id": "name2",
-        "role": "decoration",
-        "maxChars": 20,
-        "lang": "en"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
-      }
-    ]
-  },
   "mag-18": {
     "id": "mag-18",
     "slot": "interior",
@@ -908,18 +685,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     ],
     "texts": [
       {
-        "id": "numLeft",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
-      },
-      {
-        "id": "numRight",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
-      },
-      {
         "id": "captionLeft",
         "role": "explain",
         "maxChars": 80,
@@ -929,12 +694,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "captionRight",
         "role": "explain",
         "maxChars": 80,
-        "lang": "user"
-      },
-      {
-        "id": "subtitle",
-        "role": "body",
-        "maxChars": 60,
         "lang": "user"
       },
       {
@@ -953,7 +712,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "image",
         "orientation": [
-          "landscape"
+          "square"
         ],
         "quality": [
           "detail",
@@ -964,26 +723,20 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     "texts": [
       {
         "id": "intro",
-        "role": "body",
-        "maxChars": 80,
+        "role": "title",
+        "maxChars": 8,
         "lang": "user"
       },
       {
         "id": "captionLeft",
         "role": "explain",
-        "maxChars": 80,
+        "maxChars": 110,
         "lang": "user"
       },
       {
         "id": "captionRight",
         "role": "explain",
-        "maxChars": 80,
-        "lang": "user"
-      },
-      {
-        "id": "quote",
-        "role": "body",
-        "maxChars": 60,
+        "maxChars": 110,
         "lang": "user"
       },
       {
@@ -996,57 +749,18 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "mag-20": {
     "id": "mag-20",
-    "slot": "cover",
-    "scene": "opening",
-    "images": [],
-    "texts": [
-      {
-        "id": "boxText",
-        "role": "body",
-        "maxChars": 40,
-        "lang": "user"
-      },
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 30,
-        "lang": "user"
-      },
-      {
-        "id": "plate",
-        "role": "decoration",
-        "maxChars": 25,
-        "lang": "en"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
-      }
-    ]
-  },
-  "mag-21": {
-    "id": "mag-21",
-    "slot": "interior",
-    "scene": "record",
+    "slot": "ending",
+    "scene": "ending",
     "images": [
       {
-        "id": "image1",
-        "orientation": [
-          "square"
-        ],
-        "quality": [
-          "detail",
-          "fill"
-        ]
+        "id": "image1"
       }
     ],
     "texts": [
       {
         "id": "title",
-        "role": "title",
-        "maxChars": 20,
+        "role": "body",
+        "maxChars": 60,
         "lang": "user"
       }
     ]

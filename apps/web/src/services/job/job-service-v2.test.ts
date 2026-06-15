@@ -19,7 +19,7 @@ const DRAFT = {
   photoPool: [],
   basePages: {
     cover: { pageIndex: 0, templateId: 'mag-01', images: {}, texts: {} },
-    ending: { pageIndex: 1, templateId: 'mag-17', images: {}, texts: {} },
+    ending: { pageIndex: 1, templateId: 'mag-03', images: {}, texts: {} },
   },
   chapters: [],
 };

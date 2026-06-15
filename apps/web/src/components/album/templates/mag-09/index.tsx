@@ -6,11 +6,12 @@ export function WebMag09({ data, totalPages }: TemplateRenderProps) {
   const d = data as {
     imageTop?: string;
     imageMain?: string;
-    quote?: string;
     caption1?: string;
     title?: string;
     caption2?: string;
     caption3?: string;
+    caption4?: string;
+    caption5?: string;
     folio?: string;
   };
   return (
@@ -18,31 +19,15 @@ export function WebMag09({ data, totalPages }: TemplateRenderProps) {
       <WebImage
         src={d.imageTop}
         placeholder="4:3"
-        style={{ position: 'absolute', top: 110, left: 60, width: 280, height: 210 }}
+        style={{ position: 'absolute', left: 50, top: 90, width: 300, height: 300 }}
       />
       <div style={{ position: 'absolute', top: 130, right: 60, width: 230 }}>
         <p
-          style={{
-            margin: 0,
-            fontFamily: WEB_FONTS.serifEn,
-            fontStyle: 'italic',
-            fontSize: 16,
-            lineHeight: 1.55,
-            color: COLORS.ink,
-          }}
-        >
-          {d.quote || ''}
-        </p>
-        <p
-          style={{
-            marginTop: 14,
-            marginBottom: 0,
-            lineHeight: 1.7,
+          style={{ position: 'absolute', left: 504, top: 130, width: 230, height: 31, lineHeight: 1.7,
             color: COLORS.ink2,
             letterSpacing: '0.02em',
             textAlign: 'justify',
-            fontSize: 16,
-          }}
+            fontSize: 18 }}
         >
           {d.caption1 || ''}
         </p>
@@ -50,7 +35,7 @@ export function WebMag09({ data, totalPages }: TemplateRenderProps) {
       <h1
         style={{
           position: 'absolute',
-          top: 380,
+          top: 400,
           left: 60,
           margin: 0,
           fontFamily: WEB_FONTS.serifEn,
@@ -65,7 +50,7 @@ export function WebMag09({ data, totalPages }: TemplateRenderProps) {
       <WebImage
         src={d.imageMain}
         placeholder="11:10"
-        style={{ position: 'absolute', top: 590, right: 60, width: 360, height: 330 }}
+        style={{ position: 'absolute', left: 374, top: 400, width: 370, height: 600 }}
       />
       <div
         style={{
@@ -79,8 +64,10 @@ export function WebMag09({ data, totalPages }: TemplateRenderProps) {
           textAlign: 'justify',
         }}
       >
-        <p style={{ margin: 0, fontSize: 16 }}>{d.caption2 || ''}</p>
-        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 16 }}>{d.caption3 || ''}</p>
+        <p style={{ position: 'absolute', left: 60, top: 620, width: 280, height: 32, fontSize: 18 }}>{d.caption2 || ''}</p>
+        <p style={{ position: 'absolute', left: 60, top: 664, width: 280, height: 32, fontSize: 18 }}>{d.caption3 || ''}</p>
+        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 18 }}>{d.caption4 || ''}</p>
+        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 18 }}>{d.caption5 || ''}</p>
       </div>
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="09" />
     </WebPage>

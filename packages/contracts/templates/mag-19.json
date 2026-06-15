@@ -6,7 +6,7 @@
     {
       "id": "image",
       "orientation": [
-        "landscape"
+        "square"
       ],
       "quality": [
         "detail",
@@ -17,26 +17,20 @@
   "texts": [
     {
       "id": "intro",
-      "role": "body",
-      "maxChars": 80,
+      "role": "title",
+      "maxChars": 8,
       "lang": "user"
     },
     {
       "id": "captionLeft",
       "role": "explain",
-      "maxChars": 80,
+      "maxChars": 110,
       "lang": "user"
     },
     {
       "id": "captionRight",
       "role": "explain",
-      "maxChars": 80,
-      "lang": "user"
-    },
-    {
-      "id": "quote",
-      "role": "body",
-      "maxChars": 60,
+      "maxChars": 110,
       "lang": "user"
     },
     {

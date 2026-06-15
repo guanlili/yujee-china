@@ -169,7 +169,7 @@ export const AlbumDraft = z
       .object({
         cover: Page, // 必有;init 给默认 cover
         toc: Page.nullable().optional(), // 章≥4 且 总页≥8 才有(§4.4)
-        ending: Page, // 固定 closing 模板 mag-17
+        ending: Page, // closing page; falls back to an active interior template when no ending template exists
       })
       .strict(),
     chapters: z.array(V2Chapter),

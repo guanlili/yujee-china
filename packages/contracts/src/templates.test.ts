@@ -25,16 +25,11 @@ const EXPECTED_TEMPLATE_IDS = [
   'mag-09',
   'mag-10',
   'mag-11',
-  'mag-12',
   'mag-13',
-  'mag-14',
   'mag-15',
-  'mag-16',
-  'mag-17',
   'mag-18',
   'mag-19',
   'mag-20',
-  'mag-21',
   'p01',
 ];
 
@@ -50,7 +45,7 @@ const VALID_SCENES = new Set([
 ]);
 const VALID_ROLES = new Set(['title', 'body', 'explain', 'decoration']);
 
-test('registry contains the 22 templates (memoir 21 + square home mag-21)', () => {
+test('registry contains the active template set', () => {
   assert.deepEqual(TEMPLATE_IDS, EXPECTED_TEMPLATE_IDS);
   assert.equal(INDEX_TEMPLATES, TEMPLATES);
 });
@@ -113,8 +108,8 @@ test('every template parses, mirrors its id, and uses valid slot/scene/role', ()
 
 test('selected template metadata matches the new schema semantics', () => {
   assert.deepEqual(getTemplate('mag-04')?.images, [
-    { id: 'image1', orientation: ['landscape'], quality: ['hero', 'detail'] },
-    { id: 'image2', orientation: ['portrait'], quality: ['detail', 'fill'] },
+    { id: 'image1', orientation: ['square'], quality: ['hero', 'detail'] },
+    { id: 'image2', orientation: ['square'], quality: ['detail', 'fill'] },
     { id: 'image3', orientation: ['square'], quality: ['detail', 'fill'] },
   ]);
   assert.deepEqual(
@@ -122,15 +117,17 @@ test('selected template metadata matches the new schema semantics', () => {
     { id: 'caption', role: 'body', maxChars: 120, lang: 'user' },
   );
   assert.deepEqual(
-    getTemplate('mag-03')?.texts.find((t) => t.id === 'caption'),
-    { id: 'caption', role: 'explain', maxChars: 60, lang: 'user' },
+    getTemplate('mag-03')?.texts.find((t) => t.id === 'location'),
+    { id: 'location', role: 'decoration', maxChars: 20, lang: 'en' },
   );
   assert.deepEqual(
     getTemplate('p01')?.texts.find((t) => t.id === 'vol'),
     { id: 'vol', role: 'decoration', maxChars: 4, lang: 'en' },
   );
   // repeat slots carry the flag the renderer keys off
-  assert.equal(getTemplate('mag-02')?.texts.find((t) => t.id === 'items')?.repeat, true);
+  assert.equal(getTemplate('mag-02')?.texts.find((t) => t.id === 'numbers')?.repeat, true);
+  assert.equal(getTemplate('mag-02')?.texts.find((t) => t.id === 'titles')?.repeat, true);
+  assert.equal(getTemplate('mag-02')?.texts.find((t) => t.id === 'descriptions')?.repeat, true);
 });
 
 test('generated templates are synchronized with template JSON files', () => {
@@ -149,11 +146,22 @@ test('slot validation accepts known memoir slots and rejects unknown slots', () 
     ),
     { ok: true },
   );
-  assert.deepEqual(validateSlotsForTemplate('mag-02', [], ['items', 'folio']), { ok: true });
+  assert.deepEqual(
+    validateSlotsForTemplate(
+      'mag-02',
+      [],
+      ['heading', 'numbers[0]', 'titles[0]', 'descriptions[0]', 'folio'],
+    ),
+    { ok: true },
+  );
 
-  assert.deepEqual(validateSlotsForTemplate('mag-02', ['image'], ['items']), {
+  assert.deepEqual(validateSlotsForTemplate('mag-02', ['image'], ['titles[0]']), {
     ok: false,
     reason: 'image slot "image" not in template mag-02',
+  });
+  assert.deepEqual(validateSlotsForTemplate('mag-02', [], ['items[0].title']), {
+    ok: false,
+    reason: 'text slot "items[0].title" not in template mag-02',
   });
   assert.deepEqual(validateSlotsForTemplate('mag-01', ['image'], ['headline']), {
     ok: false,

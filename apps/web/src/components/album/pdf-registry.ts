@@ -16,16 +16,11 @@ import { PdfMag08 } from './templates/mag-08/pdf';
 import { PdfMag09 } from './templates/mag-09/pdf';
 import { PdfMag10 } from './templates/mag-10/pdf';
 import { PdfMag11 } from './templates/mag-11/pdf';
-import { PdfMag12 } from './templates/mag-12/pdf';
 import { PdfMag13 } from './templates/mag-13/pdf';
-import { PdfMag14 } from './templates/mag-14/pdf';
 import { PdfMag15 } from './templates/mag-15/pdf';
-import { PdfMag16 } from './templates/mag-16/pdf';
-import { PdfMag17 } from './templates/mag-17/pdf';
 import { PdfMag18 } from './templates/mag-18/pdf';
 import { PdfMag19 } from './templates/mag-19/pdf';
 import { PdfMag20 } from './templates/mag-20/pdf';
-import { PdfMag21 } from './templates/mag-21/pdf';
 import { PdfP01 } from './templates/p01/pdf';
 
 export const PDF_TEMPLATE_REGISTRY: Record<string, ComponentType<TemplateRenderProps>> = {
@@ -40,16 +35,11 @@ export const PDF_TEMPLATE_REGISTRY: Record<string, ComponentType<TemplateRenderP
   'mag-09': PdfMag09,
   'mag-10': PdfMag10,
   'mag-11': PdfMag11,
-  'mag-12': PdfMag12,
   'mag-13': PdfMag13,
-  'mag-14': PdfMag14,
   'mag-15': PdfMag15,
-  'mag-16': PdfMag16,
-  'mag-17': PdfMag17,
   'mag-18': PdfMag18,
   'mag-19': PdfMag19,
   'mag-20': PdfMag20,
-  'mag-21': PdfMag21,
   p01: PdfP01,
 };
 

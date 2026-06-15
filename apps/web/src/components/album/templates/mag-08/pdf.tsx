@@ -10,7 +10,7 @@ export function PdfMag08({ data, totalPages }: TemplateRenderProps) {
     caption1?: string;
     caption2?: string;
     title?: string;
-    subtitle?: string;
+    body?: string;
     folio?: string;
   };
   const dn = (d.dateNum || '08/24').split('/');
@@ -57,43 +57,34 @@ export function PdfMag08({ data, totalPages }: TemplateRenderProps) {
       </View>
       <PdfImage
         src={d.image}
-        style={{ position: 'absolute', top: 100, left: 70, width: 360, height: 440 }}
+        style={{ position: 'absolute', left: 70, top: 100, width: 360, height: 550 }}
       />
-      <View style={{ position: 'absolute', top: 670, left: 70, width: 305 }}>
-        <Text style={{ fontSize: 14, lineHeight: 1.7, color: COLORS.ink2, textAlign: 'justify' }}>
+      {/* 左侧说明：与照片左缘对齐、宽度等于照片宽度 */}
+      <View style={{ position: 'absolute', top: 670, left: 70, width: 360 }}>
+        <Text style={{ position: 'absolute', left: 70, top: 670, width: 360, fontSize: 18, lineHeight: 1.7, color: COLORS.ink2, textAlign: 'justify' }}>
           {d.caption1 || ''}
         </Text>
       </View>
-      <View style={{ position: 'absolute', top: 670, left: 403, width: 305 }}>
-        <Text style={{ fontSize: 14, lineHeight: 1.7, color: COLORS.ink2, textAlign: 'justify' }}>
+      {/* 右侧说明：移到照片右缘之外、收窄宽度，避免与照片重叠 */}
+      <View style={{ position: 'absolute', top: 670, left: 470, width: 250 }}>
+        <Text style={{ position: 'absolute', left: 470, top: 670, width: 250, fontSize: 18, lineHeight: 1.7, color: COLORS.ink2, textAlign: 'justify' }}>
           {d.caption2 || ''}
         </Text>
       </View>
       <Text
-        style={{
-          position: 'absolute',
-          bottom: 130,
-          left: 70,
-          fontFamily: PDF_FONTS.serifEn,
+        style={{ position: 'absolute', left: 70, top: 968, width: 244, fontFamily: PDF_FONTS.serifEn,
           fontSize: 60,
           letterSpacing: 5,
-          color: COLORS.ink,
-        }}
+          color: COLORS.ink }}
       >
         {d.title || 'EVENT'}
       </Text>
-      <Text
-        style={{
-          position: 'absolute',
-          bottom: 95,
-          left: 72,
-          fontSize: 14,
-          letterSpacing: 4,
-          color: COLORS.ink2,
-        }}
-      >
-        {(d.subtitle || '').toUpperCase()}
-      </Text>
+      {/* 标题右侧补一段长文字，填补 Event 右边的空缺 */}
+      <View style={{ position: 'absolute', top: 970, left: 360, width: 360 }}>
+        <Text style={{ position: 'absolute', left: 360, top: 970, width: 360, fontSize: 13, lineHeight: 1.55, color: COLORS.ink2, textAlign: 'justify' }}>
+          {d.body || ''}
+        </Text>
+      </View>
       <PdfFolio folio={d.folio} totalPages={totalPages} fallback="08" />
     </PdfPageShell>
   );

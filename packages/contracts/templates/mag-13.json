@@ -22,34 +22,10 @@
       "lang": "user"
     },
     {
-      "id": "intro",
+      "id": "caption",
       "role": "body",
-      "maxChars": 80,
+      "maxChars": 165,
       "lang": "user"
-    },
-    {
-      "id": "caption1",
-      "role": "explain",
-      "maxChars": 80,
-      "lang": "user"
-    },
-    {
-      "id": "caption2",
-      "role": "explain",
-      "maxChars": 80,
-      "lang": "user"
-    },
-    {
-      "id": "issue",
-      "role": "decoration",
-      "maxChars": 15,
-      "lang": "en"
-    },
-    {
-      "id": "credit",
-      "role": "decoration",
-      "maxChars": 30,
-      "lang": "en"
     },
     {
       "id": "folio",

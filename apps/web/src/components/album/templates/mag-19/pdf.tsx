@@ -9,7 +9,6 @@ export function PdfMag19({ data, totalPages }: TemplateRenderProps) {
     intro?: string;
     captionLeft?: string;
     captionRight?: string;
-    quote?: string;
     folio?: string;
   };
   // PDF 不支持 writingMode: vertical-rl,Frame 提示退化为水平摆放
@@ -18,30 +17,30 @@ export function PdfMag19({ data, totalPages }: TemplateRenderProps) {
       <Text
         style={{
           position: 'absolute',
-          top: 230,
-          left: 200,
-          right: 200,
+          top: 100,
+          left: 70,
+          right: 70,
           textAlign: 'center',
-          lineHeight: 1.7,
-          color: COLORS.ink2,
-          fontSize: 16,
+          lineHeight: 1.4,
+          color: COLORS.ink,
+          fontSize: 45,
         }}
       >
         {d.intro || ''}
       </Text>
       <PdfImage
         src={d.image}
-        style={{ position: 'absolute', top: 340, left: 70, right: 70, height: 460 }}
+        style={{ position: 'absolute', top: 170, left: 60, width: 674, height: 674 }}
       />
       <Text
         style={{
           position: 'absolute',
-          top: 815,
-          left: 70,
-          width: 280,
+          top: 868,
+          left: 60,
+          width: 300,
           lineHeight: 1.7,
           color: COLORS.ink2,
-          fontSize: 16,
+          fontSize: 18,
         }}
       >
         {d.captionLeft || ''}
@@ -49,13 +48,13 @@ export function PdfMag19({ data, totalPages }: TemplateRenderProps) {
       <Text
         style={{
           position: 'absolute',
-          top: 815,
-          right: 70,
-          width: 280,
+          top: 868,
+          right: 60,
+          width: 300,
           lineHeight: 1.7,
           color: COLORS.ink2,
           textAlign: 'right',
-          fontSize: 16,
+          fontSize: 18,
         }}
       >
         {d.captionRight || ''}
@@ -63,7 +62,7 @@ export function PdfMag19({ data, totalPages }: TemplateRenderProps) {
       <Text
         style={{
           position: 'absolute',
-          top: 340,
+          top: 420,
           right: 70,
           width: 20,
           fontSize: 10,
@@ -72,21 +71,6 @@ export function PdfMag19({ data, totalPages }: TemplateRenderProps) {
         }}
       >
         {`FRAME ${d.folio || '19'} / 30`}
-      </Text>
-      <Text
-        style={{
-          position: 'absolute',
-          bottom: 95,
-          left: 70,
-          right: 70,
-          textAlign: 'center',
-          fontFamily: PDF_FONTS.serifEn,
-          fontStyle: 'italic',
-          color: COLORS.ink,
-          fontSize: 16,
-        }}
-      >
-        {d.quote || ''}
       </Text>
       <PdfFolio folio={d.folio} totalPages={totalPages} fallback="19" />
     </PdfPageShell>

@@ -16,7 +16,7 @@ export function WebMag15({ data, totalPages }: TemplateRenderProps) {
       <p
         style={{
           position: 'absolute',
-          top: 110,
+          top: 90,
           left: 70,
           width: 280,
           margin: 0,
@@ -24,7 +24,7 @@ export function WebMag15({ data, totalPages }: TemplateRenderProps) {
           color: COLORS.ink2,
           letterSpacing: '0.02em',
           textAlign: 'justify',
-          fontSize: 16,
+          fontSize: 18,
         }}
       >
         {d.body || ''}
@@ -32,12 +32,12 @@ export function WebMag15({ data, totalPages }: TemplateRenderProps) {
       <WebImage
         src={d.imagePerson}
         placeholder="3:4"
-        style={{ position: 'absolute', top: 110, right: 70, width: 270, height: 360 }}
+        style={{ position: 'absolute', top: 180, right: 70, width: 655, height: 440 }}
       />
       <WebImage
         src={d.imageRoad}
         placeholder="4:3"
-        style={{ position: 'absolute', top: 580, left: 70, width: 360, height: 280 }}
+        style={{ position: 'absolute', top: 660, left: 70, width: 400, height: 350 }}
       />
       <h1
         style={{

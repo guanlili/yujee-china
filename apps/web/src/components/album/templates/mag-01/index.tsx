@@ -24,7 +24,7 @@ export function WebMag01({ data, totalPages }: TemplateRenderProps) {
           gap: 16,
         }}
       >
-        <div style={{ letterSpacing: '0.36em', fontWeight: 400, fontSize: 24 }}>
+        <div style={{ letterSpacing: '0.36em', fontWeight: 400, fontSize: 34 }}>
           {d.heading || 'VENUES'}
         </div>
         <div style={{ flex: 1, height: 1, background: COLORS.ink }} />
@@ -38,7 +38,7 @@ export function WebMag01({ data, totalPages }: TemplateRenderProps) {
             alignItems: 'center',
             justifyContent: 'center',
             fontFamily: WEB_FONTS.mono,
-            fontSize: 14,
+            fontSize: 16,
           }}
         >
           N
@@ -47,7 +47,7 @@ export function WebMag01({ data, totalPages }: TemplateRenderProps) {
       <div
         style={{
           position: 'absolute',
-          top: 280,
+          top: 290,
           left: 56,
           writingMode: 'vertical-rl',
           letterSpacing: '0.36em',
@@ -71,8 +71,8 @@ export function WebMag01({ data, totalPages }: TemplateRenderProps) {
           lineHeight: 1.7,
           color: COLORS.ink2,
           letterSpacing: '0.02em',
-          fontSize: 16,
-          width: 264,
+          fontSize: 18,
+          width: 360,
         }}
       >
         {d.caption1 || ''}
@@ -86,22 +86,12 @@ export function WebMag01({ data, totalPages }: TemplateRenderProps) {
           color: COLORS.ink2,
           textAlign: 'justify',
           letterSpacing: '0.02em',
-          fontSize: 16,
-          width: 264,
+          fontSize: 18,
+          width: 360,
         }}
       >
         {d.caption2 || ''}
       </div>
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 90,
-          left: 130,
-          right: 130,
-          height: 1,
-          background: COLORS.ruleLight,
-        }}
-      />
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="01" />
     </WebPage>
   );

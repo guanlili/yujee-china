@@ -113,9 +113,9 @@
       "toc": null,
       "ending": {
         "pageIndex": 3,
-        "templateId": "mag-17",
+        "templateId": "mag-20",
         "images": {
-          "image": "h001"
+          "image1": "h001"
         },
         "texts": {}
       }
@@ -184,9 +184,9 @@
       },
       {
         "pageIndex": 3,
-        "templateId": "mag-17",
+        "templateId": "mag-20",
         "images": {
-          "image": "h001"
+          "image1": "h001"
         },
         "texts": {}
       }

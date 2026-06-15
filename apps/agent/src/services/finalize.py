@@ -9,7 +9,7 @@ docs/agent/rebuild-tech-plan.md §5.2:
   ② write the ending closing line (mixed: anchor on user words when present),
   ③ build the TOC (mag-02, flat bracket-path `items[i].title` keys, P0-3),
   ④ derive cover/ending under the reuse budget (≤2, ending first, cover falls
-     back to the text-only mag-20 when no photo budget remains, §4.4 / P0-4),
+     back to active template-compatible pages when no photo budget remains, §4.4 / P0-4),
   ⑤ flatten the tree to a contiguous pages[] (cover → toc? → chapters → ending)
      and strip photos to the external 5-field PhotoAnalysis (tree never leaks,
      invariant 12),
@@ -451,6 +451,7 @@ def validate_v2(layout: LayoutV2) -> str | None:
 
     ending_index = len(pages) - 1
     used_counts: Counter[str] = Counter()
+    reuse_counts: Counter[str] = Counter()
     for index, page in enumerate(pages):
         tpl = registry.get(page.templateId)
         if not tpl:
@@ -487,6 +488,8 @@ def validate_v2(layout: LayoutV2) -> str | None:
                 return f"page {page.pageIndex}: photoId {pid} used twice on same page"
             seen_on_page.add(pid)
             used_counts[pid] += 1
+            if index != 0:
+                reuse_counts[pid] += 1
 
             if not hero_exempt and _fill_in_hero(by_id[pid], image_by_id[slot]):
                 return (
@@ -498,7 +501,7 @@ def validate_v2(layout: LayoutV2) -> str | None:
     if unused:
         return f"unused photos: {unused[:3]}"
 
-    overused = [pid for pid, count in used_counts.items() if count > 2]
+    overused = [pid for pid, count in reuse_counts.items() if count > 2]
     if overused:
         return f"photos reused more than 2 times: {overused[:3]}"
 

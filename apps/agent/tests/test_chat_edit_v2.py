@@ -33,8 +33,7 @@ def _photo(pid: str, *, quality: str, orientation: str) -> PhotoAnalysis:
 
 
 def _layout() -> LayoutV2:
-    """Valid 4-page album: cover(mag-13) → chapter(mag-19) → chapter(mag-12) →
-    ending(mag-17). p2 is used twice (chapter + ending), everyone else once."""
+    """Valid 4-page album: cover → two chapter pages → ending."""
     photos = [
         _photo("p1", quality="hero", orientation="landscape"),
         _photo("p2", quality="detail", orientation="portrait"),
@@ -43,14 +42,14 @@ def _layout() -> LayoutV2:
     ]
     pages = [
         Page(pageIndex=0, templateId="mag-13", images={"image": "p1"},
-             texts={"title": "Kyoto", "issue": "YUJEE · 01"}),
+             texts={"title": "Kyoto", "caption": "A quiet cover.", "folio": "01"}),
         Page(pageIndex=1, templateId="mag-19", images={"image": "p4"},
              texts={"intro": "A quiet street."}),
-        Page(pageIndex=2, templateId="mag-12",
-             images={"imageTop": "p3", "imageBottom": "p2"},
-             texts={"num1": "02", "num2": "03"}),
-        Page(pageIndex=3, templateId="mag-17", images={"image": "p2"},
-             texts={"name1": "The End"}),
+        Page(pageIndex=2, templateId="mag-19",
+             images={"image": "p3"},
+             texts={"intro": "Square note"}),
+        Page(pageIndex=3, templateId="mag-03", images={"image": "p2"},
+             texts={"location": "The End"}),
     ]
     return LayoutV2(
         magazine=Magazine(title="Trip", style="warm-film", language="en"),
@@ -132,7 +131,7 @@ class TestApplyPatch:
         patch = chat_edit_v2._resolve_entries(layout, raw, album_id="alb_1", attempt=0)
         patched = chat_edit_v2._apply_patch(layout, patch)
         assert patched.pages[0].texts["title"] == "Nara"
-        assert patched.pages[2].images == {"imageTop": "p3", "imageBottom": "p2"}
+        assert patched.pages[2].images == {"image": "p3"}
         assert chat_edit_v2.validate_v2(patched) is None
 
     def test_template_change_requires_full_replacement(self):
@@ -179,10 +178,10 @@ class TestValidateV2:
         ]
         pages = [
             Page(pageIndex=0, templateId="mag-13", images={"image": "p1"}, texts={}),
-            Page(pageIndex=1, templateId="mag-12",
-                 images={"imageTop": "p3", "imageBottom": "p2"}, texts={}),
-            Page(pageIndex=2, templateId="mag-19", images={"image": "p2"}, texts={}),
-            Page(pageIndex=3, templateId="mag-17", images={"image": "p2"}, texts={}),
+            Page(pageIndex=1, templateId="mag-19", images={"image": "p3"}, texts={}),
+            Page(pageIndex=2, templateId="mag-03", images={"image": "p2"}, texts={}),
+            Page(pageIndex=3, templateId="mag-11", images={"image": "p2"}, texts={}),
+            Page(pageIndex=4, templateId="mag-03", images={"image": "p2"}, texts={}),
         ]
         layout = LayoutV2(
             magazine=Magazine(title="T", style="warm-film", language="en"),
@@ -198,7 +197,7 @@ class TestValidateV2:
         assert v is not None and "must be cover" in v
 
     def test_fill_in_hero_on_chapter_page_rejected(self):
-        # p4 (fill) into mag-12's imageBottom (a hero/detail slot) on a chapter page.
+        # p4 (fill) into mag-03's hero/detail slot on a chapter page.
         photos = [
             _photo("p1", quality="hero", orientation="landscape"),
             _photo("p2", quality="detail", orientation="square"),
@@ -206,9 +205,9 @@ class TestValidateV2:
         ]
         pages = [
             Page(pageIndex=0, templateId="mag-13", images={"image": "p1"}, texts={}),
-            Page(pageIndex=1, templateId="mag-12",
-                 images={"imageTop": "p2", "imageBottom": "p4"}, texts={}),
-            Page(pageIndex=2, templateId="mag-17", images={"image": "p2"}, texts={}),
+            Page(pageIndex=1, templateId="mag-03", images={"image": "p4"}, texts={}),
+            Page(pageIndex=2, templateId="mag-19", images={"image": "p2"}, texts={}),
+            Page(pageIndex=3, templateId="mag-03", images={"image": "p2"}, texts={}),
         ]
         layout = LayoutV2(
             magazine=Magazine(title="T", style="warm-film", language="en"),
@@ -222,11 +221,10 @@ class TestValidateV2:
         # (last page) — §4.4 exempts both, so the layout is valid.
         photos = [
             _photo("pf", quality="fill", orientation="landscape"),
-            _photo("pd", quality="detail", orientation="portrait"),
         ]
         pages = [
             Page(pageIndex=0, templateId="mag-13", images={"image": "pf"}, texts={}),
-            Page(pageIndex=1, templateId="mag-17", images={"image": "pd"}, texts={}),
+            Page(pageIndex=1, templateId="mag-03", images={"image": "pf"}, texts={}),
         ]
         layout = LayoutV2(
             magazine=Magazine(title="T", style="warm-film", language="en"),
@@ -243,7 +241,7 @@ class TestValidateV2:
             pages.append(
                 Page(pageIndex=i + 1, templateId="mag-19", images={"image": f"f{i}"}, texts={})
             )
-        pages.append(Page(pageIndex=16, templateId="mag-17", images={"image": "p0"}, texts={}))
+        pages.append(Page(pageIndex=16, templateId="mag-03", images={"image": "p0"}, texts={}))
         layout = LayoutV2(
             magazine=Magazine(title="T", style="warm-film", language="en"),
             photos=photos, pages=pages,
@@ -265,9 +263,9 @@ class TestRetemplate:
         )
         patch = chat_edit_v2._resolve_entries(layout, raw, album_id="alb_1", attempt=0)
         entry = patch[0]
-        assert entry.templateId is not None and entry.templateId != "mag-12"
+        assert entry.templateId is not None and entry.templateId != "mag-19"
         # Every image slot of the new template is filled with the page's photos.
-        assert set(entry.images.values()) == {"p3", "p2"}
+        assert set(entry.images.values()) == {"p3"}
         patched = chat_edit_v2._apply_patch(layout, patch)
         assert chat_edit_v2.validate_v2(patched) is None
 
@@ -293,18 +291,15 @@ class TestRetemplate:
         patched = chat_edit_v2._apply_patch(layout, patch)
         assert chat_edit_v2.validate_v2(patched) is None
 
-    def test_retemplate_ending_falls_back_to_lone_closing(self):
-        # The closing use-case has a single template (mag-17); excluding it leaves
-        # an empty pool, so pickTemplate falls back to the legal pool (no raise)
-        # and the page keeps mag-17 with its texts preserved.
+    def test_retemplate_final_page_uses_active_chapter_pool_when_no_closing_template(self):
         layout = _layout()
         _, raw = chat_edit_v2._coerce_response(
             {"assistantReply": "redo ending", "layoutPatch": [{"pageIndex": 3, "retemplate": True}]}
         )
         patch = chat_edit_v2._resolve_entries(layout, raw, album_id="alb_1", attempt=0)
         entry = patch[0]
-        assert entry.templateId == "mag-17"
-        assert entry.texts.get("name1") == "The End"  # preserved, not rekeyed
+        assert entry.templateId is not None and entry.templateId != "mag-03"
+        assert set(entry.images.values()) == {"p2"}
         patched = chat_edit_v2._apply_patch(layout, patch)
         assert chat_edit_v2.validate_v2(patched) is None
 
@@ -346,7 +341,7 @@ class TestRun:
             {"assistantReply": "Changed the layout.", "layoutPatch": [{"pageIndex": 2, "retemplate": True}]}
         )
         res = await chat_edit_v2.run(_req(), complete=complete)
-        assert res.layoutPatch[0].templateId not in (None, "mag-12")
+        assert res.layoutPatch[0].templateId not in (None, "mag-19")
         assert res.usage.repairAttempts == 0
 
     async def test_repair_after_invalid_first_response(self):

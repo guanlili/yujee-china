@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { getAuthRedirect, isProtectedPath } from './middleware';
+import * as middleware from './middleware';
+
+const { getAuthRedirect, isProtectedPath } = middleware;
 
 describe('middleware routing decisions', () => {
   it('protects localized tool and dashboard routes', () => {
@@ -24,5 +26,17 @@ describe('middleware routing decisions', () => {
     // /create was removed — creation now funnels straight into /album.
     assert.equal(getAuthRedirect('/create', false), null);
     assert.equal(isProtectedPath('/create'), false);
+  });
+
+  it('redirects the removed /create route to the live homepage composer', () => {
+    assert.equal(typeof middleware.getLegacyRedirect, 'function');
+    assert.deepEqual(middleware.getLegacyRedirect('/create'), {
+      pathname: '/en',
+      hash: '#homepage-composer',
+    });
+    assert.deepEqual(middleware.getLegacyRedirect('/zh/create'), {
+      pathname: '/zh',
+      hash: '#homepage-composer',
+    });
   });
 });

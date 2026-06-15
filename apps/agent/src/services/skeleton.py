@@ -115,13 +115,11 @@ def _use_case_for_template(template_id: str, template: templates.TemplateDef) ->
     return "chapter"
 
 
-# Templates reachable only via the deterministic few-photo fallback
-# (layout_rules._page_slot_for_photo) and manual editor selection — never the
-# scene-driven auto rotation. mag-21 is the square single-image home: a lone
-# square photo with no other home lands there, but it must NOT win general
-# 1-image pages (its frame is square and would crop a portrait/landscape photo),
-# so it stays out of the auto-selection pool. Mirrored in web skeleton.ts.
-_FALLBACK_ONLY_TEMPLATE_IDS = frozenset({"mag-21"})
+# Templates reachable only via the deterministic few-photo fallback and manual
+# editor selection — never the scene-driven auto rotation. Empty by default; keep
+# the hook so agent and web skeleton selection can exclude future special cases
+# in one place.
+_FALLBACK_ONLY_TEMPLATE_IDS = frozenset()
 
 
 def _build_templates_by() -> dict[UseCase, dict[int, list[str]]]:
@@ -207,6 +205,8 @@ def can_place(template_id: str, photos: Sequence[Photo]) -> bool:
     if _image_slot_count(template) != len(photos):
         return False
     fill_count = sum(1 for photo in photos if _quality(photo) == "fill")
+    if template["slot"] in ("cover", "ending"):
+        return True
     fill_ok = sum(1 for slot in template["images"] if not _is_hero_slot(slot))
     return fill_count <= fill_ok
 
@@ -359,12 +359,26 @@ def best_photo(photos: Sequence[Photo]) -> Photo | None:
 
 
 def build_toc(chapters: Sequence[Mapping[str, Any]]) -> Page:
-    texts: dict[str, str] = {}
+    texts: dict[str, str] = {"heading": "CONTENTS", "folio": "02"}
     for idx, chapter in enumerate(chapters):
         cluster = chapter.get("cluster")
         label = cluster.get("label") if isinstance(cluster, Mapping) else None
-        texts[f"items[{idx}].title"] = str(label or chapter.get("chapterId") or f"Chapter {idx + 1}")
+        texts[f"numbers[{idx}]"] = str(idx + 1).zfill(2)
+        texts[f"titles[{idx}]"] = str(label or chapter.get("chapterId") or f"Chapter {idx + 1}")
     return {"pageIndex": 0, "templateId": "mag-02", "images": {}, "texts": texts}
+
+
+def _pick_closing_template(album_id: str, ending_pick: Photo) -> str:
+    use_case: UseCase = "closing" if TEMPLATES_BY["closing"].get(1) else "chapter"
+    return pick_template(
+        use_case,
+        1,
+        [ending_pick],
+        album_id=album_id,
+        chapter_id="base:ending",
+        page_ordinal=999,
+        scene=page_scene([ending_pick]) if use_case == "chapter" else None,
+    )
 
 
 def build_base_pages(
@@ -395,37 +409,41 @@ def build_base_pages(
     if ending_pick is None:
         raise ValueError("cannot build ending without at least one used photo")
 
+    ending_template_id = _pick_closing_template(album_id, ending_pick)
     ending = {
         "pageIndex": 0,
-        "templateId": "mag-17",
-        "images": assign_images("mag-17", [ending_pick], allow_fill_in_hero=True),
+        "templateId": ending_template_id,
+        "images": assign_images(ending_template_id, [ending_pick], allow_fill_in_hero=True),
         "texts": {},
     }
     use_count[_photo_id(ending_pick)] += 1
 
-    cover_candidates = [
-        photo
-        for photo in used_photos
-        if _quality(photo) in ("hero", "detail") and budget_ok(photo)
-    ]
-    cover_pick = best_photo(cover_candidates)
+    cover_pick = (
+        best_photo([
+            photo
+            for photo in used_photos
+            if _quality(photo) in ("hero", "detail") and budget_ok(photo)
+        ])
+        or best_photo([photo for photo in used_photos if budget_ok(photo)])
+        or best_photo(used_photos)
+    )
     if cover_pick is None:
-        cover = {"pageIndex": 0, "templateId": "mag-20", "images": {}, "texts": {}}
-    else:
-        cover_template_id = pick_template(
-            "cover",
-            1,
-            [cover_pick],
-            album_id=album_id,
-            chapter_id="cover",
-            page_ordinal=0,
-        )
-        cover = {
-            "pageIndex": 0,
-            "templateId": cover_template_id,
-            "images": assign_images(cover_template_id, [cover_pick]),
-            "texts": {},
-        }
+        raise ValueError("cannot build cover without at least one used photo")
+
+    cover_template_id = pick_template(
+        "cover",
+        1,
+        [cover_pick],
+        album_id=album_id,
+        chapter_id="cover",
+        page_ordinal=0,
+    )
+    cover = {
+        "pageIndex": 0,
+        "templateId": cover_template_id,
+        "images": assign_images(cover_template_id, [cover_pick], allow_fill_in_hero=True),
+        "texts": {},
+    }
 
     return cover, ending
 

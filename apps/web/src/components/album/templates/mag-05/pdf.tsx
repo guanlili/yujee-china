@@ -27,42 +27,19 @@ export function PdfMag05({ data, totalPages }: TemplateRenderProps) {
       >
         {d.title || "LET'S GO RIDE\nA BIKE"}
       </Text>
-      <Text
-        style={{
-          position: 'absolute',
-          top: 60,
-          right: 50,
-          fontSize: 14,
-          letterSpacing: 4,
-          color: COLORS.ink2,
-        }}
-      >
-        {d.topRight || 'JOURNEY · 05'}
-      </Text>
       <View style={{ position: 'absolute', top: 290, left: 50, width: 320 }}>
-        <Text
-          style={{
-            fontFamily: PDF_FONTS.serifEn,
-            fontStyle: 'italic',
-            fontSize: 20,
-            color: COLORS.ink3,
-            marginBottom: 10,
-          }}
-        >
-          i.
-        </Text>
         <Text
           style={{
             lineHeight: 1.75,
             color: COLORS.ink2,
             textAlign: 'justify',
-            fontSize: 16,
+            fontSize: 18,
           }}
         >
           {d.caption || ''}
         </Text>
       </View>
-      <PdfImage src={d.image} style={{ position: 'absolute', top: 560, left: 50, right: 50, height: 460 }} />
+      <PdfImage src={d.image} style={{ position: 'absolute', top: 430, left: 50, right: 50, height: 600 }} />
       <PdfFolio folio={d.folio} totalPages={totalPages} fallback="05" />
     </PdfPageShell>
   );

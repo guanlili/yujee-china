@@ -28,25 +28,19 @@
     {
       "id": "caption1",
       "role": "explain",
-      "maxChars": 80,
+      "maxChars": 120,
       "lang": "user"
     },
     {
       "id": "caption2",
       "role": "explain",
-      "maxChars": 80,
-      "lang": "user"
-    },
-    {
-      "id": "caption3",
-      "role": "explain",
-      "maxChars": 80,
+      "maxChars": 120,
       "lang": "user"
     },
     {
       "id": "title",
       "role": "title",
-      "maxChars": 16,
+      "maxChars": 20,
       "lang": "user"
     },
     {

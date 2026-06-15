@@ -21,11 +21,27 @@ function registerCjk(family: string, src: string): void {
   });
 }
 
+// 拉丁装饰字体（仅英文）：从 /fonts/*.ttf 注册，和 web @font-face 同一份文件 → 导出与预览一致。
+// 这些字无中文字形，只用于英文槽（canvas codegen 已按 lang 区分，中文槽走 Noto）。
+const LATIN_PDF_FONTS: [string, string][] = [
+  ['EB Garamond', 'EBGaramond.ttf'], ['Inter', 'Inter.ttf'], ['Playfair Display', 'PlayfairDisplay.ttf'],
+  ['Lora', 'Lora.ttf'], ['Abril Fatface', 'AbrilFatface.ttf'], ['Montserrat', 'Montserrat.ttf'],
+  ['Poppins', 'Poppins.ttf'], ['Work Sans', 'WorkSans.ttf'], ['Raleway', 'Raleway.ttf'], ['Bebas Neue', 'BebasNeue.ttf'],
+];
+function registerLatin(family: string, file: string): void {
+  const src = `/fonts/${file}`;
+  Font.register({
+    family,
+    fonts: [{ src }, { src, fontWeight: 'bold' }, { src, fontStyle: 'italic' }, { src, fontWeight: 'bold', fontStyle: 'italic' }],
+  });
+}
+
 // Called by lib/pdf/render.ts right before pdf().toBlob(). Re-registering a
 // family replaces its sources, so each export uses that album's own subset.
 export function registerPdfFonts(subset: { sans: string; serif: string }): void {
   registerCjk('NotoSerifSC', `data:font/ttf;base64,${subset.serif}`);
   registerCjk('NotoSansSC', `data:font/ttf;base64,${subset.sans}`);
+  for (const [fam, file] of LATIN_PDF_FONTS) registerLatin(fam, file);
 }
 
 // CJK lines have no spaces; @react-pdf won't wrap them on its own. Treat each

@@ -16,13 +16,16 @@ export function PdfMag04({ data, totalPages }: TemplateRenderProps) {
   const dn = (d.dateNum || '04/24').split('/');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
-      <PdfImage src={d.image1} style={{ position: 'absolute', top: 100, left: 50, width: 380, height: 300 }} />
+      <PdfImage src={d.image1} style={{ position: 'absolute', top: 60, left: 50, width: 380, height: 360 }} />
       <View
         style={{
           position: 'absolute',
-          top: 260,
-          right: 50,
+          top: 180,
+          left: 464,
+          width: 280,
+          height: 80,
           flexDirection: 'row',
+          justifyContent: 'flex-end',
         }}
       >
         <Text
@@ -49,33 +52,33 @@ export function PdfMag04({ data, totalPages }: TemplateRenderProps) {
       <Text
         style={{
           position: 'absolute',
-          top: 440,
-          left: 50,
-          width: 300,
+          top: 500,
+          left: 60,
+          width: 347,
           lineHeight: 1.75,
           color: COLORS.ink2,
           textAlign: 'justify',
-          fontSize: 16,
+          fontSize: 20,
         }}
       >
         {d.caption1 || ''}
       </Text>
-      <PdfImage src={d.image2} style={{ position: 'absolute', top: 430, right: 50, width: 230, height: 280 }} />
+      <PdfImage src={d.image2} style={{ position: 'absolute', top: 460, right: 50, width: 280, height: 280 }} />
       <Text
         style={{
           position: 'absolute',
           top: 760,
-          left: 50,
+          left: 60,
           width: 300,
           lineHeight: 1.75,
           color: COLORS.ink2,
           textAlign: 'justify',
-          fontSize: 16,
+          fontSize: 20,
         }}
       >
         {d.caption2 || ''}
       </Text>
-      <PdfImage src={d.image3} style={{ position: 'absolute', top: 740, right: 50, width: 230, height: 230 }} />
+      <PdfImage src={d.image3} style={{ position: 'absolute', top: 760, right: 50, width: 280, height: 280 }} />
       <PdfFolio folio={d.folio} totalPages={totalPages} fallback="04" />
     </PdfPageShell>
   );

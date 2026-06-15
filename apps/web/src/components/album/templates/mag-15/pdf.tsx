@@ -17,24 +17,24 @@ export function PdfMag15({ data, totalPages }: TemplateRenderProps) {
       <Text
         style={{
           position: 'absolute',
-          top: 110,
+          top: 90,
           left: 70,
           width: 280,
           lineHeight: 1.7,
           color: COLORS.ink2,
           textAlign: 'justify',
-          fontSize: 16,
+          fontSize: 18,
         }}
       >
         {d.body || ''}
       </Text>
       <PdfImage
         src={d.imagePerson}
-        style={{ position: 'absolute', top: 110, right: 70, width: 270, height: 360 }}
+        style={{ position: 'absolute', top: 180, right: 70, width: 655, height: 440 }}
       />
       <PdfImage
         src={d.imageRoad}
-        style={{ position: 'absolute', top: 580, left: 70, width: 360, height: 280 }}
+        style={{ position: 'absolute', top: 660, left: 70, width: 400, height: 350 }}
       />
       <Text
         style={{

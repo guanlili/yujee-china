@@ -26,18 +26,6 @@
   ],
   "texts": [
     {
-      "id": "numLeft",
-      "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
-    },
-    {
-      "id": "numRight",
-      "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
-    },
-    {
       "id": "captionLeft",
       "role": "explain",
       "maxChars": 80,
@@ -47,12 +35,6 @@
       "id": "captionRight",
       "role": "explain",
       "maxChars": 80,
-      "lang": "user"
-    },
-    {
-      "id": "subtitle",
-      "role": "body",
-      "maxChars": 60,
       "lang": "user"
     },
     {

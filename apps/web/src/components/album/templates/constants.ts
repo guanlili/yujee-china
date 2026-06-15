@@ -16,9 +16,19 @@ export const COLORS = {
 export const WEB_FONTS = {
   serifCn: '"Noto Serif SC", "Source Han Serif SC", "Songti SC", serif',
   sansCn: '"Noto Sans SC", "PingFang SC", "Heiti SC", sans-serif',
-  serifEn: '"EB Garamond", "Times New Roman", Georgia, serif',
-  sansEn: '"Inter", "Helvetica Neue", Arial, sans-serif',
-  mono: '"JetBrains Mono", "SF Mono", "Menlo", monospace',
+  // 拉丁字体一律带中文回退（"Noto Serif/Sans SC" + 系统中文）：英文字符用拉丁字、中文字符自动落到中文字，
+  // 一个字体中英文都不豁牙/不豆腐。@font-face 见 globals.css。
+  serifEn: '"EB Garamond", "Noto Serif SC", "Songti SC", serif',
+  sansEn: '"Inter", "Noto Sans SC", "PingFang SC", sans-serif',
+  mono: '"JetBrains Mono", "Noto Sans SC", "Menlo", monospace',
+  playfair: '"Playfair Display", "Noto Serif SC", "Songti SC", serif',
+  lora: '"Lora", "Noto Serif SC", "Songti SC", serif',
+  abril: '"Abril Fatface", "Noto Serif SC", "Songti SC", serif',
+  montserrat: '"Montserrat", "Noto Sans SC", "PingFang SC", sans-serif',
+  poppins: '"Poppins", "Noto Sans SC", "PingFang SC", sans-serif',
+  worksans: '"Work Sans", "Noto Sans SC", "PingFang SC", sans-serif',
+  raleway: '"Raleway", "Noto Sans SC", "PingFang SC", sans-serif',
+  bebas: '"Bebas Neue", "Noto Sans SC", Impact, sans-serif',
 } as const;
 
 // 字体在导出时由 pdf-utils.tsx 的 registerPdfFonts 动态注册(POST /api/v1/fonts/subset
@@ -33,6 +43,18 @@ export const PDF_FONTS = {
   serifEn: 'NotoSerifSC',
   sansEn: 'NotoSansSC',
   mono: 'Courier',
+  // 真拉丁字体（仅英文安全，无中文字形）——画布模板的英文槽用，和 web 一致；
+  // 由 pdf-utils registerPdfFonts 从 /fonts/*.ttf 注册（与 web @font-face 同一份文件）。
+  garamond: 'EB Garamond',
+  interEn: 'Inter',
+  playfair: 'Playfair Display',
+  lora: 'Lora',
+  abril: 'Abril Fatface',
+  montserrat: 'Montserrat',
+  poppins: 'Poppins',
+  worksans: 'Work Sans',
+  raleway: 'Raleway',
+  bebas: 'Bebas Neue',
 } as const;
 
 // A4 @ 96dpi = 794 × 1123 px;PDF 也使用同样数字作 page size(pt),

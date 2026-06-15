@@ -3,48 +3,81 @@ import { WebFolio, WebPage } from '../web-utils';
 import type { TemplateRenderProps, ToCItem } from '../types';
 
 export function WebMag02({ data, totalPages }: TemplateRenderProps) {
-  const d = data as { items?: ToCItem[]; folio?: string };
-  const items = d.items ?? [{ n: '1', title: 'Title', body: 'Description' }];
+  const d = data as {
+    heading?: string;
+    numbers?: string[];
+    titles?: string[];
+    descriptions?: string[];
+    items?: ToCItem[];
+    folio?: string;
+  };
+  // 三个并列可编辑槽位 numbers/titles/descriptions;兼容旧的 items 对象数组数据
+  const legacy = d.items ?? [];
+  // 预览样例:无数据时填充示意目录,避免页面看着空白
+  const SAMPLE_NUMBERS = ['01', '02', '03', '04'];
+  const SAMPLE_TITLES = ['Beginnings', 'Everyday Light', 'Together', 'Looking Back'];
+  const SAMPLE_DESCRIPTIONS = [
+    'The first quiet mornings, and where this whole story started to take shape.',
+    'Small ordinary moments — a kitchen, a window, the warmth of an afternoon.',
+    'The faces and hands we held close through every season of this year.',
+    'A gentle pause to gather what mattered most before turning the page.',
+  ];
+  const hasContent =
+    (d.numbers?.length ?? 0) > 0 ||
+    (d.titles?.length ?? 0) > 0 ||
+    (d.descriptions?.length ?? 0) > 0 ||
+    legacy.length > 0;
+  const numbers = hasContent ? d.numbers : SAMPLE_NUMBERS;
+  const titles = hasContent ? d.titles : SAMPLE_TITLES;
+  const descriptions = hasContent ? d.descriptions : SAMPLE_DESCRIPTIONS;
+  const count = Math.max(
+    numbers?.length ?? 0,
+    titles?.length ?? 0,
+    descriptions?.length ?? 0,
+    legacy.length,
+    1,
+  );
+  const rows = Array.from({ length: count });
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
-      <div style={{ position: 'absolute', top: 110, left: 56, fontSize: 16, letterSpacing: '0.36em' }}>
-        CONTENT
+      <div style={{ position: 'absolute', top: 110, left: 56, fontSize: 25, letterSpacing: '0.36em' }}>
+        {d.heading ?? 'CONTENTS'}
       </div>
       <div
         style={{
           position: 'absolute',
-          top: 180,
+          top: 240,
           left: 56,
           right: 56,
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
-          rowGap: 60,
+          rowGap: 100,
           columnGap: 80,
         }}
       >
-        {items.map((it, i) => (
-          <div key={it.n ?? i}>
+        {rows.map((_, i) => (
+          <div key={i}>
             <div
               style={{
-                fontSize: 36,
+                fontSize: 44,
                 fontFamily: WEB_FONTS.serifEn,
                 fontStyle: 'italic',
                 color: COLORS.ink,
                 marginBottom: 6,
               }}
             >
-              {it.n}
+              {numbers?.[i] ?? legacy[i]?.n ?? String(i + 1).padStart(2, '0')}
             </div>
             <div
               style={{
-                fontSize: 13.5,
+                fontSize: 15,
                 letterSpacing: '0.32em',
                 textTransform: 'uppercase',
                 color: COLORS.ink2,
                 marginBottom: 10,
               }}
             >
-              {it.title}
+              {titles?.[i] ?? legacy[i]?.title ?? ''}
             </div>
             <div
               style={{
@@ -52,10 +85,10 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
                 color: COLORS.ink2,
                 textAlign: 'justify',
                 letterSpacing: '0.02em',
-                fontSize: 16,
+                fontSize: 20,
               }}
             >
-              {it.body}
+              {descriptions?.[i] ?? legacy[i]?.body ?? ''}
             </div>
           </div>
         ))}

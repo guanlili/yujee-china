@@ -17,20 +17,23 @@ export function WebMag04({ data, totalPages }: TemplateRenderProps) {
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
         src={d.image1}
-        placeholder="4:3"
-        style={{ position: 'absolute', top: 100, left: 50, width: 380, height: 300 }}
+        placeholder="1:1"
+        style={{ position: 'absolute', top: 60, left: 50, width: 380, height: 360 }}
       />
       <div
         style={{
           position: 'absolute',
-          top: 260,
-          right: 50,
+          top: 180,
+          left: 464,
+          width: 280,
+          height: 80,
           fontFamily: WEB_FONTS.serifEn,
           fontStyle: 'italic',
           fontSize: 64,
           lineHeight: 1,
           color: COLORS.ink,
           letterSpacing: '0.02em',
+          textAlign: 'right',
         }}
       >
         {dn[0]}
@@ -39,34 +42,34 @@ export function WebMag04({ data, totalPages }: TemplateRenderProps) {
       <div
         style={{
           position: 'absolute',
-          top: 440,
-          left: 50,
-          width: 300,
+          top: 500,
+          left: 60,
+          width: 347,
           lineHeight: 1.75,
           color: COLORS.ink2,
           textAlign: 'justify',
           letterSpacing: '0.02em',
-          fontSize: 16,
+          fontSize: 20,
         }}
       >
         {d.caption1 || ''}
       </div>
       <WebImage
         src={d.image2}
-        placeholder="4:5"
-        style={{ position: 'absolute', top: 430, right: 50, width: 230, height: 280 }}
+        placeholder="1:1"
+        style={{ position: 'absolute', top: 460, right: 50, width: 280, height: 280 }}
       />
       <div
         style={{
           position: 'absolute',
           top: 760,
-          left: 50,
+          left: 60,
           width: 300,
           lineHeight: 1.75,
           color: COLORS.ink2,
           textAlign: 'justify',
           letterSpacing: '0.02em',
-          fontSize: 16,
+          fontSize: 20,
         }}
       >
         {d.caption2 || ''}
@@ -74,7 +77,7 @@ export function WebMag04({ data, totalPages }: TemplateRenderProps) {
       <WebImage
         src={d.image3}
         placeholder="1:1"
-        style={{ position: 'absolute', top: 740, right: 50, width: 230, height: 230 }}
+        style={{ position: 'absolute', top: 760, right: 50, width: 280, height: 280 }}
       />
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="04" />
     </WebPage>

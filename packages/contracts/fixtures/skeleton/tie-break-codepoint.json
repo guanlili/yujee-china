@@ -5,13 +5,57 @@
     "chapters": [
       {
         "chapterId": "chapter-tie",
-        "cluster": { "label": "Tie", "role": "body" },
-        "photoIds": ["A", "a"]
+        "cluster": {
+          "label": "Tie",
+          "role": "body"
+        },
+        "photoIds": [
+          "A",
+          "a"
+        ]
       }
     ],
     "photos": [
-      { "photoId": "A", "analysis": { "photoId": "A", "description": "upper", "tags": ["fixture"], "quality": "detail", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 0 }, "used": true },
-      { "photoId": "a", "analysis": { "photoId": "a", "description": "lower", "tags": ["fixture"], "quality": "detail", "orientation": "portrait", "peopleCount": "1", "scene": "indoor", "mood": "quiet" }, "exif": { "takenAt": null, "order": 0 }, "used": true }
+      {
+        "photoId": "A",
+        "analysis": {
+          "photoId": "A",
+          "description": "upper",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "detail",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 0
+        },
+        "used": true
+      },
+      {
+        "photoId": "a",
+        "analysis": {
+          "photoId": "a",
+          "description": "lower",
+          "tags": [
+            "fixture"
+          ],
+          "quality": "detail",
+          "orientation": "portrait",
+          "peopleCount": "1",
+          "scene": "indoor",
+          "mood": "quiet"
+        },
+        "exif": {
+          "takenAt": null,
+          "order": 0
+        },
+        "used": true
+      }
     ]
   },
   "expected": {
@@ -27,9 +71,9 @@
       "toc": null,
       "ending": {
         "pageIndex": 2,
-        "templateId": "mag-17",
+        "templateId": "mag-20",
         "images": {
-          "image": "A"
+          "image1": "A"
         },
         "texts": {}
       }
@@ -78,9 +122,9 @@
       },
       {
         "pageIndex": 2,
-        "templateId": "mag-17",
+        "templateId": "mag-20",
         "images": {
-          "image": "A"
+          "image1": "A"
         },
         "texts": {}
       }

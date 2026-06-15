@@ -5,9 +5,29 @@
   "images": [],
   "texts": [
     {
-      "id": "items",
+      "id": "heading",
       "role": "title",
-      "maxChars": 240,
+      "maxChars": 16,
+      "lang": "user"
+    },
+    {
+      "id": "numbers",
+      "role": "decoration",
+      "maxChars": 3,
+      "lang": "en",
+      "repeat": true
+    },
+    {
+      "id": "titles",
+      "role": "title",
+      "maxChars": 16,
+      "lang": "user",
+      "repeat": true
+    },
+    {
+      "id": "descriptions",
+      "role": "explain",
+      "maxChars": 80,
       "lang": "user",
       "repeat": true
     },

@@ -9,7 +9,7 @@ export function WebMag08({ data, totalPages }: TemplateRenderProps) {
     caption1?: string;
     caption2?: string;
     title?: string;
-    subtitle?: string;
+    body?: string;
     folio?: string;
   };
   const dn = (d.dateNum || '08/24').split('/');
@@ -35,55 +35,47 @@ export function WebMag08({ data, totalPages }: TemplateRenderProps) {
       <WebImage
         src={d.image}
         placeholder="4:5"
-        style={{ position: 'absolute', top: 100, left: 70, width: 360, height: 440 }}
+        style={{ position: 'absolute', left: 70, top: 100, width: 360, height: 550 }}
       />
-      <div
-        style={{
-          position: 'absolute',
-          top: 670,
-          left: 70,
-          right: 70,
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          columnGap: 28,
-          fontSize: 14,
+      {/* 左侧说明：与照片左缘对齐、宽度等于照片宽度 */}
+      <p
+        style={{ position: 'absolute', left: 70, top: 670, width: 360, height: 24, fontSize: 18,
           lineHeight: 1.7,
           color: COLORS.ink2,
           letterSpacing: '0.02em',
-          textAlign: 'justify',
-        }}
+          textAlign: 'justify' }}
       >
-        <p style={{ margin: 0 }}>{d.caption1 || ''}</p>
-        <p style={{ margin: 0 }}>{d.caption2 || ''}</p>
-      </div>
+        {d.caption1 || ''}
+      </p>
+      {/* 右侧说明：移到照片右缘之外、收窄宽度，避免与照片重叠 */}
+      <p
+        style={{ position: 'absolute', left: 470, top: 670, width: 250, height: 24, fontSize: 18,
+          lineHeight: 1.7,
+          color: COLORS.ink2,
+          letterSpacing: '0.02em',
+          textAlign: 'justify' }}
+      >
+        {d.caption2 || ''}
+      </p>
       <h1
-        style={{
-          position: 'absolute',
-          bottom: 130,
-          left: 70,
-          margin: 0,
-          fontFamily: WEB_FONTS.serifEn,
+        style={{ position: 'absolute', left: 70, top: 968, width: 244, height: 60, fontFamily: WEB_FONTS.serifEn,
           fontWeight: 400,
           fontSize: 60,
           letterSpacing: '0.08em',
-          lineHeight: 1,
-        }}
+          lineHeight: 1 }}
       >
         {d.title || 'EVENT'}
       </h1>
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 95,
-          left: 72,
-          fontSize: 14,
-          letterSpacing: '0.3em',
+      {/* 标题右侧补一段长文字，填补 Event 右边的空缺 */}
+      <p
+        style={{ position: 'absolute', left: 360, top: 970, width: 360, height: 20, fontSize: 13,
+          lineHeight: 1.55,
           color: COLORS.ink2,
-          textTransform: 'uppercase',
-        }}
+          letterSpacing: '0.02em',
+          textAlign: 'justify' }}
       >
-        {d.subtitle || ''}
-      </div>
+        {d.body || ''}
+      </p>
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="08" />
     </WebPage>
   );

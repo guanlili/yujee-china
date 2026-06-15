@@ -11,10 +11,24 @@ export type AuthRedirect = {
   from: string;
 };
 
+export type LegacyRedirect = {
+  pathname: string;
+  hash: string;
+};
+
 export function isProtectedPath(pathnameWithoutLocale: string): boolean {
   return protectedPaths.some(
     (path) => pathnameWithoutLocale === path || pathnameWithoutLocale.startsWith(`${path}/`),
   );
+}
+
+export function getLegacyRedirect(pathname: string): LegacyRedirect | null {
+  if (stripLocale(pathname) !== '/create') return null;
+
+  return {
+    pathname: localizePath('/', detectLocale(pathname)),
+    hash: '#homepage-composer',
+  };
 }
 
 export function getAuthRedirect(pathname: string, hasSession: boolean): AuthRedirect | null {
@@ -48,6 +62,14 @@ function withSecurityHeaders(response: NextResponse): NextResponse {
 }
 
 export default function middleware(request: NextRequest) {
+  const legacy = getLegacyRedirect(request.nextUrl.pathname);
+  if (legacy) {
+    const url = request.nextUrl.clone();
+    url.pathname = legacy.pathname;
+    url.hash = legacy.hash;
+    return withSecurityHeaders(NextResponse.redirect(url));
+  }
+
   const redirect = getAuthRedirect(request.nextUrl.pathname, hasSessionCookie(request));
   if (redirect) {
     const url = request.nextUrl.clone();

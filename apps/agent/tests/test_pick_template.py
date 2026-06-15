@@ -32,7 +32,7 @@ def _photo(idx: int, quality: str = "fill", orientation: str = "portrait") -> di
 
 
 def test_chapter_1_up_never_returns_cover_or_closing_templates():
-    forbidden = {"mag-01", "mag-13", "mag-17", "p01"}
+    forbidden = {"mag-01", "mag-13", "p01"}
 
     for attempt in range(12):
         template_id = pick_template(
@@ -98,13 +98,13 @@ def test_exclude_exhaustion_falls_back_to_legal_candidates():
         "chapter",
         3,
         photos,
-        exclude={"mag-04", "mag-16"},
+        exclude={"mag-04"},
         album_id="album",
         chapter_id="chapter",
         page_ordinal=0,
     )
 
-    assert template_id in {"mag-04", "mag-16"}
+    assert template_id == "mag-04"
     assert can_place(template_id, photos)
 
 

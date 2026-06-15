@@ -28,31 +28,7 @@ export function WebMag05({ data, totalPages }: TemplateRenderProps) {
       >
         {brToReact(d.title || "LET'S GO RIDE\nA BIKE")}
       </h1>
-      <div
-        style={{
-          position: 'absolute',
-          top: 60,
-          right: 50,
-          fontSize: 14,
-          letterSpacing: '0.32em',
-          color: COLORS.ink2,
-          textTransform: 'uppercase',
-        }}
-      >
-        {d.topRight || 'Journey · 05'}
-      </div>
       <div style={{ position: 'absolute', top: 290, left: 50, width: 320 }}>
-        <div
-          style={{
-            fontFamily: WEB_FONTS.serifEn,
-            fontStyle: 'italic',
-            fontSize: 20,
-            color: COLORS.ink3,
-            marginBottom: 10,
-          }}
-        >
-          i.
-        </div>
         <p
           style={{
             margin: 0,
@@ -60,7 +36,7 @@ export function WebMag05({ data, totalPages }: TemplateRenderProps) {
             color: COLORS.ink2,
             textAlign: 'justify',
             letterSpacing: '0.02em',
-            fontSize: 16,
+            fontSize: 18,
           }}
         >
           {d.caption || ''}
@@ -69,7 +45,7 @@ export function WebMag05({ data, totalPages }: TemplateRenderProps) {
       <WebImage
         src={d.image}
         placeholder="3:2"
-        style={{ position: 'absolute', top: 560, left: 50, right: 50, height: 460 }}
+        style={{ position: 'absolute', top: 430, left: 50, right: 50, height: 600 }}
       />
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="05" />
     </WebPage>

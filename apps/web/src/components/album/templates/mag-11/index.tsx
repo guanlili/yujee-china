@@ -15,7 +15,7 @@ export function WebMag11({ data, totalPages }: TemplateRenderProps) {
       <WebImage
         src={d.image}
         placeholder="4:5"
-        style={{ position: 'absolute', top: 120, left: 50, right: 50, height: 640 }}
+        style={{ position: 'absolute', top: 120, left: 25, right: 25, height: 640 }}
       />
       <h1
         style={{
@@ -56,7 +56,7 @@ export function WebMag11({ data, totalPages }: TemplateRenderProps) {
           textAlign: 'justify',
         }}
       >
-        <p style={{ margin: 0, fontSize: 16 }}>{d.caption2 || ''}</p>
+        <p style={{ margin: 0, fontSize: 18 }}>{d.caption2 || ''}</p>
       </div>
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="11" />
     </WebPage>

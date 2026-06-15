@@ -76,7 +76,7 @@ async def test_theme_run_returns_valid_theme_and_cover_draft():
                     "style": "warm-film",
                 },
                 "cover": {
-                    "templateId": "mag-20",
+                    "templateId": "mag-01",
                     "texts": {"title": "Rainy spring walks", "subtitle": "small moments"},
                     "heroPhotoId": None,
                 },
@@ -89,8 +89,8 @@ async def test_theme_run_returns_valid_theme_and_cover_draft():
     assert res.theme.subject == "Rainy spring walks"
     assert res.theme.style == "warm-film"
     assert res.cover is not None
-    assert res.cover.templateId == "mag-20"
-    assert res.cover.texts["title"] == "Rainy spring walks"
+    assert res.cover.templateId == "mag-01"
+    assert res.cover.texts["heading"] == "Rainy spring"
     assert res.cover.heroPhotoId is None
     assert res.usage.planningInputTokens == 11
     assert res.usage.planningOutputTokens == 7
@@ -124,13 +124,13 @@ async def test_theme_run_repairs_invalid_style_and_missing_cover_texts():
     assert res.theme.subject == "Station evenings"
     assert res.theme.style == "warm-film"
     assert res.cover is not None
-    assert res.cover.templateId == "mag-20"
-    assert res.cover.texts["title"] == "Station evenings"
+    assert res.cover.templateId == "mag-01"
+    assert res.cover.texts["heading"] == "Station"
     assert res.assistantReply
 
 
 @pytest.mark.asyncio
-async def test_theme_cover_uses_text_only_when_hero_photo_id_cannot_be_verified():
+async def test_theme_cover_omits_unverified_hero_photo_id():
     async def fake_complete(**_kwargs):
         return _usage_response(
             {
@@ -151,7 +151,7 @@ async def test_theme_cover_uses_text_only_when_hero_photo_id_cannot_be_verified(
     res = await theme.run(_theme_req(), complete=fake_complete)
 
     assert res.cover is not None
-    assert res.cover.templateId == "mag-20"
+    assert res.cover.templateId == "mag-01"
     assert res.cover.heroPhotoId is None
 
 

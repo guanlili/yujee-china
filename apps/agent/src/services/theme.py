@@ -63,7 +63,7 @@ def build_messages(req: V2ThemeRequest) -> list[dict[str, str]]:
         "Use only the supplied cluster overview and optional user direction. "
         "Do not invent people, locations, events, or dates. "
         f"Cover template ids: {', '.join(registry.COVER_TEMPLATE_IDS)}. "
-        "Prefer mag-20 when no verified hero photo id is supplied."
+        "Use one of those cover ids; omit heroPhotoId when no verified photo id is supplied."
     )
     if proposing:
         system += (
@@ -250,8 +250,8 @@ def _first_cluster_label(req: V2ThemeRequest) -> str:
 def _coerce_cover(raw: Any, theme: V2Theme) -> V2CoverDraft:
     data = raw if isinstance(raw, dict) else {}
     # V2ThemeRequest carries cluster summaries, not photoIds. Without a truth
-    # source to validate a model-supplied heroPhotoId, keep the cover text-only.
-    template_id = "mag-20"
+    # source to validate a model-supplied heroPhotoId, keep heroPhotoId empty.
+    template_id = registry.COVER_TEMPLATE_IDS[0]
 
     raw_texts = data.get("texts") if isinstance(data.get("texts"), dict) else {}
     texts = _normalize_texts(template_id, raw_texts, theme)
@@ -268,12 +268,31 @@ def _normalize_texts(template_id: str, raw_texts: dict[Any, Any], theme: V2Theme
     }
     if "title" in known_slots and not texts.get("title"):
         texts["title"] = theme.subject
+    if "heading" in known_slots and not texts.get("heading"):
+        texts["heading"] = theme.subject
+    if "body" in known_slots and not texts.get("body"):
+        texts["body"] = theme.tone
+    if "intro" in known_slots and not texts.get("intro"):
+        texts["intro"] = theme.tone
+    if "caption1" in known_slots and not texts.get("caption1"):
+        texts["caption1"] = theme.occasion or theme.tone
+    if "caption2" in known_slots and not texts.get("caption2"):
+        texts["caption2"] = theme.timeframe or theme.style
     if "boxText" in known_slots and not texts.get("boxText"):
         texts["boxText"] = theme.tone
     if "plate" in known_slots and not texts.get("plate"):
         texts["plate"] = theme.timeframe or theme.occasion or theme.style
+    if "sideText" in known_slots and not texts.get("sideText"):
+        texts["sideText"] = theme.style
+    if "category" in known_slots and not texts.get("category"):
+        texts["category"] = theme.occasion or theme.style
+    if "issue" in known_slots and not texts.get("issue"):
+        texts["issue"] = theme.timeframe or theme.style
+    if "credit" in known_slots and not texts.get("credit"):
+        texts["credit"] = "YUJEE"
     if not texts:
-        texts["title"] = theme.subject
+        first_text_slot = next(iter(known_slots), "title")
+        texts[first_text_slot] = theme.subject
     return layout_rules.clamp_texts_for_template(template_id, texts)
 
 

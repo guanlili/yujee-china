@@ -48,7 +48,7 @@ test('partition repairs all-fill 3-up chunks and preserves every photo once', ()
 });
 
 test('chapter 1-up template picking excludes cover and closing templates', () => {
-  const forbidden = new Set(['mag-01', 'mag-13', 'mag-17', 'p01']);
+  const forbidden = new Set(['mag-01', 'mag-13', 'p01']);
 
   for (let attempt = 0; attempt < 12; attempt += 1) {
     assert.equal(
@@ -117,13 +117,13 @@ test('exclude exhaustion falls back to legal candidates', () => {
     useCase: 'chapter',
     imageCount: 3,
     photos,
-    exclude: new Set(['mag-04', 'mag-16']),
+    exclude: new Set(['mag-04']),
     albumId: 'album',
     chapterId: 'chapter',
     pageOrdinal: 0,
   });
 
-  assert.ok(new Set(['mag-04', 'mag-16']).has(templateId));
+  assert.equal(templateId, 'mag-04');
   assert.equal(canPlace(templateId, photos), true);
 });
 

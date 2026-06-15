@@ -74,12 +74,12 @@ def test_add_emits_stages_and_new_pages(captured_callbacks, count):
     assert completed["jobKind"] == "add"
     assert completed["requestId"] == "req_v2_add"
 
-    # New pages exist, are content pages only (no TOC mag-02 / ending mag-17), and
+    # New pages exist and are content pages only (no TOC mag-02).
     # are locally reindexed 0..k.
     new_pages = completed["newPages"]
     assert new_pages, "expected at least one new page"
     assert [p["pageIndex"] for p in new_pages] == list(range(len(new_pages)))
-    assert all(p["templateId"] not in ("mag-02", "mag-17") for p in new_pages)
+    assert all(p["templateId"] != "mag-02" for p in new_pages)
 
     # New photo analyses re-validate as the outward-facing 5-field shape.
     assert len(completed["newPhotos"]) == count

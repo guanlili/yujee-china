@@ -129,11 +129,10 @@ function useCaseForTemplate(templateId: string, template: TemplateDef): Skeleton
 }
 
 // Reachable only via the deterministic few-photo fallback and manual editor
-// selection — never the scene-driven auto rotation. mag-21 is the square
-// single-image home: a lone square photo with no other home lands there, but it
-// must NOT win general 1-image pages (its frame is square and would crop a
-// portrait/landscape photo). Mirrored in agent skeleton.py.
-const FALLBACK_ONLY_TEMPLATE_IDS = new Set<string>(['mag-21']);
+// selection — never the scene-driven auto rotation. Empty by default; keep the
+// hook so web and agent skeleton selection can exclude future special cases in
+// one place. Mirrored in agent skeleton.py.
+const FALLBACK_ONLY_TEMPLATE_IDS = new Set<string>();
 
 function buildTemplatesBy(): Record<SkeletonUseCase, Record<number, string[]>> {
   const out: Record<SkeletonUseCase, Record<number, string[]>> = {
@@ -212,6 +211,7 @@ export function canPlace(templateId: string, photos: SkeletonPhoto[]): boolean {
   if (template.images.length !== photos.length) return false;
 
   const fillCount = photos.filter((photo) => quality(photo) === 'fill').length;
+  if (template.slot === 'cover' || template.slot === 'ending') return true;
   const fillOk = template.images.filter((slot) => !isHeroSlot(slot)).length;
   return fillCount <= fillOk;
 }
@@ -382,11 +382,25 @@ function bestPhoto(photos: SkeletonPhoto[]): SkeletonPhoto | undefined {
 }
 
 function buildToc(chapters: SkeletonChapterOutput[]): SkeletonPage {
-  const texts: Record<string, string> = {};
+  const texts: Record<string, string> = { heading: 'CONTENTS', folio: '02' };
   chapters.forEach((chapter, idx) => {
-    texts[`items[${idx}].title`] = String(chapter.cluster?.label ?? chapter.chapterId ?? `Chapter ${idx + 1}`);
+    texts[`numbers[${idx}]`] = String(idx + 1).padStart(2, '0');
+    texts[`titles[${idx}]`] = String(chapter.cluster?.label ?? chapter.chapterId ?? `Chapter ${idx + 1}`);
   });
   return { pageIndex: 0, templateId: 'mag-02', images: {}, texts };
+}
+
+function pickClosingTemplate(albumId: string, endingPick: SkeletonPhoto): string {
+  const useCase: SkeletonUseCase = TEMPLATES_BY.closing[1]?.length ? 'closing' : 'chapter';
+  return pickTemplate({
+    useCase,
+    imageCount: 1,
+    photos: [endingPick],
+    albumId,
+    chapterId: 'base:ending',
+    pageOrdinal: 999,
+    scene: useCase === 'chapter' ? pageScene([endingPick]) : undefined,
+  });
 }
 
 function buildBasePages(
@@ -408,21 +422,20 @@ function buildBasePages(
     bestPhoto(usedPhotos);
   if (!endingPick) throw new Error('cannot build ending without at least one used photo');
 
+  const endingTemplateId = pickClosingTemplate(albumId, endingPick);
   const ending: SkeletonPage = {
     pageIndex: 0,
-    templateId: 'mag-17',
-    images: assignImages('mag-17', [endingPick], { allowFillInHero: true }),
+    templateId: endingTemplateId,
+    images: assignImages(endingTemplateId, [endingPick], { allowFillInHero: true }),
     texts: {},
   };
   useCount.set(endingPick.photoId, (useCount.get(endingPick.photoId) ?? 0) + 1);
 
-  const coverPick = bestPhoto(usedPhotos.filter((photo) => quality(photo) !== 'fill' && budgetOk(photo)));
-  if (!coverPick) {
-    return {
-      cover: { pageIndex: 0, templateId: 'mag-20', images: {}, texts: {} },
-      ending,
-    };
-  }
+  const coverPick =
+    bestPhoto(usedPhotos.filter((photo) => quality(photo) !== 'fill' && budgetOk(photo))) ??
+    bestPhoto(usedPhotos.filter(budgetOk)) ??
+    bestPhoto(usedPhotos);
+  if (!coverPick) throw new Error('cannot build cover without at least one used photo');
 
   const coverTemplateId = pickTemplate({
     useCase: 'cover',
@@ -437,7 +450,7 @@ function buildBasePages(
     cover: {
       pageIndex: 0,
       templateId: coverTemplateId,
-      images: assignImages(coverTemplateId, [coverPick]),
+      images: assignImages(coverTemplateId, [coverPick], { allowFillInHero: true }),
       texts: {},
     },
     ending,

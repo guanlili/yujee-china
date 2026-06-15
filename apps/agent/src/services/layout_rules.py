@@ -3,6 +3,7 @@ composing and after applying a chat-edit patch. Returns the first violation
 as a human-readable string for the repair prompt, or None if all pass."""
 
 from collections import Counter
+import re
 
 from ..logging_config import get_logger
 from ..schemas import AlbumLayoutPlan, Magazine, Page, PhotoAnalysis
@@ -14,19 +15,33 @@ log = get_logger("layout_rules")
 # out in build_text_first_layout when the model can't compose a usable album.
 FEW_PHOTO_MAX = 2
 
-# Text-only spreads used to pad a few-photo album to the sanity floor.
-_TEXT_ONLY_PAD = ("mag-02", "mag-14")
+# Text-only spreads used to pad a few-photo album to the sanity floor. This is
+# derived from the active registry because template edits may remove old IDs.
+_TEXT_ONLY_PAD = tuple(
+    tid
+    for tid in registry.TEMPLATE_IDS
+    if (tpl := registry.get(tid)) and tpl["slot"] == "interior" and not tpl["images"]
+)
 
-# Text-only templates that carry NO image slots, used by coerce as the last
-# resort for a page whose image slot(s) cannot be legally filled: swapping the
-# whole page to one of these renders real copy instead of an empty image slot
-# (which the PDF would otherwise show as a blank/placeholder). A cover page
-# (index 0) must remain a cover, so it swaps to the text-only cover.
-_TEXT_ONLY_COVER = "mag-20"
-_TEXT_ONLY_SPREAD = "mag-02"
+_TEXT_ONLY_SPREAD = _TEXT_ONLY_PAD[0] if _TEXT_ONLY_PAD else "mag-02"
 
 _ALL_ORIENTATIONS = ("portrait", "landscape", "square")
 _ALL_QUALITIES = ("hero", "detail", "fill")
+_REPEAT_TEXT_KEY_RE = re.compile(r"^([A-Za-z0-9_-]+)\[\d+\]$")
+
+
+def _text_slot_constraint(tpl: registry.TemplateDef, slot: str) -> registry.TextSlot | None:
+    text_by_id = registry.text_slot_map(tpl)
+    cons = text_by_id.get(slot)
+    if cons:
+        return cons
+    match = _REPEAT_TEXT_KEY_RE.fullmatch(slot)
+    if not match:
+        return None
+    cons = text_by_id.get(match.group(1))
+    if cons and cons.get("repeat"):
+        return cons
+    return None
 
 
 def clamp_text(text: str, max_chars: int) -> str:
@@ -48,9 +63,8 @@ def clamp_texts_for_template(template_id: str, texts: dict[str, str]) -> dict[st
     if not tpl:
         return dict(texts)
     out = dict(texts)
-    text_by_id = registry.text_slot_map(tpl)
     for slot, text in texts.items():
-        cons = text_by_id.get(slot)
+        cons = _text_slot_constraint(tpl, slot)
         if not cons:
             continue
         max_chars = cons.get("maxChars")
@@ -74,8 +88,10 @@ def clamp_page_texts(pages: list[Page]) -> list[Page]:
     return out
 
 
-def _quality_ok(photo: PhotoAnalysis, constraint: dict) -> bool:
+def _quality_ok(photo: PhotoAnalysis, constraint: dict, *, hero_exempt: bool = False) -> bool:
     """Only hard slot quality rule: fill photos cannot occupy hero slots."""
+    if hero_exempt:
+        return True
     qualities = constraint.get("quality")
     if qualities and "hero" in qualities and photo.quality == "fill":
         return False
@@ -107,8 +123,8 @@ def _quality_prefers(photo: PhotoAnalysis, constraint: dict) -> bool:
     return photo.quality in qualities
 
 
-def _photo_placeable(photo: PhotoAnalysis, constraint: dict) -> bool:
-    return _quality_ok(photo, constraint)
+def _photo_placeable(photo: PhotoAnalysis, constraint: dict, *, hero_exempt: bool = False) -> bool:
+    return _quality_ok(photo, constraint, hero_exempt=hero_exempt)
 
 
 # For each orientation, the qualities the registry can actually hold in SOME
@@ -153,7 +169,7 @@ def _relax_for_single_image(photo: PhotoAnalysis) -> PhotoAnalysis:
     """Demote `photo`'s quality to the most prominent value a single-image
     template accepts for its orientation. Returns the photo unchanged when it
     already has a single-image home for its quality (every orientation now has
-    one — square via mag-21), or, defensively, when no single-image template
+    one — square via mag-19), or, defensively, when no single-image template
     accepts that orientation at all."""
     accepts = _SINGLE_IMAGE_QUALITIES.get(photo.orientation, set())
     if photo.quality == "fill" or not accepts or photo.quality in accepts:
@@ -169,8 +185,8 @@ def _relax_for_few_photo(photo: PhotoAnalysis) -> PhotoAnalysis:
 
     The fallback must prefer a filled legal page over preserving the exact model
     quality label. `detail` is the broadest shared quality for landscape,
-    portrait, and square pair templates, so it lets mixed square albums use the
-    existing mag-09/mag-12 templates while still satisfying hero protection.
+    portrait, and square templates, so it lets mixed square albums use active
+    multi-image templates while still satisfying hero protection.
     """
     if photo.quality != "fill" and "detail" in _PLACEABLE_QUALITIES.get(photo.orientation, set()):
         return photo.model_copy(update={"quality": "detail"})
@@ -181,6 +197,8 @@ def _template_assignment(
     tpl: dict,
     photos: list[PhotoAnalysis],
     used: Counter[str] | None = None,
+    *,
+    hero_exempt: bool = False,
 ) -> dict[str, str] | None:
     """Return a slot→photoId assignment that fills EVERY image slot of `tpl`.
 
@@ -203,7 +221,7 @@ def _template_assignment(
         candidates = [
             (idx, photo)
             for idx, photo in remaining
-            if _photo_placeable(photo, cons)
+            if _photo_placeable(photo, cons, hero_exempt=hero_exempt)
         ]
         candidates.sort(
             key=lambda item: (
@@ -257,7 +275,12 @@ def _retemplate_page(
                 continue
             if len(slots) > len(photos):
                 continue  # can't fill every slot from this set
-            assignment = _template_assignment(tpl, photos, used)
+            assignment = _template_assignment(
+                tpl,
+                photos,
+                used,
+                hero_exempt=tpl["slot"] in ("cover", "ending"),
+            )
             if assignment is None:
                 continue
             kept = set(assignment.values())
@@ -298,11 +321,10 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
          times, never exceeding the twice-reuse cap (Rule 4) or duplicating on
          the same page (Rule 4). A slot with no compatible photo anywhere
          triggers step 4.
-      4. Any page that still has an unfilled image slot is swapped to a
-         text-only template (cover page → mag-20, otherwise → mag-02), dropping
-         all its image slots so no empty slot ships. Photos that were on that
-         page are re-homed (step 2 logic) or, if they have no other home, kept
-         for step 5.
+      4. Any non-cover page that still has an unfilled image slot is swapped to
+         the active text-only spread, dropping all its image slots so no empty
+         slot ships. Cover pages stay covers and surface a violation if no
+         active cover can be filled.
       5. Last resort: a photo with no compatible slot anywhere is dropped from
          photos[] (the album omits it) — it is unused, so nothing references it.
 
@@ -324,9 +346,11 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
     on_page: list[set[str]] = [set() for _ in layout.pages]
 
     # Phase 1 — keep only placements that satisfy every per-slot rule.
+    ending_index = len(layout.pages) - 1
     for i, (imgs, tpl) in enumerate(zip(page_images, page_tpls)):
         if tpl is None:
             continue
+        hero_exempt = i == 0 or i == ending_index
         img_by_id = registry.image_slot_map(tpl)
         for slot in list(imgs.keys()):
             pid = imgs[slot]
@@ -335,7 +359,7 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
             keep = (
                 cons is not None
                 and photo is not None
-                and _photo_placeable(photo, cons)
+                and _photo_placeable(photo, cons, hero_exempt=hero_exempt)
                 and pid not in on_page[i]
                 and used[pid] < 2
             )
@@ -355,7 +379,7 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
                 continue
             for cons in tpl["images"]:
                 slot = cons["id"]
-                if slot not in imgs and _photo_placeable(photo, cons):
+                if slot not in imgs and _photo_placeable(photo, cons, hero_exempt=i == 0 or i == ending_index):
                     candidates.append((
                         _orientation_prefers(photo, cons),
                         _quality_prefers(photo, cons),
@@ -381,7 +405,7 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
             img_by_id = registry.image_slot_map(tpl)
             for slot, current_pid in imgs.items():
                 cons = img_by_id.get(slot)
-                if cons is None or not _photo_placeable(photo, cons):
+                if cons is None or not _photo_placeable(photo, cons, hero_exempt=i == 0 or i == ending_index):
                     continue
                 current = by_id.get(current_pid)
                 if current is None:
@@ -436,7 +460,7 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
                 (
                     p.photoId
                     for p in layout.photos
-                    if _photo_placeable(p, cons)
+                    if _photo_placeable(p, cons, hero_exempt=i == 0 or i == ending_index)
                     and p.photoId not in on_page[i]
                     and used[p.photoId] < 2
                 ),
@@ -456,9 +480,9 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
     # under its current template (some slot has no compatible photo). Rather than
     # ship an empty slot, re-template the page: prefer the template that keeps
     # the most page photos, breaking ties toward photos with fewer global uses.
-    # If no image template fits the page's photos, fall all the way to a
-    # text-only template (cover page → mag-20, else → mag-02), which frees those
-    # photos to re-home elsewhere or, failing that, drop in Phase 5.
+        # If no image template fits a non-cover page's photos, fall all the way
+        # to the active text-only template, which frees those photos to re-home
+        # elsewhere or, failing that, drop in Phase 5.
     swapped: dict[int, str] = {}
     for i, (imgs, tpl) in enumerate(zip(page_images, page_tpls)):
         if tpl is None:
@@ -471,7 +495,12 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
             p for p in layout.photos
             if p.photoId in current_ids or used[p.photoId] < 2
         ]
-        complete_current = _template_assignment(tpl, candidates, used)
+        complete_current = _template_assignment(
+            tpl,
+            candidates,
+            used,
+            hero_exempt=i == 0 or i == ending_index,
+        )
         if complete_current is not None:
             new_ids = set(complete_current.values())
             for pid in current_ids - new_ids:
@@ -486,13 +515,15 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
         page_photos = [by_id[pid] for pid in page_photo_ids]
         replacement = _retemplate_page(tpl["slot"], page_photos, used)
         if replacement is None:
+            if i == 0:
+                continue
             # No image template fits these photos as a whole-page set; go
             # text-only and release the photos for re-homing.
             for pid in page_photo_ids:
                 used[pid] -= 1
-            new_tid = _TEXT_ONLY_COVER if i == 0 else _TEXT_ONLY_SPREAD
-            new_images: dict[str, str] = {}
-            new_on_page: set[str] = set()
+            new_tid = _TEXT_ONLY_SPREAD
+            new_images = {}
+            new_on_page = set()
         else:
             new_tid, new_images = replacement
             # Photos that didn't make it into the smaller template are released.
@@ -570,20 +601,20 @@ def violation(layout: AlbumLayoutPlan) -> str | None:
             return f"pageIndex {page.pageIndex} at position {expected_idx} (must be sequential)"
 
     used_counts: Counter[str] = Counter()
-    for page in pages:
+    reuse_counts: Counter[str] = Counter()
+    for index, page in enumerate(pages):
         tpl = registry.get(page.templateId)
         if not tpl:
             return f"page {page.pageIndex}: templateId {page.templateId} not in TemplateRegistry"
 
         image_slot_ids = registry.image_slot_ids(tpl)
         image_by_id = registry.image_slot_map(tpl)
-        text_slot_ids = registry.text_slot_ids(tpl)
         # Rule 8: slot keys subset of template
         for slot in page.images.keys():
             if slot not in image_by_id:
                 return f"page {page.pageIndex}: image slot '{slot}' not in template {page.templateId}"
         for slot in page.texts.keys():
-            if slot not in text_slot_ids:
+            if not _text_slot_constraint(tpl, slot):
                 return f"page {page.pageIndex}: text slot '{slot}' not in template {page.templateId}"
         for slot in image_slot_ids:
             if slot not in page.images:
@@ -598,10 +629,12 @@ def violation(layout: AlbumLayoutPlan) -> str | None:
                 return f"page {page.pageIndex}: photoId {pid} used twice on same page"
             seen_on_page.add(pid)
             used_counts[pid] += 1
+            if index != 0:
+                reuse_counts[pid] += 1
 
             constraint = image_by_id[slot]
             photo = by_id[pid]
-            if not _quality_ok(photo, constraint):
+            if not _quality_ok(photo, constraint, hero_exempt=index == 0 or index == len(pages) - 1):
                 return (
                     f"page {page.pageIndex} slot '{slot}': "
                     f"fill photo {pid} cannot be placed in hero slot "
@@ -614,7 +647,7 @@ def violation(layout: AlbumLayoutPlan) -> str | None:
         return f"unused photos: {unused[:3]}"
 
     # Rule 4: single photo reused at most twice
-    overused = [pid for pid, c in used_counts.items() if c > 2]
+    overused = [pid for pid, c in reuse_counts.items() if c > 2]
     if overused:
         return f"photos reused more than 2 times: {overused[:3]}"
 
@@ -694,20 +727,20 @@ def repair_instruction(violation_text: str) -> str:
 
 
 def _cover_for_photo(photo: PhotoAnalysis | None) -> tuple[str, str]:
-    """Return (templateId, imageSlot) for a cover that can hold `photo`. Falls
-    back to the text-only cover (mag-20, empty slot) when no image cover satisfies
-    hero protection."""
+    """Return (templateId, imageSlot) for a cover that can hold `photo`."""
     if photo is not None:
         options: list[tuple[bool, str, str]] = []
         for tid in registry.COVER_TEMPLATE_IDS:
             tpl = registry.TEMPLATES[tid]
             for cons in tpl["images"]:
-                if _photo_placeable(photo, cons):
+                if _photo_placeable(photo, cons, hero_exempt=True):
                     options.append((_orientation_prefers(photo, cons), tid, cons["id"]))
         if options:
             _, tid, slot = max(options, key=lambda item: (item[0], -registry.TEMPLATE_IDS.index(item[1])))
             return tid, slot
-    return "mag-20", ""
+    tid = registry.COVER_TEMPLATE_IDS[0]
+    slot = registry.TEMPLATES[tid]["images"][0]["id"]
+    return tid, slot
 
 
 def _page_slot_for_photo(photo: PhotoAnalysis) -> tuple[str, str] | None:
@@ -716,7 +749,7 @@ def _page_slot_for_photo(photo: PhotoAnalysis) -> tuple[str, str] | None:
     empty slot (#42): placing one photo into a multi-image template (e.g. mag-04)
     would leave its other slots blank in the PDF. Every orientation has a
     single-image home: landscape/portrait via the constrained templates, square
-    via mag-21 (square/[detail,fill] image slot)."""
+    via mag-19 (square/[detail,fill] image slot)."""
     options: list[tuple[bool, int, str, str]] = []
     for order, tid in enumerate(registry.TEMPLATE_IDS):
         tpl = registry.TEMPLATES[tid]
@@ -739,9 +772,9 @@ def _filled_content_page_for_photo(
     """Find a non-cover image page that includes `target` and has no empty slot.
 
     Paired fallback for a photo with no usable single-image home of its own (or
-    whose home is already taken): it can legally sit in mag-09 with a landscape
-    photo or mag-12 with a portrait photo. Partner photos may be reused once,
-    never beyond the global reuse cap.
+    whose home is already taken): it can legally sit in any active filled
+    multi-image template. Partner photos may be reused once, never beyond the
+    global reuse cap.
     """
     available = [p for p in photos if used[p.photoId] < 2]
 
@@ -775,8 +808,8 @@ def _real_texts(
     """Fill every text slot of `template_id` with real, clamped copy.
 
     Each web/PDF template renders a built-in placeholder string for any unfilled
-    text slot (mag-20's "MASASHI WAKUI", mag-02's "Title/Description", mag-14's
-    "11/33", mag-03's "Portrait", …). The few-photo fallback has no model-authored
+    text slot (mag-02's "Title/Description", mag-03's "Portrait", and similar).
+    The few-photo fallback has no model-authored
     copy, so leaving texts={} would ship those placeholders into the finished PDF
     (architecture review §6.5 + codex P2). The agent registry can't tell which
     slots default safely, so we fill them all from real data: the magazine title
@@ -824,11 +857,11 @@ def build_text_first_layout(magazine: Magazine, photos: list[PhotoAnalysis]) -> 
     Quality is relaxed up front so fallback uses the broadest legal slots before
     dropping a photo.
 
-    SQUARE coverage: mag-21 is the single-image home for square photos (its image
+    SQUARE coverage: mag-19 is the single-image home for square photos (its image
     slot is square/[detail,fill], so a lone square fills the page with no empty
     sibling slot; a square hero relaxes to detail to fit), and mag-01 accepts a
     square cover. A square-only ≤2-photo album is therefore placeable end to end
-    — no photo is left unplaced for orientation reasons. (Phase 2: mag-21 is
+    — no photo is left unplaced for orientation reasons. (Phase 2: mag-19 is
     title-only; a richer square record layout with a caption would improve it.)"""
     photos = [_relax_for_few_photo(p) for p in photos]
     pages: list[Page] = []
@@ -851,7 +884,7 @@ def build_text_first_layout(magazine: Magazine, photos: list[PhotoAnalysis]) -> 
     )
 
     # One page per still-unplaced photo. Prefer a single-image template (every
-    # orientation has one — square via mag-21); only if none is usable, try a
+    # orientation has one — square via mag-19); only if none is usable, try a
     # fully-filled paired template using a partner photo at most one more time.
     for photo in photos:
         if used[photo.photoId] > 0:
