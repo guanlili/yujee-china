@@ -24,14 +24,6 @@ export type AgentPhotoInput = {
   height: number;
 };
 
-export type AgentLayoutRequest = {
-  requestId: string;
-  prompt: string;
-  language: 'zh' | 'en';
-  callbackUrl: string;
-  photos: AgentPhotoInput[];
-};
-
 // A patch entry is a partial Page (docs/agent/contract.md §2.2). Field names are
 // `images`/`texts` — the same as the Page schema — per the B9 agent output. The
 // shape is shared with the v2 edit contract (LayoutPatchEntry in v2.ts).
@@ -43,45 +35,16 @@ export type LayoutPatchEntry = {
 };
 
 export const agentClient = {
-  async submitLayout(payload: AgentLayoutRequest): Promise<{ requestId: string }> {
-    let res: Response;
-    try {
-      res = await fetch(`${env.AGENT_BASE_URL}/v1/layout`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
-          'Content-Type': 'application/json',
-          'X-Request-Id': payload.requestId,
-        },
-        body: JSON.stringify(payload),
-        // 30s, not 8s: the body carries 1-30 base64 photos (~2MB) forwarded
-        // Vercel→Fly cross-region. 8s aborted before the agent's fast 202 came
-        // back (agent had already accepted + started the bg task), so web
-        // wrongly marked the job FAILED while the agent kept running.
-        signal: AbortSignal.timeout(30_000),
-      });
-    } catch (e) {
-      logger.error({ err: String(e), requestId: payload.requestId }, 'agent submit failed');
-      throw ERRORS.AGENT_INTERNAL_ERROR();
-    }
-    if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
-    if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected payload');
-    if (!res.ok) {
-      logger.error({ status: res.status, requestId: payload.requestId }, 'agent non-2xx');
-      throw ERRORS.AGENT_INTERNAL_ERROR();
-    }
-    return { requestId: payload.requestId };
-  },
-
   // ──────────────────────────── v2 (agent rebuild) ────────────────────────────
   // The v2 surface forwards already-validated contract bodies (the route parses
   // V2*Request before calling). init/finalize are async (202 + callback to
   // /api/v2/internal/job-progress); theme/chapter-chat/edit are synchronous.
   // docs/agent/rebuild-tech-plan.md §1.1–§1.5.
 
-  // POST /v2/album/init — async 202. The only v2 endpoint carrying base64, so the
-  // same 30s timeout as submitLayout (a cross-region multi-MB body must not abort
-  // before the agent's fast 202; see submitLayout). The bg task callbacks later.
+  // POST /v2/album/init — async 202. The only v2 endpoint carrying base64, so it
+  // gets a 30s timeout: a cross-region multi-MB body must not abort before the
+  // agent's fast 202 (else web wrongly marks the job FAILED while the agent keeps
+  // running). The bg task callbacks later.
   async submitInitV2(payload: V2InitRequest): Promise<{ requestId: string }> {
     let res: Response;
     try {
@@ -182,14 +145,14 @@ export const agentClient = {
   },
 
   // POST /v2/album/edit — synchronous, operates on the finalized flat layout.
-  // Superset of /v1/chat-edit; returns a layoutPatch (≤48 entries).
+  // Returns a layoutPatch (≤48 entries).
   async editV2(payload: V2EditRequest): Promise<V2EditResponse> {
     return postSyncV2('/v2/album/edit', payload, V2EditResponse, { albumId: payload.albumId });
   },
 };
 
 // Shared tail for the three synchronous v2 endpoints: POST, unwrap the
-// { ok, data } envelope (same as v1 chatEdit), and validate `data` against the
+// { ok, data } envelope, and validate `data` against the
 // contract schema. A schema miss is AGENT_INVALID_OUTPUT — the agent answered but
 // off-contract, distinct from a transport failure (AGENT_CHAT_FAILED).
 async function postSyncV2<T>(

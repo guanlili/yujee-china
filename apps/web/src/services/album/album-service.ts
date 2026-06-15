@@ -45,7 +45,7 @@ export const albumService = {
   // SAME album is reused for a rerun — no new album, no orphaned failed card. The
   // transition is conditional (only wins from FAILED), so a double-click or a
   // retry racing the stale-job sweep can't start two generations or double-hold
-  // credit; the loser throws ALBUM_NOT_RETRIABLE and generationService.retry
+  // credit; the loser throws ALBUM_NOT_RETRIABLE and generationService.retryV2
   // aborts before the hold. errorMessage is cleared so the album reads clean.
   // Caller must hold ownership (findOwned) before invoking inside its tx.
   async setRetrying(tx: DbOrTx, albumId: string): Promise<void> {

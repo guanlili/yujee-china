@@ -3,18 +3,12 @@ from pydantic import ValidationError
 
 from src.schemas import (
     AlbumLayoutPlan,
-    CompletedCallback,
-    FailedCallback,
-    JobError,
-    JobUsage,
-    LayoutPatchEntry,
     LayoutRequest,
     Magazine,
     Page,
     PhotoAnalysis,
     PhotoGroup,
     PhotoIn,
-    ProgressCallback,
     VisionResult,
 )
 
@@ -31,14 +25,6 @@ def _photo_analysis(pid: str = "p1", quality: str = "hero", orientation: str = "
         mood="warm",
         timeOfDay=None,
         location=None,
-    )
-
-
-def _layout() -> AlbumLayoutPlan:
-    return AlbumLayoutPlan(
-        magazine=Magazine(title="Hi", style="warm-film", language="en"),
-        photos=[_photo_analysis("p1")],
-        pages=[Page(pageIndex=0, templateId="mag-13", images={"image": "p1"}, texts={})],
     )
 
 
@@ -95,45 +81,6 @@ class TestExtraForbid:
                 mood="warm",
                 extra="nope",  # type: ignore[call-arg]
             )
-
-    def test_callback_envelopes_each_have_extra_forbid(self):
-        with pytest.raises(ValidationError):
-            ProgressCallback(
-                event="progress",
-                requestId="r1",
-                stage="vision",
-                progress=0,
-                error={"code": "X", "message": "y"},  # type: ignore[call-arg]
-            )
-
-        with pytest.raises(ValidationError):
-            CompletedCallback(
-                event="completed",
-                requestId="r1",
-                layout=_layout(),
-                usage=JobUsage(),
-                stage="vision",  # type: ignore[call-arg]
-            )
-
-        with pytest.raises(ValidationError):
-            FailedCallback(
-                event="failed",
-                requestId="r1",
-                error=JobError(code="X", message="y"),
-                layout=_layout(),  # type: ignore[call-arg]
-            )
-
-
-class TestLayoutPatchEntry:
-    def test_partial_fields_allowed(self):
-        e = LayoutPatchEntry(pageIndex=2, texts={"caption": "ok"})
-        assert e.templateId is None
-        assert e.images is None
-        assert e.texts == {"caption": "ok"}
-
-    def test_unknown_key_rejected(self):
-        with pytest.raises(ValidationError):
-            LayoutPatchEntry(pageIndex=0, foo="bar")  # type: ignore[call-arg]
 
 
 class TestPagesBound:

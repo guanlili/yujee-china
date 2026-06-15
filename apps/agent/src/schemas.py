@@ -5,7 +5,7 @@ Web callers are rejected instead of silently propagated. Callback envelopes
 use a discriminated union on `event`.
 """
 
-from typing import Annotated, Literal, Union
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
@@ -15,7 +15,6 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 PhotoOrientation = Literal["portrait", "landscape", "square"]
 PhotoQuality = Literal["hero", "detail", "fill"]
 Language = Literal["zh", "en"]
-JobStage = Literal["vision", "writing", "composing"]
 ChatRole = Literal["user", "assistant"]
 PeopleCount = Literal["0", "1", "2-3", "4+"]
 Scene = Literal["indoor", "outdoor", "nature", "city", "interior"]
@@ -27,7 +26,7 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-# ---------- /v1/layout request -------------------------------------------------
+# ---------- vision request (Web→Agent init payload) ---------------------------
 
 
 class PhotoIn(_Strict):
@@ -100,65 +99,11 @@ class AlbumLayoutPlan(_Strict):
     pages: list[Page] = Field(min_length=1, max_length=16)
 
 
-# ---------- callbacks ---------------------------------------------------------
-
-# Web's stub /api/v1/internal/job-progress validates against the *current* TS
-# CallbackUsage shape (visionTokens/planningTokens/durationMs). Layout
-# completion callback emits this shape to avoid breaking Web. Chat-edit uses
-# the richer Usage schema below (no Web consumer yet).
-class JobUsage(_Strict):
-    visionTokens: int = Field(ge=0, default=0)
-    planningTokens: int = Field(ge=0, default=0)
-    durationMs: int = Field(ge=0, default=0)
-
-
+# JobError is the shared error shape carried by v2 failed callbacks and the
+# v2_album routes. The v1 callback envelopes (ProgressCallback / CompletedCallback
+# / FailedCallback / JobUsage / CallbackEnvelope) and the standalone
+# LayoutPatchEntry were removed in the v1 teardown — the agent now speaks only the
+# v2 contract (schemas_v2.py).
 class JobError(_Strict):
     code: str = Field(min_length=1)
     message: str
-
-
-class ProgressCallback(_Strict):
-    event: Literal["progress"]
-    requestId: str = Field(min_length=1)
-    stage: JobStage
-    progress: int = Field(ge=0, le=100)
-    message: str | None = None
-
-
-class CompletedCallback(_Strict):
-    event: Literal["completed"]
-    requestId: str = Field(min_length=1)
-    layout: AlbumLayoutPlan
-    usage: JobUsage
-    message: str | None = None
-
-
-class FailedCallback(_Strict):
-    event: Literal["failed"]
-    requestId: str = Field(min_length=1)
-    error: JobError
-    message: str | None = None
-
-
-CallbackEnvelope = Annotated[
-    Union[ProgressCallback, CompletedCallback, FailedCallback],
-    Field(discriminator="event"),
-]
-
-
-# ---------- /v1/chat-edit -----------------------------------------------------
-
-
-# NB. The v1 /v1/chat-edit request/response schemas (ChatEditRequest /
-# ChatEditResponse / ChatEditUsage / ChatHistoryItem) were removed in the v2
-# cutover (D-V1Kill): the editor now goes through /v2/album/edit, whose contract
-# lives in schemas_v2.py (V2EditRequest / V2EditResponse / V2LayoutPatchEntry).
-# LayoutPatchEntry below is retained — it is the standalone partial-Page shape
-# still exercised by the schema tests and shared in spirit with the v2 patch.
-
-
-class LayoutPatchEntry(_Strict):
-    pageIndex: int = Field(ge=0)
-    templateId: str | None = None
-    images: dict[str, str] | None = None
-    texts: dict[str, str] | None = None

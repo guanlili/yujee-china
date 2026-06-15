@@ -514,9 +514,9 @@ async def submit_add_photos(req: V2AddPhotosRequest, background_tasks: Backgroun
 def _mock_complete(payload: dict[str, Any]) -> Any:
     """Build a deterministic injected `complete` fn returning a single chat
     completion whose JSON content the W3 service then coerces — mirroring
-    vision_mock / planning_mock / _mock_chat_edit so the Web→Agent round-trip
-    is testable without a DeepSeek key. The service still applies all coercion,
-    state-machine, and layout-rule clamping on top of this raw payload."""
+    vision_mock so the Web→Agent round-trip is testable without a DeepSeek key.
+    The service still applies all coercion, state-machine, and layout-rule
+    clamping on top of this raw payload."""
 
     async def complete(**_kwargs: Any) -> dict[str, Any]:
         return {
