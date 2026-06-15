@@ -3,7 +3,7 @@ import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
 import { creditService } from '@/services/credit/credit-service';
-import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
+import { mapAgentErrorCode } from '@/lib/api/error-codes';
 import {
   AlbumLayoutPlan,
   type AlbumLayoutPlanT,
@@ -47,40 +47,15 @@ export type GenerationResolution =
   | null; // no job, or already terminal (the album row already tells the truth)
 
 export const jobService = {
-  async create(tx: DbOrTx, input: { userId: string; albumId: string; requestId: string }) {
-    const job = await agentJobRepo.create(tx, {
-      userId: input.userId,
-      albumId: input.albumId,
-      requestId: input.requestId,
-      status: 'QUEUED',
-      progress: 0,
-    });
-    return job;
-  },
-
   async markRunning(tx: DbOrTx, jobId: string) {
     // Conditional QUEUED → RUNNING so it can never overwrite a terminal status.
     await agentJobRepo.transitionStatus(tx, jobId, 'RUNNING', ['QUEUED'], { startedAt: new Date() });
   },
 
-  async findStatus(userId: string, requestId: string) {
-    const job = await agentJobRepo.findByRequestId(requestId);
-    if (!job) throw ERRORS.JOB_NOT_FOUND();
-    if (job.userId !== userId) throw ERRORS.JOB_NOT_OWNED();
-    return {
-      requestId: job.requestId,
-      albumId: job.albumId,
-      status: job.status,
-      stage: job.stage,
-      progress: job.progress,
-      error: job.error ?? null,
-    };
-  },
-
   // Read-path resolver for an album's latest job. Returns live stage/progress
   // while the job is genuinely running, and opportunistically sweeps a zombie
   // (RUNNING/QUEUED job with no callback past ZOMBIE_TIMEOUT_MS → FAILED + credit
-  // release, reusing handleFailed). This collapses the worst-case stuck window
+  // release, via sweepStaleJob). This collapses the worst-case stuck window
   // from "until the daily cron" down to "≤5 min after the user next looks".
   // The album row stays the source of truth; this only enriches/corrects it.
   async resolveGeneration(albumId: string, now: Date = new Date()): Promise<GenerationResolution> {
@@ -175,90 +150,6 @@ export const jobService = {
     });
   },
 
-  async handleCompleted(requestId: string, rawLayout: unknown, usage: unknown) {
-    const job = await agentJobRepo.findByRequestId(requestId);
-    if (!job) return;
-    if (job.status === 'COMPLETED' || job.status === 'FAILED') return; // idempotent
-
-    const parsed = AlbumLayoutPlan.safeParse(rawLayout);
-    if (!parsed.success) {
-      logger.error({ requestId, issues: parsed.error.issues }, 'agent layout invalid');
-      await this.handleFailed(requestId, {
-        code: 'AGENT_INVALID_OUTPUT',
-        message: parsed.error.issues.map((i) => i.message).join('; '),
-      });
-      return;
-    }
-    const layout: AlbumLayoutPlanT = parsed.data;
-
-    const album = await albumRepo.findById(job.albumId);
-    if (!album) {
-      logger.warn({ requestId, albumId: job.albumId }, 'album missing on completed');
-      return;
-    }
-
-    // Invariant 8: layout write + page bulk insert + credit settle + job marker
-    // commit together so partial failure cannot leave the user charged-but-no-album.
-    await db.transaction(async (tx) => {
-      // Win the job transition first; if a concurrent failed/sweep already moved
-      // it off QUEUED/RUNNING, bail before touching the album — and the row lock
-      // also blocks a double-delivered callback from inserting pages twice.
-      const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
-        progress: 100,
-        stage: 'composing',
-        usage: (usage as Record<string, unknown> | null) ?? null,
-        completedAt: new Date(),
-      });
-      if (!won) return;
-
-      await albumRepo.update(tx, job.albumId, {
-        title: layout.magazine.title,
-        status: 'EDITING',
-        layoutJson: layout,
-        pageCount: layout.pages.length,
-      });
-
-      await albumPageRepo.bulkInsert(
-        tx,
-        layout.pages.map((p) => ({
-          albumId: job.albumId,
-          pageIndex: p.pageIndex,
-          templateId: p.templateId,
-          imagesJson: p.images,
-          textsJson: p.texts,
-        })),
-      );
-
-      if (album.creditHoldId) {
-        await creditService.settle(tx, job.userId, album.creditHoldId);
-      }
-    });
-  },
-
-  async handleFailed(requestId: string, error: { code: string; message: string }) {
-    const job = await agentJobRepo.findByRequestId(requestId);
-    if (!job) return;
-    if (job.status === 'COMPLETED' || job.status === 'FAILED') return; // idempotent
-
-    await db.transaction(async (tx) => {
-      // Win the job transition first. If a concurrent completed callback already
-      // moved it off QUEUED/RUNNING (the read-path sweep racing a late success),
-      // bail before flipping the album to FAILED or releasing a settled hold.
-      const won = await agentJobRepo.transitionStatus(tx, job.id, 'FAILED', ['QUEUED', 'RUNNING'], {
-        error,
-        completedAt: new Date(),
-      });
-      if (!won) return;
-
-      await albumRepo.update(tx, job.albumId, {
-        status: 'FAILED',
-        errorMessage: error.message,
-      });
-
-      await creditService.releaseByAlbum(tx, job.albumId);
-    });
-  },
-
   // ──────────────────────────── v2 (agent rebuild) ────────────────────────────
   // Two async jobs share an album lifecycle, discriminated by agent_jobs.kind:
   // init (Stage 1+3 → draft tree) and finalize (Stage 5 → flat layout). Their
@@ -327,9 +218,9 @@ export const jobService = {
     }
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return; // idempotent
 
-    // Defence in depth: re-validate against the flat contract before persisting,
-    // mirroring v1 handleCompleted (the route already parsed V2Callback, but the
-    // flat layout is what hits album_pages — keep the same guard the v1 path has).
+    // Defence in depth: re-validate against the flat contract before persisting
+    // (the route already parsed V2Callback, but the flat layout is what hits
+    // album_pages — keep a guard right before the DB write).
     const parsed = AlbumLayoutPlan.safeParse(rawLayout);
     if (!parsed.success) {
       logger.error({ requestId, issues: parsed.error.issues }, 'v2 finalize layout invalid');

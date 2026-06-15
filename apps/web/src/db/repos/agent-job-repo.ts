@@ -92,8 +92,9 @@ export const agentJobRepo = {
 
   // Conditional terminal transition: flip status to `to` only if it is currently
   // one of `from`, and report whether *this* call won. The job row is the single
-  // arbiter when handleCompleted (callback), handleFailed (callback OR read-path
-  // sweep), and the daily cron race the same job: exactly one wins the UPDATE
+  // arbiter when the v2 terminal handlers (handleInitCompleted / handleFinalizeCompleted
+  // / handleAddCompleted / handleV2Failed, callback) and the read-path / daily-cron
+  // sweepStaleJob race the same job: exactly one wins the UPDATE
   // (row lock serializes them), the losers get 0 rows and must not touch the
   // album / credit hold. Prevents a late sweep clobbering a just-completed album,
   // or a late callback resurrecting a released one.

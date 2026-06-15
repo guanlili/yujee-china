@@ -1,55 +1,6 @@
 import { z } from 'zod';
-import { AlbumStatus, JobStage, JobStatus } from './enums';
+import { AlbumStatus } from './enums';
 import { AlbumLayoutPlan } from './layout';
-
-const BrowserPhoto = z.object({
-  photoId: z.string().min(1),
-  base64: z.string().min(1),
-  width: z.number().int().positive(),
-  height: z.number().int().positive(),
-});
-export type BrowserPhoto = z.infer<typeof BrowserPhoto>;
-
-export const CreateJobRequest = z.object({
-  requestId: z.string().uuid(),
-  prompt: z.string().min(1).max(500),
-  language: z.enum(['zh', 'en']),
-  photos: z.array(BrowserPhoto).min(1).max(30),
-});
-export type CreateJobRequest = z.infer<typeof CreateJobRequest>;
-
-export const CreateJobResponse = z.object({
-  albumId: z.string().min(1),
-  requestId: z.string().min(1),
-});
-export type CreateJobResponse = z.infer<typeof CreateJobResponse>;
-
-// Retry a FAILED album by reusing the same albumId (§6.5.3). No prompt: the
-// rerun reuses the stored album.prompt. The browser resends base64 under a fresh
-// requestId. Response shape matches CreateJobResponse (same albumId echoed back).
-// Min 1 photo, aligned with CT-1 (§6.5.6) — the Agent renders 1–2 photos with
-// text-only layouts.
-export const RetryJobRequest = z.object({
-  requestId: z.string().uuid(),
-  language: z.enum(['zh', 'en']),
-  photos: z.array(BrowserPhoto).min(1).max(30),
-});
-export type RetryJobRequest = z.infer<typeof RetryJobRequest>;
-
-export const JobStatusResponse = z.object({
-  requestId: z.string().min(1),
-  albumId: z.string().min(1),
-  status: JobStatus,
-  stage: JobStage.nullable(),
-  progress: z.number().int().min(0).max(100),
-  error: z
-    .object({
-      code: z.string().min(1),
-      message: z.string(),
-    })
-    .nullable(),
-});
-export type JobStatusResponse = z.infer<typeof JobStatusResponse>;
 
 const AlbumSummary = z.object({
   id: z.string().min(1),

@@ -16,8 +16,5 @@ export const JobStatus = z.enum([
 ]);
 export type JobStatus = z.infer<typeof JobStatus>;
 
-export const JobStage = z.enum(['vision', 'writing', 'composing']);
-export type JobStage = z.infer<typeof JobStage>;
-
 export const CallbackEvent = z.enum(['progress', 'completed', 'failed']);
 export type CallbackEvent = z.infer<typeof CallbackEvent>;

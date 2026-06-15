@@ -25,7 +25,7 @@ const BodySchema = z.object({
 });
 
 // Forwards a multi-MB base64 payload to the agent and waits for its 202; 60s
-// gives the cross-region submit room (same as v1 /api/v1/jobs).
+// gives the cross-region submit room.
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
