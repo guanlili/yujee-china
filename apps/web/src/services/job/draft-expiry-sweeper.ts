@@ -14,12 +14,16 @@ type SweepOpts = { now?: Date; expiryMs?: number };
 type SweepResult = { scanned: number; releasedHolds: number };
 
 // Release the HOLDING hold of one expired idle draft in a single transaction
-// (invariant 8). The album stays EDITING with its draft_json intact — the user
-// can still return; finalize then re-holds via ensureHold (W7b, §12.1). release
+// (invariant 8). The album stays EDITING with its draft_json intact. release
 // no-ops on an already-released hold, so concurrent sweeps (cron + read-path)
 // race safely. Returns true if a hold was released. Shared by the cron sweep and
 // the read-time opportunistic path so there is one definition of "release an
 // expired draft", no divergence.
+//
+// NOTE (§6.7 charge-at-init): the charge now settles at init success, so an EDITING
+// draft's hold is already SETTLED — findExpiredDraftHold (which matches HOLDING only)
+// no longer finds anything, making this sweep effectively a no-op. Kept for safety /
+// backward data; a successful generation is intentionally NOT refunded on abandonment.
 async function releaseExpiredDraftHold(holdId: string): Promise<boolean> {
   try {
     await db.transaction(async (tx) => {

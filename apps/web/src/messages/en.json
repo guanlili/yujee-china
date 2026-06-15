@@ -44,7 +44,7 @@
     "ALBUM_NOT_OWNED": "Album not owned by user",
     "JOB_NOT_FOUND": "Job not found",
     "PAGE_NOT_FOUND": "Page not found",
-    "CREDIT_INSUFFICIENT": "No books left",
+    "CREDIT_INSUFFICIENT": "Out of credits",
     "VALIDATION_FAILED": "Validation failed",
     "INTERNAL_ERROR": "Internal server error"
   },
@@ -57,11 +57,11 @@
     }
   },
   "pricing": {
-    "title": "Simple per-book pricing",
-    "subtitle": "Pay only for the books you make. No subscription.",
-    "unit": "books",
-    "unitSingular": "book",
-    "perBook": "/ book",
+    "title": "Simple per-credit pricing",
+    "subtitle": "Pay only for the credits you use. No subscription.",
+    "unit": "credits",
+    "unitSingular": "credit",
+    "perBook": "/ credit",
     "buy": "Buy",
     "redirecting": "Redirecting…",
     "bestValue": "Best value",
@@ -82,16 +82,16 @@
     "chrome": {
       "navHome": "Home",
       "navProjects": "My projects",
-      "creditsPillTitle": "Buy more books",
+      "creditsPillTitle": "Buy more credits",
       "upgrade": "Buy",
-      "manageSubscription": "Books & billing",
+      "manageSubscription": "Credits & billing",
       "feedback": "Feedback & issues",
       "logout": "Sign out",
       "accountMenu": "Account menu"
     },
     "nav": {
       "myAlbums": "My albums",
-      "credits": "Books",
+      "credits": "Credits",
       "settings": "Settings"
     },
     "create": {
@@ -135,24 +135,24 @@
       }
     },
     "credits": {
-      "title": "Books",
-      "balance": "Books remaining",
-      "unit": "books",
-      "unitSingular": "book",
-      "rechargeTitle": "Buy more books",
-      "rechargeSub": "One book makes one full memoir — AI layout, editing, chat, and free PDF export.",
+      "title": "Credits",
+      "balance": "Credits remaining",
+      "unit": "credits",
+      "unitSingular": "credit",
+      "rechargeTitle": "Buy more credits",
+      "rechargeSub": "Credits power your memoirs — AI layout, editing, chat, and free PDF export.",
       "buy": "Buy",
       "redirecting": "Redirecting…",
       "history": "Transaction history",
       "noHistory": "No transactions yet.",
-      "checkoutSuccess": "Payment received — your books will appear here shortly.",
+      "checkoutSuccess": "Payment received — your credits will appear here shortly.",
       "checkoutCancel": "Checkout was canceled.",
       "reason": {
-        "SIGNUP_BONUS": "Welcome book",
+        "SIGNUP_BONUS": "Welcome credit",
         "GENERATION_HOLD": "Generation reserved",
-        "GENERATION_SETTLE": "Book generated",
+        "GENERATION_SETTLE": "Memoir generated",
         "GENERATION_RELEASE": "Generation refunded",
-        "PURCHASE": "Books purchased",
+        "PURCHASE": "Credits purchased",
         "REFUND": "Refund",
         "ADMIN_ADJUST": "Adjustment"
       }
@@ -221,7 +221,7 @@
       "stateGenerating": "GENERATING",
       "failedTitle": "Something went wrong",
       "failedBodyDefault": "Generation failed.",
-      "failedNoCharge": "No book was charged.",
+      "failedNoCharge": "No credit was charged.",
       "goneTitle": "Couldn't open this album",
       "goneBody": "It may have been removed, or it isn't available on this account.",
       "slowTitle": "This is taking longer than expected",
@@ -272,7 +272,7 @@
       "email": "Email",
       "name": "Name",
       "role": "Role",
-      "credits": "Books",
+      "credits": "Credits",
       "albums": "Albums",
       "joined": "Joined",
       "admin": "Admin",
@@ -289,7 +289,7 @@
       "last30d": "Last 30 days",
       "albumsByStatus": "Albums by status",
       "jobsByStatus": "Jobs by status",
-      "credits": "Books (30 days)",
+      "credits": "Credits (30 days)",
       "purchased": "Purchased",
       "consumed": "Consumed",
       "albumStatus": {
@@ -308,7 +308,7 @@
     "settings": {
       "title": "Settings",
       "config": "Configuration",
-      "creditCost": "Books per album",
+      "creditCost": "Photos per credit",
       "agent": "Agent endpoint",
       "providers": "Payment providers",
       "configured": "on",

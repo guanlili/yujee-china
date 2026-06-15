@@ -55,11 +55,12 @@ async function seedJob(
   return { albumId: album.id, holdId: hold.id, requestId, jobId: job.id };
 }
 
-test('init/completed → draft_json written, album EDITING, hold stays HOLDING (not settled)', async (t) => {
+test('init/completed → draft_json written, album EDITING, hold SETTLED + balance debited (charge-at-init §6.7)', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('v2-init-done');
   try {
     const { albumId, holdId, requestId } = await seedJob(user.id, 'init');
+    const balanceBefore = await creditService.getBalance(user.id);
 
     await jobService.handleInitCompleted(requestId, DRAFT, { durationMs: 1, models: {} });
 
@@ -73,13 +74,15 @@ test('init/completed → draft_json written, album EDITING, hold stays HOLDING (
     assert.equal(job?.progress, 100);
 
     const hold = await creditHoldRepo.findById(holdId);
-    assert.equal(hold?.status, 'HOLDING', 'init completion must NOT settle — settle is finalize-only');
+    assert.equal(hold?.status, 'SETTLED', 'init success settles the single charge (§6.7)');
+    const balanceAfter = await creditService.getBalance(user.id);
+    assert.equal(balanceAfter, balanceBefore - HOLD_AMOUNT, 'init success debits exactly once');
   } finally {
     await cleanupUser(user.id);
   }
 });
 
-test('finalize/completed → album_pages + layout_json + EDITING + settle (hold SETTLED, balance debited)', async (t) => {
+test('finalize/completed → album_pages + layout_json + EDITING, NO charge (already settled at init §6.7)', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('v2-final-done');
   try {
@@ -99,11 +102,11 @@ test('finalize/completed → album_pages + layout_json + EDITING + settle (hold 
     assert.equal(pages[0]?.templateId, 'mag-02');
     assert.deepEqual(pages[0]?.textsJson, { headline: 'Hello' });
 
+    // Finalize is re-render only: it must NOT touch credit (the charge landed at init).
     const hold = await creditHoldRepo.findById(holdId);
-    assert.equal(hold?.status, 'SETTLED', 'finalize completion settles the single charge');
-
+    assert.equal(hold?.status, 'HOLDING', 'finalize must not settle — charge is at init now');
     const balanceAfter = await creditService.getBalance(user.id);
-    assert.equal(balanceAfter, balanceBefore - HOLD_AMOUNT);
+    assert.equal(balanceAfter, balanceBefore, 'finalize must not debit the balance');
   } finally {
     await cleanupUser(user.id);
   }
@@ -162,7 +165,7 @@ test('idempotency: a failed callback arriving after init/completed is dropped (t
 
     await jobService.handleInitCompleted(requestId, DRAFT, { durationMs: 1, models: {} });
     // Late/out-of-order failed — must NOT flip the completed album to FAILED nor
-    // release the still-needed hold.
+    // refund the already-settled charge.
     await jobService.handleV2Failed(requestId, { code: 'AGENT_TIMEOUT', message: 'late' });
     // A duplicate completed must also be a no-op.
     await jobService.handleInitCompleted(requestId, { version: 'v2', tampered: true }, null);
@@ -175,13 +178,13 @@ test('idempotency: a failed callback arriving after init/completed is dropped (t
     assert.equal(job?.status, 'COMPLETED');
 
     const hold = await creditHoldRepo.findById(holdId);
-    assert.equal(hold?.status, 'HOLDING');
+    assert.equal(hold?.status, 'SETTLED', 'init settled the charge; a late failed must not refund it');
   } finally {
     await cleanupUser(user.id);
   }
 });
 
-test('idempotency: a double-delivered finalize/completed inserts pages once, settles once', async (t) => {
+test('idempotency: a double-delivered finalize/completed inserts pages once, never charges', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('v2-final-dup');
   try {
@@ -191,16 +194,17 @@ test('idempotency: a double-delivered finalize/completed inserts pages once, set
     await jobService.handleFinalizeCompleted(requestId, LAYOUT, { durationMs: 1, models: {} });
     // Second delivery of the same callback must be a no-op — the win-or-bail job
     // transition keeps it from re-running bulkInsert (uq_album_pages_album_index
-    // would otherwise throw) or settling the hold twice.
+    // would otherwise throw).
     await jobService.handleFinalizeCompleted(requestId, LAYOUT, { durationMs: 1, models: {} });
 
     const pages = await albumPageRepo.findByAlbum(albumId);
     assert.equal(pages.length, 1, 'pages inserted exactly once');
 
+    // Finalize never charges (§6.7): hold untouched, balance unchanged across both deliveries.
     const hold = await creditHoldRepo.findById(holdId);
-    assert.equal(hold?.status, 'SETTLED');
+    assert.equal(hold?.status, 'HOLDING');
     const balanceAfter = await creditService.getBalance(user.id);
-    assert.equal(balanceAfter, balanceBefore - HOLD_AMOUNT, 'charged exactly once');
+    assert.equal(balanceAfter, balanceBefore, 'finalize never debits the balance');
   } finally {
     await cleanupUser(user.id);
   }

@@ -6,7 +6,7 @@ import { albumRepo } from '@/db/repos/album-repo';
 import { userRepo } from '@/db/repos/user-repo';
 import { users, type CreditLedger } from '@/db/schema';
 import { ERRORS } from '@/lib/api/error-codes';
-import { CREDIT_COST_PER_ALBUM } from '@/config/pricing';
+import { creditsForPhotos } from '@/config/pricing';
 
 type LedgerReason =
   | 'SIGNUP_BONUS'
@@ -25,7 +25,9 @@ type ApplyDeltaRefs = {
 };
 
 export const creditService = {
-  cost: (): number => CREDIT_COST_PER_ALBUM,
+  // Credits a generation of `photoCount` photos costs (§6.7): ceil(N / PHOTOS_PER_CREDIT),
+  // floored at 1. The photos-per-credit threshold lives only in pricing.ts.
+  cost: (photoCount = 1): number => creditsForPhotos(photoCount),
 
   async getBalance(userId: string): Promise<number> {
     const user = await userRepo.findById(userId);
@@ -45,7 +47,7 @@ export const creditService = {
     }));
   },
 
-  async precheck(userId: string, amount: number = CREDIT_COST_PER_ALBUM): Promise<void> {
+  async precheck(userId: string, amount: number): Promise<void> {
     const user = await userRepo.findById(userId);
     if (!user) throw ERRORS.UNAUTHORIZED();
     if (user.creditBalance < amount) throw ERRORS.CREDIT_INSUFFICIENT();
@@ -161,28 +163,4 @@ export const creditService = {
     await this.release(tx, album.creditHoldId);
   },
 
-  // W7b (#123) 补 hold (rebuild-tech-plan §12.1): guarantee albums.credit_hold_id
-  // points at a HOLDING hold for the finalize that settle will later resolve.
-  // Called from the finalize intake tx (after the EDITING→AGENT_RUNNING lock win).
-  //  - ≤24h re-entry: the init hold is still HOLDING → reuse it, no second charge
-  //    (requirements §10.5). No-op.
-  //  - after the 24h draft-expiry sweep released it (W7c) — or no hold ever — the
-  //    pointer is null/RELEASED/SETTLED → precheck (insufficient throws
-  //    CREDIT_INSUFFICIENT and rolls the lock back to EDITING, §6.5 decision 2) +
-  //    new HOLDING hold, which re-points credit_hold_id at the fresh hold.
-  // The single charge still lands once, at finalize-settle on the current pointer.
-  async ensureHold(
-    tx: DbOrTx,
-    userId: string,
-    albumId: string,
-    amount: number = CREDIT_COST_PER_ALBUM,
-  ): Promise<string> {
-    const album = await albumRepo.findById(albumId);
-    if (album?.creditHoldId) {
-      const existing = await creditHoldRepo.findById(album.creditHoldId);
-      if (existing?.status === 'HOLDING') return existing.id; // reuse — no double-charge
-    }
-    await this.precheck(userId, amount);
-    return this.hold(tx, userId, amount, albumId);
-  },
 };

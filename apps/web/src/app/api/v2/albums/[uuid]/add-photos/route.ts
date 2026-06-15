@@ -4,6 +4,7 @@ import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
 import { generationService } from '@/services/generation/generation-service';
+import { MAX_PHOTOS_PER_GENERATION } from '@/config/pricing';
 
 // Browser-facing add-photos body (W11 mid-edit add). Same per-photo shape as init
 // — the NEW photos only, base64 + the takenAt-only EXIF gate (D-GPS). The album is
@@ -20,7 +21,7 @@ const BodySchema = z.object({
   requestId: z.string().uuid(),
   language: z.enum(['zh', 'en']),
   promptHint: z.string().max(500).optional(),
-  photos: z.array(AddPhoto).min(1).max(30),
+  photos: z.array(AddPhoto).min(1).max(MAX_PHOTOS_PER_GENERATION),
 });
 
 // Forwards a multi-MB base64 payload to the agent and waits for its 202; 60s gives

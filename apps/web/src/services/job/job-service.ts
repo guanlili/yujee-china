@@ -110,8 +110,8 @@ export const jobService = {
 
       if (job.kind === 'finalize') {
         // finalize zombie: the draft is still intact, so the album returns to
-        // EDITING and the hold stays HOLDING — the user can just retry finalize.
-        // NOT FAILED, NOT released (unlike init).
+        // EDITING — the user can just retry finalize. NOT FAILED. No credit work:
+        // the charge already settled at init (§6.7), so there is nothing to release.
         await albumRepo.update(tx, job.albumId, { status: 'EDITING' });
         return { swept: true, releasedHold: false };
       }
@@ -173,8 +173,11 @@ export const jobService = {
   },
 
   // init/completed → write the authoring tree to draft_json + album EDITING
-  // ("draft ready"). layout_json stays null (the draft-vs-finalized discriminator)
-  // and the hold stays HOLDING — settle is deferred to finalize (§5). NOT settled.
+  // ("draft ready"). layout_json stays null (the draft-vs-finalized discriminator).
+  // CHARGE-AT-INIT (§6.7): this is where the single credit charge lands — settle the
+  // init hold in the SAME tx as the draft write + job marker (invariant 8), so a
+  // successful generation debits exactly once. A failed/zombie init releases the hold
+  // instead (handleV2Failed / sweepStaleJob) → never charged.
   // draftTree is already V2Callback-validated by the route; it lands as-is in the
   // draft_json jsonb column (typed unknown — the route is the single validation).
   async handleInitCompleted(requestId: string, draftTree: unknown, usage: unknown) {
@@ -185,6 +188,12 @@ export const jobService = {
       return;
     }
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return; // idempotent
+
+    const album = await albumRepo.findById(job.albumId);
+    if (!album) {
+      logger.warn({ requestId, albumId: job.albumId }, 'album missing on init completed');
+      return;
+    }
 
     await db.transaction(async (tx) => {
       // Win the terminal transition first; a concurrent failed/sweep that already
@@ -202,13 +211,20 @@ export const jobService = {
         status: 'EDITING',
         draftJson: draftTree,
       });
+
+      // The single charge lands here (the init hold created at submit time). settle
+      // is idempotent on an already-settled/missing hold, so a double-delivered
+      // callback that loses the transition race above never double-debits.
+      if (album.creditHoldId) {
+        await creditService.settle(tx, job.userId, album.creditHoldId);
+      }
     });
   },
 
-  // finalize/completed → flatten into album_pages + layout_json + settle the hold,
-  // all in one tx (invariant 8). album → EDITING (finalized: editable/exportable),
-  // NOT COMPLETED — that stays with PDF upload confirmation (§1.4). Opposite of
-  // init: this is where the single charge lands.
+  // finalize/completed → flatten into album_pages + layout_json in one tx. album →
+  // EDITING (finalized: editable/exportable), NOT COMPLETED — that stays with PDF
+  // upload confirmation (§1.4). No charge here: §6.7 moved the single charge to
+  // init-success, so finalize is purely re-rendering the already-paid-for draft.
   async handleFinalizeCompleted(requestId: string, rawLayout: unknown, usage: unknown) {
     const job = await agentJobRepo.findByRequestId(requestId);
     if (!job) return;
@@ -265,12 +281,9 @@ export const jobService = {
         })),
       );
 
-      // settle whatever credit_hold_id currently points at (W7b guarantees it is
-      // a HOLDING hold at this point via finalize intake; settle is a no-op on a
-      // null/already-settled hold, so this is safe before W7b lands).
-      if (album.creditHoldId) {
-        await creditService.settle(tx, job.userId, album.creditHoldId);
-      }
+      // No credit work here (§6.7 charge-at-init): the single charge already settled
+      // when the init job completed. Finalize only re-renders the paid-for draft into
+      // the flat layout — the hold this album points at is already SETTLED.
     });
   },
 
@@ -383,7 +396,7 @@ export const jobService = {
 
       if (job.kind === 'finalize') {
         await albumRepo.update(tx, job.albumId, { status: 'EDITING' });
-        return; // keep the hold; do not release
+        return; // no credit work — the charge already settled at init (§6.7)
       }
 
       if (job.kind === 'add') {

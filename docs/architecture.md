@@ -203,6 +203,18 @@ memoir-agent-rebuild/
 5. **模板 JSON 单一真相源**:`packages/contracts/templates/` 登记为模板定义源;Web / Agent 从该目录派生模板约束,不再维护多份手工模板约束副本。
 6. **对外契约不变**:不新增 `AlbumLayoutPlan` 字段,`Page.images` 继续只输出 `{slot: photoId}`;不改 Web↔Agent callback envelope,不新增 external AlbumLayoutPlan contract。
 
+### 6.7 计费时机与单位重定义(2026-06-15 · 架构拍板)
+
+> 背景:W10/W11 统一创建流程(`1f64c2f`)按产品决策**删除了"完成全书/定稿"CTA**,`finalizeBook()` 沦为死代码(无任何调用点)。而 v2 把 `settle` 设计在 finalize(§5 / job-service `handleFinalizeCompleted`),于是**扣款扳机被一并删除 → 用户生成纪念册全程不被扣费(漏钱 bug)**。本节修正 §6.5 决策 1/4 中关于 settle 时机的前提,并把"积分单位"重定义为按张计费。产品负责人(玉姐)直接拍板授权。
+
+1. **扣点从 finalize 搬到 init 成功**:create 流程的 `settle` 改在 `job-service.handleInitCompleted`(init 任务成功、草稿落库的同一事务里)发生,**不再依赖已废弃的 finalize**。理由:① init 是确定性必达环节(用户传图必走"成功/失败"),finalize 已无用户入口、放那里等于不扣;② 最贵、最不可逆的 AI 算力在 init 就花掉;③ init 之后的多轮 theme/chapter 对话属"免费编辑",不再计费。`finalize` 路径不再 settle(死代码清理时一并处理),`add-photos` 维持"每批一扣"不变。
+
+2. **失败仍走解冻、成功扣一次、不重复计费**:沿用 §6.5 决策 4 —— init 失败/超时 → `release`(从未真扣,无"退款"中间态);invariant 8(积分变更与 album 状态同事务原子)**保持不变**,`handleInitCompleted` 本就在 `db.transaction` 内 settle。
+
+3. **单位 = credit,按张计费,单一真相源**:废弃"一本书 = 1 credit"的扁平模型(`CREDIT_COST_PER_ALBUM`)。改为 `creditsForPhotos(N) = max(1, ceil(N / PHOTOS_PER_CREDIT))`,**唯一真相源 `apps/web/src/config/pricing.ts`**;`PHOTOS_PER_CREDIT` 是唯一阈值旋钮(当前占位 10,具体 10/20 由产品后定),照片硬上限 `MAX_PHOTOS_PER_GENERATION` 亦从其派生。**任何处不得再写死照片数或单价**。`creditService.cost()` 改签名带 `photoCount`,init/add/retry 调用点随之传值。
+
+4. **对外展示单位文案统一为 "credits"(中文"积分")**:面向英文主战场,弃用 "book/本"(产出物当计价单位会自相矛盾)与 "贝壳/shells"(付费墙理解成本)。涉及 en.json / zh.json / EditorPort / marketing / credits 页 / UserMenu。内部 `credit_*` 标识符与 DB schema **不变**(仅显示层文案)。
+
 ---
 
 ## 7. 怎么读这份文档系列

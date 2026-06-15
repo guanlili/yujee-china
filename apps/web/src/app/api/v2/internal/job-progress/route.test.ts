@@ -80,7 +80,7 @@ test('init/completed routes to the init branch → draft_json + EDITING', async 
   }
 });
 
-test('finalize/completed routes to the finalize branch → layout_json + settle', async (t) => {
+test('finalize/completed routes to the finalize branch → layout_json, no charge (§6.7 charge-at-init)', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('route-final');
   try {
@@ -91,8 +91,9 @@ test('finalize/completed routes to the finalize branch → layout_json + settle'
     const album = await albumRepo.findById(albumId);
     assert.equal(album?.status, 'EDITING');
     assert.ok(album?.layoutJson);
+    // Finalize re-renders only — the charge already settled at init, so it must not touch the hold.
     const hold = await creditHoldRepo.findById(holdId);
-    assert.equal(hold?.status, 'SETTLED');
+    assert.equal(hold?.status, 'HOLDING');
   } finally {
     await cleanupUser(user.id);
   }

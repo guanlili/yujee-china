@@ -71,10 +71,10 @@ export const albumService = {
         generation = { stage: resolved.stage, progress: resolved.progress };
       }
     } else if (album.status === 'EDITING') {
-      // Read-time draft-expiry sweep (rebuild-tech-plan §12), the credit twin of
-      // the zombie sweep above: an idle draft past 24h releases its hold on the
-      // next look. The album stays EDITING with its draft_json intact (no status
-      // change, nothing to reload here) — finalize re-holds via ensureHold (§12.1).
+      // Read-time draft-expiry sweep (rebuild-tech-plan §12). Under §6.7 charge-at-init
+      // the draft's hold is already SETTLED, so this no longer finds a HOLDING hold to
+      // release — kept as a harmless safety net (see draft-expiry-sweeper.ts). The album
+      // stays EDITING with its draft_json intact (no status change, nothing to reload).
       await draftExpirySweeper.sweepAlbumOnRead(albumId);
     }
 

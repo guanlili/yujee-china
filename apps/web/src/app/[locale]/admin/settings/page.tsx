@@ -2,7 +2,7 @@ import { currentAdmin } from '@/lib/auth/require-admin';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 import { env } from '@/lib/env';
-import { CREDIT_COST_PER_ALBUM } from '@/config/pricing';
+import { PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { AdminNav } from '@/components/admin/AdminNav';
 import { AdminForbidden } from '@/components/admin/AdminForbidden';
 import { AdminMaintenance } from '@/components/admin/AdminMaintenance';
@@ -30,7 +30,7 @@ export default async function AdminSettingsPage({
         <dl className="space-y-3 text-sm">
           <div className="flex justify-between">
             <dt className="text-[var(--muted)]">{t.creditCost}</dt>
-            <dd>{CREDIT_COST_PER_ALBUM.toLocaleString(locale)}</dd>
+            <dd>{PHOTOS_PER_CREDIT.toLocaleString(locale)}</dd>
           </div>
           <div className="flex justify-between">
             <dt className="text-[var(--muted)]">{t.agent}</dt>

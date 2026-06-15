@@ -330,9 +330,9 @@ function EditorBook({
         balLow: '余额不足',
         balDesc: '当前余额不足以生成新章节，充值后即可继续创作',
         balRecharge: '去充值',
-        bpLead: '哎呀，贝壳不够啦，再添几枚贝壳继续生成你的纪念册～',
-        bpTitle: '购买贝壳',
-        bpSub: '<b>1 个贝壳</b>，可处理 10 张照片',
+        bpLead: '哎呀，积分不够啦，充点积分继续生成你的纪念册～',
+        bpTitle: '购买积分',
+        bpSub: '<b>1 积分</b>，可处理一批照片',
         bpBuy: '去购买',
         editingNow: '正在编辑',
         chapterWord: '第',
@@ -455,10 +455,10 @@ function EditorBook({
         balLow: 'Balance running low',
         balDesc: 'Not enough balance to generate a new chapter — top up to keep creating',
         balRecharge: 'Top up',
-        bpLead: 'Oops, you\'re running low on shells. Add a few more to keep creating your album.',
-        bpTitle: 'Buy shells',
-        bpSub: '<b>1 shell</b> processes 10 photos',
-        bpBuy: 'Buy shells',
+        bpLead: 'Oops, you\'re running low on credits. Add a few more to keep creating your album.',
+        bpTitle: 'Buy credits',
+        bpSub: '<b>1 credit</b> covers one batch of photos',
+        bpBuy: 'Buy credits',
         editingNow: 'Editing',
         chapterWord: 'Ch.',
         photosWord: 'photos',
@@ -1419,8 +1419,8 @@ function EditorBook({
       if (finishBar) finishBar.style.display = 'none';
     }
 
-    // ── Purchase card (贝壳不足引导卡): on CreditInsufficientError, surface the
-    // design's buy-shells card at the bottom of the conversation (it carries its
+    // ── Purchase card (积分不足引导卡): on CreditInsufficientError, surface the
+    // design's buy-credits card at the bottom of the conversation (it carries its
     // own "去购买" button → /credits) instead of hard-redirecting. ──
     function showPurchaseCard() {
       const card = byId('balanceAlert');
@@ -1428,7 +1428,7 @@ function EditorBook({
         card.style.display = '';
         chatBody!.appendChild(card); // float to the end of the thread
       } else {
-        appendAiText(aT('贝壳不足，去充值后即可继续。', 'Out of shells — top up to keep creating.'));
+        appendAiText(aT('积分不足，去充值后即可继续。', 'Out of credits — top up to keep creating.'));
       }
       scrollChat();
     }
@@ -1875,7 +1875,7 @@ function EditorBook({
 
     const balanceAlert = byId('balanceAlert');
     if (balanceAlert) balanceAlert.style.display = 'none';
-    // Surface the buy-shells card only when the shell balance is running low.
+    // Surface the buy-credits card only when the credit balance is running low.
     void fetch('/api/v1/credit/balance')
       .then((r) => r.json())
       .then((j) => {
@@ -2234,14 +2234,14 @@ function EditorBook({
               </div>
 
               <div className="balance-alert" id="balanceAlert">
-                <div className="bp-lead" data-i18n="bpLead">哎呀，贝壳不够啦，再添几枚贝壳继续生成你的纪念册～</div>
+                <div className="bp-lead" data-i18n="bpLead">哎呀，积分不够啦，充点积分继续生成你的纪念册～</div>
                 <div className="bp-card">
                   <span className="bp-ic">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[26px] h-[26px]"><circle cx="12" cy="12" r="10" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /><line x1="2" y1="12" x2="22" y2="12" /></svg>
                   </span>
                   <div className="flex-1 min-w-0">
-                    <div className="bp-title" data-i18n="bpTitle">购买贝壳</div>
-                    <div className="bp-sub" data-i18n-html="bpSub"><b>1 个贝壳</b>，可处理 10 张照片</div>
+                    <div className="bp-title" data-i18n="bpTitle">购买积分</div>
+                    <div className="bp-sub" data-i18n-html="bpSub"><b>1 积分</b>，可处理一批照片</div>
                   </div>
                   <button className="bp-buy" data-action="buyShells" data-i18n="bpBuy">去购买</button>
                 </div>
