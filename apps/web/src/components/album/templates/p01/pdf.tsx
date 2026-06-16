@@ -18,7 +18,7 @@ export function PdfP01({ data }: TemplateRenderProps) {
     <PdfPageShell dark fontFamily={PDF_FONTS.serifCn}>
       <PdfImage
         src={d.image}
-        style={{ position: 'absolute', top: 0, bottom: 320, left: '50%', width: 794, marginLeft: -397 }}
+        style={{ position: 'absolute', top: 0, bottom: 320, left: 0, width: 794 }}
       />
       <View
         style={{

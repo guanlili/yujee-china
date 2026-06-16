@@ -17,7 +17,7 @@ export function WebP01({ data }: TemplateRenderProps) {
       <WebImage
         src={d.image}
         placeholder="1:1"
-        style={{ position: 'absolute', top: 0, bottom: 320, left: '50%', width: 794, marginLeft: -397, objectFit: 'cover' }}
+        style={{ position: 'absolute', top: 0, bottom: 320, left: 0, width: 794, objectFit: 'cover' }}
       />
       <div
         style={{
