@@ -631,6 +631,11 @@ function EditorBook({
     }
     function paintEl(el: HTMLElement | null, page: EditorPage | null, attempt = 0) {
       if (!el) return;
+      // #158 follow-up: a null page is "no page there" (the empty half of a solo
+      // cover/ending spread). Render nothing — faceHTML would otherwise inject a
+      // white (#fff) box. The .page-empty/.leaf-empty/.thumb-empty/.ov-solo classes
+      // strip the surrounding surface/shadow/spine so the half reads as empty space.
+      if (!page) { el.innerHTML = ''; return; }
       // offsetParent === null ⇔ a `display:none` ancestor hides the cell (these
       // page/thumb cells are never position:fixed). See paintDecision for why each
       // branch behaves as it does — notably 'skip' on hidden avoids a per-frame
@@ -706,6 +711,7 @@ function EditorBook({
     /* ─── Book / spread ─── */
     const ctxBadge = $('.chat-context');
     const pageInd = byId('pageInd');
+    const bookEl = byId('book')!;
     const pageLeft = byId('pageLeft')!;
     const pageRight = byId('pageRight')!;
     const flipper = byId('flipper')!;
@@ -739,6 +745,14 @@ function EditorBook({
       const [lp, rp] = spreadPages(i);
       paintEl(pageLeft, lp);
       paintEl(pageRight, rp);
+      // #158 follow-up: a null half is "no page there" (cover sits alone on the
+      // right, ending alone on the left). Render the empty half as truly empty —
+      // no white surface, shadow, page-num or click target — via .page-empty.
+      pageLeft.classList.toggle('page-empty', lp === null);
+      pageRight.classList.toggle('page-empty', rp === null);
+      // Drop the center spine line when either half is empty so a solo cover/ending
+      // page has no stray divider next to blank space; keep it for double spreads.
+      bookEl.classList.toggle('book-solo', lp === null || rp === null);
       if (lp) pageLeft.dataset.pageIndex = String(lp.pageIndex);
       else delete pageLeft.dataset.pageIndex;
       if (rp) pageRight.dataset.pageIndex = String(rp.pageIndex);
@@ -758,8 +772,16 @@ function EditorBook({
       flipping = true;
       const [curLeft, curRight] = spreadPages(currentCh);
       const [nxtLeft, nxtRight] = spreadPages(nextIdx);
+      // #158 follow-up: the leaf faces + the half painted directly here also carry
+      // a possibly-null page; mark each empty so no white half flashes mid-flip.
+      // Set book-solo for the DESTINATION spread now (paintSpread re-asserts it on
+      // completion) so the spine doesn't flicker during the flip.
+      bookEl.classList.toggle('book-solo', nxtLeft === null || nxtRight === null);
 
       if (dir === 'next') {
+        leafFront.classList.toggle('leaf-empty', curRight === null);
+        leafBack.classList.toggle('leaf-empty', nxtLeft === null);
+        pageRight.classList.toggle('page-empty', nxtRight === null);
         paintEl(leafFront, curRight);
         paintEl(leafBack, nxtLeft);
         paintEl(pageRight, nxtRight);
@@ -779,6 +801,9 @@ function EditorBook({
           flipping = false;
         }, 920);
       } else {
+        leafFront.classList.toggle('leaf-empty', curLeft === null);
+        leafBack.classList.toggle('leaf-empty', nxtRight === null);
+        pageLeft.classList.toggle('page-empty', nxtLeft === null);
         paintEl(leafFront, curLeft);
         paintEl(leafBack, nxtRight);
         paintEl(pageLeft, nxtLeft);
@@ -884,8 +909,15 @@ function EditorBook({
       ).join('');
       for (let i = 0; i < spreadCount(); i++) {
         const [lp, rp] = spreadPages(i);
-        paintEl(row.querySelector(`[data-tface="${i}-l"]`) as HTMLElement | null, lp);
-        paintEl(row.querySelector(`[data-tface="${i}-r"]`) as HTMLElement | null, rp);
+        const tl = row.querySelector(`[data-tface="${i}-l"]`) as HTMLElement | null;
+        const tr = row.querySelector(`[data-tface="${i}-r"]`) as HTMLElement | null;
+        // #158 follow-up: an empty half is blank space (no surface fill); drop the
+        // thumb spine divider when either half is empty (solo cover/ending thumb).
+        tl?.classList.toggle('thumb-empty', lp === null);
+        tr?.classList.toggle('thumb-empty', rp === null);
+        (tl?.closest('.thumb-img') as HTMLElement | null)?.classList.toggle('thumb-solo', lp === null || rp === null);
+        paintEl(tl, lp);
+        paintEl(tr, rp);
       }
       row.querySelectorAll('[data-gospread]').forEach((el) => {
         el.addEventListener('click', () => goToSpread(parseInt(el.getAttribute('data-gospread')!, 10)));
@@ -937,11 +969,16 @@ function EditorBook({
     function renderOverview() {
       const g = byId('ovGrid');
       if (!g) return;
-      g.innerHTML = Array.from({ length: spreadCount() }, (_, i) =>
-        `<div class="ov-spread${i === currentCh ? ' ov-current' : ''}" data-ovidx="${i}">
-          <div class="ov-book"><div class="ov-page ov-left" data-oface="${i}-l"></div><div class="ov-page ov-right" data-oface="${i}-r"></div></div>
+      g.innerHTML = Array.from({ length: spreadCount() }, (_, i) => {
+        const [lp, rp] = spreadPages(i);
+        // #158 follow-up: drop the ov-book surface fill + spine for a solo spread so
+        // the empty half reads as empty space, not a white page.
+        const solo = lp === null || rp === null;
+        return `<div class="ov-spread${i === currentCh ? ' ov-current' : ''}" data-ovidx="${i}">
+          <div class="ov-book${solo ? ' ov-solo' : ''}"><div class="ov-page ov-left${lp === null ? ' ov-empty' : ''}" data-oface="${i}-l"></div><div class="ov-page ov-right${rp === null ? ' ov-empty' : ''}" data-oface="${i}-r"></div></div>
           <div class="ov-cap">${spreadLabel(i)}</div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
       for (let i = 0; i < spreadCount(); i++) {
         const [lp, rp] = spreadPages(i);
         paintEl(g.querySelector(`[data-oface="${i}-l"]`) as HTMLElement | null, lp);

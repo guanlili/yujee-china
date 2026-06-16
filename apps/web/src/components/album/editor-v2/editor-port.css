@@ -127,6 +127,14 @@
 }
 /* W11: the page the user selected to talk to the AI about ("change this page"). */
 .editor-port .page.page-selected{ box-shadow: inset 0 0 0 3px var(--accent); }
+/* #158 follow-up: a null half ("no page there" — left of cover, right of ending)
+   renders as empty space, not a white page: no surface, shadow, border, page-num,
+   and not clickable/selectable. */
+.editor-port .page.page-empty{ background:transparent; box-shadow:none; cursor:default; }
+.editor-port .page.page-empty.page-selected{ box-shadow:none; }
+.editor-port .page.page-empty .page-num{ display:none; }
+/* Solo spread (cover/ending): drop the center spine line next to the empty half. */
+.editor-port .book.book-solo::before{ display:none; }
 
 /* Flipping leaf */
 .editor-port .flipper{
@@ -162,6 +170,8 @@
 }
 .editor-port .leaf.front{transform: rotateY(0deg);}
 .editor-port .leaf.back{transform: rotateY(180deg);}
+/* #158 follow-up: a flip leaf showing a null half is empty, not a white surface. */
+.editor-port .leaf.leaf-empty{ background:transparent; }
 .editor-port .flipper::after{
   content:''; position:absolute; inset:0;
   background: linear-gradient(90deg, rgba(0,0,0,.08), transparent 30%);
@@ -202,6 +212,11 @@
 .editor-port .ov-book{ aspect-ratio:1.414/1; display:flex; background:var(--surface); border-radius:3px; overflow:hidden;
   box-shadow:0 2px 8px rgba(0,0,0,0.06), 0 10px 26px rgba(0,0,0,0.10); position:relative; }
 .editor-port .ov-book::before{ content:''; position:absolute; top:0; bottom:0; left:50%; width:1px; transform:translateX(-50%); background:var(--border-soft); z-index:2; }
+/* #158 follow-up: a solo overview spread (cover/ending) drops the white book
+   surface + spine so its empty half reads as empty space. */
+.editor-port .ov-book.ov-solo{ background:transparent; box-shadow:none; }
+.editor-port .ov-book.ov-solo::before{ display:none; }
+.editor-port .ov-spread:hover .ov-book.ov-solo{ box-shadow:none; }
 .editor-port .ov-spread:hover .ov-book{ box-shadow:0 4px 14px rgba(0,0,0,0.08), 0 14px 36px rgba(0,0,0,0.14); }
 .editor-port .ov-page{ flex:1; overflow:hidden; }
 .editor-port .ov-left{ padding:9% 8%; display:flex; flex-direction:column; }
@@ -248,6 +263,10 @@
   background-size:cover; background-position:center;
   background-color: var(--surface);
 }
+/* #158 follow-up: an empty thumb half is blank space (no surface fill); a solo
+   thumb (cover/ending) also drops its center spine divider. */
+.editor-port .thumb-img-left.thumb-empty, .editor-port .thumb-img-right.thumb-empty{ background-color: transparent; }
+.editor-port .thumb-img.thumb-solo::after{ display:none; }
 .editor-port .thumb-label{ display:none; }
 
 /* ─── Left page content (chapter cover) ─── */
