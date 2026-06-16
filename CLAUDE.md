@@ -5,7 +5,7 @@ AI 人生纪念册 Web 应用,海外市场。用户输入文字 + 选照片 → 
 - **域名**:yujeeai.com
 - **形态**:Web 应用,英文 UI
 - **付费**:Creem
-- **初期目标**:1000 用户(简单优先);长期 10 万用户(留扩展接口,第一版不实施)
+- **初期目标**:1000 用户(简单优先)
 
 ## 三个组件
 
@@ -20,7 +20,6 @@ Browser ──► Web (Next.js) ──► Agent (FastAPI)
 - **Web** (Next.js 15 + Drizzle + better-auth):页面 / 登录 / 积分 / 支付。base64 收到后**不落盘**,直接转发 Agent。只保存排版 JSON 和 PDF 元数据。
 - **Agent** (Python + FastAPI):无状态。调火山 doubao-vision 识图 + DeepSeek 排版 → 输出 layout JSON。
 
-核心承诺:**原图永远不落服务器**。
 
 ## 技术栈
 
@@ -32,7 +31,7 @@ Browser ──► Web (Next.js) ──► Agent (FastAPI)
 | Agent | Python 3.12 + FastAPI |
 | 识图 | 火山 doubao-seed-1-6-vision |
 | 排版规划 | DeepSeek |
-| 排版引擎 | 复用 `../memoir/` 的 React 模板,21 个版式 |
+| 排版引擎 | repo 内 React 模板(`apps/web/src/components/album/templates/`) |
 | 对象存储 | Cloudflare R2(只存 PDF)|
 | 部署 | Web → Vercel,Agent → Fly.io |
 
@@ -92,6 +91,11 @@ memoir-agent-rebuild/
 
 > 调试 / 验证 / 截图 / 一次性排查时产生的**临时文档、临时测试文件、临时预览路由、一次性脚本**(不论放顶层目录还是任何子目录),**用完必须立即删除,绝不留在仓库里**。
 >
-> - 需要长期保留的测试 → 写进正式测试套件(`apps/web/src/**/*.test.ts`、`apps/agent/tests/`),不要散落临时文件。
-> - 需要长期保留的文档 → 收进 `docs/`(并在引用处登记),不要留半成品/快照式临时文档。
-> - 任务结束前自查:`git status` 里不该出现没人引用的临时产物。
+> - 测试进正式套件(`*.test.ts`、`apps/agent/tests/test_*.py`),**不准写成 `.txt`/`.log` 散落文件**;文档进 `docs/`。
+> - 任务结束前 `git status` 不留没人引用的临时产物。
+
+---
+
+## 改动必须 review + 推送(铁律)
+
+> 建分支 → 改 → review → 测试过 → 推 GitHub 开 PR。review/测试没过不推,**不把工作留在本地**。
