@@ -7,6 +7,8 @@ import {
   V2DraftEditRequest,
   V2DraftEditResponse,
   V2InitRequest,
+  V2InspectRequest,
+  V2InspectResponse,
   V2PhotoAnalysis,
 } from './v2';
 
@@ -165,4 +167,87 @@ test('V2DraftEditResponse act carries pageWrite, talk omits it', () => {
   assert.equal(V2DraftEditResponse.safeParse(talk).success, true);
   const badKind = { ...talk, kind: 'other' };
   assert.equal(V2DraftEditResponse.safeParse(badKind).success, false);
+});
+
+// #165 Phase 2 — inspect kind + imagePosWrite + inspect-page schemas (TS↔py parity).
+test('V2DraftEditResponse supports inspect kind + inspectRequest', () => {
+  const inspect = {
+    kind: 'inspect',
+    assistantReply: 'Let me take a look.',
+    inspectRequest: { pageIndex: 2 },
+    usage: { durationMs: 1, models: {} },
+  };
+  assert.equal(V2DraftEditResponse.safeParse(inspect).success, true);
+});
+
+test('V2DraftEditResponse act carries imagePosWrite with clamped ranges', () => {
+  const ok = {
+    kind: 'act',
+    assistantReply: 'moved it',
+    imagePosWrite: { pageIndex: 2, imageId: 'image', x: 50, y: 35, scale: 1.2 },
+    usage: { durationMs: 1, models: {} },
+  };
+  assert.equal(V2DraftEditResponse.safeParse(ok).success, true);
+  for (const bad of [
+    { pageIndex: 0, imageId: 'i', x: -1, y: 50, scale: 1 },
+    { pageIndex: 0, imageId: 'i', x: 50, y: 101, scale: 1 },
+    { pageIndex: 0, imageId: 'i', x: 50, y: 50, scale: 0.9 },
+    { pageIndex: 0, imageId: 'i', x: 50, y: 50, scale: 2.1 },
+  ]) {
+    assert.equal(
+      V2DraftEditResponse.safeParse({ ...ok, imagePosWrite: bad }).success,
+      false,
+    );
+  }
+});
+
+test('V2InspectRequest is strict + carries the screenshot channel only', () => {
+  const req = {
+    albumId: 'a',
+    language: 'en',
+    page: { pageIndex: 2, templateId: 'mag-05', images: { image: 'p1' }, texts: {} },
+    photos: [baseAnalysis],
+    screenshot: 'data:image/png;base64,AAAA',
+    userMessage: 'face cut off',
+  };
+  assert.equal(V2InspectRequest.safeParse(req).success, true);
+  assert.equal(
+    V2InspectRequest.safeParse({ ...req, draftTree: {} }).success,
+    false,
+    'no whole tree smuggled in (invariant 12)',
+  );
+  const { screenshot, ...noShot } = req;
+  assert.equal(V2InspectRequest.safeParse(noShot).success, false, 'screenshot required');
+});
+
+test('V2InspectResponse diagnosis: imageId nullable, ranges clamped', () => {
+  const resp = {
+    diagnosis: {
+      imageId: 'image',
+      problem: 'cut off',
+      suggestedDx: 0,
+      suggestedDy: -10,
+      suggestedScale: 1.1,
+      confidence: 0.7,
+    },
+    assistantReply: 'let me adjust',
+    usage: { durationMs: 1, models: {} },
+  };
+  assert.equal(V2InspectResponse.safeParse(resp).success, true);
+  // null imageId is the graceful "unable to inspect" shape.
+  assert.equal(
+    V2InspectResponse.safeParse({
+      ...resp,
+      diagnosis: { ...resp.diagnosis, imageId: null },
+    }).success,
+    true,
+  );
+  // out-of-range suggestions rejected.
+  assert.equal(
+    V2InspectResponse.safeParse({
+      ...resp,
+      diagnosis: { ...resp.diagnosis, suggestedDy: -51 },
+    }).success,
+    false,
+  );
 });

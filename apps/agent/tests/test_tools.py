@@ -134,15 +134,15 @@ def test_dispatch_non_object_arguments_return_none():
 def test_tools_for_prompt_only_enabled():
     offered = tools.tools_for_prompt()
     names = {t["function"]["name"] for t in offered}
-    assert names == {"write_page_copy"}
+    # #165 Phase 2: inspect_page_render + adjust_image_position joined the live set.
+    assert names == {"write_page_copy", "inspect_page_render", "adjust_image_position"}
     # Reserved tools are registered but NOT offered.
     assert "set_style" not in names
     assert "set_palette" not in names
-    assert "image_treatment" not in names
 
 
 def test_reserved_tools_registered_but_disabled():
-    for name in ("set_style", "set_palette", "image_treatment"):
+    for name in ("set_style", "set_palette"):
         spec = tools.TOOL_REGISTRY[name]
         assert spec.enabled is False
 
@@ -153,3 +153,111 @@ def test_write_page_copy_description_mentions_guardrails():
     assert "only" in desc
     assert "placeholder" in desc or "dummy" in desc
     assert "question" in desc or "greeting" in desc
+
+
+# --------------------------------------------------------------------------- #
+# #165 Phase 2 — inspect_page_render + adjust_image_position                    #
+# --------------------------------------------------------------------------- #
+
+
+def _draft_ctx(page_index=2, template_id="mag-05", image_slots=("image",)):
+    return tools.DraftEditContext(
+        page_index=page_index,
+        template_id=template_id,
+        image_slots=frozenset(image_slots),
+    )
+
+
+def _inspect_call(page_index=2):
+    return {
+        "id": "c1",
+        "type": "function",
+        "function": {"name": "inspect_page_render", "arguments": {"pageIndex": page_index}},
+    }
+
+
+def _adjust_call(image_id="image", dx=0.0, dy=-10.0, scale=1.0, page_index=2):
+    return {
+        "id": "c1",
+        "type": "function",
+        "function": {
+            "name": "adjust_image_position",
+            "arguments": {
+                "pageIndex": page_index,
+                "imageId": image_id,
+                "dx": dx,
+                "dy": dy,
+                "scale": scale,
+            },
+        },
+    }
+
+
+def test_inspect_page_render_pins_pageindex():
+    # The model's pageIndex arg is advisory; the sentinel is pinned to ctx.page_index.
+    result = tools.dispatch(_inspect_call(page_index=99), ctx=_draft_ctx(page_index=2))
+    assert result is not None
+    assert result.tool == "inspect_page_render"
+    assert result.payload == {"pageIndex": 2}
+
+
+def test_adjust_image_position_computes_absolute_from_50_base():
+    # x = clamp(50+dx,0,100), y = clamp(50+dy,0,100).
+    result = tools.dispatch(_adjust_call(dx=10, dy=-20, scale=1.5), ctx=_draft_ctx())
+    assert result is not None
+    assert result.tool == "adjust_image_position"
+    assert result.payload["pageIndex"] == 2  # pinned
+    assert result.payload["imageId"] == "image"
+    assert result.payload["x"] == 60.0
+    assert result.payload["y"] == 30.0
+    assert result.payload["scale"] == 1.5
+
+
+def test_adjust_image_position_clamps_dx_dy_scale():
+    # dx/dy clamp to [-50,50] → x/y clamp to [0,100]; scale clamps to [1,2].
+    result = tools.dispatch(_adjust_call(dx=999, dy=-999, scale=99), ctx=_draft_ctx())
+    assert result is not None
+    assert result.payload["x"] == 100.0  # 50 + clamp(999→50)
+    assert result.payload["y"] == 0.0  # 50 + clamp(-999→-50)
+    assert result.payload["scale"] == 2.0
+
+
+def test_adjust_image_position_clamps_scale_below_one():
+    result = tools.dispatch(_adjust_call(dx=5, dy=0, scale=0.2), ctx=_draft_ctx())
+    assert result is not None
+    assert result.payload["scale"] == 1.0
+
+
+def test_adjust_image_position_off_page_slot_demotes_to_none():
+    # imageId not in the page's real image-slot set → never write (G3).
+    result = tools.dispatch(_adjust_call(image_id="ghost", dy=-10), ctx=_draft_ctx())
+    assert result is None
+
+
+def test_adjust_image_position_noop_args_demote_to_none():
+    # dx==dy==0 and scale==1.0 → degenerate no-op → talk (G3).
+    result = tools.dispatch(_adjust_call(dx=0, dy=0, scale=1.0), ctx=_draft_ctx())
+    assert result is None
+
+
+def test_adjust_image_position_scale_only_is_not_noop():
+    # A pure zoom (scale!=1) with no shift is still a real adjust.
+    result = tools.dispatch(_adjust_call(dx=0, dy=0, scale=1.3), ctx=_draft_ctx())
+    assert result is not None
+    assert result.payload["x"] == 50.0
+    assert result.payload["y"] == 50.0
+    assert result.payload["scale"] == 1.3
+
+
+def test_phase2_tools_offered_and_described():
+    offered = {t["function"]["name"] for t in tools.tools_for_prompt()}
+    assert {"inspect_page_render", "adjust_image_position"} <= offered
+    inspect_desc = tools.TOOL_REGISTRY["inspect_page_render"].description.lower()
+    assert "only" in inspect_desc and ("crop" in inspect_desc or "cut off" in inspect_desc)
+    adjust_desc = tools.TOOL_REGISTRY["adjust_image_position"].description.lower()
+    assert "only" in adjust_desc and "no-op" in adjust_desc
+
+
+def test_image_treatment_stub_removed():
+    # The reserved #162 image_treatment stub is superseded by adjust_image_position.
+    assert "image_treatment" not in tools.TOOL_REGISTRY

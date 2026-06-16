@@ -234,6 +234,198 @@ def _handle_write_page_copy(
 
 
 # --------------------------------------------------------------------------- #
+# inspect_page_render — diagnose a mis-positioned photo (#165 Phase 2)          #
+# --------------------------------------------------------------------------- #
+#
+# A diagnosis-only tool: the model calls it when the user complains a photo is
+# cropped/mis-positioned and the model needs to SEE the rendered page to decide.
+# It produces no edit; the draft-edit service maps the (page-pinned) sentinel to
+# a NEW response kind "inspect", which Phase 3's browser turns into a screenshot
+# round-trip (→ /v2/album/inspect-page → diagnosis → follow-up adjust).
+
+
+_INSPECT_PAGE_RENDER_DESCRIPTION = (
+    "Call this ONLY when the user complains a photo is mis-positioned/cropped/a "
+    "face or subject is cut off and you need to SEE the page to diagnose. Do NOT "
+    "call it for text/copy edits or general chat."
+)
+
+
+def _inspect_page_render_schema() -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": "inspect_page_render",
+            "description": _INSPECT_PAGE_RENDER_DESCRIPTION,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pageIndex": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "The pageIndex of the page to inspect.",
+                    }
+                },
+                "required": ["pageIndex"],
+            },
+        },
+    }
+
+
+class InspectPageRenderArgs(_Strict):
+    """Pydantic mirror of inspect_page_render args (strict)."""
+
+    pageIndex: int = Field(ge=0)
+
+
+def _handle_inspect_page_render(
+    args: InspectPageRenderArgs, *, ctx: Any
+) -> ToolResult | None:
+    """Return a sentinel pinned to ctx.page_index (the model's arg is advisory —
+    same pin as write_page_copy: this turn only ever sees/edits one page,
+    invariant 12). The service maps this to kind="inspect"."""
+    return ToolResult(
+        tool="inspect_page_render",
+        payload={"pageIndex": ctx.page_index},
+    )
+
+
+# --------------------------------------------------------------------------- #
+# adjust_image_position — move/zoom a photo within its frame (#165 Phase 2)     #
+# --------------------------------------------------------------------------- #
+#
+# Called after a crop is diagnosed to nudge a photo inside its slot. The payload
+# field names (x/y/scale) match the Phase-1 ImagePos shape the render layer +
+# imagePosJson consume. dx/dy shift in percentage points from a 50/50 base; the
+# absolute position is clamp(50+dx,0,100). The write is pinned to the page's real
+# image-slot set so it can never touch an off-page / invented slot.
+
+
+_ADJUST_IMAGE_POSITION_DESCRIPTION = (
+    "Call ONLY to move/zoom a photo within its frame after diagnosing a crop. "
+    "dx/dy shift in percentage points (negative dx reveals more LEFT, negative dy "
+    "reveals more TOP); scale 1.0–2.0 zooms. Never call with all-zero no-op args."
+)
+
+
+def _adjust_image_position_schema() -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": "adjust_image_position",
+            "description": _ADJUST_IMAGE_POSITION_DESCRIPTION,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pageIndex": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "The pageIndex of the page being adjusted.",
+                    },
+                    "imageId": {
+                        "type": "string",
+                        "description": (
+                            "The image slot id to move (must be a real slot on this "
+                            "page, e.g. \"image\" / \"imageTop\" / \"cells[0].image\")."
+                        ),
+                    },
+                    "dx": {
+                        "type": "number",
+                        "description": (
+                            "Horizontal shift in percentage points; negative reveals "
+                            "more of the LEFT of the photo."
+                        ),
+                    },
+                    "dy": {
+                        "type": "number",
+                        "description": (
+                            "Vertical shift in percentage points; negative reveals "
+                            "more of the TOP of the photo."
+                        ),
+                    },
+                    "scale": {
+                        "type": "number",
+                        "description": "Zoom factor 1.0–2.0 (1.0 = no zoom).",
+                    },
+                },
+                "required": ["pageIndex", "imageId", "dx", "dy", "scale"],
+            },
+        },
+    }
+
+
+class AdjustImagePositionArgs(_Strict):
+    """Pydantic mirror of adjust_image_position args (strict)."""
+
+    pageIndex: int = Field(ge=0)
+    imageId: str
+    dx: float
+    dy: float
+    scale: float
+
+
+@dataclass(frozen=True)
+class AdjustImagePositionContext:
+    """What the handler needs to pin an adjust to the page being edited: the
+    page's pageIndex + the set of image slotIds that actually exist on it. The
+    service builds `image_slots` from `req.page.images` so the model can never
+    move an off-page / invented slot (G3)."""
+
+    page_index: int
+    image_slots: frozenset[str]
+
+
+@dataclass(frozen=True)
+class DraftEditContext:
+    """The single ctx the draft-edit service passes to `dispatch` — it carries
+    everything ALL of the draft-period tools need (page_index + template_id for
+    write_page_copy, image_slots for adjust_image_position, page_index alone for
+    inspect_page_render). One object so dispatch stays tool-agnostic; each handler
+    reads only the attributes it needs."""
+
+    page_index: int
+    template_id: str
+    image_slots: frozenset[str]
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
+
+def _handle_adjust_image_position(
+    args: AdjustImagePositionArgs, *, ctx: AdjustImagePositionContext
+) -> ToolResult | None:
+    """Map dx/dy/scale → an absolute ImagePos {x,y,scale} for ONE real slot.
+
+    Demotes to None (→ talk, G3) when the slot is off-page/invented, or the call
+    is a no-op (dx==dy==0 and scale==1.0). Clamps dx,dy∈[-50,50], scale∈[1,2],
+    then x=clamp(50+dx,0,100), y=clamp(50+dy,0,100) (architect-ratified)."""
+    # Off-page / invented slot → never write to it (G3).
+    if args.imageId not in ctx.image_slots:
+        return None
+    # No-op call → nothing to do, demote to talk (G1 says never call it; G3 enforces).
+    if args.dx == 0 and args.dy == 0 and args.scale == 1.0:
+        return None
+
+    dx = _clamp(args.dx, -50.0, 50.0)
+    dy = _clamp(args.dy, -50.0, 50.0)
+    scale = _clamp(args.scale, 1.0, 2.0)
+    x = _clamp(50.0 + dx, 0.0, 100.0)
+    y = _clamp(50.0 + dy, 0.0, 100.0)
+
+    return ToolResult(
+        tool="adjust_image_position",
+        payload={
+            "pageIndex": ctx.page_index,  # pinned (invariant 12)
+            "imageId": args.imageId,
+            "x": x,
+            "y": y,
+            "scale": scale,
+        },
+    )
+
+
+# --------------------------------------------------------------------------- #
 # reserved tools — registered but DISABLED (definitions only)                  #
 # --------------------------------------------------------------------------- #
 
@@ -279,15 +471,10 @@ _SET_PALETTE_SCHEMA = _reserved_schema(
     },
 )
 
-_IMAGE_TREATMENT_SCHEMA = _reserved_schema(
-    "image_treatment",
-    "Reserved: change image treatment (crop/filter/frame) on a page. Not yet enabled.",
-    {
-        "type": "object",
-        "properties": {"pageIndex": {"type": "integer", "minimum": 0}, "treatment": {"type": "object"}},
-        "required": ["pageIndex", "treatment"],
-    },
-)
+# NOTE (#165 Phase 2): the reserved `image_treatment` stub from #162 is SUPERSEDED
+# by the live `adjust_image_position` tool below (which moves/zooms a photo within
+# its frame via the Phase-1 ImagePos contract) and removed. Crop/filter/frame
+# treatments, if ever needed, get their own tool then.
 
 
 # --------------------------------------------------------------------------- #
@@ -301,6 +488,21 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         description=_WRITE_PAGE_COPY_DESCRIPTION,
         json_schema=_write_page_copy_schema(),
         handler=_handle_write_page_copy,
+        enabled=True,
+    ),
+    # #165 Phase 2 — diagnose a mis-positioned photo, then move/zoom it. Both live.
+    "inspect_page_render": ToolSpec(
+        name="inspect_page_render",
+        description=_INSPECT_PAGE_RENDER_DESCRIPTION,
+        json_schema=_inspect_page_render_schema(),
+        handler=_handle_inspect_page_render,
+        enabled=True,
+    ),
+    "adjust_image_position": ToolSpec(
+        name="adjust_image_position",
+        description=_ADJUST_IMAGE_POSITION_DESCRIPTION,
+        json_schema=_adjust_image_position_schema(),
+        handler=_handle_adjust_image_position,
         enabled=True,
     ),
     # Reserved — registered for shape parity / future plug-in, never offered to
@@ -319,13 +521,6 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         handler=_not_implemented,
         enabled=False,
     ),
-    "image_treatment": ToolSpec(
-        name="image_treatment",
-        description="Reserved image-treatment tool.",
-        json_schema=_IMAGE_TREATMENT_SCHEMA,
-        handler=_not_implemented,
-        enabled=False,
-    ),
 }
 
 
@@ -338,6 +533,8 @@ def tools_for_prompt() -> list[dict[str, Any]]:
 # Arg validators per tool (the pydantic mirror of each tool's parameters).
 _ARG_MODELS: dict[str, type[BaseModel]] = {
     "write_page_copy": WritePageCopyArgs,
+    "inspect_page_render": InspectPageRenderArgs,
+    "adjust_image_position": AdjustImagePositionArgs,
 }
 
 

@@ -431,9 +431,12 @@ export type V2DraftEditRequest = z.infer<typeof V2DraftEditRequest>;
 
 export const V2DraftEditResponse = z
   .object({
-    kind: z.enum(['talk', 'act']),
+    // #165 Phase 2:'inspect' 加入 talk/act。inspect → agent 需要「看」这一页
+    //(浏览器截图 → /v2/album/inspect-page);act → 文案改(pageWrite)或图片移动/缩放
+    //(imagePosWrite)。每种 kind 至多设一个 payload;talk 一个都不设。
+    kind: z.enum(['talk', 'act', 'inspect']),
     assistantReply: z.string().min(1).max(500),
-    // 仅当 kind=='act' 时存在:要应用到目标页的、已 clamp 的文案。
+    // 仅当 kind=='act'(经 write_page_copy)时存在:要应用到目标页的、已 clamp 的文案。
     pageWrite: z
       .object({
         pageIndex: z.number().int().nonnegative(),
@@ -441,10 +444,76 @@ export const V2DraftEditResponse = z
       })
       .strict()
       .optional(),
+    // 仅当 kind=='act'(经 adjust_image_position)时存在:要写入 Page.imagePos[imageId]
+    // 的逐图绝对位置/缩放。字段名+范围对齐 Phase-1 `ImagePos`(x/y∈[0,100]、scale∈[1,2])。
+    imagePosWrite: z
+      .object({
+        pageIndex: z.number().int().nonnegative(),
+        imageId: z.string().min(1),
+        x: z.number().min(0).max(100),
+        y: z.number().min(0).max(100),
+        scale: z.number().min(1).max(2),
+      })
+      .strict()
+      .optional(),
+    // 仅当 kind=='inspect' 时存在:给浏览器的截图/诊断指令(钉到正在编辑的那一页)。
+    inspectRequest: z
+      .object({ pageIndex: z.number().int().nonnegative() })
+      .strict()
+      .optional(),
     usage: Usage,
   })
   .strict();
 export type V2DraftEditResponse = z.infer<typeof V2DraftEditResponse>;
+
+// ── POST /v2/album/inspect-page(同步;#165 Phase 2 视觉诊断)──
+// draft-edit 返回 kind=='inspect' 后,浏览器渲染+截图该页并发到这里;agent 跑一次视觉
+// 调用(火山 doubao-1.6-vision,与 init 同模型/同 key)诊断报告的裁切问题并给出移动/缩放建议;
+// Web 侧据此再发一轮 draft-edit,让模型调用 adjust_image_position。
+// 隐私:`screenshot`(渲染页的 base64 data URI,800px 量级,同 init 照片)是唯一新增 base64
+// 通道;进上游视觉请求体后即丢弃 —— 不记日志、不落库、不回传(同 init 视觉,不变式 1)。
+const V2InspectPage = z
+  .object({
+    pageIndex: z.number().int().nonnegative(),
+    templateId: z.string().min(1),
+    images: z.record(z.string(), z.string()),
+    texts: z.record(z.string(), z.string()),
+  })
+  .strict();
+
+export const V2InspectRequest = z
+  .object({
+    albumId: z.string().min(1),
+    language: V2Language,
+    page: V2InspectPage, // 被检查的单页切片(slotId→photoId 让视觉点名真实 imageId)
+    photos: z.array(V2PhotoAnalysis), // 该页照片 analysis(纯文本,无 base64),供命名主体
+    screenshot: z.string().min(1), // 渲染页截图的 base64 data URI(唯一新增 base64 通道)
+    userMessage: z.string().max(500),
+  })
+  .strict();
+export type V2InspectRequest = z.infer<typeof V2InspectRequest>;
+
+export const V2InspectDiagnosis = z
+  .object({
+    // 出问题的 slotId:必为该页 slotId 之一,无法定位时为 null(调用方降级为 talk)。
+    imageId: z.string().min(1).nullable().optional(),
+    problem: z.string(),
+    suggestedDx: z.number().min(-50).max(50), // 百分点水平位移
+    suggestedDy: z.number().min(-50).max(50), // 百分点垂直位移
+    suggestedScale: z.number().min(1).max(2),
+    confidence: z.number().min(0).max(1),
+  })
+  .strict();
+export type V2InspectDiagnosis = z.infer<typeof V2InspectDiagnosis>;
+
+export const V2InspectResponse = z
+  .object({
+    diagnosis: V2InspectDiagnosis,
+    assistantReply: z.string().min(1).max(500),
+    usage: Usage,
+  })
+  .strict();
+export type V2InspectResponse = z.infer<typeof V2InspectResponse>;
 
 // ────────────────────────────── v2 callback envelope ──────────────────────────────
 //

@@ -30,6 +30,8 @@ from ..schemas_v2 import (
     Usage,
     V2DraftEditRequest,
     V2DraftEditResponse,
+    V2DraftImagePosWrite,
+    V2DraftInspectRequest,
     V2DraftPageWrite,
     V2Models,
 )
@@ -63,15 +65,22 @@ def _system_prompt(req: V2DraftEditRequest) -> str:
     return (
         writing_guides.persona_block() + "\n\n"
         "You are helping a user edit ONE page of their memoir photo album during "
-        "the draft stage. You can do two kinds of things:\n"
+        "the draft stage. You can do these kinds of things:\n"
         "  1. TALK — answer questions, give opinions, suggest ideas, chat. This is "
         "the DEFAULT. Reply in plain text, in the user's language, <=500 chars.\n"
-        "  2. ACT — change the words on the page. To do this, and ONLY this, call "
-        "the `write_page_copy` tool with the real final copy. Read the tool's own "
-        "description for exactly when to call it and when NOT to.\n"
-        "If the user is only asking, greeting, giving an opinion, or says not to "
-        "change anything, just TALK — do not call the tool. Never call the tool "
-        "with placeholder or dummy text.\n"
+        "  2. ACT (copy) — change the words on the page. To do this, call the "
+        "`write_page_copy` tool with the real final copy.\n"
+        "  3. INSPECT — when the user says a photo is mis-positioned/cropped or a "
+        "face/subject is cut off, and you need to SEE the page to judge, call the "
+        "`inspect_page_render` tool (it shows you the rendered page; it makes no "
+        "change).\n"
+        "  4. ACT (image) — to move/zoom a photo inside its frame AFTER you have "
+        "diagnosed a crop, call the `adjust_image_position` tool.\n"
+        "Read each tool's own description for exactly when to call it and when NOT "
+        "to. If the user is only asking, greeting, giving an opinion, or says not to "
+        "change anything, just TALK — do not call any tool. Never call write_page_copy "
+        "with placeholder or dummy text, and never call adjust_image_position with "
+        "all-zero no-op args.\n"
         + focus
         + "\n"
         + writing_guides.guides_block()
@@ -172,10 +181,14 @@ async def run(
     model_text = ai_client.extract_text_optional(response)
     tool_calls = ai_client.extract_tool_calls(response)
 
-    # An act turn needs BOTH a write_page_copy tool_call AND non-degenerate args
-    # (G3); dispatch returns None on any degenerate/off-page/unknown call → talk.
-    ctx = tools.WritePageCopyContext(
-        page_index=req.page.pageIndex, template_id=req.page.templateId
+    # An act/inspect turn needs a (valid) tool_call; dispatch returns None on any
+    # degenerate/off-page/unknown/no-op call → talk (G3). One ctx carries what all
+    # draft-period tools need: page_index + template_id (write_page_copy) + the
+    # page's real image-slot set (adjust_image_position can only move a real slot).
+    ctx = tools.DraftEditContext(
+        page_index=req.page.pageIndex,
+        template_id=req.page.templateId,
+        image_slots=frozenset(req.page.images.keys()),
     )
     result: tools.ToolResult | None = None
     for call in tool_calls:
@@ -190,6 +203,45 @@ async def run(
         planningOutputTokens=completion_tokens,
         models=V2Models(planning=settings.deepseek_model),
     )
+
+    if result is not None and result.tool == "inspect_page_render":
+        # The model wants to SEE the page before deciding (#165 Phase 2). No write:
+        # the browser screenshots the page → /v2/album/inspect-page → diagnosis.
+        page_index = result.payload["pageIndex"]
+        reply = model_text.strip() or (
+            "我看看这一页。" if req.language == "zh" else "Let me take a look at that page."
+        )
+        log.info("draft_edit.call.inspect", page_index=page_index, duration_ms=duration_ms)
+        return V2DraftEditResponse(
+            kind="inspect",
+            assistantReply=reply[:500],
+            inspectRequest=V2DraftInspectRequest(pageIndex=page_index),
+            usage=usage,
+        )
+
+    if result is not None and result.tool == "adjust_image_position":
+        # Move/zoom a photo within its frame (#165 Phase 2). An act turn carrying an
+        # imagePosWrite (not a pageWrite); the Web side folds {x,y,scale} into
+        # Page.imagePos[imageId]. Field names mirror the Phase-1 ImagePos shape.
+        image_pos_write = V2DraftImagePosWrite(
+            pageIndex=result.payload["pageIndex"],
+            imageId=result.payload["imageId"],
+            x=result.payload["x"],
+            y=result.payload["y"],
+            scale=result.payload["scale"],
+        )
+        log.info(
+            "draft_edit.call.act_image",
+            page_index=image_pos_write.pageIndex,
+            image_id=image_pos_write.imageId,
+            duration_ms=duration_ms,
+        )
+        return V2DraftEditResponse(
+            kind="act",
+            assistantReply=_act_confirmation(req, model_text),
+            imagePosWrite=image_pos_write,
+            usage=usage,
+        )
 
     if result is not None and result.tool == "write_page_copy":
         page_write = V2DraftPageWrite(

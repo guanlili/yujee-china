@@ -297,6 +297,29 @@ export const AlbumLayoutPlan = z.object({
 - **TS<->py 镜像**:`packages/contracts/src/layout.ts` `ImagePos`/`Page.imagePos` 对应 `apps/agent/src/schemas.py` `ImagePos`/`Page.imagePos`;Web 校验副本 `apps/web/src/lib/agent/layout-schema.ts` 同步。
 - **PDF 限制**:`@react-pdf <Image>` 无 transform,`scale>1` 暂不缩放(只用 objectPosition 平移),为 web-only,见 `pdf-utils.tsx` 的 `TODO(#165)`。
 
+### 4.0b 视觉诊断 + 单图位置工具(#165 Phase 2,架构已批准登记)
+
+草稿期编辑器的 tool 层(`apps/agent/src/services/tools.py`,#162 起)在 Phase 2 新增两个**已启用**工具,并新增一个同步端点 `POST /v2/album/inspect-page`。`/v2/album/draft-edit` 的响应 `kind` 从 `talk|act` 扩为 `talk|act|inspect`。#162 的 `talk` / `write_page_copy(act+pageWrite)` 路径不变。
+
+**两个新工具(G1 描述即「何时调/何时别调」;dispatch 服务端二次校验 = G3):**
+
+- `inspect_page_render(pageIndex)` —— 仅当用户抱怨某张照片位置不对/被裁/人脸或主体被切,且模型需要「看」这一页才能判断时调用;不用于文案编辑或闲聊。handler 返回 sentinel,`pageIndex` **钉到 `ctx.page_index`**(忽略模型入参,同 `write_page_copy` 的钉页;不变式 12)。服务映射为 `kind="inspect"` + `inspectRequest:{pageIndex}`,不带任何 write。
+- `adjust_image_position(pageIndex, imageId, dx, dy, scale)` —— 仅在诊断出裁切后,把照片在画框内平移/缩放时调用;`dx/dy` 为百分点位移(负 dx 露更多左、负 dy 露更多上),`scale 1.0–2.0`;禁止全零 no-op。**G3 降级为 talk(返回 None)**当:`imageId` 不在该页真实图片 slot 集合内(越页/虚构 slot),或 no-op(`dx==dy==0 且 scale==1.0`)。**clamp**:`dx,dy∈[-50,50]`、`scale∈[1,2]`,再由 50/50 基准算**绝对位置** `x=clamp(50+dx,0,100)`、`y=clamp(50+dy,0,100)`。服务映射为 `kind="act"` + `imagePosWrite:{pageIndex,imageId,x,y,scale}`(字段名/范围对齐 Phase-1 `ImagePos`,Web 折进 `Page.imagePos[imageId]`)。`#162` 预留的 `image_treatment` stub 被本工具取代、已删除。
+
+**`V2DraftEditResponse` 新增(TS↔py 严格镜像,inv 12):**
+- `kind: 'talk' | 'act' | 'inspect'`;
+- `inspectRequest?: { pageIndex: int>=0 }` —— 仅 `kind=='inspect'`;
+- `imagePosWrite?: { pageIndex:int>=0, imageId:str, x:0-100, y:0-100, scale:1-2 }` —— 仅 `kind=='act'`(经 adjust);
+- 既有 `pageWrite?`(经 write_page_copy 的 act)保留。
+
+**新端点 `POST /v2/album/inspect-page`(同步,`require_bearer`,契约形错误):**
+- `V2InspectRequest { albumId, language, page:{pageIndex,templateId,images,texts}, photos:[V2PhotoAnalysis…], screenshot:str(dataUri), userMessage }`。`screenshot` 是**唯一新增 base64 通道**(渲染页截图,800px 量级,同 init 照片):进上游视觉请求体后即丢弃,不记日志、不落库、不回传(隐私同 init 视觉,不变式 1)。
+- `V2InspectResponse { diagnosis:{ imageId?, problem, suggestedDx, suggestedDy, suggestedScale, confidence }, assistantReply, usage }`。
+- 视觉模型 = 火山 `doubao-seed-1-6-vision`(`settings.ark_vision_model`,与 init 同模型/同 key/同 image_url base64 data URI 格式);`temperature=0.1, max_tokens=512, thinking disabled`。
+- **优雅失败**:视觉报错 / JSON 不可解析 / `imageId` 不在该页 slot → 返回 `problem:"unable to inspect"` + `confidence 0` + `imageId null`(调用方降级为 talk 文案),**绝不抛**;仅极端硬失败映射 `AGENT_VISION_FAILED`/502。`diagnosis` 各数值 clamp:`dx,dy∈[-50,50]`、`scale∈[1,2]`、`confidence∈[0,1]`。
+
+**Phase 3 编排(浏览器/客户端要驱动的契约):** draft-edit 返回 `kind:"inspect"` + `inspectRequest.pageIndex` → 浏览器渲染该页并截图(base64 data URI)→ `POST /v2/album/inspect-page` → 拿 `diagnosis` → 携诊断再发一轮 `/v2/album/draft-edit`(模型据此调 `adjust_image_position`)→ 拿 `kind:"act"` + `imagePosWrite` → Web 折进 `Page.imagePos[imageId]`(即 `imagePosJson`)。
+
 ### 4.1 Composing 二期语义(文档说明,非 schema 变更)
 
 本节只说明 layout 规则语义,**不新增协议字段、不改 zod schema**:

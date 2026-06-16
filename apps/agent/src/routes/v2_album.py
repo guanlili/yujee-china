@@ -39,6 +39,8 @@ from ..schemas_v2 import (
     V2EditRequest,
     V2EditResponse,
     V2FailedCallback,
+    V2InspectRequest,
+    V2InspectResponse,
     V2FinalizeCompletedCallback,
     V2FinalizeRequest,
     V2InitCompletedCallback,
@@ -61,6 +63,7 @@ from ..services import (
     draft_edit,
     finalize as finalize_service,
     grouping,
+    inspect_render,
     skeleton,
     theme,
     vision_mock,
@@ -71,6 +74,7 @@ from ..services.chat_edit_v2 import V2EditError
 from ..services.draft_edit import DraftEditError
 from ..services.finalize import FinalizeError
 from ..services.grouping import GroupingPhoto
+from ..services.inspect_render import InspectError
 from ..services.theme import ThemeError
 from ..services.vision import VisionError
 from ..services.vision import analyze as vision_analyze
@@ -1127,6 +1131,80 @@ async def submit_draft_edit(req: V2DraftEditRequest) -> dict:
         ) from exc
     except Exception as exc:  # noqa: BLE001 — must answer in contract shape
         log.exception("v2_draft_edit.unhandled", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
+            },
+        ) from exc
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
+
+
+# ============================================================================
+# inspect-page (#165 Phase 2) — synchronous endpoint wiring services/
+# inspect_render.py. After draft-edit returns kind="inspect", the browser
+# renders + screenshots the page and posts it here; the agent runs ONE vision
+# call (火山 doubao-1.6-vision, same model/key as init) to diagnose a reported
+# crop and suggest a move/zoom. Stateless: only a single page slice + that page's
+# photo analyses + the rendered screenshot cross the wire — the screenshot is the
+# ONLY new base64 channel and is dropped after the upstream call, never persisted
+# (invariant 1, same privacy posture as init vision). Vision/parse failure
+# DEGRADES gracefully inside the service (problem="unable to inspect"); only a
+# hard InspectError maps to AGENT_VISION_FAILED/502 (mirrors submit_edit).
+# ============================================================================
+
+
+def _mock_inspect_complete(req: V2InspectRequest) -> Any:
+    """Deterministic injected `complete` for the inspect round-trip without a
+    vision key: name the page's first image slot and suggest a small move-down
+    (the common 'face cut at top' fix). The service still clamps + validates the
+    slot against the page's real slots on top (mirrors the other W6 mocks)."""
+    slot = next(iter(req.page.images), None)
+
+    async def complete(**_kwargs: Any) -> dict[str, Any]:
+        payload = {
+            "imageId": slot,
+            "problem": "a subject looks cut off near the top",
+            "suggestedDx": 0,
+            "suggestedDy": -12,
+            "suggestedScale": 1.0,
+            "confidence": 0.6,
+        }
+        return {
+            "choices": [{"message": {"content": json.dumps(payload, ensure_ascii=False)}}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+        }
+
+    return complete
+
+
+@router.post("/v2/album/inspect-page", dependencies=[Depends(require_bearer)])
+async def submit_inspect_page(req: V2InspectRequest) -> dict:
+    settings = get_settings()
+    log.info(
+        "v2_inspect.accepted",
+        album_id=req.albumId,
+        page_index=req.page.pageIndex,
+        slots=len(req.page.images),
+        language=req.language,
+    )
+    complete = (
+        _mock_inspect_complete(req) if settings.agent_pipeline_mode == "mock" else None
+    )
+    try:
+        response: V2InspectResponse = await inspect_render.diagnose(req, complete=complete)
+    except InspectError as exc:
+        log.warning("v2_inspect.failed", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_VISION_FAILED", "message": str(exc)[:300]},
+            },
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
+        log.exception("v2_inspect.unhandled", error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={

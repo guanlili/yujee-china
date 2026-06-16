@@ -273,7 +273,8 @@ async def test_tools_offered_with_auto_choice():
     await draft_edit.run(_req("hello"), complete=_capture_messages_complete(box))
     assert box["tool_choice"] == "auto"
     names = {t["function"]["name"] for t in box["tools"]}
-    assert names == {"write_page_copy"}
+    # #165 Phase 2: inspect_page_render + adjust_image_position joined the live set.
+    assert names == {"write_page_copy", "inspect_page_render", "adjust_image_position"}
 
 
 @pytest.mark.asyncio
@@ -297,3 +298,143 @@ async def test_zh_fixed_confirmation():
     resp = await draft_edit.run(req, complete=_tool_call_complete({"title": "海边"}, text=None))
     assert resp.kind == "act"
     assert resp.assistantReply == "改好了第 2 页"
+
+
+# --------------------------------------------------------------------------- #
+# #165 Phase 2 — inspect / adjust mapping                                       #
+# --------------------------------------------------------------------------- #
+
+
+def _inspect_call_complete(page_index=2, text=None):
+    async def complete(**_kwargs):
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": text,
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "function": {
+                                    "name": "inspect_page_render",
+                                    "arguments": json.dumps({"pageIndex": page_index}),
+                                },
+                            }
+                        ],
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2},
+        }
+
+    return complete
+
+
+def _adjust_call_complete(image_id="image", dx=0.0, dy=-15.0, scale=1.0, page_index=2, text=None):
+    async def complete(**_kwargs):
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": text,
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "function": {
+                                    "name": "adjust_image_position",
+                                    "arguments": json.dumps(
+                                        {
+                                            "pageIndex": page_index,
+                                            "imageId": image_id,
+                                            "dx": dx,
+                                            "dy": dy,
+                                            "scale": scale,
+                                        }
+                                    ),
+                                },
+                            }
+                        ],
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2},
+        }
+
+    return complete
+
+
+@pytest.mark.asyncio
+async def test_inspect_call_yields_inspect_kind():
+    resp = await draft_edit.run(
+        _req("the face is cut off"), complete=_inspect_call_complete(page_index=99)
+    )
+    assert resp.kind == "inspect"
+    # pinned to the page being edited (ctx.page_index=2), NOT the model's 99.
+    assert resp.inspectRequest is not None
+    assert resp.inspectRequest.pageIndex == 2
+    assert resp.pageWrite is None
+    assert resp.imagePosWrite is None
+    assert resp.assistantReply  # short non-empty line
+
+
+@pytest.mark.asyncio
+async def test_adjust_call_yields_act_with_imagepos_write():
+    resp = await draft_edit.run(
+        _req("move the photo up"),
+        complete=_adjust_call_complete(image_id="image", dx=0, dy=-15, scale=1.0),
+    )
+    assert resp.kind == "act"
+    assert resp.imagePosWrite is not None
+    assert resp.imagePosWrite.pageIndex == 2
+    assert resp.imagePosWrite.imageId == "image"
+    assert resp.imagePosWrite.x == 50.0  # 50 + 0
+    assert resp.imagePosWrite.y == 35.0  # 50 + (-15)
+    assert resp.imagePosWrite.scale == 1.0
+    assert resp.pageWrite is None
+
+
+@pytest.mark.asyncio
+async def test_adjust_off_page_slot_demotes_to_talk():
+    # imageId not on the page → dispatch returns None → talk (no write).
+    resp = await draft_edit.run(
+        _req("move that photo"),
+        complete=_adjust_call_complete(image_id="ghost", dy=-15),
+    )
+    assert resp.kind == "talk"
+    assert resp.imagePosWrite is None
+    assert resp.pageWrite is None
+
+
+@pytest.mark.asyncio
+async def test_adjust_noop_args_demote_to_talk():
+    resp = await draft_edit.run(
+        _req("center it"),
+        complete=_adjust_call_complete(dx=0, dy=0, scale=1.0),
+    )
+    assert resp.kind == "talk"
+    assert resp.imagePosWrite is None
+
+
+@pytest.mark.asyncio
+async def test_write_page_copy_still_yields_act_pagewrite():
+    # #162 path unchanged: copy edits still map to kind="act" + pageWrite.
+    resp = await draft_edit.run(
+        _req("rewrite the title"),
+        complete=_tool_call_complete({"title": "Seaside"}),
+    )
+    assert resp.kind == "act"
+    assert resp.pageWrite is not None
+    assert resp.pageWrite.texts == {"title": "Seaside"}
+    assert resp.imagePosWrite is None
+    assert resp.inspectRequest is None
+
+
+@pytest.mark.asyncio
+async def test_talk_still_yields_talk():
+    resp = await draft_edit.run(_req("what do you think?"), complete=_talk_complete())
+    assert resp.kind == "talk"
+    assert resp.pageWrite is None
+    assert resp.imagePosWrite is None
+    assert resp.inspectRequest is None
