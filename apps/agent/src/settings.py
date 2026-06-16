@@ -15,12 +15,20 @@ class Settings(BaseSettings):
     agent_shared_secret: str = Field(..., min_length=1)
     web_base_url: str = "http://localhost:3000"
     # Total budget for an init/finalize/layout background task. Must cover the
-    # worst case of its only network stage(s) including ai_client's one retry
+    # worst case of its network stage(s) including ai_client's one retry
     # (each call can take up to 2× its per-call timeout):
-    #   init: vision only → 2 × ark_timeout_seconds (2 × 120 = 240s).
+    #   init: vision (2 × ark_timeout=240s) + first-pass writing (#161). Writing
+    #     fires 1 cover + N chapter DeepSeek calls, each ≤ 2 × deepseek_timeout
+    #     (2 × 60 = 120s), capped to INIT_WRITE_CONCURRENCY (default 3) in flight.
+    #     With ⌈(N+1)/3⌉ serialized waves of ≤120s, a 30-photo album (~10 chapters
+    #     → 11 units → 4 waves) worst-cases ≈ 240 + 4 × 120 = 720s. We keep 600s:
+    #     the 720s figure assumes EVERY call hits its full 2× retry ceiling, which
+    #     is pathological; a slow-but-healthy run lands well under 600s (vision
+    #     ~20s + ~4 waves × ~30s ≈ 140s). Revisit if real writing latencies push a
+    #     full album past 600s — raising this and/or INIT_WRITE_CONCURRENCY are the
+    #     two knobs (left for architect/prod confirmation on real-model latency).
     #   layout/planning: writing (2 × 60) + composing (2 × 60) = 240s.
     #   finalize: deterministic, no network.
-    # 600s leaves headroom over the ~240s worst case on real models.
     background_task_timeout_seconds: int = 600
     port: int = 8001
     log_level: str = "info"
@@ -28,6 +36,12 @@ class Settings(BaseSettings):
     # mode switches (see docs/agent/design.md §12)
     agent_pipeline_mode: PipelineMode = "mock"
     agent_env: AgentEnv = "development"
+
+    # init first-pass writing (#161): cover + N chapters are written concurrently
+    # with an asyncio.Semaphore so init doesn't serialize one DeepSeek call per
+    # chapter. Default 3 keeps us well under provider rate limits while cutting
+    # wall-clock roughly N×; raise/lower per provider headroom.
+    init_write_concurrency: int = Field(default=3, ge=1)
 
     # vision (火山 doubao-seed-1-6-vision)
     ark_api_key: str | None = None

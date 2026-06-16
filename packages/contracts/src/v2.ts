@@ -31,8 +31,12 @@ export type V2Style = z.infer<typeof V2Style>;
 export const V2JobKind = z.enum(['init', 'finalize', 'add']);
 export type V2JobKind = z.infer<typeof V2JobKind>;
 
-/** init 三子阶段 + finalize 单阶段(进度语义,contract.md §5 沿用)。 */
-export const V2JobStage = z.enum(['vision', 'grouping', 'skeleton', 'finalize']);
+/**
+ * init 子阶段 + finalize 单阶段(进度语义,contract.md §5 沿用)。
+ * 'writing'(#161):init 在 skeleton 之后、finalize 之前直接批量写第一版全部文案
+ * (封面 + 各章正文,去掉逐章对话写作),故插在 skeleton 与 finalize 之间。
+ */
+export const V2JobStage = z.enum(['vision', 'grouping', 'skeleton', 'writing', 'finalize']);
 export type V2JobStage = z.infer<typeof V2JobStage>;
 
 /** 逐章对话状态机(requirements §5)。 */

@@ -31,6 +31,8 @@ from ..schemas_v2 import (
     V2Chapter,
     V2ChapterChatRequest,
     V2ChapterChatResponse,
+    V2ClusterOverview,
+    V2CoverDraft,
     V2EditRequest,
     V2EditResponse,
     V2FailedCallback,
@@ -44,6 +46,8 @@ from ..schemas_v2 import (
     V2Photo,
     V2PhotoAnalysis,
     V2ProgressCallback,
+    V2Theme,
+    V2ThemePartial,
     V2ThemeRequest,
     V2ThemeResponse,
 )
@@ -56,6 +60,7 @@ from ..services import (
     skeleton,
     theme,
     vision_mock,
+    writing,
 )
 from ..services.chapter_chat import ChapterChatError
 from ..services.chat_edit_v2 import V2EditError
@@ -64,6 +69,7 @@ from ..services.grouping import GroupingPhoto
 from ..services.theme import ThemeError
 from ..services.vision import VisionError
 from ..services.vision import analyze as vision_analyze
+from ..services.writing import WritingError
 from ..settings import get_settings
 
 router = APIRouter()
@@ -221,6 +227,186 @@ def _assemble_draft(
     )
 
 
+# ---------- init writing stage (#161) -----------------------------------------
+#
+# After the deterministic skeleton, write the WHOLE first draft inside init: an
+# auto-picked theme + cover copy, then every chapter's body copy. Cover + N
+# chapters run concurrently under an asyncio.Semaphore (INIT_WRITE_CONCURRENCY,
+# default 3); any unit failing fails the whole stage → init FAILED → hold
+# released (init/failed refund path, tech-plan §1.1). No conversation, no theme
+# confirmation step — chapters land at state='generated' (issue #161).
+
+
+def _clusters_overview(draft: AlbumDraft) -> list[V2ClusterOverview]:
+    """Summarize the draft chapters for the theme/cover writer (no base64; only
+    cluster labels + a few representative photo descriptions)."""
+    desc_by_id = {photo.photoId: photo.analysis.description for photo in draft.photoPool}
+    overview: list[V2ClusterOverview] = []
+    for chapter in draft.chapters:
+        descs = [
+            desc_by_id[pid]
+            for pid in chapter.photoIds
+            if pid in desc_by_id and desc_by_id[pid]
+        ][:8]
+        overview.append(
+            V2ClusterOverview(
+                chapterId=chapter.chapterId,
+                label=chapter.cluster.label,
+                place=chapter.cluster.place,
+                timeRange=chapter.cluster.timeRange,
+                photoDescs=descs,
+            )
+        )
+    return overview
+
+
+def _mock_writing_complete() -> Any:
+    """Deterministic injected `complete` for first-pass writing in mock mode:
+    returns NO pagesTexts, so the writing service falls back to its grounded
+    skeleton copy for every slot (mirrors the chapter-chat mock)."""
+
+    async def complete(**_kwargs: Any) -> dict[str, Any]:
+        return {
+            "choices": [{"message": {"content": json.dumps({"pagesTexts": []})}}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+        }
+
+    return complete
+
+
+def _merge_cover(cover_page: Page, cover: V2CoverDraft | None) -> Page:
+    """Fold the written cover copy into the skeleton cover page (texts + the
+    auto-picked cover templateId/hero if the writer chose one)."""
+    if cover is None:
+        return cover_page
+    update: dict[str, Any] = {"texts": dict(cover.texts)}
+    if cover.templateId:
+        update["templateId"] = cover.templateId
+    if cover.heroPhotoId:
+        # Keep the existing image slot key; only swap the hero photoId in.
+        slot = next(iter(cover_page.images), "image")
+        update["images"] = {**cover_page.images, slot: cover.heroPhotoId}
+    return cover_page.model_copy(update=update)
+
+
+def _merge_chapter_texts(chapter: V2Chapter, pages_texts) -> V2Chapter:
+    """Merge a chapter's written pagesTexts into its pages and flip it to
+    state='generated' (the editor opens on a complete draft, issue #161)."""
+    texts_by_index = {pt.pageIndex: pt.texts for pt in pages_texts}
+    new_pages = [
+        page.model_copy(update={"texts": texts_by_index[page.pageIndex]})
+        if page.pageIndex in texts_by_index
+        else page
+        for page in chapter.pages
+    ]
+    return chapter.model_copy(update={"pages": new_pages, "state": "generated"})
+
+
+async def _write_first_draft(draft: AlbumDraft, mock: bool) -> tuple[AlbumDraft, Usage]:
+    """Concurrently write the cover + every chapter, merge results back into the
+    draft, and return the written draft + aggregated planning usage. Raises
+    WritingError (or any unit's exception) so the caller fails the stage."""
+    settings = get_settings()
+    semaphore = asyncio.Semaphore(settings.init_write_concurrency)
+    language = draft.meta.language
+    cover_complete = _mock_writing_complete() if mock else None
+    chapter_complete = _mock_writing_complete() if mock else None
+    # The theme/cover writer reuses the theme service mock shape, not writing's.
+    theme_overview = _clusters_overview(draft)
+
+    async def run_cover() -> tuple[V2Theme, V2CoverDraft | None, Usage]:
+        async with semaphore:
+            theme_mock = (
+                _mock_theme_complete(
+                    V2ThemeRequest(
+                        albumId="init",
+                        language=language,
+                        clustersOverview=theme_overview,
+                        currentTheme=None,
+                        userMessage=draft.meta.promptHint,
+                    )
+                )
+                if mock
+                else None
+            )
+            return await writing.generate_cover_texts(
+                clusters_overview=theme_overview,
+                language=language,
+                prompt_hint=draft.meta.promptHint,
+                complete=theme_mock,
+            )
+
+    async def run_chapter(chapter: V2Chapter):
+        async with semaphore:
+            return await writing.generate_chapter_texts(
+                chapter,
+                draft.photoPool,
+                # theme not known until run_cover resolves; pass the promptHint-
+                # seeded partial so chapters still get global tone. The cover's
+                # final theme is merged into meta below regardless.
+                _theme_hint(draft),
+                language,
+                complete=chapter_complete,
+            )
+
+    cover_task = asyncio.create_task(run_cover())
+    chapter_tasks = [asyncio.create_task(run_chapter(ch)) for ch in draft.chapters]
+    all_tasks = [cover_task, *chapter_tasks]
+    try:
+        # return_exceptions=False: the first unit's exception propagates here
+        # (whole stage fails on any cover/chapter failure, issue #161 req 4).
+        await asyncio.gather(*all_tasks)
+    except BaseException:
+        for task in all_tasks:
+            task.cancel()
+        # Drain the cancellations so no task is left pending/garbage-collected.
+        await asyncio.gather(*all_tasks, return_exceptions=True)
+        raise
+    theme_obj, cover, cover_usage = cover_task.result()
+    chapter_results = [task.result() for task in chapter_tasks]
+
+    cover_page = _merge_cover(draft.basePages.cover, cover)
+    new_chapters = [
+        _merge_chapter_texts(chapter, pages_texts)
+        for chapter, (pages_texts, _usage) in zip(draft.chapters, chapter_results)
+    ]
+
+    total_in = cover_usage.planningInputTokens + sum(
+        u.planningInputTokens for _pt, u in chapter_results
+    )
+    total_out = cover_usage.planningOutputTokens + sum(
+        u.planningOutputTokens for _pt, u in chapter_results
+    )
+    writing_usage = Usage(
+        durationMs=0,
+        planningInputTokens=total_in,
+        planningOutputTokens=total_out,
+        models=V2Models(planning=cover_usage.models.planning),
+    )
+
+    written = draft.model_copy(
+        update={
+            "meta": draft.meta.model_copy(
+                update={
+                    "theme": V2ThemePartial(**theme_obj.model_dump()),
+                    "style": theme_obj.style,
+                }
+            ),
+            "basePages": draft.basePages.model_copy(update={"cover": cover_page}),
+            "chapters": new_chapters,
+        }
+    )
+    return written, writing_usage
+
+
+def _theme_hint(draft: AlbumDraft) -> V2Theme | None:
+    """A best-effort global theme to bias chapter copy before the cover writer
+    resolves: only the promptHint is known at this point, so return None and let
+    each chapter ground itself in its own photos (the cover sets the real theme
+    in meta). Kept as a seam for a future two-phase (theme-then-chapters) order."""
+    return None
+
+
 # ---------- init job ----------------------------------------------------------
 
 
@@ -273,6 +459,29 @@ async def _run_init(req: V2InitRequest) -> None:
         return
     await _emit_progress(req, "skeleton", 100)
 
+    # Stage 4 — first-pass writing (#161): auto-theme + cover + all chapter copy,
+    # written concurrently. Any cover/chapter failure fails the whole init.
+    await _emit_progress(req, "writing", 0)
+    planning_model: str | None = None
+    try:
+        draft, writing_usage = await _write_first_draft(
+            draft, mock=settings.agent_pipeline_mode == "mock"
+        )
+        planning_model = writing_usage.models.planning
+    except WritingError as exc:
+        log.warning("v2_init.writing_failed", error=str(exc))
+        await _emit_failure(
+            req, code="AGENT_PLANNING_FAILED", message=str(exc), stage="writing"
+        )
+        return
+    except Exception as exc:  # noqa: BLE001
+        log.exception("v2_init.writing_unhandled", error=str(exc))
+        await _emit_failure(
+            req, code="AGENT_PLANNING_FAILED", message=str(exc), stage="writing"
+        )
+        return
+    await _emit_progress(req, "writing", 100)
+
     duration_ms = int((time.monotonic() - started) * 1000)
     envelope = V2InitCompletedCallback(
         event="completed",
@@ -282,7 +491,9 @@ async def _run_init(req: V2InitRequest) -> None:
         usage=Usage(
             durationMs=duration_ms,
             visionCallCount=vision_call_count,
-            models=V2Models(vision=vision_model, planning=None),
+            planningInputTokens=writing_usage.planningInputTokens,
+            planningOutputTokens=writing_usage.planningOutputTokens,
+            models=V2Models(vision=vision_model, planning=planning_model),
         ),
     )
     await callback.post(str(req.callbackUrl), envelope)

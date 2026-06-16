@@ -128,6 +128,8 @@ function buildingStageLabel(stage: string | null | undefined, locale: Locale): s
       return zh ? '正在整理这些瞬间…' : 'Grouping your moments…';
     case 'skeleton':
       return zh ? '正在编排版式…' : 'Laying out the spreads…';
+    case 'writing':
+      return zh ? '正在撰写文案…' : 'Writing your story…';
     case 'finalize':
       return zh ? '正在生成终稿…' : 'Putting the final touches…';
     default:

@@ -36,7 +36,9 @@ V2Style = Literal[
     "warm-film", "editorial-mono", "soft-pastel", "bold-contrast", "vintage-print"
 ]
 V2JobKind = Literal["init", "finalize", "add"]
-V2JobStage = Literal["vision", "grouping", "skeleton", "finalize"]
+# 'writing' (#161): init writes the whole first draft (cover + chapter copy)
+# right after 'skeleton'; it sits between 'skeleton' and 'finalize'.
+V2JobStage = Literal["vision", "grouping", "skeleton", "writing", "finalize"]
 V2ChapterState = Literal[
     "empty", "asking", "brief_ready", "generated", "skipped", "finalized"
 ]
