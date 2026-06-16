@@ -7,6 +7,7 @@ import {
   V2ThemeResponse,
   V2ChapterChatResponse,
   V2EditResponse,
+  V2DraftEditResponse,
 } from '@yujee/contracts';
 import type {
   V2InitRequest,
@@ -15,6 +16,7 @@ import type {
   V2ThemeRequest,
   V2ChapterChatRequest,
   V2EditRequest,
+  V2DraftEditRequest,
 } from '@yujee/contracts';
 
 export type AgentPhotoInput = {
@@ -148,6 +150,17 @@ export const agentClient = {
   // Returns a layoutPatch (≤48 entries).
   async editV2(payload: V2EditRequest): Promise<V2EditResponse> {
     return postSyncV2('/v2/album/edit', payload, V2EditResponse, { albumId: payload.albumId });
+  },
+
+  // POST /v2/album/draft-edit — synchronous (#162). Draft-period "render first
+  // version + pointed single-page edit", with talk/act physically split. The
+  // payload carries ONLY the single focused page slice + that page's photo
+  // analyses (no base64, no whole tree — invariant 12). Returns kind:'talk'
+  // (assistant reply only) or kind:'act' (+ pageWrite to apply to that page).
+  async draftEditV2(payload: V2DraftEditRequest): Promise<V2DraftEditResponse> {
+    return postSyncV2('/v2/album/draft-edit', payload, V2DraftEditResponse, {
+      albumId: payload.albumId,
+    });
   },
 };
 

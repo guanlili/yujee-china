@@ -33,13 +33,8 @@ import {
 } from '../types';
 import {
   fetchDraftSkeleton,
-  postTheme,
-  postChapterChat,
-  postFinalize,
+  postDraftEdit,
   type DraftSkeleton,
-  type DraftSkeletonChapter,
-  type DraftTheme,
-  type ThemeOption,
 } from '@/lib/album/authoring-client';
 import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/client';
 import './editor-port.css';
@@ -51,18 +46,11 @@ import './editor-port.css';
 //   • building  → AGENT_RUNNING / first load: flipbook shows a loading placeholder,
 //                 chat rail is a non-interactive "tidying up" notice.
 //   • authoring → EDITING & layoutJson==null: draft skeleton (read-only, invariant
-//                 12) feeds the flipbook + rail; the chat rail drives the agent
-//                 single-thread theme→chapter creation flow + "finish the book".
+//                 12) feeds the flipbook + rail; init (#161) already wrote the full
+//                 first draft, so the chat rail does pointed single-page copy edits
+//                 via /draft-edit (#162) — no theme→chapter dialog, no finalize CTA.
 //   • editing   → layoutJson set: the original finalized editor, untouched.
 export type EditorMode = 'building' | 'authoring' | 'editing';
-
-// A theme counts as "set" once the agent populated any field (the user wrote a
-// prompt at creation, or already answered the theme question) — decides whether
-// the chat opens on the theme step or jumps straight into chapters.
-function hasTheme(theme: DraftTheme | null): boolean {
-  if (!theme) return false;
-  return Object.values(theme).some((v) => typeof v === 'string' && v.trim().length > 0);
-}
 
 // Generation progress from the album poll (use-album-poll); only meaningful in
 // building mode, where stage drives the loading-chat copy. Optional so the other
@@ -563,20 +551,14 @@ function EditorBook({
         ? 'zh'
         : 'en';
 
-    /* ─── Authoring (draft) chat state — single-thread cursor over theme + chapters.
-       Empty in editing mode; in authoring mode it drives the agent creation flow
-       (postTheme / postChapterChat / postFinalize) instead of the /chat editor. ─── */
+    /* ─── Authoring (draft) chat state (#162: render-first + pointed single-page
+       edits). Empty in editing mode; in authoring mode each message routes through
+       /draft-edit scoped to the focused page (no theme→chapter dialog machine). ─── */
     const isAuthoring = mode === 'authoring';
-    // ASK_LIMIT mirrors the contract's askCount>=2 auto-advance rule.
-    const ASK_LIMIT = 2;
-    const MESSAGE_MAX = 500; // v2 theme/chapter-chat body schemas cap free text at 500.
-    // Mutable working copy of the draft chapters; refetched after each turn.
-    let draftSkel: DraftSkeleton | null = draftChapters;
-    // Cursor: 'theme' until a theme is set, then walks the chapter list. We never
-    // expose theme/prev/next buttons — the cursor advances on its own.
-    let authStage: 'theme' | 'chapter' = draftSkel && hasTheme(draftSkel.theme) ? 'chapter' : 'theme';
-    let authChapterIdx = 0;
-    let finishing = false;
+    const MESSAGE_MAX = 500; // v2 draft-edit body schema caps free text at 500.
+    // The draft skeleton (read-only render projection; invariant 12). Rendered on
+    // entry; the agent persists draft_json server-side, so we don't refetch it.
+    const draftSkel: DraftSkeleton | null = draftChapters;
     const aT = (zh: string, en: string) => (currentLang === 'zh' ? zh : en);
     // Mutable working copy: chat and inline edits patch this in place and repaint
     // without remounting the effect. Sourced from detail.pages (editing) or the
@@ -1036,19 +1018,17 @@ function EditorBook({
       hideAwait();
       scrollChat();
       if (isAuthoring) {
-        await runAuthoringTurn(txt);
+        await runDraftEditTurn(txt);
       } else {
         await runEdit(txt);
       }
       sending = false;
     }
 
-    /* ─── Authoring chat round-trip (draft creation flow) ───
-       Single thread, agent-driven: postTheme while no theme, then postChapterChat
-       for the current chapter. After each turn refetch the skeleton (read-only;
-       invariant 12), repaint the book + rail, and auto-advance the cursor when the
-       agent marks the chapter done (state generated/skipped/finalized or askCount
-       hit the limit). No theme/prev/next buttons are exposed. */
+    /* ─── Authoring chat round-trip (#162: draft-period single-page edit) ───
+       Each user message goes to /draft-edit scoped to the focused page; the server
+       slices that one page (invariant 12) and answers talk (reply only) or act
+       (reply + the page's rewritten copy). No theme/chapter machine, no cursor. */
     function appendAiText(text: string) {
       const a = document.createElement('div');
       a.className = 'msg ai max-w-full';
@@ -1111,189 +1091,36 @@ function EditorBook({
       return false;
     }
 
-    // ── Stepper helper: highlight the right pill for the current cursor. ──
-    function syncStepper() {
-      if (!isAuthoring) return;
-      setChatState(authStage === 'theme' ? 2 : 3);
+    // #162 draft-edit turn: the draft-period chat is a pointed single-page edit,
+    // talk/act physically split (no theme→chapter machine, no auto-advance). The
+    // message goes to /draft-edit scoped to the page the user is looking at
+    // (selectedPageIndex, else the first page of the current spread). On 'act' we
+    // merge the returned pageWrite into that page locally + repaint; on 'talk' we
+    // just append the reply. The agent already persisted the draft server-side.
+    function draftFocusPageIndex(): number {
+      if (selectedPageIndex != null) return selectedPageIndex;
+      // No explicit selection → focus the first real page on the current spread
+      // (left, else right). Cover sits alone on spread 0's right slot.
+      const [lp, rp] = spreadPages(currentCh);
+      return (lp ?? rp)?.pageIndex ?? 0;
     }
-
-    function chapterDone(c: DraftSkeletonChapter | undefined): boolean {
-      if (!c) return true;
-      return (
-        c.state === 'generated' ||
-        c.state === 'skipped' ||
-        c.state === 'finalized' ||
-        c.state === 'brief_ready' ||
-        c.askCount >= ASK_LIMIT
-      );
-    }
-    async function refreshDraft() {
-      try {
-        const { draft } = await fetchDraftSkeleton(albumId);
-        if (!draft) return;
-        draftSkel = draft;
-        // Repaint the book from the refreshed skeleton (agent may have rewritten
-        // text/captions for this chapter).
-        pagesState = draft.pages.map((p) => ({
-          pageIndex: p.pageIndex,
-          templateId: p.templateId,
-          imagesJson: { ...p.imagesJson },
-          textsJson: { ...p.textsJson },
-        }));
-        // Re-resolve any newly referenced originals, then repaint.
-        const ids = new Set<string>();
-        for (const p of draft.pages) for (const id of Object.values(p.imagesJson)) if (id) ids.add(id);
-        const urls = await photoStore.getObjectUrls([...ids]);
-        imageUrls = { ...imageUrls, ...urls };
-        repaintBook();
-        railFromDraft();
-      } catch {
-        /* keep the current view; the next turn retries */
-      }
-    }
-
-    // ── Chapter card (in conversation flow) — tells the user which chapter the
-    // story chat is about. Read from the draft skeleton: label + photo count + a
-    // "view layout" button that flips the book to the chapter's first spread. ──
-    function chapterPhotoCount(c: DraftSkeletonChapter): number {
-      const ids = new Set<string>();
-      for (let i = c.pageStart; i < c.pageEnd; i++) {
-        const p = draftSkel?.pages[i];
-        if (!p) continue;
-        for (const id of Object.values(p.imagesJson)) if (id) ids.add(id);
-      }
-      return ids.size;
-    }
-    // Up to 4 resolved thumbnail URLs for a chapter (page order), for the design's
-    // .cc-thumbs row. Returns [] when no originals are resolved yet (graceful: the
-    // card then renders foot-only, same as before).
-    function chapterThumbUrls(c: DraftSkeletonChapter): string[] {
-      const urls: string[] = [];
-      const seen = new Set<string>();
-      for (let i = c.pageStart; i < c.pageEnd && urls.length < 4; i++) {
-        const p = draftSkel?.pages[i];
-        if (!p) continue;
-        for (const id of Object.values(p.imagesJson)) {
-          if (!id || seen.has(id)) continue;
-          seen.add(id);
-          const u = imageUrls[id];
-          if (u) urls.push(u);
-          if (urls.length >= 4) break;
-        }
-      }
-      return urls;
-    }
-    function pushChapterCard(idx: number) {
-      const c = draftSkel?.chapters[idx];
-      if (!c) return;
-      const sp = spreadOfFlatPage(c.pageStart);
-      const tag = currentLang === 'zh' ? `第 ${idx + 1} 章` : `Ch. ${idx + 1}`;
-      const d = document.createElement('div');
-      d.className = 'msg ai max-w-full';
-      const card = document.createElement('div');
-      card.className = 'chap-card';
-      // Design's .cc-thumbs row — a strip of the chapter's photos above the foot.
-      const thumbs = chapterThumbUrls(c)
-        .map((u) => `<div class="cc-thumb" style="background-image:url('${u.replace(/'/g, "\\'")}')"></div>`)
-        .join('');
-      card.innerHTML =
-        (thumbs ? `<div class="cc-thumbs">${thumbs}</div>` : '') +
-        `<div class="cc-foot"><div class="cc-info">` +
-        `<div class="cc-title-row"><span class="cc-title"></span><span class="cc-tag"></span></div>` +
-        `<div class="cc-meta"></div></div>` +
-        `<button class="cc-view" type="button">${esc(t('viewLayout'))}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>` +
-        `</div>`;
-      (card.querySelector('.cc-title') as HTMLElement).textContent = c.label;
-      (card.querySelector('.cc-tag') as HTMLElement).textContent = tag;
-      (card.querySelector('.cc-meta') as HTMLElement).textContent =
-        `${chapterPhotoCount(c)} ${t('photosWord')}`;
-      card.querySelector('.cc-view')?.addEventListener('click', () => {
-        if (sp !== currentCh) flipTo(sp, sp > currentCh ? 'next' : 'prev');
-      });
-      d.appendChild(card);
-      chatBody!.appendChild(d);
-      scrollChat();
-    }
-
-    // ── Theme stage: postTheme. If the agent hasn't fixed a theme yet it returns
-    // themeOptions → render them as pickable chip-selects (the user can also free-
-    // type). Once a theme is set, advance the cursor to the first chapter. ──
-    async function runThemeTurn(message?: string) {
+    async function runDraftEditTurn(message: string) {
+      lastUserMessage = message;
       const host = appendThinkingShell();
       try {
-        const r = await postTheme(albumId, message ? message.slice(0, MESSAGE_MAX) : undefined);
+        const r = await postDraftEdit(albumId, draftFocusPageIndex(), message.slice(0, MESSAGE_MAX));
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(host, r.assistantReply);
-        await refreshDraft();
-        if (draftSkel && hasTheme(draftSkel.theme) && (!r.themeOptions || r.themeOptions.length === 0)) {
-          // Theme decided → confirm + move into the story stage on the first chapter.
-          appendTime(host);
-          enterStoryStage(0, /*announce*/ true);
-        } else if (r.themeOptions && r.themeOptions.length > 0) {
-          renderThemeOptions(host, r.themeOptions);
-          appendTime(host);
-        } else {
-          appendTime(host);
-        }
-      } catch (e) {
-        if (authErr(host, e)) return;
-      }
-      restAwait();
-      scrollChat();
-      updateAuthInputPlaceholder();
-    }
-    function renderThemeOptions(host: HTMLElement, options: ThemeOption[]) {
-      const wrap = document.createElement('div');
-      wrap.className = 'ai-actions flex gap-2 mt-3.5 flex-wrap';
-      options.forEach((opt) => {
-        const b = document.createElement('button');
-        b.className = 'chip-select';
-        b.type = 'button';
-        b.textContent = opt.label || opt.subject;
-        b.addEventListener('click', () => {
-          if (sending) return;
-          wrap.querySelectorAll('.chip-select').forEach((c) => c.classList.remove('selected'));
-          b.classList.add('selected');
-          wrap.querySelectorAll('button').forEach((x) => ((x as HTMLButtonElement).disabled = true));
-          // Echo the pick as a user turn, then send it back as the /theme nudge.
-          appendUserBubble(b.textContent || '');
-          hideAwait();
-          void (async () => {
-            sending = true;
-            await runThemeTurn(opt.subject || opt.label);
-            sending = false;
-          })();
-        });
-        wrap.appendChild(b);
-      });
-      host.appendChild(wrap);
-    }
-
-    // ── Story stage: chat about the current chapter. postChapterChat returns the
-    // updated state (+ optional nameOptions). Render the AI copy with accept /
-    // rewrite / edit-myself chips and (when present) chapter-name chips. ──
-    async function runStoryTurn(message: string) {
-      const cur = draftSkel?.chapters[authChapterIdx];
-      if (!cur) {
-        // No chapter to talk to (theme not yet decided) — fall back to theme.
-        authStage = 'theme';
-        syncStepper();
-        await runThemeTurn(message);
-        return;
-      }
-      lastStoryMessage = message;
-      const host = appendThinkingShell();
-      try {
-        const r = await postChapterChat(albumId, cur.chapterId, message.slice(0, MESSAGE_MAX));
-        settleThinking(host, 'analyzedFeedback');
-        appendReplyBody(host, r.assistantReply);
-        await refreshDraft();
-        renderStoryActions(host, cur.chapterId);
-        if (r.nameOptions && r.nameOptions.length > 0) {
-          renderNameOptions(host, cur.chapterId, r.nameOptions);
+        if (r.kind === 'act' && r.pageWrite) {
+          // Apply the single-page rewrite to the in-memory page + repaint it. The
+          // server already merged + persisted draft_json; this mirrors it locally.
+          const page = pageByIndex(r.pageWrite.pageIndex);
+          if (page) {
+            page.textsJson = { ...page.textsJson, ...r.pageWrite.texts };
+            repaintBook();
+          }
         }
         appendTime(host);
-        maybeAdvanceChapter();
       } catch (e) {
         if (authErr(host, e)) return;
       }
@@ -1301,156 +1128,6 @@ function EditorBook({
       scrollChat();
       updateAuthInputPlaceholder();
     }
-    // 采纳 / 再写一版 / 我来改 on the story copy.
-    function renderStoryActions(host: HTMLElement, chapterId: string) {
-      const wrap = document.createElement('div');
-      wrap.className = 'ai-actions flex gap-2 mt-3.5 flex-wrap';
-      const mkChip = (label: string) => {
-        const b = document.createElement('button');
-        b.className = 'chip';
-        b.type = 'button';
-        b.textContent = label;
-        wrap.appendChild(b);
-        return b;
-      };
-      const disable = () =>
-        wrap.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
-      // 采纳 = keep this version and move forward (advance if the chapter is done).
-      const acceptBtn = mkChip(t('chipAccept'));
-      acceptBtn.addEventListener('click', () => {
-        disable();
-        acceptBtn.classList.add('selected');
-        maybeAdvanceChapter(/*force*/ true);
-      });
-      // 再写一版 = ask the agent for another take on the same story beat.
-      const rewriteBtn = mkChip(t('chipRewrite'));
-      rewriteBtn.addEventListener('click', () => {
-        if (sending) return;
-        disable();
-        const nudge = aT('再写一版，换个角度。', 'Rewrite this — try another angle.');
-        appendUserBubble(nudge);
-        hideAwait();
-        void (async () => {
-          sending = true;
-          await runStoryTurn(lastStoryMessage ? `${lastStoryMessage}\n\n${nudge}` : nudge);
-          sending = false;
-        })();
-      });
-      // 我来改 = edit the chapter's story text in place (local, persisted via the
-      // single-page PATCH the editing path already uses).
-      const editTarget = firstStoryTextSlot(chapterId);
-      if (editTarget) {
-        const editBtn = mkChip(t('chipEditMyself'));
-        editBtn.addEventListener('click', () => {
-          disable();
-          openInlineEdit(host, editTarget);
-        });
-      }
-      host.appendChild(wrap);
-    }
-    // Locate the first text slot in this chapter's pages (the narrative the user
-    // would hand-edit). Returns null if the chapter has no editable text yet.
-    function firstStoryTextSlot(chapterId: string): { pageIndex: number; slot: string } | null {
-      if (!draftSkel) return null;
-      const ch = draftSkel.chapters.find((c) => c.chapterId === chapterId);
-      if (!ch) return null;
-      for (let i = ch.pageStart; i < ch.pageEnd; i++) {
-        const sp = draftSkel.pages[i];
-        if (!sp) continue;
-        const slots = Object.keys(sp.textsJson).filter((k) => (sp.textsJson[k] ?? '').trim().length > 0);
-        if (slots.length > 0) return { pageIndex: sp.pageIndex, slot: slots[0] };
-      }
-      return null;
-    }
-    // Chapter-name candidate chips. Picking one sends it back through chapter-chat
-    // as the user's chosen title (display-only options never touch draft_json —
-    // invariant 12; the agent applies the rename and we refetch the skeleton).
-    function renderNameOptions(host: HTMLElement, chapterId: string, names: string[]) {
-      const wrap = document.createElement('div');
-      wrap.className = 'ai-actions flex gap-2 mt-3.5 flex-wrap';
-      names.forEach((name) => {
-        const b = document.createElement('button');
-        b.className = 'chip-select';
-        b.type = 'button';
-        b.textContent = name;
-        b.addEventListener('click', () => {
-          if (sending) return;
-          wrap.querySelectorAll('.chip-select').forEach((c) => c.classList.remove('selected'));
-          b.classList.add('selected');
-          wrap.querySelectorAll('button').forEach((x) => ((x as HTMLButtonElement).disabled = true));
-          const pick = aT(`用这个章节名：${name}`, `Use this chapter title: ${name}`);
-          appendUserBubble(pick);
-          hideAwait();
-          void (async () => {
-            sending = true;
-            const shell = appendThinkingShell();
-            try {
-              const r = await postChapterChat(albumId, chapterId, pick.slice(0, MESSAGE_MAX));
-              settleThinking(shell, 'analyzedFeedback');
-              appendReplyBody(shell, r.assistantReply);
-              await refreshDraft();
-              appendTime(shell);
-            } catch (e) {
-              authErr(shell, e);
-            }
-            restAwait();
-            scrollChat();
-            sending = false;
-          })();
-        });
-        wrap.appendChild(b);
-      });
-      host.appendChild(wrap);
-    }
-
-    // Enter the story stage on chapter `idx`: flip the book to it, flip the
-    // stepper to 章节故事, drop a chapter card + the storyStart prompt.
-    function enterStoryStage(idx: number, announce: boolean) {
-      authStage = 'chapter';
-      authChapterIdx = idx;
-      syncStepper();
-      showFinishBar(); // "完成全书" appears only once we're in the story stage
-      const ch = draftSkel?.chapters[idx];
-      if (ch) {
-        const sp = spreadOfFlatPage(ch.pageStart);
-        if (sp !== currentCh) flipTo(sp, sp > currentCh ? 'next' : 'prev');
-        pushChapterCard(idx);
-        if (announce) appendAiText(t('storyStart'));
-      }
-      updateAuthInputPlaceholder();
-    }
-    // Advance to the next undone chapter when the current one is done (or when the
-    // user hit 采纳). At the last chapter, stay put — the finish bar takes over.
-    function maybeAdvanceChapter(force = false) {
-      if (!draftSkel) return;
-      const cur = draftSkel.chapters[authChapterIdx];
-      if (!force && !chapterDone(cur)) return;
-      const nextIdx = authChapterIdx + 1;
-      if (nextIdx < draftSkel.chapters.length) {
-        enterStoryStage(nextIdx, /*announce*/ true);
-      }
-    }
-    function appendUserBubble(text: string) {
-      const u = document.createElement('div');
-      u.className = 'msg user max-w-full';
-      u.innerHTML = `<div class="bubble"></div>`;
-      u.querySelector('.bubble')!.textContent = text;
-      chatBody!.appendChild(u);
-      scrollChat();
-    }
-    let lastStoryMessage = '';
-
-    // ── Finish bar visibility (red line: "完成全书" exists ONLY in the story
-    // stage — never while still picking the theme). Created once during init;
-    // these toggles flip it as the cursor crosses theme → story. ──
-    let finishBar: HTMLElement | null = null;
-    function showFinishBar() {
-      if (finishBar) finishBar.style.display = '';
-    }
-    function hideFinishBar() {
-      if (finishBar) finishBar.style.display = 'none';
-    }
-
     // ── Purchase card (积分不足引导卡): on CreditInsufficientError, surface the
     // design's buy-credits card at the bottom of the conversation (it carries its
     // own "去购买" button → /credits) instead of hard-redirecting. ──
@@ -1465,13 +1142,6 @@ function EditorBook({
       scrollChat();
     }
 
-    async function runAuthoringTurn(message: string) {
-      if (authStage === 'theme') {
-        await runThemeTurn(message);
-      } else {
-        await runStoryTurn(message);
-      }
-    }
     function updateAuthInputPlaceholder() {
       // Input stays blank by design (no prompt text in the box).
       if (!input) return;
@@ -1837,81 +1507,40 @@ function EditorBook({
     if (isAuthoring) hideAwait();
     else restAwait();
 
-    /* ─── Authoring init: seed the opening message, expose the single "finish the
-       whole book" action, hide the editing-only add-chapter affordance. ─── */
-    async function finalizeBook() {
-      if (finishing || sending) return;
-      finishing = true;
-      const fb = finishBar?.querySelector('.finish-btn') as HTMLButtonElement | null;
-      if (fb) {
-        fb.disabled = true;
-        fb.textContent = aT('正在生成你的纪念册…', 'Creating your memoir…');
-      }
-      try {
-        await postFinalize(albumId);
-        // Album is now AGENT_RUNNING ("completing"). Reload hands control back to
-        // page.tsx's poll → building shell → editor once layout_json lands.
-        window.location.reload();
-      } catch (e) {
-        finishing = false;
-        if (fb) {
-          fb.disabled = false;
-          fb.textContent = aT('完成全书', 'Finish the whole book');
-        }
-        if (e instanceof UnauthorizedError) {
-          window.location.assign(localizePath(`/login?from=/album/${albumId}`, locale));
-          return;
-        }
-        if (e instanceof CreditInsufficientError) {
-          window.location.assign(localizePath('/credits?from=authoring', locale));
-          return;
-        }
-        appendAiText(e instanceof Error ? e.message : String(e));
-      }
-    }
+    /* ─── Authoring init (#162: render-first + pointed single-page edits) ───
+       No theme→chapter dialog machine, no auto-advance, no finalize CTA. init
+       (#161) already wrote the full first draft, so we just render it (the book is
+       painted from draftSkel below) and open with one system message inviting the
+       user to tap any page they want to change. Each message then routes through
+       /draft-edit scoped to the focused page (runDraftEditTurn). ─── */
     if (isAuthoring) {
       // The add-photo "+" in the input stays visible during authoring too (its real
       // "append photos to this album" flow is the mid-edit add feature — still WIP
       // server-side; for now it opens the dormant picker like editing does).
       // (Removed) The "完成全书" finish bar + disclaimer used to live above the input
       // here. Per product decision it's gone entirely — no finalize CTA in this
-      // surface anymore (showFinishBar/hideFinishBar are now no-ops).
+      // surface anymore.
       $('.authoring-finish-bar')?.remove();
 
-      // Lead with Yujee's self-intro so both opening branches start with it,
-      // before the task message.
+      // Lead with Yujee's self-intro, then the single render-first system message:
+      // the book is already rendered; ask the user to point at a page to change it.
       appendAiText(
         aT(
           '我是 Yujee，你的杂志制作小助手。文案不满意，随时可以调。',
           "Hi, I'm Yujee — your magazine-making assistant. Don't love the wording? Tweak it anytime.",
         ),
       );
-
-      // Drive the opening of the 3-state flow.
-      if (draftSkel && hasTheme(draftSkel.theme)) {
-        // Theme already fixed (the user wrote a prompt at creation) → skip straight
-        // into the story stage on the first chapter. Finish bar shows here.
-        appendAiText(
-          aT(
-            '草稿已就绪，我已经按你写的定好了主题。接下来我们一章一章把故事聊清楚吧，你也可以随时直接完成全书。',
-            "Your draft is ready, and I've set the theme from what you wrote. Let's go chapter by chapter to flesh out the story — or finish the whole book anytime.",
-          ),
-        );
-        enterStoryStage(0, /*announce*/ true);
-      } else {
-        // Theme stage: stepper on 确定主题, no finish bar. Open with themeAsk, then
-        // fetch the candidate themes (postTheme) and render them as pickable chips.
-        authStage = 'theme';
-        setChatState(2);
-        hideFinishBar();
-        appendAiText(t('themeAsk'));
-        updateAuthInputPlaceholder();
-        void (async () => {
-          sending = true;
-          await runThemeTurn();
-          sending = false;
-        })();
-      }
+      appendAiText(
+        aT(
+          '我已经写好第一版，哪页不满意，点开那页跟我说就行。',
+          "I've written the first version — tap any page you'd like to change and tell me.",
+        ),
+      );
+      // No theme step anymore; the stepper sits on the editing/story pill, and the
+      // idle await jellyfish floats to the bottom of the thread.
+      setChatState(3);
+      updateAuthInputPlaceholder();
+      restAwait();
     }
 
     // Keep the buy-credits card (#balanceAlert) hidden on entry. The CSS default

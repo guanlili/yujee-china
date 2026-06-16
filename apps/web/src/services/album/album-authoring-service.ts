@@ -10,7 +10,10 @@ import {
   type V2ThemeResponse,
   type V2ChapterChatRequest,
   type V2ChapterChatResponse,
+  type V2DraftEditRequest,
+  type V2PhotoAnalysis,
 } from '@yujee/contracts';
+import type { Page } from '@yujee/contracts';
 
 // The chat-turn shape isn't exported from the contract (it's a local const there);
 // derive it from the history array element so we stay in sync without touching v2.ts.
@@ -39,6 +42,85 @@ async function loadDraftAlbum(userId: string, albumId: string): Promise<{
   const parsed = AlbumDraft.safeParse(album.draftJson);
   if (!parsed.success) throw ERRORS.ALBUM_NOT_EDITABLE();
   return { draft: parsed.data };
+}
+
+// #162 draft-edit: the browser tracks pages by their FLAT index (the order
+// getDraftSkeleton emits: cover → toc? → chapters[].pages → ending). draft_json
+// is a tree, so to slice/merge one page we walk that exact flat order and find
+// which tree node the flat index lands on. Returns the page itself, the chapterId
+// it belongs to (null for cover/toc/ending — used to scope history), and an
+// applyTexts that produces a NEW tree with ONLY that one page's texts replaced
+// (every other page identical). No whole-tree round-trip leaves Web.
+type LocatedPage = {
+  page: Page;
+  chapterId: string | null;
+  // Returns a new AlbumDraft with this page's texts replaced (slot-scoped merge
+  // done by the caller); all other pages are the same object references.
+  applyTexts: (texts: Record<string, string>) => AlbumDraft;
+};
+
+function locatePage(draft: AlbumDraft, flatIndex: number): LocatedPage | null {
+  let cursor = 0;
+  // cover
+  if (flatIndex === cursor) {
+    return {
+      page: draft.basePages.cover,
+      chapterId: null,
+      applyTexts: (texts) => ({
+        ...draft,
+        basePages: { ...draft.basePages, cover: { ...draft.basePages.cover, texts } },
+      }),
+    };
+  }
+  cursor += 1;
+  // toc (optional)
+  if (draft.basePages.toc) {
+    if (flatIndex === cursor) {
+      const toc = draft.basePages.toc;
+      return {
+        page: toc,
+        chapterId: null,
+        applyTexts: (texts) => ({
+          ...draft,
+          basePages: { ...draft.basePages, toc: { ...toc, texts } },
+        }),
+      };
+    }
+    cursor += 1;
+  }
+  // chapter pages, in order
+  for (let ci = 0; ci < draft.chapters.length; ci++) {
+    const chapter = draft.chapters[ci]!;
+    for (let pi = 0; pi < chapter.pages.length; pi++) {
+      if (flatIndex === cursor) {
+        const page = chapter.pages[pi]!;
+        return {
+          page,
+          chapterId: chapter.chapterId,
+          applyTexts: (texts) => {
+            const nextPages = chapter.pages.slice();
+            nextPages[pi] = { ...page, texts };
+            const nextChapters = draft.chapters.slice();
+            nextChapters[ci] = { ...chapter, pages: nextPages };
+            return { ...draft, chapters: nextChapters };
+          },
+        };
+      }
+      cursor += 1;
+    }
+  }
+  // ending
+  if (flatIndex === cursor) {
+    return {
+      page: draft.basePages.ending,
+      chapterId: null,
+      applyTexts: (texts) => ({
+        ...draft,
+        basePages: { ...draft.basePages, ending: { ...draft.basePages.ending, texts } },
+      }),
+    };
+  }
+  return null;
 }
 
 export const albumAuthoringService = {
@@ -254,6 +336,140 @@ export const albumAuthoringService = {
       // nameOptions: display-only pass-through (not merged into the chapter above).
       ...(result.nameOptions ? { nameOptions: result.nameOptions } : {}),
     };
+  },
+
+  // POST /api/v2/albums/[uuid]/draft-edit — synchronous (#162). The draft-period
+  // "render first version + pointed single-page edit" path, with talk/act split.
+  // The browser sends the FLAT pageIndex of the page it's looking at + a free-text
+  // message. We slice ONLY that page (its templateId/images/texts) + that page's
+  // photo analyses from the pool (no base64, no whole tree — invariant 12), build
+  // a page-scoped history, and call the agent.
+  //   - kind:'act' → merge pageWrite.texts into THAT page (slot-scoped: only the
+  //     returned slots change), persist draft_json, write 2 album_messages (the
+  //     assistant row carries the pageWrite as its patch). Return the merged texts.
+  //   - kind:'talk' → write 2 album_messages only; no draft mutation.
+  // Like chapter-chat, draft-period copy edits are FREE (no credit/limit check) —
+  // billing happens at init (#162 / architecture §6.7); we add no new billing here.
+  async submitDraftEditV2(
+    userId: string,
+    albumId: string,
+    input: { pageIndex: number; userMessage: string },
+  ): Promise<{
+    kind: 'talk' | 'act';
+    assistantReply: string;
+    // Present iff kind==='act' — the page that changed + its full merged texts, so
+    // the browser can repaint that one page without a refetch.
+    pageWrite?: { pageIndex: number; texts: Record<string, string> };
+  }> {
+    const { draft } = await loadDraftAlbum(userId, albumId);
+
+    const located = locatePage(draft, input.pageIndex);
+    if (!located) throw ERRORS.VALIDATION_FAILED('page not found in draft');
+
+    // Slice this page's photo analyses: the photoIds it actually references in its
+    // images map, resolved to V2PhotoAnalysis from the pool. Pure text, no base64;
+    // may be [] (e.g. a text-only cover) — the contract requires the array present.
+    const analysisByPhotoId = new Map(draft.photoPool.map((p) => [p.photoId, p.analysis]));
+    const photoIds = Object.values(located.page.images).filter((id): id is string => !!id);
+    const photos: V2PhotoAnalysis[] = [];
+    const seen = new Set<string>();
+    for (const id of photoIds) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const a = analysisByPhotoId.get(id);
+      if (a) photos.push(a);
+    }
+
+    // Page/chapter-scoped history (≤20). Pages inside a chapter reuse that
+    // chapter's thread (parity with chapter-chat); cover/toc/ending (chapterId
+    // null) use the album-wide recent thread.
+    const recent = located.chapterId
+      ? await albumMessageRepo.findRecentByAlbumChapter(albumId, located.chapterId, HISTORY_LIMIT)
+      : await albumMessageRepo.findRecentByAlbum(albumId, HISTORY_LIMIT);
+    const history: V2ChatTurn[] = recent.map((m) => ({ role: m.role, content: m.content }));
+
+    const payload: V2DraftEditRequest = {
+      albumId,
+      language: draft.meta.language,
+      ...(draft.meta.theme && isFullTheme(draft.meta.theme) ? { theme: draft.meta.theme } : {}),
+      page: {
+        pageIndex: input.pageIndex,
+        templateId: located.page.templateId,
+        images: located.page.images,
+        texts: located.page.texts,
+      },
+      photos,
+      history,
+      userMessage: input.userMessage,
+      // focusedPageIndex = the page the user is on; lets "change this page" lock
+      // onto the exact single page even across a 2-page spread.
+      focusedPageIndex: input.pageIndex,
+    };
+
+    const result = await agentClient.draftEditV2(payload);
+
+    if (result.kind === 'act' && result.pageWrite) {
+      // Hoist out of the async tx closure so the narrowing survives (TS widens
+      // result.pageWrite back to optional inside the callback otherwise).
+      const pageWrite = result.pageWrite;
+      // Slot-scoped merge: only the returned slots change; keep every other slot
+      // (and every other page) as-is. The agent echoes back the focused pageIndex.
+      const mergedTexts = { ...located.page.texts, ...pageWrite.texts };
+      const next = located.applyTexts(mergedTexts);
+
+      await db.transaction(async (tx) => {
+        // user + assistant rows. The assistant row carries the pageWrite as its
+        // patch (parity with how chapter-chat/edit record the applied change), and
+        // is tagged with the page's chapter_id so it joins that chapter's thread.
+        await albumMessageRepo.create(tx, {
+          albumId,
+          userId,
+          role: 'user',
+          content: input.userMessage,
+          ...(located.chapterId ? { chapterId: located.chapterId } : {}),
+        });
+        await albumMessageRepo.create(tx, {
+          albumId,
+          userId,
+          role: 'assistant',
+          content: result.assistantReply,
+          ...(located.chapterId ? { chapterId: located.chapterId } : {}),
+          // The applied write, stored in the browser-patch shape v1 chat-edit uses
+          // (layout_patch column): one entry, pageIndex + the changed text slots.
+          layoutPatch: [{ pageIndex: pageWrite.pageIndex, textsJson: pageWrite.texts }],
+          usage: (result.usage as Record<string, unknown> | null) ?? null,
+        });
+        // persist the single-page merge + touch updated_at (W7c expiry, §12).
+        await albumRepo.update(tx, albumId, { draftJson: next });
+      });
+
+      return {
+        kind: 'act',
+        assistantReply: result.assistantReply,
+        pageWrite: { pageIndex: pageWrite.pageIndex, texts: mergedTexts },
+      };
+    }
+
+    // talk: persist the conversation only — no draft mutation.
+    await db.transaction(async (tx) => {
+      await albumMessageRepo.create(tx, {
+        albumId,
+        userId,
+        role: 'user',
+        content: input.userMessage,
+        ...(located.chapterId ? { chapterId: located.chapterId } : {}),
+      });
+      await albumMessageRepo.create(tx, {
+        albumId,
+        userId,
+        role: 'assistant',
+        content: result.assistantReply,
+        ...(located.chapterId ? { chapterId: located.chapterId } : {}),
+        usage: (result.usage as Record<string, unknown> | null) ?? null,
+      });
+    });
+
+    return { kind: 'talk', assistantReply: result.assistantReply };
   },
 };
 

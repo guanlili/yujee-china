@@ -127,3 +127,20 @@ export function postFinalize(
 ): Promise<{ albumId: string; requestId: string; accepted: true }> {
   return postJson(`/api/v2/albums/${albumId}/finalize`);
 }
+
+// POST /draft-edit — synchronous (#162). The draft-period chat path: send the
+// FLAT pageIndex the user is looking at + their message; the server slices that
+// one page (invariant 12) and either talks back (kind:'talk') or rewrites that
+// page's copy (kind:'act' + the merged pageWrite to repaint locally).
+export interface DraftEditResult {
+  kind: 'talk' | 'act';
+  assistantReply: string;
+  pageWrite?: { pageIndex: number; texts: Record<string, string> };
+}
+export function postDraftEdit(
+  albumId: string,
+  pageIndex: number,
+  userMessage: string,
+): Promise<DraftEditResult> {
+  return postJson(`/api/v2/albums/${albumId}/draft-edit`, { pageIndex, userMessage });
+}
