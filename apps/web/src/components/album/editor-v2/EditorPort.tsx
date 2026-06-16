@@ -1912,17 +1912,13 @@ function EditorBook({
       }
     }
 
+    // Keep the buy-credits card (#balanceAlert) hidden on entry. The CSS default
+    // is display:block, so we must explicitly hide it here. It is surfaced ONLY
+    // on demand by showPurchaseCard() when a turn throws CreditInsufficientError —
+    // entering the editor must never lead with a "you're out of credits" card
+    // (the first chat node is always the greeting + task message).
     const balanceAlert = byId('balanceAlert');
     if (balanceAlert) balanceAlert.style.display = 'none';
-    // Surface the buy-credits card only when the credit balance is running low.
-    void fetch('/api/v1/credit/balance')
-      .then((r) => r.json())
-      .then((j) => {
-        if (j?.ok && typeof j.data?.balance === 'number' && j.data.balance <= 1 && balanceAlert) {
-          balanceAlert.style.display = '';
-        }
-      })
-      .catch(() => {});
     // Real account identity in the user menu (design ships demo placeholders).
     void fetch('/api/v1/user/me')
       .then((r) => r.json())
