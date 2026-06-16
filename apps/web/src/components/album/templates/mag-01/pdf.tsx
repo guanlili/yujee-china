@@ -1,9 +1,9 @@
 import { Text, View } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
-import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
+import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function PdfMag01({ data, totalPages }: TemplateRenderProps) {
+export function PdfMag01({ data }: TemplateRenderProps) {
   const d = data as {
     heading?: string;
     sideText?: string;
@@ -91,7 +91,6 @@ export function PdfMag01({ data, totalPages }: TemplateRenderProps) {
       >
         {d.caption2 || ''}
       </Text>
-      <PdfFolio folio={d.folio} totalPages={totalPages} fallback="01" />
     </PdfPageShell>
   );
 }

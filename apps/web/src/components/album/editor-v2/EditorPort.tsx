@@ -22,8 +22,10 @@ import { signOut } from '@/lib/auth/client';
 import { photoStore } from '@/lib/photo/store';
 import { compressFile } from '@/lib/photo/compress';
 import { getWebTemplate } from '../web-registry';
+import { buildSpreads, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
 import { PAGE } from '../templates/constants';
+import { clampZoom, paintDecision } from './zoom-util';
 import {
   applyPatchToPages,
   extractPhotoIds,
@@ -585,14 +587,28 @@ function EditorBook({
       textsJson: { ...p.textsJson },
     }));
     const total = initialPages.length;
-    // Lead with a blank slot so the cover (page 0) sits on the right of the first
-    // spread (book-opening convention); the rest pair up two-per-spread.
-    const spreadCount = Math.max(1, Math.ceil((pagesState.length + 1) / 2));
-    const slotAt = (k: number): EditorPage | null => (k === 0 ? null : pagesState[k - 1] ?? null);
-    const spreadPages = (s: number): [EditorPage | null, EditorPage | null] => [
-      slotAt(s * 2),
-      slotAt(s * 2 + 1),
-    ];
+    // Real-book pagination (issue #158): the cover sits alone on the recto of the
+    // first spread (opens leftward), the ending sits alone on the verso of the last
+    // spread (closes), interior pages pair two-up. buildSpreads owns this algorithm;
+    // a null half is a blank page. spreads is mutable: authoring's refreshDraft may
+    // swap pagesState (and change the page count when a chapter is generated), so
+    // rebuildSpreads() reruns wherever pagesState is reassigned.
+    let spreads = buildSpreads(pagesState);
+    const rebuildSpreads = () => {
+      spreads = buildSpreads(pagesState);
+      // A slot-flip patch can shrink the spread count without changing page
+      // count (no remount); clamp the cursor so we never sit on a dropped spread.
+      if (currentCh >= spreadCount()) currentCh = spreadCount() - 1;
+    };
+    const spreadCount = () => Math.max(1, spreads.length);
+    const spreadPages = (s: number): [EditorPage | null, EditorPage | null] => {
+      const sp = spreads[s];
+      if (!sp) return [null, null];
+      return [
+        sp.left === null ? null : pagesState[sp.left] ?? null,
+        sp.right === null ? null : pagesState[sp.right] ?? null,
+      ];
+    };
     function pageByIndex(idx: number): EditorPage | undefined {
       return pagesState.find((p) => p.pageIndex === idx);
     }
@@ -629,9 +645,19 @@ function EditorBook({
         `</div></div>`
       );
     }
-    function paintEl(el: HTMLElement | null, page: EditorPage | null) {
+    function paintEl(el: HTMLElement | null, page: EditorPage | null, attempt = 0) {
       if (!el) return;
-      el.innerHTML = faceHTML(page, el.clientWidth || 1, el.clientHeight || 1);
+      // offsetParent === null ⇔ a `display:none` ancestor hides the cell (these
+      // page/thumb cells are never position:fixed). See paintDecision for why each
+      // branch behaves as it does — notably 'skip' on hidden avoids a per-frame
+      // rAF loop that the issue #157 fix would otherwise spin while overview-on.
+      const action = paintDecision(el.offsetParent === null, el.clientWidth, el.clientHeight, attempt, 30);
+      if (action === 'skip') return;
+      if (action === 'defer') {
+        requestAnimationFrame(() => paintEl(el, page, attempt + 1));
+        return;
+      }
+      el.innerHTML = faceHTML(page, el.clientWidth, el.clientHeight);
     }
     // Repaint every surface that shows page content after an edit.
     function repaintBook() {
@@ -642,6 +668,9 @@ function EditorBook({
     // Mirror a layout patch (already persisted server-side) into the preview.
     function applyLocalPatch(patch: LayoutPatchEntry[]) {
       pagesState = applyPatchToPages(pagesState, patch);
+      // A patch can swap a page's templateId, which may change its slot
+      // (cover/ending/interior) and thus the whole spread layout — recompute.
+      rebuildSpreads();
       repaintBook();
     }
 
@@ -731,7 +760,7 @@ function EditorBook({
       if (rp) pageRight.dataset.pageIndex = String(rp.pageIndex);
       else delete pageRight.dataset.pageIndex;
       updateSelectionHighlight();
-      if (pageInd) pageInd.textContent = (i + 1) + ' / ' + spreadCount;
+      if (pageInd) pageInd.textContent = (i + 1) + ' / ' + spreadCount();
       if (ctxBadge) ctxBadge.textContent = spreadLabel(i);
       // Rail items key off their target spread (data-ch), which for AI chapters is
       // a non-contiguous spread index — compare by that, not by list position.
@@ -741,7 +770,7 @@ function EditorBook({
     }
 
     function flipTo(nextIdx: number, dir: 'next' | 'prev') {
-      if (flipping || nextIdx === currentCh || nextIdx < 0 || nextIdx >= spreadCount) return;
+      if (flipping || nextIdx === currentCh || nextIdx < 0 || nextIdx >= spreadCount()) return;
       flipping = true;
       const [curLeft, curRight] = spreadPages(currentCh);
       const [nxtLeft, nxtRight] = spreadPages(nextIdx);
@@ -804,13 +833,17 @@ function EditorBook({
       pagesState.forEach((p, i) => {
         if (Object.values(p.imagesJson).some((pid) => set.has(pid))) minI = Math.min(minI, i);
       });
-      return minI === Infinity ? 0 : Math.floor((minI + 1) / 2);
+      // minI is a pagesState array index; map it to its spread via buildSpreads
+      // (the cover/ending solo-page layout means a flat /2 formula would misplace it).
+      if (minI === Infinity) return 0;
+      const sp = spreadIndexOfPage(spreads, minI);
+      return sp === -1 ? 0 : sp;
     }
     function renderRail() {
       const useCh = chapters.length > 0;
       const items = useCh
         ? chapters.map((c, i) => ({ idx: c.spread, num: String(i + 1).padStart(2, '0'), label: c.label }))
-        : Array.from({ length: spreadCount }, (_, i) => ({ idx: i, num: String(i + 1).padStart(2, '0'), label: spreadLabel(i) }));
+        : Array.from({ length: spreadCount() }, (_, i) => ({ idx: i, num: String(i + 1).padStart(2, '0'), label: spreadLabel(i) }));
       const shortOf = (it: { num: string; label: string }) =>
         useCh ? [...it.label].slice(0, 2).join('') || it.num : it.num;
 
@@ -860,12 +893,12 @@ function EditorBook({
     function buildThumbs() {
       const row = byId('thumbRow');
       if (!row) return;
-      row.innerHTML = Array.from({ length: spreadCount }, (_, i) =>
+      row.innerHTML = Array.from({ length: spreadCount() }, (_, i) =>
         `<div class="thumb-item${i === currentCh ? ' active' : ''} shrink-0 w-[52px] cursor-pointer" data-gospread="${i}">
           <div class="thumb-img"><div class="thumb-img-left" data-tface="${i}-l"></div><div class="thumb-img-right" data-tface="${i}-r"></div></div>
         </div>`,
       ).join('');
-      for (let i = 0; i < spreadCount; i++) {
+      for (let i = 0; i < spreadCount(); i++) {
         const [lp, rp] = spreadPages(i);
         paintEl(row.querySelector(`[data-tface="${i}-l"]`) as HTMLElement | null, lp);
         paintEl(row.querySelector(`[data-tface="${i}-r"]`) as HTMLElement | null, rp);
@@ -877,23 +910,26 @@ function EditorBook({
     function updateThumbUI(chIdx: number) {
       $$('.thumb-item').forEach((el, i) => el.classList.toggle('active', i === chIdx));
       const ti = byId('thumbInd');
-      if (ti) ti.textContent = (chIdx + 1) + ' / ' + spreadCount;
+      if (ti) ti.textContent = (chIdx + 1) + ' / ' + spreadCount();
     }
     function goToSpread(chIdx: number) {
-      if (chIdx === currentCh || chIdx < 0 || chIdx >= spreadCount) return;
+      if (chIdx === currentCh || chIdx < 0 || chIdx >= spreadCount()) return;
       flipTo(chIdx, chIdx > currentCh ? 'next' : 'prev');
       updateThumbUI(chIdx);
     }
     function thumbNav(dir: number) {
       let next = currentCh + dir;
-      if (next < 0) next = spreadCount - 1;
-      if (next >= spreadCount) next = 0;
+      if (next < 0) next = spreadCount() - 1;
+      if (next >= spreadCount()) next = 0;
       goToSpread(next);
     }
 
     /* ─── Zoom + overview ─── */
     let zoom = 1;
-    const ZMIN = 0.5, ZMAX = 2, ZSTEP = 0.25;
+    // ZMIN is the visible lower bound: zooming out clamps the book here (the
+    // spread stays scaled + visible). Overview is reachable *only* via ovBtn,
+    // never by crossing the zoom floor (issue #157).
+    const ZMIN = 0.25, ZMAX = 2, ZSTEP = 0.25;
     function applyZoom() {
       const bk = byId('book');
       if (bk) bk.style.transform = 'scale(' + zoom + ')';
@@ -905,9 +941,9 @@ function EditorBook({
         if (d > 0) exitOverview();
         return;
       }
-      const nz = Math.round((zoom + d) * 100) / 100;
-      if (nz < ZMIN) { enterOverview(); return; }
-      zoom = Math.min(ZMAX, nz);
+      // Clamp to [ZMIN, ZMAX]. Zooming out past the floor just stops at ZMIN;
+      // the book stays scaled + visible and never auto-jumps to overview.
+      zoom = clampZoom(zoom + d, ZMIN, ZMAX);
       applyZoom();
     }
     function resetZoom() {
@@ -917,12 +953,12 @@ function EditorBook({
     function renderOverview() {
       const g = byId('ovGrid');
       if (!g) return;
-      g.innerHTML = Array.from({ length: spreadCount }, (_, i) =>
+      g.innerHTML = Array.from({ length: spreadCount() }, (_, i) =>
         `<div class="ov-spread${i === currentCh ? ' ov-current' : ''}" data-ovidx="${i}">
           <div class="ov-book"><div class="ov-page ov-left" data-oface="${i}-l"></div><div class="ov-page ov-right" data-oface="${i}-r"></div></div>
           <div class="ov-cap">${spreadLabel(i)}</div>
         </div>`).join('');
-      for (let i = 0; i < spreadCount; i++) {
+      for (let i = 0; i < spreadCount(); i++) {
         const [lp, rp] = spreadPages(i);
         paintEl(g.querySelector(`[data-oface="${i}-l"]`) as HTMLElement | null, lp);
         paintEl(g.querySelector(`[data-oface="${i}-r"]`) as HTMLElement | null, rp);
@@ -932,8 +968,13 @@ function EditorBook({
       });
     }
     function enterOverview() {
-      renderOverview();
+      // Show the overview container *before* rendering: while .book-overview is
+      // display:none its .ov-page cells measure 0×0, so paintEl would inject
+      // 1×1 pages (issue #157). Flip the class, force a synchronous reflow, then
+      // render against real box sizes.
       bodyEl.classList.add('overview-on');
+      void byId('bookOverview')?.getBoundingClientRect();
+      renderOverview();
       byId('ovBtn')?.classList.add('active');
       const p = byId('zoomPct'); if (p) p.textContent = t('overview');
     }
@@ -1138,6 +1179,9 @@ function EditorBook({
           imagesJson: { ...p.imagesJson },
           textsJson: { ...p.textsJson },
         }));
+        // A generated chapter changes the page set (and count) → recompute spreads
+        // so spreadCount/spreadPages/rail all stay aligned with the new pagination.
+        rebuildSpreads();
         // Re-resolve any newly referenced originals, then repaint.
         const ids = new Set<string>();
         for (const p of draft.pages) for (const id of Object.values(p.imagesJson)) if (id) ids.add(id);
@@ -1966,7 +2010,14 @@ function EditorBook({
     // Declared as a hoisted function (not a const arrow) so the authoring init
     // block above — which may call enterStoryStage(0) immediately when a theme is
     // pre-set — can reference it without hitting the temporal dead zone.
-    function spreadOfFlatPage(i: number) { return Math.floor((i + 1) / 2); }
+    // i is an array index into draftSkel.pages, which mirrors pagesState in
+    // authoring (refreshDraft maps draft.pages → pagesState 1:1). Map it to the
+    // spread that holds it via buildSpreads (cover/ending sit solo, so the old flat
+    // /2 formula would be off by the solo half-pages).
+    function spreadOfFlatPage(i: number) {
+      const sp = spreadIndexOfPage(spreads, i);
+      return sp === -1 ? 0 : sp;
+    }
     function railFromDraft() {
       if (!draftSkel) return;
       chapters = draftSkel.chapters.map((c) => ({
