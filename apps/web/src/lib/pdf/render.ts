@@ -62,7 +62,7 @@ export async function renderAlbumPdf(
       const PdfTemplate = PDF_TEMPLATE_REGISTRY[page.templateId];
       if (!PdfTemplate) return null;
       const data = adaptPageToTemplateData(page, resolveImage);
-      return createElement(PdfTemplate, { key: i, data, totalPages: total });
+      return createElement(PdfTemplate, { key: i, data, totalPages: total, imagePos: page.imagePos });
     })
     .filter((child): child is NonNullable<typeof child> => child !== null);
 

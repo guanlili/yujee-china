@@ -228,6 +228,7 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
     templateId: p.templateId,
     imagesJson: { ...p.imagesJson },
     textsJson: { ...p.textsJson },
+    imagePosJson: { ...(p.imagePosJson ?? {}) },
   }));
   return (
     <EditorBook
@@ -569,6 +570,7 @@ function EditorBook({
       ...p,
       imagesJson: { ...p.imagesJson },
       textsJson: { ...p.textsJson },
+      imagePosJson: { ...(p.imagePosJson ?? {}) },
     }));
     const total = initialPages.length;
     // Real-book pagination (issue #158): the cover sits alone on the recto of the
@@ -617,7 +619,9 @@ function EditorBook({
         { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson },
         resolveImage,
       );
-      return renderToStaticMarkup(<Template data={data} totalPages={total} />);
+      return renderToStaticMarkup(
+        <Template data={data} totalPages={total} imagePos={page.imagePosJson} />,
+      );
     }
     // The 794×1123 page scaled to fill the given box (matches FlipBook PageFace).
     function faceHTML(page: EditorPage | null, boxW: number, boxH: number): string {
@@ -1347,7 +1351,7 @@ function EditorBook({
       if (btn) btn.style.opacity = '0.6';
       try {
         const adaptable = pagesState.map((p) => ({
-          templateId: p.templateId, images: p.imagesJson, texts: p.textsJson,
+          templateId: p.templateId, images: p.imagesJson, texts: p.textsJson, imagePos: p.imagePosJson,
         }));
         const ids = collectPhotoIds(adaptable);
         const dataUrls = await photoStore.getDataUrls(ids);

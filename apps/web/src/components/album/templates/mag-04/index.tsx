@@ -2,7 +2,7 @@ import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function WebMag04({ data, totalPages }: TemplateRenderProps) {
+export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image1?: string;
     image2?: string;
@@ -19,6 +19,7 @@ export function WebMag04({ data, totalPages }: TemplateRenderProps) {
         src={d.image1}
         placeholder="1:1"
         style={{ position: 'absolute', top: 60, left: 50, width: 380, height: 360 }}
+        position={imagePos?.['image1']}
       />
       <div
         style={{
@@ -58,6 +59,7 @@ export function WebMag04({ data, totalPages }: TemplateRenderProps) {
         src={d.image2}
         placeholder="1:1"
         style={{ position: 'absolute', top: 460, right: 50, width: 280, height: 280 }}
+        position={imagePos?.['image2']}
       />
       <div
         style={{
@@ -78,6 +80,7 @@ export function WebMag04({ data, totalPages }: TemplateRenderProps) {
         src={d.image3}
         placeholder="1:1"
         style={{ position: 'absolute', top: 760, right: 50, width: 280, height: 280 }}
+        position={imagePos?.['image3']}
       />
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="04" />
     </WebPage>

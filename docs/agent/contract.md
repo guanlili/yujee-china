@@ -266,11 +266,19 @@ export const PhotoAnalysis = z.object({
   location: z.string().nullable().optional(),
 });
 
+// #165: 每槽位的位置/缩放覆盖。key = 与 images 同名的 slotId。缺省即默认 50/50/1。
+export const ImagePos = z.object({
+  x: z.number().min(0).max(100),   // object-position 横向百分比,clamp [0,100]
+  y: z.number().min(0).max(100),   // object-position 纵向百分比,clamp [0,100]
+  scale: z.number().min(1).max(2), // 放大倍数,clamp [1,2];仅 web 生效,PDF 暂不支持 zoom
+});
+
 export const Page = z.object({
   pageIndex: z.number().int().nonnegative(),
   templateId: z.string(),                // 必须在 config/templates 里存在
   images: z.record(z.string(), z.string()),  // { slotName: photoId }
   texts: z.record(z.string(), z.string()),   // { slotName: text }
+  imagePos: z.record(z.string(), ImagePos).optional(), // #165 可选,缺省=默认 50/50/1
 });
 
 export const AlbumLayoutPlan = z.object({
@@ -279,6 +287,15 @@ export const AlbumLayoutPlan = z.object({
   pages: z.array(Page).min(1),
 });
 ```
+
+### 4.0 `imagePos` 单图位置覆盖(#165 Phase 1,架构已批准登记)
+
+- **形状**:`Page.imagePos?: Record<slotId, { x: number; y: number; scale: number }>`,与 `images` 用同一套 slotId(`image` / `imageTop` / `cells[0].image` 等)。**可选**:缺省该 slot 即渲染器回退默认 `objectPosition 50% 50%`、`objectFit cover`、不缩放。因此**所有 #165 之前的相册逐字节不变**。
+- **clamp 边界**:`x,y in [0,100]`,`scale in [1,2]`(zod / pydantic / web layout-schema 三处同步校验,inv 9)。写入者(#165 Phase 3 `adjust_image_position`)负责落在该范围。
+- **finalize 拍平(inv 12)**:`AlbumDraft` 各 chapter/cover 页的 `imagePos` 在 `services/finalize.py` 拍平进扁平 `LayoutV2.pages`,再由 Web `handleFinalizeCompleted` 落 `album_pages.image_pos_json`(缺省落 `{}`,渲染默认)。指向已不在 `images` 里的 slot 的陈旧覆盖在拍平时丢弃。
+- **photo-swap 重置**:换图(slot 的 photoId 变化)即清掉该 slot 的 `imagePos`(新主体回 50/50/1),由 `applyPatchToPages` 在编辑器侧执行后再持久化。
+- **TS<->py 镜像**:`packages/contracts/src/layout.ts` `ImagePos`/`Page.imagePos` 对应 `apps/agent/src/schemas.py` `ImagePos`/`Page.imagePos`;Web 校验副本 `apps/web/src/lib/agent/layout-schema.ts` 同步。
+- **PDF 限制**:`@react-pdf <Image>` 无 transform,`scale>1` 暂不缩放(只用 objectPosition 平移),为 web-only,见 `pdf-utils.tsx` 的 `TODO(#165)`。
 
 ### 4.1 Composing 二期语义(文档说明,非 schema 变更)
 

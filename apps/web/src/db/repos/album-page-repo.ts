@@ -13,7 +13,7 @@ export const albumPageRepo = {
 
   findFirstByAlbumIds: async (
     albumIds: string[],
-  ): Promise<Pick<AlbumPage, 'albumId' | 'pageIndex' | 'templateId' | 'imagesJson' | 'textsJson'>[]> => {
+  ): Promise<Pick<AlbumPage, 'albumId' | 'pageIndex' | 'templateId' | 'imagesJson' | 'textsJson' | 'imagePosJson'>[]> => {
     if (albumIds.length === 0) return [];
     return db
       .select({
@@ -22,6 +22,7 @@ export const albumPageRepo = {
         templateId: albumPages.templateId,
         imagesJson: albumPages.imagesJson,
         textsJson: albumPages.textsJson,
+        imagePosJson: albumPages.imagePosJson,
       })
       .from(albumPages)
       .where(and(inArray(albumPages.albumId, albumIds), eq(albumPages.pageIndex, 0)));
@@ -43,7 +44,7 @@ export const albumPageRepo = {
     tx: DbOrTx,
     albumId: string,
     pageIndex: number,
-    patch: Partial<Pick<NewAlbumPage, 'imagesJson' | 'textsJson'>>,
+    patch: Partial<Pick<NewAlbumPage, 'imagesJson' | 'textsJson' | 'imagePosJson'>>,
   ): Promise<void> => {
     await tx
       .update(albumPages)

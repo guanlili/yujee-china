@@ -2,7 +2,7 @@ import { COLORS, WEB_FONTS } from '../constants';
 import { WebImage, WebPage } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function WebMag01({ data }: TemplateRenderProps) {
+export function WebMag01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     heading?: string;
     sideText?: string;
@@ -62,6 +62,7 @@ export function WebMag01({ data }: TemplateRenderProps) {
         src={d.image}
         placeholder="3:2"
         style={{ position: 'absolute', top: 240, right: 0, width: 660, height: 460 }}
+        position={imagePos?.['image']}
       />
       <div
         style={{

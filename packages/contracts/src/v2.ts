@@ -10,7 +10,7 @@
 // 不改 `layout.ts`:对外扁平 `AlbumLayoutPlan` 保持 5 字段;v2 扩充字段只活在
 //   `V2PhotoAnalysis`,finalize 时 strip。
 import { z } from 'zod';
-import { Page, PhotoAnalysis, AlbumLayoutPlan } from './layout';
+import { Page, PhotoAnalysis, AlbumLayoutPlan, ImagePos } from './layout';
 
 // ────────────────────────────── 共享枚举 ──────────────────────────────
 
@@ -367,6 +367,8 @@ export const LayoutPatchEntry = z
     templateId: z.string().optional(),
     images: z.record(z.string(), z.string()).optional(),
     texts: z.record(z.string(), z.string()).optional(),
+    // Per-slot position/scale overrides (#165). Absent => render default 50/50/1.
+    imagePos: z.record(z.string(), ImagePos).optional(),
   })
   .strict();
 export type LayoutPatchEntry = z.infer<typeof LayoutPatchEntry>;

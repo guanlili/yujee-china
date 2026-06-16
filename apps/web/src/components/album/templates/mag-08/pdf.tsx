@@ -3,7 +3,7 @@ import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function PdfMag08({ data, totalPages }: TemplateRenderProps) {
+export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     dateNum?: string;
@@ -58,6 +58,7 @@ export function PdfMag08({ data, totalPages }: TemplateRenderProps) {
       <PdfImage
         src={d.image}
         style={{ position: 'absolute', left: 70, top: 100, width: 360, height: 550 }}
+        position={imagePos?.['image']}
       />
       {/* 左侧说明：与照片左缘对齐、宽度等于照片宽度 */}
       <View style={{ position: 'absolute', top: 670, left: 70, width: 360 }}>

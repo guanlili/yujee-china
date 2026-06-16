@@ -1,0 +1,1 @@
+ALTER TABLE "album_pages" ADD COLUMN "image_pos_json" jsonb DEFAULT '{}'::jsonb NOT NULL;

@@ -2,7 +2,7 @@ import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function WebMag18({ data, totalPages }: TemplateRenderProps) {
+export function WebMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     imageLeft?: string;
     imageRight?: string;
@@ -16,11 +16,13 @@ export function WebMag18({ data, totalPages }: TemplateRenderProps) {
         src={d.imageLeft}
         placeholder="3:4"
         style={{ position: 'absolute', top: 170, left: 70, width: 320, height: 600 }}
+        position={imagePos?.['imageLeft']}
       />
       <WebImage
         src={d.imageRight}
         placeholder="3:4"
         style={{ position: 'absolute', top: 170, right: 70, width: 320, height: 600 }}
+        position={imagePos?.['imageRight']}
       />
       <p
         style={{

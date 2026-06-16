@@ -3,7 +3,7 @@ import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function PdfMag11({ data, totalPages }: TemplateRenderProps) {
+export function PdfMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     title?: string;
@@ -16,6 +16,7 @@ export function PdfMag11({ data, totalPages }: TemplateRenderProps) {
       <PdfImage
         src={d.image}
         style={{ position: 'absolute', top: 120, left: 25, right: 25, height: 640 }}
+        position={imagePos?.['image']}
       />
       <Text
         style={{

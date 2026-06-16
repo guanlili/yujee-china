@@ -32,10 +32,22 @@ interface WebImageProps {
   src?: string;
   placeholder?: string;
   style: CSSProperties;
+  // #165 per-slot override. Absent => centered cover, no zoom (pre-#165 default).
+  position?: { x: number; y: number; scale: number };
 }
 
-export function WebImage({ src, placeholder, style }: WebImageProps) {
+export function WebImage({ src, placeholder, style, position }: WebImageProps) {
   if (src) {
+    const objectPosition = position ? `${position.x}% ${position.y}%` : '50% 50%';
+    // scale>1 zooms in around the focal point; transformOrigin matches the
+    // object-position so the zoom keeps the chosen subject framed.
+    const zoom: CSSProperties =
+      position && position.scale > 1
+        ? {
+            transform: `scale(${position.scale})`,
+            transformOrigin: `${position.x}% ${position.y}%`,
+          }
+        : {};
     return (
       <img
         src={src}
@@ -44,7 +56,8 @@ export function WebImage({ src, placeholder, style }: WebImageProps) {
           display: 'block',
           ...style,
           objectFit: 'cover',
-          objectPosition: '50% 50%',
+          objectPosition,
+          ...zoom,
         }}
       />
     );

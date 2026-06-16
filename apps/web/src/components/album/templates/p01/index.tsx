@@ -2,7 +2,7 @@ import { COLORS, WEB_FONTS } from '../constants';
 import { WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function WebP01({ data }: TemplateRenderProps) {
+export function WebP01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     title?: string;
@@ -18,6 +18,7 @@ export function WebP01({ data }: TemplateRenderProps) {
         src={d.image}
         placeholder="1:1"
         style={{ position: 'absolute', top: 0, bottom: 320, left: 0, width: 794, objectFit: 'cover' }}
+        position={imagePos?.['image']}
       />
       <div
         style={{

@@ -2,7 +2,7 @@ import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage } from '../web-utils';
 import type { GridCell, TemplateData, TemplateRenderProps } from '../types';
 
-export function WebMag10({ data, totalPages }: TemplateRenderProps) {
+export function WebMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as TemplateData & { cells?: GridCell[]; folio?: string };
   const fallbackCells: GridCell[] = [
     { n: '09', image: '', caption: '' },
@@ -47,6 +47,7 @@ export function WebMag10({ data, totalPages }: TemplateRenderProps) {
               src={c.image}
               placeholder="9:8"
               style={{ display: 'block', width: '100%', height: 280 }}
+              position={imagePos?.[`cells[${i}].image`]}
             />
             <p
               style={{

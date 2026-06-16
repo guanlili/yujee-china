@@ -2,7 +2,7 @@ import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function WebMag19({ data, totalPages }: TemplateRenderProps) {
+export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     intro?: string;
@@ -33,6 +33,7 @@ export function WebMag19({ data, totalPages }: TemplateRenderProps) {
         src={d.image}
         placeholder="1:1"
         style={{ position: 'absolute', top: 170, left: 60, width: 674, height: 674 }}
+        position={imagePos?.['image']}
       />
       <p
         style={{

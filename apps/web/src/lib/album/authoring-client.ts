@@ -20,6 +20,8 @@ export interface DraftSkeletonPage {
   templateId: string;
   imagesJson: Record<string, string>;
   textsJson: Record<string, string>;
+  // #165 per-slot position/scale overrides. Absent => render default 50/50/1.
+  imagePosJson?: Record<string, { x: number; y: number; scale: number }>;
   kind: DraftPageKind;
   chapterId: string | null;
 }

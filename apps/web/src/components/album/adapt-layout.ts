@@ -1,5 +1,5 @@
 import { getTemplate } from '@yujee/contracts/templates';
-import type { TemplateArrayItem, TemplateData } from './templates/types';
+import type { ImagePos, TemplateArrayItem, TemplateData } from './templates/types';
 
 // Adaptor seam (assigned to B3 by the B8 review). The agent emits each page as
 // two flat string maps:
@@ -13,6 +13,10 @@ export interface AdaptablePage {
   templateId: string;
   images: Record<string, string>;
   texts: Record<string, string>;
+  // #165 per-slot position/scale overrides, threaded straight to the template as
+  // the `imagePos` prop (not merged into `data`, so bracket-path slots like
+  // `cells[0].image` keep an addressable key). Absent => renderer default 50/50/1.
+  imagePos?: Record<string, ImagePos>;
 }
 
 export type ResolveImage = (photoId: string) => string | undefined;
