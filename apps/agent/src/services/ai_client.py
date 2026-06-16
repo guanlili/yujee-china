@@ -61,10 +61,17 @@ async def chat_completion(
     max_tokens: int | None = None,
     temperature: float = 0.3,
     extra_body: dict[str, Any] | None = None,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: str | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Call an OpenAI-compatible /chat/completions endpoint. Returns the parsed
     response envelope. One retry on transport error or 5xx; raises
-    AIRequestError if both attempts fail."""
+    AIRequestError if both attempts fail.
+
+    `tools` / `tool_choice` (OpenAI function-calling) are forwarded into the POST
+    body only when supplied — existing callers that omit them get the exact same
+    request as before. Parse any returned tool_calls with `extract_tool_calls`;
+    `parse_json_loose` stays the escape hatch for the JSON-content path."""
 
     url = f"{base_url.rstrip('/')}/chat/completions"
     body: dict[str, Any] = {
@@ -77,6 +84,10 @@ async def chat_completion(
         body["response_format"] = response_format
     if max_tokens is not None:
         body["max_tokens"] = max_tokens
+    if tools is not None:
+        body["tools"] = tools
+    if tool_choice is not None:
+        body["tool_choice"] = tool_choice
     if extra_body:
         body.update(extra_body)
 
@@ -115,6 +126,31 @@ def extract_text(response: dict[str, Any]) -> str:
     if not isinstance(content, str) or not content.strip():
         raise ValueError("model response missing message.content")
     return content
+
+
+def extract_text_optional(response: dict[str, Any]) -> str:
+    """Like `extract_text` but returns "" instead of raising when the first
+    choice carries no text content — the normal case on a function-calling turn
+    where the model answers with tool_calls and `message.content` is null."""
+    choices = response.get("choices") or []
+    if not choices:
+        return ""
+    content = (choices[0].get("message") or {}).get("content")
+    return content.strip() if isinstance(content, str) else ""
+
+
+def extract_tool_calls(response: dict[str, Any]) -> list[dict[str, Any]]:
+    """Pull the first choice's `tool_calls` out of an OpenAI-compatible response.
+    Returns [] when the model answered with plain text (no tool call). Each entry
+    is the raw OpenAI tool_call dict: {id, type:'function', function:{name,arguments}}
+    where `arguments` is a JSON STRING the caller parses (loosely)."""
+    choices = response.get("choices") or []
+    if not choices:
+        return []
+    tool_calls = (choices[0].get("message") or {}).get("tool_calls")
+    if not isinstance(tool_calls, list):
+        return []
+    return [tc for tc in tool_calls if isinstance(tc, dict)]
 
 
 def extract_usage(response: dict[str, Any]) -> tuple[int, int]:

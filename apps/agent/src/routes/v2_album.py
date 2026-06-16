@@ -34,6 +34,8 @@ from ..schemas_v2 import (
     V2ChapterChatResponse,
     V2ClusterOverview,
     V2CoverDraft,
+    V2DraftEditRequest,
+    V2DraftEditResponse,
     V2EditRequest,
     V2EditResponse,
     V2FailedCallback,
@@ -56,6 +58,7 @@ from ..services import (
     callback,
     chapter_chat,
     chat_edit_v2,
+    draft_edit,
     finalize as finalize_service,
     grouping,
     skeleton,
@@ -65,6 +68,7 @@ from ..services import (
 )
 from ..services.chapter_chat import ChapterChatError
 from ..services.chat_edit_v2 import V2EditError
+from ..services.draft_edit import DraftEditError
 from ..services.finalize import FinalizeError
 from ..services.grouping import GroupingPhoto
 from ..services.theme import ThemeError
@@ -1027,6 +1031,102 @@ async def submit_edit(req: V2EditRequest) -> dict:
         ) from exc
     except Exception as exc:  # noqa: BLE001 — must answer in contract shape
         log.exception("v2_edit.unhandled", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
+            },
+        ) from exc
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
+
+
+# ============================================================================
+# draft-edit (#162) — synchronous endpoint wiring services/draft_edit.py. The
+# draft-period "展示第一版 + 定点单页调整" turn: talk/act separated by a tool
+# layer (services/tools.py). NEW endpoint; the finalize-era /v2/album/edit is
+# untouched (it needs a flat layout_json; draft period has layout_json==null).
+# Stateless: only a single skeleton page slice + that page's photos cross the
+# wire (no base64, no whole tree — invariant 12). Model/parse failure →
+# AGENT_CHAT_FAILED/502 (mirrors submit_edit).
+# ============================================================================
+
+
+def _mock_draft_edit_complete(req: V2DraftEditRequest) -> Any:
+    """Deterministic injected `complete` for the draft-edit round-trip without a
+    dialog-model key. A bare "改/change/rewrite/写" in the message → emit a
+    write_page_copy tool_call (re-write the page's first authored slot back to
+    itself, so the act path is exercised and the clamp is a no-op); otherwise →
+    plain text (talk). The service still runs all tool dispatch / G3 demotion /
+    clamp on top, mirroring the other W6 mocks."""
+
+    msg = (req.userMessage or "").lower()
+    wants_act = any(k in msg for k in ("change", "rewrite", "改", "写", "标题", "edit"))
+
+    async def complete(**_kwargs: Any) -> dict[str, Any]:
+        if wants_act and req.page.texts:
+            slot, value = next(iter(req.page.texts.items()))
+            tool_call = {
+                "id": "call_mock",
+                "type": "function",
+                "function": {
+                    "name": "write_page_copy",
+                    "arguments": json.dumps(
+                        {"pageIndex": req.page.pageIndex, "slots": {slot: value}},
+                        ensure_ascii=False,
+                    ),
+                },
+            }
+            return {
+                "choices": [
+                    {"message": {"content": None, "tool_calls": [tool_call]}}
+                ],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+            }
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            f'(mock) Noted — "{req.userMessage[:120]}". '
+                            "Real editing runs once the model is connected."
+                        )
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+        }
+
+    return complete
+
+
+@router.post("/v2/album/draft-edit", dependencies=[Depends(require_bearer)])
+async def submit_draft_edit(req: V2DraftEditRequest) -> dict:
+    settings = get_settings()
+    log.info(
+        "v2_draft_edit.accepted",
+        album_id=req.albumId,
+        page_index=req.page.pageIndex,
+        focused=req.focusedPageIndex,
+        history_len=len(req.history),
+        language=req.language,
+    )
+    complete = (
+        _mock_draft_edit_complete(req) if settings.agent_pipeline_mode == "mock" else None
+    )
+    try:
+        response: V2DraftEditResponse = await draft_edit.run(req, complete=complete)
+    except DraftEditError as exc:
+        log.warning("v2_draft_edit.failed", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_CHAT_FAILED", "message": str(exc)[:300]},
+            },
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
+        log.exception("v2_draft_edit.unhandled", error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={

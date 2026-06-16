@@ -393,6 +393,44 @@ export const V2EditResponse = z
   .strict();
 export type V2EditResponse = z.infer<typeof V2EditResponse>;
 
+// ── POST /v2/album/draft-edit(同步;草稿期「展示第一版 + 定点单页调整」)──
+// #162:把「对话」和「改文案」物理分开。对话(提问/意见/打招呼)→ kind:'talk';
+// 改某一页的文字 → kind:'act' + pageWrite(经模板 clamp 的该页 texts)。
+// 与 /v2/album/edit(finalize 期、需扁平 layout_json)不同:本端点在 finalize 之前、
+// 草稿期 layout_json==null 时工作,且只送「单页骨架切片 + 该页照片」——
+// 不送 base64、不送整棵草稿树(不变式 12)。
+export const V2DraftEditRequest = z
+  .object({
+    albumId: z.string().min(1),
+    language: V2Language,
+    theme: V2Theme.optional(), // 全局基调约束(主题先行)
+    page: Page, // 用户正在编辑的单页骨架切片(仅此一页 —— 不变式 12)
+    photos: z.array(V2PhotoAnalysis), // 仅该页用到的照片 analysis(纯文本,无 base64)
+    history: z.array(V2ChatTurn).max(20), // 页/章作用域,≤20
+    userMessage: z.string().max(500),
+    // 用户在编辑器里选中的那一页:跨页(L+R 共 2 页)时由它锁定精确的单页 pageIndex。
+    focusedPageIndex: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+export type V2DraftEditRequest = z.infer<typeof V2DraftEditRequest>;
+
+export const V2DraftEditResponse = z
+  .object({
+    kind: z.enum(['talk', 'act']),
+    assistantReply: z.string().min(1).max(500),
+    // 仅当 kind=='act' 时存在:要应用到目标页的、已 clamp 的文案。
+    pageWrite: z
+      .object({
+        pageIndex: z.number().int().nonnegative(),
+        texts: z.record(z.string(), z.string()),
+      })
+      .strict()
+      .optional(),
+    usage: Usage,
+  })
+  .strict();
+export type V2DraftEditResponse = z.infer<typeof V2DraftEditResponse>;
+
 // ────────────────────────────── v2 callback envelope ──────────────────────────────
 //
 // ★ 不能用 z.discriminatedUnion('event', …):两个 variant 同为 event:'completed',

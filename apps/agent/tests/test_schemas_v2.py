@@ -8,7 +8,12 @@ Guards the two P0 invariants from the rebuild review:
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from src.schemas_v2 import V2Callback, V2InitRequest
+from src.schemas_v2 import (
+    V2Callback,
+    V2DraftEditRequest,
+    V2DraftEditResponse,
+    V2InitRequest,
+)
 
 _CALLBACK = TypeAdapter(V2Callback)
 
@@ -75,6 +80,80 @@ def test_finalize_completed_carries_layout():
              usage=dict(durationMs=1, models={}))
     )
     assert type(parsed).__name__ == "V2FinalizeCompletedCallback"
+
+
+# ---------- #162 draft-edit contract parity (TS v2.ts ↔ pydantic) -------------
+#
+# Field-name + strictness parity with V2DraftEditRequest / V2DraftEditResponse
+# in packages/contracts/src/v2.ts. Mirrors design.md §14 (no TS↔py drift) and
+# invariant 12 (single page slice, no whole tree, no base64).
+
+_DRAFT_PAGE = dict(pageIndex=2, templateId="mag-05", images={"image": "p1"}, texts={"title": "T"})
+_DRAFT_PHOTO = dict(
+    photoId="p1", description="d", tags=[], quality="detail", orientation="landscape",
+    peopleCount="0", scene="outdoor", mood="warm",
+)
+
+
+def _draft_edit_req(**over):
+    base = dict(
+        albumId="a", language="en", page=_DRAFT_PAGE, photos=[_DRAFT_PHOTO],
+        history=[], userMessage="change the title",
+    )
+    base.update(over)
+    return base
+
+
+def test_draft_edit_request_fields_and_strict():
+    req = V2DraftEditRequest.model_validate(_draft_edit_req(focusedPageIndex=2))
+    # exact field set matches the TS zod object.
+    assert set(V2DraftEditRequest.model_fields) == {
+        "albumId", "language", "theme", "page", "photos",
+        "history", "userMessage", "focusedPageIndex",
+    }
+    assert req.focusedPageIndex == 2
+    assert req.page.pageIndex == 2
+
+
+def test_draft_edit_request_rejects_unknown_field():
+    with pytest.raises(ValidationError):
+        V2DraftEditRequest.model_validate({**_draft_edit_req(), "draftTree": {}})
+
+
+def test_draft_edit_request_focused_optional_and_nonnegative():
+    # additive optional int>=0 | null
+    V2DraftEditRequest.model_validate(_draft_edit_req())  # absent ok
+    V2DraftEditRequest.model_validate(_draft_edit_req(focusedPageIndex=None))  # null ok
+    with pytest.raises(ValidationError):
+        V2DraftEditRequest.model_validate(_draft_edit_req(focusedPageIndex=-1))
+
+
+def test_draft_edit_response_act_shape():
+    resp = V2DraftEditResponse.model_validate(
+        dict(
+            kind="act", assistantReply="ok",
+            pageWrite=dict(pageIndex=2, texts={"title": "New"}),
+            usage=dict(durationMs=1, models={}),
+        )
+    )
+    assert set(V2DraftEditResponse.model_fields) == {"kind", "assistantReply", "pageWrite", "usage"}
+    assert resp.kind == "act"
+    assert resp.pageWrite.texts == {"title": "New"}
+
+
+def test_draft_edit_response_talk_omits_pagewrite():
+    resp = V2DraftEditResponse.model_validate(
+        dict(kind="talk", assistantReply="hi", usage=dict(durationMs=1, models={}))
+    )
+    assert resp.kind == "talk"
+    assert resp.pageWrite is None
+
+
+def test_draft_edit_response_rejects_bad_kind():
+    with pytest.raises(ValidationError):
+        V2DraftEditResponse.model_validate(
+            dict(kind="other", assistantReply="x", usage=dict(durationMs=1, models={}))
+        )
 
 
 def test_progress_and_failed_carry_jobkind():

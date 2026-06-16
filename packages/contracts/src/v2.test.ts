@@ -4,6 +4,8 @@ import test from 'node:test';
 import {
   AlbumDraft,
   V2Callback,
+  V2DraftEditRequest,
+  V2DraftEditResponse,
   V2InitRequest,
   V2PhotoAnalysis,
 } from './v2';
@@ -91,4 +93,50 @@ test('init-completed must NOT also carry layout (strict)', () => {
 
 test('AlbumDraft round-trips through strict parse', () => {
   assert.equal(AlbumDraft.safeParse(draftTree).success, true);
+});
+
+// ── #162 draft-edit:单页切片 + talk/act 响应,strict + 不变式 12 ──
+const draftEditReq = {
+  albumId: 'a1',
+  language: 'en',
+  page: { pageIndex: 2, templateId: 'mag-05', images: { image: 'p1' }, texts: { title: 'T' } },
+  photos: [baseAnalysis],
+  history: [],
+  userMessage: 'change the title',
+  focusedPageIndex: 2,
+};
+
+test('V2DraftEditRequest accepts a single-page slice', () => {
+  assert.equal(V2DraftEditRequest.safeParse(draftEditReq).success, true);
+});
+
+test('V2DraftEditRequest focusedPageIndex is optional + nonnegative', () => {
+  const { focusedPageIndex, ...noFocus } = draftEditReq;
+  void focusedPageIndex;
+  assert.equal(V2DraftEditRequest.safeParse(noFocus).success, true);
+  assert.equal(
+    V2DraftEditRequest.safeParse({ ...draftEditReq, focusedPageIndex: -1 }).success,
+    false,
+  );
+});
+
+test('V2DraftEditRequest rejects a whole draft tree (invariant 12)', () => {
+  assert.equal(
+    V2DraftEditRequest.safeParse({ ...draftEditReq, draftTree }).success,
+    false,
+  );
+});
+
+test('V2DraftEditResponse act carries pageWrite, talk omits it', () => {
+  const act = {
+    kind: 'act',
+    assistantReply: 'ok',
+    pageWrite: { pageIndex: 2, texts: { title: 'New' } },
+    usage: { durationMs: 1, models: {} },
+  };
+  assert.equal(V2DraftEditResponse.safeParse(act).success, true);
+  const talk = { kind: 'talk', assistantReply: 'hi', usage: { durationMs: 1, models: {} } };
+  assert.equal(V2DraftEditResponse.safeParse(talk).success, true);
+  const badKind = { ...talk, kind: 'other' };
+  assert.equal(V2DraftEditResponse.safeParse(badKind).success, false);
 });

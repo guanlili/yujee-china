@@ -341,6 +341,51 @@ class V2EditResponse(_Strict):
     usage: Usage
 
 
+# ---------- draft-edit (#162) -------------------------------------------------
+# The editor's draft-period turn: talk (opinions/questions) and act (write one
+# page's copy) are PHYSICALLY separated via a tool layer. Unlike /v2/album/edit
+# (finalize era; needs a flat layout_json) this operates BEFORE finalize, on a
+# SINGLE skeleton page slice + that page's photos only — no base64, no whole
+# draft tree (invariant 12). `pageWrite` is present iff kind=="act".
+
+
+class V2DraftEditPage(_Strict):
+    """One skeleton page slice the user is editing (the only page sent — invariant
+    12: never the whole draft tree). Same shape as a draft `Page`."""
+
+    pageIndex: int = Field(ge=0)
+    templateId: str = Field(min_length=1)
+    images: dict[str, str]
+    texts: dict[str, str]
+
+
+class V2DraftEditRequest(_Strict):
+    albumId: str = Field(min_length=1)
+    language: Language
+    theme: V2Theme | None = None
+    page: V2DraftEditPage
+    # Only the photos used on `page` (their analysis — pure text, no base64).
+    photos: list[V2PhotoAnalysis] = Field(default_factory=list)
+    history: list[V2ChatTurn] = Field(default_factory=list, max_length=20)
+    userMessage: str = Field(max_length=500)
+    # The page the user selected in the editor; additive on draft-edit only. A
+    # spread is 2 pages (L+R) so this carries the PRECISE single pageIndex.
+    focusedPageIndex: int | None = Field(default=None, ge=0)
+
+
+class V2DraftPageWrite(_Strict):
+    pageIndex: int = Field(ge=0)
+    texts: dict[str, str]
+
+
+class V2DraftEditResponse(_Strict):
+    kind: Literal["talk", "act"]
+    assistantReply: str = Field(min_length=1, max_length=500)
+    # Present iff kind=="act": the clamped copy to apply to the target page.
+    pageWrite: V2DraftPageWrite | None = None
+    usage: Usage
+
+
 # ---------- v2 callback envelope ----------------------------------------------
 # completed has two shapes discriminated by jobKind (NOT event) — P0-1.
 
