@@ -365,7 +365,9 @@ class V2DraftEditRequest(_Strict):
     theme: V2Theme | None = None
     page: V2DraftEditPage
     # Only the photos used on `page` (their analysis — pure text, no base64).
-    photos: list[V2PhotoAnalysis] = Field(default_factory=list)
+    # Required (mirrors TS `photos: z.array(...)`, no default): the Web caller
+    # always sends the page's photos, even if an empty array. TS↔py parity.
+    photos: list[V2PhotoAnalysis]
     history: list[V2ChatTurn] = Field(default_factory=list, max_length=20)
     userMessage: str = Field(max_length=500)
     # The page the user selected in the editor; additive on draft-edit only. A

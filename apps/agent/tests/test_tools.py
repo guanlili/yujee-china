@@ -98,6 +98,17 @@ def test_dispatch_string_arguments_are_parsed():
     assert result.payload["texts"] == {"title": "Hi"}
 
 
+def test_dispatch_unknown_template_writes_nothing():
+    # Fix 3 — defense in depth: an unknown/None template has no authored-slot
+    # allow-list, so model-invented slots must NOT pass through unfiltered. The
+    # write is demoted to talk (None), nothing is written.
+    result = tools.dispatch(
+        _call({"title": "Seaside", "anything": "x"}),
+        ctx=_ctx(template_id="no-such-template"),
+    )
+    assert result is None
+
+
 def test_dispatch_unknown_tool_returns_none():
     call = {"function": {"name": "no_such_tool", "arguments": {"x": 1}}}
     assert tools.dispatch(call, ctx=_ctx()) is None

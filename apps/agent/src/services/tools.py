@@ -173,13 +173,18 @@ def _is_placeholder(slot: str, value: str) -> bool:
     return False
 
 
-def _authored_slot_ids(template_id: str) -> set[str]:
+def _authored_slot_ids(template_id: str) -> set[str] | None:
     """Slots the model may write: every NON-decoration text slot on the template.
     Decoration slots (dates/numbers/labels) are auto-filled, never model-written —
-    same allowed-set chapter-chat's `grounding.page_texts` derives."""
+    same allowed-set chapter-chat's `grounding.page_texts` derives.
+
+    Returns None when the template is UNKNOWN (registry miss) — distinct from a
+    known template that simply has no authored slots (empty set). The handler
+    treats None as "no authored slots at all → write nothing" (defense in depth),
+    instead of letting model-invented slots pass through unfiltered."""
     tpl = registry.get(template_id)
     if not tpl:
-        return set()
+        return None
     return {
         meta["id"]
         for meta in tpl.get("texts", [])
@@ -196,12 +201,17 @@ def _handle_write_page_copy(
       3. clamp to each slot's maxChars via the shared clamp helper;
     Returns a ToolResult, or None when nothing real survives → demote to talk."""
     allowed = _authored_slot_ids(ctx.template_id)
+    # Unknown/None template (registry miss): there is no authored-slot allow-list to
+    # enforce, so do NOT pass model-invented slots through unfiltered. Demote to talk
+    # (write nothing), consistent with degenerate-arg handling (G3, defense in depth).
+    if allowed is None:
+        return None
     real: dict[str, str] = {}
     for slot, value in args.slots.items():
         if _is_placeholder(slot, value):
             continue
-        # Only authored slots on THIS page's template (if the template is known).
-        if allowed and slot not in allowed:
+        # Only authored slots on THIS page's template.
+        if slot not in allowed:
             continue
         real[slot] = value.strip()
 

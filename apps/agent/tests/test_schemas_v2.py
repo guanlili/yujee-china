@@ -120,6 +120,26 @@ def test_draft_edit_request_rejects_unknown_field():
         V2DraftEditRequest.model_validate({**_draft_edit_req(), "draftTree": {}})
 
 
+def test_draft_edit_request_rejects_unknown_key_inside_page():
+    # Fix 1 — `page` is V2DraftEditPage(_Strict); a stray key INSIDE page is
+    # rejected, never stripped. The TS `page` slice is now `.strict()` too, so
+    # both sides reject `page.bleed` symmetrically (TS↔py parity, design.md §14).
+    bad_page = {**_DRAFT_PAGE, "bleed": True}
+    with pytest.raises(ValidationError):
+        V2DraftEditRequest.model_validate(_draft_edit_req(page=bad_page))
+
+
+def test_draft_edit_request_requires_photos():
+    # Fix 2 — `photos` is required on BOTH sides (no py default_factory, no TS
+    # default): omitting it is rejected; an empty list is accepted.
+    no_photos = _draft_edit_req()
+    no_photos.pop("photos")
+    with pytest.raises(ValidationError):
+        V2DraftEditRequest.model_validate(no_photos)
+    # empty list is a valid "this page uses no photos" payload.
+    V2DraftEditRequest.model_validate(_draft_edit_req(photos=[]))
+
+
 def test_draft_edit_request_focused_optional_and_nonnegative():
     # additive optional int>=0 | null
     V2DraftEditRequest.model_validate(_draft_edit_req())  # absent ok

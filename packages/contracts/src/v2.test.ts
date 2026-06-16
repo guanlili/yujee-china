@@ -127,6 +127,32 @@ test('V2DraftEditRequest rejects a whole draft tree (invariant 12)', () => {
   );
 });
 
+// Fix 1 — `page` is a strict slice (mirrors py V2DraftEditPage extra='forbid'):
+// a stray unknown key INSIDE `page` must be rejected, not silently accepted.
+test('V2DraftEditRequest rejects an unknown key inside page (TS↔py strict parity)', () => {
+  assert.equal(
+    V2DraftEditRequest.safeParse({
+      ...draftEditReq,
+      page: { ...draftEditReq.page, bleed: true },
+    }).success,
+    false,
+    'page must be strict — extra keys rejected, mirroring py V2DraftEditPage',
+  );
+});
+
+// Fix 2 — `photos` is REQUIRED on both sides (Web always sends it, even empty []):
+// omitting it must be rejected (no TS default), an empty array must pass.
+test('V2DraftEditRequest requires photos (omitting rejected, empty [] accepted)', () => {
+  const { photos, ...noPhotos } = draftEditReq;
+  void photos;
+  assert.equal(V2DraftEditRequest.safeParse(noPhotos).success, false, 'photos is required');
+  assert.equal(
+    V2DraftEditRequest.safeParse({ ...draftEditReq, photos: [] }).success,
+    true,
+    'empty photos array is valid',
+  );
+});
+
 test('V2DraftEditResponse act carries pageWrite, talk omits it', () => {
   const act = {
     kind: 'act',

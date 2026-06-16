@@ -399,13 +399,26 @@ export type V2EditResponse = z.infer<typeof V2EditResponse>;
 // 与 /v2/album/edit(finalize 期、需扁平 layout_json)不同:本端点在 finalize 之前、
 // 草稿期 layout_json==null 时工作,且只送「单页骨架切片 + 该页照片」——
 // 不送 base64、不送整棵草稿树(不变式 12)。
+// 草稿期单页切片:与共享 `Page` 同形,但 `.strict()` —— 与 py `V2DraftEditPage(_Strict)`
+// 对称(TS↔py parity,design.md §14)。不直接 `.strict()` 共享 `Page`:它被 chapter/
+// basePages/add 等多处复用,就地收紧会波及无关 consumer。故这里专给 draft-edit 立一个
+// 严格副本,拒 `page` 内的杂散键(镜像 py V2DraftEditPage 的 extra='forbid')。
+const V2DraftEditPage = z
+  .object({
+    pageIndex: z.number().int().nonnegative(),
+    templateId: z.string().min(1),
+    images: z.record(z.string(), z.string()),
+    texts: z.record(z.string(), z.string()),
+  })
+  .strict();
+
 export const V2DraftEditRequest = z
   .object({
     albumId: z.string().min(1),
     language: V2Language,
     theme: V2Theme.optional(), // 全局基调约束(主题先行)
-    page: Page, // 用户正在编辑的单页骨架切片(仅此一页 —— 不变式 12)
-    photos: z.array(V2PhotoAnalysis), // 仅该页用到的照片 analysis(纯文本,无 base64)
+    page: V2DraftEditPage, // 用户正在编辑的单页骨架切片(仅此一页 —— 不变式 12;strict)
+    photos: z.array(V2PhotoAnalysis), // 仅该页用到的照片 analysis(纯文本,无 base64);required,Web 恒送(可空数组)
     history: z.array(V2ChatTurn).max(20), // 页/章作用域,≤20
     userMessage: z.string().max(500),
     // 用户在编辑器里选中的那一页:跨页(L+R 共 2 页)时由它锁定精确的单页 pageIndex。
