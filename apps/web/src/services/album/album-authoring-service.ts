@@ -11,7 +11,10 @@ import {
   type V2ChapterChatRequest,
   type V2ChapterChatResponse,
   type V2DraftEditRequest,
+  type V2InspectRequest,
+  type V2InspectResponse,
   type V2PhotoAnalysis,
+  type ImagePos as ImagePosT,
 } from '@yujee/contracts';
 import type { Page } from '@yujee/contracts';
 
@@ -57,6 +60,10 @@ type LocatedPage = {
   // Returns a new AlbumDraft with this page's texts replaced (slot-scoped merge
   // done by the caller); all other pages are the same object references.
   applyTexts: (texts: Record<string, string>) => AlbumDraft;
+  // #165 Phase 3: returns a new AlbumDraft with this page's imagePos map replaced
+  // (the caller merges {imageId:{x,y,scale}} into the page's existing overrides);
+  // all other pages keep their object references (single-page write, invariant 12).
+  applyImagePos: (imagePos: Record<string, ImagePosT>) => AlbumDraft;
 };
 
 function locatePage(draft: AlbumDraft, flatIndex: number): LocatedPage | null {
@@ -69,6 +76,10 @@ function locatePage(draft: AlbumDraft, flatIndex: number): LocatedPage | null {
       applyTexts: (texts) => ({
         ...draft,
         basePages: { ...draft.basePages, cover: { ...draft.basePages.cover, texts } },
+      }),
+      applyImagePos: (imagePos) => ({
+        ...draft,
+        basePages: { ...draft.basePages, cover: { ...draft.basePages.cover, imagePos } },
       }),
     };
   }
@@ -84,6 +95,10 @@ function locatePage(draft: AlbumDraft, flatIndex: number): LocatedPage | null {
           ...draft,
           basePages: { ...draft.basePages, toc: { ...toc, texts } },
         }),
+        applyImagePos: (imagePos) => ({
+          ...draft,
+          basePages: { ...draft.basePages, toc: { ...toc, imagePos } },
+        }),
       };
     }
     cursor += 1;
@@ -94,16 +109,18 @@ function locatePage(draft: AlbumDraft, flatIndex: number): LocatedPage | null {
     for (let pi = 0; pi < chapter.pages.length; pi++) {
       if (flatIndex === cursor) {
         const page = chapter.pages[pi]!;
+        const replacePage = (next: Page): AlbumDraft => {
+          const nextPages = chapter.pages.slice();
+          nextPages[pi] = next;
+          const nextChapters = draft.chapters.slice();
+          nextChapters[ci] = { ...chapter, pages: nextPages };
+          return { ...draft, chapters: nextChapters };
+        };
         return {
           page,
           chapterId: chapter.chapterId,
-          applyTexts: (texts) => {
-            const nextPages = chapter.pages.slice();
-            nextPages[pi] = { ...page, texts };
-            const nextChapters = draft.chapters.slice();
-            nextChapters[ci] = { ...chapter, pages: nextPages };
-            return { ...draft, chapters: nextChapters };
-          },
+          applyTexts: (texts) => replacePage({ ...page, texts }),
+          applyImagePos: (imagePos) => replacePage({ ...page, imagePos }),
         };
       }
       cursor += 1;
@@ -117,6 +134,10 @@ function locatePage(draft: AlbumDraft, flatIndex: number): LocatedPage | null {
       applyTexts: (texts) => ({
         ...draft,
         basePages: { ...draft.basePages, ending: { ...draft.basePages.ending, texts } },
+      }),
+      applyImagePos: (imagePos) => ({
+        ...draft,
+        basePages: { ...draft.basePages, ending: { ...draft.basePages.ending, imagePos } },
       }),
     };
   }
@@ -355,11 +376,20 @@ export const albumAuthoringService = {
     albumId: string,
     input: { pageIndex: number; userMessage: string },
   ): Promise<{
-    kind: 'talk' | 'act';
+    kind: 'talk' | 'act' | 'inspect';
     assistantReply: string;
-    // Present iff kind==='act' — the page that changed + its full merged texts, so
-    // the browser can repaint that one page without a refetch.
+    // Present iff kind==='act' via write_page_copy — the page that changed + its
+    // full merged texts, so the browser can repaint that one page without a refetch.
     pageWrite?: { pageIndex: number; texts: Record<string, string> };
+    // Present iff kind==='act' via adjust_image_position (#165 Phase 3) — the single
+    // per-image position/scale to fold into Page.imagePos[imageId]. Already persisted
+    // into draft_json server-side here; the browser mirrors it locally + repaints.
+    imagePosWrite?: { pageIndex: number; imageId: string; x: number; y: number; scale: number };
+    // Present iff kind==='inspect' (#165 Phase 3) — the model wants to SEE the page.
+    // The browser screenshots that page → /inspect-render → diagnosis → re-issues
+    // draft-edit. No draft mutation on inspect; we don't even write messages (the
+    // turn isn't done — the follow-up draft-edit records it).
+    inspectRequest?: { pageIndex: number };
   }> {
     const { draft } = await loadDraftAlbum(userId, albumId);
 
@@ -407,6 +437,59 @@ export const albumAuthoringService = {
     };
 
     const result = await agentClient.draftEditV2(payload);
+
+    // inspect (#165 Phase 3): the model wants to SEE the rendered page before it can
+    // judge a crop. We DON'T mutate the draft or write messages here — the turn is
+    // unfinished: the browser screenshots the page, hits /inspect-render for a
+    // diagnosis, then re-issues draft-edit (which carries the diagnosis as context).
+    // That follow-up turn is what records the conversation + any imagePosWrite.
+    if (result.kind === 'inspect' && result.inspectRequest) {
+      return {
+        kind: 'inspect',
+        assistantReply: result.assistantReply,
+        inspectRequest: { pageIndex: result.inspectRequest.pageIndex },
+      };
+    }
+
+    if (result.kind === 'act' && result.imagePosWrite) {
+      // adjust_image_position (#165 Phase 3): fold ONE per-image {x,y,scale} into
+      // this page's imagePos map (slot-scoped, keep every other slot), persist into
+      // draft_json, and record the conversation. The browser mirrors locally.
+      const w = result.imagePosWrite;
+      const mergedPos: Record<string, ImagePosT> = {
+        ...(located.page.imagePos ?? {}),
+        [w.imageId]: { x: w.x, y: w.y, scale: w.scale },
+      };
+      const next = located.applyImagePos(mergedPos);
+
+      await db.transaction(async (tx) => {
+        await albumMessageRepo.create(tx, {
+          albumId,
+          userId,
+          role: 'user',
+          content: input.userMessage,
+          ...(located.chapterId ? { chapterId: located.chapterId } : {}),
+        });
+        await albumMessageRepo.create(tx, {
+          albumId,
+          userId,
+          role: 'assistant',
+          content: result.assistantReply,
+          ...(located.chapterId ? { chapterId: located.chapterId } : {}),
+          // Record the applied position write in the browser-patch shape (imagePosJson),
+          // so the message thread mirrors what chat-edit stores for an imagePos change.
+          layoutPatch: [{ pageIndex: w.pageIndex, imagePosJson: { [w.imageId]: { x: w.x, y: w.y, scale: w.scale } } }],
+          usage: (result.usage as Record<string, unknown> | null) ?? null,
+        });
+        await albumRepo.update(tx, albumId, { draftJson: next });
+      });
+
+      return {
+        kind: 'act',
+        assistantReply: result.assistantReply,
+        imagePosWrite: { pageIndex: w.pageIndex, imageId: w.imageId, x: w.x, y: w.y, scale: w.scale },
+      };
+    }
 
     if (result.kind === 'act' && result.pageWrite) {
       // Hoist out of the async tx closure so the narrowing survives (TS widens
@@ -470,6 +553,61 @@ export const albumAuthoringService = {
     });
 
     return { kind: 'talk', assistantReply: result.assistantReply };
+  },
+
+  // POST /api/v2/albums/[uuid]/inspect-render — synchronous (#165 Phase 3). After
+  // draft-edit returns kind:'inspect', the browser renders+screenshots that one
+  // page and posts it here. We slice ONLY that page + its photo analyses (exactly
+  // like submitDraftEditV2 — invariant 12, no whole tree), forward the screenshot
+  // to the agent's ONE vision call (/v2/album/inspect-page), and return its
+  // diagnosis + reply. The screenshot is the only new base64 channel; it goes
+  // straight into the upstream vision request and is NEVER persisted, logged, or
+  // written to draft_json (invariant 1/2, same posture as init vision). This method
+  // does NOT mutate draft_json or write album_messages — the follow-up draft-edit
+  // (which the browser issues with the diagnosis as context) records the turn.
+  async submitInspectRenderV2(
+    userId: string,
+    albumId: string,
+    input: { pageIndex: number; userMessage: string; screenshot: string },
+  ): Promise<{
+    diagnosis: V2InspectResponse['diagnosis'];
+    assistantReply: string;
+  }> {
+    const { draft } = await loadDraftAlbum(userId, albumId);
+
+    const located = locatePage(draft, input.pageIndex);
+    if (!located) throw ERRORS.VALIDATION_FAILED('page not found in draft');
+
+    // Same single-page photo-analysis slice as draft-edit: only the photoIds this
+    // page references, resolved to V2PhotoAnalysis from the pool. Pure text, no
+    // base64 beyond the screenshot itself.
+    const analysisByPhotoId = new Map(draft.photoPool.map((p) => [p.photoId, p.analysis]));
+    const photoIds = Object.values(located.page.images).filter((id): id is string => !!id);
+    const photos: V2PhotoAnalysis[] = [];
+    const seen = new Set<string>();
+    for (const id of photoIds) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const a = analysisByPhotoId.get(id);
+      if (a) photos.push(a);
+    }
+
+    const payload: V2InspectRequest = {
+      albumId,
+      language: draft.meta.language,
+      page: {
+        pageIndex: input.pageIndex,
+        templateId: located.page.templateId,
+        images: located.page.images,
+        texts: located.page.texts,
+      },
+      photos,
+      screenshot: input.screenshot,
+      userMessage: input.userMessage,
+    };
+
+    const result = await agentClient.inspectRenderV2(payload);
+    return { diagnosis: result.diagnosis, assistantReply: result.assistantReply };
   },
 };
 

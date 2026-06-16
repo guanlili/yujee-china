@@ -398,13 +398,12 @@ def _handle_adjust_image_position(
     """Map dx/dy/scale → an absolute ImagePos {x,y,scale} for ONE real slot.
 
     Demotes to None (→ talk, G3) when the slot is off-page/invented, or the call
-    is a no-op (dx==dy==0 and scale==1.0). Clamps dx,dy∈[-50,50], scale∈[1,2],
-    then x=clamp(50+dx,0,100), y=clamp(50+dy,0,100) (architect-ratified)."""
+    is effectively a no-op. Clamps dx,dy∈[-50,50], scale∈[1,2] FIRST, then
+    x=clamp(50+dx,0,100), y=clamp(50+dy,0,100) (architect-ratified), and only
+    THEN tests for a no-op: a sub-range scale (e.g. 0.5) with dx==dy==0 clamps
+    up to {50,50,1.0} and must demote, not emit an inert act (#165 Phase-3 D2)."""
     # Off-page / invented slot → never write to it (G3).
     if args.imageId not in ctx.image_slots:
-        return None
-    # No-op call → nothing to do, demote to talk (G1 says never call it; G3 enforces).
-    if args.dx == 0 and args.dy == 0 and args.scale == 1.0:
         return None
 
     dx = _clamp(args.dx, -50.0, 50.0)
@@ -412,6 +411,12 @@ def _handle_adjust_image_position(
     scale = _clamp(args.scale, 1.0, 2.0)
     x = _clamp(50.0 + dx, 0.0, 100.0)
     y = _clamp(50.0 + dy, 0.0, 100.0)
+
+    # No-op AFTER clamping → nothing actually changes from the 50/50/1.0 default,
+    # so demote to talk (G1 says never call it; G3 enforces). Checking pre-clamp
+    # would let a sub-range scale (0.5) sneak past and emit an inert {50,50,1.0}.
+    if x == 50.0 and y == 50.0 and scale == 1.0:
+        return None
 
     return ToolResult(
         tool="adjust_image_position",

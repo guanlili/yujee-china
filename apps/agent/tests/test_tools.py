@@ -240,6 +240,14 @@ def test_adjust_image_position_noop_args_demote_to_none():
     assert result is None
 
 
+def test_adjust_image_position_subrange_scale_noop_demotes_to_none():
+    # #165 Phase-3 D2: a sub-range scale (0.5) with zero shift clamps UP to
+    # {50,50,1.0}. The no-op check must run AFTER clamping, else this slips past
+    # the pre-clamp gate (scale 0.5 != 1.0) and emits an inert {50,50,1.0} act.
+    result = tools.dispatch(_adjust_call(dx=0, dy=0, scale=0.5), ctx=_draft_ctx())
+    assert result is None
+
+
 def test_adjust_image_position_scale_only_is_not_noop():
     # A pure zoom (scale!=1) with no shift is still a real adjust.
     result = tools.dispatch(_adjust_call(dx=0, dy=0, scale=1.3), ctx=_draft_ctx())

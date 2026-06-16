@@ -26,6 +26,7 @@ import { buildSpreads, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
 import { PAGE } from '../templates/constants';
 import { clampZoom, paintDecision } from './zoom-util';
+import { runInspectAdjustLoop } from './draft-edit-orchestrator';
 import {
   applyPatchToPages,
   extractPhotoIds,
@@ -36,6 +37,8 @@ import {
 import {
   fetchDraftSkeleton,
   postDraftEdit,
+  postInspectRender,
+  type DraftEditResult,
   type DraftSkeleton,
 } from '@/lib/album/authoring-client';
 import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/client';
@@ -667,6 +670,54 @@ function EditorBook({
       repaintBook();
     }
 
+    // ── #165 Phase 3: rasterize the rendered page for the vision diagnosis ──
+    // PRIVACY (invariant 1/2): the screenshot contains the user's original photos
+    // (already resolved as blob: URLs in this browser) and is sent to the vision
+    // model — exactly the same posture as init vision: it is NOT logged, NOT stored,
+    // NOT written to draft_json; it lives only in the inspect-render request body.
+    // We render the page off-screen at full 794×1123, html2canvas it, then downscale
+    // to ~840px wide and JPEG q0.8 to keep the data URI small.
+    async function capturePageRender(pageIndex: number): Promise<string> {
+      // Test seam: jsdom can't run html2canvas, so tests install a stub here.
+      const stub = (root as unknown as { __capturePageRenderStub?: (i: number) => Promise<string> })
+        .__capturePageRenderStub;
+      if (stub) return stub(pageIndex);
+
+      const page = pageByIndex(pageIndex);
+      if (!page) throw new Error(`page ${pageIndex} not in book`);
+      // Render the page at full resolution into a detached, off-screen host (so the
+      // capture is crisp and independent of the current zoom/flip state).
+      const host = document.createElement('div');
+      host.style.cssText =
+        `position:fixed;left:-99999px;top:0;width:${PAGE.width}px;height:${PAGE.height}px;` +
+        `overflow:hidden;background:#fff`;
+      host.innerHTML = faceInner(page);
+      document.body.appendChild(host);
+      try {
+        const html2canvas = (await import('html2canvas')).default;
+        const canvas = await html2canvas(host, {
+          width: PAGE.width,
+          height: PAGE.height,
+          backgroundColor: '#ffffff',
+          scale: 1,
+          useCORS: true,
+          logging: false,
+        });
+        // Downscale to ~840px wide (payload stays small; plenty for a crop read).
+        const targetW = Math.min(840, canvas.width);
+        const targetH = Math.round((canvas.height / canvas.width) * targetW);
+        const out = document.createElement('canvas');
+        out.width = targetW;
+        out.height = targetH;
+        const ctx = out.getContext('2d');
+        if (!ctx) throw new Error('2d context unavailable');
+        ctx.drawImage(canvas, 0, 0, targetW, targetH);
+        return out.toDataURL('image/jpeg', 0.8);
+      } finally {
+        host.remove();
+      }
+    }
+
     /* ─── apply language ─── */
     function setLang(lang: string) {
       if (!i18n[lang]) return;
@@ -1186,22 +1237,78 @@ function EditorBook({
       const [lp, rp] = spreadPages(currentCh);
       return (lp ?? rp)?.pageIndex ?? 0;
     }
+    // Apply a kind:'act' write locally (the server already persisted it into
+    // draft_json — both pageWrite copy edits and imagePosWrite position/scale moves
+    // land in draft_json server-side; the browser only mirrors + repaints so a
+    // reload re-reads the same draft). Returns true if anything was applied.
+    function applyDraftAct(r: DraftEditResult): boolean {
+      if (r.pageWrite) {
+        const page = pageByIndex(r.pageWrite.pageIndex);
+        if (page) {
+          page.textsJson = { ...page.textsJson, ...r.pageWrite.texts };
+          repaintBook();
+          return true;
+        }
+      }
+      if (r.imagePosWrite) {
+        const w = r.imagePosWrite;
+        const page = pageByIndex(w.pageIndex);
+        if (page) {
+          // Fold the single per-image {x,y,scale} into imagePosJson[imageId] (the
+          // render layer reads it; mirrors the server-persisted draft_json).
+          page.imagePosJson = {
+            ...(page.imagePosJson ?? {}),
+            [w.imageId]: { x: w.x, y: w.y, scale: w.scale },
+          };
+          repaintBook();
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // #162/#165 draft-edit turn — an inspect→adjust orchestration loop. The control
+    // flow (inspect loop, 3-round cap, graceful degradations) lives in the pure,
+    // unit-tested runInspectAdjustLoop; here we only wire the deps and apply the
+    // terminal result (repaint + reply). On a kind:'inspect' the loop screenshots
+    // the page → /inspect-render → threads the diagnosis back into the next
+    // /draft-edit so the model calls adjust_image_position; the follow-up act
+    // (imagePosWrite) then applies as a normal act.
     async function runDraftEditTurn(message: string) {
       lastUserMessage = message;
       const host = appendThinkingShell();
+      const focusIndex = draftFocusPageIndex();
+      // Mark auth errors so the orchestrator rethrows them (it degrades only the
+      // inspect-render path to talk — it must not swallow a login redirect).
+      const markAuth = (e: unknown): never => {
+        if (e instanceof UnauthorizedError) (e as unknown as { isAuthError: boolean }).isAuthError = true;
+        throw e;
+      };
       try {
-        const r = await postDraftEdit(albumId, draftFocusPageIndex(), message.slice(0, MESSAGE_MAX));
+        const r = await runInspectAdjustLoop(focusIndex, message, {
+          postDraftEdit: (pi, msg) => postDraftEdit(albumId, pi, msg).catch(markAuth),
+          capturePageRender,
+          postInspectRender: (pi, msg, shot) =>
+            postInspectRender(albumId, pi, msg, shot).catch(markAuth),
+          capReply: aT(
+            '我已经尽力调整了——如果还有点偏，告诉我往哪个方向移。',
+            "I've adjusted it as best I can — tell me which direction if it's still off.",
+          ),
+          inspectFailReply: aT(
+            '我暂时没法看清这一页，你可以直接告诉我把图往哪个方向移、放大还是缩小。',
+            "I couldn't get a clear look at this page — just tell me which way to move the photo, or to zoom in/out.",
+          ),
+          // Show the multi-second vision round as a live "thinking" state again.
+          onVisionRound: () => {
+            settleThinking(host, 'thinking');
+            host.querySelector('.thinking-block')?.classList.add('active');
+          },
+          messageMax: MESSAGE_MAX,
+        });
+
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(host, r.assistantReply);
-        if (r.kind === 'act' && r.pageWrite) {
-          // Apply the single-page rewrite to the in-memory page + repaint it. The
-          // server already merged + persisted draft_json; this mirrors it locally.
-          const page = pageByIndex(r.pageWrite.pageIndex);
-          if (page) {
-            page.textsJson = { ...page.textsJson, ...r.pageWrite.texts };
-            repaintBook();
-          }
-        }
+        if (r.kind === 'act') applyDraftAct(r);
         appendTime(host);
       } catch (e) {
         if (authErr(host, e)) return;

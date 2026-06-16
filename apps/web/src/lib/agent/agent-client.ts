@@ -8,6 +8,7 @@ import {
   V2ChapterChatResponse,
   V2EditResponse,
   V2DraftEditResponse,
+  V2InspectResponse,
 } from '@yujee/contracts';
 import type {
   V2InitRequest,
@@ -17,6 +18,7 @@ import type {
   V2ChapterChatRequest,
   V2EditRequest,
   V2DraftEditRequest,
+  V2InspectRequest,
 } from '@yujee/contracts';
 
 export type AgentPhotoInput = {
@@ -34,6 +36,10 @@ export type LayoutPatchEntry = {
   templateId?: string;
   images?: Record<string, string>;
   texts?: Record<string, string>;
+  // Per-slot position/scale overrides (#165). Mirrors @yujee/contracts
+  // LayoutPatchEntry.imagePos — without it the finalize-era chat-edit path
+  // (applyPatch/toBrowserPatch) would silently strip an override (#165 D1).
+  imagePos?: Record<string, { x: number; y: number; scale: number }>;
 };
 
 export const agentClient = {
@@ -159,6 +165,17 @@ export const agentClient = {
   // (assistant reply only) or kind:'act' (+ pageWrite to apply to that page).
   async draftEditV2(payload: V2DraftEditRequest): Promise<V2DraftEditResponse> {
     return postSyncV2('/v2/album/draft-edit', payload, V2DraftEditResponse, {
+      albumId: payload.albumId,
+    });
+  },
+
+  // POST /v2/album/inspect-page — synchronous (#165 Phase 3). After draft-edit
+  // returns kind:'inspect', the browser screenshots the rendered page and posts it
+  // here; the agent runs ONE vision call (doubao-1.6-vision, same model/key as
+  // init) and returns a crop diagnosis + move/zoom suggestion. The `screenshot`
+  // base64 lives only in the request body (invariant 1/2 — not logged/stored).
+  async inspectRenderV2(payload: V2InspectRequest): Promise<V2InspectResponse> {
+    return postSyncV2('/v2/album/inspect-page', payload, V2InspectResponse, {
       albumId: payload.albumId,
     });
   },
