@@ -111,7 +111,13 @@
   z-index:5; pointer-events:none;
 }
 .editor-port .page{
-  flex:1; padding: 5.5% 5.5%;
+  /* #155: NO padding. paintEl injects the full 794×1123 scaled page sized to
+     el.clientWidth/clientHeight (the border-box). Any padding here makes the
+     scaled content start from the content-box top-left while still sized to the
+     border box → the whole page shifts right+down by the padding and overflows
+     (right/bottom clipped by overflow:hidden). The 794×1123 page already carries
+     its own print margins, so the page box must be flush like FlipBook PageFace. */
+  flex:1; padding: 0;
   display:flex; flex-direction:column;
   background: var(--surface);
   position:relative;
@@ -148,7 +154,9 @@
 .editor-port .leaf{
   position:absolute; inset:0;
   background: var(--surface);
-  padding: 5.5%;
+  /* #155: same as .page — the flip-animation leaf also hosts a full 794×1123
+     scaled page sized to its border box, so padding here offsets+clips it too. */
+  padding: 0;
   overflow:hidden;
   backface-visibility: hidden;
 }
