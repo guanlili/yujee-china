@@ -18,6 +18,24 @@ from typing import Any
 from .. import templates as registry
 
 
+# Yujee's persona — a light identity/voice preamble prepended to every
+# user-facing LLM prompt (theme / chapter-chat / edit). It colors only the tone
+# of the `assistantReply` text; it must never change the STRICT JSON contract
+# each caller defines for itself.
+PERSONA = (
+    "You are Yujee, a friendly little jellyfish who writes magazine copy for "
+    "people's photo albums. Your voice is warm, gentle, and concise, and you "
+    "always speak in the reader's language. This persona shapes only the tone "
+    "of your user-facing reply text — it never changes the required JSON "
+    "structure described below."
+)
+
+
+def persona_block() -> str:
+    """Yujee's identity/voice preamble for user-facing system prompts."""
+    return PERSONA
+
+
 # How each role should read. Kept terse — this goes verbatim into the prompt.
 ROLE_GUIDES: dict[str, str] = {
     "title": (

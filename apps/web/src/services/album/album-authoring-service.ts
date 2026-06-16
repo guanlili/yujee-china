@@ -109,6 +109,25 @@ export const albumAuthoringService = {
     };
 
     await db.transaction(async (tx) => {
+      // Persist the conversation turn so it survives a refresh (parity with
+      // chapter-chat). Theme is album-global, so these messages carry NO
+      // chapterId — that keeps them out of every per-chapter history slice
+      // (findRecentByAlbumChapter), while still showing in the main thread.
+      if (input.userMessage) {
+        await albumMessageRepo.create(tx, {
+          albumId,
+          userId,
+          role: 'user',
+          content: input.userMessage,
+        });
+      }
+      await albumMessageRepo.create(tx, {
+        albumId,
+        userId,
+        role: 'assistant',
+        content: result.assistantReply,
+        usage: (result.usage as Record<string, unknown> | null) ?? null,
+      });
       // touch updated_at (albumRepo.update always bumps it) — keeps the draft
       // alive against the 24h expiry sweep (rebuild-tech-plan §12).
       await albumRepo.update(tx, albumId, { draftJson: next });

@@ -95,12 +95,12 @@ test('getDetail: a job that started long ago but just reported progress is NOT s
   try {
     const { album, hold, job } = await runningAlbumWithJob(user.id, 60 * 60 * 1000); // started 1h ago
     // A fresh progress callback refreshes startedAt — the liveness heartbeat.
-    await jobService.handleProgress(job.requestId, 'composing', 80);
+    await jobService.handleProgress(job.requestId, 'skeleton', 80);
 
     const detail = await albumService.getDetail(user.id, album.id);
 
     assert.equal(detail.album.status, 'AGENT_RUNNING'); // NOT swept despite old start
-    assert.deepEqual(detail.generation, { stage: 'composing', progress: 80 });
+    assert.deepEqual(detail.generation, { stage: 'skeleton', progress: 80 });
     const holdAfter = await creditHoldRepo.findById(hold.id);
     assert.equal(holdAfter?.status, 'HOLDING');
   } finally {

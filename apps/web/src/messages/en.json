@@ -212,9 +212,10 @@
       "send": "Send",
       "chatError": "Couldn't reach the editor. Please try again.",
       "stage": {
-        "vision": "AI is looking at your photos…",
-        "writing": "AI is writing your story…",
-        "composing": "AI is laying out the pages…",
+        "vision": "Looking at your photos…",
+        "grouping": "Grouping your moments…",
+        "skeleton": "Laying out the spreads…",
+        "finalize": "Putting the final touches…",
         "starting": "Starting…"
       },
       "stateLoading": "LOADING",

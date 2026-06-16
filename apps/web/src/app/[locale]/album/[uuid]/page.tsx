@@ -68,6 +68,7 @@ export default function AlbumPage({
         detail={detail ?? STUB_DETAIL(uuid)}
         locale={locale}
         mode="building"
+        generation={generation}
       />
     );
   }

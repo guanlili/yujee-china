@@ -64,14 +64,21 @@ function hasTheme(theme: DraftTheme | null): boolean {
   return Object.values(theme).some((v) => typeof v === 'string' && v.trim().length > 0);
 }
 
+// Generation progress from the album poll (use-album-poll); only meaningful in
+// building mode, where stage drives the loading-chat copy. Optional so the other
+// (authoring/editing) call sites are unaffected.
+export type GenerationProgress = { stage: string | null; progress: number } | null;
+
 export function EditorPort({
   detail,
   locale,
   mode = 'editing',
+  generation = null,
 }: {
   detail: AlbumDetail;
   locale: Locale;
   mode?: EditorMode;
+  generation?: GenerationProgress;
 }) {
   // building: nothing to render yet — same editor chrome (EditorBook) in its
   // building state: cover skeleton + unified loading chat. The poll in page.tsx
@@ -85,6 +92,7 @@ export function EditorPort({
         initialPages={[]}
         draftChapters={null}
         initialImageUrls={{}}
+        generation={generation}
       />
     );
   }
@@ -105,6 +113,26 @@ export function EditorPort({
       initialImageUrls={{}}
     />
   );
+}
+
+// Human-readable copy for the live generation stage shown in the building
+// loading chat. Falls back to the generic "tidying up" line when the stage is
+// null/unknown (preserves the prior static behaviour). Uses the same local
+// dictionary convention as the rest of EditorPort (no messages/*.json).
+function buildingStageLabel(stage: string | null | undefined, locale: Locale): string {
+  const zh = locale === 'zh';
+  switch (stage) {
+    case 'vision':
+      return zh ? '正在分析你的照片…' : 'Looking at your photos…';
+    case 'grouping':
+      return zh ? '正在整理这些瞬间…' : 'Grouping your moments…';
+    case 'skeleton':
+      return zh ? '正在编排版式…' : 'Laying out the spreads…';
+    case 'finalize':
+      return zh ? '正在生成终稿…' : 'Putting the final touches…';
+    default:
+      return zh ? '正在收尾…' : 'Tidying up…';
+  }
 }
 
 // building: a single magazine-cover page rendered as a skeleton screen (shimmer +
@@ -235,6 +263,7 @@ function EditorBook({
   initialPages,
   draftChapters,
   initialImageUrls,
+  generation = null,
 }: {
   detail: AlbumDetail;
   locale: Locale;
@@ -242,6 +271,7 @@ function EditorBook({
   initialPages: EditorPage[];
   draftChapters: DraftSkeleton | null;
   initialImageUrls: Record<string, string>;
+  generation?: GenerationProgress;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   // building: the album is still generating (AGENT_RUNNING) — same editor chrome,
@@ -1846,6 +1876,15 @@ function EditorBook({
       // surface anymore (showFinishBar/hideFinishBar are now no-ops).
       $('.authoring-finish-bar')?.remove();
 
+      // Lead with Yujee's self-intro so both opening branches start with it,
+      // before the task message.
+      appendAiText(
+        aT(
+          '我是 Yujee，你的杂志制作小助手。文案不满意，随时可以调。',
+          "Hi, I'm Yujee — your magazine-making assistant. Don't love the wording? Tweak it anytime.",
+        ),
+      );
+
       // Drive the opening of the 3-state flow.
       if (draftSkel && hasTheme(draftSkel.theme)) {
         // Theme already fixed (the user wrote a prompt at creation) → skip straight
@@ -2173,7 +2212,7 @@ function EditorBook({
                 <div className="msg ai max-w-full">
                   <div className="thinking-block active">
                     <img className="think-jelly" src="/jellyfish-loop.png" alt="" />
-                    <span className="thinking-label">{locale === 'zh' ? '正在加载…' : 'Loading…'}</span>
+                    <span className="thinking-label">{buildingStageLabel(generation?.stage, locale)}</span>
                     <span className="thinking-dots"><span /><span /><span /></span>
                   </div>
                 </div>

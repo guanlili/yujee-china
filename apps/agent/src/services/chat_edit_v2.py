@@ -32,6 +32,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from . import writing_guides
 from ..logging_config import get_logger
 from ..schemas import Page, PhotoAnalysis
 from ..schemas_v2 import (
@@ -62,6 +63,7 @@ class V2EditError(Exception):
 
 def _system_prompt() -> str:
     return (
+        writing_guides.persona_block() + "\n\n"
         "You are the art director editing a finalized memoir photo album in "
         "response to a user message. The album is a FLAT layout: a list of "
         "pages, each with a templateId, images (slotKey -> photoId) and texts "

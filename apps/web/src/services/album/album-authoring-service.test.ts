@@ -148,6 +148,21 @@ test('theme → merges agent theme into draft_json.meta.theme + cover', async (t
     assert.equal(draft.basePages.cover.images.hero, 'p1');
     // …but are NOT persisted into draft_json (invariant 12 — display-only).
     assert.equal('themeOptions' in (draft.meta as Record<string, unknown>), false);
+
+    // #151: the turn is persisted as album_messages (parity with chapter-chat),
+    // but theme is album-global so these rows carry NO chapter_id. user message
+    // only because a userMessage was supplied; assistant always, carrying usage.
+    const all = await albumMessageRepo.findByAlbum(albumId);
+    assert.equal(all.length, 2);
+    assert.ok(all.every((m) => m.chapterId === null), 'theme messages must have null chapter_id');
+    const themeUser = all.find((m) => m.role === 'user');
+    const themeAsst = all.find((m) => m.role === 'assistant');
+    assert.equal(themeUser?.content, 'make it warm');
+    assert.equal(themeAsst?.content, 'How about a nostalgic vintage feel?');
+    assert.ok(themeAsst?.usage, 'assistant theme message carries usage');
+    // null chapter_id → invisible to the per-chapter history slice, so theme
+    // chatter never pollutes any chapter-chat context.
+    assert.equal((await albumMessageRepo.findRecentByAlbumChapter(albumId, 'ch1', 20)).length, 0);
   } finally {
     await cleanupUser(user.id);
   }

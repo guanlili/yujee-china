@@ -50,7 +50,7 @@ def build_messages(req: V2ThemeRequest) -> list[dict[str, str]]:
     # offer 2-3 candidates (editor.html themeAsk + themeOpt1-3) so the front-end
     # can render pickable options. Once a theme is set, just refine it.
     proposing = req.currentTheme is None
-    system = (
+    system = writing_guides.persona_block() + "\n\n" + (
         "You are setting the global creative direction for a memoir photo album. "
         "Return STRICT JSON only, matching V2ThemeResponse: "
         '{"theme":{"subject":string,"occasion"?:string,"timeframe"?:string,'

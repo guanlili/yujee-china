@@ -212,9 +212,10 @@
       "send": "发送",
       "chatError": "无法连接编辑器,请重试。",
       "stage": {
-        "vision": "AI 正在看你的照片…",
-        "writing": "AI 正在写你的故事…",
-        "composing": "AI 正在排版…",
+        "vision": "正在分析你的照片…",
+        "grouping": "正在整理这些瞬间…",
+        "skeleton": "正在编排版式…",
+        "finalize": "正在生成终稿…",
         "starting": "开始中…"
       },
       "stateLoading": "加载中",

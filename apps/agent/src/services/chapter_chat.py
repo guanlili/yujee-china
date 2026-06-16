@@ -64,7 +64,7 @@ def build_messages(
     """Build a scoped prompt containing only this chapter slice."""
 
     mode = _mode(req, ask_count=ask_count, auto_advance_after=auto_advance_after)
-    system = (
+    system = writing_guides.persona_block() + "\n\n" + (
         "You are helping write one chapter of a memoir photo album. "
         "Return STRICT JSON only, matching V2ChapterChatResponse: "
         '{"assistantReply":string,"chapterBrief"?:{"userWords"?:string,'
