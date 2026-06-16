@@ -142,7 +142,6 @@ export const SAMPLE_DATA: Record<string, TemplateData> = {
   },
   'mag-20': {
     image1: SAMPLE_LANDSCAPE,
-    title: 'A Quiet Record',
   },
   p01: {
     image: SAMPLE_PORTRAIT,

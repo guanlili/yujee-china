@@ -17,7 +17,7 @@ export function WebP01({ data }: TemplateRenderProps) {
       <WebImage
         src={d.image}
         placeholder="1:1"
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 320, objectFit: 'cover' }}
+        style={{ position: 'absolute', top: 0, bottom: 320, left: '50%', width: 794, marginLeft: -397, objectFit: 'cover' }}
       />
       <div
         style={{
@@ -30,8 +30,7 @@ export function WebP01({ data }: TemplateRenderProps) {
           alignItems: 'baseline',
           fontFamily: WEB_FONTS.mono,
           letterSpacing: '0.3em',
-          color: COLORS.paper70,
-          mixBlendMode: 'difference',
+          color: '#ffffff',
           fontSize: 14,
         }}
       >
@@ -49,8 +48,7 @@ export function WebP01({ data }: TemplateRenderProps) {
           fontStyle: 'italic',
           fontSize: 100,
           lineHeight: 0.9,
-          color: COLORS.paper92,
-          mixBlendMode: 'difference',
+          color: '#ffffff',
         }}
       >
         {d.vol || '01'}

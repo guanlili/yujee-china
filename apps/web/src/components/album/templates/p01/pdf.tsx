@@ -18,7 +18,7 @@ export function PdfP01({ data }: TemplateRenderProps) {
     <PdfPageShell dark fontFamily={PDF_FONTS.serifCn}>
       <PdfImage
         src={d.image}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 320 }}
+        style={{ position: 'absolute', top: 0, bottom: 320, left: '50%', width: 794, marginLeft: -397 }}
       />
       <View
         style={{
@@ -34,7 +34,7 @@ export function PdfP01({ data }: TemplateRenderProps) {
           style={{
             fontFamily: PDF_FONTS.mono,
             letterSpacing: 4,
-            color: COLORS.paper70,
+            color: '#ffffff',
             fontSize: 14,
           }}
         >
@@ -44,7 +44,7 @@ export function PdfP01({ data }: TemplateRenderProps) {
           style={{
             fontFamily: PDF_FONTS.mono,
             letterSpacing: 4,
-            color: COLORS.paper70,
+            color: '#ffffff',
             fontSize: 14,
           }}
         >
@@ -59,7 +59,7 @@ export function PdfP01({ data }: TemplateRenderProps) {
           fontFamily: PDF_FONTS.serifEn,
           fontStyle: 'italic',
           fontSize: 100,
-          color: COLORS.paper92,
+          color: '#ffffff',
         }}
       >
         {d.vol || '01'}

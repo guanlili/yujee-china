@@ -756,14 +756,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "image1"
       }
     ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "body",
-        "maxChars": 60,
-        "lang": "user"
-      }
-    ]
+    "texts": []
   },
   "p01": {
     "id": "p01",
