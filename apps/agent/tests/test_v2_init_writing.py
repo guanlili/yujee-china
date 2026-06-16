@@ -115,10 +115,14 @@ def test_init_writing_fills_cover_and_all_chapters(real_mode, captured_callbacks
     async def fake_chat(**kwargs):
         messages = kwargs["messages"]
         if _is_theme_prompt(messages):
+            # Subject is grounded: "Opening" is a known cluster label in the mock
+            # material, "days" is lowercase (not a proper-noun candidate), so it
+            # survives the cover scrub verbatim (the scrub only drops UNKNOWN
+            # proper nouns — see test_init_writing_scrubs_invented_proper_nouns_from_cover).
             return _completion(
                 {
-                    "theme": {"subject": "Spring days", "tone": "warm", "style": "warm-film"},
-                    "cover": {"texts": {"title": "Spring days"}},
+                    "theme": {"subject": "Opening days", "tone": "warm", "style": "warm-film"},
+                    "cover": {"texts": {"title": "Opening days"}},
                     "assistantReply": "Set a warm spring theme.",
                 }
             )
@@ -144,10 +148,10 @@ def test_init_writing_fills_cover_and_all_chapters(real_mode, captured_callbacks
     draft = AlbumDraft(**completed[0]["draftTree"])
     # auto theme + cover copy written.
     assert draft.meta.theme is not None
-    assert draft.meta.theme.subject == "Spring days"
+    assert draft.meta.theme.subject == "Opening days"
     # The cover template's heading slot carries the auto-picked subject (slot id
     # depends on the chosen cover template; assert the copy made it in).
-    assert "Spring days" in draft.basePages.cover.texts.values()
+    assert "Opening days" in draft.basePages.cover.texts.values()
     # every chapter generated + carries written page texts.
     assert draft.chapters
     for chapter in draft.chapters:
@@ -203,6 +207,60 @@ def test_init_writing_is_grounded_and_scrubs_invented_proper_nouns(
     )
     for invented in ("Alice", "Ken", "Bjorn", "Kyoto", "Shibuya", "Golden Gate Bridge"):
         assert invented not in all_text, invented
+
+
+def test_init_writing_scrubs_invented_proper_nouns_from_cover(
+    real_mode, captured_callbacks, monkeypatch
+):
+    """MUST-FIX (#161): the cover is the book's most prominent text, but the theme
+    service only length-clamps it. An invented name on the theme subject / cover
+    slots must be scrubbed by the SAME grounding heuristic the chapters use, against
+    the album-wide allowed-noun set. Mock-mode vision yields no real place names, so
+    'Sarah'/'Tuscany' are unknown proper nouns and must NOT survive on the cover."""
+
+    async def fake_chat(**kwargs):
+        messages = kwargs["messages"]
+        if _is_theme_prompt(messages):
+            # Model invents a person + place straight onto the theme subject and
+            # cover title/heading/body — the highest-visibility slots.
+            return _completion(
+                {
+                    "theme": {
+                        "subject": "Sarah in Tuscany",
+                        "tone": "warm",
+                        "style": "warm-film",
+                    },
+                    "cover": {
+                        "texts": {
+                            "title": "Sarah in Tuscany",
+                            "heading": "Sarah in Tuscany",
+                            "body": "A summer with Sarah across Tuscany.",
+                        }
+                    },
+                    "assistantReply": "Set a warm theme.",
+                }
+            )
+        # chapters: grounded fallback only (no pagesTexts).
+        return _completion({"pagesTexts": []})
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_chat)
+    asyncio.run(v2_album._run_init(_req(6)))
+
+    completed = next(c for c in captured_callbacks if c["event"] == "completed")
+    assert not [c for c in captured_callbacks if c["event"] == "failed"], captured_callbacks
+    draft = AlbumDraft(**completed["draftTree"])
+
+    # The invented person/place must be absent from BOTH the theme subject and the
+    # cover texts (title/heading/body), not just the chapter pages.
+    assert draft.meta.theme is not None
+    subject = draft.meta.theme.subject or ""
+    cover_texts = draft.basePages.cover.texts
+    cover_blob = " ".join([subject, *cover_texts.values()])
+    for invented in ("Sarah", "Tuscany"):
+        assert invented not in cover_blob, (invented, subject, cover_texts)
+    # Scrubbing must leave the cover non-empty (deterministic grounded fallback).
+    assert subject.strip()
+    assert any(v.strip() for v in cover_texts.values())
 
 
 def test_init_writing_chapter_failure_fails_whole_init_and_releases_hold(

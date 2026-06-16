@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import time
 from typing import Any
 
@@ -313,6 +314,10 @@ async def _write_first_draft(draft: AlbumDraft, mock: bool) -> tuple[AlbumDraft,
     chapter_complete = _mock_writing_complete() if mock else None
     # The theme/cover writer reuses the theme service mock shape, not writing's.
     theme_overview = _clusters_overview(draft)
+    # Album-wide allowed nouns so the cover scrub (#161 MUST-FIX) matches the
+    # chapter scrub: a name on the cover is legitimate if it appears anywhere in
+    # the album's known material (every cluster + every photo), not just one chapter.
+    cover_allowed_nouns = writing.album_allowed_proper_nouns(draft.chapters, draft.photoPool)
 
     async def run_cover() -> tuple[V2Theme, V2CoverDraft | None, Usage]:
         async with semaphore:
@@ -334,6 +339,7 @@ async def _write_first_draft(draft: AlbumDraft, mock: bool) -> tuple[AlbumDraft,
                 language=language,
                 prompt_hint=draft.meta.promptHint,
                 complete=theme_mock,
+                allowed_nouns=cover_allowed_nouns,
             )
 
     async def run_chapter(chapter: V2Chapter):
@@ -505,13 +511,36 @@ async def _run_init(req: V2InitRequest) -> None:
     )
 
 
+def _init_timeout_seconds(req: V2InitRequest, settings: Any) -> int:
+    """Scale the init background-task budget with the work it has to do (#161
+    SHOULD-FIX). The fixed 600s floor can be tripped by a large album: writing
+    fires 1 cover + N chapter DeepSeek calls, ≤ INIT_WRITE_CONCURRENCY in flight,
+    each ≤ 2× its per-call timeout on the retry ceiling (the author's worst-case
+    ~720s for a ~10-chapter album). Budget:
+
+        vision_ceiling + ⌈(N_chapters + 1) / INIT_WRITE_CONCURRENCY⌉ × per_call_ceiling
+
+    where vision_ceiling = 2× ark_timeout (one retry) and per_call_ceiling = 2×
+    deepseek_timeout. N_chapters isn't known until grouping runs inside _run_init,
+    so we upper-bound it by the photo count (every chapter holds ≥1 photo → chapters
+    ≤ photos), which only over-budgets — never under. The current fixed value stays
+    as a FLOOR so small albums and other knobs never regress below today's behavior.
+    Scoped to init only; add/finalize keep the flat background_task_timeout_seconds."""
+    n_chapters_upper = max(1, len(req.photos))
+    vision_ceiling = 2 * settings.ark_timeout_seconds
+    per_call_ceiling = 2 * settings.deepseek_timeout_seconds
+    waves = math.ceil((n_chapters_upper + 1) / settings.init_write_concurrency)
+    scaled = vision_ceiling + waves * per_call_ceiling
+    return max(settings.background_task_timeout_seconds, scaled)
+
+
 async def _run_init_with_timeout(req: V2InitRequest) -> None:
     settings = get_settings()
     token = request_id_var.set(req.requestId)
     try:
         try:
             await asyncio.wait_for(
-                _run_init(req), timeout=settings.background_task_timeout_seconds
+                _run_init(req), timeout=_init_timeout_seconds(req, settings)
             )
         except asyncio.TimeoutError:
             log.error("v2_init.timeout")

@@ -15,12 +15,58 @@ the chapter-chat request shape nor the init draft shape leaks into the rules.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
 from .. import templates as registry
 from ..schemas import Page
 from . import layout_rules
+
+
+# ---------- proper-noun grounding heuristic (shared by chapter + cover) --------
+#
+# The single source of truth for "does this copy smuggle in a proper noun that is
+# NOT in the album's known material?". The chapter path (writing.generate_chapter_
+# texts) and the cover path (writing.generate_cover_texts, #161 MUST-FIX) MUST use
+# the EXACT same heuristic so behavior is identical — no stricter, no looser.
+#
+# We never *add* names; we only ALLOW words already present in the supplied known
+# material. Latin: a capitalized word (not at sentence start) is a candidate proper
+# noun. CJK: any run of 2+ Han characters is a candidate (names, places).
+LATIN_CAP_RE = re.compile(r"\b([A-Z][a-z]+)\b")
+CJK_RUN_RE = re.compile(r"[一-鿿]{2,}")
+
+
+def allowed_nouns_from_sources(sources: list[str]) -> set[str]:
+    """The set of proper nouns copy may keep: every candidate token (Latin
+    capitalized word, lowercased; CJK 2+ run) found in the supplied known-material
+    strings. Anything outside this set is treated as invented and scrubbed."""
+    allowed: set[str] = set()
+    for text in sources:
+        if not text:
+            continue
+        allowed.update(m.lower() for m in LATIN_CAP_RE.findall(text))
+        allowed.update(CJK_RUN_RE.findall(text))
+    return allowed
+
+
+def is_grounded(value: str, allowed: set[str]) -> bool:
+    """True if `value` introduces no proper noun outside the allowed set."""
+    for m in LATIN_CAP_RE.findall(value):
+        if m.lower() not in allowed:
+            return False
+    for m in CJK_RUN_RE.findall(value):
+        if m not in allowed and not _cjk_substring_allowed(m, allowed):
+            return False
+    return True
+
+
+def _cjk_substring_allowed(token: str, allowed: set[str]) -> bool:
+    """A CJK run is fine if it (or each of its name-length pieces) appears inside
+    some allowed source token — lets grounded place names through even when the
+    model glued them to other characters, without whitelisting new names."""
+    return any(token in a or a in token for a in allowed if CJK_RUN_RE.fullmatch(a))
 
 
 @dataclass(frozen=True)

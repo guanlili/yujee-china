@@ -28,7 +28,6 @@ an asyncio.Semaphore; this module is per-unit and stateless.
 from __future__ import annotations
 
 import json
-import re
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -45,7 +44,13 @@ from ..schemas_v2 import (
 )
 from ..settings import get_settings
 from . import ai_client, theme as theme_service, writing_guides
-from .grounding import GroundingContext, page_texts, skipped_texts
+from .grounding import (
+    GroundingContext,
+    allowed_nouns_from_sources,
+    is_grounded,
+    page_texts,
+    skipped_texts,
+)
 
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
@@ -55,12 +60,10 @@ class WritingError(Exception):
     """Raised when a first-pass writing model call or response is unusable."""
 
 
-# Proper-noun detectors used to keep model copy grounded. We never *add* names;
-# we only ALLOW words that already appear in this chapter's known material.
-# Latin: a capitalized word not at sentence start is treated as a candidate
-# proper noun. CJK: any run of 2+ Han characters is a candidate (names, places).
-_LATIN_CAP_RE = re.compile(r"\b([A-Z][a-z]+)\b")
-_CJK_RUN_RE = re.compile(r"[一-鿿]{2,}")
+# Proper-noun grounding (detectors, allowed-set builder, is_grounded check) lives
+# in grounding.py so the chapter path and the cover path (#161 MUST-FIX) share the
+# EXACT same heuristic. We only build the *scope* of allowed nouns here: chapter-
+# scoped for chapters, album-wide for the cover.
 
 
 # ---------- cover (auto-theme, no confirmation dialog) ------------------------
@@ -72,11 +75,22 @@ async def generate_cover_texts(
     language: str,
     prompt_hint: str | None,
     complete: CompleteFn | None,
+    allowed_nouns: set[str] | None = None,
 ) -> tuple[V2Theme, V2CoverDraft | None, Usage]:
     """Auto-pick a theme and write cover copy in one call, with NO
     theme-confirmation step. Reuses the theme service (same grounded prompt that
     never invents people/places); the user's promptHint, if any, seeds the
     direction via `userMessage`.
+
+    The cover is the book's most prominent text, yet `theme_service` only
+    length-clamps it — the model could still land an invented name ("Sarah",
+    "Tuscany") on `theme.subject`/cover slots. So we run the cover's texts AND the
+    theme subject through the SAME deterministic grounding scrub the chapter path
+    uses (`grounding.is_grounded`), against the album-wide allowed-noun set
+    (`allowed_nouns`: union of every cluster's place/timeRange/label + all photos'
+    description/tags). Any slot/subject carrying an unknown proper noun is replaced
+    with a deterministic grounded fallback (#161 MUST-FIX). When `allowed_nouns` is
+    None (no album material supplied), no scrub is applied.
 
     Returns (theme, cover, usage). Raises WritingError on model failure so the
     caller can fail the whole init writing stage."""
@@ -93,7 +107,63 @@ async def generate_cover_texts(
         response = await theme_service.run(req, complete=complete)
     except theme_service.ThemeError as exc:
         raise WritingError(f"cover/theme generation failed: {exc}") from exc
-    return response.theme, response.cover, response.usage
+    theme_obj, cover = response.theme, response.cover
+    if allowed_nouns is not None:
+        theme_obj, cover = _scrub_cover(
+            theme_obj, cover, allowed_nouns, clusters_overview, language
+        )
+    return theme_obj, cover, response.usage
+
+
+def _neutral_cover_subject(
+    allowed_nouns: set[str],
+    clusters_overview: list[Any],
+    language: str,
+) -> str:
+    """A deterministic grounded subject to fall back to when the model's subject
+    carries an unknown proper noun: the first cluster label that is ITSELF grounded
+    (so we never reintroduce an invented name), else a neutral phrase matching the
+    chapter fallback style (grounding.fallback_texts title)."""
+    for cluster in clusters_overview:
+        label = getattr(cluster, "label", "")
+        if isinstance(label, str) and label.strip() and is_grounded(label, allowed_nouns):
+            return label.strip()
+    return "Life in photographs" if language == "en" else "照片里的时光"
+
+
+def _scrub_cover(
+    theme: V2Theme,
+    cover: V2CoverDraft | None,
+    allowed_nouns: set[str],
+    clusters_overview: list[Any],
+    language: str,
+) -> tuple[V2Theme, V2CoverDraft | None]:
+    """Replace any cover slot / theme subject that smuggles in an unknown proper
+    noun with a deterministic grounded fallback, using the SAME `is_grounded`
+    heuristic as chapters. Keeps the cover non-empty after scrubbing."""
+    neutral = _neutral_cover_subject(allowed_nouns, clusters_overview, language)
+
+    # theme.subject flows onto the cover title/heading; scrub it first so a
+    # grounded subject is available to backfill scrubbed cover slots.
+    safe_subject = theme.subject if is_grounded(theme.subject, allowed_nouns) else neutral
+    theme = theme.model_copy(update={"subject": safe_subject})
+
+    if cover is None:
+        return theme, None
+
+    safe_texts: dict[str, str] = {}
+    for slot, value in cover.texts.items():
+        if is_grounded(value, allowed_nouns):
+            safe_texts[slot] = value
+            continue
+        # Title/heading slots carry the subject; fall back to the grounded subject.
+        # Any other ungrounded slot falls back to the same neutral phrase so the
+        # cover never goes blank or keeps an invented name.
+        safe_texts[slot] = safe_subject if slot in ("title", "heading") else neutral
+    if not safe_texts:
+        safe_texts = {"title": safe_subject}
+    cover = cover.model_copy(update={"texts": safe_texts})
+    return theme, cover
 
 
 # ---------- chapter body copy (no-dialog first pass) --------------------------
@@ -180,7 +250,7 @@ async def generate_chapter_texts(
         normalized = page_texts(page, raw_by_index.get(page.pageIndex, {}), ctx)
         grounded = skipped_texts(page, ctx)
         safe = {
-            slot: (value if _is_grounded(value, allowed) else grounded.get(slot, value))
+            slot: (value if is_grounded(value, allowed) else grounded.get(slot, value))
             for slot, value in normalized.items()
         }
         out.append(V2PageTexts(pageIndex=page.pageIndex, texts=safe))
@@ -212,7 +282,9 @@ def _chapter_context(
 def _allowed_proper_nouns(chapter: V2Chapter, photos: list[V2Photo]) -> set[str]:
     """The only proper nouns model copy may keep: tokens already present in this
     chapter's known material — cluster place/timeRange/label + each photo's
-    description and tags. Anything else is treated as invented and scrubbed."""
+    description and tags. Anything else is treated as invented and scrubbed.
+    Uses the shared `grounding.allowed_nouns_from_sources` so the chapter and cover
+    scrubs derive their allowed sets identically (#161 MUST-FIX)."""
     photo_by_id = {p.photoId: p for p in photos}
     sources: list[str] = []
     cluster = chapter.cluster
@@ -225,29 +297,25 @@ def _allowed_proper_nouns(chapter: V2Chapter, photos: list[V2Photo]) -> set[str]
             continue
         sources.append(photo.analysis.description or "")
         sources.extend(photo.analysis.tags or [])
-    allowed: set[str] = set()
-    for text in sources:
-        allowed.update(m.lower() for m in _LATIN_CAP_RE.findall(text))
-        allowed.update(_CJK_RUN_RE.findall(text))
-    return allowed
+    return allowed_nouns_from_sources(sources)
 
 
-def _is_grounded(value: str, allowed: set[str]) -> bool:
-    """True if `value` introduces no proper noun outside the allowed set."""
-    for m in _LATIN_CAP_RE.findall(value):
-        if m.lower() not in allowed:
-            return False
-    for m in _CJK_RUN_RE.findall(value):
-        if m not in allowed and not _cjk_substring_allowed(m, allowed):
-            return False
-    return True
-
-
-def _cjk_substring_allowed(token: str, allowed: set[str]) -> bool:
-    """A CJK run is fine if it (or each of its name-length pieces) appears inside
-    some allowed source token — lets grounded place names through even when the
-    model glued them to other characters, without whitelisting new names."""
-    return any(token in a or a in token for a in allowed if _CJK_RUN_RE.fullmatch(a))
+def album_allowed_proper_nouns(chapters: list[V2Chapter], photos: list[V2Photo]) -> set[str]:
+    """Album-wide allowed-noun set for the COVER scrub: the union over EVERY
+    chapter's cluster place/timeRange/label + EVERY photo's description and tags
+    (not one chapter's slice). The cover speaks for the whole book, so a name is
+    legitimate if it appears anywhere in the album's known material (#161 MUST-FIX).
+    Built with the same `allowed_nouns_from_sources` the chapter scope uses."""
+    sources: list[str] = []
+    for chapter in chapters:
+        cluster = chapter.cluster
+        for value in (cluster.place, cluster.timeRange, cluster.label):
+            if isinstance(value, str):
+                sources.append(value)
+    for photo in photos:
+        sources.append(photo.analysis.description or "")
+        sources.extend(photo.analysis.tags or [])
+    return allowed_nouns_from_sources(sources)
 
 
 def _raw_pages_by_index(raw: Any, chapter: V2Chapter) -> dict[int, dict[str, str]]:
