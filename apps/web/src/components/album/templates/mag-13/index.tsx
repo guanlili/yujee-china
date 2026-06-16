@@ -1,8 +1,8 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
+import { WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function WebMag13({ data, totalPages }: TemplateRenderProps) {
+export function WebMag13({ data }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     title?: string;
@@ -48,7 +48,6 @@ export function WebMag13({ data, totalPages }: TemplateRenderProps) {
       >
         {d.caption || ''}
       </p>
-      <WebFolio folio={d.folio} totalPages={totalPages} fallback="13" />
     </WebPage>
   );
 }
