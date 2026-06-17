@@ -5,6 +5,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .logging_config import configure_logging, get_logger, request_id_var
 from .routes import health, v2_album
+from .services.vision_provider import resolved_vision_model
 from .settings import get_settings
 
 
@@ -86,6 +87,8 @@ log.info(
     "agent.startup",
     mode=settings.agent_pipeline_mode,
     env=settings.agent_env,
-    vision_model=settings.ark_vision_model,
+    vision_provider=settings.vision_provider,
+    # Resolved per provider so openai mode logs gpt-*, not the doubao default.
+    vision_model=resolved_vision_model(settings),
     planning_model=settings.deepseek_model,
 )
