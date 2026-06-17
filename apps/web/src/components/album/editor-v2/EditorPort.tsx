@@ -1304,6 +1304,14 @@ function EditorBook({
       if (r.imagePosWrite) {
         const w = r.imagePosWrite;
         const page = pageByIndex(w.pageIndex);
+        // TEMP #165 debug: surface the actual values + whether the edited page is
+        // on the currently-visible spread (a repaint only redraws currentCh).
+        console.debug(
+          '[#165 adjust] imagePosWrite=', JSON.stringify(w),
+          '| pageFound=', !!page,
+          '| currentCh=', currentCh,
+          '| visibleSpreadPages=', spreadPages(currentCh).map((p) => p?.pageIndex),
+        );
         if (page) {
           // Fold the single per-image {x,y,scale} into imagePosJson[imageId] (the
           // render layer reads it; mirrors the server-persisted draft_json).
@@ -1311,6 +1319,7 @@ function EditorBook({
             ...(page.imagePosJson ?? {}),
             [w.imageId]: { x: w.x, y: w.y, scale: w.scale },
           };
+          console.debug('[#165 adjust] applied → page.imagePosJson=', JSON.stringify(page.imagePosJson));
           repaintBook();
           appendStep(
             aT(
