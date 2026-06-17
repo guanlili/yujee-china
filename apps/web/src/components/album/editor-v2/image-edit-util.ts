@@ -2,12 +2,18 @@
 // from EditorPort.tsx so the clamp/drag math is unit-testable without importing
 // the React/template/CSS tree.
 //
-// ── Render model (templates/web-utils.tsx WebImage) ──
-// Each editable image is an <img> with `object-fit: cover`, plus:
-//   object-position: `${x}% ${y}%`
-//   transform:       `scale(${scale})` with transform-origin `${x}% ${y}%`
+// ── Render model (templates/web-utils.tsx WebImage) — #168 ──
+// Each editable image is an <img> that FILLS a fixed-size wrapper <div> 100%×100%:
+//   wrapper <div>: the slot geometry (position/top/left/width/height) + overflow:hidden
+//   inner <img>:   width/height 100%, object-fit: cover, plus:
+//     object-position: `${x}% ${y}%`
+//     transform:       `scale(${scale})` with transform-origin `${x}% ${y}%`
+// The wrapper is the frame the user sees; it never moves. scale grows the <img>
+// INSIDE that frame and the wrapper's overflow:hidden CLIPS the overflow — so a
+// zoom can never enlarge the slot or shove neighboring content (the #168 bug was
+// scale on a bare <img> that *was* the slot, with no clip container around it).
 //
-// ── Why x,y∈[0,100] + scale≥1 already guarantees NO WHITE EDGE (cover semantics) ──
+// ── Why x,y∈[0,100] + scale≥1 guarantees NO WHITE EDGE + NO OVERFLOW ──
 // `object-fit: cover` scales the image to the SMALLEST size that fully covers the
 // box, so at scale=1 the box is already completely filled; whichever axis the
 // image overflows on, `object-position` (a percentage) only slides the image
@@ -17,9 +23,11 @@
 // axis object-position has no visible effect (there's no slack), which is fine.
 //
 // `transform: scale(s)` with s≥1 only ever makes the (already-covering) image
-// LARGER than the box, so it stays fully covered; the matching transform-origin
-// keeps the focal point under the cursor. The only way to expose white is s<1
-// (image smaller than the box), so the single hard invariant is scale≥1.
+// LARGER than the box, so it stays fully covered (no white edge); the matching
+// transform-origin keeps the focal point under the cursor, and the wrapper's
+// overflow:hidden trims everything past the frame (no overflow onto neighbors).
+// The only way to expose white is s<1 (image smaller than the box), so the single
+// hard invariant is scale≥1.
 //
 // Therefore the clamp is just: x,y → [0,100], scale → [SCALE_MIN, SCALE_MAX].
 // (Matches the #165 contract ImagePos: x/y∈[0,100], scale∈[1,2].)
