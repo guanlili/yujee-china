@@ -45,6 +45,7 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
         placeholder="5:3"
         style={{ position: 'absolute', left: 364, top: 60, width: 380, height: 330 }}
         position={imagePos?.['imageTop']}
+        slotId="imageTop"
       />
       <div
         style={{
@@ -62,6 +63,7 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
         placeholder="4:5"
         style={{ position: 'absolute', left: 364, top: 450, width: 380, height: 480 }}
         position={imagePos?.['imageMain']}
+        slotId="imageMain"
       />
       <h1
         style={{
