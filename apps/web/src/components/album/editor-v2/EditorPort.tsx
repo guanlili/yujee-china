@@ -26,15 +26,6 @@ import { buildSpreads, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
 import { PAGE } from '../templates/constants';
 import { clampZoom, paintDecision } from './zoom-util';
-import {
-  clampImagePos,
-  dragToImagePos,
-  zoomImagePos,
-  DEFAULT_IMAGE_POS,
-  SCALE_MIN,
-  SCALE_MAX,
-  type ImagePosValue,
-} from './image-edit-util';
 import { runInspectAdjustLoop } from './draft-edit-orchestrator';
 import {
   applyPatchToPages,
@@ -669,37 +660,6 @@ function EditorBook({
       paintSpread(currentCh);
       buildThumbs();
       if (bodyEl.classList.contains('overview-on')) renderOverview();
-      // A repaint replaces the painted <img> nodes (#168). If an image is being
-      // manually edited, re-bind the overlay to the fresh node for its slot; if
-      // that slot no longer exists on the page (an AI edit swapped the photo /
-      // template), tear the overlay down so it can't point at a detached node.
-      reattachImgEdit();
-    }
-    // Re-grab the live <img> for the active image-edit selection after a repaint,
-    // or clear the selection if the slot is gone. Centralizes the "innerHTML was
-    // replaced" concern for every repaintBook() caller (AI patch, draft act,
-    // inline text edit, and the manual commit itself).
-    function reattachImgEdit() {
-      if (!imgEdit) return;
-      const fresh = imgEdit.hostEl.querySelector(
-        `img[data-image-slot="${CSS.escape(imgEdit.slotId)}"]`,
-      ) as HTMLImageElement | null;
-      if (fresh && imgEdit.hostEl.dataset.pageIndex === String(imgEdit.pageIndex)) {
-        imgEdit.imgEl = fresh;
-        fresh.classList.add('img-editing');
-        // When not mid-drag, re-sync the working pos from the page's committed
-        // value (an external AI patch may have changed/reset this slot); during a
-        // drag, keep the live working pos so the gesture isn't interrupted.
-        if (!dragging) {
-          const page = pageByIndex(imgEdit.pageIndex);
-          if (page) imgEdit.pos = currentImagePos(page, imgEdit.slotId);
-          if (imgEditSlider) imgEditSlider.value = String(imgEdit.pos.scale);
-        }
-        applyLiveImagePos(fresh, imgEdit.pos);
-        positionImgEditOverlay();
-      } else {
-        clearImageSelection();
-      }
     }
     // Mirror a layout patch (already persisted server-side) into the preview.
     function applyLocalPatch(patch: LayoutPatchEntry[]) {
@@ -834,258 +794,10 @@ function EditorBook({
       if (pi === undefined) return;
       const idx = Number(pi);
       selectedPageIndex = selectedPageIndex === idx ? null : idx;
-      // Switching/deselecting a page tears down any open image-edit overlay.
-      clearImageSelection();
       updateSelectionHighlight();
     };
-
-    // ════════════════════════════════════════════════════════════════════════
-    // #168 — manual in-frame image pan + zoom. Once a page is selected, clicking
-    // any photo on it selects that image and floats an overlay (drag handle +
-    // zoom slider + reset). Drag pans (objectPosition), wheel/slider zooms
-    // (scale). Live feedback writes the live <img> style directly (the page is
-    // painted as static innerHTML, so we mutate the DOM node rather than React
-    // props); on pointer-up we commit to imagePosJson and persist via the same
-    // single-page PATCH channel openInlineEdit uses.
-    //
-    // No-white-edge + clamp geometry lives in ./image-edit-util (unit-tested):
-    // object-fit:cover already fills the box, so x,y∈[0,100] + scale≥1 can never
-    // expose a white edge — see that module's header for the full reasoning.
-    // ════════════════════════════════════════════════════════════════════════
-    let imgEdit: {
-      pageIndex: number;
-      slotId: string;
-      hostEl: HTMLElement; // pageLeft/pageRight host whose innerHTML holds the <img>
-      imgEl: HTMLImageElement; // the live painted <img> we mutate during drag
-      pos: ImagePosValue; // working (committed) position for this image
-    } | null = null;
-    // The floating control overlay (created lazily, appended to the book so it
-    // tracks the spread). Hidden until an image is selected.
-    let imgEditOverlay: HTMLElement | null = null;
-    let imgEditSlider: HTMLInputElement | null = null;
-    let dragging = false;
-
-    function currentImagePos(page: EditorPage, slotId: string): ImagePosValue {
-      const p = page.imagePosJson?.[slotId];
-      return p ? clampImagePos(p) : { ...DEFAULT_IMAGE_POS };
-    }
-    // Paint a working position onto the live <img> only (instant, no repaint).
-    function applyLiveImagePos(imgEl: HTMLImageElement, pos: ImagePosValue) {
-      imgEl.style.objectPosition = `${pos.x}% ${pos.y}%`;
-      if (pos.scale > 1) {
-        imgEl.style.transform = `scale(${pos.scale})`;
-        imgEl.style.transformOrigin = `${pos.x}% ${pos.y}%`;
-      } else {
-        imgEl.style.transform = '';
-        imgEl.style.transformOrigin = '';
-      }
-    }
-    function buildImgEditOverlay(): HTMLElement {
-      if (imgEditOverlay) return imgEditOverlay;
-      const ov = document.createElement('div');
-      ov.className = 'img-edit-overlay';
-      ov.style.display = 'none';
-      const slider = document.createElement('input');
-      slider.type = 'range';
-      slider.className = 'img-edit-zoom';
-      slider.min = String(SCALE_MIN);
-      slider.max = String(SCALE_MAX);
-      slider.step = '0.01';
-      slider.title = aT('缩放', 'Zoom');
-      slider.addEventListener('input', () => {
-        if (!imgEdit) return;
-        imgEdit.pos = clampImagePos({ ...imgEdit.pos, scale: parseFloat(slider.value) });
-        applyLiveImagePos(imgEdit.imgEl, imgEdit.pos);
-      });
-      // Commit on release (松手即存) for both mouse and touch.
-      slider.addEventListener('change', () => commitImagePos());
-      const reset = document.createElement('button');
-      reset.type = 'button';
-      reset.className = 'img-edit-reset';
-      reset.textContent = aT('复位', 'Reset');
-      reset.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (!imgEdit) return;
-        imgEdit.pos = { ...DEFAULT_IMAGE_POS };
-        applyLiveImagePos(imgEdit.imgEl, imgEdit.pos);
-        if (imgEditSlider) imgEditSlider.value = String(imgEdit.pos.scale);
-        commitImagePos();
-      });
-      const hint = document.createElement('span');
-      hint.className = 'img-edit-hint';
-      hint.textContent = aT('拖动平移', 'Drag to pan');
-      ov.appendChild(hint);
-      ov.appendChild(slider);
-      ov.appendChild(reset);
-      // Clicks on the controls must not bubble to the page (which would deselect).
-      ov.addEventListener('click', (e) => e.stopPropagation());
-      ov.addEventListener('mousedown', (e) => e.stopPropagation());
-      bookEl.appendChild(ov);
-      imgEditOverlay = ov;
-      imgEditSlider = slider;
-      return ov;
-    }
-    // Position the overlay near the bottom edge of the selected image, in
-    // book-local (unscaled) coords. The overlay is a child of #book, which is
-    // CSS-scaled by `zoom` and clips overflow — so we (a) divide screen px by zoom
-    // and (b) anchor the overlay INSIDE the image's lower edge (not below it) so a
-    // photo flush with the page bottom doesn't push the controls into the clipped
-    // overflow region. translateX(-50%) (CSS) centers it on the computed x.
-    function positionImgEditOverlay() {
-      if (!imgEdit || !imgEditOverlay) return;
-      const bookRect = bookEl.getBoundingClientRect();
-      // #168: anchor to the SLOT FRAME (the overflow:hidden wrapper <div> around the
-      // <img>), not the <img> itself — once scale>1 the img's rect is the zoomed
-      // (larger, clipped-off) size, which would float the overlay off the frame.
-      // The wrapper's rect is the fixed frame the user sees. Fall back to the img if
-      // (defensively) it has no parent element.
-      const frameEl = imgEdit.imgEl.parentElement ?? imgEdit.imgEl;
-      const imgRect = frameEl.getBoundingClientRect();
-      const z = zoom || 1;
-      const localLeft = (imgRect.left - bookRect.left) / z + imgRect.width / z / 2;
-      const localBottom = (imgRect.bottom - bookRect.top) / z;
-      // ~36px overlay height + 8px inset, anchored inside the image's bottom edge.
-      imgEditOverlay.style.left = `${localLeft}px`;
-      imgEditOverlay.style.top = `${localBottom - 44}px`;
-    }
-    function selectImage(hostEl: HTMLElement, imgEl: HTMLImageElement, slotId: string) {
-      const pi = hostEl.dataset.pageIndex;
-      if (pi === undefined) return;
-      const page = pageByIndex(Number(pi));
-      if (!page) return;
-      clearImageSelection();
-      imgEdit = {
-        pageIndex: Number(pi),
-        slotId,
-        hostEl,
-        imgEl,
-        pos: currentImagePos(page, slotId),
-      };
-      imgEl.classList.add('img-editing');
-      const ov = buildImgEditOverlay();
-      if (imgEditSlider) imgEditSlider.value = String(imgEdit.pos.scale);
-      ov.style.display = '';
-      positionImgEditOverlay();
-    }
-    function clearImageSelection() {
-      if (imgEdit) imgEdit.imgEl.classList.remove('img-editing');
-      imgEdit = null;
-      dragging = false;
-      if (imgEditOverlay) imgEditOverlay.style.display = 'none';
-    }
-    // Commit the working position into imagePosJson + persist (松手即存). Repaints
-    // the whole book so thumbnails/overview reflect the move, and (cover only)
-    // refreshes the stored cover thumbnail.
-    function commitImagePos() {
-      if (!imgEdit) return;
-      const { pageIndex, slotId, pos } = imgEdit;
-      const page = pageByIndex(pageIndex);
-      if (!page) return;
-      const clamped = clampImagePos(pos);
-      imgEdit.pos = clamped;
-      page.imagePosJson = { ...(page.imagePosJson ?? {}), [slotId]: clamped };
-      // repaintBook() replaces the painted <img> nodes; reattachImgEdit (run
-      // inside it) re-binds the overlay to the fresh node for this slot.
-      repaintBook();
-      // Persist via the same single-page PATCH channel as inline text edits.
-      void fetch(`/api/v1/albums/${albumId}/pages/${pageIndex}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imagePosJson: page.imagePosJson }),
-      }).catch(() => {});
-      // #167: a cover (page 0) edit changes the stored preview — refresh it.
-      if (pageIndex === 0) void uploadCoverThumbnail();
-    }
-    // Pointer drag → pan. Bound on each host; only acts when an image on that
-    // host is the active selection.
-    let dragStart = { x: 0, y: 0 };
-    let dragStartPos: ImagePosValue = { ...DEFAULT_IMAGE_POS };
-    let dragMoved = false; // a real drag happened → swallow the trailing click
-    const onImgPointerDown = (e: PointerEvent) => {
-      if (!imgEdit) return;
-      const target = e.target as HTMLElement;
-      // Only start a drag when the press lands on the actively-edited image.
-      if (target !== imgEdit.imgEl) return;
-      e.preventDefault();
-      e.stopPropagation();
-      dragging = true;
-      dragMoved = false;
-      dragStart = { x: e.clientX, y: e.clientY };
-      dragStartPos = { ...imgEdit.pos };
-      imgEdit.imgEl.setPointerCapture?.(e.pointerId);
-    };
-    const onImgPointerMove = (e: PointerEvent) => {
-      if (!dragging || !imgEdit) return;
-      if (Math.abs(e.clientX - dragStart.x) > 2 || Math.abs(e.clientY - dragStart.y) > 2) {
-        dragMoved = true;
-      }
-      const rect = imgEdit.imgEl.getBoundingClientRect();
-      imgEdit.pos = dragToImagePos(
-        dragStartPos,
-        e.clientX - dragStart.x,
-        e.clientY - dragStart.y,
-        rect.width,
-        rect.height,
-      );
-      applyLiveImagePos(imgEdit.imgEl, imgEdit.pos);
-    };
-    const onImgPointerUp = (e: PointerEvent) => {
-      if (!dragging || !imgEdit) return;
-      dragging = false;
-      imgEdit.imgEl.releasePointerCapture?.(e.pointerId);
-      if (dragMoved) commitImagePos();
-    };
-    // Wheel over the selected image → zoom (scale). Debounced commit on idle.
-    let wheelCommitTimer: ReturnType<typeof setTimeout> | null = null;
-    const onImgWheel = (e: WheelEvent) => {
-      if (!imgEdit) return;
-      const target = e.target as HTMLElement;
-      if (target !== imgEdit.imgEl) return;
-      e.preventDefault();
-      e.stopPropagation();
-      imgEdit.pos = zoomImagePos(imgEdit.pos, e.deltaY < 0 ? 0.05 : -0.05);
-      applyLiveImagePos(imgEdit.imgEl, imgEdit.pos);
-      if (imgEditSlider) imgEditSlider.value = String(imgEdit.pos.scale);
-      if (wheelCommitTimer) clearTimeout(wheelCommitTimer);
-      wheelCommitTimer = setTimeout(() => commitImagePos(), 320);
-    };
-    // A click anywhere on a selected page: if it's on an editable image, enter
-    // image-edit mode for that slot; otherwise fall through to page select/deselect.
-    const onHostClick = (hostEl: HTMLElement) => (e: MouseEvent) => {
-      // A pan gesture ends with a synthetic click — swallow it so a drag doesn't
-      // also toggle the image/page selection.
-      if (dragMoved) {
-        dragMoved = false;
-        e.stopPropagation();
-        return;
-      }
-      const pi = hostEl.dataset.pageIndex;
-      const target = e.target as HTMLElement;
-      const img = target.closest('img[data-image-slot]') as HTMLImageElement | null;
-      // Image click is only meaningful once the page is selected (two-step: select
-      // the page, then pick a photo) — keeps single clicks as page selection.
-      if (img && pi !== undefined && Number(pi) === selectedPageIndex) {
-        const slotId = img.getAttribute('data-image-slot');
-        if (slotId) {
-          e.stopPropagation();
-          // Toggle: clicking the already-edited image clears it.
-          if (imgEdit && imgEdit.slotId === slotId && imgEdit.pageIndex === Number(pi)) {
-            clearImageSelection();
-          } else {
-            selectImage(hostEl, img, slotId);
-          }
-          return;
-        }
-      }
-      onPageSelect(hostEl);
-    };
-    for (const hostEl of [pageLeft, pageRight]) {
-      hostEl.addEventListener('click', onHostClick(hostEl));
-      hostEl.addEventListener('pointerdown', onImgPointerDown);
-      hostEl.addEventListener('pointermove', onImgPointerMove);
-      hostEl.addEventListener('pointerup', onImgPointerUp);
-      hostEl.addEventListener('wheel', onImgWheel, { passive: false });
-    }
+    pageLeft.addEventListener('click', () => onPageSelect(pageLeft));
+    pageRight.addEventListener('click', () => onPageSelect(pageRight));
 
     function paintSpread(i: number) {
       const [lp, rp] = spreadPages(i);
@@ -1115,9 +827,6 @@ function EditorBook({
 
     function flipTo(nextIdx: number, dir: 'next' | 'prev') {
       if (flipping || nextIdx === currentCh || nextIdx < 0 || nextIdx >= spreadCount()) return;
-      // Leaving the spread invalidates the active image-edit overlay (its <img>
-      // belongs to the spread we're flipping away from).
-      clearImageSelection();
       flipping = true;
       const [curLeft, curRight] = spreadPages(currentCh);
       const [nxtLeft, nxtRight] = spreadPages(nextIdx);
@@ -1665,8 +1374,8 @@ function EditorBook({
               const conf = Math.round(s.confidence * 100);
               appendStep(
                 aT(
-                  `🩺 看图诊断：${s.problem}（目标位置 x ${s.targetX}、y ${s.targetY}、缩放 ${s.scale}×，置信度 ${conf}%）`,
-                  `🩺 Diagnosis: ${s.problem} (target x ${s.targetX}, y ${s.targetY}, zoom ${s.scale}×, conf ${conf}%)`,
+                  `🩺 看图诊断：${s.problem}（建议 dx ${s.dx}、dy ${s.dy}、缩放 ${s.scale}×，置信度 ${conf}%）`,
+                  `🩺 Diagnosis: ${s.problem} (dx ${s.dx}, dy ${s.dy}, zoom ${s.scale}×, conf ${conf}%)`,
                 ),
               );
             } else if (s.kind === 'capped') {
@@ -1818,66 +1527,6 @@ function EditorBook({
         });
       });
     }
-    // ── #167: persistent cover thumbnail ──
-    // Rasterize the finalized cover (first page) to a small JPEG and direct-upload
-    // it to R2, so /my-albums can show the real cover without the (non-persistent)
-    // browser photoStore. Same R2 posture as exportPdf — bytes never touch the Web
-    // tier (invariant 4); this is a rendered derivative, not an original photo
-    // (invariant 1/2). Fire-and-forget: a failure here must never block editing or
-    // export, so everything is wrapped and only logged.
-    //
-    // Cover = the page at pageIndex 0. Only meaningful for a finalized layout, so
-    // callers gate on !isAuthoring. The capture needs the originals resolved, so it
-    // runs after imageUrls are loaded (editing init) and after exportPdf.
-    let coverThumbInFlight = false;
-    async function uploadCoverThumbnail() {
-      if (isAuthoring || coverThumbInFlight) return;
-      const cover = pageByIndex(0) ?? pagesState[0];
-      if (!cover) return;
-      coverThumbInFlight = true;
-      try {
-        const { rasterizePageToBlob } = await import('@/lib/pdf/rasterize');
-        const blob = await rasterizePageToBlob(
-          {
-            templateId: cover.templateId,
-            images: cover.imagesJson,
-            texts: cover.textsJson,
-            imagePos: cover.imagePosJson,
-          },
-          resolveImage,
-          { totalPages: total },
-        );
-        if (!blob) return;
-        const signRes = await fetch(`/api/v1/albums/${albumId}/cover-thumbnail-upload-url`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contentType: 'image/jpeg', size: blob.size }),
-        });
-        const signJson = await signRes.json();
-        if (!signJson.ok) throw new Error(signJson.error?.message ?? 'sign failed');
-        const { putUrl, r2Key } = signJson.data;
-        const putRes = await fetch(putUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'image/jpeg' },
-          body: blob,
-        });
-        if (!putRes.ok) throw new Error(`R2 PUT ${putRes.status}`);
-        const confirmRes = await fetch(`/api/v1/albums/${albumId}/cover-thumbnail`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ r2Key }),
-        });
-        const confirmJson = await confirmRes.json().catch(() => null);
-        if (!confirmRes.ok || confirmJson?.ok !== true) {
-          throw new Error(confirmJson?.error?.message ?? `cover-thumbnail confirm ${confirmRes.status}`);
-        }
-      } catch (err) {
-        console.error('cover thumbnail upload failed', err);
-      } finally {
-        coverThumbInFlight = false;
-      }
-    }
-
     // Export: render the PDF in the browser (@react-pdf), download it locally,
     // and upload straight to R2 (bytes never touch the Web tier — invariant 4).
     let exportingPdf = false;
@@ -1920,22 +1569,14 @@ function EditorBook({
             body: blob,
           });
           if (!putRes.ok) throw new Error(`R2 PUT ${putRes.status}`);
-          const confirmRes = await fetch(`/api/v1/albums/${albumId}/pdf`, {
+          await fetch(`/api/v1/albums/${albumId}/pdf`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ r2Key }),
           });
-          const confirmJson = await confirmRes.json().catch(() => null);
-          if (!confirmRes.ok || confirmJson?.ok !== true) {
-            throw new Error(confirmJson?.error?.message ?? `PDF confirm ${confirmRes.status}`);
-          }
         } catch (uploadErr) {
           console.error('PDF cloud upload failed', uploadErr);
         }
-        // #167: regenerate the cover thumbnail on export — the user has just
-        // confirmed this is the book they want, so refresh the stored preview to
-        // reflect any cover edits made since it was last captured.
-        void uploadCoverThumbnail();
       } catch (e) {
         console.error('PDF export failed', e);
       } finally {
@@ -2295,25 +1936,6 @@ function EditorBook({
         paintSpread(currentCh);
         buildThumbs();
         if (bodyEl.classList.contains('overview-on')) renderOverview();
-        // #167: now that the finalized cover's originals are resolved, capture &
-        // persist its thumbnail. This self-heals albums made before the feature and
-        // refreshes after any cover edit from a prior session — the editor is the
-        // one place that reliably has both the rendered layout and the originals.
-        // Gated on the cover page's OWN photoIds — not the whole-album union —
-        // so a cross-device open that resolved some other page's original but
-        // none of the cover's doesn't render a cover with missing photos and
-        // overwrite a good stored thumbnail. Require every cover photo to be
-        // resolved (a multi-photo cover missing one slot must not upload); a
-        // text-only cover has no ids and is always safe to capture.
-        const cover = pageByIndex(0) ?? pagesState[0];
-        const coverPhotoIds = cover
-          ? collectPhotoIds([
-              { templateId: cover.templateId, images: cover.imagesJson, texts: cover.textsJson },
-            ])
-          : [];
-        if (coverPhotoIds.length === 0 || coverPhotoIds.every((id) => urls[id])) {
-          void uploadCoverThumbnail();
-        }
       });
     }
 
@@ -2340,15 +1962,6 @@ function EditorBook({
       actionHandlers.forEach(({ el, fn }) => el.removeEventListener('click', fn));
       addPhotoInput?.removeEventListener('change', onAddPhotoChange);
       clearTimeout(completeTimer);
-      // #168 manual image editor teardown.
-      if (wheelCommitTimer) clearTimeout(wheelCommitTimer);
-      for (const hostEl of [pageLeft, pageRight]) {
-        hostEl.removeEventListener('pointerdown', onImgPointerDown);
-        hostEl.removeEventListener('pointermove', onImgPointerMove);
-        hostEl.removeEventListener('pointerup', onImgPointerUp);
-        hostEl.removeEventListener('wheel', onImgWheel);
-      }
-      imgEditOverlay?.remove();
     };
   }, []);
 

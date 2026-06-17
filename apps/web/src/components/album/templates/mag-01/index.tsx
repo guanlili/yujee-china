@@ -63,7 +63,6 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
         placeholder="3:2"
         style={{ position: 'absolute', top: 240, right: 0, width: 660, height: 460 }}
         position={imagePos?.['image']}
-        slotId="image"
       />
       <div
         style={{

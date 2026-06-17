@@ -19,7 +19,6 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
         placeholder="1:1"
         style={{ position: 'absolute', top: 0, bottom: 320, left: 0, width: 794, objectFit: 'cover' }}
         position={imagePos?.['image']}
-        slotId="image"
       />
       <div
         style={{

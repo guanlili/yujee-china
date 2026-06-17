@@ -79,8 +79,8 @@ def _system_prompt(req: V2DraftEditRequest) -> str:
         "Read each tool's own description for exactly when to call it and when NOT "
         "to. If the user is only asking, greeting, giving an opinion, or says not to "
         "change anything, just TALK — do not call any tool. Never call write_page_copy "
-        "with placeholder or dummy text, and never call adjust_image_position with the "
-        "centered no-op {x:50,y:50,scale:1}.\n"
+        "with placeholder or dummy text, and never call adjust_image_position with "
+        "all-zero no-op args.\n"
         + focus
         + "\n"
         + writing_guides.guides_block()

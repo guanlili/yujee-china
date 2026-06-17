@@ -48,7 +48,6 @@ export function WebMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
               placeholder="9:8"
               style={{ display: 'block', width: '100%', height: 280 }}
               position={imagePos?.[`cells[${i}].image`]}
-              slotId={`cells[${i}].image`}
             />
             <p
               style={{

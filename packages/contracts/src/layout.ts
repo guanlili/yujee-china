@@ -14,28 +14,12 @@ export const Magazine = z.object({
 });
 export type Magazine = z.infer<typeof Magazine>;
 
-/**
- * Subject focal point (#169) — the main subject's (face-first) center in the
- * ORIGINAL image, normalized to [0, 1] on each axis (x = left→right,
- * y = top→bottom). Same coordinate space as a CSS object-position fraction, so
- * `{x: focal.x*100, y: focal.y*100}` is a ready-made objectPosition %.
- * Optional; absent => callers fall back to the centered default 0.5/0.5.
- */
-export const Focal = z.object({
-  x: z.number().min(0).max(1),
-  y: z.number().min(0).max(1),
-});
-export type Focal = z.infer<typeof Focal>;
-
 export const PhotoAnalysis = z.object({
   photoId: z.string().min(1),
   description: z.string(),
   tags: z.array(z.string()),
   quality: PhotoQuality,
   orientation: PhotoOrientation,
-  // #169: subject focal point (0..1, face-first). Survives finalize so the flat
-  // layout's default imagePos can center on the subject. Absent => 0.5/0.5.
-  focal: Focal.optional(),
 });
 export type PhotoAnalysis = z.infer<typeof PhotoAnalysis>;
 
@@ -47,7 +31,7 @@ export type PhotoAnalysis = z.infer<typeof PhotoAnalysis>;
  * before this field is byte-unchanged.
  *
  *   x, y  - object-position percentages, clamp range [0, 100] (default 50/50)
- *   scale - zoom factor, clamp range [1, 2] (default 1; applied in BOTH web and PDF render)
+ *   scale - zoom factor, clamp range [1, 2] (default 1; web-only, PDF ignores >1)
  *
  * Clamp bounds are enforced by the writer (#165 Phase 3 adjust_image_position);
  * the schema guards the full range so a hand-rolled payload can't break render.

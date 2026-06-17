@@ -88,56 +88,18 @@ export function PdfImage({ src, style, position }: PdfImageProps) {
   if (src) {
     // @react-pdf/renderer 的 Image objectFit 通过 style 的 objectFit 控制；
     // objectPosition 同样接受 "x% y%"，故 dx/dy 在 PDF 与 web 一致生效。
+    // TODO(#165): PDF zoom (scale) not yet supported — @react-pdf <Image> has no
+    // transform, so when scale>1 we keep objectFit:cover (no zoom). Web-only.
     const objectPosition = position ? `${position.x}% ${position.y}%` : '50% 50%';
-    const scale = position && position.scale > 1 ? position.scale : 1;
-    // #168: mirror the web render (web-utils.tsx WebImage). The caller `style` is
-    // the SLOT geometry — it becomes an `overflow:hidden` wrapper <View> so a
-    // zoomed image is CLIPPED to the fixed frame, never grows the slot. objectFit/
-    // objectPosition are paint props that belong on the inner <Image>, so strip
-    // them off the wrapper (some templates inline objectFit:'cover' in `style`).
-    const { objectFit: _of, objectPosition: _op, ...frame } = style;
-    if (scale === 1) {
-      // No zoom: inner Image fills the frame 100%×100% with cover+objectPosition.
-      // This is pixel-identical to the pre-#168 single-<Image> render (an Image
-      // filling a same-size box covers the same pixels), so existing albums don't
-      // regress; the wrapper's clip only ever bites once scale>1.
-      return (
-        <View style={{ ...frame, overflow: 'hidden' }}>
-          <Image
-            src={src}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition }}
-          />
-        </View>
-      );
-    }
-    // @react-pdf has no CSS `transform`, so emulate web's `transform: scale(s)` with
-    // transform-origin `x% y%`. Web composes cover(+objectPosition) THEN scale; we
-    // reproduce that composition exactly: an inner zoom <View> sized s×100% holds the
-    // Image at 100%×100% (so cover+objectPosition resolve identically to web inside a
-    // box that is itself s× larger), and the zoom View is offset so the focal point
-    // (x%,y%) stays anchored. Holding (x%,y%) fixed means shifting the s× box left/up
-    // by (s-1)·x% / (s-1)·y% of the FRAME — expressible as percentages of the wrapper,
-    // so this is correct for every template regardless of how its width/height resolve
-    // (numeric, left+right, top+bottom). The wrapper's overflow:hidden clips the rest.
-    const offX = -((scale - 1) * position!.x);
-    const offY = -((scale - 1) * position!.y);
     return (
-      <View style={{ ...frame, overflow: 'hidden' }}>
-        <View
-          style={{
-            position: 'absolute',
-            left: `${offX}%`,
-            top: `${offY}%`,
-            width: `${scale * 100}%`,
-            height: `${scale * 100}%`,
-          }}
-        >
-          <Image
-            src={src}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition }}
-          />
-        </View>
-      </View>
+      <Image
+        src={src}
+        style={{
+          ...style,
+          objectFit: 'cover',
+          objectPosition,
+        }}
+      />
     );
   }
   return <View style={{ backgroundColor: '#e8e4db', ...style }} />;

@@ -294,20 +294,17 @@ def _handle_inspect_page_render(
 # adjust_image_position — move/zoom a photo within its frame (#165 Phase 2)     #
 # --------------------------------------------------------------------------- #
 #
-# Called after a crop is diagnosed to reposition a photo inside its slot. The
-# payload field names (x/y/scale) match the Phase-1 ImagePos shape the render
-# layer + imagePosJson consume. #169: args are now ABSOLUTE object-position
-# (x/y ∈ [0,100]) — the model picks where the subject should land, NOT a relative
-# nudge from 50/50. The write is pinned to the page's real image-slot set so it
-# can never touch an off-page / invented slot.
+# Called after a crop is diagnosed to nudge a photo inside its slot. The payload
+# field names (x/y/scale) match the Phase-1 ImagePos shape the render layer +
+# imagePosJson consume. dx/dy shift in percentage points from a 50/50 base; the
+# absolute position is clamp(50+dx,0,100). The write is pinned to the page's real
+# image-slot set so it can never touch an off-page / invented slot.
 
 
 _ADJUST_IMAGE_POSITION_DESCRIPTION = (
-    "Call ONLY to reposition/zoom a photo within its frame after diagnosing a "
-    "crop. x/y are the ABSOLUTE object-position the subject should sit at: x in "
-    "[0,100] (0 = pin LEFT edge, 50 = centered, 100 = pin RIGHT edge), y in "
-    "[0,100] (0 = pin TOP, 50 = centered, 100 = pin BOTTOM); scale 1.0–2.0 zooms. "
-    "Never call with the centered no-op {x:50,y:50,scale:1}."
+    "Call ONLY to move/zoom a photo within its frame after diagnosing a crop. "
+    "dx/dy shift in percentage points (negative dx reveals more LEFT, negative dy "
+    "reveals more TOP); scale 1.0–2.0 zooms. Never call with all-zero no-op args."
 )
 
 
@@ -332,18 +329,18 @@ def _adjust_image_position_schema() -> dict[str, Any]:
                             "page, e.g. \"image\" / \"imageTop\" / \"cells[0].image\")."
                         ),
                     },
-                    "x": {
+                    "dx": {
                         "type": "number",
                         "description": (
-                            "Absolute horizontal object-position in [0,100]: 0 pins "
-                            "the LEFT edge, 50 centers, 100 pins the RIGHT edge."
+                            "Horizontal shift in percentage points; negative reveals "
+                            "more of the LEFT of the photo."
                         ),
                     },
-                    "y": {
+                    "dy": {
                         "type": "number",
                         "description": (
-                            "Absolute vertical object-position in [0,100]: 0 pins the "
-                            "TOP, 50 centers, 100 pins the BOTTOM."
+                            "Vertical shift in percentage points; negative reveals "
+                            "more of the TOP of the photo."
                         ),
                     },
                     "scale": {
@@ -351,20 +348,19 @@ def _adjust_image_position_schema() -> dict[str, Any]:
                         "description": "Zoom factor 1.0–2.0 (1.0 = no zoom).",
                     },
                 },
-                "required": ["pageIndex", "imageId", "x", "y", "scale"],
+                "required": ["pageIndex", "imageId", "dx", "dy", "scale"],
             },
         },
     }
 
 
 class AdjustImagePositionArgs(_Strict):
-    """Pydantic mirror of adjust_image_position args (strict). #169: absolute
-    target x/y (not relative dx/dy)."""
+    """Pydantic mirror of adjust_image_position args (strict)."""
 
     pageIndex: int = Field(ge=0)
     imageId: str
-    x: float
-    y: float
+    dx: float
+    dy: float
     scale: float
 
 
@@ -399,20 +395,22 @@ def _clamp(value: float, low: float, high: float) -> float:
 def _handle_adjust_image_position(
     args: AdjustImagePositionArgs, *, ctx: AdjustImagePositionContext
 ) -> ToolResult | None:
-    """Map absolute x/y/scale → an ImagePos {x,y,scale} for ONE real slot (#169).
+    """Map dx/dy/scale → an absolute ImagePos {x,y,scale} for ONE real slot.
 
     Demotes to None (→ talk, G3) when the slot is off-page/invented, or the call
-    is effectively a no-op. Clamps x,y∈[0,100], scale∈[1,2] FIRST, and only THEN
-    tests for a no-op: a centered target {x:50,y:50} with a sub-range scale (e.g.
-    0.5) clamps up to {50,50,1.0} and must demote, not emit an inert act (#165
-    Phase-3 D2)."""
+    is effectively a no-op. Clamps dx,dy∈[-50,50], scale∈[1,2] FIRST, then
+    x=clamp(50+dx,0,100), y=clamp(50+dy,0,100) (architect-ratified), and only
+    THEN tests for a no-op: a sub-range scale (e.g. 0.5) with dx==dy==0 clamps
+    up to {50,50,1.0} and must demote, not emit an inert act (#165 Phase-3 D2)."""
     # Off-page / invented slot → never write to it (G3).
     if args.imageId not in ctx.image_slots:
         return None
 
-    x = _clamp(args.x, 0.0, 100.0)
-    y = _clamp(args.y, 0.0, 100.0)
+    dx = _clamp(args.dx, -50.0, 50.0)
+    dy = _clamp(args.dy, -50.0, 50.0)
     scale = _clamp(args.scale, 1.0, 2.0)
+    x = _clamp(50.0 + dx, 0.0, 100.0)
+    y = _clamp(50.0 + dy, 0.0, 100.0)
 
     # No-op AFTER clamping → nothing actually changes from the 50/50/1.0 default,
     # so demote to talk (G1 says never call it; G3 enforces). Checking pre-clamp

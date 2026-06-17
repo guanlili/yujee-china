@@ -31,7 +31,6 @@ from ..schemas_v2 import (
 )
 from ..settings import get_settings
 from . import ai_client
-from .vision_provider import VisionSlotError, estimate_cost_usd, select_vision_slot
 
 log = get_logger("inspect_render")
 
@@ -62,18 +61,16 @@ def _system_prompt() -> str:
         "mis-positioned slot, set it to null.\n"
         '  "problem": one short sentence describing what is cut off / wrong (English '
         "or the reader's language).\n"
-        '  "targetX": number in [0, 100] — the ABSOLUTE object-position the subject '
-        "should sit at horizontally inside the frame: 0 = pin the photo's LEFT edge, "
-        "50 = centered, 100 = pin the RIGHT edge. Pick the value that brings the "
-        "main subject into view.\n"
-        '  "targetY": number in [0, 100] — the ABSOLUTE object-position vertically: '
-        "0 = pin the TOP (use this when a face/head is cut at the top), 50 = "
-        "centered, 100 = pin the BOTTOM.\n"
+        '  "suggestedDx": number in [-50, 50] — percentage-point horizontal shift. '
+        "Negative reveals more of the LEFT of the photo, positive more of the RIGHT.\n"
+        '  "suggestedDy": number in [-50, 50] — percentage-point vertical shift. '
+        "Negative reveals more of the TOP (use this when a face/head is cut at the "
+        "top), positive more of the BOTTOM.\n"
         '  "suggestedScale": number in [1.0, 2.0] — 1.0 = no zoom; zoom in only when '
         "tighter framing genuinely helps.\n"
         '  "confidence": number in [0, 1] — how sure you are the page is mis-cropped.\n\n'
-        "If the page looks fine, return imageId=null, a brief problem note, "
-        "targetX=50, targetY=50, scale 1.0, and a low confidence."
+        "If the page looks fine, return imageId=null, a brief problem note, zero "
+        "shifts, scale 1.0, and a low confidence."
     )
 
 
@@ -94,7 +91,7 @@ def _user_content(req: V2InspectRequest) -> list[dict[str, Any]]:
         f"{subject_lines}\n\n"
         f"The user complained: {req.userMessage!r}\n\n"
         "Look at the rendered page image below and diagnose the crop. "
-        'Return {"imageId":..,"problem":..,"targetX":..,"targetY":..,'
+        'Return {"imageId":..,"problem":..,"suggestedDx":..,"suggestedDy":..,'
         '"suggestedScale":..,"confidence":..}.'
     )
     return [
@@ -104,14 +101,14 @@ def _user_content(req: V2InspectRequest) -> list[dict[str, Any]]:
 
 
 def _unable(reason: str) -> V2InspectDiagnosis:
-    """A graceful no-op diagnosis: imageId null, centered target, confidence 0 —
-    the caller degrades to a talk message. `reason` is logged, not returned."""
+    """A graceful no-op diagnosis: imageId null, zero shift, confidence 0 — the
+    caller degrades to a talk message. `reason` is logged, not returned."""
     log.info("inspect.unable", reason=reason)
     return V2InspectDiagnosis(
         imageId=None,
         problem="unable to inspect",
-        targetX=50.0,
-        targetY=50.0,
+        suggestedDx=0.0,
+        suggestedDy=0.0,
         suggestedScale=1.0,
         confidence=0.0,
     )
@@ -142,16 +139,16 @@ def _coerce(parsed: Any, slot_ids: set[str]) -> V2InspectDiagnosis:
             return default
 
     problem = str(parsed.get("problem") or "").strip() or "photo may be mis-positioned"
-    target_x = _clamp(_num("targetX", 50.0), 0.0, 100.0)
-    target_y = _clamp(_num("targetY", 50.0), 0.0, 100.0)
+    dx = _clamp(_num("suggestedDx", 0.0), -50.0, 50.0)
+    dy = _clamp(_num("suggestedDy", 0.0), -50.0, 50.0)
     scale = _clamp(_num("suggestedScale", 1.0), 1.0, 2.0)
     confidence = _clamp(_num("confidence", 0.0), 0.0, 1.0)
 
     return V2InspectDiagnosis(
         imageId=image_id,
         problem=problem[:200],
-        targetX=target_x,
-        targetY=target_y,
+        suggestedDx=dx,
+        suggestedDy=dy,
         suggestedScale=scale,
         confidence=confidence,
     )
@@ -194,38 +191,21 @@ async def diagnose(
     prompt_tokens = 0
     completion_tokens = 0
     diagnosis: V2InspectDiagnosis
-    # The model name reported in Usage tracks the configured provider even when a
-    # `complete` seam is injected (tests). Resolved best-effort: a missing-key
-    # error is deferred to the real-call branch where it degrades gracefully.
-    try:
-        slot = select_vision_slot(settings)
-        model_name = slot.model
-    except VisionSlotError:
-        slot = None
-        model_name = (
-            settings.openai_vision_model
-            if settings.vision_provider == "openai"
-            else settings.ark_vision_model
-        )
     try:
         if complete is not None:
             response = await complete(messages=messages)
         else:
-            if slot is None:
-                raise ai_client.AIRequestError(
-                    f"vision slot ({settings.vision_provider}) unavailable; cannot run vision inspect"
-                )
+            if not settings.ark_api_key:
+                raise ai_client.AIRequestError("ARK_API_KEY missing; cannot run vision inspect")
             response = await ai_client.chat_completion(
-                base_url=slot.base_url,
-                api_key=slot.api_key,
-                model=slot.model,
+                base_url=settings.ark_base_url,
+                api_key=settings.ark_api_key,
+                model=settings.ark_vision_model,
                 messages=messages,
-                timeout_seconds=slot.timeout_seconds,
+                timeout_seconds=settings.ark_timeout_seconds,
                 temperature=0.1,
                 max_tokens=512,
-                response_format=slot.response_format,
-                # `thinking` is attached only for the ark slot; never for openai.
-                extra_body=slot.extra_body,
+                extra_body={"thinking": {"type": "disabled"}},
             )
         # Drop our handle to the messages (with the screenshot base64) before parsing.
         messages = []  # noqa: F841
@@ -248,11 +228,9 @@ async def diagnose(
     duration_ms = int((time.monotonic() - started) * 1000)
     log.info(
         "inspect.call.ok",
-        model=model_name,
         image_id=diagnosis.imageId,
         confidence=diagnosis.confidence,
         duration_ms=duration_ms,
-        est_cost_usd=estimate_cost_usd(model_name, prompt_tokens, completion_tokens),
     )
     return V2InspectResponse(
         diagnosis=diagnosis,
@@ -262,6 +240,6 @@ async def diagnose(
             visionCallCount=1,
             planningInputTokens=prompt_tokens,
             planningOutputTokens=completion_tokens,
-            models=V2Models(vision=model_name),
+            models=V2Models(vision=settings.ark_vision_model),
         ),
     )

@@ -57,19 +57,6 @@ test('V2PhotoAnalysis rejects unknown keys', () => {
   assert.equal(V2PhotoAnalysis.safeParse({ ...baseAnalysis, location: 'Kyoto' }).success, false);
 });
 
-// #169: focal is an optional BASE field on V2PhotoAnalysis (0..1, finalize keeps it).
-test('V2PhotoAnalysis accepts an optional focal in [0,1] and rejects out-of-range', () => {
-  assert.equal(V2PhotoAnalysis.safeParse(baseAnalysis).success, true); // absent ok
-  assert.equal(
-    V2PhotoAnalysis.safeParse({ ...baseAnalysis, focal: { x: 0.3, y: 0.7 } }).success,
-    true,
-  );
-  assert.equal(
-    V2PhotoAnalysis.safeParse({ ...baseAnalysis, focal: { x: 1.2, y: 0.5 } }).success,
-    false,
-  );
-});
-
 // ── P0-1:callback union 按 jobKind 区分两个 completed ──
 const draftTree = {
   version: 'v2',
@@ -238,9 +225,8 @@ test('V2InspectResponse diagnosis: imageId nullable, ranges clamped', () => {
     diagnosis: {
       imageId: 'image',
       problem: 'cut off',
-      // #169: absolute target object-position (0..100), not relative dx/dy.
-      targetX: 50,
-      targetY: 20,
+      suggestedDx: 0,
+      suggestedDy: -10,
       suggestedScale: 1.1,
       confidence: 0.7,
     },
@@ -256,11 +242,11 @@ test('V2InspectResponse diagnosis: imageId nullable, ranges clamped', () => {
     }).success,
     true,
   );
-  // out-of-range target rejected (targetY must be within [0, 100]).
+  // out-of-range suggestions rejected.
   assert.equal(
     V2InspectResponse.safeParse({
       ...resp,
-      diagnosis: { ...resp.diagnosis, targetY: 101 },
+      diagnosis: { ...resp.diagnosis, suggestedDy: -51 },
     }).success,
     false,
   );

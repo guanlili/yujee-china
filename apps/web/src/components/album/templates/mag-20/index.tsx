@@ -20,8 +20,7 @@ export function WebMag20({ data, imagePos }: TemplateRenderProps) {
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 封底图片（唯一可编辑槽位） */}
-      <WebImage src={d['image1']} style={{ position: 'absolute', left: 256, top: 240, width: 282, height: 364, objectFit: 'cover' }} position={imagePos?.['image1']}
-        slotId="image1" />
+      <WebImage src={d['image1']} style={{ position: 'absolute', left: 256, top: 240, width: 282, height: 364, objectFit: 'cover' }} position={imagePos?.['image1']} />
 
       {/* 左下角：品牌 logo */}
       <img src={YUJEE_LOGO_SVG} alt="yujee" style={{ position: 'absolute', left: 56, top: 979, width: 112, height: 47, objectFit: 'contain', display: 'block' }} />

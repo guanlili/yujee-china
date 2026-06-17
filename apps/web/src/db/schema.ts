@@ -210,14 +210,6 @@ export const albums = pgTable(
     pageCount: integer('page_count').notNull().default(0),
     pdfR2Key: text('pdf_r2_key'),
     pdfUrl: text('pdf_url'),
-    // #167: persistent cover thumbnail. The browser rasterizes the finalized first
-    // page (cover) to a small JPEG and direct-uploads it to R2; we store only the
-    // key + public URL here. This is a rendered DERIVATIVE, never an original photo,
-    // so it respects invariant 1/2 (originals never leave the browser). The list
-    // (/my-albums) reads coverThumbnailUrl instead of re-rendering from the
-    // non-persistent browser photoStore, so covers survive new sessions/devices.
-    coverThumbnailR2Key: text('cover_thumbnail_r2_key'),
-    coverThumbnailUrl: text('cover_thumbnail_url'),
     creditHoldId: text('credit_hold_id'),
     errorMessage: text('error_message'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

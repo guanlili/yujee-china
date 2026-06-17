@@ -47,7 +47,6 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
         placeholder="3:2"
         style={{ position: 'absolute', top: 430, left: 50, right: 50, height: 600 }}
         position={imagePos?.['image']}
-        slotId="image"
       />
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="05" />
     </WebPage>

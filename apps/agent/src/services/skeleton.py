@@ -66,46 +66,6 @@ def _people_count(photo: Photo) -> str:
     return value if isinstance(value, str) else "0"
 
 
-def _focal(photo: Photo) -> tuple[float, float] | None:
-    """The photo's subject focal point as (x, y) ∈ [0, 1], or None when absent /
-    malformed (caller centers the image). Mirrors @yujee/contracts Focal."""
-    value = _analysis(photo).get("focal")
-    if not isinstance(value, Mapping):
-        return None
-    x = value.get("x")
-    y = value.get("y")
-    if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
-        return None
-    if isinstance(x, bool) or isinstance(y, bool):
-        return None
-    return (max(0.0, min(1.0, float(x))), max(0.0, min(1.0, float(y))))
-
-
-def build_image_pos(
-    images: Mapping[str, str], photos: Sequence[Photo]
-) -> dict[str, dict[str, float]]:
-    """Default per-slot imagePos derived from each placed photo's focal (#169).
-
-    `images` is the slotId→photoId map `assign_images` returns; for every slot
-    whose photo carries a focal, emit imagePos[slot] = {x: focal.x*100,
-    y: focal.y*100, scale: 1} — the same object-position space as ImagePos. Slots
-    whose photo has no focal are OMITTED so the renderer keeps its centered
-    50/50/1 default (no entry == unchanged behavior, byte-stable for pre-#169).
-    """
-    focal_by_id: dict[str, tuple[float, float]] = {}
-    for photo in photos:
-        focal = _focal(photo)
-        if focal is not None:
-            focal_by_id[_photo_id(photo)] = focal
-    out: dict[str, dict[str, float]] = {}
-    for slot, photo_id in images.items():
-        focal = focal_by_id.get(photo_id)
-        if focal is None:
-            continue
-        out[slot] = {"x": focal[0] * 100.0, "y": focal[1] * 100.0, "scale": 1.0}
-    return out
-
-
 def page_scene(page_photos: Sequence[Photo]) -> str | None:
     """Target template scene for a chapter page.
 
@@ -375,31 +335,17 @@ def build_chapter_pages(
             attempt=attempt,
             scene=page_scene(page_photos),
         )
-        images = assign_images(template_id, page_photos)
         pages.append(
-            _with_default_image_pos(
-                {
-                    "pageIndex": 0,
-                    "templateId": template_id,
-                    "images": images,
-                    "texts": {},
-                },
-                page_photos,
-            )
+            {
+                "pageIndex": 0,
+                "templateId": template_id,
+                "images": assign_images(template_id, page_photos),
+                "texts": {},
+            }
         )
         previous_template_id = template_id
 
     return pages
-
-
-def _with_default_image_pos(page: Page, photos: Sequence[Photo]) -> Page:
-    """Attach the focal-derived default imagePos to a freshly built page (#169),
-    only when at least one slot carries a focal (else leave the key absent so the
-    renderer keeps its centered 50/50/1 default — byte-stable for focal-less input)."""
-    image_pos = build_image_pos(page["images"], photos)
-    if image_pos:
-        page["imagePos"] = image_pos
-    return page
 
 
 def needs_toc(chapters: Sequence[Mapping[str, Any]], total_pages: int) -> bool:
@@ -464,17 +410,12 @@ def build_base_pages(
         raise ValueError("cannot build ending without at least one used photo")
 
     ending_template_id = _pick_closing_template(album_id, ending_pick)
-    ending = _with_default_image_pos(
-        {
-            "pageIndex": 0,
-            "templateId": ending_template_id,
-            "images": assign_images(
-                ending_template_id, [ending_pick], allow_fill_in_hero=True
-            ),
-            "texts": {},
-        },
-        [ending_pick],
-    )
+    ending = {
+        "pageIndex": 0,
+        "templateId": ending_template_id,
+        "images": assign_images(ending_template_id, [ending_pick], allow_fill_in_hero=True),
+        "texts": {},
+    }
     use_count[_photo_id(ending_pick)] += 1
 
     cover_pick = (
@@ -497,17 +438,12 @@ def build_base_pages(
         chapter_id="cover",
         page_ordinal=0,
     )
-    cover = _with_default_image_pos(
-        {
-            "pageIndex": 0,
-            "templateId": cover_template_id,
-            "images": assign_images(
-                cover_template_id, [cover_pick], allow_fill_in_hero=True
-            ),
-            "texts": {},
-        },
-        [cover_pick],
-    )
+    cover = {
+        "pageIndex": 0,
+        "templateId": cover_template_id,
+        "images": assign_images(cover_template_id, [cover_pick], allow_fill_in_hero=True),
+        "texts": {},
+    }
 
     return cover, ending
 

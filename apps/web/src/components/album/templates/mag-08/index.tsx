@@ -37,7 +37,6 @@ export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
         placeholder="4:5"
         style={{ position: 'absolute', left: 70, top: 100, width: 360, height: 550 }}
         position={imagePos?.['image']}
-        slotId="image"
       />
       {/* 左侧说明：与照片左缘对齐、宽度等于照片宽度 */}
       <p

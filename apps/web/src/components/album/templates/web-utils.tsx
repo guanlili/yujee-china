@@ -34,13 +34,9 @@ interface WebImageProps {
   style: CSSProperties;
   // #165 per-slot override. Absent => centered cover, no zoom (pre-#165 default).
   position?: { x: number; y: number; scale: number };
-  // #168: the page's image-slot key (same key as imagePos[slotId]). Emitted as
-  // data-image-slot so the editor's manual pan/zoom overlay can map a clicked
-  // <img> back to its slot and persist the move into imagePosJson[slotId].
-  slotId?: string;
 }
 
-export function WebImage({ src, placeholder, style, position, slotId }: WebImageProps) {
+export function WebImage({ src, placeholder, style, position }: WebImageProps) {
   if (src) {
     const objectPosition = position ? `${position.x}% ${position.y}%` : '50% 50%';
     // scale>1 zooms in around the focal point; transformOrigin matches the
@@ -52,38 +48,18 @@ export function WebImage({ src, placeholder, style, position, slotId }: WebImage
             transformOrigin: `${position.x}% ${position.y}%`,
           }
         : {};
-    // #168: the caller `style` is the SLOT geometry (position/top/left/width/...).
-    // It defines the fixed frame. We give it to an `overflow:hidden` wrapper <div>
-    // so a scaled-up <img> is CLIPPED to the frame instead of growing the slot box
-    // and shoving neighboring content (the original bug: scale was applied to the
-    // <img> which *was* the slot, with no clip container around it). The inner
-    // <img> fills the wrapper 100%×100% and keeps the paint props (object-fit/
-    // object-position/transform), so at scale=1 it covers the exact same pixels as
-    // before — pixel-identical, the wrapper's clip only ever bites once scale>1.
-    // `objectFit`/`objectPosition` belong to the img, never the wrapper: strip them
-    // out of the wrapper style (some templates inline objectFit:'cover' in `style`).
-    const { objectFit: _of, objectPosition: _op, ...frame } = style;
     return (
-      <div
+      <img
+        src={src}
+        alt=""
         style={{
-          ...frame,
-          overflow: 'hidden',
+          display: 'block',
+          ...style,
+          objectFit: 'cover',
+          objectPosition,
+          ...zoom,
         }}
-      >
-        <img
-          src={src}
-          alt=""
-          data-image-slot={slotId}
-          style={{
-            display: 'block',
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            objectPosition,
-            ...zoom,
-          }}
-        />
-      </div>
+      />
     );
   }
   return (

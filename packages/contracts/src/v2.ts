@@ -10,7 +10,7 @@
 // 不改 `layout.ts`:对外扁平 `AlbumLayoutPlan` 保持 5 字段;v2 扩充字段只活在
 //   `V2PhotoAnalysis`,finalize 时 strip。
 import { z } from 'zod';
-import { Page, PhotoAnalysis, AlbumLayoutPlan, ImagePos, Focal } from './layout';
+import { Page, PhotoAnalysis, AlbumLayoutPlan, ImagePos } from './layout';
 
 // ────────────────────────────── 共享枚举 ──────────────────────────────
 
@@ -107,9 +107,6 @@ export const V2PhotoAnalysis = z
     tags: z.array(z.string()),
     quality: z.enum(['hero', 'detail', 'fill']),
     orientation: z.enum(['portrait', 'landscape', 'square']),
-    // #169 主体焦点(0..1,face-first):属基础字段组,finalize 直接保留(不 strip),
-    // 与 layout.ts PhotoAnalysis.focal 同形。可选,缺省回落 0.5/0.5。
-    focal: Focal.optional(),
     // —— 扩充字段:内部辅助,finalize strip ——
     peopleCount: z.enum(['0', '1', '2-3', '4+']),
     scene: z.enum(['indoor', 'outdoor', 'nature', 'city', 'interior']),
@@ -501,11 +498,8 @@ export const V2InspectDiagnosis = z
     // 出问题的 slotId:必为该页 slotId 之一,无法定位时为 null(调用方降级为 talk)。
     imageId: z.string().min(1).nullable().optional(),
     problem: z.string(),
-    // #169:从「相对位移 dx/dy」改为「绝对目标 objectPosition」。targetX/targetY 是
-    // 主体应落在的渲染框 object-position 百分比(0..100,与 ImagePos.x/y 同空间);
-    // 调用方据此直接写 Page.imagePos,而非在 50/50 基础上加位移。
-    targetX: z.number().min(0).max(100),
-    targetY: z.number().min(0).max(100),
+    suggestedDx: z.number().min(-50).max(50), // 百分点水平位移
+    suggestedDy: z.number().min(-50).max(50), // 百分点垂直位移
     suggestedScale: z.number().min(1).max(2),
     confidence: z.number().min(0).max(1),
   })

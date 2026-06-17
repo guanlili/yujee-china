@@ -394,18 +394,13 @@ def _skeleton_photo(photo: V2Photo) -> dict[str, Any]:
     """Minimal photo shape the deterministic skeleton engine consumes (quality +
     orientation drive placement; order breaks ties)."""
 
-    analysis: dict[str, Any] = {
-        "photoId": photo.photoId,
-        "quality": photo.analysis.quality,
-        "orientation": photo.analysis.orientation,
-    }
-    # #169: carry focal so the re-derived cover/ending also get the focal-driven
-    # default imagePos (skeleton.build_image_pos reads analysis.focal).
-    if photo.analysis.focal is not None:
-        analysis["focal"] = photo.analysis.focal.model_dump()
     return {
         "photoId": photo.photoId,
-        "analysis": analysis,
+        "analysis": {
+            "photoId": photo.photoId,
+            "quality": photo.analysis.quality,
+            "orientation": photo.analysis.orientation,
+        },
         "exif": {"order": photo.exif.order},
         "used": True,
     }
@@ -413,10 +408,7 @@ def _skeleton_photo(photo: V2Photo) -> dict[str, Any]:
 
 def _strip_to_base5(photo: V2Photo) -> PhotoAnalysis:
     """Drop the internal extension fields (peopleCount/scene/mood/timeOfDay) so
-    the external contract keeps only the base fields (invariant 12).
-
-    #169: `focal` is a BASE field, not an extension — it MUST survive finalize so
-    the flat layout's default imagePos can center on the subject. Keep it."""
+    the external contract keeps only the 5 base fields (invariant 12)."""
 
     analysis = photo.analysis
     return PhotoAnalysis(
@@ -425,7 +417,6 @@ def _strip_to_base5(photo: V2Photo) -> PhotoAnalysis:
         tags=list(analysis.tags),
         quality=analysis.quality,
         orientation=analysis.orientation,
-        focal=analysis.focal,
     )
 
 

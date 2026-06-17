@@ -21,7 +21,6 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
         placeholder="4:3"
         style={{ position: 'absolute', left: 50, top: 90, width: 300, height: 300 }}
         position={imagePos?.['imageTop']}
-        slotId="imageTop"
       />
       <div style={{ position: 'absolute', top: 130, right: 60, width: 230 }}>
         <p
@@ -54,7 +53,6 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
         placeholder="11:10"
         style={{ position: 'absolute', left: 374, top: 400, width: 370, height: 600 }}
         position={imagePos?.['imageMain']}
-        slotId="imageMain"
       />
       <div
         style={{

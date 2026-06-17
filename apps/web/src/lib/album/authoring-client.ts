@@ -156,14 +156,11 @@ export function postDraftEdit(
 }
 
 // #165 Phase 3 — per-image position/scale diagnosis from a vision pass.
-// #169: the diagnosis now carries the ABSOLUTE target object-position the subject
-// should sit at (targetX/targetY ∈ [0,100], same space as ImagePos.x/y), not a
-// relative dx/dy shift.
 export interface InspectDiagnosis {
   imageId?: string | null;
   problem: string;
-  targetX: number;
-  targetY: number;
+  suggestedDx: number;
+  suggestedDy: number;
   suggestedScale: number;
   confidence: number;
 }

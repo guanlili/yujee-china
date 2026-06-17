@@ -20,7 +20,6 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
         placeholder="1:1"
         style={{ position: 'absolute', top: 60, left: 50, width: 380, height: 360 }}
         position={imagePos?.['image1']}
-        slotId="image1"
       />
       <div
         style={{
@@ -61,7 +60,6 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
         placeholder="1:1"
         style={{ position: 'absolute', top: 460, right: 50, width: 280, height: 280 }}
         position={imagePos?.['image2']}
-        slotId="image2"
       />
       <div
         style={{
@@ -83,7 +81,6 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
         placeholder="1:1"
         style={{ position: 'absolute', top: 760, right: 50, width: 280, height: 280 }}
         position={imagePos?.['image3']}
-        slotId="image3"
       />
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="04" />
     </WebPage>

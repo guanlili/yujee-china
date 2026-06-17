@@ -158,7 +158,6 @@ def _to_v2_analysis(analysis: PhotoAnalysis) -> V2PhotoAnalysis:
         tags=list(analysis.tags),
         quality=analysis.quality,
         orientation=analysis.orientation,
-        focal=analysis.focal,  # #169: subject focal carried into the v2 tree.
         peopleCount=analysis.peopleCount or "0",
         scene=analysis.scene or "outdoor",
         mood=analysis.mood or "warm",
@@ -497,14 +496,13 @@ async def _run_init(req: V2InitRequest) -> None:
         vision_result = vision_mock.analyze(layout_req)
     else:
         try:
-            vision_result, _tokens, vision_model = await vision_analyze(layout_req)
+            vision_result, _tokens = await vision_analyze(layout_req)
         except VisionError as exc:
             log.warning("v2_init.vision_failed", error=str(exc))
             await _emit_failure(req, code="AGENT_VISION_FAILED", message=str(exc), stage="vision")
             return
         vision_call_count = 1
-        # `vision_model` is the model the slot actually hit (doubao or gpt-*), so
-        # Usage.models.vision matches the configured provider — not hardwired ark.
+        vision_model = settings.ark_vision_model
     await _emit_progress(req, "vision", 100)
 
     # Stage 1b — deterministic grouping + duplicate folding.
@@ -744,14 +742,13 @@ async def _run_add_photos(req: V2AddPhotosRequest) -> None:
         vision_result = vision_mock.analyze(layout_req)
     else:
         try:
-            vision_result, _tokens, vision_model = await vision_analyze(layout_req)
+            vision_result, _tokens = await vision_analyze(layout_req)
         except VisionError as exc:
             log.warning("v2_add.vision_failed", error=str(exc))
             await _emit_add_failure(req, code="AGENT_VISION_FAILED", message=str(exc), stage="vision")
             return
         vision_call_count = 1
-        # `vision_model` is the model the slot actually hit (doubao or gpt-*), so
-        # Usage.models.vision matches the configured provider — not hardwired ark.
+        vision_model = settings.ark_vision_model
     await _emit_add_progress(req, "vision", 100)
 
     # Stage 1b — grouping the new photos standalone → new chapters.
@@ -1251,18 +1248,17 @@ async def submit_draft_edit(req: V2DraftEditRequest) -> dict:
 
 def _mock_inspect_complete(req: V2InspectRequest) -> Any:
     """Deterministic injected `complete` for the inspect round-trip without a
-    vision key: name the page's first image slot and target the upper area
-    (the common 'face cut at top' fix → pin nearer the TOP). The service still
-    clamps + validates the slot against the page's real slots on top (mirrors the
-    other W6 mocks)."""
+    vision key: name the page's first image slot and suggest a small move-down
+    (the common 'face cut at top' fix). The service still clamps + validates the
+    slot against the page's real slots on top (mirrors the other W6 mocks)."""
     slot = next(iter(req.page.images), None)
 
     async def complete(**_kwargs: Any) -> dict[str, Any]:
         payload = {
             "imageId": slot,
             "problem": "a subject looks cut off near the top",
-            "targetX": 50,
-            "targetY": 20,
+            "suggestedDx": 0,
+            "suggestedDy": -12,
             "suggestedScale": 1.0,
             "confidence": 0.6,
         }

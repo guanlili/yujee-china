@@ -60,7 +60,7 @@ def real_mode(monkeypatch):
     from src.services import vision_mock
 
     async def fake_vision(layout_req):
-        return vision_mock.analyze(layout_req), None, "doubao-seed-1-6-vision-250815"
+        return vision_mock.analyze(layout_req), None
 
     monkeypatch.setattr(v2_album, "vision_analyze", fake_vision)
     yield
@@ -298,72 +298,6 @@ def test_init_writing_chapter_failure_fails_whole_init_and_releases_hold(
         if c["event"] == "progress" and c["stage"] == "writing"
     ]
     assert writing_progress[-1] == 0
-
-
-def _is_vision_prompt(messages: list[dict]) -> bool:
-    # vision.analyze's system prompt is the only one mentioning "photos and groups".
-    return "photos and groups" in messages[0]["content"]
-
-
-def test_init_reports_openai_vision_model_when_provider_openai(captured_callbacks, monkeypatch):
-    """P1 (#166): init/add main chain must report the model the slot ACTUALLY hit.
-    With vision_provider=openai the real vision path runs through select_vision_slot
-    (we mock only the HTTP call, not vision_analyze), and the completed callback's
-    Usage.models.vision must be openai_vision_model — not the hardwired ark default.
-    Regression guard for the old `vision_model = settings.ark_vision_model` bug."""
-    monkeypatch.setenv("AGENT_PIPELINE_MODE", "real")
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "test_key")
-    monkeypatch.setenv("VISION_PROVIDER", "openai")
-    monkeypatch.setenv("OPENAI_API_KEY", "test_oai_key")
-    from src import settings as s
-
-    s.reset_settings_cache()
-
-    def _vision_payload(count: int) -> dict:
-        return {
-            "photos": [
-                {
-                    "description": f"Photo {i + 1}",
-                    "tags": ["memoir", "trip"],
-                    "quality": "detail",
-                    "orientation": "landscape",
-                    "peopleCount": "1",
-                    "scene": "outdoor",
-                    "mood": "warm",
-                    "timeOfDay": "day",
-                    "location": None,
-                }
-                for i in range(count)
-            ],
-            "groups": [],
-        }
-
-    async def fake_chat(**kwargs):
-        messages = kwargs["messages"]
-        if _is_vision_prompt(messages):
-            # Real vision path resolved the openai slot: it must NOT carry doubao's
-            # `thinking` knob and must request a json_object response_format.
-            assert kwargs.get("extra_body") is None
-            assert kwargs.get("response_format") == {"type": "json_object"}
-            assert kwargs["model"] == "gpt-4o-mini"
-            return _completion(_vision_payload(6))
-        if _is_theme_prompt(messages):
-            return _completion(
-                {"theme": {"subject": "x", "tone": "warm", "style": "warm-film"}, "assistantReply": "ok"}
-            )
-        return _completion({"pagesTexts": []})
-
-    monkeypatch.setattr(ai_client, "chat_completion", fake_chat)
-    try:
-        asyncio.run(v2_album._run_init(_req(6)))
-    finally:
-        s.reset_settings_cache()
-
-    completed = [c for c in captured_callbacks if c["event"] == "completed"]
-    assert len(completed) == 1, captured_callbacks
-    assert not [c for c in captured_callbacks if c["event"] == "failed"]
-    assert completed[0]["usage"]["models"]["vision"] == "gpt-4o-mini"
-    assert completed[0]["usage"]["visionCallCount"] == 1
 
 
 def test_init_writing_respects_concurrency_limit(real_mode, captured_callbacks, monkeypatch):

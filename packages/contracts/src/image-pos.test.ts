@@ -1,32 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { Focal, ImagePos, Page, PhotoAnalysis } from './layout';
+import { ImagePos, Page } from './layout';
 
 // #165 Phase 1: ImagePos clamp bounds + Page.imagePos optionality. Mirrors the
 // Python parity tests in apps/agent/tests/test_image_pos_parity.py.
-
-// #169: Focal (0..1) + PhotoAnalysis.focal optionality.
-test('Focal accepts [0,1] and rejects out-of-range', () => {
-  assert.equal(Focal.safeParse({ x: 0, y: 1 }).success, true);
-  assert.equal(Focal.safeParse({ x: 0.5, y: 0.5 }).success, true);
-  assert.equal(Focal.safeParse({ x: -0.1, y: 0.5 }).success, false);
-  assert.equal(Focal.safeParse({ x: 0.5, y: 1.1 }).success, false);
-});
-
-const basePhoto = {
-  photoId: 'p1',
-  description: 'a',
-  tags: ['x'],
-  quality: 'hero',
-  orientation: 'portrait',
-} as const;
-
-test('PhotoAnalysis.focal is optional (absent ok) and validated when present', () => {
-  assert.equal(PhotoAnalysis.safeParse(basePhoto).success, true);
-  assert.equal(PhotoAnalysis.safeParse({ ...basePhoto, focal: { x: 0.2, y: 0.8 } }).success, true);
-  assert.equal(PhotoAnalysis.safeParse({ ...basePhoto, focal: { x: 2, y: 0.8 } }).success, false);
-});
 
 test('ImagePos accepts in-range values', () => {
   assert.equal(ImagePos.safeParse({ x: 0, y: 100, scale: 1 }).success, true);
