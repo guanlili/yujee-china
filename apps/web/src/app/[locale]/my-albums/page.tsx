@@ -25,6 +25,7 @@ type Album = {
   pageCount: number;
   pdfUrl: string | null;
   createdAt: string;
+  coverThumbnailUrl: string | null;
   coverPage: AlbumCoverPage | null;
 };
 
@@ -173,6 +174,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
             <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg)]">
               <AlbumCoverPreview
                 coverPage={a.coverPage}
+                coverThumbnailUrl={a.coverThumbnailUrl}
                 pageCount={a.pageCount}
                 fallback={coverDecor(i)}
               />
@@ -204,6 +206,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg)]">
             <AlbumCoverPreview
               coverPage={a.coverPage}
+              coverThumbnailUrl={a.coverThumbnailUrl}
               pageCount={a.pageCount}
               fallback={coverDecor(i)}
             />
@@ -247,6 +250,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg)]">
             <AlbumCoverPreview
               coverPage={a.coverPage}
+              coverThumbnailUrl={a.coverThumbnailUrl}
               pageCount={a.pageCount}
               fallback={coverDecor(i)}
             />

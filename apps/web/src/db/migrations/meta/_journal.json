@@ -57,6 +57,13 @@
       "when": 1781256161826,
       "tag": "0007_image_pos_json",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1781670713598,
+      "tag": "0008_add_cover_thumbnail",
+      "breakpoints": true
     }
   ]
 }

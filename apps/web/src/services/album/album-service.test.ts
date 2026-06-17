@@ -387,3 +387,109 @@ test('getDraftSkeleton: rejects a non-owner', async (t) => {
     await cleanupUser(intruder.id);
   }
 });
+
+// ── #167: cover thumbnail sign/confirm ──
+// signCoverThumbnailUpload validates the asset BEFORE any ownership/R2 work, so
+// the rejection branches need no DB. The R2-signing success path needs R2 creds
+// (not present in local test env), so — matching signPdfUpload — it is not
+// exercised here; the validation + namespace guards are what protect the contract.
+
+test('signCoverThumbnailUpload: rejects a non-jpeg contentType', async () => {
+  await assert.rejects(
+    () =>
+      albumService.signCoverThumbnailUpload('anyone', 'any-album', {
+        contentType: 'image/png',
+        size: 1000,
+      }),
+    (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+  );
+});
+
+test('signCoverThumbnailUpload: rejects a zero / oversized payload', async () => {
+  await assert.rejects(
+    () =>
+      albumService.signCoverThumbnailUpload('anyone', 'any-album', {
+        contentType: 'image/jpeg',
+        size: 0,
+      }),
+    (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+  );
+  await assert.rejects(
+    () =>
+      albumService.signCoverThumbnailUpload('anyone', 'any-album', {
+        contentType: 'image/jpeg',
+        size: 5 * 1024 * 1024, // > 2MB ceiling
+      }),
+    (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+  );
+});
+
+test('confirmCoverThumbnail: rejects a forged r2Key for another album', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('cover-thumb-forged');
+  try {
+    const album = await makeAlbum(user.id);
+    // A key namespaced to a DIFFERENT album must be rejected even by the owner.
+    await assert.rejects(
+      () =>
+        albumService.confirmCoverThumbnail(
+          user.id,
+          album.id,
+          `cover-thumbs/${user.id}/some-other-album.jpg`,
+        ),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+    const after = await albumRepo.findById(album.id);
+    assert.equal(after?.coverThumbnailR2Key, null); // unchanged
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('confirmCoverThumbnail: records key + cache-busted url for the owner', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('cover-thumb-ok');
+  try {
+    const album = await makeAlbum(user.id);
+    const key = `cover-thumbs/${user.id}/${album.id}.jpg`;
+    const { coverThumbnailUrl } = await albumService.confirmCoverThumbnail(user.id, album.id, key);
+    assert.ok(coverThumbnailUrl.includes(key));
+    assert.match(coverThumbnailUrl, /\?v=\d+$/); // cache-busting query appended
+
+    const after = await albumRepo.findById(album.id);
+    assert.equal(after?.coverThumbnailR2Key, key);
+    assert.equal(after?.coverThumbnailUrl, coverThumbnailUrl);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('confirmCoverThumbnail: rejects a non-owner with ALBUM_NOT_OWNED', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const owner = await makeUser('cover-thumb-owner');
+  const intruder = await makeUser('cover-thumb-intruder');
+  try {
+    const album = await makeAlbum(owner.id);
+    await assert.rejects(
+      () =>
+        albumService.confirmCoverThumbnail(
+          intruder.id,
+          album.id,
+          `cover-thumbs/${intruder.id}/${album.id}.jpg`,
+        ),
+      (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
+    );
+  } finally {
+    await cleanupUser(owner.id);
+    await cleanupUser(intruder.id);
+  }
+});
