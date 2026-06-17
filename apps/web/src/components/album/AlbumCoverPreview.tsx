@@ -16,14 +16,28 @@ interface Props {
   coverPage: AlbumCoverPage | null;
   pageCount: number;
   fallback: ReactNode;
+  // #167: persistent cover thumbnail (rasterized first page stored in R2). When
+  // present this is the source of truth — a plain <img>, no photoStore needed —
+  // so covers survive new sessions/devices where the browser photoStore is empty.
+  coverThumbnailUrl?: string | null;
 }
 
 const THUMBNAIL_PADDING = 12;
 
-export function AlbumCoverPreview({ coverPage, pageCount, fallback }: Props) {
+export function AlbumCoverPreview({ coverPage, pageCount, fallback, coverThumbnailUrl }: Props) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [scale, setScale] = useState(0.1);
+  // If the stored thumbnail 404s/errors (e.g. deleted in R2), fall back to the
+  // live photoStore render path below rather than showing a broken image.
+  const [thumbBroken, setThumbBroken] = useState(false);
+
+  // Reset the broken flag whenever the URL changes — a re-uploaded thumbnail gets
+  // a fresh `?v=...` URL, so a cover that previously 404'd should retry the stored
+  // image instead of being stuck on the photoStore fallback forever.
+  useEffect(() => {
+    setThumbBroken(false);
+  }, [coverThumbnailUrl]);
 
   const photoIds = useMemo(() => {
     if (!coverPage) return [];
@@ -63,6 +77,26 @@ export function AlbumCoverPreview({ coverPage, pageCount, fallback }: Props) {
     observer.observe(frame);
     return () => observer.disconnect();
   }, [coverPage]);
+
+  // #167: prefer the stored thumbnail. It's a self-contained rendered image, so it
+  // works with no photoStore (other devices / cleared cache) — the whole point of
+  // the feature. The live-render path below stays as the same-session fallback
+  // (just-created album whose thumbnail upload may still be in flight) and as the
+  // degraded path if the stored image fails to load.
+  const useStoredThumb = !!coverThumbnailUrl && !thumbBroken;
+  if (useStoredThumb) {
+    return (
+      <div className="absolute inset-0 overflow-hidden bg-[#eee8dc]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={coverThumbnailUrl}
+          alt=""
+          className="h-full w-full object-contain"
+          onError={() => setThumbBroken(true)}
+        />
+      </div>
+    );
+  }
 
   if (!coverPage) return <>{fallback}</>;
 

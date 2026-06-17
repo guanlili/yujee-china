@@ -284,18 +284,20 @@ def test_inspect_request_requires_screenshot():
 
 
 def test_inspect_diagnosis_fields_and_clamp():
+    # #169: targetX/targetY (absolute object-position) replace suggestedDx/Dy.
     assert set(V2InspectDiagnosis.model_fields) == {
-        "imageId", "problem", "suggestedDx", "suggestedDy", "suggestedScale", "confidence",
+        "imageId", "problem", "targetX", "targetY", "suggestedScale", "confidence",
     }
     # imageId nullable; ranges enforced.
     V2InspectDiagnosis.model_validate(
-        dict(imageId=None, problem="ok", suggestedDx=0, suggestedDy=0, suggestedScale=1, confidence=0)
+        dict(imageId=None, problem="ok", targetX=50, targetY=50, suggestedScale=1, confidence=0)
     )
     for bad in (
-        dict(imageId="i", problem="p", suggestedDx=51, suggestedDy=0, suggestedScale=1, confidence=0),
-        dict(imageId="i", problem="p", suggestedDx=0, suggestedDy=-51, suggestedScale=1, confidence=0),
-        dict(imageId="i", problem="p", suggestedDx=0, suggestedDy=0, suggestedScale=2.1, confidence=0),
-        dict(imageId="i", problem="p", suggestedDx=0, suggestedDy=0, suggestedScale=1, confidence=1.1),
+        dict(imageId="i", problem="p", targetX=101, targetY=50, suggestedScale=1, confidence=0),
+        dict(imageId="i", problem="p", targetX=-1, targetY=50, suggestedScale=1, confidence=0),
+        dict(imageId="i", problem="p", targetX=50, targetY=101, suggestedScale=1, confidence=0),
+        dict(imageId="i", problem="p", targetX=50, targetY=50, suggestedScale=2.1, confidence=0),
+        dict(imageId="i", problem="p", targetX=50, targetY=50, suggestedScale=1, confidence=1.1),
     ):
         with pytest.raises(ValidationError):
             V2InspectDiagnosis.model_validate(bad)
@@ -304,7 +306,7 @@ def test_inspect_diagnosis_fields_and_clamp():
 def test_inspect_response_fields_and_strict():
     resp = V2InspectResponse.model_validate(
         dict(
-            diagnosis=dict(imageId="image", problem="cut off", suggestedDx=0, suggestedDy=-10,
+            diagnosis=dict(imageId="image", problem="cut off", targetX=50, targetY=20,
                            suggestedScale=1.1, confidence=0.7),
             assistantReply="let me adjust", usage=dict(durationMs=1, models={}),
         )
@@ -313,7 +315,7 @@ def test_inspect_response_fields_and_strict():
     assert resp.diagnosis.imageId == "image"
     with pytest.raises(ValidationError):
         V2InspectResponse.model_validate(
-            dict(diagnosis=dict(imageId="image", problem="p", suggestedDx=0, suggestedDy=0,
+            dict(diagnosis=dict(imageId="image", problem="p", targetX=50, targetY=50,
                                 suggestedScale=1, confidence=0),
                  assistantReply="x", usage=dict(durationMs=1, models={}), extra=1)
         )

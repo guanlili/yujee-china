@@ -73,8 +73,8 @@ async def test_good_json_yields_diagnosis():
             {
                 "imageId": "image",
                 "problem": "the woman's head is cut off at the top",
-                "suggestedDx": 0,
-                "suggestedDy": -12,
+                "targetX": 50,
+                "targetY": 20,
                 "suggestedScale": 1.2,
                 "confidence": 0.8,
             }
@@ -83,7 +83,8 @@ async def test_good_json_yields_diagnosis():
     assert isinstance(resp, V2InspectResponse)
     d = resp.diagnosis
     assert d.imageId == "image"
-    assert d.suggestedDy == -12
+    assert d.targetX == 50
+    assert d.targetY == 20
     assert d.suggestedScale == 1.2
     assert d.confidence == 0.8
     assert resp.usage.visionCallCount == 1
@@ -99,16 +100,16 @@ async def test_out_of_range_values_clamped():
             {
                 "imageId": "image",
                 "problem": "way off",
-                "suggestedDx": 999,
-                "suggestedDy": -999,
+                "targetX": 999,
+                "targetY": -999,
                 "suggestedScale": 9,
                 "confidence": 5,
             }
         ),
     )
     d = resp.diagnosis
-    assert d.suggestedDx == 50
-    assert d.suggestedDy == -50
+    assert d.targetX == 100
+    assert d.targetY == 0
     assert d.suggestedScale == 2.0
     assert d.confidence == 1.0
 
@@ -122,8 +123,8 @@ async def test_invalid_image_id_yields_null_unable():
             {
                 "imageId": "ghost",
                 "problem": "something",
-                "suggestedDx": 0,
-                "suggestedDy": -10,
+                "targetX": 50,
+                "targetY": 20,
                 "suggestedScale": 1.0,
                 "confidence": 0.7,
             }
@@ -133,7 +134,7 @@ async def test_invalid_image_id_yields_null_unable():
     assert d.imageId is None
     assert d.problem == "unable to inspect"
     assert d.confidence == 0.0
-    assert d.suggestedDx == 0 and d.suggestedDy == 0 and d.suggestedScale == 1.0
+    assert d.targetX == 50.0 and d.targetY == 50.0 and d.suggestedScale == 1.0
 
 
 @pytest.mark.asyncio
@@ -144,8 +145,8 @@ async def test_null_image_id_yields_unable():
             {
                 "imageId": None,
                 "problem": "page looks fine",
-                "suggestedDx": 0,
-                "suggestedDy": 0,
+                "targetX": 50,
+                "targetY": 50,
                 "suggestedScale": 1.0,
                 "confidence": 0.1,
             }
@@ -222,9 +223,9 @@ def test_route_inspect_in_mock_mode(client):
     resp = client.post("/v2/album/inspect-page", headers=_AUTH, json=_route_body())
     assert resp.status_code == 200
     data = resp.json()["data"]
-    # Mock names the first slot and suggests a small move-down.
+    # Mock names the first slot and targets the upper area (face-cut-at-top fix).
     assert data["diagnosis"]["imageId"] == "image"
-    assert data["diagnosis"]["suggestedDy"] == -12
+    assert data["diagnosis"]["targetY"] == 20
     assert data["assistantReply"]
 
 

@@ -46,3 +46,29 @@ test('every <WebImage>/<PdfImage> in a template threads a position prop', () => 
     }
   }
 });
+
+// #168: every <WebImage> (web render, the editor's manual pan/zoom surface) must
+// also thread slotId so the overlay can map a clicked <img> back to its image-slot
+// key and persist the move into imagePosJson[slotId]. PdfImage is exempt (no DOM
+// editing in the @react-pdf renderer).
+test('every web template <WebImage> threads a slotId prop (#168)', () => {
+  const tagRe = /<WebImage\b([\s\S]*?)\/>/g;
+  for (const file of templateFiles()) {
+    if (!file.endsWith('index.tsx')) continue;
+    let src: string;
+    try {
+      src = readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    let m: RegExpExecArray | null;
+    while ((m = tagRe.exec(src)) !== null) {
+      const attrs = m[1]!;
+      assert.match(
+        attrs,
+        /slotId=/,
+        `${file}: a <WebImage> is missing slotId (needed by the #168 manual editor)`,
+      );
+    }
+  }
+});

@@ -30,8 +30,9 @@ export type InspectStep =
       round: number;
       pageIndex: number;
       problem: string;
-      dx: number;
-      dy: number;
+      // #169: absolute target object-position (0..100), not a relative dx/dy.
+      targetX: number;
+      targetY: number;
       scale: number;
       confidence: number;
     }
@@ -105,16 +106,18 @@ export async function runInspectAdjustLoop(
         round: inspectRounds,
         pageIndex: inspectPage,
         problem: d.problem,
-        dx: d.suggestedDx,
-        dy: d.suggestedDy,
+        targetX: d.targetX,
+        targetY: d.targetY,
         scale: d.suggestedScale,
         confidence: d.confidence,
       });
+      // #169: thread the ABSOLUTE target so the model calls adjust_image_position
+      // with x/y (not a relative dx/dy nudge).
       diagnosisMsg =
         `[inspection of page ${inspectPage}] imageId=${d.imageId}; problem=${d.problem}; ` +
-        `suggestedDx=${d.suggestedDx}; suggestedDy=${d.suggestedDy}; ` +
+        `targetX=${d.targetX}; targetY=${d.targetY}; ` +
         `suggestedScale=${d.suggestedScale}; confidence=${d.confidence}. ` +
-        `Call adjust_image_position to fix it.`;
+        `Call adjust_image_position with x=targetX, y=targetY, scale=suggestedScale to fix it.`;
     } catch (e) {
       if (isAuthError(e)) throw e; // auth errors must surface (redirect to login).
       // Inspect-render/capture failed — never hang; degrade to talk. Log so a

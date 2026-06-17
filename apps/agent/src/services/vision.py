@@ -12,9 +12,10 @@ from typing import Any
 from pydantic import ValidationError
 
 from ..logging_config import get_logger
-from ..schemas import LayoutRequest, PhotoAnalysis, PhotoGroup, VisionResult
+from ..schemas import Focal, LayoutRequest, PhotoAnalysis, PhotoGroup, VisionResult
 from ..settings import get_settings
 from . import ai_client
+from .vision_provider import VisionSlotError, estimate_cost_usd, select_vision_slot
 
 log = get_logger("vision")
 
@@ -59,7 +60,11 @@ def _build_system_prompt(photo_count: int) -> str:
         '  "scene": one of "indoor" | "outdoor" | "nature" | "city" | "interior".\n'
         '  "mood": one of "warm" | "cool" | "sentimental" | "energetic" | "quiet".\n'
         '  "timeOfDay": one of "morning" | "day" | "evening" | "night", or null if uncertain.\n'
-        '  "location": a short free-text guess (e.g. "Kyoto street", "kitchen") or null.\n\n'
+        '  "location": a short free-text guess (e.g. "Kyoto street", "kitchen") or null.\n'
+        '  "focal": the MAIN SUBJECT\'s center in the ORIGINAL photo as '
+        '{"x":0..1,"y":0..1} normalized fractions (x = left→right, y = top→bottom). '
+        "Prefer a face when people are present; otherwise the visual subject. Use "
+        "null when there is no clear subject (then the album centers the photo).\n\n"
         "groups must be an array of 1-5 objects that cluster adjacent narrative moments:\n"
         '  "groupId": short stable id such as "g1".\n'
         '  "label": short English theme label.\n'
@@ -91,6 +96,22 @@ def _build_user_content(req: LayoutRequest) -> list[dict[str, Any]]:
     for photo in req.photos:
         parts.append({"type": "image_url", "image_url": {"url": photo.base64}})
     return parts
+
+
+def _coerce_focal(raw: Any) -> Focal | None:
+    """Parse the model's focal hint into a clamped Focal, or None when absent /
+    malformed (caller then falls back to the centered 0.5/0.5 default). Accepts an
+    {x,y} object; out-of-range numbers are clamped into [0, 1]."""
+    if not isinstance(raw, dict):
+        return None
+    try:
+        x = float(raw.get("x"))  # type: ignore[arg-type]
+        y = float(raw.get("y"))
+    except (TypeError, ValueError):
+        return None
+    x = max(0.0, min(1.0, x))
+    y = max(0.0, min(1.0, y))
+    return Focal(x=x, y=y)
 
 
 def _coerce_one(item: Any, photo_id: str, fallback_orient: str) -> PhotoAnalysis:
@@ -136,6 +157,8 @@ def _coerce_one(item: Any, photo_id: str, fallback_orient: str) -> PhotoAnalysis
     raw_loc = item.get("location")
     location = None if raw_loc in (None, "", "null") else str(raw_loc).strip()[:80] or None
 
+    focal = _coerce_focal(item.get("focal"))
+
     try:
         return PhotoAnalysis(
             photoId=photo_id,
@@ -143,6 +166,7 @@ def _coerce_one(item: Any, photo_id: str, fallback_orient: str) -> PhotoAnalysis
             tags=tags,
             quality=quality,  # type: ignore[arg-type]
             orientation=orientation,  # type: ignore[arg-type]
+            focal=focal,
             peopleCount=people,  # type: ignore[arg-type]
             scene=scene,  # type: ignore[arg-type]
             mood=mood,  # type: ignore[arg-type]
@@ -245,18 +269,28 @@ def _sanitize_groups(raw_groups: Any, photo_ids: list[str]) -> list[PhotoGroup]:
     return groups or _fallback_groups(photo_ids)
 
 
-async def analyze(req: LayoutRequest) -> tuple[VisionResult, int]:
+async def analyze(req: LayoutRequest) -> tuple[VisionResult, int, str]:
     """Run vision on all photos in one batched call. Returns
-    (vision_result, total_tokens_billed_to_vision). Raises VisionError on any
-    failure that should map to AGENT_VISION_FAILED."""
+    (vision_result, total_tokens_billed_to_vision, resolved_model). The resolved
+    model is the slot's actual model id (doubao or gpt-*), so callers can report
+    the true `models.vision` in Usage instead of hardwiring the ark model — the
+    slot helper is the single source of truth for which provider was hit (#166).
+    Raises VisionError on any failure that should map to AGENT_VISION_FAILED."""
     settings = get_settings()
-    if not settings.ark_api_key:
-        raise VisionError("ARK_API_KEY missing; cannot run real vision stage")
+    try:
+        slot = select_vision_slot(settings)
+    except VisionSlotError as exc:
+        raise VisionError(str(exc)) from exc
 
     fallback_orients = [_photo_orientation(p.width, p.height) for p in req.photos]
     photo_ids = [p.photoId for p in req.photos]
     photo_count = len(req.photos)
-    log.info("vision.call.start", photo_count=photo_count, model=settings.ark_vision_model)
+    log.info(
+        "vision.call.start",
+        photo_count=photo_count,
+        provider=slot.provider,
+        model=slot.model,
+    )
 
     messages = [
         {"role": "system", "content": _build_system_prompt(photo_count)},
@@ -265,16 +299,17 @@ async def analyze(req: LayoutRequest) -> tuple[VisionResult, int]:
 
     try:
         response = await ai_client.chat_completion(
-            base_url=settings.ark_base_url,
-            api_key=settings.ark_api_key,
-            model=settings.ark_vision_model,
+            base_url=slot.base_url,
+            api_key=slot.api_key,
+            model=slot.model,
             messages=messages,
-            timeout_seconds=settings.ark_timeout_seconds,
+            timeout_seconds=slot.timeout_seconds,
             temperature=0.2,
             max_tokens=8192,
-            extra_body=(
-                {"thinking": {"type": "disabled"}} if settings.ark_disable_thinking else None
-            ),
+            response_format=slot.response_format,
+            # doubao's `thinking` knob is set here only for the ark slot; the
+            # openai slot's extra_body is always None (OpenAI 400s on `thinking`).
+            extra_body=slot.extra_body,
         )
     except ai_client.AIRequestError as exc:
         raise VisionError(f"vision upstream call failed: {exc}") from exc
@@ -319,9 +354,17 @@ async def analyze(req: LayoutRequest) -> tuple[VisionResult, int]:
 
     log.info(
         "vision.call.ok",
+        provider=slot.provider,
+        model=slot.model,
         photo_count=photo_count,
         group_count=len(groups),
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
+        # None for per-image-billed providers (doubao); a USD estimate for GPT.
+        est_cost_usd=estimate_cost_usd(slot.model, prompt_tokens, completion_tokens),
     )
-    return VisionResult(photos=analyses, groups=groups), prompt_tokens + completion_tokens
+    return (
+        VisionResult(photos=analyses, groups=groups),
+        prompt_tokens + completion_tokens,
+        slot.model,
+    )

@@ -17,12 +17,14 @@ export function WebMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
         placeholder="3:4"
         style={{ position: 'absolute', top: 170, left: 70, width: 320, height: 600 }}
         position={imagePos?.['imageLeft']}
+        slotId="imageLeft"
       />
       <WebImage
         src={d.imageRight}
         placeholder="3:4"
         style={{ position: 'absolute', top: 170, right: 70, width: 320, height: 600 }}
         position={imagePos?.['imageRight']}
+        slotId="imageRight"
       />
       <p
         style={{
