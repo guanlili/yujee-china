@@ -31,6 +31,7 @@ from ..schemas_v2 import (
 )
 from ..settings import get_settings
 from . import ai_client
+from .vision_provider import VisionSlotError, estimate_cost_usd, select_vision_slot
 
 log = get_logger("inspect_render")
 
@@ -191,21 +192,38 @@ async def diagnose(
     prompt_tokens = 0
     completion_tokens = 0
     diagnosis: V2InspectDiagnosis
+    # The model name reported in Usage tracks the configured provider even when a
+    # `complete` seam is injected (tests). Resolved best-effort: a missing-key
+    # error is deferred to the real-call branch where it degrades gracefully.
+    try:
+        slot = select_vision_slot(settings)
+        model_name = slot.model
+    except VisionSlotError:
+        slot = None
+        model_name = (
+            settings.openai_vision_model
+            if settings.vision_provider == "openai"
+            else settings.ark_vision_model
+        )
     try:
         if complete is not None:
             response = await complete(messages=messages)
         else:
-            if not settings.ark_api_key:
-                raise ai_client.AIRequestError("ARK_API_KEY missing; cannot run vision inspect")
+            if slot is None:
+                raise ai_client.AIRequestError(
+                    f"vision slot ({settings.vision_provider}) unavailable; cannot run vision inspect"
+                )
             response = await ai_client.chat_completion(
-                base_url=settings.ark_base_url,
-                api_key=settings.ark_api_key,
-                model=settings.ark_vision_model,
+                base_url=slot.base_url,
+                api_key=slot.api_key,
+                model=slot.model,
                 messages=messages,
-                timeout_seconds=settings.ark_timeout_seconds,
+                timeout_seconds=slot.timeout_seconds,
                 temperature=0.1,
                 max_tokens=512,
-                extra_body={"thinking": {"type": "disabled"}},
+                response_format=slot.response_format,
+                # `thinking` is attached only for the ark slot; never for openai.
+                extra_body=slot.extra_body,
             )
         # Drop our handle to the messages (with the screenshot base64) before parsing.
         messages = []  # noqa: F841
@@ -228,9 +246,11 @@ async def diagnose(
     duration_ms = int((time.monotonic() - started) * 1000)
     log.info(
         "inspect.call.ok",
+        model=model_name,
         image_id=diagnosis.imageId,
         confidence=diagnosis.confidence,
         duration_ms=duration_ms,
+        est_cost_usd=estimate_cost_usd(model_name, prompt_tokens, completion_tokens),
     )
     return V2InspectResponse(
         diagnosis=diagnosis,
@@ -240,6 +260,6 @@ async def diagnose(
             visionCallCount=1,
             planningInputTokens=prompt_tokens,
             planningOutputTokens=completion_tokens,
-            models=V2Models(vision=settings.ark_vision_model),
+            models=V2Models(vision=model_name),
         ),
     )
