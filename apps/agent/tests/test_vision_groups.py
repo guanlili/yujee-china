@@ -88,10 +88,11 @@ def test_vision_parses_object_output_and_sanitizes_groups(monkeypatch):
 
     monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
 
-    result, tokens = asyncio.run(vision.analyze(_req()))
+    result, tokens, model = asyncio.run(vision.analyze(_req()))
 
     assert isinstance(result, VisionResult)
     assert tokens == 18
+    assert model == "doubao-seed-1-6-vision-250815"
     assert [p.photoId for p in result.photos] == ["p1", "p2", "p3", "p4"]
     assert [g.model_dump() for g in result.groups] == [
         {
@@ -143,7 +144,7 @@ def test_vision_accepts_legacy_array_output_and_builds_fallback_groups(monkeypat
 
     monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
 
-    result, _ = asyncio.run(vision.analyze(_req(count=3)))
+    result, _, _ = asyncio.run(vision.analyze(_req(count=3)))
 
     assert [p.photoId for p in result.photos] == ["p1", "p2", "p3"]
     assert result.groups
@@ -162,7 +163,7 @@ def test_vision_object_output_with_no_valid_groups_gets_fallback(monkeypatch):
 
     monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
 
-    result, _ = asyncio.run(vision.analyze(_req(count=1)))
+    result, _, _ = asyncio.run(vision.analyze(_req(count=1)))
 
     assert [g.model_dump() for g in result.groups] == [
         {"groupId": "g1", "label": "Closing", "photoIds": ["p1"], "role": "closing"}
