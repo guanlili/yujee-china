@@ -1527,6 +1527,62 @@ function EditorBook({
         });
       });
     }
+    // ── #167: persistent cover thumbnail ──
+    // Rasterize the finalized cover (first page) to a small JPEG and direct-upload
+    // it to R2, so /my-albums can show the real cover without the (non-persistent)
+    // browser photoStore. Same R2 posture as exportPdf — bytes never touch the Web
+    // tier (invariant 4); this is a rendered derivative, not an original photo
+    // (invariant 1/2). Fire-and-forget: a failure here must never block editing or
+    // export, so everything is wrapped and only logged.
+    //
+    // Cover = the page at pageIndex 0. Only meaningful for a finalized layout, so
+    // callers gate on !isAuthoring. The capture needs the originals resolved, so it
+    // runs after imageUrls are loaded (editing init) and after exportPdf.
+    let coverThumbInFlight = false;
+    async function uploadCoverThumbnail() {
+      if (isAuthoring || coverThumbInFlight) return;
+      const cover = pageByIndex(0) ?? pagesState[0];
+      if (!cover) return;
+      coverThumbInFlight = true;
+      try {
+        const { rasterizePageToBlob } = await import('@/lib/pdf/rasterize');
+        const blob = await rasterizePageToBlob(
+          {
+            templateId: cover.templateId,
+            images: cover.imagesJson,
+            texts: cover.textsJson,
+            imagePos: cover.imagePosJson,
+          },
+          resolveImage,
+          { totalPages: total },
+        );
+        if (!blob) return;
+        const signRes = await fetch(`/api/v1/albums/${albumId}/cover-thumbnail-upload-url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contentType: 'image/jpeg', size: blob.size }),
+        });
+        const signJson = await signRes.json();
+        if (!signJson.ok) throw new Error(signJson.error?.message ?? 'sign failed');
+        const { putUrl, r2Key } = signJson.data;
+        const putRes = await fetch(putUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'image/jpeg' },
+          body: blob,
+        });
+        if (!putRes.ok) throw new Error(`R2 PUT ${putRes.status}`);
+        await fetch(`/api/v1/albums/${albumId}/cover-thumbnail`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ r2Key }),
+        });
+      } catch (err) {
+        console.error('cover thumbnail upload failed', err);
+      } finally {
+        coverThumbInFlight = false;
+      }
+    }
+
     // Export: render the PDF in the browser (@react-pdf), download it locally,
     // and upload straight to R2 (bytes never touch the Web tier — invariant 4).
     let exportingPdf = false;
@@ -1577,6 +1633,10 @@ function EditorBook({
         } catch (uploadErr) {
           console.error('PDF cloud upload failed', uploadErr);
         }
+        // #167: regenerate the cover thumbnail on export — the user has just
+        // confirmed this is the book they want, so refresh the stored preview to
+        // reflect any cover edits made since it was last captured.
+        void uploadCoverThumbnail();
       } catch (e) {
         console.error('PDF export failed', e);
       } finally {
@@ -1936,6 +1996,25 @@ function EditorBook({
         paintSpread(currentCh);
         buildThumbs();
         if (bodyEl.classList.contains('overview-on')) renderOverview();
+        // #167: now that the finalized cover's originals are resolved, capture &
+        // persist its thumbnail. This self-heals albums made before the feature and
+        // refreshes after any cover edit from a prior session — the editor is the
+        // one place that reliably has both the rendered layout and the originals.
+        // Gated on the cover page's OWN photoIds — not the whole-album union —
+        // so a cross-device open that resolved some other page's original but
+        // none of the cover's doesn't render a cover with missing photos and
+        // overwrite a good stored thumbnail. Require every cover photo to be
+        // resolved (a multi-photo cover missing one slot must not upload); a
+        // text-only cover has no ids and is always safe to capture.
+        const cover = pageByIndex(0) ?? pagesState[0];
+        const coverPhotoIds = cover
+          ? collectPhotoIds([
+              { templateId: cover.templateId, images: cover.imagesJson, texts: cover.textsJson },
+            ])
+          : [];
+        if (coverPhotoIds.length === 0 || coverPhotoIds.every((id) => urls[id])) {
+          void uploadCoverThumbnail();
+        }
       });
     }
 

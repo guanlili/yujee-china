@@ -8,6 +8,10 @@ import { ERRORS } from '@/lib/api/error-codes';
 import { AlbumDraft, type ImagePos } from '@yujee/contracts';
 
 const PDF_MAX_BYTES = 50 * 1024 * 1024; // 50MB — docs/web/api.md §3.6
+// #167: cover thumbnail is a downscaled JPEG (~480px wide). A few hundred KB is a
+// generous ceiling; anything larger means the browser sent the wrong asset.
+const COVER_THUMB_MAX_BYTES = 2 * 1024 * 1024; // 2MB
+const COVER_THUMB_CONTENT_TYPE = 'image/jpeg';
 
 type AlbumCoverPage = {
   pageIndex: number;
@@ -245,6 +249,9 @@ export const albumService = {
         pageCount: a.pageCount,
         pdfUrl: a.pdfUrl,
         createdAt: a.createdAt,
+        // #167: persistent cover thumbnail (rasterized first page in R2). Preferred
+        // by the card over re-rendering from the non-persistent browser photoStore.
+        coverThumbnailUrl: a.coverThumbnailUrl ?? null,
         coverPage: coverByAlbumId.get(a.id) ?? null,
       });
     }
@@ -337,6 +344,56 @@ export const albumService = {
   async getPdfUrl(userId: string, albumId: string): Promise<{ pdfUrl: string | null }> {
     const album = await this.findOwned(userId, albumId);
     return { pdfUrl: album.pdfUrl ?? null };
+  },
+
+  // #167: sign a direct R2 PUT for the cover thumbnail (the browser-rasterized
+  // first page). Same posture as signPdfUpload — Web never touches the bytes
+  // (invariant 4), and this is a rendered derivative, not an original photo
+  // (invariant 1/2). The key is namespaced to {userId}/{albumId} so a forged key
+  // can't write into another album's slot.
+  async signCoverThumbnailUpload(
+    userId: string,
+    albumId: string,
+    input: { contentType: string; size: number },
+  ): Promise<{ putUrl: string; r2Key: string; publicUrl: string }> {
+    if (input.contentType !== COVER_THUMB_CONTENT_TYPE) {
+      throw ERRORS.VALIDATION_FAILED('contentType must be image/jpeg');
+    }
+    if (input.size <= 0 || input.size > COVER_THUMB_MAX_BYTES) {
+      throw ERRORS.VALIDATION_FAILED('cover thumbnail size out of range');
+    }
+
+    await this.findOwned(userId, albumId);
+
+    const r2Key = `cover-thumbs/${userId}/${albumId}.jpg`;
+    const putUrl = await r2.signPutUrl(r2Key, input.contentType, 300);
+    return { putUrl, r2Key, publicUrl: r2.publicUrl(r2Key) };
+  },
+
+  // #167: browser finished the direct R2 PUT of the cover thumbnail; record the
+  // key + public URL on the album. No status change — a thumbnail can be (re)written
+  // at finalize/export time or when the editor reopens, regardless of album status.
+  // The key must match the {userId}/{albumId} namespace signCoverThumbnailUpload
+  // issued, rejecting a forged key for another album. A cache-busting query is
+  // appended to coverThumbnailUrl so a re-uploaded thumbnail (same R2 key) is not
+  // served stale from the browser/CDN cache.
+  async confirmCoverThumbnail(
+    userId: string,
+    albumId: string,
+    r2Key: string,
+  ): Promise<{ coverThumbnailUrl: string }> {
+    await this.findOwned(userId, albumId);
+    const expected = `cover-thumbs/${userId}/${albumId}.jpg`;
+    if (r2Key !== expected) throw ERRORS.VALIDATION_FAILED('r2Key does not match album');
+
+    const coverThumbnailUrl = `${r2.publicUrl(r2Key)}?v=${Date.now()}`;
+    await db.transaction(async (tx) => {
+      await albumRepo.update(tx, albumId, {
+        coverThumbnailR2Key: r2Key,
+        coverThumbnailUrl,
+      });
+    });
+    return { coverThumbnailUrl };
   },
 };
 
