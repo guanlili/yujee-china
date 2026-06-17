@@ -3,7 +3,7 @@ import { COLORS, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function PdfP01({ data }: TemplateRenderProps) {
+export function PdfP01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     title?: string;
@@ -19,6 +19,7 @@ export function PdfP01({ data }: TemplateRenderProps) {
       <PdfImage
         src={d.image}
         style={{ position: 'absolute', top: 0, bottom: 320, left: 0, width: 794 }}
+        position={imagePos?.['image']}
       />
       <View
         style={{

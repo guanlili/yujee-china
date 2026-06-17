@@ -40,7 +40,7 @@ export function PagePreview({ page, totalPages, resolveImage, scale = 0.46 }: Pr
         }}
       >
         {Template ? (
-          <Template data={data} totalPages={totalPages} />
+          <Template data={data} totalPages={totalPages} imagePos={page.imagePosJson} />
         ) : (
           <div style={{ padding: 24, fontSize: 14 }}>Unknown template: {page.templateId}</div>
         )}

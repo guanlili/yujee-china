@@ -1,8 +1,8 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebImage, WebPage } from '../web-utils';
+import { WebImage, WebPage } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function WebMag01({ data, totalPages }: TemplateRenderProps) {
+export function WebMag01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     heading?: string;
     sideText?: string;
@@ -62,6 +62,7 @@ export function WebMag01({ data, totalPages }: TemplateRenderProps) {
         src={d.image}
         placeholder="3:2"
         style={{ position: 'absolute', top: 240, right: 0, width: 660, height: 460 }}
+        position={imagePos?.['image']}
       />
       <div
         style={{
@@ -92,7 +93,6 @@ export function WebMag01({ data, totalPages }: TemplateRenderProps) {
       >
         {d.caption2 || ''}
       </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} fallback="01" />
     </WebPage>
   );
 }

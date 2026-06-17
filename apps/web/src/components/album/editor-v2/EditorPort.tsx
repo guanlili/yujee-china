@@ -22,8 +22,11 @@ import { signOut } from '@/lib/auth/client';
 import { photoStore } from '@/lib/photo/store';
 import { compressFile } from '@/lib/photo/compress';
 import { getWebTemplate } from '../web-registry';
+import { buildSpreads, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
 import { PAGE } from '../templates/constants';
+import { clampZoom, paintDecision } from './zoom-util';
+import { runInspectAdjustLoop } from './draft-edit-orchestrator';
 import {
   applyPatchToPages,
   extractPhotoIds,
@@ -33,13 +36,10 @@ import {
 } from '../types';
 import {
   fetchDraftSkeleton,
-  postTheme,
-  postChapterChat,
-  postFinalize,
+  postDraftEdit,
+  postInspectRender,
+  type DraftEditResult,
   type DraftSkeleton,
-  type DraftSkeletonChapter,
-  type DraftTheme,
-  type ThemeOption,
 } from '@/lib/album/authoring-client';
 import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/client';
 import './editor-port.css';
@@ -51,18 +51,11 @@ import './editor-port.css';
 //   • building  → AGENT_RUNNING / first load: flipbook shows a loading placeholder,
 //                 chat rail is a non-interactive "tidying up" notice.
 //   • authoring → EDITING & layoutJson==null: draft skeleton (read-only, invariant
-//                 12) feeds the flipbook + rail; the chat rail drives the agent
-//                 single-thread theme→chapter creation flow + "finish the book".
+//                 12) feeds the flipbook + rail; init (#161) already wrote the full
+//                 first draft, so the chat rail does pointed single-page copy edits
+//                 via /draft-edit (#162) — no theme→chapter dialog, no finalize CTA.
 //   • editing   → layoutJson set: the original finalized editor, untouched.
 export type EditorMode = 'building' | 'authoring' | 'editing';
-
-// A theme counts as "set" once the agent populated any field (the user wrote a
-// prompt at creation, or already answered the theme question) — decides whether
-// the chat opens on the theme step or jumps straight into chapters.
-function hasTheme(theme: DraftTheme | null): boolean {
-  if (!theme) return false;
-  return Object.values(theme).some((v) => typeof v === 'string' && v.trim().length > 0);
-}
 
 // Generation progress from the album poll (use-album-poll); only meaningful in
 // building mode, where stage drives the loading-chat copy. Optional so the other
@@ -128,6 +121,8 @@ function buildingStageLabel(stage: string | null | undefined, locale: Locale): s
       return zh ? '正在整理这些瞬间…' : 'Grouping your moments…';
     case 'skeleton':
       return zh ? '正在编排版式…' : 'Laying out the spreads…';
+    case 'writing':
+      return zh ? '正在撰写文案…' : 'Writing your story…';
     case 'finalize':
       return zh ? '正在生成终稿…' : 'Putting the final touches…';
     default:
@@ -236,6 +231,7 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
     templateId: p.templateId,
     imagesJson: { ...p.imagesJson },
     textsJson: { ...p.textsJson },
+    imagePosJson: { ...(p.imagePosJson ?? {}) },
   }));
   return (
     <EditorBook
@@ -561,20 +557,14 @@ function EditorBook({
         ? 'zh'
         : 'en';
 
-    /* ─── Authoring (draft) chat state — single-thread cursor over theme + chapters.
-       Empty in editing mode; in authoring mode it drives the agent creation flow
-       (postTheme / postChapterChat / postFinalize) instead of the /chat editor. ─── */
+    /* ─── Authoring (draft) chat state (#162: render-first + pointed single-page
+       edits). Empty in editing mode; in authoring mode each message routes through
+       /draft-edit scoped to the focused page (no theme→chapter dialog machine). ─── */
     const isAuthoring = mode === 'authoring';
-    // ASK_LIMIT mirrors the contract's askCount>=2 auto-advance rule.
-    const ASK_LIMIT = 2;
-    const MESSAGE_MAX = 500; // v2 theme/chapter-chat body schemas cap free text at 500.
-    // Mutable working copy of the draft chapters; refetched after each turn.
-    let draftSkel: DraftSkeleton | null = draftChapters;
-    // Cursor: 'theme' until a theme is set, then walks the chapter list. We never
-    // expose theme/prev/next buttons — the cursor advances on its own.
-    let authStage: 'theme' | 'chapter' = draftSkel && hasTheme(draftSkel.theme) ? 'chapter' : 'theme';
-    let authChapterIdx = 0;
-    let finishing = false;
+    const MESSAGE_MAX = 500; // v2 draft-edit body schema caps free text at 500.
+    // The draft skeleton (read-only render projection; invariant 12). Rendered on
+    // entry; the agent persists draft_json server-side, so we don't refetch it.
+    const draftSkel: DraftSkeleton | null = draftChapters;
     const aT = (zh: string, en: string) => (currentLang === 'zh' ? zh : en);
     // Mutable working copy: chat and inline edits patch this in place and repaint
     // without remounting the effect. Sourced from detail.pages (editing) or the
@@ -583,16 +573,31 @@ function EditorBook({
       ...p,
       imagesJson: { ...p.imagesJson },
       textsJson: { ...p.textsJson },
+      imagePosJson: { ...(p.imagePosJson ?? {}) },
     }));
     const total = initialPages.length;
-    // Lead with a blank slot so the cover (page 0) sits on the right of the first
-    // spread (book-opening convention); the rest pair up two-per-spread.
-    const spreadCount = Math.max(1, Math.ceil((pagesState.length + 1) / 2));
-    const slotAt = (k: number): EditorPage | null => (k === 0 ? null : pagesState[k - 1] ?? null);
-    const spreadPages = (s: number): [EditorPage | null, EditorPage | null] => [
-      slotAt(s * 2),
-      slotAt(s * 2 + 1),
-    ];
+    // Real-book pagination (issue #158): the cover sits alone on the recto of the
+    // first spread (opens leftward), the ending sits alone on the verso of the last
+    // spread (closes), interior pages pair two-up. buildSpreads owns this algorithm;
+    // a null half is a blank page. spreads is mutable: authoring's refreshDraft may
+    // swap pagesState (and change the page count when a chapter is generated), so
+    // rebuildSpreads() reruns wherever pagesState is reassigned.
+    let spreads = buildSpreads(pagesState);
+    const rebuildSpreads = () => {
+      spreads = buildSpreads(pagesState);
+      // A slot-flip patch can shrink the spread count without changing page
+      // count (no remount); clamp the cursor so we never sit on a dropped spread.
+      if (currentCh >= spreadCount()) currentCh = spreadCount() - 1;
+    };
+    const spreadCount = () => Math.max(1, spreads.length);
+    const spreadPages = (s: number): [EditorPage | null, EditorPage | null] => {
+      const sp = spreads[s];
+      if (!sp) return [null, null];
+      return [
+        sp.left === null ? null : pagesState[sp.left] ?? null,
+        sp.right === null ? null : pagesState[sp.right] ?? null,
+      ];
+    };
     function pageByIndex(idx: number): EditorPage | undefined {
       return pagesState.find((p) => p.pageIndex === idx);
     }
@@ -617,7 +622,9 @@ function EditorBook({
         { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson },
         resolveImage,
       );
-      return renderToStaticMarkup(<Template data={data} totalPages={total} />);
+      return renderToStaticMarkup(
+        <Template data={data} totalPages={total} imagePos={page.imagePosJson} />,
+      );
     }
     // The 794×1123 page scaled to fill the given box (matches FlipBook PageFace).
     function faceHTML(page: EditorPage | null, boxW: number, boxH: number): string {
@@ -629,9 +636,24 @@ function EditorBook({
         `</div></div>`
       );
     }
-    function paintEl(el: HTMLElement | null, page: EditorPage | null) {
+    function paintEl(el: HTMLElement | null, page: EditorPage | null, attempt = 0) {
       if (!el) return;
-      el.innerHTML = faceHTML(page, el.clientWidth || 1, el.clientHeight || 1);
+      // #158 follow-up: a null page is "no page there" (the empty half of a solo
+      // cover/ending spread). Render nothing — faceHTML would otherwise inject a
+      // white (#fff) box. The .page-empty/.leaf-empty/.thumb-empty/.ov-solo classes
+      // strip the surrounding surface/shadow/spine so the half reads as empty space.
+      if (!page) { el.innerHTML = ''; return; }
+      // offsetParent === null ⇔ a `display:none` ancestor hides the cell (these
+      // page/thumb cells are never position:fixed). See paintDecision for why each
+      // branch behaves as it does — notably 'skip' on hidden avoids a per-frame
+      // rAF loop that the issue #157 fix would otherwise spin while overview-on.
+      const action = paintDecision(el.offsetParent === null, el.clientWidth, el.clientHeight, attempt, 30);
+      if (action === 'skip') return;
+      if (action === 'defer') {
+        requestAnimationFrame(() => paintEl(el, page, attempt + 1));
+        return;
+      }
+      el.innerHTML = faceHTML(page, el.clientWidth, el.clientHeight);
     }
     // Repaint every surface that shows page content after an edit.
     function repaintBook() {
@@ -642,7 +664,61 @@ function EditorBook({
     // Mirror a layout patch (already persisted server-side) into the preview.
     function applyLocalPatch(patch: LayoutPatchEntry[]) {
       pagesState = applyPatchToPages(pagesState, patch);
+      // A patch can swap a page's templateId, which may change its slot
+      // (cover/ending/interior) and thus the whole spread layout — recompute.
+      rebuildSpreads();
       repaintBook();
+    }
+
+    // ── #165 Phase 3: rasterize the rendered page for the vision diagnosis ──
+    // PRIVACY (invariant 1/2): the screenshot contains the user's original photos
+    // (already resolved as blob: URLs in this browser) and is sent to the vision
+    // model — exactly the same posture as init vision: it is NOT logged, NOT stored,
+    // NOT written to draft_json; it lives only in the inspect-render request body.
+    // We render the page off-screen at full 794×1123, html2canvas it, then downscale
+    // to ~840px wide and JPEG q0.8 to keep the data URI small.
+    async function capturePageRender(pageIndex: number): Promise<string> {
+      // Test seam: jsdom can't run html2canvas, so tests install a stub here.
+      const stub = (root as unknown as { __capturePageRenderStub?: (i: number) => Promise<string> })
+        .__capturePageRenderStub;
+      if (stub) return stub(pageIndex);
+
+      const page = pageByIndex(pageIndex);
+      if (!page) throw new Error(`page ${pageIndex} not in book`);
+      // Render the page at full resolution into a detached, off-screen host (so the
+      // capture is crisp and independent of the current zoom/flip state).
+      const host = document.createElement('div');
+      host.style.cssText =
+        `position:fixed;left:-99999px;top:0;width:${PAGE.width}px;height:${PAGE.height}px;` +
+        `overflow:hidden;background:#fff`;
+      host.innerHTML = faceInner(page);
+      document.body.appendChild(host);
+      try {
+        // html2canvas-pro (not the unmaintained html2canvas@1.4.1) — the latter
+        // throws on modern CSS color functions (oklch/lab/color-mix) that Tailwind
+        // v4 emits, which silently broke the inspect→adjust capture.
+        const html2canvas = (await import('html2canvas-pro')).default;
+        const canvas = await html2canvas(host, {
+          width: PAGE.width,
+          height: PAGE.height,
+          backgroundColor: '#ffffff',
+          scale: 1,
+          useCORS: true,
+          logging: false,
+        });
+        // Downscale to ~840px wide (payload stays small; plenty for a crop read).
+        const targetW = Math.min(840, canvas.width);
+        const targetH = Math.round((canvas.height / canvas.width) * targetW);
+        const out = document.createElement('canvas');
+        out.width = targetW;
+        out.height = targetH;
+        const ctx = out.getContext('2d');
+        if (!ctx) throw new Error('2d context unavailable');
+        ctx.drawImage(canvas, 0, 0, targetW, targetH);
+        return out.toDataURL('image/jpeg', 0.8);
+      } finally {
+        host.remove();
+      }
     }
 
     /* ─── apply language ─── */
@@ -693,6 +769,7 @@ function EditorBook({
     /* ─── Book / spread ─── */
     const ctxBadge = $('.chat-context');
     const pageInd = byId('pageInd');
+    const bookEl = byId('book')!;
     const pageLeft = byId('pageLeft')!;
     const pageRight = byId('pageRight')!;
     const flipper = byId('flipper')!;
@@ -726,12 +803,20 @@ function EditorBook({
       const [lp, rp] = spreadPages(i);
       paintEl(pageLeft, lp);
       paintEl(pageRight, rp);
+      // #158 follow-up: a null half is "no page there" (cover sits alone on the
+      // right, ending alone on the left). Render the empty half as truly empty —
+      // no white surface, shadow, page-num or click target — via .page-empty.
+      pageLeft.classList.toggle('page-empty', lp === null);
+      pageRight.classList.toggle('page-empty', rp === null);
+      // Drop the center spine line when either half is empty so a solo cover/ending
+      // page has no stray divider next to blank space; keep it for double spreads.
+      bookEl.classList.toggle('book-solo', lp === null || rp === null);
       if (lp) pageLeft.dataset.pageIndex = String(lp.pageIndex);
       else delete pageLeft.dataset.pageIndex;
       if (rp) pageRight.dataset.pageIndex = String(rp.pageIndex);
       else delete pageRight.dataset.pageIndex;
       updateSelectionHighlight();
-      if (pageInd) pageInd.textContent = (i + 1) + ' / ' + spreadCount;
+      if (pageInd) pageInd.textContent = (i + 1) + ' / ' + spreadCount();
       if (ctxBadge) ctxBadge.textContent = spreadLabel(i);
       // Rail items key off their target spread (data-ch), which for AI chapters is
       // a non-contiguous spread index — compare by that, not by list position.
@@ -741,12 +826,20 @@ function EditorBook({
     }
 
     function flipTo(nextIdx: number, dir: 'next' | 'prev') {
-      if (flipping || nextIdx === currentCh || nextIdx < 0 || nextIdx >= spreadCount) return;
+      if (flipping || nextIdx === currentCh || nextIdx < 0 || nextIdx >= spreadCount()) return;
       flipping = true;
       const [curLeft, curRight] = spreadPages(currentCh);
       const [nxtLeft, nxtRight] = spreadPages(nextIdx);
+      // #158 follow-up: the leaf faces + the half painted directly here also carry
+      // a possibly-null page; mark each empty so no white half flashes mid-flip.
+      // Set book-solo for the DESTINATION spread now (paintSpread re-asserts it on
+      // completion) so the spine doesn't flicker during the flip.
+      bookEl.classList.toggle('book-solo', nxtLeft === null || nxtRight === null);
 
       if (dir === 'next') {
+        leafFront.classList.toggle('leaf-empty', curRight === null);
+        leafBack.classList.toggle('leaf-empty', nxtLeft === null);
+        pageRight.classList.toggle('page-empty', nxtRight === null);
         paintEl(leafFront, curRight);
         paintEl(leafBack, nxtLeft);
         paintEl(pageRight, nxtRight);
@@ -766,6 +859,9 @@ function EditorBook({
           flipping = false;
         }, 920);
       } else {
+        leafFront.classList.toggle('leaf-empty', curLeft === null);
+        leafBack.classList.toggle('leaf-empty', nxtRight === null);
+        pageLeft.classList.toggle('page-empty', nxtLeft === null);
         paintEl(leafFront, curLeft);
         paintEl(leafBack, nxtRight);
         paintEl(pageLeft, nxtLeft);
@@ -804,13 +900,17 @@ function EditorBook({
       pagesState.forEach((p, i) => {
         if (Object.values(p.imagesJson).some((pid) => set.has(pid))) minI = Math.min(minI, i);
       });
-      return minI === Infinity ? 0 : Math.floor((minI + 1) / 2);
+      // minI is a pagesState array index; map it to its spread via buildSpreads
+      // (the cover/ending solo-page layout means a flat /2 formula would misplace it).
+      if (minI === Infinity) return 0;
+      const sp = spreadIndexOfPage(spreads, minI);
+      return sp === -1 ? 0 : sp;
     }
     function renderRail() {
       const useCh = chapters.length > 0;
       const items = useCh
         ? chapters.map((c, i) => ({ idx: c.spread, num: String(i + 1).padStart(2, '0'), label: c.label }))
-        : Array.from({ length: spreadCount }, (_, i) => ({ idx: i, num: String(i + 1).padStart(2, '0'), label: spreadLabel(i) }));
+        : Array.from({ length: spreadCount() }, (_, i) => ({ idx: i, num: String(i + 1).padStart(2, '0'), label: spreadLabel(i) }));
       const shortOf = (it: { num: string; label: string }) =>
         useCh ? [...it.label].slice(0, 2).join('') || it.num : it.num;
 
@@ -860,15 +960,22 @@ function EditorBook({
     function buildThumbs() {
       const row = byId('thumbRow');
       if (!row) return;
-      row.innerHTML = Array.from({ length: spreadCount }, (_, i) =>
+      row.innerHTML = Array.from({ length: spreadCount() }, (_, i) =>
         `<div class="thumb-item${i === currentCh ? ' active' : ''} shrink-0 w-[52px] cursor-pointer" data-gospread="${i}">
           <div class="thumb-img"><div class="thumb-img-left" data-tface="${i}-l"></div><div class="thumb-img-right" data-tface="${i}-r"></div></div>
         </div>`,
       ).join('');
-      for (let i = 0; i < spreadCount; i++) {
+      for (let i = 0; i < spreadCount(); i++) {
         const [lp, rp] = spreadPages(i);
-        paintEl(row.querySelector(`[data-tface="${i}-l"]`) as HTMLElement | null, lp);
-        paintEl(row.querySelector(`[data-tface="${i}-r"]`) as HTMLElement | null, rp);
+        const tl = row.querySelector(`[data-tface="${i}-l"]`) as HTMLElement | null;
+        const tr = row.querySelector(`[data-tface="${i}-r"]`) as HTMLElement | null;
+        // #158 follow-up: an empty half is blank space (no surface fill); drop the
+        // thumb spine divider when either half is empty (solo cover/ending thumb).
+        tl?.classList.toggle('thumb-empty', lp === null);
+        tr?.classList.toggle('thumb-empty', rp === null);
+        (tl?.closest('.thumb-img') as HTMLElement | null)?.classList.toggle('thumb-solo', lp === null || rp === null);
+        paintEl(tl, lp);
+        paintEl(tr, rp);
       }
       row.querySelectorAll('[data-gospread]').forEach((el) => {
         el.addEventListener('click', () => goToSpread(parseInt(el.getAttribute('data-gospread')!, 10)));
@@ -877,23 +984,26 @@ function EditorBook({
     function updateThumbUI(chIdx: number) {
       $$('.thumb-item').forEach((el, i) => el.classList.toggle('active', i === chIdx));
       const ti = byId('thumbInd');
-      if (ti) ti.textContent = (chIdx + 1) + ' / ' + spreadCount;
+      if (ti) ti.textContent = (chIdx + 1) + ' / ' + spreadCount();
     }
     function goToSpread(chIdx: number) {
-      if (chIdx === currentCh || chIdx < 0 || chIdx >= spreadCount) return;
+      if (chIdx === currentCh || chIdx < 0 || chIdx >= spreadCount()) return;
       flipTo(chIdx, chIdx > currentCh ? 'next' : 'prev');
       updateThumbUI(chIdx);
     }
     function thumbNav(dir: number) {
       let next = currentCh + dir;
-      if (next < 0) next = spreadCount - 1;
-      if (next >= spreadCount) next = 0;
+      if (next < 0) next = spreadCount() - 1;
+      if (next >= spreadCount()) next = 0;
       goToSpread(next);
     }
 
     /* ─── Zoom + overview ─── */
     let zoom = 1;
-    const ZMIN = 0.5, ZMAX = 2, ZSTEP = 0.25;
+    // ZMIN is the visible lower bound: zooming out clamps the book here (the
+    // spread stays scaled + visible). Overview is reachable *only* via ovBtn,
+    // never by crossing the zoom floor (issue #157).
+    const ZMIN = 0.25, ZMAX = 2, ZSTEP = 0.25;
     function applyZoom() {
       const bk = byId('book');
       if (bk) bk.style.transform = 'scale(' + zoom + ')';
@@ -905,9 +1015,9 @@ function EditorBook({
         if (d > 0) exitOverview();
         return;
       }
-      const nz = Math.round((zoom + d) * 100) / 100;
-      if (nz < ZMIN) { enterOverview(); return; }
-      zoom = Math.min(ZMAX, nz);
+      // Clamp to [ZMIN, ZMAX]. Zooming out past the floor just stops at ZMIN;
+      // the book stays scaled + visible and never auto-jumps to overview.
+      zoom = clampZoom(zoom + d, ZMIN, ZMAX);
       applyZoom();
     }
     function resetZoom() {
@@ -917,12 +1027,17 @@ function EditorBook({
     function renderOverview() {
       const g = byId('ovGrid');
       if (!g) return;
-      g.innerHTML = Array.from({ length: spreadCount }, (_, i) =>
-        `<div class="ov-spread${i === currentCh ? ' ov-current' : ''}" data-ovidx="${i}">
-          <div class="ov-book"><div class="ov-page ov-left" data-oface="${i}-l"></div><div class="ov-page ov-right" data-oface="${i}-r"></div></div>
+      g.innerHTML = Array.from({ length: spreadCount() }, (_, i) => {
+        const [lp, rp] = spreadPages(i);
+        // #158 follow-up: drop the ov-book surface fill + spine for a solo spread so
+        // the empty half reads as empty space, not a white page.
+        const solo = lp === null || rp === null;
+        return `<div class="ov-spread${i === currentCh ? ' ov-current' : ''}" data-ovidx="${i}">
+          <div class="ov-book${solo ? ' ov-solo' : ''}"><div class="ov-page ov-left${lp === null ? ' ov-empty' : ''}" data-oface="${i}-l"></div><div class="ov-page ov-right${rp === null ? ' ov-empty' : ''}" data-oface="${i}-r"></div></div>
           <div class="ov-cap">${spreadLabel(i)}</div>
-        </div>`).join('');
-      for (let i = 0; i < spreadCount; i++) {
+        </div>`;
+      }).join('');
+      for (let i = 0; i < spreadCount(); i++) {
         const [lp, rp] = spreadPages(i);
         paintEl(g.querySelector(`[data-oface="${i}-l"]`) as HTMLElement | null, lp);
         paintEl(g.querySelector(`[data-oface="${i}-r"]`) as HTMLElement | null, rp);
@@ -932,8 +1047,13 @@ function EditorBook({
       });
     }
     function enterOverview() {
-      renderOverview();
+      // Show the overview container *before* rendering: while .book-overview is
+      // display:none its .ov-page cells measure 0×0, so paintEl would inject
+      // 1×1 pages (issue #157). Flip the class, force a synchronous reflow, then
+      // render against real box sizes.
       bodyEl.classList.add('overview-on');
+      void byId('bookOverview')?.getBoundingClientRect();
+      renderOverview();
       byId('ovBtn')?.classList.add('active');
       const p = byId('zoomPct'); if (p) p.textContent = t('overview');
     }
@@ -1034,19 +1154,17 @@ function EditorBook({
       hideAwait();
       scrollChat();
       if (isAuthoring) {
-        await runAuthoringTurn(txt);
+        await runDraftEditTurn(txt);
       } else {
         await runEdit(txt);
       }
       sending = false;
     }
 
-    /* ─── Authoring chat round-trip (draft creation flow) ───
-       Single thread, agent-driven: postTheme while no theme, then postChapterChat
-       for the current chapter. After each turn refetch the skeleton (read-only;
-       invariant 12), repaint the book + rail, and auto-advance the cursor when the
-       agent marks the chapter done (state generated/skipped/finalized or askCount
-       hit the limit). No theme/prev/next buttons are exposed. */
+    /* ─── Authoring chat round-trip (#162: draft-period single-page edit) ───
+       Each user message goes to /draft-edit scoped to the focused page; the server
+       slices that one page (invariant 12) and answers talk (reply only) or act
+       (reply + the page's rewritten copy). No theme/chapter machine, no cursor. */
     function appendAiText(text: string) {
       const a = document.createElement('div');
       a.className = 'msg ai max-w-full';
@@ -1061,9 +1179,56 @@ function EditorBook({
       chatBody!.appendChild(a);
       scrollChat();
     }
+    // A past user message (history replay) — same bubble as a live send().
+    function appendUserText(text: string) {
+      const u = document.createElement('div');
+      u.className = 'msg user max-w-full';
+      u.innerHTML = `<div class="bubble"></div>`;
+      u.querySelector('.bubble')!.textContent = text;
+      chatBody!.appendChild(u);
+    }
+    // Load + render persisted chat history (album_messages) on entry so reopening
+    // the album shows the prior conversation, not just the opener. Returns how many
+    // turns were rendered. Skips the internal inspect-diagnosis strings the #165
+    // loop threads to the model (they are not real user chat).
+    async function loadHistory(): Promise<number> {
+      try {
+        const res = await fetch(`/api/v1/albums/${albumId}/messages?limit=50`);
+        const j = await res.json();
+        if (!j?.ok) return 0;
+        const msgs = (j.data?.messages ?? []) as Array<{
+          role: string;
+          content: string;
+          createdAt?: string;
+        }>;
+        msgs.sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')));
+        let shown = 0;
+        for (const m of msgs) {
+          const c = (m.content ?? '').trim();
+          if (!c || c.startsWith('[inspection of page')) continue;
+          if (m.role === 'user') appendUserText(c);
+          else appendAiText(c);
+          shown += 1;
+        }
+        if (shown) scrollChat();
+        return shown;
+      } catch {
+        return 0;
+      }
+    }
     // A fresh AI message shell with an active "thinking" block — the caller fills
     // in the reply (and chips) once the round-trip resolves. Mirrors the design's
     // jellyfish-loop thinking spinner.
+    // A compact, muted status line that exposes what the AI is doing during the
+    // inspect→adjust loop (#165) — screenshotting, what it diagnosed, adjusting —
+    // so the process isn't a black box to the user.
+    function appendStep(text: string) {
+      const d = document.createElement('div');
+      d.className = 'ep-step';
+      d.textContent = text;
+      chatBody!.appendChild(d);
+      scrollChat();
+    }
     function appendThinkingShell(): HTMLElement {
       const a = document.createElement('div');
       a.className = 'msg ai max-w-full';
@@ -1109,346 +1274,128 @@ function EditorBook({
       return false;
     }
 
-    // ── Stepper helper: highlight the right pill for the current cursor. ──
-    function syncStepper() {
-      if (!isAuthoring) return;
-      setChatState(authStage === 'theme' ? 2 : 3);
+    // #162 draft-edit turn: the draft-period chat is a pointed single-page edit,
+    // talk/act physically split (no theme→chapter machine, no auto-advance). The
+    // message goes to /draft-edit scoped to the page the user is looking at
+    // (selectedPageIndex, else the first page of the current spread). On 'act' we
+    // merge the returned pageWrite into that page locally + repaint; on 'talk' we
+    // just append the reply. The agent already persisted the draft server-side.
+    function draftFocusPageIndex(): number {
+      if (selectedPageIndex != null) return selectedPageIndex;
+      // No explicit selection → focus the first real page on the current spread
+      // (left, else right). Cover sits alone on spread 0's right slot.
+      const [lp, rp] = spreadPages(currentCh);
+      return (lp ?? rp)?.pageIndex ?? 0;
     }
-
-    function chapterDone(c: DraftSkeletonChapter | undefined): boolean {
-      if (!c) return true;
-      return (
-        c.state === 'generated' ||
-        c.state === 'skipped' ||
-        c.state === 'finalized' ||
-        c.state === 'brief_ready' ||
-        c.askCount >= ASK_LIMIT
-      );
-    }
-    async function refreshDraft() {
-      try {
-        const { draft } = await fetchDraftSkeleton(albumId);
-        if (!draft) return;
-        draftSkel = draft;
-        // Repaint the book from the refreshed skeleton (agent may have rewritten
-        // text/captions for this chapter).
-        pagesState = draft.pages.map((p) => ({
-          pageIndex: p.pageIndex,
-          templateId: p.templateId,
-          imagesJson: { ...p.imagesJson },
-          textsJson: { ...p.textsJson },
-        }));
-        // Re-resolve any newly referenced originals, then repaint.
-        const ids = new Set<string>();
-        for (const p of draft.pages) for (const id of Object.values(p.imagesJson)) if (id) ids.add(id);
-        const urls = await photoStore.getObjectUrls([...ids]);
-        imageUrls = { ...imageUrls, ...urls };
-        repaintBook();
-        railFromDraft();
-      } catch {
-        /* keep the current view; the next turn retries */
-      }
-    }
-
-    // ── Chapter card (in conversation flow) — tells the user which chapter the
-    // story chat is about. Read from the draft skeleton: label + photo count + a
-    // "view layout" button that flips the book to the chapter's first spread. ──
-    function chapterPhotoCount(c: DraftSkeletonChapter): number {
-      const ids = new Set<string>();
-      for (let i = c.pageStart; i < c.pageEnd; i++) {
-        const p = draftSkel?.pages[i];
-        if (!p) continue;
-        for (const id of Object.values(p.imagesJson)) if (id) ids.add(id);
-      }
-      return ids.size;
-    }
-    // Up to 4 resolved thumbnail URLs for a chapter (page order), for the design's
-    // .cc-thumbs row. Returns [] when no originals are resolved yet (graceful: the
-    // card then renders foot-only, same as before).
-    function chapterThumbUrls(c: DraftSkeletonChapter): string[] {
-      const urls: string[] = [];
-      const seen = new Set<string>();
-      for (let i = c.pageStart; i < c.pageEnd && urls.length < 4; i++) {
-        const p = draftSkel?.pages[i];
-        if (!p) continue;
-        for (const id of Object.values(p.imagesJson)) {
-          if (!id || seen.has(id)) continue;
-          seen.add(id);
-          const u = imageUrls[id];
-          if (u) urls.push(u);
-          if (urls.length >= 4) break;
+    // Apply a kind:'act' write locally (the server already persisted it into
+    // draft_json — both pageWrite copy edits and imagePosWrite position/scale moves
+    // land in draft_json server-side; the browser only mirrors + repaints so a
+    // reload re-reads the same draft). Returns true if anything was applied.
+    function applyDraftAct(r: DraftEditResult): boolean {
+      if (r.pageWrite) {
+        const page = pageByIndex(r.pageWrite.pageIndex);
+        if (page) {
+          page.textsJson = { ...page.textsJson, ...r.pageWrite.texts };
+          repaintBook();
+          appendStep(aT('✏️ 已更新这页文案。', '✏️ Updated this page’s copy.'));
+          return true;
         }
       }
-      return urls;
-    }
-    function pushChapterCard(idx: number) {
-      const c = draftSkel?.chapters[idx];
-      if (!c) return;
-      const sp = spreadOfFlatPage(c.pageStart);
-      const tag = currentLang === 'zh' ? `第 ${idx + 1} 章` : `Ch. ${idx + 1}`;
-      const d = document.createElement('div');
-      d.className = 'msg ai max-w-full';
-      const card = document.createElement('div');
-      card.className = 'chap-card';
-      // Design's .cc-thumbs row — a strip of the chapter's photos above the foot.
-      const thumbs = chapterThumbUrls(c)
-        .map((u) => `<div class="cc-thumb" style="background-image:url('${u.replace(/'/g, "\\'")}')"></div>`)
-        .join('');
-      card.innerHTML =
-        (thumbs ? `<div class="cc-thumbs">${thumbs}</div>` : '') +
-        `<div class="cc-foot"><div class="cc-info">` +
-        `<div class="cc-title-row"><span class="cc-title"></span><span class="cc-tag"></span></div>` +
-        `<div class="cc-meta"></div></div>` +
-        `<button class="cc-view" type="button">${esc(t('viewLayout'))}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>` +
-        `</div>`;
-      (card.querySelector('.cc-title') as HTMLElement).textContent = c.label;
-      (card.querySelector('.cc-tag') as HTMLElement).textContent = tag;
-      (card.querySelector('.cc-meta') as HTMLElement).textContent =
-        `${chapterPhotoCount(c)} ${t('photosWord')}`;
-      card.querySelector('.cc-view')?.addEventListener('click', () => {
-        if (sp !== currentCh) flipTo(sp, sp > currentCh ? 'next' : 'prev');
-      });
-      d.appendChild(card);
-      chatBody!.appendChild(d);
-      scrollChat();
+      if (r.imagePosWrite) {
+        const w = r.imagePosWrite;
+        const page = pageByIndex(w.pageIndex);
+        if (page) {
+          // Fold the single per-image {x,y,scale} into imagePosJson[imageId] (the
+          // render layer reads it; mirrors the server-persisted draft_json).
+          page.imagePosJson = {
+            ...(page.imagePosJson ?? {}),
+            [w.imageId]: { x: w.x, y: w.y, scale: w.scale },
+          };
+          repaintBook();
+          appendStep(
+            aT(
+              `🎯 已调整图片位置：横向 ${w.x}%、纵向 ${w.y}%、缩放 ${w.scale}×。`,
+              `🎯 Adjusted the photo: x ${w.x}%, y ${w.y}%, zoom ${w.scale}×.`,
+            ),
+          );
+          return true;
+        }
+      }
+      return false;
     }
 
-    // ── Theme stage: postTheme. If the agent hasn't fixed a theme yet it returns
-    // themeOptions → render them as pickable chip-selects (the user can also free-
-    // type). Once a theme is set, advance the cursor to the first chapter. ──
-    async function runThemeTurn(message?: string) {
+    // #162/#165 draft-edit turn — an inspect→adjust orchestration loop. The control
+    // flow (inspect loop, 3-round cap, graceful degradations) lives in the pure,
+    // unit-tested runInspectAdjustLoop; here we only wire the deps and apply the
+    // terminal result (repaint + reply). On a kind:'inspect' the loop screenshots
+    // the page → /inspect-render → threads the diagnosis back into the next
+    // /draft-edit so the model calls adjust_image_position; the follow-up act
+    // (imagePosWrite) then applies as a normal act.
+    async function runDraftEditTurn(message: string) {
+      lastUserMessage = message;
       const host = appendThinkingShell();
-      try {
-        const r = await postTheme(albumId, message ? message.slice(0, MESSAGE_MAX) : undefined);
-        settleThinking(host, 'analyzedFeedback');
-        appendReplyBody(host, r.assistantReply);
-        await refreshDraft();
-        if (draftSkel && hasTheme(draftSkel.theme) && (!r.themeOptions || r.themeOptions.length === 0)) {
-          // Theme decided → confirm + move into the story stage on the first chapter.
-          appendTime(host);
-          enterStoryStage(0, /*announce*/ true);
-        } else if (r.themeOptions && r.themeOptions.length > 0) {
-          renderThemeOptions(host, r.themeOptions);
-          appendTime(host);
-        } else {
-          appendTime(host);
-        }
-      } catch (e) {
-        if (authErr(host, e)) return;
-      }
-      restAwait();
-      scrollChat();
-      updateAuthInputPlaceholder();
-    }
-    function renderThemeOptions(host: HTMLElement, options: ThemeOption[]) {
-      const wrap = document.createElement('div');
-      wrap.className = 'ai-actions flex gap-2 mt-3.5 flex-wrap';
-      options.forEach((opt) => {
-        const b = document.createElement('button');
-        b.className = 'chip-select';
-        b.type = 'button';
-        b.textContent = opt.label || opt.subject;
-        b.addEventListener('click', () => {
-          if (sending) return;
-          wrap.querySelectorAll('.chip-select').forEach((c) => c.classList.remove('selected'));
-          b.classList.add('selected');
-          wrap.querySelectorAll('button').forEach((x) => ((x as HTMLButtonElement).disabled = true));
-          // Echo the pick as a user turn, then send it back as the /theme nudge.
-          appendUserBubble(b.textContent || '');
-          hideAwait();
-          void (async () => {
-            sending = true;
-            await runThemeTurn(opt.subject || opt.label);
-            sending = false;
-          })();
-        });
-        wrap.appendChild(b);
-      });
-      host.appendChild(wrap);
-    }
-
-    // ── Story stage: chat about the current chapter. postChapterChat returns the
-    // updated state (+ optional nameOptions). Render the AI copy with accept /
-    // rewrite / edit-myself chips and (when present) chapter-name chips. ──
-    async function runStoryTurn(message: string) {
-      const cur = draftSkel?.chapters[authChapterIdx];
-      if (!cur) {
-        // No chapter to talk to (theme not yet decided) — fall back to theme.
-        authStage = 'theme';
-        syncStepper();
-        await runThemeTurn(message);
-        return;
-      }
-      lastStoryMessage = message;
-      const host = appendThinkingShell();
-      try {
-        const r = await postChapterChat(albumId, cur.chapterId, message.slice(0, MESSAGE_MAX));
-        settleThinking(host, 'analyzedFeedback');
-        appendReplyBody(host, r.assistantReply);
-        await refreshDraft();
-        renderStoryActions(host, cur.chapterId);
-        if (r.nameOptions && r.nameOptions.length > 0) {
-          renderNameOptions(host, cur.chapterId, r.nameOptions);
-        }
-        appendTime(host);
-        maybeAdvanceChapter();
-      } catch (e) {
-        if (authErr(host, e)) return;
-      }
-      restAwait();
-      scrollChat();
-      updateAuthInputPlaceholder();
-    }
-    // 采纳 / 再写一版 / 我来改 on the story copy.
-    function renderStoryActions(host: HTMLElement, chapterId: string) {
-      const wrap = document.createElement('div');
-      wrap.className = 'ai-actions flex gap-2 mt-3.5 flex-wrap';
-      const mkChip = (label: string) => {
-        const b = document.createElement('button');
-        b.className = 'chip';
-        b.type = 'button';
-        b.textContent = label;
-        wrap.appendChild(b);
-        return b;
+      const focusIndex = draftFocusPageIndex();
+      // Mark auth errors so the orchestrator rethrows them (it degrades only the
+      // inspect-render path to talk — it must not swallow a login redirect).
+      const markAuth = (e: unknown): never => {
+        if (e instanceof UnauthorizedError) (e as unknown as { isAuthError: boolean }).isAuthError = true;
+        throw e;
       };
-      const disable = () =>
-        wrap.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
-      // 采纳 = keep this version and move forward (advance if the chapter is done).
-      const acceptBtn = mkChip(t('chipAccept'));
-      acceptBtn.addEventListener('click', () => {
-        disable();
-        acceptBtn.classList.add('selected');
-        maybeAdvanceChapter(/*force*/ true);
-      });
-      // 再写一版 = ask the agent for another take on the same story beat.
-      const rewriteBtn = mkChip(t('chipRewrite'));
-      rewriteBtn.addEventListener('click', () => {
-        if (sending) return;
-        disable();
-        const nudge = aT('再写一版，换个角度。', 'Rewrite this — try another angle.');
-        appendUserBubble(nudge);
-        hideAwait();
-        void (async () => {
-          sending = true;
-          await runStoryTurn(lastStoryMessage ? `${lastStoryMessage}\n\n${nudge}` : nudge);
-          sending = false;
-        })();
-      });
-      // 我来改 = edit the chapter's story text in place (local, persisted via the
-      // single-page PATCH the editing path already uses).
-      const editTarget = firstStoryTextSlot(chapterId);
-      if (editTarget) {
-        const editBtn = mkChip(t('chipEditMyself'));
-        editBtn.addEventListener('click', () => {
-          disable();
-          openInlineEdit(host, editTarget);
-        });
-      }
-      host.appendChild(wrap);
-    }
-    // Locate the first text slot in this chapter's pages (the narrative the user
-    // would hand-edit). Returns null if the chapter has no editable text yet.
-    function firstStoryTextSlot(chapterId: string): { pageIndex: number; slot: string } | null {
-      if (!draftSkel) return null;
-      const ch = draftSkel.chapters.find((c) => c.chapterId === chapterId);
-      if (!ch) return null;
-      for (let i = ch.pageStart; i < ch.pageEnd; i++) {
-        const sp = draftSkel.pages[i];
-        if (!sp) continue;
-        const slots = Object.keys(sp.textsJson).filter((k) => (sp.textsJson[k] ?? '').trim().length > 0);
-        if (slots.length > 0) return { pageIndex: sp.pageIndex, slot: slots[0] };
-      }
-      return null;
-    }
-    // Chapter-name candidate chips. Picking one sends it back through chapter-chat
-    // as the user's chosen title (display-only options never touch draft_json —
-    // invariant 12; the agent applies the rename and we refetch the skeleton).
-    function renderNameOptions(host: HTMLElement, chapterId: string, names: string[]) {
-      const wrap = document.createElement('div');
-      wrap.className = 'ai-actions flex gap-2 mt-3.5 flex-wrap';
-      names.forEach((name) => {
-        const b = document.createElement('button');
-        b.className = 'chip-select';
-        b.type = 'button';
-        b.textContent = name;
-        b.addEventListener('click', () => {
-          if (sending) return;
-          wrap.querySelectorAll('.chip-select').forEach((c) => c.classList.remove('selected'));
-          b.classList.add('selected');
-          wrap.querySelectorAll('button').forEach((x) => ((x as HTMLButtonElement).disabled = true));
-          const pick = aT(`用这个章节名：${name}`, `Use this chapter title: ${name}`);
-          appendUserBubble(pick);
-          hideAwait();
-          void (async () => {
-            sending = true;
-            const shell = appendThinkingShell();
-            try {
-              const r = await postChapterChat(albumId, chapterId, pick.slice(0, MESSAGE_MAX));
-              settleThinking(shell, 'analyzedFeedback');
-              appendReplyBody(shell, r.assistantReply);
-              await refreshDraft();
-              appendTime(shell);
-            } catch (e) {
-              authErr(shell, e);
+      try {
+        const r = await runInspectAdjustLoop(focusIndex, message, {
+          postDraftEdit: (pi, msg) => postDraftEdit(albumId, pi, msg).catch(markAuth),
+          capturePageRender,
+          postInspectRender: (pi, msg, shot) =>
+            postInspectRender(albumId, pi, msg, shot).catch(markAuth),
+          capReply: aT(
+            '我已经尽力调整了——如果还有点偏，告诉我往哪个方向移。',
+            "I've adjusted it as best I can — tell me which direction if it's still off.",
+          ),
+          inspectFailReply: aT(
+            '我暂时没法看清这一页，你可以直接告诉我把图往哪个方向移、放大还是缩小。',
+            "I couldn't get a clear look at this page — just tell me which way to move the photo, or to zoom in/out.",
+          ),
+          // Show the multi-second vision round as a live "thinking" state again.
+          onVisionRound: () => {
+            settleThinking(host, 'thinking');
+            host.querySelector('.thinking-block')?.classList.add('active');
+          },
+          // Expose each step to the user: what page it's looking at, what the
+          // vision model diagnosed, and when it hits the inspection cap.
+          onStep: (s) => {
+            if (s.kind === 'inspecting') {
+              appendStep(
+                aT(
+                  `🔍 第 ${s.round} 轮：截图查看这一页的图片排版…`,
+                  `🔍 Round ${s.round}: capturing this page to look at the photo…`,
+                ),
+              );
+            } else if (s.kind === 'diagnosed') {
+              const conf = Math.round(s.confidence * 100);
+              appendStep(
+                aT(
+                  `🩺 看图诊断：${s.problem}（建议 dx ${s.dx}、dy ${s.dy}、缩放 ${s.scale}×，置信度 ${conf}%）`,
+                  `🩺 Diagnosis: ${s.problem} (dx ${s.dx}, dy ${s.dy}, zoom ${s.scale}×, conf ${conf}%)`,
+                ),
+              );
+            } else if (s.kind === 'capped') {
+              appendStep(aT('↳ 已到复查上限（3 轮），先停在这。', '↳ Hit the 3-round inspection cap.'));
             }
-            restAwait();
-            scrollChat();
-            sending = false;
-          })();
+          },
+          messageMax: MESSAGE_MAX,
         });
-        wrap.appendChild(b);
-      });
-      host.appendChild(wrap);
-    }
 
-    // Enter the story stage on chapter `idx`: flip the book to it, flip the
-    // stepper to 章节故事, drop a chapter card + the storyStart prompt.
-    function enterStoryStage(idx: number, announce: boolean) {
-      authStage = 'chapter';
-      authChapterIdx = idx;
-      syncStepper();
-      showFinishBar(); // "完成全书" appears only once we're in the story stage
-      const ch = draftSkel?.chapters[idx];
-      if (ch) {
-        const sp = spreadOfFlatPage(ch.pageStart);
-        if (sp !== currentCh) flipTo(sp, sp > currentCh ? 'next' : 'prev');
-        pushChapterCard(idx);
-        if (announce) appendAiText(t('storyStart'));
+        settleThinking(host, 'analyzedFeedback');
+        appendReplyBody(host, r.assistantReply);
+        if (r.kind === 'act') applyDraftAct(r);
+        appendTime(host);
+      } catch (e) {
+        if (authErr(host, e)) return;
       }
+      restAwait();
+      scrollChat();
       updateAuthInputPlaceholder();
     }
-    // Advance to the next undone chapter when the current one is done (or when the
-    // user hit 采纳). At the last chapter, stay put — the finish bar takes over.
-    function maybeAdvanceChapter(force = false) {
-      if (!draftSkel) return;
-      const cur = draftSkel.chapters[authChapterIdx];
-      if (!force && !chapterDone(cur)) return;
-      const nextIdx = authChapterIdx + 1;
-      if (nextIdx < draftSkel.chapters.length) {
-        enterStoryStage(nextIdx, /*announce*/ true);
-      }
-    }
-    function appendUserBubble(text: string) {
-      const u = document.createElement('div');
-      u.className = 'msg user max-w-full';
-      u.innerHTML = `<div class="bubble"></div>`;
-      u.querySelector('.bubble')!.textContent = text;
-      chatBody!.appendChild(u);
-      scrollChat();
-    }
-    let lastStoryMessage = '';
-
-    // ── Finish bar visibility (red line: "完成全书" exists ONLY in the story
-    // stage — never while still picking the theme). Created once during init;
-    // these toggles flip it as the cursor crosses theme → story. ──
-    let finishBar: HTMLElement | null = null;
-    function showFinishBar() {
-      if (finishBar) finishBar.style.display = '';
-    }
-    function hideFinishBar() {
-      if (finishBar) finishBar.style.display = 'none';
-    }
-
     // ── Purchase card (积分不足引导卡): on CreditInsufficientError, surface the
     // design's buy-credits card at the bottom of the conversation (it carries its
     // own "去购买" button → /credits) instead of hard-redirecting. ──
@@ -1463,13 +1410,6 @@ function EditorBook({
       scrollChat();
     }
 
-    async function runAuthoringTurn(message: string) {
-      if (authStage === 'theme') {
-        await runThemeTurn(message);
-      } else {
-        await runStoryTurn(message);
-      }
-    }
     function updateAuthInputPlaceholder() {
       // Input stays blank by design (no prompt text in the box).
       if (!input) return;
@@ -1597,7 +1537,7 @@ function EditorBook({
       if (btn) btn.style.opacity = '0.6';
       try {
         const adaptable = pagesState.map((p) => ({
-          templateId: p.templateId, images: p.imagesJson, texts: p.textsJson,
+          templateId: p.templateId, images: p.imagesJson, texts: p.textsJson, imagePos: p.imagePosJson,
         }));
         const ids = collectPhotoIds(adaptable);
         const dataUrls = await photoStore.getDataUrls(ids);
@@ -1833,83 +1773,52 @@ function EditorBook({
     // has no opening turn (idle immediately) → float + show it now; authoring hides
     // it until the opening turn finishes, where restAwait() floats it to the bottom.
     if (isAuthoring) hideAwait();
-    else restAwait();
-
-    /* ─── Authoring init: seed the opening message, expose the single "finish the
-       whole book" action, hide the editing-only add-chapter affordance. ─── */
-    async function finalizeBook() {
-      if (finishing || sending) return;
-      finishing = true;
-      const fb = finishBar?.querySelector('.finish-btn') as HTMLButtonElement | null;
-      if (fb) {
-        fb.disabled = true;
-        fb.textContent = aT('正在生成你的纪念册…', 'Creating your memoir…');
-      }
-      try {
-        await postFinalize(albumId);
-        // Album is now AGENT_RUNNING ("completing"). Reload hands control back to
-        // page.tsx's poll → building shell → editor once layout_json lands.
-        window.location.reload();
-      } catch (e) {
-        finishing = false;
-        if (fb) {
-          fb.disabled = false;
-          fb.textContent = aT('完成全书', 'Finish the whole book');
-        }
-        if (e instanceof UnauthorizedError) {
-          window.location.assign(localizePath(`/login?from=/album/${albumId}`, locale));
-          return;
-        }
-        if (e instanceof CreditInsufficientError) {
-          window.location.assign(localizePath('/credits?from=authoring', locale));
-          return;
-        }
-        appendAiText(e instanceof Error ? e.message : String(e));
-      }
+    else {
+      // Editing (post-finalize): render the prior conversation, then sit idle.
+      restAwait();
+      void loadHistory().then(() => restAwait());
     }
+
+    /* ─── Authoring init (#162: render-first + pointed single-page edits) ───
+       No theme→chapter dialog machine, no auto-advance, no finalize CTA. init
+       (#161) already wrote the full first draft, so we just render it (the book is
+       painted from draftSkel below) and open with one system message inviting the
+       user to tap any page they want to change. Each message then routes through
+       /draft-edit scoped to the focused page (runDraftEditTurn). ─── */
     if (isAuthoring) {
       // The add-photo "+" in the input stays visible during authoring too (its real
       // "append photos to this album" flow is the mid-edit add feature — still WIP
       // server-side; for now it opens the dormant picker like editing does).
       // (Removed) The "完成全书" finish bar + disclaimer used to live above the input
       // here. Per product decision it's gone entirely — no finalize CTA in this
-      // surface anymore (showFinishBar/hideFinishBar are now no-ops).
+      // surface anymore.
       $('.authoring-finish-bar')?.remove();
 
-      // Lead with Yujee's self-intro so both opening branches start with it,
-      // before the task message.
+      // Lead with Yujee's self-intro, then the single render-first system message:
+      // the book is already rendered; ask the user to point at a page to change it.
       appendAiText(
         aT(
           '我是 Yujee，你的杂志制作小助手。文案不满意，随时可以调。',
           "Hi, I'm Yujee — your magazine-making assistant. Don't love the wording? Tweak it anytime.",
         ),
       );
-
-      // Drive the opening of the 3-state flow.
-      if (draftSkel && hasTheme(draftSkel.theme)) {
-        // Theme already fixed (the user wrote a prompt at creation) → skip straight
-        // into the story stage on the first chapter. Finish bar shows here.
-        appendAiText(
-          aT(
-            '草稿已就绪，我已经按你写的定好了主题。接下来我们一章一章把故事聊清楚吧，你也可以随时直接完成全书。',
-            "Your draft is ready, and I've set the theme from what you wrote. Let's go chapter by chapter to flesh out the story — or finish the whole book anytime.",
-          ),
-        );
-        enterStoryStage(0, /*announce*/ true);
-      } else {
-        // Theme stage: stepper on 确定主题, no finish bar. Open with themeAsk, then
-        // fetch the candidate themes (postTheme) and render them as pickable chips.
-        authStage = 'theme';
-        setChatState(2);
-        hideFinishBar();
-        appendAiText(t('themeAsk'));
-        updateAuthInputPlaceholder();
-        void (async () => {
-          sending = true;
-          await runThemeTurn();
-          sending = false;
-        })();
-      }
+      // No theme step anymore; the stepper sits on the editing/story pill, and the
+      // idle await jellyfish floats to the bottom of the thread.
+      setChatState(3);
+      updateAuthInputPlaceholder();
+      // Render the prior conversation; only a brand-new album (no history yet) gets
+      // the "first version — tap a page" onboarding invite.
+      void loadHistory().then((n) => {
+        if (n === 0) {
+          appendAiText(
+            aT(
+              '我已经写好第一版，哪页不满意，点开那页跟我说就行。',
+              "I've written the first version — tap any page you'd like to change and tell me.",
+            ),
+          );
+        }
+        restAwait();
+      });
     }
 
     // Keep the buy-credits card (#balanceAlert) hidden on entry. The CSS default
@@ -1966,7 +1875,14 @@ function EditorBook({
     // Declared as a hoisted function (not a const arrow) so the authoring init
     // block above — which may call enterStoryStage(0) immediately when a theme is
     // pre-set — can reference it without hitting the temporal dead zone.
-    function spreadOfFlatPage(i: number) { return Math.floor((i + 1) / 2); }
+    // i is an array index into draftSkel.pages, which mirrors pagesState in
+    // authoring (refreshDraft maps draft.pages → pagesState 1:1). Map it to the
+    // spread that holds it via buildSpreads (cover/ending sit solo, so the old flat
+    // /2 formula would be off by the solo half-pages).
+    function spreadOfFlatPage(i: number) {
+      const sp = spreadIndexOfPage(spreads, i);
+      return sp === -1 ? 0 : sp;
+    }
     function railFromDraft() {
       if (!draftSkel) return;
       chapters = draftSkel.chapters.map((c) => ({

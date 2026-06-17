@@ -36,7 +36,9 @@ V2Style = Literal[
     "warm-film", "editorial-mono", "soft-pastel", "bold-contrast", "vintage-print"
 ]
 V2JobKind = Literal["init", "finalize", "add"]
-V2JobStage = Literal["vision", "grouping", "skeleton", "finalize"]
+# 'writing' (#161): init writes the whole first draft (cover + chapter copy)
+# right after 'skeleton'; it sits between 'skeleton' and 'finalize'.
+V2JobStage = Literal["vision", "grouping", "skeleton", "writing", "finalize"]
 V2ChapterState = Literal[
     "empty", "asking", "brief_ready", "generated", "skipped", "finalized"
 ]
@@ -335,6 +337,136 @@ class V2EditRequest(_Strict):
 
 class V2EditResponse(_Strict):
     layoutPatch: list[V2LayoutPatchEntry] = Field(min_length=1, max_length=48)
+    assistantReply: str = Field(min_length=1, max_length=500)
+    usage: Usage
+
+
+# ---------- draft-edit (#162) -------------------------------------------------
+# The editor's draft-period turn: talk (opinions/questions) and act (write one
+# page's copy) are PHYSICALLY separated via a tool layer. Unlike /v2/album/edit
+# (finalize era; needs a flat layout_json) this operates BEFORE finalize, on a
+# SINGLE skeleton page slice + that page's photos only — no base64, no whole
+# draft tree (invariant 12). `pageWrite` is present iff kind=="act".
+
+
+class V2DraftEditPage(_Strict):
+    """One skeleton page slice the user is editing (the only page sent — invariant
+    12: never the whole draft tree). Same shape as a draft `Page`."""
+
+    pageIndex: int = Field(ge=0)
+    templateId: str = Field(min_length=1)
+    images: dict[str, str]
+    texts: dict[str, str]
+
+
+class V2DraftEditRequest(_Strict):
+    albumId: str = Field(min_length=1)
+    language: Language
+    theme: V2Theme | None = None
+    page: V2DraftEditPage
+    # Only the photos used on `page` (their analysis — pure text, no base64).
+    # Required (mirrors TS `photos: z.array(...)`, no default): the Web caller
+    # always sends the page's photos, even if an empty array. TS↔py parity.
+    photos: list[V2PhotoAnalysis]
+    history: list[V2ChatTurn] = Field(default_factory=list, max_length=20)
+    userMessage: str = Field(max_length=500)
+    # The page the user selected in the editor; additive on draft-edit only. A
+    # spread is 2 pages (L+R) so this carries the PRECISE single pageIndex.
+    focusedPageIndex: int | None = Field(default=None, ge=0)
+
+
+class V2DraftPageWrite(_Strict):
+    pageIndex: int = Field(ge=0)
+    texts: dict[str, str]
+
+
+class V2DraftInspectRequest(_Strict):
+    """Present iff kind=="inspect": the agent asks the browser to render + screenshot
+    this page so vision can diagnose a reported crop (#165 Phase 2). The page is
+    pinned to the page being edited (invariant 12)."""
+
+    pageIndex: int = Field(ge=0)
+
+
+class V2DraftImagePosWrite(_Strict):
+    """Present iff kind=="act" via adjust_image_position: the absolute per-slot
+    position/scale to apply (#165 Phase 2). Field names + ranges mirror the
+    Phase-1 `ImagePos` shape the render layer + imagePosJson consume; the Web side
+    folds {x,y,scale} into Page.imagePos[imageId]."""
+
+    pageIndex: int = Field(ge=0)
+    imageId: str = Field(min_length=1)
+    x: float = Field(ge=0, le=100)
+    y: float = Field(ge=0, le=100)
+    scale: float = Field(ge=1, le=2)
+
+
+class V2DraftEditResponse(_Strict):
+    # #165 Phase 2: "inspect" joins talk/act. inspect → the agent needs to SEE the
+    # page (browser screenshots → /v2/album/inspect-page); act → either a copy edit
+    # (pageWrite) or an image move/zoom (imagePosWrite). Exactly one payload is set
+    # per kind; talk sets none.
+    kind: Literal["talk", "act", "inspect"]
+    assistantReply: str = Field(min_length=1, max_length=500)
+    # Present iff kind=="act" via write_page_copy: the clamped copy to apply.
+    pageWrite: V2DraftPageWrite | None = None
+    # Present iff kind=="act" via adjust_image_position: the per-slot position write.
+    imagePosWrite: V2DraftImagePosWrite | None = None
+    # Present iff kind=="inspect": the screenshot/inspect directive for the browser.
+    inspectRequest: V2DraftInspectRequest | None = None
+    usage: Usage
+
+
+# ---------- inspect-page (#165 Phase 2 — vision diagnosis) --------------------
+# POST /v2/album/inspect-page: after draft-edit returns kind="inspect", the
+# browser renders + screenshots the page and posts it here. The agent runs ONE
+# vision call (火山 doubao-1.6-vision, same model/key as init) to diagnose the
+# reported crop and suggest a move/zoom; the Web side then drives a follow-up
+# draft-edit so the model can call adjust_image_position with the diagnosis.
+#
+# Privacy: `screenshot` (a base64 data URI of the RENDERED page, 800px-class like
+# init's photos) is the ONLY new base64 channel; it is passed into the upstream
+# vision body and then dropped — never logged, never persisted, never returned
+# (same posture as the init vision call, invariant 1).
+
+
+class V2InspectPage(_Strict):
+    """The single page being inspected (slotId→photoId map lets vision name a real
+    `imageId`; texts give context). Same fields as a draft page slice, strict."""
+
+    pageIndex: int = Field(ge=0)
+    templateId: str = Field(min_length=1)
+    images: dict[str, str]
+    texts: dict[str, str]
+
+
+class V2InspectRequest(_Strict):
+    albumId: str = Field(min_length=1)
+    language: Language
+    page: V2InspectPage
+    # The page's photo analyses (pure text, no base64) so vision can name subjects.
+    photos: list[V2PhotoAnalysis]
+    # base64 data URI of the rendered-page screenshot (the only new base64 channel).
+    screenshot: str = Field(min_length=1)
+    userMessage: str = Field(max_length=500)
+
+
+class V2InspectDiagnosis(_Strict):
+    """The vision verdict. `imageId` is one of the page's slotIds, or null when
+    vision could not pin a slot (then the caller degrades to a talk message).
+    suggestedDx/Dy are percentage-point shifts (clamped [-50,50]); suggestedScale
+    [1,2]; confidence [0,1]."""
+
+    imageId: str | None = None
+    problem: str
+    suggestedDx: float = Field(ge=-50, le=50)
+    suggestedDy: float = Field(ge=-50, le=50)
+    suggestedScale: float = Field(ge=1, le=2)
+    confidence: float = Field(ge=0, le=1)
+
+
+class V2InspectResponse(_Strict):
+    diagnosis: V2InspectDiagnosis
     assistantReply: str = Field(min_length=1, max_length=500)
     usage: Usage
 

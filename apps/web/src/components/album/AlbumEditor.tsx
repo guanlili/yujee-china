@@ -50,7 +50,7 @@ export function AlbumEditor({ detail, locale }: Props) {
       : 'en';
 
   const adaptable = useMemo(
-    () => pages.map((p) => ({ templateId: p.templateId, images: p.imagesJson, texts: p.textsJson })),
+    () => pages.map((p) => ({ templateId: p.templateId, images: p.imagesJson, texts: p.textsJson, imagePos: p.imagePosJson })),
     [pages],
   );
 

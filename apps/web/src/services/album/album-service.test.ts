@@ -181,6 +181,7 @@ test('listByUser: includes only the first page cover data for card previews', as
       templateId: 'mag-01',
       imagesJson: { hero: 'photo-cover' },
       textsJson: { title: 'Cover Title' },
+      imagePosJson: {},
     });
   } finally {
     await cleanupUser(user.id);

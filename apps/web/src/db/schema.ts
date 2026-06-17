@@ -234,6 +234,9 @@ export const albumPages = pgTable(
     templateId: text('template_id').notNull(),
     imagesJson: jsonb('images_json').notNull().default({}),
     textsJson: jsonb('texts_json').notNull().default({}),
+    // Per-slot position/scale overrides (#165), keyed by the same slotId as
+    // images_json. Defaults to {} so pre-#165 rows render at 50/50/1 unchanged.
+    imagePosJson: jsonb('image_pos_json').notNull().default({}),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

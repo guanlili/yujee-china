@@ -3,7 +3,7 @@ import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function PdfMag07({ data, totalPages }: TemplateRenderProps) {
+export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     imageTop?: string;
     imageMain?: string;
@@ -42,6 +42,7 @@ export function PdfMag07({ data, totalPages }: TemplateRenderProps) {
       <PdfImage
         src={d.imageTop}
         style={{ position: 'absolute', left: 364, top: 60, width: 380, height: 330 }}
+        position={imagePos?.['imageTop']}
       />
       <View
         style={{
@@ -57,6 +58,7 @@ export function PdfMag07({ data, totalPages }: TemplateRenderProps) {
       <PdfImage
         src={d.imageMain}
         style={{ position: 'absolute', left: 364, top: 450, width: 380, height: 480 }}
+        position={imagePos?.['imageMain']}
       />
       <Text
         style={{ position: 'absolute', left: 50, top: 984, width: 220, fontFamily: PDF_FONTS.serifEn,

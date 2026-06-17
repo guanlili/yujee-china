@@ -18,11 +18,22 @@ export const PhotoAnalysis = z.object({
   orientation: PhotoOrientation,
 });
 
+// #165 per-slot position/scale override. Mirrors @yujee/contracts ImagePos and
+// the Python schema; this web-side copy is the inv-9 validation point for the
+// finalize/add callbacks, so the agent's imagePos survives into album_pages.
+export const ImagePos = z.object({
+  x: z.number().min(0).max(100),
+  y: z.number().min(0).max(100),
+  scale: z.number().min(1).max(2),
+});
+
 export const Page = z.object({
   pageIndex: z.number().int().nonnegative(),
   templateId: z.string(),
   images: z.record(z.string(), z.string()),
   texts: z.record(z.string(), z.string()),
+  // Optional per-slot position/scale overrides. Absent => render default 50/50/1.
+  imagePos: z.record(z.string(), ImagePos).optional(),
 });
 
 export const AlbumLayoutPlan = z.object({
@@ -33,5 +44,6 @@ export const AlbumLayoutPlan = z.object({
 
 export type AlbumLayoutPlanT = z.infer<typeof AlbumLayoutPlan>;
 export type PageT = z.infer<typeof Page>;
+export type ImagePosT = z.infer<typeof ImagePos>;
 export type PhotoAnalysisT = z.infer<typeof PhotoAnalysis>;
 export type MagazineT = z.infer<typeof Magazine>;

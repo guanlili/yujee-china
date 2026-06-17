@@ -5,9 +5,21 @@ export type TemplateArrayItem = Record<string, string | undefined>;
 
 export type TemplateData = Record<string, TemplateDataValue>;
 
+// Per-image render override (#165). x,y are object-position percentages (0-100);
+// scale >=1 zooms (web-only - PDF ignores scale>1, see pdf-utils PdfImage).
+export interface ImagePos {
+  x: number;
+  y: number;
+  scale: number;
+}
+
 export interface TemplateRenderProps<D extends TemplateData = TemplateData> {
   data: D;
   totalPages?: number;
+  // Optional per-slot position/scale overrides, keyed by the same slotId the
+  // template's image slots use (e.g. `image`, `imageTop`, `cells[0].image`).
+  // Absent slot => renderer falls back to 50/50/1 (pre-#165 behaviour).
+  imagePos?: Record<string, ImagePos>;
 }
 
 export interface TemplateEntry {

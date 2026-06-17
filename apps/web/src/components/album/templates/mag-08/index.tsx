@@ -2,7 +2,7 @@ import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function WebMag08({ data, totalPages }: TemplateRenderProps) {
+export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     dateNum?: string;
@@ -36,6 +36,7 @@ export function WebMag08({ data, totalPages }: TemplateRenderProps) {
         src={d.image}
         placeholder="4:5"
         style={{ position: 'absolute', left: 70, top: 100, width: 360, height: 550 }}
+        position={imagePos?.['image']}
       />
       {/* 左侧说明：与照片左缘对齐、宽度等于照片宽度 */}
       <p

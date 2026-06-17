@@ -22,6 +22,9 @@ function applyPatch(layout: AlbumLayoutPlanT, patch: LayoutPatchEntry[]): AlbumL
     ...p,
     images: { ...p.images },
     texts: { ...p.texts },
+    // #165 D1: preserve per-slot position overrides through the rebuild — without
+    // this, every chat-edit silently strips an existing imagePos off untouched pages.
+    ...(p.imagePos !== undefined ? { imagePos: { ...p.imagePos } } : {}),
   }));
   const indexOf = new Map(pages.map((p, i) => [p.pageIndex, i]));
 
@@ -30,18 +33,27 @@ function applyPatch(layout: AlbumLayoutPlanT, patch: LayoutPatchEntry[]): AlbumL
     if (i === undefined) continue;
     const original = pages[i]!;
     if (entry.templateId && entry.templateId !== original.templateId) {
+      // Template swap → full slot reset; position overrides start fresh (#165).
       pages[i] = {
         pageIndex: entry.pageIndex,
         templateId: entry.templateId,
         images: { ...(entry.images ?? {}) },
         texts: { ...(entry.texts ?? {}) },
+        ...(entry.imagePos !== undefined ? { imagePos: { ...entry.imagePos } } : {}),
       };
     } else {
+      // #165 D1: an imagePos patch (Phase-3 adjust) merges into the slot's
+      // overrides; absent patch keeps the page's existing overrides untouched.
+      const mergedPos =
+        entry.imagePos !== undefined
+          ? { ...(original.imagePos ?? {}), ...entry.imagePos }
+          : original.imagePos;
       pages[i] = {
         pageIndex: entry.pageIndex,
         templateId: original.templateId,
         images: entry.images !== undefined ? { ...entry.images } : original.images,
         texts: entry.texts !== undefined ? { ...original.texts, ...entry.texts } : original.texts,
+        ...(mergedPos !== undefined ? { imagePos: mergedPos } : {}),
       };
     }
   }
@@ -57,6 +69,9 @@ function toBrowserPatch(patch: LayoutPatchEntry[]) {
     ...(e.templateId !== undefined ? { templateId: e.templateId } : {}),
     ...(e.images !== undefined ? { imagesJson: e.images } : {}),
     ...(e.texts !== undefined ? { textsJson: e.texts } : {}),
+    // #165 D1: carry the per-slot override into the browser patch (imagePosJson),
+    // matching GET detail / PATCH pages — else the browser preview can't reflect it.
+    ...(e.imagePos !== undefined ? { imagePosJson: e.imagePos } : {}),
   }));
 }
 
@@ -130,6 +145,9 @@ export const chatService = {
           await albumPageRepo.updateOne(tx, albumId, entry.pageIndex, {
             imagesJson: page.images,
             textsJson: page.texts,
+            // #165 D1: persist the merged per-slot overrides too (page.imagePos may
+            // be undefined → column stays null), so a reload keeps the position.
+            ...(page.imagePos !== undefined ? { imagePosJson: page.imagePos } : {}),
           });
         }
 
@@ -156,3 +174,7 @@ export const chatService = {
     }
   },
 };
+
+// Test-only: the two pure patch helpers, exported so the #165 D1 regression
+// (imagePos dropped through applyPatch/toBrowserPatch) can be asserted directly.
+export const __test__ = { applyPatch, toBrowserPatch };

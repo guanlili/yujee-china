@@ -2,7 +2,7 @@ import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function WebMag11({ data, totalPages }: TemplateRenderProps) {
+export function WebMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     title?: string;
@@ -16,6 +16,7 @@ export function WebMag11({ data, totalPages }: TemplateRenderProps) {
         src={d.image}
         placeholder="4:5"
         style={{ position: 'absolute', top: 120, left: 25, right: 25, height: 640 }}
+        position={imagePos?.['image']}
       />
       <h1
         style={{

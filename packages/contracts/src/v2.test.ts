@@ -4,7 +4,11 @@ import test from 'node:test';
 import {
   AlbumDraft,
   V2Callback,
+  V2DraftEditRequest,
+  V2DraftEditResponse,
   V2InitRequest,
+  V2InspectRequest,
+  V2InspectResponse,
   V2PhotoAnalysis,
 } from './v2';
 
@@ -91,4 +95,159 @@ test('init-completed must NOT also carry layout (strict)', () => {
 
 test('AlbumDraft round-trips through strict parse', () => {
   assert.equal(AlbumDraft.safeParse(draftTree).success, true);
+});
+
+// ── #162 draft-edit:单页切片 + talk/act 响应,strict + 不变式 12 ──
+const draftEditReq = {
+  albumId: 'a1',
+  language: 'en',
+  page: { pageIndex: 2, templateId: 'mag-05', images: { image: 'p1' }, texts: { title: 'T' } },
+  photos: [baseAnalysis],
+  history: [],
+  userMessage: 'change the title',
+  focusedPageIndex: 2,
+};
+
+test('V2DraftEditRequest accepts a single-page slice', () => {
+  assert.equal(V2DraftEditRequest.safeParse(draftEditReq).success, true);
+});
+
+test('V2DraftEditRequest focusedPageIndex is optional + nonnegative', () => {
+  const { focusedPageIndex, ...noFocus } = draftEditReq;
+  void focusedPageIndex;
+  assert.equal(V2DraftEditRequest.safeParse(noFocus).success, true);
+  assert.equal(
+    V2DraftEditRequest.safeParse({ ...draftEditReq, focusedPageIndex: -1 }).success,
+    false,
+  );
+});
+
+test('V2DraftEditRequest rejects a whole draft tree (invariant 12)', () => {
+  assert.equal(
+    V2DraftEditRequest.safeParse({ ...draftEditReq, draftTree }).success,
+    false,
+  );
+});
+
+// Fix 1 — `page` is a strict slice (mirrors py V2DraftEditPage extra='forbid'):
+// a stray unknown key INSIDE `page` must be rejected, not silently accepted.
+test('V2DraftEditRequest rejects an unknown key inside page (TS↔py strict parity)', () => {
+  assert.equal(
+    V2DraftEditRequest.safeParse({
+      ...draftEditReq,
+      page: { ...draftEditReq.page, bleed: true },
+    }).success,
+    false,
+    'page must be strict — extra keys rejected, mirroring py V2DraftEditPage',
+  );
+});
+
+// Fix 2 — `photos` is REQUIRED on both sides (Web always sends it, even empty []):
+// omitting it must be rejected (no TS default), an empty array must pass.
+test('V2DraftEditRequest requires photos (omitting rejected, empty [] accepted)', () => {
+  const { photos, ...noPhotos } = draftEditReq;
+  void photos;
+  assert.equal(V2DraftEditRequest.safeParse(noPhotos).success, false, 'photos is required');
+  assert.equal(
+    V2DraftEditRequest.safeParse({ ...draftEditReq, photos: [] }).success,
+    true,
+    'empty photos array is valid',
+  );
+});
+
+test('V2DraftEditResponse act carries pageWrite, talk omits it', () => {
+  const act = {
+    kind: 'act',
+    assistantReply: 'ok',
+    pageWrite: { pageIndex: 2, texts: { title: 'New' } },
+    usage: { durationMs: 1, models: {} },
+  };
+  assert.equal(V2DraftEditResponse.safeParse(act).success, true);
+  const talk = { kind: 'talk', assistantReply: 'hi', usage: { durationMs: 1, models: {} } };
+  assert.equal(V2DraftEditResponse.safeParse(talk).success, true);
+  const badKind = { ...talk, kind: 'other' };
+  assert.equal(V2DraftEditResponse.safeParse(badKind).success, false);
+});
+
+// #165 Phase 2 — inspect kind + imagePosWrite + inspect-page schemas (TS↔py parity).
+test('V2DraftEditResponse supports inspect kind + inspectRequest', () => {
+  const inspect = {
+    kind: 'inspect',
+    assistantReply: 'Let me take a look.',
+    inspectRequest: { pageIndex: 2 },
+    usage: { durationMs: 1, models: {} },
+  };
+  assert.equal(V2DraftEditResponse.safeParse(inspect).success, true);
+});
+
+test('V2DraftEditResponse act carries imagePosWrite with clamped ranges', () => {
+  const ok = {
+    kind: 'act',
+    assistantReply: 'moved it',
+    imagePosWrite: { pageIndex: 2, imageId: 'image', x: 50, y: 35, scale: 1.2 },
+    usage: { durationMs: 1, models: {} },
+  };
+  assert.equal(V2DraftEditResponse.safeParse(ok).success, true);
+  for (const bad of [
+    { pageIndex: 0, imageId: 'i', x: -1, y: 50, scale: 1 },
+    { pageIndex: 0, imageId: 'i', x: 50, y: 101, scale: 1 },
+    { pageIndex: 0, imageId: 'i', x: 50, y: 50, scale: 0.9 },
+    { pageIndex: 0, imageId: 'i', x: 50, y: 50, scale: 2.1 },
+  ]) {
+    assert.equal(
+      V2DraftEditResponse.safeParse({ ...ok, imagePosWrite: bad }).success,
+      false,
+    );
+  }
+});
+
+test('V2InspectRequest is strict + carries the screenshot channel only', () => {
+  const req = {
+    albumId: 'a',
+    language: 'en',
+    page: { pageIndex: 2, templateId: 'mag-05', images: { image: 'p1' }, texts: {} },
+    photos: [baseAnalysis],
+    screenshot: 'data:image/png;base64,AAAA',
+    userMessage: 'face cut off',
+  };
+  assert.equal(V2InspectRequest.safeParse(req).success, true);
+  assert.equal(
+    V2InspectRequest.safeParse({ ...req, draftTree: {} }).success,
+    false,
+    'no whole tree smuggled in (invariant 12)',
+  );
+  const { screenshot, ...noShot } = req;
+  assert.equal(V2InspectRequest.safeParse(noShot).success, false, 'screenshot required');
+});
+
+test('V2InspectResponse diagnosis: imageId nullable, ranges clamped', () => {
+  const resp = {
+    diagnosis: {
+      imageId: 'image',
+      problem: 'cut off',
+      suggestedDx: 0,
+      suggestedDy: -10,
+      suggestedScale: 1.1,
+      confidence: 0.7,
+    },
+    assistantReply: 'let me adjust',
+    usage: { durationMs: 1, models: {} },
+  };
+  assert.equal(V2InspectResponse.safeParse(resp).success, true);
+  // null imageId is the graceful "unable to inspect" shape.
+  assert.equal(
+    V2InspectResponse.safeParse({
+      ...resp,
+      diagnosis: { ...resp.diagnosis, imageId: null },
+    }).success,
+    true,
+  );
+  // out-of-range suggestions rejected.
+  assert.equal(
+    V2InspectResponse.safeParse({
+      ...resp,
+      diagnosis: { ...resp.diagnosis, suggestedDy: -51 },
+    }).success,
+    false,
+  );
 });

@@ -23,11 +23,33 @@ export const PhotoAnalysis = z.object({
 });
 export type PhotoAnalysis = z.infer<typeof PhotoAnalysis>;
 
+/**
+ * Per-image render override (#165 Phase 1). Sibling to a page's image slot map:
+ * keyed by the SAME slotId the page's `images` map uses (e.g. `image`,
+ * `imageTop`, `cells[0].image`). Absent slot => renderer falls back to the
+ * historical default (objectPosition 50% 50%, no zoom), so every album authored
+ * before this field is byte-unchanged.
+ *
+ *   x, y  - object-position percentages, clamp range [0, 100] (default 50/50)
+ *   scale - zoom factor, clamp range [1, 2] (default 1; web-only, PDF ignores >1)
+ *
+ * Clamp bounds are enforced by the writer (#165 Phase 3 adjust_image_position);
+ * the schema guards the full range so a hand-rolled payload can't break render.
+ */
+export const ImagePos = z.object({
+  x: z.number().min(0).max(100),
+  y: z.number().min(0).max(100),
+  scale: z.number().min(1).max(2),
+});
+export type ImagePos = z.infer<typeof ImagePos>;
+
 export const Page = z.object({
   pageIndex: z.number().int().nonnegative(),
   templateId: z.string().min(1),
   images: z.record(z.string(), z.string()),
   texts: z.record(z.string(), z.string()),
+  // Optional per-slot position/scale overrides. Absent => render default 50/50/1.
+  imagePos: z.record(z.string(), ImagePos).optional(),
 });
 export type Page = z.infer<typeof Page>;
 

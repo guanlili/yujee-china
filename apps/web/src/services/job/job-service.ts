@@ -278,6 +278,9 @@ export const jobService = {
           templateId: p.templateId,
           imagesJson: p.images,
           textsJson: p.texts,
+          // #165: position overrides flatten through finalize (inv 12). Absent =>
+          // {} so the row renders at the historical 50/50/1 default.
+          imagePosJson: p.imagePos ?? {},
         })),
       );
 
@@ -363,6 +366,8 @@ export const jobService = {
           templateId: p.templateId,
           imagesJson: p.images,
           textsJson: p.texts,
+          // #165: preserve existing pages' overrides; new add-photos pages have none.
+          imagePosJson: p.imagePos ?? {},
         })),
       );
 

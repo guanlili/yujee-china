@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import time
 from typing import Any
 
@@ -31,9 +32,15 @@ from ..schemas_v2 import (
     V2Chapter,
     V2ChapterChatRequest,
     V2ChapterChatResponse,
+    V2ClusterOverview,
+    V2CoverDraft,
+    V2DraftEditRequest,
+    V2DraftEditResponse,
     V2EditRequest,
     V2EditResponse,
     V2FailedCallback,
+    V2InspectRequest,
+    V2InspectResponse,
     V2FinalizeCompletedCallback,
     V2FinalizeRequest,
     V2InitCompletedCallback,
@@ -44,6 +51,8 @@ from ..schemas_v2 import (
     V2Photo,
     V2PhotoAnalysis,
     V2ProgressCallback,
+    V2Theme,
+    V2ThemePartial,
     V2ThemeRequest,
     V2ThemeResponse,
 )
@@ -51,19 +60,25 @@ from ..services import (
     callback,
     chapter_chat,
     chat_edit_v2,
+    draft_edit,
     finalize as finalize_service,
     grouping,
+    inspect_render,
     skeleton,
     theme,
     vision_mock,
+    writing,
 )
 from ..services.chapter_chat import ChapterChatError
 from ..services.chat_edit_v2 import V2EditError
+from ..services.draft_edit import DraftEditError
 from ..services.finalize import FinalizeError
 from ..services.grouping import GroupingPhoto
+from ..services.inspect_render import InspectError
 from ..services.theme import ThemeError
 from ..services.vision import VisionError
 from ..services.vision import analyze as vision_analyze
+from ..services.writing import WritingError
 from ..settings import get_settings
 
 router = APIRouter()
@@ -221,6 +236,191 @@ def _assemble_draft(
     )
 
 
+# ---------- init writing stage (#161) -----------------------------------------
+#
+# After the deterministic skeleton, write the WHOLE first draft inside init: an
+# auto-picked theme + cover copy, then every chapter's body copy. Cover + N
+# chapters run concurrently under an asyncio.Semaphore (INIT_WRITE_CONCURRENCY,
+# default 3); any unit failing fails the whole stage → init FAILED → hold
+# released (init/failed refund path, tech-plan §1.1). No conversation, no theme
+# confirmation step — chapters land at state='generated' (issue #161).
+
+
+def _clusters_overview(draft: AlbumDraft) -> list[V2ClusterOverview]:
+    """Summarize the draft chapters for the theme/cover writer (no base64; only
+    cluster labels + a few representative photo descriptions)."""
+    desc_by_id = {photo.photoId: photo.analysis.description for photo in draft.photoPool}
+    overview: list[V2ClusterOverview] = []
+    for chapter in draft.chapters:
+        descs = [
+            desc_by_id[pid]
+            for pid in chapter.photoIds
+            if pid in desc_by_id and desc_by_id[pid]
+        ][:8]
+        overview.append(
+            V2ClusterOverview(
+                chapterId=chapter.chapterId,
+                label=chapter.cluster.label,
+                place=chapter.cluster.place,
+                timeRange=chapter.cluster.timeRange,
+                photoDescs=descs,
+            )
+        )
+    return overview
+
+
+def _mock_writing_complete() -> Any:
+    """Deterministic injected `complete` for first-pass writing in mock mode:
+    returns NO pagesTexts, so the writing service falls back to its grounded
+    skeleton copy for every slot (mirrors the chapter-chat mock)."""
+
+    async def complete(**_kwargs: Any) -> dict[str, Any]:
+        return {
+            "choices": [{"message": {"content": json.dumps({"pagesTexts": []})}}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+        }
+
+    return complete
+
+
+def _merge_cover(cover_page: Page, cover: V2CoverDraft | None) -> Page:
+    """Fold the written cover copy into the skeleton cover page (texts + the
+    auto-picked cover templateId/hero if the writer chose one)."""
+    if cover is None:
+        return cover_page
+    update: dict[str, Any] = {"texts": dict(cover.texts)}
+    if cover.templateId:
+        update["templateId"] = cover.templateId
+    if cover.heroPhotoId:
+        # Keep the existing image slot key; only swap the hero photoId in.
+        slot = next(iter(cover_page.images), "image")
+        update["images"] = {**cover_page.images, slot: cover.heroPhotoId}
+    return cover_page.model_copy(update=update)
+
+
+def _merge_chapter_texts(chapter: V2Chapter, pages_texts) -> V2Chapter:
+    """Merge a chapter's written pagesTexts into its pages and flip it to
+    state='generated' (the editor opens on a complete draft, issue #161)."""
+    texts_by_index = {pt.pageIndex: pt.texts for pt in pages_texts}
+    new_pages = [
+        page.model_copy(update={"texts": texts_by_index[page.pageIndex]})
+        if page.pageIndex in texts_by_index
+        else page
+        for page in chapter.pages
+    ]
+    return chapter.model_copy(update={"pages": new_pages, "state": "generated"})
+
+
+async def _write_first_draft(draft: AlbumDraft, mock: bool) -> tuple[AlbumDraft, Usage]:
+    """Concurrently write the cover + every chapter, merge results back into the
+    draft, and return the written draft + aggregated planning usage. Raises
+    WritingError (or any unit's exception) so the caller fails the stage."""
+    settings = get_settings()
+    semaphore = asyncio.Semaphore(settings.init_write_concurrency)
+    language = draft.meta.language
+    cover_complete = _mock_writing_complete() if mock else None
+    chapter_complete = _mock_writing_complete() if mock else None
+    # The theme/cover writer reuses the theme service mock shape, not writing's.
+    theme_overview = _clusters_overview(draft)
+    # Album-wide allowed nouns so the cover scrub (#161 MUST-FIX) matches the
+    # chapter scrub: a name on the cover is legitimate if it appears anywhere in
+    # the album's known material (every cluster + every photo), not just one chapter.
+    cover_allowed_nouns = writing.album_allowed_proper_nouns(draft.chapters, draft.photoPool)
+
+    async def run_cover() -> tuple[V2Theme, V2CoverDraft | None, Usage]:
+        async with semaphore:
+            theme_mock = (
+                _mock_theme_complete(
+                    V2ThemeRequest(
+                        albumId="init",
+                        language=language,
+                        clustersOverview=theme_overview,
+                        currentTheme=None,
+                        userMessage=draft.meta.promptHint,
+                    )
+                )
+                if mock
+                else None
+            )
+            return await writing.generate_cover_texts(
+                clusters_overview=theme_overview,
+                language=language,
+                prompt_hint=draft.meta.promptHint,
+                complete=theme_mock,
+                allowed_nouns=cover_allowed_nouns,
+            )
+
+    async def run_chapter(chapter: V2Chapter):
+        async with semaphore:
+            return await writing.generate_chapter_texts(
+                chapter,
+                draft.photoPool,
+                # theme not known until run_cover resolves; pass the promptHint-
+                # seeded partial so chapters still get global tone. The cover's
+                # final theme is merged into meta below regardless.
+                _theme_hint(draft),
+                language,
+                complete=chapter_complete,
+            )
+
+    cover_task = asyncio.create_task(run_cover())
+    chapter_tasks = [asyncio.create_task(run_chapter(ch)) for ch in draft.chapters]
+    all_tasks = [cover_task, *chapter_tasks]
+    try:
+        # return_exceptions=False: the first unit's exception propagates here
+        # (whole stage fails on any cover/chapter failure, issue #161 req 4).
+        await asyncio.gather(*all_tasks)
+    except BaseException:
+        for task in all_tasks:
+            task.cancel()
+        # Drain the cancellations so no task is left pending/garbage-collected.
+        await asyncio.gather(*all_tasks, return_exceptions=True)
+        raise
+    theme_obj, cover, cover_usage = cover_task.result()
+    chapter_results = [task.result() for task in chapter_tasks]
+
+    cover_page = _merge_cover(draft.basePages.cover, cover)
+    new_chapters = [
+        _merge_chapter_texts(chapter, pages_texts)
+        for chapter, (pages_texts, _usage) in zip(draft.chapters, chapter_results)
+    ]
+
+    total_in = cover_usage.planningInputTokens + sum(
+        u.planningInputTokens for _pt, u in chapter_results
+    )
+    total_out = cover_usage.planningOutputTokens + sum(
+        u.planningOutputTokens for _pt, u in chapter_results
+    )
+    writing_usage = Usage(
+        durationMs=0,
+        planningInputTokens=total_in,
+        planningOutputTokens=total_out,
+        models=V2Models(planning=cover_usage.models.planning),
+    )
+
+    written = draft.model_copy(
+        update={
+            "meta": draft.meta.model_copy(
+                update={
+                    "theme": V2ThemePartial(**theme_obj.model_dump()),
+                    "style": theme_obj.style,
+                }
+            ),
+            "basePages": draft.basePages.model_copy(update={"cover": cover_page}),
+            "chapters": new_chapters,
+        }
+    )
+    return written, writing_usage
+
+
+def _theme_hint(draft: AlbumDraft) -> V2Theme | None:
+    """A best-effort global theme to bias chapter copy before the cover writer
+    resolves: only the promptHint is known at this point, so return None and let
+    each chapter ground itself in its own photos (the cover sets the real theme
+    in meta). Kept as a seam for a future two-phase (theme-then-chapters) order."""
+    return None
+
+
 # ---------- init job ----------------------------------------------------------
 
 
@@ -273,6 +473,29 @@ async def _run_init(req: V2InitRequest) -> None:
         return
     await _emit_progress(req, "skeleton", 100)
 
+    # Stage 4 — first-pass writing (#161): auto-theme + cover + all chapter copy,
+    # written concurrently. Any cover/chapter failure fails the whole init.
+    await _emit_progress(req, "writing", 0)
+    planning_model: str | None = None
+    try:
+        draft, writing_usage = await _write_first_draft(
+            draft, mock=settings.agent_pipeline_mode == "mock"
+        )
+        planning_model = writing_usage.models.planning
+    except WritingError as exc:
+        log.warning("v2_init.writing_failed", error=str(exc))
+        await _emit_failure(
+            req, code="AGENT_PLANNING_FAILED", message=str(exc), stage="writing"
+        )
+        return
+    except Exception as exc:  # noqa: BLE001
+        log.exception("v2_init.writing_unhandled", error=str(exc))
+        await _emit_failure(
+            req, code="AGENT_PLANNING_FAILED", message=str(exc), stage="writing"
+        )
+        return
+    await _emit_progress(req, "writing", 100)
+
     duration_ms = int((time.monotonic() - started) * 1000)
     envelope = V2InitCompletedCallback(
         event="completed",
@@ -282,7 +505,9 @@ async def _run_init(req: V2InitRequest) -> None:
         usage=Usage(
             durationMs=duration_ms,
             visionCallCount=vision_call_count,
-            models=V2Models(vision=vision_model, planning=None),
+            planningInputTokens=writing_usage.planningInputTokens,
+            planningOutputTokens=writing_usage.planningOutputTokens,
+            models=V2Models(vision=vision_model, planning=planning_model),
         ),
     )
     await callback.post(str(req.callbackUrl), envelope)
@@ -294,13 +519,36 @@ async def _run_init(req: V2InitRequest) -> None:
     )
 
 
+def _init_timeout_seconds(req: V2InitRequest, settings: Any) -> int:
+    """Scale the init background-task budget with the work it has to do (#161
+    SHOULD-FIX). The fixed 600s floor can be tripped by a large album: writing
+    fires 1 cover + N chapter DeepSeek calls, ≤ INIT_WRITE_CONCURRENCY in flight,
+    each ≤ 2× its per-call timeout on the retry ceiling (the author's worst-case
+    ~720s for a ~10-chapter album). Budget:
+
+        vision_ceiling + ⌈(N_chapters + 1) / INIT_WRITE_CONCURRENCY⌉ × per_call_ceiling
+
+    where vision_ceiling = 2× ark_timeout (one retry) and per_call_ceiling = 2×
+    deepseek_timeout. N_chapters isn't known until grouping runs inside _run_init,
+    so we upper-bound it by the photo count (every chapter holds ≥1 photo → chapters
+    ≤ photos), which only over-budgets — never under. The current fixed value stays
+    as a FLOOR so small albums and other knobs never regress below today's behavior.
+    Scoped to init only; add/finalize keep the flat background_task_timeout_seconds."""
+    n_chapters_upper = max(1, len(req.photos))
+    vision_ceiling = 2 * settings.ark_timeout_seconds
+    per_call_ceiling = 2 * settings.deepseek_timeout_seconds
+    waves = math.ceil((n_chapters_upper + 1) / settings.init_write_concurrency)
+    scaled = vision_ceiling + waves * per_call_ceiling
+    return max(settings.background_task_timeout_seconds, scaled)
+
+
 async def _run_init_with_timeout(req: V2InitRequest) -> None:
     settings = get_settings()
     token = request_id_var.set(req.requestId)
     try:
         try:
             await asyncio.wait_for(
-                _run_init(req), timeout=settings.background_task_timeout_seconds
+                _run_init(req), timeout=_init_timeout_seconds(req, settings)
             )
         except asyncio.TimeoutError:
             log.error("v2_init.timeout")
@@ -787,6 +1035,176 @@ async def submit_edit(req: V2EditRequest) -> dict:
         ) from exc
     except Exception as exc:  # noqa: BLE001 — must answer in contract shape
         log.exception("v2_edit.unhandled", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
+            },
+        ) from exc
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
+
+
+# ============================================================================
+# draft-edit (#162) — synchronous endpoint wiring services/draft_edit.py. The
+# draft-period "展示第一版 + 定点单页调整" turn: talk/act separated by a tool
+# layer (services/tools.py). NEW endpoint; the finalize-era /v2/album/edit is
+# untouched (it needs a flat layout_json; draft period has layout_json==null).
+# Stateless: only a single skeleton page slice + that page's photos cross the
+# wire (no base64, no whole tree — invariant 12). Model/parse failure →
+# AGENT_CHAT_FAILED/502 (mirrors submit_edit).
+# ============================================================================
+
+
+def _mock_draft_edit_complete(req: V2DraftEditRequest) -> Any:
+    """Deterministic injected `complete` for the draft-edit round-trip without a
+    dialog-model key. A bare "改/change/rewrite/写" in the message → emit a
+    write_page_copy tool_call (re-write the page's first authored slot back to
+    itself, so the act path is exercised and the clamp is a no-op); otherwise →
+    plain text (talk). The service still runs all tool dispatch / G3 demotion /
+    clamp on top, mirroring the other W6 mocks."""
+
+    msg = (req.userMessage or "").lower()
+    wants_act = any(k in msg for k in ("change", "rewrite", "改", "写", "标题", "edit"))
+
+    async def complete(**_kwargs: Any) -> dict[str, Any]:
+        if wants_act and req.page.texts:
+            slot, value = next(iter(req.page.texts.items()))
+            tool_call = {
+                "id": "call_mock",
+                "type": "function",
+                "function": {
+                    "name": "write_page_copy",
+                    "arguments": json.dumps(
+                        {"pageIndex": req.page.pageIndex, "slots": {slot: value}},
+                        ensure_ascii=False,
+                    ),
+                },
+            }
+            return {
+                "choices": [
+                    {"message": {"content": None, "tool_calls": [tool_call]}}
+                ],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+            }
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            f'(mock) Noted — "{req.userMessage[:120]}". '
+                            "Real editing runs once the model is connected."
+                        )
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+        }
+
+    return complete
+
+
+@router.post("/v2/album/draft-edit", dependencies=[Depends(require_bearer)])
+async def submit_draft_edit(req: V2DraftEditRequest) -> dict:
+    settings = get_settings()
+    log.info(
+        "v2_draft_edit.accepted",
+        album_id=req.albumId,
+        page_index=req.page.pageIndex,
+        focused=req.focusedPageIndex,
+        history_len=len(req.history),
+        language=req.language,
+    )
+    complete = (
+        _mock_draft_edit_complete(req) if settings.agent_pipeline_mode == "mock" else None
+    )
+    try:
+        response: V2DraftEditResponse = await draft_edit.run(req, complete=complete)
+    except DraftEditError as exc:
+        log.warning("v2_draft_edit.failed", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_CHAT_FAILED", "message": str(exc)[:300]},
+            },
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
+        log.exception("v2_draft_edit.unhandled", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
+            },
+        ) from exc
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
+
+
+# ============================================================================
+# inspect-page (#165 Phase 2) — synchronous endpoint wiring services/
+# inspect_render.py. After draft-edit returns kind="inspect", the browser
+# renders + screenshots the page and posts it here; the agent runs ONE vision
+# call (火山 doubao-1.6-vision, same model/key as init) to diagnose a reported
+# crop and suggest a move/zoom. Stateless: only a single page slice + that page's
+# photo analyses + the rendered screenshot cross the wire — the screenshot is the
+# ONLY new base64 channel and is dropped after the upstream call, never persisted
+# (invariant 1, same privacy posture as init vision). Vision/parse failure
+# DEGRADES gracefully inside the service (problem="unable to inspect"); only a
+# hard InspectError maps to AGENT_VISION_FAILED/502 (mirrors submit_edit).
+# ============================================================================
+
+
+def _mock_inspect_complete(req: V2InspectRequest) -> Any:
+    """Deterministic injected `complete` for the inspect round-trip without a
+    vision key: name the page's first image slot and suggest a small move-down
+    (the common 'face cut at top' fix). The service still clamps + validates the
+    slot against the page's real slots on top (mirrors the other W6 mocks)."""
+    slot = next(iter(req.page.images), None)
+
+    async def complete(**_kwargs: Any) -> dict[str, Any]:
+        payload = {
+            "imageId": slot,
+            "problem": "a subject looks cut off near the top",
+            "suggestedDx": 0,
+            "suggestedDy": -12,
+            "suggestedScale": 1.0,
+            "confidence": 0.6,
+        }
+        return {
+            "choices": [{"message": {"content": json.dumps(payload, ensure_ascii=False)}}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+        }
+
+    return complete
+
+
+@router.post("/v2/album/inspect-page", dependencies=[Depends(require_bearer)])
+async def submit_inspect_page(req: V2InspectRequest) -> dict:
+    settings = get_settings()
+    log.info(
+        "v2_inspect.accepted",
+        album_id=req.albumId,
+        page_index=req.page.pageIndex,
+        slots=len(req.page.images),
+        language=req.language,
+    )
+    complete = (
+        _mock_inspect_complete(req) if settings.agent_pipeline_mode == "mock" else None
+    )
+    try:
+        response: V2InspectResponse = await inspect_render.diagnose(req, complete=complete)
+    except InspectError as exc:
+        log.warning("v2_inspect.failed", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_VISION_FAILED", "message": str(exc)[:300]},
+            },
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
+        log.exception("v2_inspect.unhandled", error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={

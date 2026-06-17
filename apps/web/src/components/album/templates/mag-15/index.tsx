@@ -2,7 +2,7 @@ import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function WebMag15({ data, totalPages }: TemplateRenderProps) {
+export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     imagePerson?: string;
     imageRoad?: string;
@@ -33,11 +33,13 @@ export function WebMag15({ data, totalPages }: TemplateRenderProps) {
         src={d.imagePerson}
         placeholder="3:4"
         style={{ position: 'absolute', top: 180, right: 70, width: 655, height: 440 }}
+        position={imagePos?.['imagePerson']}
       />
       <WebImage
         src={d.imageRoad}
         placeholder="4:3"
         style={{ position: 'absolute', top: 660, left: 70, width: 400, height: 350 }}
+        position={imagePos?.['imageRoad']}
       />
       <h1
         style={{

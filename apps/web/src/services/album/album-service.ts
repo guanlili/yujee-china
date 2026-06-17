@@ -5,7 +5,7 @@ import { jobService } from '@/services/job/job-service';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
 import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
-import { AlbumDraft } from '@yujee/contracts';
+import { AlbumDraft, type ImagePos } from '@yujee/contracts';
 
 const PDF_MAX_BYTES = 50 * 1024 * 1024; // 50MB — docs/web/api.md §3.6
 
@@ -14,6 +14,7 @@ type AlbumCoverPage = {
   templateId: string;
   imagesJson: Record<string, string>;
   textsJson: Record<string, string>;
+  imagePosJson: Record<string, ImagePos>;
 };
 
 export const albumService = {
@@ -97,6 +98,7 @@ export const albumService = {
         templateId: p.templateId,
         imagesJson: p.imagesJson,
         textsJson: p.textsJson,
+        imagePosJson: p.imagePosJson,
       })),
       generation,
     };
@@ -148,12 +150,18 @@ export const albumService = {
       templateId: string;
       imagesJson: Record<string, string>;
       textsJson: Record<string, string>;
+      imagePosJson: Record<string, ImagePos>;
       kind: 'cover' | 'toc' | 'chapter' | 'ending';
       chapterId: string | null;
     };
     const pages: SkeletonPage[] = [];
     const push = (
-      p: { templateId: string; images: Record<string, string>; texts: Record<string, string> },
+      p: {
+        templateId: string;
+        images: Record<string, string>;
+        texts: Record<string, string>;
+        imagePos?: Record<string, ImagePos>;
+      },
       kind: SkeletonPage['kind'],
       chapterId: string | null,
     ) => {
@@ -162,6 +170,7 @@ export const albumService = {
         templateId: p.templateId,
         imagesJson: p.images,
         textsJson: p.texts,
+        imagePosJson: p.imagePos ?? {},
         kind,
         chapterId,
       });
@@ -204,6 +213,7 @@ export const albumService = {
           templateId: p.templateId,
           imagesJson: p.imagesJson as Record<string, string>,
           textsJson: p.textsJson as Record<string, string>,
+          imagePosJson: (p.imagePosJson ?? {}) as Record<string, ImagePos>,
         } satisfies AlbumCoverPage,
       ]),
     );
@@ -256,7 +266,14 @@ export const albumService = {
     userId: string,
     albumId: string,
     pageIndex: number,
-    patch: { imagesJson?: Record<string, string>; textsJson?: Record<string, string> },
+    patch: {
+      imagesJson?: Record<string, string>;
+      textsJson?: Record<string, string>;
+      // #165: per-slot position/scale overrides. The editor already applies the
+      // photo-swap reset (clearing a slot's entry when its photoId changed) via
+      // applyPatchToPages before persisting, so the server stores what it sends.
+      imagePosJson?: Record<string, ImagePos>;
+    },
   ): Promise<{ updated: true }> {
     await this.findOwned(userId, albumId);
     await db.transaction(async (tx) => {

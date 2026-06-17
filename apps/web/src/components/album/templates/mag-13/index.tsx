@@ -1,8 +1,8 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
+import { WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function WebMag13({ data, totalPages }: TemplateRenderProps) {
+export function WebMag13({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     title?: string;
@@ -31,6 +31,7 @@ export function WebMag13({ data, totalPages }: TemplateRenderProps) {
         src={d.image}
         placeholder="3:2"
         style={{ position: 'absolute', top: 300, left: 90, right: 90, height: 520 }}
+        position={imagePos?.['image']}
       />
       <p
         style={{
@@ -48,7 +49,6 @@ export function WebMag13({ data, totalPages }: TemplateRenderProps) {
       >
         {d.caption || ''}
       </p>
-      <WebFolio folio={d.folio} totalPages={totalPages} fallback="13" />
     </WebPage>
   );
 }

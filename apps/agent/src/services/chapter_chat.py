@@ -15,8 +15,6 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from .. import templates as registry
-from ..schemas import Page
 from ..schemas_v2 import (
     Usage,
     V2Brief,
@@ -27,7 +25,8 @@ from ..schemas_v2 import (
     V2PageTexts,
 )
 from ..settings import get_settings
-from . import ai_client, layout_rules, writing_guides
+from . import ai_client, writing_guides
+from .grounding import GroundingContext, page_texts, skipped_texts
 
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
@@ -309,6 +308,22 @@ def _coerce_brief(existing: V2Brief | None, raw: Any) -> V2Brief | None:
     return V2Brief(**data) if data else None
 
 
+def _grounding_context(req: V2ChapterChatRequest) -> GroundingContext:
+    """Build the shared grounding context from this chapter slice (cluster
+    place/timeRange + the chapter's own photos)."""
+    return GroundingContext(
+        language=req.language,
+        place=req.chapter.cluster.place.strip()
+        if isinstance(req.chapter.cluster.place, str) and req.chapter.cluster.place.strip()
+        else "",
+        time_range=req.chapter.cluster.timeRange.strip()
+        if isinstance(req.chapter.cluster.timeRange, str)
+        and req.chapter.cluster.timeRange.strip()
+        else "",
+        photos_by_id={p.photoId: p for p in req.chapter.photos},
+    )
+
+
 def _coerce_pages_texts(
     req: V2ChapterChatRequest,
     raw: Any,
@@ -333,140 +348,15 @@ def _coerce_pages_texts(
                     if isinstance(k, str) and str(v).strip()
                 }
 
+    ctx = _grounding_context(req)
     out: list[V2PageTexts] = []
     for page in req.chapter.pages:
         if skipped:
-            texts = _skipped_texts(page, req)
+            texts = skipped_texts(page, ctx)
         else:
-            texts = _normalize_page_texts(page, raw_by_index.get(page.pageIndex, {}), req)
+            texts = page_texts(page, raw_by_index.get(page.pageIndex, {}), ctx)
         out.append(V2PageTexts(pageIndex=page.pageIndex, texts=texts))
     return out
-
-
-def _normalize_page_texts(
-    page: Page,
-    raw_texts: dict[str, str],
-    req: V2ChapterChatRequest,
-) -> dict[str, str]:
-    tpl = registry.get(page.templateId)
-    text_slots = tpl["texts"] if tpl else []
-    allowed_slots = {meta["id"] for meta in text_slots if meta["role"] != "decoration"}
-    texts = {
-        slot: value
-        for slot, value in raw_texts.items()
-        if not allowed_slots or slot in allowed_slots
-    }
-    missing_slots = [slot for slot in allowed_slots if slot not in texts]
-    if missing_slots:
-        fallback = _fallback_texts(page, req)
-        for slot in missing_slots:
-            if slot in fallback:
-                texts[slot] = fallback[slot]
-    if not texts:
-        texts = _fallback_texts(page, req)
-    return layout_rules.clamp_texts_for_template(page.templateId, texts)
-
-
-def _fallback_texts(page: Page, req: V2ChapterChatRequest) -> dict[str, str]:
-    tpl = registry.get(page.templateId)
-    text_slots = tpl["texts"] if tpl else []
-    photo_text = _page_photo_summary(page, req)
-    texts: dict[str, str] = {}
-    for meta in text_slots:
-        slot = meta["id"]
-        role = meta["role"]
-        if role == "decoration":  # was 'meta' (and now folds in the old 'label')
-            continue
-        if meta.get("repeat") is True:  # was type=='array'
-            texts[slot] = (
-                "soft light, small details, quiet atmosphere"
-                if req.language == "en"
-                else "柔和光线、细节、安静氛围"
-            )
-        elif role == "title":  # was 'heading'
-            texts[slot] = "quiet moments" if req.language == "en" else "安静片刻"
-        elif role == "explain":  # was 'caption' (old 'quote' now maps to 'body')
-            texts[slot] = "from the visible scene" if req.language == "en" else "来自照片里的画面"
-        else:  # body (was 'paragraph'/'quote') and any other copy
-            texts[slot] = photo_text
-    if not texts:
-        texts["body"] = photo_text
-    return layout_rules.clamp_texts_for_template(page.templateId, texts)
-
-
-def _skipped_texts(
-    page: Page,
-    req: V2ChapterChatRequest,
-) -> dict[str, str]:
-    tpl = registry.get(page.templateId)
-    text_slots = tpl["texts"] if tpl else []
-    # cluster.place/timeRange are the only concrete names/dates allowed in
-    # skipped copy: they come from Web's chapter slice (EXIF/grouping metadata),
-    # not from the model's generated text.
-    place = _cluster_phrase(req.chapter.cluster.place)
-    time_range = _cluster_phrase(req.chapter.cluster.timeRange)
-    photo_summary = _page_photo_summary(page, req)
-    heading = (
-        _join_nonempty(place, "atmosphere")
-        if req.language == "en" and place
-        else _join_nonempty(place, "的氛围")
-        if req.language == "zh" and place
-        else ("quiet moments" if req.language == "en" else "安静片刻")
-    )
-    detail = _join_nonempty(place, time_range, photo_summary)
-    if not detail:
-        detail = photo_summary
-
-    texts: dict[str, str] = {}
-    for meta in text_slots:
-        slot = meta["id"]
-        role = meta["role"]
-        if role == "decoration":  # was 'meta' (and now folds in the old 'label')
-            continue
-        if meta.get("repeat") is True:  # was type=='array'
-            texts[slot] = (
-                _join_nonempty(place, time_range, "soft light, quiet details")
-                if req.language == "en"
-                else _join_nonempty(place, time_range, "柔和光线、安静细节")
-            )
-        elif role == "title":  # was 'heading'
-            texts[slot] = heading
-        elif role == "explain":  # was 'caption' (old 'quote' now maps to 'body')
-            texts[slot] = (
-                _join_nonempty(place, time_range) or "visible details"
-                if req.language == "en"
-                else _join_nonempty(place, time_range) or "照片细节"
-            )
-        else:  # body (was 'paragraph'/'quote') and any other copy
-            texts[slot] = detail
-    if not texts:
-        texts["body"] = detail
-    return layout_rules.clamp_texts_for_template(page.templateId, texts)
-
-
-def _page_photo_summary(page: Page, req: V2ChapterChatRequest) -> str:
-    photo_by_id = {p.photoId: p for p in req.chapter.photos}
-    photos = [photo_by_id[pid] for pid in page.images.values() if pid in photo_by_id]
-    if not photos:
-        return (
-            "A quiet pause between the surrounding photographs."
-            if req.language == "en"
-            else "这一页留住相邻照片之间的安静停顿。"
-        )
-    moods = sorted({p.mood for p in photos if p.mood})
-    scenes = sorted({p.scene for p in photos if p.scene})
-    if req.language == "zh":
-        return "照片里有柔和的光线、动作和细节。"
-    parts = [moods[0] if moods else "quiet", scenes[0] if scenes else "scene"]
-    return f"A {parts[0]} {parts[1]} page shaped by light, texture, and small gestures."
-
-
-def _cluster_phrase(value: str | None) -> str:
-    return value.strip() if isinstance(value, str) and value.strip() else ""
-
-
-def _join_nonempty(*parts: str) -> str:
-    return " ".join(part for part in parts if part)
 
 
 def _looks_like_more_questions(reply: str) -> bool:

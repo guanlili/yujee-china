@@ -10,7 +10,7 @@
 // 不改 `layout.ts`:对外扁平 `AlbumLayoutPlan` 保持 5 字段;v2 扩充字段只活在
 //   `V2PhotoAnalysis`,finalize 时 strip。
 import { z } from 'zod';
-import { Page, PhotoAnalysis, AlbumLayoutPlan } from './layout';
+import { Page, PhotoAnalysis, AlbumLayoutPlan, ImagePos } from './layout';
 
 // ────────────────────────────── 共享枚举 ──────────────────────────────
 
@@ -31,8 +31,12 @@ export type V2Style = z.infer<typeof V2Style>;
 export const V2JobKind = z.enum(['init', 'finalize', 'add']);
 export type V2JobKind = z.infer<typeof V2JobKind>;
 
-/** init 三子阶段 + finalize 单阶段(进度语义,contract.md §5 沿用)。 */
-export const V2JobStage = z.enum(['vision', 'grouping', 'skeleton', 'finalize']);
+/**
+ * init 子阶段 + finalize 单阶段(进度语义,contract.md §5 沿用)。
+ * 'writing'(#161):init 在 skeleton 之后、finalize 之前直接批量写第一版全部文案
+ * (封面 + 各章正文,去掉逐章对话写作),故插在 skeleton 与 finalize 之间。
+ */
+export const V2JobStage = z.enum(['vision', 'grouping', 'skeleton', 'writing', 'finalize']);
 export type V2JobStage = z.infer<typeof V2JobStage>;
 
 /** 逐章对话状态机(requirements §5)。 */
@@ -363,6 +367,8 @@ export const LayoutPatchEntry = z
     templateId: z.string().optional(),
     images: z.record(z.string(), z.string()).optional(),
     texts: z.record(z.string(), z.string()).optional(),
+    // Per-slot position/scale overrides (#165). Absent => render default 50/50/1.
+    imagePos: z.record(z.string(), ImagePos).optional(),
   })
   .strict();
 export type LayoutPatchEntry = z.infer<typeof LayoutPatchEntry>;
@@ -388,6 +394,126 @@ export const V2EditResponse = z
   })
   .strict();
 export type V2EditResponse = z.infer<typeof V2EditResponse>;
+
+// ── POST /v2/album/draft-edit(同步;草稿期「展示第一版 + 定点单页调整」)──
+// #162:把「对话」和「改文案」物理分开。对话(提问/意见/打招呼)→ kind:'talk';
+// 改某一页的文字 → kind:'act' + pageWrite(经模板 clamp 的该页 texts)。
+// 与 /v2/album/edit(finalize 期、需扁平 layout_json)不同:本端点在 finalize 之前、
+// 草稿期 layout_json==null 时工作,且只送「单页骨架切片 + 该页照片」——
+// 不送 base64、不送整棵草稿树(不变式 12)。
+// 草稿期单页切片:与共享 `Page` 同形,但 `.strict()` —— 与 py `V2DraftEditPage(_Strict)`
+// 对称(TS↔py parity,design.md §14)。不直接 `.strict()` 共享 `Page`:它被 chapter/
+// basePages/add 等多处复用,就地收紧会波及无关 consumer。故这里专给 draft-edit 立一个
+// 严格副本,拒 `page` 内的杂散键(镜像 py V2DraftEditPage 的 extra='forbid')。
+const V2DraftEditPage = z
+  .object({
+    pageIndex: z.number().int().nonnegative(),
+    templateId: z.string().min(1),
+    images: z.record(z.string(), z.string()),
+    texts: z.record(z.string(), z.string()),
+  })
+  .strict();
+
+export const V2DraftEditRequest = z
+  .object({
+    albumId: z.string().min(1),
+    language: V2Language,
+    theme: V2Theme.optional(), // 全局基调约束(主题先行)
+    page: V2DraftEditPage, // 用户正在编辑的单页骨架切片(仅此一页 —— 不变式 12;strict)
+    photos: z.array(V2PhotoAnalysis), // 仅该页用到的照片 analysis(纯文本,无 base64);required,Web 恒送(可空数组)
+    history: z.array(V2ChatTurn).max(20), // 页/章作用域,≤20
+    userMessage: z.string().max(500),
+    // 用户在编辑器里选中的那一页:跨页(L+R 共 2 页)时由它锁定精确的单页 pageIndex。
+    focusedPageIndex: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+export type V2DraftEditRequest = z.infer<typeof V2DraftEditRequest>;
+
+export const V2DraftEditResponse = z
+  .object({
+    // #165 Phase 2:'inspect' 加入 talk/act。inspect → agent 需要「看」这一页
+    //(浏览器截图 → /v2/album/inspect-page);act → 文案改(pageWrite)或图片移动/缩放
+    //(imagePosWrite)。每种 kind 至多设一个 payload;talk 一个都不设。
+    kind: z.enum(['talk', 'act', 'inspect']),
+    assistantReply: z.string().min(1).max(500),
+    // 仅当 kind=='act'(经 write_page_copy)时存在:要应用到目标页的、已 clamp 的文案。
+    pageWrite: z
+      .object({
+        pageIndex: z.number().int().nonnegative(),
+        texts: z.record(z.string(), z.string()),
+      })
+      .strict()
+      .optional(),
+    // 仅当 kind=='act'(经 adjust_image_position)时存在:要写入 Page.imagePos[imageId]
+    // 的逐图绝对位置/缩放。字段名+范围对齐 Phase-1 `ImagePos`(x/y∈[0,100]、scale∈[1,2])。
+    imagePosWrite: z
+      .object({
+        pageIndex: z.number().int().nonnegative(),
+        imageId: z.string().min(1),
+        x: z.number().min(0).max(100),
+        y: z.number().min(0).max(100),
+        scale: z.number().min(1).max(2),
+      })
+      .strict()
+      .optional(),
+    // 仅当 kind=='inspect' 时存在:给浏览器的截图/诊断指令(钉到正在编辑的那一页)。
+    inspectRequest: z
+      .object({ pageIndex: z.number().int().nonnegative() })
+      .strict()
+      .optional(),
+    usage: Usage,
+  })
+  .strict();
+export type V2DraftEditResponse = z.infer<typeof V2DraftEditResponse>;
+
+// ── POST /v2/album/inspect-page(同步;#165 Phase 2 视觉诊断)──
+// draft-edit 返回 kind=='inspect' 后,浏览器渲染+截图该页并发到这里;agent 跑一次视觉
+// 调用(火山 doubao-1.6-vision,与 init 同模型/同 key)诊断报告的裁切问题并给出移动/缩放建议;
+// Web 侧据此再发一轮 draft-edit,让模型调用 adjust_image_position。
+// 隐私:`screenshot`(渲染页的 base64 data URI,800px 量级,同 init 照片)是唯一新增 base64
+// 通道;进上游视觉请求体后即丢弃 —— 不记日志、不落库、不回传(同 init 视觉,不变式 1)。
+const V2InspectPage = z
+  .object({
+    pageIndex: z.number().int().nonnegative(),
+    templateId: z.string().min(1),
+    images: z.record(z.string(), z.string()),
+    texts: z.record(z.string(), z.string()),
+  })
+  .strict();
+
+export const V2InspectRequest = z
+  .object({
+    albumId: z.string().min(1),
+    language: V2Language,
+    page: V2InspectPage, // 被检查的单页切片(slotId→photoId 让视觉点名真实 imageId)
+    photos: z.array(V2PhotoAnalysis), // 该页照片 analysis(纯文本,无 base64),供命名主体
+    screenshot: z.string().min(1), // 渲染页截图的 base64 data URI(唯一新增 base64 通道)
+    userMessage: z.string().max(500),
+  })
+  .strict();
+export type V2InspectRequest = z.infer<typeof V2InspectRequest>;
+
+export const V2InspectDiagnosis = z
+  .object({
+    // 出问题的 slotId:必为该页 slotId 之一,无法定位时为 null(调用方降级为 talk)。
+    imageId: z.string().min(1).nullable().optional(),
+    problem: z.string(),
+    suggestedDx: z.number().min(-50).max(50), // 百分点水平位移
+    suggestedDy: z.number().min(-50).max(50), // 百分点垂直位移
+    suggestedScale: z.number().min(1).max(2),
+    confidence: z.number().min(0).max(1),
+  })
+  .strict();
+export type V2InspectDiagnosis = z.infer<typeof V2InspectDiagnosis>;
+
+export const V2InspectResponse = z
+  .object({
+    diagnosis: V2InspectDiagnosis,
+    assistantReply: z.string().min(1).max(500),
+    usage: Usage,
+  })
+  .strict();
+export type V2InspectResponse = z.infer<typeof V2InspectResponse>;
 
 // ────────────────────────────── v2 callback envelope ──────────────────────────────
 //

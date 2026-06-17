@@ -1,10 +1,11 @@
-"""Mock e2e for POST /v2/album/init (W6a).
+"""Mock e2e for POST /v2/album/init (W6a + #161).
 
 Exercises the full init job — vision (mock) → deterministic grouping → skeleton
-→ V2 callback — without hitting any upstream AI, plus the route-level 202 and
-the vision-failure path. Acceptance: draftTree comes out; progress stages are a
-subset of {vision, grouping, skeleton}; 1 / 2 / 10 / 30 photos all work
-(tech-plan §1.1, issue #119)."""
+→ first-pass writing (#161) → V2 callback — without hitting any upstream AI,
+plus the route-level 202 and the vision-failure path. Acceptance: draftTree
+comes out; progress stages are a subset of {vision, grouping, skeleton, writing};
+chapters land at state='generated' with page texts; 1 / 2 / 10 / 30 photos all
+work (tech-plan §1.1, issues #119/#161)."""
 
 import asyncio
 from typing import Any
@@ -72,7 +73,7 @@ def test_init_mock_emits_stages_and_draft_tree(captured_callbacks, count):
     # Every progress callback is an init job and within the allowed stage set.
     stages = {c["stage"] for c in captured_callbacks if c["event"] == "progress"}
     assert stages, "expected at least one progress callback"
-    assert stages <= {"vision", "grouping", "skeleton"}, stages
+    assert stages <= {"vision", "grouping", "skeleton", "writing"}, stages
     for c in captured_callbacks:
         if c["event"] == "progress":
             assert c["jobKind"] == "init"
@@ -86,10 +87,10 @@ def test_init_mock_emits_stages_and_draft_tree(captured_callbacks, count):
         assert ticks[0] == 0, (stage, ticks)
         assert ticks[-1] == 100, (stage, ticks)
 
-    # Stages are emitted in pipeline order: vision → grouping → skeleton.
+    # Stages are emitted in pipeline order: vision → grouping → skeleton → writing.
     first_seen = [c["stage"] for c in captured_callbacks if c["event"] == "progress"]
     ordered_uniques = list(dict.fromkeys(first_seen))
-    assert ordered_uniques == ["vision", "grouping", "skeleton"], ordered_uniques
+    assert ordered_uniques == ["vision", "grouping", "skeleton", "writing"], ordered_uniques
 
     completed = next(c for c in captured_callbacks if c["event"] == "completed")
     assert completed["jobKind"] == "init"
@@ -103,11 +104,16 @@ def test_init_mock_emits_stages_and_draft_tree(captured_callbacks, count):
     assert len(draft.photoPool) == count
     assert draft.basePages.cover.templateId
     assert draft.basePages.ending.templateId
+    # #161: init now auto-picks a theme and writes the cover copy.
+    assert draft.meta.theme is not None
+    assert draft.basePages.cover.texts, "cover copy must be written in init"
     assert draft.chapters, "expected at least one chapter"
     for chapter in draft.chapters:
         assert chapter.photoIds, chapter.chapterId
         assert chapter.pages, chapter.chapterId
-        assert chapter.state == "empty"
+        # #161: every chapter is written in init and lands at state='generated'.
+        assert chapter.state == "generated", chapter.chapterId
+        assert any(page.texts for page in chapter.pages), chapter.chapterId
 
 
 def test_init_groups_many_photos_into_multiple_chapters(captured_callbacks):

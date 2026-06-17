@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ImagePos } from '@yujee/contracts';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
@@ -9,10 +10,13 @@ const BodySchema = z
   .object({
     imagesJson: z.record(z.string(), z.string()).optional(),
     textsJson: z.record(z.string(), z.string()).optional(),
+    // #165: per-slot position/scale overrides (clamp bounds enforced by ImagePos).
+    imagePosJson: z.record(z.string(), ImagePos).optional(),
   })
-  .refine((b) => b.imagesJson !== undefined || b.textsJson !== undefined, {
-    message: 'imagesJson or textsJson required',
-  });
+  .refine(
+    (b) => b.imagesJson !== undefined || b.textsJson !== undefined || b.imagePosJson !== undefined,
+    { message: 'imagesJson, textsJson or imagePosJson required' },
+  );
 
 export async function PATCH(
   req: Request,

@@ -1,8 +1,18 @@
+// Per-image render override (#165), keyed by the same slotId as imagesJson.
+// Absent slot => renderer defaults to objectPosition 50% 50%, no zoom.
+export interface ImagePos {
+  x: number;
+  y: number;
+  scale: number;
+}
+
 export interface EditorPage {
   pageIndex: number;
   templateId: string;
   imagesJson: Record<string, string>;
   textsJson: Record<string, string>;
+  // Optional per-slot position/scale overrides. Absent => render default 50/50/1.
+  imagePosJson?: Record<string, ImagePos>;
 }
 
 export interface AlbumInfo {
@@ -39,6 +49,7 @@ export interface LayoutPatchEntry {
   templateId?: string;
   imagesJson?: Record<string, string>;
   textsJson?: Record<string, string>;
+  imagePosJson?: Record<string, ImagePos>;
 }
 
 // photoIds the album knows about — from the layout's analysed photo set, used to
@@ -52,17 +63,38 @@ export function extractPhotoIds(layoutJson: unknown): string[] {
 // Mirror chat-service applyPatch on the client so the preview updates without a
 // full reload (docs/web/api.md §3.5a).
 export function applyPatchToPages(pages: EditorPage[], patch: LayoutPatchEntry[]): EditorPage[] {
-  const next = pages.map((p) => ({ ...p, imagesJson: { ...p.imagesJson }, textsJson: { ...p.textsJson } }));
+  const next = pages.map((p) => ({
+    ...p,
+    imagesJson: { ...p.imagesJson },
+    textsJson: { ...p.textsJson },
+    imagePosJson: { ...(p.imagePosJson ?? {}) },
+  }));
   for (const entry of patch) {
     const page = next.find((p) => p.pageIndex === entry.pageIndex);
     if (!page) continue;
     if (entry.templateId && entry.templateId !== page.templateId) {
+      // Template swap => full slot reset; position overrides start fresh (#165).
       page.templateId = entry.templateId;
       page.imagesJson = { ...(entry.imagesJson ?? {}) };
       page.textsJson = { ...(entry.textsJson ?? {}) };
+      page.imagePosJson = { ...(entry.imagePosJson ?? {}) };
     } else {
-      if (entry.imagesJson !== undefined) page.imagesJson = { ...entry.imagesJson };
+      if (entry.imagesJson !== undefined) {
+        // Photo-swap reset (#165 architect decision): a slot whose photoId
+        // changed gets its position override cleared (new subject => 50/50/1).
+        const prevImages = page.imagesJson;
+        const nextPos = { ...page.imagePosJson };
+        for (const slot of Object.keys(nextPos)) {
+          if (prevImages[slot] !== entry.imagesJson[slot]) delete nextPos[slot];
+        }
+        page.imagesJson = { ...entry.imagesJson };
+        page.imagePosJson = nextPos;
+      }
       if (entry.textsJson !== undefined) page.textsJson = { ...page.textsJson, ...entry.textsJson };
+      // An explicit imagePos patch (Phase 3 adjust) overrides the reset above.
+      if (entry.imagePosJson !== undefined) {
+        page.imagePosJson = { ...page.imagePosJson, ...entry.imagePosJson };
+      }
     }
   }
   return next;

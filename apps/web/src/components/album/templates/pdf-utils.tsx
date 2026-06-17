@@ -80,18 +80,24 @@ export function PdfPageShell({ children, dark, fontFamily }: PdfPageProps) {
 interface PdfImageProps {
   src?: string;
   style: PdfStyle;
+  // #165 per-slot override. Absent => centered cover (pre-#165 default).
+  position?: { x: number; y: number; scale: number };
 }
 
-export function PdfImage({ src, style }: PdfImageProps) {
+export function PdfImage({ src, style, position }: PdfImageProps) {
   if (src) {
-    // @react-pdf/renderer 的 Image objectFit 通过 style 的 objectFit 控制
+    // @react-pdf/renderer 的 Image objectFit 通过 style 的 objectFit 控制；
+    // objectPosition 同样接受 "x% y%"，故 dx/dy 在 PDF 与 web 一致生效。
+    // TODO(#165): PDF zoom (scale) not yet supported — @react-pdf <Image> has no
+    // transform, so when scale>1 we keep objectFit:cover (no zoom). Web-only.
+    const objectPosition = position ? `${position.x}% ${position.y}%` : '50% 50%';
     return (
       <Image
         src={src}
         style={{
           ...style,
           objectFit: 'cover',
-          objectPosition: '50% 50%',
+          objectPosition,
         }}
       />
     );

@@ -72,7 +72,7 @@ function PageFace({
         }}
       >
         {Template ? (
-          <Template data={data} totalPages={totalPages} />
+          <Template data={data} totalPages={totalPages} imagePos={page.imagePosJson} />
         ) : (
           <div style={{ padding: 24, fontSize: 14 }}>Unknown template: {page.templateId}</div>
         )}

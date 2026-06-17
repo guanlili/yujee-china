@@ -20,6 +20,8 @@ export interface DraftSkeletonPage {
   templateId: string;
   imagesJson: Record<string, string>;
   textsJson: Record<string, string>;
+  // #165 per-slot position/scale overrides. Absent => render default 50/50/1.
+  imagePosJson?: Record<string, { x: number; y: number; scale: number }>;
   kind: DraftPageKind;
   chapterId: string | null;
 }
@@ -126,4 +128,55 @@ export function postFinalize(
   albumId: string,
 ): Promise<{ albumId: string; requestId: string; accepted: true }> {
   return postJson(`/api/v2/albums/${albumId}/finalize`);
+}
+
+// POST /draft-edit — synchronous (#162). The draft-period chat path: send the
+// FLAT pageIndex the user is looking at + their message; the server slices that
+// one page (invariant 12) and either talks back (kind:'talk') or rewrites that
+// page's copy (kind:'act' + the merged pageWrite to repaint locally).
+export interface DraftEditResult {
+  kind: 'talk' | 'act' | 'inspect';
+  assistantReply: string;
+  // kind:'act' via write_page_copy — the page's rewritten copy to repaint.
+  pageWrite?: { pageIndex: number; texts: Record<string, string> };
+  // kind:'act' via adjust_image_position (#165 Phase 3) — the single per-image
+  // {x,y,scale} to fold into the page's imagePosJson[imageId]. Already persisted
+  // server-side; the browser mirrors it locally + repaints.
+  imagePosWrite?: { pageIndex: number; imageId: string; x: number; y: number; scale: number };
+  // kind:'inspect' (#165 Phase 3) — the model wants to SEE the page; the browser
+  // screenshots it → /inspect-render → diagnosis → re-issues draft-edit.
+  inspectRequest?: { pageIndex: number };
+}
+export function postDraftEdit(
+  albumId: string,
+  pageIndex: number,
+  userMessage: string,
+): Promise<DraftEditResult> {
+  return postJson(`/api/v2/albums/${albumId}/draft-edit`, { pageIndex, userMessage });
+}
+
+// #165 Phase 3 — per-image position/scale diagnosis from a vision pass.
+export interface InspectDiagnosis {
+  imageId?: string | null;
+  problem: string;
+  suggestedDx: number;
+  suggestedDy: number;
+  suggestedScale: number;
+  confidence: number;
+}
+export interface InspectRenderResult {
+  diagnosis: InspectDiagnosis;
+  assistantReply: string;
+}
+// POST /inspect-render — synchronous (#165 Phase 3). Send the FLAT pageIndex + the
+// user's message + a screenshot data URI of the rendered page; the server slices
+// that one page (invariant 12), runs ONE vision call, and returns the crop
+// diagnosis + reply. The screenshot is never persisted/logged (invariant 1/2).
+export function postInspectRender(
+  albumId: string,
+  pageIndex: number,
+  userMessage: string,
+  screenshot: string,
+): Promise<InspectRenderResult> {
+  return postJson(`/api/v2/albums/${albumId}/inspect-render`, { pageIndex, userMessage, screenshot });
 }

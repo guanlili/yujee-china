@@ -3,7 +3,7 @@ import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 
-export function PdfMag15({ data, totalPages }: TemplateRenderProps) {
+export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     imagePerson?: string;
     imageRoad?: string;
@@ -31,10 +31,12 @@ export function PdfMag15({ data, totalPages }: TemplateRenderProps) {
       <PdfImage
         src={d.imagePerson}
         style={{ position: 'absolute', top: 180, right: 70, width: 655, height: 440 }}
+        position={imagePos?.['imagePerson']}
       />
       <PdfImage
         src={d.imageRoad}
         style={{ position: 'absolute', top: 660, left: 70, width: 400, height: 350 }}
+        position={imagePos?.['imageRoad']}
       />
       <Text
         style={{

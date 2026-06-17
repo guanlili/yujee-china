@@ -86,11 +86,28 @@ class VisionResult(_Strict):
     groups: list[PhotoGroup]
 
 
+class ImagePos(_Strict):
+    """Per-image render override (#165 Phase 1). Mirrors @yujee/contracts
+    `ImagePos`. Keyed (in Page.imagePos) by the same slotId as Page.images.
+    Absent => renderer falls back to objectPosition 50% 50%, no zoom.
+
+    x, y: object-position percentages clamped [0, 100] (default 50/50).
+    scale: zoom factor clamped [1, 2] (default 1; web-only, PDF ignores >1).
+    The schema guards the full clamp range so a hand-rolled tree can't ship an
+    out-of-range value through finalize."""
+
+    x: float = Field(ge=0, le=100)
+    y: float = Field(ge=0, le=100)
+    scale: float = Field(ge=1, le=2)
+
+
 class Page(_Strict):
     pageIndex: int = Field(ge=0)
     templateId: str = Field(min_length=1)
     images: dict[str, str]
     texts: dict[str, str]
+    # Optional per-slot position/scale overrides. Absent => render default 50/50/1.
+    imagePos: dict[str, ImagePos] | None = None
 
 
 class AlbumLayoutPlan(_Strict):

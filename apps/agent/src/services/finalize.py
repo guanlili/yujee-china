@@ -88,15 +88,18 @@ def finalize(draft: AlbumDraft) -> LayoutV2:
 
     draft_cover = draft.basePages.cover
     if _theme_authored(draft.meta.theme) and _is_valid_cover(draft_cover):
-        cover = {
-            "pageIndex": 0,
-            "templateId": draft_cover.templateId,
-            "images": dict(draft_cover.images),
-            "texts": layout_rules.clamp_texts_for_template(
-                draft_cover.templateId, dict(draft_cover.texts)
-            )
-            or _cover_texts(draft_cover.templateId, theme),
-        }
+        cover = _with_image_pos(
+            {
+                "pageIndex": 0,
+                "templateId": draft_cover.templateId,
+                "images": dict(draft_cover.images),
+                "texts": layout_rules.clamp_texts_for_template(
+                    draft_cover.templateId, dict(draft_cover.texts)
+                )
+                or _cover_texts(draft_cover.templateId, theme),
+            },
+            draft_cover,
+        )
     else:
         cover = derived_cover
         cover["texts"] = _cover_texts(cover["templateId"], theme)
@@ -200,14 +203,33 @@ def _chapter_pages(
         else:
             texts = _ambiance_texts(page, chapter, pool_by_id, language)
         pages.append(
-            {
-                "pageIndex": 0,
-                "templateId": page.templateId,
-                "images": dict(page.images),
-                "texts": texts,
-            }
+            _with_image_pos(
+                {
+                    "pageIndex": 0,
+                    "templateId": page.templateId,
+                    "images": dict(page.images),
+                    "texts": texts,
+                },
+                page,
+            )
         )
     return pages
+
+
+def _with_image_pos(flat: dict[str, Any], src: Page) -> dict[str, Any]:
+    """Flatten the per-slot position override through finalize (#165 invariant
+    12). Only slots that actually carry an override survive; absent slots stay
+    absent so the renderer applies its 50/50/1 default and pre-#165 albums are
+    byte-unchanged. A slot whose photo no longer appears in `images` is dropped
+    (a stale override on a removed image must not ride along)."""
+
+    src_pos = getattr(src, "imagePos", None)
+    if not src_pos:
+        return flat
+    kept = {slot: pos for slot, pos in src_pos.items() if slot in flat["images"]}
+    if kept:
+        flat["imagePos"] = {slot: pos.model_dump() for slot, pos in kept.items()}
+    return flat
 
 
 def _ambiance_texts(

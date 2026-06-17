@@ -268,6 +268,179 @@ test('chapter-chat → resends only this chapter history; advances askCount each
   }
 });
 
+// ── #162 draft-edit: render-first + pointed single-page edit, talk/act split ──
+// Flat page order from getDraftSkeleton (and what locatePage walks): cover(0) →
+// ch1.page(1) → ch2.page(2) → ending(3). draft-edit slices ONLY the focused page
+// + its photos, then on 'act' merges pageWrite.texts into that one page.
+
+test('draft-edit act → merges pageWrite into the focused page only, persists, writes 2 messages (+layout_patch)', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('w162-act');
+  try {
+    const albumId = await seedDraftAlbum(user.id);
+    let captured: { page: { pageIndex: number; texts: Record<string, string>; images: Record<string, string> }; photos: unknown[]; focusedPageIndex?: number } | undefined;
+    t.mock.method(agentClient, 'draftEditV2', async (p: typeof captured) => {
+      captured = p;
+      return {
+        kind: 'act' as const,
+        assistantReply: 'Done — gave that page a warmer line.',
+        pageWrite: { pageIndex: 1, texts: { body: 'The sun melted into the sea.' } },
+        usage: USAGE,
+      };
+    });
+
+    // focus flat page 1 = ch1's only page (images {hero:'p1'}).
+    const res = await albumAuthoringService.submitDraftEditV2(user.id, albumId, {
+      pageIndex: 1,
+      userMessage: 'make this page warmer',
+    });
+    assert.equal(res.kind, 'act');
+    assert.equal(res.pageWrite?.pageIndex, 1);
+    assert.equal(res.pageWrite?.texts.body, 'The sun melted into the sea.');
+
+    // payload sliced ONE page + its photos only; focusedPageIndex forwarded.
+    assert.ok(captured);
+    assert.equal(captured!.page.pageIndex, 1);
+    assert.equal(captured!.focusedPageIndex, 1);
+    assert.deepEqual(captured!.page.images, { hero: 'p1' });
+    // only p1's analysis is sent (the page references p1); no base64 anywhere.
+    assert.equal(captured!.photos.length, 1);
+    assert.equal((captured!.photos[0] as { photoId: string }).photoId, 'p1');
+    const serialized = JSON.stringify(captured);
+    assert.equal(serialized.includes('base64'), false);
+    assert.equal(serialized.includes('photoPool'), false, 'no whole tree sent');
+    assert.equal(serialized.includes('chapters'), false, 'no whole tree sent');
+
+    // merged into the draft tree: ONLY ch1's page changed.
+    const album = await albumRepo.findById(albumId);
+    const draft = reloadDraft(album!.draftJson);
+    const ch1 = draft.chapters.find((c) => c.chapterId === 'ch1')!;
+    const ch2 = draft.chapters.find((c) => c.chapterId === 'ch2')!;
+    assert.equal(ch1.pages[0]!.texts.body, 'The sun melted into the sea.');
+    assert.deepEqual(ch2.pages[0]!.texts, {}, 'ch2 page untouched');
+    assert.deepEqual(draft.basePages.cover.texts, {}, 'cover untouched');
+    assert.deepEqual(draft.basePages.ending.texts, {}, 'ending untouched');
+    // image slot is preserved (slot-scoped TEXT merge only).
+    assert.deepEqual(ch1.pages[0]!.images, { hero: 'p1' });
+
+    // 2 album_messages (user + assistant); assistant carries the write as
+    // layout_patch + usage, both tagged with ch1's chapter_id (page is in ch1).
+    const msgs = await albumMessageRepo.findRecentByAlbumChapter(albumId, 'ch1', 20);
+    assert.equal(msgs.length, 2);
+    assert.ok(msgs.every((m) => m.chapterId === 'ch1'));
+    const userMsg = msgs.find((m) => m.role === 'user');
+    const asstMsg = msgs.find((m) => m.role === 'assistant');
+    assert.equal(userMsg?.content, 'make this page warmer');
+    assert.equal(asstMsg?.content, 'Done — gave that page a warmer line.');
+    assert.ok(asstMsg?.usage, 'assistant row carries usage');
+    const patch = asstMsg?.layoutPatch as Array<{ pageIndex: number; textsJson: Record<string, string> }> | null;
+    assert.equal(patch?.[0]?.pageIndex, 1);
+    assert.equal(patch?.[0]?.textsJson.body, 'The sun melted into the sea.');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('draft-edit act on cover (flat page 0) → slot-scoped text merge keeps other slots, photos []', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('w162-cover');
+  try {
+    const albumId = await seedDraftAlbum(user.id);
+    // seed the cover with an existing slot so we can prove a slot-scoped merge.
+    const seeded = reloadDraft((await albumRepo.findById(albumId))!.draftJson);
+    seeded.basePages.cover.texts = { title: 'Old Title', subtitle: 'keep me' };
+    await albumRepo.update(db, albumId, { draftJson: seeded });
+
+    let captured: { photos: unknown[]; page: { images: Record<string, string> } } | undefined;
+    t.mock.method(agentClient, 'draftEditV2', async (p: typeof captured) => {
+      captured = p;
+      return {
+        kind: 'act' as const,
+        assistantReply: 'Updated the title.',
+        pageWrite: { pageIndex: 0, texts: { title: 'A Summer by the Sea' } },
+        usage: USAGE,
+      };
+    });
+
+    const res = await albumAuthoringService.submitDraftEditV2(user.id, albumId, {
+      pageIndex: 0,
+      userMessage: 'rename the cover',
+    });
+    // returned merged texts include BOTH the new title and the kept subtitle.
+    assert.equal(res.pageWrite?.texts.title, 'A Summer by the Sea');
+    assert.equal(res.pageWrite?.texts.subtitle, 'keep me');
+    // cover has no images → photos array present but empty (no base64).
+    assert.deepEqual(captured!.page.images, {});
+    assert.equal(captured!.photos.length, 0);
+
+    const draft = reloadDraft((await albumRepo.findById(albumId))!.draftJson);
+    assert.equal(draft.basePages.cover.texts.title, 'A Summer by the Sea');
+    assert.equal(draft.basePages.cover.texts.subtitle, 'keep me', 'untouched slot preserved');
+    // cover is not in any chapter → messages carry NO chapter_id.
+    const all = await albumMessageRepo.findByAlbum(albumId);
+    assert.equal(all.length, 2);
+    assert.ok(all.every((m) => m.chapterId === null), 'cover edit messages have null chapter_id');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('draft-edit talk → writes 2 messages, NO draft mutation', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('w162-talk');
+  try {
+    const albumId = await seedDraftAlbum(user.id);
+    const before = JSON.stringify((await albumRepo.findById(albumId))!.draftJson);
+
+    t.mock.method(agentClient, 'draftEditV2', async () => ({
+      kind: 'talk' as const,
+      assistantReply: 'This page is about the coast at sunset — want it warmer or punchier?',
+      usage: USAGE,
+    }));
+
+    const res = await albumAuthoringService.submitDraftEditV2(user.id, albumId, {
+      pageIndex: 1,
+      userMessage: 'what is this page about?',
+    });
+    assert.equal(res.kind, 'talk');
+    assert.equal(res.pageWrite, undefined);
+
+    // draft_json byte-identical (no mutation on talk).
+    const after = JSON.stringify((await albumRepo.findById(albumId))!.draftJson);
+    assert.equal(after, before, 'talk must not mutate draft_json');
+
+    // still 2 messages; assistant has NO layout_patch (nothing applied).
+    const msgs = await albumMessageRepo.findRecentByAlbumChapter(albumId, 'ch1', 20);
+    assert.equal(msgs.length, 2);
+    const asst = msgs.find((m) => m.role === 'assistant');
+    assert.equal(asst?.layoutPatch ?? null, null, 'talk assistant row has no patch');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('draft-edit → unknown page index rejects; ownership guard rejects', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const owner = await makeUser('w162-owner');
+  const intruder = await makeUser('w162-intruder');
+  try {
+    const albumId = await seedDraftAlbum(owner.id);
+    // out-of-range flat index (only 0..3 exist) → VALIDATION_FAILED.
+    await assert.rejects(
+      () => albumAuthoringService.submitDraftEditV2(owner.id, albumId, { pageIndex: 99, userMessage: 'hi' }),
+      (e) => (e as { code?: string }).code === 'VALIDATION_FAILED',
+    );
+    // wrong user → ALBUM_NOT_OWNED.
+    await assert.rejects(
+      () => albumAuthoringService.submitDraftEditV2(intruder.id, albumId, { pageIndex: 1, userMessage: 'hi' }),
+      (e) => (e as { code?: string }).code === 'ALBUM_NOT_OWNED',
+    );
+  } finally {
+    await cleanupUser(owner.id);
+    await cleanupUser(intruder.id);
+  }
+});
+
 test('ownership + draft-phase guards reject', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const owner = await makeUser('w9-owner');
@@ -298,6 +471,154 @@ test('ownership + draft-phase guards reject', async (t) => {
         userMessage: 'hi',
       }),
       (e) => (e as { code?: string }).code === 'VALIDATION_FAILED',
+    );
+  } finally {
+    await cleanupUser(owner.id);
+    await cleanupUser(intruder.id);
+  }
+});
+
+// ── #165 Phase 3: draft-edit inspect/imagePosWrite + inspect-render ──
+
+test('draft-edit act → imagePosWrite folds {x,y,scale} into the page imagePos, persists', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('w165-pos');
+  try {
+    const albumId = await seedDraftAlbum(user.id);
+    t.mock.method(agentClient, 'draftEditV2', async () => ({
+      kind: 'act' as const,
+      assistantReply: 'Nudged the photo down a touch.',
+      imagePosWrite: { pageIndex: 1, imageId: 'hero', x: 50, y: 35, scale: 1.2 },
+      usage: USAGE,
+    }));
+
+    const res = await albumAuthoringService.submitDraftEditV2(user.id, albumId, {
+      pageIndex: 1,
+      userMessage: 'the face is cut off, move it down',
+    });
+    assert.equal(res.kind, 'act');
+    assert.equal(res.pageWrite, undefined, 'no copy write on a position adjust');
+    assert.deepEqual(res.imagePosWrite, { pageIndex: 1, imageId: 'hero', x: 50, y: 35, scale: 1.2 });
+
+    // persisted into draft_json: ONLY ch1's page imagePos.hero changed.
+    const draft = reloadDraft((await albumRepo.findById(albumId))!.draftJson);
+    const ch1 = draft.chapters.find((c) => c.chapterId === 'ch1')!;
+    const ch2 = draft.chapters.find((c) => c.chapterId === 'ch2')!;
+    assert.deepEqual(ch1.pages[0]!.imagePos, { hero: { x: 50, y: 35, scale: 1.2 } });
+    assert.equal(ch2.pages[0]!.imagePos, undefined, 'ch2 page untouched');
+    assert.deepEqual(ch1.pages[0]!.texts, {}, 'a position move does not change copy');
+
+    // assistant message carries the position write as an imagePosJson patch.
+    const msgs = await albumMessageRepo.findRecentByAlbumChapter(albumId, 'ch1', 20);
+    assert.equal(msgs.length, 2);
+    const asst = msgs.find((m) => m.role === 'assistant');
+    const patch = asst?.layoutPatch as Array<{ pageIndex: number; imagePosJson?: Record<string, unknown> }> | null;
+    assert.equal(patch?.[0]?.pageIndex, 1);
+    assert.deepEqual(patch?.[0]?.imagePosJson, { hero: { x: 50, y: 35, scale: 1.2 } });
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('draft-edit inspect → returns inspectRequest, NO draft mutation, NO messages', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('w165-inspect');
+  try {
+    const albumId = await seedDraftAlbum(user.id);
+    const before = JSON.stringify((await albumRepo.findById(albumId))!.draftJson);
+    t.mock.method(agentClient, 'draftEditV2', async () => ({
+      kind: 'inspect' as const,
+      assistantReply: 'Let me take a look at that page…',
+      inspectRequest: { pageIndex: 1 },
+      usage: USAGE,
+    }));
+
+    const res = await albumAuthoringService.submitDraftEditV2(user.id, albumId, {
+      pageIndex: 1,
+      userMessage: 'is the photo cropped weird?',
+    });
+    assert.equal(res.kind, 'inspect');
+    assert.deepEqual(res.inspectRequest, { pageIndex: 1 });
+
+    // The inspect turn is unfinished: no draft mutation, and NO messages written
+    // (the follow-up draft-edit records the round).
+    const after = JSON.stringify((await albumRepo.findById(albumId))!.draftJson);
+    assert.equal(after, before, 'inspect must not mutate draft_json');
+    const msgs = await albumMessageRepo.findByAlbum(albumId);
+    assert.equal(msgs.length, 0, 'inspect writes no messages');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('inspect-render → slices ONE page + its photos, forwards screenshot, returns diagnosis, persists nothing', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('w165-irender');
+  try {
+    const albumId = await seedDraftAlbum(user.id);
+    const before = JSON.stringify((await albumRepo.findById(albumId))!.draftJson);
+    const SHOT = 'data:image/jpeg;base64,/9j/THIS-IS-A-FAKE-SCREENSHOT';
+    let captured: { page: { pageIndex: number; images: Record<string, string> }; photos: unknown[]; screenshot: string } | undefined;
+    t.mock.method(agentClient, 'inspectRenderV2', async (p: typeof captured) => {
+      captured = p;
+      return {
+        diagnosis: {
+          imageId: 'hero',
+          problem: 'the subject is cut off at the top',
+          suggestedDx: 0,
+          suggestedDy: -12,
+          suggestedScale: 1.1,
+          confidence: 0.8,
+        },
+        assistantReply: 'The top of the subject is clipped — I can nudge it down.',
+        usage: USAGE,
+      };
+    });
+
+    const res = await albumAuthoringService.submitInspectRenderV2(user.id, albumId, {
+      pageIndex: 1,
+      userMessage: 'is the photo cropped weird?',
+      screenshot: SHOT,
+    });
+    assert.equal(res.diagnosis.imageId, 'hero');
+    assert.equal(res.diagnosis.suggestedDy, -12);
+
+    // payload: ONE page slice + only that page's photos; screenshot forwarded.
+    assert.ok(captured);
+    assert.equal(captured!.page.pageIndex, 1);
+    assert.deepEqual(captured!.page.images, { hero: 'p1' });
+    assert.equal(captured!.photos.length, 1);
+    assert.equal((captured!.photos[0] as { photoId: string }).photoId, 'p1');
+    assert.equal(captured!.screenshot, SHOT, 'screenshot forwarded verbatim');
+    // No whole tree leaves Web.
+    const serialized = JSON.stringify({ ...captured, screenshot: '<redacted>' });
+    assert.equal(serialized.includes('photoPool'), false, 'no whole tree sent');
+    assert.equal(serialized.includes('chapters'), false, 'no whole tree sent');
+
+    // NOTHING persisted: draft_json untouched, no messages, screenshot not stored.
+    const after = JSON.stringify((await albumRepo.findById(albumId))!.draftJson);
+    assert.equal(after, before, 'inspect-render must not mutate draft_json');
+    assert.equal(after.includes('FAKE-SCREENSHOT'), false, 'screenshot never persisted');
+    const msgs = await albumMessageRepo.findByAlbum(albumId);
+    assert.equal(msgs.length, 0, 'inspect-render writes no messages');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('inspect-render → unknown page rejects; ownership guard rejects', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const owner = await makeUser('w165-irender-owner');
+  const intruder = await makeUser('w165-irender-intruder');
+  try {
+    const albumId = await seedDraftAlbum(owner.id);
+    await assert.rejects(
+      () => albumAuthoringService.submitInspectRenderV2(owner.id, albumId, { pageIndex: 99, userMessage: 'hi', screenshot: 'data:,x' }),
+      (e) => (e as { code?: string }).code === 'VALIDATION_FAILED',
+    );
+    await assert.rejects(
+      () => albumAuthoringService.submitInspectRenderV2(intruder.id, albumId, { pageIndex: 1, userMessage: 'hi', screenshot: 'data:,x' }),
+      (e) => (e as { code?: string }).code === 'ALBUM_NOT_OWNED',
     );
   } finally {
     await cleanupUser(owner.id);

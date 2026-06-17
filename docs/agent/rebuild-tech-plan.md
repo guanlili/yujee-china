@@ -71,7 +71,8 @@ export const V2Callback = z.union([V2ProgressEvent, V2FailedEvent, V2Completed])
 ```
 > 所有 variant 用 `.strict()`(见下方 P0-2 约定);Python 镜像每个 model `extra='forbid'`,且在 handler 里硬校验 `payload.jobKind == job.kind && payload.requestId == job.request_id`。
 
-- init progress `stage ∈ {'vision','grouping','skeleton'}`;finalize progress `stage='finalize'`(`contract.md §5` 进度语义沿用)。
+- init progress `stage ∈ {'vision','grouping','skeleton','writing'}`;finalize progress `stage='finalize'`(`contract.md §5` 进度语义沿用)。
+  - **`'writing'`(#161,架构师已批准):** init 在 `skeleton` 之后、`completed` 之前直接批量写第一版全部文案(自动定主题 + 封面文案 + 各章正文,**去掉逐章对话写作的主题确认步**),封面 + N 章用 `asyncio.Semaphore`(上限 `INIT_WRITE_CONCURRENCY`,默认 3)并发写;任一失败 → init `FAILED` + 释放 hold(沿用 §1.1 `init/failed` 退款路径)。stage 顺序:`vision → grouping → skeleton → writing`。`V2JobStage` 枚举随之加 `'writing'`(`v2.ts` / `schemas_v2.py` 同步)。
 - **Web `/api/v2/internal/job-progress` 路由**:`switch(jobKind, event)`——
   - `init/completed` → 写 `albums.draft_json` + `status=EDITING`(草稿就绪,`layout_json` 仍 null),hold 维持,**不 settle**。
   - `finalize/completed` → 见 §1.4。
