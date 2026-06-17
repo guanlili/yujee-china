@@ -47,7 +47,7 @@ export type PhotoAnalysis = z.infer<typeof PhotoAnalysis>;
  * before this field is byte-unchanged.
  *
  *   x, y  - object-position percentages, clamp range [0, 100] (default 50/50)
- *   scale - zoom factor, clamp range [1, 2] (default 1; web-only, PDF ignores >1)
+ *   scale - zoom factor, clamp range [1, 2] (default 1; applied in BOTH web and PDF render)
  *
  * Clamp bounds are enforced by the writer (#165 Phase 3 adjust_image_position);
  * the schema guards the full range so a hand-rolled payload can't break render.

@@ -32,6 +32,13 @@ export function AlbumCoverPreview({ coverPage, pageCount, fallback, coverThumbna
   // live photoStore render path below rather than showing a broken image.
   const [thumbBroken, setThumbBroken] = useState(false);
 
+  // Reset the broken flag whenever the URL changes — a re-uploaded thumbnail gets
+  // a fresh `?v=...` URL, so a cover that previously 404'd should retry the stored
+  // image instead of being stuck on the photoStore fallback forever.
+  useEffect(() => {
+    setThumbBroken(false);
+  }, [coverThumbnailUrl]);
+
   const photoIds = useMemo(() => {
     if (!coverPage) return [];
     return collectPhotoIds([

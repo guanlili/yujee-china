@@ -1862,11 +1862,15 @@ function EditorBook({
           body: blob,
         });
         if (!putRes.ok) throw new Error(`R2 PUT ${putRes.status}`);
-        await fetch(`/api/v1/albums/${albumId}/cover-thumbnail`, {
+        const confirmRes = await fetch(`/api/v1/albums/${albumId}/cover-thumbnail`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ r2Key }),
         });
+        const confirmJson = await confirmRes.json().catch(() => null);
+        if (!confirmRes.ok || confirmJson?.ok !== true) {
+          throw new Error(confirmJson?.error?.message ?? `cover-thumbnail confirm ${confirmRes.status}`);
+        }
       } catch (err) {
         console.error('cover thumbnail upload failed', err);
       } finally {
@@ -1916,11 +1920,15 @@ function EditorBook({
             body: blob,
           });
           if (!putRes.ok) throw new Error(`R2 PUT ${putRes.status}`);
-          await fetch(`/api/v1/albums/${albumId}/pdf`, {
+          const confirmRes = await fetch(`/api/v1/albums/${albumId}/pdf`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ r2Key }),
           });
+          const confirmJson = await confirmRes.json().catch(() => null);
+          if (!confirmRes.ok || confirmJson?.ok !== true) {
+            throw new Error(confirmJson?.error?.message ?? `PDF confirm ${confirmRes.status}`);
+          }
         } catch (uploadErr) {
           console.error('PDF cloud upload failed', uploadErr);
         }
