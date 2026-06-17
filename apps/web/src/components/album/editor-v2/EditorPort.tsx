@@ -2000,10 +2000,19 @@ function EditorBook({
         // persist its thumbnail. This self-heals albums made before the feature and
         // refreshes after any cover edit from a prior session — the editor is the
         // one place that reliably has both the rendered layout and the originals.
-        // Gated to fire only when at least one original actually resolved, so a
-        // cross-device open with an empty photoStore doesn't overwrite a good
-        // thumbnail with a fallback-only render.
-        if (photoIds.length === 0 || photoIds.some((id) => urls[id])) {
+        // Gated on the cover page's OWN photoIds — not the whole-album union —
+        // so a cross-device open that resolved some other page's original but
+        // none of the cover's doesn't render a cover with missing photos and
+        // overwrite a good stored thumbnail. Require every cover photo to be
+        // resolved (a multi-photo cover missing one slot must not upload); a
+        // text-only cover has no ids and is always safe to capture.
+        const cover = pageByIndex(0) ?? pagesState[0];
+        const coverPhotoIds = cover
+          ? collectPhotoIds([
+              { templateId: cover.templateId, images: cover.imagesJson, texts: cover.textsJson },
+            ])
+          : [];
+        if (coverPhotoIds.length === 0 || coverPhotoIds.every((id) => urls[id])) {
           void uploadCoverThumbnail();
         }
       });
