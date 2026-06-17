@@ -138,7 +138,7 @@ export function AlbumEditor({ detail, locale }: Props) {
     setExportErr(null);
     try {
       const ids = collectPhotoIds(adaptable);
-      const dataUrls = await photoStore.getDataUrls(ids);
+      const dataUrls = await photoStore.getPdfDataUrls(ids);
       const { renderAlbumPdf } = await import('@/lib/pdf/render');
       const blob = await renderAlbumPdf(adaptable, (id) => dataUrls[id]);
 
