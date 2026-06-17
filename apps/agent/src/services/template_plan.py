@@ -252,15 +252,19 @@ def _repair_template_for_count(
     album_id: str,
     chapter_id: str,
     ordinal: int,
+    previous_template_id: str | None = None,
 ) -> str | None:
     """Deterministically re-pick a chapter template whose image-slot count matches
     this page's photo count (the same pool/seed the deterministic engine uses).
-    Returns None when no interior template can legally take these photos."""
+    Excludes `previous_template_id` so a re-pick avoids repeating the adjacent
+    page's template, matching skeleton.build_chapter_pages. Returns None when no
+    interior template can legally take these photos."""
     try:
         return skeleton.pick_template(
             "chapter",
             len(photos),
             photos,
+            exclude={previous_template_id} if previous_template_id else set(),
             album_id=album_id,
             chapter_id=chapter_id,
             page_ordinal=ordinal,
@@ -300,6 +304,7 @@ def validate_and_build_chapter_pages(
     placed: set[str] = set()
     use_count: dict[str, int] = {}
     ordinal = 0
+    previous_template_id: str | None = None
 
     for raw in plan_pages_for_chapter:
         raw_ids = raw.get("photoIds")
@@ -328,17 +333,22 @@ def validate_and_build_chapter_pages(
         # re-picking a count-matching template; drop the page if none fits.
         slot_count = _interior_slot_count(template_id)
         if slot_count != len(page_photos):
-            template_id = _repair_template_for_count(page_photos, album_id, chapter.chapterId, ordinal)
+            template_id = _repair_template_for_count(
+                page_photos, album_id, chapter.chapterId, ordinal, previous_template_id
+            )
             if template_id is None:
                 continue
         elif not skeleton.can_place(template_id, page_photos):
             # Known, count-matching, but fill→hero protection rejects it → repair.
-            template_id = _repair_template_for_count(page_photos, album_id, chapter.chapterId, ordinal)
+            template_id = _repair_template_for_count(
+                page_photos, album_id, chapter.chapterId, ordinal, previous_template_id
+            )
             if template_id is None:
                 continue
 
         pages.append(_build_page(template_id, page_photos))
         ordinal += 1
+        previous_template_id = template_id
         for pid in clean_ids:
             placed.add(pid)
             use_count[pid] = use_count.get(pid, 0) + 1
@@ -353,12 +363,13 @@ def validate_and_build_chapter_pages(
     if leftovers:
         for page_photos in skeleton.partition_chapter_photos(leftovers):
             template_id = _repair_template_for_count(
-                page_photos, album_id, chapter.chapterId, ordinal
+                page_photos, album_id, chapter.chapterId, ordinal, previous_template_id
             )
             if template_id is None:
                 continue
             pages.append(_build_page(template_id, page_photos))
             ordinal += 1
+            previous_template_id = template_id
 
     return pages
 
