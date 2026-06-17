@@ -246,10 +246,13 @@ def _sanitize_groups(raw_groups: Any, photo_ids: list[str]) -> list[PhotoGroup]:
     return groups or _fallback_groups(photo_ids)
 
 
-async def analyze(req: LayoutRequest) -> tuple[VisionResult, int]:
+async def analyze(req: LayoutRequest) -> tuple[VisionResult, int, str]:
     """Run vision on all photos in one batched call. Returns
-    (vision_result, total_tokens_billed_to_vision). Raises VisionError on any
-    failure that should map to AGENT_VISION_FAILED."""
+    (vision_result, total_tokens_billed_to_vision, resolved_model). The resolved
+    model is the slot's actual model id (doubao or gpt-*), so callers can report
+    the true `models.vision` in Usage instead of hardwiring the ark model — the
+    slot helper is the single source of truth for which provider was hit (#166).
+    Raises VisionError on any failure that should map to AGENT_VISION_FAILED."""
     settings = get_settings()
     try:
         slot = select_vision_slot(settings)
@@ -337,4 +340,8 @@ async def analyze(req: LayoutRequest) -> tuple[VisionResult, int]:
         # None for per-image-billed providers (doubao); a USD estimate for GPT.
         est_cost_usd=estimate_cost_usd(slot.model, prompt_tokens, completion_tokens),
     )
-    return VisionResult(photos=analyses, groups=groups), prompt_tokens + completion_tokens
+    return (
+        VisionResult(photos=analyses, groups=groups),
+        prompt_tokens + completion_tokens,
+        slot.model,
+    )

@@ -23,6 +23,7 @@ from src.services import ai_client, inspect_render, vision
 from src.services.vision_provider import (
     VisionSlotError,
     estimate_cost_usd,
+    resolved_vision_model,
     select_vision_slot,
 )
 
@@ -128,6 +129,13 @@ def test_select_slot_ark_missing_key_raises(_real_env):
         select_vision_slot(settings)
 
 
+def test_resolved_vision_model_tracks_provider_without_key(_real_env):
+    # No keys set: resolved_vision_model must still return the provider's model
+    # (startup logging uses it before keys are validated).
+    assert resolved_vision_model(_real_env()) == "doubao-seed-1-6-vision-250815"
+    assert resolved_vision_model(_real_env(VISION_PROVIDER="openai")) == "gpt-4o-mini"
+
+
 # ---- vision.analyze through each slot ---------------------------------------
 
 
@@ -136,10 +144,11 @@ def test_vision_analyze_ark_sends_thinking(_real_env, monkeypatch):
     captured: dict = {}
     monkeypatch.setattr(ai_client, "chat_completion", _capture(captured))
 
-    result, tokens = asyncio.run(vision.analyze(_req()))
+    result, tokens, model = asyncio.run(vision.analyze(_req()))
 
     assert isinstance(result, VisionResult)
     assert tokens == 150
+    assert model == "doubao-seed-1-6-vision-250815"
     assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
     assert captured["response_format"] is None
     assert captured["model"] == "doubao-seed-1-6-vision-250815"
@@ -150,9 +159,10 @@ def test_vision_analyze_openai_omits_thinking(_real_env, monkeypatch):
     captured: dict = {}
     monkeypatch.setattr(ai_client, "chat_completion", _capture(captured))
 
-    result, _ = asyncio.run(vision.analyze(_req()))
+    result, _, model = asyncio.run(vision.analyze(_req()))
 
     assert isinstance(result, VisionResult)
+    assert model == "gpt-4o-mini"  # resolved model returned for Usage reporting
     # The whole point of #166: doubao's thinking knob must not reach OpenAI.
     assert captured["extra_body"] is None
     assert "thinking" not in (captured.get("extra_body") or {})

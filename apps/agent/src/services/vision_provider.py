@@ -87,6 +87,17 @@ class VisionSlot:
     supports_json_object: bool
 
 
+def resolved_vision_model(settings: Settings) -> str:
+    """The model id the configured provider would use, WITHOUT requiring its key.
+
+    Same single source of truth as `select_vision_slot` for *which* model name
+    matches `vision_provider`, but never raises — startup logging needs the right
+    name even before keys are validated, and key checks live elsewhere."""
+    if settings.vision_provider == "openai":
+        return settings.openai_vision_model
+    return settings.ark_vision_model
+
+
 def select_vision_slot(settings: Settings) -> VisionSlot:
     """Resolve the vision slot from settings. Raises VisionSlotError if the
     chosen provider has no API key configured."""
@@ -120,6 +131,11 @@ def select_vision_slot(settings: Settings) -> VisionSlot:
         api_key=settings.ark_api_key,
         model=settings.ark_vision_model,
         timeout_seconds=settings.ark_timeout_seconds,
+        # `thinking` is now gated by ark_disable_thinking for BOTH callers (init
+        # vision.py and #165 inspect_render.py). inspect used to disable thinking
+        # unconditionally; routing it through this slot deliberately unifies the
+        # two so there is one knob — at the default (disable=True) inspect's
+        # behavior is unchanged. Do NOT re-fork a separate inspect-only path.
         extra_body=(
             {"thinking": {"type": "disabled"}} if settings.ark_disable_thinking else None
         ),

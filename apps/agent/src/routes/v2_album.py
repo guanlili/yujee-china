@@ -438,13 +438,14 @@ async def _run_init(req: V2InitRequest) -> None:
         vision_result = vision_mock.analyze(layout_req)
     else:
         try:
-            vision_result, _tokens = await vision_analyze(layout_req)
+            vision_result, _tokens, vision_model = await vision_analyze(layout_req)
         except VisionError as exc:
             log.warning("v2_init.vision_failed", error=str(exc))
             await _emit_failure(req, code="AGENT_VISION_FAILED", message=str(exc), stage="vision")
             return
         vision_call_count = 1
-        vision_model = settings.ark_vision_model
+        # `vision_model` is the model the slot actually hit (doubao or gpt-*), so
+        # Usage.models.vision matches the configured provider — not hardwired ark.
     await _emit_progress(req, "vision", 100)
 
     # Stage 1b — deterministic grouping + duplicate folding.
@@ -651,13 +652,14 @@ async def _run_add_photos(req: V2AddPhotosRequest) -> None:
         vision_result = vision_mock.analyze(layout_req)
     else:
         try:
-            vision_result, _tokens = await vision_analyze(layout_req)
+            vision_result, _tokens, vision_model = await vision_analyze(layout_req)
         except VisionError as exc:
             log.warning("v2_add.vision_failed", error=str(exc))
             await _emit_add_failure(req, code="AGENT_VISION_FAILED", message=str(exc), stage="vision")
             return
         vision_call_count = 1
-        vision_model = settings.ark_vision_model
+        # `vision_model` is the model the slot actually hit (doubao or gpt-*), so
+        # Usage.models.vision matches the configured provider — not hardwired ark.
     await _emit_add_progress(req, "vision", 100)
 
     # Stage 1b — grouping the new photos standalone → new chapters.
