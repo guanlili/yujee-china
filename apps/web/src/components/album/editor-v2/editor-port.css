@@ -333,6 +333,11 @@
 .editor-port .msg.ai .ai-text{ font-size:13.5px; line-height:1.8; color:var(--fg-2); }
 .editor-port .msg .name-time{ font-size:10px; color:var(--meta); margin:6px 0 0; font-family:var(--font-mono); }
 .editor-port .msg.ai .name-time{ margin-top:10px; }
+/* #165: per-step status line exposing what the AI is doing (inspect→adjust). */
+.editor-port .ep-step{
+  font-size:12px; line-height:1.6; color:var(--muted);
+  margin:3px 0 3px 2px; font-family:var(--font-mono); white-space:pre-wrap;
+}
 
 /* ─── Thinking indicator + animations ─── */
 .editor-port .thinking-block{

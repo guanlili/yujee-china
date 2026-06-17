@@ -20,6 +20,23 @@ import type { DraftEditResult, InspectRenderResult } from '@/lib/album/authoring
 
 export const MAX_INSPECT_ROUNDS = 3;
 
+// Step events emitted during the inspect→adjust loop so the UI can show the user
+// exactly what the AI is doing (screenshotting, what the vision model diagnosed,
+// each round, hitting the cap) instead of a black box.
+export type InspectStep =
+  | { kind: 'inspecting'; round: number; pageIndex: number }
+  | {
+      kind: 'diagnosed';
+      round: number;
+      pageIndex: number;
+      problem: string;
+      dx: number;
+      dy: number;
+      scale: number;
+      confidence: number;
+    }
+  | { kind: 'capped'; round: number };
+
 // Injected so the loop is testable with plain mocks. `onVisionRound` is an
 // optional hook fired right before each inspect→render round so the UI can show a
 // "thinking" state during the multi-second vision call.
@@ -35,6 +52,8 @@ export interface InspectAdjustDeps {
   capReply: string;
   inspectFailReply: string;
   onVisionRound?: (round: number, pageIndex: number) => void;
+  // Fired at each step so the UI can expose what the AI is doing to the user.
+  onStep?: (step: InspectStep) => void;
   maxInspectRounds?: number;
   // Caps the message length sent to the agent (the body schema caps at 500).
   messageMax?: number;
@@ -64,11 +83,13 @@ export async function runInspectAdjustLoop(
   while (r.kind === 'inspect' && r.inspectRequest) {
     if (inspectRounds >= maxRounds) {
       // Converged or stuck — stop spending vision calls and let the user steer.
+      deps.onStep?.({ kind: 'capped', round: inspectRounds });
       return { kind: 'talk', assistantReply: deps.capReply };
     }
     inspectRounds += 1;
     const inspectPage = r.inspectRequest.pageIndex;
     deps.onVisionRound?.(inspectRounds, inspectPage);
+    deps.onStep?.({ kind: 'inspecting', round: inspectRounds, pageIndex: inspectPage });
 
     let diagnosisMsg: string;
     try {
@@ -79,6 +100,16 @@ export async function runInspectAdjustLoop(
         return { kind: 'talk', assistantReply: ir.assistantReply || r.assistantReply };
       }
       const d = ir.diagnosis;
+      deps.onStep?.({
+        kind: 'diagnosed',
+        round: inspectRounds,
+        pageIndex: inspectPage,
+        problem: d.problem,
+        dx: d.suggestedDx,
+        dy: d.suggestedDy,
+        scale: d.suggestedScale,
+        confidence: d.confidence,
+      });
       diagnosisMsg =
         `[inspection of page ${inspectPage}] imageId=${d.imageId}; problem=${d.problem}; ` +
         `suggestedDx=${d.suggestedDx}; suggestedDy=${d.suggestedDy}; ` +

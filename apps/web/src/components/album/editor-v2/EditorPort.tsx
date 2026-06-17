@@ -1182,6 +1182,16 @@ function EditorBook({
     // A fresh AI message shell with an active "thinking" block — the caller fills
     // in the reply (and chips) once the round-trip resolves. Mirrors the design's
     // jellyfish-loop thinking spinner.
+    // A compact, muted status line that exposes what the AI is doing during the
+    // inspect→adjust loop (#165) — screenshotting, what it diagnosed, adjusting —
+    // so the process isn't a black box to the user.
+    function appendStep(text: string) {
+      const d = document.createElement('div');
+      d.className = 'ep-step';
+      d.textContent = text;
+      chatBody!.appendChild(d);
+      scrollChat();
+    }
     function appendThinkingShell(): HTMLElement {
       const a = document.createElement('div');
       a.className = 'msg ai max-w-full';
@@ -1250,6 +1260,7 @@ function EditorBook({
         if (page) {
           page.textsJson = { ...page.textsJson, ...r.pageWrite.texts };
           repaintBook();
+          appendStep(aT('✏️ 已更新这页文案。', '✏️ Updated this page’s copy.'));
           return true;
         }
       }
@@ -1264,6 +1275,12 @@ function EditorBook({
             [w.imageId]: { x: w.x, y: w.y, scale: w.scale },
           };
           repaintBook();
+          appendStep(
+            aT(
+              `🎯 已调整图片位置：横向 ${w.x}%、纵向 ${w.y}%、缩放 ${w.scale}×。`,
+              `🎯 Adjusted the photo: x ${w.x}%, y ${w.y}%, zoom ${w.scale}×.`,
+            ),
+          );
           return true;
         }
       }
@@ -1305,6 +1322,28 @@ function EditorBook({
           onVisionRound: () => {
             settleThinking(host, 'thinking');
             host.querySelector('.thinking-block')?.classList.add('active');
+          },
+          // Expose each step to the user: what page it's looking at, what the
+          // vision model diagnosed, and when it hits the inspection cap.
+          onStep: (s) => {
+            if (s.kind === 'inspecting') {
+              appendStep(
+                aT(
+                  `🔍 第 ${s.round} 轮：截图查看这一页的图片排版…`,
+                  `🔍 Round ${s.round}: capturing this page to look at the photo…`,
+                ),
+              );
+            } else if (s.kind === 'diagnosed') {
+              const conf = Math.round(s.confidence * 100);
+              appendStep(
+                aT(
+                  `🩺 看图诊断：${s.problem}（建议 dx ${s.dx}、dy ${s.dy}、缩放 ${s.scale}×，置信度 ${conf}%）`,
+                  `🩺 Diagnosis: ${s.problem} (dx ${s.dx}, dy ${s.dy}, zoom ${s.scale}×, conf ${conf}%)`,
+                ),
+              );
+            } else if (s.kind === 'capped') {
+              appendStep(aT('↳ 已到复查上限（3 轮），先停在这。', '↳ Hit the 3-round inspection cap.'));
+            }
           },
           messageMax: MESSAGE_MAX,
         });
