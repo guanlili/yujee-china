@@ -8,6 +8,9 @@ const DB_NAME = 'yujee-photos';
 const STORE = 'originals';
 const VERSION = 1;
 
+export const PDF_IMAGE_MAX_EDGE = 1600;
+const PDF_IMAGE_QUALITY = 0.82;
+
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 function openDb(): Promise<IDBDatabase> {
@@ -44,6 +47,73 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     fr.onerror = () => reject(fr.error);
     fr.readAsDataURL(blob);
   });
+}
+
+export function fitWithinMaxEdge(
+  width: number,
+  height: number,
+  maxEdge = PDF_IMAGE_MAX_EDGE,
+): { w: number; h: number } {
+  const scale = Math.min(1, maxEdge / Math.max(width, height));
+  return {
+    w: Math.max(1, Math.round(width * scale)),
+    h: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+type DecodedImage = CanvasImageSource & {
+  width: number;
+  height: number;
+  close?: () => void;
+};
+
+function loadImageFromObjectUrl(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+async function decodeBlob(blob: Blob): Promise<DecodedImage> {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      return await createImageBitmap(blob, { imageOrientation: 'from-image' });
+    } catch {
+      // Some older engines reject ImageBitmapOptions; the <img> fallback still
+      // applies EXIF orientation and keeps export usable.
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  try {
+    return await loadImageFromObjectUrl(url);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function blobToPdfDataUrl(blob: Blob): Promise<string> {
+  const img = await decodeBlob(blob);
+  let canvas: HTMLCanvasElement | null = null;
+  try {
+    const { w, h } = fitWithinMaxEdge(img.width, img.height);
+    canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('PDF image canvas context unavailable');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL('image/jpeg', PDF_IMAGE_QUALITY);
+  } finally {
+    if (canvas) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+    img.close?.();
+  }
 }
 
 export const photoStore = {
@@ -95,6 +165,18 @@ export const photoStore = {
         if (blob) out[id] = await blobToDataUrl(blob);
       }),
     );
+    return out;
+  },
+
+  // PDF export is memory-bound in the browser: never hand @react-pdf original
+  // phone-photo data URLs. Decode from Blob, cap size locally, and process photos
+  // sequentially so peak memory stays bounded before pdf().toBlob().
+  async getPdfDataUrls(photoIds: string[]): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    for (const id of photoIds) {
+      const blob = await this.getBlob(id);
+      if (blob) out[id] = await blobToPdfDataUrl(blob);
+    }
     return out;
   },
 
