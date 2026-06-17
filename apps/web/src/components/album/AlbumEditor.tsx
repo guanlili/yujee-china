@@ -171,7 +171,10 @@ export function AlbumEditor({ detail, locale }: Props) {
           body: JSON.stringify({ r2Key }),
         });
         const notifyJson = await notifyRes.json();
-        if (notifyJson.ok) setDownloadUrl(notifyJson.data.pdfUrl ?? publicUrl);
+        if (!notifyRes.ok || notifyJson.ok !== true) {
+          throw new Error(notifyJson.error?.message ?? 'PDF confirm failed');
+        }
+        setDownloadUrl(notifyJson.data.pdfUrl ?? publicUrl);
       } catch (uploadErr) {
         console.error('PDF cloud upload failed', uploadErr);
         setExportErr(t.exportCloudError);

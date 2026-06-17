@@ -210,6 +210,8 @@ export const albums = pgTable(
     pageCount: integer('page_count').notNull().default(0),
     pdfR2Key: text('pdf_r2_key'),
     pdfUrl: text('pdf_url'),
+    coverThumbnailR2Key: text('cover_thumbnail_r2_key'),
+    coverThumbnailUrl: text('cover_thumbnail_url'),
     creditHoldId: text('credit_hold_id'),
     errorMessage: text('error_message'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

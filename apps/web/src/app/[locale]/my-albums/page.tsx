@@ -16,6 +16,10 @@ import {
   PhotosUnavailableError,
 } from '@/lib/generation/client';
 import { generationDraft, albumRecipe } from '@/lib/generation/draft';
+import {
+  COVER_THUMBNAIL_CONTENT_TYPE,
+  createCoverThumbnailJpeg,
+} from '@/lib/photo/cover-thumbnail';
 
 type Album = {
   id: string;
@@ -24,6 +28,7 @@ type Album = {
   photoCount: number;
   pageCount: number;
   pdfUrl: string | null;
+  coverThumbnailUrl: string | null;
   createdAt: string;
   coverPage: AlbumCoverPage | null;
 };
@@ -45,6 +50,8 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
   const [err, setErr] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const coverThumbnailAttemptsRef = useRef<Set<string>>(new Set());
+  const mountedRef = useRef(true);
 
   const load = async () => {
     setErr(null);
@@ -68,6 +75,12 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   // Keep the list fresh only while something is mid-generation. The list
   // endpoint already sweeps zombie jobs (album-service.listByUser), so a quiet
   // re-fetch is enough to surface completion or failure on its own.
@@ -79,6 +92,67 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
     const id = setInterval(() => loadRef.current(), POLL_MS);
     return () => clearInterval(id);
   }, [anyRunning]);
+
+  useEffect(() => {
+    if (!albums) return;
+
+    for (const album of albums) {
+      if (album.coverThumbnailUrl || !album.coverPage) continue;
+      if (coverThumbnailAttemptsRef.current.has(album.id)) continue;
+      coverThumbnailAttemptsRef.current.add(album.id);
+
+      void (async () => {
+        const photoIds = Object.values(album.coverPage?.imagesJson ?? {}).filter(Boolean);
+        for (const photoId of photoIds) {
+          const original = await photoStore.getBlob(photoId);
+          if (!original) continue;
+
+          const thumbnail = await createCoverThumbnailJpeg(original);
+          const signRes = await fetch(`/api/v1/albums/${album.id}/cover-thumbnail-upload-url`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contentType: COVER_THUMBNAIL_CONTENT_TYPE,
+              size: thumbnail.size,
+            }),
+          });
+          const signJson = await signRes.json();
+          if (!signRes.ok || signJson.ok !== true) {
+            throw new Error(signJson.error?.message ?? 'cover thumbnail sign failed');
+          }
+
+          const { putUrl, r2Key } = signJson.data as { putUrl: string; r2Key: string };
+          const putRes = await fetch(putUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': COVER_THUMBNAIL_CONTENT_TYPE },
+            body: thumbnail,
+          });
+          if (!putRes.ok) throw new Error(`cover thumbnail R2 PUT ${putRes.status}`);
+
+          const confirmRes = await fetch(`/api/v1/albums/${album.id}/cover-thumbnail`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ r2Key }),
+          });
+          const confirmJson = await confirmRes.json();
+          if (!confirmRes.ok || confirmJson.ok !== true) {
+            throw new Error(confirmJson.error?.message ?? 'cover thumbnail confirm failed');
+          }
+
+          const coverThumbnailUrl = confirmJson.data?.coverThumbnailUrl;
+          if (!coverThumbnailUrl || !mountedRef.current) return;
+          setAlbums((prev) =>
+            prev?.map((item) =>
+              item.id === album.id ? { ...item, coverThumbnailUrl } : item,
+            ) ?? prev,
+          );
+          return;
+        }
+      })().catch((e) => {
+        console.error('Cover thumbnail upload failed', e);
+      });
+    }
+  }, [albums]);
 
   const remove = async (id: string) => {
     if (!window.confirm(t.myAlbums.confirmDelete)) return;
@@ -173,6 +247,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
             <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg)]">
               <AlbumCoverPreview
                 coverPage={a.coverPage}
+                coverThumbnailUrl={a.coverThumbnailUrl}
                 pageCount={a.pageCount}
                 fallback={coverDecor(i)}
               />
@@ -204,6 +279,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg)]">
             <AlbumCoverPreview
               coverPage={a.coverPage}
+              coverThumbnailUrl={a.coverThumbnailUrl}
               pageCount={a.pageCount}
               fallback={coverDecor(i)}
             />
@@ -247,6 +323,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg)]">
             <AlbumCoverPreview
               coverPage={a.coverPage}
+              coverThumbnailUrl={a.coverThumbnailUrl}
               pageCount={a.pageCount}
               fallback={coverDecor(i)}
             />

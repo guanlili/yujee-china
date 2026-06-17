@@ -39,6 +39,29 @@ test('PDF export uses bounded PDF data URLs, not raw original data URLs', () => 
   }
 });
 
+test('PDF export checks both HTTP and JSON success before accepting cloud confirm', () => {
+  const albumEditor = readFileSync(
+    join(srcRoot, 'components/album/AlbumEditor.tsx'),
+    'utf8',
+  );
+  const editorPort = readFileSync(
+    join(srcRoot, 'components/album/editor-v2/EditorPort.tsx'),
+    'utf8',
+  );
+
+  assert.match(albumEditor, /if \(!notifyRes\.ok \|\| notifyJson\.ok !== true\)/);
+  assert.match(editorPort, /if \(!confirmRes\.ok \|\| confirmJson\.ok !== true\)/);
+});
+
+test('PDF export does not trigger cover thumbnail generation from editor flows', () => {
+  const editorPort = readFileSync(
+    join(srcRoot, 'components/album/editor-v2/EditorPort.tsx'),
+    'utf8',
+  );
+
+  assert.doesNotMatch(editorPort, /uploadCoverThumbnail/);
+});
+
 test('PDF export data URLs honor EXIF orientation and release image/canvas buffers', async () => {
   const restore = installBrowserImageMocks({
     contextFactory: () => ({

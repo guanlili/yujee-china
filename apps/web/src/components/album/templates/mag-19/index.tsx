@@ -34,6 +34,7 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
         placeholder="1:1"
         style={{ position: 'absolute', top: 170, left: 60, width: 674, height: 674 }}
         position={imagePos?.['image']}
+        slotId="image"
       />
       <p
         style={{

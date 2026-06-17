@@ -43,6 +43,16 @@ class Settings(BaseSettings):
     # wall-clock roughly N×; raise/lower per provider headroom.
     init_write_concurrency: int = Field(default=3, ge=1)
 
+    # Which slot the vision calls (init batch analysis + #165 inspect diagnosis)
+    # use. "ark" = 火山 doubao-seed-1-6-vision (the default; current behavior must
+    # not regress). "openai" = OpenAI GPT vision (the openai_* slot below).
+    # Chosen as an EXPLICIT switch rather than auto-selecting on openai_api_key
+    # presence: auto-select would silently flip the vision provider the moment
+    # OPENAI_API_KEY is set for any unrelated reason, and would also send doubao's
+    # `thinking` extra_body to a slot the operator never intended. Explicit is
+    # predictable and keeps the ark default rock-solid. See services/vision_provider.py.
+    vision_provider: Literal["ark", "openai"] = "ark"
+
     # vision (火山 doubao-seed-1-6-vision)
     ark_api_key: str | None = None
     ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
@@ -58,6 +68,20 @@ class Settings(BaseSettings):
     # worsening as photo count grows). Disable thinking for this structured
     # extraction. Ignored by non-doubao providers that don't accept `thinking`.
     ark_disable_thinking: bool = True
+
+    # OpenAI (GPT) vision slot — used only when vision_provider="openai".
+    # base_url is the public OpenAI API; override for an Azure/compatible gateway.
+    # gpt-4o-mini is the cheap multimodal default; bump to gpt-4o for harder crops.
+    openai_api_key: str | None = None  # env OPENAI_API_KEY
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_vision_model: str = "gpt-4o-mini"
+    openai_timeout_seconds: int = 120
+    # GPT supports response_format=json_object and reliably returns valid JSON for
+    # this structured extraction, so default ON for the openai slot (the doubao
+    # slot keeps thinking-disabled instead — doubao text models 400 on json_object,
+    # see deepseek_use_json_object). OpenAI must NEVER receive doubao's `thinking`
+    # extra_body (400 InvalidRequest); the slot helper guarantees that.
+    openai_use_json_object: bool = True
 
     # planning + chat-edit (DeepSeek slot; in prod points at Volcano Ark doubao)
     deepseek_api_key: str | None = None
