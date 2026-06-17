@@ -320,6 +320,19 @@ export const AlbumLayoutPlan = z.object({
 
 **Phase 3 编排(浏览器/客户端要驱动的契约):** draft-edit 返回 `kind:"inspect"` + `inspectRequest.pageIndex` → 浏览器渲染该页并截图(base64 data URI)→ `POST /v2/album/inspect-page` → 拿 `diagnosis` → 携诊断再发一轮 `/v2/album/draft-edit`(模型据此调 `adjust_image_position`)→ 拿 `kind:"act"` + `imagePosWrite` → Web 折进 `Page.imagePos[imageId]`(即 `imagePosJson`)。
 
+### 4.0c 模板 JSON 字段决策记录(#171,2026-06-16 · 已核对拍板)
+
+> 背景:#172 把确定性模板选择换成「LLM 一次性规划整本相册版面」。本节是该轮针对**模板 JSON 配置字段**的决策记录——结论是**这一轮不动模板 JSON、不动任何配色常量**。
+
+模板 JSON(`packages/contracts/templates/*.json`)的字段集只有:`id` / `slot` / `scene` / `images[{id,orientation,quality}]` / `texts[{id,role,maxChars,lang,repeat?}]` / `pairing?` / `styles?`。据此:
+
+1. **模板 JSON 配置本轮锁定不动**:保留 `scene` 与图片槽的 `orientation` / `quality`。无字段删除、无字段新增。
+2. **`scene` / `orientation` / `quality` 改为 LLM 模板选择的「参考」**:#172 把这三者作为 LLM 选模板/排图的**软参考**喂进 prompt(槽位数量 + 画面分量/朝向描述),**不再是确定性硬过滤器**。注意:**质量线(quality)硬过滤的拆除是另一个独立 issue「质量线拆除」**,本轮不动确定性兜底里的 quality 校验(`skeleton.can_place` / `assign_images` 的 fill→hero 保护仍在,作为 fallback 路径)。
+3. **`version` 不是模板字段**:`AlbumDraft.version='v2'` 是**版面/草稿 schema 版本**(结构性字段),与模板配置无关,保留。
+4. **「配色」在模板 JSON 里没有对应字段**:真正的配色活在两处——(1) 主题 `style` 预设(`warm-film` / `editorial-mono` / `soft-pastel`,见 `packages/contracts/src/v2.ts:21-23`),(2) Web 模板 JSX 里硬编码的 `COLORS` 常量。**两者本轮都不动**(延后到独立的配色 issue)。
+
+故 #171 的结论是:**模板配置层无需任何删除/修改**;模板字段语义重定位(硬过滤→软参考)由 #172 在 Agent 端的选择服务实现,不触及 JSON 真相源与配色常量。
+
 ### 4.1 Composing 二期语义(文档说明,非 schema 变更)
 
 本节只说明 layout 规则语义,**不新增协议字段、不改 zod schema**:

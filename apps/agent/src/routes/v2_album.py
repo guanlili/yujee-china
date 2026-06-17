@@ -65,6 +65,7 @@ from ..services import (
     grouping,
     inspect_render,
     skeleton,
+    template_plan,
     theme,
     vision_mock,
     writing,
@@ -194,16 +195,23 @@ def _assemble_draft(
     req: V2InitRequest,
     photo_pool: list[V2Photo],
     chapters: list[V2Chapter],
+    plan_pages: list[dict[str, Any]] | None = None,
 ) -> AlbumDraft:
-    """Run the deterministic skeleton engine and fold its pages back into the
-    grouping chapters + base pages to produce the AlbumDraft (tech-plan §2/§4)."""
-    skeleton_result = skeleton.build_skeleton(
-        {
-            "albumId": req.albumId,
-            "photos": [photo.model_dump(mode="json") for photo in photo_pool],
-            "chapters": [chapter.model_dump(mode="json") for chapter in chapters],
-        }
-    )
+    """Fold skeleton pages back into the grouping chapters + base pages to produce
+    the AlbumDraft (tech-plan §2/§4). Body-page SELECTION comes from the LLM plan
+    when `plan_pages` is supplied (#172, validated/repaired in
+    template_plan.build_skeleton_with_plan), otherwise from the deterministic
+    skeleton engine. Cover/TOC/ending and the AlbumDraft shape are identical either
+    way — only the interior selection changes."""
+    skeleton_input = {
+        "albumId": req.albumId,
+        "photos": [photo.model_dump(mode="json") for photo in photo_pool],
+        "chapters": [chapter.model_dump(mode="json") for chapter in chapters],
+    }
+    if plan_pages is not None:
+        skeleton_result = template_plan.build_skeleton_with_plan(skeleton_input, plan_pages)
+    else:
+        skeleton_result = skeleton.build_skeleton(skeleton_input)
 
     pages_by_chapter = {
         chapter["chapterId"]: chapter["pages"] for chapter in skeleton_result["chapters"]
@@ -277,6 +285,56 @@ def _mock_writing_complete() -> Any:
     async def complete(**_kwargs: Any) -> dict[str, Any]:
         return {
             "choices": [{"message": {"content": json.dumps({"pagesTexts": []})}}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+        }
+
+    return complete
+
+
+def _mock_template_plan_complete(
+    photo_pool: list[V2Photo], chapters: list[V2Chapter]
+) -> Any:
+    """Deterministic injected `complete` for the #172 template planner in mock
+    mode: emit a plan that mirrors the deterministic partition (so the mock plan is
+    always valid and the LLM-plan path is exercised end-to-end without a model
+    key). The service still runs full validate/repair on top of this payload."""
+    used_by_id = {p.photoId: p for p in photo_pool if p.used}
+    plan_pages: list[dict[str, Any]] = []
+    for chapter in chapters:
+        chapter_photos = [
+            {
+                "photoId": pid,
+                "analysis": used_by_id[pid].analysis.model_dump(mode="json"),
+                "used": True,
+            }
+            for pid in chapter.photoIds
+            if pid in used_by_id
+        ]
+        ordinal = 0
+        for page_photos in skeleton.partition_chapter_photos(chapter_photos):
+            template_id = skeleton.pick_template(
+                "chapter",
+                len(page_photos),
+                page_photos,
+                album_id="mock",
+                chapter_id=chapter.chapterId,
+                page_ordinal=ordinal,
+                scene=skeleton.page_scene(page_photos),
+            )
+            plan_pages.append(
+                {
+                    "chapterId": chapter.chapterId,
+                    "templateId": template_id,
+                    "photoIds": [p["photoId"] for p in page_photos],
+                }
+            )
+            ordinal += 1
+
+    async def complete(**_kwargs: Any) -> dict[str, Any]:
+        return {
+            "choices": [
+                {"message": {"content": json.dumps({"pages": plan_pages}, ensure_ascii=False)}}
+            ],
             "usage": {"prompt_tokens": 0, "completion_tokens": 0},
         }
 
@@ -461,16 +519,49 @@ async def _run_init(req: V2InitRequest) -> None:
         return
     await _emit_progress(req, "grouping", 100)
 
-    # Stage 3 — deterministic skeleton layout → draft tree.
+    # Stage 3 — skeleton layout → draft tree. Body-page SELECTION now comes from a
+    # single LLM plan call (#172, template_plan.plan_templates), validated/repaired
+    # against the template catalog; on ANY plan failure we fall back to the
+    # deterministic skeleton (pick_template path is the safety net, never removed).
     await _emit_progress(req, "skeleton", 0)
+    plan_pages: list[dict[str, Any]] | None = None
     try:
-        draft = _assemble_draft(req, photo_pool, chapters)
-    except Exception as exc:  # noqa: BLE001  (deterministic; should not happen)
-        log.exception("v2_init.skeleton_failed", error=str(exc))
-        await _emit_failure(
-            req, code="AGENT_OUTPUT_VALIDATION", message=str(exc), stage="skeleton"
+        plan_complete = (
+            _mock_template_plan_complete(photo_pool, chapters)
+            if settings.agent_pipeline_mode == "mock"
+            else None
         )
-        return
+        plan_pages, _plan_usage = await template_plan.plan_templates(
+            chapters, photo_pool, req.language, complete=plan_complete
+        )
+    except template_plan.TemplatePlanError as exc:
+        # Unparseable/empty model output → deterministic fallback (no failure).
+        log.warning("v2_init.template_plan_failed_fallback", error=str(exc))
+        plan_pages = None
+    except Exception as exc:  # noqa: BLE001 — never let planning crash init.
+        log.warning("v2_init.template_plan_unhandled_fallback", error=str(exc))
+        plan_pages = None
+    try:
+        draft = _assemble_draft(req, photo_pool, chapters, plan_pages=plan_pages)
+    except Exception as exc:  # noqa: BLE001  (deterministic; should not happen)
+        # The plan path itself raised post-repair — retry once with the pure
+        # deterministic engine before failing the stage.
+        if plan_pages is not None:
+            log.warning("v2_init.plan_assemble_failed_fallback", error=str(exc))
+            try:
+                draft = _assemble_draft(req, photo_pool, chapters, plan_pages=None)
+            except Exception as exc2:  # noqa: BLE001
+                log.exception("v2_init.skeleton_failed", error=str(exc2))
+                await _emit_failure(
+                    req, code="AGENT_OUTPUT_VALIDATION", message=str(exc2), stage="skeleton"
+                )
+                return
+        else:
+            log.exception("v2_init.skeleton_failed", error=str(exc))
+            await _emit_failure(
+                req, code="AGENT_OUTPUT_VALIDATION", message=str(exc), stage="skeleton"
+            )
+            return
     await _emit_progress(req, "skeleton", 100)
 
     # Stage 4 — first-pass writing (#161): auto-theme + cover + all chapter copy,
