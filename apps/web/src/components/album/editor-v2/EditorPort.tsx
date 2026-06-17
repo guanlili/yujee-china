@@ -1659,8 +1659,8 @@ function EditorBook({
               const conf = Math.round(s.confidence * 100);
               appendStep(
                 aT(
-                  `🩺 看图诊断：${s.problem}（建议 dx ${s.dx}、dy ${s.dy}、缩放 ${s.scale}×，置信度 ${conf}%）`,
-                  `🩺 Diagnosis: ${s.problem} (dx ${s.dx}, dy ${s.dy}, zoom ${s.scale}×, conf ${conf}%)`,
+                  `🩺 看图诊断：${s.problem}（目标位置 x ${s.targetX}、y ${s.targetY}、缩放 ${s.scale}×，置信度 ${conf}%）`,
+                  `🩺 Diagnosis: ${s.problem} (target x ${s.targetX}, y ${s.targetY}, zoom ${s.scale}×, conf ${conf}%)`,
                 ),
               );
             } else if (s.kind === 'capped') {

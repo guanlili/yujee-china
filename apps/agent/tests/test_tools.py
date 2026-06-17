@@ -176,7 +176,7 @@ def _inspect_call(page_index=2):
     }
 
 
-def _adjust_call(image_id="image", dx=0.0, dy=-10.0, scale=1.0, page_index=2):
+def _adjust_call(image_id="image", x=50.0, y=40.0, scale=1.0, page_index=2):
     return {
         "id": "c1",
         "type": "function",
@@ -185,8 +185,8 @@ def _adjust_call(image_id="image", dx=0.0, dy=-10.0, scale=1.0, page_index=2):
             "arguments": {
                 "pageIndex": page_index,
                 "imageId": image_id,
-                "dx": dx,
-                "dy": dy,
+                "x": x,
+                "y": y,
                 "scale": scale,
             },
         },
@@ -201,9 +201,9 @@ def test_inspect_page_render_pins_pageindex():
     assert result.payload == {"pageIndex": 2}
 
 
-def test_adjust_image_position_computes_absolute_from_50_base():
-    # x = clamp(50+dx,0,100), y = clamp(50+dy,0,100).
-    result = tools.dispatch(_adjust_call(dx=10, dy=-20, scale=1.5), ctx=_draft_ctx())
+def test_adjust_image_position_takes_absolute_target():
+    # #169: x/y are absolute object-position, written straight through.
+    result = tools.dispatch(_adjust_call(x=60, y=30, scale=1.5), ctx=_draft_ctx())
     assert result is not None
     assert result.tool == "adjust_image_position"
     assert result.payload["pageIndex"] == 2  # pinned
@@ -213,44 +213,44 @@ def test_adjust_image_position_computes_absolute_from_50_base():
     assert result.payload["scale"] == 1.5
 
 
-def test_adjust_image_position_clamps_dx_dy_scale():
-    # dx/dy clamp to [-50,50] → x/y clamp to [0,100]; scale clamps to [1,2].
-    result = tools.dispatch(_adjust_call(dx=999, dy=-999, scale=99), ctx=_draft_ctx())
+def test_adjust_image_position_clamps_x_y_scale():
+    # x/y clamp to [0,100]; scale clamps to [1,2].
+    result = tools.dispatch(_adjust_call(x=999, y=-999, scale=99), ctx=_draft_ctx())
     assert result is not None
-    assert result.payload["x"] == 100.0  # 50 + clamp(999→50)
-    assert result.payload["y"] == 0.0  # 50 + clamp(-999→-50)
+    assert result.payload["x"] == 100.0
+    assert result.payload["y"] == 0.0
     assert result.payload["scale"] == 2.0
 
 
 def test_adjust_image_position_clamps_scale_below_one():
-    result = tools.dispatch(_adjust_call(dx=5, dy=0, scale=0.2), ctx=_draft_ctx())
+    result = tools.dispatch(_adjust_call(x=55, y=50, scale=0.2), ctx=_draft_ctx())
     assert result is not None
     assert result.payload["scale"] == 1.0
 
 
 def test_adjust_image_position_off_page_slot_demotes_to_none():
     # imageId not in the page's real image-slot set → never write (G3).
-    result = tools.dispatch(_adjust_call(image_id="ghost", dy=-10), ctx=_draft_ctx())
+    result = tools.dispatch(_adjust_call(image_id="ghost", y=30), ctx=_draft_ctx())
     assert result is None
 
 
 def test_adjust_image_position_noop_args_demote_to_none():
-    # dx==dy==0 and scale==1.0 → degenerate no-op → talk (G3).
-    result = tools.dispatch(_adjust_call(dx=0, dy=0, scale=1.0), ctx=_draft_ctx())
+    # x==y==50 and scale==1.0 (the centered default) → no-op → talk (G3).
+    result = tools.dispatch(_adjust_call(x=50, y=50, scale=1.0), ctx=_draft_ctx())
     assert result is None
 
 
 def test_adjust_image_position_subrange_scale_noop_demotes_to_none():
-    # #165 Phase-3 D2: a sub-range scale (0.5) with zero shift clamps UP to
+    # #165 Phase-3 D2: a sub-range scale (0.5) with centered x/y clamps UP to
     # {50,50,1.0}. The no-op check must run AFTER clamping, else this slips past
     # the pre-clamp gate (scale 0.5 != 1.0) and emits an inert {50,50,1.0} act.
-    result = tools.dispatch(_adjust_call(dx=0, dy=0, scale=0.5), ctx=_draft_ctx())
+    result = tools.dispatch(_adjust_call(x=50, y=50, scale=0.5), ctx=_draft_ctx())
     assert result is None
 
 
 def test_adjust_image_position_scale_only_is_not_noop():
-    # A pure zoom (scale!=1) with no shift is still a real adjust.
-    result = tools.dispatch(_adjust_call(dx=0, dy=0, scale=1.3), ctx=_draft_ctx())
+    # A pure zoom (scale!=1) with centered position is still a real adjust.
+    result = tools.dispatch(_adjust_call(x=50, y=50, scale=1.3), ctx=_draft_ctx())
     assert result is not None
     assert result.payload["x"] == 50.0
     assert result.payload["y"] == 50.0

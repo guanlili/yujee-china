@@ -40,6 +40,7 @@ def _photo(
     orientation: str = "portrait",
     used: bool = True,
     people_count: str = "1",
+    focal: dict | None = None,
 ) -> V2Photo:
     pid = f"p{idx:03d}"
     return V2Photo(
@@ -50,6 +51,7 @@ def _photo(
             tags=["trip"],
             quality=quality,  # type: ignore[arg-type]
             orientation=orientation,  # type: ignore[arg-type]
+            focal=focal,  # type: ignore[arg-type]
             peopleCount=people_count,
             scene="outdoor",
             mood="warm",

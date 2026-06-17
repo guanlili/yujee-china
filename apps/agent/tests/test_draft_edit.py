@@ -331,7 +331,7 @@ def _inspect_call_complete(page_index=2, text=None):
     return complete
 
 
-def _adjust_call_complete(image_id="image", dx=0.0, dy=-15.0, scale=1.0, page_index=2, text=None):
+def _adjust_call_complete(image_id="image", x=50.0, y=35.0, scale=1.0, page_index=2, text=None):
     async def complete(**_kwargs):
         return {
             "choices": [
@@ -348,8 +348,8 @@ def _adjust_call_complete(image_id="image", dx=0.0, dy=-15.0, scale=1.0, page_in
                                         {
                                             "pageIndex": page_index,
                                             "imageId": image_id,
-                                            "dx": dx,
-                                            "dy": dy,
+                                            "x": x,
+                                            "y": y,
                                             "scale": scale,
                                         }
                                     ),
@@ -383,14 +383,14 @@ async def test_inspect_call_yields_inspect_kind():
 async def test_adjust_call_yields_act_with_imagepos_write():
     resp = await draft_edit.run(
         _req("move the photo up"),
-        complete=_adjust_call_complete(image_id="image", dx=0, dy=-15, scale=1.0),
+        complete=_adjust_call_complete(image_id="image", x=50, y=35, scale=1.0),
     )
     assert resp.kind == "act"
     assert resp.imagePosWrite is not None
     assert resp.imagePosWrite.pageIndex == 2
     assert resp.imagePosWrite.imageId == "image"
-    assert resp.imagePosWrite.x == 50.0  # 50 + 0
-    assert resp.imagePosWrite.y == 35.0  # 50 + (-15)
+    assert resp.imagePosWrite.x == 50.0  # absolute target, passed through
+    assert resp.imagePosWrite.y == 35.0
     assert resp.imagePosWrite.scale == 1.0
     assert resp.pageWrite is None
 
@@ -400,7 +400,7 @@ async def test_adjust_off_page_slot_demotes_to_talk():
     # imageId not on the page → dispatch returns None → talk (no write).
     resp = await draft_edit.run(
         _req("move that photo"),
-        complete=_adjust_call_complete(image_id="ghost", dy=-15),
+        complete=_adjust_call_complete(image_id="ghost", y=35),
     )
     assert resp.kind == "talk"
     assert resp.imagePosWrite is None
@@ -411,7 +411,7 @@ async def test_adjust_off_page_slot_demotes_to_talk():
 async def test_adjust_noop_args_demote_to_talk():
     resp = await draft_edit.run(
         _req("center it"),
-        complete=_adjust_call_complete(dx=0, dy=0, scale=1.0),
+        complete=_adjust_call_complete(x=50, y=50, scale=1.0),
     )
     assert resp.kind == "talk"
     assert resp.imagePosWrite is None

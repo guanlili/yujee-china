@@ -157,6 +157,7 @@ def _to_v2_analysis(analysis: PhotoAnalysis) -> V2PhotoAnalysis:
         tags=list(analysis.tags),
         quality=analysis.quality,
         orientation=analysis.orientation,
+        focal=analysis.focal,  # #169: subject focal carried into the v2 tree.
         peopleCount=analysis.peopleCount or "0",
         scene=analysis.scene or "outdoor",
         mood=analysis.mood or "warm",
@@ -1159,17 +1160,18 @@ async def submit_draft_edit(req: V2DraftEditRequest) -> dict:
 
 def _mock_inspect_complete(req: V2InspectRequest) -> Any:
     """Deterministic injected `complete` for the inspect round-trip without a
-    vision key: name the page's first image slot and suggest a small move-down
-    (the common 'face cut at top' fix). The service still clamps + validates the
-    slot against the page's real slots on top (mirrors the other W6 mocks)."""
+    vision key: name the page's first image slot and target the upper area
+    (the common 'face cut at top' fix → pin nearer the TOP). The service still
+    clamps + validates the slot against the page's real slots on top (mirrors the
+    other W6 mocks)."""
     slot = next(iter(req.page.images), None)
 
     async def complete(**_kwargs: Any) -> dict[str, Any]:
         payload = {
             "imageId": slot,
             "problem": "a subject looks cut off near the top",
-            "suggestedDx": 0,
-            "suggestedDy": -12,
+            "targetX": 50,
+            "targetY": 20,
             "suggestedScale": 1.0,
             "confidence": 0.6,
         }
