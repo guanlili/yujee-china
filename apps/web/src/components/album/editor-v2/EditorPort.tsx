@@ -974,8 +974,7 @@ function EditorBook({
       if (imgEditOverlay) imgEditOverlay.style.display = 'none';
     }
     // Commit the working position into imagePosJson + persist (松手即存). Repaints
-    // the whole book so thumbnails/overview reflect the move, and (cover only)
-    // refreshes the stored cover thumbnail.
+    // the whole book so thumbnails/overview reflect the move.
     function commitImagePos() {
       if (!imgEdit) return;
       const { pageIndex, slotId, pos } = imgEdit;
@@ -993,8 +992,6 @@ function EditorBook({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imagePosJson: page.imagePosJson }),
       }).catch(() => {});
-      // #167: a cover (page 0) edit changes the stored preview — refresh it.
-      if (pageIndex === 0) void uploadCoverThumbnail();
     }
     // Pointer drag → pan. Bound on each host; only acts when an image on that
     // host is the active selection.
@@ -1860,11 +1857,15 @@ function EditorBook({
             body: blob,
           });
           if (!putRes.ok) throw new Error(`R2 PUT ${putRes.status}`);
-          await fetch(`/api/v1/albums/${albumId}/pdf`, {
+          const confirmRes = await fetch(`/api/v1/albums/${albumId}/pdf`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ r2Key }),
           });
+          const confirmJson = await confirmRes.json();
+          if (!confirmRes.ok || confirmJson.ok !== true) {
+            throw new Error(confirmJson.error?.message ?? 'PDF confirm failed');
+          }
         } catch (uploadErr) {
           console.error('PDF cloud upload failed', uploadErr);
         }

@@ -183,6 +183,11 @@ test('listByUser: includes only the first page cover data for card previews', as
       textsJson: { title: 'Cover Title' },
       imagePosJson: {},
     });
+    assert.equal(
+      (row as { coverThumbnailUrl?: string | null } | undefined)?.coverThumbnailUrl,
+      null,
+      'list payload always exposes persisted derived cover URL, even before one is uploaded',
+    );
   } finally {
     await cleanupUser(user.id);
   }

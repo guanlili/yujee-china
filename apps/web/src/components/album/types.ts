@@ -24,6 +24,7 @@ export interface AlbumInfo {
   photoCount: number;
   pageCount: number;
   pdfUrl: string | null;
+  coverThumbnailUrl?: string | null;
   errorMessage: string | null;
   createdAt: string;
 }

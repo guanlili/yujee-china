@@ -6,7 +6,7 @@ export type TemplateArrayItem = Record<string, string | undefined>;
 export type TemplateData = Record<string, TemplateDataValue>;
 
 // Per-image render override (#165). x,y are object-position percentages (0-100);
-// scale >=1 zooms (web-only - PDF ignores scale>1, see pdf-utils PdfImage).
+// scale >=1 zooms (applied in BOTH web and PDF render, see pdf-utils PdfImage).
 export interface ImagePos {
   x: number;
   y: number;

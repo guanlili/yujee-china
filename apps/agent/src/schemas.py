@@ -105,7 +105,7 @@ class ImagePos(_Strict):
     Absent => renderer falls back to objectPosition 50% 50%, no zoom.
 
     x, y: object-position percentages clamped [0, 100] (default 50/50).
-    scale: zoom factor clamped [1, 2] (default 1; web-only, PDF ignores >1).
+    scale: zoom factor clamped [1, 2] (default 1; applied in BOTH web and PDF render).
     The schema guards the full clamp range so a hand-rolled tree can't ship an
     out-of-range value through finalize."""
 

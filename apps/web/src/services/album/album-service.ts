@@ -8,6 +8,8 @@ import { ERRORS } from '@/lib/api/error-codes';
 import { AlbumDraft, type ImagePos } from '@yujee/contracts';
 
 const PDF_MAX_BYTES = 50 * 1024 * 1024; // 50MB — docs/web/api.md §3.6
+const COVER_THUMB_CONTENT_TYPE = 'image/jpeg';
+const COVER_THUMB_MAX_BYTES = 512 * 1024;
 
 type AlbumCoverPage = {
   pageIndex: number;
@@ -90,6 +92,7 @@ export const albumService = {
         photoCount: album.photoCount,
         pageCount: album.pageCount,
         pdfUrl: album.pdfUrl,
+        coverThumbnailUrl: album.coverThumbnailUrl,
         errorMessage: album.errorMessage,
         createdAt: album.createdAt,
       },
@@ -244,6 +247,7 @@ export const albumService = {
         photoCount: a.photoCount,
         pageCount: a.pageCount,
         pdfUrl: a.pdfUrl,
+        coverThumbnailUrl: a.coverThumbnailUrl ?? null,
         createdAt: a.createdAt,
         coverPage: coverByAlbumId.get(a.id) ?? null,
       });
@@ -332,6 +336,44 @@ export const albumService = {
       await albumRepo.update(tx, albumId, { pdfR2Key: r2Key, pdfUrl, status: 'COMPLETED' });
     });
     return { pdfUrl };
+  },
+
+  async signCoverThumbnailUpload(
+    userId: string,
+    albumId: string,
+    input: { contentType: string; size: number },
+  ): Promise<{ putUrl: string; r2Key: string; publicUrl: string }> {
+    if (input.contentType !== COVER_THUMB_CONTENT_TYPE) {
+      throw ERRORS.VALIDATION_FAILED('contentType must be image/jpeg');
+    }
+    if (input.size <= 0 || input.size > COVER_THUMB_MAX_BYTES) {
+      throw ERRORS.VALIDATION_FAILED('cover thumbnail must be <= 512KB');
+    }
+
+    await this.findOwned(userId, albumId);
+
+    const r2Key = `cover-thumbs/${userId}/${albumId}.jpg`;
+    const putUrl = await r2.signPutUrl(r2Key, input.contentType, 300);
+    return { putUrl, r2Key, publicUrl: r2.publicUrl(r2Key) };
+  },
+
+  async confirmCoverThumbnail(
+    userId: string,
+    albumId: string,
+    r2Key: string,
+  ): Promise<{ coverThumbnailUrl: string }> {
+    await this.findOwned(userId, albumId);
+    const expected = `cover-thumbs/${userId}/${albumId}.jpg`;
+    if (r2Key !== expected) throw ERRORS.VALIDATION_FAILED('r2Key does not match album');
+
+    const coverThumbnailUrl = `${r2.publicUrl(r2Key)}?v=${Date.now()}`;
+    await db.transaction(async (tx) => {
+      await albumRepo.update(tx, albumId, {
+        coverThumbnailR2Key: r2Key,
+        coverThumbnailUrl,
+      });
+    });
+    return { coverThumbnailUrl };
   },
 
   async getPdfUrl(userId: string, albumId: string): Promise<{ pdfUrl: string | null }> {

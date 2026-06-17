@@ -9,21 +9,27 @@ import type { EditorPage } from './types';
 
 export type AlbumCoverPage = Pick<
   EditorPage,
-  'pageIndex' | 'templateId' | 'imagesJson' | 'textsJson'
+  'pageIndex' | 'templateId' | 'imagesJson' | 'textsJson' | 'imagePosJson'
 >;
 
 interface Props {
   coverPage: AlbumCoverPage | null;
+  coverThumbnailUrl?: string | null;
   pageCount: number;
   fallback: ReactNode;
 }
 
 const THUMBNAIL_PADDING = 12;
 
-export function AlbumCoverPreview({ coverPage, pageCount, fallback }: Props) {
+export function AlbumCoverPreview({ coverPage, coverThumbnailUrl, pageCount, fallback }: Props) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [scale, setScale] = useState(0.1);
+  const [thumbBroken, setThumbBroken] = useState(false);
+
+  useEffect(() => {
+    setThumbBroken(false);
+  }, [coverThumbnailUrl]);
 
   const photoIds = useMemo(() => {
     if (!coverPage) return [];
@@ -63,6 +69,19 @@ export function AlbumCoverPreview({ coverPage, pageCount, fallback }: Props) {
     observer.observe(frame);
     return () => observer.disconnect();
   }, [coverPage]);
+
+  if (coverThumbnailUrl && !thumbBroken) {
+    return (
+      <img
+        src={coverThumbnailUrl}
+        alt=""
+        className="absolute inset-0 h-full w-full object-cover"
+        loading="lazy"
+        decoding="async"
+        onError={() => setThumbBroken(true)}
+      />
+    );
+  }
 
   if (!coverPage) return <>{fallback}</>;
 

@@ -119,3 +119,39 @@ test('v2 export flow: finalize → EDITING → editor detail (photoId refs only)
     await cleanupUser(user.id);
   }
 });
+
+test('cover photo thumbnail flow: browser uploads derived JPEG only and confirms namespaced key', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('cover-thumb');
+  try {
+    const album = await makeAlbum(user.id, { photoCount: 2 });
+
+    const sign = await albumService.signCoverThumbnailUpload(user.id, album.id, {
+      contentType: 'image/jpeg',
+      size: 48 * 1024,
+    });
+
+    assert.match(sign.putUrl, /^https?:\/\//, 'a presigned PUT URL is issued');
+    assert.equal(
+      sign.r2Key,
+      `cover-thumbs/${user.id}/${album.id}.jpg`,
+      'key is bound to {userId}/{albumId}',
+    );
+
+    await assert.rejects(
+      () => albumService.confirmCoverThumbnail(user.id, album.id, `cover-thumbs/${user.id}/other.jpg`),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+      'a forged cover thumbnail key is rejected',
+    );
+
+    const { coverThumbnailUrl } = await albumService.confirmCoverThumbnail(user.id, album.id, sign.r2Key);
+    assert.ok(coverThumbnailUrl.includes(sign.r2Key));
+
+    const finalAlbum = await albumRepo.findById(album.id);
+    assert.equal(finalAlbum?.coverThumbnailR2Key, sign.r2Key);
+    assert.equal(finalAlbum?.coverThumbnailUrl, coverThumbnailUrl);
+    assert.equal(finalAlbum?.status, 'AGENT_RUNNING', 'cover thumbnail confirm never changes album status');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
