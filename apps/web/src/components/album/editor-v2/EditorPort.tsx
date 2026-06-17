@@ -1179,6 +1179,43 @@ function EditorBook({
       chatBody!.appendChild(a);
       scrollChat();
     }
+    // A past user message (history replay) — same bubble as a live send().
+    function appendUserText(text: string) {
+      const u = document.createElement('div');
+      u.className = 'msg user max-w-full';
+      u.innerHTML = `<div class="bubble"></div>`;
+      u.querySelector('.bubble')!.textContent = text;
+      chatBody!.appendChild(u);
+    }
+    // Load + render persisted chat history (album_messages) on entry so reopening
+    // the album shows the prior conversation, not just the opener. Returns how many
+    // turns were rendered. Skips the internal inspect-diagnosis strings the #165
+    // loop threads to the model (they are not real user chat).
+    async function loadHistory(): Promise<number> {
+      try {
+        const res = await fetch(`/api/v1/albums/${albumId}/messages?limit=50`);
+        const j = await res.json();
+        if (!j?.ok) return 0;
+        const msgs = (j.data?.messages ?? []) as Array<{
+          role: string;
+          content: string;
+          createdAt?: string;
+        }>;
+        msgs.sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')));
+        let shown = 0;
+        for (const m of msgs) {
+          const c = (m.content ?? '').trim();
+          if (!c || c.startsWith('[inspection of page')) continue;
+          if (m.role === 'user') appendUserText(c);
+          else appendAiText(c);
+          shown += 1;
+        }
+        if (shown) scrollChat();
+        return shown;
+      } catch {
+        return 0;
+      }
+    }
     // A fresh AI message shell with an active "thinking" block — the caller fills
     // in the reply (and chips) once the round-trip resolves. Mirrors the design's
     // jellyfish-loop thinking spinner.
@@ -1736,7 +1773,11 @@ function EditorBook({
     // has no opening turn (idle immediately) → float + show it now; authoring hides
     // it until the opening turn finishes, where restAwait() floats it to the bottom.
     if (isAuthoring) hideAwait();
-    else restAwait();
+    else {
+      // Editing (post-finalize): render the prior conversation, then sit idle.
+      restAwait();
+      void loadHistory().then(() => restAwait());
+    }
 
     /* ─── Authoring init (#162: render-first + pointed single-page edits) ───
        No theme→chapter dialog machine, no auto-advance, no finalize CTA. init
@@ -1761,17 +1802,23 @@ function EditorBook({
           "Hi, I'm Yujee — your magazine-making assistant. Don't love the wording? Tweak it anytime.",
         ),
       );
-      appendAiText(
-        aT(
-          '我已经写好第一版，哪页不满意，点开那页跟我说就行。',
-          "I've written the first version — tap any page you'd like to change and tell me.",
-        ),
-      );
       // No theme step anymore; the stepper sits on the editing/story pill, and the
       // idle await jellyfish floats to the bottom of the thread.
       setChatState(3);
       updateAuthInputPlaceholder();
-      restAwait();
+      // Render the prior conversation; only a brand-new album (no history yet) gets
+      // the "first version — tap a page" onboarding invite.
+      void loadHistory().then((n) => {
+        if (n === 0) {
+          appendAiText(
+            aT(
+              '我已经写好第一版，哪页不满意，点开那页跟我说就行。',
+              "I've written the first version — tap any page you'd like to change and tell me.",
+            ),
+          );
+        }
+        restAwait();
+      });
     }
 
     // Keep the buy-credits card (#balanceAlert) hidden on entry. The CSS default
