@@ -694,7 +694,10 @@ function EditorBook({
       host.innerHTML = faceInner(page);
       document.body.appendChild(host);
       try {
-        const html2canvas = (await import('html2canvas')).default;
+        // html2canvas-pro (not the unmaintained html2canvas@1.4.1) — the latter
+        // throws on modern CSS color functions (oklch/lab/color-mix) that Tailwind
+        // v4 emits, which silently broke the inspect→adjust capture.
+        const html2canvas = (await import('html2canvas-pro')).default;
         const canvas = await html2canvas(host, {
           width: PAGE.width,
           height: PAGE.height,

@@ -86,7 +86,9 @@ export async function runInspectAdjustLoop(
         `Call adjust_image_position to fix it.`;
     } catch (e) {
       if (isAuthError(e)) throw e; // auth errors must surface (redirect to login).
-      // Inspect-render failed (network/agent) — never hang; degrade to talk.
+      // Inspect-render/capture failed — never hang; degrade to talk. Log so a
+      // silent capture failure (e.g. an html2canvas color/CSS throw) is visible.
+      console.error('[inspect→adjust] capture/diagnose failed:', e);
       return { kind: 'talk', assistantReply: deps.inspectFailReply };
     }
     r = await deps.postDraftEdit(focusPageIndex, slice(diagnosisMsg));
