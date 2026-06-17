@@ -34,12 +34,14 @@ export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
         placeholder="3:4"
         style={{ position: 'absolute', top: 180, right: 70, width: 655, height: 440 }}
         position={imagePos?.['imagePerson']}
+        slotId="imagePerson"
       />
       <WebImage
         src={d.imageRoad}
         placeholder="4:3"
         style={{ position: 'absolute', top: 660, left: 70, width: 400, height: 350 }}
         position={imagePos?.['imageRoad']}
+        slotId="imageRoad"
       />
       <h1
         style={{
