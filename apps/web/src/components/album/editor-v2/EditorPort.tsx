@@ -934,7 +934,13 @@ function EditorBook({
     function positionImgEditOverlay() {
       if (!imgEdit || !imgEditOverlay) return;
       const bookRect = bookEl.getBoundingClientRect();
-      const imgRect = imgEdit.imgEl.getBoundingClientRect();
+      // #168: anchor to the SLOT FRAME (the overflow:hidden wrapper <div> around the
+      // <img>), not the <img> itself — once scale>1 the img's rect is the zoomed
+      // (larger, clipped-off) size, which would float the overlay off the frame.
+      // The wrapper's rect is the fixed frame the user sees. Fall back to the img if
+      // (defensively) it has no parent element.
+      const frameEl = imgEdit.imgEl.parentElement ?? imgEdit.imgEl;
+      const imgRect = frameEl.getBoundingClientRect();
       const z = zoom || 1;
       const localLeft = (imgRect.left - bookRect.left) / z + imgRect.width / z / 2;
       const localBottom = (imgRect.bottom - bookRect.top) / z;

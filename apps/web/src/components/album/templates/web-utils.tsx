@@ -52,19 +52,38 @@ export function WebImage({ src, placeholder, style, position, slotId }: WebImage
             transformOrigin: `${position.x}% ${position.y}%`,
           }
         : {};
+    // #168: the caller `style` is the SLOT geometry (position/top/left/width/...).
+    // It defines the fixed frame. We give it to an `overflow:hidden` wrapper <div>
+    // so a scaled-up <img> is CLIPPED to the frame instead of growing the slot box
+    // and shoving neighboring content (the original bug: scale was applied to the
+    // <img> which *was* the slot, with no clip container around it). The inner
+    // <img> fills the wrapper 100%×100% and keeps the paint props (object-fit/
+    // object-position/transform), so at scale=1 it covers the exact same pixels as
+    // before — pixel-identical, the wrapper's clip only ever bites once scale>1.
+    // `objectFit`/`objectPosition` belong to the img, never the wrapper: strip them
+    // out of the wrapper style (some templates inline objectFit:'cover' in `style`).
+    const { objectFit: _of, objectPosition: _op, ...frame } = style;
     return (
-      <img
-        src={src}
-        alt=""
-        data-image-slot={slotId}
+      <div
         style={{
-          display: 'block',
-          ...style,
-          objectFit: 'cover',
-          objectPosition,
-          ...zoom,
+          ...frame,
+          overflow: 'hidden',
         }}
-      />
+      >
+        <img
+          src={src}
+          alt=""
+          data-image-slot={slotId}
+          style={{
+            display: 'block',
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition,
+            ...zoom,
+          }}
+        />
+      </div>
     );
   }
   return (
