@@ -49,17 +49,32 @@ from __future__ import annotations
 
 import json
 import time
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from typing import Any, Mapping, Sequence
 
 from .. import templates as registry
+from ..logging_config import get_logger
 from ..schemas import Page
 from ..schemas_v2 import Usage, V2Chapter, V2Models, V2Photo
 from ..settings import get_settings
 from . import ai_client, skeleton
 
 
+log = get_logger("template_plan")
+
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
+
+# Global per-photo reuse cap, enforced END-TO-END across the WHOLE skeleton
+# (basePages + body). Mirrors the per-page body filter (`use_count < 2` =>
+# max 2 appearances, template_plan.validate_and_build_chapter_pages) so a photo
+# may appear at most twice in the final draft. The deterministic engine reserves
+# fresh photos for cover/ending; the LLM-plan path can over-consume the budget in
+# the body (each photo placed twice) and force build_base_pages' last-ditch
+# best_photo(used_photos) fallback to over-reuse — finalize/layout_rules then
+# REJECT that layout. We catch it here and fall back wholesale to the
+# deterministic skeleton (known-good, reserves photos) when the cap is breached.
+_GLOBAL_REUSE_CAP = 2
 
 
 class TemplatePlanError(Exception):
@@ -374,6 +389,28 @@ def validate_and_build_chapter_pages(
     return pages
 
 
+def _skeleton_photo_use_counts(result: skeleton.SkeletonResult) -> Counter[str]:
+    """Count how many times each photoId appears across the WHOLE skeleton — the
+    flat `pages` list, which already includes cover/toc/ending plus every chapter
+    body page (build_skeleton_with_plan assembles `pages` from cover + body +
+    ending). One source of truth so no appearance is double-counted or missed."""
+    counts: Counter[str] = Counter()
+    for page in result["pages"]:
+        for photo_id in page.get("images", {}).values():
+            if isinstance(photo_id, str):
+                counts[photo_id] += 1
+    return counts
+
+
+def exceeds_reuse_cap(result: skeleton.SkeletonResult) -> list[str]:
+    """Return the photoIds whose TOTAL appearances across the whole skeleton exceed
+    the global reuse cap (2). Empty list ⇒ the draft is within budget. Used to
+    decide whether the LLM-plan path over-consumed the photo budget (forcing
+    cover/ending to over-reuse) and must fall back to the deterministic engine."""
+    counts = _skeleton_photo_use_counts(result)
+    return [pid for pid, count in counts.items() if count > _GLOBAL_REUSE_CAP]
+
+
 def build_skeleton_with_plan(
     input_data: Mapping[str, Any],
     plan_pages: Sequence[Mapping[str, Any]],
@@ -446,11 +483,30 @@ def build_skeleton_with_plan(
     for page_index, page in enumerate(flat_pages):
         page["pageIndex"] = page_index
 
-    return {
+    result: skeleton.SkeletonResult = {
         "basePages": {"cover": cover, "toc": toc, "ending": ending},
         "chapters": output_chapters,
         "pages": flat_pages,
     }
+
+    # Enforce the global ≤2 reuse cap END-TO-END. The LLM plan can pack every
+    # photo into the body at the 2x body cap, exhausting the budget so
+    # build_base_pages is forced to re-place an already-twice-used photo into
+    # cover/ending (best_photo(used_photos) last-ditch) → a photoId appears >2
+    # times → finalize/layout_rules REJECT the layout. When that happens, the
+    # plan over-consumed: fall back wholesale to the deterministic skeleton, which
+    # reserves fresh photos for cover/ending (known-good, same path the
+    # init-level fallback uses). Log a warning so the over-consumption is visible.
+    overused = exceeds_reuse_cap(result)
+    if overused:
+        log.warning(
+            "template_plan.global_reuse_cap_exceeded_fallback",
+            overused=overused[:5],
+            cap=_GLOBAL_REUSE_CAP,
+        )
+        return skeleton.build_skeleton(input_data)
+
+    return result
 
 
 class _ChapterView:

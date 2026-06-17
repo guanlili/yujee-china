@@ -155,12 +155,17 @@ def test_init_template_plan_error_falls_back_completed(monkeypatch, captured_cal
     (never failed/refund). Exercises v2_album._run_init's except-TemplatePlanError
     branch (plan_pages=None → deterministic _assemble_draft)."""
 
+    calls = {"n": 0}
+
     async def boom(*_args, **_kwargs):
+        calls["n"] += 1
         raise template_plan.TemplatePlanError("unparseable plan")
 
     monkeypatch.setattr(template_plan, "plan_templates", boom)
 
     asyncio.run(v2_album._run_init(_req(10)))
+    # Planning was actually attempted (not bypassed) before the fallback fired.
+    assert calls["n"] == 1, "plan_templates must be called so the fallback path is real"
     _assert_completed_deterministic_draft(captured_callbacks, 10)
 
 
@@ -169,12 +174,17 @@ def test_init_template_plan_generic_error_falls_back_completed(monkeypatch, capt
     TemplatePlanError) is also swallowed → deterministic fallback → completed.
     Exercises v2_album._run_init's bare `except Exception` planning branch."""
 
+    calls = {"n": 0}
+
     async def boom(*_args, **_kwargs):
+        calls["n"] += 1
         raise RuntimeError("model client exploded")
 
     monkeypatch.setattr(template_plan, "plan_templates", boom)
 
     asyncio.run(v2_album._run_init(_req(10)))
+    # Planning was actually attempted (not bypassed) before the fallback fired.
+    assert calls["n"] == 1, "plan_templates must be called so the fallback path is real"
     _assert_completed_deterministic_draft(captured_callbacks, 10)
 
 
@@ -187,7 +197,10 @@ def test_init_plan_assemble_failure_retries_deterministic_completed(
     retry branch in v2_album._run_init (plan_pages not None → assemble raises →
     re-assemble with plan_pages=None)."""
 
+    calls = {"n": 0}
+
     def boom(*_args, **_kwargs):
+        calls["n"] += 1
         raise RuntimeError("plan assemble exploded")
 
     # plan_templates runs normally (mock seam yields a valid plan); only the
@@ -195,6 +208,10 @@ def test_init_plan_assemble_failure_retries_deterministic_completed(
     monkeypatch.setattr(template_plan, "build_skeleton_with_plan", boom)
 
     asyncio.run(v2_album._run_init(_req(10)))
+    # The plan-based assembly path was actually taken (plan_pages not None →
+    # build_skeleton_with_plan called) before the deterministic retry — guards
+    # against a future refactor that silently bypasses planning.
+    assert calls["n"] == 1, "build_skeleton_with_plan must be called so the retry path is real"
     _assert_completed_deterministic_draft(captured_callbacks, 10)
 
 

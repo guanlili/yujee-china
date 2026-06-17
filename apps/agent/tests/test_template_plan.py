@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections import Counter
 from typing import Any
 
 import pytest
@@ -171,6 +172,28 @@ def test_cover_or_ending_template_id_is_rejected_and_repaired():
         assert registry.TEMPLATES[page["templateId"]]["slot"] == "interior"
 
 
+def test_ending_template_id_is_rejected_and_repaired():
+    """An ENDING-slot templateId is non-interior just like a cover id, so the
+    planner must reject/repair it off body pages (companion to the cover case)."""
+    photos = [_photo(1, "hero")]
+    chapter = _chapter("ch1", ["p1"])
+    ending_id = next(
+        tid for tid in registry.TEMPLATE_IDS if registry.TEMPLATES[tid]["slot"] == "ending"
+    )
+    payload = {"pages": [{"chapterId": "ch1", "templateId": ending_id, "photoIds": ["p1"]}]}
+    raw, _ = asyncio.run(
+        template_plan.plan_templates(
+            [chapter], photos, "en", complete=_complete_returning(payload)
+        )
+    )
+    result = template_plan.build_skeleton_with_plan(_skeleton_input(photos, [chapter]), raw)
+    pages = result["chapters"][0]["pages"]
+    # The model's ending id must not survive on an interior body page.
+    assert pages
+    for page in pages:
+        assert registry.TEMPLATES[page["templateId"]]["slot"] == "interior"
+
+
 # ---------- photo-count != slot count -----------------------------------------
 
 
@@ -237,6 +260,39 @@ def test_foreign_photo_id_is_dropped_and_omitted_photo_swept_in():
     # Foreign id never placed; both real photos (incl. the omitted p2) are present.
     assert "p999" not in placed
     assert placed == {"p1", "p2"}
+
+
+def test_mixed_page_drops_foreign_id_keeps_real_and_sweeps_omitted():
+    """A MIXED page (real photoIds + one foreign id) must: drop ONLY the foreign id,
+    still build a valid page from the surviving real photo(s), and sweep any photo
+    the model omitted so every real chapter photo lands at least once. This is the
+    in-page drop + sweep path — distinct from the all-foreign 'zero usable pages →
+    whole-chapter deterministic fallback' covered above."""
+    photos = [_photo(1, "hero"), _photo(2, "detail"), _photo(3, "detail")]
+    chapter = _chapter("ch1", ["p1", "p2", "p3"])
+    t2 = _interior_template_for_count(2)
+    # One MIXED page: real p1 + foreign p999 (a 2-slot template). After dropping the
+    # foreign id only p1 survives → repaired to a count-matching page. p2/p3 omitted
+    # entirely → must be swept in deterministically.
+    payload = {"pages": [{"chapterId": "ch1", "templateId": t2, "photoIds": ["p1", "p999"]}]}
+    raw, _ = asyncio.run(
+        template_plan.plan_templates(
+            [chapter], photos, "en", complete=_complete_returning(payload)
+        )
+    )
+    result = template_plan.build_skeleton_with_plan(_skeleton_input(photos, [chapter]), raw)
+    pages = result["chapters"][0]["pages"]
+    # The mixed page still produced real pages (NOT a wholesale chapter fallback
+    # that would have ignored the model's page entirely).
+    assert pages
+    for page in pages:
+        # Every page is a valid interior page with slot count == photo count.
+        assert registry.TEMPLATES[page["templateId"]]["slot"] == "interior"
+        assert len(page["images"]) == len(registry.TEMPLATES[page["templateId"]]["images"])
+    placed = {pid for page in pages for pid in page["images"].values()}
+    # Foreign id dropped; every real photo (incl. omitted p2/p3) swept in ≥1.
+    assert "p999" not in placed
+    assert placed == {"p1", "p2", "p3"}
 
 
 # ---------- unparseable / empty → deterministic fallback ----------------------
@@ -323,3 +379,56 @@ def test_full_draft_structure_matches_deterministic_shape():
         pid for ch in result["chapters"] for page in ch["pages"] for pid in page["images"].values()
     }
     assert body_placed == {p.photoId for p in photos}
+
+
+# ---------- global ≤2 reuse cap enforced end-to-end (#172 must-fix) ------------
+
+
+def _flat_use_counts(result: Any) -> Counter:
+    """Total appearances of every photoId across the WHOLE skeleton (flat pages —
+    cover + toc + body + ending). Reproduces codex's `Counter` probe."""
+    counts: Counter = Counter()
+    for page in result["pages"]:
+        for pid in page["images"].values():
+            if isinstance(pid, str):
+                counts[pid] += 1
+    return counts
+
+
+def test_body_packed_at_cap_forces_base_overreuse_then_deterministic_fallback():
+    """codex probe: the LLM packs every photo into the body at the 2x cap, so the
+    photo budget is exhausted and build_base_pages is forced to re-place an
+    already-twice-used photo into cover/ending → some photoId ends up used >2 times
+    (codex: Counter({'p1':4,'p2':2})), which finalize/layout_rules REJECT.
+
+    The global-cap check must catch this and fall back WHOLESALE to the
+    deterministic skeleton (reserves fresh photos for cover/ending). Assert: the
+    result equals build_skeleton's output AND every photoId appears ≤2 times."""
+    # 2 photos, single chapter. A 1-slot template lets us place each photo on its
+    # own page exactly twice → body Counter == {p1:2, p2:2}, exhausting the budget.
+    photos = [_photo(1, "hero"), _photo(2, "hero")]
+    chapter = _chapter("ch1", ["p1", "p2"])
+    t1 = _interior_template_for_count(1)
+    payload = {
+        "pages": [
+            {"chapterId": "ch1", "templateId": t1, "photoIds": ["p1"]},
+            {"chapterId": "ch1", "templateId": t1, "photoIds": ["p1"]},
+            {"chapterId": "ch1", "templateId": t1, "photoIds": ["p2"]},
+            {"chapterId": "ch1", "templateId": t1, "photoIds": ["p2"]},
+        ]
+    }
+    raw, _ = asyncio.run(
+        template_plan.plan_templates(
+            [chapter], photos, "en", complete=_complete_returning(payload)
+        )
+    )
+    skel_input = _skeleton_input(photos, [chapter])
+    result = template_plan.build_skeleton_with_plan(skel_input, raw)
+
+    # No photoId may appear more than twice across the whole final draft.
+    counts = _flat_use_counts(result)
+    assert all(c <= 2 for c in counts.values()), counts
+    # The fix is "fall back to deterministic": the chosen draft IS the
+    # deterministic skeleton (which reserves fresh photos for cover/ending).
+    deterministic = skeleton.build_skeleton(skel_input)
+    assert result == deterministic
