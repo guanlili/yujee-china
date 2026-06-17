@@ -34,9 +34,13 @@ interface WebImageProps {
   style: CSSProperties;
   // #165 per-slot override. Absent => centered cover, no zoom (pre-#165 default).
   position?: { x: number; y: number; scale: number };
+  // #168: the page's image-slot key (same key as imagePos[slotId]). Emitted as
+  // data-image-slot so the editor's manual pan/zoom overlay can map a clicked
+  // <img> back to its slot and persist the move into imagePosJson[slotId].
+  slotId?: string;
 }
 
-export function WebImage({ src, placeholder, style, position }: WebImageProps) {
+export function WebImage({ src, placeholder, style, position, slotId }: WebImageProps) {
   if (src) {
     const objectPosition = position ? `${position.x}% ${position.y}%` : '50% 50%';
     // scale>1 zooms in around the focal point; transformOrigin matches the
@@ -52,6 +56,7 @@ export function WebImage({ src, placeholder, style, position }: WebImageProps) {
       <img
         src={src}
         alt=""
+        data-image-slot={slotId}
         style={{
           display: 'block',
           ...style,
