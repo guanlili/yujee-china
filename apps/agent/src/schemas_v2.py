@@ -16,6 +16,7 @@ from typing import Annotated, Literal, Union
 from pydantic import Field, HttpUrl
 
 from .schemas import (
+    Focal,
     Language,
     Magazine,
     Page,
@@ -102,6 +103,10 @@ class V2PhotoAnalysis(_Strict):
     tags: list[str]
     quality: PhotoQuality
     orientation: PhotoOrientation
+    # #169: subject focal point (0..1, face-first). Base field — finalize KEEPS it
+    # (mirrors layout.ts PhotoAnalysis.focal); NOT one of the stripped extension
+    # fields. Optional => 0.5/0.5 default.
+    focal: Focal | None = None
     peopleCount: PeopleCount
     scene: Scene
     mood: Mood
@@ -454,13 +459,15 @@ class V2InspectRequest(_Strict):
 class V2InspectDiagnosis(_Strict):
     """The vision verdict. `imageId` is one of the page's slotIds, or null when
     vision could not pin a slot (then the caller degrades to a talk message).
-    suggestedDx/Dy are percentage-point shifts (clamped [-50,50]); suggestedScale
-    [1,2]; confidence [0,1]."""
+    #169: targetX/targetY are the ABSOLUTE object-position the subject should land
+    at in the rendered frame (0..100, same space as ImagePos.x/y) — not a relative
+    shift; the caller writes Page.imagePos straight from them. suggestedScale [1,2];
+    confidence [0,1]."""
 
     imageId: str | None = None
     problem: str
-    suggestedDx: float = Field(ge=-50, le=50)
-    suggestedDy: float = Field(ge=-50, le=50)
+    targetX: float = Field(ge=0, le=100)
+    targetY: float = Field(ge=0, le=100)
     suggestedScale: float = Field(ge=1, le=2)
     confidence: float = Field(ge=0, le=1)
 

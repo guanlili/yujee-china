@@ -19,8 +19,8 @@ function diagnosis(over: Partial<InspectRenderResult['diagnosis']> = {}): Inspec
     diagnosis: {
       imageId: 'hero',
       problem: 'top clipped',
-      suggestedDx: 0,
-      suggestedDy: -10,
+      targetX: 50,
+      targetY: 20,
       suggestedScale: 1.1,
       confidence: 0.8,
       ...over,
@@ -157,7 +157,7 @@ test('graceful: "unable to inspect" (null imageId) degrades to the inspect reply
   const r = await runInspectAdjustLoop(1, 'fix it', baseDeps({
     postDraftEdit: async () => ({ kind: 'inspect', assistantReply: 'look', inspectRequest: { pageIndex: 1 } }),
     postInspectRender: async () => ({
-      diagnosis: { imageId: null, problem: 'cannot tell', suggestedDx: 0, suggestedDy: 0, suggestedScale: 1, confidence: 0 },
+      diagnosis: { imageId: null, problem: 'cannot tell', targetX: 50, targetY: 50, suggestedScale: 1, confidence: 0 },
       assistantReply: 'I cannot see a problem here.',
     }),
   }));

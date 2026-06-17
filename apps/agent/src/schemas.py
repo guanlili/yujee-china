@@ -54,6 +54,16 @@ class Magazine(_Strict):
     language: Language
 
 
+class Focal(_Strict):
+    """Subject focal point (#169) — the main subject's (face-first) center in the
+    ORIGINAL image, normalized to [0, 1] on each axis (x left→right, y top→bottom).
+    Same space as a CSS object-position fraction, so {x*100, y*100} is a ready
+    objectPosition %. Mirrors @yujee/contracts `Focal`. Absent => 0.5/0.5."""
+
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+
+
 class PhotoAnalysis(_Strict):
     """Vision output. Carries the 5 design.md §2.6 extension fields used as
     composing hints. Web-side zod (the canonical @yujee/contracts PhotoAnalysis)
@@ -67,6 +77,9 @@ class PhotoAnalysis(_Strict):
     tags: list[str]
     quality: PhotoQuality
     orientation: PhotoOrientation
+    # #169: subject focal point (0..1, face-first). Base field — survives finalize
+    # (mirrors @yujee/contracts PhotoAnalysis.focal). Optional => 0.5/0.5 default.
+    focal: Focal | None = None
     peopleCount: PeopleCount | None = None
     scene: Scene | None = None
     mood: Mood | None = None

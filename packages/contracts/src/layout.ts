@@ -14,12 +14,28 @@ export const Magazine = z.object({
 });
 export type Magazine = z.infer<typeof Magazine>;
 
+/**
+ * Subject focal point (#169) — the main subject's (face-first) center in the
+ * ORIGINAL image, normalized to [0, 1] on each axis (x = left→right,
+ * y = top→bottom). Same coordinate space as a CSS object-position fraction, so
+ * `{x: focal.x*100, y: focal.y*100}` is a ready-made objectPosition %.
+ * Optional; absent => callers fall back to the centered default 0.5/0.5.
+ */
+export const Focal = z.object({
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+});
+export type Focal = z.infer<typeof Focal>;
+
 export const PhotoAnalysis = z.object({
   photoId: z.string().min(1),
   description: z.string(),
   tags: z.array(z.string()),
   quality: PhotoQuality,
   orientation: PhotoOrientation,
+  // #169: subject focal point (0..1, face-first). Survives finalize so the flat
+  // layout's default imagePos can center on the subject. Absent => 0.5/0.5.
+  focal: Focal.optional(),
 });
 export type PhotoAnalysis = z.infer<typeof PhotoAnalysis>;
 

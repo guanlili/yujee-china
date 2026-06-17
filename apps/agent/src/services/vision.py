@@ -12,7 +12,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from ..logging_config import get_logger
-from ..schemas import LayoutRequest, PhotoAnalysis, PhotoGroup, VisionResult
+from ..schemas import Focal, LayoutRequest, PhotoAnalysis, PhotoGroup, VisionResult
 from ..settings import get_settings
 from . import ai_client
 from .vision_provider import VisionSlotError, estimate_cost_usd, select_vision_slot
@@ -60,7 +60,11 @@ def _build_system_prompt(photo_count: int) -> str:
         '  "scene": one of "indoor" | "outdoor" | "nature" | "city" | "interior".\n'
         '  "mood": one of "warm" | "cool" | "sentimental" | "energetic" | "quiet".\n'
         '  "timeOfDay": one of "morning" | "day" | "evening" | "night", or null if uncertain.\n'
-        '  "location": a short free-text guess (e.g. "Kyoto street", "kitchen") or null.\n\n'
+        '  "location": a short free-text guess (e.g. "Kyoto street", "kitchen") or null.\n'
+        '  "focal": the MAIN SUBJECT\'s center in the ORIGINAL photo as '
+        '{"x":0..1,"y":0..1} normalized fractions (x = left→right, y = top→bottom). '
+        "Prefer a face when people are present; otherwise the visual subject. Use "
+        "null when there is no clear subject (then the album centers the photo).\n\n"
         "groups must be an array of 1-5 objects that cluster adjacent narrative moments:\n"
         '  "groupId": short stable id such as "g1".\n'
         '  "label": short English theme label.\n'
@@ -92,6 +96,22 @@ def _build_user_content(req: LayoutRequest) -> list[dict[str, Any]]:
     for photo in req.photos:
         parts.append({"type": "image_url", "image_url": {"url": photo.base64}})
     return parts
+
+
+def _coerce_focal(raw: Any) -> Focal | None:
+    """Parse the model's focal hint into a clamped Focal, or None when absent /
+    malformed (caller then falls back to the centered 0.5/0.5 default). Accepts an
+    {x,y} object; out-of-range numbers are clamped into [0, 1]."""
+    if not isinstance(raw, dict):
+        return None
+    try:
+        x = float(raw.get("x"))  # type: ignore[arg-type]
+        y = float(raw.get("y"))
+    except (TypeError, ValueError):
+        return None
+    x = max(0.0, min(1.0, x))
+    y = max(0.0, min(1.0, y))
+    return Focal(x=x, y=y)
 
 
 def _coerce_one(item: Any, photo_id: str, fallback_orient: str) -> PhotoAnalysis:
@@ -137,6 +157,8 @@ def _coerce_one(item: Any, photo_id: str, fallback_orient: str) -> PhotoAnalysis
     raw_loc = item.get("location")
     location = None if raw_loc in (None, "", "null") else str(raw_loc).strip()[:80] or None
 
+    focal = _coerce_focal(item.get("focal"))
+
     try:
         return PhotoAnalysis(
             photoId=photo_id,
@@ -144,6 +166,7 @@ def _coerce_one(item: Any, photo_id: str, fallback_orient: str) -> PhotoAnalysis
             tags=tags,
             quality=quality,  # type: ignore[arg-type]
             orientation=orientation,  # type: ignore[arg-type]
+            focal=focal,
             peopleCount=people,  # type: ignore[arg-type]
             scene=scene,  # type: ignore[arg-type]
             mood=mood,  # type: ignore[arg-type]

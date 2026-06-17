@@ -565,8 +565,8 @@ test('inspect-render → slices ONE page + its photos, forwards screenshot, retu
         diagnosis: {
           imageId: 'hero',
           problem: 'the subject is cut off at the top',
-          suggestedDx: 0,
-          suggestedDy: -12,
+          targetX: 50,
+          targetY: 20,
           suggestedScale: 1.1,
           confidence: 0.8,
         },
@@ -581,7 +581,7 @@ test('inspect-render → slices ONE page + its photos, forwards screenshot, retu
       screenshot: SHOT,
     });
     assert.equal(res.diagnosis.imageId, 'hero');
-    assert.equal(res.diagnosis.suggestedDy, -12);
+    assert.equal(res.diagnosis.targetY, 20);
 
     // payload: ONE page slice + only that page's photos; screenshot forwarded.
     assert.ok(captured);
