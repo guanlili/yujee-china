@@ -3,3 +3,4 @@ export * from './layout';
 export * from './api';
 export * from './templates';
 export * from './v2';
+export * from './v3';

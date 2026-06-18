@@ -8,12 +8,16 @@ const PACKAGE_DIR = path.resolve(SCRIPT_DIR, '..');
 const TEMPLATE_DIR = path.join(PACKAGE_DIR, 'templates');
 const GENERATED_PATH = path.join(PACKAGE_DIR, 'src', 'templates.generated.ts');
 
+// NOTE: this schema mirrors `src/templates.ts` (kept inline so the gen script
+//   has no dep on tsx path-resolving the source tree). They MUST stay in sync —
+//   `templates:check` fails the typecheck if generated output drifts.
 const PhotoOrientation = z.enum(['portrait', 'landscape', 'square']);
 const PhotoQuality = z.enum(['hero', 'detail', 'fill']);
 
 const TemplateImageSlot = z
   .object({
     id: z.string().min(1),
+    // @deprecated orientation/quality — V3 作废,WP0.2 删(见 src/templates.ts)。
     orientation: z.array(PhotoOrientation).nonempty().optional(),
     quality: z.array(PhotoQuality).nonempty().optional(),
   })
@@ -28,10 +32,29 @@ const TemplateTextSlot = z
     role: TemplateTextRole,
     maxChars: z.number().int().positive().optional(),
     lang: TemplateTextLang,
+    hint: z.string().min(1).max(200).optional(),
+    variableDecor: z.boolean().optional(),
+    // @deprecated repeat — V3 用 items 组,WP0.2 删。
     repeat: z.boolean().optional(),
   })
   .strict();
 
+const TemplateSvgSlot = z
+  .object({
+    id: z.string().min(1),
+    variableDecor: z.boolean().optional(),
+  })
+  .strict();
+
+const TemplateItems = z
+  .object({
+    images: z.array(TemplateImageSlot).optional(),
+    texts: z.array(TemplateTextSlot).optional(),
+  })
+  .strict();
+
+const TemplateCategory = z.enum(['cover', 'interior', 'toc', 'ending']);
+// @deprecated slot/scene — V3 用 category 替代,WP0.2 删。
 const TemplateSlotKind = z.enum(['cover', 'interior', 'ending']);
 const TemplateScene = z.enum([
   'opening',
@@ -54,12 +77,15 @@ const TemplatePairing = z
 const TemplateDef = z
   .object({
     id: z.string().min(1),
-    slot: TemplateSlotKind,
-    scene: TemplateScene,
+    category: TemplateCategory.optional(),
+    slot: TemplateSlotKind.optional(),
+    scene: TemplateScene.optional(),
     pairing: TemplatePairing.nullable().optional(),
     styles: z.array(z.string().min(1)).optional(),
     images: z.array(TemplateImageSlot),
+    svgs: z.array(TemplateSvgSlot).optional(),
     texts: z.array(TemplateTextSlot),
+    items: TemplateItems.optional(),
   })
   .strict();
 

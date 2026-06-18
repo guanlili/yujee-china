@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ArtFontPack } from './enums';
 
 export const PhotoOrientation = z.enum(['portrait', 'landscape', 'square']);
 export type PhotoOrientation = z.infer<typeof PhotoOrientation>;
@@ -75,3 +76,66 @@ export const AlbumLayoutPlan = z.object({
   pages: z.array(Page).min(1),
 });
 export type AlbumLayoutPlan = z.infer<typeof AlbumLayoutPlan>;
+
+// ───────────────────────── V3 authoring 树(章节树) ─────────────────────────
+//
+// §3 树边界:authoring 树只活在交互期(`draft_json`),五环节全程被逐环节"刷新"
+//   (v3-requirements §7.1);finalize 时把章节色/字体烘焙进扁平页 → `AlbumLayoutPlan`,
+//   **扁平渲染契约不新增任何树形字段**。故 V3 章节树字段全部落在这里、不进 `Page` /
+//   `AlbumLayoutPlan`。
+//
+// §3 隐私红线:**绝不含 `location`/`place`/GPS/坐标任何字段**。Stage 0 只读 `takenAt`
+//   (architecture §3 / §6.8 第 3 条),分章只用时间 + 画面整体性信号。
+
+/**
+ * 章节点缀色(accentColor):每章一个主色,theme 环节由识图模型挑代表图 + 取色工具采样得出,
+ * `apply-theme` 一键刷到该章所有 `variableDecor` 槽。`#RGB` / `#RRGGBB` 十六进制。
+ */
+export const AccentColor = z.string().regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+export type AccentColor = z.infer<typeof AccentColor>;
+
+/**
+ * 章节树里的单张照片(v3-requirements §4.1)。
+ *   LLM 写:`sceneDescription`(一句画面描述)。
+ *   代码批量填:`width`/`height`/`orientation`(输入宽高算)、`takenAt`(EXIF)。
+ * ⚠️ 无 `location`/`place`/GPS/坐标字段(§3 隐私)。
+ */
+export const V3ChapterPhoto = z
+  .object({
+    photoId: z.string().min(1),
+    sceneDescription: z.string().max(300), // LLM 写,一句画面描述
+    width: z.number().int().positive(), // 代码:输入宽高
+    height: z.number().int().positive(), // 代码:输入宽高
+    orientation: PhotoOrientation, // 代码:由宽高算
+    takenAt: z.string().datetime().nullable().optional(), // 代码:EXIF;缺失为 null(无 GPS)
+  })
+  .strict();
+export type V3ChapterPhoto = z.infer<typeof V3ChapterPhoto>;
+
+/**
+ * 章节(v3-requirements §4.1):一图一章不跨章,五环节全程复用、绝不重生成。
+ *   LLM 写:`description`(主要画面/人物/情绪氛围/地点场景,一段)+ 选图归章。
+ *   theme 环节填:`accentColor`(取色)+ `artFont`(字体包内选一);分析期为 null 占位。
+ * `accentColor`/`artFont` 与品牌正文字体无关,是排版专用点缀色/艺术字落点。
+ */
+export const V3Chapter = z
+  .object({
+    chapterId: z.string().min(1),
+    description: z.string().max(600), // LLM 写,章节画面/情绪概述
+    accentColor: AccentColor.nullable(), // 占位 null;theme 环节填
+    artFont: ArtFontPack.nullable(), // 占位 null;theme 环节填
+    photos: z.array(V3ChapterPhoto),
+  })
+  .strict();
+export type V3Chapter = z.infer<typeof V3Chapter>;
+
+/**
+ * V3 章节树根。落 `albums.draft_json`,只活在交互期(§3 树边界)。
+ * finalize 时 flatten 成 `AlbumLayoutPlan`(烘焙章节色/字体进扁平页),才进渲染/PDF。
+ */
+export const V3LayoutTree = z
+  .object({
+    chapters: z.array(V3Chapter),
+  })
+  .strict();
+export type V3LayoutTree = z.infer<typeof V3LayoutTree>;
