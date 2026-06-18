@@ -2,6 +2,7 @@
   "id": "mag-05",
   "slot": "interior",
   "scene": "scenery",
+  "category": "interior",
   "images": [
     {
       "id": "image",
@@ -18,26 +19,31 @@
     {
       "id": "title",
       "role": "title",
+      "lang": "user",
       "maxChars": 25,
-      "lang": "user"
+      "variableDecor": true,
+      "hint": "整页主标题,可两行"
     },
     {
       "id": "topRight",
       "role": "decoration",
+      "lang": "en",
       "maxChars": 20,
-      "lang": "en"
+      "variableDecor": true,
+      "hint": "右上角小标签,如章节名 + 页码"
     },
     {
       "id": "caption",
       "role": "body",
+      "lang": "user",
       "maxChars": 120,
-      "lang": "user"
+      "hint": "正文段落:第一人称回忆口吻,2-3 句"
     },
     {
       "id": "folio",
       "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
+      "lang": "en",
+      "maxChars": 2
     }
   ]
 }

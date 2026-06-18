@@ -2,6 +2,7 @@
   "id": "mag-04",
   "slot": "interior",
   "scene": "record",
+  "category": "interior",
   "images": [
     {
       "id": "image1",
@@ -38,26 +39,30 @@
     {
       "id": "caption1",
       "role": "explain",
+      "lang": "user",
       "maxChars": 60,
-      "lang": "user"
+      "hint": "主图说明:客观描述这组照片的主画面"
     },
     {
       "id": "caption2",
       "role": "explain",
+      "lang": "user",
       "maxChars": 100,
-      "lang": "user"
+      "hint": "次要说明:承接主图,带一点叙事或时间"
     },
     {
       "id": "dateNum",
       "role": "decoration",
+      "lang": "en",
       "maxChars": 5,
-      "lang": "en"
+      "variableDecor": true,
+      "hint": "日期数字,如 04/24"
     },
     {
       "id": "folio",
       "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
+      "lang": "en",
+      "maxChars": 2
     }
   ]
 }

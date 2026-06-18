@@ -2,6 +2,7 @@
   "id": "mag-18",
   "slot": "interior",
   "scene": "record",
+  "category": "interior",
   "images": [
     {
       "id": "imageLeft",
@@ -28,20 +29,22 @@
     {
       "id": "captionLeft",
       "role": "explain",
+      "lang": "user",
       "maxChars": 80,
-      "lang": "user"
+      "hint": "左图说明"
     },
     {
       "id": "captionRight",
       "role": "explain",
+      "lang": "user",
       "maxChars": 80,
-      "lang": "user"
+      "hint": "右图说明,承接左图"
     },
     {
       "id": "folio",
       "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
+      "lang": "en",
+      "maxChars": 2
     }
   ]
 }

@@ -2,6 +2,7 @@
   "id": "mag-08",
   "slot": "interior",
   "scene": "portrait",
+  "category": "interior",
   "images": [
     {
       "id": "image",
@@ -18,38 +19,45 @@
     {
       "id": "dateNum",
       "role": "decoration",
+      "lang": "en",
       "maxChars": 5,
-      "lang": "en"
+      "variableDecor": true,
+      "hint": "日期数字,如 08/24"
     },
     {
       "id": "caption1",
       "role": "explain",
+      "lang": "user",
       "maxChars": 70,
-      "lang": "user"
+      "hint": "图注:点出人物或场景"
     },
     {
       "id": "caption2",
       "role": "explain",
+      "lang": "user",
       "maxChars": 160,
-      "lang": "user"
+      "hint": "较长说明:展开这一刻的故事"
     },
     {
       "id": "title",
       "role": "title",
+      "lang": "user",
       "maxChars": 10,
-      "lang": "user"
+      "variableDecor": true,
+      "hint": "短标题,≤4 字意象词"
     },
     {
       "id": "body",
       "role": "body",
+      "lang": "user",
       "maxChars": 180,
-      "lang": "user"
+      "hint": "正文:第一人称叙事,3-4 句"
     },
     {
       "id": "folio",
       "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
+      "lang": "en",
+      "maxChars": 2
     }
   ]
 }

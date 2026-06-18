@@ -2,6 +2,7 @@
   "id": "mag-10",
   "slot": "interior",
   "scene": "record",
+  "category": "interior",
   "images": [
     {
       "id": "cells[0].image",
@@ -60,15 +61,31 @@
     {
       "id": "cells",
       "role": "explain",
-      "maxChars": 70,
       "lang": "user",
+      "maxChars": 70,
       "repeat": true
     },
     {
       "id": "folio",
       "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
+      "lang": "en",
+      "maxChars": 2
     }
-  ]
+  ],
+  "items": {
+    "images": [
+      {
+        "id": "image"
+      }
+    ],
+    "texts": [
+      {
+        "id": "caption",
+        "role": "explain",
+        "lang": "user",
+        "maxChars": 70,
+        "hint": "每格图说:一句话点出这张照片"
+      }
+    ]
+  }
 }

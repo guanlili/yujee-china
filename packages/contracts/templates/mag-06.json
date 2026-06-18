@@ -2,6 +2,7 @@
   "id": "mag-06",
   "slot": "interior",
   "scene": "scenery",
+  "category": "interior",
   "images": [
     {
       "id": "image",
@@ -18,8 +19,8 @@
     {
       "id": "folio",
       "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
+      "lang": "en",
+      "maxChars": 2
     }
   ]
 }

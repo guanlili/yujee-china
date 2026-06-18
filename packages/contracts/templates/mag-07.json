@@ -2,6 +2,7 @@
   "id": "mag-07",
   "slot": "interior",
   "scene": "record",
+  "category": "interior",
   "images": [
     {
       "id": "imageTop",
@@ -28,26 +29,30 @@
     {
       "id": "caption1",
       "role": "explain",
+      "lang": "user",
       "maxChars": 120,
-      "lang": "user"
+      "hint": "上图说明"
     },
     {
       "id": "caption2",
       "role": "explain",
+      "lang": "user",
       "maxChars": 120,
-      "lang": "user"
+      "hint": "主图说明,承接上图"
     },
     {
       "id": "title",
       "role": "title",
+      "lang": "user",
       "maxChars": 20,
-      "lang": "user"
+      "variableDecor": true,
+      "hint": "该页标题"
     },
     {
       "id": "folio",
       "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
+      "lang": "en",
+      "maxChars": 2
     }
   ]
 }

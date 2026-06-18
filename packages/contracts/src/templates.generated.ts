@@ -26,6 +26,7 @@ export const TEMPLATE_IDS = [
 export const TEMPLATES: Record<string, TemplateDef> = {
   "mag-01": {
     "id": "mag-01",
+    "category": "cover",
     "slot": "cover",
     "scene": "opening",
     "images": [
@@ -46,25 +47,31 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "heading",
         "role": "title",
         "maxChars": 12,
-        "lang": "user"
+        "lang": "user",
+        "hint": "封面主标题:≤6 字意象短语,定整本基调",
+        "variableDecor": true
       },
       {
         "id": "sideText",
         "role": "decoration",
         "maxChars": 20,
-        "lang": "en"
+        "lang": "en",
+        "hint": "封面副标签:系列名 / 卷号 / 年份等小字",
+        "variableDecor": true
       },
       {
         "id": "caption1",
         "role": "explain",
         "maxChars": 30,
-        "lang": "user"
+        "lang": "user",
+        "hint": "封面图注一:点出这张封面照片的瞬间或地点"
       },
       {
         "id": "caption2",
         "role": "explain",
         "maxChars": 30,
-        "lang": "user"
+        "lang": "user",
+        "hint": "封面图注二:承接图注一,补一句情绪或时间"
       },
       {
         "id": "folio",
@@ -76,6 +83,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "mag-02": {
     "id": "mag-02",
+    "category": "toc",
     "slot": "interior",
     "scene": "textOnly",
     "images": [],
@@ -84,7 +92,9 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "heading",
         "role": "title",
         "maxChars": 16,
-        "lang": "user"
+        "lang": "user",
+        "hint": "目录页大标题,如「目录」/「Contents」",
+        "variableDecor": true
       },
       {
         "id": "numbers",
@@ -113,10 +123,38 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 2,
         "lang": "en"
       }
-    ]
+    ],
+    "items": {
+      "texts": [
+        {
+          "id": "numbers",
+          "role": "decoration",
+          "maxChars": 3,
+          "lang": "en",
+          "hint": "目录条目序号,两位数字如 01",
+          "variableDecor": true
+        },
+        {
+          "id": "titles",
+          "role": "title",
+          "maxChars": 16,
+          "lang": "user",
+          "hint": "该章节标题,简短",
+          "variableDecor": true
+        },
+        {
+          "id": "descriptions",
+          "role": "explain",
+          "maxChars": 80,
+          "lang": "user",
+          "hint": "该章节一句话简介"
+        }
+      ]
+    }
   },
   "mag-03": {
     "id": "mag-03",
+    "category": "interior",
     "slot": "interior",
     "scene": "scenery",
     "images": [
@@ -136,7 +174,9 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "location",
         "role": "decoration",
         "maxChars": 20,
-        "lang": "en"
+        "lang": "en",
+        "hint": "地点 / 章节标签小字,如「京都 · 03 / 30」",
+        "variableDecor": true
       },
       {
         "id": "folio",
@@ -148,6 +188,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "mag-04": {
     "id": "mag-04",
+    "category": "interior",
     "slot": "interior",
     "scene": "record",
     "images": [
@@ -187,19 +228,23 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "caption1",
         "role": "explain",
         "maxChars": 60,
-        "lang": "user"
+        "lang": "user",
+        "hint": "主图说明:客观描述这组照片的主画面"
       },
       {
         "id": "caption2",
         "role": "explain",
         "maxChars": 100,
-        "lang": "user"
+        "lang": "user",
+        "hint": "次要说明:承接主图,带一点叙事或时间"
       },
       {
         "id": "dateNum",
         "role": "decoration",
         "maxChars": 5,
-        "lang": "en"
+        "lang": "en",
+        "hint": "日期数字,如 04/24",
+        "variableDecor": true
       },
       {
         "id": "folio",
@@ -211,6 +256,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "mag-05": {
     "id": "mag-05",
+    "category": "interior",
     "slot": "interior",
     "scene": "scenery",
     "images": [
@@ -230,19 +276,24 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "title",
         "role": "title",
         "maxChars": 25,
-        "lang": "user"
+        "lang": "user",
+        "hint": "整页主标题,可两行",
+        "variableDecor": true
       },
       {
         "id": "topRight",
         "role": "decoration",
         "maxChars": 20,
-        "lang": "en"
+        "lang": "en",
+        "hint": "右上角小标签,如章节名 + 页码",
+        "variableDecor": true
       },
       {
         "id": "caption",
         "role": "body",
         "maxChars": 120,
-        "lang": "user"
+        "lang": "user",
+        "hint": "正文段落:第一人称回忆口吻,2-3 句"
       },
       {
         "id": "folio",
@@ -254,6 +305,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "mag-06": {
     "id": "mag-06",
+    "category": "interior",
     "slot": "interior",
     "scene": "scenery",
     "images": [
@@ -279,6 +331,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "mag-07": {
     "id": "mag-07",
+    "category": "interior",
     "slot": "interior",
     "scene": "record",
     "images": [
@@ -308,19 +361,23 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "caption1",
         "role": "explain",
         "maxChars": 120,
-        "lang": "user"
+        "lang": "user",
+        "hint": "上图说明"
       },
       {
         "id": "caption2",
         "role": "explain",
         "maxChars": 120,
-        "lang": "user"
+        "lang": "user",
+        "hint": "主图说明,承接上图"
       },
       {
         "id": "title",
         "role": "title",
         "maxChars": 20,
-        "lang": "user"
+        "lang": "user",
+        "hint": "该页标题",
+        "variableDecor": true
       },
       {
         "id": "folio",
@@ -332,6 +389,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "mag-08": {
     "id": "mag-08",
+    "category": "interior",
     "slot": "interior",
     "scene": "portrait",
     "images": [
@@ -351,31 +409,38 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "dateNum",
         "role": "decoration",
         "maxChars": 5,
-        "lang": "en"
+        "lang": "en",
+        "hint": "日期数字,如 08/24",
+        "variableDecor": true
       },
       {
         "id": "caption1",
         "role": "explain",
         "maxChars": 70,
-        "lang": "user"
+        "lang": "user",
+        "hint": "图注:点出人物或场景"
       },
       {
         "id": "caption2",
         "role": "explain",
         "maxChars": 160,
-        "lang": "user"
+        "lang": "user",
+        "hint": "较长说明:展开这一刻的故事"
       },
       {
         "id": "title",
         "role": "title",
         "maxChars": 10,
-        "lang": "user"
+        "lang": "user",
+        "hint": "短标题,≤4 字意象词",
+        "variableDecor": true
       },
       {
         "id": "body",
         "role": "body",
         "maxChars": 180,
-        "lang": "user"
+        "lang": "user",
+        "hint": "正文:第一人称叙事,3-4 句"
       },
       {
         "id": "folio",
@@ -387,6 +452,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "mag-09": {
     "id": "mag-09",
+    "category": "interior",
     "slot": "interior",
     "scene": "interlude",
     "images": [
@@ -416,31 +482,37 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "quote",
         "role": "body",
         "maxChars": 60,
-        "lang": "user"
+        "lang": "user",
+        "hint": "短引语 / 抒情句,一句话"
       },
       {
         "id": "caption1",
         "role": "explain",
         "maxChars": 80,
-        "lang": "user"
+        "lang": "user",
+        "hint": "上图说明"
       },
       {
         "id": "title",
         "role": "title",
         "maxChars": 16,
-        "lang": "user"
+        "lang": "user",
+        "hint": "该页标题,可两行",
+        "variableDecor": true
       },
       {
         "id": "caption2",
         "role": "explain",
         "maxChars": 80,
-        "lang": "user"
+        "lang": "user",
+        "hint": "主图说明"
       },
       {
         "id": "caption3",
         "role": "explain",
         "maxChars": 80,
-        "lang": "user"
+        "lang": "user",
+        "hint": "补充图注"
       },
       {
         "id": "folio",
@@ -452,6 +524,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "mag-10": {
     "id": "mag-10",
+    "category": "interior",
     "slot": "interior",
     "scene": "record",
     "images": [
@@ -522,10 +595,27 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 2,
         "lang": "en"
       }
-    ]
+    ],
+    "items": {
+      "images": [
+        {
+          "id": "image"
+        }
+      ],
+      "texts": [
+        {
+          "id": "caption",
+          "role": "explain",
+          "maxChars": 70,
+          "lang": "user",
+          "hint": "每格图说:一句话点出这张照片"
+        }
+      ]
+    }
   },
   "mag-11": {
     "id": "mag-11",
+    "category": "interior",
     "slot": "interior",
     "scene": "portrait",
     "images": [
@@ -545,19 +635,24 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "title",
         "role": "title",
         "maxChars": 16,
-        "lang": "user"
+        "lang": "user",
+        "hint": "该页标题,可两行",
+        "variableDecor": true
       },
       {
         "id": "plate",
         "role": "decoration",
         "maxChars": 20,
-        "lang": "en"
+        "lang": "en",
+        "hint": "图版标签,如「Plate · 11 / 30」",
+        "variableDecor": true
       },
       {
         "id": "caption2",
         "role": "explain",
         "maxChars": 80,
-        "lang": "user"
+        "lang": "user",
+        "hint": "图说"
       },
       {
         "id": "folio",
@@ -569,6 +664,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "mag-13": {
     "id": "mag-13",
+    "category": "cover",
     "slot": "cover",
     "scene": "opening",
     "images": [
@@ -583,18 +679,27 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         ]
       }
     ],
+    "svgs": [
+      {
+        "id": "divider",
+        "variableDecor": true
+      }
+    ],
     "texts": [
       {
         "id": "title",
         "role": "title",
         "maxChars": 30,
-        "lang": "user"
+        "lang": "user",
+        "hint": "封面主标题,可两行,如作者名 / 作品名",
+        "variableDecor": true
       },
       {
         "id": "caption",
         "role": "body",
         "maxChars": 165,
-        "lang": "user"
+        "lang": "user",
+        "hint": "封面引言 / 简介,2-3 句"
       },
       {
         "id": "folio",
@@ -606,6 +711,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "mag-15": {
     "id": "mag-15",
+    "category": "interior",
     "slot": "interior",
     "scene": "record",
     "images": [
@@ -635,19 +741,24 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "body",
         "role": "body",
         "maxChars": 60,
-        "lang": "user"
+        "lang": "user",
+        "hint": "短正文,一两句"
       },
       {
         "id": "title",
         "role": "title",
         "maxChars": 16,
-        "lang": "user"
+        "lang": "user",
+        "hint": "该页标题",
+        "variableDecor": true
       },
       {
         "id": "date",
         "role": "decoration",
         "maxChars": 20,
-        "lang": "en"
+        "lang": "en",
+        "hint": "日期,如 May 2026",
+        "variableDecor": true
       },
       {
         "id": "folio",
@@ -659,6 +770,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "mag-18": {
     "id": "mag-18",
+    "category": "interior",
     "slot": "interior",
     "scene": "record",
     "images": [
@@ -688,13 +800,15 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "captionLeft",
         "role": "explain",
         "maxChars": 80,
-        "lang": "user"
+        "lang": "user",
+        "hint": "左图说明"
       },
       {
         "id": "captionRight",
         "role": "explain",
         "maxChars": 80,
-        "lang": "user"
+        "lang": "user",
+        "hint": "右图说明,承接左图"
       },
       {
         "id": "folio",
@@ -706,6 +820,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "mag-19": {
     "id": "mag-19",
+    "category": "interior",
     "slot": "interior",
     "scene": "scenery",
     "images": [
@@ -725,19 +840,23 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "intro",
         "role": "title",
         "maxChars": 8,
-        "lang": "user"
+        "lang": "user",
+        "hint": "极短引题,如单词 / 2 字",
+        "variableDecor": true
       },
       {
         "id": "captionLeft",
         "role": "explain",
         "maxChars": 110,
-        "lang": "user"
+        "lang": "user",
+        "hint": "左栏说明"
       },
       {
         "id": "captionRight",
         "role": "explain",
         "maxChars": 110,
-        "lang": "user"
+        "lang": "user",
+        "hint": "右栏说明"
       },
       {
         "id": "folio",
@@ -749,6 +868,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "mag-20": {
     "id": "mag-20",
+    "category": "ending",
     "slot": "ending",
     "scene": "ending",
     "images": [
@@ -760,6 +880,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
   "p01": {
     "id": "p01",
+    "category": "cover",
     "slot": "cover",
     "scene": "opening",
     "images": [
@@ -779,31 +900,40 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "title",
         "role": "title",
         "maxChars": 20,
-        "lang": "user"
+        "lang": "user",
+        "hint": "封面主标题,可两行",
+        "variableDecor": true
       },
       {
         "id": "body",
         "role": "body",
         "maxChars": 80,
-        "lang": "user"
+        "lang": "user",
+        "hint": "封面简介,1-2 句"
       },
       {
         "id": "category",
         "role": "decoration",
         "maxChars": 20,
-        "lang": "en"
+        "lang": "en",
+        "hint": "分类 / 系列标签,如「nº 01 · Portrait」",
+        "variableDecor": true
       },
       {
         "id": "vol",
         "role": "decoration",
         "maxChars": 4,
-        "lang": "en"
+        "lang": "en",
+        "hint": "卷号,如 01",
+        "variableDecor": true
       },
       {
         "id": "date",
         "role": "decoration",
         "maxChars": 10,
-        "lang": "en"
+        "lang": "en",
+        "hint": "日期,如 MAY 26",
+        "variableDecor": true
       }
     ]
   }

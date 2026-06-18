@@ -2,6 +2,7 @@
   "id": "mag-09",
   "slot": "interior",
   "scene": "interlude",
+  "category": "interior",
   "images": [
     {
       "id": "imageTop",
@@ -28,38 +29,44 @@
     {
       "id": "quote",
       "role": "body",
+      "lang": "user",
       "maxChars": 60,
-      "lang": "user"
+      "hint": "短引语 / 抒情句,一句话"
     },
     {
       "id": "caption1",
       "role": "explain",
+      "lang": "user",
       "maxChars": 80,
-      "lang": "user"
+      "hint": "上图说明"
     },
     {
       "id": "title",
       "role": "title",
+      "lang": "user",
       "maxChars": 16,
-      "lang": "user"
+      "variableDecor": true,
+      "hint": "该页标题,可两行"
     },
     {
       "id": "caption2",
       "role": "explain",
+      "lang": "user",
       "maxChars": 80,
-      "lang": "user"
+      "hint": "主图说明"
     },
     {
       "id": "caption3",
       "role": "explain",
+      "lang": "user",
       "maxChars": 80,
-      "lang": "user"
+      "hint": "补充图注"
     },
     {
       "id": "folio",
       "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
+      "lang": "en",
+      "maxChars": 2
     }
   ]
 }
