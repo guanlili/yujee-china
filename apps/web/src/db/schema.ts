@@ -1,3 +1,4 @@
+import { AlbumStage } from '@yujee/contracts';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -21,6 +22,13 @@ export const albumStatusEnum = pgEnum('album_status', [
   'COMPLETED',
   'FAILED',
 ]);
+
+// V3 五环节状态主控 (architecture §6.8 第 4 条). Web is the sole source of truth;
+// the Agent never holds stage. Orthogonal to `albums.status` — status tracks the
+// init job lifecycle + credits (unchanged), stage tracks which of the five steps
+// the user is on + the export gate. Enum members come straight from the contracts
+// `AlbumStage` (packages/contracts/src/enums.ts) so there is one source of truth.
+export const albumStageEnum = pgEnum('album_stage', AlbumStage.options);
 
 export const agentJobStatusEnum = pgEnum('agent_job_status', [
   'QUEUED',
@@ -200,6 +208,10 @@ export const albums = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
     status: albumStatusEnum('status').notNull().default('AGENT_RUNNING'),
+    // V3 五环节状态 (architecture §6.8 第 4 条). Orthogonal to `status`, not derived
+    // from it. New albums start at 'analysing'; existing rows are backfilled in
+    // migration 0009 (status COMPLETED/EDITING → 'ready', AGENT_RUNNING → 'analysing').
+    stage: albumStageEnum('stage').notNull().default('analysing'),
     prompt: text('prompt').notNull(),
     layoutJson: jsonb('layout_json'),
     // v2 rebuild: authoring tree (AlbumDraft), lives only during the draft phase.
