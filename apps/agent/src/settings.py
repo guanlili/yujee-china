@@ -78,7 +78,8 @@ class Settings(BaseSettings):
 
     # vision via OpenAI (GPT) slot — secondary/alternative vision provider.
     # 只声明配置位；让 vision.py 真正改用这个槽是单独的代码改动（见 GitHub issue）。
-    # key 填到 .env 的 OPENAI_API_KEY（生产走 Fly secrets）。model 换成你要用的 GPT 视觉型号。
+    # key 填到 .env 的 OPENAI_API_KEY（生产走 Fly secrets）。当前 model 是占位默认值；
+    # V3 启用前由 WP1.3 确认生产 GPT 视觉型号并用 env 覆盖。
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_vision_model: str = "gpt-4o-mini"

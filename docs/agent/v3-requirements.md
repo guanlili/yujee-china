@@ -166,7 +166,7 @@ chapter 1 (内部自由交错) → 确定 → chapter 2 → … → 全部确定
 #### (4) 写作 LM 的信息装配
 
 ```
-写作 LM 输入 
+写作 LM 输入
   用户信息(history + userMessage + brief)
 + 写作 Skill(创作风格,集中维护)
 + 模板逐槽 hint(文案指引,模板里会有,Agent 透传——Agent 不自编 hint)

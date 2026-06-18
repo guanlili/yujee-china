@@ -533,4 +533,3 @@ export const ChatEditResponse = z.object({
 跟 §9 一致:`history[].content` 视为用户原文,**禁止打日志**(走 redact)。
 
 ---
-
