@@ -15,6 +15,7 @@ import {
   AccentColor,
   AlbumLayoutPlan,
   Page,
+  TakenAtDateTime,
   V3Chapter,
   V3LayoutTree,
 } from './layout';
@@ -84,7 +85,7 @@ const V3AnalyzePhoto = z
     width: z.number().int().positive(),
     height: z.number().int().positive(),
     exif: z
-      .object({ takenAt: z.string().datetime().nullable().optional() })
+      .object({ takenAt: TakenAtDateTime.nullable().optional() })
       .strict() // ★ 拒 lat/lng/place — §3 隐私执行点
       .optional(),
   })

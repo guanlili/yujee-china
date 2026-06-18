@@ -70,6 +70,15 @@ test('V3ChapterPhoto parses the analysis-tree photo shape', () => {
     V3ChapterPhoto.safeParse({ ...baseChapterPhoto, takenAt: null }).success,
     true,
   );
+  // Browser EXIF is local wall time with no zone.
+  assert.equal(
+    V3ChapterPhoto.safeParse({ ...baseChapterPhoto, takenAt: '2024-03-15T08:30:00' }).success,
+    true,
+  );
+  assert.equal(
+    V3ChapterPhoto.safeParse({ ...baseChapterPhoto, takenAt: '2024-03-15T08:30:00+08:00' }).success,
+    false,
+  );
 });
 
 test('V3ChapterPhoto rejects any location/GPS field (§3 privacy red line)', () => {
@@ -131,6 +140,26 @@ test('AlbumLayoutPlan follows the TS render contract without the legacy 16-page 
       })),
     }).success,
     true,
+  );
+});
+
+test('AlbumLayoutPlan photos are the strict external render shape', () => {
+  assert.equal(
+    AlbumLayoutPlan.safeParse({
+      magazine: { title: 'My Book', style: 'warm-film', language: 'en' },
+      photos: [
+        {
+          photoId: 'p1',
+          description: 'x',
+          tags: [],
+          quality: 'hero',
+          orientation: 'landscape',
+          peopleCount: '1',
+        },
+      ],
+      pages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }],
+    }).success,
+    false,
   );
 });
 
@@ -213,6 +242,20 @@ test('V3AnalyzeRequest exif is strict — only takenAt, rejects lat/lng (§3 pri
       photos: [{ ...base.photos[0], exif: { takenAt: '2024-03-15T08:30:00.000Z' } }],
     }).success,
     true,
+  );
+  assert.equal(
+    V3AnalyzeRequest.safeParse({
+      ...base,
+      photos: [{ ...base.photos[0], exif: { takenAt: '2024-03-15T08:30:00' } }],
+    }).success,
+    true,
+  );
+  assert.equal(
+    V3AnalyzeRequest.safeParse({
+      ...base,
+      photos: [{ ...base.photos[0], exif: { takenAt: '2024-03-15T08:30:00+08:00' } }],
+    }).success,
+    false,
   );
   // lat/lng rejected by strict exif
   assert.equal(

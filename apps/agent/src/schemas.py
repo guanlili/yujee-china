@@ -80,13 +80,9 @@ class Focal(_Strict):
     y: float = Field(ge=0, le=1)
 
 
-class PhotoAnalysis(_Strict):
-    """Vision output. Carries the 5 design.md §2.6 extension fields used as
-    composing hints. Web-side zod (the canonical @yujee/contracts PhotoAnalysis)
-    keeps only photoId/description/tags/quality/orientation and drops the rest,
-    so on the chat-edit round-trip the Web sends back a layout without these
-    fields. They must therefore be optional on input — vision still populates
-    them on output; the contract never requires them."""
+class LayoutPhotoAnalysis(_Strict):
+    """External flat layout photo shape. Mirrors @yujee/contracts PhotoAnalysis:
+    base render fields plus optional focal, no internal composing hints."""
 
     photoId: str = Field(min_length=1)
     description: str
@@ -96,6 +92,13 @@ class PhotoAnalysis(_Strict):
     # #169: subject focal point (0..1, face-first). Base field — survives finalize
     # (mirrors @yujee/contracts PhotoAnalysis.focal). Optional => 0.5/0.5 default.
     focal: Focal | None = None
+
+
+class PhotoAnalysis(LayoutPhotoAnalysis):
+    """Vision output. Extends the external render shape with design.md §2.6
+    composing hints. The hints are internal and must be stripped before photos
+    enter `AlbumLayoutPlan.photos`."""
+
     peopleCount: PeopleCount | None = None
     scene: Scene | None = None
     mood: Mood | None = None
@@ -145,7 +148,7 @@ class Page(_Strict):
 
 class AlbumLayoutPlan(_Strict):
     magazine: Magazine
-    photos: list[PhotoAnalysis]
+    photos: list[LayoutPhotoAnalysis]
     pages: list[Page] = Field(min_length=1)
 
 
@@ -169,22 +172,23 @@ class JobError(_Strict):
 # =============================================================================
 
 
-_ZOD_DATETIME_RE = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z$"
+_TAKEN_AT_DATETIME_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z?$"
 )
 
 
 def _validate_iso_datetime(value: str | None) -> str | None:
-    """Mirror zod `z.string().datetime()`: accept UTC ISO-8601 strings ending in
-    `Z` (the JSON stays a string — we never coerce to a datetime object, matching
-    the TS contract which keeps `takenAt` as a string). `None` passes through.
+    """Mirror `TakenAtDateTime`: accept browser EXIF local ISO datetimes plus UTC
+    `Z` strings. The JSON stays a string — we never coerce to a datetime object,
+    matching the TS contract which keeps `takenAt` as a string. `None` passes
+    through.
 
     Rejects bare dates / non-ISO junk so a malformed `takenAt` can't slip past
     the Python side while the TS side rejects it (cross-language parity)."""
     if value is None:
         return value
-    if not _ZOD_DATETIME_RE.fullmatch(value):
-        raise ValueError(f"takenAt must match zod datetime UTC format: {value!r}")
+    if not _TAKEN_AT_DATETIME_RE.fullmatch(value):
+        raise ValueError(f"takenAt must match the EXIF/UTC datetime contract: {value!r}")
     candidate = value[:-1] + "+00:00" if value.endswith("Z") else value
     try:
         datetime.fromisoformat(candidate)

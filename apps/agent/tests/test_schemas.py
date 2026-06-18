@@ -112,6 +112,27 @@ class TestExtraForbid:
                 extra="nope",  # type: ignore[call-arg]
             )
 
+    def test_album_layout_photos_reject_internal_extensions_from_json(self):
+        with pytest.raises(ValidationError):
+            AlbumLayoutPlan.model_validate(
+                {
+                    "magazine": {"title": "H", "style": "warm-film", "language": "en"},
+                    "photos": [
+                        {
+                            "photoId": "p1",
+                            "description": "x",
+                            "tags": [],
+                            "quality": "hero",
+                            "orientation": "landscape",
+                            "peopleCount": "1",
+                        }
+                    ],
+                    "pages": [
+                        {"pageIndex": 0, "templateId": "mag-13", "images": {}, "texts": {}}
+                    ],
+                }
+            )
+
 
 class TestPagesBound:
     def test_pages_match_ts_contract_without_legacy_16_cap(self):
@@ -125,6 +146,9 @@ class TestPagesBound:
         )
 
         assert len(layout.pages) == 17
+        assert {"peopleCount", "scene", "mood", "timeOfDay", "location"}.isdisjoint(
+            layout.model_dump()["photos"][0]
+        )
 
 
 class TestVisionGroups:
@@ -211,6 +235,7 @@ class TestV3ChapterTreePrivacy:
     def test_chapter_photo_shape_and_null_takenat(self):
         V3ChapterPhoto.model_validate(self.base_photo)
         V3ChapterPhoto.model_validate({**self.base_photo, "takenAt": None})
+        V3ChapterPhoto.model_validate({**self.base_photo, "takenAt": "2024-03-15T08:30:00"})
 
     @pytest.mark.parametrize(
         "leak", ["location", "place", "lat", "lng", "gps", "coordinates"]
@@ -222,8 +247,6 @@ class TestV3ChapterTreePrivacy:
     def test_chapter_photo_rejects_bad_takenat(self):
         with pytest.raises(ValidationError):
             V3ChapterPhoto.model_validate({**self.base_photo, "takenAt": "not-a-date"})
-        with pytest.raises(ValidationError):
-            V3ChapterPhoto.model_validate({**self.base_photo, "takenAt": "2024-03-15T08:30:00"})
         with pytest.raises(ValidationError):
             V3ChapterPhoto.model_validate({**self.base_photo, "takenAt": "2024-03-15T08:30:00+08:00"})
 
@@ -335,6 +358,14 @@ class TestV3AnalyzePrivacy:
             "photos": [{**self.base["photos"][0], "exif": {"takenAt": "2024-03-15T08:30:00.000Z"}}],
         }
         V3AnalyzeRequest.model_validate(with_exif)
+        V3AnalyzeRequest.model_validate(
+            {
+                **self.base,
+                "photos": [
+                    {**self.base["photos"][0], "exif": {"takenAt": "2024-03-15T08:30:00"}}
+                ],
+            }
+        )
 
     def test_rejects_zod_disallowed_type_coercion(self):
         bad = {

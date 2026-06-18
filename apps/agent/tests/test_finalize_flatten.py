@@ -334,11 +334,13 @@ def test_extension_fields_are_stripped_from_output_photos():
     layout = finalize.finalize(_draft(photos, [_chapter("c1", photos)]))
 
     for photo in layout.photos:
-        assert photo.scene is None
-        assert photo.mood is None
-        assert photo.peopleCount is None
-        assert photo.timeOfDay is None
-        assert photo.location is None
+        assert {
+            "scene",
+            "mood",
+            "peopleCount",
+            "timeOfDay",
+            "location",
+        }.isdisjoint(photo.model_dump())
 
 
 def test_unused_pool_photos_excluded_from_layout_photos():

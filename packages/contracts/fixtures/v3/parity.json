@@ -59,6 +59,46 @@
       }
     },
     {
+      "name": "V3AnalyzeRequest exif local takenAt accepted",
+      "schema": "V3AnalyzeRequest",
+      "expectValid": true,
+      "payload": {
+        "requestId": "r1",
+        "albumId": "a1",
+        "callbackUrl": "https://example.com/cb",
+        "language": "en",
+        "photos": [
+          {
+            "photoId": "p1",
+            "base64": "data:image/jpeg;base64,xx",
+            "width": 800,
+            "height": 600,
+            "exif": { "takenAt": "2024-03-15T08:30:00" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "V3AnalyzeRequest exif rejects offset takenAt",
+      "schema": "V3AnalyzeRequest",
+      "expectValid": false,
+      "payload": {
+        "requestId": "r1",
+        "albumId": "a1",
+        "callbackUrl": "https://example.com/cb",
+        "language": "en",
+        "photos": [
+          {
+            "photoId": "p1",
+            "base64": "data:image/jpeg;base64,xx",
+            "width": 800,
+            "height": 600,
+            "exif": { "takenAt": "2024-03-15T08:30:00+08:00" }
+          }
+        ]
+      }
+    },
+    {
       "name": "V3AnalyzeRequest rejects null exif optional field",
       "schema": "V3AnalyzeRequest",
       "expectValid": false,
@@ -151,9 +191,9 @@
       }
     },
     {
-      "name": "V3ChapterPhoto rejects local datetime without Z",
+      "name": "V3ChapterPhoto accepts local datetime without Z",
       "schema": "V3ChapterPhoto",
-      "expectValid": false,
+      "expectValid": true,
       "payload": {
         "photoId": "p1",
         "sceneDescription": "x",
@@ -502,6 +542,28 @@
         "layout": {
           "magazine": { "title": "My Book", "style": "warm-film", "language": "en" },
           "photos": [],
+          "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+        },
+        "usage": { "durationMs": 1, "models": {} }
+      }
+    },
+    {
+      "name": "V3FinalizeResponse rejects internal photo analysis extension fields",
+      "schema": "V3FinalizeResponse",
+      "expectValid": false,
+      "payload": {
+        "layout": {
+          "magazine": { "title": "My Book", "style": "warm-film", "language": "en" },
+          "photos": [
+            {
+              "photoId": "p1",
+              "description": "x",
+              "tags": [],
+              "quality": "hero",
+              "orientation": "landscape",
+              "peopleCount": "1"
+            }
+          ],
           "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
         },
         "usage": { "durationMs": 1, "models": {} }
