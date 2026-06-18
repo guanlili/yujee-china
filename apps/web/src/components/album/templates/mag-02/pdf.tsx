@@ -14,6 +14,17 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
   };
   // 三个并列可编辑槽位 numbers/titles/descriptions;兼容旧的 items 对象数组数据
   const legacy = d.items ?? [];
+  // 真实相册数据里,repeat 文字槽经 adapt-layout 会被包成 {body, caption} 对象
+  // (SAMPLE_*/legacy 仍是纯字符串)。两种形状都取成字符串,绝不把对象塞进渲染节点。
+  const slotText = (v: unknown): string | undefined => {
+    if (v == null) return undefined;
+    if (typeof v === 'string') return v;
+    if (typeof v === 'object') {
+      const o = v as { body?: string; caption?: string };
+      return o.body ?? o.caption ?? undefined;
+    }
+    return String(v);
+  };
   // 预览样例:无数据时填充示意目录,避免页面看着空白
   const SAMPLE_NUMBERS = ['01', '02', '03', '04'];
   const SAMPLE_TITLES = ['Beginnings', 'Everyday Light', 'Together', 'Looking Back'];
@@ -74,7 +85,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
                 marginBottom: 6,
               }}
             >
-              {numbers?.[i] || legacy[i]?.n || String(i + 1).padStart(2, '0')}
+              {slotText(numbers?.[i]) || legacy[i]?.n || String(i + 1).padStart(2, '0')}
             </Text>
             <Text
               style={{
@@ -85,7 +96,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
                 textTransform: 'uppercase',
               }}
             >
-              {titles?.[i] || legacy[i]?.title || ''}
+              {slotText(titles?.[i]) || legacy[i]?.title || ''}
             </Text>
             <Text
               style={{
@@ -95,7 +106,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
                 fontSize: 20,
               }}
             >
-              {descriptions?.[i] || legacy[i]?.body || ''}
+              {slotText(descriptions?.[i]) || legacy[i]?.body || ''}
             </Text>
           </View>
         );
