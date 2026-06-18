@@ -102,7 +102,7 @@
 
 失败相册重试(§6.5.3):**复用同一 albumId 重跑**,不新建 album、不孤儿化失败卡。
 
-请求(无 `prompt` —— 复用 album 里存的 prompt;浏览器从 IndexedDB 重传 base64,守不变式 1;`photos` ≥1 张,对齐 CT-1 §6.5.6,1–2 图走纯文字版面):
+请求(无 `prompt` —— 复用 album 里存的 prompt;浏览器从 IndexedDB 重传 base64,守 §3 隐私;`photos` ≥1 张,对齐 CT-1 §6.5.6,1–2 图走纯文字版面):
 ```json
 {
   "requestId": "req_yyy",
@@ -114,7 +114,7 @@
 服务端流程(`generationService.retry`,与 §3.1 `submit` 共用 `dispatch` 尾段):
 1. `requireAuth` + `albumService.findOwned`(归属校验 + 取 `prompt`)
 2. `creditService.precheck`,不足 → `CREDIT_INSUFFICIENT`(前端跳 `/credits` 充值后回来再点重试 —— `/credits` 才是充值入口,非 `/pricing`)
-3. 事务里(守不变式 8):
+3. 事务里(守 §3 积分):
    - `albumService.setRetrying(tx, albumId)` —— 条件转移 `FAILED → AGENT_RUNNING` 并清空 `errorMessage`;非 FAILED(已在跑 / 输掉并发重试)→ `ALBUM_NOT_RETRIABLE`(409),回滚不占 hold
    - `jobService.create` —— **新 requestId 的新 job**(旧 FAILED job 保留;`findLatestByAlbum` 取新的)
    - `creditService.hold` —— **新 hold**(旧 hold 在失败时已 release)
