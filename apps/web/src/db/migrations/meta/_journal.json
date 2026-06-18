@@ -64,6 +64,13 @@
       "when": 1781256261826,
       "tag": "0008_add_cover_thumbnail",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781797108291,
+      "tag": "0009_albums_stage",
+      "breakpoints": true
     }
   ]
 }
