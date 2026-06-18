@@ -27,7 +27,7 @@ from src.schemas import (
     V3LayoutTree,
 )
 from src.services import callback as cb_mod
-from src.services import skeleton_v3
+from src.services import select_template
 from src.services import vision
 
 
@@ -174,10 +174,10 @@ def test_analyze_template_failure_resets_stage(monkeypatch, captured_callbacks):
     after resetting that stage's bar to 0 — a retry never inherits a half-filled
     stage (失败可重试不污染 stage)."""
 
-    def boom(_chapters):
+    async def boom(_chapters):
         raise RuntimeError("engine exploded")
 
-    monkeypatch.setattr(skeleton_v3, "build_skeleton_v3", boom)
+    monkeypatch.setattr(select_template, "select_template_pages", boom)
 
     asyncio.run(v3_album._run_analyze(_req(3)))
 
