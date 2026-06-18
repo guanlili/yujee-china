@@ -23,15 +23,21 @@ from src.schemas import (
     TemplateCategory,
     TemplateDef,
     TemplateTextSlot,
+    V3AcceptedResponse,
+    V3ApplyThemeResponse,
     V3AnalyzeRequest,
     V3ApplyThemeRequest,
     V3Callback,
     V3Chapter,
+    V3ChapterChatRequest,
     V3ChapterChatResponse,
     V3ChapterPhoto,
     V3CoverRequest,
+    V3CoverResponse,
+    V3FinalizeRequest,
     V3FinalizeResponse,
     V3LayoutTree,
+    V3RecommendRequest,
     V3RecommendResponse,
     V3TemplateCandidate,
 )
@@ -215,6 +221,10 @@ class TestV3ChapterTreePrivacy:
     def test_chapter_photo_rejects_bad_takenat(self):
         with pytest.raises(ValidationError):
             V3ChapterPhoto.model_validate({**self.base_photo, "takenAt": "not-a-date"})
+        with pytest.raises(ValidationError):
+            V3ChapterPhoto.model_validate({**self.base_photo, "takenAt": "2024-03-15T08:30:00"})
+        with pytest.raises(ValidationError):
+            V3ChapterPhoto.model_validate({**self.base_photo, "takenAt": "2024-03-15T08:30:00+08:00"})
 
     def test_chapter_null_placeholders_then_filled(self):
         chapter = {
@@ -318,11 +328,25 @@ class TestV3AnalyzePrivacy:
 
     def test_minimal_and_takenat_accepted(self):
         V3AnalyzeRequest.model_validate(self.base)
+        V3AnalyzeRequest.model_validate({**self.base, "callbackUrl": "mailto:ops@example.com"})
         with_exif = {
             **self.base,
             "photos": [{**self.base["photos"][0], "exif": {"takenAt": "2024-03-15T08:30:00.000Z"}}],
         }
         V3AnalyzeRequest.model_validate(with_exif)
+
+    def test_rejects_zod_disallowed_type_coercion(self):
+        bad = {
+            **self.base,
+            "photos": [
+                {
+                    **self.base["photos"][0],
+                    "width": "800",
+                }
+            ],
+        }
+        with pytest.raises(ValidationError):
+            V3AnalyzeRequest.model_validate(bad)
 
     @pytest.mark.parametrize(
         "exif_leak",
@@ -420,14 +444,20 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PARITY_FIXTURE = _REPO_ROOT / "packages" / "contracts" / "fixtures" / "v3" / "parity.json"
 
 _PY_SCHEMAS = {
+    "V3AcceptedResponse": V3AcceptedResponse,
     "V3AnalyzeRequest": V3AnalyzeRequest,
+    "V3ApplyThemeResponse": V3ApplyThemeResponse,
     "V3ApplyThemeRequest": V3ApplyThemeRequest,
     "V3Chapter": V3Chapter,
+    "V3ChapterChatRequest": V3ChapterChatRequest,
     "V3ChapterChatResponse": V3ChapterChatResponse,
     "V3ChapterPhoto": V3ChapterPhoto,
     "V3CoverRequest": V3CoverRequest,
+    "V3CoverResponse": V3CoverResponse,
+    "V3FinalizeRequest": V3FinalizeRequest,
     "V3FinalizeResponse": V3FinalizeResponse,
     "V3LayoutTree": V3LayoutTree,
+    "V3RecommendRequest": V3RecommendRequest,
     "V3RecommendResponse": V3RecommendResponse,
     "V3TemplateCandidate": V3TemplateCandidate,
     "TemplateDef": TemplateDef,

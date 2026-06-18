@@ -17,26 +17,38 @@ import type { ZodTypeAny } from 'zod';
 import { V3Chapter, V3ChapterPhoto, V3LayoutTree } from '../src/layout';
 import { TemplateDef, TemplateTextSlot } from '../src/templates';
 import {
+  V3AcceptedResponse,
   V3AnalyzeRequest,
+  V3ApplyThemeResponse,
   V3ApplyThemeRequest,
   V3Callback,
+  V3ChapterChatRequest,
   V3ChapterChatResponse,
+  V3CoverResponse,
   V3CoverRequest,
+  V3FinalizeRequest,
   V3FinalizeResponse,
+  V3RecommendRequest,
   V3RecommendResponse,
   V3TemplateCandidate,
 } from '../src/v3';
 
 const SCHEMAS: Record<string, ZodTypeAny> = {
+  V3AcceptedResponse,
   V3AnalyzeRequest,
+  V3ApplyThemeResponse,
   V3ApplyThemeRequest,
   V3Callback,
   V3Chapter,
+  V3ChapterChatRequest,
   V3ChapterChatResponse,
   V3ChapterPhoto,
+  V3CoverResponse,
   V3CoverRequest,
+  V3FinalizeRequest,
   V3FinalizeResponse,
   V3LayoutTree,
+  V3RecommendRequest,
   V3RecommendResponse,
   V3TemplateCandidate,
   TemplateDef,

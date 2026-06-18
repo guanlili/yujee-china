@@ -12,6 +12,7 @@ called out in design.md §14, guarded by the cross-language fixture parity tests
 in tests/test_schemas.py.
 """
 
+import re
 from datetime import datetime
 from typing import Annotated, Literal, Union
 
@@ -19,6 +20,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    AnyUrl,
     HttpUrl,
     field_validator,
 )
@@ -123,12 +125,16 @@ class ImagePos(_Strict):
     The schema guards the full clamp range so a hand-rolled tree can't ship an
     out-of-range value through finalize."""
 
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     x: float = Field(ge=0, le=100)
     y: float = Field(ge=0, le=100)
     scale: float = Field(ge=1, le=2)
 
 
 class Page(_Strict):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     pageIndex: int = Field(ge=0)
     templateId: str = Field(min_length=1)
     images: dict[str, str]
@@ -163,15 +169,22 @@ class JobError(_Strict):
 # =============================================================================
 
 
+_ZOD_DATETIME_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z$"
+)
+
+
 def _validate_iso_datetime(value: str | None) -> str | None:
-    """Mirror zod `z.string().datetime()`: accept ISO-8601 strings (the JSON
-    stays a string — we never coerce to a datetime object, matching the TS
-    contract which keeps `takenAt` as a string). `None` passes through.
+    """Mirror zod `z.string().datetime()`: accept UTC ISO-8601 strings ending in
+    `Z` (the JSON stays a string — we never coerce to a datetime object, matching
+    the TS contract which keeps `takenAt` as a string). `None` passes through.
 
     Rejects bare dates / non-ISO junk so a malformed `takenAt` can't slip past
     the Python side while the TS side rejects it (cross-language parity)."""
     if value is None:
         return value
+    if not _ZOD_DATETIME_RE.fullmatch(value):
+        raise ValueError(f"takenAt must match zod datetime UTC format: {value!r}")
     candidate = value[:-1] + "+00:00" if value.endswith("Z") else value
     try:
         datetime.fromisoformat(candidate)
@@ -181,7 +194,7 @@ def _validate_iso_datetime(value: str | None) -> str | None:
 
 
 class _V3Strict(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
 
 # ---------- enums.ts ----------------------------------------------------------
@@ -254,35 +267,35 @@ class TemplateImageSlot(_V3Strict):
     @deprecated `orientation`/`quality` — V3 作废(§9);过渡期保留为可选容忍 legacy JSON."""
 
     id: str = Field(min_length=1)
-    orientation: list[PhotoOrientation] | None = Field(default=None, min_length=1)
-    quality: list[PhotoQuality] | None = Field(default=None, min_length=1)
+    orientation: list[PhotoOrientation] = Field(default=None, min_length=1)
+    quality: list[PhotoQuality] = Field(default=None, min_length=1)
 
 
 class TemplateTextSlot(_V3Strict):
     id: str = Field(min_length=1)
     role: TemplateTextRole
-    maxChars: int | None = Field(default=None, gt=0)
+    maxChars: int = Field(default=None, gt=0)
     lang: TemplateTextLang
     # V3:逐槽文案指引,透传给写作 LM(§4.2(4))。
-    hint: str | None = Field(default=None, min_length=1, max_length=200)
+    hint: str = Field(default=None, min_length=1, max_length=200)
     # V3:渲染变量落点(§9)。standalone 装饰槽被 apply-theme 一键刷。
-    variableDecor: bool | None = None
+    variableDecor: bool = None
     # @deprecated `repeat` — V3 用 `items` 组承载重复内容(§9)。过渡期保留为可选。
-    repeat: bool | None = None
+    repeat: bool = None
 
 
 class TemplateSvgSlot(_V3Strict):
     """V3:装饰矢量图槽(§9)。`variableDecor:true` 的 svg 被 apply-theme 一键刷。"""
 
     id: str = Field(min_length=1)
-    variableDecor: bool | None = None
+    variableDecor: bool = None
 
 
 class TemplateItems(_V3Strict):
     """V3:唯一「重复组」(§9),替代旧 `repeat:true` + bracket-path 键。"""
 
-    images: list[TemplateImageSlot] | None = None
-    texts: list[TemplateTextSlot] | None = None
+    images: list[TemplateImageSlot] = None
+    texts: list[TemplateTextSlot] = None
 
 
 class TemplatePairing(_V3Strict):
@@ -297,22 +310,22 @@ class TemplateDef(_V3Strict):
     """模板定义。`category`/`slot`+`scene` 双轨容忍:至少一条分类必须声明
     (mirrors TS superRefine)。WP0.2 迁移后 category 转必填、删 deprecated。"""
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, strict=True)
 
     id: str = Field(min_length=1)
     # V3:分类(§9)。过渡期可选,WP0.2 迁移后改必填。
-    category: TemplateCategory | None = None
+    category: TemplateCategory = None
     # @deprecated slot/scene — 见上,WP0.2 删除。过渡期保留容忍 legacy JSON。
-    slot: TemplateSlotKind | None = None
-    scene: TemplateScene | None = None
+    slot: TemplateSlotKind = None
+    scene: TemplateScene = None
     pairing: TemplatePairing | None = None
-    styles: list[str] | None = None
+    styles: list[str] = None
     images: list[TemplateImageSlot]
     # V3:装饰矢量图槽(可选,§9)。
-    svgs: list[TemplateSvgSlot] | None = None
+    svgs: list[TemplateSvgSlot] = None
     texts: list[TemplateTextSlot]
     # V3:唯一重复组(可选,§9)。
-    items: TemplateItems | None = None
+    items: TemplateItems = None
 
     @field_validator("styles")
     @classmethod
@@ -338,8 +351,8 @@ V3JobStage = Literal["describe", "group", "template", "preview"]
 
 
 class V3Models(_V3Strict):
-    vision: str | None = None
-    planning: str | None = None
+    vision: str = None
+    planning: str = None
 
 
 class V3Usage(_V3Strict):
@@ -394,19 +407,19 @@ class V3AnalyzePhoto(_V3Strict):
     base64: str = Field(min_length=1)  # data:image/(jpeg|png);base64,… ≤800KB
     width: int = Field(gt=0)
     height: int = Field(gt=0)
-    exif: V3AnalyzeExif | None = None
+    exif: V3AnalyzeExif = None
 
 
 class V3AnalyzeMeta(_V3Strict):
-    promptHint: str | None = Field(default=None, max_length=500)
+    promptHint: str = Field(default=None, max_length=500)
 
 
 class V3AnalyzeRequest(_V3Strict):
     requestId: str = Field(min_length=1)
     albumId: str = Field(min_length=1)
-    callbackUrl: HttpUrl
+    callbackUrl: AnyUrl
     language: V3Language
-    meta: V3AnalyzeMeta | None = None
+    meta: V3AnalyzeMeta = None
     photos: list[V3AnalyzePhoto] = Field(min_length=1, max_length=30)
 
 
@@ -420,7 +433,7 @@ class V3ChapterChatRequest(_V3Strict):
     pages: list[Page]
     history: list[V3ChatTurn] = Field(max_length=20)
     userMessage: str = Field(max_length=500)
-    focusedPageIndex: int | None = Field(default=None, ge=0)
+    focusedPageIndex: int = Field(default=None, ge=0)
 
 
 V3ChapterChatKind = Literal["talk", "write", "edit"]
@@ -430,20 +443,20 @@ class V3LayoutPatchEntry(_V3Strict):
     """改页的版面补丁(§4.2(3))。templateId/images/texts 局部更新。"""
 
     pageIndex: int = Field(ge=0)
-    templateId: str | None = Field(default=None, min_length=1)
-    images: dict[str, str] | None = None
-    texts: dict[str, str] | None = None
+    templateId: str = Field(default=None, min_length=1)
+    images: dict[str, str] = None
+    texts: dict[str, str] = None
 
 
 class V3ChapterChatResponse(_V3Strict):
     kind: V3ChapterChatKind
     assistantReply: str = Field(min_length=1, max_length=500)
     # 仅 kind=='write':一次性写满本章全部页文案(§4.2(2))。
-    pagesTexts: list[V3PageTextsPatch] | None = None
+    pagesTexts: list[V3PageTextsPatch] = None
     # 仅 kind=='edit' 且涉版面:确定性引擎执行后的整页补丁(§4.2(3))。
-    layoutPatch: list[V3LayoutPatchEntry] | None = None
+    layoutPatch: list[V3LayoutPatchEntry] = None
     # 本章标题候选(≤4),供前端展示挑选;不回灌树(§3 数据归属)。
-    nameOptions: list[str] | None = Field(default=None, max_length=4)
+    nameOptions: list[str] = Field(default=None, max_length=4)
     usage: V3Usage
 
     @field_validator("nameOptions")
@@ -469,8 +482,8 @@ class V3RecommendRequest(_V3Strict):
     albumId: str = Field(min_length=1)
     language: V3Language
     chapters: list[V3ChapterOverview] = Field(min_length=1)
-    analysisSummary: str | None = Field(default=None, max_length=1000)
-    userMessage: str | None = Field(default=None, max_length=500)
+    analysisSummary: str = Field(default=None, max_length=1000)
+    userMessage: str = Field(default=None, max_length=500)
 
 
 class V3ThemeOption(_V3Strict):
@@ -478,7 +491,7 @@ class V3ThemeOption(_V3Strict):
 
     subject: str = Field(min_length=1)
     label: str = Field(min_length=1)
-    tone: str | None = None
+    tone: str = None
 
 
 class V3ChapterColorRecommendation(_V3Strict):
@@ -513,7 +526,7 @@ class V3ApplyThemeRequest(_V3Strict):
 
 class V3ApplyThemeResponse(_V3Strict):
     layoutPatch: list[V3LayoutPatchEntry] = Field(min_length=1)
-    assistantReply: str | None = Field(default=None, max_length=500)
+    assistantReply: str = Field(default=None, max_length=500)
     usage: V3Usage
 
 
@@ -531,7 +544,7 @@ class V3CoverRequest(_V3Strict):
 
 class V3CoverResponse(_V3Strict):
     layoutPatch: list[V3LayoutPatchEntry]  # 跳过时为空数组(§4.4「跳过=空」)。
-    assistantReply: str | None = Field(default=None, max_length=500)
+    assistantReply: str = Field(default=None, max_length=500)
     usage: V3Usage
 
 
@@ -565,7 +578,7 @@ class V3ProgressEvent(_V3Strict):
     event: Literal["progress"]
     stage: V3JobStage
     progress: int = Field(ge=0, le=100)
-    message: str | None = None
+    message: str = None
 
 
 class V3AnalyzeCompleted(_V3Strict):
@@ -583,8 +596,8 @@ class V3FailedEvent(_V3Strict):
     jobKind: V3JobKind
     event: Literal["failed"]
     error: V3CallbackError
-    stage: V3JobStage | None = None
-    progress: int | None = Field(default=None, ge=0, le=100)
+    stage: V3JobStage = None
+    progress: int = Field(default=None, ge=0, le=100)
 
 
 V3Callback = Annotated[
