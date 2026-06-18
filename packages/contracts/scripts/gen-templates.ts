@@ -17,7 +17,7 @@ const PhotoQuality = z.enum(['hero', 'detail', 'fill']);
 const TemplateImageSlot = z
   .object({
     id: z.string().min(1),
-    // @deprecated orientation/quality — V3 作废,WP0.2 删(见 src/templates.ts)。
+    // @deprecated orientation/quality — V3 作废;WP0.2 bridge 保留到 WP0.4 引擎迁移后删。
     orientation: z.array(PhotoOrientation).nonempty().optional(),
     quality: z.array(PhotoQuality).nonempty().optional(),
   })
@@ -34,7 +34,7 @@ const TemplateTextSlot = z
     lang: TemplateTextLang,
     hint: z.string().min(1).max(200).optional(),
     variableDecor: z.boolean().optional(),
-    // @deprecated repeat — V3 用 items 组,WP0.2 删。
+    // @deprecated repeat — V3 用 items 组;WP0.2 bridge 保留到 WP0.4 引擎迁移后删。
     repeat: z.boolean().optional(),
   })
   .strict();
@@ -54,7 +54,7 @@ const TemplateItems = z
   .strict();
 
 const TemplateCategory = z.enum(['cover', 'interior', 'toc', 'ending']);
-// @deprecated slot/scene — V3 用 category 替代,WP0.2 删。
+// @deprecated slot/scene — V3 用 category 替代;WP0.2 bridge 保留到 WP0.4 引擎迁移后删。
 const TemplateSlotKind = z.enum(['cover', 'interior', 'ending']);
 const TemplateScene = z.enum([
   'opening',

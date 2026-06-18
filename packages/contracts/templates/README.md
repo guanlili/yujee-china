@@ -60,5 +60,6 @@ These templates currently carry the V3 fields **alongside** their legacy fields
 deterministic template-picking engine — a shared TS↔Python contract locked by the
 golden fixtures in `packages/contracts/fixtures/skeleton/` — still reads the legacy
 fields, so they are kept until that engine is rewritten onto `category` / `items`
-(together with the Python loader rewrite, WP0.4). Once both ends switch over, the
-legacy fields are removed.
+(together with the Python consumer rewrite, WP0.4). This is an implementation
+bridge only; `docs/agent/v3-requirements.md` §9 remains the final V3 contract.
+Once both ends switch over, the legacy fields are removed.

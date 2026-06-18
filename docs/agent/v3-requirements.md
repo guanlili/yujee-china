@@ -342,6 +342,11 @@ Browser 出 PDF → 传 R2:
 
 > 模板模块**已统一为下述现行格式**(`packages/contracts/templates/*.json`,单一真相源;TS + Python 双侧 loader 派生)。**模板模块由用户单独维护**,本节只为对齐 Agent 侧消费,不再展开演进。示例:`mag-08`。
 
+> 过渡说明(WP0.2 → WP0.4):下述格式是 V3 最终消费契约。WP0.2 代码库为保证现有
+> skeleton 引擎、Python 消费路径和 golden fixtures 不中断,模板 JSON 会临时同时携带
+> legacy `slot`/`scene`、图片槽 `quality`/`orientation` 和文字槽 `repeat`;TS/Python
+> loader 会校验新旧两层字段。WP0.4 改写引擎后,这些 legacy 字段再删除。
+
 ```jsonc
 {
   "id": "mag-08",

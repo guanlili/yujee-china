@@ -253,9 +253,9 @@ class V3LayoutTree(_V3Strict):
 # ---------- templates.ts ------------------------------------------------------
 # V3 模板契约:category | pairing | images | svgs | texts | items | variableDecor
 #   | hint。**图片槽 quality/orientation 概念整体作废**。
-# 但 packages/contracts/templates/*.json 仍是 legacy 形状 → deprecated 字段
-#   (slot/scene/quality/orientation/repeat)一律「可选 + 容忍」,与 WP0.1 TS
-#   容忍策略一致,否则 loader 在 WP0.4 起不来。
+# WP0.2 是增量 bridge:packages/contracts/templates/*.json 已补 V3 字段,但仍保留
+# deprecated 字段(slot/scene/quality/orientation/repeat),供现有 skeleton engine
+# 和 golden fixtures 运行。WP0.4 引擎/Python consumer 迁完后再删除。
 
 TemplateTextRole = Literal["title", "body", "explain", "decoration"]
 TemplateTextLang = Literal["user", "en"]
@@ -268,7 +268,7 @@ TemplateScene = Literal[
 
 class TemplateImageSlot(_V3Strict):
     """Addressable image position. `id` may be a bracket path (`cells[0].image`).
-    @deprecated `orientation`/`quality` — V3 作废(§9);过渡期保留为可选容忍 legacy JSON."""
+    @deprecated `orientation`/`quality` — V3 作废(§9);WP0.2 bridge 保留到 WP0.4."""
 
     id: str = Field(min_length=1)
     orientation: list[PhotoOrientation] = Field(default=None, min_length=1)
@@ -284,7 +284,7 @@ class TemplateTextSlot(_V3Strict):
     hint: str = Field(default=None, min_length=1, max_length=200)
     # V3:渲染变量落点(§9)。standalone 装饰槽被 apply-theme 一键刷。
     variableDecor: bool = None
-    # @deprecated `repeat` — V3 用 `items` 组承载重复内容(§9)。过渡期保留为可选。
+    # @deprecated `repeat` — V3 用 `items` 组承载重复内容(§9)。WP0.4 后删除。
     repeat: bool = None
 
 
@@ -312,14 +312,14 @@ class TemplatePairing(_V3Strict):
 
 class TemplateDef(_V3Strict):
     """模板定义。`category`/`slot`+`scene` 双轨容忍:至少一条分类必须声明
-    (mirrors TS superRefine)。WP0.2 迁移后 category 转必填、删 deprecated。"""
+    (mirrors TS superRefine)。WP0.2 bridge 保留 deprecated 到 WP0.4。"""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True, strict=True)
 
     id: str = Field(min_length=1)
-    # V3:分类(§9)。过渡期可选,WP0.2 迁移后改必填。
+    # V3:分类(§9)。当前 JSON 应携带;可选只为兼容完整 legacy fixtures。
     category: TemplateCategory = None
-    # @deprecated slot/scene — 见上,WP0.2 删除。过渡期保留容忍 legacy JSON。
+    # @deprecated slot/scene — 见上,WP0.4 引擎迁移后删除。过渡期保留容忍 legacy JSON。
     slot: TemplateSlotKind = None
     scene: TemplateScene = None
     pairing: TemplatePairing | None = None
