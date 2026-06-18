@@ -88,21 +88,32 @@ POOLS: dict[Category, dict[int, list[str]]] = _build_pools()
 def candidate_ids(category: Category, image_count: int) -> list[str]:
     """Templates in `category` whose image-slot count is exactly `image_count`.
 
-    These are the *legal candidates* select-template (WP1.4) offers the model:
-    same category, exact capacity. Sorted for determinism."""
+    Exact-capacity helper used by tests and callers that need no underfilled
+    slots. `legal_candidates` is the select-template API and includes larger
+    capacities that can still hold N photos. Sorted for determinism."""
     return list(POOLS.get(category, {}).get(image_count, []))
 
 
-def legal_candidates(category: Category, image_count: int) -> list[dict[str, str]]:
+def legal_candidates(category: Category, image_count: int) -> list[dict[str, Any]]:
     """Legal candidate descriptors for select-template (WP1.4 / V3TemplateCandidate).
 
-    Each entry is ``{"templateId": ..., "category": ...}`` — exactly the legal
-    set the vision model may choose from (category match + capacity holds N).
+    Each entry is shaped like V3TemplateCandidate:
+    ``{"templateId": ..., "category": ..., "imageSlotCount": ...}``.
+    The legal set is every template in the target category whose image capacity
+    can hold N photos. Exact-capacity templates appear first, followed by larger
+    capacities in ascending order; ids are stable-sorted inside each bucket.
     """
-    return [
-        {"templateId": template_id, "category": category}
-        for template_id in candidate_ids(category, image_count)
-    ]
+    out: list[dict[str, Any]] = []
+    for capacity in _fallback_capacities(category, image_count):
+        for template_id in POOLS.get(category, {}).get(capacity, []):
+            out.append(
+                {
+                    "templateId": template_id,
+                    "category": category,
+                    "imageSlotCount": capacity,
+                }
+            )
+    return out
 
 
 def _fallback_capacities(category: Category, image_count: int) -> list[int]:

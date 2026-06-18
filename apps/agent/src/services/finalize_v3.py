@@ -181,8 +181,10 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
     Enforced:
       * 1..48 pages, sequential pageIndex.
       * Every template id is known.
-      * Every image/text slot key belongs to its template (base slot for
-        bracket-path repeat keys); every declared image slot is filled.
+      * Every image/text slot key belongs to its template. V3 allows larger
+        templates to be underfilled when a legal candidate only needs capacity
+        >= N, so only present image keys are validated.
+      * Bracket-path text keys are accepted only for declared repeat bases.
       * Every referenced photoId exists in photos[]; no photo twice on one page;
         no photo reused more than twice across the album; no unused photo.
     """
@@ -215,16 +217,17 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
                     f"template {page.templateId}"
                 )
         for slot in page.texts:
-            if _base_slot(slot) not in text_by_id:
+            base = _base_slot(slot)
+            text_slot = text_by_id.get(base)
+            if text_slot is None:
                 return (
                     f"page {page.pageIndex}: text slot '{slot}' not in "
                     f"template {page.templateId}"
                 )
-        for slot in image_by_id:
-            if slot not in page.images:
+            if "[" in slot and not text_slot.get("repeat"):
                 return (
-                    f"page {page.pageIndex}: missing image slot '{slot}' in "
-                    f"template {page.templateId}"
+                    f"page {page.pageIndex}: text slot '{slot}' is not a repeat "
+                    f"slot in template {page.templateId}"
                 )
 
         seen_on_page: set[str] = set()

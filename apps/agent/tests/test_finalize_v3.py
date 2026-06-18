@@ -127,17 +127,14 @@ def test_validate_rejects_unknown_template():
     assert "not in TemplateRegistry" in (fv3.validate_v3(bad) or "")
 
 
-def test_validate_rejects_missing_image_slot():
-    photos = [_photo(0), _photo(1)]
-    # mag-07 holds 2; drop one slot so a declared slot is unfilled.
-    page = Page(**sk.build_page_v3("interior", ["p0", "p1"], template_id="mag-07"))
+def test_validate_accepts_underfilled_larger_template():
+    photos = [_photo(0), _photo(1), _photo(2)]
+    # mag-10 has 4 image slots. V3 legal candidates may have capacity >= N, so a
+    # 3-photo page may leave the fourth slot empty; the renderer simply has no
+    # content for that declared slot.
+    page = Page(**sk.build_page_v3("interior", ["p0", "p1", "p2"], template_id="mag-10"))
     layout = fv3.finalize_v3(_request([_chapter("c1", photos)], [page]))
-    short = dict(layout.pages[0].images)
-    short.pop(next(iter(short)))
-    broken = layout.model_copy(
-        update={"pages": [layout.pages[0].model_copy(update={"images": short})]}
-    )
-    assert "missing image slot" in (fv3.validate_v3(broken) or "")
+    assert fv3.validate_v3(layout) is None
 
 
 def test_validate_accepts_repeat_group_text_slot_keys():
@@ -154,6 +151,15 @@ def test_validate_rejects_unknown_text_slot():
     photos = [_photo(0)]
     page = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-03"))
     page = page.model_copy(update={"texts": {"nonexistent": "x"}})
+    with pytest.raises(fv3.FinalizeV3Error):
+        fv3.finalize_v3(_request([_chapter("c1", photos)], [page]))
+
+
+def test_validate_rejects_bracket_key_for_plain_text_slot():
+    photos = [_photo(0)]
+    page = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-03"))
+    # mag-03 declares a plain `location` text slot, not an items/repeat base.
+    page = page.model_copy(update={"texts": {"location[0]": "not a repeat slot"}})
     with pytest.raises(fv3.FinalizeV3Error):
         fv3.finalize_v3(_request([_chapter("c1", photos)], [page]))
 

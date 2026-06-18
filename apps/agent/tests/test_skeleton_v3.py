@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from src import templates
+from src.schemas import V3TemplateCandidate
 from src.services import skeleton_v3 as sk
 
 
@@ -45,10 +46,20 @@ def test_candidate_ids_exact_capacity_and_category():
 
 
 def test_legal_candidates_shape_for_select_template():
-    candidates = sk.legal_candidates("interior", 1)
+    candidates = sk.legal_candidates("interior", 3)
     assert candidates
-    assert all(set(c) == {"templateId", "category"} for c in candidates)
-    assert all(c["category"] == "interior" for c in candidates)
+    parsed = [V3TemplateCandidate(**candidate) for candidate in candidates]
+
+    expected_ids = {
+        template_id
+        for template_id in templates.TEMPLATE_IDS
+        if sk.template_category(templates.TEMPLATES[template_id]) == "interior"
+        and sk.image_capacity(templates.TEMPLATES[template_id]) >= 3
+    }
+    assert {candidate.templateId for candidate in parsed} == expected_ids
+    assert all(candidate.category == "interior" for candidate in parsed)
+    assert all(candidate.imageSlotCount >= 3 for candidate in parsed)
+    assert any(candidate.imageSlotCount > 3 for candidate in parsed)
 
 
 def test_fallback_prefers_exact_capacity():
@@ -138,13 +149,13 @@ def test_partition_empty_photos_is_empty():
     assert sk.partition_photos_v3([]) == []
 
 
-def test_interior_capacities_are_contiguous_so_every_chunk_has_exact_template():
-    # The partitioner chunks by max_capacity and relies on every remainder size in
-    # 1..max having an exact-capacity interior template (else a chunk would pick a
-    # larger template and leave a slot unfilled, failing finalize validation). Guard
-    # the assumption so a future template edit that opens a gap fails loudly here.
-    caps = set(sk.POOLS["interior"].keys())
-    assert caps == set(range(1, sk.max_capacity("interior") + 1))
+def test_partition_photos_does_not_require_contiguous_capacities(monkeypatch):
+    # The fallback can legally use the closest larger template, so capacity gaps
+    # are fine: 7 photos with max capacity 4 become 4 + 3, and the 3-photo chunk
+    # may later pick a 4-slot template.
+    monkeypatch.setattr(sk, "POOLS", {"interior": {2: ["t2"], 4: ["t4"]}})
+    chunks = sk.partition_photos_v3([str(i) for i in range(7)], category="interior")
+    assert [len(chunk) for chunk in chunks] == [4, 3]
 
 
 def test_build_skeleton_skips_empty_chapters_and_reindexes():
