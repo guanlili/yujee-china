@@ -7,6 +7,8 @@ import { compressFile } from '@/lib/photo/compress';
 import { photoStore } from '@/lib/photo/store';
 import {
   CreditInsufficientError,
+  generationPhotosFromCache,
+  type GenerationPhoto,
   PhotosUnavailableError,
   UnauthorizedError,
   photosFromStore,
@@ -21,6 +23,7 @@ type LocalPhoto = {
   previewUrl: string;
   width: number;
   height: number;
+  generationPhoto?: GenerationPhoto;
 };
 
 interface Props {
@@ -68,7 +71,7 @@ export function HeroComposer({
     router.push(loginPath);
   };
 
-  const submitDraft = async (draft: GenerationDraft) => {
+  const submitDraft = async (draft: GenerationDraft, cachedPhotos?: readonly GenerationPhoto[]) => {
     const photoIds = draft.photoIds;
     // No client-side balance pre-check here on purpose: selecting/uploading photos
     // is cheap (compressed, client-side) and is exactly the investment we WANT the
@@ -77,7 +80,7 @@ export function HeroComposer({
     // the AI runs: submitInitV2 → precheck + hold inside the album tx, which throws
     // CREDIT_INSUFFICIENT before the agent is ever called (no wasted AI spend). The
     // catch below routes that to /credits.
-    const builtPhotos = await photosFromStore(photoIds);
+    const builtPhotos = generationPhotosFromCache(photoIds, cachedPhotos) ?? (await photosFromStore(photoIds));
     const trimmed = draft.prompt.trim();
     const { albumId } = await submitInitV2({
       requestId: crypto.randomUUID(),
@@ -153,10 +156,16 @@ export function HeroComposer({
       for (const f of Array.from(files)) {
         if (photos.length + next.length >= 30) break;
         const photoId = crypto.randomUUID();
-        const { width, height } = await compressFile(f, photoId);
+        const generationPhoto = await compressFile(f, photoId);
         await photoStore.put(photoId, f);
         const previewUrl = (await photoStore.getObjectUrl(photoId)) ?? '';
-        next.push({ photoId, previewUrl, width, height });
+        next.push({
+          photoId,
+          previewUrl,
+          width: generationPhoto.width,
+          height: generationPhoto.height,
+          generationPhoto,
+        });
       }
       setPhotos((prev) => [...prev, ...next]);
     } catch (e) {
@@ -170,6 +179,7 @@ export function HeroComposer({
     setPhotos((prev) => prev.filter((p) => p.photoId !== photoId));
 
   const submit = async () => {
+    if (busy) return;
     if (photos.length < 1) {
       setErr(t.errPhotoMin);
       return;
@@ -187,7 +197,7 @@ export function HeroComposer({
         saveDraftAndLogin(draft);
         return;
       }
-      await submitDraft(draft);
+      await submitDraft(draft, photos.map((p) => p.generationPhoto).filter((p): p is GenerationPhoto => !!p));
     } catch (e) {
       if (e instanceof CreditInsufficientError) {
         generationDraft.save(draft);
@@ -262,6 +272,7 @@ export function HeroComposer({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
+                  if (busy) return;
                   void submit();
                 }
               }}

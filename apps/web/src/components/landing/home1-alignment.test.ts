@@ -84,6 +84,8 @@ test('HeroComposer matches Home 1 responsive composer and send button details', 
   assert.match(heroComposer, /btn-glow/, 'send button should use the Home 1 glow wrapper');
   assert.match(heroComposer, /#homepage-composer \.btn-glow/, 'btn-glow CSS should be scoped to the composer');
   assert.match(heroComposer, /btn-glow-disabled/, 'disabled send button should not receive hover glow intensification');
+  assert.match(heroComposer, /const submit = async \(\) => \{\s*if \(busy\) return;/s, 'submit should no-op while photos are still processing');
+  assert.match(heroComposer, /if \(busy\) return;\s*void submit\(\);/s, 'Enter-to-submit should be disabled while photos are still processing');
   assert.match(heroComposer, /linear-gradient\(90deg,\s*var\(--grad-green\),\s*var\(--grad-purple\),\s*var\(--grad-lime\)\)/);
   assert.match(heroComposer, /h-10 w-10/, 'send button should be 40px');
   assert.doesNotMatch(heroComposer, /h-\[42px\]|w-\[42px\]/, 'send button should not keep the old 42px size');

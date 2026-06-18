@@ -9,9 +9,10 @@ import { AppChrome } from '@/components/app/AppChrome';
 import { AlbumCoverPreview, type AlbumCoverPage } from '@/components/album/AlbumCoverPreview';
 import { RetryFailedButton } from '@/components/album/RetryFailedButton';
 import { photoStore } from '@/lib/photo/store';
+import { compressFile } from '@/lib/photo/compress';
 import {
   submitInitV2,
-  photosFromStore,
+  type GenerationPhoto,
   CreditInsufficientError,
   PhotosUnavailableError,
 } from '@/lib/generation/client';
@@ -348,9 +349,11 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
     setErr(null);
     const language: 'zh' | 'en' = locale === 'zh' ? 'zh' : 'en';
     const photoIds: string[] = [];
+    const builtPhotos: GenerationPhoto[] = [];
     try {
       for (const f of Array.from(files).slice(0, 30)) {
         const photoId = crypto.randomUUID();
+        builtPhotos.push(await compressFile(f, photoId));
         await photoStore.put(photoId, f);
         photoIds.push(photoId);
       }
@@ -358,7 +361,6 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
       // investment we want before any paywall. The billing gate is server-side,
       // right before the AI runs — submitInitV2 throws CREDIT_INSUFFICIENT (caught
       // below) before the agent is called.
-      const builtPhotos = await photosFromStore(photoIds);
       const { albumId } = await submitInitV2({
         requestId: crypto.randomUUID(),
         language,

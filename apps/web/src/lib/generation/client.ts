@@ -17,6 +17,21 @@ export type GenerationPhoto = {
   height: number;
 };
 
+export function generationPhotosFromCache(
+  photoIds: readonly string[],
+  cachedPhotos?: readonly GenerationPhoto[] | null,
+): GenerationPhoto[] | null {
+  if (!cachedPhotos || cachedPhotos.length === 0) return null;
+  const byId = new Map(cachedPhotos.map((photo) => [photo.photoId, photo]));
+  const out: GenerationPhoto[] = [];
+  for (const photoId of photoIds) {
+    const photo = byId.get(photoId);
+    if (!photo) return null;
+    out.push(photo);
+  }
+  return out;
+}
+
 // Thrown on a 402 so callers can branch on `instanceof` instead of matching the
 // error code string. Carries nothing else — the create flow already knows the
 // draft it just tried to submit.

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { submitInitV2, UnauthorizedError } from './client';
+import { generationPhotosFromCache, submitInitV2, UnauthorizedError } from './client';
 
 test('submitInitV2 throws UnauthorizedError for unauthorized responses', async () => {
   const originalFetch = globalThis.fetch;
@@ -19,4 +19,19 @@ test('submitInitV2 throws UnauthorizedError for unauthorized responses', async (
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('generationPhotosFromCache returns cached photos in requested order', () => {
+  const cached = [
+    { photoId: 'b', base64: 'data:image/jpeg;base64,b', width: 800, height: 600 },
+    { photoId: 'a', base64: 'data:image/jpeg;base64,a', width: 600, height: 800 },
+  ];
+
+  assert.deepEqual(generationPhotosFromCache(['a', 'b'], cached), [cached[1], cached[0]]);
+});
+
+test('generationPhotosFromCache returns null when any requested photo is missing', () => {
+  const cached = [{ photoId: 'a', base64: 'data:image/jpeg;base64,a', width: 600, height: 800 }];
+
+  assert.equal(generationPhotosFromCache(['a', 'b'], cached), null);
 });
