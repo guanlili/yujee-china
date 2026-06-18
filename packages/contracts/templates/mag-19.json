@@ -2,6 +2,7 @@
   "id": "mag-19",
   "slot": "interior",
   "scene": "scenery",
+  "category": "interior",
   "images": [
     {
       "id": "image",
@@ -18,26 +19,30 @@
     {
       "id": "intro",
       "role": "title",
+      "lang": "user",
       "maxChars": 8,
-      "lang": "user"
+      "variableDecor": true,
+      "hint": "极短引题,如单词 / 2 字"
     },
     {
       "id": "captionLeft",
       "role": "explain",
+      "lang": "user",
       "maxChars": 110,
-      "lang": "user"
+      "hint": "左栏说明"
     },
     {
       "id": "captionRight",
       "role": "explain",
+      "lang": "user",
       "maxChars": 110,
-      "lang": "user"
+      "hint": "右栏说明"
     },
     {
       "id": "folio",
       "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
+      "lang": "en",
+      "maxChars": 2
     }
   ]
 }

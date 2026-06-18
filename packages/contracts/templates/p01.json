@@ -2,6 +2,7 @@
   "id": "p01",
   "slot": "cover",
   "scene": "opening",
+  "category": "cover",
   "images": [
     {
       "id": "image",
@@ -18,32 +19,41 @@
     {
       "id": "title",
       "role": "title",
+      "lang": "user",
       "maxChars": 20,
-      "lang": "user"
+      "variableDecor": true,
+      "hint": "封面主标题,可两行"
     },
     {
       "id": "body",
       "role": "body",
+      "lang": "user",
       "maxChars": 80,
-      "lang": "user"
+      "hint": "封面简介,1-2 句"
     },
     {
       "id": "category",
       "role": "decoration",
+      "lang": "en",
       "maxChars": 20,
-      "lang": "en"
+      "variableDecor": true,
+      "hint": "分类 / 系列标签,如「nº 01 · Portrait」"
     },
     {
       "id": "vol",
       "role": "decoration",
+      "lang": "en",
       "maxChars": 4,
-      "lang": "en"
+      "variableDecor": true,
+      "hint": "卷号,如 01"
     },
     {
       "id": "date",
       "role": "decoration",
+      "lang": "en",
       "maxChars": 10,
-      "lang": "en"
+      "variableDecor": true,
+      "hint": "日期,如 MAY 26"
     }
   ]
 }

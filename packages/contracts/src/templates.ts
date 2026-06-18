@@ -6,22 +6,22 @@ import {
   TEMPLATES as GENERATED_TEMPLATES,
 } from './templates.generated';
 
-// ── V3 迁移说明(WP0.1 ↔ WP0.2 耦合) ──────────────────────────────────────
+// ── V3 迁移说明(WP0.2 过渡态) ─────────────────────────────────────────────
 // V3 模板契约(v3-requirements §9)= `category | pairing | images | svgs | texts
 //   | items | variableDecor | hint`,**图片槽 quality/orientation 概念整体作废**。
-// 但 `packages/contracts/templates/*.json` 仍是 legacy 形状(`slot`+`scene`、
-//   图片槽带 `quality`/`orientation`、重复槽用 `repeat:true`、无 `svgs`/`items`/
-//   `variableDecor`/`hint`),由模板维护方在 WP0.2(#177)收尾迁移。
-// 故此处 schema 对 deprecated 字段一律「可选 + 容忍」:解析时接受、但 V3 逻辑不依赖,
-//   保证 `pnpm --filter contracts test` 与 gen 脚本在 JSON 迁移完成前持续全绿。
-// WP0.2 完成后需最终删除的字段清单见本文件 §DEPRECATED 注释 + issue #176 评论。
+// WP0.2(#177) 是增量迁移:JSON 已补齐 V3 字段,同时保留 legacy `slot`/`scene`,
+//   图片槽 `quality`/`orientation`,以及文字槽 `repeat`,供现有 skeleton 引擎和
+//   golden fixtures 继续运行。WP0.4 改写引擎 / Python 消费路径后,再删除这些
+//   deprecated 字段。
+// 故此处 schema 对新旧字段都做严格校验:解析时接受两层契约,但新增 V3 逻辑不再依赖
+//   legacy 字段。
 
 // Image slot: an addressable image position inside a template. `id` may be a
 // bracket path ("cells[0].image") for repeat/grid layouts.
 //
 // @deprecated `orientation` / `quality` — V3 作废(§9):图片槽不带这两维,排图改由
-//   select-template + 确定性兜底。**WP0.2 模板 JSON 完成迁移后删除这两个字段**。
-//   过渡期保留为可选,容忍 legacy JSON。
+//   select-template + 确定性兜底。WP0.2 只补齐 V3 `{ id }` 语义;这两个字段保留到
+//   WP0.4 引擎迁移完成后删除。
 export const TemplateImageSlot = z
   .object({
     id: z.string().min(1),
@@ -58,7 +58,7 @@ export const TemplateTextSlot = z
     //   被 `apply-theme` 一键刷;普通正文槽不带此标记、不被刷。
     variableDecor: z.boolean().optional(),
     // @deprecated `repeat` — V3 用 `items` 组承载重复内容(§9),不再用 repeat+bracket-path。
-    //   **WP0.2 把 repeat 槽迁进 `items` 后删除此字段**。过渡期保留为可选。
+    //   WP0.2 已补 `items`;`repeat` 保留到 WP0.4 引擎迁移完成后删除。
     repeat: z.boolean().optional(),
   })
   .strict();
@@ -85,7 +85,7 @@ export const TemplateItems = z
 export type TemplateItems = z.infer<typeof TemplateItems>;
 
 // @deprecated V3 用 `category`(TemplateCategory)替代 `slot` + `scene`(§9)。
-//   **WP0.2 给每个模板补 `category`、删 `slot`/`scene` 后删除这两个 enum + 字段**。
+//   WP0.2 已补 `category`;`slot`/`scene` 保留到 WP0.4 引擎迁移完成后删除。
 // Where a template sits on the canvas. cover = head solo page, ending = tail
 // solo page (both outside the spread system), interior = pages that pair.
 export const TemplateSlotKind = z.enum(['cover', 'interior', 'ending']);
@@ -117,10 +117,10 @@ export type TemplatePairing = z.infer<typeof TemplatePairing>;
 export const TemplateDef = z
   .object({
     id: z.string().min(1),
-    // V3:分类(§9),替代旧 slot+scene。过渡期可选——legacy JSON 还没补 category,
-    //   WP0.2 迁移后改为必填(并删下面两个 deprecated 字段)。
+    // V3:分类(§9),替代旧 slot+scene。当前模板 JSON 应携带它;schema 保持可选只为
+    //   兼容带完整 legacy slot+scene 的旧 fixtures / 临时测试数据。
     category: TemplateCategory.optional(),
-    // @deprecated slot/scene — 见上,WP0.2 删除。过渡期保留容忍 legacy JSON。
+    // @deprecated slot/scene — 见上,WP0.4 引擎迁移后删除。过渡期保留容忍 legacy JSON。
     slot: TemplateSlotKind.optional(),
     scene: TemplateScene.optional(),
     pairing: TemplatePairing.nullable().optional(),

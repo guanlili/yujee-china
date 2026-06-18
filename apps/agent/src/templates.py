@@ -4,13 +4,10 @@ The template source of truth lives in packages/contracts/templates/*.json.
 This module keeps the Agent-side public API stable while loading those files
 directly at process startup.
 
-Phase 1 of the schema rebuild: the source JSON moved from dict-keyed
-``imageSlots``/``textSlots`` + ``category`` to array-shaped ``images``/``texts``
-+ ``slot``/``scene``/``pairing``. This module loads the new shape and exposes it
-to the rest of the Agent. ``scene`` now drives chapter template selection
-(see ``skeleton.page_scene``) and ``lang``/role drives writing guidance
-(``writing_guides``). ``pairing`` is carried through but not yet consumed —
-forced-pairing logic is still pending product input on which templates pair.
+WP0.2 is an additive V3 bridge: JSON carries the V3 ``category`` / ``svgs`` /
+``items`` / ``hint`` fields while retaining legacy ``slot`` / ``scene`` /
+``quality`` / ``orientation`` / ``repeat`` for the live skeleton engine. The
+deprecated fields stay until the WP0.4 Python consumer and engine rewrite.
 """
 
 from __future__ import annotations
@@ -25,11 +22,14 @@ TemplateSlot = Literal["cover", "interior", "ending"]
 TemplateScene = Literal[
     "opening", "portrait", "scenery", "record", "interlude", "textOnly", "ending"
 ]
+# V3 (WP0.2): category replaces slot+scene. Added tolerantly alongside them.
+TemplateCategory = Literal["cover", "interior", "toc", "ending"]
 PhotoOrientation = Literal["portrait", "landscape", "square"]
 PhotoQuality = Literal["hero", "detail", "fill"]
 TextRole = Literal["title", "body", "explain", "decoration"]
 TextLang = Literal["user", "en"]
 PairingSide = Literal["left", "right"]
+Pairing = TypedDict("Pairing", {"forced": bool, "with": str, "side": PairingSide})
 
 
 class ImageSlot(TypedDict):
@@ -44,22 +44,36 @@ class TextSlot(TypedDict):
     lang: TextLang
     maxChars: NotRequired[int]
     repeat: NotRequired[bool]
+    # V3 (WP0.2, additive): per-slot writing guidance + themable-decoration flag.
+    # The V3 engine that consumes them is WP0.4.
+    hint: NotRequired[str]
+    variableDecor: NotRequired[bool]
 
 
-class Pairing(TypedDict):
-    forced: bool
-    with_: NotRequired[str]
-    side: NotRequired[PairingSide]
+class SvgSlot(TypedDict):
+    id: str
+    variableDecor: NotRequired[bool]
+
+
+class Items(TypedDict):
+    images: NotRequired[list[ImageSlot]]
+    texts: NotRequired[list[TextSlot]]
 
 
 class TemplateDef(TypedDict):
     id: str
-    slot: TemplateSlot
-    scene: TemplateScene
+    slot: NotRequired[TemplateSlot]
+    scene: NotRequired[TemplateScene]
     images: list[ImageSlot]
     texts: list[TextSlot]
-    pairing: NotRequired[dict[str, Any] | None]
+    pairing: NotRequired[Pairing | None]
     styles: NotRequired[list[str]]
+    # V3 (WP0.2, additive): category replaces slot+scene, svgs = decoration
+    # vector slots, items = the single repeat group. The engine switches off
+    # slot/scene onto these in WP0.4.
+    category: NotRequired[TemplateCategory]
+    svgs: NotRequired[list[SvgSlot]]
+    items: NotRequired[Items]
 
 
 _SLOTS = {"cover", "interior", "ending"}
@@ -76,10 +90,20 @@ _ORIENTATIONS = {"portrait", "landscape", "square"}
 _QUALITIES = {"hero", "detail", "fill"}
 _TEXT_ROLES = {"title", "body", "explain", "decoration"}
 _TEXT_LANGS = {"user", "en"}
+_CATEGORIES = {"cover", "interior", "toc", "ending"}
 
-_TEMPLATE_KEYS = {"id", "slot", "scene", "pairing", "styles", "images", "texts"}
+# V3 (WP0.2, additive): category / svgs / items at the top level and
+# hint / variableDecor on text slots are accepted now so the migrated template
+# JSONs load; the V3 loader/engine that consumes them is WP0.4.
+_TEMPLATE_KEYS = {
+    "id", "slot", "scene", "pairing", "styles", "images", "texts",
+    "category", "svgs", "items",
+}
 _IMAGE_SLOT_KEYS = {"id", "orientation", "quality"}
-_TEXT_SLOT_KEYS = {"id", "role", "lang", "maxChars", "repeat"}
+_TEXT_SLOT_KEYS = {"id", "role", "lang", "maxChars", "repeat", "hint", "variableDecor"}
+_SVG_SLOT_KEYS = {"id", "variableDecor"}
+_ITEMS_KEYS = {"images", "texts"}
+_PAIRING_KEYS = {"forced", "with", "side"}
 
 
 def _fail(message: str) -> RuntimeError:
@@ -101,6 +125,17 @@ def _require_list(value: Any, label: str) -> list[Any]:
 def _optional_nonempty_string_array(value: Any, label: str) -> list[str]:
     if not isinstance(value, list) or not value:
         raise _fail(f"{label} must be a non-empty array")
+    out: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item:
+            raise _fail(f"{label} entries must be non-empty strings")
+        out.append(item)
+    return out
+
+
+def _optional_string_array(value: Any, label: str) -> list[str]:
+    if not isinstance(value, list):
+        raise _fail(f"{label} must be an array")
     out: list[str] = []
     for item in value:
         if not isinstance(item, str) or not item:
@@ -170,12 +205,90 @@ def _validate_text_slot(value: Any, label: str) -> TextSlot:
         if not isinstance(repeat, bool):
             raise _fail(f"{label}.repeat must be a boolean")
         out["repeat"] = repeat
+    # V3 (WP0.2, additive): carry guidance/decoration flags through.
+    if "hint" in data:
+        hint = data["hint"]
+        if not isinstance(hint, str) or not hint:
+            raise _fail(f"{label}.hint must be a non-empty string")
+        if len(hint) > 200:
+            raise _fail(f"{label}.hint must be at most 200 characters")
+        out["hint"] = hint
+    if "variableDecor" in data:
+        variable_decor = data["variableDecor"]
+        if not isinstance(variable_decor, bool):
+            raise _fail(f"{label}.variableDecor must be a boolean")
+        out["variableDecor"] = variable_decor
     return out
+
+
+def _validate_svg_slot(value: Any, label: str) -> SvgSlot:
+    data = _require_dict(value, label)
+    extra = set(data) - _SVG_SLOT_KEYS
+    if extra:
+        raise _fail(f"{label} has unsupported fields: {sorted(extra)}")
+
+    slot_id = data.get("id")
+    if not isinstance(slot_id, str) or not slot_id:
+        raise _fail(f"{label}.id must be a non-empty string")
+
+    out: SvgSlot = {"id": slot_id}
+    if "variableDecor" in data:
+        variable_decor = data["variableDecor"]
+        if not isinstance(variable_decor, bool):
+            raise _fail(f"{label}.variableDecor must be a boolean")
+        out["variableDecor"] = variable_decor
+    return out
+
+
+def _validate_items(value: Any, label: str) -> Items:
+    data = _require_dict(value, label)
+    extra = set(data) - _ITEMS_KEYS
+    if extra:
+        raise _fail(f"{label} has unsupported fields: {sorted(extra)}")
+
+    out: Items = {}
+    if "images" in data:
+        out["images"] = [
+            _validate_image_slot(slot_def, f"{label}.images[{idx}]")
+            for idx, slot_def in enumerate(_require_list(data["images"], f"{label}.images"))
+        ]
+    if "texts" in data:
+        out["texts"] = [
+            _validate_text_slot(slot_def, f"{label}.texts[{idx}]")
+            for idx, slot_def in enumerate(_require_list(data["texts"], f"{label}.texts"))
+        ]
+    return out
+
+
+def _validate_pairing(value: Any, label: str) -> Pairing | None:
+    if value is None:
+        return None
+    data = _require_dict(value, label)
+    missing = _PAIRING_KEYS - set(data)
+    if missing:
+        raise _fail(f"{label} missing required fields: {sorted(missing)}")
+    extra = set(data) - _PAIRING_KEYS
+    if extra:
+        raise _fail(f"{label} has unsupported fields: {sorted(extra)}")
+
+    forced = data["forced"]
+    if not isinstance(forced, bool):
+        raise _fail(f"{label}.forced must be a boolean")
+
+    paired_with = data["with"]
+    if not isinstance(paired_with, str) or not paired_with:
+        raise _fail(f"{label}.with must be a non-empty string")
+
+    side = data["side"]
+    if side not in {"left", "right"}:
+        raise _fail(f"{label}.side must be one of ['left', 'right']")
+
+    return {"forced": forced, "with": paired_with, "side": cast(PairingSide, side)}
 
 
 def _validate_template(value: Any, source: Path) -> TemplateDef:
     data = _require_dict(value, str(source))
-    missing = {"id", "slot", "scene", "images", "texts"} - set(data)
+    missing = {"id", "images", "texts"} - set(data)
     if missing:
         raise _fail(f"{source} missing required fields: {sorted(missing)}")
     extra = set(data) - _TEMPLATE_KEYS
@@ -188,13 +301,20 @@ def _validate_template(value: Any, source: Path) -> TemplateDef:
     if source.stem != template_id:
         raise _fail(f"{source} id must match file name")
 
-    slot = data["slot"]
-    if slot not in _SLOTS:
+    has_category = "category" in data
+    has_legacy_classification = "slot" in data and "scene" in data
+    if not has_category and not has_legacy_classification:
+        raise _fail(f"{source} must declare category or legacy slot+scene")
+
+    if "slot" in data and data["slot"] not in _SLOTS:
         raise _fail(f"{source}.slot must be one of {sorted(_SLOTS)}")
 
-    scene = data["scene"]
-    if scene not in _SCENES:
+    if "scene" in data and data["scene"] not in _SCENES:
         raise _fail(f"{source}.scene must be one of {sorted(_SCENES)}")
+
+    # V3 (WP0.2): category is optional during the transition; validate when set.
+    if "category" in data and data["category"] not in _CATEGORIES:
+        raise _fail(f"{source}.category must be one of {sorted(_CATEGORIES)}")
 
     images = [
         _validate_image_slot(slot_def, f"{source}.images[{idx}]")
@@ -207,16 +327,28 @@ def _validate_template(value: Any, source: Path) -> TemplateDef:
 
     out: TemplateDef = {
         "id": template_id,
-        "slot": cast(TemplateSlot, slot),
-        "scene": cast(TemplateScene, scene),
         "images": images,
         "texts": texts,
     }
-    # scene/pairing/lang are carried through but not consumed in Phase 1.
+    # scene/pairing/lang are carried through for the live engine.
+    if "slot" in data:
+        out["slot"] = cast(TemplateSlot, data["slot"])
+    if "scene" in data:
+        out["scene"] = cast(TemplateScene, data["scene"])
     if "pairing" in data:
-        out["pairing"] = data["pairing"]
+        out["pairing"] = _validate_pairing(data["pairing"], f"{source}.pairing")
     if "styles" in data:
-        out["styles"] = _optional_nonempty_string_array(data["styles"], f"{source}.styles")
+        out["styles"] = _optional_string_array(data["styles"], f"{source}.styles")
+    # V3 (WP0.2): WP0.4 switches the engine onto these fields.
+    if "category" in data:
+        out["category"] = cast(TemplateCategory, data["category"])
+    if "svgs" in data:
+        out["svgs"] = [
+            _validate_svg_slot(slot_def, f"{source}.svgs[{idx}]")
+            for idx, slot_def in enumerate(_require_list(data["svgs"], f"{source}.svgs"))
+        ]
+    if "items" in data:
+        out["items"] = _validate_items(data["items"], f"{source}.items")
     return out
 
 
@@ -348,12 +480,15 @@ def _summarize_templates_for_prompt(templates: dict[str, TemplateDef]) -> str:
             for slot in tpl["texts"]
             if slot["role"] != "decoration"
         )
-        lines.append(f"- {tid} [{tpl['slot']}] images: {img} | texts: {txt}")
+        classification = tpl.get("slot") or tpl.get("category", "?")
+        lines.append(f"- {tid} [{classification}] images: {img} | texts: {txt}")
     return "\n".join(lines)
 
 
 TEMPLATES: dict[str, TemplateDef] = _load_default_templates()
-COVER_TEMPLATE_IDS = sorted(tid for tid, t in TEMPLATES.items() if t["slot"] == "cover")
+COVER_TEMPLATE_IDS = sorted(
+    tid for tid, t in TEMPLATES.items() if (t.get("slot") or t.get("category")) == "cover"
+)
 TEMPLATE_IDS = sorted(TEMPLATES.keys())
 
 

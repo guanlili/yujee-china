@@ -2,6 +2,7 @@
   "id": "mag-03",
   "slot": "interior",
   "scene": "scenery",
+  "category": "interior",
   "images": [
     {
       "id": "image",
@@ -18,14 +19,16 @@
     {
       "id": "location",
       "role": "decoration",
+      "lang": "en",
       "maxChars": 20,
-      "lang": "en"
+      "variableDecor": true,
+      "hint": "地点 / 章节标签小字,如「京都 · 03 / 30」"
     },
     {
       "id": "folio",
       "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
+      "lang": "en",
+      "maxChars": 2
     }
   ]
 }

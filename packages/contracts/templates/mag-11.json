@@ -2,6 +2,7 @@
   "id": "mag-11",
   "slot": "interior",
   "scene": "portrait",
+  "category": "interior",
   "images": [
     {
       "id": "image",
@@ -18,26 +19,31 @@
     {
       "id": "title",
       "role": "title",
+      "lang": "user",
       "maxChars": 16,
-      "lang": "user"
+      "variableDecor": true,
+      "hint": "该页标题,可两行"
     },
     {
       "id": "plate",
       "role": "decoration",
+      "lang": "en",
       "maxChars": 20,
-      "lang": "en"
+      "variableDecor": true,
+      "hint": "图版标签,如「Plate · 11 / 30」"
     },
     {
       "id": "caption2",
       "role": "explain",
+      "lang": "user",
       "maxChars": 80,
-      "lang": "user"
+      "hint": "图说"
     },
     {
       "id": "folio",
       "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
+      "lang": "en",
+      "maxChars": 2
     }
   ]
 }
