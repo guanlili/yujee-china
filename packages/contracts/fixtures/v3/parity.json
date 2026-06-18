@@ -1,0 +1,329 @@
+{
+  "_comment": "Cross-language contract parity fixtures (WP0.3 / #178). Each case is parsed by BOTH the TS zod contract (packages/contracts/src/v3.ts, layout.ts, templates.ts, enums.ts) and the Python pydantic mirror (apps/agent/src/schemas.py). `expectValid` is the single shared verdict — if TS and Python disagree with it, the contract has drifted (design.md §14 / architecture §6.8 第 5 条). Run TS side: `tsx packages/contracts/scripts/parity-check.ts`; Python side: `pytest apps/agent/tests/test_schemas.py -k parity`.",
+  "cases": [
+    {
+      "name": "V3AnalyzeRequest minimal valid",
+      "schema": "V3AnalyzeRequest",
+      "expectValid": true,
+      "payload": {
+        "requestId": "r1",
+        "albumId": "a1",
+        "callbackUrl": "https://example.com/cb",
+        "language": "en",
+        "photos": [
+          { "photoId": "p1", "base64": "data:image/jpeg;base64,xx", "width": 800, "height": 600 }
+        ]
+      }
+    },
+    {
+      "name": "V3AnalyzeRequest exif takenAt accepted",
+      "schema": "V3AnalyzeRequest",
+      "expectValid": true,
+      "payload": {
+        "requestId": "r1",
+        "albumId": "a1",
+        "callbackUrl": "https://example.com/cb",
+        "language": "en",
+        "photos": [
+          {
+            "photoId": "p1",
+            "base64": "data:image/jpeg;base64,xx",
+            "width": 800,
+            "height": 600,
+            "exif": { "takenAt": "2024-03-15T08:30:00.000Z" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "V3AnalyzeRequest exif rejects lat/lng (PRIVACY red line)",
+      "schema": "V3AnalyzeRequest",
+      "expectValid": false,
+      "payload": {
+        "requestId": "r1",
+        "albumId": "a1",
+        "callbackUrl": "https://example.com/cb",
+        "language": "en",
+        "photos": [
+          {
+            "photoId": "p1",
+            "base64": "data:image/jpeg;base64,xx",
+            "width": 800,
+            "height": 600,
+            "exif": { "takenAt": null, "lat": 1, "lng": 2 }
+          }
+        ]
+      }
+    },
+    {
+      "name": "V3AnalyzeRequest rejects >30 photos",
+      "schema": "V3AnalyzeRequest",
+      "expectValid": false,
+      "payload": {
+        "requestId": "r1",
+        "albumId": "a1",
+        "callbackUrl": "not-a-url",
+        "language": "en",
+        "photos": []
+      }
+    },
+    {
+      "name": "V3ChapterPhoto analysis-tree shape",
+      "schema": "V3ChapterPhoto",
+      "expectValid": true,
+      "payload": {
+        "photoId": "p1",
+        "sceneDescription": "a woman in a red coat walking in the snow",
+        "width": 800,
+        "height": 1200,
+        "orientation": "portrait",
+        "takenAt": "2024-03-15T08:30:00.000Z"
+      }
+    },
+    {
+      "name": "V3ChapterPhoto takenAt null ok (no GPS)",
+      "schema": "V3ChapterPhoto",
+      "expectValid": true,
+      "payload": {
+        "photoId": "p1",
+        "sceneDescription": "x",
+        "width": 800,
+        "height": 1200,
+        "orientation": "portrait",
+        "takenAt": null
+      }
+    },
+    {
+      "name": "V3ChapterPhoto rejects location leak (PRIVACY)",
+      "schema": "V3ChapterPhoto",
+      "expectValid": false,
+      "payload": {
+        "photoId": "p1",
+        "sceneDescription": "x",
+        "width": 800,
+        "height": 1200,
+        "orientation": "portrait",
+        "location": "paris"
+      }
+    },
+    {
+      "name": "V3Chapter null placeholders at analysis time",
+      "schema": "V3Chapter",
+      "expectValid": true,
+      "payload": {
+        "chapterId": "c1",
+        "description": "a quiet spring morning in an old town",
+        "accentColor": null,
+        "artFont": null,
+        "photos": [
+          { "photoId": "p1", "sceneDescription": "x", "width": 800, "height": 1200, "orientation": "portrait", "takenAt": null }
+        ]
+      }
+    },
+    {
+      "name": "V3Chapter filled accentColor + artFont",
+      "schema": "V3Chapter",
+      "expectValid": true,
+      "payload": {
+        "chapterId": "c1",
+        "description": "d",
+        "accentColor": "#aabbcc",
+        "artFont": "sans-modern",
+        "photos": []
+      }
+    },
+    {
+      "name": "V3Chapter rejects illegal artFont",
+      "schema": "V3Chapter",
+      "expectValid": false,
+      "payload": {
+        "chapterId": "c1",
+        "description": "d",
+        "accentColor": null,
+        "artFont": "nope",
+        "photos": []
+      }
+    },
+    {
+      "name": "V3Chapter rejects illegal accentColor",
+      "schema": "V3Chapter",
+      "expectValid": false,
+      "payload": {
+        "chapterId": "c1",
+        "description": "d",
+        "accentColor": "blue",
+        "artFont": null,
+        "photos": []
+      }
+    },
+    {
+      "name": "V3LayoutTree round-trips",
+      "schema": "V3LayoutTree",
+      "expectValid": true,
+      "payload": { "chapters": [] }
+    },
+    {
+      "name": "V3LayoutTree rejects extra key",
+      "schema": "V3LayoutTree",
+      "expectValid": false,
+      "payload": { "chapters": [], "extra": 1 }
+    },
+    {
+      "name": "TemplateDef tolerates legacy slot/scene + quality/orientation",
+      "schema": "TemplateDef",
+      "expectValid": true,
+      "payload": {
+        "id": "mag-x",
+        "slot": "interior",
+        "scene": "portrait",
+        "images": [{ "id": "image", "quality": ["hero"], "orientation": ["portrait"] }],
+        "texts": [{ "id": "body", "role": "body", "lang": "user" }]
+      }
+    },
+    {
+      "name": "TemplateDef accepts V3 category/svgs/items/variableDecor/hint",
+      "schema": "TemplateDef",
+      "expectValid": true,
+      "payload": {
+        "id": "mag-y",
+        "category": "interior",
+        "images": [{ "id": "image" }],
+        "svgs": [{ "id": "divider", "variableDecor": true }],
+        "texts": [{ "id": "title", "role": "title", "lang": "user", "variableDecor": true, "hint": "h" }],
+        "items": { "texts": [{ "id": "caption", "role": "explain", "lang": "user", "maxChars": 70 }] }
+      }
+    },
+    {
+      "name": "TemplateDef rejects no classification (neither category nor slot+scene)",
+      "schema": "TemplateDef",
+      "expectValid": false,
+      "payload": {
+        "id": "mag-z",
+        "images": [{ "id": "image" }],
+        "texts": [{ "id": "title", "role": "title", "lang": "user" }]
+      }
+    },
+    {
+      "name": "TemplateTextSlot rejects hint over 200 chars",
+      "schema": "TemplateTextSlot",
+      "expectValid": false,
+      "payload": { "id": "t", "role": "body", "lang": "user", "hint": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+    },
+    {
+      "name": "V3ChapterChatResponse write turn carries pagesTexts",
+      "schema": "V3ChapterChatResponse",
+      "expectValid": true,
+      "payload": {
+        "kind": "write",
+        "assistantReply": "done",
+        "pagesTexts": [{ "pageIndex": 0, "texts": { "body": "hi" } }],
+        "usage": { "durationMs": 1, "models": {} }
+      }
+    },
+    {
+      "name": "V3ChapterChatResponse talk turn carries neither patch",
+      "schema": "V3ChapterChatResponse",
+      "expectValid": true,
+      "payload": {
+        "kind": "talk",
+        "assistantReply": "tell me more",
+        "usage": { "durationMs": 1, "models": {} }
+      }
+    },
+    {
+      "name": "V3ChapterChatResponse rejects illegal kind",
+      "schema": "V3ChapterChatResponse",
+      "expectValid": false,
+      "payload": {
+        "kind": "sing",
+        "assistantReply": "x",
+        "usage": { "durationMs": 1, "models": {} }
+      }
+    },
+    {
+      "name": "V3RecommendResponse theme + per-chapter color/font",
+      "schema": "V3RecommendResponse",
+      "expectValid": true,
+      "payload": {
+        "themeOptions": [{ "subject": "Spring in Kyoto", "label": "Kyoto" }],
+        "chapterColors": [{ "chapterId": "c1", "accentColor": "#aabbcc", "artFont": "serif-classic" }],
+        "assistantReply": "",
+        "usage": { "durationMs": 1, "models": {} }
+      }
+    },
+    {
+      "name": "V3ApplyThemeRequest page-level patches",
+      "schema": "V3ApplyThemeRequest",
+      "expectValid": true,
+      "payload": {
+        "albumId": "a1",
+        "language": "en",
+        "theme": { "subject": "s", "label": "l" },
+        "chapters": [{ "chapterId": "c1", "accentColor": "#abc", "artFont": "sans-modern" }],
+        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+      }
+    },
+    {
+      "name": "V3CoverRequest skip (null) ok",
+      "schema": "V3CoverRequest",
+      "expectValid": true,
+      "payload": {
+        "albumId": "a1",
+        "language": "en",
+        "coverTemplateId": null,
+        "endingTemplateId": null,
+        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+      }
+    },
+    {
+      "name": "V3FinalizeResponse flat AlbumLayoutPlan",
+      "schema": "V3FinalizeResponse",
+      "expectValid": true,
+      "payload": {
+        "layout": {
+          "magazine": { "title": "My Book", "style": "warm-film", "language": "en" },
+          "photos": [],
+          "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+        },
+        "usage": { "durationMs": 1, "models": {} }
+      }
+    },
+    {
+      "name": "V3Callback progress",
+      "schema": "V3Callback",
+      "expectValid": true,
+      "payload": { "requestId": "r1", "jobKind": "analyze", "event": "progress", "stage": "describe", "progress": 40 }
+    },
+    {
+      "name": "V3Callback completed(analyze)",
+      "schema": "V3Callback",
+      "expectValid": true,
+      "payload": {
+        "requestId": "r1",
+        "jobKind": "analyze",
+        "event": "completed",
+        "tree": { "chapters": [] },
+        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }],
+        "usage": { "durationMs": 1, "models": {} }
+      }
+    },
+    {
+      "name": "V3Callback failed",
+      "schema": "V3Callback",
+      "expectValid": true,
+      "payload": { "requestId": "r1", "jobKind": "analyze", "event": "failed", "error": { "code": "AGENT_TIMEOUT", "message": "timeout" } }
+    },
+    {
+      "name": "V3Callback rejects unknown event",
+      "schema": "V3Callback",
+      "expectValid": false,
+      "payload": { "requestId": "r1", "jobKind": "analyze", "event": "bogus" }
+    },
+    {
+      "name": "V3TemplateCandidate legal candidate",
+      "schema": "V3TemplateCandidate",
+      "expectValid": true,
+      "payload": { "templateId": "mag-08", "category": "interior", "imageSlotCount": 3 }
+    }
+  ]
+}
