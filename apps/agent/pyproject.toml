@@ -9,7 +9,8 @@ dependencies = [
   "pydantic>=2.7.0",
   "pydantic-settings>=2.4.0",
   "structlog>=24.1.0",
-  "python-multipart>=0.0.9"
+  "python-multipart>=0.0.9",
+  "pillow>=10.0.0"
 ]
 
 [project.optional-dependencies]
