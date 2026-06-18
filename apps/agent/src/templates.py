@@ -25,6 +25,8 @@ TemplateSlot = Literal["cover", "interior", "ending"]
 TemplateScene = Literal[
     "opening", "portrait", "scenery", "record", "interlude", "textOnly", "ending"
 ]
+# V3 (WP0.2): category replaces slot+scene. Added tolerantly alongside them.
+TemplateCategory = Literal["cover", "interior", "toc", "ending"]
 PhotoOrientation = Literal["portrait", "landscape", "square"]
 PhotoQuality = Literal["hero", "detail", "fill"]
 TextRole = Literal["title", "body", "explain", "decoration"]
@@ -44,6 +46,20 @@ class TextSlot(TypedDict):
     lang: TextLang
     maxChars: NotRequired[int]
     repeat: NotRequired[bool]
+    # V3 (WP0.2, additive): per-slot writing guidance + themable-decoration flag.
+    # Loaded tolerantly here; the V3 engine that consumes them is WP0.4.
+    hint: NotRequired[str]
+    variableDecor: NotRequired[bool]
+
+
+class SvgSlot(TypedDict):
+    id: str
+    variableDecor: NotRequired[bool]
+
+
+class Items(TypedDict):
+    images: NotRequired[list[ImageSlot]]
+    texts: NotRequired[list[TextSlot]]
 
 
 class Pairing(TypedDict):
@@ -60,6 +76,12 @@ class TemplateDef(TypedDict):
     texts: list[TextSlot]
     pairing: NotRequired[dict[str, Any] | None]
     styles: NotRequired[list[str]]
+    # V3 (WP0.2, additive): category replaces slot+scene, svgs = decoration
+    # vector slots, items = the single repeat group. Tolerated on load now;
+    # the loader/engine that switches OFF slot/scene onto these is WP0.4.
+    category: NotRequired[TemplateCategory]
+    svgs: NotRequired[list[SvgSlot]]
+    items: NotRequired[Items]
 
 
 _SLOTS = {"cover", "interior", "ending"}
@@ -76,10 +98,17 @@ _ORIENTATIONS = {"portrait", "landscape", "square"}
 _QUALITIES = {"hero", "detail", "fill"}
 _TEXT_ROLES = {"title", "body", "explain", "decoration"}
 _TEXT_LANGS = {"user", "en"}
+_CATEGORIES = {"cover", "interior", "toc", "ending"}
 
-_TEMPLATE_KEYS = {"id", "slot", "scene", "pairing", "styles", "images", "texts"}
+# V3 (WP0.2, additive): category / svgs / items at the top level and
+# hint / variableDecor on text slots are accepted now so the migrated template
+# JSONs load; the V3 loader/engine that consumes them is WP0.4.
+_TEMPLATE_KEYS = {
+    "id", "slot", "scene", "pairing", "styles", "images", "texts",
+    "category", "svgs", "items",
+}
 _IMAGE_SLOT_KEYS = {"id", "orientation", "quality"}
-_TEXT_SLOT_KEYS = {"id", "role", "lang", "maxChars", "repeat"}
+_TEXT_SLOT_KEYS = {"id", "role", "lang", "maxChars", "repeat", "hint", "variableDecor"}
 
 
 def _fail(message: str) -> RuntimeError:
@@ -170,6 +199,17 @@ def _validate_text_slot(value: Any, label: str) -> TextSlot:
         if not isinstance(repeat, bool):
             raise _fail(f"{label}.repeat must be a boolean")
         out["repeat"] = repeat
+    # V3 (WP0.2, additive): carry guidance/decoration flags through untouched.
+    if "hint" in data:
+        hint = data["hint"]
+        if not isinstance(hint, str) or not hint:
+            raise _fail(f"{label}.hint must be a non-empty string")
+        out["hint"] = hint
+    if "variableDecor" in data:
+        variable_decor = data["variableDecor"]
+        if not isinstance(variable_decor, bool):
+            raise _fail(f"{label}.variableDecor must be a boolean")
+        out["variableDecor"] = variable_decor
     return out
 
 
@@ -196,6 +236,10 @@ def _validate_template(value: Any, source: Path) -> TemplateDef:
     if scene not in _SCENES:
         raise _fail(f"{source}.scene must be one of {sorted(_SCENES)}")
 
+    # V3 (WP0.2): category is optional during the transition; validate when set.
+    if "category" in data and data["category"] not in _CATEGORIES:
+        raise _fail(f"{source}.category must be one of {sorted(_CATEGORIES)}")
+
     images = [
         _validate_image_slot(slot_def, f"{source}.images[{idx}]")
         for idx, slot_def in enumerate(_require_list(data["images"], f"{source}.images"))
@@ -217,6 +261,14 @@ def _validate_template(value: Any, source: Path) -> TemplateDef:
         out["pairing"] = data["pairing"]
     if "styles" in data:
         out["styles"] = _optional_nonempty_string_array(data["styles"], f"{source}.styles")
+    # V3 (WP0.2): carry the new fields through untouched; WP0.4 switches the
+    # engine onto them. hint/variableDecor already pass through on text slots.
+    if "category" in data:
+        out["category"] = cast(TemplateCategory, data["category"])
+    if "svgs" in data:
+        out["svgs"] = data["svgs"]
+    if "items" in data:
+        out["items"] = data["items"]
     return out
 
 

@@ -2,6 +2,7 @@
   "id": "mag-15",
   "slot": "interior",
   "scene": "record",
+  "category": "interior",
   "images": [
     {
       "id": "imagePerson",
@@ -28,26 +29,31 @@
     {
       "id": "body",
       "role": "body",
+      "lang": "user",
       "maxChars": 60,
-      "lang": "user"
+      "hint": "短正文,一两句"
     },
     {
       "id": "title",
       "role": "title",
+      "lang": "user",
       "maxChars": 16,
-      "lang": "user"
+      "variableDecor": true,
+      "hint": "该页标题"
     },
     {
       "id": "date",
       "role": "decoration",
+      "lang": "en",
       "maxChars": 20,
-      "lang": "en"
+      "variableDecor": true,
+      "hint": "日期,如 May 2026"
     },
     {
       "id": "folio",
       "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
+      "lang": "en",
+      "maxChars": 2
     }
   ]
 }

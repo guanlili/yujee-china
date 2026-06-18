@@ -2,6 +2,7 @@
   "id": "mag-13",
   "slot": "cover",
   "scene": "opening",
+  "category": "cover",
   "images": [
     {
       "id": "image",
@@ -14,24 +15,33 @@
       ]
     }
   ],
+  "svgs": [
+    {
+      "id": "divider",
+      "variableDecor": true
+    }
+  ],
   "texts": [
     {
       "id": "title",
       "role": "title",
+      "lang": "user",
       "maxChars": 30,
-      "lang": "user"
+      "variableDecor": true,
+      "hint": "封面主标题,可两行,如作者名 / 作品名"
     },
     {
       "id": "caption",
       "role": "body",
+      "lang": "user",
       "maxChars": 165,
-      "lang": "user"
+      "hint": "封面引言 / 简介,2-3 句"
     },
     {
       "id": "folio",
       "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
+      "lang": "en",
+      "maxChars": 2
     }
   ]
 }
