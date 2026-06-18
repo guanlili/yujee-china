@@ -300,6 +300,11 @@ export const albumService = {
       }
 
       const doneSet = new Set(normalized.progress.doneChapterIds);
+      const currentChapterId = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
+      if (!doneSet.has(chapterId) && chapterId !== currentChapterId) {
+        throw ERRORS.VALIDATION_FAILED('chapterId is not the current story chapter');
+      }
+
       doneSet.add(chapterId);
       const doneChapterIds = chapterOrder.filter((id) => doneSet.has(id));
       const allDone = chapterOrder.every((id) => doneSet.has(id));

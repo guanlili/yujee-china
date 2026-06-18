@@ -49,6 +49,7 @@ from ..schemas import (
     V3Usage,
 )
 from ..settings import get_settings
+from ..skills import load_skill
 from . import ai_client, writing_guides
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
@@ -68,13 +69,13 @@ class ChapterChatV3Error(Exception):
 
 
 def _page_slot_specs_by_index(pages: list[Page]) -> dict[int, list[dict[str, Any]]]:
-    """Per-page authored-slot specs (id/role/lang/maxChars[/repeat]).
+    """Per-page authored-slot specs (id/role/lang/maxChars[/repeat][/hint]).
 
     Reuses `writing_guides.page_slot_specs` (read-only, shared with v2 — calling it
     cannot break v2). It already drops decoration slots (code auto-fills those) and
-    surfaces only the slots the LM must author. The逐槽 `hint` 透传 is WP2.2 (#186);
-    this WP wires the turn dispatch and leaves `page_slot_specs` as the seam where
-    that hint will flow in."""
+    surfaces only the slots the LM must author. WP2.2 (#186): `page_slot_specs` now
+    carries each slot's template-authored `hint` verbatim, so the逐槽 hint reaches
+    the writing LM through this same seam (§4.2(4) 逐槽 hint 透传)."""
     return {page.pageIndex: _page_slot_specs(page) for page in pages}
 
 
@@ -154,6 +155,31 @@ def _slot_spec(slot: dict[str, Any], *, slot_id: str, repeat_index: int | None =
     return spec
 
 
+def _lang_name(language: str) -> str:
+    """Human language name for a skill `{LANGUAGE}` placeholder (mirrors vision.py)."""
+    return "Chinese" if language == "zh" else "English"
+
+
+def _scene_background(chapter: Any) -> dict[str, Any]:
+    """画面背景 (§4.2(4)): chapter description + per-photo sceneDescription, drawn
+    from the §4.1 analysis tree the request carries. Privacy-clean by construction —
+    `V3ChapterPhoto` (`_V3Strict`) forbids any GPS/place field at parse time."""
+    return {
+        "chapterDescription": chapter.description,
+        "photos": [
+            {"photoId": p.photoId, "sceneDescription": p.sceneDescription}
+            for p in chapter.photos
+        ],
+    }
+
+
+def _page_images_by_index(pages: list[Page]) -> dict[int, dict[str, str]]:
+    """页面结构 (§4.2(4)) 的「每页放了哪些图」: each page's slot→photoId map, so the
+    writing LM knows which photos sit on which page and can write copy that actually
+    refers to them. Read-only echo of `Page.images`."""
+    return {page.pageIndex: dict(page.images) for page in pages}
+
+
 def _authored_slot_ids(specs: list[dict[str, Any]]) -> set[str]:
     return {str(spec["id"]) for spec in specs}
 
@@ -176,8 +202,16 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
     per-page slot specs, history, the user's message, and the focused page (if any).
     """
     slot_specs = _page_slot_specs_by_index(req.pages)
+    page_images = _page_images_by_index(req.pages)
     focused = req.focusedPageIndex
+    lang_name = _lang_name(req.language)
 
+    # Persona + STRICT JSON contract + per-turn dispatch rule. The creative writing
+    # style and the guidance style are NOT inlined here — they live in the write /
+    # guide skills (prompt assets, 集中维护). The old `writing_guides.ROLE_GUIDES`
+    # 创作话术 (`guides_block()`) is intentionally NOT used on the V3 path; V3
+    # authoring style comes from `write_chapter` (Option B: v2 keeps ROLE_GUIDES, it
+    # is整删 in #197).
     system = writing_guides.persona_block() + "\n\n" + (
         "You are helping a user write ONE chapter of a memoir photo album, one "
         "conversational turn at a time. Return STRICT JSON only, matching: "
@@ -187,30 +221,48 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
         '"nameOptions"?:[string]}. '
         "Decide `kind` from THIS turn's intent (the three actions interleave "
         "freely — there is no fixed order):\n"
-        "- talk: the user is still telling the story, asking, or unsure. GUIDE "
-        "them — ask ONE focused question; NEVER write the chapter unprompted "
-        "(this is a hard rule). Return only assistantReply (no texts).\n"
+        "- talk: the user is still telling the story, asking, or unsure. Follow the "
+        "GUIDANCE STYLE below; NEVER write the chapter unprompted (this is a hard "
+        "rule). Return only assistantReply (no texts).\n"
         "- write: the user has given enough and wants the chapter written (or "
-        "explicitly asks to write/generate/finish). Fill EVERY page in "
-        "`pagesTexts` in one shot using the supplied page slots.\n"
+        "explicitly asks to write/generate/finish). Follow the WRITING STYLE below "
+        "and fill EVERY page in `pagesTexts` in one shot, using each page's slots, "
+        "per-slot hints, scene background, and which photos sit on it.\n"
         "- edit: the user points at ONE page and asks to change its wording/tone "
-        "(a focused page is supplied). Rewrite ONLY that page into `pageTexts`. "
-        "If instead the user wants to change/replace/move a PHOTO, do NOT invent a "
-        "layout — set kind=talk and ask them to confirm; an image change is "
-        "handled by a separate step.\n"
+        "(a focused page is supplied). Rewrite ONLY that page into `pageTexts` "
+        "using the WRITING STYLE. If instead the user wants to change/replace/move "
+        "a PHOTO, do NOT invent a layout — set kind=talk and ask them to confirm; "
+        "an image change is handled by a separate step.\n"
         "Only use the supplied chapter slice; never output another chapter or the "
         "whole album. Do not mention base64 or hidden image data. "
         "You may also return `nameOptions`: up to 4 short chapter-title candidates, "
         "grounded only in this chapter's photos and the user's words — evocative "
         "but never inventing people, places, events, or dates."
     )
-    system += "\n\n" + writing_guides.guides_block()
+    # §4.2(4): 写作 Skill (creative style) + 引导 Skill (guidance style), both as
+    # prompt assets loaded by name. Localized via the {LANGUAGE} placeholder.
+    system += "\n\n=== WRITING STYLE (写作 Skill) ===\n" + load_skill(
+        "write_chapter", LANGUAGE=lang_name
+    )
+    system += "\n\n=== GUIDANCE STYLE (引导 Skill) ===\n" + load_skill(
+        "guide_chapter", LANGUAGE=lang_name
+    )
 
+    # §4.2(4) writing-LM input assembly. Every item the requirement names is here:
+    #   用户信息  → history + userMessage (+ promptHint carried in chapter context)
+    #   写作 Skill → system (write_chapter), 引导 Skill → system (guide_chapter)
+    #   逐槽 hint  → pageSlots[].hint (透传 from the template via page_slot_specs)
+    #   画面背景  → sceneBackground (chapter description + per-photo sceneDescription)
+    #   页面结构  → pageSlots (id/role/lang/maxChars per page) + pageImages (每页放哪些图)
     payload: dict[str, Any] = {
         "language": req.language,
-        "chapter": req.chapter.model_dump(exclude_none=True),
-        # Per page: the role/lang/maxChars of each slot the model may write.
+        # 画面背景 (§4.1 analysis tree): chapter description + per-photo scenes.
+        "sceneBackground": _scene_background(req.chapter),
+        # 页面结构: per page the authored slot specs (now incl. per-slot hint)…
         "pageSlots": {str(idx): specs for idx, specs in slot_specs.items()},
+        # …and which photos are placed on each page (slot→photoId).
+        "pageImages": {str(idx): imgs for idx, imgs in page_images.items()},
+        # 用户信息: the conversation so far + this turn's message.
         "history": [turn.model_dump() for turn in req.history],
         "userMessage": req.userMessage,
         "focusedPageIndex": focused,

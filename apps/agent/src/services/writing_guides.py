@@ -74,14 +74,25 @@ def guides_block() -> str:
 
 
 def page_slot_specs(template_id: str) -> list[dict[str, Any]]:
-    """Per-authored-slot {id, role, lang, maxChars?, repeat?} for one template.
+    """Per-authored-slot {id, role, lang, maxChars?, repeat?, hint?} for one template.
 
     Drives the prompt: it tells the model the role of every slot it must fill on
     a page. Decoration slots are omitted (the deterministic layer fills them).
+
+    The per-slot ``hint`` (authored by the template designer, lives in the template
+    JSON) is passed through verbatim when present — the writing LM treats it as the
+    intent for that specific slot (§4.2(4) 逐槽 hint 透传). Carrying it here is
+    additive: callers that do not surface hint simply ignore the extra key.
     """
     tpl = registry.get(template_id)
     if not tpl:
         return []
+    item_texts = [
+        item
+        for item in tpl.get("items", {}).get("texts", [])
+        if item["role"] in AUTHORED_ROLES
+    ]
+    repeat_item_hint = item_texts[0].get("hint") if len(item_texts) == 1 else None
     specs: list[dict[str, Any]] = []
     for slot in tpl["texts"]:
         if slot["role"] not in AUTHORED_ROLES:
@@ -95,5 +106,9 @@ def page_slot_specs(template_id: str) -> list[dict[str, Any]]:
             spec["repeat"] = True
         if slot.get("maxChars"):
             spec["maxChars"] = slot["maxChars"]
+        if slot.get("hint"):
+            spec["hint"] = slot["hint"]
+        elif slot.get("repeat") is True and repeat_item_hint:
+            spec["hint"] = repeat_item_hint
         specs.append(spec)
     return specs

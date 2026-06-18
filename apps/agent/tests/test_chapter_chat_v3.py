@@ -238,6 +238,21 @@ def test_write_expands_repeat_text_slots_from_page_images():
     assert texts["cells[1]"] == "Second cell."
 
 
+def test_repeat_item_hint_passes_through_to_expanded_slots():
+    page = Page(
+        pageIndex=2,
+        templateId="mag-10",
+        images={"cells[0].image": "p1", "cells[1].image": "p1"},
+        texts={},
+    )
+    _, user = _system_user(_req(user_message="write this grid", pages=[page]))
+    payload = json.loads(user)
+    page_slots = {s["id"]: s for s in payload["pageSlots"]["2"]}
+
+    assert page_slots["cells[0]"]["hint"] == "每格图说:一句话点出这张照片"
+    assert page_slots["cells[1]"]["hint"] == "每格图说:一句话点出这张照片"
+
+
 # ---------- edit turn (改) ----------------------------------------------------
 
 
@@ -369,3 +384,95 @@ def req_usage():
     from src.schemas import V3Models, V3Usage
 
     return V3Usage(durationMs=1, models=V3Models(planning="deepseek-chat"))
+
+
+# ---------- WP2.2 (#186): writing-LM input assembly ---------------------------
+# §4.2(4): the write turn's prompt must carry 用户信息 + 写作 Skill + 逐槽 hint +
+# 画面背景 + 页面结构, and the V3 path must NOT fall back on v2's ROLE_GUIDES
+# 创作话术. These exercise build_messages directly (the assembly is deterministic;
+# no model call needed).
+
+
+def _system_user(req: V3ChapterChatRequest) -> tuple[str, str]:
+    messages = chapter_chat_v3.build_messages(req)
+    assert messages[0]["role"] == "system"
+    assert messages[1]["role"] == "user"
+    return messages[0]["content"], messages[1]["content"]
+
+
+def test_assembly_carries_all_section_4_2_4_items():
+    system, user = _system_user(_req(user_message="write it"))
+
+    # 写作 Skill + 引导 Skill loaded into the system prompt (not inlined code).
+    assert "WRITING STYLE" in system and "GUIDANCE STYLE" in system
+    # A line unique to the write_chapter skill asset (proves the file was loaded).
+    assert "the felt story behind the moment" in system
+
+    payload = json.loads(user)
+    # 用户信息: this turn's message + history channel present.
+    assert payload["userMessage"] == "write it"
+    assert "history" in payload
+    # 画面背景: chapter description + per-photo sceneDescription (§4.1 tree).
+    bg = payload["sceneBackground"]
+    assert bg["chapterDescription"] == "A spring trip to the coast."
+    assert bg["photos"] == [{"photoId": "p1", "sceneDescription": "two people on a beach"}]
+    # 页面结构: per-page slot specs + which photos sit on each page.
+    assert set(payload["pageSlots"]) == {"0", "1"}
+    assert payload["pageImages"]["0"] == {"image": "p1"}
+    assert payload["pageImages"]["1"] == {}
+
+
+def test_per_slot_hint_passes_through_to_writing_lm():
+    # mag-13 (page 0) authored slots carry template hints; they must reach the LM.
+    _, user = _system_user(_req(user_message="write it"))
+    payload = json.loads(user)
+    page0_slots = {s["id"]: s for s in payload["pageSlots"]["0"]}
+    assert page0_slots["title"]["hint"]  # template-authored hint, passed verbatim
+    assert page0_slots["caption"]["hint"]
+    # Sanity: the hint is the template's, not invented by the Agent.
+    from src.services import writing_guides
+
+    expected = {s["id"]: s.get("hint") for s in writing_guides.page_slot_specs(_COVER)}
+    assert page0_slots["title"]["hint"] == expected["title"]
+
+
+def test_page_slot_specs_surfaces_hint_when_template_has_one():
+    from src.services import writing_guides
+
+    specs = {s["id"]: s for s in writing_guides.page_slot_specs(_COVER)}
+    # mag-13 title/caption have hints in the template JSON; decoration folio is dropped.
+    assert "hint" in specs["title"] and specs["title"]["hint"]
+    assert "folio" not in specs  # decoration is code-filled, never authored
+
+    repeat_specs = {s["id"]: s for s in writing_guides.page_slot_specs("mag-10")}
+    assert repeat_specs["cells"]["hint"] == "每格图说:一句话点出这张照片"
+
+
+def test_v3_write_path_has_no_role_guides_creative_residue():
+    # §4.2(4) acceptance: the V3 authoring prompt must not carry the v2 ROLE_GUIDES
+    # 创作话术 (those live only in writing_guides.guides_block, kept for v2 / #197).
+    from src.services import writing_guides
+
+    system, _ = _system_user(_req(user_message="write it"))
+    assert writing_guides.guides_block() not in system
+    # The signature v2 line must be absent from the V3 prompt.
+    assert "Write each text slot to its role" not in system
+
+
+def test_assembly_localizes_skill_language():
+    # zh request → skills loaded with the Chinese {LANGUAGE} fill.
+    extra = {"language": "zh"}
+    req = V3ChapterChatRequest(
+        albumId="alb_v3",
+        chapter=_chapter(),
+        pages=_pages(),
+        history=[],
+        userMessage="写吧",
+        **extra,
+    )
+    system, _ = _system_user(req)
+    # The {LANGUAGE} placeholder in both skills resolved to Chinese for a zh turn.
+    from src.skills import load_skill
+
+    assert load_skill("write_chapter", LANGUAGE="Chinese") in system
+    assert load_skill("guide_chapter", LANGUAGE="Chinese") in system
