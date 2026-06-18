@@ -52,7 +52,7 @@ class _ChapterSeed:
 
 
 _TIME_GAP_SECONDS = 6 * 60 * 60
-_UTC_ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
+_TAKEN_AT_ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?$")
 
 
 def build_photo_pool_and_chapters(photos: list[GroupingPhoto]) -> tuple[list[V2Photo], list[V2Chapter]]:
@@ -77,10 +77,10 @@ def build_photo_pool_and_chapters(photos: list[GroupingPhoto]) -> tuple[list[V2P
 
 
 def _parse_taken_at(value: str | None) -> datetime | None:
-    if value is None or not _UTC_ISO_RE.match(value):
+    if value is None or not _TAKEN_AT_ISO_RE.match(value):
         return None
     try:
-        return datetime.fromisoformat(value[:-1] + "+00:00")
+        return datetime.fromisoformat(value.removesuffix("Z"))
     except ValueError:
         return None
 
@@ -178,13 +178,12 @@ def _build_clean_chapters(
 
 
 def _time_range(states: list[_PhotoState]) -> str | None:
-    dates = sorted(state.taken_at_dt for state in states if state.taken_at_dt is not None)
-    if not dates:
+    ordered = sorted(
+        (state for state in states if state.taken_at_dt is not None and state.taken_at is not None),
+        key=lambda state: state.taken_at_dt,
+    )
+    if not ordered:
         return None
-    if dates[0] == dates[-1]:
-        return _isoformat_utc(dates[0])
-    return f"{_isoformat_utc(dates[0])}..{_isoformat_utc(dates[-1])}"
-
-
-def _isoformat_utc(value: datetime) -> str:
-    return value.isoformat().replace("+00:00", "Z")
+    if ordered[0].taken_at_dt == ordered[-1].taken_at_dt:
+        return ordered[0].taken_at
+    return f"{ordered[0].taken_at}..{ordered[-1].taken_at}"

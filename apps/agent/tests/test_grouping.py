@@ -121,6 +121,22 @@ def test_within_segment_group_hint_splits_chapters_preserving_first_seen_order()
     assert [chapter.photoIds for chapter in chapters] == [["p1", "p3"], ["p2"]]
 
 
+def test_local_exif_taken_at_without_timezone_is_timed_and_preserved():
+    photo_pool, chapters = build_photo_pool_and_chapters(
+        [
+            _photo("p1", order=0, taken_at="2026-06-01T09:00:00", group_hint="local"),
+            _photo("p2", order=1, taken_at="2026-06-01T10:30:00", group_hint="local"),
+            _photo("p3", order=2, taken_at="2026-06-01T18:31:00", group_hint="local"),
+        ]
+    )
+
+    by_id = {photo.photoId: photo for photo in photo_pool}
+    assert by_id["p1"].exif.takenAt == "2026-06-01T09:00:00"
+    assert [chapter.photoIds for chapter in chapters] == [["p1", "p2"], ["p3"]]
+    assert chapters[0].cluster.timeRange == "2026-06-01T09:00:00..2026-06-01T10:30:00"
+    assert chapters[1].cluster.timeRange == "2026-06-01T18:31:00"
+
+
 def test_invalid_taken_at_is_treated_as_untimed_and_not_written_back_to_photo_pool():
     photo_pool, chapters = build_photo_pool_and_chapters(
         [
@@ -128,8 +144,8 @@ def test_invalid_taken_at_is_treated_as_untimed_and_not_written_back_to_photo_po
             _photo(
                 "p2",
                 order=1,
-                taken_at="2026-06-01T09:00:00",
-                group_hint="local-without-zone",
+                taken_at="2026/06/01 09:00:00",
+                group_hint="invalid-format",
             ),
             _photo("p3", order=2, taken_at="2026-06-01T10:00:00Z", group_hint="timed"),
         ]
