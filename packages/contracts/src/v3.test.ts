@@ -159,6 +159,15 @@ test('TemplateDef tolerates legacy slot/scene AND accepts new category/svgs/item
     }).success,
     true,
   );
+  // Classification is required in either the V3 or transitional legacy form.
+  assert.equal(
+    TemplateDef.safeParse({
+      id: 'mag-z',
+      images: [{ id: 'image' }],
+      texts: [{ id: 'title', role: 'title', lang: 'user' }],
+    }).success,
+    false,
+  );
 });
 
 // ───────────────────────── 端点契约(§8) ─────────────────────────

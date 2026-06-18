@@ -132,7 +132,19 @@ export const TemplateDef = z
     // V3:唯一重复组(可选,§9)。
     items: TemplateItems.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((template, ctx) => {
+    const hasV3Category = Boolean(template.category);
+    const hasLegacyClassification = Boolean(template.slot && template.scene);
+
+    if (!hasV3Category && !hasLegacyClassification) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'template must declare category or legacy slot+scene',
+        path: ['category'],
+      });
+    }
+  });
 export type TemplateDef = z.infer<typeof TemplateDef>;
 
 export const TEMPLATES: Record<string, TemplateDef> = GENERATED_TEMPLATES;
