@@ -232,9 +232,39 @@ test('V3AnalyzeRequest exif is strict — only takenAt, rejects lat/lng (§3 pri
     albumId: 'a1',
     callbackUrl: 'https://example.com/cb',
     language: 'en' as const,
-    photos: [{ photoId: 'p1', base64: 'data:image/jpeg;base64,xx', width: 800, height: 600 }],
+    photos: [{ photoId: 'p1', base64: 'data:image/jpeg;base64,AA==', width: 800, height: 600 }],
   };
   assert.equal(V3AnalyzeRequest.safeParse(base).success, true);
+  assert.equal(
+    V3AnalyzeRequest.safeParse({ ...base, callbackUrl: 'mailto:ops@example.com' }).success,
+    false,
+  );
+  assert.equal(
+    V3AnalyzeRequest.safeParse({
+      ...base,
+      photos: [{ ...base.photos[0], base64: 'AA==' }],
+    }).success,
+    false,
+  );
+  assert.equal(
+    V3AnalyzeRequest.safeParse({
+      ...base,
+      photos: [{ ...base.photos[0], base64: 'data:image/jpeg;base64,AA=A' }],
+    }).success,
+    false,
+  );
+  assert.equal(
+    V3AnalyzeRequest.safeParse({
+      ...base,
+      photos: [
+        {
+          ...base.photos[0],
+          base64: `data:image/png;base64,${Buffer.from(new Uint8Array(800 * 1024 + 1)).toString('base64')}`,
+        },
+      ],
+    }).success,
+    false,
+  );
   // takenAt accepted
   assert.equal(
     V3AnalyzeRequest.safeParse({

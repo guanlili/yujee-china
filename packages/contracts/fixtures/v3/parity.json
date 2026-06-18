@@ -20,21 +20,49 @@
         "callbackUrl": "https://example.com/cb",
         "language": "en",
         "photos": [
-          { "photoId": "p1", "base64": "data:image/jpeg;base64,xx", "width": 800, "height": 600 }
+          { "photoId": "p1", "base64": "data:image/jpeg;base64,AA==", "width": 800, "height": 600 }
         ]
       }
     },
     {
-      "name": "V3AnalyzeRequest callbackUrl mirrors zod url",
+      "name": "V3AnalyzeRequest rejects non-http callbackUrl",
       "schema": "V3AnalyzeRequest",
-      "expectValid": true,
+      "expectValid": false,
       "payload": {
         "requestId": "r1",
         "albumId": "a1",
         "callbackUrl": "mailto:ops@example.com",
         "language": "en",
         "photos": [
-          { "photoId": "p1", "base64": "data:image/jpeg;base64,xx", "width": 800, "height": 600 }
+          { "photoId": "p1", "base64": "data:image/jpeg;base64,AA==", "width": 800, "height": 600 }
+        ]
+      }
+    },
+    {
+      "name": "V3AnalyzeRequest rejects non-data-url base64",
+      "schema": "V3AnalyzeRequest",
+      "expectValid": false,
+      "payload": {
+        "requestId": "r1",
+        "albumId": "a1",
+        "callbackUrl": "https://example.com/cb",
+        "language": "en",
+        "photos": [
+          { "photoId": "p1", "base64": "AA==", "width": 800, "height": 600 }
+        ]
+      }
+    },
+    {
+      "name": "V3AnalyzeRequest rejects malformed base64 padding",
+      "schema": "V3AnalyzeRequest",
+      "expectValid": false,
+      "payload": {
+        "requestId": "r1",
+        "albumId": "a1",
+        "callbackUrl": "https://example.com/cb",
+        "language": "en",
+        "photos": [
+          { "photoId": "p1", "base64": "data:image/jpeg;base64,AA=A", "width": 800, "height": 600 }
         ]
       }
     },
@@ -50,7 +78,7 @@
         "photos": [
           {
             "photoId": "p1",
-            "base64": "data:image/jpeg;base64,xx",
+            "base64": "data:image/jpeg;base64,AA==",
             "width": 800,
             "height": 600,
             "exif": { "takenAt": "2024-03-15T08:30:00.000Z" }
@@ -70,7 +98,7 @@
         "photos": [
           {
             "photoId": "p1",
-            "base64": "data:image/jpeg;base64,xx",
+            "base64": "data:image/jpeg;base64,AA==",
             "width": 800,
             "height": 600,
             "exif": { "takenAt": "2024-03-15T08:30:00" }
@@ -90,7 +118,7 @@
         "photos": [
           {
             "photoId": "p1",
-            "base64": "data:image/jpeg;base64,xx",
+            "base64": "data:image/jpeg;base64,AA==",
             "width": 800,
             "height": 600,
             "exif": { "takenAt": "2024-03-15T08:30:00+08:00" }
@@ -110,7 +138,7 @@
         "photos": [
           {
             "photoId": "p1",
-            "base64": "data:image/jpeg;base64,xx",
+            "base64": "data:image/jpeg;base64,AA==",
             "width": 800,
             "height": 600,
             "exif": null
@@ -130,7 +158,7 @@
         "photos": [
           {
             "photoId": "p1",
-            "base64": "data:image/jpeg;base64,xx",
+            "base64": "data:image/jpeg;base64,AA==",
             "width": 800,
             "height": 600,
             "exif": { "takenAt": null, "lat": 1, "lng": 2 }
@@ -160,7 +188,7 @@
         "callbackUrl": "https://example.com/cb",
         "language": "en",
         "photos": [
-          { "photoId": "p1", "base64": "data:image/jpeg;base64,xx", "width": "800", "height": 600 }
+          { "photoId": "p1", "base64": "data:image/jpeg;base64,AA==", "width": "800", "height": 600 }
         ]
       }
     },

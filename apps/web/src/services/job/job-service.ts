@@ -397,12 +397,12 @@ export const jobService = {
     await this.handleProgress(requestId, stage, progress);
   },
 
-  // analyze/completed → write the V3 章节树 to draft_json + settle the init hold in
-  // the SAME tx + album EDITING (mirrors handleInitCompleted; the v3 tree lands as-is
-  // in the jsonb column — the route is the single V3Callback validation). The credit
+  // analyze/completed → write the V3 章节树 + preview pages to draft_json + settle
+  // the init hold in the SAME tx + album EDITING (mirrors handleInitCompleted; the
+  // route is the single V3Callback validation). The credit
   // charge settles here exactly once (§6.7 charge-at-init); a double-delivered
   // callback loses the terminal transition race and never double-debits.
-  async handleV3AnalyzeCompleted(requestId: string, tree: unknown, usage: unknown) {
+  async handleV3AnalyzeCompleted(requestId: string, tree: unknown, pages: unknown, usage: unknown) {
     const job = await agentJobRepo.findByRequestId(requestId);
     if (!job) return; // idempotent: late callback after the row is gone
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return; // idempotent
@@ -422,9 +422,14 @@ export const jobService = {
       });
       if (!won) return;
 
+      const draftJson =
+        tree && typeof tree === 'object' && !Array.isArray(tree)
+          ? { ...(tree as Record<string, unknown>), pages }
+          : { tree, pages };
+
       await albumRepo.update(tx, job.albumId, {
         status: 'EDITING',
-        draftJson: tree,
+        draftJson,
         // albums.stage stays 'analysing' here — WP1.5 advances it to 'story' once the
         // preview tree carries generic copy/colors. Keeping it untouched means a
         // failed-then-retried analyze never moves the stage forward prematurely.

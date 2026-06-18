@@ -82,7 +82,7 @@ test('unknown requestId → accepted:false, nothing written', async (t) => {
   assert.deepEqual((await res.json()).data, { accepted: false });
 });
 
-test('analyze/completed → draft_json + EDITING + hold settled (charge-at-init)', async (t) => {
+test('analyze/completed → draft_json retains tree pages + EDITING + hold settled (charge-at-init)', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('v3route-done');
   try {
@@ -99,7 +99,7 @@ test('analyze/completed → draft_json + EDITING + hold settled (charge-at-init)
 
     const album = await albumRepo.findById(albumId);
     assert.equal(album?.status, 'EDITING');
-    assert.deepEqual(album?.draftJson, TREE);
+    assert.deepEqual(album?.draftJson, { ...TREE, pages: PAGES });
     assert.equal(album?.layoutJson, null);
     // stage stays 'analysing' in WP1.1 — WP1.5 advances it to 'story'.
     assert.equal(album?.stage, 'analysing');

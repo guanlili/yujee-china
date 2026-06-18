@@ -10,10 +10,12 @@ The analysis BODY is a clearly-marked seam (WP1.3/1.4/1.5); this only asserts th
 pipe round-trips and the two-end contract shapes match (schemas.py / v3.ts)."""
 
 import asyncio
+import base64
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from src.routes import v3_album
 from src.schemas import V3AnalyzeCompleted, V3AnalyzeRequest, V3LayoutTree
@@ -40,13 +42,13 @@ def _req(count: int, request_id: str = "req_v3_analyze") -> V3AnalyzeRequest:
     photos = []
     for i in range(count):
         photos.append(
-            {
-                "photoId": f"p{i + 1}",
-                "base64": "data:image/jpeg;base64,AAA",
-                "width": 800 if i % 2 == 0 else 600,
-                "height": 600 if i % 2 == 0 else 800,
-                "exif": {"takenAt": f"2024-01-{(i % 28) + 1:02d}T10:00:00Z"},
-            }
+                {
+                    "photoId": f"p{i + 1}",
+                    "base64": "data:image/jpeg;base64,AA==",
+                    "width": 800 if i % 2 == 0 else 600,
+                    "height": 600 if i % 2 == 0 else 800,
+                    "exif": {"takenAt": f"2024-01-{(i % 28) + 1:02d}T10:00:00Z"},
+                }
         )
     return V3AnalyzeRequest(
         requestId=request_id,
@@ -56,6 +58,39 @@ def _req(count: int, request_id: str = "req_v3_analyze") -> V3AnalyzeRequest:
         meta={"promptHint": "A spring trip"},
         photos=photos,
     )
+
+
+def test_analyze_request_rejects_non_http_callback_url():
+    data = _req(1).model_dump(mode="json")
+    data["callbackUrl"] = "mailto:ops@example.com"
+
+    with pytest.raises(ValidationError):
+        V3AnalyzeRequest(**data)
+
+
+def test_analyze_photo_requires_image_data_url():
+    data = _req(1).model_dump(mode="json")
+    data["photos"][0]["base64"] = "AA=="
+
+    with pytest.raises(ValidationError):
+        V3AnalyzeRequest(**data)
+
+
+def test_analyze_photo_rejects_malformed_base64_payload():
+    data = _req(1).model_dump(mode="json")
+    data["photos"][0]["base64"] = "data:image/jpeg;base64,AA=A"
+
+    with pytest.raises(ValidationError):
+        V3AnalyzeRequest(**data)
+
+
+def test_analyze_photo_rejects_payloads_over_800kb():
+    data = _req(1).model_dump(mode="json")
+    oversized = base64.b64encode(b"x" * (800 * 1024 + 1)).decode("ascii")
+    data["photos"][0]["base64"] = f"data:image/png;base64,{oversized}"
+
+    with pytest.raises(ValidationError):
+        V3AnalyzeRequest(**data)
 
 
 @pytest.mark.parametrize("count", [1, 2, 10, 30])
@@ -139,15 +174,16 @@ def test_analyze_template_failure_resets_stage(monkeypatch, captured_callbacks):
     assert template_ticks[-1] == 0, template_ticks
 
 
-def test_analyze_timeout_emits_failed(monkeypatch, captured_callbacks):
-    """The wrapper turns an exceeded background budget into a failed callback
-    (no stage), never a hang."""
+def test_analyze_timeout_resets_the_active_stage(monkeypatch, captured_callbacks):
+    """If the background budget expires after a stage has started, the failed
+    callback carries that stage and resets it so retry state is clean."""
 
     async def slow(_req):
+        await v3_album._emit_progress(_req, "template", 50)
         await asyncio.sleep(0.5)
 
     class _Budget:
-        background_task_timeout_seconds = 0  # force immediate asyncio.wait_for timeout
+        background_task_timeout_seconds = 0.01
 
     monkeypatch.setattr(v3_album, "_run_analyze", slow)
     monkeypatch.setattr(v3_album, "get_settings", lambda: _Budget())
@@ -157,6 +193,41 @@ def test_analyze_timeout_emits_failed(monkeypatch, captured_callbacks):
     failed = [c for c in captured_callbacks if c["event"] == "failed"]
     assert len(failed) == 1, captured_callbacks
     assert failed[0]["error"]["code"] == "AGENT_TIMEOUT"
+    assert failed[0]["stage"] == "template"
+    template_ticks = [
+        c["progress"]
+        for c in captured_callbacks
+        if c["event"] == "progress" and c["stage"] == "template"
+    ]
+    assert template_ticks == [50, 0], template_ticks
+
+
+def test_analyze_unhandled_error_resets_the_active_stage(monkeypatch, captured_callbacks):
+    """Unexpected errors after progress has started preserve the active stage in
+    the terminal failed callback, matching handled stage failures."""
+
+    async def boom(_req):
+        await v3_album._emit_progress(_req, "preview", 25)
+        raise RuntimeError("callback-adjacent boom")
+
+    class _Budget:
+        background_task_timeout_seconds = 10
+
+    monkeypatch.setattr(v3_album, "_run_analyze", boom)
+    monkeypatch.setattr(v3_album, "get_settings", lambda: _Budget())
+
+    asyncio.run(v3_album._run_analyze_with_timeout(_req(2)))
+
+    failed = [c for c in captured_callbacks if c["event"] == "failed"]
+    assert len(failed) == 1, captured_callbacks
+    assert failed[0]["error"]["code"] == "AGENT_INTERNAL_ERROR"
+    assert failed[0]["stage"] == "preview"
+    preview_ticks = [
+        c["progress"]
+        for c in captured_callbacks
+        if c["event"] == "progress" and c["stage"] == "preview"
+    ]
+    assert preview_ticks == [25, 0], preview_ticks
 
 
 def test_analyze_route_returns_202(captured_callbacks):
@@ -174,7 +245,7 @@ def test_analyze_route_returns_202(captured_callbacks):
             "photos": [
                 {
                     "photoId": "p1",
-                    "base64": "data:image/jpeg;base64,AAA",
+                    "base64": "data:image/jpeg;base64,AA==",
                     "width": 800,
                     "height": 600,
                 }
@@ -206,7 +277,7 @@ def test_analyze_route_rejects_lat_lng_in_exif():
             "photos": [
                 {
                     "photoId": "p1",
-                    "base64": "data:image/jpeg;base64,AAA",
+                    "base64": "data:image/jpeg;base64,AA==",
                     "width": 800,
                     "height": 600,
                     "exif": {"takenAt": "2024-01-01T10:00:00Z", "lat": 35.0, "lng": 139.0},
@@ -230,7 +301,7 @@ def test_analyze_route_requires_auth():
             "callbackUrl": "http://example.com/cb",
             "language": "en",
             "photos": [
-                {"photoId": "p1", "base64": "data:image/jpeg;base64,AAA", "width": 1, "height": 1}
+                {"photoId": "p1", "base64": "data:image/jpeg;base64,AA==", "width": 1, "height": 1}
             ],
         },
     )
