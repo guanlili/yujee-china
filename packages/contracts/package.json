@@ -12,7 +12,8 @@
     "./api": "./src/api.ts",
     "./enums": "./src/enums.ts",
     "./templates": "./src/templates.ts",
-    "./v2": "./src/v2.ts"
+    "./v2": "./src/v2.ts",
+    "./v3": "./src/v3.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
