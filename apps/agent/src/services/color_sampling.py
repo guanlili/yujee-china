@@ -37,6 +37,11 @@ log = get_logger("color_sampling")
 # keeps quantize cheap. Browser images arrive ~800px; 64px is plenty.
 _SAMPLE_BOX = (64, 64)
 
+# Representative images should already be browser-compressed thumbnails. Keep a
+# hard guard so malformed or hostile inputs cannot force large in-memory decodes.
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024
+_MAX_IMAGE_PIXELS = 16_000_000
+
 # Median-cut palette size. Few buckets => a stable, saturated "main" color
 # rather than a muddy average.
 _PALETTE_COLORS = 8
@@ -75,11 +80,17 @@ def _decode_image(image_base64: str) -> Image.Image:
         raw = base64.b64decode(payload, validate=True)
     except (binascii.Error, ValueError) as exc:
         raise ColorSamplingError("invalid base64 payload") from exc
+    if len(raw) > _MAX_IMAGE_BYTES:
+        raise ColorSamplingError("image payload too large")
 
     try:
-        # `Image.open` is lazy; `.convert` forces the decode and normalizes
-        # palette/alpha/grayscale inputs to plain RGB.
+        # `Image.open` is lazy. Check dimensions before forcing decode, then
+        # downscale before RGB conversion to keep memory bounded.
         with Image.open(io.BytesIO(raw)) as img:
+            width, height = img.size
+            if width <= 0 or height <= 0 or width * height > _MAX_IMAGE_PIXELS:
+                raise ColorSamplingError("image dimensions too large")
+            img.thumbnail(_SAMPLE_BOX, Image.Resampling.BILINEAR)
             return img.convert("RGB")
     except (UnidentifiedImageError, OSError) as exc:
         raise ColorSamplingError("undecodable image data") from exc

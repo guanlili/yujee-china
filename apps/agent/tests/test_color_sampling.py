@@ -13,6 +13,7 @@ import re
 import pytest
 from PIL import Image
 
+from src.services import color_sampling
 from src.services.color_sampling import (
     ColorSamplingError,
     sample_dominant_color,
@@ -138,6 +139,19 @@ def test_non_image_bytes_raises():
     payload = base64.b64encode(b"this is plain text, not an image").decode("ascii")
     with pytest.raises(ColorSamplingError):
         sample_dominant_color(payload)
+
+
+def test_oversized_payload_raises_before_image_decode(monkeypatch):
+    monkeypatch.setattr(color_sampling, "_MAX_IMAGE_BYTES", 4)
+    payload = base64.b64encode(b"too large").decode("ascii")
+    with pytest.raises(ColorSamplingError, match="too large"):
+        sample_dominant_color(payload)
+
+
+def test_oversized_dimensions_raise(monkeypatch):
+    monkeypatch.setattr(color_sampling, "_MAX_IMAGE_PIXELS", 4)
+    with pytest.raises(ColorSamplingError, match="too large"):
+        sample_dominant_color(_b64(_solid((10, 20, 30), size=(3, 3))))
 
 
 # ---------- stateless / no-disk ----------------------------------------------
