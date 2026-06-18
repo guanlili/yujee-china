@@ -10,10 +10,12 @@ The analysis pipeline BODY is WP1.3 (describe-content vision → 章节树) / WP
 job + callback transport faithfully and stands a **clearly-marked seam** in place
 of the real vision/templating work:
 
-  * It does NOT fake real image understanding (§ task hard constraint). Instead it
-    builds a minimal, honest draft from the request metadata alone via the WP0.4
-    pure-code engine (`skeleton_v3.build_skeleton_v3`): one photo → one chapter →
-    one interior page, photos slotted in declaration order, empty texts/colors.
+  * The `describe` stage now runs the REAL describe-content recognition-model call
+    (WP1.3, issue #182): one batched call → 章节树 (分章 + 每章 description + 每图
+    sceneDescription). The LLM authors只这 3 处; width/height/orientation/takenAt
+    are code-filled. OpenAI (GPT-5.5 Mini) primary, 火山 doubao failover.
+  * The `template`/`preview` stages still take the WP0.4 deterministic engine seam
+    (WP1.4 select-template / WP1.5 generic 文案色 own the real work there).
   * `describe`/`group`/`template`/`preview` progress callbacks round-trip so the
     202 + callback + stage flow is fully testable end-to-end today.
 
@@ -40,7 +42,6 @@ from ..schemas import (
     V3AnalyzeCompleted,
     V3CallbackError,
     V3Chapter,
-    V3ChapterPhoto,
     V3FailedEvent,
     V3JobStage,
     V3LayoutTree,
@@ -50,6 +51,8 @@ from ..schemas import (
 )
 from ..services import callback
 from ..services import skeleton_v3
+from ..services import vision
+from ..services.vision import VisionError
 from ..settings import get_settings
 
 router = APIRouter()
@@ -99,54 +102,7 @@ async def _emit_failure(
     await callback.post(str(req.callbackUrl), envelope)
 
 
-# ---------- draft assembly (WP1.1 seam) ---------------------------------------
-
-
-def _orientation(width: int, height: int) -> str:
-    """Placeholder orientation from the request dimensions.
-
-    `V3ChapterPhoto.orientation` is a required field, so the seam fills it
-    deterministically from width/height. TODO(WP1.2 deterministic-attrs): the
-    确定性属性补全 WP owns computing width/height/orientation/takenAt as the real
-    code-filled (not LLM) attributes — this is the minimal stand-in until then."""
-    if width > height:
-        return "landscape"
-    if height > width:
-        return "portrait"
-    return "square"
-
-
-def _seed_chapters(req: V3AnalyzeRequest) -> list[V3Chapter]:
-    """Build a minimal honest 章节树 from request metadata ALONE — NO image
-    understanding (§ task: do not fake real vision analysis).
-
-    TODO(WP1.3 describe-content): the real vision call partitions photos into
-    chapters and writes every chapter `description` + each photo `sceneDescription`
-    (the only 3 LLM-authored fields, §4.1). Until then: one chapter per photo (一图
-    一章不跨章, §4.1), empty descriptions, accentColor/artFont null placeholders
-    (theme 环节填, §4.1)."""
-    chapters: list[V3Chapter] = []
-    for idx, photo in enumerate(req.photos):
-        chapters.append(
-            V3Chapter(
-                chapterId=f"ch_{idx + 1}",
-                description="",  # TODO(WP1.3 describe-content): vision writes this
-                accentColor=None,  # null placeholder until theme stage (§4.1)
-                artFont=None,
-                photos=[
-                    V3ChapterPhoto(
-                        photoId=photo.photoId,
-                        # TODO(WP1.3 describe-content): vision writes sceneDescription
-                        sceneDescription="",
-                        width=photo.width,
-                        height=photo.height,
-                        orientation=_orientation(photo.width, photo.height),
-                        takenAt=photo.exif.takenAt if photo.exif else None,
-                    )
-                ],
-            )
-        )
-    return chapters
+# ---------- draft assembly ----------------------------------------------------
 
 
 def _build_preview(chapters: list[V3Chapter]) -> tuple[V3LayoutTree, list[Page]]:
@@ -170,18 +126,34 @@ def _build_preview(chapters: list[V3Chapter]) -> tuple[V3LayoutTree, list[Page]]
 
 async def _run_analyze(req: V3AnalyzeRequest) -> None:
     started = time.monotonic()
+    vision_call_count = 0
+    vision_model: str | None = None
 
-    # describe — TODO(WP1.3): real vision分章 + sceneDescription. Seed only here.
+    # describe — WP1.3 (#182): real describe-content call → 章节树. The recognition
+    # model authors只分章 + 每章 description + 每图 sceneDescription; the
+    # deterministic photo attrs (width/height/orientation/takenAt) are code-filled
+    # inside describe_content. OpenAI primary, 火山 failover (§6.8 第 2 条).
     await _emit_progress(req, "describe", 0)
+    prompt_hint = req.meta.promptHint if req.meta else None
     try:
-        chapters = _seed_chapters(req)
-    except Exception as exc:  # noqa: BLE001
-        log.exception("v3_analyze.describe_failed", error=str(exc))
+        described = await vision.describe_content(
+            req.photos, language=req.language, prompt_hint=prompt_hint
+        )
+    except VisionError as exc:
+        log.warning("v3_analyze.describe_failed", error=str(exc))
         await _emit_failure(req, code="AGENT_VISION_FAILED", message=str(exc), stage="describe")
         return
+    except Exception as exc:  # noqa: BLE001
+        log.exception("v3_analyze.describe_unhandled", error=str(exc))
+        await _emit_failure(req, code="AGENT_VISION_FAILED", message=str(exc), stage="describe")
+        return
+    chapters = described.tree.chapters
+    vision_call_count = 1
+    vision_model = described.model
     await _emit_progress(req, "describe", 100)
 
-    # group — TODO(WP1.2/1.3): time-signal grouping. Seam: one chapter per photo.
+    # group — 分章 happens INSIDE describe-content (§4.1: grouping并进识图模型这一次
+    # 调用). This stage stays as a progress beat for UI parity; no separate call.
     await _emit_progress(req, "group", 0)
     await _emit_progress(req, "group", 100)
 
@@ -210,11 +182,12 @@ async def _run_analyze(req: V3AnalyzeRequest) -> None:
         pages=pages,
         usage=V3Usage(
             durationMs=duration_ms,
-            # Seam runs no vision/planning call — TODO(WP1.3) bumps visionCallCount
-            # and sets models.vision. V3Models built bare: strict schema rejects an
-            # explicit None for the optional `str` model-name fields.
-            visionCallCount=0,
-            models=V3Models(),
+            # describe-content ran one recognition-model call (WP1.3). models.vision
+            # is the slot actually hit (GPT-5.5 Mini or 火山 on failover). V3Models
+            # is built with vision only when known: the strict schema rejects an
+            # explicit None for the optional `str` model-name field.
+            visionCallCount=vision_call_count,
+            models=V3Models(**({"vision": vision_model} if vision_model else {})),
         ),
     )
     await callback.post(str(req.callbackUrl), envelope)

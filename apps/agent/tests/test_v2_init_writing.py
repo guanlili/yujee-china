@@ -345,7 +345,7 @@ def test_init_reports_openai_vision_model_when_provider_openai(captured_callback
             # `thinking` knob and must request a json_object response_format.
             assert kwargs.get("extra_body") is None
             assert kwargs.get("response_format") == {"type": "json_object"}
-            assert kwargs["model"] == "gpt-4o-mini"
+            assert kwargs["model"] == "gpt-5.5-mini"
             return _completion(_vision_payload(6))
         if _is_theme_prompt(messages):
             return _completion(
@@ -362,7 +362,7 @@ def test_init_reports_openai_vision_model_when_provider_openai(captured_callback
     completed = [c for c in captured_callbacks if c["event"] == "completed"]
     assert len(completed) == 1, captured_callbacks
     assert not [c for c in captured_callbacks if c["event"] == "failed"]
-    assert completed[0]["usage"]["models"]["vision"] == "gpt-4o-mini"
+    assert completed[0]["usage"]["models"]["vision"] == "gpt-5.5-mini"
     assert completed[0]["usage"]["visionCallCount"] == 1
 
 

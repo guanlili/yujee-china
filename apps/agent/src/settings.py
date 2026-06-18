@@ -69,12 +69,15 @@ class Settings(BaseSettings):
     # extraction. Ignored by non-doubao providers that don't accept `thinking`.
     ark_disable_thinking: bool = True
 
-    # OpenAI (GPT) vision slot — used only when vision_provider="openai".
-    # base_url is the public OpenAI API; override for an Azure/compatible gateway.
-    # gpt-4o-mini is the cheap multimodal default; bump to gpt-4o for harder crops.
+    # OpenAI (GPT) vision slot — used by V2 when vision_provider="openai", and the
+    # PRIMARY slot for the V3 describe-content recognition model (architecture
+    # §6.8 第 2 条: 识图模型 = GPT-5.5 Mini 主, `OPENAI_*` 槽). base_url is the
+    # public OpenAI API; override for an Azure/compatible gateway. The model
+    # default is the production GPT-5.5 Mini id; override via env if OpenAI ships a
+    # different alias.
     openai_api_key: str | None = None  # env OPENAI_API_KEY
     openai_base_url: str = "https://api.openai.com/v1"
-    openai_vision_model: str = "gpt-4o-mini"
+    openai_vision_model: str = "gpt-5.5-mini"
     openai_timeout_seconds: int = 120
     # GPT supports response_format=json_object and reliably returns valid JSON for
     # this structured extraction, so default ON for the openai slot (the doubao
@@ -82,6 +85,17 @@ class Settings(BaseSettings):
     # see deepseek_use_json_object). OpenAI must NEVER receive doubao's `thinking`
     # extra_body (400 InvalidRequest); the slot helper guarantees that.
     openai_use_json_object: bool = True
+
+    # V3 describe-content failover (architecture §6.8 第 2 条 / v3-impl-plan §6.2):
+    # the recognition model defaults to OPENAI (GPT-5.5 Mini, the openai_* slot
+    # above). ai_client already retries once on transport/5xx within
+    # openai_timeout_seconds, so a 30s per-call budget = 30s + one retry ≈ 60s
+    # worst case for the primary attempt. If the OpenAI slot still 5xx/times-out
+    # after that retry, OR the whole batch hasn't finished within
+    # describe_batch_deadline_seconds, describe-content降级火山 (the ark_* slot).
+    # 数值可微调,不改「先 GPT、自动降级火山」的降级语义。
+    describe_openai_timeout_seconds: int = 30
+    describe_batch_deadline_seconds: int = 90
 
     # planning + chat-edit (DeepSeek slot; in prod points at Volcano Ark doubao)
     deepseek_api_key: str | None = None
@@ -113,15 +127,6 @@ class Settings(BaseSettings):
     # still catch any rule violations. Flip OFF only if a faster/abler composing
     # provider makes thinking affordable again.
     composing_disable_thinking: bool = True
-
-    # vision via OpenAI (GPT) slot — secondary/alternative vision provider.
-    # 只声明配置位；让 vision.py 真正改用这个槽是单独的代码改动（见 GitHub issue）。
-    # key 填到 .env 的 OPENAI_API_KEY（生产走 Fly secrets）。当前 model 是占位默认值；
-    # V3 启用前由 WP1.3 确认生产 GPT 视觉型号并用 env 覆盖。
-    openai_api_key: str | None = None
-    openai_base_url: str = "https://api.openai.com/v1"
-    openai_vision_model: str = "gpt-4o-mini"
-    openai_timeout_seconds: int = 120
 
 
 _settings: Settings | None = None
