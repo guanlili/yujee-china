@@ -4,6 +4,8 @@ import test from 'node:test';
 import { AlbumStage, ArtFontPack, TemplateCategory } from './enums';
 import {
   AccentColor,
+  AlbumLayoutPlan,
+  Page,
   V3Chapter,
   V3ChapterPhoto,
   V3LayoutTree,
@@ -68,6 +70,15 @@ test('V3ChapterPhoto parses the analysis-tree photo shape', () => {
     V3ChapterPhoto.safeParse({ ...baseChapterPhoto, takenAt: null }).success,
     true,
   );
+  // Browser EXIF is local wall time with no zone.
+  assert.equal(
+    V3ChapterPhoto.safeParse({ ...baseChapterPhoto, takenAt: '2024-03-15T08:30:00' }).success,
+    true,
+  );
+  assert.equal(
+    V3ChapterPhoto.safeParse({ ...baseChapterPhoto, takenAt: '2024-03-15T08:30:00+08:00' }).success,
+    false,
+  );
 });
 
 test('V3ChapterPhoto rejects any location/GPS field (§3 privacy red line)', () => {
@@ -107,6 +118,49 @@ test('V3LayoutTree round-trips through strict parse', () => {
   };
   assert.deepEqual(V3LayoutTree.parse(tree), tree);
   assert.equal(V3LayoutTree.safeParse({ chapters: [], extra: 1 }).success, false);
+});
+
+test('shared Page is strict for nested V3 endpoint payloads', () => {
+  assert.equal(
+    Page.safeParse({ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {}, extra: true }).success,
+    false,
+  );
+});
+
+test('AlbumLayoutPlan follows the TS render contract without the legacy 16-page cap', () => {
+  assert.equal(
+    AlbumLayoutPlan.safeParse({
+      magazine: { title: 'My Book', style: 'warm-film', language: 'en' },
+      photos: [],
+      pages: Array.from({ length: 17 }, (_, pageIndex) => ({
+        pageIndex,
+        templateId: 'mag-08',
+        images: {},
+        texts: {},
+      })),
+    }).success,
+    true,
+  );
+});
+
+test('AlbumLayoutPlan photos are the strict external render shape', () => {
+  assert.equal(
+    AlbumLayoutPlan.safeParse({
+      magazine: { title: 'My Book', style: 'warm-film', language: 'en' },
+      photos: [
+        {
+          photoId: 'p1',
+          description: 'x',
+          tags: [],
+          quality: 'hero',
+          orientation: 'landscape',
+          peopleCount: '1',
+        },
+      ],
+      pages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }],
+    }).success,
+    false,
+  );
 });
 
 // ───────────────────────── 模板新字段(§9) ─────────────────────────
@@ -188,6 +242,20 @@ test('V3AnalyzeRequest exif is strict — only takenAt, rejects lat/lng (§3 pri
       photos: [{ ...base.photos[0], exif: { takenAt: '2024-03-15T08:30:00.000Z' } }],
     }).success,
     true,
+  );
+  assert.equal(
+    V3AnalyzeRequest.safeParse({
+      ...base,
+      photos: [{ ...base.photos[0], exif: { takenAt: '2024-03-15T08:30:00' } }],
+    }).success,
+    true,
+  );
+  assert.equal(
+    V3AnalyzeRequest.safeParse({
+      ...base,
+      photos: [{ ...base.photos[0], exif: { takenAt: '2024-03-15T08:30:00+08:00' } }],
+    }).success,
+    false,
   );
   // lat/lng rejected by strict exif
   assert.equal(

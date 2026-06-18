@@ -164,10 +164,8 @@ def test_finalize_keeps_focal_on_photos():
     assert by_id["p001"].focal.x == 0.5 and by_id["p001"].focal.y == 0.2
     assert by_id["p002"].focal is not None
     assert by_id["p003"].focal is not None
-    # Extension fields are still stripped (None on the external 5-field shape);
-    # focal is the only NON-base field finalize keeps.
-    assert by_id["p001"].peopleCount is None
-    assert by_id["p001"].scene is None
+    # Extension fields are stripped; focal is the only analysis hint finalize keeps.
+    assert {"peopleCount", "scene"}.isdisjoint(by_id["p001"].model_dump())
 
 
 def test_finalize_focal_none_stays_none():
@@ -181,3 +179,6 @@ def test_finalize_strip_to_base5_preserves_focal():
     stripped = finalize._strip_to_base5(photo)
     assert stripped.focal is not None
     assert stripped.focal.x == 0.25 and stripped.focal.y == 0.75
+    assert {"peopleCount", "scene", "mood", "timeOfDay", "location"}.isdisjoint(
+        stripped.model_dump()
+    )

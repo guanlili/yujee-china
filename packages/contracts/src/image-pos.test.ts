@@ -26,6 +26,7 @@ test('PhotoAnalysis.focal is optional (absent ok) and validated when present', (
   assert.equal(PhotoAnalysis.safeParse(basePhoto).success, true);
   assert.equal(PhotoAnalysis.safeParse({ ...basePhoto, focal: { x: 0.2, y: 0.8 } }).success, true);
   assert.equal(PhotoAnalysis.safeParse({ ...basePhoto, focal: { x: 2, y: 0.8 } }).success, false);
+  assert.equal(PhotoAnalysis.safeParse({ ...basePhoto, peopleCount: '1' }).success, false);
 });
 
 test('ImagePos accepts in-range values', () => {

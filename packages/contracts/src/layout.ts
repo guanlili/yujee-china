@@ -7,12 +7,17 @@ export type PhotoOrientation = z.infer<typeof PhotoOrientation>;
 export const PhotoQuality = z.enum(['hero', 'detail', 'fill']);
 export type PhotoQuality = z.infer<typeof PhotoQuality>;
 
+// Browser EXIF DateTime is local wall time with no zone. Accept that format
+// plus UTC `Z` strings, but keep offset datetimes out so no timezone is invented.
+export const TakenAtDateTime = z.string().datetime({ local: true });
+export type TakenAtDateTime = z.infer<typeof TakenAtDateTime>;
+
 export const Magazine = z.object({
   title: z.string().min(1).max(60),
   subtitle: z.string().max(100).optional(),
   style: z.string().min(1),
   language: z.enum(['zh', 'en']),
-});
+}).strict();
 export type Magazine = z.infer<typeof Magazine>;
 
 /**
@@ -25,7 +30,7 @@ export type Magazine = z.infer<typeof Magazine>;
 export const Focal = z.object({
   x: z.number().min(0).max(1),
   y: z.number().min(0).max(1),
-});
+}).strict();
 export type Focal = z.infer<typeof Focal>;
 
 export const PhotoAnalysis = z.object({
@@ -37,7 +42,7 @@ export const PhotoAnalysis = z.object({
   // #169: subject focal point (0..1, face-first). Survives finalize so the flat
   // layout's default imagePos can center on the subject. Absent => 0.5/0.5.
   focal: Focal.optional(),
-});
+}).strict();
 export type PhotoAnalysis = z.infer<typeof PhotoAnalysis>;
 
 /**
@@ -57,7 +62,7 @@ export const ImagePos = z.object({
   x: z.number().min(0).max(100),
   y: z.number().min(0).max(100),
   scale: z.number().min(1).max(2),
-});
+}).strict();
 export type ImagePos = z.infer<typeof ImagePos>;
 
 export const Page = z.object({
@@ -67,14 +72,14 @@ export const Page = z.object({
   texts: z.record(z.string(), z.string()),
   // Optional per-slot position/scale overrides. Absent => render default 50/50/1.
   imagePos: z.record(z.string(), ImagePos).optional(),
-});
+}).strict();
 export type Page = z.infer<typeof Page>;
 
 export const AlbumLayoutPlan = z.object({
   magazine: Magazine,
   photos: z.array(PhotoAnalysis),
   pages: z.array(Page).min(1),
-});
+}).strict();
 export type AlbumLayoutPlan = z.infer<typeof AlbumLayoutPlan>;
 
 // ───────────────────────── V3 authoring 树(章节树) ─────────────────────────
@@ -107,7 +112,7 @@ export const V3ChapterPhoto = z
     width: z.number().int().positive(), // 代码:输入宽高
     height: z.number().int().positive(), // 代码:输入宽高
     orientation: PhotoOrientation, // 代码:由宽高算
-    takenAt: z.string().datetime().nullable().optional(), // 代码:EXIF;缺失为 null(无 GPS)
+    takenAt: TakenAtDateTime.nullable().optional(), // 代码:EXIF;缺失为 null(无 GPS)
   })
   .strict();
 export type V3ChapterPhoto = z.infer<typeof V3ChapterPhoto>;

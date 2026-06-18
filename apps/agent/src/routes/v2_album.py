@@ -22,7 +22,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from ..auth import require_bearer
 from ..logging_config import get_logger, request_id_var
-from ..schemas import JobError, LayoutRequest, Page, PhotoAnalysis, PhotoIn
+from ..schemas import JobError, LayoutPhotoAnalysis, LayoutRequest, Page, PhotoAnalysis, PhotoIn
 from ..schemas_v2 import (
     AlbumDraft,
     Usage,
@@ -792,7 +792,7 @@ async def _run_add_photos(req: V2AddPhotosRequest) -> None:
 
     # Strip the new photos to the 5 outward-facing fields (invariant 12).
     new_photos = [
-        PhotoAnalysis(
+        LayoutPhotoAnalysis(
             photoId=photo.analysis.photoId,
             description=photo.analysis.description,
             tags=list(photo.analysis.tags),

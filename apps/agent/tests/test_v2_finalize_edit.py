@@ -165,15 +165,16 @@ def test_finalize_mock_emits_finalize_stage_and_layout(captured_callbacks):
     assert 1 <= len(layout.pages) <= 48
     assert finalize.validate_v2(layout) is None
     # Photos are stripped to the external base-5 fields — the internal
-    # composing-hint extensions never carry a value into the flat layout
-    # (invariant 12 / D-GPS: location stays null).
+    # composing-hint extensions never carry into the flat layout.
     for photo in layout.photos:
         assert photo.photoId and photo.quality and photo.orientation
-        assert photo.peopleCount is None
-        assert photo.scene is None
-        assert photo.mood is None
-        assert photo.timeOfDay is None
-        assert photo.location is None
+        assert {
+            "peopleCount",
+            "scene",
+            "mood",
+            "timeOfDay",
+            "location",
+        }.isdisjoint(photo.model_dump())
 
 
 def test_finalize_failure_emits_failed(monkeypatch, captured_callbacks):

@@ -18,6 +18,7 @@ from pydantic import Field, HttpUrl
 from .schemas import (
     Focal,
     Language,
+    LayoutPhotoAnalysis,
     Magazine,
     Page,
     PhotoAnalysis,
@@ -174,7 +175,7 @@ class LayoutV2(_Strict):
     accepts it; the 48 cap is the Agent-side safety net."""
 
     magazine: Magazine
-    photos: list[PhotoAnalysis]
+    photos: list[LayoutPhotoAnalysis]
     pages: list[Page] = Field(min_length=1, max_length=48)
 
 
@@ -511,7 +512,7 @@ class V2AddCompletedCallback(_Strict):
     event: Literal["completed"]
     jobKind: Literal["add"]
     requestId: str = Field(min_length=1)
-    newPhotos: list[PhotoAnalysis]
+    newPhotos: list[LayoutPhotoAnalysis]
     newPages: list[Page] = Field(min_length=1)
     usage: Usage
 

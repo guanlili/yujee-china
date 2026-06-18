@@ -34,7 +34,7 @@ from collections import Counter
 from typing import Any, Mapping
 
 from .. import templates as registry
-from ..schemas import Magazine, Page, PhotoAnalysis
+from ..schemas import LayoutPhotoAnalysis, Magazine, Page
 from ..schemas_v2 import (
     AlbumDraft,
     LayoutV2,
@@ -411,7 +411,7 @@ def _skeleton_photo(photo: V2Photo) -> dict[str, Any]:
     }
 
 
-def _strip_to_base5(photo: V2Photo) -> PhotoAnalysis:
+def _strip_to_base5(photo: V2Photo) -> LayoutPhotoAnalysis:
     """Drop the internal extension fields (peopleCount/scene/mood/timeOfDay) so
     the external contract keeps only the base fields (invariant 12).
 
@@ -419,7 +419,7 @@ def _strip_to_base5(photo: V2Photo) -> PhotoAnalysis:
     the flat layout's default imagePos can center on the subject. Keep it."""
 
     analysis = photo.analysis
-    return PhotoAnalysis(
+    return LayoutPhotoAnalysis(
         photoId=analysis.photoId,
         description=analysis.description,
         tags=list(analysis.tags),
@@ -539,7 +539,7 @@ def validate_v2(layout: LayoutV2) -> str | None:
     return None
 
 
-def _fill_in_hero(photo: PhotoAnalysis, constraint: Mapping[str, Any]) -> bool:
+def _fill_in_hero(photo: LayoutPhotoAnalysis, constraint: Mapping[str, Any]) -> bool:
     qualities = constraint.get("quality") or []
     return photo.quality == "fill" and "hero" in qualities and "fill" not in qualities
 
