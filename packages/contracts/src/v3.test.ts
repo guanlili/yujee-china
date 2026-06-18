@@ -4,6 +4,8 @@ import test from 'node:test';
 import { AlbumStage, ArtFontPack, TemplateCategory } from './enums';
 import {
   AccentColor,
+  AlbumLayoutPlan,
+  Page,
   V3Chapter,
   V3ChapterPhoto,
   V3LayoutTree,
@@ -107,6 +109,29 @@ test('V3LayoutTree round-trips through strict parse', () => {
   };
   assert.deepEqual(V3LayoutTree.parse(tree), tree);
   assert.equal(V3LayoutTree.safeParse({ chapters: [], extra: 1 }).success, false);
+});
+
+test('shared Page is strict for nested V3 endpoint payloads', () => {
+  assert.equal(
+    Page.safeParse({ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {}, extra: true }).success,
+    false,
+  );
+});
+
+test('AlbumLayoutPlan follows the TS render contract without the legacy 16-page cap', () => {
+  assert.equal(
+    AlbumLayoutPlan.safeParse({
+      magazine: { title: 'My Book', style: 'warm-film', language: 'en' },
+      photos: [],
+      pages: Array.from({ length: 17 }, (_, pageIndex) => ({
+        pageIndex,
+        templateId: 'mag-08',
+        images: {},
+        texts: {},
+      })),
+    }).success,
+    true,
+  );
 });
 
 // ───────────────────────── 模板新字段(§9) ─────────────────────────

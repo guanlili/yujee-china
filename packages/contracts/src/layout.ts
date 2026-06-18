@@ -12,7 +12,7 @@ export const Magazine = z.object({
   subtitle: z.string().max(100).optional(),
   style: z.string().min(1),
   language: z.enum(['zh', 'en']),
-});
+}).strict();
 export type Magazine = z.infer<typeof Magazine>;
 
 /**
@@ -25,7 +25,7 @@ export type Magazine = z.infer<typeof Magazine>;
 export const Focal = z.object({
   x: z.number().min(0).max(1),
   y: z.number().min(0).max(1),
-});
+}).strict();
 export type Focal = z.infer<typeof Focal>;
 
 export const PhotoAnalysis = z.object({
@@ -57,7 +57,7 @@ export const ImagePos = z.object({
   x: z.number().min(0).max(100),
   y: z.number().min(0).max(100),
   scale: z.number().min(1).max(2),
-});
+}).strict();
 export type ImagePos = z.infer<typeof ImagePos>;
 
 export const Page = z.object({
@@ -67,14 +67,14 @@ export const Page = z.object({
   texts: z.record(z.string(), z.string()),
   // Optional per-slot position/scale overrides. Absent => render default 50/50/1.
   imagePos: z.record(z.string(), ImagePos).optional(),
-});
+}).strict();
 export type Page = z.infer<typeof Page>;
 
 export const AlbumLayoutPlan = z.object({
   magazine: Magazine,
   photos: z.array(PhotoAnalysis),
   pages: z.array(Page).min(1),
-});
+}).strict();
 export type AlbumLayoutPlan = z.infer<typeof AlbumLayoutPlan>;
 
 // ───────────────────────── V3 authoring 树(章节树) ─────────────────────────

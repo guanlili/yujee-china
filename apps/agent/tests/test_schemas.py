@@ -114,16 +114,17 @@ class TestExtraForbid:
 
 
 class TestPagesBound:
-    def test_pages_capped_at_16(self):
-        with pytest.raises(ValidationError):
-            AlbumLayoutPlan(
-                magazine=Magazine(title="H", style="warm-film", language="en"),
-                photos=[_photo_analysis("p1")],
-                pages=[
-                    Page(pageIndex=i, templateId="mag-13", images={"image": "p1"}, texts={})
-                    for i in range(17)
-                ],
-            )
+    def test_pages_match_ts_contract_without_legacy_16_cap(self):
+        layout = AlbumLayoutPlan(
+            magazine=Magazine(title="H", style="warm-film", language="en"),
+            photos=[_photo_analysis("p1")],
+            pages=[
+                Page(pageIndex=i, templateId="mag-13", images={"image": "p1"}, texts={})
+                for i in range(17)
+            ],
+        )
+
+        assert len(layout.pages) == 17
 
 
 class TestVisionGroups:

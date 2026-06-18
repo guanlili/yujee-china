@@ -146,7 +146,7 @@ class Page(_Strict):
 class AlbumLayoutPlan(_Strict):
     magazine: Magazine
     photos: list[PhotoAnalysis]
-    pages: list[Page] = Field(min_length=1, max_length=16)
+    pages: list[Page] = Field(min_length=1)
 
 
 # JobError is the shared error shape carried by v2 failed callbacks and the

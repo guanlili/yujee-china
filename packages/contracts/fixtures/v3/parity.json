@@ -357,6 +357,25 @@
       }
     },
     {
+      "name": "V3ChapterChatRequest rejects nested Page extra key",
+      "schema": "V3ChapterChatRequest",
+      "expectValid": false,
+      "payload": {
+        "albumId": "a1",
+        "language": "en",
+        "chapter": {
+          "chapterId": "c1",
+          "description": "a quiet spring morning in an old town",
+          "accentColor": null,
+          "artFont": null,
+          "photos": []
+        },
+        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}, "extra": true }],
+        "history": [],
+        "userMessage": "write this chapter"
+      }
+    },
+    {
       "name": "V3ChapterChatResponse write turn carries pagesTexts",
       "schema": "V3ChapterChatResponse",
       "expectValid": true,
@@ -484,6 +503,37 @@
           "magazine": { "title": "My Book", "style": "warm-film", "language": "en" },
           "photos": [],
           "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+        },
+        "usage": { "durationMs": 1, "models": {} }
+      }
+    },
+    {
+      "name": "V3FinalizeResponse accepts more than legacy 16 pages",
+      "schema": "V3FinalizeResponse",
+      "expectValid": true,
+      "payload": {
+        "layout": {
+          "magazine": { "title": "My Book", "style": "warm-film", "language": "en" },
+          "photos": [],
+          "pages": [
+            { "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 1, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 2, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 3, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 4, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 5, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 6, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 7, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 8, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 9, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 10, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 11, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 12, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 13, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 14, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 15, "templateId": "mag-08", "images": {}, "texts": {} },
+            { "pageIndex": 16, "templateId": "mag-08", "images": {}, "texts": {} }
+          ]
         },
         "usage": { "durationMs": 1, "models": {} }
       }
