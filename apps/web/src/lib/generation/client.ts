@@ -15,6 +15,10 @@ export type GenerationPhoto = {
   base64: string;
   width: number;
   height: number;
+  // EXIF capture time (ISO 8601) or null — produced by compressFile, forwarded to
+  // the Agent as a deterministic chaptering signal. takenAt is the ONLY EXIF field
+  // carried (D-GPS: no coordinates ever enter the payload).
+  takenAt?: string | null;
 };
 
 export function generationPhotosFromCache(
