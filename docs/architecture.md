@@ -13,7 +13,7 @@
 | 产品名 | Yujee(遇己)|
 | 域名 | yujeeai.com |
 | 形态 | AI 人生纪念册 Web 应用,海外市场,英文 UI |
-| 用户路径 | 输入文字 + 选照片 → AI 排版 → 用户编辑 → 浏览器导出 PDF |
+| 用户路径(V3 五环节)| 选照片 → 秒级进编辑器 → ① 分析(后台)→ ② 章节故事 → ③ 确定主题与章节色 → ④ 书籍设计 → ⑤ 待导出(浏览器出 PDF)|
 | 初期容量目标 | 1000 用户(简单优先)|
 | 长期容量目标 | 10 万用户(预留扩展,但**第一版不实施**)|
 
@@ -21,23 +21,26 @@
 
 ## 1. 系统切分:三个组件
 
+> 下图为 **V3** 三端边界(五环节状态机)。CJK 宽字在等宽终端里框线会略错位,以内容为准。
+
 ```
-┌─────────────────────┐        ┌──────────────────────┐         ┌──────────────────┐
-│      Browser        │        │  Web (Next.js 15)    │         │ Agent (FastAPI)  │
-│                     │        │                      │         │                  │
-│ • 选照片            │        │ • 页面/登录/积分/支付 │         │ • 调火山识图     │
-│ • 浏览器压缩 base64 │ ─────► │ • 转发图片到 Agent   │ ──────► │ • 调 DeepSeek 排版│
-│ • 轮询 job 状态     │ ◄───── │ • 保存排版 JSON      │ ◄────── │ • 推 progress    │
-│ • 编辑/Chat 修改    │ ─────► │ • Chat 转发 Agent    │ ──────► │ • Chat-Edit 同步 │
-│ • 本地渲染 PDF      │ ◄───── │ • 写 album_messages  │ ◄────── │ • 推终态 callback│
-│ • PDF 上传 R2       │ ─────► │ • PDF 上传/分发      │         │ • 不存任何数据   │
-└─────────────────────┘        └──────────────────────┘         │ • 无状态         │
-                                         │                       └──────────────────┘
-                                         ▼
-                              ┌──────────────────────┐
-                              │ Postgres (Neon)      │
-                              │ R2 (Cloudflare)      │
-                              └──────────────────────┘
+┌──────────────────────────┐      ┌──────────────────────────┐      ┌──────────────────────────┐
+│         Browser          │      │     Web (Next.js 15)     │      │     Agent (FastAPI)      │
+├──────────────────────────┤      ├──────────────────────────┤      ├──────────────────────────┤
+│ 选照片 / 端内压缩 800px   │      │ 建相册 + ≤0.5s 跳编辑器   │      │ 无状态,不存任何数据       │
+│ Stage0 读 EXIF 取 takenAt │      │ (分析任务后台异步跑)      │      │                          │
+│ 不抽 GPS · 无地点维度     │ ───► │ 转发 base64,不落盘        │ ───► │ 识图模型(GPT-5.5 Mini /  │
+│ 五环节 UI/面包屑/加载动画 │      │ 持 layout 树 + stage      │      │ 火山 failover):分析+版面 │
+│ 章节故事交互组件          │ ◄─── │ (五环节状态唯一真相源)    │ ◄─── │ 主控                     │
+│ 封面/封尾单独成页(画板)   │      │ 调度各环节对 Agent 调用   │      │ DeepSeek:章节文案        │
+│ 本地渲染 PDF → 直传 R2    │      │ 积分:init 成功即按张扣    │      │ 确定性引擎:分组/套模板/  │
+│                          │      │ 导出失败日志(飞书后置)    │      │ flatten/校验             │
+└──────────────────────────┘      └──────────────────────────┘      └──────────────────────────┘
+                                              │
+                                              ▼
+                                   ┌──────────────────────────┐
+                                   │  Postgres (Neon) · R2    │
+                                   └──────────────────────────┘
 ```
 
 ### 1.1 三个组件的职责边界
@@ -45,24 +48,29 @@
 **Browser**
 - 唯一拥有原图的地方。原图永远不出浏览器。
 - Canvas 压缩到 800px、quality 0.6 → base64 data URL 作为"特征载体"。
-- 拿到排版 JSON 后用 React 模板渲染预览。
-- 编辑 / Chat 修改时,把当前 layout 摘要 + 用户消息发给 Web。
-- 用户点导出 → 浏览器本地用 `@react-pdf/renderer` 生成 PDF → 直传 R2。
+- **Stage 0 读 EXIF**:只取 `takenAt`(排序/分章用)随 base64 发出;**不抽取 GPS、不做地点反查**(§3 隐私 / §6.8 第 3 条:排版不需要地址,反查成本与体验提升不成正比)。
+- 用 React 模板渲染**五环节 UI**:顶栏常驻面包屑(分析 > 章节故事 > 确定主题 > 书籍设计 > 待导出,当前环节高亮)、分析期加载动画(「正在分析照片」)、章节故事交互组件(对话 + 缩略图条)。
+- **画板把封面/封尾单独成页**展示,不混进明细跨页。
+- 章节故事/编辑时,把当前 layout 切片 + 用户消息发给 Web(非全树)。
+- 用户点导出 → 浏览器本地用 `@react-pdf/renderer` 生成 PDF → 直传 R2(失败自动重试 ≤3 次,连续 3 次失败弹安抚框)。
 
 **Web (Next.js)**
 - 唯一与用户、数据库、支付打交道的组件。
+- **建相册 + 秒级跳转编辑器**:点「下一个」≤0.5s 进编辑器,`/v3/analyze` 后台异步跑,不阻塞进入。
 - 收到 base64 后**不落盘、不存 R2、不写日志**,直接转发给 Agent。
-- 保存的是排版 JSON + Chat 对话历史(`album_messages`),不是图片。
-- Chat 编辑请求转发给 Agent(同步),拿到 layout patch 后写回 DB。
-- PDF 上传走 R2 presigned PUT,Web 不过 PDF 流量。
+- **持有 layout 树(`draft_json`)+ `stage`**:`stage` 是整本相册五环节状态的**唯一真相源**(Agent 不持 stage);保存 layout 树 + 对话历史(`album_messages`),不是图片。
+- **调度各环节对 Agent 的调用**:转发切片、合并补丁/子树写回 DB、推进 `stage`、控导出闸门(章节故事全完成才解锁)。
+- **积分扣费**:init 成功即按张实扣(`⌈张数/10⌉`),失败 `release`(§6.7 / §6.8);其余环节免费。
+- PDF 上传走 R2 presigned PUT,Web 不过 PDF 流量;导出连续失败记错误日志(飞书推送后置)。
 
 **Agent (FastAPI)**
 - 无状态服务。无数据库连接。无文件系统持久化。
-- 两个端点:
-  - `POST /v1/layout` — 异步(BackgroundTask + callback),首次生成,见 §2
-  - `POST /v1/chat-edit` — 同步(用户在等回复),基于当前 layout + 对话历史出 patch
-- 接收 base64 数组 + 用户文本 → 火山识图 → DeepSeek 排版 → 返回 JSON。
-- 不直接被浏览器调用,只被 Web 调用。
+- 承载**两类模型 + 确定性引擎**(V3):
+  - **识图模型**(GPT-5.5 Mini 主 / 火山 doubao-vision failover):图片分析 + 当「主控」做一切改变版面观感的判断(套模板/主题/章节色/布局变动)。
+  - **DeepSeek**:章节文案,不碰布局。
+  - **确定性引擎**:分组 / 套模板 / flatten / 校验,无 LLM。
+- 端点集 = 1 异步(`/v3/analyze`)+ 5 同步(§2);旧 `/v1`、`/v2` 在 V3 调通后整删。
+- 每次调用收完整上下文、回补丁/子树,Web 合并入库;不直接被浏览器调用,只被 Web 调用。
 
 ### 1.2 为什么这样切
 
@@ -75,49 +83,58 @@
 
 ## 2. Web ↔ Agent 协议(骨架)
 
-Agent 暴露**两个端点**,工作模式不同:
+> **【V3 · 2026-06-18 架构拍板】** 协议整切到全新 `/v3/*` 端点集,对应五环节状态机(`v3-requirements.md §2`);`/v1`、`/v2` 在 V3 调通后**整套删除**,不留兼容层(§6.8)。本节只锁骨架——详细 req/res、错误码、状态机见 `v3-requirements.md §8` 及各模块施工契约(`contract.md` 随 V3 重写,旧 v1 内容废弃)。
 
-### 2.1 首次生成 — `POST /v1/layout`(异步)
+Agent 暴露**一个异步端点 + 五个同步端点**:
 
-- **传输模式**:异步 HTTP(Web 立刻返回,Agent 后台跑,浏览器轮询拿状态)
-- **入口**:`POST https://agent.yujeeai.com/v1/layout` — Agent 接单后立刻 `202 Accepted` 返回,在后台 task 里跑
-- **进度 / 终态回推**:Agent → Web `POST /api/v1/internal/job-progress`,事件类型 `progress` / `completed` / `failed`
-- **浏览器侧**:不开长连接、不开 SSE。每 2 秒轮询 `GET /api/v1/jobs/[requestId]` 拿 `stage` / `progress` / `status`,看到 `COMPLETED` / `FAILED` 停轮询
+### 2.1 分析 — `POST /v3/analyze`(异步,唯一异步端点)
 
-### 2.2 Chat 编辑 — `POST /v1/chat-edit`(同步)
+- **为什么异步**:多图识图 1–2 min;支撑「点下一个 ≤0.5s 进入编辑器 + 后台分析」硬红线——**建相册 + 跳编辑器与分析任务解耦**,分析未完不阻塞进入。
+- Agent 接单即 `202`,后台跑,回推 `POST /api/v3/internal/job-progress`(`progress`/`completed`/`failed`)。
+- **入参**:base64 照片 + EXIF(只有 `takenAt`,无地点;§3 隐私)。
+- **出参(回调)**:套模板 + 通用文案/通用色的**预览态 layout 树**。
+- **浏览器侧**:轮询相册状态,不开 SSE(理由见 2.3)。
 
-- **传输模式**:同步 HTTP(用户在 chat 里等回复,无需轮询)
-- **入口**:`POST https://agent.yujeeai.com/v1/chat-edit`
-- **入参**:当前 `layoutJson` + 对话历史(最近 N 条)+ 用户新消息 + language
-- **出参**:`{ newLayout 或 layoutPatch, assistantReply, usage }`
-- **浏览器侧**:用户发消息 → 转 Web → Web 转 Agent → 拿到 patch 后 Web 写 `album_messages` + 更新 `album_pages`,返回给浏览器渲染
-- **超时**:60 秒(同步要等)
+### 2.2 其余四环节 — 同步端点(秒级,前端转圈)
+
+| 环节 | 端点 | 模型 |
+|---|---|---|
+| 章节故事 | `POST /v3/chapter-chat` | DeepSeek(涉版面变动时升级识图模型)|
+| 主题/章节色 · 推荐 | `POST /v3/recommend` | 识图模型 |
+| 主题/章节色 · 应用 | `POST /v3/apply-theme` | 无(确定性脚本)|
+| 书籍设计(封面/封尾)| `POST /v3/cover` | 无 / 识图模型辅助选 |
+| 待导出 | `POST /v3/finalize` | 无(确定性 flatten)|
+
+- 均**同步 HTTP**,不轮询、不回调;每端点是纯变换「输入切片 → 输出补丁」,可重试、可水平扩展。
+- **`stage` 推进权在 Web**:Agent 不持 stage,只做无状态变换;Web 合并补丁、记 stage、控导出闸门。
+- layout 树**按需切片传**(②传单章;③④传相关页),全树只在 ⑤ finalize 传一次,控识图模型 token。
 
 ### 2.3 共通
 
-- **鉴权**:Bearer Token,共享密钥 `AGENT_SHARED_SECRET`,两个端点都用
-- **超时**:Web → Agent `/v1/layout` 接单 5 秒;`/v1/chat-edit` 60 秒;Agent → 外部模型 30 秒,重试 1 次;Agent → Web callback 10 秒,重试 2 次
+- **鉴权**:Bearer Token,共享密钥 `AGENT_SHARED_SECRET`,所有端点通用。
+- **超时**:接单 5s;同步端点 60s;Agent → 外部模型 30s 重试 1 次;Agent → Web callback 10s 重试 2 次。
+- **模型通道**:识图模型默认走 OpenAI 兼容槽(`OPENAI_*`),不可用 / 批量过慢时 failover 火山(`ARK_*`);DeepSeek 走自有槽。
+- **失败语义**:异步 `/v3/analyze` 走回调 `failed`;同步端点走 HTTP 错误码;前端可重试,不污染 `stage`。
 
 **为什么不用 SSE**:Vercel serverless 多 lambda 实例,进程内 EventEmitter 无法跨实例,SSE 接收端和回调接收端不在同一进程,**1 个用户就不通**。轮询零依赖、零运维、Vercel 上必然工作,1000 用户阶段足够。
 
-**详细 req/res、错误码、状态机** → 见 [`docs/agent/contract.md`](./agent/contract.md)。
-
 ---
 
-## 3. 十二条不变式(违反 = bug)
+## 3. 不变式(违反 = bug)
 
-1. 浏览器原图**永远不写入数据库,不存 R2**(只 base64 临时穿过 Web)。
-2. Web 收到 base64 后**只转发给 Agent**,不写日志、不落盘。
-3. Agent 处理完请求**不留任何数据**,无状态。
-4. PDF 由浏览器生成,通过 presigned PUT 上传 R2,Web 不接 PDF 流量。
-5. 所有 API route.ts ≤ 40 行,业务逻辑全在 service。
-6. Route 不 import drizzle,Service 不 import 其他 service 的 repo。
-7. 所有 service 方法第一参数是 `userId` 或 `actor`,数据归属明确。
-8. 所有积分变更必须在 DB 事务里,和 album 状态变更原子。
-9. Agent 输出的 layout 写库前必须 zod 校验。
-10. `AGENT_SHARED_SECRET` 不允许出现在任何 client bundle 里。
-11. **隐私 · GPS/EXIF**:v1 **完全不抽取 GPS**(决策 D-GPS,rebuild-architecture §8.1)——浏览器 Stage 0 只读 `takenAt`,坐标根本不进入系统;故无地点分组、`place` 恒为 null、无创建页"包含地点信息"开关。`takenAt`(时间)低敏,可入 `draft_json`(排序/分组需要)。原始经纬度 = base64 同级机密:即便未来启用 GPS,也只反查一次粗地名当场丢弃,**绝不入库 / 日志 / `draft_json`**;入库的只有城市/地标级 `place`。redact 列表(`design.md §9`、`logging_config.py`)含 `lat/lng/latitude/longitude/gps/coordinates/place/exif` 作为预置红线,即便 v1 不抽 GPS 也保留,防回归/误传。
-12. **authoring 树边界**:authoring 树(`albums.draft_json` + 交互期请求体)**永不进渲染器 / PDF / 对外契约 / callback 的 `layout` 字段**。finalize 时拍平成扁平 `AlbumLayoutPlan` 写 `album_pages`;对外渲染契约恒为扁平 `magazine + photos + pages[]`。
+> 施工反复对照的重点只有两类:**① Server 端数据归属**、**② 积分数据变更**。其余是边界红线,一次说清、不重复强调。
+
+**① 数据归属(重点)**
+1. **Web 是唯一真相源**:持 layout 树(`draft_json`)+ `stage`;**Agent 无持久状态**(无 DB / FS / 会话),每次收完整上下文、回补丁——同步端点纯函数可水平扩展,异步 analyze 仅进程内瞬态。
+2. **分层归属**:Service 方法第一参数 `userId` / `actor`;Route ≤ 40 行只编排、不 import drizzle;Service 不跨用别的 service 的 repo。
+3. **authoring 树边界**:`draft_json` + 交互期请求体**永不进渲染 / PDF / 对外契约**;finalize 拍平成扁平 `AlbumLayoutPlan`(章节色/字体烘焙进扁平页,渲染契约不加树形字段)才落 `album_pages`。
+
+**② 积分变更(重点)**
+4. 积分变更在 DB 事务里、与 album 状态变更**原子**;**init 成功即按张实扣**(`⌈张数/10⌉`)、失败 `release`、成功只扣一次、重试不重复(§6.7)。
+
+**边界红线(知道即可,不赘述)**
+5. **隐私**:原图与 base64 只在「浏览器 → Agent」内存链路过,**不入库 / R2 / 日志**;**不抽 GPS、无地点维度**(`place` 恒 null,redact 仍拦坐标键作防御);PDF 浏览器生成 + presigned 上传。
+6. Agent 输出 layout 写库前必 **zod 校验**;`AGENT_SHARED_SECRET` 不进任何 client bundle。
 
 ---
 
@@ -131,6 +148,7 @@ memoir-agent-rebuild/
 │   │   ├── fonts/            # 全量 Noto SC TTF(server-only,非公开)— PDF subset 源,见 #31
 │   │   └── design-v1/        # V1 UI 实现稿(HTML),React 化前的视觉权威源
 │   └── agent/                # FastAPI 服务       → docs/agent/*
+│       └── src/skills/       # V3 skill = prompt 资产(识图模型加载),集中存放、人工维护(§6.8 第 2 条)
 ├── packages/
 │   └── contracts/            # 跨服务 zod schema + TS 类型
 │       └── templates/        # 相册模板 JSON 单一真相源
@@ -170,50 +188,35 @@ memoir-agent-rebuild/
 
 第一版**不留任何抽象**给这些扩展。YAGNI。
 
----
 
-## 6.5 二期决策记录(2026-06-01 · 架构拍板)
 
-> 二期两块需求(UI 还原 `docs/product/ui-restore-gap.md` + 生成积分 `docs/product/credit-hold-on-generation.md`)的架构定调。**执行窗口动手前必读本节** —— 它覆盖/修正产品文档里的部分前提。
+### 6.8 V3 架构拍板(2026-06-18)
 
-1. **计费现状澄清**:`generation-service.ts:20/35` + `job-service.ts:112/193/218` 已接 precheck/hold/settle/release/zombie。`credit-hold-on-generation.md` 的「现状」节(称"完全没接")**已过时**,以本节为准。`settle` 只在成功发生 → "失败不扣、成功扣一次、重试不重复计费"**现已满足**。
+> V3 = 五环节状态机重构(分析 → 章节故事 → 确定主题与章节色 → 书籍设计 → 待导出)。需求真相源 = [`docs/agent/v3-requirements.md`](./agent/v3-requirements.md)(已评审)。本节只登记**架构层**结论(不变式 / 协议 / schema / 契约 / 施工地基排序);产品与交互细节不在此重复。
 
-2. **余额不足接回 = 前端保留 + 购后重提(否决服务端占位任务)**。理由:不变式 1 下原图只在浏览器,付款接回时 base64 必须浏览器从 IndexedDB 重传,服务端占位任务的"持久性"是假的(换设备/清缓存即僵尸),不值得新增 `PENDING_PAYMENT` 状态 + schema 迁移。流程:precheck 不足 → 抛 `CREDIT_INSUFFICIENT` → 前端跳 `/pricing`(prompt+照片留 IndexedDB)→ 充值 → 前端重提交 `POST /api/v1/jobs`。**不加 album 状态,不改 generation-service 主流程。**
+1. **端点全切 `/v3/*`,旧端点整删**(§2):新建 1 异步 `/v3/analyze` + 5 同步端点。**无真实用户**,V3 调通后 `/v1`、`/v2` 的路由 + service + 旧 schema + 旧测试**整套删除**,不留兼容层、不灰度。前端 UI 复用 V2 编辑器框架(画板/对话板/缩略图条),只按五环节状态机改交互流;Agent 内部逻辑能迁就迁、**以满足 V3 为准**(复用不便处直接重写)。
+   - **整删范围 = 生成链路**:Agent `/v1/layout`·`/v1/chat-edit`·`/v2/album/*` + Web 侧对应编排路由/service/schema/测试。**基建型 v1 端点保留**——PDF presigned 上传、字体 subset、积分/Creem 支付 webhook、auth、以及 V3 仍复用的 job 轮询/相册 CRUD。删前**逐个核实引用方、定保留白名单**(防误伤导出/支付/字体链路)。
 
-3. **失败重试 = 复用同一 album 重跑**(`FAILED→AGENT_RUNNING`),浏览器重传 base64,新 precheck+hold(D1 已退旧 hold),**不孤儿化失败卡**。需要一个 retry 路径复用 albumId。
+2. **两类模型 + 识图模型当主控**:① **识图模型 = GPT-5.5 Mini(主,`OPENAI_*` 槽);火山 doubao-vision failover(`ARK_*`)**——既做图片分析,又当「主控」负责一切改变版面观感的判断(套模板 / 主题 / 章节色 / 布局变动)。② DeepSeek 只管章节文案,不碰布局。failover 触发阈值(GPT 不可用 / 批量过慢)留**模块施工文档**敲定。
 
-4. **失败结算 = 失败即退 hold(不改现状)**;settle 只在成功;zombie sweeper 兜底不变。
+3. **§3 隐私红线(GPS/place)— V3 不接入**:见 §3 隐私。原 V3 草案拟「浏览器 Stage 0 读 GPS → 反查粗地名 `place` 供分章」,**产品拍板撤销**:排版不需要地址,GPS 反查(本地全球城市库几 MB / 外部地理 API 配额成本)与体验提升不成正比。**结论:Stage 0 只读 `takenAt`,不抽 GPS,`place` 恒 null,分章只用时间 + 画面整体性信号。** redact 列表保留坐标键作防御红线。`v3-requirements §11` 原列的「反查放哪端」开放点随之作废。
 
-5. **编辑器拆分**:**UI-1a 功能版**(准确平铺预览 + 编辑 + Chat + 导出 + 顶栏 chrome)= **P0 先上**;**UI-1b 3D 翻书 + 缩略图条**= **P1 polish 跟进**。理由:翻书是表现层,且与导出的 `@react-pdf` 平铺页不一致,不该拖住核心编辑功能上线。
+4. **新增 `albums.stage`(五环节状态主控,需 schema 迁移)**:整本相册当前环节存 Web DB,Web 唯一真相源,Agent 不持 stage。
+   - **迁移 `0007`**:新增 `album_stage` pgEnum = `('analysing','story','theme','cover','ready')` + `albums.stage` 列,`notNull default 'analysing'`;现有行回填(`status COMPLETED/EDITING → 'ready'`,`AGENT_RUNNING → 'analysing'`;无真实用户,回填量极小)。
+   - **`stage` 与 `albums.status` 正交并存,互不派生**:`status`(`AGENT_RUNNING|EDITING|COMPLETED`)只管 init 任务生命周期与积分扣减(沿用 V2);`stage` 只管用户走到第几环 + 导出闸门。两列各自独立写——例:init 成功 → `status=EDITING`,而 `stage` 仍可停在 `story`。
+   - **导出闸门**:`stage` 达「章节故事全部章节完成」即解锁导出;主题(theme)/ 封面(cover)**不卡导出**。
 
-6. **照片下限 ≥3 → ≥1(CT-1,跨 Web↔Agent,架构协调)**:web 路由 schema + `create/page.tsx` + agent `schemas.py:45`(`min_length` 3→1)+ composing 对 1-2 图用纯文字版面(mag-02/14/20)兜底。**验收必须含 1 图 fixture 跑通**,不许只改下限就宣布完成,不许某窗口单边改一半。
+5. **契约单一真相源:TS 先行,Python 镜像**:V3 大量新增 layout 树字段(章节色 / 字体 / `variableDecor` / `items`),借 V3 把 `packages/contracts`(TS/zod)补成单一真相源,Agent `schemas.py` 重新对齐镜像。**契约重整 + 模板 loader 迁移 = 所有 `/v3/*` 端点的前置地基**(「起不来就别往上盖」),实施计划必须排在最前。
 
-7. **路由结构统一**:`/create`、`/album/[uuid]` 现在 `[locale]` 段**外**(故无 i18n、文案硬编码英文)。目标收进 `[locale]` 做 2 语(中/英)。各屏 owner(UI-2 / UI-1a)在**自己 PR 里**迁移本屏路由,不单开任务。
+6. **模板契约标准化(承接 §6.6)**:模板 JSON 统一为 `category | pairing | images | svgs | texts | items | variableDecor`(替代旧 `slot+scene`、`repeat:true`+bracket-path)。**图片槽 `quality` / `orientation` 概念整体作废**——`can_place` / `_is_hero_slot` / hero-cap 硬约束全废;排图改由 `select-template` skill 出意图 + 确定性引擎在合法候选里兜底(横竖比错配交 center-cover 渲染)。Python `templates.py` / `skeleton.py` / `finalize.py` 必须先迁到本契约,否则 Agent 起不来——属第 5 条地基层。
 
-8. **依赖**:① 统一 chrome(UI-0)是 UI-1a/UI-2/UI-4/UI-6/UI-9 的地基,**先定组件 props 接口再并行**。② BILL 语义(本节 2/3)先于 UI-2(/create)、UI-4(/my-albums)实现,因为这两屏要渲染"不足跳转/失败重试"态。
+7. **校验单一真相源**:删除当前分叉的双 `validate_v2`,合并成单一 validate;**删 page0-必须-cover 规则**(封面可选、可跳过),认 `svgs` / `items` / `variableDecor` / 章节色 / 字体字段。
 
-### 6.6 Composing 重设计决策(2026-06-04 · 架构闸门)
+8. **积分不变**(§6.7):init 成功即按张实扣(`⌈张数/10⌉`),失败 `release`;**不引入锁定 / R2 / 8h 三段式**。V3 只需新 `/v3/analyze` init 回调**复用同一 settle 路径**,不改 `creditService` / `handleInitCompleted`。
 
-本节只登记架构语义,施工细节见 `docs/agent/composing-redesign.md` / `docs/agent/composing-rebuild-tech-plan.md`。
+9. **导出失败处理**:本地出 PDF / R2 上传失败 → 自动重试 ≤3 次 → 连续 3 次失败 → 前端弹安抚框 + 错误日志;**飞书服务台推送后置**(方案已调研,上线后视失败率再加,`v3-requirements §4.5d`)。失败**不碰积分**。
 
-1. **D-A cover 语义**:图片槽渲染采用 `object-fit: cover` 等价语义,保持比例、铺满槽位、超出裁切;裁切发生在浏览器渲染原图时。当前决策是 **center-cover**,不引入 face/focal point 字段,不承诺人脸避让。
-2. **D-B orientation 软化**:`PhotoAnalysis.orientation` 继续产出并喂给 composing prompt,但不再作为确定性 layout 硬校验;错配由 cover 渲染兜底。
-3. **页数公式移除**:废弃 `max(3, ceil(photos.length / 2.5))` 严格页数公式;页数按实际内容排出,但 `pages` 仍保留 **1..16** 硬边界。
-4. **文案长度软化**:模板只给推荐长度;超推荐长度不作为 Agent 输出违规。渲染层负责文本适配,Agent 端可保留只缩短的安全网。
-5. **模板 JSON 单一真相源**:`packages/contracts/templates/` 登记为模板定义源;Web / Agent 从该目录派生模板约束,不再维护多份手工模板约束副本。
-6. **对外契约不变**:不新增 `AlbumLayoutPlan` 字段,`Page.images` 继续只输出 `{slot: photoId}`;不改 Web↔Agent callback envelope,不新增 external AlbumLayoutPlan contract。
-
-### 6.7 计费时机与单位重定义(2026-06-15 · 架构拍板)
-
-> 背景:W10/W11 统一创建流程(`1f64c2f`)按产品决策**删除了"完成全书/定稿"CTA**,`finalizeBook()` 沦为死代码(无任何调用点)。而 v2 把 `settle` 设计在 finalize(§5 / job-service `handleFinalizeCompleted`),于是**扣款扳机被一并删除 → 用户生成纪念册全程不被扣费(漏钱 bug)**。本节修正 §6.5 决策 1/4 中关于 settle 时机的前提,并把"积分单位"重定义为按张计费。产品负责人(玉姐)直接拍板授权。
-
-1. **扣点从 finalize 搬到 init 成功**:create 流程的 `settle` 改在 `job-service.handleInitCompleted`(init 任务成功、草稿落库的同一事务里)发生,**不再依赖已废弃的 finalize**。理由:① init 是确定性必达环节(用户传图必走"成功/失败"),finalize 已无用户入口、放那里等于不扣;② 最贵、最不可逆的 AI 算力在 init 就花掉;③ init 之后的多轮 theme/chapter 对话属"免费编辑",不再计费。`finalize` 路径不再 settle(死代码清理时一并处理),`add-photos` 维持"每批一扣"不变。
-
-2. **失败仍走解冻、成功扣一次、不重复计费**:沿用 §6.5 决策 4 —— init 失败/超时 → `release`(从未真扣,无"退款"中间态);invariant 8(积分变更与 album 状态同事务原子)**保持不变**,`handleInitCompleted` 本就在 `db.transaction` 内 settle。
-
-3. **单位 = credit,按张计费,单一真相源**:废弃"一本书 = 1 credit"的扁平模型(`CREDIT_COST_PER_ALBUM`)。改为 `creditsForPhotos(N) = max(1, ceil(N / PHOTOS_PER_CREDIT))`,**唯一真相源 `apps/web/src/config/pricing.ts`**;`PHOTOS_PER_CREDIT` 是唯一阈值旋钮(当前占位 10,具体 10/20 由产品后定),照片硬上限 `MAX_PHOTOS_PER_GENERATION` 亦从其派生。**任何处不得再写死照片数或单价**。`creditService.cost()` 改签名带 `photoCount`,init/add/retry 调用点随之传值。
-
-4. **对外展示单位文案统一为 "credits"(中文"积分")**:面向英文主战场,弃用 "book/本"(产出物当计价单位会自相矛盾)与 "贝壳/shells"(付费墙理解成本)。涉及 en.json / zh.json / EditorPort / marketing / credits 页 / UserMenu。内部 `credit_*` 标识符与 DB schema **不变**(仅显示层文案)。
+10. **去重 union-find 删残留**:V3 不做单批去重(单批从不触发),清掉残留代码。
 
 ---
 

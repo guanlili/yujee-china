@@ -25,7 +25,9 @@
 | 文件 | 内容 | 谁需要 |
 |---|---|---|
 | [`agent/contract.md`](./agent/contract.md) | 对外协议 + req/res + 错误码 | Agent 接入(Web)+ Agent 服务作者 |
-| `agent/design.md` | 内部 pipeline 设计(后续写)| Agent 服务作者 |
+| `agent/design.md` | V2 内部 pipeline 冻结稿(V3 只作历史参照)| Agent 服务作者 |
+| [`agent/v3-requirements.md`](./agent/v3-requirements.md) | **V3 重构总框架需求**(已评审,需求真相源)| 做 V3 的所有人 · 起手先读 |
+| [`agent/v3-implementation-plan.md`](./agent/v3-implementation-plan.md) | **V3 实施计划**(Phase / WP / 依赖图 / 风险 / 施工决策)| PM + 各 WP owner |
 
 ---
 
