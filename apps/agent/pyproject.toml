@@ -15,7 +15,13 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8.2.0"
+  "pytest>=8.2.0",
+  # Required by the @pytest.mark.asyncio tests (test_chapter_chat / test_theme /
+  # test_chat_edit_v2 / test_draft_edit / test_inspect_render). It was assumed
+  # present in dev envs but never pinned; without it those async tests error on a
+  # clean install. Pinned in WP0.4 (#179) so `pytest apps/agent/tests/` is green
+  # from a fresh `pip install -e .[dev]`.
+  "pytest-asyncio>=0.23.0"
 ]
 
 [build-system]
