@@ -18,6 +18,14 @@ function client(): S3Client {
         accessKeyId: env.R2_ACCESS_KEY_ID,
         secretAccessKey: env.R2_SECRET_ACCESS_KEY,
       },
+      // AWS SDK v3 (>=3.729) defaults to WHEN_SUPPORTED, which bakes an
+      // x-amz-checksum-crc32 of the (empty, at sign time) body into presigned
+      // PUT URLs. The browser then uploads a real body → checksum mismatch →
+      // R2 rejects the PUT (cover-thumbnail + PDF direct uploads both broke).
+      // WHEN_REQUIRED keeps checksums off unless an operation needs them, so
+      // presigned PUTs sign cleanly. See r2-presign.test.ts.
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
     });
   }
   return _client;
