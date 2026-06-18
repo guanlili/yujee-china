@@ -378,6 +378,89 @@ export const jobService = {
     });
   },
 
+  // ──────────────────────────── v3 (五环节状态机, WP1.1) ────────────────────────────
+  // The /v3/analyze async job reuses the existing init lifecycle: it creates the
+  // album draft (draft_json) and settles the credit charge on success, releases on
+  // failure — identical to v2 init. To avoid a schema migration on agent_jobs.kind
+  // (architect-gated), the v3 analyze job is stored as kind='init'; the V3Callback
+  // envelope carries jobKind='analyze' and the v3 job-progress handler maps the two.
+  //
+  // SEAM(WP1.5 通用文案/色+预览+settle复用): WP1.5 owns advancing albums.stage
+  // (analysing → story) once the generic-copy preview tree lands, and any richer
+  // settle/stage orchestration. WP1.1 only wires the round-trip: write the tree to
+  // draft_json + settle (reuse) + album EDITING; albums.stage stays 'analysing'
+  // (its default), so a failed/retried analyze never pollutes the stage column
+  // (acceptance: 失败可重试不污染 stage).
+
+  // analyze/progress → reuse the generic progress heartbeat (stage is just a label).
+  async handleV3Progress(requestId: string, stage: string, progress: number) {
+    await this.handleProgress(requestId, stage, progress);
+  },
+
+  // analyze/completed → write the V3 章节树 + preview pages to draft_json + settle
+  // the init hold in the SAME tx + album EDITING (mirrors handleInitCompleted; the
+  // route is the single V3Callback validation). The credit
+  // charge settles here exactly once (§6.7 charge-at-init); a double-delivered
+  // callback loses the terminal transition race and never double-debits.
+  async handleV3AnalyzeCompleted(requestId: string, tree: unknown, pages: unknown, usage: unknown) {
+    const job = await agentJobRepo.findByRequestId(requestId);
+    if (!job) return; // idempotent: late callback after the row is gone
+    if (job.status === 'COMPLETED' || job.status === 'FAILED') return; // idempotent
+
+    const album = await albumRepo.findById(job.albumId);
+    if (!album) {
+      logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 analyze completed');
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
+        progress: 100,
+        stage: 'preview',
+        usage: (usage as Record<string, unknown> | null) ?? null,
+        completedAt: new Date(),
+      });
+      if (!won) return;
+
+      const draftJson =
+        tree && typeof tree === 'object' && !Array.isArray(tree)
+          ? { ...(tree as Record<string, unknown>), pages }
+          : { tree, pages };
+
+      await albumRepo.update(tx, job.albumId, {
+        status: 'EDITING',
+        draftJson,
+        // albums.stage stays 'analysing' here — WP1.5 advances it to 'story' once the
+        // preview tree carries generic copy/colors. Keeping it untouched means a
+        // failed-then-retried analyze never moves the stage forward prematurely.
+      });
+
+      if (album.creditHoldId) {
+        await creditService.settle(tx, job.userId, album.creditHoldId);
+      }
+    });
+  },
+
+  // analyze/failed → album FAILED + release the hold (no draft to keep, mirrors the
+  // init failure fork). albums.stage is left at 'analysing', so the retriable failed
+  // card reruns analyze from the same stage (失败可重试不污染 stage).
+  async handleV3Failed(requestId: string, error: { code: string; message: string }) {
+    const job = await agentJobRepo.findByRequestId(requestId);
+    if (!job) return;
+    if (job.status === 'COMPLETED' || job.status === 'FAILED') return; // idempotent
+
+    const mapped = { code: mapAgentErrorCode(error.code), message: error.message };
+    await db.transaction(async (tx) => {
+      const won = await agentJobRepo.transitionStatus(tx, job.id, 'FAILED', ['QUEUED', 'RUNNING'], {
+        error: mapped,
+        completedAt: new Date(),
+      });
+      if (!won) return;
+      await albumRepo.update(tx, job.albumId, { status: 'FAILED', errorMessage: error.message });
+      await creditService.releaseByAlbum(tx, job.albumId);
+    });
+  },
+
   // */failed → fork on kind. init: album FAILED + release (no draft to keep).
   // finalize: album back to EDITING + hold stays HOLDING (retry-able) — the draft
   // is untouched, so we never FAILED it nor release the reservation (§5).

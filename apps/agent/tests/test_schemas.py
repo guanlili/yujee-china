@@ -346,13 +346,12 @@ class TestV3AnalyzePrivacy:
         "callbackUrl": "https://example.com/cb",
         "language": "en",
         "photos": [
-            {"photoId": "p1", "base64": "data:image/jpeg;base64,xx", "width": 800, "height": 600}
+            {"photoId": "p1", "base64": "data:image/jpeg;base64,AA==", "width": 800, "height": 600}
         ],
     }
 
     def test_minimal_and_takenat_accepted(self):
         V3AnalyzeRequest.model_validate(self.base)
-        V3AnalyzeRequest.model_validate({**self.base, "callbackUrl": "mailto:ops@example.com"})
         with_exif = {
             **self.base,
             "photos": [{**self.base["photos"][0], "exif": {"takenAt": "2024-03-15T08:30:00.000Z"}}],
@@ -366,6 +365,18 @@ class TestV3AnalyzePrivacy:
                 ],
             }
         )
+
+    def test_rejects_non_http_callback_url(self):
+        with pytest.raises(ValidationError):
+            V3AnalyzeRequest.model_validate({**self.base, "callbackUrl": "mailto:ops@example.com"})
+
+    def test_rejects_invalid_base64_data_url(self):
+        bad = {
+            **self.base,
+            "photos": [{**self.base["photos"][0], "base64": "AA=="}],
+        }
+        with pytest.raises(ValidationError):
+            V3AnalyzeRequest.model_validate(bad)
 
     def test_rejects_zod_disallowed_type_coercion(self):
         bad = {

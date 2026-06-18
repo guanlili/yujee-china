@@ -19,6 +19,7 @@ import type {
   V2EditRequest,
   V2DraftEditRequest,
   V2InspectRequest,
+  V3AnalyzeRequest,
 } from '@yujee/contracts';
 
 export type AgentPhotoInput = {
@@ -43,6 +44,41 @@ export type LayoutPatchEntry = {
 };
 
 export const agentClient = {
+  // ──────────────────────────── v3 (五环节状态机) ────────────────────────────
+  // POST /v3/analyze — async 202 + callback to /api/v3/internal/job-progress
+  // (WP1.1, docs/agent/v3-requirements.md §8). The only v3 endpoint carrying
+  // base64, so it mirrors submitInitV2's 30s submit window: a cross-region
+  // multi-MB body must not abort before the agent's fast 202 (else web wrongly
+  // marks the job FAILED while the agent keeps analysing). The bg task callbacks
+  // progress → completed/failed later. The route parses V3AnalyzeRequest before
+  // calling, so this forwards an already-validated body. AGENT_SHARED_SECRET only
+  // — never bundled to the client (§3 secret).
+  async submitAnalyzeV3(payload: V3AnalyzeRequest): Promise<{ requestId: string }> {
+    let res: Response;
+    try {
+      res = await fetch(`${env.AGENT_BASE_URL}/v3/analyze`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': payload.requestId,
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (e) {
+      logger.error({ err: String(e), requestId: payload.requestId }, 'agent v3 analyze submit failed');
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+    if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
+    if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected analyze payload');
+    if (!res.ok) {
+      logger.error({ status: res.status, requestId: payload.requestId }, 'agent v3 analyze non-2xx');
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+    return { requestId: payload.requestId };
+  },
+
   // ──────────────────────────── v2 (agent rebuild) ────────────────────────────
   // The v2 surface forwards already-validated contract bodies (the route parses
   // V2*Request before calling). init/finalize are async (202 + callback to

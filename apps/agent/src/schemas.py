@@ -13,6 +13,8 @@ in tests/test_schemas.py.
 """
 
 import re
+import base64
+import binascii
 from datetime import datetime
 from typing import Annotated, Literal, Union
 
@@ -20,7 +22,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    AnyUrl,
     HttpUrl,
     field_validator,
 )
@@ -175,6 +176,10 @@ class JobError(_Strict):
 _TAKEN_AT_DATETIME_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z?$"
 )
+_V3_ANALYZE_IMAGE_DATA_URL_RE = re.compile(
+    r"^data:image/(?:jpeg|png);base64,([A-Za-z0-9+/=]+)$"
+)
+_V3_ANALYZE_MAX_IMAGE_BYTES = 800 * 1024
 
 
 def _validate_iso_datetime(value: str | None) -> str | None:
@@ -194,6 +199,30 @@ def _validate_iso_datetime(value: str | None) -> str | None:
         datetime.fromisoformat(candidate)
     except ValueError as exc:  # pragma: no cover - exercised via parametrized tests
         raise ValueError(f"takenAt must be an ISO-8601 datetime string: {value!r}") from exc
+    return value
+
+
+def _validate_v3_analyze_image_data_url(value: str) -> str:
+    match = _V3_ANALYZE_IMAGE_DATA_URL_RE.fullmatch(value)
+    if not match:
+        raise ValueError("base64 must be a data:image/(jpeg|png);base64 URL")
+
+    payload = match.group(1)
+    padding = len(payload) - len(payload.rstrip("="))
+    unpadded = payload[:-padding] if padding else payload
+    if padding > 2 or "=" in unpadded or len(payload) % 4 != 0:
+        raise ValueError("base64 image payload must be valid padded base64")
+
+    decoded_size = (len(payload) // 4) * 3 - padding
+    if decoded_size > _V3_ANALYZE_MAX_IMAGE_BYTES:
+        raise ValueError("decoded image payload must be <= 800KB")
+
+    try:
+        decoded = base64.b64decode(payload, validate=True)
+    except binascii.Error as exc:
+        raise ValueError("base64 image payload must be valid base64") from exc
+    if len(decoded) > _V3_ANALYZE_MAX_IMAGE_BYTES:
+        raise ValueError("decoded image payload must be <= 800KB")
     return value
 
 
@@ -413,6 +442,8 @@ class V3AnalyzePhoto(_V3Strict):
     height: int = Field(gt=0)
     exif: V3AnalyzeExif = None
 
+    _check_base64 = field_validator("base64")(_validate_v3_analyze_image_data_url)
+
 
 class V3AnalyzeMeta(_V3Strict):
     promptHint: str = Field(default=None, max_length=500)
@@ -421,7 +452,7 @@ class V3AnalyzeMeta(_V3Strict):
 class V3AnalyzeRequest(_V3Strict):
     requestId: str = Field(min_length=1)
     albumId: str = Field(min_length=1)
-    callbackUrl: AnyUrl
+    callbackUrl: HttpUrl
     language: V3Language
     meta: V3AnalyzeMeta = None
     photos: list[V3AnalyzePhoto] = Field(min_length=1, max_length=30)

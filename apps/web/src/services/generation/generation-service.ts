@@ -8,7 +8,28 @@ import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { albumRepo } from '@/db/repos/album-repo';
 import { ERRORS } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
-import { AlbumDraft, type V2InitRequest, type V2AddPhotosRequest } from '@yujee/contracts';
+import {
+  AlbumDraft,
+  type V2InitRequest,
+  type V2AddPhotosRequest,
+  type V3AnalyzeRequest,
+} from '@yujee/contracts';
+
+// Browser → /api/v3/albums analyze payload (五环节状态机 WP1.1). Same browser-owned
+// shape as v2 init (base64 + language + optional prompt + idempotency requestId);
+// takenAt is the ONLY EXIF field accepted (§3 隐私: coordinates never enter).
+type V3AnalyzeInput = {
+  requestId: string;
+  language: 'zh' | 'en';
+  promptHint?: string;
+  photos: Array<{
+    photoId: string;
+    base64: string;
+    width: number;
+    height: number;
+    takenAt?: string | null;
+  }>;
+};
 
 // Browser → /api/v2/albums init payload (originals as base64, invariant 1). The
 // route generates nothing the browser owns except photo bytes; requestId is the
@@ -48,6 +69,45 @@ type RetryInput = {
 };
 
 export const generationService = {
+  // ──────────────────────────── v3 (五环节状态机, WP1.1) ────────────────────────────
+
+  // POST /api/v3/albums — start the analyze job. Creates the album (AGENT_RUNNING,
+  // stage defaults to 'analysing') + a job, holds credit, then forwards base64 to
+  // the agent's async /v3/analyze. The completed callback writes draft_json + settles
+  // (jobService.handleV3AnalyzeCompleted). Reuses the v2 init credit lifecycle
+  // verbatim (precheck → hold inside the album+job tx → settle-at-success), so the
+  // single charge (⌈N/10⌉) lands once on success and releases on failure (§6.7).
+  // SEAM(WP1.5): the 0.5s editor redirect + stage→story advance live in WP1.5; this
+  // WP only stands up the async job + callback pipe.
+  async submitAnalyzeV3(userId: string, input: V3AnalyzeInput) {
+    const amount = creditService.cost(input.photos.length);
+    await creditService.precheck(userId, amount);
+
+    const placeholderTitle =
+      input.promptHint?.trim().slice(0, 40) || (input.language === 'zh' ? '我的故事' : 'My Memoir');
+
+    const { albumId } = await db.transaction(async (tx) => {
+      const album = await albumService.create(tx, {
+        userId,
+        prompt: input.promptHint ?? '',
+        photoCount: input.photos.length,
+        title: placeholderTitle,
+      });
+      // kind='init' reuses the existing analyze lifecycle without an agent_jobs.kind
+      // migration; the V3Callback carries jobKind='analyze' and the v3 handler maps it.
+      await jobService.createV2(tx, {
+        userId,
+        albumId: album.albumId,
+        requestId: input.requestId,
+        kind: 'init',
+      });
+      await creditService.hold(tx, userId, amount, album.albumId);
+      return album;
+    });
+
+    return dispatchAnalyzeV3(albumId, input);
+  },
+
   // ──────────────────────────── v2 (agent rebuild) ────────────────────────────
 
   // POST /api/v2/albums — start the init job (Stage 1+3). Creates the album
@@ -224,6 +284,49 @@ async function dispatchInitV2(
       'agent v2 init submit failed, marking job FAILED',
     );
     await jobService.handleV2Failed(input.requestId, {
+      code: 'AGENT_INTERNAL_ERROR',
+      message: 'Failed to submit to agent',
+    });
+    return { albumId, requestId: input.requestId, accepted: true };
+  }
+
+  const job = await agentJobRepo.findByRequestId(input.requestId);
+  if (job) await jobService.markRunning(db, job.id);
+
+  return { albumId, requestId: input.requestId, accepted: true };
+}
+
+// v3 analyze dispatch tail (mirrors dispatchInitV2). On submit failure, fail the job
+// (album FAILED + release the hold) and still return the albumId without throwing —
+// the browser needs the id to store the recipe and reach the retriable failed card
+// (never strand a charged-but-unreachable album).
+async function dispatchAnalyzeV3(
+  albumId: string,
+  input: V3AnalyzeInput,
+): Promise<{ albumId: string; requestId: string; accepted: true }> {
+  const photos: V3AnalyzeRequest['photos'] = input.photos.map((p) => ({
+    photoId: p.photoId,
+    base64: p.base64,
+    width: p.width,
+    height: p.height,
+    ...(p.takenAt !== undefined ? { exif: { takenAt: p.takenAt } } : {}),
+  }));
+
+  try {
+    await agentClient.submitAnalyzeV3({
+      requestId: input.requestId,
+      albumId,
+      callbackUrl: `${env.WEB_BASE_URL}/api/v3/internal/job-progress`,
+      language: input.language,
+      ...(input.promptHint ? { meta: { promptHint: input.promptHint } } : {}),
+      photos,
+    });
+  } catch (e) {
+    logger.error(
+      { err: String(e), requestId: input.requestId },
+      'agent v3 analyze submit failed, marking job FAILED',
+    );
+    await jobService.handleV3Failed(input.requestId, {
       code: 'AGENT_INTERNAL_ERROR',
       message: 'Failed to submit to agent',
     });
