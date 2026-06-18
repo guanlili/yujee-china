@@ -1,5 +1,10 @@
 # Agent 内部 Pipeline 设计
 
+> ⚠️ **本文 = 线上 V2 系统的内部设计规格,不是 V3。**
+> v2 仍在运行(yujeeai.com,真用户),且被约 34 行 v2 代码注释当规格引用(`// design.md §X` / `rebuild-tech-plan §X`),故**冻结保留、不在此就地改 V3**。
+> **V3 内部 pipeline 设计看 [`v3-requirements.md`](./v3-requirements.md) §4/§6/§7/§8/§9**(架构边界见 [`architecture.md`](../architecture.md),施工拆解见 [`v3-implementation-plan.md`](./v3-implementation-plan.md))。
+> 本文将于 **Phase 6(`v3-implementation-plan.md` WP6.2)**——V3 调通、v1/v2 代码整删后——从**真实代码反向重写**成 V3 design;在那之前它只描述 v2 现状。
+>
 > Agent design reviewed by Claude Opus (B0 window) on 2026-05-27.
 >
 > **前置阅读**: `CLAUDE.md` → `docs/architecture.md` → `docs/agent/contract.md`
@@ -529,27 +534,3 @@ export const ChatEditResponse = z.object({
 
 ---
 
-## 14. 落地任务清单(状态 2026-05-30 核对)
-
-本文档**只定决策**。下表是当初拆出的落地任务,状态以**当前代码**为准(一期已上线,大部分已落)。
-
-| 任务 ID | 内容 | 归属轨道(`execution-plan.md`) | 当前状态(2026-05-30) |
-|---|---|---|---|
-| D-1 | `docs/agent/contract.md` PhotoAnalysis schema 加 5 字段 + Usage 重定义 + callback envelope discriminated 表达 | **T0**(Contracts) | ✅ 文档已改(代码侧见 D-3/D-4) |
-| D-2 | `docs/web/api.md §5` zombie sweeper 改"目标导向" | T0(同步)| ✅ |
-| D-3 | `packages/contracts/src/layout.ts` PhotoAnalysis 加 5 字段 | T0 | ⛔ **未做** —— TS 仍只有 5 个基础字段;Python `schemas.py:71-75` 已加 5 字段。**契约漂移**,见表下注。 |
-| D-4 | `packages/contracts/src/agent.ts` Usage 字段扩充 | T0 | ⛔ **未做** —— §10 的新 Usage schema 两端都没落;layout callback 仍用旧 3 字段(`visionTokens/planningTokens/durationMs`),有意为之(避免破坏 Web)。 |
-| D-5 | `packages/contracts/src/templates.ts` 占位骨架 | T0 | ✅ |
-| D-6 | 把 21 个模板从 `yvaineyu9/memoir` 抽到 `templates.ts` | **T4 / B-1**(硬阻塞,见 §5)| ✅ 21 个全填齐(mag-01~20 + p01) |
-| D-7 | `apps/agent/src/schemas.py` 镜像 TS contracts(discriminated union + extra='forbid') | T3 | ✅ `_Strict(extra='forbid')` + progress/completed/failed 三 variant |
-| D-8 | `apps/agent/src/services/pipeline.py` 把 mock 换成真实 vision + writing + composing | T3 | ✅ real 分支已落(`_run_real`),mock 保留给 CI |
-| D-9 | `apps/agent/src/logging_config.py` 加 redact processor | T3 | ✅ `_REDACT_KEY_*` + `test_logging_redact.py` |
-| D-10 | Web 侧 zombie sweeper(目标见 §7,实现方式由轨道评估)| T6 / T-Deploy | ✅ 双保险(issue #48):**读时机会式收尸**(`getDetail`/`listByUser` → `jobService.resolveGeneration`,5 分钟,响应层)+ **每日 `recover-stuck` cron**(`zombieSweeper`,10 分钟,兜底层)。§7/api.md §5 已同步。 |
-| D-11 | `AGENT_PIPELINE_MODE` 启动检查 | T3 | ✅ `main.py:21-34`(production 必须 real,real 必须配齐 key) |
-| D-12 | Agent fixtures(§11) | T3 | ⚠️ 换形态:没建 §11 那批独立 fixtures JSON,改用 `conftest.py` + `test_pipeline_mock.py` / `test_chat_edit_patch.py` 等。§11 列表已 stale。 |
-| D-13 | `packages/contracts/src/chat.ts`:`ChatEditRequest` / `ChatEditResponse` / `LayoutPatchEntry` zod | T0 | ⛔ **未做** —— TS 无 `chat.ts`,chat 契约只活在 Python `schemas.py:140-176`。**契约漂移**,见表下注。 |
-| D-14 | `apps/agent/src/routes/chat_edit.py` + `services/chat_edit.py`:实现 §13 同步 pipeline + repair | T3 | ✅ |
-| D-15 | Web `services/chat/chat-service.ts` + `app/api/v1/albums/[uuid]/chat/route.ts` + `messages/route.ts` + repos | Web Editor 轨道 | ✅(PR #24)|
-| D-16 | DB:新增 `customers` + `album_messages` 表 + migration | T2 | ✅(11 表已含)|
-
-> **遗留项 · TS↔Python 契约漂移(二期可清)**:`packages/contracts`(TS,本应是单一真相源、Web 直接 import)落后于 Agent 的 Python `schemas.py`。具体:D-3(PhotoAnalysis 5 字段)、D-13(chat 三个 schema)只在 Python 端存在,TS 端缺失。当前**端到端能跑**——因为 Web 实际只消费 callback 里的 layout(走 `AlbumLayoutPlan`,两端一致)和 chat 的 browser-patch(Web 自己翻译),漂移字段未被 Web 直接依赖,所以没炸。但"TS 是真相源、Python 镜像"这个不变式名存实亡了。二期若要复用这些字段(如 #42 让 composing 用 scene/mood 做约束、或给前端展示 usage 成本),应先把 D-3/D-13 补回 TS 并让 Python 重新对齐。**优先级低,不阻塞,但要记账。**

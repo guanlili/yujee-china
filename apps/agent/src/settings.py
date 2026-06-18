@@ -114,6 +114,14 @@ class Settings(BaseSettings):
     # provider makes thinking affordable again.
     composing_disable_thinking: bool = True
 
+    # vision via OpenAI (GPT) slot — secondary/alternative vision provider.
+    # 只声明配置位；让 vision.py 真正改用这个槽是单独的代码改动（见 GitHub issue）。
+    # key 填到 .env 的 OPENAI_API_KEY（生产走 Fly secrets）。model 换成你要用的 GPT 视觉型号。
+    openai_api_key: str | None = None
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_vision_model: str = "gpt-4o-mini"
+    openai_timeout_seconds: int = 120
+
 
 _settings: Settings | None = None
 
