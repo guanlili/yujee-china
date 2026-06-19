@@ -52,6 +52,7 @@ from ..schemas import (
     V3Usage,
 )
 from ..services import callback
+from ..services import generic_copy
 from ..services import select_template
 from ..services import vision
 from ..services.vision import VisionError
@@ -110,7 +111,7 @@ async def _emit_failure(
 
 
 async def _build_preview(chapters: list[V3Chapter]) -> tuple[V3LayoutTree, list[Page]]:
-    """Produce the preview-state tree + pages via WP1.4 select-template.
+    """Produce the preview-state tree + pages (WP1.4 select-template + WP1.5 generic).
 
     select-template (the recognition model) picks each page's templateId from the
     LEGAL candidates the WP0.4 engine exposes (`legal_candidates`); the model can
@@ -119,10 +120,15 @@ async def _build_preview(chapters: list[V3Chapter]) -> tuple[V3LayoutTree, list[
     slotted in order — `skeleton_v3.build_skeleton_v3`-equivalent). NO quality/hero/
     orientation matching; aspect mismatch is the renderer's center-cover concern.
 
-    TODO(WP1.5 generic-copy): generic 文案/色 are layered onto the pages here before
-    preview — this seam still leaves texts empty."""
+    WP1.5 (#184) then layers the GENERIC 文案/色 onto those pages so the preview reads
+    as a finished spread (§4.1(e) / §7.1): `generic_copy.fill_generic_copy` code-fills
+    deterministic decoration (`folio` page numbers, `date`/`dateNum` from the photos'
+    code-filled takenAt) into `texts`, leaving user-content slots empty for the章节故事
+    环节 to author正式文案. The chapter tree's `accentColor`/`artFont` stay null
+    placeholders (通用色 = the null placeholder; theme环节 fills real值). Pure code."""
     tree = V3LayoutTree(chapters=chapters)
     page_dicts = await select_template.select_template_pages(chapters)
+    page_dicts = generic_copy.fill_generic_copy(page_dicts, chapters)
     pages = [Page(**page) for page in page_dicts]
     return tree, pages
 
@@ -166,6 +172,8 @@ async def _run_analyze(req: V3AnalyzeRequest) -> None:
     # template — WP1.4 (#183): select-template. The recognition model picks each
     # page's templateId from the legal candidates skeleton_v3 exposes; on any LLM
     # failure the stage degrades to the pure-code §9 fallback inside _build_preview.
+    # _build_preview also runs WP1.5 generic-copy fill; both stay inside this guard so
+    # any failure resets the bar and fails cleanly (失败可重试不污染 stage).
     await _emit_progress(req, "template", 0)
     try:
         tree, pages = await _build_preview(chapters)
@@ -177,7 +185,9 @@ async def _run_analyze(req: V3AnalyzeRequest) -> None:
         return
     await _emit_progress(req, "template", 100)
 
-    # preview — TODO(WP1.5): generic 文案/色 baked into pages before preview.
+    # preview — WP1.5 (#184): generic 文案/色 are now baked into the pages inside
+    # _build_preview (generic_copy.fill_generic_copy). This beat marks the
+    # preview-state tree ready; the completed callback below ships it to Web.
     await _emit_progress(req, "preview", 0)
     await _emit_progress(req, "preview", 100)
 

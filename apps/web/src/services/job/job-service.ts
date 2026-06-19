@@ -385,12 +385,11 @@ export const jobService = {
   // (architect-gated), the v3 analyze job is stored as kind='init'; the V3Callback
   // envelope carries jobKind='analyze' and the v3 job-progress handler maps the two.
   //
-  // SEAM(WP1.5 通用文案/色+预览+settle复用): WP1.5 owns advancing albums.stage
-  // (analysing → story) once the generic-copy preview tree lands, and any richer
-  // settle/stage orchestration. WP1.1 only wires the round-trip: write the tree to
-  // draft_json + settle (reuse) + album EDITING; albums.stage stays 'analysing'
-  // (its default), so a failed/retried analyze never pollutes the stage column
-  // (acceptance: 失败可重试不污染 stage).
+  // WP1.5 (#184) 通用文案/色+预览+settle复用: the analyze-completed handler now
+  // advances albums.stage analysing → story once the generic-copy preview tree lands,
+  // reusing the existing init settle path unchanged. stage ⟂ status (§6.8 第 4 条): a
+  // failed/retried analyze (handleV3Failed) leaves stage at 'analysing', never
+  // polluting it (acceptance: 失败可重试不污染 stage).
 
   // analyze/progress → reuse the generic progress heartbeat (stage is just a label).
   async handleV3Progress(requestId: string, stage: string, progress: number) {
@@ -430,12 +429,21 @@ export const jobService = {
       await albumRepo.update(tx, job.albumId, {
         status: 'EDITING',
         draftJson,
-        // albums.stage stays 'analysing' here — WP1.5 advances it to 'story' once the
-        // preview tree carries generic copy/colors. Keeping it untouched means a
-        // failed-then-retried analyze never moves the stage forward prematurely.
+        // WP1.5 (#184): the preview tree now carries generic copy/colors, so advance
+        // the环节 analysing → story (architecture §6.8 第 4 条). `stage` is orthogonal
+        // to `status`: we write only the stage column here and never derive one from
+        // the other — `status` stays EDITING (init lifecycle + credit), `stage` moves
+        // to story (the user's first interactive环节). This sits in the SAME tx as the
+        // job/album/credit writes so a delivered callback either advances everything or
+        // nothing. A failed analyze (handleV3Failed) leaves stage at 'analysing', so a
+        // retry never inherits a prematurely-advanced stage (失败可重试不污染 stage).
+        stage: 'story',
       });
 
       if (album.creditHoldId) {
+        // Reuse the exact init settle path (handleInitCompleted §6.7): charge-at-init
+        // settles the hold here, once, inside this tx. WP1.5 does NOT touch
+        // creditService — it only advances stage alongside the existing settle.
         await creditService.settle(tx, job.userId, album.creditHoldId);
       }
     });
