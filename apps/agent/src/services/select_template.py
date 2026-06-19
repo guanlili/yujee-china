@@ -138,7 +138,11 @@ def _select_slot(settings: Any) -> VisionSlot:
     primary when configured, else the ark slot. Raises SelectTemplateError when
     neither is configured (caller then takes the pure-code fallback)."""
     try:
-        return openai_vision_slot(settings)
+        return openai_vision_slot(
+            settings,
+            timeout_seconds=settings.describe_openai_timeout_seconds,
+            model=settings.describe_openai_model,
+        )
     except VisionSlotError:
         pass
     try:

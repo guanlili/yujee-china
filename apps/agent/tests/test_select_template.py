@@ -214,6 +214,20 @@ def test_no_provider_configured_falls_back(no_keys):
     assert result == expected
 
 
+def test_select_template_uses_v3_describe_model_not_v2_openai_default(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "fake_oai")
+    monkeypatch.setenv("OPENAI_VISION_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("DESCRIBE_OPENAI_MODEL", "gpt-5.5-mini")
+    from src import settings as s
+
+    s.reset_settings_cache()
+    try:
+        slot = st._select_slot(s.get_settings())
+        assert slot.model == "gpt-5.5-mini"
+    finally:
+        s.reset_settings_cache()
+
+
 def test_unparseable_response_falls_back(monkeypatch):
     chapter = _chapter(2)
 
