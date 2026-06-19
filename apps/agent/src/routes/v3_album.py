@@ -14,8 +14,10 @@ of the real vision/templating work:
     (WP1.3, issue #182): one batched call → 章节树 (分章 + 每章 description + 每图
     sceneDescription). The LLM authors只这 3 处; width/height/orientation/takenAt
     are code-filled. OpenAI (GPT-5.5 Mini) primary, 火山 doubao failover.
-  * The `template`/`preview` stages still take the WP0.4 deterministic engine seam
-    (WP1.4 select-template / WP1.5 generic 文案色 own the real work there).
+  * The `template` stage now runs WP1.4 select-template (#183): the recognition
+    model picks each page's templateId from the legal candidates, pure-code §9
+    fallback on LLM failure. The `preview` stage still takes the seam (WP1.5 generic
+    文案色 owns the real work there).
   * `describe`/`group`/`template`/`preview` progress callbacks round-trip so the
     202 + callback + stage flow is fully testable end-to-end today.
 
@@ -50,7 +52,7 @@ from ..schemas import (
     V3Usage,
 )
 from ..services import callback
-from ..services import skeleton_v3
+from ..services import select_template
 from ..services import vision
 from ..services.vision import VisionError
 from ..settings import get_settings
@@ -107,18 +109,20 @@ async def _emit_failure(
 # ---------- draft assembly ----------------------------------------------------
 
 
-def _build_preview(chapters: list[V3Chapter]) -> tuple[V3LayoutTree, list[Page]]:
-    """Run the WP0.4 pure-code engine to produce the preview-state tree + pages.
+async def _build_preview(chapters: list[V3Chapter]) -> tuple[V3LayoutTree, list[Page]]:
+    """Produce the preview-state tree + pages via WP1.4 select-template.
 
-    TODO(WP1.4 select-template): the vision model picks templateId from the legal
-    candidates; this seam takes the deterministic fallback only (skeleton_v3 picks
-    a template that can hold each chapter's photos and slots them in order).
-    TODO(WP1.5 describe-content/generic-copy): generic 文案/色 are layered onto the
-    pages here before preview — the seam leaves texts empty."""
+    select-template (the recognition model) picks each page's templateId from the
+    LEGAL candidates the WP0.4 engine exposes (`legal_candidates`); the model can
+    never inject an illegal/hallucinated id. On any LLM failure the whole stage
+    degrades to the pure-code §9 fallback (a template that holds each page's photos,
+    slotted in order — `skeleton_v3.build_skeleton_v3`-equivalent). NO quality/hero/
+    orientation matching; aspect mismatch is the renderer's center-cover concern.
+
+    TODO(WP1.5 generic-copy): generic 文案/色 are layered onto the pages here before
+    preview — this seam still leaves texts empty."""
     tree = V3LayoutTree(chapters=chapters)
-    page_dicts = skeleton_v3.build_skeleton_v3(
-        [chapter.model_dump(mode="json") for chapter in chapters]
-    )
+    page_dicts = await select_template.select_template_pages(chapters)
     pages = [Page(**page) for page in page_dicts]
     return tree, pages
 
@@ -159,10 +163,12 @@ async def _run_analyze(req: V3AnalyzeRequest) -> None:
     await _emit_progress(req, "group", 0)
     await _emit_progress(req, "group", 100)
 
-    # template — TODO(WP1.4): select-template + 兜底. Seam: deterministic fallback.
+    # template — WP1.4 (#183): select-template. The recognition model picks each
+    # page's templateId from the legal candidates skeleton_v3 exposes; on any LLM
+    # failure the stage degrades to the pure-code §9 fallback inside _build_preview.
     await _emit_progress(req, "template", 0)
     try:
-        tree, pages = _build_preview(chapters)
+        tree, pages = await _build_preview(chapters)
     except Exception as exc:  # noqa: BLE001
         log.exception("v3_analyze.template_failed", error=str(exc))
         await _emit_failure(
