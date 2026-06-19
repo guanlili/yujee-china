@@ -13,6 +13,7 @@ import {
   V3ChapterChatResponse,
   V3RecommendResponse,
   V3ApplyThemeResponse,
+  V3CoverResponse,
 } from '@yujee/contracts';
 import type {
   V2InitRequest,
@@ -27,6 +28,7 @@ import type {
   V3ChapterChatRequest,
   V3RecommendRequest,
   V3ApplyThemeRequest,
+  V3CoverRequest,
 } from '@yujee/contracts';
 
 export type AgentPhotoInput = {
@@ -120,6 +122,19 @@ export const agentClient = {
   // budget, no base64 here.
   async applyThemeV3(payload: V3ApplyThemeRequest): Promise<V3ApplyThemeResponse> {
     return postSyncV3('/v3/apply-theme', payload, V3ApplyThemeResponse, {
+      albumId: payload.albumId,
+    });
+  },
+
+  // POST /v3/cover — synchronous, deterministic (④ 书籍设计 — 封面/封尾, WP4.1 #192).
+  // After the user (optionally) picks a 封面/封尾 system template, the agent
+  // deterministically auto-fills the relevant pages into finished spreads and returns a
+  // page-level layoutPatch (§3 树边界: 仍是页级). Cover is OPTIONAL — when no template is
+  // chosen the agent returns an EMPTY patch (§4.4 跳过=空), never an error. Stateless:
+  // the agent writes neither tree nor stage — Web merges the patch + advances
+  // stage=ready (§8.3 stage 推进权在 Web). 60s budget, no base64 here.
+  async coverV3(payload: V3CoverRequest): Promise<V3CoverResponse> {
+    return postSyncV3('/v3/cover', payload, V3CoverResponse, {
       albumId: payload.albumId,
     });
   },

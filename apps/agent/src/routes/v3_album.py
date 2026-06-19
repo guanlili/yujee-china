@@ -56,18 +56,22 @@ from ..schemas import (
 from ..schemas import (
     V3ApplyThemeRequest,
     V3ApplyThemeResponse,
+    V3CoverRequest,
+    V3CoverResponse,
     V3RecommendRequest,
     V3RecommendResponse,
 )
 from ..services import apply_theme_v3
 from ..services import callback
 from ..services import chapter_chat_v3
+from ..services import cover_v3
 from ..services import generic_copy
 from ..services import recommend_v3
 from ..services import select_template
 from ..services import vision
 from ..services.apply_theme_v3 import ApplyThemeV3Error
 from ..services.chapter_chat_v3 import ChapterChatV3Error
+from ..services.cover_v3 import CoverV3Error
 from ..services.recommend_v3 import RecommendV3Error
 from ..services.vision import VisionError
 from ..settings import get_settings
@@ -415,6 +419,61 @@ async def submit_apply_theme(req: V3ApplyThemeRequest) -> dict[str, Any]:
         ) from exc
     log.info(
         "v3_apply_theme.completed",
+        album_id=req.albumId,
+        patched=len(response.layoutPatch),
+    )
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
+
+
+# ---------- cover (④ 书籍设计 — 封面/封尾, sync, deterministic, optional) ------
+
+
+@router.post("/v3/cover", dependencies=[Depends(require_bearer)])
+async def submit_cover(req: V3CoverRequest) -> dict[str, Any]:
+    """④ 书籍设计 — 封面/封尾 endpoint (§8 同步 / 确定性 / 可选 / WP4.1 #192).
+
+    Synchronous, NO model call (§8.1: 确定性). After the user (optionally) picks a 封面
+    template (category=cover) and/or a 封尾 template (category=ending), this
+    deterministically AUTO-FILLS the relevant pages into finished spreads (§4.4(b)):
+    the页's photos slot into the template in declaration order (no quality/hero match),
+    generic decoration is code-filled, user-prose stays empty (§4.1 不生成正式文案; §3
+    隐私: no place). Cover is OPTIONAL — when BOTH ids are absent it returns an EMPTY
+    patch and does NOT error (§4.4 「跳过=空」; page0 is no longer forced to be cover,
+    a rule WP0.4 already removed from the V3 engine). Stateless (§8.3): the Agent
+    returns a page-level `layoutPatch` (§3 树边界: 仍是页级); Web merges the patch +
+    advances stage cover→ready (stage 推进权在 Web). Input carries no base64 (pure
+    structural transform). An invalid template (unknown id / wrong category) answers in
+    the contract error shape (§8.3 同步端点走 HTTP 错误码; retry without polluting stage)."""
+    log.info(
+        "v3_cover.accepted",
+        album_id=req.albumId,
+        pages=len(req.pages),
+        cover=bool(req.coverTemplateId),
+        ending=bool(req.endingTemplateId),
+        language=req.language,
+    )
+    try:
+        response: V3CoverResponse = cover_v3.build_cover(req)
+    except CoverV3Error as exc:
+        log.warning("v3_cover.failed", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_OUTPUT_VALIDATION", "message": str(exc)[:300]},
+            },
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
+        log.exception("v3_cover.unhandled", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
+            },
+        ) from exc
+    log.info(
+        "v3_cover.completed",
         album_id=req.albumId,
         patched=len(response.layoutPatch),
     )
