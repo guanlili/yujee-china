@@ -38,6 +38,8 @@ import {
 import { runInspectAdjustLoop } from './draft-edit-orchestrator';
 import { StageBreadcrumb } from './StageBreadcrumb';
 import { computeExportUnlocked } from './export-gate-util';
+import { runExportWithRetry, buildExportFailureLog, ExportError } from './export-retry-util';
+import { logger } from '@/lib/log/logger';
 import {
   applyPatchToPages,
   extractPhotoIds,
@@ -360,6 +362,11 @@ function EditorBook({
         exportPdf: '导出 PDF',
         // WP5.2 / §4.5b: 全章 done 后的「流程结束」提示,出现在导出按钮解锁时。
         exportReady: '太棒了，你的书已经准备好了！',
+        // WP5.3 / §4.5d: 连续 3 次导出失败后的安抚弹框文案。不甩锅、不暴露技术细节。
+        exportFailTitle: '导出遇到了点小麻烦',
+        exportFailBody: '我们试了几次都没能生成你的 PDF，可能是网络不太稳。你的纪念册内容都安全保存着，稍后再点一次「导出 PDF」通常就好了。',
+        exportFailRetry: '再试一次',
+        exportFailClose: '知道了',
         alertUndo: '撤销上一步操作',
         alertRedo: '重做已撤销的操作',
         alertLinkCopied: '链接已复制到剪贴板！',
@@ -487,6 +494,12 @@ function EditorBook({
         exportPdf: 'Export PDF',
         // WP5.2 / §4.5b: the "you're done" line shown once the export gate opens.
         exportReady: 'Wonderful — your book is ready!',
+        // WP5.3 / §4.5d: reassurance modal copy after 3 consecutive export failures.
+        // Calm, no blame, no tech detail.
+        exportFailTitle: 'Export hit a small snag',
+        exportFailBody: "We tried a few times but couldn't generate your PDF — it may be a shaky connection. Your memoir is saved safe and sound. Tapping “Export PDF” again in a moment usually does the trick.",
+        exportFailRetry: 'Try again',
+        exportFailClose: 'Got it',
         alertUndo: 'Undo last action',
         alertRedo: 'Redo undone action',
         alertLinkCopied: 'Link copied to clipboard!',
@@ -1957,16 +1970,19 @@ function EditorBook({
     }
     // Export: render the PDF in the browser (@react-pdf), download it locally,
     // and upload straight to R2 (bytes never touch the Web tier — invariant 4).
-    let exportingPdf = false;
-    async function exportPdf() {
-      if (isAuthoringExportLocked()) {
-        appendAiText(aT('全部章节确定后才能导出 PDF。', 'Confirm all chapters before exporting PDF.'));
-        return;
-      }
-      if (exportingPdf) return;
-      exportingPdf = true;
-      const btn = $('[data-action="exportPdf"]') as HTMLButtonElement | null;
-      if (btn) btn.style.opacity = '0.6';
+    // WP5.3 / §4.5d:连续 3 次导出失败后的安抚弹框开/关。复用编辑器既有的
+    // .modal-overlay/.open 视觉(同 photoModal),只读 i18n 文案,不碰积分/不发飞书。
+    function openExportFailModal() { byId('exportFailModal')?.classList.add('open'); }
+    function closeExportFailModal() { byId('exportFailModal')?.classList.remove('open'); }
+
+    // 一次导出尝试:本地出 PDF(render 环节)→ 上传 R2 + 落库(upload 环节)。任一
+    // 环节失败都抛 ExportError(带 phase + 可选 status code,供脱敏日志用,§3 隐私)。
+    // 本地下载放在 render 成功后立刻做(即便 R2 没配也能拿到文件);只在首张生成成功时
+    // 下载一次,避免重试时重复下载。整段路径**零 creditService**:导出成功或失败都不
+    // 碰积分(积分早在 init 成功时已实扣,§5)。
+    let didLocalDownload = false;
+    async function runExportOnce() {
+      let blob: Blob;
       try {
         const adaptable = pagesState.map((p) => ({
           templateId: p.templateId, images: p.imagesJson, texts: p.textsJson, imagePos: p.imagePosJson,
@@ -1974,9 +1990,15 @@ function EditorBook({
         const ids = collectPhotoIds(adaptable);
         const dataUrls = await photoStore.getPdfDataUrls(ids);
         const { renderAlbumPdf } = await import('@/lib/pdf/render');
-        const blob = await renderAlbumPdf(adaptable, (id) => dataUrls[id]);
+        blob = await renderAlbumPdf(adaptable, (id) => dataUrls[id]);
+      } catch (e) {
+        throw new ExportError('render', e instanceof Error ? e.message : String(e));
+      }
 
-        // Local download — useful even if R2 isn't configured (e.g. mock runs).
+      // Local download — useful even if R2 isn't configured (e.g. mock runs). Once
+      // per export so a retry doesn't trigger a second download.
+      if (!didLocalDownload) {
+        didLocalDownload = true;
         const url = URL.createObjectURL(blob);
         const aEl = document.createElement('a');
         aEl.href = url;
@@ -1985,36 +2007,58 @@ function EditorBook({
         aEl.click();
         aEl.remove();
         setTimeout(() => URL.revokeObjectURL(url), 0);
+      }
 
-        try {
-          const signRes = await fetch(`/api/v1/albums/${albumId}/pdf-upload-url`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contentType: 'application/pdf', size: blob.size }),
-          });
-          const signJson = await signRes.json();
-          if (!signJson.ok) throw new Error(signJson.error?.message ?? 'sign failed');
-          const { putUrl, r2Key } = signJson.data;
-          const putRes = await fetch(putUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/pdf' },
-            body: blob,
-          });
-          if (!putRes.ok) throw new Error(`R2 PUT ${putRes.status}`);
-          const confirmRes = await fetch(`/api/v1/albums/${albumId}/pdf`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ r2Key }),
-          });
-          const confirmJson = await confirmRes.json();
-          if (!confirmRes.ok || confirmJson.ok !== true) {
-            throw new Error(confirmJson.error?.message ?? 'PDF confirm failed');
-          }
-        } catch (uploadErr) {
-          console.error('PDF cloud upload failed', uploadErr);
-        }
-      } catch (e) {
-        console.error('PDF export failed', e);
+      const signRes = await fetch(`/api/v1/albums/${albumId}/pdf-upload-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentType: 'application/pdf', size: blob.size }),
+      });
+      const signJson = await signRes.json();
+      if (!signJson.ok) {
+        throw new ExportError('upload', signJson.error?.message ?? 'sign failed', signRes.status);
+      }
+      const { putUrl, r2Key } = signJson.data;
+      const putRes = await fetch(putUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/pdf' },
+        body: blob,
+      });
+      if (!putRes.ok) throw new ExportError('upload', `R2 PUT ${putRes.status}`, putRes.status);
+      const confirmRes = await fetch(`/api/v1/albums/${albumId}/pdf`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ r2Key }),
+      });
+      const confirmJson = await confirmRes.json();
+      if (!confirmRes.ok || confirmJson.ok !== true) {
+        throw new ExportError('upload', confirmJson.error?.message ?? 'PDF confirm failed', confirmRes.status);
+      }
+    }
+
+    let exportingPdf = false;
+    async function exportPdf() {
+      if (isAuthoringExportLocked()) {
+        appendAiText(aT('全部章节确定后才能导出 PDF。', 'Confirm all chapters before exporting PDF.'));
+        return;
+      }
+      if (exportingPdf) return;
+      exportingPdf = true;
+      didLocalDownload = false;
+      const btn = $('[data-action="exportPdf"]') as HTMLButtonElement | null;
+      if (btn) btn.style.opacity = '0.6';
+      try {
+        // WP5.3 / §4.5d:自动重试 ≤3 次;连续 3 次失败 → 弹安抚框 + 落一条错误日志。
+        // 计数全在前端(runExportWithRetry)。导出失败**不动积分**(本回调不触任何
+        // creditService;积分早在 init 成功时已扣,§5)。飞书推送后置(§4.5d):此处
+        // 只 logger.error 落日志,不调任何飞书端点;上线后视失败率再在 onExhausted
+        // 里加一次告警调用(方案已记录在 export-retry-util.ts 顶注 + 需求 §4.5d)。
+        await runExportWithRetry(() => runExportOnce(), {
+          onExhausted: (lastError, attempts) => {
+            logger.error(buildExportFailureLog(lastError, { albumId, attempts }), 'pdf export failed');
+            openExportFailModal();
+          },
+        });
       } finally {
         exportingPdf = false;
         if (btn) btn.style.opacity = '';
@@ -2123,6 +2167,10 @@ function EditorBook({
       markCurrentChapterDone,
       openPhotoPicker,
       closePhotoPicker,
+      // WP5.3 / §4.5d: 安抚弹框的两个出口。「再试一次」关弹框后重跑导出(重新一轮
+      // ≤3 次重试);「知道了」只关弹框。两者都不碰积分。
+      closeExportFail: closeExportFailModal,
+      retryExportPdf: () => { closeExportFailModal(); void exportPdf(); },
       // The "+" in the input: finalized albums → real add-photos flow; while still
       // authoring there's no finalized layout to append to, so fall back to the
       // (dormant) picker rather than erroring.
@@ -2147,6 +2195,13 @@ function EditorBook({
       const fn = (e: Event) => { if (e.target === overlayEl) closePhotoPicker(); };
       overlayEl.addEventListener('click', fn);
       actionHandlers.push({ el: overlayEl, fn });
+    }
+    // WP5.3 / §4.5d: same backdrop-click-to-close for the export-failure modal.
+    const exportFailOverlay = byId('exportFailModal');
+    if (exportFailOverlay) {
+      const fn = (e: Event) => { if (e.target === exportFailOverlay) closeExportFailModal(); };
+      exportFailOverlay.addEventListener('click', fn);
+      actionHandlers.push({ el: exportFailOverlay, fn });
     }
     // zoom buttons carry an amount
     $$('[data-zoom]').forEach((el) => {
@@ -2743,6 +2798,30 @@ function EditorBook({
                 </button>
               </span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* WP5.3 / §4.5d:导出失败安抚弹框。连续 3 次出 PDF / 上传 R2 失败后由
+          openExportFailModal() 加 .open 显示。复用 .modal-overlay/.modal-card 视觉。
+          文案安抚、不暴露技术细节;两个出口都不碰积分。飞书推送后置(此处不发,见
+          export-retry-util.ts 顶注 + 需求 §4.5d)。 */}
+      <div className="modal-overlay" id="exportFailModal" data-overlay-close>
+        <div className="modal-card" role="alertdialog" aria-modal="true" aria-labelledby="exportFailTitle" data-testid="export-fail-modal">
+          <div className="px-6 pt-6 pb-3 shrink-0">
+            <div className="flex items-center gap-3">
+              <span className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-bg text-accent">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" /></svg>
+              </span>
+              <h3 id="exportFailTitle" className="font-display text-[17px] font-bold" data-i18n="exportFailTitle">导出遇到了点小麻烦</h3>
+            </div>
+            <p className="text-[13px] text-muted mt-3 leading-relaxed" data-i18n="exportFailBody">我们试了几次都没能生成你的 PDF，可能是网络不太稳。你的纪念册内容都安全保存着，稍后再点一次「导出 PDF」通常就好了。</p>
+          </div>
+          <div className="px-6 py-4 shrink-0 flex items-center justify-end gap-2">
+            <button className="px-5 py-2.5 rounded-pill text-[13px] font-medium text-fg2 border border-bd transition-colors hover:bg-bg" data-action="closeExportFail" data-i18n="exportFailClose">知道了</button>
+            <span className="btn-glow">
+              <button className="px-5 py-2.5 rounded-pill text-[13px] font-semibold bg-fg text-white transition-transform hover:-translate-y-px" style={{ boxShadow: '0 1px 3px rgba(0,0,0,.12)' }} data-action="retryExportPdf" data-i18n="exportFailRetry">再试一次</button>
+            </span>
           </div>
         </div>
       </div>
