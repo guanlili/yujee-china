@@ -735,3 +735,86 @@
   transition:background var(--motion-fast) var(--ease);
 }
 .editor-port .img-edit-reset:hover{ background:var(--border-soft); }
+
+/* ─── ③ palette-card (主题/配色选择,对话流内,缺口#20) ───
+   Faithful port of 设计稿 .palette-card. Each .pc-group is a THEME OPTION
+   (label + tone head) over the recommended per-chapter accent swatches. ─── */
+.editor-port .palette-card{
+  border:1px solid var(--border); border-radius:16px;
+  background:var(--surface); box-shadow:var(--shadow-card); max-width:100%;
+  display:flex; flex-direction:column; gap:10px; padding:14px;
+}
+.editor-port .pc-title{ font-family:var(--font-display); font-size:15px; font-weight:700; color:var(--fg); }
+.editor-port .pc-groups{ display:flex; flex-direction:column; gap:8px; }
+.editor-port .pc-group{
+  position:relative;
+  padding:8px 9px; border:1px solid var(--border); border-radius:12px;
+  background:transparent; cursor:pointer; text-align:left;
+  display:flex; flex-direction:column; gap:7px;
+  transition: all var(--motion-fast) var(--ease);
+}
+.editor-port .pc-group:hover{ background:#f7f7f7; border-color:var(--fg-2); }
+.editor-port .pc-group.selected{ border-color:var(--fg); box-shadow:0 0 0 1px var(--fg) inset; }
+.editor-port .pc-group-head{ display:flex; align-items:baseline; gap:8px; padding-right:26px; }
+.editor-port .pc-group-label{ font-size:13px; font-weight:600; color:var(--fg); }
+.editor-port .pc-group-tone{ font-size:11px; color:var(--muted); }
+.editor-port .pc-swatches{ display:flex; height:34px; border-radius:8px; overflow:hidden; }
+.editor-port .pc-swatches span{ flex:1; }
+.editor-port .pc-check{
+  position:absolute; top:12px; right:11px; transform:scale(.7);
+  width:20px; height:20px; border-radius:50%; background:var(--fg); color:#fff;
+  display:grid; place-items:center; opacity:0;
+  transition: all var(--motion-fast) var(--ease);
+}
+.editor-port .pc-check svg{ width:13px; height:13px; }
+.editor-port .pc-group.selected .pc-check{ opacity:1; transform:scale(1); }
+.editor-port .pc-reco{
+  position:absolute; top:-7px; left:10px; z-index:1;
+  height:16px; padding:0 8px; border-radius:9999px;
+  background:var(--fg); color:#fff; font-size:10px; font-weight:600; line-height:16px;
+}
+
+/* ─── ④ cover-card (封面/封底选择,对话流内,缺口#20) ───
+   Port of 设计稿 .cover-card. 封面/封底 each show the CURRENT template as the
+   (single) recommended option previewed through its real web template; the
+   contract gives no alternative-template catalog, so there is no multi-option
+   grid. Two actions: 应用 / 跳过. ─── */
+.editor-port .cover-card{
+  border:1px solid var(--border); border-radius:16px;
+  background:var(--surface); box-shadow:var(--shadow-card); max-width:100%;
+  display:flex; flex-direction:column; gap:12px; padding:14px;
+}
+.editor-port .cv-title{ font-family:var(--font-display); font-size:15px; font-weight:700; color:var(--fg); }
+.editor-port .cv-section{ display:flex; flex-direction:column; gap:7px; }
+.editor-port .cv-label{ font-size:12px; font-weight:600; color:var(--muted); }
+.editor-port .cv-row{ display:flex; gap:8px; }
+.editor-port .cv-opt{
+  position:relative; flex:0 0 auto; width:132px; aspect-ratio:3/4; border-radius:10px;
+  background-color:var(--bg);
+  border:none; cursor:default; padding:0; overflow:hidden;
+  box-shadow:0 0 0 1px var(--border) inset;
+  transition: all var(--motion-fast) var(--ease);
+}
+.editor-port .cv-opt.selected{ box-shadow:0 0 0 2px var(--fg); }
+.editor-port .cv-check{
+  position:absolute; top:6px; right:6px;
+  width:18px; height:18px; border-radius:50%; background:var(--fg); color:#fff;
+  display:grid; place-items:center; opacity:0; transform:scale(.7);
+  transition: all var(--motion-fast) var(--ease);
+}
+.editor-port .cv-check svg{ width:11px; height:11px; }
+.editor-port .cv-opt.selected .cv-check{ opacity:1; transform:scale(1); }
+.editor-port .cv-reco{
+  position:absolute; top:6px; left:6px; z-index:1;
+  height:16px; padding:0 7px; border-radius:9999px;
+  background:var(--fg); color:#fff; font-size:10px; font-weight:600; line-height:16px;
+}
+.editor-port .cv-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:2px; }
+.editor-port .cv-action{
+  border-radius:9999px; padding:7px 14px; font-size:12.5px; font-weight:600;
+  cursor:pointer; transition: all var(--motion-fast) var(--ease);
+}
+.editor-port .cv-action-primary{ background:var(--fg); color:#fff; border:1px solid var(--fg); }
+.editor-port .cv-action-primary:hover{ transform:translateY(-1px); }
+.editor-port .cv-action-ghost{ background:transparent; color:var(--fg-2); border:1px solid var(--border); }
+.editor-port .cv-action-ghost:hover{ background:#f7f7f7; }

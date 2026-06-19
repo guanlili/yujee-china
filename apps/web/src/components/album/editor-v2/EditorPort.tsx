@@ -58,6 +58,7 @@ import {
   type BrowserLayoutPatchEntry,
   type DraftEditResult,
   type DraftSkeleton,
+  type DraftPageKind,
 } from '@/lib/album/authoring-client';
 import type {
   V3ChatTurn,
@@ -1707,6 +1708,14 @@ function EditorBook({
             ? aT('所有章节已确定，现在可以导出 PDF。', 'All chapters are confirmed. PDF export is ready.')
             : aT('这一章已确定，我们继续下一章。', "This chapter is confirmed. Let's continue with the next one."),
         );
+        // ③ 确定主题: confirming the LAST chapter advances stage story → theme (album
+        // -service.markChapterDone). That's the cue to enter the theme 环节 — fetch the
+        // recommendation and surface the palette-card in the chat flow (缺口#20).
+        if (storyGate.stage === 'theme') {
+          confirmingStoryChapter = false;
+          setStoryConfirming(false);
+          await runRecommendTheme();
+        }
       } catch (e) {
         appendAiText(
           e instanceof Error
@@ -1744,7 +1753,10 @@ function EditorBook({
 
     // ③ 主题/章节色 · 推荐: ask /v3/recommend for theme candidates + per-chapter色/字体.
     // Stores the response so the apply step can send the user's pick back. Display only —
-    // nothing is written until apply-theme.
+    // nothing is written until apply-theme. The reply is followed by the palette-card
+    // (设计稿 palette-card): the user picks ONE theme option, then apply-theme writes it
+    // along with the recommended per-chapter {accentColor, artFont}. The 自动套第一候选
+    // fallback is gone — apply only fires from a user pick on the card.
     async function runRecommendTheme(userMessage?: string) {
       if (!isAuthoring || sending) return;
       sending = true;
@@ -1755,6 +1767,7 @@ function EditorBook({
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(host, res.assistantReply);
         appendTime(host);
+        appendPaletteCard(res);
       } catch (e) {
         if (authErr(host, e)) { sending = false; return; }
       }
@@ -1763,25 +1776,114 @@ function EditorBook({
       scrollChat();
     }
 
-    // ③ 主题/章节色 · 应用: send the user's per-chapter {accentColor, artFont} (defaults to
-    // the recommended set) + chosen theme to /v3/apply-theme, fold the returned patch into
-    // the canvas, advance stage theme→cover. `chapters`/`theme` override the recommendation
-    // when the user picks; absent them we apply the last recommendation as-is.
-    async function runApplyTheme(override?: {
-      theme?: { subject: string; label: string; tone?: string };
-      chapters?: V3ChapterThemeChoice[];
+    // ─── palette-card (设计稿 palette-card,对话流内) ────────────────────────────
+    // The design mocks each "color group" as 5 swatches; the real contract instead
+    // returns themeOptions (≤3 textual themes: subject/label/tone — NO palette) + ONE
+    // recommended chapterColors set (per-chapter single accentColor + artFont). So the
+    // honest mapping is: each card row = a THEME OPTION (label as the heading, tone as a
+    // sub-line), and the swatch strip shows the REAL recommended per-chapter accentColors
+    // (deduped, in order) — the actual colors apply-theme will brush on. First option is
+    // 推荐. Picking a row → runApplyTheme with that theme + the recommended chapterColors.
+    // 契约↔设计差异(flag): the contract has no per-theme palette, so all rows share the
+    // same swatch strip; chapters can be fine-tuned later (设计稿语义) is not yet a contract
+    // affordance.
+    function appendPaletteCard(res: V3RecommendResponse) {
+      // Real recommended colors → swatch strip (dedupe, keep order; cap at 6 like 设计稿).
+      const swatchColors: string[] = [];
+      for (const c of res.chapterColors) {
+        if (c.accentColor && !swatchColors.includes(c.accentColor)) swatchColors.push(c.accentColor);
+        if (swatchColors.length >= 6) break;
+      }
+      const swatchesHTML = swatchColors
+        .map((c) => `<span style="background:${c}"></span>`)
+        .join('');
+      const checkSvg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" ' +
+        'stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+      const card = document.createElement('div');
+      card.className = 'msg ai max-w-full';
+      const inner = document.createElement('div');
+      inner.className = 'palette-card';
+      const title = document.createElement('div');
+      title.className = 'pc-title';
+      title.textContent = aT('挑选一组喜欢的配色吧', 'Pick a palette you like');
+      const groups = document.createElement('div');
+      groups.className = 'pc-groups';
+      res.themeOptions.forEach((opt, gi) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'pc-group' + (gi === 0 ? ' selected' : '');
+        btn.dataset.pal = String(gi);
+        if (gi === 0) {
+          const reco = document.createElement('span');
+          reco.className = 'pc-reco';
+          reco.textContent = aT('推荐', 'Recommended');
+          btn.appendChild(reco);
+        }
+        const head = document.createElement('div');
+        head.className = 'pc-group-head';
+        const label = document.createElement('span');
+        label.className = 'pc-group-label';
+        label.textContent = opt.label;
+        head.appendChild(label);
+        if (opt.tone) {
+          const tone = document.createElement('span');
+          tone.className = 'pc-group-tone';
+          tone.textContent = opt.tone;
+          head.appendChild(tone);
+        }
+        btn.appendChild(head);
+        const sw = document.createElement('div');
+        sw.className = 'pc-swatches';
+        sw.innerHTML = swatchesHTML;
+        btn.appendChild(sw);
+        const check = document.createElement('span');
+        check.className = 'pc-check';
+        check.innerHTML = checkSvg;
+        btn.appendChild(check);
+        btn.addEventListener('click', () => {
+          if (sending) return;
+          groups.querySelectorAll('.pc-group').forEach((g) =>
+            g.classList.toggle('selected', g === btn),
+          );
+          // Echo the pick, then apply the chosen theme + recommended per-chapter colors.
+          appendUserText(aT(`就用「${opt.label}」`, `Use "${opt.label}"`));
+          hideAwait();
+          scrollChat();
+          void runApplyTheme({
+            theme: { subject: opt.subject, label: opt.label, ...(opt.tone ? { tone: opt.tone } : {}) },
+            chapters: res.chapterColors.map((c) => ({
+              chapterId: c.chapterId,
+              accentColor: c.accentColor,
+              artFont: c.artFont,
+            })),
+          });
+        });
+        groups.appendChild(btn);
+      });
+      inner.appendChild(title);
+      inner.appendChild(groups);
+      card.appendChild(inner);
+      chatBody!.appendChild(card);
+      scrollChat();
+    }
+
+    // ③ 主题/章节色 · 应用: send the user's CHOSEN theme + the recommended per-chapter
+    // {accentColor, artFont} to /v3/apply-theme, fold the returned patch into the canvas,
+    // advance stage theme→cover. Driven only by a user pick on the palette-card — there is
+    // NO "auto-apply the first candidate" fallback (缺口#20: 删掉自动套第一兜底). If called
+    // with no selection (e.g. no recommendation yet), we fetch a recommendation so the user
+    // gets the picker, and apply nothing.
+    async function runApplyTheme(selection?: {
+      theme: { subject: string; label: string; tone?: string };
+      chapters: V3ChapterThemeChoice[];
     }) {
       if (!isAuthoring || sending) return;
-      const theme = override?.theme ?? lastRecommend?.themeOptions[0];
-      const chapters =
-        override?.chapters ??
-        lastRecommend?.chapterColors.map((c) => ({
-          chapterId: c.chapterId,
-          accentColor: c.accentColor,
-          artFont: c.artFont,
-        }));
+      const theme = selection?.theme;
+      const chapters = selection?.chapters;
       if (!theme || !chapters || chapters.length === 0) {
-        // No recommendation yet — fetch one first so the user has something to apply.
+        // No user pick to apply — surface the picker instead of silently applying a default.
         await runRecommendTheme();
         return;
       }
@@ -1798,6 +1900,12 @@ function EditorBook({
             aT('已应用主题色与字体。', 'Applied the theme colors and fonts.'),
         );
         appendTime(host);
+        // ④ 书籍设计: apply-theme advances stage theme → cover. Surface the cover-card so
+        // the user picks/keeps 封面/封底 (or 跳过) right after the theme lands (缺口#20).
+        if (res.stage === 'cover') {
+          sending = false;
+          appendCoverCard();
+        }
       } catch (e) {
         if (authErr(host, e)) { sending = false; return; }
       }
@@ -1831,6 +1939,111 @@ function EditorBook({
       }
       sending = false;
       restAwait();
+      scrollChat();
+    }
+
+    // ─── cover-card (设计稿 cover-card,对话流内) ─────────────────────────────────
+    // 设计稿 mocks a few portrait IMAGE options each for 封面/封底. The real contract
+    // instead takes cover/ending TEMPLATE ids (system templates, not arbitrary images)
+    // and the browser has NO catalog endpoint to discover alternative cover/ending
+    // templates — only the CURRENT cover/ending page (from the read-only draft skeleton,
+    // invariant 12) is knowable. So the honest card renders the current 封面 + 封底 as the
+    // (single) recommended option each, previewed through their real web template (the same
+    // faceInner the book uses, NOT unsplash images), plus a 跳过 path. Picking "应用" re-runs
+    // the deterministic auto-fill on the current templates; "跳过" sends nothing → empty
+    // patch (§4.4 封面可跳过) and never errors.
+    // 契约↔设计差异(flag): no template catalog → no multi-option grid; 封面/封底 each show
+    // only the current template. A real picker needs a cover/ending-template list endpoint.
+    function coverPreviewHTML(page: EditorPage | null): string {
+      if (!page) return '';
+      // 3:4 portrait box matching 设计稿 .cv-opt; reuse the book's render path.
+      return faceHTML(page, 132, 176);
+    }
+    function appendCoverCard() {
+      // Resolve the 封面/封底 pages by their skeleton KIND, keyed on pageIndex so a folded
+      // apply-theme/cover patch (which patches by pageIndex, not array position) can't
+      // misalign the lookup. draftSkel is the read-only render projection (invariant 12).
+      const kindByPageIndex = new Map<number, DraftPageKind>();
+      for (const p of draftSkel?.pages ?? []) kindByPageIndex.set(p.pageIndex, p.kind);
+      const coverPage = pagesState.find((p) => kindByPageIndex.get(p.pageIndex) === 'cover') ?? null;
+      const endingPage = pagesState.find((p) => kindByPageIndex.get(p.pageIndex) === 'ending') ?? null;
+      const coverTemplateId = coverPage?.templateId ?? null;
+      const endingTemplateId = endingPage?.templateId ?? null;
+      const checkSvg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" ' +
+        'stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+      const card = document.createElement('div');
+      card.className = 'msg ai max-w-full';
+      const inner = document.createElement('div');
+      inner.className = 'cover-card';
+
+      const title = document.createElement('div');
+      title.className = 'cv-title';
+      title.textContent = aT('挑一个封面和封底吧', 'Pick a cover and back cover');
+      inner.appendChild(title);
+
+      const section = (labelZh: string, labelEn: string, page: EditorPage | null) => {
+        const sec = document.createElement('div');
+        sec.className = 'cv-section';
+        const label = document.createElement('div');
+        label.className = 'cv-label';
+        label.textContent = aT(labelZh, labelEn);
+        const row = document.createElement('div');
+        row.className = 'cv-row';
+        const opt = document.createElement('button');
+        opt.type = 'button';
+        // Single (current) option — pre-selected + 推荐, since the contract gives no
+        // alternative templates to choose from.
+        opt.className = 'cv-opt selected';
+        opt.innerHTML = coverPreviewHTML(page);
+        const reco = document.createElement('span');
+        reco.className = 'cv-reco';
+        reco.textContent = aT('推荐', 'Recommended');
+        const check = document.createElement('span');
+        check.className = 'cv-check';
+        check.innerHTML = checkSvg;
+        opt.appendChild(reco);
+        opt.appendChild(check);
+        row.appendChild(opt);
+        sec.appendChild(label);
+        sec.appendChild(row);
+        return sec;
+      };
+      inner.appendChild(section('封面', 'Cover', coverPage));
+      inner.appendChild(section('封底', 'Back cover', endingPage));
+
+      // Actions: 应用 (re-run auto-fill on the current templates) / 跳过 (empty patch).
+      const actionsRow = document.createElement('div');
+      actionsRow.className = 'cv-actions';
+      const applyBtn = document.createElement('button');
+      applyBtn.type = 'button';
+      applyBtn.className = 'cv-action cv-action-primary';
+      applyBtn.textContent = aT('应用封面设计', 'Apply cover design');
+      applyBtn.addEventListener('click', () => {
+        if (sending) return;
+        appendUserText(aT('就用这个封面设计', 'Use this cover design'));
+        hideAwait();
+        scrollChat();
+        void runCover({ coverTemplateId, endingTemplateId });
+      });
+      const skipBtn = document.createElement('button');
+      skipBtn.type = 'button';
+      skipBtn.className = 'cv-action cv-action-ghost';
+      skipBtn.textContent = aT('跳过', 'Skip');
+      skipBtn.addEventListener('click', () => {
+        if (sending) return;
+        appendUserText(aT('先跳过封面设计', 'Skip the cover design for now'));
+        hideAwait();
+        scrollChat();
+        void runCover({}); // empty selection → empty patch, never errors (§4.4)
+      });
+      actionsRow.appendChild(skipBtn);
+      actionsRow.appendChild(applyBtn);
+      inner.appendChild(actionsRow);
+
+      card.appendChild(inner);
+      chatBody!.appendChild(card);
       scrollChat();
     }
 
@@ -2274,13 +2487,15 @@ function EditorBook({
       toggleOverview,
       resetZoom,
       markCurrentChapterDone,
-      // ③④ theme/cover drivers (缺口#20). Wired as data-action entry points; the full
-      // theme-candidate / cover-template picker UI is a follow-up (visual 用户验收) — these
-      // run one real /v3 turn and fold the patch into the canvas. recommendTheme +
-      // applyTheme apply the recommended色/字体; skipCover advances cover→ready with no design.
+      // ③④ theme/cover drivers (缺口#20). Wired as data-action entry points.
+      //   • recommendTheme → fetch candidates + render the palette-card; the user picks ONE
+      //     theme on the card, which fires apply-theme (no auto-apply-first fallback).
+      //   • openCoverCard → render the cover-card; the user 应用/跳过 on it drives /v3/cover.
+      //   • skipCover → direct skip (cover→ready, empty patch), kept for callers that want
+      //     to bypass the picker entirely.
       recommendTheme: () => { void runRecommendTheme(); },
-      applyTheme: () => { void runApplyTheme(); },
-      skipCover: () => { void runCover(); },
+      openCoverCard: () => { appendCoverCard(); },
+      skipCover: () => { void runCover({}); },
       openPhotoPicker,
       closePhotoPicker,
       // WP5.3 / §4.5d: 安抚弹框的两个出口。「再试一次」关弹框后重跑导出(重新一轮
