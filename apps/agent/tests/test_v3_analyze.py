@@ -1,4 +1,4 @@
-"""WP1.1 接入骨架 e2e for POST /v3/analyze (#180).
+"""WP1.1 接入骨架 + WP1.3 describe-content e2e for POST /v3/analyze (#180 / #182).
 
 Exercises the async 202 + V3 callback transport: route-level 202
 (V3AcceptedResponse), the describe→group→template→preview progress flow, the
@@ -6,8 +6,11 @@ completed callback carrying a contract-valid 章节树 + preview pages, the §3
 privacy guard (lat/lng rejected at parse), auth, and the failure path that resets
 the failing stage (失败可重试不污染 stage).
 
-The analysis BODY is a clearly-marked seam (WP1.3/1.4/1.5); this only asserts the
-pipe round-trips and the two-end contract shapes match (schemas.py / v3.ts)."""
+The describe stage now runs the REAL describe-content recognition call (WP1.3);
+these e2e tests mock the recognition model (`vision.describe_content`) with a
+deterministic one-chapter-per-photo partition so the transport + contract shapes
+stay the assertion focus. describe-content's own unit behavior (partition fusion,
+failover) lives in test_vision_groups.py."""
 
 import asyncio
 import base64
@@ -18,9 +21,61 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from src.routes import v3_album
-from src.schemas import V3AnalyzeCompleted, V3AnalyzeRequest, V3LayoutTree
+from src.schemas import (
+    V3AnalyzeCompleted,
+    V3AnalyzeRequest,
+    V3Chapter,
+    V3ChapterPhoto,
+    V3LayoutTree,
+)
 from src.services import callback as cb_mod
 from src.services import skeleton_v3
+from src.services import vision
+
+
+def _orient(w: int, h: int) -> str:
+    if w > h:
+        return "landscape"
+    if h > w:
+        return "portrait"
+    return "square"
+
+
+@pytest.fixture(autouse=True)
+def _mock_describe_content(monkeypatch):
+    """Stand in for the real recognition-model call: one chapter per photo with a
+    canned description / sceneDescription, code-filled deterministic attrs. Mirrors
+    what vision.describe_content returns so the route's tree/usage assertions hold
+    without hitting an LLM."""
+
+    async def fake_describe(photos, *, language, prompt_hint=None):
+        chapters = [
+            V3Chapter(
+                chapterId=f"ch_{i + 1}",
+                description=f"Chapter {i + 1}.",
+                accentColor=None,
+                artFont=None,
+                photos=[
+                    V3ChapterPhoto(
+                        photoId=p.photoId,
+                        sceneDescription=f"scene {p.photoId}",
+                        width=p.width,
+                        height=p.height,
+                        orientation=_orient(p.width, p.height),
+                        takenAt=p.exif.takenAt if p.exif else None,
+                    )
+                ],
+            )
+            for i, p in enumerate(photos)
+        ]
+        return vision.V3DescribeResult(
+            tree=V3LayoutTree(chapters=chapters),
+            tokens_billed=18,
+            model="gpt-5.5-mini",
+            provider="openai",
+        )
+
+    monkeypatch.setattr(vision, "describe_content", fake_describe)
 
 
 @pytest.fixture
@@ -126,7 +181,9 @@ def test_analyze_mock_emits_stages_and_tree(captured_callbacks, count):
     completed = next(c for c in captured_callbacks if c["event"] == "completed")
     assert completed["jobKind"] == "analyze"
     assert completed["requestId"] == "req_v3_analyze"
-    assert completed["usage"]["visionCallCount"] == 0  # seam runs no vision call
+    # describe-content ran one recognition call (WP1.3); model reported in Usage.
+    assert completed["usage"]["visionCallCount"] == 1
+    assert completed["usage"]["models"]["vision"] == "gpt-5.5-mini"
 
     # The completed envelope must re-validate against the V3 contract (two-end
     # shape parity: schemas.py mirrors packages/contracts/src/v3.ts).

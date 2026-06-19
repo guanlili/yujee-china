@@ -4,7 +4,8 @@ Vision used to hardwire the 火山 Ark (doubao) slot. We now let it switch betwe
 two OpenAI-compatible slots via `settings.vision_provider`:
 
   * "ark"    → 火山 doubao-seed-1-6-vision (default; existing behavior).
-  * "openai" → OpenAI GPT vision (gpt-4o-mini by default).
+  * "openai" → OpenAI GPT vision (gpt-4o-mini by default for V2). V3
+    describe-content reuses this slot wiring with a describe-specific model.
 
 Both init's batched analysis (vision.py) and the #165 inspect diagnosis
 (inspect_render.py) resolve their endpoint/key/model/timeout through
@@ -98,44 +99,47 @@ def resolved_vision_model(settings: Settings) -> str:
     return settings.ark_vision_model
 
 
-def select_vision_slot(settings: Settings) -> VisionSlot:
-    """Resolve the vision slot from settings. Raises VisionSlotError if the
-    chosen provider has no API key configured."""
-    provider = settings.vision_provider
+def openai_vision_slot(
+    settings: Settings,
+    *,
+    timeout_seconds: int | None = None,
+    model: str | None = None,
+) -> VisionSlot:
+    """Resolve the OpenAI (GPT) vision slot explicitly, independent of the V2
+    `vision_provider` switch. Used as the V3 describe-content PRIMARY (architecture
+    §6.8 第 2 条) with a describe-specific model override. `timeout_seconds`
+    overrides the slot's default per-call budget so V3 failover can use a tighter
+    primary deadline. Raises VisionSlotError if the OpenAI key is missing."""
+    if not settings.openai_api_key:
+        raise VisionSlotError("OPENAI_API_KEY missing; cannot run OpenAI vision slot")
+    return VisionSlot(
+        provider="openai",
+        base_url=settings.openai_base_url,
+        api_key=settings.openai_api_key,
+        model=model or settings.openai_vision_model,
+        timeout_seconds=(
+            settings.openai_timeout_seconds if timeout_seconds is None else timeout_seconds
+        ),
+        # Never forward doubao's `thinking` knob to OpenAI (400 otherwise).
+        extra_body=None,
+        response_format=({"type": "json_object"} if settings.openai_use_json_object else None),
+        supports_json_object=settings.openai_use_json_object,
+    )
 
-    if provider == "openai":
-        if not settings.openai_api_key:
-            raise VisionSlotError(
-                "OPENAI_API_KEY missing; cannot run vision with vision_provider=openai"
-            )
-        return VisionSlot(
-            provider="openai",
-            base_url=settings.openai_base_url,
-            api_key=settings.openai_api_key,
-            model=settings.openai_vision_model,
-            timeout_seconds=settings.openai_timeout_seconds,
-            # Never forward doubao's `thinking` knob to OpenAI (400 otherwise).
-            extra_body=None,
-            response_format=(
-                {"type": "json_object"} if settings.openai_use_json_object else None
-            ),
-            supports_json_object=settings.openai_use_json_object,
-        )
 
-    # Default / "ark": 火山 doubao — unchanged behavior.
+def ark_vision_slot(settings: Settings) -> VisionSlot:
+    """Resolve the 火山 doubao vision slot explicitly. Used as the V3
+    describe-content FAILOVER (architecture §6.8 第 2 条). Raises VisionSlotError if
+    the ARK key is missing."""
     if not settings.ark_api_key:
-        raise VisionSlotError("ARK_API_KEY missing; cannot run real vision stage")
+        raise VisionSlotError("ARK_API_KEY missing; cannot run 火山 vision slot")
     return VisionSlot(
         provider="ark",
         base_url=settings.ark_base_url,
         api_key=settings.ark_api_key,
         model=settings.ark_vision_model,
         timeout_seconds=settings.ark_timeout_seconds,
-        # `thinking` is now gated by ark_disable_thinking for BOTH callers (init
-        # vision.py and #165 inspect_render.py). inspect used to disable thinking
-        # unconditionally; routing it through this slot deliberately unifies the
-        # two so there is one knob — at the default (disable=True) inspect's
-        # behavior is unchanged. Do NOT re-fork a separate inspect-only path.
+        # `thinking` gated by ark_disable_thinking (one knob across callers).
         extra_body=(
             {"thinking": {"type": "disabled"}} if settings.ark_disable_thinking else None
         ),
@@ -144,3 +148,12 @@ def select_vision_slot(settings: Settings) -> VisionSlot:
         response_format=None,
         supports_json_object=False,
     )
+
+
+def select_vision_slot(settings: Settings) -> VisionSlot:
+    """Resolve the vision slot from settings. Raises VisionSlotError if the
+    chosen provider has no API key configured."""
+    if settings.vision_provider == "openai":
+        return openai_vision_slot(settings)
+    # Default / "ark": 火山 doubao — unchanged behavior.
+    return ark_vision_slot(settings)

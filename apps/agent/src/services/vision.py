@@ -5,6 +5,8 @@ extension fields (peopleCount / scene / mood / timeOfDay / location).
 Privacy: photo base64 is passed into the upstream HTTP body and then the
 local reference is dropped; we never log it or hand it back to the caller."""
 
+import asyncio
+from dataclasses import dataclass
 from math import ceil
 import re
 from typing import Any
@@ -12,10 +14,28 @@ from typing import Any
 from pydantic import ValidationError
 
 from ..logging_config import get_logger
-from ..schemas import Focal, LayoutRequest, PhotoAnalysis, PhotoGroup, VisionResult
+from ..schemas import (
+    Focal,
+    LayoutRequest,
+    PhotoAnalysis,
+    PhotoGroup,
+    V3AnalyzePhoto,
+    V3Chapter,
+    V3ChapterPhoto,
+    V3LayoutTree,
+    VisionResult,
+)
 from ..settings import get_settings
+from ..skills import load_skill
 from . import ai_client
-from .vision_provider import VisionSlotError, estimate_cost_usd, select_vision_slot
+from .vision_provider import (
+    VisionSlot,
+    VisionSlotError,
+    ark_vision_slot,
+    estimate_cost_usd,
+    openai_vision_slot,
+    select_vision_slot,
+)
 
 log = get_logger("vision")
 
@@ -367,4 +387,327 @@ async def analyze(req: LayoutRequest) -> tuple[VisionResult, int, str]:
         VisionResult(photos=analyses, groups=groups),
         prompt_tokens + completion_tokens,
         slot.model,
+    )
+
+
+# =============================================================================
+# V3 describe-content (issue #182): one recognition-model call → 章节树.
+#
+# The model authors ONLY 3 things (v3-requirements §4.1):
+#   ① partition photos into chapters (分章)  ② each chapter `description`
+#   ③ each photo `sceneDescription`
+# Everything else (width/height/orientation/takenAt) is code-filled (WP1.2) and
+# never round-trips through the LLM — see `_assemble_v3_tree`.
+#
+# Provider failover (architecture §6.8 第 2 条 / v3-impl-plan §6.2): PRIMARY =
+# OpenAI (GPT-5.5 Mini, `OPENAI_*`); FAILOVER = 火山 doubao (`ARK_*`). We降级火山
+# when the OpenAI slot still 5xx/times-out after ai_client's one retry within the
+# tighter `describe_openai_timeout_seconds` budget, OR the whole batch overruns
+# `describe_batch_deadline_seconds`. The降级语义 (先 GPT、自动降级火山) is fixed;
+# the numbers are tunable.
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class V3DescribeResult:
+    """describe-content output for one analyze batch. `tree` carries ONLY the 3
+    LLM-authored fields + the code-filled deterministic photo attrs; `model` is the
+    slot actually hit (so Usage.models.vision reflects真实 provider, not hardwired)."""
+
+    tree: V3LayoutTree
+    tokens_billed: int
+    model: str
+    provider: str
+    call_count: int = 1
+
+
+def _build_v3_system_prompt(language: str) -> str:
+    lang_name = "Chinese" if language == "zh" else "English"
+    return load_skill("describe_content", LANGUAGE=lang_name)
+
+
+def _build_v3_user_content(
+    photos: list[V3AnalyzePhoto], prompt_hint: str | None
+) -> list[dict[str, Any]]:
+    """Build the multi-image user turn. The manifest carries each photoId + its
+    code-computed `takenAt` as the分章 time signal (§4.1(c)). NO GPS/place is ever
+    placed in the manifest (§3 privacy)."""
+    manifest_lines = []
+    for idx, photo in enumerate(photos):
+        taken = (photo.exif.takenAt if photo.exif else None) or "unknown"
+        manifest_lines.append(
+            f"{idx + 1}. photoId={photo.photoId} takenAt={taken}"
+        )
+    manifest = "\n".join(manifest_lines)
+    hint_block = (
+        f"User memoir prompt (context only, do not re-emit verbatim):\n{prompt_hint}\n\n"
+        if prompt_hint
+        else ""
+    )
+    parts: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": (
+                f"{hint_block}"
+                f"Photos follow in order (count={len(photos)}). Use these exact "
+                "photoId values; takenAt is the capture-time signal for chapter "
+                "boundaries:\n"
+                f"{manifest}\n\n"
+                'Return {"chapters":[...]} per the system instructions.'
+            ),
+        }
+    ]
+    for photo in photos:
+        parts.append({"type": "image_url", "image_url": {"url": photo.base64}})
+    return parts
+
+
+def _orientation(width: int, height: int) -> str:
+    return _photo_orientation(width, height)
+
+
+def _assemble_v3_tree(
+    parsed: Any, photos: list[V3AnalyzePhoto]
+) -> V3LayoutTree:
+    """Fuse the model's chapter partition (LLM-authored) with the code-filled
+    deterministic photo attrs into a validated V3LayoutTree.
+
+    Validation guards (§4.1 一图一章不跨章 + LLM 只写 3 处):
+      * Every input photo must land in exactly ONE chapter; duplicate, unknown,
+        or omitted photoIds make the model output invalid.
+      * Chapter `description` and photo `sceneDescription` must be present; code
+        never authors fallback prose for those LLM-owned fields.
+      * width/height/orientation/takenAt come ONLY from the request — the model's
+        copies (if any) are ignored.
+      * accentColor/artFont stay null placeholders (theme stage fills them, §4.1).
+    """
+    by_id = {p.photoId: p for p in photos}
+    raw_chapters = parsed.get("chapters") if isinstance(parsed, dict) else None
+    if not isinstance(raw_chapters, list):
+        raise VisionError("describe-content response missing chapters[] array")
+
+    def _required_text(raw: Any, *, field: str, max_len: int) -> str:
+        if not isinstance(raw, str):
+            raise VisionError(f"describe-content {field} must be a string")
+        text = raw.strip()
+        if not text:
+            raise VisionError(f"describe-content {field} is required")
+        if len(text) > max_len:
+            raise VisionError(f"describe-content {field} exceeds {max_len} chars")
+        return text
+
+    def _photo_node(photo_id: str, scene_raw: Any) -> V3ChapterPhoto:
+        src = by_id[photo_id]
+        scene = _required_text(
+            scene_raw, field=f"scenes.{photo_id}", max_len=300
+        )
+        return V3ChapterPhoto(
+            photoId=photo_id,
+            sceneDescription=scene,
+            width=src.width,
+            height=src.height,
+            orientation=_orientation(src.width, src.height),  # type: ignore[arg-type]
+            takenAt=src.exif.takenAt if src.exif else None,
+        )
+
+    chapters: list[V3Chapter] = []
+    claimed: set[str] = set()
+    for ch_idx, raw in enumerate(raw_chapters):
+        if not isinstance(raw, dict):
+            raise VisionError(f"describe-content chapter {ch_idx + 1} must be an object")
+        scenes = raw.get("scenes")
+        if not isinstance(scenes, dict):
+            raise VisionError(f"describe-content chapter {ch_idx + 1} missing scenes object")
+        raw_ids = raw.get("photoIds")
+        if not isinstance(raw_ids, list) or not raw_ids:
+            raise VisionError(f"describe-content chapter {ch_idx + 1} missing photoIds[]")
+        description = _required_text(
+            raw.get("description"),
+            field=f"chapters[{ch_idx}].description",
+            max_len=600,
+        )
+        chapter_photos: list[V3ChapterPhoto] = []
+        for raw_pid in raw_ids:
+            if not isinstance(raw_pid, str) or not raw_pid.strip():
+                raise VisionError(f"describe-content chapter {ch_idx + 1} has invalid photoId")
+            pid = raw_pid.strip()
+            if pid not in by_id:
+                raise VisionError(f"describe-content referenced unknown photoId: {pid}")
+            if pid in claimed:
+                raise VisionError(f"describe-content duplicated photoId: {pid}")
+            claimed.add(pid)
+            chapter_photos.append(_photo_node(pid, scenes.get(pid)))
+        chapters.append(
+            V3Chapter(
+                chapterId=f"ch_{len(chapters) + 1}",
+                description=description,
+                accentColor=None,  # theme stage fills (§4.1)
+                artFont=None,
+                photos=chapter_photos,
+            )
+        )
+
+    missed = [p.photoId for p in photos if p.photoId not in claimed]
+    if missed:
+        raise VisionError(f"describe-content omitted photoIds: {', '.join(missed)}")
+
+    if not chapters:
+        raise VisionError("describe-content produced no usable chapters")
+    return V3LayoutTree(chapters=chapters)
+
+
+async def _describe_call(
+    slot: VisionSlot, photos: list[V3AnalyzePhoto], language: str, prompt_hint: str | None
+) -> tuple[V3LayoutTree, int]:
+    """One recognition-model call on `slot`. Returns (tree, tokens_billed). Raises
+    ai_client.AIRequestError on upstream failure (caller decides failover) and
+    VisionError on an unusable response."""
+    messages = [
+        {"role": "system", "content": _build_v3_system_prompt(language)},
+        {"role": "user", "content": _build_v3_user_content(photos, prompt_hint)},
+    ]
+    response = await ai_client.chat_completion(
+        base_url=slot.base_url,
+        api_key=slot.api_key,
+        model=slot.model,
+        messages=messages,
+        timeout_seconds=slot.timeout_seconds,
+        temperature=0.2,
+        max_tokens=8192,
+        response_format=slot.response_format,
+        extra_body=slot.extra_body,
+    )
+    # Drop the local handle to user content (base64s) before parsing (§3 privacy).
+    messages = []  # noqa: F841
+    del messages
+
+    try:
+        raw_text = ai_client.extract_text(response)
+        parsed = ai_client.parse_json_loose(raw_text)
+    except ValueError as exc:
+        raise VisionError(f"describe-content response unparseable: {exc}") from exc
+
+    prompt_tokens, completion_tokens = ai_client.extract_usage(response)
+    tree = _assemble_v3_tree(parsed, photos)
+    return tree, prompt_tokens + completion_tokens
+
+
+async def describe_content(
+    photos: list[V3AnalyzePhoto],
+    *,
+    language: str,
+    prompt_hint: str | None = None,
+) -> V3DescribeResult:
+    """V3 analyze step (b): one recognition-model call → 章节树 (§4.1).
+
+    Failover: try OpenAI (GPT-5.5 Mini) first within the tighter describe budget;
+    on AIRequestError (5xx/timeout after ai_client's retry), or when the whole
+    batch exceeds `describe_batch_deadline_seconds`,降级火山 doubao (ARK).
+    OpenAI 4xx/missing-key failures are configuration/request errors and do not
+    fail over. The whole call is additionally bounded by
+    `describe_batch_deadline_seconds` so a slow-but-not-erroring primary still
+    triggers failover instead of hanging the analyze job.
+
+    Raises VisionError if BOTH providers fail or neither is configured — the route
+    maps it to AGENT_VISION_FAILED."""
+    settings = get_settings()
+    photo_count = len(photos)
+    if photo_count == 0:
+        raise VisionError("describe-content called with no photos")
+
+    deadline = settings.describe_batch_deadline_seconds
+
+    try:
+        primary_slot = openai_vision_slot(
+            settings,
+            timeout_seconds=settings.describe_openai_timeout_seconds,
+            model=settings.describe_openai_model,
+        )
+    except VisionSlotError as exc:
+        log.warning("v3_describe.primary_unconfigured", error=str(exc))
+        raise VisionError(f"describe-content primary unavailable (OpenAI slot): {exc}") from exc
+
+    log.info(
+        "v3_describe.call.start",
+        provider=primary_slot.provider,
+        model=primary_slot.model,
+        photo_count=photo_count,
+    )
+    try:
+        tree, tokens = await asyncio.wait_for(
+            _describe_call(primary_slot, photos, language, prompt_hint),
+            timeout=deadline,
+        )
+        log.info(
+            "v3_describe.call.ok",
+            provider=primary_slot.provider,
+            model=primary_slot.model,
+            chapters=len(tree.chapters),
+        )
+        return V3DescribeResult(
+            tree=tree,
+            tokens_billed=tokens,
+            model=primary_slot.model,
+            provider=primary_slot.provider,
+            call_count=1,
+        )
+    except asyncio.TimeoutError as exc:
+        # Batch deadline overrun → 降级火山.
+        log.warning(
+            "v3_describe.primary_failover",
+            provider=primary_slot.provider,
+            reason=type(exc).__name__,
+        )
+    except ai_client.AIRequestError as exc:
+        if not exc.failover_eligible:
+            raise VisionError(f"describe-content OpenAI failed: {exc}") from exc
+        # 5xx/timeout after retry → 降级火山.
+        log.warning(
+            "v3_describe.primary_failover",
+            provider=primary_slot.provider,
+            reason=exc.kind or type(exc).__name__,
+        )
+    # A VisionError (unparseable / unusable response) is NOT a transport
+    # failure; it propagates rather than wasting a second provider on the same
+    # malformed-output class of bug.
+
+    # --- FAILOVER: 火山 doubao (ARK) -----------------------------------------
+    try:
+        fallback_slot = ark_vision_slot(settings)
+    except VisionSlotError as exc:
+        raise VisionError(
+            f"describe-content failover unavailable (火山 slot): {exc}"
+        ) from exc
+
+    log.info(
+        "v3_describe.failover.start",
+        provider=fallback_slot.provider,
+        model=fallback_slot.model,
+        photo_count=photo_count,
+    )
+    # The failover call is bounded by the ark slot's own per-call timeout
+    # (ark_timeout_seconds + ai_client's one retry); the whole analyze job is in
+    # turn capped by background_task_timeout_seconds. We deliberately do NOT also
+    # wrap it in the primary's tighter `describe_batch_deadline_seconds` budget —
+    # that deadline exists to flip a slow-but-healthy GPT over to 火山, not to
+    # prematurely cut 火山 (whose own per-call ceiling is the larger ark budget).
+    try:
+        tree, tokens = await _describe_call(
+            fallback_slot, photos, language, prompt_hint
+        )
+    except ai_client.AIRequestError as exc:
+        raise VisionError(f"describe-content火山 failover failed: {exc}") from exc
+
+    log.info(
+        "v3_describe.failover.ok",
+        provider=fallback_slot.provider,
+        model=fallback_slot.model,
+        chapters=len(tree.chapters),
+    )
+    return V3DescribeResult(
+        tree=tree,
+        tokens_billed=tokens,
+        model=fallback_slot.model,
+        provider=fallback_slot.provider,
+        call_count=2,
     )

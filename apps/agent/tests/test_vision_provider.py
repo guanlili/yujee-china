@@ -107,7 +107,7 @@ def test_select_slot_openai_has_no_thinking_and_json_object(_real_env):
     assert slot.provider == "openai"
     assert slot.base_url == "https://api.openai.com/v1"
     assert slot.api_key == "fake_oai"
-    assert slot.model == "gpt-4o-mini"
+    assert slot.model == "gpt-4o-mini"  # V2 OpenAI vision default; V3 describe has its own model.
     assert slot.extra_body is None  # CRITICAL: never send doubao `thinking` to OpenAI
     assert slot.response_format == {"type": "json_object"}
 
