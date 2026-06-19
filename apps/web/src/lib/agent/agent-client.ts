@@ -1,5 +1,5 @@
 import { env } from '@/lib/env';
-import { ERRORS } from '@/lib/api/error-codes';
+import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
 import {
   // Response zod (value) + inferred type share the name — used for both runtime
@@ -12,6 +12,7 @@ import {
   // v3 (五环节状态机). Truth source: packages/contracts/src/v3.ts.
   V3ChapterChatResponse,
   V3RecommendResponse,
+  V3ApplyThemeResponse,
 } from '@yujee/contracts';
 import type {
   V2InitRequest,
@@ -25,6 +26,7 @@ import type {
   V3AnalyzeRequest,
   V3ChapterChatRequest,
   V3RecommendRequest,
+  V3ApplyThemeRequest,
 } from '@yujee/contracts';
 
 export type AgentPhotoInput = {
@@ -108,6 +110,18 @@ export const agentClient = {
     });
     assertRecommendChapterCoverage(payload, data);
     return data;
+  },
+
+  // POST /v3/apply-theme — synchronous, deterministic (§8.1: 无模型). After the user
+  // picks per-chapter {accentColor, artFont}, the agent 一键刷 every variableDecor
+  // slot (含 SVG) and returns a page-level layoutPatch (§3 树边界: 仍是页级). Stateless:
+  // the agent writes neither tree nor stage — Web persists the chapter color/font into
+  // the tree + merges the patch + advances stage=cover (§8.3 stage 推进权在 Web). 60s
+  // budget, no base64 here.
+  async applyThemeV3(payload: V3ApplyThemeRequest): Promise<V3ApplyThemeResponse> {
+    return postSyncV3('/v3/apply-theme', payload, V3ApplyThemeResponse, {
+      albumId: payload.albumId,
+    });
   },
 
   // ──────────────────────────── v2 (agent rebuild) ────────────────────────────
@@ -299,6 +313,13 @@ async function postSync<T>(
   if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
   if (!res.ok) {
     logger.error({ status: res.status, api, path, ...logCtx }, 'agent sync non-2xx');
+    if (res.status === 422) {
+      const code = await readAgentErrorCode(res);
+      if (code && mapAgentErrorCode(code) === 'AGENT_INVALID_OUTPUT') {
+        throw ERRORS.AGENT_INVALID_OUTPUT();
+      }
+      throw ERRORS.VALIDATION_FAILED('agent rejected sync payload');
+    }
     throw ERRORS.AGENT_CHAT_FAILED();
   }
   const json = await res.json();
@@ -309,6 +330,19 @@ async function postSync<T>(
     throw ERRORS.AGENT_INVALID_OUTPUT();
   }
   return parsed.data;
+}
+
+async function readAgentErrorCode(res: Response): Promise<string | null> {
+  try {
+    const body = await res.json() as {
+      detail?: { error?: { code?: unknown } };
+      error?: { code?: unknown };
+    };
+    const code = body.detail?.error?.code ?? body.error?.code;
+    return typeof code === 'string' ? code : null;
+  } catch {
+    return null;
+  }
 }
 
 function assertRecommendChapterCoverage(

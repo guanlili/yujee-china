@@ -54,15 +54,19 @@ from ..schemas import (
     V3Usage,
 )
 from ..schemas import (
+    V3ApplyThemeRequest,
+    V3ApplyThemeResponse,
     V3RecommendRequest,
     V3RecommendResponse,
 )
+from ..services import apply_theme_v3
 from ..services import callback
 from ..services import chapter_chat_v3
 from ..services import generic_copy
 from ..services import recommend_v3
 from ..services import select_template
 from ..services import vision
+from ..services.apply_theme_v3 import ApplyThemeV3Error
 from ..services.chapter_chat_v3 import ChapterChatV3Error
 from ..services.recommend_v3 import RecommendV3Error
 from ..services.vision import VisionError
@@ -362,5 +366,56 @@ async def submit_recommend(req: V3RecommendRequest) -> dict[str, Any]:
         album_id=req.albumId,
         theme_options=len(response.themeOptions),
         chapter_colors=len(response.chapterColors),
+    )
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
+
+
+# ---------- apply-theme (③ 主题/章节色-应用, sync, deterministic) -------------
+
+
+@router.post("/v3/apply-theme", dependencies=[Depends(require_bearer)])
+async def submit_apply_theme(req: V3ApplyThemeRequest) -> dict[str, Any]:
+    """③ 主题/章节色-应用 endpoint (§8 同步 / 确定性 / WP3.2 #190).
+
+    Synchronous, NO model call (§8.1: 无 / 脚本). After the user picks per-chapter
+    `{accentColor, artFont}` (from /v3/recommend), this 一键批量刷 every
+    `variableDecor:true` slot (文字点缀 + 装饰 + SVG 图层) with that chapter's theme,
+    leaving 普通正文槽 untouched (§4.3 / §9). Stateless (§8.3): the Agent returns a
+    page-level `layoutPatch` (§3 树边界: 仍是页级, no tree-shaped render field); Web
+    writes the chapter color/font into the tree + merges the patch + advances stage
+    (stage 推进权在 Web). Input carries no base64 (pure structural transform).
+    Failures answer in the contract error shape (§8.3 同步端点走 HTTP 错误码; front
+    end may retry without polluting stage)."""
+    log.info(
+        "v3_apply_theme.accepted",
+        album_id=req.albumId,
+        chapters=len(req.chapters),
+        pages=len(req.pages),
+        language=req.language,
+    )
+    try:
+        response: V3ApplyThemeResponse = apply_theme_v3.apply_theme(req)
+    except ApplyThemeV3Error as exc:
+        log.warning("v3_apply_theme.failed", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_OUTPUT_VALIDATION", "message": str(exc)[:300]},
+            },
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
+        log.exception("v3_apply_theme.unhandled", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
+            },
+        ) from exc
+    log.info(
+        "v3_apply_theme.completed",
+        album_id=req.albumId,
+        patched=len(response.layoutPatch),
     )
     return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}

@@ -6,6 +6,7 @@ export function WebMag13({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     title?: string;
+    divider?: string;
     caption?: string;
     folio?: string;
   };
@@ -27,6 +28,16 @@ export function WebMag13({ data, imagePos }: TemplateRenderProps) {
       >
         {brToReact(d.title || 'YUICHI TOKUDA\nPHOTOGRAPHY')}
       </div>
+      <div
+        style={{
+          position: 'absolute',
+          top: 242,
+          left: 260,
+          right: 260,
+          height: 2,
+          backgroundColor: d.divider || COLORS.ink2,
+        }}
+      />
       <WebImage
         src={d.image}
         placeholder="3:2"
