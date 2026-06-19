@@ -13,13 +13,17 @@ Turn kinds (V3ChapterChatKind, mirror of packages/contracts/src/v3.ts):
   * talk  — 引导: AI asks/guides, never auto-writes (Frame 4 红线). No patch.
   * write — 写: collect-then-write — fill EVERY page of this chapter's pagesTexts
             in one shot (§4.2(2)).
-  * edit  — 改: rewrite the focused page (§4.2(3)). Pure-text intent → DeepSeek
-            rewrites that page's texts (returned as a layoutPatch entry). The
-            image/layout升级 path (用户要换图/挪图 → 识图模型出意图 → 确定性
-            pick_template/assign_images) is **WP2.3 (#187)**: this module marks a
-            clear seam for it and, until then, an image-leaning edit is answered
-            with a talk-style reply that asks the user to confirm (never fabricates
-            a layout). Pure-text edits work end-to-end today.
+  * edit  — 改: rewrite the focused page (§4.2(3)). DeepSeek classifies the edit's
+            target (`editTarget`): 纯文字 vs 涉及图片 (换图/挪图/改图文配比).
+            - editTarget=="text" (default) → DeepSeek rewrites that page's texts
+              (returned as a layoutPatch entry). The recognition (vision) model is
+              NEVER invoked for a text-only edit (图文分流, WP2.3 #187).
+            - editTarget=="image" → the recognition model is upgraded in via
+              `chat_edit_v3.run_image_edit`: it emits a structured photoId INTENT
+              (never a templateId/pageIndex); the deterministic V3 engine
+              (pick_template_v3 / assign_images_v3) executes it into a full-page
+              layoutPatch. An image edit the model/engine cannot satisfy degrades
+              to a talk reply (never fabricates a layout).
 
 One DeepSeek call per turn does BOTH the dispatch (it returns `kind`) and the
 turn's content (reply / pagesTexts / page texts). Keeping classification +
@@ -50,7 +54,7 @@ from ..schemas import (
 )
 from ..settings import get_settings
 from ..skills import load_skill
-from . import ai_client, writing_guides
+from . import ai_client, chat_edit_v3, writing_guides
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
 
@@ -218,7 +222,7 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
         '{"kind":"talk|write|edit","assistantReply":string,'
         '"pagesTexts"?:[{"pageIndex":number,"texts":object}],'
         '"pageTexts"?:{"pageIndex":number,"texts":object},'
-        '"nameOptions"?:[string]}. '
+        '"editTarget"?:"text|image","nameOptions"?:[string]}. '
         "Decide `kind` from THIS turn's intent (the three actions interleave "
         "freely — there is no fixed order):\n"
         "- talk: the user is still telling the story, asking, or unsure. Follow the "
@@ -228,11 +232,14 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
         "explicitly asks to write/generate/finish). Follow the WRITING STYLE below "
         "and fill EVERY page in `pagesTexts` in one shot, using each page's slots, "
         "per-slot hints, scene background, and which photos sit on it.\n"
-        "- edit: the user points at ONE page and asks to change its wording/tone "
-        "(a focused page is supplied). Rewrite ONLY that page into `pageTexts` "
-        "using the WRITING STYLE. If instead the user wants to change/replace/move "
-        "a PHOTO, do NOT invent a layout — set kind=talk and ask them to confirm; "
-        "an image change is handled by a separate step.\n"
+        "- edit: the user points at ONE page (a focused page is supplied) and asks "
+        "to change it. Set `editTarget`:\n"
+        "    · editTarget=\"text\" when they want to change wording/tone — rewrite "
+        "ONLY that page into `pageTexts` using the WRITING STYLE.\n"
+        "    · editTarget=\"image\" when they want to change/replace/move a PHOTO or "
+        "the photo↔text balance. Do NOT invent a layout, templateId, or photo "
+        "placement — just set kind=edit, editTarget=\"image\", and a short "
+        "assistantReply; a separate step picks the photos and layout.\n"
         "Only use the supplied chapter slice; never output another chapter or the "
         "whole album. Do not mention base64 or hidden image data. "
         "You may also return `nameOptions`: up to 4 short chapter-title candidates, "
@@ -280,6 +287,7 @@ async def run(
     req: V3ChapterChatRequest,
     *,
     complete: CompleteFn | None = None,
+    call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
 ) -> V3ChapterChatResponse:
     started = time.monotonic()
     messages = build_messages(req)
@@ -287,7 +295,10 @@ async def run(
     parsed = _parse_model_json(response)
     duration_ms = int((time.monotonic() - started) * 1000)
     usage = _usage_from_response(response, duration_ms)
-    return _coerce_response(req, parsed, usage)
+    # `call_intent` injects the WP2.3 image-edit intent call (recognition model),
+    # mirroring how `complete` injects the DeepSeek dispatch — both default to the
+    # real providers and are only overridden in tests.
+    return await _coerce_response(req, parsed, usage, call_intent=call_intent)
 
 
 async def _complete(
@@ -351,10 +362,12 @@ def _usage_from_response(response: dict[str, Any], duration_ms: int) -> V3Usage:
 # ---------- response coercion -------------------------------------------------
 
 
-def _coerce_response(
+async def _coerce_response(
     req: V3ChapterChatRequest,
     parsed: dict[str, Any],
     usage: V3Usage,
+    *,
+    call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
 ) -> V3ChapterChatResponse:
     kind = _resolve_kind(req, parsed.get("kind"))
     # Optional V3 response fields are strict-typed lists with an absent-sentinel
@@ -385,20 +398,40 @@ def _coerce_response(
         )
 
     if kind == "edit":
-        patch = _coerce_edit_patch(req, parsed.get("pageTexts"))
-        if patch is not None:
-            reply = _text(parsed.get("assistantReply")) or _default_reply(req.language, "edit")
-            return V3ChapterChatResponse(
-                kind="edit",
-                assistantReply=reply[:500],
-                layoutPatch=[patch],
-                usage=usage,
-                **extra,
-            )
-        # Model classified edit but produced no usable focused-page texts (or the
-        # focus is missing / out of slice). Degrade to a talk turn rather than emit
-        # an empty/invalid patch — never fabricate a layout. The image升级 path
-        # (WP2.3 #187) owns real photo-change edits.
+        # 图文分流 (WP2.3 #187): an image-leaning edit升级 the recognition model to
+        # emit an intent; a text edit stays on DeepSeek. The recognition model is
+        # NEVER invoked for a text-only edit.
+        if _is_image_edit(parsed.get("editTarget")):
+            patch = await _coerce_image_edit_patch(req, call_intent=call_intent)
+            if patch is not None:
+                reply = _text(parsed.get("assistantReply")) or _default_reply(
+                    req.language, "edit"
+                )
+                return V3ChapterChatResponse(
+                    kind="edit",
+                    assistantReply=reply[:500],
+                    layoutPatch=[patch],
+                    usage=usage,
+                    **extra,
+                )
+            # Image edit the model/engine couldn't satisfy → talk (never fabricate).
+        else:
+            patch = _coerce_edit_patch(req, parsed.get("pageTexts"))
+            if patch is not None:
+                reply = _text(parsed.get("assistantReply")) or _default_reply(
+                    req.language, "edit"
+                )
+                return V3ChapterChatResponse(
+                    kind="edit",
+                    assistantReply=reply[:500],
+                    layoutPatch=[patch],
+                    usage=usage,
+                    **extra,
+                )
+        # Model classified edit but produced no usable patch (text-only edit with no
+        # usable texts, an image edit the engine couldn't place, or the focus is
+        # missing / out of slice). Degrade to a talk turn rather than emit an
+        # empty/invalid patch — never fabricate a layout.
 
     # talk — 引导: reply only, never a patch (Frame 4 红线). Also the fallthrough for
     # an edit turn that had nothing to apply.
@@ -457,6 +490,35 @@ def _missing_required_texts(req: V3ChapterChatRequest, pages_texts: list[V3PageT
         for slot_id in sorted(required - present):
             missing.append(f"{page.pageIndex}:{slot_id}")
     return missing
+
+
+def _is_image_edit(raw: Any) -> bool:
+    """DeepSeek's edit dispatch flags an image-leaning turn (换图/挪图/改图文配比)
+    with editTarget=="image". Anything else (incl. absent / "text") is a pure-text
+    edit and must NOT touch the recognition model (图文分流, WP2.3)."""
+    return isinstance(raw, str) and raw.strip().lower() == "image"
+
+
+async def _coerce_image_edit_patch(
+    req: V3ChapterChatRequest,
+    *,
+    call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
+) -> V3LayoutPatchEntry | None:
+    """涉及图片 edit (§4.2(3) / WP2.3): hand the focused page + this chapter's photos
+    + the user's message to `chat_edit_v3`, which has the recognition model emit a
+    photoId intent and runs the deterministic engine to execute it. The model never
+    emits a templateId/pageIndex — the engine guarantees a legal layout. Returns
+    None (→ talk) when the focus is missing/out-of-slice or nothing usable came
+    back; never raises (`run_image_edit` degrades internally)."""
+    focused = req.focusedPageIndex
+    if focused is None:
+        return None
+    page = next((p for p in req.pages if p.pageIndex == focused), None)
+    if page is None:
+        return None
+    return await chat_edit_v3.run_image_edit(
+        req.chapter, page, req.userMessage, call_intent=call_intent
+    )
 
 
 def _coerce_edit_patch(
