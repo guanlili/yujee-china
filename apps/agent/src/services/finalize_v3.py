@@ -42,7 +42,9 @@ from ..schemas import (
     LayoutPhotoAnalysis,
     Magazine,
     Page,
+    V3Chapter,
     V3FinalizeRequest,
+    V3LayoutTree,
 )
 
 
@@ -61,6 +63,25 @@ _V3_OUTPUT_QUALITY = "detail"
 
 _DEFAULT_TITLE = {"en": "Life in photographs", "zh": "照片里的时光"}
 
+# variableDecor theme-carrier suffixes (§3 树边界: the chapter accentColor/artFont
+# are baked into `page.texts` as STRING values — never a tree-shaped field). A real
+# slot id is a plain id or a bracket-path (`cells[0].image`); none contain ``#``, so
+# these suffixed keys can never collide with a declared slot id and are recognized
+# only as theme carriers by validate_v3.
+#   * SVG variableDecor slots + EMPTY decoration variableDecor slots → the slot's
+#     own `texts[slotId]` value IS the accent color (the vector / decoration glyph
+#     is painted in it) — this lands the WP3.2 svg seam as the final flat form.
+#   * variableDecor slots that hold USER PROSE (title) or a code-owned decoration
+#     value (a non-empty date/folio) keep their content; the chapter color/font ride
+#     these sibling carrier keys so the prose/value is never clobbered.
+_ACCENT_SUFFIX = "#accentColor"
+_FONT_SUFFIX = "#artFont"
+
+# Text-slot roles whose content is user prose: their value is NEVER overwritten by a
+# theme color (matches apply_theme_v3._USER_PROSE_ROLES). The chapter color/font are
+# baked onto sibling carrier keys instead.
+_USER_PROSE_ROLES = frozenset({"title", "body", "explain"})
+
 
 class FinalizeV3Error(Exception):
     """Raised when the flattened V3 layout fails validate_v3."""
@@ -74,14 +95,20 @@ def finalize_v3(request: V3FinalizeRequest) -> AlbumLayoutPlan:
          render contract (synthesizing the inert legacy quality field);
       ② flatten the preview `pages` as-is (cover optional — no forced page 0),
          reindexing pageIndex sequentially;
+      ②b bake each chapter's variableDecor theme (accentColor / artFont, incl.
+         the WP3.2 svg seam) into that chapter's flat pages — the per-chapter
+         color/font lives ONLY in the tree until this point (§3 树边界), and is
+         landed into `pages[].texts` here so the flat render contract never
+         carries a tree-shaped field;
       ③ build the magazine header from the language + first chapter;
-      ④ hard-validate the flat layout (validate_v3) and raise on the first
-         violation.
+      ④ hard-validate the flat layout with the SINGLE `validate_v3` (§6.8 第 7
+         条 校验单一真相源) and raise on the first violation.
     """
     language = request.language
 
     photos = _collect_photos(request)
     pages = _flatten_pages(request.pages)
+    pages = _bake_variable_decor(pages, request.tree)
     magazine = _magazine(request, language)
 
     layout = AlbumLayoutPlan(magazine=magazine, photos=photos, pages=pages)
@@ -133,6 +160,147 @@ def _flatten_pages(pages: list[Page]) -> list[Page]:
     return [page.model_copy(update={"pageIndex": idx}) for idx, page in enumerate(pages)]
 
 
+# ---------- ②b variableDecor bake (章节色/字体/SVG → 扁平页, §3 树边界 收口) ----
+
+
+def _bake_variable_decor(pages: list[Page], tree: V3LayoutTree) -> list[Page]:
+    """Bake every chapter's `{accentColor, artFont}` into that chapter's flat pages.
+
+    This lands the §3 树边界 contract: the per-chapter theme lives ONLY in the tree
+    (`V3Chapter.accentColor/artFont`) through analyze/story/theme/cover; finalize is
+    the single point where it is baked into the flat `page.texts` so the render
+    contract (`magazine + photos + pages[]`) never carries a tree-shaped field.
+
+    Page→chapter mapping: V3 is 一图一章不跨章, so a body page's photos all belong to
+    one chapter. We map each page to the FIRST chapter that owns any of the page's
+    image photoIds. Pages with no owning chapter (e.g. a WP4.1 cover/ending spread
+    not tied to a chapter, or a page whose chapter has a null theme) are left exactly
+    as-is — no theme to bake. Idempotent: re-baking the same tree yields identical
+    texts (it overwrites the carriers / svg-seam values, never appends)."""
+    owner = _page_chapter_index(pages, tree)
+    out: list[Page] = []
+    for page in pages:
+        chapter = owner.get(page.pageIndex)
+        if chapter is None or chapter.accentColor is None:
+            # No resolvable chapter, or chapter theme not chosen yet → nothing to bake.
+            out.append(page)
+            continue
+        out.append(_bake_page(page, chapter.accentColor, chapter.artFont))
+    return out
+
+
+def _page_chapter_index(
+    pages: list[Page], tree: V3LayoutTree
+) -> dict[int, V3Chapter]:
+    """Map each page's `pageIndex` to its owning chapter via photoId membership.
+
+    Builds a photoId → chapter lookup (first-seen chapter wins, matching the
+    first-seen dedupe in `_collect_photos`), then assigns each page to the chapter
+    owning its first resolvable image photoId. A page whose photos belong to no
+    chapter is simply absent from the result (left un-themed by the caller)."""
+    photo_owner: dict[str, V3Chapter] = {}
+    for chapter in tree.chapters:
+        for photo in chapter.photos:
+            photo_owner.setdefault(photo.photoId, chapter)
+
+    mapping: dict[int, V3Chapter] = {}
+    for page in pages:
+        for photo_id in page.images.values():
+            chapter = photo_owner.get(photo_id)
+            if chapter is not None:
+                mapping[page.pageIndex] = chapter
+                break
+    return mapping
+
+
+def _bake_page(page: Page, accent_color: str, art_font: str | None) -> Page:
+    """Return a copy of `page` with its template's variableDecor slots themed.
+
+    * SVG variableDecor slots → `texts[svgId] = accent_color` (the vector is painted
+      in the accent color; lands the WP3.2 apply-theme svg seam as the final flat
+      form, re-derived from the tree so the tree is the single source of truth).
+    * variableDecor TEXT slots (standalone + inside the `items` repeat group):
+        - an EMPTY decoration slot → `texts[slotId] = accent_color` (a pure-decoration
+          glyph the renderer paints in the accent color);
+        - a slot holding USER PROSE (title) or a non-empty code-owned decoration value
+          → content is kept verbatim; the chapter color/font ride sibling carrier keys
+          `texts[slotId#accentColor]` / `texts[slotId#artFont]` (never clobbered).
+    Non-variableDecor slots and 普通正文 (body/explain) values are never touched."""
+    template = registry.get(page.templateId)
+    if template is None:
+        # Unknown template (validate_v3 will reject it later); nothing to bake.
+        return page
+
+    texts = dict(page.texts)
+
+    for svg in template.get("svgs") or []:
+        if not svg.get("variableDecor"):
+            continue
+        slot_id = svg.get("id")
+        if slot_id:
+            texts[slot_id] = accent_color
+
+    _bake_text_slots(texts, registry.text_slots(template), accent_color, art_font)
+    items = template.get("items")
+    if items:
+        _bake_text_slots(texts, items.get("texts") or [], accent_color, art_font)
+
+    return page.model_copy(update={"texts": texts})
+
+
+def _bake_text_slots(
+    texts: dict[str, str],
+    slots: list[dict[str, Any]],
+    accent_color: str,
+    art_font: str | None,
+) -> None:
+    """Bake the chapter theme into the variableDecor TEXT slots of one slot list.
+
+    Mutates `texts` in place. For repeat-group (`items`) slots the declared base id
+    may be addressed per-index in the page (`caption[0]`); we theme every present key
+    whose base matches a variableDecor slot, plus the bare base key if present."""
+    for slot in slots:
+        if not slot.get("variableDecor"):
+            continue
+        slot_id = slot.get("id")
+        if not slot_id:
+            continue
+        role = str(slot.get("role") or "")
+        for key in _matching_text_keys(texts, slot_id):
+            existing = texts.get(key)
+            if role in _USER_PROSE_ROLES or existing:
+                # Keep user prose / code-owned decoration value; theme rides carriers.
+                texts[f"{key}{_ACCENT_SUFFIX}"] = accent_color
+                if art_font is not None:
+                    texts[f"{key}{_FONT_SUFFIX}"] = art_font
+            else:
+                # Empty decoration slot the theme owns → the accent color glyph.
+                texts[key] = accent_color
+        if not _matching_text_keys(texts, slot_id):
+            # Slot declared variableDecor but not present on the page (e.g. an empty
+            # decoration slot generic-copy never filled): bake the accent color in.
+            if role not in _USER_PROSE_ROLES:
+                texts[slot_id] = accent_color
+            else:
+                texts[f"{slot_id}{_ACCENT_SUFFIX}"] = accent_color
+                if art_font is not None:
+                    texts[f"{slot_id}{_FONT_SUFFIX}"] = art_font
+
+
+def _matching_text_keys(texts: dict[str, str], base_slot: str) -> list[str]:
+    """Present text keys whose base slot == `base_slot` (bare id or bracket-path).
+
+    A repeat-group base ``caption`` matches ``caption``, ``caption[0]``, ``caption[1]``;
+    carrier keys (``…#accentColor``) are excluded so re-baking is idempotent."""
+    out: list[str] = []
+    for key in texts:
+        if _ACCENT_SUFFIX in key or _FONT_SUFFIX in key:
+            continue
+        if _base_slot(key) == base_slot:
+            out.append(key)
+    return out
+
+
 # ---------- ③ magazine header -------------------------------------------------
 
 
@@ -166,6 +334,34 @@ def _clamp(text: str, max_chars: int) -> str:
 def _base_slot(slot: str) -> str:
     match = _BASE_SLOT_RE.match(slot)
     return match.group(1) if match else slot
+
+
+def _carrier_base(slot: str) -> str | None:
+    """The owning slot id of a theme-carrier key, or None if `slot` is not a carrier.
+
+    `title#accentColor` → `title`; `caption[0]#artFont` → `caption[0]`. Returns None
+    for a plain slot id so the normal slot-membership check runs."""
+    for suffix in (_ACCENT_SUFFIX, _FONT_SUFFIX):
+        if slot.endswith(suffix):
+            return slot[: -len(suffix)]
+    return None
+
+
+def _is_variable_decor_slot(
+    slot_key: str,
+    text_by_id: dict[str, Any],
+    item_text_by_id: dict[str, Any],
+    svg_ids: set[str],
+) -> bool:
+    """Whether `slot_key` (bare id or bracket-path) names a declared variableDecor slot.
+
+    Resolves the key's base against the template's text slots, `items` text slots and
+    svg slots; only a slot marked ``variableDecor:true`` may carry a baked theme."""
+    base = _base_slot(slot_key)
+    text_slot = text_by_id.get(base) or item_text_by_id.get(base)
+    if text_slot is not None and text_slot.get("variableDecor"):
+        return True
+    return base in svg_ids
 
 
 def validate_v3(layout: AlbumLayoutPlan) -> str | None:
@@ -210,10 +406,17 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
         image_by_id = registry.image_slot_map(template)
         text_by_id = registry.text_slot_map(template)
         # svg decoration slots (§9) live in `page.texts` as a themed-decoration carrier
-        # written by apply-theme (WP3.2 #190): the slot's value is the chapter accent
-        # color the renderer paints the vector in. They are NOT text slots, so accept
-        # their ids here too (additive, V3-only — v2 finalize.py is untouched).
+        # baked by finalize (WP5.1; seam from apply-theme WP3.2 #190): the slot's value
+        # is the chapter accent color the renderer paints the vector in. They are NOT
+        # text slots, so accept their ids here too (additive, V3-only — v2 finalize.py
+        # is untouched).
         svg_ids = {svg["id"] for svg in (template.get("svgs") or [])}
+        # `items` repeat-group declared text-slot bases (§9): the unique V3 repeat
+        # carrier (replaces the deprecated top-level `repeat:true`). An items text slot
+        # may appear in page.texts as the bare base (`caption`) or per-index
+        # (`caption[0]`). variableDecor flags ride the slot defs themselves.
+        items = template.get("items") or {}
+        item_text_by_id = {slot["id"]: slot for slot in (items.get("texts") or [])}
 
         for slot in page.images:
             if slot not in image_by_id:
@@ -222,11 +425,26 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
                     f"template {page.templateId}"
                 )
         for slot in page.texts:
+            # ②b theme carriers (§3 树边界): finalize bakes the chapter accentColor/
+            # artFont into `<slotId>#accentColor` / `<slotId>#artFont` string keys when
+            # the slot holds user prose / a code-owned value. Accept a carrier iff its
+            # owning slot is a declared variableDecor slot (svg / text / items.text).
+            carrier_base = _carrier_base(slot)
+            if carrier_base is not None:
+                if _is_variable_decor_slot(carrier_base, text_by_id, item_text_by_id, svg_ids):
+                    continue
+                return (
+                    f"page {page.pageIndex}: theme carrier '{slot}' has no "
+                    f"variableDecor slot in template {page.templateId}"
+                )
             base = _base_slot(slot)
             text_slot = text_by_id.get(base)
             if text_slot is None:
                 if slot in svg_ids:
-                    continue  # themed svg-decoration key (apply-theme), not a text slot
+                    continue  # themed svg-decoration key (baked), not a text slot
+                item_slot = item_text_by_id.get(base)
+                if item_slot is not None:
+                    continue  # declared `items` repeat-group text slot (bare or [i])
                 return (
                     f"page {page.pageIndex}: text slot '{slot}' not in "
                     f"template {page.templateId}"

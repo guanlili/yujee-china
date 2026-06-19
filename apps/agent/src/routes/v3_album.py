@@ -58,6 +58,8 @@ from ..schemas import (
     V3ApplyThemeResponse,
     V3CoverRequest,
     V3CoverResponse,
+    V3FinalizeRequest,
+    V3FinalizeResponse,
     V3RecommendRequest,
     V3RecommendResponse,
 )
@@ -65,6 +67,7 @@ from ..services import apply_theme_v3
 from ..services import callback
 from ..services import chapter_chat_v3
 from ..services import cover_v3
+from ..services import finalize_v3
 from ..services import generic_copy
 from ..services import recommend_v3
 from ..services import select_template
@@ -72,6 +75,7 @@ from ..services import vision
 from ..services.apply_theme_v3 import ApplyThemeV3Error
 from ..services.chapter_chat_v3 import ChapterChatV3Error
 from ..services.cover_v3 import CoverV3Error
+from ..services.finalize_v3 import FinalizeV3Error
 from ..services.recommend_v3 import RecommendV3Error
 from ..services.vision import VisionError
 from ..settings import get_settings
@@ -476,5 +480,70 @@ async def submit_cover(req: V3CoverRequest) -> dict[str, Any]:
         "v3_cover.completed",
         album_id=req.albumId,
         patched=len(response.layoutPatch),
+    )
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
+
+
+# ---------- finalize (⑤ 待导出 — flatten + 单一 validate, sync, deterministic) -
+
+
+@router.post("/v3/finalize", dependencies=[Depends(require_bearer)])
+async def submit_finalize(req: V3FinalizeRequest) -> dict[str, Any]:
+    """⑤ 待导出 — finalize endpoint (§8 同步 / 确定性 / WP5.1 #194).
+
+    Synchronous, NO model call (§8.1 同步确定性; §8.3 全树只在 finalize 传一次). Takes the
+    WHOLE layout tree + the preview pages and flattens them into the external render
+    contract `AlbumLayoutPlan` (`magazine + photos + pages[]`) the Browser turns into a
+    PDF. The flatten:
+
+      * lands the §3 树边界: the per-chapter `accentColor`/`artFont` lived ONLY in the
+        tree until now and is BAKED into `pages[].texts` here (incl. the WP3.2 svg seam)
+        so the flat contract carries NO tree-shaped field;
+      * runs the SINGLE `validate_v3` (§6.8 第 7 条 校验单一真相源) — one validate认
+        svgs/items/variableDecor/章节色/字体, replacing the v2 双 validate_v2 (which is
+        left untouched, Option B).
+
+    Stateless (§3 数据归属): the Agent holds no draft/stage; Web owns the tree + stage
+    (finalize does not advance stage). Input carries no base64 (the tree已是无图层节点).
+    An unflattenable layout (validate violation) answers in the contract error shape
+    (§8.3 同步端点走 HTTP 错误码; retry without polluting stage)."""
+    started = time.monotonic()
+    log.info(
+        "v3_finalize.accepted",
+        album_id=req.albumId,
+        chapters=len(req.tree.chapters),
+        pages=len(req.pages),
+        language=req.language,
+    )
+    try:
+        layout = finalize_v3.finalize_v3(req)
+    except FinalizeV3Error as exc:
+        log.warning("v3_finalize.failed", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_OUTPUT_VALIDATION", "message": str(exc)[:300]},
+            },
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
+        log.exception("v3_finalize.unhandled", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
+            },
+        ) from exc
+    duration_ms = int((time.monotonic() - started) * 1000)
+    response = V3FinalizeResponse(
+        layout=layout,
+        usage=V3Usage(durationMs=duration_ms, models=V3Models()),
+    )
+    log.info(
+        "v3_finalize.completed",
+        album_id=req.albumId,
+        pages=len(layout.pages),
+        photos=len(layout.photos),
     )
     return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}

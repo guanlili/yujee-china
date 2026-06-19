@@ -14,6 +14,7 @@ import {
   V3RecommendResponse,
   V3ApplyThemeResponse,
   V3CoverResponse,
+  V3FinalizeResponse,
 } from '@yujee/contracts';
 import type {
   V2InitRequest,
@@ -29,6 +30,7 @@ import type {
   V3RecommendRequest,
   V3ApplyThemeRequest,
   V3CoverRequest,
+  V3FinalizeRequest,
 } from '@yujee/contracts';
 
 export type AgentPhotoInput = {
@@ -135,6 +137,20 @@ export const agentClient = {
   // stage=ready (§8.3 stage 推进权在 Web). 60s budget, no base64 here.
   async coverV3(payload: V3CoverRequest): Promise<V3CoverResponse> {
     return postSyncV3('/v3/cover', payload, V3CoverResponse, {
+      albumId: payload.albumId,
+    });
+  },
+
+  // POST /v3/finalize — synchronous, deterministic (⑤ 待导出, WP5.1 #194). Forwards the
+  // WHOLE layout tree + preview pages (§8.3 全树只在 finalize 传一次, no base64) and the
+  // agent flattens them into the external render contract AlbumLayoutPlan
+  // (magazine+photos+pages[]) the browser turns into a PDF. The agent bakes each
+  // chapter's accentColor/artFont (incl. the svg seam) into the flat pages[].texts (§3
+  // 树边界: 渲染契约不加树形字段) and runs the SINGLE validate (§6.8 第 7 条). Stateless:
+  // the agent writes neither tree nor stage — Web persists the flat layout and owns
+  // stage (§8.3). 60s budget, no base64 here.
+  async finalizeV3(payload: V3FinalizeRequest): Promise<V3FinalizeResponse> {
+    return postSyncV3('/v3/finalize', payload, V3FinalizeResponse, {
       albumId: payload.albumId,
     });
   },

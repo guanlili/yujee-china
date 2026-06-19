@@ -3,6 +3,7 @@ import { albumRepo } from '@/db/repos/album-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
 import { jobService } from '@/services/job/job-service';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
+import { agentClient } from '@/lib/agent/agent-client';
 import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
@@ -11,9 +12,11 @@ import {
   Page,
   V3LayoutTree,
   V3StoryDraft,
+  type AlbumLayoutPlan,
   type ImagePos,
   type Page as V3Page,
   type V3LayoutTree as V3LayoutTreeT,
+  type V3Language,
   type V3StoryProgress,
   type V3ChapterThemeChoice,
   type V3LayoutPatchEntry,
@@ -443,6 +446,52 @@ export const albumService = {
       stage: advanceStage ? 'ready' : album.stage,
       layoutPatch,
     };
+  },
+
+  // ⑤ 待导出 — finalize (WP5.1 #194). Flattens the V3 authoring tree (draft_json) +
+  // the current pages into the external render contract `AlbumLayoutPlan`
+  // (magazine+photos+pages[]) the browser turns into a PDF. The WHOLE tree is read
+  // SERVER-SIDE here (§8.3 全树只在 finalize 传一次; invariant 12: the tree never
+  // round-trips through the browser) — only the UI `language` scalar comes from the
+  // caller. The Agent is stateless + deterministic (no model): it bakes each chapter's
+  // accentColor/artFont (incl. the svg seam) into the flat pages[].texts (§3 树边界:
+  // 渲染契约不加树形字段) and runs the SINGLE validate (§6.8 第 7 条). finalize does NOT
+  // advance stage and NEVER touches creditService (积分 changes are atomic with status
+  // at init, §6.7 — out of scope here); it is a pure read → flatten projection. Caller
+  // must hold ownership (findOwned). Returns the flat定稿 for the browser to render.
+  async finalize(
+    userId: string,
+    albumId: string,
+    language: V3Language,
+  ): Promise<{ layout: AlbumLayoutPlan }> {
+    const album = await this.findOwned(userId, albumId);
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+
+    const rows = await albumPageRepo.findByAlbum(albumId);
+    if (rows.length === 0) throw ERRORS.VALIDATION_FAILED('album has no pages to finalize');
+    const pages: V3Page[] = rows.map((p) => {
+      // album_pages json columns are stored as jsonb (unknown at the type level);
+      // the writers persist the Page-shaped maps, so we narrow to the contract types.
+      const imagePos = p.imagePosJson as Record<string, ImagePos>;
+      return {
+        pageIndex: p.pageIndex,
+        templateId: p.templateId,
+        images: p.imagesJson as Record<string, string>,
+        texts: p.textsJson as Record<string, string>,
+        ...(imagePos && Object.keys(imagePos).length > 0 ? { imagePos } : {}),
+      };
+    });
+
+    // Deterministic flatten + bake + single-validate (no base64; tree carries no images).
+    const result = await agentClient.finalizeV3({
+      albumId,
+      language,
+      tree: normalized.tree,
+      pages,
+    });
+
+    return { layout: result.layout };
   },
 
   // Read-only RENDER projection of the authoring tree (draft_json) for the v2
