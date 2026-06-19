@@ -1336,3 +1336,246 @@ test('chapterChatTurn: unknown chapterId throws VALIDATION_FAILED before any age
     await cleanupUser(user.id);
   }
 });
+
+// ───────── ③④ theme/cover — recommendTheme / applyThemeTurn / coverTurn (缺口#20) ─────────
+//
+// The browser holds NO authoring tree / layout pages (invariant 12): it sends only its
+// selections. The service re-slices draft_json SERVER-SIDE — recommend derives the
+// per-chapter overview, apply-theme/cover the relevant pages. These lock the slice
+// (browser-sent payload contains no tree/pages) + the read-only posture.
+
+const fullUsage = {
+  durationMs: 1,
+  visionCallCount: 0,
+  planningInputTokens: 0,
+  planningOutputTokens: 0,
+  repairAttempts: 0,
+  models: {},
+};
+
+// One chapter with a photo + a themable page (mag-13 has variableDecor slots), plus a
+// cover + ending page with no chapter photo so the cover re-slice has 相关页 to pull from.
+async function seedThemeCoverAlbum(userId: string) {
+  const album = await makeAlbum(userId);
+  const tree = {
+    chapters: [
+      {
+        chapterId: 'c1',
+        description: 'a sunlit week by the coast',
+        accentColor: null,
+        artFont: null,
+        photos: [
+          { photoId: 'p1', sceneDescription: 'beach at dawn', width: 800, height: 600, orientation: 'landscape' as const, takenAt: null },
+        ],
+      },
+    ],
+  };
+  const pages: Page[] = [
+    // cover (mag-01) + ending (mag-20) carry no chapter photo → cover step's 相关页;
+    // the interior page (mag-05, has variableDecor) references p1 → chapter c1's themable page.
+    { pageIndex: 0, templateId: 'mag-01', images: { hero: 'cover-photo' }, texts: { title: 'Cover' } },
+    { pageIndex: 1, templateId: 'mag-05', images: { image: 'p1' }, texts: { title: 'One' } },
+    { pageIndex: 2, templateId: 'mag-20', images: {}, texts: { end: 'The End' } },
+  ];
+  const wrapped: V3StoryDraft = {
+    version: 'v3-story',
+    tree,
+    pages,
+    progress: { currentChapterId: 'c1', doneChapterIds: [] },
+  };
+  await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'theme', draftJson: wrapped });
+  return album.id;
+}
+
+test('recommendTheme: re-slices the per-chapter overview server-side (no base64, text only)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('gap20-recommend');
+  try {
+    const albumId = await seedThemeCoverAlbum(user.id);
+    const seen: Parameters<typeof agentClient.recommendV3>[0][] = [];
+    t.mock.method(agentClient, 'recommendV3', async (p: Parameters<typeof agentClient.recommendV3>[0]) => {
+      seen.push(p);
+      return {
+        themeOptions: [{ subject: 'Coast', label: 'By the Sea' }],
+        chapterColors: [{ chapterId: 'c1', accentColor: '#1F618D', artFont: 'sans-modern' }],
+        assistantReply: 'Some themes.',
+        usage: fullUsage,
+      };
+    });
+
+    const res = await albumService.recommendTheme(user.id, albumId, { language: 'en', userMessage: 'warmer' });
+
+    assert.equal(seen.length, 1);
+    const payload = seen[0]!;
+    assert.equal(payload.albumId, albumId);
+    assert.equal(payload.userMessage, 'warmer');
+    // Server re-sliced the overview from draft_json: chapterId + description + photo descs.
+    assert.deepEqual(payload.chapters, [
+      { chapterId: 'c1', description: 'a sunlit week by the coast', photoDescs: ['beach at dawn'] },
+    ]);
+    assert.equal(res.themeOptions[0]!.label, 'By the Sea');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('applyThemeTurn: re-slices only the chapter themable pages + persists tree color/stage', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('gap20-apply');
+  try {
+    const albumId = await seedThemeCoverAlbum(user.id);
+    const seen: Parameters<typeof agentClient.applyThemeV3>[0][] = [];
+    t.mock.method(agentClient, 'applyThemeV3', async (p: Parameters<typeof agentClient.applyThemeV3>[0]) => {
+      seen.push(p);
+      return {
+        layoutPatch: [{ pageIndex: 1, texts: { divider: '#C0392B' } }],
+        assistantReply: 'Brushed.',
+        usage: fullUsage,
+      };
+    });
+
+    const res = await albumService.applyThemeTurn(user.id, albumId, {
+      language: 'en',
+      theme: { subject: 'Coast', label: 'By the Sea' },
+      chapters: [{ chapterId: 'c1', accentColor: '#C0392B', artFont: 'script-elegant' }],
+    });
+
+    assert.equal(seen.length, 1, 'one agent call per chapter with themable pages');
+    // The browser sent NO pages; the service re-sliced ONLY c1's themable page (mag-13 #1).
+    assert.deepEqual(seen[0]!.pages.map((pg) => pg.pageIndex), [1]);
+    assert.equal(seen[0]!.chapters[0]!.chapterId, 'c1');
+
+    assert.equal(res.stage, 'cover'); // theme → cover
+    assert.deepEqual(res.layoutPatch, [{ pageIndex: 1, texts: { divider: '#C0392B' } }]);
+
+    // Persisted: c1's node carries the chosen color/font; stage=cover; status ⟂.
+    const reloaded = await albumRepo.findById(albumId);
+    assert.equal(reloaded?.stage, 'cover');
+    assert.equal(reloaded?.status, 'EDITING');
+    const draft = reloaded?.draftJson as { tree: { chapters: Array<{ chapterId: string; accentColor: string | null; artFont: string | null }> } };
+    const c1 = draft.tree.chapters.find((c) => c.chapterId === 'c1');
+    assert.equal(c1?.accentColor, '#C0392B');
+    assert.equal(c1?.artFont, 'script-elegant');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('coverTurn: re-slices the cover/ending pages server-side + folds patch into draft pages', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('gap20-cover');
+  try {
+    const albumId = await seedThemeCoverAlbum(user.id);
+    await albumRepo.update(db, albumId, { stage: 'cover' });
+    const seen: Parameters<typeof agentClient.coverV3>[0][] = [];
+    t.mock.method(agentClient, 'coverV3', async (p: Parameters<typeof agentClient.coverV3>[0]) => {
+      seen.push(p);
+      return {
+        layoutPatch: [{ pageIndex: 0, templateId: 'mag-01', images: { hero: 'cover-photo' }, texts: { title: 'My Book' } }],
+        assistantReply: 'Cover filled.',
+        usage: fullUsage,
+      };
+    });
+
+    const res = await albumService.coverTurn(user.id, albumId, {
+      language: 'en',
+      coverTemplateId: 'mag-01',
+      endingTemplateId: 'mag-20',
+    });
+
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0]!.coverTemplateId, 'mag-01');
+    // The browser sent NO pages; the service re-sliced the non-chapter pages (cover #0 + ending #2).
+    assert.deepEqual(seen[0]!.pages.map((pg) => pg.pageIndex).sort(), [0, 2]);
+
+    assert.equal(res.stage, 'ready'); // cover → ready
+    assert.deepEqual(res.layoutPatch, [
+      { pageIndex: 0, templateId: 'mag-01', images: { hero: 'cover-photo' }, texts: { title: 'My Book' } },
+    ]);
+    // Persisted: the cover patch is folded into draft_json.pages so finalize sends it.
+    const reloaded = await albumRepo.findById(albumId);
+    const draft = reloaded?.draftJson as V3StoryDraft;
+    assert.equal(draft.pages?.[0]?.texts.title, 'My Book');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('coverTurn: skip (no template ids) = empty patch, advances stage, never errors', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('gap20-cover-skip');
+  try {
+    const albumId = await seedThemeCoverAlbum(user.id);
+    await albumRepo.update(db, albumId, { stage: 'cover' });
+    const before = (await albumRepo.findById(albumId))?.draftJson;
+    t.mock.method(agentClient, 'coverV3', async () => ({
+      layoutPatch: [], // §4.4 跳过=空
+      assistantReply: undefined,
+      usage: fullUsage,
+    }));
+
+    const res = await albumService.coverTurn(user.id, albumId, { language: 'en' });
+
+    assert.equal(res.stage, 'ready'); // skip does not block the gate
+    assert.deepEqual(res.layoutPatch, []);
+    // Empty patch → draft pages untouched (only stage moved).
+    const reloaded = await albumRepo.findById(albumId);
+    assert.equal(reloaded?.stage, 'ready');
+    assert.deepEqual(
+      (reloaded?.draftJson as V3StoryDraft).pages,
+      (before as V3StoryDraft).pages,
+      'skip must not mutate draft pages',
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('recommendTheme / applyThemeTurn / coverTurn: reject a non-owner before any agent call', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const owner = await makeUser('gap20-owner');
+  const intruder = await makeUser('gap20-intruder');
+  try {
+    const albumId = await seedThemeCoverAlbum(owner.id);
+    let called = false;
+    t.mock.method(agentClient, 'recommendV3', async () => { called = true; throw new Error('unreached'); });
+    t.mock.method(agentClient, 'applyThemeV3', async () => { called = true; throw new Error('unreached'); });
+    t.mock.method(agentClient, 'coverV3', async () => { called = true; throw new Error('unreached'); });
+
+    await assert.rejects(
+      () => albumService.recommendTheme(intruder.id, albumId, { language: 'en' }),
+      hasCode('ALBUM_NOT_OWNED'),
+    );
+    await assert.rejects(
+      () => albumService.applyThemeTurn(intruder.id, albumId, {
+        language: 'en',
+        theme: { subject: 'x', label: 'y' },
+        chapters: [{ chapterId: 'c1', accentColor: '#000000', artFont: 'sans-modern' }],
+      }),
+      hasCode('ALBUM_NOT_OWNED'),
+    );
+    await assert.rejects(
+      () => albumService.coverTurn(intruder.id, albumId, { language: 'en' }),
+      hasCode('ALBUM_NOT_OWNED'),
+    );
+    assert.equal(called, false, 'ownership gate must precede every agent call');
+  } finally {
+    await cleanupUser(owner.id);
+    await cleanupUser(intruder.id);
+  }
+});

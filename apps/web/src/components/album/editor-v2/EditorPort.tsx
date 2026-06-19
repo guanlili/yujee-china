@@ -50,12 +50,21 @@ import {
 import {
   fetchDraftSkeleton,
   postChapterChat,
+  postRecommend,
+  postApplyTheme,
+  postCover,
   postDraftEdit,
   postInspectRender,
+  type BrowserLayoutPatchEntry,
   type DraftEditResult,
   type DraftSkeleton,
 } from '@/lib/album/authoring-client';
-import type { V3ChatTurn, V3PageTextsPatch } from '@yujee/contracts';
+import type {
+  V3ChatTurn,
+  V3PageTextsPatch,
+  V3RecommendResponse,
+  V3ChapterThemeChoice,
+} from '@yujee/contracts';
 import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/client';
 import './editor-port.css';
 
@@ -649,6 +658,11 @@ function EditorBook({
       return !computeExportUnlocked(progress.stage, progress.allDone);
     }
     let confirmingStoryChapter = false;
+    // ③④ theme/cover (缺口#20). The last /v3/recommend response (theme candidates +
+    // per-chapter recommended {accentColor, artFont}) is held in-session so the apply
+    // step can send the user's pick back; the browser never holds the authoring tree
+    // (invariant 12) — recommend re-derives the overview server-side from draft_json.
+    let lastRecommend: V3RecommendResponse | null = null;
     // The draft skeleton (read-only render projection; invariant 12). Rendered on
     // entry; the agent persists draft_json server-side, so we don't refetch it.
     const draftSkel: DraftSkeleton | null = draftChapters;
@@ -1706,6 +1720,120 @@ function EditorBook({
       }
     }
 
+    // ── ③④ theme/cover drivers (缺口#20) ──────────────────────────────────────
+    // These fold a returned page-level patch into pagesState the SAME way the chapter
+    // edit-turn does (applyPatchToPages → rebuildSpreads → repaintBook). The browser
+    // sends only its SELECTIONS; the Web service re-slices draft_json server-side
+    // (invariant 12) and is the sole truth source for stage. When the server reports a
+    // new stage we mirror it into storyGate so the breadcrumb advances live.
+    function applyAuthoringPatch(patch: BrowserLayoutPatchEntry[]): boolean {
+      if (patch.length === 0) return false;
+      // BrowserLayoutPatchEntry is shape-compatible with LayoutPatchEntry
+      // (pageIndex + templateId?/imagesJson?/textsJson?).
+      pagesState = applyPatchToPages(pagesState, patch as LayoutPatchEntry[]);
+      rebuildSpreads();
+      repaintBook();
+      return true;
+    }
+    function mirrorStage(stage: string) {
+      if (!storyGate || storyGate.stage === stage) return;
+      storyGate = { ...storyGate, stage };
+      setStoryProgress(storyGate);
+      updateStoryGateUi(storyGate);
+    }
+
+    // ③ 主题/章节色 · 推荐: ask /v3/recommend for theme candidates + per-chapter色/字体.
+    // Stores the response so the apply step can send the user's pick back. Display only —
+    // nothing is written until apply-theme.
+    async function runRecommendTheme(userMessage?: string) {
+      if (!isAuthoring || sending) return;
+      sending = true;
+      const host = appendThinkingShell();
+      try {
+        const res = await postRecommend(albumId, userMessage);
+        lastRecommend = res;
+        settleThinking(host, 'analyzedFeedback');
+        appendReplyBody(host, res.assistantReply);
+        appendTime(host);
+      } catch (e) {
+        if (authErr(host, e)) { sending = false; return; }
+      }
+      sending = false;
+      restAwait();
+      scrollChat();
+    }
+
+    // ③ 主题/章节色 · 应用: send the user's per-chapter {accentColor, artFont} (defaults to
+    // the recommended set) + chosen theme to /v3/apply-theme, fold the returned patch into
+    // the canvas, advance stage theme→cover. `chapters`/`theme` override the recommendation
+    // when the user picks; absent them we apply the last recommendation as-is.
+    async function runApplyTheme(override?: {
+      theme?: { subject: string; label: string; tone?: string };
+      chapters?: V3ChapterThemeChoice[];
+    }) {
+      if (!isAuthoring || sending) return;
+      const theme = override?.theme ?? lastRecommend?.themeOptions[0];
+      const chapters =
+        override?.chapters ??
+        lastRecommend?.chapterColors.map((c) => ({
+          chapterId: c.chapterId,
+          accentColor: c.accentColor,
+          artFont: c.artFont,
+        }));
+      if (!theme || !chapters || chapters.length === 0) {
+        // No recommendation yet — fetch one first so the user has something to apply.
+        await runRecommendTheme();
+        return;
+      }
+      sending = true;
+      const host = appendThinkingShell();
+      try {
+        const res = await postApplyTheme(albumId, { theme, chapters });
+        settleThinking(host, 'analyzedFeedback');
+        applyAuthoringPatch(res.layoutPatch);
+        mirrorStage(res.stage);
+        appendReplyBody(
+          host,
+          res.assistantReply ??
+            aT('已应用主题色与字体。', 'Applied the theme colors and fonts.'),
+        );
+        appendTime(host);
+      } catch (e) {
+        if (authErr(host, e)) { sending = false; return; }
+      }
+      sending = false;
+      restAwait();
+      scrollChat();
+    }
+
+    // ④ 书籍设计 — 封面/封尾: send the chosen 封面/封尾 template ids (null/absent = 跳过) to
+    // /v3/cover, fold the returned patch into the canvas, advance stage cover→ready. Skip
+    // (no selection) returns an empty patch and never errors (§4.4 封面可跳过).
+    async function runCover(input?: { coverTemplateId?: string | null; endingTemplateId?: string | null }) {
+      if (!isAuthoring || sending) return;
+      sending = true;
+      const host = appendThinkingShell();
+      try {
+        const res = await postCover(albumId, input ?? {});
+        settleThinking(host, 'analyzedFeedback');
+        const applied = applyAuthoringPatch(res.layoutPatch);
+        mirrorStage(res.stage);
+        appendReplyBody(
+          host,
+          res.assistantReply ??
+            (applied
+              ? aT('已应用封面与封尾设计。', 'Applied the cover and ending design.')
+              : aT('已跳过封面设计。', 'Skipped the cover design.')),
+        );
+        appendTime(host);
+      } catch (e) {
+        if (authErr(host, e)) { sending = false; return; }
+      }
+      sending = false;
+      restAwait();
+      scrollChat();
+    }
+
     // #162 draft-edit turn: the draft-period chat is a pointed single-page edit,
     // talk/act physically split (no theme→chapter machine, no auto-advance). The
     // message goes to /draft-edit scoped to the page the user is looking at
@@ -2146,6 +2274,13 @@ function EditorBook({
       toggleOverview,
       resetZoom,
       markCurrentChapterDone,
+      // ③④ theme/cover drivers (缺口#20). Wired as data-action entry points; the full
+      // theme-candidate / cover-template picker UI is a follow-up (visual 用户验收) — these
+      // run one real /v3 turn and fold the patch into the canvas. recommendTheme +
+      // applyTheme apply the recommended色/字体; skipCover advances cover→ready with no design.
+      recommendTheme: () => { void runRecommendTheme(); },
+      applyTheme: () => { void runApplyTheme(); },
+      skipCover: () => { void runCover(); },
       openPhotoPicker,
       closePhotoPicker,
       // WP5.3 / §4.5d: 安抚弹框的两个出口。「再试一次」关弹框后重跑导出(重新一轮

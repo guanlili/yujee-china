@@ -4,6 +4,9 @@ import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/cli
 import type {
   V3ChatTurn,
   V3ChapterChatResponse,
+  V3RecommendResponse,
+  V3ThemeOption,
+  V3ChapterThemeChoice,
 } from '@yujee/contracts';
 
 // Browser-side client for the V3 authoring surface. The read-only draft skeleton
@@ -56,16 +59,6 @@ export interface DraftTheme {
   style?: string;
 }
 
-// A pickable theme candidate proposed before a theme is fixed (editor.html
-// themeOpt1-3). Display-only (invariant 12) — the server never merges these into
-// draft_json; picking one just sends its label back as the next /theme nudge.
-export interface ThemeOption {
-  subject: string;
-  label: string;
-  tone?: string;
-  style?: string;
-}
-
 export interface DraftSkeleton {
   theme: DraftTheme | null;
   style: string;
@@ -110,11 +103,72 @@ export function fetchDraftSkeleton(albumId: string): Promise<{ draft: DraftSkele
   return getJson(`/api/v3/albums/${albumId}/draft`);
 }
 
-export function postTheme(
-  _albumId: string,
-  _userMessage?: string,
-): Promise<{ theme: unknown; assistantReply: string; themeOptions?: ThemeOption[] }> {
-  return Promise.resolve({ theme: null, assistantReply: V3_AUTHORING_GUIDANCE });
+// A page patch the browser folds into pagesState via applyPatchToPages
+// (imagesJson/textsJson/templateId) — the apply-theme / cover stages repaint the
+// canvas with it. Mirrors the chapter-chat edit-turn mapping.
+export interface BrowserLayoutPatchEntry {
+  pageIndex: number;
+  templateId?: string;
+  imagesJson?: Record<string, string>;
+  textsJson?: Record<string, string>;
+}
+
+// ③ 主题/章节色 · 推荐 — one real /v3/recommend turn (缺口#20). Invariant 12 / §3 数据归属:
+// the browser holds NO authoring tree, so it sends ONLY its language (+ an optional
+// free-text nudge); the Web route re-slices the per-chapter overview from draft_json
+// server-side. Returns the agent's theme candidates (themeOptions, ≤3) + per-chapter
+// recommended {accentColor, artFont} (chapterColors) for the user to pick. Nothing is
+// written — picking + apply-theme write the tree.
+export function postRecommend(
+  albumId: string,
+  userMessage?: string,
+): Promise<V3RecommendResponse> {
+  return postJson(`/api/v3/albums/${albumId}/recommend`, {
+    language: 'en',
+    ...(userMessage !== undefined ? { userMessage } : {}),
+  });
+}
+
+// ③ 主题/章节色 · 应用 — one real /v3/apply-theme turn (缺口#20). Invariant 12 / §3 数据
+// 归属: the browser holds NO layout pages, so it sends ONLY its SELECTIONS (the chosen
+// theme + per-chapter {accentColor, artFont}); the Web service re-slices each chapter's
+// themable pages from draft_json server-side, runs the deterministic brush, writes the
+// tree color/font + advances stage theme→cover. Returns the page-level layoutPatch the
+// browser applies live + the new stage.
+export interface ApplyThemeInput {
+  theme: V3ThemeOption;
+  chapters: V3ChapterThemeChoice[];
+}
+export function postApplyTheme(
+  albumId: string,
+  input: ApplyThemeInput,
+): Promise<{ stage: string; layoutPatch: BrowserLayoutPatchEntry[]; assistantReply?: string }> {
+  return postJson(`/api/v3/albums/${albumId}/apply-theme`, {
+    language: 'en',
+    theme: input.theme,
+    chapters: input.chapters,
+  });
+}
+
+// ④ 书籍设计 — 封面/封尾 — one real /v3/cover turn (缺口#20). Invariant 12 / §3 数据归属:
+// the browser holds NO layout pages, so it sends ONLY its SELECTIONS (the chosen 封面/封尾
+// template ids, or null = 跳过 — 封面可选 §4.4); the Web service re-slices the relevant
+// pages from draft_json server-side, runs the deterministic auto-fill, folds the patch
+// into draft_json.pages + advances stage cover→ready. A skip returns an EMPTY patch and
+// never errors. Returns the browser-shaped layoutPatch to apply live + the new stage.
+export interface CoverInput {
+  coverTemplateId?: string | null;
+  endingTemplateId?: string | null;
+}
+export function postCover(
+  albumId: string,
+  input: CoverInput,
+): Promise<{ stage: string; layoutPatch: BrowserLayoutPatchEntry[]; assistantReply?: string }> {
+  return postJson(`/api/v3/albums/${albumId}/cover`, {
+    language: 'en',
+    ...(input.coverTemplateId !== undefined ? { coverTemplateId: input.coverTemplateId } : {}),
+    ...(input.endingTemplateId !== undefined ? { endingTemplateId: input.endingTemplateId } : {}),
+  });
 }
 
 // ② 章节故事 — one real /v3/chapter-chat turn (缺口#20). Invariant 12 / §3 数据归属:

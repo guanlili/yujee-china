@@ -3,19 +3,22 @@ import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
 import { albumService } from '@/services/album/album-service';
-import { agentClient } from '@/lib/agent/agent-client';
 import { V3CoverRequest } from '@yujee/contracts';
 import { toBrowserCoverPatch } from './route-utils';
 
-// Browser-facing cover body (④ 书籍设计 — 封面/封尾, WP4.1 #192). The user (optionally)
-// picks a 封面/封尾 system template; the browser sends the selected template ids + the
-// relevant pages (§8.3 ③④传相关页). albumId comes from the URL, so it is stripped from
-// the forwarded body's source of truth. The agent is stateless and deterministic (no
-// model): it auto-fills the cover/ending pages and returns a page-level layoutPatch (§3
-// 树边界: 仍是页级) — or an EMPTY patch when the user skipped (§4.4 跳过=空, never an
-// error). Web is the sole truth source: it then advances stage cover → ready (§8.3 stage
-// 推进权在 Web) and hands the patch back for the browser to apply live.
-const BodySchema = V3CoverRequest.omit({ albumId: true });
+// Browser-facing cover body (④ 书籍设计 — 封面/封尾, WP4.1 #192 / 缺口#20). Invariant 12 /
+// §3 数据归属: the authoring tree (layout pages) NEVER round-trips through the browser, so
+// the browser sends only its SELECTIONS — the chosen 封面/封尾 template ids (null/absent =
+// 跳过, 封面可选 §4.4). albumId comes from the URL. The Web service is the sole truth source
+// for draft_json: it re-slices the relevant pages SERVER-SIDE (§8.3 ③④传相关页), runs the
+// deterministic agent auto-fill (an EMPTY patch when skipped — never an error), folds the
+// returned page-level patch into draft_json.pages + advances stage cover → ready (§8.3 stage
+// 推进权在 Web), and hands the patch back for the browser to apply live.
+const BodySchema = V3CoverRequest.pick({
+  language: true,
+  coverTemplateId: true,
+  endingTemplateId: true,
+}).strict();
 
 // POST /api/v3/albums/[uuid]/cover — synchronous (§8). 60s budget.
 export const maxDuration = 60;
@@ -24,25 +27,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
   try {
     const user = await requireAuth(req);
     const { uuid } = await ctx.params;
-    // Ownership gate before any agent call (§3 数据归属 / never act on another user's
-    // album). Throws ALBUM_NOT_FOUND / ALBUM_NOT_OWNED.
-    await albumService.findOwned(user.id, uuid);
-    const slice = await parseBody(BodySchema, req);
-
-    // Deterministic agent auto-fill of the chosen 封面/封尾 pages (empty when skipped).
-    const result = await agentClient.coverV3({ albumId: uuid, ...slice });
-
-    // Persist: advance stage cover → ready (stage 推进权在 Web). The agent's layoutPatch
-    // is folded into draft_json.pages for finalize, and handed back for the browser to
-    // apply live. The cover/ending design stays page-level (§3 树边界); draft_json.tree is
-    // not edited here.
-    const persisted = await albumService.cover(user.id, uuid, result.layoutPatch);
+    const body = await parseBody(BodySchema, req);
+    // Ownership gate + draft re-slice + agent auto-fill + persist all live inside the
+    // service (§3 数据归属). Throws ALBUM_NOT_FOUND / ALBUM_NOT_OWNED / VALIDATION_FAILED.
+    const result = await albumService.coverTurn(user.id, uuid, body);
 
     return ok({
-      layoutPatch: toBrowserCoverPatch(persisted.layoutPatch),
-      stage: persisted.stage,
+      // Map the agent's V3LayoutPatchEntry to the browser patch shape
+      // (imagesJson/textsJson) applyPatchToPages expects.
+      layoutPatch: toBrowserCoverPatch(result.layoutPatch),
+      stage: result.stage,
       assistantReply: result.assistantReply,
-      usage: result.usage,
     });
   } catch (e) {
     return fromException(e);

@@ -22,6 +22,11 @@ import {
   type V3StoryProgress,
   type V3ChapterThemeChoice,
   type V3LayoutPatchEntry,
+  type V3ThemeOption,
+  type V3ChapterOverview,
+  type V3RecommendResponse,
+  type V3ApplyThemeRequest,
+  type V3ApplyThemeResponse,
 } from '@yujee/contracts';
 
 const PDF_MAX_BYTES = 50 * 1024 * 1024; // 50MB — docs/web/api.md §3.6
@@ -172,6 +177,64 @@ function sliceChapterForChat(
     Object.values(page.images).some((id) => photoIds.has(id)),
   );
   return { chapter, pages };
+}
+
+// ③ 主题/章节色 · 推荐 — server-side text-only slice for /v3/recommend (缺口#20;
+// invariant 12: the authoring tree NEVER round-trips through the browser, so the
+// browser sends NO chapter overview — Web re-slices it from draft_json here). Maps each
+// V3Chapter to a V3ChapterOverview (chapterId + description + each photo's
+// sceneDescription摘要, ≤12). No base64 (§3 privacy by construction): only text descs.
+function buildRecommendOverviews(tree: V3LayoutTreeT): V3ChapterOverview[] {
+  return tree.chapters.map((chapter) => ({
+    chapterId: chapter.chapterId,
+    description: chapter.description.slice(0, 600),
+    photoDescs: chapter.photos.slice(0, 12).map((p) => p.sceneDescription),
+  }));
+}
+
+// ③④ — the SAME chapter→pages membership rule sliceChapterForChat / getDraftSkeleton
+// use (and getDraftSkeleton's chapterIdForPage), applied to ALL pages keyed by their
+// stored draft_json pageIndex. apply-theme / cover re-slice the relevant pages
+// SERVER-SIDE from draft_json (§8.3 ③④传相关页; invariant 12: the browser never holds
+// the layout pages, so it sends only its selections). Like getDraftSkeleton, a
+// cover/toc/ending page maps to null (chapter membership is for interior pages only), so
+// apply-theme targets the chapter (interior) pages and cover targets the rest.
+function chapterIdForDraftPage(normalized: NormalizedStoryDraft, page: V3Page): string | null {
+  const category = getTemplate(page.templateId)?.category;
+  if (category === 'cover' || category === 'toc' || category === 'ending') return null;
+  const refs = new Set(Object.values(page.images));
+  const match = normalized.tree.chapters.find((chapter) =>
+    chapter.photos.some((photo) => refs.has(photo.photoId)),
+  );
+  return match?.chapterId ?? null;
+}
+
+// apply-theme only brushes pages whose template actually has a `variableDecor` slot
+// (svg / text), so a chapter with no themable page makes no agent call (§4.3 / §9).
+function hasVariableDecorSlot(page: V3Page): boolean {
+  const template = getTemplate(page.templateId);
+  if (!template) return false;
+  if ((template.svgs ?? []).some((slot) => slot.variableDecor)) return true;
+  if ((template.texts ?? []).some((slot) => slot.variableDecor)) return true;
+  return (template.items?.texts ?? []).some((slot) => slot.variableDecor);
+}
+
+// Fold the per-chapter apply-theme responses into one (each agent call handled one
+// chapter's related pages; the layoutPatch/usage just concatenate).
+function combineApplyThemeResponses(responses: V3ApplyThemeResponse[]): V3ApplyThemeResponse {
+  return {
+    layoutPatch: responses.flatMap((response) => response.layoutPatch),
+    assistantReply:
+      responses.map((response) => response.assistantReply).filter(Boolean).join('\n') || undefined,
+    usage: {
+      durationMs: responses.reduce((sum, r) => sum + r.usage.durationMs, 0),
+      visionCallCount: responses.reduce((sum, r) => sum + r.usage.visionCallCount, 0),
+      planningInputTokens: responses.reduce((sum, r) => sum + r.usage.planningInputTokens, 0),
+      planningOutputTokens: responses.reduce((sum, r) => sum + r.usage.planningOutputTokens, 0),
+      repairAttempts: responses.reduce((sum, r) => sum + r.usage.repairAttempts, 0),
+      models: Object.assign({}, ...responses.map((r) => r.usage.models)),
+    },
+  };
 }
 
 function storyProgressFrom(stage: string, normalized: NormalizedStoryDraft | null): StoryProgressState {
@@ -571,6 +634,140 @@ export const albumService = {
     return {
       stage: advanceStage ? 'ready' : album.stage,
       layoutPatch,
+    };
+  },
+
+  // ③ 主题/章节色 · 推荐 — one /v3/recommend turn (WP3.1 #189 wiring / 缺口#20). The
+  // browser holds NO authoring tree (invariant 12 / §3 数据归属): it sends only its
+  // language (+ an optional free-text nudge). Web is the sole truth source for draft_json,
+  // so we re-slice the per-chapter overview (description + each photo's sceneDescription摘
+  // 要, ≤12 — text only, NO base64 §3) SERVER-SIDE and forward the V3RecommendRequest to
+  // the stateless agent. The agent only SUGGESTS theme candidates + per-chapter
+  // {accentColor, artFont}; nothing is written here (writing the tree is apply-theme, stage
+  // advances elsewhere — §8.3). Caller must hold ownership (findOwned). Throws
+  // ALBUM_NOT_FOUND / ALBUM_NOT_OWNED / VALIDATION_FAILED.
+  async recommendTheme(
+    userId: string,
+    albumId: string,
+    input: { language: V3Language; userMessage?: string },
+  ): Promise<V3RecommendResponse> {
+    const album = await this.findOwned(userId, albumId);
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+    const chapters = buildRecommendOverviews(normalized.tree);
+    if (chapters.length === 0) throw ERRORS.VALIDATION_FAILED('album draft has no chapters');
+    return agentClient.recommendV3({
+      albumId,
+      language: input.language,
+      chapters,
+      ...(input.userMessage !== undefined ? { userMessage: input.userMessage } : {}),
+    });
+  },
+
+  // ③ 主题/章节色 · 应用 — one /v3/apply-theme turn (WP3.2 #190 wiring / 缺口#20). The
+  // browser holds NO layout pages (invariant 12 / §3 数据归属): it sends only its
+  // SELECTIONS (chosen theme + per-chapter {accentColor, artFont}). Web re-slices each
+  // chapter's themable pages from draft_json SERVER-SIDE (§8.3 ③④传相关页), runs the
+  // deterministic agent brush (一键刷 variableDecor 槽, 含 SVG) per chapter, then persists
+  // the tree colors + advances stage theme→cover (via applyTheme) and hands the combined
+  // page-level layoutPatch back for the browser to apply live. Caller must hold ownership
+  // (findOwned). Throws ALBUM_NOT_FOUND / ALBUM_NOT_OWNED / VALIDATION_FAILED.
+  async applyThemeTurn(
+    userId: string,
+    albumId: string,
+    input: { language: V3Language; theme: V3ThemeOption; chapters: V3ChapterThemeChoice[] },
+  ): Promise<{ stage: string; layoutPatch: V3LayoutPatchEntry[]; assistantReply?: string }> {
+    const album = await this.findOwned(userId, albumId);
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+
+    // Re-slice each chapter's themable pages (with a variableDecor slot) from the stored
+    // draft pages — the browser sent none. One agent call per chapter (the flat Page
+    // contract carries no chapterId, so apply needs one chapter's related pages each).
+    const pages = normalized.pages ?? [];
+    const requests: V3ApplyThemeRequest[] = [];
+    for (const choice of input.chapters) {
+      const relatedPages = pages.filter(
+        (page) =>
+          chapterIdForDraftPage(normalized, page) === choice.chapterId &&
+          hasVariableDecorSlot(page),
+      );
+      if (relatedPages.length > 0) {
+        requests.push({
+          albumId,
+          language: input.language,
+          theme: input.theme,
+          chapters: [choice],
+          pages: relatedPages,
+        });
+      }
+    }
+
+    const agentResult = combineApplyThemeResponses(
+      await Promise.all(requests.map((payload) => agentClient.applyThemeV3(payload))),
+    );
+
+    // Persist: write per-chapter color/font into the tree + advance stage theme→cover.
+    const persisted = await this.applyTheme(
+      userId,
+      albumId,
+      input.chapters,
+      agentResult.layoutPatch,
+    );
+
+    return {
+      stage: persisted.stage,
+      layoutPatch: persisted.layoutPatch,
+      ...(agentResult.assistantReply !== undefined
+        ? { assistantReply: agentResult.assistantReply }
+        : {}),
+    };
+  },
+
+  // ④ 书籍设计 — one /v3/cover turn (WP4.1 #192 wiring / 缺口#20). The browser holds NO
+  // layout pages (invariant 12 / §3 数据归属): it sends only its SELECTIONS (chosen
+  // 封面/封尾 template ids, or null/absent = 跳过). Web re-slices the relevant pages from
+  // draft_json SERVER-SIDE (§8.3 ③④传相关页), runs the deterministic agent auto-fill,
+  // then folds the returned page-level patch into draft_json.pages + advances stage
+  // cover→ready (via cover) and hands the patch back for the browser to apply live. A skip
+  // yields an EMPTY patch and never errors (§4.4 跳过=空). Caller must hold ownership
+  // (findOwned). Throws ALBUM_NOT_FOUND / ALBUM_NOT_OWNED / VALIDATION_FAILED.
+  async coverTurn(
+    userId: string,
+    albumId: string,
+    input: {
+      language: V3Language;
+      coverTemplateId?: string | null;
+      endingTemplateId?: string | null;
+    },
+  ): Promise<{ stage: string; layoutPatch: V3LayoutPatchEntry[]; assistantReply?: string }> {
+    const album = await this.findOwned(userId, albumId);
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+
+    // Re-slice the cover/toc/ending pages (chapter membership = null) — the auto-fill
+    // pulls image/text from them. The browser sent none (invariant 12).
+    const relevantPages = (normalized.pages ?? []).filter(
+      (page) => chapterIdForDraftPage(normalized, page) === null,
+    );
+
+    const agentResult = await agentClient.coverV3({
+      albumId,
+      language: input.language,
+      ...(input.coverTemplateId !== undefined ? { coverTemplateId: input.coverTemplateId } : {}),
+      ...(input.endingTemplateId !== undefined ? { endingTemplateId: input.endingTemplateId } : {}),
+      pages: relevantPages,
+    });
+
+    // Persist: fold the patch into draft_json.pages + advance stage cover→ready.
+    const persisted = await this.cover(userId, albumId, agentResult.layoutPatch);
+
+    return {
+      stage: persisted.stage,
+      layoutPatch: persisted.layoutPatch,
+      ...(agentResult.assistantReply !== undefined
+        ? { assistantReply: agentResult.assistantReply }
+        : {}),
     };
   },
 
