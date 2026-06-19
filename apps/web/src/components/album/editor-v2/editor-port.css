@@ -133,7 +133,8 @@
 .editor-port .page.page-empty{ background:transparent; box-shadow:none; cursor:default; }
 .editor-port .page.page-empty.page-selected{ box-shadow:none; }
 .editor-port .page.page-empty .page-num{ display:none; }
-/* Solo spread (cover/ending): drop the center spine line next to the empty half. */
+/* Solo spread (cover/ending): drop the parent backing + spine next to the empty half. */
+.editor-port .book.book-solo{ background:transparent; }
 .editor-port .book.book-solo::before{ display:none; }
 
 /* Flipping leaf */
@@ -216,6 +217,11 @@
    surface + spine so its empty half reads as empty space. */
 .editor-port .ov-book.ov-solo{ background:transparent; box-shadow:none; }
 .editor-port .ov-book.ov-solo::before{ display:none; }
+/* WP4.2 / §4.4: the blank half of a solo cover/ending overview spread (or any
+   skipped page) must read as truly empty — drop the .ov-left/.ov-right content
+   padding so the empty cell carries no inset surface, matching the empty .page /
+   thumb halves on the main canvas. */
+.editor-port .ov-page.ov-empty{ padding:0; }
 .editor-port .ov-spread:hover .ov-book.ov-solo{ box-shadow:none; }
 .editor-port .ov-spread:hover .ov-book{ box-shadow:0 4px 14px rgba(0,0,0,0.08), 0 14px 36px rgba(0,0,0,0.14); }
 .editor-port .ov-page{ flex:1; overflow:hidden; }
