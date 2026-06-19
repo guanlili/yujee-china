@@ -2,6 +2,7 @@ import { Text } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -11,6 +12,7 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
     captionRight?: string;
     folio?: string;
   };
+  const introTheme = resolveThemeCarrier(data, 'intro');
   // PDF 不支持 writingMode: vertical-rl,Frame 提示退化为水平摆放
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
@@ -22,11 +24,12 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           right: 70,
           textAlign: 'center',
           lineHeight: 1.4,
-          color: COLORS.ink,
+          color: introTheme.accentColor ?? COLORS.ink,
           fontSize: 45,
+          fontFamily: introTheme.pdfFontFamily,
         }}
       >
-        {d.intro || ''}
+        {introTheme.text ?? d.intro ?? ''}
       </Text>
       <PdfImage
         src={d.image}

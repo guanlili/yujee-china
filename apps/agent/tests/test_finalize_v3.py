@@ -209,3 +209,334 @@ def test_zh_default_title_when_no_description():
     page = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-03"))
     layout = fv3.finalize_v3(_request([chapter], [page], language="zh"))
     assert layout.magazine.title == "照片里的时光"
+
+
+# =============================================================================
+# WP5.1 (#194) — flatten + 单一 validate + variableDecor 烘焙(svg 收口)
+# =============================================================================
+
+_ACCENT = "#C0392B"
+_FONT = "script-elegant"
+
+
+def _themed_chapter(
+    chapter_id: str,
+    photos: list[V3ChapterPhoto],
+    *,
+    accent: str | None = _ACCENT,
+    font: str | None = _FONT,
+    description: str = "desc",
+) -> V3Chapter:
+    return V3Chapter(
+        chapterId=chapter_id,
+        description=description,
+        accentColor=accent,
+        artFont=font,
+        photos=photos,
+    )
+
+
+def test_flat_output_is_only_magazine_photos_pages_no_tree_field():
+    # §3 树边界: the flattened contract is exactly magazine + photos + pages[]; a page
+    # carries only pageIndex/templateId/images/texts/imagePos — never a tree-shaped
+    # field (chapterId/accentColor/artFont/variableDecor live ONLY in the tree).
+    photos = [_photo(0)]
+    chapter = _themed_chapter("c1", photos)
+    page = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-08"))
+    layout = fv3.finalize_v3(_request([chapter], [page]))
+
+    assert set(layout.model_dump().keys()) == {"magazine", "photos", "pages"}
+    allowed_page_keys = {"pageIndex", "templateId", "images", "texts", "imagePos"}
+    for flat in layout.pages:
+        assert set(flat.model_dump().keys()) <= allowed_page_keys
+        for forbidden in ("chapterId", "accentColor", "artFont", "variableDecor", "tree"):
+            assert forbidden not in flat.texts
+            assert forbidden not in flat.images
+
+
+def test_single_validate_passes_on_baked_layout():
+    # The SINGLE validate_v3 (§6.8 第 7 条) accepts the baked svg/items/variableDecor/
+    # 章节色/字体 keys it itself produced — finalize never emits a layout its own
+    # validate would reject.
+    photos = [_photo(0)]
+    chapter = _themed_chapter("c1", photos)
+    page = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-13"))
+    page = page.model_copy(update={"texts": {"title": "Homecoming"}})
+    layout = fv3.finalize_v3(_request([chapter], [page]))
+    assert fv3.validate_v3(layout) is None
+
+
+def test_chapter_color_and_font_baked_into_title_variable_decor_slot():
+    # mag-08 `title` is a variableDecor title (user prose). Its prose is kept verbatim;
+    # the chapter accentColor/artFont ride sibling carrier keys (§3 树边界: baked into
+    # flat texts, no tree field).
+    photos = [_photo(0)]
+    chapter = _themed_chapter("c1", photos)
+    page = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-08"))
+    page = page.model_copy(update={"texts": {"title": "Homecoming"}})
+    layout = fv3.finalize_v3(_request([chapter], [page]))
+    texts = layout.pages[0].texts
+    assert texts["title"] == "Homecoming"  # prose untouched
+    assert texts["title#accentColor"] == _ACCENT
+    assert texts["title#artFont"] == _FONT
+    assert fv3.validate_v3(layout) is None
+
+
+def test_empty_decoration_variable_decor_slot_stays_empty_theme_rides_carrier():
+    # mag-03 `location` is a variableDecor text decoration slot. Missing/empty
+    # visible content must stay missing/empty; theme rides sibling carrier keys so a
+    # color token never becomes user-facing text.
+    photos = [_photo(0), _photo(1)]
+    chapter = _themed_chapter("c1", photos)
+    missing = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-03", page_index=0))
+    empty = Page(**sk.build_page_v3("interior", ["p1"], template_id="mag-03", page_index=1))
+    empty = empty.model_copy(update={"texts": {"location": ""}})
+
+    layout = fv3.finalize_v3(_request([chapter], [missing, empty]))
+
+    missing_texts = layout.pages[0].texts
+    assert "location" not in missing_texts
+    assert missing_texts["location#accentColor"] == _ACCENT
+    assert missing_texts["location#artFont"] == _FONT
+
+    empty_texts = layout.pages[1].texts
+    assert empty_texts["location"] == ""
+    assert empty_texts["location#accentColor"] == _ACCENT
+    assert empty_texts["location#artFont"] == _FONT
+
+
+def test_nonempty_decoration_value_is_preserved_color_rides_carrier():
+    # mag-08 `dateNum` is a variableDecor decoration slot. A code-owned value (a date)
+    # is NEVER clobbered; the accent rides a carrier key instead.
+    photos = [_photo(0)]
+    chapter = _themed_chapter("c1", photos)
+    page = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-08"))
+    page = page.model_copy(update={"texts": {"dateNum": "08/24"}})
+    layout = fv3.finalize_v3(_request([chapter], [page]))
+    texts = layout.pages[0].texts
+    assert texts["dateNum"] == "08/24"  # date preserved
+    assert texts["dateNum#accentColor"] == _ACCENT
+
+
+def test_svg_variable_decor_slot_baked_into_flat_page_seam_closed():
+    # WP3.2 seam收口: mag-13 svg `divider` is a variableDecor vector → finalize lands
+    # its accent color into the flat page.texts (re-derived from the tree, the single
+    # source of truth — even if apply-theme never ran or wrote a stale value).
+    photos = [_photo(0)]
+    chapter = _themed_chapter("c1", photos)
+    page = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-13"))
+    page = page.model_copy(update={"texts": {"title": "Two", "divider": "#000000"}})
+    layout = fv3.finalize_v3(_request([chapter], [page]))
+    texts = layout.pages[0].texts
+    assert texts["divider"] == _ACCENT  # seam value re-baked from the tree
+    assert texts["title"] == "Two"
+    assert fv3.validate_v3(layout) is None
+
+
+def test_validate_rejects_svg_sibling_carrier_but_accepts_bare_svg_color():
+    # SVG variableDecor is value-as-color (`divider: "#C0392B"`). Sibling carrier
+    # keys are only legal for text/items text variableDecor slots.
+    from src.schemas import AlbumLayoutPlan, LayoutPhotoAnalysis, Magazine
+
+    base_page = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-13"))
+    valid_page = base_page.model_copy(update={"texts": {"title": "Two", "divider": _ACCENT}})
+    invalid_page = base_page.model_copy(
+        update={"texts": {"title": "Two", "divider#accentColor": _ACCENT}}
+    )
+
+    base_plan = {
+        "magazine": Magazine(title="t", subtitle=None, style="editorial", language="en"),
+        "photos": [
+            LayoutPhotoAnalysis(
+                photoId="p0",
+                description="d",
+                tags=[],
+                quality="detail",
+                orientation="landscape",
+            )
+        ],
+    }
+
+    valid_plan = AlbumLayoutPlan(**base_plan, pages=[valid_page])
+    invalid_plan = AlbumLayoutPlan(**base_plan, pages=[invalid_page])
+
+    assert fv3.validate_v3(valid_plan) is None
+    problem = fv3.validate_v3(invalid_plan)
+    assert problem is not None
+    assert "carrier" in problem
+    assert "no text variableDecor slot" in problem
+
+
+def test_items_group_variable_decor_is_baked():
+    # mag-02 `items.texts` carries a variableDecor decoration (`numbers`) and a
+    # variableDecor title (`titles`). The items repeat group is themed via sibling
+    # carriers: empty decoration stays absent/empty; title prose stays verbatim.
+    template = templates.get("mag-02")
+    texts: dict[str, str] = {"titles[0]": "Chapter One", "numbers[0]": ""}
+    fv3._bake_text_slots(texts, template["items"]["texts"], _ACCENT, _FONT)
+    assert texts["numbers[0]"] == ""
+    assert "numbers" not in texts
+    assert texts["numbers[0]#accentColor"] == _ACCENT
+    assert texts["numbers[0]#artFont"] == _FONT
+    assert texts["titles[0]"] == "Chapter One"  # title prose kept
+    assert texts["titles[0]#accentColor"] == _ACCENT
+    assert texts["titles[0]#artFont"] == _FONT
+
+
+def test_validate_accepts_item_text_carriers_when_top_level_repeat_slot_shares_id():
+    # mag-02 keeps legacy top-level repeat slots (`numbers` / `titles`) that are
+    # not variableDecor, while the same ids under `items.texts` are variableDecor.
+    # Carrier validation must accept the item slot instead of stopping at the
+    # top-level repeat slot.
+    from src.schemas import AlbumLayoutPlan, Magazine
+
+    page = Page(
+        pageIndex=0,
+        templateId="mag-02",
+        images={},
+        texts={
+            "numbers[0]": "01",
+            "numbers[0]#accentColor": _ACCENT,
+            "titles[0]": "Beginnings",
+            "titles[0]#accentColor": _ACCENT,
+        },
+    )
+    plan = AlbumLayoutPlan(
+        magazine=Magazine(title="t", subtitle=None, style="editorial", language="en"),
+        photos=[],
+        pages=[page],
+    )
+
+    assert fv3.validate_v3(plan) is None
+
+
+def test_plain_body_text_not_touched_by_bake():
+    # 普通正文 (non-variableDecor body/explain) is never themed. mag-19's body-style
+    # slots stay byte-identical; only the variableDecor `intro` title gets a carrier.
+    photos = [_photo(0)]
+    chapter = _themed_chapter("c1", photos)
+    page = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-19"))
+    page = page.model_copy(update={"texts": {"intro": "Once upon a time"}})
+    layout = fv3.finalize_v3(_request([chapter], [page]))
+    texts = layout.pages[0].texts
+    assert texts["intro"] == "Once upon a time"  # prose untouched
+    # no spurious color written onto the prose value itself
+    assert texts["intro"] != _ACCENT
+
+
+def test_no_bake_when_chapter_theme_unset():
+    # A chapter with null accentColor (theme环节 not done) is left un-themed — finalize
+    # bakes nothing, the page texts are byte-identical to input.
+    photos = [_photo(0)]
+    chapter = _chapter("c1", photos)  # accentColor=None
+    page = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-08"))
+    page = page.model_copy(update={"texts": {"title": "Homecoming"}})
+    layout = fv3.finalize_v3(_request([chapter], [page]))
+    texts = layout.pages[0].texts
+    assert texts == {"title": "Homecoming"}
+    assert "title#accentColor" not in texts
+
+
+def test_page_with_no_owning_chapter_is_not_baked():
+    # A photo-less toc page (mag-02, 0 images) maps to no chapter → never themed.
+    photos = [_photo(0)]
+    chapter = _themed_chapter("c1", photos)
+    body = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-08", page_index=0))
+    toc = Page(pageIndex=1, templateId="mag-02", images={}, texts={"heading": "Contents"})
+    layout = fv3.finalize_v3(_request([chapter], [body, toc]))
+    toc_flat = layout.pages[1]
+    assert toc_flat.texts == {"heading": "Contents"}  # un-themed (no owning chapter)
+
+
+def test_validate_rejects_carrier_without_variable_decor_slot():
+    # A theme carrier is only legal for a declared variableDecor slot. mag-06 has NO
+    # variableDecor slot, so a stray carrier key must be rejected by the single validate.
+    from src.schemas import AlbumLayoutPlan, LayoutPhotoAnalysis, Magazine
+
+    page = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-06"))
+    page = page.model_copy(update={"texts": {"caption#accentColor": _ACCENT}})
+    plan = AlbumLayoutPlan(
+        magazine=Magazine(title="t", subtitle=None, style="editorial", language="en"),
+        photos=[LayoutPhotoAnalysis(photoId="p0", description="d", tags=[], quality="detail", orientation="landscape")],
+        pages=[page],
+    )
+    problem = fv3.validate_v3(plan)
+    assert problem is not None and "carrier" in problem
+
+
+# ---------- /v3/finalize route (WP5.1) ---------------------------------------
+
+
+def _client():
+    from fastapi.testclient import TestClient
+
+    from src.main import app
+
+    return TestClient(app)
+
+
+def _route_body() -> dict:
+    return {
+        "albumId": "alb_v3",
+        "language": "en",
+        "tree": {
+            "chapters": [
+                {
+                    "chapterId": "c1",
+                    "description": "A day out",
+                    "accentColor": _ACCENT,
+                    "artFont": _FONT,
+                    "photos": [
+                        {
+                            "photoId": "p0",
+                            "sceneDescription": "scene 0",
+                            "width": 800,
+                            "height": 600,
+                            "orientation": "landscape",
+                        }
+                    ],
+                }
+            ]
+        },
+        "pages": [
+            {"pageIndex": 0, "templateId": "mag-08", "images": {"image": "p0"}, "texts": {"title": "Homecoming"}}
+        ],
+    }
+
+
+def test_route_requires_auth() -> None:
+    res = _client().post("/v3/finalize", json=_route_body())
+    assert res.status_code == 401
+
+
+def test_route_happy_path_returns_flat_layout_envelope() -> None:
+    from src.schemas import V3FinalizeResponse
+
+    res = _client().post(
+        "/v3/finalize",
+        json=_route_body(),
+        headers={"Authorization": "Bearer test_secret"},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["ok"] is True
+    parsed = V3FinalizeResponse(**body["data"])  # two-end parity
+    assert set(parsed.layout.model_dump().keys()) == {"magazine", "photos", "pages"}
+    flat = parsed.layout.pages[0]
+    assert flat.texts["title"] == "Homecoming"
+    assert flat.texts["title#accentColor"] == _ACCENT
+
+
+def test_route_validate_violation_is_422_contract_error() -> None:
+    body = _route_body()
+    # Reference a photo the tree doesn't carry → validate_v3 unused/missing violation.
+    body["pages"][0]["images"] = {"image": "ghost"}
+    res = _client().post(
+        "/v3/finalize",
+        json=body,
+        headers={"Authorization": "Bearer test_secret"},
+    )
+    assert res.status_code == 422
+    detail = res.json().get("detail", res.json())
+    assert detail["ok"] is False
+    assert detail["error"]["code"] == "AGENT_OUTPUT_VALIDATION"

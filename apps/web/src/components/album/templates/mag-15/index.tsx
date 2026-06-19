@@ -1,6 +1,7 @@
 import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -11,6 +12,8 @@ export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
     date?: string;
     folio?: string;
   };
+  const titleTheme = resolveThemeCarrier(data, 'title');
+  const dateTheme = resolveThemeCarrier(data, 'date');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <p
@@ -50,14 +53,15 @@ export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
           right: 70,
           margin: 0,
           textAlign: 'right',
-          fontFamily: WEB_FONTS.serifEn,
+          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.serifEn,
           fontWeight: 400,
           fontSize: 54,
           letterSpacing: '0.10em',
           lineHeight: 1.1,
+          color: titleTheme.accentColor,
         }}
       >
-        {brToReact(d.title || 'HAPPY\nCHOFU')}
+        {brToReact(titleTheme.text ?? d.title ?? 'HAPPY\nCHOFU')}
       </h1>
       <div
         style={{
@@ -66,11 +70,12 @@ export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
           right: 72,
           fontSize: 11,
           letterSpacing: '0.3em',
-          color: COLORS.ink2,
+          color: dateTheme.accentColor ?? COLORS.ink2,
           textTransform: 'uppercase',
+          fontFamily: dateTheme.webFontFamily,
         }}
       >
-        {d.date || ''}
+        {dateTheme.text ?? d.date ?? ''}
       </div>
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="15" />
     </WebPage>

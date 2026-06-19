@@ -1,6 +1,7 @@
 import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -10,6 +11,7 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
     captionRight?: string;
     folio?: string;
   };
+  const introTheme = resolveThemeCarrier(data, 'intro');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <p
@@ -21,13 +23,14 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           margin: 0,
           textAlign: 'center',
           lineHeight: 1.4,
-          color: COLORS.ink,
+          color: introTheme.accentColor ?? COLORS.ink,
           letterSpacing: '0.02em',
           fontSize: 45,
           whiteSpace: 'nowrap',
+          fontFamily: introTheme.webFontFamily,
         }}
       >
-        {d.intro || ''}
+        {introTheme.text ?? d.intro ?? ''}
       </p>
       <WebImage
         src={d.image}

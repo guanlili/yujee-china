@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag13({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -11,6 +12,7 @@ export function PdfMag13({ data, imagePos }: TemplateRenderProps) {
     caption?: string;
     folio?: string;
   };
+  const titleTheme = resolveThemeCarrier(data, 'title');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <Text
@@ -19,15 +21,15 @@ export function PdfMag13({ data, imagePos }: TemplateRenderProps) {
           top: 110,
           left: 90,
           right: 90,
-          fontFamily: PDF_FONTS.serifEn,
+          fontFamily: titleTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
           fontSize: 28,
           letterSpacing: 8,
           textAlign: 'center',
           lineHeight: 1.35,
-          color: COLORS.ink,
+          color: titleTheme.accentColor ?? COLORS.ink,
         }}
       >
-        {d.title || 'YUICHI TOKUDA\nPHOTOGRAPHY'}
+        {titleTheme.text ?? d.title ?? 'YUICHI TOKUDA\nPHOTOGRAPHY'}
       </Text>
       <View
         style={{

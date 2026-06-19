@@ -1,4 +1,8 @@
 import { getTemplate } from '@yujee/contracts/templates';
+import {
+  THEME_ACCENT_CARRIER_SUFFIX,
+  THEME_FONT_CARRIER_SUFFIX,
+} from '@yujee/contracts';
 import type { ImagePos, TemplateArrayItem, TemplateData } from './templates/types';
 
 // Adaptor seam (assigned to B3 by the B8 review). The agent emits each page as
@@ -53,6 +57,10 @@ function setPath(root: Record<string, unknown>, key: string, value: unknown): vo
   (node as Record<PathSeg, unknown>)[path[path.length - 1]!] = value;
 }
 
+function isThemeCarrierKey(key: string): boolean {
+  return key.endsWith(THEME_ACCENT_CARRIER_SUFFIX) || key.endsWith(THEME_FONT_CARRIER_SUFFIX);
+}
+
 // Declared-array slots must reach the component as an array. The mock planner
 // (and a sloppy model) can emit the slot as a single string; wrap it so
 // components that `.map` over it never crash.
@@ -76,6 +84,10 @@ export function adaptPageToTemplateData(
   const result: Record<string, unknown> = {};
 
   for (const [key, text] of Object.entries(page.texts)) {
+    if (isThemeCarrierKey(key)) {
+      result[key] = text;
+      continue;
+    }
     setPath(result, key, text);
   }
   for (const [key, photoId] of Object.entries(page.images)) {

@@ -2,6 +2,7 @@ import { Text } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -12,6 +13,8 @@ export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
     date?: string;
     folio?: string;
   };
+  const titleTheme = resolveThemeCarrier(data, 'title');
+  const dateTheme = resolveThemeCarrier(data, 'date');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <Text
@@ -44,14 +47,14 @@ export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
           top: 750,
           right: 70,
           textAlign: 'right',
-          fontFamily: PDF_FONTS.serifEn,
+          fontFamily: titleTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
           fontSize: 54,
           letterSpacing: 5,
           lineHeight: 1.1,
-          color: COLORS.ink,
+          color: titleTheme.accentColor ?? COLORS.ink,
         }}
       >
-        {d.title || 'HAPPY\nCHOFU'}
+        {titleTheme.text ?? d.title ?? 'HAPPY\nCHOFU'}
       </Text>
       <Text
         style={{
@@ -60,10 +63,11 @@ export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
           right: 72,
           fontSize: 11,
           letterSpacing: 4,
-          color: COLORS.ink2,
+          color: dateTheme.accentColor ?? COLORS.ink2,
+          fontFamily: dateTheme.pdfFontFamily,
         }}
       >
-        {(d.date || '').toUpperCase()}
+        {(dateTheme.text ?? d.date ?? '').toUpperCase()}
       </Text>
       <PdfFolio folio={d.folio} totalPages={totalPages} fallback="15" />
     </PdfPageShell>

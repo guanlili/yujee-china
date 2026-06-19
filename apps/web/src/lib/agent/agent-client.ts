@@ -14,6 +14,7 @@ import {
   V3RecommendResponse,
   V3ApplyThemeResponse,
   V3CoverResponse,
+  V3FinalizeResponse,
 } from '@yujee/contracts';
 import type {
   V2InitRequest,
@@ -29,6 +30,7 @@ import type {
   V3RecommendRequest,
   V3ApplyThemeRequest,
   V3CoverRequest,
+  V3FinalizeRequest,
 } from '@yujee/contracts';
 
 export type AgentPhotoInput = {
@@ -135,6 +137,20 @@ export const agentClient = {
   // stage=ready (§8.3 stage 推进权在 Web). 60s budget, no base64 here.
   async coverV3(payload: V3CoverRequest): Promise<V3CoverResponse> {
     return postSyncV3('/v3/cover', payload, V3CoverResponse, {
+      albumId: payload.albumId,
+    });
+  },
+
+  // POST /v3/finalize — synchronous, deterministic (⑤ 待导出, WP5.1 #194). Forwards the
+  // WHOLE layout tree + preview pages (§8.3 全树只在 finalize 传一次, no base64) and the
+  // agent flattens them into the external render contract AlbumLayoutPlan
+  // (magazine+photos+pages[]) the browser turns into a PDF. The agent bakes each
+  // chapter's accentColor/artFont (incl. the svg seam) into the flat pages[].texts (§3
+  // 树边界: 渲染契约不加树形字段) and runs the SINGLE validate (§6.8 第 7 条). Stateless:
+  // the agent writes neither tree nor stage — Web persists the flat layout and owns
+  // stage (§8.3). 60s budget, no base64 here.
+  async finalizeV3(payload: V3FinalizeRequest): Promise<V3FinalizeResponse> {
+    return postSyncV3Finalize('/v3/finalize', payload, V3FinalizeResponse, {
       albumId: payload.albumId,
     });
   },
@@ -300,6 +316,61 @@ async function postSyncV3<T>(
   logCtx: Record<string, unknown>,
 ): Promise<T> {
   return postSync('v3', path, payload, schema, logCtx);
+}
+
+// Finalize keeps a stricter transport contract than other v3 sync endpoints:
+// fetch/parse/network errors or non-422 HTTP are infrastructure faults, not
+// chat-edit failures.
+async function postSyncV3Finalize<T>(
+  path: string,
+  payload: unknown,
+  schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
+  logCtx: Record<string, unknown>,
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${env.AGENT_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
+        'Content-Type': 'application/json',
+        'X-Request-Id': crypto.randomUUID(),
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (e) {
+    logger.error({ err: String(e), api: 'v3', path, ...logCtx }, 'agent sync call failed');
+    throw ERRORS.AGENT_INTERNAL_ERROR();
+  }
+  if (!res.ok) {
+    logger.error({ status: res.status, api: 'v3', path, ...logCtx }, 'agent sync non-2xx');
+    if (res.status === 422) {
+      const code = await readAgentErrorCode(res);
+      if (code && mapAgentErrorCode(code) === 'AGENT_INVALID_OUTPUT') {
+        throw ERRORS.AGENT_INVALID_OUTPUT();
+      }
+      throw ERRORS.VALIDATION_FAILED('agent rejected sync payload');
+    }
+    throw ERRORS.AGENT_INTERNAL_ERROR();
+  }
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch (e) {
+    logger.error({ err: String(e), api: 'v3', path, ...logCtx }, 'agent sync response JSON parse failed');
+    throw ERRORS.AGENT_INTERNAL_ERROR();
+  }
+  if (!json || typeof json !== 'object' || Array.isArray(json) || !(json as { ok?: boolean }).ok) {
+    logger.error({ api: 'v3', path, ...logCtx }, 'agent sync non-ok envelope');
+    throw ERRORS.AGENT_INTERNAL_ERROR();
+  }
+  const parsed = schema.safeParse((json as { data?: unknown }).data);
+  if (!parsed.success) {
+    logger.error({ api: 'v3', path, ...logCtx }, 'agent sync response off-contract');
+    throw ERRORS.AGENT_INVALID_OUTPUT();
+  }
+  return parsed.data;
 }
 
 async function postSync<T>(

@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -9,6 +10,7 @@ export function PdfMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
     folio?: string;
     image?: string;
   };
+  const locationTheme = resolveThemeCarrier(data, 'location');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage
@@ -17,8 +19,15 @@ export function PdfMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
         position={imagePos?.['image']}
       />
       <View style={{ position: 'absolute', bottom: 50, left: 50, right: 50 }}>
-        <Text style={{ letterSpacing: 4, color: COLORS.ink, fontSize: 16 }}>
-          {d.location || ''}
+        <Text
+          style={{
+            letterSpacing: 4,
+            color: locationTheme.accentColor ?? COLORS.ink,
+            fontSize: 16,
+            fontFamily: locationTheme.pdfFontFamily,
+          }}
+        >
+          {locationTheme.text ?? d.location ?? ''}
         </Text>
       </View>
       <PdfFolio folio={d.folio} totalPages={totalPages} fallback="03" />

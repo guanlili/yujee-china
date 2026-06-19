@@ -33,8 +33,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
     const result = await agentClient.coverV3({ albumId: uuid, ...slice });
 
     // Persist: advance stage cover → ready (stage 推进权在 Web). The agent's layoutPatch
-    // is handed back for the browser to apply live (pages are re-derived at finalize, not
-    // stored in draft_json — cover/ending design is page-level, §3 树边界).
+    // is folded into draft_json.pages for finalize, and handed back for the browser to
+    // apply live. The cover/ending design stays page-level (§3 树边界); draft_json.tree is
+    // not edited here.
     const persisted = await albumService.cover(user.id, uuid, result.layoutPatch);
 
     return ok({

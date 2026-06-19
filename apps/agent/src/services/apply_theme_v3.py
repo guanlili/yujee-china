@@ -49,6 +49,7 @@ from collections.abc import Mapping, Sequence
 from .. import templates
 from ..logging_config import get_logger
 from ..schemas import (
+    THEME_USER_PROSE_ROLES,
     Page,
     V3ApplyThemeRequest,
     V3ApplyThemeResponse,
@@ -71,7 +72,9 @@ class ApplyThemeV3Error(Exception):
 # Text-slot roles whose CONTENT is user prose — apply-theme never overwrites these
 # (their styling rides the tree's chapter accent/font, baked at finalize). `title`
 # variableDecor slots are recolored via the tree, NOT via a content rewrite here.
-_USER_PROSE_ROLES = frozenset({"title", "body", "explain"})
+# 约定是 `packages/contracts` 单一真相源(theme-carrier.ts ↔ schemas.py);此处 import
+# 共享定义,消除与 finalize_v3 的重复(行为不变)。
+_USER_PROSE_ROLES = THEME_USER_PROSE_ROLES
 
 
 def _resolve_page_chapter(

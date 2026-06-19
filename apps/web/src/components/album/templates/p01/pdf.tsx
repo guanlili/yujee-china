@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfP01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -13,6 +14,10 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
     vol?: string;
     date?: string;
   };
+  const titleTheme = resolveThemeCarrier(data, 'title');
+  const categoryTheme = resolveThemeCarrier(data, 'category');
+  const volTheme = resolveThemeCarrier(data, 'vol');
+  const dateTheme = resolveThemeCarrier(data, 'date');
   // PDF 不支持 mixBlendMode,顶部白文字直接半透明渲染,深色背景下仍可读。
   return (
     <PdfPageShell dark fontFamily={PDF_FONTS.serifCn}>
@@ -39,7 +44,24 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
             fontSize: 14,
           }}
         >
-          {`VOL. ${d.vol || '01'} · ${d.date || '2026'}`}
+          VOL.{' '}
+          <Text
+            style={{
+              color: volTheme.accentColor,
+              fontFamily: volTheme.pdfFontFamily,
+            }}
+          >
+            {volTheme.text ?? d.vol ?? '01'}
+          </Text>{' '}
+          ·{' '}
+          <Text
+            style={{
+              color: dateTheme.accentColor,
+              fontFamily: dateTheme.pdfFontFamily,
+            }}
+          >
+            {dateTheme.text ?? d.date ?? '2026'}
+          </Text>
         </Text>
         <Text
           style={{
@@ -57,13 +79,13 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
           position: 'absolute',
           top: 70,
           right: 56,
-          fontFamily: PDF_FONTS.serifEn,
+          fontFamily: volTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
           fontStyle: 'italic',
           fontSize: 100,
-          color: '#ffffff',
+          color: volTheme.accentColor ?? '#ffffff',
         }}
       >
-        {d.vol || '01'}
+        {volTheme.text ?? d.vol ?? '01'}
       </Text>
       <View
         style={{
@@ -80,24 +102,24 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
       >
         <Text
           style={{
-            fontFamily: PDF_FONTS.serifEn,
+            fontFamily: categoryTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
             fontStyle: 'italic',
-            color: d.categoryColor || COLORS.vermilionSoft,
+            color: categoryTheme.accentColor ?? d.categoryColor ?? COLORS.vermilionSoft,
             fontSize: 16,
           }}
         >
-          {d.category || 'no 01 · Portrait'}
+          {categoryTheme.text ?? d.category ?? 'no 01 · Portrait'}
         </Text>
         <Text
           style={{
             marginTop: 8,
-            fontFamily: PDF_FONTS.serifCn,
+            fontFamily: titleTheme.pdfFontFamily ?? PDF_FONTS.serifCn,
             lineHeight: 1.15,
-            color: COLORS.paper,
+            color: titleTheme.accentColor ?? COLORS.paper,
             fontSize: 46,
           }}
         >
-          {d.title || '页面标题'}
+          {titleTheme.text ?? d.title ?? '页面标题'}
         </Text>
         <Text
           style={{

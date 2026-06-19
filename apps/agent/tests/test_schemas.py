@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -565,3 +566,51 @@ def test_cross_language_parity_ts_side_matches_python():
         py = _py_valid(case["schema"], case["payload"])
         ts = ts_results.get(case["name"])
         assert ts == py, f"TS({ts}) != Python({py}) for case: {case['name']}"
+
+
+# ---------- theme-carrier single-source-of-truth parity (WP5.1) ---------------
+# §3 树边界 carrier 文法是 packages/contracts 单一真相源(theme-carrier.ts ↔ schemas.py)。
+# finalize_v3 / apply_theme_v3 都 import 它,这里硬断言两侧逐字一致:① 后缀字面量相同;
+# ② prose-role 集相同且确为 TemplateTextRole 枚举减 `decoration`(从枚举派生,非手抄)。
+
+_THEME_CARRIER_TS = _REPO_ROOT / "packages" / "contracts" / "src" / "theme-carrier.ts"
+
+
+def _ts_suffix(name: str) -> str:
+    src = _THEME_CARRIER_TS.read_text()
+    match = re.search(rf"{name}\s*=\s*'([^']+)'", src)
+    assert match is not None, f"{name} not found in theme-carrier.ts"
+    return match.group(1)
+
+
+class TestThemeCarrierParity:
+    def test_accent_suffix_value(self):
+        from src.schemas import THEME_ACCENT_CARRIER_SUFFIX
+
+        assert THEME_ACCENT_CARRIER_SUFFIX == "#accentColor"
+        assert THEME_ACCENT_CARRIER_SUFFIX == _ts_suffix("THEME_ACCENT_CARRIER_SUFFIX")
+
+    def test_font_suffix_value(self):
+        from src.schemas import THEME_FONT_CARRIER_SUFFIX
+
+        assert THEME_FONT_CARRIER_SUFFIX == "#artFont"
+        assert THEME_FONT_CARRIER_SUFFIX == _ts_suffix("THEME_FONT_CARRIER_SUFFIX")
+
+    def test_prose_roles_derived_from_role_enum(self):
+        """The prose-role set is the TemplateTextRole enum minus `decoration`,
+        derived (not a hand-written literal): adding a 4th prose role to the enum
+        auto-extends both sides without editing the carrier definition."""
+        from typing import get_args
+
+        from src.schemas import THEME_USER_PROSE_ROLES, TemplateTextRole
+
+        all_roles = set(get_args(TemplateTextRole))
+        assert THEME_USER_PROSE_ROLES == all_roles - {"decoration"}
+        assert THEME_USER_PROSE_ROLES == {"title", "body", "explain"}
+
+    def test_ts_prose_roles_derived_too(self):
+        """The TS side likewise derives the set from `TemplateTextRole.options`
+        (filtering out `decoration`), not a literal — guards two-side drift."""
+        src = _THEME_CARRIER_TS.read_text()
+        assert "TemplateTextRole.options.filter" in src
+        assert "'decoration'" in src

@@ -1,6 +1,7 @@
 import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -11,6 +12,7 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
     title?: string;
     folio?: string;
   };
+  const titleTheme = resolveThemeCarrier(data, 'title');
   // ── 各槽位几何（直接改这里的数字即可调 位置/宽高/字号）──
   // 坐标系：整页 794×1123 px，左上角 (0,0)，单位 px。
   const LAYOUT = {
@@ -71,14 +73,15 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
           bottom: LAYOUT.title.bottom,
           left: LAYOUT.title.x,
           margin: 0,
-          fontFamily: WEB_FONTS.serifEn,
+          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.serifEn,
           fontSize: LAYOUT.title.fontSize,
           letterSpacing: '0.06em',
           lineHeight: 1.15,
           fontWeight: 400,
+          color: titleTheme.accentColor,
         }}
       >
-        {brToReact(d.title || 'FUSHI\nINARI')}
+        {brToReact(titleTheme.text ?? d.title ?? 'FUSHI\nINARI')}
       </h1>
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="07" />
     </WebPage>

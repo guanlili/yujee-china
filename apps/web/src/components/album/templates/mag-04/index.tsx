@@ -1,6 +1,7 @@
 import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -12,7 +13,8 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
     dateNum?: string;
     folio?: string;
   };
-  const dn = (d.dateNum || '04/24').split('/');
+  const dateTheme = resolveThemeCarrier(data, 'dateNum');
+  const dn = (dateTheme.text ?? d.dateNum ?? '04/24').split('/');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -29,17 +31,17 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           left: 464,
           width: 280,
           height: 80,
-          fontFamily: WEB_FONTS.serifEn,
+          fontFamily: dateTheme.webFontFamily ?? WEB_FONTS.serifEn,
           fontStyle: 'italic',
           fontSize: 64,
           lineHeight: 1,
-          color: COLORS.ink,
+          color: dateTheme.accentColor ?? COLORS.ink,
           letterSpacing: '0.02em',
           textAlign: 'right',
         }}
       >
         {dn[0]}
-        <span style={{ color: COLORS.ink3 }}>/{dn[1]}</span>
+        <span style={{ color: dateTheme.accentColor ?? COLORS.ink3 }}>/{dn[1]}</span>
       </div>
       <div
         style={{

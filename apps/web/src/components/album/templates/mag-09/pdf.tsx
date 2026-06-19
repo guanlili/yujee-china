@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -15,6 +16,7 @@ export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
     caption5?: string;
     folio?: string;
   };
+  const titleTheme = resolveThemeCarrier(data, 'title');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage
@@ -33,13 +35,13 @@ export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
         </Text>
       </View>
       <Text
-        style={{ position: 'absolute', left: 60, top: 392, width: 251, fontFamily: PDF_FONTS.serifEn,
+        style={{ position: 'absolute', left: 60, top: 392, width: 251, fontFamily: titleTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
           fontSize: 64,
           letterSpacing: 4,
           lineHeight: 1.05,
-          color: COLORS.ink }}
+          color: titleTheme.accentColor ?? COLORS.ink }}
       >
-        {d.title || 'OSAKA\nJAPAN'}
+        {titleTheme.text ?? d.title ?? 'OSAKA\nJAPAN'}
       </Text>
       <PdfImage
         src={d.imageMain}

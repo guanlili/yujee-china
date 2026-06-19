@@ -2,6 +2,7 @@ import { Text } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -11,6 +12,8 @@ export function PdfMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
     caption2?: string;
     folio?: string;
   };
+  const titleTheme = resolveThemeCarrier(data, 'title');
+  const plateTheme = resolveThemeCarrier(data, 'plate');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage
@@ -23,14 +26,14 @@ export function PdfMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
           position: 'absolute',
           top: 800,
           left: 50,
-          fontFamily: PDF_FONTS.serifEn,
+          fontFamily: titleTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
           fontSize: 50,
           letterSpacing: 4,
           lineHeight: 1.1,
-          color: COLORS.ink,
+          color: titleTheme.accentColor ?? COLORS.ink,
         }}
       >
-        {d.title || 'CHERRY\nBUCKET'}
+        {titleTheme.text ?? d.title ?? 'CHERRY\nBUCKET'}
       </Text>
       <Text
         style={{
@@ -40,10 +43,11 @@ export function PdfMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
           width: 260,
           fontSize: 13,
           letterSpacing: 4,
-          color: COLORS.ink,
+          color: plateTheme.accentColor ?? COLORS.ink,
+          fontFamily: plateTheme.pdfFontFamily,
         }}
       >
-        {(d.plate || '').toUpperCase()}
+        {(plateTheme.text ?? d.plate ?? '').toUpperCase()}
       </Text>
       <Text
         style={{

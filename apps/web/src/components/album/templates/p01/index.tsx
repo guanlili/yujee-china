@@ -1,6 +1,7 @@
 import { COLORS, WEB_FONTS } from '../constants';
 import { WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebP01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -12,6 +13,10 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
     vol?: string;
     date?: string;
   };
+  const titleTheme = resolveThemeCarrier(data, 'title');
+  const categoryTheme = resolveThemeCarrier(data, 'category');
+  const volTheme = resolveThemeCarrier(data, 'vol');
+  const dateTheme = resolveThemeCarrier(data, 'date');
   return (
     <WebPage dark fontFamily={WEB_FONTS.serifCn}>
       <WebImage
@@ -37,7 +42,24 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
         }}
       >
         <span>
-          VOL. {d.vol || '01'} · {d.date || '2026'}
+          VOL.{' '}
+          <span
+            style={{
+              color: volTheme.accentColor,
+              fontFamily: volTheme.webFontFamily,
+            }}
+          >
+            {volTheme.text ?? d.vol ?? '01'}
+          </span>{' '}
+          ·{' '}
+          <span
+            style={{
+              color: dateTheme.accentColor,
+              fontFamily: dateTheme.webFontFamily,
+            }}
+          >
+            {dateTheme.text ?? d.date ?? '2026'}
+          </span>
         </span>
         <span>人　生　誌</span>
       </div>
@@ -46,14 +68,14 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
           position: 'absolute',
           top: 70,
           right: 56,
-          fontFamily: WEB_FONTS.serifEn,
+          fontFamily: volTheme.webFontFamily ?? WEB_FONTS.serifEn,
           fontStyle: 'italic',
           fontSize: 100,
           lineHeight: 0.9,
-          color: '#ffffff',
+          color: volTheme.accentColor ?? '#ffffff',
         }}
       >
-        {d.vol || '01'}
+        {volTheme.text ?? d.vol ?? '01'}
       </div>
       <div
         style={{
@@ -68,27 +90,27 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
       >
         <div
           style={{
-            fontFamily: WEB_FONTS.serifEn,
+            fontFamily: categoryTheme.webFontFamily ?? WEB_FONTS.serifEn,
             fontStyle: 'italic',
             letterSpacing: '0.04em',
-            color: d.categoryColor || COLORS.vermilionSoft,
+            color: categoryTheme.accentColor ?? d.categoryColor ?? COLORS.vermilionSoft,
             fontSize: 16,
           }}
         >
-          {d.category || 'nº 01 · Portrait'}
+          {categoryTheme.text ?? d.category ?? 'nº 01 · Portrait'}
         </div>
         <h1
           style={{
             margin: '8px 0 0',
-            fontFamily: WEB_FONTS.serifCn,
+            fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.serifCn,
             fontWeight: 500,
             letterSpacing: '0.04em',
             lineHeight: 1.15,
-            color: COLORS.paper,
+            color: titleTheme.accentColor ?? COLORS.paper,
             fontSize: 46,
           }}
         >
-          {brToReact(d.title || '页面标题')}
+          {brToReact(titleTheme.text ?? d.title ?? '页面标题')}
         </h1>
         <div style={{ marginTop: 22 }}>
           <p

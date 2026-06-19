@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -13,7 +14,8 @@ export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
     dateNum?: string;
     folio?: string;
   };
-  const dn = (d.dateNum || '04/24').split('/');
+  const dateTheme = resolveThemeCarrier(data, 'dateNum');
+  const dn = (dateTheme.text ?? d.dateNum ?? '04/24').split('/');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage src={d.image1} style={{ position: 'absolute', top: 60, left: 50, width: 380, height: 360 }} position={imagePos?.['image1']} />
@@ -30,20 +32,20 @@ export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         <Text
           style={{
-            fontFamily: PDF_FONTS.serifEn,
+            fontFamily: dateTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
             fontStyle: 'italic',
             fontSize: 64,
-            color: COLORS.ink,
+            color: dateTheme.accentColor ?? COLORS.ink,
           }}
         >
           {dn[0]}
         </Text>
         <Text
           style={{
-            fontFamily: PDF_FONTS.serifEn,
+            fontFamily: dateTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
             fontStyle: 'italic',
             fontSize: 64,
-            color: COLORS.ink3,
+            color: dateTheme.accentColor ?? COLORS.ink3,
           }}
         >
           /{dn[1] || ''}
