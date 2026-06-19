@@ -37,6 +37,7 @@ import {
 } from './image-edit-util';
 import { runInspectAdjustLoop } from './draft-edit-orchestrator';
 import { StageBreadcrumb } from './StageBreadcrumb';
+import { computeExportUnlocked } from './export-gate-util';
 import {
   applyPatchToPages,
   extractPhotoIds,
@@ -318,10 +319,22 @@ function EditorBook({
     : currentChapterNumber > 0
       ? locale === 'zh' ? `确定第 ${currentChapterNumber} 章` : `Confirm Ch. ${currentChapterNumber}`
       : locale === 'zh' ? '确定本章' : 'Confirm chapter';
-  const exportLocked =
+  const exportReadyLabel = locale === 'zh'
+    ? '太棒了，你的书已经准备好了！'
+    : 'Wonderful — your book is ready!';
+
+  // 导出闸门(WP5.2 / §4.5a). 复用 WP2.4 的 exportUnlocked 口径(album-service
+  // .getStoryProgress:导出解锁 ⇔ allDone && stage ∉ {analysing, story})。仅当
+  // 「章节故事」全章完成(stage 推进过 story)才让导出 PDF 按钮可用 + 出「太棒了…」
+  // 提示;主题/封面在 story 之后,跳过不影响导出(§4.5a)。editing 模式的相册已
+  // finalize,导出沿用旧路径,即使 post-migration V2 行的 stage 仍停在 analysing/story
+  // 也不前端锁;building 隐藏。authoring 以 storyProgress 的 live stage 为准,因为
+  // EDITING 轮询会停止,detail.album.stage 可能仍停在 story。
+  const authoringExportLocked =
     mode === 'authoring' &&
-    ((storyProgressLoading && detail.album.stage === 'story') ||
-      (hasStoryGate && storyProgress?.exportUnlocked !== true));
+    (storyProgress === null ||
+      (hasStoryGate && !computeExportUnlocked(breadcrumbStage, storyProgress.allDone)));
+  const exportUnlocked = !building && !authoringExportLocked;
 
   useEffect(() => {
     const root = rootRef.current;
@@ -345,6 +358,8 @@ function EditorBook({
         redo: '重做',
         share: '分享',
         exportPdf: '导出 PDF',
+        // WP5.2 / §4.5b: 全章 done 后的「流程结束」提示,出现在导出按钮解锁时。
+        exportReady: '太棒了，你的书已经准备好了！',
         alertUndo: '撤销上一步操作',
         alertRedo: '重做已撤销的操作',
         alertLinkCopied: '链接已复制到剪贴板！',
@@ -470,6 +485,8 @@ function EditorBook({
         redo: 'Redo',
         share: 'Share',
         exportPdf: 'Export PDF',
+        // WP5.2 / §4.5b: the "you're done" line shown once the export gate opens.
+        exportReady: 'Wonderful — your book is ready!',
         alertUndo: 'Undo last action',
         alertRedo: 'Redo undone action',
         alertLinkCopied: 'Link copied to clipboard!',
@@ -610,6 +627,13 @@ function EditorBook({
     const isAuthoring = mode === 'authoring';
     const MESSAGE_MAX = 500; // v2 draft-edit body schema caps free text at 500.
     let storyGate: StoryProgress | null = storyProgress;
+    // The effect is installed once; storyGate is refreshed by the authoring progress calls.
+    function isAuthoringExportLocked(progress: StoryProgress | null = storyGate) {
+      if (!isAuthoring) return false;
+      if (!progress) return true;
+      if (progress.chapterOrder.length === 0) return false;
+      return !computeExportUnlocked(progress.stage, progress.allDone);
+    }
     let confirmingStoryChapter = false;
     // The draft skeleton (read-only render projection; invariant 12). Rendered on
     // entry; the agent persists draft_json server-side, so we don't refetch it.
@@ -1605,7 +1629,7 @@ function EditorBook({
     function updateStoryGateUi(progress: StoryProgress | null = storyGate) {
       const exportBtn = $('[data-action="exportPdf"]') as HTMLButtonElement | null;
       if (exportBtn && isAuthoring) {
-        const locked = (progress?.chapterOrder.length ?? 0) > 0 && progress?.exportUnlocked !== true;
+        const locked = isAuthoringExportLocked(progress);
         exportBtn.disabled = locked;
         exportBtn.classList.toggle('is-disabled', locked);
         exportBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
@@ -1935,11 +1959,7 @@ function EditorBook({
     // and upload straight to R2 (bytes never touch the Web tier — invariant 4).
     let exportingPdf = false;
     async function exportPdf() {
-      if (
-        isAuthoring &&
-        (storyGate?.chapterOrder.length ?? 0) > 0 &&
-        storyGate?.exportUnlocked !== true
-      ) {
+      if (isAuthoringExportLocked()) {
         appendAiText(aT('全部章节确定后才能导出 PDF。', 'Confirm all chapters before exporting PDF.'));
         return;
       }
@@ -2419,8 +2439,20 @@ function EditorBook({
           )}
         </div>
         {!building && <div className="top-right flex items-center gap-1 sm:gap-2 shrink-0">
-          <span className="btn-glow">
-            <button className="btn-primary bg-fg text-white px-4 sm:px-7 py-2.5 rounded-pill text-[13px] font-semibold flex items-center gap-1.5 transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} data-action="exportPdf" disabled={exportLocked} aria-disabled={exportLocked ? 'true' : 'false'}>
+          {/* 导出闸门(WP5.2 / §4.5a):章节故事未全章 done(stage∈{analysing,story})时
+              按钮 disabled —— 既不可点也无 glow(.btn-glow:has(button:disabled) 已置零)。
+              全章 done(stage 推进过 story)后解锁,主题/封面跳过不影响。disabled 时
+              exportPdf 这个 data-action 不会触发(浏览器不派发 disabled 按钮的 click)。 */}
+          <span className="btn-glow" data-export-gate={exportUnlocked ? 'open' : 'locked'}>
+            <button
+              className="btn-primary bg-fg text-white px-4 sm:px-7 py-2.5 rounded-pill text-[13px] font-semibold flex items-center gap-1.5 transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+              style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }}
+              data-action="exportPdf"
+              data-testid="export-pdf-btn"
+              disabled={!exportUnlocked}
+              aria-disabled={!exportUnlocked}
+              title={exportUnlocked ? undefined : (locale === 'zh' ? '先把每一章都「确定」，才能导出 PDF' : 'Confirm every chapter before exporting the PDF')}
+            >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
               <span className="hidden sm:inline" data-i18n="exportPdf">导出 PDF</span>
             </button>
@@ -2536,10 +2568,11 @@ function EditorBook({
             </div>
 
             {/* 五环节面包屑(WP2.4 / §2): 分析 → 章节故事 → 确定主题 → 书籍设计 →
-                待导出, with the current 环节 lit from albums.stage (stage 推进权在 Web,
-                §8.3). Building albums report 'analysing'; authoring/editing read the
-                album's real stage. story 环节 also shows per-chapter done ticks
-                (一章一确定, §4.2(1)) when the editor surfaces chapterProgress. */}
+                待导出, with the current 环节 lit from the live stage. Building albums
+                report 'analysing'; authoring prefers storyProgress.stage because
+                albums.stage can be stale after polling stops in EDITING. story 环节
+                also shows per-chapter done ticks (一章一确定, §4.2(1)) when the editor
+                surfaces chapterProgress. */}
             {mode !== 'editing' && (
               <StageBreadcrumb
                 stage={breadcrumbStage}
@@ -2557,6 +2590,23 @@ function EditorBook({
                 >
                   {storyGateLabel}
                 </button>
+              </div>
+            )}
+
+            {/* 待导出「流程结束」提示(WP5.2 / §4.5b):章节故事全章 done(stage 推进过
+                story → exportUnlocked)后,在面包屑下出现「太棒了，你的书已经准备好了！」,
+                指引用户去顶栏导出 PDF。authoring 模式才显示(editing 是已 finalize 的旧
+                编辑器,不出这条引导)。只读 exportUnlocked,不改 stage。 */}
+            {mode !== 'editing' && exportUnlocked && (
+              <div
+                className="export-ready-banner flex items-center gap-2 mx-4 mt-1 mb-2 px-3 py-2 rounded-xl bg-bg text-[12.5px] text-fg2 font-medium"
+                data-testid="export-ready-banner"
+                role="status"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-accent shrink-0">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+                <span>{exportReadyLabel}</span>
               </div>
             )}
 
