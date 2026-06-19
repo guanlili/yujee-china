@@ -11,6 +11,7 @@ import {
   V2InspectResponse,
   // v3 (五环节状态机). Truth source: packages/contracts/src/v3.ts.
   V3ChapterChatResponse,
+  V3RecommendResponse,
 } from '@yujee/contracts';
 import type {
   V2InitRequest,
@@ -23,6 +24,7 @@ import type {
   V2InspectRequest,
   V3AnalyzeRequest,
   V3ChapterChatRequest,
+  V3RecommendRequest,
 } from '@yujee/contracts';
 
 export type AgentPhotoInput = {
@@ -92,6 +94,20 @@ export const agentClient = {
     return postSyncV3('/v3/chapter-chat', payload, V3ChapterChatResponse, {
       albumId: payload.albumId,
     });
+  },
+
+  // POST /v3/recommend — synchronous (③ 主题/章节色-推荐, WP3.1 #189). Text-only
+  // (chapter overviews + analysis summary, no base64); the recognition model runs
+  // the two recommend Skills and returns theme CANDIDATES + one {accentColor,
+  // artFont} per chapter. Stateless: the agent only suggests — it never writes the
+  // tree (apply-theme/WP3.2 does after the user picks) and never advances stage
+  // (§8.3 stage 推进权在 Web). 60s budget, no base64 here.
+  async recommendV3(payload: V3RecommendRequest): Promise<V3RecommendResponse> {
+    const data = await postSyncV3('/v3/recommend', payload, V3RecommendResponse, {
+      albumId: payload.albumId,
+    });
+    assertRecommendChapterCoverage(payload, data);
+    return data;
   },
 
   // ──────────────────────────── v2 (agent rebuild) ────────────────────────────
@@ -293,4 +309,26 @@ async function postSync<T>(
     throw ERRORS.AGENT_INVALID_OUTPUT();
   }
   return parsed.data;
+}
+
+function assertRecommendChapterCoverage(
+  payload: V3RecommendRequest,
+  response: V3RecommendResponse,
+): void {
+  const expected = payload.chapters.map((chapter) => chapter.chapterId);
+  const seen = new Set<string>();
+  for (const rec of response.chapterColors) {
+    if (seen.has(rec.chapterId)) {
+      logger.error({ albumId: payload.albumId, chapterId: rec.chapterId }, 'agent v3 recommend duplicate chapter color');
+      throw ERRORS.AGENT_INVALID_OUTPUT();
+    }
+    seen.add(rec.chapterId);
+  }
+  if (response.chapterColors.length !== expected.length || expected.some((chapterId) => !seen.has(chapterId))) {
+    logger.error(
+      { albumId: payload.albumId, expectedChapterIds: expected, returnedChapterIds: [...seen] },
+      'agent v3 recommend chapter color coverage mismatch',
+    );
+    throw ERRORS.AGENT_INVALID_OUTPUT();
+  }
 }
