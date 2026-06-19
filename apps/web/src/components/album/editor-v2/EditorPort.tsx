@@ -41,17 +41,21 @@ import { runExportWithRetry, buildExportFailureLog, ExportError } from './export
 import { logger } from '@/lib/log/logger';
 import {
   extractPhotoIds,
+  applyPatchToPages,
   type AlbumDetail,
   type EditorPage,
+  type LayoutPatchEntry,
   type StoryProgress,
 } from '../types';
 import {
   fetchDraftSkeleton,
+  postChapterChat,
   postDraftEdit,
   postInspectRender,
   type DraftEditResult,
   type DraftSkeleton,
 } from '@/lib/album/authoring-client';
+import type { V3ChatTurn, V3PageTextsPatch } from '@yujee/contracts';
 import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/client';
 import './editor-port.css';
 
@@ -630,6 +634,12 @@ function EditorBook({
        /draft-edit scoped to the focused page (no theme→chapter dialog machine). ─── */
     const isAuthoring = mode === 'authoring';
     const MESSAGE_MAX = 500; // v2 draft-edit body schema caps free text at 500.
+    // ② 章节故事 chat history (缺口#20). The chapter-chat endpoint is stateless and
+    // does NOT persist messages, so the browser holds the running turn log in-session
+    // and replays it on each turn (contract caps it at 20 turns). Trimmed to the most
+    // recent turns before each send.
+    const CHAT_HISTORY_MAX = 20;
+    const chapterHistory: V3ChatTurn[] = [];
     let storyGate: StoryProgress | null = storyProgress;
     // The effect is installed once; storyGate is refreshed by the authoring progress calls.
     function isAuthoringExportLocked(progress: StoryProgress | null = storyGate) {
@@ -1500,7 +1510,7 @@ function EditorBook({
       hideAwait();
       scrollChat();
       if (isAuthoring) {
-        await runDraftEditTurn(txt);
+        await runChapterChatTurn(txt);
       } else {
         await runEdit(txt);
       }
@@ -1816,6 +1826,138 @@ function EditorBook({
       restAwait();
       scrollChat();
       updateAuthInputPlaceholder();
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // ② 章节故事 — one real /v3/chapter-chat turn (缺口#20). This REPLACES the
+    // legacy /draft-edit single-page loop as the authoring send path. The agent
+    // dispatches THIS turn by intent and returns kind=talk/write/edit:
+    //   • talk  → reply only — NEVER a patch (Frame 4 红线: a talk turn must not
+    //             touch pagesState; the contract makes pagesTexts/layoutPatch
+    //             optional + we ignore them on talk defensively).
+    //   • write → pagesTexts: merge each page's rewritten copy into pagesState.
+    //   • edit  → layoutPatch: fold the page patch in (same applyPatch path the
+    //             finalized editor uses) — covers text + image-slot + template moves.
+    // nameOptions (≤4) render as picker chips; picking one sends it back as the
+    // next chapter-chat message so the model can fold the chosen title in.
+    // History is browser-held (the endpoint is stateless), capped at 20 turns.
+    // ════════════════════════════════════════════════════════════════════════
+
+    // write: merge the agent's per-page copy rewrites into pagesState + repaint.
+    function applyChapterWrite(pagesTexts: V3PageTextsPatch[]): boolean {
+      let applied = false;
+      for (const pt of pagesTexts) {
+        const page = pageByIndex(pt.pageIndex);
+        if (!page) continue;
+        page.textsJson = { ...page.textsJson, ...pt.texts };
+        applied = true;
+      }
+      if (applied) {
+        repaintBook();
+        appendStep(aT('✏️ 已为本章写好文案。', '✏️ Wrote this chapter’s copy.'));
+      }
+      return applied;
+    }
+
+    // edit: fold the agent's deterministic page patch into pagesState via the same
+    // applyPatchToPages used by the finalized editor (text / image-slot / template).
+    function applyChapterEdit(layoutPatch: LayoutPatchEntry[]): boolean {
+      if (layoutPatch.length === 0) return false;
+      pagesState = applyPatchToPages(pagesState, layoutPatch);
+      rebuildSpreads();
+      repaintBook();
+      appendStep(aT('🛠️ 已更新这一页的排版。', '🛠️ Updated this page’s layout.'));
+      return true;
+    }
+
+    // Send one chapter-chat message and apply the result. `message` is the user's
+    // text (a name-chip pick reuses this path). Returns nothing; UI side effects only.
+    async function runChapterChatTurn(message: string) {
+      const host = appendThinkingShell();
+      const chapterId = storyGate?.currentChapterId ?? null;
+      if (!chapterId) {
+        // No live chapter (all chapters confirmed) — nothing to author. Degrade to a
+        // calm reply rather than POSTing an invalid (chapter-less) turn.
+        settleThinking(host, 'analyzedFeedback');
+        appendReplyBody(
+          host,
+          aT('这一章已经确定了——你可以继续下一步，或者从左侧选另一章来调整。',
+             "This chapter is already confirmed — move on, or pick another chapter on the left to tweak."),
+        );
+        appendTime(host);
+        restAwait();
+        scrollChat();
+        return;
+      }
+      const userMessage = message.slice(0, MESSAGE_MAX);
+      const history = chapterHistory.slice(-CHAT_HISTORY_MAX);
+      try {
+        const res = await postChapterChat(albumId, {
+          language: currentLang === 'zh' ? 'zh' : 'en',
+          chapterId,
+          history,
+          userMessage,
+          // ③ 改页: when a page is selected, "change this / this page" targets it.
+          ...(selectedPageIndex != null ? { focusedPageIndex: selectedPageIndex } : {}),
+        });
+        settleThinking(host, 'analyzedFeedback');
+        appendReplyBody(host, res.assistantReply);
+        // Frame 4 红线: a talk turn applies NO patch — only write/edit mutate pages.
+        if (res.kind === 'write' && res.pagesTexts) {
+          applyChapterWrite(res.pagesTexts);
+        } else if (res.kind === 'edit' && res.layoutPatch) {
+          // The agent's V3LayoutPatchEntry carries images/texts; map to the browser
+          // patch shape (imagesJson/textsJson) applyPatchToPages expects.
+          applyChapterEdit(
+            res.layoutPatch.map((e) => ({
+              pageIndex: e.pageIndex,
+              ...(e.templateId !== undefined ? { templateId: e.templateId } : {}),
+              ...(e.images !== undefined ? { imagesJson: e.images } : {}),
+              ...(e.texts !== undefined ? { textsJson: e.texts } : {}),
+            })),
+          );
+        }
+        if (res.nameOptions && res.nameOptions.length > 0) {
+          appendNameChips(host, res.nameOptions);
+        }
+        appendTime(host);
+        // Record the turn for the next round's history (user + assistant).
+        chapterHistory.push({ role: 'user', content: userMessage });
+        chapterHistory.push({ role: 'assistant', content: res.assistantReply });
+      } catch (e) {
+        if (authErr(host, e)) return;
+      }
+      restAwait();
+      scrollChat();
+      updateAuthInputPlaceholder();
+    }
+
+    // Render the chapter-title candidates (≤4) as picker chips under the reply.
+    // Picking one feeds it back as the next chapter-chat message so the model can
+    // adopt the chosen title — the browser never writes the tree (§3 数据归属).
+    function appendNameChips(host: HTMLElement, names: string[]) {
+      const row = document.createElement('div');
+      row.className = 'chips';
+      for (const name of names.slice(0, 4)) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'chip-select';
+        chip.textContent = name;
+        chip.addEventListener('click', () => {
+          if (sending) return;
+          sending = true;
+          row.querySelectorAll('.chip-select').forEach((c) => c.classList.remove('selected'));
+          chip.classList.add('selected');
+          // Echo the pick as a user bubble, then run it as a normal chapter-chat turn.
+          appendUserText(aT(`就用「${name}」`, `Use "${name}"`));
+          hideAwait();
+          scrollChat();
+          void runChapterChatTurn(aT(`这一章就叫「${name}」`, `Name this chapter "${name}"`))
+            .finally(() => { sending = false; });
+        });
+        row.appendChild(chip);
+      }
+      host.appendChild(row);
     }
     // ── Purchase card (积分不足引导卡): on CreditInsufficientError, surface the
     // design's buy-credits card at the bottom of the conversation (it carries its

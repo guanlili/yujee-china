@@ -14,6 +14,9 @@ import {
   type AlbumLayoutPlan,
   type ImagePos,
   type Page as V3Page,
+  type V3Chapter,
+  type V3ChatTurn,
+  type V3ChapterChatResponse,
   type V3LayoutTree as V3LayoutTreeT,
   type V3Language,
   type V3StoryProgress,
@@ -146,6 +149,29 @@ function applyLayoutPatchToDraftPages(pages: V3Page[], patch: V3LayoutPatchEntry
   }
 
   return next;
+}
+
+// ② 章节故事 — server-side single-chapter slice for /v3/chapter-chat (§8.3 单章切片;
+// invariant 12: the authoring tree NEVER round-trips through the browser, so the
+// browser sends only a chapterId and Web re-slices draft_json here). Returns the
+// chapter's V3Chapter node + the raw Page[] whose images reference that chapter's
+// photos (same membership rule getDraftSkeleton uses). Pages keep their STORED
+// draft_json pageIndex so the agent's pagesTexts/layoutPatch echo back the same key
+// (the browser then matches that index 1:1). This relies on analyze writing sequential
+// page indices (skeleton_v3 page_index = len(pages)); if a future flow reorders/removes
+// draft pages it MUST keep pageIndex stable, or write/edit patches would target the
+// wrong page browser-side.
+function sliceChapterForChat(
+  normalized: NormalizedStoryDraft,
+  chapterId: string,
+): { chapter: V3Chapter; pages: V3Page[] } | null {
+  const chapter = normalized.tree.chapters.find((c) => c.chapterId === chapterId);
+  if (!chapter) return null;
+  const photoIds = new Set(chapter.photos.map((p) => p.photoId));
+  const pages = (normalized.pages ?? []).filter((page) =>
+    Object.values(page.images).some((id) => photoIds.has(id)),
+  );
+  return { chapter, pages };
 }
 
 function storyProgressFrom(stage: string, normalized: NormalizedStoryDraft | null): StoryProgressState {
@@ -377,6 +403,44 @@ export const albumService = {
         ...normalized,
         progress: { currentChapterId: nextCurrent, doneChapterIds },
       });
+    });
+  },
+
+  // ② 章节故事 — one chapter-chat turn (WP2.1 #185 wiring / 缺口#20). The browser
+  // holds NO authoring tree (invariant 12 / §3 数据归属): it sends only the chapterId
+  // it's on + history + userMessage (+ focusedPageIndex). Web is the sole truth source
+  // for draft_json, so we re-slice the single chapter here (chapter node + its pages,
+  // §8.3 单章切片) and forward the full V3ChapterChatRequest to the stateless agent.
+  // talk/write/edit dispatch + patch contents are the agent's; this method does NOT
+  // mutate draft_json (the browser mirrors write/edit patches locally; nothing is
+  // round-tripped back, and stage advances only via markChapterDone). Caller must hold
+  // ownership (findOwned). Throws ALBUM_NOT_FOUND / ALBUM_NOT_OWNED / VALIDATION_FAILED.
+  async chapterChatTurn(
+    userId: string,
+    albumId: string,
+    input: {
+      language: V3Language;
+      chapterId: string;
+      history: V3ChatTurn[];
+      userMessage: string;
+      focusedPageIndex?: number;
+    },
+  ): Promise<V3ChapterChatResponse> {
+    const album = await this.findOwned(userId, albumId);
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+    const slice = sliceChapterForChat(normalized, input.chapterId);
+    if (!slice) throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+    return agentClient.chapterChatV3({
+      albumId,
+      language: input.language,
+      chapter: slice.chapter,
+      pages: slice.pages,
+      history: input.history,
+      userMessage: input.userMessage,
+      ...(input.focusedPageIndex !== undefined
+        ? { focusedPageIndex: input.focusedPageIndex }
+        : {}),
     });
   },
 

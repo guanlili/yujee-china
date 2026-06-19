@@ -1190,3 +1190,149 @@ test('finalize: does not call agent finalize when not all story chapters are don
     await cleanupUser(user.id);
   }
 });
+
+// ───────── ② 章节故事 — chapterChatTurn server slice (缺口#20) ──────────────
+//
+// The browser holds no authoring tree (invariant 12): it sends only chapterId +
+// history + userMessage; the service re-slices draft_json into the single-chapter
+// V3ChapterChatRequest. These lock the load-bearing slice (one chapter node + only
+// THAT chapter's pages) and the turn pass-through.
+
+// Two chapters, each with one photo + one page referencing that photo, so the
+// per-chapter page membership (images→photoId) has something to slice.
+async function seedChapterChatAlbum(userId: string) {
+  const album = await makeAlbum(userId);
+  const tree = {
+    chapters: [
+      {
+        chapterId: 'c1',
+        description: 'chapter one',
+        accentColor: null,
+        artFont: null,
+        photos: [{ photoId: 'p1', sceneDescription: 'beach', width: 800, height: 600, orientation: 'landscape' as const, takenAt: null }],
+      },
+      {
+        chapterId: 'c2',
+        description: 'chapter two',
+        accentColor: null,
+        artFont: null,
+        photos: [{ photoId: 'p2', sceneDescription: 'street', width: 600, height: 800, orientation: 'portrait' as const, takenAt: null }],
+      },
+    ],
+  };
+  const pages: Page[] = [
+    { pageIndex: 0, templateId: 'mag-02', images: { image: 'p1' }, texts: { headline: 'one' } },
+    { pageIndex: 1, templateId: 'mag-02', images: { image: 'p2' }, texts: { headline: 'two' } },
+  ];
+  const wrapped: V3StoryDraft = {
+    version: 'v3-story',
+    tree,
+    pages,
+    progress: { currentChapterId: 'c1', doneChapterIds: [] },
+  };
+  await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+  return album.id;
+}
+
+const chatUsage = { durationMs: 1, models: { planning: 'deepseek-chat' } };
+
+test('chapterChatTurn: slices ONLY the named chapter node + its pages to the agent', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('gap20-slice');
+  try {
+    const albumId = await seedChapterChatAlbum(user.id);
+    const seen: Parameters<typeof agentClient.chapterChatV3>[0][] = [];
+    t.mock.method(agentClient, 'chapterChatV3', async (p: Parameters<typeof agentClient.chapterChatV3>[0]) => {
+      seen.push(p);
+      return { kind: 'talk' as const, assistantReply: 'Tell me more.', usage: chatUsage };
+    });
+
+    await albumService.chapterChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c2',
+      history: [],
+      userMessage: 'about chapter two',
+      focusedPageIndex: 1,
+    });
+
+    assert.equal(seen.length, 1, 'agent must be called once');
+    const payload = seen[0]!;
+    assert.equal(payload.albumId, albumId);
+    // single-chapter slice: only c2's node, not the whole tree.
+    assert.equal(payload.chapter.chapterId, 'c2');
+    assert.deepEqual(payload.chapter.photos.map((ph) => ph.photoId), ['p2']);
+    // only c2's page (the one whose image references p2) is forwarded.
+    assert.deepEqual(payload.pages.map((pg) => pg.pageIndex), [1]);
+    assert.equal(payload.userMessage, 'about chapter two');
+    assert.equal(payload.focusedPageIndex, 1);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('chapterChatTurn: passes a write turn through verbatim + never mutates draft_json', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('gap20-passthrough');
+  try {
+    const albumId = await seedChapterChatAlbum(user.id);
+    const before = (await albumRepo.findById(albumId))?.draftJson;
+    t.mock.method(agentClient, 'chapterChatV3', async () => ({
+      kind: 'write' as const,
+      assistantReply: 'Done.',
+      pagesTexts: [{ pageIndex: 0, texts: { headline: 'Coast Days' } }],
+      nameOptions: ['Coast Days', 'By the Sea'],
+      usage: chatUsage,
+    }));
+
+    const res = await albumService.chapterChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c1',
+      history: [],
+      userMessage: 'write it',
+    });
+    assert.equal(res.kind, 'write');
+    assert.deepEqual(res.pagesTexts, [{ pageIndex: 0, texts: { headline: 'Coast Days' } }]);
+    assert.deepEqual(res.nameOptions, ['Coast Days', 'By the Sea']);
+    // The chat turn NEVER writes draft_json (browser mirrors patches; stage advances
+    // only via markChapterDone). The persisted draft is byte-identical afterwards.
+    const after = (await albumRepo.findById(albumId))?.draftJson;
+    assert.deepEqual(after, before);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('chapterChatTurn: unknown chapterId throws VALIDATION_FAILED before any agent call', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('gap20-bad-chapter');
+  try {
+    const albumId = await seedChapterChatAlbum(user.id);
+    let called = false;
+    t.mock.method(agentClient, 'chapterChatV3', async () => {
+      called = true;
+      return { kind: 'talk' as const, assistantReply: 'x', usage: chatUsage };
+    });
+
+    await assert.rejects(
+      () => albumService.chapterChatTurn(user.id, albumId, {
+        language: 'en',
+        chapterId: 'nope',
+        history: [],
+        userMessage: 'hi',
+      }),
+      hasCode('VALIDATION_FAILED'),
+    );
+    assert.equal(called, false);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});

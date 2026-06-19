@@ -1,6 +1,10 @@
 'use client';
 
-import { UnauthorizedError } from '@/lib/generation/client';
+import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/client';
+import type {
+  V3ChatTurn,
+  V3ChapterChatResponse,
+} from '@yujee/contracts';
 
 // Browser-side client for the V3 authoring surface. The read-only draft skeleton
 // remains server-derived from draft_json; legacy draft chat endpoints were removed
@@ -80,6 +84,23 @@ async function getJson<T>(path: string): Promise<T> {
   return json.data as T;
 }
 
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  if (!json.ok) {
+    // Same typed-error posture as the generation client so the editor can redirect
+    // to login / surface the buy-credits card instead of dumping a raw message.
+    if (res.status === 401 || json.error?.code === 'UNAUTHORIZED') throw new UnauthorizedError();
+    if (json.error?.code === 'CREDIT_INSUFFICIENT') throw new CreditInsufficientError();
+    throw new Error(json.error?.message ?? 'Request failed');
+  }
+  return json.data as T;
+}
+
 const V3_AUTHORING_GUIDANCE =
   'Draft chat was retired with the legacy generation flow. Continue with the V3 chapter confirmation, theme, cover, and export steps.';
 
@@ -96,12 +117,25 @@ export function postTheme(
   return Promise.resolve({ theme: null, assistantReply: V3_AUTHORING_GUIDANCE });
 }
 
+// ② 章节故事 — one real /v3/chapter-chat turn (缺口#20). Invariant 12 / §3 数据归属:
+// the browser holds NO authoring tree, so it sends ONLY the chapter it's on (chapterId)
+// + history + userMessage (+ the focused page); the Web route re-slices draft_json
+// server-side into the single-chapter V3ChapterChatRequest the agent needs. Returns the
+// agent's turn verbatim: kind=talk/write/edit + assistantReply, plus pagesTexts (write),
+// layoutPatch (edit), nameOptions (chapter-title chips). The caller applies the patch by
+// kind (talk NEVER carries one — Frame 4 红线 is enforced agent-side via the contract).
+export interface ChapterChatInput {
+  language: 'zh' | 'en';
+  chapterId: string;
+  history: V3ChatTurn[];
+  userMessage: string;
+  focusedPageIndex?: number;
+}
 export function postChapterChat(
-  _albumId: string,
-  chapterId: string,
-  _userMessage: string,
-): Promise<{ assistantReply: string; state: ChapterState; chapterId: string; nameOptions?: string[] }> {
-  return Promise.resolve({ assistantReply: V3_AUTHORING_GUIDANCE, state: 'generated', chapterId });
+  albumId: string,
+  input: ChapterChatInput,
+): Promise<V3ChapterChatResponse> {
+  return postJson(`/api/v3/albums/${albumId}/chapter-chat`, input);
 }
 
 export function postFinalize(
