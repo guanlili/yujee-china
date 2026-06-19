@@ -9,6 +9,8 @@ import {
   V2EditResponse,
   V2DraftEditResponse,
   V2InspectResponse,
+  // v3 (五环节状态机). Truth source: packages/contracts/src/v3.ts.
+  V3ChapterChatResponse,
 } from '@yujee/contracts';
 import type {
   V2InitRequest,
@@ -20,6 +22,7 @@ import type {
   V2DraftEditRequest,
   V2InspectRequest,
   V3AnalyzeRequest,
+  V3ChapterChatRequest,
 } from '@yujee/contracts';
 
 export type AgentPhotoInput = {
@@ -77,6 +80,18 @@ export const agentClient = {
       throw ERRORS.AGENT_INTERNAL_ERROR();
     }
     return { requestId: payload.requestId };
+  },
+
+  // POST /v3/chapter-chat — synchronous (② 章节故事, WP2.1). Only the one chapter
+  // slice goes out (§8.3 单章切片) — chapter tree node + this chapter's skeleton
+  // pages + history + userMessage (+ optional focusedPageIndex). The agent
+  // dispatches THIS turn (引导/写/改) by intent and returns kind + assistantReply
+  // (+ pagesTexts on write, + layoutPatch on a text edit, + nameOptions). Stateless:
+  // stage 推进 + 各章 done live in Web (WP2.4). 60s budget, no base64 here.
+  async chapterChatV3(payload: V3ChapterChatRequest): Promise<V3ChapterChatResponse> {
+    return postSyncV3('/v3/chapter-chat', payload, V3ChapterChatResponse, {
+      albumId: payload.albumId,
+    });
   },
 
   // ──────────────────────────── v2 (agent rebuild) ────────────────────────────
@@ -227,6 +242,28 @@ async function postSyncV2<T>(
   schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
   logCtx: Record<string, unknown>,
 ): Promise<T> {
+  return postSync('v2', path, payload, schema, logCtx);
+}
+
+// Same envelope + error mapping for the synchronous v3 endpoints (chapter-chat,
+// later recommend/apply-theme/cover/finalize). The agent answers in the identical
+// { ok, data } shape; only the contract schemas differ.
+async function postSyncV3<T>(
+  path: string,
+  payload: unknown,
+  schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
+  logCtx: Record<string, unknown>,
+): Promise<T> {
+  return postSync('v3', path, payload, schema, logCtx);
+}
+
+async function postSync<T>(
+  api: 'v2' | 'v3',
+  path: string,
+  payload: unknown,
+  schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
+  logCtx: Record<string, unknown>,
+): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${env.AGENT_BASE_URL}${path}`, {
@@ -240,19 +277,19 @@ async function postSyncV2<T>(
       signal: AbortSignal.timeout(60_000),
     });
   } catch (e) {
-    logger.error({ err: String(e), path, ...logCtx }, 'agent v2 sync call failed');
+    logger.error({ err: String(e), api, path, ...logCtx }, 'agent sync call failed');
     throw ERRORS.AGENT_CHAT_FAILED();
   }
   if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
   if (!res.ok) {
-    logger.error({ status: res.status, path, ...logCtx }, 'agent v2 sync non-2xx');
+    logger.error({ status: res.status, api, path, ...logCtx }, 'agent sync non-2xx');
     throw ERRORS.AGENT_CHAT_FAILED();
   }
   const json = await res.json();
   if (!json.ok) throw ERRORS.AGENT_CHAT_FAILED();
   const parsed = schema.safeParse(json.data);
   if (!parsed.success) {
-    logger.error({ path, ...logCtx }, 'agent v2 sync response off-contract');
+    logger.error({ api, path, ...logCtx }, 'agent sync response off-contract');
     throw ERRORS.AGENT_INVALID_OUTPUT();
   }
   return parsed.data;

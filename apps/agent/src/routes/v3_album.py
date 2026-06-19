@@ -32,7 +32,7 @@ import asyncio
 import time
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from ..auth import require_bearer
 from ..logging_config import get_logger, request_id_var
@@ -44,6 +44,8 @@ from ..schemas import (
     V3AnalyzeCompleted,
     V3CallbackError,
     V3Chapter,
+    V3ChapterChatRequest,
+    V3ChapterChatResponse,
     V3FailedEvent,
     V3JobStage,
     V3LayoutTree,
@@ -52,9 +54,11 @@ from ..schemas import (
     V3Usage,
 )
 from ..services import callback
+from ..services import chapter_chat_v3
 from ..services import generic_copy
 from ..services import select_template
 from ..services import vision
+from ..services.chapter_chat_v3 import ChapterChatV3Error
 from ..services.vision import VisionError
 from ..settings import get_settings
 
@@ -258,3 +262,49 @@ async def submit_analyze(
         ok=True,
         data=V3AcceptedData(requestId=req.requestId, accepted=True),
     ).model_dump(mode="json")
+
+
+# ---------- chapter-chat (② 章节故事, sync) -----------------------------------
+
+
+@router.post("/v3/chapter-chat", dependencies=[Depends(require_bearer)])
+async def submit_chapter_chat(req: V3ChapterChatRequest) -> dict[str, Any]:
+    """② 章节故事 turn endpoint (§8 同步 / WP2.1 #185).
+
+    Synchronous (front-end spinner; 60s budget). Stateless (§8.3): the Agent
+    dispatches THIS turn (引导/写/改) by the user's intent and returns a reply +
+    the turn's patch — it holds no chapter/stage. Web owns stage 推进 + 各章 done
+    (§4.2(1), WP2.4) and merges the patch into draft_json. Failures answer in the
+    contract error shape (§8.3 同步端点走 HTTP 错误码; front end may retry without
+    polluting stage)."""
+    log.info(
+        "v3_chapter_chat.accepted",
+        album_id=req.albumId,
+        chapter_id=req.chapter.chapterId,
+        pages=len(req.pages),
+        history_len=len(req.history),
+        focused=req.focusedPageIndex,
+        language=req.language,
+    )
+    try:
+        response: V3ChapterChatResponse = await chapter_chat_v3.run(req)
+    except ChapterChatV3Error as exc:
+        log.warning("v3_chapter_chat.failed", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_PLANNING_FAILED", "message": str(exc)[:300]},
+            },
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
+        log.exception("v3_chapter_chat.unhandled", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
+            },
+        ) from exc
+    log.info("v3_chapter_chat.completed", kind=response.kind, album_id=req.albumId)
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}

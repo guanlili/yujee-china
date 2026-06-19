@@ -1,0 +1,371 @@
+"""WP2.1 (#185) — V3 chapter-chat turn state machine + sync endpoint.
+
+Exercises the per-turn dispatch (引导/写/改 free interleaving, §4.2(2)) of the new
+V3 service (`chapter_chat_v3`, Option B — v2 `chapter_chat.py` untouched) plus the
+`POST /v3/chapter-chat` sync route: kind classification, the write turn filling
+every page, the edit turn rewriting only the focused page, the talk turn returning
+no patch, the slot/ maxChars guardrails, the auth gate, and the contract-shaped
+error path. The DeepSeek call is injected (`complete=`) so the turn outputs are
+deterministic; two-end contract parity is checked by re-validating the response
+against V3ChapterChatResponse.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+from src.schemas import (
+    Page,
+    V3Chapter,
+    V3ChapterChatRequest,
+    V3ChapterChatResponse,
+    V3ChapterPhoto,
+)
+from src.services import chapter_chat_v3
+from src.services.chapter_chat_v3 import ChapterChatV3Error
+
+# Real template ids (packages/contracts/templates): mag-13 authored slots =
+# title(maxChars 30) + caption(body, 165); mag-04 = 3-image interior.
+_COVER = "mag-13"
+_INTERIOR = "mag-04"
+
+
+def _chapter() -> V3Chapter:
+    return V3Chapter(
+        chapterId="ch_1",
+        description="A spring trip to the coast.",
+        accentColor=None,
+        artFont=None,
+        photos=[
+            V3ChapterPhoto(
+                photoId="p1",
+                sceneDescription="two people on a beach",
+                width=800,
+                height=600,
+                orientation="landscape",
+                takenAt="2024-04-01T10:00:00Z",
+            )
+        ],
+    )
+
+
+def _pages() -> list[Page]:
+    return [
+        Page(pageIndex=0, templateId=_COVER, images={"image": "p1"}, texts={}),
+        Page(pageIndex=1, templateId=_INTERIOR, images={}, texts={}),
+    ]
+
+
+def _req(
+    *,
+    user_message: str = "tell me about it",
+    history: list[dict[str, str]] | None = None,
+    focused: int | None = None,
+    pages: list[Page] | None = None,
+) -> V3ChapterChatRequest:
+    # focusedPageIndex is an optional int (default sentinel = absent, not nullable
+    # under strict mode) — omit the key when there is no focus rather than pass None.
+    extra = {"focusedPageIndex": focused} if focused is not None else {}
+    return V3ChapterChatRequest(
+        albumId="alb_v3",
+        language="en",
+        chapter=_chapter(),
+        pages=pages or _pages(),
+        history=history or [],
+        userMessage=user_message,
+        **extra,
+    )
+
+
+def _fake_complete(payload: dict[str, Any]):
+    """Return an injectable `complete` that answers with a fixed model JSON."""
+
+    async def complete(*, messages, max_tokens, temperature):  # noqa: ANN001
+        return {
+            "choices": [{"message": {"content": json.dumps(payload)}}],
+            "usage": {"prompt_tokens": 11, "completion_tokens": 7},
+        }
+
+    return complete
+
+
+def _run(req: V3ChapterChatRequest, payload: dict[str, Any]) -> V3ChapterChatResponse:
+    return asyncio.run(chapter_chat_v3.run(req, complete=_fake_complete(payload)))
+
+
+# ---------- talk turn (引导) --------------------------------------------------
+
+
+def test_talk_turn_returns_reply_only():
+    resp = _run(
+        _req(user_message="hi"),
+        {"kind": "talk", "assistantReply": "What made this trip special?"},
+    )
+    assert resp.kind == "talk"
+    assert resp.assistantReply == "What made this trip special?"
+    # 引导 never carries a patch (Frame 4 红线).
+    assert resp.pagesTexts is None
+    assert resp.layoutPatch is None
+
+
+def test_unknown_kind_defaults_to_talk_never_autowrites():
+    resp = _run(_req(), {"kind": "garbage", "assistantReply": "Go on?"})
+    assert resp.kind == "talk"
+    assert resp.pagesTexts is None
+
+
+# ---------- write turn (写) ---------------------------------------------------
+
+
+def test_write_turn_fills_every_page_and_clamps():
+    long_title = "x" * 100  # mag-13 title maxChars = 30
+    resp = _run(
+        _req(user_message="write it now"),
+        {
+            "kind": "write",
+            "assistantReply": "Done.",
+            "pagesTexts": [
+                {"pageIndex": 0, "texts": {"title": long_title, "caption": "A coast story."}},
+                {"pageIndex": 1, "texts": {"caption1": "Main square.", "caption2": "A second memory."}},
+            ],
+            "nameOptions": ["Coast Days", "Coast Days", "Salt Air", ""],
+        },
+    )
+    assert resp.kind == "write"
+    assert resp.pagesTexts is not None
+    by_index = {p.pageIndex: p.texts for p in resp.pagesTexts}
+    # Every page comes back with all authored slots filled.
+    assert set(by_index) == {0, 1}
+    assert by_index[1] == {"caption1": "Main square.", "caption2": "A second memory."}
+    # title clamped to maxChars 30; authored caption kept.
+    assert len(by_index[0]["title"]) == 30
+    assert by_index[0]["caption"] == "A coast story."
+    # nameOptions de-duped + empties dropped, ≤4.
+    assert resp.nameOptions == ["Coast Days", "Salt Air"]
+
+
+def test_write_omitted_authored_page_degrades_to_talk():
+    resp = _run(
+        _req(user_message="write it now"),
+        {
+            "kind": "write",
+            "assistantReply": "Done.",
+            "pagesTexts": [
+                {"pageIndex": 0, "texts": {"title": "Coast", "caption": "A coast story."}},
+                # page 1 has authored slots and is omitted by the model.
+            ],
+        },
+    )
+    assert resp.kind == "talk"
+    assert resp.pagesTexts is None
+
+
+def test_write_missing_required_slot_degrades_to_talk():
+    resp = _run(
+        _req(user_message="write it now"),
+        {
+            "kind": "write",
+            "assistantReply": "Done.",
+            "pagesTexts": [
+                {"pageIndex": 0, "texts": {"title": "Coast", "caption": "A coast story."}},
+                # mag-04 also requires caption2.
+                {"pageIndex": 1, "texts": {"caption1": "Main square."}},
+            ],
+        },
+    )
+    assert resp.kind == "talk"
+    assert resp.pagesTexts is None
+
+
+def test_write_drops_illegal_slot_ids():
+    resp = _run(
+        _req(user_message="generate"),
+        {
+            "kind": "write",
+            "assistantReply": "Done.",
+            "pagesTexts": [
+                {
+                    "pageIndex": 0,
+                    "texts": {
+                        "title": "Coast",
+                        "caption": "A coast story.",
+                        "folio": "9",
+                        "bogus": "x",
+                    },
+                },
+                {"pageIndex": 1, "texts": {"caption1": "Main square.", "caption2": "A second memory."}},
+            ],
+        },
+    )
+    texts = {p.pageIndex: p.texts for p in resp.pagesTexts}[0]
+    # folio is decoration (code-filled, not authored) and bogus is unknown → dropped.
+    assert texts == {"title": "Coast", "caption": "A coast story."}
+
+
+def test_write_expands_repeat_text_slots_from_page_images():
+    page = Page(
+        pageIndex=2,
+        templateId="mag-10",
+        images={"cells[0].image": "p1", "cells[1].image": "p1"},
+        texts={},
+    )
+    resp = _run(
+        _req(user_message="write this grid", pages=[page]),
+        {
+            "kind": "write",
+            "assistantReply": "Done.",
+            "pagesTexts": [
+                {
+                    "pageIndex": 2,
+                    "texts": {
+                        "cells[0]": "a" * 100,
+                        "cells[1]": "Second cell.",
+                        "folio": "9",
+                    },
+                }
+            ],
+        },
+    )
+    assert resp.kind == "write"
+    texts = resp.pagesTexts[0].texts
+    assert set(texts) == {"cells[0]", "cells[1]"}
+    assert len(texts["cells[0]"]) == 70
+    assert texts["cells[1]"] == "Second cell."
+
+
+# ---------- edit turn (改) ----------------------------------------------------
+
+
+def test_edit_turn_rewrites_only_focused_page():
+    resp = _run(
+        _req(user_message="make page 0 warmer", focused=0),
+        {
+            "kind": "edit",
+            "assistantReply": "Warmer now.",
+            "pageTexts": {"pageIndex": 0, "texts": {"title": "Golden Coast"}},
+        },
+    )
+    assert resp.kind == "edit"
+    assert resp.layoutPatch is not None and len(resp.layoutPatch) == 1
+    patch = resp.layoutPatch[0]
+    assert patch.pageIndex == 0
+    assert patch.texts == {"title": "Golden Coast"}
+    # Pure-text edit never changes templateId/images (photo升级 is WP2.3).
+    assert patch.templateId is None
+    assert patch.images is None
+
+
+def test_edit_without_focus_degrades_to_talk():
+    resp = _run(
+        _req(user_message="change this page"),  # no focusedPageIndex
+        {
+            "kind": "edit",
+            "assistantReply": "Which page?",
+            "pageTexts": {"pageIndex": 0, "texts": {"title": "x"}},
+        },
+    )
+    # No focus → nothing to edit → talk (never fabricate a patch).
+    assert resp.kind == "talk"
+    assert resp.layoutPatch is None
+
+
+def test_edit_with_no_usable_texts_degrades_to_talk():
+    resp = _run(
+        _req(user_message="swap the photo", focused=0),
+        {
+            "kind": "edit",
+            "assistantReply": "Want a different photo here?",
+            "pageTexts": {"pageIndex": 0, "texts": {}},
+        },
+    )
+    # Image-leaning edit with no text patch → talk seam (WP2.3 owns photo change).
+    assert resp.kind == "talk"
+    assert resp.layoutPatch is None
+
+
+# ---------- model failure -----------------------------------------------------
+
+
+def test_non_json_response_raises():
+    async def bad_complete(*, messages, max_tokens, temperature):  # noqa: ANN001
+        return {"choices": [{"message": {"content": "not json at all"}}]}
+
+    with pytest.raises(ChapterChatV3Error):
+        asyncio.run(chapter_chat_v3.run(_req(), complete=bad_complete))
+
+
+# ---------- route: auth + contract shape -------------------------------------
+
+
+def _client() -> TestClient:
+    # Import lazily so the autouse secret fixture (conftest) sets env before
+    # src.main runs get_settings() at import time (mirrors test_v2_theme_chat).
+    from src.main import app
+
+    return TestClient(app)
+
+
+def _route_body() -> dict[str, Any]:
+    return {
+        "albumId": "alb_v3",
+        "language": "en",
+        "chapter": _chapter().model_dump(),
+        "pages": [p.model_dump() for p in _pages()],
+        "history": [],
+        "userMessage": "tell me about it",
+    }
+
+
+def test_route_requires_auth():
+    res = _client().post("/v3/chapter-chat", json=_route_body())
+    assert res.status_code == 401
+
+
+def test_route_happy_path_returns_contract_envelope(monkeypatch):
+    async def fake_run(req, *, complete=None):  # noqa: ANN001
+        return V3ChapterChatResponse(
+            kind="talk",
+            assistantReply="Tell me more.",
+            usage=req_usage(),
+        )
+
+    monkeypatch.setattr(chapter_chat_v3, "run", fake_run)
+    res = _client().post(
+        "/v3/chapter-chat",
+        json=_route_body(),
+        headers={"Authorization": "Bearer test_secret"},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["ok"] is True
+    # Re-validate against the V3 contract (two-end parity: schemas.py ↔ v3.ts).
+    parsed = V3ChapterChatResponse(**body["data"])
+    assert parsed.kind == "talk"
+    assert parsed.assistantReply == "Tell me more."
+
+
+def test_route_planning_failure_is_502_contract_error(monkeypatch):
+    async def boom(req, *, complete=None):  # noqa: ANN001
+        raise ChapterChatV3Error("model exploded")
+
+    monkeypatch.setattr(chapter_chat_v3, "run", boom)
+    res = _client().post(
+        "/v3/chapter-chat",
+        json=_route_body(),
+        headers={"Authorization": "Bearer test_secret"},
+    )
+    assert res.status_code == 502
+    body = res.json()
+    assert body["ok"] is False
+    assert body["error"]["code"] == "AGENT_PLANNING_FAILED"
+
+
+def req_usage():
+    from src.schemas import V3Models, V3Usage
+
+    return V3Usage(durationMs=1, models=V3Models(planning="deepseek-chat"))
