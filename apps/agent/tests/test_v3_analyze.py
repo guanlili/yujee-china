@@ -203,6 +203,16 @@ def test_analyze_mock_emits_stages_and_tree(captured_callbacks, count):
     placed = [pid for page in envelope.pages for pid in page.images.values()]
     assert sorted(placed) == sorted(f"p{i + 1}" for i in range(count))
 
+    # WP1.5 (#184) preview-state: generic copy is layered onto the pages — every page
+    # carries its `folio` page-number decoration (every interior template declares one),
+    # zero-padded to the page's 1-based number. The fixture photos all carry a takenAt,
+    # so date-bearing templates also expose a `MM/YY` dateNum. User-content slots stay
+    # EMPTY (正式文案 comes in the章节故事环节). 全链路:分析→树→套模板→通用文案/色→预览.
+    for page in envelope.pages:
+        assert page.texts.get("folio") == str(page.pageIndex + 1).zfill(2), page.texts
+        if "dateNum" in page.texts:
+            assert page.texts["dateNum"] == "01/24", page.texts
+
 
 def test_analyze_template_failure_resets_stage(monkeypatch, captured_callbacks):
     """A failure during the template stage emits failed with stage='template'

@@ -118,12 +118,25 @@ export function EditorPort({
 }
 
 // Human-readable copy for the live generation stage shown in the building
-// loading chat. Falls back to the generic "tidying up" line when the stage is
-// null/unknown (preserves the prior static behaviour). Uses the same local
+// loading chat. Falls back to the first-frame analyze line when the stage is
+// null/unknown. Uses the same local
 // dictionary convention as the rest of EditorPort (no messages/*.json).
 function buildingStageLabel(stage: string | null | undefined, locale: Locale): string {
   const zh = locale === 'zh';
   switch (stage) {
+    // V3 分析环节 (五环节状态机, WP1.5/#184): the /v3/analyze job streams these stage
+    // labels via the progress callback (agent V3JobStage: describe→group→template→
+    // preview). 'describe' is the first beat the user sees after the ≤0.5s nav, so it
+    // carries the "正在分析照片…" copy the acceptance calls for.
+    case 'describe':
+      return zh ? '正在分析照片…' : 'Looking at your photos…';
+    case 'group':
+      return zh ? '正在整理这些瞬间…' : 'Grouping your moments…';
+    case 'template':
+      return zh ? '正在编排版式…' : 'Laying out the spreads…';
+    case 'preview':
+      return zh ? '正在生成预览…' : 'Building your preview…';
+    // V2 stage labels (kept until the v1/v2 teardown, #197).
     case 'vision':
       return zh ? '正在分析你的照片…' : 'Looking at your photos…';
     case 'grouping':
@@ -135,7 +148,7 @@ function buildingStageLabel(stage: string | null | undefined, locale: Locale): s
     case 'finalize':
       return zh ? '正在生成终稿…' : 'Putting the final touches…';
     default:
-      return zh ? '正在收尾…' : 'Tidying up…';
+      return zh ? '正在分析照片…' : 'Looking at your photos…';
   }
 }
 

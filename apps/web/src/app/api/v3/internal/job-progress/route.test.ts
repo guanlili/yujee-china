@@ -82,7 +82,7 @@ test('unknown requestId → accepted:false, nothing written', async (t) => {
   assert.deepEqual((await res.json()).data, { accepted: false });
 });
 
-test('analyze/completed → draft_json retains tree pages + EDITING + hold settled (charge-at-init)', async (t) => {
+test('analyze/completed → draft_json retains tree pages + EDITING + stage story + hold settled (charge-at-init)', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('v3route-done');
   try {
@@ -101,8 +101,9 @@ test('analyze/completed → draft_json retains tree pages + EDITING + hold settl
     assert.equal(album?.status, 'EDITING');
     assert.deepEqual(album?.draftJson, { ...TREE, pages: PAGES });
     assert.equal(album?.layoutJson, null);
-    // stage stays 'analysing' in WP1.1 — WP1.5 advances it to 'story'.
-    assert.equal(album?.stage, 'analysing');
+    // WP1.5 (#184): the preview tree carries generic copy/colors → stage advances
+    // analysing → story in the same tx (stage ⟂ status; status stays EDITING).
+    assert.equal(album?.stage, 'story');
     // The single charge settles here.
     const hold = await creditHoldRepo.findById(holdId);
     assert.equal(hold?.status, 'SETTLED');
