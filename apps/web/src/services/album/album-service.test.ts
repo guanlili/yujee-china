@@ -356,6 +356,116 @@ test('getDraftSkeleton: flattens + re-indexes pages, slices chapters, passes met
   }
 });
 
+test('getDraftSkeleton: renders V3 tree+pages draft without dropping preview pages', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('w10-v3-skeleton');
+  try {
+    const album = await makeAlbum(user.id);
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      stage: 'story',
+      draftJson: {
+        chapters: [
+          {
+            chapterId: 'c1',
+            description: 'first',
+            accentColor: null,
+            artFont: null,
+            photos: [{ photoId: 'p1', sceneDescription: 'sea', width: 800, height: 600, orientation: 'landscape' }],
+          },
+          {
+            chapterId: 'c2',
+            description: 'second',
+            accentColor: null,
+            artFont: null,
+            photos: [{ photoId: 'p2', sceneDescription: 'city', width: 600, height: 800, orientation: 'portrait' }],
+          },
+        ],
+        pages: [
+          { pageIndex: 0, templateId: 'mag-01', images: { hero: 'p1' }, texts: { title: 'Cover' } },
+          { pageIndex: 1, templateId: 'mag-05', images: { hero: 'p1' }, texts: { body: 'First' } },
+          { pageIndex: 2, templateId: 'mag-06', images: { hero: 'p2' }, texts: { body: 'Second' } },
+          { pageIndex: 3, templateId: 'mag-20', images: {}, texts: { end: 'End' } },
+        ],
+      },
+    });
+
+    const sk = await albumService.getDraftSkeleton(user.id, album.id);
+    assert.ok(sk);
+    assert.deepEqual(sk!.pages.map((p) => p.pageIndex), [0, 1, 2, 3]);
+    assert.deepEqual(
+      sk!.pages.map((p) => p.kind),
+      ['cover', 'chapter', 'chapter', 'ending'],
+    );
+    assert.equal(sk!.pages[1]!.chapterId, 'c1');
+    assert.equal(sk!.pages[2]!.chapterId, 'c2');
+    assert.deepEqual(
+      sk!.chapters.map((ch) => ({ id: ch.chapterId, start: ch.pageStart, end: ch.pageEnd })),
+      [
+        { id: 'c1', start: 1, end: 2 },
+        { id: 'c2', start: 2, end: 3 },
+      ],
+    );
+    assert.equal(sk!.language, 'en');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('getDraftSkeleton: V3 body-only preview keeps first/last pages mapped to chapters', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('w10-v3-body-only');
+  try {
+    const album = await makeAlbum(user.id);
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      stage: 'story',
+      draftJson: {
+        chapters: [
+          {
+            chapterId: 'c1',
+            description: 'first',
+            accentColor: null,
+            artFont: null,
+            photos: [{ photoId: 'p1', sceneDescription: 'sea', width: 800, height: 600, orientation: 'landscape' }],
+          },
+          {
+            chapterId: 'c2',
+            description: 'second',
+            accentColor: null,
+            artFont: null,
+            photos: [{ photoId: 'p2', sceneDescription: 'city', width: 600, height: 800, orientation: 'portrait' }],
+          },
+        ],
+        pages: [
+          { pageIndex: 0, templateId: 'mag-05', images: { hero: 'p1' }, texts: { body: 'First' } },
+          { pageIndex: 1, templateId: 'mag-06', images: { hero: 'p2' }, texts: { body: 'Second' } },
+        ],
+      },
+    });
+
+    const sk = await albumService.getDraftSkeleton(user.id, album.id);
+    assert.ok(sk);
+    assert.deepEqual(sk!.pages.map((p) => p.kind), ['chapter', 'chapter']);
+    assert.deepEqual(sk!.pages.map((p) => p.chapterId), ['c1', 'c2']);
+    assert.deepEqual(
+      sk!.chapters.map((ch) => ({ id: ch.chapterId, start: ch.pageStart, end: ch.pageEnd })),
+      [
+        { id: 'c1', start: 0, end: 1 },
+        { id: 'c2', start: 1, end: 2 },
+      ],
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('getDraftSkeleton: null once finalized (layout_json set)', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
@@ -385,6 +495,222 @@ test('getDraftSkeleton: rejects a non-owner', async (t) => {
     const albumId = await seedDraftAlbum(owner.id);
     await assert.rejects(
       () => albumService.getDraftSkeleton(intruder.id, albumId),
+      (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
+    );
+  } finally {
+    await cleanupUser(owner.id);
+    await cleanupUser(intruder.id);
+  }
+});
+
+// ──────────────── ② 章节故事完成度闸门 (WP2.4 / #188) ────────────────
+
+function makeStoryTree(n: number) {
+  return {
+    chapters: Array.from({ length: n }, (_, i) => ({
+      chapterId: `c${i + 1}`,
+      description: `chapter ${i + 1}`,
+      accentColor: null,
+      artFont: null,
+      photos: [],
+    })),
+  };
+}
+
+function makePreviewPages(n: number) {
+  return Array.from({ length: n }, (_, i) => ({
+    pageIndex: i,
+    templateId: 'mag-02',
+    images: {},
+    texts: { headline: `chapter ${i + 1}` },
+  }));
+}
+
+// V3 story draft: current main stores the preview pages next to the tree
+// (`{ chapters, pages }`) after analyze-completed. The album is put in EDITING +
+// stage='story'.
+async function seedStoryAlbum(userId: string, n: number) {
+  const album = await makeAlbum(userId);
+  const tree = makeStoryTree(n);
+  const pages = makePreviewPages(n);
+  await albumRepo.update(db, album.id, {
+    status: 'EDITING',
+    stage: 'story',
+    draftJson: { ...tree, pages },
+  });
+  return album.id;
+}
+
+test('getStoryProgress: current tree+pages draft → first chapter current, none done, export locked', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp24-progress-bare');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 3);
+    const p = await albumService.getStoryProgress(user.id, albumId);
+    assert.equal(p.stage, 'story');
+    assert.deepEqual(p.chapterOrder, ['c1', 'c2', 'c3']);
+    assert.deepEqual(p.doneChapterIds, []);
+    assert.equal(p.currentChapterId, 'c1');
+    assert.equal(p.allDone, false);
+    assert.equal(p.exportUnlocked, false);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('getStoryProgress: legacy bare tree remains readable', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp24-progress-bare');
+  try {
+    const album = await makeAlbum(user.id);
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      stage: 'story',
+      draftJson: makeStoryTree(2),
+    });
+    const p = await albumService.getStoryProgress(user.id, album.id);
+    assert.deepEqual(p.chapterOrder, ['c1', 'c2']);
+    assert.equal(p.currentChapterId, 'c1');
+    assert.equal(p.exportUnlocked, false);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('markChapterDone: advances cursor; last chapter → stage=theme + export unlocked', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp24-confirm-flow');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 2);
+
+    const a = await albumService.markChapterDone(user.id, albumId, 'c1');
+    assert.deepEqual(a.doneChapterIds, ['c1']);
+    assert.equal(a.currentChapterId, 'c2'); // cursor moved to next not-done
+    assert.equal(a.allDone, false);
+    assert.equal(a.stage, 'story'); // not yet all done → stage unchanged
+    assert.equal(a.exportUnlocked, false);
+    const afterFirst = await albumRepo.findById(albumId);
+    assert.deepEqual(
+      (afterFirst?.draftJson as { pages?: unknown } | null)?.pages,
+      makePreviewPages(2),
+      'chapter done wrapper must preserve preview pages',
+    );
+
+    const b = await albumService.markChapterDone(user.id, albumId, 'c2');
+    assert.deepEqual(b.doneChapterIds, ['c1', 'c2']);
+    assert.equal(b.currentChapterId, null); // all done
+    assert.equal(b.allDone, true);
+    assert.equal(b.stage, 'theme'); // 全章确定 → 进下一环
+    assert.equal(b.exportUnlocked, true);
+
+    // Persisted: re-reading shows theme + unlocked; status untouched (⟂ stage).
+    const reloaded = await albumRepo.findById(albumId);
+    assert.equal(reloaded?.stage, 'theme');
+    assert.equal(reloaded?.status, 'EDITING'); // markChapterDone never touches status
+
+    const p = await albumService.getStoryProgress(user.id, albumId);
+    assert.equal(p.exportUnlocked, true);
+    assert.equal(p.allDone, true);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('getStoryProgress: stale later stage does not unlock export unless every chapter is done', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp24-stage-not-enough');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 2);
+    await albumService.markChapterDone(user.id, albumId, 'c1');
+    await albumRepo.update(db, albumId, { stage: 'cover' });
+
+    const p = await albumService.getStoryProgress(user.id, albumId);
+    assert.equal(p.stage, 'cover');
+    assert.equal(p.allDone, false);
+    assert.equal(p.exportUnlocked, false);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('markChapterDone: idempotent re-confirm does not double-advance', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp24-idempotent');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 2);
+    await albumService.markChapterDone(user.id, albumId, 'c1');
+    const again = await albumService.markChapterDone(user.id, albumId, 'c1');
+    assert.deepEqual(again.doneChapterIds, ['c1']); // still just c1
+    assert.equal(again.currentChapterId, 'c2');
+    assert.equal(again.stage, 'story');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('markChapterDone: after gate opened (stage past story) is a no-op', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp24-postgate');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 1);
+    await albumService.markChapterDone(user.id, albumId, 'c1'); // → theme
+    await albumRepo.update(db, albumId, { stage: 'cover' }); // user moved further on
+    const after = await albumService.markChapterDone(user.id, albumId, 'c1');
+    assert.equal(after.stage, 'cover'); // no regression
+    assert.equal(after.exportUnlocked, true);
+    const reloaded = await albumRepo.findById(albumId);
+    assert.equal(reloaded?.stage, 'cover');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('markChapterDone: unknown chapterId → VALIDATION_FAILED', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp24-badchapter');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 2);
+    await assert.rejects(
+      () => albumService.markChapterDone(user.id, albumId, 'nope'),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('getStoryProgress: rejects a non-owner', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const owner = await makeUser('wp24-owner');
+  const intruder = await makeUser('wp24-intruder');
+  try {
+    const albumId = await seedStoryAlbum(owner.id, 1);
+    await assert.rejects(
+      () => albumService.getStoryProgress(intruder.id, albumId),
       (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
     );
   } finally {

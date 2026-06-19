@@ -5,7 +5,17 @@ import { jobService } from '@/services/job/job-service';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
 import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
-import { AlbumDraft, type ImagePos } from '@yujee/contracts';
+import { getTemplate } from '@yujee/contracts/templates';
+import {
+  AlbumDraft,
+  Page,
+  V3LayoutTree,
+  V3StoryDraft,
+  type ImagePos,
+  type Page as V3Page,
+  type V3LayoutTree as V3LayoutTreeT,
+  type V3StoryProgress,
+} from '@yujee/contracts';
 
 const PDF_MAX_BYTES = 50 * 1024 * 1024; // 50MB — docs/web/api.md §3.6
 const COVER_THUMB_CONTENT_TYPE = 'image/jpeg';
@@ -18,6 +28,106 @@ type AlbumCoverPage = {
   textsJson: Record<string, string>;
   imagePosJson: Record<string, ImagePos>;
 };
+
+// ── ② 章节故事完成度(WP2.4 / §4.2(1)) ───────────────────────────────────
+//
+// `albums.draft_json` 在 V3 里有两种合法形态(无新增 DB 迁移):
+//   ① 裸 `V3LayoutTree`(WP1.5 #184 analyze-completed 直接写入的预览树);
+//   ② 包裹形 `V3StoryDraft = { version, tree, progress }`(WP2.4 起,带章级 done + 当前章)。
+// 读时一律归一化成「树 + 进度」:裸树视作进度初态(当前章 = 第一章,done 集合空)。
+// 写回 done/当前章时升级成包裹形,WP1.5 的写入路径不变(向后兼容)。
+//
+// stage(五环节走到哪)永远在 `albums.stage` 列(architecture §6.8 第 4 条),
+//   **不**塞进 draft_json;progress 只管「章级 done + 当前章」这一颗粒度。
+
+type NormalizedStoryDraft = {
+  tree: V3LayoutTreeT;
+  pages?: V3Page[];
+  progress: V3StoryProgress;
+};
+
+type StoryProgressState = {
+  stage: string;
+  chapterOrder: string[];
+  doneChapterIds: string[];
+  currentChapterId: string | null;
+  allDone: boolean;
+  exportUnlocked: boolean;
+};
+
+function readPreviewPages(draftJson: unknown): V3Page[] | undefined {
+  if (!draftJson || typeof draftJson !== 'object' || Array.isArray(draftJson)) return undefined;
+  const pages = (draftJson as { pages?: unknown }).pages;
+  const parsed = Page.array().safeParse(pages);
+  return parsed.success ? parsed.data : undefined;
+}
+
+// Parse draft_json into { tree, progress }, tolerating both the bare-tree and the
+// wrapped shape. Returns null when draft_json isn't a V3 story draft at all (no
+// draft / a v2 AlbumDraft / a finalized album) — callers treat that as "not in the
+// story 环节". The initial currentChapterId is the FIRST not-done chapter so a bare
+// tree resumes from chapter 1.
+function readStoryDraft(draftJson: unknown): NormalizedStoryDraft | null {
+  const wrapped = V3StoryDraft.safeParse(draftJson);
+  if (wrapped.success) {
+    return {
+      tree: wrapped.data.tree,
+      pages: wrapped.data.pages,
+      progress: wrapped.data.progress,
+    };
+  }
+
+  if (
+    draftJson &&
+    typeof draftJson === 'object' &&
+    !Array.isArray(draftJson) &&
+    'version' in draftJson
+  ) {
+    return null;
+  }
+
+  const treeCandidate =
+    draftJson && typeof draftJson === 'object' && !Array.isArray(draftJson) && 'chapters' in draftJson
+      ? { chapters: (draftJson as { chapters?: unknown }).chapters }
+      : draftJson;
+  const bare = V3LayoutTree.safeParse(treeCandidate);
+  if (!bare.success) return null;
+  const tree = bare.data;
+  const firstChapterId = tree.chapters[0]?.chapterId ?? null;
+  return {
+    tree,
+    pages: readPreviewPages(draftJson),
+    progress: { currentChapterId: firstChapterId, doneChapterIds: [] },
+  };
+}
+
+function storyProgressFrom(stage: string, normalized: NormalizedStoryDraft | null): StoryProgressState {
+  const chapterOrder = normalized?.tree.chapters.map((c) => c.chapterId) ?? [];
+  const doneSet = new Set(normalized?.progress.doneChapterIds ?? []);
+  // allDone is derived from the tree+done set, NOT from stage, so a stale stage
+  // cannot unlock export unless every chapter is explicitly confirmed.
+  const allDone = chapterOrder.length > 0 && chapterOrder.every((id) => doneSet.has(id));
+  return {
+    stage,
+    chapterOrder,
+    doneChapterIds: chapterOrder.filter((id) => doneSet.has(id)),
+    currentChapterId: normalized?.progress.currentChapterId ?? null,
+    allDone,
+    // Theme/cover are downstream optional steps and do not re-lock export, but
+    // stage alone is not enough: every current chapter must be done.
+    exportUnlocked: allDone && stage !== 'analysing' && stage !== 'story',
+  };
+}
+
+function assertStoryExportUnlocked(album: Awaited<ReturnType<typeof albumRepo.findById>>): void {
+  if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+  const normalized = readStoryDraft(album.draftJson);
+  // V1/V2/finalized rows do not use the V3 story gate.
+  if (!normalized) return;
+  if (!storyProgressFrom(album.stage, normalized).exportUnlocked) {
+    throw ERRORS.VALIDATION_FAILED('finish all story chapters before export');
+  }
+}
 
 export const albumService = {
   async create(tx: DbOrTx, input: {
@@ -87,6 +197,9 @@ export const albumService = {
         id: album.id,
         title: album.title,
         status: album.status,
+        // V3 五环节状态 (WP2.4). Orthogonal to status; the editor reads it to drive
+        // the breadcrumb + the story gate. Always present (column default 'analysing').
+        stage: album.stage,
         prompt: album.prompt,
         layoutJson: album.layoutJson ?? null,
         photoCount: album.photoCount,
@@ -127,6 +240,93 @@ export const albumService = {
     };
   },
 
+  // ② 章节故事完成度(WP2.4 / §4.2(1)). Web is the sole owner of stage + 当前章 +
+  // 各章 done (architecture §8.3 stage 推进权在 Web). Returns the editor's gate state:
+  // the ordered chapter ids, which are done, the current (not-yet-confirmed) chapter,
+  // and whether the export gate is open. `exportUnlocked` keys ONLY off story being
+  // fully done (stage advanced past 'story') — theme/cover are NOT gates (§4.5a), so
+  // skipping them never blocks export (WP5.2 consumes this). Returns chapters: []
+  // when the album isn't a V3 story draft (no draft / finalized) — caller renders no
+  // gate.
+  async getStoryProgress(userId: string, albumId: string): Promise<{
+    stage: string;
+    chapterOrder: string[];
+    doneChapterIds: string[];
+    currentChapterId: string | null;
+    allDone: boolean;
+    exportUnlocked: boolean;
+  }> {
+    const album = await this.findOwned(userId, albumId);
+    return storyProgressFrom(album.stage, readStoryDraft(album.draftJson));
+  },
+
+  // Mark ONE chapter 确定 (done) — the "一章一确定" action (§4.2(1)). Advances the
+  // cursor to the next not-done chapter; when EVERY chapter is done it sets the
+  // current chapter to null AND advances albums.stage 'story' → 'theme', which opens
+  // the export gate (§4.5a). stage ⟂ status: this writes ONLY the stage column +
+  // draft_json progress — it never touches status / creditService (§6.8 第 4 条 /
+  // 任务硬约束). Idempotent: re-confirming an already-done chapter is a no-op that
+  // returns the current state (so a double-click can't double-advance). Only valid
+  // while stage='story'; calling it after theme is a no-op (the gate already opened).
+  async markChapterDone(
+    userId: string,
+    albumId: string,
+    chapterId: string,
+  ): Promise<{
+    stage: string;
+    chapterOrder: string[];
+    doneChapterIds: string[];
+    currentChapterId: string | null;
+    allDone: boolean;
+    exportUnlocked: boolean;
+  }> {
+    return db.transaction(async (tx) => {
+      const album = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+      if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+
+      const normalized = readStoryDraft(album.draftJson);
+      if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+
+      const chapterOrder = normalized.tree.chapters.map((c) => c.chapterId);
+      if (!chapterOrder.includes(chapterId)) {
+        throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+      }
+
+      // The gate already moved past story → nothing to confirm. Surface the current
+      // state so the caller is idempotent and never regresses the stage.
+      if (album.stage !== 'story') {
+        return storyProgressFrom(album.stage, normalized);
+      }
+
+      const doneSet = new Set(normalized.progress.doneChapterIds);
+      doneSet.add(chapterId);
+      const doneChapterIds = chapterOrder.filter((id) => doneSet.has(id));
+      const allDone = chapterOrder.every((id) => doneSet.has(id));
+      // Next cursor = first chapter (in tree order) not yet done; null when all done.
+      const nextCurrent = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
+
+      const nextDraft: V3StoryDraft = {
+        version: 'v3-story',
+        tree: normalized.tree,
+        ...(normalized.pages ? { pages: normalized.pages } : {}),
+        progress: { currentChapterId: nextCurrent, doneChapterIds },
+      };
+
+      await albumRepo.update(tx, albumId, {
+        draftJson: nextDraft,
+        // 全章确定 → 进下一环 theme + 解锁导出(§4.2(1) / §4.5a). Only the stage column
+        // moves; status stays whatever the init lifecycle left it (EDITING).
+        ...(allDone ? { stage: 'theme' as const } : {}),
+      });
+
+      return storyProgressFrom(allDone ? 'theme' : album.stage, {
+        ...normalized,
+        progress: { currentChapterId: nextCurrent, doneChapterIds },
+      });
+    });
+  },
+
   // Read-only RENDER projection of the authoring tree (draft_json) for the v2
   // authoring flow's skeleton preview (W10 #140). Unlike getChapterSummary this
   // includes pages (templateId/images/texts) because the skeleton must show the
@@ -145,7 +345,67 @@ export const albumService = {
     const album = await this.findOwned(userId, albumId);
     if (album.status !== 'EDITING' || album.layoutJson) return null;
     const parsed = AlbumDraft.safeParse(album.draftJson);
-    if (!parsed.success) return null;
+    if (!parsed.success) {
+      const normalized = readStoryDraft(album.draftJson);
+      if (!normalized?.pages) return null;
+
+      const chapterIdForPage = (page: V3Page): string | null => {
+        const refs = new Set(Object.values(page.images));
+        const match = normalized.tree.chapters.find((chapter) =>
+          chapter.photos.some((photo) => refs.has(photo.photoId)),
+        );
+        return match?.chapterId ?? null;
+      };
+
+      const pages = normalized.pages.map((p, i) => {
+        const category = getTemplate(p.templateId)?.category;
+        const kind =
+          category === 'cover'
+            ? 'cover' as const
+            : category === 'toc'
+              ? 'toc' as const
+              : category === 'ending'
+                ? 'ending' as const
+                : 'chapter' as const;
+        return {
+          pageIndex: i,
+          templateId: p.templateId,
+          imagesJson: p.images,
+          textsJson: p.texts,
+          imagePosJson: p.imagePos ?? {},
+          kind,
+          chapterId: kind === 'chapter' ? chapterIdForPage(p) : null,
+        };
+      });
+
+      const chapters = normalized.tree.chapters.map((ch, i) => {
+        const pageIndexes = pages
+          .map((page, idx) => (page.chapterId === ch.chapterId ? idx : -1))
+          .filter((idx) => idx >= 0);
+        const fallbackStart = Math.min(i + 1, Math.max(pages.length - 1, 0));
+        const pageStart = pageIndexes[0] ?? fallbackStart;
+        const pageEnd = pageIndexes.length > 0
+          ? pageIndexes[pageIndexes.length - 1]! + 1
+          : Math.min(pageStart + 1, pages.length);
+        return {
+          chapterId: ch.chapterId,
+          label: `Chapter ${i + 1}`,
+          role: i === 0 ? 'opening' as const : i === normalized.tree.chapters.length - 1 ? 'closing' as const : 'body' as const,
+          state: 'generated' as const,
+          askCount: 0,
+          pageStart,
+          pageEnd,
+        };
+      });
+
+      return {
+        theme: null,
+        style: 'v3',
+        language: 'en' as const,
+        pages,
+        chapters,
+      };
+    }
     const draft = parsed.data;
 
     type SkeletonPage = {
@@ -311,7 +571,8 @@ export const albumService = {
     }
     if (input.size <= 0 || input.size > PDF_MAX_BYTES) throw ERRORS.PDF_TOO_LARGE();
 
-    await this.findOwned(userId, albumId);
+    const album = await this.findOwned(userId, albumId);
+    assertStoryExportUnlocked(album);
 
     const r2Key = `pdfs/${userId}/${albumId}.pdf`;
     const putUrl = await r2.signPutUrl(r2Key, input.contentType, 300);
@@ -327,7 +588,8 @@ export const albumService = {
     albumId: string,
     r2Key: string,
   ): Promise<{ pdfUrl: string }> {
-    await this.findOwned(userId, albumId);
+    const album = await this.findOwned(userId, albumId);
+    assertStoryExportUnlocked(album);
     const expected = `pdfs/${userId}/${albumId}.pdf`;
     if (r2Key !== expected) throw ERRORS.VALIDATION_FAILED('r2Key does not match album');
 
