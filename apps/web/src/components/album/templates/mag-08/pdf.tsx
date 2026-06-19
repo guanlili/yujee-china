@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -13,6 +14,8 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
     body?: string;
     folio?: string;
   };
+  const dateTheme = resolveThemeCarrier(data, 'dateNum');
+  const titleTheme = resolveThemeCarrier(data, 'title');
   const dn = (d.dateNum || '08/24').split('/');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
@@ -26,30 +29,30 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         <Text
           style={{
-            fontFamily: PDF_FONTS.serifEn,
+            fontFamily: dateTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
             fontStyle: 'italic',
             fontSize: 46,
-            color: COLORS.ink,
+            color: dateTheme.accentColor ?? COLORS.ink,
           }}
         >
           {dn[0]}
         </Text>
         <Text
           style={{
-            fontFamily: PDF_FONTS.serifEn,
+            fontFamily: dateTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
             fontStyle: 'italic',
             fontSize: 46,
-            color: COLORS.ink2,
+            color: dateTheme.accentColor ?? COLORS.ink2,
           }}
         >
           /
         </Text>
         <Text
           style={{
-            fontFamily: PDF_FONTS.serifEn,
+            fontFamily: dateTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
             fontStyle: 'italic',
             fontSize: 46,
-            color: COLORS.ink,
+            color: dateTheme.accentColor ?? COLORS.ink,
           }}
         >
           {dn[1] || ''}
@@ -73,12 +76,12 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
         </Text>
       </View>
       <Text
-        style={{ position: 'absolute', left: 70, top: 968, width: 244, fontFamily: PDF_FONTS.serifEn,
+        style={{ position: 'absolute', left: 70, top: 968, width: 244, fontFamily: titleTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
           fontSize: 60,
           letterSpacing: 5,
-          color: COLORS.ink }}
+          color: titleTheme.accentColor ?? COLORS.ink }}
       >
-        {d.title || 'EVENT'}
+        {titleTheme.text ?? d.title ?? 'EVENT'}
       </Text>
       {/* 标题右侧补一段长文字，填补 Event 右边的空缺 */}
       <View style={{ position: 'absolute', top: 970, left: 360, width: 360 }}>

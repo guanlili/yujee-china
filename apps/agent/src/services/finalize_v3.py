@@ -69,11 +69,10 @@ _DEFAULT_TITLE = {"en": "Life in photographs", "zh": "照片里的时光"}
 # variableDecor theme-carrier 文法 (§3 树边界):章节 accentColor/artFont 烘焙进
 # `page.texts` 的 STRING 值 —— 绝不是树形字段。约定是 `packages/contracts` 的单一真相源
 # (`theme-carrier.ts` ↔ `schemas.py`),finalize 不再私有持有,改 import 共享定义:
-#   * SVG variableDecor 槽 + EMPTY decoration variableDecor 槽 → 槽自己的
-#     `texts[slotId]` 值即 accentColor(矢量/装饰字形以该色绘制)—— 这把 WP3.2 svg seam
-#     收口为最终扁平形态。
-#   * 持 USER PROSE(title)或 code-owned 装饰值(非空 date/folio)的 variableDecor 槽 →
-#     内容保留,章节色/字体走 sibling carrier 键,prose/值永不被覆盖。
+#   * SVG variableDecor 槽 → 槽自己的 `texts[slotId]` 值即 accentColor(矢量以该色
+#     绘制)—— 这把 WP3.2 svg seam 收口为最终扁平形态。
+#   * TEXT variableDecor 槽 → 内容保留/缺省,章节色/字体走 sibling carrier 键,
+#     prose/值/空值永不被覆盖。
 # A real slot id 是普通 id 或 bracket-path(`cells[0].image`),均不含 ``#``,故 carrier
 # 键与声明槽零碰撞,validate_v3 只把它们认作 theme carrier。
 _ACCENT_SUFFIX = THEME_ACCENT_CARRIER_SUFFIX
@@ -218,11 +217,9 @@ def _bake_page(page: Page, accent_color: str, art_font: str | None) -> Page:
       in the accent color; lands the WP3.2 apply-theme svg seam as the final flat
       form, re-derived from the tree so the tree is the single source of truth).
     * variableDecor TEXT slots (standalone + inside the `items` repeat group):
-        - an EMPTY decoration slot → `texts[slotId] = accent_color` (a pure-decoration
-          glyph the renderer paints in the accent color);
-        - a slot holding USER PROSE (title) or a non-empty code-owned decoration value
-          → content is kept verbatim; the chapter color/font ride sibling carrier keys
-          `texts[slotId#accentColor]` / `texts[slotId#artFont]` (never clobbered).
+      visible content is kept verbatim, including missing/empty decoration slots.
+      The chapter color/font ride sibling carrier keys `texts[slotId#accentColor]` /
+      `texts[slotId#artFont]` and never clobber the visible slot value.
     Non-variableDecor slots and 普通正文 (body/explain) values are never touched."""
     template = registry.get(page.templateId)
     if template is None:
@@ -264,25 +261,23 @@ def _bake_text_slots(
         if not slot_id:
             continue
         role = str(slot.get("role") or "")
-        for key in _matching_text_keys(texts, slot_id):
+        matching_keys = _matching_text_keys(texts, slot_id)
+        for key in matching_keys:
             existing = texts.get(key)
-            if role in _USER_PROSE_ROLES or existing:
-                # Keep user prose / code-owned decoration value; theme rides carriers.
-                texts[f"{key}{_ACCENT_SUFFIX}"] = accent_color
-                if art_font is not None:
-                    texts[f"{key}{_FONT_SUFFIX}"] = art_font
-            else:
-                # Empty decoration slot the theme owns → the accent color glyph.
-                texts[key] = accent_color
-        if not _matching_text_keys(texts, slot_id):
-            # Slot declared variableDecor but not present on the page (e.g. an empty
-            # decoration slot generic-copy never filled): bake the accent color in.
-            if role not in _USER_PROSE_ROLES:
-                texts[slot_id] = accent_color
-            else:
-                texts[f"{slot_id}{_ACCENT_SUFFIX}"] = accent_color
-                if art_font is not None:
-                    texts[f"{slot_id}{_FONT_SUFFIX}"] = art_font
+            if existing is None:
+                continue
+            # Keep user prose, code-owned decoration values and empty decoration
+            # strings verbatim; theme rides carriers.
+            texts[f"{key}{_ACCENT_SUFFIX}"] = accent_color
+            if art_font is not None:
+                texts[f"{key}{_FONT_SUFFIX}"] = art_font
+        if not matching_keys:
+            # Slot declared variableDecor but not present on the page (e.g. generic
+            # copy never filled a decoration): keep visible content absent and carry
+            # the theme through sibling keys only.
+            texts[f"{slot_id}{_ACCENT_SUFFIX}"] = accent_color
+            if art_font is not None:
+                texts[f"{slot_id}{_FONT_SUFFIX}"] = art_font
 
 
 def _matching_text_keys(texts: dict[str, str], base_slot: str) -> list[str]:
@@ -349,17 +344,19 @@ def _is_variable_decor_slot(
     slot_key: str,
     text_by_id: dict[str, Any],
     item_text_by_id: dict[str, Any],
-    svg_ids: set[str],
 ) -> bool:
-    """Whether `slot_key` (bare id or bracket-path) names a declared variableDecor slot.
+    """Whether `slot_key` (bare id or bracket-path) names a text variableDecor slot.
 
-    Resolves the key's base against the template's text slots, `items` text slots and
-    svg slots; only a slot marked ``variableDecor:true`` may carry a baked theme."""
+    Sibling carrier keys belong only to text and `items.texts` slots. SVG
+    variableDecor slots are value-as-color and are validated as bare svg ids."""
     base = _base_slot(slot_key)
-    text_slot = text_by_id.get(base) or item_text_by_id.get(base)
+    text_slot = text_by_id.get(base)
     if text_slot is not None and text_slot.get("variableDecor"):
         return True
-    return base in svg_ids
+    item_text_slot = item_text_by_id.get(base)
+    if item_text_slot is not None and item_text_slot.get("variableDecor"):
+        return True
+    return False
 
 
 def validate_v3(layout: AlbumLayoutPlan) -> str | None:
@@ -426,14 +423,15 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
             # ②b theme carriers (§3 树边界): finalize bakes the chapter accentColor/
             # artFont into `<slotId>#accentColor` / `<slotId>#artFont` string keys when
             # the slot holds user prose / a code-owned value. Accept a carrier iff its
-            # owning slot is a declared variableDecor slot (svg / text / items.text).
+            # owning slot is a declared text/items.text variableDecor slot. SVG
+            # variableDecor uses the bare svg slot value as color instead.
             carrier_base = _carrier_base(slot)
             if carrier_base is not None:
-                if _is_variable_decor_slot(carrier_base, text_by_id, item_text_by_id, svg_ids):
+                if _is_variable_decor_slot(carrier_base, text_by_id, item_text_by_id):
                     continue
                 return (
                     f"page {page.pageIndex}: theme carrier '{slot}' has no "
-                    f"variableDecor slot in template {page.templateId}"
+                    f"text variableDecor slot in template {page.templateId}"
                 )
             base = _base_slot(slot)
             text_slot = text_by_id.get(base)

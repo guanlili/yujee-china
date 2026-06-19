@@ -1,6 +1,7 @@
 import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -12,6 +13,8 @@ export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
     body?: string;
     folio?: string;
   };
+  const dateTheme = resolveThemeCarrier(data, 'dateNum');
+  const titleTheme = resolveThemeCarrier(data, 'title');
   const dn = (d.dateNum || '08/24').split('/');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
@@ -20,16 +23,16 @@ export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
           position: 'absolute',
           top: 90,
           right: 70,
-          fontFamily: WEB_FONTS.serifEn,
+          fontFamily: dateTheme.webFontFamily ?? WEB_FONTS.serifEn,
           fontStyle: 'italic',
           fontSize: 46,
-          color: COLORS.ink,
+          color: dateTheme.accentColor ?? COLORS.ink,
           lineHeight: 1,
           letterSpacing: '0.02em',
         }}
       >
         {dn[0]}
-        <span style={{ color: COLORS.ink2 }}>/</span>
+        <span style={{ color: dateTheme.accentColor ?? COLORS.ink2 }}>/</span>
         {dn[1]}
       </div>
       <WebImage
@@ -60,13 +63,15 @@ export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
         {d.caption2 || ''}
       </p>
       <h1
-        style={{ position: 'absolute', left: 70, top: 968, width: 244, height: 60, fontFamily: WEB_FONTS.serifEn,
+        style={{ position: 'absolute', left: 70, top: 968, width: 244, height: 60,
           fontWeight: 400,
           fontSize: 60,
           letterSpacing: '0.08em',
-          lineHeight: 1 }}
+          lineHeight: 1,
+          color: titleTheme.accentColor ?? COLORS.ink,
+          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.serifEn }}
       >
-        {d.title || 'EVENT'}
+        {titleTheme.text ?? d.title ?? 'EVENT'}
       </h1>
       {/* 标题右侧补一段长文字，填补 Event 右边的空缺 */}
       <p

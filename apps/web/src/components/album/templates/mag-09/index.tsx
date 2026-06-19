@@ -1,6 +1,7 @@
 import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -14,6 +15,7 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
     caption5?: string;
     folio?: string;
   };
+  const titleTheme = resolveThemeCarrier(data, 'title');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -40,14 +42,15 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
           top: 400,
           left: 60,
           margin: 0,
-          fontFamily: WEB_FONTS.serifEn,
+          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.serifEn,
           fontWeight: 400,
           fontSize: 64,
           letterSpacing: '0.06em',
           lineHeight: 1.05,
+          color: titleTheme.accentColor,
         }}
       >
-        {brToReact(d.title || 'OSAKA\nJAPAN')}
+        {brToReact(titleTheme.text ?? d.title ?? 'OSAKA\nJAPAN')}
       </h1>
       <WebImage
         src={d.imageMain}

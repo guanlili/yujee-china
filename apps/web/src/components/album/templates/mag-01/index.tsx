@@ -1,6 +1,7 @@
 import { COLORS, WEB_FONTS } from '../constants';
 import { WebImage, WebPage } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -11,6 +12,8 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
     folio?: string;
     image?: string;
   };
+  const headingTheme = resolveThemeCarrier(data, 'heading');
+  const sideTextTheme = resolveThemeCarrier(data, 'sideText');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <div
@@ -24,8 +27,16 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
           gap: 16,
         }}
       >
-        <div style={{ letterSpacing: '0.36em', fontWeight: 400, fontSize: 34 }}>
-          {d.heading || 'VENUES'}
+        <div
+          style={{
+            letterSpacing: '0.36em',
+            fontWeight: 400,
+            fontSize: 34,
+            color: headingTheme.accentColor,
+            fontFamily: headingTheme.webFontFamily,
+          }}
+        >
+          {headingTheme.text ?? d.heading ?? 'VENUES'}
         </div>
         <div style={{ flex: 1, height: 1, background: COLORS.ink }} />
         <div
@@ -51,12 +62,13 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
           left: 56,
           writingMode: 'vertical-rl',
           letterSpacing: '0.36em',
-          color: COLORS.ink2,
+          color: sideTextTheme.accentColor ?? COLORS.ink2,
           textTransform: 'uppercase',
           fontSize: 14,
+          fontFamily: sideTextTheme.webFontFamily,
         }}
       >
-        {d.sideText || ''}
+        {sideTextTheme.text ?? d.sideText ?? ''}
       </div>
       <WebImage
         src={d.image}

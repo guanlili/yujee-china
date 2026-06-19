@@ -282,14 +282,27 @@ def test_chapter_color_and_font_baked_into_title_variable_decor_slot():
     assert fv3.validate_v3(layout) is None
 
 
-def test_empty_decoration_variable_decor_slot_gets_accent_value():
-    # mag-03 `location` is a variableDecor decoration slot. Empty (generic-copy never
-    # fills a place — §3 隐私) → its value IS the accent color the renderer paints.
-    photos = [_photo(0)]
+def test_empty_decoration_variable_decor_slot_stays_empty_theme_rides_carrier():
+    # mag-03 `location` is a variableDecor text decoration slot. Missing/empty
+    # visible content must stay missing/empty; theme rides sibling carrier keys so a
+    # color token never becomes user-facing text.
+    photos = [_photo(0), _photo(1)]
     chapter = _themed_chapter("c1", photos)
-    page = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-03"))
-    layout = fv3.finalize_v3(_request([chapter], [page]))
-    assert layout.pages[0].texts["location"] == _ACCENT
+    missing = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-03", page_index=0))
+    empty = Page(**sk.build_page_v3("interior", ["p1"], template_id="mag-03", page_index=1))
+    empty = empty.model_copy(update={"texts": {"location": ""}})
+
+    layout = fv3.finalize_v3(_request([chapter], [missing, empty]))
+
+    missing_texts = layout.pages[0].texts
+    assert "location" not in missing_texts
+    assert missing_texts["location#accentColor"] == _ACCENT
+    assert missing_texts["location#artFont"] == _FONT
+
+    empty_texts = layout.pages[1].texts
+    assert empty_texts["location"] == ""
+    assert empty_texts["location#accentColor"] == _ACCENT
+    assert empty_texts["location#artFont"] == _FONT
 
 
 def test_nonempty_decoration_value_is_preserved_color_rides_carrier():
@@ -320,17 +333,81 @@ def test_svg_variable_decor_slot_baked_into_flat_page_seam_closed():
     assert fv3.validate_v3(layout) is None
 
 
+def test_validate_rejects_svg_sibling_carrier_but_accepts_bare_svg_color():
+    # SVG variableDecor is value-as-color (`divider: "#C0392B"`). Sibling carrier
+    # keys are only legal for text/items text variableDecor slots.
+    from src.schemas import AlbumLayoutPlan, LayoutPhotoAnalysis, Magazine
+
+    base_page = Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-13"))
+    valid_page = base_page.model_copy(update={"texts": {"title": "Two", "divider": _ACCENT}})
+    invalid_page = base_page.model_copy(
+        update={"texts": {"title": "Two", "divider#accentColor": _ACCENT}}
+    )
+
+    base_plan = {
+        "magazine": Magazine(title="t", subtitle=None, style="editorial", language="en"),
+        "photos": [
+            LayoutPhotoAnalysis(
+                photoId="p0",
+                description="d",
+                tags=[],
+                quality="detail",
+                orientation="landscape",
+            )
+        ],
+    }
+
+    valid_plan = AlbumLayoutPlan(**base_plan, pages=[valid_page])
+    invalid_plan = AlbumLayoutPlan(**base_plan, pages=[invalid_page])
+
+    assert fv3.validate_v3(valid_plan) is None
+    problem = fv3.validate_v3(invalid_plan)
+    assert problem is not None
+    assert "carrier" in problem
+    assert "no text variableDecor slot" in problem
+
+
 def test_items_group_variable_decor_is_baked():
     # mag-02 `items.texts` carries a variableDecor decoration (`numbers`) and a
-    # variableDecor title (`titles`). The items repeat group is themed: empty
-    # decoration → accent value; title → prose kept + carrier color/font.
+    # variableDecor title (`titles`). The items repeat group is themed via sibling
+    # carriers: empty decoration stays absent/empty; title prose stays verbatim.
     template = templates.get("mag-02")
-    texts: dict[str, str] = {"titles[0]": "Chapter One"}
+    texts: dict[str, str] = {"titles[0]": "Chapter One", "numbers[0]": ""}
     fv3._bake_text_slots(texts, template["items"]["texts"], _ACCENT, _FONT)
-    assert texts["numbers"] == _ACCENT  # empty decoration items slot → accent value
+    assert texts["numbers[0]"] == ""
+    assert "numbers" not in texts
+    assert texts["numbers[0]#accentColor"] == _ACCENT
+    assert texts["numbers[0]#artFont"] == _FONT
     assert texts["titles[0]"] == "Chapter One"  # title prose kept
     assert texts["titles[0]#accentColor"] == _ACCENT
     assert texts["titles[0]#artFont"] == _FONT
+
+
+def test_validate_accepts_item_text_carriers_when_top_level_repeat_slot_shares_id():
+    # mag-02 keeps legacy top-level repeat slots (`numbers` / `titles`) that are
+    # not variableDecor, while the same ids under `items.texts` are variableDecor.
+    # Carrier validation must accept the item slot instead of stopping at the
+    # top-level repeat slot.
+    from src.schemas import AlbumLayoutPlan, Magazine
+
+    page = Page(
+        pageIndex=0,
+        templateId="mag-02",
+        images={},
+        texts={
+            "numbers[0]": "01",
+            "numbers[0]#accentColor": _ACCENT,
+            "titles[0]": "Beginnings",
+            "titles[0]#accentColor": _ACCENT,
+        },
+    )
+    plan = AlbumLayoutPlan(
+        magazine=Magazine(title="t", subtitle=None, style="editorial", language="en"),
+        photos=[],
+        pages=[page],
+    )
+
+    assert fv3.validate_v3(plan) is None
 
 
 def test_plain_body_text_not_touched_by_bake():

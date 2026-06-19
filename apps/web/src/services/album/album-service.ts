@@ -51,6 +51,10 @@ type NormalizedStoryDraft = {
   progress: V3StoryProgress;
 };
 
+type V3LayoutPatchEntryWithImagePos = V3LayoutPatchEntry & {
+  imagePos?: Record<string, ImagePos>;
+};
+
 type StoryProgressState = {
   stage: string;
   chapterOrder: string[];
@@ -104,6 +108,46 @@ function readStoryDraft(draftJson: unknown): NormalizedStoryDraft | null {
     pages: readPreviewPages(draftJson),
     progress: { currentChapterId: firstChapterId, doneChapterIds: [] },
   };
+}
+
+function applyLayoutPatchToDraftPages(pages: V3Page[], patch: V3LayoutPatchEntry[]): V3Page[] {
+  const next: V3Page[] = pages.map((p) => ({
+    ...p,
+    images: { ...p.images },
+    texts: { ...p.texts },
+    ...(p.imagePos ? { imagePos: { ...p.imagePos } } : {}),
+  }));
+
+  for (const rawEntry of patch) {
+    const entry = rawEntry as V3LayoutPatchEntryWithImagePos;
+    const page = next.find((p) => p.pageIndex === entry.pageIndex);
+    if (!page) continue;
+
+    if (entry.templateId && entry.templateId !== page.templateId) {
+      page.templateId = entry.templateId;
+      page.images = { ...(entry.images ?? {}) };
+      page.texts = { ...(entry.texts ?? {}) };
+      if (entry.imagePos !== undefined) page.imagePos = { ...entry.imagePos };
+      else delete page.imagePos;
+    } else {
+      if (entry.images !== undefined) {
+        const prevImages = page.images;
+        const nextImagePos = { ...(page.imagePos ?? {}) };
+        for (const slot of Object.keys(nextImagePos)) {
+          if (prevImages[slot] !== entry.images[slot]) delete nextImagePos[slot];
+        }
+        page.images = { ...entry.images };
+        if (Object.keys(nextImagePos).length > 0) page.imagePos = nextImagePos;
+        else delete page.imagePos;
+      }
+      if (entry.texts !== undefined) page.texts = { ...page.texts, ...entry.texts };
+      if (entry.imagePos !== undefined) {
+        page.imagePos = { ...(page.imagePos ?? {}), ...entry.imagePos };
+      }
+    }
+  }
+
+  return next;
 }
 
 function storyProgressFrom(stage: string, normalized: NormalizedStoryDraft | null): StoryProgressState {
@@ -413,10 +457,11 @@ export const albumService = {
   // ④ 书籍设计 — 封面/封尾 (WP4.1 #192). After the user (optionally) picks a 封面/封尾
   // system template, the Agent deterministically auto-fills the relevant pages and
   // returns a page-level `layoutPatch` (§3 树边界: 仍是页级 — cover/ending design is a
-  // flat layout patch, NOT a tree field, so nothing is written into draft_json's tree;
-  // pages are re-derived/merged at finalize). Web is the sole truth source for stage,
-  // so this advances albums.stage cover → ready (§8.3 stage 推进权在 Web) and hands the
-  // patch back for the browser to apply live. Cover is OPTIONAL (§4.4): a skip yields an
+  // flat layout patch, NOT a tree field, so nothing is written into draft_json.tree; the
+  // patch is folded into draft_json.pages so finalize sends the chosen design). Web is
+  // the sole truth source for stage, so this advances albums.stage cover → ready (§8.3
+  // stage 推进权在 Web) and hands the patch back for the browser to apply live. Cover is
+  // OPTIONAL (§4.4): a skip yields an
   // empty patch, and the stage still advances cover → ready (主题/封面不卡导出 — §4.5a:
   // the export gate already opened at story完成; 封面 is never a gate). stage ⟂ status
   // (§6.8 第 4 条): only the stage column moves; status stays EDITING. Idempotent:
@@ -428,17 +473,35 @@ export const albumService = {
     layoutPatch: V3LayoutPatchEntry[],
   ): Promise<{ stage: string; layoutPatch: V3LayoutPatchEntry[] }> {
     const album = await this.findOwned(userId, albumId);
-
     // Advance cover → ready only (the 书籍设计 环节 is done). From any other stage this
     // is a no-op on the stage column (idempotent; never regresses past ready). We accept
     // 'theme' too so a user who skipped straight through theme→cover→ready isn't stuck:
     // the only stages BEFORE the design step are 'analysing'/'story', which gate export
     // and must NOT be jumped by a cover call; 'theme'/'cover' may advance to 'ready'.
     const advanceStage = album.stage === 'cover' || album.stage === 'theme';
+    let nextDraft: V3StoryDraft | null = null;
+    if (advanceStage && layoutPatch.length > 0) {
+      const normalized = readStoryDraft(album.draftJson);
+      if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+      if (!normalized.pages || normalized.pages.length === 0) {
+        throw ERRORS.VALIDATION_FAILED('album has no pages to patch');
+      }
+      nextDraft = {
+        version: 'v3-story',
+        tree: normalized.tree,
+        pages: applyLayoutPatchToDraftPages(normalized.pages, layoutPatch),
+        progress: normalized.progress,
+      };
+    }
 
+    // finalize trusts draft_json.pages, so calls before the cover/theme step (or
+    // after ready) must not fold a returned patch into persisted preview pages.
     if (advanceStage) {
       await db.transaction(async (tx) => {
-        await albumRepo.update(tx, albumId, { stage: 'ready' as const });
+        await albumRepo.update(tx, albumId, {
+          ...(nextDraft ? { draftJson: nextDraft } : {}),
+          ...(advanceStage ? { stage: 'ready' as const } : {}),
+        });
       });
     }
 
@@ -465,30 +528,19 @@ export const albumService = {
     language: V3Language,
   ): Promise<{ layout: AlbumLayoutPlan }> {
     const album = await this.findOwned(userId, albumId);
+    assertStoryExportUnlocked(album);
     const normalized = readStoryDraft(album.draftJson);
     if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
-
-    const rows = await albumPageRepo.findByAlbum(albumId);
-    if (rows.length === 0) throw ERRORS.VALIDATION_FAILED('album has no pages to finalize');
-    const pages: V3Page[] = rows.map((p) => {
-      // album_pages json columns are stored as jsonb (unknown at the type level);
-      // the writers persist the Page-shaped maps, so we narrow to the contract types.
-      const imagePos = p.imagePosJson as Record<string, ImagePos>;
-      return {
-        pageIndex: p.pageIndex,
-        templateId: p.templateId,
-        images: p.imagesJson as Record<string, string>,
-        texts: p.textsJson as Record<string, string>,
-        ...(imagePos && Object.keys(imagePos).length > 0 ? { imagePos } : {}),
-      };
-    });
+    if (!normalized.pages || normalized.pages.length === 0) {
+      throw ERRORS.VALIDATION_FAILED('album has no pages to finalize');
+    }
 
     // Deterministic flatten + bake + single-validate (no base64; tree carries no images).
     const result = await agentClient.finalizeV3({
       albumId,
       language,
       tree: normalized.tree,
-      pages,
+      pages: normalized.pages,
     });
 
     return { layout: result.layout };

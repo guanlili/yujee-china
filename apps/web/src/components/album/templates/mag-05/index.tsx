@@ -1,6 +1,7 @@
 import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -10,6 +11,8 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
     folio?: string;
     image?: string;
   };
+  const titleTheme = resolveThemeCarrier(data, 'title');
+  const topRightTheme = resolveThemeCarrier(data, 'topRight');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <h1
@@ -19,15 +22,32 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
           left: 50,
           right: 280,
           margin: 0,
-          fontFamily: WEB_FONTS.serifEn,
+          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.serifEn,
           fontSize: 44,
           letterSpacing: '0.04em',
           lineHeight: 1.15,
           fontWeight: 400,
+          color: titleTheme.accentColor,
         }}
       >
-        {brToReact(d.title || "LET'S GO RIDE\nA BIKE")}
+        {brToReact(titleTheme.text ?? d.title ?? "LET'S GO RIDE\nA BIKE")}
       </h1>
+      <div
+        style={{
+          position: 'absolute',
+          top: 120,
+          right: 50,
+          width: 190,
+          textAlign: 'right',
+          fontSize: 13,
+          letterSpacing: '0.3em',
+          color: topRightTheme.accentColor ?? COLORS.ink2,
+          textTransform: 'uppercase',
+          fontFamily: topRightTheme.webFontFamily,
+        }}
+      >
+        {topRightTheme.text ?? d.topRight ?? ''}
+      </div>
       <div style={{ position: 'absolute', top: 290, left: 50, width: 320 }}>
         <p
           style={{

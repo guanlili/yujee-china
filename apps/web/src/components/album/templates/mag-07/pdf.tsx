@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -12,6 +13,7 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
     title?: string;
     folio?: string;
   };
+  const titleTheme = resolveThemeCarrier(data, 'title');
   // ── 各槽位几何（与 index.tsx 保持一致；直接改这里的数字）──
   // 坐标系：整页 794×1123 px，左上角 (0,0)，单位 px。
   const LAYOUT = {
@@ -61,12 +63,12 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
         position={imagePos?.['imageMain']}
       />
       <Text
-        style={{ position: 'absolute', left: 50, top: 984, width: 220, fontFamily: PDF_FONTS.serifEn,
+        style={{ position: 'absolute', left: 50, top: 984, width: 220, fontFamily: titleTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
           fontSize: LAYOUT.title.fontSize,
           lineHeight: 1.15,
-          color: COLORS.ink }}
+          color: titleTheme.accentColor ?? COLORS.ink }}
       >
-        {d.title || 'FUSHI\nINARI'}
+        {titleTheme.text ?? d.title ?? 'FUSHI\nINARI'}
       </Text>
       <PdfFolio folio={d.folio} totalPages={totalPages} fallback="07" />
     </PdfPageShell>

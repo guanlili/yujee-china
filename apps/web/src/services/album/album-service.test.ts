@@ -5,6 +5,7 @@ import { agentJobRepo } from '../../db/repos/agent-job-repo';
 import { albumPageRepo } from '../../db/repos/album-page-repo';
 import { albumRepo } from '../../db/repos/album-repo';
 import { creditHoldRepo } from '../../db/repos/credit-hold-repo';
+import { agentClient } from '../../lib/agent/agent-client';
 import {
   cleanupUser,
   isDbReachable,
@@ -13,7 +14,10 @@ import {
 } from '../../db/repos/__test__/setup';
 import { albumService } from './album-service';
 import { jobService } from '../job/job-service';
-import { AlbumDraft, type V3ChapterThemeChoice } from '@yujee/contracts';
+import { AlbumDraft, type Page, type V3ChapterThemeChoice, type V3StoryDraft } from '@yujee/contracts';
+
+const hasCode = (code: string) => (err: unknown) =>
+  typeof err === 'object' && err !== null && (err as { code?: string }).code === code;
 
 // Sets up an AGENT_RUNNING album with a held credit and a RUNNING job whose
 // startedAt is `startedAgoMs` in the past. Returns the ids for assertions.
@@ -541,6 +545,36 @@ async function seedStoryAlbum(userId: string, n: number) {
   return album.id;
 }
 
+async function seedWrappedStoryAlbum(
+  userId: string,
+  chapters: number,
+  opts: {
+    pages?: Page[];
+    done?: boolean;
+    stage?: 'analysing' | 'story' | 'theme' | 'cover' | 'ready';
+  } = {},
+) {
+  const album = await makeAlbum(userId);
+  const tree = makeStoryTree(chapters);
+  const chapterIds = tree.chapters.map((chapter) => chapter.chapterId);
+  const pages = opts.pages ?? makePreviewPages(chapters);
+  const wrapped: V3StoryDraft = {
+    version: 'v3-story',
+    tree,
+    pages,
+    progress: {
+      currentChapterId: opts.done ? null : chapterIds[0] ?? null,
+      doneChapterIds: opts.done ? chapterIds : [],
+    },
+  };
+  await albumRepo.update(db, album.id, {
+    status: 'EDITING',
+    stage: opts.stage ?? (opts.done ? 'theme' : 'story'),
+    draftJson: wrapped,
+  });
+  return { albumId: album.id, pages };
+}
+
 test('getStoryProgress: current tree+pages draft → first chapter current, none done, export locked', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
@@ -995,6 +1029,34 @@ test('cover: skip from theme advances directly to ready (theme/cover may both be
   }
 });
 
+test('cover: story-stage patch does not mutate draft pages or advance stage', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp41-story-noop');
+  try {
+    const originalPages: Page[] = [
+      { pageIndex: 0, templateId: 'mag-02', images: { image: 'story-photo' }, texts: { title: 'Story preview' } },
+      { pageIndex: 1, templateId: 'mag-05', images: { image: 'chapter-photo' }, texts: { body: 'Chapter' } },
+    ];
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 1, {
+      pages: originalPages,
+      stage: 'story',
+    });
+
+    const res = await albumService.cover(user.id, albumId, COVER_PATCH);
+
+    assert.equal(res.stage, 'story');
+    assert.deepEqual(res.layoutPatch, COVER_PATCH);
+    const reloaded = await albumRepo.findById(albumId);
+    assert.equal(reloaded?.stage, 'story');
+    assert.deepEqual((reloaded?.draftJson as V3StoryDraft | undefined)?.pages, originalPages);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('cover: idempotent — re-applying from ready does not regress stage', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
@@ -1029,5 +1091,178 @@ test('cover: rejects a non-owner', async (t) => {
   } finally {
     await cleanupUser(owner.id);
     await cleanupUser(intruder.id);
+  }
+});
+
+test('cover: persists patched draft pages so finalize sends cover design', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp51-cover-finalize-pages');
+  try {
+    const originalPages: Page[] = [
+      {
+        pageIndex: 0,
+        templateId: 'mag-02',
+        images: { image: 'pre-cover-photo', stale: 'old-photo' },
+        texts: { title: 'Pre-cover', stale: 'old copy' },
+        imagePos: { image: { x: 20, y: 80, scale: 1.4 } },
+      },
+      { pageIndex: 1, templateId: 'mag-05', images: { image: 'chapter-photo' }, texts: { body: 'Chapter' } },
+    ];
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 1, {
+      pages: originalPages,
+      done: true,
+      stage: 'cover',
+    });
+    const before = await albumRepo.findById(albumId);
+    const beforeDraft = before?.draftJson as V3StoryDraft;
+    const coverPatch = [
+      {
+        pageIndex: 0,
+        templateId: 'mag-01',
+        images: { image: 'cover-photo' },
+        texts: { folio: '01', title: 'Cover after design' },
+      },
+    ];
+    const expectedPages: Page[] = [
+      {
+        pageIndex: 0,
+        templateId: 'mag-01',
+        images: { image: 'cover-photo' },
+        texts: { folio: '01', title: 'Cover after design' },
+      },
+      originalPages[1]!,
+    ];
+
+    const coverRes = await albumService.cover(user.id, albumId, coverPatch);
+    assert.equal(coverRes.stage, 'ready');
+    assert.deepEqual(coverRes.layoutPatch, coverPatch);
+
+    const afterCover = await albumRepo.findById(albumId);
+    const afterCoverDraft = afterCover?.draftJson as V3StoryDraft;
+    assert.equal(afterCover?.stage, 'ready');
+    assert.deepEqual(afterCoverDraft.pages, expectedPages);
+    assert.deepEqual(afterCoverDraft.tree, beforeDraft.tree);
+    assert.deepEqual(afterCoverDraft.progress, beforeDraft.progress);
+
+    let payload: { pages?: unknown } = {};
+    t.mock.method(agentClient, 'finalizeV3', async (p: Parameters<typeof agentClient.finalizeV3>[0]) => {
+      payload = { pages: p.pages };
+      return {
+        layout: {
+          magazine: { title: 'Cover based', style: 'warm-film', language: 'en' },
+          photos: [],
+          pages: p.pages,
+        },
+        usage: { durationMs: 1, models: {} },
+      };
+    });
+
+    await albumService.finalize(user.id, albumId, 'en');
+    assert.deepEqual(payload.pages, expectedPages);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// ───────── ⑤ 待导出 — finalize (WP5.1 #194) ────────────────────────────────
+
+test('finalize: uses draft_json.pages even when album_pages differs', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp51-finalize-page-source');
+  try {
+    const albumPages = [
+      { pageIndex: 0, templateId: 'mag-02', images: { hero: 'draft-photo-1' }, texts: { title: 'Draft page' } },
+    ];
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 1, { pages: albumPages, done: true });
+    await albumPageRepo.bulkInsert(db, [
+      {
+        albumId,
+        pageIndex: 0,
+        templateId: 'mag-99',
+        imagesJson: { hero: 'persisted-photo' },
+        textsJson: { title: 'Persisted page' },
+      },
+    ]);
+
+    let payload: { pages?: unknown } = {};
+    t.mock.method(agentClient, 'finalizeV3', async (p: Parameters<typeof agentClient.finalizeV3>[0]) => {
+      payload = { pages: p.pages };
+      return {
+        layout: {
+          magazine: { title: 'Draft based', style: 'warm-film', language: 'en' },
+          photos: [],
+          pages: albumPages,
+        },
+        usage: { durationMs: 1, models: {} },
+      };
+    });
+
+    const res = await albumService.finalize(user.id, albumId, 'en');
+    assert.deepEqual(res.layout.pages, albumPages);
+    assert.deepEqual(payload.pages, albumPages);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('finalize: throws VALIDATION_FAILED when draft_json.pages is missing or empty', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp51-finalize-no-pages');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 1, { pages: [], done: true });
+    let called = false;
+    t.mock.method(agentClient, 'finalizeV3', async () => {
+      called = true;
+      return {
+        layout: {
+          magazine: { title: 'Should not run', style: 'warm-film', language: 'en' },
+          photos: [],
+          pages: [],
+        },
+        usage: { durationMs: 1, models: {} },
+      };
+    });
+
+    await assert.rejects(() => albumService.finalize(user.id, albumId, 'en'), hasCode('VALIDATION_FAILED'));
+    assert.equal(called, false);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('finalize: does not call agent finalize when not all story chapters are done', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp51-finalize-gate');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 2);
+    let called = false;
+    t.mock.method(agentClient, 'finalizeV3', async () => {
+      called = true;
+      return {
+        layout: {
+          magazine: { title: 'Should not run', style: 'warm-film', language: 'en' },
+          photos: [],
+          pages: [{ pageIndex: 0, templateId: 'mag-01', images: { hero: 'x' }, texts: {} }],
+        },
+        usage: { durationMs: 1, models: {} },
+      };
+    });
+
+    await assert.rejects(() => albumService.finalize(user.id, albumId, 'en'), hasCode('VALIDATION_FAILED'));
+    assert.equal(called, false);
+  } finally {
+    await cleanupUser(user.id);
   }
 });

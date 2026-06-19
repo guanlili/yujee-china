@@ -1,6 +1,7 @@
 import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebPage } from '../web-utils';
 import type { TemplateRenderProps, ToCItem } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag02({ data, totalPages }: TemplateRenderProps) {
   const d = data as {
@@ -11,6 +12,7 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
     items?: ToCItem[];
     folio?: string;
   };
+  const headingTheme = resolveThemeCarrier(data, 'heading');
   // 三个并列可编辑槽位 numbers/titles/descriptions;兼容旧的 items 对象数组数据
   const legacy = d.items ?? [];
   // 真实相册数据里,repeat 文字槽经 adapt-layout 会被包成 {body, caption} 对象
@@ -52,8 +54,18 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
   const rows = Array.from({ length: count });
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
-      <div style={{ position: 'absolute', top: 110, left: 56, fontSize: 25, letterSpacing: '0.36em' }}>
-        {d.heading ?? 'CONTENTS'}
+      <div
+        style={{
+          position: 'absolute',
+          top: 110,
+          left: 56,
+          fontSize: 25,
+          letterSpacing: '0.36em',
+          color: headingTheme.accentColor,
+          fontFamily: headingTheme.webFontFamily,
+        }}
+      >
+        {headingTheme.text ?? d.heading ?? 'CONTENTS'}
       </div>
       <div
         style={{
@@ -67,14 +79,17 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
           columnGap: 80,
         }}
       >
-        {rows.map((_, i) => (
+        {rows.map((_, i) => {
+          const numberTheme = resolveThemeCarrier(data, `numbers[${i}]`);
+          const titleTheme = resolveThemeCarrier(data, `titles[${i}]`);
+          return (
           <div key={i}>
             <div
               style={{
                 fontSize: 44,
-                fontFamily: WEB_FONTS.serifEn,
+                fontFamily: numberTheme.webFontFamily ?? WEB_FONTS.serifEn,
                 fontStyle: 'italic',
-                color: COLORS.ink,
+                color: numberTheme.accentColor ?? COLORS.ink,
                 marginBottom: 6,
               }}
             >
@@ -85,8 +100,9 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
                 fontSize: 15,
                 letterSpacing: '0.32em',
                 textTransform: 'uppercase',
-                color: COLORS.ink2,
+                color: titleTheme.accentColor ?? COLORS.ink2,
                 marginBottom: 10,
+                fontFamily: titleTheme.webFontFamily,
               }}
             >
               {slotText(titles?.[i]) ?? legacy[i]?.title ?? ''}
@@ -103,7 +119,8 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
               {slotText(descriptions?.[i]) ?? legacy[i]?.body ?? ''}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="02" />
     </WebPage>

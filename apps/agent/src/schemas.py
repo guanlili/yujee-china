@@ -294,8 +294,8 @@ TemplateTextLang = Literal["user", "en"]
 # (`dict[str,str]`),扁平渲染契约不新增树形字段,只能借这组 magic key 文法携带。
 # finalize_v3 烘焙、validate_v3 校验、渲染器消费都从这里取约定。值与 TS 逐字一致
 # (cross-language parity 见 tests/test_schemas.py / theme-carrier.test.ts):
-#   ① SVG / 空装饰 variableDecor 槽 → 值即色:texts[slotId] 本身就是 accentColor。
-#   ② 持 prose / code-owned 值的 variableDecor 槽 → sibling carrier 键:内容逐字保留,
+#   ① SVG variableDecor 槽 → 值即色:texts[slotId] 本身就是 accentColor。
+#   ② TEXT variableDecor 槽 → sibling carrier 键:内容逐字保留(含空/缺省),
 #      色/字走 texts[slotId + ACCENT_SUFFIX] / texts[slotId + FONT_SUFFIX]。
 #   ③ 真实 slotId(普通 id 或 bracket-path)均不含 `#`,carrier 后缀以 `#` 起头 → 零碰撞。
 #   ④ finalize 幂等覆盖(不追加)。
@@ -303,9 +303,9 @@ TemplateTextLang = Literal["user", "en"]
 THEME_ACCENT_CARRIER_SUFFIX = "#accentColor"
 THEME_FONT_CARRIER_SUFFIX = "#artFont"
 
-# 「持用户散文」的文字 role 子集:其 texts[slotId] 内容绝不被主题色覆盖(主题走 sibling
-# carrier)。**从 TemplateTextRole 枚举派生**(全部 role 减去 `decoration`),将来枚举加第
-# 4 个正文 role 自动纳入,不必两处改。
+# 「持用户散文」的文字 role 子集。所有 TEXT variableDecor 槽的内容都绝不被主题色覆盖
+# (主题走 sibling carrier);该集合仍用于区分 prose role 的定义。**从 TemplateTextRole
+# 枚举派生**(全部 role 减去 `decoration`),将来枚举加第 4 个正文 role 自动纳入。
 THEME_USER_PROSE_ROLES: frozenset[str] = frozenset(
     role for role in get_args(TemplateTextRole) if role != "decoration"
 )

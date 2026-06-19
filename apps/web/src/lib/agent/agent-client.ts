@@ -150,7 +150,7 @@ export const agentClient = {
   // the agent writes neither tree nor stage — Web persists the flat layout and owns
   // stage (§8.3). 60s budget, no base64 here.
   async finalizeV3(payload: V3FinalizeRequest): Promise<V3FinalizeResponse> {
-    return postSyncV3('/v3/finalize', payload, V3FinalizeResponse, {
+    return postSyncV3Finalize('/v3/finalize', payload, V3FinalizeResponse, {
       albumId: payload.albumId,
     });
   },
@@ -316,6 +316,61 @@ async function postSyncV3<T>(
   logCtx: Record<string, unknown>,
 ): Promise<T> {
   return postSync('v3', path, payload, schema, logCtx);
+}
+
+// Finalize keeps a stricter transport contract than other v3 sync endpoints:
+// fetch/parse/network errors or non-422 HTTP are infrastructure faults, not
+// chat-edit failures.
+async function postSyncV3Finalize<T>(
+  path: string,
+  payload: unknown,
+  schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
+  logCtx: Record<string, unknown>,
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${env.AGENT_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
+        'Content-Type': 'application/json',
+        'X-Request-Id': crypto.randomUUID(),
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (e) {
+    logger.error({ err: String(e), api: 'v3', path, ...logCtx }, 'agent sync call failed');
+    throw ERRORS.AGENT_INTERNAL_ERROR();
+  }
+  if (!res.ok) {
+    logger.error({ status: res.status, api: 'v3', path, ...logCtx }, 'agent sync non-2xx');
+    if (res.status === 422) {
+      const code = await readAgentErrorCode(res);
+      if (code && mapAgentErrorCode(code) === 'AGENT_INVALID_OUTPUT') {
+        throw ERRORS.AGENT_INVALID_OUTPUT();
+      }
+      throw ERRORS.VALIDATION_FAILED('agent rejected sync payload');
+    }
+    throw ERRORS.AGENT_INTERNAL_ERROR();
+  }
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch (e) {
+    logger.error({ err: String(e), api: 'v3', path, ...logCtx }, 'agent sync response JSON parse failed');
+    throw ERRORS.AGENT_INTERNAL_ERROR();
+  }
+  if (!json || typeof json !== 'object' || Array.isArray(json) || !(json as { ok?: boolean }).ok) {
+    logger.error({ api: 'v3', path, ...logCtx }, 'agent sync non-ok envelope');
+    throw ERRORS.AGENT_INTERNAL_ERROR();
+  }
+  const parsed = schema.safeParse((json as { data?: unknown }).data);
+  if (!parsed.success) {
+    logger.error({ api: 'v3', path, ...logCtx }, 'agent sync response off-contract');
+    throw ERRORS.AGENT_INVALID_OUTPUT();
+  }
+  return parsed.data;
 }
 
 async function postSync<T>(

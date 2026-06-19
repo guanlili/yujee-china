@@ -1,6 +1,7 @@
 import { COLORS, WEB_FONTS } from '../constants';
 import { WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag13({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -10,6 +11,7 @@ export function WebMag13({ data, imagePos }: TemplateRenderProps) {
     caption?: string;
     folio?: string;
   };
+  const titleTheme = resolveThemeCarrier(data, 'title');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <div
@@ -18,15 +20,16 @@ export function WebMag13({ data, imagePos }: TemplateRenderProps) {
           top: 110,
           left: 90,
           right: 90,
-          fontFamily: WEB_FONTS.serifEn,
+          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.serifEn,
           fontWeight: 400,
           fontSize: 28,
           letterSpacing: '0.36em',
           textAlign: 'center',
           lineHeight: 1.35,
+          color: titleTheme.accentColor ?? COLORS.ink,
         }}
       >
-        {brToReact(d.title || 'YUICHI TOKUDA\nPHOTOGRAPHY')}
+        {brToReact(titleTheme.text ?? d.title ?? 'YUICHI TOKUDA\nPHOTOGRAPHY')}
       </div>
       <div
         style={{

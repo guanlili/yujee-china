@@ -1,6 +1,7 @@
 import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -8,6 +9,7 @@ export function WebMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
     folio?: string;
     image?: string;
   };
+  const locationTheme = resolveThemeCarrier(data, 'location');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -28,12 +30,13 @@ export function WebMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
         <div
           style={{
             letterSpacing: '0.3em',
-            color: COLORS.ink,
+            color: locationTheme.accentColor ?? COLORS.ink,
             textTransform: 'uppercase',
             fontSize: 16,
+            fontFamily: locationTheme.webFontFamily,
           }}
         >
-          {d.location || ''}
+          {locationTheme.text ?? d.location ?? ''}
         </div>
       </div>
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="03" />

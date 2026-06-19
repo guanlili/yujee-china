@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -12,6 +13,8 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
     folio?: string;
     image?: string;
   };
+  const headingTheme = resolveThemeCarrier(data, 'heading');
+  const sideTextTheme = resolveThemeCarrier(data, 'sideText');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <View
@@ -24,8 +27,15 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
           alignItems: 'center',
         }}
       >
-        <Text style={{ letterSpacing: 11, fontSize: 34, color: COLORS.ink }}>
-          {d.heading || 'VENUES'}
+        <Text
+          style={{
+            letterSpacing: 11,
+            fontSize: 34,
+            color: headingTheme.accentColor ?? COLORS.ink,
+            fontFamily: headingTheme.pdfFontFamily,
+          }}
+        >
+          {headingTheme.text ?? d.heading ?? 'VENUES'}
         </Text>
         <View style={{ flexGrow: 1, height: 1, backgroundColor: COLORS.ink, marginHorizontal: 16 }} />
         <View
@@ -50,15 +60,16 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
           position: 'absolute',
           top: 280,
           left: 56,
-          color: COLORS.ink2,
+          color: sideTextTheme.accentColor ?? COLORS.ink2,
           fontSize: 17,
+          fontFamily: sideTextTheme.pdfFontFamily,
           textTransform: 'uppercase',
           textAlign: 'center',
           lineHeight: 1.05,
           width: 17,
         }}
       >
-        {(d.sideText || '').split('').join('\n')}
+        {(sideTextTheme.text ?? d.sideText ?? '').split('').join('\n')}
       </Text>
       <PdfImage
         src={d.image}

@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps, ToCItem } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
   const d = data as {
@@ -12,6 +13,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
     items?: ToCItem[];
     folio?: string;
   };
+  const headingTheme = resolveThemeCarrier(data, 'heading');
   // 三个并列可编辑槽位 numbers/titles/descriptions;兼容旧的 items 对象数组数据
   const legacy = d.items ?? [];
   // 真实相册数据里,repeat 文字槽经 adapt-layout 会被包成 {body, caption} 对象
@@ -64,24 +66,27 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
           left: 56,
           fontSize: 25,
           letterSpacing: 6,
-          color: COLORS.ink,
+          color: headingTheme.accentColor ?? COLORS.ink,
+          fontFamily: headingTheme.pdfFontFamily,
         }}
       >
-        {d.heading ?? 'CONTENTS'}
+        {headingTheme.text ?? d.heading ?? 'CONTENTS'}
       </Text>
       {rows.map((_, i) => {
         const col = i % 2;
         const row = Math.floor(i / 2);
         const x = 56 + col * (cellW + 80);
         const y = 240 + row * 360;
+        const numberTheme = resolveThemeCarrier(data, `numbers[${i}]`);
+        const titleTheme = resolveThemeCarrier(data, `titles[${i}]`);
         return (
           <View key={i} style={{ position: 'absolute', top: y, left: x, width: cellW }}>
             <Text
               style={{
                 fontSize: 44,
-                fontFamily: PDF_FONTS.serifEn,
+                fontFamily: numberTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
                 fontStyle: 'italic',
-                color: COLORS.ink,
+                color: numberTheme.accentColor ?? COLORS.ink,
                 marginBottom: 6,
               }}
             >
@@ -91,9 +96,10 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
               style={{
                 fontSize: 15,
                 letterSpacing: 5,
-                color: COLORS.ink2,
+                color: titleTheme.accentColor ?? COLORS.ink2,
                 marginBottom: 10,
                 textTransform: 'uppercase',
+                fontFamily: titleTheme.pdfFontFamily,
               }}
             >
               {slotText(titles?.[i]) || legacy[i]?.title || ''}
