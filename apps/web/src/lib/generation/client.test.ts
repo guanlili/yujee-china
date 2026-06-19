@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { generationPhotosFromCache, submitInitV2, UnauthorizedError } from './client';
+import { generationPhotosFromCache, submitAnalyzeV3, UnauthorizedError } from './client';
 
-test('submitInitV2 throws UnauthorizedError for unauthorized responses', async () => {
+test('submitAnalyzeV3 throws UnauthorizedError for unauthorized responses', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
     Response.json({ ok: false, error: { code: 'UNAUTHORIZED', message: 'Login required' } }, { status: 401 })) as typeof fetch;
 
   try {
     await assert.rejects(
-      submitInitV2({
+      submitAnalyzeV3({
         requestId: '00000000-0000-4000-8000-000000000000',
         language: 'en',
         photos: [{ photoId: 'photo-1', base64: 'data:image/jpeg;base64,abc', width: 1, height: 1 }],

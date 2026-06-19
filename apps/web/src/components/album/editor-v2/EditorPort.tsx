@@ -20,7 +20,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore } from '@/lib/photo/store';
-import { compressFile } from '@/lib/photo/compress';
 import { getWebTemplate } from '../web-registry';
 import { buildSpreads, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
@@ -2104,49 +2103,7 @@ function EditorBook({
         sending = false;
         restAwait();
       };
-      try {
-        const photos: { photoId: string; base64: string; width: number; height: number }[] = [];
-        for (const f of Array.from(files).slice(0, 30)) {
-          const photoId = crypto.randomUUID();
-          const c = await compressFile(f, photoId);
-          await photoStore.put(photoId, f);
-          photos.push({ photoId, base64: c.base64, width: c.width, height: c.height });
-        }
-        const requestId = crypto.randomUUID();
-        const res = await fetch(`/api/v2/albums/${albumId}/add-photos`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requestId, language: currentLang, photos }),
-        });
-        const json = await res.json();
-        if (!json.ok) {
-          if (json.error?.code === 'CREDIT_INSUFFICIENT') {
-            window.location.assign(localizePath('/credits?from=album', locale));
-            return;
-          }
-          fail(json.error?.message ?? aT('加图失败，请重试。', 'Add failed — please try again.'));
-          return;
-        }
-        const reqId: string = json.data.requestId;
-        // Poll the add job; on completion reload to paint the appended pages.
-        for (let i = 0; i < 160; i++) {
-          await new Promise((r) => setTimeout(r, 1500));
-          const sres = await fetch(`/api/v2/albums/${albumId}/add-photos?requestId=${reqId}`);
-          const sjson = await sres.json();
-          const status = sjson.data?.status;
-          if (status === 'completed') {
-            window.location.reload();
-            return;
-          }
-          if (status === 'failed') {
-            fail(sjson.data?.error ?? aT('加图失败，请重试。', 'Add failed — please try again.'));
-            return;
-          }
-        }
-        fail(aT('处理超时，请稍后刷新查看。', 'Timed out — refresh later to check.'));
-      } catch (e) {
-        fail(e instanceof Error ? e.message : String(e));
-      }
+      fail(aT('加图功能正在迁移到新版流程，请先完成当前编辑。', 'Adding photos is being moved to the new flow. Finish the current edit first.'));
     }
     const onAddPhotoChange = () => {
       const files = addPhotoInput?.files;

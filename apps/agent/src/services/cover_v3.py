@@ -1,12 +1,9 @@
 """V3 cover/ending — deterministic auto-fill of the optional 封面/封尾 pages (§4.4).
 
-Issue #192 / WP4.1. **Option B**: this is a NEW V3 module. The v2 `skeleton.py` /
-`finalize.py` engines (and their forced "page 0 must be cover" rule) are left
-COMPLETELY untouched — the cover/ending construction lives here so the v2 surface
-and its tests cannot turn red. The "page0-must-cover" constraint was already dropped
-from the V3 engine in WP0.4 (`finalize_v3.validate_v3` has NO page0-cover rule, and
-`skeleton_v3.build_skeleton_v3` builds body-only pages with cover as an optional add);
-there is nothing left to delete here — this module just adds the optional cover/ending.
+Issue #192 / WP4.1. The "page0-must-cover" constraint is absent from the V3 engine:
+`finalize_v3.validate_v3` has no page0-cover rule, and `skeleton_v3.build_skeleton_v3`
+builds body-only pages with cover as an optional add. This module only adds the
+optional cover/ending pages.
 
 The endpoint is `POST /v3/cover` (§8.1 / 4.4: 同步 / 确定性 / 可选). It consumes the
 `V3CoverRequest` DTO (schemas.py ↔ packages/contracts/src/v3.ts — single truth source,

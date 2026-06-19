@@ -2,11 +2,9 @@
 INTENT (which photos sit on the page, in what order); the deterministic engine
 (`skeleton_v3.pick_template_v3` / `assign_images_v3`) executes it (WP2.3 / #187).
 
-Option B: this is a NEW V3 module. It is invoked by `chapter_chat_v3` ONLY when
-the per-turn DeepSeek dispatch classified the focused-page edit as 涉及图片
-(换图 / 挪图 / 改图文配比). The v2 retemplate tool-chain (`chat_edit_v2.py`) is
-left untouched (deleted wholesale in #197); the V3 image edit is reimplemented on
-top of the V3 deterministic engine here.
+It is invoked by `chapter_chat_v3` ONLY when the per-turn DeepSeek dispatch
+classified the focused-page edit as 涉及图片(换图 / 挪图 / 改图文配比). The V3 image
+edit is implemented on top of the V3 deterministic engine here.
 
 图文分流 (§4.2(3) / architecture §6.8 第 2 条):
 

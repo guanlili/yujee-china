@@ -153,11 +153,7 @@ class AlbumLayoutPlan(_Strict):
     pages: list[Page] = Field(min_length=1)
 
 
-# JobError is the shared error shape carried by v2 failed callbacks and the
-# v2_album routes. The v1 callback envelopes (ProgressCallback / CompletedCallback
-# / FailedCallback / JobUsage / CallbackEnvelope) and the standalone
-# LayoutPatchEntry were removed in the v1 teardown — the agent now speaks only the
-# v2 contract (schemas_v2.py).
+# JobError is the shared error shape carried by V3 failed callbacks.
 class JobError(_Strict):
     code: str = Field(min_length=1)
     message: str

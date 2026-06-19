@@ -14,7 +14,7 @@ import {
 } from '../../db/repos/__test__/setup';
 import { albumService } from './album-service';
 import { jobService } from '../job/job-service';
-import { AlbumDraft, type Page, type V3ChapterThemeChoice, type V3StoryDraft } from '@yujee/contracts';
+import { type Page, type V3ChapterThemeChoice, type V3StoryDraft } from '@yujee/contracts';
 
 const hasCode = (code: string) => (err: unknown) =>
   typeof err === 'object' && err !== null && (err as { code?: string }).code === code;
@@ -258,107 +258,31 @@ test('updateTitle: rejects a non-owner with ALBUM_NOT_OWNED', async (t) => {
   }
 });
 
-// ── W10 (#140): getDraftSkeleton — read-only RENDER projection of draft_json ──
-
-function makeDraft(): AlbumDraft {
-  const tree = {
-    version: 'v2' as const,
-    meta: { style: 'warm-film' as const, language: 'en' as const },
-    photoPool: [
-      {
-        photoId: 'p1',
-        analysis: {
-          photoId: 'p1',
-          description: 'sunset',
-          tags: ['sea'],
-          quality: 'hero' as const,
-          orientation: 'landscape' as const,
-          peopleCount: '0' as const,
-          scene: 'nature' as const,
-          mood: 'warm' as const,
-        },
-        exif: { order: 0 },
-        used: true,
-      },
-    ],
-    basePages: {
-      cover: { pageIndex: 0, templateId: 'mag-01', images: { hero: 'p1' }, texts: {} },
-      ending: { pageIndex: 99, templateId: 'mag-03', images: {}, texts: {} },
-    },
-    chapters: [
-      {
-        chapterId: 'ch1',
-        state: 'empty' as const,
-        cluster: { label: 'The Coast', role: 'opening' as const },
-        photoIds: ['p1'],
-        askCount: 0,
-        pages: [
-          { pageIndex: 1, templateId: 'mag-02', images: { hero: 'p1' }, texts: {} },
-          { pageIndex: 2, templateId: 'mag-03', images: {}, texts: {} },
-        ],
-      },
-      {
-        chapterId: 'ch2',
-        state: 'skipped' as const,
-        cluster: { label: 'The City', role: 'body' as const },
-        photoIds: [],
-        askCount: 2,
-        pages: [{ pageIndex: 3, templateId: 'mag-04', images: {}, texts: {} }],
-      },
-    ],
-  };
-  return AlbumDraft.parse(tree);
-}
+// ── getDraftSkeleton — read-only RENDER projection of V3 draft_json ──
 
 async function seedDraftAlbum(userId: string) {
   const album = await makeAlbum(userId);
-  await albumRepo.update(db, album.id, { status: 'EDITING', draftJson: makeDraft() });
+  await albumRepo.update(db, album.id, {
+    status: 'EDITING',
+    stage: 'story',
+    draftJson: {
+      chapters: [
+        {
+          chapterId: 'c1',
+          description: 'first',
+          accentColor: null,
+          artFont: null,
+          photos: [{ photoId: 'p1', sceneDescription: 'sea', width: 800, height: 600, orientation: 'landscape' }],
+        },
+      ],
+      pages: [
+        { pageIndex: 0, templateId: 'mag-01', images: { hero: 'p1' }, texts: { title: 'Cover' } },
+        { pageIndex: 1, templateId: 'mag-05', images: { hero: 'p1' }, texts: { body: 'First' } },
+      ],
+    },
+  });
   return album.id;
 }
-
-test('getDraftSkeleton: flattens + re-indexes pages, slices chapters, passes meta', async (t) => {
-  if (!(await isDbReachable())) {
-    t.skip('DATABASE_URL is not reachable; skipping');
-    return;
-  }
-  const user = await makeUser('w10-skeleton');
-  try {
-    const albumId = await seedDraftAlbum(user.id);
-    const sk = await albumService.getDraftSkeleton(user.id, albumId);
-    assert.ok(sk, 'skeleton present in draft phase');
-
-    // cover(0) → ch1 p(1) → ch1 p(2) → ch2 p(3) → ending(4): 5 pages, re-indexed.
-    assert.equal(sk!.pages.length, 5);
-    assert.deepEqual(sk!.pages.map((p) => p.pageIndex), [0, 1, 2, 3, 4]);
-    assert.deepEqual(
-      sk!.pages.map((p) => p.kind),
-      ['cover', 'chapter', 'chapter', 'chapter', 'ending'],
-    );
-    // image map carried through as imagesJson (EditorPage shape for PagePreview).
-    assert.equal(sk!.pages[0]!.imagesJson.hero, 'p1');
-
-    // chapter slices index into the flat list; ch1 owns flat [1,3), ch2 [3,4).
-    assert.equal(sk!.chapters.length, 2);
-    assert.deepEqual(sk!.chapters[0], {
-      chapterId: 'ch1',
-      label: 'The Coast',
-      role: 'opening',
-      state: 'empty',
-      askCount: 0,
-      pageStart: 1,
-      pageEnd: 3,
-    });
-    assert.equal(sk!.chapters[1]!.pageStart, 3);
-    assert.equal(sk!.chapters[1]!.pageEnd, 4);
-    assert.equal(sk!.chapters[1]!.state, 'skipped');
-
-    assert.equal(sk!.theme, null);
-    assert.equal(sk!.style, 'warm-film');
-    assert.equal(sk!.language, 'en');
-  } finally {
-    await cleanupUser(user.id);
-  }
-});
 
 test('getDraftSkeleton: renders V3 tree+pages draft without dropping preview pages', async (t) => {
   if (!(await isDbReachable())) {

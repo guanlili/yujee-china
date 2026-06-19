@@ -9,12 +9,6 @@ from ..schemas import (
     V3FailedEvent,
     V3ProgressEvent,
 )
-from ..schemas_v2 import (
-    V2FailedCallback,
-    V2FinalizeCompletedCallback,
-    V2InitCompletedCallback,
-    V2ProgressCallback,
-)
 from ..settings import get_settings
 
 log = get_logger("callback")
@@ -24,24 +18,14 @@ _RETRY_BACKOFFS = (1, 4)
 
 # All envelopes share the duck-typed contract this poster relies on: `.event`
 # (for logging), `.requestId` (for the giveup log), and a pydantic `model_dump`.
-# v2 callbacks go to `/api/v2/internal/job-progress`, v3 callbacks (analyze) go to
-# `/api/v3/internal/job-progress`; the URL is the caller's choice, the wire
-# mechanics are shared (single retry/auth poster across both contracts).
-Envelope = Union[
-    V2ProgressCallback,
-    V2InitCompletedCallback,
-    V2FinalizeCompletedCallback,
-    V2FailedCallback,
-    V3ProgressEvent,
-    V3AnalyzeCompleted,
-    V3FailedEvent,
-]
+# The V3 analyze job posts to the Web callback URL supplied by the request.
+Envelope = Union[V3ProgressEvent, V3AnalyzeCompleted, V3FailedEvent]
 
 
 def _serialize(envelope: Envelope) -> dict:
     """JSON body for an envelope, honoring the two-end (zod) contract shape.
 
-    Default rule (all v2 envelopes + v3 progress/failed): `exclude_none=True` —
+    Default rule (progress/failed): `exclude_none=True` —
     drop absent optionals so the wire stays tidy (their TS counterparts are
     `.optional()`, key-absent is the accepted shape).
 

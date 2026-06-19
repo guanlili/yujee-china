@@ -1,9 +1,6 @@
 """V3 deterministic template-selection + image-assignment engine.
 
-This is the V3 path of the deterministic engine (issue #179 / WP0.4). It is a
-*new* code path that coexists with the v2 `skeleton.py` engine — the v2 engine
-and its quality/hero/scene logic stay untouched until the v1/v2 teardown
-(WP6.1 / #197).
+This is the V3 path of the deterministic engine (issue #179 / WP0.4).
 
 The V3 engine is **purely category + image-slot-count driven** (docs/agent/
 v3-requirements.md §9 / docs/agent/v3-implementation-plan.md §3 WP0.4):

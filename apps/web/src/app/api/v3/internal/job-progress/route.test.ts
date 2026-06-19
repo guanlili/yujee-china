@@ -55,7 +55,7 @@ async function seed(userId: string) {
   await albumRepo.update(db, album.id, { creditHoldId: hold.id });
   const requestId = `v3route-${Date.now()}-${Math.round(performance.now())}`;
   // v3 analyze reuses kind='init'.
-  await jobService.createV2(db, { userId, albumId: album.id, requestId, kind: 'init' });
+  await jobService.createGenerationJob(db, { userId, albumId: album.id, requestId, kind: 'init' });
   return { albumId: album.id, holdId: hold.id, requestId };
 }
 

@@ -1,9 +1,7 @@
 """V3 apply-theme — deterministic one-click 刷 variableDecor 槽 (含 SVG, §4.3 / §9).
 
-Issue #190 / WP3.2. **Option B**: this is a NEW V3 module. The v2 `theme.py`
-(cover/theme draft for the v2 finalize era) is left completely untouched — apply
-lives here so the v2 surface and its tests cannot turn red. The endpoint is
-`POST /v3/apply-theme` (§8.1: 同步 / 确定性 / 无模型调用); it consumes the
+Issue #190 / WP3.2. The endpoint is `POST /v3/apply-theme`
+(§8.1: 同步 / 确定性 / 无模型调用); it consumes the
 `V3ApplyThemeRequest` DTO (schemas.py ↔ packages/contracts/src/v3.ts — single truth
 source, predefined by WP0.1/0.3, NOT modified here).
 

@@ -105,25 +105,18 @@ async function postJobs(path: string, body: unknown): Promise<SubmitResult> {
   return json.data as SubmitResult;
 }
 
-// v2 init (agent rebuild, W10 #140). POST /api/v2/albums starts the init job
-// (Stage 1+3) and returns { albumId, requestId } once the agent accepts (202).
-// Billing-aware: CREDIT_INSUFFICIENT routes the caller to top up. The prompt is a
-// promptHint here (optional — the storytelling happens later in the authoring
-// flow); language is explicit.
-export function submitInitV2(input: {
+export function submitAnalyzeV3(input: {
   requestId: string;
   language: 'zh' | 'en';
   promptHint?: string;
   photos: GenerationPhoto[];
 }): Promise<SubmitResult> {
-  return postJobs('/api/v2/albums', input);
+  return postJobs('/api/v3/albums', input);
 }
 
-// Reuses albumId — no prompt (the server reuses the stored album.prompt as the
-// promptHint). A FAILED card reruns the v2 init job (Stage 1+3).
 export function retryGeneration(
   albumId: string,
   input: { requestId: string; language: 'zh' | 'en'; photos: GenerationPhoto[] },
 ): Promise<SubmitResult> {
-  return postJobs(`/api/v2/albums/${albumId}/retry`, input);
+  return postJobs(`/api/v3/albums/${albumId}/retry`, input);
 }
