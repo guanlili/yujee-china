@@ -34,11 +34,9 @@ function ThinkingDots() {
   );
 }
 
-// Natural-language editing (design-v1 editor.html chat pane). POST /chat is
-// synchronous (the user waits); on success we append both turns, surface the AI
-// reply as plain text, cite any text it changed in a quote card, and hand the
-// patch up so the preview updates in place.
-export function ChatPanel({ albumId, locale, language, onPatch }: Props) {
+// Natural-language chat pane retained for history display. New legacy chat-edit
+// sends are local guidance only; the retired endpoint is not called.
+export function ChatPanel({ albumId, locale }: Props) {
   const t = getMessages(locale).dashboard.editor;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -77,28 +75,20 @@ export function ChatPanel({ albumId, locale, language, onPatch }: Props) {
       { id: `tmp-${m.length}`, role: 'user', content: trimmed, layoutPatch: null, createdAt: '' },
     ]);
     setInput('');
-    try {
-      const res = await fetch(`/api/v1/albums/${albumId}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: trimmed, language }),
-      });
-      const json = await res.json();
-      if (!json.ok) {
-        setErr(json.error?.message ?? t.chatError);
-        return;
-      }
-      const { assistantReply, layoutPatch, messageId } = json.data;
-      setMessages((m) => [
-        ...m,
-        { id: messageId, role: 'assistant', content: assistantReply, layoutPatch, createdAt: '' },
-      ]);
-      onPatch(layoutPatch as LayoutPatchEntry[]);
-    } catch {
-      setErr(t.chatError);
-    } finally {
-      setBusy(false);
-    }
+    setMessages((m) => [
+      ...m,
+      {
+        id: `retired-${m.length}`,
+        role: 'assistant',
+        content:
+          locale === 'zh'
+            ? '旧版聊天改稿已下线，不会再改动当前版面。请继续使用 V3 流程：确认章节故事、选择主题与封面，然后导出 PDF。'
+            : 'Legacy chat editing has been retired and will no longer change this layout. Continue with the V3 flow: confirm chapter stories, choose the theme and cover, then export the PDF.',
+        layoutPatch: null,
+        createdAt: '',
+      },
+    ]);
+    setBusy(false);
   };
 
   const autoGrow = (el: HTMLTextAreaElement) => {

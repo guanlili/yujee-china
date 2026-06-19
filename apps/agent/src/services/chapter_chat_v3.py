@@ -1,8 +1,7 @@
 """V3 chapter-chat turn dispatcher (§4.2, issue #185 / WP2.1).
 
-Option B: this is a NEW V3 module. The v2 service (`chapter_chat.py`) is left
-untouched (it is deleted wholesale in #197). V3 chapter authoring is NOT a
-pipeline — §4.2(2) makes引导/写/改 a free interleaving of *turns*. Each
+V3 chapter authoring is NOT a pipeline — §4.2(2) makes引导/写/改 a free
+interleaving of *turns*. Each
 `/v3/chapter-chat` call is ONE turn; the Agent dispatches by the user's intent
 THIS turn (not a fixed sequence). The chapter-internal "state" is the turn
 itself; the across-chapter sequential state (一章一确定 → 解锁导出, §4.2(1)) is

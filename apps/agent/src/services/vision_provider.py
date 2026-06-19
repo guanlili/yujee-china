@@ -8,7 +8,7 @@ two OpenAI-compatible slots via `settings.vision_provider`:
     describe-content reuses this slot wiring with a describe-specific model.
 
 Both init's batched analysis (vision.py) and the #165 inspect diagnosis
-(inspect_render.py) resolve their endpoint/key/model/timeout through
+resolve their endpoint/key/model/timeout through
 `select_vision_slot()` so there is exactly one place that knows the per-provider
 quirks:
 

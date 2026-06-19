@@ -8,7 +8,6 @@ import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
 import {
-  AlbumDraft,
   Page,
   V3LayoutTree,
   V3StoryDraft,
@@ -73,9 +72,8 @@ function readPreviewPages(draftJson: unknown): V3Page[] | undefined {
 
 // Parse draft_json into { tree, progress }, tolerating both the bare-tree and the
 // wrapped shape. Returns null when draft_json isn't a V3 story draft at all (no
-// draft / a v2 AlbumDraft / a finalized album) — callers treat that as "not in the
-// story 环节". The initial currentChapterId is the FIRST not-done chapter so a bare
-// tree resumes from chapter 1.
+// draft / finalized album). The initial currentChapterId is the FIRST not-done
+// chapter so a bare tree resumes from chapter 1.
 function readStoryDraft(draftJson: unknown): NormalizedStoryDraft | null {
   const wrapped = V3StoryDraft.safeParse(draftJson);
   if (wrapped.success) {
@@ -207,8 +205,8 @@ export const albumService = {
   // SAME album is reused for a rerun — no new album, no orphaned failed card. The
   // transition is conditional (only wins from FAILED), so a double-click or a
   // retry racing the stale-job sweep can't start two generations or double-hold
-  // credit; the loser throws ALBUM_NOT_RETRIABLE and generationService.retryV2
-  // aborts before the hold. errorMessage is cleared so the album reads clean.
+  // credit; the loser throws ALBUM_NOT_RETRIABLE and retryAnalyzeV3 aborts before
+  // the hold. errorMessage is cleared so the album reads clean.
   // Caller must hold ownership (findOwned) before invoking inside its tx.
   async setRetrying(tx: DbOrTx, albumId: string): Promise<void> {
     const won = await albumRepo.transitionStatus(tx, albumId, 'AGENT_RUNNING', ['FAILED'], {
@@ -277,14 +275,15 @@ export const albumService = {
     chapters: { chapterId: string; label: string; role: string; photoIds: string[] }[];
   }> {
     const album = await this.findOwned(userId, albumId);
-    const parsed = AlbumDraft.safeParse(album.draftJson);
-    if (!parsed.success) return { chapters: [] };
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized) return { chapters: [] };
+    const last = normalized.tree.chapters.length - 1;
     return {
-      chapters: parsed.data.chapters.map((ch) => ({
+      chapters: normalized.tree.chapters.map((ch, i) => ({
         chapterId: ch.chapterId,
-        label: ch.cluster.label,
-        role: ch.cluster.role,
-        photoIds: ch.photoIds,
+        label: ch.description || `Chapter ${i + 1}`,
+        role: i === 0 ? 'opening' : i === last ? 'closing' : 'body',
+        photoIds: ch.photos.map((photo) => photo.photoId),
       })),
     };
   },
@@ -546,8 +545,8 @@ export const albumService = {
     return { layout: result.layout };
   },
 
-  // Read-only RENDER projection of the authoring tree (draft_json) for the v2
-  // authoring flow's skeleton preview (W10 #140). Unlike getChapterSummary this
+  // Read-only RENDER projection of the V3 authoring tree (draft_json) for the
+  // editor skeleton preview. Unlike getChapterSummary this
   // includes pages (templateId/images/texts) because the skeleton must show the
   // actual layout — but it stays consistent with invariant 12: this is a one-way
   // READ for rendering only; the tree is NEVER edited in the browser and never
@@ -563,122 +562,68 @@ export const albumService = {
   async getDraftSkeleton(userId: string, albumId: string) {
     const album = await this.findOwned(userId, albumId);
     if (album.status !== 'EDITING' || album.layoutJson) return null;
-    const parsed = AlbumDraft.safeParse(album.draftJson);
-    if (!parsed.success) {
-      const normalized = readStoryDraft(album.draftJson);
-      if (!normalized?.pages) return null;
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized?.pages) return null;
 
-      const chapterIdForPage = (page: V3Page): string | null => {
-        const refs = new Set(Object.values(page.images));
-        const match = normalized.tree.chapters.find((chapter) =>
-          chapter.photos.some((photo) => refs.has(photo.photoId)),
-        );
-        return match?.chapterId ?? null;
-      };
-
-      const pages = normalized.pages.map((p, i) => {
-        const category = getTemplate(p.templateId)?.category;
-        const kind =
-          category === 'cover'
-            ? 'cover' as const
-            : category === 'toc'
-              ? 'toc' as const
-              : category === 'ending'
-                ? 'ending' as const
-                : 'chapter' as const;
-        return {
-          pageIndex: i,
-          templateId: p.templateId,
-          imagesJson: p.images,
-          textsJson: p.texts,
-          imagePosJson: p.imagePos ?? {},
-          kind,
-          chapterId: kind === 'chapter' ? chapterIdForPage(p) : null,
-        };
-      });
-
-      const chapters = normalized.tree.chapters.map((ch, i) => {
-        const pageIndexes = pages
-          .map((page, idx) => (page.chapterId === ch.chapterId ? idx : -1))
-          .filter((idx) => idx >= 0);
-        const fallbackStart = Math.min(i + 1, Math.max(pages.length - 1, 0));
-        const pageStart = pageIndexes[0] ?? fallbackStart;
-        const pageEnd = pageIndexes.length > 0
-          ? pageIndexes[pageIndexes.length - 1]! + 1
-          : Math.min(pageStart + 1, pages.length);
-        return {
-          chapterId: ch.chapterId,
-          label: `Chapter ${i + 1}`,
-          role: i === 0 ? 'opening' as const : i === normalized.tree.chapters.length - 1 ? 'closing' as const : 'body' as const,
-          state: 'generated' as const,
-          askCount: 0,
-          pageStart,
-          pageEnd,
-        };
-      });
-
-      return {
-        theme: null,
-        style: 'v3',
-        language: 'en' as const,
-        pages,
-        chapters,
-      };
-    }
-    const draft = parsed.data;
-
-    type SkeletonPage = {
-      pageIndex: number;
-      templateId: string;
-      imagesJson: Record<string, string>;
-      textsJson: Record<string, string>;
-      imagePosJson: Record<string, ImagePos>;
-      kind: 'cover' | 'toc' | 'chapter' | 'ending';
-      chapterId: string | null;
+    const chapterIdForPage = (page: V3Page): string | null => {
+      const refs = new Set(Object.values(page.images));
+      const match = normalized.tree.chapters.find((chapter) =>
+        chapter.photos.some((photo) => refs.has(photo.photoId)),
+      );
+      return match?.chapterId ?? null;
     };
-    const pages: SkeletonPage[] = [];
-    const push = (
-      p: {
-        templateId: string;
-        images: Record<string, string>;
-        texts: Record<string, string>;
-        imagePos?: Record<string, ImagePos>;
-      },
-      kind: SkeletonPage['kind'],
-      chapterId: string | null,
-    ) => {
-      pages.push({
-        pageIndex: pages.length,
+
+    const pages = normalized.pages.map((p, i) => {
+      const category = getTemplate(p.templateId)?.category;
+      const kind =
+        category === 'cover'
+          ? 'cover' as const
+          : category === 'toc'
+            ? 'toc' as const
+            : category === 'ending'
+              ? 'ending' as const
+              : 'chapter' as const;
+      return {
+        pageIndex: i,
         templateId: p.templateId,
         imagesJson: p.images,
         textsJson: p.texts,
         imagePosJson: p.imagePos ?? {},
         kind,
-        chapterId,
-      });
-    };
-
-    push(draft.basePages.cover, 'cover', null);
-    if (draft.basePages.toc) push(draft.basePages.toc, 'toc', null);
-    const chapters = draft.chapters.map((ch) => {
-      const pageStart = pages.length;
-      for (const pg of ch.pages) push(pg, 'chapter', ch.chapterId);
-      return {
-        chapterId: ch.chapterId,
-        label: ch.cluster.label,
-        role: ch.cluster.role,
-        state: ch.state,
-        askCount: ch.askCount,
-        pageStart,
-        pageEnd: pages.length,
+        chapterId: kind === 'chapter' ? chapterIdForPage(p) : null,
       };
     });
-    push(draft.basePages.ending, 'ending', null);
+
+    const chapters = normalized.tree.chapters.map((ch, i) => {
+      const pageIndexes = pages
+        .map((page, idx) => (page.chapterId === ch.chapterId ? idx : -1))
+        .filter((idx) => idx >= 0);
+      const fallbackStart = Math.min(i + 1, Math.max(pages.length - 1, 0));
+      const pageStart = pageIndexes[0] ?? fallbackStart;
+      const pageEnd =
+        pageIndexes.length > 0
+          ? pageIndexes[pageIndexes.length - 1]! + 1
+          : Math.min(pageStart + 1, pages.length);
+      return {
+        chapterId: ch.chapterId,
+        label: `Chapter ${i + 1}`,
+        role:
+          i === 0
+            ? 'opening' as const
+            : i === normalized.tree.chapters.length - 1
+              ? 'closing' as const
+              : 'body' as const,
+        state: 'generated' as const,
+        askCount: 0,
+        pageStart,
+        pageEnd,
+      };
+    });
 
     return {
-      theme: draft.meta.theme ?? null,
-      style: draft.meta.style,
-      language: draft.meta.language,
+      theme: null,
+      style: 'v3',
+      language: 'en' as const,
       pages,
       chapters,
     };
@@ -706,9 +651,8 @@ export const albumService = {
       let status = a.status;
       if (status === 'AGENT_RUNNING') {
         const resolved = await jobService.resolveGeneration(a.id);
-        // A swept zombie is no longer AGENT_RUNNING, but its new status depends on
-        // kind (init→FAILED, finalize→back to EDITING), so reload rather than
-        // assume FAILED. See jobService.sweepStaleJob.
+        // A swept zombie is no longer AGENT_RUNNING, so reload instead of relying
+        // on the stale list row.
         if (resolved?.kind === 'swept') {
           const reloaded = await albumRepo.findById(a.id);
           status = reloaded?.status ?? status;

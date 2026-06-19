@@ -214,7 +214,7 @@ export const albums = pgTable(
     stage: albumStageEnum('stage').notNull().default('analysing'),
     prompt: text('prompt').notNull(),
     layoutJson: jsonb('layout_json'),
-    // v2 rebuild: authoring tree (AlbumDraft), lives only during the draft phase.
+    // V3 authoring tree / preview pages, lives only during the draft phase.
     // null = v1 album. Discriminator draft vs finalized = layoutJson IS NULL.
     // See docs/agent/rebuild-architecture.md §4.1 / §5.
     draftJson: jsonb('draft_json'),

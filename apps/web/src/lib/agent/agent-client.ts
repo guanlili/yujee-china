@@ -2,35 +2,19 @@ import { env } from '@/lib/env';
 import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
 import {
-  // Response zod (value) + inferred type share the name — used for both runtime
-  // validation and typing. Truth source: packages/contracts/src/v2.ts (T0 #113).
-  V2ThemeResponse,
-  V2ChapterChatResponse,
-  V2EditResponse,
-  V2DraftEditResponse,
-  V2InspectResponse,
-  // v3 (五环节状态机). Truth source: packages/contracts/src/v3.ts.
-  V3ChapterChatResponse,
-  V3RecommendResponse,
   V3ApplyThemeResponse,
+  V3ChapterChatResponse,
   V3CoverResponse,
   V3FinalizeResponse,
+  V3RecommendResponse,
 } from '@yujee/contracts';
 import type {
-  V2InitRequest,
-  V2FinalizeRequest,
-  V2AddPhotosRequest,
-  V2ThemeRequest,
-  V2ChapterChatRequest,
-  V2EditRequest,
-  V2DraftEditRequest,
-  V2InspectRequest,
   V3AnalyzeRequest,
-  V3ChapterChatRequest,
-  V3RecommendRequest,
   V3ApplyThemeRequest,
+  V3ChapterChatRequest,
   V3CoverRequest,
   V3FinalizeRequest,
+  V3RecommendRequest,
 } from '@yujee/contracts';
 
 export type AgentPhotoInput = {
@@ -40,30 +24,7 @@ export type AgentPhotoInput = {
   height: number;
 };
 
-// A patch entry is a partial Page (docs/agent/contract.md §2.2). Field names are
-// `images`/`texts` — the same as the Page schema — per the B9 agent output. The
-// shape is shared with the v2 edit contract (LayoutPatchEntry in v2.ts).
-export type LayoutPatchEntry = {
-  pageIndex: number;
-  templateId?: string;
-  images?: Record<string, string>;
-  texts?: Record<string, string>;
-  // Per-slot position/scale overrides (#165). Mirrors @yujee/contracts
-  // LayoutPatchEntry.imagePos — without it the finalize-era chat-edit path
-  // (applyPatch/toBrowserPatch) would silently strip an override (#165 D1).
-  imagePos?: Record<string, { x: number; y: number; scale: number }>;
-};
-
 export const agentClient = {
-  // ──────────────────────────── v3 (五环节状态机) ────────────────────────────
-  // POST /v3/analyze — async 202 + callback to /api/v3/internal/job-progress
-  // (WP1.1, docs/agent/v3-requirements.md §8). The only v3 endpoint carrying
-  // base64, so it mirrors submitInitV2's 30s submit window: a cross-region
-  // multi-MB body must not abort before the agent's fast 202 (else web wrongly
-  // marks the job FAILED while the agent keeps analysing). The bg task callbacks
-  // progress → completed/failed later. The route parses V3AnalyzeRequest before
-  // calling, so this forwards an already-validated body. AGENT_SHARED_SECRET only
-  // — never bundled to the client (§3 secret).
   async submitAnalyzeV3(payload: V3AnalyzeRequest): Promise<{ requestId: string }> {
     let res: Response;
     try {
@@ -90,24 +51,12 @@ export const agentClient = {
     return { requestId: payload.requestId };
   },
 
-  // POST /v3/chapter-chat — synchronous (② 章节故事, WP2.1). Only the one chapter
-  // slice goes out (§8.3 单章切片) — chapter tree node + this chapter's skeleton
-  // pages + history + userMessage (+ optional focusedPageIndex). The agent
-  // dispatches THIS turn (引导/写/改) by intent and returns kind + assistantReply
-  // (+ pagesTexts on write, + layoutPatch on a text edit, + nameOptions). Stateless:
-  // stage 推进 + 各章 done live in Web (WP2.4). 60s budget, no base64 here.
   async chapterChatV3(payload: V3ChapterChatRequest): Promise<V3ChapterChatResponse> {
     return postSyncV3('/v3/chapter-chat', payload, V3ChapterChatResponse, {
       albumId: payload.albumId,
     });
   },
 
-  // POST /v3/recommend — synchronous (③ 主题/章节色-推荐, WP3.1 #189). Text-only
-  // (chapter overviews + analysis summary, no base64); the recognition model runs
-  // the two recommend Skills and returns theme CANDIDATES + one {accentColor,
-  // artFont} per chapter. Stateless: the agent only suggests — it never writes the
-  // tree (apply-theme/WP3.2 does after the user picks) and never advances stage
-  // (§8.3 stage 推进权在 Web). 60s budget, no base64 here.
   async recommendV3(payload: V3RecommendRequest): Promise<V3RecommendResponse> {
     const data = await postSyncV3('/v3/recommend', payload, V3RecommendResponse, {
       albumId: payload.albumId,
@@ -116,211 +65,69 @@ export const agentClient = {
     return data;
   },
 
-  // POST /v3/apply-theme — synchronous, deterministic (§8.1: 无模型). After the user
-  // picks per-chapter {accentColor, artFont}, the agent 一键刷 every variableDecor
-  // slot (含 SVG) and returns a page-level layoutPatch (§3 树边界: 仍是页级). Stateless:
-  // the agent writes neither tree nor stage — Web persists the chapter color/font into
-  // the tree + merges the patch + advances stage=cover (§8.3 stage 推进权在 Web). 60s
-  // budget, no base64 here.
   async applyThemeV3(payload: V3ApplyThemeRequest): Promise<V3ApplyThemeResponse> {
     return postSyncV3('/v3/apply-theme', payload, V3ApplyThemeResponse, {
       albumId: payload.albumId,
     });
   },
 
-  // POST /v3/cover — synchronous, deterministic (④ 书籍设计 — 封面/封尾, WP4.1 #192).
-  // After the user (optionally) picks a 封面/封尾 system template, the agent
-  // deterministically auto-fills the relevant pages into finished spreads and returns a
-  // page-level layoutPatch (§3 树边界: 仍是页级). Cover is OPTIONAL — when no template is
-  // chosen the agent returns an EMPTY patch (§4.4 跳过=空), never an error. Stateless:
-  // the agent writes neither tree nor stage — Web merges the patch + advances
-  // stage=ready (§8.3 stage 推进权在 Web). 60s budget, no base64 here.
   async coverV3(payload: V3CoverRequest): Promise<V3CoverResponse> {
     return postSyncV3('/v3/cover', payload, V3CoverResponse, {
       albumId: payload.albumId,
     });
   },
 
-  // POST /v3/finalize — synchronous, deterministic (⑤ 待导出, WP5.1 #194). Forwards the
-  // WHOLE layout tree + preview pages (§8.3 全树只在 finalize 传一次, no base64) and the
-  // agent flattens them into the external render contract AlbumLayoutPlan
-  // (magazine+photos+pages[]) the browser turns into a PDF. The agent bakes each
-  // chapter's accentColor/artFont (incl. the svg seam) into the flat pages[].texts (§3
-  // 树边界: 渲染契约不加树形字段) and runs the SINGLE validate (§6.8 第 7 条). Stateless:
-  // the agent writes neither tree nor stage — Web persists the flat layout and owns
-  // stage (§8.3). 60s budget, no base64 here.
   async finalizeV3(payload: V3FinalizeRequest): Promise<V3FinalizeResponse> {
     return postSyncV3Finalize('/v3/finalize', payload, V3FinalizeResponse, {
       albumId: payload.albumId,
     });
   },
-
-  // ──────────────────────────── v2 (agent rebuild) ────────────────────────────
-  // The v2 surface forwards already-validated contract bodies (the route parses
-  // V2*Request before calling). init/finalize are async (202 + callback to
-  // /api/v2/internal/job-progress); theme/chapter-chat/edit are synchronous.
-  // docs/agent/rebuild-tech-plan.md §1.1–§1.5.
-
-  // POST /v2/album/init — async 202. The only v2 endpoint carrying base64, so it
-  // gets a 30s timeout: a cross-region multi-MB body must not abort before the
-  // agent's fast 202 (else web wrongly marks the job FAILED while the agent keeps
-  // running). The bg task callbacks later.
-  async submitInitV2(payload: V2InitRequest): Promise<{ requestId: string }> {
-    let res: Response;
-    try {
-      res = await fetch(`${env.AGENT_BASE_URL}/v2/album/init`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
-          'Content-Type': 'application/json',
-          'X-Request-Id': payload.requestId,
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(30_000),
-      });
-    } catch (e) {
-      logger.error({ err: String(e), requestId: payload.requestId }, 'agent v2 init submit failed');
-      throw ERRORS.AGENT_INTERNAL_ERROR();
-    }
-    if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
-    if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected init payload');
-    if (!res.ok) {
-      logger.error({ status: res.status, requestId: payload.requestId }, 'agent v2 init non-2xx');
-      throw ERRORS.AGENT_INTERNAL_ERROR();
-    }
-    return { requestId: payload.requestId };
-  },
-
-  // POST /v2/album/add-photos — async 202 (W11 mid-edit add). Carries base64 for the
-  // NEW photos only, so the same 30s window as init. Completed callback carries the
-  // new pages + photo analyses to splice before the existing ending.
-  async submitAddPhotosV2(payload: V2AddPhotosRequest): Promise<{ requestId: string }> {
-    let res: Response;
-    try {
-      res = await fetch(`${env.AGENT_BASE_URL}/v2/album/add-photos`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
-          'Content-Type': 'application/json',
-          'X-Request-Id': payload.requestId,
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(30_000),
-      });
-    } catch (e) {
-      logger.error({ err: String(e), requestId: payload.requestId }, 'agent v2 add-photos submit failed');
-      throw ERRORS.AGENT_INTERNAL_ERROR();
-    }
-    if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
-    if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected add-photos payload');
-    if (!res.ok) {
-      logger.error({ status: res.status, requestId: payload.requestId }, 'agent v2 add-photos non-2xx');
-      throw ERRORS.AGENT_INTERNAL_ERROR();
-    }
-    return { requestId: payload.requestId };
-  },
-
-  // POST /v2/album/finalize — async 202. Body is the whole authoring tree (no
-  // base64), still cross-region, so keep the 30s submit window. Completed callback
-  // carries the flat AlbumLayoutPlan (invariant 12: the tree never crosses out).
-  async submitFinalizeV2(payload: V2FinalizeRequest): Promise<{ requestId: string }> {
-    let res: Response;
-    try {
-      res = await fetch(`${env.AGENT_BASE_URL}/v2/album/finalize`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
-          'Content-Type': 'application/json',
-          'X-Request-Id': payload.requestId,
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(30_000),
-      });
-    } catch (e) {
-      logger.error({ err: String(e), requestId: payload.requestId }, 'agent v2 finalize submit failed');
-      throw ERRORS.AGENT_INTERNAL_ERROR();
-    }
-    if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
-    if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected finalize payload');
-    if (!res.ok) {
-      logger.error({ status: res.status, requestId: payload.requestId }, 'agent v2 finalize non-2xx');
-      throw ERRORS.AGENT_INTERNAL_ERROR();
-    }
-    return { requestId: payload.requestId };
-  },
-
-  // POST /v2/album/theme — synchronous, user waits. Returns the proposed theme +
-  // optional cover draft. 60s, no retry (same as chatEdit). Response validated
-  // against the contract so a drifted agent can't poison draft_json.
-  async themeV2(payload: V2ThemeRequest): Promise<V2ThemeResponse> {
-    return postSyncV2('/v2/album/theme', payload, V2ThemeResponse, { albumId: payload.albumId });
-  },
-
-  // POST /v2/album/chapter-chat — synchronous. Only the one chapter slice goes out
-  // (architecture §3); returns the assistant reply + advanced state + page texts.
-  async chapterChatV2(payload: V2ChapterChatRequest): Promise<V2ChapterChatResponse> {
-    return postSyncV2('/v2/album/chapter-chat', payload, V2ChapterChatResponse, {
-      albumId: payload.albumId,
-    });
-  },
-
-  // POST /v2/album/edit — synchronous, operates on the finalized flat layout.
-  // Returns a layoutPatch (≤48 entries).
-  async editV2(payload: V2EditRequest): Promise<V2EditResponse> {
-    return postSyncV2('/v2/album/edit', payload, V2EditResponse, { albumId: payload.albumId });
-  },
-
-  // POST /v2/album/draft-edit — synchronous (#162). Draft-period "render first
-  // version + pointed single-page edit", with talk/act physically split. The
-  // payload carries ONLY the single focused page slice + that page's photo
-  // analyses (no base64, no whole tree — invariant 12). Returns kind:'talk'
-  // (assistant reply only) or kind:'act' (+ pageWrite to apply to that page).
-  async draftEditV2(payload: V2DraftEditRequest): Promise<V2DraftEditResponse> {
-    return postSyncV2('/v2/album/draft-edit', payload, V2DraftEditResponse, {
-      albumId: payload.albumId,
-    });
-  },
-
-  // POST /v2/album/inspect-page — synchronous (#165 Phase 3). After draft-edit
-  // returns kind:'inspect', the browser screenshots the rendered page and posts it
-  // here; the agent runs ONE vision call (doubao-1.6-vision, same model/key as
-  // init) and returns a crop diagnosis + move/zoom suggestion. The `screenshot`
-  // base64 lives only in the request body (invariant 1/2 — not logged/stored).
-  async inspectRenderV2(payload: V2InspectRequest): Promise<V2InspectResponse> {
-    return postSyncV2('/v2/album/inspect-page', payload, V2InspectResponse, {
-      albumId: payload.albumId,
-    });
-  },
 };
 
-// Shared tail for the three synchronous v2 endpoints: POST, unwrap the
-// { ok, data } envelope, and validate `data` against the
-// contract schema. A schema miss is AGENT_INVALID_OUTPUT — the agent answered but
-// off-contract, distinct from a transport failure (AGENT_CHAT_FAILED).
-async function postSyncV2<T>(
-  path: string,
-  payload: unknown,
-  schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
-  logCtx: Record<string, unknown>,
-): Promise<T> {
-  return postSync('v2', path, payload, schema, logCtx);
-}
-
-// Same envelope + error mapping for the synchronous v3 endpoints (chapter-chat,
-// later recommend/apply-theme/cover/finalize). The agent answers in the identical
-// { ok, data } shape; only the contract schemas differ.
 async function postSyncV3<T>(
   path: string,
   payload: unknown,
   schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
   logCtx: Record<string, unknown>,
 ): Promise<T> {
-  return postSync('v3', path, payload, schema, logCtx);
+  let res: Response;
+  try {
+    res = await fetch(`${env.AGENT_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
+        'Content-Type': 'application/json',
+        'X-Request-Id': crypto.randomUUID(),
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (e) {
+    logger.error({ err: String(e), api: 'v3', path, ...logCtx }, 'agent sync call failed');
+    throw ERRORS.AGENT_CHAT_FAILED();
+  }
+  if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
+  if (!res.ok) {
+    logger.error({ status: res.status, api: 'v3', path, ...logCtx }, 'agent sync non-2xx');
+    if (res.status === 422) {
+      const code = await readAgentErrorCode(res);
+      if (code && mapAgentErrorCode(code) === 'AGENT_INVALID_OUTPUT') {
+        throw ERRORS.AGENT_INVALID_OUTPUT();
+      }
+      throw ERRORS.VALIDATION_FAILED('agent rejected sync payload');
+    }
+    throw ERRORS.AGENT_CHAT_FAILED();
+  }
+  const json = await res.json();
+  if (!json.ok) throw ERRORS.AGENT_CHAT_FAILED();
+  const parsed = schema.safeParse(json.data);
+  if (!parsed.success) {
+    logger.error({ api: 'v3', path, ...logCtx }, 'agent sync response off-contract');
+    throw ERRORS.AGENT_INVALID_OUTPUT();
+  }
+  return parsed.data;
 }
 
-// Finalize keeps a stricter transport contract than other v3 sync endpoints:
-// fetch/parse/network errors or non-422 HTTP are infrastructure faults, not
-// chat-edit failures.
 async function postSyncV3Finalize<T>(
   path: string,
   payload: unknown,
@@ -368,51 +175,6 @@ async function postSyncV3Finalize<T>(
   const parsed = schema.safeParse((json as { data?: unknown }).data);
   if (!parsed.success) {
     logger.error({ api: 'v3', path, ...logCtx }, 'agent sync response off-contract');
-    throw ERRORS.AGENT_INVALID_OUTPUT();
-  }
-  return parsed.data;
-}
-
-async function postSync<T>(
-  api: 'v2' | 'v3',
-  path: string,
-  payload: unknown,
-  schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
-  logCtx: Record<string, unknown>,
-): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${env.AGENT_BASE_URL}${path}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
-        'Content-Type': 'application/json',
-        'X-Request-Id': crypto.randomUUID(),
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(60_000),
-    });
-  } catch (e) {
-    logger.error({ err: String(e), api, path, ...logCtx }, 'agent sync call failed');
-    throw ERRORS.AGENT_CHAT_FAILED();
-  }
-  if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
-  if (!res.ok) {
-    logger.error({ status: res.status, api, path, ...logCtx }, 'agent sync non-2xx');
-    if (res.status === 422) {
-      const code = await readAgentErrorCode(res);
-      if (code && mapAgentErrorCode(code) === 'AGENT_INVALID_OUTPUT') {
-        throw ERRORS.AGENT_INVALID_OUTPUT();
-      }
-      throw ERRORS.VALIDATION_FAILED('agent rejected sync payload');
-    }
-    throw ERRORS.AGENT_CHAT_FAILED();
-  }
-  const json = await res.json();
-  if (!json.ok) throw ERRORS.AGENT_CHAT_FAILED();
-  const parsed = schema.safeParse(json.data);
-  if (!parsed.success) {
-    logger.error({ api, path, ...logCtx }, 'agent sync response off-contract');
     throw ERRORS.AGENT_INVALID_OUTPUT();
   }
   return parsed.data;

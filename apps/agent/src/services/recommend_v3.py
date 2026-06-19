@@ -1,9 +1,7 @@
 """V3 theme/chapter-color recommender (§4.3 / §6 / §8, issue #189 / WP3.1).
 
-Option B: this is a NEW V3 module. The v2 `theme.py` (the cover/theme draft for
-the v2 finalize era) is left completely untouched — recommend lives here so the v2
-surface and its tests cannot turn red. The endpoint is `POST /v3/recommend`
-(§8.1: 同步 / 识图模型); it carries the two recommend Skills:
+The endpoint is `POST /v3/recommend` (§8.1: 同步 / 识图模型); it carries the two
+recommend Skills:
 
   * recommend-theme          → 1–3 whole-album theme candidates (subject/label/tone).
                                The user picks one; nothing here writes the tree.

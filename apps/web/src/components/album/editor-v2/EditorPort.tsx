@@ -20,7 +20,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore } from '@/lib/photo/store';
-import { compressFile } from '@/lib/photo/compress';
 import { getWebTemplate } from '../web-registry';
 import { buildSpreads, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
@@ -41,11 +40,9 @@ import { computeExportUnlocked } from './export-gate-util';
 import { runExportWithRetry, buildExportFailureLog, ExportError } from './export-retry-util';
 import { logger } from '@/lib/log/logger';
 import {
-  applyPatchToPages,
   extractPhotoIds,
   type AlbumDetail,
   type EditorPage,
-  type LayoutPatchEntry,
   type StoryProgress,
 } from '../types';
 import {
@@ -277,7 +274,7 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
 // EditorBook — the faithful editor.html port. Mounts once with already-resolved
 // pages/chapters/originals; its single mount-time effect runs the imperative
 // flipbook/zoom/overview/thumbnail/chat logic. `mode` selects the chat behaviour:
-// editing → /chat (applyPatch); authoring → agent theme/chapter flow + finalize.
+// editing → retired chat-edit guidance; authoring → agent theme/chapter flow + finalize.
 // ════════════════════════════════════════════════════════════════════════════
 function EditorBook({
   detail,
@@ -627,12 +624,6 @@ function EditorBook({
 
     /* ─── Real pages → spreads (cover alone on the right-hand page) ─── */
     const albumId = detail.album.id;
-    // The album's *content* language (what the agent writes in) is fixed at
-    // generation time and read from the layout — distinct from the UI locale.
-    const contentLang: 'zh' | 'en' =
-      (detail.album.layoutJson as { magazine?: { language?: string } } | null)?.magazine?.language === 'zh'
-        ? 'zh'
-        : 'en';
 
     /* ─── Authoring (draft) chat state (#162: render-first + pointed single-page
        edits). Empty in editing mode; in authoring mode each message routes through
@@ -778,15 +769,6 @@ function EditorBook({
         clearImageSelection();
       }
     }
-    // Mirror a layout patch (already persisted server-side) into the preview.
-    function applyLocalPatch(patch: LayoutPatchEntry[]) {
-      pagesState = applyPatchToPages(pagesState, patch);
-      // A patch can swap a page's templateId, which may change its slot
-      // (cover/ending/interior) and thus the whole spread layout — recompute.
-      rebuildSpreads();
-      repaintBook();
-    }
-
     // ── #165 Phase 3: rasterize the rendered page for the vision diagnosis ──
     // PRIVACY (invariant 1/2): the screenshot contains the user's original photos
     // (already resolved as blob: URLs in this browser) and is sent to the vision
@@ -1503,7 +1485,6 @@ function EditorBook({
     const input = byId('msgInput') as HTMLTextAreaElement | null;
     const sendBtnEl = byId('sendBtn');
     let sending = false;
-    let lastUserMessage = '';
 
     async function send() {
       if (!input || sending) return;
@@ -1773,7 +1754,6 @@ function EditorBook({
     // /draft-edit so the model calls adjust_image_position; the follow-up act
     // (imagePosWrite) then applies as a normal act.
     async function runDraftEditTurn(message: string) {
-      lastUserMessage = message;
       const host = appendThinkingShell();
       const focusIndex = draftFocusPageIndex();
       // Mark auth errors so the orchestrator rethrows them (it degrades only the
@@ -1857,116 +1837,17 @@ function EditorBook({
       input.setAttribute('placeholder', '');
     }
 
-    // One chat-edit round trip: POST the message, mirror the returned layout
-    // patch into the book (the server already persisted it), then offer the
-    // accept / rewrite / edit-myself chips on the assistant reply.
-    async function runEdit(message: string) {
-      lastUserMessage = message;
-      const a = document.createElement('div');
-      a.className = 'msg ai max-w-full';
-      a.innerHTML =
-        `<div class="thinking-block active">` +
-        `<img class="think-jelly" src="/jellyfish-loop.png" alt="">` +
-        `<span class="thinking-label">${t('thinking')}</span>` +
-        `<span class="thinking-dots"><span></span><span></span><span></span></span>` +
-        `</div>`;
-      chatBody!.appendChild(a);
-      scrollChat();
-      try {
-        const res = await fetch(`/api/v1/albums/${albumId}/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message,
-            language: contentLang,
-            ...(selectedPageIndex != null ? { pageIndex: selectedPageIndex } : {}),
-          }),
-        });
-        const json = await res.json();
-        if (!json.ok) throw new Error(json.error?.message ?? 'chat failed');
-        const patch: LayoutPatchEntry[] = json.data.layoutPatch ?? [];
-        const reply: string = json.data.assistantReply ?? '';
-        applyLocalPatch(patch); // reflect the server-applied edit in the preview
-        a.querySelector('.thinking-block')!.classList.remove('active');
-        (a.querySelector('.thinking-label') as HTMLElement).textContent = t('analyzedFeedback');
-        renderProposal(a, reply, patch);
-      } catch {
-        a.querySelector('.thinking-block')?.classList.remove('active');
-        const err = document.createElement('div');
-        err.className = 'ai-text';
-        err.textContent = t('aiReplyDefault');
-        a.appendChild(err);
-      }
+    // Finalized albums no longer support the legacy synchronous chat-edit path.
+    // Keep the chat rail stable, but do not call a retired endpoint or patch layout.
+    async function runEdit(_message: string) {
+      appendAiText(
+        aT(
+          '旧版聊天改稿已下线，不会再改动当前版面。请继续使用 V3 流程：确认章节故事、选择主题与封面，然后导出 PDF。',
+          'Legacy chat editing has been retired and will no longer change this layout. Continue with the V3 flow: confirm chapter stories, choose the theme and cover, then export the PDF.',
+        ),
+      );
       restAwait();
       scrollChat();
-    }
-
-    function renderProposal(host: HTMLElement, reply: string, patch: LayoutPatchEntry[]) {
-      if (reply) {
-        const textEl = document.createElement('div');
-        textEl.className = 'ai-text';
-        textEl.textContent = reply;
-        host.appendChild(textEl);
-      }
-      // First changed text slot — the target "我来改" lets the user edit by hand.
-      const textEntry = patch.find((e) => e.textsJson && Object.keys(e.textsJson).length > 0);
-      const editTarget = textEntry
-        ? { pageIndex: textEntry.pageIndex, slot: Object.keys(textEntry.textsJson!)[0] }
-        : null;
-
-      const actionsEl = document.createElement('div');
-      actionsEl.className = 'ai-actions flex gap-2 mt-3.5 flex-wrap';
-      const mkChip = (label: string) => {
-        const b = document.createElement('button');
-        b.className = 'chip';
-        b.textContent = label;
-        actionsEl.appendChild(b);
-        return b;
-      };
-      const disable = () =>
-        actionsEl.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
-
-      const acceptBtn = mkChip(t('chipAccept'));
-      acceptBtn.addEventListener('click', () => { disable(); acceptBtn.classList.add('selected'); });
-
-      const rewriteBtn = mkChip(t('chipRewrite'));
-      rewriteBtn.addEventListener('click', () => { disable(); void runEdit(lastUserMessage); });
-
-      if (editTarget) {
-        const editBtn = mkChip(t('chipEditMyself'));
-        editBtn.addEventListener('click', () => { disable(); openInlineEdit(host, editTarget); });
-      }
-      host.appendChild(actionsEl);
-
-      const time = document.createElement('div');
-      time.className = 'name-time';
-      time.textContent = t('justNow');
-      host.appendChild(time);
-    }
-
-    // "我来改": edit the changed text in place and persist via the single-page
-    // PATCH (the existing slot-edit endpoint), then repaint the book.
-    function openInlineEdit(host: HTMLElement, target: { pageIndex: number; slot: string }) {
-      const page = pageByIndex(target.pageIndex);
-      if (!page) return;
-      const box = document.createElement('div');
-      box.className = 'ai-quote';
-      box.setAttribute('contenteditable', 'true');
-      box.textContent = page.textsJson[target.slot] ?? '';
-      host.appendChild(box);
-      box.focus();
-      box.addEventListener('blur', () => {
-        const val = box.textContent ?? '';
-        const cur = pageByIndex(target.pageIndex);
-        if (!cur || val === (cur.textsJson[target.slot] ?? '')) return;
-        cur.textsJson = { ...cur.textsJson, [target.slot]: val };
-        repaintBook();
-        void fetch(`/api/v1/albums/${albumId}/pages/${target.pageIndex}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ textsJson: cur.textsJson }),
-        });
-      });
     }
     // Export: render the PDF in the browser (@react-pdf), download it locally,
     // and upload straight to R2 (bytes never touch the Web tier — invariant 4).
@@ -2104,49 +1985,7 @@ function EditorBook({
         sending = false;
         restAwait();
       };
-      try {
-        const photos: { photoId: string; base64: string; width: number; height: number }[] = [];
-        for (const f of Array.from(files).slice(0, 30)) {
-          const photoId = crypto.randomUUID();
-          const c = await compressFile(f, photoId);
-          await photoStore.put(photoId, f);
-          photos.push({ photoId, base64: c.base64, width: c.width, height: c.height });
-        }
-        const requestId = crypto.randomUUID();
-        const res = await fetch(`/api/v2/albums/${albumId}/add-photos`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requestId, language: currentLang, photos }),
-        });
-        const json = await res.json();
-        if (!json.ok) {
-          if (json.error?.code === 'CREDIT_INSUFFICIENT') {
-            window.location.assign(localizePath('/credits?from=album', locale));
-            return;
-          }
-          fail(json.error?.message ?? aT('加图失败，请重试。', 'Add failed — please try again.'));
-          return;
-        }
-        const reqId: string = json.data.requestId;
-        // Poll the add job; on completion reload to paint the appended pages.
-        for (let i = 0; i < 160; i++) {
-          await new Promise((r) => setTimeout(r, 1500));
-          const sres = await fetch(`/api/v2/albums/${albumId}/add-photos?requestId=${reqId}`);
-          const sjson = await sres.json();
-          const status = sjson.data?.status;
-          if (status === 'completed') {
-            window.location.reload();
-            return;
-          }
-          if (status === 'failed') {
-            fail(sjson.data?.error ?? aT('加图失败，请重试。', 'Add failed — please try again.'));
-            return;
-          }
-        }
-        fail(aT('处理超时，请稍后刷新查看。', 'Timed out — refresh later to check.'));
-      } catch (e) {
-        fail(e instanceof Error ? e.message : String(e));
-      }
+      fail(aT('加图功能正在迁移到新版流程，请先完成当前编辑。', 'Adding photos is being moved to the new flow. Finish the current edit first.'));
     }
     const onAddPhotoChange = () => {
       const files = addPhotoInput?.files;

@@ -11,7 +11,7 @@ import { RetryFailedButton } from '@/components/album/RetryFailedButton';
 import { photoStore } from '@/lib/photo/store';
 import { compressFile } from '@/lib/photo/compress';
 import {
-  submitInitV2,
+  submitAnalyzeV3,
   type GenerationPhoto,
   CreditInsufficientError,
   PhotosUnavailableError,
@@ -359,9 +359,9 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
       }
       // No client-side balance pre-check: uploading photos is cheap and is the
       // investment we want before any paywall. The billing gate is server-side,
-      // right before the AI runs — submitInitV2 throws CREDIT_INSUFFICIENT (caught
+      // right before the AI runs — submitAnalyzeV3 throws CREDIT_INSUFFICIENT (caught
       // below) before the agent is called.
-      const { albumId } = await submitInitV2({
+      const { albumId } = await submitAnalyzeV3({
         requestId: crypto.randomUUID(),
         language,
         photos: builtPhotos,

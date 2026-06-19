@@ -1,12 +1,11 @@
 """Vision provider-slot switching (#166).
 
 Covers `select_vision_slot` wiring for both slots and, end-to-end through
-`vision.analyze` / `inspect_render.diagnose`, asserts that:
+`vision.analyze`, asserts that:
   * the ark (doubao) slot still sends `thinking` disabled (no regression);
   * the openai slot sends NO `thinking`/doubao extra_body and DOES request a
     json_object response_format;
-  * a missing key for the chosen slot fails the right way per caller (vision
-    raises VisionError; inspect degrades gracefully).
+  * a missing key for the chosen slot raises VisionError.
 No live network — `ai_client.chat_completion` is monkeypatched and the call
 kwargs are captured for assertion.
 """
@@ -18,8 +17,7 @@ from typing import Any
 import pytest
 
 from src.schemas import LayoutRequest, PhotoIn, VisionResult
-from src.schemas_v2 import V2InspectRequest
-from src.services import ai_client, inspect_render, vision
+from src.services import ai_client, vision
 from src.services.vision_provider import (
     VisionSlotError,
     estimate_cost_usd,
@@ -177,107 +175,6 @@ def test_vision_analyze_openai_missing_key_raises_vision_error(_real_env, monkey
     monkeypatch.setattr(ai_client, "chat_completion", _capture({}))
     with pytest.raises(vision.VisionError):
         asyncio.run(vision.analyze(_req()))
-
-
-# ---- inspect_render.diagnose through each slot ------------------------------
-
-
-def _inspect_req():
-    return V2InspectRequest.model_validate(
-        {
-            "albumId": "a1",
-            "language": "en",
-            "page": {
-                "pageIndex": 1,
-                "templateId": "mag-05",
-                "images": {"image": "p1"},
-                "texts": {"title": "T"},
-            },
-            "photos": [
-                {
-                    "photoId": "p1",
-                    "description": "a portrait",
-                    "tags": ["portrait"],
-                    "quality": "hero",
-                    "orientation": "portrait",
-                    "peopleCount": "1",
-                    "scene": "outdoor",
-                    "mood": "warm",
-                }
-            ],
-            "screenshot": "data:image/png;base64,AAAA",
-            "userMessage": "face cut off",
-        }
-    )
-
-
-def _inspect_capture(captured: dict):
-    async def fake_completion(**kwargs):
-        captured.update(kwargs)
-        return {
-            "choices": [
-                {
-                    "message": {
-                        "content": json.dumps(
-                            {
-                                "imageId": "image",
-                                "problem": "head cropped",
-                                "suggestedDx": 0,
-                                "suggestedDy": -10,
-                                "suggestedScale": 1.0,
-                                "confidence": 0.8,
-                            }
-                        )
-                    }
-                }
-            ],
-            "usage": {"prompt_tokens": 80, "completion_tokens": 20},
-        }
-
-    return fake_completion
-
-
-def test_inspect_ark_sends_thinking(_real_env, monkeypatch):
-    _real_env(ARK_API_KEY="fake_ark")
-    captured: dict = {}
-    monkeypatch.setattr(ai_client, "chat_completion", _inspect_capture(captured))
-
-    resp = asyncio.run(inspect_render.diagnose(_inspect_req()))
-
-    assert resp.usage.models.vision == "doubao-seed-1-6-vision-250815"
-    assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
-
-
-def test_inspect_openai_omits_thinking(_real_env, monkeypatch):
-    _real_env(VISION_PROVIDER="openai", OPENAI_API_KEY="fake_oai")
-    captured: dict = {}
-    monkeypatch.setattr(ai_client, "chat_completion", _inspect_capture(captured))
-
-    resp = asyncio.run(inspect_render.diagnose(_inspect_req()))
-
-    assert resp.usage.models.vision == "gpt-4o-mini"
-    assert captured["extra_body"] is None
-    assert captured["response_format"] == {"type": "json_object"}
-    assert captured["model"] == "gpt-4o-mini"
-
-
-def test_inspect_openai_missing_key_degrades_gracefully(_real_env, monkeypatch):
-    _real_env(VISION_PROVIDER="openai")  # no OPENAI_API_KEY
-    # chat_completion must NOT be called; the slot is unavailable.
-    called = {"hit": False}
-
-    async def boom(**_kwargs):
-        called["hit"] = True
-        raise AssertionError("should not call upstream when slot key is missing")
-
-    monkeypatch.setattr(ai_client, "chat_completion", boom)
-
-    resp = asyncio.run(inspect_render.diagnose(_inspect_req()))
-
-    # Graceful no-op diagnosis, model name still reports the configured provider.
-    assert resp.diagnosis.imageId is None
-    assert resp.usage.models.vision == "gpt-4o-mini"
-    assert called["hit"] is False
 
 
 # ---- cost estimate ----------------------------------------------------------

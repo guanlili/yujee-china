@@ -7,9 +7,8 @@ import { logger } from '@/lib/log/logger';
 
 // v3 callback dispatcher (WP1.1). The agent posts analyze progress/completed/failed
 // here as a V3Callback envelope (jobKind always 'analyze'). The V3 analyze job is
-// stored under agent_jobs.kind='init' (no kind migration), so unlike the v2 handler
-// there is no DB-kind cross-check — V3Callback only ever carries 'analyze', and the
-// requestId already pins the exact job. Mirrors handleV2JobProgress otherwise.
+// stored under agent_jobs.kind='init' (no kind migration). V3Callback only ever
+// carries 'analyze', and the requestId already pins the exact job.
 export async function handleV3JobProgress(req: Request) {
   const payload = await parseBody(V3Callback, req);
   const job = await agentJobRepo.findByRequestId(payload.requestId);

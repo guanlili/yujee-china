@@ -1,11 +1,9 @@
 """V3 deterministic finalize — V3 layout tree + pages -> flat AlbumLayoutPlan.
 
-The V3 path of finalize (issue #179 / WP0.4). A *new* code path next to v2
-`finalize.py`; the v2 finalize and its quality/hero/page0-cover rules stay
-untouched until the v1/v2 teardown (WP6.1 / #197).
+The V3 path of finalize (issue #179 / WP0.4).
 
 V3 finalize (docs/agent/v3-requirements.md §9 / §4.5; v3-implementation-plan §3
-WP0.4) differs from v2 finalize:
+WP0.4) has these rules:
 
   * **Cover is optional** — page 0 is NOT forced to be a cover-category
     template (covers can be skipped, §4.4). No "page 0 must be cover" rule.
@@ -17,10 +15,7 @@ WP0.4) differs from v2 finalize:
     color and art font. Repeat-group content is addressed by the declared
     bracket-path slot ids (``cells[0].image``), already enumerated by the loader.
 
-This WP delivers the V3 finalize *basis* (flatten + a V3-shaped validate). The
-single merged validate (one path shared by finalize + edit) is WP5.1 — this is
-the deterministic core it will build on, and it does not touch v2's
-``finalize.validate_v2``.
+This WP delivers the V3 finalize basis: flatten + a V3-shaped validate.
 
 Scope note: the external render contract ``AlbumLayoutPlan`` still carries the
 legacy ``quality`` field on each photo (it mirrors @yujee/contracts

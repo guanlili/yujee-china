@@ -241,7 +241,7 @@ def _handle_write_page_copy(
 # cropped/mis-positioned and the model needs to SEE the rendered page to decide.
 # It produces no edit; the draft-edit service maps the (page-pinned) sentinel to
 # a NEW response kind "inspect", which Phase 3's browser turns into a screenshot
-# round-trip (→ /v2/album/inspect-page → diagnosis → follow-up adjust).
+# round-trip (rendered-page screenshot → diagnosis → follow-up adjust).
 
 
 _INSPECT_PAGE_RENDER_DESCRIPTION = (

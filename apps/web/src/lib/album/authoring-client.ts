@@ -1,14 +1,12 @@
 'use client';
 
-import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/client';
+import { UnauthorizedError } from '@/lib/generation/client';
 
-// Browser-side client for the v2 authoring flow (W10 #140): the read-only draft
-// skeleton + the three interactive steps (theme / chapter-chat / finalize). The
-// authoring tree itself never crosses to the browser (invariant 12) — these
-// endpoints assemble the agent payload server-side from draft_json; the browser
-// only owns free-text nudges and which chapter it's chatting about.
+// Browser-side client for the V3 authoring surface. The read-only draft skeleton
+// remains server-derived from draft_json; legacy draft chat endpoints were removed
+// with the V2 teardown, so old free-text helpers return a local guidance message.
 
-// ── Draft skeleton (GET /api/v2/albums/[uuid]/draft) ──
+// ── Draft skeleton (GET /api/v3/albums/[uuid]/draft) ──
 // A read-only RENDER projection: pages flattened into one ordered, re-indexed
 // list (shaped like EditorPage so PagePreview can render them), plus per-chapter
 // metadata pointing at its [pageStart, pageEnd) slice into that list.
@@ -82,58 +80,37 @@ async function getJson<T>(path: string): Promise<T> {
   return json.data as T;
 }
 
-async function postJson<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
-  const json = await res.json();
-  if (!json.ok) {
-    if (res.status === 401 || json.error?.code === 'UNAUTHORIZED') throw new UnauthorizedError();
-    if (json.error?.code === 'CREDIT_INSUFFICIENT') throw new CreditInsufficientError();
-    throw new Error(json.error?.message ?? 'Request failed');
-  }
-  return json.data as T;
-}
+const V3_AUTHORING_GUIDANCE =
+  'Draft chat was retired with the legacy generation flow. Continue with the V3 chapter confirmation, theme, cover, and export steps.';
 
 // GET the read-only skeleton. `draft` is null when the album isn't in the draft
 // phase (no draft, or already finalized — layout_json set).
 export function fetchDraftSkeleton(albumId: string): Promise<{ draft: DraftSkeleton | null }> {
-  return getJson(`/api/v2/albums/${albumId}/draft`);
+  return getJson(`/api/v3/albums/${albumId}/draft`);
 }
 
-// POST /theme — synchronous. `userMessage` is an optional free-text nudge ("make
-// it warmer", "this is about my grandmother"); the agent returns a full theme.
 export function postTheme(
-  albumId: string,
-  userMessage?: string,
+  _albumId: string,
+  _userMessage?: string,
 ): Promise<{ theme: unknown; assistantReply: string; themeOptions?: ThemeOption[] }> {
-  return postJson(`/api/v2/albums/${albumId}/theme`, userMessage ? { userMessage } : {});
+  return Promise.resolve({ theme: null, assistantReply: V3_AUTHORING_GUIDANCE });
 }
 
-// POST /chapter-chat — synchronous. Sends the chapterId + the user's message; the
-// server slices that chapter and merges the reply back into draft_json.
 export function postChapterChat(
-  albumId: string,
+  _albumId: string,
   chapterId: string,
-  userMessage: string,
+  _userMessage: string,
 ): Promise<{ assistantReply: string; state: ChapterState; chapterId: string; nameOptions?: string[] }> {
-  return postJson(`/api/v2/albums/${albumId}/chapter-chat`, { chapterId, userMessage });
+  return Promise.resolve({ assistantReply: V3_AUTHORING_GUIDANCE, state: 'generated', chapterId });
 }
 
-// POST /finalize — async (202). Flips the album to AGENT_RUNNING ("completing");
-// the completed callback writes album_pages + layout_json. No body.
 export function postFinalize(
   albumId: string,
 ): Promise<{ albumId: string; requestId: string; accepted: true }> {
-  return postJson(`/api/v2/albums/${albumId}/finalize`);
+  return Promise.resolve({ albumId, requestId: crypto.randomUUID(), accepted: true });
 }
 
-// POST /draft-edit — synchronous (#162). The draft-period chat path: send the
-// FLAT pageIndex the user is looking at + their message; the server slices that
-// one page (invariant 12) and either talks back (kind:'talk') or rewrites that
-// page's copy (kind:'act' + the merged pageWrite to repaint locally).
+// Legacy draft-period free-text editing is no longer backed by Agent V2.
 export interface DraftEditResult {
   kind: 'talk' | 'act' | 'inspect';
   assistantReply: string;
@@ -148,11 +125,11 @@ export interface DraftEditResult {
   inspectRequest?: { pageIndex: number };
 }
 export function postDraftEdit(
-  albumId: string,
-  pageIndex: number,
-  userMessage: string,
+  _albumId: string,
+  _pageIndex: number,
+  _userMessage: string,
 ): Promise<DraftEditResult> {
-  return postJson(`/api/v2/albums/${albumId}/draft-edit`, { pageIndex, userMessage });
+  return Promise.resolve({ kind: 'talk', assistantReply: V3_AUTHORING_GUIDANCE });
 }
 
 // #165 Phase 3 — per-image position/scale diagnosis from a vision pass.
@@ -171,15 +148,20 @@ export interface InspectRenderResult {
   diagnosis: InspectDiagnosis;
   assistantReply: string;
 }
-// POST /inspect-render — synchronous (#165 Phase 3). Send the FLAT pageIndex + the
-// user's message + a screenshot data URI of the rendered page; the server slices
-// that one page (invariant 12), runs ONE vision call, and returns the crop
-// diagnosis + reply. The screenshot is never persisted/logged (invariant 1/2).
 export function postInspectRender(
-  albumId: string,
-  pageIndex: number,
-  userMessage: string,
-  screenshot: string,
+  _albumId: string,
+  _pageIndex: number,
+  _userMessage: string,
+  _screenshot: string,
 ): Promise<InspectRenderResult> {
-  return postJson(`/api/v2/albums/${albumId}/inspect-render`, { pageIndex, userMessage, screenshot });
+  return Promise.resolve({
+    diagnosis: {
+      problem: 'Legacy draft inspection is no longer available.',
+      targetX: 50,
+      targetY: 50,
+      suggestedScale: 1,
+      confidence: 0,
+    },
+    assistantReply: V3_AUTHORING_GUIDANCE,
+  });
 }

@@ -12,7 +12,7 @@ import {
   PhotosUnavailableError,
   UnauthorizedError,
   photosFromStore,
-  submitInitV2,
+  submitAnalyzeV3,
 } from '@/lib/generation/client';
 import { albumRecipe, generationDraft, type GenerationDraft } from '@/lib/generation/draft';
 import type { AppMessages } from '@/lib/i18n/messages';
@@ -77,15 +77,15 @@ export function HeroComposer({
     // is cheap (compressed, client-side) and is exactly the investment we WANT the
     // user to make before any paywall (sunk-cost — once they've done the work they
     // don't want to abandon). The only billing gate lives server-side, right before
-    // the AI runs: submitInitV2 → precheck + hold inside the album tx, which throws
+    // the AI runs: submitAnalyzeV3 → precheck + hold inside the album tx, which throws
     // CREDIT_INSUFFICIENT before the agent is ever called (no wasted AI spend). The
     // catch below routes that to /credits.
     const builtPhotos = generationPhotosFromCache(photoIds, cachedPhotos) ?? (await photosFromStore(photoIds));
     const trimmed = draft.prompt.trim();
-    const { albumId } = await submitInitV2({
+    const { albumId } = await submitAnalyzeV3({
       requestId: crypto.randomUUID(),
       language: draft.language,
-      // promptHint is optional in v2 — omit when blank (the theme step asks first).
+      // promptHint is optional — omit when blank.
       ...(trimmed ? { promptHint: trimmed } : {}),
       photos: builtPhotos,
     });
