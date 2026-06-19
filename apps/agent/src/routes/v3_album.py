@@ -53,12 +53,18 @@ from ..schemas import (
     V3ProgressEvent,
     V3Usage,
 )
+from ..schemas import (
+    V3RecommendRequest,
+    V3RecommendResponse,
+)
 from ..services import callback
 from ..services import chapter_chat_v3
 from ..services import generic_copy
+from ..services import recommend_v3
 from ..services import select_template
 from ..services import vision
 from ..services.chapter_chat_v3 import ChapterChatV3Error
+from ..services.recommend_v3 import RecommendV3Error
 from ..services.vision import VisionError
 from ..settings import get_settings
 
@@ -307,4 +313,54 @@ async def submit_chapter_chat(req: V3ChapterChatRequest) -> dict[str, Any]:
             },
         ) from exc
     log.info("v3_chapter_chat.completed", kind=response.kind, album_id=req.albumId)
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
+
+
+# ---------- recommend (③ 主题/章节色-推荐, sync) ------------------------------
+
+
+@router.post("/v3/recommend", dependencies=[Depends(require_bearer)])
+async def submit_recommend(req: V3RecommendRequest) -> dict[str, Any]:
+    """③ 主题/章节色-推荐 endpoint (§8 同步 / WP3.1 #189).
+
+    Synchronous (front-end spinner; §8.1 其余秒级同步). The recognition model runs
+    the two recommend Skills (recommend-theme + recommend-chapter-colors) and returns
+    theme CANDIDATES + one {accentColor, artFont} per chapter. Stateless (§8.3): the
+    Agent only suggests — it never writes the tree (apply-theme/WP3.2 does, after the
+    user picks) and never advances stage (stage 推进权在 Web). Input is TEXT ONLY
+    (chapter overviews + analysis summary); no base64 here. Failures answer in the
+    contract error shape (§8.3 同步端点走 HTTP 错误码; front end may retry without
+    polluting stage)."""
+    log.info(
+        "v3_recommend.accepted",
+        album_id=req.albumId,
+        chapters=len(req.chapters),
+        language=req.language,
+    )
+    try:
+        response: V3RecommendResponse = await recommend_v3.run(req)
+    except RecommendV3Error as exc:
+        log.warning("v3_recommend.failed", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_PLANNING_FAILED", "message": str(exc)[:300]},
+            },
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
+        log.exception("v3_recommend.unhandled", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
+            },
+        ) from exc
+    log.info(
+        "v3_recommend.completed",
+        album_id=req.albumId,
+        theme_options=len(response.themeOptions),
+        chapter_colors=len(response.chapterColors),
+    )
     return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
