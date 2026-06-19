@@ -69,6 +69,21 @@ export const Page = z.object({
   pageIndex: z.number().int().nonnegative(),
   templateId: z.string().min(1),
   images: z.record(z.string(), z.string()),
+  /**
+   * 文字槽内容 + 主题 carrier(§3 树边界 单一真相源,文法见 `./theme-carrier`)。
+   *
+   * 除真实文字槽文案外,`texts` 还按 theme-carrier 约定携带章节主题(章节色/字体只能
+   * 借这张 string map 传递 —— 扁平渲染契约不新增树形字段)。finalize
+   * (`finalize_v3._bake_variable_decor`)烘焙、`validate_v3` 校验、渲染器消费:
+   *   ① **SVG / 空装饰 variableDecor 槽 —— 值即色**:`texts[slotId]` 的值本身就是章节
+   *      accentColor,矢量/装饰字形以该色绘制(自包含,无 sibling key)。
+   *   ② **持 prose / code-owned 值的 variableDecor 槽 —— sibling carrier 键**:槽内容
+   *      逐字保留,章节色/字体改走 `texts[slotId + THEME_ACCENT_CARRIER_SUFFIX]` /
+   *      `texts[slotId + THEME_FONT_CARRIER_SUFFIX]`(prose role 见 THEME_USER_PROSE_ROLES)。
+   *   ③ **零碰撞**:真实 slotId(普通 id 或 `cells[0].image` bracket-path)均不含 `#`,
+   *      carrier 后缀以 `#` 起头,故与任何声明的真实 slotId 不会撞键。
+   *   ④ **幂等覆盖**:finalize 对同一棵树重复烘焙得到逐字节相同的 `texts`(覆盖,不追加)。
+   */
   texts: z.record(z.string(), z.string()),
   // Optional per-slot position/scale overrides. Absent => render default 50/50/1.
   imagePos: z.record(z.string(), ImagePos).optional(),

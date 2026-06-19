@@ -38,6 +38,9 @@ from typing import Any
 
 from .. import templates as registry
 from ..schemas import (
+    THEME_ACCENT_CARRIER_SUFFIX,
+    THEME_FONT_CARRIER_SUFFIX,
+    THEME_USER_PROSE_ROLES,
     AlbumLayoutPlan,
     LayoutPhotoAnalysis,
     Magazine,
@@ -63,24 +66,19 @@ _V3_OUTPUT_QUALITY = "detail"
 
 _DEFAULT_TITLE = {"en": "Life in photographs", "zh": "照片里的时光"}
 
-# variableDecor theme-carrier suffixes (§3 树边界: the chapter accentColor/artFont
-# are baked into `page.texts` as STRING values — never a tree-shaped field). A real
-# slot id is a plain id or a bracket-path (`cells[0].image`); none contain ``#``, so
-# these suffixed keys can never collide with a declared slot id and are recognized
-# only as theme carriers by validate_v3.
-#   * SVG variableDecor slots + EMPTY decoration variableDecor slots → the slot's
-#     own `texts[slotId]` value IS the accent color (the vector / decoration glyph
-#     is painted in it) — this lands the WP3.2 svg seam as the final flat form.
-#   * variableDecor slots that hold USER PROSE (title) or a code-owned decoration
-#     value (a non-empty date/folio) keep their content; the chapter color/font ride
-#     these sibling carrier keys so the prose/value is never clobbered.
-_ACCENT_SUFFIX = "#accentColor"
-_FONT_SUFFIX = "#artFont"
-
-# Text-slot roles whose content is user prose: their value is NEVER overwritten by a
-# theme color (matches apply_theme_v3._USER_PROSE_ROLES). The chapter color/font are
-# baked onto sibling carrier keys instead.
-_USER_PROSE_ROLES = frozenset({"title", "body", "explain"})
+# variableDecor theme-carrier 文法 (§3 树边界):章节 accentColor/artFont 烘焙进
+# `page.texts` 的 STRING 值 —— 绝不是树形字段。约定是 `packages/contracts` 的单一真相源
+# (`theme-carrier.ts` ↔ `schemas.py`),finalize 不再私有持有,改 import 共享定义:
+#   * SVG variableDecor 槽 + EMPTY decoration variableDecor 槽 → 槽自己的
+#     `texts[slotId]` 值即 accentColor(矢量/装饰字形以该色绘制)—— 这把 WP3.2 svg seam
+#     收口为最终扁平形态。
+#   * 持 USER PROSE(title)或 code-owned 装饰值(非空 date/folio)的 variableDecor 槽 →
+#     内容保留,章节色/字体走 sibling carrier 键,prose/值永不被覆盖。
+# A real slot id 是普通 id 或 bracket-path(`cells[0].image`),均不含 ``#``,故 carrier
+# 键与声明槽零碰撞,validate_v3 只把它们认作 theme carrier。
+_ACCENT_SUFFIX = THEME_ACCENT_CARRIER_SUFFIX
+_FONT_SUFFIX = THEME_FONT_CARRIER_SUFFIX
+_USER_PROSE_ROLES = THEME_USER_PROSE_ROLES
 
 
 class FinalizeV3Error(Exception):
