@@ -107,7 +107,7 @@ def test_select_slot_openai_has_no_thinking_and_json_object(_real_env):
     assert slot.provider == "openai"
     assert slot.base_url == "https://api.openai.com/v1"
     assert slot.api_key == "fake_oai"
-    assert slot.model == "gpt-5.5-mini"  # WP1.3: GPT-5.5 Mini is the OpenAI vision default
+    assert slot.model == "gpt-4o-mini"  # V2 OpenAI vision default; V3 describe has its own model.
     assert slot.extra_body is None  # CRITICAL: never send doubao `thinking` to OpenAI
     assert slot.response_format == {"type": "json_object"}
 
@@ -133,7 +133,7 @@ def test_resolved_vision_model_tracks_provider_without_key(_real_env):
     # No keys set: resolved_vision_model must still return the provider's model
     # (startup logging uses it before keys are validated).
     assert resolved_vision_model(_real_env()) == "doubao-seed-1-6-vision-250815"
-    assert resolved_vision_model(_real_env(VISION_PROVIDER="openai")) == "gpt-5.5-mini"
+    assert resolved_vision_model(_real_env(VISION_PROVIDER="openai")) == "gpt-4o-mini"
 
 
 # ---- vision.analyze through each slot ---------------------------------------
@@ -162,12 +162,12 @@ def test_vision_analyze_openai_omits_thinking(_real_env, monkeypatch):
     result, _, model = asyncio.run(vision.analyze(_req()))
 
     assert isinstance(result, VisionResult)
-    assert model == "gpt-5.5-mini"  # resolved model returned for Usage reporting
+    assert model == "gpt-4o-mini"  # resolved model returned for Usage reporting
     # The whole point of #166: doubao's thinking knob must not reach OpenAI.
     assert captured["extra_body"] is None
     assert "thinking" not in (captured.get("extra_body") or {})
     assert captured["response_format"] == {"type": "json_object"}
-    assert captured["model"] == "gpt-5.5-mini"
+    assert captured["model"] == "gpt-4o-mini"
     assert captured["base_url"] == "https://api.openai.com/v1"
     assert captured["api_key"] == "fake_oai"
 
@@ -255,10 +255,10 @@ def test_inspect_openai_omits_thinking(_real_env, monkeypatch):
 
     resp = asyncio.run(inspect_render.diagnose(_inspect_req()))
 
-    assert resp.usage.models.vision == "gpt-5.5-mini"
+    assert resp.usage.models.vision == "gpt-4o-mini"
     assert captured["extra_body"] is None
     assert captured["response_format"] == {"type": "json_object"}
-    assert captured["model"] == "gpt-5.5-mini"
+    assert captured["model"] == "gpt-4o-mini"
 
 
 def test_inspect_openai_missing_key_degrades_gracefully(_real_env, monkeypatch):
@@ -276,7 +276,7 @@ def test_inspect_openai_missing_key_degrades_gracefully(_real_env, monkeypatch):
 
     # Graceful no-op diagnosis, model name still reports the configured provider.
     assert resp.diagnosis.imageId is None
-    assert resp.usage.models.vision == "gpt-5.5-mini"
+    assert resp.usage.models.vision == "gpt-4o-mini"
     assert called["hit"] is False
 
 

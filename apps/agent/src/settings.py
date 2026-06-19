@@ -69,15 +69,12 @@ class Settings(BaseSettings):
     # extraction. Ignored by non-doubao providers that don't accept `thinking`.
     ark_disable_thinking: bool = True
 
-    # OpenAI (GPT) vision slot — used by V2 when vision_provider="openai", and the
-    # PRIMARY slot for the V3 describe-content recognition model (architecture
-    # §6.8 第 2 条: 识图模型 = GPT-5.5 Mini 主, `OPENAI_*` 槽). base_url is the
-    # public OpenAI API; override for an Azure/compatible gateway. The model
-    # default is the production GPT-5.5 Mini id; override via env if OpenAI ships a
-    # different alias.
+    # OpenAI (GPT) vision slot — used by V2 when vision_provider="openai". V3
+    # describe-content uses the same endpoint/key/json/thinking wiring but has its
+    # own model knob below, so enabling WP1.3 does not silently change V2 behavior.
     openai_api_key: str | None = None  # env OPENAI_API_KEY
     openai_base_url: str = "https://api.openai.com/v1"
-    openai_vision_model: str = "gpt-5.5-mini"
+    openai_vision_model: str = "gpt-4o-mini"
     openai_timeout_seconds: int = 120
     # GPT supports response_format=json_object and reliably returns valid JSON for
     # this structured extraction, so default ON for the openai slot (the doubao
@@ -87,13 +84,14 @@ class Settings(BaseSettings):
     openai_use_json_object: bool = True
 
     # V3 describe-content failover (architecture §6.8 第 2 条 / v3-impl-plan §6.2):
-    # the recognition model defaults to OPENAI (GPT-5.5 Mini, the openai_* slot
-    # above). ai_client already retries once on transport/5xx within
-    # openai_timeout_seconds, so a 30s per-call budget = 30s + one retry ≈ 60s
-    # worst case for the primary attempt. If the OpenAI slot still 5xx/times-out
-    # after that retry, OR the whole batch hasn't finished within
-    # describe_batch_deadline_seconds, describe-content降级火山 (the ark_* slot).
-    # 数值可微调,不改「先 GPT、自动降级火山」的降级语义。
+    # the recognition model defaults to OPENAI (GPT-5.5 Mini, using the openai_*
+    # endpoint/key). ai_client already retries once on 5xx/timeouts within the
+    # per-call budget, so a 30s budget = 30s + one retry ≈ 60s worst case for the
+    # primary attempt. If the OpenAI slot still 5xx/times-out after that retry, OR
+    # the whole batch hasn't finished within describe_batch_deadline_seconds,
+    # describe-content降级火山 (the ark_* slot). Missing keys and 4xx are config /
+    # request failures, not failover cases. 数值可微调,不改「先 GPT、自动降级火山」语义。
+    describe_openai_model: str = "gpt-5.5-mini"
     describe_openai_timeout_seconds: int = 30
     describe_batch_deadline_seconds: int = 90
 

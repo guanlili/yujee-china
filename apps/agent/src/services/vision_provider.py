@@ -4,8 +4,8 @@ Vision used to hardwire the 火山 Ark (doubao) slot. We now let it switch betwe
 two OpenAI-compatible slots via `settings.vision_provider`:
 
   * "ark"    → 火山 doubao-seed-1-6-vision (default; existing behavior).
-  * "openai" → OpenAI GPT vision (GPT-5.5 Mini by default; also the V3
-    describe-content primary slot, see openai_vision_slot).
+  * "openai" → OpenAI GPT vision (gpt-4o-mini by default for V2). V3
+    describe-content reuses this slot wiring with a describe-specific model.
 
 Both init's batched analysis (vision.py) and the #165 inspect diagnosis
 (inspect_render.py) resolve their endpoint/key/model/timeout through
@@ -99,19 +99,24 @@ def resolved_vision_model(settings: Settings) -> str:
     return settings.ark_vision_model
 
 
-def openai_vision_slot(settings: Settings, *, timeout_seconds: int | None = None) -> VisionSlot:
+def openai_vision_slot(
+    settings: Settings,
+    *,
+    timeout_seconds: int | None = None,
+    model: str | None = None,
+) -> VisionSlot:
     """Resolve the OpenAI (GPT) vision slot explicitly, independent of the V2
     `vision_provider` switch. Used as the V3 describe-content PRIMARY (architecture
-    §6.8 第 2 条). `timeout_seconds` overrides the slot's default per-call budget so
-    the V3 failover can use a tighter primary deadline. Raises VisionSlotError if
-    the OpenAI key is missing (caller decides whether to fall back to ark)."""
+    §6.8 第 2 条) with a describe-specific model override. `timeout_seconds`
+    overrides the slot's default per-call budget so V3 failover can use a tighter
+    primary deadline. Raises VisionSlotError if the OpenAI key is missing."""
     if not settings.openai_api_key:
         raise VisionSlotError("OPENAI_API_KEY missing; cannot run OpenAI vision slot")
     return VisionSlot(
         provider="openai",
         base_url=settings.openai_base_url,
         api_key=settings.openai_api_key,
-        model=settings.openai_vision_model,
+        model=model or settings.openai_vision_model,
         timeout_seconds=(
             settings.openai_timeout_seconds if timeout_seconds is None else timeout_seconds
         ),

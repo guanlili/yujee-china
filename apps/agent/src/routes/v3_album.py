@@ -148,7 +148,7 @@ async def _run_analyze(req: V3AnalyzeRequest) -> None:
         await _emit_failure(req, code="AGENT_VISION_FAILED", message=str(exc), stage="describe")
         return
     chapters = described.tree.chapters
-    vision_call_count = 1
+    vision_call_count = described.call_count
     vision_model = described.model
     await _emit_progress(req, "describe", 100)
 

@@ -5,7 +5,7 @@ stay attributable to the right pipeline stage."""
 
 import json
 import re
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -14,8 +14,26 @@ from ..logging_config import get_logger
 log = get_logger("ai_client")
 
 
+AIErrorKind = Literal["4xx", "5xx", "timeout", "transport"]
+
+
 class AIRequestError(Exception):
     """Raised when the upstream model HTTP call fails after the network retry."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        kind: AIErrorKind | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.kind = kind
+
+    @property
+    def failover_eligible(self) -> bool:
+        return self.kind in {"5xx", "timeout"}
 
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
@@ -97,23 +115,41 @@ async def chat_completion(
     }
 
     last_error: str = ""
+    last_status_code: int | None = None
+    last_kind: AIErrorKind | None = None
     for attempt in (1, 2):
         try:
             async with httpx.AsyncClient(timeout=timeout_seconds) as client:
                 resp = await client.post(url, json=body, headers=headers)
             if resp.status_code >= 500:
                 last_error = f"upstream_5xx status={resp.status_code}"
+                last_status_code = resp.status_code
+                last_kind = "5xx"
                 log.warning("ai.upstream_5xx", model=model, status=resp.status_code, attempt=attempt)
             elif resp.status_code >= 400:
-                detail = resp.text[:300]
                 log.warning("ai.upstream_4xx", model=model, status=resp.status_code, attempt=attempt)
-                raise AIRequestError(f"upstream_4xx status={resp.status_code} body_len={len(resp.text)}")
+                raise AIRequestError(
+                    f"upstream_4xx status={resp.status_code} body_len={len(resp.text)}",
+                    status_code=resp.status_code,
+                    kind="4xx",
+                )
             else:
                 return resp.json()
+        except httpx.TimeoutException as exc:
+            last_error = f"transport={type(exc).__name__}"
+            last_status_code = None
+            last_kind = "timeout"
+            log.warning("ai.transport_error", model=model, attempt=attempt, error=type(exc).__name__)
         except httpx.HTTPError as exc:
             last_error = f"transport={type(exc).__name__}"
+            last_status_code = None
+            last_kind = "transport"
             log.warning("ai.transport_error", model=model, attempt=attempt, error=type(exc).__name__)
-    raise AIRequestError(f"model {model} failed after retry: {last_error}")
+    raise AIRequestError(
+        f"model {model} failed after retry: {last_error}",
+        status_code=last_status_code,
+        kind=last_kind,
+    )
 
 
 def extract_text(response: dict[str, Any]) -> str:
