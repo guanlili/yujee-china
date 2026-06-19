@@ -85,8 +85,12 @@ export const Page = z.object({
    *   ④ **幂等覆盖**:finalize 对同一棵树重复烘焙得到逐字节相同的 `texts`(覆盖,不追加)。
    */
   texts: z.record(z.string(), z.string()),
-  // Optional per-slot position/scale overrides. Absent => render default 50/50/1.
-  imagePos: z.record(z.string(), ImagePos).optional(),
+  // Optional per-slot position/scale overrides. Absent/null => render default 50/50/1.
+  // `.nullish()` (not just `.optional()`): the Python side serializes `imagePos:
+  // dict | None` as JSON `null`, so the V3 analyze callback / finalize payloads
+  // carry `null` here — accept it (renderer reads `imagePos?.[slot]`, so null and
+  // absent are equivalent). Was `.optional()`, which rejected the agent's `null`.
+  imagePos: z.record(z.string(), ImagePos).nullish(),
 }).strict();
 export type Page = z.infer<typeof Page>;
 

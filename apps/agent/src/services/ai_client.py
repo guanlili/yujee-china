@@ -33,7 +33,10 @@ class AIRequestError(Exception):
 
     @property
     def failover_eligible(self) -> bool:
-        return self.kind in {"5xx", "timeout"}
+        # transport errors (connection drop / RemoteProtocolError — e.g. OpenAI
+        # unreachable from CN) are exactly when failing over to the other provider
+        # helps; only 4xx (request/config error, same on both) stays non-eligible.
+        return self.kind in {"5xx", "timeout", "transport"}
 
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
