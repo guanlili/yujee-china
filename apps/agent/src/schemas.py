@@ -7,9 +7,8 @@ use a discriminated union on `event`.
 V3 section (WP0.3 / issue #178) mirrors `packages/contracts/src/{enums,layout,
 templates,v3}.ts` 1:1 — the TS zod definitions are the single source of truth
 (architecture §6.8 第 5 条:契约 TS 先行 Python 镜像). Field names, optionality,
-and enum members are kept byte-for-byte aligned; drift is the historical risk
-called out in design.md §14, guarded by the cross-language fixture parity tests
-in tests/test_schemas.py.
+and enum members are kept byte-for-byte aligned; cross-language drift is guarded
+by the fixture parity tests in tests/test_schemas.py.
 """
 
 import re
@@ -96,9 +95,8 @@ class LayoutPhotoAnalysis(_Strict):
 
 
 class PhotoAnalysis(LayoutPhotoAnalysis):
-    """Vision output. Extends the external render shape with design.md §2.6
-    composing hints. The hints are internal and must be stripped before photos
-    enter `AlbumLayoutPlan.photos`."""
+    """Vision output. Extends the external render shape with internal composing
+    hints. The hints are stripped before photos enter `AlbumLayoutPlan.photos`."""
 
     peopleCount: PeopleCount | None = None
     scene: Scene | None = None

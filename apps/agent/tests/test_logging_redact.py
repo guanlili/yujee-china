@@ -50,19 +50,61 @@ class TestRedaction:
         assert out["stage"] == "vision"
         assert out["progress"] == 50
 
-    def test_nested_dict_values_scrubbed(self):
+    def test_nested_dict_strings_scrubbed_and_sensitive_keys_redacted(self):
         out = _run(
             {
                 "event": "evt",
                 "payload": {
                     "headers": {"Authorization": "Bearer xyz"},
                     "snippet": "data:image/jpeg;base64,ABC",
+                    "geo": {"lat": 37.7749, "lng": -122.4194},
                 },
             }
         )
-        # Nested values are scrubbed by string content (regex), not key match.
+        # Nested dict/list processing applies both regex scrubbing and key redaction.
+        assert out["payload"]["headers"]["Authorization"] == "<redacted>"
+        assert out["payload"]["geo"]["lat"] == "<redacted>"
+        assert out["payload"]["geo"]["lng"] == "<redacted>"
         assert "xyz" not in json.dumps(out["payload"])
         assert "ABC" not in json.dumps(out["payload"])
+
+    def test_nested_prompt_hint_user_message_and_history_content_redacted(self):
+        out = _run(
+            {
+                "event": "evt",
+                "payload": {
+                    "promptHint": "a private story prompt",
+                    "user_message": "please write about my family",
+                    "history": [
+                        {"role": "user", "content": "raw user turn"},
+                        {"role": "assistant", "history.content": "raw assistant turn"},
+                    ],
+                    "history_content": "flattened raw history",
+                },
+            }
+        )
+
+        assert out["payload"]["promptHint"] == "<redacted>"
+        assert out["payload"]["user_message"] == "<redacted>"
+        assert out["payload"]["history"][0]["content"] == "<redacted>"
+        assert out["payload"]["history"][1]["history.content"] == "<redacted>"
+        assert out["payload"]["history_content"] == "<redacted>"
+
+    def test_redact_keys_are_case_insensitive_in_nested_payloads(self):
+        out = _run(
+            {
+                "event": "evt",
+                "payload": {
+                    "Prompt_Hint": "secret",
+                    "UserMessage": "secret",
+                    "History": {"Content": "secret"},
+                },
+            }
+        )
+
+        assert out["payload"]["Prompt_Hint"] == "<redacted>"
+        assert out["payload"]["UserMessage"] == "<redacted>"
+        assert out["payload"]["History"]["Content"] == "<redacted>"
 
     def test_email_key_redacted(self):
         out = _run({"event": "evt", "user_email": "a@b.com"})

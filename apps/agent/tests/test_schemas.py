@@ -482,7 +482,7 @@ class TestV3Callback:
             _CALLBACK.validate_python({"requestId": "r1", "jobKind": "analyze", "event": "bogus"})
 
 
-# ---------- cross-language parity (design.md §14 drift guard) -----------------
+# ---------- cross-language parity drift guard ---------------------------------
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PARITY_FIXTURE = _REPO_ROOT / "packages" / "contracts" / "fixtures" / "v3" / "parity.json"
@@ -536,7 +536,7 @@ def test_cross_language_parity_python_side(case):
     """Python pydantic mirror must agree with the shared `expectValid` verdict for
     every fixture case. `expectValid` is the TS zod verdict (verified by
     packages/contracts/scripts/parity-check.ts), so a Python/TS drift surfaces
-    here as a failing case — the historical risk in design.md §14."""
+    here as a failing case."""
     assert _py_valid(case["schema"], case["payload"]) == case["expectValid"], (
         f"Python verdict disagrees with shared contract verdict for: {case['name']}"
     )

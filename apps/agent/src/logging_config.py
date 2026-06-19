@@ -20,19 +20,24 @@ _REDACTED = "<redacted>"
 _REDACT_KEY_EXACT = frozenset(
     {
         "prompt",
+        "prompthint",
+        "prompt_hint",
         "user_prompt",
         "userprompt",
+        "user_message",
+        "usermessage",
         "system_prompt",
         "systemprompt",
+        "history.content",
         "history_content",
+        "historycontent",
         "content",
-        # Geo / GPS coordinates (invariant 11 / rebuild-architecture §6,
-        # design.md §9). v1 never extracts GPS (D-GPS) so these should never
-        # appear — they're kept here as a defensive pre-set red line so a future
-        # GPS feature, or an accidental upstream leak / regression, can never
-        # spill raw coordinates or a reverse-geocoded place into logs. Exact-match
-        # because the names are short and unambiguous (a substring rule on "lat"
-        # would wrongly catch "latency", "translate", "related", etc.).
+        # Geo / GPS coordinates (docs/agent/design.md §9;
+        # docs/architecture.md §3). These should never appear in V3 logs, but
+        # remain a defensive red line so an accidental upstream leak cannot spill
+        # raw coordinates or a reverse-geocoded place. Exact-match because the
+        # names are short and unambiguous (a substring rule on "lat" would
+        # wrongly catch "latency", "translate", "related", etc.).
         "lat",
         "lng",
         "latitude",
@@ -82,7 +87,10 @@ def _redact_value(value: Any) -> Any:
     if isinstance(value, list):
         return [_redact_value(item) for item in value]
     if isinstance(value, dict):
-        return {k: _redact_value(v) for k, v in value.items()}
+        return {
+            k: _REDACTED if _should_redact_key(str(k)) else _redact_value(v)
+            for k, v in value.items()
+        }
     return value
 
 

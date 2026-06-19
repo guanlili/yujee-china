@@ -61,25 +61,25 @@ memoir-agent-rebuild/
 
 ### 角色 → 必读文档
 
-> V3 真相源 = `docs/agent/v3-requirements.md`(需求)+ `docs/agent/v3-implementation-plan.md`(WP 拆解)。下表 V3 相关行已指向它们。
+> V3 起手入口 = `docs/agent/contract.md`(Web <-> Agent 契约 + Web orchestration route map)+ `docs/agent/design.md`(Agent 内部 pipeline)。`docs/agent/v3-requirements.md` 保留需求背景,`docs/agent/v3-implementation-plan.md` 保留 WP 拆解。`docs/web/api.md` 不是 V3 generation/authoring/API 接入起手文档。
 
 | 角色 | 必读(按顺序) |
 |---|---|
 | Web · 基建 | architecture → web/layering → web/directory → web/conventions → web/database → web/errors |
 | Web · DB / Repo | architecture → web/layering → web/database → web/conventions |
-| Web · API | architecture → web/layering → web/api → web/conventions → web/errors |
+| Web · API / V3 接入 | architecture → agent/contract → web/layering → web/conventions → web/errors |
 | Web · Service | architecture → web/layering → web/conventions → web/errors → web/database |
-| Web · UI · 创建页 / 编辑器 | architecture → v3-requirements(§2 五环节 + §4 逐环节)→ web/api → web/conventions |
+| Web · UI · 创建页 / 编辑器 | architecture → agent/contract → v3-requirements(§2 五环节 + §4 逐环节)→ web/conventions |
 | Web · UI · PDF / 营销 / 账单 | architecture → web/api → web/conventions |
-| Agent · 接入(Web 侧)| architecture → v3-requirements §8(端点契约)→ web/api |
-| Agent · 内部 pipeline | architecture → v3-requirements → v3-implementation-plan(认领的 WP)|
+| Agent · 接入(Web 侧)| architecture → agent/contract |
+| Agent · 内部 pipeline | architecture → agent/contract → agent/design |
 | Contracts / 模板 | architecture → v3-requirements §8·§9 → web/database |
 | Infra | architecture + 各文档末尾的「环境变量」小节 |
-| 架构师 / Reviewer | architecture + v3-requirements;**其余按所设计/评审的模块对应行按需读,不预读全部** |
+| 架构师 / Reviewer | architecture → agent/contract → agent/design;**其余按所设计/评审的模块对应行按需读,不预读全部** |
 
 文档位置:`docs/architecture.md`、`docs/web/*.md`、`docs/agent/*.md`。
 
-> ⚠️ `docs/agent/contract.md`、`design.md` 是 **V1/V2 旧实现文档**,V3 施工**不据此**(将于旧端点整删时随 V3 重写);需要对外契约/内部 pipeline 细节时看 `v3-requirements.md §8/§9`。
+> `docs/agent/contract.md` 是 V3 req/res、错误码、状态机入口;`docs/agent/design.md` 是 V3 pipeline、failover、validation、redact 入口。
 >
 > §3 不变式(两类重点:**数据归属 / 积分变更**)动手前对照原文自查,不要凭记忆。
 

@@ -1,6 +1,6 @@
 """Real vision stage: Volcano Ark `doubao-seed-1-6-vision` in a single
-multi-image call. Output schema mirrors docs/agent/design.md §2.6 with the 5
-extension fields (peopleCount / scene / mood / timeOfDay / location).
+multi-image call. V3 design §2 uses visible scene/time signals for grouping;
+the V3 authoring tree has no location/place dimension.
 
 Privacy: photo base64 is passed into the upstream HTTP body and then the
 local reference is dropped; we never log it or hand it back to the caller."""

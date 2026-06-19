@@ -10,7 +10,7 @@ from .settings import get_settings
 
 
 def _validate_startup_config() -> None:
-    """Fail-fast checks per docs/agent/design.md §12.
+    """Fail-fast checks for Agent startup config; see docs/agent/design.md.
 
     - AGENT_PIPELINE_MODE must be 'mock' or 'real' (Settings literal enforces this).
     - production env may only run with mode=real.
