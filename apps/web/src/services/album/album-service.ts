@@ -15,6 +15,8 @@ import {
   type Page as V3Page,
   type V3LayoutTree as V3LayoutTreeT,
   type V3StoryProgress,
+  type V3ChapterThemeChoice,
+  type V3LayoutPatchEntry,
 } from '@yujee/contracts';
 
 const PDF_MAX_BYTES = 50 * 1024 * 1024; // 50MB — docs/web/api.md §3.6
@@ -330,6 +332,79 @@ export const albumService = {
         progress: { currentChapterId: nextCurrent, doneChapterIds },
       });
     });
+  },
+
+  // ③ 主题/章节色-应用 (WP3.2 / #190). The user picked, per chapter, one
+  // {accentColor, artFont}; this WRITES them into the tree's V3Chapter nodes (where
+  // the chapter color/font live until finalize bakes them — §3 树边界: the flat
+  // render contract gains no tree-shaped field), and advances albums.stage
+  // theme → cover. The Agent already produced the deterministic page-level
+  // `layoutPatch` (one-click 刷 variableDecor 槽, 含 SVG) — Web is the sole truth
+  // source, so we persist the tree colors + advance stage here and hand the patch back
+  // for the browser to apply live (pages are re-derived/merged at finalize, not stored
+  // in draft_json). stage ⟂ status (§6.8 第 4 条): only the stage column moves; status
+  // stays EDITING. Idempotent: re-applying (or applying after cover) only ever advances
+  // theme → cover, never regresses, so a double-submit is safe. Caller must hold
+  // ownership (findOwned) before invoking.
+  async applyTheme(
+    userId: string,
+    albumId: string,
+    chapters: V3ChapterThemeChoice[],
+    layoutPatch: V3LayoutPatchEntry[],
+  ): Promise<{ stage: string; layoutPatch: V3LayoutPatchEntry[] }> {
+    const album = await this.findOwned(userId, albumId);
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+
+    const expectedChapterIds = normalized.tree.chapters.map((ch) => ch.chapterId);
+    const expectedSet = new Set(expectedChapterIds);
+    const seen = new Set<string>();
+    for (const choice of chapters) {
+      if (seen.has(choice.chapterId)) {
+        throw ERRORS.VALIDATION_FAILED('duplicate chapterId in theme choices');
+      }
+      if (!expectedSet.has(choice.chapterId)) {
+        throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+      }
+      seen.add(choice.chapterId);
+    }
+    if (seen.size !== expectedChapterIds.length) {
+      throw ERRORS.VALIDATION_FAILED('theme choices must cover every chapter');
+    }
+
+    // Write each chosen {accentColor, artFont} onto its chapter node in the tree.
+    const choiceById = new Map(chapters.map((c) => [c.chapterId, c]));
+    const nextTree: typeof normalized.tree = {
+      chapters: normalized.tree.chapters.map((ch) => {
+        const choice = choiceById.get(ch.chapterId);
+        return choice
+          ? { ...ch, accentColor: choice.accentColor, artFont: choice.artFont }
+          : ch;
+      }),
+    };
+
+    const nextDraft: V3StoryDraft = {
+      version: 'v3-story',
+      tree: nextTree,
+      ...(normalized.pages ? { pages: normalized.pages } : {}),
+      progress: normalized.progress,
+    };
+
+    // Advance theme → cover only (the theme 环节 is done). From any other stage this
+    // is a no-op on the stage column (idempotent; never regresses past cover).
+    const advanceStage = album.stage === 'theme';
+
+    await db.transaction(async (tx) => {
+      await albumRepo.update(tx, albumId, {
+        draftJson: nextDraft,
+        ...(advanceStage ? { stage: 'cover' as const } : {}),
+      });
+    });
+
+    return {
+      stage: advanceStage ? 'cover' : album.stage,
+      layoutPatch,
+    };
   },
 
   // Read-only RENDER projection of the authoring tree (draft_json) for the v2

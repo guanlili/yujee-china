@@ -13,7 +13,7 @@ import {
 } from '../../db/repos/__test__/setup';
 import { albumService } from './album-service';
 import { jobService } from '../job/job-service';
-import { AlbumDraft } from '@yujee/contracts';
+import { AlbumDraft, type V3ChapterThemeChoice } from '@yujee/contracts';
 
 // Sets up an AGENT_RUNNING album with a held credit and a RUNNING job whose
 // startedAt is `startedAgoMs` in the past. Returns the ids for assertions.
@@ -743,6 +743,176 @@ test('getStoryProgress: rejects a non-owner', async (t) => {
     const albumId = await seedStoryAlbum(owner.id, 1);
     await assert.rejects(
       () => albumService.getStoryProgress(intruder.id, albumId),
+      (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
+    );
+  } finally {
+    await cleanupUser(owner.id);
+    await cleanupUser(intruder.id);
+  }
+});
+
+// ── ③ 主题/章节色-应用 (WP3.2 / #190) ─────────────────────────────────────────
+
+const PATCH = [{ pageIndex: 0, texts: { divider: '#C0392B', title: 'X' } }];
+const isValidationFailed = (err: { code?: string }) => err.code === 'VALIDATION_FAILED';
+
+// Put a seeded story album at stage='theme' (the state apply-theme runs from).
+async function seedThemeAlbum(userId: string, n: number) {
+  const albumId = await seedStoryAlbum(userId, n);
+  await albumRepo.update(db, albumId, { stage: 'theme' });
+  return albumId;
+}
+
+test('applyTheme: writes per-chapter color/font into the tree + advances stage=cover', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp32-apply');
+  try {
+    const albumId = await seedThemeAlbum(user.id, 2);
+    const res = await albumService.applyTheme(
+      user.id,
+      albumId,
+      [
+        { chapterId: 'c1', accentColor: '#C0392B', artFont: 'script-elegant' },
+        { chapterId: 'c2', accentColor: '#1F618D', artFont: 'sans-modern' },
+      ] satisfies V3ChapterThemeChoice[],
+      PATCH,
+    );
+    assert.equal(res.stage, 'cover'); // theme → cover
+    assert.deepEqual(res.layoutPatch, PATCH); // patch handed back verbatim
+
+    // Persisted: tree chapters carry the chosen color/font; stage=cover; status ⟂.
+    const reloaded = await albumRepo.findById(albumId);
+    assert.equal(reloaded?.stage, 'cover');
+    assert.equal(reloaded?.status, 'EDITING'); // applyTheme never touches status
+    const draft = reloaded?.draftJson as {
+      tree: { chapters: Array<{ chapterId: string; accentColor: string | null; artFont: string | null }> };
+      pages?: unknown;
+    };
+    assert.deepEqual(draft.pages, makePreviewPages(2), 'applyTheme must preserve V3 preview pages in draft_json');
+    const byId = new Map(draft.tree.chapters.map((c) => [c.chapterId, c]));
+    assert.equal(byId.get('c1')?.accentColor, '#C0392B');
+    assert.equal(byId.get('c1')?.artFont, 'script-elegant');
+    assert.equal(byId.get('c2')?.accentColor, '#1F618D');
+    assert.equal(byId.get('c2')?.artFont, 'sans-modern');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('applyTheme: idempotent — re-applying from cover does not regress stage', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp32-idempotent');
+  try {
+    const albumId = await seedThemeAlbum(user.id, 1);
+    const choices = [{ chapterId: 'c1', accentColor: '#2ECC71', artFont: 'display-bold' }] satisfies V3ChapterThemeChoice[];
+    await albumService.applyTheme(user.id, albumId, choices, PATCH); // → cover
+    const again = await albumService.applyTheme(user.id, albumId, choices, PATCH);
+    assert.equal(again.stage, 'cover'); // no regression / no double-advance
+    const reloaded = await albumRepo.findById(albumId);
+    assert.equal(reloaded?.stage, 'cover');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('applyTheme: rejects a choice for an unknown chapterId', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp32-unknown-ch');
+  try {
+    const albumId = await seedThemeAlbum(user.id, 1);
+    await assert.rejects(
+      () =>
+        albumService.applyTheme(
+          user.id,
+          albumId,
+          [
+            { chapterId: 'c1', accentColor: '#C0392B', artFont: 'serif-classic' },
+            { chapterId: 'ghost', accentColor: '#000000', artFont: 'sans-modern' },
+          ] satisfies V3ChapterThemeChoice[],
+          PATCH,
+        ),
+      isValidationFailed,
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('applyTheme: rejects missing chapter choices', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp32-missing-ch');
+  try {
+    const albumId = await seedThemeAlbum(user.id, 2);
+    await assert.rejects(
+      () =>
+        albumService.applyTheme(
+          user.id,
+          albumId,
+          [{ chapterId: 'c1', accentColor: '#C0392B', artFont: 'serif-classic' }] satisfies V3ChapterThemeChoice[],
+          PATCH,
+        ),
+      isValidationFailed,
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('applyTheme: rejects duplicate chapter choices', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp32-duplicate-ch');
+  try {
+    const albumId = await seedThemeAlbum(user.id, 1);
+    await assert.rejects(
+      () =>
+        albumService.applyTheme(
+          user.id,
+          albumId,
+          [
+            { chapterId: 'c1', accentColor: '#C0392B', artFont: 'serif-classic' },
+            { chapterId: 'c1', accentColor: '#1F618D', artFont: 'sans-modern' },
+          ] satisfies V3ChapterThemeChoice[],
+          PATCH,
+        ),
+      isValidationFailed,
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('applyTheme: rejects a non-owner', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const owner = await makeUser('wp32-owner');
+  const intruder = await makeUser('wp32-intruder');
+  try {
+    const albumId = await seedThemeAlbum(owner.id, 1);
+    await assert.rejects(
+      () =>
+        albumService.applyTheme(
+          intruder.id,
+          albumId,
+          [{ chapterId: 'c1', accentColor: '#C0392B', artFont: 'serif-classic' }] satisfies V3ChapterThemeChoice[],
+          PATCH,
+        ),
       (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
     );
   } finally {

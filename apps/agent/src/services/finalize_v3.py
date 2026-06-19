@@ -209,6 +209,11 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
 
         image_by_id = registry.image_slot_map(template)
         text_by_id = registry.text_slot_map(template)
+        # svg decoration slots (§9) live in `page.texts` as a themed-decoration carrier
+        # written by apply-theme (WP3.2 #190): the slot's value is the chapter accent
+        # color the renderer paints the vector in. They are NOT text slots, so accept
+        # their ids here too (additive, V3-only — v2 finalize.py is untouched).
+        svg_ids = {svg["id"] for svg in (template.get("svgs") or [])}
 
         for slot in page.images:
             if slot not in image_by_id:
@@ -220,6 +225,8 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
             base = _base_slot(slot)
             text_slot = text_by_id.get(base)
             if text_slot is None:
+                if slot in svg_ids:
+                    continue  # themed svg-decoration key (apply-theme), not a text slot
                 return (
                     f"page {page.pageIndex}: text slot '{slot}' not in "
                     f"template {page.templateId}"
