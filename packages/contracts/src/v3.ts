@@ -185,6 +185,44 @@ export const V3ChapterChatResponse = z
   .strict();
 export type V3ChapterChatResponse = z.infer<typeof V3ChapterChatResponse>;
 
+// ───────────── ② 章节故事 · Web 完成度状态(WP2.4 / §4.2(1)) ─────────────
+//
+// 这两个形状描述的是 **Web 侧 `albums.draft_json` 的存储结构**,不是 Agent 端点 req/res:
+//   §4.2(1)「Web 持 stage + 当前章 + 各章 done」→ 章级 done + 当前章存哪。
+//   stage 列管「五环节走到哪」(architecture §6.8 第 4 条),done 标记的颗粒度是章,
+//   存进 draft_json 旁挂的 progress(无新增 DB 迁移)。stage ⟂ status,WP2.4 只写 stage 列。
+//
+// 兼容:WP1.5(#184)analyze-completed 把**裸 `V3LayoutTree`** 写进 draft_json;WP2.4 读时
+//   两种形状都认(裸树 = progress 空初态),首次记 done 才回写成 `{ tree, progress }` 包裹形。
+
+/** ② 章节故事进度:当前章 + 已确定(done)章集合。落 `albums.draft_json`(包裹形)。 */
+export const V3StoryProgress = z
+  .object({
+    // 当前正在推进(尚未确定)的章;为 null = 全部章已确定。
+    currentChapterId: z.string().min(1).nullable(),
+    // 已「确定」的章 id 集合(章级 done 标记,§4.2(1))。
+    doneChapterIds: z.array(z.string().min(1)),
+  })
+  .strict();
+export type V3StoryProgress = z.infer<typeof V3StoryProgress>;
+
+/**
+ * `albums.draft_json` 的 V3 包裹形(WP2.4 起):章节树 + 章节故事进度。
+ * 与 WP1.5 写入的裸 `V3LayoutTree` 二选一被读;归一化由 Web service 负责(§4.2(1))。
+ */
+export const V3StoryDraft = z
+  .object({
+    version: z.literal('v3-story'),
+    tree: V3LayoutTree,
+    // WP1.5 persists preview pages next to the tree (`{ chapters, pages }`).
+    // WP2.4 wraps the tree to add progress, but must keep those pages alive for
+    // preview/finalize.
+    pages: z.array(Page).optional(),
+    progress: V3StoryProgress,
+  })
+  .strict();
+export type V3StoryDraft = z.infer<typeof V3StoryDraft>;
+
 // ───────────── ③ 主题/章节色 · 推荐 — POST /v3/recommend(同步) ─────────────
 //
 // 承载 recommend-theme + recommend-chapter-colors 两 Skill(§6)。识图模型出候选,用户挑。

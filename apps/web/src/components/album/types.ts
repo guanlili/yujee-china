@@ -19,6 +19,10 @@ export interface AlbumInfo {
   id: string;
   title: string;
   status: string;
+  // V3 五环节状态 (analysing|story|theme|cover|ready). Orthogonal to status; drives
+  // the editor breadcrumb + the chapter-story gate (WP2.4). Optional so the building-
+  // mode stub and pre-v3 callers stay valid.
+  stage?: string;
   prompt: string;
   layoutJson: unknown;
   photoCount: number;
@@ -32,6 +36,15 @@ export interface AlbumInfo {
 export interface AlbumDetail {
   album: AlbumInfo;
   pages: EditorPage[];
+}
+
+export interface StoryProgress {
+  stage: string;
+  chapterOrder: string[];
+  doneChapterIds: string[];
+  currentChapterId: string | null;
+  allDone: boolean;
+  exportUnlocked: boolean;
 }
 
 export interface ChatMessage {

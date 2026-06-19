@@ -11,6 +11,18 @@ export const albumRepo = {
     return rows[0];
   },
 
+  // Row-locked read for workflows that merge JSON progress into draft_json.
+  // Callers must use it inside a transaction.
+  findByIdForUpdate: async (tx: DbOrTx, id: string): Promise<Album | undefined> => {
+    const rows = await tx
+      .select()
+      .from(albums)
+      .where(eq(albums.id, id))
+      .for('update')
+      .limit(1);
+    return rows[0];
+  },
+
   count: async (): Promise<number> => {
     const rows = await db
       .select({ total: sql<number>`count(*)::int` })

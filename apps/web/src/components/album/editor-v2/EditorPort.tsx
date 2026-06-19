@@ -36,12 +36,14 @@ import {
   type ImagePosValue,
 } from './image-edit-util';
 import { runInspectAdjustLoop } from './draft-edit-orchestrator';
+import { StageBreadcrumb } from './StageBreadcrumb';
 import {
   applyPatchToPages,
   extractPhotoIds,
   type AlbumDetail,
   type EditorPage,
   type LayoutPatchEntry,
+  type StoryProgress,
 } from '../types';
 import {
   fetchDraftSkeleton,
@@ -292,11 +294,34 @@ function EditorBook({
   generation?: GenerationProgress;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const [storyProgress, setStoryProgress] = useState<StoryProgress | null>(null);
+  const [storyProgressLoading, setStoryProgressLoading] = useState(mode === 'authoring');
+  const [storyConfirming, setStoryConfirming] = useState(false);
   // building: the album is still generating (AGENT_RUNNING) — same editor chrome,
   // but the canvas shows a single cover skeleton and the chat shows the unified
   // loading state with the input disabled. The imperative flipbook/chat engine
   // below has no pages to drive yet, so it short-circuits.
   const building = mode === 'building';
+  const breadcrumbStage = building ? 'analysing' : storyProgress?.stage ?? detail.album.stage;
+  const hasStoryGate = (storyProgress?.chapterOrder.length ?? 0) > 0;
+  const showStoryGate = mode === 'authoring' && hasStoryGate;
+  const currentChapterIndex = storyProgress?.currentChapterId
+    ? storyProgress.chapterOrder.indexOf(storyProgress.currentChapterId)
+    : -1;
+  const currentChapterNumber =
+    currentChapterIndex >= 0 ? currentChapterIndex + 1 : 0;
+  const storyGateDone = storyProgress?.exportUnlocked === true;
+  const storyGateDisabled =
+    storyProgressLoading || storyConfirming || storyGateDone || !storyProgress?.currentChapterId;
+  const storyGateLabel = storyGateDone
+    ? locale === 'zh' ? '可导出' : 'Export ready'
+    : currentChapterNumber > 0
+      ? locale === 'zh' ? `确定第 ${currentChapterNumber} 章` : `Confirm Ch. ${currentChapterNumber}`
+      : locale === 'zh' ? '确定本章' : 'Confirm chapter';
+  const exportLocked =
+    mode === 'authoring' &&
+    ((storyProgressLoading && detail.album.stage === 'story') ||
+      (hasStoryGate && storyProgress?.exportUnlocked !== true));
 
   useEffect(() => {
     const root = rootRef.current;
@@ -584,6 +609,8 @@ function EditorBook({
        /draft-edit scoped to the focused page (no theme→chapter dialog machine). ─── */
     const isAuthoring = mode === 'authoring';
     const MESSAGE_MAX = 500; // v2 draft-edit body schema caps free text at 500.
+    let storyGate: StoryProgress | null = storyProgress;
+    let confirmingStoryChapter = false;
     // The draft skeleton (read-only render projection; invariant 12). Rendered on
     // entry; the agent persists draft_json server-side, so we don't refetch it.
     const draftSkel: DraftSkeleton | null = draftChapters;
@@ -1575,6 +1602,82 @@ function EditorBook({
       return false;
     }
 
+    function updateStoryGateUi(progress: StoryProgress | null = storyGate) {
+      const exportBtn = $('[data-action="exportPdf"]') as HTMLButtonElement | null;
+      if (exportBtn && isAuthoring) {
+        const locked = (progress?.chapterOrder.length ?? 0) > 0 && progress?.exportUnlocked !== true;
+        exportBtn.disabled = locked;
+        exportBtn.classList.toggle('is-disabled', locked);
+        exportBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
+      }
+      const doneBtn = $('[data-action="markCurrentChapterDone"]') as HTMLButtonElement | null;
+      if (doneBtn) {
+        const disabled =
+          (progress?.chapterOrder.length ?? 0) === 0 ||
+          confirmingStoryChapter ||
+          progress?.exportUnlocked === true ||
+          !progress?.currentChapterId;
+        doneBtn.disabled = disabled;
+        doneBtn.classList.toggle('is-disabled', disabled);
+      }
+    }
+
+    async function loadStoryGate() {
+      if (!isAuthoring) return;
+      try {
+        const res = await fetch(`/api/v3/albums/${albumId}/story-progress`);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error?.message ?? 'story progress failed');
+        storyGate = json.data as StoryProgress;
+        setStoryProgress(storyGate);
+        updateStoryGateUi(storyGate);
+      } catch {
+        storyGate = null;
+        updateStoryGateUi(null);
+      } finally {
+        setStoryProgressLoading(false);
+      }
+    }
+
+    async function markCurrentChapterDone() {
+      if (
+        !isAuthoring ||
+        confirmingStoryChapter ||
+        !storyGate?.currentChapterId ||
+        storyGate.chapterOrder.length === 0
+      ) return;
+      confirmingStoryChapter = true;
+      setStoryConfirming(true);
+      updateStoryGateUi();
+      try {
+        const res = await fetch(`/api/v3/albums/${albumId}/story-progress`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chapterId: storyGate.currentChapterId }),
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error?.message ?? 'confirm chapter failed');
+        storyGate = json.data as StoryProgress;
+        setStoryProgress(storyGate);
+        updateStoryGateUi(storyGate);
+        appendAiText(
+          storyGate.exportUnlocked
+            ? aT('所有章节已确定，现在可以导出 PDF。', 'All chapters are confirmed. PDF export is ready.')
+            : aT('这一章已确定，我们继续下一章。', "This chapter is confirmed. Let's continue with the next one."),
+        );
+      } catch (e) {
+        appendAiText(
+          e instanceof Error
+            ? e.message
+            : aT('确定章节失败，请重试。', 'Could not confirm the chapter. Please try again.'),
+        );
+      } finally {
+        confirmingStoryChapter = false;
+        setStoryConfirming(false);
+        updateStoryGateUi();
+      }
+    }
+
     // #162 draft-edit turn: the draft-period chat is a pointed single-page edit,
     // talk/act physically split (no theme→chapter machine, no auto-advance). The
     // message goes to /draft-edit scoped to the page the user is looking at
@@ -1832,6 +1935,14 @@ function EditorBook({
     // and upload straight to R2 (bytes never touch the Web tier — invariant 4).
     let exportingPdf = false;
     async function exportPdf() {
+      if (
+        isAuthoring &&
+        (storyGate?.chapterOrder.length ?? 0) > 0 &&
+        storyGate?.exportUnlocked !== true
+      ) {
+        appendAiText(aT('全部章节确定后才能导出 PDF。', 'Confirm all chapters before exporting PDF.'));
+        return;
+      }
       if (exportingPdf) return;
       exportingPdf = true;
       const btn = $('[data-action="exportPdf"]') as HTMLButtonElement | null;
@@ -1989,6 +2100,7 @@ function EditorBook({
       closeDetail,
       toggleOverview,
       resetZoom,
+      markCurrentChapterDone,
       openPhotoPicker,
       closePhotoPicker,
       // The "+" in the input: finalized albums → real add-photos flow; while still
@@ -2083,6 +2195,7 @@ function EditorBook({
       restAwait();
       void loadHistory().then(() => restAwait());
     }
+    void loadStoryGate();
 
     /* ─── Authoring init (#162: render-first + pointed single-page edits) ───
        No theme→chapter dialog machine, no auto-advance, no finalize CTA. init
@@ -2307,7 +2420,7 @@ function EditorBook({
         </div>
         {!building && <div className="top-right flex items-center gap-1 sm:gap-2 shrink-0">
           <span className="btn-glow">
-            <button className="btn-primary bg-fg text-white px-4 sm:px-7 py-2.5 rounded-pill text-[13px] font-semibold flex items-center gap-1.5 transition-transform hover:-translate-y-px" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} data-action="exportPdf">
+            <button className="btn-primary bg-fg text-white px-4 sm:px-7 py-2.5 rounded-pill text-[13px] font-semibold flex items-center gap-1.5 transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} data-action="exportPdf" disabled={exportLocked} aria-disabled={exportLocked ? 'true' : 'false'}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
               <span className="hidden sm:inline" data-i18n="exportPdf">导出 PDF</span>
             </button>
@@ -2422,16 +2535,30 @@ function EditorBook({
               </button>
             </div>
 
-            {/* 3-state stepper: 加载 → 确定主题 → 章节故事. Hidden in editing mode
-                (the finalized editor has no creation flow); building highlights
-                "加载", authoring tracks the cursor (theme / story). */}
-            <div className="state-stepper" id="stateStepper">
-              <span className={`state-pill${building ? ' active' : ''}`} data-state="1"><span className="state-dot" /><span data-i18n="stateLoading">加载</span></span>
-              <span className="state-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><polyline points="9 18 15 12 9 6" /></svg></span>
-              <span className="state-pill" data-state="2"><span className="state-dot" /><span data-i18n="stateTheme">确定主题</span></span>
-              <span className="state-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><polyline points="9 18 15 12 9 6" /></svg></span>
-              <span className="state-pill" data-state="3"><span className="state-dot" /><span data-i18n="stateStory">章节故事</span></span>
-            </div>
+            {/* 五环节面包屑(WP2.4 / §2): 分析 → 章节故事 → 确定主题 → 书籍设计 →
+                待导出, with the current 环节 lit from albums.stage (stage 推进权在 Web,
+                §8.3). Building albums report 'analysing'; authoring/editing read the
+                album's real stage. story 环节 also shows per-chapter done ticks
+                (一章一确定, §4.2(1)) when the editor surfaces chapterProgress. */}
+            {mode !== 'editing' && (
+              <StageBreadcrumb
+                stage={breadcrumbStage}
+                locale={locale}
+                chapterProgress={storyProgress}
+              />
+            )}
+            {showStoryGate && (
+              <div className="story-gate-actions">
+                <button
+                  className="story-gate-btn"
+                  data-action="markCurrentChapterDone"
+                  disabled={storyGateDisabled}
+                  aria-disabled={storyGateDisabled ? 'true' : 'false'}
+                >
+                  {storyGateLabel}
+                </button>
+              </div>
+            )}
 
             <div className="chat-body flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-6" id="chatBody" style={{ gap: '24px' }}>
               {building ? (

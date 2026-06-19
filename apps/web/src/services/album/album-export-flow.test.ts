@@ -61,6 +61,23 @@ async function seedFinalizeJob(userId: string) {
   return { albumId: album.id, requestId };
 }
 
+function makeV3StoryDraft(chapterCount: number) {
+  const chapters = Array.from({ length: chapterCount }, (_, i) => ({
+    chapterId: `c${i + 1}`,
+    description: `chapter ${i + 1}`,
+    accentColor: null,
+    artFont: null,
+    photos: [],
+  }));
+  const pages = chapters.map((_, pageIndex) => ({
+    pageIndex,
+    templateId: 'mag-02',
+    images: {},
+    texts: { headline: `chapter ${pageIndex + 1}` },
+  }));
+  return { chapters, pages };
+}
+
 test('v2 export flow: finalize → EDITING → editor detail (photoId refs only) → presigned PUT → confirm → COMPLETED', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('v2-export');
@@ -115,6 +132,49 @@ test('v2 export flow: finalize → EDITING → editor detail (photoId refs only)
     const pages = await albumPageRepo.findByAlbum(albumId);
     const pagesStr = JSON.stringify(pages);
     assert.ok(!/data:image\/[a-z]+;base64,/.test(pagesStr), 'album_pages hold no base64');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('v3 export gate: PDF sign/confirm reject until all story chapters are done', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('v3-export-gate');
+  try {
+    const album = await makeAlbum(user.id, { photoCount: 2 });
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      stage: 'story',
+      draftJson: makeV3StoryDraft(2),
+    });
+
+    await assert.rejects(
+      () => albumService.signPdfUpload(user.id, album.id, {
+        contentType: 'application/pdf',
+        size: 4,
+      }),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+    await assert.rejects(
+      () => albumService.confirmPdf(user.id, album.id, `pdfs/${user.id}/${album.id}.pdf`),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+
+    await albumService.markChapterDone(user.id, album.id, 'c1');
+    await assert.rejects(
+      () => albumService.signPdfUpload(user.id, album.id, {
+        contentType: 'application/pdf',
+        size: 4,
+      }),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+
+    await albumService.markChapterDone(user.id, album.id, 'c2');
+    const sign = await albumService.signPdfUpload(user.id, album.id, {
+      contentType: 'application/pdf',
+      size: 4,
+    });
+    assert.equal(sign.r2Key, `pdfs/${user.id}/${album.id}.pdf`);
   } finally {
     await cleanupUser(user.id);
   }

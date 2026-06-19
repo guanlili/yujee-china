@@ -18,6 +18,8 @@ import {
   V3CoverRequest,
   V3FinalizeResponse,
   V3RecommendResponse,
+  V3StoryDraft,
+  V3StoryProgress,
 } from './v3';
 import {
   TemplateDef,
@@ -395,4 +397,48 @@ test('V3Callback union: progress / completed(analyze) / failed', () => {
     }).success,
     true,
   );
+});
+
+// ───────────────────── ② 章节故事 · 完成度状态(WP2.4) ─────────────────────
+
+test('V3StoryProgress: 当前章 + done 集合(章级标记)', () => {
+  assert.equal(
+    V3StoryProgress.safeParse({ currentChapterId: 'c2', doneChapterIds: ['c1'] }).success,
+    true,
+  );
+  // 全部确定 = currentChapterId null
+  assert.equal(
+    V3StoryProgress.safeParse({ currentChapterId: null, doneChapterIds: ['c1', 'c2'] }).success,
+    true,
+  );
+  // strict:拒未知字段(不藏 stage —— stage 在 albums.stage 列,§6.8 第 4 条)
+  assert.equal(
+    V3StoryProgress.safeParse({
+      currentChapterId: 'c1',
+      doneChapterIds: [],
+      stage: 'story',
+    }).success,
+    false,
+  );
+});
+
+test('V3StoryDraft: draft_json 包裹形(tree + preview pages + progress)', () => {
+  const ok = V3StoryDraft.safeParse({
+    version: 'v3-story',
+    tree: { chapters: [] },
+    pages: [{ pageIndex: 0, templateId: 'mag-02', images: {}, texts: { headline: 'Hello' } }],
+    progress: { currentChapterId: 'c1', doneChapterIds: [] },
+  });
+  assert.equal(ok.success, true);
+  assert.equal(
+    V3StoryDraft.safeParse({
+      version: 'v3-story',
+      tree: { chapters: [] },
+      pages: [{ pageIndex: 0, templateId: 'mag-02', images: {}, texts: {}, extra: true }],
+      progress: { currentChapterId: null, doneChapterIds: [] },
+    }).success,
+    false,
+  );
+  // 裸 V3LayoutTree(WP1.5 写入态)不是包裹形 —— 由 service 归一化,不当 V3StoryDraft 解
+  assert.equal(V3StoryDraft.safeParse({ chapters: [] }).success, false);
 });
