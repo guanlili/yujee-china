@@ -58,6 +58,68 @@ test('.leaf (flip-animation page box) carries no 5.5% padding either', () => {
   );
 });
 
+// ── WP4.2 / §4.4: cover/ending (and any skipped page) sit solo, so the facing
+// half is empty. The empty halves on every editor surface — main canvas page,
+// flip leaf, thumbnail, overview — must read as truly empty: no surface fill,
+// no spine, no leftover content padding. The grouping/paint logic toggles the
+// .page-empty / .leaf-empty / .thumb-empty / .ov-empty + *-solo classes; these
+// guards pin the CSS those classes rely on so a future restyle can't silently
+// repaint a blank half as a white page.
+
+test('an empty solo half drops its surface on every editor surface (no white blank page)', () => {
+  const css = source('editor-port.css');
+  // Main-canvas empty page: transparent, no shadow.
+  assert.match(
+    ruleBody(css, '.editor-port .page.page-empty'),
+    /background:\s*transparent/,
+    '.page-empty must be transparent (a skipped/solo half is empty space, not a white page)',
+  );
+  // Flip leaf empty half: transparent (no white flash mid-flip).
+  assert.match(
+    ruleBody(css, '.editor-port .leaf.leaf-empty'),
+    /background:\s*transparent/,
+    '.leaf-empty must be transparent',
+  );
+  // Overview empty half: no content padding so it carries no inset surface.
+  assert.match(
+    ruleBody(css, '.editor-port .ov-page.ov-empty'),
+    /padding:\s*0\b/,
+    '.ov-empty must zero its padding so the blank overview half reads as empty',
+  );
+});
+
+test('a solo spread drops the center spine on every editor surface', () => {
+  const css = source('editor-port.css');
+  // Main canvas + overview hide the spine via display:none on the ::before rule;
+  // the thumbnail spine is an ::after. Assert each solo variant suppresses it.
+  assert.match(
+    ruleBody(css, '.editor-port .book.book-solo::before'),
+    /display:\s*none/,
+    'book-solo must hide the center spine line',
+  );
+  assert.match(
+    ruleBody(css, '.editor-port .ov-book.ov-solo::before'),
+    /display:\s*none/,
+    'ov-solo must hide the overview spine line',
+  );
+  assert.match(
+    ruleBody(css, '.editor-port .thumb-img.thumb-solo::after'),
+    /display:\s*none/,
+    'thumb-solo must hide the thumbnail spine divider',
+  );
+});
+
+test('a main-canvas solo spread drops the parent book surface behind its empty half', () => {
+  const css = source('editor-port.css');
+  const body = ruleBody(css, '.editor-port .book.book-solo');
+
+  assert.match(
+    body,
+    /background(?:-color)?:\s*transparent/,
+    'book-solo must override the .book.bg-surface parent backing so the empty half stays transparent',
+  );
+});
+
 test('paintEl sizes the injected page to the element box, so the box must be flush', () => {
   // Guards the assumption the CSS fix relies on: paintEl measures clientWidth/
   // clientHeight (the padding-inclusive box) and the page is scaled to fill it.

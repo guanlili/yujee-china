@@ -110,3 +110,58 @@ test('an ending mid-document forces the next interior onto a fresh pair', () => 
     { left: 3, right: 4 }, // fresh interior pair after the ending
   ]);
 });
+
+// ── WP4.2 / §4.4 skip cases: V3 makes the book-design step optional, so the
+// "page 0 must be cover" rule is gone (§4.1). The canvas must lay the book out
+// without injecting a blank solo spread or crashing when the cover, the ending,
+// or both are skipped. Interior-only pages just pair two-up from the first page.
+
+test('skip cover: an album with no cover starts straight into a paired interior spread', () => {
+  const pages = [
+    page('mag-03', 0), // interior (no cover ahead of it — book opens here)
+    page('mag-05', 1), // interior
+    page('mag-06', 2), // interior
+    page('mag-20', 3), // ending (solo verso)
+  ];
+  // No leading { left: null, right: 0 } cover spread is fabricated — the first
+  // interior pair is the first spread. The ending still closes solo.
+  assert.deepEqual(buildSpreads(pages), [
+    { left: 0, right: 1 }, // interior pair (book opens here, no blank cover page)
+    { left: 2, right: null }, // odd interior flushed before the ending
+    { left: 3, right: null }, // ending solo verso
+  ]);
+});
+
+test('skip ending: an album with a cover but no ending closes on a paired interior spread', () => {
+  const pages = [
+    page('mag-01', 0), // cover (solo recto)
+    page('mag-03', 1), // interior
+    page('mag-05', 2), // interior
+  ];
+  // No trailing { left: i, right: null } ending spread is fabricated — the book
+  // just ends on the last interior pair (which here is complete, no blank half).
+  assert.deepEqual(buildSpreads(pages), [
+    { left: null, right: 0 }, // cover solo recto
+    { left: 1, right: 2 }, // interior pair closes the book
+  ]);
+});
+
+test('skip both: an interior-only album never gets a fabricated blank solo spread', () => {
+  const pages = [
+    page('mag-03', 0),
+    page('mag-05', 1),
+    page('mag-06', 2),
+    page('mag-19', 3),
+  ];
+  assert.deepEqual(buildSpreads(pages), [
+    { left: 0, right: 1 },
+    { left: 2, right: 3 },
+  ]);
+});
+
+test('empty book: zero pages yields zero spreads (no crash, no blank page)', () => {
+  // The draft/cover step can legitimately leave the book empty (skip everything).
+  // buildSpreads must return []; EditorBook.spreadCount() clamps this to a single
+  // visible (empty) spread, so the canvas never indexes into a missing spread.
+  assert.deepEqual(buildSpreads([]), []);
+});
