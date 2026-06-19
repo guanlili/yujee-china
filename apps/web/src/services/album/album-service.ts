@@ -407,6 +407,44 @@ export const albumService = {
     };
   },
 
+  // ④ 书籍设计 — 封面/封尾 (WP4.1 #192). After the user (optionally) picks a 封面/封尾
+  // system template, the Agent deterministically auto-fills the relevant pages and
+  // returns a page-level `layoutPatch` (§3 树边界: 仍是页级 — cover/ending design is a
+  // flat layout patch, NOT a tree field, so nothing is written into draft_json's tree;
+  // pages are re-derived/merged at finalize). Web is the sole truth source for stage,
+  // so this advances albums.stage cover → ready (§8.3 stage 推进权在 Web) and hands the
+  // patch back for the browser to apply live. Cover is OPTIONAL (§4.4): a skip yields an
+  // empty patch, and the stage still advances cover → ready (主题/封面不卡导出 — §4.5a:
+  // the export gate already opened at story完成; 封面 is never a gate). stage ⟂ status
+  // (§6.8 第 4 条): only the stage column moves; status stays EDITING. Idempotent:
+  // re-applying (or applying after ready) only ever advances cover → ready, never
+  // regresses, so a double-submit is safe. Caller must hold ownership (findOwned).
+  async cover(
+    userId: string,
+    albumId: string,
+    layoutPatch: V3LayoutPatchEntry[],
+  ): Promise<{ stage: string; layoutPatch: V3LayoutPatchEntry[] }> {
+    const album = await this.findOwned(userId, albumId);
+
+    // Advance cover → ready only (the 书籍设计 环节 is done). From any other stage this
+    // is a no-op on the stage column (idempotent; never regresses past ready). We accept
+    // 'theme' too so a user who skipped straight through theme→cover→ready isn't stuck:
+    // the only stages BEFORE the design step are 'analysing'/'story', which gate export
+    // and must NOT be jumped by a cover call; 'theme'/'cover' may advance to 'ready'.
+    const advanceStage = album.stage === 'cover' || album.stage === 'theme';
+
+    if (advanceStage) {
+      await db.transaction(async (tx) => {
+        await albumRepo.update(tx, albumId, { stage: 'ready' as const });
+      });
+    }
+
+    return {
+      stage: advanceStage ? 'ready' : album.stage,
+      layoutPatch,
+    };
+  },
+
   // Read-only RENDER projection of the authoring tree (draft_json) for the v2
   // authoring flow's skeleton preview (W10 #140). Unlike getChapterSummary this
   // includes pages (templateId/images/texts) because the skeleton must show the

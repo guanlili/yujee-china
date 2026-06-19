@@ -920,3 +920,114 @@ test('applyTheme: rejects a non-owner', async (t) => {
     await cleanupUser(intruder.id);
   }
 });
+
+// ──────────────────────────── ④ 书籍设计 — cover (WP4.1 #192) ────────────────
+// The cover layoutPatch is page-level (templateId/images/texts), distinct from the
+// theme patch — it carries the auto-filled cover/ending design handed back to the
+// browser. Cover never writes the tree (§3 树边界); it only advances stage cover→ready.
+const COVER_PATCH = [
+  { pageIndex: 0, templateId: 'mag-01', images: { image: 'p1' }, texts: { folio: '01' } },
+];
+
+// Put a seeded story album at stage='cover' (the state the cover step runs from).
+async function seedCoverAlbum(userId: string, n: number) {
+  const albumId = await seedStoryAlbum(userId, n);
+  await albumRepo.update(db, albumId, { stage: 'cover' });
+  return albumId;
+}
+
+test('cover: advances stage cover→ready and hands the patch back', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp41-cover');
+  try {
+    const albumId = await seedCoverAlbum(user.id, 1);
+    const res = await albumService.cover(user.id, albumId, COVER_PATCH);
+    assert.equal(res.stage, 'ready'); // cover → ready
+    assert.deepEqual(res.layoutPatch, COVER_PATCH); // patch handed back verbatim
+
+    const reloaded = await albumRepo.findById(albumId);
+    assert.equal(reloaded?.stage, 'ready');
+    assert.equal(reloaded?.status, 'EDITING'); // cover never touches status (⟂ stage)
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('cover: skip (empty patch) still advances stage cover→ready (封面可跳过)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp41-skip');
+  try {
+    const albumId = await seedCoverAlbum(user.id, 1);
+    const res = await albumService.cover(user.id, albumId, []); // skipped = empty patch
+    assert.equal(res.stage, 'ready'); // skip does not block the gate (§4.5a)
+    assert.deepEqual(res.layoutPatch, []);
+    const reloaded = await albumRepo.findById(albumId);
+    assert.equal(reloaded?.stage, 'ready');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('cover: skip from theme advances directly to ready (theme/cover may both be skipped)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp41-theme-skip');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 1);
+    await albumRepo.update(db, albumId, { stage: 'theme' });
+
+    const res = await albumService.cover(user.id, albumId, []);
+
+    assert.equal(res.stage, 'ready');
+    assert.deepEqual(res.layoutPatch, []);
+    const reloaded = await albumRepo.findById(albumId);
+    assert.equal(reloaded?.stage, 'ready');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('cover: idempotent — re-applying from ready does not regress stage', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp41-idempotent');
+  try {
+    const albumId = await seedCoverAlbum(user.id, 1);
+    await albumService.cover(user.id, albumId, COVER_PATCH); // → ready
+    const again = await albumService.cover(user.id, albumId, COVER_PATCH);
+    assert.equal(again.stage, 'ready'); // no regression / no double-advance
+    const reloaded = await albumRepo.findById(albumId);
+    assert.equal(reloaded?.stage, 'ready');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('cover: rejects a non-owner', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const owner = await makeUser('wp41-owner');
+  const intruder = await makeUser('wp41-intruder');
+  try {
+    const albumId = await seedCoverAlbum(owner.id, 1);
+    await assert.rejects(
+      () => albumService.cover(intruder.id, albumId, COVER_PATCH),
+      (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
+    );
+  } finally {
+    await cleanupUser(owner.id);
+    await cleanupUser(intruder.id);
+  }
+});
