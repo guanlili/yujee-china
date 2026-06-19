@@ -6,6 +6,11 @@ import { test } from 'node:test';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(testDir, '../../../../../../');
+const webSrcRoot = path.join(repoRoot, 'apps/web/src');
+
+function toRepoPath(file: string): string {
+  return path.relative(repoRoot, file).split(path.sep).join('/');
+}
 
 function listFiles(root: string): string[] {
   const entries = readdirSync(root, { withFileTypes: true });
@@ -21,6 +26,12 @@ function listFiles(root: string): string[] {
   }
 
   return files;
+}
+
+function listSourceFiles(): string[] {
+  return listFiles(webSrcRoot)
+    .filter((file) => /\.(ts|tsx)$/.test(file))
+    .filter((file) => !file.endsWith('v3-teardown-guard.test.ts'));
 }
 
 test('web no longer exposes browser-facing v2 api routes or v2 album calls', () => {
@@ -52,25 +63,41 @@ test('contracts no longer exposes the old v2 contract module', () => {
 });
 
 test('web keeps the v1 infrastructure route whitelist used by V3', () => {
-  const routes = [
-    'apps/web/src/app/api/v1/albums/route.ts',
-    'apps/web/src/app/api/v1/albums/[uuid]/route.ts',
-    'apps/web/src/app/api/v1/albums/[uuid]/pdf-upload-url/route.ts',
-    'apps/web/src/app/api/v1/albums/[uuid]/pdf/route.ts',
-    'apps/web/src/app/api/v1/albums/[uuid]/cover-thumbnail-upload-url/route.ts',
-    'apps/web/src/app/api/v1/albums/[uuid]/cover-thumbnail/route.ts',
-    'apps/web/src/app/api/v1/fonts/subset/route.ts',
-    'apps/web/src/app/api/v1/credit/balance/route.ts',
-    'apps/web/src/app/api/v1/credit/history/route.ts',
-    'apps/web/src/app/api/v1/billing/checkout/route.ts',
-    'apps/web/src/app/api/v1/user/me/route.ts',
-    'apps/web/src/app/api/v1/user/billing/route.ts',
+  const allowedRoutes = [
     'apps/web/src/app/api/v1/admin/cleanup-photos/route.ts',
     'apps/web/src/app/api/v1/admin/recover-stuck/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/chapters/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/cover-thumbnail-upload-url/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/cover-thumbnail/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/messages/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/pages/[idx]/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/pdf-upload-url/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/pdf/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/route.ts',
+    'apps/web/src/app/api/v1/albums/route.ts',
+    'apps/web/src/app/api/v1/billing/checkout/route.ts',
+    'apps/web/src/app/api/v1/credit/balance/route.ts',
+    'apps/web/src/app/api/v1/credit/history/route.ts',
+    'apps/web/src/app/api/v1/fonts/subset/route.ts',
     'apps/web/src/app/api/v1/health/route.ts',
-  ];
+    'apps/web/src/app/api/v1/user/billing/route.ts',
+    'apps/web/src/app/api/v1/user/me/route.ts',
+  ].sort();
 
-  const missing = routes.filter((route) => !existsSync(path.join(repoRoot, route)));
+  const actualRoutes = listFiles(path.join(repoRoot, 'apps/web/src/app/api/v1'))
+    .filter((file) => file.endsWith('/route.ts'))
+    .map(toRepoPath)
+    .sort();
 
-  assert.deepEqual(missing, []);
+  assert.deepEqual(actualRoutes, allowedRoutes);
+});
+
+test('web no longer calls the retired v1 album chat business endpoint', () => {
+  const retiredAlbumChatCall = /\/api\/v1\/albums\/(?:\$\{[^}]+\}|[^'"`])*\/chat\b/;
+  const offenders = listSourceFiles()
+    .filter((file) => retiredAlbumChatCall.test(readFileSync(file, 'utf8')))
+    .map(toRepoPath)
+    .sort();
+
+  assert.deepEqual(offenders, []);
 });
