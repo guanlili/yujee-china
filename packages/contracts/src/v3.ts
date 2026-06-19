@@ -78,10 +78,39 @@ export type V3PageTextsPatch = z.infer<typeof V3PageTextsPatch>;
 //
 // 唯一带 base64 的端点;入参只 takenAt(§3 隐私)。回调回 V3 章节树 + 套好模板的预览页。
 
+export const V3AnalyzeImageDataUrl = z.string().refine(
+  (value) => {
+    const match = /^data:image\/(?:jpeg|png);base64,([A-Za-z0-9+/=]+)$/.exec(value);
+    if (!match) return false;
+
+    const payload = match[1];
+    const padding = payload.length - payload.replace(/=+$/, '').length;
+    const unpadded = padding > 0 ? payload.slice(0, -padding) : payload;
+    if (padding > 2 || unpadded.includes('=')) return false;
+    if (payload.length % 4 !== 0) return false;
+
+    const decodedSize = (payload.length / 4) * 3 - padding;
+    return decodedSize <= 800 * 1024;
+  },
+  { message: 'base64 must be a data:image/(jpeg|png);base64 URL <= 800KB' },
+);
+
+const HttpCallbackUrl = z.string().url().refine(
+  (value) => {
+    try {
+      const protocol = new URL(value).protocol;
+      return protocol === 'http:' || protocol === 'https:';
+    } catch {
+      return false;
+    }
+  },
+  { message: 'callbackUrl must be http(s)' },
+);
+
 const V3AnalyzePhoto = z
   .object({
     photoId: z.string().min(1),
-    base64: z.string().min(1), // data:image/(jpeg|png);base64,…  ≤800KB
+    base64: V3AnalyzeImageDataUrl, // data:image/(jpeg|png);base64,…  ≤800KB
     width: z.number().int().positive(),
     height: z.number().int().positive(),
     exif: z
@@ -95,7 +124,7 @@ export const V3AnalyzeRequest = z
   .object({
     requestId: z.string().min(1),
     albumId: z.string().min(1),
-    callbackUrl: z.string().url(),
+    callbackUrl: HttpCallbackUrl,
     language: V3Language,
     meta: z.object({ promptHint: z.string().max(500).optional() }).strict().optional(),
     photos: z.array(V3AnalyzePhoto).min(1).max(30),

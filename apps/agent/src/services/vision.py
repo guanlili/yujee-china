@@ -418,6 +418,7 @@ class V3DescribeResult:
     tokens_billed: int
     model: str
     provider: str
+    call_count: int = 1
 
 
 def _build_v3_system_prompt(language: str) -> str:
@@ -471,11 +472,11 @@ def _assemble_v3_tree(
     """Fuse the model's chapter partition (LLM-authored) with the code-filled
     deterministic photo attrs into a validated V3LayoutTree.
 
-    Determinism guards (§4.1 一图一章不跨章 + LLM 只写 3 处):
-      * Every input photo lands in exactly ONE chapter; the FIRST chapter that
-        claims a photoId wins, later duplicates are dropped.
-      * Any photo the model forgot is swept into a trailing chapter so no input is
-        lost (the engine never silently drops a user photo).
+    Validation guards (§4.1 一图一章不跨章 + LLM 只写 3 处):
+      * Every input photo must land in exactly ONE chapter; duplicate, unknown,
+        or omitted photoIds make the model output invalid.
+      * Chapter `description` and photo `sceneDescription` must be present; code
+        never authors fallback prose for those LLM-owned fields.
       * width/height/orientation/takenAt come ONLY from the request — the model's
         copies (if any) are ignored.
       * accentColor/artFont stay null placeholders (theme stage fills them, §4.1).
@@ -485,12 +486,24 @@ def _assemble_v3_tree(
     if not isinstance(raw_chapters, list):
         raise VisionError("describe-content response missing chapters[] array")
 
+    def _required_text(raw: Any, *, field: str, max_len: int) -> str:
+        if not isinstance(raw, str):
+            raise VisionError(f"describe-content {field} must be a string")
+        text = raw.strip()
+        if not text:
+            raise VisionError(f"describe-content {field} is required")
+        if len(text) > max_len:
+            raise VisionError(f"describe-content {field} exceeds {max_len} chars")
+        return text
+
     def _photo_node(photo_id: str, scene_raw: Any) -> V3ChapterPhoto:
         src = by_id[photo_id]
-        scene = str(scene_raw or "").strip() or "A moment from your story."
+        scene = _required_text(
+            scene_raw, field=f"scenes.{photo_id}", max_len=300
+        )
         return V3ChapterPhoto(
             photoId=photo_id,
-            sceneDescription=scene[:300],
+            sceneDescription=scene,
             width=src.width,
             height=src.height,
             orientation=_orientation(src.width, src.height),  # type: ignore[arg-type]
@@ -501,41 +514,42 @@ def _assemble_v3_tree(
     claimed: set[str] = set()
     for ch_idx, raw in enumerate(raw_chapters):
         if not isinstance(raw, dict):
-            continue
-        scenes = raw.get("scenes") if isinstance(raw.get("scenes"), dict) else {}
-        raw_ids = raw.get("photoIds") if isinstance(raw.get("photoIds"), list) else []
+            raise VisionError(f"describe-content chapter {ch_idx + 1} must be an object")
+        scenes = raw.get("scenes")
+        if not isinstance(scenes, dict):
+            raise VisionError(f"describe-content chapter {ch_idx + 1} missing scenes object")
+        raw_ids = raw.get("photoIds")
+        if not isinstance(raw_ids, list) or not raw_ids:
+            raise VisionError(f"describe-content chapter {ch_idx + 1} missing photoIds[]")
+        description = _required_text(
+            raw.get("description"),
+            field=f"chapters[{ch_idx}].description",
+            max_len=600,
+        )
         chapter_photos: list[V3ChapterPhoto] = []
         for raw_pid in raw_ids:
-            pid = str(raw_pid)
-            if pid in by_id and pid not in claimed:
-                claimed.add(pid)
-                chapter_photos.append(_photo_node(pid, scenes.get(pid)))
-        if not chapter_photos:
-            continue
-        description = str(raw.get("description") or "").strip() or "A chapter of your story."
+            if not isinstance(raw_pid, str) or not raw_pid.strip():
+                raise VisionError(f"describe-content chapter {ch_idx + 1} has invalid photoId")
+            pid = raw_pid.strip()
+            if pid not in by_id:
+                raise VisionError(f"describe-content referenced unknown photoId: {pid}")
+            if pid in claimed:
+                raise VisionError(f"describe-content duplicated photoId: {pid}")
+            claimed.add(pid)
+            chapter_photos.append(_photo_node(pid, scenes.get(pid)))
         chapters.append(
             V3Chapter(
                 chapterId=f"ch_{len(chapters) + 1}",
-                description=description[:600],
+                description=description,
                 accentColor=None,  # theme stage fills (§4.1)
                 artFont=None,
                 photos=chapter_photos,
             )
         )
 
-    # Sweep any photo the model omitted into a trailing chapter (in input order).
-    missed = [p for p in photos if p.photoId not in claimed]
+    missed = [p.photoId for p in photos if p.photoId not in claimed]
     if missed:
-        log.info("v3_describe.swept_unassigned", count=len(missed))
-        chapters.append(
-            V3Chapter(
-                chapterId=f"ch_{len(chapters) + 1}",
-                description="A chapter of your story.",
-                accentColor=None,
-                artFont=None,
-                photos=[_photo_node(p.photoId, None) for p in missed],
-            )
-        )
+        raise VisionError(f"describe-content omitted photoIds: {', '.join(missed)}")
 
     if not chapters:
         raise VisionError("describe-content produced no usable chapters")
@@ -587,8 +601,10 @@ async def describe_content(
     """V3 analyze step (b): one recognition-model call → 章节树 (§4.1).
 
     Failover: try OpenAI (GPT-5.5 Mini) first within the tighter describe budget;
-    on AIRequestError (5xx/timeout after ai_client's retry) OR a missing OpenAI
-    key,降级火山 doubao (ARK). The whole call is additionally bounded by
+    on AIRequestError (5xx/timeout after ai_client's retry), or when the whole
+    batch exceeds `describe_batch_deadline_seconds`,降级火山 doubao (ARK).
+    OpenAI 4xx/missing-key failures are configuration/request errors and do not
+    fail over. The whole call is additionally bounded by
     `describe_batch_deadline_seconds` so a slow-but-not-erroring primary still
     triggers failover instead of hanging the analyze job.
 
@@ -601,49 +617,59 @@ async def describe_content(
 
     deadline = settings.describe_batch_deadline_seconds
 
-    # --- PRIMARY: OpenAI (GPT-5.5 Mini) --------------------------------------
-    primary_slot: VisionSlot | None = None
     try:
         primary_slot = openai_vision_slot(
-            settings, timeout_seconds=settings.describe_openai_timeout_seconds
+            settings,
+            timeout_seconds=settings.describe_openai_timeout_seconds,
+            model=settings.describe_openai_model,
         )
     except VisionSlotError as exc:
         log.warning("v3_describe.primary_unconfigured", error=str(exc))
+        raise VisionError(f"describe-content primary unavailable (OpenAI slot): {exc}") from exc
 
-    if primary_slot is not None:
+    log.info(
+        "v3_describe.call.start",
+        provider=primary_slot.provider,
+        model=primary_slot.model,
+        photo_count=photo_count,
+    )
+    try:
+        tree, tokens = await asyncio.wait_for(
+            _describe_call(primary_slot, photos, language, prompt_hint),
+            timeout=deadline,
+        )
         log.info(
-            "v3_describe.call.start",
+            "v3_describe.call.ok",
             provider=primary_slot.provider,
             model=primary_slot.model,
-            photo_count=photo_count,
+            chapters=len(tree.chapters),
         )
-        try:
-            tree, tokens = await asyncio.wait_for(
-                _describe_call(primary_slot, photos, language, prompt_hint),
-                timeout=deadline,
-            )
-            log.info(
-                "v3_describe.call.ok",
-                provider=primary_slot.provider,
-                model=primary_slot.model,
-                chapters=len(tree.chapters),
-            )
-            return V3DescribeResult(
-                tree=tree,
-                tokens_billed=tokens,
-                model=primary_slot.model,
-                provider=primary_slot.provider,
-            )
-        except (ai_client.AIRequestError, asyncio.TimeoutError) as exc:
-            # 5xx/timeout after retry, or batch overran the deadline → 降级火山.
-            log.warning(
-                "v3_describe.primary_failover",
-                provider=primary_slot.provider,
-                reason=type(exc).__name__,
-            )
-        # A VisionError (unparseable / unusable response) is NOT a transport
-        # failure; it propagates rather than wasting a second provider on the same
-        # malformed-output class of bug.
+        return V3DescribeResult(
+            tree=tree,
+            tokens_billed=tokens,
+            model=primary_slot.model,
+            provider=primary_slot.provider,
+            call_count=1,
+        )
+    except asyncio.TimeoutError as exc:
+        # Batch deadline overrun → 降级火山.
+        log.warning(
+            "v3_describe.primary_failover",
+            provider=primary_slot.provider,
+            reason=type(exc).__name__,
+        )
+    except ai_client.AIRequestError as exc:
+        if not exc.failover_eligible:
+            raise VisionError(f"describe-content OpenAI failed: {exc}") from exc
+        # 5xx/timeout after retry → 降级火山.
+        log.warning(
+            "v3_describe.primary_failover",
+            provider=primary_slot.provider,
+            reason=exc.kind or type(exc).__name__,
+        )
+    # A VisionError (unparseable / unusable response) is NOT a transport
+    # failure; it propagates rather than wasting a second provider on the same
+    # malformed-output class of bug.
 
     # --- FAILOVER: 火山 doubao (ARK) -----------------------------------------
     try:
@@ -683,4 +709,5 @@ async def describe_content(
         tokens_billed=tokens,
         model=fallback_slot.model,
         provider=fallback_slot.provider,
+        call_count=2,
     )

@@ -179,6 +179,7 @@ def test_vision_object_output_with_no_valid_groups_gets_fallback(monkeypatch):
 def _describe_env(monkeypatch):
     """describe-content env with BOTH slots keyed (OpenAI primary + 火山 failover)."""
     monkeypatch.setenv("AGENT_PIPELINE_MODE", "real")
+    monkeypatch.setenv("OPENAI_VISION_MODEL", "gpt-4o-mini")
     monkeypatch.setenv("OPENAI_API_KEY", "fake_oai")
     monkeypatch.setenv("ARK_API_KEY", "fake_ark")
     from src import settings as s
@@ -192,7 +193,7 @@ def _v3_photos(count: int = 3) -> list[V3AnalyzePhoto]:
     return [
         V3AnalyzePhoto(
             photoId=f"p{i + 1}",
-            base64="data:image/jpeg;base64,AAA",
+            base64="data:image/jpeg;base64,AA==",
             width=800 if i % 2 == 0 else 600,
             height=600 if i % 2 == 0 else 800,
             exif={"takenAt": f"2024-03-{(i % 28) + 1:02d}T08:30:00"},
@@ -266,14 +267,21 @@ def test_describe_content_builds_chapter_tree_with_llm_3_fields(_describe_env, m
         assert c.accentColor is None and c.artFont is None
 
 
-def test_describe_content_one_photo_one_chapter_no_cross_and_sweeps_omitted(
-    _describe_env, monkeypatch
-):
-    # Model duplicates p1 across chapters and forgets p3 entirely.
+def test_describe_content_rejects_duplicate_photo_ids(_describe_env, monkeypatch):
+    # The code must reject duplicate LLM-authored grouping, not silently keep the
+    # first occurrence or patch in its own partition.
     payload = {
         "chapters": [
-            {"description": "A.", "photoIds": ["p1", "p2"], "scenes": {}},
-            {"description": "B.", "photoIds": ["p1"], "scenes": {}},  # dup p1 dropped
+            {
+                "description": "A.",
+                "photoIds": ["p1", "p2"],
+                "scenes": {"p1": "one", "p2": "two"},
+            },
+            {
+                "description": "B.",
+                "photoIds": ["p1", "p3"],
+                "scenes": {"p1": "one again", "p3": "three"},
+            },
         ]
     }
 
@@ -282,15 +290,77 @@ def test_describe_content_one_photo_one_chapter_no_cross_and_sweeps_omitted(
 
     monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
 
-    photos = _v3_photos(3)
-    result = asyncio.run(vision.describe_content(photos, language="en"))
+    with pytest.raises(vision.VisionError, match="duplicated photoId"):
+        asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
 
-    all_ids = [p.photoId for c in result.tree.chapters for p in c.photos]
-    # 一图一章不跨章: each input photo appears EXACTLY once.
-    assert sorted(all_ids) == ["p1", "p2", "p3"]
-    assert len(all_ids) == len(set(all_ids))
-    # The omitted p3 was swept into a trailing chapter (never dropped).
-    assert "p3" in [p.photoId for p in result.tree.chapters[-1].photos]
+
+def test_describe_content_rejects_omitted_photo_ids(_describe_env, monkeypatch):
+    # Every input photo must appear once; omitted ids are invalid LLM output.
+    payload = {
+        "chapters": [
+            {
+                "description": "A.",
+                "photoIds": ["p1", "p2"],
+                "scenes": {"p1": "one", "p2": "two"},
+            }
+        ]
+    }
+
+    async def fake_completion(**kwargs):
+        return _completion(payload)
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
+
+    with pytest.raises(vision.VisionError, match="omitted photoIds"):
+        asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
+
+
+def test_describe_content_rejects_unknown_photo_ids(_describe_env, monkeypatch):
+    # The model may only reference exact photoIds from the request manifest.
+    payload = {
+        "chapters": [
+            {
+                "description": "A.",
+                "photoIds": ["p1", "p2", "p3", "p999"],
+                "scenes": {"p1": "one", "p2": "two", "p3": "three", "p999": "unknown"},
+            }
+        ]
+    }
+
+    async def fake_completion(**kwargs):
+        return _completion(payload)
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
+
+    with pytest.raises(vision.VisionError, match="unknown photoId"):
+        asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
+
+
+def test_describe_content_rejects_missing_llm_authored_text(_describe_env, monkeypatch):
+    """`description` and per-photo `sceneDescription` are LLM-authored fields.
+    Missing values are invalid model output, not code-fill opportunities."""
+    payload = {
+        "chapters": [
+            {
+                "description": "Spring morning walk.",
+                "photoIds": ["p1", "p2"],
+                "scenes": {"p1": "a woman in a red coat"},
+            },
+            {
+                "description": "",
+                "photoIds": ["p3"],
+                "scenes": {"p3": "a quiet teahouse"},
+            },
+        ]
+    }
+
+    async def fake_completion(**kwargs):
+        return _completion(payload)
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
+
+    with pytest.raises(vision.VisionError):
+        asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
 
 
 def test_describe_content_fails_over_to_ark_on_openai_5xx(_describe_env, monkeypatch):
@@ -300,7 +370,9 @@ def test_describe_content_fails_over_to_ark_on_openai_5xx(_describe_env, monkeyp
         model = kwargs["model"]
         calls.append(model)
         if model == "gpt-5.5-mini":
-            raise ai_client.AIRequestError("upstream_5xx status=503")
+            raise ai_client.AIRequestError(
+                "upstream_5xx status=503", status_code=503, kind="5xx"
+            )
         # Failover slot = 火山 doubao; thinking-disabled, no json_object.
         assert model == "doubao-seed-1-6-vision-250815"
         assert kwargs.get("response_format") is None
@@ -314,7 +386,26 @@ def test_describe_content_fails_over_to_ark_on_openai_5xx(_describe_env, monkeyp
     assert calls == ["gpt-5.5-mini", "doubao-seed-1-6-vision-250815"]
     assert result.provider == "ark"
     assert result.model == "doubao-seed-1-6-vision-250815"
+    assert result.call_count == 2
     assert len(result.tree.chapters) == 2
+
+
+def test_describe_content_does_not_failover_on_openai_4xx(_describe_env, monkeypatch):
+    """Auth/model/request errors are configuration or request bugs, not
+    5xx/timeout/deadline failover cases."""
+    calls: list[str] = []
+
+    async def fake_completion(**kwargs):
+        calls.append(kwargs["model"])
+        raise ai_client.AIRequestError(
+            "upstream_4xx status=401", status_code=401, kind="4xx"
+        )
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
+
+    with pytest.raises(vision.VisionError):
+        asyncio.run(vision.describe_content(_v3_photos(2), language="en"))
+    assert calls == ["gpt-5.5-mini"]
 
 
 def test_describe_content_fails_over_when_primary_overruns_deadline(_describe_env, monkeypatch):
@@ -336,13 +427,14 @@ def test_describe_content_fails_over_when_primary_overruns_deadline(_describe_en
 
     monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
 
-    result = asyncio.run(vision.describe_content(_v3_photos(2), language="en"))
+    result = asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
     assert calls == ["gpt-5.5-mini", "doubao-seed-1-6-vision-250815"]
     assert result.provider == "ark"
 
 
-def test_describe_content_uses_ark_when_openai_unconfigured(monkeypatch):
-    # Only the 火山 key is present → primary slot unconfigured, go straight to ark.
+def test_describe_content_raises_when_openai_unconfigured(monkeypatch):
+    # Only the 火山 key is present. V3 describe-content must not silently switch
+    # providers for a missing primary key; failover is for 5xx/timeouts/deadline.
     monkeypatch.setenv("AGENT_PIPELINE_MODE", "real")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("ARK_API_KEY", "fake_ark")
@@ -358,16 +450,16 @@ def test_describe_content_uses_ark_when_openai_unconfigured(monkeypatch):
 
         monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
 
-        result = asyncio.run(vision.describe_content(_v3_photos(2), language="en"))
-        assert calls == ["doubao-seed-1-6-vision-250815"]
-        assert result.provider == "ark"
+        with pytest.raises(vision.VisionError):
+            asyncio.run(vision.describe_content(_v3_photos(2), language="en"))
+        assert calls == []
     finally:
         s.reset_settings_cache()
 
 
 def test_describe_content_raises_when_both_providers_fail(_describe_env, monkeypatch):
     async def fake_completion(**kwargs):
-        raise ai_client.AIRequestError("boom")
+        raise ai_client.AIRequestError("upstream_5xx status=503", status_code=503, kind="5xx")
 
     monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
 

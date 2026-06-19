@@ -59,12 +59,14 @@ from ..settings import get_settings
 
 router = APIRouter()
 log = get_logger("v3_album")
+_active_stage_by_request: dict[str, V3JobStage] = {}
 
 
 # ---------- callback helpers --------------------------------------------------
 
 
 async def _emit_progress(req: V3AnalyzeRequest, stage: V3JobStage, progress: int) -> None:
+    _active_stage_by_request[req.requestId] = stage
     envelope = V3ProgressEvent(
         event="progress",
         jobKind="analyze",
@@ -152,7 +154,7 @@ async def _run_analyze(req: V3AnalyzeRequest) -> None:
         await _emit_failure(req, code="AGENT_VISION_FAILED", message=str(exc), stage="describe")
         return
     chapters = described.tree.chapters
-    vision_call_count = 1
+    vision_call_count = described.call_count
     vision_model = described.model
     await _emit_progress(req, "describe", 100)
 
@@ -208,6 +210,7 @@ async def _run_analyze(req: V3AnalyzeRequest) -> None:
 async def _run_analyze_with_timeout(req: V3AnalyzeRequest) -> None:
     settings = get_settings()
     token = request_id_var.set(req.requestId)
+    _active_stage_by_request.pop(req.requestId, None)
     try:
         try:
             await asyncio.wait_for(
@@ -216,12 +219,21 @@ async def _run_analyze_with_timeout(req: V3AnalyzeRequest) -> None:
         except asyncio.TimeoutError:
             log.error("v3_analyze.timeout")
             await _emit_failure(
-                req, code="AGENT_TIMEOUT", message="background task exceeded timeout"
+                req,
+                code="AGENT_TIMEOUT",
+                message="background task exceeded timeout",
+                stage=_active_stage_by_request.get(req.requestId),
             )
         except Exception as exc:  # noqa: BLE001
             log.exception("v3_analyze.unhandled", error=str(exc))
-            await _emit_failure(req, code="AGENT_INTERNAL_ERROR", message=str(exc))
+            await _emit_failure(
+                req,
+                code="AGENT_INTERNAL_ERROR",
+                message=str(exc),
+                stage=_active_stage_by_request.get(req.requestId),
+            )
     finally:
+        _active_stage_by_request.pop(req.requestId, None)
         request_id_var.reset(token)
 
 
