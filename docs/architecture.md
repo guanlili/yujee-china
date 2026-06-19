@@ -83,7 +83,7 @@
 
 ## 2. Web ↔ Agent 协议(骨架)
 
-> **【V3 · 2026-06-18 架构拍板】** 协议整切到全新 `/v3/*` 端点集,对应五环节状态机(`v3-requirements.md §2`);`/v1`、`/v2` 在 V3 调通后**整套删除**,不留兼容层(§6.8)。本节只锁骨架——详细 req/res、错误码、状态机见 `v3-requirements.md §8` 及各模块施工契约(`contract.md` 随 V3 重写,旧 v1 内容废弃)。
+> **【V3 · 2026-06-18 架构拍板】** 协议整切到全新 `/v3/*` 端点集,对应五环节状态机(`v3-requirements.md §2`);`/v1`、`/v2` 在 V3 调通后**整套删除**,不留兼容层(§6.8)。本节只锁骨架——详细 req/res、错误码、状态机见 [`docs/agent/contract.md`](./agent/contract.md);Agent 内部 pipeline、failover、redact 边界见 [`docs/agent/design.md`](./agent/design.md)。
 
 Agent 暴露**一个异步端点 + 五个同步端点**:
 
@@ -133,7 +133,7 @@ Agent 暴露**一个异步端点 + 五个同步端点**:
 4. 积分变更在 DB 事务里、与 album 状态变更**原子**;**init 成功即按张实扣**(`⌈张数/10⌉`)、失败 `release`、成功只扣一次、重试不重复(§6.7)。
 
 **边界红线(知道即可,不赘述)**
-5. **隐私**:原图与 base64 只在「浏览器 → Agent」内存链路过,**不入库 / R2 / 日志**;**不抽 GPS、无地点维度**(`place` 恒 null,redact 仍拦坐标键作防御);PDF 浏览器生成 + presigned 上传。
+5. **隐私**:原图与 base64 只在「浏览器 → Agent」内存链路过,**不入库 / R2 / 日志**;**不抽 GPS、无地点/坐标字段**(redact 仍拦坐标键作防御);PDF 浏览器生成 + presigned 上传。
 6. Agent 输出 layout 写库前必 **zod 校验**;`AGENT_SHARED_SECRET` 不进任何 client bundle。
 
 ---
@@ -199,7 +199,7 @@ memoir-agent-rebuild/
 
 2. **两类模型 + 识图模型当主控**:① **识图模型 = GPT-5.5 Mini(主,`OPENAI_*` 槽);火山 doubao-vision failover(`ARK_*`)**——既做图片分析,又当「主控」负责一切改变版面观感的判断(套模板 / 主题 / 章节色 / 布局变动)。② DeepSeek 只管章节文案,不碰布局。failover 触发阈值(GPT 不可用 / 批量过慢)留**模块施工文档**敲定。
 
-3. **§3 隐私红线(GPS/place)— V3 不接入**:见 §3 隐私。原 V3 草案拟「浏览器 Stage 0 读 GPS → 反查粗地名 `place` 供分章」,**产品拍板撤销**:排版不需要地址,GPS 反查(本地全球城市库几 MB / 外部地理 API 配额成本)与体验提升不成正比。**结论:Stage 0 只读 `takenAt`,不抽 GPS,`place` 恒 null,分章只用时间 + 画面整体性信号。** redact 列表保留坐标键作防御红线。`v3-requirements §11` 原列的「反查放哪端」开放点随之作废。
+3. **§3 隐私红线(GPS/place)— V3 不接入**:见 §3 隐私。原 V3 草案拟「浏览器 Stage 0 读 GPS → 反查粗地名 `place` 供分章」,**产品拍板撤销**:排版不需要地址,GPS 反查(本地全球城市库几 MB / 外部地理 API 配额成本)与体验提升不成正比。**结论:Stage 0 只读 `takenAt`,不抽 GPS,不产出地点/坐标字段,分章只用时间 + 画面整体性信号。** redact 列表保留坐标键作防御红线。`v3-requirements §11` 原列的「反查放哪端」开放点随之作废。
 
 4. **新增 `albums.stage`(五环节状态主控,需 schema 迁移)**:整本相册当前环节存 Web DB,Web 唯一真相源,Agent 不持 stage。
    - **迁移 `0007`**:新增 `album_stage` pgEnum = `('analysing','story','theme','cover','ready')` + `albums.stage` 列,`notNull default 'analysing'`;现有行回填(`status COMPLETED/EDITING → 'ready'`,`AGENT_RUNNING → 'analysing'`;无真实用户,回填量极小)。

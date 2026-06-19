@@ -1,93 +1,203 @@
-# Agent 对外契约
+# Agent V3 对外契约
 
-> **前置阅读**: `CLAUDE.md` → `docs/architecture.md`
+> **前置阅读**: `CLAUDE.md` -> `docs/architecture.md`
 >
-> 谁读这份: 写 Agent 接入层(Web 这边),或写 Agent 服务本身的人。
+> 谁读这份: 写 Agent 接入层(Web 侧)或 Agent 路由的人。
 >
-> 这份文档**只定义对外协议**。内部 pipeline 实现(阶段边界、Prompt、火山/DeepSeek 调用、校验/repair、模板注册表、日志红线、mock/real 边界)在 [`docs/agent/design.md`](./design.md)。
+> 本文只定义 Web <-> Agent 的 HTTP 协议、req/res、错误码、状态机。Agent 内部 pipeline、模型 failover、prompt skill、redact 规则见 [`docs/agent/design.md`](./design.md)。
 
 ---
 
-## 1. 部署与基础信息
+## 1. Truth Source
 
-| 项 | 值 |
-|---|---|
-| 语言 | Python 3.12 + FastAPI |
-| 部署 | Fly.io |
-| 域名 | `agent.yujeeai.com` |
-| 实例 | 单 region(初期),2 进程,512MB |
-| 状态 | **完全无状态**——不连数据库,不存文件 |
-| 鉴权 | Bearer Token,共享密钥 `AGENT_SHARED_SECRET` |
+V3 contract 的单一真相源是 `packages/contracts/src/v3.ts`、`packages/contracts/src/layout.ts`、`packages/contracts/src/enums.ts`。
+
+- TypeScript zod schema 先行;Agent Python `apps/agent/src/schemas.py` 必须逐字段镜像。
+- 所有 object schema 都是 strict;Python mirror 使用 `extra='forbid'`。未知字段必须拒绝,不能静默透传。
+- 模板与扁平渲染结构由 `layout.ts` 和模板 loader 约束;Agent 不自由生成 contract 外字段。
+- V3 authoring tree 只在交互期存在;只有 `/v3/finalize` 返回扁平 `AlbumLayoutPlan` 给渲染/PDF。
 
 ---
 
-## 2. 暴露的接口
+## 2. Auth & Envelope
 
-Agent **两个**业务端点 + 1 个健康检查。模式不同:
-
-| 端点 | 模式 | 用途 |
-|---|---|---|
-| `POST /v1/layout` | 异步(202 + callback) | 首次生成,跑 vision → writing → composing |
-| `POST /v1/chat-edit` | 同步(60s 超时) | Chat 修改已有 layout,跑单次 DeepSeek |
-| `GET /health` | — | 健康检查 |
-
-### 2.1 `POST /v1/layout` —— 主接口
+所有 Agent 业务端点均只接受 Web server 调用。
 
 请求头:
-```
+
+```http
 Authorization: Bearer <AGENT_SHARED_SECRET>
-Content-Type:  application/json
-X-Request-Id:  <uuid>
+Content-Type: application/json
+X-Request-Id: <uuid>
 ```
 
-请求体:
+成功 envelope:
+
 ```json
+{ "ok": true, "data": {} }
+```
+
+失败 envelope:
+
+```json
+{ "ok": false, "error": { "code": "AGENT_INVALID_INPUT", "message": "..." } }
+```
+
+约定:
+
+- Bearer 校验失败 -> `AGENT_UNAUTHORIZED`。
+- 请求体验证失败 -> `AGENT_INVALID_INPUT`。
+- Agent route 不返回裸对象;业务数据一律放在 `data`。
+- `/v3/analyze` 成功接单返回 HTTP 202;同步端点成功返回 HTTP 200。
+- 同步端点的 output validation 类错误返回 HTTP 422 + `AGENT_OUTPUT_VALIDATION`;Web client 会映射成 Web 侧 `AGENT_INVALID_OUTPUT`。
+
+---
+
+## 3. Endpoint Map
+
+### 3.1 Agent V3 endpoints
+
+| Endpoint | Mode | Purpose |
+|---|---|---|
+| `POST /v3/analyze` | async, HTTP 202 + callback | 接收照片,生成章节树与预览页 |
+| `POST /v3/chapter-chat` | sync | 单章引导、写作、改页 turn |
+| `POST /v3/recommend` | sync | 推荐全局主题与每章色/字体 |
+| `POST /v3/apply-theme` | sync deterministic | 应用用户选择的主题、章节色、字体 |
+| `POST /v3/cover` | sync deterministic | 生成或跳过封面/封尾补丁 |
+| `POST /v3/finalize` | sync deterministic | 将整棵树拍平成 `AlbumLayoutPlan` |
+
+### 3.2 Web orchestration routes
+
+| Web route | Purpose |
+|---|---|
+| `POST /api/v3/albums` | 创建相册、扣费 hold、派发 `/v3/analyze` |
+| `POST /api/v3/internal/job-progress` | Agent analyze callback sink |
+| `POST /api/v3/albums/:id/retry` | 对失败相册重新派发 analyze |
+| `GET /api/v3/albums/:id/draft` | 读取预览骨架 |
+| `GET/POST /api/v3/albums/:id/story-progress` | 读取/推进章节完成度 |
+| `POST /api/v3/albums/:id/recommend` | 代理推荐主题与章节色 |
+| `POST /api/v3/albums/:id/apply-theme` | 代理并持久化主题应用 |
+| `POST /api/v3/albums/:id/cover` | 代理并持久化封面/封尾应用 |
+| `POST /api/v3/albums/:id/finalize` | 代理 finalize 并返回扁平定稿 |
+
+---
+
+## 4. Shared Shapes
+
+### 4.1 `V3Usage`
+
+```ts
 {
-  "requestId": "req_xxx",
-  "prompt": "我和妈妈在京都的春天",
-  "language": "zh",
-  "callbackUrl": "https://yujeeai.com/api/v1/internal/job-progress",
-  "photos": [
-    {
-      "photoId": "p1",
-      "base64": "data:image/jpeg;base64,/9j/4AAQ...",
-      "width": 800,
-      "height": 600
-    }
-  ]
+  durationMs: number;
+  visionCallCount: number;
+  planningInputTokens: number;
+  planningOutputTokens: number;
+  repairAttempts: number;
+  models: { vision?: string; planning?: string };
 }
 ```
 
-约束:
-- `photos.length` ∈ [1, 30](架构 §6.5 决策 6:下限 3→1;1-2 图 composing 用纯文字版面兜底)
-- 每张 base64 ≤ 800KB
-- 总请求体 ≤ 25MB
-- `prompt` ≤ 500 字
+### 4.2 Authoring tree
 
-**工作模式(第一版只此一种,无可选)**:
+`V3LayoutTree`:
 
-Agent 收到 `POST /v1/layout` 后**立刻 202 接单**,把 layout 任务挂到 FastAPI `BackgroundTasks` 里跑,通过 `callbackUrl` 推进度和**终态**(`completed` / `failed`)。Web HTTP 响应只表示"我接到了",**不携带 layout**。
-
-```
-Web ──POST /v1/layout──► Agent  (后台 task 开始跑)
-                          │
-Web ◄──202 + {requestId}──┘   (立刻返回,Web HTTP 调用 ≤ 30 秒)
-
-      [Agent 后台 task 期间]
-                          ├─► POST callbackUrl  (event=progress, stage=vision,    progress=30)
-                          ├─► POST callbackUrl  (event=progress, stage=writing,   progress=60)
-                          ├─► POST callbackUrl  (event=progress, stage=composing, progress=90)
-                          └─► POST callbackUrl  (event=completed, layout=...)   ← 终态
-                                                or
-                              POST callbackUrl  (event=failed, code=..., message=...)
+```ts
+{ chapters: V3Chapter[] }
 ```
 
-- **终态走 callback**(`event=completed` 带 layout,或 `event=failed` 带错误码)。
-- Web 不再阻塞等 90 秒。浏览器轮询 `GET /api/v1/jobs/[requestId]` 拿状态。
-- callback 是 Agent 推终态的唯一通道,**Web 不会重试调 Agent**。
-- 同一个 `requestId` 的 `completed` / `failed` callback 必须是**幂等**的(Web 用 `agent_jobs.status` 判重)。
+`V3Chapter`:
 
-**HTTP 响应体(接单成功)**:
+```ts
+{
+  chapterId: string;
+  description: string;
+  accentColor: string | null;
+  artFont: "serif-classic" | "sans-modern" | "script-elegant" | "display-bold" | null;
+  photos: V3ChapterPhoto[];
+}
+```
+
+`V3ChapterPhoto`:
+
+```ts
+{
+  photoId: string;
+  sceneDescription: string;
+  width: number;
+  height: number;
+  orientation: "portrait" | "landscape" | "square";
+  takenAt?: string | null;
+}
+```
+
+### 4.3 Page and patch
+
+`Page` is the render page shape from `layout.ts`:
+
+```ts
+{
+  pageIndex: number;
+  templateId: string;
+  images: Record<string, string>;
+  texts: Record<string, string>;
+  imagePos?: Record<string, { x: number; y: number; scale: number }>;
+}
+```
+
+`V3LayoutPatchEntry`:
+
+```ts
+{
+  pageIndex: number;
+  templateId?: string;
+  images?: Record<string, string>;
+  texts?: Record<string, string>;
+}
+```
+
+`V3PageTextsPatch`:
+
+```ts
+{ pageIndex: number; texts: Record<string, string> }
+```
+
+---
+
+## 5. `POST /v3/analyze`
+
+唯一带 base64 的 Agent endpoint。Agent 接单后立即返回 202,后台执行,终态只通过 callback 通知 Web。
+
+Request:
+
+```ts
+{
+  requestId: string;
+  albumId: string;
+  callbackUrl: string;
+  language: "zh" | "en";
+  meta?: { promptHint?: string };
+  photos: Array<{
+    photoId: string;
+    base64: string;
+    width: number;
+    height: number;
+    exif?: { takenAt?: string | null };
+  }>;
+}
+```
+
+Constraints:
+
+- `photos.length` is 1..30.
+- `base64` must be `data:image/jpeg;base64,...` or `data:image/png;base64,...`, decoded size <= 800KB.
+- `callbackUrl` must be HTTP(S).
+- `language` is `zh` or `en`.
+- `meta.promptHint` length <= 500.
+- Photo object allows only `photoId`, `base64`, `width`, `height`, and `exif.takenAt`.
+- There is no coordinate, GPS, `place`, or `location` field. Any such field is rejected by strict schema.
+
+Accepted response:
+
 ```json
 {
   "ok": true,
@@ -95,414 +205,318 @@ Web ◄──202 + {requestId}──┘   (立刻返回,Web HTTP 调用 ≤ 30 �
 }
 ```
 
-**HTTP 响应体(接单失败 —— 仅在 Agent 都没把任务挂上去就拒绝时)**: HTTP status 4xx/5xx,body:
-```json
-{
-  "ok": false,
-  "error": { "code": "AGENT_INVALID_INPUT", "message": "photos.length must be 1-30" }
-}
-```
+---
 
-**callback 请求体(Agent → Web `callbackUrl`,discriminated union by `event`)**:
+## 6. Analyze Callback
 
-三种事件**字段不互通**(`extra: forbid`,见 [`design.md §8`](./design.md)):
+Agent posts every analyze progress and terminal event to:
 
-```json
-// event=progress
-{ "requestId": "req_xxx", "event": "progress",
-  "stage": "vision" | "writing" | "composing", "progress": 0-100, "message"?: "..." }
-
-// event=completed
-{ "requestId": "req_xxx", "event": "completed",
-  "layout": { ... AlbumLayoutPlan ... },
-  "usage": { ... see §4 ... } }
-
-// event=failed
-{ "requestId": "req_xxx", "event": "failed",
-  "error": { "code": "AGENT_VISION_FAILED", "message": "..." },
-  "stage"?: "vision" | "writing" | "composing",   // 失败时所在阶段
-  "progress"?: 0-100 }                              // 失败时已跑到的进度
-```
-
-**进度语义**(design.md §6):每阶段至少发 2 次(开始 0、完成 100)。失败前必须先发一次 `progress`,再发 `failed` —— 前端 progress bar 不会从 50% 跳到失败。
-
-> 为什么这样选:Vercel serverless 不能跨 lambda 共享 SSE 通道(见 `architecture.md §2`);改"Web fire-and-forget + Agent 回调推终态 + 浏览器轮询"后,Web 函数执行时长降到秒级,不存在 idle timeout 风险。1000 用户阶段轮询 QPS ≈ 总并发任务数 × 0.5,完全可承。
-
-### 2.2 `POST /v1/chat-edit` —— Chat 编辑
-
-请求头:
-```
+```http
+POST /api/v3/internal/job-progress
 Authorization: Bearer <AGENT_SHARED_SECRET>
-Content-Type:  application/json
-X-Request-Id:  <uuid>
+Content-Type: application/json
 ```
 
-请求体:
-```json
-{
-  "albumId": "alb_xxx",
-  "currentLayout": { ... AlbumLayoutPlan ... },
-  "history": [
-    { "role": "user",      "content": "封面再大胆一点" },
-    { "role": "assistant", "content": "好的,我把封面字号放大,加了一行副标题。" }
-  ],
-  "userMessage": "把第二页副标题改感性点",
-  "language": "zh"
-}
-```
+`jobKind` is always `"analyze"`.
 
-约束:
-- `currentLayout` 必须通过 `AlbumLayoutPlan` zod 校验
-- `history.length` ≤ 20(只送最近 N 条,Web 侧裁剪)
-- `userMessage.length` ≤ 500
-- **请求体不含**:`userId` / `email` / 原图 base64(全部隐私字段 Web 已剥)
-
-**工作模式**:
-
-```
-Web ──POST /v1/chat-edit──► Agent  (单次 DeepSeek 调用)
-                            │
-                            ├─ 拼 system prompt:layout schema + TemplateRegistry + 业务规则
-                            ├─ 拼 user prompt:currentLayout + history + userMessage
-                            ├─ 调 DeepSeek(结构化 JSON 输出)
-                            ├─ 解析 + 校验 layoutPatch
-                            │   → 失败 → repair 1 次
-                            │   → repair 仍失败 → 502 AGENT_CHAT_FAILED
-                            └─ 200 + { layoutPatch, assistantReply, usage }
-```
-
-**成功响应**(HTTP 200):
-```json
-{
-  "ok": true,
-  "data": {
-    "layoutPatch": [
-      {
-        "pageIndex": 1,
-        "textsJson": { "subtitle": "春天总是来得太早" }
-      }
-    ],
-    "assistantReply": "已经把第二页副标题改成「春天总是来得太早」,语气更感性。",
-    "usage": {
-      "durationMs": 4200,
-      "planningInputTokens": 1820,
-      "planningOutputTokens": 142,
-      "repairAttempts": 0,
-      "model": "deepseek-chat"
-    }
-  }
-}
-```
-
-**失败响应**:
-```json
-{
-  "ok": false,
-  "error": { "code": "AGENT_CHAT_FAILED", "message": "..." }
-}
-```
-
-**约束**:
-- `layoutPatch` 是 `Page` 的**部分字段**数组,每项必须有 `pageIndex`,其他字段(`templateId` / `images` / `texts`)按需出现
-- patch 不允许新增/删除页(只改字段);需要换模板时,assistant 在 reply 里说明并按整页替换 `templateId` + `images` + `texts`
-- patch apply 后 layout 必须**仍然通过** §4 全量 schema 校验(Agent 端校验通过才发出来,Web 端 apply 后再校验一次兜底)
-
-**错误码**:见 §8。
-
-### 2.3 `GET /health`
-
-```json
-{ "ok": true, "version": "1.0.0", "timestamp": "2026-05-27T12:00:00Z" }
-```
-
----
-
-## 3. Agent 调用的外部接口
-
-Agent → Web 回调(**progress / completed / failed 三种事件都走这一个端点**):
-
-```
-POST https://yujeeai.com/api/v1/internal/job-progress
-Headers:
-  Authorization: Bearer <AGENT_SHARED_SECRET>
-  Content-Type:  application/json
-```
-
-Body 同 §2.1 callback 请求体(`event` 字段区分类型)。
-
-详细 Web 侧处理 → `docs/web/api.md §3.3`。
-
----
-
-## 4. AlbumLayoutPlan 完整 schema
-
-这是 Agent 输出的核心契约。**任何字段变更必须先改 `packages/contracts/src/agent.ts`**,Web/Agent 两端都从这里读类型。
+Progress event:
 
 ```ts
-// packages/contracts/src/agent.ts (示意)
-import { z } from 'zod';
-
-export const PhotoOrientation = z.enum(['portrait', 'landscape', 'square']);
-export const PhotoQuality = z.enum(['hero', 'detail', 'fill']);
-
-export const Magazine = z.object({
-  title: z.string().min(1).max(60),
-  subtitle: z.string().max(100).optional(),
-  style: z.string(),                    // 风格 ID,见 config/templates
-  language: z.enum(['zh', 'en']),
-});
-
-export const PhotoAnalysis = z.object({
-  photoId: z.string(),
-  description: z.string(),
-  tags: z.array(z.string()),
-  quality: PhotoQuality,
-  orientation: PhotoOrientation,
-  // ↓ design.md §2.3 扩充,vision 阶段输出
-  peopleCount: z.enum(['0', '1', '2-3', '4+']),
-  scene: z.enum(['indoor', 'outdoor', 'nature', 'city', 'interior']),
-  mood: z.enum(['warm', 'cool', 'sentimental', 'energetic', 'quiet']),
-  timeOfDay: z.enum(['morning', 'day', 'evening', 'night']).nullable().optional(),
-  location: z.string().nullable().optional(),
-});
-
-// #165: 每槽位的位置/缩放覆盖。key = 与 images 同名的 slotId。缺省即默认 50/50/1。
-export const ImagePos = z.object({
-  x: z.number().min(0).max(100),   // object-position 横向百分比,clamp [0,100]
-  y: z.number().min(0).max(100),   // object-position 纵向百分比,clamp [0,100]
-  scale: z.number().min(1).max(2), // 放大倍数,clamp [1,2];仅 web 生效,PDF 暂不支持 zoom
-});
-
-export const Page = z.object({
-  pageIndex: z.number().int().nonnegative(),
-  templateId: z.string(),                // 必须在 config/templates 里存在
-  images: z.record(z.string(), z.string()),  // { slotName: photoId }
-  texts: z.record(z.string(), z.string()),   // { slotName: text }
-  imagePos: z.record(z.string(), ImagePos).optional(), // #165 可选,缺省=默认 50/50/1
-});
-
-export const AlbumLayoutPlan = z.object({
-  magazine: Magazine,
-  photos: z.array(PhotoAnalysis),
-  pages: z.array(Page).min(1),
-});
+{
+  requestId: string;
+  jobKind: "analyze";
+  event: "progress";
+  stage: "describe" | "group" | "template" | "preview";
+  progress: number;
+  message?: string;
+}
 ```
 
-### 4.0 `imagePos` 单图位置覆盖(#165 Phase 1,架构已批准登记)
+Completed event:
 
-- **形状**:`Page.imagePos?: Record<slotId, { x: number; y: number; scale: number }>`,与 `images` 用同一套 slotId(`image` / `imageTop` / `cells[0].image` 等)。**可选**:缺省该 slot 即渲染器回退默认 `objectPosition 50% 50%`、`objectFit cover`、不缩放。因此**所有 #165 之前的相册逐字节不变**。
-- **clamp 边界**:`x,y in [0,100]`,`scale in [1,2]`(zod / pydantic / web layout-schema 三处同步校验,inv 9)。写入者(#165 Phase 3 `adjust_image_position`)负责落在该范围。
-- **finalize 拍平(inv 12)**:`AlbumDraft` 各 chapter/cover 页的 `imagePos` 在 `services/finalize.py` 拍平进扁平 `LayoutV2.pages`,再由 Web `handleFinalizeCompleted` 落 `album_pages.image_pos_json`(缺省落 `{}`,渲染默认)。指向已不在 `images` 里的 slot 的陈旧覆盖在拍平时丢弃。
-- **photo-swap 重置**:换图(slot 的 photoId 变化)即清掉该 slot 的 `imagePos`(新主体回 50/50/1),由 `applyPatchToPages` 在编辑器侧执行后再持久化。
-- **TS<->py 镜像**:`packages/contracts/src/layout.ts` `ImagePos`/`Page.imagePos` 对应 `apps/agent/src/schemas.py` `ImagePos`/`Page.imagePos`;Web 校验副本 `apps/web/src/lib/agent/layout-schema.ts` 同步。
-- **PDF 限制**:`@react-pdf <Image>` 无 transform,`scale>1` 暂不缩放(只用 objectPosition 平移),为 web-only,见 `pdf-utils.tsx` 的 `TODO(#165)`。
+```ts
+{
+  requestId: string;
+  jobKind: "analyze";
+  event: "completed";
+  tree: V3LayoutTree;
+  pages: Page[];
+  usage: V3Usage;
+}
+```
 
-### 4.0b 视觉诊断 + 单图位置工具(#165 Phase 2,架构已批准登记)
+Failed event:
 
-草稿期编辑器的 tool 层(`apps/agent/src/services/tools.py`,#162 起)在 Phase 2 新增两个**已启用**工具,并新增一个同步端点 `POST /v2/album/inspect-page`。`/v2/album/draft-edit` 的响应 `kind` 从 `talk|act` 扩为 `talk|act|inspect`。#162 的 `talk` / `write_page_copy(act+pageWrite)` 路径不变。
+```ts
+{
+  requestId: string;
+  jobKind: "analyze";
+  event: "failed";
+  error: { code: string; message: string };
+  stage?: "describe" | "group" | "template" | "preview";
+  progress?: number;
+}
+```
 
-**两个新工具(G1 描述即「何时调/何时别调」;dispatch 服务端二次校验 = G3):**
+Progress semantics:
 
-- `inspect_page_render(pageIndex)` —— 仅当用户抱怨某张照片位置不对/被裁/人脸或主体被切,且模型需要「看」这一页才能判断时调用;不用于文案编辑或闲聊。handler 返回 sentinel,`pageIndex` **钉到 `ctx.page_index`**(忽略模型入参,同 `write_page_copy` 的钉页;不变式 12)。服务映射为 `kind="inspect"` + `inspectRequest:{pageIndex}`,不带任何 write。
-- `adjust_image_position(pageIndex, imageId, dx, dy, scale)` —— 仅在诊断出裁切后,把照片在画框内平移/缩放时调用;`dx/dy` 为百分点位移(负 dx 露更多左、负 dy 露更多上),`scale 1.0–2.0`;禁止全零 no-op。**G3 降级为 talk(返回 None)**当:`imageId` 不在该页真实图片 slot 集合内(越页/虚构 slot),或 no-op(`dx==dy==0 且 scale==1.0`)。**clamp**:`dx,dy∈[-50,50]`、`scale∈[1,2]`,再由 50/50 基准算**绝对位置** `x=clamp(50+dx,0,100)`、`y=clamp(50+dy,0,100)`。服务映射为 `kind="act"` + `imagePosWrite:{pageIndex,imageId,x,y,scale}`(字段名/范围对齐 Phase-1 `ImagePos`,Web 折进 `Page.imagePos[imageId]`)。`#162` 预留的 `image_treatment` stub 被本工具取代、已删除。
+- `describe`: recognition model creates chapter grouping, chapter descriptions, and per-photo scene descriptions.
+- `group`: UI progress beat; grouping already happens inside `describe`.
+- `template`: legal candidate selection and deterministic fallback.
+- `preview`: preview tree/pages are ready.
 
-**`V2DraftEditResponse` 新增(TS↔py 严格镜像,inv 12):**
-- `kind: 'talk' | 'act' | 'inspect'`;
-- `inspectRequest?: { pageIndex: int>=0 }` —— 仅 `kind=='inspect'`;
-- `imagePosWrite?: { pageIndex:int>=0, imageId:str, x:0-100, y:0-100, scale:1-2 }` —— 仅 `kind=='act'`(经 adjust);
-- 既有 `pageWrite?`(经 write_page_copy 的 act)保留。
+Web handling:
 
-**新端点 `POST /v2/album/inspect-page`(同步,`require_bearer`,契约形错误):**
-- `V2InspectRequest { albumId, language, page:{pageIndex,templateId,images,texts}, photos:[V2PhotoAnalysis…], screenshot:str(dataUri), userMessage }`。`screenshot` 是**唯一新增 base64 通道**(渲染页截图,800px 量级,同 init 照片):进上游视觉请求体后即丢弃,不记日志、不落库、不回传(隐私同 init 视觉,不变式 1)。
-- `V2InspectResponse { diagnosis:{ imageId?, problem, suggestedDx, suggestedDy, suggestedScale, confidence }, assistantReply, usage }`。
-- 视觉模型 = 火山 `doubao-seed-1-6-vision`(`settings.ark_vision_model`,与 init 同模型/同 key/同 image_url base64 data URI 格式);`temperature=0.1, max_tokens=512, thinking disabled`。
-- **优雅失败**:视觉报错 / JSON 不可解析 / `imageId` 不在该页 slot → 返回 `problem:"unable to inspect"` + `confidence 0` + `imageId null`(调用方降级为 talk 文案),**绝不抛**;仅极端硬失败映射 `AGENT_VISION_FAILED`/502。`diagnosis` 各数值 clamp:`dx,dy∈[-50,50]`、`scale∈[1,2]`、`confidence∈[0,1]`。
-
-**Phase 3 编排(浏览器/客户端要驱动的契约):** draft-edit 返回 `kind:"inspect"` + `inspectRequest.pageIndex` → 浏览器渲染该页并截图(base64 data URI)→ `POST /v2/album/inspect-page` → 拿 `diagnosis` → 携诊断再发一轮 `/v2/album/draft-edit`(模型据此调 `adjust_image_position`)→ 拿 `kind:"act"` + `imagePosWrite` → Web 折进 `Page.imagePos[imageId]`(即 `imagePosJson`)。
-
-### 4.0c 模板 JSON 字段决策记录(#171,2026-06-16 · 已核对拍板)
-
-> 背景:#172 把确定性模板选择换成「LLM 一次性规划整本相册版面」。本节是该轮针对**模板 JSON 配置字段**的决策记录——结论是**这一轮不动模板 JSON、不动任何配色常量**。
-
-模板 JSON(`packages/contracts/templates/*.json`)的字段集只有:`id` / `slot` / `scene` / `images[{id,orientation,quality}]` / `texts[{id,role,maxChars,lang,repeat?}]` / `pairing?` / `styles?`。据此:
-
-1. **模板 JSON 配置本轮锁定不动**:保留 `scene` 与图片槽的 `orientation` / `quality`。无字段删除、无字段新增。
-2. **`scene` / `orientation` / `quality` 改为 LLM 模板选择的「参考」**:#172 把这三者作为 LLM 选模板/排图的**软参考**喂进 prompt(槽位数量 + 画面分量/朝向描述),**不再是确定性硬过滤器**。注意:**质量线(quality)硬过滤的拆除是另一个独立 issue「质量线拆除」**,本轮不动确定性兜底里的 quality 校验(`skeleton.can_place` / `assign_images` 的 fill→hero 保护仍在,作为 fallback 路径)。
-3. **`version` 不是模板字段**:`AlbumDraft.version='v2'` 是**版面/草稿 schema 版本**(结构性字段),与模板配置无关,保留。
-4. **「配色」在模板 JSON 里没有对应字段**:真正的配色活在两处——(1) 主题 `style` 预设(`warm-film` / `editorial-mono` / `soft-pastel`,见 `packages/contracts/src/v2.ts:21-23`),(2) Web 模板 JSX 里硬编码的 `COLORS` 常量。**两者本轮都不动**(延后到独立的配色 issue)。
-
-故 #171 的结论是:**模板配置层无需任何删除/修改**;模板字段语义重定位(硬过滤→软参考)由 #172 在 Agent 端的选择服务实现,不触及 JSON 真相源与配色常量。
-
-### 4.1 Composing 二期语义(文档说明,非 schema 变更)
-
-本节只说明 layout 规则语义,**不新增协议字段、不改 zod schema**:
-
-- `PhotoAnalysis.orientation` 仍然保留在输出里,供模型做软偏好与渲染调试参考;但它不再是确定性 layout validation 的硬规则。orientation 错配不应单独触发 repair / failed。
-- 页数不再按 `max(3, ceil(photos.length / 2.5))` 公式强制相等;Agent 可按实际内容排页,但最终 `pages` 仍必须落在 **1..16** 边界内。
-- `Page.images` 的 value 仍然只能是 `photoId`,不得输出 URL / 原图地址 / 临时图片地址。`photoId → 原图` 的映射只在浏览器本地完成。
-- callback envelope 不变:仍然只有 `progress` / `completed` / `failed` 三个 variant,字段集按 §2.1,不新增包裹层或额外事件类型。
+- `progress` updates `agent_jobs.stage/progress` and transitions job to `RUNNING`.
+- `completed` stores `tree + pages`, sets `agent_jobs.status=COMPLETED`, sets `albums.status=EDITING`, and advances `albums.stage=story`.
+- `failed` maps the Agent error code, sets `agent_jobs.status=FAILED`, sets album `status=FAILED`, and releases the credit hold.
 
 ---
 
-## 5. 进度 stage 枚举
+## 7. Sync Endpoints
 
-| stage | 用户看到 |
-|---|---|
-| `vision` | "AI 在看图" |
-| `writing` | "AI 在写文案" |
-| `composing` | "AI 在排版" |
+All sync endpoints return:
 
-Agent 在每个阶段开始时 POST 一次 progress=0,中途可以 POST 多次,阶段结束时 POST progress=100。
+```ts
+{ ok: true; data: <EndpointResponse> }
+```
+
+### 7.1 `POST /v3/chapter-chat`
+
+Request `V3ChapterChatRequest`:
+
+```ts
+{
+  albumId: string;
+  language: "zh" | "en";
+  chapter: V3Chapter;
+  pages: Page[];
+  history: Array<{ role: "user" | "assistant"; content: string }>;
+  userMessage: string;
+  focusedPageIndex?: number;
+}
+```
+
+Response `V3ChapterChatResponse`:
+
+```ts
+{
+  kind: "talk" | "write" | "edit";
+  assistantReply: string;
+  pagesTexts?: V3PageTextsPatch[];
+  layoutPatch?: V3LayoutPatchEntry[];
+  nameOptions?: string[];
+  usage: V3Usage;
+}
+```
+
+Rules:
+
+- `history.length` <= 20.
+- `userMessage.length` <= 500.
+- `kind=talk` returns only conversational guidance.
+- `kind=write` may return `pagesTexts` for all text slots in the current chapter.
+- `kind=edit` may return `layoutPatch` when page structure changes.
+
+### 7.2 `POST /v3/recommend`
+
+Request `V3RecommendRequest`:
+
+```ts
+{
+  albumId: string;
+  language: "zh" | "en";
+  chapters: Array<{
+    chapterId: string;
+    description: string;
+    photoDescs: string[];
+  }>;
+  analysisSummary?: string;
+  userMessage?: string;
+}
+```
+
+Response `V3RecommendResponse`:
+
+```ts
+{
+  themeOptions: Array<{ subject: string; label: string; tone?: string }>;
+  chapterColors: Array<{
+    chapterId: string;
+    accentColor: string;
+    artFont: "serif-classic" | "sans-modern" | "script-elegant" | "display-bold";
+  }>;
+  assistantReply: string;
+  usage: V3Usage;
+}
+```
+
+Rules:
+
+- `themeOptions.length` is 1..3.
+- `chapterColors` must cover every requested chapter exactly once; Web rejects off-contract coverage as `AGENT_INVALID_OUTPUT`.
+
+### 7.3 `POST /v3/apply-theme`
+
+Request `V3ApplyThemeRequest`:
+
+```ts
+{
+  albumId: string;
+  language: "zh" | "en";
+  theme: { subject: string; label: string; tone?: string };
+  chapters: Array<{
+    chapterId: string;
+    accentColor: string;
+    artFont: "serif-classic" | "sans-modern" | "script-elegant" | "display-bold";
+  }>;
+  pages: Page[];
+}
+```
+
+Response `V3ApplyThemeResponse`:
+
+```ts
+{
+  layoutPatch: V3LayoutPatchEntry[];
+  assistantReply?: string;
+  usage: V3Usage;
+}
+```
+
+Rules:
+
+- No model call; deterministic transform only.
+- `layoutPatch.length` must be at least 1.
+- Web writes the chosen `accentColor/artFont` into the authoring tree and advances `theme -> cover` when applicable.
+
+### 7.4 `POST /v3/cover`
+
+Request `V3CoverRequest`:
+
+```ts
+{
+  albumId: string;
+  language: "zh" | "en";
+  coverTemplateId?: string | null;
+  endingTemplateId?: string | null;
+  pages: Page[];
+}
+```
+
+Response `V3CoverResponse`:
+
+```ts
+{
+  layoutPatch: V3LayoutPatchEntry[];
+  assistantReply?: string;
+  usage: V3Usage;
+}
+```
+
+Rules:
+
+- `coverTemplateId` and `endingTemplateId` are optional independently.
+- Skipping both is valid and returns an empty `layoutPatch`.
+- Web folds non-empty patches into `draft_json.pages` when the stage can advance.
+
+### 7.5 `POST /v3/finalize`
+
+Request `V3FinalizeRequest`:
+
+```ts
+{
+  albumId: string;
+  language: "zh" | "en";
+  tree: V3LayoutTree;
+  pages: Page[];
+}
+```
+
+Response `V3FinalizeResponse`:
+
+```ts
+{
+  layout: AlbumLayoutPlan;
+  usage: V3Usage;
+}
+```
+
+Rules:
+
+- This is the only sync endpoint that receives the complete authoring tree.
+- It bakes chapter color/font carriers into render `pages[].texts`.
+- Response `layout` must not contain tree-shaped fields.
 
 ---
 
-## 6. 超时与重试
+## 8. State Machine
 
-| 场景 | 策略 |
-|---|---|
-| Web → Agent `/v1/layout`(接单) | 30 秒。超时后 Web 标记 job=FAILED,**不自动重试**。 |
-| Web → Agent `/v1/chat-edit`(同步) | 60 秒。超时返回 504 `AGENT_CHAT_FAILED`,**不自动重试**(用户在等)。 |
-| Agent 后台 task 总时长(layout) | 软上限 180 秒。超时 Agent 自己 POST `event=failed` callback,code=`AGENT_TIMEOUT`。 |
-| Agent → 火山 | 30 秒。Agent 内部重试 1 次。 |
-| Agent → DeepSeek(planning / writing / chat-edit / composing) | 60 秒。Agent 内部重试 1 次。(composing 同一 slot,见 [`design.md`](./design.md))|
-| Agent → callbackUrl | 10 秒。失败重试 2 次(指数退避 1s / 4s)。所有重试都失败后,任务在 Agent 侧就**丢失了** —— Web 侧 zombie sweeper(每 60s 扫,阈值 5min)会兜底标 FAILED 并释放积分,见 [`design.md §7`](./design.md)。 |
-| 浏览器 → Web (轮询) | 不需要超时配置,失败重试下一次。 |
-| 浏览器 → Web (chat) | 65 秒(Agent 60 + 缓冲 5)。超时显示"AI 没回话,请重试"。 |
+`albums.stage` is the V3 user-flow state and is owned by Web:
+
+```ts
+"analysing" | "story" | "theme" | "cover" | "ready"
+```
+
+Stage transitions:
+
+| From | To | Owner | Trigger |
+|---|---|---|---|
+| `analysing` | `story` | Web | analyze completed callback |
+| `story` | `theme` | Web | every chapter marked done |
+| `theme` | `cover` | Web | apply-theme accepted and merged |
+| `cover` | `ready` | Web | cover/ending accepted or skipped |
+
+`albums.status` is orthogonal:
+
+```ts
+"AGENT_RUNNING" | "EDITING" | "COMPLETED" | "FAILED"
+```
+
+- `status` tracks init lifecycle, user-visible completion, failure, and credit settlement.
+- `stage` tracks current V3 editing ring and export gate.
+- Do not derive either field from the other.
+
+`agent_jobs.status` tracks async analyze jobs:
+
+```ts
+"QUEUED" | "RUNNING" | "COMPLETED" | "FAILED"
+```
+
+`agent_jobs.kind` remains Web's init job kind; callback `jobKind` remains `"analyze"`.
 
 ---
 
-## 7. 鉴权
+## 9. Error Codes
 
-`AGENT_SHARED_SECRET` 是 32 字节随机字符串,Web 和 Agent 各自从 env 读。
+Agent error namespace:
 
-- Web → Agent: `Authorization: Bearer ${SECRET}`
-- Agent → Web `/api/v1/internal/job-progress`: 同上
-
-任一方校验失败 → 401 `AGENT_UNAUTHORIZED`。
-
-**不允许**:
-- 写在代码里
-- 出现在客户端 bundle 里
-- 写到日志里
-
----
-
-## 8. 错误码(Agent 内部产生)
-
-Agent 失败时通过 `POST /v1/layout` 的 **HTTP 非 2xx 响应** 返回这些 code(见 §2.1 失败响应体):
-
-| code | HTTP status | 含义 |
+| Code | Source | Surface |
 |---|---|---|
-| `AGENT_INVALID_INPUT` | 400 | 请求体不合法 |
-| `AGENT_UNAUTHORIZED` | 401 | Bearer 校验失败 |
-| `AGENT_VISION_FAILED` | 502 | 火山识图调用失败/超时 |
-| `AGENT_PLANNING_FAILED` | 502 | DeepSeek 排版调用失败/超时(layout 阶段) |
-| `AGENT_OUTPUT_VALIDATION` | 502 | 内部生成的 layout 校验未通过 |
-| `AGENT_CHAT_FAILED` | 502 / 504 | Chat-edit 调用失败 / patch 校验失败 / 60s 超时 |
-| `AGENT_INTERNAL_ERROR` | 500 | 其他未知 |
+| `AGENT_INVALID_INPUT` | strict request validation | HTTP 400 |
+| `AGENT_UNAUTHORIZED` | missing/invalid bearer | HTTP 401 |
+| `AGENT_VISION_FAILED` | recognition model, parse, or describe failure | analyze failed callback |
+| `AGENT_PLANNING_FAILED` | text/planning model failure | HTTP 502 |
+| `AGENT_OUTPUT_VALIDATION` | Agent produced an invalid patch/layout | HTTP 422 or analyze failed callback |
+| `AGENT_TIMEOUT` | background analyze exceeded budget | analyze failed callback |
+| `AGENT_INTERNAL_ERROR` | unknown exception | HTTP 500 or analyze failed callback |
 
-Web 收到后会映射到自己的错误码体系(`docs/web/errors.md`)。
+Web mapping:
 
----
-
-## 9. 接入端实现要点(Web 这边)
-
-### 9.1 `lib/agent/agent-client.ts`
-
-```ts
-import { env } from '@/lib/env';
-
-export const agentClient = {
-  // fire-and-forget:Web 只关心 Agent 有没有接单。终态走 callback。
-  async submitLayout(payload: AgentRequest): Promise<{ requestId: string }> {
-    const res = await fetch(`${env.AGENT_BASE_URL}/v1/layout`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${env.AGENT_SHARED_SECRET}`,
-        'Content-Type': 'application/json',
-        'X-Request-Id': payload.requestId,
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
-    if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected');
-    if (!res.ok) throw ERRORS.AGENT_INTERNAL_ERROR();
-    return { requestId: payload.requestId };
-  },
-
-  // 同步:用户在等。返回 layoutPatch + assistantReply。
-  async chatEdit(payload: ChatEditRequest): Promise<ChatEditResponse> {
-    const res = await fetch(`${env.AGENT_BASE_URL}/v1/chat-edit`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${env.AGENT_SHARED_SECRET}`,
-        'Content-Type': 'application/json',
-        'X-Request-Id': crypto.randomUUID(),
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(60_000),
-    });
-    if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
-    if (!res.ok) throw ERRORS.AGENT_CHAT_FAILED();
-    const json = await res.json();
-    return json.data;
-  },
-};
-```
-
-### 9.2 `/api/v1/internal/job-progress` 路由要点
-
-- 校验 `Authorization: Bearer`,失败 → 401。
-- 按 `body.event` 分发到 `jobService`:
-  - `progress` → 更新 `agent_jobs.stage` / `progress`
-  - `completed` → 同一事务里:zod 校验 layout → 写 `album_pages` + `albums.layout_json` + `status='EDITING'` + `creditService.hold`
-  - `failed` → 写 `albums.status='FAILED'` + `error_message` + `creditService.release`
-- **幂等**:若 `agent_jobs.status` 已经是 `COMPLETED` / `FAILED`,直接返回 200,不重复写。
-- 所有写完后返回 `{ ok: true }`。浏览器靠下一次轮询拿到终态。
-
-详见 `docs/web/api.md §3.3`。
+- Agent `AGENT_OUTPUT_VALIDATION` is persisted/exposed by Web as `AGENT_INVALID_OUTPUT`.
+- Shared runtime failures keep their Agent code unless Web transport itself failed.
+- Unknown Agent codes are not swallowed; Web keeps the code string for diagnostics.
 
 ---
 
-## 10. 环境变量
+## 10. Privacy Boundary
 
-### Agent 端 (`apps/agent/.env`)
-```
-# 鉴权
-AGENT_SHARED_SECRET=<同 Web>
+V3 privacy rules are part of the contract, not an implementation detail.
 
-# Web 回调
-WEB_BASE_URL=https://yujeeai.com
-
-# 模型
-ARK_API_KEY=...
-ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
-ARK_VISION_MODEL=doubao-seed-1-6-vision-250815
-DEEPSEEK_API_KEY=...
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-
-# 限制
-MAX_PHOTOS_PER_REQUEST=30
-BACKGROUND_TASK_TIMEOUT_SECONDS=180
-
-# Observability
-SENTRY_DSN=...
-LOG_LEVEL=info
-```
-
-### Web 端调 Agent 需要 (`apps/web/.env`)
-```
-AGENT_BASE_URL=https://agent.yujeeai.com
-AGENT_SHARED_SECRET=<同 Agent>
-```
-
----
-
-## 11. 自查
-
-- [ ] 我对 Agent 的请求/响应字段都按 §2、§4 来吗?
-- [ ] 我处理了所有 §8 的错误码吗?
-- [ ] Bearer Token 是不是从 env 读,没硬编码?
-- [ ] Layout JSON 写库前 zod 校验了吗?
-- [ ] 如果改了协议,有没有同步 `packages/contracts/src/agent.ts`?
+- Base64 appears only in `/v3/analyze` request memory.
+- Stage0 only reads `takenAt`; it does not extract GPS or a place dimension.
+- Grouping uses time and visual coherence from `describe`; it does not use coordinates.
+- `exif` is strict and only allows `takenAt`.
+- There is no coordinate, GPS, `place`, or `location` field anywhere in `V3LayoutTree`, callbacks, or sync endpoint responses.
+- Redact keys are defensive guardrails; seeing one in a log payload is a bug to scrub, not a contract field to preserve.
+- `docs/agent/design.md §9` is the detailed redact and logging reference.
