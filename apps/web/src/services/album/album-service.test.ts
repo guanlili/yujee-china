@@ -663,6 +663,38 @@ test('markChapterDone: idempotent re-confirm does not double-advance', async (t)
   }
 });
 
+test('markChapterDone: rejects confirming a later chapter before the current one', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp24-strict-order');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 3);
+
+    await assert.rejects(
+      () => albumService.markChapterDone(user.id, albumId, 'c2'),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+    let p = await albumService.getStoryProgress(user.id, albumId);
+    assert.deepEqual(p.doneChapterIds, []);
+    assert.equal(p.currentChapterId, 'c1');
+    assert.equal(p.exportUnlocked, false);
+
+    await albumService.markChapterDone(user.id, albumId, 'c1');
+    await assert.rejects(
+      () => albumService.markChapterDone(user.id, albumId, 'c3'),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+    p = await albumService.getStoryProgress(user.id, albumId);
+    assert.deepEqual(p.doneChapterIds, ['c1']);
+    assert.equal(p.currentChapterId, 'c2');
+    assert.equal(p.exportUnlocked, false);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('markChapterDone: after gate opened (stage past story) is a no-op', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
