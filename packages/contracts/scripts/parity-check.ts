@@ -4,7 +4,7 @@
 // emits per-case verdicts as JSON on stdout, so the Python pydantic mirror
 // (apps/agent/tests/test_schemas.py::test_cross_language_parity) can diff the
 // two parsers against the shared `expectValid`. If TS and Python disagree the
-// contract has drifted — the historical risk called out in design.md §14 and
+// contract has drifted — the historical risk this guard exists to catch and
 // the reason architecture §6.8 第 5 条 mandates "TS 先行,Python 镜像".
 //
 // Usage: tsx packages/contracts/scripts/parity-check.ts

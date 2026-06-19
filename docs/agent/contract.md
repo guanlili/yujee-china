@@ -75,6 +75,7 @@ X-Request-Id: <uuid>
 | `POST /api/v3/albums/:id/retry` | 对失败相册重新派发 analyze |
 | `GET /api/v3/albums/:id/draft` | 读取预览骨架 |
 | `GET/POST /api/v3/albums/:id/story-progress` | 读取/推进章节完成度 |
+| `POST /api/v3/albums/:id/chapter-chat` | 代理单章引导、写作、改页 turn |
 | `POST /api/v3/albums/:id/recommend` | 代理推荐主题与章节色 |
 | `POST /api/v3/albums/:id/apply-theme` | 代理并持久化主题应用 |
 | `POST /api/v3/albums/:id/cover` | 代理并持久化封面/封尾应用 |
@@ -388,7 +389,9 @@ Rules:
 
 - No model call; deterministic transform only.
 - `layoutPatch.length` must be at least 1.
+- The Agent emits page patches for SVG/decor surfaces where applicable; it does not write tree-shaped color/font carriers.
 - Web writes the chosen `accentColor/artFont` into the authoring tree and advances `theme -> cover` when applicable.
+- Finalize bakes text color/font carriers from the authoring tree into flat render pages.
 
 ### 7.4 `POST /v3/cover`
 
@@ -465,6 +468,7 @@ Stage transitions:
 | `analysing` | `story` | Web | analyze completed callback |
 | `story` | `theme` | Web | every chapter marked done |
 | `theme` | `cover` | Web | apply-theme accepted and merged |
+| `theme` | `ready` | Web | cover step skipped from theme |
 | `cover` | `ready` | Web | cover/ending accepted or skipped |
 
 `albums.status` is orthogonal:

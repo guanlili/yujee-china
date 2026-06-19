@@ -1,6 +1,6 @@
-"""The 9 business rules from docs/agent/design.md §4.3. Used both after
-composing and after applying a chat-edit patch. Returns the first violation
-as a human-readable string for the repair prompt, or None if all pass."""
+"""V3 layout validator business rules. Used after composing and after applying
+a patch. Returns the first violation as a human-readable string for the repair
+prompt, or None if all pass."""
 
 from collections import Counter
 import re

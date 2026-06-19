@@ -102,11 +102,12 @@ Agent 暴露**一个异步端点 + 五个同步端点**:
 | 章节故事 | `POST /v3/chapter-chat` | DeepSeek(涉版面变动时升级识图模型)|
 | 主题/章节色 · 推荐 | `POST /v3/recommend` | 识图模型 |
 | 主题/章节色 · 应用 | `POST /v3/apply-theme` | 无(确定性脚本)|
-| 书籍设计(封面/封尾)| `POST /v3/cover` | 无 / 识图模型辅助选 |
+| 书籍设计(封面/封尾)| `POST /v3/cover` | 无(确定性脚本)|
 | 待导出 | `POST /v3/finalize` | 无(确定性 flatten)|
 
 - 均**同步 HTTP**,不轮询、不回调;每端点是纯变换「输入切片 → 输出补丁」,可重试、可水平扩展。
 - **`stage` 推进权在 Web**:Agent 不持 stage,只做无状态变换;Web 合并补丁、记 stage、控导出闸门。
+- Web 允许封面环节从 `theme` 直接跳到 `ready`(跳过 cover),也允许常规 `cover -> ready`。
 - layout 树**按需切片传**(②传单章;③④传相关页),全树只在 ⑤ finalize 传一次,控识图模型 token。
 
 ### 2.3 共通

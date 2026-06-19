@@ -150,10 +150,10 @@ The Web client rejects missing, duplicate, or extra chapter color coverage as in
 `POST /v3/apply-theme` is deterministic.
 
 - It receives the user-selected theme and per-chapter choices.
-- It writes `variableDecor` text/svg carriers into page-level patches.
+- It emits page patches for SVG/decor surfaces where applicable.
 - It does not call any model.
 - Web persists `accentColor/artFont` back into the authoring tree and advances the stage when applicable.
-- Finalize bakes these values into the render `Page.texts` carrier format.
+- Finalize bakes text carriers from the tree into the render `Page.texts` format.
 
 ---
 
@@ -168,7 +168,7 @@ The Web client rejects missing, duplicate, or extra chapter color coverage as in
 - There is no forced cover page rule.
 - Invalid ids or wrong categories become `AGENT_OUTPUT_VALIDATION`.
 
-Web decides whether to fold patches into `draft_json.pages` and whether to advance `cover -> ready`.
+Web decides whether to fold patches into `draft_json.pages` and whether to advance `cover -> ready` or skip from `theme -> ready`.
 
 ---
 

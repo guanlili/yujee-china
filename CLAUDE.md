@@ -61,17 +61,17 @@ memoir-agent-rebuild/
 
 ### 角色 → 必读文档
 
-> V3 起手入口 = `docs/agent/contract.md`(Web <-> Agent 契约)+ `docs/agent/design.md`(Agent 内部 pipeline)。`docs/agent/v3-requirements.md` 保留需求背景,`docs/agent/v3-implementation-plan.md` 保留 WP 拆解。
+> V3 起手入口 = `docs/agent/contract.md`(Web <-> Agent 契约 + Web orchestration route map)+ `docs/agent/design.md`(Agent 内部 pipeline)。`docs/agent/v3-requirements.md` 保留需求背景,`docs/agent/v3-implementation-plan.md` 保留 WP 拆解。`docs/web/api.md` 不是 V3 generation/authoring/API 接入起手文档。
 
 | 角色 | 必读(按顺序) |
 |---|---|
 | Web · 基建 | architecture → web/layering → web/directory → web/conventions → web/database → web/errors |
 | Web · DB / Repo | architecture → web/layering → web/database → web/conventions |
-| Web · API | architecture → web/layering → web/api → web/conventions → web/errors |
+| Web · API / V3 接入 | architecture → agent/contract → web/layering → web/conventions → web/errors |
 | Web · Service | architecture → web/layering → web/conventions → web/errors → web/database |
-| Web · UI · 创建页 / 编辑器 | architecture → v3-requirements(§2 五环节 + §4 逐环节)→ web/api → web/conventions |
+| Web · UI · 创建页 / 编辑器 | architecture → agent/contract → v3-requirements(§2 五环节 + §4 逐环节)→ web/conventions |
 | Web · UI · PDF / 营销 / 账单 | architecture → web/api → web/conventions |
-| Agent · 接入(Web 侧)| architecture → agent/contract → web/api |
+| Agent · 接入(Web 侧)| architecture → agent/contract |
 | Agent · 内部 pipeline | architecture → agent/contract → agent/design |
 | Contracts / 模板 | architecture → v3-requirements §8·§9 → web/database |
 | Infra | architecture + 各文档末尾的「环境变量」小节 |

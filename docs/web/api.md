@@ -3,6 +3,8 @@
 > **前置阅读**: `CLAUDE.md` → `docs/architecture.md` → `docs/web/layering.md`
 >
 > 谁读这份: 写 `app/api/*` 的 route.ts,或写 UI 时需要调接口的人。
+>
+> **状态说明(重要)**: 这份文档不是 V3 generation/authoring source。V3 Web <-> Agent/API orchestration 以 `docs/agent/contract.md` 和 `apps/web/src/app/api/v3/**` 为准;下方历史内容可用于理解仍存在的旧 Web route 语义,但不要把它当作 V3 创建页、编辑器、Web API 或 Agent 接入的起手文档。
 
 ---
 
@@ -74,7 +76,7 @@
 - 每张 base64 ≤ 800KB
 - `prompt` ≤ 500 字
 
-服务端流程(**fire-and-forget**,不阻塞,详见 `docs/agent/contract.md §2.1`):
+服务端流程(**fire-and-forget**,不阻塞,详见 `docs/agent/contract.md`):
 
 1. `requireAuth`
 2. `parseBody`(zod 校验上面约束)
@@ -155,7 +157,7 @@
 
 Header: `Authorization: Bearer ${AGENT_SHARED_SECRET}`
 
-请求体(统一信封,见 `docs/agent/contract.md §2.1`):
+请求体(统一信封,见 `docs/agent/contract.md`):
 ```json
 {
   "requestId": "req_xxx",
@@ -258,7 +260,7 @@ Chat 编辑入口。**同步**:用户在 chat 框里等 AI 回复,不轮询。
 4. `albumMessageRepo.findRecent(albumId, limit=20)` —— 拉最近对话
 5. `chatService.edit(user.id, albumId, message)`,内部:
    - 拼 Agent 入参:`{ albumId, currentLayout: albums.layout_json, history, userMessage: message, language }`
-   - 调 `agentClient.chatEdit(payload)`(60s 超时,见 `docs/agent/contract.md §2.3`)
+   - 调 `agentClient.chatEdit(payload)`(60s 超时,见 `docs/agent/contract.md`)
    - 事务里:
      - `albumMessageRepo.insert({ role: 'user', content: message })`
      - 把 `layoutPatch` apply 到 `album_pages`(只 PATCH 受影响的行)

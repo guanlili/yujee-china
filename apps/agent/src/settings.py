@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     port: int = 8001
     log_level: str = "info"
 
-    # mode switches (see docs/agent/design.md §12)
+    # mode switches (see docs/agent/design.md)
     agent_pipeline_mode: PipelineMode = "mock"
     agent_env: AgentEnv = "development"
 

@@ -53,7 +53,7 @@ export const ERRORS = {
 } as const;
 
 // Agent → Web error-code alignment (rebuild-tech-plan §1.6, fix P2-8). The agent
-// emits the contract.md §8 namespace (e.g. AGENT_OUTPUT_VALIDATION); Web persists
+// emits the contract.md §9 namespace (e.g. AGENT_OUTPUT_VALIDATION); Web persists
 // the error-codes.ts namespace. Map at the inbound callback boundary so a single
 // canonical code lands in agent_jobs.error / albums.error_message. Codes already
 // shared by both sides (AGENT_VISION_FAILED, AGENT_PLANNING_FAILED, AGENT_TIMEOUT,

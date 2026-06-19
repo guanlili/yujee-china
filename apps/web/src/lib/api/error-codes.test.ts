@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ERRORS, mapAgentErrorCode } from './error-codes';
 
-// rebuild-tech-plan §1.6 (P2-8): the agent's contract.md §8 namespace is mapped
+// rebuild-tech-plan §1.6 (P2-8): the agent's contract.md §9 namespace is mapped
 // to the error-codes.ts namespace at the inbound callback boundary.
 test('mapAgentErrorCode: AGENT_OUTPUT_VALIDATION → AGENT_INVALID_OUTPUT', () => {
   assert.equal(mapAgentErrorCode('AGENT_OUTPUT_VALIDATION'), 'AGENT_INVALID_OUTPUT');
