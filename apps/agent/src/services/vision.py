@@ -618,14 +618,19 @@ async def describe_content(
     deadline = settings.describe_batch_deadline_seconds
 
     try:
-        primary_slot = openai_vision_slot(
-            settings,
-            timeout_seconds=settings.describe_openai_timeout_seconds,
-            model=settings.describe_openai_model,
-        )
+        # 本地/豆包模式:vision_provider="ark" 时识图直接用火山 doubao 主力(带 thinking
+        # 配置,避免 JSON 截断),不走打不通的 OpenAI。生产用 OpenAI 时设 vision_provider="openai"。
+        if settings.vision_provider == "ark":
+            primary_slot = ark_vision_slot(settings)
+        else:
+            primary_slot = openai_vision_slot(
+                settings,
+                timeout_seconds=settings.describe_openai_timeout_seconds,
+                model=settings.describe_openai_model,
+            )
     except VisionSlotError as exc:
         log.warning("v3_describe.primary_unconfigured", error=str(exc))
-        raise VisionError(f"describe-content primary unavailable (OpenAI slot): {exc}") from exc
+        raise VisionError(f"describe-content primary unavailable: {exc}") from exc
 
     log.info(
         "v3_describe.call.start",
@@ -660,8 +665,7 @@ async def describe_content(
         )
     except ai_client.AIRequestError as exc:
         if not exc.failover_eligible:
-            raise VisionError(f"describe-content OpenAI failed: {exc}") from exc
-        # 5xx/timeout after retry → 降级火山.
+            raise VisionError(f"describe-content primary failed: {exc}") from exc
         log.warning(
             "v3_describe.primary_failover",
             provider=primary_slot.provider,
