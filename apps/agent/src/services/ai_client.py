@@ -4,7 +4,9 @@ non-2xx; the caller does any JSON-parse retry / repair separately so failures
 stay attributable to the right pipeline stage."""
 
 import json
+import os
 import re
+import time
 from typing import Any, Literal
 
 import httpx
@@ -12,6 +14,55 @@ import httpx
 from ..logging_config import get_logger
 
 log = get_logger("ai_client")
+
+
+# ── LLM 调用追踪(调试用)──────────────────────────────────────────────────
+# 设环境变量 YUJEE_LLM_TRACE=/path/to/trace.txt 开启:每次 LLM 调用把
+# 「系统指令 + 用户上下文(base64 图片脱敏) + 模型输出」追加到该文件,看每步 AI 在想啥。
+# 不设则零开销。绝不因追踪失败影响真实调用。
+def _redact_messages(messages: list[dict[str, Any]]) -> str:
+    out: list[str] = []
+    for m in messages:
+        role = str(m.get("role", "?")).upper()
+        content = m.get("content")
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            parts: list[str] = []
+            for p in content:
+                if isinstance(p, dict) and p.get("type") == "image_url":
+                    parts.append("[图片已脱敏]")
+                elif isinstance(p, dict) and p.get("type") == "text":
+                    parts.append(str(p.get("text", "")))
+                else:
+                    parts.append(str(p)[:200])
+            text = "\n".join(parts)
+        else:
+            text = str(content)
+        out.append(f"--- {role} ---\n{text}")
+    return "\n".join(out)
+
+
+def _trace_llm_call(model: str, messages: list[dict[str, Any]], response: dict[str, Any]) -> None:
+    path = os.environ.get("YUJEE_LLM_TRACE")
+    if not path:
+        return
+    try:
+        try:
+            msg = response["choices"][0]["message"]
+            output = msg.get("content") or json.dumps(msg, ensure_ascii=False)
+        except Exception:
+            output = json.dumps(response, ensure_ascii=False)[:4000]
+        entry = (
+            "\n" + "=" * 90 + "\n"
+            + f"[{time.strftime('%H:%M:%S')}] model={model}\n"
+            + _redact_messages(messages) + "\n"
+            + "--- 输出 OUTPUT ---\n" + (output or "") + "\n"
+        )
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(entry)
+    except Exception:
+        pass  # 追踪绝不能弄崩真实调用
 
 
 AIErrorKind = Literal["4xx", "5xx", "timeout", "transport"]
@@ -130,14 +181,16 @@ async def chat_completion(
                 last_kind = "5xx"
                 log.warning("ai.upstream_5xx", model=model, status=resp.status_code, attempt=attempt)
             elif resp.status_code >= 400:
-                log.warning("ai.upstream_4xx", model=model, status=resp.status_code, attempt=attempt)
+                log.warning("ai.upstream_4xx", model=model, status=resp.status_code, attempt=attempt, body=resp.text[:400])
                 raise AIRequestError(
                     f"upstream_4xx status={resp.status_code} body_len={len(resp.text)}",
                     status_code=resp.status_code,
                     kind="4xx",
                 )
             else:
-                return resp.json()
+                data = resp.json()
+                _trace_llm_call(model, messages, data)
+                return data
         except httpx.TimeoutException as exc:
             last_error = f"transport={type(exc).__name__}"
             last_status_code = None
