@@ -76,11 +76,11 @@ def _title_max_chars(template_id: str) -> int:
 def test_brushes_only_variable_decor_text_slots_writing_subject_into_title():
     # mag-08 variableDecor text slots = dateNum (decoration), title (title role).
     # body/caption1/caption2 are NOT variableDecor → must stay exactly as given.
-    # #236: the `title` slot is now (re)written with the chapter subject.
+    # #236: the EMPTY `title` slot is seeded with the chapter subject.
     page = _page(
         "mag-08",
         texts={
-            "title": "Homecoming",       # variableDecor title → overwritten with subject
+            # title slot omitted (empty) → seeded with subject
             "body": "We drove north.",   # not variableDecor → untouched
             "caption1": "By the lake",   # not variableDecor → untouched
             # dateNum (variableDecor decoration) is EMPTY → stays empty (not a carrier)
@@ -103,7 +103,8 @@ def test_brushes_only_variable_decor_text_slots_writing_subject_into_title():
 
 def test_subject_is_clamped_to_the_title_slot_max_chars():
     long_subject = "A very very very long chapter title that exceeds the slot"
-    page = _page("mag-08", texts={"title": "x"}, images={"image": "p1"})
+    # title slot empty → the subject is written (and clamped to the slot maxChars).
+    page = _page("mag-08", texts={}, images={"image": "p1"})
     resp = at.apply_theme(_request([page], chapters=[_choice(subject=long_subject)]))
     max_chars = _title_max_chars("mag-08")
     title = resp.layoutPatch[0].texts["title"]
@@ -116,8 +117,8 @@ def test_empty_decoration_text_value_is_never_replaced_with_accent_color():
     resp = at.apply_theme(_request([page]))
     patched = resp.layoutPatch[0].texts
     assert patched["dateNum"] == ""
-    # #236: title takes the subject.
-    assert patched["title"] == _SUBJECT[: _title_max_chars("mag-08")]
+    # #236: a non-empty user title is preserved (not overwritten by the subject).
+    assert patched["title"] == "Trip"
 
 
 def test_non_empty_decoration_value_is_never_clobbered():
@@ -129,25 +130,44 @@ def test_non_empty_decoration_value_is_never_clobbered():
     resp = at.apply_theme(_request([page]))
     patched = resp.layoutPatch[0].texts
     assert patched["dateNum"] == "08/24"   # non-empty decoration preserved
-    assert patched["title"] == _SUBJECT[: _title_max_chars("mag-08")]  # #236: subject as title
+    assert patched["title"] == "Trip"      # #236: non-empty user title preserved
 
 
 def test_page_with_only_user_prose_variable_decor_is_still_themable():
     # mag-19's only variableDecor slot is `intro`. The page IS themable (it has a
-    # variableDecor slot), so an entry is emitted. If `intro` is a title role it takes
-    # the subject (#236); otherwise its content is preserved.
+    # variableDecor slot), so an entry is emitted. The slot already holds content, so
+    # whether it is a title role or prose, its non-empty value is preserved (#236: a
+    # title is only seeded when empty; prose is never rewritten).
     page = _page("mag-19", texts={"intro": "Once upon a time"}, page_index=0)
     resp = at.apply_theme(_request([page]))
     assert len(resp.layoutPatch) == 1
-    intro_slot = next(
-        s for s in templates.text_slots(templates.get("mag-19")) if s.get("id") == "intro"
-    )
-    expected = (
-        _SUBJECT[: int(intro_slot["maxChars"])]
-        if intro_slot.get("role") == "title"
-        else "Once upon a time"
-    )
-    assert resp.layoutPatch[0].texts["intro"] == expected
+    assert resp.layoutPatch[0].texts["intro"] == "Once upon a time"
+
+
+# ──────────────────── #236 守卫:subject 仅在标题为空时写入 ────────────────────
+
+
+def test_subject_written_into_title_only_when_slot_is_empty():
+    # title slot missing entirely → empty → apply-theme persists the chapter subject.
+    page = _page("mag-08", texts={"body": "We drove north."}, images={"image": "p1"})
+    resp = at.apply_theme(_request([page]))
+    patched = resp.layoutPatch[0].texts
+    assert patched["title"] == _SUBJECT[: _title_max_chars("mag-08")]
+
+
+def test_subject_written_into_title_when_slot_is_empty_string():
+    # title slot present but empty string → still treated as empty → subject written.
+    page = _page("mag-08", texts={"title": "", "body": "x"}, images={"image": "p1"})
+    resp = at.apply_theme(_request([page]))
+    assert resp.layoutPatch[0].texts["title"] == _SUBJECT[: _title_max_chars("mag-08")]
+
+
+def test_user_authored_title_is_preserved_not_overwritten_by_subject():
+    # The user hand-named the chapter in the story stage (nameOptions → title slot).
+    # apply-theme must NOT clobber it with the subject (保留用户手起章名).
+    page = _page("mag-08", texts={"title": "Homecoming"}, images={"image": "p1"})
+    resp = at.apply_theme(_request([page]))
+    assert resp.layoutPatch[0].texts["title"] == "Homecoming"
 
 
 # ──────────────────────────── ② SVG 图层被填色 ────────────────────────────
@@ -160,7 +180,7 @@ def test_variable_decor_svg_layer_is_filled_with_accent_color():
     resp = at.apply_theme(_request([page]))
     patched = resp.layoutPatch[0].texts
     assert patched["divider"] == _ACCENT                          # svg filled with accent
-    assert patched["title"] == _SUBJECT[: _title_max_chars("mag-13")]  # #236: subject as title
+    assert patched["title"] == "Chapter Two"  # #236: non-empty user title preserved
 
 
 def test_svg_themed_key_survives_finalize_v3_validate():
@@ -233,6 +253,22 @@ def test_apply_theme_is_idempotent():
     req = _request([page])
     first = at.apply_theme(req)
     # Re-feed the brushed page back in: the same theme yields the same texts (no drift).
+    rebrushed = Page(
+        pageIndex=0,
+        templateId="mag-13",
+        images={"image": "p1"},
+        texts=first.layoutPatch[0].texts,
+    )
+    second = at.apply_theme(_request([rebrushed]))
+    assert second.layoutPatch[0].texts == first.layoutPatch[0].texts
+
+
+def test_idempotent_when_title_seeded_from_empty_then_reapplied():
+    # Empty title → seeded with subject on first apply; on re-apply the slot is now
+    # non-empty (holds the subject) → preserved → identical texts (no drift, #236).
+    page = _page("mag-13", texts={}, images={"image": "p1"})
+    first = at.apply_theme(_request([page]))
+    assert first.layoutPatch[0].texts["title"] == _SUBJECT[: _title_max_chars("mag-13")]
     rebrushed = Page(
         pageIndex=0,
         templateId="mag-13",

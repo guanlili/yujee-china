@@ -96,9 +96,13 @@ def _decor_value_for_text_slot(
 ) -> str | None:
     """Themed value for one variableDecor TEXT slot, or None to leave it untouched.
 
-    * `title` (chapter title) → the per-chapter `subject` (问题5 / #236): apply-theme
-      persists the user-confirmed chapter title into every title slot. Truncated to the
-      slot's `maxChars` when declared so a long subject can't overflow the template.
+    * `title` (chapter title) → the per-chapter `subject` (问题5 / #236), but ONLY when
+      the slot is currently empty (empty string or missing). A non-empty title is a name
+      the user hand-picked in the story stage (nameOptions → title slot), so it is kept
+      verbatim and never clobbered by the subject (#236 保留用户手起章名). When written,
+      the subject is truncated to the slot's `maxChars` so it can't overflow the template.
+      This keeps apply-theme idempotent: a slot already holding the subject is non-empty,
+      so re-applying the same theme leaves it untouched.
     * `body`/`explain` (user prose) → None: content is never rewritten; the color/font
       lives on the chapter node in the tree (baked at finalize).
     * `decoration` text slots → existing or empty content is never rewritten with a
@@ -108,6 +112,10 @@ def _decor_value_for_text_slot(
     text-content preservation both hold by construction."""
     role = str(slot.get("role") or "")
     if role == "title":
+        # Only seed an empty (empty string / missing) title with the subject; a
+        # non-empty title is the user's hand-picked chapter name → preserve it (#236).
+        if existing:
+            return None
         max_chars = slot.get("maxChars")
         if isinstance(max_chars, int) and max_chars > 0:
             return subject[:max_chars]
