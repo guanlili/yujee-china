@@ -71,7 +71,9 @@ test('C: a write turn surfaces the satisfaction card (满意/不满意), not on 
   // wroteChapter flag set by applyChapterWrite's return.
   assert.match(src, /wroteChapter = applyChapterWrite\(res\.pagesTexts\)/,
     'the write-turn result must drive the wroteChapter flag');
-  assert.match(src, /if \(wroteChapter\) appendSatisfactionCard\(\)/,
+  // (#236 ④: the write branch now also drops the write-now exit before the satisfaction
+  // card, so the satisfaction card lives inside an `if (wroteChapter) { … }` block.)
+  assert.match(src, /if \(wroteChapter\) \{[\s\S]*?appendSatisfactionCard\(\);/,
     'the satisfaction card must appear only after a successful write turn');
 });
 
