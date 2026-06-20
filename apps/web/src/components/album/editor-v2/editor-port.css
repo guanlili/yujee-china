@@ -762,9 +762,9 @@
 }
 .editor-port .img-edit-reset:hover{ background:var(--border-soft); }
 
-/* ─── ③ palette-card (主题/配色选择,对话流内,缺口#20) ───
-   Faithful port of 设计稿 .palette-card. Each .pc-group is a THEME OPTION
-   (label + tone head) over the recommended per-chapter accent swatches. ─── */
+/* ─── ③ palette-card (主题/配色选择,对话流内,缺口#20 / #236) ───
+   #236: purely per-chapter — one .pc-chapter-row per chapter (subject title +
+   accent swatch) + a single「应用」(.pc-apply) action. No album-level theme picker. ─── */
 .editor-port .palette-card{
   border:1px solid var(--border); border-radius:16px;
   background:var(--surface); box-shadow:var(--shadow-card); max-width:100%;
@@ -772,32 +772,46 @@
 }
 .editor-port .pc-title{ font-family:var(--font-display); font-size:15px; font-weight:700; color:var(--fg); }
 .editor-port .pc-groups{ display:flex; flex-direction:column; gap:8px; }
-.editor-port .pc-group{
-  position:relative;
-  padding:8px 9px; border:1px solid var(--border); border-radius:12px;
-  background:transparent; cursor:pointer; text-align:left;
-  display:flex; flex-direction:column; gap:7px;
-  transition: all var(--motion-fast) var(--ease);
-}
-.editor-port .pc-group:hover{ background:#f7f7f7; border-color:var(--fg-2); }
-.editor-port .pc-group.selected{ border-color:var(--fg); box-shadow:0 0 0 1px var(--fg) inset; }
-.editor-port .pc-group-head{ display:flex; align-items:baseline; gap:8px; padding-right:26px; }
+.editor-port .pc-group-head{ display:flex; align-items:baseline; gap:8px; }
 .editor-port .pc-group-label{ font-size:13px; font-weight:600; color:var(--fg); }
-.editor-port .pc-group-tone{ font-size:11px; color:var(--muted); }
 .editor-port .pc-swatches{ display:flex; height:34px; border-radius:8px; overflow:hidden; }
 .editor-port .pc-swatches span{ flex:1; }
-.editor-port .pc-check{
-  position:absolute; top:12px; right:11px; transform:scale(.7);
-  width:20px; height:20px; border-radius:50%; background:var(--fg); color:#fff;
-  display:grid; place-items:center; opacity:0;
+/* #236: palette-card is now PURELY per-chapter — one read-only row per chapter
+   (subject title + its accent swatch) + a single「应用」action. */
+.editor-port .pc-chapter-row{
+  display:flex; align-items:center; gap:10px;
+  padding:8px 10px; border:1px solid var(--border); border-radius:12px;
+}
+.editor-port .pc-chapter-row .pc-group-head{ flex:1; padding-right:0; min-width:0; }
+.editor-port .pc-chapter-num{ font-size:11px; font-weight:600; color:var(--muted); }
+.editor-port .pc-chapter-row .pc-group-label{
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.editor-port .pc-chapter-row .pc-swatches{
+  flex:none; width:34px; height:22px; border-radius:6px;
+}
+.editor-port .pc-apply{
+  align-self:flex-start; height:34px; padding:0 16px; border:none; border-radius:9999px;
+  background:var(--fg); color:#fff; font-size:13px; font-weight:600; cursor:pointer;
   transition: all var(--motion-fast) var(--ease);
 }
-.editor-port .pc-check svg{ width:13px; height:13px; }
-.editor-port .pc-group.selected .pc-check{ opacity:1; transform:scale(1); }
-.editor-port .pc-reco{
-  position:absolute; top:-7px; left:10px; z-index:1;
-  height:16px; padding:0 8px; border-radius:9999px;
-  background:var(--fg); color:#fff; font-size:10px; font-weight:600; line-height:16px;
+.editor-port .pc-apply:hover:not(:disabled){ transform:translateY(-1px); }
+.editor-port .pc-apply:disabled{ opacity:.5; cursor:not-allowed; }
+
+/* ─── 问题③ chapter-card (进章节提示,对话流内) ───
+   When entering a chapter, a chapter-styled card announces WHICH chapter the user
+   is in (number kicker + chapter title/subject). ─── */
+.editor-port .chapter-card{
+  border:1px solid var(--border); border-left:3px solid var(--fg); border-radius:14px;
+  background:var(--surface); box-shadow:var(--shadow-card); max-width:100%;
+  display:flex; flex-direction:column; gap:4px; padding:12px 14px;
+}
+.editor-port .chapter-card .cc-kicker{
+  font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--muted);
+}
+.editor-port .chapter-card .cc-title{
+  font-family:var(--font-display); font-size:16px; font-weight:700; color:var(--fg);
 }
 
 /* ─── ④ cover-card (封面/封底选择,对话流内,缺口#20) ───

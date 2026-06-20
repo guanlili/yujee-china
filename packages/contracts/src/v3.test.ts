@@ -366,14 +366,33 @@ test('V3ChapterChatResponse: kind drives which patch is present', () => {
   assert.equal(V3ChapterChatResponse.safeParse({ kind: 'sing', assistantReply: 'x', usage }).success, false);
 });
 
-test('V3RecommendResponse returns theme options + per-chapter color/font in legal sets', () => {
+test('V3RecommendResponse returns per-chapter subject + color/font in legal sets', () => {
   const ok = V3RecommendResponse.safeParse({
-    themeOptions: [{ subject: 'Spring in Kyoto', label: 'Kyoto' }],
-    chapterColors: [{ chapterId: 'c1', accentColor: '#aabbcc', artFont: 'serif-classic' }],
+    chapterColors: [
+      { chapterId: 'c1', subject: 'Spring in Kyoto', accentColor: '#aabbcc', artFont: 'serif-classic' },
+    ],
     assistantReply: '',
     usage: { durationMs: 1, models: {} },
   });
   assert.equal(ok.success, true);
+  // themeOptions / per-chapter subject<min(1) are rejected (strict + min(1)).
+  assert.equal(
+    V3RecommendResponse.safeParse({
+      themeOptions: [{ subject: 's', label: 'l' }],
+      chapterColors: [{ chapterId: 'c1', subject: 'x', accentColor: '#aabbcc', artFont: 'serif-classic' }],
+      assistantReply: '',
+      usage: { durationMs: 1, models: {} },
+    }).success,
+    false,
+  );
+  assert.equal(
+    V3RecommendResponse.safeParse({
+      chapterColors: [{ chapterId: 'c1', subject: '', accentColor: '#aabbcc', artFont: 'serif-classic' }],
+      assistantReply: '',
+      usage: { durationMs: 1, models: {} },
+    }).success,
+    false,
+  );
 });
 
 test('V3ApplyThemeRequest + V3CoverRequest carry page-level patches (not tree fields)', () => {
@@ -382,8 +401,7 @@ test('V3ApplyThemeRequest + V3CoverRequest carry page-level patches (not tree fi
     V3ApplyThemeRequest.safeParse({
       albumId: 'a1',
       language: 'en',
-      theme: { subject: 's', label: 'l' },
-      chapters: [{ chapterId: 'c1', accentColor: '#abc', artFont: 'sans-modern' }],
+      chapters: [{ chapterId: 'c1', subject: 's', accentColor: '#abc', artFont: 'sans-modern' }],
       pages: [page],
     }).success,
     true,

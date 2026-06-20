@@ -42,10 +42,11 @@ test('B: the opener fires on entry (no prior history) and on advancing to the ne
   const src = source('EditorPort.tsx');
 
   // Entry: after loading history + story-gate, fire the opener only when the chapter has
-  // no prior conversation (shown === 0).
+  // no prior conversation (shown === 0). (#236 added an else-branch that still shows the
+  // chapter card on re-entry, but the opener itself stays gated on shown === 0.)
   assert.match(
     src,
-    /if \(shown === 0\) void runChapterGuideOpener\(\)/,
+    /if \(shown === 0\) \{\s*void runChapterGuideOpener\(\);/,
     'on entry the opener must fire only when this chapter has no prior history',
   );
 

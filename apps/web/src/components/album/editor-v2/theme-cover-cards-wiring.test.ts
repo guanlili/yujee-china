@@ -10,8 +10,9 @@ import { test } from 'node:test';
 // applyPatchToPages, album-service slice/stage) is covered in its own unit tests. Here we
 // lock the load-bearing wiring invariants of the theme/cover selector UI:
 //   • recommend renders the palette-card from the REAL contract response,
-//   • picking a palette fires apply-theme with the chosen theme + recommended chapterColors,
-//   • there is NO "auto-apply the first candidate" fallback,
+//   • the palette-card lists one row per chapter (subject title + accent), apply-theme
+//     fires with the per-chapter {subject, accentColor, artFont} (#236),
+//   • there is NO "auto-apply" fallback,
 //   • confirming the last chapter (stage → theme) surfaces the palette-card,
 //   • apply-theme advancing (stage → cover) surfaces the cover-card,
 //   • the cover-card 应用 sends template ids and 跳过 sends an empty selection.
@@ -27,39 +28,40 @@ test('runRecommendTheme renders the palette-card after the reply', () => {
   assert.match(body, /appendPaletteCard\(res\)/);
 });
 
-test('appendPaletteCard builds one .pc-group per theme option with the real swatch colors', () => {
+test('appendPaletteCard builds one row per chapter (subject title + accent swatch)', () => {
   const fn = /function appendPaletteCard\(res: V3RecommendResponse\)[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'appendPaletteCard must exist');
   const body = fn![0];
-  // One palette-card; one row per themeOption (the contract's ≤3 candidates).
+  // One palette-card; one row per chapter (#236: purely per-chapter, no themeOptions).
   assert.match(body, /palette-card/);
-  assert.match(body, /res\.themeOptions\.forEach/);
-  // Swatches are the REAL recommended per-chapter accentColors (not unsplash/mock).
-  assert.match(body, /res\.chapterColors/);
+  assert.match(body, /res\.chapterColors\.forEach/);
+  // Each row shows the chapter subject (its title) + the chapter accent swatch.
+  assert.match(body, /c\.subject/);
   assert.match(body, /c\.accentColor/);
-  // First option carries the 推荐 badge; selected check on pick.
-  assert.match(body, /pc-reco/);
-  assert.match(body, /pc-check/);
+  // Contract no longer carries album-level themeOptions.
+  assert.doesNotMatch(body, /themeOptions/);
+  // A single「应用」action applies the whole per-chapter theme set.
+  assert.match(body, /pc-apply/);
 });
 
-test('picking a palette fires apply-theme with the chosen theme + recommended chapterColors', () => {
+test('the 应用 action fires apply-theme with per-chapter {subject, accentColor, artFont}', () => {
   const fn = /function appendPaletteCard\(res: V3RecommendResponse\)[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'appendPaletteCard must exist');
   const body = fn![0];
   assert.match(body, /runApplyTheme\(\{/);
-  // The picked theme option (subject/label/tone) is sent as the chosen theme.
-  assert.match(body, /theme: \{ subject: opt\.subject, label: opt\.label/);
-  // The recommended per-chapter {accentColor, artFont} ride along as the chapter choices.
+  // No album-level theme is sent anymore — only the per-chapter choices.
+  assert.doesNotMatch(body, /theme: \{ subject: opt/);
   assert.match(body, /chapters: res\.chapterColors\.map/);
+  assert.match(body, /subject: c\.subject/);
   assert.match(body, /accentColor: c\.accentColor/);
   assert.match(body, /artFont: c\.artFont/);
 });
 
-test('runApplyTheme has NO auto-apply-first fallback (缺口#20: 删掉自动套第一兜底)', () => {
-  // The whole effect must never silently default apply-theme to the first candidate.
-  assert.doesNotMatch(src, /lastRecommend\?\.themeOptions\[0\]/);
+test('runApplyTheme has NO auto-apply fallback (缺口#20: 删掉自动套兜底)', () => {
+  // The whole effect must never silently default apply-theme to a candidate.
+  assert.doesNotMatch(src, /lastRecommend\?\.themeOptions/);
   // runApplyTheme: with no user selection it surfaces the picker, applies nothing.
-  assert.match(src, /async function runApplyTheme[\s\S]{0,400}if \(!theme \|\| !chapters \|\| chapters\.length === 0\)[\s\S]{0,160}await runRecommendTheme\(\)/);
+  assert.match(src, /async function runApplyTheme[\s\S]{0,400}if \(!chapters \|\| chapters\.length === 0\)[\s\S]{0,160}await runRecommendTheme\(\)/);
 });
 
 test('confirming the last chapter (stage → theme) surfaces the palette-card', () => {

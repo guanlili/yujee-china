@@ -147,23 +147,30 @@ Patch rules:
 
 Input is text/metadata only: chapter descriptions, photo scene descriptions, optional analysis summary, optional user message. It carries no base64.
 
-Output:
+Output (#236: purely per-chapter — no album-level theme options):
 
-- 1..3 theme options;
-- exactly one `accentColor/artFont` recommendation per chapter;
+- exactly one `{subject, accentColor, artFont}` recommendation per chapter, where
+  `subject` is the chapter's one-line title (grounded in that chapter, no trailing
+  punctuation; the recommender clamps a missing subject to a neutral fallback);
 - assistant reply;
 - usage.
 
-The Web client rejects missing, duplicate, or extra chapter color coverage as invalid Agent output.
+The Web client rejects missing, duplicate, or extra chapter coverage as invalid Agent output.
 
 ### 5.2 Apply Theme
 
 `POST /v3/apply-theme` is deterministic.
 
-- It receives the user-selected theme and per-chapter choices.
+- It receives the per-chapter choices (`{subject, accentColor, artFont}`).
 - It emits page patches for SVG/decor surfaces where applicable.
+- #236: it ALSO writes each chapter's `subject` into that chapter's `title` role text
+  slot (clamped to the slot `maxChars`) — the chapter title is persisted. This is a
+  deterministic, user-confirmed write at the theme stage; it does not call any model and
+  is unrelated to the §4.1 analyze invariant (what the LLM writes in the analyze stage).
 - It does not call any model.
-- Web persists `accentColor/artFont` back into the authoring tree and advances the stage when applicable.
+- Web persists `accentColor/artFont` into the authoring tree, folds the page patch
+  (subject→title + accent→svg) into `draft_json.pages`, and advances the stage when
+  applicable.
 - Finalize bakes text carriers from the tree into the render `Page.texts` format.
 
 ---

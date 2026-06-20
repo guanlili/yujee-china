@@ -549,22 +549,19 @@ class V3RecommendRequest(_V3Strict):
     userMessage: str = Field(default=None, max_length=500)
 
 
-class V3ThemeOption(_V3Strict):
-    """主题候选(供用户挑,不进树)。"""
-
-    subject: str = Field(min_length=1)
-    label: str = Field(min_length=1)
-    tone: str = None
-
-
 class V3ChapterColorRecommendation(_V3Strict):
+    """每章推荐:主题句(subject,作章节标题)+ 推荐色 + 字体。
+
+    `subject` 是 grounded 该章照片+故事的一句章节主题(简短、无句末标点);它在
+    apply-theme 阶段被持久化为该章标题(问题5 方向 A 变体 / #236)。"""
+
     chapterId: str = Field(min_length=1)
+    subject: str = Field(min_length=1)
     accentColor: AccentColor
     artFont: ArtFontPack
 
 
 class V3RecommendResponse(_V3Strict):
-    themeOptions: list[V3ThemeOption] = Field(min_length=1, max_length=3)
     chapterColors: list[V3ChapterColorRecommendation] = Field(min_length=1)
     assistantReply: str = Field(max_length=500)
     usage: V3Usage
@@ -574,7 +571,13 @@ class V3RecommendResponse(_V3Strict):
 
 
 class V3ChapterThemeChoice(_V3Strict):
+    """用户选定的每章主题/色/字体。
+
+    `subject` = 用户确认的该章标题(一句话主题);apply-theme 把它持久化到该章 title
+    角色文字槽(问题5 方向 A 变体 / #236),并把色/字体刷到 variableDecor 槽。"""
+
     chapterId: str = Field(min_length=1)
+    subject: str = Field(min_length=1)
     accentColor: AccentColor
     artFont: ArtFontPack
 
@@ -582,7 +585,6 @@ class V3ChapterThemeChoice(_V3Strict):
 class V3ApplyThemeRequest(_V3Strict):
     albumId: str = Field(min_length=1)
     language: V3Language
-    theme: V3ThemeOption
     chapters: list[V3ChapterThemeChoice] = Field(min_length=1)
     pages: list[Page]
 

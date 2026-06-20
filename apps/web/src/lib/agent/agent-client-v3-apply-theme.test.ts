@@ -13,8 +13,7 @@ import type { V3ApplyThemeRequest } from '@yujee/contracts';
 const PAYLOAD: V3ApplyThemeRequest = {
   albumId: 'alb_v3',
   language: 'en',
-  theme: { subject: 'A Year Away', label: 'The Journey' },
-  chapters: [{ chapterId: 'ch_1', accentColor: '#C0392B', artFont: 'script-elegant' }],
+  chapters: [{ chapterId: 'ch_1', subject: 'A Year Away', accentColor: '#C0392B', artFont: 'script-elegant' }],
   pages: [{ pageIndex: 0, templateId: 'mag-13', images: { image: 'p1' }, texts: { title: 'Two' } }],
 };
 

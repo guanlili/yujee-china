@@ -102,8 +102,7 @@ test('postChapterChat throws CreditInsufficientError on CREDIT_INSUFFICIENT', as
 const RECOMMEND = {
   ok: true,
   data: {
-    themeOptions: [{ subject: 'A Year Away', label: 'The Journey' }],
-    chapterColors: [{ chapterId: 'c1', accentColor: '#C0392B', artFont: 'script-elegant' }],
+    chapterColors: [{ chapterId: 'c1', subject: 'A Year Away', accentColor: '#C0392B', artFont: 'script-elegant' }],
     assistantReply: 'Here are some themes.',
     usage: { durationMs: 1, models: {} },
   },
@@ -115,7 +114,7 @@ test('postRecommend POSTs only {language} (no chapter overview) to /recommend', 
   assert.equal(captured.url, '/api/v3/albums/alb_1/recommend');
   assert.equal(captured.method, 'POST');
   assert.deepEqual(captured.body, { language: 'en' }); // no chapters/analysisSummary
-  assert.equal(res.themeOptions[0]!.label, 'The Journey');
+  assert.equal(res.chapterColors[0]!.subject, 'A Year Away');
   assert.equal(res.chapterColors[0]!.accentColor, '#C0392B');
 });
 
@@ -134,17 +133,15 @@ const APPLY = {
   },
 };
 
-test('postApplyTheme POSTs only the SELECTIONS (theme + per-chapter色/字体), no pages', async (t) => {
+test('postApplyTheme POSTs only the SELECTIONS (per-chapter主题/色/字体), no pages', async (t) => {
   const captured = mockFetch(t, APPLY);
   const res = await postApplyTheme('alb_1', {
-    theme: { subject: 'A Year Away', label: 'The Journey' },
-    chapters: [{ chapterId: 'c1', accentColor: '#C0392B', artFont: 'script-elegant' }],
+    chapters: [{ chapterId: 'c1', subject: 'A Year Away', accentColor: '#C0392B', artFont: 'script-elegant' }],
   });
   assert.equal(captured.url, '/api/v3/albums/alb_1/apply-theme');
   assert.deepEqual(captured.body, {
     language: 'en',
-    theme: { subject: 'A Year Away', label: 'The Journey' },
-    chapters: [{ chapterId: 'c1', accentColor: '#C0392B', artFont: 'script-elegant' }],
+    chapters: [{ chapterId: 'c1', subject: 'A Year Away', accentColor: '#C0392B', artFont: 'script-elegant' }],
   });
   assert.equal(res.stage, 'cover');
   assert.deepEqual(res.layoutPatch, [{ pageIndex: 1, textsJson: { divider: '#C0392B' } }]);
@@ -179,8 +176,7 @@ test('postApplyTheme throws UnauthorizedError on a 401 envelope', async (t) => {
   mockFetch(t, { ok: false, error: { code: 'UNAUTHORIZED' } }, 401);
   await assert.rejects(
     postApplyTheme('alb_1', {
-      theme: { subject: 'x', label: 'y' },
-      chapters: [{ chapterId: 'c1', accentColor: '#000000', artFont: 'sans-modern' }],
+      chapters: [{ chapterId: 'c1', subject: 'x', accentColor: '#000000', artFont: 'sans-modern' }],
     }),
     (e) => e instanceof UnauthorizedError,
   );

@@ -5,7 +5,6 @@ import type {
   V3ChatTurn,
   V3ChapterChatResponse,
   V3RecommendResponse,
-  V3ThemeOption,
   V3ChapterThemeChoice,
 } from '@yujee/contracts';
 
@@ -44,6 +43,9 @@ export type ChapterState =
 export interface DraftSkeletonChapter {
   chapterId: string;
   label: string;
+  // The chapter's title (its theme `subject`, persisted into the title slot at
+  // apply-theme, #236). Absent/empty until the theme stage runs — fall back to `label`.
+  subject?: string;
   role: 'opening' | 'body' | 'closing';
   state: ChapterState;
   askCount: number;
@@ -116,9 +118,9 @@ export interface BrowserLayoutPatchEntry {
 // ③ 主题/章节色 · 推荐 — one real /v3/recommend turn (缺口#20). Invariant 12 / §3 数据归属:
 // the browser holds NO authoring tree, so it sends ONLY its language (+ an optional
 // free-text nudge); the Web route re-slices the per-chapter overview from draft_json
-// server-side. Returns the agent's theme candidates (themeOptions, ≤3) + per-chapter
-// recommended {accentColor, artFont} (chapterColors) for the user to pick. Nothing is
-// written — picking + apply-theme write the tree.
+// server-side. Returns the agent's per-chapter recommendations (chapterColors:
+// {chapterId, subject, accentColor, artFont}) for the user to apply — subject is the
+// chapter title (#236). Nothing is written — apply-theme writes the tree + title slots.
 export function postRecommend(
   albumId: string,
   userMessage?: string,
@@ -130,13 +132,12 @@ export function postRecommend(
 }
 
 // ③ 主题/章节色 · 应用 — one real /v3/apply-theme turn (缺口#20). Invariant 12 / §3 数据
-// 归属: the browser holds NO layout pages, so it sends ONLY its SELECTIONS (the chosen
-// theme + per-chapter {accentColor, artFont}); the Web service re-slices each chapter's
-// themable pages from draft_json server-side, runs the deterministic brush, writes the
-// tree color/font + advances stage theme→cover. Returns the page-level layoutPatch the
-// browser applies live + the new stage.
+// 归属: the browser holds NO layout pages, so it sends ONLY its SELECTIONS (per-chapter
+// {subject, accentColor, artFont}); the Web service re-slices each chapter's themable
+// pages from draft_json server-side, runs the deterministic brush, writes the tree
+// color/font + persists each subject into its chapter title slot (#236) + advances stage
+// theme→cover. Returns the page-level layoutPatch the browser applies live + new stage.
 export interface ApplyThemeInput {
-  theme: V3ThemeOption;
   chapters: V3ChapterThemeChoice[];
 }
 export function postApplyTheme(
@@ -145,7 +146,6 @@ export function postApplyTheme(
 ): Promise<{ stage: string; layoutPatch: BrowserLayoutPatchEntry[]; assistantReply?: string }> {
   return postJson(`/api/v3/albums/${albumId}/apply-theme`, {
     language: 'en',
-    theme: input.theme,
     chapters: input.chapters,
   });
 }

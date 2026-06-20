@@ -22,7 +22,6 @@ import {
   type V3StoryProgress,
   type V3ChapterThemeChoice,
   type V3LayoutPatchEntry,
-  type V3ThemeOption,
   type V3ChapterOverview,
   type V3RecommendResponse,
   type V3ApplyThemeRequest,
@@ -217,6 +216,23 @@ function hasVariableDecorSlot(page: V3Page): boolean {
   if ((template.svgs ?? []).some((slot) => slot.variableDecor)) return true;
   if ((template.texts ?? []).some((slot) => slot.variableDecor)) return true;
   return (template.items?.texts ?? []).some((slot) => slot.variableDecor);
+}
+
+// The chapter title (#236): apply-theme persists each chapter's `subject` into its
+// `title` role text slot (Page.texts). Read it back from the first of a chapter's pages
+// whose template declares a non-empty `title` slot value, so the draft skeleton can
+// surface the title for the chapter card / rail. Returns undefined before the theme
+// stage has run (no title written yet) — callers fall back to a generic label.
+function titleOfChapterPages(pages: V3Page[]): string | undefined {
+  for (const page of pages) {
+    const template = getTemplate(page.templateId);
+    if (!template) continue;
+    const titleSlotId = (template.texts ?? []).find((slot) => slot.role === 'title')?.id;
+    if (!titleSlotId) continue;
+    const value = page.texts[titleSlotId];
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+  }
+  return undefined;
 }
 
 // Fold the per-chapter apply-theme responses into one (each agent call handled one
@@ -556,10 +572,19 @@ export const albumService = {
       }),
     };
 
+    // Persist the page-level patch into draft_json.pages: the agent brush wrote each
+    // chapter's `subject` into its title slot (#236) + accent into svg slots. The title
+    // lives in Page.texts (the flat render contract), so it MUST be persisted here or a
+    // reload/finalize would lose it (§3 树边界: title is page text, not a tree field).
+    const nextPages =
+      normalized.pages && layoutPatch.length > 0
+        ? applyLayoutPatchToDraftPages(normalized.pages, layoutPatch)
+        : normalized.pages;
+
     const nextDraft: V3StoryDraft = {
       version: 'v3-story',
       tree: nextTree,
-      ...(normalized.pages ? { pages: normalized.pages } : {}),
+      ...(nextPages ? { pages: nextPages } : {}),
       progress: normalized.progress,
     };
 
@@ -675,7 +700,7 @@ export const albumService = {
   async applyThemeTurn(
     userId: string,
     albumId: string,
-    input: { language: V3Language; theme: V3ThemeOption; chapters: V3ChapterThemeChoice[] },
+    input: { language: V3Language; chapters: V3ChapterThemeChoice[] },
   ): Promise<{ stage: string; layoutPatch: V3LayoutPatchEntry[]; assistantReply?: string }> {
     const album = await this.findOwned(userId, albumId);
     const normalized = readStoryDraft(album.draftJson);
@@ -696,7 +721,6 @@ export const albumService = {
         requests.push({
           albumId,
           language: input.language,
-          theme: input.theme,
           chapters: [choice],
           pages: relatedPages,
         });
@@ -865,9 +889,16 @@ export const albumService = {
         pageIndexes.length > 0
           ? pageIndexes[pageIndexes.length - 1]! + 1
           : Math.min(pageStart + 1, pages.length);
+      // The chapter title (its theme `subject`) is persisted into the chapter's title
+      // slot at apply-theme (#236). Surface it from the first of this chapter's pages
+      // that carries a `title` role slot value, so the chapter card / rail can show it.
+      const subject = titleOfChapterPages(
+        pageIndexes.map((idx) => normalized.pages![idx]!),
+      );
       return {
         chapterId: ch.chapterId,
         label: `Chapter ${i + 1}`,
+        ...(subject ? { subject } : {}),
         role:
           i === 0
             ? 'opening' as const

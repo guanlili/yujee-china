@@ -19,11 +19,15 @@ What apply-theme does (§4.3(b) / §9 `variableDecor`):
       existing values (`date`/`dateNum`/`folio`) and empty values both stay exactly
       as-is. Styling rides the chapter node in the tree; color strings only travel
       through SVG decoration carriers.
-    * variableDecor **title** text slots hold USER prose (the chapter title authored in
-      章节故事). apply-theme MUST NOT rewrite that content — its color/font is carried by
-      the chapter node in the tree (`V3Chapter.accentColor/artFont`, written by Web) and
-      baked into the flat page at finalize (§3 树边界: 渲染契约不新增树形字段, so the
-      per-page color does NOT ride the flat Page — it stays in the tree until finalize).
+    * variableDecor **title** text slots hold the CHAPTER TITLE. Since #236, the theme
+      stage carries a per-chapter `subject` (the user-confirmed one-line chapter title);
+      apply-theme writes it into every `title` role text slot of the chapter's pages so
+      the title is persisted (问题5 方向 A 变体). Its color/font is still carried by the
+      chapter node in the tree (`V3Chapter.accentColor/artFont`, written by Web) and baked
+      into the flat page at finalize (§3 树边界: 渲染契约不新增树形字段, so the per-page
+      color does NOT ride the flat Page — it stays in the tree until finalize). This is a
+      deterministic, user-confirmed write — NOT the §4.1 analyze invariant (which governs
+      what the LLM writes in the analyze stage, untouched here).
 
   普通正文槽 (`body`/`explain`, and any slot WITHOUT `variableDecor`) is never touched.
 
@@ -87,17 +91,27 @@ def _resolve_page_chapter(
     return chapters[0]
 
 
-def _decor_value_for_text_slot(slot: Mapping[str, object], existing: str | None) -> str | None:
+def _decor_value_for_text_slot(
+    slot: Mapping[str, object], existing: str | None, subject: str
+) -> str | None:
     """Themed value for one variableDecor TEXT slot, or None to leave it untouched.
 
-    * `title`/`body`/`explain` (user prose) → None: content is never rewritten; the
-      color/font lives on the chapter node in the tree (baked at finalize).
+    * `title` (chapter title) → the per-chapter `subject` (问题5 / #236): apply-theme
+      persists the user-confirmed chapter title into every title slot. Truncated to the
+      slot's `maxChars` when declared so a long subject can't overflow the template.
+    * `body`/`explain` (user prose) → None: content is never rewritten; the color/font
+      lives on the chapter node in the tree (baked at finalize).
     * `decoration` text slots → existing or empty content is never rewritten with a
       color string. SVG variableDecor slots are the only flat-page accent carriers.
 
     Never returns a place/location value or a color token, so §3 隐私 (no place) and
     text-content preservation both hold by construction."""
     role = str(slot.get("role") or "")
+    if role == "title":
+        max_chars = slot.get("maxChars")
+        if isinstance(max_chars, int) and max_chars > 0:
+            return subject[:max_chars]
+        return subject
     if role in _USER_PROSE_ROLES:
         return None
     return existing if existing is not None else None
@@ -142,7 +156,7 @@ def _apply_page(page: Page, choice: V3ChapterThemeChoice) -> V3LayoutPatchEntry 
         if not slot_id:
             continue
         themable = True
-        value = _decor_value_for_text_slot(slot, texts.get(slot_id))
+        value = _decor_value_for_text_slot(slot, texts.get(slot_id), choice.subject)
         if value is not None:
             texts[slot_id] = value
 

@@ -1,4 +1,4 @@
-"""V3 apply-theme — deterministic 刷 variableDecor 槽 (WP3.2 / #190).
+"""V3 apply-theme — deterministic 刷 variableDecor 槽 + subject→标题 (WP3.2 / #190 / #236).
 
 Covers the acceptance:
   ① only variableDecor slots are brushed; 普通正文 (body/explain/non-variableDecor) untouched.
@@ -6,6 +6,8 @@ Covers the acceptance:
   ③ each chapter's color/font is applied per the chapter choice (章级粒度).
   ④ illegal color/font is impossible to inject (the strict DTO rejects it at parse).
   ⑤ idempotent — re-applying the same theme yields the same patch.
+  ⑥ #236: the per-chapter `subject` is written into the chapter's `title` slot
+     (the chapter title is persisted), clamped to the slot's maxChars.
 
 Grounded in real templates (mag-08: variableDecor `dateNum`+`title`; mag-13: svg
 `divider`). The v2 theme.py is untouched (Option B — apply lives in apply_theme_v3).
@@ -21,7 +23,6 @@ from src.schemas import (
     Page,
     V3ApplyThemeRequest,
     V3ChapterThemeChoice,
-    V3ThemeOption,
 )
 from src.services import apply_theme_v3 as at
 from src.services import finalize_v3 as fv3
@@ -33,14 +34,15 @@ from src.schemas import (
 
 _ACCENT = "#C0392B"
 _FONT = "script-elegant"
+_SUBJECT = "A Year Away"
 
 
-def _theme() -> V3ThemeOption:
-    return V3ThemeOption(subject="A Year Away", label="The Journey")
-
-
-def _choice(chapter_id: str = "c1", accent: str = _ACCENT, font: str = _FONT) -> V3ChapterThemeChoice:
-    return V3ChapterThemeChoice(chapterId=chapter_id, accentColor=accent, artFont=font)
+def _choice(
+    chapter_id: str = "c1", accent: str = _ACCENT, font: str = _FONT, subject: str = _SUBJECT
+) -> V3ChapterThemeChoice:
+    return V3ChapterThemeChoice(
+        chapterId=chapter_id, subject=subject, accentColor=accent, artFont=font
+    )
 
 
 def _page(template_id: str, *, texts: dict[str, str] | None = None, images: dict[str, str] | None = None, page_index: int = 0) -> Page:
@@ -56,25 +58,32 @@ def _request(pages: list[Page], chapters: list[V3ChapterThemeChoice] | None = No
     return V3ApplyThemeRequest(
         albumId="album-1",
         language="en",
-        theme=_theme(),
         chapters=chapters or [_choice()],
         pages=pages,
     )
 
 
+def _title_max_chars(template_id: str) -> int:
+    """The mag template's `title` slot maxChars (apply-theme clamps subject to it)."""
+    tmpl = templates.get(template_id)
+    slot = next(s for s in templates.text_slots(tmpl) if s.get("role") == "title")
+    return int(slot["maxChars"])
+
+
 # ──────────────────────────── ① only variableDecor; 正文不碰 ────────────────────────────
 
 
-def test_brushes_only_variable_decor_text_slots_leaving_prose_untouched():
-    # mag-08 variableDecor text slots = dateNum (decoration), title (title/user prose).
+def test_brushes_only_variable_decor_text_slots_writing_subject_into_title():
+    # mag-08 variableDecor text slots = dateNum (decoration), title (title role).
     # body/caption1/caption2 are NOT variableDecor → must stay exactly as given.
+    # #236: the `title` slot is now (re)written with the chapter subject.
     page = _page(
         "mag-08",
         texts={
-            "title": "Homecoming",       # variableDecor title (user prose) → untouched
+            "title": "Homecoming",       # variableDecor title → overwritten with subject
             "body": "We drove north.",   # not variableDecor → untouched
             "caption1": "By the lake",   # not variableDecor → untouched
-            # dateNum (variableDecor decoration) is EMPTY → gets the accent token
+            # dateNum (variableDecor decoration) is EMPTY → stays empty (not a carrier)
         },
         images={"image": "p1"},
     )
@@ -82,13 +91,24 @@ def test_brushes_only_variable_decor_text_slots_leaving_prose_untouched():
 
     assert len(resp.layoutPatch) == 1
     patched = resp.layoutPatch[0].texts
-    # 普通正文 + user-prose title preserved verbatim (普通正文不碰 / title 内容不重写).
+    # 普通正文 preserved verbatim (普通正文不碰).
     assert patched["body"] == "We drove north."
     assert patched["caption1"] == "By the lake"
-    assert patched["title"] == "Homecoming"
+    # #236: title slot now holds the chapter subject (clamped to the slot maxChars).
+    assert patched["title"] == _SUBJECT[: _title_max_chars("mag-08")]
     # Empty text decorations are not color carriers; only SVG variableDecor slots
     # may carry the accent color through page.texts.
     assert "dateNum" not in patched
+
+
+def test_subject_is_clamped_to_the_title_slot_max_chars():
+    long_subject = "A very very very long chapter title that exceeds the slot"
+    page = _page("mag-08", texts={"title": "x"}, images={"image": "p1"})
+    resp = at.apply_theme(_request([page], chapters=[_choice(subject=long_subject)]))
+    max_chars = _title_max_chars("mag-08")
+    title = resp.layoutPatch[0].texts["title"]
+    assert title == long_subject[:max_chars]
+    assert len(title) <= max_chars
 
 
 def test_empty_decoration_text_value_is_never_replaced_with_accent_color():
@@ -96,29 +116,38 @@ def test_empty_decoration_text_value_is_never_replaced_with_accent_color():
     resp = at.apply_theme(_request([page]))
     patched = resp.layoutPatch[0].texts
     assert patched["dateNum"] == ""
-    assert patched["title"] == "Trip"
+    # #236: title takes the subject.
+    assert patched["title"] == _SUBJECT[: _title_max_chars("mag-08")]
 
 
 def test_non_empty_decoration_value_is_never_clobbered():
     # `dateNum` already holds a generic-copy date — theme recolors via the tree, the
     # code-owned value must survive (we never overwrite a non-empty decoration slot).
-    # mag-08 also has the svg-less `title` (variableDecor prose) → page IS themable,
-    # so an entry is emitted; the date value must be preserved verbatim within it.
+    # mag-08 also has the svg-less `title` (variableDecor) → page IS themable, so an
+    # entry is emitted; the date value must be preserved verbatim within it.
     page = _page("mag-08", texts={"dateNum": "08/24", "title": "Trip"}, images={"image": "p1"})
     resp = at.apply_theme(_request([page]))
     patched = resp.layoutPatch[0].texts
     assert patched["dateNum"] == "08/24"   # non-empty decoration preserved
-    assert patched["title"] == "Trip"      # title prose preserved
+    assert patched["title"] == _SUBJECT[: _title_max_chars("mag-08")]  # #236: subject as title
 
 
 def test_page_with_only_user_prose_variable_decor_is_still_themable():
-    # mag-19's only variableDecor slot is `intro` (title/prose). The page IS themable
-    # (it has a variableDecor slot), so an entry is emitted — but the prose content is
-    # preserved verbatim (color/font ride the tree, not the flat page).
+    # mag-19's only variableDecor slot is `intro`. The page IS themable (it has a
+    # variableDecor slot), so an entry is emitted. If `intro` is a title role it takes
+    # the subject (#236); otherwise its content is preserved.
     page = _page("mag-19", texts={"intro": "Once upon a time"}, page_index=0)
     resp = at.apply_theme(_request([page]))
     assert len(resp.layoutPatch) == 1
-    assert resp.layoutPatch[0].texts["intro"] == "Once upon a time"
+    intro_slot = next(
+        s for s in templates.text_slots(templates.get("mag-19")) if s.get("id") == "intro"
+    )
+    expected = (
+        _SUBJECT[: int(intro_slot["maxChars"])]
+        if intro_slot.get("role") == "title"
+        else "Once upon a time"
+    )
+    assert resp.layoutPatch[0].texts["intro"] == expected
 
 
 # ──────────────────────────── ② SVG 图层被填色 ────────────────────────────
@@ -130,8 +159,8 @@ def test_variable_decor_svg_layer_is_filled_with_accent_color():
     page = _page("mag-13", texts={"title": "Chapter Two"}, images={"image": "p1"})
     resp = at.apply_theme(_request([page]))
     patched = resp.layoutPatch[0].texts
-    assert patched["divider"] == _ACCENT          # svg filled with accent
-    assert patched["title"] == "Chapter Two"      # title prose untouched
+    assert patched["divider"] == _ACCENT                          # svg filled with accent
+    assert patched["title"] == _SUBJECT[: _title_max_chars("mag-13")]  # #236: subject as title
 
 
 def test_svg_themed_key_survives_finalize_v3_validate():

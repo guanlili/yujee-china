@@ -343,9 +343,11 @@ Response `V3RecommendResponse`:
 
 ```ts
 {
-  themeOptions: Array<{ subject: string; label: string; tone?: string }>;
+  // #236: purely per-chapter — NO album-level themeOptions. `subject` is the
+  // chapter's one-line title (作章节标题), grounded in that chapter's photos + story.
   chapterColors: Array<{
     chapterId: string;
+    subject: string;
     accentColor: string;
     artFont: "serif-classic" | "sans-modern" | "script-elegant" | "display-bold";
   }>;
@@ -356,8 +358,8 @@ Response `V3RecommendResponse`:
 
 Rules:
 
-- `themeOptions.length` is 1..3.
 - `chapterColors` must cover every requested chapter exactly once; Web rejects off-contract coverage as `AGENT_INVALID_OUTPUT`.
+- Each `subject` is non-empty; it becomes the chapter title when the user applies the theme.
 
 ### 7.3 `POST /v3/apply-theme`
 
@@ -367,9 +369,11 @@ Request `V3ApplyThemeRequest`:
 {
   albumId: string;
   language: "zh" | "en";
-  theme: { subject: string; label: string; tone?: string };
+  // #236: each chapter carries its `subject` (the user-confirmed chapter title);
+  // apply-theme persists it into that chapter's `title` slot + brushes color/font.
   chapters: Array<{
     chapterId: string;
+    subject: string;
     accentColor: string;
     artFont: "serif-classic" | "sans-modern" | "script-elegant" | "display-bold";
   }>;
@@ -392,6 +396,7 @@ Rules:
 - No model call; deterministic transform only.
 - `layoutPatch.length` must be at least 1.
 - The Agent emits page patches for SVG/decor surfaces where applicable; it does not write tree-shaped color/font carriers.
+- #236: the Agent ALSO writes each chapter's `subject` into that chapter's `title` role text slot (clamped to the slot `maxChars`) — the chapter title is persisted. Web folds this patch into `draft_json.pages` so the title survives reload/finalize. (This is a deterministic, user-confirmed write at the theme stage; it is NOT the §4.1 analyze invariant about what the LLM writes.)
 - Web writes the chosen `accentColor/artFont` into the authoring tree and advances `theme -> cover` when applicable.
 - Finalize bakes text color/font carriers from the authoring tree into flat render pages.
 

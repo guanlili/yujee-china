@@ -733,8 +733,8 @@ test('applyTheme: writes per-chapter color/font into the tree + advances stage=c
       user.id,
       albumId,
       [
-        { chapterId: 'c1', accentColor: '#C0392B', artFont: 'script-elegant' },
-        { chapterId: 'c2', accentColor: '#1F618D', artFont: 'sans-modern' },
+        { chapterId: 'c1', subject: 'Chapter One', accentColor: '#C0392B', artFont: 'script-elegant' },
+        { chapterId: 'c2', subject: 'Chapter Two', accentColor: '#1F618D', artFont: 'sans-modern' },
       ] satisfies V3ChapterThemeChoice[],
       PATCH,
     );
@@ -749,7 +749,14 @@ test('applyTheme: writes per-chapter color/font into the tree + advances stage=c
       tree: { chapters: Array<{ chapterId: string; accentColor: string | null; artFont: string | null }> };
       pages?: unknown;
     };
-    assert.deepEqual(draft.pages, makePreviewPages(2), 'applyTheme must preserve V3 preview pages in draft_json');
+    // The theme patch (per-chapter subject→title + accent svg) is folded into
+    // draft_json.pages so a reload/finalize keeps it (#236); non-patched pages stay verbatim.
+    const previewPages = makePreviewPages(2);
+    const expectedPages = [
+      { ...previewPages[0]!, texts: { ...previewPages[0]!.texts, divider: '#C0392B', title: 'X' } },
+      previewPages[1]!,
+    ];
+    assert.deepEqual(draft.pages, expectedPages, 'applyTheme folds the theme patch into draft_json pages');
     const byId = new Map(draft.tree.chapters.map((c) => [c.chapterId, c]));
     assert.equal(byId.get('c1')?.accentColor, '#C0392B');
     assert.equal(byId.get('c1')?.artFont, 'script-elegant');
@@ -768,7 +775,7 @@ test('applyTheme: idempotent — re-applying from cover does not regress stage',
   const user = await makeUser('wp32-idempotent');
   try {
     const albumId = await seedThemeAlbum(user.id, 1);
-    const choices = [{ chapterId: 'c1', accentColor: '#2ECC71', artFont: 'display-bold' }] satisfies V3ChapterThemeChoice[];
+    const choices = [{ chapterId: 'c1', subject: 'Chapter One', accentColor: '#2ECC71', artFont: 'display-bold' }] satisfies V3ChapterThemeChoice[];
     await albumService.applyTheme(user.id, albumId, choices, PATCH); // → cover
     const again = await albumService.applyTheme(user.id, albumId, choices, PATCH);
     assert.equal(again.stage, 'cover'); // no regression / no double-advance
@@ -793,8 +800,8 @@ test('applyTheme: rejects a choice for an unknown chapterId', async (t) => {
           user.id,
           albumId,
           [
-            { chapterId: 'c1', accentColor: '#C0392B', artFont: 'serif-classic' },
-            { chapterId: 'ghost', accentColor: '#000000', artFont: 'sans-modern' },
+            { chapterId: 'c1', subject: 'Chapter One', accentColor: '#C0392B', artFont: 'serif-classic' },
+            { chapterId: 'ghost', subject: 'A ghost chapter', accentColor: '#000000', artFont: 'sans-modern' },
           ] satisfies V3ChapterThemeChoice[],
           PATCH,
         ),
@@ -818,7 +825,7 @@ test('applyTheme: rejects missing chapter choices', async (t) => {
         albumService.applyTheme(
           user.id,
           albumId,
-          [{ chapterId: 'c1', accentColor: '#C0392B', artFont: 'serif-classic' }] satisfies V3ChapterThemeChoice[],
+          [{ chapterId: 'c1', subject: 'Chapter One', accentColor: '#C0392B', artFont: 'serif-classic' }] satisfies V3ChapterThemeChoice[],
           PATCH,
         ),
       isValidationFailed,
@@ -842,8 +849,8 @@ test('applyTheme: rejects duplicate chapter choices', async (t) => {
           user.id,
           albumId,
           [
-            { chapterId: 'c1', accentColor: '#C0392B', artFont: 'serif-classic' },
-            { chapterId: 'c1', accentColor: '#1F618D', artFont: 'sans-modern' },
+            { chapterId: 'c1', subject: 'Chapter One', accentColor: '#C0392B', artFont: 'serif-classic' },
+            { chapterId: 'c1', subject: 'A duplicate', accentColor: '#1F618D', artFont: 'sans-modern' },
           ] satisfies V3ChapterThemeChoice[],
           PATCH,
         ),
@@ -868,7 +875,7 @@ test('applyTheme: rejects a non-owner', async (t) => {
         albumService.applyTheme(
           intruder.id,
           albumId,
-          [{ chapterId: 'c1', accentColor: '#C0392B', artFont: 'serif-classic' }] satisfies V3ChapterThemeChoice[],
+          [{ chapterId: 'c1', subject: 'Chapter One', accentColor: '#C0392B', artFont: 'serif-classic' }] satisfies V3ChapterThemeChoice[],
           PATCH,
         ),
       (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
@@ -1399,8 +1406,7 @@ test('recommendTheme: re-slices the per-chapter overview server-side (no base64,
     t.mock.method(agentClient, 'recommendV3', async (p: Parameters<typeof agentClient.recommendV3>[0]) => {
       seen.push(p);
       return {
-        themeOptions: [{ subject: 'Coast', label: 'By the Sea' }],
-        chapterColors: [{ chapterId: 'c1', accentColor: '#1F618D', artFont: 'sans-modern' }],
+        chapterColors: [{ chapterId: 'c1', subject: 'By the Sea', accentColor: '#1F618D', artFont: 'sans-modern' }],
         assistantReply: 'Some themes.',
         usage: fullUsage,
       };
@@ -1416,7 +1422,7 @@ test('recommendTheme: re-slices the per-chapter overview server-side (no base64,
     assert.deepEqual(payload.chapters, [
       { chapterId: 'c1', description: 'a sunlit week by the coast', photoDescs: ['beach at dawn'] },
     ]);
-    assert.equal(res.themeOptions[0]!.label, 'By the Sea');
+    assert.equal(res.chapterColors[0]!.subject, 'By the Sea');
   } finally {
     await cleanupUser(user.id);
   }
@@ -1442,8 +1448,7 @@ test('applyThemeTurn: re-slices only the chapter themable pages + persists tree 
 
     const res = await albumService.applyThemeTurn(user.id, albumId, {
       language: 'en',
-      theme: { subject: 'Coast', label: 'By the Sea' },
-      chapters: [{ chapterId: 'c1', accentColor: '#C0392B', artFont: 'script-elegant' }],
+      chapters: [{ chapterId: 'c1', subject: 'By the Sea', accentColor: '#C0392B', artFont: 'script-elegant' }],
     });
 
     assert.equal(seen.length, 1, 'one agent call per chapter with themable pages');
@@ -1564,8 +1569,7 @@ test('recommendTheme / applyThemeTurn / coverTurn: reject a non-owner before any
     await assert.rejects(
       () => albumService.applyThemeTurn(intruder.id, albumId, {
         language: 'en',
-        theme: { subject: 'x', label: 'y' },
-        chapters: [{ chapterId: 'c1', accentColor: '#000000', artFont: 'sans-modern' }],
+        chapters: [{ chapterId: 'c1', subject: 'x', accentColor: '#000000', artFont: 'sans-modern' }],
       }),
       hasCode('ALBUM_NOT_OWNED'),
     );

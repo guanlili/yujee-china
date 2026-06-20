@@ -453,8 +453,9 @@ class TestV3Endpoints:
     def test_recommend_response_legal_sets(self):
         V3RecommendResponse.model_validate(
             {
-                "themeOptions": [{"subject": "Spring in Kyoto", "label": "Kyoto"}],
-                "chapterColors": [{"chapterId": "c1", "accentColor": "#aabbcc", "artFont": "serif-classic"}],
+                "chapterColors": [
+                    {"chapterId": "c1", "subject": "Spring in Kyoto", "accentColor": "#aabbcc", "artFont": "serif-classic"}
+                ],
                 "assistantReply": "",
                 "usage": {"durationMs": 1, "models": {}},
             }
@@ -466,8 +467,7 @@ class TestV3Endpoints:
             {
                 "albumId": "a1",
                 "language": "en",
-                "theme": {"subject": "s", "label": "l"},
-                "chapters": [{"chapterId": "c1", "accentColor": "#abc", "artFont": "sans-modern"}],
+                "chapters": [{"chapterId": "c1", "subject": "s", "accentColor": "#abc", "artFont": "sans-modern"}],
                 "pages": [page],
             }
         )

@@ -181,16 +181,16 @@ chapter 1 (内部自由交错) → 确定 → chapter 2 → … → 全部确定
 
 ### 4.3 确定主题与章节色(Frame 5 / 6)
 
-目标:定全局主题 + 每章点缀色 + 字体,**写入 `layout.json`**,脚本一键渲染。
+目标:定**每章主题(subject,作章节标题)** + 每章点缀色 + 字体,**写入 `layout.json`**,脚本一键渲染。
 
-- (a) **识图模型按 Skill 推荐主题 + 章节色**(`recommend-theme` / `recommend-chapter-colors`,见 §6)。
-- (b) **一键渲染**:颜色确定后,用工具一键批量填充**文字 + 点缀元素**,完成内页渲染。
+- (a) **识图模型按 Skill 逐章推荐 subject + 章节色**(`recommend-theme` / `recommend-chapter-colors`,见 §6)。**【已定 #236】环节产物纯逐章** `{chapterId, subject, accentColor, artFont}` —— 不再产 album 级 `themeOptions(subject/label/tone)`;`subject` 是 grounded 该章照片+故事的一句章节主题(英文,简短,无句末标点),用户确认后**作章节标题**(进章节时对话框「章节卡片」+ 章节页 `title` 槽 + 画板定位到当前章)。
+- (b) **一键渲染**:颜色确定后,用工具一键批量填充**文字 + 点缀元素**,完成内页渲染;同时把每章 `subject` 持久化到该章 `title` 角色文字槽(`apply-theme` 确定性写入)。
 - **数据决策**:
   - 章节色 / 字体 **定义在 `layout.json` 里**(不是纯前端临时变量)。
   - **品牌字体库固定**(就那么几个),用户在最后一步选其一。
   - 渲染时**脚本一键批量填充**,**含模板变量里的 SVG 图层**。
 - 校验需**认识这些字段**(章节色/字体的允许集 + 合法值)。
-- **细化留待施工文档**:章节色/字体「**按章节控制**」的精确模型(映射规则、用户可调粒度、与 `variableDecor` 的对应)属施工级细节,在该模块(③)的详细方案文档里定;本框架只锁定「写入 `layout.json` + `variableDecor` 落点 + `apply-theme` 一键刷」。
+- **细化留待施工文档**:章节色/字体「**按章节控制**」的精确模型(映射规则、用户可调粒度、与 `variableDecor` 的对应)属施工级细节,在该模块(③)的详细方案文档里定;本框架只锁定「写入 `layout.json` + `variableDecor` 落点 + `apply-theme` 一键刷 + 每章 subject 作标题」。
 
 ### 4.4 书籍设计 / 封面设计(Frame 6)
 
@@ -244,7 +244,7 @@ chapter 1 (内部自由交错) → 确定 → chapter 2 → … → 全部确定
 |---|---|---|---|
 | `describe-content` | 一批图(base64)+ 代码提供的时间信号 + 不透明 `clusterId` 簇标签(#232) | **章节树**:分章 + 每章 `description` + 每图 `sceneDescription`(§4.1 结构)。带 `clusterId` 时簇感知、整簇打包、总数大时多路并发再合并(详见 `design.md`/WP-C) | ① 分析 |
 | `select-template` | 每组/页特征(**图片数** + 内容/情绪摘要)+ **目标 `category` 下的合法候选** | 选定 templateId(从合法候选里挑最契合的) | ①(d) 套模板、②(c) 换版、④ 封面 |
-| `recommend-theme` | 章节概览 + 图片分析摘要 | 主题候选(subject/tone/风格) | ③(a) |
+| `recommend-theme` | 章节概览 + 图片分析摘要 | **每章 `subject`**(一句话章节主题/标题,grounded 该章,作章节标题;#236 不再产 album 级 themeOptions/label/tone) | ③(a) |
 | `recommend-chapter-colors` | 各章代表图 + 内容/情绪 + **取色工具**(Agent 端从 base64 采样主色)+ 固定字体包 | 每章 `accentColor`(色值)+ `artFont`(字体包内选一) | ③(a) |
 
 > `select-template`:识图模型出选择,但**只在确定性引擎给出的合法候选集里挑**(候选 = `category` 匹配 + 图片槽数能容纳本组图片数),模型不凭空造 templateId——沿用 §8.3「模型出意图、确定性引擎保合法」的安全模式。模型失败时直接走 §9 的纯代码兜底(按图片数挑模板顺序塞)。
@@ -298,8 +298,8 @@ chapter 1 (内部自由交错) → 确定 → chapter 2 → … → 全部确定
 |---|---|---|---|---|---|
 | ① 分析 | `POST /v3/analyze` | **异步** 202 + callback | 识图模型(GPT-5.5 Mini;火山备用) | base64 照片 + EXIF(`takenAt`)+ 不透明 `clusterId`(#232,可空) | 回调:layout 树(套模板 + 通用文案/色,预览态) |
 | ② 章节故事 | `POST /v3/chapter-chat` | **同步** | DeepSeek(+ 识图模型仅布局变动时) | 单章切片 + history + 当前 layout 子树 + userMessage | assistantReply + 章节文案补丁(+ 必要时版面补丁) |
-| ③ 主题/章节色-推荐 | `POST /v3/recommend`(承载 2 个 Skill) | **同步** | 识图模型 | 章节概览 + 分析摘要 + 当前 layout | 主题候选 + 每章色 + 字体建议 |
-| ③ 主题/章节色-应用 | `POST /v3/apply-theme` | **同步**(确定性) | 无(脚本) | 用户选定的主题/色/字体 + 当前 layout | 写入色/字体/SVG 后的 layout 补丁 |
+| ③ 主题/章节色-推荐 | `POST /v3/recommend`(承载 2 个 Skill) | **同步** | 识图模型 | 章节概览 + 分析摘要 + 当前 layout | 逐章 `{subject, accentColor, artFont}`(#236,subject 作章节标题;无 album 级 themeOptions) |
+| ③ 主题/章节色-应用 | `POST /v3/apply-theme` | **同步**(确定性) | 无(脚本) | 用户选定的逐章 `{subject, 色, 字体}` + 当前 layout | 写入色/字体/SVG + 把 subject 写进 `title` 槽后的 layout 补丁 |
 | ④ 书籍设计 | `POST /v3/cover` | **同步**(确定性,可选) | 无 / 识图模型辅助选 | 选定的封面/封尾模板 + 当前 layout | 封面/封尾页补丁(或跳过=空) |
 | ⑤ 待导出 | `POST /v3/finalize` | **同步**(确定性) | 无 | 完整 layout 树 | flatten 后的定稿 layout(供 Browser 出 PDF) |
 

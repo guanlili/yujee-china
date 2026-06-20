@@ -1799,112 +1799,83 @@ function EditorBook({
     }
 
     // ─── palette-card (设计稿 palette-card,对话流内) ────────────────────────────
-    // The design mocks each "color group" as 5 swatches; the real contract instead
-    // returns themeOptions (≤3 textual themes: subject/label/tone — NO palette) + ONE
-    // recommended chapterColors set (per-chapter single accentColor + artFont). So the
-    // honest mapping is: each card row = a THEME OPTION (label as the heading, tone as a
-    // sub-line), and the swatch strip shows the REAL recommended per-chapter accentColors
-    // (deduped, in order) — the actual colors apply-theme will brush on. First option is
-    // 推荐. Picking a row → runApplyTheme with that theme + the recommended chapterColors.
-    // 契约↔设计差异(flag): the contract has no per-theme palette, so all rows share the
-    // same swatch strip; chapters can be fine-tuned later (设计稿语义) is not yet a contract
-    // affordance.
+    // Since #236 the contract is PURELY per-chapter: recommend returns one
+    // {chapterId, subject, accentColor, artFont} per chapter (NO album-level
+    // themeOptions). So the card lists each chapter as a ROW — its `subject` (the
+    // chapter title) as the heading + a swatch of that chapter's recommended accent —
+    // and a single「应用」action applies the whole set (each chapter's subject is
+    // persisted as its title at apply-theme). No per-theme picking; one confirm.
     function appendPaletteCard(res: V3RecommendResponse) {
-      // Real recommended colors → swatch strip (dedupe, keep order; cap at 6 like 设计稿).
-      const swatchColors: string[] = [];
-      for (const c of res.chapterColors) {
-        if (c.accentColor && !swatchColors.includes(c.accentColor)) swatchColors.push(c.accentColor);
-        if (swatchColors.length >= 6) break;
-      }
-      const swatchesHTML = swatchColors
-        .map((c) => `<span style="background:${c}"></span>`)
-        .join('');
-      const checkSvg =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" ' +
-        'stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-
       const card = document.createElement('div');
       card.className = 'msg ai max-w-full';
       const inner = document.createElement('div');
       inner.className = 'palette-card';
       const title = document.createElement('div');
       title.className = 'pc-title';
-      title.textContent = aT('挑选一组喜欢的配色吧', 'Pick a palette you like');
+      title.textContent = aT('看看每章的标题与配色', 'Here are each chapter’s title and color');
       const groups = document.createElement('div');
       groups.className = 'pc-groups';
-      res.themeOptions.forEach((opt, gi) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'pc-group' + (gi === 0 ? ' selected' : '');
-        btn.dataset.pal = String(gi);
-        if (gi === 0) {
-          const reco = document.createElement('span');
-          reco.className = 'pc-reco';
-          reco.textContent = aT('推荐', 'Recommended');
-          btn.appendChild(reco);
-        }
+      res.chapterColors.forEach((c, i) => {
+        const rowEl = document.createElement('div');
+        rowEl.className = 'pc-chapter-row';
         const head = document.createElement('div');
         head.className = 'pc-group-head';
+        const num = document.createElement('span');
+        num.className = 'pc-chapter-num';
+        num.textContent = String(i + 1).padStart(2, '0');
+        head.appendChild(num);
         const label = document.createElement('span');
         label.className = 'pc-group-label';
-        label.textContent = opt.label;
+        label.textContent = c.subject;
         head.appendChild(label);
-        if (opt.tone) {
-          const tone = document.createElement('span');
-          tone.className = 'pc-group-tone';
-          tone.textContent = opt.tone;
-          head.appendChild(tone);
-        }
-        btn.appendChild(head);
+        rowEl.appendChild(head);
         const sw = document.createElement('div');
         sw.className = 'pc-swatches';
-        sw.innerHTML = swatchesHTML;
-        btn.appendChild(sw);
-        const check = document.createElement('span');
-        check.className = 'pc-check';
-        check.innerHTML = checkSvg;
-        btn.appendChild(check);
-        btn.addEventListener('click', () => {
-          if (sending) return;
-          groups.querySelectorAll('.pc-group').forEach((g) =>
-            g.classList.toggle('selected', g === btn),
-          );
-          // Echo the pick, then apply the chosen theme + recommended per-chapter colors.
-          appendUserText(aT(`就用「${opt.label}」`, `Use "${opt.label}"`));
-          hideAwait();
-          scrollChat();
-          void runApplyTheme({
-            theme: { subject: opt.subject, label: opt.label, ...(opt.tone ? { tone: opt.tone } : {}) },
-            chapters: res.chapterColors.map((c) => ({
-              chapterId: c.chapterId,
-              accentColor: c.accentColor,
-              artFont: c.artFont,
-            })),
-          });
-        });
-        groups.appendChild(btn);
+        const dot = document.createElement('span');
+        dot.style.background = c.accentColor;
+        sw.appendChild(dot);
+        rowEl.appendChild(sw);
+        groups.appendChild(rowEl);
       });
+
+      const applyBtn = document.createElement('button');
+      applyBtn.type = 'button';
+      applyBtn.className = 'pc-apply';
+      applyBtn.textContent = aT('应用这套主题', 'Apply this theme');
+      applyBtn.addEventListener('click', () => {
+        if (sending) return;
+        applyBtn.disabled = true;
+        appendUserText(aT('就用这套主题', 'Use this theme'));
+        hideAwait();
+        scrollChat();
+        void runApplyTheme({
+          chapters: res.chapterColors.map((c) => ({
+            chapterId: c.chapterId,
+            subject: c.subject,
+            accentColor: c.accentColor,
+            artFont: c.artFont,
+          })),
+        });
+      });
+
       inner.appendChild(title);
       inner.appendChild(groups);
+      inner.appendChild(applyBtn);
       card.appendChild(inner);
       chatBody!.appendChild(card);
       scrollChat();
     }
 
-    // ③ 主题/章节色 · 应用: send the user's CHOSEN theme + the recommended per-chapter
-    // {accentColor, artFont} to /v3/apply-theme, fold the returned patch into the canvas,
-    // advance stage theme→cover. Driven only by a user pick on the palette-card — there is
-    // NO "auto-apply the first candidate" fallback (缺口#20: 删掉自动套第一兜底). If called
-    // with no selection (e.g. no recommendation yet), we fetch a recommendation so the user
-    // gets the picker, and apply nothing.
-    async function runApplyTheme(selection?: {
-      theme: { subject: string; label: string; tone?: string };
-      chapters: V3ChapterThemeChoice[];
-    }) {
+    // ③ 主题/章节色 · 应用: send the per-chapter {subject, accentColor, artFont} to
+    // /v3/apply-theme, fold the returned patch into the canvas, advance stage theme→cover.
+    // Each subject is persisted as its chapter title (#236). Driven only by a user click on
+    // the palette-card「应用」— there is NO "auto-apply" fallback (缺口#20). If called with no
+    // selection (e.g. no recommendation yet), we fetch a recommendation so the user gets the
+    // card, and apply nothing.
+    async function runApplyTheme(selection?: { chapters: V3ChapterThemeChoice[] }) {
       if (!isAuthoring || sending) return;
-      const theme = selection?.theme;
       const chapters = selection?.chapters;
-      if (!theme || !chapters || chapters.length === 0) {
+      if (!chapters || chapters.length === 0) {
         // No user pick to apply — surface the picker instead of silently applying a default.
         await runRecommendTheme();
         return;
@@ -1912,7 +1883,7 @@ function EditorBook({
       sending = true;
       const host = appendThinkingShell();
       try {
-        const res = await postApplyTheme(albumId, { theme, chapters });
+        const res = await postApplyTheme(albumId, { chapters });
         settleThinking(host, 'analyzedFeedback');
         applyAuthoringPatch(res.layoutPatch);
         mirrorStage(res.stage);
@@ -2300,6 +2271,42 @@ function EditorBook({
       updateAuthInputPlaceholder();
     }
 
+    // 问题③ 章节卡片: which chapter are we in? Resolve a chapter's display title +
+    // its 1-based number from the draft skeleton (subject once the theme stage wrote it,
+    // else the generic「Chapter N」label).
+    function chapterMetaById(chapterId: string): { num: number; title: string } | null {
+      const idx = draftSkel?.chapters.findIndex((c) => c.chapterId === chapterId) ?? -1;
+      if (idx < 0) return null;
+      const c = draftSkel!.chapters[idx]!;
+      return { num: idx + 1, title: (c.subject && c.subject.trim()) || c.label };
+    }
+
+    // 问题③ 章节卡片: when entering a chapter, push a chapter-styled card into the chat so
+    // the user always knows WHICH chapter they're in (前面引导开场之前/同时出现). Fires once
+    // per chapter per session (`shownChapterCards` guard) so re-entry/advance doesn't spam.
+    const shownChapterCards = new Set<string>();
+    function appendChapterCard(chapterId: string) {
+      if (shownChapterCards.has(chapterId)) return;
+      const meta = chapterMetaById(chapterId);
+      if (!meta) return;
+      shownChapterCards.add(chapterId);
+      const card = document.createElement('div');
+      card.className = 'msg ai max-w-full';
+      const inner = document.createElement('div');
+      inner.className = 'chapter-card';
+      const kicker = document.createElement('div');
+      kicker.className = 'cc-kicker';
+      kicker.textContent = aT(`第 ${meta.num} 章`, `Chapter ${meta.num}`);
+      const title = document.createElement('div');
+      title.className = 'cc-title';
+      title.textContent = meta.title;
+      inner.appendChild(kicker);
+      inner.appendChild(title);
+      card.appendChild(inner);
+      chatBody!.appendChild(card);
+      scrollChat();
+    }
+
     // §4.2 引导优先「AI 先开口提问,不擅自动笔」: entering an unfinished chapter, the
     // Agent opens the turn — it asks (引导 Skill 话术: who/what/how/why) instead of
     // waiting for the user. We fire ONE chapter-chat turn with an empty userMessage so
@@ -2314,6 +2321,8 @@ function EditorBook({
       // Already confirmed chapter, or already opened/conversed this session → skip.
       if (storyGate?.doneChapterIds.includes(chapterId)) return;
       if (guidedChapters.has(chapterId) || chapterHistory.length > 0) return;
+      // 问题③: surface the chapter card (which chapter) BEFORE the AI's opener question.
+      appendChapterCard(chapterId);
       guidedChapters.add(chapterId);
       // Hold the send lock for the opener round-trip so a user send can't race it onto
       // the same chapter (both would POST). send()/runChapterChatTurn already respect it.
@@ -2774,7 +2783,17 @@ function EditorBook({
       // question (runChapterGuideOpener) instead of sitting idle waiting for the user.
       void Promise.all([loadHistory(), loadStoryGate()]).then(([shown]) => {
         restAwait();
-        if (shown === 0) void runChapterGuideOpener();
+        // 问题③ 画板定位: once the story gate is loaded, flip the canvas to the chapter
+        // we're currently authoring so the preview tracks the live chapter on entry.
+        const liveChapterId = storyGate?.currentChapterId ?? null;
+        if (liveChapterId) goToChapterById(liveChapterId);
+        if (shown === 0) {
+          void runChapterGuideOpener();
+        } else if (liveChapterId) {
+          // Returning to an in-progress chapter (prior conversation): the opener won't
+          // re-fire, but still show the chapter card so the user knows where they are.
+          appendChapterCard(liveChapterId);
+        }
       });
     }
 
@@ -2843,7 +2862,9 @@ function EditorBook({
     function railFromDraft() {
       if (!draftSkel) return;
       chapters = draftSkel.chapters.map((c) => ({
-        label: c.label,
+        // Prefer the chapter title (theme `subject`, #236) once the theme stage wrote it;
+        // fall back to the generic「Chapter N」label before then.
+        label: (c.subject && c.subject.trim()) || c.label,
         spread: spreadOfFlatPage(c.pageStart),
       }));
       renderRail();

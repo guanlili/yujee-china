@@ -1,14 +1,15 @@
-"""WP3.1 (#189) — V3 recommend: theme candidates + per-chapter color/font.
+"""WP3.1 (#189, #236) — V3 recommend: per-chapter subject + color/font.
 
 Exercises the new V3 service (`recommend_v3`, Option B — v2 `theme.py` untouched)
 plus the `POST /v3/recommend` sync route:
-  * theme candidates come back (1–3) and each chapter gets one {accentColor, artFont};
+  * each chapter gets one {subject, accentColor, artFont} (no album-level themeOptions, #236);
+  * subject (chapter title) round-trips, a trailing period is stripped, and a
+    missing/empty subject degrades to the "Untitled Chapter" fallback;
   * artFont is clamped to the 4-member ArtFontPack and accentColor is a legal #hex
     (illegal model output is coerced back, never injected into the response);
   * the recognition-model call is injected (`complete=`) so outputs are deterministic
     and no real model is hit;
-  * missing/empty chapters degrade without crashing (full chapter coverage; a theme
-    fallback when the model returns none);
+  * missing/empty chapters degrade without crashing (full chapter coverage);
   * the auth gate + contract-shaped error path on the route.
 
 Two-end contract parity is checked by re-validating the response against
@@ -84,32 +85,34 @@ def _run(req: V3RecommendRequest, payload: dict[str, Any]) -> V3RecommendRespons
 
 def _good_payload() -> dict[str, Any]:
     return {
-        "themeOptions": [
-            {"subject": "Spring by the sea", "label": "Salt & Light", "tone": "warm, nostalgic"},
-            {"subject": "A coastal escape", "label": "Tideline"},
-        ],
         "chapterColors": [
-            {"chapterId": "ch_1", "accentColor": "#C2410C", "artFont": "script-elegant"},
-            {"chapterId": "ch_2", "accentColor": "#1E3A5F", "artFont": "serif-classic"},
+            {
+                "chapterId": "ch_1",
+                "subject": "Spring by the sea",
+                "accentColor": "#C2410C",
+                "artFont": "script-elegant",
+            },
+            {
+                "chapterId": "ch_2",
+                "subject": "A quiet evening",
+                "accentColor": "#1E3A5F",
+                "artFont": "serif-classic",
+            },
         ],
-        "assistantReply": "Here are a couple of themes and per-chapter colors.",
+        "assistantReply": "Here are per-chapter subjects and colors.",
     }
 
 
-# ---------- happy path: ① theme candidates + ② per-chapter color/font ---------
+# ---------- happy path: per-chapter subject + color/font ----------------------
 
 
-def test_happy_path_theme_and_chapter_colors():
+def test_happy_path_chapter_subject_and_colors():
     resp = _run(_req(), _good_payload())
-    # ① theme candidates (1–3).
-    assert 1 <= len(resp.themeOptions) <= 3
-    assert resp.themeOptions[0].subject == "Spring by the sea"
-    assert resp.themeOptions[0].label == "Salt & Light"
-    assert resp.themeOptions[0].tone == "warm, nostalgic"
-    # tone is optional — second option omitted it.
-    assert resp.themeOptions[1].tone is None
-    # ② one {accentColor, artFont} per chapter, in input order.
+    # one {subject, accentColor, artFont} per chapter, in input order.
     assert [c.chapterId for c in resp.chapterColors] == ["ch_1", "ch_2"]
+    # subject (chapter title) round-trips.
+    assert resp.chapterColors[0].subject == "Spring by the sea"
+    assert resp.chapterColors[1].subject == "A quiet evening"
     assert resp.chapterColors[0].accentColor == "#C2410C"
     assert resp.chapterColors[0].artFont == "script-elegant"
     # usage reports the recognition (vision) call.
@@ -126,8 +129,8 @@ def test_font_clamped_to_pack_and_color_legal_hex():
     payload = _good_payload()
     # Illegal font → default; #RGB shorthand → expanded #RRGGBB; no-# tolerated.
     payload["chapterColors"] = [
-        {"chapterId": "ch_1", "accentColor": "#abc", "artFont": "comic-sans"},
-        {"chapterId": "ch_2", "accentColor": "AABBCC", "artFont": "sans-modern"},
+        {"chapterId": "ch_1", "subject": "Spring by the sea", "accentColor": "#abc", "artFont": "comic-sans"},
+        {"chapterId": "ch_2", "subject": "A quiet evening", "accentColor": "AABBCC", "artFont": "sans-modern"},
     ]
     resp = _run(_req(), payload)
     for rec in resp.chapterColors:
@@ -143,8 +146,8 @@ def test_font_clamped_to_pack_and_color_legal_hex():
 def test_illegal_color_falls_back_not_raises():
     payload = _good_payload()
     payload["chapterColors"] = [
-        {"chapterId": "ch_1", "accentColor": "cornflowerblue", "artFont": "display-bold"},
-        {"chapterId": "ch_2", "accentColor": "#12", "artFont": "serif-classic"},
+        {"chapterId": "ch_1", "subject": "Spring by the sea", "accentColor": "cornflowerblue", "artFont": "display-bold"},
+        {"chapterId": "ch_2", "subject": "A quiet evening", "accentColor": "#12", "artFont": "serif-classic"},
     ]
     resp = _run(_req(), payload)
     # Non-hex / wrong-length → neutral fallback (a legal #hex), never an exception.
@@ -161,21 +164,30 @@ def test_missing_chapter_filled_with_fallback_full_coverage():
     payload = _good_payload()
     # Model only returned ch_1 — ch_2 must still come back (never dropped).
     payload["chapterColors"] = [
-        {"chapterId": "ch_1", "accentColor": "#C2410C", "artFont": "script-elegant"},
+        {"chapterId": "ch_1", "subject": "Spring by the sea", "accentColor": "#C2410C", "artFont": "script-elegant"},
     ]
     resp = _run(_req(), payload)
     assert [c.chapterId for c in resp.chapterColors] == ["ch_1", "ch_2"]
-    # ch_2 got the neutral fallback + default font.
+    # ch_2 got the neutral fallback + default font + fallback subject.
     assert resp.chapterColors[1].accentColor.startswith("#")
     assert resp.chapterColors[1].artFont in _ART_FONTS
+    assert resp.chapterColors[1].subject == "Untitled Chapter"
 
 
-def test_empty_theme_options_degrades_to_one_candidate():
+def test_missing_subject_degrades_to_fallback_and_trailing_period_stripped():
     payload = _good_payload()
-    payload["themeOptions"] = []  # model returned nothing usable
+    # ch_1: subject omitted entirely → must degrade to the neutral placeholder.
+    # ch_2: a drifted trailing period → stripped to a clean one-line title.
+    payload["chapterColors"] = [
+        {"chapterId": "ch_1", "accentColor": "#C2410C", "artFont": "script-elegant"},
+        {"chapterId": "ch_2", "subject": "A quiet evening.", "accentColor": "#1E3A5F", "artFont": "serif-classic"},
+    ]
     resp = _run(_req(), payload)
-    # Contract requires ≥1 theme option — never 0.
-    assert len(resp.themeOptions) == 1
+    # Missing subject → fallback (the service's _coerce_subject placeholder).
+    assert resp.chapterColors[0].subject == "Untitled Chapter"
+    # Trailing period stripped.
+    assert resp.chapterColors[1].subject == "A quiet evening"
+    # Contract requires subject min_length=1 — fallback keeps the response valid.
     V3RecommendResponse(**resp.model_dump(exclude_none=True))
 
 
@@ -184,9 +196,8 @@ def test_chapter_with_no_photos_does_not_crash():
         V3ChapterOverview(chapterId="ch_1", description="An empty chapter.", photoDescs=[]),
     ]
     payload = {
-        "themeOptions": [{"subject": "Quiet", "label": "Still"}],
         "chapterColors": [
-            {"chapterId": "ch_1", "accentColor": "#445566", "artFont": "serif-classic"}
+            {"chapterId": "ch_1", "subject": "An empty chapter", "accentColor": "#445566", "artFont": "serif-classic"}
         ],
         "assistantReply": "ok",
     }
@@ -270,14 +281,16 @@ def test_route_requires_auth():
 
 
 def test_route_happy_path_returns_contract_envelope(monkeypatch):
-    from src.schemas import V3ChapterColorRecommendation, V3Models, V3ThemeOption, V3Usage
+    from src.schemas import V3ChapterColorRecommendation, V3Models, V3Usage
 
     async def fake_run(req, *, complete=None):  # noqa: ANN001
         return V3RecommendResponse(
-            themeOptions=[V3ThemeOption(subject="Spring", label="Salt & Light")],
             chapterColors=[
                 V3ChapterColorRecommendation(
-                    chapterId="ch_1", accentColor="#C2410C", artFont="script-elegant"
+                    chapterId="ch_1",
+                    subject="Spring by the sea",
+                    accentColor="#C2410C",
+                    artFont="script-elegant",
                 )
             ],
             assistantReply="Here you go.",
@@ -294,7 +307,7 @@ def test_route_happy_path_returns_contract_envelope(monkeypatch):
     body = res.json()
     assert body["ok"] is True
     parsed = V3RecommendResponse(**body["data"])  # two-end parity
-    assert parsed.themeOptions[0].label == "Salt & Light"
+    assert parsed.chapterColors[0].subject == "Spring by the sea"
     assert parsed.chapterColors[0].accentColor == "#C2410C"
 
 
