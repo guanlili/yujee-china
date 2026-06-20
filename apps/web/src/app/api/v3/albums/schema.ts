@@ -8,6 +8,10 @@ const AnalyzePhoto = z.object({
   width: z.number().int().positive(),
   height: z.number().int().positive(),
   takenAt: TakenAtDateTime.nullable().optional(),
+  // #232: opaque browser-derived spatio-temporal cluster label (c1/c2/…). The
+  // .strict() body still rejects any lat/lng/place/location key — only this label
+  // is permitted. nullish: legacy clients (no key) and un-clusterable (null) both ok.
+  clusterId: z.string().min(1).nullish(),
 }).strict();
 
 export const BodySchema = z.object({

@@ -22,6 +22,9 @@ export type AgentPhotoInput = {
   base64: string;
   width: number;
   height: number;
+  takenAt?: string | null;
+  // #232 opaque spatio-temporal cluster label (c1/c2/…); never a coordinate.
+  clusterId?: string | null;
 };
 
 export const agentClient = {

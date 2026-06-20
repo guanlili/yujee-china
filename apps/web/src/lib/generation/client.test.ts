@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { generationPhotosFromCache, submitAnalyzeV3, UnauthorizedError } from './client';
+import type { CompressedPhoto } from '@/lib/photo/compress';
+import {
+  clusterCompressedPhotos,
+  compressedPhotosFromCache,
+  submitAnalyzeV3,
+  UnauthorizedError,
+} from './client';
+
+const compressed = (photoId: string, base64: string, w: number, h: number): CompressedPhoto => ({
+  photoId,
+  base64,
+  width: w,
+  height: h,
+  takenAt: null,
+  clusterGeo: null,
+});
 
 test('submitAnalyzeV3 throws UnauthorizedError for unauthorized responses', async () => {
   const originalFetch = globalThis.fetch;
@@ -21,17 +36,34 @@ test('submitAnalyzeV3 throws UnauthorizedError for unauthorized responses', asyn
   }
 });
 
-test('generationPhotosFromCache returns cached photos in requested order', () => {
+test('compressedPhotosFromCache returns cached photos in requested order', () => {
   const cached = [
-    { photoId: 'b', base64: 'data:image/jpeg;base64,b', width: 800, height: 600 },
-    { photoId: 'a', base64: 'data:image/jpeg;base64,a', width: 600, height: 800 },
+    compressed('b', 'data:image/jpeg;base64,b', 800, 600),
+    compressed('a', 'data:image/jpeg;base64,a', 600, 800),
   ];
 
-  assert.deepEqual(generationPhotosFromCache(['a', 'b'], cached), [cached[1], cached[0]]);
+  assert.deepEqual(compressedPhotosFromCache(['a', 'b'], cached), [cached[1], cached[0]]);
 });
 
-test('generationPhotosFromCache returns null when any requested photo is missing', () => {
-  const cached = [{ photoId: 'a', base64: 'data:image/jpeg;base64,a', width: 600, height: 800 }];
+test('compressedPhotosFromCache returns null when any requested photo is missing', () => {
+  const cached = [compressed('a', 'data:image/jpeg;base64,a', 600, 800)];
 
-  assert.equal(generationPhotosFromCache(['a', 'b'], cached), null);
+  assert.equal(compressedPhotosFromCache(['a', 'b'], cached), null);
+});
+
+test('clusterCompressedPhotos attaches clusterId and DROPS the transient geo (privacy)', () => {
+  const inA = { ...compressed('a', 'data:image/jpeg;base64,a', 800, 600), takenAt: '2024-03-15T09:00:00', clusterGeo: { lat: 40.5, lng: -74 } };
+  const inB = { ...compressed('b', 'data:image/jpeg;base64,b', 800, 600), takenAt: '2024-03-16T09:00:00', clusterGeo: { lat: 48.85, lng: 2.35 } };
+
+  const out = clusterCompressedPhotos([inA, inB]);
+
+  // Different days → two clusters, time-ordered.
+  assert.equal(out[0].clusterId, 'c1');
+  assert.equal(out[1].clusterId, 'c2');
+  // The transient geo must NOT survive onto the photo sent to the Agent.
+  for (const p of out) {
+    assert.equal('clusterGeo' in p, false);
+    const serialized = JSON.stringify(p);
+    assert.equal(/lat|lng|geo|coord/i.test(serialized), false);
+  }
 });
