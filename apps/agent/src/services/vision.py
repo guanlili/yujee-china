@@ -583,47 +583,107 @@ def _remap_describe_photo_ids(parsed: Any, real_by_simple: dict[str, str]) -> An
     return parsed
 
 
+# 小模型(豆包)非确定性偷懒:照片一多就漏几张/重复/错认序号。这类是可恢复失误,
+# 带「必须覆盖全部 N 张」纠正提示 + 升温在同一 slot 内重抽,通常能修;结构性错误
+# (缺 chapters[] 等)重试无益,直接上抛。注:浏览器侧 geo+date 预分组上线后单批变小,
+# 此重试退化为纯兜底保险。
+MAX_DESCRIBE_ATTEMPTS = 3
+
+
+def _is_recoverable_describe_error(exc: VisionError) -> bool:
+    """模型漏/重/错认 photoId 是非确定性失误,值得带纠正提示重抽。"""
+    msg = str(exc)
+    return (
+        "omitted photoIds" in msg
+        or "duplicated photoId" in msg
+        or "referenced unknown photoId" in msg
+    )
+
+
 async def _describe_call(
     slot: VisionSlot, photos: list[V3AnalyzePhoto], language: str, prompt_hint: str | None
 ) -> tuple[V3LayoutTree, int]:
     """One recognition-model call on `slot`. Returns (tree, tokens_billed). Raises
     ai_client.AIRequestError on upstream failure (caller decides failover) and
-    VisionError on an unusable response."""
+    VisionError on an unusable response.
+
+    模型漏/重/错认 photoId 时,在同一 slot 内带纠正提示重抽,最多 MAX_DESCRIBE_ATTEMPTS
+    次(累计计费 tokens);用尽仍不完整才抛 VisionError。"""
     # 给识图模型只喂简单序号 id(1,2,3…),它抄不错;拿回结果再映射回真实 photoId。
     # 真实 photoId 是长 hash,小模型(豆包)常抄岔/截断 → 「unknown photoId」失败。
     simple_photos = [
         p.model_copy(update={"photoId": str(i + 1)}) for i, p in enumerate(photos)
     ]
     real_by_simple = {str(i + 1): p.photoId for i, p in enumerate(photos)}
-    messages = [
-        {"role": "system", "content": _build_v3_system_prompt(language)},
-        {"role": "user", "content": _build_v3_user_content(simple_photos, prompt_hint)},
-    ]
-    response = await ai_client.chat_completion(
-        base_url=slot.base_url,
-        api_key=slot.api_key,
-        model=slot.model,
-        messages=messages,
-        timeout_seconds=slot.timeout_seconds,
-        temperature=0.2,
-        max_tokens=8192,
-        response_format=slot.response_format,
-        extra_body=slot.extra_body,
-    )
-    # Drop the local handle to user content (base64s) before parsing (§3 privacy).
-    messages = []  # noqa: F841
-    del messages
+    n = len(simple_photos)
+    system_prompt = _build_v3_system_prompt(language)
+    user_content = _build_v3_user_content(simple_photos, prompt_hint)
 
-    try:
-        raw_text = ai_client.extract_text(response)
-        parsed = ai_client.parse_json_loose(raw_text)
-    except ValueError as exc:
-        raise VisionError(f"describe-content response unparseable: {exc}") from exc
+    total_tokens = 0
+    last_err: VisionError | None = None
+    for attempt in range(MAX_DESCRIBE_ATTEMPTS):
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ]
+        if attempt > 0 and last_err is not None:
+            # 上一次漏/重/错认照片 → 明确要求覆盖全部 N 张再重抽(升温打破确定性偷懒)。
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"上一次输出有问题:{last_err}。必须把全部 {n} 张照片"
+                        f"(序号 1 到 {n})每一张都恰好放进一个章节——一张都不能漏、"
+                        f"不能重复、不能用不存在的序号。请重新输出完整 JSON。"
+                    ),
+                }
+            )
+        response = await ai_client.chat_completion(
+            base_url=slot.base_url,
+            api_key=slot.api_key,
+            model=slot.model,
+            messages=messages,
+            timeout_seconds=slot.timeout_seconds,
+            temperature=0.2 if attempt == 0 else 0.5,
+            max_tokens=8192,
+            response_format=slot.response_format,
+            extra_body=slot.extra_body,
+        )
+        # Drop the local handle to user content (base64s) before parsing (§3 privacy).
+        messages = []  # noqa: F841
+        del messages
 
-    prompt_tokens, completion_tokens = ai_client.extract_usage(response)
-    parsed = _remap_describe_photo_ids(parsed, real_by_simple)
-    tree = _assemble_v3_tree(parsed, photos)
-    return tree, prompt_tokens + completion_tokens
+        prompt_tokens, completion_tokens = ai_client.extract_usage(response)
+        total_tokens += prompt_tokens + completion_tokens
+
+        try:
+            raw_text = ai_client.extract_text(response)
+            parsed = ai_client.parse_json_loose(raw_text)
+        except ValueError as exc:
+            # 解析失败保持原行为(同类畸形输出不靠重试,直接抛)。
+            raise VisionError(f"describe-content response unparseable: {exc}") from exc
+
+        parsed = _remap_describe_photo_ids(parsed, real_by_simple)
+        try:
+            tree = _assemble_v3_tree(parsed, photos)
+        except VisionError as exc:
+            if (
+                not _is_recoverable_describe_error(exc)
+                or attempt == MAX_DESCRIBE_ATTEMPTS - 1
+            ):
+                raise
+            last_err = exc
+            log.warning(
+                "v3_describe.retry",
+                provider=slot.provider,
+                attempt=attempt + 1,
+                reason=str(exc)[:120],
+            )
+            continue
+        return tree, total_tokens
+
+    # 末次可恢复错误已在循环里 raise;此处仅防御性兜底。
+    raise last_err or VisionError("describe-content failed after retries")
 
 
 async def describe_content(
