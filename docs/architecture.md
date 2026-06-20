@@ -135,6 +135,7 @@ Agent 暴露**一个异步端点 + 五个同步端点**:
 
 **边界红线(知道即可,不赘述)**
 5. **隐私**:原图与 base64 只在「浏览器 → Agent」内存链路过,**不入库 / R2 / 日志**;**不抽 GPS、无地点/坐标字段**(redact 仍拦坐标键作防御);PDF 浏览器生成 + presigned 上传。
+   - **clusterId 例外(#232)**:analyze 入参每张照片可带一个**不透明** `clusterId`(`c1`/`c2`/…),由浏览器本地从 EXIF 时间/GPS 派生,只表达「这几张同址同时」,**绝不含坐标 / 经纬度 / 地名**——比原始 GPS 弱得多,产品已确认接受。红线放宽到此为止:**允许 clusterId,仍严禁 location / place / GPS / 坐标 / 经纬度任何真实位置字段**(redact 与契约 `.strict()` 继续拦坐标键)。算不出 → null,Agent 退化为当前行为(向后兼容)。
 6. Agent 输出 layout 写库前必 **zod 校验**;`AGENT_SHARED_SECRET` 不进任何 client bundle。
 
 ---

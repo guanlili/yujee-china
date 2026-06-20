@@ -299,6 +299,53 @@ test('V3AnalyzeRequest exif is strict — only takenAt, rejects lat/lng (§3 pri
   );
 });
 
+test('V3AnalyzeRequest photo accepts clusterId, rejects coordinate keys (#232 §3 privacy)', () => {
+  const base = {
+    requestId: 'r1',
+    albumId: 'a1',
+    callbackUrl: 'https://example.com/cb',
+    language: 'en' as const,
+    photos: [{ photoId: 'p1', base64: 'data:image/jpeg;base64,AA==', width: 800, height: 600 }],
+  };
+  // clusterId absent (backward compatible) accepted
+  assert.equal(V3AnalyzeRequest.safeParse(base).success, true);
+  // clusterId string label accepted
+  assert.equal(
+    V3AnalyzeRequest.safeParse({
+      ...base,
+      photos: [{ ...base.photos[0], clusterId: 'c1' }],
+    }).success,
+    true,
+  );
+  // clusterId null (browser couldn't derive — no EXIF/GPS) accepted
+  assert.equal(
+    V3AnalyzeRequest.safeParse({
+      ...base,
+      photos: [{ ...base.photos[0], clusterId: null }],
+    }).success,
+    true,
+  );
+  // empty clusterId string rejected (min(1))
+  assert.equal(
+    V3AnalyzeRequest.safeParse({
+      ...base,
+      photos: [{ ...base.photos[0], clusterId: '' }],
+    }).success,
+    false,
+  );
+  // clusterId must not smuggle coordinates — any geo key still rejected by strict()
+  for (const leak of ['lat', 'lng', 'latitude', 'longitude', 'gps', 'place', 'location', 'coordinates']) {
+    assert.equal(
+      V3AnalyzeRequest.safeParse({
+        ...base,
+        photos: [{ ...base.photos[0], clusterId: 'c1', [leak]: 1 }],
+      }).success,
+      false,
+      `${leak} must be rejected by strict() on the analyze photo`,
+    );
+  }
+});
+
 test('V3ChapterChatResponse: kind drives which patch is present', () => {
   const usage = { durationMs: 1, models: {} };
   // write turn carries pagesTexts

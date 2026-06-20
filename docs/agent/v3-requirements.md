@@ -94,8 +94,8 @@
 | 步骤 | 内容 | 负责 |
 |---|---|---|
 | (a) | 浏览器端图片压缩 | Browser |
-| (b) | **识图模型一次调用 → 章节树**:模型只做三件事——① 把图分到各章(分章)② 写每章 `description`(主要画面 / 人物 / 情绪氛围 / 地点场景)③ 写每图一句 `sceneDescription`。按 `describe-content` skill 约定结构输出 JSON(§6) | Agent · 识图模型 |
-| (c) | **代码补全 photo 确定性属性**:每张图的 `width/height/orientation`(输入宽高算)、`takenAt`(EXIF)由**代码批量填**,不经 LLM;时间作为 (b) 分章的输入信号喂给模型(**不抽 GPS、无地点信号**,见 §11 第 4 条)| Agent · 确定性引擎 |
+| (b) | **识图模型 → 章节树(簇感知,可并发)**:模型只做三件事——① 把图分到各章(分章)② 写每章 `description`(主要画面 / 人物 / 情绪氛围 / 地点场景)③ 写每图一句 `sceneDescription`。按 `describe-content` skill 约定结构输出 JSON(§6)。**当照片带 `clusterId`(#232)时**,describe 按簇分组、整簇打包,总数大时**多路并发**(`asyncio.gather`,互不跨簇)再按簇全局序合并、章节重编号——既消除大批量 omission、又并发提速;`clusterId` 缺省时退化为当前「一次大批 / 模型自由分组」。详细调度/合并实现见 `design.md`、WP-C(#232)| Agent · 识图模型 |
+| (c) | **代码补全 photo 确定性属性**:每张图的 `width/height/orientation`(输入宽高算)、`takenAt`(EXIF)由**代码批量填**,不经 LLM;时间作为 (b) 分章的输入信号喂给模型(**不抽 GPS、无地点信号**;另可借浏览器派生的不透明 `clusterId` 共址/共时标签,见 §11 第 4 条)| Agent · 确定性引擎 |
 | (d) | **模板套用**:`select-template` skill 按各章特征(图片数 + 内容摘要)选版,确定性引擎兜底合法性(§6) | Agent · 识图模型 + 确定性引擎 |
 | (e) | **填通用文案/通用色 + 占位点缀**:**不生成正式文案**,直接用模板自带通用文案 + 填照片;章节 `accentColor` / `artFont` 先填通用占位 → 出**预览**,环节结束 | Agent |
 
@@ -126,8 +126,9 @@
 - **已砍**:V2 逐图的 `tags` / `quality` / `peopleCount` / `mood` / `timeOfDay`(图片槽 quality/orientation 概念整体作废,见 §9);grouping 不再是 vision 之后的独立确定性步骤,**分章并进识图模型这一次调用**。
 - **一图一章**:每张 photo 只归属一个 chapter,不跨章。
 - **`accentColor` / `artFont` 与品牌字体无关**,是排版专用的点缀色 / 艺术字:分析期占位,theme 环节由识图模型(每章挑 1 张代表图 → Agent 端从 base64 采样主色定色 + 从固定字体包选字)出值,代码一键刷到该章所有 `variableDecor` 槽(§4.3 / §9)。
-- V2 grouping 只按时间 + groupHint;**V3 分章改由识图模型做**,加「画面整体性」信号;**不接入地点 / GPS**。
-- ❌ **【已定 2026-06-18】location/GPS 不接入**:V3 草案曾拟重新接入地点供分章,**产品拍板撤销**——排版不需要地址,GPS 反查(本地打包全球城市库几 MB,或调外部地理 API 的配额成本)与体验提升不成正比。**Stage 0 只读 `takenAt`,不抽 GPS;`location`/`place` 字段不产出(恒 null)。** §3 隐私 维持「不抽 GPS」(architecture §3 / §6.8 第 3 条);redact 列表保留 `lat/lng/...` 作防御红线。
+- V2 grouping 只按时间 + groupHint;**V3 分章改由识图模型做**,加「画面整体性」信号 + 浏览器派生的不透明 `clusterId` 共址/共时标签(#232);**仍不接入地点 / GPS / 坐标**。
+- ✅ **【已定 #232】clusterId 共址/共时标签**:浏览器本地从 EXIF 时间/GPS 派生一个**不透明** `clusterId`(`c1`/`c2`/…),只发标签、**绝不发坐标**,作为 (b) 簇感知 describe 的预分组输入。比原始 GPS 弱得多(只表达「这几张同址同时」),产品已确认接受。算不出(无 EXIF / 无 GPS)→ null/缺省 → describe 退化为当前行为(向后兼容)。§3 隐私红线随之放宽到**允许 `clusterId`、仍严禁 location/place/GPS/坐标/经纬度任何真实位置字段**。
+- ❌ **【已定 2026-06-18】location/GPS 不接入**:V3 草案曾拟重新接入地点供分章,**产品拍板撤销**——排版不需要地址,GPS 反查(本地打包全球城市库几 MB,或调外部地理 API 的配额成本)与体验提升不成正比。**Stage 0 只读 `takenAt`,不抽 GPS;`location`/`place` 字段不产出(恒 null)。** §3 隐私 维持「不抽 GPS」(architecture §3 / §6.8 第 3 条);redact 列表保留 `lat/lng/...` 作防御红线。clusterId 是上一条的不透明标签例外,**不是坐标**,不与此条冲突。
 - 预览即「同一棵树的初态」(见 §7 数据流):此刻文案与色彩**均来自通用模板**;后续章节故事覆盖正式文案、主题环节覆盖正式色彩。
 - 全程异步;失败要可重试,不能把用户卡死在加载动画里。
 
@@ -241,7 +242,7 @@ chapter 1 (内部自由交错) → 确定 → chapter 2 → … → 全部确定
 
 | Skill(暂名) | 输入 | 输出 | 用在 |
 |---|---|---|---|
-| `describe-content` | 一批图(base64)+ 代码提供的时间/地点信号 | **章节树**:分章 + 每章 `description` + 每图 `sceneDescription`(§4.1 结构) | ① 分析 |
+| `describe-content` | 一批图(base64)+ 代码提供的时间信号 + 不透明 `clusterId` 簇标签(#232) | **章节树**:分章 + 每章 `description` + 每图 `sceneDescription`(§4.1 结构)。带 `clusterId` 时簇感知、整簇打包、总数大时多路并发再合并(详见 `design.md`/WP-C) | ① 分析 |
 | `select-template` | 每组/页特征(**图片数** + 内容/情绪摘要)+ **目标 `category` 下的合法候选** | 选定 templateId(从合法候选里挑最契合的) | ①(d) 套模板、②(c) 换版、④ 封面 |
 | `recommend-theme` | 章节概览 + 图片分析摘要 | 主题候选(subject/tone/风格) | ③(a) |
 | `recommend-chapter-colors` | 各章代表图 + 内容/情绪 + **取色工具**(Agent 端从 base64 采样主色)+ 固定字体包 | 每章 `accentColor`(色值)+ `artFont`(字体包内选一) | ③(a) |
@@ -295,7 +296,7 @@ chapter 1 (内部自由交错) → 确定 → chapter 2 → … → 全部确定
 
 | 环节 | 端点(暂名) | 模式 | 模型 | Web 传入 | Agent 回 |
 |---|---|---|---|---|---|
-| ① 分析 | `POST /v3/analyze` | **异步** 202 + callback | 识图模型(GPT-5.5 Mini;火山备用) | base64 照片 + EXIF | 回调:layout 树(套模板 + 通用文案/色,预览态) |
+| ① 分析 | `POST /v3/analyze` | **异步** 202 + callback | 识图模型(GPT-5.5 Mini;火山备用) | base64 照片 + EXIF(`takenAt`)+ 不透明 `clusterId`(#232,可空) | 回调:layout 树(套模板 + 通用文案/色,预览态) |
 | ② 章节故事 | `POST /v3/chapter-chat` | **同步** | DeepSeek(+ 识图模型仅布局变动时) | 单章切片 + history + 当前 layout 子树 + userMessage | assistantReply + 章节文案补丁(+ 必要时版面补丁) |
 | ③ 主题/章节色-推荐 | `POST /v3/recommend`(承载 2 个 Skill) | **同步** | 识图模型 | 章节概览 + 分析摘要 + 当前 layout | 主题候选 + 每章色 + 字体建议 |
 | ③ 主题/章节色-应用 | `POST /v3/apply-theme` | **同步**(确定性) | 无(脚本) | 用户选定的主题/色/字体 + 当前 layout | 写入色/字体/SVG 后的 layout 补丁 |

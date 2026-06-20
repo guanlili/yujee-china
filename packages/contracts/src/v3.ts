@@ -6,6 +6,8 @@
 // 硬约定(沿用 v2.ts):本文所有对象一律 `.strict()`(含嵌套),拒未知字段。
 //   zod3 的 `.strict()` 只作用于当前层,故每层 object 都显式 `.strict()`。
 //   ★ analyze 的 `exif` 必须 strict —— §3 隐私边界执行点(只收 takenAt,拒 lat/lng/place)。
+//   ★ analyze 的 photo 允许 `clusterId`(浏览器本地从 EXIF 时间/GPS 派生的不透明共址/
+//     共时标签,c1/c2/…),仍严禁 location/place/GPS/坐标/经纬度任何真实位置字段(#232)。
 //
 // §3 树边界:`/v3/analyze` 回调 + chapter-chat 子树流转用 V3 章节树(authoring);
 //   只有 `/v3/finalize` 回扁平 `AlbumLayoutPlan`(渲染契约,不加树形字段)。
@@ -113,6 +115,11 @@ const V3AnalyzePhoto = z
     base64: V3AnalyzeImageDataUrl, // data:image/(jpeg|png);base64,…  ≤800KB
     width: z.number().int().positive(),
     height: z.number().int().positive(),
+    // #232 簇标签:浏览器本地从 EXIF 时间/GPS 派生的不透明共址/共时标签(c1/c2/…),
+    //   ★绝不是坐标 —— 只表达「这几张同址同时」,§3 隐私红线允许它、仍禁真实位置字段。
+    //   算不出(无 EXIF / 无 GPS)→ null/缺省 → Agent 退化为当前「一大批/模型自由分组」
+    //   行为(向后兼容)。`.nullish()`:旧 payload(无此键)与 `null` 均接受。
+    clusterId: z.string().min(1).nullish(),
     exif: z
       .object({ takenAt: TakenAtDateTime.nullable().optional() })
       .strict() // ★ 拒 lat/lng/place — §3 隐私执行点

@@ -164,6 +164,10 @@ class JobError(_Strict):
 # All models below are `_V3Strict` (extra='forbid'), matching the TS `.strict()`
 # on every (nested) object. ★ analyze `exif` is the §3 privacy enforcement point:
 # it carries only `takenAt`, so any lat/lng/place key is rejected at parse time.
+# ★ analyze photo also accepts `clusterId` (#232): an opaque co-location/co-time
+# label the browser derives locally from EXIF time/GPS (c1/c2/…) — NOT a
+# coordinate. §3 privacy red line allows it but still forbids any
+# location/place/GPS/lat/lng/coordinate field.
 # =============================================================================
 
 
@@ -243,8 +247,9 @@ AccentColor = Annotated[str, Field(pattern=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})
 class V3ChapterPhoto(_V3Strict):
     """章节树里的单张照片(v3-requirements §4.1).
     LLM writes `sceneDescription`; code fills width/height/orientation/takenAt.
-    ⚠️ NO location/place/GPS/coordinate field (§3 privacy) — `_V3Strict` rejects
-    any such key at parse time."""
+    ⚠️ NO location/place/GPS/lat/lng/coordinate field (§3 privacy) — `_V3Strict`
+    rejects any such key at parse time. The opaque `clusterId` (#232) used for
+    cluster grouping lives only on the analyze input photo, not on this tree node."""
 
     photoId: str = Field(min_length=1)
     sceneDescription: str = Field(max_length=300)
@@ -456,6 +461,13 @@ class V3AnalyzePhoto(_V3Strict):
     base64: str = Field(min_length=1)  # data:image/(jpeg|png);base64,… ≤800KB
     width: int = Field(gt=0)
     height: int = Field(gt=0)
+    # #232 opaque co-location/co-time cluster label (c1/c2/…), browser-derived
+    # from EXIF time/GPS. NOT a coordinate. None/absent => browser couldn't
+    # derive it (no EXIF / no GPS); the Agent then degrades to the current
+    # "one big batch / model groups freely" behavior (backward compatible).
+    # Mirrors TS `clusterId: z.string().min(1).nullish()` — old payloads without
+    # the key still parse.
+    clusterId: str | None = Field(default=None, min_length=1)
     exif: V3AnalyzeExif = None
 
     _check_base64 = field_validator("base64")(_validate_v3_analyze_image_data_url)
