@@ -63,9 +63,11 @@ test('a successful confirm advances the canvas and resets per-chapter chat histo
   assert.match(body, /const prevChapterId = storyGate\.currentChapterId;/);
   // On advancement, clear the running chat log + awaiting flag and flip the book to the
   // new chapter. (§4.2: the new chapter then auto-opens with a guide turn.)
+  // (#236 ④: the advance branch also drops the previous chapter's write-now exit card so
+  // it doesn't leak into the new chapter — removeWriteNowCard() sits before the canvas flip.)
   assert.match(
     body,
-    /const advanced = advancedTo != null && advancedTo !== prevChapterId;\s*if \(advanced\) \{[\s\S]*?chapterHistory\.length = 0;\s*awaitingSatisfaction = false;\s*goToChapterById\(advancedTo!\);\s*\}/,
+    /const advanced = advancedTo != null && advancedTo !== prevChapterId;\s*if \(advanced\) \{[\s\S]*?chapterHistory\.length = 0;\s*awaitingSatisfaction = false;[\s\S]*?goToChapterById\(advancedTo!\);\s*\}/,
     'advancing must reset chapterHistory + awaitingSatisfaction and flip the canvas to the new chapter',
   );
   // Advancing to a new STORY chapter auto-fires the guide opener (引导优先).

@@ -82,8 +82,12 @@ test('cover-card 应用 sends current template ids; 跳过 sends an empty select
   // 封面/封底 resolved from the read-only draft skeleton kinds, not mock images.
   assert.match(body, /kindByPageIndex\.get\(p\.pageIndex\) === 'cover'/);
   assert.match(body, /kindByPageIndex\.get\(p\.pageIndex\) === 'ending'/);
-  // 应用: re-run auto-fill on the current cover/ending templates.
-  assert.match(body, /runCover\(\{ coverTemplateId, endingTemplateId \}\)/);
+  // 应用 (#236 ⑥): re-run auto-fill on the current cover/ending templates, but forward ONLY
+  // the ids that actually resolved — a null id reads as 跳过 agent-side, so a null lookup
+  // must never be sent as an "apply" (that was the "应用→已跳过" bug). The apply path spreads
+  // the non-null ids conditionally.
+  assert.match(body, /coverTemplateId != null \? \{ coverTemplateId \} : \{\}/);
+  assert.match(body, /endingTemplateId != null \? \{ endingTemplateId \} : \{\}/);
   // 跳过: empty selection → empty patch, never errors.
   assert.match(body, /runCover\(\{\}\)/);
 });
