@@ -74,6 +74,16 @@ test('④: entering/opening a live chapter surfaces the write-now exit (not only
   assert.match(fn![0], /appendWriteNowCard\(\)/, 'the opener must surface the write-now exit after its question');
 });
 
+test('④: the 不满意 (想改改) tweak path also re-offers the write-now exit', () => {
+  const src = source('EditorPort.tsx');
+  // After 不满意, the user is back in a talk-style loop (describe what to change). They must
+  // keep a standing way to (re-)write the chapter, not be stranded answering questions.
+  const card = /function appendSatisfactionCard\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(card, 'appendSatisfactionCard() body must be parseable');
+  const noBranch = card![0].slice(card![0].indexOf('sc-no'));
+  assert.match(noBranch, /appendWriteNowCard\(\)/, '不满意 must re-offer the write-now exit');
+});
+
 // ───────────────────────── ⑥ cover apply/skip not reversed ─────────────────────────
 test('⑥: "apply" only sends real (non-null) template ids; a null lookup degrades, never silently skips', () => {
   const src = source('EditorPort.tsx');

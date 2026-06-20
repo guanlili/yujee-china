@@ -2496,6 +2496,9 @@ function EditorBook({
           aT('好的,这一章先留着。哪里不太满意?点开那一页,告诉我想怎么改。',
              "Sure — let's keep this chapter. What's not quite right? Tap the page you mean and tell me what to change."),
         );
+        // #236 ④: keep a standing write-now exit on the tweak path too, so the user can
+        // re-write this chapter at any point instead of being stranded answering questions.
+        appendWriteNowCard();
         scrollChat();
       });
 
