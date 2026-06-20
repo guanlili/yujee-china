@@ -8,7 +8,8 @@ import { test } from 'node:test';
 // imperative DOM effect with no jsdom harness (tests run under tsx/node:test), so —
 // following the repo's existing source-assertion style (chapter-guide-satisfaction
 // .test.ts, theme-cover-cards-wiring.test.ts) — we lock the load-bearing structural
-// invariants. ⑨ is verified against the real buildSpreads at the bottom.
+// invariants for ①④⑥⑦⑧. ⑨ (cover/ending sit on solo pages) is untouched by this
+// branch and its real behavior is verified in spreads.test.ts, not here.
 
 const here = dirname(fileURLToPath(import.meta.url));
 function source(file: string): string {

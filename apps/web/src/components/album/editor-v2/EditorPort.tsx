@@ -2499,6 +2499,7 @@ function EditorBook({
         // #236 ④: keep a standing write-now exit on the tweak path too, so the user can
         // re-write this chapter at any point instead of being stranded answering questions.
         appendWriteNowCard();
+        restAwait(); // float the idle indicator below the write-now card (match other sites)
         scrollChat();
       });
 
