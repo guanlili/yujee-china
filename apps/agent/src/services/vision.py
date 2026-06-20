@@ -556,15 +556,48 @@ def _assemble_v3_tree(
     return V3LayoutTree(chapters=chapters)
 
 
+def _remap_describe_photo_ids(parsed: Any, real_by_simple: dict[str, str]) -> Any:
+    """识图模型用简单序号 id(1,2,3…)作答 → 映射回真实 photoId(serial→hash)。
+    映射 chapters[].photoIds 列表 + chapters[].scenes 的 key。模型偶发幻觉的未知序号
+    原样留下(不在映射表里),由 _assemble_v3_tree 的 unknown/omitted 校验拦截。"""
+    if not isinstance(parsed, dict):
+        return parsed
+    chapters = parsed.get("chapters")
+    if not isinstance(chapters, list):
+        return parsed
+    for ch in chapters:
+        if not isinstance(ch, dict):
+            continue
+        ids = ch.get("photoIds")
+        if isinstance(ids, list):
+            ch["photoIds"] = [
+                real_by_simple.get(i.strip(), i.strip()) if isinstance(i, str) else i
+                for i in ids
+            ]
+        scenes = ch.get("scenes")
+        if isinstance(scenes, dict):
+            ch["scenes"] = {
+                (real_by_simple.get(k.strip(), k.strip()) if isinstance(k, str) else k): v
+                for k, v in scenes.items()
+            }
+    return parsed
+
+
 async def _describe_call(
     slot: VisionSlot, photos: list[V3AnalyzePhoto], language: str, prompt_hint: str | None
 ) -> tuple[V3LayoutTree, int]:
     """One recognition-model call on `slot`. Returns (tree, tokens_billed). Raises
     ai_client.AIRequestError on upstream failure (caller decides failover) and
     VisionError on an unusable response."""
+    # 给识图模型只喂简单序号 id(1,2,3…),它抄不错;拿回结果再映射回真实 photoId。
+    # 真实 photoId 是长 hash,小模型(豆包)常抄岔/截断 → 「unknown photoId」失败。
+    simple_photos = [
+        p.model_copy(update={"photoId": str(i + 1)}) for i, p in enumerate(photos)
+    ]
+    real_by_simple = {str(i + 1): p.photoId for i, p in enumerate(photos)}
     messages = [
         {"role": "system", "content": _build_v3_system_prompt(language)},
-        {"role": "user", "content": _build_v3_user_content(photos, prompt_hint)},
+        {"role": "user", "content": _build_v3_user_content(simple_photos, prompt_hint)},
     ]
     response = await ai_client.chat_completion(
         base_url=slot.base_url,
@@ -588,6 +621,7 @@ async def _describe_call(
         raise VisionError(f"describe-content response unparseable: {exc}") from exc
 
     prompt_tokens, completion_tokens = ai_client.extract_usage(response)
+    parsed = _remap_describe_photo_ids(parsed, real_by_simple)
     tree = _assemble_v3_tree(parsed, photos)
     return tree, prompt_tokens + completion_tokens
 

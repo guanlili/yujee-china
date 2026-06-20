@@ -16,12 +16,19 @@ test('story gate UI only applies when the progress payload has V3 chapters', () 
   assert.match(
     src,
     /const hasStoryGate = \(storyProgress\?\.chapterOrder\.length \?\? 0\) > 0;/,
-    'non-V3 authoring progress returns chapterOrder: [] and must not show the gate',
+    'non-V3 authoring progress returns chapterOrder: [] and must keep the export gate locked',
   );
-  assert.match(
+  // §4.2: the standing「确定本章」breadcrumb button (showStoryGate / story-gate-btn) was
+  // replaced by the in-flow satisfaction card — confirmation is a per-write affordance now.
+  assert.doesNotMatch(
     src,
-    /const showStoryGate = mode === 'authoring' && hasStoryGate;/,
-    'the confirm-chapter button must be hidden for non-V3 authoring drafts',
+    /const showStoryGate =/,
+    'the standing confirm-chapter breadcrumb button must be gone (satisfaction card drives it)',
+  );
+  assert.doesNotMatch(
+    src,
+    /story-gate-btn/,
+    'the story-gate button must no longer be rendered',
   );
 });
 

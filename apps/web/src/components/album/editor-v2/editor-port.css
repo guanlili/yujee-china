@@ -592,19 +592,45 @@
 .editor-port .chapter-ticks{ padding:0 16px 10px; }
 .editor-port .chapter-tick{ width:7px; height:7px; border-radius:50%; background:var(--border-soft); border:1px solid var(--meta); flex-shrink:0; transition: all var(--motion-fast) var(--ease); }
 .editor-port .chapter-tick.done{ background:var(--fg); border-color:var(--fg); }
-.editor-port .story-gate-actions{
-  display:flex; justify-content:flex-end; padding:0 16px 12px;
-  border-bottom:1px solid var(--border-soft); flex-shrink:0;
+/* §4.2 满意/不满意卡片(章节故事环节,对话流内) —— AI 写完一章后,在对话里弹出两枚
+   按钮:满意(accent 实底,确定本章 → 下一章 / 末章进主题)+ 想改改(描边,留本章逐页调整)。
+   取代旧的常驻「确定本章」breadcrumb 按钮:确认是「写完即问」的随流卡片,不是常亮 CTA。 */
+.editor-port .satisfaction-card{
+  display:flex; flex-direction:column; gap:10px;
+  padding:13px 15px; background:var(--bg); border-radius:16px;
 }
-.editor-port .story-gate-btn{
-  min-height:30px; padding:0 12px; border-radius:9999px; border:1px solid var(--border);
-  background:var(--fg); color:#fff; font-size:12px; font-weight:600;
-  transition: all var(--motion-fast) var(--ease);
+.editor-port .satisfaction-card .sc-title{
+  font-size:13px; font-weight:600; color:var(--fg); letter-spacing:.01em;
 }
-.editor-port .story-gate-btn:hover{ transform:translateY(-1px); }
-.editor-port .story-gate-btn:disabled,
-.editor-port .story-gate-btn.is-disabled{
-  cursor:not-allowed; opacity:.48; transform:none;
+.editor-port .satisfaction-card .sc-actions{ display:flex; gap:8px; }
+.editor-port .satisfaction-card .sc-btn{
+  display:inline-flex; align-items:center; justify-content:center;
+  flex:1; min-height:36px; padding:0 14px; border-radius:9999px;
+  font-size:12.5px; font-weight:600; letter-spacing:.01em; cursor:pointer;
+  transition: transform var(--motion-fast) var(--ease),
+              box-shadow var(--motion-fast) var(--ease),
+              filter var(--motion-fast) var(--ease), opacity var(--motion-fast) var(--ease);
+}
+.editor-port .satisfaction-card .sc-yes{
+  border:none; background:var(--accent); color:#fff; box-shadow:0 1px 2px rgba(0,0,0,.08);
+}
+.editor-port .satisfaction-card .sc-yes:hover:not(:disabled){
+  transform:translateY(-1px); filter:brightness(1.06); box-shadow:0 3px 8px rgba(19,184,166,.28);
+}
+.editor-port .satisfaction-card .sc-yes:active:not(:disabled){
+  transform:translateY(0); filter:brightness(.96); box-shadow:0 1px 2px rgba(0,0,0,.08);
+}
+.editor-port .satisfaction-card .sc-no{
+  border:1px solid var(--border); background:var(--surface); color:var(--fg2);
+}
+.editor-port .satisfaction-card .sc-no:hover:not(:disabled){
+  background:var(--bg); transform:translateY(-1px);
+}
+.editor-port .satisfaction-card .sc-btn:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px;
+}
+.editor-port .satisfaction-card .sc-btn:disabled{
+  cursor:not-allowed; opacity:.5; transform:none; filter:none; box-shadow:none;
 }
 
 /* ─── Chat: unified loading block ─── */

@@ -309,29 +309,18 @@ function EditorBook({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [storyProgress, setStoryProgress] = useState<StoryProgress | null>(null);
-  const [storyProgressLoading, setStoryProgressLoading] = useState(mode === 'authoring');
-  const [storyConfirming, setStoryConfirming] = useState(false);
+  const [, setStoryProgressLoading] = useState(mode === 'authoring');
+  const [, setStoryConfirming] = useState(false);
   // building: the album is still generating (AGENT_RUNNING) — same editor chrome,
   // but the canvas shows a single cover skeleton and the chat shows the unified
   // loading state with the input disabled. The imperative flipbook/chat engine
   // below has no pages to drive yet, so it short-circuits.
   const building = mode === 'building';
   const breadcrumbStage = building ? 'analysing' : storyProgress?.stage ?? detail.album.stage;
+  // §4.2: chapter confirmation moved off the breadcrumb into the in-flow satisfaction
+  // card, so the standing「确定本章」button + its label/disabled state are gone. We keep
+  // hasStoryGate only for the authoring export-lock口径 below (§4.5a).
   const hasStoryGate = (storyProgress?.chapterOrder.length ?? 0) > 0;
-  const showStoryGate = mode === 'authoring' && hasStoryGate;
-  const currentChapterIndex = storyProgress?.currentChapterId
-    ? storyProgress.chapterOrder.indexOf(storyProgress.currentChapterId)
-    : -1;
-  const currentChapterNumber =
-    currentChapterIndex >= 0 ? currentChapterIndex + 1 : 0;
-  const storyGateDone = storyProgress?.exportUnlocked === true;
-  const storyGateDisabled =
-    storyProgressLoading || storyConfirming || storyGateDone || !storyProgress?.currentChapterId;
-  const storyGateLabel = storyGateDone
-    ? locale === 'zh' ? '可导出' : 'Export ready'
-    : currentChapterNumber > 0
-      ? locale === 'zh' ? `确定第 ${currentChapterNumber} 章` : `Confirm Ch. ${currentChapterNumber}`
-      : locale === 'zh' ? '确定本章' : 'Confirm chapter';
   const exportReadyLabel = locale === 'zh'
     ? '太棒了，你的书已经准备好了！'
     : 'Wonderful — your book is ready!';
@@ -650,6 +639,14 @@ function EditorBook({
     // recent turns before each send.
     const CHAT_HISTORY_MAX = 20;
     const chapterHistory: V3ChatTurn[] = [];
+    // §4.2「AI 先开口提问,不擅自动笔」(引导优先). Track which chapters have already had
+    // their auto-guide opener fired this session so re-renders / chapter hops don't
+    // double-prompt. A chapter is "guided" once its opening引导 turn has been sent.
+    const guidedChapters = new Set<string>();
+    // §4.2 满意/不满意: true between the AI finishing a write turn and the user choosing
+    // 满意/不满意. While awaiting the choice we don't fire another auto-guide opener
+    // (the satisfaction card is the live affordance).
+    let awaitingSatisfaction = false;
     let storyGate: StoryProgress | null = storyProgress;
     // The effect is installed once; storyGate is refreshed by the authoring progress calls.
     function isAuthoringExportLocked(progress: StoryProgress | null = storyGate) {
@@ -1369,6 +1366,18 @@ function EditorBook({
       if (next >= spreadCount()) next = 0;
       goToSpread(next);
     }
+    // ① Flip the book to a chapter's first page. Used when 「确定本章」 advances the
+    // live chapter so the canvas follows the chat into the next chapter. The
+    // chapter→page map comes from the draft skeleton (DraftSkeletonPage.chapterId);
+    // we resolve its first page, find the spread it sits on, and flip there. No-op
+    // when the skeleton/chapter/spread can't be resolved (leaves the view as-is).
+    function goToChapterById(chapterId: string) {
+      const pageIdx = draftSkel?.pages.find((p) => p.chapterId === chapterId)?.pageIndex;
+      if (pageIdx == null) return;
+      const sp = spreadIndexOfPage(spreads, pageIdx);
+      if (sp < 0) return;
+      goToSpread(sp);
+    }
 
     /* ─── Zoom + overview ─── */
     let zoom = 1;
@@ -1646,22 +1655,14 @@ function EditorBook({
     }
 
     function updateStoryGateUi(progress: StoryProgress | null = storyGate) {
+      // §4.2: only the export-lock UI is gate-driven now — the「确定本章」button is gone
+      // (confirmation lives in the in-flow satisfaction card). Keep the export PDF gate.
       const exportBtn = $('[data-action="exportPdf"]') as HTMLButtonElement | null;
       if (exportBtn && isAuthoring) {
         const locked = isAuthoringExportLocked(progress);
         exportBtn.disabled = locked;
         exportBtn.classList.toggle('is-disabled', locked);
         exportBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
-      }
-      const doneBtn = $('[data-action="markCurrentChapterDone"]') as HTMLButtonElement | null;
-      if (doneBtn) {
-        const disabled =
-          (progress?.chapterOrder.length ?? 0) === 0 ||
-          confirmingStoryChapter ||
-          progress?.exportUnlocked === true ||
-          !progress?.currentChapterId;
-        doneBtn.disabled = disabled;
-        doneBtn.classList.toggle('is-disabled', disabled);
       }
     }
 
@@ -1689,6 +1690,7 @@ function EditorBook({
         !storyGate?.currentChapterId ||
         storyGate.chapterOrder.length === 0
       ) return;
+      const prevChapterId = storyGate.currentChapterId;
       confirmingStoryChapter = true;
       setStoryConfirming(true);
       updateStoryGateUi();
@@ -1703,11 +1705,29 @@ function EditorBook({
         storyGate = json.data as StoryProgress;
         setStoryProgress(storyGate);
         updateStoryGateUi(storyGate);
+        // ① Advance into the next chapter: the server推进了 currentChapterId (album
+        // -service.markChapterDone). Flip the canvas to the new chapter's first page and
+        // clear the running chat log so chapter-chat (which replays chapterHistory) opens
+        // a fresh per-chapter context instead of leaking the previous chapter's turns.
+        const advancedTo = storyGate.currentChapterId;
+        const advanced = advancedTo != null && advancedTo !== prevChapterId;
+        if (advanced) {
+          // A fresh per-chapter context: clear the running log AND the awaiting flag so
+          // the new chapter opens clean (its own引导 opener, not the old chapter's gate).
+          chapterHistory.length = 0;
+          awaitingSatisfaction = false;
+          goToChapterById(advancedTo!);
+        }
         appendAiText(
           storyGate.exportUnlocked
             ? aT('所有章节已确定，现在可以导出 PDF。', 'All chapters are confirmed. PDF export is ready.')
             : aT('这一章已确定，我们继续下一章。', "This chapter is confirmed. Let's continue with the next one."),
         );
+        // §4.2 切到下一章 → Agent 主动开口引导新章 (only while still in the story 环节;
+        // confirming the LAST chapter advances stage→theme and is handled below).
+        if (advanced && storyGate.stage !== 'theme') {
+          void runChapterGuideOpener();
+        }
         // ③ 确定主题: confirming the LAST chapter advances stage story → theme (album
         // -service.markChapterDone). That's the cue to enter the theme 环节 — fetch the
         // recommendation and surface the palette-card in the chat flow (缺口#20).
@@ -1728,6 +1748,8 @@ function EditorBook({
         updateStoryGateUi();
       }
     }
+    // §4.2: markCurrentChapterDone is invoked directly from the in-flow satisfaction
+    // card (appendSatisfactionCard, 满意 button) — no DOM-button ref/publish needed.
 
     // ── ③④ theme/cover drivers (缺口#20) ──────────────────────────────────────
     // These fold a returned page-level patch into pagesState the SAME way the chapter
@@ -2244,8 +2266,9 @@ function EditorBook({
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(host, res.assistantReply);
         // Frame 4 红线: a talk turn applies NO patch — only write/edit mutate pages.
+        let wroteChapter = false;
         if (res.kind === 'write' && res.pagesTexts) {
-          applyChapterWrite(res.pagesTexts);
+          wroteChapter = applyChapterWrite(res.pagesTexts);
         } else if (res.kind === 'edit' && res.layoutPatch) {
           // The agent's V3LayoutPatchEntry carries images/texts; map to the browser
           // patch shape (imagesJson/textsJson) applyPatchToPages expects.
@@ -2265,12 +2288,123 @@ function EditorBook({
         // Record the turn for the next round's history (user + assistant).
         chapterHistory.push({ role: 'user', content: userMessage });
         chapterHistory.push({ role: 'assistant', content: res.assistantReply });
+        // §4.2 满意/不满意: the moment the AI finishes WRITING this chapter, offer the
+        // satisfaction choice in the flow. 满意→markChapterDone→下一章/主题;不满意→留本章
+        // 逐页调整. Not on talk/edit turns — only a fresh full-chapter write opens the gate.
+        if (wroteChapter) appendSatisfactionCard();
       } catch (e) {
         if (authErr(host, e)) return;
       }
       restAwait();
       scrollChat();
       updateAuthInputPlaceholder();
+    }
+
+    // §4.2 引导优先「AI 先开口提问,不擅自动笔」: entering an unfinished chapter, the
+    // Agent opens the turn — it asks (引导 Skill 话术: who/what/how/why) instead of
+    // waiting for the user. We fire ONE chapter-chat turn with an empty userMessage so
+    // the model dispatches kind=talk (引导) and returns a question; Frame 4 红线 keeps it
+    // patch-free. Only fires for a LIVE, NOT-yet-done chapter with no prior history this
+    // session (a chapter the user already conversed in re-opens to its own log, not a
+    // fresh opener). Never auto-writes.
+    async function runChapterGuideOpener() {
+      if (!isAuthoring || sending || awaitingSatisfaction) return;
+      const chapterId = storyGate?.currentChapterId ?? null;
+      if (!chapterId) return;
+      // Already confirmed chapter, or already opened/conversed this session → skip.
+      if (storyGate?.doneChapterIds.includes(chapterId)) return;
+      if (guidedChapters.has(chapterId) || chapterHistory.length > 0) return;
+      guidedChapters.add(chapterId);
+      // Hold the send lock for the opener round-trip so a user send can't race it onto
+      // the same chapter (both would POST). send()/runChapterChatTurn already respect it.
+      sending = true;
+      const host = appendThinkingShell();
+      const history = chapterHistory.slice(-CHAT_HISTORY_MAX);
+      try {
+        const res = await postChapterChat(albumId, {
+          language: currentLang === 'zh' ? 'zh' : 'en',
+          chapterId,
+          history,
+          // Empty userMessage = "open the chapter": the model has nothing to write yet,
+          // so it dispatches a 引导 (talk) question. contract allows max(500), no min.
+          userMessage: '',
+        });
+        settleThinking(host, 'analyzedFeedback');
+        appendReplyBody(host, res.assistantReply);
+        appendTime(host);
+        // Frame 4 红线: the opener is引导 only. A drifted model that still tried to
+        // write/edit is ignored here — the opener never applies a patch nor advances.
+        chapterHistory.push({ role: 'user', content: '' });
+        chapterHistory.push({ role: 'assistant', content: res.assistantReply });
+      } catch (e) {
+        // A failed opener shouldn't strand the chapter: let the user type to retry.
+        guidedChapters.delete(chapterId);
+        if (authErr(host, e)) { sending = false; return; }
+      }
+      sending = false;
+      restAwait();
+      scrollChat();
+    }
+
+    // §4.2 满意/不满意: after the AI writes a chapter (kind=write), surface two buttons in
+    // the chat flow — 满意 confirms the chapter (markCurrentChapterDone → next chapter /
+    // 末章→主题), 不满意 keeps this chapter and asks the user where it falls short, then the
+    // existing focusedPageIndex + edit-turn machinery does逐页 adjustment (no stage推进
+    // until满意, §8.3 stage 推进权在 Web service). Replaces the old always-on「确定本章」
+    // breadcrumb button: confirmation is now a per-write affordance, not a standing CTA.
+    function appendSatisfactionCard() {
+      awaitingSatisfaction = true;
+      const card = document.createElement('div');
+      card.className = 'msg ai max-w-full';
+      const inner = document.createElement('div');
+      inner.className = 'satisfaction-card';
+      const title = document.createElement('div');
+      title.className = 'sc-title';
+      title.textContent = aT('这一章写好了,你满意吗?', "Here's this chapter — happy with it?");
+      const row = document.createElement('div');
+      row.className = 'sc-actions';
+
+      const yes = document.createElement('button');
+      yes.type = 'button';
+      yes.className = 'sc-btn sc-yes';
+      yes.textContent = aT('满意,下一章', 'Looks great');
+      yes.addEventListener('click', () => {
+        if (sending || confirmingStoryChapter) return;
+        // Lock the card so a double-tap can't double-confirm; the next chapter's
+        // opener fires from markCurrentChapterDone's advance branch.
+        row.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
+        awaitingSatisfaction = false;
+        appendUserText(aT('满意,继续下一章', 'Looks great — next chapter'));
+        scrollChat();
+        void markCurrentChapterDone();
+      });
+
+      const no = document.createElement('button');
+      no.type = 'button';
+      no.className = 'sc-btn sc-no';
+      no.textContent = aT('想改改', 'Tweak it');
+      no.addEventListener('click', () => {
+        if (sending) return;
+        row.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
+        awaitingSatisfaction = false;
+        // Stay on this chapter. Ask which page falls short and run逐页 adjustment via
+        // the existing focusedPageIndex + edit-turn path (user taps a page, says what
+        // to change). This is a引导 (talk) ask — no patch, no stage推进.
+        appendUserText(aT('还想再改改', "I'd like to tweak it"));
+        appendAiText(
+          aT('好的,这一章先留着。哪里不太满意?点开那一页,告诉我想怎么改。',
+             "Sure — let's keep this chapter. What's not quite right? Tap the page you mean and tell me what to change."),
+        );
+        scrollChat();
+      });
+
+      row.appendChild(yes);
+      row.appendChild(no);
+      inner.appendChild(title);
+      inner.appendChild(row);
+      card.appendChild(inner);
+      chatBody!.appendChild(card);
+      scrollChat();
     }
 
     // Render the chapter-title candidates (≤4) as picker chips under the reply.
@@ -2486,7 +2620,9 @@ function EditorBook({
       closeDetail,
       toggleOverview,
       resetZoom,
-      markCurrentChapterDone,
+      // §4.2: markCurrentChapterDone has no data-action node anymore — the standing
+      // 「确定本章」breadcrumb button was replaced by the in-flow satisfaction card, whose
+      // 满意 button calls markCurrentChapterDone directly (see appendSatisfactionCard).
       // ③④ theme/cover drivers (缺口#20). Wired as data-action entry points.
       //   • recommendTheme → fetch candidates + render the palette-card; the user picks ONE
       //     theme on the card, which fires apply-theme (no auto-apply-first fallback).
@@ -2600,8 +2736,11 @@ function EditorBook({
       // Editing (post-finalize): render the prior conversation, then sit idle.
       restAwait();
       void loadHistory().then(() => restAwait());
+      // Authoring loads the story-gate together with history below (so the auto-guide
+      // opener can read the live currentChapterId); editing only needs the gate for
+      // the export-lock UI, so fetch it here.
+      void loadStoryGate();
     }
-    void loadStoryGate();
 
     /* ─── Authoring init (#162: render-first + pointed single-page edits) ───
        No theme→chapter dialog machine, no auto-advance, no finalize CTA. init
@@ -2618,30 +2757,24 @@ function EditorBook({
       // surface anymore.
       $('.authoring-finish-bar')?.remove();
 
-      // Lead with Yujee's self-intro, then the single render-first system message:
-      // the book is already rendered; ask the user to point at a page to change it.
-      appendAiText(
-        aT(
-          '我是 Yujee，你的杂志制作小助手。文案不满意，随时可以调。',
-          "Hi, I'm Yujee — your magazine-making assistant. Don't love the wording? Tweak it anytime.",
-        ),
-      );
+      // ③ The fixed self-intro greeting ("我是 Yujee…/Hi, I'm Yujee…") is gone — the
+      // user writes their own opening per chapter via chapter-chat, so a canned banner
+      // is redundant. The chat opens straight into the rendered draft + the user's own
+      // conversation (loaded below).
       // No theme step anymore; the stepper sits on the editing/story pill, and the
       // idle await jellyfish floats to the bottom of the thread.
       setChatState(3);
       updateAuthInputPlaceholder();
-      // Render the prior conversation; only a brand-new album (no history yet) gets
-      // the "first version — tap a page" onboarding invite.
-      void loadHistory().then((n) => {
-        if (n === 0) {
-          appendAiText(
-            aT(
-              '我已经写好第一版，哪页不满意，点开那页跟我说就行。',
-              "I've written the first version — tap any page you'd like to change and tell me.",
-            ),
-          );
-        }
+      // ④ Render the prior conversation. The old "我已经写好第一版,点开那页跟我说" copy was
+      // a V2 leftover (render-first single-page edit flow). V3 authors chapter by chapter
+      // through chapter-chat — there is no pre-written "first version" to tap-edit — so the
+      // onboarding line is removed; the brand-new-album path now just settles to idle.
+      // §4.2 引导优先: once history + story-gate are loaded, if this chapter has no prior
+      // conversation and isn't confirmed yet, the Agent OPENS the chapter with a引导
+      // question (runChapterGuideOpener) instead of sitting idle waiting for the user.
+      void Promise.all([loadHistory(), loadStoryGate()]).then(([shown]) => {
         restAwait();
+        if (shown === 0) void runChapterGuideOpener();
       });
     }
 
@@ -2797,6 +2930,12 @@ function EditorBook({
       imgEditOverlay?.remove();
     };
   }, []);
+
+  // §4.2: the standing「确定本章」breadcrumb button (and its post-mount click binding)
+  // is removed — chapter confirmation is driven from the in-flow satisfaction card
+  // (appendSatisfactionCard → markCurrentChapterDone), which lives inside the mount
+  // effect and binds its own buttons as it appends them. No DOM-button re-binding
+  // effect is needed anymore.
 
   // ── Static markup: transcription of editor.html <body> (class→className etc.) ──
   return (
@@ -2966,18 +3105,11 @@ function EditorBook({
                 chapterProgress={storyProgress}
               />
             )}
-            {showStoryGate && (
-              <div className="story-gate-actions">
-                <button
-                  className="story-gate-btn"
-                  data-action="markCurrentChapterDone"
-                  disabled={storyGateDisabled}
-                  aria-disabled={storyGateDisabled ? 'true' : 'false'}
-                >
-                  {storyGateLabel}
-                </button>
-              </div>
-            )}
+            {/* §4.2 满意/不满意: the standing「确定本章」breadcrumb button is gone — chapter
+                confirmation is now a per-write affordance (appendSatisfactionCard, in the
+                chat flow): the AI writes a chapter → 满意/不满意 buttons appear inline. 满意
+                → markCurrentChapterDone (advances chapter / 末章→主题); 不满意 → stays on the
+                chapter for逐页 adjustment. No always-on CTA in the breadcrumb. */}
 
             {/* 待导出「流程结束」提示(WP5.2 / §4.5b):章节故事全章 done(stage 推进过
                 story → exportUnlocked)后,在面包屑下出现「太棒了，你的书已经准备好了！」,
