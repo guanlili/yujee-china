@@ -430,20 +430,52 @@ def _build_v3_user_content(
     photos: list[V3AnalyzePhoto], prompt_hint: str | None
 ) -> list[dict[str, Any]]:
     """Build the multi-image user turn. The manifest carries each photoId + its
-    code-computed `takenAt` as the分章 time signal (§4.1(c)). NO GPS/place is ever
-    placed in the manifest (§3 privacy)."""
+    code-computed `takenAt` as the分章 time signal (§4.1(c)), plus — when the
+    browser pre-grouped photos (#232) — an opaque `cluster` label per photo so the
+    model honors cluster boundaries. NO GPS/place is ever placed in the manifest
+    (§3 privacy); `cluster` is a bare same-place/same-time tag, not a coordinate.
+
+    NOTE: cluster labels are expressed in the SIMPLE-id space (1,2,3…) the model
+    sees — `photos` here are already remapped by `_describe_call`, and their
+    `clusterId` rides through `model_copy`. They are RE-LABELED to c1/c2/… in the
+    order clusters first appear in THIS call's manifest so the model never sees a
+    global cluster index that doesn't match its local batch."""
+    # Re-label this call's clusters to dense local c1/c2/… (order of first
+    # appearance). Photos without a clusterId get no tag → model groups them freely.
+    local_label: dict[str, str] = {}
+    for photo in photos:
+        cid = photo.clusterId
+        if cid is not None and cid not in local_label:
+            local_label[cid] = f"c{len(local_label) + 1}"
+    has_clusters = bool(local_label)
+
     manifest_lines = []
     for idx, photo in enumerate(photos):
         taken = (photo.exif.takenAt if photo.exif else None) or "unknown"
-        manifest_lines.append(
-            f"{idx + 1}. photoId={photo.photoId} takenAt={taken}"
-        )
+        line = f"{idx + 1}. photoId={photo.photoId} takenAt={taken}"
+        if photo.clusterId is not None:
+            line += f" cluster={local_label[photo.clusterId]}"
+        manifest_lines.append(line)
     manifest = "\n".join(manifest_lines)
     hint_block = (
         f"User memoir prompt (context only, do not re-emit verbatim):\n{prompt_hint}\n\n"
         if prompt_hint
         else ""
     )
+    cluster_block = ""
+    if has_clusters:
+        cluster_block = (
+            "\n\nThese photos are PRE-GROUPED into clusters (the `cluster` tag in "
+            "the manifest marks which cluster each photo belongs to). Rules:\n"
+            "  - Photos of the SAME cluster MUST stay together and go into "
+            "chapter(s) that contain NO photo from any other cluster.\n"
+            "  - Photos of DIFFERENT clusters must NEVER be merged into one "
+            "chapter.\n"
+            "  - A cluster MAY be split into several adjacent sub-chapters if it "
+            "is large and spans distinct scenes — but each such chapter still "
+            "holds only that one cluster's photos.\n"
+            "  - Emit clusters in the manifest order (c1, then c2, …)."
+        )
     parts: list[dict[str, Any]] = [
         {
             "type": "text",
@@ -452,7 +484,8 @@ def _build_v3_user_content(
                 f"Photos follow in order (count={len(photos)}). Use these exact "
                 "photoId values; takenAt is the capture-time signal for chapter "
                 "boundaries:\n"
-                f"{manifest}\n\n"
+                f"{manifest}"
+                f"{cluster_block}\n\n"
                 'Return {"chapters":[...]} per the system instructions.'
             ),
         }
@@ -583,6 +616,164 @@ def _remap_describe_photo_ids(parsed: Any, real_by_simple: dict[str, str]) -> An
     return parsed
 
 
+# =============================================================================
+# WP-C (#232): cluster-aware describe — partition by clusterId, schedule whole
+# clusters into concurrent routes by COUNT, merge local trees in global order.
+# =============================================================================
+
+
+def _partition_into_clusters(
+    photos: list[V3AnalyzePhoto],
+) -> list[list[V3AnalyzePhoto]]:
+    """Group photos by `clusterId` (the browser's same-place/same-time label,
+    #232). Returns a list of clusters; each cluster keeps its photos in input
+    order. Clusters are SEQUENCED by their earliest `takenAt` (time order); ties
+    and missing takenAt fall back to the cluster's first-appearance order. Cluster
+    = chapter floor: a cluster is never split across routes.
+
+    Photos whose `clusterId` is None are NOT merged together — each null photo is
+    its own singleton "cluster" so the model is free to group it. When EVERY photo
+    is null this yields one singleton per photo, which the count-based scheduler
+    still collapses into the single legacy route (≤20) or balanced routes."""
+    order: list[str] = []  # cluster keys in first-appearance order
+    members: dict[str, list[V3AnalyzePhoto]] = {}
+    null_seq = 0
+    for photo in photos:
+        if photo.clusterId is None:
+            null_seq += 1
+            key = f"\x00null:{null_seq}"  # unique sentinel → singleton cluster
+        else:
+            key = photo.clusterId
+        if key not in members:
+            members[key] = []
+            order.append(key)
+        members[key].append(photo)
+
+    appear_idx = {key: i for i, key in enumerate(order)}
+
+    def _earliest(key: str) -> tuple[int, str, int]:
+        # Sort key: (has_taken_at?, earliest takenAt iso, first-appearance index).
+        # Photos with takenAt sort before those without; ISO strings sort
+        # chronologically; first-appearance index is the stable tiebreaker.
+        takens = [
+            p.exif.takenAt
+            for p in members[key]
+            if p.exif and p.exif.takenAt
+        ]
+        if takens:
+            return (0, min(takens), appear_idx[key])
+        return (1, "", appear_idx[key])
+
+    return [members[k] for k in sorted(order, key=_earliest)]
+
+
+def _plan_describe_routes(
+    clusters: list[list[V3AnalyzePhoto]], route_count: int
+) -> list[list[V3AnalyzePhoto]]:
+    """Bin-pack whole clusters into `route_count` routes balanced by photo count
+    (greedy largest-cluster-first into the currently-lightest route). A cluster is
+    NEVER split across routes (簇不跨路). Cluster global order is recoverable at
+    merge time from each photo's position, so packing order here is irrelevant to
+    the final chapter sequence. Empty routes are dropped."""
+    if route_count <= 1:
+        flat = [p for cluster in clusters for p in cluster]
+        return [flat] if flat else []
+
+    # Largest clusters first so a single oversized cluster lands alone-ish and
+    # small clusters fill the gaps → balanced张数 (bin-pack first-fit-decreasing).
+    ordered = sorted(clusters, key=len, reverse=True)
+    routes: list[list[V3AnalyzePhoto]] = [[] for _ in range(route_count)]
+    loads = [0] * route_count
+    for cluster in ordered:
+        target = min(range(route_count), key=lambda i: loads[i])
+        routes[target].extend(cluster)
+        loads[target] += len(cluster)
+    return [r for r in routes if r]
+
+
+def _route_count_for(total: int, settings: Any) -> int:
+    """Count-driven concurrency WIDTH (#232): ≤lo → 1, >lo → 2, >hi → 3 (capped
+    by describe_max_concurrency). Thresholds never re-cut semantic clusters."""
+    lo = settings.describe_concurrency_threshold_lo
+    hi = settings.describe_concurrency_threshold_hi
+    if total <= lo:
+        return 1
+    width = 3 if total > hi else 2
+    return min(width, max(1, settings.describe_max_concurrency))
+
+
+def _merge_route_trees(
+    sequenced_photos: list[V3AnalyzePhoto], route_trees: list[V3LayoutTree]
+) -> V3LayoutTree:
+    """Concatenate per-route local chapter trees into one global tree (#232).
+
+    `sequenced_photos` is the photo list already flattened in GLOBAL CLUSTER ORDER
+    (clusters sorted by earliest takenAt — see `_partition_into_clusters`), NOT raw
+    request order. Routes carry disjoint sets of whole clusters, so ordering each
+    route's chapters by the sequenced index of their first photo lands chapters in
+    cluster (time) order across routes; a cluster sub-chaptered within one route
+    stays contiguous because it occupies a contiguous range of the sequenced order.
+    Chapters are then renumbered ch_1..N; photo order within a chapter is preserved
+    as authored. The union MUST cover every photo exactly once (each route already
+    passed `_assemble_v3_tree`'s one-photo-one-chapter guard on its slice; here we
+    re-assert global coverage so a scheduling/merge bug can't silently drop or
+    duplicate a photo). We ALSO enforce the cluster boundary deterministically: a
+    single chapter may not mix photos from two different (non-null) clusters — the
+    prompt requests this, and a misbehaving model that merges clusters is rejected
+    here so 异簇不并章 holds even if the model ignores the instruction."""
+    global_pos = {p.photoId: i for i, p in enumerate(sequenced_photos)}
+    cluster_of = {p.photoId: p.clusterId for p in sequenced_photos}
+
+    ordered_chapters: list[V3Chapter] = []
+    for tree in route_trees:
+        for ch in tree.chapters:
+            ordered_chapters.append(ch)
+    # Stable sort by the sequenced (cluster/time) index of each chapter's first
+    # photo → chapters land in global cluster order across routes.
+    ordered_chapters.sort(
+        key=lambda ch: global_pos.get(ch.photos[0].photoId, len(global_pos))
+        if ch.photos
+        else len(global_pos)
+    )
+
+    seen: set[str] = set()
+    renumbered: list[V3Chapter] = []
+    for ch in ordered_chapters:
+        chapter_clusters: set[str] = set()
+        for ph in ch.photos:
+            if ph.photoId in seen:
+                raise VisionError(
+                    f"describe-content merge duplicated photoId: {ph.photoId}"
+                )
+            seen.add(ph.photoId)
+            cid = cluster_of.get(ph.photoId)
+            if cid is not None:  # null-cluster photos carry no boundary constraint
+                chapter_clusters.add(cid)
+        if len(chapter_clusters) > 1:
+            raise VisionError(
+                "describe-content merge mixed distinct clusters in one chapter: "
+                + ", ".join(sorted(chapter_clusters))
+            )
+        renumbered.append(
+            V3Chapter(
+                chapterId=f"ch_{len(renumbered) + 1}",
+                description=ch.description,
+                accentColor=ch.accentColor,
+                artFont=ch.artFont,
+                photos=ch.photos,
+            )
+        )
+
+    missed = [p.photoId for p in sequenced_photos if p.photoId not in seen]
+    if missed:
+        raise VisionError(
+            f"describe-content merge omitted photoIds: {', '.join(missed)}"
+        )
+    if not renumbered:
+        raise VisionError("describe-content merge produced no chapters")
+    return V3LayoutTree(chapters=renumbered)
+
+
 # 小模型(豆包)非确定性偷懒:照片一多就漏几张/重复/错认序号。这类是可恢复失误,
 # 带「必须覆盖全部 N 张」纠正提示 + 升温在同一 slot 内重抽,通常能修;结构性错误
 # (缺 chapters[] 等)重试无益,直接上抛。注:浏览器侧 geo+date 预分组上线后单批变小,
@@ -686,6 +877,59 @@ async def _describe_call(
     raise last_err or VisionError("describe-content failed after retries")
 
 
+async def _describe_on_slot(
+    slot: VisionSlot,
+    photos: list[V3AnalyzePhoto],
+    language: str,
+    prompt_hint: str | None,
+    *,
+    settings: Any,
+) -> tuple[V3LayoutTree, int, int]:
+    """Cluster-aware describe on ONE provider slot (#232). Returns
+    (merged_tree, tokens_billed, route_count).
+
+    - Partition photos by clusterId, schedule whole clusters into N count-driven
+      concurrent routes (N=1 degrades to the legacy single call).
+    - Run each route's `_describe_call` concurrently via asyncio.gather; each route
+      keeps its own omitted-photo retry safety net over its own slice.
+    - Merge the per-route local trees in global cluster order, renumber ch_1..N.
+
+    Raises ai_client.AIRequestError if ANY route hits an upstream transport
+    failure (caller decides failover); VisionError on an unusable/merge-invalid
+    response. gather(return_exceptions=False) means the first transport error
+    propagates and the slow-but-healthy paths are cancelled — failover then runs
+    ONCE on the other slot for the whole batch, never per-route, so concurrency
+    never multiplies the failover fan-out."""
+    clusters = _partition_into_clusters(photos)
+    route_count = _route_count_for(len(photos), settings)
+    routes = _plan_describe_routes(clusters, route_count)
+
+    if len(routes) <= 1:
+        # Legacy single-batch path (also the all-null backward-compatible case).
+        tree, tokens = await _describe_call(slot, photos, language, prompt_hint)
+        return tree, tokens, 1
+
+    log.info(
+        "v3_describe.routes.plan",
+        provider=slot.provider,
+        routes=len(routes),
+        sizes=[len(r) for r in routes],
+    )
+    results = await asyncio.gather(
+        *(
+            _describe_call(slot, route_photos, language, prompt_hint)
+            for route_photos in routes
+        )
+    )
+    route_trees = [tree for tree, _ in results]
+    total_tokens = sum(tokens for _, tokens in results)
+    # Merge in GLOBAL CLUSTER ORDER: flatten the takenAt-sequenced partition so the
+    # merge orders cross-route chapters by cluster/time, not by raw request order.
+    sequenced = [p for cluster in clusters for p in cluster]
+    merged = _merge_route_trees(sequenced, route_trees)
+    return merged, total_tokens, len(routes)
+
+
 async def describe_content(
     photos: list[V3AnalyzePhoto],
     *,
@@ -733,8 +977,14 @@ async def describe_content(
         photo_count=photo_count,
     )
     try:
-        tree, tokens = await asyncio.wait_for(
-            _describe_call(primary_slot, photos, language, prompt_hint),
+        # The deadline wraps the WHOLE concurrent route set (asyncio.gather inside
+        # _describe_on_slot). One slow route therefore trips failover ONCE for the
+        # entire batch — never per-route — so concurrency never multiplies the
+        # failover fan-out. Wall-clock ≈ the slowest route, not their sum (#232).
+        tree, tokens, routes = await asyncio.wait_for(
+            _describe_on_slot(
+                primary_slot, photos, language, prompt_hint, settings=settings
+            ),
             timeout=deadline,
         )
         log.info(
@@ -742,13 +992,14 @@ async def describe_content(
             provider=primary_slot.provider,
             model=primary_slot.model,
             chapters=len(tree.chapters),
+            routes=routes,
         )
         return V3DescribeResult(
             tree=tree,
             tokens_billed=tokens,
             model=primary_slot.model,
             provider=primary_slot.provider,
-            call_count=1,
+            call_count=routes,
         )
     except asyncio.TimeoutError as exc:
         # Batch deadline overrun → 降级火山.
@@ -790,8 +1041,8 @@ async def describe_content(
     # that deadline exists to flip a slow-but-healthy GPT over to 火山, not to
     # prematurely cut 火山 (whose own per-call ceiling is the larger ark budget).
     try:
-        tree, tokens = await _describe_call(
-            fallback_slot, photos, language, prompt_hint
+        tree, tokens, routes = await _describe_on_slot(
+            fallback_slot, photos, language, prompt_hint, settings=settings
         )
     except ai_client.AIRequestError as exc:
         raise VisionError(f"describe-content火山 failover failed: {exc}") from exc
@@ -801,11 +1052,14 @@ async def describe_content(
         provider=fallback_slot.provider,
         model=fallback_slot.model,
         chapters=len(tree.chapters),
+        routes=routes,
     )
+    # call_count = primary attempt (1) + the failover slot's真实路数 so Usage
+    # reflects that failover happened AND how many concurrent calls produced it.
     return V3DescribeResult(
         tree=tree,
         tokens_billed=tokens,
         model=fallback_slot.model,
         provider=fallback_slot.provider,
-        call_count=2,
+        call_count=1 + routes,
     )
