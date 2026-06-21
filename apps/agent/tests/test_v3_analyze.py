@@ -20,7 +20,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from src.routes import v3_album
+from src.flows import analyze
 from src.schemas import (
     V3AnalyzeCompleted,
     V3AnalyzeRequest,
@@ -150,7 +150,7 @@ def test_analyze_photo_rejects_payloads_over_800kb():
 
 @pytest.mark.parametrize("count", [1, 2, 10, 30])
 def test_analyze_mock_emits_stages_and_tree(captured_callbacks, count):
-    asyncio.run(v3_album._run_analyze(_req(count)))
+    asyncio.run(analyze._run_analyze(analyze._Job(_req(count))))
 
     events = [c["event"] for c in captured_callbacks]
     assert events.count("completed") == 1, events
@@ -224,7 +224,7 @@ def test_analyze_template_failure_resets_stage(monkeypatch, captured_callbacks):
 
     monkeypatch.setattr(select_template, "select_template_pages", boom)
 
-    asyncio.run(v3_album._run_analyze(_req(3)))
+    asyncio.run(analyze._run_analyze(analyze._Job(_req(3))))
 
     failed = [c for c in captured_callbacks if c["event"] == "failed"]
     assert len(failed) == 1, captured_callbacks
@@ -245,17 +245,17 @@ def test_analyze_timeout_resets_the_active_stage(monkeypatch, captured_callbacks
     """If the background budget expires after a stage has started, the failed
     callback carries that stage and resets it so retry state is clean."""
 
-    async def slow(_req):
-        await v3_album._emit_progress(_req, "template", 50)
+    async def slow(_job):
+        await analyze._emit_progress(_job, "template", 50)
         await asyncio.sleep(0.5)
 
     class _Budget:
         background_task_timeout_seconds = 0.01
 
-    monkeypatch.setattr(v3_album, "_run_analyze", slow)
-    monkeypatch.setattr(v3_album, "get_settings", lambda: _Budget())
+    monkeypatch.setattr(analyze, "_run_analyze", slow)
+    monkeypatch.setattr(analyze, "get_settings", lambda: _Budget())
 
-    asyncio.run(v3_album._run_analyze_with_timeout(_req(2)))
+    asyncio.run(analyze.run_with_timeout(_req(2)))
 
     failed = [c for c in captured_callbacks if c["event"] == "failed"]
     assert len(failed) == 1, captured_callbacks
@@ -273,17 +273,17 @@ def test_analyze_unhandled_error_resets_the_active_stage(monkeypatch, captured_c
     """Unexpected errors after progress has started preserve the active stage in
     the terminal failed callback, matching handled stage failures."""
 
-    async def boom(_req):
-        await v3_album._emit_progress(_req, "preview", 25)
+    async def boom(_job):
+        await analyze._emit_progress(_job, "preview", 25)
         raise RuntimeError("callback-adjacent boom")
 
     class _Budget:
         background_task_timeout_seconds = 10
 
-    monkeypatch.setattr(v3_album, "_run_analyze", boom)
-    monkeypatch.setattr(v3_album, "get_settings", lambda: _Budget())
+    monkeypatch.setattr(analyze, "_run_analyze", boom)
+    monkeypatch.setattr(analyze, "get_settings", lambda: _Budget())
 
-    asyncio.run(v3_album._run_analyze_with_timeout(_req(2)))
+    asyncio.run(analyze.run_with_timeout(_req(2)))
 
     failed = [c for c in captured_callbacks if c["event"] == "failed"]
     assert len(failed) == 1, captured_callbacks
