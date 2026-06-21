@@ -336,8 +336,9 @@ async def submit_recommend(req: V3RecommendRequest) -> dict[str, Any]:
     """③ 主题/章节色-推荐 endpoint (§8 同步 / WP3.1 #189).
 
     Synchronous (front-end spinner; §8.1 其余秒级同步). The recognition model runs
-    the two recommend Skills (recommend-theme + recommend-chapter-colors) and returns
-    theme CANDIDATES + one {accentColor, artFont} per chapter. Stateless (§8.3): the
+    the recommend Skills (recommend-theme + recommend-chapter-colors) and returns one
+    {subject, accentColor, artFont} per chapter (subject = the chapter title, #236).
+    Stateless (§8.3): the
     Agent only suggests — it never writes the tree (apply-theme/WP3.2 does, after the
     user picks) and never advances stage (stage 推进权在 Web). Input is TEXT ONLY
     (chapter overviews + analysis summary); no base64 here. Failures answer in the
@@ -372,7 +373,6 @@ async def submit_recommend(req: V3RecommendRequest) -> dict[str, Any]:
     log.info(
         "v3_recommend.completed",
         album_id=req.albumId,
-        theme_options=len(response.themeOptions),
         chapter_colors=len(response.chapterColors),
     )
     return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}

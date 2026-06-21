@@ -14,7 +14,7 @@ V3 是五环节状态机,但 Agent 自身无状态。Web 持 `draft_json` author
 
 | Ring | Agent responsibility | Mode |
 |---|---|---|
-| ① 分析 | describe -> group beat -> template -> preview | async callback |
+| ① 分析 | describe (cluster-aware, may concurrent) -> merge -> group beat -> template -> preview | async callback |
 | ② 章节故事 | one turn dispatch: talk / write / edit | sync |
 | ③ 主题与章节色 | recommend candidates, then deterministic apply | sync |
 | ④ 书籍设计 | deterministic cover/ending patch or skip | sync |
@@ -60,7 +60,18 @@ Code fills or overwrites:
 - `accentColor: null`;
 - `artFont: null`.
 
-Stage0 reads `takenAt` only. It does not read GPS and does not produce a place dimension. Grouping is part of the recognition-model output and can use time plus visual coherence only.
+Stage0 reads `takenAt` only. It does not read GPS and does not produce a place dimension. Grouping is part of the recognition-model output and can use time, the opaque `clusterId` label, and visual coherence — never coordinates.
+
+### 2.1.1 Cluster-aware concurrent describe (#232 — framework; details in WP-C)
+
+The browser may stamp each analyze photo with an opaque `clusterId` (`c1`/`c2`/…) derived locally from EXIF time/GPS (a same-place/same-time label, never a coordinate — see `architecture.md §3`). When clusters are present, describe is cluster-aware and may run concurrently:
+
+- **Cluster = chapter floor**: photos sharing a `clusterId` stay together (same-cluster-must-join), different clusters must split. Clusters are sequenced by time order.
+- **Scheduling (count-driven, not semantic)**: total photo count decides how many concurrent describe calls run (e.g. ≤20 → single call with cluster boundaries written into the prompt; >20 → pack whole clusters into 2 concurrent calls via `asyncio.gather`, >40 → 3; a single oversized cluster gets its own call and may be sub-chaptered by the model). Count thresholds only set concurrency width; they never re-cut the semantic grouping.
+- **Merge**: per-call local chapter trees are concatenated in global cluster order, chapters renumbered `ch_1..N`, photo order preserved; the union must cover every photo (the existing omitted-photo retry safety net still applies per call).
+- **Backward compatible**: when `clusterId` is absent/null on all photos, describe degrades to the current single-batch "model groups freely" path with no behavior change.
+
+> WP-A only wires the `clusterId` contract field and these doc/notes. The concurrent scheduler, prompt cluster-boundary injection, and merge/renumber implementation land in WP-C (#232).
 
 ### 2.2 Group beat
 
@@ -136,23 +147,30 @@ Patch rules:
 
 Input is text/metadata only: chapter descriptions, photo scene descriptions, optional analysis summary, optional user message. It carries no base64.
 
-Output:
+Output (#236: purely per-chapter — no album-level theme options):
 
-- 1..3 theme options;
-- exactly one `accentColor/artFont` recommendation per chapter;
+- exactly one `{subject, accentColor, artFont}` recommendation per chapter, where
+  `subject` is the chapter's one-line title (grounded in that chapter, no trailing
+  punctuation; the recommender clamps a missing subject to a neutral fallback);
 - assistant reply;
 - usage.
 
-The Web client rejects missing, duplicate, or extra chapter color coverage as invalid Agent output.
+The Web client rejects missing, duplicate, or extra chapter coverage as invalid Agent output.
 
 ### 5.2 Apply Theme
 
 `POST /v3/apply-theme` is deterministic.
 
-- It receives the user-selected theme and per-chapter choices.
+- It receives the per-chapter choices (`{subject, accentColor, artFont}`).
 - It emits page patches for SVG/decor surfaces where applicable.
+- #236: it ALSO writes each chapter's `subject` into that chapter's `title` role text
+  slot (clamped to the slot `maxChars`) — the chapter title is persisted. This is a
+  deterministic, user-confirmed write at the theme stage; it does not call any model and
+  is unrelated to the §4.1 analyze invariant (what the LLM writes in the analyze stage).
 - It does not call any model.
-- Web persists `accentColor/artFont` back into the authoring tree and advances the stage when applicable.
+- Web persists `accentColor/artFont` into the authoring tree, folds the page patch
+  (subject→title + accent→svg) into `draft_json.pages`, and advances the stage when
+  applicable.
 - Finalize bakes text carriers from the tree into the render `Page.texts` format.
 
 ---
@@ -249,7 +267,7 @@ Web maps `AGENT_OUTPUT_VALIDATION` to Web-side `AGENT_INVALID_OUTPUT` before exp
 
 ### 9.3 Redact rules
 
-Privacy boundary matches `docs/architecture.md §3`: base64 and original photos are memory-only; Stage0 reads only `takenAt`; grouping uses time and visual coherence; no GPS or place dimension enters the tree.
+Privacy boundary matches `docs/architecture.md §3`: base64 and original photos are memory-only; Stage0 reads only `takenAt`; grouping uses time, the opaque `clusterId` label (#232), and visual coherence; no GPS, coordinate, or place dimension enters the request or the tree. `clusterId` is an opaque same-place/same-time label, not a coordinate, so it is **not** a redact target — the redact list keeps `lat`/`lng`/… as a defensive red line against real coordinates.
 
 The redact key set is:
 

@@ -3,12 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getSession } from '@/lib/auth/client';
-import { compressFile } from '@/lib/photo/compress';
+import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
 import { photoStore } from '@/lib/photo/store';
 import {
+  clusterCompressedPhotos,
+  compressedPhotosFromCache,
   CreditInsufficientError,
-  generationPhotosFromCache,
-  type GenerationPhoto,
   PhotosUnavailableError,
   UnauthorizedError,
   photosFromStore,
@@ -23,7 +23,10 @@ type LocalPhoto = {
   previewUrl: string;
   width: number;
   height: number;
-  generationPhoto?: GenerationPhoto;
+  // Holds the compressed photo (incl. transient clusterGeo) so clustering can run
+  // over the WHOLE selected set at submit time — clusterId is a property of the set,
+  // never of a single file, so it can't be assigned in the per-file onFiles loop.
+  compressed?: CompressedPhoto;
 };
 
 interface Props {
@@ -71,7 +74,7 @@ export function HeroComposer({
     router.push(loginPath);
   };
 
-  const submitDraft = async (draft: GenerationDraft, cachedPhotos?: readonly GenerationPhoto[]) => {
+  const submitDraft = async (draft: GenerationDraft, cachedPhotos?: readonly CompressedPhoto[]) => {
     const photoIds = draft.photoIds;
     // No client-side balance pre-check here on purpose: selecting/uploading photos
     // is cheap (compressed, client-side) and is exactly the investment we WANT the
@@ -80,7 +83,11 @@ export function HeroComposer({
     // the AI runs: submitAnalyzeV3 → precheck + hold inside the album tx, which throws
     // CREDIT_INSUFFICIENT before the agent is ever called (no wasted AI spend). The
     // catch below routes that to /credits.
-    const builtPhotos = generationPhotosFromCache(photoIds, cachedPhotos) ?? (await photosFromStore(photoIds));
+    // Prefer the in-memory compressed set (cluster it here); else rebuild from
+    // IndexedDB (photosFromStore clusters internally). Either way the photos sent
+    // carry clusterId only — never coordinates.
+    const cached = compressedPhotosFromCache(photoIds, cachedPhotos);
+    const builtPhotos = cached ? clusterCompressedPhotos(cached) : await photosFromStore(photoIds);
     const trimmed = draft.prompt.trim();
     const { albumId } = await submitAnalyzeV3({
       requestId: crypto.randomUUID(),
@@ -156,15 +163,15 @@ export function HeroComposer({
       for (const f of Array.from(files)) {
         if (photos.length + next.length >= 30) break;
         const photoId = crypto.randomUUID();
-        const generationPhoto = await compressFile(f, photoId);
+        const compressed = await compressFile(f, photoId);
         await photoStore.put(photoId, f);
         const previewUrl = (await photoStore.getObjectUrl(photoId)) ?? '';
         next.push({
           photoId,
           previewUrl,
-          width: generationPhoto.width,
-          height: generationPhoto.height,
-          generationPhoto,
+          width: compressed.width,
+          height: compressed.height,
+          compressed,
         });
       }
       setPhotos((prev) => [...prev, ...next]);
@@ -197,7 +204,7 @@ export function HeroComposer({
         saveDraftAndLogin(draft);
         return;
       }
-      await submitDraft(draft, photos.map((p) => p.generationPhoto).filter((p): p is GenerationPhoto => !!p));
+      await submitDraft(draft, photos.map((p) => p.compressed).filter((p): p is CompressedPhoto => !!p));
     } catch (e) {
       if (e instanceof CreditInsufficientError) {
         generationDraft.save(draft);

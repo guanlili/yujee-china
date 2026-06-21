@@ -9,10 +9,10 @@ import { AppChrome } from '@/components/app/AppChrome';
 import { AlbumCoverPreview, type AlbumCoverPage } from '@/components/album/AlbumCoverPreview';
 import { RetryFailedButton } from '@/components/album/RetryFailedButton';
 import { photoStore } from '@/lib/photo/store';
-import { compressFile } from '@/lib/photo/compress';
+import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
 import {
+  clusterCompressedPhotos,
   submitAnalyzeV3,
-  type GenerationPhoto,
   CreditInsufficientError,
   PhotosUnavailableError,
 } from '@/lib/generation/client';
@@ -349,14 +349,16 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
     setErr(null);
     const language: 'zh' | 'en' = locale === 'zh' ? 'zh' : 'en';
     const photoIds: string[] = [];
-    const builtPhotos: GenerationPhoto[] = [];
+    const compressed: CompressedPhoto[] = [];
     try {
       for (const f of Array.from(files).slice(0, 30)) {
         const photoId = crypto.randomUUID();
-        builtPhotos.push(await compressFile(f, photoId));
+        compressed.push(await compressFile(f, photoId));
         await photoStore.put(photoId, f);
         photoIds.push(photoId);
       }
+      // Cluster the whole set + drop transient geo → photos carry clusterId only.
+      const builtPhotos = clusterCompressedPhotos(compressed);
       // No client-side balance pre-check: uploading photos is cheap and is the
       // investment we want before any paywall. The billing gate is server-side,
       // right before the AI runs — submitAnalyzeV3 throws CREDIT_INSUFFICIENT (caught

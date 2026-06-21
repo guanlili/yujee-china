@@ -182,6 +182,7 @@ Request:
     base64: string;
     width: number;
     height: number;
+    clusterId?: string | null;
     exif?: { takenAt?: string | null };
   }>;
 }
@@ -194,8 +195,9 @@ Constraints:
 - `callbackUrl` must be HTTP(S).
 - `language` is `zh` or `en`.
 - `meta.promptHint` length <= 500.
-- Photo object allows only `photoId`, `base64`, `width`, `height`, and `exif.takenAt`.
-- There is no coordinate, GPS, `place`, or `location` field. Any such field is rejected by strict schema.
+- `clusterId` (#232) is an **opaque** co-location/co-time label (`c1`/`c2`/…) the browser derives locally from EXIF time/GPS. It is **never a coordinate** — it only says "these photos are same-place/same-time". Optional/nullable: when the browser can't derive it (no EXIF / no GPS) it is `null` or absent, and the Agent degrades to its current "one big batch / model groups freely" behavior (backward compatible). Empty string is rejected (`min(1)`).
+- Photo object allows only `photoId`, `base64`, `width`, `height`, `clusterId`, and `exif.takenAt`.
+- There is no coordinate, GPS, `place`, or `location` field. Any such field is rejected by strict schema. `clusterId` does **not** relax this — coordinate keys stay rejected even when a `clusterId` is present.
 
 Accepted response:
 
@@ -261,7 +263,7 @@ Failed event:
 
 Progress semantics:
 
-- `describe`: recognition model creates chapter grouping, chapter descriptions, and per-photo scene descriptions.
+- `describe`: recognition model creates chapter grouping, chapter descriptions, and per-photo scene descriptions. When photos carry `clusterId` (#232), `describe` becomes **cluster-aware** and may run **concurrently** across clusters (see `design.md` / `v3-requirements.md §4.1`); when `clusterId` is absent it degrades to the current single-batch behavior.
 - `group`: UI progress beat; grouping already happens inside `describe`.
 - `template`: legal candidate selection and deterministic fallback.
 - `preview`: preview tree/pages are ready.
@@ -341,9 +343,11 @@ Response `V3RecommendResponse`:
 
 ```ts
 {
-  themeOptions: Array<{ subject: string; label: string; tone?: string }>;
+  // #236: purely per-chapter — NO album-level themeOptions. `subject` is the
+  // chapter's one-line title (作章节标题), grounded in that chapter's photos + story.
   chapterColors: Array<{
     chapterId: string;
+    subject: string;
     accentColor: string;
     artFont: "serif-classic" | "sans-modern" | "script-elegant" | "display-bold";
   }>;
@@ -354,8 +358,8 @@ Response `V3RecommendResponse`:
 
 Rules:
 
-- `themeOptions.length` is 1..3.
 - `chapterColors` must cover every requested chapter exactly once; Web rejects off-contract coverage as `AGENT_INVALID_OUTPUT`.
+- Each `subject` is non-empty; it becomes the chapter title when the user applies the theme.
 
 ### 7.3 `POST /v3/apply-theme`
 
@@ -365,9 +369,11 @@ Request `V3ApplyThemeRequest`:
 {
   albumId: string;
   language: "zh" | "en";
-  theme: { subject: string; label: string; tone?: string };
+  // #236: each chapter carries its `subject` (the user-confirmed chapter title);
+  // apply-theme persists it into that chapter's `title` slot + brushes color/font.
   chapters: Array<{
     chapterId: string;
+    subject: string;
     accentColor: string;
     artFont: "serif-classic" | "sans-modern" | "script-elegant" | "display-bold";
   }>;
@@ -390,6 +396,7 @@ Rules:
 - No model call; deterministic transform only.
 - `layoutPatch.length` must be at least 1.
 - The Agent emits page patches for SVG/decor surfaces where applicable; it does not write tree-shaped color/font carriers.
+- #236: the Agent ALSO writes each chapter's `subject` into that chapter's `title` role text slot (clamped to the slot `maxChars`) — the chapter title is persisted. Web folds this patch into `draft_json.pages` so the title survives reload/finalize. (This is a deterministic, user-confirmed write at the theme stage; it is NOT the §4.1 analyze invariant about what the LLM writes.)
 - Web writes the chosen `accentColor/artFont` into the authoring tree and advances `theme -> cover` when applicable.
 - Finalize bakes text color/font carriers from the authoring tree into flat render pages.
 
@@ -518,9 +525,9 @@ Web mapping:
 V3 privacy rules are part of the contract, not an implementation detail.
 
 - Base64 appears only in `/v3/analyze` request memory.
-- Stage0 only reads `takenAt`; it does not extract GPS or a place dimension.
-- Grouping uses time and visual coherence from `describe`; it does not use coordinates.
-- `exif` is strict and only allows `takenAt`.
-- There is no coordinate, GPS, `place`, or `location` field anywhere in `V3LayoutTree`, callbacks, or sync endpoint responses.
+- Stage0 only reads `takenAt`; it does not extract GPS or a place dimension. It may additionally emit an **opaque** `clusterId` (#232) derived locally from EXIF time/GPS — a same-place/same-time label, **never a coordinate or place name**.
+- Grouping uses time, the opaque `clusterId` label (#232), and visual coherence from `describe`; it does not use coordinates.
+- `exif` is strict and only allows `takenAt`. The analyze photo additionally allows `clusterId`; both are the **only** time/place-derived inputs, and `clusterId` carries no coordinate.
+- There is no coordinate, GPS, `place`, or `location` field anywhere in the analyze request, `V3LayoutTree`, callbacks, or sync endpoint responses — `clusterId` does not relax this red line.
 - Redact keys are defensive guardrails; seeing one in a log payload is a bug to scrub, not a contract field to preserve.
 - `docs/agent/design.md §9` is the detailed redact and logging reference.

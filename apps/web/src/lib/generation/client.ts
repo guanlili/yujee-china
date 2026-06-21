@@ -1,6 +1,7 @@
 'use client';
 
-import { compressFile } from '@/lib/photo/compress';
+import { assignClusterIds, type ClusterInput } from '@/lib/photo/cluster';
+import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
 import { photoStore } from '@/lib/photo/store';
 
 // Browser-side client for the generation endpoints. Owns the two billing-aware
@@ -19,15 +20,49 @@ export type GenerationPhoto = {
   // the Agent as a deterministic chaptering signal. takenAt is the ONLY EXIF field
   // carried (D-GPS: no coordinates ever enter the payload).
   takenAt?: string | null;
+  // Opaque spatio-temporal cluster label (c1/c2/…), derived in the browser from EXIF
+  // time+GPS by `assignClusterIds` (#232). It is the ONLY thing that leaves the geo
+  // computation — NO coordinate is ever carried. `null`/omitted when un-clusterable
+  // (no EXIF) → the Agent degrades to its prior "one big batch" behaviour.
+  clusterId?: string | null;
 };
 
-export function generationPhotosFromCache(
+// Run the browser's deterministic spatio-temporal clustering over a set of
+// freshly-compressed photos and return clean GenerationPhotos with `clusterId`
+// attached. PRIVACY (#232 / architecture §3): the transient `clusterGeo` is read
+// here ONLY to compute cluster labels and is DROPPED — it never appears on the
+// returned object, so coordinates can never reach the request body.
+export function clusterCompressedPhotos(
+  compressed: readonly CompressedPhoto[],
+): GenerationPhoto[] {
+  const inputs: ClusterInput[] = compressed.map((p) => ({
+    photoId: p.photoId,
+    takenAt: p.takenAt,
+    geo: p.clusterGeo,
+  }));
+  const clusterIds = assignClusterIds(inputs);
+  return compressed.map((p) => ({
+    photoId: p.photoId,
+    base64: p.base64,
+    width: p.width,
+    height: p.height,
+    takenAt: p.takenAt,
+    clusterId: clusterIds.get(p.photoId) ?? null,
+    // NOTE: p.clusterGeo is intentionally NOT spread here — coordinates stop at clustering.
+  }));
+}
+
+// Reorders the in-memory compressed set to match `photoIds`, returning null if any
+// requested id is missing (caller then rebuilds from IndexedDB). Returns the raw
+// CompressedPhotos (geo still attached) — the caller runs clustering next, which is
+// where the transient geo is dropped.
+export function compressedPhotosFromCache(
   photoIds: readonly string[],
-  cachedPhotos?: readonly GenerationPhoto[] | null,
-): GenerationPhoto[] | null {
+  cachedPhotos?: readonly CompressedPhoto[] | null,
+): CompressedPhoto[] | null {
   if (!cachedPhotos || cachedPhotos.length === 0) return null;
   const byId = new Map(cachedPhotos.map((photo) => [photo.photoId, photo]));
-  const out: GenerationPhoto[] = [];
+  const out: CompressedPhoto[] = [];
   for (const photoId of photoIds) {
     const photo = byId.get(photoId);
     if (!photo) return null;
@@ -74,7 +109,7 @@ export class PhotosUnavailableError extends Error {
 // set that no longer matches the album's photoCount. Any missing id aborts with
 // PhotosUnavailableError so the caller surfaces an honest dead-end instead.
 export async function photosFromStore(photoIds: string[]): Promise<GenerationPhoto[]> {
-  const out: GenerationPhoto[] = [];
+  const compressed: CompressedPhoto[] = [];
   const missing: string[] = [];
   for (const photoId of photoIds) {
     const blob = await photoStore.getBlob(photoId);
@@ -82,10 +117,12 @@ export async function photosFromStore(photoIds: string[]): Promise<GenerationPho
       missing.push(photoId);
       continue;
     }
-    out.push(await compressFile(blob, photoId));
+    compressed.push(await compressFile(blob, photoId));
   }
   if (missing.length > 0) throw new PhotosUnavailableError(missing);
-  return out;
+  // Cluster + strip transient geo in one place, so the rebuild path emits the same
+  // clusterId-bearing, coordinate-free GenerationPhotos as the fresh-upload path.
+  return clusterCompressedPhotos(compressed);
 }
 
 type SubmitResult = { albumId: string; requestId: string };

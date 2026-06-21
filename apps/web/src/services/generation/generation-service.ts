@@ -18,6 +18,8 @@ type V3AnalyzeInput = {
     width: number;
     height: number;
     takenAt?: string | null;
+    // #232 opaque cluster label only — never a coordinate (see contract V3AnalyzePhoto).
+    clusterId?: string | null;
   }>;
 };
 
@@ -89,6 +91,9 @@ async function dispatchAnalyzeV3(
     base64: p.base64,
     width: p.width,
     height: p.height,
+    // #232: forward the opaque cluster label when present (null/absent → omitted →
+    // Agent degrades to "one big batch"). NEVER any coordinate — only this label.
+    ...(p.clusterId != null ? { clusterId: p.clusterId } : {}),
     ...(p.takenAt !== undefined ? { exif: { takenAt: p.takenAt } } : {}),
   }));
 

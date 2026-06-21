@@ -95,6 +95,18 @@ class Settings(BaseSettings):
     describe_openai_timeout_seconds: int = 30
     describe_batch_deadline_seconds: int = 90
 
+    # V3 describe cluster-aware concurrency (#232 WP-C). When the browser stamps
+    # photos with `clusterId` (EXIF time/GPS-derived), whole clusters are packed
+    # into concurrent describe routes by total photo COUNT — semantic grouping
+    # (the clusters themselves) is never re-cut by count. These thresholds only
+    # set concurrency WIDTH: ≤lo → 1 route, >lo → 2 routes, >hi → 3 routes. A
+    # single oversized cluster still gets its own route (the model sub-chapters
+    # it; the omitted-photo retry net guarantees coverage). All clusterId null →
+    # degrade to the legacy single-batch path. 数值可微调,不改语义。
+    describe_concurrency_threshold_lo: int = 20
+    describe_concurrency_threshold_hi: int = 40
+    describe_max_concurrency: int = 3
+
     # planning + chat-edit (DeepSeek slot; in prod points at Volcano Ark doubao)
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"

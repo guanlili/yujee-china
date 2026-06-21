@@ -299,6 +299,53 @@ test('V3AnalyzeRequest exif is strict — only takenAt, rejects lat/lng (§3 pri
   );
 });
 
+test('V3AnalyzeRequest photo accepts clusterId, rejects coordinate keys (#232 §3 privacy)', () => {
+  const base = {
+    requestId: 'r1',
+    albumId: 'a1',
+    callbackUrl: 'https://example.com/cb',
+    language: 'en' as const,
+    photos: [{ photoId: 'p1', base64: 'data:image/jpeg;base64,AA==', width: 800, height: 600 }],
+  };
+  // clusterId absent (backward compatible) accepted
+  assert.equal(V3AnalyzeRequest.safeParse(base).success, true);
+  // clusterId string label accepted
+  assert.equal(
+    V3AnalyzeRequest.safeParse({
+      ...base,
+      photos: [{ ...base.photos[0], clusterId: 'c1' }],
+    }).success,
+    true,
+  );
+  // clusterId null (browser couldn't derive — no EXIF/GPS) accepted
+  assert.equal(
+    V3AnalyzeRequest.safeParse({
+      ...base,
+      photos: [{ ...base.photos[0], clusterId: null }],
+    }).success,
+    true,
+  );
+  // empty clusterId string rejected (min(1))
+  assert.equal(
+    V3AnalyzeRequest.safeParse({
+      ...base,
+      photos: [{ ...base.photos[0], clusterId: '' }],
+    }).success,
+    false,
+  );
+  // clusterId must not smuggle coordinates — any geo key still rejected by strict()
+  for (const leak of ['lat', 'lng', 'latitude', 'longitude', 'gps', 'place', 'location', 'coordinates']) {
+    assert.equal(
+      V3AnalyzeRequest.safeParse({
+        ...base,
+        photos: [{ ...base.photos[0], clusterId: 'c1', [leak]: 1 }],
+      }).success,
+      false,
+      `${leak} must be rejected by strict() on the analyze photo`,
+    );
+  }
+});
+
 test('V3ChapterChatResponse: kind drives which patch is present', () => {
   const usage = { durationMs: 1, models: {} };
   // write turn carries pagesTexts
@@ -319,14 +366,33 @@ test('V3ChapterChatResponse: kind drives which patch is present', () => {
   assert.equal(V3ChapterChatResponse.safeParse({ kind: 'sing', assistantReply: 'x', usage }).success, false);
 });
 
-test('V3RecommendResponse returns theme options + per-chapter color/font in legal sets', () => {
+test('V3RecommendResponse returns per-chapter subject + color/font in legal sets', () => {
   const ok = V3RecommendResponse.safeParse({
-    themeOptions: [{ subject: 'Spring in Kyoto', label: 'Kyoto' }],
-    chapterColors: [{ chapterId: 'c1', accentColor: '#aabbcc', artFont: 'serif-classic' }],
+    chapterColors: [
+      { chapterId: 'c1', subject: 'Spring in Kyoto', accentColor: '#aabbcc', artFont: 'serif-classic' },
+    ],
     assistantReply: '',
     usage: { durationMs: 1, models: {} },
   });
   assert.equal(ok.success, true);
+  // themeOptions / per-chapter subject<min(1) are rejected (strict + min(1)).
+  assert.equal(
+    V3RecommendResponse.safeParse({
+      themeOptions: [{ subject: 's', label: 'l' }],
+      chapterColors: [{ chapterId: 'c1', subject: 'x', accentColor: '#aabbcc', artFont: 'serif-classic' }],
+      assistantReply: '',
+      usage: { durationMs: 1, models: {} },
+    }).success,
+    false,
+  );
+  assert.equal(
+    V3RecommendResponse.safeParse({
+      chapterColors: [{ chapterId: 'c1', subject: '', accentColor: '#aabbcc', artFont: 'serif-classic' }],
+      assistantReply: '',
+      usage: { durationMs: 1, models: {} },
+    }).success,
+    false,
+  );
 });
 
 test('V3ApplyThemeRequest + V3CoverRequest carry page-level patches (not tree fields)', () => {
@@ -335,8 +401,7 @@ test('V3ApplyThemeRequest + V3CoverRequest carry page-level patches (not tree fi
     V3ApplyThemeRequest.safeParse({
       albumId: 'a1',
       language: 'en',
-      theme: { subject: 's', label: 'l' },
-      chapters: [{ chapterId: 'c1', accentColor: '#abc', artFont: 'sans-modern' }],
+      chapters: [{ chapterId: 'c1', subject: 's', accentColor: '#abc', artFont: 'sans-modern' }],
       pages: [page],
     }).success,
     true,

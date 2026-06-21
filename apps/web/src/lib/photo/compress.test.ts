@@ -1,14 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readTakenAtFromExif } from './compress';
+import { readGeoForClustering, readTakenAtFromExif } from './compress';
+
+type Gps = { lat: [number, number, number]; latRef: string; lng: [number, number, number]; lngRef: string };
 
 // Build a minimal JPEG (SOI + APP1/Exif + EOI) carrying a single IFD0 entry that
 // points at an Exif sub-IFD with a DateTimeOriginal (0x9003) ASCII tag. Big-endian
-// ("MM") TIFF layout. Optionally injects a GPS IFD pointer (0x8825) to prove the
-// reader ignores it (privacy red line).
+// ("MM") TIFF layout by default. Optionally injects a real GPS IFD (0x8825) with
+// lat/lng rationals so we can assert (a) takenAt reader ignores GPS and (b) the
+// dedicated GPS reader parses it for in-memory clustering only.
 function buildJpegWithExif(opts: {
   dateOriginal?: string;
   withGpsPointer?: boolean;
+  gps?: Gps;
   byteOrder?: 'II' | 'MM';
 }): ArrayBuffer {
   const little = opts.byteOrder === 'II';
@@ -19,13 +23,16 @@ function buildJpegWithExif(opts: {
       ? [v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >> 24) & 0xff]
       : [(v >> 24) & 0xff, (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff];
 
+  const hasGps = opts.withGpsPointer || !!opts.gps;
+  const gps: Gps = opts.gps ?? { lat: [40, 30, 0], latRef: 'N', lng: [74, 0, 0], lngRef: 'W' };
+
   // TIFF header
   if (little) tiff.push(0x49, 0x49);
   else tiff.push(0x4d, 0x4d);
   tiff.push(...u16(0x002a));
   tiff.push(...u32(8)); // IFD0 at offset 8
 
-  const ifd0Count = 1 + (opts.withGpsPointer ? 1 : 0);
+  const ifd0Count = 1 + (hasGps ? 1 : 0);
   // Layout offsets are computed from the TIFF start.
   const ifd0Start = 8;
   const ifd0End = ifd0Start + 2 + ifd0Count * 12 + 4;
@@ -36,13 +43,20 @@ function buildJpegWithExif(opts: {
   const exifIfdEnd = exifIfdStart + 2 + 1 * 12 + 4;
   const dateValueOffset = exifIfdEnd; // ASCII payload after the Exif IFD
 
+  // GPS IFD layout (only when present): 4 tags (latRef, lat, lngRef, lng) + next.
+  const gpsIfdStart = dateValueOffset + dateBytes.length;
+  const gpsIfdEnd = gpsIfdStart + 2 + 4 * 12 + 4;
+  // Out-of-line rational payloads: 3 rationals (24 bytes) each for lat then lng.
+  const latPayloadOffset = gpsIfdEnd;
+  const lngPayloadOffset = latPayloadOffset + 24;
+
   // --- IFD0 ---
   tiff.push(...u16(ifd0Count));
   // 0x8769 Exif IFD pointer (type 4 LONG, count 1) → exifIfdStart
   tiff.push(...u16(0x8769), ...u16(4), ...u32(1), ...u32(exifIfdStart));
-  if (opts.withGpsPointer) {
-    // 0x8825 GPS IFD pointer — present but should NEVER be followed by the reader.
-    tiff.push(...u16(0x8825), ...u16(4), ...u32(1), ...u32(exifIfdEnd + dateBytes.length));
+  if (hasGps) {
+    // 0x8825 GPS IFD pointer → gpsIfdStart
+    tiff.push(...u16(0x8825), ...u16(4), ...u32(1), ...u32(gpsIfdStart));
   }
   tiff.push(...u32(0)); // next IFD = none
 
@@ -55,10 +69,26 @@ function buildJpegWithExif(opts: {
   // --- DateTimeOriginal payload ---
   tiff.push(...dateBytes);
 
-  // --- (optional) GPS IFD: a fake coordinate, to verify it's ignored ---
-  if (opts.withGpsPointer) {
-    tiff.push(...u16(0)); // empty GPS IFD is enough; reader must not even reach here
-    tiff.push(...u32(0));
+  // --- (optional) GPS IFD with real lat/lng rationals ---
+  if (hasGps) {
+    const refInline = (ch: string) => {
+      // Full IFD entry tail for an ASCII ref tag: type(2)=ASCII, count(4)=2,
+      // value(4) inline = "X\0" + padding.
+      return [...u16(2), ...u32(2), ch.charCodeAt(0), 0, 0, 0];
+    };
+    tiff.push(...u16(4));
+    // 0x0001 GPSLatitudeRef (ASCII, count 2, inline)
+    tiff.push(...u16(0x0001), ...refInline(gps.latRef));
+    // 0x0002 GPSLatitude (RATIONAL type 5, count 3, out-of-line)
+    tiff.push(...u16(0x0002), ...u16(5), ...u32(3), ...u32(latPayloadOffset));
+    // 0x0003 GPSLongitudeRef (ASCII, count 2, inline)
+    tiff.push(...u16(0x0003), ...refInline(gps.lngRef));
+    // 0x0004 GPSLongitude (RATIONAL type 5, count 3, out-of-line)
+    tiff.push(...u16(0x0004), ...u16(5), ...u32(3), ...u32(lngPayloadOffset));
+    tiff.push(...u32(0)); // next IFD = none
+    // lat then lng rational payloads (num/den pairs; den = 1)
+    for (const v of gps.lat) tiff.push(...u32(v), ...u32(1));
+    for (const v of gps.lng) tiff.push(...u32(v), ...u32(1));
   }
 
   const exifHeader = [0x45, 0x78, 0x69, 0x66, 0x00, 0x00]; // "Exif\0\0"
@@ -85,10 +115,41 @@ test('readTakenAtFromExif reads DateTimeOriginal (II/little-endian)', () => {
   assert.equal(readTakenAtFromExif(buf), '2021-12-31T23:59:59');
 });
 
-test('readTakenAtFromExif ignores the GPS IFD entirely (privacy red line)', () => {
-  // Even with a GPS pointer present, only the date comes back — no coordinate path.
+test('readTakenAtFromExif returns ONLY the date even when GPS is present (no coord path)', () => {
+  // readTakenAtFromExif must never surface a coordinate: with a full GPS IFD present
+  // it still returns a plain datetime string, nothing else.
   const buf = buildJpegWithExif({ dateOriginal: '2024:03:15 08:30:00', withGpsPointer: true });
   assert.equal(readTakenAtFromExif(buf), '2024-03-15T08:30:00');
+});
+
+test('readGeoForClustering parses N/W GPS into signed decimal degrees', () => {
+  // 40°30′00″N, 74°00′00″W → (40.5, -74)
+  const buf = buildJpegWithExif({
+    gps: { lat: [40, 30, 0], latRef: 'N', lng: [74, 0, 0], lngRef: 'W' },
+  });
+  const geo = readGeoForClustering(buf);
+  assert.ok(geo);
+  assert.ok(Math.abs(geo!.lat - 40.5) < 1e-9);
+  assert.ok(Math.abs(geo!.lng - -74) < 1e-9);
+});
+
+test('readGeoForClustering applies S/E ref signs (little-endian)', () => {
+  // 33°30′00″S, 151°00′00″E → (-33.5, 151)
+  const buf = buildJpegWithExif({
+    byteOrder: 'II',
+    gps: { lat: [33, 30, 0], latRef: 'S', lng: [151, 0, 0], lngRef: 'E' },
+  });
+  const geo = readGeoForClustering(buf);
+  assert.ok(geo);
+  assert.ok(Math.abs(geo!.lat - -33.5) < 1e-9);
+  assert.ok(Math.abs(geo!.lng - 151) < 1e-9);
+});
+
+test('readGeoForClustering returns null when no GPS IFD is present', () => {
+  const buf = buildJpegWithExif({ dateOriginal: '2024:03:15 08:30:00' });
+  assert.equal(readGeoForClustering(buf), null);
+  // And for a non-JPEG buffer.
+  assert.equal(readGeoForClustering(new Uint8Array([0x00, 0x01]).buffer), null);
 });
 
 test('readTakenAtFromExif returns null for a non-JPEG / no-EXIF buffer', () => {
@@ -103,14 +164,18 @@ test('readTakenAtFromExif rejects zeroed/garbage date and never throws', () => {
   assert.equal(readTakenAtFromExif(buildJpegWithExif({ dateOriginal: 'not-a-date-at-all' })), null);
 });
 
-test('compress.ts never reads GPS tags (static source guard)', async () => {
+test('compress.ts confines GPS to the clustering reader (static privacy guard)', async () => {
   const { readFileSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
   const { dirname, join } = await import('node:path');
   const here = dirname(fileURLToPath(import.meta.url));
   const src = readFileSync(join(here, 'compress.ts'), 'utf8');
-  // The GPS IFD pointer tag must only ever appear in a comment explaining it is
-  // NOT followed — not as a live constant the reader resolves.
-  assert.equal(/TAG_GPS|0x8825[^)]*\)/.test(src) && !/never/.test(src), false);
-  assert.match(src, /never follows the GPS IFD/i);
+
+  // GPS may now be read — but ONLY by readGeoForClustering, returning a transient
+  // ClusterGeo. The privacy invariant comment must be present and explicit.
+  assert.match(src, /readGeoForClustering/);
+  assert.match(src, /never leave the browser/i);
+  // CompressedPhoto must NOT expose raw lat/lng keys — only the transient clusterGeo.
+  assert.equal(/^\s*lat\s*[:?]/m.test(src), false);
+  assert.equal(/^\s*lng\s*[:?]/m.test(src), false);
 });

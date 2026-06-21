@@ -1,10 +1,11 @@
 """V3 theme/chapter-color recommender (§4.3 / §6 / §8, issue #189 / WP3.1).
 
 The endpoint is `POST /v3/recommend` (§8.1: 同步 / 识图模型); it carries the two
-recommend Skills:
+recommend Skills (now purely per-chapter — no album-level themeOptions, #236):
 
-  * recommend-theme          → 1–3 whole-album theme candidates (subject/label/tone).
-                               The user picks one; nothing here writes the tree.
+  * recommend-theme          → per chapter, a `subject` (one-line chapter title,
+                               grounded in that chapter's photos + story). The user
+                               confirms; apply-theme persists it as the chapter title.
   * recommend-chapter-colors → one {accentColor, artFont} per chapter. `artFont`
                                MUST be one of the 4 ArtFontPack members; `accentColor`
                                MUST be a `#hex`. Both are clamped/validated below so a
@@ -43,7 +44,6 @@ from ..schemas import (
     V3Models,
     V3RecommendRequest,
     V3RecommendResponse,
-    V3ThemeOption,
     V3Usage,
 )
 from ..settings import get_settings
@@ -67,7 +67,10 @@ _DEFAULT_FONT = "serif-classic"
 # Neutral accent used when a chapter's model color is missing/illegal — a calm
 # slate that reads fine on any spread; apply-theme/the user can still override.
 _FALLBACK_ACCENT = "#4A5568"
-_MAX_THEME_OPTIONS = 3
+# Subject (chapter title) is min(1) in the contract; clamp to a sane title length so
+# a drifted long subject can't blow the slot. Fallback keeps the response valid.
+_MAX_SUBJECT_LEN = 80
+_FALLBACK_SUBJECT = "Untitled Chapter"
 # 6-hex form the response/AccentColor regex accepts; also what we normalize to.
 _HEX6_LEN = 6
 
@@ -258,54 +261,31 @@ def _coerce_response(
     parsed: dict[str, Any],
     usage: V3Usage,
 ) -> V3RecommendResponse:
-    theme_options = _coerce_theme_options(parsed.get("themeOptions"))
     chapter_colors = _coerce_chapter_colors(req, parsed.get("chapterColors"))
     reply = _text(parsed.get("assistantReply")) or _default_reply(req.language)
     return V3RecommendResponse(
-        themeOptions=theme_options,
         chapterColors=chapter_colors,
         assistantReply=reply[:500],
         usage=usage,
     )
 
 
-def _coerce_theme_options(raw: Any) -> list[V3ThemeOption]:
-    """Up to 3 theme candidates (§ contract min 1 / max 3). Each needs a non-empty
-    `subject` + `label`; `tone` is optional. A drifted/empty list degrades to one
-    neutral candidate so the response always validates (never 0 options)."""
-    options: list[V3ThemeOption] = []
-    if isinstance(raw, list):
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            subject = _text(item.get("subject"))
-            label = _text(item.get("label"))
-            if not subject or not label:
-                continue
-            tone = _text(item.get("tone"))
-            extra = {"tone": tone[:120]} if tone else {}
-            options.append(V3ThemeOption(subject=subject[:120], label=label[:120], **extra))
-            if len(options) == _MAX_THEME_OPTIONS:
-                break
-    if not options:
-        log.info("v3_recommend.theme_fallback")
-        options.append(V3ThemeOption(subject="Your Story", label="A Memoir"))
-    return options
-
-
 def _coerce_chapter_colors(
     req: V3RecommendRequest, raw: Any
 ) -> list[V3ChapterColorRecommendation]:
-    """Exactly one {accentColor, artFont} per input chapter, in input order.
+    """Exactly one {subject, accentColor, artFont} per input chapter, in input order.
 
     Grounding guardrails (§8.3 模型出意图、代码保合法):
+      * subject (chapter title) is trimmed + clamped to a sane title length; a
+        missing/empty subject → a neutral placeholder so the response always
+        validates (contract min(1)).
       * artFont is clamped to the 4-member ArtFontPack — an illegal/missing font →
         the default font, never an injected value.
       * accentColor is normalized to `#RRGGBB`; an illegal/missing color → the
         neutral fallback. The model can never emit a non-hex color into the tree.
       * Every input chapter gets exactly one entry (a chapter the model omitted is
-        filled with the fallback color+font) — recommend never drops a chapter, and
-        apply-theme can rely on full coverage.
+        filled with the fallback subject+color+font) — recommend never drops a
+        chapter, and apply-theme can rely on full coverage.
     """
     by_id: dict[str, dict[str, Any]] = {}
     if isinstance(raw, list):
@@ -319,16 +299,30 @@ def _coerce_chapter_colors(
     out: list[V3ChapterColorRecommendation] = []
     for chapter in req.chapters:
         item = by_id.get(chapter.chapterId, {})
+        subject = _coerce_subject(item.get("subject"))
         accent = _coerce_accent(item.get("accentColor"))
         font = _coerce_font(item.get("artFont"))
         out.append(
             V3ChapterColorRecommendation(
                 chapterId=chapter.chapterId,
+                subject=subject,
                 accentColor=accent,
                 artFont=font,  # type: ignore[arg-type]
             )
         )
     return out
+
+
+def _coerce_subject(raw: Any) -> str:
+    """Trim + clamp the chapter subject (title); fall back to a neutral placeholder.
+
+    Strips a trailing period/句号 the skill asked the model to omit, so a drifted
+    output still reads as a clean one-line title."""
+    subject = _text(raw)
+    subject = subject.rstrip(".。!! ?? ")
+    if not subject:
+        return _FALLBACK_SUBJECT
+    return subject[:_MAX_SUBJECT_LEN]
 
 
 def _coerce_font(raw: Any) -> str:

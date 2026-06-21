@@ -6,6 +6,8 @@
 // 硬约定(沿用 v2.ts):本文所有对象一律 `.strict()`(含嵌套),拒未知字段。
 //   zod3 的 `.strict()` 只作用于当前层,故每层 object 都显式 `.strict()`。
 //   ★ analyze 的 `exif` 必须 strict —— §3 隐私边界执行点(只收 takenAt,拒 lat/lng/place)。
+//   ★ analyze 的 photo 允许 `clusterId`(浏览器本地从 EXIF 时间/GPS 派生的不透明共址/
+//     共时标签,c1/c2/…),仍严禁 location/place/GPS/坐标/经纬度任何真实位置字段(#232)。
 //
 // §3 树边界:`/v3/analyze` 回调 + chapter-chat 子树流转用 V3 章节树(authoring);
 //   只有 `/v3/finalize` 回扁平 `AlbumLayoutPlan`(渲染契约,不加树形字段)。
@@ -113,6 +115,11 @@ const V3AnalyzePhoto = z
     base64: V3AnalyzeImageDataUrl, // data:image/(jpeg|png);base64,…  ≤800KB
     width: z.number().int().positive(),
     height: z.number().int().positive(),
+    // #232 簇标签:浏览器本地从 EXIF 时间/GPS 派生的不透明共址/共时标签(c1/c2/…),
+    //   ★绝不是坐标 —— 只表达「这几张同址同时」,§3 隐私红线允许它、仍禁真实位置字段。
+    //   算不出(无 EXIF / 无 GPS)→ null/缺省 → Agent 退化为当前「一大批/模型自由分组」
+    //   行为(向后兼容)。`.nullish()`:旧 payload(无此键)与 `null` 均接受。
+    clusterId: z.string().min(1).nullish(),
     exif: z
       .object({ takenAt: TakenAtDateTime.nullable().optional() })
       .strict() // ★ 拒 lat/lng/place — §3 隐私执行点
@@ -225,7 +232,9 @@ export type V3StoryDraft = z.infer<typeof V3StoryDraft>;
 
 // ───────────── ③ 主题/章节色 · 推荐 — POST /v3/recommend(同步) ─────────────
 //
-// 承载 recommend-theme + recommend-chapter-colors 两 Skill(§6)。识图模型出候选,用户挑。
+// 承载 recommend-chapter-colors Skill(§6)。识图模型逐章产出 {subject, accentColor,
+//   artFont}:subject 是该章一句话主题(作章节标题),色/字体供用户确认。无 album 级
+//   themeOptions(问题5 改逐章 / #236)。
 
 /** 章节概览(每章一条),recommend 的主输入(§8 表)。 */
 export const V3ChapterOverview = z
@@ -248,20 +257,15 @@ export const V3RecommendRequest = z
   .strict();
 export type V3RecommendRequest = z.infer<typeof V3RecommendRequest>;
 
-/** 主题候选(供用户挑,不进树)。 */
-export const V3ThemeOption = z
-  .object({
-    subject: z.string().min(1),
-    label: z.string().min(1),
-    tone: z.string().optional(),
-  })
-  .strict();
-export type V3ThemeOption = z.infer<typeof V3ThemeOption>;
-
-/** 每章推荐色 + 字体(用户确认后由 apply-theme 写树)。 */
+/**
+ * 每章推荐:主题句(subject,作章节标题)+ 推荐色 + 字体(用户确认后由 apply-theme
+ * 写树/写标题槽)。`subject` 是 grounded 该章照片+故事的一句章节主题(英文,简短,
+ * 无句末标点);它在 apply-theme 阶段被持久化为该章标题(§问题5 方向 A 变体 / #236)。
+ */
 export const V3ChapterColorRecommendation = z
   .object({
     chapterId: z.string().min(1),
+    subject: z.string().min(1),
     accentColor: AccentColor,
     artFont: ArtFontPack,
   })
@@ -270,7 +274,6 @@ export type V3ChapterColorRecommendation = z.infer<typeof V3ChapterColorRecommen
 
 export const V3RecommendResponse = z
   .object({
-    themeOptions: z.array(V3ThemeOption).min(1).max(3),
     chapterColors: z.array(V3ChapterColorRecommendation).min(1),
     assistantReply: z.string().max(500),
     usage: V3Usage,
@@ -282,10 +285,15 @@ export type V3RecommendResponse = z.infer<typeof V3RecommendResponse>;
 //
 // 无 LLM:把用户选定的每章色/字体一键刷到所有 `variableDecor` 槽(§4.3 / §9),回 layout 补丁。
 
-/** 用户选定的每章色/字体(写入章节树)。 */
+/**
+ * 用户选定的每章主题/色/字体(写入章节树 + 标题槽)。
+ * `subject` = 用户确认的该章标题(一句话主题);apply-theme 把它持久化到该章 `title`
+ * 角色文字槽(§问题5 方向 A 变体 / #236),并把色/字体刷到 variableDecor 槽。
+ */
 export const V3ChapterThemeChoice = z
   .object({
     chapterId: z.string().min(1),
+    subject: z.string().min(1),
     accentColor: AccentColor,
     artFont: ArtFontPack,
   })
@@ -296,9 +304,9 @@ export const V3ApplyThemeRequest = z
   .object({
     albumId: z.string().min(1),
     language: V3Language,
-    theme: V3ThemeOption, // 用户选定的主题
     chapters: z.array(V3ChapterThemeChoice).min(1),
-    // 受影响的 layout 子树(③④传相关页,§8.3);apply 把 variableDecor 槽刷上色/字体。
+    // 受影响的 layout 子树(③④传相关页,§8.3);apply 把 variableDecor 槽刷上色/字体,
+    // 并把每章 subject 写进该章 title 槽(章节标题持久化)。
     pages: z.array(Page),
   })
   .strict();

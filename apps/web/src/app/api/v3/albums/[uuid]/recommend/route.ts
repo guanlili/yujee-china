@@ -3,18 +3,20 @@ import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
 import { albumService } from '@/services/album/album-service';
-import { agentClient } from '@/lib/agent/agent-client';
 import { V3RecommendRequest } from '@yujee/contracts';
 
-// Browser-facing recommend body (③ 主题/章节色-推荐, WP3.1 #189). The browser holds
-// the chapter overview (each chapter's description + its photos' scene descriptions)
-// and the analysis summary from draft_json, and sends them as the text-only slice
-// the agent needs (no base64 — §3 privacy by construction). albumId comes from the
-// URL, so it is stripped from the forwarded body's source of truth. The agent is
-// stateless: it only SUGGESTS theme candidates + per-chapter {accentColor, artFont};
-// writing the tree (apply-theme/WP3.2) and advancing stage (§8.3 stage 推进权在 Web)
-// happen elsewhere. This route is the thin authenticated forwarder.
-const BodySchema = V3RecommendRequest.omit({ albumId: true });
+// Browser-facing recommend body (③ 主题/章节色-推荐, WP3.1 #189 / 缺口#20). Invariant 12 /
+// §3 数据归属: the authoring tree NEVER round-trips through the browser, so the browser
+// holds NO chapter overview — it sends only its language (+ an optional free-text nudge).
+// albumId comes from the URL. The Web service is the sole truth source for draft_json: it
+// re-slices the per-chapter overview (description + each photo's sceneDescription摘要, text
+// only, NO base64) SERVER-SIDE and forwards the full V3RecommendRequest to the stateless
+// agent, which only SUGGESTS theme candidates + per-chapter {accentColor, artFont}. Writing
+// the tree (apply-theme) and advancing stage (§8.3 stage 推进权在 Web) happen elsewhere.
+const BodySchema = V3RecommendRequest.pick({
+  language: true,
+  userMessage: true,
+}).strict();
 
 // POST /api/v3/albums/[uuid]/recommend — synchronous (§8). 60s budget.
 export const maxDuration = 60;
@@ -23,11 +25,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
   try {
     const user = await requireAuth(req);
     const { uuid } = await ctx.params;
-    // Ownership gate before any agent call (§3 数据归属 / never act on another
-    // user's album). Throws ALBUM_NOT_FOUND / ALBUM_NOT_OWNED.
-    await albumService.findOwned(user.id, uuid);
-    const slice = await parseBody(BodySchema, req);
-    const result = await agentClient.recommendV3({ albumId: uuid, ...slice });
+    const body = await parseBody(BodySchema, req);
+    // Ownership gate + draft re-slice + forward all live inside the service (§3 数据归属 /
+    // never act on another user's album). Throws ALBUM_NOT_FOUND / ALBUM_NOT_OWNED /
+    // VALIDATION_FAILED.
+    const result = await albumService.recommendTheme(user.id, uuid, body);
     return ok(result);
   } catch (e) {
     return fromException(e);

@@ -85,8 +85,12 @@ export const Page = z.object({
    *   ④ **幂等覆盖**:finalize 对同一棵树重复烘焙得到逐字节相同的 `texts`(覆盖,不追加)。
    */
   texts: z.record(z.string(), z.string()),
-  // Optional per-slot position/scale overrides. Absent => render default 50/50/1.
-  imagePos: z.record(z.string(), ImagePos).optional(),
+  // Optional per-slot position/scale overrides. Absent/null => render default 50/50/1.
+  // `.nullish()` (not just `.optional()`): the Python side serializes `imagePos:
+  // dict | None` as JSON `null`, so the V3 analyze callback / finalize payloads
+  // carry `null` here — accept it (renderer reads `imagePos?.[slot]`, so null and
+  // absent are equivalent). Was `.optional()`, which rejected the agent's `null`.
+  imagePos: z.record(z.string(), ImagePos).nullish(),
 }).strict();
 export type Page = z.infer<typeof Page>;
 
@@ -104,8 +108,9 @@ export type AlbumLayoutPlan = z.infer<typeof AlbumLayoutPlan>;
 //   **扁平渲染契约不新增任何树形字段**。故 V3 章节树字段全部落在这里、不进 `Page` /
 //   `AlbumLayoutPlan`。
 //
-// §3 隐私红线:**绝不含 `location`/`place`/GPS/坐标任何字段**。Stage 0 只读 `takenAt`
-//   (architecture §3 / §6.8 第 3 条),分章只用时间 + 画面整体性信号。
+// §3 隐私红线:**绝不含 `location`/`place`/GPS/坐标/经纬度任何真实位置字段**。Stage 0 只读
+//   `takenAt`(architecture §3 / §6.8 第 3 条);分章另可借浏览器派生的不透明 `clusterId`
+//   共址/共时标签(#232,见 analyze 入参,绝非坐标)+ 画面整体性信号。允许 clusterId,坐标仍禁。
 
 /**
  * 章节点缀色(accentColor):每章一个主色,theme 环节由识图模型挑代表图 + 取色工具采样得出,
@@ -118,7 +123,8 @@ export type AccentColor = z.infer<typeof AccentColor>;
  * 章节树里的单张照片(v3-requirements §4.1)。
  *   LLM 写:`sceneDescription`(一句画面描述)。
  *   代码批量填:`width`/`height`/`orientation`(输入宽高算)、`takenAt`(EXIF)。
- * ⚠️ 无 `location`/`place`/GPS/坐标字段(§3 隐私)。
+ * ⚠️ 无 `location`/`place`/GPS/坐标/经纬度任何真实位置字段(§3 隐私)。簇分组所用的不透明
+ *   `clusterId`(#232)只活在 analyze 入参,绝非坐标;此处章节树不携带它。
  */
 export const V3ChapterPhoto = z
   .object({

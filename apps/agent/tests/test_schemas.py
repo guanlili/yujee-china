@@ -406,6 +406,39 @@ class TestV3AnalyzePrivacy:
         with pytest.raises(ValidationError):
             V3AnalyzeRequest.model_validate(bad)
 
+    def test_cluster_id_accepts_label_null_absent(self):
+        """#232: analyze photo accepts an opaque clusterId string, null, or
+        absent (backward compatible). Mirrors TS `clusterId.nullish()`."""
+        # absent (legacy payload)
+        V3AnalyzeRequest.model_validate(self.base)
+        # string label
+        V3AnalyzeRequest.model_validate(
+            {**self.base, "photos": [{**self.base["photos"][0], "clusterId": "c1"}]}
+        )
+        # null (browser couldn't derive it)
+        V3AnalyzeRequest.model_validate(
+            {**self.base, "photos": [{**self.base["photos"][0], "clusterId": None}]}
+        )
+
+    def test_cluster_id_rejects_empty_string(self):
+        with pytest.raises(ValidationError):
+            V3AnalyzeRequest.model_validate(
+                {**self.base, "photos": [{**self.base["photos"][0], "clusterId": ""}]}
+            )
+
+    @pytest.mark.parametrize(
+        "geo_key", ["lat", "lng", "latitude", "longitude", "gps", "place", "location", "coordinates"]
+    )
+    def test_cluster_id_does_not_open_coordinate_keys(self, geo_key):
+        """clusterId must not become a backdoor for coordinates — any geo key on
+        the analyze photo is still rejected at parse time (§3 privacy)."""
+        bad = {
+            **self.base,
+            "photos": [{**self.base["photos"][0], "clusterId": "c1", geo_key: 1}],
+        }
+        with pytest.raises(ValidationError):
+            V3AnalyzeRequest.model_validate(bad)
+
 
 class TestV3Endpoints:
     def test_chapter_chat_kind_drives_patch(self):
@@ -420,8 +453,9 @@ class TestV3Endpoints:
     def test_recommend_response_legal_sets(self):
         V3RecommendResponse.model_validate(
             {
-                "themeOptions": [{"subject": "Spring in Kyoto", "label": "Kyoto"}],
-                "chapterColors": [{"chapterId": "c1", "accentColor": "#aabbcc", "artFont": "serif-classic"}],
+                "chapterColors": [
+                    {"chapterId": "c1", "subject": "Spring in Kyoto", "accentColor": "#aabbcc", "artFont": "serif-classic"}
+                ],
                 "assistantReply": "",
                 "usage": {"durationMs": 1, "models": {}},
             }
@@ -433,8 +467,7 @@ class TestV3Endpoints:
             {
                 "albumId": "a1",
                 "language": "en",
-                "theme": {"subject": "s", "label": "l"},
-                "chapters": [{"chapterId": "c1", "accentColor": "#abc", "artFont": "sans-modern"}],
+                "chapters": [{"chapterId": "c1", "subject": "s", "accentColor": "#abc", "artFont": "sans-modern"}],
                 "pages": [page],
             }
         )

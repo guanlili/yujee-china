@@ -1,6 +1,12 @@
 'use client';
 
-import { UnauthorizedError } from '@/lib/generation/client';
+import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/client';
+import type {
+  V3ChatTurn,
+  V3ChapterChatResponse,
+  V3RecommendResponse,
+  V3ChapterThemeChoice,
+} from '@yujee/contracts';
 
 // Browser-side client for the V3 authoring surface. The read-only draft skeleton
 // remains server-derived from draft_json; legacy draft chat endpoints were removed
@@ -37,6 +43,9 @@ export type ChapterState =
 export interface DraftSkeletonChapter {
   chapterId: string;
   label: string;
+  // The chapter's title (its theme `subject`, persisted into the title slot at
+  // apply-theme, #236). Absent/empty until the theme stage runs — fall back to `label`.
+  subject?: string;
   role: 'opening' | 'body' | 'closing';
   state: ChapterState;
   askCount: number;
@@ -48,16 +57,6 @@ export interface DraftTheme {
   subject?: string;
   occasion?: string;
   timeframe?: string;
-  tone?: string;
-  style?: string;
-}
-
-// A pickable theme candidate proposed before a theme is fixed (editor.html
-// themeOpt1-3). Display-only (invariant 12) — the server never merges these into
-// draft_json; picking one just sends its label back as the next /theme nudge.
-export interface ThemeOption {
-  subject: string;
-  label: string;
   tone?: string;
   style?: string;
 }
@@ -80,6 +79,23 @@ async function getJson<T>(path: string): Promise<T> {
   return json.data as T;
 }
 
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  if (!json.ok) {
+    // Same typed-error posture as the generation client so the editor can redirect
+    // to login / surface the buy-credits card instead of dumping a raw message.
+    if (res.status === 401 || json.error?.code === 'UNAUTHORIZED') throw new UnauthorizedError();
+    if (json.error?.code === 'CREDIT_INSUFFICIENT') throw new CreditInsufficientError();
+    throw new Error(json.error?.message ?? 'Request failed');
+  }
+  return json.data as T;
+}
+
 const V3_AUTHORING_GUIDANCE =
   'Draft chat was retired with the legacy generation flow. Continue with the V3 chapter confirmation, theme, cover, and export steps.';
 
@@ -89,19 +105,91 @@ export function fetchDraftSkeleton(albumId: string): Promise<{ draft: DraftSkele
   return getJson(`/api/v3/albums/${albumId}/draft`);
 }
 
-export function postTheme(
-  _albumId: string,
-  _userMessage?: string,
-): Promise<{ theme: unknown; assistantReply: string; themeOptions?: ThemeOption[] }> {
-  return Promise.resolve({ theme: null, assistantReply: V3_AUTHORING_GUIDANCE });
+// A page patch the browser folds into pagesState via applyPatchToPages
+// (imagesJson/textsJson/templateId) — the apply-theme / cover stages repaint the
+// canvas with it. Mirrors the chapter-chat edit-turn mapping.
+export interface BrowserLayoutPatchEntry {
+  pageIndex: number;
+  templateId?: string;
+  imagesJson?: Record<string, string>;
+  textsJson?: Record<string, string>;
 }
 
+// ③ 主题/章节色 · 推荐 — one real /v3/recommend turn (缺口#20). Invariant 12 / §3 数据归属:
+// the browser holds NO authoring tree, so it sends ONLY its language (+ an optional
+// free-text nudge); the Web route re-slices the per-chapter overview from draft_json
+// server-side. Returns the agent's per-chapter recommendations (chapterColors:
+// {chapterId, subject, accentColor, artFont}) for the user to apply — subject is the
+// chapter title (#236). Nothing is written — apply-theme writes the tree + title slots.
+export function postRecommend(
+  albumId: string,
+  userMessage?: string,
+): Promise<V3RecommendResponse> {
+  return postJson(`/api/v3/albums/${albumId}/recommend`, {
+    language: 'en',
+    ...(userMessage !== undefined ? { userMessage } : {}),
+  });
+}
+
+// ③ 主题/章节色 · 应用 — one real /v3/apply-theme turn (缺口#20). Invariant 12 / §3 数据
+// 归属: the browser holds NO layout pages, so it sends ONLY its SELECTIONS (per-chapter
+// {subject, accentColor, artFont}); the Web service re-slices each chapter's themable
+// pages from draft_json server-side, runs the deterministic brush, writes the tree
+// color/font + persists each subject into its chapter title slot (#236) + advances stage
+// theme→cover. Returns the page-level layoutPatch the browser applies live + new stage.
+export interface ApplyThemeInput {
+  chapters: V3ChapterThemeChoice[];
+}
+export function postApplyTheme(
+  albumId: string,
+  input: ApplyThemeInput,
+): Promise<{ stage: string; layoutPatch: BrowserLayoutPatchEntry[]; assistantReply?: string }> {
+  return postJson(`/api/v3/albums/${albumId}/apply-theme`, {
+    language: 'en',
+    chapters: input.chapters,
+  });
+}
+
+// ④ 书籍设计 — 封面/封尾 — one real /v3/cover turn (缺口#20). Invariant 12 / §3 数据归属:
+// the browser holds NO layout pages, so it sends ONLY its SELECTIONS (the chosen 封面/封尾
+// template ids, or null = 跳过 — 封面可选 §4.4); the Web service re-slices the relevant
+// pages from draft_json server-side, runs the deterministic auto-fill, folds the patch
+// into draft_json.pages + advances stage cover→ready. A skip returns an EMPTY patch and
+// never errors. Returns the browser-shaped layoutPatch to apply live + the new stage.
+export interface CoverInput {
+  coverTemplateId?: string | null;
+  endingTemplateId?: string | null;
+}
+export function postCover(
+  albumId: string,
+  input: CoverInput,
+): Promise<{ stage: string; layoutPatch: BrowserLayoutPatchEntry[]; assistantReply?: string }> {
+  return postJson(`/api/v3/albums/${albumId}/cover`, {
+    language: 'en',
+    ...(input.coverTemplateId !== undefined ? { coverTemplateId: input.coverTemplateId } : {}),
+    ...(input.endingTemplateId !== undefined ? { endingTemplateId: input.endingTemplateId } : {}),
+  });
+}
+
+// ② 章节故事 — one real /v3/chapter-chat turn (缺口#20). Invariant 12 / §3 数据归属:
+// the browser holds NO authoring tree, so it sends ONLY the chapter it's on (chapterId)
+// + history + userMessage (+ the focused page); the Web route re-slices draft_json
+// server-side into the single-chapter V3ChapterChatRequest the agent needs. Returns the
+// agent's turn verbatim: kind=talk/write/edit + assistantReply, plus pagesTexts (write),
+// layoutPatch (edit), nameOptions (chapter-title chips). The caller applies the patch by
+// kind (talk NEVER carries one — Frame 4 红线 is enforced agent-side via the contract).
+export interface ChapterChatInput {
+  language: 'zh' | 'en';
+  chapterId: string;
+  history: V3ChatTurn[];
+  userMessage: string;
+  focusedPageIndex?: number;
+}
 export function postChapterChat(
-  _albumId: string,
-  chapterId: string,
-  _userMessage: string,
-): Promise<{ assistantReply: string; state: ChapterState; chapterId: string; nameOptions?: string[] }> {
-  return Promise.resolve({ assistantReply: V3_AUTHORING_GUIDANCE, state: 'generated', chapterId });
+  albumId: string,
+  input: ChapterChatInput,
+): Promise<V3ChapterChatResponse> {
+  return postJson(`/api/v3/albums/${albumId}/chapter-chat`, input);
 }
 
 export function postFinalize(

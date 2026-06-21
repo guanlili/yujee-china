@@ -1,5 +1,7 @@
 'use client';
 
+import type { ClusterGeo } from './cluster';
+
 export type CompressedPhoto = {
   photoId: string;
   base64: string;
@@ -7,9 +9,15 @@ export type CompressedPhoto = {
   height: number;
   // EXIF capture time (ISO 8601), used as a deterministic chaptering signal by the
   // Agent. `null` when the file carries no readable EXIF DateTime. PRIVACY (D-GPS,
-  // architecture §3): this is the ONLY EXIF field we ever read — `readTakenAtFromExif`
-  // has no code path that touches the GPS IFD, so coordinates can never leak out.
+  // architecture §3): this is the ONLY EXIF field that ever rides on the photo object
+  // — see `clusterGeo` below for why GPS does NOT.
   takenAt: string | null;
+  // PRIVACY (#232 / architecture §3 carve-out): transient EXIF GPS, used ONLY by the
+  // browser's in-memory spatio-temporal clustering to derive an opaque `clusterId`.
+  // It is NOT part of `GenerationPhoto`, so it never reaches the request body, a log,
+  // or IndexedDB. Callers must read it for clustering and then DROP it — never spread
+  // it into the payload sent to `/v3/analyze`. `null` when the file carries no GPS.
+  clusterGeo: ClusterGeo | null;
 };
 
 // Accepts a Blob (File is a Blob) so we can re-compress originals read back from
@@ -18,11 +26,12 @@ export type CompressedPhoto = {
 export async function compressFile(file: Blob, photoId: string): Promise<CompressedPhoto> {
   const bytes = await readAsArrayBuffer(file);
   const takenAt = readTakenAtFromExif(bytes);
+  const clusterGeo = readGeoForClustering(bytes);
   const dataUrl = arrayBufferToDataUrl(bytes, file.type || 'image/jpeg');
   const img = await loadImage(dataUrl);
   const { canvas, w, h } = drawScaled(img, 800);
   const base64 = canvas.toDataURL('image/jpeg', 0.6);
-  return { photoId, base64, width: w, height: h, takenAt };
+  return { photoId, base64, width: w, height: h, takenAt, clusterGeo };
 }
 
 function readAsArrayBuffer(file: Blob): Promise<ArrayBuffer> {
@@ -65,20 +74,32 @@ function drawScaled(img: HTMLImageElement, maxLen: number) {
   return { canvas, w, h };
 }
 
-// --- EXIF takenAt reader (takenAt ONLY — never GPS) -------------------------
+// --- EXIF parser (takenAt + GPS-for-clustering ONLY) ------------------------
 //
 // Minimal, dependency-free JPEG APP1/EXIF parser. It walks the TIFF IFD0 +
-// Exif sub-IFD and returns ONLY the capture timestamp from one of three tags:
+// Exif sub-IFD and returns the capture timestamp from one of three tags:
 //   - 0x9003 DateTimeOriginal   (preferred)
 //   - 0x9004 DateTimeDigitized  (fallback)
 //   - 0x0132 DateTime           (fallback)
-// It deliberately NEVER follows the GPS IFD pointer (tag 0x8825), so no
-// coordinate can ever be parsed out (architecture §3 D-GPS red line).
+//
+// PRIVACY (#232 / architecture §3 carve-out): it ALSO reads the GPS IFD (tag
+// 0x8825) — but ONLY via `readGeoForClustering`, which returns a transient
+// {lat,lng} consumed in-memory by spatio-temporal clustering to derive an opaque
+// `clusterId`. The coordinates NEVER leave the browser: they are not attached to
+// `GenerationPhoto`, never serialised into the `/v3/analyze` body, never logged,
+// never persisted. `readTakenAtFromExif` still never touches GPS.
 
 const TAG_EXIF_IFD_POINTER = 0x8769;
+const TAG_GPS_IFD_POINTER = 0x8825;
 const TAG_DATETIME = 0x0132;
 const TAG_DATETIME_ORIGINAL = 0x9003;
 const TAG_DATETIME_DIGITIZED = 0x9004;
+
+// GPS IFD tags.
+const TAG_GPS_LAT_REF = 0x0001; // 'N' | 'S'
+const TAG_GPS_LAT = 0x0002; // 3 rationals: deg, min, sec
+const TAG_GPS_LNG_REF = 0x0003; // 'E' | 'W'
+const TAG_GPS_LNG = 0x0004; // 3 rationals: deg, min, sec
 
 export function readTakenAtFromExif(bytes: ArrayBuffer): string | null {
   try {
@@ -135,6 +156,97 @@ function readDateFromTiff(view: DataView, tiffStart: number): string | null {
   }
   if (!result) result = readAsciiTag(view, ifd0, TAG_DATETIME, tiffStart, little, u32);
   return result ? exifDateToIso(result) : null;
+}
+
+// Reads EXIF GPS into a transient {lat,lng} for in-browser clustering ONLY.
+// Mirrors the APP1/EXIF walk of `readTakenAtFromExif`, then follows the GPS IFD
+// pointer (0x8825). The returned coordinate is consumed by the clustering pass to
+// derive an opaque `clusterId` and is then dropped — it must NEVER be attached to
+// any payload, log, or persistence (architecture §3 / #232). Returns `null` for
+// no-GPS / malformed EXIF; never throws.
+export function readGeoForClustering(bytes: ArrayBuffer): ClusterGeo | null {
+  try {
+    const view = new DataView(bytes);
+    if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null;
+
+    let offset = 2;
+    while (offset + 4 <= view.byteLength) {
+      if (view.getUint8(offset) !== 0xff) break;
+      const marker = view.getUint8(offset + 1);
+      if (marker === 0xda) break; // start of scan — no metadata beyond here
+      const segLen = view.getUint16(offset + 2);
+      if (segLen < 2) break;
+      if (marker === 0xe1) {
+        const tiffStart = offset + 4 + 6; // skip "Exif\0\0"
+        if (
+          offset + 4 + 6 <= view.byteLength &&
+          view.getUint32(offset + 4) === 0x45786966 && // "Exif"
+          view.getUint16(offset + 8) === 0x0000
+        ) {
+          return readGeoFromTiff(view, tiffStart);
+        }
+      }
+      offset += 2 + segLen;
+    }
+    return null;
+  } catch {
+    return null; // malformed EXIF → treat as no GPS, never throw
+  }
+}
+
+function readGeoFromTiff(view: DataView, tiffStart: number): ClusterGeo | null {
+  if (tiffStart + 8 > view.byteLength) return null;
+  const byteOrder = view.getUint16(tiffStart);
+  const little = byteOrder === 0x4949;
+  if (!little && byteOrder !== 0x4d4d) return null;
+
+  const u16 = (o: number) => view.getUint16(o, little);
+  const u32 = (o: number) => view.getUint32(o, little);
+
+  const ifd0 = readIfd(view, tiffStart, tiffStart + u32(tiffStart + 4), little, u16, u32);
+  const gpsPtr = ifd0.get(TAG_GPS_IFD_POINTER);
+  if (!gpsPtr) return null;
+
+  const gps = readIfd(view, tiffStart, tiffStart + gpsPtr.valueOffset, little, u16, u32);
+  const lat = readGpsCoord(view, gps, TAG_GPS_LAT, TAG_GPS_LAT_REF, tiffStart, little);
+  const lng = readGpsCoord(view, gps, TAG_GPS_LNG, TAG_GPS_LNG_REF, tiffStart, little);
+  if (lat === null || lng === null) return null;
+  return { lat, lng };
+}
+
+// Reads a GPS coordinate: three RATIONALs (deg, min, sec) + a ref char (N/S/E/W).
+// Returns signed decimal degrees, or null if absent/malformed.
+function readGpsCoord(
+  view: DataView,
+  gps: Map<number, IfdEntry>,
+  coordTag: number,
+  refTag: number,
+  tiffStart: number,
+  little: boolean,
+): number | null {
+  const entry = gps.get(coordTag);
+  if (!entry || entry.type !== 5 || entry.count < 3) return null; // type 5 = RATIONAL
+  const base = tiffStart + entry.valueOffset; // 3 rationals = 24 bytes, always out-of-line
+  if (base + 24 > view.byteLength) return null;
+
+  const rational = (i: number): number | null => {
+    const num = view.getUint32(base + i * 8, little);
+    const den = view.getUint32(base + i * 8 + 4, little);
+    if (den === 0) return null;
+    return num / den;
+  };
+  const deg = rational(0);
+  const min = rational(1);
+  const sec = rational(2);
+  if (deg === null || min === null || sec === null) return null;
+
+  let value = deg + min / 60 + sec / 3600;
+  if (!Number.isFinite(value)) return null;
+
+  const ref = readAsciiTag(view, gps, refTag, tiffStart, little, (o) => view.getUint32(o, little));
+  if (ref === 'S' || ref === 'W') value = -value;
+  if (Math.abs(value) > 180) return null; // out-of-range guard
+  return value;
 }
 
 type IfdEntry = { type: number; count: number; valueOffset: number; valuePos: number };

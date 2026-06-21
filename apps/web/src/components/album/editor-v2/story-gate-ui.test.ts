@@ -16,12 +16,19 @@ test('story gate UI only applies when the progress payload has V3 chapters', () 
   assert.match(
     src,
     /const hasStoryGate = \(storyProgress\?\.chapterOrder\.length \?\? 0\) > 0;/,
-    'non-V3 authoring progress returns chapterOrder: [] and must not show the gate',
+    'non-V3 authoring progress returns chapterOrder: [] and must keep the export gate locked',
   );
-  assert.match(
+  // §4.2: the standing「确定本章」breadcrumb button (showStoryGate / story-gate-btn) was
+  // replaced by the in-flow satisfaction card — confirmation is a per-write affordance now.
+  assert.doesNotMatch(
     src,
-    /const showStoryGate = mode === 'authoring' && hasStoryGate;/,
-    'the confirm-chapter button must be hidden for non-V3 authoring drafts',
+    /const showStoryGate =/,
+    'the standing confirm-chapter breadcrumb button must be gone (satisfaction card drives it)',
+  );
+  assert.doesNotMatch(
+    src,
+    /story-gate-btn/,
+    'the story-gate button must no longer be rendered',
   );
 });
 
@@ -135,22 +142,26 @@ test('stage gate is not a global prerequisite for finalized editing exports', ()
   );
 });
 
-test('export ready banner renders locale text directly when it mounts after i18n setup', () => {
+test('export-ready closing card uses the locale-derived label, not mount-time i18n rewriting', () => {
   const src = source('EditorPort.tsx');
 
+  // #236 ⑦⑧: the pinned top banner is gone — the closing line is now appended into the
+  // chat flow by appendExportReadyCard(). It must still derive its copy from the React
+  // locale (the same reason the banner did: a conditionally/imperatively created node
+  // can't rely on the mount-time data-i18n sweep).
   assert.doesNotMatch(
     src,
     /<span[^>]*data-i18n="exportReady"[^>]*>/,
-    'the conditionally mounted export-ready banner must not depend on mount-time data-i18n rewriting',
+    'the export-ready copy must not depend on mount-time data-i18n rewriting',
   );
+  assert.doesNotMatch(src, /export-ready-banner/, 'the pinned top banner JSX must be removed');
   assert.match(
     src,
     /const exportReadyLabel = locale === 'zh'\s*\?\s*'太棒了，你的书已经准备好了！'\s*:\s*'Wonderful — your book is ready!';/,
-    'the export-ready banner should derive both zh/en strings from the React locale like storyGateLabel',
+    'the export-ready copy should derive both zh/en strings from the React locale like storyGateLabel',
   );
-  assert.match(
-    src,
-    /<span>\{exportReadyLabel\}<\/span>/,
-    'the export-ready banner should render the locale-derived label in JSX',
-  );
+  // The closing card renders that locale-derived label imperatively (textContent).
+  const card = /function appendExportReadyCard\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(card, 'appendExportReadyCard() must exist');
+  assert.match(card![0], /line\.textContent = exportReadyLabel/, 'the closing card must render exportReadyLabel');
 });

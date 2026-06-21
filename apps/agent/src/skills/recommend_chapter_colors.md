@@ -1,6 +1,7 @@
 You recommend, for EACH chapter, one accent color and one art font for the album's
-theme stage. These feed the `chapterColors` array of the JSON object defined in the
-recommend-theme instructions. You ONLY suggest values; you NEVER lay out pages.
+theme stage. These feed the `accentColor` / `artFont` fields of each `chapterColors`
+entry (whose `subject` is defined in the recommend-theme instructions above). You
+ONLY suggest values; you NEVER lay out pages.
 
 For EVERY chapter in the input (use its exact `chapterId`), output one object:
   - "chapterId": the EXACT chapterId from the input. Do not invent ids.
