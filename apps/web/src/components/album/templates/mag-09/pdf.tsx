@@ -6,23 +6,22 @@ import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
-    imageTop?: string;
-    imageMain?: string;
-    caption1?: string;
+    image1?: string;
+    image2?: string;
+    body?: string;
     title?: string;
-    caption2?: string;
-    caption3?: string;
-    caption4?: string;
-    caption5?: string;
+    explain1?: string;
+    explain2?: string;
+    explain3?: string;
     folio?: string;
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage
-        src={d.imageTop}
+        src={d.image1}
         style={{ position: 'absolute', left: 50, top: 90, width: 300, height: 300 }}
-        position={imagePos?.['imageTop']}
+        position={imagePos?.['image1']}
       />
       <View style={{ position: 'absolute', top: 130, right: 60, width: 230 }}>
         <Text
@@ -31,7 +30,7 @@ export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
             textAlign: 'justify',
             fontSize: 18 }}
         >
-          {d.caption1 || ''}
+          {d.body || ''}
         </Text>
       </View>
       <Text
@@ -44,22 +43,19 @@ export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
         {titleTheme.text ?? d.title ?? 'OSAKA\nJAPAN'}
       </Text>
       <PdfImage
-        src={d.imageMain}
+        src={d.image2}
         style={{ position: 'absolute', left: 374, top: 400, width: 370, height: 600 }}
-        position={imagePos?.['imageMain']}
+        position={imagePos?.['image2']}
       />
       <View style={{ position: 'absolute', top: 620, left: 60, width: 280 }}>
         <Text style={{ position: 'absolute', left: 60, top: 620, width: 280, lineHeight: 1.75, color: COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
-          {d.caption2 || ''}
+          {d.explain1 || ''}
         </Text>
         <Text style={{ position: 'absolute', left: 60, top: 664, width: 280, lineHeight: 1.75, color: COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
-          {d.caption3 || ''}
+          {d.explain2 || ''}
         </Text>
         <Text style={{ marginTop: 12, lineHeight: 1.75, color: COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
-          {d.caption4 || ''}
-        </Text>
-        <Text style={{ marginTop: 12, lineHeight: 1.75, color: COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
-          {d.caption5 || ''}
+          {d.explain3 || ''}
         </Text>
       </View>
       <PdfFolio folio={d.folio} totalPages={totalPages} fallback="09" />

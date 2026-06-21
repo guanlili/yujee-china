@@ -106,13 +106,14 @@ def test_assign_images_rejects_overflow():
 
 
 def test_assign_images_into_repeat_group_template():
-    # mag-10 declares cells[0..3].image as its addressable capacity.
+    # mag-10's single items.images slot `image` expands to image[0..k-1] as its
+    # addressable grid capacity (k = _ITEMS_GRID_CAPACITY).
     mapping = sk.assign_images_v3("mag-10", ["a", "b", "c", "d"])
     assert mapping == {
-        "cells[0].image": "a",
-        "cells[1].image": "b",
-        "cells[2].image": "c",
-        "cells[3].image": "d",
+        "image[0]": "a",
+        "image[1]": "b",
+        "image[2]": "c",
+        "image[3]": "d",
     }
 
 

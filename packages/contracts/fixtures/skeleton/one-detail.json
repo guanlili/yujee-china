@@ -41,7 +41,7 @@
     "basePages": {
       "cover": {
         "pageIndex": 0,
-        "templateId": "mag-01",
+        "templateId": "p01",
         "images": {
           "image": "p001"
         },
@@ -52,7 +52,7 @@
         "pageIndex": 2,
         "templateId": "mag-20",
         "images": {
-          "image1": "p001"
+          "image": "p001"
         },
         "texts": {}
       }
@@ -82,7 +82,7 @@
     "pages": [
       {
         "pageIndex": 0,
-        "templateId": "mag-01",
+        "templateId": "p01",
         "images": {
           "image": "p001"
         },
@@ -100,7 +100,7 @@
         "pageIndex": 2,
         "templateId": "mag-20",
         "images": {
-          "image1": "p001"
+          "image": "p001"
         },
         "texts": {}
       }

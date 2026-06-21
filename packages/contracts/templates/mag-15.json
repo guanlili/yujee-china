@@ -1,59 +1,14 @@
 {
   "id": "mag-15",
-  "slot": "interior",
-  "scene": "record",
   "category": "interior",
   "images": [
-    {
-      "id": "imagePerson",
-      "orientation": [
-        "portrait"
-      ],
-      "quality": [
-        "hero",
-        "detail"
-      ]
-    },
-    {
-      "id": "imageRoad",
-      "orientation": [
-        "landscape"
-      ],
-      "quality": [
-        "detail",
-        "fill"
-      ]
-    }
+    { "id": "image1", "orientation": ["portrait"], "quality": ["hero", "detail"] },
+    { "id": "image2", "orientation": ["landscape"], "quality": ["detail", "fill"] }
   ],
   "texts": [
-    {
-      "id": "body",
-      "role": "body",
-      "lang": "user",
-      "maxChars": 60,
-      "hint": "短正文,一两句"
-    },
-    {
-      "id": "title",
-      "role": "title",
-      "lang": "user",
-      "maxChars": 16,
-      "variableDecor": true,
-      "hint": "该页标题"
-    },
-    {
-      "id": "date",
-      "role": "decoration",
-      "lang": "en",
-      "maxChars": 20,
-      "variableDecor": true,
-      "hint": "日期,如 May 2026"
-    },
-    {
-      "id": "folio",
-      "role": "decoration",
-      "lang": "en",
-      "maxChars": 2
-    }
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "该页标题", "variableDecor": true },
+    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "hint": "短正文,一两句" },
+    { "id": "date", "role": "decoration", "lang": "en", "maxChars": 12, "hint": "日期,如 May 2026", "variableDecor": true },
+    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

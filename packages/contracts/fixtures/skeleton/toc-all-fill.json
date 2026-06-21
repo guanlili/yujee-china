@@ -299,7 +299,7 @@
     "basePages": {
       "cover": {
         "pageIndex": 0,
-        "templateId": "mag-13",
+        "templateId": "p01",
         "images": {
           "image": "c1p2"
         },
@@ -310,23 +310,23 @@
         "templateId": "mag-02",
         "images": {},
         "texts": {
-          "heading": "CONTENTS",
+          "title": "CONTENTS",
           "folio": "02",
-          "numbers[0]": "01",
-          "titles[0]": "Chapter 1",
-          "numbers[1]": "02",
-          "titles[1]": "Chapter 2",
-          "numbers[2]": "03",
-          "titles[2]": "Chapter 3",
-          "numbers[3]": "04",
-          "titles[3]": "Chapter 4"
+          "number[0]": "01",
+          "title[0]": "Chapter 1",
+          "number[1]": "02",
+          "title[1]": "Chapter 2",
+          "number[2]": "03",
+          "title[2]": "Chapter 3",
+          "number[3]": "04",
+          "title[3]": "Chapter 4"
         }
       },
       "ending": {
         "pageIndex": 10,
         "templateId": "mag-20",
         "images": {
-          "image1": "c1p1"
+          "image": "c1p1"
         },
         "texts": {}
       }
@@ -348,8 +348,8 @@
             "pageIndex": 2,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "c1p1",
-              "imageRight": "c1p2"
+              "image1": "c1p1",
+              "image2": "c1p2"
             },
             "texts": {}
           },
@@ -379,8 +379,8 @@
             "pageIndex": 4,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "c2p1",
-              "imageRight": "c2p2"
+              "image1": "c2p1",
+              "image2": "c2p2"
             },
             "texts": {}
           },
@@ -410,8 +410,8 @@
             "pageIndex": 6,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "c3p1",
-              "imageRight": "c3p2"
+              "image1": "c3p1",
+              "image2": "c3p2"
             },
             "texts": {}
           },
@@ -441,8 +441,8 @@
             "pageIndex": 8,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "c4p1",
-              "imageRight": "c4p2"
+              "image1": "c4p1",
+              "image2": "c4p2"
             },
             "texts": {}
           },
@@ -460,7 +460,7 @@
     "pages": [
       {
         "pageIndex": 0,
-        "templateId": "mag-13",
+        "templateId": "p01",
         "images": {
           "image": "c1p2"
         },
@@ -471,24 +471,24 @@
         "templateId": "mag-02",
         "images": {},
         "texts": {
-          "heading": "CONTENTS",
+          "title": "CONTENTS",
           "folio": "02",
-          "numbers[0]": "01",
-          "titles[0]": "Chapter 1",
-          "numbers[1]": "02",
-          "titles[1]": "Chapter 2",
-          "numbers[2]": "03",
-          "titles[2]": "Chapter 3",
-          "numbers[3]": "04",
-          "titles[3]": "Chapter 4"
+          "number[0]": "01",
+          "title[0]": "Chapter 1",
+          "number[1]": "02",
+          "title[1]": "Chapter 2",
+          "number[2]": "03",
+          "title[2]": "Chapter 3",
+          "number[3]": "04",
+          "title[3]": "Chapter 4"
         }
       },
       {
         "pageIndex": 2,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "c1p1",
-          "imageRight": "c1p2"
+          "image1": "c1p1",
+          "image2": "c1p2"
         },
         "texts": {}
       },
@@ -504,8 +504,8 @@
         "pageIndex": 4,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "c2p1",
-          "imageRight": "c2p2"
+          "image1": "c2p1",
+          "image2": "c2p2"
         },
         "texts": {}
       },
@@ -521,8 +521,8 @@
         "pageIndex": 6,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "c3p1",
-          "imageRight": "c3p2"
+          "image1": "c3p1",
+          "image2": "c3p2"
         },
         "texts": {}
       },
@@ -538,8 +538,8 @@
         "pageIndex": 8,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "c4p1",
-          "imageRight": "c4p2"
+          "image1": "c4p1",
+          "image2": "c4p2"
         },
         "texts": {}
       },
@@ -555,7 +555,7 @@
         "pageIndex": 10,
         "templateId": "mag-20",
         "images": {
-          "image1": "c1p1"
+          "image": "c1p1"
         },
         "texts": {}
       }

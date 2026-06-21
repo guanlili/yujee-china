@@ -73,7 +73,7 @@
         "pageIndex": 2,
         "templateId": "mag-20",
         "images": {
-          "image1": "A"
+          "image": "A"
         },
         "texts": {}
       }
@@ -94,8 +94,8 @@
             "pageIndex": 1,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "A",
-              "imageRight": "a"
+              "image1": "A",
+              "image2": "a"
             },
             "texts": {}
           }
@@ -115,8 +115,8 @@
         "pageIndex": 1,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "A",
-          "imageRight": "a"
+          "image1": "A",
+          "image2": "a"
         },
         "texts": {}
       },
@@ -124,7 +124,7 @@
         "pageIndex": 2,
         "templateId": "mag-20",
         "images": {
-          "image1": "A"
+          "image": "A"
         },
         "texts": {}
       }

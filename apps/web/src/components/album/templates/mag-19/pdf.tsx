@@ -7,12 +7,12 @@ import { resolveThemeCarrier } from '../theme-carrier';
 export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
-    intro?: string;
-    captionLeft?: string;
-    captionRight?: string;
+    title?: string;
+    explain1?: string;
+    explain2?: string;
     folio?: string;
   };
-  const introTheme = resolveThemeCarrier(data, 'intro');
+  const introTheme = resolveThemeCarrier(data, 'title');
   // PDF 不支持 writingMode: vertical-rl,Frame 提示退化为水平摆放
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
@@ -29,7 +29,7 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontFamily: introTheme.pdfFontFamily,
         }}
       >
-        {introTheme.text ?? d.intro ?? ''}
+        {introTheme.text ?? d.title ?? ''}
       </Text>
       <PdfImage
         src={d.image}
@@ -47,7 +47,7 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 18,
         }}
       >
-        {d.captionLeft || ''}
+        {d.explain1 || ''}
       </Text>
       <Text
         style={{
@@ -61,7 +61,7 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 18,
         }}
       >
-        {d.captionRight || ''}
+        {d.explain2 || ''}
       </Text>
       <Text
         style={{

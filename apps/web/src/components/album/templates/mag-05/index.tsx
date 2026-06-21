@@ -6,13 +6,13 @@ import { resolveThemeCarrier } from '../theme-carrier';
 export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     title?: string;
-    topRight?: string;
-    caption?: string;
+    label?: string;
+    explain?: string;
     folio?: string;
     image?: string;
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
-  const topRightTheme = resolveThemeCarrier(data, 'topRight');
+  const topRightTheme = resolveThemeCarrier(data, 'label');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <h1
@@ -46,7 +46,7 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontFamily: topRightTheme.webFontFamily,
         }}
       >
-        {topRightTheme.text ?? d.topRight ?? ''}
+        {topRightTheme.text ?? d.label ?? ''}
       </div>
       <div style={{ position: 'absolute', top: 290, left: 50, width: 320 }}>
         <p
@@ -59,7 +59,7 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
             fontSize: 18,
           }}
         >
-          {d.caption || ''}
+          {d.explain || ''}
         </p>
       </div>
       <WebImage

@@ -6,15 +6,15 @@ import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
-    heading?: string;
-    sideText?: string;
-    caption1?: string;
-    caption2?: string;
+    title?: string;
+    label?: string;
+    explain1?: string;
+    explain2?: string;
     folio?: string;
     image?: string;
   };
-  const headingTheme = resolveThemeCarrier(data, 'heading');
-  const sideTextTheme = resolveThemeCarrier(data, 'sideText');
+  const headingTheme = resolveThemeCarrier(data, 'title');
+  const sideTextTheme = resolveThemeCarrier(data, 'label');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <View
@@ -35,7 +35,7 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
             fontFamily: headingTheme.pdfFontFamily,
           }}
         >
-          {headingTheme.text ?? d.heading ?? 'VENUES'}
+          {headingTheme.text ?? d.title ?? 'VENUES'}
         </Text>
         <View style={{ flexGrow: 1, height: 1, backgroundColor: COLORS.ink, marginHorizontal: 16 }} />
         <View
@@ -69,7 +69,7 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
           width: 17,
         }}
       >
-        {(sideTextTheme.text ?? d.sideText ?? '').split('').join('\n')}
+        {(sideTextTheme.text ?? d.label ?? '').split('').join('\n')}
       </Text>
       <PdfImage
         src={d.image}
@@ -87,7 +87,7 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
           width: 360,
         }}
       >
-        {d.caption1 || ''}
+        {d.explain1 || ''}
       </Text>
       <Text
         style={{
@@ -101,7 +101,7 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
           width: 360,
         }}
       >
-        {d.caption2 || ''}
+        {d.explain2 || ''}
       </Text>
     </PdfPageShell>
   );

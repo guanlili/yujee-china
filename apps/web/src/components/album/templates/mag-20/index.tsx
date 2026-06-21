@@ -3,7 +3,7 @@ import { PAGE, WEB_FONTS } from '../constants';
 import { WebImage } from '../web-utils';
 import { YUJEE_LOGO_SVG } from '../brand-logo';
 
-// 杂志封底（slot: ending）。纯白底；中部一张图片（唯一可编辑槽位 image1）；
+// 杂志封底（slot: ending）。纯白底；中部一张图片（唯一可编辑槽位 image）；
 // 左下角品牌 logo + 版权，右下角社媒图标（Instagram / X / TikTok）+ 网址，均为固定品牌落款。
 // 版式来自 Figma 封底稿（595×842 → ×1.3344 → 794×1123）。
 
@@ -20,8 +20,8 @@ export function WebMag20({ data, imagePos }: TemplateRenderProps) {
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 封底图片（唯一可编辑槽位） */}
-      <WebImage src={d['image1']} style={{ position: 'absolute', left: 256, top: 240, width: 282, height: 364, objectFit: 'cover' }} position={imagePos?.['image1']}
-        slotId="image1" />
+      <WebImage src={d['image']} style={{ position: 'absolute', left: 256, top: 240, width: 282, height: 364, objectFit: 'cover' }} position={imagePos?.['image']}
+        slotId="image" />
 
       {/* 左下角：品牌 logo */}
       <img src={YUJEE_LOGO_SVG} alt="yujee" style={{ position: 'absolute', left: 56, top: 979, width: 112, height: 47, objectFit: 'contain', display: 'block' }} />

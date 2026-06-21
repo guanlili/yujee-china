@@ -25,10 +25,12 @@ def _photo(pid: str, *, quality: str, orientation: str) -> PhotoAnalysis:
 
 
 def _toc_texts(line: str = "A small page of entries kept from the trip.") -> dict[str, str]:
+    # mag-02 top-level text slots are `title` + `folio`; the per-entry repeat slots
+    # (number/title/description) now live under items.texts and are not addressed
+    # by the v2 layout_rules validator, so only the top-level slots appear here.
+    del line  # entry copy lives in items.texts, outside this validator's scope
     return {
-        "heading": "CONTENTS",
-        "numbers[0]": "01",
-        "titles[0]": line,
+        "title": "CONTENTS",
         "folio": "02",
     }
 
@@ -41,12 +43,12 @@ def _good_layout() -> AlbumLayoutPlan:
     ]
     pages = [
         Page(pageIndex=0, templateId="mag-13", images={"image": "p1"},
-             texts={"title": "A spring trip to Kyoto", "caption": "x" * 45, "folio": "01"}),
+             texts={"title": "A spring trip to Kyoto", "explain": "x" * 45, "folio": "01"}),
         Page(pageIndex=1, templateId="mag-02", images={},
              texts=_toc_texts()),
         Page(pageIndex=2, templateId="mag-04",
              images={"image1": "p1", "image2": "p2", "image3": "p3"},
-             texts={"caption1": "Square record", "caption2": "Portrait note"}),
+             texts={"explain1": "Square record", "explain2": "Portrait note"}),
     ]
     return AlbumLayoutPlan(
         magazine=Magazine(title="Trip", style="warm-film", language="en"),
@@ -121,7 +123,7 @@ class TestRules:
             pageIndex=2,
             templateId="mag-04",
             images={"image1": "p1", "image2": "p1", "image3": "p1"},
-            texts={"caption1": "x" * 45, "caption2": "y" * 45},
+            texts={"explain1": "x" * 45, "explain2": "y" * 45},
         )
         assert "twice on same page" in (violation(layout) or "")
 
@@ -142,13 +144,13 @@ class TestRules:
             photos=photos,
             pages=[
                 Page(pageIndex=0, templateId="mag-13", images={"image": "p1"},
-                     texts={"title": "Trip to Tokyo", "caption": "y" * 45, "folio": "01"}),
+                     texts={"title": "Trip to Tokyo", "explain": "y" * 45, "folio": "01"}),
                 Page(pageIndex=1, templateId="mag-05", images={"image": "p3"},
-                     texts={"title": "A quiet day", "topRight": "Kyoto spring",
-                            "caption": "x" * 70, "folio": "02"}),
+                     texts={"title": "A quiet day", "label": "Kyoto spring",
+                            "explain": "x" * 70, "folio": "02"}),
                 Page(pageIndex=2, templateId="mag-18",
-                     images={"imageLeft": "p2"},
-                     texts={"captionLeft": "x" * 45, "captionRight": "y" * 45,
+                     images={"image1": "p2"},
+                     texts={"explain1": "x" * 45, "explain2": "y" * 45,
                             "folio": "03"}),
             ],
         )
@@ -166,11 +168,11 @@ class TestRules:
             photos=photos,
             pages=[
                 Page(pageIndex=0, templateId="mag-13", images={"image": "p1"},
-                     texts={"title": "Trip to Tokyo", "caption": "y" * 45, "folio": "01"}),
+                     texts={"title": "Trip to Tokyo", "explain": "y" * 45, "folio": "01"}),
                 Page(pageIndex=1, templateId="mag-02", images={}, texts=_toc_texts("x")),
                 Page(pageIndex=2, templateId="mag-18",
-                     images={"imageLeft": "p2", "imageRight": "p2"},
-                     texts={"captionLeft": "x" * 45, "captionRight": "y" * 45,
+                     images={"image1": "p2", "image2": "p2"},
+                     texts={"explain1": "x" * 45, "explain2": "y" * 45,
                             "folio": "03"}),
             ],
         )
@@ -253,7 +255,7 @@ class TestCoerce:
         assert coerced.pages[2].images == {"image1": "p1", "image2": "p2", "image3": "p3"}
 
     def test_quality_mismatch_coerced(self):
-        # mag-18 imageLeft accepts only detail/fill — a hero photo there is the
+        # mag-18 image1 accepts only detail/fill — a hero photo there is the
         # exact prod failure (requestId 22998fe0). coerce swaps in a fitting photo.
         photos = [
             _photo("p1", quality="hero",   orientation="landscape"),
@@ -267,9 +269,9 @@ class TestCoerce:
                 Page(pageIndex=0, templateId="mag-13", images={"image": "p1"},
                      texts={}),
                 Page(pageIndex=1, templateId="mag-02", images={}, texts={}),
-                # imageLeft/imageRight want detail|fill portraits; p1 is hero/landscape
+                # image1/image2 want detail|fill portraits; p1 is hero/landscape
                 Page(pageIndex=2, templateId="mag-18",
-                     images={"imageLeft": "p1", "imageRight": "p2"}, texts={}),
+                     images={"image1": "p1", "image2": "p2"}, texts={}),
             ],
         )
         msg = violation(layout) or ""
@@ -361,9 +363,12 @@ class TestCoerce:
         assert coerced.photos
 
     def test_square_heroes_relax_to_fill_existing_grid(self):
+        # mag-04 is the existing multi-image square interior grid (3 square slots).
+        # Square hero photos relax to detail so the grid can hold them (mag-04's
+        # first slot is a hero square slot; the rest are detail/fill).
         photos = [
             _photo(f"p{i}", quality="hero", orientation="square")
-            for i in range(4)
+            for i in range(3)
         ]
         layout = AlbumLayoutPlan(
             magazine=self._magazine(),
@@ -372,8 +377,8 @@ class TestCoerce:
                 Page(pageIndex=0, templateId="mag-01", images={"image": "p0"}, texts={}),
                 Page(
                     pageIndex=1,
-                    templateId="mag-10",
-                    images={f"cells[{i}].image": f"p{i}" for i in range(4)},
+                    templateId="mag-04",
+                    images={f"image{i + 1}": f"p{i}" for i in range(3)},
                     texts={},
                 ),
                 Page(pageIndex=2, templateId="mag-02", images={}, texts={}),
@@ -383,10 +388,10 @@ class TestCoerce:
         coerced = coerce_image_slots(layout)
 
         assert violation(coerced) is None
-        assert {p.photoId for p in coerced.photos} == {"p0", "p1", "p2", "p3"}
+        assert {p.photoId for p in coerced.photos} == {"p0", "p1", "p2"}
         assert {p.quality for p in coerced.photos} == {"detail"}
-        assert coerced.pages[1].templateId == "mag-10"
-        assert set(coerced.pages[1].images.values()) == {"p0", "p1", "p2", "p3"}
+        assert coerced.pages[1].templateId == "mag-04"
+        assert set(coerced.pages[1].images.values()) == {"p0", "p1", "p2"}
 
 
 class TestFewPhotoFallback:
@@ -516,7 +521,7 @@ class TestClamp:
         layout.pages[0] = Page(
             pageIndex=0, templateId="mag-13", images={"image": "p1"},
             texts={"title": "A spring trip to Kyoto in the early cherry season",
-                   "caption": "x" * 45, "folio": "01"},
+                   "explain": "x" * 45, "folio": "01"},
         )
         assert violation(layout) is None
         layout.pages = clamp_page_texts(layout.pages)

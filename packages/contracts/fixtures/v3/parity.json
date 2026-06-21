@@ -320,9 +320,9 @@
       "payload": { "chapters": [], "extra": 1 }
     },
     {
-      "name": "TemplateDef tolerates legacy slot/scene + quality/orientation",
+      "name": "TemplateDef rejects removed legacy slot/scene fields",
       "schema": "TemplateDef",
-      "expectValid": true,
+      "expectValid": false,
       "payload": {
         "id": "mag-x",
         "slot": "interior",
@@ -332,20 +332,20 @@
       }
     },
     {
-      "name": "TemplateDef accepts V3 category/svgs/items/variableDecor/hint",
+      "name": "TemplateDef accepts category/svgs/items/variableDecor/hint + image orientation/quality",
       "schema": "TemplateDef",
       "expectValid": true,
       "payload": {
         "id": "mag-y",
         "category": "interior",
-        "images": [{ "id": "image" }],
+        "images": [{ "id": "image", "quality": ["hero"], "orientation": ["portrait"] }],
         "svgs": [{ "id": "divider", "variableDecor": true }],
         "texts": [{ "id": "title", "role": "title", "lang": "user", "variableDecor": true, "hint": "h" }],
-        "items": { "texts": [{ "id": "caption", "role": "explain", "lang": "user", "maxChars": 70 }] }
+        "items": { "texts": [{ "id": "explain", "role": "explain", "lang": "user", "maxChars": 70 }] }
       }
     },
     {
-      "name": "TemplateDef rejects no classification (neither category nor slot+scene)",
+      "name": "TemplateDef rejects missing category",
       "schema": "TemplateDef",
       "expectValid": false,
       "payload": {

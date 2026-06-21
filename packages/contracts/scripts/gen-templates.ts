@@ -17,7 +17,7 @@ const PhotoQuality = z.enum(['hero', 'detail', 'fill']);
 const TemplateImageSlot = z
   .object({
     id: z.string().min(1),
-    // @deprecated orientation/quality — V3 作废;WP0.2 bridge 保留到 WP0.4 引擎迁移后删。
+    // orientation/quality 是图位特征匹配的输入(确定性照片打分)。
     orientation: z.array(PhotoOrientation).nonempty().optional(),
     quality: z.array(PhotoQuality).nonempty().optional(),
   })
@@ -34,7 +34,7 @@ const TemplateTextSlot = z
     lang: TemplateTextLang,
     hint: z.string().min(1).max(200).optional(),
     variableDecor: z.boolean().optional(),
-    // @deprecated repeat — V3 用 items 组;WP0.2 bridge 保留到 WP0.4 引擎迁移后删。
+    // 旧重复内容承载方式;引擎仍接受 repeat 槽的 bracket-path 寻址。
     repeat: z.boolean().optional(),
   })
   .strict();
@@ -54,17 +54,6 @@ const TemplateItems = z
   .strict();
 
 const TemplateCategory = z.enum(['cover', 'interior', 'toc', 'ending']);
-// @deprecated slot/scene — V3 用 category 替代;WP0.2 bridge 保留到 WP0.4 引擎迁移后删。
-const TemplateSlotKind = z.enum(['cover', 'interior', 'ending']);
-const TemplateScene = z.enum([
-  'opening',
-  'portrait',
-  'scenery',
-  'record',
-  'interlude',
-  'textOnly',
-  'ending',
-]);
 
 const TemplatePairing = z
   .object({
@@ -77,9 +66,7 @@ const TemplatePairing = z
 const TemplateDef = z
   .object({
     id: z.string().min(1),
-    category: TemplateCategory.optional(),
-    slot: TemplateSlotKind.optional(),
-    scene: TemplateScene.optional(),
+    category: TemplateCategory,
     pairing: TemplatePairing.nullable().optional(),
     styles: z.array(z.string().min(1)).optional(),
     images: z.array(TemplateImageSlot),
@@ -89,14 +76,11 @@ const TemplateDef = z
   })
   .strict()
   .superRefine((template, ctx) => {
-    const hasV3Category = Boolean(template.category);
-    const hasLegacyClassification = Boolean(template.slot && template.scene);
-
-    if (!hasV3Category && !hasLegacyClassification) {
+    if (template.pairing && template.category !== 'interior') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'template must declare category or legacy slot+scene',
-        path: ['category'],
+        message: 'pairing is only valid on interior templates',
+        path: ['pairing'],
       });
     }
   });

@@ -1,72 +1,16 @@
 {
   "id": "mag-09",
-  "slot": "interior",
-  "scene": "interlude",
   "category": "interior",
   "images": [
-    {
-      "id": "imageTop",
-      "orientation": [
-        "landscape"
-      ],
-      "quality": [
-        "detail",
-        "fill"
-      ]
-    },
-    {
-      "id": "imageMain",
-      "orientation": [
-        "square"
-      ],
-      "quality": [
-        "hero",
-        "detail"
-      ]
-    }
+    { "id": "image1", "orientation": ["landscape"], "quality": ["detail", "fill"] },
+    { "id": "image2", "orientation": ["square"], "quality": ["hero", "detail"] }
   ],
   "texts": [
-    {
-      "id": "quote",
-      "role": "body",
-      "lang": "user",
-      "maxChars": 60,
-      "hint": "短引语 / 抒情句,一句话"
-    },
-    {
-      "id": "caption1",
-      "role": "explain",
-      "lang": "user",
-      "maxChars": 80,
-      "hint": "上图说明"
-    },
-    {
-      "id": "title",
-      "role": "title",
-      "lang": "user",
-      "maxChars": 16,
-      "variableDecor": true,
-      "hint": "该页标题,可两行"
-    },
-    {
-      "id": "caption2",
-      "role": "explain",
-      "lang": "user",
-      "maxChars": 80,
-      "hint": "主图说明"
-    },
-    {
-      "id": "caption3",
-      "role": "explain",
-      "lang": "user",
-      "maxChars": 80,
-      "hint": "补充图注"
-    },
-    {
-      "id": "folio",
-      "role": "decoration",
-      "lang": "en",
-      "maxChars": 2
-    }
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "该页标题,可两行", "variableDecor": true },
+    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "hint": "短引语 / 抒情句,一句话" },
+    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "上图说明" },
+    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "主图说明" },
+    { "id": "explain3", "role": "explain", "lang": "user", "maxChars": 90, "hint": "补充图注" },
+    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

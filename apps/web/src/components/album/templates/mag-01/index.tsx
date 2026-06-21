@@ -5,15 +5,15 @@ import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
-    heading?: string;
-    sideText?: string;
-    caption1?: string;
-    caption2?: string;
+    title?: string;
+    label?: string;
+    explain1?: string;
+    explain2?: string;
     folio?: string;
     image?: string;
   };
-  const headingTheme = resolveThemeCarrier(data, 'heading');
-  const sideTextTheme = resolveThemeCarrier(data, 'sideText');
+  const headingTheme = resolveThemeCarrier(data, 'title');
+  const sideTextTheme = resolveThemeCarrier(data, 'label');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <div
@@ -36,7 +36,7 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
             fontFamily: headingTheme.webFontFamily,
           }}
         >
-          {headingTheme.text ?? d.heading ?? 'VENUES'}
+          {headingTheme.text ?? d.title ?? 'VENUES'}
         </div>
         <div style={{ flex: 1, height: 1, background: COLORS.ink }} />
         <div
@@ -68,7 +68,7 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
           fontFamily: sideTextTheme.webFontFamily,
         }}
       >
-        {sideTextTheme.text ?? d.sideText ?? ''}
+        {sideTextTheme.text ?? d.label ?? ''}
       </div>
       <WebImage
         src={d.image}
@@ -89,7 +89,7 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
           width: 360,
         }}
       >
-        {d.caption1 || ''}
+        {d.explain1 || ''}
       </div>
       <div
         style={{
@@ -104,7 +104,7 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
           width: 360,
         }}
       >
-        {d.caption2 || ''}
+        {d.explain2 || ''}
       </div>
     </WebPage>
   );

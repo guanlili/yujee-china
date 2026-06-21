@@ -25,13 +25,12 @@ test('mag-02 renders repeat text slots ({body,caption} shape) without crashing',
       templateId: 'mag-02',
       images: {},
       texts: {
-        heading: 'CONTENTS',
-        'numbers[0]': '01',
-        'titles[0]': 'Beginnings',
-        'descriptions[0]': 'The first quiet mornings.',
-        'numbers[1]': '02',
-        'titles[1]': 'Together',
-        'descriptions[1]': 'The faces we held close.',
+        'number[0]': '01',
+        'title[0]': 'Beginnings',
+        'description[0]': 'The first quiet mornings.',
+        'number[1]': '02',
+        'title[1]': 'Together',
+        'description[1]': 'The faces we held close.',
       },
     },
     () => undefined,
@@ -61,7 +60,7 @@ test('mag-02 PDF variant renders repeat text slots without crashing', () => {
     {
       templateId: 'mag-02',
       images: {},
-      texts: { 'numbers[0]': '01', 'titles[0]': 'Beginnings', 'descriptions[0]': 'Quiet mornings.' },
+      texts: { 'number[0]': '01', 'title[0]': 'Beginnings', 'description[0]': 'Quiet mornings.' },
     },
     () => undefined,
   );
@@ -82,7 +81,7 @@ test('mag-10 renders its repeat cells slot without crashing', () => {
     {
       templateId: 'mag-10',
       images: {},
-      texts: { 'cells[0].caption': 'A quiet caption' },
+      texts: { 'explain[0]': 'A quiet caption' },
     },
     () => undefined,
   );

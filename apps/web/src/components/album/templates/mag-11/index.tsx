@@ -7,12 +7,12 @@ export function WebMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     title?: string;
-    plate?: string;
-    caption2?: string;
+    label?: string;
+    explain?: string;
     folio?: string;
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
-  const plateTheme = resolveThemeCarrier(data, 'plate');
+  const labelTheme = resolveThemeCarrier(data, 'label');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -43,12 +43,12 @@ export function WebMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
           style={{
             fontSize: 13,
             letterSpacing: '0.3em',
-            color: plateTheme.accentColor ?? COLORS.ink,
+            color: labelTheme.accentColor ?? COLORS.ink,
             textTransform: 'uppercase',
-            fontFamily: plateTheme.webFontFamily,
+            fontFamily: labelTheme.webFontFamily,
           }}
         >
-          {plateTheme.text ?? d.plate ?? ''}
+          {labelTheme.text ?? d.label ?? ''}
         </div>
       </div>
       <div
@@ -63,7 +63,7 @@ export function WebMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
           textAlign: 'justify',
         }}
       >
-        <p style={{ margin: 0, fontSize: 18 }}>{d.caption2 || ''}</p>
+        <p style={{ margin: 0, fontSize: 18 }}>{d.explain || ''}</p>
       </div>
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="11" />
     </WebPage>

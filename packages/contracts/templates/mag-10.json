@@ -1,91 +1,16 @@
 {
   "id": "mag-10",
-  "slot": "interior",
-  "scene": "record",
   "category": "interior",
-  "images": [
-    {
-      "id": "cells[0].image",
-      "orientation": [
-        "square",
-        "portrait",
-        "landscape"
-      ],
-      "quality": [
-        "detail",
-        "fill",
-        "hero"
-      ]
-    },
-    {
-      "id": "cells[1].image",
-      "orientation": [
-        "square",
-        "landscape",
-        "portrait"
-      ],
-      "quality": [
-        "detail",
-        "fill",
-        "hero"
-      ]
-    },
-    {
-      "id": "cells[2].image",
-      "orientation": [
-        "square",
-        "portrait",
-        "landscape"
-      ],
-      "quality": [
-        "detail",
-        "fill",
-        "hero"
-      ]
-    },
-    {
-      "id": "cells[3].image",
-      "orientation": [
-        "square",
-        "portrait",
-        "landscape"
-      ],
-      "quality": [
-        "detail",
-        "fill",
-        "hero"
-      ]
-    }
-  ],
+  "images": [],
   "texts": [
-    {
-      "id": "cells",
-      "role": "explain",
-      "lang": "user",
-      "maxChars": 70,
-      "repeat": true
-    },
-    {
-      "id": "folio",
-      "role": "decoration",
-      "lang": "en",
-      "maxChars": 2
-    }
+    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ],
   "items": {
     "images": [
-      {
-        "id": "image"
-      }
+      { "id": "image" }
     ],
     "texts": [
-      {
-        "id": "caption",
-        "role": "explain",
-        "lang": "user",
-        "maxChars": 70,
-        "hint": "每格图说:一句话点出这张照片"
-      }
+      { "id": "explain", "role": "explain", "lang": "user", "maxChars": 90, "hint": "每格图说:一句话点出这张照片" }
     ]
   }
 }

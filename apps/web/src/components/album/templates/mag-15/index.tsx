@@ -5,8 +5,8 @@ import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
-    imagePerson?: string;
-    imageRoad?: string;
+    image1?: string;
+    image2?: string;
     body?: string;
     title?: string;
     date?: string;
@@ -33,18 +33,18 @@ export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
         {d.body || ''}
       </p>
       <WebImage
-        src={d.imagePerson}
+        src={d.image1}
         placeholder="3:4"
         style={{ position: 'absolute', top: 180, right: 70, width: 655, height: 440 }}
-        position={imagePos?.['imagePerson']}
-        slotId="imagePerson"
+        position={imagePos?.['image1']}
+        slotId="image1"
       />
       <WebImage
-        src={d.imageRoad}
+        src={d.image2}
         placeholder="4:3"
         style={{ position: 'absolute', top: 660, left: 70, width: 400, height: 350 }}
-        position={imagePos?.['imageRoad']}
-        slotId="imageRoad"
+        position={imagePos?.['image2']}
+        slotId="image2"
       />
       <h1
         style={{

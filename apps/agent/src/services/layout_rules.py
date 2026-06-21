@@ -15,12 +15,24 @@ log = get_logger("layout_rules")
 # out in build_text_first_layout when the model can't compose a usable album.
 FEW_PHOTO_MAX = 2
 
-# Text-only spreads used to pad a few-photo album to the sanity floor. This is
-# derived from the active registry because template edits may remove old IDs.
+
+def _is_solo_category(tpl: registry.TemplateDef) -> bool:
+    """cover / ending sit alone on a page (hero-exempt, not paired)."""
+    return tpl["category"] in ("cover", "ending")
+
+# Text-only spreads used to pad a few-photo album to the sanity floor, and as the
+# Phase-4 swap target when a page's image slots can't be filled. A pad must carry
+# NO image slots at all (top-level or in its repeat group) so dropping a page's
+# images leaves nothing blank to render. Derived from the active registry because
+# template edits may remove old IDs.
+def _has_no_images(tpl: registry.TemplateDef) -> bool:
+    return not tpl["images"] and not (tpl.get("items") or {}).get("images")
+
+
 _TEXT_ONLY_PAD = tuple(
     tid
     for tid in registry.TEMPLATE_IDS
-    if (tpl := registry.get(tid)) and tpl["slot"] == "interior" and not tpl["images"]
+    if (tpl := registry.get(tid)) and _has_no_images(tpl)
 )
 
 _TEXT_ONLY_SPREAD = _TEXT_ONLY_PAD[0] if _TEXT_ONLY_PAD else "mag-02"
@@ -158,7 +170,7 @@ def _relax_to_placeable(photo: PhotoAnalysis) -> PhotoAnalysis:
 # non-hero detail/fill so a lone fill-grade photo has a legal home.
 _SINGLE_IMAGE_QUALITIES: dict[str, set[str]] = {}
 for _tpl in registry.TEMPLATES.values():
-    if _tpl["slot"] == "cover" or len(_tpl["images"]) != 1:
+    if _tpl["category"] == "cover" or len(_tpl["images"]) != 1:
         continue
     (_cons,) = _tpl["images"]
     for _o in _slot_orientations(_cons):
@@ -271,7 +283,7 @@ def _retemplate_page(
             slots = tpl["images"]
             if not slots:
                 continue
-            if only_category and tpl["slot"] != category:
+            if only_category and tpl["category"] != category:
                 continue
             if len(slots) > len(photos):
                 continue  # can't fill every slot from this set
@@ -279,7 +291,7 @@ def _retemplate_page(
                 tpl,
                 photos,
                 used,
-                hero_exempt=tpl["slot"] in ("cover", "ending"),
+                hero_exempt=_is_solo_category(tpl),
             )
             if assignment is None:
                 continue
@@ -513,7 +525,7 @@ def coerce_image_slots(layout: AlbumLayoutPlan) -> AlbumLayoutPlan:
 
         page_photo_ids = list(imgs.values())
         page_photos = [by_id[pid] for pid in page_photo_ids]
-        replacement = _retemplate_page(tpl["slot"], page_photos, used)
+        replacement = _retemplate_page(tpl["category"], page_photos, used)
         if replacement is None:
             if i == 0:
                 continue
@@ -592,8 +604,8 @@ def violation(layout: AlbumLayoutPlan) -> str | None:
     first_tpl = registry.get(pages[0].templateId)
     if not first_tpl:
         return f"page 0 templateId {pages[0].templateId} not in TemplateRegistry"
-    if first_tpl["slot"] != "cover":
-        return f"page 0 templateId {pages[0].templateId} category={first_tpl['slot']} (must be cover)"
+    if first_tpl["category"] != "cover":
+        return f"page 0 templateId {pages[0].templateId} category={first_tpl['category']} (must be cover)"
 
     # Rule 6: pageIndex strictly 0..N-1
     for expected_idx, page in enumerate(pages):
@@ -753,7 +765,7 @@ def _page_slot_for_photo(photo: PhotoAnalysis) -> tuple[str, str] | None:
     options: list[tuple[bool, int, str, str]] = []
     for order, tid in enumerate(registry.TEMPLATE_IDS):
         tpl = registry.TEMPLATES[tid]
-        if tpl["slot"] == "cover" or len(tpl["images"]) != 1:
+        if tpl["category"] == "cover" or len(tpl["images"]) != 1:
             continue
         cons = tpl["images"][0]
         if _photo_placeable(photo, cons):
@@ -782,7 +794,7 @@ def _filled_content_page_for_photo(
         for order, tid in enumerate(registry.TEMPLATE_IDS):
             tpl = registry.TEMPLATES[tid]
             slots = tpl["images"]
-            if tpl["slot"] == "cover" or not slots:
+            if tpl["category"] == "cover" or not slots:
                 continue
             if len(slots) > len(available):
                 continue

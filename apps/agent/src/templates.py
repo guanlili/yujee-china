@@ -4,10 +4,11 @@ The template source of truth lives in packages/contracts/templates/*.json.
 This module keeps the Agent-side public API stable while loading those files
 directly at process startup.
 
-WP0.2 is an additive V3 bridge: JSON carries the V3 ``category`` / ``svgs`` /
-``items`` / ``hint`` fields while retaining legacy ``slot`` / ``scene`` /
-``quality`` / ``orientation`` / ``repeat`` for the live skeleton engine. The
-deprecated fields stay until the WP0.4 Python consumer and engine rewrite.
+The template contract is category-only (v3-requirements §9): every template
+declares a single ``category`` (cover | toc | interior | ending). The legacy
+``slot`` / ``scene`` fields are gone. Image-slot ``orientation`` / ``quality``
+remain — they feed the deterministic image-slot feature matching used to pick a
+template and assign photos.
 """
 
 from __future__ import annotations
@@ -18,11 +19,6 @@ from pathlib import Path
 from typing import Any, Literal, NotRequired, TypedDict, cast
 
 
-TemplateSlot = Literal["cover", "interior", "ending"]
-TemplateScene = Literal[
-    "opening", "portrait", "scenery", "record", "interlude", "textOnly", "ending"
-]
-# V3 (WP0.2): category replaces slot+scene. Added tolerantly alongside them.
 TemplateCategory = Literal["cover", "interior", "toc", "ending"]
 PhotoOrientation = Literal["portrait", "landscape", "square"]
 PhotoQuality = Literal["hero", "detail", "fill"]
@@ -62,42 +58,25 @@ class Items(TypedDict):
 
 class TemplateDef(TypedDict):
     id: str
-    slot: NotRequired[TemplateSlot]
-    scene: NotRequired[TemplateScene]
+    # category replaces the legacy slot+scene; svgs = decoration vector slots,
+    # items = the single repeat group.
+    category: TemplateCategory
     images: list[ImageSlot]
     texts: list[TextSlot]
     pairing: NotRequired[Pairing | None]
     styles: NotRequired[list[str]]
-    # V3 (WP0.2, additive): category replaces slot+scene, svgs = decoration
-    # vector slots, items = the single repeat group. The engine switches off
-    # slot/scene onto these in WP0.4.
-    category: NotRequired[TemplateCategory]
     svgs: NotRequired[list[SvgSlot]]
     items: NotRequired[Items]
 
 
-_SLOTS = {"cover", "interior", "ending"}
-_SCENES = {
-    "opening",
-    "portrait",
-    "scenery",
-    "record",
-    "interlude",
-    "textOnly",
-    "ending",
-}
 _ORIENTATIONS = {"portrait", "landscape", "square"}
 _QUALITIES = {"hero", "detail", "fill"}
 _TEXT_ROLES = {"title", "body", "explain", "decoration"}
 _TEXT_LANGS = {"user", "en"}
 _CATEGORIES = {"cover", "interior", "toc", "ending"}
 
-# V3 (WP0.2, additive): category / svgs / items at the top level and
-# hint / variableDecor on text slots are accepted now so the migrated template
-# JSONs load; the V3 loader/engine that consumes them is WP0.4.
 _TEMPLATE_KEYS = {
-    "id", "slot", "scene", "pairing", "styles", "images", "texts",
-    "category", "svgs", "items",
+    "id", "category", "pairing", "styles", "images", "texts", "svgs", "items",
 }
 _IMAGE_SLOT_KEYS = {"id", "orientation", "quality"}
 _TEXT_SLOT_KEYS = {"id", "role", "lang", "maxChars", "repeat", "hint", "variableDecor"}
@@ -301,19 +280,9 @@ def _validate_template(value: Any, source: Path) -> TemplateDef:
     if source.stem != template_id:
         raise _fail(f"{source} id must match file name")
 
-    has_category = "category" in data
-    has_legacy_classification = "slot" in data and "scene" in data
-    if not has_category and not has_legacy_classification:
-        raise _fail(f"{source} must declare category or legacy slot+scene")
-
-    if "slot" in data and data["slot"] not in _SLOTS:
-        raise _fail(f"{source}.slot must be one of {sorted(_SLOTS)}")
-
-    if "scene" in data and data["scene"] not in _SCENES:
-        raise _fail(f"{source}.scene must be one of {sorted(_SCENES)}")
-
-    # V3 (WP0.2): category is optional during the transition; validate when set.
-    if "category" in data and data["category"] not in _CATEGORIES:
+    if "category" not in data:
+        raise _fail(f"{source} must declare category")
+    if data["category"] not in _CATEGORIES:
         raise _fail(f"{source}.category must be one of {sorted(_CATEGORIES)}")
 
     images = [
@@ -327,21 +296,17 @@ def _validate_template(value: Any, source: Path) -> TemplateDef:
 
     out: TemplateDef = {
         "id": template_id,
+        "category": cast(TemplateCategory, data["category"]),
         "images": images,
         "texts": texts,
     }
-    # scene/pairing/lang are carried through for the live engine.
-    if "slot" in data:
-        out["slot"] = cast(TemplateSlot, data["slot"])
-    if "scene" in data:
-        out["scene"] = cast(TemplateScene, data["scene"])
     if "pairing" in data:
-        out["pairing"] = _validate_pairing(data["pairing"], f"{source}.pairing")
+        pairing = _validate_pairing(data["pairing"], f"{source}.pairing")
+        if pairing is not None and data["category"] != "interior":
+            raise _fail(f"{source}.pairing is only valid on interior templates")
+        out["pairing"] = pairing
     if "styles" in data:
         out["styles"] = _optional_string_array(data["styles"], f"{source}.styles")
-    # V3 (WP0.2): WP0.4 switches the engine onto these fields.
-    if "category" in data:
-        out["category"] = cast(TemplateCategory, data["category"])
     if "svgs" in data:
         out["svgs"] = [
             _validate_svg_slot(slot_def, f"{source}.svgs[{idx}]")
@@ -480,14 +445,14 @@ def _summarize_templates_for_prompt(templates: dict[str, TemplateDef]) -> str:
             for slot in tpl["texts"]
             if slot["role"] != "decoration"
         )
-        classification = tpl.get("slot") or tpl.get("category", "?")
+        classification = tpl["category"]
         lines.append(f"- {tid} [{classification}] images: {img} | texts: {txt}")
     return "\n".join(lines)
 
 
 TEMPLATES: dict[str, TemplateDef] = _load_default_templates()
 COVER_TEMPLATE_IDS = sorted(
-    tid for tid, t in TEMPLATES.items() if (t.get("slot") or t.get("category")) == "cover"
+    tid for tid, t in TEMPLATES.items() if t["category"] == "cover"
 )
 TEMPLATE_IDS = sorted(TEMPLATES.keys())
 

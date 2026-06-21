@@ -1,48 +1,13 @@
 {
   "id": "mag-19",
-  "slot": "interior",
-  "scene": "scenery",
   "category": "interior",
   "images": [
-    {
-      "id": "image",
-      "orientation": [
-        "square"
-      ],
-      "quality": [
-        "detail",
-        "fill"
-      ]
-    }
+    { "id": "image", "orientation": ["square"], "quality": ["detail", "fill"] }
   ],
   "texts": [
-    {
-      "id": "intro",
-      "role": "title",
-      "lang": "user",
-      "maxChars": 8,
-      "variableDecor": true,
-      "hint": "极短引题,如单词 / 2 字"
-    },
-    {
-      "id": "captionLeft",
-      "role": "explain",
-      "lang": "user",
-      "maxChars": 110,
-      "hint": "左栏说明"
-    },
-    {
-      "id": "captionRight",
-      "role": "explain",
-      "lang": "user",
-      "maxChars": 110,
-      "hint": "右栏说明"
-    },
-    {
-      "id": "folio",
-      "role": "decoration",
-      "lang": "en",
-      "maxChars": 2
-    }
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 12, "hint": "极短引题,如单词 / 2 字", "variableDecor": true },
+    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "左栏说明" },
+    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "右栏说明" },
+    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

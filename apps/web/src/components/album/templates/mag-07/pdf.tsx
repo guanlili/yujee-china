@@ -6,10 +6,10 @@ import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
-    imageTop?: string;
-    imageMain?: string;
-    caption1?: string;
-    caption2?: string;
+    image1?: string;
+    image2?: string;
+    explain1?: string;
+    explain2?: string;
     title?: string;
     folio?: string;
   };
@@ -20,8 +20,8 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
     caption1: { x: 50, y: 150, w: 240, h: 330, fontSize: 18 }, // 文本框1（上）：x/y 位置、h 高度、fontSize 字号均可编辑
     caption2: { x: 50, y: 510, w: 240, h: 420, fontSize: 18 }, // 文本框2（下，对齐大图）：x/y 位置、h 高度、fontSize 字号均可编辑
     title: { x: 50, bottom: 70, fontSize: 56 }, // 标题（贴底；bottom 越大越往上）
-    imageTop: { x: 364, y: 90, w: 380, h: 330 }, // 上方横图
-    imageMain: { x: 364, y: 450, w: 380, h: 480 }, // 下方竖图（大）
+    image1: { x: 364, y: 90, w: 380, h: 330 }, // 上方横图
+    image2: { x: 364, y: 450, w: 380, h: 480 }, // 下方竖图（大）
   };
   const cap = (text: string, fontSize: number) => (
     <Text style={{ lineHeight: 1.7, color: COLORS.ink2, textAlign: 'justify', fontSize }}>
@@ -39,12 +39,12 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
           height: LAYOUT.caption1.h,
         }}
       >
-        {cap(d.caption1 || '', LAYOUT.caption1.fontSize)}
+        {cap(d.explain1 || '', LAYOUT.caption1.fontSize)}
       </View>
       <PdfImage
-        src={d.imageTop}
+        src={d.image1}
         style={{ position: 'absolute', left: 364, top: 60, width: 380, height: 330 }}
-        position={imagePos?.['imageTop']}
+        position={imagePos?.['image1']}
       />
       <View
         style={{
@@ -55,12 +55,12 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
           height: LAYOUT.caption2.h,
         }}
       >
-        {cap(d.caption2 || '', LAYOUT.caption2.fontSize)}
+        {cap(d.explain2 || '', LAYOUT.caption2.fontSize)}
       </View>
       <PdfImage
-        src={d.imageMain}
+        src={d.image2}
         style={{ position: 'absolute', left: 364, top: 450, width: 380, height: 480 }}
-        position={imagePos?.['imageMain']}
+        position={imagePos?.['image2']}
       />
       <Text
         style={{ position: 'absolute', left: 50, top: 984, width: 220, fontFamily: titleTheme.pdfFontFamily ?? PDF_FONTS.serifEn,

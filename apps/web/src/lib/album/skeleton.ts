@@ -53,7 +53,6 @@ type PickTemplateArgs = {
   chapterId?: string;
   pageOrdinal?: number;
   attempt?: number;
-  scene?: string;
 };
 
 const QUALITY_RANK: Record<PhotoQuality, number> = {
@@ -90,23 +89,6 @@ function orientation(photo: SkeletonPhoto): string | undefined {
   return photo.analysis.orientation;
 }
 
-function peopleCount(photo: SkeletonPhoto): string {
-  const value = photo.analysis.peopleCount;
-  return typeof value === 'string' ? value : '0';
-}
-
-// Target template scene for a chapter page (mirror of skeleton.py page_scene):
-// multi-photo → record; single photo → portrait when it has people, else
-// scenery. Returns undefined when no scene preference applies.
-export function pageScene(pagePhotos: SkeletonPhoto[]): string | undefined {
-  if (pagePhotos.length >= 2) return 'record';
-  if (pagePhotos.length === 1) {
-    const hasPeople = ['1', '2-3', '4+'].includes(peopleCount(pagePhotos[0]));
-    return hasPeople ? 'portrait' : 'scenery';
-  }
-  return undefined;
-}
-
 function photoOrder(photo: SkeletonPhoto): number {
   const value = photo.exif?.order;
   return typeof value === 'number' && Number.isInteger(value) ? value : 0;
@@ -121,17 +103,17 @@ function isHeroSlot(slot: TemplateDef['images'][number]): boolean {
   return qualities.includes('hero') && !qualities.includes('fill');
 }
 
-function useCaseForTemplate(templateId: string, template: TemplateDef): SkeletonUseCase {
-  if (templateId === 'mag-02') return 'toc';
-  if (template.slot === 'cover') return 'cover';
-  if (template.slot === 'ending') return 'closing';
+function useCaseForTemplate(_templateId: string, template: TemplateDef): SkeletonUseCase {
+  if (template.category === 'toc') return 'toc';
+  if (template.category === 'cover') return 'cover';
+  if (template.category === 'ending') return 'closing';
   return 'chapter';
 }
 
-// Reachable only via the deterministic few-photo fallback and manual editor
-// selection — never the scene-driven auto rotation. Empty by default; keep the
-// hook so web and agent skeleton selection can exclude future special cases in
-// one place. Mirrored in agent skeleton.py.
+// Templates to exclude from this web-side selection. Empty by default; keep the
+// hook so future special cases live in one place. NOTE: this web skeleton builder
+// drives only the showcase/preview + golden-fixture tests — production authoring
+// selection is the agent's (apps/agent), which is not guaranteed to match here.
 const FALLBACK_ONLY_TEMPLATE_IDS = new Set<string>();
 
 function buildTemplatesBy(): Record<SkeletonUseCase, Record<number, string[]>> {
@@ -211,7 +193,7 @@ export function canPlace(templateId: string, photos: SkeletonPhoto[]): boolean {
   if (template.images.length !== photos.length) return false;
 
   const fillCount = photos.filter((photo) => quality(photo) === 'fill').length;
-  if (template.slot === 'cover' || template.slot === 'ending') return true;
+  if (template.category === 'cover' || template.category === 'ending') return true;
   const fillOk = template.images.filter((slot) => !isHeroSlot(slot)).length;
   return fillCount <= fillOk;
 }
@@ -225,6 +207,27 @@ export function stableHash(value: string): number {
   return hash;
 }
 
+// Deterministic image-slot feature match (web-side, standalone — NOT a mirror of
+// the agent's production selection, which picks by capacity only):
+// the best achievable assignment score of a template's image slots against this
+// page's actual photos — quality match weighted over orientation. Templates whose
+// slots fit the photos' orientation/quality score higher. Pure function of the
+// inputs, so the same page always scores templates the same way.
+function templateFeatureScore(templateId: string, photos: SkeletonPhoto[]): number {
+  const template = TEMPLATES[templateId];
+  const slots = template.images;
+  if (slots.length === 0 || slots.length !== photos.length) return 0;
+  let best = -1;
+  for (const orderedPhotos of permutations(photos)) {
+    let score = 0;
+    for (let i = 0; i < slots.length; i += 1) {
+      score += imageScore(slots[i], orderedPhotos[i]);
+    }
+    if (score > best) best = score;
+  }
+  return best;
+}
+
 export function pickTemplate({
   useCase,
   imageCount,
@@ -234,7 +237,6 @@ export function pickTemplate({
   chapterId = '',
   pageOrdinal = 0,
   attempt = 0,
-  scene,
 }: PickTemplateArgs): string {
   const candidates = [...(TEMPLATES_BY[useCase][imageCount] ?? [])];
   if (candidates.length === 0) {
@@ -249,14 +251,19 @@ export function pickTemplate({
     );
   }
 
-  // Narrow to the page's target scene when one applies (mirror of skeleton.py):
-  // splits the 1-image pool into portrait vs scenery and keeps interlude /
-  // textOnly out of auto-selection. Fall back to scene-agnostic legal if empty.
-  let scoped = legal;
-  if (scene !== undefined) {
-    const sceneLegal = legal.filter((templateId) => TEMPLATES[templateId].scene === scene);
-    if (sceneLegal.length > 0) scoped = sceneLegal;
+  // Replace the old scene filter with deterministic image-slot feature matching:
+  // keep only the legal templates whose slots best fit this page's photos'
+  // orientation/quality. Ties (incl. text-only / image-less pages where every
+  // template scores 0) keep the whole legal pool so rotation still varies pages.
+  let bestScore = -Infinity;
+  for (const templateId of legal) {
+    const score = templateFeatureScore(templateId, photos);
+    if (score > bestScore) bestScore = score;
   }
+  const scoped =
+    bestScore > 0
+      ? legal.filter((templateId) => templateFeatureScore(templateId, photos) === bestScore)
+      : legal;
 
   const excluded = new Set(exclude);
   const pool = scoped.filter((templateId) => !excluded.has(templateId));
@@ -352,7 +359,6 @@ export function buildChapterPages(
       chapterId,
       pageOrdinal: ordinal,
       attempt,
-      scene: pageScene(pagePhotos),
     });
 
     pages.push({
@@ -381,13 +387,20 @@ function bestPhoto(photos: SkeletonPhoto[]): SkeletonPhoto | undefined {
   })[0];
 }
 
+// The single toc-category template (the migration replaced the hardcoded mag-02).
+const TOC_TEMPLATE_ID = [...TEMPLATE_IDS]
+  .sort()
+  .find((templateId) => TEMPLATES[templateId].category === 'toc');
+
 function buildToc(chapters: SkeletonChapterOutput[]): SkeletonPage {
-  const texts: Record<string, string> = { heading: 'CONTENTS', folio: '02' };
+  if (!TOC_TEMPLATE_ID) throw new Error('no toc-category template in registry');
+  // New mag-02 ids: top-level `title` (page heading) + items number/title/description.
+  const texts: Record<string, string> = { title: 'CONTENTS', folio: '02' };
   chapters.forEach((chapter, idx) => {
-    texts[`numbers[${idx}]`] = String(idx + 1).padStart(2, '0');
-    texts[`titles[${idx}]`] = String(chapter.cluster?.label ?? chapter.chapterId ?? `Chapter ${idx + 1}`);
+    texts[`number[${idx}]`] = String(idx + 1).padStart(2, '0');
+    texts[`title[${idx}]`] = String(chapter.cluster?.label ?? chapter.chapterId ?? `Chapter ${idx + 1}`);
   });
-  return { pageIndex: 0, templateId: 'mag-02', images: {}, texts };
+  return { pageIndex: 0, templateId: TOC_TEMPLATE_ID, images: {}, texts };
 }
 
 function pickClosingTemplate(albumId: string, endingPick: SkeletonPhoto): string {
@@ -399,7 +412,6 @@ function pickClosingTemplate(albumId: string, endingPick: SkeletonPhoto): string
     albumId,
     chapterId: 'base:ending',
     pageOrdinal: 999,
-    scene: useCase === 'chapter' ? pageScene([endingPick]) : undefined,
   });
 }
 

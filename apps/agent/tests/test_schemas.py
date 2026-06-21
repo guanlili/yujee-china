@@ -274,21 +274,21 @@ class TestV3ChapterTreePrivacy:
             V3LayoutTree.model_validate({"chapters": [], "extra": 1})
 
 
-class TestV3TemplateLegacyTolerance:
-    """templates.ts — V3 adds category/svgs/items/variableDecor/hint; the loader
-    must still TOLERATE legacy slot/scene/quality/orientation/repeat JSON (WP0.1
-    parity), or the WP0.4 template loader can't start."""
+class TestV3TemplateCategoryOnly:
+    """templates.ts — the template contract is category-only. category/svgs/items/
+    variableDecor/hint are accepted; the removed legacy slot/scene are rejected."""
 
-    def test_tolerates_legacy_slot_scene_quality_orientation(self):
-        TemplateDef.model_validate(
-            {
-                "id": "mag-x",
-                "slot": "interior",
-                "scene": "portrait",
-                "images": [{"id": "image", "quality": ["hero"], "orientation": ["portrait"]}],
-                "texts": [{"id": "body", "role": "body", "lang": "user"}],
-            }
-        )
+    def test_rejects_legacy_slot_scene(self):
+        with pytest.raises(ValidationError):
+            TemplateDef.model_validate(
+                {
+                    "id": "mag-x",
+                    "slot": "interior",
+                    "scene": "portrait",
+                    "images": [{"id": "image", "quality": ["hero"], "orientation": ["portrait"]}],
+                    "texts": [{"id": "body", "role": "body", "lang": "user"}],
+                }
+            )
 
     def test_accepts_v3_category_svgs_items(self):
         TemplateDef.model_validate(

@@ -6,12 +6,12 @@ import { resolveThemeCarrier } from '../theme-carrier';
 export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
-    intro?: string;
-    captionLeft?: string;
-    captionRight?: string;
+    title?: string;
+    explain1?: string;
+    explain2?: string;
     folio?: string;
   };
-  const introTheme = resolveThemeCarrier(data, 'intro');
+  const introTheme = resolveThemeCarrier(data, 'title');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <p
@@ -30,7 +30,7 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontFamily: introTheme.webFontFamily,
         }}
       >
-        {introTheme.text ?? d.intro ?? ''}
+        {introTheme.text ?? d.title ?? ''}
       </p>
       <WebImage
         src={d.image}
@@ -53,7 +53,7 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 18,
         }}
       >
-        {d.captionLeft || ''}
+        {d.explain1 || ''}
       </p>
       <p
         style={{
@@ -69,7 +69,7 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 18,
         }}
       >
-        {d.captionRight || ''}
+        {d.explain2 || ''}
       </p>
       <div
         style={{

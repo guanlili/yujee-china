@@ -279,11 +279,10 @@ class V3LayoutTree(_V3Strict):
 
 
 # ---------- templates.ts ------------------------------------------------------
-# V3 模板契约:category | pairing | images | svgs | texts | items | variableDecor
-#   | hint。**图片槽 quality/orientation 概念整体作废**。
-# WP0.2 是增量 bridge:packages/contracts/templates/*.json 已补 V3 字段,但仍保留
-# deprecated 字段(slot/scene/quality/orientation/repeat),供现有 skeleton engine
-# 和 golden fixtures 运行。WP0.4 引擎/Python consumer 迁完后再删除。
+# 模板契约:category | pairing | images | svgs | texts | items | variableDecor
+#   | hint。单一 `category` 取代旧 slot+scene;图片槽 quality/orientation 保留,
+#   作为图位特征匹配(确定性照片打分)的输入。packages/contracts/templates/*.json
+#   是真相源。
 
 TemplateTextRole = Literal["title", "body", "explain", "decoration"]
 TemplateTextLang = Literal["user", "en"]
@@ -309,16 +308,9 @@ THEME_USER_PROSE_ROLES: frozenset[str] = frozenset(
     role for role in get_args(TemplateTextRole) if role != "decoration"
 )
 
-# @deprecated slot/scene — V3 用 category 替代(§9)。过渡期保留容忍 legacy JSON。
-TemplateSlotKind = Literal["cover", "interior", "ending"]
-TemplateScene = Literal[
-    "opening", "portrait", "scenery", "record", "interlude", "textOnly", "ending"
-]
-
-
 class TemplateImageSlot(_V3Strict):
     """Addressable image position. `id` may be a bracket path (`cells[0].image`).
-    @deprecated `orientation`/`quality` — V3 作废(§9);WP0.2 bridge 保留到 WP0.4."""
+    `orientation`/`quality` feed the deterministic image-slot feature matching."""
 
     id: str = Field(min_length=1)
     orientation: list[PhotoOrientation] = Field(default=None, min_length=1)
@@ -353,7 +345,7 @@ class TemplateItems(_V3Strict):
 
 
 class TemplatePairing(_V3Strict):
-    """Forced spread pairing (print)。Only valid when category/slot === interior."""
+    """Forced spread pairing (print)。Only valid when category == interior."""
 
     forced: bool
     with_: str = Field(min_length=1, alias="with")
@@ -361,17 +353,14 @@ class TemplatePairing(_V3Strict):
 
 
 class TemplateDef(_V3Strict):
-    """模板定义。`category`/`slot`+`scene` 双轨容忍:至少一条分类必须声明
-    (mirrors TS superRefine)。WP0.2 bridge 保留 deprecated 到 WP0.4。"""
+    """模板定义。单一 `category` 分类(必填),取代旧 slot+scene
+    (mirrors TS TemplateDef)。"""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True, strict=True)
 
     id: str = Field(min_length=1)
-    # V3:分类(§9)。当前 JSON 应携带;可选只为兼容完整 legacy fixtures。
-    category: TemplateCategory = None
-    # @deprecated slot/scene — 见上,WP0.4 引擎迁移后删除。过渡期保留容忍 legacy JSON。
-    slot: TemplateSlotKind = None
-    scene: TemplateScene = None
+    # 分类(§9):唯一分类字段,必填。
+    category: TemplateCategory
     pairing: TemplatePairing | None = None
     styles: list[str] = None
     images: list[TemplateImageSlot]
@@ -389,10 +378,9 @@ class TemplateDef(_V3Strict):
         return value
 
     def model_post_init(self, __context: object) -> None:
-        has_v3_category = bool(self.category)
-        has_legacy = bool(self.slot and self.scene)
-        if not has_v3_category and not has_legacy:
-            raise ValueError("template must declare category or legacy slot+scene")
+        # pairing 只在 interior 有意义(mirrors TS superRefine)。
+        if self.pairing is not None and self.category != "interior":
+            raise ValueError("pairing is only valid on interior templates")
 
 
 # ---------- v3.ts: shared -----------------------------------------------------

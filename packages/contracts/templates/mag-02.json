@@ -1,71 +1,16 @@
 {
   "id": "mag-02",
-  "slot": "interior",
-  "scene": "textOnly",
   "category": "toc",
   "images": [],
   "texts": [
-    {
-      "id": "heading",
-      "role": "title",
-      "lang": "user",
-      "maxChars": 16,
-      "variableDecor": true,
-      "hint": "目录页大标题,如「目录」/「Contents」"
-    },
-    {
-      "id": "numbers",
-      "role": "decoration",
-      "lang": "en",
-      "maxChars": 3,
-      "repeat": true
-    },
-    {
-      "id": "titles",
-      "role": "title",
-      "lang": "user",
-      "maxChars": 16,
-      "repeat": true
-    },
-    {
-      "id": "descriptions",
-      "role": "explain",
-      "lang": "user",
-      "maxChars": 80,
-      "repeat": true
-    },
-    {
-      "id": "folio",
-      "role": "decoration",
-      "lang": "en",
-      "maxChars": 2
-    }
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "目录页大标题,如「目录」/「Contents」", "variableDecor": true },
+    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ],
   "items": {
     "texts": [
-      {
-        "id": "numbers",
-        "role": "decoration",
-        "lang": "en",
-        "maxChars": 3,
-        "variableDecor": true,
-        "hint": "目录条目序号,两位数字如 01"
-      },
-      {
-        "id": "titles",
-        "role": "title",
-        "lang": "user",
-        "maxChars": 16,
-        "variableDecor": true,
-        "hint": "该章节标题,简短"
-      },
-      {
-        "id": "descriptions",
-        "role": "explain",
-        "lang": "user",
-        "maxChars": 80,
-        "hint": "该章节一句话简介"
-      }
+      { "id": "number", "role": "decoration", "lang": "en", "maxChars": 3, "variableDecor": true },
+      { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "variableDecor": true },
+      { "id": "description", "role": "explain", "lang": "user", "maxChars": 90 }
     ]
   }
 }

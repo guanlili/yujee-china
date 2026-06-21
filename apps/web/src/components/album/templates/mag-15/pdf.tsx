@@ -6,8 +6,8 @@ import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
-    imagePerson?: string;
-    imageRoad?: string;
+    image1?: string;
+    image2?: string;
     body?: string;
     title?: string;
     date?: string;
@@ -32,14 +32,14 @@ export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
         {d.body || ''}
       </Text>
       <PdfImage
-        src={d.imagePerson}
+        src={d.image1}
         style={{ position: 'absolute', top: 180, right: 70, width: 655, height: 440 }}
-        position={imagePos?.['imagePerson']}
+        position={imagePos?.['image1']}
       />
       <PdfImage
-        src={d.imageRoad}
+        src={d.image2}
         style={{ position: 'absolute', top: 660, left: 70, width: 400, height: 350 }}
-        position={imagePos?.['imageRoad']}
+        position={imagePos?.['image2']}
       />
       <Text
         style={{

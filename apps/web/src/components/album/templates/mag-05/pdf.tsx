@@ -7,13 +7,13 @@ import { resolveThemeCarrier } from '../theme-carrier';
 export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     title?: string;
-    topRight?: string;
-    caption?: string;
+    label?: string;
+    explain?: string;
     folio?: string;
     image?: string;
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
-  const topRightTheme = resolveThemeCarrier(data, 'topRight');
+  const topRightTheme = resolveThemeCarrier(data, 'label');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <Text
@@ -43,7 +43,7 @@ export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontFamily: topRightTheme.pdfFontFamily,
         }}
       >
-        {topRightTheme.text ?? d.topRight ?? ''}
+        {topRightTheme.text ?? d.label ?? ''}
       </Text>
       <View style={{ position: 'absolute', top: 290, left: 50, width: 320 }}>
         <Text
@@ -54,7 +54,7 @@ export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
             fontSize: 18,
           }}
         >
-          {d.caption || ''}
+          {d.explain || ''}
         </Text>
       </View>
       <PdfImage src={d.image} style={{ position: 'absolute', top: 430, left: 50, right: 50, height: 600 }} position={imagePos?.['image']} />

@@ -1,34 +1,11 @@
 {
   "id": "mag-03",
-  "slot": "interior",
-  "scene": "scenery",
   "category": "interior",
   "images": [
-    {
-      "id": "image",
-      "orientation": [
-        "portrait"
-      ],
-      "quality": [
-        "hero",
-        "detail"
-      ]
-    }
+    { "id": "image", "orientation": ["portrait"], "quality": ["hero", "detail"] }
   ],
   "texts": [
-    {
-      "id": "location",
-      "role": "decoration",
-      "lang": "en",
-      "maxChars": 20,
-      "variableDecor": true,
-      "hint": "地点 / 章节标签小字,如「京都 · 03 / 30」"
-    },
-    {
-      "id": "folio",
-      "role": "decoration",
-      "lang": "en",
-      "maxChars": 2
-    }
+    { "id": "label", "role": "decoration", "lang": "en", "maxChars": 20, "hint": "地点 / 章节标签小字,如「京都 · 03 / 30」", "variableDecor": true },
+    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

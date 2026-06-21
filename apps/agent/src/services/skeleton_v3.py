@@ -17,10 +17,10 @@ v3-requirements.md §9 / docs/agent/v3-implementation-plan.md §3 WP0.4):
     template whose image-slot count can hold the N photos and slots them in
     order. "10 photos → pick a template that holds 10, slot them in order."
 
-The repeat group (`items`) lets one template hold a variable number of photos:
-its declared `images` slots (e.g. ``cells[0].image`` .. ``cells[k].image``) are
-the addressable capacity. We treat the flat declared image-slot ids as the
-capacity and assign photos to them in declaration order.
+The repeat group (`items`) lets a grid template hold several photos: its single
+``items.images`` slot expands to ``<base>[0]``..``<base>[k-1]`` (k = the fixed
+grid capacity, see `_ITEMS_GRID_CAPACITY`). `image_slot_keys` / `image_capacity`
+hide that expansion; assignment slots photos into those keys in order.
 """
 
 from __future__ import annotations
@@ -36,28 +36,49 @@ Category = str
 
 
 def template_category(template: templates.TemplateDef) -> Category:
-    """The V3 category a template belongs to.
+    """The category a template belongs to (the loader guarantees it is set).
 
-    Prefers the V3 ``category`` field; falls back to the legacy ``slot`` only for
-    transitional templates that have not declared a category yet (the loader
-    guarantees at least one classification exists). ``slot`` has no ``toc`` value,
-    so a slot-only template can never masquerade as toc — exactly the mag-02
-    distinction the V3 contract draws."""
-    category = template.get("category")
-    if category:
-        return category
-    slot = template.get("slot")
-    if slot == "cover":
-        return "cover"
-    if slot == "ending":
-        return "ending"
-    return "interior"
+    Category is the single classification field: cover | toc | interior | ending.
+    mag-02 is category=toc and is pooled strictly by category."""
+    return template["category"]
+
+
+# Grid templates declare ONE image slot inside ``items.images`` (the repeat
+# group, §9) and expand it to ``<base>[0..k-1]``. The JSON no longer enumerates a
+# fixed cell count, so the engine fixes the grid capacity here. 4 preserves the
+# prior mag-10 4-cell behaviour. (If a grid should hold a different count, carry
+# it on the template and read it here.)
+_ITEMS_GRID_CAPACITY = 4
+
+
+def _items_image_base(template: templates.TemplateDef) -> str | None:
+    """The single ``items.images`` repeat-group base id, if the template is a grid."""
+    items = template.get("items") or {}
+    item_images = items.get("images") or []
+    if len(item_images) == 1 and not template["images"]:
+        return item_images[0]["id"]
+    return None
+
+
+def image_slot_keys(template: templates.TemplateDef) -> list[str]:
+    """Addressable image-slot keys for assignment, in order.
+
+    Normal templates expose their declared top-level image-slot ids. A grid
+    template (single ``items.images`` repeat slot, no top-level images) expands to
+    ``<base>[0]``..``<base>[k-1]`` for k = `_ITEMS_GRID_CAPACITY`."""
+    base = _items_image_base(template)
+    if base is not None:
+        return [f"{base}[{i}]" for i in range(_ITEMS_GRID_CAPACITY)]
+    return templates.image_slot_ids(template)
 
 
 def image_capacity(template: templates.TemplateDef) -> int:
-    """How many distinct photos a template can hold = its declared image-slot
-    count. Bracket-path repeat-group slots (``cells[0].image`` …) are already
-    enumerated in ``images`` by the loader, so this is just the slot count."""
+    """How many distinct photos a template can hold.
+
+    Normal templates: their declared top-level image-slot count. Grid templates
+    (single ``items.images`` repeat slot): the fixed grid capacity."""
+    if _items_image_base(template) is not None:
+        return _ITEMS_GRID_CAPACITY
     return len(template["images"])
 
 
@@ -170,7 +191,7 @@ def assign_images_v3(
     template = templates.get(template_id)
     if template is None:
         raise ValueError(f"unknown template id: {template_id}")
-    slot_ids = templates.image_slot_ids(template)
+    slot_ids = image_slot_keys(template)
     if len(photos) > len(slot_ids):
         raise ValueError(
             f"template {template_id} holds {len(slot_ids)} image(s); got {len(photos)}"

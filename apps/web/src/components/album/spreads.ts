@@ -15,8 +15,13 @@ export interface Spread {
   right: number | null;
 }
 
+// cover / ending sit as solo pages; everything else (toc + interior body) pairs
+// two-up. We collapse the category to that solo-vs-paired distinction here.
 function slotOf(page: EditorPage): 'cover' | 'interior' | 'ending' {
-  return getTemplate(page.templateId)?.slot ?? 'interior';
+  const category = getTemplate(page.templateId)?.category;
+  if (category === 'cover') return 'cover';
+  if (category === 'ending') return 'ending';
+  return 'interior';
 }
 
 export function buildSpreads(pages: EditorPage[]): Spread[] {
