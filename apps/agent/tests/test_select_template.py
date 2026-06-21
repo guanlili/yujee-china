@@ -19,7 +19,7 @@ import pytest
 from src.engine import templates
 from src.schemas import Page, V3Chapter, V3ChapterPhoto
 from src import ai_client
-from src.services import select_template as st
+from src.agents.template_select import handler as st
 from src.engine import skeleton_v3 as sk
 
 

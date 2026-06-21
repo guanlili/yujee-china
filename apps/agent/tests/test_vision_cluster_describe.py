@@ -19,7 +19,7 @@ import pytest
 
 from src.schemas import V3AnalyzePhoto, V3Chapter, V3ChapterPhoto, V3LayoutTree
 from src import ai_client
-from src.services import vision
+from src.agents.image_understanding import handler as vision
 
 
 @pytest.fixture

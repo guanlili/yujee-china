@@ -29,8 +29,8 @@ from src.schemas import (
     V3LayoutTree,
 )
 from src import callback as cb_mod
-from src.services import select_template
-from src.services import vision
+from src.agents.template_select import handler as select_template
+from src.agents.image_understanding import handler as vision
 
 
 def _orient(w: int, h: int) -> str:

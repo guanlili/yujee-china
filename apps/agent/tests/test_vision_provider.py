@@ -18,7 +18,7 @@ import pytest
 
 from src.schemas import LayoutRequest, PhotoIn, VisionResult
 from src import ai_client
-from src.services import vision
+from src.agents.image_understanding import handler as vision
 from src.vision_provider import (
     VisionSlotError,
     estimate_cost_usd,

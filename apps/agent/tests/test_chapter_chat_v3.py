@@ -26,8 +26,8 @@ from src.schemas import (
     V3ChapterChatResponse,
     V3ChapterPhoto,
 )
-from src.services import chapter_chat_v3
-from src.services.chapter_chat_v3 import ChapterChatV3Error
+from src.agents.writing import handler as chapter_chat_v3
+from src.agents.writing import ChapterChatV3Error
 
 # Real template ids (packages/contracts/templates): mag-13 authored slots =
 # title(maxChars 24) + explain; mag-04 = 3-image interior (explain1/explain2).
@@ -430,14 +430,14 @@ def test_per_slot_hint_passes_through_to_writing_lm():
     assert page0_slots["title"]["hint"]  # template-authored hint, passed verbatim
     assert page0_slots["explain"]["hint"]
     # Sanity: the hint is the template's, not invented by the Agent.
-    from src.services import writing_guides
+    from src.agents.writing import guides as writing_guides
 
     expected = {s["id"]: s.get("hint") for s in writing_guides.page_slot_specs(_COVER)}
     assert page0_slots["title"]["hint"] == expected["title"]
 
 
 def test_page_slot_specs_surfaces_hint_when_template_has_one():
-    from src.services import writing_guides
+    from src.agents.writing import guides as writing_guides
 
     specs = {s["id"]: s for s in writing_guides.page_slot_specs(_COVER)}
     # mag-13 title/explain have hints in the template JSON; decoration folio is dropped.
@@ -454,7 +454,7 @@ def test_page_slot_specs_surfaces_hint_when_template_has_one():
 def test_v3_write_path_has_no_role_guides_creative_residue():
     # §4.2(4) acceptance: the V3 authoring prompt must not carry the v2 ROLE_GUIDES
     # 创作话术 (those live only in writing_guides.guides_block, kept for v2 / #197).
-    from src.services import writing_guides
+    from src.agents.writing import guides as writing_guides
 
     system, _ = _system_user(_req(user_message="write it"))
     assert writing_guides.guides_block() not in system
@@ -474,8 +474,11 @@ def test_assembly_localizes_skill_language():
         **extra,
     )
     system, _ = _system_user(req)
-    # The {LANGUAGE} placeholder in both skills resolved to Chinese for a zh turn.
-    from src.skills import load_skill
+    # The {LANGUAGE} placeholder in both prompts resolved to Chinese for a zh turn.
+    from pathlib import Path
 
-    assert load_skill("write_chapter", LANGUAGE="Chinese") in system
-    assert load_skill("guide_chapter", LANGUAGE="Chinese") in system
+    from src.prompts import load_prompt
+
+    _writing_dir = Path("src/agents/writing")
+    assert load_prompt(_writing_dir / "write_chapter.md", LANGUAGE="Chinese") in system
+    assert load_prompt(_writing_dir / "guide_chapter.md", LANGUAGE="Chinese") in system

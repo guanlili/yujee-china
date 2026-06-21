@@ -32,20 +32,23 @@ recognition model did not already author in WP1.3.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from ..logging_config import get_logger
-from ..schemas import V3Chapter
-from ..settings import get_settings
-from ..skills import load_skill
-from .. import ai_client
-from ..engine import skeleton_v3
-from ..vision_provider import (
+from ...logging_config import get_logger
+from ...schemas import V3Chapter
+from ...settings import get_settings
+from ...prompts import load_prompt
+from ... import ai_client
+from ...engine import skeleton_v3
+from ...vision_provider import (
     VisionSlot,
     VisionSlotError,
     ark_vision_slot,
     openai_vision_slot,
 )
+
+_PROMPT_DIR = Path(__file__).resolve().parent
 
 log = get_logger("select_template")
 
@@ -197,7 +200,7 @@ def _parse_choices(parsed: Any) -> dict[str, str]:
 
 async def _call_model(slot: VisionSlot, pages: Sequence[_PlannedPage]) -> dict[str, str]:
     messages = [
-        {"role": "system", "content": load_skill("select_template")},
+        {"role": "system", "content": load_prompt(_PROMPT_DIR / "select_template.md")},
         {"role": "user", "content": _build_user_content(pages)},
     ]
     try:

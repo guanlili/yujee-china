@@ -31,8 +31,8 @@ from src.schemas import (
     V3RecommendRequest,
     V3RecommendResponse,
 )
-from src.services import recommend_v3
-from src.services.recommend_v3 import RecommendV3Error
+from src.agents.theme_recommend import handler as recommend_v3
+from src.agents.theme_recommend import RecommendV3Error
 
 _ART_FONTS = set(get_args(ArtFontPack))
 

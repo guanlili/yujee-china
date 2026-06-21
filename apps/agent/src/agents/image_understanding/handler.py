@@ -6,15 +6,15 @@ Privacy: photo base64 is passed into the upstream HTTP body and then the
 local reference is dropped; we never log it or hand it back to the caller."""
 
 import asyncio
-from dataclasses import dataclass
 from math import ceil
+from pathlib import Path
 import re
 from typing import Any
 
 from pydantic import ValidationError
 
-from ..logging_config import get_logger
-from ..schemas import (
+from ...logging_config import get_logger
+from ...schemas import (
     Focal,
     LayoutRequest,
     PhotoAnalysis,
@@ -25,10 +25,10 @@ from ..schemas import (
     V3LayoutTree,
     VisionResult,
 )
-from ..settings import get_settings
-from ..skills import load_skill
-from .. import ai_client
-from ..vision_provider import (
+from ...settings import get_settings
+from ...prompts import load_prompt
+from ... import ai_client
+from ...vision_provider import (
     VisionSlot,
     VisionSlotError,
     ark_vision_slot,
@@ -36,6 +36,9 @@ from ..vision_provider import (
     openai_vision_slot,
     select_vision_slot,
 )
+from .schema import V3DescribeResult
+
+_PROMPT_DIR = Path(__file__).resolve().parent
 
 log = get_logger("vision")
 
@@ -408,22 +411,9 @@ async def analyze(req: LayoutRequest) -> tuple[VisionResult, int, str]:
 # =============================================================================
 
 
-@dataclass(frozen=True)
-class V3DescribeResult:
-    """describe-content output for one analyze batch. `tree` carries ONLY the 3
-    LLM-authored fields + the code-filled deterministic photo attrs; `model` is the
-    slot actually hit (so Usage.models.vision reflects真实 provider, not hardwired)."""
-
-    tree: V3LayoutTree
-    tokens_billed: int
-    model: str
-    provider: str
-    call_count: int = 1
-
-
 def _build_v3_system_prompt(language: str) -> str:
     lang_name = "Chinese" if language == "zh" else "English"
-    return load_skill("describe_content", LANGUAGE=lang_name)
+    return load_prompt(_PROMPT_DIR / "describe_content.md", LANGUAGE=lang_name)
 
 
 def _build_v3_user_content(

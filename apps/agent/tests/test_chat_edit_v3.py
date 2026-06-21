@@ -35,7 +35,8 @@ from src.schemas import (
     V3ChapterChatResponse,
     V3ChapterPhoto,
 )
-from src.services import chapter_chat_v3, chat_edit_v3
+from src.agents.writing import handler as chapter_chat_v3
+from src.agents.image_edit_intent import handler as chat_edit_v3
 from src.engine import skeleton_v3
 
 # mag-04 is a 3-image interior template (matches test_chapter_chat_v3 baseline).

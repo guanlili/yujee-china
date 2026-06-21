@@ -38,10 +38,11 @@ import json
 import re
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
-from ..engine import templates as registry
-from ..schemas import (
+from ...engine import templates as registry
+from ...schemas import (
     Page,
     V3ChapterChatKind,
     V3ChapterChatRequest,
@@ -51,10 +52,13 @@ from ..schemas import (
     V3PageTextsPatch,
     V3Usage,
 )
-from ..settings import get_settings
-from ..skills import load_skill
-from .. import ai_client
-from . import chat_edit_v3, writing_guides
+from ...settings import get_settings
+from ...prompts import load_prompt
+from ... import ai_client
+from ..image_edit_intent import handler as chat_edit_v3
+from . import guides as writing_guides
+
+_PROMPT_DIR = Path(__file__).resolve().parent
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
 
@@ -248,11 +252,11 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
     )
     # §4.2(4): 写作 Skill (creative style) + 引导 Skill (guidance style), both as
     # prompt assets loaded by name. Localized via the {LANGUAGE} placeholder.
-    system += "\n\n=== WRITING STYLE (写作 Skill) ===\n" + load_skill(
-        "write_chapter", LANGUAGE=lang_name
+    system += "\n\n=== WRITING STYLE (写作 Skill) ===\n" + load_prompt(
+        _PROMPT_DIR / "write_chapter.md", LANGUAGE=lang_name
     )
-    system += "\n\n=== GUIDANCE STYLE (引导 Skill) ===\n" + load_skill(
-        "guide_chapter", LANGUAGE=lang_name
+    system += "\n\n=== GUIDANCE STYLE (引导 Skill) ===\n" + load_prompt(
+        _PROMPT_DIR / "guide_chapter.md", LANGUAGE=lang_name
     )
 
     # §4.2(4) writing-LM input assembly. Every item the requirement names is here:

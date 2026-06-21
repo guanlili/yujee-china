@@ -66,19 +66,19 @@ from ..schemas import (
 from ..engine import apply_theme_v3
 from .. import callback
 from ..errors import sync_endpoint_errors
-from ..services import chapter_chat_v3
+from ..agents.writing import handler as chapter_chat_v3
 from ..engine import cover_v3
 from ..engine import finalize_v3
 from ..engine import generic_copy
-from ..services import recommend_v3
-from ..services import select_template
-from ..services import vision
+from ..agents.theme_recommend import handler as recommend_v3
+from ..agents.template_select import handler as select_template
+from ..agents.image_understanding import handler as vision
 from ..engine.apply_theme_v3 import ApplyThemeV3Error
-from ..services.chapter_chat_v3 import ChapterChatV3Error
+from ..agents.writing import ChapterChatV3Error
 from ..engine.cover_v3 import CoverV3Error
 from ..engine.finalize_v3 import FinalizeV3Error
-from ..services.recommend_v3 import RecommendV3Error
-from ..services.vision import VisionError
+from ..agents.theme_recommend import RecommendV3Error
+from ..agents.image_understanding import VisionError
 from ..settings import get_settings
 
 router = APIRouter()

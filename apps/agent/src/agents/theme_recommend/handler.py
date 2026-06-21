@@ -34,10 +34,11 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any, get_args
 
-from ..logging_config import get_logger
-from ..schemas import (
+from ...logging_config import get_logger
+from ...schemas import (
     ArtFontPack,
     V3ChapterColorRecommendation,
     V3ChapterOverview,
@@ -46,15 +47,17 @@ from ..schemas import (
     V3RecommendResponse,
     V3Usage,
 )
-from ..settings import get_settings
-from ..skills import load_skill
-from .. import ai_client
-from ..vision_provider import (
+from ...settings import get_settings
+from ...prompts import load_prompt
+from ... import ai_client
+from ...vision_provider import (
     VisionSlot,
     VisionSlotError,
     ark_vision_slot,
     openai_vision_slot,
 )
+
+_PROMPT_DIR = Path(__file__).resolve().parent
 
 log = get_logger("recommend_v3")
 
@@ -111,10 +114,10 @@ def build_messages(req: V3RecommendRequest) -> list[dict[str, str]]:
     are loaded as prompt assets (集中维护), localized via `{LANGUAGE}`."""
     lang_name = _lang_name(req.language)
     system = (
-        load_skill("recommend_theme", LANGUAGE=lang_name)
+        load_prompt(_PROMPT_DIR / "recommend_theme.md", LANGUAGE=lang_name)
         + "\n\n=== CHAPTER COLORS & ART FONT (recommend-chapter-colors Skill) ===\n"
-        + load_skill(
-            "recommend_chapter_colors",
+        + load_prompt(
+            _PROMPT_DIR / "recommend_chapter_colors.md",
             LANGUAGE=lang_name,
             ART_FONTS=", ".join(_ART_FONTS),
         )

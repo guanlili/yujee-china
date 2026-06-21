@@ -35,20 +35,23 @@ the recognition model in WP1.3; nothing new about the pixels is round-tripped.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
-from ..logging_config import get_logger
-from ..schemas import Page, V3Chapter, V3LayoutPatchEntry
-from ..settings import get_settings
-from ..skills import load_skill
-from .. import ai_client
-from ..engine import skeleton_v3
-from ..vision_provider import (
+from ...logging_config import get_logger
+from ...schemas import Page, V3Chapter, V3LayoutPatchEntry
+from ...settings import get_settings
+from ...prompts import load_prompt
+from ... import ai_client
+from ...engine import skeleton_v3
+from ...vision_provider import (
     VisionSlot,
     VisionSlotError,
     ark_vision_slot,
     openai_vision_slot,
 )
+
+_PROMPT_DIR = Path(__file__).resolve().parent
 
 log = get_logger("chat_edit_v3")
 
@@ -150,7 +153,7 @@ def _parse_intent(parsed: Any) -> list[str]:
 
 async def _call_model(slot: VisionSlot, manifest: str) -> list[str]:
     messages = [
-        {"role": "system", "content": load_skill("edit_image_intent")},
+        {"role": "system", "content": load_prompt(_PROMPT_DIR / "edit_image_intent.md")},
         {"role": "user", "content": manifest},
     ]
     try:

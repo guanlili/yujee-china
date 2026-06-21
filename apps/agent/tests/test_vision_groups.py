@@ -6,7 +6,7 @@ import pytest
 
 from src.schemas import LayoutRequest, PhotoIn, V3AnalyzePhoto, V3LayoutTree, VisionResult
 from src import ai_client
-from src.services import vision
+from src.agents.image_understanding import handler as vision
 
 
 @pytest.fixture(autouse=True)
