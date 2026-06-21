@@ -5,23 +5,23 @@ import type { TemplateRenderProps } from '../types';
 
 export function PdfMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
-    imageLeft?: string;
-    imageRight?: string;
-    captionLeft?: string;
-    captionRight?: string;
+    image1?: string;
+    image2?: string;
+    explain1?: string;
+    explain2?: string;
     folio?: string;
   };
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage
-        src={d.imageLeft}
+        src={d.image1}
         style={{ position: 'absolute', top: 170, left: 70, width: 320, height: 600 }}
-        position={imagePos?.['imageLeft']}
+        position={imagePos?.['image1']}
       />
       <PdfImage
-        src={d.imageRight}
+        src={d.image2}
         style={{ position: 'absolute', top: 170, right: 70, width: 320, height: 600 }}
-        position={imagePos?.['imageRight']}
+        position={imagePos?.['image2']}
       />
       <Text
         style={{
@@ -35,7 +35,7 @@ export function PdfMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 16,
         }}
       >
-        {d.captionLeft || ''}
+        {d.explain1 || ''}
       </Text>
       <Text
         style={{
@@ -49,7 +49,7 @@ export function PdfMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 16,
         }}
       >
-        {d.captionRight || ''}
+        {d.explain2 || ''}
       </Text>
       <PdfFolio folio={d.folio} totalPages={totalPages} fallback="18" />
     </PdfPageShell>

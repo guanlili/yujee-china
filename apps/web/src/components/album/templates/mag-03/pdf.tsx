@@ -6,11 +6,11 @@ import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
-    location?: string;
+    label?: string;
     folio?: string;
     image?: string;
   };
-  const locationTheme = resolveThemeCarrier(data, 'location');
+  const labelTheme = resolveThemeCarrier(data, 'label');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage
@@ -22,12 +22,12 @@ export function PdfMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
         <Text
           style={{
             letterSpacing: 4,
-            color: locationTheme.accentColor ?? COLORS.ink,
+            color: labelTheme.accentColor ?? COLORS.ink,
             fontSize: 16,
-            fontFamily: locationTheme.pdfFontFamily,
+            fontFamily: labelTheme.pdfFontFamily,
           }}
         >
-          {locationTheme.text ?? d.location ?? ''}
+          {labelTheme.text ?? d.label ?? ''}
         </Text>
       </View>
       <PdfFolio folio={d.folio} totalPages={totalPages} fallback="03" />

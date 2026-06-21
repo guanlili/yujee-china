@@ -1,26 +1,10 @@
 {
   "id": "mag-06",
-  "slot": "interior",
-  "scene": "scenery",
   "category": "interior",
   "images": [
-    {
-      "id": "image",
-      "orientation": [
-        "portrait"
-      ],
-      "quality": [
-        "hero",
-        "detail"
-      ]
-    }
+    { "id": "image", "orientation": ["portrait"], "quality": ["hero", "detail"] }
   ],
   "texts": [
-    {
-      "id": "folio",
-      "role": "decoration",
-      "lang": "en",
-      "maxChars": 2
-    }
+    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

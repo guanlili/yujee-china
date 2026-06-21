@@ -6,22 +6,17 @@ import {
   TEMPLATES as GENERATED_TEMPLATES,
 } from './templates.generated';
 
-// ── V3 迁移说明(WP0.2 过渡态) ─────────────────────────────────────────────
-// V3 模板契约(v3-requirements §9)= `category | pairing | images | svgs | texts
-//   | items | variableDecor | hint`,**图片槽 quality/orientation 概念整体作废**。
-// WP0.2(#177) 是增量迁移:JSON 已补齐 V3 字段,同时保留 legacy `slot`/`scene`,
-//   图片槽 `quality`/`orientation`,以及文字槽 `repeat`,供现有 skeleton 引擎和
-//   golden fixtures 继续运行。WP0.4 改写引擎 / Python 消费路径后,再删除这些
-//   deprecated 字段。
-// 故此处 schema 对新旧字段都做严格校验:解析时接受两层契约,但新增 V3 逻辑不再依赖
-//   legacy 字段。
+// ── 模板分类契约 ──────────────────────────────────────────────────────────
+// V3 模板契约(v3-requirements §9):单一 `category`(cover|toc|interior|ending)
+//   取代旧 `slot` + `scene`。`scene` 整体删除;模板选择不再做 scene 过滤,改为在
+//   合法候选(图位数量能容纳本页照片)里按图位 orientation/quality 与照片特征做
+//   **确定性**打分匹配。图片槽 `orientation`/`quality` 是这套图位特征匹配的输入,
+//   故保留。
 
 // Image slot: an addressable image position inside a template. `id` may be a
-// bracket path ("cells[0].image") for repeat/grid layouts.
-//
-// @deprecated `orientation` / `quality` — V3 作废(§9):图片槽不带这两维,排图改由
-//   select-template + 确定性兜底。WP0.2 只补齐 V3 `{ id }` 语义;这两个字段保留到
-//   WP0.4 引擎迁移完成后删除。
+// bracket path ("cells[0].image") for repeat/grid layouts. `orientation` /
+// `quality` describe what kind of photo the slot prefers — the deterministic
+// template-selection / image-assignment scorer reads them to match real photos.
 export const TemplateImageSlot = z
   .object({
     id: z.string().min(1),
@@ -57,8 +52,8 @@ export const TemplateTextSlot = z
     // V3:渲染变量落点(§9)。standalone 装饰槽(章节色/艺术字字体/花字/点缀)
     //   被 `apply-theme` 一键刷;普通正文槽不带此标记、不被刷。
     variableDecor: z.boolean().optional(),
-    // @deprecated `repeat` — V3 用 `items` 组承载重复内容(§9),不再用 repeat+bracket-path。
-    //   WP0.2 已补 `items`;`repeat` 保留到 WP0.4 引擎迁移完成后删除。
+    // 旧 `repeat:true` + bracket-path 的重复内容承载方式。V3 用 `items` 组替代,
+    //   但当前引擎仍接受 repeat 槽的 bracket-path 寻址(见 validateSlotsForTemplate)。
     repeat: z.boolean().optional(),
   })
   .strict();
@@ -84,27 +79,8 @@ export const TemplateItems = z
   .strict();
 export type TemplateItems = z.infer<typeof TemplateItems>;
 
-// @deprecated V3 用 `category`(TemplateCategory)替代 `slot` + `scene`(§9)。
-//   WP0.2 已补 `category`;`slot`/`scene` 保留到 WP0.4 引擎迁移完成后删除。
-// Where a template sits on the canvas. cover = head solo page, ending = tail
-// solo page (both outside the spread system), interior = pages that pair.
-export const TemplateSlotKind = z.enum(['cover', 'interior', 'ending']);
-export type TemplateSlotKind = z.infer<typeof TemplateSlotKind>;
-
-// @deprecated 同上(`scene`)。Content scenario, used to match a template.
-export const TemplateScene = z.enum([
-  'opening',
-  'portrait',
-  'scenery',
-  'record',
-  'interlude',
-  'textOnly',
-  'ending',
-]);
-export type TemplateScene = z.infer<typeof TemplateScene>;
-
 // Forced spread pairing (print): this interior template must share a spread with
-// `with`, sitting on `side`. Only valid when category/slot === 'interior'.
+// `with`, sitting on `side`. Only valid when category === 'interior'.
 export const TemplatePairing = z
   .object({
     forced: z.boolean(),
@@ -117,12 +93,8 @@ export type TemplatePairing = z.infer<typeof TemplatePairing>;
 export const TemplateDef = z
   .object({
     id: z.string().min(1),
-    // V3:分类(§9),替代旧 slot+scene。当前模板 JSON 应携带它;schema 保持可选只为
-    //   兼容带完整 legacy slot+scene 的旧 fixtures / 临时测试数据。
-    category: TemplateCategory.optional(),
-    // @deprecated slot/scene — 见上,WP0.4 引擎迁移后删除。过渡期保留容忍 legacy JSON。
-    slot: TemplateSlotKind.optional(),
-    scene: TemplateScene.optional(),
+    // V3:分类(§9),唯一分类字段,替代旧 slot+scene。
+    category: TemplateCategory,
     pairing: TemplatePairing.nullable().optional(),
     styles: z.array(z.string().min(1)).optional(),
     images: z.array(TemplateImageSlot),
@@ -134,14 +106,12 @@ export const TemplateDef = z
   })
   .strict()
   .superRefine((template, ctx) => {
-    const hasV3Category = Boolean(template.category);
-    const hasLegacyClassification = Boolean(template.slot && template.scene);
-
-    if (!hasV3Category && !hasLegacyClassification) {
+    // pairing 只在 interior 有意义(cover/toc/ending 单独成页,不参与 spread 配对)。
+    if (template.pairing && template.category !== 'interior') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'template must declare category or legacy slot+scene',
-        path: ['category'],
+        message: 'pairing is only valid on interior templates',
+        path: ['pairing'],
       });
     }
   });

@@ -1,19 +1,26 @@
 import { COLORS, WEB_FONTS } from '../constants';
 import { WebFolio, WebPage } from '../web-utils';
-import type { TemplateRenderProps, ToCItem } from '../types';
+import type { TemplateArrayItem, TemplateRenderProps, ToCItem } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag02({ data, totalPages }: TemplateRenderProps) {
   const d = data as {
-    heading?: string;
-    numbers?: string[];
-    titles?: string[];
-    descriptions?: string[];
+    title?: string | TemplateArrayItem[];
+    number?: TemplateArrayItem[];
+    description?: TemplateArrayItem[];
     items?: ToCItem[];
     folio?: string;
   };
-  const headingTheme = resolveThemeCarrier(data, 'heading');
-  // 三个并列可编辑槽位 numbers/titles/descriptions;兼容旧的 items 对象数组数据
+  const headingTheme = resolveThemeCarrier(data, 'title');
+  // 顶层标题与重复项 title[i] 共享 base key `title`:有重复项时 data.title 是数组,
+  // 顶层标题退回默认值。仅当 data.title 是字符串时才作为顶层大标题用。
+  const headingText =
+    typeof d.title === 'string' ? d.title : undefined;
+  // 重复组 items 三个并列可编辑槽位 number/title/description(寻址 number[i]/title[i]/
+  // description[i]);兼容旧的 items 对象数组数据
+  const rawNumbers = Array.isArray(d.number) ? d.number : undefined;
+  const rawTitles = Array.isArray(d.title) ? d.title : undefined;
+  const rawDescriptions = Array.isArray(d.description) ? d.description : undefined;
   const legacy = d.items ?? [];
   // 真实相册数据里,repeat 文字槽经 adapt-layout 会被包成 {body, caption} 对象
   // (SAMPLE_*/legacy 仍是纯字符串)。两种形状都取成字符串,绝不把对象塞进 JSX
@@ -37,13 +44,13 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
     'A gentle pause to gather what mattered most before turning the page.',
   ];
   const hasContent =
-    (d.numbers?.length ?? 0) > 0 ||
-    (d.titles?.length ?? 0) > 0 ||
-    (d.descriptions?.length ?? 0) > 0 ||
+    (rawNumbers?.length ?? 0) > 0 ||
+    (rawTitles?.length ?? 0) > 0 ||
+    (rawDescriptions?.length ?? 0) > 0 ||
     legacy.length > 0;
-  const numbers = hasContent ? d.numbers : SAMPLE_NUMBERS;
-  const titles = hasContent ? d.titles : SAMPLE_TITLES;
-  const descriptions = hasContent ? d.descriptions : SAMPLE_DESCRIPTIONS;
+  const numbers = hasContent ? rawNumbers : SAMPLE_NUMBERS;
+  const titles = hasContent ? rawTitles : SAMPLE_TITLES;
+  const descriptions = hasContent ? rawDescriptions : SAMPLE_DESCRIPTIONS;
   const count = Math.max(
     numbers?.length ?? 0,
     titles?.length ?? 0,
@@ -65,7 +72,7 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
           fontFamily: headingTheme.webFontFamily,
         }}
       >
-        {headingTheme.text ?? d.heading ?? 'CONTENTS'}
+        {headingTheme.text ?? headingText ?? 'CONTENTS'}
       </div>
       <div
         style={{
@@ -80,8 +87,8 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
         }}
       >
         {rows.map((_, i) => {
-          const numberTheme = resolveThemeCarrier(data, `numbers[${i}]`);
-          const titleTheme = resolveThemeCarrier(data, `titles[${i}]`);
+          const numberTheme = resolveThemeCarrier(data, `number[${i}]`);
+          const titleTheme = resolveThemeCarrier(data, `title[${i}]`);
           return (
           <div key={i}>
             <div

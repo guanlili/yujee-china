@@ -407,13 +407,20 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
         # (`caption[0]`). variableDecor flags ride the slot defs themselves.
         items = template.get("items") or {}
         item_text_by_id = {slot["id"]: slot for slot in (items.get("texts") or [])}
+        # `items.images` repeat-group bases (§9): a grid template declares its image
+        # slot once under items and addresses each cell as `<base>[i]`.
+        item_image_by_id = {slot["id"]: slot for slot in (items.get("images") or [])}
 
         for slot in page.images:
-            if slot not in image_by_id:
-                return (
-                    f"page {page.pageIndex}: image slot '{slot}' not in "
-                    f"template {page.templateId}"
-                )
+            if slot in image_by_id:
+                continue
+            base = _base_slot(slot)
+            if base in item_image_by_id:
+                continue  # declared `items` repeat-group image cell (bare or [i])
+            return (
+                f"page {page.pageIndex}: image slot '{slot}' not in "
+                f"template {page.templateId}"
+            )
         for slot in page.texts:
             # ②b theme carriers (§3 树边界): finalize bakes the chapter accentColor/
             # artFont into `<slotId>#accentColor` / `<slotId>#artFont` string keys when
@@ -429,6 +436,11 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
                     f"text variableDecor slot in template {page.templateId}"
                 )
             base = _base_slot(slot)
+            # A bracket-path key (`base[i]`) resolves against the `items.texts`
+            # repeat base first — even when a same-named plain top-level slot
+            # exists (mag-02 has both a top-level `title` and an items `title`).
+            if "[" in slot and base in item_text_by_id:
+                continue
             text_slot = text_by_id.get(base)
             if text_slot is None:
                 if slot in svg_ids:

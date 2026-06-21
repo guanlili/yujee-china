@@ -8,14 +8,14 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
     image?: string;
     title?: string;
     body?: string;
-    category?: string;
-    categoryColor?: string;
-    vol?: string;
+    label1?: string;
+    label1Color?: string;
+    label2?: string;
     date?: string;
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
-  const categoryTheme = resolveThemeCarrier(data, 'category');
-  const volTheme = resolveThemeCarrier(data, 'vol');
+  const categoryTheme = resolveThemeCarrier(data, 'label1');
+  const volTheme = resolveThemeCarrier(data, 'label2');
   const dateTheme = resolveThemeCarrier(data, 'date');
   return (
     <WebPage dark fontFamily={WEB_FONTS.serifCn}>
@@ -49,7 +49,7 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
               fontFamily: volTheme.webFontFamily,
             }}
           >
-            {volTheme.text ?? d.vol ?? '01'}
+            {volTheme.text ?? d.label2 ?? '01'}
           </span>{' '}
           ·{' '}
           <span
@@ -75,7 +75,7 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
           color: volTheme.accentColor ?? '#ffffff',
         }}
       >
-        {volTheme.text ?? d.vol ?? '01'}
+        {volTheme.text ?? d.label2 ?? '01'}
       </div>
       <div
         style={{
@@ -93,11 +93,11 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
             fontFamily: categoryTheme.webFontFamily ?? WEB_FONTS.serifEn,
             fontStyle: 'italic',
             letterSpacing: '0.04em',
-            color: categoryTheme.accentColor ?? d.categoryColor ?? COLORS.vermilionSoft,
+            color: categoryTheme.accentColor ?? d.label1Color ?? COLORS.vermilionSoft,
             fontSize: 16,
           }}
         >
-          {categoryTheme.text ?? d.category ?? 'nº 01 · Portrait'}
+          {categoryTheme.text ?? d.label1 ?? 'nº 01 · Portrait'}
         </div>
         <h1
           style={{

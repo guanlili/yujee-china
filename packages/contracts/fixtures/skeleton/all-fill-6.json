@@ -146,7 +146,7 @@
     "basePages": {
       "cover": {
         "pageIndex": 0,
-        "templateId": "mag-01",
+        "templateId": "p01",
         "images": {
           "image": "p002"
         },
@@ -157,7 +157,7 @@
         "pageIndex": 5,
         "templateId": "mag-20",
         "images": {
-          "image1": "p001"
+          "image": "p001"
         },
         "texts": {}
       }
@@ -182,8 +182,8 @@
             "pageIndex": 1,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "p001",
-              "imageRight": "p002"
+              "image1": "p001",
+              "image2": "p002"
             },
             "texts": {}
           },
@@ -199,8 +199,8 @@
             "pageIndex": 3,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "p004",
-              "imageRight": "p005"
+              "image1": "p004",
+              "image2": "p005"
             },
             "texts": {}
           },
@@ -218,7 +218,7 @@
     "pages": [
       {
         "pageIndex": 0,
-        "templateId": "mag-01",
+        "templateId": "p01",
         "images": {
           "image": "p002"
         },
@@ -228,8 +228,8 @@
         "pageIndex": 1,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "p001",
-          "imageRight": "p002"
+          "image1": "p001",
+          "image2": "p002"
         },
         "texts": {}
       },
@@ -245,8 +245,8 @@
         "pageIndex": 3,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "p004",
-          "imageRight": "p005"
+          "image1": "p004",
+          "image2": "p005"
         },
         "texts": {}
       },
@@ -262,7 +262,7 @@
         "pageIndex": 5,
         "templateId": "mag-20",
         "images": {
-          "image1": "p001"
+          "image": "p001"
         },
         "texts": {}
       }

@@ -52,7 +52,7 @@
         "pageIndex": 2,
         "templateId": "mag-20",
         "images": {
-          "image1": "p001"
+          "image": "p001"
         },
         "texts": {}
       }
@@ -100,7 +100,7 @@
         "pageIndex": 2,
         "templateId": "mag-20",
         "images": {
-          "image1": "p001"
+          "image": "p001"
         },
         "texts": {}
       }

@@ -9,7 +9,7 @@ export function PdfMag13({ data, imagePos }: TemplateRenderProps) {
     image?: string;
     title?: string;
     divider?: string;
-    caption?: string;
+    explain?: string;
     folio?: string;
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
@@ -58,7 +58,7 @@ export function PdfMag13({ data, imagePos }: TemplateRenderProps) {
           fontSize: 15,
         }}
       >
-        {d.caption || ''}
+        {d.explain || ''}
       </Text>
     </PdfPageShell>
   );

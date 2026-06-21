@@ -1,63 +1,15 @@
 {
   "id": "mag-08",
-  "slot": "interior",
-  "scene": "portrait",
   "category": "interior",
   "images": [
-    {
-      "id": "image",
-      "orientation": [
-        "portrait"
-      ],
-      "quality": [
-        "hero",
-        "detail"
-      ]
-    }
+    { "id": "image", "orientation": ["portrait"], "quality": ["hero", "detail"] }
   ],
   "texts": [
-    {
-      "id": "dateNum",
-      "role": "decoration",
-      "lang": "en",
-      "maxChars": 5,
-      "variableDecor": true,
-      "hint": "日期数字,如 08/24"
-    },
-    {
-      "id": "caption1",
-      "role": "explain",
-      "lang": "user",
-      "maxChars": 70,
-      "hint": "图注:点出人物或场景"
-    },
-    {
-      "id": "caption2",
-      "role": "explain",
-      "lang": "user",
-      "maxChars": 160,
-      "hint": "较长说明:展开这一刻的故事"
-    },
-    {
-      "id": "title",
-      "role": "title",
-      "lang": "user",
-      "maxChars": 10,
-      "variableDecor": true,
-      "hint": "短标题,≤4 字意象词"
-    },
-    {
-      "id": "body",
-      "role": "body",
-      "lang": "user",
-      "maxChars": 180,
-      "hint": "正文:第一人称叙事,3-4 句"
-    },
-    {
-      "id": "folio",
-      "role": "decoration",
-      "lang": "en",
-      "maxChars": 2
-    }
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 12, "hint": "短标题,≤4 字意象词", "variableDecor": true },
+    { "id": "body", "role": "body", "lang": "user", "maxChars": 180, "hint": "正文:第一人称叙事,3-4 句" },
+    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "图注:点出人物或场景" },
+    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "较长说明:展开这一刻的故事" },
+    { "id": "date", "role": "decoration", "lang": "en", "maxChars": 12, "hint": "日期数字,如 08/24", "variableDecor": true },
+    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

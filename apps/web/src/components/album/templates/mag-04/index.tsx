@@ -8,13 +8,13 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
     image1?: string;
     image2?: string;
     image3?: string;
-    caption1?: string;
-    caption2?: string;
-    dateNum?: string;
+    explain1?: string;
+    explain2?: string;
+    date?: string;
     folio?: string;
   };
-  const dateTheme = resolveThemeCarrier(data, 'dateNum');
-  const dn = (dateTheme.text ?? d.dateNum ?? '04/24').split('/');
+  const dateTheme = resolveThemeCarrier(data, 'date');
+  const dn = (dateTheme.text ?? d.date ?? '04/24').split('/');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -56,7 +56,7 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 20,
         }}
       >
-        {d.caption1 || ''}
+        {d.explain1 || ''}
       </div>
       <WebImage
         src={d.image2}
@@ -78,7 +78,7 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 20,
         }}
       >
-        {d.caption2 || ''}
+        {d.explain2 || ''}
       </div>
       <WebImage
         src={d.image3}

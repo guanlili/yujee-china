@@ -8,12 +8,12 @@ export function PdfMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     title?: string;
-    plate?: string;
-    caption2?: string;
+    label?: string;
+    explain?: string;
     folio?: string;
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
-  const plateTheme = resolveThemeCarrier(data, 'plate');
+  const labelTheme = resolveThemeCarrier(data, 'label');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage
@@ -43,11 +43,11 @@ export function PdfMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
           width: 260,
           fontSize: 13,
           letterSpacing: 4,
-          color: plateTheme.accentColor ?? COLORS.ink,
-          fontFamily: plateTheme.pdfFontFamily,
+          color: labelTheme.accentColor ?? COLORS.ink,
+          fontFamily: labelTheme.pdfFontFamily,
         }}
       >
-        {(plateTheme.text ?? d.plate ?? '').toUpperCase()}
+        {(labelTheme.text ?? d.label ?? '').toUpperCase()}
       </Text>
       <Text
         style={{
@@ -61,7 +61,7 @@ export function PdfMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 18,
         }}
       >
-        {d.caption2 || ''}
+        {d.explain || ''}
       </Text>
       <PdfFolio folio={d.folio} totalPages={totalPages} fallback="11" />
     </PdfPageShell>

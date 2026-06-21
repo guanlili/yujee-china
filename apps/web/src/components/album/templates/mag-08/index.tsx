@@ -6,16 +6,16 @@ import { resolveThemeCarrier } from '../theme-carrier';
 export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
-    dateNum?: string;
-    caption1?: string;
-    caption2?: string;
+    date?: string;
+    explain1?: string;
+    explain2?: string;
     title?: string;
     body?: string;
     folio?: string;
   };
-  const dateTheme = resolveThemeCarrier(data, 'dateNum');
+  const dateTheme = resolveThemeCarrier(data, 'date');
   const titleTheme = resolveThemeCarrier(data, 'title');
-  const dn = (d.dateNum || '08/24').split('/');
+  const dn = (d.date || '08/24').split('/');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <div
@@ -50,7 +50,7 @@ export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
           letterSpacing: '0.02em',
           textAlign: 'justify' }}
       >
-        {d.caption1 || ''}
+        {d.explain1 || ''}
       </p>
       {/* 右侧说明：移到照片右缘之外、收窄宽度，避免与照片重叠 */}
       <p
@@ -60,7 +60,7 @@ export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
           letterSpacing: '0.02em',
           textAlign: 'justify' }}
       >
-        {d.caption2 || ''}
+        {d.explain2 || ''}
       </p>
       <h1
         style={{ position: 'absolute', left: 70, top: 968, width: 244, height: 60,

@@ -6,7 +6,7 @@ deterministic decoration (folio page numbers, date from the photos' code-filled
 takenAt) and leaves user-content slots empty for the章节故事环节. No LLM, no base64.
 
 These run against the REAL template registry so the decoration ids we own
-(`folio` / `dateNum`) are exercised on actual interior templates (mag-08 has both).
+(`folio` / `date`) are exercised on actual interior templates (mag-08 has both).
 """
 
 from __future__ import annotations
@@ -64,8 +64,8 @@ def test_date_decor_from_taken_at():
         [{"pageIndex": 0, "templateId": "mag-08", "images": {"image": "p1"}, "texts": {}}],
         chapters,
     )
-    # mag-08 has a `dateNum` decoration slot (maxChars 5) → "03/24".
-    assert pages[0]["texts"]["dateNum"] == "03/24"
+    # mag-08 has a `date` decoration slot (maxChars 12) → "03/24".
+    assert pages[0]["texts"]["date"] == "03/24"
     # folio still filled alongside.
     assert pages[0]["texts"]["folio"] == "01"
 
@@ -77,7 +77,7 @@ def test_date_decor_omitted_without_taken_at():
         chapters,
     )
     # No takenAt anywhere on the page → no invented date (§3 / no fake dates).
-    assert "dateNum" not in pages[0]["texts"]
+    assert "date" not in pages[0]["texts"]
     assert pages[0]["texts"]["folio"] == "01"
 
 
@@ -92,7 +92,7 @@ def test_date_decor_uses_earliest_taken_at_on_page():
         [
             {
                 "pageIndex": 0,
-                "templateId": "mag-04",  # holds 3 images + dateNum decoration
+                "templateId": "mag-04",  # holds 3 images + date decoration slot
                 "images": {"image1": "p1", "image2": "p2", "image3": "p3"},
                 "texts": {},
             }
@@ -100,7 +100,7 @@ def test_date_decor_uses_earliest_taken_at_on_page():
         chapters,
     )
     # Earliest of the three (March) wins.
-    assert pages[0]["texts"]["dateNum"] == "03/24"
+    assert pages[0]["texts"]["date"] == "03/24"
 
 
 # ---------- user-content slots stay empty (no正式文案) -------------------------
@@ -113,19 +113,19 @@ def test_user_content_slots_left_empty():
         chapters,
     )
     texts = pages[0]["texts"]
-    # mag-08 user slots: caption1/caption2/title/body — NONE filled (§4.1: 不生成正式文案).
-    for user_slot in ("caption1", "caption2", "title", "body"):
+    # mag-08 user slots: explain1/explain2/title/body — NONE filled (§4.1: 不生成正式文案).
+    for user_slot in ("explain1", "explain2", "title", "body"):
         assert user_slot not in texts, user_slot
 
 
 def test_location_decoration_never_filled():
-    """§3 隐私: a `location` decoration slot is never given a value (no place)."""
+    """§3 隐私: a `label` decoration slot is never given a value (no place)."""
     chapters = [_chapter("c1", [_photo("p1", taken_at="2024-03-15T08:30:00Z")])]
     pages = generic_copy.fill_generic_copy(
         [{"pageIndex": 0, "templateId": "mag-03", "images": {"image": "p1"}, "texts": {}}],
         chapters,
     )
-    assert "location" not in pages[0]["texts"]
+    assert "label" not in pages[0]["texts"]
     # folio is still filled on mag-03.
     assert pages[0]["texts"]["folio"] == "01"
 
@@ -168,7 +168,7 @@ def test_filled_pages_revalidate_as_page_objects():
     )
     obj = Page(**pages[0])
     assert obj.texts["folio"] == "01"
-    assert obj.texts["dateNum"] == "03/24"
+    assert obj.texts["date"] == "03/24"
 
 
 def test_chapter_color_placeholders_left_null():

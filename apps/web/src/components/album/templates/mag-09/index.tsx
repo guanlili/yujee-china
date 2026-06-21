@@ -5,25 +5,24 @@ import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
-    imageTop?: string;
-    imageMain?: string;
-    caption1?: string;
+    image1?: string;
+    image2?: string;
+    body?: string;
     title?: string;
-    caption2?: string;
-    caption3?: string;
-    caption4?: string;
-    caption5?: string;
+    explain1?: string;
+    explain2?: string;
+    explain3?: string;
     folio?: string;
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
-        src={d.imageTop}
+        src={d.image1}
         placeholder="4:3"
         style={{ position: 'absolute', left: 50, top: 90, width: 300, height: 300 }}
-        position={imagePos?.['imageTop']}
-        slotId="imageTop"
+        position={imagePos?.['image1']}
+        slotId="image1"
       />
       <div style={{ position: 'absolute', top: 130, right: 60, width: 230 }}>
         <p
@@ -33,7 +32,7 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
             textAlign: 'justify',
             fontSize: 18 }}
         >
-          {d.caption1 || ''}
+          {d.body || ''}
         </p>
       </div>
       <h1
@@ -53,11 +52,11 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
         {brToReact(titleTheme.text ?? d.title ?? 'OSAKA\nJAPAN')}
       </h1>
       <WebImage
-        src={d.imageMain}
+        src={d.image2}
         placeholder="11:10"
         style={{ position: 'absolute', left: 374, top: 400, width: 370, height: 600 }}
-        position={imagePos?.['imageMain']}
-        slotId="imageMain"
+        position={imagePos?.['image2']}
+        slotId="image2"
       />
       <div
         style={{
@@ -71,10 +70,9 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
           textAlign: 'justify',
         }}
       >
-        <p style={{ position: 'absolute', left: 60, top: 620, width: 280, height: 32, fontSize: 18 }}>{d.caption2 || ''}</p>
-        <p style={{ position: 'absolute', left: 60, top: 664, width: 280, height: 32, fontSize: 18 }}>{d.caption3 || ''}</p>
-        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 18 }}>{d.caption4 || ''}</p>
-        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 18 }}>{d.caption5 || ''}</p>
+        <p style={{ position: 'absolute', left: 60, top: 620, width: 280, height: 32, fontSize: 18 }}>{d.explain1 || ''}</p>
+        <p style={{ position: 'absolute', left: 60, top: 664, width: 280, height: 32, fontSize: 18 }}>{d.explain2 || ''}</p>
+        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 18 }}>{d.explain3 || ''}</p>
       </div>
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="09" />
     </WebPage>

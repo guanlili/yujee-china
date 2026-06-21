@@ -9,13 +9,13 @@ export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
     image1?: string;
     image2?: string;
     image3?: string;
-    caption1?: string;
-    caption2?: string;
-    dateNum?: string;
+    explain1?: string;
+    explain2?: string;
+    date?: string;
     folio?: string;
   };
-  const dateTheme = resolveThemeCarrier(data, 'dateNum');
-  const dn = (dateTheme.text ?? d.dateNum ?? '04/24').split('/');
+  const dateTheme = resolveThemeCarrier(data, 'date');
+  const dn = (dateTheme.text ?? d.date ?? '04/24').split('/');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage src={d.image1} style={{ position: 'absolute', top: 60, left: 50, width: 380, height: 360 }} position={imagePos?.['image1']} />
@@ -63,7 +63,7 @@ export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 20,
         }}
       >
-        {d.caption1 || ''}
+        {d.explain1 || ''}
       </Text>
       <PdfImage src={d.image2} style={{ position: 'absolute', top: 460, right: 50, width: 280, height: 280 }} position={imagePos?.['image2']} />
       <Text
@@ -78,7 +78,7 @@ export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 20,
         }}
       >
-        {d.caption2 || ''}
+        {d.explain2 || ''}
       </Text>
       <PdfImage src={d.image3} style={{ position: 'absolute', top: 760, right: 50, width: 280, height: 280 }} position={imagePos?.['image3']} />
       <PdfFolio folio={d.folio} totalPages={totalPages} fallback="04" />

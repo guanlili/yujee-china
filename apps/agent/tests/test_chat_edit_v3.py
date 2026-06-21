@@ -168,7 +168,7 @@ def test_explicit_text_target_stays_on_deepseek(monkeypatch):
                     "kind": "edit",
                     "editTarget": "text",
                     "assistantReply": "Reworded.",
-                    "pageTexts": {"pageIndex": 1, "texts": {"caption1": "Salt and sun."}},
+                    "pageTexts": {"pageIndex": 1, "texts": {"explain1": "Salt and sun."}},
                 }
             ),
         )
@@ -178,7 +178,7 @@ def test_explicit_text_target_stays_on_deepseek(monkeypatch):
     assert resp.layoutPatch is not None and len(resp.layoutPatch) == 1
     patch = resp.layoutPatch[0]
     assert patch.pageIndex == 1
-    assert patch.texts == {"caption1": "Salt and sun."}
+    assert patch.texts == {"explain1": "Salt and sun."}
     # Pure-text edit never changes templateId/images.
     assert patch.templateId is None
     assert patch.images is None
@@ -347,11 +347,11 @@ def test_run_image_edit_carries_only_surviving_texts():
         pageIndex=1,
         templateId=_INTERIOR_3,
         images=_two_image_assignment(),
-        texts={"caption1": "kept if slot survives", "ghost": "dropped"},
+        texts={"explain1": "kept if slot survives", "ghost": "dropped"},
     )
 
     async def fake_intent(_manifest: str) -> list[str]:
-        return ["p1", "p2", "p3"]  # → mag-04 (3-slot), which has a caption1 slot
+        return ["p1", "p2", "p3"]  # → mag-04 (3-slot), which has an explain1 slot
 
     patch = asyncio.run(
         chat_edit_v3.run_image_edit(
@@ -364,8 +364,8 @@ def test_run_image_edit_carries_only_surviving_texts():
     assert set(patch.texts).issubset(new_text_slots)
     assert "ghost" not in patch.texts
     # A surviving slot's text is carried verbatim (an image change keeps the words).
-    if "caption1" in new_text_slots:
-        assert patch.texts["caption1"] == "kept if slot survives"
+    if "explain1" in new_text_slots:
+        assert patch.texts["explain1"] == "kept if slot survives"
 
 
 def test_run_image_edit_no_provider_returns_none(monkeypatch):

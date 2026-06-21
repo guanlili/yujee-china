@@ -70,8 +70,7 @@ def test_prompt_summary_handles_optional_constraints(tmp_path):
         json.dumps(
             {
                 "id": "optional-01",
-                "slot": "interior",
-                "scene": "portrait",
+                "category": "interior",
                 "images": [
                     {"id": "image"},
                     {"id": "thumb", "quality": ["detail"]},
@@ -151,8 +150,6 @@ def test_loader_rejects_invalid_v3_nested_fields(tmp_path):
     def write_template(template_id: str, **overrides):
         data = {
             "id": template_id,
-            "slot": "interior",
-            "scene": "record",
             "category": "interior",
             "images": [{"id": "image"}],
             "texts": [{"id": "body", "role": "body", "lang": "user"}],
@@ -178,8 +175,6 @@ def test_loader_mirrors_template_def_edge_constraints(tmp_path):
     def write_template(template_id: str, **overrides):
         data = {
             "id": template_id,
-            "slot": "interior",
-            "scene": "record",
             "category": "interior",
             "images": [{"id": "image"}],
             "texts": [{"id": "body", "role": "body", "lang": "user"}],
@@ -229,13 +224,12 @@ def test_loader_mirrors_template_def_edge_constraints(tmp_path):
 
 
 def test_layout_rules_treat_optional_image_slot_hints_as_any(monkeypatch, tmp_path):
-    def write_template(template_id: str, slot: str, scene: str, images: list, texts: list):
+    def write_template(template_id: str, category: str, images: list, texts: list):
         (tmp_path / f"{template_id}.json").write_text(
             json.dumps(
                 {
                     "id": template_id,
-                    "slot": slot,
-                    "scene": scene,
+                    "category": category,
                     "images": images,
                     "texts": texts,
                 }
@@ -244,15 +238,15 @@ def test_layout_rules_treat_optional_image_slot_hints_as_any(monkeypatch, tmp_pa
         )
 
     write_template(
-        "mag-01", "cover", "opening",
+        "mag-01", "cover",
         [{"id": "image"}], [{"id": "title", "role": "title", "lang": "user"}],
     )
     write_template(
-        "mag-02", "interior", "textOnly",
+        "mag-02", "toc",
         [], [{"id": "items", "role": "body", "lang": "user"}],
     )
     write_template(
-        "optional-01", "interior", "portrait",
+        "optional-01", "interior",
         [{"id": "image"}], [{"id": "caption", "role": "explain", "lang": "user"}],
     )
 

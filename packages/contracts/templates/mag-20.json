@@ -1,12 +1,8 @@
 {
   "id": "mag-20",
-  "slot": "ending",
-  "scene": "ending",
   "category": "ending",
   "images": [
-    {
-      "id": "image1"
-    }
+    { "id": "image" }
   ],
   "texts": []
 }

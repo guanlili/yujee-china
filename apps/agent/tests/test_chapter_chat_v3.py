@@ -30,7 +30,7 @@ from src.services import chapter_chat_v3
 from src.services.chapter_chat_v3 import ChapterChatV3Error
 
 # Real template ids (packages/contracts/templates): mag-13 authored slots =
-# title(maxChars 30) + caption(body, 165); mag-04 = 3-image interior.
+# title(maxChars 24) + explain; mag-04 = 3-image interior (explain1/explain2).
 _COVER = "mag-13"
 _INTERIOR = "mag-04"
 
@@ -123,15 +123,15 @@ def test_unknown_kind_defaults_to_talk_never_autowrites():
 
 
 def test_write_turn_fills_every_page_and_clamps():
-    long_title = "x" * 100  # mag-13 title maxChars = 30
+    long_title = "x" * 100  # mag-13 title maxChars = 24
     resp = _run(
         _req(user_message="write it now"),
         {
             "kind": "write",
             "assistantReply": "Done.",
             "pagesTexts": [
-                {"pageIndex": 0, "texts": {"title": long_title, "caption": "A coast story."}},
-                {"pageIndex": 1, "texts": {"caption1": "Main square.", "caption2": "A second memory."}},
+                {"pageIndex": 0, "texts": {"title": long_title, "explain": "A coast story."}},
+                {"pageIndex": 1, "texts": {"explain1": "Main square.", "explain2": "A second memory."}},
             ],
             "nameOptions": ["Coast Days", "Coast Days", "Salt Air", ""],
         },
@@ -141,10 +141,10 @@ def test_write_turn_fills_every_page_and_clamps():
     by_index = {p.pageIndex: p.texts for p in resp.pagesTexts}
     # Every page comes back with all authored slots filled.
     assert set(by_index) == {0, 1}
-    assert by_index[1] == {"caption1": "Main square.", "caption2": "A second memory."}
-    # title clamped to maxChars 30; authored caption kept.
-    assert len(by_index[0]["title"]) == 30
-    assert by_index[0]["caption"] == "A coast story."
+    assert by_index[1] == {"explain1": "Main square.", "explain2": "A second memory."}
+    # title clamped to maxChars 24; authored explain kept.
+    assert len(by_index[0]["title"]) == 24
+    assert by_index[0]["explain"] == "A coast story."
     # nameOptions de-duped + empties dropped, ≤4.
     assert resp.nameOptions == ["Coast Days", "Salt Air"]
 
@@ -156,7 +156,7 @@ def test_write_omitted_authored_page_degrades_to_talk():
             "kind": "write",
             "assistantReply": "Done.",
             "pagesTexts": [
-                {"pageIndex": 0, "texts": {"title": "Coast", "caption": "A coast story."}},
+                {"pageIndex": 0, "texts": {"title": "Coast", "explain": "A coast story."}},
                 # page 1 has authored slots and is omitted by the model.
             ],
         },
@@ -172,9 +172,9 @@ def test_write_missing_required_slot_degrades_to_talk():
             "kind": "write",
             "assistantReply": "Done.",
             "pagesTexts": [
-                {"pageIndex": 0, "texts": {"title": "Coast", "caption": "A coast story."}},
-                # mag-04 also requires caption2.
-                {"pageIndex": 1, "texts": {"caption1": "Main square."}},
+                {"pageIndex": 0, "texts": {"title": "Coast", "explain": "A coast story."}},
+                # mag-04 also requires explain2.
+                {"pageIndex": 1, "texts": {"explain1": "Main square."}},
             ],
         },
     )
@@ -193,25 +193,25 @@ def test_write_drops_illegal_slot_ids():
                     "pageIndex": 0,
                     "texts": {
                         "title": "Coast",
-                        "caption": "A coast story.",
+                        "explain": "A coast story.",
                         "folio": "9",
                         "bogus": "x",
                     },
                 },
-                {"pageIndex": 1, "texts": {"caption1": "Main square.", "caption2": "A second memory."}},
+                {"pageIndex": 1, "texts": {"explain1": "Main square.", "explain2": "A second memory."}},
             ],
         },
     )
     texts = {p.pageIndex: p.texts for p in resp.pagesTexts}[0]
     # folio is decoration (code-filled, not authored) and bogus is unknown → dropped.
-    assert texts == {"title": "Coast", "caption": "A coast story."}
+    assert texts == {"title": "Coast", "explain": "A coast story."}
 
 
 def test_write_expands_repeat_text_slots_from_page_images():
     page = Page(
         pageIndex=2,
         templateId="mag-10",
-        images={"cells[0].image": "p1", "cells[1].image": "p1"},
+        images={"image[0]": "p1", "image[1]": "p1"},
         texts={},
     )
     resp = _run(
@@ -223,8 +223,8 @@ def test_write_expands_repeat_text_slots_from_page_images():
                 {
                     "pageIndex": 2,
                     "texts": {
-                        "cells[0]": "a" * 100,
-                        "cells[1]": "Second cell.",
+                        "explain[0]": "a" * 100,
+                        "explain[1]": "Second cell.",
                         "folio": "9",
                     },
                 }
@@ -233,24 +233,24 @@ def test_write_expands_repeat_text_slots_from_page_images():
     )
     assert resp.kind == "write"
     texts = resp.pagesTexts[0].texts
-    assert set(texts) == {"cells[0]", "cells[1]"}
-    assert len(texts["cells[0]"]) == 70
-    assert texts["cells[1]"] == "Second cell."
+    assert set(texts) == {"explain[0]", "explain[1]"}
+    assert len(texts["explain[0]"]) == 90
+    assert texts["explain[1]"] == "Second cell."
 
 
 def test_repeat_item_hint_passes_through_to_expanded_slots():
     page = Page(
         pageIndex=2,
         templateId="mag-10",
-        images={"cells[0].image": "p1", "cells[1].image": "p1"},
+        images={"image[0]": "p1", "image[1]": "p1"},
         texts={},
     )
     _, user = _system_user(_req(user_message="write this grid", pages=[page]))
     payload = json.loads(user)
     page_slots = {s["id"]: s for s in payload["pageSlots"]["2"]}
 
-    assert page_slots["cells[0]"]["hint"] == "每格图说:一句话点出这张照片"
-    assert page_slots["cells[1]"]["hint"] == "每格图说:一句话点出这张照片"
+    assert page_slots["explain[0]"]["hint"] == "每格图说:一句话点出这张照片"
+    assert page_slots["explain[1]"]["hint"] == "每格图说:一句话点出这张照片"
 
 
 # ---------- edit turn (改) ----------------------------------------------------
@@ -428,7 +428,7 @@ def test_per_slot_hint_passes_through_to_writing_lm():
     payload = json.loads(user)
     page0_slots = {s["id"]: s for s in payload["pageSlots"]["0"]}
     assert page0_slots["title"]["hint"]  # template-authored hint, passed verbatim
-    assert page0_slots["caption"]["hint"]
+    assert page0_slots["explain"]["hint"]
     # Sanity: the hint is the template's, not invented by the Agent.
     from src.services import writing_guides
 
@@ -440,12 +440,15 @@ def test_page_slot_specs_surfaces_hint_when_template_has_one():
     from src.services import writing_guides
 
     specs = {s["id"]: s for s in writing_guides.page_slot_specs(_COVER)}
-    # mag-13 title/caption have hints in the template JSON; decoration folio is dropped.
+    # mag-13 title/explain have hints in the template JSON; decoration folio is dropped.
     assert "hint" in specs["title"] and specs["title"]["hint"]
     assert "folio" not in specs  # decoration is code-filled, never authored
 
-    repeat_specs = {s["id"]: s for s in writing_guides.page_slot_specs("mag-10")}
-    assert repeat_specs["cells"]["hint"] == "每格图说:一句话点出这张照片"
+    # mag-10's repeat content lives in items.texts (`explain`), not a top-level
+    # repeat slot, so the template-level specs expose only the (dropped) folio →
+    # empty. The per-page expansion (with image indices) is what surfaces the item
+    # hint as explain[i]; see test_repeat_item_hint_passes_through_to_expanded_slots.
+    assert writing_guides.page_slot_specs("mag-10") == []
 
 
 def test_v3_write_path_has_no_role_guides_creative_residue():

@@ -191,31 +191,31 @@ test('TemplateSvgSlot + TemplateItems parse the V3 decoration/repeat shapes', ()
   assert.deepEqual(TemplateItems.parse(items), items);
 });
 
-test('TemplateDef tolerates legacy slot/scene AND accepts new category/svgs/items', () => {
-  // legacy (current JSON shape) still parses — WP0.2 容忍策略
+test('TemplateDef is category-only — legacy slot/scene are rejected', () => {
+  // V3 shape parses (category + svgs + items + image orientation/quality hints).
+  assert.equal(
+    TemplateDef.safeParse({
+      id: 'mag-y',
+      category: 'interior',
+      images: [{ id: 'image', quality: ['hero'], orientation: ['portrait'] }],
+      svgs: [{ id: 'divider', variableDecor: true }],
+      texts: [{ id: 'title', role: 'title', lang: 'user', variableDecor: true, hint: 'h' }],
+      items: { texts: [{ id: 'explain', role: 'explain', lang: 'user', maxChars: 70 }] },
+    }).success,
+    true,
+  );
+  // Legacy slot/scene are removed — supplying them is an unrecognized-key error.
   assert.equal(
     TemplateDef.safeParse({
       id: 'mag-x',
       slot: 'interior',
       scene: 'portrait',
-      images: [{ id: 'image', quality: ['hero'], orientation: ['portrait'] }],
+      images: [{ id: 'image' }],
       texts: [{ id: 'body', role: 'body', lang: 'user' }],
     }).success,
-    true,
+    false,
   );
-  // new V3 shape parses
-  assert.equal(
-    TemplateDef.safeParse({
-      id: 'mag-y',
-      category: 'interior',
-      images: [{ id: 'image' }],
-      svgs: [{ id: 'divider', variableDecor: true }],
-      texts: [{ id: 'title', role: 'title', lang: 'user', variableDecor: true, hint: 'h' }],
-      items: { texts: [{ id: 'caption', role: 'explain', lang: 'user', maxChars: 70 }] },
-    }).success,
-    true,
-  );
-  // Classification is required in either the V3 or transitional legacy form.
+  // category is required.
   assert.equal(
     TemplateDef.safeParse({
       id: 'mag-z',

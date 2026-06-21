@@ -650,7 +650,7 @@
     "basePages": {
       "cover": {
         "pageIndex": 0,
-        "templateId": "mag-13",
+        "templateId": "p01",
         "images": {
           "image": "p002"
         },
@@ -661,7 +661,7 @@
         "pageIndex": 21,
         "templateId": "mag-20",
         "images": {
-          "image1": "p001"
+          "image": "p001"
         },
         "texts": {}
       }
@@ -710,8 +710,8 @@
             "pageIndex": 1,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "p001",
-              "imageRight": "p002"
+              "image1": "p001",
+              "image2": "p002"
             },
             "texts": {}
           },
@@ -727,8 +727,8 @@
             "pageIndex": 3,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "p004",
-              "imageRight": "p005"
+              "image1": "p004",
+              "image2": "p005"
             },
             "texts": {}
           },
@@ -744,8 +744,8 @@
             "pageIndex": 5,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "p007",
-              "imageRight": "p008"
+              "image1": "p007",
+              "image2": "p008"
             },
             "texts": {}
           },
@@ -761,8 +761,8 @@
             "pageIndex": 7,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "p010",
-              "imageRight": "p011"
+              "image1": "p010",
+              "image2": "p011"
             },
             "texts": {}
           },
@@ -778,8 +778,8 @@
             "pageIndex": 9,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "p013",
-              "imageRight": "p014"
+              "image1": "p013",
+              "image2": "p014"
             },
             "texts": {}
           },
@@ -795,8 +795,8 @@
             "pageIndex": 11,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "p016",
-              "imageRight": "p017"
+              "image1": "p016",
+              "image2": "p017"
             },
             "texts": {}
           },
@@ -812,8 +812,8 @@
             "pageIndex": 13,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "p019",
-              "imageRight": "p020"
+              "image1": "p019",
+              "image2": "p020"
             },
             "texts": {}
           },
@@ -829,8 +829,8 @@
             "pageIndex": 15,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "p022",
-              "imageRight": "p023"
+              "image1": "p022",
+              "image2": "p023"
             },
             "texts": {}
           },
@@ -846,8 +846,8 @@
             "pageIndex": 17,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "p025",
-              "imageRight": "p026"
+              "image1": "p025",
+              "image2": "p026"
             },
             "texts": {}
           },
@@ -863,8 +863,8 @@
             "pageIndex": 19,
             "templateId": "mag-18",
             "images": {
-              "imageLeft": "p028",
-              "imageRight": "p029"
+              "image1": "p028",
+              "image2": "p029"
             },
             "texts": {}
           },
@@ -882,7 +882,7 @@
     "pages": [
       {
         "pageIndex": 0,
-        "templateId": "mag-13",
+        "templateId": "p01",
         "images": {
           "image": "p002"
         },
@@ -892,8 +892,8 @@
         "pageIndex": 1,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "p001",
-          "imageRight": "p002"
+          "image1": "p001",
+          "image2": "p002"
         },
         "texts": {}
       },
@@ -909,8 +909,8 @@
         "pageIndex": 3,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "p004",
-          "imageRight": "p005"
+          "image1": "p004",
+          "image2": "p005"
         },
         "texts": {}
       },
@@ -926,8 +926,8 @@
         "pageIndex": 5,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "p007",
-          "imageRight": "p008"
+          "image1": "p007",
+          "image2": "p008"
         },
         "texts": {}
       },
@@ -943,8 +943,8 @@
         "pageIndex": 7,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "p010",
-          "imageRight": "p011"
+          "image1": "p010",
+          "image2": "p011"
         },
         "texts": {}
       },
@@ -960,8 +960,8 @@
         "pageIndex": 9,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "p013",
-          "imageRight": "p014"
+          "image1": "p013",
+          "image2": "p014"
         },
         "texts": {}
       },
@@ -977,8 +977,8 @@
         "pageIndex": 11,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "p016",
-          "imageRight": "p017"
+          "image1": "p016",
+          "image2": "p017"
         },
         "texts": {}
       },
@@ -994,8 +994,8 @@
         "pageIndex": 13,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "p019",
-          "imageRight": "p020"
+          "image1": "p019",
+          "image2": "p020"
         },
         "texts": {}
       },
@@ -1011,8 +1011,8 @@
         "pageIndex": 15,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "p022",
-          "imageRight": "p023"
+          "image1": "p022",
+          "image2": "p023"
         },
         "texts": {}
       },
@@ -1028,8 +1028,8 @@
         "pageIndex": 17,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "p025",
-          "imageRight": "p026"
+          "image1": "p025",
+          "image2": "p026"
         },
         "texts": {}
       },
@@ -1045,8 +1045,8 @@
         "pageIndex": 19,
         "templateId": "mag-18",
         "images": {
-          "imageLeft": "p028",
-          "imageRight": "p029"
+          "image1": "p028",
+          "image2": "p029"
         },
         "texts": {}
       },
@@ -1062,7 +1062,7 @@
         "pageIndex": 21,
         "templateId": "mag-20",
         "images": {
-          "image1": "p001"
+          "image": "p001"
         },
         "texts": {}
       }

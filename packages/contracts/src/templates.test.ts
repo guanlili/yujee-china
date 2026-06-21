@@ -13,12 +13,10 @@ import {
 } from './templates';
 import { TEMPLATES as INDEX_TEMPLATES } from './index';
 
-// WP0.2 is a TRANSITIONAL (additive) migration: every template now carries the
-// V3 fields (category / items / hint / variableDecor / svgs) AND keeps its
-// legacy fields (slot / scene / orientation / quality / repeat) so the live web
-// skeleton engine — a shared TS<->Python contract locked by golden fixtures —
-// keeps working untouched. Legacy-field removal happens with the engine rewrite
-// (alongside WP0.4). These tests assert BOTH layers are coherent.
+// The template contract is category-only: every template declares a single
+// `category` (cover | toc | interior | ending) — the legacy `slot` + `scene`
+// fields are gone. These tests assert the new shape and the migrated text-slot
+// ids (title / body / explain* / label* / folio / date …).
 
 const EXPECTED_TEMPLATE_IDS = [
   'mag-01',
@@ -40,17 +38,7 @@ const EXPECTED_TEMPLATE_IDS = [
   'p01',
 ];
 
-const VALID_SLOTS = new Set(['cover', 'interior', 'ending']);
-const VALID_SCENES = new Set([
-  'opening',
-  'portrait',
-  'scenery',
-  'record',
-  'interlude',
-  'textOnly',
-  'ending',
-]);
-const VALID_CATEGORIES = new Set(['cover', 'interior', 'toc', 'ending']);
+const VALID_CATEGORIES = new Set(['cover', 'toc', 'interior', 'ending']);
 const VALID_ROLES = new Set(['title', 'body', 'explain', 'decoration']);
 // variableDecor (themable styling) is only meaningful for title / decoration /
 // svg slots — body / explain are reading content and must never carry it.
@@ -91,15 +79,15 @@ test('registry contains the active template set', () => {
   assert.equal(INDEX_TEMPLATES, TEMPLATES);
 });
 
-test('image and text slot schemas accept the V3 id-keyed shape', () => {
+test('image and text slot schemas accept the id-keyed shape', () => {
   assert.deepEqual(TemplateImageSlot.parse({ id: 'image' }), { id: 'image' });
   assert.deepEqual(
     TemplateImageSlot.parse({ id: 'image', orientation: ['portrait'] }),
     { id: 'image', orientation: ['portrait'] },
   );
   assert.deepEqual(
-    TemplateTextSlot.parse({ id: 'caption', role: 'explain', lang: 'user' }),
-    { id: 'caption', role: 'explain', lang: 'user' },
+    TemplateTextSlot.parse({ id: 'explain', role: 'explain', lang: 'user' }),
+    { id: 'explain', role: 'explain', lang: 'user' },
   );
   assert.deepEqual(
     TemplateTextSlot.parse({
@@ -114,7 +102,37 @@ test('image and text slot schemas accept the V3 id-keyed shape', () => {
   );
 });
 
-test('every template parses, mirrors its id, and carries coherent legacy + V3 fields', () => {
+test('TemplateDef rejects the removed legacy slot/scene fields', () => {
+  const base = {
+    id: 'legacy-check',
+    category: 'interior' as const,
+    images: [{ id: 'image' }],
+    texts: [{ id: 'body', role: 'body' as const, lang: 'user' as const }],
+  };
+  assert.equal(TemplateDef.safeParse(base).success, true);
+  assert.equal(TemplateDef.safeParse({ ...base, slot: 'interior' }).success, false);
+  assert.equal(TemplateDef.safeParse({ ...base, scene: 'record' }).success, false);
+  // category is now required.
+  const { category: _omit, ...withoutCategory } = base;
+  assert.equal(TemplateDef.safeParse(withoutCategory).success, false);
+});
+
+test('pairing is only valid on interior templates', () => {
+  const pairing = { forced: true, with: 'mag-08', side: 'left' as const };
+  const make = (category: 'cover' | 'toc' | 'interior' | 'ending') => ({
+    id: 'pairing-check',
+    category,
+    pairing,
+    images: [{ id: 'image' }],
+    texts: [{ id: 'body', role: 'body' as const, lang: 'user' as const }],
+  });
+  assert.equal(TemplateDef.safeParse(make('interior')).success, true);
+  assert.equal(TemplateDef.safeParse(make('cover')).success, false);
+  assert.equal(TemplateDef.safeParse(make('toc')).success, false);
+  assert.equal(TemplateDef.safeParse(make('ending')).success, false);
+});
+
+test('every template parses, mirrors its id, and carries a valid category', () => {
   for (const id of EXPECTED_TEMPLATE_IDS) {
     const template = TEMPLATES[id] as Record<string, unknown> & {
       images: AnySlot[];
@@ -127,15 +145,14 @@ test('every template parses, mirrors its id, and carries coherent legacy + V3 fi
     assert.deepEqual(TemplateDef.parse(template), template);
     assert.equal(template.id, id);
 
-    // Legacy classification still present (engine reads it).
-    assert.ok(VALID_SLOTS.has(template.slot as string), `${id} slot should be valid`);
-    assert.ok(VALID_SCENES.has(template.scene as string), `${id} scene should be valid`);
-    // V3 classification added.
+    // Single category classification; no legacy slot/scene.
     assert.ok(VALID_CATEGORIES.has(template.category as string), `${id} category should be valid`);
+    assert.equal('slot' in template, false, `${id} must not carry legacy slot`);
+    assert.equal('scene' in template, false, `${id} must not carry legacy scene`);
 
     // pairing only allowed on interior pages.
     if (template.pairing) {
-      assert.equal(template.slot, 'interior', `${id} pairing requires interior`);
+      assert.equal(template.category, 'interior', `${id} pairing requires interior`);
     }
 
     for (const slot of template.images) {
@@ -146,7 +163,7 @@ test('every template parses, mirrors its id, and carries coherent legacy + V3 fi
       checkTextSlot(id, slot);
     }
 
-    // V3 repeat group, when present, validates the same way.
+    // Repeat group, when present, validates the same way.
     for (const slot of template.items?.images ?? []) {
       assert.ok(slot.id, `${id} items image slot needs an id`);
     }
@@ -160,7 +177,7 @@ test('every template parses, mirrors its id, and carries coherent legacy + V3 fi
   }
 });
 
-test('every V3 category pool is non-empty', () => {
+test('every category pool is non-empty', () => {
   const byCategory = new Map<string, number>();
   for (const id of EXPECTED_TEMPLATE_IDS) {
     const category = (TEMPLATES[id] as { category?: string }).category ?? '';
@@ -171,43 +188,47 @@ test('every V3 category pool is non-empty', () => {
   }
 });
 
-test('legacy metadata is preserved for the live skeleton engine', () => {
+test('category assignment for the head/toc/tail/body anchors', () => {
+  assert.equal(getTemplate('mag-01')?.category, 'cover');
+  assert.equal(getTemplate('mag-13')?.category, 'cover');
+  assert.equal(getTemplate('p01')?.category, 'cover');
+  assert.equal(getTemplate('mag-02')?.category, 'toc');
+  assert.equal(getTemplate('mag-20')?.category, 'ending');
+  assert.equal(getTemplate('mag-05')?.category, 'interior');
+});
+
+test('image-slot orientation/quality hints are preserved for matching', () => {
   assert.deepEqual(getTemplate('mag-04')?.images, [
     { id: 'image1', orientation: ['square'], quality: ['hero', 'detail'] },
     { id: 'image2', orientation: ['square'], quality: ['detail', 'fill'] },
     { id: 'image3', orientation: ['square'], quality: ['detail', 'fill'] },
   ]);
-  assert.equal(getTemplate('mag-02')?.texts.find((t) => t.id === 'numbers')?.repeat, true);
-  assert.equal(getTemplate('mag-02')?.texts.find((t) => t.id === 'titles')?.repeat, true);
-  assert.equal(getTemplate('mag-10')?.texts.find((t) => t.id === 'cells')?.repeat, true);
 });
 
-test('V3 fields are added: category, hint, variableDecor, items, svgs', () => {
-  // category mapping (slot+scene kept, category added).
-  assert.equal(getTemplate('mag-01')?.category, 'cover');
-  assert.equal(getTemplate('mag-02')?.category, 'toc');
-  assert.equal(getTemplate('mag-20')?.category, 'ending');
-  assert.equal(getTemplate('mag-05')?.category, 'interior');
-
-  // hint authored on a content slot.
-  const caption = getTemplate('mag-05')?.texts.find((t) => t.id === 'caption');
-  assert.ok(typeof caption?.hint === 'string' && caption.hint.length > 0);
-
-  // variableDecor on a decoration slot, absent on the page folio.
-  assert.equal(getTemplate('mag-03')?.texts.find((t) => t.id === 'location')?.variableDecor, true);
-  assert.equal(getTemplate('mag-03')?.texts.find((t) => t.id === 'folio')?.variableDecor, undefined);
-
-  // items repeat group present for the toc / grid templates.
-  assert.deepEqual(getTemplate('mag-02')?.items?.texts?.map((s) => s.id), [
-    'numbers',
-    'titles',
-    'descriptions',
+test('text ids are the migrated semantic ids', () => {
+  assert.deepEqual(
+    getTemplate('mag-01')?.texts.map((t) => t.id),
+    ['title', 'label', 'explain1', 'explain2', 'folio'],
+  );
+  assert.deepEqual(
+    getTemplate('mag-05')?.texts.map((t) => t.id),
+    ['title', 'label', 'explain', 'folio'],
+  );
+  // toc top-level texts + repeat-group item texts.
+  assert.deepEqual(getTemplate('mag-02')?.texts.map((t) => t.id), ['title', 'folio']);
+  assert.deepEqual(getTemplate('mag-02')?.items?.texts?.map((t) => t.id), [
+    'number',
+    'title',
+    'description',
   ]);
+  // grid repeat group: image + explain item slots.
   assert.deepEqual(getTemplate('mag-10')?.items?.images?.map((s) => s.id), ['image']);
-  assert.deepEqual(getTemplate('mag-10')?.items?.texts?.map((s) => s.id), ['caption']);
-
-  // svgs decoration slot (fixture coverage for the new svgs[] field).
-  assert.deepEqual(getTemplate('mag-13')?.svgs, [{ id: 'divider', variableDecor: true }]);
+  assert.deepEqual(getTemplate('mag-10')?.items?.texts?.map((s) => s.id), ['explain']);
+  // p01 cover decoration labels.
+  assert.deepEqual(
+    getTemplate('p01')?.texts.map((t) => t.id),
+    ['title', 'body', 'label1', 'label2', 'date'],
+  );
 });
 
 test('generated templates are synchronized with template JSON files', () => {
@@ -217,31 +238,23 @@ test('generated templates are synchronized with template JSON files', () => {
   });
 });
 
-test('slot validation accepts legacy + V3 item bracket paths and rejects unknown slots', () => {
-  // legacy repeat addressing (still valid).
+test('slot validation accepts item bracket paths and rejects unknown slots', () => {
+  // mag-10 grid: items.images[].image addressed as image[i]; items.texts[].explain as explain[i].
   assert.deepEqual(
-    validateSlotsForTemplate(
-      'mag-10',
-      ['cells[0].image', 'cells[1].image', 'cells[2].image', 'cells[3].image'],
-      ['cells', 'folio'],
-    ),
+    validateSlotsForTemplate('mag-10', ['image[0]', 'image[1]'], ['explain[0]', 'folio']),
     { ok: true },
   );
+  // mag-02 toc: items number/title/description addressed as base[i]; top-level title/folio.
   assert.deepEqual(
     validateSlotsForTemplate(
       'mag-02',
       [],
-      ['heading', 'numbers[0]', 'titles[0]', 'descriptions[0]', 'folio'],
+      ['title', 'number[0]', 'title[0]', 'description[0]', 'folio'],
     ),
     { ok: true },
   );
-  // V3 items addressing for mag-10 (image[i] / caption[i]) also resolves.
-  assert.deepEqual(
-    validateSlotsForTemplate('mag-10', ['image[0]', 'image[1]'], ['caption[0]', 'folio']),
-    { ok: true },
-  );
 
-  assert.deepEqual(validateSlotsForTemplate('mag-02', ['image'], ['titles[0]']), {
+  assert.deepEqual(validateSlotsForTemplate('mag-02', ['image'], ['title[0]']), {
     ok: false,
     reason: 'image slot "image" not in template mag-02',
   });

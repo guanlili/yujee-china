@@ -23,21 +23,20 @@ interface TextCarrierRenderCase {
 }
 
 const TEXT_CARRIER_RENDER_CASES: TextCarrierRenderCase[] = [
-  { templateId: 'mag-01', slotId: 'heading', text: 'Heading Carrier', images: { image: 'p0' } },
-  { templateId: 'mag-01', slotId: 'sideText', text: 'Side Carrier', images: { image: 'p0' } },
-  { templateId: 'mag-02', slotId: 'heading', text: 'Contents Carrier' },
-  { templateId: 'mag-02', slotId: 'numbers[0]', text: '42', expectedText: '42' },
-  { templateId: 'mag-02', slotId: 'titles[0]', text: 'Chapter Carrier' },
-  { templateId: 'mag-03', slotId: 'location', text: 'Location Carrier', images: { image: 'p0' } },
-  { templateId: 'mag-04', slotId: 'dateNum', text: '44/24', expectedText: '44', images: { image1: 'p1', image2: 'p2', image3: 'p3' } },
+  { templateId: 'mag-01', slotId: 'title', text: 'Heading Carrier', images: { image: 'p0' } },
+  { templateId: 'mag-01', slotId: 'label', text: 'Side Carrier', images: { image: 'p0' } },
+  { templateId: 'mag-02', slotId: 'number[0]', text: '42', expectedText: '42' },
+  { templateId: 'mag-02', slotId: 'title[0]', text: 'Chapter Carrier' },
+  { templateId: 'mag-03', slotId: 'label', text: 'Location Carrier', images: { image: 'p0' } },
+  { templateId: 'mag-04', slotId: 'date', text: '44/24', expectedText: '44', images: { image1: 'p1', image2: 'p2', image3: 'p3' } },
   { templateId: 'mag-05', slotId: 'title', text: 'Title Carrier', images: { image: 'p0' } },
-  { templateId: 'mag-05', slotId: 'topRight', text: 'Top Right Carrier', images: { image: 'p0' } },
-  { templateId: 'mag-07', slotId: 'title', text: 'Title Carrier', images: { imageTop: 'p0', imageMain: 'p1' } },
-  { templateId: 'mag-08', slotId: 'dateNum', text: '88/24', expectedText: '88', images: { image: 'p0' } },
+  { templateId: 'mag-05', slotId: 'label', text: 'Top Right Carrier', images: { image: 'p0' } },
+  { templateId: 'mag-07', slotId: 'title', text: 'Title Carrier', images: { image1: 'p0', image2: 'p1' } },
+  { templateId: 'mag-08', slotId: 'date', text: '88/24', expectedText: '88', images: { image: 'p0' } },
   { templateId: 'mag-08', slotId: 'title', text: 'Title Carrier', images: { image: 'p0' } },
-  { templateId: 'mag-09', slotId: 'title', text: 'Title Carrier', images: { imageTop: 'p0', imageMain: 'p1' } },
+  { templateId: 'mag-09', slotId: 'title', text: 'Title Carrier', images: { image1: 'p0', image2: 'p1' } },
   { templateId: 'mag-11', slotId: 'title', text: 'Title Carrier', images: { image: 'p0' } },
-  { templateId: 'mag-11', slotId: 'plate', text: 'Plate Carrier', images: { image: 'p0' } },
+  { templateId: 'mag-11', slotId: 'label', text: 'Plate Carrier', images: { image: 'p0' } },
   {
     templateId: 'mag-13',
     slotId: 'title',
@@ -45,29 +44,29 @@ const TEXT_CARRIER_RENDER_CASES: TextCarrierRenderCase[] = [
     images: { image: 'p0' },
     extraTexts: { divider: '#112233' },
   },
-  { templateId: 'mag-15', slotId: 'title', text: 'Title Carrier', images: { imagePerson: 'p0', imageRoad: 'p1' } },
-  { templateId: 'mag-15', slotId: 'date', text: 'Date Carrier', images: { imagePerson: 'p0', imageRoad: 'p1' } },
-  { templateId: 'mag-19', slotId: 'intro', text: 'Intro Carrier', images: { image: 'p0' } },
+  { templateId: 'mag-15', slotId: 'title', text: 'Title Carrier', images: { image1: 'p0', image2: 'p1' } },
+  { templateId: 'mag-15', slotId: 'date', text: 'Date Carrier', images: { image1: 'p0', image2: 'p1' } },
+  { templateId: 'mag-19', slotId: 'title', text: 'Intro Carrier', images: { image: 'p0' } },
   { templateId: 'p01', slotId: 'title', text: 'Title Carrier', images: { image: 'p0' } },
-  { templateId: 'p01', slotId: 'category', text: 'Category Carrier', images: { image: 'p0' } },
-  { templateId: 'p01', slotId: 'vol', text: '77', images: { image: 'p0' } },
+  { templateId: 'p01', slotId: 'label1', text: 'Category Carrier', images: { image: 'p0' } },
+  { templateId: 'p01', slotId: 'label2', text: '77', images: { image: 'p0' } },
   { templateId: 'p01', slotId: 'date', text: '2030', images: { image: 'p0' } },
 ];
 
 const PDF_TEXT_CARRIER_SLOTS: Record<string, string[]> = {
-  'mag-01': ['heading', 'sideText'],
-  'mag-02': ['heading', 'numbers[${i}]', 'titles[${i}]'],
-  'mag-03': ['location'],
-  'mag-04': ['dateNum'],
-  'mag-05': ['title', 'topRight'],
+  'mag-01': ['title', 'label'],
+  'mag-02': ['title', 'number[${i}]', 'title[${i}]'],
+  'mag-03': ['label'],
+  'mag-04': ['date'],
+  'mag-05': ['title', 'label'],
   'mag-07': ['title'],
-  'mag-08': ['dateNum', 'title'],
+  'mag-08': ['date', 'title'],
   'mag-09': ['title'],
-  'mag-11': ['title', 'plate'],
+  'mag-11': ['title', 'label'],
   'mag-13': ['title'],
   'mag-15': ['title', 'date'],
-  'mag-19': ['intro'],
-  p01: ['title', 'category', 'vol', 'date'],
+  'mag-19': ['title'],
+  p01: ['title', 'label1', 'label2', 'date'],
 };
 
 function escapeRegExp(value: string): string {
@@ -109,8 +108,8 @@ test('mag-03 consumes location carrier as style without rendering raw color text
       templateId: 'mag-03',
       images: { image: 'p0' },
       texts: {
-        'location#accentColor': '#C0392B',
-        'location#artFont': 'sans-modern',
+        'label#accentColor': '#C0392B',
+        'label#artFont': 'sans-modern',
       },
     },
     (photoId) => `/photos/${photoId}.jpg`,
@@ -122,7 +121,7 @@ test('mag-03 consumes location carrier as style without rendering raw color text
 
   assert.match(html, /color:#C0392B/);
   assert.doesNotMatch(html, />#C0392B</);
-  assert.doesNotMatch(html, /location#accentColor/);
+  assert.doesNotMatch(html, /label#accentColor/);
 });
 
 test('resolveThemeCarrier reads repeat-slot carriers without clobbering repeat text', () => {
@@ -131,18 +130,18 @@ test('resolveThemeCarrier reads repeat-slot carriers without clobbering repeat t
       templateId: 'mag-02',
       images: {},
       texts: {
-        'numbers[0]': '01',
-        'numbers[0]#accentColor': '#C0392B',
-        'numbers[0]#artFont': 'sans-modern',
+        'number[0]': '01',
+        'number[0]#accentColor': '#C0392B',
+        'number[0]#artFont': 'sans-modern',
       },
     },
     () => undefined,
   );
 
-  const carrier = resolveThemeCarrier(data, 'numbers[0]');
+  const carrier = resolveThemeCarrier(data, 'number[0]');
   assert.equal(carrier.accentColor, '#C0392B');
   assert.equal(carrier.webFontFamily, '"Inter", "Noto Sans SC", "PingFang SC", sans-serif');
-  assert.deepEqual(data.numbers, [{ body: '01', caption: '01' }]);
+  assert.deepEqual(data.number, ['01']);
 });
 
 test('mag-08 consumes title carrier while preserving title text', () => {
@@ -260,7 +259,7 @@ test('PDF templates resolve every text variableDecor carrier in source', () => {
 
 test('PDF templates uppercase carrier text for decoration slots in source', () => {
   const cases = [
-    { templateId: 'mag-11', themeVar: 'plateTheme', dataProp: 'plate' },
+    { templateId: 'mag-11', themeVar: 'labelTheme', dataProp: 'label' },
     { templateId: 'mag-15', themeVar: 'dateTheme', dataProp: 'date' },
   ];
 

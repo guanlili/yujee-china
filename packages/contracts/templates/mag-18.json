@@ -1,50 +1,13 @@
 {
   "id": "mag-18",
-  "slot": "interior",
-  "scene": "record",
   "category": "interior",
   "images": [
-    {
-      "id": "imageLeft",
-      "orientation": [
-        "portrait"
-      ],
-      "quality": [
-        "detail",
-        "fill"
-      ]
-    },
-    {
-      "id": "imageRight",
-      "orientation": [
-        "portrait"
-      ],
-      "quality": [
-        "detail",
-        "fill"
-      ]
-    }
+    { "id": "image1", "orientation": ["portrait"], "quality": ["detail", "fill"] },
+    { "id": "image2", "orientation": ["portrait"], "quality": ["detail", "fill"] }
   ],
   "texts": [
-    {
-      "id": "captionLeft",
-      "role": "explain",
-      "lang": "user",
-      "maxChars": 80,
-      "hint": "左图说明"
-    },
-    {
-      "id": "captionRight",
-      "role": "explain",
-      "lang": "user",
-      "maxChars": 80,
-      "hint": "右图说明,承接左图"
-    },
-    {
-      "id": "folio",
-      "role": "decoration",
-      "lang": "en",
-      "maxChars": 2
-    }
+    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "左图说明" },
+    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "右图说明,承接左图" },
+    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

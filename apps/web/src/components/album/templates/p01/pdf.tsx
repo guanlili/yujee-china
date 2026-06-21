@@ -9,14 +9,14 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
     image?: string;
     title?: string;
     body?: string;
-    category?: string;
-    categoryColor?: string;
-    vol?: string;
+    label1?: string;
+    label1Color?: string;
+    label2?: string;
     date?: string;
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
-  const categoryTheme = resolveThemeCarrier(data, 'category');
-  const volTheme = resolveThemeCarrier(data, 'vol');
+  const categoryTheme = resolveThemeCarrier(data, 'label1');
+  const volTheme = resolveThemeCarrier(data, 'label2');
   const dateTheme = resolveThemeCarrier(data, 'date');
   // PDF 不支持 mixBlendMode,顶部白文字直接半透明渲染,深色背景下仍可读。
   return (
@@ -51,7 +51,7 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
               fontFamily: volTheme.pdfFontFamily,
             }}
           >
-            {volTheme.text ?? d.vol ?? '01'}
+            {volTheme.text ?? d.label2 ?? '01'}
           </Text>{' '}
           ·{' '}
           <Text
@@ -85,7 +85,7 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
           color: volTheme.accentColor ?? '#ffffff',
         }}
       >
-        {volTheme.text ?? d.vol ?? '01'}
+        {volTheme.text ?? d.label2 ?? '01'}
       </Text>
       <View
         style={{
@@ -104,11 +104,11 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
           style={{
             fontFamily: categoryTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
             fontStyle: 'italic',
-            color: categoryTheme.accentColor ?? d.categoryColor ?? COLORS.vermilionSoft,
+            color: categoryTheme.accentColor ?? d.label1Color ?? COLORS.vermilionSoft,
             fontSize: 16,
           }}
         >
-          {categoryTheme.text ?? d.category ?? 'no 01 · Portrait'}
+          {categoryTheme.text ?? d.label1 ?? 'no 01 · Portrait'}
         </Text>
         <Text
           style={{

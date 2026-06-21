@@ -7,16 +7,16 @@ import { resolveThemeCarrier } from '../theme-carrier';
 export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
-    dateNum?: string;
-    caption1?: string;
-    caption2?: string;
+    date?: string;
+    explain1?: string;
+    explain2?: string;
     title?: string;
     body?: string;
     folio?: string;
   };
-  const dateTheme = resolveThemeCarrier(data, 'dateNum');
+  const dateTheme = resolveThemeCarrier(data, 'date');
   const titleTheme = resolveThemeCarrier(data, 'title');
-  const dn = (d.dateNum || '08/24').split('/');
+  const dn = (d.date || '08/24').split('/');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <View
@@ -66,13 +66,13 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
       {/* 左侧说明：与照片左缘对齐、宽度等于照片宽度 */}
       <View style={{ position: 'absolute', top: 670, left: 70, width: 360 }}>
         <Text style={{ position: 'absolute', left: 70, top: 670, width: 360, fontSize: 18, lineHeight: 1.7, color: COLORS.ink2, textAlign: 'justify' }}>
-          {d.caption1 || ''}
+          {d.explain1 || ''}
         </Text>
       </View>
       {/* 右侧说明：移到照片右缘之外、收窄宽度，避免与照片重叠 */}
       <View style={{ position: 'absolute', top: 670, left: 470, width: 250 }}>
         <Text style={{ position: 'absolute', left: 470, top: 670, width: 250, fontSize: 18, lineHeight: 1.7, color: COLORS.ink2, textAlign: 'justify' }}>
-          {d.caption2 || ''}
+          {d.explain2 || ''}
         </Text>
       </View>
       <Text

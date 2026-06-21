@@ -4,8 +4,8 @@
 non-authored / unknown slots are filtered; placeholder/empty args demote to None
 (G3); reserved tools are registered but NOT offered to the model.
 
-mag-05 authored text slots: `title` (title, maxChars=25), `caption` (body,
-maxChars=120). `topRight`/`folio` are decoration — never model-writable.
+mag-05 authored text slots: `title` (title, maxChars=25), `explain` (explain,
+maxChars=90). `label`/`folio` are decoration — never model-writable.
 """
 
 from src.services import tools
@@ -27,10 +27,10 @@ def _call(slots, page_index=2):
 
 
 def test_dispatch_applies_authored_slots():
-    result = tools.dispatch(_call({"title": "Seaside", "caption": "A calm afternoon."}), ctx=_ctx())
+    result = tools.dispatch(_call({"title": "Seaside", "explain": "A calm afternoon."}), ctx=_ctx())
     assert result is not None
     assert result.tool == "write_page_copy"
-    assert result.payload["texts"] == {"title": "Seaside", "caption": "A calm afternoon."}
+    assert result.payload["texts"] == {"title": "Seaside", "explain": "A calm afternoon."}
 
 
 def test_dispatch_pins_pageindex_to_ctx():
@@ -43,19 +43,19 @@ def test_dispatch_pins_pageindex_to_ctx():
 
 def test_dispatch_clamps_to_maxchars():
     long_caption = "x" * 400
-    result = tools.dispatch(_call({"caption": long_caption}), ctx=_ctx())
+    result = tools.dispatch(_call({"explain": long_caption}), ctx=_ctx())
     assert result is not None
-    # mag-05 caption maxChars=120 → clamped.
-    assert len(result.payload["texts"]["caption"]) <= 120
+    # mag-05 explain maxChars=90 → clamped.
+    assert len(result.payload["texts"]["explain"]) <= 90
 
 
 def test_dispatch_filters_unknown_and_decoration_slots():
     result = tools.dispatch(
-        _call({"title": "Keep", "folio": "1", "topRight": "x", "nope": "drop"}),
+        _call({"title": "Keep", "folio": "1", "label": "x", "nope": "drop"}),
         ctx=_ctx(),
     )
     assert result is not None
-    # Only the authored `title` survives; decoration (folio/topRight) + unknown
+    # Only the authored `title` survives; decoration (folio/label) + unknown
     # (nope) are filtered out.
     assert result.payload["texts"] == {"title": "Keep"}
 
@@ -65,7 +65,7 @@ def test_dispatch_empty_slots_demotes_to_none():
 
 
 def test_dispatch_blank_values_demote_to_none():
-    assert tools.dispatch(_call({"title": "   ", "caption": ""}), ctx=_ctx()) is None
+    assert tools.dispatch(_call({"title": "   ", "explain": ""}), ctx=_ctx()) is None
 
 
 def test_dispatch_placeholder_values_demote_to_none():
@@ -73,15 +73,15 @@ def test_dispatch_placeholder_values_demote_to_none():
     assert tools.dispatch(_call({"title": "Dummy Title"}), ctx=_ctx()) is None
     assert tools.dispatch(_call({"title": "标题"}), ctx=_ctx()) is None
     assert tools.dispatch(_call({"title": "title"}), ctx=_ctx()) is None
-    assert tools.dispatch(_call({"caption": "placeholder"}), ctx=_ctx()) is None
+    assert tools.dispatch(_call({"explain": "placeholder"}), ctx=_ctx()) is None
 
 
 def test_dispatch_mixed_real_and_placeholder_keeps_real():
     result = tools.dispatch(
-        _call({"title": "Dummy Title", "caption": "A real line of copy."}), ctx=_ctx()
+        _call({"title": "Dummy Title", "explain": "A real line of copy."}), ctx=_ctx()
     )
     assert result is not None
-    assert result.payload["texts"] == {"caption": "A real line of copy."}
+    assert result.payload["texts"] == {"explain": "A real line of copy."}
 
 
 def test_dispatch_string_arguments_are_parsed():

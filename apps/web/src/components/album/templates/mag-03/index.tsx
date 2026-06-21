@@ -5,11 +5,11 @@ import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
-    location?: string;
+    label?: string;
     folio?: string;
     image?: string;
   };
-  const locationTheme = resolveThemeCarrier(data, 'location');
+  const labelTheme = resolveThemeCarrier(data, 'label');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -30,13 +30,13 @@ export function WebMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
         <div
           style={{
             letterSpacing: '0.3em',
-            color: locationTheme.accentColor ?? COLORS.ink,
+            color: labelTheme.accentColor ?? COLORS.ink,
             textTransform: 'uppercase',
             fontSize: 16,
-            fontFamily: locationTheme.webFontFamily,
+            fontFamily: labelTheme.webFontFamily,
           }}
         >
-          {locationTheme.text ?? d.location ?? ''}
+          {labelTheme.text ?? d.label ?? ''}
         </div>
       </div>
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="03" />
