@@ -1,0 +1,1 @@
+Never output coordinates, latitude/longitude, GPS, addresses, or any structured place/location field. A free-text scene phrase like "at the seaside" is fine; a coordinate or a place/location field is not.

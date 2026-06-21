@@ -120,6 +120,7 @@ def build_messages(req: V3RecommendRequest) -> list[dict[str, str]]:
             _PROMPT_DIR / "recommend_chapter_colors.md",
             LANGUAGE=lang_name,
             ART_FONTS=", ".join(_ART_FONTS),
+            common=("json_only", "grounding", "privacy"),
         )
     )
     payload: dict[str, Any] = {

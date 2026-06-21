@@ -413,7 +413,11 @@ async def analyze(req: LayoutRequest) -> tuple[VisionResult, int, str]:
 
 def _build_v3_system_prompt(language: str) -> str:
     lang_name = "Chinese" if language == "zh" else "English"
-    return load_prompt(_PROMPT_DIR / "describe_content.md", LANGUAGE=lang_name)
+    return load_prompt(
+        _PROMPT_DIR / "describe_content.md",
+        LANGUAGE=lang_name,
+        common=("json_only", "grounding", "privacy"),
+    )
 
 
 def _build_v3_user_content(

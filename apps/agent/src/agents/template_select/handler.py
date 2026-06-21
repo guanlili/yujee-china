@@ -200,7 +200,12 @@ def _parse_choices(parsed: Any) -> dict[str, str]:
 
 async def _call_model(slot: VisionSlot, pages: Sequence[_PlannedPage]) -> dict[str, str]:
     messages = [
-        {"role": "system", "content": load_prompt(_PROMPT_DIR / "select_template.md")},
+        {
+            "role": "system",
+            "content": load_prompt(
+                _PROMPT_DIR / "select_template.md", common=("json_only",)
+            ),
+        },
         {"role": "user", "content": _build_user_content(pages)},
     ]
     try:

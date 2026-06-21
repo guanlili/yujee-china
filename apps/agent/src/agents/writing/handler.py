@@ -253,7 +253,7 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
     # §4.2(4): 写作 Skill (creative style) + 引导 Skill (guidance style), both as
     # prompt assets loaded by name. Localized via the {LANGUAGE} placeholder.
     system += "\n\n=== WRITING STYLE (写作 Skill) ===\n" + load_prompt(
-        _PROMPT_DIR / "write_chapter.md", LANGUAGE=lang_name
+        _PROMPT_DIR / "write_chapter.md", LANGUAGE=lang_name, common=("grounding",)
     )
     system += "\n\n=== GUIDANCE STYLE (引导 Skill) ===\n" + load_prompt(
         _PROMPT_DIR / "guide_chapter.md", LANGUAGE=lang_name

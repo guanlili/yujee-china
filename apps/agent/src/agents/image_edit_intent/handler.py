@@ -153,7 +153,12 @@ def _parse_intent(parsed: Any) -> list[str]:
 
 async def _call_model(slot: VisionSlot, manifest: str) -> list[str]:
     messages = [
-        {"role": "system", "content": load_prompt(_PROMPT_DIR / "edit_image_intent.md")},
+        {
+            "role": "system",
+            "content": load_prompt(
+                _PROMPT_DIR / "edit_image_intent.md", common=("json_only",)
+            ),
+        },
         {"role": "user", "content": manifest},
     ]
     try:
