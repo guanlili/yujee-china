@@ -223,7 +223,12 @@ def test_loader_mirrors_template_def_edge_constraints(tmp_path):
         templates._load_templates_from_dir(tmp_path)
 
 
-def test_layout_rules_treat_optional_image_slot_hints_as_any(monkeypatch, tmp_path):
+def test_optional_image_slot_hints_treated_as_any(monkeypatch, tmp_path):
+    """Loader coverage: an image slot declared with no orientation/quality hints
+    loads as ``{"id": ...}`` — it accepts any image. (The former V2
+    ``layout_rules`` violation/coerce/build assertions were dropped together with
+    that orphaned module in the engine refactor; this keeps the genuine loader
+    assertion.)"""
     def write_template(template_id: str, category: str, images: list, texts: list):
         (tmp_path / f"{template_id}.json").write_text(
             json.dumps(
@@ -252,45 +257,11 @@ def test_layout_rules_treat_optional_image_slot_hints_as_any(monkeypatch, tmp_pa
 
     monkeypatch.setenv("YUJEE_TEMPLATE_DIR", str(tmp_path))
     sys.modules.pop("src.templates", None)
-    sys.modules.pop("src.services.layout_rules", None)
 
     try:
         templates = importlib.import_module("src.templates")
-        layout_rules = importlib.import_module("src.services.layout_rules")
-
-        from src.schemas import AlbumLayoutPlan, Magazine, Page, PhotoAnalysis
-
-        magazine = Magazine(title="Optional hints", style="warm-film", language="en")
-        fill_photo = PhotoAnalysis(
-            photoId="p1",
-            description="d",
-            tags=["t"],
-            quality="fill",
-            orientation="square",
-        )
-        layout = AlbumLayoutPlan(
-            magazine=magazine,
-            photos=[fill_photo],
-            pages=[
-                Page(pageIndex=0, templateId="mag-01", images={"image": "p1"}, texts={"title": "x"}),
-                Page(pageIndex=1, templateId="optional-01", images={}, texts={"caption": "x"}),
-            ],
-        )
-
         assert templates.image_slot_map(templates.TEMPLATES["optional-01"])["image"] == {"id": "image"}
-        assert layout_rules.violation(layout) == "page 1: missing image slot 'image' in template optional-01"
-
-        coerced = layout_rules.coerce_image_slots(layout)
-        assert coerced.pages[1].images == {"image": "p1"}
-        assert layout_rules.violation(coerced) is None
-
-        fallback = layout_rules.build_text_first_layout(magazine, [fill_photo])
-        assert fallback.pages[0].templateId == "mag-01"
-        assert fallback.pages[0].images == {"image": "p1"}
-        assert layout_rules.violation(fallback) is None
     finally:
         monkeypatch.delenv("YUJEE_TEMPLATE_DIR", raising=False)
         sys.modules.pop("src.templates", None)
-        sys.modules.pop("src.services.layout_rules", None)
         importlib.import_module("src.templates")
-        importlib.import_module("src.services.layout_rules")
