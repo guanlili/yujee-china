@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 import httpx
 
-from ..logging_config import get_logger
+from .logging_config import get_logger
 
 log = get_logger("ai_client")
 

@@ -38,9 +38,9 @@ from ..logging_config import get_logger
 from ..schemas import V3Chapter
 from ..settings import get_settings
 from ..skills import load_skill
-from . import ai_client
+from .. import ai_client
 from . import skeleton_v3
-from .vision_provider import (
+from ..vision_provider import (
     VisionSlot,
     VisionSlotError,
     ark_vision_slot,

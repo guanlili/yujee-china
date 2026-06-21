@@ -17,8 +17,9 @@ from typing import Any
 import pytest
 
 from src.schemas import LayoutRequest, PhotoIn, VisionResult
-from src.services import ai_client, vision
-from src.services.vision_provider import (
+from src import ai_client
+from src.services import vision
+from src.vision_provider import (
     VisionSlotError,
     estimate_cost_usd,
     resolved_vision_model,

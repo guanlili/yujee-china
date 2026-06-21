@@ -53,7 +53,8 @@ from ..schemas import (
 )
 from ..settings import get_settings
 from ..skills import load_skill
-from . import ai_client, chat_edit_v3, writing_guides
+from .. import ai_client
+from . import chat_edit_v3, writing_guides
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
 

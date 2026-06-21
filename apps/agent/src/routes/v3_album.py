@@ -32,7 +32,7 @@ import asyncio
 import time
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, status
 
 from ..auth import require_bearer
 from ..logging_config import get_logger, request_id_var
@@ -64,7 +64,8 @@ from ..schemas import (
     V3RecommendResponse,
 )
 from ..services import apply_theme_v3
-from ..services import callback
+from .. import callback
+from ..errors import sync_endpoint_errors
 from ..services import chapter_chat_v3
 from ..services import cover_v3
 from ..services import finalize_v3
@@ -304,26 +305,14 @@ async def submit_chapter_chat(req: V3ChapterChatRequest) -> dict[str, Any]:
         focused=req.focusedPageIndex,
         language=req.language,
     )
-    try:
+    with sync_endpoint_errors(
+        log,
+        "v3_chapter_chat",
+        ChapterChatV3Error,
+        known_status=status.HTTP_502_BAD_GATEWAY,
+        known_code="AGENT_PLANNING_FAILED",
+    ):
         response: V3ChapterChatResponse = await chapter_chat_v3.run(req)
-    except ChapterChatV3Error as exc:
-        log.warning("v3_chapter_chat.failed", error=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={
-                "ok": False,
-                "error": {"code": "AGENT_PLANNING_FAILED", "message": str(exc)[:300]},
-            },
-        ) from exc
-    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
-        log.exception("v3_chapter_chat.unhandled", error=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "ok": False,
-                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
-            },
-        ) from exc
     log.info("v3_chapter_chat.completed", kind=response.kind, album_id=req.albumId)
     return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
 
@@ -350,26 +339,14 @@ async def submit_recommend(req: V3RecommendRequest) -> dict[str, Any]:
         chapters=len(req.chapters),
         language=req.language,
     )
-    try:
+    with sync_endpoint_errors(
+        log,
+        "v3_recommend",
+        RecommendV3Error,
+        known_status=status.HTTP_502_BAD_GATEWAY,
+        known_code="AGENT_PLANNING_FAILED",
+    ):
         response: V3RecommendResponse = await recommend_v3.run(req)
-    except RecommendV3Error as exc:
-        log.warning("v3_recommend.failed", error=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={
-                "ok": False,
-                "error": {"code": "AGENT_PLANNING_FAILED", "message": str(exc)[:300]},
-            },
-        ) from exc
-    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
-        log.exception("v3_recommend.unhandled", error=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "ok": False,
-                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
-            },
-        ) from exc
     log.info(
         "v3_recommend.completed",
         album_id=req.albumId,
@@ -401,26 +378,14 @@ async def submit_apply_theme(req: V3ApplyThemeRequest) -> dict[str, Any]:
         pages=len(req.pages),
         language=req.language,
     )
-    try:
+    with sync_endpoint_errors(
+        log,
+        "v3_apply_theme",
+        ApplyThemeV3Error,
+        known_status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        known_code="AGENT_OUTPUT_VALIDATION",
+    ):
         response: V3ApplyThemeResponse = apply_theme_v3.apply_theme(req)
-    except ApplyThemeV3Error as exc:
-        log.warning("v3_apply_theme.failed", error=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "ok": False,
-                "error": {"code": "AGENT_OUTPUT_VALIDATION", "message": str(exc)[:300]},
-            },
-        ) from exc
-    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
-        log.exception("v3_apply_theme.unhandled", error=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "ok": False,
-                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
-            },
-        ) from exc
     log.info(
         "v3_apply_theme.completed",
         album_id=req.albumId,
@@ -456,26 +421,14 @@ async def submit_cover(req: V3CoverRequest) -> dict[str, Any]:
         ending=bool(req.endingTemplateId),
         language=req.language,
     )
-    try:
+    with sync_endpoint_errors(
+        log,
+        "v3_cover",
+        CoverV3Error,
+        known_status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        known_code="AGENT_OUTPUT_VALIDATION",
+    ):
         response: V3CoverResponse = cover_v3.build_cover(req)
-    except CoverV3Error as exc:
-        log.warning("v3_cover.failed", error=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "ok": False,
-                "error": {"code": "AGENT_OUTPUT_VALIDATION", "message": str(exc)[:300]},
-            },
-        ) from exc
-    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
-        log.exception("v3_cover.unhandled", error=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "ok": False,
-                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
-            },
-        ) from exc
     log.info(
         "v3_cover.completed",
         album_id=req.albumId,
@@ -515,26 +468,14 @@ async def submit_finalize(req: V3FinalizeRequest) -> dict[str, Any]:
         pages=len(req.pages),
         language=req.language,
     )
-    try:
+    with sync_endpoint_errors(
+        log,
+        "v3_finalize",
+        FinalizeV3Error,
+        known_status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        known_code="AGENT_OUTPUT_VALIDATION",
+    ):
         layout = finalize_v3.finalize_v3(req)
-    except FinalizeV3Error as exc:
-        log.warning("v3_finalize.failed", error=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "ok": False,
-                "error": {"code": "AGENT_OUTPUT_VALIDATION", "message": str(exc)[:300]},
-            },
-        ) from exc
-    except Exception as exc:  # noqa: BLE001 — must answer in contract shape
-        log.exception("v3_finalize.unhandled", error=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "ok": False,
-                "error": {"code": "AGENT_INTERNAL_ERROR", "message": str(exc)[:300]},
-            },
-        ) from exc
     duration_ms = int((time.monotonic() - started) * 1000)
     response = V3FinalizeResponse(
         layout=layout,

@@ -5,7 +5,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .logging_config import configure_logging, get_logger, request_id_var
 from .routes import health, v3_album
-from .services.vision_provider import resolved_vision_model
+from .vision_provider import resolved_vision_model
 from .settings import get_settings
 
 

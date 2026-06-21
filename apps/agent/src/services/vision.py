@@ -27,8 +27,8 @@ from ..schemas import (
 )
 from ..settings import get_settings
 from ..skills import load_skill
-from . import ai_client
-from .vision_provider import (
+from .. import ai_client
+from ..vision_provider import (
     VisionSlot,
     VisionSlotError,
     ark_vision_slot,

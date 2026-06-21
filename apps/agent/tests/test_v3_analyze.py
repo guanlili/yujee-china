@@ -28,7 +28,7 @@ from src.schemas import (
     V3ChapterPhoto,
     V3LayoutTree,
 )
-from src.services import callback as cb_mod
+from src import callback as cb_mod
 from src.services import select_template
 from src.services import vision
 

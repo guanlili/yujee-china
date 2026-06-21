@@ -18,7 +18,8 @@ from typing import Any
 import pytest
 
 from src.schemas import V3AnalyzePhoto, V3Chapter, V3ChapterPhoto, V3LayoutTree
-from src.services import ai_client, vision
+from src import ai_client
+from src.services import vision
 
 
 @pytest.fixture

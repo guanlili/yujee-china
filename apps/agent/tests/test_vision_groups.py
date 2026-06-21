@@ -5,7 +5,8 @@ from typing import Any
 import pytest
 
 from src.schemas import LayoutRequest, PhotoIn, V3AnalyzePhoto, V3LayoutTree, VisionResult
-from src.services import ai_client, vision
+from src import ai_client
+from src.services import vision
 
 
 @pytest.fixture(autouse=True)

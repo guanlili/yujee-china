@@ -3,13 +3,13 @@ from typing import Union
 
 import httpx
 
-from ..logging_config import get_logger
-from ..schemas import (
+from .logging_config import get_logger
+from .schemas import (
     V3AnalyzeCompleted,
     V3FailedEvent,
     V3ProgressEvent,
 )
-from ..settings import get_settings
+from .settings import get_settings
 
 log = get_logger("callback")
 
