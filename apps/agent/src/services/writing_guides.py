@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .. import templates as registry
+from ..engine import templates as registry
 
 
 # Yujee's persona — a light identity/voice preamble prepended to every

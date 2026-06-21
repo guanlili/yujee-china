@@ -48,7 +48,7 @@ from __future__ import annotations
 import time
 from collections.abc import Mapping, Sequence
 
-from .. import templates
+from . import templates
 from ..logging_config import get_logger
 from ..schemas import (
     THEME_USER_PROSE_ROLES,

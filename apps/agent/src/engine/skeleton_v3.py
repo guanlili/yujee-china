@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
-from src import templates
+from . import templates
 
 
 # V3 template categories. mag-02 is slot=interior but category=toc — the V3

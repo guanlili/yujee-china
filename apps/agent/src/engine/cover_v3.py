@@ -52,7 +52,7 @@ import time
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from .. import templates
+from . import templates
 from ..logging_config import get_logger
 from ..schemas import (
     Page,

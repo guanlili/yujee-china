@@ -39,7 +39,7 @@ from ..schemas import V3Chapter
 from ..settings import get_settings
 from ..skills import load_skill
 from .. import ai_client
-from . import skeleton_v3
+from ..engine import skeleton_v3
 from ..vision_provider import (
     VisionSlot,
     VisionSlotError,

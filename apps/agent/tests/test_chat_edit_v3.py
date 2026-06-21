@@ -27,7 +27,7 @@ from typing import Any
 
 import pytest
 
-from src import templates
+from src.engine import templates
 from src.schemas import (
     Page,
     V3Chapter,
@@ -35,7 +35,8 @@ from src.schemas import (
     V3ChapterChatResponse,
     V3ChapterPhoto,
 )
-from src.services import chapter_chat_v3, chat_edit_v3, skeleton_v3
+from src.services import chapter_chat_v3, chat_edit_v3
+from src.engine import skeleton_v3
 
 # mag-04 is a 3-image interior template (matches test_chapter_chat_v3 baseline).
 _INTERIOR_3 = "mag-04"

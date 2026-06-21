@@ -42,7 +42,7 @@ from ..schemas import Page, V3Chapter, V3LayoutPatchEntry
 from ..settings import get_settings
 from ..skills import load_skill
 from .. import ai_client
-from . import skeleton_v3
+from ..engine import skeleton_v3
 from ..vision_provider import (
     VisionSlot,
     VisionSlotError,
@@ -227,7 +227,7 @@ def _carried_texts(old_texts: dict[str, str], template_id: str) -> dict[str, str
     """Keep only the old page's texts whose slot id still exists on the new
     template (a re-template can change the slot set). Mirrors v2's reflow guard
     without the v2 machinery: a dropped slot's text is simply not carried."""
-    from src import templates
+    from src.engine import templates
 
     template = templates.get(template_id)
     if template is None:

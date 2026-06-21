@@ -63,20 +63,20 @@ from ..schemas import (
     V3RecommendRequest,
     V3RecommendResponse,
 )
-from ..services import apply_theme_v3
+from ..engine import apply_theme_v3
 from .. import callback
 from ..errors import sync_endpoint_errors
 from ..services import chapter_chat_v3
-from ..services import cover_v3
-from ..services import finalize_v3
-from ..services import generic_copy
+from ..engine import cover_v3
+from ..engine import finalize_v3
+from ..engine import generic_copy
 from ..services import recommend_v3
 from ..services import select_template
 from ..services import vision
-from ..services.apply_theme_v3 import ApplyThemeV3Error
+from ..engine.apply_theme_v3 import ApplyThemeV3Error
 from ..services.chapter_chat_v3 import ChapterChatV3Error
-from ..services.cover_v3 import CoverV3Error
-from ..services.finalize_v3 import FinalizeV3Error
+from ..engine.cover_v3 import CoverV3Error
+from ..engine.finalize_v3 import FinalizeV3Error
 from ..services.recommend_v3 import RecommendV3Error
 from ..services.vision import VisionError
 from ..settings import get_settings

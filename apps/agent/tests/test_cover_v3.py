@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from src import templates
+from src.engine import templates
 from src.schemas import (
     AlbumLayoutPlan,
     LayoutPhotoAnalysis,
@@ -26,9 +26,9 @@ from src.schemas import (
     Page,
     V3CoverRequest,
 )
-from src.services import cover_v3
-from src.services import finalize_v3 as fv3
-from src.services import skeleton_v3
+from src.engine import cover_v3
+from src.engine import finalize_v3 as fv3
+from src.engine import skeleton_v3
 
 
 # A real cover template (category=cover, holds one hero image) and a real ending one.

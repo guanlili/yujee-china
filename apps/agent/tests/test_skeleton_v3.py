@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from src import templates
+from src.engine import templates
 from src.schemas import V3TemplateCandidate
-from src.services import skeleton_v3 as sk
+from src.engine import skeleton_v3 as sk
 
 
 def test_pools_are_keyed_by_category_not_slot():

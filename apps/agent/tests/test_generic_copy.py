@@ -12,7 +12,7 @@ These run against the REAL template registry so the decoration ids we own
 from __future__ import annotations
 
 from src.schemas import V3Chapter, V3ChapterPhoto, Page
-from src.services import generic_copy
+from src.engine import generic_copy
 
 
 def _photo(pid: str, *, w: int = 800, h: int = 1200, taken_at: str | None = None) -> V3ChapterPhoto:

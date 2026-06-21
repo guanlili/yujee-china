@@ -18,14 +18,14 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from src import templates
+from src.engine import templates
 from src.schemas import (
     Page,
     V3ApplyThemeRequest,
     V3ChapterThemeChoice,
 )
-from src.services import apply_theme_v3 as at
-from src.services import finalize_v3 as fv3
+from src.engine import apply_theme_v3 as at
+from src.engine import finalize_v3 as fv3
 from src.schemas import (
     AlbumLayoutPlan,
     LayoutPhotoAnalysis,

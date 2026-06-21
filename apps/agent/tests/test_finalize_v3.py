@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from src import templates
+from src.engine import templates
 from src.schemas import (
     Page,
     V3Chapter,
@@ -18,8 +18,8 @@ from src.schemas import (
     V3FinalizeRequest,
     V3LayoutTree,
 )
-from src.services import finalize_v3 as fv3
-from src.services import skeleton_v3 as sk
+from src.engine import finalize_v3 as fv3
+from src.engine import skeleton_v3 as sk
 
 
 def _photo(idx: int, orientation: str = "landscape") -> V3ChapterPhoto:

@@ -16,11 +16,11 @@ import asyncio
 
 import pytest
 
-from src import templates
+from src.engine import templates
 from src.schemas import Page, V3Chapter, V3ChapterPhoto
 from src import ai_client
 from src.services import select_template as st
-from src.services import skeleton_v3 as sk
+from src.engine import skeleton_v3 as sk
 
 
 # ---------- helpers -----------------------------------------------------------

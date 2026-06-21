@@ -40,7 +40,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from .. import templates as registry
+from ..engine import templates as registry
 from ..schemas import (
     Page,
     V3ChapterChatKind,

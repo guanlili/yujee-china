@@ -42,7 +42,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
-from .. import templates
+from . import templates
 from ..logging_config import get_logger
 from ..schemas import V3Chapter
 

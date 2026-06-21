@@ -31,7 +31,7 @@ import re
 from collections import Counter
 from typing import Any
 
-from .. import templates as registry
+from . import templates as registry
 from ..schemas import (
     THEME_ACCENT_CARRIER_SUFFIX,
     THEME_FONT_CARRIER_SUFFIX,
