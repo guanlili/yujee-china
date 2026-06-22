@@ -11,6 +11,7 @@ export const chatService = {
         role: m.role,
         content: m.content,
         layoutPatch: m.layoutPatch ?? null,
+        chapterId: m.chapterId,
         createdAt: m.createdAt,
       })),
     };

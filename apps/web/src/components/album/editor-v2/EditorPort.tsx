@@ -1589,15 +1589,26 @@ function EditorBook({
         const msgs = (j.data?.messages ?? []) as Array<{
           role: string;
           content: string;
+          chapterId?: string | null;
           createdAt?: string;
         }>;
         msgs.sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')));
+        chapterHistory.splice(0, chapterHistory.length);
         let shown = 0;
         for (const m of msgs) {
           const c = (m.content ?? '').trim();
           if (!c || c.startsWith('[inspection of page')) continue;
-          if (m.role === 'user') appendUserText(c);
-          else appendAiText(c);
+          if (m.role === 'user') {
+            appendUserText(c);
+            if (!m.chapterId || !storyGate?.currentChapterId || m.chapterId === storyGate.currentChapterId) {
+              chapterHistory.push({ role: 'user', content: c });
+            }
+          } else {
+            appendAiText(c);
+            if (!m.chapterId || !storyGate?.currentChapterId || m.chapterId === storyGate.currentChapterId) {
+              chapterHistory.push({ role: 'assistant', content: c });
+            }
+          }
           shown += 1;
         }
         if (shown) scrollChat();
@@ -2357,11 +2368,24 @@ function EditorBook({
     // 问题③ 章节卡片: which chapter are we in? Resolve a chapter's display title +
     // its 1-based number from the draft skeleton (subject once the theme stage wrote it,
     // else the generic「Chapter N」label).
-    function chapterMetaById(chapterId: string): { num: number; title: string } | null {
+    function chapterMetaById(chapterId: string): { num: number; title: string; tag: string; photoIds: string[] } | null {
       const idx = draftSkel?.chapters.findIndex((c) => c.chapterId === chapterId) ?? -1;
       if (idx < 0) return null;
       const c = draftSkel!.chapters[idx]!;
-      return { num: idx + 1, title: (c.subject && c.subject.trim()) || c.label };
+      const tag =
+        c.role === 'opening'
+          ? aT('开篇', 'Opening')
+          : c.role === 'closing'
+            ? aT('收尾', 'Closing')
+            : aT('章节', 'Chapter');
+      const photoIds = [
+        ...new Set(
+          (draftSkel?.pages ?? [])
+            .filter((p) => p.chapterId === chapterId)
+            .flatMap((p) => Object.values(p.imagesJson).filter(Boolean)),
+        ),
+      ];
+      return { num: idx + 1, title: (c.subject && c.subject.trim()) || c.label, tag, photoIds };
     }
 
     // 问题③ 章节卡片: when entering a chapter, push a chapter-styled card into the chat so
@@ -2376,15 +2400,56 @@ function EditorBook({
       const card = document.createElement('div');
       card.className = 'msg ai max-w-full';
       const inner = document.createElement('div');
-      inner.className = 'chapter-card';
-      const kicker = document.createElement('div');
-      kicker.className = 'cc-kicker';
-      kicker.textContent = aT(`第 ${meta.num} 章`, `Chapter ${meta.num}`);
-      const title = document.createElement('div');
+      inner.className = 'chap-card';
+      const thumbs = document.createElement('div');
+      thumbs.className = 'cc-thumbs';
+      for (const photoId of meta.photoIds.slice(0, 4)) {
+        const thumb = document.createElement('div');
+        thumb.className = 'cc-thumb';
+        const url = imageUrls[photoId];
+        if (url) thumb.style.backgroundImage = `url("${url}")`;
+        thumbs.appendChild(thumb);
+      }
+      const foot = document.createElement('div');
+      foot.className = 'cc-foot';
+      const info = document.createElement('div');
+      info.className = 'cc-info';
+      const titleRow = document.createElement('div');
+      titleRow.className = 'cc-title-row';
+      const title = document.createElement('span');
       title.className = 'cc-title';
       title.textContent = meta.title;
-      inner.appendChild(kicker);
-      inner.appendChild(title);
+      const tag = document.createElement('span');
+      tag.className = 'cc-tag';
+      tag.textContent = meta.tag;
+      titleRow.appendChild(title);
+      titleRow.appendChild(tag);
+      const chapterLine = document.createElement('div');
+      chapterLine.className = 'cc-meta';
+      chapterLine.textContent = aT(`第 ${meta.num} 章`, `Chapter ${meta.num}`);
+      const metaLine = document.createElement('div');
+      metaLine.className = 'cc-meta';
+      metaLine.textContent = `${meta.photoIds.length} ${t('photosWord')} · ${t('justEdited')}`;
+      info.appendChild(titleRow);
+      info.appendChild(chapterLine);
+      info.appendChild(metaLine);
+      const view = document.createElement('button');
+      view.type = 'button';
+      view.className = 'cc-view';
+      view.innerHTML = `${t('viewLayout')}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`;
+      view.addEventListener('click', () => {
+        goToChapterById(chapterId);
+        const book = byId('book');
+        if (book) {
+          book.classList.remove('book-flash');
+          void book.offsetWidth;
+          book.classList.add('book-flash');
+        }
+      });
+      foot.appendChild(info);
+      foot.appendChild(view);
+      if (thumbs.children.length > 0) inner.appendChild(thumbs);
+      inner.appendChild(foot);
       card.appendChild(inner);
       chatBody!.appendChild(card);
       scrollChat();
@@ -2920,7 +2985,7 @@ function EditorBook({
       // §4.2 引导优先: once history + story-gate are loaded, if this chapter has no prior
       // conversation and isn't confirmed yet, the Agent OPENS the chapter with a引导
       // question (runChapterGuideOpener) instead of sitting idle waiting for the user.
-      void Promise.all([loadHistory(), loadStoryGate()]).then(([shown]) => {
+      void loadStoryGate().then(() => loadHistory()).then((shown) => {
         restAwait();
         // 问题③ 画板定位: once the story gate is loaded, flip the canvas to the chapter
         // we're currently authoring so the preview tracks the live chapter on entry.

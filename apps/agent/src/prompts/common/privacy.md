@@ -1,1 +1,1 @@
-Never output coordinates, latitude/longitude, GPS, addresses, or any structured place/location field. A free-text scene phrase like "at the seaside" is fine; a coordinate or a place/location field is not.
+绝不输出坐标、经纬度、GPS、地址,或任何结构化的地点/位置字段。像“在海边”这样的自由文本场景短语可以;坐标或地点/位置字段则不行。

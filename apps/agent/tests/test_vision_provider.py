@@ -1,24 +1,13 @@
 """Vision provider-slot switching (#166).
 
-Covers `select_vision_slot` wiring for both slots and, end-to-end through
-`vision.analyze`, asserts that:
-  * the ark (doubao) slot still sends `thinking` disabled (no regression);
-  * the openai slot sends NO `thinking`/doubao extra_body and DOES request a
-    json_object response_format;
-  * a missing key for the chosen slot raises VisionError.
-No live network — `ai_client.chat_completion` is monkeypatched and the call
-kwargs are captured for assertion.
+Covers `select_vision_slot` wiring for both slots: the ark (doubao) slot sends
+`thinking` disabled; the openai slot sends NO doubao extra_body and DOES request a
+json_object response_format; a missing key for the chosen slot raises. Plus the
+per-model cost estimate. No live network.
 """
-
-import asyncio
-import json
-from typing import Any
 
 import pytest
 
-from src.schemas import LayoutRequest, PhotoIn, VisionResult
-from src import ai_client
-from src.agents.image_understanding import handler as vision
 from src.vision_provider import (
     VisionSlotError,
     estimate_cost_usd,
@@ -40,50 +29,6 @@ def _real_env(monkeypatch):
 
     yield _apply
     s.reset_settings_cache()
-
-
-def _req(count: int = 2) -> LayoutRequest:
-    return LayoutRequest(
-        requestId="r1",
-        prompt="a family trip",
-        language="en",
-        callbackUrl="http://example.com/cb",
-        photos=[
-            PhotoIn(
-                photoId=f"p{i + 1}",
-                base64=f"data:image/jpeg;base64,{i}",
-                width=800,
-                height=600,
-            )
-            for i in range(count)
-        ],
-    )
-
-
-def _photo_payload(idx: int) -> dict[str, Any]:
-    return {
-        "description": f"Photo {idx}",
-        "tags": ["memoir", "trip"],
-        "quality": "detail",
-        "orientation": "landscape",
-        "peopleCount": "1",
-        "scene": "outdoor",
-        "mood": "warm",
-        "timeOfDay": "day",
-        "location": None,
-    }
-
-
-def _capture(captured: dict):
-    async def fake_completion(**kwargs):
-        captured.update(kwargs)
-        payload = {"photos": [_photo_payload(i) for i in range(1, 3)], "groups": []}
-        return {
-            "choices": [{"message": {"content": json.dumps(payload)}}],
-            "usage": {"prompt_tokens": 100, "completion_tokens": 50},
-        }
-
-    return fake_completion
 
 
 # ---- select_vision_slot -----------------------------------------------------
@@ -133,49 +78,6 @@ def test_resolved_vision_model_tracks_provider_without_key(_real_env):
     # (startup logging uses it before keys are validated).
     assert resolved_vision_model(_real_env()) == "doubao-seed-1-6-vision-250815"
     assert resolved_vision_model(_real_env(VISION_PROVIDER="openai")) == "gpt-4o-mini"
-
-
-# ---- vision.analyze through each slot ---------------------------------------
-
-
-def test_vision_analyze_ark_sends_thinking(_real_env, monkeypatch):
-    _real_env(ARK_API_KEY="fake_ark")
-    captured: dict = {}
-    monkeypatch.setattr(ai_client, "chat_completion", _capture(captured))
-
-    result, tokens, model = asyncio.run(vision.analyze(_req()))
-
-    assert isinstance(result, VisionResult)
-    assert tokens == 150
-    assert model == "doubao-seed-1-6-vision-250815"
-    assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
-    assert captured["response_format"] is None
-    assert captured["model"] == "doubao-seed-1-6-vision-250815"
-
-
-def test_vision_analyze_openai_omits_thinking(_real_env, monkeypatch):
-    _real_env(VISION_PROVIDER="openai", OPENAI_API_KEY="fake_oai")
-    captured: dict = {}
-    monkeypatch.setattr(ai_client, "chat_completion", _capture(captured))
-
-    result, _, model = asyncio.run(vision.analyze(_req()))
-
-    assert isinstance(result, VisionResult)
-    assert model == "gpt-4o-mini"  # resolved model returned for Usage reporting
-    # The whole point of #166: doubao's thinking knob must not reach OpenAI.
-    assert captured["extra_body"] is None
-    assert "thinking" not in (captured.get("extra_body") or {})
-    assert captured["response_format"] == {"type": "json_object"}
-    assert captured["model"] == "gpt-4o-mini"
-    assert captured["base_url"] == "https://api.openai.com/v1"
-    assert captured["api_key"] == "fake_oai"
-
-
-def test_vision_analyze_openai_missing_key_raises_vision_error(_real_env, monkeypatch):
-    _real_env(VISION_PROVIDER="openai")  # no OPENAI_API_KEY
-    monkeypatch.setattr(ai_client, "chat_completion", _capture({}))
-    with pytest.raises(vision.VisionError):
-        asyncio.run(vision.analyze(_req()))
 
 
 # ---- cost estimate ----------------------------------------------------------

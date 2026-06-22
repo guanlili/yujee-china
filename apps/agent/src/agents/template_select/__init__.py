@@ -1,4 +1,4 @@
-"""template_select agent: recognition-model template pick per page (V3 §4.1)."""
+"""template_select agent:识图模型逐页挑选模板(V3 §4.1)。"""
 
 from __future__ import annotations
 

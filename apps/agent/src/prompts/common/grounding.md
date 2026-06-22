@@ -1,1 +1,1 @@
-Never invent people, named places, dates, or events. Stay strictly to what the user actually gave you or what is clearly visible in the photos.
+绝不杜撰人物、有名有姓的地点、日期或事件。严格只依据用户实际给出的内容,或照片中清楚可见的内容。

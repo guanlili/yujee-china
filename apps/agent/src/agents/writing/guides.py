@@ -1,14 +1,12 @@
-"""Role-based writing guidance for memoir text slots.
+"""纪念册文字槽的基于 role 的写作指引。
 
-Templates declare each text slot's *role* (title / body / explain / decoration)
-and *language* (user / en) — but they deliberately carry no writing
-instructions. How to write each role lives here, in one place, and is injected
-into the authoring prompt. See docs/agent/template-redesign.md §5.
+模板声明每个文字槽的 *role*(title / body / explain / decoration)和 *language*
+(user / en)—— 但它们刻意不带写作指令。每个 role 怎么写都集中放在这里、一处,并被
+注入到创作 prompt。见 docs/agent/template-redesign.md §5。
 
-This is the core of AI rewriting: the model is told, per slot, what kind of text
-it is and how that kind should read. Decoration slots (dates, numbers, English
-sub-labels) are visual furniture filled by the deterministic layer, so they are
-left out of what the model is asked to write.
+这是 AI 重写的核心:逐槽告诉模型这是什么类型的文字、这种类型该读起来如何。decoration
+槽(日期、数字、英文副标签)是由确定性层填充的视觉点缀,所以被排除在模型被要求写的内容
+之外。
 """
 
 from __future__ import annotations
@@ -16,27 +14,19 @@ from __future__ import annotations
 from typing import Any
 
 from ...engine import templates as registry
-
-
-# Yujee's persona — a light identity/voice preamble prepended to every
-# user-facing LLM prompt (theme / chapter-chat / edit). It colors only the tone
-# of the `assistantReply` text; it must never change the STRICT JSON contract
-# each caller defines for itself.
-PERSONA = (
-    "You are Yujee, a friendly little jellyfish who writes magazine copy for "
-    "people's photo albums. Your voice is warm, gentle, and concise, and you "
-    "always speak in the reader's language. This persona shapes only the tone "
-    "of your user-facing reply text — it never changes the required JSON "
-    "structure described below."
-)
+from ...prompts import COMMON_DIR, load_prompt
 
 
 def persona_block() -> str:
-    """Yujee's identity/voice preamble for user-facing system prompts."""
-    return PERSONA
+    """水母 Yujee 的身份/语气前言,用于面向用户的 system prompt。
+
+    人设是人为可调规则,外置在 prompts/common/persona.md(跨 theme / chapter-chat /
+    edit 共享)。它只给 `assistantReply` 文本上色,绝不改变各调用方自定义的 STRICT
+    JSON 契约。"""
+    return load_prompt(COMMON_DIR / "persona.md")
 
 
-# How each role should read. Kept terse — this goes verbatim into the prompt.
+# 每个 role 该读起来如何。保持精简 —— 这段会原样进入 prompt。
 ROLE_GUIDES: dict[str, str] = {
     "title": (
         "a short, evocative heading — the one line that anchors the page; "
@@ -56,12 +46,12 @@ ROLE_GUIDES: dict[str, str] = {
     ),
 }
 
-# Roles the model is responsible for writing (decoration is auto-filled).
+# 模型负责撰写的 role(decoration 自动填充)。
 AUTHORED_ROLES = ("title", "body", "explain")
 
 
 def guides_block() -> str:
-    """A compact role-writing guide for the authoring system prompt."""
+    """给创作 system prompt 用的一段紧凑的 role 写作指引。"""
     lines = ["Write each text slot to its role:"]
     for role in AUTHORED_ROLES:
         lines.append(f"- {role}: {ROLE_GUIDES[role]}.")
@@ -74,15 +64,14 @@ def guides_block() -> str:
 
 
 def page_slot_specs(template_id: str) -> list[dict[str, Any]]:
-    """Per-authored-slot {id, role, lang, maxChars?, repeat?, hint?} for one template.
+    """一个模板的逐创作槽 {id, role, lang, maxChars?, repeat?, hint?}。
 
-    Drives the prompt: it tells the model the role of every slot it must fill on
-    a page. Decoration slots are omitted (the deterministic layer fills them).
+    驱动 prompt:它告诉模型一页上它必须填的每个槽的 role。decoration 槽被略去(由确定性
+    层填充)。
 
-    The per-slot ``hint`` (authored by the template designer, lives in the template
-    JSON) is passed through verbatim when present — the writing LM treats it as the
-    intent for that specific slot (§4.2(4) 逐槽 hint 透传). Carrying it here is
-    additive: callers that do not surface hint simply ignore the extra key.
+    逐槽的 ``hint``(由模板设计者撰写,存在模板 JSON 里)在存在时原样透传 —— 写作 LM
+    把它当作那个具体槽的意图(§4.2(4) 逐槽 hint 透传)。在这里带上它是叠加性的:不暴露
+    hint 的调用方只需忽略这个额外的 key。
     """
     tpl = registry.get(template_id)
     if not tpl:

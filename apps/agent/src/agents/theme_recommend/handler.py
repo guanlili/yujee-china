@@ -1,32 +1,26 @@
-"""V3 theme/chapter-color recommender (§4.3 / §6 / §8, issue #189 / WP3.1).
+"""V3 主题/章节配色推荐器(§4.3 / §6 / §8,issue #189 / WP3.1)。
 
-The endpoint is `POST /v3/recommend` (§8.1: 同步 / 识图模型); it carries the two
-recommend Skills (now purely per-chapter — no album-level themeOptions, #236):
+端点是 `POST /v3/recommend`(§8.1:同步 / 识图模型);它承载两个 recommend Skill
+(现在纯按章 —— 没有 album 级 themeOptions,#236):
 
-  * recommend-theme          → per chapter, a `subject` (one-line chapter title,
-                               grounded in that chapter's photos + story). The user
-                               confirms; apply-theme persists it as the chapter title.
-  * recommend-chapter-colors → one {accentColor, artFont} per chapter. `artFont`
-                               MUST be one of the 4 ArtFontPack members; `accentColor`
-                               MUST be a `#hex`. Both are clamped/validated below so a
-                               drifted model can never inject an illegal font or a
-                               non-hex color.
+  * recommend-theme          → 每章一个 `subject`(单行章节标题,扎根于该章照片 + 故事)。
+                               用户确认;apply-theme 把它持久化为章节标题。
+  * recommend-chapter-colors → 每章一组 {accentColor, artFont}。`artFont` 必须是 4 个
+                               ArtFontPack 成员之一;`accentColor` 必须是 `#hex`。两者都
+                               在下面被钳/校验,使漂移的模型绝无法注入非法字体或非 hex 颜色。
 
-The model authors ONLY suggestions — it never invents a templateId / pageIndex
-(those are the deterministic engine's, §8.3). recommend produces *candidates*; the
-tree is written later by WP3.2 `apply-theme` after the user confirms (§4.1: theme
-环节 fills the null placeholders). recommend does NOT advance stage (§8.3 stage
-推进权在 Web).
+模型【只】产出建议 —— 它绝不臆造 templateId / pageIndex(那些归确定性引擎,§8.3)。
+recommend 产出的是 *候选*;树由 WP3.2 `apply-theme` 在用户确认后才写
+(§4.1:theme 环节填那些 null 占位)。recommend 不推进 stage(§8.3 stage 推进权在 Web)。
 
-Recognition-model slot reuse (§6.8 第 2 条): the same OpenAI-primary /火山-failover
-strategy as describe-content (`vision.describe_content`). recommend's input is
-TEXT ONLY (chapter descriptions + per-photo sceneDescriptions + analysis summary);
-no base64 reaches this endpoint (the V3RecommendRequest contract carries none), so
-there is nothing to sample with `color_sampling.sample_dominant_color` here and
-nothing image-shaped to log (§3 privacy holds by construction).
+识图模型 slot 复用(§6.8 第 2 条):与 describe-content(`vision.describe_content`)相同
+的 OpenAI 主 /火山-failover 策略。recommend 的输入【只有】文字(章节描述 + 逐照片
+sceneDescription + analysis summary);没有 base64 到达此端点(V3RecommendRequest 契约
+不带),所以这里没有东西可供 `color_sampling.sample_dominant_color` 取样,也没有图片形态
+的东西可记录(§3 隐私在构造上成立)。
 
-Stateless (§3): the Agent holds no draft/stage; Web owns the tree + stage and
-merges. This module keeps no module-level state.
+无状态 (§3):Agent 不持 draft/stage;Web 拥有树 + stage 并负责合并。本模块不保留任何
+模块级状态。
 """
 
 from __future__ import annotations
@@ -48,7 +42,7 @@ from ...schemas import (
     V3Usage,
 )
 from ...settings import get_settings
-from ...prompts import load_prompt
+from ...prompts import RULES_DIR, load_prompt
 from ... import ai_client
 from ...vision_provider import (
     VisionSlot,
@@ -63,41 +57,40 @@ log = get_logger("recommend_v3")
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
 
-# Closed legal sets (mirror the contract). A drifted model output is coerced back
-# into these so the response always validates against V3RecommendResponse.
+# 封闭的合法集(镜像契约)。漂移的模型输出被强制收回这些集合,使响应总能通过
+# V3RecommendResponse 校验。
 _ART_FONTS: tuple[str, ...] = tuple(get_args(ArtFontPack))
 _DEFAULT_FONT = "serif-classic"
-# Neutral accent used when a chapter's model color is missing/illegal — a calm
-# slate that reads fine on any spread; apply-theme/the user can still override.
+# 当某章的模型颜色缺失/非法时使用的中性 accent —— 一个沉静的 slate,在任何跨页上都好看;
+# apply-theme/用户仍可覆盖。
 _FALLBACK_ACCENT = "#4A5568"
-# Subject (chapter title) is min(1) in the contract; clamp to a sane title length so
-# a drifted long subject can't blow the slot. Fallback keeps the response valid.
+# 契约里 subject(章节标题)是 min(1);钳到一个合理的标题长度,免得漂移的长 subject 撑爆
+# 槽位。Fallback 保持响应有效。
 _MAX_SUBJECT_LEN = 80
 _FALLBACK_SUBJECT = "Untitled Chapter"
-# 6-hex form the response/AccentColor regex accepts; also what we normalize to.
+# 响应/AccentColor regex 接受的 6-hex 形式;也是我们归一化到的形式。
 _HEX6_LEN = 6
 
 
 class RecommendV3Error(Exception):
-    """Raised when the recommend model call or its JSON response is unusable.
+    """recommend 模型调用或其 JSON 响应不可用时抛。
 
-    The route maps this to an HTTP error code (§8.3 同步端点走 HTTP 错误码); the
-    front end may retry without polluting stage."""
+    路由把它映射成 HTTP 错误码(§8.3 同步端点走 HTTP 错误码);前端可重试而不污染 stage。"""
 
 
-# ---------- prompt assembly ---------------------------------------------------
+# ---------- prompt 组装 ---------------------------------------------------
 
 
 def _lang_name(language: str) -> str:
-    """Human language name for a skill `{LANGUAGE}` placeholder (mirrors vision.py)."""
+    """供 skill `{LANGUAGE}` 占位用的人类语言名(镜像 vision.py)。"""
     return "Chinese" if language == "zh" else "English"
 
 
 def _chapter_payload(chapter: V3ChapterOverview) -> dict[str, Any]:
-    """One chapter's recommend input (§8 表): description + per-photo scenes.
+    """一章的 recommend 输入(§8 表):description + 逐照片场景。
 
-    Privacy-clean by construction — `V3ChapterOverview` (`_V3Strict`) forbids any
-    GPS/place field at parse time, and photoDescs are free-text scene sentences."""
+    在构造上隐私干净 —— `V3ChapterOverview`(`_V3Strict`)在解析时就禁止任何
+    GPS/place 字段,而 photoDescs 是自由文本的场景句子。"""
     return {
         "chapterId": chapter.chapterId,
         "description": chapter.description,
@@ -106,18 +99,18 @@ def _chapter_payload(chapter: V3ChapterOverview) -> dict[str, Any]:
 
 
 def build_messages(req: V3RecommendRequest) -> list[dict[str, str]]:
-    """Build the recommend prompt from the chapter overview + analysis summary.
+    """从章节 overview + analysis summary 构建 recommend prompt。
 
-    The system prompt fixes the STRICT JSON contract + the two-skill task and the
-    closed font/color legal sets; the user payload carries the chapter overviews,
-    the global analysis summary, and any user steer (`userMessage`). Both skills
-    are loaded as prompt assets (集中维护), localized via `{LANGUAGE}`."""
+    system prompt 固定 STRICT JSON 契约 + 两个 skill 任务以及封闭的字体/颜色合法集;
+    user payload 承载章节 overview、全局 analysis summary,以及任何用户引导
+    (`userMessage`)。两个 skill 都作为 prompt 资产加载(集中维护),经 `{LANGUAGE}`
+    本地化。"""
     lang_name = _lang_name(req.language)
     system = (
         load_prompt(_PROMPT_DIR / "recommend_theme.md", LANGUAGE=lang_name)
-        + "\n\n=== CHAPTER COLORS & ART FONT (recommend-chapter-colors Skill) ===\n"
+        + "\n\n=== 章节配色与艺术字体(CHAPTER COLORS & ART FONT)===\n"
         + load_prompt(
-            _PROMPT_DIR / "recommend_chapter_colors.md",
+            RULES_DIR / "theme_colors.md",
             LANGUAGE=lang_name,
             ART_FONTS=", ".join(_ART_FONTS),
             common=("json_only", "grounding", "privacy"),
@@ -135,7 +128,7 @@ def build_messages(req: V3RecommendRequest) -> list[dict[str, str]]:
     ]
 
 
-# ---------- model call --------------------------------------------------------
+# ---------- 模型调用 --------------------------------------------------------
 
 
 async def run(
@@ -143,9 +136,9 @@ async def run(
     *,
     complete: CompleteFn | None = None,
 ) -> V3RecommendResponse:
-    """③ recommend (§8 同步). One recognition-model call → theme candidates + per
-    chapter {accentColor, artFont}. `complete` is injected in tests; production uses
-    the OpenAI-primary /火山-failover slot strategy (`_complete`)."""
+    """③ recommend(§8 同步)。一次识图模型调用 → 主题候选 + 每章
+    {accentColor, artFont}。`complete` 在测试里注入;生产用 OpenAI 主 /火山-failover 的
+    slot 策略(`_complete`)。"""
     started = time.monotonic()
     messages = build_messages(req)
     response, model = await _complete(messages, complete=complete)
@@ -160,19 +153,18 @@ async def _complete(
     *,
     complete: CompleteFn | None,
 ) -> tuple[dict[str, Any], str | None]:
-    """Run the recommend call. Returns (response, resolved_model).
+    """跑 recommend 调用。返回 (response, resolved_model)。
 
-    Test path: the injected `complete` stands in for the upstream call (model name
-    unknown → None). Production path: recognition-model slot reuse — try OpenAI
-    (GPT-5.5 Mini) first, 降级火山 doubao on transport failure / missing key, exactly
-    like describe-content (§6.8 第 2 条). A VisionError-class unusable RESPONSE is the
-    caller's concern (RecommendV3Error), not a reason to burn the second provider."""
+    测试路径:注入的 `complete` 顶替上游调用(模型名未知 → None)。生产路径:识图模型
+    slot 复用 —— 先试 OpenAI (GPT-5.5 Mini),传输失败 / 缺 key 时降级火山 doubao,与
+    describe-content 完全一致(§6.8 第 2 条)。VisionError 类的不可用【响应】归调用方处理
+    (RecommendV3Error),不是烧掉第二个 provider 的理由。"""
     if complete is not None:
         return await complete(messages=messages), None
 
     settings = get_settings()
 
-    # --- PRIMARY: OpenAI (GPT-5.5 Mini) --------------------------------------
+    # --- 主:OpenAI (GPT-5.5 Mini) --------------------------------------
     primary_slot: VisionSlot | None = None
     try:
         primary_slot = openai_vision_slot(
@@ -195,7 +187,7 @@ async def _complete(
                 reason=type(exc).__name__,
             )
 
-    # --- FAILOVER: 火山 doubao (ARK) -----------------------------------------
+    # --- FAILOVER:火山 doubao (ARK) -----------------------------------------
     try:
         fallback_slot = ark_vision_slot(settings)
     except VisionSlotError as exc:
@@ -211,9 +203,9 @@ async def _complete(
 
 
 async def _call_slot(slot: VisionSlot, messages: list[dict[str, str]]) -> dict[str, Any]:
-    """One recommend call on `slot`. Text-only (no images) — recommend never sends
-    base64 — but it reuses the vision slot's provider quirks (json_object / thinking
-    knob) since the recognition model owns this stage (§8.1)."""
+    """在 `slot` 上做一次 recommend 调用。纯文字(无图)—— recommend 从不发送
+    base64 —— 但它复用 vision slot 的 provider 怪癖(json_object / thinking 开关),
+    因为这一环节归识图模型所有(§8.1)。"""
     return await ai_client.chat_completion(
         base_url=slot.base_url,
         api_key=slot.api_key,
@@ -250,14 +242,13 @@ def _usage_from_response(
         visionCallCount=1,
         planningInputTokens=prompt_tokens,
         planningOutputTokens=completion_tokens,
-        # recommend runs on the recognition (vision) slot; report it as models.vision
-        # when known. The strict schema rejects an explicit None for the optional
-        # model-name field, so include it only when resolved.
+        # recommend 跑在识图(vision)slot 上;已知时把它报告为 models.vision。strict
+        # schema 拒绝给可选 model-name 字段显式传 None,所以仅在解析出来时才包含它。
         models=V3Models(**({"vision": model} if model else {})),
     )
 
 
-# ---------- response coercion -------------------------------------------------
+# ---------- 响应矫正 -------------------------------------------------
 
 
 def _coerce_response(
@@ -277,19 +268,16 @@ def _coerce_response(
 def _coerce_chapter_colors(
     req: V3RecommendRequest, raw: Any
 ) -> list[V3ChapterColorRecommendation]:
-    """Exactly one {subject, accentColor, artFont} per input chapter, in input order.
+    """每个输入章节恰好一组 {subject, accentColor, artFont},按输入顺序。
 
-    Grounding guardrails (§8.3 模型出意图、代码保合法):
-      * subject (chapter title) is trimmed + clamped to a sane title length; a
-        missing/empty subject → a neutral placeholder so the response always
-        validates (contract min(1)).
-      * artFont is clamped to the 4-member ArtFontPack — an illegal/missing font →
-        the default font, never an injected value.
-      * accentColor is normalized to `#RRGGBB`; an illegal/missing color → the
-        neutral fallback. The model can never emit a non-hex color into the tree.
-      * Every input chapter gets exactly one entry (a chapter the model omitted is
-        filled with the fallback subject+color+font) — recommend never drops a
-        chapter, and apply-theme can rely on full coverage.
+    Grounding 护栏(§8.3 模型出意图、代码保合法):
+      * subject(章节标题)被 trim + 钳到合理的标题长度;缺失/空的 subject → 一个中性
+        占位,使响应总能通过校验(契约 min(1))。
+      * artFont 被钳到 4 成员的 ArtFontPack —— 非法/缺失的字体 → 默认字体,绝不用注入值。
+      * accentColor 被归一化为 `#RRGGBB`;非法/缺失的颜色 → 中性 fallback。模型绝无法把
+        非 hex 颜色发进树里。
+      * 每个输入章节恰好得到一条(模型遗漏的章节用 fallback 的 subject+颜色+字体填上)——
+        recommend 绝不丢章,apply-theme 可依赖完整覆盖。
     """
     by_id: dict[str, dict[str, Any]] = {}
     if isinstance(raw, list):
@@ -318,10 +306,9 @@ def _coerce_chapter_colors(
 
 
 def _coerce_subject(raw: Any) -> str:
-    """Trim + clamp the chapter subject (title); fall back to a neutral placeholder.
+    """Trim + 钳章节 subject(标题);回退到一个中性占位。
 
-    Strips a trailing period/句号 the skill asked the model to omit, so a drifted
-    output still reads as a clean one-line title."""
+    去掉一个结尾的句点/句号(skill 已要求模型省略),使漂移的输出仍读起来是一行干净的标题。"""
     subject = _text(raw)
     subject = subject.rstrip(".。!! ?? ")
     if not subject:
@@ -335,12 +322,11 @@ def _coerce_font(raw: Any) -> str:
 
 
 def _coerce_accent(raw: Any) -> str:
-    """Normalize the model's color into `#RRGGBB`, or the neutral fallback.
+    """把模型的颜色归一化为 `#RRGGBB`,否则用中性 fallback。
 
-    Accepts `#RGB` / `#RRGGBB` (case-insensitive, optional leading `#`); expands the
-    3-digit shorthand to 6 so the stored value is the canonical uppercase 6-hex form
-    the AccentColor regex / renderer expect. Anything else → fallback (the model can
-    never poison the tree with an arbitrary string)."""
+    接受 `#RGB` / `#RRGGBB`(不区分大小写,前导 `#` 可选);把 3 位简写展开为 6 位,使
+    存下的值是 AccentColor regex / 渲染器所期望的规范大写 6-hex 形式。其它一切 → fallback
+    (模型绝无法用任意字符串污染树)。"""
     if not isinstance(raw, str):
         return _FALLBACK_ACCENT
     value = raw.strip().lstrip("#")

@@ -1,32 +1,27 @@
-"""V3 select-template: the recognition model picks each page's templateId from
-the LEGAL candidate set; pure-code fallback when the LLM call fails (WP1.4 / #183).
+"""V3 select-template:识图模型从【合法】候选集里为每页挑 templateId;LLM 调用失败时
+走纯代码 fallback(WP1.4 / #183)。
 
-This sits on top of the WP0.4 deterministic engine (`skeleton_v3`) and follows the
-§8.3 safety model — "model emits intent, deterministic engine guarantees legality":
+它建在 WP0.4 确定性引擎(`skeleton_v3`)之上,遵循 §8.3 安全模型 ——「模型出意图、
+确定性引擎保合法」:
 
-  * The chapter tree (WP1.3) is partitioned into per-page chunks no larger than the
-    interior category's biggest template (`skeleton_v3.partition_photos_v3`). Each
-    chunk becomes exactly one interior page.
-  * For each page we compute its LEGAL candidate set with
-    `skeleton_v3.legal_candidates("interior", N)` — every template in the interior
-    category whose image-slot count can hold the page's N photos. The model is shown
-    ONLY those candidate ids (plus the chapter/scene context) and must return a
-    templateId drawn from that exact list. A choice outside the legal set (a
-    hallucinated / wrong-page id) is rejected and that page falls back — the model
-    can never inject an illegal templateId (§9 / §6.8 第 6 条).
-  * NO quality / hero / orientation matching anywhere. Photos are slotted in
-    declaration order (`skeleton_v3.assign_images_v3`); aspect-ratio mismatch is the
-    renderer's center-cover concern, never an error here.
+  * 章节树(WP1.3)被切成逐页 chunk,每个不大于 interior 类别最大的模板
+    (`skeleton_v3.partition_photos_v3`)。每个 chunk 恰好变成一个 interior 页。
+  * 对每页我们用 `skeleton_v3.legal_candidates("interior", N)` 算出其【合法】候选集
+    —— interior 类别里 image-slot 数能容纳本页 N 张照片的每一个模板。模型【只】看到
+    这些候选 id(外加章节/场景上下文),并且必须返回取自这一确切列表的 templateId。
+    合法集之外的选择(幻觉 / 错页 id)被拒,该页 fallback —— 模型绝无法注入非法
+    templateId(§9 / §6.8 第 6 条)。
+  * 任何地方都不做质量 / hero / 朝向匹配。照片按声明顺序摆进槽
+    (`skeleton_v3.assign_images_v3`);宽高比不符是渲染器 center-cover 的事,在这里
+    绝不算错误。
 
-Fallback (§9): when the LLM call fails (transport/timeout/unparseable/unusable) the
-WHOLE preview reverts to the pure-code path — `skeleton_v3.build_skeleton_v3`, which
-picks, per chunk, a template that can hold the N photos (exact capacity preferred,
-else closest larger) and slots them in order. "10 photos → a template that holds 10,
-slotted in order." No quality/hero matching, mismatched aspect ratios unrejected.
+Fallback (§9):LLM 调用失败时(transport/timeout/无法解析/不可用),整份预览回退到纯
+代码路径 —— `skeleton_v3.build_skeleton_v3`,它逐 chunk 挑一个能容纳 N 张照片的模板
+(优先恰好容量,否则最接近的更大),并按顺序摆进去。「10 张照片 → 一个能放 10 张的
+模板,按顺序摆。」不做质量/hero 匹配,宽高比不符也不拒。
 
-Stateless / privacy (§3): this stage sends ONLY text (chapter descriptions + scene
-sentences + candidate ids) to the model — no base64, no GPS/place, nothing the
-recognition model did not already author in WP1.3.
+无状态 / 隐私 (§3):本环节【只】给模型发送文字(章节描述 + 场景句子 + 候选 id)——
+无 base64,无 GPS/place,没有任何识图模型在 WP1.3 未曾写过的东西。
 """
 
 from __future__ import annotations
@@ -52,22 +47,22 @@ _PROMPT_DIR = Path(__file__).resolve().parent
 
 log = get_logger("select_template")
 
-# Every page in this stage is an interior body page (cover/toc/ending are owned by
-# later WPs); the candidate pool is therefore always the interior category.
+# 本环节每页都是 interior 正文页(cover/toc/ending 归后续 WP 所有);因此候选池始终是
+# interior 类别。
 _INTERIOR: skeleton_v3.Category = "interior"
 
 
 class SelectTemplateError(Exception):
-    """The select-template LLM step failed in a way that must trigger the pure-code
-    fallback (`skeleton_v3.build_skeleton_v3`). Never surfaced to the caller as a
-    hard error — the preview always succeeds via the deterministic path."""
+    """select-template 的 LLM 步骤以一种必须触发纯代码 fallback
+    (`skeleton_v3.build_skeleton_v3`)的方式失败时抛。绝不作为硬错误向调用方外抛 ——
+    预览总能经确定性路径成功。"""
 
 
-# ---------- page planning (pure code) ----------------------------------------
+# ---------- 页面规划(纯代码)----------------------------------------
 
 
 def _photo_id(photo: Mapping[str, Any] | Any) -> str:
-    """photoId out of a V3ChapterPhoto model or a plain mapping."""
+    """从一个 V3ChapterPhoto 模型或纯 mapping 里取出 photoId。"""
     if isinstance(photo, Mapping):
         return str(photo["photoId"])
     return str(photo.photoId)
@@ -80,9 +75,8 @@ def _scene(photo: Mapping[str, Any] | Any) -> str:
 
 
 class _PlannedPage:
-    """One per-page chunk: which chapter it came from, its photos, and the legal
-    candidate templateIds it may use. `pageId` is a stable handle the LLM echoes
-    back so we can match its choice to the right page."""
+    """一个逐页 chunk:它来自哪一章、它的照片、以及它可用的合法候选 templateId。
+    `pageId` 是一个稳定句柄,LLM 会原样回带,好让我们把它的选择对到正确的页。"""
 
     __slots__ = ("page_id", "chapter_index", "chapter", "photos", "candidates")
 
@@ -106,12 +100,11 @@ class _PlannedPage:
 
 
 def plan_pages(chapters: Sequence[V3Chapter]) -> list[_PlannedPage]:
-    """Partition every chapter into per-page chunks with their legal candidate sets.
+    """把每一章切成逐页 chunk,连同各自的合法候选集。
 
-    Mirrors `skeleton_v3.build_skeleton_v3`'s partition so the LLM and fallback paths
-    produce the SAME page count / photo grouping — select-template only changes WHICH
-    template each page uses, never how photos are split across pages. Chapters with no
-    photos are skipped (a chapter never yields an empty page)."""
+    镜像 `skeleton_v3.build_skeleton_v3` 的切分,使 LLM 路径与 fallback 路径产出【相同】
+    的页数 / 照片分组 —— select-template 只改变每页用【哪个】模板,绝不改变照片怎么分到
+    各页。没有照片的章节被跳过(一章绝不产出空页)。"""
     planned: list[_PlannedPage] = []
     for ch_idx, chapter in enumerate(chapters):
         photos = list(chapter.photos)
@@ -132,14 +125,13 @@ def plan_pages(chapters: Sequence[V3Chapter]) -> list[_PlannedPage]:
     return planned
 
 
-# ---------- LLM intent --------------------------------------------------------
+# ---------- LLM 意图 --------------------------------------------------------
 
 
 def _select_slot(settings: Any) -> VisionSlot:
-    """Reuse the describe-content provider policy: OpenAI (GPT-5.5 Mini) primary,
-    火山 doubao failover. This stage is text-only so either slot works; we pick the
-    primary when configured, else the ark slot. Raises SelectTemplateError when
-    neither is configured (caller then takes the pure-code fallback)."""
+    """复用 describe-content 的 provider 策略:OpenAI (GPT-5.5 Mini) 为主,
+    火山 doubao 为 failover。本环节是纯文字,所以哪个 slot 都行;配了主就用主,否则用
+    ark slot。两者都没配时抛 SelectTemplateError(调用方随后走纯代码 fallback)。"""
     try:
         return openai_vision_slot(
             settings,
@@ -155,33 +147,33 @@ def _select_slot(settings: Any) -> VisionSlot:
 
 
 def _build_user_content(pages: Sequence[_PlannedPage]) -> str:
-    """A compact text manifest: per page, its photo count + chapter/scene context +
-    the legal candidate ids the model must choose among. No base64, no place/GPS."""
+    """一份紧凑的文字清单:逐页给出其照片数 + 章节/场景上下文 + 模型必须从中挑选的合法
+    候选 id。无 base64,无 place/GPS。"""
     blocks: list[str] = []
     for page in pages:
         scene_lines = "\n".join(
-            f"    - {_photo_id(p)}: {_scene(p) or '(no description)'}" for p in page.photos
+            f"    - {_photo_id(p)}: {_scene(p) or '(无描述)'}" for p in page.photos
         )
         candidate_lines = "\n".join(
-            f"    - {c['templateId']} (holds {c['imageSlotCount']})" for c in page.candidates
+            f"    - {c['templateId']}(可容纳 {c['imageSlotCount']} 张)" for c in page.candidates
         )
         blocks.append(
-            f"Page {page.page_id} — {len(page.photos)} photo(s)\n"
-            f"  Chapter: {page.chapter.description or '(no description)'}\n"
-            f"  Scenes:\n{scene_lines}\n"
-            f"  candidates (pick exactly one templateId):\n{candidate_lines}"
+            f"页 {page.page_id} —— {len(page.photos)} 张照片\n"
+            f"  章节:{page.chapter.description or '(无描述)'}\n"
+            f"  场景:\n{scene_lines}\n"
+            f"  候选 candidates(恰好挑一个 templateId):\n{candidate_lines}"
         )
     manifest = "\n\n".join(blocks)
     return (
         f"{manifest}\n\n"
-        'Return {"pages":[{"pageId":...,"templateId":...}]} with one entry per page, '
-        "each templateId taken from that page's candidates."
+        '返回 {"pages":[{"pageId":...,"templateId":...}]},每页一个条目,'
+        "每个 templateId 都取自该页的 candidates。"
     )
 
 
 def _parse_choices(parsed: Any) -> dict[str, str]:
-    """pageId -> chosen templateId from the model's JSON. Ignores malformed rows; the
-    caller validates legality and falls back per page for anything missing/illegal."""
+    """从模型 JSON 里取 pageId -> 所选 templateId。忽略畸形行;调用方校验合法性,并对任何
+    缺失/非法的逐页 fallback。"""
     if not isinstance(parsed, dict):
         raise SelectTemplateError("select-template response is not a JSON object")
     rows = parsed.get("pages")
@@ -230,16 +222,14 @@ async def _call_model(slot: VisionSlot, pages: Sequence[_PlannedPage]) -> dict[s
     return _parse_choices(parsed)
 
 
-# ---------- public API --------------------------------------------------------
+# ---------- 公开 API --------------------------------------------------------
 
 
 def _fallback_pages(pages: Sequence[_PlannedPage]) -> list[dict[str, Any]]:
-    """Pure-code §9 fallback for the planned pages: per page, `pick_template_v3`
-    chooses a template that can hold its photos (exact capacity preferred, else
-    closest larger) and `build_page_v3` slots them in declaration order. No
-    quality/hero/orientation matching. This is exactly what `build_skeleton_v3`
-    yields for the same partition — kept as a dedicated helper so the
-    partial-fallback path (some LLM choices legal, some not) reuses it per page."""
+    """对规划好的页做纯代码 §9 fallback:逐页 `pick_template_v3` 挑一个能容纳其照片的
+    模板(优先恰好容量,否则最接近的更大),`build_page_v3` 按声明顺序摆进去。不做
+    质量/hero/朝向匹配。这正是 `build_skeleton_v3` 对同一切分产出的结果 —— 作为一个
+    专用 helper 保留,使部分 fallback 路径(部分 LLM 选择合法、部分不合法)能逐页复用它。"""
     return [
         skeleton_v3.build_page_v3(
             _INTERIOR, [_photo_id(p) for p in page.photos], page_index=i
@@ -249,14 +239,13 @@ def _fallback_pages(pages: Sequence[_PlannedPage]) -> list[dict[str, Any]]:
 
 
 async def select_template_pages(chapters: Sequence[V3Chapter]) -> list[dict[str, Any]]:
-    """Build the preview body pages: model picks each page's templateId from its
-    legal candidates; pure-code fallback on any LLM failure (WP1.4 / §9).
+    """构建预览正文页:模型从各页合法候选里挑 templateId;任何 LLM 失败时走纯代码
+    fallback(WP1.4 / §9)。
 
-    Returns a flat list of page dicts shaped like `schemas.Page`
-    (pageIndex/templateId/images/texts) with sequential pageIndex and empty texts
-    (generic copy/colors are layered later — WP1.5). NEVER raises: a failed LLM call,
-    a missing provider, or an unusable response all degrade to the deterministic
-    `build_skeleton_v3`-equivalent fallback so the preview always succeeds."""
+    返回一个扁平的 page dict 列表,形如 `schemas.Page`
+    (pageIndex/templateId/images/texts),pageIndex 连续、texts 为空(通用文案/颜色
+    在稍后叠加 —— WP1.5)。绝不抛错:失败的 LLM 调用、缺失的 provider、不可用的响应,
+    统统降级到等价于 `build_skeleton_v3` 的确定性 fallback,使预览总能成功。"""
     pages = plan_pages(chapters)
     if not pages:
         return []
@@ -264,8 +253,7 @@ async def select_template_pages(chapters: Sequence[V3Chapter]) -> list[dict[str,
     settings = get_settings()
     try:
         slot = _select_slot(settings)
-        # The whole stage is bounded by the describe budget so a slow model can't
-        # hang the analyze job past its own deadline; on timeout we fall back.
+        # 整个环节受 describe 预算约束,免得慢模型把 analyze 作业拖过自己的截止;超时则 fallback。
         choices = await asyncio.wait_for(
             _call_model(slot, pages),
             timeout=settings.describe_batch_deadline_seconds,
@@ -273,7 +261,7 @@ async def select_template_pages(chapters: Sequence[V3Chapter]) -> list[dict[str,
     except (SelectTemplateError, asyncio.TimeoutError) as exc:
         log.warning("select_template.fallback", reason=str(exc), pages=len(pages))
         return _fallback_pages(pages)
-    except Exception as exc:  # noqa: BLE001 — never let this stage hard-fail the preview
+    except Exception as exc:  # noqa: BLE001 —— 绝不让本环节硬失败而连累预览
         log.warning("select_template.fallback_unhandled", reason=str(exc), pages=len(pages))
         return _fallback_pages(pages)
 
@@ -281,9 +269,8 @@ async def select_template_pages(chapters: Sequence[V3Chapter]) -> list[dict[str,
     fell_back = 0
     for i, page in enumerate(pages):
         chosen = choices.get(page.page_id)
-        # Hallucinate-proof: the choice must be one of THIS page's legal candidates.
-        # Anything missing / out-of-set degrades to the deterministic pick for this
-        # page — the model can never inject an illegal or cross-page templateId.
+        # 防幻觉:选择必须是【本页】合法候选之一。任何缺失 / 集外的都降级为本页的确定性
+        # 挑选 —— 模型绝无法注入非法或跨页的 templateId。
         if chosen not in page.legal_ids:
             chosen = None
             fell_back += 1

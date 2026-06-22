@@ -1,4 +1,4 @@
-"""writing agent: chapter-chat authoring (write / talk / edit) (V3 §4.2)."""
+"""writing agent: chapter-chat 创作(write / talk / edit)(V3 §4.2)。"""
 
 from __future__ import annotations
 

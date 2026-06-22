@@ -263,7 +263,7 @@ Failed event:
 
 Progress semantics:
 
-- `describe`: recognition model creates chapter grouping, chapter descriptions, and per-photo scene descriptions. When photos carry `clusterId` (#232), `describe` becomes **cluster-aware** and may run **concurrently** across clusters (see `design.md` / `v3-requirements.md §4.1`); when `clusterId` is absent it degrades to the current single-batch behavior.
+- `describe`: recognition model creates chapter grouping, chapter descriptions, and per-photo scene descriptions. When photos carry `clusterId` (#232), `describe` becomes **cluster-aware** and may run **concurrently** across clusters (见 `design.md`);when `clusterId` is absent it degrades to the current single-batch behavior.
 - `group`: UI progress beat; grouping already happens inside `describe`.
 - `template`: legal candidate selection and deterministic fallback.
 - `preview`: preview tree/pages are ready.
@@ -396,7 +396,7 @@ Rules:
 - No model call; deterministic transform only.
 - `layoutPatch.length` must be at least 1.
 - The Agent emits page patches for SVG/decor surfaces where applicable; it does not write tree-shaped color/font carriers.
-- #236: the Agent ALSO writes each chapter's `subject` into that chapter's `title` role text slot (clamped to the slot `maxChars`) — the chapter title is persisted. Web folds this patch into `draft_json.pages` so the title survives reload/finalize. (This is a deterministic, user-confirmed write at the theme stage; it is NOT the §4.1 analyze invariant about what the LLM writes.)
+- #236: the Agent ALSO writes each chapter's `subject` into that chapter's `title` role text slot (clamped to the slot `maxChars`) — the chapter title is persisted. Web folds this patch into `draft_json.pages` so the title survives reload/finalize. (This is a deterministic, user-confirmed write at the theme stage; it is NOT the analyze-stage invariant about what the LLM writes — that lives in `design.md`.)
 - Web writes the chosen `accentColor/artFont` into the authoring tree and advances `theme -> cover` when applicable.
 - Finalize bakes text color/font carriers from the authoring tree into flat render pages.
 

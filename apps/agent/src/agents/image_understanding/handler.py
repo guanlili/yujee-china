@@ -1,40 +1,28 @@
-"""Real vision stage: Volcano Ark `doubao-seed-1-6-vision` in a single
-multi-image call. V3 design §2 uses visible scene/time signals for grouping;
-the V3 authoring tree has no location/place dimension.
+"""真实识图环节:Volcano Ark `doubao-seed-1-6-vision`,一次多图调用。V3 设计 §2 用可见的
+场景/时间信号来分组;V3 创作树没有 location/place 维度。
 
-Privacy: photo base64 is passed into the upstream HTTP body and then the
-local reference is dropped; we never log it or hand it back to the caller."""
+隐私:照片 base64 被传进上游 HTTP body,随后丢掉本地引用;我们绝不记录它,也绝不把它交回
+给调用方。"""
 
 import asyncio
-from math import ceil
 from pathlib import Path
-import re
 from typing import Any
-
-from pydantic import ValidationError
 
 from ...logging_config import get_logger
 from ...schemas import (
-    Focal,
-    LayoutRequest,
-    PhotoAnalysis,
-    PhotoGroup,
     V3AnalyzePhoto,
     V3Chapter,
     V3ChapterPhoto,
     V3LayoutTree,
-    VisionResult,
 )
 from ...settings import get_settings
-from ...prompts import load_prompt
+from ...prompts import RULES_DIR, load_prompt
 from ... import ai_client
 from ...vision_provider import (
     VisionSlot,
     VisionSlotError,
     ark_vision_slot,
-    estimate_cost_usd,
     openai_vision_slot,
-    select_vision_slot,
 )
 from .schema import V3DescribeResult
 
@@ -43,16 +31,8 @@ _PROMPT_DIR = Path(__file__).resolve().parent
 log = get_logger("vision")
 
 
-_ALLOWED_QUALITY = {"hero", "detail", "fill"}
-_ALLOWED_ORIENT = {"portrait", "landscape", "square"}
-_ALLOWED_PEOPLE = {"0", "1", "2-3", "4+"}
-_ALLOWED_SCENE = {"indoor", "outdoor", "nature", "city", "interior"}
-_ALLOWED_MOOD = {"warm", "cool", "sentimental", "energetic", "quiet"}
-_ALLOWED_TIME = {"morning", "day", "evening", "night"}
-
-
 class VisionError(Exception):
-    """Vision stage failed in a way that should surface as AGENT_VISION_FAILED."""
+    """识图环节以一种应作为 AGENT_VISION_FAILED 外抛的方式失败。"""
 
 
 def _photo_orientation(width: int, height: int) -> str:
@@ -63,379 +43,50 @@ def _photo_orientation(width: int, height: int) -> str:
     return "square"
 
 
-def _build_system_prompt(photo_count: int) -> str:
-    hero_cap = max(1, ceil(photo_count / 3))
-    return (
-        "You analyze a batch of memoir photos for an AI-curated photo album. "
-        "Output STRICT JSON only: a JSON object with keys photos and groups. "
-        "photos must be a JSON array of length equal to the number of input "
-        "images, in the SAME ORDER as the inputs. Do not wrap with code fences "
-        "or commentary.\n\n"
-        "Each photos[] element must be an object with EXACTLY these keys:\n"
-        '  "description": one short English sentence (<=120 chars) about what is visible. '
-        "Describe only what is visible. Do not invent people, places, or events.\n"
-        '  "tags": 3-6 short English keywords (lowercase words or hyphenated phrases).\n'
-        '  "quality": one of "hero" | "detail" | "fill". '
-        'Pick "hero" only for striking, narratively strong images that can carry a full page; '
-        '"detail" for solid supporting shots; "fill" for small / atmospheric / background-quality images.\n'
-        '  "orientation": one of "portrait" | "landscape" | "square" — describe the photo crop.\n'
-        '  "peopleCount": one of "0" | "1" | "2-3" | "4+".\n'
-        '  "scene": one of "indoor" | "outdoor" | "nature" | "city" | "interior".\n'
-        '  "mood": one of "warm" | "cool" | "sentimental" | "energetic" | "quiet".\n'
-        '  "timeOfDay": one of "morning" | "day" | "evening" | "night", or null if uncertain.\n'
-        '  "location": a short free-text guess (e.g. "Kyoto street", "kitchen") or null.\n'
-        '  "focal": the MAIN SUBJECT\'s center in the ORIGINAL photo as '
-        '{"x":0..1,"y":0..1} normalized fractions (x = left→right, y = top→bottom). '
-        "Prefer a face when people are present; otherwise the visual subject. Use "
-        "null when there is no clear subject (then the album centers the photo).\n\n"
-        "groups must be an array of 1-5 objects that cluster adjacent narrative moments:\n"
-        '  "groupId": short stable id such as "g1".\n'
-        '  "label": short English theme label.\n'
-        '  "photoIds": photo ids from the input batch only.\n'
-        '  "role": one of "opening" | "body" | "closing", or null.\n\n'
-        f"HARD RULE: at most {hero_cap} of the {photo_count} photos may have quality=\"hero\". "
-        "If you would exceed the cap, downgrade the weaker ones to \"detail\"."
-    )
-
-
-def _build_user_content(req: LayoutRequest) -> list[dict[str, Any]]:
-    photo_manifest = "\n".join(
-        f"{idx + 1}. photoId={photo.photoId} width={photo.width} height={photo.height}"
-        for idx, photo in enumerate(req.photos)
-    )
-    parts: list[dict[str, Any]] = [
-        {
-            "type": "text",
-            "text": (
-                "User memoir prompt (context only, do not re-emit verbatim):\n"
-                f"{req.prompt}\n\n"
-                f"Photos follow in order (count={len(req.photos)}). "
-                "Use these exact photoId values in groups[].photoIds:\n"
-                f"{photo_manifest}\n\n"
-                'Return {"photos":[...], "groups":[...]} with photos in the same order.'
-            ),
-        }
-    ]
-    for photo in req.photos:
-        parts.append({"type": "image_url", "image_url": {"url": photo.base64}})
-    return parts
-
-
-def _coerce_focal(raw: Any) -> Focal | None:
-    """Parse the model's focal hint into a clamped Focal, or None when absent /
-    malformed (caller then falls back to the centered 0.5/0.5 default). Accepts an
-    {x,y} object; out-of-range numbers are clamped into [0, 1]."""
-    if not isinstance(raw, dict):
-        return None
-    try:
-        x = float(raw.get("x"))  # type: ignore[arg-type]
-        y = float(raw.get("y"))
-    except (TypeError, ValueError):
-        return None
-    x = max(0.0, min(1.0, x))
-    y = max(0.0, min(1.0, y))
-    return Focal(x=x, y=y)
-
-
-def _coerce_one(item: Any, photo_id: str, fallback_orient: str) -> PhotoAnalysis:
-    if not isinstance(item, dict):
-        raise VisionError(f"vision item for {photo_id} is not an object")
-
-    description = str(item.get("description") or "").strip() or "A moment from your story."
-    tags = item.get("tags") or []
-    if not isinstance(tags, list):
-        tags = [str(tags)]
-    tags = [str(t).strip() for t in tags if str(t).strip()][:6]
-    if not tags:
-        tags = ["memoir"]
-
-    quality = str(item.get("quality") or "").lower()
-    if quality not in _ALLOWED_QUALITY:
-        quality = "detail"
-
-    orientation = str(item.get("orientation") or "").lower()
-    if orientation not in _ALLOWED_ORIENT:
-        orientation = fallback_orient
-
-    people = str(item.get("peopleCount") or "").strip()
-    if people not in _ALLOWED_PEOPLE:
-        people = "0"
-
-    scene = str(item.get("scene") or "").lower()
-    if scene not in _ALLOWED_SCENE:
-        scene = "outdoor"
-
-    mood = str(item.get("mood") or "").lower()
-    if mood not in _ALLOWED_MOOD:
-        mood = "warm"
-
-    raw_time = item.get("timeOfDay")
-    time_of_day: str | None
-    if raw_time in (None, "", "null"):
-        time_of_day = None
-    else:
-        candidate = str(raw_time).lower()
-        time_of_day = candidate if candidate in _ALLOWED_TIME else None
-
-    raw_loc = item.get("location")
-    location = None if raw_loc in (None, "", "null") else str(raw_loc).strip()[:80] or None
-
-    focal = _coerce_focal(item.get("focal"))
-
-    try:
-        return PhotoAnalysis(
-            photoId=photo_id,
-            description=description[:240],
-            tags=tags,
-            quality=quality,  # type: ignore[arg-type]
-            orientation=orientation,  # type: ignore[arg-type]
-            focal=focal,
-            peopleCount=people,  # type: ignore[arg-type]
-            scene=scene,  # type: ignore[arg-type]
-            mood=mood,  # type: ignore[arg-type]
-            timeOfDay=time_of_day,  # type: ignore[arg-type]
-            location=location,
-        )
-    except ValidationError as exc:
-        raise VisionError(f"vision item failed schema for {photo_id}: {exc.errors()[:1]}") from exc
-
-
-def _enforce_hero_cap(items: list[PhotoAnalysis]) -> list[PhotoAnalysis]:
-    cap = max(1, ceil(len(items) / 3))
-    hero_indices = [i for i, p in enumerate(items) if p.quality == "hero"]
-    if len(hero_indices) <= cap:
-        return items
-    # Demote the trailing heroes deterministically.
-    for idx in hero_indices[cap:]:
-        items[idx] = items[idx].model_copy(update={"quality": "detail"})
-    log.info("vision.hero_cap_enforced", cap=cap, demoted=len(hero_indices) - cap)
-    return items
-
-
-def _normalize_group_id(raw: Any, fallback: str) -> str:
-    candidate = str(raw or "").strip().lower()
-    candidate = re.sub(r"[^a-z0-9]+", "-", candidate).strip("-")
-    return candidate or fallback
-
-
-def _unique_group_id(base: str, used: set[str]) -> str:
-    if base not in used:
-        used.add(base)
-        return base
-    suffix = 2
-    while f"{base}-{suffix}" in used:
-        suffix += 1
-    unique = f"{base}-{suffix}"
-    used.add(unique)
-    return unique
-
-
-def _fallback_groups(photo_ids: list[str]) -> list[PhotoGroup]:
-    if len(photo_ids) == 1:
-        return [
-            PhotoGroup(groupId="g1", label="Closing", photoIds=[photo_ids[0]], role="closing")
-        ]
-    if len(photo_ids) == 2:
-        return [
-            PhotoGroup(groupId="g1", label="Opening", photoIds=[photo_ids[0]], role="opening"),
-            PhotoGroup(groupId="g2", label="Closing", photoIds=[photo_ids[1]], role="closing"),
-        ]
-
-    return [
-        PhotoGroup(groupId="g1", label="Opening", photoIds=[photo_ids[0]], role="opening"),
-        PhotoGroup(groupId="g2", label="Body", photoIds=photo_ids[1:-1], role="body"),
-        PhotoGroup(groupId="g3", label="Closing", photoIds=[photo_ids[-1]], role="closing"),
-    ]
-
-
-def _sanitize_groups(raw_groups: Any, photo_ids: list[str]) -> list[PhotoGroup]:
-    if not isinstance(raw_groups, list):
-        return _fallback_groups(photo_ids)
-
-    allowed_ids = set(photo_ids)
-    allowed_roles = {"opening", "body", "closing"}
-    used_group_ids: set[str] = set()
-    groups: list[PhotoGroup] = []
-
-    for item in raw_groups:
-        if not isinstance(item, dict):
-            continue
-
-        seen_photo_ids: set[str] = set()
-        group_photo_ids: list[str] = []
-        raw_photo_ids = item.get("photoIds") if isinstance(item.get("photoIds"), list) else []
-        for raw_pid in raw_photo_ids:
-            pid = str(raw_pid)
-            if pid in allowed_ids and pid not in seen_photo_ids:
-                seen_photo_ids.add(pid)
-                group_photo_ids.append(pid)
-        if not group_photo_ids:
-            continue
-
-        idx = len(groups) + 1
-        group_id = _unique_group_id(
-            _normalize_group_id(item.get("groupId"), f"g{idx}"),
-            used_group_ids,
-        )
-        label = str(item.get("label") or "").strip() or f"Group {idx}"
-        raw_role = item.get("role")
-        role = raw_role if isinstance(raw_role, str) and raw_role in allowed_roles else None
-        groups.append(
-            PhotoGroup(
-                groupId=group_id,
-                label=label[:80],
-                photoIds=group_photo_ids,
-                role=role,  # type: ignore[arg-type]
-            )
-        )
-
-    return groups or _fallback_groups(photo_ids)
-
-
-async def analyze(req: LayoutRequest) -> tuple[VisionResult, int, str]:
-    """Run vision on all photos in one batched call. Returns
-    (vision_result, total_tokens_billed_to_vision, resolved_model). The resolved
-    model is the slot's actual model id (doubao or gpt-*), so callers can report
-    the true `models.vision` in Usage instead of hardwiring the ark model — the
-    slot helper is the single source of truth for which provider was hit (#166).
-    Raises VisionError on any failure that should map to AGENT_VISION_FAILED."""
-    settings = get_settings()
-    try:
-        slot = select_vision_slot(settings)
-    except VisionSlotError as exc:
-        raise VisionError(str(exc)) from exc
-
-    fallback_orients = [_photo_orientation(p.width, p.height) for p in req.photos]
-    photo_ids = [p.photoId for p in req.photos]
-    photo_count = len(req.photos)
-    log.info(
-        "vision.call.start",
-        photo_count=photo_count,
-        provider=slot.provider,
-        model=slot.model,
-    )
-
-    messages = [
-        {"role": "system", "content": _build_system_prompt(photo_count)},
-        {"role": "user", "content": _build_user_content(req)},
-    ]
-
-    try:
-        response = await ai_client.chat_completion(
-            base_url=slot.base_url,
-            api_key=slot.api_key,
-            model=slot.model,
-            messages=messages,
-            timeout_seconds=slot.timeout_seconds,
-            temperature=0.2,
-            max_tokens=8192,
-            response_format=slot.response_format,
-            # doubao's `thinking` knob is set here only for the ark slot; the
-            # openai slot's extra_body is always None (OpenAI 400s on `thinking`).
-            extra_body=slot.extra_body,
-        )
-    except ai_client.AIRequestError as exc:
-        raise VisionError(f"vision upstream call failed: {exc}") from exc
-    # Drop our local handle to the user_content (with base64s) before parsing.
-    messages = []  # noqa: F841
-    del messages
-
-    try:
-        raw_text = ai_client.extract_text(response)
-        parsed = ai_client.parse_json_loose(raw_text)
-    except ValueError as exc:
-        raise VisionError(f"vision response unparseable: {exc}") from exc
-
-    prompt_tokens, completion_tokens = ai_client.extract_usage(response)
-
-    raw_groups: Any = []
-    if isinstance(parsed, dict):
-        photos_raw = parsed.get("photos")
-        raw_groups = parsed.get("groups", [])
-    elif isinstance(parsed, list):
-        photos_raw = parsed
-    else:
-        raise VisionError(
-            f"vision response is not a JSON object or array (got {type(parsed).__name__})"
-        )
-
-    if not isinstance(photos_raw, list):
-        raise VisionError(
-            f"vision response photos is not a JSON array (got {type(photos_raw).__name__})"
-        )
-    if len(photos_raw) != photo_count:
-        raise VisionError(
-            f"vision response length {len(photos_raw)} != photo count {photo_count}"
-        )
-
-    analyses = [
-        _coerce_one(item, photo_id=photo_ids[i], fallback_orient=fallback_orients[i])
-        for i, item in enumerate(photos_raw)
-    ]
-    analyses = _enforce_hero_cap(analyses)
-    groups = _sanitize_groups(raw_groups, photo_ids)
-
-    log.info(
-        "vision.call.ok",
-        provider=slot.provider,
-        model=slot.model,
-        photo_count=photo_count,
-        group_count=len(groups),
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        # None for per-image-billed providers (doubao); a USD estimate for GPT.
-        est_cost_usd=estimate_cost_usd(slot.model, prompt_tokens, completion_tokens),
-    )
-    return (
-        VisionResult(photos=analyses, groups=groups),
-        prompt_tokens + completion_tokens,
-        slot.model,
-    )
-
-
 # =============================================================================
-# V3 describe-content (issue #182): one recognition-model call → 章节树.
+# V3 describe-content (issue #182):一次识图模型调用 → 章节树。
 #
-# The model authors ONLY 3 things (v3-requirements §4.1):
-#   ① partition photos into chapters (分章)  ② each chapter `description`
-#   ③ each photo `sceneDescription`
-# Everything else (width/height/orientation/takenAt) is code-filled (WP1.2) and
-# never round-trips through the LLM — see `_assemble_v3_tree`.
+# 模型【只】撰写 3 样东西(v3-requirements §4.1):
+#   ① 把照片分入章节(分章)  ② 每章 `description`
+#   ③ 每张照片 `sceneDescription`
+# 其它一切(width/height/orientation/takenAt)都由代码填充(WP1.2),从不经 LLM 往返
+# —— 见 `_assemble_v3_tree`。
 #
-# Provider failover (architecture §6.8 第 2 条 / v3-impl-plan §6.2): PRIMARY =
-# OpenAI (GPT-5.5 Mini, `OPENAI_*`); FAILOVER = 火山 doubao (`ARK_*`). We降级火山
-# when the OpenAI slot still 5xx/times-out after ai_client's one retry within the
-# tighter `describe_openai_timeout_seconds` budget, OR the whole batch overruns
-# `describe_batch_deadline_seconds`. The降级语义 (先 GPT、自动降级火山) is fixed;
-# the numbers are tunable.
+# Provider failover(architecture §6.8 第 2 条 / v3-impl-plan §6.2):主 =
+# OpenAI (GPT-5.5 Mini, `OPENAI_*`);FAILOVER = 火山 doubao (`ARK_*`)。当 OpenAI slot
+# 在 ai_client 的一次重试后、在更紧的 `describe_openai_timeout_seconds` 预算内仍 5xx/超时,
+# 或整批超出 `describe_batch_deadline_seconds` 时,我们降级火山。降级语义(先 GPT、自动
+# 降级火山)是固定的;数字可调。
 # =============================================================================
 
 
 def _build_v3_system_prompt(language: str) -> str:
     lang_name = "Chinese" if language == "zh" else "English"
-    return load_prompt(
+    # 固定结构(任务 + 输出 JSON 契约)co-located 在 describe_content.md;
+    # 分章启发式是人为可调规则,外置在 prompts/rules/chapter_grouping.md。
+    base = load_prompt(
         _PROMPT_DIR / "describe_content.md",
         LANGUAGE=lang_name,
         common=("json_only", "grounding", "privacy"),
     )
+    grouping = load_prompt(RULES_DIR / "chapter_grouping.md")
+    return f"{base}\n\n{grouping}"
 
 
 def _build_v3_user_content(
     photos: list[V3AnalyzePhoto], prompt_hint: str | None
 ) -> list[dict[str, Any]]:
-    """Build the multi-image user turn. The manifest carries each photoId + its
-    code-computed `takenAt` as the分章 time signal (§4.1(c)), plus — when the
-    browser pre-grouped photos (#232) — an opaque `cluster` label per photo so the
-    model honors cluster boundaries. NO GPS/place is ever placed in the manifest
-    (§3 privacy); `cluster` is a bare same-place/same-time tag, not a coordinate.
+    """构建多图 user turn。清单承载每个 photoId + 其代码算出的 `takenAt` 作为分章时间信号
+    (§4.1(c)),外加 —— 当浏览器对照片做了预分组(#232)—— 逐照片一个不透明的 `cluster`
+    标签,使模型尊重 cluster 边界。清单里绝不放任何 GPS/place(§3 隐私);`cluster` 只是一个
+    裸的 same-place/same-time 标签,不是坐标。
 
-    NOTE: cluster labels are expressed in the SIMPLE-id space (1,2,3…) the model
-    sees — `photos` here are already remapped by `_describe_call`, and their
-    `clusterId` rides through `model_copy`. They are RE-LABELED to c1/c2/… in the
-    order clusters first appear in THIS call's manifest so the model never sees a
-    global cluster index that doesn't match its local batch."""
-    # Re-label this call's clusters to dense local c1/c2/… (order of first
-    # appearance). Photos without a clusterId get no tag → model groups them freely.
+    注意:cluster 标签表达在模型看到的简单 id 空间(1,2,3…)里 —— 这里的 `photos` 已被
+    `_describe_call` 重映射过,它们的 `clusterId` 随 `model_copy` 一起带过。它们按 cluster
+    在【本次】调用清单里首次出现的顺序被重新标记为 c1/c2/…,使模型永远看不到一个与其本地批次
+    不匹配的全局 cluster 索引。"""
+    # 把本次调用的 cluster 重新标记为稠密的本地 c1/c2/…(按首次出现顺序)。没有 clusterId 的
+    # 照片不带标签 → 模型自由分组。
     local_label: dict[str, str] = {}
     for photo in photos:
         cid = photo.clusterId
@@ -452,35 +103,24 @@ def _build_v3_user_content(
         manifest_lines.append(line)
     manifest = "\n".join(manifest_lines)
     hint_block = (
-        f"User memoir prompt (context only, do not re-emit verbatim):\n{prompt_hint}\n\n"
+        f"用户的纪念册提示(仅作背景,不要原样照搬):\n{prompt_hint}\n\n"
         if prompt_hint
         else ""
     )
-    cluster_block = ""
-    if has_clusters:
-        cluster_block = (
-            "\n\nThese photos are PRE-GROUPED into clusters (the `cluster` tag in "
-            "the manifest marks which cluster each photo belongs to). Rules:\n"
-            "  - Photos of the SAME cluster MUST stay together and go into "
-            "chapter(s) that contain NO photo from any other cluster.\n"
-            "  - Photos of DIFFERENT clusters must NEVER be merged into one "
-            "chapter.\n"
-            "  - A cluster MAY be split into several adjacent sub-chapters if it "
-            "is large and spans distinct scenes — but each such chapter still "
-            "holds only that one cluster's photos.\n"
-            "  - Emit clusters in the manifest order (c1, then c2, …)."
-        )
+    # cluster 分组规则是人为可调规则,外置在 prompts/rules/cluster_grouping.md。
+    cluster_block = (
+        "\n\n" + load_prompt(RULES_DIR / "cluster_grouping.md") if has_clusters else ""
+    )
     parts: list[dict[str, Any]] = [
         {
             "type": "text",
             "text": (
                 f"{hint_block}"
-                f"Photos follow in order (count={len(photos)}). Use these exact "
-                "photoId values; takenAt is the capture-time signal for chapter "
-                "boundaries:\n"
+                f"照片按顺序排列如下(共 {len(photos)} 张)。请使用这些确切的 "
+                "photoId 值;takenAt 是用于划定章节边界的拍摄时间信号:\n"
                 f"{manifest}"
                 f"{cluster_block}\n\n"
-                'Return {"chapters":[...]} per the system instructions.'
+                '按系统指令返回 {"chapters":[...]}。'
             ),
         }
     ]
@@ -496,17 +136,15 @@ def _orientation(width: int, height: int) -> str:
 def _assemble_v3_tree(
     parsed: Any, photos: list[V3AnalyzePhoto]
 ) -> V3LayoutTree:
-    """Fuse the model's chapter partition (LLM-authored) with the code-filled
-    deterministic photo attrs into a validated V3LayoutTree.
+    """把模型的章节切分(LLM 撰写)与代码填充的确定性照片属性融合成一个经校验的
+    V3LayoutTree。
 
-    Validation guards (§4.1 一图一章不跨章 + LLM 只写 3 处):
-      * Every input photo must land in exactly ONE chapter; duplicate, unknown,
-        or omitted photoIds make the model output invalid.
-      * Chapter `description` and photo `sceneDescription` must be present; code
-        never authors fallback prose for those LLM-owned fields.
-      * width/height/orientation/takenAt come ONLY from the request — the model's
-        copies (if any) are ignored.
-      * accentColor/artFont stay null placeholders (theme stage fills them, §4.1).
+    校验守卫(§4.1 一图一章不跨章 + LLM 只写 3 处):
+      * 每张输入照片必须恰好落入【一个】章节;重复、未知或遗漏的 photoId 使模型输出无效。
+      * 章节 `description` 和照片 `sceneDescription` 必须存在;代码绝不为那些 LLM 所有的
+        字段撰写兜底文案。
+      * width/height/orientation/takenAt 【只】来自请求 —— 模型的副本(若有)被忽略。
+      * accentColor/artFont 保持 null 占位(theme 环节填它们,§4.1)。
     """
     by_id = {p.photoId: p for p in photos}
     raw_chapters = parsed.get("chapters") if isinstance(parsed, dict) else None
@@ -568,7 +206,7 @@ def _assemble_v3_tree(
             V3Chapter(
                 chapterId=f"ch_{len(chapters) + 1}",
                 description=description,
-                accentColor=None,  # theme stage fills (§4.1)
+                accentColor=None,  # theme 环节填(§4.1)
                 artFont=None,
                 photos=chapter_photos,
             )
@@ -611,31 +249,29 @@ def _remap_describe_photo_ids(parsed: Any, real_by_simple: dict[str, str]) -> An
 
 
 # =============================================================================
-# WP-C (#232): cluster-aware describe — partition by clusterId, schedule whole
-# clusters into concurrent routes by COUNT, merge local trees in global order.
+# WP-C (#232):cluster 感知的 describe —— 按 clusterId 切分,按张数把整簇调度进并发
+# 路由,再按全局顺序合并各局部树。
 # =============================================================================
 
 
 def _partition_into_clusters(
     photos: list[V3AnalyzePhoto],
 ) -> list[list[V3AnalyzePhoto]]:
-    """Group photos by `clusterId` (the browser's same-place/same-time label,
-    #232). Returns a list of clusters; each cluster keeps its photos in input
-    order. Clusters are SEQUENCED by their earliest `takenAt` (time order); ties
-    and missing takenAt fall back to the cluster's first-appearance order. Cluster
-    = chapter floor: a cluster is never split across routes.
+    """按 `clusterId`(浏览器的 same-place/same-time 标签,#232)给照片分组。返回一个 cluster
+    列表;每个 cluster 把它的照片保持在输入顺序。Cluster 按其最早的 `takenAt` 排序(时间
+    顺序);并列与缺失 takenAt 时回退到 cluster 的首次出现顺序。Cluster = 章节下界:一个
+    cluster 绝不跨路由拆分。
 
-    Photos whose `clusterId` is None are NOT merged together — each null photo is
-    its own singleton "cluster" so the model is free to group it. When EVERY photo
-    is null this yields one singleton per photo, which the count-based scheduler
-    still collapses into the single legacy route (≤20) or balanced routes."""
-    order: list[str] = []  # cluster keys in first-appearance order
+    `clusterId` 为 None 的照片不被合并到一起 —— 每张 null 照片自成一个单元素「cluster」,
+    使模型可自由分组它。当【每张】照片都是 null 时,这会得到逐照片一个单元素 cluster,基于
+    张数的调度器仍把它们收拢成单条遗留路由(≤20)或均衡路由。"""
+    order: list[str] = []  # cluster key,按首次出现顺序
     members: dict[str, list[V3AnalyzePhoto]] = {}
     null_seq = 0
     for photo in photos:
         if photo.clusterId is None:
             null_seq += 1
-            key = f"\x00null:{null_seq}"  # unique sentinel → singleton cluster
+            key = f"\x00null:{null_seq}"  # 唯一哨兵 → 单元素 cluster
         else:
             key = photo.clusterId
         if key not in members:
@@ -646,9 +282,9 @@ def _partition_into_clusters(
     appear_idx = {key: i for i, key in enumerate(order)}
 
     def _earliest(key: str) -> tuple[int, str, int]:
-        # Sort key: (has_taken_at?, earliest takenAt iso, first-appearance index).
-        # Photos with takenAt sort before those without; ISO strings sort
-        # chronologically; first-appearance index is the stable tiebreaker.
+        # 排序键:(有 takenAt?, 最早 takenAt 的 iso, 首次出现索引)。
+        # 有 takenAt 的照片排在没有的前面;ISO 字符串按时间顺序排;首次出现索引是稳定的
+        # 平局裁决。
         takens = [
             p.exif.takenAt
             for p in members[key]
@@ -664,17 +300,14 @@ def _partition_into_clusters(
 def _plan_describe_routes(
     clusters: list[list[V3AnalyzePhoto]], route_count: int
 ) -> list[list[V3AnalyzePhoto]]:
-    """Bin-pack whole clusters into `route_count` routes balanced by photo count
-    (greedy largest-cluster-first into the currently-lightest route). A cluster is
-    NEVER split across routes (簇不跨路). Cluster global order is recoverable at
-    merge time from each photo's position, so packing order here is irrelevant to
-    the final chapter sequence. Empty routes are dropped."""
+    """把整簇装箱进 `route_count` 条路由,按照片数均衡(贪心:最大簇优先放进当前最轻的
+    路由)。一个 cluster 绝不跨路由拆分(簇不跨路)。Cluster 的全局顺序在合并时可从每张
+    照片的位置恢复,所以这里的装箱顺序与最终章节序列无关。空路由被丢弃。"""
     if route_count <= 1:
         flat = [p for cluster in clusters for p in cluster]
         return [flat] if flat else []
 
-    # Largest clusters first so a single oversized cluster lands alone-ish and
-    # small clusters fill the gaps → balanced张数 (bin-pack first-fit-decreasing).
+    # 最大簇优先,使单个超大簇大致独占一路、小簇填补空隙 → 均衡张数(装箱 first-fit-decreasing)。
     ordered = sorted(clusters, key=len, reverse=True)
     routes: list[list[V3AnalyzePhoto]] = [[] for _ in range(route_count)]
     loads = [0] * route_count
@@ -686,8 +319,8 @@ def _plan_describe_routes(
 
 
 def _route_count_for(total: int, settings: Any) -> int:
-    """Count-driven concurrency WIDTH (#232): ≤lo → 1, >lo → 2, >hi → 3 (capped
-    by describe_max_concurrency). Thresholds never re-cut semantic clusters."""
+    """张数驱动的并发宽度(#232):≤lo → 1,>lo → 2,>hi → 3(受 describe_max_concurrency
+    封顶)。阈值绝不重新切割语义 cluster。"""
     lo = settings.describe_concurrency_threshold_lo
     hi = settings.describe_concurrency_threshold_hi
     if total <= lo:
@@ -699,22 +332,17 @@ def _route_count_for(total: int, settings: Any) -> int:
 def _merge_route_trees(
     sequenced_photos: list[V3AnalyzePhoto], route_trees: list[V3LayoutTree]
 ) -> V3LayoutTree:
-    """Concatenate per-route local chapter trees into one global tree (#232).
+    """把各路由的局部章节树拼接成一个全局树(#232)。
 
-    `sequenced_photos` is the photo list already flattened in GLOBAL CLUSTER ORDER
-    (clusters sorted by earliest takenAt — see `_partition_into_clusters`), NOT raw
-    request order. Routes carry disjoint sets of whole clusters, so ordering each
-    route's chapters by the sequenced index of their first photo lands chapters in
-    cluster (time) order across routes; a cluster sub-chaptered within one route
-    stays contiguous because it occupies a contiguous range of the sequenced order.
-    Chapters are then renumbered ch_1..N; photo order within a chapter is preserved
-    as authored. The union MUST cover every photo exactly once (each route already
-    passed `_assemble_v3_tree`'s one-photo-one-chapter guard on its slice; here we
-    re-assert global coverage so a scheduling/merge bug can't silently drop or
-    duplicate a photo). We ALSO enforce the cluster boundary deterministically: a
-    single chapter may not mix photos from two different (non-null) clusters — the
-    prompt requests this, and a misbehaving model that merges clusters is rejected
-    here so 异簇不并章 holds even if the model ignores the instruction."""
+    `sequenced_photos` 是已按【全局 cluster 顺序】(cluster 按最早 takenAt 排序 ——
+    见 `_partition_into_clusters`)展平的照片列表,【不是】原始请求顺序。各路由承载互不相交
+    的整簇集合,所以按每路由各章首照片的 sequenced 索引来排序,就让跨路由的章节落在 cluster
+    (时间)顺序上;某路由内被再分成子章节的一个 cluster 仍保持连续,因为它占据 sequenced
+    顺序里一段连续区间。随后章节被重编号 ch_1..N;章节内的照片顺序按撰写保持不变。这个并集
+    必须恰好覆盖每张照片一次(每条路由已在自己的切片上通过 `_assemble_v3_tree` 的一图一章
+    守卫;这里我们再断言全局覆盖,使调度/合并 bug 无法悄悄丢掉或重复一张照片)。我们【还】
+    确定性地强制 cluster 边界:单个章节不得混入两个不同(非 null)cluster 的照片 —— prompt
+    已这样要求,而一个把 cluster 合并的失常模型在这里被拒,使异簇不并章即便模型无视指令也成立。"""
     global_pos = {p.photoId: i for i, p in enumerate(sequenced_photos)}
     cluster_of = {p.photoId: p.clusterId for p in sequenced_photos}
 
@@ -722,8 +350,8 @@ def _merge_route_trees(
     for tree in route_trees:
         for ch in tree.chapters:
             ordered_chapters.append(ch)
-    # Stable sort by the sequenced (cluster/time) index of each chapter's first
-    # photo → chapters land in global cluster order across routes.
+    # 按每章首照片的 sequenced(cluster/时间)索引做稳定排序 → 跨路由的章节落在全局
+    # cluster 顺序上。
     ordered_chapters.sort(
         key=lambda ch: global_pos.get(ch.photos[0].photoId, len(global_pos))
         if ch.photos
@@ -741,7 +369,7 @@ def _merge_route_trees(
                 )
             seen.add(ph.photoId)
             cid = cluster_of.get(ph.photoId)
-            if cid is not None:  # null-cluster photos carry no boundary constraint
+            if cid is not None:  # null-cluster 照片不带边界约束
                 chapter_clusters.add(cid)
         if len(chapter_clusters) > 1:
             raise VisionError(
@@ -788,9 +416,8 @@ def _is_recoverable_describe_error(exc: VisionError) -> bool:
 async def _describe_call(
     slot: VisionSlot, photos: list[V3AnalyzePhoto], language: str, prompt_hint: str | None
 ) -> tuple[V3LayoutTree, int]:
-    """One recognition-model call on `slot`. Returns (tree, tokens_billed). Raises
-    ai_client.AIRequestError on upstream failure (caller decides failover) and
-    VisionError on an unusable response.
+    """在 `slot` 上做一次识图模型调用。返回 (tree, tokens_billed)。上游失败时抛
+    ai_client.AIRequestError(由调用方决定 failover),响应不可用时抛 VisionError。
 
     模型漏/重/错认 photoId 时,在同一 slot 内带纠正提示重抽,最多 MAX_DESCRIBE_ATTEMPTS
     次(累计计费 tokens);用尽仍不完整才抛 VisionError。"""
@@ -813,13 +440,12 @@ async def _describe_call(
         ]
         if attempt > 0 and last_err is not None:
             # 上一次漏/重/错认照片 → 明确要求覆盖全部 N 张再重抽(升温打破确定性偷懒)。
+            # 重试纠正语是人为可调规则,外置在 prompts/rules/describe_retry.md。
             messages.append(
                 {
                     "role": "user",
-                    "content": (
-                        f"上一次输出有问题:{last_err}。必须把全部 {n} 张照片"
-                        f"(序号 1 到 {n})每一张都恰好放进一个章节——一张都不能漏、"
-                        f"不能重复、不能用不存在的序号。请重新输出完整 JSON。"
+                    "content": load_prompt(
+                        RULES_DIR / "describe_retry.md", N=str(n), ERR=str(last_err)
                     ),
                 }
             )
@@ -834,7 +460,7 @@ async def _describe_call(
             response_format=slot.response_format,
             extra_body=slot.extra_body,
         )
-        # Drop the local handle to user content (base64s) before parsing (§3 privacy).
+        # 解析前丢掉对 user content(base64)的本地引用(§3 隐私)。
         messages = []  # noqa: F841
         del messages
 
@@ -879,27 +505,24 @@ async def _describe_on_slot(
     *,
     settings: Any,
 ) -> tuple[V3LayoutTree, int, int]:
-    """Cluster-aware describe on ONE provider slot (#232). Returns
-    (merged_tree, tokens_billed, route_count).
+    """在【单个】provider slot 上做 cluster 感知的 describe(#232)。返回
+    (merged_tree, tokens_billed, route_count)。
 
-    - Partition photos by clusterId, schedule whole clusters into N count-driven
-      concurrent routes (N=1 degrades to the legacy single call).
-    - Run each route's `_describe_call` concurrently via asyncio.gather; each route
-      keeps its own omitted-photo retry safety net over its own slice.
-    - Merge the per-route local trees in global cluster order, renumber ch_1..N.
+    - 按 clusterId 切分照片,把整簇调度进 N 条张数驱动的并发路由(N=1 退化为遗留的单次调用)。
+    - 经 asyncio.gather 并发跑每条路由的 `_describe_call`;每条路由在自己的切片上保留各自的
+      漏图重试安全网。
+    - 按全局 cluster 顺序合并各路由的局部树,重编号 ch_1..N。
 
-    Raises ai_client.AIRequestError if ANY route hits an upstream transport
-    failure (caller decides failover); VisionError on an unusable/merge-invalid
-    response. gather(return_exceptions=False) means the first transport error
-    propagates and the slow-but-healthy paths are cancelled — failover then runs
-    ONCE on the other slot for the whole batch, never per-route, so concurrency
-    never multiplies the failover fan-out."""
+    若【任一】路由命中上游传输失败,抛 ai_client.AIRequestError(由调用方决定 failover);
+    响应不可用/合并非法时抛 VisionError。gather(return_exceptions=False) 意味着首个传输错误
+    传播、慢但健康的路径被取消 —— 然后 failover 对整批在另一个 slot 上跑【一次】,绝不逐路由,
+    使并发绝不放大 failover 的扇出。"""
     clusters = _partition_into_clusters(photos)
     route_count = _route_count_for(len(photos), settings)
     routes = _plan_describe_routes(clusters, route_count)
 
     if len(routes) <= 1:
-        # Legacy single-batch path (also the all-null backward-compatible case).
+        # 遗留的单批路径(也是全 null 的向后兼容情形)。
         tree, tokens = await _describe_call(slot, photos, language, prompt_hint)
         return tree, tokens, 1
 
@@ -917,8 +540,8 @@ async def _describe_on_slot(
     )
     route_trees = [tree for tree, _ in results]
     total_tokens = sum(tokens for _, tokens in results)
-    # Merge in GLOBAL CLUSTER ORDER: flatten the takenAt-sequenced partition so the
-    # merge orders cross-route chapters by cluster/time, not by raw request order.
+    # 按【全局 cluster 顺序】合并:把 takenAt 排序后的切分展平,使合并按 cluster/时间
+    # 而非原始请求顺序来排跨路由的章节。
     sequenced = [p for cluster in clusters for p in cluster]
     merged = _merge_route_trees(sequenced, route_trees)
     return merged, total_tokens, len(routes)
@@ -930,18 +553,15 @@ async def describe_content(
     language: str,
     prompt_hint: str | None = None,
 ) -> V3DescribeResult:
-    """V3 analyze step (b): one recognition-model call → 章节树 (§4.1).
+    """V3 analyze 步骤 (b):一次识图模型调用 → 章节树(§4.1)。
 
-    Failover: try OpenAI (GPT-5.5 Mini) first within the tighter describe budget;
-    on AIRequestError (5xx/timeout after ai_client's retry), or when the whole
-    batch exceeds `describe_batch_deadline_seconds`,降级火山 doubao (ARK).
-    OpenAI 4xx/missing-key failures are configuration/request errors and do not
-    fail over. The whole call is additionally bounded by
-    `describe_batch_deadline_seconds` so a slow-but-not-erroring primary still
-    triggers failover instead of hanging the analyze job.
+    Failover:先在更紧的 describe 预算内试 OpenAI (GPT-5.5 Mini);遇 AIRequestError
+    (ai_client 重试后仍 5xx/超时),或整批超过 `describe_batch_deadline_seconds` 时,
+    降级火山 doubao (ARK)。OpenAI 的 4xx/缺 key 失败是配置/请求错误,不做 failover。整次
+    调用还额外受 `describe_batch_deadline_seconds` 约束,使一个慢但不报错的主 provider 仍会
+    触发 failover,而非把 analyze 作业卡死。
 
-    Raises VisionError if BOTH providers fail or neither is configured — the route
-    maps it to AGENT_VISION_FAILED."""
+    若【两个】provider 都失败或都没配,抛 VisionError —— 路由把它映射成 AGENT_VISION_FAILED。"""
     settings = get_settings()
     photo_count = len(photos)
     if photo_count == 0:
@@ -971,10 +591,9 @@ async def describe_content(
         photo_count=photo_count,
     )
     try:
-        # The deadline wraps the WHOLE concurrent route set (asyncio.gather inside
-        # _describe_on_slot). One slow route therefore trips failover ONCE for the
-        # entire batch — never per-route — so concurrency never multiplies the
-        # failover fan-out. Wall-clock ≈ the slowest route, not their sum (#232).
+        # 这个 deadline 包住【整个】并发路由集合(_describe_on_slot 内部的 asyncio.gather)。
+        # 因此一条慢路由对整批触发 failover【一次】—— 绝不逐路由 —— 使并发绝不放大 failover
+        # 扇出。挂钟 ≈ 最慢的那条路由,而非它们之和(#232)。
         tree, tokens, routes = await asyncio.wait_for(
             _describe_on_slot(
                 primary_slot, photos, language, prompt_hint, settings=settings
@@ -996,7 +615,7 @@ async def describe_content(
             call_count=routes,
         )
     except asyncio.TimeoutError as exc:
-        # Batch deadline overrun → 降级火山.
+        # 整批超出 deadline → 降级火山。
         log.warning(
             "v3_describe.primary_failover",
             provider=primary_slot.provider,
@@ -1010,11 +629,10 @@ async def describe_content(
             provider=primary_slot.provider,
             reason=exc.kind or type(exc).__name__,
         )
-    # A VisionError (unparseable / unusable response) is NOT a transport
-    # failure; it propagates rather than wasting a second provider on the same
-    # malformed-output class of bug.
+    # VisionError(无法解析 / 不可用的响应)【不是】传输失败;它向外传播,而不是把第二个
+    # provider 浪费在同一类畸形输出的 bug 上。
 
-    # --- FAILOVER: 火山 doubao (ARK) -----------------------------------------
+    # --- FAILOVER:火山 doubao (ARK) -----------------------------------------
     try:
         fallback_slot = ark_vision_slot(settings)
     except VisionSlotError as exc:
@@ -1028,12 +646,11 @@ async def describe_content(
         model=fallback_slot.model,
         photo_count=photo_count,
     )
-    # The failover call is bounded by the ark slot's own per-call timeout
-    # (ark_timeout_seconds + ai_client's one retry); the whole analyze job is in
-    # turn capped by background_task_timeout_seconds. We deliberately do NOT also
-    # wrap it in the primary's tighter `describe_batch_deadline_seconds` budget —
-    # that deadline exists to flip a slow-but-healthy GPT over to 火山, not to
-    # prematurely cut 火山 (whose own per-call ceiling is the larger ark budget).
+    # failover 调用受 ark slot 自己的逐次调用超时约束(ark_timeout_seconds + ai_client 的
+    # 一次重试);整个 analyze 作业则受 background_task_timeout_seconds 封顶。我们刻意【不】
+    # 把它也包进主 provider 那更紧的 `describe_batch_deadline_seconds` 预算 —— 那个 deadline
+    # 存在的意义是把慢但健康的 GPT 翻向火山,而非过早切断火山(火山自己的逐次调用上限是更大的
+    # ark 预算)。
     try:
         tree, tokens, routes = await _describe_on_slot(
             fallback_slot, photos, language, prompt_hint, settings=settings
@@ -1048,8 +665,8 @@ async def describe_content(
         chapters=len(tree.chapters),
         routes=routes,
     )
-    # call_count = primary attempt (1) + the failover slot's真实路数 so Usage
-    # reflects that failover happened AND how many concurrent calls produced it.
+    # call_count = 主 provider 的尝试(1)+ failover slot 的真实路数,使 Usage 既反映
+    # failover 发生过,也反映是多少次并发调用产出了它。
     return V3DescribeResult(
         tree=tree,
         tokens_billed=tokens,

@@ -1,4 +1,4 @@
-"""theme_recommend agent: theme + chapter-color recommendation (V3 §4.3)."""
+"""theme_recommend agent:主题 + 章节配色推荐(V3 §4.3)。"""
 
 from __future__ import annotations
 

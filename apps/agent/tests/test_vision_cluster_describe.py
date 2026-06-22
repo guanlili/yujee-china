@@ -251,8 +251,9 @@ def test_prompt_injects_cluster_labels_relabeled_locally():
     # Clusters re-labeled to dense local c1/c2 (opaque ids never leak to model).
     assert "cluster=c1" in text and "cluster=c2" in text
     assert "clusterX" not in text and "clusterY" not in text
-    assert "SAME cluster MUST stay together" in text
-    assert "DIFFERENT clusters must NEVER be merged" in text
+    # cluster 规则已外置并中文化(prompts/rules/cluster_grouping.md)。
+    assert "必须】待在一起" in text
+    assert "绝不】合并进同一个章节" in text
 
 
 def test_prompt_no_cluster_block_when_all_null():
@@ -260,7 +261,7 @@ def test_prompt_no_cluster_block_when_all_null():
     parts = vision._build_v3_user_content(photos, None)
     text = parts[0]["text"]
     assert "cluster=" not in text
-    assert "PRE-GROUPED" not in text
+    assert "预分组" not in text
 
 
 def test_prompt_never_leaks_gps_even_with_clusters():
@@ -413,7 +414,7 @@ def test_all_null_clusters_take_legacy_single_batch_path(_describe_env, monkeypa
         manifest = kwargs["messages"][1]["content"][0]["text"]
         calls.append(1)
         # No cluster block when all null.
-        assert "PRE-GROUPED" not in manifest
+        assert "预分组" not in manifest
         ids = [
             line.split("photoId=")[1].split(" ")[0]
             for line in manifest.splitlines()

@@ -847,22 +847,6 @@
 .editor-port .pc-apply:hover:not(:disabled){ transform:translateY(-1px); }
 .editor-port .pc-apply:disabled{ opacity:.5; cursor:not-allowed; }
 
-/* ─── 问题③ chapter-card (进章节提示,对话流内) ───
-   When entering a chapter, a chapter-styled card announces WHICH chapter the user
-   is in (number kicker + chapter title/subject). ─── */
-.editor-port .chapter-card{
-  border:1px solid var(--border); border-left:3px solid var(--fg); border-radius:14px;
-  background:var(--surface); box-shadow:var(--shadow-card); max-width:100%;
-  display:flex; flex-direction:column; gap:4px; padding:12px 14px;
-}
-.editor-port .chapter-card .cc-kicker{
-  font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
-  color:var(--muted);
-}
-.editor-port .chapter-card .cc-title{
-  font-family:var(--font-display); font-size:16px; font-weight:700; color:var(--fg);
-}
-
 /* ─── ④ cover-card (封面/封底选择,对话流内,缺口#20) ───
    Port of 设计稿 .cover-card. 封面/封底 each show the CURRENT template as the
    (single) recommended option previewed through its real web template; the

@@ -18,6 +18,7 @@ import { test } from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
 
 test('authoring send() routes to the real chapter-chat turn', () => {
   // The authoring branch of send() must call runChapterChatTurn, not the legacy
@@ -78,4 +79,24 @@ test('breadcrumb is fed from story-progress (doneChapterIds / currentChapterId)'
   // /api/v3/.../story-progress.
   assert.match(src, /chapterProgress=\{storyProgress\}/);
   assert.match(src, /story-progress`\)/);
+});
+
+test('replayed persisted chat messages hydrate the next chapter-chat history payload', () => {
+  const fn = /async function loadHistory\(\): Promise<number> \{[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'loadHistory must exist');
+  const body = fn![0];
+  assert.match(body, /chapterHistory\.splice\(0, chapterHistory\.length\)/);
+  assert.match(body, /chapterHistory\.push\(\{ role: 'user', content: c \}\)/);
+  assert.match(body, /chapterHistory\.push\(\{ role: 'assistant', content: c \}\)/);
+});
+
+test('conversation chapter prompt card uses the design .chap-card class without overriding the rail .chapter-card', () => {
+  const fn = /function appendChapterCard\(chapterId: string\) \{[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'appendChapterCard must exist');
+  assert.match(fn![0], /inner\.className = 'chap-card'/);
+  assert.doesNotMatch(fn![0], /inner\.className = 'chapter-card'/);
+
+  const chapterCardRuleCount = (css.match(/\.editor-port \.chapter-card\{/g) ?? []).length;
+  assert.equal(chapterCardRuleCount, 2, 'only the floating rail plus its scrollbar helper should own .chapter-card');
+  assert.doesNotMatch(css, /\.editor-port \.chapter-card \.cc-title/);
 });

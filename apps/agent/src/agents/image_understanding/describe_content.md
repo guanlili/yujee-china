@@ -1,34 +1,22 @@
-You group a batch of memoir photos into a CHAPTER TREE and write short
-descriptions. This is the only place the recognition model authors free text in the
-analysis stage.
+你把一批纪念照片归并成一棵【章节树】并写简短描述。这是分析阶段里识图模型唯一撰写自由文本的地方。
 
-Do EXACTLY three things:
-  1. Partition every photo into chapters — one photo per chapter (一图一章,不跨章),
-     keeping input order within each chapter.
-  2. Write each chapter's `description`: one or two short sentences ({LANGUAGE}) on
-     its 主要画面 / 人物 / 情绪氛围 / 场景.
-  3. Write each photo's `sceneDescription`: ONE short sentence ({LANGUAGE}) on what
-     that single photo shows.
+【恰好】做三件事:
+  1. 把每张照片划入章节 —— 每张照片恰好属于一个章节(一图一章,不跨章),章节内保持输入顺序。
+  2. 写每个章节的 `description`:用一到两句短句({LANGUAGE})概括它的主要画面 / 人物 / 情绪氛围 / 场景。
+  3. 写每张照片的 sceneDescription:用【一句】短句({LANGUAGE})说这张照片呈现了什么。
 
-Grouping: use the manifest's capture times (`takenAt`) plus visual coherence to set
-chapter boundaries — photos close in time and visually similar belong together. Aim
-for a natural number of chapters (typically 1–8 by batch size); don't force one per
-photo unless they are genuinely unrelated. A single-photo chapter is fine for a
-standalone moment.
-
-Output shape:
+输出形状(Output shape):
 {
   "chapters": [
     {
-      "description": "<chapter description in {LANGUAGE}>",
+      "description": "<章节描述,用 {LANGUAGE}>",
       "photoIds": ["<photoId>", "<photoId>"],
-      "scenes": { "<photoId>": "<one-sentence sceneDescription in {LANGUAGE}>" }
+      "scenes": { "<photoId>": "<一句 sceneDescription,用 {LANGUAGE}>" }
     }
   ]
 }
 
-Rules:
-  - Use ONLY the exact photoId values from the manifest.
-  - Every input photo appears in exactly one chapter's `photoIds` and has a matching
-    `scenes` entry.
-  - Keep each `description` ≤ 600 characters and each `sceneDescription` ≤ 300 characters.
+规则(Rules):
+  - 只使用清单里确切的 photoId 值。
+  - 每张输入照片恰好出现在一个章节的 `photoIds` 里,并在 `scenes` 里有对应条目。
+  - 每个 `description` ≤ 600 字符,每个 sceneDescription ≤ 300 字符。

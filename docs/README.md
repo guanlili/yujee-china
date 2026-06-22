@@ -1,13 +1,18 @@
 # Yujee 文档索引
 
-> 不要从头到尾读这些文档。按角色加载,见根目录 `CLAUDE.md §3`。
-
----
+> 不要从头到尾读这些文档。按角色加载,见根目录 `CLAUDE.md`。
 
 ## 总入口
 
 - [`../CLAUDE.md`](../CLAUDE.md) —— 项目说明 + 角色 → 文档映射 + 不变式
-- [`architecture.md`](./architecture.md) —— 架构骨架 + 十条不变式完整版
+- [`architecture.md`](./architecture.md) —— 架构骨架 + 不变式完整版
+
+## Agent 子文档(`docs/agent/`)
+
+| 文件 | 内容 | 谁需要 |
+|---|---|---|
+| [`agent/contract.md`](./agent/contract.md) | Web↔Agent 协议:req/res + 错误码 + 状态机 | Agent 接入(Web 侧)· Agent 服务作者 |
+| [`agent/design.md`](./agent/design.md) | Agent 内部分层 + pipeline + failover + validation | Agent 服务作者 |
 
 ## Web 子文档(`docs/web/`)
 
@@ -18,24 +23,21 @@
 | [`web/conventions.md`](./web/conventions.md) | 命名 + Route/Service/Repo 模板 | 所有 Web 工程师 |
 | [`web/errors.md`](./web/errors.md) | AppError + 错误码集中表 | 写 route / service 的人 |
 | [`web/database.md`](./web/database.md) | 所有表 schema + 索引 + 状态机 | 写 repo / migration 的人 |
-| [`web/api.md`](./web/api.md) | API 接口清单 + 浏览器三个核心流程 | 写 API / UI 的人 |
+| [`web/api.md`](./web/api.md) | API 接口清单 + 浏览器核心流程 | 写 API / UI 的人 |
 
-## Agent 子文档(`docs/agent/`)
+## 部署(`docs/deploy/`)
 
 | 文件 | 内容 | 谁需要 |
 |---|---|---|
-| [`agent/contract.md`](./agent/contract.md) | 对外协议 + req/res + 错误码 | Agent 接入(Web)+ Agent 服务作者 |
-| `agent/design.md` | V2 内部 pipeline 冻结稿(V3 只作历史参照)| Agent 服务作者 |
-| [`agent/v3-requirements.md`](./agent/v3-requirements.md) | **V3 重构总框架需求**(已评审,需求真相源)| 做 V3 的所有人 · 起手先读 |
-| [`agent/v3-implementation-plan.md`](./agent/v3-implementation-plan.md) | **V3 实施计划**(Phase / WP / 依赖图 / 风险 / 施工决策)| PM + 各 WP owner |
+| [`deploy/env.production.md`](./deploy/env.production.md) | 生产环境变量参考(按 Web / Agent 分组) | Infra · 上线核对 |
 
 ---
 
 ## 阅读流程提醒
 
-1. 任何任务开始前 → 读 `../CLAUDE.md`
-2. 然后读 `architecture.md`
-3. 然后按 `CLAUDE.md §3` 的角色清单加载起手子文档
-4. 任务过程中遇到清单外的细节,按需打开对应子文档查证
+1. 任何任务开始前 → 读 [`../CLAUDE.md`](../CLAUDE.md)
+2. 然后读 [`architecture.md`](./architecture.md)
+3. 然后按 `CLAUDE.md` 的角色清单加载起手子文档
+4. 任务过程中遇到清单外细节,按需打开对应子文档查证
 
 修改任何子文档需要架构师 review。

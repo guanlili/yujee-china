@@ -2,7 +2,7 @@
 
 > **前置阅读**: `CLAUDE.md` → `docs/architecture.md` → `docs/web/layering.md`
 >
-> 谁读这份: 所有 Web 工程师在创建新文件前必读。
+> 谁读这份: 所有 Web 工程师在创建新文件前必读。以 `apps/web/src/` 现状为准。
 
 这份文档定义 `apps/web/src/` 下**每一个目录的归属**。新增文件前先在这里找到对应目录,**找不到的先停下来问架构师**,不要随便建目录。
 
@@ -12,92 +12,100 @@
 
 ```
 apps/web/src/
-├── app/                      # Layer 1: Routes & Pages
+├── app/                      # Layer 1: Routes & Pages（含 API）
 ├── services/                 # Layer 2: 业务编排
-├── db/                       # Layer 3: 数据
+├── db/                       # Layer 3: 数据（schema / repos / migrations）
 ├── lib/                      # Layer 4: 横向能力
 ├── components/               # React UI 组件
-├── stores/                   # Zustand 客户端状态
-├── hooks/                    # React Hooks
 ├── config/                   # 静态产品配置
 ├── messages/                 # i18n 文案
-└── styles/                   # 全局样式
+├── styles/                   # 全局样式
+├── types/                    # 全局 .d.ts
+└── middleware.ts             # next-intl 路由 + 鉴权中间件
 ```
+
+> 没有独立的 `stores/` 或 `hooks/` 顶层目录。客户端 hooks 放 `lib/hooks/`;UI 局部状态就近放组件。
 
 ---
 
 ## 2. `app/` —— Routes & Pages
 
+页面在 `[locale]/` 下平铺(无 `(marketing)`/`(tool)` 之类路由组),API 在 `app/api/` 下按 `v1`(基建)与 `v3`(五环节编排)两个命名空间分。
+
 ```
 app/
-├── [locale]/                          # i18n 包裹层(所有用户页面)
-│   ├── (marketing)/                   # 未登录可访问的营销页
-│   │   ├── page.tsx                   # 首页
-│   │   ├── pricing/page.tsx
-│   │   ├── privacy/page.tsx
-│   │   └── terms/page.tsx
-│   ├── (auth)/                        # 登录/注册
-│   │   ├── login/page.tsx
-│   │   └── register/page.tsx
-│   ├── (tool)/                        # 核心工具页
-│   │   ├── create/page.tsx            # Prompt + 照片选择
-│   │   └── album/[uuid]/page.tsx      # 相册编辑器
-│   ├── (dashboard)/                   # 登录后的私有页
-│   │   ├── my-albums/page.tsx
-│   │   ├── credits/page.tsx
-│   │   └── settings/page.tsx
-│   └── (admin)/                       # 内部管理
-│       └── admin/...
+├── [locale]/                          # i18n 包裹层（所有用户页面）
+│   ├── page.tsx                       # 首页（营销 + Composer 选图入口）
+│   ├── layout.tsx
+│   ├── pricing/ · privacy/ · terms/   # 营销页
+│   ├── login/ · register/             # 登录 / 注册
+│   ├── album/[uuid]/                  # 相册编辑器（选完图直接进，无 /create）
+│   ├── my-albums/ · credits/ · settings/   # 登录后私有页
+│   └── admin/                         # 内部管理（analytics / settings / users）
+├── _design-page/                      # 设计预览页（非生产路由）
 └── api/
-    ├── auth/[...all]/route.ts         # better-auth
-    ├── health/route.ts
-    ├── webhooks/
-    │   └── creem/route.ts
-    └── v1/
-        ├── jobs/
-        │   ├── route.ts                            # POST 创建任务(fire-and-forget)
-        │   └── [requestId]/
-        │       └── route.ts                        # GET 轮询任务状态
+    ├── auth/
+    │   ├── [...all]/route.ts          # better-auth
+    │   └── creem/webhook/route.ts
+    ├── webhooks/creem/route.ts
+    ├── v1/                            # 基建端点（保留复用）
+    │   ├── albums/
+    │   │   ├── route.ts                            # GET 列表
+    │   │   └── [uuid]/
+    │   │       ├── route.ts                        # GET/PATCH/DELETE
+    │   │       ├── pages/[idx]/route.ts            # PATCH 单页
+    │   │       ├── chapters/route.ts
+    │   │       ├── messages/route.ts               # chat 历史
+    │   │       ├── pdf-upload-url/ · pdf/          # PDF 签 URL / 标记完成
+    │   │       └── cover-thumbnail-upload-url/ · cover-thumbnail/
+    │   ├── credit/{balance,history}/route.ts
+    │   ├── billing/checkout/route.ts
+    │   ├── user/{me,billing}/route.ts
+    │   ├── fonts/subset/route.ts                   # PDF 字体 subset
+    │   ├── admin/{cleanup-photos,recover-stuck}/route.ts
+    │   └── health/route.ts
+    └── v3/                            # 五环节编排（详见 docs/agent/contract.md）
         ├── albums/
-        │   ├── route.ts                            # GET 列表
+        │   ├── route.ts                            # POST 建册 + 扣费 + 派 analyze
         │   └── [uuid]/
-        │       ├── route.ts                        # GET/PATCH/DELETE
-        │       ├── pages/[pageIndex]/route.ts      # PATCH 单页
-        │       ├── pdf-upload-url/route.ts         # POST 签 PUT URL
-        │       └── pdf/route.ts                    # PUT 标记完成 / GET 下载 URL
-        ├── credit/
-        │   ├── balance/route.ts
-        │   └── history/route.ts
-        └── internal/
-            └── job-progress/route.ts               # Agent → Web 回调
+        │       ├── draft/route.ts                  # GET draft_json
+        │       ├── story-progress/route.ts
+        │       ├── chapter-chat/route.ts           # ② 章节故事
+        │       ├── recommend/ · apply-theme/route.ts   # ③ 主题/章节色
+        │       ├── cover/route.ts                  # ④ 书籍设计
+        │       ├── finalize/route.ts               # ⑤ 待导出（flatten）
+        │       └── retry/route.ts
+        └── internal/job-progress/route.ts          # Agent → Web 回调 sink
 ```
 
-详细 API 行为 → `docs/web/api.md`。
+> V3 编排端点与 Web↔Agent 契约 → `docs/agent/contract.md`。`/v1` 端点行为细节 → `docs/web/api.md`。
 
 ---
 
 ## 3. `services/` —— 业务编排
 
+一个业务名词一个目录;文件名 `<名词>-service.ts`。
+
 ```
 services/
-├── generation/
-│   └── generation-service.ts          # 编排: base64 → Agent → 存 album
-├── album/
-│   └── album-service.ts               # 相册 CRUD 业务规则
-├── credit/
-│   └── credit-service.ts              # 预检 / 冻结 / 结算 / 释放
-├── job/
-│   └── job-service.ts                 # job 状态机 + 进度更新
-├── pdf/
-│   └── pdf-service.ts                 # PDF 签 URL / 记录 / 分发
+├── album/album-service.ts             # 相册 CRUD + draft/stage 编排
+├── generation/generation-service.ts   # base64 → Agent → 写回
+├── chat/chat-service.ts               # 章节对话编排
+├── credit/credit-service.ts           # 预检 / 冻结 / 结算 / 释放
+├── job/                               # agent_job 状态机 + 清扫
+│   ├── job-service.ts
+│   ├── zombie-sweeper.ts              # RUNNING 僵尸任务回收
+│   └── draft-expiry-sweeper.ts        # draft 过期清理
 ├── billing/
+│   ├── billing-service.ts
 │   └── creem-service.ts
-└── notification/
-    └── email-service.ts
+├── font/font-service.ts               # 字体 subset 编排
+├── user/user-service.ts
+└── admin/admin-service.ts
 ```
 
 **新增 service 的判断**:
-- 是不是一个**业务名词**(album / credit / pdf / billing)?如果是,可以独立成 service。
+- 是不是一个**业务名词**(album / credit / billing)?如果是,可以独立成 service。
 - 是不是一个**横向能力**(zod / http / log)?如果是,放 `lib/`。
 
 ---
@@ -107,19 +115,20 @@ services/
 ```
 db/
 ├── client.ts                          # Drizzle 客户端单例
-├── schema.ts                          # 所有表 + 枚举(权威)
-├── enums.ts                           # 业务枚举
-├── migrations/                        # drizzle-kit 生成
-└── repos/                             # 一表一文件
+├── schema.ts                          # 所有表 + 枚举（权威，见 database.md）
+├── migrations/                        # drizzle-kit 生成（0000_… 顺序编号 + meta/）
+└── repos/                             # 一表一文件（+ 同名 .test.ts）
     ├── user-repo.ts
+    ├── customer-repo.ts
     ├── album-repo.ts
     ├── album-page-repo.ts
+    ├── album-message-repo.ts
     ├── agent-job-repo.ts
     ├── credit-hold-repo.ts
     └── credit-ledger-repo.ts
 ```
 
-详细 schema → `docs/web/database.md`。
+> 枚举内联在 `schema.ts` 里(无独立 `enums.ts`)。详细 schema → `docs/web/database.md`。
 
 ---
 
@@ -127,36 +136,24 @@ db/
 
 ```
 lib/
-├── auth/
-│   ├── better-auth.ts                 # better-auth 配置
-│   └── require-auth.ts                # API 用,未登录抛 401
-├── api/
-│   ├── ok.ts                          # ok(data)
-│   ├── err.ts                         # err(code, msg, status)
-│   ├── zod-parse.ts                   # parseBody(schema, req)
-│   ├── error-codes.ts                 # AppError + ERRORS 常量
-│   └── from-exception.ts              # 把已知/未知异常转 JSON 响应
-├── agent/
-│   └── agent-client.ts                # HTTP 调 Agent
-├── storage/
-│   ├── r2-client.ts
-│   └── r2-presign.ts                  # 签 PUT URL
-├── photo/
-│   ├── compress.ts                    # 浏览器 Canvas 压缩(client only)
-│   └── to-base64.ts
-├── pdf/
-│   └── render.ts                      # 浏览器 @react-pdf/renderer 入口
-├── i18n/
-│   └── routing.ts
-├── seo/
-│   └── metadata.ts
-├── log/
-│   └── logger.ts                      # pino,自动带 requestId
-└── env.ts                             # 启动时校验所有 env,缺一不启
+├── auth/                              # better-auth / require-auth / require-admin
+│   │                                  #   require-agent-secret / cron-auth / client
+├── api/                               # ok / err / zod-parse / error-codes / from-exception
+├── agent/                             # agent-client（HTTP 调 Agent）/ layout-schema
+├── album/                             # authoring-client / skeleton
+├── generation/                        # client / draft
+├── r2/r2-client.ts                    # R2 + presign
+├── photo/                             # compress / cluster / cover-thumbnail / store（client only）
+├── pdf/                               # render（@react-pdf）/ subset
+├── billing/handle-creem-webhook.ts
+├── email/                            # send-email + templates/
+├── hooks/use-album-poll.ts            # 客户端轮询 hook
+├── i18n/                              # routing / request / messages
+├── log/logger.ts                      # pino，自动带 requestId
+└── env.ts                             # 启动时校验 env
 ```
 
-**新增 lib 的判断**:
-- 它知道"相册""积分"是什么吗?如果知道,放 `services/` 而不是 `lib/`。
+**新增 lib 的判断**:它知道"相册""积分"是什么吗?如果知道,放 `services/` 而不是 `lib/`。
 
 ---
 
@@ -164,91 +161,55 @@ lib/
 
 ```
 components/
-├── create/                            # PromptInput / PhotoPicker / StartButton
-├── editor/                            # EditorShell / PreviewPane / ProgressPanel
-├── album/                             # 21 个模板组件 + 列表卡片
-│   └── templates/                     # mag-01 ~ mag-21
-├── pdf/                               # 浏览器 PDF 渲染组件
-├── landing/                           # 营销页组件
-├── pricing/
-├── billing/
-├── credits/
-├── admin/
-├── layout/                            # AppHeader / SideNav / Footer
-└── ui/                                # shadcn/ui 基础组件
+├── app/                               # AppChrome / Sidebar / UserMenu / 状态栏 / 语言切换
+├── album/                             # 编辑器 + 模板
+│   ├── AlbumEditor / EditorTopbar / ChatPanel / PageEditPanel / FlipBook …
+│   ├── AlbumGeneratingShell          #   分析期加载态（building 分支）
+│   ├── editor-v2/                     #   编辑器实现
+│   ├── templates/                     #   模板组件
+│   ├── web-registry.ts · pdf-registry.ts   # 模板注册表（web 渲染 / PDF）
+│   └── spreads.ts · adapt-layout.ts …
+├── landing/                           # 首页营销组件（HeroComposer / Marquee …）
+├── marketing/                         # 营销框架（Nav / Footer / Faq / PricingSection）
+└── admin/                             # 内部管理 UI
 ```
 
-**组件命名**: PascalCase,文件名 = 组件名(`AlbumCard.tsx`)。
+**组件命名**: PascalCase,文件名 = 组件名(`AlbumEditor.tsx`)。
 
 ---
 
-## 7. `stores/` —— Zustand 全局状态
-
-```
-stores/
-├── editor-store.ts                    # 当前编辑器状态(currentPage / dirty)
-├── photos-store.ts                    # 原图引用(File / blob URL)+ 压缩 base64 缓存
-└── job-store.ts                       # 当前生成任务的进度
-```
-
-**注意**: photos-store 里的原图引用绝对不能被序列化上传——这是 §3 隐私。
-
----
-
-## 8. `hooks/` —— React Hooks
-
-```
-hooks/
-├── use-job-poll.ts                    # 2 秒一次轮询 /api/v1/jobs/[id]
-├── use-album.ts                       # 加载并订阅单个 album
-├── use-credit.ts                      # 加载余额
-└── use-photo-compress.ts              # 触发浏览器压缩
-```
-
----
-
-## 9. `config/` —— 静态产品配置
+## 7. `config/` · `messages/` · `styles/` · `types/`
 
 ```
 config/
-├── agent.ts                           # Agent URL / 超时 / 重试
-├── photo.ts                           # 压缩参数 / 张数限制
-├── templates.ts                       # 21 个模板的元数据
-├── pricing.ts                         # 套餐 / 积分包 / 单次生成消耗
-└── brand.ts                           # 品牌名 / 文案常量
-```
+└── pricing.ts                         # 定价 / 单本消耗（纯常量，无函数逻辑）
 
-**与 `services/` 的区别**: config 是**纯常量**,没有任何函数逻辑。
-
----
-
-## 10. `messages/` & `styles/`
-
-```
 messages/
-├── en.json
-└── zh.json                            # 海外版以英文为主,zh 留作运营备用
+├── en.json                            # 主语言（英文 UI）
+├── zh.json                            # 运营备用
+└── marketing.ts                       # 营销文案常量
 
-styles/
-├── globals.css
-└── theme.css
+styles/globals.css
+
+types/subset-font.d.ts                 # 第三方模块声明
 ```
+
+**config 与 services 的区别**: config 是**纯常量**,没有任何函数逻辑。
 
 ---
 
-## 11. 顶层不允许的目录
+## 8. 顶层不允许的目录
 
-不要在 `src/` 下创建以下目录(memoir-web 有但 Yujee 不要):
+不要在 `src/` 下创建以下目录:
 
 - ❌ `actions/` —— 用 Server Action 时直接放在 `app/.../actions.ts`
 - ❌ `payment/` —— 已归并到 `services/billing/`
-- ❌ `registry/` —— 用不上 shadcn registry
+- ❌ `stores/` / `hooks/` —— 客户端 hooks 放 `lib/hooks/`,局部状态就近放组件
 - ❌ `content/` —— 第一版不做 CMS
-- ❌ `mail/` —— 邮件模板归 `lib/email/templates/`(必要时再建)
 
 ---
 
-## 12. 新增文件 / 目录的流程
+## 9. 新增文件 / 目录的流程
 
 1. 在本文件搜索关键词,找到归属目录
 2. 找不到 → 在 GitHub issue 里 @架构师,说明新文件用途

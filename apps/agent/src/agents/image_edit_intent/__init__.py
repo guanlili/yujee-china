@@ -1,4 +1,4 @@
-"""image_edit_intent agent: recognition-model photo-edit intent (V3 §4.2)."""
+"""image_edit_intent agent:识图模型的照片编辑意图(V3 §4.2)。"""
 
 from __future__ import annotations
 

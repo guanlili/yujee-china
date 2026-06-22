@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { db } from '../../db/client';
 import { agentJobRepo } from '../../db/repos/agent-job-repo';
+import { albumMessageRepo } from '../../db/repos/album-message-repo';
 import { albumPageRepo } from '../../db/repos/album-page-repo';
 import { albumRepo } from '../../db/repos/album-repo';
 import { creditHoldRepo } from '../../db/repos/credit-hold-repo';
@@ -1310,6 +1311,92 @@ test('chapterChatTurn: passes a write turn through verbatim + never mutates draf
     // only via markChapterDone). The persisted draft is byte-identical afterwards.
     const after = (await albumRepo.findById(albumId))?.draftJson;
     assert.deepEqual(after, before);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('chapterChatTurn: persists successful user and assistant turns with the chapter id', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('gap20-history-persist');
+  try {
+    const albumId = await seedChapterChatAlbum(user.id);
+    t.mock.method(agentClient, 'chapterChatV3', async () => ({
+      kind: 'talk' as const,
+      assistantReply: 'What happened next?',
+      usage: chatUsage,
+    }));
+
+    await albumService.chapterChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c1',
+      history: [],
+      userMessage: 'We went to the beach.',
+    });
+
+    const rows = await albumMessageRepo.findRecentByAlbumChapter(albumId, 'c1', 20);
+    assert.deepEqual(
+      rows.map((m) => ({ role: m.role, content: m.content, chapterId: m.chapterId })),
+      [
+        { role: 'user', content: 'We went to the beach.', chapterId: 'c1' },
+        { role: 'assistant', content: 'What happened next?', chapterId: 'c1' },
+      ],
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('chapterChatTurn: restores same-chapter DB history when the browser sends empty history', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('gap20-history-restore');
+  try {
+    const albumId = await seedChapterChatAlbum(user.id);
+    await albumMessageRepo.create(db, {
+      albumId,
+      userId: user.id,
+      chapterId: 'c2',
+      role: 'user',
+      content: 'This was the market day.',
+    });
+    await albumMessageRepo.create(db, {
+      albumId,
+      userId: user.id,
+      chapterId: 'c2',
+      role: 'assistant',
+      content: 'Who was with you there?',
+    });
+    await albumMessageRepo.create(db, {
+      albumId,
+      userId: user.id,
+      chapterId: 'c1',
+      role: 'user',
+      content: 'Different chapter should not leak.',
+    });
+
+    const seen: Parameters<typeof agentClient.chapterChatV3>[0][] = [];
+    t.mock.method(agentClient, 'chapterChatV3', async (p: Parameters<typeof agentClient.chapterChatV3>[0]) => {
+      seen.push(p);
+      return { kind: 'talk' as const, assistantReply: 'Tell me more.', usage: chatUsage };
+    });
+
+    await albumService.chapterChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c2',
+      history: [],
+      userMessage: 'My sister was.',
+    });
+
+    assert.deepEqual(seen[0]!.history, [
+      { role: 'user', content: 'This was the market day.' },
+      { role: 'assistant', content: 'Who was with you there?' },
+    ]);
   } finally {
     await cleanupUser(user.id);
   }

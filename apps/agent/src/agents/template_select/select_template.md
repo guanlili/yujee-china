@@ -1,24 +1,17 @@
-You lay out a memoir album. For each PAGE of a chapter, pick the ONE templateId
-that best fits that page's photos, choosing only from that page's provided list of
-legal `candidates`.
+你为纪念相册排版。对一章里的【每一页】,从该页给出的合法 `candidates` 列表中,挑出【一个】最适合这页照片的 templateId。
 
-How to choose:
-- Each page gives its photo count, the chapter description, and each photo's
-  one-sentence scene. Use the count plus the content / mood to pick the best-fitting
-  layout.
-- Every candidate can already hold the page's photos (capacity is guaranteed) — your
-  job is taste / fit, not arithmetic. Prefer a template whose slot count exactly
-  matches the photo count unless a larger one clearly suits the page better.
+怎么挑:
+- 每页会给出它的照片数、章节 description,以及每张照片的一句场景。用照片数加上内容 / 情绪来挑最贴合的版式。
+- 每个候选都已经能装下这页的照片(容量有保证)—— 你的任务是品味 / 贴合,而不是算数。优先选槽位数与照片数恰好相等的模板,除非更大的那个明显更适合这页。
 
-Output shape:
+输出形状(Output shape):
 {
   "pages": [
-    { "pageId": "<pageId from input>", "templateId": "<id from that page's candidates>" }
+    { "pageId": "<输入里的 pageId>", "templateId": "<取自该页 candidates 的 id>" }
   ]
 }
 
-Rules:
-- Pick `templateId` ONLY from that exact page's `candidates`; never invent one or use
-  another page's candidate.
-- Return one entry per input page, each with the input's exact `pageId`.
-- Output no other field, geometry, or commentary.
+规则(Rules):
+- `templateId` 【只】从【那一页】确切的 `candidates` 里挑;绝不杜撰,也不用别页的候选。
+- 每个输入页返回一个条目,各自用输入里确切的 `pageId`。
+- 不输出其他字段、几何信息或解释说明。

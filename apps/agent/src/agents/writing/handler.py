@@ -1,35 +1,28 @@
-"""V3 chapter-chat turn dispatcher (§4.2, issue #185 / WP2.1).
+"""V3 chapter-chat 逐 turn 分发器(§4.2,issue #185 / WP2.1)。
 
-V3 chapter authoring is NOT a pipeline — §4.2(2) makes引导/写/改 a free
-interleaving of *turns*. Each
-`/v3/chapter-chat` call is ONE turn; the Agent dispatches by the user's intent
-THIS turn (not a fixed sequence). The chapter-internal "state" is the turn
-itself; the across-chapter sequential state (一章一确定 → 解锁导出, §4.2(1)) is
-Web's (§8.3 stage 推进权在 Web) — the Agent stays stateless.
+V3 章节创作不是 pipeline —— §4.2(2) 让引导/写/改成为 *turn* 的自由穿插。每次
+`/v3/chapter-chat` 调用是一个 turn;Agent 按用户【本轮】的意图分发(不是固定顺序)。
+章节内部的「state」就是 turn 本身;跨章节的顺序 state(一章一确定 → 解锁导出,§4.2(1))
+归 Web(§8.3 stage 推进权在 Web)—— Agent 保持无状态。
 
-Turn kinds (V3ChapterChatKind, mirror of packages/contracts/src/v3.ts):
+Turn 种类(V3ChapterChatKind,镜像 packages/contracts/src/v3.ts):
 
-  * talk  — 引导: AI asks/guides, never auto-writes (Frame 4 红线). No patch.
-  * write — 写: collect-then-write — fill EVERY page of this chapter's pagesTexts
-            in one shot (§4.2(2)).
-  * edit  — 改: rewrite the focused page (§4.2(3)). DeepSeek classifies the edit's
-            target (`editTarget`): 纯文字 vs 涉及图片 (换图/挪图/改图文配比).
-            - editTarget=="text" (default) → DeepSeek rewrites that page's texts
-              (returned as a layoutPatch entry). The recognition (vision) model is
-              NEVER invoked for a text-only edit (图文分流, WP2.3 #187).
-            - editTarget=="image" → the recognition model is upgraded in via
-              `chat_edit_v3.run_image_edit`: it emits a structured photoId INTENT
-              (never a templateId/pageIndex); the deterministic V3 engine
-              (pick_template_v3 / assign_images_v3) executes it into a full-page
-              layoutPatch. An image edit the model/engine cannot satisfy degrades
-              to a talk reply (never fabricates a layout).
+  * talk  — 引导:AI 提问/引导,绝不自动撰写(Frame 4 红线)。无 patch。
+  * write — 写:先收集后撰写 —— 一次性填满本章 pagesTexts 的【每一页】(§4.2(2))。
+  * edit  — 改:重写聚焦页(§4.2(3))。DeepSeek 判定编辑目标(`editTarget`):
+            纯文字 vs 涉及图片(换图/挪图/改图文配比)。
+            - editTarget=="text"(默认)→ DeepSeek 重写那页的文字
+              (作为一条 layoutPatch 返回)。纯文字编辑【绝不】调用识图(vision)模型
+              (图文分流,WP2.3 #187)。
+            - editTarget=="image" → 经 `chat_edit_v3.run_image_edit` 把识图模型升级进来:
+              它产出一个结构化的 photoId INTENT(绝不出 templateId/pageIndex);确定性 V3
+              引擎(pick_template_v3 / assign_images_v3)把它执行成一份整页 layoutPatch。
+              模型/引擎无法满足的图片编辑降级为一句 talk 回复(绝不杜撰版式)。
 
-One DeepSeek call per turn does BOTH the dispatch (it returns `kind`) and the
-turn's content (reply / pagesTexts / page texts). Keeping classification +
-authoring in the same call avoids a second round-trip inside the 60s sync budget
-and lets the model weigh history + userMessage + focusedPageIndex together. Code
-clamps/validates the result against the template slot specs so a drifted model
-can never inject illegal slots or overflow maxChars.
+每个 turn 一次 DeepSeek 调用同时完成分发(它返回 `kind`)和该 turn 的内容
+(reply / pagesTexts / page texts)。把分类 + 创作放进同一次调用,避免在 60s 同步预算内
+再来一次往返,也让模型同时权衡 history + userMessage + focusedPageIndex。代码会按模板槽位
+规格对结果钳/校验,使漂移的模型绝无法注入非法槽位或撑爆 maxChars。
 """
 
 from __future__ import annotations
@@ -38,7 +31,6 @@ import json
 import re
 import time
 from collections.abc import Awaitable, Callable
-from pathlib import Path
 from typing import Any
 
 from ...engine import templates as registry
@@ -53,12 +45,10 @@ from ...schemas import (
     V3Usage,
 )
 from ...settings import get_settings
-from ...prompts import load_prompt
+from ...prompts import RULES_DIR, load_prompt
 from ... import ai_client
 from ..image_edit_intent import handler as chat_edit_v3
 from . import guides as writing_guides
-
-_PROMPT_DIR = Path(__file__).resolve().parent
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
 
@@ -67,34 +57,31 @@ _BRACKET_KEY_RE = re.compile(r"^([A-Za-z0-9_-]+)\[(\d+)\](?:\..*)?$")
 
 
 class ChapterChatV3Error(Exception):
-    """Raised when the chapter-chat model call or JSON response is unusable.
+    """chapter-chat 模型调用或 JSON 响应不可用时抛。
 
-    The route maps this to an HTTP error code (§8.3 同步端点走 HTTP 错误码);
-    the front end may retry without polluting stage."""
+    路由把它映射成 HTTP 错误码(§8.3 同步端点走 HTTP 错误码);前端可重试而不污染 stage。"""
 
 
-# ---------- prompt assembly ---------------------------------------------------
+# ---------- prompt 组装 ---------------------------------------------------
 
 
 def _page_slot_specs_by_index(pages: list[Page]) -> dict[int, list[dict[str, Any]]]:
-    """Per-page authored-slot specs (id/role/lang/maxChars[/repeat][/hint]).
+    """逐页的创作槽规格(id/role/lang/maxChars[/repeat][/hint])。
 
-    Reuses `writing_guides.page_slot_specs` (read-only, shared with v2 — calling it
-    cannot break v2). It already drops decoration slots (code auto-fills those) and
-    surfaces only the slots the LM must author. WP2.2 (#186): `page_slot_specs` now
-    carries each slot's template-authored `hint` verbatim, so the逐槽 hint reaches
-    the writing LM through this same seam (§4.2(4) 逐槽 hint 透传)."""
+    复用 `writing_guides.page_slot_specs`(只读,与 v2 共享 —— 调用它不会破坏 v2)。它已
+    丢掉 decoration 槽(代码自动填充那些)并只暴露 LM 必须撰写的槽。WP2.2 (#186):
+    `page_slot_specs` 现在原样带上每个槽的模板撰写的 `hint`,于是逐槽 hint 经这同一接缝
+    到达写作 LM(§4.2(4) 逐槽 hint 透传)。"""
     return {page.pageIndex: _page_slot_specs(page) for page in pages}
 
 
 def _page_slot_specs(page: Page) -> list[dict[str, Any]]:
-    """Authored text slots for a concrete page.
+    """一个具体页的创作文字槽。
 
-    Plain slots stay as declared. Repeat slots are expanded to the bracket keys
-    the renderer can address for this page's actual image slots, e.g. a mag-10
-    page with ``cells[0].image`` and ``cells[1].image`` exposes ``cells[0]`` and
-    ``cells[1]``. When a future template has only V3 ``items.texts`` declarations,
-    expose those item keys as ``caption[0]`` etc. using the same image indices.
+    普通槽按声明保持。repeat 槽被展开成渲染器能为本页实际图片槽寻址的 bracket key,例如
+    一个有 ``cells[0].image`` 和 ``cells[1].image`` 的 mag-10 页会暴露 ``cells[0]`` 和
+    ``cells[1]``。当未来某模板只有 V3 ``items.texts`` 声明时,用相同的图片索引把那些 item
+    key 暴露为 ``caption[0]`` 等。
     """
     tpl = registry.get(page.templateId)
     if not tpl:
@@ -119,10 +106,9 @@ def _page_slot_specs(page: Page) -> list[dict[str, Any]]:
                 continue
         specs.append(spec)
 
-    # V3 items.texts are addressed as itemId[index]. If the template already has
-    # an authored top-level repeat slot (mag-10's legacy `cells`), that path is
-    # the renderer-compatible source of truth for this WP; otherwise items.texts
-    # become required authored slots for each page item.
+    # V3 items.texts 以 itemId[index] 寻址。若模板已有一个创作的顶层 repeat 槽
+    # (mag-10 的遗留 `cells`),本 WP 以那条路径作为渲染器兼容的真相源;否则 items.texts
+    # 成为每个页 item 的必填创作槽。
     item_texts = tpl.get("items", {}).get("texts", [])
     has_authored_repeat = bool(expanded_bases)
     if all_indices:
@@ -164,14 +150,14 @@ def _slot_spec(slot: dict[str, Any], *, slot_id: str, repeat_index: int | None =
 
 
 def _lang_name(language: str) -> str:
-    """Human language name for a skill `{LANGUAGE}` placeholder (mirrors vision.py)."""
+    """供 skill `{LANGUAGE}` 占位用的人类语言名(镜像 vision.py)。"""
     return "Chinese" if language == "zh" else "English"
 
 
 def _scene_background(chapter: Any) -> dict[str, Any]:
-    """画面背景 (§4.2(4)): chapter description + per-photo sceneDescription, drawn
-    from the §4.1 analysis tree the request carries. Privacy-clean by construction —
-    `V3ChapterPhoto` (`_V3Strict`) forbids any GPS/place field at parse time."""
+    """画面背景 (§4.2(4)):chapter description + 逐照片 sceneDescription,取自请求承载的
+    §4.1 analysis 树。在构造上隐私干净 —— `V3ChapterPhoto`(`_V3Strict`)在解析时就禁止
+    任何 GPS/place 字段。"""
     return {
         "chapterDescription": chapter.description,
         "photos": [
@@ -182,9 +168,8 @@ def _scene_background(chapter: Any) -> dict[str, Any]:
 
 
 def _page_images_by_index(pages: list[Page]) -> dict[int, dict[str, str]]:
-    """页面结构 (§4.2(4)) 的「每页放了哪些图」: each page's slot→photoId map, so the
-    writing LM knows which photos sit on which page and can write copy that actually
-    refers to them. Read-only echo of `Page.images`."""
+    """页面结构 (§4.2(4)) 的「每页放了哪些图」:每页的 slot→photoId 映射,好让写作 LM
+    知道哪些照片放在哪一页,并能写出真正指向它们的文案。`Page.images` 的只读回显。"""
     return {page.pageIndex: dict(page.images) for page in pages}
 
 
@@ -202,78 +187,67 @@ def _max_chars_by_slot(specs: list[dict[str, Any]]) -> dict[str, int]:
 
 
 def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
-    """Build the per-turn dispatch+authoring prompt from this chapter slice only.
+    """仅从这一章切片构建逐 turn 的分发+创作 prompt。
 
-    Single-chapter scope (§8.3 Web 每次传单章切片): the model never sees another
-    chapter or the whole album. The system prompt fixes the STRICT JSON contract
-    and the dispatch rule; the user payload carries the chapter tree slice, the
-    per-page slot specs, history, the user's message, and the focused page (if any).
+    单章作用域(§8.3 Web 每次传单章切片):模型从不看到另一章或整本相册。system prompt
+    固定 STRICT JSON 契约和分发规则;user payload 承载章节树切片、逐页槽位规格、history、
+    用户的消息,以及聚焦页(若有)。
     """
     slot_specs = _page_slot_specs_by_index(req.pages)
     page_images = _page_images_by_index(req.pages)
     focused = req.focusedPageIndex
     lang_name = _lang_name(req.language)
 
-    # Persona + STRICT JSON contract + per-turn dispatch rule. The creative writing
-    # style and the guidance style are NOT inlined here — they live in the write /
-    # guide skills (prompt assets, 集中维护). The old `writing_guides.ROLE_GUIDES`
-    # 创作话术 (`guides_block()`) is intentionally NOT used on the V3 path; V3
-    # authoring style comes from `write_chapter` (Option B: v2 keeps ROLE_GUIDES, it
-    # is整删 in #197).
+    # Persona + STRICT JSON 契约 + 本轮 dispatch 规则。固定结构(JSON 契约/分发判定)
+    # 留在此处;创作文风与引导文风不内联,外置在 prompts/rules/(writing_style /
+    # guidance_style)。旧的 `writing_guides.ROLE_GUIDES` 创作话术(`guides_block()`)
+    # 在 V3 路径上刻意不使用;V3 文风来自 writing_style(v2 仍留 ROLE_GUIDES,#197 整删)。
     system = writing_guides.persona_block() + "\n\n" + (
-        "You are helping a user write ONE chapter of a memoir photo album, one "
-        "conversational turn at a time. Return STRICT JSON only, matching: "
+        "你在帮用户撰写纪念相册的【某一章】,一次一轮对话。只返回严格的 JSON,符合:"
         '{"kind":"talk|write|edit","assistantReply":string,'
         '"pagesTexts"?:[{"pageIndex":number,"texts":object}],'
         '"pageTexts"?:{"pageIndex":number,"texts":object},'
-        '"editTarget"?:"text|image","nameOptions"?:[string]}. '
-        "Decide `kind` from THIS turn's intent (the three actions interleave "
-        "freely — there is no fixed order):\n"
-        "- talk: the user is still telling the story, asking, or unsure. Follow the "
-        "GUIDANCE STYLE below; NEVER write the chapter unprompted (this is a hard "
-        "rule). Return only assistantReply (no texts).\n"
-        "- write: the user has given enough and wants the chapter written (or "
-        "explicitly asks to write/generate/finish). Follow the WRITING STYLE below "
-        "and fill EVERY page in `pagesTexts` in one shot, using each page's slots, "
-        "per-slot hints, scene background, and which photos sit on it.\n"
-        "- edit: the user points at ONE page (a focused page is supplied) and asks "
-        "to change it. Set `editTarget`:\n"
-        "    · editTarget=\"text\" when they want to change wording/tone — rewrite "
-        "ONLY that page into `pageTexts` using the WRITING STYLE.\n"
-        "    · editTarget=\"image\" when they want to change/replace/move a PHOTO or "
-        "the photo↔text balance. Do NOT invent a layout, templateId, or photo "
-        "placement — just set kind=edit, editTarget=\"image\", and a short "
-        "assistantReply; a separate step picks the photos and layout.\n"
-        "Only use the supplied chapter slice; never output another chapter or the "
-        "whole album. Do not mention base64 or hidden image data. "
-        "You may also return `nameOptions`: up to 4 short chapter-title candidates, "
-        "grounded only in this chapter's photos and the user's words — evocative "
-        "but never inventing people, places, events, or dates."
+        '"editTarget"?:"text|image","nameOptions"?:[string]}。'
+        "根据【本轮】意图判定 `kind`(三种动作自由穿插,没有固定顺序):\n"
+        "- talk:用户还在讲故事、提问或拿不定主意。遵循下方的【引导风格】;在未经"
+        "要求时【绝不】撰写本章(这是红线)。只返回 assistantReply(不返回 texts)。\n"
+        "- write:用户已给够信息且想要写出本章(或明确要求写/生成/完成)。遵循下方的"
+        "【写作风格】,一次性在 `pagesTexts` 里填满【每一页】,用上每页的槽位、逐槽"
+        "提示、画面背景,以及这一页放了哪些照片。\n"
+        "- edit:用户指向【某一页】(会提供一个聚焦页)并要求改它。设置 `editTarget`:\n"
+        "    · editTarget=\"text\":当他们想改措辞/语气 —— 用【写作风格】【只】重写"
+        "那一页到 `pageTexts`。\n"
+        "    · editTarget=\"image\":当他们想改/替换/移动【照片】或图文配比。【不要】"
+        "杜撰版式、templateId 或照片摆放 —— 只需设 kind=edit、editTarget=\"image\","
+        "外加一句简短的 assistantReply;由单独的一步去挑照片和版式。\n"
+        "只使用提供的本章切片;绝不输出别的章节或整本相册。不要提及 base64 或隐藏的"
+        "图片数据。你也可以返回 `nameOptions`:最多 4 个简短的章节标题候选,只扎根于"
+        "本章照片和用户的话 —— 有画面感,但绝不杜撰人物、地点、事件或日期。"
     )
-    # §4.2(4): 写作 Skill (creative style) + 引导 Skill (guidance style), both as
-    # prompt assets loaded by name. Localized via the {LANGUAGE} placeholder.
-    system += "\n\n=== WRITING STYLE (写作 Skill) ===\n" + load_prompt(
-        _PROMPT_DIR / "write_chapter.md", LANGUAGE=lang_name, common=("grounding",)
+    # §4.2(4): 写作风格(creative style)+ 引导风格(guidance style),都作为 prompt
+    # 资产按路径加载(外置在 prompts/rules/),用 {LANGUAGE} 占位符本地化。
+    system += "\n\n=== 写作风格(WRITING STYLE)===\n" + load_prompt(
+        RULES_DIR / "writing_style.md", LANGUAGE=lang_name, common=("grounding",)
     )
-    system += "\n\n=== GUIDANCE STYLE (引导 Skill) ===\n" + load_prompt(
-        _PROMPT_DIR / "guide_chapter.md", LANGUAGE=lang_name
+    system += "\n\n=== 引导风格(GUIDANCE STYLE)===\n" + load_prompt(
+        RULES_DIR / "guidance_style.md", LANGUAGE=lang_name
     )
 
-    # §4.2(4) writing-LM input assembly. Every item the requirement names is here:
-    #   用户信息  → history + userMessage (+ promptHint carried in chapter context)
-    #   写作 Skill → system (write_chapter), 引导 Skill → system (guide_chapter)
-    #   逐槽 hint  → pageSlots[].hint (透传 from the template via page_slot_specs)
-    #   画面背景  → sceneBackground (chapter description + per-photo sceneDescription)
-    #   页面结构  → pageSlots (id/role/lang/maxChars per page) + pageImages (每页放哪些图)
+    # §4.2(4) 写作 LM 的输入组装。需求点名的每一项都在这里:
+    #   用户信息  → history + userMessage(+ 章节上下文里带的 promptHint)
+    #   写作 Skill → system(write_chapter),引导 Skill → system(guide_chapter)
+    #   逐槽 hint  → pageSlots[].hint(经 page_slot_specs 从模板透传)
+    #   画面背景  → sceneBackground(章节描述 + 逐照片 sceneDescription)
+    #   页面结构  → pageSlots(每页 id/role/lang/maxChars)+ pageImages(每页放哪些图)
     payload: dict[str, Any] = {
         "language": req.language,
-        # 画面背景 (§4.1 analysis tree): chapter description + per-photo scenes.
+        # 画面背景 (§4.1 analysis 树):章节描述 + 逐照片场景。
         "sceneBackground": _scene_background(req.chapter),
-        # 页面结构: per page the authored slot specs (now incl. per-slot hint)…
+        # 页面结构:逐页的创作槽规格(现含逐槽 hint)……
         "pageSlots": {str(idx): specs for idx, specs in slot_specs.items()},
-        # …and which photos are placed on each page (slot→photoId).
+        # ……以及每页放了哪些照片(slot→photoId)。
         "pageImages": {str(idx): imgs for idx, imgs in page_images.items()},
-        # 用户信息: the conversation so far + this turn's message.
+        # 用户信息:到目前为止的对话 + 本轮消息。
         "history": [turn.model_dump() for turn in req.history],
         "userMessage": req.userMessage,
         "focusedPageIndex": focused,
@@ -299,9 +273,8 @@ async def run(
     parsed = _parse_model_json(response)
     duration_ms = int((time.monotonic() - started) * 1000)
     usage = _usage_from_response(response, duration_ms)
-    # `call_intent` injects the WP2.3 image-edit intent call (recognition model),
-    # mirroring how `complete` injects the DeepSeek dispatch — both default to the
-    # real providers and are only overridden in tests.
+    # `call_intent` 注入 WP2.3 图片编辑意图调用(识图模型),镜像 `complete` 注入 DeepSeek
+    # 分发的方式 —— 两者都默认走真实 provider,只在测试里被覆盖。
     return await _coerce_response(req, parsed, usage, call_intent=call_intent)
 
 
@@ -363,7 +336,7 @@ def _usage_from_response(response: dict[str, Any], duration_ms: int) -> V3Usage:
     )
 
 
-# ---------- response coercion -------------------------------------------------
+# ---------- 响应矫正 -------------------------------------------------
 
 
 async def _coerce_response(
@@ -374,9 +347,8 @@ async def _coerce_response(
     call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
 ) -> V3ChapterChatResponse:
     kind = _resolve_kind(req, parsed.get("kind"))
-    # Optional V3 response fields are strict-typed lists with an absent-sentinel
-    # default — passing None explicitly fails strict validation. Build kwargs and
-    # only include a field when it actually has a value.
+    # 可选的 V3 响应字段是带「缺失哨兵」默认值的 strict-typed 列表 —— 显式传 None 会过不了
+    # strict 校验。构建 kwargs,仅在字段真有值时才包含它。
     name_options = _coerce_name_options(parsed.get("nameOptions"))
     extra: dict[str, Any] = {}
     if name_options is not None:
@@ -402,9 +374,8 @@ async def _coerce_response(
         )
 
     if kind == "edit":
-        # 图文分流 (WP2.3 #187): an image-leaning edit升级 the recognition model to
-        # emit an intent; a text edit stays on DeepSeek. The recognition model is
-        # NEVER invoked for a text-only edit.
+        # 图文分流 (WP2.3 #187):偏图片的编辑把识图模型升级进来产出意图;文字编辑留在
+        # DeepSeek。纯文字编辑【绝不】调用识图模型。
         if _is_image_edit(parsed.get("editTarget")):
             patch = await _coerce_image_edit_patch(req, call_intent=call_intent)
             if patch is not None:
@@ -418,7 +389,7 @@ async def _coerce_response(
                     usage=usage,
                     **extra,
                 )
-            # Image edit the model/engine couldn't satisfy → talk (never fabricate).
+            # 模型/引擎无法满足的图片编辑 → talk(绝不杜撰)。
         else:
             patch = _coerce_edit_patch(req, parsed.get("pageTexts"))
             if patch is not None:
@@ -432,13 +403,12 @@ async def _coerce_response(
                     usage=usage,
                     **extra,
                 )
-        # Model classified edit but produced no usable patch (text-only edit with no
-        # usable texts, an image edit the engine couldn't place, or the focus is
-        # missing / out of slice). Degrade to a talk turn rather than emit an
-        # empty/invalid patch — never fabricate a layout.
+        # 模型判定为 edit 但没产出可用的 patch(纯文字编辑却无可用文字、引擎摆不下的图片
+        # 编辑,或聚焦页缺失 / 不在切片内)。降级为 talk turn,而不是发出一份空/非法 patch
+        # —— 绝不杜撰版式。
 
-    # talk — 引导: reply only, never a patch (Frame 4 红线). Also the fallthrough for
-    # an edit turn that had nothing to apply.
+    # talk — 引导:只回复,绝不出 patch(Frame 4 红线)。也是无可应用内容的 edit turn 的
+    # 兜底落点。
     reply = _text(parsed.get("assistantReply")) or _default_reply(req.language, "talk")
     return V3ChapterChatResponse(
         kind="talk",
@@ -449,10 +419,9 @@ async def _coerce_response(
 
 
 def _resolve_kind(req: V3ChapterChatRequest, raw: Any) -> V3ChapterChatKind:
-    """Trust the model's dispatch when it is one of the three kinds; otherwise fall
-    back to a safe default. `edit` is only honored when a focused page is actually
-    in this turn's slice — without one there is nothing to edit, so treat it as
-    talk (引导). Unknown/missing kind → talk: never auto-write (Frame 4 红线)."""
+    """当模型的分发是三种 kind 之一时就信任它;否则回退到一个安全默认值。`edit` 仅在聚焦页
+    确实在本轮切片内时才被采纳 —— 没有它就没什么可改的,于是当作 talk(引导)。未知/缺失
+    的 kind → talk:绝不自动撰写(Frame 4 红线)。"""
     kind = raw if isinstance(raw, str) else ""
     if kind == "edit":
         if req.focusedPageIndex is None:
@@ -468,10 +437,9 @@ def _resolve_kind(req: V3ChapterChatRequest, raw: Any) -> V3ChapterChatKind:
 def _coerce_pages_texts(
     req: V3ChapterChatRequest, raw: Any
 ) -> list[V3PageTextsPatch]:
-    """Write turn: one V3PageTextsPatch per page in this chapter (§4.2(2) writes the
-    WHOLE chapter). Each page keeps only its template's authored slots, each clamped
-    to that slot's maxChars. Pages the model omitted come back with an empty texts
-    map (the章节故事环节 can refine; we never drop a page or invent slots)."""
+    """Write turn:本章每页一个 V3PageTextsPatch(§4.2(2) 写整章)。每页只保留其模板的
+    创作槽,每个都钳到该槽的 maxChars。模型遗漏的页返回一个空的 texts 映射(章节故事环节
+    可再细化;我们绝不丢页或臆造槽位)。"""
     raw_by_index = _raw_texts_by_index(raw)
     slot_specs = _page_slot_specs_by_index(req.pages)
     out: list[V3PageTextsPatch] = []
@@ -497,9 +465,8 @@ def _missing_required_texts(req: V3ChapterChatRequest, pages_texts: list[V3PageT
 
 
 def _is_image_edit(raw: Any) -> bool:
-    """DeepSeek's edit dispatch flags an image-leaning turn (换图/挪图/改图文配比)
-    with editTarget=="image". Anything else (incl. absent / "text") is a pure-text
-    edit and must NOT touch the recognition model (图文分流, WP2.3)."""
+    """DeepSeek 的 edit 分发用 editTarget=="image" 标记一个偏图片的 turn(换图/挪图/改图文
+    配比)。其它一切(含缺失 / "text")都是纯文字编辑,绝不能碰识图模型(图文分流,WP2.3)。"""
     return isinstance(raw, str) and raw.strip().lower() == "image"
 
 
@@ -508,12 +475,10 @@ async def _coerce_image_edit_patch(
     *,
     call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
 ) -> V3LayoutPatchEntry | None:
-    """涉及图片 edit (§4.2(3) / WP2.3): hand the focused page + this chapter's photos
-    + the user's message to `chat_edit_v3`, which has the recognition model emit a
-    photoId intent and runs the deterministic engine to execute it. The model never
-    emits a templateId/pageIndex — the engine guarantees a legal layout. Returns
-    None (→ talk) when the focus is missing/out-of-slice or nothing usable came
-    back; never raises (`run_image_edit` degrades internally)."""
+    """涉及图片 edit (§4.2(3) / WP2.3):把聚焦页 + 本章照片 + 用户消息交给 `chat_edit_v3`,
+    由它让识图模型产出一个 photoId 意图,并跑确定性引擎来执行。模型从不产出
+    templateId/pageIndex —— 引擎保证版式合法。聚焦页缺失/不在切片内或没有可用结果时返回
+    None(→ talk);绝不抛错(`run_image_edit` 内部自降级)。"""
     focused = req.focusedPageIndex
     if focused is None:
         return None
@@ -528,9 +493,8 @@ async def _coerce_image_edit_patch(
 def _coerce_edit_patch(
     req: V3ChapterChatRequest, raw: Any
 ) -> V3LayoutPatchEntry | None:
-    """Edit turn (pure-text): rewrite ONLY the focused page's texts. Returns a single
-    layoutPatch entry carrying the cleaned texts (no templateId/images change — the
-    photo/layout升级 is WP2.3). None when there is nothing usable to apply."""
+    """Edit turn(纯文字):【只】重写聚焦页的文字。返回一条承载清洗后文字的 layoutPatch
+    (不改 templateId/images —— 照片/版式升级是 WP2.3)。没有可应用的东西时返回 None。"""
     focused = req.focusedPageIndex
     if focused is None:
         return None
@@ -569,11 +533,10 @@ def _raw_texts_by_index(raw: Any) -> dict[int, dict[str, Any]]:
 def _clean_texts(
     raw_texts: dict[str, Any], specs: list[dict[str, Any]]
 ) -> dict[str, str]:
-    """Keep only the page's AUTHORED slots, trim, drop empties, clamp to maxChars.
+    """只保留本页的创作槽,trim,丢空值,钳到 maxChars。
 
-    A drifted model cannot inject a non-existent slot id (kept set = the template's
-    authored slots) nor overflow a slot (maxChars clamp), mirroring the v2 grounding
-    guardrails without the v2 cluster/grounding machinery."""
+    漂移的模型既无法注入不存在的槽位 id(保留集 = 模板的创作槽),也无法撑爆某槽
+    (maxChars 钳),镜像 v2 的 grounding 护栏,但不带 v2 那套 cluster/grounding 机制。"""
     allowed = _authored_slot_ids(specs)
     max_chars = _max_chars_by_slot(specs)
     out: dict[str, str] = {}
@@ -589,8 +552,8 @@ def _clean_texts(
 
 
 def _coerce_name_options(raw: Any) -> list[str] | None:
-    """Tolerant parse of model `nameOptions`: up to 4 non-empty, de-duped titles.
-    Returns None when none survive (the field stays optional)."""
+    """宽容解析模型的 `nameOptions`:最多 4 个非空、去重的标题。无一存活时返回 None
+    (该字段保持可选)。"""
     if not isinstance(raw, list):
         return None
     seen: set[str] = set()

@@ -1,9 +1,14 @@
-"""Co-located prompt loader (replaces the central `skills.load_skill`).
+"""Prompt loader (replaces the central `skills.load_skill`).
 
-Each agent keeps its prompt `.md` assets next to its `handler.py`; code loads
-one by explicit path so the prompt lives with the capability that uses it.
-`{KEY}` placeholders are filled via `str.replace` (NOT `str.format`) so JSON
-braces in a prompt body are left untouched. Loaded text is `lru_cache`d by path.
+按稳定性切分 prompt 的归属:
+  * 固定结构(任务定义 + 输出 JSON 形状 + 字段契约)co-located 在 `agents/<cap>/`,
+    跟使用它的能力放一起 —— code 按显式路径加载。
+  * 人为可调规则(分章启发式 / 写作·引导风格 / 颜色字体 / 重试纠正语 / grounding /
+    privacy / persona)集中放在本目录:`common/`(跨能力共享,handler 用 `common=`
+    声明)与 `rules/`(按能力的规则,handler 按 `RULES_DIR / "<name>.md"` 加载)。
+
+`{KEY}` 占位符用 `str.replace`(不是 `str.format`)填充,所以 prompt 里 JSON 示例的
+`{ }` 不会被动到。加载文本按路径 `lru_cache`。
 """
 
 from __future__ import annotations
@@ -11,7 +16,12 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-_COMMON_DIR = Path(__file__).resolve().parent / "common"
+PROMPTS_DIR = Path(__file__).resolve().parent
+COMMON_DIR = PROMPTS_DIR / "common"
+RULES_DIR = PROMPTS_DIR / "rules"
+
+# Backward-compatible private alias (load_prompt's `common=` resolves against it).
+_COMMON_DIR = COMMON_DIR
 
 
 @lru_cache(maxsize=None)

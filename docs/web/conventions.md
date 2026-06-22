@@ -21,7 +21,7 @@
 | TS 字段 | camelCase | `createdAt` |
 | Drizzle 字段映射 | `createdAt: timestamp('created_at')` | |
 | 环境变量 | 大写下划线 | `AGENT_SHARED_SECRET` |
-| URL 路径 | kebab-case | `/api/v1/agent-layout` |
+| URL 路径 | kebab-case | `/api/v3/albums/[uuid]/chapter-chat` |
 | Zustand store | `xxx-store.ts` 导出 `useXxxStore` | `usePhotosStore` |
 
 ---
@@ -29,7 +29,7 @@
 ## 2. Route 模板(所有 `route.ts` 按这个写)
 
 ```ts
-// app/api/v1/.../route.ts
+// app/api/v3/albums/[uuid]/route.ts
 import { requireAuth } from '@/lib/auth/require-auth';
 import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
@@ -37,21 +37,23 @@ import { fromException } from '@/lib/api/from-exception';
 import { albumService } from '@/services/album/album-service';
 import { z } from 'zod';
 
-const BodySchema = z.object({
-  title: z.string().min(1).max(100),
-});
+const PatchSchema = z.object({ title: z.string().min(1).max(120) });
 
-export async function POST(req: Request) {
+// Next.js 15: 动态段 params 是 Promise,必须 await
+export async function PATCH(req: Request, ctx: { params: Promise<{ uuid: string }> }) {
   try {
     const user = await requireAuth(req);
-    const body = await parseBody(BodySchema, req);
-    const data = await albumService.create(user.id, body);
+    const { uuid } = await ctx.params;
+    const body = await parseBody(PatchSchema, req);
+    const data = await albumService.updateTitle(user.id, uuid, body.title);
     return ok(data);
   } catch (e) {
     return fromException(e);
   }
 }
 ```
+
+> 多 method 的 route 可把 `requireAuth → await params → service → ok / fromException` 抽成一个本地 `withAlbum` helper 复用(见 `app/api/v1/albums/[uuid]/route.ts`)。需要拉长函数预算时用 `export const maxDuration = 60`(转发大 base64 / 同步 Agent 调用,见 `chapter-chat`、`v3/albums`)。
 
 **Route 的硬规则**:
 - 总行数 ≤ 40
@@ -105,26 +107,23 @@ export const albumService = {
 
 ```ts
 // db/repos/album-repo.ts
-import { db } from '@/db/client';
+import { db, type DbOrTx } from '@/db/client';
 import { albums, type NewAlbum } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
-import type { PgTransaction } from 'drizzle-orm/pg-core';
-
-type Tx = PgTransaction<any, any, any> | typeof db;
 
 export const albumRepo = {
-  findById: (id: string) =>
-    db.select().from(albums).where(eq(albums.id, id)).limit(1).then(r => r[0]),
+  findById: async (id: string) =>
+    (await db.select().from(albums).where(eq(albums.id, id)).limit(1))[0],
 
   findByUser: (userId: string) =>
     db.select().from(albums)
       .where(eq(albums.userId, userId))
       .orderBy(desc(albums.createdAt)),
 
-  create: (tx: Tx, data: NewAlbum) =>
-    tx.insert(albums).values(data).returning().then(r => r[0]),
+  create: (tx: DbOrTx, data: NewAlbum) =>
+    tx.insert(albums).values(data).returning().then((r) => r[0]),
 
-  updateStatus: (tx: Tx, id: string, status: AlbumStatus) =>
+  updateStatus: (tx: DbOrTx, id: string, status: AlbumStatus) =>
     tx.update(albums).set({ status }).where(eq(albums.id, id)),
 };
 ```
@@ -132,7 +131,7 @@ export const albumRepo = {
 **Repo 的硬规则**:
 - 一张表一个文件
 - 只导出**纯数据访问函数**
-- 写操作的第一参数是 `tx`(支持事务调用)
+- 事务相关的写/锁读第一参数是 `tx: DbOrTx`(`DbOrTx` 从 `@/db/client` 导入,= `db | 事务句柄`;调用方可传 `db` 也可传 `tx`)
 - 不 import service / 业务 lib
 - 不写日志、不写校验
 
@@ -143,24 +142,28 @@ export const albumRepo = {
 ```ts
 // lib/agent/agent-client.ts
 import { env } from '@/lib/env';
+import { ERRORS } from '@/lib/api/error-codes';
 
 export const agentClient = {
-  async generateLayout(payload: AgentRequest): Promise<AgentResponse> {
-    const res = await fetch(`${env.AGENT_BASE_URL}/v1/layout`, {
+  async submitAnalyzeV3(payload: V3AnalyzeRequest): Promise<{ requestId: string }> {
+    const res = await fetch(`${env.AGENT_BASE_URL}/v3/analyze`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${env.AGENT_SHARED_SECRET}`,
+        Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
         'Content-Type': 'application/json',
         'X-Request-Id': payload.requestId,
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(90_000),
+      signal: AbortSignal.timeout(30_000),
     });
-    if (!res.ok) throw new Error(`agent http ${res.status}`);
+    if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
+    if (!res.ok) throw ERRORS.AGENT_INTERNAL_ERROR();
     return res.json();
   },
 };
 ```
+
+> Agent 端点全在 `/v3/*`(1 异步 `analyze` + 5 同步);req/res 形状以 `packages/contracts`(`V3*Request` / `V3*Response`)为单一真相源,client 直接 import 这些类型。把 HTTP status 翻成 `ERRORS.XXX()`(`AGENT_*`)而不是裸 `Error`。
 
 **Lib 的硬规则**:
 - 不知道"相册""积分"是什么(无业务知识)
@@ -195,7 +198,7 @@ export function PromptInput({ onSubmit, disabled }: Props) {
 
 **组件硬规则**:
 - 不直接调 `db` / `repo` / `service`
-- 用 `fetch('/api/v1/...')` 或 Server Action
+- 用 `fetch('/api/v3/...')` / `fetch('/api/v1/...')` 或 Server Action
 - props 用 `interface Props`,导出命名组件(不要 default export)
 - 客户端组件加 `'use client'`,服务器组件不加
 

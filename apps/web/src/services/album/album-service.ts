@@ -1,5 +1,6 @@
 import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
+import { albumMessageRepo } from '@/db/repos/album-message-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
 import { jobService } from '@/services/job/job-service';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
@@ -510,17 +511,45 @@ export const albumService = {
     if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
     const slice = sliceChapterForChat(normalized, input.chapterId);
     if (!slice) throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
-    return agentClient.chapterChatV3({
+    const persistedHistory = (
+      await albumMessageRepo.findRecentByAlbumChapter(albumId, input.chapterId, 20)
+    )
+      .filter((m) => m.content.trim().length > 0)
+      .map((m) => ({ role: m.role, content: m.content }) satisfies V3ChatTurn);
+    const history = persistedHistory.length > 0 ? persistedHistory : input.history;
+
+    const result = await agentClient.chapterChatV3({
       albumId,
       language: input.language,
       chapter: slice.chapter,
       pages: slice.pages,
-      history: input.history,
+      history,
       userMessage: input.userMessage,
       ...(input.focusedPageIndex !== undefined
         ? { focusedPageIndex: input.focusedPageIndex }
         : {}),
     });
+    await db.transaction(async (tx) => {
+      if (input.userMessage.trim()) {
+        await albumMessageRepo.create(tx, {
+          albumId,
+          userId,
+          chapterId: input.chapterId,
+          role: 'user',
+          content: input.userMessage,
+        });
+      }
+      await albumMessageRepo.create(tx, {
+        albumId,
+        userId,
+        chapterId: input.chapterId,
+        role: 'assistant',
+        content: result.assistantReply,
+        usage: result.usage,
+        layoutPatch: result.kind === 'edit' ? (result.layoutPatch ?? null) : null,
+      });
+    });
+    return result;
   },
 
   // ③ 主题/章节色-应用 (WP3.2 / #190). The user picked, per chapter, one

@@ -1,35 +1,29 @@
-"""V3 image-leaning focused-page edit: recognition model emits a structured
-INTENT (which photos sit on the page, in what order); the deterministic engine
-(`skeleton_v3.pick_template_v3` / `assign_images_v3`) executes it (WP2.3 / #187).
+"""V3 偏图片的聚焦页编辑:识图模型产出一个结构化 INTENT(哪些照片放在这页、按什么
+顺序);确定性引擎(`skeleton_v3.pick_template_v3` / `assign_images_v3`)来执行
+(WP2.3 / #187)。
 
-It is invoked by `chapter_chat_v3` ONLY when the per-turn DeepSeek dispatch
-classified the focused-page edit as 涉及图片(换图 / 挪图 / 改图文配比). The V3 image
-edit is implemented on top of the V3 deterministic engine here.
+只有当本轮 DeepSeek dispatch 把聚焦页编辑判定为涉及图片(换图 / 挪图 / 改图文配比)时,
+`chapter_chat_v3` 才会调用本模块。V3 图片编辑就建在这里的 V3 确定性引擎之上。
 
 图文分流 (§4.2(3) / architecture §6.8 第 2 条):
 
-  * 纯文字 turn → DeepSeek rewrites the focused page's texts. NEVER reaches this
-    module, so the recognition (vision) model is never invoked for a text-only
-    edit. `chapter_chat_v3` owns that path (`_coerce_edit_patch`).
-  * 涉及图片 turn → the recognition model is upgraded in, but it emits ONLY a
-    structured intent: the ordered list of `photoId`s that should occupy the
-    focused page (drawn strictly from THIS chapter's photos). It NEVER emits a
-    `templateId` or a `pageIndex`. The deterministic engine then:
-      - picks a legal template for that photo count (`pick_template_v3`, exact
-        capacity preferred else closest-larger), and
-      - slots the chosen photos in declaration order (`assign_images_v3`).
-    A photoId outside the chapter is dropped; an empty / unusable intent yields
-    None so the caller degrades to a talk turn rather than fabricate a layout.
+  * 纯文字 turn → DeepSeek 重写聚焦页的文字。绝不会进到本模块,所以纯文字编辑从不
+    调用识图(vision)模型。那条路径归 `chapter_chat_v3` 管(`_coerce_edit_patch`)。
+  * 涉及图片 turn → 识图模型被升级进来,但它【只】产出一个结构化意图:应占据聚焦页的
+    `photoId` 有序列表(严格取自【本章】的照片)。它绝不产出 `templateId` 或
+    `pageIndex`。随后确定性引擎:
+      - 为该照片数挑一个合法模板(`pick_template_v3`,优先恰好容量、否则最接近的更大),
+      - 按声明顺序把选中的照片摆进槽(`assign_images_v3`)。
+    本章之外的 photoId 被丢弃;空的 / 不可用的意图返回 None,于是调用方降级为 talk turn,
+    而不是杜撰一份版式。
 
-触发权在用户 (§4.2(3)): this only ever runs in response to THIS turn's user
-message — never a proactive re-layout. The vision model is hallucinate-proof by
-construction: it cannot inject an illegal templateId (the engine picks it) nor
-move a different page (it only ever sees / answers for the focused page).
+触发权在用户 (§4.2(3)):本模块只在响应【本轮】用户消息时运行 —— 绝不主动重新排版。识图
+模型在构造上就防幻觉:它既无法注入非法 templateId(由引擎来挑),也无法动到别的页(它
+只看见 / 只为聚焦页作答)。
 
-Stateless / privacy (§3): the intent call sends ONLY text — the focused page's
-current photo placement + the chapter's photo scene sentences + the user's
-message. NO base64, NO GPS/place. The scene sentences were already authored by
-the recognition model in WP1.3; nothing new about the pixels is round-tripped.
+无状态 / 隐私 (§3):意图调用【只】发送文字 —— 聚焦页当前的照片摆放 + 本章的照片场景
+句子 + 用户的消息。无 base64,无 GPS/place。场景句子在 WP1.3 已由识图模型写好;像素本身
+没有任何新信息被往返传递。
 """
 
 from __future__ import annotations
@@ -55,28 +49,26 @@ _PROMPT_DIR = Path(__file__).resolve().parent
 
 log = get_logger("chat_edit_v3")
 
-# Every focused page in 章节故事 is an interior body page; the legal candidate
-# pool is therefore always the interior category (cover/toc/ending are owned by
-# later stages, never edited here).
+# 章节故事里每个聚焦页都是内页正文页;因此合法候选池始终是 interior 类别
+# (cover/toc/ending 归后续环节所有,从不在这里编辑)。
 _INTERIOR: skeleton_v3.Category = "interior"
 
 
 class ChatEditV3Error(Exception):
-    """The image-edit intent step failed in a way that must degrade to a talk turn.
+    """图片编辑意图步骤以一种必须降级为 talk turn 的方式失败时抛。
 
-    Never surfaced as a hard error — an image edit that the model/engine cannot
-    satisfy returns no patch, and `chapter_chat_v3` answers with a talk reply
-    asking the user to clarify (never fabricates a layout)."""
+    绝不作为硬错误外抛 —— 模型/引擎无法满足的图片编辑返回不出 patch,于是
+    `chapter_chat_v3` 用一句 talk 回复请用户澄清(绝不杜撰版式)。"""
 
 
-# ---------- intent slot (vision provider) ------------------------------------
+# ---------- 意图槽(vision provider)------------------------------------
 
 
 def _intent_slot(settings: Any) -> VisionSlot:
-    """Reuse the describe-content provider policy: OpenAI (GPT-5.5 Mini) primary,
-    火山 doubao failover (architecture §6.8 第 2 条). The intent call is text-only,
-    so either slot works; pick the primary when configured, else ark. Raises
-    ChatEditV3Error when neither is configured (caller degrades to talk)."""
+    """复用 describe-content 的 provider 策略:OpenAI (GPT-5.5 Mini) 为主,
+    火山 doubao 为 failover(architecture §6.8 第 2 条)。意图调用是纯文字,
+    所以哪个 slot 都行;配了主就用主,否则用 ark。两者都没配时抛
+    ChatEditV3Error(调用方降级为 talk)。"""
     try:
         return openai_vision_slot(
             settings,
@@ -91,48 +83,44 @@ def _intent_slot(settings: Any) -> VisionSlot:
         raise ChatEditV3Error(f"no image-edit intent slot configured: {exc}") from exc
 
 
-# ---------- prompt assembly ---------------------------------------------------
+# ---------- prompt 组装 ---------------------------------------------------
 
 
 def _max_interior_capacity() -> int:
-    """Largest photo count any interior template can hold — the hard ceiling the
-    model's intent is clamped to before the engine ever sees it."""
+    """任一 interior 模板能容纳的最大照片数 —— 在引擎看到之前,模型意图被钳到的硬上限。"""
     return skeleton_v3.max_capacity(_INTERIOR)
 
 
 def _build_user_content(
     chapter: V3Chapter, page: Page, user_message: str
 ) -> str:
-    """Compact text manifest for the intent call. Carries the chapter's photos (id
-    + scene sentence), which photos currently sit on the focused page (so 挪图 /
-    换图 is grounded), the capacity ceiling, and the user's request. NO base64, NO
-    GPS/place — only text the recognition model already authored (§3 privacy)."""
+    """意图调用的紧凑文字清单。带上本章的照片(id + 场景句子)、当前聚焦页上有哪些照片
+    (好让挪图 / 换图有依据)、容量上限,以及用户的诉求。无 base64,无 GPS/place ——
+    只有识图模型早已写好的文字(§3 隐私)。"""
     photo_lines = "\n".join(
-        f"    - {p.photoId}: {p.sceneDescription or '(no description)'}"
+        f"    - {p.photoId}: {p.sceneDescription or '(无描述)'}"
         for p in chapter.photos
     )
     current_ids = list(page.images.values())
-    current = ", ".join(current_ids) if current_ids else "(none)"
+    current = ", ".join(current_ids) if current_ids else "(无)"
     capacity = _max_interior_capacity()
     return (
-        f"Chapter: {chapter.description or '(no description)'}\n\n"
-        f"All photos available in this chapter (use these exact photoId values):\n"
+        f"章节:{chapter.description or '(无描述)'}\n\n"
+        f"本章可用的全部照片(请使用这些确切的 photoId 值):\n"
         f"{photo_lines}\n\n"
-        f"Photos currently on the page being edited, in order: {current}\n\n"
-        f"The user's request for THIS page:\n{user_message}\n\n"
-        f"A page can hold at most {capacity} photo(s). "
-        'Return {"photoIds":[...]} — the ordered list of photoIds that should be on '
-        "this page after the change, taken ONLY from the chapter photos above. Do "
-        "NOT return a templateId, a pageIndex, or any layout id; the system places "
-        "the photos and picks the layout."
+        f"当前正在编辑的这页上的照片,按顺序:{current}\n\n"
+        f"用户对【这一页】的要求:\n{user_message}\n\n"
+        f"一页最多容纳 {capacity} 张照片。"
+        '返回 {"photoIds":[...]} —— 改动后这页上应有的、按顺序排列的 photoId 列表,'
+        "【只】从上面本章的照片里取。不要返回 templateId、pageIndex 或任何版式 id;"
+        "由系统来摆放照片、挑选版式。"
     )
 
 
 def _parse_intent(parsed: Any) -> list[str]:
-    """Ordered photoId list from the model's JSON. Tolerant: ignores non-string /
-    empty ids and de-dupes (a photo can sit in only one slot). The caller filters
-    against the chapter's real photoIds and clamps to capacity, so a drifted model
-    can never place a phantom photo or overflow the page."""
+    """从模型 JSON 里取出有序的 photoId 列表。宽容处理:忽略非字符串 / 空 id 并去重
+    (一张照片只能占一个槽)。调用方会按本章真实 photoId 过滤并钳到容量,所以漂移的
+    模型既无法摆上一张幻觉照片,也无法把这页撑爆。"""
     if not isinstance(parsed, dict):
         raise ChatEditV3Error("image-edit intent response is not a JSON object")
     raw = parsed.get("photoIds")
@@ -183,15 +171,13 @@ async def _call_model(slot: VisionSlot, manifest: str) -> list[str]:
     return _parse_intent(parsed)
 
 
-# ---------- deterministic execution ------------------------------------------
+# ---------- 确定性执行 ------------------------------------------
 
 
 def _ground_intent(chapter: V3Chapter, photo_ids: list[str]) -> list[str]:
-    """Keep only photoIds that actually belong to THIS chapter, in the model's
-    order, de-duped (a photo can occupy only one slot) and clamped to the interior
-    capacity ceiling. Drops phantom ids (model hallucination), collapses repeats,
-    and trims overflow. The engine never sees an illegal or duplicated photo —
-    enforced here so BOTH the real intent call and an injected one are grounded."""
+    """只保留确实属于【本章】的 photoId,按模型的顺序,去重(一张照片只能占一个槽)
+    并钳到 interior 容量上限。丢掉幻觉 id(模型臆造)、合并重复、裁掉溢出。引擎从不
+    看到非法或重复的照片 —— 在这里强制,使真实的意图调用与注入的意图调用都被 grounded。"""
     chapter_ids = {p.photoId for p in chapter.photos}
     grounded: list[str] = []
     seen: set[str] = set()
@@ -204,37 +190,33 @@ def _ground_intent(chapter: V3Chapter, photo_ids: list[str]) -> list[str]:
 
 
 def _execute_intent(page: Page, photo_ids: list[str]) -> V3LayoutPatchEntry | None:
-    """Run the deterministic engine on a grounded photoId list → a full-page patch.
+    """在 grounded 后的 photoId 列表上跑确定性引擎 → 一份整页 patch。
 
-    Picks a legal interior template for the photo count (`pick_template_v3`: exact
-    capacity preferred, else closest-larger) and slots the photos in order
-    (`assign_images_v3`). The model never supplied the templateId — it is legal by
-    construction. Texts are carried over verbatim (an image change does not rewrite
-    copy; pure-text edits own that path). Returns None when there is nothing to
-    place."""
+    为照片数挑一个合法的 interior 模板(`pick_template_v3`:优先恰好容量,否则最接近的
+    更大),并按顺序把照片摆进槽(`assign_images_v3`)。模型从未提供 templateId —— 它
+    在构造上就合法。文字原样带过(改图不重写文案;纯文字编辑走那条路径)。没有可摆的
+    东西时返回 None。"""
     if not photo_ids:
         return None
     try:
         template_id = skeleton_v3.pick_template_v3(_INTERIOR, len(photo_ids))
         images = skeleton_v3.assign_images_v3(template_id, photo_ids)
     except ValueError as exc:
-        # No interior template can hold the requested count → degrade to talk.
+        # 没有 interior 模板能容纳请求的张数 → 降级为 talk。
         log.warning("chat_edit_v3.no_template", reason=str(exc), count=len(photo_ids))
         return None
     return V3LayoutPatchEntry(
         pageIndex=page.pageIndex,
         templateId=template_id,
         images=images,
-        # Carry existing texts that still have a home on the new template. An image
-        # change keeps the user's words; copy rewrites are the pure-text edit path.
+        # 带过在新模板上仍有归宿的现有文字。改图保留用户的文字;文案重写归纯文字编辑路径。
         texts=_carried_texts(page.texts, template_id),
     )
 
 
 def _carried_texts(old_texts: dict[str, str], template_id: str) -> dict[str, str]:
-    """Keep only the old page's texts whose slot id still exists on the new
-    template (a re-template can change the slot set). Mirrors v2's reflow guard
-    without the v2 machinery: a dropped slot's text is simply not carried."""
+    """只保留旧页中槽位 id 在新模板上仍存在的文字(换模板会改变槽位集合)。镜像 v2 的
+    reflow 守卫,但不带 v2 那套机制:被丢掉的槽位文字就直接不带过。"""
     from src.engine import templates
 
     template = templates.get(template_id)
@@ -244,7 +226,7 @@ def _carried_texts(old_texts: dict[str, str], template_id: str) -> dict[str, str
     return {key: value for key, value in old_texts.items() if key in allowed}
 
 
-# ---------- public API --------------------------------------------------------
+# ---------- 公开 API --------------------------------------------------------
 
 
 async def run_image_edit(
@@ -254,16 +236,14 @@ async def run_image_edit(
     *,
     call_intent: Any = None,
 ) -> V3LayoutPatchEntry | None:
-    """Resolve an image-leaning focused-page edit into a deterministic layout patch.
+    """把偏图片的聚焦页编辑解析成一份确定性的 layout patch。
 
-    The recognition model emits an ordered photoId intent; the deterministic engine
-    picks a legal template and slots the photos. NEVER raises: a failed/missing
-    provider, an unparseable response, a phantom-only intent, or an oversize
-    request all return None so `chapter_chat_v3` degrades to a talk turn (never
-    fabricates a layout).
+    识图模型产出有序的 photoId 意图;确定性引擎挑一个合法模板并把照片摆进槽。绝不抛错:
+    失败/缺失的 provider、无法解析的响应、纯幻觉的意图、超量的请求,统统返回 None,于是
+    `chapter_chat_v3` 降级为 talk turn(绝不杜撰版式)。
 
-    `call_intent` lets tests inject the intent call (`async (manifest) -> list[str]`)
-    so no real vision model is hit; production resolves the slot + provider policy.
+    `call_intent` 让测试注入意图调用(`async (manifest) -> list[str]`),从而不打到真实
+    vision 模型;生产路径解析 slot + provider 策略。
     """
     manifest = _build_user_content(chapter, page, user_message)
     try:
@@ -272,8 +252,7 @@ async def run_image_edit(
         else:
             settings = get_settings()
             slot = _intent_slot(settings)
-            # Bound the call by the describe budget so a slow model can't hang the
-            # 60s sync turn; on timeout we degrade to talk.
+            # 用 describe 预算给调用设界,免得慢模型把 60s 同步 turn 卡死;超时则降级为 talk。
             photo_ids = await asyncio.wait_for(
                 _call_model(slot, manifest),
                 timeout=settings.describe_batch_deadline_seconds,
@@ -281,7 +260,7 @@ async def run_image_edit(
     except (ChatEditV3Error, asyncio.TimeoutError) as exc:
         log.warning("chat_edit_v3.degrade", reason=str(exc))
         return None
-    except Exception as exc:  # noqa: BLE001 — never hard-fail the turn
+    except Exception as exc:  # noqa: BLE001 —— 绝不让这一 turn 硬失败
         log.warning("chat_edit_v3.degrade_unhandled", reason=str(exc))
         return None
 

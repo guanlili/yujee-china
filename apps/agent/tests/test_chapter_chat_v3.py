@@ -405,8 +405,8 @@ def test_assembly_carries_all_section_4_2_4_items():
 
     # 写作 Skill + 引导 Skill loaded into the system prompt (not inlined code).
     assert "WRITING STYLE" in system and "GUIDANCE STYLE" in system
-    # A line unique to the write_chapter skill asset (proves the file was loaded).
-    assert "the felt story behind the moment" in system
+    # A line unique to the writing-style skill asset (proves the file was loaded).
+    assert "这一刻背后被感受到的故事" in system
 
     payload = json.loads(user)
     # 用户信息: this turn's message + history channel present.
@@ -475,10 +475,8 @@ def test_assembly_localizes_skill_language():
     )
     system, _ = _system_user(req)
     # The {LANGUAGE} placeholder in both prompts resolved to Chinese for a zh turn.
-    from pathlib import Path
+    # 写作/引导风格已外置到 prompts/rules/(人为可调规则)。
+    from src.prompts import RULES_DIR, load_prompt
 
-    from src.prompts import load_prompt
-
-    _writing_dir = Path("src/agents/writing")
-    assert load_prompt(_writing_dir / "write_chapter.md", LANGUAGE="Chinese") in system
-    assert load_prompt(_writing_dir / "guide_chapter.md", LANGUAGE="Chinese") in system
+    assert load_prompt(RULES_DIR / "writing_style.md", LANGUAGE="Chinese") in system
+    assert load_prompt(RULES_DIR / "guidance_style.md", LANGUAGE="Chinese") in system

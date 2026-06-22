@@ -106,7 +106,7 @@ await creditHoldRepo.create({ ... });
 ## 5. 组件 / Server Action
 
 - **组件不调 repo,不调 lib(除 UI lib),不调 service**
-- 组件用 `fetch('/api/v1/...')` 或 Next.js Server Action 调到 Route 层
+- 组件用 `fetch('/api/v3/...')` / `fetch('/api/v1/...')` 调到 Route 层(编排路由在 `/api/v3/*`,基建型 CRUD/PDF/积分/字体仍在 `/api/v1/*`,见 `docs/web/api.md`)
 - Server Action 本身相当于一个 Route,遵循 Route 的硬规则
 
 ---
