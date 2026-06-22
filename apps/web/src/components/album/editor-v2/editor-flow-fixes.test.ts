@@ -50,39 +50,39 @@ test('①: the opener holds an in-flight guard so two same-tick calls cannot bot
   assert.match(fn![0], /openerInFlight/, 'the opener must track an in-flight guard');
 });
 
-// ───────────────────────── ④ talk→write exit button ─────────────────────────
-test('④: a persistent "write this chapter now" trigger sends an explicit write request', () => {
+// ───────────────────────── ④ agent decides when to write (no write-now button) ─────────────────────────
+// The old "write it now" chip existed because the system prompt forbade the model from
+// writing unprompted (硬规则), stranding the user in a talk loop. That 红线 is gone: the
+// agent now decides on its own when enough has been said and dispatches kind=write. The
+// manual chip is fully removed — confirmation lives only in the post-write satisfaction card.
+test('④: the manual write-now chip is fully removed (agent self-dispatches kind=write)', () => {
   const src = source('EditorPort.tsx');
-  // A helper that appends the write-now affordance into the chat flow must exist.
+  assert.doesNotMatch(
+    src,
+    /function appendWriteNowCard\b/,
+    'appendWriteNowCard() must be removed — the agent decides when to write, no manual chip',
+  );
+  assert.doesNotMatch(
+    src,
+    /appendWriteNowCard\(\)/,
+    'no call site may surface a write-now chip',
+  );
+  assert.doesNotMatch(
+    src,
+    /write-now-card/,
+    'the write-now card markup must be gone',
+  );
+});
+
+test('④: the satisfaction card opens only after a real chapter write, never on a talk turn', () => {
+  const src = source('EditorPort.tsx');
+  // 满意/想改 is a per-write affordance: it is gated on wroteChapter, so a talk turn (the
+  // agent still gathering material) never shows it. This is the only standing confirmation.
   assert.match(
     src,
-    /function appendWriteNowCard\(\)/,
-    'appendWriteNowCard() must exist to give the user a talk→write exit',
+    /if \(wroteChapter\)\s*\{\s*appendSatisfactionCard\(\);/,
+    'appendSatisfactionCard() must be gated on wroteChapter (a fresh full-chapter write)',
   );
-  const card = /function appendWriteNowCard\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(card, 'appendWriteNowCard() body must be parseable');
-  // Clicking it routes through the normal chapter-chat turn with an explicit write ask,
-  // so the model dispatches kind=write (the user "明确要写" signal).
-  assert.match(card![0], /runChapterChatTurn\(/, 'the write-now trigger must run a chapter-chat turn');
-});
-
-test('④: entering/opening a live chapter surfaces the write-now exit (not only after talk)', () => {
-  const src = source('EditorPort.tsx');
-  // The opener (AI 先开口) is followed by the write-now affordance so the user always has
-  // a way out of the talk loop — it is appended after the opener reply lands.
-  const fn = /async function runChapterGuideOpener\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(fn, 'runChapterGuideOpener() body must be parseable');
-  assert.match(fn![0], /appendWriteNowCard\(\)/, 'the opener must surface the write-now exit after its question');
-});
-
-test('④: the 不满意 (想改改) tweak path also re-offers the write-now exit', () => {
-  const src = source('EditorPort.tsx');
-  // After 不满意, the user is back in a talk-style loop (describe what to change). They must
-  // keep a standing way to (re-)write the chapter, not be stranded answering questions.
-  const card = /function appendSatisfactionCard\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(card, 'appendSatisfactionCard() body must be parseable');
-  const noBranch = card![0].slice(card![0].indexOf('sc-no'));
-  assert.match(noBranch, /appendWriteNowCard\(\)/, '不满意 must re-offer the write-now exit');
 });
 
 // ───────────────────────── ⑥ cover apply/skip not reversed ─────────────────────────

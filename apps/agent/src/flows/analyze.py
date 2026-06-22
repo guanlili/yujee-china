@@ -48,6 +48,7 @@ from ..agents.image_understanding import handler as vision
 from ..agents.image_understanding import VisionError
 from ..agents.template_select import handler as select_template
 from ..engine import generic_copy
+from ..engine import skeleton_v3
 from ..settings import get_settings
 
 log = get_logger("v3_album")
@@ -128,6 +129,12 @@ async def _build_preview(chapters: list[V3Chapter]) -> tuple[V3LayoutTree, list[
     placeholders (通用色 = the null placeholder; theme环节 fills real值). Pure code."""
     tree = V3LayoutTree(chapters=chapters)
     page_dicts = await select_template.select_template_pages(chapters)
+    # 书籍设计环节(§4.4)要能选/换封面/封底,前提是 draft skeleton 里真有一张
+    # category=cover 页和一张 category=ending 页 —— 否则封面卡片找不到封面页,只能
+    # auto-skip(本次缺口的根因)。这里在正文页前后确定性补齐默认封面/封底页(hero
+    # 复用首/尾照片),并重排 pageIndex;封面 patch 仍是页级,Web 确认后才落库,Agent
+    # 不写库 / 不推 stage(§3 不变式)。
+    page_dicts = skeleton_v3.wrap_with_cover_ending(page_dicts, chapters)
     page_dicts = generic_copy.fill_generic_copy(page_dicts, chapters)
     pages = [Page(**page) for page in page_dicts]
     return tree, pages

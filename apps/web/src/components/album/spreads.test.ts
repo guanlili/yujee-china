@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildSpreads, spreadIndexOfPage } from './spreads';
+import { buildSpreads, isSoloSpread, spreadIndexOfPage } from './spreads';
 import type { EditorPage } from './types';
 
 // Real template ids carry the slot we group by: mag-01/p01 = cover, current
@@ -164,4 +164,57 @@ test('empty book: zero pages yields zero spreads (no crash, no blank page)', () 
   // buildSpreads must return []; EditorBook.spreadCount() clamps this to a single
   // visible (empty) spread, so the canvas never indexes into a missing spread.
   assert.deepEqual(buildSpreads([]), []);
+});
+
+// ── solo-page classification (FlipBook single-page render). A cover/ending sits
+// on its own spread and must render as ONE centered page (no blank facing half,
+// no spine). The trap: an interior odd-trailing page has the IDENTICAL shape
+// ({ left: i, right: null }) but its blank half is normal spread whitespace and
+// must stay — so isSoloSpread keys off the occupied page's category, never off
+// "a half is null".
+
+test('isSoloSpread: cover-solo (left null, right=cover) is solo', () => {
+  const pages = [page('mag-01', 0), page('mag-03', 1), page('mag-05', 2)];
+  const spreads = buildSpreads(pages);
+  // [{ left: null, right: 0 }, { left: 1, right: 2 }]
+  assert.equal(isSoloSpread(spreads[0], pages), true);
+});
+
+test('isSoloSpread: ending-solo (left=ending, right null) is solo', () => {
+  const pages = [
+    page('mag-01', 0), // cover
+    page('mag-03', 1), // interior
+    page('mag-05', 2), // interior
+    page('mag-20', 3), // ending (solo verso)
+  ];
+  const spreads = buildSpreads(pages);
+  const endingSpread = spreads.find((s) => s.left === 3);
+  assert.ok(endingSpread, 'expected an ending spread holding page 3');
+  assert.equal(isSoloSpread(endingSpread, pages), true);
+});
+
+test('isSoloSpread: interior odd-trailing { left:i, right:null } is NOT solo (keeps blank half)', () => {
+  // Three interior pages → one full pair + one odd trailing interior with a blank
+  // facing half. That blank half is normal whitespace, NOT a solo page.
+  const pages = [page('mag-03', 0), page('mag-05', 1), page('mag-06', 2)];
+  const spreads = buildSpreads(pages);
+  // [{ left: 0, right: 1 }, { left: 2, right: null }]
+  assert.deepEqual(spreads[1], { left: 2, right: null });
+  assert.equal(
+    isSoloSpread(spreads[1], pages),
+    false,
+    'interior odd-trailing must stay a double-width spread with a blank half',
+  );
+});
+
+test('isSoloSpread: a paired interior spread is never solo', () => {
+  const pages = [page('mag-03', 0), page('mag-05', 1)];
+  const spreads = buildSpreads(pages); // [{ left: 0, right: 1 }]
+  assert.equal(isSoloSpread(spreads[0], pages), false);
+});
+
+test('isSoloSpread: undefined / out-of-range spread is not solo (no crash)', () => {
+  const pages = [page('mag-01', 0)];
+  assert.equal(isSoloSpread(undefined, pages), false);
+  assert.equal(isSoloSpread({ left: 99, right: null }, pages), false);
 });

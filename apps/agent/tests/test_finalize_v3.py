@@ -188,6 +188,29 @@ def test_validate_reuse_cap_is_album_wide_twice_no_cover_exemption():
     assert "reused more than 2 times" in (bad or "")
 
 
+def test_validate_cover_ending_reuse_of_hero_photos_is_exempt():
+    # 单照片相册:wrap_with_cover_ending 让那张照片同时出现在 cover + interior + ending
+    # (封面/封底复用首尾照片是确定性设计)。封面/封底页的复用不计入「全册复用 ≤2」上限,
+    # 所以即便总出现 3 次也能 finalize —— 否则单照片书导出会被误判滥用而失败。正文复用仍 ≤2。
+    from src.schemas import AlbumLayoutPlan, LayoutPhotoAnalysis, Magazine
+
+    cover_tid = sk.default_cover_template_id()
+    ending_tid = sk.default_ending_template_id()
+    assert cover_tid and ending_tid  # registry 应提供 cover/ending 模板
+    pages = [
+        Page(**sk.build_page_v3("cover", ["p0"], template_id=cover_tid, page_index=0)),
+        Page(**sk.build_page_v3("interior", ["p0"], template_id="mag-03", page_index=1)),
+        Page(**sk.build_page_v3("ending", ["p0"], template_id=ending_tid, page_index=2)),
+    ]
+    plan = AlbumLayoutPlan(
+        magazine=Magazine(title="t", subtitle=None, style="editorial", language="en"),
+        photos=[LayoutPhotoAnalysis(photoId="p0", description="d", tags=[], quality="detail", orientation="landscape")],
+        pages=pages,
+    )
+    # p0 placed 3 times, but cover + ending placements are exempt; interior count is 1 → not overused.
+    assert fv3.validate_v3(plan) is None
+
+
 def test_validate_rejects_unused_photo():
     from src.schemas import AlbumLayoutPlan, LayoutPhotoAnalysis, Magazine
 

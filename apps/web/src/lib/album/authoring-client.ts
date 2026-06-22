@@ -156,9 +156,16 @@ export function postApplyTheme(
 // pages from draft_json server-side, runs the deterministic auto-fill, folds the patch
 // into draft_json.pages + advances stage cover→ready. A skip returns an EMPTY patch and
 // never errors. Returns the browser-shaped layoutPatch to apply live + the new stage.
+// `coverPhotoId`/`endingPhotoId` (optional) let the user pick WHICH photo sits on the
+// cover/ending hero. They never touch the Agent /v3/cover contract: the Web service swaps
+// the chosen photo into the re-sliced cover/ending page BEFORE forwarding to the stateless
+// agent (which auto-fills from the page's own images). Absent = keep whatever analyze put
+// there (book's first/last photo).
 export interface CoverInput {
   coverTemplateId?: string | null;
   endingTemplateId?: string | null;
+  coverPhotoId?: string | null;
+  endingPhotoId?: string | null;
 }
 export function postCover(
   albumId: string,
@@ -168,6 +175,8 @@ export function postCover(
     language: 'en',
     ...(input.coverTemplateId !== undefined ? { coverTemplateId: input.coverTemplateId } : {}),
     ...(input.endingTemplateId !== undefined ? { endingTemplateId: input.endingTemplateId } : {}),
+    ...(input.coverPhotoId !== undefined ? { coverPhotoId: input.coverPhotoId } : {}),
+    ...(input.endingPhotoId !== undefined ? { endingPhotoId: input.endingPhotoId } : {}),
   });
 }
 

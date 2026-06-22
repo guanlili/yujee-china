@@ -181,3 +181,69 @@ def test_aspect_ratio_mismatch_never_rejected_at_assignment():
     # portrait-only must still slot fine — V3 does no orientation hard rule.
     page = sk.build_page_v3("interior", ["wide"], template_id="mag-08")
     assert page["images"] == {templates.image_slot_ids(templates.TEMPLATES["mag-08"])[0]: "wide"}
+
+
+# ── cover/ending wrapping (book-design step needs real cover/ending pages) ─────
+
+
+def test_default_cover_and_ending_template_ids_are_stable_first():
+    # Defaults are the stably-sorted first id in each category pool.
+    assert sk.default_cover_template_id() == "mag-01"
+    assert sk.default_ending_template_id() == "mag-20"
+
+
+def test_wrap_with_cover_ending_prepends_cover_appends_ending_and_reindexes():
+    interior = sk.build_skeleton_v3([{"photos": ["a", "b", "c"]}])
+    wrapped = sk.wrap_with_cover_ending(interior, [{"photos": ["a", "b", "c"]}])
+
+    # cover (first photo) at the front, ending (last photo) at the back.
+    assert sk.template_category(templates.get(wrapped[0]["templateId"])) == "cover"
+    assert sk.template_category(templates.get(wrapped[-1]["templateId"])) == "ending"
+    assert list(wrapped[0]["images"].values()) == ["a"]   # first photo of the book
+    assert list(wrapped[-1]["images"].values()) == ["c"]  # last photo of the book
+    # The interior pages survive in the middle, in order.
+    assert [sk.template_category(templates.get(p["templateId"])) for p in wrapped[1:-1]] == [
+        "interior" for _ in interior
+    ]
+    # pageIndex is contiguous 0..N-1 across the whole wrapped list.
+    assert [p["pageIndex"] for p in wrapped] == list(range(len(wrapped)))
+
+
+def test_wrap_with_cover_ending_single_photo_uses_it_for_both():
+    interior = sk.build_skeleton_v3([{"photos": ["solo"]}])
+    wrapped = sk.wrap_with_cover_ending(interior, [{"photos": ["solo"]}])
+    # cover + 1 interior + ending; the lone photo is reused on both cover and ending.
+    assert len(wrapped) == len(interior) + 2
+    assert list(wrapped[0]["images"].values()) == ["solo"]
+    assert list(wrapped[-1]["images"].values()) == ["solo"]
+
+
+def test_wrap_with_cover_ending_no_photos_returns_interior_unchanged():
+    # No photos anywhere → nothing to put on a cover/ending hero; wrap is a no-op
+    # beyond a defensive re-index (interior is already empty here).
+    wrapped = sk.wrap_with_cover_ending([], [{"photos": []}])
+    assert wrapped == []
+
+
+def test_wrap_with_cover_ending_accepts_pydantic_chapter_photos():
+    # analyze pipeline passes V3Chapter / V3ChapterPhoto pydantic objects, not dicts.
+    from src.schemas import V3Chapter, V3ChapterPhoto
+
+    chapter = V3Chapter(
+        chapterId="ch_1",
+        description="d",
+        accentColor=None,
+        artFont=None,
+        photos=[
+            V3ChapterPhoto(
+                photoId="x", sceneDescription="s", width=800, height=600, orientation="landscape"
+            ),
+            V3ChapterPhoto(
+                photoId="y", sceneDescription="s", width=600, height=800, orientation="portrait"
+            ),
+        ],
+    )
+    interior = sk.build_page_v3("interior", ["x", "y"], page_index=0)
+    wrapped = sk.wrap_with_cover_ending([interior], [chapter])
+    assert list(wrapped[0]["images"].values()) == ["x"]
+    assert list(wrapped[-1]["images"].values()) == ["y"]

@@ -137,6 +137,22 @@
 .editor-port .book.book-solo{ background:transparent; }
 .editor-port .book.book-solo::before{ display:none; }
 
+/* WP/#158-cover: a TRUE cover/ending solo (isSoloSpread, category-keyed in
+   paintSpread/flipTo — NOT just "a null half", so interior odd-trailing pages are
+   excluded) renders as ONE centered single-page leaf. The container narrows to
+   single-page aspect (0.707 ≈ 1/1.414, half a spread's width-bounds so the page
+   renders at the same scale as one half of a double spread) and the empty half
+   leaves the layout entirely — no transparent half-page gap beside the cover/ending.
+   The book-stage flex (items-center justify-center) keeps it centered on the canvas. */
+.editor-port .book.book-single{
+  width: min(47%, calc(80vh * 0.707), 505px);
+  aspect-ratio: 0.707 / 1;
+}
+/* The empty facing half (already .page-empty) leaves the layout so the occupied
+   half (flex:1) fills the single-page container. Scoped to .book-single, so the
+   interior odd-trailing blank half (which never gets .book-single) keeps its space. */
+.editor-port .book.book-single .page.page-empty{ display:none; }
+
 /* Flipping leaf */
 .editor-port .flipper{
   position:absolute; top:0; bottom:0;
@@ -633,32 +649,6 @@
   cursor:not-allowed; opacity:.5; transform:none; filter:none; box-shadow:none;
 }
 
-/* ─── Chat: #236 ④ talk→write 出口 (write-now card) ─── */
-.editor-port .write-now-card{
-  display:flex; flex-direction:column; gap:9px;
-  padding:12px 14px; background:var(--bg); border-radius:16px;
-}
-.editor-port .write-now-card .wn-hint{
-  font-size:12px; color:var(--fg-2); line-height:1.45;
-}
-.editor-port .write-now-card .wn-btn{
-  align-self:flex-start;
-  display:inline-flex; align-items:center; justify-content:center;
-  min-height:34px; padding:0 16px; border-radius:9999px; border:none;
-  font-size:12.5px; font-weight:600; letter-spacing:.01em; cursor:pointer;
-  background:var(--accent); color:#fff; box-shadow:0 1px 2px rgba(0,0,0,.08);
-  transition: transform var(--motion-fast) var(--ease),
-              filter var(--motion-fast) var(--ease),
-              box-shadow var(--motion-fast) var(--ease);
-}
-.editor-port .write-now-card .wn-btn:hover{
-  transform:translateY(-1px); filter:brightness(1.06); box-shadow:0 3px 8px rgba(19,184,166,.28);
-}
-.editor-port .write-now-card .wn-btn:active{
-  transform:translateY(0); filter:brightness(.96); box-shadow:0 1px 2px rgba(0,0,0,.08);
-}
-.editor-port .write-now-card .wn-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
-
 /* ─── Chat: #236 ⑦⑧ 收尾卡片 (export-ready card, in-flow not pinned) ─── */
 .editor-port .export-ready-card{
   display:flex; flex-direction:column; gap:10px;
@@ -860,15 +850,27 @@
 .editor-port .cv-title{ font-family:var(--font-display); font-size:15px; font-weight:700; color:var(--fg); }
 .editor-port .cv-section{ display:flex; flex-direction:column; gap:7px; }
 .editor-port .cv-label{ font-size:12px; font-weight:600; color:var(--muted); }
-.editor-port .cv-row{ display:flex; gap:8px; }
+.editor-port .cv-sublabel{ font-size:11px; font-weight:500; color:var(--muted); margin-top:2px; }
+.editor-port .cv-row{ display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; }
 .editor-port .cv-opt{
   position:relative; flex:0 0 auto; width:132px; aspect-ratio:3/4; border-radius:10px;
   background-color:var(--bg);
-  border:none; cursor:default; padding:0; overflow:hidden;
+  border:none; cursor:pointer; padding:0; overflow:hidden;
   box-shadow:0 0 0 1px var(--border) inset;
   transition: all var(--motion-fast) var(--ease);
 }
+.editor-port .cv-opt:hover{ box-shadow:0 0 0 1.5px var(--fg-2) inset; }
 .editor-port .cv-opt.selected{ box-shadow:0 0 0 2px var(--fg); }
+/* hero-photo picker: a small horizontal strip of the book's photos */
+.editor-port .cv-photos{ display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; }
+.editor-port .cv-photo{
+  flex:0 0 auto; width:34px; height:34px; border-radius:7px; padding:0; cursor:pointer;
+  background-size:cover; background-position:center; background-color:var(--bg);
+  border:none; box-shadow:0 0 0 1px var(--border) inset;
+  transition: all var(--motion-fast) var(--ease);
+}
+.editor-port .cv-photo:hover{ box-shadow:0 0 0 1.5px var(--fg-2) inset; }
+.editor-port .cv-photo.selected{ box-shadow:0 0 0 2px var(--fg); }
 .editor-port .cv-check{
   position:absolute; top:6px; right:6px;
   width:18px; height:18px; border-radius:50%; background:var(--fg); color:#fff;

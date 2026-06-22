@@ -165,10 +165,11 @@ def pick_template_v3(category: Category, image_count: int) -> str:
     )
 
 
-def _photo_id(photo: Mapping[str, Any] | str) -> str:
+def _photo_id(photo: Mapping[str, Any] | str | Any) -> str:
     if isinstance(photo, str):
         return photo
-    value = photo.get("photoId")
+    # 兼容纯 mapping 与 V3ChapterPhoto pydantic 对象(后者来自 analyze pipeline)。
+    value = photo.get("photoId") if isinstance(photo, Mapping) else getattr(photo, "photoId", None)
     if not isinstance(value, str) or not value:
         raise ValueError("photo must carry a non-empty photoId")
     return value
@@ -278,3 +279,83 @@ def build_skeleton_v3(chapters: Sequence[Mapping[str, Any]]) -> list[dict[str, A
         for chunk in partition_photos_v3(photos, category="interior"):
             pages.append(build_page_v3("interior", chunk, page_index=len(pages)))
     return pages
+
+
+def default_cover_template_id() -> str | None:
+    """默认封面模板 id(cover 类别里稳定排序的第一个),没有 cover 模板时为 None。"""
+    bucket = sorted(tid for ids in POOLS.get("cover", {}).values() for tid in ids)
+    return bucket[0] if bucket else None
+
+
+def default_ending_template_id() -> str | None:
+    """默认封底模板 id(ending 类别里稳定排序的第一个),没有 ending 模板时为 None。"""
+    bucket = sorted(tid for ids in POOLS.get("ending", {}).values() for tid in ids)
+    return bucket[0] if bucket else None
+
+
+def _chapter_photos(chapter: Mapping[str, Any] | Any) -> list[Any]:
+    """一章的照片序列,兼容纯 mapping 与 V3Chapter pydantic 对象。
+
+    与 `build_skeleton_v3`(收 mapping)和 `select_template.plan_pages`(收 V3Chapter)
+    两条调用路径都对齐 —— `wrap_with_cover_ending` 在 analyze pipeline 里收到的是
+    V3Chapter 对象,纯代码 fallback / 单测里可能是 mapping。"""
+    if isinstance(chapter, Mapping):
+        return list(chapter.get("photos", []))
+    return list(getattr(chapter, "photos", []) or [])
+
+
+def _first_photo_id(chapters: Sequence[Mapping[str, Any] | Any]) -> str | None:
+    """整本书第一张照片的 photoId(按章节、章内声明顺序),无照片时 None。"""
+    for chapter in chapters:
+        for photo in _chapter_photos(chapter):
+            return _photo_id(photo)
+    return None
+
+
+def _last_photo_id(chapters: Sequence[Mapping[str, Any] | Any]) -> str | None:
+    """整本书最后一张照片的 photoId(按章节、章内声明顺序),无照片时 None。"""
+    last: str | None = None
+    for chapter in chapters:
+        for photo in _chapter_photos(chapter):
+            last = _photo_id(photo)
+    return last
+
+
+def wrap_with_cover_ending(
+    interior_pages: Sequence[Mapping[str, Any]],
+    chapters: Sequence[Mapping[str, Any] | Any],
+) -> list[dict[str, Any]]:
+    """在正文页前后补一张默认封面页 + 一张默认封底页,并把整列页重排成
+    pageIndex 连续。
+
+    封面环节(§4.4)需要 draft skeleton 里真的有 ``category=cover`` / ``category=ending``
+    的页,Web 才能渲染封面卡片;analyze 默认只建正文页(`build_skeleton_v3` /
+    `select_template_pages`),于是封面卡片找不到封面页而 auto-skip(本次缺口)。这里
+    确定性地补齐这两页:
+
+      * 封面 = 默认 cover 模板(`default_cover_template_id`),hero 槽放整本书第一张照片;
+      * 封底 = 默认 ending 模板(`default_ending_template_id`),hero 槽放整本书最后一张照片。
+
+    封面/封底 hero 复用首/尾照片(照片可同时出现在封面与正文 —— 真实影集封面常如此);
+    封底与封面在只有一张照片时仍各自成页(都放那一张)。补出的页 ``texts`` 留空,通用
+    装饰(folio/date)由调用方随后的 `generic_copy.fill_generic_copy` 统一叠加,与正文页
+    一致。
+
+    无可用 cover/ending 模板,或整本书没有照片时,对应页跳过(优雅降级,绝不抛错);
+    封面在最前、封底在最后,中间正文页保持原相对顺序。返回 pageIndex 从 0 起连续的
+    新页 dict 列表(不改动入参)。"""
+    cover_tid = default_cover_template_id()
+    ending_tid = default_ending_template_id()
+    first_photo = _first_photo_id(chapters)
+    last_photo = _last_photo_id(chapters)
+
+    ordered: list[dict[str, Any]] = []
+    if cover_tid is not None and first_photo is not None:
+        ordered.append(build_page_v3("cover", [first_photo], template_id=cover_tid))
+    ordered.extend(dict(page) for page in interior_pages)
+    if ending_tid is not None and last_photo is not None:
+        ordered.append(build_page_v3("ending", [last_photo], template_id=ending_tid))
+
+    for index, page in enumerate(ordered):
+        page["pageIndex"] = index
+    return ordered

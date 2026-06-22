@@ -173,9 +173,15 @@ function sliceChapterForChat(
   const chapter = normalized.tree.chapters.find((c) => c.chapterId === chapterId);
   if (!chapter) return null;
   const photoIds = new Set(chapter.photos.map((p) => p.photoId));
-  const pages = (normalized.pages ?? []).filter((page) =>
-    Object.values(page.images).some((id) => photoIds.has(id)),
-  );
+  const pages = (normalized.pages ?? []).filter((page) => {
+    // Cover/ending pages belong to no chapter — analyze seeds them by REUSING the book's
+    // first/last photo (a chapter's hero), so without this guard a cover/ending page would
+    // leak into that chapter's chat slice and get rewritten by chapter-chat. (toc pages are
+    // intentionally left as-is: they carry no reused hero and predate this change.)
+    const category = getTemplate(page.templateId)?.category;
+    if (category === 'cover' || category === 'ending') return false;
+    return Object.values(page.images).some((id) => photoIds.has(id));
+  });
   return { chapter, pages };
 }
 
@@ -207,6 +213,36 @@ function chapterIdForDraftPage(normalized: NormalizedStoryDraft, page: V3Page): 
     chapter.photos.some((photo) => refs.has(photo.photoId)),
   );
   return match?.chapterId ?? null;
+}
+
+// Put a single chosen photo onto a page's hero image slot, preserving the existing slot
+// key when the page already has one (else default to 'image'). cover_v3 reads only the
+// image VALUES (it re-assigns slot keys to the chosen template), so a one-entry images map
+// is enough to drive which photo lands on the cover/ending.
+function withHeroPhoto(page: V3Page, photoId: string): V3Page {
+  const existingSlot = Object.keys(page.images)[0] ?? 'image';
+  return { ...page, images: { [existingSlot]: photoId } };
+}
+
+// Apply the user's cover/ending photo picks to the re-sliced relevant pages (cover = FIRST
+// relevant page, ending = LAST — matching cover_v3's design targets). Each pick is optional;
+// a null/undefined pick leaves that page's photo as analyze placed it. When cover and ending
+// would target the same single page, only the cover pick is applied (cover_v3 can't design
+// both onto one page anyway). Pure: returns a new array, never mutates the input pages.
+function withCoverEndingHeroPhotos(
+  pages: V3Page[],
+  coverPhotoId?: string | null,
+  endingPhotoId?: string | null,
+): V3Page[] {
+  if (pages.length === 0) return pages;
+  const next = pages.slice();
+  const firstIndex = 0;
+  const lastIndex = next.length - 1;
+  if (coverPhotoId) next[firstIndex] = withHeroPhoto(next[firstIndex]!, coverPhotoId);
+  if (endingPhotoId && lastIndex !== firstIndex) {
+    next[lastIndex] = withHeroPhoto(next[lastIndex]!, endingPhotoId);
+  }
+  return next;
 }
 
 // apply-theme only brushes pages whose template actually has a `variableDecor` slot
@@ -792,6 +828,11 @@ export const albumService = {
       language: V3Language;
       coverTemplateId?: string | null;
       endingTemplateId?: string | null;
+      // WEB-ONLY (not in the Agent contract): which photo to put on the cover/ending hero.
+      // Applied here by swapping the chosen photo into the re-sliced cover/ending page
+      // before forwarding — the agent then auto-fills from the page's own images.
+      coverPhotoId?: string | null;
+      endingPhotoId?: string | null;
     },
   ): Promise<{ stage: string; layoutPatch: V3LayoutPatchEntry[]; assistantReply?: string }> {
     const album = await this.findOwned(userId, albumId);
@@ -804,12 +845,22 @@ export const albumService = {
       (page) => chapterIdForDraftPage(normalized, page) === null,
     );
 
+    // Apply the user's photo pick: cover_v3 designs the cover onto the FIRST relevant page
+    // and the ending onto the LAST, reading each page's own image VALUES (slot keys are
+    // re-assigned to the chosen template). So setting the page's single hero value to the
+    // picked photoId is enough to change which photo lands. A no-op when no pick was sent.
+    const pagesForAgent = withCoverEndingHeroPhotos(
+      relevantPages,
+      input.coverPhotoId,
+      input.endingPhotoId,
+    );
+
     const agentResult = await agentClient.coverV3({
       albumId,
       language: input.language,
       ...(input.coverTemplateId !== undefined ? { coverTemplateId: input.coverTemplateId } : {}),
       ...(input.endingTemplateId !== undefined ? { endingTemplateId: input.endingTemplateId } : {}),
-      pages: relevantPages,
+      pages: pagesForAgent,
     });
 
     // Persist: fold the patch into draft_json.pages + advance stage cover→ready.

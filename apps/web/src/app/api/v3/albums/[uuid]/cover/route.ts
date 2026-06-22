@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
@@ -14,11 +15,19 @@ import { toBrowserCoverPatch } from './route-utils';
 // deterministic agent auto-fill (an EMPTY patch when skipped — never an error), folds the
 // returned page-level patch into draft_json.pages + advances stage cover → ready (§8.3 stage
 // 推进权在 Web), and hands the patch back for the browser to apply live.
+// coverPhotoId/endingPhotoId are WEB-ONLY (not part of the Agent /v3/cover contract): the
+// service swaps the chosen photo into the re-sliced cover/ending page before forwarding to
+// the agent (invariant 12: the browser holds no layout pages, only its selections).
 const BodySchema = V3CoverRequest.pick({
   language: true,
   coverTemplateId: true,
   endingTemplateId: true,
-}).strict();
+})
+  .extend({
+    coverPhotoId: z.string().min(1).nullable().optional(),
+    endingPhotoId: z.string().min(1).nullable().optional(),
+  })
+  .strict();
 
 // POST /api/v3/albums/[uuid]/cover — synchronous (§8). 60s budget.
 export const maxDuration = 60;

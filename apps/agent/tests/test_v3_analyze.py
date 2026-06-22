@@ -198,18 +198,48 @@ def test_analyze_mock_emits_stages_and_tree(captured_callbacks, count):
         # accentColor/artFont are null placeholders until the theme stage (§4.1).
         assert chapter.accentColor is None
         assert chapter.artFont is None
-    # Preview pages cover every photo and re-validate as flat Page objects.
+    # Preview pages re-validate as flat Page objects and cover every photo at least once.
     assert envelope.pages, "expected at least one preview page"
     placed = [pid for page in envelope.pages for pid in page.images.values()]
-    assert sorted(placed) == sorted(f"p{i + 1}" for i in range(count))
+    # Every photo appears (in its interior page). 书籍设计环节(§4.4)需要真实的封面/封底
+    # 页才能选/换封面,所以 analyze 现在在正文页前后补一张 cover 页和一张 ending 页,
+    # hero 复用整本书首/尾照片(影集封面常与正文共用同一张) —— 故首/尾照片各多出现一次。
+    assert set(placed) == {f"p{i + 1}" for i in range(count)}
+    expected_dupes = {"p1", f"p{count}"}  # 封面复用首张、封底复用尾张
+    for pid in placed:
+        if pid in expected_dupes:
+            continue
+        assert placed.count(pid) == 1, (pid, placed)
+
+    # The first page is a default cover (category=cover) reusing the first photo; the
+    # last is a default ending (category=ending) reusing the last photo. Pages are
+    # re-indexed contiguously around them (cover=0 … ending=last).
+    from src.engine import skeleton_v3 as _sk
+    from src.engine import templates as _tpl
+
+    pages_by_index = sorted(envelope.pages, key=lambda p: p.pageIndex)
+    assert [p.pageIndex for p in pages_by_index] == list(range(count + 2))
+    cover_page = pages_by_index[0]
+    ending_page = pages_by_index[-1]
+    assert _sk.template_category(_tpl.get(cover_page.templateId)) == "cover"
+    assert _sk.template_category(_tpl.get(ending_page.templateId)) == "ending"
+    assert list(cover_page.images.values()) == ["p1"]
+    assert list(ending_page.images.values()) == [f"p{count}"]
 
     # WP1.5 (#184) preview-state: generic copy is layered onto the pages — every page
-    # carries its `folio` page-number decoration (every interior template declares one),
-    # zero-padded to the page's 1-based number. The fixture photos all carry a takenAt,
-    # so date-bearing templates also expose a `MM/YY` dateNum. User-content slots stay
-    # EMPTY (正式文案 comes in the章节故事环节). 全链路:分析→树→套模板→通用文案/色→预览.
+    # whose template declares a `folio` slot carries its page-number decoration,
+    # zero-padded to the page's 1-based number (the ending template mag-20 has no text
+    # slots, so it carries none). The fixture photos all carry a takenAt, so
+    # date-bearing templates also expose a `MM/YY` dateNum. User-content slots stay
+    # EMPTY (正式文案 comes in the章节故事环节). 全链路:分析→树→套模板→封面/封底→通用文案/色→预览.
     for page in envelope.pages:
-        assert page.texts.get("folio") == str(page.pageIndex + 1).zfill(2), page.texts
+        folio_slots = {
+            slot["id"]
+            for slot in _tpl.text_slots(_tpl.get(page.templateId))
+            if slot["id"] == "folio"
+        }
+        if folio_slots:
+            assert page.texts.get("folio") == str(page.pageIndex + 1).zfill(2), page.texts
         if "dateNum" in page.texts:
             assert page.texts["dateNum"] == "01/24", page.texts
 

@@ -21,7 +21,7 @@ import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore } from '@/lib/photo/store';
 import { getWebTemplate } from '../web-registry';
-import { buildSpreads, spreadIndexOfPage } from '../spreads';
+import { buildSpreads, isSoloSpread, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
 import { PAGE } from '../templates/constants';
 import { clampZoom, paintDecision } from './zoom-util';
@@ -66,6 +66,7 @@ import type {
   V3RecommendResponse,
   V3ChapterThemeChoice,
 } from '@yujee/contracts';
+import { getTemplate, TEMPLATE_IDS } from '@yujee/contracts/templates';
 import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/client';
 import './editor-port.css';
 
@@ -1177,16 +1178,31 @@ function EditorBook({
 
     function paintSpread(i: number) {
       const [lp, rp] = spreadPages(i);
-      paintEl(pageLeft, lp);
-      paintEl(pageRight, rp);
-      // #158 follow-up: a null half is "no page there" (cover sits alone on the
-      // right, ending alone on the left). Render the empty half as truly empty —
-      // no white surface, shadow, page-num or click target — via .page-empty.
+      // Layout MUST be settled BEFORE paintEl. paintEl scales the page to the cell's
+      // live clientWidth/height and SKIPS a cell hidden by display:none (offsetParent
+      // === null). A solo cover/ending spread narrows the book to single-page width and
+      // collapses the empty half via `.book-single .page-empty{display:none}`. If we
+      // painted first, then toggled these classes, a solo→double switch (e.g. flipping
+      // off the cover) would paint the right page while it was STILL display:none from
+      // the previous solo spread → it'd be skipped and render blank, only reappearing
+      // after some later repaint. So toggle the container/half classes first, paint after.
+      // #158 follow-up: a null half is "no page there" (cover sits alone on the right,
+      // ending alone on the left) — .page-empty renders it as truly empty (no surface,
+      // shadow, page-num or click target) and drops the center spine.
       pageLeft.classList.toggle('page-empty', lp === null);
       pageRight.classList.toggle('page-empty', rp === null);
       // Drop the center spine line when either half is empty so a solo cover/ending
       // page has no stray divider next to blank space; keep it for double spreads.
       bookEl.classList.toggle('book-solo', lp === null || rp === null);
+      // A *true* cover/ending solo (isSoloSpread, keyed off the page category — NOT
+      // off "a null half") renders as one centered single-width page: the empty half
+      // leaves the layout and the container narrows to single-page aspect. An interior
+      // odd-trailing page is { left:i, right:null } too but is NOT solo — it must keep
+      // its double-width spread with a transparent blank half, so we never collapse it.
+      bookEl.classList.toggle('book-single', isSoloSpread(spreads[i], pagesState));
+      // Content painted last, once the cells are at their final visibility + size.
+      paintEl(pageLeft, lp);
+      paintEl(pageRight, rp);
       if (lp) pageLeft.dataset.pageIndex = String(lp.pageIndex);
       else delete pageLeft.dataset.pageIndex;
       if (rp) pageRight.dataset.pageIndex = String(rp.pageIndex);
@@ -1209,6 +1225,19 @@ function EditorBook({
       flipping = true;
       const [curLeft, curRight] = spreadPages(currentCh);
       const [nxtLeft, nxtRight] = spreadPages(nextIdx);
+      // Solo cover/ending pages render in a single-page-width container; the leaf
+      // flip geometry is built for the double-width container (flipper left:50%/0%,
+      // width:50%), so animating across a width change tears/misaligns the leaf. When
+      // either endpoint is a true cover/ending solo, skip the leaf and switch directly
+      // (the same safe path a reduced-motion jump would take). Double↔double flips keep
+      // the leaf animation. (isSoloSpread is category-keyed, so an interior odd-trailing
+      // spread does NOT take this branch — it animates normally.)
+      if (isSoloSpread(spreads[currentCh], pagesState) || isSoloSpread(spreads[nextIdx], pagesState)) {
+        currentCh = nextIdx;
+        paintSpread(nextIdx);
+        flipping = false;
+        return;
+      }
       // #158 follow-up: the leaf faces + the half painted directly here also carry
       // a possibly-null page; mark each empty so no white half flashes mid-flip.
       // Set book-solo for the DESTINATION spread now (paintSpread re-asserts it on
@@ -1631,6 +1660,11 @@ function EditorBook({
       scrollChat();
     }
     function appendThinkingShell(): HTMLElement {
+      // Thinking ⇔ idle-jellyfish are mutually exclusive: the moment a thinking block
+      // goes active, the resting「水母浮动」float must be gone. Every thinking entry funnels
+      // through here, so hiding the await float here covers ALL paths (chat turn, opener,
+      // recommend/apply-theme/cover, advance) without each call site re-pairing hideAwait().
+      hideAwait();
       const a = document.createElement('div');
       a.className = 'msg ai max-w-full';
       a.innerHTML =
@@ -1720,7 +1754,10 @@ function EditorBook({
     // from the mount tail (entry into an already-unlocked album — after history rendered,
     // so it lands last) and from mirrorStage (the live cover→ready transition). One-shot.
     function maybeAppendExportReadyCard() {
-      if (isAuthoring && !isAuthoringExportLocked()) appendExportReadyCard();
+      // 导出模块只在整本完成(封面环节走完 → stage=ready)后才出现在对话框,不在主题/
+      // 封面阶段弹出,以免干扰用户继续选封面等后续操作。网页右上角导出按钮的解锁口径
+      // (exportUnlocked / computeExportUnlocked,主题后即可用)不受此影响。
+      if (isAuthoring && storyGate?.stage === 'ready') appendExportReadyCard();
     }
 
     async function loadStoryGate() {
@@ -1773,8 +1810,6 @@ function EditorBook({
           // the new chapter opens clean (its own引导 opener, not the old chapter's gate).
           chapterHistory.length = 0;
           awaitingSatisfaction = false;
-          // #236 ④: don't leak the previous chapter's write-now exit into the new chapter.
-          removeWriteNowCard();
           goToChapterById(advancedTo!);
         }
         appendAiText(
@@ -1998,21 +2033,51 @@ function EditorBook({
       scrollChat();
     }
 
-    // ─── cover-card (设计稿 cover-card,对话流内) ─────────────────────────────────
-    // 设计稿 mocks a few portrait IMAGE options each for 封面/封底. The real contract
-    // instead takes cover/ending TEMPLATE ids (system templates, not arbitrary images)
-    // and the browser has NO catalog endpoint to discover alternative cover/ending
-    // templates — only the CURRENT cover/ending page (from the read-only draft skeleton,
-    // invariant 12) is knowable. So the honest card renders the current 封面 + 封底 as the
-    // (single) recommended option each, previewed through their real web template (the same
-    // faceInner the book uses, NOT unsplash images), plus a 跳过 path. Picking "应用" re-runs
-    // the deterministic auto-fill on the current templates; "跳过" sends nothing → empty
-    // patch (§4.4 封面可跳过) and never errors.
-    // 契约↔设计差异(flag): no template catalog → no multi-option grid; 封面/封底 each show
-    // only the current template. A real picker needs a cover/ending-template list endpoint.
-    function coverPreviewHTML(page: EditorPage | null): string {
-      if (!page) return '';
-      // 3:4 portrait box matching 设计稿 .cv-opt; reuse the book's render path.
+    // ─── cover-card (封面/封底选择,对话流内,缺口#20 + 封面选择缺口) ──────────────
+    // ④ 书籍设计: the user picks/keeps/swaps 封面 + 封底. analyze now seeds a real
+    // category=cover page (first photo) + category=ending page (last photo) into the draft
+    // skeleton, so this card always resolves them by KIND. For EACH of 封面/封底 we offer:
+    //   • the system TEMPLATE candidates of that category (cover: mag-01/mag-13/p01; ending:
+    //     mag-20), each previewed through its REAL web template (the same render path the
+    //     book uses), the current one pre-selected;
+    //   • a PHOTO strip (the book's photos) so the user can change which photo is the hero.
+    // Picking 应用 forwards the chosen {coverTemplateId, endingTemplateId} (contract) plus the
+    // WEB-ONLY {coverPhotoId, endingPhotoId} (the Web service swaps the photo into the page
+    // before the deterministic /v3/cover auto-fill; the Agent contract is untouched). 跳过
+    // sends an empty selection → empty patch, never errors (§4.4 封面可跳过). Everything stays
+    // page-level + invariant 12: the browser holds no tree; the service re-slices draft_json.
+
+    // The book's photo ids (deduped, in page order) — the hero-photo picker pool.
+    function bookPhotoIds(): string[] {
+      const seen = new Set<string>();
+      const out: string[] = [];
+      for (const p of pagesState) {
+        for (const id of Object.values(p.imagesJson)) {
+          if (id && !seen.has(id)) {
+            seen.add(id);
+            out.push(id);
+          }
+        }
+      }
+      return out;
+    }
+    // Template ids of a given category (sorted, stable) — the cover/ending candidates.
+    function templateIdsByCategory(category: 'cover' | 'ending'): string[] {
+      return TEMPLATE_IDS.filter((id) => getTemplate(id)?.category === category);
+    }
+    // The hero image-slot id of a template (its first declared image slot), or 'image'.
+    function heroSlotId(templateId: string): string {
+      const slots = getTemplate(templateId)?.images ?? [];
+      return slots[0]?.id ?? 'image';
+    }
+    // Render a {template, photo} choice through its real web template into the .cv-opt box.
+    function coverOptionHTML(templateId: string, photoId: string | null): string {
+      const page: EditorPage = {
+        pageIndex: 0,
+        templateId,
+        imagesJson: photoId ? { [heroSlotId(templateId)]: photoId } : {},
+        textsJson: {},
+      };
       return faceHTML(page, 132, 176);
     }
     function appendCoverCard() {
@@ -2026,11 +2091,11 @@ function EditorBook({
       const coverTemplateId = coverPage?.templateId ?? null;
       const endingTemplateId = endingPage?.templateId ?? null;
       // #236 ⑥: the root cause of "应用 → 已跳过" was a null lookup: when neither a cover nor
-      // an ending page exists in the skeleton, both ids are null, so "应用" sent
-      // {coverTemplateId:null, endingTemplateId:null} — which the agent reads as 跳过 (§4.4
-      // 跳过=空) and returns an empty patch labelled "已跳过". There is genuinely nothing to
-      // apply here, so don't offer a misleading apply button: auto-advance through cover
-      // (empty selection) and move on, exactly as an explicit 跳过 would.
+      // an ending page exists in the skeleton (legacy drafts created before analyze seeded
+      // them), both ids are null, so "应用" sent {coverTemplateId:null, endingTemplateId:null}
+      // — which the agent reads as 跳过 (§4.4 跳过=空) and returns an empty patch labelled
+      // "已跳过". There is genuinely nothing to apply here, so don't offer a misleading apply
+      // button: auto-advance through cover (empty selection), exactly as an explicit 跳过.
       if (coverTemplateId == null && endingTemplateId == null) {
         void runCover({});
         return;
@@ -2049,37 +2114,113 @@ function EditorBook({
       title.textContent = aT('挑一个封面和封底吧', 'Pick a cover and back cover');
       inner.appendChild(title);
 
-      const section = (labelZh: string, labelEn: string, page: EditorPage | null) => {
+      const photos = bookPhotoIds();
+
+      // One live-editable section (封面 OR 封底): a template-candidate row + a photo-pick row,
+      // both re-rendering the selected option preview. Returns a getter for the current pick.
+      const section = (
+        labelZh: string,
+        labelEn: string,
+        category: 'cover' | 'ending',
+        page: EditorPage | null,
+      ): (() => { templateId: string | null; photoId: string | null }) => {
+        const candidateIds = templateIdsByCategory(category);
+        // Current selection seeds: the page's template + its hero photo (analyze put the
+        // book's first/last photo there). Fall back to the first candidate / first photo.
+        let selTemplateId: string | null =
+          page?.templateId ?? candidateIds[0] ?? null;
+        let selPhotoId: string | null =
+          (page ? Object.values(page.imagesJson)[0] : undefined) ??
+          photos[0] ??
+          null;
+
         const sec = document.createElement('div');
         sec.className = 'cv-section';
         const label = document.createElement('div');
         label.className = 'cv-label';
         label.textContent = aT(labelZh, labelEn);
+        sec.appendChild(label);
+
+        // Template-candidate row: one .cv-opt per category template, previewed live.
         const row = document.createElement('div');
         row.className = 'cv-row';
-        const opt = document.createElement('button');
-        opt.type = 'button';
-        // Single (current) option — pre-selected + 推荐, since the contract gives no
-        // alternative templates to choose from.
-        opt.className = 'cv-opt selected';
-        opt.innerHTML = coverPreviewHTML(page);
-        const reco = document.createElement('span');
-        reco.className = 'cv-reco';
-        reco.textContent = aT('推荐', 'Recommended');
-        const check = document.createElement('span');
-        check.className = 'cv-check';
-        check.innerHTML = checkSvg;
-        opt.appendChild(reco);
-        opt.appendChild(check);
-        row.appendChild(opt);
-        sec.appendChild(label);
+        const optByTemplate = new Map<string, HTMLButtonElement>();
+        const repaintOptions = () => {
+          for (const [tid, opt] of optByTemplate) {
+            opt.innerHTML = coverOptionHTML(tid, selPhotoId);
+            opt.classList.toggle('selected', tid === selTemplateId);
+            const check = document.createElement('span');
+            check.className = 'cv-check';
+            check.innerHTML = checkSvg;
+            opt.appendChild(check);
+            if (tid === (page?.templateId ?? candidateIds[0])) {
+              const reco = document.createElement('span');
+              reco.className = 'cv-reco';
+              reco.textContent = aT('推荐', 'Recommended');
+              opt.appendChild(reco);
+            }
+          }
+        };
+        for (const tid of candidateIds) {
+          const opt = document.createElement('button');
+          opt.type = 'button';
+          opt.className = 'cv-opt';
+          opt.addEventListener('click', () => {
+            selTemplateId = tid;
+            repaintOptions();
+          });
+          optByTemplate.set(tid, opt);
+          row.appendChild(opt);
+        }
         sec.appendChild(row);
-        return sec;
-      };
-      inner.appendChild(section('封面', 'Cover', coverPage));
-      inner.appendChild(section('封底', 'Back cover', endingPage));
 
-      // Actions: 应用 (re-run auto-fill on the current templates) / 跳过 (empty patch).
+        // Photo-pick row: small thumbs of the book's photos; click sets the hero photo.
+        if (photos.length > 1) {
+          const photoLabel = document.createElement('div');
+          photoLabel.className = 'cv-sublabel';
+          photoLabel.textContent = aT('换一张照片', 'Change photo');
+          sec.appendChild(photoLabel);
+          const photoRow = document.createElement('div');
+          photoRow.className = 'cv-photos';
+          const thumbByPhoto = new Map<string, HTMLButtonElement>();
+          const repaintPhotos = () => {
+            for (const [pid, thumb] of thumbByPhoto) {
+              thumb.classList.toggle('selected', pid === selPhotoId);
+            }
+          };
+          for (const pid of photos) {
+            const thumb = document.createElement('button');
+            thumb.type = 'button';
+            thumb.className = 'cv-photo';
+            const url = imageUrls[pid];
+            if (url) thumb.style.backgroundImage = `url("${url}")`;
+            thumb.addEventListener('click', () => {
+              selPhotoId = pid;
+              repaintPhotos();
+              repaintOptions();
+            });
+            thumbByPhoto.set(pid, thumb);
+            photoRow.appendChild(thumb);
+          }
+          sec.appendChild(photoRow);
+          repaintPhotos();
+        }
+
+        repaintOptions();
+        inner.appendChild(sec);
+        return () => ({ templateId: selTemplateId, photoId: selPhotoId });
+      };
+
+      // Only offer a section when that page exists (skeleton has cover/ending); legacy
+      // drafts may have one but not the other.
+      const getCover = coverPage
+        ? section('封面', 'Cover', 'cover', coverPage)
+        : () => ({ templateId: null as string | null, photoId: null as string | null });
+      const getEnding = endingPage
+        ? section('封底', 'Back cover', 'ending', endingPage)
+        : () => ({ templateId: null as string | null, photoId: null as string | null });
+
+      // Actions: 应用 (forward the chosen templates + photos) / 跳过 (empty patch).
       const actionsRow = document.createElement('div');
       actionsRow.className = 'cv-actions';
       const applyBtn = document.createElement('button');
@@ -2088,10 +2229,14 @@ function EditorBook({
       applyBtn.textContent = aT('应用封面设计', 'Apply cover design');
       applyBtn.addEventListener('click', () => {
         if (sending) return;
+        const cover = getCover();
+        const ending = getEnding();
         // #236 ⑥: send only the ids that actually resolved. A null id reads as 跳过 agent
         // -side, so passing null would turn an "应用" into a silent skip. Apply ONLY when at
-        // least one id resolved (the both-null case auto-skipped above); we then forward
-        // exactly the non-null ids — never a null that would flip apply→skip.
+        // least one template resolved (the both-null case auto-skipped above); forward the
+        // chosen non-null template ids + their picked hero photos.
+        const coverTemplateId = cover.templateId;
+        const endingTemplateId = ending.templateId;
         const hasSelection = coverTemplateId != null || endingTemplateId != null;
         if (!hasSelection) {
           void runCover({});
@@ -2103,6 +2248,8 @@ function EditorBook({
         void runCover({
           ...(coverTemplateId != null ? { coverTemplateId } : {}),
           ...(endingTemplateId != null ? { endingTemplateId } : {}),
+          ...(coverTemplateId != null && cover.photoId ? { coverPhotoId: cover.photoId } : {}),
+          ...(endingTemplateId != null && ending.photoId ? { endingPhotoId: ending.photoId } : {}),
         });
       });
       const skipBtn = document.createElement('button');
@@ -2347,15 +2494,11 @@ function EditorBook({
         // §4.2 满意/不满意: the moment the AI finishes WRITING this chapter, offer the
         // satisfaction choice in the flow. 满意→markChapterDone→下一章/主题;不满意→留本章
         // 逐页调整. Not on talk/edit turns — only a fresh full-chapter write opens the gate.
+        // talk turns no longer surface a write-now button: the agent decides on its own
+        // when enough has been said and dispatches kind=write (handler.py 红线已撤). The
+        // satisfaction card after a write is the only standing affordance.
         if (wroteChapter) {
-          // #236 ④: the chapter is written — drop the write-now exit; the satisfaction
-          // card now owns the next step.
-          removeWriteNowCard();
           appendSatisfactionCard();
-        } else if (res.kind === 'talk' && !awaitingSatisfaction) {
-          // #236 ④: still in the talk loop — keep the "write it now" exit in front of the
-          // user so they're never stranded answering questions.
-          appendWriteNowCard();
         }
       } catch (e) {
         if (authErr(host, e)) return;
@@ -2496,11 +2639,6 @@ function EditorBook({
         // write/edit is ignored here — the opener never applies a patch nor advances.
         chapterHistory.push({ role: 'user', content: '' });
         chapterHistory.push({ role: 'assistant', content: res.assistantReply });
-        // #236 ④: give the user a way OUT of the talk loop. The system prompt forbids the
-        // model from writing unprompted (硬规则), so without an explicit "write it now"
-        // affordance the user can only keep answering questions → 死循环. Surface a
-        // standing write-now chip right after the opener question.
-        appendWriteNowCard();
       } catch (e) {
         // A failed opener shouldn't strand the chapter: let the user type to retry.
         guidedChapters.delete(chapterId);
@@ -2561,10 +2699,7 @@ function EditorBook({
           aT('好的,这一章先留着。哪里不太满意?点开那一页,告诉我想怎么改。',
              "Sure — let's keep this chapter. What's not quite right? Tap the page you mean and tell me what to change."),
         );
-        // #236 ④: keep a standing write-now exit on the tweak path too, so the user can
-        // re-write this chapter at any point instead of being stranded answering questions.
-        appendWriteNowCard();
-        restAwait(); // float the idle indicator below the write-now card (match other sites)
+        restAwait();
         scrollChat();
       });
 
@@ -2574,49 +2709,6 @@ function EditorBook({
       inner.appendChild(row);
       card.appendChild(inner);
       chatBody!.appendChild(card);
-      scrollChat();
-    }
-
-    // #236 ④ talk→write 出口: the guide stage is talk-only (the model never writes
-    // unprompted, 硬规则), so without an explicit trigger the user is stuck answering
-    // questions forever (死循环). This standing chip is the "现在就写 / Write it now"
-    // exit: clicking it sends an explicit write request as a user turn, so the model
-    // dispatches kind=write. One card at a time (the prior one is removed first) and it
-    // self-removes on click; a fresh one re-appears after the next opener if needed.
-    let writeNowCard: HTMLElement | null = null;
-    function removeWriteNowCard() {
-      writeNowCard?.remove();
-      writeNowCard = null;
-    }
-    function appendWriteNowCard() {
-      removeWriteNowCard();
-      const card = document.createElement('div');
-      card.className = 'msg ai max-w-full';
-      const inner = document.createElement('div');
-      inner.className = 'write-now-card';
-      const hint = document.createElement('div');
-      hint.className = 'wn-hint';
-      hint.textContent = aT('聊够了?随时让我把这一章写出来。',
-        'Said enough? Have me write this chapter whenever you like.');
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'wn-btn';
-      btn.textContent = aT('写这一章', 'Write it now');
-      btn.addEventListener('click', () => {
-        if (sending) return;
-        const ask = aT('就照我们聊的,把这一章写出来吧。',
-          "Go ahead and write this chapter based on what we've talked about.");
-        removeWriteNowCard();
-        appendUserText(ask);
-        hideAwait();
-        scrollChat();
-        void runChapterChatTurn(ask);
-      });
-      inner.appendChild(hint);
-      inner.appendChild(btn);
-      card.appendChild(inner);
-      chatBody!.appendChild(card);
-      writeNowCard = card;
       scrollChat();
     }
 
@@ -2686,14 +2778,16 @@ function EditorBook({
     function openExportFailModal() { byId('exportFailModal')?.classList.add('open'); }
     function closeExportFailModal() { byId('exportFailModal')?.classList.remove('open'); }
 
-    // 一次导出尝试:本地出 PDF(render 环节)→ 上传 R2 + 落库(upload 环节)。任一
-    // 环节失败都抛 ExportError(带 phase + 可选 status code,供脱敏日志用,§3 隐私)。
-    // 本地下载放在 render 成功后立刻做(即便 R2 没配也能拿到文件);只在首张生成成功时
-    // 下载一次,避免重试时重复下载。整段路径**零 creditService**:导出成功或失败都不
-    // 碰积分(积分早在 init 成功时已实扣,§5)。
+    // 导出分两段,语义【解耦】(用户诉求:本地拿到 PDF 就算导出成功):
+    //   • render 段 —— 本地出 PDF + 本地下载。这才是用户眼里的「导出」:拿到文件即成功。
+    //     连续 3 次 render 失败(真的没出 PDF)才弹安抚框 + 落日志。
+    //   • upload 段 —— 传 R2 + 落库(云端留存 / 标 COMPLETED)。失败【完全静默】:后台
+    //     自动重试 ≤3 次,耗尽也只 logger.error 落日志,**绝不弹框、不提示**——本地没配
+    //     R2 时也不再把「云端上传失败」误报成「导出失败」。
+    // 任一环节失败都抛 ExportError(带 phase + 可选 status,供脱敏日志用,§3 隐私)。整段
+    // 路径**零 creditService**:导出成功或失败都不碰积分(积分早在 init 成功时已实扣,§5)。
     let didLocalDownload = false;
-    async function runExportOnce() {
-      let blob: Blob;
+    async function renderPdfOnce(): Promise<Blob> {
       try {
         const adaptable = pagesState.map((p) => ({
           templateId: p.templateId, images: p.imagesJson, texts: p.textsJson, imagePos: p.imagePosJson,
@@ -2701,25 +2795,28 @@ function EditorBook({
         const ids = collectPhotoIds(adaptable);
         const dataUrls = await photoStore.getPdfDataUrls(ids);
         const { renderAlbumPdf } = await import('@/lib/pdf/render');
-        blob = await renderAlbumPdf(adaptable, (id) => dataUrls[id]);
+        return await renderAlbumPdf(adaptable, (id) => dataUrls[id]);
       } catch (e) {
         throw new ExportError('render', e instanceof Error ? e.message : String(e));
       }
+    }
 
-      // Local download — useful even if R2 isn't configured (e.g. mock runs). Once
-      // per export so a retry doesn't trigger a second download.
-      if (!didLocalDownload) {
-        didLocalDownload = true;
-        const url = URL.createObjectURL(blob);
-        const aEl = document.createElement('a');
-        aEl.href = url;
-        aEl.download = (currentTitle || 'album') + '.pdf';
-        document.body.appendChild(aEl);
-        aEl.click();
-        aEl.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 0);
-      }
+    // Local download — useful even if R2 isn't configured (e.g. mock runs). Once
+    // per export so a retry doesn't trigger a second download.
+    function downloadPdfOnce(blob: Blob) {
+      if (didLocalDownload) return;
+      didLocalDownload = true;
+      const url = URL.createObjectURL(blob);
+      const aEl = document.createElement('a');
+      aEl.href = url;
+      aEl.download = (currentTitle || 'album') + '.pdf';
+      document.body.appendChild(aEl);
+      aEl.click();
+      aEl.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
 
+    async function uploadPdfOnce(blob: Blob): Promise<void> {
       const signRes = await fetch(`/api/v1/albums/${albumId}/pdf-upload-url`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2759,15 +2856,30 @@ function EditorBook({
       const btn = $('[data-action="exportPdf"]') as HTMLButtonElement | null;
       if (btn) btn.style.opacity = '0.6';
       try {
-        // WP5.3 / §4.5d:自动重试 ≤3 次;连续 3 次失败 → 弹安抚框 + 落一条错误日志。
-        // 计数全在前端(runExportWithRetry)。导出失败**不动积分**(本回调不触任何
-        // creditService;积分早在 init 成功时已扣,§5)。飞书推送后置(§4.5d):此处
-        // 只 logger.error 落日志,不调任何飞书端点;上线后视失败率再在 onExhausted
-        // 里加一次告警调用(方案已记录在 export-retry-util.ts 顶注 + 需求 §4.5d)。
-        await runExportWithRetry(() => runExportOnce(), {
+        // render 段:出 PDF + 本地下载,自动重试 ≤3 次。连续 3 次失败才是真·导出失败 →
+        // 弹安抚框 + 落日志。计数全在前端(runExportWithRetry),**不动积分**(§5)。
+        let blob: Blob | null = null;
+        const rendered = await runExportWithRetry(
+          async () => { const b = await renderPdfOnce(); downloadPdfOnce(b); blob = b; },
+          {
+            onExhausted: (lastError, attempts) => {
+              logger.error(buildExportFailureLog(lastError, { albumId, attempts }), 'pdf export failed');
+              openExportFailModal();
+            },
+          },
+        );
+        // render 失败:安抚框已弹,到此为止(用户确实没拿到文件)。
+        if (!rendered.ok || blob == null) return;
+
+        // 到这里用户已拿到 PDF = 导出成功。云端上传(R2 + 落库)解耦,失败【完全静默】:
+        // 后台自动重试 ≤3 次,耗尽也只落日志——不弹框、不提示(用户诉求)。飞书推送后置
+        // (§4.5d):此处只 logger.error,不调任何飞书端点。
+        await runExportWithRetry(() => uploadPdfOnce(blob!), {
           onExhausted: (lastError, attempts) => {
-            logger.error(buildExportFailureLog(lastError, { albumId, attempts }), 'pdf export failed');
-            openExportFailModal();
+            logger.error(
+              buildExportFailureLog(lastError, { albumId, attempts }),
+              'pdf cloud upload failed (silent — local download already succeeded)',
+            );
           },
         });
       } finally {
@@ -2776,7 +2888,21 @@ function EditorBook({
       }
     }
     function hideAwait() { const w = byId('awaitUser'); if (w) w.style.display = 'none'; }
-    function restAwait() { const w = byId('awaitUser'); if (w) { chatBody!.appendChild(w); w.style.display = 'flex'; } }
+    // Show the resting「水母浮动」idle indicator ONLY when the AI is truly idle and waiting
+    // for the user to speak. Guard against the two non-idle states that still funnel through
+    // restAwait()'s finally-block callers: (a) a thinking block is still active (the round-trip
+    // hasn't settled), and (b) we're awaiting a 满意/不满意 card choice (the affordance is the
+    // card, not free chat). In either case stay hidden so the float and thinking never coexist.
+    function restAwait() {
+      const w = byId('awaitUser');
+      if (!w) return;
+      if (awaitingSatisfaction || chatBody?.querySelector('.thinking-block.active')) {
+        w.style.display = 'none';
+        return;
+      }
+      chatBody!.appendChild(w);
+      w.style.display = 'flex';
+    }
     sendBtnEl?.addEventListener('click', send);
     const onKeydown = (e: KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
@@ -3426,7 +3552,6 @@ function EditorBook({
               </div>
               <div className="await-user" id="awaitUser">
                 <img className="await-jelly" src="/jellyfish-icon.png" alt="" style={{ width: '40px', height: '40px' }} />
-                <span className="await-label" data-i18n="awaitUser">在听，随时和我说～</span>
               </div>
               </>
               )}

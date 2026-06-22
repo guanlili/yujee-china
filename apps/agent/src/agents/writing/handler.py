@@ -7,8 +7,9 @@ V3 章节创作不是 pipeline —— §4.2(2) 让引导/写/改成为 *turn* �
 
 Turn 种类(V3ChapterChatKind,镜像 packages/contracts/src/v3.ts):
 
-  * talk  — 引导:AI 提问/引导,绝不自动撰写(Frame 4 红线)。无 patch。
-  * write — 写:先收集后撰写 —— 一次性填满本章 pagesTexts 的【每一页】(§4.2(2))。
+  * talk  — 引导:AI 提问/引导,把故事引出来。无 patch。
+  * write — 写:模型自行判断聊够了就主动撰写(不必等用户开口),一次性填满本章
+            pagesTexts 的【每一页】(§4.2(2))。写完后由 Web 出满意/想改确认卡。
   * edit  — 改:重写聚焦页(§4.2(3))。DeepSeek 判定编辑目标(`editTarget`):
             纯文字 vs 涉及图片(换图/挪图/改图文配比)。
             - editTarget=="text"(默认)→ DeepSeek 重写那页的文字
@@ -31,6 +32,7 @@ import json
 import re
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 from ...engine import templates as registry
@@ -51,6 +53,10 @@ from ..image_edit_intent import handler as chat_edit_v3
 from . import guides as writing_guides
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
+
+# 任务定义 + 输出 JSON 形状 + dispatch 判定:固定结构,co-located 在本 cap 目录,按显式
+# 路径加载(对照 theme_recommend/recommend_theme.md)。人为可调的文风规则另放 prompts/rules/。
+_PROMPT_DIR = Path(__file__).resolve().parent
 
 _VALID_KINDS: tuple[str, ...] = ("talk", "write", "edit")
 _BRACKET_KEY_RE = re.compile(r"^([A-Za-z0-9_-]+)\[(\d+)\](?:\..*)?$")
@@ -198,31 +204,15 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
     focused = req.focusedPageIndex
     lang_name = _lang_name(req.language)
 
-    # Persona + STRICT JSON 契约 + 本轮 dispatch 规则。固定结构(JSON 契约/分发判定)
-    # 留在此处;创作文风与引导文风不内联,外置在 prompts/rules/(writing_style /
-    # guidance_style)。旧的 `writing_guides.ROLE_GUIDES` 创作话术(`guides_block()`)
-    # 在 V3 路径上刻意不使用;V3 文风来自 writing_style(v2 仍留 ROLE_GUIDES,#197 整删)。
-    system = writing_guides.persona_block() + "\n\n" + (
-        "你在帮用户撰写纪念相册的【某一章】,一次一轮对话。只返回严格的 JSON,符合:"
-        '{"kind":"talk|write|edit","assistantReply":string,'
-        '"pagesTexts"?:[{"pageIndex":number,"texts":object}],'
-        '"pageTexts"?:{"pageIndex":number,"texts":object},'
-        '"editTarget"?:"text|image","nameOptions"?:[string]}。'
-        "根据【本轮】意图判定 `kind`(三种动作自由穿插,没有固定顺序):\n"
-        "- talk:用户还在讲故事、提问或拿不定主意。遵循下方的【引导风格】;在未经"
-        "要求时【绝不】撰写本章(这是红线)。只返回 assistantReply(不返回 texts)。\n"
-        "- write:用户已给够信息且想要写出本章(或明确要求写/生成/完成)。遵循下方的"
-        "【写作风格】,一次性在 `pagesTexts` 里填满【每一页】,用上每页的槽位、逐槽"
-        "提示、画面背景,以及这一页放了哪些照片。\n"
-        "- edit:用户指向【某一页】(会提供一个聚焦页)并要求改它。设置 `editTarget`:\n"
-        "    · editTarget=\"text\":当他们想改措辞/语气 —— 用【写作风格】【只】重写"
-        "那一页到 `pageTexts`。\n"
-        "    · editTarget=\"image\":当他们想改/替换/移动【照片】或图文配比。【不要】"
-        "杜撰版式、templateId 或照片摆放 —— 只需设 kind=edit、editTarget=\"image\","
-        "外加一句简短的 assistantReply;由单独的一步去挑照片和版式。\n"
-        "只使用提供的本章切片;绝不输出别的章节或整本相册。不要提及 base64 或隐藏的"
-        "图片数据。你也可以返回 `nameOptions`:最多 4 个简短的章节标题候选,只扎根于"
-        "本章照片和用户的话 —— 有画面感,但绝不杜撰人物、地点、事件或日期。"
+    # Persona + STRICT JSON 契约 + 本轮 dispatch 规则。固定结构(JSON 契约/分发判定)外置
+    # 在 chapter_chat.md(co-located,显式路径加载);创作/引导文风另放 prompts/rules/
+    # (writing_style / guidance_style)。旧的 `writing_guides.ROLE_GUIDES` 创作话术
+    # (`guides_block()`)在 V3 路径上刻意不使用;V3 文风来自 writing_style(v2 仍留
+    # ROLE_GUIDES,#197 整删)。
+    system = (
+        writing_guides.persona_block()
+        + "\n\n"
+        + load_prompt(_PROMPT_DIR / "chapter_chat.md")
     )
     # §4.2(4): 写作风格(creative style)+ 引导风格(guidance style),都作为 prompt
     # 资产按路径加载(外置在 prompts/rules/),用 {LANGUAGE} 占位符本地化。
@@ -419,9 +409,9 @@ async def _coerce_response(
 
 
 def _resolve_kind(req: V3ChapterChatRequest, raw: Any) -> V3ChapterChatKind:
-    """当模型的分发是三种 kind 之一时就信任它;否则回退到一个安全默认值。`edit` 仅在聚焦页
-    确实在本轮切片内时才被采纳 —— 没有它就没什么可改的,于是当作 talk(引导)。未知/缺失
-    的 kind → talk:绝不自动撰写(Frame 4 红线)。"""
+    """当模型的分发是三种 kind 之一时就信任它(是否主动写由模型在 kind 字段里表达);否则
+    回退到一个安全默认值。`edit` 仅在聚焦页确实在本轮切片内时才被采纳 —— 没有它就没什么可改
+    的,于是当作 talk(引导)。未知/缺失的 kind → talk(安全兜底,不臆造写/改)。"""
     kind = raw if isinstance(raw, str) else ""
     if kind == "edit":
         if req.focusedPageIndex is None:

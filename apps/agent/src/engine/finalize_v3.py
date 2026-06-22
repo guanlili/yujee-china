@@ -385,11 +385,18 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
                 f"(must be sequential)"
             )
 
+    # used_counts 计所有页(含 cover/ending)→ unused 检查;reuse_counts 只计正文页
+    # → 全册复用上限。封面/封底页复用首尾照片是 wrap_with_cover_ending 的确定性设计
+    # (真实影集封面常复用正文照片),不该算进「最多复用 2 次」的滥用上限 —— 否则单照片
+    # 相册那张图在 cover + interior + ending 出现 3 次会被误判。恢复 v2 豁免 cover page0
+    # 的精神,并扩展到 V3 的 cover + ending 页。
     used_counts: Counter[str] = Counter()
+    reuse_counts: Counter[str] = Counter()
     for page in pages:
         template = registry.get(page.templateId)
         if template is None:
             return f"page {page.pageIndex}: templateId {page.templateId} not in TemplateRegistry"
+        is_cover_or_ending = template.get("category") in ("cover", "ending")
 
         image_by_id = registry.image_slot_map(template)
         text_by_id = registry.text_slot_map(template)
@@ -464,15 +471,17 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
                 return f"page {page.pageIndex}: photoId {pid} used twice on same page"
             seen_on_page.add(pid)
             used_counts[pid] += 1
+            if not is_cover_or_ending:
+                reuse_counts[pid] += 1
 
     unused = [pid for pid in photo_ids if used_counts[pid] == 0]
     if unused:
         return f"unused photos: {sorted(unused)[:3]}"
 
-    # 全册复用上限:一张照片最多出现 TOTAL 两次。与 v2 不同
-    # (v2 豁免 page 0,因为 page 0 总是 cover),V3 的
-    # cover 可选,所以没有特殊首页 —— 每次放置都计数。
-    overused = [pid for pid, count in used_counts.items() if count > 2]
+    # 全册复用上限:一张照片在正文页最多出现 TOTAL 两次。封面/封底页复用首尾照片
+    # (wrap_with_cover_ending)不计入此上限 —— 否则单照片相册的那张图会在 cover +
+    # interior + ending 出现 3 次而被误判滥用。正文复用仍严格 ≤2。
+    overused = [pid for pid, count in reuse_counts.items() if count > 2]
     if overused:
         return f"photos reused more than 2 times: {sorted(overused)[:3]}"
 

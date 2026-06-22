@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getWebTemplate } from './web-registry';
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
-import { buildSpreads, spreadIndexOfPage } from './spreads';
+import { buildSpreads, isSoloSpread, spreadIndexOfPage } from './spreads';
 import { PAGE } from './templates/constants';
 import type { EditorPage } from './types';
 
@@ -126,6 +126,13 @@ export function FlipBook({
     },
     [pages, spreads],
   );
+  // Is spread `s` a true cover/ending solo page (render single-page, centered,
+  // no blank facing half, no spine)? An interior odd-trailing { left:i, right:null }
+  // is NOT solo — see isSoloSpread.
+  const soloOf = useCallback(
+    (s: number) => isSoloSpread(spreads[s], pages),
+    [spreads, pages],
+  );
 
   const [spread, setSpread] = useState(() => spreadOf(selected));
 
@@ -190,8 +197,12 @@ export function FlipBook({
       // active thumbnail and selection-driven UI follow the visible spread.
       syncSelectionToSpread(to);
 
-      // Reduced motion: jump straight to the target spread, no leaf animation.
-      if (reducedMotion) {
+      // Reduced motion, OR a solo cover/ending on either end: jump straight to the
+      // target spread with no leaf animation. The half-width leaf flip is a
+      // double-page⇄double-page move; a solo page has a different (single-page)
+      // width, so a cross-width leaf would tear/misplace. A direct switch is the
+      // safe transition for solo edges (no residue, no blank flash).
+      if (reducedMotion || soloOf(spread) || soloOf(to)) {
         setSpread(to);
         return;
       }
@@ -209,7 +220,7 @@ export function FlipBook({
         timerRef.current = null;
       }, FLIP_MS + 40);
     },
-    [spread, spreadCount, anim, reducedMotion, syncSelectionToSpread],
+    [spread, spreadCount, anim, reducedMotion, syncSelectionToSpread, soloOf],
   );
 
   // prev/next on the strip move one spread at a time.
@@ -248,6 +259,15 @@ export function FlipBook({
 
   const onLeftHalf = selected === spreads[spread]?.left;
   const onRightHalf = selected === spreads[spread]?.right;
+
+  // Solo cover/ending: render a single centered page (no blank facing half, no
+  // spine). Animation is already suppressed for solo edges in goToSpread, so the
+  // book is only ever solo while at rest (anim is null) — the single page is
+  // whichever half the spread occupies.
+  const soloHere = isSoloSpread(spreads[spread], pages);
+  const soloPage = soloHere ? (curLeft ?? curRight) : null;
+  const soloArrayIndex = soloHere ? (spreads[spread]?.left ?? spreads[spread]?.right ?? -1) : -1;
+  const soloActive = soloHere && selected === soloArrayIndex;
 
   const indicator = useMemo(
     () => t.pageIndicator.replace('{current}', String(spread + 1)).replace('{total}', String(spreadCount)),
@@ -316,7 +336,26 @@ export function FlipBook({
       className="relative flex h-full w-full items-center justify-center overflow-hidden"
       style={{ perspective: 2400 }}
     >
-      {book.w > 0 && (
+      {book.w > 0 && soloHere && (
+        // Solo cover/ending: one centered page, half-width container, no facing
+        // blank half, no center spine, no leaf. The page-turn into/out of here is
+        // a direct switch (see goToSpread), so anim is always null while solo.
+        <div
+          className="relative flex"
+          style={{
+            width: halfW,
+            height: book.h,
+            borderRadius: 2,
+            background: 'var(--surface)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.08)',
+            overflow: 'hidden',
+          }}
+        >
+          <Half page={soloPage} pageArrayIndex={soloArrayIndex} side="left" active={soloActive} />
+        </div>
+      )}
+
+      {book.w > 0 && !soloHere && (
         <div
           className="relative flex"
           style={{
@@ -432,6 +471,11 @@ export function FlipBook({
             // Highlight the spread currently shown in the book, not a stale
             // selection — turning the page keeps the two in lockstep.
             const active = s === spread;
+            // Solo cover/ending thumbnail: a single centered page, no blank facing
+            // half and no spine divider — mirrors the book's solo render. (An
+            // interior odd-trailing spread is NOT solo and keeps its blank half.)
+            const solo = soloOf(s);
+            const soloThumb = solo ? (tl ?? tr) : null;
             return (
               <button
                 key={s}
@@ -442,24 +486,32 @@ export function FlipBook({
                 className="flex-shrink-0 transition-transform hover:-translate-y-px"
               >
                 <div
-                  className="relative flex h-[34px] w-[52px] overflow-hidden rounded-[3px]"
+                  className={`relative flex h-[34px] overflow-hidden rounded-[3px] ${solo ? 'w-[26px]' : 'w-[52px]'}`}
                   style={{
                     border: `1.5px solid ${active ? 'var(--fg)' : 'transparent'}`,
                     boxShadow: active ? '0 0 0 1.5px rgba(0,0,0,0.08)' : undefined,
                     background: 'var(--bg)',
                   }}
                 >
-                  <div className="h-full flex-1 overflow-hidden">
-                    <PageFace page={tl} totalPages={totalPages} resolveImage={resolveImage} width={26} height={34} />
-                  </div>
-                  <div className="h-full flex-1 overflow-hidden">
-                    <PageFace page={tr} totalPages={totalPages} resolveImage={resolveImage} width={26} height={34} />
-                  </div>
-                  <div
-                    aria-hidden
-                    className="absolute inset-y-1 left-1/2 z-[1] w-px -translate-x-1/2"
-                    style={{ background: 'var(--border-soft)' }}
-                  />
+                  {solo ? (
+                    <div className="h-full w-full overflow-hidden">
+                      <PageFace page={soloThumb} totalPages={totalPages} resolveImage={resolveImage} width={26} height={34} />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="h-full flex-1 overflow-hidden">
+                        <PageFace page={tl} totalPages={totalPages} resolveImage={resolveImage} width={26} height={34} />
+                      </div>
+                      <div className="h-full flex-1 overflow-hidden">
+                        <PageFace page={tr} totalPages={totalPages} resolveImage={resolveImage} width={26} height={34} />
+                      </div>
+                      <div
+                        aria-hidden
+                        className="absolute inset-y-1 left-1/2 z-[1] w-px -translate-x-1/2"
+                        style={{ background: 'var(--border-soft)' }}
+                      />
+                    </>
+                  )}
                 </div>
               </button>
             );

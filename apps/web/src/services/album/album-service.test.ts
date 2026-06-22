@@ -1602,6 +1602,44 @@ test('coverTurn: re-slices the cover/ending pages server-side + folds patch into
   }
 });
 
+test('coverTurn: a chosen cover/ending photo is swapped into the page sent to the agent', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('cover-photo-swap');
+  try {
+    const albumId = await seedThemeCoverAlbum(user.id);
+    await albumRepo.update(db, albumId, { stage: 'cover' });
+    const seen: Parameters<typeof agentClient.coverV3>[0][] = [];
+    t.mock.method(agentClient, 'coverV3', async (p: Parameters<typeof agentClient.coverV3>[0]) => {
+      seen.push(p);
+      return { layoutPatch: [], assistantReply: 'ok', usage: fullUsage };
+    });
+
+    await albumService.coverTurn(user.id, albumId, {
+      language: 'en',
+      coverTemplateId: 'mag-01',
+      endingTemplateId: 'mag-20',
+      coverPhotoId: 'p1', // change the cover hero from the seeded 'cover-photo' to 'p1'
+      endingPhotoId: 'p1', // and put p1 on the ending hero too
+    });
+
+    assert.equal(seen.length, 1);
+    // Relevant pages are the cover (#0) and ending (#2); the chosen photo replaces each
+    // page's single hero VALUE (cover_v3 re-assigns slot keys to the chosen template).
+    const byIndex = new Map(seen[0]!.pages.map((pg) => [pg.pageIndex, pg]));
+    assert.deepEqual(Object.values(byIndex.get(0)!.images), ['p1']);
+    assert.deepEqual(Object.values(byIndex.get(2)!.images), ['p1']);
+    // The persisted draft pages are untouched by the swap (it only affects the agent call).
+    const reloaded = await albumRepo.findById(albumId);
+    const draft = reloaded?.draftJson as V3StoryDraft;
+    assert.deepEqual(draft.pages?.[0]?.images, { hero: 'cover-photo' });
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('coverTurn: skip (no template ids) = empty patch, advances stage, never errors', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');

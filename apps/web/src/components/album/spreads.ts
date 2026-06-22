@@ -61,3 +61,25 @@ export function spreadIndexOfPage(spreads: Spread[], pageArrayIndex: number): nu
     (s) => s.left === pageArrayIndex || s.right === pageArrayIndex,
   );
 }
+
+// A *solo* spread is a true single-page leaf: a cover (recto) or an ending
+// (verso) that buildSpreads pushed on its own, with the facing half blank.
+// The preview renders these as one centered page — no blank facing half, no
+// center spine.
+//
+// IMPORTANT: an interior odd-trailing page also lands as { left: i, right: null }
+// (same shape as an ending), but it is NOT solo — that blank half is normal
+// spread whitespace and must stay. So we never key off "a null half"; we key off
+// the *category* of the single occupied page. Only category cover/ending qualify.
+export function isSoloSpread(spread: Spread | undefined, pages: EditorPage[]): boolean {
+  if (!spread) return false;
+  const hasLeft = spread.left != null;
+  const hasRight = spread.right != null;
+  // Exactly one half occupied — a paired interior spread is never solo.
+  if (hasLeft === hasRight) return false;
+  const idx = hasLeft ? spread.left! : spread.right!;
+  const page = pages[idx];
+  if (!page) return false;
+  const slot = slotOf(page);
+  return slot === 'cover' || slot === 'ending';
+}
