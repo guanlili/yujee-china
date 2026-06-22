@@ -29,6 +29,11 @@ def _real_vision_env(monkeypatch):
 def _describe_env(monkeypatch):
     """describe-content env with BOTH slots keyed (OpenAI primary + 火山 failover)."""
     monkeypatch.setenv("AGENT_PIPELINE_MODE", "real")
+    # describe-content's primary IS the OpenAI slot; without pinning the provider the
+    # default (vision_provider="ark") makes ark the primary and the gpt-5.5-mini
+    # assertions below fail. This keeps the failover tests deterministic regardless of
+    # the operator's .env default.
+    monkeypatch.setenv("VISION_PROVIDER", "openai")
     monkeypatch.setenv("OPENAI_VISION_MODEL", "gpt-4o-mini")
     monkeypatch.setenv("OPENAI_API_KEY", "fake_oai")
     monkeypatch.setenv("ARK_API_KEY", "fake_ark")
@@ -286,6 +291,9 @@ def test_describe_content_raises_when_openai_unconfigured(monkeypatch):
     # Only the 火山 key is present. V3 describe-content must not silently switch
     # providers for a missing primary key; failover is for 5xx/timeouts/deadline.
     monkeypatch.setenv("AGENT_PIPELINE_MODE", "real")
+    # primary IS the OpenAI slot here (vision_provider=openai); the test asserts a
+    # missing OpenAI key errors out rather than silently failing over to 火山.
+    monkeypatch.setenv("VISION_PROVIDER", "openai")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("ARK_API_KEY", "fake_ark")
     from src import settings as s
