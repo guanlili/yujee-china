@@ -1,14 +1,13 @@
-"""Template registry loader for the shared JSON template library.
+"""共享 JSON 模板库的模板 registry loader。
 
-The template source of truth lives in packages/contracts/templates/*.json.
-This module keeps the Agent-side public API stable while loading those files
-directly at process startup.
+模板真相源活在 packages/contracts/templates/*.json。
+本模块在保持 Agent 侧公开 API 稳定的同时,在进程启动时
+直接加载这些文件。
 
-The template contract is category-only (v3-requirements §9): every template
-declares a single ``category`` (cover | toc | interior | ending). The legacy
-``slot`` / ``scene`` fields are gone. Image-slot ``orientation`` / ``quality``
-remain — they feed the deterministic image-slot feature matching used to pick a
-template and assign photos.
+模板契约是 category-only(v3-requirements §9):每个模板
+声明单个 ``category``(cover | toc | interior | ending)。遗留的
+``slot`` / ``scene`` 字段已移除。Image-slot ``orientation`` / ``quality``
+保留 —— 它们供给用于挑模板和分配照片的确定性 image-slot 特征匹配。
 """
 
 from __future__ import annotations
@@ -40,8 +39,8 @@ class TextSlot(TypedDict):
     lang: TextLang
     maxChars: NotRequired[int]
     repeat: NotRequired[bool]
-    # V3 (WP0.2, additive): per-slot writing guidance + themable-decoration flag.
-    # The V3 engine that consumes them is WP0.4.
+    # V3(WP0.2,增量):逐 slot 写作指引 + themable-decoration 标志。
+    # 消费它们的 V3 引擎是 WP0.4。
     hint: NotRequired[str]
     variableDecor: NotRequired[bool]
 
@@ -58,8 +57,8 @@ class Items(TypedDict):
 
 class TemplateDef(TypedDict):
     id: str
-    # category replaces the legacy slot+scene; svgs = decoration vector slots,
-    # items = the single repeat group.
+    # category 取代遗留的 slot+scene;svgs = 装饰矢量 slot,
+    # items = 单一 repeat group。
     category: TemplateCategory
     images: list[ImageSlot]
     texts: list[TextSlot]
@@ -184,7 +183,7 @@ def _validate_text_slot(value: Any, label: str) -> TextSlot:
         if not isinstance(repeat, bool):
             raise _fail(f"{label}.repeat must be a boolean")
         out["repeat"] = repeat
-    # V3 (WP0.2, additive): carry guidance/decoration flags through.
+    # V3(WP0.2,增量):透传 guidance/decoration 标志。
     if "hint" in data:
         hint = data["hint"]
         if not isinstance(hint, str) or not hint:
@@ -385,16 +384,16 @@ def _load_default_templates() -> dict[str, TemplateDef]:
         raise
 
 
-# ---------- read helpers (dict→array adaptation) ------------------------------
+# ---------- read helpers(dict→array 适配)------------------------------------
 
 
 def image_slots(template: TemplateDef) -> list[ImageSlot]:
-    """All image slots of a template, in declaration order."""
+    """模板的所有 image slot,按声明顺序。"""
     return template["images"]
 
 
 def text_slots(template: TemplateDef) -> list[TextSlot]:
-    """All text slots of a template, in declaration order."""
+    """模板的所有 text slot,按声明顺序。"""
     return template["texts"]
 
 
@@ -407,12 +406,12 @@ def text_slot_ids(template: TemplateDef) -> list[str]:
 
 
 def image_slot_map(template: TemplateDef) -> dict[str, ImageSlot]:
-    """Image slots keyed by id for by-name lookup."""
+    """以 id 为键的 image slot,供按名查找。"""
     return {slot["id"]: slot for slot in template["images"]}
 
 
 def text_slot_map(template: TemplateDef) -> dict[str, TextSlot]:
-    """Text slots keyed by id for by-name lookup."""
+    """以 id 为键的 text slot,供按名查找。"""
     return {slot["id"]: slot for slot in template["texts"]}
 
 
@@ -429,7 +428,7 @@ def _summarize_image_slot(slot: ImageSlot) -> str:
 
 
 def _summarize_templates_for_prompt(templates: dict[str, TemplateDef]) -> str:
-    """Compact human-readable registry dump for composing/chat-edit prompts."""
+    """供 composing/chat-edit prompt 用的紧凑人类可读 registry dump。"""
     lines: list[str] = []
     for tid in sorted(templates):
         tpl = templates[tid]
@@ -437,9 +436,9 @@ def _summarize_templates_for_prompt(templates: dict[str, TemplateDef]) -> str:
             img = "; ".join(_summarize_image_slot(slot) for slot in tpl["images"])
         else:
             img = "(text-only)"
-        # role=='decoration' folds in the former 'meta' (page numbers) and 'label'
-        # (English sub-labels); both are excluded from the prompt's text summary,
-        # matching the prior `type != 'meta'` exclusion of page-number slots.
+        # role=='decoration' 收纳了原先的 'meta'(页码)和 'label'
+        # (英文子标签);两者都被排除在 prompt 的文字摘要之外,
+        # 与此前 `type != 'meta'` 排除页码 slot 的做法一致。
         txt = ", ".join(
             f"{slot['id']}<={slot.get('maxChars', '?')}c"
             for slot in tpl["texts"]

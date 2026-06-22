@@ -1,41 +1,40 @@
-"""V3 generic copy + generic color: the preview-state layer (WP1.5 / #184).
+"""V3 generic copy + generic color:预览态层(WP1.5 / #184)。
 
-The analyze环节 ends with a book the user can immediately see "已排好版、填了通用
-文案/通用色" (v3-requirements §4.1(e) / §7.1). WP1.4 (`select_template`) produced the
-flat preview pages — which template each page uses and which photo sits in each
-image slot — but with EMPTY `texts`. This module layers the generic copy onto those
-pages so the preview reads as a finished spread, WITHOUT generating any正式文案.
+analyze环节 结束时,用户能立刻看到一本「已排好版、填了通用
+文案/通用色」的书(v3-requirements §4.1(e) / §7.1)。WP1.4(`select_template`)产出了
+扁平预览页 —— 每页用哪个模板、每个 image
+slot 里坐着哪张照片 —— 但 `texts` 为 EMPTY。本模块把通用文案叠到这些
+页上,使预览读起来像成稿 spread,且 WITHOUT 生成任何正式文案。
 
-What "通用文案" means here (§4.1(e): 不生成正式文案,直接用模板自带通用文案):
+这里「通用文案」的含义(§4.1(e):不生成正式文案,直接用模板自带通用文案):
 
-  * `decoration`-role text slots are CODE-FILLED with deterministic, template-driven
-    decoration — never user content (templates/README.md: decoration ids are
-    function names like `folio` / `date`, "filled with code-generated decoration like
+  * `decoration` 角色的文字 slot 被 CODE-FILL 上确定性、模板驱动的
+    装饰 —— 绝非用户内容(templates/README.md:decoration id 是
+    像 `folio` / `date` 的函数名,"filled with code-generated decoration like
     dates/numbers/labels, never user content"):
-      - `folio`  → the page number (1-based), zero-padded to the slot's maxChars.
-      - `date` / `dateNum` → a compact date derived from the page's photos' earliest
-        `takenAt` (code-filled EXIF, §4.1(c)); omitted when no photo on the page
-        carries a takenAt (no invented dates — §3 / writing skill红线).
-  * Every OTHER text slot — `title` / `body` / `explain` (lang=user), and decoration
-    slots we don't own a deterministic value for (`location` / `topRight` / `sideText`
-    / `numbers`) — is left EMPTY. The正式文案 for user slots is authored later by the
-    章节故事环节 (§7.1: "章节故事: 覆盖成正式文案"); writing fake copy now would violate
-    §4.1 "不生成正式文案". `location` in particular MUST stay empty (§3 隐私: no place).
+      - `folio`  → 页码(从 1 起),按 slot 的 maxChars 补零。
+      - `date` / `dateNum` → 由页内照片最早的
+        `takenAt`(code-filled EXIF,§4.1(c))推出的紧凑日期;当页上没有照片
+        携带 takenAt 时省略(不编造日期 —— §3 / writing skill红线)。
+  * 其余 EVERY 文字 slot —— `title` / `body` / `explain`(lang=user),以及我们
+    没有确定性值的装饰 slot(`location` / `topRight` / `sideText`
+    / `numbers`)—— 都留 EMPTY。用户 slot 的正式文案稍后由
+    章节故事环节 撰写(§7.1:"章节故事: 覆盖成正式文案");现在写假文案会违反
+    §4.1「不生成正式文案」。`location` 尤其 MUST 留空(§3 隐私:无地点)。
 
-What "通用色 / 占位 accentColor/artFont" means here (§4.1):
+这里「通用色 / 占位 accentColor/artFont」的含义(§4.1):
 
-  * The chapter tree carries `accentColor` / `artFont` as REQUIRED-NULLABLE keys; the
-    describe-content step (WP1.3) already sets them to `null` placeholders, and the
-    theme环节 (WP3.x) fills the real值 by sampling each chapter's hero photo. This
-    module does NOT invent a per-chapter color — `null` IS the通用占位 the renderer
-    falls back to a neutral default for. Baking a fake accent now would be overwritten
-    in theme and risk shipping a wrong color into the preview. So generic色 = leaving
-    the null placeholders intact + the deterministic decoration above; this module
-    keeps that contract explicit so later WPs know the seam.
+  * 章节树把 `accentColor` / `artFont` 作为 REQUIRED-NULLABLE 键携带;
+    describe-content 步骤(WP1.3)已把它们设为 `null` 占位,而
+    theme环节(WP3.x)通过采样每章 hero 照片填入真实值。本
+    模块 NOT 凭空造逐章颜色 —— `null` IS 那个通用占位,renderer
+    会对其回退到一个中性默认值。现在烘一个假 accent 会在 theme 阶段被覆盖,
+    并冒着把错色发进预览的风险。所以通用色 = 保持
+    null 占位不动 + 上面的确定性装饰;本模块把这个契约显式化,让后续 WP 知道这处 seam。
 
-Pure code, no LLM, no base64 (§3): this stage only reads page/template structure and
-the code-filled `takenAt` the tree already carries. It NEVER hard-fails the preview —
-an unknown template or a missing slot just yields fewer filled decorations.
+纯 code,无 LLM,无 base64(§3):本阶段只读页/模板结构与
+树已携带的 code-filled `takenAt`。它 NEVER 硬失败预览 ——
+未知模板或缺失 slot 只会产出更少的已填装饰。
 """
 
 from __future__ import annotations
@@ -48,19 +47,19 @@ from ..schemas import V3Chapter
 
 log = get_logger("generic_copy")
 
-# Decoration slot ids we own a deterministic generic value for. Anything else
-# (location/topRight/sideText/numbers/…) is intentionally left empty — see module
-# docstring. `location` MUST never be filled (§3 隐私: no place).
+# 我们拥有确定性通用值的装饰 slot id。其余任何
+# (location/topRight/sideText/numbers/…)都刻意留空 —— 见模块
+# docstring。`location` MUST 绝不填(§3 隐私:无地点)。
 _FOLIO_IDS = frozenset({"folio"})
 _DATE_IDS = frozenset({"date", "dateNum"})
 
 
 def _photo_taken_at_index(chapters: Sequence[V3Chapter]) -> dict[str, str]:
-    """photoId -> takenAt for every photo that carries one (code-filled EXIF).
+    """对每张携带 takenAt 的照片建 photoId -> takenAt(code-filled EXIF)。
 
-    Built once from the chapter tree so the per-page date decoration can look up the
-    capture time of whatever photos landed on that page. Photos without a takenAt are
-    omitted (no invented dates)."""
+    从章节树一次性构建,使逐页 date 装饰能查到落在该页上任意照片的
+    拍摄时间。没有 takenAt 的照片被
+    省略(不编造日期)。"""
     index: dict[str, str] = {}
     for chapter in chapters:
         for photo in chapter.photos:
@@ -70,24 +69,24 @@ def _photo_taken_at_index(chapters: Sequence[V3Chapter]) -> dict[str, str]:
 
 
 def _earliest_taken_at(photo_ids: Sequence[str], taken_at: Mapping[str, str]) -> str | None:
-    """The earliest known capture time among a page's photos (ISO strings sort
-    chronologically), or None when none of them carry a takenAt."""
+    """页内照片里已知最早的拍摄时间(ISO 字符串按
+    时间顺序排序),或当它们都不带 takenAt 时返回 None。"""
     stamps = [taken_at[pid] for pid in photo_ids if pid in taken_at]
     return min(stamps) if stamps else None
 
 
 def _format_date_decor(taken_at_iso: str, max_chars: int | None) -> str:
-    """A compact generic date label from an ISO `takenAt`, clamped to the slot's
-    maxChars. Prefers `MM/YY` (e.g. ``03/24`` — matches templates/README's "如 08/24",
-    5 chars); on a tight slot falls back to a bare zero-padded month, then truncation.
-    EXIF time only — no place (§3)."""
-    # takenAt matches the contract's ISO datetime (validated upstream); slice the
-    # date parts off the front rather than parsing, so a `Z`/offset suffix is moot.
+    """从 ISO `takenAt` 生成紧凑通用日期标签,截到 slot 的
+    maxChars。优先 `MM/YY`(如 ``03/24`` —— 匹配 templates/README 的「如 08/24」,
+    5 字符);slot 太窄时回退到裸补零月份,再回退到截断。
+    仅 EXIF 时间 —— 无地点(§3)。"""
+    # takenAt 匹配契约的 ISO datetime(上游已校验);从开头切出
+    # 日期部分而非解析,故 `Z`/offset 后缀无关紧要。
     year = taken_at_iso[0:4]
     month = taken_at_iso[5:7]
     if not (year.isdigit() and month.isdigit()):
         return ""
-    full = f"{month}/{year[2:]}"  # e.g. "03/24"
+    full = f"{month}/{year[2:]}"  # 如 "03/24"
     if max_chars is None or len(full) <= max_chars:
         return full
     if max_chars >= len(month):
@@ -96,16 +95,16 @@ def _format_date_decor(taken_at_iso: str, max_chars: int | None) -> str:
 
 
 def _format_folio(page_index: int, max_chars: int | None) -> str:
-    """A 1-based page number for a `folio` slot, zero-padded to maxChars (defaulting
-    to 2 digits — `02` — matching the existing decoration convention)."""
+    """给 `folio` slot 的从 1 起页码,按 maxChars 补零(默认
+    2 位 —— `02` —— 与现有装饰约定一致)。"""
     width = max_chars if (max_chars and max_chars > 0) else 2
     return str(page_index + 1).zfill(width)[:width]
 
 
 def _decor_for_slot(slot: Mapping[str, Any], page_index: int, page_date: str | None) -> str | None:
-    """The deterministic generic value for one decoration slot, or None to leave it
-    empty. Only `folio` and `date`/`dateNum` are owned; every other decoration id is
-    left to later environments (theme just recolors them — value stays code-owned)."""
+    """单个装饰 slot 的确定性通用值,或返回 None 表示留
+    空。只有 `folio` 和 `date`/`dateNum` 是我们拥有的;其余每个装饰 id 都
+    留给后续环节(theme 只给它们重新着色 —— 值仍由 code 持有)。"""
     slot_id = slot.get("id", "")
     max_chars = slot.get("maxChars")
     if slot_id in _FOLIO_IDS:
@@ -117,14 +116,14 @@ def _decor_for_slot(slot: Mapping[str, Any], page_index: int, page_date: str | N
 
 
 def fill_page_generic_copy(page: Mapping[str, Any], page_date: str | None) -> dict[str, str]:
-    """Generic-copy `texts` for one preview page: deterministic decoration only.
+    """单个预览页的通用文案 `texts`:仅确定性装饰。
 
-    Reads the page's `templateId` to find its text-slot declarations, fills the
-    decoration slots we own (`folio`, `date`/`dateNum`) and leaves everything else
-    empty. Merges over any texts already on the page (keeps explicit values, never
-    overwrites a non-empty slot). Returns a plain `{slotId: str}` dict (Page.texts
-    shape). An unknown template yields the page's existing texts unchanged — this
-    stage never hard-fails the preview."""
+    读页的 `templateId` 找到其 text-slot 声明,填入我们拥有的
+    装饰 slot(`folio`、`date`/`dateNum`),其余一律留
+    空。合并到页上已有的 texts 之上(保留显式值,绝不
+    覆盖非空 slot)。返回一个普通 `{slotId: str}` dict(Page.texts
+    形态)。未知模板时原样返回页已有 texts —— 本
+    阶段绝不硬失败预览。"""
     existing = dict(page.get("texts") or {})
     template_id = page.get("templateId")
     template = templates.get(template_id) if isinstance(template_id, str) else None
@@ -138,7 +137,7 @@ def fill_page_generic_copy(page: Mapping[str, Any], page_date: str | None) -> di
             continue
         slot_id = slot.get("id", "")
         if out.get(slot_id):
-            continue  # never clobber an explicit/non-empty value
+            continue  # 绝不覆盖显式/非空值
         value = _decor_for_slot(slot, page_index, page_date)
         if value:
             out[slot_id] = value
@@ -148,17 +147,17 @@ def fill_page_generic_copy(page: Mapping[str, Any], page_date: str | None) -> di
 def fill_generic_copy(
     pages: Sequence[Mapping[str, Any]], chapters: Sequence[V3Chapter]
 ) -> list[dict[str, Any]]:
-    """Layer generic 文案 onto the WP1.4 preview pages → preview-state pages (§4.1(e)).
+    """把通用 文案 叠到 WP1.4 预览页上 → 预览态页(§4.1(e))。
 
-    For each page: deterministic decoration (`folio` page number, `date` from the
-    page's photos' earliest code-filled `takenAt`) is filled into `texts`; user-content
-    and unowned decoration slots stay empty for the章节故事环节 to author. The chapter
-    tree's `accentColor`/`artFont` null placeholders are left intact (通用色 = the null
-    placeholder; theme环节 fills real值). Pure code, never raises.
+    对每页:确定性装饰(`folio` 页码、`date` 来自
+    页内照片最早的 code-filled `takenAt`)被填入 `texts`;用户内容
+    和未拥有的装饰 slot 留空,交给章节故事环节 撰写。章节
+    树的 `accentColor`/`artFont` null 占位保持不动(通用色 = 那个 null
+    占位;theme环节 填真实值)。纯 code,绝不抛错。
 
-    Returns NEW page dicts (Page shape: pageIndex/templateId/images/texts/…) so the
-    caller's input is not mutated. Page ordering and image assignment are untouched —
-    this stage only adds generic decoration text."""
+    返回 NEW 的页 dict(Page 形态:pageIndex/templateId/images/texts/…),使
+    调用方的输入不被改动。页顺序和图片分配不动 ——
+    本阶段只添加通用装饰文字。"""
     taken_at = _photo_taken_at_index(chapters)
     out: list[dict[str, Any]] = []
     filled_decor = 0

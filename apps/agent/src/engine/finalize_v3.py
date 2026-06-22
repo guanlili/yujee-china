@@ -1,28 +1,27 @@
-"""V3 deterministic finalize — V3 layout tree + pages -> flat AlbumLayoutPlan.
+"""V3 确定性 finalize —— V3 layout 树 + 页 -> 扁平 AlbumLayoutPlan。
 
-The V3 path of finalize (issue #179 / WP0.4).
+finalize 的 V3 路径(issue #179 / WP0.4)。
 
-V3 finalize (docs/agent/v3-requirements.md §9 / §4.5; v3-implementation-plan §3
-WP0.4) has these rules:
+V3 finalize(docs/agent/v3-requirements.md §9 / §4.5;v3-implementation-plan §3
+WP0.4)有以下规则:
 
-  * **Cover is optional** — page 0 is NOT forced to be a cover-category
-    template (covers can be skipped, §4.4). No "page 0 must be cover" rule.
-  * **No quality / hero / orientation** — image slots carry none in V3, so there
-    is no fill-in-hero check and no hero-slot protection. Aspect-ratio mismatch is
-    the renderer's center-cover concern.
-  * **Recognizes V3 template fields** — validation accepts ``svgs`` slots, the
-    ``items`` repeat group, ``variableDecor`` flags, ``category``, chapter accent
-    color and art font. Repeat-group content is addressed by the declared
-    bracket-path slot ids (``cells[0].image``), already enumerated by the loader.
+  * **Cover 可选** —— page 0 NOT 被强制为 cover-category
+    模板(cover 可跳过,§4.4)。没有「page 0 必须是 cover」规则。
+  * **无 quality / hero / orientation** —— V3 里 image slot 不带这些,所以
+    没有 fill-in-hero 检查、也没有 hero-slot 保护。比例不符是
+    renderer 的 center-cover 关切。
+  * **识别 V3 模板字段** —— validation 接受 ``svgs`` slot、``items`` repeat
+    group、``variableDecor`` 标志、``category``、章节 accent
+    color 和 art font。repeat-group 内容用声明的
+    bracket-path slot id(``cells[0].image``)寻址,loader 已枚举好。
 
-This WP delivers the V3 finalize basis: flatten + a V3-shaped validate.
+本 WP 交付 V3 finalize 基座:flatten + 一个 V3 形态的 validate。
 
-Scope note: the external render contract ``AlbumLayoutPlan`` still carries the
-legacy ``quality`` field on each photo (it mirrors @yujee/contracts
-PhotoAnalysis, unchanged this WP). V3 input photos have no quality, so finalize
-synthesizes a neutral ``"detail"`` quality on output — quality is inert in V3
-(no hero protection consumes it). When the contract drops the field this synth
-goes away.
+范围说明:对外 render 契约 ``AlbumLayoutPlan`` 仍在每张照片上携带遗留
+``quality`` 字段(它镜像 @yujee/contracts
+PhotoAnalysis,本 WP 不动)。V3 输入照片没有 quality,所以 finalize
+在输出时合成一个中性 ``"detail"`` quality —— quality 在 V3 里是惰性的
+(没有 hero 保护消费它)。等契约去掉该字段,这个合成就消失。
 """
 
 from __future__ import annotations
@@ -46,17 +45,17 @@ from ..schemas import (
 )
 
 
-# V3 flat-layout page bound (matches v2's [1, 48]; the flat schema also enforces
-# >= 1). A V3 album with no pages cannot ship.
+# V3 扁平 layout 页数上限(与 v2 的 [1, 48] 一致;扁平 schema 也强制
+# >= 1)。没有页的 V3 相册无法出货。
 _MAX_PAGES = 48
 
-# Repeat-group / bracket-path slot key, e.g. ``cells[0].image`` or ``titles[3]``.
-# The part before the first ``[`` is the base slot the template declares (image
-# slots are enumerated per-index by the loader; repeat text slots stay as the
-# base key with a numeric index).
+# Repeat-group / bracket-path slot key,如 ``cells[0].image`` 或 ``titles[3]``。
+# 第一个 ``[`` 之前的部分是模板声明的 base slot(image
+# slot 由 loader 逐 index 枚举;repeat 文字 slot 保持为带数字 index 的
+# base key)。
 _BASE_SLOT_RE = re.compile(r"^([^\[]+)")
 
-# Neutral inert quality for the external render contract (see module docstring).
+# 对外 render 契约用的中性惰性 quality(见模块 docstring)。
 _V3_OUTPUT_QUALITY = "detail"
 
 _DEFAULT_TITLE = {"en": "Life in photographs", "zh": "照片里的时光"}
@@ -76,25 +75,25 @@ _USER_PROSE_ROLES = THEME_USER_PROSE_ROLES
 
 
 class FinalizeV3Error(Exception):
-    """Raised when the flattened V3 layout fails validate_v3."""
+    """扁平后的 V3 layout 未通过 validate_v3 时抛。"""
 
 
 def finalize_v3(request: V3FinalizeRequest) -> AlbumLayoutPlan:
-    """Flatten a V3 layout tree + preview pages into the external AlbumLayoutPlan.
+    """把 V3 layout 树 + 预览页扁平化成对外 AlbumLayoutPlan。
 
-    Pure function (no LLM/network/DB). Steps:
-      ① collect every photo referenced by the tree, shaped to the external
-         render contract (synthesizing the inert legacy quality field);
-      ② flatten the preview `pages` as-is (cover optional — no forced page 0),
-         reindexing pageIndex sequentially;
-      ②b bake each chapter's variableDecor theme (accentColor / artFont, incl.
-         the WP3.2 svg seam) into that chapter's flat pages — the per-chapter
-         color/font lives ONLY in the tree until this point (§3 树边界), and is
-         landed into `pages[].texts` here so the flat render contract never
-         carries a tree-shaped field;
-      ③ build the magazine header from the language + first chapter;
-      ④ hard-validate the flat layout with the SINGLE `validate_v3` (§6.8 第 7
-         条 校验单一真相源) and raise on the first violation.
+    纯函数(无 LLM/网络/DB)。步骤:
+      ① 收集树引用的每张照片,塑形成对外
+         render 契约(合成惰性遗留 quality 字段);
+      ② 原样扁平化预览 `pages`(cover 可选 —— 不强制 page 0),
+         按顺序重排 pageIndex;
+      ②b 把每章的 variableDecor 主题(accentColor / artFont,含
+         WP3.2 svg seam)烘进该章的扁平页 —— 逐章
+         color/font 在此之前只活在树里(§3 树边界),并在这里
+         落到 `pages[].texts`,使扁平 render 契约绝不
+         携带树形字段;
+      ③ 从 language + 第一章构建 magazine header;
+      ④ 用 SINGLE `validate_v3`(§6.8 第 7
+         条 校验单一真相源)硬校验扁平 layout,遇首个违规即抛。
     """
     language = request.language
 
@@ -115,12 +114,12 @@ def finalize_v3(request: V3FinalizeRequest) -> AlbumLayoutPlan:
 
 
 def _collect_photos(request: V3FinalizeRequest) -> list[LayoutPhotoAnalysis]:
-    """Every distinct photo in the tree, in first-seen order, shaped for output.
+    """树里每张不重复的照片,按 first-seen 顺序,塑形成输出。
 
-    Description comes from the chapter photo's ``sceneDescription``; tags default
-    empty (V3 has no tag dimension here); ``quality`` is the inert neutral value
-    (see module docstring); orientation is carried through; focal is omitted (no
-    focal dimension in the V3 chapter photo → renderer 50/50 default)."""
+    Description 来自章节照片的 ``sceneDescription``;tags 默认
+    空(V3 这里没有 tag 维度);``quality`` 是惰性中性值
+    (见模块 docstring);orientation 直接透传;focal 省略(V3 章节照片里没有
+    focal 维度 → renderer 50/50 默认)。"""
     out: list[LayoutPhotoAnalysis] = []
     seen: set[str] = set()
     for chapter in request.tree.chapters:
@@ -144,11 +143,11 @@ def _collect_photos(request: V3FinalizeRequest) -> list[LayoutPhotoAnalysis]:
 
 
 def _flatten_pages(pages: list[Page]) -> list[Page]:
-    """Reindex the preview pages sequentially from 0, order preserved.
+    """把预览页从 0 起按顺序重排 index,保持原顺序。
 
-    Cover optionality lives here: we do NOT inject or require a cover page — the
-    pages arrive in their authored order and we only renumber pageIndex so the
-    flat layout is contiguous."""
+    Cover 的可选性体现在这里:我们 NOT 注入或要求 cover 页 ——
+    页按其创作顺序到达,我们只重排 pageIndex 让
+    扁平 layout 连续。"""
     return [page.model_copy(update={"pageIndex": idx}) for idx, page in enumerate(pages)]
 
 
@@ -156,25 +155,25 @@ def _flatten_pages(pages: list[Page]) -> list[Page]:
 
 
 def _bake_variable_decor(pages: list[Page], tree: V3LayoutTree) -> list[Page]:
-    """Bake every chapter's `{accentColor, artFont}` into that chapter's flat pages.
+    """把每章的 `{accentColor, artFont}` 烘进该章的扁平页。
 
-    This lands the §3 树边界 contract: the per-chapter theme lives ONLY in the tree
-    (`V3Chapter.accentColor/artFont`) through analyze/story/theme/cover; finalize is
-    the single point where it is baked into the flat `page.texts` so the render
-    contract (`magazine + photos + pages[]`) never carries a tree-shaped field.
+    这落地 §3 树边界 契约:逐章主题在 analyze/story/theme/cover 过程中 ONLY 活在树里
+    (`V3Chapter.accentColor/artFont`);finalize 是
+    唯一把它烘进扁平 `page.texts` 的点,使 render
+    契约(`magazine + photos + pages[]`)绝不携带树形字段。
 
-    Page→chapter mapping: V3 is 一图一章不跨章, so a body page's photos all belong to
-    one chapter. We map each page to the FIRST chapter that owns any of the page's
-    image photoIds. Pages with no owning chapter (e.g. a WP4.1 cover/ending spread
-    not tied to a chapter, or a page whose chapter has a null theme) are left exactly
-    as-is — no theme to bake. Idempotent: re-baking the same tree yields identical
-    texts (it overwrites the carriers / svg-seam values, never appends)."""
+    页→章映射:V3 是 一图一章不跨章,所以正文页的照片都属于
+    一章。我们把每页映射到 FIRST 拥有该页任一
+    image photoId 的章节。没有归属章节的页(如未绑定章节的 WP4.1 cover/ending
+    spread,或其章节主题为 null 的页)原样
+    保留 —— 没有主题可烘。幂等:对同一棵树重复烘出相同的
+    texts(它覆盖 carrier / svg-seam 值,绝不追加)。"""
     owner = _page_chapter_index(pages, tree)
     out: list[Page] = []
     for page in pages:
         chapter = owner.get(page.pageIndex)
         if chapter is None or chapter.accentColor is None:
-            # No resolvable chapter, or chapter theme not chosen yet → nothing to bake.
+            # 没有可解析的章节,或章节主题尚未选定 → 没什么可烘。
             out.append(page)
             continue
         out.append(_bake_page(page, chapter.accentColor, chapter.artFont))
@@ -184,12 +183,12 @@ def _bake_variable_decor(pages: list[Page], tree: V3LayoutTree) -> list[Page]:
 def _page_chapter_index(
     pages: list[Page], tree: V3LayoutTree
 ) -> dict[int, V3Chapter]:
-    """Map each page's `pageIndex` to its owning chapter via photoId membership.
+    """通过 photoId 归属把每页的 `pageIndex` 映射到其所属章节。
 
-    Builds a photoId → chapter lookup (first-seen chapter wins, matching the
-    first-seen dedupe in `_collect_photos`), then assigns each page to the chapter
-    owning its first resolvable image photoId. A page whose photos belong to no
-    chapter is simply absent from the result (left un-themed by the caller)."""
+    构建一个 photoId → chapter 查找表(first-seen 章节胜出,与
+    `_collect_photos` 里的 first-seen 去重一致),再把每页分配给
+    拥有其第一个可解析 image photoId 的章节。照片不属于任何
+    章节的页在结果里直接缺席(由调用方留作未着主题)。"""
     photo_owner: dict[str, V3Chapter] = {}
     for chapter in tree.chapters:
         for photo in chapter.photos:
@@ -206,19 +205,19 @@ def _page_chapter_index(
 
 
 def _bake_page(page: Page, accent_color: str, art_font: str | None) -> Page:
-    """Return a copy of `page` with its template's variableDecor slots themed.
+    """返回 `page` 的一份副本,其模板的 variableDecor slot 已被着主题。
 
-    * SVG variableDecor slots → `texts[svgId] = accent_color` (the vector is painted
-      in the accent color; lands the WP3.2 apply-theme svg seam as the final flat
-      form, re-derived from the tree so the tree is the single source of truth).
-    * variableDecor TEXT slots (standalone + inside the `items` repeat group):
-      visible content is kept verbatim, including missing/empty decoration slots.
-      The chapter color/font ride sibling carrier keys `texts[slotId#accentColor]` /
-      `texts[slotId#artFont]` and never clobber the visible slot value.
-    Non-variableDecor slots and 普通正文 (body/explain) values are never touched."""
+    * SVG variableDecor slot → `texts[svgId] = accent_color`(矢量以
+      accent color 绘制;把 WP3.2 apply-theme svg seam 落地为最终扁平
+      形态,从树重新推导,使树是单一真相源)。
+    * variableDecor TEXT slot(独立 + 在 `items` repeat group 内):
+      可见内容原样保留,含缺失/空的装饰 slot。
+      章节 color/font 走 sibling carrier 键 `texts[slotId#accentColor]` /
+      `texts[slotId#artFont]`,绝不覆盖可见 slot 值。
+    非 variableDecor slot 与 普通正文(body/explain)值绝不触碰。"""
     template = registry.get(page.templateId)
     if template is None:
-        # Unknown template (validate_v3 will reject it later); nothing to bake.
+        # 未知模板(validate_v3 稍后会拒它);没什么可烘。
         return page
 
     texts = dict(page.texts)
@@ -244,11 +243,11 @@ def _bake_text_slots(
     accent_color: str,
     art_font: str | None,
 ) -> None:
-    """Bake the chapter theme into the variableDecor TEXT slots of one slot list.
+    """把章节主题烘进一个 slot 列表的 variableDecor TEXT slot。
 
-    Mutates `texts` in place. For repeat-group (`items`) slots the declared base id
-    may be addressed per-index in the page (`caption[0]`); we theme every present key
-    whose base matches a variableDecor slot, plus the bare base key if present."""
+    就地修改 `texts`。对 repeat-group(`items`)slot,声明的 base id
+    在页里可能按 index 寻址(`caption[0]`);我们给每个 base 匹配 variableDecor slot
+    的现存键、以及裸 base 键(如存在)着主题。"""
     for slot in slots:
         if not slot.get("variableDecor"):
             continue
@@ -261,25 +260,25 @@ def _bake_text_slots(
             existing = texts.get(key)
             if existing is None:
                 continue
-            # Keep user prose, code-owned decoration values and empty decoration
-            # strings verbatim; theme rides carriers.
+            # 用户正文、code 持有的装饰值、空装饰
+            # 字符串都原样保留;主题走 carrier。
             texts[f"{key}{_ACCENT_SUFFIX}"] = accent_color
             if art_font is not None:
                 texts[f"{key}{_FONT_SUFFIX}"] = art_font
         if not matching_keys:
-            # Slot declared variableDecor but not present on the page (e.g. generic
-            # copy never filled a decoration): keep visible content absent and carry
-            # the theme through sibling keys only.
+            # slot 声明了 variableDecor 但页上没有(如 generic
+            # copy 从未填过某装饰):保持可见内容缺席,只通过
+            # sibling 键携带主题。
             texts[f"{slot_id}{_ACCENT_SUFFIX}"] = accent_color
             if art_font is not None:
                 texts[f"{slot_id}{_FONT_SUFFIX}"] = art_font
 
 
 def _matching_text_keys(texts: dict[str, str], base_slot: str) -> list[str]:
-    """Present text keys whose base slot == `base_slot` (bare id or bracket-path).
+    """base slot == `base_slot`(裸 id 或 bracket-path)的现存文字键。
 
-    A repeat-group base ``caption`` matches ``caption``, ``caption[0]``, ``caption[1]``;
-    carrier keys (``…#accentColor``) are excluded so re-baking is idempotent."""
+    repeat-group base ``caption`` 匹配 ``caption``、``caption[0]``、``caption[1]``;
+    carrier 键(``…#accentColor``)被排除,使重复烘焙幂等。"""
     out: list[str] = []
     for key in texts:
         if _ACCENT_SUFFIX in key or _FONT_SUFFIX in key:
@@ -325,10 +324,10 @@ def _base_slot(slot: str) -> str:
 
 
 def _carrier_base(slot: str) -> str | None:
-    """The owning slot id of a theme-carrier key, or None if `slot` is not a carrier.
+    """theme-carrier 键所属的 slot id,若 `slot` 不是 carrier 则返回 None。
 
-    `title#accentColor` → `title`; `caption[0]#artFont` → `caption[0]`. Returns None
-    for a plain slot id so the normal slot-membership check runs."""
+    `title#accentColor` → `title`;`caption[0]#artFont` → `caption[0]`。对普通 slot id
+    返回 None,以便走正常的 slot 归属检查。"""
     for suffix in (_ACCENT_SUFFIX, _FONT_SUFFIX):
         if slot.endswith(suffix):
             return slot[: -len(suffix)]
@@ -340,10 +339,10 @@ def _is_variable_decor_slot(
     text_by_id: dict[str, Any],
     item_text_by_id: dict[str, Any],
 ) -> bool:
-    """Whether `slot_key` (bare id or bracket-path) names a text variableDecor slot.
+    """`slot_key`(裸 id 或 bracket-path)是否指向一个 text variableDecor slot。
 
-    Sibling carrier keys belong only to text and `items.texts` slots. SVG
-    variableDecor slots are value-as-color and are validated as bare svg ids."""
+    sibling carrier 键只属于 text 和 `items.texts` slot。SVG
+    variableDecor slot 是 value-as-color,按裸 svg id 校验。"""
     base = _base_slot(slot_key)
     text_slot = text_by_id.get(base)
     if text_slot is not None and text_slot.get("variableDecor"):
@@ -355,24 +354,23 @@ def _is_variable_decor_slot(
 
 
 def validate_v3(layout: AlbumLayoutPlan) -> str | None:
-    """V3 flat-layout hard rules. Returns the first violation as a human-readable
-    string, or None when the layout is shippable.
+    """V3 扁平 layout 硬规则。返回首个违规的人类可读
+    字符串,或在 layout 可出货时返回 None。
 
-    Differs from v2 ``finalize.validate_v2``:
-      * NO "page 0 must be cover" rule — covers are optional in V3.
-      * NO fill-in-hero / quality / orientation check — those dimensions are gone.
-      * Recognizes V3 repeat-group / bracket-path slots, ``svgs`` and ``items``
-        via the loader's declared slot ids.
+    与 v2 ``finalize.validate_v2`` 的不同:
+      * 没有「page 0 必须是 cover」规则 —— V3 里 cover 可选。
+      * 没有 fill-in-hero / quality / orientation 检查 —— 这些维度已移除。
+      * 通过 loader 声明的 slot id 识别 V3 repeat-group / bracket-path slot、``svgs`` 和 ``items``。
 
-    Enforced:
-      * 1..48 pages, sequential pageIndex.
-      * Every template id is known.
-      * Every image/text slot key belongs to its template. V3 allows larger
-        templates to be underfilled when a legal candidate only needs capacity
-        >= N, so only present image keys are validated.
-      * Bracket-path text keys are accepted only for declared repeat bases.
-      * Every referenced photoId exists in photos[]; no photo twice on one page;
-        no photo reused more than twice across the album; no unused photo.
+    强制约束:
+      * 1..48 页,pageIndex 顺序连续。
+      * 每个 template id 已知。
+      * 每个 image/text slot 键都属于其模板。V3 允许在合法候选只需
+        容量 >= N 时,较大模板留有空槽,所以只校验
+        present image 键。
+      * bracket-path 文字键仅对声明的 repeat base 接受。
+      * 每个被引用的 photoId 都存在于 photos[];同一页不重复用一张照片;
+        全册任一照片复用不超过两次;无未使用照片。
     """
     pages = layout.pages
     photo_ids = {photo.photoId for photo in layout.photos}
@@ -395,20 +393,20 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
 
         image_by_id = registry.image_slot_map(template)
         text_by_id = registry.text_slot_map(template)
-        # svg decoration slots (§9) live in `page.texts` as a themed-decoration carrier
-        # baked by finalize (WP5.1; seam from apply-theme WP3.2 #190): the slot's value
-        # is the chapter accent color the renderer paints the vector in. They are NOT
-        # text slots, so accept their ids here too (additive, V3-only — v2 finalize.py
-        # is untouched).
+        # svg 装饰 slot(§9)以 finalize 烘出的 themed-decoration carrier 形态
+        # 活在 `page.texts`(WP5.1;seam 来自 apply-theme WP3.2 #190):slot 的值
+        # 是 renderer 给矢量上色用的章节 accent color。它们 NOT
+        # 是 text slot,所以这里也接受它们的 id(增量、仅 V3 —— v2 finalize.py
+        # 不动)。
         svg_ids = {svg["id"] for svg in (template.get("svgs") or [])}
-        # `items` repeat-group declared text-slot bases (§9): the unique V3 repeat
-        # carrier (replaces the deprecated top-level `repeat:true`). An items text slot
-        # may appear in page.texts as the bare base (`caption`) or per-index
-        # (`caption[0]`). variableDecor flags ride the slot defs themselves.
+        # `items` repeat-group 声明的 text-slot base(§9):V3 唯一的 repeat
+        # carrier(取代已弃用的顶层 `repeat:true`)。一个 items text slot
+        # 在 page.texts 里可能以裸 base(`caption`)或按 index
+        # (`caption[0]`)出现。variableDecor 标志挂在 slot 定义本身上。
         items = template.get("items") or {}
         item_text_by_id = {slot["id"]: slot for slot in (items.get("texts") or [])}
-        # `items.images` repeat-group bases (§9): a grid template declares its image
-        # slot once under items and addresses each cell as `<base>[i]`.
+        # `items.images` repeat-group base(§9):grid 模板把它的 image
+        # slot 在 items 下声明一次,并把每个 cell 寻址为 `<base>[i]`。
         item_image_by_id = {slot["id"]: slot for slot in (items.get("images") or [])}
 
         for slot in page.images:
@@ -416,17 +414,17 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
                 continue
             base = _base_slot(slot)
             if base in item_image_by_id:
-                continue  # declared `items` repeat-group image cell (bare or [i])
+                continue  # 声明的 `items` repeat-group image cell(裸或 [i])
             return (
                 f"page {page.pageIndex}: image slot '{slot}' not in "
                 f"template {page.templateId}"
             )
         for slot in page.texts:
-            # ②b theme carriers (§3 树边界): finalize bakes the chapter accentColor/
-            # artFont into `<slotId>#accentColor` / `<slotId>#artFont` string keys when
-            # the slot holds user prose / a code-owned value. Accept a carrier iff its
-            # owning slot is a declared text/items.text variableDecor slot. SVG
-            # variableDecor uses the bare svg slot value as color instead.
+            # ②b theme carrier(§3 树边界):当 slot 持有用户正文 / code 持有的值时,
+            # finalize 把章节 accentColor/artFont 烘进 `<slotId>#accentColor` /
+            # `<slotId>#artFont` 字符串键。仅当 carrier 所属 slot 是声明的
+            # text/items.text variableDecor slot 时才接受。SVG
+            # variableDecor 改用裸 svg slot 值作为颜色。
             carrier_base = _carrier_base(slot)
             if carrier_base is not None:
                 if _is_variable_decor_slot(carrier_base, text_by_id, item_text_by_id):
@@ -436,18 +434,18 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
                     f"text variableDecor slot in template {page.templateId}"
                 )
             base = _base_slot(slot)
-            # A bracket-path key (`base[i]`) resolves against the `items.texts`
-            # repeat base first — even when a same-named plain top-level slot
-            # exists (mag-02 has both a top-level `title` and an items `title`).
+            # bracket-path 键(`base[i]`)优先对 `items.texts`
+            # repeat base 解析 —— 即便存在同名的普通顶层 slot
+            # (mag-02 同时有顶层 `title` 和 items `title`)。
             if "[" in slot and base in item_text_by_id:
                 continue
             text_slot = text_by_id.get(base)
             if text_slot is None:
                 if slot in svg_ids:
-                    continue  # themed svg-decoration key (baked), not a text slot
+                    continue  # 已烘的 themed svg-decoration 键,不是 text slot
                 item_slot = item_text_by_id.get(base)
                 if item_slot is not None:
-                    continue  # declared `items` repeat-group text slot (bare or [i])
+                    continue  # 声明的 `items` repeat-group text slot(裸或 [i])
                 return (
                     f"page {page.pageIndex}: text slot '{slot}' not in "
                     f"template {page.templateId}"
@@ -471,9 +469,9 @@ def validate_v3(layout: AlbumLayoutPlan) -> str | None:
     if unused:
         return f"unused photos: {sorted(unused)[:3]}"
 
-    # Album-wide reuse cap: a photo may appear at most twice TOTAL. Unlike v2
-    # (which exempts page 0 because page 0 is always the cover), V3 has an
-    # optional cover, so there is no special first page — every placement counts.
+    # 全册复用上限:一张照片最多出现 TOTAL 两次。与 v2 不同
+    # (v2 豁免 page 0,因为 page 0 总是 cover),V3 的
+    # cover 可选,所以没有特殊首页 —— 每次放置都计数。
     overused = [pid for pid, count in used_counts.items() if count > 2]
     if overused:
         return f"photos reused more than 2 times: {sorted(overused)[:3]}"
