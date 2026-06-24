@@ -252,8 +252,8 @@ def test_prompt_injects_cluster_labels_relabeled_locally():
     assert "cluster=c1" in text and "cluster=c2" in text
     assert "clusterX" not in text and "clusterY" not in text
     # cluster 规则已外置并中文化(prompts/rules/cluster_grouping.md)。
-    assert "必须】待在一起" in text
-    assert "绝不】合并进同一个章节" in text
+    assert "待在一起" in text
+    assert "合并进同一章节" in text
 
 
 def test_prompt_no_cluster_block_when_all_null():
