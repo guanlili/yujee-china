@@ -41,7 +41,6 @@ from ...schemas import (
     V3ChapterChatKind,
     V3ChapterChatRequest,
     V3ChapterChatResponse,
-    V3LayoutPatchEntry,
     V3Models,
     V3PageTextsPatch,
     V3Usage,
@@ -49,7 +48,7 @@ from ...schemas import (
 from ...settings import get_settings
 from ...prompts import RULES_DIR, load_prompt
 from ... import ai_client
-from ..image_edit_intent import handler as chat_edit_v3
+from . import author_loop
 from . import guides as writing_guides
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
@@ -255,7 +254,7 @@ async def run(
     req: V3ChapterChatRequest,
     *,
     complete: CompleteFn | None = None,
-    call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
+    author_complete: CompleteFn | None = None,
 ) -> V3ChapterChatResponse:
     started = time.monotonic()
     messages = build_messages(req)
@@ -263,9 +262,10 @@ async def run(
     parsed = _parse_model_json(response)
     duration_ms = int((time.monotonic() - started) * 1000)
     usage = _usage_from_response(response, duration_ms)
-    # `call_intent` 注入 WP2.3 图片编辑意图调用(识图模型),镜像 `complete` 注入 DeepSeek
-    # 分发的方式 —— 两者都默认走真实 provider,只在测试里被覆盖。
-    return await _coerce_response(req, parsed, usage, call_intent=call_intent)
+    # dispatch 判 talk/write/edit;edit 由统一创作 agent loop 接管(去 editTarget 二分)。
+    # `author_complete` 注入 loop 的模型调用,镜像 dispatch 的 `complete` —— 默认走真实
+    # DeepSeek,只在测试里被覆盖。
+    return await _coerce_response(req, parsed, usage, author_complete=author_complete)
 
 
 async def _complete(
@@ -334,15 +334,12 @@ async def _coerce_response(
     parsed: dict[str, Any],
     usage: V3Usage,
     *,
-    call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
+    author_complete: CompleteFn | None = None,
 ) -> V3ChapterChatResponse:
     kind = _resolve_kind(req, parsed.get("kind"))
-    # 可选的 V3 响应字段是带「缺失哨兵」默认值的 strict-typed 列表 —— 显式传 None 会过不了
-    # strict 校验。构建 kwargs,仅在字段真有值时才包含它。
-    name_options = _coerce_name_options(parsed.get("nameOptions"))
+    # 对齐主仓 contracts:nameOptions 已从 V3ChapterChatResponse 删除,这里不再返回它
+    # (worktree agent 基于旧 main,若仍回该字段会被 web 的新 strict 契约拒 → AGENT_INVALID_OUTPUT)。
     extra: dict[str, Any] = {}
-    if name_options is not None:
-        extra["nameOptions"] = name_options
 
     if kind == "write":
         pages_texts = _coerce_pages_texts(req, parsed.get("pagesTexts"))
@@ -364,38 +361,31 @@ async def _coerce_response(
         )
 
     if kind == "edit":
-        # 图文分流 (WP2.3 #187):偏图片的编辑把识图模型升级进来产出意图;文字编辑留在
-        # DeepSeek。纯文字编辑【绝不】调用识图模型。
-        if _is_image_edit(parsed.get("editTarget")):
-            patch = await _coerce_image_edit_patch(req, call_intent=call_intent)
+        # 统一创作 agent loop(去 editTarget 二分):模型自主决定改版式 / 换图 / 改文案。
+        # _resolve_kind 已保证聚焦页在本轮切片内。同步 60s 预算下把 loop 步数压到保守值;
+        # loop 一步没动 → patch=None → 降级 talk(绝不发空 / 杜撰 patch)。
+        page = next((p for p in req.pages if p.pageIndex == req.focusedPageIndex), None)
+        if page is not None:
+            patch, loop_reply, loop_usage = await author_loop.run_author_edit(
+                req.chapter,
+                page,
+                req.userMessage,
+                list(req.history),
+                complete=author_complete,
+                max_steps=4,
+            )
             if patch is not None:
-                reply = _text(parsed.get("assistantReply")) or _default_reply(
+                reply = loop_reply or _text(parsed.get("assistantReply")) or _default_reply(
                     req.language, "edit"
                 )
                 return V3ChapterChatResponse(
                     kind="edit",
                     assistantReply=reply[:500],
                     layoutPatch=[patch],
-                    usage=usage,
+                    usage=_merge_usage(usage, loop_usage),
                     **extra,
                 )
-            # 模型/引擎无法满足的图片编辑 → talk(绝不杜撰)。
-        else:
-            patch = _coerce_edit_patch(req, parsed.get("pageTexts"))
-            if patch is not None:
-                reply = _text(parsed.get("assistantReply")) or _default_reply(
-                    req.language, "edit"
-                )
-                return V3ChapterChatResponse(
-                    kind="edit",
-                    assistantReply=reply[:500],
-                    layoutPatch=[patch],
-                    usage=usage,
-                    **extra,
-                )
-        # 模型判定为 edit 但没产出可用的 patch(纯文字编辑却无可用文字、引擎摆不下的图片
-        # 编辑,或聚焦页缺失 / 不在切片内)。降级为 talk turn,而不是发出一份空/非法 patch
-        # —— 绝不杜撰版式。
+        # 聚焦页缺失 / loop 无改动 → 降级 talk(下方),绝不发空 patch。
 
     # talk — 引导:只回复,绝不出 patch(Frame 4 红线)。也是无可应用内容的 edit turn 的
     # 兜底落点。
@@ -454,53 +444,15 @@ def _missing_required_texts(req: V3ChapterChatRequest, pages_texts: list[V3PageT
     return missing
 
 
-def _is_image_edit(raw: Any) -> bool:
-    """DeepSeek 的 edit 分发用 editTarget=="image" 标记一个偏图片的 turn(换图/挪图/改图文
-    配比)。其它一切(含缺失 / "text")都是纯文字编辑,绝不能碰识图模型(图文分流,WP2.3)。"""
-    return isinstance(raw, str) and raw.strip().lower() == "image"
-
-
-async def _coerce_image_edit_patch(
-    req: V3ChapterChatRequest,
-    *,
-    call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
-) -> V3LayoutPatchEntry | None:
-    """涉及图片 edit (§4.2(3) / WP2.3):把聚焦页 + 本章照片 + 用户消息交给 `chat_edit_v3`,
-    由它让识图模型产出一个 photoId 意图,并跑确定性引擎来执行。模型从不产出
-    templateId/pageIndex —— 引擎保证版式合法。聚焦页缺失/不在切片内或没有可用结果时返回
-    None(→ talk);绝不抛错(`run_image_edit` 内部自降级)。"""
-    focused = req.focusedPageIndex
-    if focused is None:
-        return None
-    page = next((p for p in req.pages if p.pageIndex == focused), None)
-    if page is None:
-        return None
-    return await chat_edit_v3.run_image_edit(
-        req.chapter, page, req.userMessage, call_intent=call_intent
+def _merge_usage(dispatch: V3Usage, loop: V3Usage) -> V3Usage:
+    """合并 dispatch(判 kind)与 author loop(多步)两段 usage —— token / 时长相加,便于计费
+    与可观测(评审 N3 多跳聚合)。"""
+    return V3Usage(
+        durationMs=dispatch.durationMs + loop.durationMs,
+        planningInputTokens=dispatch.planningInputTokens + loop.planningInputTokens,
+        planningOutputTokens=dispatch.planningOutputTokens + loop.planningOutputTokens,
+        models=V3Models(planning=get_settings().deepseek_model),
     )
-
-
-def _coerce_edit_patch(
-    req: V3ChapterChatRequest, raw: Any
-) -> V3LayoutPatchEntry | None:
-    """Edit turn(纯文字):【只】重写聚焦页的文字。返回一条承载清洗后文字的 layoutPatch
-    (不改 templateId/images —— 照片/版式升级是 WP2.3)。没有可应用的东西时返回 None。"""
-    focused = req.focusedPageIndex
-    if focused is None:
-        return None
-    page = next((p for p in req.pages if p.pageIndex == focused), None)
-    if page is None:
-        return None
-    if not isinstance(raw, dict):
-        return None
-    raw_texts = raw.get("texts")
-    if not isinstance(raw_texts, dict):
-        return None
-    specs = _page_slot_specs(page)
-    texts = _clean_texts(raw_texts, specs)
-    if not texts:
-        return None
-    return V3LayoutPatchEntry(pageIndex=focused, texts=texts)
 
 
 def _raw_texts_by_index(raw: Any) -> dict[int, dict[str, Any]]:
