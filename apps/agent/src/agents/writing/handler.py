@@ -485,6 +485,18 @@ async def _coerce_response(
                 )
         # 聚焦页缺失 / loop 无改动 → 降级 talk(下方),绝不发空 patch。
 
+    # 模型判了 edit 但被 _resolve_kind 降级成 talk —— 即用户想改某页却没选页
+    # (focusedPageIndex 缺失 / 不在切片内)。dispatch 这次很可能已经生成了"我这就换"的客套话,
+    # 但实际无从执行;直接用它会给用户"似乎换了其实没换"的错觉。这里用明确的"请先选页"覆盖。
+    if parsed.get("kind") == "edit" and kind == "talk":
+        reply = _default_reply(req.language, "edit_needs_focus")
+        return V3ChapterChatResponse(
+            kind="talk",
+            assistantReply=reply[:500],
+            usage=usage,
+            **extra,
+        )
+
     # talk — 引导:只回复,绝不出 patch(Frame 4 红线)。也是无可应用内容的 edit turn 的
     # 兜底落点。
     reply = _text(parsed.get("assistantReply")) or _default_reply(req.language, "talk")
@@ -600,9 +612,13 @@ def _default_reply(language: str, kind: str) -> str:
             return "这一章的文案我已经写好了。"
         if kind == "edit":
             return "这一页我已经按你的想法改好了。"
+        if kind == "edit_needs_focus":
+            return "你想改哪一页?先点选那一页,再告诉我怎么改,我就帮你换。"
         return "再和我说说这一章的故事吧?"
     if kind == "write":
         return "I drafted the copy for this chapter."
     if kind == "edit":
         return "I rewrote this page the way you asked."
+    if kind == "edit_needs_focus":
+        return "Which page would you like to change? Tap that page first, then tell me what to change."
     return "Tell me more about the story in this chapter."

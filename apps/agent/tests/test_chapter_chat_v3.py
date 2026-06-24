@@ -303,9 +303,12 @@ def test_edit_without_focus_degrades_to_talk():
             "pageTexts": {"pageIndex": 0, "texts": {"title": "x"}},
         },
     )
-    # No focus → nothing to edit → talk (never fabricate a patch).
+    # No focus → talk (never fabricate a patch). reply 必须明确提示"先选页",而不是沿用
+    # dispatch 那句客套话 —— 否则用户会"似乎换了其实没换"。
     assert resp.kind == "talk"
     assert resp.layoutPatch is None
+    assert "Tap that page first" in resp.assistantReply
+    assert resp.assistantReply != "Which page?"  # 不沿用 dispatch 的客套话
 
 
 def test_edit_with_no_action_degrades_to_talk():
