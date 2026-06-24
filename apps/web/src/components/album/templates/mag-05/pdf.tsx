@@ -4,6 +4,8 @@ import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
+const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
+
 export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     title?: string;
@@ -14,21 +16,24 @@ export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
   const topRightTheme = resolveThemeCarrier(data, 'label');
+  const titleText = titleTheme.text ?? d.title ?? "LET'S GO RIDE\nA BIKE";
+  const titleFont = titleTheme.pdfFontFamily ?? (hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.bebas);
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <Text
         style={{
           position: 'absolute',
-          top: 110,
+          top: 96,
           left: 50,
-          right: 280,
-          fontFamily: titleTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
-          fontSize: 44,
-          lineHeight: 1.15,
+          right: 240,
+          fontFamily: titleFont,
+          fontSize: 88,
+          letterSpacing: 1.5,
+          lineHeight: 0.92,
           color: titleTheme.accentColor ?? COLORS.ink,
         }}
       >
-        {titleTheme.text ?? d.title ?? "LET'S GO RIDE\nA BIKE"}
+        {titleText.toUpperCase()}
       </Text>
       <Text
         style={{
@@ -40,10 +45,10 @@ export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 13,
           letterSpacing: 4,
           color: topRightTheme.accentColor ?? COLORS.ink2,
-          fontFamily: topRightTheme.pdfFontFamily,
+          fontFamily: topRightTheme.pdfFontFamily ?? (hasCjk(topRightTheme.text ?? d.label) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat),
         }}
       >
-        {topRightTheme.text ?? d.label ?? ''}
+        {(topRightTheme.text ?? d.label ?? '').toUpperCase()}
       </Text>
       <View style={{ position: 'absolute', top: 290, left: 50, width: 320 }}>
         <Text

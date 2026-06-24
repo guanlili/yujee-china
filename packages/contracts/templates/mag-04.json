@@ -3,12 +3,11 @@
   "category": "interior",
   "images": [
     { "id": "image1", "orientation": ["square"], "quality": ["hero", "detail"] },
-    { "id": "image2", "orientation": ["square"], "quality": ["detail", "fill"] },
-    { "id": "image3", "orientation": ["square"], "quality": ["detail", "fill"] }
+    { "id": "image2", "orientation": ["square"], "quality": ["detail", "fill"] }
   ],
   "texts": [
-    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "主图说明:客观描述这组照片的主画面" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "次要说明:承接主图,带一点叙事或时间" },
+    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "主图说明" },
+    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "次图说明，接主图" },
     { "id": "date", "role": "decoration", "lang": "en", "maxChars": 12, "hint": "日期数字,如 04/24", "variableDecor": true },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]

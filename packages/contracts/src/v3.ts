@@ -185,8 +185,6 @@ export const V3ChapterChatResponse = z
     pagesTexts: z.array(V3PageTextsPatch).optional(),
     // 仅 kind=='edit' 且涉版面:确定性引擎执行后的整页补丁(§4.2(3))。
     layoutPatch: z.array(V3LayoutPatchEntry).optional(),
-    // 本章标题候选(≤4),供前端展示挑选;不回灌树(§3 数据归属)。
-    nameOptions: z.array(z.string().min(1)).max(4).optional(),
     usage: V3Usage,
   })
   .strict();

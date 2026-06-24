@@ -1,0 +1,26 @@
+{
+  "id": "mag-34",
+  "category": "interior",
+  "images": [
+    {
+      "id": "image"
+    }
+  ],
+  "texts": [
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 24,
+      "lang": "user",
+      "hint": "顶部居中大字主标题，压竖图上沿（如「All Alone」）",
+      "variableDecor": true
+    },
+    {
+      "id": "explain",
+      "role": "explain",
+      "maxChars": 120,
+      "lang": "user",
+      "hint": "底部居中收尾图注"
+    }
+  ]
+}

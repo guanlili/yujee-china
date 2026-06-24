@@ -3,6 +3,9 @@ import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
+// 主标题用 Bebas Neue（高瘦大写艺术字，配城市地名展示大字）；含中文回退（见 WEB_FONTS.bebas / pdf 端 serifCn）。
+const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
+
 export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image1?: string;
@@ -38,15 +41,20 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
       <h1
         style={{
           position: 'absolute',
-          top: 400,
+          top: 396,
           left: 60,
+          width: 300,
+          height: 224,
           margin: 0,
-          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.serifEn,
+          overflow: 'hidden',
+          fontFamily:
+            titleTheme.webFontFamily ??
+            (hasCjk(titleTheme.text ?? d.title) ? WEB_FONTS.serifCn : WEB_FONTS.bebas),
           fontWeight: 400,
-          fontSize: 64,
-          letterSpacing: '0.06em',
-          lineHeight: 1.05,
-          color: titleTheme.accentColor,
+          fontSize: 116,
+          letterSpacing: '0.02em',
+          lineHeight: 0.92,
+          color: titleTheme.accentColor ?? COLORS.ink,
         }}
       >
         {brToReact(titleTheme.text ?? d.title ?? 'OSAKA\nJAPAN')}
@@ -64,6 +72,7 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
           top: 620,
           left: 60,
           width: 280,
+          fontFamily: WEB_FONTS.montserrat,
           lineHeight: 1.75,
           color: COLORS.ink2,
           letterSpacing: '0.02em',
@@ -72,7 +81,7 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         <p style={{ position: 'absolute', left: 60, top: 620, width: 280, height: 32, fontSize: 18 }}>{d.explain1 || ''}</p>
         <p style={{ position: 'absolute', left: 60, top: 664, width: 280, height: 32, fontSize: 18 }}>{d.explain2 || ''}</p>
-        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 18 }}>{d.explain3 || ''}</p>
+        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 13, lineHeight: 1.6 }}>{d.explain3 || ''}</p>
       </div>
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="09" />
     </WebPage>

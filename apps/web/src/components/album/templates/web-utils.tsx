@@ -16,7 +16,7 @@ export function WebPage({ children, dark, fontFamily, className }: WebPageProps)
         position: 'relative',
         width: PAGE.width,
         height: PAGE.height,
-        background: dark ? COLORS.ink : COLORS.paper,
+        background: dark ? COLORS.ink : '#FFFFFF',
         color: dark ? COLORS.paper : COLORS.ink,
         overflow: 'hidden',
         boxSizing: 'border-box',

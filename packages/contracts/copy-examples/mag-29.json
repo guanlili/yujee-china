@@ -1,0 +1,11 @@
+{
+  "examples": [
+    {
+      "texts": {
+        "title": "The Long Way Round",
+        "body": "We drove until the road ran out of names. Then we turned around, and quietly went home.",
+        "label": "SPAIN"
+      }
+    }
+  ]
+}

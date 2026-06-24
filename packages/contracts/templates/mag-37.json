@@ -1,0 +1,26 @@
+{
+  "id": "mag-37",
+  "category": "interior",
+  "images": [
+    {
+      "id": "image"
+    }
+  ],
+  "texts": [
+    {
+      "id": "body",
+      "role": "body",
+      "maxChars": 90,
+      "lang": "user",
+      "hint": "图上方左侧一小段闭合手记"
+    },
+    {
+      "id": "decor",
+      "role": "title",
+      "maxChars": 44,
+      "lang": "user",
+      "hint": "右上角倾斜装饰短句，呼应正文里最戳人的那句",
+      "variableDecor": true
+    }
+  ]
+}

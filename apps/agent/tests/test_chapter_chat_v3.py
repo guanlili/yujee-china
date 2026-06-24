@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -133,7 +134,6 @@ def test_write_turn_fills_every_page_and_clamps():
                 {"pageIndex": 0, "texts": {"title": long_title, "explain": "A coast story."}},
                 {"pageIndex": 1, "texts": {"explain1": "Main square.", "explain2": "A second memory."}},
             ],
-            "nameOptions": ["Coast Days", "Coast Days", "Salt Air", ""],
         },
     )
     assert resp.kind == "write"
@@ -145,8 +145,6 @@ def test_write_turn_fills_every_page_and_clamps():
     # title clamped to maxChars 24; authored explain kept.
     assert len(by_index[0]["title"]) == 24
     assert by_index[0]["explain"] == "A coast story."
-    # nameOptions de-duped + empties dropped, ≤4.
-    assert resp.nameOptions == ["Coast Days", "Salt Air"]
 
 
 def test_write_omitted_authored_page_degrades_to_talk():
@@ -420,6 +418,55 @@ def test_assembly_carries_all_section_4_2_4_items():
     assert set(payload["pageSlots"]) == {"0", "1"}
     assert payload["pageImages"]["0"] == {"image": "p1"}
     assert payload["pageImages"]["1"] == {}
+
+
+def test_assembly_carries_copy_examples_for_page_templates(monkeypatch, tmp_path):
+    examples_dir = tmp_path / "copy-examples"
+    examples_dir.mkdir()
+    (examples_dir / f"{_COVER}.json").write_text(
+        json.dumps(
+            {
+                "examples": [
+                    {
+                        "texts": {
+                            "title": "Coast Days",
+                            "explain": "The sea wind kept the afternoon bright.",
+                            "folio": "13",
+                        }
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("YUJEE_COPY_EXAMPLES_DIR", str(examples_dir))
+
+    _, user = _system_user(_req(user_message="write it"))
+    payload = json.loads(user)
+
+    assert payload["copyExamples"] == {
+        _COVER: [
+            {
+                "texts": {
+                    "title": "Coast Days",
+                    "explain": "The sea wind kept the afternoon bright.",
+                    "folio": "13",
+                }
+            }
+        ]
+    }
+
+
+def test_repo_copy_examples_are_data_only_and_match_template_ids(monkeypatch):
+    monkeypatch.delenv("YUJEE_COPY_EXAMPLES_DIR", raising=False)
+    repo_root = Path(__file__).resolve().parents[3]
+    examples_dir = repo_root / "packages" / "contracts" / "copy-examples"
+    files = sorted(examples_dir.glob("*.json"))
+
+    assert files
+    for file in files:
+        examples = chapter_chat_v3._load_copy_examples(file.stem)
+        assert examples, file.name
 
 
 def test_per_slot_hint_passes_through_to_writing_lm():

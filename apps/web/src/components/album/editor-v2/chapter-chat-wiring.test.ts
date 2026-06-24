@@ -13,7 +13,6 @@ import { test } from 'node:test';
 //   • talk applies NO patch (Frame 4 红线), write applies pagesTexts, edit applies
 //     layoutPatch,
 //   • the turn sends the current chapterId + focusedPageIndex,
-//   • nameOptions render as picker chips,
 //   • the breadcrumb is fed from story-progress.
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -61,16 +60,6 @@ test('write merges pagesTexts; edit folds layoutPatch via applyPatchToPages', ()
   assert.ok(edit, 'applyChapterEdit must exist');
   assert.match(edit![0], /pagesState = applyPatchToPages\(pagesState, layoutPatch\)/);
   assert.match(edit![0], /repaintBook\(\)/);
-});
-
-test('nameOptions render as picker chips that re-run a chapter-chat turn', () => {
-  const fn = /function appendNameChips\([\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(fn, 'appendNameChips must exist');
-  const body = fn![0];
-  assert.match(body, /class.*chip-select|chip-select/);
-  assert.match(body, /runChapterChatTurn\(/);
-  // The turn calls appendNameChips when the agent returns nameOptions.
-  assert.match(src, /res\.nameOptions && res\.nameOptions\.length > 0[\s\S]{0,80}appendNameChips/);
 });
 
 test('breadcrumb is fed from story-progress (doneChapterIds / currentChapterId)', () => {

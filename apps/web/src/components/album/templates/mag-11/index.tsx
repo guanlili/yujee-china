@@ -25,27 +25,29 @@ export function WebMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
       <h1
         style={{
           position: 'absolute',
-          top: 800,
+          top: 792,
           left: 50,
           margin: 0,
-          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.serifEn,
-          fontWeight: 400,
-          fontSize: 50,
-          letterSpacing: '0.06em',
-          lineHeight: 1.1,
-          color: titleTheme.accentColor,
+          width: 360,
+          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.playfair,
+          fontWeight: 700,
+          fontSize: 76,
+          letterSpacing: '0.01em',
+          lineHeight: 1.02,
+          color: titleTheme.accentColor ?? COLORS.ink,
         }}
       >
         {brToReact(titleTheme.text ?? d.title ?? 'CHERRY\nBUCKET')}
       </h1>
-      <div style={{ position: 'absolute', top: 980, left: 50, width: 260 }}>
+      <div style={{ position: 'absolute', top: 992, left: 50, width: 280 }}>
         <div
           style={{
             fontSize: 13,
             letterSpacing: '0.3em',
             color: labelTheme.accentColor ?? COLORS.ink,
             textTransform: 'uppercase',
-            fontFamily: labelTheme.webFontFamily,
+            fontFamily: labelTheme.webFontFamily ?? WEB_FONTS.montserrat,
+            fontWeight: 600,
           }}
         >
           {labelTheme.text ?? d.label ?? ''}

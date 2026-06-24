@@ -185,8 +185,8 @@ export function postCover(
 // + history + userMessage (+ the focused page); the Web route re-slices draft_json
 // server-side into the single-chapter V3ChapterChatRequest the agent needs. Returns the
 // agent's turn verbatim: kind=talk/write/edit + assistantReply, plus pagesTexts (write),
-// layoutPatch (edit), nameOptions (chapter-title chips). The caller applies the patch by
-// kind (talk NEVER carries one — Frame 4 红线 is enforced agent-side via the contract).
+// layoutPatch (edit). The caller applies the patch by kind (talk NEVER carries one —
+// Frame 4 红线 is enforced agent-side via the contract).
 export interface ChapterChatInput {
   language: 'zh' | 'en';
   chapterId: string;

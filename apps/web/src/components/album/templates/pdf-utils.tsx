@@ -67,7 +67,7 @@ export function PdfPageShell({ children, dark, fontFamily }: PdfPageProps) {
       size={[PAGE.width, PAGE.height]}
       style={{
         position: 'relative',
-        backgroundColor: dark ? COLORS.ink : COLORS.paper,
+        backgroundColor: dark ? COLORS.ink : '#FFFFFF',
         color: dark ? COLORS.paper : COLORS.ink,
         fontFamily: fontFamily ?? PDF_FONTS.sansEn,
       }}

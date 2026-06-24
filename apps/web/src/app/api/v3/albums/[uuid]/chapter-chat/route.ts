@@ -12,7 +12,7 @@ import { V3ChapterChatRequest } from '@yujee/contracts';
 // is the sole truth source for draft_json: it re-slices the single chapter (chapter node
 // + its skeleton pages, §8.3 单章切片) SERVER-SIDE and forwards the full
 // V3ChapterChatRequest to the stateless agent, which dispatches THIS turn (引导/写/改)
-// by intent and returns kind + reply (+ pagesTexts/layoutPatch/nameOptions). Persisting
+// by intent and returns kind + reply (+ pagesTexts/layoutPatch). Persisting
 // any patch into draft_json + advancing stage/各章 done is the browser-mirror + the
 // separate story-progress (markChapterDone) channel; this route never mutates draft_json.
 const BodySchema = V3ChapterChatRequest.pick({

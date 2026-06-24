@@ -1,0 +1,36 @@
+{
+  "id": "mag-29",
+  "category": "interior",
+  "images": [
+    {
+      "id": "image1"
+    },
+    {
+      "id": "image2"
+    }
+  ],
+  "texts": [
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 22,
+      "lang": "user",
+      "hint": "右对齐大标题，一句旅途主题短语",
+      "variableDecor": true
+    },
+    {
+      "id": "body",
+      "role": "body",
+      "maxChars": 90,
+      "lang": "user",
+      "hint": "右对齐图注，接上方双图"
+    },
+    {
+      "id": "label",
+      "role": "decoration",
+      "maxChars": 12,
+      "lang": "en",
+      "variableDecor": true
+    }
+  ]
+}

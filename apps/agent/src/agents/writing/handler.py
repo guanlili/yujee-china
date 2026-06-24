@@ -29,6 +29,7 @@ Turn 种类(V3ChapterChatKind,镜像 packages/contracts/src/v3.ts):
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -173,6 +174,104 @@ def _scene_background(chapter: Any) -> dict[str, Any]:
     }
 
 
+def _repo_copy_examples_dir_from_file() -> Path | None:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "packages" / "contracts" / "copy-examples"
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def _resolve_copy_examples_dir() -> Path | None:
+    explicit = os.environ.get("YUJEE_COPY_EXAMPLES_DIR")
+    if explicit:
+        return Path(explicit)
+    return _repo_copy_examples_dir_from_file()
+
+
+def _template_text_ids(template_id: str) -> set[str]:
+    tpl = registry.get(template_id)
+    if not tpl:
+        return set()
+    slots = list(tpl.get("texts", [])) + list(tpl.get("items", {}).get("texts", []))
+    return {slot["id"] for slot in slots}
+
+
+def _is_template_text_key(slot_id: str, allowed: set[str]) -> bool:
+    if slot_id in allowed:
+        return True
+    match = _BRACKET_KEY_RE.fullmatch(slot_id)
+    return bool(match and match.group(1) in allowed)
+
+
+def _load_copy_examples(template_id: str) -> list[dict[str, Any]]:
+    examples_dir = _resolve_copy_examples_dir()
+    if examples_dir is None:
+        return []
+    path = examples_dir / f"{template_id}.json"
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ChapterChatV3Error(f"copy examples invalid for {template_id}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ChapterChatV3Error(f"copy examples invalid for {template_id}: root must be object")
+    extra = set(data) - {"examples"}
+    if extra:
+        raise ChapterChatV3Error(
+            f"copy examples invalid for {template_id}: unsupported fields {sorted(extra)}"
+        )
+    examples = data.get("examples")
+    if not isinstance(examples, list):
+        raise ChapterChatV3Error(f"copy examples invalid for {template_id}: examples must be array")
+
+    allowed = _template_text_ids(template_id)
+    out: list[dict[str, Any]] = []
+    for idx, example in enumerate(examples):
+        if not isinstance(example, dict):
+            raise ChapterChatV3Error(
+                f"copy examples invalid for {template_id}: examples[{idx}] must be object"
+            )
+        extra_example = set(example) - {"texts"}
+        if extra_example:
+            raise ChapterChatV3Error(
+                f"copy examples invalid for {template_id}: examples[{idx}] unsupported fields {sorted(extra_example)}"
+            )
+        texts = example.get("texts")
+        if not isinstance(texts, dict):
+            raise ChapterChatV3Error(
+                f"copy examples invalid for {template_id}: examples[{idx}].texts must be object"
+            )
+        clean_texts: dict[str, str | list[str]] = {}
+        for slot_id, value in texts.items():
+            if not isinstance(slot_id, str) or not _is_template_text_key(slot_id, allowed):
+                raise ChapterChatV3Error(
+                    f"copy examples invalid for {template_id}: examples[{idx}].texts.{slot_id} not in template text ids"
+                )
+            if isinstance(value, str):
+                clean_texts[slot_id] = value
+                continue
+            if isinstance(value, list) and all(isinstance(item, str) for item in value):
+                clean_texts[slot_id] = value
+                continue
+            raise ChapterChatV3Error(
+                f"copy examples invalid for {template_id}: examples[{idx}].texts.{slot_id} must be string or string array"
+            )
+        out.append({"texts": clean_texts})
+    return out
+
+
+def _copy_examples_by_template(pages: list[Page]) -> dict[str, list[dict[str, Any]]]:
+    out: dict[str, list[dict[str, Any]]] = {}
+    for template_id in sorted({page.templateId for page in pages}):
+        examples = _load_copy_examples(template_id)
+        if examples:
+            out[template_id] = examples
+    return out
+
+
 def _page_images_by_index(pages: list[Page]) -> dict[int, dict[str, str]]:
     """页面结构 (§4.2(4)) 的「每页放了哪些图」:每页的 slot→photoId 映射,好让写作 LM
     知道哪些照片放在哪一页,并能写出真正指向它们的文案。`Page.images` 的只读回显。"""
@@ -237,6 +336,7 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
         "pageSlots": {str(idx): specs for idx, specs in slot_specs.items()},
         # ……以及每页放了哪些照片(slot→photoId)。
         "pageImages": {str(idx): imgs for idx, imgs in page_images.items()},
+        "copyExamples": _copy_examples_by_template(req.pages),
         # 用户信息:到目前为止的对话 + 本轮消息。
         "history": [turn.model_dump() for turn in req.history],
         "userMessage": req.userMessage,
@@ -337,12 +437,6 @@ async def _coerce_response(
     call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
 ) -> V3ChapterChatResponse:
     kind = _resolve_kind(req, parsed.get("kind"))
-    # 可选的 V3 响应字段是带「缺失哨兵」默认值的 strict-typed 列表 —— 显式传 None 会过不了
-    # strict 校验。构建 kwargs,仅在字段真有值时才包含它。
-    name_options = _coerce_name_options(parsed.get("nameOptions"))
-    extra: dict[str, Any] = {}
-    if name_options is not None:
-        extra["nameOptions"] = name_options
 
     if kind == "write":
         pages_texts = _coerce_pages_texts(req, parsed.get("pagesTexts"))
@@ -352,7 +446,6 @@ async def _coerce_response(
                 kind="talk",
                 assistantReply=reply[:500],
                 usage=usage,
-                **extra,
             )
         reply = _text(parsed.get("assistantReply")) or _default_reply(req.language, "write")
         return V3ChapterChatResponse(
@@ -360,7 +453,6 @@ async def _coerce_response(
             assistantReply=reply[:500],
             pagesTexts=pages_texts,
             usage=usage,
-            **extra,
         )
 
     if kind == "edit":
@@ -377,7 +469,6 @@ async def _coerce_response(
                     assistantReply=reply[:500],
                     layoutPatch=[patch],
                     usage=usage,
-                    **extra,
                 )
             # 模型/引擎无法满足的图片编辑 → talk(绝不杜撰)。
         else:
@@ -391,7 +482,6 @@ async def _coerce_response(
                     assistantReply=reply[:500],
                     layoutPatch=[patch],
                     usage=usage,
-                    **extra,
                 )
         # 模型判定为 edit 但没产出可用的 patch(纯文字编辑却无可用文字、引擎摆不下的图片
         # 编辑,或聚焦页缺失 / 不在切片内)。降级为 talk turn,而不是发出一份空/非法 patch
@@ -404,7 +494,6 @@ async def _coerce_response(
         kind="talk",
         assistantReply=reply[:500],
         usage=usage,
-        **extra,
     )
 
 
@@ -539,24 +628,6 @@ def _clean_texts(
         cap = max_chars.get(key)
         out[key] = text[:cap] if cap else text
     return out
-
-
-def _coerce_name_options(raw: Any) -> list[str] | None:
-    """宽容解析模型的 `nameOptions`:最多 4 个非空、去重的标题。无一存活时返回 None
-    (该字段保持可选)。"""
-    if not isinstance(raw, list):
-        return None
-    seen: set[str] = set()
-    names: list[str] = []
-    for item in raw:
-        name = _text(item)
-        if not name or name in seen:
-            continue
-        seen.add(name)
-        names.append(name[:120])
-        if len(names) == 4:
-            break
-    return names or None
 
 
 def _text(value: Any) -> str:

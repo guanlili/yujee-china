@@ -3,14 +3,43 @@
   "category": "toc",
   "images": [],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "目录页大标题,如「目录」/「Contents」", "variableDecor": true },
-    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 30,
+      "lang": "user",
+      "hint": "目录页大标题（如「目录」「Contents」）",
+      "variableDecor": true
+    },
+    {
+      "id": "folio",
+      "role": "decoration",
+      "maxChars": 2,
+      "lang": "en"
+    }
   ],
   "items": {
     "texts": [
-      { "id": "number", "role": "decoration", "lang": "en", "maxChars": 3, "variableDecor": true },
-      { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "variableDecor": true },
-      { "id": "description", "role": "explain", "lang": "user", "maxChars": 90 }
+      {
+        "id": "number",
+        "role": "decoration",
+        "maxChars": 3,
+        "lang": "en",
+        "variableDecor": true
+      },
+      {
+        "id": "title",
+        "role": "title",
+        "maxChars": 24,
+        "lang": "user",
+        "variableDecor": true
+      },
+      {
+        "id": "description",
+        "role": "explain",
+        "maxChars": 90,
+        "lang": "user"
+      }
     ]
   }
 }

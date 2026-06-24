@@ -1,0 +1,19 @@
+{
+  "id": "mag-45",
+  "category": "interior",
+  "images": [
+    {
+      "id": "image"
+    }
+  ],
+  "texts": [
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 16,
+      "lang": "user",
+      "hint": "底部一行大号主标题，单个短词（如「Watermelon」）",
+      "variableDecor": true
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "mag-38",
+  "category": "interior",
+  "images": [
+    {
+      "id": "image1"
+    },
+    {
+      "id": "image2"
+    }
+  ],
+  "texts": [
+    {
+      "id": "body",
+      "role": "title",
+      "maxChars": 90,
+      "lang": "user",
+      "hint": "居中大字陈述句，跨上下两图交界，一句心境",
+      "variableDecor": true
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "id": "mag-44",
+  "category": "interior",
+  "images": [
+    {
+      "id": "image1"
+    },
+    {
+      "id": "image2"
+    }
+  ],
+  "texts": [
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 16,
+      "lang": "user",
+      "hint": "左上超大字主标题，一个短词（如「Notes」「Home」）",
+      "variableDecor": true
+    },
+    {
+      "id": "line",
+      "role": "explain",
+      "maxChars": 40,
+      "lang": "user",
+      "hint": "中部一行承上启下的私语"
+    },
+    {
+      "id": "caption",
+      "role": "explain",
+      "maxChars": 130,
+      "lang": "user",
+      "hint": "右下角收尾图注段"
+    }
+  ]
+}

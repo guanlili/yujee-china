@@ -57,14 +57,13 @@ test('postChapterChat POSTs the single-chapter slice to /api/v3/albums/:id/chapt
   assert.equal(res.assistantReply, 'Tell me more.');
 });
 
-test('postChapterChat passes through a write turn (pagesTexts + nameOptions)', async (t) => {
+test('postChapterChat passes through a write turn (pagesTexts)', async (t) => {
   mockFetch(t, {
     ok: true,
     data: {
       kind: 'write',
       assistantReply: 'Done.',
       pagesTexts: [{ pageIndex: 0, texts: { headline: 'Coast Days' } }],
-      nameOptions: ['Coast Days'],
       usage: { durationMs: 1, models: {} },
     },
   });
@@ -76,7 +75,6 @@ test('postChapterChat passes through a write turn (pagesTexts + nameOptions)', a
   });
   assert.equal(res.kind, 'write');
   assert.deepEqual(res.pagesTexts, [{ pageIndex: 0, texts: { headline: 'Coast Days' } }]);
-  assert.deepEqual(res.nameOptions, ['Coast Days']);
 });
 
 test('postChapterChat throws UnauthorizedError on a 401 envelope', async (t) => {

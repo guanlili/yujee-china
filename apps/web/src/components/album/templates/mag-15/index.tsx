@@ -49,16 +49,17 @@ export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
       <h1
         style={{
           position: 'absolute',
-          top: 750,
+          top: 690,
           right: 70,
+          width: 460,
           margin: 0,
           textAlign: 'right',
-          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.serifEn,
-          fontWeight: 400,
-          fontSize: 54,
-          letterSpacing: '0.10em',
-          lineHeight: 1.1,
-          color: titleTheme.accentColor,
+          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.poppins,
+          fontWeight: 800,
+          fontSize: 84,
+          letterSpacing: '0.01em',
+          lineHeight: 1.02,
+          color: titleTheme.accentColor ?? COLORS.ink,
         }}
       >
         {brToReact(titleTheme.text ?? d.title ?? 'HAPPY\nCHOFU')}

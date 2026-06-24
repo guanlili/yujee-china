@@ -156,6 +156,24 @@ function applyLayoutPatchToDraftPages(pages: V3Page[], patch: V3LayoutPatchEntry
   return next;
 }
 
+// ② 章节故事 — turn the agent's chat result into a draft_json patch so the chapter's
+// AUTHORED COPY round-trips into the sole truth source (docs/web/api.md §3.2 红线:
+// 「patch 由 Web 写回 draft_json」). Both turn kinds carry text the next turn must see:
+//   • write → pagesTexts: each page's freshly written copy → a texts-only patch entry.
+//   • edit  → layoutPatch: the page's text/image/template change, already patch-shaped.
+// talk carries no patch (Frame 4 红线). Without this write-back sliceChapterForChat
+// keeps slicing skeleton pages, so the model never sees what it (or the user) wrote
+// last turn — the chat-context 割裂 this fixes.
+function chatResultToDraftPatch(result: V3ChapterChatResponse): V3LayoutPatchEntry[] {
+  if (result.kind === 'write' && result.pagesTexts) {
+    return result.pagesTexts.map((pt) => ({ pageIndex: pt.pageIndex, texts: pt.texts }));
+  }
+  if (result.kind === 'edit' && result.layoutPatch) {
+    return result.layoutPatch;
+  }
+  return [];
+}
+
 // ② 章节故事 — server-side single-chapter slice for /v3/chapter-chat (§8.3 单章切片;
 // invariant 12: the authoring tree NEVER round-trips through the browser, so the
 // browser sends only a chapterId and Web re-slices draft_json here). Returns the
@@ -565,7 +583,18 @@ export const albumService = {
         ? { focusedPageIndex: input.focusedPageIndex }
         : {}),
     });
+    // Persist the turn + write the authored copy back into draft_json (docs/web/api.md
+    // §3.2: 「patch 由 Web 写回 draft_json」). The agent call above ran OUTSIDE this tx
+    // (it's a slow network round-trip); we now take a ROW LOCK and RE-READ draft_json
+    // inside the tx so two near-simultaneous turns serialize — each merges its patch onto
+    // the other's committed copy instead of the last writer clobbering the first (the
+    // chat send path is async, so a user CAN fire a second message before the first
+    // returns). markChapterDone uses the same findByIdForUpdate lock.
     await db.transaction(async (tx) => {
+      const locked = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!locked) throw ERRORS.ALBUM_NOT_FOUND();
+      if (locked.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+
       if (input.userMessage.trim()) {
         await albumMessageRepo.create(tx, {
           albumId,
@@ -584,6 +613,20 @@ export const albumService = {
         usage: result.usage,
         layoutPatch: result.kind === 'edit' ? (result.layoutPatch ?? null) : null,
       });
+
+      // Fold write/edit copy into the freshly-locked draft. talk → empty patch → no-op.
+      // A draft with no preview pages (bare tree) has nothing to write back into.
+      const patch = chatResultToDraftPatch(result);
+      const lockedDraft = readStoryDraft(locked.draftJson);
+      if (patch.length > 0 && lockedDraft?.pages) {
+        const nextDraft: V3StoryDraft = {
+          version: 'v3-story',
+          tree: lockedDraft.tree,
+          pages: applyLayoutPatchToDraftPages(lockedDraft.pages, patch),
+          progress: lockedDraft.progress,
+        };
+        await albumRepo.update(tx, albumId, { draftJson: nextDraft });
+      }
     });
     return result;
   },

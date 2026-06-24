@@ -7,7 +7,7 @@
   ],
   "texts": [
     { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "该页标题", "variableDecor": true },
-    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "hint": "短正文,一两句" },
+    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "hint": "短正文" },
     { "id": "date", "role": "decoration", "lang": "en", "maxChars": 12, "hint": "日期,如 May 2026", "variableDecor": true },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]

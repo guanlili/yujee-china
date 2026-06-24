@@ -4,6 +4,8 @@ import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
+const hasCjk = (s?: string) => /[一-鿿]/.test(s || '');
+
 export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     title?: string;
@@ -15,6 +17,8 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
   };
   const headingTheme = resolveThemeCarrier(data, 'title');
   const sideTextTheme = resolveThemeCarrier(data, 'label');
+  const titleText = headingTheme.text ?? d.title ?? 'VENUES';
+  const titleFont = hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.playfair;
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <View
@@ -29,15 +33,17 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
       >
         <Text
           style={{
-            letterSpacing: 11,
-            fontSize: 34,
+            letterSpacing: 2.9,
+            fontSize: 72,
+            fontWeight: 700,
+            lineHeight: 1,
             color: headingTheme.accentColor ?? COLORS.ink,
-            fontFamily: headingTheme.pdfFontFamily,
+            fontFamily: titleFont,
           }}
         >
-          {headingTheme.text ?? d.title ?? 'VENUES'}
+          {titleText}
         </Text>
-        <View style={{ flexGrow: 1, height: 1, backgroundColor: COLORS.ink, marginHorizontal: 16 }} />
+        <View style={{ flexGrow: 1, height: 3, backgroundColor: COLORS.ink, marginHorizontal: 16 }} />
         <View
           style={{
             width: 26,
@@ -80,7 +86,7 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
         style={{
           position: 'absolute',
           left: 130,
-          top: 760,
+          top: 720,
           lineHeight: 1.7,
           color: COLORS.ink2,
           fontSize: 18,
@@ -93,7 +99,7 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
         style={{
           position: 'absolute',
           left: 130,
-          top: 880,
+          top: 840,
           lineHeight: 1.7,
           color: COLORS.ink2,
           textAlign: 'justify',
