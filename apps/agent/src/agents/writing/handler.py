@@ -337,12 +337,9 @@ async def _coerce_response(
     author_complete: CompleteFn | None = None,
 ) -> V3ChapterChatResponse:
     kind = _resolve_kind(req, parsed.get("kind"))
-    # 可选的 V3 响应字段是带「缺失哨兵」默认值的 strict-typed 列表 —— 显式传 None 会过不了
-    # strict 校验。构建 kwargs,仅在字段真有值时才包含它。
-    name_options = _coerce_name_options(parsed.get("nameOptions"))
+    # 对齐主仓 contracts:nameOptions 已从 V3ChapterChatResponse 删除,这里不再返回它
+    # (worktree agent 基于旧 main,若仍回该字段会被 web 的新 strict 契约拒 → AGENT_INVALID_OUTPUT)。
     extra: dict[str, Any] = {}
-    if name_options is not None:
-        extra["nameOptions"] = name_options
 
     if kind == "write":
         pages_texts = _coerce_pages_texts(req, parsed.get("pagesTexts"))
