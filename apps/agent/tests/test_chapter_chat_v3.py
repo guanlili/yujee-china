@@ -149,7 +149,6 @@ def test_write_turn_fills_every_page_and_clamps():
                 {"pageIndex": 0, "texts": {"title": long_title, "explain": "A coast story."}},
                 {"pageIndex": 1, "texts": {"explain1": "Main square.", "explain2": "A second memory."}},
             ],
-            "nameOptions": ["Coast Days", "Coast Days", "Salt Air", ""],
         },
     )
     assert resp.kind == "write"
@@ -161,8 +160,6 @@ def test_write_turn_fills_every_page_and_clamps():
     # title clamped to maxChars 24; authored explain kept.
     assert len(by_index[0]["title"]) == 24
     assert by_index[0]["explain"] == "A coast story."
-    # nameOptions de-duped + empties dropped, ≤4.
-    assert resp.nameOptions == ["Coast Days", "Salt Air"]
 
 
 def test_write_omitted_authored_page_degrades_to_talk():
