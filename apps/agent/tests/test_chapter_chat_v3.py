@@ -94,6 +94,22 @@ def _fake_complete(payload: dict[str, Any]):
     return complete
 
 
+def _scripted_loop(actions: list[dict[str, Any]]):
+    """Injectable author-loop `complete` replaying scripted JSON actions in order."""
+    state = {"i": 0}
+
+    async def complete(*, messages, max_tokens, temperature):  # noqa: ANN001
+        i = state["i"]
+        state["i"] += 1
+        payload = actions[i] if i < len(actions) else {"action": "finish", "args": {"reply": "ok"}}
+        return {
+            "choices": [{"message": {"content": json.dumps(payload)}}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 3},
+        }
+
+    return complete
+
+
 def _run(req: V3ChapterChatRequest, payload: dict[str, Any]) -> V3ChapterChatResponse:
     return asyncio.run(chapter_chat_v3.run(req, complete=_fake_complete(payload)))
 
@@ -256,23 +272,28 @@ def test_repeat_item_hint_passes_through_to_expanded_slots():
 # ---------- edit turn (改) ----------------------------------------------------
 
 
-def test_edit_turn_rewrites_only_focused_page():
-    resp = _run(
-        _req(user_message="make page 0 warmer", focused=0),
-        {
-            "kind": "edit",
-            "assistantReply": "Warmer now.",
-            "pageTexts": {"pageIndex": 0, "texts": {"title": "Golden Coast"}},
-        },
+def test_edit_turn_routes_to_author_loop():
+    # edit 统一走创作 loop(去 editTarget 二分):dispatch 判 edit,loop 用 write_texts 改文案
+    # 再 finish。loop 拍整页,patch 回显 templateId/images + 改后的文字。
+    resp = asyncio.run(
+        chapter_chat_v3.run(
+            _req(user_message="make page 0 warmer", focused=0),
+            complete=_fake_complete({"kind": "edit", "assistantReply": "ok"}),
+            author_complete=_scripted_loop(
+                [
+                    {"action": "write_texts", "args": {"texts": {"title": "Golden Coast"}}},
+                    {"action": "finish", "args": {"reply": "Warmer now."}},
+                ]
+            ),
+        )
     )
     assert resp.kind == "edit"
     assert resp.layoutPatch is not None and len(resp.layoutPatch) == 1
     patch = resp.layoutPatch[0]
     assert patch.pageIndex == 0
-    assert patch.texts == {"title": "Golden Coast"}
-    # Pure-text edit never changes templateId/images (photo升级 is WP2.3).
-    assert patch.templateId is None
-    assert patch.images is None
+    assert patch.texts.get("title") == "Golden Coast"
+    assert patch.templateId == _COVER  # loop 拍整页,回显模板
+    assert resp.assistantReply == "Warmer now."
 
 
 def test_edit_without_focus_degrades_to_talk():
@@ -289,16 +310,17 @@ def test_edit_without_focus_degrades_to_talk():
     assert resp.layoutPatch is None
 
 
-def test_edit_with_no_usable_texts_degrades_to_talk():
-    resp = _run(
-        _req(user_message="swap the photo", focused=0),
-        {
-            "kind": "edit",
-            "assistantReply": "Want a different photo here?",
-            "pageTexts": {"pageIndex": 0, "texts": {}},
-        },
+def test_edit_with_no_action_degrades_to_talk():
+    # edit 但 loop 一步没动(直接 finish)→ patch None → 降级 talk(绝不发空 patch)。
+    resp = asyncio.run(
+        chapter_chat_v3.run(
+            _req(user_message="hmm, not sure", focused=0),
+            complete=_fake_complete({"kind": "edit", "assistantReply": "?"}),
+            author_complete=_scripted_loop(
+                [{"action": "finish", "args": {"reply": "What would you like to change?"}}]
+            ),
+        )
     )
-    # Image-leaning edit with no text patch → talk seam (WP2.3 owns photo change).
     assert resp.kind == "talk"
     assert resp.layoutPatch is None
 

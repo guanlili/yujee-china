@@ -193,6 +193,7 @@ async def run_author_edit(
     history: list[Any] | None = None,
     *,
     complete: CompleteFn | None = None,
+    max_steps: int = MAX_STEPS,
 ) -> tuple[V3LayoutPatchEntry | None, str, V3Usage]:
     """对聚焦页跑创作 loop。返回 (layoutPatch | None, reply, usage)。
 
@@ -208,7 +209,7 @@ async def run_author_edit(
     in_tok = 0
     out_tok = 0
 
-    for _step in range(MAX_STEPS):
+    for _step in range(max_steps):
         response = await _complete(messages, complete=complete)
         p_tok, c_tok = ai_client.extract_usage(response)
         in_tok += p_tok
