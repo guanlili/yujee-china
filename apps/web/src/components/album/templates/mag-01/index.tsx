@@ -35,7 +35,7 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
             lineHeight: 1,
             whiteSpace: 'nowrap',
             color: headingTheme.accentColor,
-            fontFamily: WEB_FONTS.playfair,
+            fontFamily: headingTheme.webFontFamily ?? WEB_FONTS.playfair,
           }}
         >
           {headingTheme.text ?? d.title ?? 'VENUES'}

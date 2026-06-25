@@ -67,14 +67,9 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
   // 4 项 2×2,简单 absolute 网格
   const cellW = (794 - 56 * 2 - 80) / 2;
   const headingResolved = headingTheme.text ?? headingText ?? 'CONTENTS';
-  // 四个小标题共用同一份主题(取 title[0])与同一字体:只要任一标题含中文就整体
-  // 切到 serifCn,保证四个小标题的字号/字体/颜色等设置完全统一。
-  const titleTheme = resolveThemeCarrier(data, 'title[0]');
   const anyTitleCjk = rows.some((_, i) =>
     hasCjk(slotText(titles?.[i]) || legacy[i]?.title || ''),
   );
-  const titleFontFamily =
-    titleTheme.pdfFontFamily ?? (anyTitleCjk ? PDF_FONTS.serifCn : PDF_FONTS.montserrat);
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <Text
@@ -100,6 +95,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
         const x = 56 + col * (cellW + 80);
         const y = 338 + row * 360;
         const numberTheme = resolveThemeCarrier(data, `number[${i}]`);
+        const titleTheme = resolveThemeCarrier(data, `title[${i}]`);
         const titleResolved = slotText(titles?.[i]) || legacy[i]?.title || '';
         // 把编号(如 "01")拆成前导 0(lead)与主数字(rest):前导 0 小号、上移半个字符,
         // 主数字放大,形成"0¹/"的层次。无前导 0 时 lead 为空,只显示主数字。
@@ -167,7 +163,9 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
                 color: titleTheme.accentColor ?? COLORS.ink,
                 marginBottom: 10,
                 textTransform: 'uppercase',
-                fontFamily: titleFontFamily,
+                fontFamily:
+                  titleTheme.pdfFontFamily ??
+                  (anyTitleCjk ? PDF_FONTS.serifCn : PDF_FONTS.montserrat),
               }}
             >
               {titleResolved}

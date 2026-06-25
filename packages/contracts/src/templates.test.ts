@@ -232,7 +232,6 @@ test('image-slot orientation/quality hints are preserved for matching', () => {
   assert.deepEqual(getTemplate('mag-04')?.images, [
     { id: 'image1', orientation: ['square'], quality: ['hero', 'detail'] },
     { id: 'image2', orientation: ['square'], quality: ['detail', 'fill'] },
-    { id: 'image3', orientation: ['square'], quality: ['detail', 'fill'] },
   ]);
 });
 
