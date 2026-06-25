@@ -102,10 +102,11 @@ def _build_v3_user_content(
             line += f" cluster={local_label[photo.clusterId]}"
         manifest_lines.append(line)
     manifest = "\n".join(manifest_lines)
+    # 仅数据:纪念册提示的值(其「仅作背景不要照搬」的框定语已移入 describe_content.md)
+    # + 逐照片清单(photoId/takenAt[/cluster])。怎么读、takenAt 含义、输出 JSON 形状由
+    # describe_content.md(系统指令)统一拥有,不在此重复。
     hint_block = (
-        f"用户的纪念册提示(仅作背景,不要原样照搬):\n{prompt_hint}\n\n"
-        if prompt_hint
-        else ""
+        f"纪念册提示:\n{prompt_hint}\n\n" if prompt_hint else ""
     )
     # cluster 分组规则是人为可调规则,外置在 prompts/rules/cluster_grouping.md。
     cluster_block = (
@@ -116,11 +117,9 @@ def _build_v3_user_content(
             "type": "text",
             "text": (
                 f"{hint_block}"
-                f"照片按顺序排列如下(共 {len(photos)} 张)。请使用这些确切的 "
-                "photoId 值;takenAt 是用于划定章节边界的拍摄时间信号:\n"
+                f"照片清单(共 {len(photos)} 张):\n"
                 f"{manifest}"
-                f"{cluster_block}\n\n"
-                '按系统指令返回 {"chapters":[...]}。'
+                f"{cluster_block}"
             ),
         }
     ]

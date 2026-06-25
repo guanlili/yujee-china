@@ -179,17 +179,14 @@ def _build_user_content(pages: Sequence[_PlannedPage]) -> str:
             f"    - {c['templateId']}(可容纳 {c['imageSlotCount']} 张)" for c in page.candidates
         )
         blocks.append(
-            f"页 {page.page_id} —— {len(page.photos)} 张照片\n"
+            f"页 pageId={page.page_id} —— {len(page.photos)} 张照片\n"
             f"  章节:{page.chapter.description or '(无描述)'}\n"
             f"  场景:\n{scene_lines}\n"
-            f"  候选 candidates(恰好挑一个 templateId):\n{candidate_lines}"
+            f"  candidates:\n{candidate_lines}"
         )
-    manifest = "\n\n".join(blocks)
-    return (
-        f"{manifest}\n\n"
-        '返回 {"pages":[{"pageId":...,"templateId":...}]},每页一个条目,'
-        "每个 templateId 都取自该页的 candidates。"
-    )
+    # 仅数据:逐页 pageId + 照片数 + 章节/场景上下文 + candidates 列表。怎么挑、硬性约束、
+    # 输出 JSON 形状由 select_template.md(系统指令)统一拥有,不在此重复。
+    return "\n\n".join(blocks)
 
 
 def _parse_choices(parsed: Any) -> dict[str, str]:

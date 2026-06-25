@@ -47,7 +47,7 @@ from ...schemas import (
     V3Usage,
 )
 from ...settings import get_settings
-from ...prompts import RULES_DIR, load_prompt
+from ...prompts import RULES_DIR, load_prompt, load_replies
 from ... import ai_client
 from ..image_edit_intent import handler as chat_edit_v3
 from . import guides as writing_guides
@@ -262,12 +262,12 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
     # §4.2(4): 写作风格(creative style)+ 引导风格(guidance style),都作为 prompt
     # 资产按路径加载(外置在 prompts/rules/)。语言由槽位的 lang 标记 + 文风资产自身
     # 决定(跟随用户语言),不再由 {LANGUAGE} 占位符强制。
-    system += "\n\n=== 写作风格(WRITING STYLE)===\n" + load_prompt(
+    # 段落分隔标题(=== 写作风格 === / === 引导风格 ===)已并入各 fragment 文件顶部,
+    # 这里只做拼接,不再注入字符串字面量。
+    system += "\n\n" + load_prompt(
         RULES_DIR / "writing_style.md", common=("grounding",)
     )
-    system += "\n\n=== 引导风格(GUIDANCE STYLE)===\n" + load_prompt(
-        RULES_DIR / "guidance_style.md"
-    )
+    system += "\n\n" + load_prompt(RULES_DIR / "guidance_style.md")
 
     # §4.2(4) 写作 LM 的输入组装。需求点名的每一项都在这里:
     #   用户信息  → history + userMessage(+ 章节上下文里带的 promptHint)
@@ -617,14 +617,10 @@ def _text(value: Any) -> str:
 
 
 def _default_reply(language: str, kind: str) -> str:
-    if language == "zh":
-        if kind == "write":
-            return "这一章的文案我已经写好了。"
-        if kind == "edit":
-            return "这一页我已经按你的想法改好了。"
-        return "再和我说说这一章的故事吧?"
-    if kind == "write":
-        return "I drafted the copy for this chapter."
-    if kind == "edit":
-        return "I rewrote this page the way you asked."
-    return "Tell me more about the story in this chapter."
+    """从可手调的 replies.md 读兜底回复(`kind.语言`),按路径缓存。未知 kind 回 talk。"""
+    replies = load_replies(_PROMPT_DIR / "replies.md")
+    lang = "zh" if language == "zh" else "en"
+    return (
+        replies.get(f"{kind}.{lang}")
+        or replies.get(f"talk.{lang}", "")
+    )

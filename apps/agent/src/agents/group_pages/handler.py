@@ -134,14 +134,9 @@ def _build_user_content(chapters: Sequence[Any], baseline: dict[str, list[list[s
             f"  确定性基线(参考,可据效果重分):{baseline[cid]}"
         )
     manifest = "\n\n".join(blocks)
-    return (
-        f"每页最多 {cap} 张照片。按画面效果 / 时间连贯性把每章照片分页 —— 可比基线拆得更细,"
-        "让同一页的照片在场景 / 主体 / 情绪上连贯,避免一页过挤或落单孤页。\n"
-        "硬性约束:每页 1..上限 张;保持照片原顺序(相册是时间序);每张照片恰好出现一次,不丢不重。\n\n"
-        f"{manifest}\n\n"
-        '返回 {"chapters":[{"chapterId":"...","pages":[["photoId",...],...]}]} —— 每章一条,'
-        "其 pages 必须按序覆盖该章全部照片。"
-    )
+    # 仅数据:每页上限(动态值)+ 逐章照片清单 + 确定性基线。规则 / 输出 JSON 形状由
+    # group_pages.md(系统指令)统一拥有,不在此重复。
+    return f"每页上限:{cap} 张\n\n{manifest}"
 
 
 def _parse_grouping(parsed: Any) -> dict[str, list[list[str]]]:

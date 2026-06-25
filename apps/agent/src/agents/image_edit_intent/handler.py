@@ -104,16 +104,15 @@ def _build_user_content(
     current_ids = list(page.images.values())
     current = ", ".join(current_ids) if current_ids else "(无)"
     capacity = _max_interior_capacity()
+    # 仅数据:章节描述 + 本章可用照片(id+场景)+ 当前页照片 + 本页容量上限(动态值)+
+    # 用户诉求。怎么改、硬性约束、输出 JSON 形状由 edit_image_intent.md(系统指令)统一拥有。
     return (
         f"章节:{chapter.description or '(无描述)'}\n\n"
-        f"本章可用的全部照片(请使用这些确切的 photoId 值):\n"
+        f"本章可用的照片(photoId | 场景):\n"
         f"{photo_lines}\n\n"
-        f"当前正在编辑的这页上的照片,按顺序:{current}\n\n"
-        f"用户对【这一页】的要求:\n{user_message}\n\n"
-        f"一页最多容纳 {capacity} 张照片。"
-        '返回 {"photoIds":[...]} —— 改动后这页上应有的、按顺序排列的 photoId 列表,'
-        "【只】从上面本章的照片里取。不要返回 templateId、pageIndex 或任何版式 id;"
-        "由系统来摆放照片、挑选版式。"
+        f"当前页照片(按顺序):{current}\n\n"
+        f"本页照片容量上限:{capacity} 张\n\n"
+        f"用户对【这一页】的要求:\n{user_message}"
     )
 
 

@@ -47,7 +47,7 @@ from ...schemas import (
     V3Usage,
 )
 from ...settings import get_settings
-from ...prompts import RULES_DIR, load_prompt
+from ...prompts import RULES_DIR, load_prompt, load_replies
 from ... import ai_client
 from ...engine import skeleton_v3
 from ..writing import handler as writing
@@ -192,7 +192,8 @@ def _build_edit_messages(req: V3PageEditRequest, page: Page) -> list[dict[str, s
         writing.writing_guides.persona_block()
         + "\n\n"
         + load_prompt(_PROMPT_DIR / "edit_text.md", common=("json_only",))
-        + "\n\n=== 写作风格(WRITING STYLE)===\n"
+        # === 写作风格 === 标题已并入 writing_style.md 顶部,这里只拼接,不注入字面量。
+        + "\n\n"
         + load_prompt(RULES_DIR / "writing_style.md", common=("grounding",))
     )
     payload = {
@@ -413,16 +414,10 @@ def _text(value: Any) -> str:
 
 
 def _default_reply(language: str, intent: str) -> str:
-    if language == "zh":
-        return {
-            "edit_text": "这一页我已经按你的想法改好了。",
-            "change_layout": "我给这一页换了个排版。",
-            "change_layout_none": "这一页按当前照片数暂时没有别的版式可换了。",
-            "advance": "好的,我们继续下一章。",
-        }.get(intent, "再和我说说这一页的故事吧?")
-    return {
-        "edit_text": "I rewrote this page the way you asked.",
-        "change_layout": "I switched this page to a new layout.",
-        "change_layout_none": "There's no alternative layout for this page's current number of photos.",
-        "advance": "Great — let's move on to the next chapter.",
-    }.get(intent, "Tell me more about the story on this page.")
+    """从可手调的 replies.md 读兜底回复(`intent.语言`),按路径缓存。未知意图回 talk。"""
+    replies = load_replies(_PROMPT_DIR / "replies.md")
+    lang = "zh" if language == "zh" else "en"
+    return (
+        replies.get(f"{intent}.{lang}")
+        or replies.get(f"talk.{lang}", "")
+    )

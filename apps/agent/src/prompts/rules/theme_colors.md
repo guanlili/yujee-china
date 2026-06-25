@@ -1,3 +1,5 @@
+=== 章节配色与艺术字体(CHAPTER COLORS & ART FONT)===
+
 为每个 `chapterColors` 条目(其 `subject` 已在上文定义)给出该章的 `accentColor` 与 `artFont`。对【每一个】章节(用它确切的 `chapterId`)各给一条。
 
 ## 【硬性】必守(违反即出错)
