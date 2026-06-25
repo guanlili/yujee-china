@@ -518,6 +518,35 @@ class V3ChapterChatResponse(_V3Strict):
         return value
 
 
+# ---------- v3.ts: ②b page-edit (sync, two-stage) -----------------------------
+# 镜像 v3.ts V3PageEditRequest/Response。请求复用 V3ChapterChatRequest 同形字段;响应复用
+# V3LayoutPatchEntry(不另造补丁形状)。全 `_V3Strict`(extra='forbid')。§3 隐私:
+# V3Chapter/Page 本身已 strict,拒任何 place/GPS/坐标 key。
+
+
+# 段一意图(可观测)。单意图(本期不做多意图 plan)。
+V3PageEditIntent = Literal["edit_text", "change_layout", "advance", "talk"]
+
+
+class V3PageEditRequest(_V3Strict):
+    language: V3Language
+    chapter: V3Chapter
+    pages: list[Page]
+    focusedPageIndex: int = Field(ge=0)
+    userMessage: str = Field(max_length=500)
+    history: list[V3ChatTurn] = Field(max_length=20)
+
+
+class V3PageEditResponse(_V3Strict):
+    assistantReply: str = Field(min_length=1, max_length=500)
+    intent: V3PageEditIntent
+    # edit_text→一条 {pageIndex, texts};change_layout→一条 {pageIndex, templateId, images}。
+    layoutPatch: list[V3LayoutPatchEntry] = None
+    # intent=='advance' 时为 True:用户想进下一章 → web 导航(Agent 不导航)。
+    advanceIntent: bool = None
+    usage: V3Usage
+
+
 # ---------- v3.ts: ③ recommend (sync) -----------------------------------------
 
 

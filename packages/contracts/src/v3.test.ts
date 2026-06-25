@@ -17,6 +17,8 @@ import {
   V3ChapterChatResponse,
   V3CoverRequest,
   V3FinalizeResponse,
+  V3PageEditRequest,
+  V3PageEditResponse,
   V3RecommendResponse,
   V3StoryDraft,
   V3StoryProgress,
@@ -364,6 +366,90 @@ test('V3ChapterChatResponse: kind drives which patch is present', () => {
     true,
   );
   assert.equal(V3ChapterChatResponse.safeParse({ kind: 'sing', assistantReply: 'x', usage }).success, false);
+});
+
+// ───────────────────── ②b 页级编辑 — POST /v3/page-edit ─────────────────────
+
+const pageEditChapter = {
+  chapterId: 'c1',
+  description: 'd',
+  accentColor: null,
+  artFont: null,
+  photos: [baseChapterPhoto],
+};
+
+test('V3PageEditRequest mirrors chapter-chat fields, focusedPageIndex required', () => {
+  const base = {
+    language: 'en' as const,
+    chapter: pageEditChapter,
+    pages: [{ pageIndex: 0, templateId: 'mag-08', images: { image: 'p1' }, texts: {} }],
+    focusedPageIndex: 0,
+    userMessage: 'tighten the caption',
+    history: [{ role: 'user' as const, content: 'hi' }],
+  };
+  assert.equal(V3PageEditRequest.safeParse(base).success, true);
+  // focusedPageIndex is required (no optional default — page-edit always targets a page)
+  const { focusedPageIndex, ...noFocus } = base;
+  assert.equal(V3PageEditRequest.safeParse(noFocus).success, false);
+  // strict: unknown key rejected
+  assert.equal(V3PageEditRequest.safeParse({ ...base, albumId: 'a1' }).success, false);
+  // §3 privacy: a place/GPS key on the chapter photo is rejected by strict()
+  assert.equal(
+    V3PageEditRequest.safeParse({
+      ...base,
+      chapter: { ...pageEditChapter, photos: [{ ...baseChapterPhoto, lat: 1 }] },
+    }).success,
+    false,
+  );
+});
+
+test('V3PageEditResponse: intent + optional layoutPatch (reuses V3LayoutPatchEntry)', () => {
+  const usage = { durationMs: 1, models: {} };
+  // edit_text → texts-only patch entry
+  assert.equal(
+    V3PageEditResponse.safeParse({
+      assistantReply: 'done',
+      intent: 'edit_text',
+      layoutPatch: [{ pageIndex: 0, texts: { title: 'New Title' } }],
+      usage,
+    }).success,
+    true,
+  );
+  // change_layout → templateId + images patch entry
+  assert.equal(
+    V3PageEditResponse.safeParse({
+      assistantReply: 'reflowed',
+      intent: 'change_layout',
+      layoutPatch: [{ pageIndex: 0, templateId: 'mag-04', images: { image1: 'p1', image2: 'p2' } }],
+      usage,
+    }).success,
+    true,
+  );
+  // advance → advanceIntent, no patch
+  assert.equal(
+    V3PageEditResponse.safeParse({
+      assistantReply: 'moving on',
+      intent: 'advance',
+      advanceIntent: true,
+      usage,
+    }).success,
+    true,
+  );
+  // talk → reply only
+  assert.equal(
+    V3PageEditResponse.safeParse({ assistantReply: 'tell me more', intent: 'talk', usage }).success,
+    true,
+  );
+  // unknown intent rejected
+  assert.equal(
+    V3PageEditResponse.safeParse({ assistantReply: 'x', intent: 'sing', usage }).success,
+    false,
+  );
+  // strict: unknown key rejected
+  assert.equal(
+    V3PageEditResponse.safeParse({ assistantReply: 'x', intent: 'talk', usage, extra: 1 }).success,
+    false,
+  );
 });
 
 test('V3RecommendResponse returns per-chapter subject + color/font in legal sets', () => {
