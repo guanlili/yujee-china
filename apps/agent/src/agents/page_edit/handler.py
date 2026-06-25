@@ -219,7 +219,7 @@ async def _execute_edit_text(
     if not isinstance(raw_texts, dict):
         return None
     specs = writing._page_slot_specs(page)
-    texts = writing._clean_texts(raw_texts, specs)
+    texts = writing._clean_texts(raw_texts, specs, template_id=page.templateId)
     if not texts:
         return None
     return V3LayoutPatchEntry(pageIndex=page.pageIndex, texts=texts)

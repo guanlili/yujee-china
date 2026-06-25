@@ -72,7 +72,9 @@ class ChapterChatV3Error(Exception):
 
 
 def _page_slot_specs_by_index(pages: list[Page]) -> dict[int, list[dict[str, Any]]]:
-    """逐页的创作槽规格(id/role/lang/maxChars[/repeat][/hint])。
+    """逐页的创作槽规格(model-facing:id/lang[/hint][/repeatIndex])。
+
+    例驱动:role/maxChars 不进 model-facing 规格(角色由「输出示例」表达,字数由服务端钳裁)。
 
     复用 `writing_guides.page_slot_specs`(只读,与 v2 共享 —— 调用它不会破坏 v2)。它已
     丢掉 decoration 槽(代码自动填充那些)并只暴露 LM 必须撰写的槽。WP2.2 (#186):
@@ -97,6 +99,8 @@ def _page_slot_specs(page: Page) -> list[dict[str, Any]]:
     indices_by_base = _bracket_indices_by_base(page.images.keys())
     all_indices = sorted({idx for indices in indices_by_base.values() for idx in indices})
 
+    # `base_specs` 来自 writing_guides(带 role/maxChars,供代码过滤);model-facing 槽规格
+    # 一律经 `_slot_spec` 归一 —— 只留 id/lang/hint(+repeatIndex),不外泄 role/maxChars。
     specs: list[dict[str, Any]] = []
     expanded_bases: set[str] = set()
     for spec in base_specs:
@@ -106,11 +110,9 @@ def _page_slot_specs(page: Page) -> list[dict[str, Any]]:
             if indices:
                 expanded_bases.add(slot_id)
                 for idx in indices:
-                    item_spec = {**spec, "id": f"{slot_id}[{idx}]", "repeatIndex": idx}
-                    item_spec.pop("repeat", None)
-                    specs.append(item_spec)
+                    specs.append(_slot_spec(spec, slot_id=f"{slot_id}[{idx}]", repeat_index=idx))
                 continue
-        specs.append(spec)
+        specs.append(_slot_spec(spec, slot_id=slot_id))
 
     # V3 items.texts 以 itemId[index] 寻址。若模板已有一个创作的顶层 repeat 槽
     # (mag-10 的遗留 `cells`),本 WP 以那条路径作为渲染器兼容的真相源;否则 items.texts
@@ -141,13 +143,13 @@ def _bracket_indices_by_base(keys: Any) -> dict[str, list[int]]:
 
 
 def _slot_spec(slot: dict[str, Any], *, slot_id: str, repeat_index: int | None = None) -> dict[str, Any]:
+    # 例驱动(example-driven):模型靠逐页「输出示例」+ 逐槽 hint 写作,不再靠规则约束。
+    # 故 model-facing 的槽规格只留 id/lang(语言所需)/hint(写什么)/repeatIndex;
+    # 不再带 maxChars(无字数约束进 prompt)与 role(示例已表达每槽的性质)。
     spec: dict[str, Any] = {
         "id": slot_id,
-        "role": slot["role"],
         "lang": slot["lang"],
     }
-    if slot.get("maxChars"):
-        spec["maxChars"] = slot["maxChars"]
     if slot.get("hint"):
         spec["hint"] = slot["hint"]
     if repeat_index is not None:
@@ -178,13 +180,61 @@ def _authored_slot_ids(specs: list[dict[str, Any]]) -> set[str]:
     return {str(spec["id"]) for spec in specs}
 
 
-def _max_chars_by_slot(specs: list[dict[str, Any]]) -> dict[str, int]:
-    out: dict[str, int] = {}
-    for spec in specs:
-        max_chars = spec.get("maxChars")
-        if isinstance(max_chars, int) and max_chars > 0:
-            out[str(spec["id"])] = max_chars
+def _page_output_example(page: Page, specs: list[dict[str, Any]]) -> dict[str, str]:
+    """本页的「输出示例」(例驱动):模板的示例文案,裁到这页实际要写的创作槽。
+
+    示例文案是静态模板串(无用户数据),给写作 LM 看「好的输出长什么样」—— 让它照样式与
+    篇幅写、把示例内容换成用户的真实故事。键按 slot id 对齐;repeat-group 示例本就以
+    ``explain[0]`` 这样的 bracket key 入键,与逐页展开出的槽 id 直接对得上。无示例文件的
+    模板返回空 dict,调用方据此优雅降级(omit 本页示例,仍发 hint+lang)。"""
+    example = registry.copy_example(page.templateId)
+    if not example:
+        return {}
+    allowed = _authored_slot_ids(specs)
+    return {slot_id: example[slot_id] for slot_id in allowed if slot_id in example}
+
+
+def _page_output_examples_by_index(
+    pages: list[Page], slot_specs: dict[int, list[dict[str, Any]]]
+) -> dict[int, dict[str, str]]:
+    """逐页输出示例。无示例或无创作槽(纯图页)的页不入字典 —— 优雅省略,绝不崩。"""
+    out: dict[int, dict[str, str]] = {}
+    for page in pages:
+        specs = slot_specs.get(page.pageIndex, [])
+        example = _page_output_example(page, specs)
+        if example:
+            out[page.pageIndex] = example
     return out
+
+
+def _template_max_chars(template_id: str) -> dict[str, int]:
+    """模板各创作槽的 maxChars(按 base slot id),从 registry 直接取 —— 服务端钳长护栏的
+    真相源。maxChars 已从 model-facing 槽规格里移除(例驱动,prompt 不带字数),但服务端
+    仍据此钳裁防溢出;两件事解耦,各取所需。repeat / items.texts 的 base id 也收进来,
+    bracket key(``explain[0]``)按其 base(``explain``)查表。"""
+    tpl = registry.get(template_id)
+    if not tpl:
+        return {}
+    out: dict[str, int] = {}
+    for slot in tpl.get("texts", []):
+        max_chars = slot.get("maxChars")
+        if isinstance(max_chars, int) and max_chars > 0:
+            out[str(slot["id"])] = max_chars
+    for slot in tpl.get("items", {}).get("texts", []):
+        max_chars = slot.get("maxChars")
+        if isinstance(max_chars, int) and max_chars > 0:
+            out[str(slot["id"])] = max_chars
+    return out
+
+
+def _max_chars_for_key(key: str, by_base: dict[str, int]) -> int | None:
+    """槽 key 的 maxChars:先按整 key 查(普通槽),再按 bracket base 查(repeat / item 槽)。"""
+    if key in by_base:
+        return by_base[key]
+    match = _BRACKET_KEY_RE.fullmatch(key)
+    if match:
+        return by_base.get(match.group(1))
+    return None
 
 
 def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
@@ -196,6 +246,7 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
     """
     slot_specs = _page_slot_specs_by_index(req.pages)
     page_images = _page_images_by_index(req.pages)
+    page_examples = _page_output_examples_by_index(req.pages, slot_specs)
     focused = req.focusedPageIndex
 
     # Persona + STRICT JSON 契约 + 本轮 dispatch 规则。固定结构(JSON 契约/分发判定)外置
@@ -222,14 +273,18 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
     #   用户信息  → history + userMessage(+ 章节上下文里带的 promptHint)
     #   写作 Skill → system(write_chapter),引导 Skill → system(guide_chapter)
     #   逐槽 hint  → pageSlots[].hint(经 page_slot_specs 从模板透传)
+    #   输出示例  → pageOutputExamples(每页模板示例文案,例驱动写作的核心)
     #   画面背景  → sceneBackground(章节描述 + 逐照片 sceneDescription)
-    #   页面结构  → pageSlots(每页 id/role/lang/maxChars)+ pageImages(每页放哪些图)
+    #   页面结构  → pageSlots(每页 id/lang/hint)+ pageImages(每页放哪些图)
     payload: dict[str, Any] = {
         "language": req.language,
         # 画面背景 (§4.1 analysis 树):章节描述 + 逐照片场景。
         "sceneBackground": _scene_background(req.chapter),
-        # 页面结构:逐页的创作槽规格(现含逐槽 hint)……
+        # 页面结构:逐页的创作槽规格(id/lang/hint;无 role/maxChars —— 例驱动)……
         "pageSlots": {str(idx): specs for idx, specs in slot_specs.items()},
+        # 输出示例(例驱动):逐页模板示例文案(slotId→示例串),裁到本页创作槽。模型照样式
+        # 与篇幅写、把示例内容换成用户真实故事。无示例文件的模板那页缺省省略(仍有 hint+lang)。
+        "pageOutputExamples": {str(idx): ex for idx, ex in page_examples.items()},
         # ……以及每页放了哪些照片(slot→photoId)。
         "pageImages": {str(idx): imgs for idx, imgs in page_images.items()},
         # 用户信息:到目前为止的对话 + 本轮消息。
@@ -430,7 +485,9 @@ def _coerce_pages_texts(
     out: list[V3PageTextsPatch] = []
     for page in req.pages:
         specs = slot_specs.get(page.pageIndex, [])
-        texts = _clean_texts(raw_by_index.get(page.pageIndex, {}), specs)
+        texts = _clean_texts(
+            raw_by_index.get(page.pageIndex, {}), specs, template_id=page.templateId
+        )
         out.append(V3PageTextsPatch(pageIndex=page.pageIndex, texts=texts))
     return out
 
@@ -492,7 +549,7 @@ def _coerce_edit_patch(
     if not isinstance(raw_texts, dict):
         return None
     specs = _page_slot_specs(page)
-    texts = _clean_texts(raw_texts, specs)
+    texts = _clean_texts(raw_texts, specs, template_id=page.templateId)
     if not texts:
         return None
     return V3LayoutPatchEntry(pageIndex=focused, texts=texts)
@@ -516,14 +573,15 @@ def _raw_texts_by_index(raw: Any) -> dict[int, dict[str, Any]]:
 
 
 def _clean_texts(
-    raw_texts: dict[str, Any], specs: list[dict[str, Any]]
+    raw_texts: dict[str, Any], specs: list[dict[str, Any]], *, template_id: str
 ) -> dict[str, str]:
-    """只保留本页的创作槽,trim,丢空值,钳到 maxChars。
+    """只保留本页的创作槽,trim,丢空值,按模板 maxChars 钳裁。
 
-    漂移的模型既无法注入不存在的槽位 id(保留集 = 模板的创作槽),也无法撑爆某槽
-    (maxChars 钳),镜像 v2 的 grounding 护栏,但不带 v2 那套 cluster/grounding 机制。"""
+    漂移的模型既无法注入不存在的槽位 id(保留集 = 模板的创作槽),也无法撑爆某槽 —— maxChars
+    虽已不进 prompt(例驱动),服务端仍据模板 registry 钳裁防溢出(镜像 v2 grounding 护栏)。
+    `specs` 给「允许哪些 key」,`template_id` 给「每槽钳到多长」。"""
     allowed = _authored_slot_ids(specs)
-    max_chars = _max_chars_by_slot(specs)
+    by_base = _template_max_chars(template_id)
     out: dict[str, str] = {}
     for key, value in raw_texts.items():
         if not isinstance(key, str) or key not in allowed:
@@ -531,7 +589,7 @@ def _clean_texts(
         text = _text(value)
         if not text:
             continue
-        cap = max_chars.get(key)
+        cap = _max_chars_for_key(key, by_base)
         out[key] = text[:cap] if cap else text
     return out
 

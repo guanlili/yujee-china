@@ -233,9 +233,11 @@ def test_stage2_edit_text_rejects_illegal_slots_and_clamps_maxchars():
     entry = res.layoutPatch[0]
     assert "bogus_slot" not in entry.texts
     assert "title" in entry.texts
+    # maxChars no longer rides on the model-facing slot spec (example-driven); the
+    # server-side clamp now sources lengths straight from the template registry.
     from src.agents.writing import handler as wh
 
-    max_chars = {s["id"]: s.get("maxChars") for s in wh._page_slot_specs(page)}
+    max_chars = wh._template_max_chars(page.templateId)
     assert len(entry.texts["title"]) == max_chars["title"]
 
 

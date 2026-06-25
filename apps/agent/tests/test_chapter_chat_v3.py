@@ -405,8 +405,10 @@ def test_assembly_carries_all_section_4_2_4_items():
 
     # 写作 Skill + 引导 Skill loaded into the system prompt (not inlined code).
     assert "WRITING STYLE" in system and "GUIDANCE STYLE" in system
-    # A line unique to the writing-style skill asset (proves the file was loaded).
-    assert "这一刻背后被感受到的故事" in system
+    # A line unique to the (now example-driven) writing-style asset (proves it loaded).
+    # The old role/maxChars/VOICE wording is gone; the asset now points at the per-page
+    # 输出示例 (EXAMPLE-DRIVEN) instead.
+    assert "EXAMPLE-DRIVEN" in system or "输出示例" in system
 
     payload = json.loads(user)
     # 用户信息: this turn's message + history channel present.
@@ -434,6 +436,64 @@ def test_per_slot_hint_passes_through_to_writing_lm():
 
     expected = {s["id"]: s.get("hint") for s in writing_guides.page_slot_specs(_COVER)}
     assert page0_slots["title"]["hint"] == expected["title"]
+
+
+def test_model_facing_slot_specs_drop_maxchars_and_role():
+    # Example-driven: the per-slot spec the model sees keeps id/lang(/hint), but never
+    # maxChars (no char-length in the prompt) or role (the output example conveys it).
+    _, user = _system_user(_req(user_message="write it"))
+    payload = json.loads(user)
+    for specs in payload["pageSlots"].values():
+        for spec in specs:
+            assert "maxChars" not in spec
+            assert "role" not in spec
+            assert "lang" in spec  # language still needed
+
+
+def test_page_output_examples_present_for_template_with_copy_example():
+    # mag-13 (page 0) has a copy-example file → the page carries an outputExample keyed
+    # by its authored slot ids; the strings are the template's static example copy.
+    _, user = _system_user(_req(user_message="write it"))
+    payload = json.loads(user)
+    examples = payload["pageOutputExamples"]
+    page0 = examples["0"]
+    page0_slots = {s["id"] for s in payload["pageSlots"]["0"]}
+    # example is restricted to this page's authored slots…
+    assert set(page0.keys()) <= page0_slots
+    assert page0  # …and non-empty for a template that ships example copy
+    # the example value is the template's static copy (verbatim from copy-examples).
+    from src.engine import templates as registry
+
+    src_example = registry.copy_example(_COVER)
+    for slot_id, text in page0.items():
+        assert src_example[slot_id] == text
+
+
+def test_page_output_examples_omitted_when_template_has_no_example():
+    # mag-20 ships no copy-example file → graceful degrade: that page is simply absent
+    # from pageOutputExamples (still gets hint+lang via pageSlots), never crashes.
+    page = Page(pageIndex=0, templateId="mag-20", images={"image": "p1"}, texts={})
+    _, user = _system_user(_req(user_message="write it", pages=[page]))
+    payload = json.loads(user)
+    assert "0" not in payload["pageOutputExamples"]
+    assert "0" in payload["pageSlots"]  # slots (hint+lang) still sent
+
+
+def test_repeat_group_output_example_keys_align_with_expanded_slots():
+    # mag-10 grid: copy-example keys repeats as explain[0..3]; the page with image[0]/
+    # image[1] expands slots explain[0]/explain[1], so the example is restricted to
+    # exactly those — bracket keys line up with the expanded slot ids.
+    page = Page(
+        pageIndex=2,
+        templateId="mag-10",
+        images={"image[0]": "p1", "image[1]": "p1"},
+        texts={},
+    )
+    _, user = _system_user(_req(user_message="write this grid", pages=[page]))
+    payload = json.loads(user)
+    example = payload["pageOutputExamples"]["2"]
+    assert set(example.keys()) == {"explain[0]", "explain[1]"}
+    assert example["explain[0]"] and example["explain[1]"]
 
 
 def test_page_slot_specs_surfaces_hint_when_template_has_one():
