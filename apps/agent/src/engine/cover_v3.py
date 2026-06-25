@@ -406,7 +406,7 @@ async def build_cover(
             album_id=req.albumId,
             error=type(exc).__name__,
         )
-        return _needs_input_response(started, req.language)
+        copy_result = CoverCopyResult(needs_user_input=True)
 
     if not isinstance(copy_result, CoverCopyResult):
         log.warning(
@@ -414,7 +414,7 @@ async def build_cover(
             album_id=req.albumId,
             result_type=type(copy_result).__name__,
         )
-        return _needs_input_response(started, req.language)
+        copy_result = CoverCopyResult(needs_user_input=True)
 
     clarify_rounds = _clarify_rounds(req.history)
     if copy_result.needs_user_input:
@@ -449,7 +449,7 @@ async def build_cover(
             album_id=req.albumId,
             error=type(exc).__name__,
         )
-        color_result = CoverColorResult(color=_NEUTRAL_ACCENT)
+        color_result = CoverColorResult(color=extracted_accent or _NEUTRAL_ACCENT)
     final_accent = _finalize_cover_color(color_result.color, finalize_color_fn)
 
     patches: list[V3LayoutPatchEntry] = []
@@ -560,7 +560,14 @@ async def _default_copy(payload: CoverCopyPayload) -> CoverCopyResult:
         max_tokens=1200,
         temperature=0.35,
     )
-    parsed = _parse_model_json(response, "cover copy")
+    try:
+        parsed = _parse_model_json(response, "cover copy")
+    except CoverV3Error:
+        return CoverCopyResult(
+            needs_user_input=True,
+            assistant_reply=_default_clarification_reply(payload.language),
+            usage=usage,
+        )
     needs_input = parsed.get("needsUserInput") is True
     return CoverCopyResult(
         needs_user_input=needs_input,
@@ -589,7 +596,13 @@ async def _default_color_design(payload: CoverColorPayload) -> CoverColorResult:
         max_tokens=300,
         temperature=0.25,
     )
-    parsed = _parse_model_json(response, "cover color")
+    try:
+        parsed = _parse_model_json(response, "cover color")
+    except CoverV3Error:
+        return CoverColorResult(
+            color=payload.extractedAccent or _NEUTRAL_ACCENT,
+            usage=usage,
+        )
     color = (
         _text(parsed.get("accentColor"))
         or _text(parsed.get("designedColor"))

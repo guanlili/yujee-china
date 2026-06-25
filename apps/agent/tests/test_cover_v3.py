@@ -128,6 +128,32 @@ def _patch_cover_ai(monkeypatch, calls: list[dict[str, Any]], payloads: list[dic
     monkeypatch.setattr(ai_client, "chat_completion", fake_chat_completion)
 
 
+def _patch_cover_ai_raw(
+    monkeypatch,
+    calls: list[dict[str, Any]],
+    contents: list[str],
+) -> None:
+    settings = SimpleNamespace(
+        deepseek_api_key="test-key",
+        deepseek_base_url="https://example.test/v1",
+        deepseek_model="deepseek-test",
+        deepseek_timeout_seconds=3,
+        deepseek_use_json_object=True,
+        deepseek_disable_thinking=True,
+    )
+    monkeypatch.setattr(cover_v3, "get_settings", lambda: settings, raising=False)
+
+    async def fake_chat_completion(**kwargs):  # noqa: ANN003
+        calls.append(kwargs)
+        idx = len(calls) - 1
+        return {
+            "choices": [{"message": {"content": contents[idx]}}],
+            "usage": {"prompt_tokens": 10 + idx, "completion_tokens": 4 + idx},
+        }
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_chat_completion)
+
+
 # ---------- categories sanity (the test assumptions) --------------------------
 
 
@@ -598,6 +624,68 @@ def test_default_copy_parse_failure_needs_input_without_patch(monkeypatch) -> No
     assert len(calls) == 1
     assert res.needsUserInput is True
     assert res.layoutPatch == []
+
+
+def test_default_copy_parse_failure_obeys_clarification_hard_cap(monkeypatch) -> None:
+    calls: list[dict[str, Any]] = []
+    _patch_cover_ai_raw(
+        monkeypatch,
+        calls,
+        [
+            "not json",
+            json.dumps({"accentColor": "#102030"}),
+        ],
+    )
+    history = [
+        {"role": "assistant", "content": "请告诉我封面标题。"},
+        {"role": "user", "content": "还没想好"},
+        {"role": "assistant", "content": "也可以给我一个氛围词。"},
+    ]
+
+    page = _page(images={"image": "p1"}, page_index=0)
+    res = _run(
+        _request([page], cover=_COVER_TID, history=history),
+        use_default_ai=True,
+    )
+
+    assert len(calls) == 2
+    assert res.needsUserInput is False
+    assert res.assistantReply is None
+    assert len(res.layoutPatch) == 1
+    assert res.usage.planningInputTokens == 21
+    assert res.usage.planningOutputTokens == 9
+    assert res.usage.models.planning == "deepseek-test"
+
+
+def test_default_color_parse_failure_keeps_fallback_color_and_usage(monkeypatch) -> None:
+    calls: list[dict[str, Any]] = []
+    _patch_cover_ai_raw(
+        monkeypatch,
+        calls,
+        [
+            json.dumps(
+                {
+                    "needsUserInput": False,
+                    "assistantReply": "Drafted.",
+                    "coverTexts": {"title": "Lake Days"},
+                    "endingTexts": {},
+                }
+            ),
+            "not json",
+        ],
+    )
+
+    page = _page(images={"image": "p1"}, page_index=0)
+    res = _run(_request([page], cover=_COVER_TID), use_default_ai=True)
+    texts = res.layoutPatch[0].texts or {}
+
+    assert len(calls) == 2
+    assert res.needsUserInput is False
+    assert texts["title"] == "Lake Days"
+    assert texts["title#accentColor"] == "#8A8174"
+    assert res.usage.planningInputTokens == 21
+    assert res.usage.planningOutputTokens == 9
+    assert res.usage.models.planning == "deepseek-test"
 
 
 # ---------- route-level: auth gate + contract envelope + error shape ----------
