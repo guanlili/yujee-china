@@ -78,10 +78,10 @@ def _page_slot_specs_by_index(pages: list[Page]) -> dict[int, list[dict[str, Any
     丢掉 decoration 槽(代码自动填充那些)并只暴露 LM 必须撰写的槽。WP2.2 (#186):
     `page_slot_specs` 现在原样带上每个槽的模板撰写的 `hint`,于是逐槽 hint 经这同一接缝
     到达写作 LM(§4.2(4) 逐槽 hint 透传)。"""
-    return {page.pageIndex: _page_slot_specs(page) for page in pages}
+    return {page.pageIndex: page_slot_specs(page) for page in pages}
 
 
-def _page_slot_specs(page: Page) -> list[dict[str, Any]]:
+def page_slot_specs(page: Page) -> list[dict[str, Any]]:
     """一个具体页的创作文字槽。
 
     普通槽按声明保持。repeat 槽被展开成渲染器能为本页实际图片槽寻址的 bracket key,例如
@@ -126,6 +126,9 @@ def _page_slot_specs(page: Page) -> list[dict[str, Any]]:
             for idx in all_indices:
                 specs.append(_slot_spec(slot, slot_id=f"{slot['id']}[{idx}]", repeat_index=idx))
     return specs
+
+
+_page_slot_specs = page_slot_specs
 
 
 def _bracket_indices_by_base(keys: Any) -> dict[str, list[int]]:
@@ -534,7 +537,7 @@ def _coerce_pages_texts(
     out: list[V3PageTextsPatch] = []
     for page in req.pages:
         specs = slot_specs.get(page.pageIndex, [])
-        texts = _clean_texts(raw_by_index.get(page.pageIndex, {}), specs)
+        texts = clean_texts(raw_by_index.get(page.pageIndex, {}), specs)
         out.append(V3PageTextsPatch(pageIndex=page.pageIndex, texts=texts))
     return out
 
@@ -543,7 +546,7 @@ def _missing_required_texts(req: V3ChapterChatRequest, pages_texts: list[V3PageT
     by_index = {patch.pageIndex: patch.texts for patch in pages_texts}
     missing: list[str] = []
     for page in req.pages:
-        specs = _page_slot_specs(page)
+        specs = page_slot_specs(page)
         required = {str(spec["id"]) for spec in specs}
         if not required:
             continue
@@ -581,7 +584,7 @@ def _raw_texts_by_index(raw: Any) -> dict[int, dict[str, Any]]:
     return by_index
 
 
-def _clean_texts(
+def clean_texts(
     raw_texts: dict[str, Any], specs: list[dict[str, Any]]
 ) -> dict[str, str]:
     """只保留本页的创作槽,trim,丢空值,钳到 maxChars。
@@ -600,6 +603,9 @@ def _clean_texts(
         cap = max_chars.get(key)
         out[key] = text[:cap] if cap else text
     return out
+
+
+_clean_texts = clean_texts
 
 
 def _text(value: Any) -> str:
