@@ -560,7 +560,12 @@ def _is_recoverable_describe_error(exc: VisionError) -> bool:
 
 
 async def _describe_call(
-    slot: VisionSlot, photos: list[V3AnalyzePhoto], language: str, prompt_hint: str | None
+    slot: VisionSlot,
+    photos: list[V3AnalyzePhoto],
+    language: str,
+    prompt_hint: str | None,
+    *,
+    max_output_tokens: int,
 ) -> tuple[V3LayoutTree, dict[str, list[dict[str, Any]]], int]:
     """在 `slot` 上做一次统一识图模型调用(读图 + 分章 + 分页选模板)。返回
     (tree, pages_by_chapter, tokens_billed)。上游失败时抛 ai_client.AIRequestError
@@ -603,7 +608,12 @@ async def _describe_call(
             messages=messages,
             timeout_seconds=slot.timeout_seconds,
             temperature=0.2 if attempt == 0 else 0.5,
-            max_tokens=8192,
+            # Headroom for the larger COMBINED output (description + scenes +
+            # per-page photoIds + templateId in one response). A truncated reply
+            # is non-lossy but fatal (hard AGENT_VISION_FAILED, no degrade), so
+            # the budget is wider than the old describe-only 8192. Route-splitting
+            # is still the primary per-call output bound; this is just headroom.
+            max_tokens=max_output_tokens,
             response_format=slot.response_format,
             extra_body=slot.extra_body,
         )
@@ -668,10 +678,11 @@ async def _describe_on_slot(
     route_count = _route_count_for(len(photos), settings)
     routes = _plan_describe_routes(clusters, route_count)
 
+    max_output_tokens = settings.describe_max_output_tokens
     if len(routes) <= 1:
         # 遗留的单批路径(也是全 null 的向后兼容情形)。
         tree, pages_by_chapter, tokens = await _describe_call(
-            slot, photos, language, prompt_hint
+            slot, photos, language, prompt_hint, max_output_tokens=max_output_tokens
         )
         return tree, pages_by_chapter, tokens, 1
 
@@ -683,7 +694,13 @@ async def _describe_on_slot(
     )
     results = await asyncio.gather(
         *(
-            _describe_call(slot, route_photos, language, prompt_hint)
+            _describe_call(
+                slot,
+                route_photos,
+                language,
+                prompt_hint,
+                max_output_tokens=max_output_tokens,
+            )
             for route_photos in routes
         )
     )
