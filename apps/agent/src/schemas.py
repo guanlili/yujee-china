@@ -585,11 +585,11 @@ class V3CoverRequest(_V3Strict):
     endingTemplateId: str | None = Field(default=None, min_length=1)
     # Stage5: 200px base64 thumbnails are for local color extraction only; do not
     # forward them to LLM prompts.
-    coverPhoto: str = None
-    endingPhoto: str = None
+    coverPhoto: str | None = None
+    endingPhoto: str | None = None
     # Textual guidance may be sent to 5a copy / 5b AI color design instead of base64.
-    coverPhotoDesc: str = None
-    hint: str = None
+    coverPhotoDesc: str | None = None
+    hint: str | None = None
     userMessage: str = ""
     history: list[V3ChatTurn] = Field(default_factory=list, max_length=20)
     pages: list[Page]

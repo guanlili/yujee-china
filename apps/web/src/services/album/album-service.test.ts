@@ -1698,6 +1698,8 @@ test('coverTurn: re-slices the cover/ending pages server-side + folds patch into
 
     assert.equal(seen.length, 1);
     assert.equal(seen[0]!.coverTemplateId, 'mag-01');
+    assert.equal(seen[0]!.userMessage, '');
+    assert.deepEqual(seen[0]!.history, []);
     // The browser sent NO pages; the service re-sliced the non-chapter pages (cover #0 + ending #2).
     assert.deepEqual(seen[0]!.pages.map((pg) => pg.pageIndex).sort(), [0, 2]);
 

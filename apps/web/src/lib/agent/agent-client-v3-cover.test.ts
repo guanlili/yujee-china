@@ -15,6 +15,8 @@ const PAYLOAD: V3CoverRequest = {
   language: 'en',
   coverTemplateId: 'mag-01',
   endingTemplateId: null,
+  userMessage: '',
+  history: [],
   pages: [{ pageIndex: 0, templateId: 'mag-08', images: { image: 'p1' }, texts: {} }],
 };
 
