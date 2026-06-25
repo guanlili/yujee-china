@@ -5,15 +5,20 @@ the base64 photos, run the analysis pipeline in a background task, and stream
 `progress` → `completed`/`failed` callbacks back to the Web side (`V3Callback`,
 schemas.py / packages/contracts/src/v3.ts — single truth source).
 
-  * The `describe` stage runs the REAL describe-content recognition-model call
-    (WP1.3, issue #182): one batched call → 章节树 (分章 + 每章 description + 每图
-    sceneDescription). The LLM authors只这 3 处; width/height/orientation/takenAt
-    are code-filled. OpenAI (GPT-5.5 Mini) primary, 火山 doubao failover.
-  * The `template` stage runs WP1.4 select-template (#183): the recognition model
-    picks each page's templateId from the legal candidates, pure-code §9 fallback on
-    LLM failure. `_build_preview` also runs WP1.5 generic 文案/色 fill.
+  * The `describe` stage runs the UNIFIED recognition-model call (读图 + 分章 +
+    分页选模板,合一 — 选完模板分页就自动出来了): one call → 章节树 (分章 + 每章
+    description + 每图 sceneDescription) AND each chapter's pages (photoIds +
+    templateId). The LLM authors the text + the page intent; width/height/orientation/
+    takenAt are code-filled and per-page/per-chapter legality is guaranteed by the
+    deterministic engine after the call (§8.3). OpenAI (GPT-5.5 Mini) primary, 火山
+    doubao failover. There is NO separate group-pages or select-template model call.
+  * The `template` stage is now pure code (`_build_preview`): wrap the unified call's
+    legality-guarded interior pages with a default cover/ending + lay WP1.5 generic
+    文案/色. No model call.
   * `describe`/`group`/`template`/`preview` progress callbacks round-trip so the
-    202 + callback + stage flow is fully testable end-to-end.
+    202 + callback + stage flow is fully testable end-to-end. `group`/`template`
+    survive only as UI progress beats (no separate calls) — the V3JobStage enum and
+    Web↔Agent contract are UNCHANGED.
 
 Stateless (§3 数据归属): Agent holds no draft/stage; Web owns the tree + stage and
 merges the callback. base64 never leaves the request memory — it is read to build
@@ -46,8 +51,6 @@ from ..schemas import (
 from .. import callback
 from ..agents.image_understanding import handler as vision
 from ..agents.image_understanding import VisionError
-from ..agents.template_select import handler as select_template
-from ..agents.group_pages import handler as group_pages
 from ..engine import generic_copy
 from ..engine import skeleton_v3
 from ..settings import get_settings
@@ -112,15 +115,24 @@ async def _emit_failure(
 # ---------- draft assembly ----------------------------------------------------
 
 
-async def _build_preview(chapters: list[V3Chapter]) -> tuple[V3LayoutTree, list[Page]]:
-    """Produce the preview-state tree + pages (WP1.4 select-template + WP1.5 generic).
+def _build_preview(
+    chapters: list[V3Chapter], interior_pages: list[dict]
+) -> tuple[V3LayoutTree, list[Page]]:
+    """Produce the preview-state tree + pages from the unified vision call's output.
 
-    select-template (the recognition model) picks each page's templateId from the
-    LEGAL candidates the WP0.4 engine exposes (`legal_candidates`); the model can
-    never inject an illegal/hallucinated id. On any LLM failure the whole stage
-    degrades to the pure-code §9 fallback (a template that holds each page's photos,
-    slotted in order — `skeleton_v3.build_skeleton_v3`-equivalent). NO quality/hero/
-    orientation matching; aspect mismatch is the renderer's center-cover concern.
+    The unified vision call (image_understanding.describe_content) is the SINGLE
+    model call: it reads the photos, splits chapters, AND assigns each chapter's
+    photos to template-pages — selecting templateId per page from the LEGAL capacity
+    table. Code then guarantees legality after the call (§8.3): per-page template
+    legality clamp + per-chapter `validate_grouping` with a `partition_photos_v3`
+    baseline fallback (all inside `_assemble_chapter_pages`). So `interior_pages` is
+    already the legality-guarded flat interior page list — this step adds NO model
+    call; it only wraps cover/ending + lays generic copy.
+
+    书籍设计环节(§4.4)要能选/换封面/封底,前提是 draft skeleton 里真有一张
+    category=cover 页和一张 category=ending 页 —— 否则封面卡片找不到封面页,只能
+    auto-skip。这里在正文页前后确定性补齐默认封面/封底页(hero 复用首/尾照片),并重排
+    pageIndex;封面 patch 仍是页级,Web 确认后才落库,Agent 不写库 / 不推 stage(§3 不变式)。
 
     WP1.5 (#184) then layers the GENERIC 文案/色 onto those pages so the preview reads
     as a finished spread (§4.1(e) / §7.1): `generic_copy.fill_generic_copy` code-fills
@@ -129,16 +141,7 @@ async def _build_preview(chapters: list[V3Chapter]) -> tuple[V3LayoutTree, list[
     环节 to author正式文案. The chapter tree's `accentColor`/`artFont` stay null
     placeholders (通用色 = the null placeholder; theme环节 fills real值). Pure code."""
     tree = V3LayoutTree(chapters=chapters)
-    # AI 按画面效果重分章内页(group_pages);失败/不合法则该章回退确定性分页 —— 永不崩。
-    # select-template 随后只为这些已分好的页挑 templateId(不再自己分页)。
-    grouping = await group_pages.group_chapter_pages(chapters)
-    page_dicts = await select_template.select_template_pages(chapters, grouping)
-    # 书籍设计环节(§4.4)要能选/换封面/封底,前提是 draft skeleton 里真有一张
-    # category=cover 页和一张 category=ending 页 —— 否则封面卡片找不到封面页,只能
-    # auto-skip(本次缺口的根因)。这里在正文页前后确定性补齐默认封面/封底页(hero
-    # 复用首/尾照片),并重排 pageIndex;封面 patch 仍是页级,Web 确认后才落库,Agent
-    # 不写库 / 不推 stage(§3 不变式)。
-    page_dicts = skeleton_v3.wrap_with_cover_ending(page_dicts, chapters)
+    page_dicts = skeleton_v3.wrap_with_cover_ending(interior_pages, chapters)
     page_dicts = generic_copy.fill_generic_copy(page_dicts, chapters)
     pages = [Page(**page) for page in page_dicts]
     return tree, pages
@@ -153,10 +156,12 @@ async def _run_analyze(job: _Job) -> None:
     vision_call_count = 0
     vision_model: str | None = None
 
-    # describe — WP1.3 (#182): real describe-content call → 章节树. The recognition
-    # model authors只分章 + 每章 description + 每图 sceneDescription; the
-    # deterministic photo attrs (width/height/orientation/takenAt) are code-filled
-    # inside describe_content. OpenAI primary, 火山 failover (§6.8 第 2 条).
+    # describe — 统一识图调用(读图 + 分章 + 分页选模板,合一,§4.1):识图模型一次返回
+    # 分章 + 每章 description + 每图 sceneDescription + 每章的 pages(photoIds + templateId)。
+    # 确定性照片属性(width/height/orientation/takenAt)由代码填充;分页/选模板的合法性由
+    # describe_content 内部的确定性护栏(分页合法 / 逐页模板合法 / 章级基线兜底)保证。
+    # OpenAI primary,火山 failover(§6.8 第 2 条)。pages 在此已就绪 —— 不再有独立的
+    # group/template 模型调用(选完模板分页就自动出来了)。
     await _emit_progress(job, "describe", 0)
     prompt_hint = req.meta.promptHint if req.meta else None
     try:
@@ -172,23 +177,21 @@ async def _run_analyze(job: _Job) -> None:
         await _emit_failure(job, code="AGENT_VISION_FAILED", message=str(exc), stage="describe")
         return
     chapters = described.tree.chapters
+    interior_pages = described.pages
     vision_call_count = described.call_count
     vision_model = described.model
     await _emit_progress(job, "describe", 100)
 
-    # group — 分章 happens INSIDE describe-content (§4.1: grouping并进识图模型这一次
-    # 调用). This stage stays as a progress beat for UI parity; no separate call.
+    # group / template — 分章 + 分页选模板都发生在 describe 那【一次】统一调用里(§4.1)。
+    # 这两个 stage 仅保留为 UI 同步的进度节拍(不改 Web 状态机/UI),没有单独的模型调用。
     await _emit_progress(job, "group", 0)
     await _emit_progress(job, "group", 100)
 
-    # template — WP1.4 (#183): select-template. The recognition model picks each
-    # page's templateId from the legal candidates skeleton_v3 exposes; on any LLM
-    # failure the stage degrades to the pure-code §9 fallback inside _build_preview.
-    # _build_preview also runs WP1.5 generic-copy fill; both stay inside this guard so
-    # any failure resets the bar and fails cleanly (失败可重试不污染 stage).
+    # template — 仅把统一调用产出的(已合法的)正文页包上封面/封底 + 叠加通用文案/色
+    # (`_build_preview`,纯代码)。任何失败都重置进度条并干净失败(失败可重试不污染 stage)。
     await _emit_progress(job, "template", 0)
     try:
-        tree, pages = await _build_preview(chapters)
+        tree, pages = _build_preview(chapters, interior_pages)
     except Exception as exc:  # noqa: BLE001
         log.exception("v3_analyze.template_failed", error=str(exc))
         await _emit_failure(

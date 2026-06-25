@@ -173,7 +173,7 @@ def test_merge_orders_by_sequenced_cluster_position_and_renumbers():
     )
     route_a = V3LayoutTree(chapters=[_chapter("A.", ["p1", "p2"])])
     route_b = V3LayoutTree(chapters=[_chapter("B.", ["p3", "p4"])])
-    merged = vision._merge_route_trees(sequenced, [route_b, route_a])
+    merged, _ = vision._merge_route_trees(sequenced, [(route_b, {}), (route_a, {})])
     assert [c.chapterId for c in merged.chapters] == ["ch_1", "ch_2"]
     assert [[p.photoId for p in c.photos] for c in merged.chapters] == [
         ["p1", "p2"],
@@ -198,7 +198,7 @@ def test_merge_keeps_sub_chaptered_cluster_contiguous():
         chapters=[_chapter("A1.", ["p1", "p2"]), _chapter("A2.", ["p3"])]
     )
     route_b = V3LayoutTree(chapters=[_chapter("B.", ["p4"])])
-    merged = vision._merge_route_trees(sequenced, [route_b, route_a])
+    merged, _ = vision._merge_route_trees(sequenced, [(route_b, {}), (route_a, {})])
     assert [[p.photoId for p in c.photos] for c in merged.chapters] == [
         ["p1", "p2"],
         ["p3"],
@@ -211,7 +211,7 @@ def test_merge_rejects_omitted_photo():
     photos = _photos([("cA", "2024-03-01T08:00:00"), ("cA", "2024-03-01T08:00:00"), ("cB", "2024-03-01T08:00:00")])
     route_a = V3LayoutTree(chapters=[_chapter("A.", ["p1", "p2"])])
     with pytest.raises(vision.VisionError, match="merge omitted photoIds"):
-        vision._merge_route_trees(photos, [route_a])
+        vision._merge_route_trees(photos, [(route_a, {})])
 
 
 def test_merge_rejects_duplicate_photo_across_routes():
@@ -219,7 +219,7 @@ def test_merge_rejects_duplicate_photo_across_routes():
     route_a = V3LayoutTree(chapters=[_chapter("A.", ["p1"])])
     route_b = V3LayoutTree(chapters=[_chapter("B.", ["p1", "p2"])])  # p1 dup
     with pytest.raises(vision.VisionError, match="merge duplicated photoId"):
-        vision._merge_route_trees(photos, [route_a, route_b])
+        vision._merge_route_trees(photos, [(route_a, {}), (route_b, {})])
 
 
 def test_merge_rejects_two_clusters_merged_into_one_chapter():
@@ -228,14 +228,14 @@ def test_merge_rejects_two_clusters_merged_into_one_chapter():
     photos = _photos([("cA", "2024-03-01T08:00:00"), ("cB", "2024-03-02T08:00:00")])
     bad = V3LayoutTree(chapters=[_chapter("merged.", ["p1", "p2"])])
     with pytest.raises(vision.VisionError, match="mixed distinct clusters"):
-        vision._merge_route_trees(photos, [bad])
+        vision._merge_route_trees(photos, [(bad, {})])
 
 
 def test_merge_allows_null_cluster_photos_in_one_chapter():
     # Null-cluster photos carry no boundary constraint → may share a chapter.
     photos = _photos([(None, "2024-03-01T08:00:00"), (None, "2024-03-02T08:00:00")])
     ok = V3LayoutTree(chapters=[_chapter("free.", ["p1", "p2"])])
-    merged = vision._merge_route_trees(photos, [ok])
+    merged, _ = vision._merge_route_trees(photos, [(ok, {})])
     assert [[p.photoId for p in c.photos] for c in merged.chapters] == [["p1", "p2"]]
 
 
