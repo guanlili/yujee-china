@@ -47,6 +47,7 @@ from .. import callback
 from ..agents.image_understanding import handler as vision
 from ..agents.image_understanding import VisionError
 from ..agents.template_select import handler as select_template
+from ..agents.group_pages import handler as group_pages
 from ..engine import generic_copy
 from ..engine import skeleton_v3
 from ..settings import get_settings
@@ -128,7 +129,10 @@ async def _build_preview(chapters: list[V3Chapter]) -> tuple[V3LayoutTree, list[
     环节 to author正式文案. The chapter tree's `accentColor`/`artFont` stay null
     placeholders (通用色 = the null placeholder; theme环节 fills real值). Pure code."""
     tree = V3LayoutTree(chapters=chapters)
-    page_dicts = await select_template.select_template_pages(chapters)
+    # AI 按画面效果重分章内页(group_pages);失败/不合法则该章回退确定性分页 —— 永不崩。
+    # select-template 随后只为这些已分好的页挑 templateId(不再自己分页)。
+    grouping = await group_pages.group_chapter_pages(chapters)
+    page_dicts = await select_template.select_template_pages(chapters, grouping)
     # 书籍设计环节(§4.4)要能选/换封面/封底,前提是 draft skeleton 里真有一张
     # category=cover 页和一张 category=ending 页 —— 否则封面卡片找不到封面页,只能
     # auto-skip(本次缺口的根因)。这里在正文页前后确定性补齐默认封面/封底页(hero

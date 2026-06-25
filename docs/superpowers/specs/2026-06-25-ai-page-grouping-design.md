@@ -41,7 +41,7 @@ flows/analyze.py:
 ## 这一步做什么（每章独立）
 
 1. **算确定性基线**：`partition_photos_v3(chapter.photos)` → 基线分组（给 AI 当参考，也是兜底）。
-2. **拼纯文字 prompt**，每张照片喂：`photoId` + `sceneDescription` + `orientation` + `quality` + `takenAt`（时间间隔是天然分页断点）。附上：基线分组、每页上限 `max_capacity(interior)`、指令"按画面效果/连贯性重分页；每页 ≤ 上限；保持原顺序；每张照片恰好出现一次；倾向避免孤页"。
+2. **拼纯文字 prompt**，每张照片喂：`photoId` + `sceneDescription` + `orientation` + `takenAt`（时间间隔是天然分页断点）。注：`V3ChapterPhoto` 不带 `quality`（quality 在分析输入节点，不在章节树），故分组信号不含 quality。附上：基线分组、每页上限 `max_capacity(interior)`、指令"按画面效果/连贯性重分页；每页 ≤ 上限；保持原顺序；每张照片恰好出现一次；倾向避免孤页"。
 3. **模型返回分组**：`{"pages": [["p1","p2"], ["p3"], ...]}`（每页是按序 photoId 列表）。
 
 ## 确定性护栏（沿用 §8.3）

@@ -99,18 +99,39 @@ class _PlannedPage:
         return {c["templateId"] for c in self.candidates}
 
 
-def plan_pages(chapters: Sequence[V3Chapter]) -> list[_PlannedPage]:
+def _chapter_chunks(
+    chapter: V3Chapter,
+    photos: Sequence[Any],
+    grouping: Mapping[str, Sequence[Sequence[str]]] | None,
+) -> list[list[Any]]:
+    """该章的逐页照片 chunk:给了 AI 分组(`group_pages`)就按它重建(photoId→照片对象),
+    否则走确定性分页(`partition_photos_v3`)。AI 分组上游已用 `validate_grouping` 校验过
+    (不丢不重保序);这里再 try 防御 —— 任何 id 对不上立刻退确定性分页。"""
+    pages = grouping.get(chapter.chapterId) if grouping else None
+    if not pages:
+        return [list(c) for c in skeleton_v3.partition_photos_v3(photos, category=_INTERIOR)]
+    by_id = {_photo_id(p): p for p in photos}
+    try:
+        return [[by_id[pid] for pid in page] for page in pages]
+    except KeyError:
+        return [list(c) for c in skeleton_v3.partition_photos_v3(photos, category=_INTERIOR)]
+
+
+def plan_pages(
+    chapters: Sequence[V3Chapter],
+    grouping: Mapping[str, Sequence[Sequence[str]]] | None = None,
+) -> list[_PlannedPage]:
     """把每一章切成逐页 chunk,连同各自的合法候选集。
 
-    镜像 `skeleton_v3.build_skeleton_v3` 的切分,使 LLM 路径与 fallback 路径产出【相同】
-    的页数 / 照片分组 —— select-template 只改变每页用【哪个】模板,绝不改变照片怎么分到
-    各页。没有照片的章节被跳过(一章绝不产出空页)。"""
+    分页来源:给了 `grouping`(AI 按效果重分,`group_pages`)就用它,否则确定性
+    `partition_photos_v3`。无论哪种,select-template 仍只改每页用【哪个】模板,绝不再改
+    照片怎么分到各页(分页此刻已定)。没有照片的章节被跳过(一章绝不产出空页)。"""
     planned: list[_PlannedPage] = []
     for ch_idx, chapter in enumerate(chapters):
         photos = list(chapter.photos)
         if not photos:
             continue
-        for chunk in skeleton_v3.partition_photos_v3(photos, category=_INTERIOR):
+        for chunk in _chapter_chunks(chapter, photos, grouping):
             page_id = f"pg_{len(planned) + 1}"
             candidates = skeleton_v3.legal_candidates(_INTERIOR, len(chunk))
             planned.append(
@@ -238,15 +259,20 @@ def _fallback_pages(pages: Sequence[_PlannedPage]) -> list[dict[str, Any]]:
     ]
 
 
-async def select_template_pages(chapters: Sequence[V3Chapter]) -> list[dict[str, Any]]:
+async def select_template_pages(
+    chapters: Sequence[V3Chapter],
+    grouping: Mapping[str, Sequence[Sequence[str]]] | None = None,
+) -> list[dict[str, Any]]:
     """构建预览正文页:模型从各页合法候选里挑 templateId;任何 LLM 失败时走纯代码
     fallback(WP1.4 / §9)。
+
+    分页由 `grouping`(AI 按效果重分,`group_pages`)决定;不给则确定性分页。
 
     返回一个扁平的 page dict 列表,形如 `schemas.Page`
     (pageIndex/templateId/images/texts),pageIndex 连续、texts 为空(通用文案/颜色
     在稍后叠加 —— WP1.5)。绝不抛错:失败的 LLM 调用、缺失的 provider、不可用的响应,
     统统降级到等价于 `build_skeleton_v3` 的确定性 fallback,使预览总能成功。"""
-    pages = plan_pages(chapters)
+    pages = plan_pages(chapters, grouping)
     if not pages:
         return []
 
