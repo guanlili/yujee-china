@@ -1,10 +1,9 @@
-import { z } from 'zod';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
 import { albumService } from '@/services/album/album-service';
-import { V3CoverRequest } from '@yujee/contracts';
+import { CoverBodySchema } from './schema';
 import { toBrowserCoverPatch } from './route-utils';
 
 // Browser-facing cover body (④ 书籍设计 — 封面/封尾, WP4.1 #192 / 缺口#20). Invariant 12 /
@@ -18,16 +17,6 @@ import { toBrowserCoverPatch } from './route-utils';
 // coverPhotoId/endingPhotoId are WEB-ONLY (not part of the Agent /v3/cover contract): the
 // service swaps the chosen photo into the re-sliced cover/ending page before forwarding to
 // the agent (invariant 12: the browser holds no layout pages, only its selections).
-const BodySchema = V3CoverRequest.pick({
-  language: true,
-  coverTemplateId: true,
-  endingTemplateId: true,
-})
-  .extend({
-    coverPhotoId: z.string().min(1).nullable().optional(),
-    endingPhotoId: z.string().min(1).nullable().optional(),
-  })
-  .strict();
 
 // POST /api/v3/albums/[uuid]/cover — synchronous (§8). 60s budget.
 export const maxDuration = 60;
@@ -36,7 +25,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
   try {
     const user = await requireAuth(req);
     const { uuid } = await ctx.params;
-    const body = await parseBody(BodySchema, req);
+    const body = await parseBody(CoverBodySchema, req);
     // Ownership gate + draft re-slice + agent auto-fill + persist all live inside the
     // service (§3 数据归属). Throws ALBUM_NOT_FOUND / ALBUM_NOT_OWNED / VALIDATION_FAILED.
     const result = await albumService.coverTurn(user.id, uuid, body);
@@ -47,6 +36,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
       layoutPatch: toBrowserCoverPatch(result.layoutPatch),
       stage: result.stage,
       assistantReply: result.assistantReply,
+      needsUserInput: result.needsUserInput,
     });
   } catch (e) {
     return fromException(e);

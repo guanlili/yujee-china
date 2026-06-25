@@ -1686,6 +1686,7 @@ test('coverTurn: re-slices the cover/ending pages server-side + folds patch into
       return {
         layoutPatch: [{ pageIndex: 0, templateId: 'mag-01', images: { hero: 'cover-photo' }, texts: { title: 'My Book' } }],
         assistantReply: 'Cover filled.',
+        needsUserInput: false,
         usage: fullUsage,
       };
     });
@@ -1747,6 +1748,93 @@ test('coverTurn: a chosen cover/ending photo is swapped into the page sent to th
     const reloaded = await albumRepo.findById(albumId);
     const draft = reloaded?.draftJson as V3StoryDraft;
     assert.deepEqual(draft.pages?.[0]?.images, { hero: 'cover-photo' });
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('coverTurn: forwards transient cover assets, user context, and derived coverPhotoDesc without persisting base64', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('cover-transient');
+  try {
+    const albumId = await seedThemeCoverAlbum(user.id);
+    await albumRepo.update(db, albumId, { stage: 'cover' });
+    const coverPhoto = 'data:image/jpeg;base64,cover-thumb';
+    const endingPhoto = 'data:image/jpeg;base64,ending-thumb';
+    const history = [{ role: 'assistant' as const, content: 'Do you want it warm?' }];
+    const seen: Parameters<typeof agentClient.coverV3>[0][] = [];
+    t.mock.method(agentClient, 'coverV3', async (p: Parameters<typeof agentClient.coverV3>[0]) => {
+      seen.push(p);
+      return { layoutPatch: [], assistantReply: 'ok', usage: fullUsage };
+    });
+
+    await albumService.coverTurn(user.id, albumId, {
+      language: 'en',
+      coverTemplateId: 'mag-01',
+      endingTemplateId: 'mag-20',
+      coverPhotoId: 'p1',
+      endingPhotoId: 'p1',
+      coverPhoto,
+      endingPhoto,
+      userMessage: 'make the cover warmer',
+      history,
+    });
+
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0]!.coverPhoto, coverPhoto);
+    assert.equal(seen[0]!.endingPhoto, endingPhoto);
+    assert.equal(seen[0]!.coverPhotoDesc, 'beach at dawn');
+    assert.equal(seen[0]!.userMessage, 'make the cover warmer');
+    assert.deepEqual(seen[0]!.history, history);
+
+    const reloaded = await albumRepo.findById(albumId);
+    const persistedDraft = JSON.stringify(reloaded?.draftJson);
+    assert.equal(persistedDraft.includes('data:image/jpeg;base64'), false);
+    assert.equal(persistedDraft.includes('cover-thumb'), false);
+    assert.equal(persistedDraft.includes('ending-thumb'), false);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('coverTurn: needsUserInput true returns the agent patch but does not call cover or mutate draft/stage', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('cover-needs-input');
+  try {
+    const albumId = await seedThemeCoverAlbum(user.id);
+    await albumRepo.update(db, albumId, { stage: 'cover' });
+    const before = (await albumRepo.findById(albumId))?.draftJson;
+    const patch = [{ pageIndex: 0, templateId: 'mag-01', texts: { title: 'Draft direction' } }];
+    t.mock.method(agentClient, 'coverV3', async () => ({
+      layoutPatch: patch,
+      assistantReply: 'Which mood should the cover use?',
+      needsUserInput: true,
+      usage: fullUsage,
+    }));
+    let coverCalled = false;
+    t.mock.method(albumService, 'cover', async () => {
+      coverCalled = true;
+      return { stage: 'ready', layoutPatch: [] };
+    });
+
+    const res = await albumService.coverTurn(user.id, albumId, {
+      language: 'en',
+      coverTemplateId: 'mag-01',
+    });
+
+    assert.equal(coverCalled, false);
+    assert.equal(res.stage, 'cover');
+    assert.equal(res.assistantReply, 'Which mood should the cover use?');
+    assert.deepEqual(res.layoutPatch, patch);
+    const reloaded = await albumRepo.findById(albumId);
+    assert.equal(reloaded?.stage, 'cover');
+    assert.deepEqual(reloaded?.draftJson, before);
   } finally {
     await cleanupUser(user.id);
   }

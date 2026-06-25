@@ -162,6 +162,34 @@ test('postCover POSTs only the template SELECTIONS to /cover', async (t) => {
   assert.equal(res.stage, 'ready');
 });
 
+test('postCover forwards transient thumbnails and cover chat context to /cover', async (t) => {
+  const captured = mockFetch(t, {
+    ok: true,
+    data: { stage: 'cover', layoutPatch: [], assistantReply: 'Which mood?', needsUserInput: true },
+  });
+  const res = await postCover('alb_1', {
+    coverTemplateId: 'mag-01',
+    coverPhotoId: 'p1',
+    endingPhotoId: 'p2',
+    coverPhoto: 'data:image/jpeg;base64,cover',
+    endingPhoto: 'data:image/jpeg;base64,ending',
+    userMessage: 'make it quieter',
+    history: [{ role: 'assistant', content: 'Do you want a quiet cover?' }],
+  });
+
+  assert.deepEqual(captured.body, {
+    language: 'en',
+    coverTemplateId: 'mag-01',
+    coverPhotoId: 'p1',
+    endingPhotoId: 'p2',
+    coverPhoto: 'data:image/jpeg;base64,cover',
+    endingPhoto: 'data:image/jpeg;base64,ending',
+    userMessage: 'make it quieter',
+    history: [{ role: 'assistant', content: 'Do you want a quiet cover?' }],
+  });
+  assert.equal(res.needsUserInput, true);
+});
+
 test('postCover skip (no selection) sends just {language} and accepts an empty patch', async (t) => {
   const captured = mockFetch(t, { ok: true, data: { stage: 'ready', layoutPatch: [] } });
   const res = await postCover('alb_1', {});
