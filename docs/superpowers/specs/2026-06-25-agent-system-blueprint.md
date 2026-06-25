@@ -17,10 +17,10 @@ agent 能力按 skill 组织,被各环节调用(一处实现、多处复用):
 | 图片描述 | 豆包视觉 | Stage1 describe |
 | 排版(选版式+分槽) | Gemini 多模态 | Stage2、Stage3 case4(同一可复用模块) |
 | 写文(引导/写作) | DeepSeek | Stage3 case1/2、Stage5 文案 |
-| 颜色设计 | DeepSeek| k章节色=代码取色(Stage1 1d,参考 accent_color.py)/ 封面色=豆包(待 Stage5 定) | Stage1 章节色、Stage5 封面色 |
+| 颜色设计 | AI + 「颜色设计」skill | 章节色=AI 设计(Stage4,吃 Stage1 1d 提取色作依据)/ 封面色=AI 设计(Stage5,吃封面照片提取色作依据)—— 同一套模型 | Stage4 章节色、Stage5 封面色 |
 | 字体设计 | DeepSeek | Stage4 |
-| (代码) `accent_color` 取色 | 代码 | Stage1 1d 章节色(`accent_of_group`);封面色是否复用 `accent_from_photo` 待 Stage5 定 |
-| (代码) `finalize_color` 统一颜色函数 | 代码 | 仅可能服务封面色(待 Stage5 定);章节色不经它 |
+| (代码) `accent_color` 颜色识别 | 代码 | Stage1 1d 出提取色 `extractedColor`(`accent_of_group`,喂 AI 设计,非最终色);Stage5 封面色用 `accent_from_photo` 从封面照片出提取色喂 AI 设计 —— 章节色 + 封面色两者 |
+| (代码) `finalize_color` 统一颜色函数 | 代码 | 归一化 AI 设计出的色为最终 hex —— 章节色 Stage4 + 封面色 Stage5 两者 |
 | (代码) 填文案 / 刷色 | 代码 | 单页编辑、apply-theme、Stage5(同一套) |
 | (代码) `skeleton_v3` 合法性兜底 | 代码 | Stage2、Stage3 case3/4 |
 | (代码) 简易 id 映射 | 代码 | 所有"喂数据给 LLM"处 |
@@ -37,8 +37,8 @@ STAGE 1 识图章节  (Agent,异步 /v3/analyze + callback)
   1a 分组算法[代码]   确定性分章 → 产生「余量图」          ★算法稍后由 boss 补
   1c describe[豆包]   章节描述 + 逐张图片描述;输入=1a 的确定性分组(★输入无描述);按章批量、同章不切
   1b 余量图归组[DeepSeek] 无法分的图归入章节(简易 id)
-  1d 章节取色[代码]   章定稿后从整章图片组确定性提主色 → chapter.accentColor(参考 accent_color.py)  ★取色数值 boss 定
-  → V3LayoutTree(章节含 photos+图片描述;accentColor=1d 代码取色【不再 null】;artFont=null 待 Stage4;★无 pages)
+  1d 颜色识别[代码]   章定稿后从整章图片组确定性提真实主色 → chapter.extractedColor(提取色,依据非最终色;参考 accent_color.py)  ★取色数值 boss 定
+  → V3LayoutTree(章节含 photos+图片描述;extractedColor=1d 提取色;accentColor=null 待 Stage4 AI 设计;artFont=null 待 Stage4;★无 pages)
   ▼ callback 仅 tree(★去 pages)→ Web 存 draft_json={tree,progress}
 STAGE 2 选版式  (Agent,NEW /v3/select-layout,按章/簇批量调,★绝不切开同章)
   2a Gemini 排版[Gemini] 200px真图+模板预览图+结构描述 → templateId+图→槽(★不出色)
@@ -49,14 +49,15 @@ STAGE 2 选版式  (Agent,NEW /v3/select-layout,按章/簇批量调,★绝不切
 STAGE 3 编辑对话 agent loop  (★需专门讨论,小型 agent,见 §7)
   ▼
 STAGE 4 设计(主题)  (Agent,/v3/recommend 改造 + /v3/apply-theme)
-  整体 3 组(字体+整体风格)[DeepSeek] 全书级 → 用户选 1(★只出字体+风格+颜色)
-  apply-theme[代码] 把选中字体刷进 pages(章节色由 Stage1 1d 已定,apply 仍把已定 accentColor 落页,但不来自本环节)
+  整体 3 组(字体+颜色+整体风格)[DeepSeek] 全书级,AI 用「颜色设计」skill 吃 Stage1 1d 提取色作依据 → 用户选 1
+  finalize_color[代码] AI 设计出的章节色 → 归一化最终 hex(chapter.accentColor)
+  apply-theme[代码] 把选中字体 + 最终色刷进 pages
   ▼
 STAGE 5 封面+封尾  (Agent,/v3/cover 改造,交互)
   封面照片【浏览器选】
   5a 文案[DeepSeek] 封面/封尾文案;问用户填什么(交互)
-  5b 配色[豆包] 看封面照片颜色→通用色
-  5c 落地[代码] finalize_color + 刷文案/刷色 ★复用单页那套函数(只是把分开步骤统一)
+  5b 配色[代码识别提取色 accent_from_photo + AI「颜色设计」skill 设计封面色] 同章节色一套模型
+  5c 落地[代码] finalize_color(归一化封面色) + 刷文案/刷色 ★复用单页那套函数(只是把分开步骤统一)
   ▼
 /v3/finalize[代码] 拍平 tree+pages → AlbumLayoutPlan(★外部契约不变)→ 浏览器出 PDF
 ```
@@ -72,8 +73,8 @@ STAGE 5 封面+封尾  (Agent,/v3/cover 改造,交互)
 | 1a 分组算法 | `V3AnalyzeRequest.photos[]`(photoId/base64/wh/clusterId?/takenAt?) | NEW `GroupingResult{chapters:{chapterId,photoIds[]}[], unplacedPhotoIds[]}` | 代码(算法 boss 补) |
 | 1b 余量图归组 | NEW `{chapterDescs:{simpleId,text}[], photoDescs:{simpleId,desc}[], unplaced:{simpleId}[]}`(简易id,代码反映射) | NEW `{assignments: simpleId→chapterSimpleId}` 合并进分组 | DeepSeek+代码 |
 | 1c describe | **1a 确定性分组(每章 photoIds + 图,★输入无描述)** + language + promptHint;按章批量、同章不切 | **章节描述 + 逐张图片描述**;代码补 wh/orientation/takenAt | 豆包+代码 |
-| 1d 章节取色 | 各章 photoIds 对应图(base64,与 1c 同源)+ base64 | `chapterId → "#RRGGBB"`(`accent_of_group`,整章聚合确定性取色;参考 accent_color.py) | 代码(数值 boss 定) |
-| 结果 | 合并 | `V3LayoutTree`(REUSE;`chapter.accentColor=1d 代码取色【不再 null】`/`artFont=null`;★无 pages) | 代码 |
+| 1d 颜色识别 | 各章 photoIds 对应图(base64,与 1c 同源)+ base64 | `chapterId → "#RRGGBB"` 提取色(`accent_of_group`,整章聚合确定性识别;参考 accent_color.py;依据非最终色) | 代码(数值 boss 定) |
+| 结果 | 合并 | `V3LayoutTree`(REUSE;`chapter.extractedColor=1d 提取色`/`accentColor=null 待 Stage4`/`artFont=null`;★无 pages) | 代码 |
 
 ★契约变更:callback 去掉 pages(今天 `V3AnalyzeCompleted.pages` 必填)。
 
@@ -88,17 +89,17 @@ STAGE 5 封面+封尾  (Agent,/v3/cover 改造,交互)
 ### Stage 4 设计(`/v3/recommend` 改造 + `/v3/apply-theme`)
 | 子步 | 输入 | 输出 | 归属 |
 |---|---|---|---|
-| 整体 3 组 | EXTEND `V3RecommendRequest`(chapters:V3ChapterOverview[] + analysisSummary? + NEW fontHint?) | NEW `bookThemeOptions:{optionId, artFont, style}[3]`(★只字体+整体风格,不出颜色)→ 用户选 1 | DeepSeek |
-| apply-theme | EXTEND `V3ApplyThemeRequest`(chosen 字体 + pages[]) | `layoutPatch[]`(刷字体;章节 accentColor 由 Stage1 1d 已定,apply 可落页但不来自本环节) | 代码 apply_theme_v3 |
+| 整体 3 组 | EXTEND `V3RecommendRequest`(chapters:V3ChapterOverview[]+extractedColor? + analysisSummary? + NEW fontHint?) | NEW `bookThemeOptions:{optionId, artFont, palette, style}[3]`(★字体+颜色+整体风格,AI 用「颜色设计」skill 吃提取色作依据)→ 用户选 1 | DeepSeek |
+| apply-theme | EXTEND `V3ApplyThemeRequest`(chosen 字体 + 最终色 + pages[]) | `layoutPatch[]`(刷字体 + 刷色;accentColor = Stage4 AI 设计经 finalize_color 的最终值) | 代码 apply_theme_v3 |
 
-★Stage4 不再出任何颜色(章节色 / palette / base 全移除);章节色 = Stage1 1d 代码取色(已定 hex),Stage4 只出字体 + 整体风格。
+★Stage4 出最终颜色(章节 accentColor):AI 用「颜色设计」skill 拿 章节描述 + Stage1 1d 提取色作依据设计,经 finalize_color 归一化;Stage4 同时出字体 + 整体风格。
 
 ### Stage 5 封面封尾(`/v3/cover` 改造,交互)
 | 子步 | 输入 | 输出 | 归属 |
 |---|---|---|---|
 | 5a 文案(交互) | EXTEND `V3CoverRequest`(coverTemplateId?/endingTemplateId? + NEW **coverPhoto(浏览器选,200px)**/hint/userMessage/history) | NEW coverTexts/endingTexts + assistantReply(可能提问) | DeepSeek |
-| 5b 配色 | 选中封面照片(200px) | 通用色 | 豆包 |
-| 5c 落地 | 文案 + 通用色 | `layoutPatch[]`:**复用单页填文案/刷色函数** + finalize_color | 代码 |
+| 5b 配色 | 选中封面照片(200px) | 提取色(代码 `accent_from_photo`)→ AI「颜色设计」skill 设计封面色 | 代码识别 + AI 设计(同章节色一套) |
+| 5c 落地 | 文案 + AI 设计封面色 | `layoutPatch[]`:**复用单页填文案/刷色函数** + finalize_color 归一化 | 代码 |
 
 ---
 
@@ -106,15 +107,15 @@ STAGE 5 封面+封尾  (Agent,/v3/cover 改造,交互)
 
 唯一真相 = Web `albums.draft_json` = `V3StoryDraft{version, tree, pages?, progress}`。
 ```
-Stage1 → tree.chapters[].{chapterId, description, accentColor:1d代码取色(★确定性hex,不再null), artFont:null,
+Stage1 → tree.chapters[].{chapterId, description, extractedColor:1d提取色(★依据,确定性hex), accentColor:null(待Stage4), artFont:null,
                           photos[].{photoId, imageDescription, width,height,orientation,takenAt}}  (★无 pages)
 Stage2 → + pages[].{pageIndex, templateId, images:{slotId→photoId}, texts:{}空, imagePos?} + 封面封尾页 + folio/date
 Stage3 → pages[].texts 填(case1/2);images/templateId 改(case3/4);页数可增(case4);progress 演进
-Stage4 → tree.chapters[].{artFont:选定};subject 写 title 槽(★不再写 accentColor —— 已由 Stage1 1d 定)
-Stage5 → 封面封尾 texts(文案)+ 封面色(待 Stage5 定:豆包通用色经 finalize_color,或同套 accent_color 代码取色)
+Stage4 → tree.chapters[].{artFont:选定, accentColor:AI颜色设计经finalize_color(吃Stage1提取色作依据)};subject 写 title 槽
+Stage5 → 封面封尾 texts(文案)+ 封面色(同章节色一套:代码 accent_from_photo 出提取色 → AI「颜色设计」skill 设计 → finalize_color 归一化)
 finalize→ 拍平 → AlbumLayoutPlan{magazine,photos[],pages[]}(★不变)
 ```
-规则:字留在 tree(chapter 级),章节 accentColor 在 Stage1 1d 即定(确定性 hex),finalize 才烘进 `Page.texts`;扁平 `Page`/`AlbumLayoutPlan` 不加新字段,渲染契约冻结。
+规则:字留在 tree(chapter 级),`extractedColor` 在 Stage1 1d 即定(依据),`accentColor` 由 Stage4 AI 设计经 finalize_color 填,finalize 才烘进 `Page.texts`;扁平 `Page`/`AlbumLayoutPlan` 不加新字段,渲染契约冻结。
 
 ---
 
@@ -141,9 +142,9 @@ gemini_layout({units:[{chapterId, photos:[{photoId,ref200px,orientation}],
                结构描述, mode:"select"|"case4-swap", allowAddPages:bool})
   -> {pages:[{chapterId,templateId,slots:{slotId→photoId}}]}      # 只意图,★无色 → 接 skeleton_v3 兜底
 
-accent_of_group(photoIds, photos_by_id) -> "#RRGGBB"               # Stage1 1d 章节色:整章聚合确定性取色(参考 accent_color.py)
-accent_from_photo(...) -> "#RRGGBB"                                # 单图确定性取色;封面色是否复用 = Stage5 单独决策,待定
-finalize_color(通用色) -> "#RRGGBB"                                # 仅可能服务封面色(待 Stage5 定);★章节色不再经它(章节色=1d 代码取色)
+accent_of_group(photoIds, photos_by_id) -> "#RRGGBB"               # Stage1 1d 颜色识别:整章聚合确定性出提取色(参考 accent_color.py);依据非最终色,喂 Stage4 AI 设计
+accent_from_photo(...) -> "#RRGGBB"                                # 单图确定性识别出提取色;Stage5 封面色用它从封面照片出提取色喂 AI 设计
+finalize_color(设计色) -> "#RRGGBB"                                # 归一化 AI 设计出的色为最终 hex(章节色 Stage4 + 封面色 Stage5,同一套)
 fill_texts(page, texts) / apply_color(page, color) -> page         # 单页编辑/apply-theme/Stage5 共用
 to_simple(realIds)->{simpleIds,map}; from_simple(simpleIds,map)->realIds
 skeleton_v3: legal_candidates / pick_template_v3 / assign_images_v3 / validate_grouping / 覆盖校验
@@ -156,11 +157,11 @@ skeleton_v3: legal_candidates / pick_template_v3 / assign_images_v3 / validate_g
 | # | 点 | 状态 |
 |---|---|---|
 | 1 | **stage 推进 / 提交归属**:AI 出意图、谁提交(Web?Agent?)+ agent 是否仍无状态 | ❓ **boss 要专门讨论(并入 §7 Stage3)** |
-| 2 | 章节色归属 | ✅ **已定 = Stage1 1d 代码取色**(纯代码确定性,参考 accent_color.py);Stage4 不出色,3 组只字体+整体风格 |
+| 2 | 章节色归属 | ✅ **已定 = 识别+设计两段**:颜色识别 = Stage1 1d 代码出提取色(参考 accent_color.py,依据);颜色设计 = Stage4 AI「颜色设计」skill 吃提取色出最终色,经 finalize_color;3 组 = 字体+颜色+整体风格 |
 | 3 | 封面照片来源 | ✅ 浏览器选 |
 | 4 | 工具 I/O + function-calling | ✅ 分批设计:先锁信封,内部后置(进 §7 讨论) |
-| 5 | `finalize_color` 逻辑 + 去留 | ⏳ 章节色已不经它;去留取决于封面色(Stage5)是否仍用豆包通用色。逻辑 boss 待给,先锁签名 |
-| 8 | 封面色取色方式 | ❓ **待 Stage5 定**:封面色是否也改用 `accent_color` 代码取色(`accent_from_photo`)替代豆包+finalize_color |
+| 5 | `finalize_color` 逻辑 | ⏳ **保留**:归一化 AI 设计出的色为最终 hex(章节色 Stage4 + 封面色 Stage5,同一套)。逻辑 boss 待给,先锁签名 |
+| 8 | 封面色取色方式 | ✅ **已定 = 与章节色同一套模型**:颜色识别=代码(`accent_from_photo` 从封面照片出提取色)+ 颜色设计=AI「颜色设计」skill(吃提取色设计封面色)+ finalize_color 归一化最终 hex。封面文案仍 DeepSeek |
 | 6 | Stage2 异步形态 | ✅ 按章/簇批量调,**绝不把同 chapter 的图切到下一批**;同步批 vs 独立 job 详设定 |
 | 7 | 进度词表 V3JobStage | 跟随 §6-6,详设定 |
 

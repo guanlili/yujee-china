@@ -13,9 +13,9 @@
 ## 0. 六个共享件总览(签名速查)
 
 ```
-1. finalize_color(generic: GenericColor) -> "#RRGGBB"                          # NEW(agent 端;★仅可能服务封面色,待 Stage5 定)
-1b. accent_of_group(photoIds, photos_by_id) -> "#RRGGBB"                        # NEW(代码取色;Stage1 1d 章节色)
-    accent_from_photo(...) -> "#RRGGBB"                                         # NEW(单图代码取色;封面是否复用待 Stage5 定)
+1. finalize_color(generic: GenericColor) -> "#RRGGBB"                          # NEW(agent 端;★服务颜色设计——章节色 Stage4 + 封面色 Stage5,同一套)
+1b. accent_of_group(photoIds, photos_by_id) -> "#RRGGBB"                        # NEW(代码识别/提取;Stage1 1d 提取色,喂 AI 设计,非最终色)
+    accent_from_photo(...) -> "#RRGGBB"                                         # NEW(单图代码识别/提取;Stage5 封面色用它从封面照片出提取色,喂 AI 设计)
 2. gemini_layout({units, structureDesc, mode, allowAddPages}) -> {pages:[...]}  # EXTEND(现 template_select)
 3. to_simple(realIds) -> (simpleIds, map);  from_simple(payload, map) -> payload # NEW helper(抽现有逻辑)
 4. GET /internal/agent-data?type=page-info|chapter-search  -> 信封              # NEW(Web 端,Agent 读回调)
@@ -27,26 +27,26 @@
 
 | 共享件 | Stage1 | Stage2 | Stage3 | Stage4 | Stage5 |
 |---|---|---|---|---|---|
-| 1 finalize_color | | | | | ⏳ 仅可能封面色(待定) |
-| 1b accent_color 取色 | ✅ 1d 章节色 | | | | ⏳ 封面色是否复用(待定) |
+| 1 finalize_color | | | | ✅ 章节色(AI 设计→hex) | ✅ 封面色(AI 设计→hex,同章节色一套) |
+| 1b accent_color 识别/提取 | ✅ 1d 提取色(依据) | | | | ✅ 封面色提取色(`accent_from_photo`,依据) |
 | 2 gemini_layout | | ✅ select | ✅ case4-swap | | |
 | 3 to/from_simple | ✅ 识图+余量归组 | ✅ 排版喂图 | ✅ 工具喂图 | | ✅ 封面色喂图 |
 | 4 /internal/agent-data | | | ✅ T1/T2 读工具 | | |
 | 5 agent 自有库 | | | ✅ edit 会话/消息/操作日志 | | |
 | 6 skeleton_v3 | | ✅ 兜底 | ✅ case3/case4 兜底 | | |
 
-> ★章节色不再经 finalize_color:章节 accentColor = Stage1 1d 纯代码确定性取色(`accent_of_group`,真相源 = `detail-stage1.md` §1d)。Stage4 不出色。finalize_color 现仅可能服务封面色,去留待 Stage5 决策。
+> ★颜色分工:**颜色识别 = 代码**(`accent_of_group`,Stage1 1d 出**提取色**,真相源 = `detail-stage1.md` §1d,是依据非最终色);**颜色设计 = AI**(Stage4「颜色设计」skill,吃提取色作依据出最终色);**finalize_color 归一化**(AI 设计出的色 → 最终 hex,章节色 + 封面色都用)。
 
 ---
 
-## 1. `finalize_color()` — 通用色→最终 hex(★章节色不经它;现仅可能服务封面色,待 Stage5 定)
+## 1. `finalize_color()` — 设计色→最终 hex(★服务颜色设计:章节色 Stage4 + 封面色 Stage5)
 
-> ★决策变更:章节色已改为 **Stage1 1d 纯代码确定性取色**(`accent_of_group`,见 §1A),不再经 finalize_color。finalize_color 的去留取决于**封面色(Stage5)**:封面色是否仍用豆包通用色(经本函数)还是改用同套 `accent_from_photo` 代码取色 = **Stage5 单独决策,待定**。在那之前本函数标为「仅可能服务封面色」,Stage4 不调用它。
+> ★角色:AI 颜色设计(Stage4 章节色、Stage5 封面色)出的颜色经本函数归一化为最终合法 hex。章节色 = Stage4 AI 用 Stage1 1d 提取色作依据设计 → finalize_color;封面色 = Stage5 AI 用 `accent_from_photo` 出的封面照片提取色作依据设计 → finalize_color(与章节色同一套模型)。这是唯一出最终色口。
 
 ### 1.1 推荐落点:**Agent 端**(`apps/agent/src/engine/finalize_color.py`,NEW)
 理由:
-- 现有最终色逻辑在 agent(`theme_recommend/handler.py::_coerce_accent`、`engine/apply_theme_v3.py`、`engine/finalize_v3.py::_bake_*`),Web 从不算色、只存 hex。把"通用色→hex"留在 agent,Web 仍只持久化结果,符合不变式「Web 只管相册数据」。(注:`_coerce_accent` 随章节色移出 Stage4 而弃用,见 §7 风险 5。)
-- Stage5 封面色若仍用豆包出通用色,则在 agent 内就近转换零跨网。
+- 现有最终色逻辑在 agent(`theme_recommend/handler.py::_coerce_accent`、`engine/apply_theme_v3.py`、`engine/finalize_v3.py::_bake_*`),Web 从不算色、只存 hex。把"设计色→hex"留在 agent,Web 仍只持久化结果,符合不变式「Web 只管相册数据」。(注:`_coerce_accent` 保留 —— 它就是 Stage4 把 AI 出色归一化的落点,见 §7 风险 5。)
+- Stage5 封面色由代码 `accent_from_photo` 出提取色 + AI「颜色设计」skill 设计,均在 agent 内,finalize_color 就近转换零跨网。
 - 渲染契约冻结:`AccentColor`(`#RGB|#RRGGBB` 正则,`packages/contracts` 与 agent schemas 双侧已有)是唯一出口类型,本函数输出必须满足它。
 
 ### 1.2 签名(锁定)
@@ -60,36 +60,38 @@ def finalize_color(generic: GenericColor) -> str:
 ```
 
 ### 1.3 契约
-- **输入**:`generic`(通用色,黑盒;Stage4 来自 DeepSeek 主题组、Stage5 来自豆包看封面照片)。
+- **输入**:`generic`(设计色,黑盒;Stage4 来自 AI「颜色设计」skill 出的章节色、Stage5 来自 AI「颜色设计」skill 吃封面照片提取色设计的封面色 —— 同一套)。
 - **输出**:`"#RRGGBB"` 大写六位,**保证**匹配 `AccentColor` 正则;3 位 hex 一律展开为 6 位。
 - **纯函数**:无 IO、无网络、确定性。
 - **失败兜底**:输入无法解析/越界/抛错 → 返回常量 `FALLBACK_ACCENT = "#4A5568"`(沿用现 `theme_recommend._FALLBACK_ACCENT`),**绝不抛**给上层。失败计 telemetry,不阻断管线。
 
 ### 1.4 调用约定
-- Stage4:★**不调用**(章节色 = Stage1 1d 代码取色,见 §1A;Stage4 只出字体)。
-- Stage5:封面/封尾色 —— **待 Stage5 定**:若仍用豆包通用色,则 `finalize_color(通用色)` → 落封面封尾页(经 cover 落地);若改用 `accent_from_photo` 代码取色,则不经本函数。
-- 章节色不经本函数:`V3Chapter.accentColor` 由 Stage1 1d `accent_of_group` 直接写定合法 hex;`apply_theme_v3` 接收的 `accentColor` 已是 Stage1 产物。
+- Stage4:★**调用**(章节色 = AI「颜色设计」skill 用 Stage1 1d 提取色作依据出色 → `finalize_color` 归一化 → `V3Chapter.accentColor`)。
+- Stage5:封面/封尾色 —— ★**调用**(与章节色同一套):代码 `accent_from_photo` 出封面照片提取色 → AI「颜色设计」skill 设计封面色 → `finalize_color(设计色)` 归一化 → 经 cover 落地落封面封尾页。
+- 章节色经本函数:`V3Chapter.accentColor` 由 Stage4 AI 设计经 `finalize_color` 写定合法 hex;`apply_theme_v3` 接收的 `accentColor` 是 Stage4 产物(Stage1 留 null,只产 `extractedColor` 作依据)。
 
 ---
 
-## 1A. `accent_color` 取色 — 章节色确定性组件(★NEW,归 Stage1/共享)
+## 1A. `accent_color` 识别/提取 — 颜色识别确定性组件(★NEW,归 Stage1/共享)
+
+> ★定位:**「颜色识别 / 提取」** —— 产 `extractedColor`(提取色)**喂 AI 设计**,**不是产最终色**。最终色由 AI 颜色设计(Stage4)+ finalize_color 出。
 
 ### 1A.1 落点:`apps/agent/src/engine/accent_color.py`(NEW,纯代码,无模型无网络)
-章节色 = 纯代码确定性取色,替代原由模型/豆包出色(发灰发丑)。算法本体参考 `accent_color.py`:逐像素 HSV → 丢天空/白墙(v>V_HI 且 s<S_HI)、近黑(v<V_LO)、近灰(s<S_LO)→ 剩余有彩像素按饱和度加权统计 24 桶色相、取主色相 → **丢照片自身 S/V、用设计固定 L/S 重建**(全书协调永不丑)→ 全灰兜底中性色。整章聚合出一个色。详口径见真相源 `detail-stage1.md` §1d(本文只引用,不重设数值)。
+颜色识别 = 纯代码确定性提取真实主色(提取色),作 AI 颜色设计的依据(解决凭文字瞎猜 / 豆包取色发灰发丑)。算法本体参考 `accent_color.py`:逐像素 HSV → 丢天空/白墙(v>V_HI 且 s<S_HI)、近黑(v<V_LO)、近灰(s<S_LO)→ 剩余有彩像素按饱和度加权统计 24 桶色相、取主色相 → **丢照片自身 S/V、用设计固定 L/S 重建** → 全灰兜底中性色。整章聚合出一个提取色。详口径见真相源 `detail-stage1.md` §1d(本文只引用,不重设数值)。
 
 ### 1A.2 签名(锁定)
 ```python
 def accent_of_group(photo_ids: Sequence[str], photos_by_id: Mapping[str, V3AnalyzePhoto]) -> str:
-    """整章图片组 → 一个章节主色 "#RRGGBB"(确定性,直接满足 AccentColor 正则)。"""
+    """整章图片组 → 一个提取色 "#RRGGBB"(确定性,合法 hex)。是 AI 设计依据,非最终 accentColor。"""
 
 def accent_from_photo(...) -> str:
-    """单张图 → "#RRGGBB"(确定性)。封面色是否复用本函数 = Stage5 单独决策,待定。"""
+    """单张图 → "#RRGGBB"(确定性提取色)。Stage5 封面色用它从封面照片出提取色,喂 AI 颜色设计(非最终色)。"""
 ```
 
 ### 1A.3 契约 / 边界
-- **纯函数**:无 IO、无网络、确定性;输出 `"#RRGGBB"` 必匹配 `AccentColor` 正则(无需再过 finalize_color)。
+- **纯函数**:无 IO、无网络、确定性;输出 `"#RRGGBB"` 合法 hex(作依据写进 tree `extractedColor`)。
 - **失败兜底**:全灰/无有彩像素 → 中性色常量(如 `"#8A8174"`);绝不抛。固定 L/S 与阈值是可调设计常量,最终值 boss 定。
-- **被谁消费**:Stage1 1d(`accent_of_group`,在 1b 之后、章成员最终定时执行);Stage5 封面色是否复用 `accent_from_photo` 待定。
+- **被谁消费**:Stage1 1d(`accent_of_group`,在 1b 之后、章成员最终定时执行,产提取色喂 Stage4 AI 设计);Stage5 封面色用 `accent_from_photo` 从封面照片出提取色喂 AI「颜色设计」skill。
 
 ---
 
@@ -294,4 +296,4 @@ validate_grouping(grouping: Sequence[Sequence[str]], photo_ids: Sequence[str], *
 
 4. **模板预览图资源**:`gemini_layout` 需要"模板预览图"喂 Gemini,agent 侧目前 `template_select` 只用 `TemplateDef`(无预览图)。新增预览图静态资源是新依赖/新资产,Stage2 与 Stage3 共用同一份;由谁生成/存哪(agent 内置 vs R2)需总架构师定,避免两板块各引一份。
 
-5. **finalize_color 收编 + 章节色改纯代码取色**:实测代码中只有 `_coerce_accent`(theme_recommend/handler.py)真做通用→hex 归一化;`_apply_page`(apply_theme_v3.py)、`_bake_text_slots`(finalize_v3.py)只**消费**已合法色。★决策变更后:**章节色既已由 Stage1 1d `accent_of_group` 纯代码出 hex,`_coerce_accent` 随章节色移出 Stage4 而废弃/删除**(recommend 端不再产色);Stage4 不再有任何出色路径。出色口现只剩**封面色一处**(Stage5,且是否经 finalize_color 待 Stage5 定)。需确认:下游 `_apply_page`/`_bake_*` 收到的 `accentColor` 一律是已合法 hex(章节色来自 Stage1、封面色来自 Stage5),二者不再各自钳色,"唯一/不重复出色口"在新模型下成立。
+5. **finalize_color 收编 + 颜色识别代码化**:实测代码中只有 `_coerce_accent`(theme_recommend/handler.py)真做设计色→hex 归一化;`_apply_page`(apply_theme_v3.py)、`_bake_text_slots`(finalize_v3.py)只**消费**已合法色。★新模型:**颜色设计 = AI「颜色设计」skill**(Stage4 吃 Stage1 1d 提取色作依据;Stage5 封面色吃 `accent_from_photo` 出的封面照片提取色作依据 —— 同一套);**颜色识别 = 代码**(`accent_of_group` / `accent_from_photo` 产提取色,是依据非最终色);**finalize_color 在**(AI 出色经它/`_coerce_accent` 归一化成最终 hex)。`_coerce_accent` **保留**(它就是 finalize_color 在 recommend 端的落点)。唯一出最终色口 = finalize_color(章节色 Stage4、封面色 Stage5,同一套)。需确认:下游 `_apply_page`/`_bake_*` 收到的 `accentColor` 一律是已合法 hex,不再各自钳色,"唯一/不重复出色口"在新模型下成立。

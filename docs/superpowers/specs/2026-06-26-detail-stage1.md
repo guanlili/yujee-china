@@ -18,8 +18,8 @@ Stage1  flows/analyze.py 编排
   1a 分组算法[代码]         确定性分章 → GroupingResult{chapters, unplacedPhotoIds}   ★算法本体 boss 补,本文锁契约
   1c describe[豆包]         按章批量 → 章节描述 + 逐张图片描述(★输入无描述)
   1b 余量图归组[DeepSeek]   把 unplaced 用「章节描述 + 图片描述」归入已有章节(简易 id)
-  1d 章节取色[代码]         章定稿后,从整章图片组确定性提主色 → chapter.accentColor   ★取色逻辑 boss 定,本文锁契约
-  → 装配 V3LayoutTree(chapter.accentColor=1d 取色;artFont=null 等 Stage4;★无 pages)
+  1d 颜色识别[代码]         章定稿后,从整章图片组确定性提真实主色 → chapter.extractedColor(提取色,依据非最终色)   ★取色数值 boss 定,本文锁契约
+  → 装配 V3LayoutTree(chapter.extractedColor=1d 提取色;chapter.accentColor=null 等 Stage4 设计;artFont=null 等 Stage4;★无 pages)
   ▼  callback 仅 tree(★去 pages)
 Web  draft_json = {version, tree, progress}    (★无 pages,Stage2 才有)
 ```
@@ -154,10 +154,12 @@ class UnplacedAssignments:
 
 ---
 
-## 1d 章节取色(代码 · 确定性 · 分章后 · 无模型无 API)
+## 1d 颜色识别(代码 · 确定性 · 分章后 · 无模型无 API)→ 提取色 extractedColor
 
 ### 职责
-章定稿后(1a + 1b 成员已最终确定),对**每一章的图片组**确定性地算出一个章节主色 `accentColor`。**纯代码逐像素,不调任何模型** —— 替代原 theme 环节由豆包/模型出色(豆包取色发灰发丑的根因:把天空/白墙/灰像素也算进去)。参考 `accent_color.py` 核心逻辑。
+章定稿后(1a + 1b 成员已最终确定),对**每一章的图片组**确定性地算出该章照片的**真实主色 = 提取色 `extractedColor`**。**纯代码逐像素,不调任何模型**。
+★ **这是「识别 / 依据」,不是最终颜色**:`extractedColor` 写进 tree 供 Stage4 做 AI 颜色设计时当依据,**不直接作为 `accentColor`**。最终章节色由 Stage4 的 AI(「颜色设计」skill)拿 章节描述 + 本步提取色 设计/推荐,再经 `finalize_color` 归一化得出。
+代码化的只是「识别真实颜色」这一步(解决豆包凭文字瞎猜 / 取色发灰发丑:把天空/白墙/灰像素也算进去);AI 审美仍在 Stage4 保留。参考 `accent_color.py` 核心逻辑。
 
 ### 输入
 - 每章的图片组(该章 photoIds 对应的图)+ base64(请求已带,与 1c 同源像素;下采样即可,如 80×120 / 70×100)。
@@ -171,14 +173,14 @@ class UnplacedAssignments:
 - 固定 L/S 与阈值(V_HI/S_HI/V_LO/S_LO)是**可调设计常量,最终值 boss 定**;本文锁"流程口径 + I/O",不锁数值。
 
 ### 输出
-- `dict[str, AccentColor]`:chapterId → "#RRGGBB"(规范 6-hex,直接满足 `AccentColor` 正则,无需再过 finalize)。
+- `dict[str, str]`:chapterId → "#RRGGBB"(规范 6-hex 的**提取色**)。注:它是设计依据,不是最终 `accentColor`;写进 tree 的 `extractedColor` 字段,供 Stage4 使用。
 
 ### 位置与归属
-- 在 Stage1、**1b 之后**执行(章成员含余量图已最终定);纯代码,放分组/识图同层(如 `engine/accent_color.py`,被 `image_grouping` 或 flows 调)。
-- 产物直接写进 tree:`chapter.accentColor = 1d 取色`(**不再留 null**)。
-- ★ **跨板块影响**:章节色从 Stage4 **移走** —— Stage4 设计环节**不再出 accentColor**,只管字体(+ 整体风格);`finalize_color` 对**章节色**不再需要(章节色已是确定性 hex)。封面色(Stage5)是否也改用同一套代码取色(`accent_from_photo` 看封面照片)是 Stage5 的单独决策,本文只标不改。
+- 在 Stage1、**1b 之后**执行(章成员含余量图已最终定);纯代码,放分组/识图同层(如 `engine/accent_color.py`,被 `image_grouping` 或 flows 调)。该组件定位 = **「颜色识别 / 提取」(产 extractedColor 喂 AI 设计),不是产最终色**。
+- 产物直接写进 tree:`chapter.extractedColor = 1d 提取色`(NEW 字段);**`chapter.accentColor` 仍为 null,由 Stage4 填**。
+- ★ **跨板块影响**:Stage4 设计环节**仍出最终章节色**(上一轮误删,本轮改回),但 AI 现在**以本步提取色为依据**做颜色设计;`finalize_color` 对**章节色**仍需要(AI 设计出的色经它归一化成最终 hex)。封面色(Stage5)**同模型已定**:代码识别(`accent_from_photo` 从封面照片出提取色)+ AI「颜色设计」skill 设计 + finalize_color 归一化,本文只标不改。
 
-> 落点:`accent_of_group(photoIds, photos_by_id) -> "#RRGGBB"` 确定性纯函数;算法本体参考 accent_color.py,数值常量 boss 定。
+> 落点:`accent_of_group(photoIds, photos_by_id) -> "#RRGGBB"` 确定性纯函数,产**提取色**;算法本体参考 accent_color.py,数值常量 boss 定。
 
 ---
 
@@ -190,7 +192,8 @@ class UnplacedAssignments:
 V3LayoutTree.chapters[] = {
   chapterId,                       # ch_1..N(1a 本地 id,余量并入后保持)
   description,                     # 1c 章节描述
-  accentColor = "#RRGGBB",         # ★1d 代码取色(不再 null)
+  extractedColor = "#RRGGBB",      # ★1d 颜色识别出的提取色(依据,非最终色;NEW 字段)
+  accentColor = None,              # ★仍为 null,由 Stage4 AI 颜色设计 + finalize_color 填最终色
   artFont    = None,               # ★Stage4 设计环节填字体
   photos[] = {
     photoId,
@@ -205,7 +208,7 @@ V3LayoutTree.chapters[] = {
 装配不变式(瘦身后,精简自现 `_assemble_v3_tree`):
 - 每张输入照片恰好落入一个章(1a 覆盖 + 1b 归并后,代码再断言一次全局覆盖)。
 - 章 description / 每图 sceneDescription 必须存在(代码绝不为 LLM 字段写兜底文案)。
-- 章内照片保序;`accentColor` 由 1d 代码取色填(必为合法 6-hex);`artFont` 留 null(Stage4 填)。
+- 章内照片保序;`extractedColor` 由 1d 颜色识别填(必为合法 6-hex 的提取色);`accentColor` 留 null(Stage4 AI 颜色设计 + finalize_color 填);`artFont` 留 null(Stage4 填)。
 
 ---
 
@@ -250,7 +253,7 @@ V3LayoutTree.chapters[] = {
 | **简易 id** `to_simple/from_simple` | 共享板块(蓝图 §5) | 1c/1b 喂 LLM 前后调用;Stage1 删内联 `_remap_*`/`model_copy` 那套,改引共享 helper |
 | **Stage2(选版式)** | 消费 `tree`(★无 pages) | Stage1 callback 只交 tree;pages 由 Stage2 `/v3/select-layout` 产;`skeleton_v3`/`gemini_layout` 归 Stage2,Stage1 不再 import 分页/模板函数 |
 | **Web(callback)** | `draft_json={tree,progress}`(★无 pages) | 契约 C1:callback 去 pages;Web 渲染容忍 pages 缺省 |
-| **theme(Stage4)** | 只填 `artFont`(+ 整体风格) | Stage1 1d 已把 `accentColor` 取定;Stage4 **不再出章节色**,`finalize_color` 对章节色不再需要 |
+| **theme(Stage4)** | 出最终 `accentColor`(AI 颜色设计 + finalize_color)+ `artFont`(+ 整体风格) | Stage1 1d 只产 `extractedColor`(提取色,依据);Stage4 AI 拿 章节描述 + 提取色 设计最终章节色,经 `finalize_color` 归一化填 `accentColor` |
 
 ---
 
@@ -260,7 +263,7 @@ V3LayoutTree.chapters[] = {
 2. 1a **只分组不读图**(不吃 base64);describe 全归 1c;cluster 边界 + 分章职责从现 handler **上移到 1a**。
 3. 1c **按章装箱、同章绝不切**:软上限是装箱目标而非切章阈值;余量图单独成批、内部逐张。
 4. describe **瘦身**:删分页/选模板/容量表/cover-wrap/generic-copy/flatten,只留"读图写两类描述 + 代码补属性 + 简易 id + failover + 隐私"。
-5. **1d 章节取色 = 纯代码确定性**(参考 accent_color.py):整章聚合、丢天空/白墙/黑/灰、饱和度加权取主色相、固定 L/S 重建 → 全书协调永不丑;**章节色不再由模型/豆包出**。
-6. 装配产物**只有 tree、无 pages**;`accentColor` = 1d 取色(确定性 hex),`artFont` 留 null(Stage4)。
-7. **章节色移出 Stage4**:Stage4 只出字体(+ 风格);`finalize_color` 对章节色不再需要(封面色另议)。
+5. **1d 颜色识别 = 纯代码确定性出提取色**(参考 accent_color.py):整章聚合、丢天空/白墙/黑/灰、饱和度加权取主色相、固定 L/S 重建 → 产 `extractedColor`(真实主色,**作依据**);**它不是最终色**,最终章节色由 Stage4 AI 用提取色做颜色设计得出。
+6. 装配产物**只有 tree、无 pages**;`extractedColor` = 1d 提取色(确定性 hex),`accentColor` 仍 null(待 Stage4),`artFont` 留 null(Stage4)。
+7. **章节最终色由 Stage4 出**:Stage4 AI(「颜色设计」skill)用 1d 提取色做依据设计最终章节色,经 `finalize_color` 归一化;Stage1 只负责颜色识别(出提取色)。
 8. callback **去 pages**(C1)+ flows 编排重写(C2):跨 Web/架构师边界,须确认。

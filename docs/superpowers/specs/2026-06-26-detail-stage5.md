@@ -12,13 +12,13 @@
 Stage5 把今天「纯确定性塞图 + folio/date」的 `/v3/cover` 升级为
 **AI 文案(交互一轮)+ AI 配色 + 代码落地** 三子步,且**落地步把以前分开的「填文案 / 刷色 / 装饰」统一到单页那套复用函数**。
 
-> ★封面色取色方式 = **待 boss 定**:章节色已改为 Stage1 1d 纯代码确定性取色(`accent_of_group`,见 `detail-stage1.md` §1d / `detail-shared.md` §1A)。封面色是否也改用同套代码取色(`accent_from_photo` 看封面照片)替代「豆包出通用色 + finalize_color」= Stage5 单独决策,待定。本文按现有「豆包 + finalize_color」路径描述 5b/5c,若 boss 改走代码取色,5b 换成 `accent_from_photo`、5c 不经 finalize_color。
+> ★封面色取色方式 = **已定(与章节色同一套模型)**:**颜色识别=代码**——从用户选的封面照片确定性提取「提取色」(`accent_from_photo`,复用 `accent_color.py`,见 `detail-stage1.md` §1d / `detail-shared.md` §1A);**颜色设计=AI + 「颜色设计」skill**——AI 拿封面照片提取色作依据,设计最终封面色;**finalize_color**——把 AI 设计出的封面色归一化为最终 hex。封面文案仍走 DeepSeek(不变)。
 
 | 子步 | 谁 | 输入 | 输出 | 归属层 |
 |---|---|---|---|---|
 | 5a 文案(交互) | DeepSeek | 封面/封尾模板 id + 封面照片(200px,浏览器选)+ hint + userMessage + history + 页槽规格 | coverTexts / endingTexts(可为空)+ assistantReply(可能是反问) | agents(新 `cover_copy`)|
-| 5b 配色 | 豆包视觉 | 封面照片(200px,base64) | 通用色(skill 输出,未定 hex) | agents(复用 vision slot)|
-| 5c 落地 | 代码 | 5a 文案 + 5b 通用色 + 相关页 | `layoutPatch[]`(文案 + 最终色刷进封面/封尾页) | engine(复用单页填文案 + apply-theme 刷色)|
+| 5b 配色 | 代码识别(`accent_from_photo` 出提取色)+ AI「颜色设计」skill(吃提取色设计封面色) | 封面照片(200px,base64) | 提取色(代码)→ AI 设计出的封面色(经 finalize_color 归一化为最终 hex) | engine(`accent_from_photo`)+ agents(颜色设计 skill)|
+| 5c 落地 | 代码 | 5a 文案 + 5b 封面色(finalize_color 归一化后)+ 相关页 | `layoutPatch[]`(文案 + 最终色刷进封面/封尾页) | engine(复用单页填文案 + apply-theme 刷色)|
 
 交互点(蓝图 §1):**5a「问用户填什么」一轮**。5b/5c 不交互。
 
@@ -36,7 +36,7 @@ Stage5 把今天「纯确定性塞图 + folio/date」的 `/v3/cover` 升级为
 | `assign_images_v3` 塞图(图装配) | **保留**,封面照片由浏览器选 + Web 落到相关页(见 §5);5c 仍走 `assign_images_v3` 把页上照片塞进模板 image 槽 |
 | `generic_copy.fill_page_generic_copy`(folio/date 装饰) | **保留**,5c 仍调它补 folio/date(装饰非用户内容,§3) |
 | 「用户正文槽 title/body 留空」 | **被取代** —— 改由 5a AI 写文案 + 5c 复用单页 `_clean_texts` 落进正文槽 |
-| 「accentColor 不动 / 留 null」 | **被取代** —— 5b 出色 + `finalize_color` 定 hex + 5c 复用 apply-theme 刷色 |
+| 「accentColor 不动 / 留 null」 | **被取代** —— 5b 代码识别提取色 → AI「颜色设计」skill 设计封面色 → `finalize_color` 定 hex + 5c 复用 apply-theme 刷色 |
 | skip 流程(两 id 缺 = 空 patch,不报错) | **保留**(见 §4) |
 | 「FIRST 页=cover / LAST 页=ending,落不下抛错」 | **保留**(页选取语义不变) |
 
@@ -54,8 +54,8 @@ Stage5 把今天「纯确定性塞图 + folio/date」的 `/v3/cover` 升级为
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `coverPhoto` | `str?`(200px base64) | 浏览器选的封面照片;5a 给 DeepSeek 看 + 5b 给豆包取色。skip 时省略 |
-| `endingPhoto` | `str?`(200px base64,可选) | 封尾照片(若封尾也要 AI 取色/看图);无则封尾沿用页上既有照片、配色复用封面通用色 |
+| `coverPhoto` | `str?`(200px base64) | 浏览器选的封面照片;5a 给 DeepSeek 看 + 5b 代码识别提取色 + AI 设计封面色。skip 时省略 |
+| `endingPhoto` | `str?`(200px base64,可选) | 封尾照片(若封尾也要识别取色/看图);无则封尾沿用页上既有照片、配色复用封面色 |
 | `hint` | `str?` | promptHint(整本基调引导,透传 5a)|
 | `userMessage` | `str`(默认 "") | 本轮用户消息(交互输入)|
 | `history` | `list[V3ChatTurn]`(`max_length=20`) | 跨轮对话历史(**复用现有 `V3ChatTurn`**,与 chapter-chat/page-edit 同型)|
@@ -73,7 +73,7 @@ Stage5 把今天「纯确定性塞图 + folio/date」的 `/v3/cover` 升级为
 | `layoutPatch` | 不变(`V3LayoutPatchEntry[]`,可空) | 文案 + 色刷进封面/封尾页;skip / 纯反问轮时为空 |
 | `assistantReply` | **语义扩展** | 可能是**反问**(5a 问用户填什么)而非确认;Web 据此决定是否结束交互 |
 | `needsUserInput` | NEW `bool`(默认 False) | True = 这是反问轮,patch 为空,Web 应展示 reply 等用户答、**不推进 stage** |
-| `usage` | 不变 | 计入 vision(5b)+ planning(5a)|
+| `usage` | 不变 | 计入颜色设计(5b AI skill)+ planning(5a);代码识别提取色不计模型用量 |
 
 > 蓝图 §2 Stage5 行「coverTexts/endingTexts + assistantReply(可能提问)」即由
 > `layoutPatch`(文案已落页)+ `assistantReply` + `needsUserInput` 三者表达;**不**单列
@@ -142,7 +142,8 @@ Web 把 reply 显示给用户 → 用户回答 → 再次 POST /v3/cover(userMes
 | 填装饰(folio/date) | `engine.generic_copy.fill_page_generic_copy` | 与 Stage2 generic、现 cover_v3 同源 |
 | **填文案(正文槽)** | `agents.writing.handler._clean_texts(raw_texts, specs, template_id=...)` + `_page_slot_specs(page)` | **与 Stage3 单页编辑(page_edit)同一函数** —— page_edit 段二就调它落 edit_text 补丁;Stage5 把 5a 的 coverTexts 当 `raw_texts` 喂同一清洗/钳裁器 |
 | **刷色(强调色 + 字体)** | `engine.apply_theme_v3._apply_page(page, V3ChapterThemeChoice(...))` 的刷色路径(svg variableDecor → accentColor;title 槽逻辑) | **与 Stage4 apply-theme 同一函数** —— 把封面页当「一章」构造一个 `V3ChapterThemeChoice{accentColor=finalize_color(...), artFont, subject=封面标题?}` 喂进去 |
-| **定最终色** | `finalize_color(通用色) -> "#RRGGBB"` | **共享板块(Stage4 定义),本文只引用** —— 唯一出最终 hex 的口 |
+| **识别提取色** | `engine.accent_color.accent_from_photo(封面照片)` -> 提取色 `"#RRGGBB"` | **与 Stage1 1d 颜色识别同源** —— 代码确定性从封面照片提取色,作 AI 设计依据(非最终色) |
+| **定最终色** | `finalize_color(AI 设计出的封面色) -> "#RRGGBB"` | **共享板块(Stage4 定义),本文只引用** —— 唯一出最终 hex 的口 |
 
 落地顺序(单页内):`assign_images_v3` → `_clean_texts` 落正文 → `fill_page_generic_copy`
 补装饰 → `_apply_page` 刷色,合成一条 `V3LayoutPatchEntry{pageIndex, templateId, images, texts}`。
@@ -159,7 +160,8 @@ Web 把 reply 显示给用户 → 用户回答 → 再次 POST /v3/cover(userMes
 
 ## 7. 共享板块依赖(只引用,不在本文重设)
 
-- `finalize_color(通用色)->"#RRGGBB"`:共享板块定义;Stage5 在 5c 调用(★若封面色仍走豆包通用色),逻辑 boss 待给。★章节色已不经 finalize_color(Stage1 1d 代码取色);封面色是否改用 `accent_from_photo` 代码取色 = 待 boss 定。
+- `finalize_color(设计色)->"#RRGGBB"`:共享板块定义;Stage5 在 5c 调用(把 AI「颜色设计」skill 设计出的封面色归一化为最终 hex),逻辑 boss 待给。★finalize_color 同时服务章节色(Stage4)与封面色(Stage5):两者都是 AI 颜色设计出色 → finalize_color 归一化。
+- `accent_from_photo(封面照片)->"#RRGGBB"`:共享板块(`accent_color`)定义;Stage5 5b 调用,代码确定性从封面照片提取「提取色」作 AI 颜色设计的依据(与 Stage1 1d `accent_of_group` 同套识别,非最终色)。
 - 简易 id 映射 `to_simple/from_simple`:Stage5 喂 DeepSeek 的载体若需脱敏 id,复用共享映射,**不另建**。
 - `V3ChatTurn`:复用现有 schema(chapter-chat / page-edit 同型),不新增交互 turn 类型。
 
