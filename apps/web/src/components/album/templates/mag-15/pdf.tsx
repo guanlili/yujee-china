@@ -4,8 +4,6 @@ import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
-
 export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image1?: string;
@@ -17,9 +15,6 @@ export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
   const dateTheme = resolveThemeCarrier(data, 'date');
-  const titleText = titleTheme.text ?? d.title ?? 'HAPPY\nCHOFU';
-  const titleFont =
-    titleTheme.pdfFontFamily ?? (hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.poppins);
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <Text
@@ -49,19 +44,17 @@ export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
       <Text
         style={{
           position: 'absolute',
-          top: 690,
+          top: 750,
           right: 70,
-          width: 460,
           textAlign: 'right',
-          fontFamily: titleFont,
-          fontWeight: 'bold',
-          fontSize: 84,
-          letterSpacing: 1,
-          lineHeight: 1.02,
+          fontFamily: titleTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
+          fontSize: 54,
+          letterSpacing: 5,
+          lineHeight: 1.1,
           color: titleTheme.accentColor ?? COLORS.ink,
         }}
       >
-        {titleText}
+        {titleTheme.text ?? d.title ?? 'HAPPY\nCHOFU'}
       </Text>
       <Text
         style={{

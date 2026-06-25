@@ -4,8 +4,6 @@ import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
-
 export function PdfMag13({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
@@ -15,8 +13,6 @@ export function PdfMag13({ data, imagePos }: TemplateRenderProps) {
     folio?: string;
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
-  const titleText = titleTheme.text ?? d.title ?? 'YUICHI TOKUDA\nPHOTOGRAPHY';
-  const titleFont = titleTheme.pdfFontFamily ?? (hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat);
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <Text
@@ -25,16 +21,15 @@ export function PdfMag13({ data, imagePos }: TemplateRenderProps) {
           top: 110,
           left: 90,
           right: 90,
-          fontFamily: titleFont,
-          fontWeight: 'bold',
-          fontSize: 56,
-          letterSpacing: 6.7,
+          fontFamily: titleTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
+          fontSize: 28,
+          letterSpacing: 8,
           textAlign: 'center',
-          lineHeight: 1.12,
+          lineHeight: 1.35,
           color: titleTheme.accentColor ?? COLORS.ink,
         }}
       >
-        {titleText}
+        {titleTheme.text ?? d.title ?? 'YUICHI TOKUDA\nPHOTOGRAPHY'}
       </Text>
       <View
         style={{

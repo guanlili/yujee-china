@@ -308,6 +308,7 @@ Response `V3ChapterChatResponse`:
   assistantReply: string;
   pagesTexts?: V3PageTextsPatch[];
   layoutPatch?: V3LayoutPatchEntry[];
+  nameOptions?: string[];
   usage: V3Usage;
 }
 ```

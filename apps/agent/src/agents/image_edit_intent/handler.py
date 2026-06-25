@@ -94,22 +94,26 @@ def _max_interior_capacity() -> int:
 def _build_user_content(
     chapter: V3Chapter, page: Page, user_message: str
 ) -> str:
-    """意图调用的数据清单。文字模板在 `edit_image_intent.user.md`,这里【只】拼装动态
-    数据填进占位符:本章照片(id + 场景句子)、当前聚焦页上有哪些照片(好让挪图 / 换图有
-    依据)、容量上限,以及用户的诉求。无 base64,无 GPS/place —— 只有识图模型早已写好的
-    文字(§3 隐私)。输出约束在 system prompt 里,不在这里重复。"""
+    """意图调用的紧凑文字清单。带上本章的照片(id + 场景句子)、当前聚焦页上有哪些照片
+    (好让挪图 / 换图有依据)、容量上限,以及用户的诉求。无 base64,无 GPS/place ——
+    只有识图模型早已写好的文字(§3 隐私)。"""
     photo_lines = "\n".join(
         f"    - {p.photoId}: {p.sceneDescription or '(无描述)'}"
         for p in chapter.photos
     )
     current_ids = list(page.images.values())
-    return load_prompt(
-        _PROMPT_DIR / "edit_image_intent.user.md",
-        CHAPTER_DESC=chapter.description or "(无描述)",
-        PHOTO_LIST=photo_lines,
-        CURRENT_PHOTOS=", ".join(current_ids) if current_ids else "(无)",
-        CAPACITY=str(_max_interior_capacity()),
-        USER_MESSAGE=user_message,
+    current = ", ".join(current_ids) if current_ids else "(无)"
+    capacity = _max_interior_capacity()
+    return (
+        f"章节:{chapter.description or '(无描述)'}\n\n"
+        f"本章可用的全部照片(请使用这些确切的 photoId 值):\n"
+        f"{photo_lines}\n\n"
+        f"当前正在编辑的这页上的照片,按顺序:{current}\n\n"
+        f"用户对【这一页】的要求:\n{user_message}\n\n"
+        f"一页最多容纳 {capacity} 张照片。"
+        '返回 {"photoIds":[...]} —— 改动后这页上应有的、按顺序排列的 photoId 列表,'
+        "【只】从上面本章的照片里取。不要返回 templateId、pageIndex 或任何版式 id;"
+        "由系统来摆放照片、挑选版式。"
     )
 
 
@@ -139,7 +143,9 @@ async def _call_model(slot: VisionSlot, manifest: str) -> list[str]:
     messages = [
         {
             "role": "system",
-            "content": load_prompt(_PROMPT_DIR / "edit_image_intent.md"),
+            "content": load_prompt(
+                _PROMPT_DIR / "edit_image_intent.md", common=("json_only",)
+            ),
         },
         {"role": "user", "content": manifest},
     ]

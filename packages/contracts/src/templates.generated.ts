@@ -20,37 +20,6 @@ export const TEMPLATE_IDS = [
   "mag-18",
   "mag-19",
   "mag-20",
-  "mag-22",
-  "mag-23",
-  "mag-25",
-  "mag-26",
-  "mag-27",
-  "mag-28",
-  "mag-29",
-  "mag-30",
-  "mag-31",
-  "mag-32",
-  "mag-33",
-  "mag-34",
-  "mag-35",
-  "mag-36",
-  "mag-37",
-  "mag-38",
-  "mag-39",
-  "mag-40",
-  "mag-41",
-  "mag-42",
-  "mag-43",
-  "mag-44",
-  "mag-45",
-  "mag-46",
-  "mag-47",
-  "mag-48",
-  "mag-49",
-  "mag-50",
-  "mag-51",
-  "mag-52",
-  "mag-53",
   "p01"
 ] as const;
 
@@ -77,7 +46,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "title",
         "maxChars": 12,
         "lang": "user",
-        "hint": "封面主标题，意象短语",
+        "hint": "封面主标题:≤6 字意象短语,定整本基调",
         "variableDecor": true
       },
       {
@@ -93,14 +62,14 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "explain",
         "maxChars": 40,
         "lang": "user",
-        "hint": "封面图注一"
+        "hint": "封面图注一:点出这张封面照片的瞬间或地点"
       },
       {
         "id": "explain2",
         "role": "explain",
         "maxChars": 40,
         "lang": "user",
-        "hint": "封面图注二，接图注一"
+        "hint": "封面图注二:承接图注一,补一句情绪或时间"
       },
       {
         "id": "folio",
@@ -118,9 +87,9 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 30,
+        "maxChars": 24,
         "lang": "user",
-        "hint": "目录页大标题（如「目录」「Contents」）",
+        "hint": "目录页大标题,如「目录」/「Contents」",
         "variableDecor": true
       },
       {
@@ -174,17 +143,9 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "label",
         "role": "decoration",
-        "maxChars": 12,
+        "maxChars": 20,
         "lang": "en",
-        "hint": "只写地点 / 章节标签小字(上方小字 kicker),如「京都 ·」;不要带日期——日期单独走 date 槽,两者分开填",
-        "variableDecor": true
-      },
-      {
-        "id": "date",
-        "role": "decoration",
-        "maxChars": 10,
-        "lang": "en",
-        "hint": "只写日期(下方放大显示的较大一行),如「03 / 30」或「3 月 30 号」;不要带地点——地点单独走 label 槽",
+        "hint": "地点 / 章节标签小字,如「京都 · 03 / 30」",
         "variableDecor": true
       },
       {
@@ -218,6 +179,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
           "detail",
           "fill"
         ]
+      },
+      {
+        "id": "image3",
+        "orientation": [
+          "square"
+        ],
+        "quality": [
+          "detail",
+          "fill"
+        ]
       }
     ],
     "texts": [
@@ -226,14 +197,14 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "主图说明"
+        "hint": "主图说明:客观描述这组照片的主画面"
       },
       {
         "id": "explain2",
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "次图说明，接主图"
+        "hint": "次要说明:承接主图,带一点叙事或时间"
       },
       {
         "id": "date",
@@ -272,7 +243,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "title",
         "maxChars": 24,
         "lang": "user",
-        "hint": "整页主标题，可两行",
+        "hint": "整页主标题,可两行",
         "variableDecor": true
       },
       {
@@ -288,7 +259,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "整页正文段落"
+        "hint": "正文段落:第一人称回忆口吻,2-3 句"
       },
       {
         "id": "folio",
@@ -368,7 +339,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "主图说明，接上图"
+        "hint": "主图说明,承接上图"
       },
       {
         "id": "folio",
@@ -399,22 +370,29 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "title",
         "maxChars": 12,
         "lang": "user",
-        "hint": "短意象标题（≤4 字）",
+        "hint": "短标题,≤4 字意象词",
         "variableDecor": true
+      },
+      {
+        "id": "body",
+        "role": "body",
+        "maxChars": 180,
+        "lang": "user",
+        "hint": "正文:第一人称叙事,3-4 句"
       },
       {
         "id": "explain1",
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "图注，点出人物或场景"
+        "hint": "图注:点出人物或场景"
       },
       {
         "id": "explain2",
         "role": "explain",
-        "maxChars": 480,
+        "maxChars": 90,
         "lang": "user",
-        "hint": "较长图注，展开这一刻；分两段（段间空行），第一段抓住瞬间、第二段回味"
+        "hint": "较长说明:展开这一刻的故事"
       },
       {
         "id": "date",
@@ -463,7 +441,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "title",
         "maxChars": 24,
         "lang": "user",
-        "hint": "该页标题，可两行",
+        "hint": "该页标题,可两行",
         "variableDecor": true
       },
       {
@@ -471,7 +449,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "body",
         "maxChars": 80,
         "lang": "user",
-        "hint": "一句短引语"
+        "hint": "短引语 / 抒情句,一句话"
       },
       {
         "id": "explain1",
@@ -490,9 +468,9 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "explain3",
         "role": "explain",
-        "maxChars": 220,
+        "maxChars": 90,
         "lang": "user",
-        "hint": "图片下方的事件说明：用 3–4 句话讲清这组照片背后的经过与情景（说明+事件叙述），比上面两条图注更长更具体"
+        "hint": "补充图注"
       },
       {
         "id": "folio",
@@ -552,7 +530,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "title",
         "maxChars": 24,
         "lang": "user",
-        "hint": "该页标题，可两行",
+        "hint": "该页标题,可两行",
         "variableDecor": true
       },
       {
@@ -605,7 +583,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "title",
         "maxChars": 24,
         "lang": "user",
-        "hint": "封面主标题，可两行（作者名/作品名）",
+        "hint": "封面主标题,可两行,如作者名 / 作品名",
         "variableDecor": true
       },
       {
@@ -613,7 +591,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "封面引言/简介"
+        "hint": "封面引言 / 简介,2-3 句"
       },
       {
         "id": "folio",
@@ -662,7 +640,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "body",
         "maxChars": 80,
         "lang": "user",
-        "hint": "短正文"
+        "hint": "短正文,一两句"
       },
       {
         "id": "date",
@@ -718,7 +696,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "右图说明，接左图"
+        "hint": "右图说明,承接左图"
       },
       {
         "id": "folio",
@@ -749,7 +727,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "title",
         "maxChars": 12,
         "lang": "user",
-        "hint": "极短引题（单词/2 字）",
+        "hint": "极短引题,如单词 / 2 字",
         "variableDecor": true
       },
       {
@@ -784,950 +762,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     ],
     "texts": []
   },
-  "mag-22": {
-    "id": "mag-22",
-    "category": "ending",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 20,
-        "lang": "user",
-        "hint": "合集主标题，短词（如「365 Stories」）",
-        "variableDecor": true
-      },
-      {
-        "id": "body1",
-        "role": "body",
-        "maxChars": 180,
-        "lang": "user",
-        "hint": "第一段故事正文"
-      },
-      {
-        "id": "explain1",
-        "role": "explain",
-        "maxChars": 20,
-        "lang": "user",
-        "hint": "第一段作者署名（如「Steven D.K」）"
-      },
-      {
-        "id": "body2",
-        "role": "body",
-        "maxChars": 180,
-        "lang": "user",
-        "hint": "第二段故事正文"
-      },
-      {
-        "id": "explain2",
-        "role": "explain",
-        "maxChars": 20,
-        "lang": "user",
-        "hint": "第二段作者署名（如「July Zh」）"
-      }
-    ]
-  },
-  "mag-23": {
-    "id": "mag-23",
-    "category": "cover",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 12,
-        "lang": "user",
-        "hint": "封面书名，展示大字（如「YVAINE」）",
-        "variableDecor": true
-      },
-      {
-        "id": "subtitle",
-        "role": "title",
-        "maxChars": 12,
-        "lang": "user",
-        "hint": "副标题，接书名下方略小（如「LIFE」）",
-        "variableDecor": true
-      },
-      {
-        "id": "year",
-        "role": "decoration",
-        "maxChars": 20,
-        "lang": "en",
-        "hint": "封面年份列表，每行一个年份（换行分隔），如「2026\n2025\n2024」"
-      },
-      {
-        "id": "city",
-        "role": "decoration",
-        "maxChars": 30,
-        "lang": "en",
-        "hint": "封面城市列表，每行一个城市（换行分隔），如「Shanghai\nBeijing\nDali」"
-      }
-    ]
-  },
-  "mag-25": {
-    "id": "mag-25",
-    "category": "ending",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 12,
-        "lang": "user",
-        "hint": "封底主标题，意象短词两行排（如「意外」「时光」），收束整册",
-        "variableDecor": true
-      },
-      {
-        "id": "body",
-        "role": "body",
-        "maxChars": 80,
-        "lang": "user",
-        "hint": "封底结尾，温柔收束，可留余韵（「未完待续…」）"
-      },
-      {
-        "id": "explain",
-        "role": "explain",
-        "maxChars": 20,
-        "lang": "user",
-        "hint": "作者署名，竖排（如「Yavine Yun」）"
-      },
-      {
-        "id": "label",
-        "role": "decoration",
-        "maxChars": 4,
-        "lang": "en",
-        "hint": "大号装饰数字编号，如「26」",
-        "variableDecor": true
-      },
-      {
-        "id": "date",
-        "role": "decoration",
-        "maxChars": 12,
-        "lang": "en",
-        "variableDecor": true
-      }
-    ]
-  },
-  "mag-26": {
-    "id": "mag-26",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 16,
-        "lang": "user",
-        "hint": "竖排大标题（如「nano / banana」）",
-        "variableDecor": true
-      },
-      {
-        "id": "explain",
-        "role": "explain",
-        "maxChars": 40,
-        "lang": "user",
-        "hint": "正文上方导语小标题，一句"
-      },
-      {
-        "id": "body",
-        "role": "body",
-        "maxChars": 180,
-        "lang": "user",
-        "hint": "页面主正文，接导语"
-      },
-      {
-        "id": "label1",
-        "role": "decoration",
-        "maxChars": 20,
-        "lang": "en",
-        "hint": "竖排英文装饰小字（rotate -90°），靠内侧，短句即可",
-        "variableDecor": true
-      },
-      {
-        "id": "label2",
-        "role": "decoration",
-        "maxChars": 20,
-        "lang": "en",
-        "hint": "竖排英文装饰小字（rotate -90°），靠外侧，短句即可",
-        "variableDecor": true
-      }
-    ]
-  },
-  "mag-27": {
-    "id": "mag-27",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 18,
-        "lang": "user",
-        "hint": "左上大标题，1–2 短词分两行",
-        "variableDecor": true
-      },
-      {
-        "id": "explain1",
-        "role": "explain",
-        "maxChars": 24,
-        "lang": "user",
-        "hint": "右上导语小标题，呼应大标题"
-      },
-      {
-        "id": "body",
-        "role": "body",
-        "maxChars": 80,
-        "lang": "user",
-        "hint": "右上正文导语，接小标题"
-      },
-      {
-        "id": "explain2",
-        "role": "explain",
-        "maxChars": 40,
-        "lang": "user",
-        "hint": "中部横图图注"
-      },
-      {
-        "id": "date",
-        "role": "decoration",
-        "maxChars": 12,
-        "lang": "en",
-        "variableDecor": true
-      },
-      {
-        "id": "label1",
-        "role": "decoration",
-        "maxChars": 12,
-        "lang": "en",
-        "variableDecor": true
-      },
-      {
-        "id": "label2",
-        "role": "decoration",
-        "maxChars": 20,
-        "lang": "en",
-        "variableDecor": true
-      }
-    ]
-  },
-  "mag-28": {
-    "id": "mag-28",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 24,
-        "lang": "user",
-        "hint": "左侧大字主标题，短词分多行（如「My Secret Place」）",
-        "variableDecor": true
-      },
-      {
-        "id": "headline",
-        "role": "title",
-        "maxChars": 90,
-        "lang": "user",
-        "hint": "左侧大字陈述句，接主标题，点出这地方对「我」的意义",
-        "variableDecor": true
-      },
-      {
-        "id": "explain",
-        "role": "explain",
-        "maxChars": 40,
-        "lang": "user",
-        "hint": "左下角小图注"
-      }
-    ]
-  },
-  "mag-29": {
-    "id": "mag-29",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 22,
-        "lang": "user",
-        "hint": "右对齐大标题，一句旅途主题短语",
-        "variableDecor": true
-      },
-      {
-        "id": "body",
-        "role": "body",
-        "maxChars": 90,
-        "lang": "user",
-        "hint": "右对齐图注，接上方双图"
-      },
-      {
-        "id": "label",
-        "role": "decoration",
-        "maxChars": 12,
-        "lang": "en",
-        "variableDecor": true
-      }
-    ]
-  },
-  "mag-30": {
-    "id": "mag-30",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "explain",
-        "role": "explain",
-        "maxChars": 90,
-        "lang": "user",
-        "hint": "横图右下角多行图注"
-      }
-    ]
-  },
-  "mag-31": {
-    "id": "mag-31",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      },
-      {
-        "id": "image3"
-      },
-      {
-        "id": "image4"
-      },
-      {
-        "id": "image5"
-      },
-      {
-        "id": "image6"
-      }
-    ],
-    "texts": [
-      {
-        "id": "body",
-        "role": "body",
-        "maxChars": 80,
-        "lang": "user",
-        "hint": "底部居中图注，串起这六张照片"
-      }
-    ]
-  },
-  "mag-32": {
-    "id": "mag-32",
-    "category": "cover",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 30,
-        "lang": "user",
-        "hint": "封面书名，落左下角（如「A Year of Somewhere」）",
-        "variableDecor": true
-      },
-      {
-        "id": "label",
-        "role": "decoration",
-        "maxChars": 12,
-        "lang": "en",
-        "hint": "封面地名标签，竖排沿左缘大字重复出现，如「NORWAY」",
-        "variableDecor": true
-      }
-    ]
-  },
-  "mag-33": {
-    "id": "mag-33",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      },
-      {
-        "id": "image3"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 22,
-        "lang": "user",
-        "hint": "左侧竖排大字标题，短词（如「Three Mornings」）",
-        "variableDecor": true
-      },
-      {
-        "id": "caption1",
-        "role": "explain",
-        "maxChars": 40,
-        "lang": "user",
-        "hint": "第一张图图注"
-      },
-      {
-        "id": "caption2",
-        "role": "explain",
-        "maxChars": 40,
-        "lang": "user",
-        "hint": "第二张图图注"
-      },
-      {
-        "id": "caption3",
-        "role": "explain",
-        "maxChars": 40,
-        "lang": "user",
-        "hint": "第三张图图注"
-      }
-    ]
-  },
-  "mag-34": {
-    "id": "mag-34",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 24,
-        "lang": "user",
-        "hint": "顶部居中大字主标题，压竖图上沿（如「All Alone」）",
-        "variableDecor": true
-      },
-      {
-        "id": "explain",
-        "role": "explain",
-        "maxChars": 120,
-        "lang": "user",
-        "hint": "底部居中收尾图注"
-      }
-    ]
-  },
-  "mag-35": {
-    "id": "mag-35",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "label",
-        "role": "title",
-        "maxChars": 12,
-        "lang": "user",
-        "hint": "左上角引导小标签（如「And」「Notes」）",
-        "variableDecor": true
-      },
-      {
-        "id": "date",
-        "role": "title",
-        "maxChars": 14,
-        "lang": "user",
-        "hint": "右上角日期/地点小标签，与左侧对仗（如「June 2026」）",
-        "variableDecor": true
-      },
-      {
-        "id": "body",
-        "role": "explain",
-        "maxChars": 120,
-        "lang": "user",
-        "hint": "图下左侧散文收束语"
-      }
-    ]
-  },
-  "mag-36": {
-    "id": "mag-36",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 16,
-        "lang": "user",
-        "hint": "居中大字主标题，叠在大图上的白色面板里，地名/短词（如「Seaside」）",
-        "variableDecor": true
-      },
-      {
-        "id": "explain",
-        "role": "explain",
-        "maxChars": 48,
-        "lang": "user",
-        "hint": "左下角浅色小图注"
-      }
-    ]
-  },
-  "mag-37": {
-    "id": "mag-37",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "body",
-        "role": "body",
-        "maxChars": 90,
-        "lang": "user",
-        "hint": "图上方左侧一小段闭合手记"
-      },
-      {
-        "id": "decor",
-        "role": "title",
-        "maxChars": 44,
-        "lang": "user",
-        "hint": "右上角倾斜装饰短句，呼应正文里最戳人的那句",
-        "variableDecor": true
-      }
-    ]
-  },
-  "mag-38": {
-    "id": "mag-38",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      }
-    ],
-    "texts": [
-      {
-        "id": "body",
-        "role": "title",
-        "maxChars": 90,
-        "lang": "user",
-        "hint": "居中大字陈述句，跨上下两图交界，一句心境",
-        "variableDecor": true
-      }
-    ]
-  },
-  "mag-39": {
-    "id": "mag-39",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      }
-    ],
-    "texts": []
-  },
-  "mag-40": {
-    "id": "mag-40",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": []
-  },
-  "mag-41": {
-    "id": "mag-41",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": []
-  },
-  "mag-42": {
-    "id": "mag-42",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      },
-      {
-        "id": "image3"
-      },
-      {
-        "id": "image4"
-      },
-      {
-        "id": "image5"
-      },
-      {
-        "id": "image6"
-      }
-    ],
-    "texts": []
-  },
-  "mag-43": {
-    "id": "mag-43",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      },
-      {
-        "id": "image3"
-      },
-      {
-        "id": "image4"
-      },
-      {
-        "id": "image5"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 12,
-        "lang": "user",
-        "hint": "右中大字主标题，短词（如「Notes」）",
-        "variableDecor": true
-      },
-      {
-        "id": "subtitle",
-        "role": "title",
-        "maxChars": 20,
-        "lang": "user",
-        "hint": "大标题续行（如「from Elsewhere」）",
-        "variableDecor": true
-      },
-      {
-        "id": "caption",
-        "role": "explain",
-        "maxChars": 120,
-        "lang": "user",
-        "hint": "右上拼贴下方图注段"
-      }
-    ]
-  },
-  "mag-44": {
-    "id": "mag-44",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 16,
-        "lang": "user",
-        "hint": "左上超大字主标题，一个短词（如「Notes」「Home」）",
-        "variableDecor": true
-      },
-      {
-        "id": "line",
-        "role": "explain",
-        "maxChars": 40,
-        "lang": "user",
-        "hint": "中部一行承上启下的私语"
-      },
-      {
-        "id": "caption",
-        "role": "explain",
-        "maxChars": 130,
-        "lang": "user",
-        "hint": "右下角收尾图注段"
-      }
-    ]
-  },
-  "mag-45": {
-    "id": "mag-45",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 16,
-        "lang": "user",
-        "hint": "底部一行大号主标题，单个短词（如「Watermelon」）",
-        "variableDecor": true
-      }
-    ]
-  },
-  "mag-46": {
-    "id": "mag-46",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 30,
-        "lang": "user",
-        "hint": "顶部大字主标题，一句收束一天的陈述（如「then we went home,」）",
-        "variableDecor": true
-      },
-      {
-        "id": "caption",
-        "role": "explain",
-        "maxChars": 40,
-        "lang": "user",
-        "hint": "右侧小图注，接标题"
-      }
-    ]
-  },
-  "mag-47": {
-    "id": "mag-47",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      },
-      {
-        "id": "image3"
-      },
-      {
-        "id": "image4"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 26,
-        "lang": "user",
-        "hint": "左上大字主标题，一句旅程收尾",
-        "variableDecor": true
-      },
-      {
-        "id": "explain",
-        "role": "explain",
-        "maxChars": 130,
-        "lang": "user",
-        "hint": "标题下图注段，串起这四张照片"
-      }
-    ]
-  },
-  "mag-48": {
-    "id": "mag-48",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      },
-      {
-        "id": "image3"
-      },
-      {
-        "id": "image4"
-      },
-      {
-        "id": "image5"
-      },
-      {
-        "id": "image6"
-      },
-      {
-        "id": "image7"
-      },
-      {
-        "id": "image8"
-      },
-      {
-        "id": "image9"
-      }
-    ],
-    "texts": []
-  },
-  "mag-49": {
-    "id": "mag-49",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 12,
-        "lang": "user",
-        "hint": "顶部超大地名，横排铺满页顶（如「NORWAY」），首字母略大",
-        "variableDecor": true
-      }
-    ]
-  },
-  "mag-50": {
-    "id": "mag-50",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      },
-      {
-        "id": "image3"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 16,
-        "lang": "user",
-        "hint": "右下角主标题，全大写短词（如「ANOTHER」）",
-        "variableDecor": true
-      }
-    ]
-  },
-  "mag-51": {
-    "id": "mag-51",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 16,
-        "lang": "user",
-        "hint": "顶部超大地名/主标题，单行（如「NORWAY」）",
-        "variableDecor": true
-      }
-    ]
-  },
-  "mag-52": {
-    "id": "mag-52",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      },
-      {
-        "id": "image3"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 40,
-        "lang": "user",
-        "hint": "跨页大标题，左页只露左片段（如「Notes from Elsewhere」）",
-        "variableDecor": true
-      }
-    ]
-  },
-  "mag-53": {
-    "id": "mag-53",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 28,
-        "lang": "user",
-        "hint": "跨页大标题右片段，短词分多行（如「Notes from Elsewhere」）",
-        "variableDecor": true
-      }
-    ]
-  },
   "p01": {
     "id": "p01",
     "category": "cover",
@@ -1749,7 +783,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "title",
         "maxChars": 24,
         "lang": "user",
-        "hint": "封面主标题，可两行",
+        "hint": "封面主标题,可两行",
         "variableDecor": true
       },
       {
@@ -1757,7 +791,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "body",
         "maxChars": 80,
         "lang": "user",
-        "hint": "封面简介"
+        "hint": "封面简介,1-2 句"
       },
       {
         "id": "label1",

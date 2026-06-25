@@ -5,10 +5,10 @@
     { "id": "image", "orientation": ["landscape", "square"], "quality": ["hero", "detail"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 12, "hint": "封面主标题，意象短语", "variableDecor": true },
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 12, "hint": "封面主标题:≤6 字意象短语,定整本基调", "variableDecor": true },
     { "id": "label", "role": "decoration", "lang": "en", "maxChars": 20, "hint": "封面副标签:系列名 / 卷号 / 年份等小字", "variableDecor": true },
-    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 40, "hint": "封面图注一" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 40, "hint": "封面图注二，接图注一" },
+    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 40, "hint": "封面图注一:点出这张封面照片的瞬间或地点" },
+    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 40, "hint": "封面图注二:承接图注一,补一句情绪或时间" },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

@@ -5,7 +5,7 @@
     { "id": "image", "orientation": ["square"], "quality": ["detail", "fill"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 12, "hint": "极短引题（单词/2 字）", "variableDecor": true },
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 12, "hint": "极短引题,如单词 / 2 字", "variableDecor": true },
     { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "左栏说明" },
     { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "右栏说明" },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }

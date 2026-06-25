@@ -26,58 +26,38 @@ export function WebMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
         position={imagePos?.['image2']}
         slotId="image2"
       />
-      <div style={{ position: 'absolute', top: 778, left: 70, width: 320 }}>
-        <p
-          style={{
-            margin: '0 0 7px',
-            fontFamily: WEB_FONTS.montserrat,
-            fontSize: 8,
-            letterSpacing: '0.3em',
-            color: COLORS.ink3,
-          }}
-        >
-          PLATE I
-        </p>
-        <p
-          style={{
-            margin: 0,
-            fontFamily: WEB_FONTS.montserrat,
-            lineHeight: 1.75,
-            color: COLORS.ink2,
-            letterSpacing: '0.02em',
-            textAlign: 'justify',
-            fontSize: 15,
-          }}
-        >
-          {d.explain1 || ''}
-        </p>
-      </div>
-      <div style={{ position: 'absolute', top: 778, right: 70, width: 320 }}>
-        <p
-          style={{
-            margin: '0 0 7px',
-            fontFamily: WEB_FONTS.montserrat,
-            fontSize: 8,
-            letterSpacing: '0.3em',
-            color: COLORS.ink3,
-          }}
-        >
-          PLATE II
-        </p>
-        <p
-          style={{
-            margin: 0,
-            fontFamily: WEB_FONTS.montserrat,
-            lineHeight: 1.75,
-            color: COLORS.ink2,
-            letterSpacing: '0.02em',
-            textAlign: 'justify',
-            fontSize: 15,
-          }}
-        >
-          {d.explain2 || ''}
-        </p>
-      </div>
+      <p
+        style={{
+          position: 'absolute',
+          top: 790,
+          left: 70,
+          width: 320,
+          margin: 0,
+          lineHeight: 1.75,
+          color: COLORS.ink2,
+          letterSpacing: '0.02em',
+          textAlign: 'justify',
+          fontSize: 16,
+        }}
+      >
+        {d.explain1 || ''}
+      </p>
+      <p
+        style={{
+          position: 'absolute',
+          top: 790,
+          right: 70,
+          width: 320,
+          margin: 0,
+          lineHeight: 1.75,
+          color: COLORS.ink2,
+          letterSpacing: '0.02em',
+          textAlign: 'justify',
+          fontSize: 16,
+        }}
+      >
+        {d.explain2 || ''}
+      </p>
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="18" />
     </WebPage>
   );

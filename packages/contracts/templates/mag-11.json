@@ -5,7 +5,7 @@
     { "id": "image", "orientation": ["portrait"], "quality": ["hero", "detail"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "该页标题，可两行", "variableDecor": true },
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "该页标题,可两行", "variableDecor": true },
     { "id": "label", "role": "decoration", "lang": "en", "maxChars": 20, "hint": "图版标签,如「Plate · 11 / 30」", "variableDecor": true },
     { "id": "explain", "role": "explain", "lang": "user", "maxChars": 90, "hint": "图说" },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }

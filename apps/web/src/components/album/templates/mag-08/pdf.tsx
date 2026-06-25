@@ -4,8 +4,6 @@ import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
-
 export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
@@ -13,12 +11,11 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
     explain1?: string;
     explain2?: string;
     title?: string;
+    body?: string;
     folio?: string;
   };
   const dateTheme = resolveThemeCarrier(data, 'date');
   const titleTheme = resolveThemeCarrier(data, 'title');
-  const titleText = titleTheme.text ?? d.title ?? 'EVENT';
-  const titleFont = titleTheme.pdfFontFamily ?? (hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.abril);
   const dn = (d.date || '08/24').split('/');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
@@ -68,27 +65,30 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
       />
       {/* 左侧说明：与照片左缘对齐、宽度等于照片宽度 */}
       <View style={{ position: 'absolute', top: 670, left: 70, width: 360 }}>
-        <Text style={{ position: 'absolute', left: 70, top: 670, width: 360, fontFamily: hasCjk(d.explain1) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat, fontSize: 18, lineHeight: 1.7, color: COLORS.ink2, textAlign: 'justify' }}>
+        <Text style={{ position: 'absolute', left: 70, top: 670, width: 360, fontSize: 18, lineHeight: 1.7, color: COLORS.ink2, textAlign: 'justify' }}>
           {d.explain1 || ''}
         </Text>
       </View>
-      {/* 右侧说明：移到照片右缘之外、收窄宽度，避免与照片重叠；分两段渲染 */}
-      <View style={{ position: 'absolute', top: 300, left: 470, width: 250 }}>
-        {(d.explain2 || '').split('\n\n').map((para, i) => (
-          <Text key={i} style={{ marginTop: i === 0 ? 0 : 14, fontFamily: hasCjk(d.explain2) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat, fontSize: 16, lineHeight: 1.7, color: COLORS.ink2, textAlign: 'justify' }}>
-            {para}
-          </Text>
-        ))}
+      {/* 右侧说明：移到照片右缘之外、收窄宽度，避免与照片重叠 */}
+      <View style={{ position: 'absolute', top: 670, left: 470, width: 250 }}>
+        <Text style={{ position: 'absolute', left: 470, top: 670, width: 250, fontSize: 18, lineHeight: 1.7, color: COLORS.ink2, textAlign: 'justify' }}>
+          {d.explain2 || ''}
+        </Text>
       </View>
       <Text
-        style={{ position: 'absolute', left: 70, top: 920, width: 280, fontFamily: titleFont,
-          fontSize: 78,
-          lineHeight: 1.05,
-          letterSpacing: 1,
+        style={{ position: 'absolute', left: 70, top: 968, width: 244, fontFamily: titleTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
+          fontSize: 60,
+          letterSpacing: 5,
           color: titleTheme.accentColor ?? COLORS.ink }}
       >
-        {titleText}
+        {titleTheme.text ?? d.title ?? 'EVENT'}
       </Text>
+      {/* 标题右侧补一段长文字，填补 Event 右边的空缺 */}
+      <View style={{ position: 'absolute', top: 970, left: 360, width: 360 }}>
+        <Text style={{ position: 'absolute', left: 360, top: 970, width: 360, fontSize: 13, lineHeight: 1.55, color: COLORS.ink2, textAlign: 'justify' }}>
+          {d.body || ''}
+        </Text>
+      </View>
       <PdfFolio folio={d.folio} totalPages={totalPages} fallback="08" />
     </PdfPageShell>
   );

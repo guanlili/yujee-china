@@ -18,13 +18,12 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
   const LAYOUT = {
     caption1: { x: 50, y: 150, w: 240, h: 330, fontSize: 18 }, // 文本框1（上）：x/y 位置、h 高度、fontSize 字号均可编辑
     caption2: { x: 50, y: 510, w: 240, h: 420, fontSize: 18 }, // 文本框2（下，对齐大图）：x/y 位置、h 高度、fontSize 字号均可编辑
-    title: { x: 50, bottom: 70, fontSize: 104 }, // 标题（贴底；bottom 越大越往上）展示级 Bebas Neue 大字
+    title: { x: 50, bottom: 70, fontSize: 56 }, // 标题（贴底；bottom 越大越往上）
     image1: { x: 364, y: 90, w: 380, h: 330 }, // 上方横图
     image2: { x: 364, y: 450, w: 380, h: 480 }, // 下方竖图（大）
   };
   const captionStyle = {
     margin: 0,
-    fontFamily: WEB_FONTS.montserrat, // 图注：Montserrat（带中文回退），保持可读
     lineHeight: 1.7,
     color: COLORS.ink2,
     textAlign: 'justify' as const,
@@ -73,13 +72,11 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
           position: 'absolute',
           bottom: LAYOUT.title.bottom,
           left: LAYOUT.title.x,
-          width: 300,
           margin: 0,
-          // 主标题：指定艺术字 Bebas Neue（高瘦大写，带中文回退）
-          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.bebas,
+          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.serifEn,
           fontSize: LAYOUT.title.fontSize,
-          letterSpacing: '0.02em',
-          lineHeight: 0.92,
+          letterSpacing: '0.06em',
+          lineHeight: 1.15,
           fontWeight: 400,
           color: titleTheme.accentColor,
         }}

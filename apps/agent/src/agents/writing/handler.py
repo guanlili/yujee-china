@@ -29,7 +29,6 @@ Turn 种类(V3ChapterChatKind,镜像 packages/contracts/src/v3.ts):
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -42,6 +41,7 @@ from ...schemas import (
     V3ChapterChatKind,
     V3ChapterChatRequest,
     V3ChapterChatResponse,
+    V3LayoutPatchEntry,
     V3Models,
     V3PageTextsPatch,
     V3Usage,
@@ -49,7 +49,7 @@ from ...schemas import (
 from ...settings import get_settings
 from ...prompts import RULES_DIR, load_prompt
 from ... import ai_client
-from . import author_loop
+from ..image_edit_intent import handler as chat_edit_v3
 from . import guides as writing_guides
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
@@ -173,104 +173,6 @@ def _scene_background(chapter: Any) -> dict[str, Any]:
     }
 
 
-def _repo_copy_examples_dir_from_file() -> Path | None:
-    here = Path(__file__).resolve()
-    for parent in here.parents:
-        candidate = parent / "packages" / "contracts" / "copy-examples"
-        if candidate.is_dir():
-            return candidate
-    return None
-
-
-def _resolve_copy_examples_dir() -> Path | None:
-    explicit = os.environ.get("YUJEE_COPY_EXAMPLES_DIR")
-    if explicit:
-        return Path(explicit)
-    return _repo_copy_examples_dir_from_file()
-
-
-def _template_text_ids(template_id: str) -> set[str]:
-    tpl = registry.get(template_id)
-    if not tpl:
-        return set()
-    slots = list(tpl.get("texts", [])) + list(tpl.get("items", {}).get("texts", []))
-    return {slot["id"] for slot in slots}
-
-
-def _is_template_text_key(slot_id: str, allowed: set[str]) -> bool:
-    if slot_id in allowed:
-        return True
-    match = _BRACKET_KEY_RE.fullmatch(slot_id)
-    return bool(match and match.group(1) in allowed)
-
-
-def _load_copy_examples(template_id: str) -> list[dict[str, Any]]:
-    examples_dir = _resolve_copy_examples_dir()
-    if examples_dir is None:
-        return []
-    path = examples_dir / f"{template_id}.json"
-    if not path.exists():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise ChapterChatV3Error(f"copy examples invalid for {template_id}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise ChapterChatV3Error(f"copy examples invalid for {template_id}: root must be object")
-    extra = set(data) - {"examples"}
-    if extra:
-        raise ChapterChatV3Error(
-            f"copy examples invalid for {template_id}: unsupported fields {sorted(extra)}"
-        )
-    examples = data.get("examples")
-    if not isinstance(examples, list):
-        raise ChapterChatV3Error(f"copy examples invalid for {template_id}: examples must be array")
-
-    allowed = _template_text_ids(template_id)
-    out: list[dict[str, Any]] = []
-    for idx, example in enumerate(examples):
-        if not isinstance(example, dict):
-            raise ChapterChatV3Error(
-                f"copy examples invalid for {template_id}: examples[{idx}] must be object"
-            )
-        extra_example = set(example) - {"texts"}
-        if extra_example:
-            raise ChapterChatV3Error(
-                f"copy examples invalid for {template_id}: examples[{idx}] unsupported fields {sorted(extra_example)}"
-            )
-        texts = example.get("texts")
-        if not isinstance(texts, dict):
-            raise ChapterChatV3Error(
-                f"copy examples invalid for {template_id}: examples[{idx}].texts must be object"
-            )
-        clean_texts: dict[str, str | list[str]] = {}
-        for slot_id, value in texts.items():
-            if not isinstance(slot_id, str) or not _is_template_text_key(slot_id, allowed):
-                raise ChapterChatV3Error(
-                    f"copy examples invalid for {template_id}: examples[{idx}].texts.{slot_id} not in template text ids"
-                )
-            if isinstance(value, str):
-                clean_texts[slot_id] = value
-                continue
-            if isinstance(value, list) and all(isinstance(item, str) for item in value):
-                clean_texts[slot_id] = value
-                continue
-            raise ChapterChatV3Error(
-                f"copy examples invalid for {template_id}: examples[{idx}].texts.{slot_id} must be string or string array"
-            )
-        out.append({"texts": clean_texts})
-    return out
-
-
-def _copy_examples_by_template(pages: list[Page]) -> dict[str, list[dict[str, Any]]]:
-    out: dict[str, list[dict[str, Any]]] = {}
-    for template_id in sorted({page.templateId for page in pages}):
-        examples = _load_copy_examples(template_id)
-        if examples:
-            out[template_id] = examples
-    return out
-
-
 def _page_images_by_index(pages: list[Page]) -> dict[int, dict[str, str]]:
     """页面结构 (§4.2(4)) 的「每页放了哪些图」:每页的 slot→photoId 映射,好让写作 LM
     知道哪些照片放在哪一页,并能写出真正指向它们的文案。`Page.images` 的只读回显。"""
@@ -335,7 +237,6 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
         "pageSlots": {str(idx): specs for idx, specs in slot_specs.items()},
         # ……以及每页放了哪些照片(slot→photoId)。
         "pageImages": {str(idx): imgs for idx, imgs in page_images.items()},
-        "copyExamples": _copy_examples_by_template(req.pages),
         # 用户信息:到目前为止的对话 + 本轮消息。
         "history": [turn.model_dump() for turn in req.history],
         "userMessage": req.userMessage,
@@ -354,7 +255,7 @@ async def run(
     req: V3ChapterChatRequest,
     *,
     complete: CompleteFn | None = None,
-    author_complete: CompleteFn | None = None,
+    call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
 ) -> V3ChapterChatResponse:
     started = time.monotonic()
     messages = build_messages(req)
@@ -362,10 +263,9 @@ async def run(
     parsed = _parse_model_json(response)
     duration_ms = int((time.monotonic() - started) * 1000)
     usage = _usage_from_response(response, duration_ms)
-    # dispatch 判 talk/write/edit;edit 由统一创作 agent loop 接管(去 editTarget 二分)。
-    # `author_complete` 注入 loop 的模型调用,镜像 dispatch 的 `complete` —— 默认走真实
-    # DeepSeek,只在测试里被覆盖。
-    return await _coerce_response(req, parsed, usage, author_complete=author_complete)
+    # `call_intent` 注入 WP2.3 图片编辑意图调用(识图模型),镜像 `complete` 注入 DeepSeek
+    # 分发的方式 —— 两者都默认走真实 provider,只在测试里被覆盖。
+    return await _coerce_response(req, parsed, usage, call_intent=call_intent)
 
 
 async def _complete(
@@ -434,12 +334,15 @@ async def _coerce_response(
     parsed: dict[str, Any],
     usage: V3Usage,
     *,
-    author_complete: CompleteFn | None = None,
+    call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
 ) -> V3ChapterChatResponse:
     kind = _resolve_kind(req, parsed.get("kind"))
-    # 对齐主仓 contracts:nameOptions 已从 V3ChapterChatResponse 删除,这里不再返回它
-    # (worktree agent 基于旧 main,若仍回该字段会被 web 的新 strict 契约拒 → AGENT_INVALID_OUTPUT)。
+    # 可选的 V3 响应字段是带「缺失哨兵」默认值的 strict-typed 列表 —— 显式传 None 会过不了
+    # strict 校验。构建 kwargs,仅在字段真有值时才包含它。
+    name_options = _coerce_name_options(parsed.get("nameOptions"))
     extra: dict[str, Any] = {}
+    if name_options is not None:
+        extra["nameOptions"] = name_options
 
     if kind == "write":
         pages_texts = _coerce_pages_texts(req, parsed.get("pagesTexts"))
@@ -449,6 +352,7 @@ async def _coerce_response(
                 kind="talk",
                 assistantReply=reply[:500],
                 usage=usage,
+                **extra,
             )
         reply = _text(parsed.get("assistantReply")) or _default_reply(req.language, "write")
         return V3ChapterChatResponse(
@@ -456,46 +360,42 @@ async def _coerce_response(
             assistantReply=reply[:500],
             pagesTexts=pages_texts,
             usage=usage,
+            **extra,
         )
 
     if kind == "edit":
-        # 统一创作 agent loop(去 editTarget 二分):模型自主决定改版式 / 换图 / 改文案。
-        # _resolve_kind 已保证聚焦页在本轮切片内。同步 60s 预算下把 loop 步数压到保守值;
-        # loop 一步没动 → patch=None → 降级 talk(绝不发空 / 杜撰 patch)。
-        page = next((p for p in req.pages if p.pageIndex == req.focusedPageIndex), None)
-        if page is not None:
-            patch, loop_reply, loop_usage = await author_loop.run_author_edit(
-                req.chapter,
-                page,
-                req.userMessage,
-                list(req.history),
-                complete=author_complete,
-                max_steps=4,
-            )
+        # 图文分流 (WP2.3 #187):偏图片的编辑把识图模型升级进来产出意图;文字编辑留在
+        # DeepSeek。纯文字编辑【绝不】调用识图模型。
+        if _is_image_edit(parsed.get("editTarget")):
+            patch = await _coerce_image_edit_patch(req, call_intent=call_intent)
             if patch is not None:
-                reply = loop_reply or _text(parsed.get("assistantReply")) or _default_reply(
+                reply = _text(parsed.get("assistantReply")) or _default_reply(
                     req.language, "edit"
                 )
                 return V3ChapterChatResponse(
                     kind="edit",
                     assistantReply=reply[:500],
                     layoutPatch=[patch],
-                    usage=_merge_usage(usage, loop_usage),
+                    usage=usage,
                     **extra,
                 )
-        # 聚焦页缺失 / loop 无改动 → 降级 talk(下方),绝不发空 patch。
-
-    # 模型判了 edit 但被 _resolve_kind 降级成 talk —— 即用户想改某页却没选页
-    # (focusedPageIndex 缺失 / 不在切片内)。dispatch 这次很可能已经生成了"我这就换"的客套话,
-    # 但实际无从执行;直接用它会给用户"似乎换了其实没换"的错觉。这里用明确的"请先选页"覆盖。
-    if parsed.get("kind") == "edit" and kind == "talk":
-        reply = _default_reply(req.language, "edit_needs_focus")
-        return V3ChapterChatResponse(
-            kind="talk",
-            assistantReply=reply[:500],
-            usage=usage,
-            **extra,
-        )
+            # 模型/引擎无法满足的图片编辑 → talk(绝不杜撰)。
+        else:
+            patch = _coerce_edit_patch(req, parsed.get("pageTexts"))
+            if patch is not None:
+                reply = _text(parsed.get("assistantReply")) or _default_reply(
+                    req.language, "edit"
+                )
+                return V3ChapterChatResponse(
+                    kind="edit",
+                    assistantReply=reply[:500],
+                    layoutPatch=[patch],
+                    usage=usage,
+                    **extra,
+                )
+        # 模型判定为 edit 但没产出可用的 patch(纯文字编辑却无可用文字、引擎摆不下的图片
+        # 编辑,或聚焦页缺失 / 不在切片内)。降级为 talk turn,而不是发出一份空/非法 patch
+        # —— 绝不杜撰版式。
 
     # talk — 引导:只回复,绝不出 patch(Frame 4 红线)。也是无可应用内容的 edit turn 的
     # 兜底落点。
@@ -504,6 +404,7 @@ async def _coerce_response(
         kind="talk",
         assistantReply=reply[:500],
         usage=usage,
+        **extra,
     )
 
 
@@ -553,15 +454,53 @@ def _missing_required_texts(req: V3ChapterChatRequest, pages_texts: list[V3PageT
     return missing
 
 
-def _merge_usage(dispatch: V3Usage, loop: V3Usage) -> V3Usage:
-    """合并 dispatch(判 kind)与 author loop(多步)两段 usage —— token / 时长相加,便于计费
-    与可观测(评审 N3 多跳聚合)。"""
-    return V3Usage(
-        durationMs=dispatch.durationMs + loop.durationMs,
-        planningInputTokens=dispatch.planningInputTokens + loop.planningInputTokens,
-        planningOutputTokens=dispatch.planningOutputTokens + loop.planningOutputTokens,
-        models=V3Models(planning=get_settings().deepseek_model),
+def _is_image_edit(raw: Any) -> bool:
+    """DeepSeek 的 edit 分发用 editTarget=="image" 标记一个偏图片的 turn(换图/挪图/改图文
+    配比)。其它一切(含缺失 / "text")都是纯文字编辑,绝不能碰识图模型(图文分流,WP2.3)。"""
+    return isinstance(raw, str) and raw.strip().lower() == "image"
+
+
+async def _coerce_image_edit_patch(
+    req: V3ChapterChatRequest,
+    *,
+    call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
+) -> V3LayoutPatchEntry | None:
+    """涉及图片 edit (§4.2(3) / WP2.3):把聚焦页 + 本章照片 + 用户消息交给 `chat_edit_v3`,
+    由它让识图模型产出一个 photoId 意图,并跑确定性引擎来执行。模型从不产出
+    templateId/pageIndex —— 引擎保证版式合法。聚焦页缺失/不在切片内或没有可用结果时返回
+    None(→ talk);绝不抛错(`run_image_edit` 内部自降级)。"""
+    focused = req.focusedPageIndex
+    if focused is None:
+        return None
+    page = next((p for p in req.pages if p.pageIndex == focused), None)
+    if page is None:
+        return None
+    return await chat_edit_v3.run_image_edit(
+        req.chapter, page, req.userMessage, call_intent=call_intent
     )
+
+
+def _coerce_edit_patch(
+    req: V3ChapterChatRequest, raw: Any
+) -> V3LayoutPatchEntry | None:
+    """Edit turn(纯文字):【只】重写聚焦页的文字。返回一条承载清洗后文字的 layoutPatch
+    (不改 templateId/images —— 照片/版式升级是 WP2.3)。没有可应用的东西时返回 None。"""
+    focused = req.focusedPageIndex
+    if focused is None:
+        return None
+    page = next((p for p in req.pages if p.pageIndex == focused), None)
+    if page is None:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    raw_texts = raw.get("texts")
+    if not isinstance(raw_texts, dict):
+        return None
+    specs = _page_slot_specs(page)
+    texts = _clean_texts(raw_texts, specs)
+    if not texts:
+        return None
+    return V3LayoutPatchEntry(pageIndex=focused, texts=texts)
 
 
 def _raw_texts_by_index(raw: Any) -> dict[int, dict[str, Any]]:
@@ -602,6 +541,24 @@ def _clean_texts(
     return out
 
 
+def _coerce_name_options(raw: Any) -> list[str] | None:
+    """宽容解析模型的 `nameOptions`:最多 4 个非空、去重的标题。无一存活时返回 None
+    (该字段保持可选)。"""
+    if not isinstance(raw, list):
+        return None
+    seen: set[str] = set()
+    names: list[str] = []
+    for item in raw:
+        name = _text(item)
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name[:120])
+        if len(names) == 4:
+            break
+    return names or None
+
+
 def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) and value.strip() else ""
 
@@ -612,13 +569,9 @@ def _default_reply(language: str, kind: str) -> str:
             return "这一章的文案我已经写好了。"
         if kind == "edit":
             return "这一页我已经按你的想法改好了。"
-        if kind == "edit_needs_focus":
-            return "你想改哪一页?先点选那一页,再告诉我怎么改,我就帮你换。"
         return "再和我说说这一章的故事吧?"
     if kind == "write":
         return "I drafted the copy for this chapter."
     if kind == "edit":
         return "I rewrote this page the way you asked."
-    if kind == "edit_needs_focus":
-        return "Which page would you like to change? Tap that page first, then tell me what to change."
     return "Tell me more about the story in this chapter."

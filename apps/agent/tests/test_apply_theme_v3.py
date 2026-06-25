@@ -163,8 +163,8 @@ def test_subject_written_into_title_when_slot_is_empty_string():
 
 
 def test_user_authored_title_is_preserved_not_overwritten_by_subject():
-    # The title slot already holds a value (e.g. edited in the editor).
-    # apply-theme must NOT clobber it with the subject (保留已有章名).
+    # The user hand-named the chapter in the story stage (nameOptions → title slot).
+    # apply-theme must NOT clobber it with the subject (保留用户手起章名).
     page = _page("mag-08", texts={"title": "Homecoming"}, images={"image": "p1"})
     resp = at.apply_theme(_request([page]))
     assert resp.layoutPatch[0].texts["title"] == "Homecoming"

@@ -3,8 +3,6 @@ import { WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-const hasCjk = (s?: string) => /[一-鿿]/.test(s || '');
-
 export function WebP01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
@@ -63,14 +61,14 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
             {dateTheme.text ?? d.date ?? '2026'}
           </span>
         </span>
-        <span>MEMOIR</span>
+        <span>人　生　誌</span>
       </div>
       <div
         style={{
           position: 'absolute',
           top: 70,
           right: 56,
-          fontFamily: volTheme.webFontFamily ?? WEB_FONTS.playfair,
+          fontFamily: volTheme.webFontFamily ?? WEB_FONTS.serifEn,
           fontStyle: 'italic',
           fontSize: 100,
           lineHeight: 0.9,
@@ -92,7 +90,7 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
       >
         <div
           style={{
-            fontFamily: categoryTheme.webFontFamily ?? WEB_FONTS.playfair,
+            fontFamily: categoryTheme.webFontFamily ?? WEB_FONTS.serifEn,
             fontStyle: 'italic',
             letterSpacing: '0.04em',
             color: categoryTheme.accentColor ?? d.label1Color ?? COLORS.vermilionSoft,
@@ -104,26 +102,25 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
         <h1
           style={{
             margin: '8px 0 0',
-            fontFamily:
-              titleTheme.webFontFamily ?? (hasCjk(titleTheme.text ?? d.title) ? WEB_FONTS.serifCn : WEB_FONTS.playfair),
+            fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.serifCn,
             fontWeight: 500,
             letterSpacing: '0.04em',
             lineHeight: 1.15,
             color: titleTheme.accentColor ?? COLORS.paper,
-            fontSize: 56,
+            fontSize: 46,
           }}
         >
-          {brToReact(titleTheme.text ?? d.title ?? 'Page Title')}
+          {brToReact(titleTheme.text ?? d.title ?? '页面标题')}
         </h1>
         <div style={{ marginTop: 22 }}>
           <p
             style={{
               margin: 0,
-              fontFamily: hasCjk(d.body) ? WEB_FONTS.serifCn : WEB_FONTS.lora,
+              fontFamily: WEB_FONTS.serifCn,
               lineHeight: 1.85,
               color: COLORS.paper78,
               textAlign: 'justify',
-              fontSize: 18,
+              fontSize: 16,
             }}
           >
             {d.body || ''}

@@ -506,7 +506,16 @@ class V3ChapterChatResponse(_V3Strict):
     pagesTexts: list[V3PageTextsPatch] = None
     # 仅 kind=='edit' 且涉版面:确定性引擎执行后的整页补丁(§4.2(3))。
     layoutPatch: list[V3LayoutPatchEntry] = None
+    # 本章标题候选(≤4),供前端展示挑选;不回灌树(§3 数据归属)。
+    nameOptions: list[str] = Field(default=None, max_length=4)
     usage: V3Usage
+
+    @field_validator("nameOptions")
+    @classmethod
+    def _name_options_nonempty(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and any(len(s) < 1 for s in value):
+            raise ValueError("nameOptions entries must be non-empty")
+        return value
 
 
 # ---------- v3.ts: ③ recommend (sync) -----------------------------------------

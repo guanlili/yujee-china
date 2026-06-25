@@ -6,11 +6,11 @@
     { "id": "image2", "orientation": ["square"], "quality": ["hero", "detail"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "该页标题，可两行", "variableDecor": true },
-    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "hint": "一句短引语" },
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "该页标题,可两行", "variableDecor": true },
+    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "hint": "短引语 / 抒情句,一句话" },
     { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "上图说明" },
     { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "主图说明" },
-    { "id": "explain3", "role": "explain", "lang": "user", "maxChars": 220, "hint": "图片下方的事件说明：用 3–4 句话讲清这组照片背后的经过与情景（说明+事件叙述），比上面两条图注更长更具体" },
+    { "id": "explain3", "role": "explain", "lang": "user", "maxChars": 90, "hint": "补充图注" },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

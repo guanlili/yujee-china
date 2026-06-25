@@ -17,23 +17,17 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
       <p
         style={{
           position: 'absolute',
-          top: 70,
-          left: 60,
-          width: 674,
-          height: 90,
+          top: 100,
+          left: 70,
+          right: 70,
           margin: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           textAlign: 'center',
-          lineHeight: 1.05,
+          lineHeight: 1.4,
           color: introTheme.accentColor ?? COLORS.ink,
-          letterSpacing: '0.01em',
-          fontSize: 72,
-          fontStyle: 'italic',
+          letterSpacing: '0.02em',
+          fontSize: 45,
           whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          fontFamily: WEB_FONTS.playfair,
+          fontFamily: introTheme.webFontFamily,
         }}
       >
         {introTheme.text ?? d.title ?? ''}
@@ -57,7 +51,6 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           letterSpacing: '0.02em',
           textAlign: 'left',
           fontSize: 18,
-          fontFamily: WEB_FONTS.montserrat,
         }}
       >
         {d.explain1 || ''}
@@ -74,7 +67,6 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           letterSpacing: '0.02em',
           textAlign: 'right',
           fontSize: 18,
-          fontFamily: WEB_FONTS.montserrat,
         }}
       >
         {d.explain2 || ''}

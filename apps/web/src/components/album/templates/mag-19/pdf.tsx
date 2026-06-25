@@ -4,8 +4,6 @@ import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
-
 export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
@@ -15,26 +13,23 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
     folio?: string;
   };
   const introTheme = resolveThemeCarrier(data, 'title');
-  const introText = introTheme.text ?? d.title ?? '';
-  const introFont = hasCjk(introText) ? PDF_FONTS.serifCn : PDF_FONTS.playfair;
   // PDF 不支持 writingMode: vertical-rl,Frame 提示退化为水平摆放
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <Text
         style={{
           position: 'absolute',
-          top: 78,
-          left: 60,
-          width: 674,
+          top: 100,
+          left: 70,
+          right: 70,
           textAlign: 'center',
-          lineHeight: 1.05,
+          lineHeight: 1.4,
           color: introTheme.accentColor ?? COLORS.ink,
-          fontSize: 72,
-          fontStyle: 'italic',
-          fontFamily: introFont,
+          fontSize: 45,
+          fontFamily: introTheme.pdfFontFamily,
         }}
       >
-        {introText}
+        {introTheme.text ?? d.title ?? ''}
       </Text>
       <PdfImage
         src={d.image}
@@ -50,7 +45,6 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           lineHeight: 1.7,
           color: COLORS.ink2,
           fontSize: 18,
-          fontFamily: PDF_FONTS.montserrat,
         }}
       >
         {d.explain1 || ''}
@@ -65,7 +59,6 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           color: COLORS.ink2,
           textAlign: 'right',
           fontSize: 18,
-          fontFamily: PDF_FONTS.montserrat,
         }}
       >
         {d.explain2 || ''}

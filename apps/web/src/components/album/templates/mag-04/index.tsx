@@ -7,6 +7,7 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image1?: string;
     image2?: string;
+    image3?: string;
     explain1?: string;
     explain2?: string;
     date?: string;
@@ -23,26 +24,24 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
         position={imagePos?.['image1']}
         slotId="image1"
       />
-      {/* 展示主元素：大号日期数字（Bebas Neue，高瘦大写展示字） */}
       <div
         style={{
           position: 'absolute',
-          top: 150,
-          left: 424,
-          width: 320,
-          height: 120,
-          fontFamily: dateTheme.webFontFamily ?? WEB_FONTS.bebas,
-          fontSize: 108,
+          top: 180,
+          left: 464,
+          width: 280,
+          height: 80,
+          fontFamily: dateTheme.webFontFamily ?? WEB_FONTS.serifEn,
+          fontStyle: 'italic',
+          fontSize: 64,
           lineHeight: 1,
           color: dateTheme.accentColor ?? COLORS.ink,
-          letterSpacing: '0.04em',
+          letterSpacing: '0.02em',
           textAlign: 'right',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
         }}
       >
         {dn[0]}
-        <span style={{ color: dateTheme.accentColor ?? COLORS.ink3, marginLeft: '0.35em' }}>/{dn[1]}</span>
+        <span style={{ color: dateTheme.accentColor ?? COLORS.ink3 }}>/{dn[1]}</span>
       </div>
       <div
         style={{
@@ -50,12 +49,11 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           top: 500,
           left: 60,
           width: 347,
-          fontFamily: WEB_FONTS.montserrat,
           lineHeight: 1.75,
           color: COLORS.ink2,
           textAlign: 'justify',
           letterSpacing: '0.02em',
-          fontSize: 18,
+          fontSize: 20,
         }}
       >
         {d.explain1 || ''}
@@ -63,37 +61,32 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
       <WebImage
         src={d.image2}
         placeholder="1:1"
-        style={{ position: 'absolute', top: 460, right: 50, width: 280, height: 580 }}
+        style={{ position: 'absolute', top: 460, right: 50, width: 280, height: 280 }}
         position={imagePos?.['image2']}
         slotId="image2"
-      />
-      {/* explain2 左侧加粗竖线，上下与两行文字对齐（18×1.75×2 ≈ 63px） */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 760,
-          left: 48,
-          width: 4,
-          height: 63,
-          backgroundColor: COLORS.ink2,
-        }}
       />
       <div
         style={{
           position: 'absolute',
           top: 760,
           left: 60,
-          width: 347,
-          fontFamily: WEB_FONTS.montserrat,
+          width: 300,
           lineHeight: 1.75,
           color: COLORS.ink2,
           textAlign: 'justify',
           letterSpacing: '0.02em',
-          fontSize: 18,
+          fontSize: 20,
         }}
       >
         {d.explain2 || ''}
       </div>
+      <WebImage
+        src={d.image3}
+        placeholder="1:1"
+        style={{ position: 'absolute', top: 760, right: 50, width: 280, height: 280 }}
+        position={imagePos?.['image3']}
+        slotId="image3"
+      />
       <WebFolio folio={d.folio} totalPages={totalPages} fallback="04" />
     </WebPage>
   );
