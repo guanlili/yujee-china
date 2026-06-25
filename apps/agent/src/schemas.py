@@ -583,12 +583,29 @@ class V3CoverRequest(_V3Strict):
     # 选定的封面/封尾模板;null = 跳过该项(封面可选,§4.4)。
     coverTemplateId: str | None = Field(default=None, min_length=1)
     endingTemplateId: str | None = Field(default=None, min_length=1)
+    # Stage5: 200px base64 thumbnails are for local color extraction only; do not
+    # forward them to LLM prompts.
+    coverPhoto: str | None = None
+    endingPhoto: str | None = None
+    # Textual guidance may be sent to 5a copy / 5b AI color design instead of base64.
+    coverPhotoDesc: str | None = None
+    hint: str | None = None
+    userMessage: str = ""
+    history: list[V3ChatTurn] = Field(default_factory=list, max_length=20)
     pages: list[Page]
+
+    @field_validator("coverPhoto", "endingPhoto", "coverPhotoDesc", "hint", mode="before")
+    @classmethod
+    def _reject_explicit_null_stage5_optional_string(cls, value):
+        if value is None:
+            raise ValueError("omit Stage5 optional string fields instead of sending null")
+        return value
 
 
 class V3CoverResponse(_V3Strict):
     layoutPatch: list[V3LayoutPatchEntry]  # 跳过时为空数组(§4.4「跳过=空」)。
     assistantReply: str = Field(default=None, max_length=500)
+    needsUserInput: bool = False
     usage: V3Usage
 
 
