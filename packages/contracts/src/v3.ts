@@ -344,6 +344,7 @@ export const V3CoverRequest = z
   })
   .strict();
 export type V3CoverRequest = z.infer<typeof V3CoverRequest>;
+export type V3CoverRequestInput = z.input<typeof V3CoverRequest>;
 
 export const V3CoverResponse = z
   .object({

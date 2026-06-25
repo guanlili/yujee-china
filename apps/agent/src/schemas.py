@@ -594,6 +594,13 @@ class V3CoverRequest(_V3Strict):
     history: list[V3ChatTurn] = Field(default_factory=list, max_length=20)
     pages: list[Page]
 
+    @field_validator("coverPhoto", "endingPhoto", "coverPhotoDesc", "hint", mode="before")
+    @classmethod
+    def _reject_explicit_null_stage5_optional_string(cls, value):
+        if value is None:
+            raise ValueError("omit Stage5 optional string fields instead of sending null")
+        return value
+
 
 class V3CoverResponse(_V3Strict):
     layoutPatch: list[V3LayoutPatchEntry]  # 跳过时为空数组(§4.4「跳过=空」)。

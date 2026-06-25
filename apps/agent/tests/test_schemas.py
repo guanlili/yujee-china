@@ -524,6 +524,26 @@ class TestV3Endpoints:
                 }
             )
 
+    @pytest.mark.parametrize("field", ["coverPhoto", "endingPhoto", "coverPhotoDesc", "hint"])
+    def test_cover_request_stage5_optional_strings_reject_explicit_null(self, field):
+        page = {"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}
+        omitted = V3CoverRequest.model_validate(
+            {"albumId": "a1", "language": "en", "coverTemplateId": None, "endingTemplateId": None, "pages": [page]}
+        )
+        assert getattr(omitted, field) is None
+
+        with pytest.raises(ValidationError):
+            V3CoverRequest.model_validate(
+                {
+                    "albumId": "a1",
+                    "language": "en",
+                    "coverTemplateId": None,
+                    "endingTemplateId": None,
+                    "pages": [page],
+                    field: None,
+                }
+            )
+
     def test_cover_response_clarification_state_without_public_text_payloads(self):
         usage = {"durationMs": 1, "models": {}}
         normal = V3CoverResponse.model_validate({"layoutPatch": [], "usage": usage})

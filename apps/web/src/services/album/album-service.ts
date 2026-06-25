@@ -903,8 +903,6 @@ export const albumService = {
       language: input.language,
       ...(input.coverTemplateId !== undefined ? { coverTemplateId: input.coverTemplateId } : {}),
       ...(input.endingTemplateId !== undefined ? { endingTemplateId: input.endingTemplateId } : {}),
-      userMessage: '',
-      history: [],
       pages: pagesForAgent,
     });
 

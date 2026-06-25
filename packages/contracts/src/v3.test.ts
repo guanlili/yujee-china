@@ -473,6 +473,22 @@ test('V3CoverRequest defaults chat fields and caps history at 20 turns', () => {
   );
 });
 
+test('V3CoverRequest rejects explicit null for Stage5 optional string fields', () => {
+  const page = { pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} };
+  for (const key of ['coverPhoto', 'endingPhoto', 'coverPhotoDesc', 'hint'] as const) {
+    assert.equal(
+      V3CoverRequest.safeParse({
+        albumId: 'a1',
+        language: 'en',
+        pages: [page],
+        [key]: null,
+      }).success,
+      false,
+      `${key}: null must be rejected; omit the key instead`,
+    );
+  }
+});
+
 test('V3CoverResponse carries clarification state without public text payloads', () => {
   const usage = { durationMs: 1, models: {} };
   const normal = V3CoverResponse.parse({

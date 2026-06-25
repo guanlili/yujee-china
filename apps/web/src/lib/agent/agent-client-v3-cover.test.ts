@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { agentClient } from './agent-client';
-import type { V3CoverRequest } from '@yujee/contracts';
+import type { V3CoverRequestInput } from '@yujee/contracts';
 
 // WP4.1 (#192): the Web-side load-bearing logic for POST /v3/cover is the agent-client
 // method — it unwraps the agent's { ok, data } envelope and validates `data` against the
@@ -10,13 +10,11 @@ import type { V3CoverRequest } from '@yujee/contracts';
 // route is a thin auth + ownership forwarder that then advances stage=ready. These tests
 // mock fetch so no agent/network is needed.
 
-const PAYLOAD: V3CoverRequest = {
+const PAYLOAD: V3CoverRequestInput = {
   albumId: 'alb_v3',
   language: 'en',
   coverTemplateId: 'mag-01',
   endingTemplateId: null,
-  userMessage: '',
-  history: [],
   pages: [{ pageIndex: 0, templateId: 'mag-08', images: { image: 'p1' }, texts: {} }],
 };
 
