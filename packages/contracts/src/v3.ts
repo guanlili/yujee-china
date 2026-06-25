@@ -331,6 +331,15 @@ export const V3CoverRequest = z
     // 选定的封面/封尾模板;null = 跳过该项(封面可选,§4.4)。
     coverTemplateId: z.string().min(1).nullable().optional(),
     endingTemplateId: z.string().min(1).nullable().optional(),
+    // Stage5: 200px base64 thumbnails are for local color extraction only; do not
+    // forward them to LLM prompts.
+    coverPhoto: z.string().optional(),
+    endingPhoto: z.string().optional(),
+    // Textual guidance may be sent to 5a copy / 5b AI color design instead of base64.
+    coverPhotoDesc: z.string().optional(),
+    hint: z.string().optional(),
+    userMessage: z.string().default(''),
+    history: z.array(V3ChatTurn).max(20).default([]),
     pages: z.array(Page), // 相关页(供自动填充取图/文)
   })
   .strict();
@@ -341,6 +350,7 @@ export const V3CoverResponse = z
     // 封面/封尾页补丁;跳过时为空数组(§4.4「跳过=空」)。
     layoutPatch: z.array(V3LayoutPatchEntry),
     assistantReply: z.string().max(500).optional(),
+    needsUserInput: z.boolean().default(false),
     usage: V3Usage,
   })
   .strict();

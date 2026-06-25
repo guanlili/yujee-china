@@ -475,6 +475,80 @@ class TestV3Endpoints:
             {"albumId": "a1", "language": "en", "coverTemplateId": None, "endingTemplateId": None, "pages": [page]}
         )
 
+    def test_cover_request_stage5_fields_and_chat_context(self):
+        page = {"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}
+        req = V3CoverRequest.model_validate(
+            {
+                "albumId": "a1",
+                "language": "en",
+                "coverTemplateId": "mag-01",
+                "endingTemplateId": "mag-20",
+                "coverPhoto": "data:image/jpeg;base64,AA==",
+                "endingPhoto": "data:image/png;base64,AA==",
+                "coverPhotoDesc": "a quiet portrait beside a window",
+                "hint": "keep the whole book tender and understated",
+                "userMessage": "Could the cover feel calmer?",
+                "history": [
+                    {"role": "user", "content": "I want a calmer cover"},
+                    {"role": "assistant", "content": "I can make it quieter."},
+                ],
+                "pages": [page],
+            }
+        )
+
+        assert req.coverPhoto == "data:image/jpeg;base64,AA=="
+        assert req.endingPhoto == "data:image/png;base64,AA=="
+        assert req.coverPhotoDesc == "a quiet portrait beside a window"
+        assert req.hint == "keep the whole book tender and understated"
+        assert req.userMessage == "Could the cover feel calmer?"
+        assert [turn.model_dump() for turn in req.history] == [
+            {"role": "user", "content": "I want a calmer cover"},
+            {"role": "assistant", "content": "I can make it quieter."},
+        ]
+
+    def test_cover_request_defaults_chat_fields_and_caps_history(self):
+        page = {"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}
+        req = V3CoverRequest.model_validate(
+            {"albumId": "a1", "language": "en", "coverTemplateId": None, "endingTemplateId": None, "pages": [page]}
+        )
+
+        assert req.userMessage == ""
+        assert req.history == []
+        with pytest.raises(ValidationError):
+            V3CoverRequest.model_validate(
+                {
+                    "albumId": "a1",
+                    "language": "en",
+                    "history": [{"role": "user", "content": "x"} for _ in range(21)],
+                    "pages": [page],
+                }
+            )
+
+    def test_cover_response_clarification_state_without_public_text_payloads(self):
+        usage = {"durationMs": 1, "models": {}}
+        normal = V3CoverResponse.model_validate({"layoutPatch": [], "usage": usage})
+        assert normal.needsUserInput is False
+
+        clarification = V3CoverResponse.model_validate(
+            {
+                "layoutPatch": [],
+                "assistantReply": "Which cover mood should I use?",
+                "needsUserInput": True,
+                "usage": usage,
+            }
+        )
+        assert clarification.needsUserInput is True
+        assert clarification.assistantReply == "Which cover mood should I use?"
+
+        with pytest.raises(ValidationError):
+            V3CoverResponse.model_validate(
+                {"layoutPatch": [], "assistantReply": "done", "coverTexts": {}, "usage": usage}
+            )
+        with pytest.raises(ValidationError):
+            V3CoverResponse.model_validate(
+                {"layoutPatch": [], "assistantReply": "done", "endingTexts": {}, "usage": usage}
+            )
+
     def test_finalize_returns_flat_layout(self):
         V3FinalizeResponse.model_validate(
             {
