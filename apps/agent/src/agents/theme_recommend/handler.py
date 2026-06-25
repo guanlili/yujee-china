@@ -103,11 +103,11 @@ def build_messages(req: V3RecommendRequest) -> list[dict[str, str]]:
 
     system prompt 固定 STRICT JSON 契约 + 两个 skill 任务以及封闭的字体/颜色合法集;
     user payload 承载章节 overview、全局 analysis summary,以及任何用户引导
-    (`userMessage`)。两个 skill 都作为 prompt 资产加载(集中维护),经 `{LANGUAGE}`
-    本地化。"""
+    (`userMessage`)。两个 skill 都作为 prompt 资产加载(集中维护);recommend_theme
+    的语言不再强制(SUBJECT/assistantReply 跟随用户语言)。"""
     lang_name = _lang_name(req.language)
     system = (
-        load_prompt(_PROMPT_DIR / "recommend_theme.md", LANGUAGE=lang_name)
+        load_prompt(_PROMPT_DIR / "recommend_theme.md")
         + "\n\n=== 章节配色与艺术字体(CHAPTER COLORS & ART FONT)===\n"
         + load_prompt(
             RULES_DIR / "theme_colors.md",

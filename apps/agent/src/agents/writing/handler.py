@@ -202,7 +202,6 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
     slot_specs = _page_slot_specs_by_index(req.pages)
     page_images = _page_images_by_index(req.pages)
     focused = req.focusedPageIndex
-    lang_name = _lang_name(req.language)
 
     # Persona + STRICT JSON 契约 + 本轮 dispatch 规则。固定结构(JSON 契约/分发判定)外置
     # 在 chapter_chat.md(co-located,显式路径加载);创作/引导文风另放 prompts/rules/
@@ -215,12 +214,13 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
         + load_prompt(_PROMPT_DIR / "chapter_chat.md")
     )
     # §4.2(4): 写作风格(creative style)+ 引导风格(guidance style),都作为 prompt
-    # 资产按路径加载(外置在 prompts/rules/),用 {LANGUAGE} 占位符本地化。
+    # 资产按路径加载(外置在 prompts/rules/)。语言由槽位的 lang 标记 + 文风资产自身
+    # 决定(跟随用户语言),不再由 {LANGUAGE} 占位符强制。
     system += "\n\n=== 写作风格(WRITING STYLE)===\n" + load_prompt(
-        RULES_DIR / "writing_style.md", LANGUAGE=lang_name, common=("grounding",)
+        RULES_DIR / "writing_style.md", common=("grounding",)
     )
     system += "\n\n=== 引导风格(GUIDANCE STYLE)===\n" + load_prompt(
-        RULES_DIR / "guidance_style.md", LANGUAGE=lang_name
+        RULES_DIR / "guidance_style.md"
     )
 
     # §4.2(4) 写作 LM 的输入组装。需求点名的每一项都在这里:

@@ -462,8 +462,10 @@ def test_v3_write_path_has_no_role_guides_creative_residue():
     assert "Write each text slot to its role" not in system
 
 
-def test_assembly_localizes_skill_language():
-    # zh request → skills loaded with the Chinese {LANGUAGE} fill.
+def test_assembly_loads_style_assets_without_language_pinning():
+    # 写作/引导风格已外置到 prompts/rules/(人为可调规则),作为 prompt 资产按路径加载。
+    # 语言不再被 {LANGUAGE} 强制 —— 槽位的 lang 标记决定语言(lang=user 跟随用户语言),
+    # 所以两份风格资产都【原样】(无任何语言填充)出现在 system 里。
     extra = {"language": "zh"}
     req = V3ChapterChatRequest(
         albumId="alb_v3",
@@ -474,9 +476,7 @@ def test_assembly_localizes_skill_language():
         **extra,
     )
     system, _ = _system_user(req)
-    # The {LANGUAGE} placeholder in both prompts resolved to Chinese for a zh turn.
-    # 写作/引导风格已外置到 prompts/rules/(人为可调规则)。
     from src.prompts import RULES_DIR, load_prompt
 
-    assert load_prompt(RULES_DIR / "writing_style.md", LANGUAGE="Chinese") in system
-    assert load_prompt(RULES_DIR / "guidance_style.md", LANGUAGE="Chinese") in system
+    assert load_prompt(RULES_DIR / "writing_style.md", common=("grounding",)) in system
+    assert load_prompt(RULES_DIR / "guidance_style.md") in system
