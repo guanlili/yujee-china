@@ -2605,6 +2605,27 @@ function EditorBook({
     // patch-free. Only fires for a LIVE, NOT-yet-done chapter with no prior history this
     // session (a chapter the user already conversed in re-opens to its own log, not a
     // fresh opener). Never auto-writes.
+    // A chapter is PHOTO-ONLY when none of its pages carry a writable text slot, so the
+    // writer (Agent) has nothing to author — it always returns kind=talk, never kind=write,
+    // and the post-write satisfaction card never appears, stranding the user with no way to
+    // confirm/advance. "Writable" matches the Agent's own AUTHORED_ROLES (writing/guides.py):
+    // title/body/explain are authored; decoration is code-filled (themable) and doesn't count.
+    // We read the slots from the SAME template defs the rest of the editor uses (getTemplate),
+    // over the chapter's pages in the read-only draft skeleton (invariant 12).
+    const AUTHORED_TEXT_ROLES = new Set(['title', 'body', 'explain']);
+    function pageHasWritableTextSlot(templateId: string): boolean {
+      const texts = getTemplate(templateId)?.texts ?? [];
+      if (texts.some((slot) => AUTHORED_TEXT_ROLES.has(slot.role))) return true;
+      // items.texts (repeat groups) are authored too — a page with only those is not photo-only.
+      const itemTexts = getTemplate(templateId)?.items?.texts ?? [];
+      return itemTexts.some((slot) => AUTHORED_TEXT_ROLES.has(slot.role));
+    }
+    function isPhotoOnlyChapter(chapterId: string): boolean {
+      const pages = (draftSkel?.pages ?? []).filter((p) => p.chapterId === chapterId);
+      if (pages.length === 0) return false; // unknown shape → don't auto-surface (let the opener run)
+      return pages.every((p) => !pageHasWritableTextSlot(p.templateId));
+    }
+
     async function runChapterGuideOpener() {
       if (!isAuthoring || sending || awaitingSatisfaction) return;
       const chapterId = storyGate?.currentChapterId ?? null;
@@ -2612,6 +2633,18 @@ function EditorBook({
       // Already confirmed chapter, or already opened/conversed this session → skip.
       if (storyGate?.doneChapterIds.includes(chapterId)) return;
       if (guidedChapters.has(chapterId) || openerInFlight.has(chapterId) || chapterHistory.length > 0) return;
+      // PHOTO-ONLY chapter: there's nothing to write, so the Agent would only ever talk and
+      // the post-write satisfaction card never fires. Skip the (pointless) guide opener and
+      // surface the satisfaction/next-chapter card directly so the user can confirm → advance
+      // through the satisfaction card's existing confirm path. guidedChapters marks it
+      // done-once so re-entry/advance/re-render won't re-append (same dedupe the real opener
+      // uses). The card itself (not this branch) is what advances — Frame 4 红线 intact.
+      if (isPhotoOnlyChapter(chapterId)) {
+        guidedChapters.add(chapterId);
+        appendChapterCard(chapterId);
+        appendSatisfactionCard({ photoOnly: true });
+        return;
+      }
       // 问题③: surface the chapter card (which chapter) BEFORE the AI's opener question.
       appendChapterCard(chapterId);
       // #236 ①: mark both guards synchronously, BEFORE any await, so a second same-tick
@@ -2656,7 +2689,7 @@ function EditorBook({
     // existing focusedPageIndex + edit-turn machinery does逐页 adjustment (no stage推进
     // until满意, §8.3 stage 推进权在 Web service). Replaces the old always-on「确定本章」
     // breadcrumb button: confirmation is now a per-write affordance, not a standing CTA.
-    function appendSatisfactionCard() {
+    function appendSatisfactionCard(opts?: { photoOnly?: boolean }) {
       awaitingSatisfaction = true;
       const card = document.createElement('div');
       card.className = 'msg ai max-w-full';
@@ -2664,7 +2697,12 @@ function EditorBook({
       inner.className = 'satisfaction-card';
       const title = document.createElement('div');
       title.className = 'sc-title';
-      title.textContent = aT('这一章写好了,你满意吗?', "Here's this chapter — happy with it?");
+      // Photo-only chapters have no copy to write, so don't claim we wrote one — just ask
+      // if they're ready to move on (the only meaningful action for such a chapter).
+      title.textContent = opts?.photoOnly
+        ? aT('这一章只有照片,准备好进入下一章了吗?',
+             'This chapter is photo-only — ready for the next one?')
+        : aT('这一章写好了,你满意吗?', "Here's this chapter — happy with it?");
       const row = document.createElement('div');
       row.className = 'sc-actions';
 

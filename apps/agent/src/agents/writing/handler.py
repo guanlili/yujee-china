@@ -155,11 +155,6 @@ def _slot_spec(slot: dict[str, Any], *, slot_id: str, repeat_index: int | None =
     return spec
 
 
-def _lang_name(language: str) -> str:
-    """供 skill `{LANGUAGE}` 占位用的人类语言名(镜像 vision.py)。"""
-    return "Chinese" if language == "zh" else "English"
-
-
 def _scene_background(chapter: Any) -> dict[str, Any]:
     """画面背景 (§4.2(4)):chapter description + 逐照片 sceneDescription,取自请求承载的
     §4.1 analysis 树。在构造上隐私干净 —— `V3ChapterPhoto`(`_V3Strict`)在解析时就禁止
