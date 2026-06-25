@@ -16,8 +16,14 @@ cover_v3; the page0-cover deletion already happened in the V3 engine at WP0.4).
 
 from __future__ import annotations
 
+import asyncio
+import json
+from types import SimpleNamespace
+from typing import Any
+
 import pytest
 
+from src import ai_client
 from src.engine import templates
 from src.schemas import (
     AlbumLayoutPlan,
@@ -25,6 +31,10 @@ from src.schemas import (
     Magazine,
     Page,
     V3CoverRequest,
+    V3CoverResponse,
+    V3LayoutPatchEntry,
+    V3Models,
+    V3Usage,
 )
 from src.engine import cover_v3
 from src.engine import finalize_v3 as fv3
@@ -56,14 +66,92 @@ def _request(
     *,
     cover: str | None = None,
     ending: str | None = None,
+    cover_photo: str | None = None,
+    ending_photo: str | None = None,
+    cover_photo_desc: str | None = None,
+    hint: str | None = None,
+    user_message: str = "",
+    history: list[dict[str, str]] | None = None,
 ) -> V3CoverRequest:
+    extra: dict[str, Any] = {}
+    if cover_photo is not None:
+        extra["coverPhoto"] = cover_photo
+    if ending_photo is not None:
+        extra["endingPhoto"] = ending_photo
+    if cover_photo_desc is not None:
+        extra["coverPhotoDesc"] = cover_photo_desc
+    if hint is not None:
+        extra["hint"] = hint
     return V3CoverRequest(
         albumId="album-1",
         language="en",
         coverTemplateId=cover,
         endingTemplateId=ending,
+        userMessage=user_message,
+        history=history or [],
         pages=pages,
+        **extra,
     )
+
+
+def _run(
+    req: V3CoverRequest, *, use_default_ai: bool = False, **kwargs: Any
+) -> V3CoverResponse:
+    if (
+        not use_default_ai
+        and (req.coverTemplateId or req.endingTemplateId)
+        and "copy_fn" not in kwargs
+    ):
+        kwargs["copy_fn"] = lambda payload: cover_v3.CoverCopyResult()
+    return asyncio.run(cover_v3.build_cover(req, **kwargs))
+
+
+def _patch_cover_ai(monkeypatch, calls: list[dict[str, Any]], payloads: list[dict[str, Any]]) -> None:
+    settings = SimpleNamespace(
+        deepseek_api_key="test-key",
+        deepseek_base_url="https://example.test/v1",
+        deepseek_model="deepseek-test",
+        deepseek_timeout_seconds=3,
+        deepseek_use_json_object=True,
+        deepseek_disable_thinking=True,
+    )
+    monkeypatch.setattr(cover_v3, "get_settings", lambda: settings, raising=False)
+
+    async def fake_chat_completion(**kwargs):  # noqa: ANN003
+        calls.append(kwargs)
+        idx = len(calls) - 1
+        return {
+            "choices": [{"message": {"content": json.dumps(payloads[idx])}}],
+            "usage": {"prompt_tokens": 10 + idx, "completion_tokens": 4 + idx},
+        }
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_chat_completion)
+
+
+def _patch_cover_ai_raw(
+    monkeypatch,
+    calls: list[dict[str, Any]],
+    contents: list[str],
+) -> None:
+    settings = SimpleNamespace(
+        deepseek_api_key="test-key",
+        deepseek_base_url="https://example.test/v1",
+        deepseek_model="deepseek-test",
+        deepseek_timeout_seconds=3,
+        deepseek_use_json_object=True,
+        deepseek_disable_thinking=True,
+    )
+    monkeypatch.setattr(cover_v3, "get_settings", lambda: settings, raising=False)
+
+    async def fake_chat_completion(**kwargs):  # noqa: ANN003
+        calls.append(kwargs)
+        idx = len(calls) - 1
+        return {
+            "choices": [{"message": {"content": contents[idx]}}],
+            "usage": {"prompt_tokens": 10 + idx, "completion_tokens": 4 + idx},
+        }
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_chat_completion)
 
 
 # ---------- categories sanity (the test assumptions) --------------------------
@@ -85,7 +173,7 @@ def test_test_templates_have_the_expected_categories() -> None:
 
 def test_cover_chosen_autofills_first_page() -> None:
     page = _page(images={"image": "p1"}, page_index=0)
-    res = cover_v3.build_cover(_request([page], cover=_COVER_TID))
+    res = _run(_request([page], cover=_COVER_TID))
 
     assert len(res.layoutPatch) == 1
     entry = res.layoutPatch[0]
@@ -99,7 +187,7 @@ def test_cover_chosen_autofills_first_page() -> None:
 def test_cover_autofill_fills_folio_but_leaves_user_prose_empty() -> None:
     # mag-01 has a `folio` decoration slot + title/explain user-prose slots.
     page = _page(images={"image": "p1"}, page_index=0)
-    res = cover_v3.build_cover(_request([page], cover=_COVER_TID))
+    res = _run(_request([page], cover=_COVER_TID))
     texts = res.layoutPatch[0].texts or {}
 
     # folio (decoration) is code-filled with the 1-based page number.
@@ -113,7 +201,7 @@ def test_cover_autofill_fills_folio_but_leaves_user_prose_empty() -> None:
 def test_ending_chosen_autofills_last_page() -> None:
     body = _page("mag-08", images={"image": "p1"}, page_index=0)
     ending_slot = _page("mag-08", images={"image": "p2"}, page_index=1)
-    res = cover_v3.build_cover(_request([body, ending_slot], ending=_ENDING_TID))
+    res = _run(_request([body, ending_slot], ending=_ENDING_TID))
 
     assert len(res.layoutPatch) == 1
     entry = res.layoutPatch[0]
@@ -127,7 +215,7 @@ def test_cover_and_ending_together_use_distinct_pages() -> None:
     first = _page(images={"image": "p1"}, page_index=0)
     middle = _page("mag-08", images={"image": "p2"}, page_index=1)
     last = _page(images={"image": "p3"}, page_index=2)
-    res = cover_v3.build_cover(
+    res = _run(
         _request([first, middle, last], cover=_COVER_TID, ending=_ENDING_TID)
     )
 
@@ -140,7 +228,7 @@ def test_cover_and_ending_together_use_distinct_pages() -> None:
 def test_single_page_with_both_chosen_raises_when_ending_has_no_distinct_page() -> None:
     page = _page(images={"image": "p1"}, page_index=0)
     with pytest.raises(cover_v3.CoverV3Error, match="distinct landing page"):
-        cover_v3.build_cover(
+        _run(
             _request([page], cover=_COVER_TID, ending=_ENDING_TID)
         )
 
@@ -149,7 +237,7 @@ def test_duplicate_page_index_with_both_chosen_raises_no_distinct_landing_page()
     cover_slot = _page(images={"image": "p1"}, page_index=0)
     ending_slot = _page(images={"image": "p2"}, page_index=0)
     with pytest.raises(cover_v3.CoverV3Error, match="distinct landing page"):
-        cover_v3.build_cover(
+        _run(
             _request([cover_slot, ending_slot], cover=_COVER_TID, ending=_ENDING_TID)
         )
 
@@ -160,7 +248,7 @@ def test_both_chosen_raise_when_first_and_last_land_on_same_page_index() -> None
     ending_slot = _page(images={"image": "p3"}, page_index=0)
 
     with pytest.raises(cover_v3.CoverV3Error, match="distinct landing page"):
-        cover_v3.build_cover(
+        _run(
             _request([cover_slot, body, ending_slot], cover=_COVER_TID, ending=_ENDING_TID)
         )
 
@@ -170,23 +258,110 @@ def test_both_chosen_raise_when_first_and_last_land_on_same_page_index() -> None
 
 def test_skip_returns_empty_patch_no_error() -> None:
     page = _page(images={"image": "p1"}, page_index=0)
-    res = cover_v3.build_cover(_request([page]))  # neither cover nor ending
+    res = _run(_request([page]))  # neither cover nor ending
     assert res.layoutPatch == []
+    assert res.needsUserInput is False
 
 
 def test_skip_with_no_pages_returns_empty_patch() -> None:
-    res = cover_v3.build_cover(_request([]))
+    res = _run(_request([]))
     assert res.layoutPatch == []
+    assert res.needsUserInput is False
+
+
+def test_skip_with_no_template_ids_does_not_run_copy_or_color_seams() -> None:
+    page = _page(images={"image": "p1"}, page_index=0)
+    calls: list[str] = []
+
+    async def copy_fn(payload):  # noqa: ANN001
+        calls.append(f"copy:{payload}")
+        return cover_v3.CoverCopyResult(cover_texts={"title": "Should not run"})
+
+    async def color_fn(payload):  # noqa: ANN001
+        calls.append(f"color:{payload}")
+        return "#123456"
+
+    res = _run(_request([page]), copy_fn=copy_fn, color_design_fn=color_fn)
+
+    assert res.layoutPatch == []
+    assert res.needsUserInput is False
+    assert calls == []
+
+
+def test_clarification_turn_returns_empty_patch_and_skips_color() -> None:
+    page = _page(images={"image": "p1"}, page_index=0)
+    color_called = False
+
+    async def copy_fn(payload):  # noqa: ANN001
+        return cover_v3.CoverCopyResult(
+            needs_user_input=True,
+            assistant_reply="What title should I put on the cover?",
+        )
+
+    async def color_fn(payload):  # noqa: ANN001
+        nonlocal color_called
+        color_called = True
+        return "#123456"
+
+    res = _run(_request([page], cover=_COVER_TID), copy_fn=copy_fn, color_design_fn=color_fn)
+
+    assert res.needsUserInput is True
+    assert res.assistantReply == "What title should I put on the cover?"
+    assert res.layoutPatch == []
+    assert color_called is False
+
+
+def test_clarification_hard_cap_forces_landing_instead_of_reasking() -> None:
+    page = _page(images={"image": "p1"}, page_index=0)
+    history = [
+        {"role": "assistant", "content": "What title should I use?"},
+        {"role": "user", "content": "I'm not sure."},
+        {"role": "assistant", "content": "Could you share one mood or phrase?"},
+    ]
+
+    async def copy_fn(payload):  # noqa: ANN001
+        return cover_v3.CoverCopyResult(
+            needs_user_input=True,
+            assistant_reply="One more question?",
+        )
+
+    res = _run(_request([page], cover=_COVER_TID, history=history), copy_fn=copy_fn)
+
+    assert res.needsUserInput is False
+    assert res.assistantReply is None
+    assert len(res.layoutPatch) == 1
+    assert res.layoutPatch[0].templateId == _COVER_TID
+
+
+def test_clarification_hard_cap_counts_assistant_turns_without_question_marks() -> None:
+    page = _page(images={"image": "p1"}, page_index=0)
+    history = [
+        {"role": "assistant", "content": "请告诉我封面标题。"},
+        {"role": "user", "content": "还没想好"},
+        {"role": "assistant", "content": "也可以给我一个氛围词。"},
+    ]
+
+    async def copy_fn(payload):  # noqa: ANN001
+        return cover_v3.CoverCopyResult(
+            needs_user_input=True,
+            assistant_reply="继续补充一点背景。",
+        )
+
+    res = _run(_request([page], cover=_COVER_TID, history=history), copy_fn=copy_fn)
+
+    assert res.needsUserInput is False
+    assert res.assistantReply is None
+    assert len(res.layoutPatch) == 1
 
 
 def test_chosen_cover_template_but_no_pages_raises() -> None:
     with pytest.raises(cover_v3.CoverV3Error, match="landing page"):
-        cover_v3.build_cover(_request([], cover=_COVER_TID))
+        _run(_request([], cover=_COVER_TID))
 
 
 def test_chosen_ending_template_but_no_pages_raises() -> None:
     with pytest.raises(cover_v3.CoverV3Error, match="landing page"):
-        cover_v3.build_cover(_request([], ending=_ENDING_TID))
+        _run(_request([], ending=_ENDING_TID))
 
 
 # ---------- ③ page0 非 cover 也合法(删 page0-cover) --------------------------
@@ -215,28 +390,28 @@ def test_page0_interior_is_valid_no_forced_cover() -> None:
 def test_unknown_cover_template_raises() -> None:
     page = _page(images={"image": "p1"}, page_index=0)
     with pytest.raises(cover_v3.CoverV3Error):
-        cover_v3.build_cover(_request([page], cover="does-not-exist"))
+        _run(_request([page], cover="does-not-exist"))
 
 
 def test_wrong_category_as_cover_raises() -> None:
     # mag-08 is interior — choosing it as the COVER is a caller bug.
     page = _page(images={"image": "p1"}, page_index=0)
     with pytest.raises(cover_v3.CoverV3Error):
-        cover_v3.build_cover(_request([page], cover="mag-08"))
+        _run(_request([page], cover="mag-08"))
 
 
 def test_wrong_category_as_ending_raises() -> None:
     # the cover template mag-01 is NOT an ending.
     page = _page(images={"image": "p1"}, page_index=0)
     with pytest.raises(cover_v3.CoverV3Error):
-        cover_v3.build_cover(_request([page], ending=_COVER_TID))
+        _run(_request([page], ending=_COVER_TID))
 
 
 def test_extra_photos_beyond_capacity_are_dropped() -> None:
     """A cover holds ONE hero — given a page with several photos, only the first lands
     (capacity cap); extras are dropped, never reused/invented (no over-capacity error)."""
     page = _page(images={"a": "p1", "b": "p2", "c": "p3"}, page_index=0)
-    res = cover_v3.build_cover(_request([page], cover=_COVER_TID))
+    res = _run(_request([page], cover=_COVER_TID))
     cover_img_slot = templates.image_slot_ids(templates.get(_COVER_TID))[0]
     assert res.layoutPatch[0].images == {cover_img_slot: "p1"}
 
@@ -245,10 +420,272 @@ def test_cover_page_with_no_photo_still_designs_with_empty_images() -> None:
     """A reserved cover page may carry no photo yet — it still gets the chosen template
     (empty image map), so the user sees the cover layout to fill in."""
     page = _page(images={}, page_index=0)
-    res = cover_v3.build_cover(_request([page], cover=_COVER_TID))
+    res = _run(_request([page], cover=_COVER_TID))
     assert len(res.layoutPatch) == 1
     assert res.layoutPatch[0].templateId == _COVER_TID
     assert res.layoutPatch[0].images == {}
+
+
+def test_base64_reaches_only_accent_extraction_not_copy_or_color_payloads() -> None:
+    secret_base64 = "data:image/png;base64,SECRET_PAYLOAD_SHOULD_NOT_BE_PROMPTED"
+    page = _page(images={"image": "p1"}, page_index=0)
+    captured: dict[str, Any] = {}
+
+    def accent_fn(photo):  # noqa: ANN001
+        captured["accent_photo"] = photo
+        return "#AABBCC"
+
+    async def copy_fn(payload):  # noqa: ANN001
+        captured["copy_payload"] = payload
+        return cover_v3.CoverCopyResult(cover_texts={"title": "Lake Days"})
+
+    async def color_fn(payload):  # noqa: ANN001
+        captured["color_payload"] = payload
+        return "#112233"
+
+    res = _run(
+        _request(
+            [page],
+            cover=_COVER_TID,
+            cover_photo=secret_base64,
+            cover_photo_desc="A family beside a blue lake.",
+            hint="quiet and warm",
+            user_message="Use a gentle title.",
+        ),
+        copy_fn=copy_fn,
+        color_design_fn=color_fn,
+        accent_from_photo_fn=accent_fn,
+    )
+
+    assert res.layoutPatch
+    assert captured["accent_photo"] == secret_base64
+    assert secret_base64 not in repr(captured["copy_payload"])
+    assert secret_base64 not in repr(captured["color_payload"])
+
+
+def test_landing_cleans_authored_copy_slots() -> None:
+    page = _page(images={"image": "p1"}, page_index=0)
+
+    async def copy_fn(payload):  # noqa: ANN001
+        return cover_v3.CoverCopyResult(
+            cover_texts={
+                "title": "A very long cover title that must be clamped",
+                "explain1": "",
+                "explain2": "  A quiet lake morning  ",
+                "unknownSlot": "must be dropped",
+            }
+        )
+
+    res = _run(_request([page], cover=_COVER_TID), copy_fn=copy_fn)
+    texts = res.layoutPatch[0].texts or {}
+
+    assert texts["title"] == "A very long "
+    assert texts["explain2"] == "A quiet lake morning"
+    assert "explain1" not in texts
+    assert "unknownSlot" not in texts
+
+
+def test_color_design_result_exits_through_finalize_color() -> None:
+    page = _page(images={"image": "p1"}, page_index=0)
+    finalize_inputs: list[str] = []
+
+    async def color_fn(payload):  # noqa: ANN001
+        return "not-a-color"
+
+    def finalizer(value: str) -> str:
+        finalize_inputs.append(value)
+        return "#4A5568"
+
+    res = _run(
+        _request([page], cover=_COVER_TID),
+        color_design_fn=color_fn,
+        finalize_color_fn=finalizer,
+    )
+    texts = res.layoutPatch[0].texts or {}
+
+    assert finalize_inputs == ["not-a-color"]
+    assert texts["title#accentColor"] == "#4A5568"
+    assert texts["title#artFont"] == "serif-classic"
+    assert texts["label#accentColor"] == "#4A5568"
+    assert texts["label#artFont"] == "serif-classic"
+
+
+def test_ending_photo_used_for_accent_when_cover_photo_missing() -> None:
+    ending_photo = "data:image/png;base64,ENDING_ONLY"
+    body = _page("mag-08", images={"image": "p1"}, page_index=0)
+    ending_slot = _page("mag-08", images={"image": "p2"}, page_index=1)
+    captured: dict[str, Any] = {}
+
+    def accent_fn(photo):  # noqa: ANN001
+        captured["photo"] = photo
+        return "#778899"
+
+    async def color_fn(payload):  # noqa: ANN001
+        captured["extracted"] = payload.extractedAccent
+        return "#112233"
+
+    res = _run(
+        _request([body, ending_slot], ending=_ENDING_TID, ending_photo=ending_photo),
+        accent_from_photo_fn=accent_fn,
+        color_design_fn=color_fn,
+    )
+
+    assert res.layoutPatch
+    assert captured["photo"] == ending_photo
+    assert captured["extracted"] == "#778899"
+
+
+def test_default_copy_and_color_use_deepseek_text_model_without_base64(monkeypatch) -> None:
+    secret_base64 = "data:image/png;base64,SECRET_SHOULD_NOT_REACH_MESSAGES"
+    calls: list[dict[str, Any]] = []
+    _patch_cover_ai(
+        monkeypatch,
+        calls,
+        [
+            {
+                "needsUserInput": False,
+                "assistantReply": "Drafted.",
+                "coverTexts": {"title": "Lake Days", "explain2": "Quiet morning"},
+                "endingTexts": {},
+            },
+            {"accentColor": "#102030"},
+        ],
+    )
+
+    page = _page(images={"image": "p1"}, page_index=0)
+    res = _run(
+        _request(
+            [page],
+            cover=_COVER_TID,
+            cover_photo=secret_base64,
+            cover_photo_desc="Family beside a blue lake.",
+            hint="quiet",
+            user_message="Make it warm.",
+        ),
+        use_default_ai=True,
+    )
+
+    assert len(calls) == 2
+    assert secret_base64 not in repr(calls[0]["messages"])
+    assert secret_base64 not in repr(calls[1]["messages"])
+    assert calls[0]["model"] == "deepseek-test"
+    assert calls[1]["model"] == "deepseek-test"
+    texts = res.layoutPatch[0].texts or {}
+    assert texts["title"] == "Lake Days"
+    assert texts["explain2"] == "Quiet morning"
+    assert texts["title#accentColor"] == "#102030"
+    assert texts["label#accentColor"] == "#102030"
+    assert res.usage.planningInputTokens == 21
+    assert res.usage.planningOutputTokens == 9
+    assert res.usage.models.planning == "deepseek-test"
+
+
+def test_default_copy_clarification_returns_usage_and_skips_color(monkeypatch) -> None:
+    calls: list[dict[str, Any]] = []
+    _patch_cover_ai(
+        monkeypatch,
+        calls,
+        [{"needsUserInput": True, "assistantReply": "请告诉我封面标题。"}],
+    )
+
+    page = _page(images={"image": "p1"}, page_index=0)
+    res = _run(_request([page], cover=_COVER_TID), use_default_ai=True)
+
+    assert len(calls) == 1
+    assert res.needsUserInput is True
+    assert res.assistantReply == "请告诉我封面标题。"
+    assert res.layoutPatch == []
+    assert res.usage.planningInputTokens == 10
+    assert res.usage.planningOutputTokens == 4
+    assert res.usage.models.planning == "deepseek-test"
+
+
+def test_default_copy_parse_failure_needs_input_without_patch(monkeypatch) -> None:
+    calls: list[dict[str, Any]] = []
+    settings = SimpleNamespace(
+        deepseek_api_key="test-key",
+        deepseek_base_url="https://example.test/v1",
+        deepseek_model="deepseek-test",
+        deepseek_timeout_seconds=3,
+        deepseek_use_json_object=True,
+        deepseek_disable_thinking=True,
+    )
+    monkeypatch.setattr(cover_v3, "get_settings", lambda: settings, raising=False)
+
+    async def invalid_json_completion(**kwargs):  # noqa: ANN003
+        calls.append(kwargs)
+        return {"choices": [{"message": {"content": "not json"}}], "usage": {}}
+
+    monkeypatch.setattr(ai_client, "chat_completion", invalid_json_completion)
+
+    page = _page(images={"image": "p1"}, page_index=0)
+    res = _run(_request([page], cover=_COVER_TID), use_default_ai=True)
+
+    assert len(calls) == 1
+    assert res.needsUserInput is True
+    assert res.layoutPatch == []
+
+
+def test_default_copy_parse_failure_obeys_clarification_hard_cap(monkeypatch) -> None:
+    calls: list[dict[str, Any]] = []
+    _patch_cover_ai_raw(
+        monkeypatch,
+        calls,
+        [
+            "not json",
+            json.dumps({"accentColor": "#102030"}),
+        ],
+    )
+    history = [
+        {"role": "assistant", "content": "请告诉我封面标题。"},
+        {"role": "user", "content": "还没想好"},
+        {"role": "assistant", "content": "也可以给我一个氛围词。"},
+    ]
+
+    page = _page(images={"image": "p1"}, page_index=0)
+    res = _run(
+        _request([page], cover=_COVER_TID, history=history),
+        use_default_ai=True,
+    )
+
+    assert len(calls) == 2
+    assert res.needsUserInput is False
+    assert res.assistantReply is None
+    assert len(res.layoutPatch) == 1
+    assert res.usage.planningInputTokens == 21
+    assert res.usage.planningOutputTokens == 9
+    assert res.usage.models.planning == "deepseek-test"
+
+
+def test_default_color_parse_failure_keeps_fallback_color_and_usage(monkeypatch) -> None:
+    calls: list[dict[str, Any]] = []
+    _patch_cover_ai_raw(
+        monkeypatch,
+        calls,
+        [
+            json.dumps(
+                {
+                    "needsUserInput": False,
+                    "assistantReply": "Drafted.",
+                    "coverTexts": {"title": "Lake Days"},
+                    "endingTexts": {},
+                }
+            ),
+            "not json",
+        ],
+    )
+
+    page = _page(images={"image": "p1"}, page_index=0)
+    res = _run(_request([page], cover=_COVER_TID), use_default_ai=True)
+    texts = res.layoutPatch[0].texts or {}
+
+    assert len(calls) == 2
+    assert res.needsUserInput is False
+    assert texts["title"] == "Lake Days"
+    assert texts["title#accentColor"] == "#8A8174"
+    assert res.usage.planningInputTokens == 21
+    assert res.usage.planningOutputTokens == 9
+    assert res.usage.models.planning == "deepseek-test"
 
 
 # ---------- route-level: auth gate + contract envelope + error shape ----------
@@ -284,8 +721,21 @@ def test_route_requires_auth() -> None:
     assert res.status_code == 401
 
 
-def test_route_happy_path_returns_contract_envelope() -> None:
-    from src.schemas import V3CoverResponse
+def test_route_happy_path_returns_contract_envelope(monkeypatch) -> None:
+    async def fake_build(req):  # noqa: ANN001
+        return V3CoverResponse(
+            layoutPatch=[
+                V3LayoutPatchEntry(
+                    pageIndex=0,
+                    templateId=_COVER_TID,
+                    images={"image": "p1"},
+                    texts={"folio": "01"},
+                )
+            ],
+            usage=V3Usage(durationMs=1, models=V3Models()),
+        )
+
+    monkeypatch.setattr(cover_v3, "build_cover", fake_build)
 
     res = _client().post(
         "/v3/cover",
@@ -296,13 +746,12 @@ def test_route_happy_path_returns_contract_envelope() -> None:
     body = res.json()
     assert body["ok"] is True
     parsed = V3CoverResponse(**body["data"])  # two-end parity
+    assert parsed.needsUserInput is False
     assert len(parsed.layoutPatch) == 1
     assert parsed.layoutPatch[0].templateId == _COVER_TID
 
 
 def test_route_skip_returns_empty_patch_ok() -> None:
-    from src.schemas import V3CoverResponse
-
     res = _client().post(
         "/v3/cover",
         json=_route_body(),  # no cover/ending → skip
@@ -313,6 +762,34 @@ def test_route_skip_returns_empty_patch_ok() -> None:
     assert body["ok"] is True
     parsed = V3CoverResponse(**body["data"])
     assert parsed.layoutPatch == []
+    assert parsed.needsUserInput is False
+
+
+def test_route_awaits_async_build_cover_and_returns_needs_user_input_default(monkeypatch) -> None:
+    awaited = False
+
+    async def fake_build(req):  # noqa: ANN001
+        nonlocal awaited
+        awaited = True
+        return V3CoverResponse(
+            layoutPatch=[],
+            usage=V3Usage(durationMs=1, models=V3Models()),
+        )
+
+    monkeypatch.setattr(cover_v3, "build_cover", fake_build)
+
+    res = _client().post(
+        "/v3/cover",
+        json=_route_body(cover=_COVER_TID),
+        headers={"Authorization": "Bearer test_secret"},
+    )
+
+    assert res.status_code == 200, res.text
+    assert awaited is True
+    body = res.json()
+    assert body["ok"] is True
+    assert body["data"]["layoutPatch"] == []
+    assert body["data"]["needsUserInput"] is False
 
 
 def test_route_invalid_template_is_422_contract_error() -> None:
