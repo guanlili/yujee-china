@@ -1,7 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { toBrowserCoverPatch } from './route-utils';
+import { CoverBodySchema } from './schema';
 import type { V3LayoutPatchEntry } from '@yujee/contracts';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const routeSource = readFileSync(join(here, 'route.ts'), 'utf8');
 
 type SafeParser = {
   safeParse: (value: unknown) =>
@@ -9,16 +16,39 @@ type SafeParser = {
     | { success: false; error: unknown };
 };
 
-async function bodySchema(): Promise<SafeParser> {
-  const route = await import('./route') as { BodySchema?: SafeParser };
-  assert.ok(route.BodySchema, 'cover route must export BodySchema for schema coverage');
-  return route.BodySchema;
-}
+const bodySchema: SafeParser = CoverBodySchema;
+
+test('cover route exports only Next.js route fields', () => {
+  const allowed = new Set([
+    'GET',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'HEAD',
+    'OPTIONS',
+    'runtime',
+    'dynamic',
+    'dynamicParams',
+    'revalidate',
+    'fetchCache',
+    'preferredRegion',
+    'maxDuration',
+    'generateStaticParams',
+    'config',
+  ]);
+  const exported = [...routeSource.matchAll(/export\s+(?:async\s+function|const)\s+([A-Za-z0-9_]+)/g)]
+    .map((m) => m[1]!);
+
+  assert.deepEqual(
+    exported.filter((name) => !allowed.has(name)),
+    [],
+    'Next Route modules must not export schemas or other helper fields',
+  );
+});
 
 test('cover route schema accepts transient cover photos and chat context', async () => {
-  const schema = await bodySchema();
-
-  const parsed = schema.safeParse({
+  const parsed = bodySchema.safeParse({
     language: 'en',
     coverTemplateId: 'mag-01',
     endingTemplateId: 'mag-20',
@@ -40,16 +70,14 @@ test('cover route schema accepts transient cover photos and chat context', async
 });
 
 test('cover route schema rejects unknown fields and explicit null for Agent optional strings', async () => {
-  const schema = await bodySchema();
-
   assert.equal(
-    schema.safeParse({ language: 'en', coverPhotoDesc: 'browser must not send this' }).success,
+    bodySchema.safeParse({ language: 'en', coverPhotoDesc: 'browser must not send this' }).success,
     false,
   );
 
   for (const key of ['coverPhoto', 'endingPhoto', 'userMessage', 'history'] as const) {
     assert.equal(
-      schema.safeParse({ language: 'en', [key]: null }).success,
+      bodySchema.safeParse({ language: 'en', [key]: null }).success,
       false,
       `${key} must reject explicit null`,
     );
