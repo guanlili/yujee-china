@@ -1,0 +1,36 @@
+{
+  "id": "mag-43",
+  "category": "interior",
+  "images": [
+    { "id": "image1" },
+    { "id": "image2" },
+    { "id": "image3" },
+    { "id": "image4" },
+    { "id": "image5" }
+  ],
+  "texts": [
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 12,
+      "lang": "user",
+      "hint": "右中大字主标题，短词（如「Notes」）",
+      "variableDecor": true
+    },
+    {
+      "id": "subtitle",
+      "role": "title",
+      "maxChars": 20,
+      "lang": "user",
+      "hint": "大标题续行（如「from Elsewhere」）",
+      "variableDecor": true
+    },
+    {
+      "id": "caption",
+      "role": "explain",
+      "maxChars": 120,
+      "lang": "user",
+      "hint": "右上拼贴下方图注段"
+    }
+  ]
+}

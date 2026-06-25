@@ -8,7 +8,7 @@
   "texts": [
     { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "该页标题", "variableDecor": true },
     { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "上图说明" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "主图说明,承接上图" },
+    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "主图说明，接上图" },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

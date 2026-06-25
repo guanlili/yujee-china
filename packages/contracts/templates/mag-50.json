@@ -1,0 +1,25 @@
+{
+  "id": "mag-50",
+  "category": "interior",
+  "images": [
+    {
+      "id": "image1"
+    },
+    {
+      "id": "image2"
+    },
+    {
+      "id": "image3"
+    }
+  ],
+  "texts": [
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 16,
+      "lang": "user",
+      "hint": "右下角主标题，全大写短词（如「ANOTHER」）",
+      "variableDecor": true
+    }
+  ]
+}

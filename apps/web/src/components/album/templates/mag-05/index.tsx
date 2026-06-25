@@ -18,16 +18,17 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
       <h1
         style={{
           position: 'absolute',
-          top: 110,
+          top: 96,
           left: 50,
-          right: 280,
+          right: 240,
           margin: 0,
-          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.serifEn,
-          fontSize: 44,
-          letterSpacing: '0.04em',
-          lineHeight: 1.15,
+          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.bebas,
+          fontSize: 88,
+          letterSpacing: '0.02em',
+          lineHeight: 0.92,
           fontWeight: 400,
-          color: titleTheme.accentColor,
+          textTransform: 'uppercase',
+          color: titleTheme.accentColor ?? COLORS.ink,
         }}
       >
         {brToReact(titleTheme.text ?? d.title ?? "LET'S GO RIDE\nA BIKE")}
@@ -43,7 +44,7 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
           letterSpacing: '0.3em',
           color: topRightTheme.accentColor ?? COLORS.ink2,
           textTransform: 'uppercase',
-          fontFamily: topRightTheme.webFontFamily,
+          fontFamily: topRightTheme.webFontFamily ?? WEB_FONTS.montserrat,
         }}
       >
         {topRightTheme.text ?? d.label ?? ''}

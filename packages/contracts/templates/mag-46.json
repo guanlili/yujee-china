@@ -1,0 +1,29 @@
+{
+  "id": "mag-46",
+  "category": "interior",
+  "images": [
+    {
+      "id": "image1"
+    },
+    {
+      "id": "image2"
+    }
+  ],
+  "texts": [
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 30,
+      "lang": "user",
+      "hint": "顶部大字主标题，一句收束一天的陈述（如「then we went home,」）",
+      "variableDecor": true
+    },
+    {
+      "id": "caption",
+      "role": "explain",
+      "maxChars": 40,
+      "lang": "user",
+      "hint": "右侧小图注，接标题"
+    }
+  ]
+}

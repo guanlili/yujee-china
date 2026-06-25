@@ -6,6 +6,9 @@ import type { GridCell, TemplateData, TemplateRenderProps } from '../types';
 // 重复组 items:image 寻址 image[i]、图说文字寻址 explain[i]。adapt-layout 把
 // image[i]/explain[i] 还原成 data.image / data.explain 两个并列数组(元素为
 // 字符串或 {body,caption} 对象)。
+// 图注含中文时切到 serifCn（Noto SC）避免豆腐块，纯英文走 Montserrat（与 web 一致）。
+const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
+
 function cellText(v: unknown): string {
   if (v == null) return '';
   if (typeof v === 'string') return v;
@@ -65,10 +68,12 @@ export function PdfMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
             <Text
               style={{
                 marginTop: 12,
+                fontFamily: hasCjk(c.caption) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat,
                 lineHeight: 1.7,
-                color: COLORS.ink2,
+                letterSpacing: 0.5,
+                color: COLORS.ink,
                 textAlign: 'justify',
-                fontSize: 18,
+                fontSize: 13,
               }}
             >
               {c.caption || ''}

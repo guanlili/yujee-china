@@ -4,6 +4,8 @@ import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
+const hasCjk = (s?: string) => /[一-鿿]/.test(s || '');
+
 export function PdfP01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
@@ -79,7 +81,7 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
           position: 'absolute',
           top: 70,
           right: 56,
-          fontFamily: volTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
+          fontFamily: volTheme.pdfFontFamily ?? PDF_FONTS.playfair,
           fontStyle: 'italic',
           fontSize: 100,
           color: volTheme.accentColor ?? '#ffffff',
@@ -102,7 +104,7 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
       >
         <Text
           style={{
-            fontFamily: categoryTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
+            fontFamily: categoryTheme.pdfFontFamily ?? PDF_FONTS.playfair,
             fontStyle: 'italic',
             color: categoryTheme.accentColor ?? d.label1Color ?? COLORS.vermilionSoft,
             fontSize: 16,
@@ -113,22 +115,23 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
         <Text
           style={{
             marginTop: 8,
-            fontFamily: titleTheme.pdfFontFamily ?? PDF_FONTS.serifCn,
+            fontFamily:
+              titleTheme.pdfFontFamily ?? (hasCjk(titleTheme.text ?? d.title) ? PDF_FONTS.serifCn : PDF_FONTS.playfair),
             lineHeight: 1.15,
             color: titleTheme.accentColor ?? COLORS.paper,
-            fontSize: 46,
+            fontSize: 56,
           }}
         >
-          {titleTheme.text ?? d.title ?? '页面标题'}
+          {titleTheme.text ?? d.title ?? 'Page Title'}
         </Text>
         <Text
           style={{
             marginTop: 22,
-            fontFamily: PDF_FONTS.serifCn,
+            fontFamily: hasCjk(d.body) ? PDF_FONTS.serifCn : PDF_FONTS.lora,
             lineHeight: 1.85,
             color: COLORS.paper78,
             textAlign: 'justify',
-            fontSize: 16,
+            fontSize: 18,
           }}
         >
           {d.body || ''}

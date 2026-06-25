@@ -1,0 +1,34 @@
+{
+  "id": "mag-28",
+  "category": "interior",
+  "images": [
+    {
+      "id": "image"
+    }
+  ],
+  "texts": [
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 24,
+      "lang": "user",
+      "hint": "左侧大字主标题，短词分多行（如「My Secret Place」）",
+      "variableDecor": true
+    },
+    {
+      "id": "headline",
+      "role": "title",
+      "maxChars": 90,
+      "lang": "user",
+      "hint": "左侧大字陈述句，接主标题，点出这地方对「我」的意义",
+      "variableDecor": true
+    },
+    {
+      "id": "explain",
+      "role": "explain",
+      "maxChars": 40,
+      "lang": "user",
+      "hint": "左下角小图注"
+    }
+  ]
+}

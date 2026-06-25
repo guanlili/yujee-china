@@ -29,16 +29,18 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
       >
         <div
           style={{
-            letterSpacing: '0.36em',
-            fontWeight: 400,
-            fontSize: 34,
+            letterSpacing: '0.04em',
+            fontWeight: 700,
+            fontSize: 72,
+            lineHeight: 1,
+            whiteSpace: 'nowrap',
             color: headingTheme.accentColor,
-            fontFamily: headingTheme.webFontFamily,
+            fontFamily: WEB_FONTS.playfair,
           }}
         >
           {headingTheme.text ?? d.title ?? 'VENUES'}
         </div>
-        <div style={{ flex: 1, height: 1, background: COLORS.ink }} />
+        <div style={{ flex: 1, height: 3, background: COLORS.ink }} />
         <div
           style={{
             width: 26,
@@ -81,7 +83,7 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
         style={{
           position: 'absolute',
           left: 130,
-          top: 760,
+          top: 720,
           lineHeight: 1.7,
           color: COLORS.ink2,
           letterSpacing: '0.02em',
@@ -95,7 +97,7 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
         style={{
           position: 'absolute',
           left: 130,
-          top: 880,
+          top: 840,
           lineHeight: 1.7,
           color: COLORS.ink2,
           textAlign: 'justify',

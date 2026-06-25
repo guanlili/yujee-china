@@ -7,7 +7,7 @@
   ],
   "texts": [
     { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "左图说明" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "右图说明,承接左图" },
+    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "右图说明，接左图" },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

@@ -20,12 +20,12 @@ export function WebMag13({ data, imagePos }: TemplateRenderProps) {
           top: 110,
           left: 90,
           right: 90,
-          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.serifEn,
-          fontWeight: 400,
-          fontSize: 28,
-          letterSpacing: '0.36em',
+          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.montserrat,
+          fontWeight: 800,
+          fontSize: 56,
+          letterSpacing: '0.12em',
           textAlign: 'center',
-          lineHeight: 1.35,
+          lineHeight: 1.12,
           color: titleTheme.accentColor ?? COLORS.ink,
         }}
       >

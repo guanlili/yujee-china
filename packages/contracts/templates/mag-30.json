@@ -1,0 +1,18 @@
+{
+  "id": "mag-30",
+  "category": "interior",
+  "images": [
+    {
+      "id": "image"
+    }
+  ],
+  "texts": [
+    {
+      "id": "explain",
+      "role": "explain",
+      "maxChars": 90,
+      "lang": "user",
+      "hint": "横图右下角多行图注"
+    }
+  ]
+}

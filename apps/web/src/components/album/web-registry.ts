@@ -23,7 +23,69 @@ import { WebMag19 } from './templates/mag-19';
 import { WebMag20 } from './templates/mag-20';
 import { WebP01 } from './templates/p01';
 
+import { WebMag22 } from './templates/mag-22';
+import { WebMag23 } from './templates/mag-23';
+import { WebMag25 } from './templates/mag-25';
+import { WebMag26 } from './templates/mag-26';
+import { WebMag27 } from './templates/mag-27';
+import { WebMag28 } from './templates/mag-28';
+import { WebMag29 } from './templates/mag-29';
+import { WebMag30 } from './templates/mag-30';
+import { WebMag31 } from './templates/mag-31';
+import { WebMag32 } from './templates/mag-32';
+import { WebMag33 } from './templates/mag-33';
+import { WebMag34 } from './templates/mag-34';
+import { WebMag35 } from './templates/mag-35';
+import { WebMag36 } from './templates/mag-36';
+import { WebMag37 } from './templates/mag-37';
+import { WebMag38 } from './templates/mag-38';
+import { WebMag39 } from './templates/mag-39';
+import { WebMag40 } from './templates/mag-40';
+import { WebMag41 } from './templates/mag-41';
+import { WebMag42 } from './templates/mag-42';
+import { WebMag43 } from './templates/mag-43';
+import { WebMag44 } from './templates/mag-44';
+import { WebMag45 } from './templates/mag-45';
+import { WebMag46 } from './templates/mag-46';
+import { WebMag47 } from './templates/mag-47';
+import { WebMag48 } from './templates/mag-48';
+import { WebMag49 } from './templates/mag-49';
+import { WebMag50 } from './templates/mag-50';
+import { WebMag51 } from './templates/mag-51';
+import { WebMag52 } from './templates/mag-52';
+import { WebMag53 } from './templates/mag-53';
 export const WEB_TEMPLATE_REGISTRY: Record<string, ComponentType<TemplateRenderProps>> = {
+  'mag-53': WebMag53,
+  'mag-52': WebMag52,
+  'mag-51': WebMag51,
+  'mag-50': WebMag50,
+  'mag-49': WebMag49,
+  'mag-48': WebMag48,
+  'mag-47': WebMag47,
+  'mag-46': WebMag46,
+  'mag-45': WebMag45,
+  'mag-44': WebMag44,
+  'mag-43': WebMag43,
+  'mag-42': WebMag42,
+  'mag-41': WebMag41,
+  'mag-40': WebMag40,
+  'mag-39': WebMag39,
+  'mag-38': WebMag38,
+  'mag-37': WebMag37,
+  'mag-36': WebMag36,
+  'mag-35': WebMag35,
+  'mag-34': WebMag34,
+  'mag-33': WebMag33,
+  'mag-32': WebMag32,
+  'mag-31': WebMag31,
+  'mag-30': WebMag30,
+  'mag-29': WebMag29,
+  'mag-28': WebMag28,
+  'mag-27': WebMag27,
+  'mag-26': WebMag26,
+  'mag-25': WebMag25,
+  'mag-23': WebMag23,
+  'mag-22': WebMag22,
   'mag-01': WebMag01,
   'mag-02': WebMag02,
   'mag-03': WebMag03,

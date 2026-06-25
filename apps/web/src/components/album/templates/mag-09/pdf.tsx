@@ -4,6 +4,9 @@ import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
+// 主标题用 Bebas Neue（高瘦大写艺术字）；含中文切 serifCn（Noto SC）避免豆腐块，与 web 一致。
+const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
+
 export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image1?: string;
@@ -34,10 +37,13 @@ export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
         </Text>
       </View>
       <Text
-        style={{ position: 'absolute', left: 60, top: 392, width: 251, fontFamily: titleTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
-          fontSize: 64,
-          letterSpacing: 4,
-          lineHeight: 1.05,
+        style={{ position: 'absolute', left: 60, top: 396, width: 300,
+          fontFamily:
+            titleTheme.pdfFontFamily ??
+            (hasCjk(titleTheme.text ?? d.title) ? PDF_FONTS.serifCn : PDF_FONTS.bebas),
+          fontSize: 116,
+          letterSpacing: 2,
+          lineHeight: 0.92,
           color: titleTheme.accentColor ?? COLORS.ink }}
       >
         {titleTheme.text ?? d.title ?? 'OSAKA\nJAPAN'}
@@ -48,13 +54,13 @@ export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
         position={imagePos?.['image2']}
       />
       <View style={{ position: 'absolute', top: 620, left: 60, width: 280 }}>
-        <Text style={{ position: 'absolute', left: 60, top: 620, width: 280, lineHeight: 1.75, color: COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
+        <Text style={{ position: 'absolute', left: 60, top: 620, width: 280, fontFamily: PDF_FONTS.montserrat, lineHeight: 1.75, color: COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
           {d.explain1 || ''}
         </Text>
-        <Text style={{ position: 'absolute', left: 60, top: 664, width: 280, lineHeight: 1.75, color: COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
+        <Text style={{ position: 'absolute', left: 60, top: 664, width: 280, fontFamily: PDF_FONTS.montserrat, lineHeight: 1.75, color: COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
           {d.explain2 || ''}
         </Text>
-        <Text style={{ marginTop: 12, lineHeight: 1.75, color: COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
+        <Text style={{ marginTop: 12, fontFamily: PDF_FONTS.montserrat, lineHeight: 1.6, color: COLORS.ink2, textAlign: 'justify', fontSize: 13 }}>
           {d.explain3 || ''}
         </Text>
       </View>

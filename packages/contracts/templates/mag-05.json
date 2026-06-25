@@ -5,9 +5,9 @@
     { "id": "image", "orientation": ["landscape"], "quality": ["hero", "detail"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "整页主标题,可两行", "variableDecor": true },
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "整页主标题，可两行", "variableDecor": true },
     { "id": "label", "role": "decoration", "lang": "en", "maxChars": 20, "hint": "右上角小标签,如章节名 + 页码", "variableDecor": true },
-    { "id": "explain", "role": "explain", "lang": "user", "maxChars": 90, "hint": "正文段落:第一人称回忆口吻,2-3 句" },
+    { "id": "explain", "role": "explain", "lang": "user", "maxChars": 90, "hint": "整页正文段落" },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

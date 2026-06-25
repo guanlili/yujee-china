@@ -59,17 +59,22 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
     1,
   );
   const rows = Array.from({ length: count });
+  // 四个小标题共用同一份主题(取 title[0]),保证字号/字体/颜色等设置完全统一,
+  // 不再让每个 title[i] 各取各的主题而出现差异。
+  const titleTheme = resolveThemeCarrier(data, 'title[0]');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <div
         style={{
           position: 'absolute',
-          top: 110,
+          top: 96,
           left: 56,
-          fontSize: 25,
-          letterSpacing: '0.36em',
-          color: headingTheme.accentColor,
-          fontFamily: headingTheme.webFontFamily,
+          fontSize: 36,
+          fontWeight: 800,
+          lineHeight: 1,
+          letterSpacing: '0.04em',
+          color: headingTheme.accentColor ?? COLORS.ink,
+          fontFamily: headingTheme.webFontFamily ?? WEB_FONTS.montserrat,
         }}
       >
         {headingTheme.text ?? headingText ?? 'CONTENTS'}
@@ -77,50 +82,81 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
       <div
         style={{
           position: 'absolute',
-          top: 240,
+          top: 338,
           left: 56,
           right: 56,
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
-          rowGap: 100,
+          rowGap: 96,
           columnGap: 80,
         }}
       >
         {rows.map((_, i) => {
           const numberTheme = resolveThemeCarrier(data, `number[${i}]`);
-          const titleTheme = resolveThemeCarrier(data, `title[${i}]`);
+          // 把编号(如 "01")拆成前导 0(lead)与主数字(rest):前导 0 小号、上移半个字符,
+          // 主数字放大,形成"0¹/"的层次。无前导 0 时 lead 为空,只显示主数字。
+          const numRaw =
+            slotText(numbers?.[i]) ?? legacy[i]?.n ?? String(i + 1).padStart(2, '0');
+          const numMatch = /^(0*)(.*)$/.exec(numRaw) ?? ['', '', numRaw];
+          const numLead = numMatch[1];
+          const numRest = numMatch[2] || numRaw;
           return (
           <div key={i}>
             <div
               style={{
-                fontSize: 44,
-                fontFamily: numberTheme.webFontFamily ?? WEB_FONTS.serifEn,
-                fontStyle: 'italic',
-                color: numberTheme.accentColor ?? COLORS.ink,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
                 marginBottom: 6,
               }}
             >
-              {slotText(numbers?.[i]) ?? legacy[i]?.n ?? String(i + 1).padStart(2, '0')}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  gap: 5,
+                  lineHeight: 1,
+                  transform: 'skewX(-8deg)',
+                  fontFamily: numberTheme.webFontFamily ?? WEB_FONTS.montserrat,
+                  color: numberTheme.accentColor ?? COLORS.ink,
+                }}
+              >
+                {numLead ? <span style={{ fontSize: 50 }}>{numLead}</span> : null}
+                <span style={{ fontSize: 64 }}>{numRest}</span>
+              </div>
+              {/* 数字后的斜杠:字号 17(同小标题行),不加粗 */}
+              <div
+                style={{
+                  fontSize: 17,
+                  fontWeight: 400,
+                  lineHeight: 1,
+                  fontFamily: numberTheme.webFontFamily ?? WEB_FONTS.montserrat,
+                  color: numberTheme.accentColor ?? COLORS.ink,
+                }}
+              >
+                /
+              </div>
             </div>
             <div
               style={{
-                fontSize: 15,
-                letterSpacing: '0.32em',
+                fontSize: 17,
+                fontWeight: 800,
+                letterSpacing: '0.15em',
                 textTransform: 'uppercase',
-                color: titleTheme.accentColor ?? COLORS.ink2,
+                color: titleTheme.accentColor ?? COLORS.ink,
                 marginBottom: 10,
-                fontFamily: titleTheme.webFontFamily,
+                fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.montserrat,
               }}
             >
               {slotText(titles?.[i]) ?? legacy[i]?.title ?? ''}
             </div>
             <div
               style={{
-                lineHeight: 1.85,
+                lineHeight: 1.7,
                 color: COLORS.ink2,
                 textAlign: 'justify',
                 letterSpacing: '0.02em',
-                fontSize: 20,
+                fontSize: 16,
               }}
             >
               {slotText(descriptions?.[i]) ?? legacy[i]?.body ?? ''}

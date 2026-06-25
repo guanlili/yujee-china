@@ -75,11 +75,12 @@ export function WebMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
             <p
               style={{
                 margin: '12px 0 0',
+                fontFamily: WEB_FONTS.montserrat,
                 lineHeight: 1.7,
-                color: COLORS.ink2,
-                letterSpacing: '0.02em',
+                color: COLORS.ink,
+                letterSpacing: '0.05em',
                 textAlign: 'justify',
-                fontSize: 18,
+                fontSize: 13,
               }}
             >
               {c.caption}

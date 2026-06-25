@@ -2,14 +2,53 @@
   "id": "mag-08",
   "category": "interior",
   "images": [
-    { "id": "image", "orientation": ["portrait"], "quality": ["hero", "detail"] }
+    {
+      "id": "image",
+      "orientation": [
+        "portrait"
+      ],
+      "quality": [
+        "hero",
+        "detail"
+      ]
+    }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 12, "hint": "短标题,≤4 字意象词", "variableDecor": true },
-    { "id": "body", "role": "body", "lang": "user", "maxChars": 180, "hint": "正文:第一人称叙事,3-4 句" },
-    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "图注:点出人物或场景" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "较长说明:展开这一刻的故事" },
-    { "id": "date", "role": "decoration", "lang": "en", "maxChars": 12, "hint": "日期数字,如 08/24", "variableDecor": true },
-    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
+    {
+      "id": "title",
+      "role": "title",
+      "maxChars": 12,
+      "lang": "user",
+      "hint": "短意象标题（≤4 字）",
+      "variableDecor": true
+    },
+    {
+      "id": "explain1",
+      "role": "explain",
+      "maxChars": 90,
+      "lang": "user",
+      "hint": "图注，点出人物或场景"
+    },
+    {
+      "id": "explain2",
+      "role": "explain",
+      "maxChars": 480,
+      "lang": "user",
+      "hint": "较长图注，展开这一刻；分两段（段间空行），第一段抓住瞬间、第二段回味"
+    },
+    {
+      "id": "date",
+      "role": "decoration",
+      "maxChars": 12,
+      "lang": "en",
+      "hint": "日期数字,如 08/24",
+      "variableDecor": true
+    },
+    {
+      "id": "folio",
+      "role": "decoration",
+      "maxChars": 2,
+      "lang": "en"
+    }
   ]
 }

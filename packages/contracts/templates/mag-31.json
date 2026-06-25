@@ -1,0 +1,21 @@
+{
+  "id": "mag-31",
+  "category": "interior",
+  "images": [
+    { "id": "image1" },
+    { "id": "image2" },
+    { "id": "image3" },
+    { "id": "image4" },
+    { "id": "image5" },
+    { "id": "image6" }
+  ],
+  "texts": [
+    {
+      "id": "body",
+      "role": "body",
+      "maxChars": 80,
+      "lang": "user",
+      "hint": "底部居中图注，串起这六张照片"
+    }
+  ]
+}
