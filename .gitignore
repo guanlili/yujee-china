@@ -19,6 +19,10 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 
+# LLM I/O 调试追踪(dev 默认常开,本地产物,绝不入库)
+llm-trace.txt
+apps/agent/llm-trace.txt
+
 # Local SQLite dev DB
 *.db
 *.db-journal
