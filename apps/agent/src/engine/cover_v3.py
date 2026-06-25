@@ -47,6 +47,7 @@ cover/ending 页选取(§8.3「③④传相关页」):扁平 render 契约里页
 from __future__ import annotations
 
 import inspect
+import json
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -58,6 +59,7 @@ from .accent_color import accent_from_photo
 from .apply_theme_v3 import apply_page
 from .finalize_color import finalize_color
 from ..agents.writing.handler import clean_texts, page_slot_specs
+from .. import ai_client
 from ..logging_config import get_logger
 from ..schemas import (
     Page,
@@ -70,6 +72,7 @@ from ..schemas import (
     V3Models,
     V3Usage,
 )
+from ..settings import get_settings
 from . import generic_copy
 from . import skeleton_v3
 
@@ -106,6 +109,7 @@ class CoverCopyResult:
     assistant_reply: str | None = None
     cover_texts: Mapping[str, Any] = field(default_factory=dict)
     ending_texts: Mapping[str, Any] = field(default_factory=dict)
+    usage: V3Usage | None = None
 
 
 @dataclass(frozen=True)
@@ -122,8 +126,17 @@ class CoverColorPayload:
     endingTexts: dict[str, str]
 
 
+@dataclass(frozen=True)
+class CoverColorResult:
+    color: str | None = None
+    usage: V3Usage | None = None
+
+
 CoverCopyFn = Callable[[CoverCopyPayload], Awaitable[CoverCopyResult] | CoverCopyResult]
-CoverColorDesignFn = Callable[[CoverColorPayload], Awaitable[str | None] | str | None]
+CoverColorDesignFn = Callable[
+    [CoverColorPayload],
+    Awaitable[str | None | CoverColorResult] | str | None | CoverColorResult,
+]
 AccentFromPhotoFn = Callable[[Any], str]
 FinalizeColorFn = Callable[[str], str]
 
@@ -319,8 +332,6 @@ def _add_page_level_text_theme_carriers(
     for slot in templates.text_slots(template):
         if not slot.get("variableDecor"):
             continue
-        if slot.get("role") not in THEME_USER_PROSE_ROLES:
-            continue
         slot_id = str(slot.get("id") or "")
         if not slot_id:
             continue
@@ -412,8 +423,9 @@ async def build_cover(
                 started,
                 req.language,
                 reply=copy_result.assistant_reply,
+                usage=copy_result.usage,
             )
-        copy_result = CoverCopyResult()
+        copy_result = CoverCopyResult(usage=copy_result.usage)
 
     extracted_accent = _extract_cover_accent(req, accent_from_photo_fn)
     color_payload = CoverColorPayload(
@@ -427,7 +439,7 @@ async def build_cover(
         endingTexts=_string_texts(copy_result.ending_texts),
     )
     try:
-        designed_color = await _run_color_design(
+        color_result = await _run_color_design(
             color_payload,
             color_design_fn=color_design_fn,
         )
@@ -437,8 +449,8 @@ async def build_cover(
             album_id=req.albumId,
             error=type(exc).__name__,
         )
-        designed_color = _NEUTRAL_ACCENT
-    final_accent = _finalize_cover_color(designed_color, finalize_color_fn)
+        color_result = CoverColorResult(color=_NEUTRAL_ACCENT)
+    final_accent = _finalize_cover_color(color_result.color, finalize_color_fn)
 
     patches: list[V3LayoutPatchEntry] = []
     used_indices: set[int] = set()
@@ -485,7 +497,7 @@ async def build_cover(
     )
     return V3CoverResponse(
         layoutPatch=patches,
-        usage=V3Usage(durationMs=duration_ms, models=V3Models()),
+        usage=_merge_usage(duration_ms, copy_result.usage, color_result.usage),
     )
 
 
@@ -542,21 +554,181 @@ async def _run_copy(
     return await _maybe_await(fn(payload))
 
 
-def _default_copy(payload: CoverCopyPayload) -> CoverCopyResult:
-    return CoverCopyResult()
+async def _default_copy(payload: CoverCopyPayload) -> CoverCopyResult:
+    response, usage = await _complete_deepseek(
+        _copy_messages(payload),
+        max_tokens=1200,
+        temperature=0.35,
+    )
+    parsed = _parse_model_json(response, "cover copy")
+    needs_input = parsed.get("needsUserInput") is True
+    return CoverCopyResult(
+        needs_user_input=needs_input,
+        assistant_reply=_text(parsed.get("assistantReply")),
+        cover_texts=_mapping_texts(parsed.get("coverTexts")),
+        ending_texts=_mapping_texts(parsed.get("endingTexts")),
+        usage=usage,
+    )
 
 
 async def _run_color_design(
     payload: CoverColorPayload,
     *,
     color_design_fn: CoverColorDesignFn | None,
-) -> str | None:
+) -> CoverColorResult:
     fn = color_design_fn or _default_color_design
-    return await _maybe_await(fn(payload))
+    result = await _maybe_await(fn(payload))
+    if isinstance(result, CoverColorResult):
+        return result
+    return CoverColorResult(color=result if isinstance(result, str) else None)
 
 
-def _default_color_design(payload: CoverColorPayload) -> str:
-    return payload.extractedAccent
+async def _default_color_design(payload: CoverColorPayload) -> CoverColorResult:
+    response, usage = await _complete_deepseek(
+        _color_messages(payload),
+        max_tokens=300,
+        temperature=0.25,
+    )
+    parsed = _parse_model_json(response, "cover color")
+    color = (
+        _text(parsed.get("accentColor"))
+        or _text(parsed.get("designedColor"))
+        or _text(parsed.get("color"))
+        or payload.extractedAccent
+    )
+    return CoverColorResult(color=color, usage=usage)
+
+
+def _copy_messages(payload: CoverCopyPayload) -> list[dict[str, str]]:
+    system = (
+        "You write short memoir cover and ending page copy. Return STRICT JSON only. "
+        "Schema: {\"needsUserInput\": boolean, \"assistantReply\": string, "
+        "\"coverTexts\": object, \"endingTexts\": object}. "
+        "If the text context is insufficient, set needsUserInput=true and ask one "
+        "brief clarification in assistantReply; leave text objects empty. "
+        "If sufficient, set needsUserInput=false and fill only slot ids present in "
+        "pageSlotSpecs, respecting each maxChars. Never write locations or places."
+    )
+    user_payload = {
+        "language": payload.language,
+        "coverTemplateId": payload.coverTemplateId,
+        "endingTemplateId": payload.endingTemplateId,
+        "coverPhotoDesc": payload.coverPhotoDesc or "",
+        "hint": payload.hint or "",
+        "userMessage": payload.userMessage or "",
+        "history": payload.history,
+        "pageSlotSpecs": payload.pageSlotSpecs,
+        "templates": _template_prompt_specs(
+            payload.coverTemplateId,
+            payload.endingTemplateId,
+        ),
+        "clarifyRounds": payload.clarifyRounds,
+        "maxClarifyRounds": MAX_COVER_CLARIFY_ROUNDS,
+    }
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+    ]
+
+
+def _template_prompt_specs(*template_ids: str | None) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for template_id in template_ids:
+        if not template_id or template_id in out:
+            continue
+        template = templates.get(template_id)
+        if template is None:
+            continue
+        out[template_id] = {
+            "category": skeleton_v3.template_category(template),
+            "imageSlots": [dict(slot) for slot in (template.get("images") or [])],
+            "textSlots": [dict(slot) for slot in templates.text_slots(template)],
+        }
+    return out
+
+
+def _color_messages(payload: CoverColorPayload) -> list[dict[str, str]]:
+    system = (
+        "You choose one final design accent color for a memoir cover. "
+        "Return STRICT JSON only: {\"accentColor\":\"#RRGGBB\"}. "
+        "Use the extractedAccent as grounding, adjust only if the text context "
+        "suggests a better tasteful editorial color. Do not request more input."
+    )
+    user_payload = {
+        "language": payload.language,
+        "extractedAccent": payload.extractedAccent,
+        "coverPhotoDesc": payload.coverPhotoDesc or "",
+        "hint": payload.hint or "",
+        "userMessage": payload.userMessage or "",
+        "history": payload.history,
+        "coverTexts": payload.coverTexts,
+        "endingTexts": payload.endingTexts,
+    }
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+    ]
+
+
+async def _complete_deepseek(
+    messages: list[dict[str, str]],
+    *,
+    max_tokens: int,
+    temperature: float,
+) -> tuple[dict[str, Any], V3Usage]:
+    settings = get_settings()
+    if not settings.deepseek_api_key:
+        raise CoverV3Error("DEEPSEEK_API_KEY missing; cannot run cover orchestration")
+    started = time.monotonic()
+    response = await ai_client.chat_completion(
+        base_url=settings.deepseek_base_url,
+        api_key=settings.deepseek_api_key,
+        model=settings.deepseek_model,
+        messages=messages,
+        timeout_seconds=settings.deepseek_timeout_seconds,
+        response_format=(
+            {"type": "json_object"} if settings.deepseek_use_json_object else None
+        ),
+        max_tokens=max_tokens,
+        temperature=temperature,
+        extra_body=(
+            {"thinking": {"type": "disabled"}}
+            if settings.deepseek_disable_thinking
+            else None
+        ),
+    )
+    duration_ms = int((time.monotonic() - started) * 1000)
+    return response, _usage_from_response(response, duration_ms, settings.deepseek_model)
+
+
+def _parse_model_json(response: dict[str, Any], label: str) -> dict[str, Any]:
+    try:
+        parsed = ai_client.parse_json_loose(ai_client.extract_text(response))
+    except ValueError as exc:
+        raise CoverV3Error(f"{label} model response was not valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise CoverV3Error(
+            f"{label} model response must be an object, got {type(parsed).__name__}"
+        )
+    return parsed
+
+
+def _usage_from_response(response: dict[str, Any], duration_ms: int, model: str) -> V3Usage:
+    prompt_tokens, completion_tokens = ai_client.extract_usage(response)
+    return V3Usage(
+        durationMs=duration_ms,
+        planningInputTokens=prompt_tokens,
+        planningOutputTokens=completion_tokens,
+        models=V3Models(planning=model),
+    )
+
+
+def _mapping_texts(raw: Any) -> dict[str, Any]:
+    return dict(raw) if isinstance(raw, Mapping) else {}
+
+
+def _text(value: Any) -> str:
+    return value.strip() if isinstance(value, str) and value.strip() else ""
 
 
 async def _maybe_await(value: Awaitable[Any] | Any) -> Any:
@@ -568,10 +740,11 @@ async def _maybe_await(value: Awaitable[Any] | Any) -> Any:
 def _extract_cover_accent(
     req: V3CoverRequest, accent_from_photo_fn: AccentFromPhotoFn
 ) -> str:
-    if not req.coverPhoto:
+    photo = req.coverPhoto or req.endingPhoto
+    if not photo:
         return _NEUTRAL_ACCENT
     try:
-        return accent_from_photo_fn(req.coverPhoto)
+        return accent_from_photo_fn(photo)
     except Exception:
         return _NEUTRAL_ACCENT
 
@@ -590,14 +763,44 @@ def _needs_input_response(
     language: str,
     *,
     reply: str | None = None,
+    usage: V3Usage | None = None,
 ) -> V3CoverResponse:
     return V3CoverResponse(
         layoutPatch=[],
         assistantReply=(reply or _default_clarification_reply(language))[:500],
         needsUserInput=True,
-        usage=V3Usage(
-            durationMs=int((time.monotonic() - started) * 1000),
-            models=V3Models(),
+        usage=_merge_usage(int((time.monotonic() - started) * 1000), usage),
+    )
+
+
+def _merge_usage(duration_ms: int, *usages: V3Usage | None) -> V3Usage:
+    present = [usage for usage in usages if usage is not None]
+    if not present:
+        return V3Usage(durationMs=duration_ms, models=V3Models())
+    planning_model = next(
+        (usage.models.planning for usage in present if usage.models.planning),
+        None,
+    )
+    vision_model = next(
+        (usage.models.vision for usage in present if usage.models.vision),
+        None,
+    )
+    summed_duration = sum(usage.durationMs for usage in present)
+    return V3Usage(
+        durationMs=max(duration_ms, summed_duration),
+        visionCallCount=sum(usage.visionCallCount for usage in present),
+        planningInputTokens=sum(usage.planningInputTokens for usage in present),
+        planningOutputTokens=sum(usage.planningOutputTokens for usage in present),
+        repairAttempts=sum(usage.repairAttempts for usage in present),
+        models=V3Models(
+            **{
+                key: value
+                for key, value in {
+                    "planning": planning_model,
+                    "vision": vision_model,
+                }.items()
+                if value
+            }
         ),
     )
 
@@ -613,11 +816,7 @@ def _clarify_rounds(history: Sequence[Any]) -> int:
     for turn in history:
         role = _turn_value(turn, "role")
         content = _turn_value(turn, "content")
-        if (
-            role == "assistant"
-            and isinstance(content, str)
-            and ("?" in content or "？" in content)
-        ):
+        if role == "assistant" and isinstance(content, str) and content.strip():
             rounds += 1
     return rounds
 
