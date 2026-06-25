@@ -42,9 +42,9 @@ def load_replies(path: Path | str) -> dict[str, str]:
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        # 取首个 ASCII 冒号或全角冒号作为分隔符。
+        # 取首个 ASCII 冒号或全角冒号作为分隔符(取两者中位置更靠前的那个)。
         idx_ascii = line.find(":")
-        idx_full = line.find(":")
+        idx_full = line.find("：")
         candidates = [i for i in (idx_ascii, idx_full) if i != -1]
         if not candidates:
             continue
