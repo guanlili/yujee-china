@@ -113,8 +113,10 @@ def gemini_layout(
 # Unit(输入数据契约)
 Unit = {
   "chapterId": str,
-  "photos":    [{"photoId": str, "ref200px": str, "orientation": str}],  # 200px 真图
-  "candidates":[{"templateId": str, "previewImage": str, "spec": V3TemplateCandidate}],  # 候选+模板预览图
+  "photos":    [{"photoId": str, "ref200px": str, "orientation": str, "takenAt": str}],  # 200px 真图;takenAt 供调用方 wrap+generic 的 date 装饰(本模块不用)
+  # ★candidates 不由调用方传 —— 本模块内部用 legal_candidates 算 + 加载模板预览图组装(§2.3),
+  #   下面 candidates[] 是组装后形状,仅作内部说明:
+  # "candidates":[{"templateId": str, "previewImage": str, "spec": V3TemplateCandidate}],  # 候选+模板预览图(模块内部产)
 }
 
 # LayoutResult(输出契约,★只意图、无色)
@@ -126,7 +128,7 @@ LayoutResult = {
 ### 2.3 模块边界(谁组装、谁兜底,锁死避免重复)
 - **谁组装候选(`candidates`)**:本模块内部调 `skeleton_v3.legal_candidates(category="interior", N)`,N=该 unit 图数(多章取章内最大),再贴模板预览图。Stage2/Stage3 **都不自己拼候选**。
 - **输入数据从哪来**:
-  - 200px 真图:Stage2 由 Web `SelectLayoutRequest` 带入;Stage3 case4 由 T4 触发时 Web 重发该章 200px(蓝图 §4「case4 重发 200px」)。
+  - 200px 真图:Stage2 由 Web `SelectLayoutRequest` 带入;Stage3 case4 由 T4 触发时 agent 经 **`GET /internal/agent-data?type=page-photos`** 读回该章 200px(★B2 收敛:协议定死走读回调,不靠模糊"Web 重发";base64 来源/隐私见 §4.3)。
   - 模板预览图:agent 侧静态资源(模板预览图资源是新增依赖,见 §7 耦合点)。
   - 结构描述:Stage2 来自 tree 切片;Stage3 来自会话 focus + T1 读到的章节描述。
 - **谁跑兜底**:本模块出口**强制**过 `skeleton_v3`:Gemini 出的 `LayoutResult` 逐 unit 喂 `validate_grouping` + 槽位合法性钳;非法 unit 局部降级 = 用 `pick_template_v3` + `assign_images_v3` 只重算失败的 unit(不整批重跑)。**意图非法 → 代码保合法**是 §6 不变式的落点,本模块不绕过。
@@ -171,8 +173,9 @@ Stage1(识图 + 余量归组)、Stage2(排版喂 200px)、Stage3(T3/T4 工具喂
 ## 4. Agent→Web 读回调 `GET /internal/agent-data`
 
 ### 4.1 用途与边界
-Stage3 渐进加载读工具(T1 页面信息 / T2 分章检索)回 Web 取数据。**Web 是 draft_json 唯一真相**,agent 不持有相册布局,按需来取。
-- **本端点只服务 page-info / chapter-search**。
+Stage3 渐进加载读工具(T1 页面信息 / T2 分章检索 / **case4 取 200px 真图**)回 Web 取数据。**Web 是 draft_json 唯一真相**,agent 不持有相册布局,按需来取。
+- **本端点服务 page-info / chapter-search / `page-photos`**。
+- **★`page-photos`(B2 收敛)**:Stage3 **case4 换版式**(T4)需要该章 200px 真图喂 `gemini_layout`。蓝图 §4「case4 重发 200px」原表述含糊(edit-chat 请求体**不带任何 base64**,见 Stage3 §1/§7);本文**定死协议** = case4 触发时 agent 经本回调 `GET /internal/agent-data?type=page-photos` 读回该章 200px,**不靠浏览器重发**(与 T1/T2「agent 按需拉」同构,不破"树不经浏览器"不变式)。
 - **history 不走这里**:对话历史属 agent 自有库(§5),T-history 读 agent 自己的表,不回 Web。(注:这是对 Stage3 设计 §6「type=...|history」的收敛——history 既已迁入 agent 库,就不再经此回调。见 §7 耦合点。)
 
 ### 4.2 落点:Web 端,与现有 `/api/v3/internal/job-progress` 同目录族
@@ -184,6 +187,7 @@ Stage3 渐进加载读工具(T1 页面信息 / T2 分章检索)回 Web 取数据
 ```
 GET /api/v3/internal/agent-data?type=page-info&albumId=...&scope=page|chapter&chapterId=...&pageIndex=...
 GET /api/v3/internal/agent-data?type=chapter-search&albumId=...&query=...&limit=...
+GET /api/v3/internal/agent-data?type=page-photos&albumId=...&chapterId=...   # ★case4 取该章 200px
 Header: Authorization: Bearer ${AGENT_SHARED_SECRET}
 ```
 响应(JSON 信封,200):
@@ -197,6 +201,13 @@ Header: Authorization: Bearer ${AGENT_SHARED_SECRET}
 // type=chapter-search
 { type: "chapter-search",
   data: { matches: [{ chapterId: string, pageIndexes: number[], label: string, score: number }] }}
+// ★type=page-photos(B2:case4 喂 gemini_layout)
+{ type: "page-photos",
+  data: { photos: [{ photoId: string, ref200px: string, orientation: string, takenAt: string }] } }
+//   ref200px=200px base64。★base64 来源:浏览器是唯一有原图处(Web base64 不落盘),故 case4 这一轮
+//   edit-chat 由浏览器随请求带上该 focus 章的 200px;Web 服务端**仅本轮 transient 持有**,经本 page-photos
+//   回调转发给 agent(orientation/takenAt 从 draft_json.tree 该章补)。隐私:transient,进 body 后丢引用、
+//   不记录、不入 draft(同 §3 隐私红线);喂 gemini_layout 后即弃。
 ```
 错误:复用 Web 错误码族(`apps/web/src/lib/api/error-codes.ts`),`401` 鉴权失败、`404` album 不存在、`422` 参数非法。
 
@@ -207,6 +218,19 @@ Header: Authorization: Bearer ${AGENT_SHARED_SECRET}
 - `type=page-info`:服务端从 `draft_json` 重切,**复用 `sliceChapterForChat`**(`apps/web/src/services/album/album-service.ts:169`,返回 `{chapter, pages}`);`scope=page` 时再按 `pageIndex` 过滤。completion 判据(`page_filled`/`chapter_completion`)由 Web 拼入或 agent 侧算(本文不锁内部)。
 - `type=chapter-search`:服务端在 `draft_json.tree.chapters` 上做匹配(关键词→章/页),复用 `buildRecommendOverviews` 风格的文本切片;**无 base64**(隐私 by construction)。
 - **树不经浏览器**(不变式 12):本回调是 agent↔Web 服务端直连,浏览器只发 chapterId/userMessage。
+
+### 4.6 `POST /internal/agent-ack` — Web→Agent 提交确认(★B4 弱一致收敛)
+方向**与 §4 相反**(Web→Agent;§4 是 Agent→Web)。落点 = **Agent 端**新路由 `POST /internal/agent-ack`。
+- **用途**:Stage3 edit loop 提交协议里,agent 落 `agent.edit_ops`/`agent.edit_messages` 时记 `status='pending'` 并把 `opId` 放进 `CommitBundle`;Web 单事务落相册成功后调用本端点,agent 据 `opId` 把该 op + 关联 message 转 `status='committed'`。**T-history / 喂模型上下文只读 committed**,杜绝"AI 看见自己声称做过、相册却没落"的历史污染(Stage3 §3/§4.1)。
+- **信封**:
+```
+POST /internal/agent-ack
+Header: Authorization: Bearer ${AGENT_SHARED_SECRET}   # 同 shared bearer,不新增密钥
+Body:   { "opId": string }
+200:    { "ok": true }       # 幂等:重复 ack 同 opId 安全;未知 opId → 200 {ok:false}(不抛)
+```
+- **鉴权**:复用 shared bearer(同 §4.4)。
+- **崩溃语义**:ack 没回 → op/message 停留 `pending`,相册以 Web 为准、对话以 committed 为准,遗留 pending 按 TTL 清理(Stage3 §3)。
 
 ---
 
@@ -243,20 +267,25 @@ updated_at    timestamptz not null
 
 -- agent.edit_messages  (对话消息;T-history 读这里,取代回 Web 取 history)
 id            uuid pk
+op_id         text                       -- ★关联本轮 edit_ops.op_id(纯 talk 轮可空);ack 时连同转 committed
 album_id      text not null
 chapter_id    text                       -- 可空(全书级消息)
 role          text not null              -- user|assistant
 content       text not null
+status        text not null              -- ★pending|committed;T-history 只读 committed(B4)
 created_at    timestamptz not null
--- index: (album_id, chapter_id, created_at)  -- 仿 albumMessageRepo.findRecentByAlbumChapter
+-- index: (album_id, chapter_id, status, created_at)  -- 仿 albumMessageRepo.findRecentByAlbumChapter
 
--- agent.edit_operations  (操作日志;已提交动作审计)
+-- agent.edit_ops  (操作日志;已提交动作审计)
 id            uuid pk
+op_id         text unique not null       -- ★稳定 opId(放进 CommitBundle;Web 经 /internal/agent-ack 回销)
 album_id      text not null
 session_id    uuid not null              -- -> agent.edit_sessions.id
 kind          text not null              -- write_chapter|edit_text|swap_image|swap_layout|advance
+status        text not null              -- ★pending|committed;agent 落库 pending,Web ack 后 committed(B4)
 payload_json  jsonb not null             -- 该次动作的 patch/decision 摘要
 created_at    timestamptz not null
+-- index: (album_id, status, created_at)
 ```
 > 字段只到 schema 级;约束/索引细节由 Stage3 板块在实现期定。`album_id` 跨 schema 用**逻辑外键**(不建 DB 级 FK,避免 Drizzle/Alembic 互相耦合)。
 
@@ -294,6 +323,6 @@ validate_grouping(grouping: Sequence[Sequence[str]], photo_ids: Sequence[str], *
 
 3. **history 来源二选一未对齐**:Stage3 设计 §6 写 `/internal/agent-data?type=...|history` + T-history 复用 `albumMessageRepo`;本文把 history 收敛进 agent 库(§4.1/§5.4)。需总架构师拍:对话消息归 **Web 库(album_messages)** 还是 **agent 库(agent.edit_messages)**?若归 agent 库,则 Web 现有 `album_messages` 表/`albumMessageRepo` 在 Stage3 的角色需重定(镜像?废弃?)。两处不能各执一词。
 
-4. **模板预览图资源**:`gemini_layout` 需要"模板预览图"喂 Gemini,agent 侧目前 `template_select` 只用 `TemplateDef`(无预览图)。新增预览图静态资源是新依赖/新资产,Stage2 与 Stage3 共用同一份;由谁生成/存哪(agent 内置 vs R2)需总架构师定,避免两板块各引一份。
+4. **模板预览图资源**:`gemini_layout` 需要"模板预览图"喂 Gemini,agent 侧目前 `template_select` 只用 `TemplateDef`(无预览图)。新增预览图静态资源是新依赖/新资产,Stage2 与 Stage3 共用同一份。★**已裁定(chief-review B3)**:烘焙脚本入 `apps/web/scripts/`、产物存 `packages/contracts/template-previews/`(随模板库,Stage2/Stage3 共用一份,`gemini_layout` 模块从该路径加载)。
 
 5. **finalize_color 收编 + 颜色识别代码化**:实测代码中只有 `_coerce_accent`(theme_recommend/handler.py)真做设计色→hex 归一化;`_apply_page`(apply_theme_v3.py)、`_bake_text_slots`(finalize_v3.py)只**消费**已合法色。★新模型:**颜色设计 = AI「颜色设计」skill**(Stage4 吃 Stage1 1d 提取色作依据;Stage5 封面色吃 `accent_from_photo` 出的封面照片提取色作依据 —— 同一套);**颜色识别 = 代码**(`accent_of_group` / `accent_from_photo` 产提取色,是依据非最终色);**finalize_color 在**(AI 出色经它/`_coerce_accent` 归一化成最终 hex)。`_coerce_accent` **保留**(它就是 finalize_color 在 recommend 端的落点)。唯一出最终色口 = finalize_color(章节色 Stage4、封面色 Stage5,同一套)。需确认:下游 `_apply_page`/`_bake_*` 收到的 `accentColor` 一律是已合法 hex,不再各自钳色,"唯一/不重复出色口"在新模型下成立。

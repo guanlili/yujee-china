@@ -81,7 +81,7 @@ STAGE 5 封面+封尾  (Agent,/v3/cover 改造,交互)
 ### Stage 2 选版式(`/v3/select-layout` NEW)
 | 子步 | 输入 | 输出 | 归属 |
 |---|---|---|---|
-| 2a Gemini 排版 | NEW `SelectLayoutRequest{chapters:{chapterId,photos:{photoId,200px,orientation}[]}[], candidates:V3TemplateCandidate[]+预览图, 结构描述}`(候选容量≤章节图数,多章取章内最大);**按章/簇批量、同章不切** | NEW `LayoutIntent{pages:{chapterId,templateId,slots:{slotId→photoId}}[]}` ★无色 | Gemini |
+| 2a Gemini 排版 | NEW `SelectLayoutRequest{chapters:{chapterId,photos:{photoId,200px,orientation,takenAt}[]}[], 结构描述}`(★`candidates` **不进请求**——由 `gemini_layout` 模块内部用 `legal_candidates` 算 + 加载模板预览图组装,候选容量≤章节图数,多章取章内最大);**按章/簇批量、同章不切** | NEW `LayoutIntent{pages:{chapterId,templateId,slots:{slotId→photoId}}[]}` ★无色 | Gemini |
 | 2b 合法性兜底 | LayoutIntent + 章节图 | 合法 `Page[]`;局部只重算失败章/页 | 代码 skeleton_v3 |
 | 2c wrap+generic | interior Page[]+tree | 全 Page[](含封面封尾)+folio/date | 代码 |
 | 结果 | — | `Page[]` → Web 合并 draft_json.pages | 代码 |
@@ -89,7 +89,7 @@ STAGE 5 封面+封尾  (Agent,/v3/cover 改造,交互)
 ### Stage 4 设计(`/v3/recommend` 改造 + `/v3/apply-theme`)
 | 子步 | 输入 | 输出 | 归属 |
 |---|---|---|---|
-| 整体 3 组 | EXTEND `V3RecommendRequest`(chapters:V3ChapterOverview[]+extractedColor? + analysisSummary? + NEW fontHint?) | NEW `bookThemeOptions:{optionId, artFont, palette, style}[3]`(★字体+颜色+整体风格,AI 用「颜色设计」skill 吃提取色作依据)→ 用户选 1 | DeepSeek |
+| 整体 3 组 | EXTEND `V3RecommendRequest`(chapters:V3ChapterOverview[]+extractedColor? + analysisSummary? + NEW fontHint?) | NEW `bookThemeOptions:{optionId, artFont, chapters:[{chapterId,accentColor,subject?}], style}[3]`(★字体+逐章确定色+整体风格,AI 用「颜色设计」skill 吃提取色作依据)→ 用户选 1 | DeepSeek |
 | apply-theme | EXTEND `V3ApplyThemeRequest`(chosen 字体 + 最终色 + pages[]) | `layoutPatch[]`(刷字体 + 刷色;accentColor = Stage4 AI 设计经 finalize_color 的最终值) | 代码 apply_theme_v3 |
 
 ★Stage4 出最终颜色(章节 accentColor):AI 用「颜色设计」skill 拿 章节描述 + Stage1 1d 提取色作依据设计,经 finalize_color 归一化;Stage4 同时出字体 + 整体风格。
@@ -97,8 +97,8 @@ STAGE 5 封面+封尾  (Agent,/v3/cover 改造,交互)
 ### Stage 5 封面封尾(`/v3/cover` 改造,交互)
 | 子步 | 输入 | 输出 | 归属 |
 |---|---|---|---|
-| 5a 文案(交互) | EXTEND `V3CoverRequest`(coverTemplateId?/endingTemplateId? + NEW **coverPhoto(浏览器选,200px)**/hint/userMessage/history) | NEW coverTexts/endingTexts + assistantReply(可能提问) | DeepSeek |
-| 5b 配色 | 选中封面照片(200px) | 提取色(代码 `accent_from_photo`)→ AI「颜色设计」skill 设计封面色 | 代码识别 + AI 设计(同章节色一套) |
+| 5a 文案(交互) | EXTEND `V3CoverRequest`(coverTemplateId?/endingTemplateId? + NEW **coverPhoto(200px,仅代码取色)/coverPhotoDesc(文字,喂模型)**/hint/userMessage/history)★DeepSeek 纯文本,不看 base64 | NEW coverTexts/endingTexts + assistantReply(可能提问) | DeepSeek |
+| 5b 配色 | 封面照片 base64(代码取色)+ 提取色 hex(喂 AI) | 提取色(代码 `accent_from_photo` 出像素提取色)→ AI「颜色设计」skill 吃提取色设计封面色 | 代码识别 + AI 设计(同章节色一套) |
 | 5c 落地 | 文案 + AI 设计封面色 | `layoutPatch[]`:**复用单页填文案/刷色函数** + finalize_color 归一化 | 代码 |
 
 ---
@@ -124,7 +124,7 @@ finalize→ 拍平 → AlbumLayoutPlan{magazine,photos[],pages[]}(★不变)
 | Stage | 端点 | 同步? | 请求带 | 响应带 | 图 |
 |---|---|---|---|---|---|
 | 1 | `/v3/analyze` | 异步+callback | base64@800px、clusterId、takenAt、hint | callback 仅 `tree`(★去 pages) | 800px |
-| 2 | **`/v3/select-layout` NEW** | 异步(按章/簇批量) | 200px真图+模板预览+tree切片 | `pages[]` | 200px |
+| 2 | **`/v3/select-layout` NEW** | 异步(按章/簇批量) | 200px真图+tree切片(★候选/预览图由 `gemini_layout` 模块内部组装,不进请求) | `pages[]` | 200px |
 | 3 | `/v3/chapter-chat`(+工具) | 同步 | 见 §7 | 见 §7 | case4 重发200px |
 | 4 | `/v3/recommend`,`/v3/apply-theme` | 同步 | 文字概览;选择 | 3组→选;layoutPatch | 无 |
 | 5 | `/v3/cover` | 同步(交互) | 模板id + 封面照片(200px,浏览器选)+hint+history | 文案+色 patch(或提问) | 200px |
@@ -137,9 +137,9 @@ finalize→ 拍平 → AlbumLayoutPlan{magazine,photos[],pages[]}(★不变)
 ## 5. 共享组件接口(只签名)
 
 ```
-gemini_layout({units:[{chapterId, photos:[{photoId,ref200px,orientation}],
-               candidates:[{templateId,previewImage,V3TemplateCandidate}]}],
+gemini_layout({units:[{chapterId, photos:[{photoId,ref200px,orientation,takenAt}]}],
                结构描述, mode:"select"|"case4-swap", allowAddPages:bool})
+  # ★candidates 不由调用方传:模块内部用 legal_candidates 算合法候选 + 加载模板预览图自行组装
   -> {pages:[{chapterId,templateId,slots:{slotId→photoId}}]}      # 只意图,★无色 → 接 skeleton_v3 兜底
 
 accent_of_group(photoIds, photos_by_id) -> "#RRGGBB"               # Stage1 1d 颜色识别:整章聚合确定性出提取色(参考 accent_color.py);依据非最终色,喂 Stage4 AI 设计

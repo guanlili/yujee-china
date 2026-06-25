@@ -49,7 +49,7 @@ SelectLayoutRequest {
   chapters: [                       # Stage1 tree 的「排版切片」(Web 从 draft_json.tree 摘)
     {
       chapterId: str
-      photos: [ { photoId, ref200px, orientation } ]   # 200px 真图(base64),orientation 代码已填
+      photos: [ { photoId, ref200px, orientation, takenAt } ]   # 200px 真图(base64),orientation/takenAt 代码已填(takenAt 供 §6 wrap+generic 的 date/dateNum 装饰,Stage2 不再持完整 tree)
       structureHint?: str           # 结构描述(章节级,见 §3.2);prompt 细节不在本文
     }
   ]
@@ -88,8 +88,7 @@ Stage2 把每批装配成 `gemini_layout` 的 `units` 入参(蓝图 §5):
 ```
 gemini_layout({
   units: [ { chapterId,
-             photos: [{photoId, ref200px, orientation}],
-             candidates: [{templateId, previewImage, V3TemplateCandidate}] } ],
+             photos: [{photoId, ref200px, orientation, takenAt}] } ],   # ★调用方只传 units(无 candidates)
   结构描述,
   mode: "select",          # Stage2 固定 "select";Stage3 case4 传 "case4-swap"
   allowAddPages: bool      # Stage2 = true(Gemini 决定一章切几页);见 §2.5
@@ -99,7 +98,7 @@ gemini_layout({
 
 Stage2 对 `gemini_layout` 的用法约定:
 - **mode="select"**:全新排版(对照 Stage3 case4 的 swap)。
-- **`candidates` 带 `previewImage`**:由 Stage2 从预览图资源装配(§2.3),`V3TemplateCandidate` 来自 `skeleton_v3.legal_candidates`(§2.4)。
+- **`candidates` 不由 Stage2 传**:候选(含 `previewImage`)由 `gemini_layout` 模块内部用 `skeleton_v3.legal_candidates` 算 + 加载模板预览图组装(共享板块 detail-shared §2.3),Stage2/Stage3 都不自己拼候选。容量过滤口径(≤章节图数,多章取章内最大)见 §2.4,由模块据 unit 图数应用。
 - Gemini 输出是**意图**(templateId + 图→槽),无色;直接接 `skeleton_v3` 钳(§5)。
 
 ### 2.2 Gemini provider / 端点 / 关思考
@@ -111,21 +110,21 @@ Stage2 对 `gemini_layout` 的用法约定:
 - **`response_format`**:Gemini OpenAI-compat 支持 json,优先 `json_object`;不支持则靠 prompt「STRICT JSON only」+ `parse_json_loose`(同 ark 分支退路)。
 - **简易 id**:喂图给 Gemini 用 `to_simple` / `from_simple`(共享板块,蓝图 §5)把长 hash photoId 映射成 1,2,3…,回来再反映射 —— 与 describe 的 `_remap_describe_photo_ids` 同理(防小模型抄岔 id)。映射归共享板块,Stage2 只调用。
 
-### 2.3 候选装配:预览图从资源加载(不进请求体)
+### 2.3 候选装配:预览图从资源加载(不进请求体,模块内部组装)
 
-每个 unit 的 `candidates[].previewImage` 由 **Agent 内部从预览图资源加载**(§3 烘焙产出),不由 Web 传。流程:
-1. Stage2 对每章算合法候选 templateId 集(§2.4)。
+每个 unit 的 `candidates[].previewImage` 由 **`gemini_layout` 模块内部从预览图资源加载**(§3 烘焙产出),既不由 Web 传、也不由 Stage2 拼(共享板块 detail-shared §2.3 锁死:Stage2/Stage3 都不自己拼候选)。模块内部流程:
+1. 对每章用 `skeleton_v3.legal_candidates("interior", N)` 算合法候选 templateId 集(N=该章图数,§2.4)。
 2. 对每个候选 templateId,从预览图资源目录加载对应 PNG(或目录图,§3.4),组成 `previewImage`(base64 / data-uri)。
-3. 连同 `V3TemplateCandidate`(templateId/category/imageSlotCount)装进 `candidates`。
+3. 连同 `V3TemplateCandidate`(templateId/category/imageSlotCount)装进 `candidates`,喂 Gemini。
 
 好处:模板预览图是**定长资产**(只随模板库变,与相册无关),不必每请求从 Web 搬过网络;Agent 进程内缓存一次加载(同 `skeleton_v3.POOLS` 的一次性构建模式)。
 
 ### 2.4 候选容量过滤(★≤章节图数,多章取章内最大)
 
-蓝图 §2:「候选容量 ≤ 章节图数,多章取章内最大」。落地:
+蓝图 §2:「候选容量 ≤ 章节图数,多章取章内最大」。★**按页容量桶,不按整章 N(M3)**:因 §2.5 `allowAddPages` 让 Gemini 把一章切成多页,**每页** slot 数远小于整章 N;若候选只给"能装下整章 N 张"的模板,会**排除掉真正需要的小容量(每页)模板**、把多页排版逼死。故候选容量按**单页**算:
 
-- **逐章**:候选 = `skeleton_v3.legal_candidates("interior", N)`,N = 该章图数(`legal_candidates` 已实现「精确容量优先 + 更大容量兜底」,且只给能装下 N 张的模板)。
-- **一批含多章**(§4 打包):候选集取**批内各章 N 的最大值**对应的合法集的**并集**,确保每章都能在候选里找到合法模板;但每章在 prompt/装配里仍按自己的 N 过滤(避免给小章塞超大模板)—— 即「多章取章内最大」用于装配候选**池**,逐章应用各自上限。
+- **页容量桶**:候选池 = 各页容量桶 `c ∈ [1 .. min(N, 单模板最大 slot 数)]` 的合法模板**并集**,即 `⋃_c skeleton_v3.legal_candidates("interior", c)`(N=该章图数,作上界)。Gemini 据此在一章内自由切页 + 每页选合适容量的模板。
+- **一批含多章**(§4 打包):候选池取**批内各章页容量桶的并集**(上界 = 批内最大章的 N);仍**逐章**应用各自 N 作页容量上界(小章不给超过其 N 的页模板),避免给小章塞超大单页模板。「多章取章内最大」仅用于定**池**的上界,逐章/逐页应用各自上限。
 - category 固定 `interior`(封面封尾不进 Gemini,由确定性 wrap 补,§6)。
 
 ### 2.5 同章不切 + Gemini 可加页
@@ -143,7 +142,7 @@ Stage2 对 `gemini_layout` 的用法约定:
 
 - **渲染源**:复用现有 React 模板组件(`apps/web/src/components/album/templates/mag-*`),无头渲染(Playwright / puppeteer / `@react-pdf` 截帧)成 PNG。页面尺寸 = `PAGE` 794×1123(`constants.ts`),低清缩放(如 ×0.25 → ~200px 宽)省体积。
 - **灰块占位**:渲染时给每个 image slot 喂占位灰块(`WebImage` 已有 `placeholder` 行为 —— 不传 `src` 时显示占位;烘焙时用统一灰色块替代),文字槽喂占位短串或留空。产物 = **纯版式骨架低清图**(哪里放图、哪里放字、几栏几格)。
-- **脚本位置**:新增烘焙脚本(顶层 `scripts/` 或 `apps/web/scripts/`)。**新增顶层目录需架构师在 architecture.md 登记**(CLAUDE.md 铁律)—— 本文标为待登记项,优先放 `apps/web/scripts/`(已存在 `seed.ts`,无需新顶层目录)。
+- **脚本位置**:烘焙脚本入 **`apps/web/scripts/`**(总架构师已裁定,chief-review B3;不新增顶层目录,已存在 `seed.ts`)。
 - **触发**:手动 / CI 在**模板变更时重跑**(§3.5)。非运行时路径。
 
 ### 3.2 结构描述(随预览图一起喂,文字辅助)
@@ -152,7 +151,7 @@ Stage2 对 `gemini_layout` 的用法约定:
 
 ### 3.3 资源存放 + Agent 加载
 
-- **存放**:烘焙产物 PNG + 结构描述 JSON 存为**版本化资产**(随仓库,如 `apps/agent/src/engine/template_previews/<templateId>.png` + `.json`,或 `packages/contracts/template-previews/`)。最终目录由架构师在 architecture.md 登记;倾向放 Agent 可直接读的路径(避免跨包运行时依赖)。
+- **存放**:烘焙产物 PNG + 结构描述 JSON 存为**版本化资产**于 **`packages/contracts/template-previews/<templateId>.png` + `.json`**(总架构师已裁定,chief-review B3;随模板库,Stage2/Stage3 共用同一份)。Agent 从该路径加载。
 - **Agent 加载**:Stage2 启动时一次性加载进进程缓存(同 `templates.TEMPLATES` / `skeleton_v3.POOLS` 模式),装配 `candidates` 时按 templateId 取。
 
 ### 3.4 目录图(省 Gemini 图量预算)
@@ -187,10 +186,13 @@ Stage2 对 `gemini_layout` 的用法约定:
 Gemini 出意图后,逐章跑既有护栏(**与 Stage1 现 `_assemble_chapter_pages` 同款逻辑搬过来**):
 
 1. **章内分页合法**:`skeleton_v3.validate_grouping(pages_ids, chapter_ids, category="interior")`(每页 1..容量、不丢不重保序)。
-2. **逐页模板合法**:页 templateId ∉ `skeleton_v3.legal_candidates("interior", N)` → 置 None,`skeleton_v3.build_page_v3` → `pick_template_v3` 确定性补选。
-3. **图→槽**:`skeleton_v3.assign_images_v3(templateId, photoIds)` 按声明顺序塞槽(无 quality/hero/orientation 匹配,比例不符由渲染 center-cover 吸收)。
+2. **逐页模板合法**:页 templateId ∉ 该页容量桶的 `skeleton_v3.legal_candidates("interior", c)`(c=该页图数,M3)→ 置 None,`skeleton_v3.build_page_v3` → `pick_template_v3` 确定性补选。
+3. **图→槽(★只修非法,保留 Gemini slot,M4)**:Gemini 已出 `slots:{slotId→photoId}` 是 Gemini 的排版决策,**不无条件重塞**。逐页校验该 slots 是否合法(slotId ∈ 模板声明槽、photoId ∈ 该页图、无重无漏覆盖模板 image 槽);
+   - **合法** → **原样保留 Gemini 的图→槽**(尊重模型的位置意图,如 hero/朝向编排)。
+   - **非法 / 缺失 / 模板被步骤 2 改过** → 才 `skeleton_v3.assign_images_v3(templateId, photoIds)` 兜底按声明顺序塞槽(无 quality/hero/orientation 匹配,比例不符由渲染 center-cover 吸收)。
+   即 `assign_images_v3` 是**兜底**,不是默认覆盖;Gemini 的合法 slot 决策必须被保留。
 
-> 这套逻辑是 `skeleton_v3` + `template_select.plan_pages/fallback_pages` 已有的;Stage2 **只是调用方**,把 Stage1 内嵌的同款代码搬到 Stage2 handler。
+> 校验/兜底引擎是 `skeleton_v3` + `template_select.plan_pages/fallback_pages` 已有的;Stage2 **只是调用方**,把 Stage1 内嵌的同款代码搬到 Stage2 handler——但**改为"只修非法、保留合法 Gemini slot"**(M4),而非现 Gemini-less 路径的无条件 `assign_images_v3`。
 
 ### 5.2 局部只重算失败章/页
 
@@ -213,7 +215,7 @@ Gemini 出意图后,逐章跑既有护栏(**与 Stage1 现 `_assemble_chapter_pa
 Gemini + 钳产出的是 **interior 正文页**。Stage2 末步复用既有确定性函数:
 
 - `skeleton_v3.wrap_with_cover_ending(interior_pages, chapters)`:前后补默认封面/封底页(hero = 首/尾照片),pageIndex 重排。
-- `generic_copy.fill_generic_copy(pages, chapters)`:叠加 folio / date / dateNum 等通用装饰进 `texts`(用户文案槽留空,Stage3 写;色留空,Stage4 落)。
+- `generic_copy.fill_generic_copy(pages, chapters)`:叠加 folio / date / dateNum 等通用装饰进 `texts`(用户文案槽留空,Stage3 写;色留空,Stage4 落)。★`date`/`dateNum` 依赖照片 `takenAt`;Stage2 不持完整 tree,故 `takenAt` 由 `SelectLayoutRequest.chapters[].photos[].takenAt`(§1.2)随请求带入,代码据它构造 generic 所需的 `{photoId→takenAt}` 索引(无 takenAt 的照片省略日期,不编造)。
 - 产出 `Page[]` → callback。**这一步与 analyze `_build_preview` 完全同款**,直接复用(封面封尾不进 Gemini,§2.4)。
 
 ---
@@ -239,7 +241,7 @@ Gemini + 钳产出的是 **interior 正文页**。Stage2 末步复用既有确�
 
 ## 9. 实现清单(供后续拆 PR)
 
-1. **烘焙脚本**(路 A):无头渲染 React 模板 + 灰块 → 预览 PNG + 目录图 + 结构描述 JSON;一致性自检;模板变更重跑(资源目录 + 顶层目录归属待 architecture.md 登记)。
+1. **烘焙脚本**(路 A):无头渲染 React 模板 + 灰块 → 预览 PNG + 目录图 + 结构描述 JSON;一致性自检;模板变更重跑。脚本入 `apps/web/scripts/`、产物入 `packages/contracts/template-previews/`(chief-review B3 已定)。
 2. **Stage1 瘦身**:`describe_content` 去 pages;`V3AnalyzeCompleted` 去 pages(契约板块协同)。
 3. **`/v3/select-layout` 端点 + 异步 job**:`routes.py` 接 202;`flows/select_layout.py` 编排(照抄 analyze 的 _Job/progress/callback)。
 4. **批处理**:章为单元的图量预算装箱(复用 describe `_plan_describe_routes` 思路)。
@@ -247,5 +249,3 @@ Gemini + 钳产出的是 **interior 正文页**。Stage2 末步复用既有确�
 6. **钳 + 兜底**:复用 `skeleton_v3`(局部重算失败章/页 + 整步降级)。
 7. **wrap + generic**:复用 `wrap_with_cover_ending` + `fill_generic_copy`。
 8. **契约**:`SelectLayoutRequest` / `SelectLayoutCompleted` + jobKind/stage 进 `schemas.py` + `packages/contracts/src/v3.ts`(契约板块)。
-</content>
-</invoke>

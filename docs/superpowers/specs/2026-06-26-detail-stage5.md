@@ -16,8 +16,8 @@ Stage5 把今天「纯确定性塞图 + folio/date」的 `/v3/cover` 升级为
 
 | 子步 | 谁 | 输入 | 输出 | 归属层 |
 |---|---|---|---|---|
-| 5a 文案(交互) | DeepSeek | 封面/封尾模板 id + 封面照片(200px,浏览器选)+ hint + userMessage + history + 页槽规格 | coverTexts / endingTexts(可为空)+ assistantReply(可能是反问) | agents(新 `cover_copy`)|
-| 5b 配色 | 代码识别(`accent_from_photo` 出提取色)+ AI「颜色设计」skill(吃提取色设计封面色) | 封面照片(200px,base64) | 提取色(代码)→ AI 设计出的封面色(经 finalize_color 归一化为最终 hex) | engine(`accent_from_photo`)+ agents(颜色设计 skill)|
+| 5a 文案(交互) | DeepSeek | 封面/封尾模板 id + **封面照片文字描述**(★非 base64,见下)+ hint + userMessage + history + 页槽规格 | coverTexts / endingTexts(可为空)+ assistantReply(可能是反问) | agents(新 `cover_copy`)|
+| 5b 配色 | 代码识别(`accent_from_photo` 从封面照片**像素**出提取色)+ AI「颜色设计」skill(吃**提取色 hex**设计封面色) | 提取色 hex(代码先算)+ 封面照片文字描述 | 提取色(代码)→ AI 设计出的封面色(经 finalize_color 归一化为最终 hex) | engine(`accent_from_photo`)+ agents(颜色设计 skill)|
 | 5c 落地 | 代码 | 5a 文案 + 5b 封面色(finalize_color 归一化后)+ 相关页 | `layoutPatch[]`(文案 + 最终色刷进封面/封尾页) | engine(复用单页填文案 + apply-theme 刷色)|
 
 交互点(蓝图 §1):**5a「问用户填什么」一轮**。5b/5c 不交互。
@@ -54,12 +54,14 @@ Stage5 把今天「纯确定性塞图 + folio/date」的 `/v3/cover` 升级为
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `coverPhoto` | `str?`(200px base64) | 浏览器选的封面照片;5a 给 DeepSeek 看 + 5b 代码识别提取色 + AI 设计封面色。skip 时省略 |
-| `endingPhoto` | `str?`(200px base64,可选) | 封尾照片(若封尾也要识别取色/看图);无则封尾沿用页上既有照片、配色复用封面色 |
+| `coverPhoto` | `str?`(200px base64) | 浏览器选的封面照片;★**仅代码消费**:5b `accent_from_photo` 从像素出提取色。**不喂 DeepSeek**(DeepSeek 纯文本)。skip 时省略 |
+| `endingPhoto` | `str?`(200px base64,可选) | 封尾照片;仅代码取色用。无则封尾沿用页上既有照片、配色复用封面色 |
+| `coverPhotoDesc` | `str?` | ★封面照片的**文字描述**(来自 Stage1 该图 `sceneDescription`,Web 从 draft 树取);喂 5a DeepSeek 写文案 / 喂 5b AI 颜色设计(代替给模型看图)|
 | `hint` | `str?` | promptHint(整本基调引导,透传 5a)|
 | `userMessage` | `str`(默认 "") | 本轮用户消息(交互输入)|
 | `history` | `list[V3ChatTurn]`(`max_length=20`) | 跨轮对话历史(**复用现有 `V3ChatTurn`**,与 chapter-chat/page-edit 同型)|
 
+> ★**M5:DeepSeek 不收 base64**。`coverPhoto/endingPhoto` base64 **只给代码** `accent_from_photo` 出提取色(像素级,确定性);**5a 文案 / 5b AI 颜色设计这两个模型步只吃文字**——封面色 = 代码提取色 hex + AI 设计;文案 = 用户填的(`userMessage`/`history`)+ 图片**文字描述**(`coverPhotoDesc`,Stage1 已产)。DeepSeek 是纯文本模型,给它 base64 既无效又费 token。
 > `pages[]` 含义不变(Web 服务端再切的相关页,见 §5)。`coverPhoto/endingPhoto` 是
 > **Stage5 起新进入 Agent 契约的 base64**(此前 `/v3/cover` 无 base64);隐私按 §3:
 > 传入 HTTP body 后丢本地引用、绝不记录、绝不回传。
@@ -92,17 +94,24 @@ Stage5 把今天「纯确定性塞图 + folio/date」的 `/v3/cover` 升级为
 单轮模型(对齐 page-edit 两段式的「轻交互」气质,但 Stage5 只需**一类判断**:文案够不够写):
 
 ```
-Web 首次进 cover：userMessage="" + history=[] + coverPhoto + 模板 id
-  └─ 5a DeepSeek：信息不足 → needsUserInput=True + assistantReply(反问"想在封面写什么标题/副标题?")
-                  信息足够 → 直接写 coverTexts/endingTexts，needsUserInput=False
+Web 首次进 cover：userMessage="" + history=[] + coverPhoto(给代码取色)+ coverPhotoDesc(给 5a/5b 模型)+ 模板 id
+  └─ 5a DeepSeek(吃文字:coverPhotoDesc/hint/history,★不看 base64):
+        信息不足 → needsUserInput=True + assistantReply(反问"想在封面写什么标题/副标题?")
+        信息足够 → 直接写 coverTexts/endingTexts，needsUserInput=False
 Web 把 reply 显示给用户 → 用户回答 → 再次 POST /v3/cover(userMessage=答案, history+=本轮)
   └─ 5a：据答案写文案 → needsUserInput=False → 5b/5c 落地 → patch 返回
 ```
 
 - 交互是**无状态多轮**(Agent 不持会话):每轮 Web 带全量 `history`,与 chapter-chat / page-edit 完全一致。
-- 「AI 询问用户要填什么」= 5a 在信息不足时返回 `needsUserInput=True` 的那一轮;**至多反问的轮次由 prompt 控制**(本文不写 prompt),代码侧只认 `needsUserInput` 标志。
+- 「AI 询问用户要填什么」= 5a 在信息不足时返回 `needsUserInput=True` 的那一轮;**反问轮次有代码层硬上限**(见 §3.1,M6),触顶强制成稿。
 - `needsUserInput=True` 的轮:**跳过 5b/5c**(不取色、不落地),`layoutPatch=[]`,省 token + 不在用户还没拍板时刷色。
 - skip(两模板 id 都缺):**完全不进 5a**,直接空 patch(见 §4)。
+
+### 3.1 反问硬上限(★M6,代码层强制成稿)
+反问次数**不能只靠 prompt 约束**(模型可能无限反问把用户卡死)。**代码层硬上限**:
+- 设 `MAX_COVER_CLARIFY_ROUNDS = N`(settings 可调,如 2)。代码从 `history` 数已发生的反问轮(`needsUserInput=True` 的 assistant 轮)。
+- **触顶**:当反问轮 ≥ N,本轮**强制 `needsUserInput=False`**,忽略模型的再次反问,用现有信息(`userMessage`/`history`/`coverPhotoDesc` + 默认引导)**直接成稿**写 coverTexts/endingTexts → 走 5b/5c 落地。文案不足处用确定性兜底(如标题缺省=相册标题/留空)。
+- 这是 loop 终止闸,等价 Stage3 的步数上限:**保证 cover 环节有限步内必成稿**,不依赖模型自觉。
 
 ---
 
@@ -124,8 +133,9 @@ Web 把 reply 显示给用户 → 用户回答 → 再次 POST /v3/cover(userMes
   授权层 `albums.draft_json` 树永不经浏览器往返(不变式 12)。
 - Web 服务端:① 从 `draft_json.pages` **再切相关页**(cover=首相关页 / ending=末相关页,
   现有 `withCoverEndingHeroPhotos` + `chapterIdForDraftPage` 逻辑保留);② 把
-  `coverPhotoId/endingPhotoId` 换进相关页 hero 槽(现有 `withHeroPhoto`);③ 转发
-  `coverPhoto/endingPhoto` base64 给 Agent(**新**:base64 不落盘、不存 draft);④ 收到
+  `coverPhotoId/endingPhotoId` 换进相关页 hero 槽(现有 `withHeroPhoto`);②b ★从 draft 树取
+  `coverPhotoId` 的 `sceneDescription` 作 `coverPhotoDesc` 一并转发(给 5a/5b 模型,代替看图,M5);③ 转发
+  `coverPhoto/endingPhoto` base64 给 Agent(**仅供代码 `accent_from_photo` 取色,不喂模型**;base64 不落盘、不存 draft);④ 收到
   patch 合并进 `draft_json.pages`;⑤ **仅当 `needsUserInput=False` 时**推进 stage
   cover→ready(反问轮不推进,stage 推进权仍在 Web)。
 - 200px 封面照片 base64 由浏览器在选图时生成(浏览器是唯一有原图处),随这一轮请求带上。
@@ -141,12 +151,17 @@ Web 把 reply 显示给用户 → 用户回答 → 再次 POST /v3/cover(userMes
 | 塞图(图装配) | `engine.skeleton_v3.assign_images_v3` | 与 Stage2 兜底、现 cover_v3 同源 |
 | 填装饰(folio/date) | `engine.generic_copy.fill_page_generic_copy` | 与 Stage2 generic、现 cover_v3 同源 |
 | **填文案(正文槽)** | `agents.writing.handler._clean_texts(raw_texts, specs, template_id=...)` + `_page_slot_specs(page)` | **与 Stage3 单页编辑(page_edit)同一函数** —— page_edit 段二就调它落 edit_text 补丁;Stage5 把 5a 的 coverTexts 当 `raw_texts` 喂同一清洗/钳裁器 |
-| **刷色(强调色 + 字体)** | `engine.apply_theme_v3._apply_page(page, V3ChapterThemeChoice(...))` 的刷色路径(svg variableDecor → accentColor;title 槽逻辑) | **与 Stage4 apply-theme 同一函数** —— 把封面页当「一章」构造一个 `V3ChapterThemeChoice{accentColor=finalize_color(...), artFont, subject=封面标题?}` 喂进去 |
+| **刷色(强调色 + 字体)★页级直刷** | `engine.apply_theme_v3.apply_page(page, V3ChapterThemeChoice(...))` 的刷色路径(svg variableDecor → accentColor;title 槽逻辑)**+ 页级写字体 carrier 键** | **与 Stage4 apply-theme 同一刷色函数** —— 但**页级直刷,不经 chapter tree**(封面/封尾页在树里没有 `V3Chapter` 节点,故不走 §3 树边界的逐章 carrier bake) |
 | **识别提取色** | `engine.accent_color.accent_from_photo(封面照片)` -> 提取色 `"#RRGGBB"` | **与 Stage1 1d 颜色识别同源** —— 代码确定性从封面照片提取色,作 AI 设计依据(非最终色) |
 | **定最终色** | `finalize_color(AI 设计出的封面色) -> "#RRGGBB"` | **共享板块(Stage4 定义),本文只引用** —— 唯一出最终 hex 的口 |
 
 落地顺序(单页内):`assign_images_v3` → `_clean_texts` 落正文 → `fill_page_generic_copy`
-补装饰 → `_apply_page` 刷色,合成一条 `V3LayoutPatchEntry{pageIndex, templateId, images, texts}`。
+补装饰 → `apply_page` 刷色 + 页级写字体 carrier 键,合成一条 `V3LayoutPatchEntry{pageIndex, templateId, images, texts}`。
+
+> ★**页级直刷,不经 chapter tree(B8)**:封面/封尾页**不属于任何 `V3Chapter` 节点**,故 Stage4 的逐章 carrier bake(finalize `_bake_page` 只遍历 `tree.chapters[]`)**不会触及它们**。Stage5 必须在 5c **页级**自行写齐主题:
+> - **强调色**:`apply_page` 已把 `choice.accentColor` 直接刷进 svg variableDecor 槽(可见值)。
+> - **字体**:`apply_page` **不刷字体**(字体在常规流走树 carrier),故 5c 须**直接在该封面/封尾页**写字体 carrier 键 `texts[slotId#artFont]`(沿用 `THEME_FONT_CARRIER_SUFFIX` 文法,与 finalize 逐章烘焙等价但落在页级);accentColor 若也需 finalize 幂等,可同写 `texts[slotId#accentColor]`。
+> - **`artFont` 来源 = 选中 option 的全书 artFont**(Stage4 用户选 1 后定的 `V3BookThemeOption.artFont`,全书统一)。Web 把它随这一轮 cover 请求带入(或由 cover 编排层从 draft 树任一章的 `artFont` 取,因全书统一),5c 据它写页级字体 carrier。封面色仍是 5b 的 `finalize_color(AI 设计封面色)`,与章节色无关。
 
 > 「把以前分开的步骤统一」= 现状 cover_v3 只做「塞图 + 装饰、正文留空、色不动」三步里的两步;
 > Stage5 在**同一落地函数内**把「填正文(复用 page_edit 清洗器)+ 刷色(复用 apply-theme)」一并完成,
@@ -182,6 +197,6 @@ Web 把 reply 显示给用户 → 用户回答 → 再次 POST /v3/cover(userMes
 ## 9. 边界点清单(实施收口)
 
 1. **`finalize_color`**:5c 唯一定最终 hex 处 —— 引用共享板块,不在 Stage5 重写。
-2. **复用刷色函数**:`apply_theme_v3._apply_page`(提升为公开)—— 封面页当「一章」构造 `V3ChatThemeChoice` 喂入。
+2. **复用刷色函数**:`apply_theme_v3._apply_page`(提升为公开)—— 封面页当「一章」构造 `V3ChapterThemeChoice` 喂入(页级直刷,见 §6;不经 chapter tree)。
 3. **复用填文案函数**:`writing._clean_texts` + `_page_slot_specs`(提升为公开)—— 与 page_edit 段二同源。
 4. **Web 封面选择 + 交互**:`cover/route.ts` + `coverTurn` —— 浏览器只发选择 + 200px base64;`needsUserInput` 决定是否推进 stage。

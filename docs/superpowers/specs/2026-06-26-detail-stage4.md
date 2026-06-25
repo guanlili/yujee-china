@@ -30,7 +30,7 @@
 
 ```
 [A] recommend(DeepSeek,改造)   全书概览(章节 overview + extractedColor 提取色 + analysisSummary + fontHint?)
-      → bookThemeOptions:{optionId, artFont, palette(颜色), style(整体风格)}[3]   ★字体+颜色+风格(AI 以提取色为依据)
+      → bookThemeOptions:{optionId, artFont, chapters[{chapterId,accentColor,subject?}](逐章确定色), style(整体风格)}[3]   ★字体+颜色+风格(AI 以提取色为依据)
       → assistantReply
    ▼ 用户在 Web 选 1（交互点,Web)
 [B] finalize_color（代码,共享）  AI 设计出的颜色 → 归一化最终 hex（章节 accentColor）
@@ -70,7 +70,9 @@ V3RecommendRequest {
 V3BookThemeOption {                        # NEW:一组主题(★字体 + 颜色 + 整体风格)
   optionId: str        # 稳定标识,用户回选用(如 "warm" / "calm" / "bold" 或 opt-1..3)
   artFont: ArtFontPack # 全书统一字体,4 成员之一
-  palette: V3BookThemePalette  # 全书颜色方案(AI 颜色设计;含逐章 accent 或可推导规则)
+  chapters: V3ChapterThemeColor[]  # ★每章一条确定逐章色(不再"可推导规则"):
+                       #   V3ChapterThemeColor { chapterId: str, accentColor: AccentColor(已 finalize_color 归一化的合法 hex), subject?: str }
+                       #   覆盖全书每章;Web 按 chapterId 直取该章 accentColor 拼 apply-theme 入参(§5)
   style?: str          # 可选:整体风格自由文本(给 Web 展示/区分三组的基调描述)
   label?: str          # 可选:给 Web 展示的一行组名/描述
 }
@@ -82,7 +84,7 @@ V3RecommendResponse {                       # 改造
 }
 ```
 
-**★颜色恢复**(上一轮误删,本轮改回):每组含 `palette` = AI 用「颜色设计」skill 设计的全书颜色方案。AI 以 §2.1 传入的**逐章提取色 `extractedColor` 为依据**做设计(解决凭文字瞎猜 / 豆包取色丑,同时保留 AI 审美)。模型出的色经 §4 `finalize_color` 归一化为最终 hex(章节 accentColor)。subject(章标题)若仍需推荐,可保留为附带文案。
+**★颜色恢复**(上一轮误删,本轮改回):每组的 `chapters[]` = AI 用「颜色设计」skill 设计的**逐章确定色**(每章一条 `{chapterId, accentColor, subject?}`,覆盖全书每章,**不留"可推导规则"模糊口**)。AI 以 §2.1 传入的**逐章提取色 `extractedColor` 为依据**做设计(解决凭文字瞎猜 / 豆包取色丑,同时保留 AI 审美)。模型出的色经 §4 `finalize_color` 归一化为合法 hex 后写进 `chapters[].accentColor`。subject(章标题)若仍需推荐,作每章可选附带文案。
 
 > recommend 端产出颜色设计(经 finalize_color 定 hex)+ 字体(钳 `artFont` 4 集)+ 补足 3 组。`theme_colors.md` 颜色规则仍用(AI 现额外吃提取色作依据,见 §7)。
 
@@ -91,7 +93,7 @@ V3RecommendResponse {                       # 改造
 - `bookThemeOptions` 恰好 3 组:模型少出 → 用 fallback 组补;多出 → 截前 3。每组 `optionId` 缺失/重复 → 代码补稳定 id(`opt-1..3`)。
 - `artFont` 钳到 `ArtFontPack`(非法/缺失 → `_DEFAULT_FONT`),沿用 `_coerce_font`。
 - `style`/`label` 仅做 `str` trim + 长度钳;可空。
-- **★颜色钳制保留**:`palette` 内每个色经 §4 `finalize_color` 归一化为合法 hex(沿用/恢复 `_coerce_accent` 的归一化职责);非法/缺失色兜底中性 fallback。若保留 subject,则 `subject` trim + 去句末标点 + 钳 `_MAX_SUBJECT_LEN`(沿用 `_coerce_subject`)。
+- **★颜色钳制保留**:`chapters[].accentColor` 每个色经 §4 `finalize_color` 归一化为合法 hex(沿用/恢复 `_coerce_accent` 的归一化职责);非法/缺失色兜底中性 fallback。**逐章覆盖校验**:模型漏某章 → 该章 accentColor 用 fallback 补齐(保证每章都有确定色);多出未知 chapterId → 丢弃。若保留 subject,则 `subject` trim + 去句末标点 + 钳 `_MAX_SUBJECT_LEN`(沿用 `_coerce_subject`)。
 
 ---
 
@@ -101,7 +103,7 @@ V3RecommendResponse {                       # 改造
 
 1. 用户在 Web 选中 `optionId = X`。
 2. 字体:全书统一 = `option[X].artFont`,写进**每个**章节的 `V3Chapter.artFont`(树为章级字段,故逐章写同一值)。
-3. 章节 accentColor:取 `option[X].palette` 里该章的设计色 → 经 `finalize_color` 归一化 → 写进 `V3Chapter.accentColor`(Stage1 该字段仍为 null,Stage4 在此填最终值)。
+3. 章节 accentColor:取 `option[X].chapters[]` 里 `chapterId` 匹配该章的 `accentColor`(recommend 响应里已经 finalize_color 归一化)→ 写进 `V3Chapter.accentColor`(Stage1 该字段仍为 null,Stage4 在此填最终值)。
 4. subject(章标题)若由本环节出,Web 把它落 title 槽;若不出则沿用现有章标题。
 
 > accentColor 是 **chapter 级属性**(`V3Chapter.accentColor`,schemas.py),由 Stage4 AI 颜色设计 + finalize_color 写入(Stage1 留 null);`extractedColor` 是 Stage1 1d 写的依据字段。封面/无章页的色属 Stage5(同思路:可用提取色作依据 + AI/豆包设计 + finalize_color),本详设不扩 Stage5。
@@ -111,7 +113,7 @@ V3RecommendResponse {                       # 改造
 ## 4. finalize_color(共享)— ★Stage4 恢复调用
 
 - 签名(蓝图 §5):`finalize_color(通用色) -> "#RRGGBB"`;逻辑 boss 待给。
-- **★Stage4 调用 finalize_color**:AI 颜色设计出的颜色(`palette` 内各色)经它归一化为最终合法 hex(章节 accentColor)。这是**唯一出最终色口**。
+- **★Stage4 调用 finalize_color**:AI 颜色设计出的颜色(`chapters[].accentColor` 各色)经它归一化为最终合法 hex(章节 accentColor)。这是**唯一出最终色口**。
 - finalize_color 同时服务**封面色(Stage5)**:封面色是否仍用豆包通用色(经 finalize_color)还是改用 `accent_from_photo` 代码取色 = Stage5 决策,与本环节无关。
 - 现 handler.py 的 `_coerce_accent`(通用→hex 归一化)**保留/沿用**:它就是 recommend 端把 AI 出的色归一化的落点(对齐 finalize_color 语义)。
 
@@ -153,9 +155,9 @@ V3RecommendResponse {                       # 改造
 
 | 文件 | 改动 |
 |---|---|
-| `apps/agent/src/schemas.py` | NEW `V3BookThemeOption`(optionId/artFont/**palette**/style?/label?);`V3RecommendResponse.chapterColors` → `bookThemeOptions[3]`;`V3RecommendRequest` + `fontHint?`;`V3ChapterOverview` + `extractedColor?`(提取色依据)。★保留/新增 `V3BookThemePalette`(颜色载体)。`V3ApplyThemeRequest`/`Response` **不变**。 |
+| `apps/agent/src/schemas.py` | NEW `V3BookThemeOption`(optionId/artFont/**chapters: V3ChapterThemeColor[]**/style?/label?);NEW `V3ChapterThemeColor`(chapterId/accentColor/subject?,每章确定色);`V3RecommendResponse.chapterColors` → `bookThemeOptions[3]`;`V3RecommendRequest` + `fontHint?`;`V3ChapterOverview` + `extractedColor?`(提取色依据)。`V3ApplyThemeRequest`/`Response` **不变**。 |
 | `packages/contracts/src/v3.ts` | 同步镜像上面(zod + TS),保持跨语言 parity。 |
-| `theme_recommend/handler.py` | `_coerce_response` → 出 3 组(★字体+颜色+风格);模型槽 vision→DeepSeek;★保留 `_coerce_accent` / palette coerce(AI 出色经 finalize_color 归一化)。 |
+| `theme_recommend/handler.py` | `_coerce_response` → 出 3 组(★字体+颜色+风格);模型槽 vision→DeepSeek;★保留 `_coerce_accent` / 逐章 `chapters[].accentColor` coerce + 覆盖补齐(AI 出色经 finalize_color 归一化)。 |
 | recommend prompt 资产 | 改写为全书级 3 组(★字体+颜色+整体风格,AI 用「颜色设计」skill 吃逐章提取色作依据);`prompts/rules/theme_colors.md` 颜色规则保留(补「以提取色为依据」)。 |
 | `engine/apply_theme_v3.py` | **不改**(Web 展开 choices;accentColor 取 Stage4 AI 设计经 finalize_color 的最终值)。 |
 | Web 编排 | 选 optionId → 全书统一 artFont → 每章 accentColor 取 recommend 响应该组该章最终色 → 拼 `V3ChapterThemeChoice[]` → 逐章 apply-theme;把 artFont + accentColor(+ subject)写树;推进 stage theme→cover。 |

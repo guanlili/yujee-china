@@ -54,7 +54,7 @@ class GroupingChapter:
 - **覆盖且互斥**:`flatten(chapters[].photoIds) ∪ unplacedPhotoIds` == 全部 `photoId`,且无重复、无未知 id。
 - **保序**:章内 photoId 保持全局 cluster/时间顺序(相册=时间顺序回忆录)。
 - **cluster 不跨章**:同一非 null `clusterId` 的照片不被拆进两章(沿用现 handler 的 cluster 边界硬约束)。
-- **退化**:`chapters` 至少 1 章(全是余量的极端情形,算法应兜底归一章或全进 unplaced 交 1b;由本体决定,校验只断言覆盖)。
+- **退化(★M1)**:`chapters` **至少 1 章**——全是余量的极端情形,1a **必须兜底建 1 章**(可空成员或纳入首图),**不允许"全进 unplaced 交 1b"**:1b 只「归入已有章节」(§1b),若 1a 给零章,1b 无目标章可归 → 链路断。故"至少 1 章"是 1a 硬约束,1b 永远有目标章。校验断言覆盖 + `len(chapters) ≥ 1`。
 
 ### 占位接口(算法本体后补)
 ```python
@@ -147,7 +147,8 @@ class UnplacedAssignments:
 
 ### 护栏 / 兜底
 - 目标章必须 ∈ 已有章集合;幻觉章 id 的那张 → 兜底归"时间上最近的章"或末章(确定性,本文不定细则,留实现;只要求**每张余量图最终都有归宿**)。
-- DeepSeek 失败 / 不可解析 / 无配置 → **整体兜底**:把所有 unplaced 确定性并入时间相邻章(不致命,预览永不崩)。
+- **★cluster 原子(M2)**:1a 的 `cluster 不跨章` 硬约束(§1a)对 1b 同样成立。1a 保证一个 cluster 要么整簇进某章、要么整簇进 unplaced;故 unplaced 里的 cluster **以整簇为归组原子单元**——1b 对同一非 null `clusterId` 的余量图**给同一个目标章**(模型按簇判、或代码把同簇余量图绑定成一票),**绝不把一个 cluster 拆进两章**。代码侧:归组后断言"同 clusterId 的 unplaced 落同一章",违反则把该簇整体并入其多数票/时间相邻章。(等价表述:完整 cluster 进 unplaced 时仍作整体,不被逐图打散。)
+- DeepSeek 失败 / 不可解析 / 无配置 → **整体兜底**:把所有 unplaced 确定性并入时间相邻章(按簇整体,不拆簇;不致命,预览永不崩)。
 - 归并把余量图**插回所属章的保序位置**(按 takenAt / 全局顺序),保持"章内时间序"不变式。
 
 > 落点:复用现有 `writing` 或新建 `apps/agent/src/agents/regroup_unplaced/`(DeepSeek slot)。三件套:handler(编排 + 简易 id + 兜底)、prompt.md(归组规则,**本文不写**)、复用 `ai_client` + DeepSeek 槽。
@@ -235,9 +236,15 @@ V3LayoutTree.chapters[] = {
 ## 契约变更(★需登记)
 
 ### C1 — analyze callback 去 pages(对 Web)
-- `V3AnalyzeCompleted.pages` 现**必填**(`list[Page] = Field(min_length=1)`)→ **删除该字段**(或改 `pages: list[Page] | None = None` 过渡)。callback 只带 `tree`。
-- TS 侧 `packages/contracts/src/v3.ts` 的 `V3AnalyzeCompleted` 同步去 `pages`(跨语言 parity,单一真相)。
+- `V3AnalyzeCompleted.pages` 现**必填**(`list[Page] = Field(min_length=1)`)→ **改为可选 `pages?: optional`**(`pages: list[Page] | None = None`),**不直接删除**(总架构师裁定,chief-review S2:用过渡形态让 Web 渲染改造与 Stage2 上线解耦)。callback 只带 `tree`(`pages` 缺省)。
+- TS 侧 `packages/contracts/src/v3.ts` 的 `V3AnalyzeCompleted` 同步改 `pages` 为 optional(跨语言 parity,单一真相;同 chief-review S2 过渡形态)。
 - Web 影响:`draft_json` 在 analyze 完成后只写 `{version, tree, progress}`,**不再有 pages**;pages 由 Stage2 `/v3/select-layout` 后才合并进 `draft_json.pages`。Web 的"分析完成 → 进编辑器"渲染分支须容忍 `pages` 缺省(预览态画板改由 Stage2 填,或加载态等 Stage2)。**此改动归属 §6-1/§4 的边界,须 Web 板块 + 架构师确认**。
+
+### C3 — `extractedColor` 登记进契约(★1d 新字段,strict 必须先登记)
+- 1d 写的 `chapter.extractedColor`(提取色,6-hex,依据非最终色)是 **NEW 字段**;`V3Chapter` / `V3ChapterOverview` 全部对象 `.strict()`(`packages/contracts/src/v3.ts` 顶部硬约定 + `apps/agent/src/schemas.py`),未登记则解析期 **直接拒未知字段、parse 失败**。
+- `apps/agent/src/schemas.py`:`V3Chapter` 加 `extractedColor: AccentColor | None = None`(Stage1 1d 写,Stage4 读作设计依据);`V3ChapterOverview` 加 `extractedColor: AccentColor | None = None`(Stage4 recommend 入参依据,见 detail-stage4 §2.1)。
+- `packages/contracts/src/v3.ts`:`V3Chapter` / `V3ChapterOverview` 同步加 `extractedColor: AccentColor.nullable().optional()`(跨语言 parity,单一真相)。
+- 复用既有 `AccentColor`(`#RGB|#RRGGBB` 正则)类型;`accentColor`(Stage4 填)与 `extractedColor`(Stage1 填)并存,语义不同(见 §装配)。**须契约板块同步两侧。**
 
 ### C2 — flows/analyze.py 编排重写
 - 三步串:`group_photos`(1a)→ `describe_chapters`(1c)→ `group_unplaced`(1b)→ 装配 tree。
