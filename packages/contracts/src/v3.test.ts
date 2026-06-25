@@ -16,6 +16,7 @@ import {
   V3Callback,
   V3ChapterChatResponse,
   V3CoverRequest,
+  V3CoverResponse,
   V3FinalizeResponse,
   V3RecommendResponse,
   V3StoryDraft,
@@ -416,6 +417,112 @@ test('V3ApplyThemeRequest + V3CoverRequest carry page-level patches (not tree fi
       pages: [page],
     }).success,
     true,
+  );
+});
+
+test('V3CoverRequest accepts Stage5 photo guidance and chat context', () => {
+  const page = { pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} };
+  const parsed = V3CoverRequest.parse({
+    albumId: 'a1',
+    language: 'en',
+    coverTemplateId: 'mag-01',
+    endingTemplateId: 'mag-20',
+    coverPhoto: 'data:image/jpeg;base64,AA==',
+    endingPhoto: 'data:image/png;base64,AA==',
+    coverPhotoDesc: 'a quiet portrait beside a window',
+    hint: 'keep the whole book tender and understated',
+    userMessage: 'Could the cover feel calmer?',
+    history: [
+      { role: 'user', content: 'I want a calmer cover' },
+      { role: 'assistant', content: 'I can make it quieter.' },
+    ],
+    pages: [page],
+  });
+
+  assert.equal(parsed.coverPhoto, 'data:image/jpeg;base64,AA==');
+  assert.equal(parsed.endingPhoto, 'data:image/png;base64,AA==');
+  assert.equal(parsed.coverPhotoDesc, 'a quiet portrait beside a window');
+  assert.equal(parsed.hint, 'keep the whole book tender and understated');
+  assert.equal(parsed.userMessage, 'Could the cover feel calmer?');
+  assert.deepEqual(parsed.history, [
+    { role: 'user', content: 'I want a calmer cover' },
+    { role: 'assistant', content: 'I can make it quieter.' },
+  ]);
+});
+
+test('V3CoverRequest defaults chat fields and caps history at 20 turns', () => {
+  const page = { pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} };
+  const parsed = V3CoverRequest.parse({
+    albumId: 'a1',
+    language: 'en',
+    coverTemplateId: null,
+    endingTemplateId: null,
+    pages: [page],
+  });
+
+  assert.equal(parsed.userMessage, '');
+  assert.deepEqual(parsed.history, []);
+  assert.equal(
+    V3CoverRequest.safeParse({
+      albumId: 'a1',
+      language: 'en',
+      history: Array.from({ length: 21 }, () => ({ role: 'user' as const, content: 'x' })),
+      pages: [page],
+    }).success,
+    false,
+  );
+});
+
+test('V3CoverRequest rejects explicit null for Stage5 optional string fields', () => {
+  const page = { pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} };
+  for (const key of ['coverPhoto', 'endingPhoto', 'coverPhotoDesc', 'hint'] as const) {
+    assert.equal(
+      V3CoverRequest.safeParse({
+        albumId: 'a1',
+        language: 'en',
+        pages: [page],
+        [key]: null,
+      }).success,
+      false,
+      `${key}: null must be rejected; omit the key instead`,
+    );
+  }
+});
+
+test('V3CoverResponse carries clarification state without public text payloads', () => {
+  const usage = { durationMs: 1, models: {} };
+  const normal = V3CoverResponse.parse({
+    layoutPatch: [],
+    usage,
+  });
+  assert.equal(normal.needsUserInput, false);
+
+  const clarification = V3CoverResponse.parse({
+    layoutPatch: [],
+    assistantReply: 'Which cover mood should I use?',
+    needsUserInput: true,
+    usage,
+  });
+  assert.equal(clarification.needsUserInput, true);
+  assert.equal(clarification.assistantReply, 'Which cover mood should I use?');
+
+  assert.equal(
+    V3CoverResponse.safeParse({
+      layoutPatch: [],
+      assistantReply: 'done',
+      coverTexts: {},
+      usage,
+    }).success,
+    false,
+  );
+  assert.equal(
+    V3CoverResponse.safeParse({
+      layoutPatch: [],
+      assistantReply: 'done',
+      endingTexts: {},
+      usage,
+    }).success,
+    false,
   );
 });
 

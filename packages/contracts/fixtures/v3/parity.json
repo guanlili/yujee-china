@@ -541,11 +541,87 @@
       }
     },
     {
+      "name": "V3CoverRequest Stage5 fields ok",
+      "schema": "V3CoverRequest",
+      "expectValid": true,
+      "payload": {
+        "albumId": "a1",
+        "language": "en",
+        "coverTemplateId": "mag-01",
+        "endingTemplateId": "mag-20",
+        "coverPhoto": "data:image/jpeg;base64,AA==",
+        "endingPhoto": "data:image/png;base64,AA==",
+        "coverPhotoDesc": "a quiet portrait beside a window",
+        "hint": "keep the book tender and understated",
+        "userMessage": "Can the cover feel calmer?",
+        "history": [
+          { "role": "user", "content": "I want a calmer cover" },
+          { "role": "assistant", "content": "I can make it quieter." }
+        ],
+        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+      }
+    },
+    {
+      "name": "V3CoverRequest rejects explicit null Stage5 string",
+      "schema": "V3CoverRequest",
+      "expectValid": false,
+      "payload": {
+        "albumId": "a1",
+        "language": "en",
+        "coverPhoto": null,
+        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+      }
+    },
+    {
+      "name": "V3CoverRequest rejects history over 20",
+      "schema": "V3CoverRequest",
+      "expectValid": false,
+      "payload": {
+        "albumId": "a1",
+        "language": "en",
+        "history": [
+          { "role": "user", "content": "1" },
+          { "role": "user", "content": "2" },
+          { "role": "user", "content": "3" },
+          { "role": "user", "content": "4" },
+          { "role": "user", "content": "5" },
+          { "role": "user", "content": "6" },
+          { "role": "user", "content": "7" },
+          { "role": "user", "content": "8" },
+          { "role": "user", "content": "9" },
+          { "role": "user", "content": "10" },
+          { "role": "user", "content": "11" },
+          { "role": "user", "content": "12" },
+          { "role": "user", "content": "13" },
+          { "role": "user", "content": "14" },
+          { "role": "user", "content": "15" },
+          { "role": "user", "content": "16" },
+          { "role": "user", "content": "17" },
+          { "role": "user", "content": "18" },
+          { "role": "user", "content": "19" },
+          { "role": "user", "content": "20" },
+          { "role": "user", "content": "21" }
+        ],
+        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+      }
+    },
+    {
       "name": "V3CoverResponse skip returns empty patch",
       "schema": "V3CoverResponse",
       "expectValid": true,
       "payload": {
         "layoutPatch": [],
+        "usage": { "durationMs": 1, "models": {} }
+      }
+    },
+    {
+      "name": "V3CoverResponse clarification ok",
+      "schema": "V3CoverResponse",
+      "expectValid": true,
+      "payload": {
+        "layoutPatch": [],
+        "assistantReply": "Which cover mood should I use?",
+        "needsUserInput": true,
         "usage": { "durationMs": 1, "models": {} }
       }
     },
