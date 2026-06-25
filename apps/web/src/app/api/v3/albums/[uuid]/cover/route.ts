@@ -18,10 +18,14 @@ import { toBrowserCoverPatch } from './route-utils';
 // coverPhotoId/endingPhotoId are WEB-ONLY (not part of the Agent /v3/cover contract): the
 // service swaps the chosen photo into the re-sliced cover/ending page before forwarding to
 // the agent (invariant 12: the browser holds no layout pages, only its selections).
-const BodySchema = V3CoverRequest.pick({
+export const BodySchema = V3CoverRequest.pick({
   language: true,
   coverTemplateId: true,
   endingTemplateId: true,
+  coverPhoto: true,
+  endingPhoto: true,
+  userMessage: true,
+  history: true,
 })
   .extend({
     coverPhotoId: z.string().min(1).nullable().optional(),
@@ -47,6 +51,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
       layoutPatch: toBrowserCoverPatch(result.layoutPatch),
       stage: result.stage,
       assistantReply: result.assistantReply,
+      needsUserInput: result.needsUserInput,
     });
   } catch (e) {
     return fromException(e);

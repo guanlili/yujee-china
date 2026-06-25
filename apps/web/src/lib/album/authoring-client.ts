@@ -166,17 +166,25 @@ export interface CoverInput {
   endingTemplateId?: string | null;
   coverPhotoId?: string | null;
   endingPhotoId?: string | null;
+  coverPhoto?: string;
+  endingPhoto?: string;
+  userMessage?: string;
+  history?: V3ChatTurn[];
 }
 export function postCover(
   albumId: string,
   input: CoverInput,
-): Promise<{ stage: string; layoutPatch: BrowserLayoutPatchEntry[]; assistantReply?: string }> {
+): Promise<{ stage: string; layoutPatch: BrowserLayoutPatchEntry[]; assistantReply?: string; needsUserInput?: boolean }> {
   return postJson(`/api/v3/albums/${albumId}/cover`, {
     language: 'en',
     ...(input.coverTemplateId !== undefined ? { coverTemplateId: input.coverTemplateId } : {}),
     ...(input.endingTemplateId !== undefined ? { endingTemplateId: input.endingTemplateId } : {}),
     ...(input.coverPhotoId !== undefined ? { coverPhotoId: input.coverPhotoId } : {}),
     ...(input.endingPhotoId !== undefined ? { endingPhotoId: input.endingPhotoId } : {}),
+    ...(input.coverPhoto !== undefined ? { coverPhoto: input.coverPhoto } : {}),
+    ...(input.endingPhoto !== undefined ? { endingPhoto: input.endingPhoto } : {}),
+    ...(input.userMessage !== undefined ? { userMessage: input.userMessage } : {}),
+    ...(input.history !== undefined ? { history: input.history } : {}),
   });
 }
 

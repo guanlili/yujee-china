@@ -99,6 +99,15 @@ test('skipCover action sends an empty cover selection (no auto design)', () => {
   assert.match(src, /skipCover: \(\) => \{ void runCover\(\{\}\); \}/);
 });
 
+test('cover-stage free text routes to the cover turn with cover history', () => {
+  const fn = /async function send\(\)[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'send must exist');
+  const body = fn![0];
+  assert.match(body, /storyGate\?\.stage === 'cover'/);
+  assert.match(body, /runCover\(\{[\s\S]{0,180}userMessage: txt[\s\S]{0,180}history: coverHistory\.slice\(-CHAT_HISTORY_MAX\)/);
+  assert.match(body, /return/);
+});
+
 // ─── restore chat decision cards on reload ──────────────────────────────────
 // The theme/cover cards are session-only DOM (album_messages is text-only), so on
 // re-entry they're re-derived from stage + draftSkel: past stages as read-only

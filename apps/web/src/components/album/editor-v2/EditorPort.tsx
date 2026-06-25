@@ -56,6 +56,7 @@ import {
   postDraftEdit,
   postInspectRender,
   type BrowserLayoutPatchEntry,
+  type CoverInput,
   type DraftEditResult,
   type DraftSkeleton,
   type DraftPageKind,
@@ -629,6 +630,8 @@ function EditorBook({
     // recent turns before each send.
     const CHAT_HISTORY_MAX = 20;
     const chapterHistory: V3ChatTurn[] = [];
+    const coverHistory: V3ChatTurn[] = [];
+    let lastCoverSelection: CoverInput = {};
     // §4.2「AI 先开口提问,不擅自动笔」(引导优先). Track which chapters have already had
     // their auto-guide opener fired this session so re-renders / chapter hops don't
     // double-prompt. A chapter is "guided" once its opening引导 turn has been sent.
@@ -834,6 +837,41 @@ function EditorBook({
         return out.toDataURL('image/jpeg', 0.8);
       } finally {
         host.remove();
+      }
+    }
+
+    async function capturePhotoThumb(photoId?: string | null): Promise<string | undefined> {
+      if (!photoId) return undefined;
+      const stub = (root as unknown as {
+        __capturePhotoThumbStub?: (id: string) => Promise<string | undefined>;
+      }).__capturePhotoThumbStub;
+      if (stub) return stub(photoId);
+
+      const src = imageUrls[photoId];
+      if (!src) return undefined;
+      try {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error('cover photo thumbnail load failed'));
+          img.src = src;
+        });
+        const sourceW = img.naturalWidth || img.width;
+        const sourceH = img.naturalHeight || img.height;
+        if (sourceW <= 0 || sourceH <= 0) return undefined;
+        const scale = Math.min(1, 200 / Math.max(sourceW, sourceH));
+        const targetW = Math.max(1, Math.round(sourceW * scale));
+        const targetH = Math.max(1, Math.round(sourceH * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return undefined;
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+        return canvas.toDataURL('image/jpeg', 0.82);
+      } catch {
+        return undefined;
       }
     }
 
@@ -1547,7 +1585,6 @@ function EditorBook({
       if (!input || sending) return;
       const txt = input.value.trim();
       if (!txt) return;
-      sending = true;
       const u = document.createElement('div');
       u.className = 'msg user max-w-full';
       u.innerHTML = `<div class="bubble"></div>`;
@@ -1556,6 +1593,15 @@ function EditorBook({
       input.value = ''; input.style.height = 'auto';
       hideAwait();
       scrollChat();
+      if (isAuthoring && storyGate?.stage === 'cover') {
+        await runCover({
+          ...lastCoverSelection,
+          userMessage: txt.slice(0, MESSAGE_MAX),
+          history: coverHistory.slice(-CHAT_HISTORY_MAX),
+        });
+        return;
+      }
+      sending = true;
       if (isAuthoring) {
         await runChapterChatTurn(txt);
       } else {
@@ -2081,12 +2127,29 @@ function EditorBook({
     // ④ 书籍设计 — 封面/封尾: send the chosen 封面/封尾 template ids (null/absent = 跳过) to
     // /v3/cover, fold the returned patch into the canvas, advance stage cover→ready. Skip
     // (no selection) returns an empty patch and never errors (§4.4 封面可跳过).
-    async function runCover(input?: { coverTemplateId?: string | null; endingTemplateId?: string | null }) {
+    async function runCover(input?: CoverInput) {
       if (!isAuthoring || sending) return;
       sending = true;
       const host = appendThinkingShell();
       try {
-        const res = await postCover(albumId, input ?? {});
+        const payload: CoverInput = { ...(input ?? {}) };
+        if (payload.coverPhoto === undefined && payload.coverPhotoId) {
+          const thumb = await capturePhotoThumb(payload.coverPhotoId);
+          if (thumb) payload.coverPhoto = thumb;
+        }
+        if (payload.endingPhoto === undefined && payload.endingPhotoId) {
+          const thumb = await capturePhotoThumb(payload.endingPhotoId);
+          if (thumb) payload.endingPhoto = thumb;
+        }
+        const selection: CoverInput = {};
+        if (payload.coverTemplateId !== undefined) selection.coverTemplateId = payload.coverTemplateId;
+        if (payload.endingTemplateId !== undefined) selection.endingTemplateId = payload.endingTemplateId;
+        if (payload.coverPhotoId !== undefined) selection.coverPhotoId = payload.coverPhotoId;
+        if (payload.endingPhotoId !== undefined) selection.endingPhotoId = payload.endingPhotoId;
+        if (payload.coverPhoto !== undefined) selection.coverPhoto = payload.coverPhoto;
+        if (payload.endingPhoto !== undefined) selection.endingPhoto = payload.endingPhoto;
+        if (Object.keys(selection).length > 0) lastCoverSelection = selection;
+        const res = await postCover(albumId, payload);
         settleThinking(host, 'analyzedFeedback');
         const applied = applyAuthoringPatch(res.layoutPatch);
         mirrorStage(res.stage);
@@ -2098,6 +2161,11 @@ function EditorBook({
               : aT('已跳过封面设计。', 'Skipped the cover design.')),
         );
         appendTime(host);
+        const userMessage = payload.userMessage?.trim();
+        if (userMessage) coverHistory.push({ role: 'user', content: userMessage });
+        if (res.assistantReply?.trim()) {
+          coverHistory.push({ role: 'assistant', content: res.assistantReply });
+        }
       } catch (e) {
         if (authErr(host, e)) { sending = false; return; }
       }
@@ -2318,7 +2386,8 @@ function EditorBook({
         // 点完「应用」即置为已应用态,按钮不再可点(同 palette-card 的 pc-apply 行为)。
         applyBtn.disabled = true;
         applyBtn.textContent = aT('已应用', 'Applied');
-        appendUserText(aT('就用这个封面设计', 'Use this cover design'));
+        const userMessage = aT('就用这个封面设计', 'Use this cover design');
+        appendUserText(userMessage);
         hideAwait();
         scrollChat();
         void runCover({
@@ -2326,6 +2395,8 @@ function EditorBook({
           ...(endingTemplateId != null ? { endingTemplateId } : {}),
           ...(coverTemplateId != null && cover.photoId ? { coverPhotoId: cover.photoId } : {}),
           ...(endingTemplateId != null && ending.photoId ? { endingPhotoId: ending.photoId } : {}),
+          userMessage,
+          history: coverHistory.slice(-CHAT_HISTORY_MAX),
         });
       });
       const skipBtn = document.createElement('button');
@@ -2334,10 +2405,15 @@ function EditorBook({
       skipBtn.textContent = aT('跳过', 'Skip');
       skipBtn.addEventListener('click', () => {
         if (sending) return;
-        appendUserText(aT('先跳过封面设计', 'Skip the cover design for now'));
+        lastCoverSelection = {};
+        const userMessage = aT('先跳过封面设计', 'Skip the cover design for now');
+        appendUserText(userMessage);
         hideAwait();
         scrollChat();
-        void runCover({}); // empty selection → empty patch, never errors (§4.4)
+        void runCover({
+          userMessage,
+          history: coverHistory.slice(-CHAT_HISTORY_MAX),
+        }); // empty selection → empty patch, never errors (§4.4)
       });
       actionsRow.appendChild(skipBtn);
       actionsRow.appendChild(applyBtn);
