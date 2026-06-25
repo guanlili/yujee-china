@@ -1,10 +1,10 @@
-"""V3 cover/ending —— 确定性自动填充可选的 封面/封尾 页(§4.4)。
+"""V3 cover/ending —— Stage5 async orchestration for optional 封面/封尾 pages.
 
 Issue #192 / WP4.1。V3 引擎里没有「page0 必须是 cover」这条约束:
 `finalize_v3.validate_v3` 没有 page0-cover 规则,`skeleton_v3.build_skeleton_v3`
 只建正文页、cover 作为可选追加项。本模块只负责追加可选的 cover/ending 页。
 
-端点是 `POST /v3/cover`(§8.1 / 4.4:同步 / 确定性 / 可选)。它消费
+端点是 `POST /v3/cover`(§8.1 / 4.4:Web 同步等待 / 可选)。它消费
 `V3CoverRequest` DTO(schemas.py ↔ packages/contracts/src/v3.ts —— 单一真相源,
 由 WP0.1/0.3 预定义,此处不改)。
 
@@ -21,8 +21,9 @@ cover 做什么(§4.4(a)(b)「选封面/封尾系统模板 → 自动填充成�
       hero 图片 slot —— 我们把页的第一张可用照片塞进去(确定性 assign,无
       quality/hero/orientation 匹配,与 `skeleton_v3.assign_images_v3` 一致;比例不符
       是 renderer 的 center-cover 关切)。通用装饰文字(`folio` 页码、`date`
-      来自照片 code-filled 的 takenAt)按 generic_copy 给正文页的同样方式 code-fill
-      —— 用户正文 slot(title/body/explain)保持 EMPTY(不编造文案;§4.1 不生成正式文案 / §3 隐私:绝不写地点/位置值)。
+      来自照片 code-filled 的 takenAt)按 generic_copy 给正文页的同样方式 code-fill。
+      Stage5 5a 可写 authored cover 文案,但必须经 public writing slot specs +
+      clean_texts 清洗;地点/位置值保持空。
     * 对每个设计好的页返回一个 `V3LayoutPatchEntry`(templateId + images +
       texts),挂在页原有的 `pageIndex` 上(§3 树边界:仍是 页级,不加树形
       render 字段)。
@@ -33,7 +34,8 @@ cover 做什么(§4.4(a)(b)「选封面/封尾系统模板 → 自动填充成�
 
 无状态(§3 数据归属):Agent 不持 draft/stage。它只返回页级
 `layoutPatch`;Web 负责持久化 patch + 推进 `stage` cover→ready(stage 推进权
-在 Web)。无模型调用、无 base64、无网络(纯结构变换)。
+在 Web)。base64 thumbnail 只允许进入本地 accent extraction seam,绝不进入
+5a copy 或 5b color prompt payload。
 
 cover/ending 页选取(§8.3「③④传相关页」):扁平 render 契约里页不带 chapterId/role,
 所以规范流程 = Web 恰好把它为 cover(第一页)和 ending(最后一页)预留的页 slot
@@ -44,14 +46,24 @@ cover/ending 页选取(§8.3「③④传相关页」):扁平 render 契约里页
 
 from __future__ import annotations
 
+import inspect
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 from . import templates
+from .accent_color import accent_from_photo
+from .apply_theme_v3 import apply_page
+from .finalize_color import finalize_color
+from ..agents.writing.handler import clean_texts, page_slot_specs
 from ..logging_config import get_logger
 from ..schemas import (
     Page,
+    THEME_ACCENT_CARRIER_SUFFIX,
+    THEME_FONT_CARRIER_SUFFIX,
+    THEME_USER_PROSE_ROLES,
     V3CoverRequest,
     V3CoverResponse,
     V3LayoutPatchEntry,
@@ -62,6 +74,58 @@ from . import generic_copy
 from . import skeleton_v3
 
 log = get_logger("cover_v3")
+
+MAX_COVER_CLARIFY_ROUNDS = 2
+# Current cover request contracts do not carry an artFont source. Cover pages also
+# lack chapter ownership, so use a closed-set safe default for text font carriers.
+_DEFAULT_ART_FONT = "serif-classic"
+_NEUTRAL_ACCENT = "#8A8174"
+
+
+@dataclass(frozen=True)
+class CoverCopyPayload:
+    """Text-only payload for the 5a copy seam.
+
+    The request base64 fields are intentionally absent. Tests assert this boundary.
+    """
+
+    language: str
+    coverTemplateId: str | None
+    endingTemplateId: str | None
+    coverPhotoDesc: str | None
+    hint: str | None
+    userMessage: str
+    history: list[dict[str, str]]
+    pageSlotSpecs: dict[str, list[dict[str, Any]]]
+    clarifyRounds: int
+
+
+@dataclass(frozen=True)
+class CoverCopyResult:
+    needs_user_input: bool = False
+    assistant_reply: str | None = None
+    cover_texts: Mapping[str, Any] = field(default_factory=dict)
+    ending_texts: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CoverColorPayload:
+    """Text/extracted-hex-only payload for 5b color design."""
+
+    language: str
+    extractedAccent: str
+    coverPhotoDesc: str | None
+    hint: str | None
+    userMessage: str
+    history: list[dict[str, str]]
+    coverTexts: dict[str, str]
+    endingTexts: dict[str, str]
+
+
+CoverCopyFn = Callable[[CoverCopyPayload], Awaitable[CoverCopyResult] | CoverCopyResult]
+CoverColorDesignFn = Callable[[CoverColorPayload], Awaitable[str | None] | str | None]
+AccentFromPhotoFn = Callable[[Any], str]
+FinalizeColorFn = Callable[[str], str]
 
 
 class CoverV3Error(Exception):
@@ -96,7 +160,13 @@ def _photo_ids(page: Page) -> list[str]:
 
 
 def _design_page(
-    page: Page, template: templates.TemplateDef, template_id: str
+    page: Page,
+    template: templates.TemplateDef,
+    template_id: str,
+    *,
+    authored_texts: Mapping[str, Any] | None = None,
+    accent_color: str | None = None,
+    art_font: str | None = None,
 ) -> V3LayoutPatchEntry:
     """把 `page` 在 `template` 上自动填充成成稿 cover/ending spread(§4.4(b))。
 
@@ -125,6 +195,25 @@ def _design_page(
     }
     page_date = _earliest_taken_at_for_page(images, page)
     texts = generic_copy.fill_page_generic_copy(page_dict, page_date)
+    planned_page = Page(
+        pageIndex=page.pageIndex,
+        templateId=template_id,
+        images=images,
+        texts=texts,
+        imagePos=page.imagePos,
+    )
+
+    if authored_texts:
+        texts.update(_clean_authored_texts(planned_page, authored_texts))
+        planned_page = planned_page.model_copy(update={"texts": texts})
+
+    if accent_color:
+        texts = _apply_cover_page_theme(
+            planned_page,
+            template,
+            accent_color=accent_color,
+            art_font=art_font,
+        )
 
     return V3LayoutPatchEntry(
         pageIndex=page.pageIndex,
@@ -146,15 +235,118 @@ def _earliest_taken_at_for_page(
     return None
 
 
-def build_cover(req: V3CoverRequest) -> V3CoverResponse:
-    """确定性地设计可选的 封面/封尾 页(§4.4)。
+def _clean_authored_texts(
+    page: Page, raw_texts: Mapping[str, Any]
+) -> dict[str, str]:
+    specs = page_slot_specs(page)
+    cleaned = clean_texts(dict(raw_texts), specs)
+    return {
+        key: value
+        for key, value in cleaned.items()
+        if not _is_location_text_slot(key)
+    }
 
-    纯函数(无 LLM/网络/DB/base64)。行为:
+
+def _is_location_text_slot(slot_id: str) -> bool:
+    lowered = slot_id.lower()
+    return lowered in {"location", "place", "gps"} or lowered.endswith(".location")
+
+
+def _apply_cover_page_theme(
+    page: Page,
+    template: templates.TemplateDef,
+    *,
+    accent_color: str,
+    art_font: str | None,
+) -> dict[str, str]:
+    texts = dict(page.texts)
+
+    if _has_variable_svg(template):
+        try:
+            themed = apply_page(
+                page.model_copy(update={"texts": texts}),
+                SimpleNamespace(
+                    chapterId="cover",
+                    subject=_first_title_text(texts, template),
+                    accentColor=accent_color,
+                    artFont=art_font,
+                ),
+            )
+            if themed is not None and themed.texts is not None:
+                texts = dict(themed.texts)
+        except Exception:
+            # Theme application is best-effort here; page-level carriers below are
+            # the durable cover/ending styling path because these pages lack chapters.
+            texts = dict(page.texts)
+
+    _remove_empty_authored_slots_added_by_theme(texts, template)
+    _add_page_level_text_theme_carriers(texts, template, accent_color, art_font)
+    return texts
+
+
+def _has_variable_svg(template: templates.TemplateDef) -> bool:
+    return any(svg.get("variableDecor") for svg in (template.get("svgs") or []))
+
+
+def _first_title_text(
+    texts: Mapping[str, str], template: templates.TemplateDef
+) -> str:
+    for slot in templates.text_slots(template):
+        if slot.get("role") == "title":
+            value = texts.get(str(slot.get("id")))
+            if value:
+                return value
+    return ""
+
+
+def _remove_empty_authored_slots_added_by_theme(
+    texts: dict[str, str], template: templates.TemplateDef
+) -> None:
+    for slot in templates.text_slots(template):
+        slot_id = str(slot.get("id") or "")
+        if not slot_id:
+            continue
+        if slot.get("role") in THEME_USER_PROSE_ROLES and texts.get(slot_id) == "":
+            texts.pop(slot_id, None)
+
+
+def _add_page_level_text_theme_carriers(
+    texts: dict[str, str],
+    template: templates.TemplateDef,
+    accent_color: str,
+    art_font: str | None,
+) -> None:
+    for slot in templates.text_slots(template):
+        if not slot.get("variableDecor"):
+            continue
+        if slot.get("role") not in THEME_USER_PROSE_ROLES:
+            continue
+        slot_id = str(slot.get("id") or "")
+        if not slot_id:
+            continue
+        texts[f"{slot_id}{THEME_ACCENT_CARRIER_SUFFIX}"] = accent_color
+        if art_font:
+            texts[f"{slot_id}{THEME_FONT_CARRIER_SUFFIX}"] = art_font
+
+
+async def build_cover(
+    req: V3CoverRequest,
+    *,
+    copy_fn: CoverCopyFn | None = None,
+    color_design_fn: CoverColorDesignFn | None = None,
+    accent_from_photo_fn: AccentFromPhotoFn = accent_from_photo,
+    finalize_color_fn: FinalizeColorFn = finalize_color,
+) -> V3CoverResponse:
+    """设计可选的 封面/封尾 页,并执行 Stage5 cover orchestration。
+
+    行为:
       * 跳过(两个 template id 都缺失)→ 空 patch,不报错(§4.4 跳过=空)。
       * 选了 cover → 设计到 FIRST 给定页。
       * 选了 ending → 设计到 LAST 给定页。
       * 两个都选且页数 ≥2 → cover 在第一页、ending 在最后一页(不同页)。
       * 任何选了模板却没有落地页的情况都抛 CoverV3Error;不可与跳过混淆。
+      * 5a/5b prompt seams are text-only; coverPhoto base64 is only read by
+        the local accent extraction seam.
 
     在模板无效或缺落地页时抛 `CoverV3Error`。"""
     started = time.monotonic()
@@ -189,12 +381,80 @@ def build_cover(req: V3CoverRequest) -> V3CoverResponse:
             "cover and ending templates require distinct landing pages"
         )
 
+    copy_payload = _build_copy_payload(
+        req,
+        pages,
+        cover_template_id=cover_id,
+        ending_template_id=ending_id,
+    )
+    try:
+        copy_result = await _run_copy(copy_payload, copy_fn=copy_fn)
+    except Exception as exc:
+        log.warning(
+            "cover_v3.copy_failed",
+            album_id=req.albumId,
+            error=type(exc).__name__,
+        )
+        return _needs_input_response(started, req.language)
+
+    if not isinstance(copy_result, CoverCopyResult):
+        log.warning(
+            "cover_v3.copy_invalid",
+            album_id=req.albumId,
+            result_type=type(copy_result).__name__,
+        )
+        return _needs_input_response(started, req.language)
+
+    clarify_rounds = _clarify_rounds(req.history)
+    if copy_result.needs_user_input:
+        if clarify_rounds < MAX_COVER_CLARIFY_ROUNDS:
+            return _needs_input_response(
+                started,
+                req.language,
+                reply=copy_result.assistant_reply,
+            )
+        copy_result = CoverCopyResult()
+
+    extracted_accent = _extract_cover_accent(req, accent_from_photo_fn)
+    color_payload = CoverColorPayload(
+        language=req.language,
+        extractedAccent=extracted_accent,
+        coverPhotoDesc=req.coverPhotoDesc,
+        hint=req.hint,
+        userMessage=req.userMessage,
+        history=_history_dicts(req.history),
+        coverTexts=_string_texts(copy_result.cover_texts),
+        endingTexts=_string_texts(copy_result.ending_texts),
+    )
+    try:
+        designed_color = await _run_color_design(
+            color_payload,
+            color_design_fn=color_design_fn,
+        )
+    except Exception as exc:
+        log.warning(
+            "cover_v3.color_failed",
+            album_id=req.albumId,
+            error=type(exc).__name__,
+        )
+        designed_color = _NEUTRAL_ACCENT
+    final_accent = _finalize_cover_color(designed_color, finalize_color_fn)
+
     patches: list[V3LayoutPatchEntry] = []
     used_indices: set[int] = set()
 
     if cover_template is not None and pages:
         first = pages[0]
-        patches.append(_design_page(first, cover_template, cover_id))  # type: ignore[arg-type]
+        patches.append(
+            _design_page(
+                first,
+                cover_template,
+                cover_id,  # type: ignore[arg-type]
+                authored_texts=copy_result.cover_texts,
+                accent_color=final_accent,
+                art_font=_DEFAULT_ART_FONT,
+            )
+        )
         used_indices.add(0)
 
     if ending_template is not None and pages:
@@ -202,7 +462,16 @@ def build_cover(req: V3CoverRequest) -> V3CoverResponse:
         # 就没有独立的 ending slot —— 跳过,而非覆盖 cover 或凭空造页。
         last_pos = len(pages) - 1
         if last_pos not in used_indices:
-            patches.append(_design_page(pages[last_pos], ending_template, ending_id))  # type: ignore[arg-type]
+            patches.append(
+                _design_page(
+                    pages[last_pos],
+                    ending_template,
+                    ending_id,  # type: ignore[arg-type]
+                    authored_texts=copy_result.ending_texts,
+                    accent_color=final_accent,
+                    art_font=_DEFAULT_ART_FONT,
+                )
+            )
             used_indices.add(last_pos)
 
     duration_ms = int((time.monotonic() - started) * 1000)
@@ -218,3 +487,160 @@ def build_cover(req: V3CoverRequest) -> V3CoverResponse:
         layoutPatch=patches,
         usage=V3Usage(durationMs=duration_ms, models=V3Models()),
     )
+
+
+def _build_copy_payload(
+    req: V3CoverRequest,
+    pages: list[Page],
+    *,
+    cover_template_id: str | None,
+    ending_template_id: str | None,
+) -> CoverCopyPayload:
+    page_specs: dict[str, list[dict[str, Any]]] = {}
+    if cover_template_id:
+        page_specs["cover"] = page_slot_specs(
+            _page_as_template(pages[0], cover_template_id)
+        )
+    if ending_template_id:
+        page_specs["ending"] = page_slot_specs(
+            _page_as_template(pages[-1], ending_template_id)
+        )
+    return CoverCopyPayload(
+        language=req.language,
+        coverTemplateId=cover_template_id,
+        endingTemplateId=ending_template_id,
+        coverPhotoDesc=req.coverPhotoDesc,
+        hint=req.hint,
+        userMessage=req.userMessage,
+        history=_history_dicts(req.history),
+        pageSlotSpecs=page_specs,
+        clarifyRounds=_clarify_rounds(req.history),
+    )
+
+
+def _page_as_template(page: Page, template_id: str) -> Page:
+    template = templates.get(template_id)
+    if template is None:
+        return page.model_copy(update={"templateId": template_id})
+    capacity = skeleton_v3.image_capacity(template)
+    images = skeleton_v3.assign_images_v3(template_id, _photo_ids(page)[:capacity])
+    return Page(
+        pageIndex=page.pageIndex,
+        templateId=template_id,
+        images=images,
+        texts={},
+        imagePos=page.imagePos,
+    )
+
+
+async def _run_copy(
+    payload: CoverCopyPayload,
+    *,
+    copy_fn: CoverCopyFn | None,
+) -> CoverCopyResult:
+    fn = copy_fn or _default_copy
+    return await _maybe_await(fn(payload))
+
+
+def _default_copy(payload: CoverCopyPayload) -> CoverCopyResult:
+    return CoverCopyResult()
+
+
+async def _run_color_design(
+    payload: CoverColorPayload,
+    *,
+    color_design_fn: CoverColorDesignFn | None,
+) -> str | None:
+    fn = color_design_fn or _default_color_design
+    return await _maybe_await(fn(payload))
+
+
+def _default_color_design(payload: CoverColorPayload) -> str:
+    return payload.extractedAccent
+
+
+async def _maybe_await(value: Awaitable[Any] | Any) -> Any:
+    if inspect.isawaitable(value):
+        return await value
+    return value
+
+
+def _extract_cover_accent(
+    req: V3CoverRequest, accent_from_photo_fn: AccentFromPhotoFn
+) -> str:
+    if not req.coverPhoto:
+        return _NEUTRAL_ACCENT
+    try:
+        return accent_from_photo_fn(req.coverPhoto)
+    except Exception:
+        return _NEUTRAL_ACCENT
+
+
+def _finalize_cover_color(
+    designed_color: str | None, finalize_color_fn: FinalizeColorFn
+) -> str:
+    try:
+        return finalize_color_fn(designed_color or _NEUTRAL_ACCENT)
+    except Exception:
+        return finalize_color(_NEUTRAL_ACCENT)
+
+
+def _needs_input_response(
+    started: float,
+    language: str,
+    *,
+    reply: str | None = None,
+) -> V3CoverResponse:
+    return V3CoverResponse(
+        layoutPatch=[],
+        assistantReply=(reply or _default_clarification_reply(language))[:500],
+        needsUserInput=True,
+        usage=V3Usage(
+            durationMs=int((time.monotonic() - started) * 1000),
+            models=V3Models(),
+        ),
+    )
+
+
+def _default_clarification_reply(language: str) -> str:
+    if language == "zh":
+        return "我还需要一句封面标题、氛围词，或你想突出的人和时刻。"
+    return "What title, mood, or moment should I emphasize on the cover?"
+
+
+def _clarify_rounds(history: Sequence[Any]) -> int:
+    rounds = 0
+    for turn in history:
+        role = _turn_value(turn, "role")
+        content = _turn_value(turn, "content")
+        if (
+            role == "assistant"
+            and isinstance(content, str)
+            and ("?" in content or "？" in content)
+        ):
+            rounds += 1
+    return rounds
+
+
+def _history_dicts(history: Sequence[Any]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    for turn in history:
+        role = _turn_value(turn, "role")
+        content = _turn_value(turn, "content")
+        if isinstance(role, str) and isinstance(content, str):
+            out.append({"role": role, "content": content})
+    return out
+
+
+def _turn_value(turn: Any, key: str) -> Any:
+    if isinstance(turn, Mapping):
+        return turn.get(key)
+    return getattr(turn, key, None)
+
+
+def _string_texts(raw: Mapping[str, Any]) -> dict[str, str]:
+    return {
+        key: value.strip()
+        for key, value in raw.items()
+        if isinstance(key, str) and isinstance(value, str) and value.strip()
+    }
