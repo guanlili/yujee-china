@@ -219,8 +219,9 @@ def partition_photos_v3(
     塞入」—— 推广到模板 image 容量有上限的库:把照片贪心地
     装进不大于 category 最大模板的 chunk,使每个 chunk 恰好
     映射到一个 fallback 模板(精确
-    容量优先,否则最接近的更大者)。在当前 interior 最大值 4 下,
-    一个 10 张照片的章节变成 4 + 4 + 2。仅在给了照片时返回至少一个(可能为空)
+    容量优先,否则最接近的更大者)。chunk 大小 = category 内最大模板容量;
+    当前 interior 最大值为 9(mag-48),故一个 10 张照片的章节变成 9 + 1。
+    仅在给了照片时返回至少一个(可能为空)
     list;空输入产出 ``[]``。"""
     items = list(photos)
     if not items:
