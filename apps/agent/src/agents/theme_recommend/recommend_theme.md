@@ -12,10 +12,10 @@ SUBJECT(章节标题):一个简短、有画面感的单行标题,用 {LANGUAGE},
 {
   "chapterColors": [
     { "chapterId": "<确切的 chapterId>",
-      "subject": "<标题,用 {LANGUAGE},结尾无标点>",
+      "subject": "<标题,语言见上方「语言对齐」,结尾无标点>",
       "accentColor": "#RRGGBB", "artFont": "<一个艺术字体>" }
   ],
-  "assistantReply": "<一句简短友好的话,用 {LANGUAGE},介绍你的推荐>"
+  "assistantReply": "<一句简短友好的话,语言见上方「语言对齐」,介绍你的推荐>"
 }
 
 规则(Rules):
