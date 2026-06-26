@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "templateId": "mag-44",
+  "category": "interior",
+  "imageSlotCount": 2,
+  "imageSlotIds": [
+    "image1",
+    "image2"
+  ],
+  "textSlotCount": 3,
+  "textSlotIds": [
+    "title",
+    "line",
+    "caption"
+  ],
+  "structureDescription": "mag-44 interior template with 2 image slot(s) (image1, image2) and 3 text slot(s) (title, line, caption). two balanced image blocks; 3 text slots."
+}

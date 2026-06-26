@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "templateId": "mag-30",
+  "category": "interior",
+  "imageSlotCount": 1,
+  "imageSlotIds": [
+    "image"
+  ],
+  "textSlotCount": 1,
+  "textSlotIds": [
+    "explain"
+  ],
+  "structureDescription": "mag-30 interior template with 1 image slot(s) (image) and 1 text slot(s) (explain). one dominant image block; one text slot."
+}

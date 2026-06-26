@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "templateId": "mag-31",
+  "category": "interior",
+  "imageSlotCount": 6,
+  "imageSlotIds": [
+    "image1",
+    "image2",
+    "image3",
+    "image4",
+    "image5",
+    "image6"
+  ],
+  "textSlotCount": 1,
+  "textSlotIds": [
+    "body"
+  ],
+  "structureDescription": "mag-31 interior template with 6 image slot(s) (image1, image2, image3, image4, image5, image6) and 1 text slot(s) (body). 6 image blocks in a grid; one text slot."
+}

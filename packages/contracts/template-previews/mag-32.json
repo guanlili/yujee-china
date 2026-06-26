@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "templateId": "mag-32",
+  "category": "cover",
+  "imageSlotCount": 1,
+  "imageSlotIds": [
+    "image"
+  ],
+  "textSlotCount": 2,
+  "textSlotIds": [
+    "title",
+    "label"
+  ],
+  "structureDescription": "mag-32 cover template with 1 image slot(s) (image) and 2 text slot(s) (title, label). one dominant image block; 2 text slots."
+}
