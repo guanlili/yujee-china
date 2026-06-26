@@ -83,8 +83,8 @@ def _decor_value_for_text_slot(
     """一个 variableDecor 文字槽的主题化取值,或返回 None 表示原样不动。
 
     * `title`(章节标题)→ 逐章 `subject`(问题5 / #236),但仅当该槽当前为空(空串或缺失)时。
-      非空的 title 是已有的章名(例如用户在编辑里改过),所以原样保留、绝不被
-      subject 覆盖(#236 保留已有章名)。写入时 subject 截到槽的 `maxChars`,不会溢出模板。
+      非空的 title 是用户在故事环节亲手挑的名字(nameOptions → title 槽),所以原样保留、绝不被
+      subject 覆盖(#236 保留用户手起章名)。写入时 subject 截到槽的 `maxChars`,不会溢出模板。
       这让 apply-theme 幂等:已持有 subject 的槽是非空的,重复应用同一主题不动它。
     * `body`/`explain`(用户正文)→ None:内容从不重写;颜色/字体挂在树的章节节点上(finalize 烘入)。
     * `decoration` 文字槽 → 已有或空的内容从不用颜色字符串重写。SVG variableDecor 槽是扁平页上
@@ -93,7 +93,7 @@ def _decor_value_for_text_slot(
     绝不返回地点/位置值或颜色 token,所以 §3 隐私(无地点)与文字内容保留都由构造保证。"""
     role = str(slot.get("role") or "")
     if role == "title":
-        # 仅给空(空串/缺失)的 title 填入 subject;非空 title 是已有章名(如编辑里改过)→ 保留(#236)。
+        # 仅给空(空串/缺失)的 title 填入 subject;非空 title 是用户亲手挑的章名 → 保留(#236)。
         if existing:
             return None
         max_chars = slot.get("maxChars")

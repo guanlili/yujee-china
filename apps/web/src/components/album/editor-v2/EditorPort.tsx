@@ -409,6 +409,14 @@ function EditorBook({
         alertAccepted: '已采纳这个版本！文案已更新到杂志预览中。',
         alertRewrite: '好的，我重新写一版...',
         alertEditMyself: '你可以直接编辑上方文案了',
+        userMsg2: '很好。再帮我想个更有诗意的章节名？',
+        thinkingChapterName: '正在构思章节名',
+        aiMsg3: '几个备选，挑一个或告诉我感觉：',
+        chipName1: '浪把时间洗薄了',
+        chipName2: '风从海上来',
+        chipName3: '咸味的下午',
+        chipName4: '那只差点飞走的帽子',
+        alertChapterUpdated: '章节名已更新为「',
         inputPlaceholder: '输入消息...',
         send: '发送',
         thinking: '正在思考',
@@ -534,6 +542,14 @@ function EditorBook({
         alertAccepted: 'Accepted! The copy has been updated in the magazine preview.',
         alertRewrite: 'OK, let me rewrite a new version...',
         alertEditMyself: 'You can now edit the text above directly',
+        userMsg2: 'Great. Can you come up with a more poetic chapter title?',
+        thinkingChapterName: 'Brainstorming chapter names',
+        aiMsg3: 'Here are some options — pick one or tell me what feels right:',
+        chipName1: 'Waves Thinning Time',
+        chipName2: 'Wind from the Sea',
+        chipName3: 'A Salty Afternoon',
+        chipName4: 'The Hat That Almost Flew Away',
+        alertChapterUpdated: 'Chapter title updated to "',
         inputPlaceholder: 'Type a message...',
         send: 'Send',
         thinking: 'Thinking',
@@ -1995,16 +2011,9 @@ function EditorBook({
     }
 
     // ─── 只读回放卡 (fix: restore chat decision cards) ──────────────────────────
-    // The theme/cover decision cards are session-only DOM and are NEVER persisted
-    // (album_messages is text-only), so loadHistory can't rebuild them — past
-    // decisions would vanish on refresh. These two helpers re-derive a READ-ONLY
-    // recap from draftSkel/pagesState (the selection result itself is in draft_json):
-    // no buttons, no API, nothing pushed into chapterHistory — purely a record of
-    // what was already applied, surfaced for stages the user has walked past.
-
-    // Recap of the applied theme: each chapter's title (its theme `subject`, written
-    // at apply-theme). accentColor isn't carried on the skeleton, so this lists the
-    // titles — the decision the user confirmed on the palette card.
+    // The theme/cover decision cards are session-only DOM and are never persisted
+    // (album_messages is text-only), so loadHistory can't rebuild them. These helpers
+    // re-derive a read-only recap from draftSkel/pagesState for stages already passed.
     function appendThemeSummary() {
       const chapters = draftSkel?.chapters ?? [];
       if (chapters.length === 0) return;
@@ -2039,8 +2048,6 @@ function EditorBook({
       chatBody!.appendChild(card);
     }
 
-    // Recap of the chosen 封面/封底: a live preview of each (rendered through the same
-    // template path as the active card), or 已跳过 when neither page exists. Read-only.
     function appendCoverSummary() {
       const kindByPageIndex = new Map<number, DraftPageKind>();
       for (const p of draftSkel?.pages ?? []) kindByPageIndex.set(p.pageIndex, p.kind);
@@ -2556,6 +2563,8 @@ function EditorBook({
     //   • write → pagesTexts: merge each page's rewritten copy into pagesState.
     //   • edit  → layoutPatch: fold the page patch in (same applyPatch path the
     //             finalized editor uses) — covers text + image-slot + template moves.
+    // nameOptions (≤4) render as picker chips; picking one sends it back as the
+    // next chapter-chat message so the model can fold the chosen title in.
     // History is browser-held (the endpoint is stateless), capped at 20 turns.
     // ════════════════════════════════════════════════════════════════════════
 
@@ -2587,7 +2596,7 @@ function EditorBook({
     }
 
     // Send one chapter-chat message and apply the result. `message` is the user's
-    // text. Returns nothing; UI side effects only.
+    // text (a name-chip pick reuses this path). Returns nothing; UI side effects only.
     async function runChapterChatTurn(message: string) {
       const host = appendThinkingShell();
       const chapterId = storyGate?.currentChapterId ?? null;
@@ -2633,6 +2642,9 @@ function EditorBook({
               ...(e.texts !== undefined ? { textsJson: e.texts } : {}),
             })),
           );
+        }
+        if (res.nameOptions && res.nameOptions.length > 0) {
+          appendNameChips(host, res.nameOptions);
         }
         appendTime(host);
         // Record the turn for the next round's history (user + assistant).
@@ -2752,6 +2764,27 @@ function EditorBook({
     // patch-free. Only fires for a LIVE, NOT-yet-done chapter with no prior history this
     // session (a chapter the user already conversed in re-opens to its own log, not a
     // fresh opener). Never auto-writes.
+    // A chapter is PHOTO-ONLY when none of its pages carry a writable text slot, so the
+    // writer (Agent) has nothing to author — it always returns kind=talk, never kind=write,
+    // and the post-write satisfaction card never appears, stranding the user with no way to
+    // confirm/advance. "Writable" matches the Agent's own AUTHORED_ROLES (writing/guides.py):
+    // title/body/explain are authored; decoration is code-filled (themable) and doesn't count.
+    // We read the slots from the SAME template defs the rest of the editor uses (getTemplate),
+    // over the chapter's pages in the read-only draft skeleton (invariant 12).
+    const AUTHORED_TEXT_ROLES = new Set(['title', 'body', 'explain']);
+    function pageHasWritableTextSlot(templateId: string): boolean {
+      const texts = getTemplate(templateId)?.texts ?? [];
+      if (texts.some((slot) => AUTHORED_TEXT_ROLES.has(slot.role))) return true;
+      // items.texts (repeat groups) are authored too — a page with only those is not photo-only.
+      const itemTexts = getTemplate(templateId)?.items?.texts ?? [];
+      return itemTexts.some((slot) => AUTHORED_TEXT_ROLES.has(slot.role));
+    }
+    function isPhotoOnlyChapter(chapterId: string): boolean {
+      const pages = (draftSkel?.pages ?? []).filter((p) => p.chapterId === chapterId);
+      if (pages.length === 0) return false; // unknown shape → don't auto-surface (let the opener run)
+      return pages.every((p) => !pageHasWritableTextSlot(p.templateId));
+    }
+
     async function runChapterGuideOpener() {
       if (!isAuthoring || sending || awaitingSatisfaction) return;
       const chapterId = storyGate?.currentChapterId ?? null;
@@ -2759,6 +2792,18 @@ function EditorBook({
       // Already confirmed chapter, or already opened/conversed this session → skip.
       if (storyGate?.doneChapterIds.includes(chapterId)) return;
       if (guidedChapters.has(chapterId) || openerInFlight.has(chapterId) || chapterHistory.length > 0) return;
+      // PHOTO-ONLY chapter: there's nothing to write, so the Agent would only ever talk and
+      // the post-write satisfaction card never fires. Skip the (pointless) guide opener and
+      // surface the satisfaction/next-chapter card directly so the user can confirm → advance
+      // through the satisfaction card's existing confirm path. guidedChapters marks it
+      // done-once so re-entry/advance/re-render won't re-append (same dedupe the real opener
+      // uses). The card itself (not this branch) is what advances — Frame 4 红线 intact.
+      if (isPhotoOnlyChapter(chapterId)) {
+        guidedChapters.add(chapterId);
+        appendChapterCard(chapterId);
+        appendSatisfactionCard({ photoOnly: true });
+        return;
+      }
       // 问题③: surface the chapter card (which chapter) BEFORE the AI's opener question.
       appendChapterCard(chapterId);
       // #236 ①: mark both guards synchronously, BEFORE any await, so a second same-tick
@@ -2803,7 +2848,7 @@ function EditorBook({
     // existing focusedPageIndex + edit-turn machinery does逐页 adjustment (no stage推进
     // until满意, §8.3 stage 推进权在 Web service). Replaces the old always-on「确定本章」
     // breadcrumb button: confirmation is now a per-write affordance, not a standing CTA.
-    function appendSatisfactionCard() {
+    function appendSatisfactionCard(opts?: { photoOnly?: boolean }) {
       awaitingSatisfaction = true;
       const card = document.createElement('div');
       card.className = 'msg ai max-w-full';
@@ -2811,7 +2856,12 @@ function EditorBook({
       inner.className = 'satisfaction-card';
       const title = document.createElement('div');
       title.className = 'sc-title';
-      title.textContent = aT('这一章写好了,你满意吗?', "Here's this chapter — happy with it?");
+      // Photo-only chapters have no copy to write, so don't claim we wrote one — just ask
+      // if they're ready to move on (the only meaningful action for such a chapter).
+      title.textContent = opts?.photoOnly
+        ? aT('这一章只有照片,准备好进入下一章了吗?',
+             'This chapter is photo-only — ready for the next one?')
+        : aT('这一章写好了,你满意吗?', "Here's this chapter — happy with it?");
       const row = document.createElement('div');
       row.className = 'sc-actions';
 
@@ -2859,6 +2909,33 @@ function EditorBook({
       scrollChat();
     }
 
+    // Render the chapter-title candidates (≤4) as picker chips under the reply.
+    // Picking one feeds it back as the next chapter-chat message so the model can
+    // adopt the chosen title — the browser never writes the tree (§3 数据归属).
+    function appendNameChips(host: HTMLElement, names: string[]) {
+      const row = document.createElement('div');
+      row.className = 'chips';
+      for (const name of names.slice(0, 4)) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'chip-select';
+        chip.textContent = name;
+        chip.addEventListener('click', () => {
+          if (sending) return;
+          sending = true;
+          row.querySelectorAll('.chip-select').forEach((c) => c.classList.remove('selected'));
+          chip.classList.add('selected');
+          // Echo the pick as a user bubble, then run it as a normal chapter-chat turn.
+          appendUserText(aT(`就用「${name}」`, `Use "${name}"`));
+          hideAwait();
+          scrollChat();
+          void runChapterChatTurn(aT(`这一章就叫「${name}」`, `Name this chapter "${name}"`))
+            .finally(() => { sending = false; });
+        });
+        row.appendChild(chip);
+      }
+      host.appendChild(row);
+    }
     // ── Purchase card (积分不足引导卡): on CreditInsufficientError, surface the
     // design's buy-credits card at the bottom of the conversation (it carries its
     // own "去购买" button → /credits) instead of hard-redirecting. ──
@@ -3239,7 +3316,6 @@ function EditorBook({
         if (liveChapterId) goToChapterById(liveChapterId);
         const stage = storyGate?.stage;
         if (liveChapterId) {
-          // ── story stage: still authoring chapters ──
           if (shown === 0) {
             void runChapterGuideOpener();
           } else {
@@ -3248,22 +3324,13 @@ function EditorBook({
             appendChapterCard(liveChapterId);
           }
         } else if (stage === 'theme' || stage === 'cover' || stage === 'ready') {
-          // ── all chapters done: re-derive the theme/cover decision cards (fix: restore
-          // chat decision cards). They're session-only DOM, never persisted, so loadHistory
-          // can't rebuild them — past stages render as read-only recaps, the CURRENT stage
-          // as its live actionable card. Without this, refreshing mid-theme/mid-cover left
-          // the user stranded with no card to continue (there was no stage-based re-emit
-          // for palette/cover, only story + ready).
           if (stage === 'theme') {
-            void runRecommendTheme(); // re-fetch + show the live palette card to pick a theme
+            void runRecommendTheme();
           } else if (stage === 'cover') {
-            appendThemeSummary(); // theme已应用 → 只读回放
-            // 封面是当前活动卡 → 可操作。注意:legacy 草稿(无 cover/ending 页)下
-            // appendCoverCard 会自动 runCover({}) 把 stage 推到 ready —— 即一次刷新就
-            // 走完封面环节(等价显式跳过)。正常 V3 草稿有封面页,只显示选择卡、不自动推进。
+            appendThemeSummary();
             appendCoverCard();
           } else {
-            appendThemeSummary(); // 两步都走过 → 都只读回放
+            appendThemeSummary();
             appendCoverSummary();
           }
         }
@@ -3658,6 +3725,26 @@ function EditorBook({
                   <button className="chip" data-i18n="chipEditMyself" data-chip="editMyself">我来改</button>
                 </div>
                 <div className="name-time">10:42</div>
+              </div>
+
+              <div className="msg user max-w-full">
+                <div className="bubble" data-i18n="userMsg2">很好。再帮我想个更有诗意的章节名？</div>
+              </div>
+
+              <div className="msg ai max-w-full">
+                <div className="thinking-block active">
+                  <img className="think-jelly" src="/jellyfish-loop.png" alt="" />
+                  <span className="thinking-label" data-i18n="thinkingChapterName">正在构思章节名</span>
+                  <span className="thinking-dots"><span /><span /><span /></span>
+                </div>
+                <div className="ai-text" data-i18n="aiMsg3">几个备选，挑一个或告诉我感觉：</div>
+                <div className="ai-actions flex gap-2 mt-3.5 flex-wrap">
+                  <button className="chip-select" data-i18n="chipName1" data-name-chip>浪把时间洗薄了</button>
+                  <button className="chip-select" data-i18n="chipName2" data-name-chip>风从海上来</button>
+                  <button className="chip-select" data-i18n="chipName3" data-name-chip>咸味的下午</button>
+                  <button className="chip-select" data-i18n="chipName4" data-name-chip>那只差点飞走的帽子</button>
+                </div>
+                <div className="name-time">10:43</div>
               </div>
 
               <div className="balance-alert" id="balanceAlert">

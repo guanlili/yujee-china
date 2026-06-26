@@ -173,7 +173,7 @@ def test_merge_orders_by_sequenced_cluster_position_and_renumbers():
     )
     route_a = V3LayoutTree(chapters=[_chapter("A.", ["p1", "p2"])])
     route_b = V3LayoutTree(chapters=[_chapter("B.", ["p3", "p4"])])
-    merged = vision._merge_route_trees(sequenced, [route_b, route_a])
+    merged, _ = vision._merge_route_trees(sequenced, [(route_b, {}), (route_a, {})])
     assert [c.chapterId for c in merged.chapters] == ["ch_1", "ch_2"]
     assert [[p.photoId for p in c.photos] for c in merged.chapters] == [
         ["p1", "p2"],
@@ -198,7 +198,7 @@ def test_merge_keeps_sub_chaptered_cluster_contiguous():
         chapters=[_chapter("A1.", ["p1", "p2"]), _chapter("A2.", ["p3"])]
     )
     route_b = V3LayoutTree(chapters=[_chapter("B.", ["p4"])])
-    merged = vision._merge_route_trees(sequenced, [route_b, route_a])
+    merged, _ = vision._merge_route_trees(sequenced, [(route_b, {}), (route_a, {})])
     assert [[p.photoId for p in c.photos] for c in merged.chapters] == [
         ["p1", "p2"],
         ["p3"],
@@ -211,7 +211,7 @@ def test_merge_rejects_omitted_photo():
     photos = _photos([("cA", "2024-03-01T08:00:00"), ("cA", "2024-03-01T08:00:00"), ("cB", "2024-03-01T08:00:00")])
     route_a = V3LayoutTree(chapters=[_chapter("A.", ["p1", "p2"])])
     with pytest.raises(vision.VisionError, match="merge omitted photoIds"):
-        vision._merge_route_trees(photos, [route_a])
+        vision._merge_route_trees(photos, [(route_a, {})])
 
 
 def test_merge_rejects_duplicate_photo_across_routes():
@@ -219,7 +219,7 @@ def test_merge_rejects_duplicate_photo_across_routes():
     route_a = V3LayoutTree(chapters=[_chapter("A.", ["p1"])])
     route_b = V3LayoutTree(chapters=[_chapter("B.", ["p1", "p2"])])  # p1 dup
     with pytest.raises(vision.VisionError, match="merge duplicated photoId"):
-        vision._merge_route_trees(photos, [route_a, route_b])
+        vision._merge_route_trees(photos, [(route_a, {}), (route_b, {})])
 
 
 def test_merge_rejects_two_clusters_merged_into_one_chapter():
@@ -228,14 +228,79 @@ def test_merge_rejects_two_clusters_merged_into_one_chapter():
     photos = _photos([("cA", "2024-03-01T08:00:00"), ("cB", "2024-03-02T08:00:00")])
     bad = V3LayoutTree(chapters=[_chapter("merged.", ["p1", "p2"])])
     with pytest.raises(vision.VisionError, match="mixed distinct clusters"):
-        vision._merge_route_trees(photos, [bad])
+        vision._merge_route_trees(photos, [(bad, {})])
+
+
+def _pages_for(photo_ids: list[str]) -> list[dict[str, Any]]:
+    """One deterministic interior page per photo (1-slot mag-03), so each route
+    carries NON-empty `pages` through merge — today all merge tests pass `{}`."""
+    return [
+        {
+            "pageIndex": 0,
+            "templateId": "mag-03",
+            "images": {"img": pid},
+            "texts": {},
+        }
+        for pid in photo_ids
+    ]
+
+
+def test_merge_carries_per_route_pages_to_renumbered_chapters_no_loss():
+    # d. Multi-route merge where EACH route carries non-empty `pages` per chapter.
+    # sequenced order is p1..p4 (cluster/time); route B (cB: p3,p4) appears BEFORE
+    # route A (cA: p1,p2) in the trees list. Merge must:
+    #   * order chapters by sequenced position (cA before cB),
+    #   * renumber chapters ch_1..N,
+    #   * carry EACH route's pages to the RIGHT (renumbered) chapter — no loss,
+    #     no misattribution — keyed by new ch_N (not the colliding local id).
+    sequenced = _photos(
+        [
+            ("cA", "2024-03-01T08:00:00"),
+            ("cA", "2024-03-01T08:10:00"),
+            ("cB", "2024-03-02T08:00:00"),
+            ("cB", "2024-03-02T08:10:00"),
+        ]
+    )
+    route_a = V3LayoutTree(chapters=[_chapter("A.", ["p1", "p2"])])
+    route_b = V3LayoutTree(chapters=[_chapter("B.", ["p3", "p4"])])
+    pages_a = {"ch_local": _pages_for(["p1", "p2"])}
+    pages_b = {"ch_local": _pages_for(["p3", "p4"])}
+
+    # Route B listed first to prove ordering is by sequenced position, not list order.
+    merged, merged_pages = vision._merge_route_trees(
+        sequenced, [(route_b, pages_b), (route_a, pages_a)]
+    )
+
+    assert [c.chapterId for c in merged.chapters] == ["ch_1", "ch_2"]
+    # cA (p1,p2) → ch_1 ; cB (p3,p4) → ch_2 (sequenced/time order, not list order).
+    assert [[p.photoId for p in c.photos] for c in merged.chapters] == [
+        ["p1", "p2"],
+        ["p3", "p4"],
+    ]
+    # Pages re-keyed to the NEW ch_N and attributed to the right chapter.
+    assert set(merged_pages.keys()) == {"ch_1", "ch_2"}
+    ch1_photos = [pid for pg in merged_pages["ch_1"] for pid in pg["images"].values()]
+    ch2_photos = [pid for pg in merged_pages["ch_2"] for pid in pg["images"].values()]
+    assert ch1_photos == ["p1", "p2"]  # ch_1 got route A's pages, not route B's
+    assert ch2_photos == ["p3", "p4"]  # ch_2 got route B's pages
+
+    # Carry through the final flatten: pageIndex contiguous across the whole book,
+    # no page lost or misattributed.
+    flat = vision._flatten_pages(merged, merged_pages)
+    assert [pg["pageIndex"] for pg in flat] == [0, 1, 2, 3]
+    assert [pid for pg in flat for pid in pg["images"].values()] == [
+        "p1",
+        "p2",
+        "p3",
+        "p4",
+    ]
 
 
 def test_merge_allows_null_cluster_photos_in_one_chapter():
     # Null-cluster photos carry no boundary constraint → may share a chapter.
     photos = _photos([(None, "2024-03-01T08:00:00"), (None, "2024-03-02T08:00:00")])
     ok = V3LayoutTree(chapters=[_chapter("free.", ["p1", "p2"])])
-    merged = vision._merge_route_trees(photos, [ok])
+    merged, _ = vision._merge_route_trees(photos, [(ok, {})])
     assert [[p.photoId for p in c.photos] for c in merged.chapters] == [["p1", "p2"]]
 
 
@@ -252,8 +317,8 @@ def test_prompt_injects_cluster_labels_relabeled_locally():
     assert "cluster=c1" in text and "cluster=c2" in text
     assert "clusterX" not in text and "clusterY" not in text
     # cluster 规则已外置并中文化(prompts/rules/cluster_grouping.md)。
-    assert "待在一起" in text
-    assert "合并进同一章节" in text
+    assert "必须】待在一起" in text
+    assert "绝不】合并进同一个章节" in text
 
 
 def test_prompt_no_cluster_block_when_all_null():

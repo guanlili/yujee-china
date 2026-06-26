@@ -257,3 +257,35 @@ def test_optional_image_slot_hints_treated_as_any(monkeypatch, tmp_path):
         monkeypatch.delenv("YUJEE_TEMPLATE_DIR", raising=False)
         sys.modules.pop("src.engine.templates", None)
         importlib.import_module("src.engine.templates")
+
+
+# ---------- 示例文案(copy-examples)加载 -------------------------------------
+# 示例文案与模板分文件、并列存放(packages/contracts/copy-examples/),通过与模板【同一】
+# 机制到达 Agent。它们给写作 LM 做「输出示例」(例驱动);缺失须优雅降级,绝不崩。
+
+
+def test_copy_example_returns_slot_texts_map():
+    from src.engine import templates as registry
+
+    # mag-01 ships example copy keyed by slot id (examples[0].texts).
+    example = registry.copy_example("mag-01")
+    assert example["title"] == "VENUES"
+    assert example["explain1"] and example["explain2"]
+
+
+def test_copy_example_repeat_group_keys_use_brackets():
+    from src.engine import templates as registry
+
+    # mag-10's repeat group example keys as explain[0..3] — same bracket shape the
+    # writing-side per-page expansion produces.
+    example = registry.copy_example("mag-10")
+    assert example["explain[0]"] == "Low tide at dawn."
+    assert "explain[3]" in example
+
+
+def test_copy_example_missing_file_returns_empty_dict():
+    from src.engine import templates as registry
+
+    # mag-20 has no copy-example file → empty dict (graceful degrade, never KeyError).
+    assert registry.copy_example("mag-20") == {}
+    assert registry.copy_example("does-not-exist") == {}

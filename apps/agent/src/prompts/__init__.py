@@ -29,6 +29,33 @@ def _read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8").strip()
 
 
+@lru_cache(maxsize=None)
+def load_replies(path: Path | str) -> dict[str, str]:
+    """加载一份「兜底/默认回复」文件,解析成扁平的 `key -> 文本` 字典(按路径 lru_cache)。
+
+    格式极简、便于产品手调:每行 `key: 文本`(首个冒号 `:` 或全角 `:` 分隔)。
+    实践里 key 形如 `intent.zh` / `intent.en`(意图/种类 + 语言),但本加载器不强加这层
+    语义 —— 它只做「键 → 文本」。空行与以 `#` 起头的注释行被忽略;键与值两端空白被裁掉。
+    重复键以最后一次为准(宽容)。"""
+    out: dict[str, str] = {}
+    for raw_line in Path(path).read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # 取首个 ASCII 冒号或全角冒号作为分隔符(取两者中位置更靠前的那个)。
+        idx_ascii = line.find(":")
+        idx_full = line.find("：")
+        candidates = [i for i in (idx_ascii, idx_full) if i != -1]
+        if not candidates:
+            continue
+        sep = min(candidates)
+        key = line[:sep].strip()
+        value = line[sep + 1 :].strip()
+        if key:
+            out[key] = value
+    return out
+
+
 def load_prompt(
     path: Path | str, *, common: tuple[str, ...] = (), **slots: str
 ) -> str:

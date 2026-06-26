@@ -177,6 +177,40 @@ def test_partition_photos_does_not_require_contiguous_capacities(monkeypatch):
     assert [len(chunk) for chunk in chunks] == [4, 3]
 
 
+# ── validate_grouping: AI 分组的确定性护栏(§8.3 引擎保合法) ──────────────────
+
+
+def test_validate_grouping_accepts_legal_split(monkeypatch):
+    monkeypatch.setattr(sk, "POOLS", {"interior": {1: ["t1"], 4: ["t4"]}})  # cap 4
+    ids = ["a", "b", "c", "d", "e"]
+    assert sk.validate_grouping([["a", "b", "c"], ["d", "e"]], ids) is True
+
+
+def test_validate_grouping_rejects_over_capacity(monkeypatch):
+    monkeypatch.setattr(sk, "POOLS", {"interior": {1: ["t1"], 4: ["t4"]}})  # cap 4
+    ids = ["a", "b", "c", "d", "e"]
+    assert sk.validate_grouping([["a", "b", "c", "d", "e"]], ids) is False  # 5 > 4
+
+
+def test_validate_grouping_rejects_empty_page(monkeypatch):
+    monkeypatch.setattr(sk, "POOLS", {"interior": {1: ["t1"], 4: ["t4"]}})
+    assert sk.validate_grouping([["a"], []], ["a"]) is False
+
+
+def test_validate_grouping_rejects_lost_dup_reordered_or_extra(monkeypatch):
+    monkeypatch.setattr(sk, "POOLS", {"interior": {1: ["t1"], 4: ["t4"]}})
+    ids = ["a", "b", "c"]
+    assert sk.validate_grouping([["a", "b"]], ids) is False  # 丢了 c
+    assert sk.validate_grouping([["a", "b"], ["b", "c"]], ids) is False  # 重复 b
+    assert sk.validate_grouping([["b", "a"], ["c"]], ids) is False  # 乱序
+    assert sk.validate_grouping([["a", "b"], ["c"], ["x"]], ids) is False  # 多了 x
+
+
+def test_validate_grouping_rejects_empty_grouping_with_photos(monkeypatch):
+    monkeypatch.setattr(sk, "POOLS", {"interior": {1: ["t1"], 4: ["t4"]}})
+    assert sk.validate_grouping([], ["a"]) is False
+
+
 def test_build_skeleton_skips_empty_chapters_and_reindexes():
     pages = sk.build_skeleton_v3(
         [{"photos": ["a", "b"]}, {"photos": []}, {"photos": ["c"]}]

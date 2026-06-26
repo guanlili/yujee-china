@@ -219,8 +219,9 @@ def partition_photos_v3(
     塞入」—— 推广到模板 image 容量有上限的库:把照片贪心地
     装进不大于 category 最大模板的 chunk,使每个 chunk 恰好
     映射到一个 fallback 模板(精确
-    容量优先,否则最接近的更大者)。在当前 interior 最大值 4 下,
-    一个 10 张照片的章节变成 4 + 4 + 2。仅在给了照片时返回至少一个(可能为空)
+    容量优先,否则最接近的更大者)。chunk 大小 = category 内最大模板容量;
+    当前 interior 最大值为 9(mag-48),故一个 10 张照片的章节变成 9 + 1。
+    仅在给了照片时返回至少一个(可能为空)
     list;空输入产出 ``[]``。"""
     items = list(photos)
     if not items:
@@ -229,6 +230,34 @@ def partition_photos_v3(
     if chunk <= 0:
         raise ValueError(f"no V3 template in category={category!r} holds any image")
     return [items[i : i + chunk] for i in range(0, len(items), chunk)]
+
+
+def validate_grouping(
+    grouping: Sequence[Sequence[str]],
+    photo_ids: Sequence[str],
+    *,
+    category: Category = "interior",
+) -> bool:
+    """校验一份 AI 章内分组是否合法(§8.3「模型出意图、确定性引擎保合法」)。
+
+    AI 可按画面效果重分页,但确定性引擎守住三条硬护栏 —— 任一不满足返回
+    ``False``,调用方据此回退确定性基线(`partition_photos_v3`):
+
+      1. 每页 1..`max_capacity(category)` 张(容量上限是「用户的分寸」)。
+      2. 各页按序拼接 == 原始 `photo_ids` —— 即不丢、不重、保持原顺序
+         (相册是时间序回忆录,跨页不打乱)。
+
+    第 2 条用一次序列相等同时覆盖「不丢/不重/保序」:并集要全、不能多、不能换位。"""
+    cap = max_capacity(category)
+    if cap <= 0:
+        return False
+    flat: list[str] = []
+    for page in grouping:
+        n = len(page)
+        if n < 1 or n > cap:
+            return False
+        flat.extend(page)
+    return flat == list(photo_ids)
 
 
 def build_page_v3(

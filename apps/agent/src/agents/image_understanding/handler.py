@@ -18,13 +18,14 @@ from ...schemas import (
 from ...settings import get_settings
 from ...prompts import RULES_DIR, load_prompt
 from ... import ai_client
+from ...engine import skeleton_v3
 from ...vision_provider import (
     VisionSlot,
     VisionSlotError,
     ark_vision_slot,
     openai_vision_slot,
 )
-from .schema import V3DescribeResult
+from .schema import V3AnalyzeResult
 
 _PROMPT_DIR = Path(__file__).resolve().parent
 
@@ -60,17 +61,50 @@ def _photo_orientation(width: int, height: int) -> str:
 # =============================================================================
 
 
+# 本环节正文页始终是 interior 类别(cover/toc/ending 归其它环节 / wrap_with_cover_ending)。
+_INTERIOR: skeleton_v3.Category = "interior"
+
+
+def _legal_capacity_table() -> str:
+    """统一调用的系统提示里注入的「N 张照片 → 合法 templateId 列表」表(interior 类别)。
+
+    每页恰好一个模板实例 —— 模型给一页塞 N 张照片就必须从「容量 == N」的桶里挑一个
+    templateId(选模板=分页)。表是定长的(只取决于模板库,与相册大小无关),所以在系统
+    提示里注入【一次】即可。容量上限(`max_capacity`)= 单页最多能放的照片数,也即模型分页
+    时每页照片数的硬上限。
+
+    用恰好容量桶(`candidate_ids`)而非 `legal_candidates`(后者还纳入更大容量,是确定性
+    引擎的兜底用),让模型优先选「不浪费空槽」的精确版式;若某容量桶为空(库里没有恰好 N 槽
+    的模板),回退给出能装下 N 张的最近更大容量桶,使每个 N 都至少有合法候选可选。"""
+    cap = skeleton_v3.max_capacity(_INTERIOR)
+    lines: list[str] = []
+    for n in range(1, cap + 1):
+        ids = skeleton_v3.candidate_ids(_INTERIOR, n)
+        if not ids:
+            # 库里没有恰好 n 槽的模板 → 给出能装下 n 张的合法候选(最近更大容量),
+            # 模型仍有合法 id 可选;确定性引擎随后保证最终合法。
+            ids = [c["templateId"] for c in skeleton_v3.legal_candidates(_INTERIOR, n)]
+        lines.append(f"- {n} 张照片 → {', '.join(ids)}")
+    return (
+        f"每页最多 {cap} 张照片。给一页塞 N 张照片时,templateId 从下表对应 N 的那一行里挑:\n"
+        + "\n".join(lines)
+    )
+
+
 def _build_v3_system_prompt(language: str) -> str:
     lang_name = "Chinese" if language == "zh" else "English"
     # 固定结构(任务 + 输出 JSON 契约)co-located 在 describe_content.md;
-    # 分章启发式是人为可调规则,外置在 prompts/rules/chapter_grouping.md。
+    # 分章启发式 + 分页/选模板规则是人为可调规则,外置在 prompts/rules/*.md。
+    # 合法容量表(N 张 → templateId)由代码从模板库动态生成后注入(定长,与相册大小无关)。
     base = load_prompt(
         _PROMPT_DIR / "describe_content.md",
         LANGUAGE=lang_name,
         common=("json_only", "grounding", "privacy"),
     )
     grouping = load_prompt(RULES_DIR / "chapter_grouping.md")
-    return f"{base}\n\n{grouping}"
+    paging = load_prompt(RULES_DIR / "page_assignment.md")
+    table = _legal_capacity_table()
+    return f"{base}\n\n{grouping}\n\n{paging}\n\n{table}"
 
 
 def _build_v3_user_content(
@@ -102,10 +136,11 @@ def _build_v3_user_content(
             line += f" cluster={local_label[photo.clusterId]}"
         manifest_lines.append(line)
     manifest = "\n".join(manifest_lines)
+    # 仅数据:纪念册提示的值(其「仅作背景不要照搬」的框定语已移入 describe_content.md)
+    # + 逐照片清单(photoId/takenAt[/cluster])。怎么读、takenAt 含义、输出 JSON 形状由
+    # describe_content.md(系统指令)统一拥有,不在此重复。
     hint_block = (
-        f"用户的纪念册提示(仅作背景,不要原样照搬):\n{prompt_hint}\n\n"
-        if prompt_hint
-        else ""
+        f"纪念册提示:\n{prompt_hint}\n\n" if prompt_hint else ""
     )
     # cluster 分组规则是人为可调规则,外置在 prompts/rules/cluster_grouping.md。
     cluster_block = (
@@ -116,11 +151,9 @@ def _build_v3_user_content(
             "type": "text",
             "text": (
                 f"{hint_block}"
-                f"照片按顺序排列如下(共 {len(photos)} 张)。请使用这些确切的 "
-                "photoId 值;takenAt 是用于划定章节边界的拍摄时间信号:\n"
+                f"照片清单(共 {len(photos)} 张):\n"
                 f"{manifest}"
-                f"{cluster_block}\n\n"
-                '按系统指令返回 {"chapters":[...]}。'
+                f"{cluster_block}"
             ),
         }
     ]
@@ -133,18 +166,83 @@ def _orientation(width: int, height: int) -> str:
     return _photo_orientation(width, height)
 
 
+def _assemble_chapter_pages(
+    raw_pages: Any, chapter_ids: list[str], chapter_idx: int
+) -> list[dict[str, Any]]:
+    """把模型给本章的 `pages[]`(每页 photoIds + templateId)落成确定性合法的扁平页 dict。
+
+    §8.3「模型出意图、确定性引擎保合法」—— 在已重映射的 photoIds 上跑三道护栏(复用既有
+    引擎函数):
+
+      1. 章内分页合法性:`validate_grouping(pages_ids, chapter_ids)`(每页 1..容量上限、不丢、
+         不重、保序)。任一不满足 → 本章整体回退确定性基线 `partition_photos_v3` + 逐页
+         `pick_template_v3`(终极保险网,逐章、非致命)。
+      2. 逐页模板合法性:某页 templateId ∉ `legal_candidates("interior", N)` → 置 None,交由
+         `build_page_v3` → `pick_template_v3` 确定性补选(复用 template_select 既有的 clamp)。
+      3. pageIndex 由调用方在跨章合并后统一重排,这里先填 0 占位。
+
+    `chapter_ids` 是本章【按序】的真实 photoId 列表(== flatten(pages[].photoIds),用于
+    校验覆盖)。返回逐页 dict(形如 schemas.Page,texts 为空)。"""
+    pages_ids: list[list[str]] = []
+    template_by_page: list[str | None] = []
+    malformed = False
+    if isinstance(raw_pages, list) and raw_pages:
+        for raw_page in raw_pages:
+            if not isinstance(raw_page, dict):
+                malformed = True
+                break
+            ids = raw_page.get("photoIds")
+            if not isinstance(ids, list) or not ids:
+                malformed = True
+                break
+            page_ids = [str(x).strip() for x in ids if isinstance(x, str) and x.strip()]
+            if len(page_ids) != len(ids):
+                malformed = True
+                break
+            tid = raw_page.get("templateId")
+            pages_ids.append(page_ids)
+            template_by_page.append(tid if isinstance(tid, str) and tid else None)
+    else:
+        malformed = True
+
+    # 护栏 1:章内分页必须合法(1..容量、不丢不重保序)。畸形 / 不合法 → 本章回退确定性基线。
+    if malformed or not skeleton_v3.validate_grouping(
+        pages_ids, chapter_ids, category=_INTERIOR
+    ):
+        if not malformed and pages_ids:
+            log.info("v3_assemble.chapter_pages_fallback", chapter_index=chapter_idx + 1)
+        return [
+            skeleton_v3.build_page_v3(_INTERIOR, chunk)
+            for chunk in skeleton_v3.partition_photos_v3(chapter_ids, category=_INTERIOR)
+        ]
+
+    pages: list[dict[str, Any]] = []
+    for page_ids, tid in zip(pages_ids, template_by_page):
+        # 护栏 2:逐页模板合法性 —— 集外 / 幻觉 id 置 None,确定性引擎补选。
+        legal = {c["templateId"] for c in skeleton_v3.legal_candidates(_INTERIOR, len(page_ids))}
+        chosen = tid if tid in legal else None
+        pages.append(skeleton_v3.build_page_v3(_INTERIOR, page_ids, template_id=chosen))
+    return pages
+
+
 def _assemble_v3_tree(
     parsed: Any, photos: list[V3AnalyzePhoto]
-) -> V3LayoutTree:
-    """把模型的章节切分(LLM 撰写)与代码填充的确定性照片属性融合成一个经校验的
-    V3LayoutTree。
+) -> tuple[V3LayoutTree, dict[str, list[dict[str, Any]]]]:
+    """把统一识图调用的输出(LLM 撰写的分章 + 每图场景 + 每页 photoIds/templateId)与代码
+    填充的确定性照片属性,融合成一棵经校验的 V3LayoutTree + 逐章的确定性合法正文页。
 
-    校验守卫(§4.1 一图一章不跨章 + LLM 只写 3 处):
-      * 每张输入照片必须恰好落入【一个】章节;重复、未知或遗漏的 photoId 使模型输出无效。
-      * 章节 `description` 和照片 `sceneDescription` 必须存在;代码绝不为那些 LLM 所有的
-        字段撰写兜底文案。
+    返回 `(tree, pages_by_chapter)`,后者 key 为 chapterId、value 为该章的扁平页 dict 列表
+    (跨章合并 + pageIndex 重排在调用方做)。
+
+    校验守卫(§4.1 一图一章不跨章 + LLM 只写文字三处 + §8.3 引擎保合法):
+      * 章节成员 = flatten(pages[].photoIds);每张输入照片必须恰好落入【一个】章节;重复、
+        未知或遗漏的 photoId 使模型输出无效(可恢复,触发同 slot 升温重抽)。
+      * 章节 `description` 和照片 `sceneDescription` 必须存在;代码绝不为那些 LLM 所有的字段
+        撰写兜底文案。
       * width/height/orientation/takenAt 【只】来自请求 —— 模型的副本(若有)被忽略。
       * accentColor/artFont 保持 null 占位(theme 环节填它们,§4.1)。
+      * 每章的 `pages` 经 `_assemble_chapter_pages` 跑确定性合法性护栏(分页合法 + 逐页模板
+        合法 + 章级基线兜底)。
     """
     by_id = {p.photoId: p for p in photos}
     raw_chapters = parsed.get("chapters") if isinstance(parsed, dict) else None
@@ -175,7 +273,32 @@ def _assemble_v3_tree(
             takenAt=src.exif.takenAt if src.exif else None,
         )
 
+    def _chapter_member_ids(raw: dict[str, Any], ch_idx: int) -> list[str]:
+        """章节成员的有序 photoId 列表。统一调用里章节成员 = flatten(pages[].photoIds)
+        (选模板=分页);向后兼容旧的扁平 `photoIds`(仅分章、无页)。"""
+        raw_pages = raw.get("pages")
+        if isinstance(raw_pages, list) and raw_pages:
+            flat: list[str] = []
+            ok = True
+            for raw_page in raw_pages:
+                if not isinstance(raw_page, dict):
+                    ok = False
+                    break
+                ids = raw_page.get("photoIds")
+                if not isinstance(ids, list):
+                    ok = False
+                    break
+                flat.extend(ids)
+            if ok and flat:
+                return flat
+        # 回退:旧扁平 photoIds(无 pages)。
+        legacy = raw.get("photoIds")
+        if isinstance(legacy, list):
+            return list(legacy)
+        raise VisionError(f"describe-content chapter {ch_idx + 1} missing pages/photoIds")
+
     chapters: list[V3Chapter] = []
+    pages_by_chapter: dict[str, list[dict[str, Any]]] = {}
     claimed: set[str] = set()
     for ch_idx, raw in enumerate(raw_chapters):
         if not isinstance(raw, dict):
@@ -183,8 +306,8 @@ def _assemble_v3_tree(
         scenes = raw.get("scenes")
         if not isinstance(scenes, dict):
             raise VisionError(f"describe-content chapter {ch_idx + 1} missing scenes object")
-        raw_ids = raw.get("photoIds")
-        if not isinstance(raw_ids, list) or not raw_ids:
+        raw_ids = _chapter_member_ids(raw, ch_idx)
+        if not raw_ids:
             raise VisionError(f"describe-content chapter {ch_idx + 1} missing photoIds[]")
         description = _required_text(
             raw.get("description"),
@@ -192,6 +315,7 @@ def _assemble_v3_tree(
             max_len=600,
         )
         chapter_photos: list[V3ChapterPhoto] = []
+        member_ids: list[str] = []
         for raw_pid in raw_ids:
             if not isinstance(raw_pid, str) or not raw_pid.strip():
                 raise VisionError(f"describe-content chapter {ch_idx + 1} has invalid photoId")
@@ -201,15 +325,21 @@ def _assemble_v3_tree(
             if pid in claimed:
                 raise VisionError(f"describe-content duplicated photoId: {pid}")
             claimed.add(pid)
+            member_ids.append(pid)
             chapter_photos.append(_photo_node(pid, scenes.get(pid)))
+        chapter_id = f"ch_{len(chapters) + 1}"
         chapters.append(
             V3Chapter(
-                chapterId=f"ch_{len(chapters) + 1}",
+                chapterId=chapter_id,
                 description=description,
                 accentColor=None,  # theme 环节填(§4.1)
                 artFont=None,
                 photos=chapter_photos,
             )
+        )
+        # 模型的页意图(photoIds 已重映射成真实 id)经确定性合法性护栏落成正文页。
+        pages_by_chapter[chapter_id] = _assemble_chapter_pages(
+            raw.get("pages"), member_ids, ch_idx
         )
 
     missed = [p.photoId for p in photos if p.photoId not in claimed]
@@ -218,27 +348,34 @@ def _assemble_v3_tree(
 
     if not chapters:
         raise VisionError("describe-content produced no usable chapters")
-    return V3LayoutTree(chapters=chapters)
+    return V3LayoutTree(chapters=chapters), pages_by_chapter
 
 
 def _remap_describe_photo_ids(parsed: Any, real_by_simple: dict[str, str]) -> Any:
-    """识图模型用简单序号 id(1,2,3…)作答 → 映射回真实 photoId(serial→hash)。
-    映射 chapters[].photoIds 列表 + chapters[].scenes 的 key。模型偶发幻觉的未知序号
-    原样留下(不在映射表里),由 _assemble_v3_tree 的 unknown/omitted 校验拦截。"""
+    """识图模型用简单序号 id(1,2,3…)作答 → 映射回真实 photoId(serial→hash)。映射
+    chapters[].photoIds(旧扁平,向后兼容)、chapters[].pages[].photoIds(统一调用的页意图)
+    与 chapters[].scenes 的 key。模型偶发幻觉的未知序号原样留下(不在映射表里),由
+    _assemble_v3_tree 的 unknown/omitted 校验拦截。"""
     if not isinstance(parsed, dict):
         return parsed
     chapters = parsed.get("chapters")
     if not isinstance(chapters, list):
         return parsed
+
+    def _remap_id(i: Any) -> Any:
+        return real_by_simple.get(i.strip(), i.strip()) if isinstance(i, str) else i
+
     for ch in chapters:
         if not isinstance(ch, dict):
             continue
         ids = ch.get("photoIds")
         if isinstance(ids, list):
-            ch["photoIds"] = [
-                real_by_simple.get(i.strip(), i.strip()) if isinstance(i, str) else i
-                for i in ids
-            ]
+            ch["photoIds"] = [_remap_id(i) for i in ids]
+        pages = ch.get("pages")
+        if isinstance(pages, list):
+            for page in pages:
+                if isinstance(page, dict) and isinstance(page.get("photoIds"), list):
+                    page["photoIds"] = [_remap_id(i) for i in page["photoIds"]]
         scenes = ch.get("scenes")
         if isinstance(scenes, dict):
             ch["scenes"] = {
@@ -330,37 +467,44 @@ def _route_count_for(total: int, settings: Any) -> int:
 
 
 def _merge_route_trees(
-    sequenced_photos: list[V3AnalyzePhoto], route_trees: list[V3LayoutTree]
-) -> V3LayoutTree:
-    """把各路由的局部章节树拼接成一个全局树(#232)。
+    sequenced_photos: list[V3AnalyzePhoto],
+    route_results: list[tuple[V3LayoutTree, dict[str, list[dict[str, Any]]]]],
+) -> tuple[V3LayoutTree, dict[str, list[dict[str, Any]]]]:
+    """把各路由的局部章节树 + 逐章正文页拼接成一个全局树 + 全局逐章页(#232)。
 
     `sequenced_photos` 是已按【全局 cluster 顺序】(cluster 按最早 takenAt 排序 ——
     见 `_partition_into_clusters`)展平的照片列表,【不是】原始请求顺序。各路由承载互不相交
     的整簇集合,所以按每路由各章首照片的 sequenced 索引来排序,就让跨路由的章节落在 cluster
     (时间)顺序上;某路由内被再分成子章节的一个 cluster 仍保持连续,因为它占据 sequenced
-    顺序里一段连续区间。随后章节被重编号 ch_1..N;章节内的照片顺序按撰写保持不变。这个并集
-    必须恰好覆盖每张照片一次(每条路由已在自己的切片上通过 `_assemble_v3_tree` 的一图一章
-    守卫;这里我们再断言全局覆盖,使调度/合并 bug 无法悄悄丢掉或重复一张照片)。我们【还】
-    确定性地强制 cluster 边界:单个章节不得混入两个不同(非 null)cluster 的照片 —— prompt
-    已这样要求,而一个把 cluster 合并的失常模型在这里被拒,使异簇不并章即便模型无视指令也成立。"""
+    顺序里一段连续区间。随后章节被重编号 ch_1..N;章节内的照片顺序按撰写保持不变,每章的正文
+    页(`pages`)随章节一起带过、并 rekey 到新的 ch_N。这个并集必须恰好覆盖每张照片一次
+    (每条路由已在自己的切片上通过 `_assemble_v3_tree` 的一图一章守卫;这里我们再断言全局覆盖,
+    使调度/合并 bug 无法悄悄丢掉或重复一张照片)。我们【还】确定性地强制 cluster 边界:单个
+    章节不得混入两个不同(非 null)cluster 的照片 —— prompt 已这样要求,而一个把 cluster 合并的
+    失常模型在这里被拒,使异簇不并章即便模型无视指令也成立。
+
+    每条路由各自的 chapterId 都从 ch_1 起(局部),跨路由会撞号 —— 故按路由把 (章节, 该章页)
+    在路由内先配对,再展平排序,避免用撞号的 chapterId 跨路由查页。"""
     global_pos = {p.photoId: i for i, p in enumerate(sequenced_photos)}
     cluster_of = {p.photoId: p.clusterId for p in sequenced_photos}
 
-    ordered_chapters: list[V3Chapter] = []
-    for tree in route_trees:
+    # 路由内先把章节与其页配对(局部 chapterId 仅在本路由内唯一),再跨路由展平。
+    paired: list[tuple[V3Chapter, list[dict[str, Any]]]] = []
+    for tree, pages_by_chapter in route_results:
         for ch in tree.chapters:
-            ordered_chapters.append(ch)
+            paired.append((ch, pages_by_chapter.get(ch.chapterId, [])))
     # 按每章首照片的 sequenced(cluster/时间)索引做稳定排序 → 跨路由的章节落在全局
     # cluster 顺序上。
-    ordered_chapters.sort(
-        key=lambda ch: global_pos.get(ch.photos[0].photoId, len(global_pos))
-        if ch.photos
+    paired.sort(
+        key=lambda pair: global_pos.get(pair[0].photos[0].photoId, len(global_pos))
+        if pair[0].photos
         else len(global_pos)
     )
 
     seen: set[str] = set()
     renumbered: list[V3Chapter] = []
-    for ch in ordered_chapters:
+    merged_pages: dict[str, list[dict[str, Any]]] = {}
+    for ch, ch_pages in paired:
         chapter_clusters: set[str] = set()
         for ph in ch.photos:
             if ph.photoId in seen:
@@ -376,15 +520,17 @@ def _merge_route_trees(
                 "describe-content merge mixed distinct clusters in one chapter: "
                 + ", ".join(sorted(chapter_clusters))
             )
+        new_id = f"ch_{len(renumbered) + 1}"
         renumbered.append(
             V3Chapter(
-                chapterId=f"ch_{len(renumbered) + 1}",
+                chapterId=new_id,
                 description=ch.description,
                 accentColor=ch.accentColor,
                 artFont=ch.artFont,
                 photos=ch.photos,
             )
         )
+        merged_pages[new_id] = ch_pages
 
     missed = [p.photoId for p in sequenced_photos if p.photoId not in seen]
     if missed:
@@ -393,7 +539,7 @@ def _merge_route_trees(
         )
     if not renumbered:
         raise VisionError("describe-content merge produced no chapters")
-    return V3LayoutTree(chapters=renumbered)
+    return V3LayoutTree(chapters=renumbered), merged_pages
 
 
 # 小模型(豆包)非确定性偷懒:照片一多就漏几张/重复/错认序号。这类是可恢复失误,
@@ -414,10 +560,16 @@ def _is_recoverable_describe_error(exc: VisionError) -> bool:
 
 
 async def _describe_call(
-    slot: VisionSlot, photos: list[V3AnalyzePhoto], language: str, prompt_hint: str | None
-) -> tuple[V3LayoutTree, int]:
-    """在 `slot` 上做一次识图模型调用。返回 (tree, tokens_billed)。上游失败时抛
-    ai_client.AIRequestError(由调用方决定 failover),响应不可用时抛 VisionError。
+    slot: VisionSlot,
+    photos: list[V3AnalyzePhoto],
+    language: str,
+    prompt_hint: str | None,
+    *,
+    max_output_tokens: int,
+) -> tuple[V3LayoutTree, dict[str, list[dict[str, Any]]], int]:
+    """在 `slot` 上做一次统一识图模型调用(读图 + 分章 + 分页选模板)。返回
+    (tree, pages_by_chapter, tokens_billed)。上游失败时抛 ai_client.AIRequestError
+    (由调用方决定 failover),响应不可用时抛 VisionError。
 
     模型漏/重/错认 photoId 时,在同一 slot 内带纠正提示重抽,最多 MAX_DESCRIBE_ATTEMPTS
     次(累计计费 tokens);用尽仍不完整才抛 VisionError。"""
@@ -456,7 +608,12 @@ async def _describe_call(
             messages=messages,
             timeout_seconds=slot.timeout_seconds,
             temperature=0.2 if attempt == 0 else 0.5,
-            max_tokens=8192,
+            # Headroom for the larger COMBINED output (description + scenes +
+            # per-page photoIds + templateId in one response). A truncated reply
+            # is non-lossy but fatal (hard AGENT_VISION_FAILED, no degrade), so
+            # the budget is wider than the old describe-only 8192. Route-splitting
+            # is still the primary per-call output bound; this is just headroom.
+            max_tokens=max_output_tokens,
             response_format=slot.response_format,
             extra_body=slot.extra_body,
         )
@@ -476,7 +633,7 @@ async def _describe_call(
 
         parsed = _remap_describe_photo_ids(parsed, real_by_simple)
         try:
-            tree = _assemble_v3_tree(parsed, photos)
+            tree, pages_by_chapter = _assemble_v3_tree(parsed, photos)
         except VisionError as exc:
             if (
                 not _is_recoverable_describe_error(exc)
@@ -491,7 +648,7 @@ async def _describe_call(
                 reason=str(exc)[:120],
             )
             continue
-        return tree, total_tokens
+        return tree, pages_by_chapter, total_tokens
 
     # 末次可恢复错误已在循环里 raise;此处仅防御性兜底。
     raise last_err or VisionError("describe-content failed after retries")
@@ -504,14 +661,14 @@ async def _describe_on_slot(
     prompt_hint: str | None,
     *,
     settings: Any,
-) -> tuple[V3LayoutTree, int, int]:
-    """在【单个】provider slot 上做 cluster 感知的 describe(#232)。返回
-    (merged_tree, tokens_billed, route_count)。
+) -> tuple[V3LayoutTree, dict[str, list[dict[str, Any]]], int, int]:
+    """在【单个】provider slot 上做 cluster 感知的统一 describe(#232)。返回
+    (merged_tree, merged_pages_by_chapter, tokens_billed, route_count)。
 
     - 按 clusterId 切分照片,把整簇调度进 N 条张数驱动的并发路由(N=1 退化为遗留的单次调用)。
     - 经 asyncio.gather 并发跑每条路由的 `_describe_call`;每条路由在自己的切片上保留各自的
-      漏图重试安全网。
-    - 按全局 cluster 顺序合并各路由的局部树,重编号 ch_1..N。
+      漏图重试安全网,并各自产出 tree + 逐章正文页。
+    - 按全局 cluster 顺序合并各路由的局部树 + 逐章页,重编号 ch_1..N。
 
     若【任一】路由命中上游传输失败,抛 ai_client.AIRequestError(由调用方决定 failover);
     响应不可用/合并非法时抛 VisionError。gather(return_exceptions=False) 意味着首个传输错误
@@ -521,10 +678,13 @@ async def _describe_on_slot(
     route_count = _route_count_for(len(photos), settings)
     routes = _plan_describe_routes(clusters, route_count)
 
+    max_output_tokens = settings.describe_max_output_tokens
     if len(routes) <= 1:
         # 遗留的单批路径(也是全 null 的向后兼容情形)。
-        tree, tokens = await _describe_call(slot, photos, language, prompt_hint)
-        return tree, tokens, 1
+        tree, pages_by_chapter, tokens = await _describe_call(
+            slot, photos, language, prompt_hint, max_output_tokens=max_output_tokens
+        )
+        return tree, pages_by_chapter, tokens, 1
 
     log.info(
         "v3_describe.routes.plan",
@@ -534,17 +694,39 @@ async def _describe_on_slot(
     )
     results = await asyncio.gather(
         *(
-            _describe_call(slot, route_photos, language, prompt_hint)
+            _describe_call(
+                slot,
+                route_photos,
+                language,
+                prompt_hint,
+                max_output_tokens=max_output_tokens,
+            )
             for route_photos in routes
         )
     )
-    route_trees = [tree for tree, _ in results]
-    total_tokens = sum(tokens for _, tokens in results)
+    route_results = [(tree, pages) for tree, pages, _ in results]
+    total_tokens = sum(tokens for _, _, tokens in results)
     # 按【全局 cluster 顺序】合并:把 takenAt 排序后的切分展平,使合并按 cluster/时间
     # 而非原始请求顺序来排跨路由的章节。
     sequenced = [p for cluster in clusters for p in cluster]
-    merged = _merge_route_trees(sequenced, route_trees)
-    return merged, total_tokens, len(routes)
+    merged_tree, merged_pages = _merge_route_trees(sequenced, route_results)
+    return merged_tree, merged_pages, total_tokens, len(routes)
+
+
+def _flatten_pages(
+    tree: V3LayoutTree, pages_by_chapter: dict[str, list[dict[str, Any]]]
+) -> list[dict[str, Any]]:
+    """按【章节顺序】把逐章正文页展平成一个扁平页列表,pageIndex 重排成 0 起连续。
+
+    封面/封底由调用方(flows/analyze)的 `wrap_with_cover_ending` 在这些正文页前后补齐,
+    届时会再做一次统一 pageIndex 重排;这里先给确定性连续序。"""
+    flat: list[dict[str, Any]] = []
+    for chapter in tree.chapters:
+        for page in pages_by_chapter.get(chapter.chapterId, []):
+            page = dict(page)
+            page["pageIndex"] = len(flat)
+            flat.append(page)
+    return flat
 
 
 async def describe_content(
@@ -552,8 +734,13 @@ async def describe_content(
     *,
     language: str,
     prompt_hint: str | None = None,
-) -> V3DescribeResult:
-    """V3 analyze 步骤 (b):一次识图模型调用 → 章节树(§4.1)。
+) -> V3AnalyzeResult:
+    """V3 analyze 步骤 (b):【一次】统一识图模型调用 → 章节树 + 正文页(§4.1)。
+
+    读照片内容 + 分章 + 选模板分页是同一套逻辑、同一次调用(选完模板分页就自动出来了)——
+    模型一次返回 chapters[]{description, scenes, pages[]{photoIds, templateId}},代码在解析
+    后跑确定性合法性护栏(分页合法 / 逐页模板合法 / 章级基线兜底,§8.3)落成正文页。
+
 
     Failover:先在更紧的 describe 预算内试 OpenAI (GPT-5.5 Mini);遇 AIRequestError
     (ai_client 重试后仍 5xx/超时),或整批超过 `describe_batch_deadline_seconds` 时,
@@ -594,7 +781,7 @@ async def describe_content(
         # 这个 deadline 包住【整个】并发路由集合(_describe_on_slot 内部的 asyncio.gather)。
         # 因此一条慢路由对整批触发 failover【一次】—— 绝不逐路由 —— 使并发绝不放大 failover
         # 扇出。挂钟 ≈ 最慢的那条路由,而非它们之和(#232)。
-        tree, tokens, routes = await asyncio.wait_for(
+        tree, pages_by_chapter, tokens, routes = await asyncio.wait_for(
             _describe_on_slot(
                 primary_slot, photos, language, prompt_hint, settings=settings
             ),
@@ -607,8 +794,9 @@ async def describe_content(
             chapters=len(tree.chapters),
             routes=routes,
         )
-        return V3DescribeResult(
+        return V3AnalyzeResult(
             tree=tree,
+            pages=_flatten_pages(tree, pages_by_chapter),
             tokens_billed=tokens,
             model=primary_slot.model,
             provider=primary_slot.provider,
@@ -652,7 +840,7 @@ async def describe_content(
     # 存在的意义是把慢但健康的 GPT 翻向火山,而非过早切断火山(火山自己的逐次调用上限是更大的
     # ark 预算)。
     try:
-        tree, tokens, routes = await _describe_on_slot(
+        tree, pages_by_chapter, tokens, routes = await _describe_on_slot(
             fallback_slot, photos, language, prompt_hint, settings=settings
         )
     except ai_client.AIRequestError as exc:
@@ -667,8 +855,9 @@ async def describe_content(
     )
     # call_count = 主 provider 的尝试(1)+ failover slot 的真实路数,使 Usage 既反映
     # failover 发生过,也反映是多少次并发调用产出了它。
-    return V3DescribeResult(
+    return V3AnalyzeResult(
         tree=tree,
+        pages=_flatten_pages(tree, pages_by_chapter),
         tokens_billed=tokens,
         model=fallback_slot.model,
         provider=fallback_slot.provider,

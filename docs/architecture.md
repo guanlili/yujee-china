@@ -62,9 +62,9 @@
 - 编排路由见 §2 端点表与 [`docs/agent/contract.md §3.2`](./agent/contract.md)。
 
 **Agent (FastAPI)** —— 无状态、无 DB、无文件持久化。内部 = **三真层 + 平铺边**(详见 [`design.md`](./agent/design.md)):
-- **transport**(`routes.py` + `errors.py` + `callback.py`):6 个端点,瘦——解析 → 调 flow/agent/engine → 套信封;`errors.py` 统一同步端点错误映射。
+- **transport**(`routes.py` + `errors.py` + `callback.py`):`/v3/*` 端点,瘦——解析 → 调 flow/agent/engine → 套信封;`errors.py` 统一同步端点错误映射。
 - **flows**(`flows/analyze.py`):唯一真多步编排(describe→group→template→preview + 回调),无状态。
-- **agents**(`agents/<cap>/`):5 个 LLM 能力,每个 = `handler.py` + 共置 prompt `.md`(+ 需要时 `schema.py`):`image_understanding`(识图分章)、`writing`(章节文案/对话)、`theme_recommend`(主题/章节色)、`template_select`(挑模板)、`image_edit_intent`(改图意图)。
+- **agents**(`agents/<cap>/`):LLM 能力,每个 = `handler.py` + 共置 prompt `.md`(+ 需要时 `schema.py`):`image_understanding`(识图分章)、`writing`(章节文案/对话)、`group_pages`(章内按效果重分页)、`theme_recommend`(主题/章节色)、`template_select`(挑模板)、`layout_plan`(版面规划)、`image_edit_intent`(改图意图)、`page_edit`(页级编辑·两段式意图路由→执行)。
 - **engine**(`engine/`):确定性引擎,不调模型——`templates` / `skeleton`(挑模板+排图)/ `generic_copy` / `apply_theme` / `cover` / `finalize`(拍平 + 单一 validate)。
 - **平铺边**:`ai_client.py`(HTTP/JSON/usage)+ `vision_provider.py`(provider/failover/超时)= 模型适配;`schemas.py` = 契约镜像;`main/settings/auth/logging`。
 - **prompts**(`prompts/`):分层组装——`agents/<cap>/*.md`(固定结构:任务 + JSON 形状)+ `common/`(跨能力红线:`json_only`/`grounding`/`privacy`/`persona`,handler 用 `common=` 声明)+ `rules/`(按能力可调规则:分章/写作·引导风格/颜色字体,`RULES_DIR` 加载)。

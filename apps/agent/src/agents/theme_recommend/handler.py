@@ -42,7 +42,7 @@ from ...schemas import (
     V3Usage,
 )
 from ...settings import get_settings
-from ...prompts import RULES_DIR, load_prompt
+from ...prompts import RULES_DIR, load_prompt, load_replies
 from ... import ai_client
 from ...vision_provider import (
     VisionSlot,
@@ -65,9 +65,8 @@ _DEFAULT_FONT = "serif-classic"
 # apply-theme/用户仍可覆盖。
 _FALLBACK_ACCENT = "#4A5568"
 # 契约里 subject(章节标题)是 min(1);钳到一个合理的标题长度,免得漂移的长 subject 撑爆
-# 槽位。Fallback 保持响应有效。
+# 槽位。Fallback 文本外置在可手调的 replies.md(subject_fallback),保持响应有效。
 _MAX_SUBJECT_LEN = 80
-_FALLBACK_SUBJECT = "Untitled Chapter"
 # 响应/AccentColor regex 接受的 6-hex 形式;也是我们归一化到的形式。
 _HEX6_LEN = 6
 
@@ -103,12 +102,13 @@ def build_messages(req: V3RecommendRequest) -> list[dict[str, str]]:
 
     system prompt 固定 STRICT JSON 契约 + 两个 skill 任务以及封闭的字体/颜色合法集;
     user payload 承载章节 overview、全局 analysis summary,以及任何用户引导
-    (`userMessage`)。两个 skill 都作为 prompt 资产加载(集中维护),经 `{LANGUAGE}`
-    本地化。"""
+    (`userMessage`)。两个 skill 都作为 prompt 资产加载(集中维护);recommend_theme
+    的语言不再强制(SUBJECT/assistantReply 跟随用户语言)。"""
     lang_name = _lang_name(req.language)
     system = (
-        load_prompt(_PROMPT_DIR / "recommend_theme.md", LANGUAGE=lang_name)
-        + "\n\n=== 章节配色与艺术字体(CHAPTER COLORS & ART FONT)===\n"
+        load_prompt(_PROMPT_DIR / "recommend_theme.md")
+        # === 章节配色与艺术字体 === 标题已并入 theme_colors.md 顶部,这里只拼接。
+        + "\n\n"
         + load_prompt(
             RULES_DIR / "theme_colors.md",
             LANGUAGE=lang_name,
@@ -305,14 +305,19 @@ def _coerce_chapter_colors(
     return out
 
 
+def _replies() -> dict[str, str]:
+    """recommend 的兜底/默认文案(可手调,replies.md;按路径缓存)。"""
+    return load_replies(_PROMPT_DIR / "replies.md")
+
+
 def _coerce_subject(raw: Any) -> str:
-    """Trim + 钳章节 subject(标题);回退到一个中性占位。
+    """Trim + 钳章节 subject(标题);回退到一个中性占位(replies.md 的 subject_fallback)。
 
     去掉一个结尾的句点/句号(skill 已要求模型省略),使漂移的输出仍读起来是一行干净的标题。"""
     subject = _text(raw)
     subject = subject.rstrip(".。!! ?? ")
     if not subject:
-        return _FALLBACK_SUBJECT
+        return _replies().get("subject_fallback", "")
     return subject[:_MAX_SUBJECT_LEN]
 
 
@@ -344,6 +349,6 @@ def _text(value: Any) -> str:
 
 
 def _default_reply(language: str) -> str:
-    if language == "zh":
-        return "我根据你的故事挑了几套主题和每章的配色字体,看看哪个最合适?"
-    return "Here are a few themes and per-chapter color/font picks for your story — which fits best?"
+    """从可手调的 replies.md 读兜底回复(`reply.语言`),按路径缓存。"""
+    lang = "zh" if language == "zh" else "en"
+    return _replies().get(f"reply.{lang}", "")

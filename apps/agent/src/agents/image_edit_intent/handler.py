@@ -94,22 +94,25 @@ def _max_interior_capacity() -> int:
 def _build_user_content(
     chapter: V3Chapter, page: Page, user_message: str
 ) -> str:
-    """意图调用的数据清单。文字模板在 `edit_image_intent.user.md`,这里【只】拼装动态
-    数据填进占位符:本章照片(id + 场景句子)、当前聚焦页上有哪些照片(好让挪图 / 换图有
-    依据)、容量上限,以及用户的诉求。无 base64,无 GPS/place —— 只有识图模型早已写好的
-    文字(§3 隐私)。输出约束在 system prompt 里,不在这里重复。"""
+    """意图调用的紧凑文字清单。带上本章的照片(id + 场景句子)、当前聚焦页上有哪些照片
+    (好让挪图 / 换图有依据)、容量上限,以及用户的诉求。无 base64,无 GPS/place ——
+    只有识图模型早已写好的文字(§3 隐私)。"""
     photo_lines = "\n".join(
         f"    - {p.photoId}: {p.sceneDescription or '(无描述)'}"
         for p in chapter.photos
     )
     current_ids = list(page.images.values())
-    return load_prompt(
-        _PROMPT_DIR / "edit_image_intent.user.md",
-        CHAPTER_DESC=chapter.description or "(无描述)",
-        PHOTO_LIST=photo_lines,
-        CURRENT_PHOTOS=", ".join(current_ids) if current_ids else "(无)",
-        CAPACITY=str(_max_interior_capacity()),
-        USER_MESSAGE=user_message,
+    current = ", ".join(current_ids) if current_ids else "(无)"
+    capacity = _max_interior_capacity()
+    # 仅数据:章节描述 + 本章可用照片(id+场景)+ 当前页照片 + 本页容量上限(动态值)+
+    # 用户诉求。怎么改、硬性约束、输出 JSON 形状由 edit_image_intent.md(系统指令)统一拥有。
+    return (
+        f"章节:{chapter.description or '(无描述)'}\n\n"
+        f"本章可用的照片(photoId | 场景):\n"
+        f"{photo_lines}\n\n"
+        f"当前页照片(按顺序):{current}\n\n"
+        f"本页照片容量上限:{capacity} 张\n\n"
+        f"用户对【这一页】的要求:\n{user_message}"
     )
 
 
@@ -139,7 +142,9 @@ async def _call_model(slot: VisionSlot, manifest: str) -> list[str]:
     messages = [
         {
             "role": "system",
-            "content": load_prompt(_PROMPT_DIR / "edit_image_intent.md"),
+            "content": load_prompt(
+                _PROMPT_DIR / "edit_image_intent.md", common=("json_only",)
+            ),
         },
         {"role": "user", "content": manifest},
     ]

@@ -90,9 +90,6 @@ test('cover-card 应用 sends current template ids; 跳过 sends an empty select
   assert.match(body, /endingTemplateId != null \? \{ endingTemplateId \} : \{\}/);
   // 跳过: empty selection → empty patch, never errors.
   assert.match(body, /runCover\(\{\}\)/);
-  // 点完「应用」后按钮置为已应用态、不再可点(按钮状态,不改服务端/不删卡).
-  assert.match(body, /applyBtn\.disabled = true/);
-  assert.match(body, /applyBtn\.textContent = aT\('已应用'/);
 });
 
 test('skipCover action sends an empty cover selection (no auto design)', () => {

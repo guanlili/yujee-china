@@ -14,6 +14,7 @@ WORKDIR /app
 COPY apps/agent/pyproject.toml ./
 COPY apps/agent/src ./src
 COPY packages/contracts/templates ./packages/contracts/templates
+COPY packages/contracts/copy-examples ./packages/contracts/copy-examples
 RUN pip install .
 
 EXPOSE 8001

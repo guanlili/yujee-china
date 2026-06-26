@@ -251,7 +251,7 @@ def _clean_authored_texts(
     page: Page, raw_texts: Mapping[str, Any]
 ) -> dict[str, str]:
     specs = page_slot_specs(page)
-    cleaned = clean_texts(dict(raw_texts), specs)
+    cleaned = clean_texts(dict(raw_texts), specs, template_id=page.templateId)
     return {
         key: value
         for key, value in cleaned.items()

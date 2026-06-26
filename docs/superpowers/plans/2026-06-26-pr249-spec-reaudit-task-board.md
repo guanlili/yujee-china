@@ -71,6 +71,38 @@ Agents may decide whether to use their own sub-agents, but they must keep write 
 
 ---
 
+## Audit Findings After Agent Pass
+
+Status captured after merging `origin/main` (PR #249 merged) into `codex/stage5-final-review` and comparing the eight PR #249 design docs against the #250-#254/#260 implementation line.
+
+### Overlap Classification
+
+- **Already covered by last-night work:** Stage5 cover/ending flow is substantially implemented: cover chat context, local base64-only accent extraction, DeepSeek copy/color payloads without base64, `needsUserInput`, cover/ending patch persistence, and re-entry cover/theme cards are covered by code and tests. Shared helper promotion also exists for `finalize_color`, `accent_color`, `simple_id`, `page_slot_specs`, `clean_texts`, and `apply_page`.
+- **Overlaps but not wired to PR249 target:** Shared helpers exist but are not consistently the single owner (`_coerce_accent`, local Stage1 ids, unused `accent_of_group`). Stage1 still produces preview pages and template selections instead of tree-only output. Stage4 still returns/applies per-chapter `chapterColors`, not PR249 `bookThemeOptions[3]`. Stage3 still uses legacy Web-owned chapter chat/page edit paths, not agent-owned stateful ops.
+- **Missing PR249 work above last night:** Stage2 `/v3/select-layout`, `gemini_layout`, template preview assets, and select-layout callback are absent. Stage3 `/v3/edit-chat`, agent DB/Alembic tables, pending/committed `opId`, internal `agent-data`/`agent-ack`, and `progressDecision` are absent. Stage1 `image_grouping`, `regroup_unplaced`, final-membership `extractedColor`, and optional analyze `pages` contract are absent. Stage4 `bookThemeOptions[3]` contract/model/Web picker expansion is absent.
+
+### Agent Results
+
+- **Task 1 Shared/contracts:** Implemented: helper files/public promotions and Stage5 cover contract fields. Missing: `extractedColor`, optional `V3AnalyzeCompleted.pages`, agent DB/Alembic, internal `agent-data`/`agent-ack`. Contradictory: helper APIs are not yet consumed as single-owner seams across stages.
+- **Task 2 Stage1:** Implemented: old analysis tree and placeholder `accentColor/artFont=null` remain readable. Missing: tree-only pipeline, image grouping/regroup-unplaced agents, `extractedColor`, optional pages callback. Contradictory: analyze still builds pages, selects templates, wraps cover/ending, fills generic copy, and Web still expects pages.
+- **Task 3 Stage2:** Implemented: some deterministic skeleton/template helpers from #254. Missing: the whole PR249 select-layout stage: route, flow, Gemini layout engine, template preview bake/output, request/response contract, and callback merge.
+- **Task 4 Stage3:** Implemented: legacy chapter-chat/page-edit and AI function-call plumbing. Missing: `/v3/edit-chat`, agent-owned sessions/messages/ops, pending ack flow, progress decision, and page-photo internal fetch for case4 swap.
+- **Task 5 Stage4:** Implemented: deterministic apply-theme and color/font carriers. Missing/contradictory: current contract is legacy `chapterColors`; PR249 requires three book-level theme options built from `extractedColor` and then expanded by Web into apply-theme choices.
+- **Task 6 Stage5:** No blocking missing item found. Risks to track: clarify rounds are approximated from assistant history count; cover asset strings are not schema-validated as 200px base64; color design falls back to extracted accent if AI output is invalid.
+- **Task 7 End-to-end:** Still needed after Stage1-4 implementation. The current #260 line must not be merged as PR249-complete until these gaps are either implemented or explicitly descoped.
+
+### Execution Priority
+
+1. Land the merge of PR #249 docs into #260 without dropping the spec files.
+2. Fix shared contracts first (`extractedColor`, optional analyze pages, internal agent callback surfaces).
+3. Rebuild Stage1 tree-only output before Stage2, because Stage2 should consume tree + refs, not legacy preview pages.
+4. Build Stage2 select-layout before Stage3 case4 image-swap, because both need the same `gemini_layout` seam.
+5. Build Stage3 stateful edit loop and ack protocol.
+6. Replace Stage4 legacy `chapterColors` recommendation with PR249 `bookThemeOptions[3]`.
+7. Keep Stage5 as regression-protected; do not rewrite it unless review finds concrete defects.
+
+---
+
 ## Task 1: Shared Contracts And Architecture Grounding
 
 **Owner:** shared/contracts auditor

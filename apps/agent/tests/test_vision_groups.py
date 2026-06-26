@@ -342,6 +342,188 @@ def test_describe_content_does_not_failover_on_unparseable_response(_describe_en
     assert calls == ["gpt-5.5-mini"]
 
 
+# =============================================================================
+# Unified path (single vision call returns chapters[]{ description, scenes,
+# pages[]{ photoIds, templateId } }). The legacy flat-`photoIds` payloads above
+# only exercise chaptering; these drive REAL per-page grouping + template choice
+# through describe_content → _assemble_chapter_pages.
+# =============================================================================
+
+
+def _unified_completion(content: Any) -> dict[str, Any]:
+    return _completion(content)
+
+
+def test_describe_content_honors_model_pages_and_per_page_template(_describe_env, monkeypatch):
+    """a. Honored happy path: a unified reply whose `pages` carry a LEGAL
+    templateId per page → result.pages reflect the model's grouping AND its
+    chosen templateId per page (not overridden), every photo covered exactly
+    once, pageIndex contiguous from 0."""
+    payload = {
+        "chapters": [
+            {
+                "description": "Spring morning walk.",
+                "scenes": {"p1": "red coat", "p2": "old street", "p3": "teahouse"},
+                "pages": [
+                    # page 0: two photos → mag-04 is a LEGAL 2-slot interior template.
+                    {"photoIds": ["p1", "p2"], "templateId": "mag-04"},
+                    # page 1: one photo → mag-03 is a LEGAL 1-slot interior template.
+                    {"photoIds": ["p3"], "templateId": "mag-03"},
+                ],
+            }
+        ]
+    }
+
+    async def fake_completion(**kwargs):
+        return _unified_completion(payload)
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
+
+    result = asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
+
+    # Chapter membership = flatten(pages[].photoIds), in order.
+    assert [[p.photoId for p in c.photos] for c in result.tree.chapters] == [
+        ["p1", "p2", "p3"]
+    ]
+    # Model's per-page grouping honored on the flattened pages.
+    assert [list(pg["images"].values()) for pg in result.pages] == [
+        ["p1", "p2"],
+        ["p3"],
+    ]
+    # Model's LEGAL per-page templateId honored (NOT overridden by the engine).
+    assert [pg["templateId"] for pg in result.pages] == ["mag-04", "mag-03"]
+    # pageIndex contiguous from 0.
+    assert [pg["pageIndex"] for pg in result.pages] == [0, 1]
+    # Coverage: every input photo placed exactly once across pages.
+    placed = [pid for pg in result.pages for pid in pg["images"].values()]
+    assert sorted(placed) == ["p1", "p2", "p3"]
+
+
+def test_describe_content_clamps_illegal_page_template_keeps_others(_describe_env, monkeypatch):
+    """b. Per-page template clamp: a page whose templateId is illegal for its
+    photo count falls back to a deterministic legal pick_template_v3 choice,
+    while OTHER pages keep their legal model choices."""
+    from src.engine import skeleton_v3
+
+    # mag-03 is a 1-slot template → ILLEGAL for a 2-photo page (legal_candidates
+    # only widens capacity UP from N, never below; a 1-slot can't hold 2 photos).
+    illegal_for_two = "mag-03"
+    legal_for_one = "mag-03"  # the same 1-slot template is legal on a 1-photo page
+    assert illegal_for_two not in {
+        c["templateId"] for c in skeleton_v3.legal_candidates("interior", 2)
+    }
+    assert legal_for_one in {
+        c["templateId"] for c in skeleton_v3.legal_candidates("interior", 1)
+    }
+    deterministic_two = skeleton_v3.pick_template_v3("interior", 2)
+
+    payload = {
+        "chapters": [
+            {
+                "description": "A day out.",
+                "scenes": {"p1": "one", "p2": "two", "p3": "three"},
+                "pages": [
+                    # page 0: TWO photos but an illegal 1-slot templateId → clamp.
+                    {"photoIds": ["p1", "p2"], "templateId": illegal_for_two},
+                    # page 1: ONE photo with a legal 1-slot templateId → kept.
+                    {"photoIds": ["p3"], "templateId": legal_for_one},
+                ],
+            }
+        ]
+    }
+
+    async def fake_completion(**kwargs):
+        return _unified_completion(payload)
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
+
+    result = asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
+
+    # Grouping preserved.
+    assert [list(pg["images"].values()) for pg in result.pages] == [["p1", "p2"], ["p3"]]
+    # Illegal page clamped to the deterministic legal pick; legal page untouched.
+    assert result.pages[0]["templateId"] == deterministic_two
+    assert result.pages[0]["templateId"] != illegal_for_two
+    assert result.pages[1]["templateId"] == legal_for_one
+    # No photo lost by the clamp.
+    placed = [pid for pg in result.pages for pid in pg["images"].values()]
+    assert sorted(placed) == ["p1", "p2", "p3"]
+
+
+def test_describe_content_chapter_pages_malformed_falls_back_to_baseline(_describe_env, monkeypatch):
+    """c. Per-chapter malformed pages → that chapter degrades to the
+    partition_photos_v3 baseline covering ALL its photos (no photo lost), while
+    OTHER chapters keep their honored model pages."""
+    from src.engine import skeleton_v3
+
+    cap = skeleton_v3.max_capacity("interior")  # interior page hard cap (9)
+    # Broken chapter has cap+1 photos in ONE page → over-capacity. Membership
+    # (flatten of pages) is intact (no dup/omit/unknown), so it passes the tree
+    # guards and reaches _assemble_chapter_pages, where validate_grouping fails on
+    # the over-capacity page → chapter-level partition_photos_v3 baseline.
+    broken_n = cap + 1
+    good_ids = ["p1", "p2"]
+    broken_ids = [f"p{i + 3}" for i in range(broken_n)]  # p3..p(broken_n+2)
+    total = 2 + broken_n
+
+    payload = {
+        "chapters": [
+            {
+                "description": "Good chapter.",
+                "scenes": {pid: f"scene {pid}" for pid in good_ids},
+                "pages": [
+                    {"photoIds": ["p1"], "templateId": "mag-03"},
+                    {"photoIds": ["p2"], "templateId": "mag-03"},
+                ],
+            },
+            {
+                "description": "Broken chapter.",
+                "scenes": {pid: f"scene {pid}" for pid in broken_ids},
+                # Malformed: a single page over the interior capacity cap →
+                # validate_grouping fails → chapter-level baseline (no photo lost).
+                "pages": [{"photoIds": list(broken_ids), "templateId": "mag-03"}],
+            },
+        ]
+    }
+
+    async def fake_completion(**kwargs):
+        return _unified_completion(payload)
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
+
+    result = asyncio.run(vision.describe_content(_v3_photos(total), language="en"))
+
+    chapters = result.tree.chapters
+    assert [c.chapterId for c in chapters] == ["ch_1", "ch_2"]
+
+    # Map flattened pages back to chapters via membership to assert per-chapter.
+    ch1_ids = {p.photoId for p in chapters[0].photos}
+    ch2_ids = {p.photoId for p in chapters[1].photos}
+    ch1_pages = [pg for pg in result.pages if set(pg["images"].values()) <= ch1_ids]
+    ch2_pages = [pg for pg in result.pages if set(pg["images"].values()) <= ch2_ids]
+
+    # Good chapter UNAFFECTED: model pages honored (two single-photo mag-03 pages).
+    assert [list(pg["images"].values()) for pg in ch1_pages] == [["p1"], ["p2"]]
+    assert [pg["templateId"] for pg in ch1_pages] == ["mag-03", "mag-03"]
+
+    # Broken chapter: degraded to the deterministic partition baseline that
+    # covers ALL its photos with no loss (cap+1 → split into cap + 1).
+    baseline = [
+        skeleton_v3.build_page_v3("interior", chunk)
+        for chunk in skeleton_v3.partition_photos_v3(broken_ids, category="interior")
+    ]
+    assert [list(pg["images"].values()) for pg in ch2_pages] == [
+        list(pg["images"].values()) for pg in baseline
+    ]
+    # The broken chapter is NOT one over-capacity page anymore — it was healed.
+    assert all(len(pg["images"]) <= cap for pg in ch2_pages)
+    # Whole-book coverage: no photo lost despite the malformed chapter.
+    placed = [pid for pg in result.pages for pid in pg["images"].values()]
+    assert sorted(placed) == sorted(p.photoId for p in _v3_photos(total))
+    # pageIndex contiguous across the whole book.
+    assert [pg["pageIndex"] for pg in result.pages] == list(range(len(result.pages)))
+
+
 def test_describe_content_manifest_carries_takenat_but_never_gps(_describe_env):
     """§3 privacy: the user turn lists photoId + takenAt as the分章 signal and
     contains NO GPS/coordinate/place token."""

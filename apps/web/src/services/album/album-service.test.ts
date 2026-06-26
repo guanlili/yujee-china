@@ -1281,18 +1281,20 @@ test('chapterChatTurn: slices ONLY the named chapter node + its pages to the age
   }
 });
 
-test('chapterChatTurn: a write turn merges the authored copy back into draft_json', async (t) => {
+test('chapterChatTurn: passes a write turn through verbatim + never mutates draft_json', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
     return;
   }
-  const user = await makeUser('gap20-write-back');
+  const user = await makeUser('gap20-passthrough');
   try {
     const albumId = await seedChapterChatAlbum(user.id);
+    const before = (await albumRepo.findById(albumId))?.draftJson;
     t.mock.method(agentClient, 'chapterChatV3', async () => ({
       kind: 'write' as const,
       assistantReply: 'Done.',
       pagesTexts: [{ pageIndex: 0, texts: { headline: 'Coast Days' } }],
+      nameOptions: ['Coast Days', 'By the Sea'],
       usage: chatUsage,
     }));
 
@@ -1304,125 +1306,11 @@ test('chapterChatTurn: a write turn merges the authored copy back into draft_jso
     });
     assert.equal(res.kind, 'write');
     assert.deepEqual(res.pagesTexts, [{ pageIndex: 0, texts: { headline: 'Coast Days' } }]);
-    // The authored copy is now persisted into draft_json (docs/web/api.md §3.2: patch
-    // 由 Web 写回 draft_json) so the NEXT turn's slice carries it — it no longer lives
-    // only in the browser mirror. The written slot is merged; other pages untouched.
-    const draft = (await albumRepo.findById(albumId))?.draftJson as V3StoryDraft;
-    assert.equal(draft.pages!.find((p) => p.pageIndex === 0)!.texts.headline, 'Coast Days');
-    assert.equal(draft.pages!.find((p) => p.pageIndex === 1)!.texts.headline, 'two');
-  } finally {
-    await cleanupUser(user.id);
-  }
-});
-
-test('chapterChatTurn: a talk turn leaves draft_json byte-identical', async (t) => {
-  if (!(await isDbReachable())) {
-    t.skip('DATABASE_URL is not reachable; skipping');
-    return;
-  }
-  const user = await makeUser('gap20-talk-noop');
-  try {
-    const albumId = await seedChapterChatAlbum(user.id);
-    const before = (await albumRepo.findById(albumId))?.draftJson;
-    t.mock.method(agentClient, 'chapterChatV3', async () => ({
-      kind: 'talk' as const,
-      assistantReply: 'Tell me more.',
-      usage: chatUsage,
-    }));
-
-    await albumService.chapterChatTurn(user.id, albumId, {
-      language: 'en',
-      chapterId: 'c1',
-      history: [],
-      userMessage: 'hmm',
-    });
-    // talk carries no patch (Frame 4 红线) → write-back is a no-op.
+    assert.deepEqual(res.nameOptions, ['Coast Days', 'By the Sea']);
+    // The chat turn NEVER writes draft_json (browser mirrors patches; stage advances
+    // only via markChapterDone). The persisted draft is byte-identical afterwards.
     const after = (await albumRepo.findById(albumId))?.draftJson;
     assert.deepEqual(after, before);
-  } finally {
-    await cleanupUser(user.id);
-  }
-});
-
-test('chapterChatTurn: an edit turn merges its layoutPatch into draft_json', async (t) => {
-  if (!(await isDbReachable())) {
-    t.skip('DATABASE_URL is not reachable; skipping');
-    return;
-  }
-  const user = await makeUser('gap20-edit-back');
-  try {
-    const albumId = await seedChapterChatAlbum(user.id);
-    t.mock.method(agentClient, 'chapterChatV3', async () => ({
-      kind: 'edit' as const,
-      assistantReply: 'Updated.',
-      layoutPatch: [{ pageIndex: 0, texts: { headline: 'Edited' } }],
-      usage: chatUsage,
-    }));
-
-    await albumService.chapterChatTurn(user.id, albumId, {
-      language: 'en',
-      chapterId: 'c1',
-      history: [],
-      userMessage: 'change the title',
-      focusedPageIndex: 0,
-    });
-    // edit's layoutPatch is folded into draft_json the same way write's copy is.
-    const draft = (await albumRepo.findById(albumId))?.draftJson as V3StoryDraft;
-    assert.equal(draft.pages!.find((p) => p.pageIndex === 0)!.texts.headline, 'Edited');
-  } finally {
-    await cleanupUser(user.id);
-  }
-});
-
-test('chapterChatTurn: concurrent turns both persist — the row lock prevents lost updates', async (t) => {
-  if (!(await isDbReachable())) {
-    t.skip('DATABASE_URL is not reachable; skipping');
-    return;
-  }
-  const user = await makeUser('gap20-concurrent');
-  try {
-    const albumId = await seedChapterChatAlbum(user.id);
-    // Two turns fire concurrently (the browser send path is async). Turn c1 writes
-    // page0, turn c2 writes page1. Without findByIdForUpdate + an in-tx re-read, the
-    // second committer would overwrite the WHOLE draft_json from a stale read and drop
-    // the first turn's page. Both pages must survive.
-    t.mock.method(
-      agentClient,
-      'chapterChatV3',
-      async (p: Parameters<typeof agentClient.chapterChatV3>[0]) =>
-        p.chapter.chapterId === 'c1'
-          ? {
-              kind: 'write' as const,
-              assistantReply: 'a',
-              pagesTexts: [{ pageIndex: 0, texts: { headline: 'AAA' } }],
-              usage: chatUsage,
-            }
-          : {
-              kind: 'write' as const,
-              assistantReply: 'b',
-              pagesTexts: [{ pageIndex: 1, texts: { headline: 'BBB' } }],
-              usage: chatUsage,
-            },
-    );
-
-    await Promise.all([
-      albumService.chapterChatTurn(user.id, albumId, {
-        language: 'en',
-        chapterId: 'c1',
-        history: [],
-        userMessage: 'x',
-      }),
-      albumService.chapterChatTurn(user.id, albumId, {
-        language: 'en',
-        chapterId: 'c2',
-        history: [],
-        userMessage: 'y',
-      }),
-    ]);
-
-    const draft = (await albumRepo.findById(albumId))?.draftJson as V3StoryDraft;
-    assert.equal(draft.pages!.find((p) => p.pageIndex === 0)!.texts.headline, 'AAA');
-    assert.equal(draft.pages!.find((p) => p.pageIndex === 1)!.texts.headline, 'BBB');
   } finally {
     await cleanupUser(user.id);
   }

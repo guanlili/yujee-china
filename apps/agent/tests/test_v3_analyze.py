@@ -6,11 +6,12 @@ completed callback carrying a contract-valid 章节树 + preview pages, the §3
 privacy guard (lat/lng rejected at parse), auth, and the failure path that resets
 the failing stage (失败可重试不污染 stage).
 
-The describe stage now runs the REAL describe-content recognition call (WP1.3);
-these e2e tests mock the recognition model (`vision.describe_content`) with a
-deterministic one-chapter-per-photo partition so the transport + contract shapes
-stay the assertion focus. describe-content's own unit behavior (partition fusion,
-failover) lives in test_vision_groups.py."""
+The describe stage now runs the UNIFIED vision call (read + chapter-split + page/
+template assignment, one call); these e2e tests mock it (`vision.describe_content`)
+with a deterministic one-chapter-per-photo partition + one interior page per chapter
+so the transport + contract shapes stay the assertion focus. The unified call's own
+unit behavior (3-field authoring, per-page/per-chapter legality guards, route merge,
+failover) lives in test_vision_groups.py / test_vision_cluster_describe.py."""
 
 import asyncio
 import base64
@@ -29,8 +30,8 @@ from src.schemas import (
     V3LayoutTree,
 )
 from src import callback as cb_mod
-from src.agents.template_select import handler as select_template
 from src.agents.image_understanding import handler as vision
+from src.engine import skeleton_v3 as sk
 
 
 def _orient(w: int, h: int) -> str:
@@ -43,10 +44,11 @@ def _orient(w: int, h: int) -> str:
 
 @pytest.fixture(autouse=True)
 def _mock_describe_content(monkeypatch):
-    """Stand in for the real recognition-model call: one chapter per photo with a
-    canned description / sceneDescription, code-filled deterministic attrs. Mirrors
-    what vision.describe_content returns so the route's tree/usage assertions hold
-    without hitting an LLM."""
+    """Stand in for the UNIFIED vision call: one chapter per photo with a canned
+    description / sceneDescription + ONE interior page holding that photo (templateId
+    left to the deterministic engine), code-filled deterministic attrs. Mirrors what
+    vision.describe_content returns (tree + legality-guarded interior pages) so the
+    route's tree/pages/usage assertions hold without hitting an LLM."""
 
     async def fake_describe(photos, *, language, prompt_hint=None):
         chapters = [
@@ -68,8 +70,15 @@ def _mock_describe_content(monkeypatch):
             )
             for i, p in enumerate(photos)
         ]
-        return vision.V3DescribeResult(
+        # One interior page per chapter (the unified call's per-chapter pages, already
+        # run through the deterministic legality guards), flat + contiguous pageIndex.
+        pages = [
+            sk.build_page_v3("interior", [p.photoId], page_index=i)
+            for i, p in enumerate(photos)
+        ]
+        return vision.V3AnalyzeResult(
             tree=V3LayoutTree(chapters=chapters),
+            pages=pages,
             tokens_billed=18,
             model="gpt-5.5-mini",
             provider="openai",
@@ -245,14 +254,16 @@ def test_analyze_mock_emits_stages_and_tree(captured_callbacks, count):
 
 
 def test_analyze_template_failure_resets_stage(monkeypatch, captured_callbacks):
-    """A failure during the template stage emits failed with stage='template'
-    after resetting that stage's bar to 0 — a retry never inherits a half-filled
-    stage (失败可重试不污染 stage)."""
+    """A failure during the template stage (the pure-code _build_preview that wraps
+    cover/ending + lays generic copy on the unified call's pages) emits failed with
+    stage='template' after resetting that stage's bar to 0 — a retry never inherits a
+    half-filled stage (失败可重试不污染 stage)."""
+    from src.engine import generic_copy
 
-    async def boom(_chapters):
+    def boom(_pages, _chapters):
         raise RuntimeError("engine exploded")
 
-    monkeypatch.setattr(select_template, "select_template_pages", boom)
+    monkeypatch.setattr(generic_copy, "fill_generic_copy", boom)
 
     asyncio.run(analyze._run_analyze(analyze._Job(_req(3))))
 
