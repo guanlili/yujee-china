@@ -16,6 +16,7 @@ import {
   V3Callback,
   V3ChapterOverview,
   V3ChapterChatResponse,
+  V3ChapterOverview,
   V3CoverRequest,
   V3CoverResponse,
   V3FinalizeResponse,
@@ -25,6 +26,7 @@ import {
   V3InternalAgentDataResponse,
   V3PageEditRequest,
   V3PageEditResponse,
+  V3RecommendRequest,
   V3RecommendResponse,
   V3StoryDraft,
   V3StoryProgress,
@@ -560,19 +562,73 @@ test('V3PageEditResponse: intent + optional layoutPatch (reuses V3LayoutPatchEnt
   );
 });
 
-test('V3RecommendResponse returns per-chapter subject + color/font in legal sets', () => {
+test('V3RecommendRequest accepts fontHint and per-chapter extractedColor basis', () => {
+  assert.equal(
+    V3ChapterOverview.safeParse({
+      chapterId: 'c1',
+      description: 'Spring in Kyoto',
+      photoDescs: ['red lanterns'],
+      extractedColor: '#aabbcc',
+    }).success,
+    true,
+  );
+  assert.equal(
+    V3ChapterOverview.safeParse({
+      chapterId: 'c1',
+      description: 'Spring in Kyoto',
+      photoDescs: [],
+      extractedColor: null,
+    }).success,
+    true,
+  );
+  assert.equal(
+    V3RecommendRequest.safeParse({
+      albumId: 'a1',
+      language: 'en',
+      fontHint: 'classic but not too formal',
+      chapters: [{ chapterId: 'c1', description: 'Spring in Kyoto', photoDescs: [] }],
+    }).success,
+    true,
+  );
+  assert.equal(
+    V3RecommendRequest.safeParse({
+      albumId: 'a1',
+      language: 'en',
+      fontHint: 'x'.repeat(201),
+      chapters: [{ chapterId: 'c1', description: 'Spring in Kyoto', photoDescs: [] }],
+    }).success,
+    false,
+  );
+});
+
+test('V3RecommendResponse returns exactly three book theme options', () => {
   const ok = V3RecommendResponse.safeParse({
-    chapterColors: [
-      { chapterId: 'c1', subject: 'Spring in Kyoto', accentColor: '#aabbcc', artFont: 'serif-classic' },
+    bookThemeOptions: [
+      {
+        optionId: 'opt-1',
+        label: 'Warm',
+        style: 'Warm editorial',
+        artFont: 'serif-classic',
+        chapters: [{ chapterId: 'c1', subject: 'Spring in Kyoto', accentColor: '#aabbcc' }],
+      },
+      {
+        optionId: 'opt-2',
+        artFont: 'sans-modern',
+        chapters: [{ chapterId: 'c1', subject: 'Spring in Kyoto', accentColor: '#bbccdd' }],
+      },
+      {
+        optionId: 'opt-3',
+        artFont: 'display-bold',
+        chapters: [{ chapterId: 'c1', subject: 'Spring in Kyoto', accentColor: '#ccddee' }],
+      },
     ],
     assistantReply: '',
     usage: { durationMs: 1, models: {} },
   });
   assert.equal(ok.success, true);
-  // themeOptions / per-chapter subject<min(1) are rejected (strict + min(1)).
+  // Old chapterColors and non-3 option counts are rejected.
   assert.equal(
     V3RecommendResponse.safeParse({
-      themeOptions: [{ subject: 's', label: 'l' }],
       chapterColors: [{ chapterId: 'c1', subject: 'x', accentColor: '#aabbcc', artFont: 'serif-classic' }],
       assistantReply: '',
       usage: { durationMs: 1, models: {} },
@@ -581,7 +637,13 @@ test('V3RecommendResponse returns per-chapter subject + color/font in legal sets
   );
   assert.equal(
     V3RecommendResponse.safeParse({
-      chapterColors: [{ chapterId: 'c1', subject: '', accentColor: '#aabbcc', artFont: 'serif-classic' }],
+      bookThemeOptions: [
+        {
+          optionId: 'opt-1',
+          artFont: 'serif-classic',
+          chapters: [{ chapterId: 'c1', accentColor: '#aabbcc' }],
+        },
+      ],
       assistantReply: '',
       usage: { durationMs: 1, models: {} },
     }).success,

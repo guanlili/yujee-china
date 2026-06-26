@@ -822,7 +822,7 @@ export const albumService = {
   async recommendTheme(
     userId: string,
     albumId: string,
-    input: { language: V3Language; userMessage?: string },
+    input: { language: V3Language; userMessage?: string; fontHint?: string },
   ): Promise<V3RecommendResponse> {
     const album = await this.findOwned(userId, albumId);
     const normalized = readStoryDraft(album.draftJson);
@@ -834,6 +834,7 @@ export const albumService = {
       language: input.language,
       chapters,
       ...(input.userMessage !== undefined ? { userMessage: input.userMessage } : {}),
+      ...(input.fontHint !== undefined ? { fontHint: input.fontHint } : {}),
     });
   },
 

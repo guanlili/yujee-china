@@ -1728,7 +1728,23 @@ test('recommendTheme: re-slices the per-chapter overview server-side (no base64,
     t.mock.method(agentClient, 'recommendV3', async (p: Parameters<typeof agentClient.recommendV3>[0]) => {
       seen.push(p);
       return {
-        chapterColors: [{ chapterId: 'c1', subject: 'By the Sea', accentColor: '#1F618D', artFont: 'sans-modern' }],
+        bookThemeOptions: [
+          {
+            optionId: 'opt-1',
+            artFont: 'sans-modern',
+            chapters: [{ chapterId: 'c1', subject: 'By the Sea', accentColor: '#1F618D' }],
+          },
+          {
+            optionId: 'opt-2',
+            artFont: 'serif-classic',
+            chapters: [{ chapterId: 'c1', accentColor: '#C0392B' }],
+          },
+          {
+            optionId: 'opt-3',
+            artFont: 'display-bold',
+            chapters: [{ chapterId: 'c1', accentColor: '#2F855A' }],
+          },
+        ],
         assistantReply: 'Some themes.',
         usage: fullUsage,
       };
@@ -1744,7 +1760,7 @@ test('recommendTheme: re-slices the per-chapter overview server-side (no base64,
     assert.deepEqual(payload.chapters, [
       { chapterId: 'c1', description: 'a sunlit week by the coast', photoDescs: ['beach at dawn'] },
     ]);
-    assert.equal(res.chapterColors[0]!.subject, 'By the Sea');
+    assert.equal(res.bookThemeOptions[0]!.chapters[0]!.subject, 'By the Sea');
   } finally {
     await cleanupUser(user.id);
   }

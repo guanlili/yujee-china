@@ -504,11 +504,27 @@
       }
     },
     {
-      "name": "V3RecommendResponse theme + per-chapter color/font",
+      "name": "V3RecommendResponse book theme options",
       "schema": "V3RecommendResponse",
       "expectValid": true,
       "payload": {
-        "chapterColors": [{ "chapterId": "c1", "subject": "Spring in Kyoto", "accentColor": "#aabbcc", "artFont": "serif-classic" }],
+        "bookThemeOptions": [
+          {
+            "optionId": "opt-1",
+            "artFont": "serif-classic",
+            "chapters": [{ "chapterId": "c1", "subject": "Spring in Kyoto", "accentColor": "#aabbcc" }]
+          },
+          {
+            "optionId": "opt-2",
+            "artFont": "sans-modern",
+            "chapters": [{ "chapterId": "c1", "accentColor": "#bbccdd" }]
+          },
+          {
+            "optionId": "opt-3",
+            "artFont": "display-bold",
+            "chapters": [{ "chapterId": "c1", "accentColor": "#ccddee" }]
+          }
+        ],
         "assistantReply": "",
         "usage": { "durationMs": 1, "models": {} }
       }
@@ -520,7 +536,8 @@
       "payload": {
         "albumId": "a1",
         "language": "en",
-        "chapters": [{ "chapterId": "c1", "description": "d", "photoDescs": ["p"] }],
+        "fontHint": "classic",
+        "chapters": [{ "chapterId": "c1", "description": "d", "photoDescs": ["p"], "extractedColor": "#aabbcc" }],
         "analysisSummary": "quiet morning",
         "userMessage": "more classic"
       }

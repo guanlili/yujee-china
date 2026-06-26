@@ -563,30 +563,34 @@ class V3ChapterOverview(_V3Strict):
     # not the final theme `accentColor`.
     extractedColor: AccentColor | None = None
     photoDescs: list[str] = Field(max_length=12)
+    extractedColor: AccentColor | None = None
 
 
 class V3RecommendRequest(_V3Strict):
     albumId: str = Field(min_length=1)
     language: V3Language
     chapters: list[V3ChapterOverview] = Field(min_length=1)
-    analysisSummary: str = Field(default=None, max_length=1000)
-    userMessage: str = Field(default=None, max_length=500)
+    analysisSummary: str | None = Field(default=None, max_length=1000)
+    userMessage: str | None = Field(default=None, max_length=500)
+    fontHint: str | None = Field(default=None, max_length=200)
 
 
-class V3ChapterColorRecommendation(_V3Strict):
-    """每章推荐:主题句(subject,作章节标题)+ 推荐色 + 字体。
-
-    `subject` 是 grounded 该章照片+故事的一句章节主题(简短、无句末标点);它在
-    apply-theme 阶段被持久化为该章标题(问题5 方向 A 变体 / #236)。"""
-
+class V3ChapterThemeColor(_V3Strict):
     chapterId: str = Field(min_length=1)
-    subject: str = Field(min_length=1)
     accentColor: AccentColor
+    subject: str | None = Field(default=None, min_length=1)
+
+
+class V3BookThemeOption(_V3Strict):
+    optionId: str = Field(min_length=1)
     artFont: ArtFontPack
+    chapters: list[V3ChapterThemeColor] = Field(min_length=1)
+    style: str | None = Field(default=None, min_length=1)
+    label: str | None = Field(default=None, min_length=1)
 
 
 class V3RecommendResponse(_V3Strict):
-    chapterColors: list[V3ChapterColorRecommendation] = Field(min_length=1)
+    bookThemeOptions: list[V3BookThemeOption] = Field(min_length=3, max_length=3)
     assistantReply: str = Field(max_length=500)
     usage: V3Usage
 
