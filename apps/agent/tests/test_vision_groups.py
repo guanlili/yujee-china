@@ -40,6 +40,10 @@ def _assert_partition(result: GroupingResult, expected: set[str]) -> None:
     assert len(all_ids) == len(set(all_ids))
 
 
+def _chapter_photo_ids(result: GroupingResult) -> list[list[str]]:
+    return [chapter.photoIds for chapter in result.chapters]
+
+
 def test_grouping_never_returns_zero_chapters():
     result = group_photos([])
 
@@ -80,6 +84,46 @@ def test_grouping_keeps_cluster_atomic():
         owner[photo_id] = "__unplaced__"
     assert owner["p1"] == owner["p2"]
     assert owner["p3"] == owner["p4"]
+
+
+def test_grouping_splits_distinct_dates_and_clusters_into_chapters():
+    photos = [
+        _photo("p1", cluster_id="morning", taken_at="2024-01-01T09:00:00Z"),
+        _photo("p2", cluster_id="morning", taken_at="2024-01-01T09:05:00Z"),
+        _photo("p3", cluster_id="evening", taken_at="2024-01-04T18:00:00Z"),
+        _photo("p4", cluster_id="evening", taken_at="2024-01-04T18:05:00Z"),
+    ]
+
+    result = group_photos(photos)
+
+    assert _chapter_photo_ids(result) == [["p1", "p2"], ["p3", "p4"]]
+    assert result.unplacedPhotoIds == []
+
+
+def test_grouping_splits_many_unclustered_undated_photos_by_soft_limit():
+    photos = [_photo(f"p{i + 1}") for i in range(25)]
+
+    result = group_photos(photos)
+
+    assert _chapter_photo_ids(result) == [
+        [f"p{i + 1}" for i in range(20)],
+        [f"p{i + 1}" for i in range(20, 25)],
+    ]
+    assert result.unplacedPhotoIds == []
+
+
+def test_grouping_keeps_oversized_cluster_atomic_when_splitting_later_units():
+    cluster_ids = [f"p{i + 1}" for i in range(25)]
+    photos = [
+        _photo(photo_id, cluster_id="oversized", taken_at="2024-01-01T10:00:00Z")
+        for photo_id in cluster_ids
+    ]
+    photos.append(_photo("p26", cluster_id="next", taken_at="2024-01-05T10:00:00Z"))
+
+    result = group_photos(photos)
+
+    assert _chapter_photo_ids(result) == [cluster_ids, ["p26"]]
+    assert result.unplacedPhotoIds == []
 
 
 def test_describe_chapters_retries_recoverable_missing_scene(monkeypatch):

@@ -1,32 +1,139 @@
 """Deterministic Stage1 photo grouping.
 
-The algorithm body is intentionally conservative for PR249 Stage1: it returns a
-single ordered chapter and no unplaced photos. The surrounding contract and
-validator lock the invariants that the later richer grouping algorithm must keep.
+The algorithm is intentionally small and deterministic for Stage1: it uses only
+request metadata to form chapter membership. Image bytes are reserved for the
+separate describe step.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from ...schemas import V3AnalyzePhoto
 from .schema import GroupingChapter, GroupingResult
 
 
-def group_photos(photos: Sequence[V3AnalyzePhoto]) -> GroupingResult:
-    """Return deterministic chapter membership for Stage1.
+_MAX_CHAPTER_PHOTOS = 20
+_MAX_CHAPTER_SPAN_SECONDS = 36 * 60 * 60
 
-    Placeholder behavior groups all input photos into one chapter. This satisfies
-    the Stage1 contract while keeping cluster atomicity and full coverage until
-    the richer grouping heuristic lands behind the same interface.
-    """
-    photo_ids = [photo.photoId for photo in photos]
+
+@dataclass
+class _Unit:
+    photo_ids: list[str]
+    first_index: int
+    earliest_ts: float | None
+
+    @property
+    def size(self) -> int:
+        return len(self.photo_ids)
+
+
+def group_photos(photos: Sequence[V3AnalyzePhoto]) -> GroupingResult:
+    """Return deterministic chapter membership for Stage1."""
+    units = _cluster_units(photos)
+    chapters = _split_units_into_chapters(units)
+    if not chapters:
+        chapters = [[]]
+
     result = GroupingResult(
-        chapters=[GroupingChapter(chapterId="ch_1", photoIds=photo_ids)],
+        chapters=[
+            GroupingChapter(chapterId=f"ch_{index + 1}", photoIds=photo_ids)
+            for index, photo_ids in enumerate(chapters)
+        ],
         unplacedPhotoIds=[],
     )
     validate_grouping_result(result, photos)
     return result
+
+
+def _cluster_units(photos: Sequence[V3AnalyzePhoto]) -> list[_Unit]:
+    order: list[tuple[str, str | int]] = []
+    members: dict[tuple[str, str | int], list[str]] = {}
+    first_index: dict[tuple[str, str | int], int] = {}
+    earliest_ts: dict[tuple[str, str | int], float | None] = {}
+
+    for index, photo in enumerate(photos):
+        key: tuple[str, str | int]
+        if photo.clusterId is None:
+            key = ("photo", index)
+        else:
+            key = ("cluster", photo.clusterId)
+        if key not in members:
+            members[key] = []
+            first_index[key] = index
+            earliest_ts[key] = None
+            order.append(key)
+        members[key].append(photo.photoId)
+        taken_at_ts = _taken_at_timestamp(photo)
+        if taken_at_ts is not None:
+            current = earliest_ts[key]
+            earliest_ts[key] = taken_at_ts if current is None else min(current, taken_at_ts)
+
+    units = [
+        _Unit(
+            photo_ids=members[key],
+            first_index=first_index[key],
+            earliest_ts=earliest_ts[key],
+        )
+        for key in order
+    ]
+    return sorted(
+        units,
+        key=lambda unit: (
+            0 if unit.earliest_ts is not None else 1,
+            unit.earliest_ts or 0,
+            unit.first_index,
+        ),
+    )
+
+
+def _split_units_into_chapters(units: Sequence[_Unit]) -> list[list[str]]:
+    chapters: list[list[str]] = []
+    current: list[str] = []
+    current_count = 0
+    current_start_ts: float | None = None
+
+    for unit in units:
+        if current and _starts_new_chapter(current_count, current_start_ts, unit):
+            chapters.append(current)
+            current = []
+            current_count = 0
+            current_start_ts = None
+
+        current.extend(unit.photo_ids)
+        current_count += unit.size
+        if current_start_ts is None and unit.earliest_ts is not None:
+            current_start_ts = unit.earliest_ts
+
+    if current:
+        chapters.append(current)
+    return chapters
+
+
+def _starts_new_chapter(
+    current_count: int, current_start_ts: float | None, next_unit: _Unit
+) -> bool:
+    if current_count + next_unit.size > _MAX_CHAPTER_PHOTOS:
+        return True
+    if current_start_ts is None or next_unit.earliest_ts is None:
+        return False
+    return next_unit.earliest_ts - current_start_ts > _MAX_CHAPTER_SPAN_SECONDS
+
+
+def _taken_at_timestamp(photo: V3AnalyzePhoto) -> float | None:
+    value = photo.exif.takenAt if photo.exif else None
+    if not value:
+        return None
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
 
 
 def validate_grouping_result(
