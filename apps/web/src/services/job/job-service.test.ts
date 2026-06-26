@@ -41,6 +41,17 @@ test('mergeSelectLayoutPages adds pages without mutating the Stage1 tree/progres
   });
 });
 
+test('mergeSelectLayoutPages rejects select-layout output before a Stage1 tree exists', () => {
+  assert.throws(
+    () => mergeSelectLayoutPages({ chapters: [] }, PAGES),
+    /select-layout completion requires an existing v3-story draft/,
+  );
+  assert.throws(
+    () => mergeSelectLayoutPages(null, PAGES),
+    /select-layout completion requires an existing v3-story draft/,
+  );
+});
+
 test('mergeV3Usage keeps Stage1 usage when Stage2 reuses the same job', () => {
   assert.deepEqual(
     mergeV3Usage(

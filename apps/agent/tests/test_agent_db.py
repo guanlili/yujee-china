@@ -31,6 +31,7 @@ def test_agent_edit_boundary_migration_static_contract() -> None:
     assert "script_location = %(here)s/migrations" in alembic_ini
     assert "COPY apps/agent/alembic.ini ./alembic.ini" in dockerfile
     assert "COPY apps/agent/migrations ./migrations" in dockerfile
+    assert "COPY packages/contracts/template-previews ./packages/contracts/template-previews" in dockerfile
 
 
 @pytest.mark.skipif(

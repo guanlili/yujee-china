@@ -2,8 +2,9 @@ import { db, type DbOrTx } from '@/db/client';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { albumRepo } from '@/db/repos/album-repo';
 import { creditService } from '@/services/credit/credit-service';
-import { mapAgentErrorCode } from '@/lib/api/error-codes';
+import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
+import { V3StoryDraft } from '@yujee/contracts';
 
 const ZOMBIE_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -31,15 +32,11 @@ export function buildAnalyzeDraftJson(tree: unknown) {
 }
 
 export function mergeSelectLayoutPages(draftJson: unknown, pages: unknown) {
-  if (
-    draftJson &&
-    typeof draftJson === 'object' &&
-    !Array.isArray(draftJson) &&
-    (draftJson as { version?: unknown }).version === 'v3-story'
-  ) {
-    return { ...(draftJson as Record<string, unknown>), pages };
+  const parsed = V3StoryDraft.safeParse(draftJson);
+  if (!parsed.success) {
+    throw ERRORS.VALIDATION_FAILED('select-layout completion requires an existing v3-story draft');
   }
-  return { ...buildAnalyzeDraftJson(draftJson), pages };
+  return { ...parsed.data, pages };
 }
 
 function recordOrEmpty(value: unknown): Record<string, unknown> {
@@ -128,9 +125,12 @@ export const jobService = {
     const job = await agentJobRepo.findByRequestId(requestId);
     if (!job) return;
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
+    const currentProgress = Number.isFinite(job.progress) ? job.progress : 0;
+    const nextProgress = Math.max(currentProgress, progress);
+    const nextStage = progress < currentProgress ? job.stage : stage;
     await agentJobRepo.transitionStatus(db, job.id, 'RUNNING', ['QUEUED', 'RUNNING'], {
-      stage,
-      progress,
+      stage: nextStage,
+      progress: nextProgress,
       startedAt: new Date(),
     });
   },
@@ -189,6 +189,20 @@ export const jobService = {
     const album = await albumRepo.findById(job.albumId);
     if (!album) {
       logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 select-layout completed');
+      return;
+    }
+    const parsedDraft = V3StoryDraft.safeParse(album.draftJson);
+    if (job.stage !== 'layout' || album.status !== 'AGENT_RUNNING' || !parsedDraft.success) {
+      logger.warn(
+        {
+          requestId,
+          albumId: job.albumId,
+          jobStage: job.stage,
+          albumStatus: album.status,
+          hasStoryDraft: parsedDraft.success,
+        },
+        'ignored select-layout completed callback before analyze tree was ready',
+      );
       return;
     }
 
