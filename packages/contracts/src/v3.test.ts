@@ -14,7 +14,6 @@ import {
   V3AnalyzeRequest,
   V3ApplyThemeRequest,
   V3Callback,
-  V3ChapterOverview,
   V3ChapterChatResponse,
   V3ChapterOverview,
   V3CoverRequest,
