@@ -1666,6 +1666,261 @@ test('chapterChatTurn: unknown chapterId throws VALIDATION_FAILED before any age
   }
 });
 
+test('editChatTurn applies pagesTexts patches and acks after album transaction', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-atomic');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 2);
+    const calls: string[] = [];
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'edit' as const,
+      assistantReply: 'Updated.',
+      pagesTexts: [{ pageIndex: 0, texts: { headline: 'Coast Days' } }],
+      patches: [{ pageIndex: 1, texts: { body: 'Sea air' } }],
+      progressDecision: { chapterDone: true },
+      opId: 'op_1',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async ({ opId }: { opId: string }) => {
+      calls.push(opId);
+      return true;
+    });
+
+    const res = await albumService.editChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c1',
+      userMessage: 'write and finish',
+      focusedPageIndex: 1,
+    });
+
+    assert.equal(res.opId, 'op_1');
+    assert.deepEqual(calls, ['op_1']);
+    const draft = (await albumRepo.findById(albumId))!.draftJson as V3StoryDraft;
+    assert.equal(draft.pages?.[0]?.texts.headline, 'Coast Days');
+    assert.equal(draft.pages?.[1]?.texts.body, 'Sea air');
+    assert.deepEqual(draft.progress.doneChapterIds, ['c1']);
+    assert.equal(draft.progress.currentChapterId, 'c2');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('editChatTurn keeps committed album changes when ack fails after the transaction', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-ack-fails-after-commit');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 2);
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'edit' as const,
+      assistantReply: 'Updated, but ack will fail.',
+      pagesTexts: [{ pageIndex: 0, texts: { headline: 'Committed Before Ack' } }],
+      patches: [{ pageIndex: 1, texts: { body: 'This survives ack failure' } }],
+      progressDecision: { chapterDone: true },
+      opId: 'op_ack_after_commit',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => {
+      throw new Error('agent ack unavailable');
+    });
+
+    await assert.rejects(
+      () =>
+        albumService.editChatTurn(user.id, albumId, {
+          language: 'en',
+          chapterId: 'c1',
+          userMessage: 'write and finish',
+          focusedPageIndex: 1,
+        }),
+      /agent ack unavailable/,
+    );
+
+    const draft = (await albumRepo.findById(albumId))!.draftJson as V3StoryDraft;
+    assert.equal(draft.pages?.[0]?.texts.headline, 'Committed Before Ack');
+    assert.equal(draft.pages?.[1]?.texts.body, 'This survives ack failure');
+    assert.deepEqual(draft.progress.doneChapterIds, ['c1']);
+    assert.equal(draft.progress.currentChapterId, 'c2');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('editChatTurn never writes Web album_messages history', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-no-web-history');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 1);
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'talk' as const,
+      assistantReply: 'Tell me more.',
+      patches: [],
+      opId: 'op_talk',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => true);
+
+    await albumService.editChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c1',
+      userMessage: 'hello',
+    });
+
+    const rows = await albumMessageRepo.findRecentByAlbumChapter(albumId, 'c1', 20);
+    assert.deepEqual(rows, []);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('editChatTurn maps advanceTo theme to album stage only after chapter progress write', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-theme');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 1);
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'talk' as const,
+      assistantReply: 'Ready for theme.',
+      patches: [],
+      progressDecision: { chapterDone: true, advanceTo: 'theme' as const },
+      opId: 'op_theme',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => true);
+
+    await albumService.editChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c1',
+      userMessage: 'done',
+    });
+
+    const album = await albumRepo.findById(albumId);
+    const draft = album?.draftJson as V3StoryDraft;
+    assert.equal(album?.stage, 'theme');
+    assert.deepEqual(draft.progress.doneChapterIds, ['c1']);
+    assert.equal(draft.progress.currentChapterId, null);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('editChatTurn ignores advanceTo theme until every chapter is done', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-theme-gate');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 2);
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'talk' as const,
+      assistantReply: 'First chapter done.',
+      patches: [],
+      progressDecision: { chapterDone: true, advanceTo: 'theme' as const },
+      opId: 'op_theme_early',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => true);
+
+    await albumService.editChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c1',
+      userMessage: 'done',
+    });
+
+    const album = await albumRepo.findById(albumId);
+    const draft = album?.draftJson as V3StoryDraft;
+    assert.equal(album?.stage, 'story');
+    assert.deepEqual(draft.progress.doneChapterIds, ['c1']);
+    assert.equal(draft.progress.currentChapterId, 'c2');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('editChatTurn rejects chapterDone for a non-current chapter', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-current-guard');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 2, { stage: 'story' });
+    let acked = false;
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'talk' as const,
+      assistantReply: 'Skipped ahead.',
+      patches: [],
+      progressDecision: { chapterDone: true },
+      opId: 'op_wrong_chapter',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => {
+      acked = true;
+      return true;
+    });
+
+    await assert.rejects(
+      () =>
+        albumService.editChatTurn(user.id, albumId, {
+          language: 'en',
+          chapterId: 'c2',
+          userMessage: 'done',
+        }),
+      hasCode('VALIDATION_FAILED'),
+    );
+
+    const album = await albumRepo.findById(albumId);
+    const draft = album?.draftJson as V3StoryDraft;
+    assert.equal(acked, false);
+    assert.equal(album?.stage, 'story');
+    assert.deepEqual(draft.progress.doneChapterIds, []);
+    assert.equal(draft.progress.currentChapterId, 'c1');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('editChatTurn supports case4 append page patch at next pageIndex', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-append');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 1);
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'edit' as const,
+      assistantReply: 'Added a page.',
+      patches: [{ pageIndex: 1, templateId: 'mag-03', images: { image: 'p1' }, texts: { title: 'More' } }],
+      opId: 'op_append',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => true);
+
+    await albumService.editChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c1',
+      userMessage: 'change layout and add page',
+    });
+
+    const draft = (await albumRepo.findById(albumId))!.draftJson as V3StoryDraft;
+    assert.equal(draft.pages?.some((page) => page.pageIndex === 1 && page.templateId === 'mag-03'), true);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 // ───────── ③④ theme/cover — recommendTheme / applyThemeTurn / coverTurn (缺口#20) ─────────
 //
 // The browser holds NO authoring tree / layout pages (invariant 12): it sends only its

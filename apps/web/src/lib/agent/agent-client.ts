@@ -5,15 +5,20 @@ import {
   V3ApplyThemeResponse,
   V3ChapterChatResponse,
   V3CoverResponse,
+  V3EditChatResponse,
   V3FinalizeResponse,
+  V3InternalAgentAckResponse,
   V3RecommendResponse,
 } from '@yujee/contracts';
 import type {
+  SelectLayoutRequest,
   V3AnalyzeRequest,
   V3ApplyThemeRequest,
   V3ChapterChatRequest,
   V3CoverRequestInput,
+  V3EditChatRequest,
   V3FinalizeRequest,
+  V3InternalAgentAckRequest,
   V3RecommendRequest,
 } from '@yujee/contracts';
 
@@ -54,10 +59,46 @@ export const agentClient = {
     return { requestId: payload.requestId };
   },
 
+  async submitSelectLayoutV3(payload: SelectLayoutRequest): Promise<{ requestId: string }> {
+    let res: Response;
+    try {
+      res = await fetch(`${env.AGENT_BASE_URL}/v3/select-layout`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': payload.requestId,
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (e) {
+      logger.error({ err: String(e), requestId: payload.requestId }, 'agent v3 select-layout submit failed');
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+    if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
+    if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected select-layout payload');
+    if (!res.ok) {
+      logger.error({ status: res.status, requestId: payload.requestId }, 'agent v3 select-layout non-2xx');
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+    return { requestId: payload.requestId };
+  },
+
   async chapterChatV3(payload: V3ChapterChatRequest): Promise<V3ChapterChatResponse> {
     return postSyncV3('/v3/chapter-chat', payload, V3ChapterChatResponse, {
       albumId: payload.albumId,
     });
+  },
+
+  async editChatV3(payload: V3EditChatRequest): Promise<V3EditChatResponse> {
+    return postSyncV3('/v3/edit-chat', payload, V3EditChatResponse, {
+      albumId: payload.albumId,
+    });
+  },
+
+  async ackEditOp(payload: V3InternalAgentAckRequest): Promise<boolean> {
+    return postInternalAgentAck(payload);
   },
 
   async recommendV3(payload: V3RecommendRequest): Promise<V3RecommendResponse> {
@@ -86,6 +127,56 @@ export const agentClient = {
     });
   },
 };
+
+async function postInternalAgentAck(payload: V3InternalAgentAckRequest): Promise<boolean> {
+  let res: Response;
+  try {
+    res = await fetch(`${env.AGENT_BASE_URL}/internal/agent-ack`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
+        'Content-Type': 'application/json',
+        'X-Request-Id': crypto.randomUUID(),
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (e) {
+    logger.error(
+      { err: String(e), api: 'v3', path: '/internal/agent-ack', opId: payload.opId },
+      'agent ack call failed',
+    );
+    throw ERRORS.AGENT_INTERNAL_ERROR();
+  }
+  if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
+  if (!res.ok) {
+    logger.error(
+      { status: res.status, api: 'v3', path: '/internal/agent-ack', opId: payload.opId },
+      'agent ack non-2xx',
+    );
+    throw ERRORS.AGENT_INTERNAL_ERROR();
+  }
+
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch (e) {
+    logger.error(
+      { err: String(e), api: 'v3', path: '/internal/agent-ack', opId: payload.opId },
+      'agent ack response JSON parse failed',
+    );
+    throw ERRORS.AGENT_INTERNAL_ERROR();
+  }
+  const parsed = V3InternalAgentAckResponse.safeParse(json);
+  if (!parsed.success) {
+    logger.error(
+      { api: 'v3', path: '/internal/agent-ack', opId: payload.opId },
+      'agent ack response off-contract',
+    );
+    throw ERRORS.AGENT_INVALID_OUTPUT();
+  }
+  return parsed.data.ok;
+}
 
 async function postSyncV3<T>(
   path: string,

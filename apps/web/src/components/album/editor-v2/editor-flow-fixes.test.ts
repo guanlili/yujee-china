@@ -80,7 +80,7 @@ test('④: the satisfaction card opens only after a real chapter write, never on
   // agent still gathering material) never shows it. This is the only standing confirmation.
   assert.match(
     src,
-    /if \(wroteChapter\)\s*\{\s*appendSatisfactionCard\(\);/,
+    /if \(wroteChapter && !res\.progressDecision\?\.chapterDone\)\s*\{\s*appendSatisfactionCard\(\);/,
     'appendSatisfactionCard() must be gated on wroteChapter (a fresh full-chapter write)',
   );
 });

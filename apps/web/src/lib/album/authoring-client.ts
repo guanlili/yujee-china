@@ -4,6 +4,7 @@ import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/cli
 import type {
   V3ChatTurn,
   V3ChapterChatResponse,
+  V3EditChatResponse,
   V3RecommendResponse,
   V3ChapterThemeChoice,
 } from '@yujee/contracts';
@@ -208,6 +209,18 @@ export function postChapterChat(
   input: ChapterChatInput,
 ): Promise<V3ChapterChatResponse> {
   return postJson(`/api/v3/albums/${albumId}/chapter-chat`, input);
+}
+
+export interface EditChatInput {
+  language: 'zh' | 'en';
+  chapterId?: string;
+  userMessage: string;
+  focusedPageIndex?: number;
+  pagePhotoRefs?: Record<string, string>;
+}
+
+export function postEditChat(albumId: string, input: EditChatInput): Promise<V3EditChatResponse> {
+  return postJson(`/api/v3/albums/${albumId}/edit-chat`, input);
 }
 
 export function postFinalize(

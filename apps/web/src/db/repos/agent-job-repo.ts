@@ -90,6 +90,22 @@ export const agentJobRepo = {
     await tx.update(agentJobs).set(patch).where(eq(agentJobs.id, id));
   },
 
+  reserveSelectLayout: async (tx: DbOrTx, id: string): Promise<boolean> => {
+    const rows = await tx
+      .update(agentJobs)
+      .set({ progress: 51, startedAt: new Date() })
+      .where(
+        and(
+          eq(agentJobs.id, id),
+          eq(agentJobs.status, 'RUNNING'),
+          eq(agentJobs.stage, 'layout'),
+          eq(agentJobs.progress, 50),
+        ),
+      )
+      .returning({ id: agentJobs.id });
+    return rows.length > 0;
+  },
+
   // Conditional terminal transition: flip status to `to` only if it is currently
   // one of `from`, and report whether *this* call won. The job row is the single
   // arbiter when terminal callback handling and the read-path / daily-cron

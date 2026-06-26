@@ -71,6 +71,12 @@ export function compressedPhotosFromCache(
   return out;
 }
 
+export function selectLayoutRefsFromCompressed(
+  compressed: readonly CompressedPhoto[],
+): Record<string, string> {
+  return Object.fromEntries(compressed.map((photo) => [photo.photoId, photo.base64]));
+}
+
 // Thrown on a 402 so callers can branch on `instanceof` instead of matching the
 // error code string. Carries nothing else — the create flow already knows the
 // draft it just tried to submit.
@@ -125,6 +131,21 @@ export async function photosFromStore(photoIds: string[]): Promise<GenerationPho
   return clusterCompressedPhotos(compressed);
 }
 
+export async function selectLayoutRefsFromStore(photoIds: string[]): Promise<Record<string, string>> {
+  const compressed: CompressedPhoto[] = [];
+  const missing: string[] = [];
+  for (const photoId of photoIds) {
+    const blob = await photoStore.getBlob(photoId);
+    if (!blob) {
+      missing.push(photoId);
+      continue;
+    }
+    compressed.push(await compressFile(blob, photoId, { maxLen: 200, quality: 0.65 }));
+  }
+  if (missing.length > 0) throw new PhotosUnavailableError(missing);
+  return selectLayoutRefsFromCompressed(compressed);
+}
+
 type SubmitResult = { albumId: string; requestId: string };
 
 async function postJobs(path: string, body: unknown): Promise<SubmitResult> {
@@ -156,4 +177,15 @@ export function retryGeneration(
   input: { requestId: string; language: 'zh' | 'en'; photos: GenerationPhoto[] },
 ): Promise<SubmitResult> {
   return postJobs(`/api/v3/albums/${albumId}/retry`, input);
+}
+
+export function submitSelectLayoutV3(
+  albumId: string,
+  input: {
+    requestId: string;
+    language: 'zh' | 'en';
+    refs: Record<string, string> | Array<{ photoId: string; ref200px: string }>;
+  },
+): Promise<SubmitResult> {
+  return postJobs(`/api/v3/albums/${albumId}/select-layout`, input);
 }

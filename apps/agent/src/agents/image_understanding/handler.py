@@ -26,7 +26,8 @@ from ...vision_provider import (
     ark_vision_slot,
     openai_vision_slot,
 )
-from .schema import V3AnalyzeResult
+from ..image_grouping.schema import GroupingResult
+from .schema import DescribeResult, V3AnalyzeResult
 
 _PROMPT_DIR = Path(__file__).resolve().parent
 
@@ -69,6 +70,11 @@ _DESCRIBE_SIMPLE_VALUE_PATHS = (
     ("chapters", "*", "pages", "*", "photoIds", "*"),
 )
 _DESCRIBE_SIMPLE_KEY_PATHS = (("chapters", "*", "scenes", "*"),)
+
+_DESCRIBE_CHAPTERS_SIMPLE_KEY_PATHS = (
+    ("chapters", "*", "scenes", "*"),
+    ("unplacedScenes", "*"),
+)
 
 
 def _legal_capacity_table() -> str:
@@ -166,6 +172,143 @@ def _build_v3_user_content(
     for photo in photos:
         parts.append({"type": "image_url", "image_url": {"url": photo.base64}})
     return parts
+
+
+def _build_describe_chapters_system_prompt(language: str) -> str:
+    lang_name = "Chinese" if language == "zh" else "English"
+    return (
+        "You describe already-grouped memoir photos. Return JSON only. "
+        f"Write all text in {lang_name}. Do not choose templates, pages, layout, "
+        "cover, ending, colors, fonts, titles, or generic copy. "
+        "Output shape: "
+        '{"chapters":[{"chapterId":"ch_1","description":"...",'
+        '"scenes":{"1":"..."}}],"unplacedScenes":{"3":"..."}}. '
+        "Every listed chapter photo must have one non-empty scene. Every listed "
+        "unplaced photo must have one non-empty unplacedScenes entry."
+    )
+
+
+def _build_describe_chapters_user_content(
+    grouping: GroupingResult,
+    photos_by_id: dict[str, V3AnalyzePhoto],
+    prompt_hint: str | None,
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    ordered_ids: list[str] = []
+    for chapter in grouping.chapters:
+        ordered_ids.extend(chapter.photoIds)
+    ordered_ids.extend(grouping.unplacedPhotoIds)
+
+    seen: set[str] = set()
+    unique_ordered_ids: list[str] = []
+    for photo_id in ordered_ids:
+        if photo_id in seen:
+            continue
+        if photo_id not in photos_by_id:
+            raise VisionError(f"describe-chapters referenced unknown photoId: {photo_id}")
+        seen.add(photo_id)
+        unique_ordered_ids.append(photo_id)
+
+    simple_ids, real_by_simple = to_simple(unique_ordered_ids)
+    simple_by_real = {
+        real_id: simple_id
+        for simple_id, real_id in zip(simple_ids, unique_ordered_ids, strict=True)
+    }
+
+    manifest_lines: list[str] = []
+    if prompt_hint:
+        manifest_lines.append(f"Memoir prompt hint: {prompt_hint}")
+    manifest_lines.append("Fixed chapters:")
+    for chapter in grouping.chapters:
+        photo_ids = ", ".join(simple_by_real[pid] for pid in chapter.photoIds)
+        manifest_lines.append(f"- {chapter.chapterId}: [{photo_ids}]")
+    if grouping.unplacedPhotoIds:
+        unplaced = ", ".join(simple_by_real[pid] for pid in grouping.unplacedPhotoIds)
+        manifest_lines.append(f"Unplaced photos needing scenes only: [{unplaced}]")
+    manifest = "\n".join(manifest_lines)
+
+    parts: list[dict[str, Any]] = [{"type": "text", "text": manifest}]
+    for photo_id in unique_ordered_ids:
+        parts.append(
+            {"type": "image_url", "image_url": {"url": photos_by_id[photo_id].base64}}
+        )
+    return parts, real_by_simple
+
+
+def _required_describe_text(raw: Any, *, field: str, max_len: int) -> str:
+    if not isinstance(raw, str):
+        raise VisionError(f"describe-chapters {field} must be a string")
+    text = raw.strip()
+    if not text:
+        raise VisionError(f"describe-chapters {field} is required")
+    if len(text) > max_len:
+        raise VisionError(f"describe-chapters {field} exceeds {max_len} chars")
+    return text
+
+
+def _assemble_describe_result(
+    parsed: Any, grouping: GroupingResult
+) -> DescribeResult:
+    raw_chapters = parsed.get("chapters") if isinstance(parsed, dict) else None
+    if not isinstance(raw_chapters, list):
+        raise VisionError("describe-chapters response missing chapters[] array")
+
+    raw_by_id: dict[str, dict[str, Any]] = {}
+    for idx, raw in enumerate(raw_chapters):
+        if not isinstance(raw, dict):
+            raise VisionError(f"describe-chapters chapter {idx + 1} must be an object")
+        raw_id = raw.get("chapterId")
+        chapter_id = raw_id if isinstance(raw_id, str) and raw_id else ""
+        if not chapter_id and idx < len(grouping.chapters):
+            chapter_id = grouping.chapters[idx].chapterId
+        if not chapter_id:
+            raise VisionError(f"describe-chapters chapter {idx + 1} missing chapterId")
+        raw_by_id[chapter_id] = raw
+
+    chapter_descriptions: dict[str, str] = {}
+    image_descriptions: dict[str, str] = {}
+    for chapter in grouping.chapters:
+        raw = raw_by_id.get(chapter.chapterId)
+        if raw is None:
+            raise VisionError(f"describe-chapters omitted chapterId: {chapter.chapterId}")
+        scenes = raw.get("scenes")
+        if not isinstance(scenes, dict):
+            raise VisionError(f"describe-chapters {chapter.chapterId} missing scenes object")
+        chapter_descriptions[chapter.chapterId] = _required_describe_text(
+            raw.get("description"),
+            field=f"{chapter.chapterId}.description",
+            max_len=600,
+        )
+        for photo_id in chapter.photoIds:
+            image_descriptions[photo_id] = _required_describe_text(
+                scenes.get(photo_id),
+                field=f"scenes.{photo_id}",
+                max_len=300,
+            )
+
+    raw_unplaced = parsed.get("unplacedScenes", {}) if isinstance(parsed, dict) else {}
+    if grouping.unplacedPhotoIds and not isinstance(raw_unplaced, dict):
+        raise VisionError("describe-chapters unplacedScenes must be an object")
+    for photo_id in grouping.unplacedPhotoIds:
+        image_descriptions[photo_id] = _required_describe_text(
+            raw_unplaced.get(photo_id),
+            field=f"unplacedScenes.{photo_id}",
+            max_len=300,
+        )
+
+    return DescribeResult(
+        chapterDescriptions=chapter_descriptions,
+        imageDescriptions=image_descriptions,
+    )
+
+
+def _is_recoverable_describe_chapters_error(exc: VisionError) -> bool:
+    msg = str(exc)
+    return (
+        "omitted chapterId" in msg
+        or ".description" in msg
+        or "scenes." in msg
+        or "unplacedScenes." in msg
+    )
 
 
 def _orientation(width: int, height: int) -> str:
@@ -705,6 +848,164 @@ def _flatten_pages(
             page["pageIndex"] = len(flat)
             flat.append(page)
     return flat
+
+
+async def _describe_chapters_call(
+    slot: VisionSlot,
+    grouping: GroupingResult,
+    photos_by_id: dict[str, V3AnalyzePhoto],
+    language: str,
+    prompt_hint: str | None,
+    *,
+    max_output_tokens: int,
+) -> tuple[DescribeResult, int]:
+    user_content, real_by_simple = _build_describe_chapters_user_content(
+        grouping, photos_by_id, prompt_hint
+    )
+    total_tokens = 0
+    last_err: VisionError | None = None
+    for attempt in range(MAX_DESCRIBE_ATTEMPTS):
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": _build_describe_chapters_system_prompt(language)},
+            {"role": "user", "content": user_content},
+        ]
+        if attempt > 0 and last_err is not None:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": load_prompt(
+                        RULES_DIR / "describe_retry.md",
+                        N=str(len(real_by_simple)),
+                        ERR=str(last_err),
+                    ),
+                }
+            )
+        response = await ai_client.chat_completion(
+            base_url=slot.base_url,
+            api_key=slot.api_key,
+            model=slot.model,
+            messages=messages,
+            timeout_seconds=slot.timeout_seconds,
+            temperature=0.2 if attempt == 0 else 0.5,
+            max_tokens=max_output_tokens,
+            response_format=slot.response_format,
+            extra_body=slot.extra_body,
+        )
+        messages = []  # noqa: F841
+        del messages
+
+        prompt_tokens, completion_tokens = ai_client.extract_usage(response)
+        total_tokens += prompt_tokens + completion_tokens
+        raw_text = ai_client.extract_text(response)
+        try:
+            parsed = ai_client.parse_json_loose(raw_text)
+        except ValueError as exc:
+            raise VisionError(f"describe-chapters response unparseable: {exc}") from exc
+        parsed = from_simple_at_paths(
+            parsed,
+            real_by_simple,
+            value_paths=(),
+            key_paths=_DESCRIBE_CHAPTERS_SIMPLE_KEY_PATHS,
+        )
+        try:
+            result = _assemble_describe_result(parsed, grouping)
+        except VisionError as exc:
+            if (
+                not _is_recoverable_describe_chapters_error(exc)
+                or attempt == MAX_DESCRIBE_ATTEMPTS - 1
+            ):
+                raise
+            last_err = exc
+            log.warning(
+                "v3_describe_chapters.retry",
+                provider=slot.provider,
+                attempt=attempt + 1,
+                reason=str(exc)[:120],
+            )
+            continue
+        return result, total_tokens
+
+    raise last_err or VisionError("describe-chapters failed after retries")
+
+
+async def describe_chapters(
+    grouping: GroupingResult,
+    photos_by_id: dict[str, V3AnalyzePhoto],
+    *,
+    language: str,
+    prompt_hint: str | None = None,
+) -> DescribeResult:
+    """Describe fixed Stage1 chapters without producing pages/templates."""
+    settings = get_settings()
+    if not photos_by_id:
+        raise VisionError("describe-chapters called with no photos")
+
+    try:
+        if settings.vision_provider == "ark":
+            primary_slot = ark_vision_slot(settings)
+        else:
+            primary_slot = openai_vision_slot(
+                settings,
+                timeout_seconds=settings.describe_openai_timeout_seconds,
+                model=settings.describe_openai_model,
+            )
+    except VisionSlotError as exc:
+        raise VisionError(f"describe-chapters primary unavailable: {exc}") from exc
+
+    try:
+        result, tokens = await asyncio.wait_for(
+            _describe_chapters_call(
+                primary_slot,
+                grouping,
+                photos_by_id,
+                language,
+                prompt_hint,
+                max_output_tokens=settings.describe_max_output_tokens,
+            ),
+            timeout=settings.describe_batch_deadline_seconds,
+        )
+        return DescribeResult(
+            chapterDescriptions=result.chapterDescriptions,
+            imageDescriptions=result.imageDescriptions,
+            tokens_billed=tokens,
+            model=primary_slot.model,
+            provider=primary_slot.provider,
+            call_count=1,
+        )
+    except asyncio.TimeoutError:
+        log.warning("v3_describe_chapters.primary_failover", provider=primary_slot.provider)
+    except ai_client.AIRequestError as exc:
+        if not exc.failover_eligible:
+            raise VisionError(f"describe-chapters primary failed: {exc}") from exc
+        log.warning(
+            "v3_describe_chapters.primary_failover",
+            provider=primary_slot.provider,
+            reason=exc.kind or type(exc).__name__,
+        )
+
+    try:
+        fallback_slot = ark_vision_slot(settings)
+    except VisionSlotError as exc:
+        raise VisionError(f"describe-chapters failover unavailable: {exc}") from exc
+    try:
+        result, tokens = await _describe_chapters_call(
+            fallback_slot,
+            grouping,
+            photos_by_id,
+            language,
+            prompt_hint,
+            max_output_tokens=settings.describe_max_output_tokens,
+        )
+    except ai_client.AIRequestError as exc:
+        raise VisionError(f"describe-chapters failover failed: {exc}") from exc
+    return DescribeResult(
+        chapterDescriptions=result.chapterDescriptions,
+        imageDescriptions=result.imageDescriptions,
+        tokens_billed=tokens,
+        model=fallback_slot.model,
+        provider=fallback_slot.provider,
+        call_count=2,
+    )
 
 
 async def describe_content(

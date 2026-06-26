@@ -16,6 +16,7 @@ COPY apps/agent/alembic.ini ./alembic.ini
 COPY apps/agent/migrations ./migrations
 COPY apps/agent/src ./src
 COPY packages/contracts/templates ./packages/contracts/templates
+COPY packages/contracts/template-previews ./packages/contracts/template-previews
 COPY packages/contracts/copy-examples ./packages/contracts/copy-examples
 RUN pip install .
 

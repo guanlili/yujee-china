@@ -58,6 +58,9 @@ export const generationDraft = {
 export type AlbumRecipe = {
   language: 'zh' | 'en';
   photoIds: string[];
+  // Stage2 select-layout reuses the analyze/init job requestId so the callback
+  // lands on the same job row and settles the original credit hold.
+  requestId?: string;
 };
 
 const recipeKey = (albumId: string) => `yujee:album-recipe:${albumId}`;
@@ -77,6 +80,7 @@ export const albumRecipe = {
       if (!raw) return null;
       const r = JSON.parse(raw) as AlbumRecipe;
       if (!r || !Array.isArray(r.photoIds) || r.photoIds.length === 0) return null;
+      if (r.requestId !== undefined && typeof r.requestId !== 'string') return null;
       return r;
     } catch {
       return null;

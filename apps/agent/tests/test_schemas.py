@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
+from src import schemas
 from src.schemas import (
     AgentAckRequest,
     AgentAckResponse,
@@ -44,6 +45,8 @@ from src.schemas import (
     V3LayoutTree,
     V3RecommendRequest,
     V3RecommendResponse,
+    SelectLayoutCompleted,
+    SelectLayoutRequest,
     V3TemplateCandidate,
 )
 
@@ -459,6 +462,73 @@ class TestV3AnalyzePrivacy:
             V3AnalyzeRequest.model_validate(bad)
 
 
+class TestSelectLayoutRequest:
+    def test_carries_taken_at_and_rejects_caller_candidates(self):
+        payload = {
+            "requestId": "layout-r1",
+            "callbackUrl": "https://example.com/api/v3/internal/job-progress",
+            "language": "en",
+            "chapters": [
+                {
+                    "chapterId": "ch_1",
+                    "structureHint": "coast morning",
+                    "photos": [
+                        {
+                            "photoId": "p1",
+                            "ref200px": "data:image/jpeg;base64,AA==",
+                            "orientation": "landscape",
+                            "takenAt": "2024-03-15T08:30:00",
+                        },
+                        {
+                            "photoId": "p2",
+                            "ref200px": "data:image/png;base64,AA==",
+                            "orientation": "portrait",
+                            "takenAt": None,
+                        },
+                    ],
+                }
+            ],
+        }
+
+        SelectLayoutRequest.model_validate(payload)
+        with pytest.raises(ValidationError):
+            SelectLayoutRequest.model_validate(
+                {
+                    **payload,
+                    "chapters": [
+                        {
+                            **payload["chapters"][0],
+                            "candidates": [
+                                {
+                                    "templateId": "mag-08",
+                                    "category": "interior",
+                                    "imageSlotCount": 2,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+        with pytest.raises(ValidationError):
+            SelectLayoutRequest.model_validate(
+                {
+                    **payload,
+                    "chapters": [
+                        {
+                            **payload["chapters"][0],
+                            "photos": [
+                                {
+                                    "photoId": "p1",
+                                    "ref200px": "data:image/jpeg;base64,AA==",
+                                    "orientation": "landscape",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+
 class TestV3Endpoints:
     def test_chapter_chat_kind_drives_patch(self):
         usage = {"durationMs": 1, "models": {}}
@@ -468,6 +538,61 @@ class TestV3Endpoints:
         V3ChapterChatResponse.model_validate({"kind": "talk", "assistantReply": "tell me more", "usage": usage})
         with pytest.raises(ValidationError):
             V3ChapterChatResponse.model_validate({"kind": "sing", "assistantReply": "x", "usage": usage})
+
+    def test_v3_edit_chat_requires_op_id_and_rejects_inline_pages(self) -> None:
+        req = schemas.V3EditChatRequest(
+            albumId="alb_1",
+            language="en",
+            userMessage="write it",
+            focus={"chapterId": "c1", "pageIndex": 1},
+            progress={"currentChapterId": "c1", "doneChapterIds": []},
+        )
+        assert req.focus.chapterId == "c1"
+
+        with pytest.raises(ValidationError):
+            schemas.V3EditChatRequest(
+                albumId="alb_1",
+                language="en",
+                userMessage="write it",
+                focus={"chapterId": "c1"},
+                progress={"currentChapterId": "c1", "doneChapterIds": []},
+                pages=[],
+            )
+
+        with pytest.raises(ValidationError):
+            schemas.V3EditChatRequest(
+                albumId="alb_1",
+                language="en",
+                userMessage="write it",
+                focus={"chapterId": None},
+                progress={"currentChapterId": "c1", "doneChapterIds": []},
+            )
+
+        with pytest.raises(ValidationError):
+            schemas.V3EditChatRequest(
+                albumId="alb_1",
+                language="en",
+                userMessage="write it",
+                focus={"pageIndex": None},
+                progress={"currentChapterId": "c1", "doneChapterIds": []},
+            )
+
+        with pytest.raises(ValidationError):
+            schemas.V3EditChatRequest(
+                albumId="alb_1",
+                language="en",
+                userMessage="write it",
+                focus={},
+                progress={"doneChapterIds": []},
+            )
+
+        with pytest.raises(ValidationError):
+            schemas.V3EditChatResponse(
+                kind="edit",
+                assistantReply="Updated.",
+                patches=[],
+                usage={"durationMs": 1, "models": {}},
+            )
 
     def test_recommend_response_legal_sets(self):
         V3RecommendResponse.model_validate(
@@ -672,8 +797,34 @@ class TestV3Callback:
                 "jobKind": "analyze",
                 "event": "completed",
                 "tree": {"chapters": []},
-                "pages": [{"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}],
                 "usage": {"durationMs": 1, "models": {}},
+            }
+        )
+        SelectLayoutCompleted.model_validate(
+            {
+                "requestId": "r1",
+                "jobKind": "select-layout",
+                "event": "completed",
+                "pages": [{"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}],
+                "usage": {"durationMs": 1, "geminiCallCount": 1, "models": {"planning": "gemini-layout"}},
+            }
+        )
+        _CALLBACK.validate_python(
+            {
+                "requestId": "r1",
+                "jobKind": "select-layout",
+                "event": "progress",
+                "stage": "wrap",
+                "progress": 90,
+            }
+        )
+        _CALLBACK.validate_python(
+            {
+                "requestId": "r1",
+                "jobKind": "select-layout",
+                "event": "completed",
+                "pages": [{"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}],
+                "usage": {"durationMs": 1, "geminiCallCount": 1, "models": {"planning": "gemini-layout"}},
             }
         )
         _CALLBACK.validate_python(
@@ -684,7 +835,7 @@ class TestV3Callback:
         with pytest.raises(ValidationError):
             _CALLBACK.validate_python({"requestId": "r1", "jobKind": "analyze", "event": "bogus"})
 
-    def test_analyze_completed_pages_optional(self):
+    def test_analyze_completed_is_tree_only(self):
         payload = {
             "requestId": "r1",
             "jobKind": "analyze",
@@ -696,7 +847,7 @@ class TestV3Callback:
         V3AnalyzeCompleted.model_validate(payload)
         _CALLBACK.validate_python(payload)
         with pytest.raises(ValidationError):
-            V3AnalyzeCompleted.model_validate({**payload, "pages": None})
+            V3AnalyzeCompleted.model_validate({**payload, "pages": [{"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}]})
 
 
 # ---------- cross-language parity drift guard ---------------------------------
@@ -720,6 +871,8 @@ _PY_SCHEMAS = {
     "V3LayoutTree": V3LayoutTree,
     "V3RecommendRequest": V3RecommendRequest,
     "V3RecommendResponse": V3RecommendResponse,
+    "SelectLayoutRequest": SelectLayoutRequest,
+    "SelectLayoutCompleted": SelectLayoutCompleted,
     "V3TemplateCandidate": V3TemplateCandidate,
     "TemplateDef": TemplateDef,
     "TemplateTextSlot": TemplateTextSlot,

@@ -2,15 +2,73 @@ import { db, type DbOrTx } from '@/db/client';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { albumRepo } from '@/db/repos/album-repo';
 import { creditService } from '@/services/credit/credit-service';
-import { mapAgentErrorCode } from '@/lib/api/error-codes';
+import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
+import { V3StoryDraft } from '@yujee/contracts';
 
 const ZOMBIE_TIMEOUT_MS = 5 * 60 * 1000;
+const SELECT_LAYOUT_COMPLETABLE_STAGES = new Set(['layout', 'legalize', 'wrap']);
 
 export type GenerationResolution =
   | { kind: 'progress'; stage: string | null; progress: number }
   | { kind: 'swept' }
   | null;
+
+function firstChapterId(tree: unknown): string | null {
+  if (!tree || typeof tree !== 'object' || Array.isArray(tree)) return null;
+  const chapters = (tree as { chapters?: unknown }).chapters;
+  if (!Array.isArray(chapters)) return null;
+  const first = chapters[0];
+  if (!first || typeof first !== 'object' || Array.isArray(first)) return null;
+  const chapterId = (first as { chapterId?: unknown }).chapterId;
+  return typeof chapterId === 'string' && chapterId.length > 0 ? chapterId : null;
+}
+
+export function buildAnalyzeDraftJson(tree: unknown) {
+  return {
+    version: 'v3-story',
+    tree,
+    progress: { currentChapterId: firstChapterId(tree), doneChapterIds: [] },
+  };
+}
+
+export function mergeSelectLayoutPages(draftJson: unknown, pages: unknown) {
+  const parsed = V3StoryDraft.safeParse(draftJson);
+  if (!parsed.success) {
+    throw ERRORS.VALIDATION_FAILED('select-layout completion requires an existing v3-story draft');
+  }
+  return { ...parsed.data, pages };
+}
+
+function recordOrEmpty(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function numberValue(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+export function mergeV3Usage(previous: unknown, next: unknown): Record<string, unknown> {
+  const prev = recordOrEmpty(previous);
+  const cur = recordOrEmpty(next);
+  const prevModels = recordOrEmpty(prev.models);
+  const curModels = recordOrEmpty(cur.models);
+  const out: Record<string, unknown> = {
+    durationMs: numberValue(prev, 'durationMs') + numberValue(cur, 'durationMs'),
+    visionCallCount: numberValue(prev, 'visionCallCount') + numberValue(cur, 'visionCallCount'),
+    geminiCallCount: numberValue(prev, 'geminiCallCount') + numberValue(cur, 'geminiCallCount'),
+    planningInputTokens:
+      numberValue(prev, 'planningInputTokens') + numberValue(cur, 'planningInputTokens'),
+    planningOutputTokens:
+      numberValue(prev, 'planningOutputTokens') + numberValue(cur, 'planningOutputTokens'),
+    repairAttempts: numberValue(prev, 'repairAttempts') + numberValue(cur, 'repairAttempts'),
+    models: { ...prevModels, ...curModels },
+  };
+  return out;
+}
 
 export const jobService = {
   async markRunning(tx: DbOrTx, jobId: string) {
@@ -68,9 +126,12 @@ export const jobService = {
     const job = await agentJobRepo.findByRequestId(requestId);
     if (!job) return;
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
+    const currentProgress = Number.isFinite(job.progress) ? job.progress : 0;
+    const nextProgress = Math.max(currentProgress, progress);
+    const nextStage = progress < currentProgress ? job.stage : stage;
     await agentJobRepo.transitionStatus(db, job.id, 'RUNNING', ['QUEUED', 'RUNNING'], {
-      stage,
-      progress,
+      stage: nextStage,
+      progress: nextProgress,
       startedAt: new Date(),
     });
   },
@@ -93,7 +154,7 @@ export const jobService = {
     await this.handleProgress(requestId, stage, progress);
   },
 
-  async handleV3AnalyzeCompleted(requestId: string, tree: unknown, pages: unknown, usage: unknown) {
+  async handleV3AnalyzeCompleted(requestId: string, tree: unknown, usage: unknown) {
     const job = await agentJobRepo.findByRequestId(requestId);
     if (!job) return;
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
@@ -105,24 +166,58 @@ export const jobService = {
     }
 
     await db.transaction(async (tx) => {
+      const progress = Math.max(Number.isFinite(job.progress) ? job.progress : 0, 50);
+      const won = await agentJobRepo.transitionStatus(tx, job.id, 'RUNNING', ['QUEUED', 'RUNNING'], {
+        progress,
+        stage: 'layout',
+        usage: (usage as Record<string, unknown> | null) ?? null,
+        startedAt: new Date(),
+      });
+      if (!won) return;
+
+      const draftJson = buildAnalyzeDraftJson(tree);
+
+      await albumRepo.update(tx, job.albumId, {
+        draftJson,
+      });
+    });
+  },
+
+  async handleV3SelectLayoutCompleted(requestId: string, pages: unknown, usage: unknown) {
+    const job = await agentJobRepo.findByRequestId(requestId);
+    if (!job) return;
+    if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
+
+    const album = await albumRepo.findById(job.albumId);
+    if (!album) {
+      logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 select-layout completed');
+      return;
+    }
+    const parsedDraft = V3StoryDraft.safeParse(album.draftJson);
+    if (!SELECT_LAYOUT_COMPLETABLE_STAGES.has(job.stage ?? '') || album.status !== 'AGENT_RUNNING' || !parsedDraft.success) {
+      logger.warn(
+        {
+          requestId,
+          albumId: job.albumId,
+          jobStage: job.stage,
+          albumStatus: album.status,
+          hasStoryDraft: parsedDraft.success,
+        },
+        'ignored select-layout completed callback before analyze tree was ready',
+      );
+      return;
+    }
+
+    await db.transaction(async (tx) => {
       const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
         progress: 100,
-        stage: 'preview',
-        usage: (usage as Record<string, unknown> | null) ?? null,
+        stage: 'wrap',
+        usage: mergeV3Usage(job.usage, usage),
         completedAt: new Date(),
       });
       if (!won) return;
 
-      const draftJson =
-        tree && typeof tree === 'object' && !Array.isArray(tree)
-          ? {
-              ...(tree as Record<string, unknown>),
-              ...(pages !== undefined ? { pages } : {}),
-            }
-          : {
-              tree,
-              ...(pages !== undefined ? { pages } : {}),
-            };
+      const draftJson = mergeSelectLayoutPages(album.draftJson, pages);
 
       await albumRepo.update(tx, job.albumId, {
         status: 'EDITING',

@@ -4,6 +4,8 @@ import type { CompressedPhoto } from '@/lib/photo/compress';
 import {
   clusterCompressedPhotos,
   compressedPhotosFromCache,
+  selectLayoutRefsFromCompressed,
+  submitSelectLayoutV3,
   submitAnalyzeV3,
   UnauthorizedError,
 } from './client';
@@ -36,6 +38,39 @@ test('submitAnalyzeV3 throws UnauthorizedError for unauthorized responses', asyn
   }
 });
 
+test('submitSelectLayoutV3 posts refs to the browser-facing select-layout route', async () => {
+  const originalFetch = globalThis.fetch;
+  const captured: { url?: string; method?: string; body?: unknown } = {};
+  globalThis.fetch = (async (input: string, init?: RequestInit) => {
+    captured.url = String(input);
+    captured.method = init?.method;
+    captured.body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    return Response.json({
+      ok: true,
+      data: { albumId: 'alb_1', requestId: 'layout-r1', accepted: true },
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await submitSelectLayoutV3('alb_1', {
+      requestId: 'layout-r1',
+      language: 'en',
+      refs: { p1: 'data:image/jpeg;base64,AA==' },
+    });
+
+    assert.equal(captured.url, '/api/v3/albums/alb_1/select-layout');
+    assert.equal(captured.method, 'POST');
+    assert.deepEqual(captured.body, {
+      requestId: 'layout-r1',
+      language: 'en',
+      refs: { p1: 'data:image/jpeg;base64,AA==' },
+    });
+    assert.deepEqual(result, { albumId: 'alb_1', requestId: 'layout-r1', accepted: true });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('compressedPhotosFromCache returns cached photos in requested order', () => {
   const cached = [
     compressed('b', 'data:image/jpeg;base64,b', 800, 600),
@@ -49,6 +84,19 @@ test('compressedPhotosFromCache returns null when any requested photo is missing
   const cached = [compressed('a', 'data:image/jpeg;base64,a', 600, 800)];
 
   assert.equal(compressedPhotosFromCache(['a', 'b'], cached), null);
+});
+
+test('selectLayoutRefsFromCompressed returns photoId keyed transient data URLs', () => {
+  assert.deepEqual(
+    selectLayoutRefsFromCompressed([
+      compressed('a', 'data:image/jpeg;base64,a', 800, 600),
+      compressed('b', 'data:image/jpeg;base64,b', 600, 800),
+    ]),
+    {
+      a: 'data:image/jpeg;base64,a',
+      b: 'data:image/jpeg;base64,b',
+    },
+  );
 });
 
 test('clusterCompressedPhotos attaches clusterId and DROPS the transient geo (privacy)', () => {

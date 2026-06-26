@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   postChapterChat,
+  postEditChat,
   postRecommend,
   postApplyTheme,
   postCover,
@@ -93,6 +94,33 @@ test('postChapterChat throws CreditInsufficientError on CREDIT_INSUFFICIENT', as
     postChapterChat('alb_1', { language: 'en', chapterId: 'c1', history: [], userMessage: 'hi' }),
     (e) => e instanceof CreditInsufficientError,
   );
+});
+
+test('postEditChat POSTs slim edit-chat body to /api/v3/albums/:id/edit-chat', async (t) => {
+  const captured = mockFetch(t, {
+    ok: true,
+    data: {
+      kind: 'talk',
+      assistantReply: 'Tell me more.',
+      patches: [],
+      opId: 'op_1',
+      usage: { durationMs: 1, models: {} },
+    },
+  });
+  const res = await postEditChat('alb_1', {
+    language: 'en',
+    chapterId: 'c2',
+    userMessage: 'about it',
+    focusedPageIndex: 3,
+  });
+  assert.equal(captured.url, '/api/v3/albums/alb_1/edit-chat');
+  assert.deepEqual(captured.body, {
+    language: 'en',
+    chapterId: 'c2',
+    userMessage: 'about it',
+    focusedPageIndex: 3,
+  });
+  assert.equal(res.opId, 'op_1');
 });
 
 // ─── ③ recommend / apply-theme (缺口#20) ───

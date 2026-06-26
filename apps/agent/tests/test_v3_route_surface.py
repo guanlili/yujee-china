@@ -15,7 +15,9 @@ def test_agent_route_surface_keeps_health_and_v3_only() -> None:
     assert "/health" in paths
     assert {
         "/v3/analyze",
+        "/v3/select-layout",
         "/v3/chapter-chat",
+        "/v3/edit-chat",
         "/v3/page-edit",
         "/v3/recommend",
         "/v3/apply-theme",
@@ -24,6 +26,48 @@ def test_agent_route_surface_keeps_health_and_v3_only() -> None:
         "/internal/agent-ack",
     }.issubset(paths)
     assert not any(path.startswith("/" + "v2" + "/album") for path in paths)
+
+
+def test_select_layout_route_accepts_202_and_background_task(monkeypatch) -> None:
+    from src import routes
+    from src.main import app
+
+    seen = []
+
+    async def fake_run_with_timeout(req):
+        seen.append(req.requestId)
+
+    monkeypatch.setattr(routes.select_layout, "run_with_timeout", fake_run_with_timeout)
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer test_secret"}
+
+    resp = client.post(
+        "/v3/select-layout",
+        json={
+            "requestId": "layout-r1",
+            "callbackUrl": "https://example.com/api/v3/internal/job-progress",
+            "language": "en",
+            "chapters": [
+                {
+                    "chapterId": "ch_1",
+                    "structureHint": "coast morning",
+                    "photos": [
+                        {
+                            "photoId": "p1",
+                            "ref200px": "data:image/jpeg;base64,AA==",
+                            "orientation": "landscape",
+                            "takenAt": None,
+                        }
+                    ],
+                }
+            ],
+        },
+        headers=headers,
+    )
+
+    assert resp.status_code == 202
+    assert resp.json() == {"ok": True, "data": {"requestId": "layout-r1", "accepted": True}}
+    assert seen == ["layout-r1"]
 
 
 def test_internal_agent_ack_contract_surface(monkeypatch) -> None:

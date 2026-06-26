@@ -122,6 +122,19 @@ class Settings(BaseSettings):
     describe_concurrency_threshold_hi: int = 40
     describe_max_concurrency: int = 3
 
+    # Stage2 select-layout: Gemini via OpenAI-compatible /chat/completions.
+    # Missing key is non-fatal for the stage: flows/select_layout.py catches it
+    # and uses the deterministic skeleton fallback.
+    select_layout_api_key: str | None = None
+    select_layout_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    select_layout_model: str = "gemini-2.5-flash"
+    select_layout_timeout_seconds: int = 60
+    select_layout_max_output_tokens: int = 4096
+    select_layout_use_json_object: bool = True
+    select_layout_disable_thinking: bool = True
+    select_layout_max_images_per_batch: int = 24
+    select_layout_max_concurrency: int = Field(default=3, ge=1)
+
     # planning + chat-edit (DeepSeek slot; in prod points at Volcano Ark doubao)
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"

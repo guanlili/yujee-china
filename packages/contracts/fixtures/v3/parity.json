@@ -755,6 +755,30 @@
         "jobKind": "analyze",
         "event": "completed",
         "tree": { "chapters": [] },
+        "usage": { "durationMs": 1, "models": {} }
+      }
+    },
+    {
+      "name": "V3Callback completed(select-layout)",
+      "schema": "V3Callback",
+      "expectValid": true,
+      "payload": {
+        "requestId": "r1",
+        "jobKind": "select-layout",
+        "event": "completed",
+        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }],
+        "usage": { "durationMs": 1, "geminiCallCount": 1, "models": { "planning": "gemini-layout" } }
+      }
+    },
+    {
+      "name": "V3Callback rejects analyze pages",
+      "schema": "V3Callback",
+      "expectValid": false,
+      "payload": {
+        "requestId": "r1",
+        "jobKind": "analyze",
+        "event": "completed",
+        "tree": { "chapters": [] },
         "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }],
         "usage": { "durationMs": 1, "models": {} }
       }

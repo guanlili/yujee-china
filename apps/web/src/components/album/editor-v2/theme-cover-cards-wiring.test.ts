@@ -62,7 +62,7 @@ test('runApplyTheme has NO auto-apply fallback (缺口#20: 删掉自动套兜底
 });
 
 test('confirming the last chapter (stage → theme) surfaces the palette-card', () => {
-  // markCurrentChapterDone reads the returned stage; when it advances to 'theme'
+  // edit-chat progressDecision refreshes the story projection; when it advances to 'theme'
   // it kicks off the recommend → palette-card flow.
   assert.match(src, /if \(storyGate\.stage === 'theme'\)\s*\{[\s\S]{0,160}runRecommendTheme\(\)/);
 });

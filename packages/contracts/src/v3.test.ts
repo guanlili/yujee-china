@@ -18,6 +18,8 @@ import {
   V3ChapterOverview,
   V3CoverRequest,
   V3CoverResponse,
+  V3EditChatRequest,
+  V3EditChatResponse,
   V3FinalizeResponse,
   V3InternalAgentAckRequest,
   V3InternalAgentAckResponse,
@@ -27,6 +29,8 @@ import {
   V3PageEditResponse,
   V3RecommendRequest,
   V3RecommendResponse,
+  SelectLayoutCompleted,
+  SelectLayoutRequest,
   V3StoryDraft,
   V3StoryProgress,
 } from './v3';
@@ -373,6 +377,60 @@ test('V3AnalyzeRequest photo accepts clusterId, rejects coordinate keys (#232 §
   }
 });
 
+test('SelectLayoutRequest carries 200px refs and takenAt, and rejects caller candidates', () => {
+  const payload = {
+    requestId: 'layout-r1',
+    callbackUrl: 'https://example.com/api/v3/internal/job-progress',
+    language: 'en' as const,
+    chapters: [
+      {
+        chapterId: 'ch_1',
+        structureHint: 'coast morning',
+        photos: [
+          {
+            photoId: 'p1',
+            ref200px: 'data:image/jpeg;base64,AA==',
+            orientation: 'landscape' as const,
+            takenAt: '2024-03-15T08:30:00',
+          },
+          {
+            photoId: 'p2',
+            ref200px: 'data:image/png;base64,AA==',
+            orientation: 'portrait' as const,
+            takenAt: null,
+          },
+        ],
+      },
+    ],
+  };
+
+  assert.equal(SelectLayoutRequest.safeParse(payload).success, true);
+  assert.equal(
+    SelectLayoutRequest.safeParse({
+      ...payload,
+      chapters: [
+        {
+          ...payload.chapters[0],
+          candidates: [{ templateId: 'mag-08', category: 'interior', imageSlotCount: 2 }],
+        },
+      ],
+    }).success,
+    false,
+  );
+  assert.equal(
+    SelectLayoutRequest.safeParse({
+      ...payload,
+      chapters: [
+        {
+          ...payload.chapters[0],
+          photos: [{ ...payload.chapters[0].photos[0], takenAt: undefined }],
+        },
+      ],
+    }).success,
+    false,
+  );
+});
+
 test('internal agent ack schemas parse request and response', () => {
   assert.deepEqual(V3InternalAgentAckRequest.parse({ opId: 'op_1' }), { opId: 'op_1' });
   assert.deepEqual(V3InternalAgentAckResponse.parse({ ok: false }), { ok: false });
@@ -478,6 +536,57 @@ test('V3ChapterChatResponse: kind drives which patch is present', () => {
     true,
   );
   assert.equal(V3ChapterChatResponse.safeParse({ kind: 'sing', assistantReply: 'x', usage }).success, false);
+});
+
+test('V3EditChatResponse requires opId and supports commit bundle fields', () => {
+  assert.equal(
+    V3EditChatResponse.safeParse({
+      kind: 'edit',
+      assistantReply: 'Updated.',
+      patches: [{ pageIndex: 2, texts: { body: 'New copy' } }],
+      pagesTexts: [{ pageIndex: 1, texts: { title: 'Coast' } }],
+      progressDecision: { pageDone: true, chapterDone: true, advanceTo: 'theme' },
+      opId: 'op_1',
+      usage: { durationMs: 1, models: {} },
+    }).success,
+    true,
+  );
+
+  assert.equal(
+    V3EditChatResponse.safeParse({
+      kind: 'edit',
+      assistantReply: 'Updated.',
+      patches: [],
+      usage: { durationMs: 1, models: {} },
+    }).success,
+    false,
+  );
+});
+
+test('V3EditChatRequest is slim and does not carry chapter pages or history', () => {
+  assert.equal(
+    V3EditChatRequest.safeParse({
+      albumId: 'alb_1',
+      language: 'en',
+      userMessage: 'write this chapter',
+      focus: { chapterId: 'c1', pageIndex: 3 },
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+    }).success,
+    true,
+  );
+
+  assert.equal(
+    V3EditChatRequest.safeParse({
+      albumId: 'alb_1',
+      language: 'en',
+      userMessage: 'write this chapter',
+      focus: { chapterId: 'c1' },
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+      history: [],
+      pages: [],
+    }).success,
+    false,
+  );
 });
 
 // ───────────────────── ②b 页级编辑 — POST /v3/page-edit ─────────────────────
@@ -836,7 +945,7 @@ test('V3FinalizeResponse returns the flat AlbumLayoutPlan (render contract)', ()
   assert.equal(ok.success, true);
 });
 
-test('V3Callback union: progress / completed(analyze) / failed', () => {
+test('V3Callback union: analyze progress / analyze completed / select-layout completed / failed', () => {
   assert.equal(
     V3Callback.safeParse({
       requestId: 'r1',
@@ -853,8 +962,37 @@ test('V3Callback union: progress / completed(analyze) / failed', () => {
       jobKind: 'analyze',
       event: 'completed',
       tree: { chapters: [] },
-      pages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }],
       usage: { durationMs: 1, models: {} },
+    }).success,
+    true,
+  );
+  assert.equal(
+    SelectLayoutCompleted.safeParse({
+      requestId: 'r1',
+      jobKind: 'select-layout',
+      event: 'completed',
+      pages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }],
+      usage: { durationMs: 1, geminiCallCount: 1, models: { planning: 'gemini-layout' } },
+    }).success,
+    true,
+  );
+  assert.equal(
+    V3Callback.safeParse({
+      requestId: 'r1',
+      jobKind: 'select-layout',
+      event: 'progress',
+      stage: 'legalize',
+      progress: 50,
+    }).success,
+    true,
+  );
+  assert.equal(
+    V3Callback.safeParse({
+      requestId: 'r1',
+      jobKind: 'select-layout',
+      event: 'completed',
+      pages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }],
+      usage: { durationMs: 1, geminiCallCount: 1, models: { planning: 'gemini-layout' } },
     }).success,
     true,
   );
@@ -869,7 +1007,7 @@ test('V3Callback union: progress / completed(analyze) / failed', () => {
   );
 });
 
-test('test_analyze_completed_pages_optional', () => {
+test('test_analyze_completed_is_tree_only', () => {
   assert.equal(
     V3Callback.safeParse({
       requestId: 'r1',
@@ -886,7 +1024,7 @@ test('test_analyze_completed_pages_optional', () => {
       jobKind: 'analyze',
       event: 'completed',
       tree: { chapters: [] },
-      pages: null,
+      pages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }],
       usage: { durationMs: 1, models: {} },
     }).success,
     false,

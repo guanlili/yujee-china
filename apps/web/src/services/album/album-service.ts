@@ -20,6 +20,7 @@ import {
   type V3Chapter,
   type V3ChatTurn,
   type V3ChapterChatResponse,
+  type V3EditChatResponse,
   type V3LayoutTree as V3LayoutTreeT,
   type V3Language,
   type V3StoryProgress,
@@ -30,6 +31,7 @@ import {
   type V3ApplyThemeRequest,
   type V3ApplyThemeResponse,
   type V3InternalAgentDataRequest,
+  type V3PageTextsPatch,
 } from '@yujee/contracts';
 
 const PDF_MAX_BYTES = 50 * 1024 * 1024; // 50MB — docs/web/api.md §3.6
@@ -130,7 +132,18 @@ function applyLayoutPatchToDraftPages(pages: V3Page[], patch: V3LayoutPatchEntry
   for (const rawEntry of patch) {
     const entry = rawEntry as V3LayoutPatchEntryWithImagePos;
     const page = next.find((p) => p.pageIndex === entry.pageIndex);
-    if (!page) continue;
+    if (!page) {
+      if (entry.pageIndex === next.length && entry.templateId && entry.images && entry.texts) {
+        next.push({
+          pageIndex: entry.pageIndex,
+          templateId: entry.templateId,
+          images: { ...entry.images },
+          texts: { ...entry.texts },
+          ...(entry.imagePos !== undefined ? { imagePos: { ...entry.imagePos } } : {}),
+        });
+      }
+      continue;
+    }
 
     if (entry.templateId && entry.templateId !== page.templateId) {
       page.templateId = entry.templateId;
@@ -157,6 +170,13 @@ function applyLayoutPatchToDraftPages(pages: V3Page[], patch: V3LayoutPatchEntry
   }
 
   return next;
+}
+
+function applyPagesTextsToDraftPages(pages: V3Page[], patches: V3PageTextsPatch[]): V3Page[] {
+  return pages.map((page) => {
+    const patch = patches.find((item) => item.pageIndex === page.pageIndex);
+    return patch ? { ...page, texts: { ...page.texts, ...patch.texts } } : page;
+  });
 }
 
 // ② 章节故事 — server-side single-chapter slice for /v3/chapter-chat (§8.3 单章切片;
@@ -303,6 +323,7 @@ function combineApplyThemeResponses(responses: V3ApplyThemeResponse[]): V3ApplyT
     usage: {
       durationMs: responses.reduce((sum, r) => sum + r.usage.durationMs, 0),
       visionCallCount: responses.reduce((sum, r) => sum + r.usage.visionCallCount, 0),
+      geminiCallCount: responses.reduce((sum, r) => sum + r.usage.geminiCallCount, 0),
       planningInputTokens: responses.reduce((sum, r) => sum + r.usage.planningInputTokens, 0),
       planningOutputTokens: responses.reduce((sum, r) => sum + r.usage.planningOutputTokens, 0),
       repairAttempts: responses.reduce((sum, r) => sum + r.usage.repairAttempts, 0),
@@ -669,6 +690,83 @@ export const albumService = {
       });
     });
     return result;
+  },
+
+  async editChatTurn(
+    userId: string,
+    albumId: string,
+    input: {
+      language: V3Language;
+      chapterId?: string;
+      userMessage: string;
+      focusedPageIndex?: number;
+      pagePhotoRefs?: Record<string, string> | Array<{ photoId: string; ref200px: string }>;
+    },
+  ): Promise<V3EditChatResponse> {
+    const album = await this.findOwned(userId, albumId);
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+    if (input.chapterId && !normalized.tree.chapters.some((chapter) => chapter.chapterId === input.chapterId)) {
+      throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+    }
+    if (input.chapterId && input.pagePhotoRefs) {
+      transientPagePhotoRefs.register({ albumId, chapterId: input.chapterId, refs: input.pagePhotoRefs });
+    }
+
+    try {
+      const result = await agentClient.editChatV3({
+        albumId,
+        language: input.language,
+        userMessage: input.userMessage,
+        focus: {
+          ...(input.chapterId ? { chapterId: input.chapterId } : {}),
+          ...(input.focusedPageIndex !== undefined ? { pageIndex: input.focusedPageIndex } : {}),
+        },
+        progress: normalized.progress,
+      });
+
+      await db.transaction(async (tx) => {
+        const latest = await albumRepo.findByIdForUpdate(tx, albumId);
+        if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
+        const current = readStoryDraft(latest.draftJson);
+        if (!current?.pages) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft pages');
+
+        let pages = current.pages;
+        if (result.pagesTexts?.length) pages = applyPagesTextsToDraftPages(pages, result.pagesTexts);
+        if (result.patches.length > 0) pages = applyLayoutPatchToDraftPages(pages, result.patches);
+
+        const chapterOrder = current.tree.chapters.map((chapter) => chapter.chapterId);
+        const doneSet = new Set(current.progress.doneChapterIds);
+        const currentChapterIdBefore = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
+        if (result.progressDecision?.chapterDone && input.chapterId) {
+          if (!doneSet.has(input.chapterId) && input.chapterId !== currentChapterIdBefore) {
+            throw ERRORS.VALIDATION_FAILED('chapterId is not the current story chapter');
+          }
+          doneSet.add(input.chapterId);
+        }
+        const doneChapterIds = chapterOrder.filter((id) => doneSet.has(id));
+        const currentChapterId = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
+        const allDone = chapterOrder.length > 0 && chapterOrder.every((id) => doneSet.has(id));
+        const nextDraft: V3StoryDraft = {
+          version: 'v3-story',
+          tree: current.tree,
+          pages,
+          progress: { currentChapterId, doneChapterIds },
+        };
+
+        await albumRepo.update(tx, albumId, {
+          draftJson: nextDraft,
+          ...(allDone && result.progressDecision?.advanceTo === 'theme' ? { stage: 'theme' as const } : {}),
+        });
+      });
+
+      await agentClient.ackEditOp({ opId: result.opId });
+      return result;
+    } finally {
+      if (input.chapterId && input.pagePhotoRefs) {
+        transientPagePhotoRefs.clear(albumId, input.chapterId);
+      }
+    }
   },
 
   // ③ 主题/章节色-应用 (WP3.2 / #190). The user picked, per chapter, one
