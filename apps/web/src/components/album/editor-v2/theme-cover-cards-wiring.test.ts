@@ -95,3 +95,56 @@ test('cover-card 应用 sends current template ids; 跳过 sends an empty select
 test('skipCover action sends an empty cover selection (no auto design)', () => {
   assert.match(src, /skipCover: \(\) => \{ void runCover\(\{\}\); \}/);
 });
+
+test('cover-stage free text routes to the cover turn with cover history', () => {
+  const fn = /async function send\(\)[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'send must exist');
+  const body = fn![0];
+  assert.match(body, /storyGate\?\.stage === 'cover'/);
+  assert.match(body, /runCover\(\{[\s\S]{0,180}userMessage: txt[\s\S]{0,180}history: coverHistory\.slice\(-CHAT_HISTORY_MAX\)/);
+  assert.match(body, /return/);
+});
+
+// ─── restore chat decision cards on reload ──────────────────────────────────
+// The theme/cover cards are session-only DOM (album_messages is text-only), so on
+// re-entry they're re-derived from stage + draftSkel: past stages as read-only
+// recaps, the current stage as its live actionable card. Without this, refreshing
+// mid-theme/mid-cover left no card to continue with.
+
+test('on re-entry, the active decision card is re-emitted per stage', () => {
+  // theme → live palette card; cover → theme recap + live cover card; ready → both recaps.
+  assert.match(src, /else if \(stage === 'theme' \|\| stage === 'cover' \|\| stage === 'ready'\)/);
+  assert.match(src, /if \(stage === 'theme'\)\s*\{\s*void runRecommendTheme\(\)/);
+  // cover stage: theme recap + live cover card (the cover branch carries a multi-line
+  // legacy-auto-advance note between the calls, so the window is generous).
+  assert.match(src, /else if \(stage === 'cover'\)\s*\{[\s\S]{0,400}appendThemeSummary\(\);[\s\S]{0,400}appendCoverCard\(\)/);
+  // ready branch (the trailing else): both stages walked past → both read-only recaps.
+  assert.match(src, /appendThemeSummary\(\);[\s\S]{0,400}appendCoverSummary\(\)/);
+});
+
+test('appendThemeSummary is a READ-ONLY recap of chapter titles (no apply action)', () => {
+  const fn = /function appendThemeSummary\(\)[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'appendThemeSummary must exist');
+  const body = fn![0];
+  assert.match(body, /palette-card is-recap/);
+  assert.match(body, /draftSkel\?\.chapters/);
+  // shows each chapter's applied title (subject), falling back to its label.
+  assert.match(body, /c\.subject && c\.subject\.trim\(\)\) \|\| c\.label/);
+  // read-only: no apply button, never re-fires apply-theme.
+  assert.doesNotMatch(body, /pc-apply/);
+  assert.doesNotMatch(body, /runApplyTheme/);
+});
+
+test('appendCoverSummary is a READ-ONLY recap (preview or 跳过, no API call)', () => {
+  const fn = /function appendCoverSummary\(\)[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'appendCoverSummary must exist');
+  const body = fn![0];
+  assert.match(body, /cover-card is-recap/);
+  // cover/ending resolved by skeleton kind (same as the live card), previewed read-only.
+  assert.match(body, /kindByPageIndex\.get\(p\.pageIndex\) === 'cover'/);
+  assert.match(body, /coverOptionHTML\(page\.templateId/);
+  // 已跳过 when neither cover nor ending page exists.
+  assert.match(body, /已跳过封面设计/);
+  // read-only: never posts a cover selection.
+  assert.doesNotMatch(body, /runCover/);
+});

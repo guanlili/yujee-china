@@ -12,6 +12,7 @@ import {
   Page,
   V3LayoutTree,
   V3StoryDraft,
+  type ArtFontPack,
   type AlbumLayoutPlan,
   type ImagePos,
   type Page as V3Page,
@@ -243,6 +244,23 @@ function withCoverEndingHeroPhotos(
     next[lastIndex] = withHeroPhoto(next[lastIndex]!, endingPhotoId);
   }
   return next;
+}
+
+function photoSceneDescriptionById(tree: V3LayoutTreeT, photoId?: string | null): string | undefined {
+  if (!photoId) return undefined;
+  for (const chapter of tree.chapters) {
+    const photo = chapter.photos.find((p) => p.photoId === photoId);
+    const desc = photo?.sceneDescription?.trim();
+    if (desc) return desc;
+  }
+  return undefined;
+}
+
+function selectedBookArtFont(tree: V3LayoutTreeT): ArtFontPack | undefined {
+  for (const chapter of tree.chapters) {
+    if (chapter.artFont) return chapter.artFont;
+  }
+  return undefined;
 }
 
 // apply-theme only brushes pages whose template actually has a `variableDecor` slot
@@ -833,8 +851,14 @@ export const albumService = {
       // before forwarding — the agent then auto-fills from the page's own images.
       coverPhotoId?: string | null;
       endingPhotoId?: string | null;
+      // Transient browser thumbnails/context for Stage5 cover clarification. These are
+      // forwarded only in the Agent request body and are never written into draft_json.
+      coverPhoto?: string;
+      endingPhoto?: string;
+      userMessage?: string;
+      history?: V3ChatTurn[];
     },
-  ): Promise<{ stage: string; layoutPatch: V3LayoutPatchEntry[]; assistantReply?: string }> {
+  ): Promise<{ stage: string; layoutPatch: V3LayoutPatchEntry[]; assistantReply?: string; needsUserInput: boolean }> {
     const album = await this.findOwned(userId, albumId);
     const normalized = readStoryDraft(album.draftJson);
     if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
@@ -854,14 +878,34 @@ export const albumService = {
       input.coverPhotoId,
       input.endingPhotoId,
     );
+    const coverPhotoDesc = photoSceneDescriptionById(normalized.tree, input.coverPhotoId);
+    const artFont = selectedBookArtFont(normalized.tree);
 
     const agentResult = await agentClient.coverV3({
       albumId,
       language: input.language,
       ...(input.coverTemplateId !== undefined ? { coverTemplateId: input.coverTemplateId } : {}),
       ...(input.endingTemplateId !== undefined ? { endingTemplateId: input.endingTemplateId } : {}),
+      ...(input.coverPhoto !== undefined ? { coverPhoto: input.coverPhoto } : {}),
+      ...(input.endingPhoto !== undefined ? { endingPhoto: input.endingPhoto } : {}),
+      ...(coverPhotoDesc !== undefined ? { coverPhotoDesc } : {}),
+      ...(artFont !== undefined ? { artFont } : {}),
+      ...(input.userMessage !== undefined ? { userMessage: input.userMessage } : {}),
+      ...(input.history !== undefined ? { history: input.history } : {}),
       pages: pagesForAgent,
     });
+
+    const needsUserInput = agentResult.needsUserInput ?? false;
+    if (needsUserInput) {
+      return {
+        stage: album.stage,
+        layoutPatch: agentResult.layoutPatch,
+        needsUserInput,
+        ...(agentResult.assistantReply !== undefined
+          ? { assistantReply: agentResult.assistantReply }
+          : {}),
+      };
+    }
 
     // Persist: fold the patch into draft_json.pages + advance stage cover→ready.
     const persisted = await this.cover(userId, albumId, agentResult.layoutPatch);
@@ -869,6 +913,7 @@ export const albumService = {
     return {
       stage: persisted.stage,
       layoutPatch: persisted.layoutPatch,
+      needsUserInput,
       ...(agentResult.assistantReply !== undefined
         ? { assistantReply: agentResult.assistantReply }
         : {}),

@@ -246,25 +246,18 @@ async def submit_apply_theme(req: V3ApplyThemeRequest) -> dict[str, Any]:
     return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
 
 
-# ---------- cover (④ 书籍设计 — 封面/封尾, sync, deterministic, optional) ------
+# ---------- cover (④ 书籍设计 — 封面/封尾, sync route + async orchestration) ---
 
 
 @router.post("/v3/cover", dependencies=[Depends(require_bearer)])
 async def submit_cover(req: V3CoverRequest) -> dict[str, Any]:
-    """④ 书籍设计 — 封面/封尾 endpoint (§8 同步 / 确定性 / 可选 / WP4.1 #192).
+    """④ 书籍设计 — 封面/封尾 endpoint.
 
-    Synchronous, NO model call (§8.1: 确定性). After the user (optionally) picks a 封面
-    template (category=cover) and/or a 封尾 template (category=ending), this
-    deterministically AUTO-FILLS the relevant pages into finished spreads (§4.4(b)):
-    the页's photos slot into the template in declaration order (no quality/hero match),
-    generic decoration is code-filled, user-prose stays empty (§4.1 不生成正式文案; §3
-    隐私: no place). Cover is OPTIONAL — when BOTH ids are absent it returns an EMPTY
-    patch and does NOT error (§4.4 「跳过=空」; page0 is no longer forced to be cover,
-    a rule WP0.4 already removed from the V3 engine). Stateless (§8.3): the Agent
-    returns a page-level `layoutPatch` (§3 树边界: 仍是页级); Web merges the patch +
-    advances stage cover→ready (stage 推进权在 Web). Input carries no base64 (pure
-    structural transform). An invalid template (unknown id / wrong category) answers in
-    the contract error shape (§8.3 同步端点走 HTTP 错误码; retry without polluting stage)."""
+    The route is synchronous from Web's point of view, but the cover engine is async:
+    Stage5 may run copy clarification, local thumbnail color extraction, safe color
+    design, then deterministic landing patches. The Agent remains stateless; Web owns
+    persistence and stage advancement. Base64 thumbnails are never logged or sent to
+    prompt seams; they are only used by local color extraction."""
     log.info(
         "v3_cover.accepted",
         album_id=req.albumId,
@@ -280,7 +273,7 @@ async def submit_cover(req: V3CoverRequest) -> dict[str, Any]:
         known_status=status.HTTP_422_UNPROCESSABLE_ENTITY,
         known_code="AGENT_OUTPUT_VALIDATION",
     ):
-        response: V3CoverResponse = cover_v3.build_cover(req)
+        response: V3CoverResponse = await cover_v3.build_cover(req)
     log.info(
         "v3_cover.completed",
         album_id=req.albumId,

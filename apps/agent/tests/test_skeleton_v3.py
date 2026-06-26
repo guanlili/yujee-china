@@ -15,6 +15,19 @@ from src.schemas import V3TemplateCandidate
 from src.engine import skeleton_v3 as sk
 
 
+def _greedy_pack(total: int, max_capacity: int) -> list[int]:
+    """Expected page/chunk sizes when packing ``total`` photos greedily, each page
+    taking up to ``max_capacity``. Mirrors the engine's partition rule so the
+    assertions track the real interior max instead of a hardcoded literal."""
+    sizes: list[int] = []
+    remaining = total
+    while remaining > 0:
+        take = min(max_capacity, remaining)
+        sizes.append(take)
+        remaining -= take
+    return sizes
+
+
 def test_pools_are_keyed_by_category_not_slot():
     # mag-02 is slot=interior but category=toc — it must land in the toc pool,
     # never the interior pool (category != slot, the §9 distinction).
@@ -63,8 +76,8 @@ def test_legal_candidates_shape_for_select_template():
 
 
 def test_fallback_prefers_exact_capacity():
-    # 3-photo interior: 精确容量优先 —— pick 出的模板容量恰好为 3
-    # (不写死具体 id:模板库扩了多个 3 槽模板,断言"性质"而非"哪一个")。
+    # 3-photo interior: the picked template holds exactly 3 (an exact-capacity match,
+    # preferred over any larger template).
     pick3 = sk.pick_template_v3("interior", 3)
     assert sk.image_capacity(templates.TEMPLATES[pick3]) == 3
     # 1-photo interior: smallest sorted id among the 1-slot interiors.
@@ -121,8 +134,8 @@ def test_assign_images_into_repeat_group_template():
 
 def test_fallback_fixture_ten_photos_pick_holding_templates_in_order():
     """§9 fallback fixture: N photos → pick templates that can hold them, slot in
-    order. With the interior max of 9 (mag-48), 10 photos pack as 9 + 1, photos
-    kept in their original order across pages."""
+    order. Photos are packed greedily up to the interior max capacity and kept in
+    their original order across pages."""
     photo_ids = [f"p{i}" for i in range(10)]
     pages = sk.build_skeleton_v3([{"photos": photo_ids}])
 
@@ -137,19 +150,18 @@ def test_fallback_fixture_ten_photos_pick_holding_templates_in_order():
     # No photo lost, no photo duplicated, original order preserved.
     assert placed == photo_ids
     assert [p["pageIndex"] for p in pages] == list(range(len(pages)))
-    # 10 photos, interior max 9 (mag-48) -> 9 + 1.
-    assert [len(p["images"]) for p in pages] == [9, 1]
+    # Page sizes follow a greedy pack up to the interior max capacity (derived so
+    # this stays correct as templates change the max).
+    assert [len(p["images"]) for p in pages] == _greedy_pack(len(photo_ids), sk.max_capacity("interior"))
 
 
 def test_partition_photos_chunks_by_max_capacity():
-    # 满一页装到 interior 最大容量,余数另起一页(按 max 推导,不写死数字,
-    # 模板库再扩也不会误挂)。
-    cap = sk.max_capacity("interior")
-    n = cap + 2
-    chunks = sk.partition_photos_v3([str(i) for i in range(n)], category="interior")
-    assert [len(c) for c in chunks] == [cap, 2]
+    photos = [str(i) for i in range(10)]
+    chunks = sk.partition_photos_v3(photos, category="interior")
+    # Chunk sizes are a greedy pack up to the interior max capacity (derived).
+    assert [len(c) for c in chunks] == _greedy_pack(len(photos), sk.max_capacity("interior"))
     # flattening recovers the original order.
-    assert [pid for c in chunks for pid in c] == [str(i) for i in range(n)]
+    assert [pid for c in chunks for pid in c] == photos
 
 
 def test_partition_empty_photos_is_empty():

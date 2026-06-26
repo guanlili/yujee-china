@@ -12,7 +12,7 @@ import type {
   V3AnalyzeRequest,
   V3ApplyThemeRequest,
   V3ChapterChatRequest,
-  V3CoverRequest,
+  V3CoverRequestInput,
   V3FinalizeRequest,
   V3RecommendRequest,
 } from '@yujee/contracts';
@@ -74,7 +74,7 @@ export const agentClient = {
     });
   },
 
-  async coverV3(payload: V3CoverRequest): Promise<V3CoverResponse> {
+  async coverV3(payload: V3CoverRequestInput): Promise<V3CoverResponse> {
     return postSyncV3('/v3/cover', payload, V3CoverResponse, {
       albumId: payload.albumId,
     });

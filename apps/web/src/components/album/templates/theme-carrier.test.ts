@@ -168,6 +168,32 @@ test('mag-08 consumes title carrier while preserving title text', () => {
   assert.doesNotMatch(html, /title#accentColor/);
 });
 
+test('mag-02 web resolves repeat title carriers per row', () => {
+  const data = adaptPageToTemplateData(
+    {
+      templateId: 'mag-02',
+      images: {},
+      texts: {
+        'title[0]': 'First Row',
+        'title[0]#accentColor': '#111111',
+        'title[0]#artFont': 'sans-modern',
+        'title[1]': 'Second Row',
+        'title[1]#accentColor': '#C0392B',
+        'title[1]#artFont': 'display-bold',
+      },
+    },
+    () => undefined,
+  );
+  const Template = getWebTemplate('mag-02');
+  assert.ok(Template, 'mag-02 web template must resolve');
+
+  const html = renderToStaticMarkup(createElement(Template!, { data, totalPages: 5, imagePos: {} }));
+
+  assert.match(html, />Second Row</);
+  assert.match(html, /color:#C0392B/);
+  assert.match(html, new RegExp(escapeRegExp(DISPLAY_BOLD_WEB_FONT_NEEDLE)));
+});
+
 test('web templates consume every text variableDecor carrier as style only', () => {
   for (const [index, renderCase] of TEXT_CARRIER_RENDER_CASES.entries()) {
     const accentColor = accentColorFor(index);

@@ -105,7 +105,7 @@ def _decor_value_for_text_slot(
     return existing if existing is not None else None
 
 
-def _apply_page(page: Page, choice: V3ChapterThemeChoice) -> V3LayoutPatchEntry | None:
+def apply_page(page: Page, choice: V3ChapterThemeChoice) -> V3LayoutPatchEntry | None:
     """一页的 variableDecor patch,或当该页没有可主题化的槽时返回 None。
 
     读该页模板,找出哪些槽是 `variableDecor:true`,把 svg 槽 + 合格的 decoration 文字槽刷上该章
@@ -149,6 +149,9 @@ def _apply_page(page: Page, choice: V3ChapterThemeChoice) -> V3LayoutPatchEntry 
     return V3LayoutPatchEntry(pageIndex=page.pageIndex, texts=texts)
 
 
+_apply_page = apply_page
+
+
 def apply_theme(req: V3ApplyThemeRequest) -> V3ApplyThemeResponse:
     """确定性地刷给定页的每个 variableDecor 槽(§4.3/§9)。
 
@@ -168,7 +171,7 @@ def apply_theme(req: V3ApplyThemeRequest) -> V3ApplyThemeResponse:
 
     patches: list[V3LayoutPatchEntry] = []
     for page in req.pages:
-        entry = _apply_page(page, choice)
+        entry = apply_page(page, choice)
         if entry is not None:
             patches.append(entry)
 

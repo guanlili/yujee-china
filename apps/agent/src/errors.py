@@ -50,7 +50,7 @@ def sync_endpoint_errors(
 
         with sync_endpoint_errors(log, "v3_cover", CoverV3Error,
                                   known_status=422, known_code="AGENT_OUTPUT_VALIDATION"):
-            response = cover_v3.build_cover(req)
+            response = await cover_v3.build_cover(req)
 
     On `known_error`: `log.warning("<name>.failed", error=str(exc))` then raise
     `HTTPException(known_status, contract detail with known_code)`.
