@@ -20,17 +20,26 @@ export type CompressedPhoto = {
   clusterGeo: ClusterGeo | null;
 };
 
+type CompressOptions = {
+  maxLen?: number;
+  quality?: number;
+};
+
 // Accepts a Blob (File is a Blob) so we can re-compress originals read back from
 // IndexedDB — the resume-after-purchase and failed-album retry flows rebuild the
 // 800px base64 from the stored original instead of persisting the base64 itself.
-export async function compressFile(file: Blob, photoId: string): Promise<CompressedPhoto> {
+export async function compressFile(
+  file: Blob,
+  photoId: string,
+  options: CompressOptions = {},
+): Promise<CompressedPhoto> {
   const bytes = await readAsArrayBuffer(file);
   const takenAt = readTakenAtFromExif(bytes);
   const clusterGeo = readGeoForClustering(bytes);
   const dataUrl = arrayBufferToDataUrl(bytes, file.type || 'image/jpeg');
   const img = await loadImage(dataUrl);
-  const { canvas, w, h } = drawScaled(img, 800);
-  const base64 = canvas.toDataURL('image/jpeg', 0.6);
+  const { canvas, w, h } = drawScaled(img, options.maxLen ?? 800);
+  const base64 = canvas.toDataURL('image/jpeg', options.quality ?? 0.6);
   return { photoId, base64, width: w, height: h, takenAt, clusterGeo };
 }
 

@@ -590,9 +590,10 @@ export const V3FinalizeResponse = z
   .strict();
 export type V3FinalizeResponse = z.infer<typeof V3FinalizeResponse>;
 
-// ────────────────────────────── analyze callback envelope ──────────────────────────────
+// ────────────────────────────── async callback envelope ──────────────────────────────
 //
-// 沿用 v2 两级判别思路,但 V3 只有 analyze 一种 completed,故按 event 普通 union 即可。
+// 沿用 v2 两级判别思路；V3 已有 analyze/select-layout 两类 completed，
+// 这里按 event + jobKind 组成普通 union。
 
 const V3CallbackError = z.object({ code: z.string().min(1), message: z.string() }).strict();
 
@@ -612,7 +613,7 @@ const V3AnalyzeCompleted = z
     requestId: z.string().min(1),
     jobKind: z.literal('analyze'),
     event: z.literal('completed'),
-    // Stage1 tree-only: pages are created by select-layout.
+    // Stage1 tree-only: pages are created later by select-layout using this same requestId.
     tree: V3LayoutTree,
     usage: V3Usage,
   })
@@ -623,6 +624,8 @@ export const SelectLayoutCompleted = z
     requestId: z.string().min(1),
     jobKind: z.literal('select-layout'),
     event: z.literal('completed'),
+    // Stage2 reuses the analyze/init requestId and returns the layout pages that
+    // Web merges into draft_json before settling the original job/hold.
     pages: z.array(Page).min(1),
     usage: V3Usage,
   })

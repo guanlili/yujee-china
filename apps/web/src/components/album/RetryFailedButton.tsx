@@ -62,11 +62,12 @@ export function RetryFailedButton({
       return;
     }
     try {
-      await retryGeneration(albumId, {
+      const { requestId } = await retryGeneration(albumId, {
         requestId: crypto.randomUUID(),
         language: recipe.language,
         photos,
       });
+      albumRecipe.save(albumId, { ...recipe, requestId });
       // Album is AGENT_RUNNING again; reload so the poll loop restarts from a
       // non-terminal state (useAlbumPoll only re-arms on uuid change / remount).
       window.location.reload();

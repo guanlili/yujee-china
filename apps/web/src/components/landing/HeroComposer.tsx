@@ -89,7 +89,7 @@ export function HeroComposer({
     const cached = compressedPhotosFromCache(photoIds, cachedPhotos);
     const builtPhotos = cached ? clusterCompressedPhotos(cached) : await photosFromStore(photoIds);
     const trimmed = draft.prompt.trim();
-    const { albumId } = await submitAnalyzeV3({
+    const { albumId, requestId } = await submitAnalyzeV3({
       requestId: crypto.randomUUID(),
       language: draft.language,
       // promptHint is optional — omit when blank.
@@ -97,7 +97,7 @@ export function HeroComposer({
       photos: builtPhotos,
     });
     generationDraft.clear();
-    albumRecipe.save(albumId, { language: draft.language, photoIds });
+    albumRecipe.save(albumId, { language: draft.language, photoIds, requestId });
     router.push(`/${locale}/album/${albumId}`);
   };
 

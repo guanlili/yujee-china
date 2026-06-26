@@ -42,6 +42,36 @@ export function mergeSelectLayoutPages(draftJson: unknown, pages: unknown) {
   return { ...buildAnalyzeDraftJson(draftJson), pages };
 }
 
+function recordOrEmpty(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function numberValue(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+export function mergeV3Usage(previous: unknown, next: unknown): Record<string, unknown> {
+  const prev = recordOrEmpty(previous);
+  const cur = recordOrEmpty(next);
+  const prevModels = recordOrEmpty(prev.models);
+  const curModels = recordOrEmpty(cur.models);
+  const out: Record<string, unknown> = {
+    durationMs: numberValue(prev, 'durationMs') + numberValue(cur, 'durationMs'),
+    visionCallCount: numberValue(prev, 'visionCallCount') + numberValue(cur, 'visionCallCount'),
+    geminiCallCount: numberValue(prev, 'geminiCallCount') + numberValue(cur, 'geminiCallCount'),
+    planningInputTokens:
+      numberValue(prev, 'planningInputTokens') + numberValue(cur, 'planningInputTokens'),
+    planningOutputTokens:
+      numberValue(prev, 'planningOutputTokens') + numberValue(cur, 'planningOutputTokens'),
+    repairAttempts: numberValue(prev, 'repairAttempts') + numberValue(cur, 'repairAttempts'),
+    models: { ...prevModels, ...curModels },
+  };
+  return out;
+}
+
 export const jobService = {
   async markRunning(tx: DbOrTx, jobId: string) {
     await agentJobRepo.transitionStatus(tx, jobId, 'RUNNING', ['QUEUED'], { startedAt: new Date() });
@@ -166,7 +196,7 @@ export const jobService = {
       const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
         progress: 100,
         stage: 'wrap',
-        usage: (usage as Record<string, unknown> | null) ?? null,
+        usage: mergeV3Usage(job.usage, usage),
         completedAt: new Date(),
       });
       if (!won) return;

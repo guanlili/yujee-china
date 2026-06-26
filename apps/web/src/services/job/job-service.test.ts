@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildAnalyzeDraftJson, mergeSelectLayoutPages } from './job-service';
+import { buildAnalyzeDraftJson, mergeSelectLayoutPages, mergeV3Usage } from './job-service';
 
 const TREE = {
   chapters: [
@@ -39,4 +39,33 @@ test('mergeSelectLayoutPages adds pages without mutating the Stage1 tree/progres
     tree: TREE,
     progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
   });
+});
+
+test('mergeV3Usage keeps Stage1 usage when Stage2 reuses the same job', () => {
+  assert.deepEqual(
+    mergeV3Usage(
+      {
+        durationMs: 10,
+        visionCallCount: 2,
+        planningInputTokens: 3,
+        models: { vision: 'doubao' },
+      },
+      {
+        durationMs: 20,
+        geminiCallCount: 1,
+        planningInputTokens: 7,
+        planningOutputTokens: 11,
+        models: { planning: 'gemini-layout' },
+      },
+    ),
+    {
+      durationMs: 30,
+      visionCallCount: 2,
+      geminiCallCount: 1,
+      planningInputTokens: 10,
+      planningOutputTokens: 11,
+      repairAttempts: 0,
+      models: { vision: 'doubao', planning: 'gemini-layout' },
+    },
+  );
 });

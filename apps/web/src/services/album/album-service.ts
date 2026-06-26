@@ -303,6 +303,7 @@ function combineApplyThemeResponses(responses: V3ApplyThemeResponse[]): V3ApplyT
     usage: {
       durationMs: responses.reduce((sum, r) => sum + r.usage.durationMs, 0),
       visionCallCount: responses.reduce((sum, r) => sum + r.usage.visionCallCount, 0),
+      geminiCallCount: responses.reduce((sum, r) => sum + r.usage.geminiCallCount, 0),
       planningInputTokens: responses.reduce((sum, r) => sum + r.usage.planningInputTokens, 0),
       planningOutputTokens: responses.reduce((sum, r) => sum + r.usage.planningOutputTokens, 0),
       repairAttempts: responses.reduce((sum, r) => sum + r.usage.repairAttempts, 0),

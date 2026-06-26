@@ -2,6 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import type { AlbumDetail } from '@/components/album/types';
+import {
+  PhotosUnavailableError,
+  selectLayoutRefsFromStore,
+  submitSelectLayoutV3,
+  UnauthorizedError,
+} from '@/lib/generation/client';
+import { albumRecipe } from '@/lib/generation/draft';
 
 // Album is the source of truth (docs/web/api.md §3.4): we poll GET
 // /api/v1/albums/{uuid} by the addressable, ownership-checked uuid — never a
@@ -67,6 +74,8 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
     let inFlight = false;
     let timer: ReturnType<typeof setInterval> | null = null;
     let transient = 0;
+    let layoutSubmitInFlight = false;
+    const submittedLayoutRequests = new Set<string>();
     const startedAt = Date.now();
 
     const stop = () => {
@@ -137,6 +146,42 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
         // AGENT_RUNNING: keep polling unless we've crossed the soft ceiling.
         if (Date.now() - startedAt > SOFT_CEILING_MS) {
           return apply({ detail, generation, phase: 'error', error: null });
+        }
+        if (generation?.stage === 'layout') {
+          const recipe = albumRecipe.load(uuid);
+          if (!recipe?.requestId) {
+            return apply({
+              detail,
+              generation,
+              phase: 'error',
+              error: 'Original photos are no longer available on this device.',
+            });
+          }
+          if (!submittedLayoutRequests.has(recipe.requestId) && !layoutSubmitInFlight) {
+            layoutSubmitInFlight = true;
+            try {
+              const refs = await selectLayoutRefsFromStore(recipe.photoIds);
+              await submitSelectLayoutV3(uuid, {
+                requestId: recipe.requestId,
+                language: recipe.language,
+                refs,
+              });
+              submittedLayoutRequests.add(recipe.requestId);
+            } catch (e) {
+              if (e instanceof UnauthorizedError) {
+                return apply({ ...INITIAL, phase: 'unauthorized' });
+              }
+              const message =
+                e instanceof PhotosUnavailableError
+                  ? 'Original photos are no longer available on this device.'
+                  : e instanceof Error
+                    ? e.message
+                    : 'Failed to start layout.';
+              return apply({ detail, generation, phase: 'error', error: message });
+            } finally {
+              layoutSubmitInFlight = false;
+            }
+          }
         }
         apply({ detail, generation, phase: 'running', error: null });
       } finally {

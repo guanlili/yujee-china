@@ -363,12 +363,12 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
       // investment we want before any paywall. The billing gate is server-side,
       // right before the AI runs — submitAnalyzeV3 throws CREDIT_INSUFFICIENT (caught
       // below) before the agent is called.
-      const { albumId } = await submitAnalyzeV3({
+      const { albumId, requestId } = await submitAnalyzeV3({
         requestId: crypto.randomUUID(),
         language,
         photos: builtPhotos,
       });
-      albumRecipe.save(albumId, { language, photoIds });
+      albumRecipe.save(albumId, { language, photoIds, requestId });
       router.push(`/${locale}/album/${albumId}`);
     } catch (e) {
       if (e instanceof CreditInsufficientError) {

@@ -160,7 +160,7 @@ class JobError(_Strict):
 
 # =============================================================================
 # V3 contracts (WP0.3 / #178) — mirror of @yujee/contracts src/{enums,layout,
-# templates,v3}.ts. 五环节状态机的 `/v3/*` 端点 req/res + analyze callback。
+# templates,v3}.ts. 五环节状态机的 `/v3/*` 端点 req/res + async callback。
 #
 # All models below are `_V3Strict` (extra='forbid'), matching the TS `.strict()`
 # on every (nested) object. ★ analyze `exif` is the §3 privacy enforcement point:
@@ -698,8 +698,8 @@ class V3FinalizeResponse(_V3Strict):
     usage: V3Usage
 
 
-# ---------- v3.ts: analyze callback envelope ----------------------------------
-# Plain union discriminated on `event` (V3 has only one completed shape: analyze).
+# ---------- v3.ts: async callback envelope ------------------------------------
+# Plain union discriminated on `event` plus `jobKind` for completed variants.
 
 
 class V3CallbackError(_V3Strict):

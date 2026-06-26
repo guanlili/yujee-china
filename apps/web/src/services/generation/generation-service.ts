@@ -7,8 +7,8 @@ import { logger } from '@/lib/log/logger';
 import { albumService } from '@/services/album/album-service';
 import { creditService } from '@/services/credit/credit-service';
 import { jobService } from '@/services/job/job-service';
-import { V3LayoutTree } from '@yujee/contracts';
-import type { SelectLayoutRequest, V3AnalyzeRequest } from '@yujee/contracts';
+import { SelectLayoutRequest, V3LayoutTree } from '@yujee/contracts';
+import type { V3AnalyzeRequest } from '@yujee/contracts';
 
 type V3AnalyzeInput = {
   requestId: string;
@@ -91,6 +91,13 @@ export const generationService = {
 
   async submitSelectLayoutV3(userId: string, albumId: string, input: SelectLayoutInput) {
     const album = await albumService.findOwned(userId, albumId);
+    const job = await agentJobRepo.findByRequestId(input.requestId);
+    if (!job) throw ERRORS.JOB_NOT_FOUND();
+    if (job.userId !== userId || job.albumId !== albumId) throw ERRORS.JOB_NOT_OWNED();
+    if (album.status !== 'AGENT_RUNNING' || job.status !== 'RUNNING' || job.stage !== 'layout') {
+      throw ERRORS.ALBUM_NOT_EDITABLE();
+    }
+
     const tree = readDraftTree(album.draftJson);
     const payload = buildSelectLayoutRequestFromTree({
       requestId: input.requestId,
@@ -99,6 +106,13 @@ export const generationService = {
       tree,
       refs: input.refs,
     });
+    if (job.progress !== 50) {
+      return { albumId, requestId: input.requestId, accepted: true };
+    }
+    const reserved = await agentJobRepo.reserveSelectLayout(db, job.id);
+    if (!reserved) {
+      return { albumId, requestId: input.requestId, accepted: true };
+    }
 
     try {
       await agentClient.submitSelectLayoutV3(payload);
@@ -114,8 +128,6 @@ export const generationService = {
       return { albumId, requestId: input.requestId, accepted: true };
     }
 
-    const job = await agentJobRepo.findByRequestId(input.requestId);
-    if (job) await jobService.markRunning(db, job.id);
     return { albumId, requestId: input.requestId, accepted: true };
   },
 };
@@ -146,7 +158,7 @@ export function buildSelectLayoutRequestFromTree(input: {
 }): SelectLayoutRequest {
   const tree = V3LayoutTree.parse(input.tree);
   const refs = toRefMap(input.refs);
-  return {
+  const payload = {
     requestId: input.requestId,
     callbackUrl: input.callbackUrl,
     language: input.language,
@@ -167,6 +179,13 @@ export function buildSelectLayoutRequestFromTree(input: {
       }),
     })),
   };
+  const parsed = SelectLayoutRequest.safeParse(payload);
+  if (!parsed.success) {
+    throw ERRORS.VALIDATION_FAILED(
+      parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; '),
+    );
+  }
+  return parsed.data;
 }
 
 async function dispatchAnalyzeV3(

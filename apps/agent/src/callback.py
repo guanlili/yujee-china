@@ -19,7 +19,7 @@ _RETRY_BACKOFFS = (1, 4)
 
 # All envelopes share the duck-typed contract this poster relies on: `.event`
 # (for logging), `.requestId` (for the giveup log), and a pydantic `model_dump`.
-# The V3 analyze job posts to the Web callback URL supplied by the request.
+# V3 async jobs post to the Web callback URL supplied by the request.
 Envelope = Union[V3ProgressEvent, V3AnalyzeCompleted, SelectLayoutCompleted, V3FailedEvent]
 
 
