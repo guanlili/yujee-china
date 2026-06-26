@@ -327,6 +327,28 @@ def test_edit_chat_write_turn_fetches_page_info_and_returns_pages_texts():
     }
 
 
+def test_edit_chat_confirm_turn_returns_progress_decision():
+    repo = FakeRepo(op_id="op_advance")
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("Looks great — next chapter", chapter_id="c1", page_index=None),
+            repo=repo,
+            tools=FakeTools(),
+        )
+    )
+
+    assert resp.kind == "talk"
+    assert resp.progressDecision is not None
+    assert resp.progressDecision.chapterDone is True
+    assert resp.progressDecision.advanceTo == "theme"
+    assert repo.created[0]["kind"] == "advance"
+    assert repo.created[0]["payload"]["progressDecision"] == {
+        "chapterDone": True,
+        "advanceTo": "theme",
+    }
+
+
 def test_edit_chat_case4_fetches_page_photos_via_agent_data_and_calls_gemini(monkeypatch):
     tools = FakeTools(
         page_info={"chapter": _chapter().model_copy(update={"chapterId": "c1"}), "pages": _pages()},

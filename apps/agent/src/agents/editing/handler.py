@@ -94,6 +94,24 @@ def _wants_layout_swap(req: V3EditChatRequest) -> bool:
     return "layout" in text or "版式" in text
 
 
+def _wants_chapter_done(req: V3EditChatRequest) -> bool:
+    if not req.focus.chapterId:
+        return False
+    text = req.userMessage.lower()
+    return any(
+        token in text
+        for token in (
+            "looks great",
+            "next chapter",
+            "confirm this chapter",
+            "chapter done",
+            "满意",
+            "继续下一章",
+            "确定本章",
+        )
+    )
+
+
 def _page_index(page: dict[str, Any] | Any) -> int | None:
     value = page.get("pageIndex") if isinstance(page, dict) else getattr(page, "pageIndex", None)
     return value if isinstance(value, int) and value >= 0 else None
@@ -222,7 +240,10 @@ async def run(
     assistant_reply = "Tell me more about what you want to change."
     usage: V3Usage | None = None
 
-    if _wants_layout_swap(req):
+    if _wants_chapter_done(req):
+        progress = V3EditProgressDecision(chapterDone=True, advanceTo="theme")
+        assistant_reply = "This chapter is confirmed."
+    elif _wants_layout_swap(req):
         try:
             patches = await _case4_layout_swap(req, tools)
         except Exception as exc:
@@ -248,7 +269,7 @@ async def run(
         "kind": _kind_from_bundle(pages_texts, patches),
         "patches": [patch.model_dump(exclude_none=True, mode="json") for patch in patches],
         "pagesTexts": [patch.model_dump(mode="json") for patch in pages_texts] if pages_texts else None,
-        "progressDecision": progress.model_dump(mode="json") if progress else None,
+        "progressDecision": progress.model_dump(mode="json", exclude_none=True) if progress else None,
         "history": history,
     }
     op_id = await repo.create_pending_turn(

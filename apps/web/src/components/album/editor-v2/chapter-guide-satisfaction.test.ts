@@ -74,7 +74,7 @@ test('C: a write turn surfaces the satisfaction card (满意/不满意), not on 
     'the write-turn result must drive the wroteChapter flag');
   // (#236 ④: the write branch now also drops the write-now exit before the satisfaction
   // card, so the satisfaction card lives inside an `if (wroteChapter) { … }` block.)
-  assert.match(src, /if \(wroteChapter\) \{[\s\S]*?appendSatisfactionCard\(\);/,
+  assert.match(src, /if \(wroteChapter && !res\.progressDecision\?\.chapterDone\) \{[\s\S]*?appendSatisfactionCard\(\);/,
     'the satisfaction card must appear only after a successful write turn');
 });
 
@@ -83,15 +83,16 @@ test('C: 满意 confirms the chapter; 不满意 stays for逐页 adjustment (no s
   const card = /function appendSatisfactionCard\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(card, 'appendSatisfactionCard() body must be parseable');
 
-  // 满意 → markCurrentChapterDone (advance chapter / 末章→主题).
-  assert.match(card![0], /markCurrentChapterDone\(\)/, '满意 must call markCurrentChapterDone');
+  // 满意 → edit-chat progressDecision (advance chapter / 末章→主题) inside the acked bundle.
+  assert.match(card![0], /confirmCurrentChapterViaEditChat\(\)/,
+    '满意 must confirm through edit-chat');
 
   // 不满意 → stays on the chapter and asks the user which page to change (a talk/引导 ask);
   // it must NOT confirm the chapter or push stage. The existing focusedPageIndex + edit
   // turn machinery then does the逐页 adjustment — so the 不满意 branch itself applies no
   // patch and never advances.
   const noBranch = card![0].slice(card![0].indexOf('sc-no'));
-  assert.doesNotMatch(noBranch, /markCurrentChapterDone/,
+  assert.doesNotMatch(noBranch, /confirmCurrentChapterViaEditChat/,
     '不满意 must NOT confirm the chapter (stays for逐页 adjustment, no stage推进)');
 });
 
