@@ -11,6 +11,24 @@
       }
     },
     {
+      "name": "AgentAckRequest valid",
+      "schema": "AgentAckRequest",
+      "expectValid": true,
+      "payload": { "opId": "op_1" }
+    },
+    {
+      "name": "AgentAckRequest rejects extra",
+      "schema": "AgentAckRequest",
+      "expectValid": false,
+      "payload": { "opId": "op_1", "extra": true }
+    },
+    {
+      "name": "AgentAckResponse valid false",
+      "schema": "AgentAckResponse",
+      "expectValid": true,
+      "payload": { "ok": false }
+    },
+    {
       "name": "V3AnalyzeRequest minimal valid",
       "schema": "V3AnalyzeRequest",
       "expectValid": true,

@@ -15,14 +15,14 @@ Browser ──► Web (Next.js) ──► Agent (FastAPI)
 
 - **Browser** — 唯一有原图的地方。压缩到 800px base64 发出;本地 `@react-pdf/renderer` 生成 PDF 直传 R2。
 - **Web**(Next.js 15 + Drizzle + better-auth)— 页面 / 登录 / 积分 / 支付。base64 **不落盘**,直接转发 Agent;只存排版 JSON + PDF 元数据。
-- **Agent**(Python + FastAPI)— 无状态,三真层(flows/agents/engine)+ 平铺边。识图模型做分析 + 版面主控,DeepSeek 写文案,确定性引擎做分组 / 套模板 / flatten / 校验。
+- **Agent**(Python + FastAPI)— 三真层(flows/agents/engine)+ 平铺边。识图模型做分析 + 版面主控,DeepSeek 写文案,确定性引擎做分组 / 套模板 / flatten / 校验。Agent 不持 `draft_json`/stage;仅 Stage3 edit-loop 状态归独立 Postgres `agent` schema(Alembic)。
 
 ## 技术栈
 
 | 层 | 选型 |
 |---|---|
 | Web | Next.js 15 + React 19 + TypeScript |
-| ORM | Drizzle + Neon Postgres |
+| ORM / DB | Web Drizzle + Neon Postgres;Agent Alembic owns only `agent.*` |
 | Auth | better-auth |
 | Agent | Python 3.12 + FastAPI |
 | 识图 / 版面 | 火山 doubao-vision(`ARK_*`,默认)/ OpenAI GPT(`OPENAI_*`)双槽 failover |

@@ -115,8 +115,14 @@ export const jobService = {
 
       const draftJson =
         tree && typeof tree === 'object' && !Array.isArray(tree)
-          ? { ...(tree as Record<string, unknown>), pages }
-          : { tree, pages };
+          ? {
+              ...(tree as Record<string, unknown>),
+              ...(pages !== undefined ? { pages } : {}),
+            }
+          : {
+              tree,
+              ...(pages !== undefined ? { pages } : {}),
+            };
 
       await albumRepo.update(tx, job.albumId, {
         status: 'EDITING',

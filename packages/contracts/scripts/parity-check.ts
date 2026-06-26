@@ -17,6 +17,8 @@ import type { ZodTypeAny } from 'zod';
 import { V3Chapter, V3ChapterPhoto, V3LayoutTree } from '../src/layout';
 import { TemplateDef, TemplateTextSlot } from '../src/templates';
 import {
+  V3InternalAgentAckRequest,
+  V3InternalAgentAckResponse,
   V3AcceptedResponse,
   V3AnalyzeRequest,
   V3ApplyThemeResponse,
@@ -35,6 +37,8 @@ import {
 
 const SCHEMAS: Record<string, ZodTypeAny> = {
   V3AcceptedResponse,
+  AgentAckRequest: V3InternalAgentAckRequest,
+  AgentAckResponse: V3InternalAgentAckResponse,
   V3AnalyzeRequest,
   V3ApplyThemeResponse,
   V3ApplyThemeRequest,

@@ -9,6 +9,8 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from src.schemas import (
+    AgentAckRequest,
+    AgentAckResponse,
     AlbumLayoutPlan,
     LayoutRequest,
     Magazine,
@@ -26,12 +28,14 @@ from src.schemas import (
     TemplateTextSlot,
     V3AcceptedResponse,
     V3ApplyThemeResponse,
+    V3AnalyzeCompleted,
     V3AnalyzeRequest,
     V3ApplyThemeRequest,
     V3Callback,
     V3Chapter,
     V3ChapterChatRequest,
     V3ChapterChatResponse,
+    V3ChapterOverview,
     V3ChapterPhoto,
     V3CoverRequest,
     V3CoverResponse,
@@ -267,6 +271,21 @@ class TestV3ChapterTreePrivacy:
             V3Chapter.model_validate({**chapter, "artFont": "nope"})
         with pytest.raises(ValidationError):
             V3Chapter.model_validate({**chapter, "accentColor": "blue"})
+
+    def test_v3_chapter_carries_extracted_color(self):
+        chapter = {
+            "chapterId": "c1",
+            "description": "a quiet spring morning in an old town",
+            "extractedColor": "#abc",
+            "accentColor": None,
+            "artFont": None,
+            "photos": [self.base_photo],
+        }
+
+        V3Chapter.model_validate(chapter)
+        V3Chapter.model_validate({**chapter, "extractedColor": None})
+        with pytest.raises(ValidationError):
+            V3Chapter.model_validate({**chapter, "extractedColor": "blue"})
 
     def test_layout_tree_strict(self):
         V3LayoutTree.model_validate({"chapters": []})
@@ -586,6 +605,19 @@ class TestV3Endpoints:
     def test_template_candidate(self):
         V3TemplateCandidate.model_validate({"templateId": "mag-08", "category": "interior", "imageSlotCount": 3})
 
+    def test_v3_chapter_overview_carries_extracted_color(self):
+        overview = {
+            "chapterId": "c1",
+            "description": "a quiet spring morning in an old town",
+            "extractedColor": "#A1B2C3",
+            "photoDescs": ["red coat in snow"],
+        }
+
+        V3ChapterOverview.model_validate(overview)
+        V3ChapterOverview.model_validate({**overview, "extractedColor": None})
+        with pytest.raises(ValidationError):
+            V3ChapterOverview.model_validate({**overview, "extractedColor": "red"})
+
 
 class TestV3Callback:
     def test_union_progress_completed_failed(self):
@@ -609,6 +641,20 @@ class TestV3Callback:
     def test_union_rejects_unknown_event(self):
         with pytest.raises(ValidationError):
             _CALLBACK.validate_python({"requestId": "r1", "jobKind": "analyze", "event": "bogus"})
+
+    def test_analyze_completed_pages_optional(self):
+        payload = {
+            "requestId": "r1",
+            "jobKind": "analyze",
+            "event": "completed",
+            "tree": {"chapters": []},
+            "usage": {"durationMs": 1, "models": {}},
+        }
+
+        V3AnalyzeCompleted.model_validate(payload)
+        _CALLBACK.validate_python(payload)
+        with pytest.raises(ValidationError):
+            V3AnalyzeCompleted.model_validate({**payload, "pages": None})
 
 
 # ---------- cross-language parity drift guard ---------------------------------
@@ -635,6 +681,8 @@ _PY_SCHEMAS = {
     "V3TemplateCandidate": V3TemplateCandidate,
     "TemplateDef": TemplateDef,
     "TemplateTextSlot": TemplateTextSlot,
+    "AgentAckRequest": AgentAckRequest,
+    "AgentAckResponse": AgentAckResponse,
 }
 _PY_ADAPTERS = {"V3Callback": _CALLBACK}
 

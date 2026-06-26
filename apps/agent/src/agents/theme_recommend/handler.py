@@ -41,6 +41,7 @@ from ...schemas import (
     V3RecommendResponse,
     V3Usage,
 )
+from ...engine.finalize_color import finalize_color
 from ...settings import get_settings
 from ...prompts import RULES_DIR, load_prompt, load_replies
 from ... import ai_client
@@ -61,14 +62,9 @@ CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
 # V3RecommendResponse 校验。
 _ART_FONTS: tuple[str, ...] = tuple(get_args(ArtFontPack))
 _DEFAULT_FONT = "serif-classic"
-# 当某章的模型颜色缺失/非法时使用的中性 accent —— 一个沉静的 slate,在任何跨页上都好看;
-# apply-theme/用户仍可覆盖。
-_FALLBACK_ACCENT = "#4A5568"
 # 契约里 subject(章节标题)是 min(1);钳到一个合理的标题长度,免得漂移的长 subject 撑爆
 # 槽位。Fallback 文本外置在可手调的 replies.md(subject_fallback),保持响应有效。
 _MAX_SUBJECT_LEN = 80
-# 响应/AccentColor regex 接受的 6-hex 形式;也是我们归一化到的形式。
-_HEX6_LEN = 6
 
 
 class RecommendV3Error(Exception):
@@ -93,6 +89,7 @@ def _chapter_payload(chapter: V3ChapterOverview) -> dict[str, Any]:
     return {
         "chapterId": chapter.chapterId,
         "description": chapter.description,
+        "extractedColor": chapter.extractedColor,
         "photoDescs": list(chapter.photoDescs),
     }
 
@@ -327,21 +324,8 @@ def _coerce_font(raw: Any) -> str:
 
 
 def _coerce_accent(raw: Any) -> str:
-    """把模型的颜色归一化为 `#RRGGBB`,否则用中性 fallback。
-
-    接受 `#RGB` / `#RRGGBB`(不区分大小写,前导 `#` 可选);把 3 位简写展开为 6 位,使
-    存下的值是 AccentColor regex / 渲染器所期望的规范大写 6-hex 形式。其它一切 → fallback
-    (模型绝无法用任意字符串污染树)。"""
-    if not isinstance(raw, str):
-        return _FALLBACK_ACCENT
-    value = raw.strip().lstrip("#")
-    if not all(c in "0123456789abcdefABCDEF" for c in value):
-        return _FALLBACK_ACCENT
-    if len(value) == 3:
-        value = "".join(ch * 2 for ch in value)
-    if len(value) != _HEX6_LEN:
-        return _FALLBACK_ACCENT
-    return f"#{value.upper()}"
+    """Normalize model color through the shared design-color owner."""
+    return finalize_color(raw)
 
 
 def _text(value: Any) -> str:

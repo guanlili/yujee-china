@@ -23,6 +23,7 @@ from pydantic import (
     Field,
     HttpUrl,
     field_validator,
+    model_validator,
 )
 
 
@@ -267,6 +268,9 @@ class V3Chapter(_V3Strict):
 
     chapterId: str = Field(min_length=1)
     description: str = Field(max_length=600)
+    # Stage1 extracted source color. Distinct from final theme `accentColor`.
+    # Migration field: older trees omit it; Stage1 PR249 trees may carry null.
+    extractedColor: AccentColor | None = None
     accentColor: AccentColor | None  # required key; null placeholder until theme
     artFont: ArtFontPack | None  # required key; null placeholder until theme
     photos: list[V3ChapterPhoto]
@@ -555,6 +559,9 @@ class V3ChapterOverview(_V3Strict):
 
     chapterId: str = Field(min_length=1)
     description: str = Field(max_length=600)
+    # Stage1 extracted source color. Recommend may use it as evidence, but it is
+    # not the final theme `accentColor`.
+    extractedColor: AccentColor | None = None
     photoDescs: list[str] = Field(max_length=12)
 
 
@@ -689,8 +696,23 @@ class V3AnalyzeCompleted(_V3Strict):
     event: Literal["completed"]
     # 预览态产物:V3 章节树 + 套好模板/填好通用文案-色的页。
     tree: V3LayoutTree
-    pages: list[Page] = Field(min_length=1)
+    pages: list[Page] | None = Field(default=None, min_length=1)
     usage: V3Usage
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_explicit_null_pages(cls, data: object) -> object:
+        if isinstance(data, dict) and data.get("pages") is None and "pages" in data:
+            raise ValueError("pages may be omitted during migration but cannot be null")
+        return data
+
+
+class AgentAckRequest(_V3Strict):
+    opId: str = Field(min_length=1)
+
+
+class AgentAckResponse(_V3Strict):
+    ok: bool
 
 
 class V3FailedEvent(_V3Strict):

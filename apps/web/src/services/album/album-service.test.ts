@@ -14,11 +14,28 @@ import {
   makeUser,
 } from '../../db/repos/__test__/setup';
 import { albumService } from './album-service';
+import { transientPagePhotoRefs } from './page-photo-refs';
 import { jobService } from '../job/job-service';
-import { type Page, type V3ChapterThemeChoice, type V3StoryDraft } from '@yujee/contracts';
+import {
+  V3InternalAgentDataResponse,
+  type Page,
+  type V3ChapterThemeChoice,
+  type V3StoryDraft,
+} from '@yujee/contracts';
 
 const hasCode = (code: string) => (err: unknown) =>
   typeof err === 'object' && err !== null && (err as { code?: string }).code === code;
+
+function hasForbiddenLocationKey(value: unknown): boolean {
+  const forbidden = new Set(['location', 'place', 'gps', 'lat', 'lng', 'coordinates']);
+  if (Array.isArray(value)) return value.some(hasForbiddenLocationKey);
+  if (value && typeof value === 'object') {
+    return Object.entries(value).some(
+      ([key, child]) => forbidden.has(key.toLowerCase()) || hasForbiddenLocationKey(child),
+    );
+  }
+  return false;
+}
 
 // Sets up an AGENT_RUNNING album with a held credit and a RUNNING job whose
 // startedAt is `startedAgoMs` in the past. Returns the ids for assertions.
@@ -1277,6 +1294,224 @@ test('chapterChatTurn: slices ONLY the named chapter node + its pages to the age
     assert.equal(payload.userMessage, 'about chapter two');
     assert.equal(payload.focusedPageIndex, 1);
   } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('getInternalAgentData page-info and chapter-search return scoped draft data without location leakage', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('internal-agent-data-read');
+  try {
+    const album = await makeAlbum(user.id);
+    const draft: V3StoryDraft = {
+      version: 'v3-story',
+      tree: {
+        chapters: [
+          {
+            chapterId: 'c1',
+            description: 'coast morning',
+            accentColor: null,
+            artFont: null,
+            photos: [
+              {
+                photoId: 'p1',
+                sceneDescription: 'coast sunrise',
+                width: 800,
+                height: 600,
+                orientation: 'landscape',
+                takenAt: '2024-03-02T10:20:30',
+              },
+              {
+                photoId: 'p2',
+                sceneDescription: 'coast details',
+                width: 600,
+                height: 800,
+                orientation: 'portrait',
+                takenAt: null,
+              },
+            ],
+          },
+          {
+            chapterId: 'c2',
+            description: 'city gallery',
+            accentColor: null,
+            artFont: null,
+            photos: [
+              {
+                photoId: 'p3',
+                sceneDescription: 'gallery wall',
+                width: 800,
+                height: 600,
+                orientation: 'landscape',
+              },
+            ],
+          },
+        ],
+      },
+      pages: [
+        { pageIndex: 0, templateId: 'mag-01', images: { hero: 'p1' }, texts: { title: 'Cover' } },
+        { pageIndex: 1, templateId: 'mag-03', images: { image: 'p1' }, texts: { title: 'One' } },
+        { pageIndex: 2, templateId: 'mag-04', images: { image: 'p2' }, texts: { title: 'Two' } },
+        { pageIndex: 3, templateId: 'mag-03', images: { image: 'p3' }, texts: { title: 'Three' } },
+        { pageIndex: 4, templateId: 'mag-20', images: { hero: 'p1' }, texts: { end: 'End' } },
+      ],
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: draft });
+
+    const chapterInfo = await albumService.getInternalAgentData({
+      type: 'page-info',
+      albumId: album.id,
+      scope: 'chapter',
+      chapterId: 'c1',
+    });
+    assert.equal(V3InternalAgentDataResponse.safeParse(chapterInfo).success, true);
+    if (chapterInfo.type !== 'page-info') assert.fail(`unexpected response type ${chapterInfo.type}`);
+    assert.equal(chapterInfo.data.chapter.chapterId, 'c1');
+    assert.deepEqual(chapterInfo.data.pages.map((page) => page.pageIndex), [1, 2]);
+    assert.equal(hasForbiddenLocationKey(chapterInfo), false);
+
+    const pageInfo = await albumService.getInternalAgentData({
+      type: 'page-info',
+      albumId: album.id,
+      scope: 'page',
+      chapterId: 'c1',
+      pageIndex: 2,
+    });
+    assert.equal(V3InternalAgentDataResponse.safeParse(pageInfo).success, true);
+    if (pageInfo.type !== 'page-info') assert.fail(`unexpected response type ${pageInfo.type}`);
+    assert.deepEqual(pageInfo.data.pages.map((page) => page.pageIndex), [2]);
+
+    const search = await albumService.getInternalAgentData({
+      type: 'chapter-search',
+      albumId: album.id,
+      query: 'coast',
+      limit: 5,
+    });
+    assert.equal(V3InternalAgentDataResponse.safeParse(search).success, true);
+    if (search.type !== 'chapter-search') assert.fail(`unexpected response type ${search.type}`);
+    assert.deepEqual(search.data.matches, [
+      { chapterId: 'c1', pageIndexes: [1, 2], label: 'coast morning', score: 3 },
+    ]);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('getInternalAgentData page-photos returns registered transient refs without persisting base64', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('internal-page-photos');
+  transientPagePhotoRefs.resetForTest();
+  try {
+    const album = await makeAlbum(user.id);
+    const draft: V3StoryDraft = {
+      version: 'v3-story',
+      tree: {
+        chapters: [
+          {
+            chapterId: 'c1',
+            description: 'chapter one',
+            accentColor: null,
+            artFont: null,
+            photos: [
+              {
+                photoId: 'p1',
+                sceneDescription: 'coast morning',
+                width: 800,
+                height: 600,
+                orientation: 'landscape',
+                takenAt: '2024-03-02T10:20:30',
+              },
+              {
+                photoId: 'p2',
+                sceneDescription: 'window portrait',
+                width: 600,
+                height: 800,
+                orientation: 'portrait',
+                takenAt: null,
+              },
+              {
+                photoId: 'p3',
+                sceneDescription: 'unregistered detail',
+                width: 700,
+                height: 700,
+                orientation: 'square',
+              },
+            ],
+          },
+          {
+            chapterId: 'c2',
+            description: 'chapter two',
+            accentColor: null,
+            artFont: null,
+            photos: [
+              {
+                photoId: 'p4',
+                sceneDescription: 'other chapter',
+                width: 800,
+                height: 600,
+                orientation: 'landscape',
+              },
+            ],
+          },
+        ],
+      },
+      pages: [],
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: draft });
+
+    assert.deepEqual(await albumService.getInternalAgentData({ type: 'page-photos', albumId: album.id, chapterId: 'c1' }), {
+      type: 'page-photos',
+      data: { photos: [] },
+    });
+
+    transientPagePhotoRefs.register({
+      albumId: album.id,
+      chapterId: 'c1',
+      refs: {
+        p1: 'data:image/jpeg;base64,AA==',
+        p2: 'data:image/jpeg;base64,BB==',
+        p4: 'data:image/jpeg;base64,OTHER==',
+      },
+    });
+
+    assert.deepEqual(await albumService.getInternalAgentData({ type: 'page-photos', albumId: album.id, chapterId: 'c1' }), {
+      type: 'page-photos',
+      data: {
+        photos: [
+          {
+            photoId: 'p1',
+            ref200px: 'data:image/jpeg;base64,AA==',
+            orientation: 'landscape',
+            takenAt: '2024-03-02T10:20:30',
+          },
+          {
+            photoId: 'p2',
+            ref200px: 'data:image/jpeg;base64,BB==',
+            orientation: 'portrait',
+            takenAt: null,
+          },
+        ],
+      },
+    });
+
+    const reloaded = await albumRepo.findById(album.id);
+    assert.equal(JSON.stringify(reloaded?.draftJson).includes('data:image'), false);
+
+    transientPagePhotoRefs.clear(album.id, 'c1');
+    assert.deepEqual(await albumService.getInternalAgentData({ type: 'page-photos', albumId: album.id, chapterId: 'c1' }), {
+      type: 'page-photos',
+      data: { photos: [] },
+    });
+  } finally {
+    transientPagePhotoRefs.resetForTest();
     await cleanupUser(user.id);
   }
 });

@@ -19,6 +19,7 @@ from ...settings import get_settings
 from ...prompts import RULES_DIR, load_prompt
 from ... import ai_client
 from ...engine import skeleton_v3
+from ...engine.simple_id import from_simple_at_paths, to_simple
 from ...vision_provider import (
     VisionSlot,
     VisionSlotError,
@@ -63,6 +64,11 @@ def _photo_orientation(width: int, height: int) -> str:
 
 # 本环节正文页始终是 interior 类别(cover/toc/ending 归其它环节 / wrap_with_cover_ending)。
 _INTERIOR: skeleton_v3.Category = "interior"
+_DESCRIBE_SIMPLE_VALUE_PATHS = (
+    ("chapters", "*", "photoIds", "*"),
+    ("chapters", "*", "pages", "*", "photoIds", "*"),
+)
+_DESCRIBE_SIMPLE_KEY_PATHS = (("chapters", "*", "scenes", "*"),)
 
 
 def _legal_capacity_table() -> str:
@@ -351,40 +357,6 @@ def _assemble_v3_tree(
     return V3LayoutTree(chapters=chapters), pages_by_chapter
 
 
-def _remap_describe_photo_ids(parsed: Any, real_by_simple: dict[str, str]) -> Any:
-    """识图模型用简单序号 id(1,2,3…)作答 → 映射回真实 photoId(serial→hash)。映射
-    chapters[].photoIds(旧扁平,向后兼容)、chapters[].pages[].photoIds(统一调用的页意图)
-    与 chapters[].scenes 的 key。模型偶发幻觉的未知序号原样留下(不在映射表里),由
-    _assemble_v3_tree 的 unknown/omitted 校验拦截。"""
-    if not isinstance(parsed, dict):
-        return parsed
-    chapters = parsed.get("chapters")
-    if not isinstance(chapters, list):
-        return parsed
-
-    def _remap_id(i: Any) -> Any:
-        return real_by_simple.get(i.strip(), i.strip()) if isinstance(i, str) else i
-
-    for ch in chapters:
-        if not isinstance(ch, dict):
-            continue
-        ids = ch.get("photoIds")
-        if isinstance(ids, list):
-            ch["photoIds"] = [_remap_id(i) for i in ids]
-        pages = ch.get("pages")
-        if isinstance(pages, list):
-            for page in pages:
-                if isinstance(page, dict) and isinstance(page.get("photoIds"), list):
-                    page["photoIds"] = [_remap_id(i) for i in page["photoIds"]]
-        scenes = ch.get("scenes")
-        if isinstance(scenes, dict):
-            ch["scenes"] = {
-                (real_by_simple.get(k.strip(), k.strip()) if isinstance(k, str) else k): v
-                for k, v in scenes.items()
-            }
-    return parsed
-
-
 # =============================================================================
 # WP-C (#232):cluster 感知的 describe —— 按 clusterId 切分,按张数把整簇调度进并发
 # 路由,再按全局顺序合并各局部树。
@@ -575,10 +547,11 @@ async def _describe_call(
     次(累计计费 tokens);用尽仍不完整才抛 VisionError。"""
     # 给识图模型只喂简单序号 id(1,2,3…),它抄不错;拿回结果再映射回真实 photoId。
     # 真实 photoId 是长 hash,小模型(豆包)常抄岔/截断 → 「unknown photoId」失败。
+    simple_ids, real_by_simple = to_simple([p.photoId for p in photos])
     simple_photos = [
-        p.model_copy(update={"photoId": str(i + 1)}) for i, p in enumerate(photos)
+        p.model_copy(update={"photoId": simple_id})
+        for simple_id, p in zip(simple_ids, photos, strict=True)
     ]
-    real_by_simple = {str(i + 1): p.photoId for i, p in enumerate(photos)}
     n = len(simple_photos)
     system_prompt = _build_v3_system_prompt(language)
     user_content = _build_v3_user_content(simple_photos, prompt_hint)
@@ -631,7 +604,12 @@ async def _describe_call(
             # 解析失败保持原行为(同类畸形输出不靠重试,直接抛)。
             raise VisionError(f"describe-content response unparseable: {exc}") from exc
 
-        parsed = _remap_describe_photo_ids(parsed, real_by_simple)
+        parsed = from_simple_at_paths(
+            parsed,
+            real_by_simple,
+            value_paths=_DESCRIBE_SIMPLE_VALUE_PATHS,
+            key_paths=_DESCRIBE_SIMPLE_KEY_PATHS,
+        )
         try:
             tree, pages_by_chapter = _assemble_v3_tree(parsed, photos)
         except VisionError as exc:

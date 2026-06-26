@@ -122,6 +122,153 @@ def test_describe_content_builds_chapter_tree_with_llm_3_fields(_describe_env, m
         assert c.accentColor is None and c.artFont is None
 
 
+def test_describe_call_uses_shared_simple_id_helpers(_describe_env, monkeypatch):
+    from src.engine.simple_id import from_simple_at_paths as real_from_simple_at_paths
+    from src.engine.simple_id import to_simple as real_to_simple
+    from src.vision_provider import VisionSlot
+
+    calls: list[tuple[str, Any]] = []
+
+    def spy_to_simple(real_ids: list[str]):
+        calls.append(("to_simple", list(real_ids)))
+        return real_to_simple(real_ids)
+
+    def spy_from_simple_at_paths(
+        payload: Any,
+        mapping: dict[str, str],
+        *,
+        value_paths: tuple[tuple[str, ...], ...],
+        key_paths: tuple[tuple[str, ...], ...] = (),
+    ):
+        calls.append(("from_simple_at_paths", payload, dict(mapping), tuple(value_paths), tuple(key_paths)))
+        return real_from_simple_at_paths(payload, mapping, value_paths=value_paths, key_paths=key_paths)
+
+    parsed_payload = {
+        "chapters": [
+            {
+                "description": "Spring morning walk.",
+                "photoIds": ["1", "2"],
+                "pages": [{"photoIds": ["1", "2"], "templateId": "mag-13"}],
+                "scenes": {"1": "a woman in a red coat", "2": "snow on the old street"},
+            }
+        ]
+    }
+
+    async def fake_completion(**kwargs):
+        return _completion(parsed_payload)
+
+    monkeypatch.setattr(vision, "to_simple", spy_to_simple, raising=False)
+    monkeypatch.setattr(vision, "from_simple_at_paths", spy_from_simple_at_paths, raising=False)
+    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
+
+    tree, _pages_by_chapter, _tokens = asyncio.run(
+        vision._describe_call(
+            VisionSlot(
+                provider="test",
+                base_url="http://vision.test",
+                api_key="key",
+                model="model",
+                timeout_seconds=1,
+                extra_body=None,
+                response_format=None,
+                supports_json_object=False,
+            ),
+            _v3_photos(2),
+            "en",
+            None,
+            max_output_tokens=1024,
+        )
+    )
+
+    assert ("to_simple", ["p1", "p2"]) in calls
+    remap_calls = [call for call in calls if call[0] == "from_simple_at_paths"]
+    assert len(remap_calls) == 1
+    assert remap_calls[0][1] == parsed_payload
+    assert remap_calls[0][2] == {"1": "p1", "2": "p2"}
+    assert ("chapters", "*", "photoIds", "*") in remap_calls[0][3]
+    assert ("chapters", "*", "pages", "*", "photoIds", "*") in remap_calls[0][3]
+    assert ("chapters", "*", "scenes", "*") in remap_calls[0][4]
+    assert [[p.photoId for p in chapter.photos] for chapter in tree.chapters] == [["p1", "p2"]]
+    assert list(_pages_by_chapter["ch_1"][0]["images"].values()) == ["p1", "p2"]
+
+
+def test_describe_call_simple_id_remap_does_not_rewrite_numeric_text(_describe_env, monkeypatch):
+    from src.vision_provider import VisionSlot
+
+    parsed_payload = {
+        "chapters": [
+            {
+                "description": "1",
+                "pages": [
+                    {"photoIds": ["1"], "templateId": "mag-03"},
+                    {"photoIds": ["2"], "templateId": "mag-03"},
+                ],
+                "scenes": {"1": "2", "2": "1"},
+            }
+        ]
+    }
+
+    async def fake_completion(**kwargs):
+        return _completion(parsed_payload)
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
+
+    tree, pages_by_chapter, _tokens = asyncio.run(
+        vision._describe_call(
+            VisionSlot(
+                provider="test",
+                base_url="http://vision.test",
+                api_key="key",
+                model="model",
+                timeout_seconds=1,
+                extra_body=None,
+                response_format=None,
+                supports_json_object=False,
+            ),
+            _v3_photos(2),
+            "en",
+            None,
+            max_output_tokens=1024,
+        )
+    )
+
+    chapter = tree.chapters[0]
+    assert chapter.description == "1"
+    assert [[photo.photoId for photo in chapter.photos]] == [["p1", "p2"]]
+    assert [photo.sceneDescription for photo in chapter.photos] == ["2", "1"]
+    assert [list(page["images"].values()) for page in pages_by_chapter["ch_1"]] == [["p1"], ["p2"]]
+
+
+def test_describe_simple_id_remap_strips_ids_only_on_selected_paths():
+    from src.engine.simple_id import from_simple_at_paths
+
+    payload = {
+        "chapters": [
+            {
+                "description": " 1 ",
+                "photoIds": [" 1 ", " 2 "],
+                "pages": [{"photoIds": [" 1 "], "templateId": "mag-03"}],
+                "scenes": {" 1 ": " 2 ", " 2 ": " 1 "},
+                "note": " 2 ",
+            }
+        ]
+    }
+
+    remapped = from_simple_at_paths(
+        payload,
+        {"1": "p1", "2": "p2"},
+        value_paths=vision._DESCRIBE_SIMPLE_VALUE_PATHS,
+        key_paths=vision._DESCRIBE_SIMPLE_KEY_PATHS,
+    )
+
+    chapter = remapped["chapters"][0]
+    assert chapter["description"] == " 1 "
+    assert chapter["note"] == " 2 "
+    assert chapter["photoIds"] == ["p1", "p2"]
+    assert chapter["pages"][0]["photoIds"] == ["p1"]
+    assert chapter["scenes"] == {"p1": " 2 ", "p2": " 1 "}
+
+
 def test_describe_content_rejects_duplicate_photo_ids(_describe_env, monkeypatch):
     # The code must reject duplicate LLM-authored grouping, not silently keep the
     # first occurrence or patch in its own partition.

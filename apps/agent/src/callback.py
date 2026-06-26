@@ -39,6 +39,8 @@ def _serialize(envelope: Envelope) -> dict:
     an explicit null there would be rejected — absent is the contract shape)."""
     if isinstance(envelope, V3AnalyzeCompleted):
         body = envelope.model_dump(exclude_none=False, mode="json")
+        if body.get("pages") is None:
+            body.pop("pages", None)
         models = body.get("usage", {}).get("models")
         if isinstance(models, dict):
             for key in ("vision", "planning"):
