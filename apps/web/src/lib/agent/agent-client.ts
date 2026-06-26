@@ -5,7 +5,9 @@ import {
   V3ApplyThemeResponse,
   V3ChapterChatResponse,
   V3CoverResponse,
+  V3EditChatResponse,
   V3FinalizeResponse,
+  V3InternalAgentAckResponse,
   V3RecommendResponse,
 } from '@yujee/contracts';
 import type {
@@ -14,7 +16,9 @@ import type {
   V3ApplyThemeRequest,
   V3ChapterChatRequest,
   V3CoverRequestInput,
+  V3EditChatRequest,
   V3FinalizeRequest,
+  V3InternalAgentAckRequest,
   V3RecommendRequest,
 } from '@yujee/contracts';
 
@@ -85,6 +89,19 @@ export const agentClient = {
     return postSyncV3('/v3/chapter-chat', payload, V3ChapterChatResponse, {
       albumId: payload.albumId,
     });
+  },
+
+  async editChatV3(payload: V3EditChatRequest): Promise<V3EditChatResponse> {
+    return postSyncV3('/v3/edit-chat', payload, V3EditChatResponse, {
+      albumId: payload.albumId,
+    });
+  },
+
+  async ackEditOp(payload: V3InternalAgentAckRequest): Promise<boolean> {
+    const data = await postSyncV3('/internal/agent-ack', payload, V3InternalAgentAckResponse, {
+      opId: payload.opId,
+    });
+    return data.ok;
   },
 
   async recommendV3(payload: V3RecommendRequest): Promise<V3RecommendResponse> {
