@@ -1772,6 +1772,40 @@ test('editChatTurn maps advanceTo theme to album stage only after chapter progre
   }
 });
 
+test('editChatTurn ignores advanceTo theme until every chapter is done', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-theme-gate');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 2);
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'talk' as const,
+      assistantReply: 'First chapter done.',
+      patches: [],
+      progressDecision: { chapterDone: true, advanceTo: 'theme' as const },
+      opId: 'op_theme_early',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => true);
+
+    await albumService.editChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c1',
+      userMessage: 'done',
+    });
+
+    const album = await albumRepo.findById(albumId);
+    const draft = album?.draftJson as V3StoryDraft;
+    assert.equal(album?.stage, 'story');
+    assert.deepEqual(draft.progress.doneChapterIds, ['c1']);
+    assert.equal(draft.progress.currentChapterId, 'c2');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('editChatTurn supports case4 append page patch at next pageIndex', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');

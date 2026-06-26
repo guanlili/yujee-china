@@ -740,6 +740,7 @@ export const albumService = {
         if (result.progressDecision?.chapterDone && input.chapterId) doneSet.add(input.chapterId);
         const doneChapterIds = chapterOrder.filter((id) => doneSet.has(id));
         const currentChapterId = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
+        const allDone = chapterOrder.length > 0 && chapterOrder.every((id) => doneSet.has(id));
         const nextDraft: V3StoryDraft = {
           version: 'v3-story',
           tree: current.tree,
@@ -749,7 +750,7 @@ export const albumService = {
 
         await albumRepo.update(tx, albumId, {
           draftJson: nextDraft,
-          ...(result.progressDecision?.advanceTo === 'theme' ? { stage: 'theme' as const } : {}),
+          ...(allDone && result.progressDecision?.advanceTo === 'theme' ? { stage: 'theme' as const } : {}),
         });
       });
 

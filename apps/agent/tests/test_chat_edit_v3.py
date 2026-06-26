@@ -329,6 +329,7 @@ def test_edit_chat_write_turn_fetches_page_info_and_returns_pages_texts():
 
 def test_edit_chat_case4_fetches_page_photos_via_agent_data_and_calls_gemini(monkeypatch):
     tools = FakeTools(
+        page_info={"chapter": _chapter().model_copy(update={"chapterId": "c1"}), "pages": _pages()},
         page_photos=[
             {
                 "photoId": "p1",
@@ -353,6 +354,56 @@ def test_edit_chat_case4_fetches_page_photos_via_agent_data_and_calls_gemini(mon
     assert tools.page_photo_requests == [{"albumId": "alb_v3", "chapterId": "c1"}]
     assert calls[0][1:] == ("case4-swap", True)
     assert resp.patches[0].templateId == "mag-03"
+
+
+def test_edit_chat_case4_without_focused_page_uses_chapter_page_indexes(monkeypatch):
+    chapter = _chapter().model_copy(update={"chapterId": "c2"})
+    tools = FakeTools(
+        page_info={
+            "chapter": chapter,
+            "pages": [
+                Page(pageIndex=3, templateId="mag-13", images={"image": "p1"}, texts={}),
+                Page(pageIndex=4, templateId="mag-13", images={"image": "p2"}, texts={}),
+            ],
+        },
+        page_photos=[
+            {
+                "photoId": "p1",
+                "ref200px": "data:image/jpeg;base64,AA==",
+                "orientation": "landscape",
+                "takenAt": None,
+            },
+            {
+                "photoId": "p2",
+                "ref200px": "data:image/jpeg;base64,AA==",
+                "orientation": "landscape",
+                "takenAt": None,
+            },
+        ],
+    )
+
+    async def fake_gemini(chapters, *, mode, allowAddPages):  # noqa: ANN001
+        return gemini_layout.GeminiLayoutResult(
+            pages=[
+                {"chapterId": "c2", "templateId": "mag-13", "slots": {"image": "p1"}},
+                {"chapterId": "c2", "templateId": "mag-13", "slots": {"image": "p2"}},
+            ]
+        )
+
+    monkeypatch.setattr(edit_handler.gemini_layout, "gemini_layout", fake_gemini)
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("change the layout", chapter_id="c2", page_index=None),
+            repo=FakeRepo(),
+            tools=tools,
+        )
+    )
+
+    assert tools.page_info_requests == [
+        {"albumId": "alb_v3", "chapterId": "c2", "scope": "chapter", "pageIndex": None}
+    ]
+    assert [patch.pageIndex for patch in resp.patches] == [3, 4]
 
 
 # =============================================================================
