@@ -59,9 +59,6 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
     1,
   );
   const rows = Array.from({ length: count });
-  // 四个小标题共用同一份主题(取 title[0]),保证字号/字体/颜色等设置完全统一,
-  // 不再让每个 title[i] 各取各的主题而出现差异。
-  const titleTheme = resolveThemeCarrier(data, 'title[0]');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <div
@@ -93,6 +90,7 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
       >
         {rows.map((_, i) => {
           const numberTheme = resolveThemeCarrier(data, `number[${i}]`);
+          const titleTheme = resolveThemeCarrier(data, `title[${i}]`);
           // 把编号(如 "01")拆成前导 0(lead)与主数字(rest):前导 0 小号、上移半个字符,
           // 主数字放大,形成"0¹/"的层次。无前导 0 时 lead 为空,只显示主数字。
           const numRaw =
