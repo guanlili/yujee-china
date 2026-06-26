@@ -34,6 +34,8 @@ from .schemas import (
     V3AnalyzeRequest,
     V3ChapterChatRequest,
     V3ChapterChatResponse,
+    V3EditChatRequest,
+    V3EditChatResponse,
     V3PageEditRequest,
     V3PageEditResponse,
     SelectLayoutRequest,
@@ -52,6 +54,8 @@ from .schemas import (
 )
 from .engine import apply_theme_v3
 from .errors import sync_endpoint_errors
+from .agents.editing import handler as edit_chat_v3
+from .agents.editing.handler import EditChatError
 from .agents.writing import handler as chapter_chat_v3
 from .agents.page_edit import handler as page_edit_v3
 from .agents.page_edit import PageEditError
@@ -165,6 +169,22 @@ async def submit_chapter_chat(req: V3ChapterChatRequest) -> dict[str, Any]:
     ):
         response: V3ChapterChatResponse = await chapter_chat_v3.run(req)
     log.info("v3_chapter_chat.completed", kind=response.kind, album_id=req.albumId)
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
+
+
+# ---------- edit-chat (② Stage3 stateful authoring, sync) ---------------------
+
+
+@router.post("/v3/edit-chat", dependencies=[Depends(require_bearer)])
+async def submit_edit_chat(req: V3EditChatRequest) -> dict[str, Any]:
+    with sync_endpoint_errors(
+        log,
+        "v3_edit_chat",
+        EditChatError,
+        known_status=status.HTTP_502_BAD_GATEWAY,
+        known_code="AGENT_PLANNING_FAILED",
+    ):
+        response: V3EditChatResponse = await edit_chat_v3.run(req)
     return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
 
 

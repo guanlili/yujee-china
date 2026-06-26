@@ -18,6 +18,8 @@ import {
   V3ChapterChatResponse,
   V3CoverRequest,
   V3CoverResponse,
+  V3EditChatRequest,
+  V3EditChatResponse,
   V3FinalizeResponse,
   V3InternalAgentAckRequest,
   V3InternalAgentAckResponse,
@@ -530,6 +532,57 @@ test('V3ChapterChatResponse: kind drives which patch is present', () => {
     true,
   );
   assert.equal(V3ChapterChatResponse.safeParse({ kind: 'sing', assistantReply: 'x', usage }).success, false);
+});
+
+test('V3EditChatResponse requires opId and supports commit bundle fields', () => {
+  assert.equal(
+    V3EditChatResponse.safeParse({
+      kind: 'edit',
+      assistantReply: 'Updated.',
+      patches: [{ pageIndex: 2, texts: { body: 'New copy' } }],
+      pagesTexts: [{ pageIndex: 1, texts: { title: 'Coast' } }],
+      progressDecision: { pageDone: true, chapterDone: true, advanceTo: 'theme' },
+      opId: 'op_1',
+      usage: { durationMs: 1, models: {} },
+    }).success,
+    true,
+  );
+
+  assert.equal(
+    V3EditChatResponse.safeParse({
+      kind: 'edit',
+      assistantReply: 'Updated.',
+      patches: [],
+      usage: { durationMs: 1, models: {} },
+    }).success,
+    false,
+  );
+});
+
+test('V3EditChatRequest is slim and does not carry chapter pages or history', () => {
+  assert.equal(
+    V3EditChatRequest.safeParse({
+      albumId: 'alb_1',
+      language: 'en',
+      userMessage: 'write this chapter',
+      focus: { chapterId: 'c1', pageIndex: 3 },
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+    }).success,
+    true,
+  );
+
+  assert.equal(
+    V3EditChatRequest.safeParse({
+      albumId: 'alb_1',
+      language: 'en',
+      userMessage: 'write this chapter',
+      focus: { chapterId: 'c1' },
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+      history: [],
+      pages: [],
+    }).success,
+    false,
+  );
 });
 
 // ───────────────────── ②b 页级编辑 — POST /v3/page-edit ─────────────────────

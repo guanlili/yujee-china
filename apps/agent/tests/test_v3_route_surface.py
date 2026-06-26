@@ -17,6 +17,7 @@ def test_agent_route_surface_keeps_health_and_v3_only() -> None:
         "/v3/analyze",
         "/v3/select-layout",
         "/v3/chapter-chat",
+        "/v3/edit-chat",
         "/v3/page-edit",
         "/v3/recommend",
         "/v3/apply-theme",

@@ -548,6 +548,50 @@ class V3ChapterChatResponse(_V3Strict):
         return value
 
 
+class V3StoryProgress(_V3Strict):
+    currentChapterId: str | None = Field(default=None, min_length=1)
+    doneChapterIds: list[str]
+
+    @field_validator("doneChapterIds")
+    @classmethod
+    def _done_chapter_ids_nonempty(cls, value: list[str]) -> list[str]:
+        if any(len(item) < 1 for item in value):
+            raise ValueError("doneChapterIds entries must be non-empty")
+        return value
+
+
+class V3EditChatFocus(_V3Strict):
+    chapterId: str | None = Field(default=None, min_length=1)
+    pageIndex: int | None = Field(default=None, ge=0)
+
+
+class V3EditProgressDecision(_V3Strict):
+    pageDone: bool | None = None
+    chapterDone: bool | None = None
+    advanceTo: Literal["theme"] | None = None
+
+
+class V3EditChatRequest(_V3Strict):
+    albumId: str = Field(min_length=1)
+    language: V3Language
+    userMessage: str = Field(max_length=500)
+    focus: V3EditChatFocus
+    progress: V3StoryProgress
+
+
+V3EditChatKind = Literal["talk", "write", "edit"]
+
+
+class V3EditChatResponse(_V3Strict):
+    kind: V3EditChatKind
+    assistantReply: str = Field(min_length=1, max_length=500)
+    patches: list[V3LayoutPatchEntry] = Field(default_factory=list)
+    pagesTexts: list[V3PageTextsPatch] | None = None
+    progressDecision: V3EditProgressDecision | None = None
+    opId: str = Field(min_length=1)
+    usage: V3Usage
+
+
 # ---------- v3.ts: ②b page-edit (sync, two-stage) -----------------------------
 # 镜像 v3.ts V3PageEditRequest/Response。请求复用 V3ChapterChatRequest 同形字段;响应复用
 # V3LayoutPatchEntry(不另造补丁形状)。全 `_V3Strict`(extra='forbid')。§3 隐私:

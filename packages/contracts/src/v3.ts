@@ -391,6 +391,47 @@ export const V3StoryDraft = z
   .strict();
 export type V3StoryDraft = z.infer<typeof V3StoryDraft>;
 
+export const V3EditChatFocus = z
+  .object({
+    chapterId: z.string().min(1).optional(),
+    pageIndex: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+export type V3EditChatFocus = z.infer<typeof V3EditChatFocus>;
+
+export const V3EditProgressDecision = z
+  .object({
+    pageDone: z.boolean().optional(),
+    chapterDone: z.boolean().optional(),
+    advanceTo: z.literal('theme').nullable().optional(),
+  })
+  .strict();
+export type V3EditProgressDecision = z.infer<typeof V3EditProgressDecision>;
+
+export const V3EditChatRequest = z
+  .object({
+    albumId: z.string().min(1),
+    language: V3Language,
+    userMessage: z.string().max(500),
+    focus: V3EditChatFocus,
+    progress: V3StoryProgress,
+  })
+  .strict();
+export type V3EditChatRequest = z.infer<typeof V3EditChatRequest>;
+
+export const V3EditChatResponse = z
+  .object({
+    kind: z.enum(['talk', 'write', 'edit']),
+    assistantReply: z.string().min(1).max(500),
+    patches: z.array(V3LayoutPatchEntry).default([]),
+    pagesTexts: z.array(V3PageTextsPatch).optional(),
+    progressDecision: V3EditProgressDecision.optional(),
+    opId: z.string().min(1),
+    usage: V3Usage,
+  })
+  .strict();
+export type V3EditChatResponse = z.infer<typeof V3EditChatResponse>;
+
 // ───────────── ②b 页级编辑 — POST /v3/page-edit(同步,两段式) ─────────────
 //
 // 两段解耦(docs/superpowers/specs/2026-06-25-page-edit-agent-loop-design.md):

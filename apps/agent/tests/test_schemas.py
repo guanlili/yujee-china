@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
+from src import schemas
 from src.schemas import (
     AgentAckRequest,
     AgentAckResponse,
@@ -537,6 +538,34 @@ class TestV3Endpoints:
         V3ChapterChatResponse.model_validate({"kind": "talk", "assistantReply": "tell me more", "usage": usage})
         with pytest.raises(ValidationError):
             V3ChapterChatResponse.model_validate({"kind": "sing", "assistantReply": "x", "usage": usage})
+
+    def test_v3_edit_chat_requires_op_id_and_rejects_inline_pages(self) -> None:
+        req = schemas.V3EditChatRequest(
+            albumId="alb_1",
+            language="en",
+            userMessage="write it",
+            focus={"chapterId": "c1", "pageIndex": 1},
+            progress={"currentChapterId": "c1", "doneChapterIds": []},
+        )
+        assert req.focus.chapterId == "c1"
+
+        with pytest.raises(ValidationError):
+            schemas.V3EditChatRequest(
+                albumId="alb_1",
+                language="en",
+                userMessage="write it",
+                focus={"chapterId": "c1"},
+                progress={"currentChapterId": "c1", "doneChapterIds": []},
+                pages=[],
+            )
+
+        with pytest.raises(ValidationError):
+            schemas.V3EditChatResponse(
+                kind="edit",
+                assistantReply="Updated.",
+                patches=[],
+                usage={"durationMs": 1, "models": {}},
+            )
 
     def test_recommend_response_legal_sets(self):
         V3RecommendResponse.model_validate(
