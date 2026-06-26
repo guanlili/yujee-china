@@ -201,19 +201,29 @@ function assertRecommendChapterCoverage(
   response: V3RecommendResponse,
 ): void {
   const expected = payload.chapters.map((chapter) => chapter.chapterId);
-  const seen = new Set<string>();
-  for (const rec of response.chapterColors) {
-    if (seen.has(rec.chapterId)) {
-      logger.error({ albumId: payload.albumId, chapterId: rec.chapterId }, 'agent v3 recommend duplicate chapter color');
+  for (const option of response.bookThemeOptions) {
+    const seen = new Set<string>();
+    for (const rec of option.chapters) {
+      if (seen.has(rec.chapterId)) {
+        logger.error(
+          { albumId: payload.albumId, optionId: option.optionId, chapterId: rec.chapterId },
+          'agent v3 recommend duplicate option chapter color',
+        );
+        throw ERRORS.AGENT_INVALID_OUTPUT();
+      }
+      seen.add(rec.chapterId);
+    }
+    if (option.chapters.length !== expected.length || expected.some((chapterId) => !seen.has(chapterId))) {
+      logger.error(
+        {
+          albumId: payload.albumId,
+          optionId: option.optionId,
+          expectedChapterIds: expected,
+          returnedChapterIds: [...seen],
+        },
+        'agent v3 recommend option chapter color coverage mismatch',
+      );
       throw ERRORS.AGENT_INVALID_OUTPUT();
     }
-    seen.add(rec.chapterId);
-  }
-  if (response.chapterColors.length !== expected.length || expected.some((chapterId) => !seen.has(chapterId))) {
-    logger.error(
-      { albumId: payload.albumId, expectedChapterIds: expected, returnedChapterIds: [...seen] },
-      'agent v3 recommend chapter color coverage mismatch',
-    );
-    throw ERRORS.AGENT_INVALID_OUTPUT();
   }
 }

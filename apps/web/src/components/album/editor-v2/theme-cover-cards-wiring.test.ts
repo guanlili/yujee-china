@@ -10,8 +10,8 @@ import { test } from 'node:test';
 // applyPatchToPages, album-service slice/stage) is covered in its own unit tests. Here we
 // lock the load-bearing wiring invariants of the theme/cover selector UI:
 //   • recommend renders the palette-card from the REAL contract response,
-//   • the palette-card lists one row per chapter (subject title + accent), apply-theme
-//     fires with the per-chapter {subject, accentColor, artFont} (#236),
+//   • the palette-card lists one row per theme option, apply-theme expands the selected
+//     option into per-chapter {subject, accentColor, artFont},
 //   • there is NO "auto-apply" fallback,
 //   • confirming the last chapter (stage → theme) surfaces the palette-card,
 //   • apply-theme advancing (stage → cover) surfaces the cover-card,
@@ -28,33 +28,30 @@ test('runRecommendTheme renders the palette-card after the reply', () => {
   assert.match(body, /appendPaletteCard\(res\)/);
 });
 
-test('appendPaletteCard builds one row per chapter (subject title + accent swatch)', () => {
+test('appendPaletteCard builds one row per book theme option', () => {
   const fn = /function appendPaletteCard\(res: V3RecommendResponse\)[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'appendPaletteCard must exist');
   const body = fn![0];
-  // One palette-card; one row per chapter (#236: purely per-chapter, no themeOptions).
+  // One palette-card; one row per book theme option.
   assert.match(body, /palette-card/);
-  assert.match(body, /res\.chapterColors\.forEach/);
-  // Each row shows the chapter subject (its title) + the chapter accent swatch.
-  assert.match(body, /c\.subject/);
-  assert.match(body, /c\.accentColor/);
-  // Contract no longer carries album-level themeOptions.
-  assert.doesNotMatch(body, /themeOptions/);
-  // A single「应用」action applies the whole per-chapter theme set.
+  assert.match(body, /res\.bookThemeOptions\.forEach/);
+  assert.match(body, /option\.label/);
+  assert.match(body, /option\.style/);
+  assert.match(body, /option\.chapters\.slice\(0, 4\)/);
   assert.match(body, /pc-apply/);
 });
 
-test('the 应用 action fires apply-theme with per-chapter {subject, accentColor, artFont}', () => {
+test('each 应用 action expands selected option to per-chapter choices', () => {
   const fn = /function appendPaletteCard\(res: V3RecommendResponse\)[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'appendPaletteCard must exist');
   const body = fn![0];
   assert.match(body, /runApplyTheme\(\{/);
-  // No album-level theme is sent anymore — only the per-chapter choices.
-  assert.doesNotMatch(body, /theme: \{ subject: opt/);
-  assert.match(body, /chapters: res\.chapterColors\.map/);
+  assert.match(body, /chapters: option\.chapters\.map/);
   assert.match(body, /subject: c\.subject/);
   assert.match(body, /accentColor: c\.accentColor/);
-  assert.match(body, /artFont: c\.artFont/);
+  assert.match(body, /artFont: option\.artFont/);
+  assert.doesNotMatch(body, /Untitled Chapter/);
+  assert.doesNotMatch(body, /未命名章节/);
 });
 
 test('runApplyTheme has NO auto-apply fallback (缺口#20: 删掉自动套兜底)', () => {

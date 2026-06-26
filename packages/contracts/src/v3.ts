@@ -398,9 +398,8 @@ export type V3PageEditResponse = z.infer<typeof V3PageEditResponse>;
 
 // ───────────── ③ 主题/章节色 · 推荐 — POST /v3/recommend(同步) ─────────────
 //
-// 承载 recommend-chapter-colors Skill(§6)。识图模型逐章产出 {subject, accentColor,
-//   artFont}:subject 是该章一句话主题(作章节标题),色/字体供用户确认。无 album 级
-//   themeOptions(问题5 改逐章 / #236)。
+// 承载 Stage4 book theme recommendation: planning model returns exactly three
+// book-wide theme options. Each option has one artFont plus one accent color per chapter.
 
 /** 章节概览(每章一条),recommend 的主输入(§8 表)。 */
 export const V3ChapterOverview = z
@@ -422,28 +421,34 @@ export const V3RecommendRequest = z
     chapters: z.array(V3ChapterOverview).min(1),
     analysisSummary: z.string().max(1000).optional(), // 分析摘要(全局基调)
     userMessage: z.string().max(500).optional(),
+    fontHint: z.string().max(200).optional(),
   })
   .strict();
 export type V3RecommendRequest = z.infer<typeof V3RecommendRequest>;
 
-/**
- * 每章推荐:主题句(subject,作章节标题)+ 推荐色 + 字体(用户确认后由 apply-theme
- * 写树/写标题槽)。`subject` 是 grounded 该章照片+故事的一句章节主题(英文,简短,
- * 无句末标点);它在 apply-theme 阶段被持久化为该章标题(§问题5 方向 A 变体 / #236)。
- */
-export const V3ChapterColorRecommendation = z
+export const V3ChapterThemeColor = z
   .object({
     chapterId: z.string().min(1),
-    subject: z.string().min(1),
     accentColor: AccentColor,
-    artFont: ArtFontPack,
+    subject: z.string().min(1).optional(),
   })
   .strict();
-export type V3ChapterColorRecommendation = z.infer<typeof V3ChapterColorRecommendation>;
+export type V3ChapterThemeColor = z.infer<typeof V3ChapterThemeColor>;
+
+export const V3BookThemeOption = z
+  .object({
+    optionId: z.string().min(1).max(80),
+    artFont: ArtFontPack,
+    chapters: z.array(V3ChapterThemeColor).min(1),
+    style: z.string().min(1).max(160).optional(),
+    label: z.string().min(1).max(160).optional(),
+  })
+  .strict();
+export type V3BookThemeOption = z.infer<typeof V3BookThemeOption>;
 
 export const V3RecommendResponse = z
   .object({
-    chapterColors: z.array(V3ChapterColorRecommendation).min(1),
+    bookThemeOptions: z.array(V3BookThemeOption).length(3),
     assistantReply: z.string().max(500),
     usage: V3Usage,
   })
@@ -455,14 +460,14 @@ export type V3RecommendResponse = z.infer<typeof V3RecommendResponse>;
 // 无 LLM:把用户选定的每章色/字体一键刷到所有 `variableDecor` 槽(§4.3 / §9),回 layout 补丁。
 
 /**
- * 用户选定的每章主题/色/字体(写入章节树 + 标题槽)。
- * `subject` = 用户确认的该章标题(一句话主题);apply-theme 把它持久化到该章 `title`
- * 角色文字槽(§问题5 方向 A 变体 / #236),并把色/字体刷到 variableDecor 槽。
+ * 用户选定的每章主题/色/字体(写入章节树 + 可选标题槽)。
+ * `subject` 存在时 = 用户确认的该章标题(一句话主题);apply-theme 只在它存在且 title
+ * 槽为空时持久化,并把色/字体刷到 variableDecor 槽。
  */
 export const V3ChapterThemeChoice = z
   .object({
     chapterId: z.string().min(1),
-    subject: z.string().min(1),
+    subject: z.string().min(1).optional(),
     accentColor: AccentColor,
     artFont: ArtFontPack,
   })
@@ -475,7 +480,7 @@ export const V3ApplyThemeRequest = z
     language: V3Language,
     chapters: z.array(V3ChapterThemeChoice).min(1),
     // 受影响的 layout 子树(③④传相关页,§8.3);apply 把 variableDecor 槽刷上色/字体,
-    // 并把每章 subject 写进该章 title 槽(章节标题持久化)。
+    // 并在 subject 存在时把它写进该章空 title 槽(章节标题持久化)。
     pages: z.array(Page),
   })
   .strict();

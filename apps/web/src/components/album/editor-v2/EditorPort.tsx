@@ -1943,12 +1943,9 @@ function EditorBook({
     }
 
     // ─── palette-card (设计稿 palette-card,对话流内) ────────────────────────────
-    // Since #236 the contract is PURELY per-chapter: recommend returns one
-    // {chapterId, subject, accentColor, artFont} per chapter (NO album-level
-    // themeOptions). So the card lists each chapter as a ROW — its `subject` (the
-    // chapter title) as the heading + a swatch of that chapter's recommended accent —
-    // and a single「应用」action applies the whole set (each chapter's subject is
-    // persisted as its title at apply-theme). No per-theme picking; one confirm.
+    // Stage4 returns exactly three book theme options. The user picks one option; Web
+    // expands that option into per-chapter apply-theme choices using the option's single
+    // artFont plus each chapter's accentColor/subject.
     function appendPaletteCard(res: V3RecommendResponse) {
       const card = document.createElement('div');
       card.className = 'msg ai max-w-full';
@@ -1956,10 +1953,10 @@ function EditorBook({
       inner.className = 'palette-card';
       const title = document.createElement('div');
       title.className = 'pc-title';
-      title.textContent = aT('看看每章的标题与配色', 'Here are each chapter’s title and color');
+      title.textContent = aT('选择一套主题', 'Choose a theme option');
       const groups = document.createElement('div');
       groups.className = 'pc-groups';
-      res.chapterColors.forEach((c, i) => {
+      res.bookThemeOptions.forEach((option, i) => {
         const rowEl = document.createElement('div');
         rowEl.className = 'pc-chapter-row';
         const head = document.createElement('div');
@@ -1970,41 +1967,48 @@ function EditorBook({
         head.appendChild(num);
         const label = document.createElement('span');
         label.className = 'pc-group-label';
-        label.textContent = c.subject;
+        label.textContent = option.label ?? option.style ?? option.optionId;
         head.appendChild(label);
         rowEl.appendChild(head);
+        if (option.style) {
+          const style = document.createElement('div');
+          style.className = 'pc-style';
+          style.textContent = option.style;
+          rowEl.appendChild(style);
+        }
         const sw = document.createElement('div');
         sw.className = 'pc-swatches';
-        const dot = document.createElement('span');
-        dot.style.background = c.accentColor;
-        sw.appendChild(dot);
-        rowEl.appendChild(sw);
-        groups.appendChild(rowEl);
-      });
-
-      const applyBtn = document.createElement('button');
-      applyBtn.type = 'button';
-      applyBtn.className = 'pc-apply';
-      applyBtn.textContent = aT('应用这套主题', 'Apply this theme');
-      applyBtn.addEventListener('click', () => {
-        if (sending) return;
-        applyBtn.disabled = true;
-        appendUserText(aT('就用这套主题', 'Use this theme'));
-        hideAwait();
-        scrollChat();
-        void runApplyTheme({
-          chapters: res.chapterColors.map((c) => ({
-            chapterId: c.chapterId,
-            subject: c.subject,
-            accentColor: c.accentColor,
-            artFont: c.artFont,
-          })),
+        option.chapters.slice(0, 4).forEach((c) => {
+          const dot = document.createElement('span');
+          dot.style.background = c.accentColor;
+          sw.appendChild(dot);
         });
+        rowEl.appendChild(sw);
+        const applyBtn = document.createElement('button');
+        applyBtn.type = 'button';
+        applyBtn.className = 'pc-apply';
+        applyBtn.textContent = aT('应用', 'Apply');
+        applyBtn.addEventListener('click', () => {
+          if (sending) return;
+          applyBtn.disabled = true;
+          appendUserText(aT('就用这套主题', 'Use this theme'));
+          hideAwait();
+          scrollChat();
+          void runApplyTheme({
+            chapters: option.chapters.map((c) => ({
+              chapterId: c.chapterId,
+              ...(c.subject ? { subject: c.subject } : {}),
+              accentColor: c.accentColor,
+              artFont: option.artFont,
+            })),
+          });
+        });
+        rowEl.appendChild(applyBtn);
+        groups.appendChild(rowEl);
       });
 
       inner.appendChild(title);
       inner.appendChild(groups);
-      inner.appendChild(applyBtn);
       card.appendChild(inner);
       chatBody!.appendChild(card);
       scrollChat();
@@ -2092,8 +2096,8 @@ function EditorBook({
 
     // ③ 主题/章节色 · 应用: send the per-chapter {subject, accentColor, artFont} to
     // /v3/apply-theme, fold the returned patch into the canvas, advance stage theme→cover.
-    // Each subject is persisted as its chapter title (#236). Driven only by a user click on
-    // the palette-card「应用」— there is NO "auto-apply" fallback (缺口#20). If called with no
+    // A provided subject can be persisted as its chapter title (#236). Driven only by a user
+    // click on the palette-card「应用」— there is NO "auto-apply" fallback (缺口#20). If called with no
     // selection (e.g. no recommendation yet), we fetch a recommendation so the user gets the
     // card, and apply nothing.
     async function runApplyTheme(selection?: { chapters: V3ChapterThemeChoice[] }) {

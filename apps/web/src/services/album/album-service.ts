@@ -822,7 +822,7 @@ export const albumService = {
   async recommendTheme(
     userId: string,
     albumId: string,
-    input: { language: V3Language; userMessage?: string },
+    input: { language: V3Language; userMessage?: string; fontHint?: string },
   ): Promise<V3RecommendResponse> {
     const album = await this.findOwned(userId, albumId);
     const normalized = readStoryDraft(album.draftJson);
@@ -834,6 +834,7 @@ export const albumService = {
       language: input.language,
       chapters,
       ...(input.userMessage !== undefined ? { userMessage: input.userMessage } : {}),
+      ...(input.fontHint !== undefined ? { fontHint: input.fontHint } : {}),
     });
   },
 
@@ -1079,9 +1080,9 @@ export const albumService = {
         pageIndexes.length > 0
           ? pageIndexes[pageIndexes.length - 1]! + 1
           : Math.min(pageStart + 1, pages.length);
-      // The chapter title (its theme `subject`) is persisted into the chapter's title
-      // slot at apply-theme (#236). Surface it from the first of this chapter's pages
-      // that carries a `title` role slot value, so the chapter card / rail can show it.
+      // The chapter title may be persisted into an empty title slot at apply-theme (#236).
+      // Surface it from the first of this chapter's pages that carries a `title` role slot
+      // value, so the chapter card / rail can show it.
       const subject = titleOfChapterPages(
         pageIndexes.map((idx) => normalized.pages![idx]!),
       );

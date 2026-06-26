@@ -102,7 +102,23 @@ test('postChapterChat throws CreditInsufficientError on CREDIT_INSUFFICIENT', as
 const RECOMMEND = {
   ok: true,
   data: {
-    chapterColors: [{ chapterId: 'c1', subject: 'A Year Away', accentColor: '#C0392B', artFont: 'script-elegant' }],
+    bookThemeOptions: [
+      {
+        optionId: 'opt-1',
+        artFont: 'script-elegant',
+        chapters: [{ chapterId: 'c1', subject: 'A Year Away', accentColor: '#C0392B' }],
+      },
+      {
+        optionId: 'opt-2',
+        artFont: 'serif-classic',
+        chapters: [{ chapterId: 'c1', accentColor: '#1E3A5F' }],
+      },
+      {
+        optionId: 'opt-3',
+        artFont: 'display-bold',
+        chapters: [{ chapterId: 'c1', accentColor: '#2F855A' }],
+      },
+    ],
     assistantReply: 'Here are some themes.',
     usage: { durationMs: 1, models: {} },
   },
@@ -114,14 +130,20 @@ test('postRecommend POSTs only {language} (no chapter overview) to /recommend', 
   assert.equal(captured.url, '/api/v3/albums/alb_1/recommend');
   assert.equal(captured.method, 'POST');
   assert.deepEqual(captured.body, { language: 'en' }); // no chapters/analysisSummary
-  assert.equal(res.chapterColors[0]!.subject, 'A Year Away');
-  assert.equal(res.chapterColors[0]!.accentColor, '#C0392B');
+  assert.equal(res.bookThemeOptions[0]!.chapters[0]!.subject, 'A Year Away');
+  assert.equal(res.bookThemeOptions[0]!.chapters[0]!.accentColor, '#C0392B');
 });
 
 test('postRecommend forwards an optional free-text nudge', async (t) => {
   const captured = mockFetch(t, RECOMMEND);
   await postRecommend('alb_1', 'warmer please');
   assert.deepEqual(captured.body, { language: 'en', userMessage: 'warmer please' });
+});
+
+test('postRecommend forwards an optional font hint', async (t) => {
+  const captured = mockFetch(t, RECOMMEND);
+  await postRecommend('alb_1', undefined, 'classic serif');
+  assert.deepEqual(captured.body, { language: 'en', fontHint: 'classic serif' });
 });
 
 const APPLY = {

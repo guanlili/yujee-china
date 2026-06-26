@@ -43,7 +43,7 @@ export type ChapterState =
 export interface DraftSkeletonChapter {
   chapterId: string;
   label: string;
-  // The chapter's title (its theme `subject`, persisted into the title slot at
+  // The chapter's title (optional theme `subject`, persisted into an empty title slot at
   // apply-theme, #236). Absent/empty until the theme stage runs — fall back to `label`.
   subject?: string;
   role: 'opening' | 'body' | 'closing';
@@ -118,16 +118,17 @@ export interface BrowserLayoutPatchEntry {
 // ③ 主题/章节色 · 推荐 — one real /v3/recommend turn (缺口#20). Invariant 12 / §3 数据归属:
 // the browser holds NO authoring tree, so it sends ONLY its language (+ an optional
 // free-text nudge); the Web route re-slices the per-chapter overview from draft_json
-// server-side. Returns the agent's per-chapter recommendations (chapterColors:
-// {chapterId, subject, accentColor, artFont}) for the user to apply — subject is the
-// chapter title (#236). Nothing is written — apply-theme writes the tree + title slots.
+// server-side. Returns three book theme options. Nothing is written — apply-theme writes
+// the tree + title slots after the user selects one option.
 export function postRecommend(
   albumId: string,
   userMessage?: string,
+  fontHint?: string,
 ): Promise<V3RecommendResponse> {
   return postJson(`/api/v3/albums/${albumId}/recommend`, {
     language: 'en',
     ...(userMessage !== undefined ? { userMessage } : {}),
+    ...(fontHint !== undefined ? { fontHint } : {}),
   });
 }
 
