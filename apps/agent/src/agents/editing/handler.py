@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from time import perf_counter
 from typing import Any, Protocol
 
 from ...db import agent_edit_repo
 from ...engine import gemini_layout
 from ...schemas import (
+    V3ChapterChatRequest,
+    V3ChatTurn,
     V3EditChatRequest,
     V3EditChatResponse,
     V3EditProgressDecision,
@@ -13,6 +16,7 @@ from ...schemas import (
     V3PageTextsPatch,
     V3Usage,
 )
+from ..writing import handler as chapter_chat_v3
 from .web_client import WebAgentDataClient
 
 
@@ -39,6 +43,15 @@ class EditRepo(Protocol):
 
 
 class EditTools(Protocol):
+    async def get_page_info(
+        self,
+        *,
+        albumId: str,
+        chapterId: str,
+        scope: str,
+        pageIndex: int | None = None,
+    ) -> dict[str, Any]: ...
+
     async def get_page_photos(self, *, albumId: str, chapterId: str) -> list[dict[str, Any]]: ...
 
 
@@ -116,11 +129,63 @@ async def _case4_layout_swap(req: V3EditChatRequest, tools: EditTools) -> list[V
     return _patches_from_pages(legal_pages, base_page_index=req.focus.pageIndex or 0)
 
 
+def _history_turns(rows: list[dict[str, str]]) -> list[V3ChatTurn]:
+    turns: list[V3ChatTurn] = []
+    for row in rows:
+        role = row.get("role")
+        content = row.get("content")
+        if role in {"user", "assistant"} and isinstance(content, str) and content.strip():
+            turns.append(V3ChatTurn(role=role, content=content))
+    return turns[-20:]
+
+
+async def _chapter_chat_bundle(
+    req: V3EditChatRequest,
+    *,
+    history: list[dict[str, str]],
+    tools: EditTools,
+    complete: Callable[..., Awaitable[dict[str, Any]]] | None = None,
+    call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
+) -> tuple[str, list[V3PageTextsPatch] | None, list[V3LayoutPatchEntry], V3Usage]:
+    chapter_id = req.focus.chapterId
+    if not chapter_id:
+        return "Tell me more about what you want to change.", None, [], _usage(1)
+
+    page_info = await tools.get_page_info(
+        albumId=req.albumId,
+        chapterId=chapter_id,
+        scope="chapter",
+        pageIndex=None,
+    )
+    chapter_req = V3ChapterChatRequest(
+        albumId=req.albumId,
+        language=req.language,
+        chapter=page_info["chapter"],
+        pages=page_info["pages"],
+        history=_history_turns(history),
+        userMessage=req.userMessage,
+        **({"focusedPageIndex": req.focus.pageIndex} if req.focus.pageIndex is not None else {}),
+    )
+    response = await chapter_chat_v3.run(
+        chapter_req,
+        complete=complete,
+        call_intent=call_intent,
+    )
+    return (
+        response.assistantReply,
+        response.pagesTexts,
+        response.layoutPatch or [],
+        response.usage,
+    )
+
+
 async def run(
     req: V3EditChatRequest,
     *,
     repo: EditRepo | None = None,
     tools: EditTools | None = None,
+    complete: Callable[..., Awaitable[dict[str, Any]]] | None = None,
+    call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
 ) -> V3EditChatResponse:
     start = perf_counter()
     repo = repo or agent_edit_repo
@@ -132,6 +197,7 @@ async def run(
     pages_texts: list[V3PageTextsPatch] | None = None
     progress: V3EditProgressDecision | None = None
     assistant_reply = "Tell me more about what you want to change."
+    usage: V3Usage | None = None
 
     if _wants_layout_swap(req):
         try:
@@ -140,9 +206,20 @@ async def run(
             raise EditChatError(f"case4 layout swap failed: {exc}") from exc
         if patches:
             assistant_reply = "Updated the layout."
+    elif req.focus.chapterId:
+        try:
+            assistant_reply, pages_texts, patches, usage = await _chapter_chat_bundle(
+                req,
+                history=history,
+                tools=tools,
+                complete=complete,
+                call_intent=call_intent,
+            )
+        except Exception as exc:
+            raise EditChatError(f"chapter edit failed: {exc}") from exc
 
     duration_ms = max(1, int((perf_counter() - start) * 1000))
-    usage = _usage(duration_ms)
+    usage = usage or _usage(duration_ms)
     op_kind = _op_kind(req, pages_texts, patches, progress)
     payload = {
         "kind": _kind_from_bundle(pages_texts, patches),

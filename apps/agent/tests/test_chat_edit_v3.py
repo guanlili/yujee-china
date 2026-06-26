@@ -112,6 +112,13 @@ def _fake_complete(payload: dict[str, Any]):
     return complete
 
 
+def _write_pages_texts() -> list[dict[str, Any]]:
+    return [
+        {"pageIndex": 0, "texts": {"title": "Coast Days", "explain": "A quiet day by the sea."}},
+        {"pageIndex": 1, "texts": {"explain1": "Salt and sun.", "explain2": "Dinner by the water."}},
+    ]
+
+
 def _edit_req(user_message: str, *, chapter_id: str | None = "c1", page_index: int | None = 1) -> V3EditChatRequest:
     focus = {}
     if chapter_id is not None:
@@ -144,9 +151,31 @@ class FakeRepo:
 
 
 class FakeTools:
-    def __init__(self, *, page_photos: list[dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        page_info: dict[str, Any] | None = None,
+        page_photos: list[dict[str, Any]] | None = None,
+    ) -> None:
+        self.page_info = page_info
         self.page_photos = page_photos or []
+        self.page_info_requests: list[dict[str, Any]] = []
         self.page_photo_requests: list[dict[str, str]] = []
+
+    async def get_page_info(
+        self,
+        *,
+        albumId: str,
+        chapterId: str,
+        scope: str,
+        pageIndex: int | None = None,
+    ) -> dict[str, Any]:
+        self.page_info_requests.append(
+            {"albumId": albumId, "chapterId": chapterId, "scope": scope, "pageIndex": pageIndex}
+        )
+        if self.page_info is None:
+            raise AssertionError("page-info was not configured")
+        return self.page_info
 
     async def get_page_photos(self, *, albumId: str, chapterId: str) -> list[dict[str, Any]]:
         self.page_photo_requests.append({"albumId": albumId, "chapterId": chapterId})
@@ -155,19 +184,74 @@ class FakeTools:
 
 def test_edit_chat_response_requires_op_id_for_write_turn():
     repo = FakeRepo(op_id="op_123")
+    chapter = _chapter().model_copy(update={"chapterId": "c1"})
 
-    resp = asyncio.run(edit_handler.run(_edit_req("write this"), repo=repo, tools=FakeTools()))
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("write this"),
+            repo=repo,
+            tools=FakeTools(page_info={"chapter": chapter, "pages": _pages()}),
+            complete=_fake_complete(
+                {
+                    "kind": "write",
+                    "assistantReply": "Done.",
+                    "pagesTexts": _write_pages_texts(),
+                }
+            ),
+        )
+    )
 
     assert resp.opId == "op_123"
+    assert resp.kind == "write"
     assert repo.created[0]["status"] == "pending"
 
 
 def test_edit_chat_history_reads_only_committed_messages():
     repo = FakeRepo(committed=[{"role": "assistant", "content": "committed only"}])
+    chapter = _chapter().model_copy(update={"chapterId": "c1"})
 
-    asyncio.run(edit_handler.run(_edit_req("continue"), repo=repo, tools=FakeTools()))
+    asyncio.run(
+        edit_handler.run(
+            _edit_req("continue"),
+            repo=repo,
+            tools=FakeTools(page_info={"chapter": chapter, "pages": _pages()}),
+            complete=_fake_complete({"kind": "talk", "assistantReply": "Tell me more."}),
+        )
+    )
 
     assert repo.history_args == {"album_id": "alb_v3", "chapter_id": "c1", "limit": 20}
+
+
+def test_edit_chat_write_turn_fetches_page_info_and_returns_pages_texts():
+    chapter = _chapter().model_copy(update={"chapterId": "c1"})
+    tools = FakeTools(page_info={"chapter": chapter, "pages": _pages()})
+    repo = FakeRepo(committed=[{"role": "assistant", "content": "committed prompt"}])
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("write this chapter"),
+            repo=repo,
+            tools=tools,
+            complete=_fake_complete(
+                {
+                    "kind": "write",
+                    "assistantReply": "Done.",
+                    "pagesTexts": _write_pages_texts(),
+                }
+            ),
+        )
+    )
+
+    assert tools.page_info_requests == [
+        {"albumId": "alb_v3", "chapterId": "c1", "scope": "chapter", "pageIndex": None}
+    ]
+    assert resp.kind == "write"
+    assert resp.pagesTexts is not None
+    assert resp.pagesTexts[0].texts == {"title": "Coast Days", "explain": "A quiet day by the sea."}
+    assert repo.created[0]["payload"]["pagesTexts"][0]["texts"] == {
+        "title": "Coast Days",
+        "explain": "A quiet day by the sea.",
+    }
 
 
 def test_edit_chat_case4_fetches_page_photos_via_agent_data_and_calls_gemini(monkeypatch):
