@@ -12,6 +12,7 @@ import {
   Page,
   V3LayoutTree,
   V3StoryDraft,
+  type ArtFontPack,
   type AlbumLayoutPlan,
   type ImagePos,
   type Page as V3Page,
@@ -269,6 +270,13 @@ function photoSceneDescriptionById(tree: V3LayoutTreeT, photoId?: string | null)
     const photo = chapter.photos.find((p) => p.photoId === photoId);
     const desc = photo?.sceneDescription?.trim();
     if (desc) return desc;
+  }
+  return undefined;
+}
+
+function selectedBookArtFont(tree: V3LayoutTreeT): ArtFontPack | undefined {
+  for (const chapter of tree.chapters) {
+    if (chapter.artFont) return chapter.artFont;
   }
   return undefined;
 }
@@ -914,6 +922,7 @@ export const albumService = {
       input.endingPhotoId,
     );
     const coverPhotoDesc = photoSceneDescriptionById(normalized.tree, input.coverPhotoId);
+    const artFont = selectedBookArtFont(normalized.tree);
 
     const agentResult = await agentClient.coverV3({
       albumId,
@@ -923,6 +932,7 @@ export const albumService = {
       ...(input.coverPhoto !== undefined ? { coverPhoto: input.coverPhoto } : {}),
       ...(input.endingPhoto !== undefined ? { endingPhoto: input.endingPhoto } : {}),
       ...(coverPhotoDesc !== undefined ? { coverPhotoDesc } : {}),
+      ...(artFont !== undefined ? { artFont } : {}),
       ...(input.userMessage !== undefined ? { userMessage: input.userMessage } : {}),
       ...(input.history !== undefined ? { history: input.history } : {}),
       pages: pagesForAgent,

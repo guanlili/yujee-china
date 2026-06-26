@@ -337,6 +337,9 @@ export const V3CoverRequest = z
     endingPhoto: z.string().optional(),
     // Textual guidance may be sent to 5a copy / 5b AI color design instead of base64.
     coverPhotoDesc: z.string().optional(),
+    // Cover/ending pages have no chapter owner, so Stage5 carries the selected
+    // whole-book art font explicitly for page-level text carriers.
+    artFont: ArtFontPack.optional(),
     hint: z.string().optional(),
     userMessage: z.string().default(''),
     history: z.array(V3ChatTurn).max(20).default([]),

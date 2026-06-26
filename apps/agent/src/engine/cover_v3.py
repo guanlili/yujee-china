@@ -79,8 +79,7 @@ from . import skeleton_v3
 log = get_logger("cover_v3")
 
 MAX_COVER_CLARIFY_ROUNDS = 2
-# Current cover request contracts do not carry an artFont source. Cover pages also
-# lack chapter ownership, so use a closed-set safe default for text font carriers.
+# Backward-compatible fallback for callers that predate Stage5's cover artFont carrier.
 _DEFAULT_ART_FONT = "serif-classic"
 _NEUTRAL_ACCENT = "#8A8174"
 
@@ -451,6 +450,7 @@ async def build_cover(
         )
         color_result = CoverColorResult(color=extracted_accent or _NEUTRAL_ACCENT)
     final_accent = _finalize_cover_color(color_result.color, finalize_color_fn)
+    art_font = req.artFont or _DEFAULT_ART_FONT
 
     patches: list[V3LayoutPatchEntry] = []
     used_indices: set[int] = set()
@@ -464,7 +464,7 @@ async def build_cover(
                 cover_id,  # type: ignore[arg-type]
                 authored_texts=copy_result.cover_texts,
                 accent_color=final_accent,
-                art_font=_DEFAULT_ART_FONT,
+                art_font=art_font,
             )
         )
         used_indices.add(0)
@@ -481,7 +481,7 @@ async def build_cover(
                     ending_id,  # type: ignore[arg-type]
                     authored_texts=copy_result.ending_texts,
                     accent_color=final_accent,
-                    art_font=_DEFAULT_ART_FONT,
+                    art_font=art_font,
                 )
             )
             used_indices.add(last_pos)

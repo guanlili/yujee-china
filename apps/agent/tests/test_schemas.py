@@ -486,6 +486,7 @@ class TestV3Endpoints:
                 "coverPhoto": "data:image/jpeg;base64,AA==",
                 "endingPhoto": "data:image/png;base64,AA==",
                 "coverPhotoDesc": "a quiet portrait beside a window",
+                "artFont": "display-bold",
                 "hint": "keep the whole book tender and understated",
                 "userMessage": "Could the cover feel calmer?",
                 "history": [
@@ -499,6 +500,7 @@ class TestV3Endpoints:
         assert req.coverPhoto == "data:image/jpeg;base64,AA=="
         assert req.endingPhoto == "data:image/png;base64,AA=="
         assert req.coverPhotoDesc == "a quiet portrait beside a window"
+        assert req.artFont == "display-bold"
         assert req.hint == "keep the whole book tender and understated"
         assert req.userMessage == "Could the cover feel calmer?"
         assert [turn.model_dump() for turn in req.history] == [

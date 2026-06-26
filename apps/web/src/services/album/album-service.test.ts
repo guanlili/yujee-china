@@ -1800,6 +1800,48 @@ test('coverTurn: forwards transient cover assets, user context, and derived cove
   }
 });
 
+test('coverTurn: forwards the selected book artFont from the draft tree to the agent', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('cover-art-font');
+  try {
+    const albumId = await seedThemeCoverAlbum(user.id);
+    const album = await albumRepo.findById(albumId);
+    const draft = album?.draftJson as V3StoryDraft;
+    await albumRepo.update(db, albumId, {
+      stage: 'cover',
+      draftJson: {
+        ...draft,
+        tree: {
+          chapters: draft.tree.chapters.map((chapter) =>
+            chapter.chapterId === 'c1'
+              ? { ...chapter, accentColor: '#C0392B', artFont: 'display-bold' }
+              : chapter,
+          ),
+        },
+      },
+    });
+    const seen: Parameters<typeof agentClient.coverV3>[0][] = [];
+    t.mock.method(agentClient, 'coverV3', async (p: Parameters<typeof agentClient.coverV3>[0]) => {
+      seen.push(p);
+      return { layoutPatch: [], assistantReply: 'ok', usage: fullUsage };
+    });
+
+    await albumService.coverTurn(user.id, albumId, {
+      language: 'en',
+      coverTemplateId: 'mag-01',
+      endingTemplateId: 'mag-20',
+    });
+
+    assert.equal(seen.length, 1);
+    assert.equal((seen[0] as { artFont?: unknown }).artFont, 'display-bold');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('coverTurn: needsUserInput true returns the agent patch but does not call cover or mutate draft/stage', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');

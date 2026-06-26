@@ -589,16 +589,19 @@ class V3CoverRequest(_V3Strict):
     endingPhoto: str | None = None
     # Textual guidance may be sent to 5a copy / 5b AI color design instead of base64.
     coverPhotoDesc: str | None = None
+    # Cover/ending pages have no chapter owner, so Stage5 carries the selected
+    # whole-book art font explicitly for page-level text carriers.
+    artFont: ArtFontPack | None = None
     hint: str | None = None
     userMessage: str = ""
     history: list[V3ChatTurn] = Field(default_factory=list, max_length=20)
     pages: list[Page]
 
-    @field_validator("coverPhoto", "endingPhoto", "coverPhotoDesc", "hint", mode="before")
+    @field_validator("coverPhoto", "endingPhoto", "coverPhotoDesc", "artFont", "hint", mode="before")
     @classmethod
-    def _reject_explicit_null_stage5_optional_string(cls, value):
+    def _reject_explicit_null_stage5_optional(cls, value):
         if value is None:
-            raise ValueError("omit Stage5 optional string fields instead of sending null")
+            raise ValueError("omit Stage5 optional fields instead of sending null")
         return value
 
 

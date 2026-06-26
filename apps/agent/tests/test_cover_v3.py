@@ -69,6 +69,7 @@ def _request(
     cover_photo: str | None = None,
     ending_photo: str | None = None,
     cover_photo_desc: str | None = None,
+    art_font: str | None = None,
     hint: str | None = None,
     user_message: str = "",
     history: list[dict[str, str]] | None = None,
@@ -80,6 +81,8 @@ def _request(
         extra["endingPhoto"] = ending_photo
     if cover_photo_desc is not None:
         extra["coverPhotoDesc"] = cover_photo_desc
+    if art_font is not None:
+        extra["artFont"] = art_font
     if hint is not None:
         extra["hint"] = hint
     return V3CoverRequest(
@@ -508,6 +511,16 @@ def test_color_design_result_exits_through_finalize_color() -> None:
     assert texts["title#artFont"] == "serif-classic"
     assert texts["label#accentColor"] == "#4A5568"
     assert texts["label#artFont"] == "serif-classic"
+
+
+def test_cover_theme_carriers_use_request_art_font() -> None:
+    page = _page(images={"image": "p1"}, page_index=0)
+
+    res = _run(_request([page], cover=_COVER_TID, art_font="display-bold"))
+    texts = res.layoutPatch[0].texts or {}
+
+    assert texts["title#artFont"] == "display-bold"
+    assert texts["label#artFont"] == "display-bold"
 
 
 def test_ending_photo_used_for_accent_when_cover_photo_missing() -> None:

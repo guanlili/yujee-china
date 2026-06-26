@@ -430,6 +430,7 @@ test('V3CoverRequest accepts Stage5 photo guidance and chat context', () => {
     coverPhoto: 'data:image/jpeg;base64,AA==',
     endingPhoto: 'data:image/png;base64,AA==',
     coverPhotoDesc: 'a quiet portrait beside a window',
+    artFont: 'display-bold',
     hint: 'keep the whole book tender and understated',
     userMessage: 'Could the cover feel calmer?',
     history: [
@@ -442,6 +443,7 @@ test('V3CoverRequest accepts Stage5 photo guidance and chat context', () => {
   assert.equal(parsed.coverPhoto, 'data:image/jpeg;base64,AA==');
   assert.equal(parsed.endingPhoto, 'data:image/png;base64,AA==');
   assert.equal(parsed.coverPhotoDesc, 'a quiet portrait beside a window');
+  assert.equal(parsed.artFont, 'display-bold');
   assert.equal(parsed.hint, 'keep the whole book tender and understated');
   assert.equal(parsed.userMessage, 'Could the cover feel calmer?');
   assert.deepEqual(parsed.history, [
