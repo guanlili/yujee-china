@@ -7,6 +7,7 @@ import { logger } from '@/lib/log/logger';
 import { V3StoryDraft } from '@yujee/contracts';
 
 const ZOMBIE_TIMEOUT_MS = 5 * 60 * 1000;
+const SELECT_LAYOUT_COMPLETABLE_STAGES = new Set(['layout', 'legalize', 'wrap']);
 
 export type GenerationResolution =
   | { kind: 'progress'; stage: string | null; progress: number }
@@ -193,7 +194,7 @@ export const jobService = {
       return;
     }
     const parsedDraft = V3StoryDraft.safeParse(album.draftJson);
-    if (job.stage !== 'layout' || album.status !== 'AGENT_RUNNING' || !parsedDraft.success) {
+    if (!SELECT_LAYOUT_COMPLETABLE_STAGES.has(job.stage ?? '') || album.status !== 'AGENT_RUNNING' || !parsedDraft.success) {
       logger.warn(
         {
           requestId,

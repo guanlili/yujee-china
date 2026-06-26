@@ -153,6 +153,20 @@ test('select-layout/completed → merges pages + EDITING + stage story + hold se
       progress: 51,
       startedAt: new Date(),
     });
+    await post({
+      requestId,
+      jobKind: 'select-layout',
+      event: 'progress',
+      stage: 'legalize',
+      progress: 100,
+    });
+    await post({
+      requestId,
+      jobKind: 'select-layout',
+      event: 'progress',
+      stage: 'wrap',
+      progress: 100,
+    });
     const res = await post({
       requestId,
       jobKind: 'select-layout',
