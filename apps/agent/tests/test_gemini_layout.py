@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from src.engine import gemini_layout, skeleton_v3, template_previews, templates
@@ -91,3 +93,10 @@ def test_gemini_layout_falls_back_only_for_illegal_or_missing_slots():
     assert len(pages) == 1
     assert set(pages[0]["images"].values()) == {"p1", "p2"}
     assert pages[0]["images"] != {slot_a: "p1"}
+
+
+def test_gemini_layout_accepts_case4_swap_mode_without_rejecting(monkeypatch):
+    monkeypatch.setattr(gemini_layout.get_settings(), "select_layout_api_key", None, raising=False)
+
+    with pytest.raises(gemini_layout.GeminiLayoutUnavailable):
+        asyncio.run(gemini_layout.gemini_layout([_chapter(["p1"])], mode="case4-swap", allowAddPages=True))

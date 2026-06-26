@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import os
 import subprocess
 import sys
@@ -32,6 +33,22 @@ def test_agent_edit_boundary_migration_static_contract() -> None:
     assert "COPY apps/agent/alembic.ini ./alembic.ini" in dockerfile
     assert "COPY apps/agent/migrations ./migrations" in dockerfile
     assert "COPY packages/contracts/template-previews ./packages/contracts/template-previews" in dockerfile
+
+
+def test_agent_edit_repo_stage3_methods_static_contract() -> None:
+    from src.db import AgentEditRepository
+
+    assert hasattr(AgentEditRepository, "list_committed_messages")
+    assert hasattr(AgentEditRepository, "create_pending_turn")
+
+    history_source = inspect.getsource(AgentEditRepository.list_committed_messages)
+    pending_source = inspect.getsource(AgentEditRepository.create_pending_turn)
+    assert "status = 'committed'" in history_source
+    assert "order by created_at desc" in history_source
+    assert "status" in pending_source
+    assert "'pending'" in pending_source
+    assert "agent.edit_ops" in pending_source
+    assert "agent.edit_messages" in pending_source
 
 
 @pytest.mark.skipif(
@@ -122,6 +139,163 @@ def test_agent_edit_repo_ack_integration(monkeypatch) -> None:
                     (talk_content,),
                 )
                 assert cur.fetchone()[0] == "committed"
+    finally:
+        cleanup()
+        settings_module.reset_settings_cache()
+
+
+@pytest.mark.skipif(
+    not os.environ.get("AGENT_TEST_DATABASE_URL"),
+    reason="set AGENT_TEST_DATABASE_URL to run agent DB history integration test",
+)
+def test_agent_edit_repo_committed_history_excludes_pending(monkeypatch) -> None:
+    database_url = os.environ["AGENT_TEST_DATABASE_URL"]
+    env = {**os.environ, "DATABASE_URL": database_url}
+    migration = subprocess.run(
+        [sys.executable, "-m", "alembic", "-c", str(AGENT_DIR / "alembic.ini"), "upgrade", "head"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert migration.returncode == 0, migration.stderr[-1000:]
+
+    import psycopg  # type: ignore[import-not-found]
+
+    from src import settings as settings_module
+    from src.db import AgentEditRepository
+
+    album_id = f"album-{uuid4()}"
+    op_id = f"op-{uuid4()}"
+
+    def cleanup() -> None:
+        with psycopg.connect(database_url) as conn:  # type: ignore[attr-defined]
+            with conn.cursor() as cur:
+                cur.execute("delete from agent.edit_messages where album_id = %s", (album_id,))
+                cur.execute("delete from agent.edit_ops where album_id = %s", (album_id,))
+                cur.execute("delete from agent.edit_sessions where album_id = %s", (album_id,))
+            conn.commit()
+
+    cleanup()
+    try:
+        with psycopg.connect(database_url) as conn:  # type: ignore[attr-defined]
+            with conn.cursor() as cur:
+                cur.execute(
+                    "insert into agent.edit_sessions (album_id, session_json) values (%s, '{}'::jsonb) returning id",
+                    (album_id,),
+                )
+                session_id = cur.fetchone()[0]
+                cur.execute(
+                    """
+                    insert into agent.edit_ops (op_id, album_id, session_id, kind, status, payload_json)
+                    values (%s, %s, %s, 'edit_text', 'pending', '{}'::jsonb)
+                    """,
+                    (op_id, album_id, session_id),
+                )
+                cur.execute(
+                    """
+                    insert into agent.edit_messages (op_id, album_id, chapter_id, role, content, status)
+                    values (null, %s, 'c1', 'user', 'committed user', 'committed')
+                    """,
+                    (album_id,),
+                )
+                cur.execute(
+                    """
+                    insert into agent.edit_messages (op_id, album_id, chapter_id, role, content, status)
+                    values (%s, %s, 'c1', 'assistant', 'pending assistant', 'pending')
+                    """,
+                    (op_id, album_id),
+                )
+            conn.commit()
+
+        monkeypatch.setenv("DATABASE_URL", database_url)
+        settings_module.reset_settings_cache()
+        repo = AgentEditRepository()
+
+        assert asyncio.run(repo.list_committed_messages(album_id, chapter_id="c1", limit=20)) == [
+            {"role": "user", "content": "committed user"}
+        ]
+    finally:
+        cleanup()
+        settings_module.reset_settings_cache()
+
+
+@pytest.mark.skipif(
+    not os.environ.get("AGENT_TEST_DATABASE_URL"),
+    reason="set AGENT_TEST_DATABASE_URL to run agent DB pending-turn integration test",
+)
+def test_agent_edit_repo_create_pending_turn_inserts_op_and_messages(monkeypatch) -> None:
+    database_url = os.environ["AGENT_TEST_DATABASE_URL"]
+    env = {**os.environ, "DATABASE_URL": database_url}
+    migration = subprocess.run(
+        [sys.executable, "-m", "alembic", "-c", str(AGENT_DIR / "alembic.ini"), "upgrade", "head"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert migration.returncode == 0, migration.stderr[-1000:]
+
+    import psycopg  # type: ignore[import-not-found]
+
+    from src import settings as settings_module
+    from src.db import AgentEditRepository
+
+    album_id = f"album-{uuid4()}"
+
+    def cleanup() -> None:
+        with psycopg.connect(database_url) as conn:  # type: ignore[attr-defined]
+            with conn.cursor() as cur:
+                cur.execute("delete from agent.edit_messages where album_id = %s", (album_id,))
+                cur.execute("delete from agent.edit_ops where album_id = %s", (album_id,))
+                cur.execute("delete from agent.edit_sessions where album_id = %s", (album_id,))
+            conn.commit()
+
+    cleanup()
+    try:
+        monkeypatch.setenv("DATABASE_URL", database_url)
+        settings_module.reset_settings_cache()
+        repo = AgentEditRepository()
+
+        op_id = asyncio.run(
+            repo.create_pending_turn(
+                album_id=album_id,
+                chapter_id="c1",
+                user_content="u",
+                assistant_content="a",
+                kind="edit_text",
+                payload={"patches": []},
+                usage={"durationMs": 1},
+            )
+        )
+
+        with psycopg.connect(database_url) as conn:  # type: ignore[attr-defined]
+            with conn.cursor() as cur:
+                cur.execute("select status, kind, payload_json from agent.edit_ops where op_id = %s", (op_id,))
+                status, kind, payload = cur.fetchone()
+                assert status == "pending"
+                assert kind == "edit_text"
+                assert payload["patches"] == []
+
+                cur.execute(
+                    "select role, content, status from agent.edit_messages where op_id = %s order by created_at, role",
+                    (op_id,),
+                )
+                rows = cur.fetchall()
+                assert {(role, content, status) for role, content, status in rows} == {
+                    ("user", "u", "pending"),
+                    ("assistant", "a", "pending"),
+                }
+
+        assert asyncio.run(repo.acknowledge_op(op_id)) is True
+        with psycopg.connect(database_url) as conn:  # type: ignore[attr-defined]
+            with conn.cursor() as cur:
+                cur.execute("select status from agent.edit_ops where op_id = %s", (op_id,))
+                assert cur.fetchone()[0] == "committed"
+                cur.execute("select distinct status from agent.edit_messages where op_id = %s", (op_id,))
+                assert cur.fetchall() == [("committed",)]
     finally:
         cleanup()
         settings_module.reset_settings_cache()

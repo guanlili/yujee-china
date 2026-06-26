@@ -265,8 +265,8 @@ async def gemini_layout(
     mode: str = "select",
     allowAddPages: bool = True,
 ) -> GeminiLayoutResult:
-    if mode != "select" or not allowAddPages:
-        raise ValueError("Stage2 gemini_layout expects mode='select' and allowAddPages=True")
+    if mode not in {"select", "case4-swap"} or not allowAddPages:
+        raise ValueError("gemini_layout expects mode='select' or 'case4-swap' and allowAddPages=True")
 
     settings = get_settings()
     api_key = getattr(settings, "select_layout_api_key", None)

@@ -34,10 +34,12 @@ from src.schemas import (
     V3ChapterChatRequest,
     V3ChapterChatResponse,
     V3ChapterPhoto,
+    V3EditChatRequest,
 )
+from src.agents.editing import handler as edit_handler
 from src.agents.writing import handler as chapter_chat_v3
 from src.agents.image_edit_intent import handler as chat_edit_v3
-from src.engine import skeleton_v3
+from src.engine import gemini_layout, skeleton_v3
 
 # mag-04 is a 3-image interior template (matches test_chapter_chat_v3 baseline).
 _INTERIOR_3 = "mag-04"
@@ -108,6 +110,92 @@ def _fake_complete(payload: dict[str, Any]):
         }
 
     return complete
+
+
+def _edit_req(user_message: str, *, chapter_id: str | None = "c1", page_index: int | None = 1) -> V3EditChatRequest:
+    focus = {}
+    if chapter_id is not None:
+        focus["chapterId"] = chapter_id
+    if page_index is not None:
+        focus["pageIndex"] = page_index
+    return V3EditChatRequest(
+        albumId="alb_v3",
+        language="en",
+        userMessage=user_message,
+        focus=focus,
+        progress={"currentChapterId": chapter_id, "doneChapterIds": []},
+    )
+
+
+class FakeRepo:
+    def __init__(self, *, op_id: str = "op_fake", committed: list[dict[str, str]] | None = None) -> None:
+        self.op_id = op_id
+        self.committed = committed or []
+        self.created: list[dict[str, Any]] = []
+        self.history_args: dict[str, Any] | None = None
+
+    async def list_committed_messages(self, album_id: str, *, chapter_id: str | None, limit: int = 20) -> list[dict[str, str]]:
+        self.history_args = {"album_id": album_id, "chapter_id": chapter_id, "limit": limit}
+        return self.committed
+
+    async def create_pending_turn(self, **kwargs: Any) -> str:
+        self.created.append({**kwargs, "status": "pending"})
+        return self.op_id
+
+
+class FakeTools:
+    def __init__(self, *, page_photos: list[dict[str, Any]] | None = None) -> None:
+        self.page_photos = page_photos or []
+        self.page_photo_requests: list[dict[str, str]] = []
+
+    async def get_page_photos(self, *, albumId: str, chapterId: str) -> list[dict[str, Any]]:
+        self.page_photo_requests.append({"albumId": albumId, "chapterId": chapterId})
+        return self.page_photos
+
+
+def test_edit_chat_response_requires_op_id_for_write_turn():
+    repo = FakeRepo(op_id="op_123")
+
+    resp = asyncio.run(edit_handler.run(_edit_req("write this"), repo=repo, tools=FakeTools()))
+
+    assert resp.opId == "op_123"
+    assert repo.created[0]["status"] == "pending"
+
+
+def test_edit_chat_history_reads_only_committed_messages():
+    repo = FakeRepo(committed=[{"role": "assistant", "content": "committed only"}])
+
+    asyncio.run(edit_handler.run(_edit_req("continue"), repo=repo, tools=FakeTools()))
+
+    assert repo.history_args == {"album_id": "alb_v3", "chapter_id": "c1", "limit": 20}
+
+
+def test_edit_chat_case4_fetches_page_photos_via_agent_data_and_calls_gemini(monkeypatch):
+    tools = FakeTools(
+        page_photos=[
+            {
+                "photoId": "p1",
+                "ref200px": "data:image/jpeg;base64,AA==",
+                "orientation": "landscape",
+                "takenAt": None,
+            }
+        ]
+    )
+    calls: list[tuple[Any, str, bool]] = []
+
+    async def fake_gemini(chapters, *, mode, allowAddPages):  # noqa: ANN001
+        calls.append((chapters, mode, allowAddPages))
+        return gemini_layout.GeminiLayoutResult(
+            pages=[{"chapterId": "c1", "templateId": "mag-03", "slots": {"image": "p1"}}]
+        )
+
+    monkeypatch.setattr(edit_handler.gemini_layout, "gemini_layout", fake_gemini)
+
+    resp = asyncio.run(edit_handler.run(_edit_req("change the layout"), repo=FakeRepo(), tools=tools))
+
+    assert tools.page_photo_requests == [{"albumId": "alb_v3", "chapterId": "c1"}]
+    assert calls[0][1:] == ("case4-swap", True)
+    assert resp.patches[0].templateId == "mag-03"
 
 
 # =============================================================================
