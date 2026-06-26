@@ -75,18 +75,17 @@ test('unknown requestId → accepted:false, nothing written', async (t) => {
     jobKind: 'analyze',
     event: 'completed',
     tree: TREE,
-    pages: PAGES,
     usage: USAGE,
   });
   assert.equal(res.status, 200);
   assert.deepEqual((await res.json()).data, { accepted: false });
 });
 
-test('analyze/completed → draft_json retains tree pages + EDITING + stage story + hold settled (charge-at-init)', async (t) => {
+test('analyze/completed rejects pages because Stage1 is tree-only', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
-  const user = await makeUser('v3route-done');
+  const user = await makeUser('v3route-analyze-pages');
   try {
-    const { albumId, holdId, requestId } = await seed(user.id);
+    const { requestId } = await seed(user.id);
     const res = await post({
       requestId,
       jobKind: 'analyze',
@@ -95,24 +94,13 @@ test('analyze/completed → draft_json retains tree pages + EDITING + stage stor
       pages: PAGES,
       usage: USAGE,
     });
-    assert.equal((await res.json()).data.accepted, true);
-
-    const album = await albumRepo.findById(albumId);
-    assert.equal(album?.status, 'EDITING');
-    assert.deepEqual(album?.draftJson, { ...TREE, pages: PAGES });
-    assert.equal(album?.layoutJson, null);
-    // Legacy completed callbacks may still carry pages during migration; stage
-    // advances analysing → story in the same tx (stage ⟂ status; status stays EDITING).
-    assert.equal(album?.stage, 'story');
-    // The single charge settles here.
-    const hold = await creditHoldRepo.findById(holdId);
-    assert.equal(hold?.status, 'SETTLED');
+    assert.equal(res.status, 400);
   } finally {
     await cleanupUser(user.id);
   }
 });
 
-test('analyze/completed tree-only → draft_json stores version tree progress without pages', async (t) => {
+test('analyze/completed tree-only → stores tree progress, keeps init job running and hold open', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('v3route-tree-only');
   try {
@@ -127,15 +115,60 @@ test('analyze/completed tree-only → draft_json stores version tree progress wi
     assert.equal((await res.json()).data.accepted, true);
 
     const album = await albumRepo.findById(albumId);
-    assert.equal(album?.status, 'EDITING');
+    assert.equal(album?.status, 'AGENT_RUNNING');
     assert.deepEqual(album?.draftJson, {
       version: 'v3-story',
       tree: TREE,
       progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
     });
+    assert.equal(album?.stage, 'analysing');
+    const hold = await creditHoldRepo.findById(holdId);
+    assert.equal(hold?.status, 'HOLDING');
+    const job = await agentJobRepo.findByRequestId(requestId);
+    assert.equal(job?.status, 'RUNNING');
+    assert.equal(job?.stage, 'layout');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('select-layout/completed → merges pages + EDITING + stage story + hold settled', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('v3route-layout-done');
+  try {
+    const { albumId, holdId, requestId } = await seed(user.id);
+    await albumRepo.update(db, albumId, {
+      status: 'AGENT_RUNNING',
+      stage: 'analysing',
+      draftJson: {
+        version: 'v3-story',
+        tree: TREE,
+        progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
+      },
+    });
+    const res = await post({
+      requestId,
+      jobKind: 'select-layout',
+      event: 'completed',
+      pages: PAGES,
+      usage: USAGE,
+    });
+    assert.equal((await res.json()).data.accepted, true);
+
+    const album = await albumRepo.findById(albumId);
+    assert.equal(album?.status, 'EDITING');
+    assert.deepEqual(album?.draftJson, {
+      version: 'v3-story',
+      tree: TREE,
+      pages: PAGES,
+      progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
+    });
+    assert.equal(album?.layoutJson, null);
     assert.equal(album?.stage, 'story');
     const hold = await creditHoldRepo.findById(holdId);
     assert.equal(hold?.status, 'SETTLED');
+    const job = await agentJobRepo.findByRequestId(requestId);
+    assert.equal(job?.status, 'COMPLETED');
   } finally {
     await cleanupUser(user.id);
   }

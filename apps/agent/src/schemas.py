@@ -390,10 +390,9 @@ class TemplateDef(_V3Strict):
 # ---------- v3.ts: shared -----------------------------------------------------
 
 V3Language = Literal["zh", "en"]
-# V3 唯一异步 job = analyze;失败语义走回调 `failed`(§8.3)。
-V3JobKind = Literal["analyze"]
+V3JobKind = Literal["analyze", "select-layout"]
 # analyze 进度子阶段(§4.1);仅用于 progress 回调展示。
-V3JobStage = Literal["describe", "group", "template", "preview"]
+V3JobStage = Literal["describe", "group", "template", "preview", "layout", "legalize", "wrap"]
 
 
 class V3Models(_V3Strict):
@@ -406,6 +405,7 @@ class V3Usage(_V3Strict):
 
     durationMs: int = Field(ge=0)
     visionCallCount: int = Field(ge=0, default=0)
+    geminiCallCount: int = Field(ge=0, default=0)
     planningInputTokens: int = Field(ge=0, default=0)
     planningOutputTokens: int = Field(ge=0, default=0)
     repairAttempts: int = Field(ge=0, default=0)
@@ -476,6 +476,32 @@ class V3AnalyzeRequest(_V3Strict):
     language: V3Language
     meta: V3AnalyzeMeta = None
     photos: list[V3AnalyzePhoto] = Field(min_length=1, max_length=30)
+
+
+# ---------- v3.ts: ②0 select-layout (async 202 + callback) -------------------
+
+
+class SelectLayoutPhoto(_V3Strict):
+    photoId: str = Field(min_length=1)
+    ref200px: str = Field(min_length=1)
+    orientation: PhotoOrientation
+    takenAt: str | None
+
+    _check_ref200px = field_validator("ref200px")(_validate_v3_analyze_image_data_url)
+    _check_taken_at = field_validator("takenAt")(_validate_iso_datetime)
+
+
+class SelectLayoutChapter(_V3Strict):
+    chapterId: str = Field(min_length=1)
+    photos: list[SelectLayoutPhoto] = Field(min_length=1)
+    structureHint: str = Field(default=None, max_length=600)
+
+
+class SelectLayoutRequest(_V3Strict):
+    requestId: str = Field(min_length=1)
+    callbackUrl: HttpUrl
+    language: V3Language
+    chapters: list[SelectLayoutChapter] = Field(min_length=1)
 
 
 # ---------- v3.ts: ② chapter-chat (sync) --------------------------------------
@@ -694,17 +720,17 @@ class V3AnalyzeCompleted(_V3Strict):
     requestId: str = Field(min_length=1)
     jobKind: Literal["analyze"]
     event: Literal["completed"]
-    # 预览态产物:V3 章节树 + 套好模板/填好通用文案-色的页。
+    # Stage1 tree-only. Stage2 select-layout is the only creator of pages.
     tree: V3LayoutTree
-    pages: list[Page] | None = Field(default=None, min_length=1)
     usage: V3Usage
 
-    @model_validator(mode="before")
-    @classmethod
-    def _reject_explicit_null_pages(cls, data: object) -> object:
-        if isinstance(data, dict) and data.get("pages") is None and "pages" in data:
-            raise ValueError("pages may be omitted during migration but cannot be null")
-        return data
+
+class SelectLayoutCompleted(_V3Strict):
+    requestId: str = Field(min_length=1)
+    jobKind: Literal["select-layout"]
+    event: Literal["completed"]
+    pages: list[Page] = Field(min_length=1)
+    usage: V3Usage
 
 
 class AgentAckRequest(_V3Strict):
@@ -724,10 +750,7 @@ class V3FailedEvent(_V3Strict):
     progress: int = Field(default=None, ge=0, le=100)
 
 
-V3Callback = Annotated[
-    Union[V3ProgressEvent, V3FailedEvent, V3AnalyzeCompleted],
-    Field(discriminator="event"),
-]
+V3Callback = Union[V3ProgressEvent, V3FailedEvent, V3AnalyzeCompleted, SelectLayoutCompleted]
 
 
 # ---------- v3.ts: select-template legal candidate (§9 / §6) ------------------

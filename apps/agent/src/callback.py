@@ -5,6 +5,7 @@ import httpx
 
 from .logging_config import get_logger
 from .schemas import (
+    SelectLayoutCompleted,
     V3AnalyzeCompleted,
     V3FailedEvent,
     V3ProgressEvent,
@@ -19,7 +20,7 @@ _RETRY_BACKOFFS = (1, 4)
 # All envelopes share the duck-typed contract this poster relies on: `.event`
 # (for logging), `.requestId` (for the giveup log), and a pydantic `model_dump`.
 # The V3 analyze job posts to the Web callback URL supplied by the request.
-Envelope = Union[V3ProgressEvent, V3AnalyzeCompleted, V3FailedEvent]
+Envelope = Union[V3ProgressEvent, V3AnalyzeCompleted, SelectLayoutCompleted, V3FailedEvent]
 
 
 def _serialize(envelope: Envelope) -> dict:

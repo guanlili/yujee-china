@@ -22,24 +22,24 @@ function firstChapterId(tree: unknown): string | null {
   return typeof chapterId === 'string' && chapterId.length > 0 ? chapterId : null;
 }
 
-export function buildAnalyzeDraftJson(tree: unknown, pages: unknown) {
-  if (pages !== undefined) {
-    return tree && typeof tree === 'object' && !Array.isArray(tree)
-      ? {
-          ...(tree as Record<string, unknown>),
-          pages,
-        }
-      : {
-          tree,
-          pages,
-        };
-  }
-
+export function buildAnalyzeDraftJson(tree: unknown) {
   return {
     version: 'v3-story',
     tree,
     progress: { currentChapterId: firstChapterId(tree), doneChapterIds: [] },
   };
+}
+
+export function mergeSelectLayoutPages(draftJson: unknown, pages: unknown) {
+  if (
+    draftJson &&
+    typeof draftJson === 'object' &&
+    !Array.isArray(draftJson) &&
+    (draftJson as { version?: unknown }).version === 'v3-story'
+  ) {
+    return { ...(draftJson as Record<string, unknown>), pages };
+  }
+  return { ...buildAnalyzeDraftJson(draftJson), pages };
 }
 
 export const jobService = {
@@ -123,7 +123,7 @@ export const jobService = {
     await this.handleProgress(requestId, stage, progress);
   },
 
-  async handleV3AnalyzeCompleted(requestId: string, tree: unknown, pages: unknown, usage: unknown) {
+  async handleV3AnalyzeCompleted(requestId: string, tree: unknown, usage: unknown) {
     const job = await agentJobRepo.findByRequestId(requestId);
     if (!job) return;
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
@@ -135,15 +135,43 @@ export const jobService = {
     }
 
     await db.transaction(async (tx) => {
+      const won = await agentJobRepo.transitionStatus(tx, job.id, 'RUNNING', ['QUEUED', 'RUNNING'], {
+        progress: 50,
+        stage: 'layout',
+        usage: (usage as Record<string, unknown> | null) ?? null,
+        startedAt: new Date(),
+      });
+      if (!won) return;
+
+      const draftJson = buildAnalyzeDraftJson(tree);
+
+      await albumRepo.update(tx, job.albumId, {
+        draftJson,
+      });
+    });
+  },
+
+  async handleV3SelectLayoutCompleted(requestId: string, pages: unknown, usage: unknown) {
+    const job = await agentJobRepo.findByRequestId(requestId);
+    if (!job) return;
+    if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
+
+    const album = await albumRepo.findById(job.albumId);
+    if (!album) {
+      logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 select-layout completed');
+      return;
+    }
+
+    await db.transaction(async (tx) => {
       const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
         progress: 100,
-        stage: 'preview',
+        stage: 'wrap',
         usage: (usage as Record<string, unknown> | null) ?? null,
         completedAt: new Date(),
       });
       if (!won) return;
 
-      const draftJson = buildAnalyzeDraftJson(tree, pages);
+      const draftJson = mergeSelectLayoutPages(album.draftJson, pages);
 
       await albumRepo.update(tx, job.albumId, {
         status: 'EDITING',

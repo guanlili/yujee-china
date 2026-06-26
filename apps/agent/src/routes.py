@@ -36,6 +36,7 @@ from .schemas import (
     V3ChapterChatResponse,
     V3PageEditRequest,
     V3PageEditResponse,
+    SelectLayoutRequest,
 )
 from .schemas import (
     V3ApplyThemeRequest,
@@ -62,7 +63,7 @@ from .agents.writing import ChapterChatV3Error
 from .engine.cover_v3 import CoverV3Error
 from .engine.finalize_v3 import FinalizeV3Error
 from .agents.theme_recommend import RecommendV3Error
-from .flows import analyze
+from .flows import analyze, select_layout
 from .db import AgentDbUnavailable, agent_edit_repo
 
 router = APIRouter()
@@ -91,6 +92,23 @@ async def submit_analyze(
     # base64 is read into the background task only; never logged (§3 隐私).
     log.info("v3_analyze.accepted", photo_count=len(req.photos), language=req.language)
     background_tasks.add_task(analyze.run_with_timeout, req)
+    return V3AcceptedResponse(
+        ok=True,
+        data=V3AcceptedData(requestId=req.requestId, accepted=True),
+    ).model_dump(mode="json")
+
+
+@router.post("/v3/select-layout", status_code=202, dependencies=[Depends(require_bearer)])
+async def submit_select_layout(
+    req: SelectLayoutRequest, background_tasks: BackgroundTasks
+) -> dict[str, Any]:
+    log.info(
+        "v3_select_layout.accepted",
+        chapters=len(req.chapters),
+        photos=sum(len(chapter.photos) for chapter in req.chapters),
+        language=req.language,
+    )
+    background_tasks.add_task(select_layout.run_with_timeout, req)
     return V3AcceptedResponse(
         ok=True,
         data=V3AcceptedData(requestId=req.requestId, accepted=True),

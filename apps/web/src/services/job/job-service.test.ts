@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildAnalyzeDraftJson } from './job-service';
+import { buildAnalyzeDraftJson, mergeSelectLayoutPages } from './job-service';
 
 const TREE = {
   chapters: [
@@ -18,13 +18,25 @@ const TREE = {
 const PAGES = [{ pageIndex: 0, templateId: 'mag-02', images: { image: 'p1' }, texts: {} }];
 
 test('buildAnalyzeDraftJson wraps tree-only analyze output as V3StoryDraft', () => {
-  assert.deepEqual(buildAnalyzeDraftJson(TREE, undefined), {
+  assert.deepEqual(buildAnalyzeDraftJson(TREE), {
     version: 'v3-story',
     tree: TREE,
     progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
   });
 });
 
-test('buildAnalyzeDraftJson preserves legacy pages callbacks during migration', () => {
-  assert.deepEqual(buildAnalyzeDraftJson(TREE, PAGES), { ...TREE, pages: PAGES });
+test('mergeSelectLayoutPages adds pages without mutating the Stage1 tree/progress', () => {
+  const draft = buildAnalyzeDraftJson(TREE);
+
+  assert.deepEqual(mergeSelectLayoutPages(draft, PAGES), {
+    version: 'v3-story',
+    tree: TREE,
+    pages: PAGES,
+    progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
+  });
+  assert.deepEqual(draft, {
+    version: 'v3-story',
+    tree: TREE,
+    progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
+  });
 });

@@ -22,7 +22,11 @@ export async function handleV3JobProgress(req: Request) {
       await jobService.handleV3Progress(payload.requestId, payload.stage, payload.progress);
       break;
     case 'completed':
-      await jobService.handleV3AnalyzeCompleted(payload.requestId, payload.tree, payload.pages, payload.usage);
+      if (payload.jobKind === 'analyze') {
+        await jobService.handleV3AnalyzeCompleted(payload.requestId, payload.tree, payload.usage);
+      } else {
+        await jobService.handleV3SelectLayoutCompleted(payload.requestId, payload.pages, payload.usage);
+      }
       break;
     case 'failed':
       await jobService.handleV3Failed(payload.requestId, payload.error);

@@ -44,6 +44,8 @@ from src.schemas import (
     V3LayoutTree,
     V3RecommendRequest,
     V3RecommendResponse,
+    SelectLayoutCompleted,
+    SelectLayoutRequest,
     V3TemplateCandidate,
 )
 
@@ -459,6 +461,73 @@ class TestV3AnalyzePrivacy:
             V3AnalyzeRequest.model_validate(bad)
 
 
+class TestSelectLayoutRequest:
+    def test_carries_taken_at_and_rejects_caller_candidates(self):
+        payload = {
+            "requestId": "layout-r1",
+            "callbackUrl": "https://example.com/api/v3/internal/job-progress",
+            "language": "en",
+            "chapters": [
+                {
+                    "chapterId": "ch_1",
+                    "structureHint": "coast morning",
+                    "photos": [
+                        {
+                            "photoId": "p1",
+                            "ref200px": "data:image/jpeg;base64,AA==",
+                            "orientation": "landscape",
+                            "takenAt": "2024-03-15T08:30:00",
+                        },
+                        {
+                            "photoId": "p2",
+                            "ref200px": "data:image/png;base64,AA==",
+                            "orientation": "portrait",
+                            "takenAt": None,
+                        },
+                    ],
+                }
+            ],
+        }
+
+        SelectLayoutRequest.model_validate(payload)
+        with pytest.raises(ValidationError):
+            SelectLayoutRequest.model_validate(
+                {
+                    **payload,
+                    "chapters": [
+                        {
+                            **payload["chapters"][0],
+                            "candidates": [
+                                {
+                                    "templateId": "mag-08",
+                                    "category": "interior",
+                                    "imageSlotCount": 2,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+        with pytest.raises(ValidationError):
+            SelectLayoutRequest.model_validate(
+                {
+                    **payload,
+                    "chapters": [
+                        {
+                            **payload["chapters"][0],
+                            "photos": [
+                                {
+                                    "photoId": "p1",
+                                    "ref200px": "data:image/jpeg;base64,AA==",
+                                    "orientation": "landscape",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+
 class TestV3Endpoints:
     def test_chapter_chat_kind_drives_patch(self):
         usage = {"durationMs": 1, "models": {}}
@@ -630,8 +699,34 @@ class TestV3Callback:
                 "jobKind": "analyze",
                 "event": "completed",
                 "tree": {"chapters": []},
-                "pages": [{"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}],
                 "usage": {"durationMs": 1, "models": {}},
+            }
+        )
+        SelectLayoutCompleted.model_validate(
+            {
+                "requestId": "r1",
+                "jobKind": "select-layout",
+                "event": "completed",
+                "pages": [{"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}],
+                "usage": {"durationMs": 1, "geminiCallCount": 1, "models": {"planning": "gemini-layout"}},
+            }
+        )
+        _CALLBACK.validate_python(
+            {
+                "requestId": "r1",
+                "jobKind": "select-layout",
+                "event": "progress",
+                "stage": "wrap",
+                "progress": 90,
+            }
+        )
+        _CALLBACK.validate_python(
+            {
+                "requestId": "r1",
+                "jobKind": "select-layout",
+                "event": "completed",
+                "pages": [{"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}],
+                "usage": {"durationMs": 1, "geminiCallCount": 1, "models": {"planning": "gemini-layout"}},
             }
         )
         _CALLBACK.validate_python(
@@ -642,7 +737,7 @@ class TestV3Callback:
         with pytest.raises(ValidationError):
             _CALLBACK.validate_python({"requestId": "r1", "jobKind": "analyze", "event": "bogus"})
 
-    def test_analyze_completed_pages_optional(self):
+    def test_analyze_completed_is_tree_only(self):
         payload = {
             "requestId": "r1",
             "jobKind": "analyze",
@@ -654,7 +749,7 @@ class TestV3Callback:
         V3AnalyzeCompleted.model_validate(payload)
         _CALLBACK.validate_python(payload)
         with pytest.raises(ValidationError):
-            V3AnalyzeCompleted.model_validate({**payload, "pages": None})
+            V3AnalyzeCompleted.model_validate({**payload, "pages": [{"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}]})
 
 
 # ---------- cross-language parity drift guard ---------------------------------
@@ -678,6 +773,8 @@ _PY_SCHEMAS = {
     "V3LayoutTree": V3LayoutTree,
     "V3RecommendRequest": V3RecommendRequest,
     "V3RecommendResponse": V3RecommendResponse,
+    "SelectLayoutRequest": SelectLayoutRequest,
+    "SelectLayoutCompleted": SelectLayoutCompleted,
     "V3TemplateCandidate": V3TemplateCandidate,
     "TemplateDef": TemplateDef,
     "TemplateTextSlot": TemplateTextSlot,

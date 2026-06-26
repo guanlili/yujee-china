@@ -2,11 +2,13 @@ import { db } from '@/db/client';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { agentClient, type AgentPhotoInput } from '@/lib/agent/agent-client';
 import { env } from '@/lib/env';
+import { ERRORS } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
 import { albumService } from '@/services/album/album-service';
 import { creditService } from '@/services/credit/credit-service';
 import { jobService } from '@/services/job/job-service';
-import type { V3AnalyzeRequest } from '@yujee/contracts';
+import { V3LayoutTree } from '@yujee/contracts';
+import type { SelectLayoutRequest, V3AnalyzeRequest } from '@yujee/contracts';
 
 type V3AnalyzeInput = {
   requestId: string;
@@ -27,6 +29,12 @@ type RetryInput = {
   requestId: string;
   language: 'zh' | 'en';
   photos: AgentPhotoInput[];
+};
+
+type SelectLayoutInput = {
+  requestId: string;
+  language: 'zh' | 'en';
+  refs: Record<string, string> | Array<{ photoId: string; ref200px: string }>;
 };
 
 export const generationService = {
@@ -80,7 +88,86 @@ export const generationService = {
       ...(album.prompt ? { promptHint: album.prompt } : {}),
     });
   },
+
+  async submitSelectLayoutV3(userId: string, albumId: string, input: SelectLayoutInput) {
+    const album = await albumService.findOwned(userId, albumId);
+    const tree = readDraftTree(album.draftJson);
+    const payload = buildSelectLayoutRequestFromTree({
+      requestId: input.requestId,
+      callbackUrl: `${env.WEB_BASE_URL}/api/v3/internal/job-progress`,
+      language: input.language,
+      tree,
+      refs: input.refs,
+    });
+
+    try {
+      await agentClient.submitSelectLayoutV3(payload);
+    } catch (e) {
+      logger.error(
+        { err: String(e), requestId: input.requestId },
+        'agent v3 select-layout submit failed, marking job FAILED',
+      );
+      await jobService.handleV3Failed(input.requestId, {
+        code: 'AGENT_INTERNAL_ERROR',
+        message: 'Failed to submit select-layout to agent',
+      });
+      return { albumId, requestId: input.requestId, accepted: true };
+    }
+
+    const job = await agentJobRepo.findByRequestId(input.requestId);
+    if (job) await jobService.markRunning(db, job.id);
+    return { albumId, requestId: input.requestId, accepted: true };
+  },
 };
+
+function toRefMap(refs: SelectLayoutInput['refs']): Map<string, string> {
+  if (Array.isArray(refs)) return new Map(refs.map((item) => [item.photoId, item.ref200px]));
+  return new Map(Object.entries(refs));
+}
+
+function readDraftTree(draftJson: unknown) {
+  if (
+    draftJson &&
+    typeof draftJson === 'object' &&
+    !Array.isArray(draftJson) &&
+    (draftJson as { version?: unknown }).version === 'v3-story'
+  ) {
+    return V3LayoutTree.parse((draftJson as { tree?: unknown }).tree);
+  }
+  return V3LayoutTree.parse(draftJson);
+}
+
+export function buildSelectLayoutRequestFromTree(input: {
+  requestId: string;
+  callbackUrl: string;
+  language: 'zh' | 'en';
+  tree: unknown;
+  refs: SelectLayoutInput['refs'];
+}): SelectLayoutRequest {
+  const tree = V3LayoutTree.parse(input.tree);
+  const refs = toRefMap(input.refs);
+  return {
+    requestId: input.requestId,
+    callbackUrl: input.callbackUrl,
+    language: input.language,
+    chapters: tree.chapters.map((chapter) => ({
+      chapterId: chapter.chapterId,
+      ...(chapter.description ? { structureHint: chapter.description } : {}),
+      photos: chapter.photos.map((photo) => {
+        const ref200px = refs.get(photo.photoId);
+        if (!ref200px) {
+          throw ERRORS.VALIDATION_FAILED(`missing 200px ref for photo ${photo.photoId}`);
+        }
+        return {
+          photoId: photo.photoId,
+          ref200px,
+          orientation: photo.orientation,
+          takenAt: photo.takenAt ?? null,
+        };
+      }),
+    })),
+  };
+}
 
 async function dispatchAnalyzeV3(
   albumId: string,

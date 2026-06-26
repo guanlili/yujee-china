@@ -32,6 +32,8 @@ import {
   V3FinalizeResponse,
   V3RecommendRequest,
   V3RecommendResponse,
+  SelectLayoutCompleted,
+  SelectLayoutRequest,
   V3TemplateCandidate,
 } from '../src/v3';
 
@@ -54,6 +56,8 @@ const SCHEMAS: Record<string, ZodTypeAny> = {
   V3LayoutTree,
   V3RecommendRequest,
   V3RecommendResponse,
+  SelectLayoutRequest,
+  SelectLayoutCompleted,
   V3TemplateCandidate,
   TemplateDef,
   TemplateTextSlot,

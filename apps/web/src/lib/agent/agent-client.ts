@@ -9,6 +9,7 @@ import {
   V3RecommendResponse,
 } from '@yujee/contracts';
 import type {
+  SelectLayoutRequest,
   V3AnalyzeRequest,
   V3ApplyThemeRequest,
   V3ChapterChatRequest,
@@ -49,6 +50,32 @@ export const agentClient = {
     if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected analyze payload');
     if (!res.ok) {
       logger.error({ status: res.status, requestId: payload.requestId }, 'agent v3 analyze non-2xx');
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+    return { requestId: payload.requestId };
+  },
+
+  async submitSelectLayoutV3(payload: SelectLayoutRequest): Promise<{ requestId: string }> {
+    let res: Response;
+    try {
+      res = await fetch(`${env.AGENT_BASE_URL}/v3/select-layout`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': payload.requestId,
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (e) {
+      logger.error({ err: String(e), requestId: payload.requestId }, 'agent v3 select-layout submit failed');
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+    if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
+    if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected select-layout payload');
+    if (!res.ok) {
+      logger.error({ status: res.status, requestId: payload.requestId }, 'agent v3 select-layout non-2xx');
       throw ERRORS.AGENT_INTERNAL_ERROR();
     }
     return { requestId: payload.requestId };

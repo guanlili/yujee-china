@@ -28,12 +28,12 @@ import {
 export const V3Language = z.enum(['zh', 'en']);
 export type V3Language = z.infer<typeof V3Language>;
 
-/** V3 唯一异步 job = analyze;失败语义走回调 `failed`(§8.3)。 */
-export const V3JobKind = z.enum(['analyze']);
+/** V3 async jobs; failures use callback `failed`(§8.3). */
+export const V3JobKind = z.enum(['analyze', 'select-layout']);
 export type V3JobKind = z.infer<typeof V3JobKind>;
 
 /** analyze 进度子阶段(§4.1 步骤);仅用于 progress 回调展示。 */
-export const V3JobStage = z.enum(['describe', 'group', 'template', 'preview']);
+export const V3JobStage = z.enum(['describe', 'group', 'template', 'preview', 'layout', 'legalize', 'wrap']);
 export type V3JobStage = z.infer<typeof V3JobStage>;
 
 /** 统一 usage,各 `/v3/*` 端点共用(同 v2.ts Usage 形状)。 */
@@ -41,6 +41,7 @@ export const V3Usage = z
   .object({
     durationMs: z.number().int().nonnegative(),
     visionCallCount: z.number().int().nonnegative().default(0),
+    geminiCallCount: z.number().int().nonnegative().default(0),
     planningInputTokens: z.number().int().nonnegative().default(0),
     planningOutputTokens: z.number().int().nonnegative().default(0),
     repairAttempts: z.number().int().nonnegative().default(0),
@@ -263,6 +264,41 @@ export const V3AnalyzeRequest = z
   })
   .strict();
 export type V3AnalyzeRequest = z.infer<typeof V3AnalyzeRequest>;
+
+// ───────────────── ②0 选版式 — POST /v3/select-layout(异步 202 + callback) ─────────────────
+//
+// Stage2 consumes the Stage1 tree slice and browser-held 200px refs. The caller
+// does not provide template candidates; Agent builds legal candidates internally
+// from templates + checked-in template preview assets.
+
+export const SelectLayoutPhoto = z
+  .object({
+    photoId: z.string().min(1),
+    ref200px: V3AnalyzeImageDataUrl,
+    orientation: PhotoOrientation,
+    takenAt: TakenAtDateTime.nullable(),
+  })
+  .strict();
+export type SelectLayoutPhoto = z.infer<typeof SelectLayoutPhoto>;
+
+export const SelectLayoutChapter = z
+  .object({
+    chapterId: z.string().min(1),
+    photos: z.array(SelectLayoutPhoto).min(1),
+    structureHint: z.string().max(600).optional(),
+  })
+  .strict();
+export type SelectLayoutChapter = z.infer<typeof SelectLayoutChapter>;
+
+export const SelectLayoutRequest = z
+  .object({
+    requestId: z.string().min(1),
+    callbackUrl: HttpCallbackUrl,
+    language: V3Language,
+    chapters: z.array(SelectLayoutChapter).min(1),
+  })
+  .strict();
+export type SelectLayoutRequest = z.infer<typeof SelectLayoutRequest>;
 
 // ───────────── ② 章节故事 — POST /v3/chapter-chat(同步) ─────────────
 //
@@ -576,12 +612,22 @@ const V3AnalyzeCompleted = z
     requestId: z.string().min(1),
     jobKind: z.literal('analyze'),
     event: z.literal('completed'),
-    // 预览态产物:V3 章节树 + 套好模板/填好通用文案-色的页。
+    // Stage1 tree-only: pages are created by select-layout.
     tree: V3LayoutTree,
-    pages: z.array(Page).min(1).optional(),
     usage: V3Usage,
   })
   .strict();
+
+export const SelectLayoutCompleted = z
+  .object({
+    requestId: z.string().min(1),
+    jobKind: z.literal('select-layout'),
+    event: z.literal('completed'),
+    pages: z.array(Page).min(1),
+    usage: V3Usage,
+  })
+  .strict();
+export type SelectLayoutCompleted = z.infer<typeof SelectLayoutCompleted>;
 
 const V3FailedEvent = z
   .object({
@@ -598,6 +644,7 @@ export const V3Callback = z.union([
   V3ProgressEvent,
   V3FailedEvent,
   V3AnalyzeCompleted,
+  SelectLayoutCompleted,
 ]);
 export type V3Callback = z.infer<typeof V3Callback>;
 

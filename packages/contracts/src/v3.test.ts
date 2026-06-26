@@ -26,6 +26,8 @@ import {
   V3PageEditRequest,
   V3PageEditResponse,
   V3RecommendResponse,
+  SelectLayoutCompleted,
+  SelectLayoutRequest,
   V3StoryDraft,
   V3StoryProgress,
 } from './v3';
@@ -367,6 +369,60 @@ test('V3AnalyzeRequest photo accepts clusterId, rejects coordinate keys (#232 §
       `${leak} must be rejected by strict() on the analyze photo`,
     );
   }
+});
+
+test('SelectLayoutRequest carries 200px refs and takenAt, and rejects caller candidates', () => {
+  const payload = {
+    requestId: 'layout-r1',
+    callbackUrl: 'https://example.com/api/v3/internal/job-progress',
+    language: 'en' as const,
+    chapters: [
+      {
+        chapterId: 'ch_1',
+        structureHint: 'coast morning',
+        photos: [
+          {
+            photoId: 'p1',
+            ref200px: 'data:image/jpeg;base64,AA==',
+            orientation: 'landscape' as const,
+            takenAt: '2024-03-15T08:30:00',
+          },
+          {
+            photoId: 'p2',
+            ref200px: 'data:image/png;base64,AA==',
+            orientation: 'portrait' as const,
+            takenAt: null,
+          },
+        ],
+      },
+    ],
+  };
+
+  assert.equal(SelectLayoutRequest.safeParse(payload).success, true);
+  assert.equal(
+    SelectLayoutRequest.safeParse({
+      ...payload,
+      chapters: [
+        {
+          ...payload.chapters[0],
+          candidates: [{ templateId: 'mag-08', category: 'interior', imageSlotCount: 2 }],
+        },
+      ],
+    }).success,
+    false,
+  );
+  assert.equal(
+    SelectLayoutRequest.safeParse({
+      ...payload,
+      chapters: [
+        {
+          ...payload.chapters[0],
+          photos: [{ ...payload.chapters[0].photos[0], takenAt: undefined }],
+        },
+      ],
+    }).success,
+    false,
+  );
 });
 
 test('internal agent ack schemas parse request and response', () => {
@@ -746,7 +802,7 @@ test('V3FinalizeResponse returns the flat AlbumLayoutPlan (render contract)', ()
   assert.equal(ok.success, true);
 });
 
-test('V3Callback union: progress / completed(analyze) / failed', () => {
+test('V3Callback union: analyze progress / analyze completed / select-layout completed / failed', () => {
   assert.equal(
     V3Callback.safeParse({
       requestId: 'r1',
@@ -763,8 +819,37 @@ test('V3Callback union: progress / completed(analyze) / failed', () => {
       jobKind: 'analyze',
       event: 'completed',
       tree: { chapters: [] },
-      pages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }],
       usage: { durationMs: 1, models: {} },
+    }).success,
+    true,
+  );
+  assert.equal(
+    SelectLayoutCompleted.safeParse({
+      requestId: 'r1',
+      jobKind: 'select-layout',
+      event: 'completed',
+      pages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }],
+      usage: { durationMs: 1, geminiCallCount: 1, models: { planning: 'gemini-layout' } },
+    }).success,
+    true,
+  );
+  assert.equal(
+    V3Callback.safeParse({
+      requestId: 'r1',
+      jobKind: 'select-layout',
+      event: 'progress',
+      stage: 'legalize',
+      progress: 50,
+    }).success,
+    true,
+  );
+  assert.equal(
+    V3Callback.safeParse({
+      requestId: 'r1',
+      jobKind: 'select-layout',
+      event: 'completed',
+      pages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }],
+      usage: { durationMs: 1, geminiCallCount: 1, models: { planning: 'gemini-layout' } },
     }).success,
     true,
   );
@@ -779,7 +864,7 @@ test('V3Callback union: progress / completed(analyze) / failed', () => {
   );
 });
 
-test('test_analyze_completed_pages_optional', () => {
+test('test_analyze_completed_is_tree_only', () => {
   assert.equal(
     V3Callback.safeParse({
       requestId: 'r1',
@@ -796,7 +881,7 @@ test('test_analyze_completed_pages_optional', () => {
       jobKind: 'analyze',
       event: 'completed',
       tree: { chapters: [] },
-      pages: null,
+      pages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }],
       usage: { durationMs: 1, models: {} },
     }).success,
     false,
