@@ -7,6 +7,16 @@ import httpx
 from ...settings import get_settings
 
 
+def _unwrap_agent_data(body: dict[str, Any], expected_type: str) -> dict[str, Any]:
+    envelope = body.get("data") if body.get("ok") is True else body
+    if not isinstance(envelope, dict) or envelope.get("type") != expected_type:
+        raise RuntimeError(f"agent-data {expected_type} returned wrong type")
+    data = envelope.get("data")
+    if not isinstance(data, dict):
+        raise RuntimeError(f"agent-data {expected_type} missing data")
+    return data
+
+
 class WebAgentDataClient:
     async def get_page_info(
         self,
@@ -34,12 +44,7 @@ class WebAgentDataClient:
             )
             resp.raise_for_status()
             body = resp.json()
-        if body.get("type") != "page-info":
-            raise RuntimeError("agent-data page-info returned wrong type")
-        data = body.get("data")
-        if not isinstance(data, dict):
-            raise RuntimeError("agent-data page-info missing data")
-        return data
+        return _unwrap_agent_data(body, "page-info")
 
     async def get_page_photos(self, *, albumId: str, chapterId: str) -> list[dict[str, Any]]:
         settings = get_settings()
@@ -52,6 +57,4 @@ class WebAgentDataClient:
             )
             resp.raise_for_status()
             body = resp.json()
-        if body.get("type") != "page-photos":
-            raise RuntimeError("agent-data page-photos returned wrong type")
-        return list(body.get("data", {}).get("photos", []))
+        return list(_unwrap_agent_data(body, "page-photos").get("photos", []))

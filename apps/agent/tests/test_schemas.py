@@ -560,6 +560,33 @@ class TestV3Endpoints:
             )
 
         with pytest.raises(ValidationError):
+            schemas.V3EditChatRequest(
+                albumId="alb_1",
+                language="en",
+                userMessage="write it",
+                focus={"chapterId": None},
+                progress={"currentChapterId": "c1", "doneChapterIds": []},
+            )
+
+        with pytest.raises(ValidationError):
+            schemas.V3EditChatRequest(
+                albumId="alb_1",
+                language="en",
+                userMessage="write it",
+                focus={"pageIndex": None},
+                progress={"currentChapterId": "c1", "doneChapterIds": []},
+            )
+
+        with pytest.raises(ValidationError):
+            schemas.V3EditChatRequest(
+                albumId="alb_1",
+                language="en",
+                userMessage="write it",
+                focus={},
+                progress={"doneChapterIds": []},
+            )
+
+        with pytest.raises(ValidationError):
             schemas.V3EditChatResponse(
                 kind="edit",
                 assistantReply="Updated.",

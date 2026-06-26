@@ -35,6 +35,8 @@ test('runEditChatTurn posts the slim edit-chat body (chapterId + focusedPageInde
   assert.match(body, /postEditChat\(albumId, \{/);
   assert.doesNotMatch(body, /postChapterChat\(albumId, \{/);
   assert.match(body, /chapterId,/);
+  assert.match(body, /pagePhotoRefs:/);
+  assert.match(src, /async function captureChapterPagePhotoRefs/);
   // ③ 改页: the selected page is sent as focusedPageIndex so "this page" targets it.
   assert.match(body, /selectedPageIndex != null \? \{ focusedPageIndex: selectedPageIndex \}/);
 });

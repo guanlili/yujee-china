@@ -549,7 +549,7 @@ class V3ChapterChatResponse(_V3Strict):
 
 
 class V3StoryProgress(_V3Strict):
-    currentChapterId: str | None = Field(default=None, min_length=1)
+    currentChapterId: str | None = Field(min_length=1)
     doneChapterIds: list[str]
 
     @field_validator("doneChapterIds")
@@ -563,6 +563,15 @@ class V3StoryProgress(_V3Strict):
 class V3EditChatFocus(_V3Strict):
     chapterId: str | None = Field(default=None, min_length=1)
     pageIndex: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_explicit_null_fields(cls, value):
+        if isinstance(value, dict):
+            for key in ("chapterId", "pageIndex"):
+                if key in value and value[key] is None:
+                    raise ValueError(f"{key} cannot be null")
+        return value
 
 
 class V3EditProgressDecision(_V3Strict):

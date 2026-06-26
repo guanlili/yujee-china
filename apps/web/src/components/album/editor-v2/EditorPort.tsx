@@ -2609,10 +2609,12 @@ function EditorBook({
       }
       const userMessage = message.slice(0, MESSAGE_MAX);
       try {
+        const pagePhotoRefs = await captureChapterPagePhotoRefs(chapterId);
         const res = await postEditChat(albumId, {
           language: currentLang === 'zh' ? 'zh' : 'en',
           chapterId,
           userMessage,
+          ...(Object.keys(pagePhotoRefs).length > 0 ? { pagePhotoRefs: pagePhotoRefs } : {}),
           // ③ 改页: when a page is selected, "change this / this page" targets it.
           ...(selectedPageIndex != null ? { focusedPageIndex: selectedPageIndex } : {}),
         });
@@ -2674,6 +2676,20 @@ function EditorBook({
         ),
       ];
       return { num: idx + 1, title: (c.subject && c.subject.trim()) || c.label, tag, photoIds };
+    }
+
+    async function captureChapterPagePhotoRefs(chapterId: string): Promise<Record<string, string>> {
+      const meta = chapterMetaById(chapterId);
+      const refs: Record<string, string> = {};
+      if (!meta) return refs;
+
+      await Promise.all(
+        meta.photoIds.map(async (photoId) => {
+          const thumb = await capturePhotoThumb(photoId);
+          if (thumb) refs[photoId] = thumb;
+        }),
+      );
+      return refs;
     }
 
     // 问题③ 章节卡片: when entering a chapter, push a chapter-styled card into the chat so

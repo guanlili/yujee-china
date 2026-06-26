@@ -182,6 +182,79 @@ class FakeTools:
         return self.page_photos
 
 
+class _FakeHttpResponse:
+    def __init__(self, body: dict[str, Any]) -> None:
+        self._body = body
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict[str, Any]:
+        return self._body
+
+
+def test_web_agent_data_client_unwraps_web_ok_envelope(monkeypatch):
+    from src import settings as settings_module
+    from src.agents.editing.web_client import WebAgentDataClient
+
+    bodies = [
+        {
+            "ok": True,
+            "data": {
+                "type": "page-info",
+                "data": {"chapter": _chapter().model_copy(update={"chapterId": "c1"}), "pages": _pages()},
+            },
+        },
+        {
+            "ok": True,
+            "data": {
+                "type": "page-photos",
+                "data": {
+                    "photos": [
+                        {
+                            "photoId": "p1",
+                            "ref200px": "data:image/jpeg;base64,AA==",
+                            "orientation": "landscape",
+                            "takenAt": None,
+                        }
+                    ]
+                },
+            },
+        },
+    ]
+    calls: list[dict[str, Any]] = []
+
+    class FakeAsyncClient:
+        def __init__(self, *, timeout: int) -> None:
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url: str, *, params: dict[str, Any], headers: dict[str, str]):
+            calls.append({"url": url, "params": params, "headers": headers})
+            return _FakeHttpResponse(bodies.pop(0))
+
+    monkeypatch.setenv("AGENT_SHARED_SECRET", "shared")
+    monkeypatch.setenv("WEB_BASE_URL", "http://web.test")
+    settings_module.reset_settings_cache()
+    monkeypatch.setattr("src.agents.editing.web_client.httpx.AsyncClient", FakeAsyncClient)
+
+    client = WebAgentDataClient()
+    page_info = asyncio.run(
+        client.get_page_info(albumId="alb", chapterId="c1", scope="chapter")
+    )
+    page_photos = asyncio.run(client.get_page_photos(albumId="alb", chapterId="c1"))
+
+    assert page_info["chapter"].chapterId == "c1"
+    assert page_photos[0]["photoId"] == "p1"
+    assert calls[0]["params"]["type"] == "page-info"
+    assert calls[1]["params"]["type"] == "page-photos"
+
+
 def test_edit_chat_response_requires_op_id_for_write_turn():
     repo = FakeRepo(op_id="op_123")
     chapter = _chapter().model_copy(update={"chapterId": "c1"})
