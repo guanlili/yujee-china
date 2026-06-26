@@ -40,15 +40,22 @@ def test_agent_edit_repo_stage3_methods_static_contract() -> None:
 
     assert hasattr(AgentEditRepository, "list_committed_messages")
     assert hasattr(AgentEditRepository, "create_pending_turn")
+    assert hasattr(AgentEditRepository, "serialized_turn")
 
     history_source = inspect.getsource(AgentEditRepository.list_committed_messages)
     pending_source = inspect.getsource(AgentEditRepository.create_pending_turn)
+    serialized_source = inspect.getsource(AgentEditRepository.serialized_turn)
     assert "status = 'committed'" in history_source
     assert "order by created_at desc" in history_source
     assert "status" in pending_source
     assert "'pending'" in pending_source
     assert "agent.edit_ops" in pending_source
     assert "agent.edit_messages" in pending_source
+    assert "for update" in serialized_source.lower()
+    assert "status = 'committed'" in serialized_source
+    assert "agent.edit_sessions" in serialized_source
+    assert "agent.edit_ops" in serialized_source
+    assert "agent.edit_messages" in serialized_source
 
 
 @pytest.mark.skipif(

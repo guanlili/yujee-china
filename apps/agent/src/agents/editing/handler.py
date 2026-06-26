@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from contextlib import AbstractAsyncContextManager
 from time import perf_counter
 from typing import Any, Protocol
 
@@ -28,6 +29,26 @@ class EditRepo(Protocol):
     async def list_committed_messages(
         self, album_id: str, *, chapter_id: str | None, limit: int = 20
     ) -> list[dict[str, str]]: ...
+
+    async def create_pending_turn(
+        self,
+        *,
+        album_id: str,
+        chapter_id: str | None,
+        user_content: str,
+        assistant_content: str,
+        kind: str,
+        payload: dict[str, Any],
+        usage: dict[str, Any] | None = None,
+    ) -> str: ...
+
+    def serialized_turn(
+        self, album_id: str, *, chapter_id: str | None, limit: int = 20
+    ) -> AbstractAsyncContextManager["EditTurn"]: ...
+
+
+class EditTurn(Protocol):
+    history: list[dict[str, str]]
 
     async def create_pending_turn(
         self,
@@ -232,62 +253,63 @@ async def run(
     repo = repo or agent_edit_repo
     tools = tools or WebAgentDataClient()
 
-    history = await repo.list_committed_messages(req.albumId, chapter_id=req.focus.chapterId, limit=20)
+    async with repo.serialized_turn(req.albumId, chapter_id=req.focus.chapterId, limit=20) as turn:
+        history = turn.history
 
-    patches: list[V3LayoutPatchEntry] = []
-    pages_texts: list[V3PageTextsPatch] | None = None
-    progress: V3EditProgressDecision | None = None
-    assistant_reply = "Tell me more about what you want to change."
-    usage: V3Usage | None = None
+        patches: list[V3LayoutPatchEntry] = []
+        pages_texts: list[V3PageTextsPatch] | None = None
+        progress: V3EditProgressDecision | None = None
+        assistant_reply = "Tell me more about what you want to change."
+        usage: V3Usage | None = None
 
-    if _wants_chapter_done(req):
-        progress = V3EditProgressDecision(chapterDone=True, advanceTo="theme")
-        assistant_reply = "This chapter is confirmed."
-    elif _wants_layout_swap(req):
-        try:
-            patches = await _case4_layout_swap(req, tools)
-        except Exception as exc:
-            raise EditChatError(f"case4 layout swap failed: {exc}") from exc
-        if patches:
-            assistant_reply = "Updated the layout."
-    elif req.focus.chapterId:
-        try:
-            assistant_reply, pages_texts, patches, usage = await _chapter_chat_bundle(
-                req,
-                history=history,
-                tools=tools,
-                complete=complete,
-                call_intent=call_intent,
-            )
-        except Exception as exc:
-            raise EditChatError(f"chapter edit failed: {exc}") from exc
+        if _wants_chapter_done(req):
+            progress = V3EditProgressDecision(chapterDone=True, advanceTo="theme")
+            assistant_reply = "This chapter is confirmed."
+        elif _wants_layout_swap(req):
+            try:
+                patches = await _case4_layout_swap(req, tools)
+            except Exception as exc:
+                raise EditChatError(f"case4 layout swap failed: {exc}") from exc
+            if patches:
+                assistant_reply = "Updated the layout."
+        elif req.focus.chapterId:
+            try:
+                assistant_reply, pages_texts, patches, usage = await _chapter_chat_bundle(
+                    req,
+                    history=history,
+                    tools=tools,
+                    complete=complete,
+                    call_intent=call_intent,
+                )
+            except Exception as exc:
+                raise EditChatError(f"chapter edit failed: {exc}") from exc
 
-    duration_ms = max(1, int((perf_counter() - start) * 1000))
-    usage = usage or _usage(duration_ms)
-    op_kind = _op_kind(req, pages_texts, patches, progress)
-    payload = {
-        "kind": _kind_from_bundle(pages_texts, patches),
-        "patches": [patch.model_dump(exclude_none=True, mode="json") for patch in patches],
-        "pagesTexts": [patch.model_dump(mode="json") for patch in pages_texts] if pages_texts else None,
-        "progressDecision": progress.model_dump(mode="json", exclude_none=True) if progress else None,
-        "history": history,
-    }
-    op_id = await repo.create_pending_turn(
-        album_id=req.albumId,
-        chapter_id=req.focus.chapterId,
-        user_content=req.userMessage,
-        assistant_content=assistant_reply,
-        kind=op_kind,
-        payload=payload,
-        usage=usage.model_dump(mode="json"),
-    )
+        duration_ms = max(1, int((perf_counter() - start) * 1000))
+        usage = usage or _usage(duration_ms)
+        op_kind = _op_kind(req, pages_texts, patches, progress)
+        payload = {
+            "kind": _kind_from_bundle(pages_texts, patches),
+            "patches": [patch.model_dump(exclude_none=True, mode="json") for patch in patches],
+            "pagesTexts": [patch.model_dump(mode="json") for patch in pages_texts] if pages_texts else None,
+            "progressDecision": progress.model_dump(mode="json", exclude_none=True) if progress else None,
+            "history": history,
+        }
+        op_id = await turn.create_pending_turn(
+            album_id=req.albumId,
+            chapter_id=req.focus.chapterId,
+            user_content=req.userMessage,
+            assistant_content=assistant_reply,
+            kind=op_kind,
+            payload=payload,
+            usage=usage.model_dump(mode="json"),
+        )
 
-    return V3EditChatResponse(
-        kind=_kind_from_bundle(pages_texts, patches),
-        assistantReply=assistant_reply,
-        patches=patches,
-        pagesTexts=pages_texts,
-        progressDecision=progress,
-        opId=op_id,
-        usage=usage,
-    )
+        return V3EditChatResponse(
+            kind=_kind_from_bundle(pages_texts, patches),
+            assistantReply=assistant_reply,
+            patches=patches,
+            pagesTexts=pages_texts,
+            progressDecision=progress,
+            opId=op_id,
+            usage=usage,
+        )

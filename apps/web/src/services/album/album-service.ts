@@ -737,7 +737,13 @@ export const albumService = {
 
         const chapterOrder = current.tree.chapters.map((chapter) => chapter.chapterId);
         const doneSet = new Set(current.progress.doneChapterIds);
-        if (result.progressDecision?.chapterDone && input.chapterId) doneSet.add(input.chapterId);
+        const currentChapterIdBefore = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
+        if (result.progressDecision?.chapterDone && input.chapterId) {
+          if (!doneSet.has(input.chapterId) && input.chapterId !== currentChapterIdBefore) {
+            throw ERRORS.VALIDATION_FAILED('chapterId is not the current story chapter');
+          }
+          doneSet.add(input.chapterId);
+        }
         const doneChapterIds = chapterOrder.filter((id) => doneSet.has(id));
         const currentChapterId = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
         const allDone = chapterOrder.length > 0 && chapterOrder.every((id) => doneSet.has(id));

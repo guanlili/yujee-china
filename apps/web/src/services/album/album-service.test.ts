@@ -1806,6 +1806,49 @@ test('editChatTurn ignores advanceTo theme until every chapter is done', async (
   }
 });
 
+test('editChatTurn rejects chapterDone for a non-current chapter', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-current-guard');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 2, { stage: 'story' });
+    let acked = false;
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'talk' as const,
+      assistantReply: 'Skipped ahead.',
+      patches: [],
+      progressDecision: { chapterDone: true },
+      opId: 'op_wrong_chapter',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => {
+      acked = true;
+      return true;
+    });
+
+    await assert.rejects(
+      () =>
+        albumService.editChatTurn(user.id, albumId, {
+          language: 'en',
+          chapterId: 'c2',
+          userMessage: 'done',
+        }),
+      hasCode('VALIDATION_FAILED'),
+    );
+
+    const album = await albumRepo.findById(albumId);
+    const draft = album?.draftJson as V3StoryDraft;
+    assert.equal(acked, false);
+    assert.equal(album?.stage, 'story');
+    assert.deepEqual(draft.progress.doneChapterIds, []);
+    assert.equal(draft.progress.currentChapterId, 'c1');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('editChatTurn supports case4 append page patch at next pageIndex', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');

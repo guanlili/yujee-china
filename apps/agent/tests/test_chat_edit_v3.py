@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
@@ -140,6 +141,7 @@ class FakeRepo:
         self.committed = committed or []
         self.created: list[dict[str, Any]] = []
         self.history_args: dict[str, Any] | None = None
+        self.serialized_args: dict[str, Any] | None = None
 
     async def list_committed_messages(self, album_id: str, *, chapter_id: str | None, limit: int = 20) -> list[dict[str, str]]:
         self.history_args = {"album_id": album_id, "chapter_id": chapter_id, "limit": limit}
@@ -148,6 +150,19 @@ class FakeRepo:
     async def create_pending_turn(self, **kwargs: Any) -> str:
         self.created.append({**kwargs, "status": "pending"})
         return self.op_id
+
+    @asynccontextmanager
+    async def serialized_turn(self, album_id: str, *, chapter_id: str | None, limit: int = 20):
+        self.serialized_args = {"album_id": album_id, "chapter_id": chapter_id, "limit": limit}
+
+        class Turn:
+            history = self.committed
+
+            async def create_pending_turn(_, **kwargs: Any) -> str:
+                self.created.append({**kwargs, "status": "pending", "serialized": True})
+                return self.op_id
+
+        yield Turn()
 
 
 class FakeTools:
@@ -292,7 +307,8 @@ def test_edit_chat_history_reads_only_committed_messages():
         )
     )
 
-    assert repo.history_args == {"album_id": "alb_v3", "chapter_id": "c1", "limit": 20}
+    assert repo.serialized_args == {"album_id": "alb_v3", "chapter_id": "c1", "limit": 20}
+    assert repo.created[0]["serialized"] is True
 
 
 def test_edit_chat_write_turn_fetches_page_info_and_returns_pages_texts():
