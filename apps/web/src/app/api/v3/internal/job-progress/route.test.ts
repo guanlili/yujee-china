@@ -101,10 +101,39 @@ test('analyze/completed → draft_json retains tree pages + EDITING + stage stor
     assert.equal(album?.status, 'EDITING');
     assert.deepEqual(album?.draftJson, { ...TREE, pages: PAGES });
     assert.equal(album?.layoutJson, null);
-    // WP1.5 (#184): the preview tree carries generic copy/colors → stage advances
-    // analysing → story in the same tx (stage ⟂ status; status stays EDITING).
+    // Legacy completed callbacks may still carry pages during migration; stage
+    // advances analysing → story in the same tx (stage ⟂ status; status stays EDITING).
     assert.equal(album?.stage, 'story');
     // The single charge settles here.
+    const hold = await creditHoldRepo.findById(holdId);
+    assert.equal(hold?.status, 'SETTLED');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('analyze/completed tree-only → draft_json stores version tree progress without pages', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('v3route-tree-only');
+  try {
+    const { albumId, holdId, requestId } = await seed(user.id);
+    const res = await post({
+      requestId,
+      jobKind: 'analyze',
+      event: 'completed',
+      tree: TREE,
+      usage: USAGE,
+    });
+    assert.equal((await res.json()).data.accepted, true);
+
+    const album = await albumRepo.findById(albumId);
+    assert.equal(album?.status, 'EDITING');
+    assert.deepEqual(album?.draftJson, {
+      version: 'v3-story',
+      tree: TREE,
+      progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
+    });
+    assert.equal(album?.stage, 'story');
     const hold = await creditHoldRepo.findById(holdId);
     assert.equal(hold?.status, 'SETTLED');
   } finally {

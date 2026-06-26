@@ -12,6 +12,36 @@ export type GenerationResolution =
   | { kind: 'swept' }
   | null;
 
+function firstChapterId(tree: unknown): string | null {
+  if (!tree || typeof tree !== 'object' || Array.isArray(tree)) return null;
+  const chapters = (tree as { chapters?: unknown }).chapters;
+  if (!Array.isArray(chapters)) return null;
+  const first = chapters[0];
+  if (!first || typeof first !== 'object' || Array.isArray(first)) return null;
+  const chapterId = (first as { chapterId?: unknown }).chapterId;
+  return typeof chapterId === 'string' && chapterId.length > 0 ? chapterId : null;
+}
+
+export function buildAnalyzeDraftJson(tree: unknown, pages: unknown) {
+  if (pages !== undefined) {
+    return tree && typeof tree === 'object' && !Array.isArray(tree)
+      ? {
+          ...(tree as Record<string, unknown>),
+          pages,
+        }
+      : {
+          tree,
+          pages,
+        };
+  }
+
+  return {
+    version: 'v3-story',
+    tree,
+    progress: { currentChapterId: firstChapterId(tree), doneChapterIds: [] },
+  };
+}
+
 export const jobService = {
   async markRunning(tx: DbOrTx, jobId: string) {
     await agentJobRepo.transitionStatus(tx, jobId, 'RUNNING', ['QUEUED'], { startedAt: new Date() });
@@ -113,16 +143,7 @@ export const jobService = {
       });
       if (!won) return;
 
-      const draftJson =
-        tree && typeof tree === 'object' && !Array.isArray(tree)
-          ? {
-              ...(tree as Record<string, unknown>),
-              ...(pages !== undefined ? { pages } : {}),
-            }
-          : {
-              tree,
-              ...(pages !== undefined ? { pages } : {}),
-            };
+      const draftJson = buildAnalyzeDraftJson(tree, pages);
 
       await albumRepo.update(tx, job.albumId, {
         status: 'EDITING',
