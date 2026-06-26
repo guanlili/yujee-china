@@ -29,7 +29,6 @@ Turn 种类(V3ChapterChatKind,镜像 packages/contracts/src/v3.ts):
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -42,14 +41,15 @@ from ...schemas import (
     V3ChapterChatKind,
     V3ChapterChatRequest,
     V3ChapterChatResponse,
+    V3LayoutPatchEntry,
     V3Models,
     V3PageTextsPatch,
     V3Usage,
 )
 from ...settings import get_settings
-from ...prompts import RULES_DIR, load_prompt
+from ...prompts import RULES_DIR, load_prompt, load_replies
 from ... import ai_client
-from . import author_loop
+from ..image_edit_intent import handler as chat_edit_v3
 from . import guides as writing_guides
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
@@ -72,7 +72,9 @@ class ChapterChatV3Error(Exception):
 
 
 def _page_slot_specs_by_index(pages: list[Page]) -> dict[int, list[dict[str, Any]]]:
-    """逐页的创作槽规格(id/role/lang/maxChars[/repeat][/hint])。
+    """逐页的创作槽规格(model-facing:id/lang[/hint][/repeatIndex])。
+
+    例驱动:role/maxChars 不进 model-facing 规格(角色由「输出示例」表达,字数由服务端钳裁)。
 
     复用 `writing_guides.page_slot_specs`(只读,与 v2 共享 —— 调用它不会破坏 v2)。它已
     丢掉 decoration 槽(代码自动填充那些)并只暴露 LM 必须撰写的槽。WP2.2 (#186):
@@ -97,6 +99,8 @@ def _page_slot_specs(page: Page) -> list[dict[str, Any]]:
     indices_by_base = _bracket_indices_by_base(page.images.keys())
     all_indices = sorted({idx for indices in indices_by_base.values() for idx in indices})
 
+    # `base_specs` 来自 writing_guides(带 role/maxChars,供代码过滤);model-facing 槽规格
+    # 一律经 `_slot_spec` 归一 —— 只留 id/lang/hint(+repeatIndex),不外泄 role/maxChars。
     specs: list[dict[str, Any]] = []
     expanded_bases: set[str] = set()
     for spec in base_specs:
@@ -106,11 +110,9 @@ def _page_slot_specs(page: Page) -> list[dict[str, Any]]:
             if indices:
                 expanded_bases.add(slot_id)
                 for idx in indices:
-                    item_spec = {**spec, "id": f"{slot_id}[{idx}]", "repeatIndex": idx}
-                    item_spec.pop("repeat", None)
-                    specs.append(item_spec)
+                    specs.append(_slot_spec(spec, slot_id=f"{slot_id}[{idx}]", repeat_index=idx))
                 continue
-        specs.append(spec)
+        specs.append(_slot_spec(spec, slot_id=slot_id))
 
     # V3 items.texts 以 itemId[index] 寻址。若模板已有一个创作的顶层 repeat 槽
     # (mag-10 的遗留 `cells`),本 WP 以那条路径作为渲染器兼容的真相源;否则 items.texts
@@ -141,23 +143,18 @@ def _bracket_indices_by_base(keys: Any) -> dict[str, list[int]]:
 
 
 def _slot_spec(slot: dict[str, Any], *, slot_id: str, repeat_index: int | None = None) -> dict[str, Any]:
+    # 例驱动(example-driven):模型靠逐页「输出示例」+ 逐槽 hint 写作,不再靠规则约束。
+    # 故 model-facing 的槽规格只留 id/lang(语言所需)/hint(写什么)/repeatIndex;
+    # 不再带 maxChars(无字数约束进 prompt)与 role(示例已表达每槽的性质)。
     spec: dict[str, Any] = {
         "id": slot_id,
-        "role": slot["role"],
         "lang": slot["lang"],
     }
-    if slot.get("maxChars"):
-        spec["maxChars"] = slot["maxChars"]
     if slot.get("hint"):
         spec["hint"] = slot["hint"]
     if repeat_index is not None:
         spec["repeatIndex"] = repeat_index
     return spec
-
-
-def _lang_name(language: str) -> str:
-    """供 skill `{LANGUAGE}` 占位用的人类语言名(镜像 vision.py)。"""
-    return "Chinese" if language == "zh" else "English"
 
 
 def _scene_background(chapter: Any) -> dict[str, Any]:
@@ -173,104 +170,6 @@ def _scene_background(chapter: Any) -> dict[str, Any]:
     }
 
 
-def _repo_copy_examples_dir_from_file() -> Path | None:
-    here = Path(__file__).resolve()
-    for parent in here.parents:
-        candidate = parent / "packages" / "contracts" / "copy-examples"
-        if candidate.is_dir():
-            return candidate
-    return None
-
-
-def _resolve_copy_examples_dir() -> Path | None:
-    explicit = os.environ.get("YUJEE_COPY_EXAMPLES_DIR")
-    if explicit:
-        return Path(explicit)
-    return _repo_copy_examples_dir_from_file()
-
-
-def _template_text_ids(template_id: str) -> set[str]:
-    tpl = registry.get(template_id)
-    if not tpl:
-        return set()
-    slots = list(tpl.get("texts", [])) + list(tpl.get("items", {}).get("texts", []))
-    return {slot["id"] for slot in slots}
-
-
-def _is_template_text_key(slot_id: str, allowed: set[str]) -> bool:
-    if slot_id in allowed:
-        return True
-    match = _BRACKET_KEY_RE.fullmatch(slot_id)
-    return bool(match and match.group(1) in allowed)
-
-
-def _load_copy_examples(template_id: str) -> list[dict[str, Any]]:
-    examples_dir = _resolve_copy_examples_dir()
-    if examples_dir is None:
-        return []
-    path = examples_dir / f"{template_id}.json"
-    if not path.exists():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise ChapterChatV3Error(f"copy examples invalid for {template_id}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise ChapterChatV3Error(f"copy examples invalid for {template_id}: root must be object")
-    extra = set(data) - {"examples"}
-    if extra:
-        raise ChapterChatV3Error(
-            f"copy examples invalid for {template_id}: unsupported fields {sorted(extra)}"
-        )
-    examples = data.get("examples")
-    if not isinstance(examples, list):
-        raise ChapterChatV3Error(f"copy examples invalid for {template_id}: examples must be array")
-
-    allowed = _template_text_ids(template_id)
-    out: list[dict[str, Any]] = []
-    for idx, example in enumerate(examples):
-        if not isinstance(example, dict):
-            raise ChapterChatV3Error(
-                f"copy examples invalid for {template_id}: examples[{idx}] must be object"
-            )
-        extra_example = set(example) - {"texts"}
-        if extra_example:
-            raise ChapterChatV3Error(
-                f"copy examples invalid for {template_id}: examples[{idx}] unsupported fields {sorted(extra_example)}"
-            )
-        texts = example.get("texts")
-        if not isinstance(texts, dict):
-            raise ChapterChatV3Error(
-                f"copy examples invalid for {template_id}: examples[{idx}].texts must be object"
-            )
-        clean_texts: dict[str, str | list[str]] = {}
-        for slot_id, value in texts.items():
-            if not isinstance(slot_id, str) or not _is_template_text_key(slot_id, allowed):
-                raise ChapterChatV3Error(
-                    f"copy examples invalid for {template_id}: examples[{idx}].texts.{slot_id} not in template text ids"
-                )
-            if isinstance(value, str):
-                clean_texts[slot_id] = value
-                continue
-            if isinstance(value, list) and all(isinstance(item, str) for item in value):
-                clean_texts[slot_id] = value
-                continue
-            raise ChapterChatV3Error(
-                f"copy examples invalid for {template_id}: examples[{idx}].texts.{slot_id} must be string or string array"
-            )
-        out.append({"texts": clean_texts})
-    return out
-
-
-def _copy_examples_by_template(pages: list[Page]) -> dict[str, list[dict[str, Any]]]:
-    out: dict[str, list[dict[str, Any]]] = {}
-    for template_id in sorted({page.templateId for page in pages}):
-        examples = _load_copy_examples(template_id)
-        if examples:
-            out[template_id] = examples
-    return out
-
-
 def _page_images_by_index(pages: list[Page]) -> dict[int, dict[str, str]]:
     """页面结构 (§4.2(4)) 的「每页放了哪些图」:每页的 slot→photoId 映射,好让写作 LM
     知道哪些照片放在哪一页,并能写出真正指向它们的文案。`Page.images` 的只读回显。"""
@@ -281,13 +180,61 @@ def _authored_slot_ids(specs: list[dict[str, Any]]) -> set[str]:
     return {str(spec["id"]) for spec in specs}
 
 
-def _max_chars_by_slot(specs: list[dict[str, Any]]) -> dict[str, int]:
-    out: dict[str, int] = {}
-    for spec in specs:
-        max_chars = spec.get("maxChars")
-        if isinstance(max_chars, int) and max_chars > 0:
-            out[str(spec["id"])] = max_chars
+def _page_output_example(page: Page, specs: list[dict[str, Any]]) -> dict[str, str]:
+    """本页的「输出示例」(例驱动):模板的示例文案,裁到这页实际要写的创作槽。
+
+    示例文案是静态模板串(无用户数据),给写作 LM 看「好的输出长什么样」—— 让它照样式与
+    篇幅写、把示例内容换成用户的真实故事。键按 slot id 对齐;repeat-group 示例本就以
+    ``explain[0]`` 这样的 bracket key 入键,与逐页展开出的槽 id 直接对得上。无示例文件的
+    模板返回空 dict,调用方据此优雅降级(omit 本页示例,仍发 hint+lang)。"""
+    example = registry.copy_example(page.templateId)
+    if not example:
+        return {}
+    allowed = _authored_slot_ids(specs)
+    return {slot_id: example[slot_id] for slot_id in allowed if slot_id in example}
+
+
+def _page_output_examples_by_index(
+    pages: list[Page], slot_specs: dict[int, list[dict[str, Any]]]
+) -> dict[int, dict[str, str]]:
+    """逐页输出示例。无示例或无创作槽(纯图页)的页不入字典 —— 优雅省略,绝不崩。"""
+    out: dict[int, dict[str, str]] = {}
+    for page in pages:
+        specs = slot_specs.get(page.pageIndex, [])
+        example = _page_output_example(page, specs)
+        if example:
+            out[page.pageIndex] = example
     return out
+
+
+def _template_max_chars(template_id: str) -> dict[str, int]:
+    """模板各创作槽的 maxChars(按 base slot id),从 registry 直接取 —— 服务端钳长护栏的
+    真相源。maxChars 已从 model-facing 槽规格里移除(例驱动,prompt 不带字数),但服务端
+    仍据此钳裁防溢出;两件事解耦,各取所需。repeat / items.texts 的 base id 也收进来,
+    bracket key(``explain[0]``)按其 base(``explain``)查表。"""
+    tpl = registry.get(template_id)
+    if not tpl:
+        return {}
+    out: dict[str, int] = {}
+    for slot in tpl.get("texts", []):
+        max_chars = slot.get("maxChars")
+        if isinstance(max_chars, int) and max_chars > 0:
+            out[str(slot["id"])] = max_chars
+    for slot in tpl.get("items", {}).get("texts", []):
+        max_chars = slot.get("maxChars")
+        if isinstance(max_chars, int) and max_chars > 0:
+            out[str(slot["id"])] = max_chars
+    return out
+
+
+def _max_chars_for_key(key: str, by_base: dict[str, int]) -> int | None:
+    """槽 key 的 maxChars:先按整 key 查(普通槽),再按 bracket base 查(repeat / item 槽)。"""
+    if key in by_base:
+        return by_base[key]
+    match = _BRACKET_KEY_RE.fullmatch(key)
+    if match:
+        return by_base.get(match.group(1))
+    return None
 
 
 def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
@@ -299,8 +246,8 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
     """
     slot_specs = _page_slot_specs_by_index(req.pages)
     page_images = _page_images_by_index(req.pages)
+    page_examples = _page_output_examples_by_index(req.pages, slot_specs)
     focused = req.focusedPageIndex
-    lang_name = _lang_name(req.language)
 
     # Persona + STRICT JSON 契约 + 本轮 dispatch 规则。固定结构(JSON 契约/分发判定)外置
     # 在 chapter_chat.md(co-located,显式路径加载);创作/引导文风另放 prompts/rules/
@@ -313,29 +260,33 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
         + load_prompt(_PROMPT_DIR / "chapter_chat.md")
     )
     # §4.2(4): 写作风格(creative style)+ 引导风格(guidance style),都作为 prompt
-    # 资产按路径加载(外置在 prompts/rules/),用 {LANGUAGE} 占位符本地化。
-    system += "\n\n=== 写作风格(WRITING STYLE)===\n" + load_prompt(
-        RULES_DIR / "writing_style.md", LANGUAGE=lang_name, common=("grounding",)
+    # 资产按路径加载(外置在 prompts/rules/)。语言由槽位的 lang 标记 + 文风资产自身
+    # 决定(跟随用户语言),不再由 {LANGUAGE} 占位符强制。
+    # 段落分隔标题(=== 写作风格 === / === 引导风格 ===)已并入各 fragment 文件顶部,
+    # 这里只做拼接,不再注入字符串字面量。
+    system += "\n\n" + load_prompt(
+        RULES_DIR / "writing_style.md", common=("grounding",)
     )
-    system += "\n\n=== 引导风格(GUIDANCE STYLE)===\n" + load_prompt(
-        RULES_DIR / "guidance_style.md", LANGUAGE=lang_name
-    )
+    system += "\n\n" + load_prompt(RULES_DIR / "guidance_style.md")
 
     # §4.2(4) 写作 LM 的输入组装。需求点名的每一项都在这里:
     #   用户信息  → history + userMessage(+ 章节上下文里带的 promptHint)
     #   写作 Skill → system(write_chapter),引导 Skill → system(guide_chapter)
     #   逐槽 hint  → pageSlots[].hint(经 page_slot_specs 从模板透传)
+    #   输出示例  → pageOutputExamples(每页模板示例文案,例驱动写作的核心)
     #   画面背景  → sceneBackground(章节描述 + 逐照片 sceneDescription)
-    #   页面结构  → pageSlots(每页 id/role/lang/maxChars)+ pageImages(每页放哪些图)
+    #   页面结构  → pageSlots(每页 id/lang/hint)+ pageImages(每页放哪些图)
     payload: dict[str, Any] = {
         "language": req.language,
         # 画面背景 (§4.1 analysis 树):章节描述 + 逐照片场景。
         "sceneBackground": _scene_background(req.chapter),
-        # 页面结构:逐页的创作槽规格(现含逐槽 hint)……
+        # 页面结构:逐页的创作槽规格(id/lang/hint;无 role/maxChars —— 例驱动)……
         "pageSlots": {str(idx): specs for idx, specs in slot_specs.items()},
+        # 输出示例(例驱动):逐页模板示例文案(slotId→示例串),裁到本页创作槽。模型照样式
+        # 与篇幅写、把示例内容换成用户真实故事。无示例文件的模板那页缺省省略(仍有 hint+lang)。
+        "pageOutputExamples": {str(idx): ex for idx, ex in page_examples.items()},
         # ……以及每页放了哪些照片(slot→photoId)。
         "pageImages": {str(idx): imgs for idx, imgs in page_images.items()},
-        "copyExamples": _copy_examples_by_template(req.pages),
         # 用户信息:到目前为止的对话 + 本轮消息。
         "history": [turn.model_dump() for turn in req.history],
         "userMessage": req.userMessage,
@@ -354,7 +305,7 @@ async def run(
     req: V3ChapterChatRequest,
     *,
     complete: CompleteFn | None = None,
-    author_complete: CompleteFn | None = None,
+    call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
 ) -> V3ChapterChatResponse:
     started = time.monotonic()
     messages = build_messages(req)
@@ -362,10 +313,9 @@ async def run(
     parsed = _parse_model_json(response)
     duration_ms = int((time.monotonic() - started) * 1000)
     usage = _usage_from_response(response, duration_ms)
-    # dispatch 判 talk/write/edit;edit 由统一创作 agent loop 接管(去 editTarget 二分)。
-    # `author_complete` 注入 loop 的模型调用,镜像 dispatch 的 `complete` —— 默认走真实
-    # DeepSeek,只在测试里被覆盖。
-    return await _coerce_response(req, parsed, usage, author_complete=author_complete)
+    # `call_intent` 注入 WP2.3 图片编辑意图调用(识图模型),镜像 `complete` 注入 DeepSeek
+    # 分发的方式 —— 两者都默认走真实 provider,只在测试里被覆盖。
+    return await _coerce_response(req, parsed, usage, call_intent=call_intent)
 
 
 async def _complete(
@@ -434,12 +384,15 @@ async def _coerce_response(
     parsed: dict[str, Any],
     usage: V3Usage,
     *,
-    author_complete: CompleteFn | None = None,
+    call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
 ) -> V3ChapterChatResponse:
     kind = _resolve_kind(req, parsed.get("kind"))
-    # 对齐主仓 contracts:nameOptions 已从 V3ChapterChatResponse 删除,这里不再返回它
-    # (worktree agent 基于旧 main,若仍回该字段会被 web 的新 strict 契约拒 → AGENT_INVALID_OUTPUT)。
+    # 可选的 V3 响应字段是带「缺失哨兵」默认值的 strict-typed 列表 —— 显式传 None 会过不了
+    # strict 校验。构建 kwargs,仅在字段真有值时才包含它。
+    name_options = _coerce_name_options(parsed.get("nameOptions"))
     extra: dict[str, Any] = {}
+    if name_options is not None:
+        extra["nameOptions"] = name_options
 
     if kind == "write":
         pages_texts = _coerce_pages_texts(req, parsed.get("pagesTexts"))
@@ -449,6 +402,7 @@ async def _coerce_response(
                 kind="talk",
                 assistantReply=reply[:500],
                 usage=usage,
+                **extra,
             )
         reply = _text(parsed.get("assistantReply")) or _default_reply(req.language, "write")
         return V3ChapterChatResponse(
@@ -456,46 +410,42 @@ async def _coerce_response(
             assistantReply=reply[:500],
             pagesTexts=pages_texts,
             usage=usage,
+            **extra,
         )
 
     if kind == "edit":
-        # 统一创作 agent loop(去 editTarget 二分):模型自主决定改版式 / 换图 / 改文案。
-        # _resolve_kind 已保证聚焦页在本轮切片内。同步 60s 预算下把 loop 步数压到保守值;
-        # loop 一步没动 → patch=None → 降级 talk(绝不发空 / 杜撰 patch)。
-        page = next((p for p in req.pages if p.pageIndex == req.focusedPageIndex), None)
-        if page is not None:
-            patch, loop_reply, loop_usage = await author_loop.run_author_edit(
-                req.chapter,
-                page,
-                req.userMessage,
-                list(req.history),
-                complete=author_complete,
-                max_steps=4,
-            )
+        # 图文分流 (WP2.3 #187):偏图片的编辑把识图模型升级进来产出意图;文字编辑留在
+        # DeepSeek。纯文字编辑【绝不】调用识图模型。
+        if _is_image_edit(parsed.get("editTarget")):
+            patch = await _coerce_image_edit_patch(req, call_intent=call_intent)
             if patch is not None:
-                reply = loop_reply or _text(parsed.get("assistantReply")) or _default_reply(
+                reply = _text(parsed.get("assistantReply")) or _default_reply(
                     req.language, "edit"
                 )
                 return V3ChapterChatResponse(
                     kind="edit",
                     assistantReply=reply[:500],
                     layoutPatch=[patch],
-                    usage=_merge_usage(usage, loop_usage),
+                    usage=usage,
                     **extra,
                 )
-        # 聚焦页缺失 / loop 无改动 → 降级 talk(下方),绝不发空 patch。
-
-    # 模型判了 edit 但被 _resolve_kind 降级成 talk —— 即用户想改某页却没选页
-    # (focusedPageIndex 缺失 / 不在切片内)。dispatch 这次很可能已经生成了"我这就换"的客套话,
-    # 但实际无从执行;直接用它会给用户"似乎换了其实没换"的错觉。这里用明确的"请先选页"覆盖。
-    if parsed.get("kind") == "edit" and kind == "talk":
-        reply = _default_reply(req.language, "edit_needs_focus")
-        return V3ChapterChatResponse(
-            kind="talk",
-            assistantReply=reply[:500],
-            usage=usage,
-            **extra,
-        )
+            # 模型/引擎无法满足的图片编辑 → talk(绝不杜撰)。
+        else:
+            patch = _coerce_edit_patch(req, parsed.get("pageTexts"))
+            if patch is not None:
+                reply = _text(parsed.get("assistantReply")) or _default_reply(
+                    req.language, "edit"
+                )
+                return V3ChapterChatResponse(
+                    kind="edit",
+                    assistantReply=reply[:500],
+                    layoutPatch=[patch],
+                    usage=usage,
+                    **extra,
+                )
+        # 模型判定为 edit 但没产出可用的 patch(纯文字编辑却无可用文字、引擎摆不下的图片
+        # 编辑,或聚焦页缺失 / 不在切片内)。降级为 talk turn,而不是发出一份空/非法 patch
+        # —— 绝不杜撰版式。
 
     # talk — 引导:只回复,绝不出 patch(Frame 4 红线)。也是无可应用内容的 edit turn 的
     # 兜底落点。
@@ -504,6 +454,7 @@ async def _coerce_response(
         kind="talk",
         assistantReply=reply[:500],
         usage=usage,
+        **extra,
     )
 
 
@@ -534,7 +485,9 @@ def _coerce_pages_texts(
     out: list[V3PageTextsPatch] = []
     for page in req.pages:
         specs = slot_specs.get(page.pageIndex, [])
-        texts = _clean_texts(raw_by_index.get(page.pageIndex, {}), specs)
+        texts = _clean_texts(
+            raw_by_index.get(page.pageIndex, {}), specs, template_id=page.templateId
+        )
         out.append(V3PageTextsPatch(pageIndex=page.pageIndex, texts=texts))
     return out
 
@@ -553,15 +506,53 @@ def _missing_required_texts(req: V3ChapterChatRequest, pages_texts: list[V3PageT
     return missing
 
 
-def _merge_usage(dispatch: V3Usage, loop: V3Usage) -> V3Usage:
-    """合并 dispatch(判 kind)与 author loop(多步)两段 usage —— token / 时长相加,便于计费
-    与可观测(评审 N3 多跳聚合)。"""
-    return V3Usage(
-        durationMs=dispatch.durationMs + loop.durationMs,
-        planningInputTokens=dispatch.planningInputTokens + loop.planningInputTokens,
-        planningOutputTokens=dispatch.planningOutputTokens + loop.planningOutputTokens,
-        models=V3Models(planning=get_settings().deepseek_model),
+def _is_image_edit(raw: Any) -> bool:
+    """DeepSeek 的 edit 分发用 editTarget=="image" 标记一个偏图片的 turn(换图/挪图/改图文
+    配比)。其它一切(含缺失 / "text")都是纯文字编辑,绝不能碰识图模型(图文分流,WP2.3)。"""
+    return isinstance(raw, str) and raw.strip().lower() == "image"
+
+
+async def _coerce_image_edit_patch(
+    req: V3ChapterChatRequest,
+    *,
+    call_intent: Callable[[str], Awaitable[list[str]]] | None = None,
+) -> V3LayoutPatchEntry | None:
+    """涉及图片 edit (§4.2(3) / WP2.3):把聚焦页 + 本章照片 + 用户消息交给 `chat_edit_v3`,
+    由它让识图模型产出一个 photoId 意图,并跑确定性引擎来执行。模型从不产出
+    templateId/pageIndex —— 引擎保证版式合法。聚焦页缺失/不在切片内或没有可用结果时返回
+    None(→ talk);绝不抛错(`run_image_edit` 内部自降级)。"""
+    focused = req.focusedPageIndex
+    if focused is None:
+        return None
+    page = next((p for p in req.pages if p.pageIndex == focused), None)
+    if page is None:
+        return None
+    return await chat_edit_v3.run_image_edit(
+        req.chapter, page, req.userMessage, call_intent=call_intent
     )
+
+
+def _coerce_edit_patch(
+    req: V3ChapterChatRequest, raw: Any
+) -> V3LayoutPatchEntry | None:
+    """Edit turn(纯文字):【只】重写聚焦页的文字。返回一条承载清洗后文字的 layoutPatch
+    (不改 templateId/images —— 照片/版式升级是 WP2.3)。没有可应用的东西时返回 None。"""
+    focused = req.focusedPageIndex
+    if focused is None:
+        return None
+    page = next((p for p in req.pages if p.pageIndex == focused), None)
+    if page is None:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    raw_texts = raw.get("texts")
+    if not isinstance(raw_texts, dict):
+        return None
+    specs = _page_slot_specs(page)
+    texts = _clean_texts(raw_texts, specs, template_id=page.templateId)
+    if not texts:
+        return None
+    return V3LayoutPatchEntry(pageIndex=focused, texts=texts)
 
 
 def _raw_texts_by_index(raw: Any) -> dict[int, dict[str, Any]]:
@@ -582,14 +573,15 @@ def _raw_texts_by_index(raw: Any) -> dict[int, dict[str, Any]]:
 
 
 def _clean_texts(
-    raw_texts: dict[str, Any], specs: list[dict[str, Any]]
+    raw_texts: dict[str, Any], specs: list[dict[str, Any]], *, template_id: str
 ) -> dict[str, str]:
-    """只保留本页的创作槽,trim,丢空值,钳到 maxChars。
+    """只保留本页的创作槽,trim,丢空值,按模板 maxChars 钳裁。
 
-    漂移的模型既无法注入不存在的槽位 id(保留集 = 模板的创作槽),也无法撑爆某槽
-    (maxChars 钳),镜像 v2 的 grounding 护栏,但不带 v2 那套 cluster/grounding 机制。"""
+    漂移的模型既无法注入不存在的槽位 id(保留集 = 模板的创作槽),也无法撑爆某槽 —— maxChars
+    虽已不进 prompt(例驱动),服务端仍据模板 registry 钳裁防溢出(镜像 v2 grounding 护栏)。
+    `specs` 给「允许哪些 key」,`template_id` 给「每槽钳到多长」。"""
     allowed = _authored_slot_ids(specs)
-    max_chars = _max_chars_by_slot(specs)
+    by_base = _template_max_chars(template_id)
     out: dict[str, str] = {}
     for key, value in raw_texts.items():
         if not isinstance(key, str) or key not in allowed:
@@ -597,9 +589,27 @@ def _clean_texts(
         text = _text(value)
         if not text:
             continue
-        cap = max_chars.get(key)
+        cap = _max_chars_for_key(key, by_base)
         out[key] = text[:cap] if cap else text
     return out
+
+
+def _coerce_name_options(raw: Any) -> list[str] | None:
+    """宽容解析模型的 `nameOptions`:最多 4 个非空、去重的标题。无一存活时返回 None
+    (该字段保持可选)。"""
+    if not isinstance(raw, list):
+        return None
+    seen: set[str] = set()
+    names: list[str] = []
+    for item in raw:
+        name = _text(item)
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name[:120])
+        if len(names) == 4:
+            break
+    return names or None
 
 
 def _text(value: Any) -> str:
@@ -607,18 +617,10 @@ def _text(value: Any) -> str:
 
 
 def _default_reply(language: str, kind: str) -> str:
-    if language == "zh":
-        if kind == "write":
-            return "这一章的文案我已经写好了。"
-        if kind == "edit":
-            return "这一页我已经按你的想法改好了。"
-        if kind == "edit_needs_focus":
-            return "你想改哪一页?先点选那一页,再告诉我怎么改,我就帮你换。"
-        return "再和我说说这一章的故事吧?"
-    if kind == "write":
-        return "I drafted the copy for this chapter."
-    if kind == "edit":
-        return "I rewrote this page the way you asked."
-    if kind == "edit_needs_focus":
-        return "Which page would you like to change? Tap that page first, then tell me what to change."
-    return "Tell me more about the story in this chapter."
+    """从可手调的 replies.md 读兜底回复(`kind.语言`),按路径缓存。未知 kind 回 talk。"""
+    replies = load_replies(_PROMPT_DIR / "replies.md")
+    lang = "zh" if language == "zh" else "en"
+    return (
+        replies.get(f"{kind}.{lang}")
+        or replies.get(f"talk.{lang}", "")
+    )

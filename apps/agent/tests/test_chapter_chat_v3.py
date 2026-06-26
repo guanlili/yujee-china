@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -95,22 +94,6 @@ def _fake_complete(payload: dict[str, Any]):
     return complete
 
 
-def _scripted_loop(actions: list[dict[str, Any]]):
-    """Injectable author-loop `complete` replaying scripted JSON actions in order."""
-    state = {"i": 0}
-
-    async def complete(*, messages, max_tokens, temperature):  # noqa: ANN001
-        i = state["i"]
-        state["i"] += 1
-        payload = actions[i] if i < len(actions) else {"action": "finish", "args": {"reply": "ok"}}
-        return {
-            "choices": [{"message": {"content": json.dumps(payload)}}],
-            "usage": {"prompt_tokens": 5, "completion_tokens": 3},
-        }
-
-    return complete
-
-
 def _run(req: V3ChapterChatRequest, payload: dict[str, Any]) -> V3ChapterChatResponse:
     return asyncio.run(chapter_chat_v3.run(req, complete=_fake_complete(payload)))
 
@@ -150,6 +133,7 @@ def test_write_turn_fills_every_page_and_clamps():
                 {"pageIndex": 0, "texts": {"title": long_title, "explain": "A coast story."}},
                 {"pageIndex": 1, "texts": {"explain1": "Main square.", "explain2": "A second memory."}},
             ],
+            "nameOptions": ["Coast Days", "Coast Days", "Salt Air", ""],
         },
     )
     assert resp.kind == "write"
@@ -161,6 +145,8 @@ def test_write_turn_fills_every_page_and_clamps():
     # title clamped to maxChars 24; authored explain kept.
     assert len(by_index[0]["title"]) == 24
     assert by_index[0]["explain"] == "A coast story."
+    # nameOptions de-duped + empties dropped, ≤4.
+    assert resp.nameOptions == ["Coast Days", "Salt Air"]
 
 
 def test_write_omitted_authored_page_degrades_to_talk():
@@ -270,28 +256,23 @@ def test_repeat_item_hint_passes_through_to_expanded_slots():
 # ---------- edit turn (改) ----------------------------------------------------
 
 
-def test_edit_turn_routes_to_author_loop():
-    # edit 统一走创作 loop(去 editTarget 二分):dispatch 判 edit,loop 用 write_texts 改文案
-    # 再 finish。loop 拍整页,patch 回显 templateId/images + 改后的文字。
-    resp = asyncio.run(
-        chapter_chat_v3.run(
-            _req(user_message="make page 0 warmer", focused=0),
-            complete=_fake_complete({"kind": "edit", "assistantReply": "ok"}),
-            author_complete=_scripted_loop(
-                [
-                    {"action": "write_texts", "args": {"texts": {"title": "Golden Coast"}}},
-                    {"action": "finish", "args": {"reply": "Warmer now."}},
-                ]
-            ),
-        )
+def test_edit_turn_rewrites_only_focused_page():
+    resp = _run(
+        _req(user_message="make page 0 warmer", focused=0),
+        {
+            "kind": "edit",
+            "assistantReply": "Warmer now.",
+            "pageTexts": {"pageIndex": 0, "texts": {"title": "Golden Coast"}},
+        },
     )
     assert resp.kind == "edit"
     assert resp.layoutPatch is not None and len(resp.layoutPatch) == 1
     patch = resp.layoutPatch[0]
     assert patch.pageIndex == 0
-    assert patch.texts.get("title") == "Golden Coast"
-    assert patch.templateId == _COVER  # loop 拍整页,回显模板
-    assert resp.assistantReply == "Warmer now."
+    assert patch.texts == {"title": "Golden Coast"}
+    # Pure-text edit never changes templateId/images (photo升级 is WP2.3).
+    assert patch.templateId is None
+    assert patch.images is None
 
 
 def test_edit_without_focus_degrades_to_talk():
@@ -303,25 +284,21 @@ def test_edit_without_focus_degrades_to_talk():
             "pageTexts": {"pageIndex": 0, "texts": {"title": "x"}},
         },
     )
-    # No focus → talk (never fabricate a patch). reply 必须明确提示"先选页",而不是沿用
-    # dispatch 那句客套话 —— 否则用户会"似乎换了其实没换"。
+    # No focus → nothing to edit → talk (never fabricate a patch).
     assert resp.kind == "talk"
     assert resp.layoutPatch is None
-    assert "Tap that page first" in resp.assistantReply
-    assert resp.assistantReply != "Which page?"  # 不沿用 dispatch 的客套话
 
 
-def test_edit_with_no_action_degrades_to_talk():
-    # edit 但 loop 一步没动(直接 finish)→ patch None → 降级 talk(绝不发空 patch)。
-    resp = asyncio.run(
-        chapter_chat_v3.run(
-            _req(user_message="hmm, not sure", focused=0),
-            complete=_fake_complete({"kind": "edit", "assistantReply": "?"}),
-            author_complete=_scripted_loop(
-                [{"action": "finish", "args": {"reply": "What would you like to change?"}}]
-            ),
-        )
+def test_edit_with_no_usable_texts_degrades_to_talk():
+    resp = _run(
+        _req(user_message="swap the photo", focused=0),
+        {
+            "kind": "edit",
+            "assistantReply": "Want a different photo here?",
+            "pageTexts": {"pageIndex": 0, "texts": {}},
+        },
     )
+    # Image-leaning edit with no text patch → talk seam (WP2.3 owns photo change).
     assert resp.kind == "talk"
     assert resp.layoutPatch is None
 
@@ -428,8 +405,10 @@ def test_assembly_carries_all_section_4_2_4_items():
 
     # 写作 Skill + 引导 Skill loaded into the system prompt (not inlined code).
     assert "WRITING STYLE" in system and "GUIDANCE STYLE" in system
-    # A line unique to the writing-style skill asset (proves the file was loaded).
-    assert "这一刻背后被感受到的故事" in system
+    # A line unique to the (now example-driven) writing-style asset (proves it loaded).
+    # The old role/maxChars/VOICE wording is gone; the asset now points at the per-page
+    # 输出示例 (EXAMPLE-DRIVEN) instead.
+    assert "EXAMPLE-DRIVEN" in system or "输出示例" in system
 
     payload = json.loads(user)
     # 用户信息: this turn's message + history channel present.
@@ -445,55 +424,6 @@ def test_assembly_carries_all_section_4_2_4_items():
     assert payload["pageImages"]["1"] == {}
 
 
-def test_assembly_carries_copy_examples_for_page_templates(monkeypatch, tmp_path):
-    examples_dir = tmp_path / "copy-examples"
-    examples_dir.mkdir()
-    (examples_dir / f"{_COVER}.json").write_text(
-        json.dumps(
-            {
-                "examples": [
-                    {
-                        "texts": {
-                            "title": "Coast Days",
-                            "explain": "The sea wind kept the afternoon bright.",
-                            "folio": "13",
-                        }
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("YUJEE_COPY_EXAMPLES_DIR", str(examples_dir))
-
-    _, user = _system_user(_req(user_message="write it"))
-    payload = json.loads(user)
-
-    assert payload["copyExamples"] == {
-        _COVER: [
-            {
-                "texts": {
-                    "title": "Coast Days",
-                    "explain": "The sea wind kept the afternoon bright.",
-                    "folio": "13",
-                }
-            }
-        ]
-    }
-
-
-def test_repo_copy_examples_are_data_only_and_match_template_ids(monkeypatch):
-    monkeypatch.delenv("YUJEE_COPY_EXAMPLES_DIR", raising=False)
-    repo_root = Path(__file__).resolve().parents[3]
-    examples_dir = repo_root / "packages" / "contracts" / "copy-examples"
-    files = sorted(examples_dir.glob("*.json"))
-
-    assert files
-    for file in files:
-        examples = chapter_chat_v3._load_copy_examples(file.stem)
-        assert examples, file.name
-
-
 def test_per_slot_hint_passes_through_to_writing_lm():
     # mag-13 (page 0) authored slots carry template hints; they must reach the LM.
     _, user = _system_user(_req(user_message="write it"))
@@ -506,6 +436,64 @@ def test_per_slot_hint_passes_through_to_writing_lm():
 
     expected = {s["id"]: s.get("hint") for s in writing_guides.page_slot_specs(_COVER)}
     assert page0_slots["title"]["hint"] == expected["title"]
+
+
+def test_model_facing_slot_specs_drop_maxchars_and_role():
+    # Example-driven: the per-slot spec the model sees keeps id/lang(/hint), but never
+    # maxChars (no char-length in the prompt) or role (the output example conveys it).
+    _, user = _system_user(_req(user_message="write it"))
+    payload = json.loads(user)
+    for specs in payload["pageSlots"].values():
+        for spec in specs:
+            assert "maxChars" not in spec
+            assert "role" not in spec
+            assert "lang" in spec  # language still needed
+
+
+def test_page_output_examples_present_for_template_with_copy_example():
+    # mag-13 (page 0) has a copy-example file → the page carries an outputExample keyed
+    # by its authored slot ids; the strings are the template's static example copy.
+    _, user = _system_user(_req(user_message="write it"))
+    payload = json.loads(user)
+    examples = payload["pageOutputExamples"]
+    page0 = examples["0"]
+    page0_slots = {s["id"] for s in payload["pageSlots"]["0"]}
+    # example is restricted to this page's authored slots…
+    assert set(page0.keys()) <= page0_slots
+    assert page0  # …and non-empty for a template that ships example copy
+    # the example value is the template's static copy (verbatim from copy-examples).
+    from src.engine import templates as registry
+
+    src_example = registry.copy_example(_COVER)
+    for slot_id, text in page0.items():
+        assert src_example[slot_id] == text
+
+
+def test_page_output_examples_omitted_when_template_has_no_example():
+    # mag-20 ships no copy-example file → graceful degrade: that page is simply absent
+    # from pageOutputExamples (still gets hint+lang via pageSlots), never crashes.
+    page = Page(pageIndex=0, templateId="mag-20", images={"image": "p1"}, texts={})
+    _, user = _system_user(_req(user_message="write it", pages=[page]))
+    payload = json.loads(user)
+    assert "0" not in payload["pageOutputExamples"]
+    assert "0" in payload["pageSlots"]  # slots (hint+lang) still sent
+
+
+def test_repeat_group_output_example_keys_align_with_expanded_slots():
+    # mag-10 grid: copy-example keys repeats as explain[0..3]; the page with image[0]/
+    # image[1] expands slots explain[0]/explain[1], so the example is restricted to
+    # exactly those — bracket keys line up with the expanded slot ids.
+    page = Page(
+        pageIndex=2,
+        templateId="mag-10",
+        images={"image[0]": "p1", "image[1]": "p1"},
+        texts={},
+    )
+    _, user = _system_user(_req(user_message="write this grid", pages=[page]))
+    payload = json.loads(user)
+    example = payload["pageOutputExamples"]["2"]
+    assert set(example.keys()) == {"explain[0]", "explain[1]"}
+    assert example["explain[0]"] and example["explain[1]"]
 
 
 def test_page_slot_specs_surfaces_hint_when_template_has_one():
@@ -534,8 +522,10 @@ def test_v3_write_path_has_no_role_guides_creative_residue():
     assert "Write each text slot to its role" not in system
 
 
-def test_assembly_localizes_skill_language():
-    # zh request → skills loaded with the Chinese {LANGUAGE} fill.
+def test_assembly_loads_style_assets_without_language_pinning():
+    # 写作/引导风格已外置到 prompts/rules/(人为可调规则),作为 prompt 资产按路径加载。
+    # 语言不再被 {LANGUAGE} 强制 —— 槽位的 lang 标记决定语言(lang=user 跟随用户语言),
+    # 所以两份风格资产都【原样】(无任何语言填充)出现在 system 里。
     extra = {"language": "zh"}
     req = V3ChapterChatRequest(
         albumId="alb_v3",
@@ -546,9 +536,7 @@ def test_assembly_localizes_skill_language():
         **extra,
     )
     system, _ = _system_user(req)
-    # The {LANGUAGE} placeholder in both prompts resolved to Chinese for a zh turn.
-    # 写作/引导风格已外置到 prompts/rules/(人为可调规则)。
     from src.prompts import RULES_DIR, load_prompt
 
-    assert load_prompt(RULES_DIR / "writing_style.md", LANGUAGE="Chinese") in system
-    assert load_prompt(RULES_DIR / "guidance_style.md", LANGUAGE="Chinese") in system
+    assert load_prompt(RULES_DIR / "writing_style.md", common=("grounding",)) in system
+    assert load_prompt(RULES_DIR / "guidance_style.md") in system

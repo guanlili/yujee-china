@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 
+# mag-24 故意不注册(搁置中);其余 mag-* + p01 全部登记。
 EXPECTED_TEMPLATE_IDS = [
     "mag-01",
     "mag-02",
@@ -23,6 +24,37 @@ EXPECTED_TEMPLATE_IDS = [
     "mag-18",
     "mag-19",
     "mag-20",
+    "mag-22",
+    "mag-23",
+    "mag-25",
+    "mag-26",
+    "mag-27",
+    "mag-28",
+    "mag-29",
+    "mag-30",
+    "mag-31",
+    "mag-32",
+    "mag-33",
+    "mag-34",
+    "mag-35",
+    "mag-36",
+    "mag-37",
+    "mag-38",
+    "mag-39",
+    "mag-40",
+    "mag-41",
+    "mag-42",
+    "mag-43",
+    "mag-44",
+    "mag-45",
+    "mag-46",
+    "mag-47",
+    "mag-48",
+    "mag-49",
+    "mag-50",
+    "mag-51",
+    "mag-52",
+    "mag-53",
     "p01",
 ]
 
@@ -37,7 +69,7 @@ def test_loader_reads_shared_template_json_count():
     template_dir = _repo_root() / "packages" / "contracts" / "templates"
     json_files = sorted(template_dir.glob("*.json"))
 
-    assert len(json_files) == 17
+    assert len(json_files) == 48
     assert templates.TEMPLATE_IDS == EXPECTED_TEMPLATE_IDS
     assert len(templates.TEMPLATES) == len(json_files)
 
@@ -59,7 +91,7 @@ def test_loader_fail_fast_when_explicit_template_path_is_missing(monkeypatch, tm
 def test_cover_ids_are_derived_from_template_json():
     from src.engine import templates
 
-    assert templates.COVER_TEMPLATE_IDS == ["mag-01", "mag-13", "p01"]
+    assert templates.COVER_TEMPLATE_IDS == ["mag-01", "mag-13", "mag-23", "mag-32", "p01"]
 
 
 def test_prompt_summary_handles_optional_constraints(tmp_path):
@@ -265,3 +297,35 @@ def test_optional_image_slot_hints_treated_as_any(monkeypatch, tmp_path):
         monkeypatch.delenv("YUJEE_TEMPLATE_DIR", raising=False)
         sys.modules.pop("src.engine.templates", None)
         importlib.import_module("src.engine.templates")
+
+
+# ---------- 示例文案(copy-examples)加载 -------------------------------------
+# 示例文案与模板分文件、并列存放(packages/contracts/copy-examples/),通过与模板【同一】
+# 机制到达 Agent。它们给写作 LM 做「输出示例」(例驱动);缺失须优雅降级,绝不崩。
+
+
+def test_copy_example_returns_slot_texts_map():
+    from src.engine import templates as registry
+
+    # mag-01 ships example copy keyed by slot id (examples[0].texts).
+    example = registry.copy_example("mag-01")
+    assert example["title"] == "VENUES"
+    assert example["explain1"] and example["explain2"]
+
+
+def test_copy_example_repeat_group_keys_use_brackets():
+    from src.engine import templates as registry
+
+    # mag-10's repeat group example keys as explain[0..3] — same bracket shape the
+    # writing-side per-page expansion produces.
+    example = registry.copy_example("mag-10")
+    assert example["explain[0]"] == "Low tide at dawn."
+    assert "explain[3]" in example
+
+
+def test_copy_example_missing_file_returns_empty_dict():
+    from src.engine import templates as registry
+
+    # mag-20 has no copy-example file → empty dict (graceful degrade, never KeyError).
+    assert registry.copy_example("mag-20") == {}
+    assert registry.copy_example("does-not-exist") == {}

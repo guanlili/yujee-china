@@ -34,7 +34,7 @@ test('confirm-chapter has no breadcrumb button: it is driven by the in-flow sati
   );
 
   // The in-flow satisfaction card's 满意 button calls markCurrentChapterDone directly.
-  const card = /function appendSatisfactionCard\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
+  const card = /function appendSatisfactionCard\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(card, 'appendSatisfactionCard() must exist');
   assert.match(card![0], /markCurrentChapterDone\(\)/, '满意 must call markCurrentChapterDone');
 });

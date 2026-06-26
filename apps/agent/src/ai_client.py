@@ -17,9 +17,13 @@ log = get_logger("ai_client")
 
 
 # ── LLM 调用追踪(调试用)──────────────────────────────────────────────────
-# 设环境变量 YUJEE_LLM_TRACE=/path/to/trace.txt 开启:每次 LLM 调用把
-# 「系统指令 + 用户上下文(base64 图片脱敏) + 模型输出」追加到该文件,看每步 AI 在想啥。
-# 不设则零开销。绝不因追踪失败影响真实调用。
+# 每次 LLM 调用把「系统指令 + 用户上下文(base64 图片脱敏) + 模型输出」追加到文件,
+# 看每步 AI 在想啥。开关:
+#   * 默认:dev 常开(写 apps/agent/llm-trace.txt),生产(AGENT_ENV=production 或 Fly
+#     运行时)零写入 —— 隐私 + 磁盘安全。
+#   * YUJEE_LLM_TRACE=/path → 写指定路径(任何环境生效,含生产强开排障)。
+#   * YUJEE_LLM_TRACE=off|0|false → 关闭(dev 临时静音的逃生阀)。
+# 绝不因追踪失败影响真实调用。
 def _redact_messages(messages: list[dict[str, Any]]) -> str:
     out: list[str] = []
     for m in messages:
@@ -43,8 +47,41 @@ def _redact_messages(messages: list[dict[str, Any]]) -> str:
     return "\n".join(out)
 
 
+# 监控默认写到这里:相对本文件定位到 apps/agent/llm-trace.txt,与启动 CWD 无关。
+_DEFAULT_TRACE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "llm-trace.txt")
+
+# 显式关闭追踪的取值(dev 也能用它临时静音)。
+_TRACE_OFF_VALUES = frozenset({"", "0", "off", "false", "no"})
+
+
+def _is_production() -> bool:
+    """生产判别:以 fly.toml 显式设的 AGENT_ENV=production 为准;再以 Fly 运行时变量
+    (FLY_APP_NAME / FLY_MACHINE_ID)做兜底防线 —— 万一 AGENT_ENV 漏配,也绝不在线上写。"""
+    if os.environ.get("AGENT_ENV", "development").strip().lower() == "production":
+        return True
+    if os.environ.get("FLY_APP_NAME") or os.environ.get("FLY_MACHINE_ID"):
+        return True
+    return False
+
+
+def _trace_path() -> str | None:
+    """解析本次是否写 trace、写到哪:
+
+    - `YUJEE_LLM_TRACE=/path` → 写该路径(任何环境生效,含生产强开排障)。
+    - `YUJEE_LLM_TRACE=off|0|false|no|空` → 关闭(dev 临时静音的逃生阀)。
+    - 未设 → dev 默认开(写 apps/agent/llm-trace.txt),生产关。
+    """
+    raw = os.environ.get("YUJEE_LLM_TRACE")
+    if raw is not None:
+        val = raw.strip()
+        if val.lower() in _TRACE_OFF_VALUES:
+            return None
+        return val
+    return None if _is_production() else _DEFAULT_TRACE_PATH
+
+
 def _trace_llm_call(model: str, messages: list[dict[str, Any]], response: dict[str, Any]) -> None:
-    path = os.environ.get("YUJEE_LLM_TRACE")
+    path = _trace_path()
     if not path:
         return
     try:

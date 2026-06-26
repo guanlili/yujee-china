@@ -65,7 +65,7 @@ test('B: the opener fires on entry (no prior history) and on advancing to the ne
 test('C: a write turn surfaces the satisfaction card (满意/不满意), not on talk/edit', () => {
   const src = source('EditorPort.tsx');
 
-  assert.match(src, /function appendSatisfactionCard\(\)/, 'appendSatisfactionCard() must exist');
+  assert.match(src, /function appendSatisfactionCard\(/, 'appendSatisfactionCard() must exist');
 
   // Only a real full-chapter WRITE opens the gate — the card is appended behind the
   // wroteChapter flag set by applyChapterWrite's return.
@@ -79,7 +79,7 @@ test('C: a write turn surfaces the satisfaction card (满意/不满意), not on 
 
 test('C: 满意 confirms the chapter; 不满意 stays for逐页 adjustment (no stage推进)', () => {
   const src = source('EditorPort.tsx');
-  const card = /function appendSatisfactionCard\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
+  const card = /function appendSatisfactionCard\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(card, 'appendSatisfactionCard() body must be parseable');
 
   // 满意 → markCurrentChapterDone (advance chapter / 末章→主题).

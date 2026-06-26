@@ -185,6 +185,8 @@ export const V3ChapterChatResponse = z
     pagesTexts: z.array(V3PageTextsPatch).optional(),
     // 仅 kind=='edit' 且涉版面:确定性引擎执行后的整页补丁(§4.2(3))。
     layoutPatch: z.array(V3LayoutPatchEntry).optional(),
+    // 本章标题候选(≤4),供前端展示挑选;不回灌树(§3 数据归属)。
+    nameOptions: z.array(z.string().min(1)).max(4).optional(),
     usage: V3Usage,
   })
   .strict();
@@ -227,6 +229,47 @@ export const V3StoryDraft = z
   })
   .strict();
 export type V3StoryDraft = z.infer<typeof V3StoryDraft>;
+
+// ───────────── ②b 页级编辑 — POST /v3/page-edit(同步,两段式) ─────────────
+//
+// 两段解耦(docs/superpowers/specs/2026-06-25-page-edit-agent-loop-design.md):
+//   段一意图路由(轻调用)判 intent ∈ edit_text|change_layout|advance|talk;段二专门执行
+//   (edit_text=一次写作调用 / change_layout=纯确定性 / advance=置标志 / talk=段一 reply)。
+// 编辑只作用于聚焦页;完成度由 Agent 代码确定性算(复用 chapter-chat 判定),派生不落库。
+// 请求复用 V3ChapterChatRequest 同形字段(降低契约面),响应复用 V3LayoutPatchEntry(不另
+//   造补丁形状)。任何 place/GPS/坐标字段禁止(§3 redact 红线;V3Chapter/Page 已 strict)。
+
+/** 段一意图(可观测,回到响应里)。单意图(本期不做多意图 plan)。 */
+export const V3PageEditIntent = z.enum(['edit_text', 'change_layout', 'advance', 'talk']);
+export type V3PageEditIntent = z.infer<typeof V3PageEditIntent>;
+
+export const V3PageEditRequest = z
+  .object({
+    language: V3Language,
+    // 聚焦页所属那一章(含 photos 的 sceneDescription/orientation),供算完成度 + 写作 grounding。
+    chapter: V3Chapter,
+    pages: z.array(Page), // 该章的页(含当前 texts)
+    focusedPageIndex: z.number().int().nonnegative(),
+    userMessage: z.string().max(500),
+    history: z.array(V3ChatTurn).max(20),
+  })
+  .strict();
+export type V3PageEditRequest = z.infer<typeof V3PageEditRequest>;
+
+export const V3PageEditResponse = z
+  .object({
+    assistantReply: z.string().min(1).max(500),
+    // 段一判定(可观测)。
+    intent: V3PageEditIntent,
+    // edit_text→一条 { pageIndex, texts };change_layout→一条 { pageIndex, templateId, images }。
+    // 复用 V3LayoutPatchEntry(与 chapter-chat 同构,web 走现有单一 patch 合并路径)。
+    layoutPatch: z.array(V3LayoutPatchEntry).optional(),
+    // intent=='advance' 时为 true:用户想进下一章 → web 导航(Agent 不导航)。
+    advanceIntent: z.boolean().optional(),
+    usage: V3Usage,
+  })
+  .strict();
+export type V3PageEditResponse = z.infer<typeof V3PageEditResponse>;
 
 // ───────────── ③ 主题/章节色 · 推荐 — POST /v3/recommend(同步) ─────────────
 //

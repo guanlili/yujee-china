@@ -94,6 +94,18 @@ class Settings(BaseSettings):
     describe_openai_model: str = "gpt-5.5-mini"
     describe_openai_timeout_seconds: int = 30
     describe_batch_deadline_seconds: int = 90
+    # The unified describe call now emits, in ONE response, per-chapter
+    # description + per-photo scene + per-page photoIds + per-page templateId
+    # (selecting templates / paging folded into the same call). That combined
+    # output is materially larger than the old describe-only reply, so the
+    # output budget needs headroom: a truncated response is non-lossy (the
+    # coverage guard rejects it) but FATAL (hard AGENT_VISION_FAILED, no graceful
+    # degrade — it propagates rather than failing over on the same bad-output
+    # class). 16384 is a conservative headroom bump accepted by both configured
+    # vision models (ark doubao-seed-1-6-vision with thinking disabled, and the
+    # openai describe slot). Route-splitting (#232) remains the primary per-call
+    # output bound; this is just headroom for dense single routes.
+    describe_max_output_tokens: int = 16384
 
     # V3 describe cluster-aware concurrency (#232 WP-C). When the browser stamps
     # photos with `clusterId` (EXIF time/GPS-derived), whole clusters are packed

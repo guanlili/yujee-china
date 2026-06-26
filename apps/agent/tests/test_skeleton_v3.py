@@ -63,8 +63,10 @@ def test_legal_candidates_shape_for_select_template():
 
 
 def test_fallback_prefers_exact_capacity():
-    # 3-photo interior: mag-04 is the only exact-3 template.
-    assert sk.pick_template_v3("interior", 3) == "mag-04"
+    # 3-photo interior: 精确容量优先 —— pick 出的模板容量恰好为 3
+    # (不写死具体 id:模板库扩了多个 3 槽模板,断言"性质"而非"哪一个")。
+    pick3 = sk.pick_template_v3("interior", 3)
+    assert sk.image_capacity(templates.TEMPLATES[pick3]) == 3
     # 1-photo interior: smallest sorted id among the 1-slot interiors.
     pick = sk.pick_template_v3("interior", 1)
     assert sk.image_capacity(templates.TEMPLATES[pick]) == 1
@@ -88,7 +90,7 @@ def test_fallback_raises_when_no_template_can_hold_n():
 
 
 def test_assign_images_in_declaration_order_no_matching():
-    tpl_id = "mag-04"  # 3 image slots
+    tpl_id = "mag-33"  # 3 image slots
     slot_ids = templates.image_slot_ids(templates.TEMPLATES[tpl_id])
     mapping = sk.assign_images_v3(tpl_id, ["a", "b", "c"])
     # Photos go into slots in declaration order — nothing about quality/orientation.
@@ -96,7 +98,7 @@ def test_assign_images_in_declaration_order_no_matching():
 
 
 def test_assign_images_accepts_photo_mappings():
-    mapping = sk.assign_images_v3("mag-04", [{"photoId": "x"}, {"photoId": "y"}, {"photoId": "z"}])
+    mapping = sk.assign_images_v3("mag-33", [{"photoId": "x"}, {"photoId": "y"}, {"photoId": "z"}])
     assert set(mapping.values()) == {"x", "y", "z"}
 
 
@@ -119,8 +121,8 @@ def test_assign_images_into_repeat_group_template():
 
 def test_fallback_fixture_ten_photos_pick_holding_templates_in_order():
     """§9 fallback fixture: N photos → pick templates that can hold them, slot in
-    order. With the interior max of 4, 10 photos pack as 4 + 4 + 2, photos kept
-    in their original order across pages."""
+    order. With the interior max of 9 (mag-48), 10 photos pack as 9 + 1, photos
+    kept in their original order across pages."""
     photo_ids = [f"p{i}" for i in range(10)]
     pages = sk.build_skeleton_v3([{"photos": photo_ids}])
 
@@ -135,15 +137,19 @@ def test_fallback_fixture_ten_photos_pick_holding_templates_in_order():
     # No photo lost, no photo duplicated, original order preserved.
     assert placed == photo_ids
     assert [p["pageIndex"] for p in pages] == list(range(len(pages)))
-    # 10 photos, interior max 4 -> 4 + 4 + 2.
-    assert [len(p["images"]) for p in pages] == [4, 4, 2]
+    # 10 photos, interior max 9 (mag-48) -> 9 + 1.
+    assert [len(p["images"]) for p in pages] == [9, 1]
 
 
 def test_partition_photos_chunks_by_max_capacity():
-    chunks = sk.partition_photos_v3([str(i) for i in range(10)], category="interior")
-    assert [len(c) for c in chunks] == [4, 4, 2]
+    # 满一页装到 interior 最大容量,余数另起一页(按 max 推导,不写死数字,
+    # 模板库再扩也不会误挂)。
+    cap = sk.max_capacity("interior")
+    n = cap + 2
+    chunks = sk.partition_photos_v3([str(i) for i in range(n)], category="interior")
+    assert [len(c) for c in chunks] == [cap, 2]
     # flattening recovers the original order.
-    assert [pid for c in chunks for pid in c] == [str(i) for i in range(10)]
+    assert [pid for c in chunks for pid in c] == [str(i) for i in range(n)]
 
 
 def test_partition_empty_photos_is_empty():
@@ -157,6 +163,40 @@ def test_partition_photos_does_not_require_contiguous_capacities(monkeypatch):
     monkeypatch.setattr(sk, "POOLS", {"interior": {2: ["t2"], 4: ["t4"]}})
     chunks = sk.partition_photos_v3([str(i) for i in range(7)], category="interior")
     assert [len(chunk) for chunk in chunks] == [4, 3]
+
+
+# ── validate_grouping: AI 分组的确定性护栏(§8.3 引擎保合法) ──────────────────
+
+
+def test_validate_grouping_accepts_legal_split(monkeypatch):
+    monkeypatch.setattr(sk, "POOLS", {"interior": {1: ["t1"], 4: ["t4"]}})  # cap 4
+    ids = ["a", "b", "c", "d", "e"]
+    assert sk.validate_grouping([["a", "b", "c"], ["d", "e"]], ids) is True
+
+
+def test_validate_grouping_rejects_over_capacity(monkeypatch):
+    monkeypatch.setattr(sk, "POOLS", {"interior": {1: ["t1"], 4: ["t4"]}})  # cap 4
+    ids = ["a", "b", "c", "d", "e"]
+    assert sk.validate_grouping([["a", "b", "c", "d", "e"]], ids) is False  # 5 > 4
+
+
+def test_validate_grouping_rejects_empty_page(monkeypatch):
+    monkeypatch.setattr(sk, "POOLS", {"interior": {1: ["t1"], 4: ["t4"]}})
+    assert sk.validate_grouping([["a"], []], ["a"]) is False
+
+
+def test_validate_grouping_rejects_lost_dup_reordered_or_extra(monkeypatch):
+    monkeypatch.setattr(sk, "POOLS", {"interior": {1: ["t1"], 4: ["t4"]}})
+    ids = ["a", "b", "c"]
+    assert sk.validate_grouping([["a", "b"]], ids) is False  # 丢了 c
+    assert sk.validate_grouping([["a", "b"], ["b", "c"]], ids) is False  # 重复 b
+    assert sk.validate_grouping([["b", "a"], ["c"]], ids) is False  # 乱序
+    assert sk.validate_grouping([["a", "b"], ["c"], ["x"]], ids) is False  # 多了 x
+
+
+def test_validate_grouping_rejects_empty_grouping_with_photos(monkeypatch):
+    monkeypatch.setattr(sk, "POOLS", {"interior": {1: ["t1"], 4: ["t4"]}})
+    assert sk.validate_grouping([], ["a"]) is False
 
 
 def test_build_skeleton_skips_empty_chapters_and_reindexes():
