@@ -14,5 +14,5 @@
     "explain2",
     "folio"
   ],
-  "structureDescription": "mag-01 cover template with 1 image slot(s) (image) and 5 text slot(s) (title, label, explain1, explain2, folio). one dominant image block; 5 text slots."
+  "structureDescription": "mag-01 cover template with 1 image slot(s) (image) and 5 concrete text slot(s) (title, label, explain1, explain2, folio). one dominant image block; 5 text slots."
 }

@@ -20,7 +20,7 @@
         "explain2",
         "folio"
       ],
-      "structureDescription": "mag-01 cover template with 1 image slot(s) (image) and 5 text slot(s) (title, label, explain1, explain2, folio). one dominant image block; 5 text slots."
+      "structureDescription": "mag-01 cover template with 1 image slot(s) (image) and 5 concrete text slot(s) (title, label, explain1, explain2, folio). one dominant image block; 5 text slots."
     },
     {
       "schemaVersion": 1,
@@ -28,15 +28,29 @@
       "category": "toc",
       "imageSlotCount": 0,
       "imageSlotIds": [],
-      "textSlotCount": 5,
+      "textSlotCount": 2,
       "textSlotIds": [
         "title",
-        "folio",
-        "items.number",
-        "items.title",
-        "items.description"
+        "folio"
       ],
-      "structureDescription": "mag-02 toc template with 0 image slot(s) (none) and 5 text slot(s) (title, folio, items.number, items.title, items.description). no image blocks; 5 text slots."
+      "repeatTextSlots": [
+        {
+          "id": "number",
+          "addressPattern": "number[n]",
+          "repeat": "variable"
+        },
+        {
+          "id": "title",
+          "addressPattern": "title[n]",
+          "repeat": "variable"
+        },
+        {
+          "id": "description",
+          "addressPattern": "description[n]",
+          "repeat": "variable"
+        }
+      ],
+      "structureDescription": "mag-02 toc template with 0 image slot(s) (none) and 2 concrete text slot(s) (title, folio). no image blocks; 2 text slots. variable repeat text pattern(s): number[n], title[n], description[n]."
     },
     {
       "schemaVersion": 1,
@@ -52,7 +66,7 @@
         "date",
         "folio"
       ],
-      "structureDescription": "mag-03 interior template with 1 image slot(s) (image) and 3 text slot(s) (label, date, folio). one dominant image block; 3 text slots."
+      "structureDescription": "mag-03 interior template with 1 image slot(s) (image) and 3 concrete text slot(s) (label, date, folio). one dominant image block; 3 text slots."
     },
     {
       "schemaVersion": 1,
@@ -70,7 +84,7 @@
         "date",
         "folio"
       ],
-      "structureDescription": "mag-04 interior template with 2 image slot(s) (image1, image2) and 4 text slot(s) (explain1, explain2, date, folio). two balanced image blocks; 4 text slots."
+      "structureDescription": "mag-04 interior template with 2 image slot(s) (image1, image2) and 4 concrete text slot(s) (explain1, explain2, date, folio). two balanced image blocks; 4 text slots."
     },
     {
       "schemaVersion": 1,
@@ -87,7 +101,7 @@
         "explain",
         "folio"
       ],
-      "structureDescription": "mag-05 interior template with 1 image slot(s) (image) and 4 text slot(s) (title, label, explain, folio). one dominant image block; 4 text slots."
+      "structureDescription": "mag-05 interior template with 1 image slot(s) (image) and 4 concrete text slot(s) (title, label, explain, folio). one dominant image block; 4 text slots."
     },
     {
       "schemaVersion": 1,
@@ -101,7 +115,7 @@
       "textSlotIds": [
         "folio"
       ],
-      "structureDescription": "mag-06 interior template with 1 image slot(s) (image) and 1 text slot(s) (folio). one dominant image block; one text slot."
+      "structureDescription": "mag-06 interior template with 1 image slot(s) (image) and 1 concrete text slot(s) (folio). one dominant image block; one text slot."
     },
     {
       "schemaVersion": 1,
@@ -119,7 +133,7 @@
         "explain2",
         "folio"
       ],
-      "structureDescription": "mag-07 interior template with 2 image slot(s) (image1, image2) and 4 text slot(s) (title, explain1, explain2, folio). two balanced image blocks; 4 text slots."
+      "structureDescription": "mag-07 interior template with 2 image slot(s) (image1, image2) and 4 concrete text slot(s) (title, explain1, explain2, folio). two balanced image blocks; 4 text slots."
     },
     {
       "schemaVersion": 1,
@@ -137,7 +151,7 @@
         "date",
         "folio"
       ],
-      "structureDescription": "mag-08 interior template with 1 image slot(s) (image) and 5 text slot(s) (title, explain1, explain2, date, folio). one dominant image block; 5 text slots."
+      "structureDescription": "mag-08 interior template with 1 image slot(s) (image) and 5 concrete text slot(s) (title, explain1, explain2, date, folio). one dominant image block; 5 text slots."
     },
     {
       "schemaVersion": 1,
@@ -157,7 +171,7 @@
         "explain3",
         "folio"
       ],
-      "structureDescription": "mag-09 interior template with 2 image slot(s) (image1, image2) and 6 text slot(s) (title, body, explain1, explain2, explain3, folio). two balanced image blocks; 6 text slots."
+      "structureDescription": "mag-09 interior template with 2 image slot(s) (image1, image2) and 6 concrete text slot(s) (title, body, explain1, explain2, explain3, folio). two balanced image blocks; 6 text slots."
     },
     {
       "schemaVersion": 1,
@@ -170,12 +184,23 @@
         "image[2]",
         "image[3]"
       ],
-      "textSlotCount": 2,
+      "textSlotCount": 5,
       "textSlotIds": [
         "folio",
-        "items.explain"
+        "explain[0]",
+        "explain[1]",
+        "explain[2]",
+        "explain[3]"
       ],
-      "structureDescription": "mag-10 interior template with 4 image slot(s) (image[0], image[1], image[2], image[3]) and 2 text slot(s) (folio, items.explain). 4 image blocks in a grid; 2 text slots."
+      "repeatTextSlots": [
+        {
+          "id": "explain",
+          "addressPattern": "explain[n]",
+          "repeat": "fixed",
+          "count": 4
+        }
+      ],
+      "structureDescription": "mag-10 interior template with 4 image slot(s) (image[0], image[1], image[2], image[3]) and 5 concrete text slot(s) (folio, explain[0], explain[1], explain[2], explain[3]). 4 image blocks in a grid; 5 text slots. fixed repeat text slot(s): explain[n] x4."
     },
     {
       "schemaVersion": 1,
@@ -192,7 +217,7 @@
         "explain",
         "folio"
       ],
-      "structureDescription": "mag-11 interior template with 1 image slot(s) (image) and 4 text slot(s) (title, label, explain, folio). one dominant image block; 4 text slots."
+      "structureDescription": "mag-11 interior template with 1 image slot(s) (image) and 4 concrete text slot(s) (title, label, explain, folio). one dominant image block; 4 text slots."
     },
     {
       "schemaVersion": 1,
@@ -208,7 +233,7 @@
         "explain",
         "folio"
       ],
-      "structureDescription": "mag-13 cover template with 1 image slot(s) (image) and 3 text slot(s) (title, explain, folio). one dominant image block; 3 text slots."
+      "structureDescription": "mag-13 cover template with 1 image slot(s) (image) and 3 concrete text slot(s) (title, explain, folio). one dominant image block; 3 text slots."
     },
     {
       "schemaVersion": 1,
@@ -226,7 +251,7 @@
         "date",
         "folio"
       ],
-      "structureDescription": "mag-15 interior template with 2 image slot(s) (image1, image2) and 4 text slot(s) (title, body, date, folio). two balanced image blocks; 4 text slots."
+      "structureDescription": "mag-15 interior template with 2 image slot(s) (image1, image2) and 4 concrete text slot(s) (title, body, date, folio). two balanced image blocks; 4 text slots."
     },
     {
       "schemaVersion": 1,
@@ -243,7 +268,7 @@
         "explain2",
         "folio"
       ],
-      "structureDescription": "mag-18 interior template with 2 image slot(s) (image1, image2) and 3 text slot(s) (explain1, explain2, folio). two balanced image blocks; 3 text slots."
+      "structureDescription": "mag-18 interior template with 2 image slot(s) (image1, image2) and 3 concrete text slot(s) (explain1, explain2, folio). two balanced image blocks; 3 text slots."
     },
     {
       "schemaVersion": 1,
@@ -260,7 +285,7 @@
         "explain2",
         "folio"
       ],
-      "structureDescription": "mag-19 interior template with 1 image slot(s) (image) and 4 text slot(s) (title, explain1, explain2, folio). one dominant image block; 4 text slots."
+      "structureDescription": "mag-19 interior template with 1 image slot(s) (image) and 4 concrete text slot(s) (title, explain1, explain2, folio). one dominant image block; 4 text slots."
     },
     {
       "schemaVersion": 1,
@@ -272,7 +297,7 @@
       ],
       "textSlotCount": 0,
       "textSlotIds": [],
-      "structureDescription": "mag-20 ending template with 1 image slot(s) (image) and 0 text slot(s) (none). one dominant image block; no text slots."
+      "structureDescription": "mag-20 ending template with 1 image slot(s) (image) and 0 concrete text slot(s) (none). one dominant image block; no text slots."
     },
     {
       "schemaVersion": 1,
@@ -291,7 +316,7 @@
         "body2",
         "explain2"
       ],
-      "structureDescription": "mag-22 ending template with 2 image slot(s) (image1, image2) and 5 text slot(s) (title, body1, explain1, body2, explain2). two balanced image blocks; 5 text slots."
+      "structureDescription": "mag-22 ending template with 2 image slot(s) (image1, image2) and 5 concrete text slot(s) (title, body1, explain1, body2, explain2). two balanced image blocks; 5 text slots."
     },
     {
       "schemaVersion": 1,
@@ -308,7 +333,7 @@
         "year",
         "city"
       ],
-      "structureDescription": "mag-23 cover template with 1 image slot(s) (image) and 4 text slot(s) (title, subtitle, year, city). one dominant image block; 4 text slots."
+      "structureDescription": "mag-23 cover template with 1 image slot(s) (image) and 4 concrete text slot(s) (title, subtitle, year, city). one dominant image block; 4 text slots."
     },
     {
       "schemaVersion": 1,
@@ -327,7 +352,7 @@
         "label",
         "date"
       ],
-      "structureDescription": "mag-25 ending template with 2 image slot(s) (image1, image2) and 5 text slot(s) (title, body, explain, label, date). two balanced image blocks; 5 text slots."
+      "structureDescription": "mag-25 ending template with 2 image slot(s) (image1, image2) and 5 concrete text slot(s) (title, body, explain, label, date). two balanced image blocks; 5 text slots."
     },
     {
       "schemaVersion": 1,
@@ -345,7 +370,7 @@
         "label1",
         "label2"
       ],
-      "structureDescription": "mag-26 interior template with 1 image slot(s) (image) and 5 text slot(s) (title, explain, body, label1, label2). one dominant image block; 5 text slots."
+      "structureDescription": "mag-26 interior template with 1 image slot(s) (image) and 5 concrete text slot(s) (title, explain, body, label1, label2). one dominant image block; 5 text slots."
     },
     {
       "schemaVersion": 1,
@@ -365,7 +390,7 @@
         "label1",
         "label2"
       ],
-      "structureDescription": "mag-27 interior template with 1 image slot(s) (image) and 7 text slot(s) (title, explain1, body, explain2, date, label1, label2). one dominant image block; 7 text slots."
+      "structureDescription": "mag-27 interior template with 1 image slot(s) (image) and 7 concrete text slot(s) (title, explain1, body, explain2, date, label1, label2). one dominant image block; 7 text slots."
     },
     {
       "schemaVersion": 1,
@@ -381,7 +406,7 @@
         "headline",
         "explain"
       ],
-      "structureDescription": "mag-28 interior template with 1 image slot(s) (image) and 3 text slot(s) (title, headline, explain). one dominant image block; 3 text slots."
+      "structureDescription": "mag-28 interior template with 1 image slot(s) (image) and 3 concrete text slot(s) (title, headline, explain). one dominant image block; 3 text slots."
     },
     {
       "schemaVersion": 1,
@@ -398,7 +423,7 @@
         "body",
         "label"
       ],
-      "structureDescription": "mag-29 interior template with 2 image slot(s) (image1, image2) and 3 text slot(s) (title, body, label). two balanced image blocks; 3 text slots."
+      "structureDescription": "mag-29 interior template with 2 image slot(s) (image1, image2) and 3 concrete text slot(s) (title, body, label). two balanced image blocks; 3 text slots."
     },
     {
       "schemaVersion": 1,
@@ -412,7 +437,7 @@
       "textSlotIds": [
         "explain"
       ],
-      "structureDescription": "mag-30 interior template with 1 image slot(s) (image) and 1 text slot(s) (explain). one dominant image block; one text slot."
+      "structureDescription": "mag-30 interior template with 1 image slot(s) (image) and 1 concrete text slot(s) (explain). one dominant image block; one text slot."
     },
     {
       "schemaVersion": 1,
@@ -431,7 +456,7 @@
       "textSlotIds": [
         "body"
       ],
-      "structureDescription": "mag-31 interior template with 6 image slot(s) (image1, image2, image3, image4, image5, image6) and 1 text slot(s) (body). 6 image blocks in a grid; one text slot."
+      "structureDescription": "mag-31 interior template with 6 image slot(s) (image1, image2, image3, image4, image5, image6) and 1 concrete text slot(s) (body). 6 image blocks in a grid; one text slot."
     },
     {
       "schemaVersion": 1,
@@ -446,7 +471,7 @@
         "title",
         "label"
       ],
-      "structureDescription": "mag-32 cover template with 1 image slot(s) (image) and 2 text slot(s) (title, label). one dominant image block; 2 text slots."
+      "structureDescription": "mag-32 cover template with 1 image slot(s) (image) and 2 concrete text slot(s) (title, label). one dominant image block; 2 text slots."
     },
     {
       "schemaVersion": 1,
@@ -465,7 +490,7 @@
         "caption2",
         "caption3"
       ],
-      "structureDescription": "mag-33 interior template with 3 image slot(s) (image1, image2, image3) and 4 text slot(s) (title, caption1, caption2, caption3). one lead block plus two supporting blocks; 4 text slots."
+      "structureDescription": "mag-33 interior template with 3 image slot(s) (image1, image2, image3) and 4 concrete text slot(s) (title, caption1, caption2, caption3). one lead block plus two supporting blocks; 4 text slots."
     },
     {
       "schemaVersion": 1,
@@ -480,7 +505,7 @@
         "title",
         "explain"
       ],
-      "structureDescription": "mag-34 interior template with 1 image slot(s) (image) and 2 text slot(s) (title, explain). one dominant image block; 2 text slots."
+      "structureDescription": "mag-34 interior template with 1 image slot(s) (image) and 2 concrete text slot(s) (title, explain). one dominant image block; 2 text slots."
     },
     {
       "schemaVersion": 1,
@@ -496,7 +521,7 @@
         "date",
         "body"
       ],
-      "structureDescription": "mag-35 interior template with 1 image slot(s) (image) and 3 text slot(s) (label, date, body). one dominant image block; 3 text slots."
+      "structureDescription": "mag-35 interior template with 1 image slot(s) (image) and 3 concrete text slot(s) (label, date, body). one dominant image block; 3 text slots."
     },
     {
       "schemaVersion": 1,
@@ -511,7 +536,7 @@
         "title",
         "explain"
       ],
-      "structureDescription": "mag-36 interior template with 1 image slot(s) (image) and 2 text slot(s) (title, explain). one dominant image block; 2 text slots."
+      "structureDescription": "mag-36 interior template with 1 image slot(s) (image) and 2 concrete text slot(s) (title, explain). one dominant image block; 2 text slots."
     },
     {
       "schemaVersion": 1,
@@ -526,7 +551,7 @@
         "body",
         "decor"
       ],
-      "structureDescription": "mag-37 interior template with 1 image slot(s) (image) and 2 text slot(s) (body, decor). one dominant image block; 2 text slots."
+      "structureDescription": "mag-37 interior template with 1 image slot(s) (image) and 2 concrete text slot(s) (body, decor). one dominant image block; 2 text slots."
     },
     {
       "schemaVersion": 1,
@@ -541,7 +566,7 @@
       "textSlotIds": [
         "body"
       ],
-      "structureDescription": "mag-38 interior template with 2 image slot(s) (image1, image2) and 1 text slot(s) (body). two balanced image blocks; one text slot."
+      "structureDescription": "mag-38 interior template with 2 image slot(s) (image1, image2) and 1 concrete text slot(s) (body). two balanced image blocks; one text slot."
     },
     {
       "schemaVersion": 1,
@@ -554,7 +579,7 @@
       ],
       "textSlotCount": 0,
       "textSlotIds": [],
-      "structureDescription": "mag-39 interior template with 2 image slot(s) (image1, image2) and 0 text slot(s) (none). two balanced image blocks; no text slots."
+      "structureDescription": "mag-39 interior template with 2 image slot(s) (image1, image2) and 0 concrete text slot(s) (none). two balanced image blocks; no text slots."
     },
     {
       "schemaVersion": 1,
@@ -566,7 +591,7 @@
       ],
       "textSlotCount": 0,
       "textSlotIds": [],
-      "structureDescription": "mag-40 interior template with 1 image slot(s) (image) and 0 text slot(s) (none). one dominant image block; no text slots."
+      "structureDescription": "mag-40 interior template with 1 image slot(s) (image) and 0 concrete text slot(s) (none). one dominant image block; no text slots."
     },
     {
       "schemaVersion": 1,
@@ -578,7 +603,7 @@
       ],
       "textSlotCount": 0,
       "textSlotIds": [],
-      "structureDescription": "mag-41 interior template with 1 image slot(s) (image) and 0 text slot(s) (none). one dominant image block; no text slots."
+      "structureDescription": "mag-41 interior template with 1 image slot(s) (image) and 0 concrete text slot(s) (none). one dominant image block; no text slots."
     },
     {
       "schemaVersion": 1,
@@ -595,7 +620,7 @@
       ],
       "textSlotCount": 0,
       "textSlotIds": [],
-      "structureDescription": "mag-42 interior template with 6 image slot(s) (image1, image2, image3, image4, image5, image6) and 0 text slot(s) (none). 6 image blocks in a grid; no text slots."
+      "structureDescription": "mag-42 interior template with 6 image slot(s) (image1, image2, image3, image4, image5, image6) and 0 concrete text slot(s) (none). 6 image blocks in a grid; no text slots."
     },
     {
       "schemaVersion": 1,
@@ -615,7 +640,7 @@
         "subtitle",
         "caption"
       ],
-      "structureDescription": "mag-43 interior template with 5 image slot(s) (image1, image2, image3, image4, image5) and 3 text slot(s) (title, subtitle, caption). 5 image blocks in a grid; 3 text slots."
+      "structureDescription": "mag-43 interior template with 5 image slot(s) (image1, image2, image3, image4, image5) and 3 concrete text slot(s) (title, subtitle, caption). 5 image blocks in a grid; 3 text slots."
     },
     {
       "schemaVersion": 1,
@@ -632,7 +657,7 @@
         "line",
         "caption"
       ],
-      "structureDescription": "mag-44 interior template with 2 image slot(s) (image1, image2) and 3 text slot(s) (title, line, caption). two balanced image blocks; 3 text slots."
+      "structureDescription": "mag-44 interior template with 2 image slot(s) (image1, image2) and 3 concrete text slot(s) (title, line, caption). two balanced image blocks; 3 text slots."
     },
     {
       "schemaVersion": 1,
@@ -646,7 +671,7 @@
       "textSlotIds": [
         "title"
       ],
-      "structureDescription": "mag-45 interior template with 1 image slot(s) (image) and 1 text slot(s) (title). one dominant image block; one text slot."
+      "structureDescription": "mag-45 interior template with 1 image slot(s) (image) and 1 concrete text slot(s) (title). one dominant image block; one text slot."
     },
     {
       "schemaVersion": 1,
@@ -662,7 +687,7 @@
         "title",
         "caption"
       ],
-      "structureDescription": "mag-46 interior template with 2 image slot(s) (image1, image2) and 2 text slot(s) (title, caption). two balanced image blocks; 2 text slots."
+      "structureDescription": "mag-46 interior template with 2 image slot(s) (image1, image2) and 2 concrete text slot(s) (title, caption). two balanced image blocks; 2 text slots."
     },
     {
       "schemaVersion": 1,
@@ -680,7 +705,7 @@
         "title",
         "explain"
       ],
-      "structureDescription": "mag-47 interior template with 4 image slot(s) (image1, image2, image3, image4) and 2 text slot(s) (title, explain). 4 image blocks in a grid; 2 text slots."
+      "structureDescription": "mag-47 interior template with 4 image slot(s) (image1, image2, image3, image4) and 2 concrete text slot(s) (title, explain). 4 image blocks in a grid; 2 text slots."
     },
     {
       "schemaVersion": 1,
@@ -700,7 +725,7 @@
       ],
       "textSlotCount": 0,
       "textSlotIds": [],
-      "structureDescription": "mag-48 interior template with 9 image slot(s) (image1, image2, image3, image4, image5, image6, image7, image8, image9) and 0 text slot(s) (none). 9 image blocks in a grid; no text slots."
+      "structureDescription": "mag-48 interior template with 9 image slot(s) (image1, image2, image3, image4, image5, image6, image7, image8, image9) and 0 concrete text slot(s) (none). 9 image blocks in a grid; no text slots."
     },
     {
       "schemaVersion": 1,
@@ -714,7 +739,7 @@
       "textSlotIds": [
         "title"
       ],
-      "structureDescription": "mag-49 interior template with 1 image slot(s) (image) and 1 text slot(s) (title). one dominant image block; one text slot."
+      "structureDescription": "mag-49 interior template with 1 image slot(s) (image) and 1 concrete text slot(s) (title). one dominant image block; one text slot."
     },
     {
       "schemaVersion": 1,
@@ -730,7 +755,7 @@
       "textSlotIds": [
         "title"
       ],
-      "structureDescription": "mag-50 interior template with 3 image slot(s) (image1, image2, image3) and 1 text slot(s) (title). one lead block plus two supporting blocks; one text slot."
+      "structureDescription": "mag-50 interior template with 3 image slot(s) (image1, image2, image3) and 1 concrete text slot(s) (title). one lead block plus two supporting blocks; one text slot."
     },
     {
       "schemaVersion": 1,
@@ -744,7 +769,7 @@
       "textSlotIds": [
         "title"
       ],
-      "structureDescription": "mag-51 interior template with 1 image slot(s) (image) and 1 text slot(s) (title). one dominant image block; one text slot."
+      "structureDescription": "mag-51 interior template with 1 image slot(s) (image) and 1 concrete text slot(s) (title). one dominant image block; one text slot."
     },
     {
       "schemaVersion": 1,
@@ -760,7 +785,7 @@
       "textSlotIds": [
         "title"
       ],
-      "structureDescription": "mag-52 interior template with 3 image slot(s) (image1, image2, image3) and 1 text slot(s) (title). one lead block plus two supporting blocks; one text slot."
+      "structureDescription": "mag-52 interior template with 3 image slot(s) (image1, image2, image3) and 1 concrete text slot(s) (title). one lead block plus two supporting blocks; one text slot."
     },
     {
       "schemaVersion": 1,
@@ -774,7 +799,7 @@
       "textSlotIds": [
         "title"
       ],
-      "structureDescription": "mag-53 interior template with 1 image slot(s) (image) and 1 text slot(s) (title). one dominant image block; one text slot."
+      "structureDescription": "mag-53 interior template with 1 image slot(s) (image) and 1 concrete text slot(s) (title). one dominant image block; one text slot."
     },
     {
       "schemaVersion": 1,
@@ -792,7 +817,7 @@
         "label2",
         "date"
       ],
-      "structureDescription": "p01 cover template with 1 image slot(s) (image) and 5 text slot(s) (title, body, label1, label2, date). one dominant image block; 5 text slots."
+      "structureDescription": "p01 cover template with 1 image slot(s) (image) and 5 concrete text slot(s) (title, body, label1, label2, date). one dominant image block; 5 text slots."
     }
   ],
   "capacityBuckets": [

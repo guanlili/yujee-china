@@ -9,10 +9,21 @@
     "image[2]",
     "image[3]"
   ],
-  "textSlotCount": 2,
+  "textSlotCount": 5,
   "textSlotIds": [
     "folio",
-    "items.explain"
+    "explain[0]",
+    "explain[1]",
+    "explain[2]",
+    "explain[3]"
   ],
-  "structureDescription": "mag-10 interior template with 4 image slot(s) (image[0], image[1], image[2], image[3]) and 2 text slot(s) (folio, items.explain). 4 image blocks in a grid; 2 text slots."
+  "repeatTextSlots": [
+    {
+      "id": "explain",
+      "addressPattern": "explain[n]",
+      "repeat": "fixed",
+      "count": 4
+    }
+  ],
+  "structureDescription": "mag-10 interior template with 4 image slot(s) (image[0], image[1], image[2], image[3]) and 5 concrete text slot(s) (folio, explain[0], explain[1], explain[2], explain[3]). 4 image blocks in a grid; 5 text slots. fixed repeat text slot(s): explain[n] x4."
 }

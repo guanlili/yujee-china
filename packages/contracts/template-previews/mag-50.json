@@ -12,5 +12,5 @@
   "textSlotIds": [
     "title"
   ],
-  "structureDescription": "mag-50 interior template with 3 image slot(s) (image1, image2, image3) and 1 text slot(s) (title). one lead block plus two supporting blocks; one text slot."
+  "structureDescription": "mag-50 interior template with 3 image slot(s) (image1, image2, image3) and 1 concrete text slot(s) (title). one lead block plus two supporting blocks; one text slot."
 }

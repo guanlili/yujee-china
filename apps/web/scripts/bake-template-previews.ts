@@ -7,8 +7,7 @@ import { TEMPLATE_IDS, TEMPLATES, type TemplateDef } from '@yujee/contracts/temp
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '../../..');
-const PREVIEW_DIR = path.join(REPO_ROOT, 'packages/contracts/template-previews');
-const BUCKET_DIR = path.join(PREVIEW_DIR, 'capacity-buckets');
+const DEFAULT_PREVIEW_DIR = path.join(REPO_ROOT, 'packages/contracts/template-previews');
 const GENERATED_FROM = 'packages/contracts/templates/*.json';
 const SCHEMA_VERSION = 1;
 const ITEMS_GRID_CAPACITY = 4;
@@ -21,6 +20,13 @@ const CATEGORY_ORDER = ['cover', 'toc', 'interior', 'ending'];
 
 type Rgba = [number, number, number, number];
 
+type RepeatTextSlotMetadata = {
+  id: string;
+  addressPattern: string;
+  repeat: 'fixed' | 'variable';
+  count?: number;
+};
+
 type PreviewMetadata = {
   schemaVersion: number;
   templateId: string;
@@ -29,6 +35,7 @@ type PreviewMetadata = {
   imageSlotIds: string[];
   textSlotCount: number;
   textSlotIds: string[];
+  repeatTextSlots?: RepeatTextSlotMetadata[];
   structureDescription: string;
 };
 
@@ -214,10 +221,60 @@ function imageSlotIds(template: TemplateDef): string[] {
 }
 
 function textSlotIds(template: TemplateDef): string[] {
-  return [
-    ...template.texts.map((slot) => slot.id),
-    ...(template.items?.texts ?? []).map((slot) => `items.${slot.id}`),
-  ];
+  const concreteSlots = [...template.texts.map((slot) => slot.id)];
+  for (const repeatSlot of repeatTextSlots(template)) {
+    if (repeatSlot.repeat !== 'fixed') continue;
+    for (let index = 0; index < (repeatSlot.count ?? 0); index += 1) {
+      concreteSlots.push(`${repeatSlot.id}[${index}]`);
+    }
+  }
+  return concreteSlots;
+}
+
+function repeatTextSlots(template: TemplateDef): RepeatTextSlotMetadata[] {
+  const itemTexts = template.items?.texts ?? [];
+  if (itemTexts.length === 0) return [];
+
+  const fixedCount = isItemsGridTemplate(template) ? ITEMS_GRID_CAPACITY : null;
+  return itemTexts.map((slot) => {
+    const base = {
+      id: slot.id,
+      addressPattern: `${slot.id}[n]`,
+    };
+    if (fixedCount !== null) {
+      return {
+        ...base,
+        repeat: 'fixed' as const,
+        count: fixedCount,
+      };
+    }
+    return {
+      ...base,
+      repeat: 'variable' as const,
+    };
+  });
+}
+
+function repeatPhrase(repeats: RepeatTextSlotMetadata[]): string {
+  if (repeats.length === 0) return '';
+  const fixed = repeats.filter((slot) => slot.repeat === 'fixed');
+  const variable = repeats.filter((slot) => slot.repeat === 'variable');
+  const parts: string[] = [];
+  if (fixed.length > 0) {
+    parts.push(
+      `fixed repeat text slot(s): ${fixed
+        .map((slot) => `${slot.addressPattern} x${slot.count}`)
+        .join(', ')}`,
+    );
+  }
+  if (variable.length > 0) {
+    parts.push(
+      `variable repeat text pattern(s): ${variable
+        .map((slot) => slot.addressPattern)
+        .join(', ')}`,
+    );
+  }
+  return ` ${parts.join('; ')}.`;
 }
 
 function layoutPhrase(imageCount: number, textCount: number): string {
@@ -243,6 +300,7 @@ function layoutPhrase(imageCount: number, textCount: number): string {
 function buildMetadata(templateId: string, template: TemplateDef): PreviewMetadata {
   const images = imageSlotIds(template);
   const texts = textSlotIds(template);
+  const repeats = repeatTextSlots(template);
   return {
     schemaVersion: SCHEMA_VERSION,
     templateId,
@@ -251,7 +309,8 @@ function buildMetadata(templateId: string, template: TemplateDef): PreviewMetada
     imageSlotIds: images,
     textSlotCount: texts.length,
     textSlotIds: texts,
-    structureDescription: `${templateId} ${template.category} template with ${images.length} image slot(s) (${images.join(', ') || 'none'}) and ${texts.length} text slot(s) (${texts.join(', ') || 'none'}). ${layoutPhrase(images.length, texts.length)}`,
+    ...(repeats.length > 0 ? { repeatTextSlots: repeats } : {}),
+    structureDescription: `${templateId} ${template.category} template with ${images.length} image slot(s) (${images.join(', ') || 'none'}) and ${texts.length} concrete text slot(s) (${texts.join(', ') || 'none'}). ${layoutPhrase(images.length, texts.length)}${repeatPhrase(repeats)}`,
   };
 }
 
@@ -442,24 +501,24 @@ async function listFilesRecursive(root: string, prefix = ''): Promise<string[]> 
   return files.sort();
 }
 
-async function writeOutputs(outputs: OutputFile[]): Promise<void> {
-  await rm(PREVIEW_DIR, { recursive: true, force: true });
-  await mkdir(BUCKET_DIR, { recursive: true });
+async function writeOutputs(outputs: OutputFile[], previewDir: string): Promise<void> {
+  await rm(previewDir, { recursive: true, force: true });
+  await mkdir(path.join(previewDir, 'capacity-buckets'), { recursive: true });
   for (const output of outputs) {
-    const destination = path.join(PREVIEW_DIR, output.relativePath);
+    const destination = path.join(previewDir, output.relativePath);
     await mkdir(path.dirname(destination), { recursive: true });
     await writeFile(destination, output.data);
   }
 }
 
-async function checkOutputs(outputs: OutputFile[]): Promise<void> {
+async function checkOutputs(outputs: OutputFile[], previewDir: string): Promise<void> {
   const expected = new Map(outputs.map((output) => [output.relativePath, output.data]));
-  const actualFiles = await listFilesRecursive(PREVIEW_DIR);
+  const actualFiles = await listFilesRecursive(previewDir);
   const expectedFiles = [...expected.keys()].sort();
   const errors: string[] = [];
 
   for (const relativePath of expectedFiles) {
-    const fullPath = path.join(PREVIEW_DIR, relativePath);
+    const fullPath = path.join(previewDir, relativePath);
     if (!(await stat(fullPath).catch(() => null))) {
       errors.push(`missing ${relativePath}`);
       continue;
@@ -488,17 +547,30 @@ async function checkOutputs(outputs: OutputFile[]): Promise<void> {
   }
 }
 
+function parseArgs(argv: string[]): { checkMode: boolean; previewDir: string } {
+  const outputDirIndex = argv.indexOf('--output-dir');
+  const outputDir = outputDirIndex >= 0 ? argv[outputDirIndex + 1] : undefined;
+  if (outputDirIndex >= 0 && !outputDir) {
+    throw new Error('--output-dir requires a path');
+  }
+
+  return {
+    checkMode: argv.includes('--check'),
+    previewDir: outputDir ? path.resolve(process.cwd(), outputDir) : DEFAULT_PREVIEW_DIR,
+  };
+}
+
 async function main(): Promise<void> {
-  const checkMode = process.argv.includes('--check');
+  const { checkMode, previewDir } = parseArgs(process.argv.slice(2));
   const outputs = buildOutputs();
 
   if (checkMode) {
-    await checkOutputs(outputs);
+    await checkOutputs(outputs, previewDir);
     return;
   }
 
-  await writeOutputs(outputs);
-  console.log(`baked ${TEMPLATE_IDS.length} template previews into ${path.relative(REPO_ROOT, PREVIEW_DIR)}`);
+  await writeOutputs(outputs, previewDir);
+  console.log(`baked ${TEMPLATE_IDS.length} template previews into ${path.relative(REPO_ROOT, previewDir)}`);
 }
 
 main().catch((error: unknown) => {

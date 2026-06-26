@@ -4,13 +4,27 @@
   "category": "toc",
   "imageSlotCount": 0,
   "imageSlotIds": [],
-  "textSlotCount": 5,
+  "textSlotCount": 2,
   "textSlotIds": [
     "title",
-    "folio",
-    "items.number",
-    "items.title",
-    "items.description"
+    "folio"
   ],
-  "structureDescription": "mag-02 toc template with 0 image slot(s) (none) and 5 text slot(s) (title, folio, items.number, items.title, items.description). no image blocks; 5 text slots."
+  "repeatTextSlots": [
+    {
+      "id": "number",
+      "addressPattern": "number[n]",
+      "repeat": "variable"
+    },
+    {
+      "id": "title",
+      "addressPattern": "title[n]",
+      "repeat": "variable"
+    },
+    {
+      "id": "description",
+      "addressPattern": "description[n]",
+      "repeat": "variable"
+    }
+  ],
+  "structureDescription": "mag-02 toc template with 0 image slot(s) (none) and 2 concrete text slot(s) (title, folio). no image blocks; 2 text slots. variable repeat text pattern(s): number[n], title[n], description[n]."
 }
