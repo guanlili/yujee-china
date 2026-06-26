@@ -237,9 +237,18 @@ def _coerce_book_theme_options(
 
 def _coerce_option_id(raw: Any, fallback: str, used: set[str]) -> str:
     candidate = _text(raw)[:_MAX_OPTION_ID_LEN]
-    if not candidate or candidate in used:
+    if candidate and candidate not in used:
+        return candidate
+    if fallback not in used:
         return fallback
-    return candidate
+    counter = 2
+    while True:
+        suffix = f"-{counter}"
+        base = fallback[: _MAX_OPTION_ID_LEN - len(suffix)]
+        candidate = f"{base}{suffix}"
+        if candidate not in used:
+            return candidate
+        counter += 1
 
 
 def _optional_text_fields(item: dict[str, Any]) -> dict[str, str]:

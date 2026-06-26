@@ -162,6 +162,19 @@ def test_option_ids_are_unique_after_truncation():
     V3RecommendResponse(**resp.model_dump(exclude_none=True))
 
 
+def test_option_id_fallback_is_unique_when_fallback_already_used():
+    payload = _good_payload()
+    payload["bookThemeOptions"] = [
+        _option("opt-2"),
+        _option("opt-2"),
+        _option("third"),
+    ]
+    resp = _run(_req(), payload)
+
+    assert [o.optionId for o in resp.bookThemeOptions] == ["opt-2", "opt-2-2", "third"]
+    V3RecommendResponse(**resp.model_dump(exclude_none=True))
+
+
 def test_missing_options_and_invalid_colors_get_deterministic_fallbacks():
     payload = {
         "bookThemeOptions": [
