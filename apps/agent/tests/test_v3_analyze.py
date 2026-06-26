@@ -124,6 +124,33 @@ def _req(count: int, request_id: str = "req_v3_analyze") -> V3AnalyzeRequest:
     )
 
 
+def test_completed_callback_omits_absent_pages_but_keeps_tree_null_placeholders():
+    envelope = V3AnalyzeCompleted(
+        requestId="r1",
+        jobKind="analyze",
+        event="completed",
+        tree=V3LayoutTree(
+            chapters=[
+                V3Chapter(
+                    chapterId="ch_1",
+                    description="Chapter one.",
+                    accentColor=None,
+                    artFont=None,
+                    photos=[],
+                )
+            ]
+        ),
+        usage={"durationMs": 1, "models": {}},
+    )
+
+    body = cb_mod._serialize(envelope)
+
+    assert "pages" not in body
+    chapter = body["tree"]["chapters"][0]
+    assert "accentColor" in chapter and chapter["accentColor"] is None
+    assert "artFont" in chapter and chapter["artFont"] is None
+
+
 def test_analyze_request_rejects_non_http_callback_url():
     data = _req(1).model_dump(mode="json")
     data["callbackUrl"] = "mailto:ops@example.com"

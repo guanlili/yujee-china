@@ -8,6 +8,7 @@ import { agentClient } from '@/lib/agent/agent-client';
 import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
+import { transientPagePhotoRefs } from './page-photo-refs';
 import {
   Page,
   V3LayoutTree,
@@ -28,6 +29,7 @@ import {
   type V3RecommendResponse,
   type V3ApplyThemeRequest,
   type V3ApplyThemeResponse,
+  type V3InternalAgentDataRequest,
 } from '@yujee/contracts';
 
 const PDF_MAX_BYTES = 50 * 1024 * 1024; // 50MB — docs/web/api.md §3.6
@@ -195,6 +197,7 @@ function buildRecommendOverviews(tree: V3LayoutTreeT): V3ChapterOverview[] {
   return tree.chapters.map((chapter) => ({
     chapterId: chapter.chapterId,
     description: chapter.description.slice(0, 600),
+    ...(chapter.extractedColor !== undefined ? { extractedColor: chapter.extractedColor } : {}),
     photoDescs: chapter.photos.slice(0, 12).map((p) => p.sceneDescription),
   }));
 }
@@ -446,6 +449,68 @@ export const albumService = {
         photoIds: ch.photos.map((photo) => photo.photoId),
       })),
     };
+  },
+
+  async getInternalAgentData(input: V3InternalAgentDataRequest) {
+    const album = await albumRepo.findById(input.albumId);
+    if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+
+    if (input.type === 'page-info') {
+      const slice = sliceChapterForChat(normalized, input.chapterId);
+      if (!slice) throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+      const pages =
+        input.scope === 'page'
+          ? slice.pages.filter((page) => page.pageIndex === input.pageIndex)
+          : slice.pages;
+      if (input.scope === 'page' && pages.length === 0) {
+        throw ERRORS.VALIDATION_FAILED('pageIndex not found in chapter');
+      }
+      return { type: 'page-info' as const, data: { chapter: slice.chapter, pages } };
+    }
+
+    if (input.type === 'chapter-search') {
+      const query = input.query.trim().toLowerCase();
+      const overviews = buildRecommendOverviews(normalized.tree);
+      const matches = overviews
+        .map((chapter) => {
+          const pageIndexes = (normalized.pages ?? [])
+            .filter((page) => chapterIdForDraftPage(normalized, page) === chapter.chapterId)
+            .map((page) => page.pageIndex);
+          const haystack = [chapter.description, ...chapter.photoDescs].join(' ').toLowerCase();
+          const score = haystack.split(query).length - 1;
+          return {
+            chapterId: chapter.chapterId,
+            pageIndexes,
+            label: chapter.description || chapter.chapterId,
+            score,
+          };
+        })
+        .filter((match) => match.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, input.limit);
+      return { type: 'chapter-search' as const, data: { matches } };
+    }
+
+    const chapter = normalized.tree.chapters.find((item) => item.chapterId === input.chapterId);
+    if (!chapter) {
+      throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+    }
+    const refs = transientPagePhotoRefs.get(input.albumId, input.chapterId);
+    const photos = chapter.photos.flatMap((photo) => {
+      const ref200px = refs.get(photo.photoId);
+      if (ref200px === undefined) return [];
+      return [
+        {
+          photoId: photo.photoId,
+          ref200px,
+          orientation: photo.orientation,
+          ...(photo.takenAt !== undefined ? { takenAt: photo.takenAt } : {}),
+        },
+      ];
+    });
+    return { type: 'page-photos' as const, data: { photos } };
   },
 
   // ② 章节故事完成度(WP2.4 / §4.2(1)). Web is the sole owner of stage + 当前章 +

@@ -14,10 +14,15 @@ import {
   V3AnalyzeRequest,
   V3ApplyThemeRequest,
   V3Callback,
+  V3ChapterOverview,
   V3ChapterChatResponse,
   V3CoverRequest,
   V3CoverResponse,
   V3FinalizeResponse,
+  V3InternalAgentAckRequest,
+  V3InternalAgentAckResponse,
+  V3InternalAgentDataRequest,
+  V3InternalAgentDataResponse,
   V3PageEditRequest,
   V3PageEditResponse,
   V3RecommendResponse,
@@ -113,6 +118,21 @@ test('V3Chapter holds null placeholders for accentColor/artFont at analysis time
   // 非法字体 / 非法色被边界拦下
   assert.equal(V3Chapter.safeParse({ ...chapter, artFont: 'nope' }).success, false);
   assert.equal(V3Chapter.safeParse({ ...chapter, accentColor: 'blue' }).success, false);
+});
+
+test('test_v3_chapter_carries_extracted_color', () => {
+  const chapter = {
+    chapterId: 'c1',
+    description: 'a quiet spring morning in an old town',
+    extractedColor: '#abc',
+    accentColor: null,
+    artFont: null,
+    photos: [baseChapterPhoto],
+  };
+
+  assert.equal(V3Chapter.safeParse(chapter).success, true);
+  assert.equal(V3Chapter.safeParse({ ...chapter, extractedColor: null }).success, true);
+  assert.equal(V3Chapter.safeParse({ ...chapter, extractedColor: 'blue' }).success, false);
 });
 
 test('V3LayoutTree round-trips through strict parse', () => {
@@ -349,6 +369,93 @@ test('V3AnalyzeRequest photo accepts clusterId, rejects coordinate keys (#232 §
   }
 });
 
+test('internal agent ack schemas parse request and response', () => {
+  assert.deepEqual(V3InternalAgentAckRequest.parse({ opId: 'op_1' }), { opId: 'op_1' });
+  assert.deepEqual(V3InternalAgentAckResponse.parse({ ok: false }), { ok: false });
+  assert.equal(V3InternalAgentAckRequest.safeParse({ opId: 'op_1', extra: true }).success, false);
+  assert.equal(V3InternalAgentAckResponse.safeParse({ ok: true, data: {} }).success, false);
+});
+
+test('internal agent-data schemas cover query parsing and response envelopes', () => {
+  assert.deepEqual(
+    V3InternalAgentDataRequest.parse({
+      type: 'page-info',
+      albumId: 'a1',
+      scope: 'page',
+      chapterId: 'c1',
+      pageIndex: '2',
+    }),
+    { type: 'page-info', albumId: 'a1', scope: 'page', chapterId: 'c1', pageIndex: 2 },
+  );
+  assert.equal(
+    V3InternalAgentDataRequest.safeParse({
+      type: 'page-info',
+      albumId: 'a1',
+      scope: 'page',
+      chapterId: 'c1',
+    }).success,
+    false,
+  );
+  assert.deepEqual(
+    V3InternalAgentDataRequest.parse({
+      type: 'chapter-search',
+      albumId: 'a1',
+      query: ' coast ',
+    }),
+    { type: 'chapter-search', albumId: 'a1', query: 'coast', limit: 5 },
+  );
+  assert.deepEqual(
+    V3InternalAgentDataRequest.parse({
+      type: 'page-photos',
+      albumId: 'a1',
+      chapterId: 'c1',
+    }),
+    { type: 'page-photos', albumId: 'a1', chapterId: 'c1' },
+  );
+
+  const chapter = {
+    chapterId: 'c1',
+    description: 'coast morning',
+    accentColor: null,
+    artFont: null,
+    photos: [baseChapterPhoto],
+  };
+  assert.equal(
+    V3InternalAgentDataResponse.safeParse({
+      type: 'page-info',
+      data: {
+        chapter,
+        pages: [{ pageIndex: 2, templateId: 'mag-03', images: { image: 'p1' }, texts: {} }],
+      },
+    }).success,
+    true,
+  );
+  assert.equal(
+    V3InternalAgentDataResponse.safeParse({
+      type: 'chapter-search',
+      data: { matches: [{ chapterId: 'c1', pageIndexes: [2], label: 'coast morning', score: 1 }] },
+    }).success,
+    true,
+  );
+  assert.equal(
+    V3InternalAgentDataResponse.safeParse({
+      type: 'page-photos',
+      data: { photos: [{ photoId: 'p1', ref200px: 'data:image/jpeg;base64,AA==', orientation: 'portrait', takenAt: null }] },
+    }).success,
+    true,
+  );
+  assert.equal(
+    V3InternalAgentDataResponse.safeParse({
+      type: 'page-info',
+      data: {
+        chapter: { ...chapter, photos: [{ ...baseChapterPhoto, location: 'private' }] },
+        pages: [],
+      },
+    }).success,
+    false,
+  );
+});
+
 test('V3ChapterChatResponse: kind drives which patch is present', () => {
   const usage = { durationMs: 1, models: {} };
   // write turn carries pagesTexts
@@ -480,6 +587,19 @@ test('V3RecommendResponse returns per-chapter subject + color/font in legal sets
     }).success,
     false,
   );
+});
+
+test('test_v3_chapter_overview_carries_extracted_color', () => {
+  const overview = {
+    chapterId: 'c1',
+    description: 'a quiet spring morning in an old town',
+    extractedColor: '#A1B2C3',
+    photoDescs: ['red coat in snow'],
+  };
+
+  assert.equal(V3ChapterOverview.safeParse(overview).success, true);
+  assert.equal(V3ChapterOverview.safeParse({ ...overview, extractedColor: null }).success, true);
+  assert.equal(V3ChapterOverview.safeParse({ ...overview, extractedColor: 'red' }).success, false);
 });
 
 test('V3ApplyThemeRequest + V3CoverRequest carry page-level patches (not tree fields)', () => {
@@ -656,6 +776,30 @@ test('V3Callback union: progress / completed(analyze) / failed', () => {
       error: { code: 'AGENT_TIMEOUT', message: 'timeout' },
     }).success,
     true,
+  );
+});
+
+test('test_analyze_completed_pages_optional', () => {
+  assert.equal(
+    V3Callback.safeParse({
+      requestId: 'r1',
+      jobKind: 'analyze',
+      event: 'completed',
+      tree: { chapters: [] },
+      usage: { durationMs: 1, models: {} },
+    }).success,
+    true,
+  );
+  assert.equal(
+    V3Callback.safeParse({
+      requestId: 'r1',
+      jobKind: 'analyze',
+      event: 'completed',
+      tree: { chapters: [] },
+      pages: null,
+      usage: { durationMs: 1, models: {} },
+    }).success,
+    false,
   );
 });
 

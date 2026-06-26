@@ -72,6 +72,7 @@
 | 变量 | 来源 | 说明 |
 |---|---|---|
 | `AGENT_SHARED_SECRET` | 新生成 | **与 Web 侧同值**(§1) |
+| `DATABASE_URL` | 复制 | 同一 Neon Postgres 连接串(含 `?sslmode=require`);Agent Alembic 只管理独立 `agent` schema |
 | `ARK_API_KEY` | 复制 | 火山方舟 API key(doubao vision + planning 共用) |
 | `DEEPSEEK_API_KEY` | 复制 | 生产指向火山,**填同一个 ARK key** |
 
@@ -93,6 +94,20 @@
 | `ARK_VISION_MODEL` | `doubao-seed-1-6-vision-250815` |
 | `DEEPSEEK_BASE_URL` | `https://ark.cn-beijing.volces.com/api/v3`(指火山,非 deepseek.com) |
 | `DEEPSEEK_MODEL` | `doubao-seed-2-0-lite-260428` |
+
+### Agent DB migration
+
+Agent owns only the `agent.*` edit-loop tables. The Docker image includes
+`apps/agent/alembic.ini` and `apps/agent/migrations/`; run migrations from the
+deployed image before enabling Stage3 edit flows:
+
+```bash
+fly ssh console -a yujee-agent -C "cd /app && alembic -c alembic.ini upgrade head"
+```
+
+`DATABASE_URL` must be present in Fly secrets for both the migration command and
+`POST /internal/agent-ack`; a missing or unavailable DB is treated as an Agent
+infrastructure failure, not as an unknown op.
 
 ### 有代码缺省、一般不必设(调优才覆盖)
 

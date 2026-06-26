@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     # core
     agent_shared_secret: str = Field(..., min_length=1)
     web_base_url: str = "http://localhost:3000"
+    # Shared Postgres instance. Agent-owned tables live under the independent
+    # `agent` schema and are migrated by apps/agent/migrations (Alembic).
+    database_url: str | None = None
     # Total budget for an init/finalize/layout background task. Must cover the
     # worst case of its network stage(s) including ai_client's one retry
     # (each call can take up to 2× its per-call timeout):

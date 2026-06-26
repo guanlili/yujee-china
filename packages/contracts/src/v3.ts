@@ -17,6 +17,7 @@ import {
   AccentColor,
   AlbumLayoutPlan,
   Page,
+  PhotoOrientation,
   TakenAtDateTime,
   V3Chapter,
   V3LayoutTree,
@@ -75,6 +76,130 @@ export const V3PageTextsPatch = z
   })
   .strict();
 export type V3PageTextsPatch = z.infer<typeof V3PageTextsPatch>;
+
+// ───────────────── internal Agent/Web surfaces(PR249 shared boundary) ─────────────────
+
+export const V3InternalAgentAckRequest = z
+  .object({
+    opId: z.string().min(1),
+  })
+  .strict();
+export type V3InternalAgentAckRequest = z.infer<typeof V3InternalAgentAckRequest>;
+
+export const V3InternalAgentAckResponse = z
+  .object({
+    ok: z.boolean(),
+  })
+  .strict();
+export type V3InternalAgentAckResponse = z.infer<typeof V3InternalAgentAckResponse>;
+
+export const V3InternalAgentDataPageInfoRequest = z
+  .object({
+    type: z.literal('page-info'),
+    albumId: z.string().min(1),
+    scope: z.enum(['page', 'chapter']),
+    chapterId: z.string().min(1),
+    pageIndex: z.coerce.number().int().nonnegative().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.scope === 'page' && value.pageIndex === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['pageIndex'],
+        message: 'pageIndex is required when scope=page',
+      });
+    }
+  });
+export type V3InternalAgentDataPageInfoRequest = z.infer<typeof V3InternalAgentDataPageInfoRequest>;
+
+export const V3InternalAgentDataChapterSearchRequest = z
+  .object({
+    type: z.literal('chapter-search'),
+    albumId: z.string().min(1),
+    query: z.string().trim().min(1),
+    limit: z.coerce.number().int().min(1).max(20).default(5),
+  })
+  .strict();
+export type V3InternalAgentDataChapterSearchRequest = z.infer<typeof V3InternalAgentDataChapterSearchRequest>;
+
+export const V3InternalAgentDataPagePhotosRequest = z
+  .object({
+    type: z.literal('page-photos'),
+    albumId: z.string().min(1),
+    chapterId: z.string().min(1),
+  })
+  .strict();
+export type V3InternalAgentDataPagePhotosRequest = z.infer<typeof V3InternalAgentDataPagePhotosRequest>;
+
+export const V3InternalAgentDataRequest = z.union([
+  V3InternalAgentDataPageInfoRequest,
+  V3InternalAgentDataChapterSearchRequest,
+  V3InternalAgentDataPagePhotosRequest,
+]);
+export type V3InternalAgentDataRequest = z.infer<typeof V3InternalAgentDataRequest>;
+
+export const V3InternalAgentDataPageInfoResponse = z
+  .object({
+    type: z.literal('page-info'),
+    data: z
+      .object({
+        chapter: V3Chapter,
+        pages: z.array(Page),
+      })
+      .strict(),
+  })
+  .strict();
+export type V3InternalAgentDataPageInfoResponse = z.infer<typeof V3InternalAgentDataPageInfoResponse>;
+
+export const V3InternalAgentDataChapterSearchResponse = z
+  .object({
+    type: z.literal('chapter-search'),
+    data: z
+      .object({
+        matches: z.array(
+          z
+            .object({
+              chapterId: z.string().min(1),
+              pageIndexes: z.array(z.number().int().nonnegative()),
+              label: z.string(),
+              score: z.number().int().nonnegative(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  })
+  .strict();
+export type V3InternalAgentDataChapterSearchResponse = z.infer<typeof V3InternalAgentDataChapterSearchResponse>;
+
+export const V3InternalAgentDataPagePhotosResponse = z
+  .object({
+    type: z.literal('page-photos'),
+    data: z
+      .object({
+        photos: z.array(
+          z
+            .object({
+              photoId: z.string().min(1),
+              ref200px: z.string().min(1),
+              orientation: PhotoOrientation,
+              takenAt: TakenAtDateTime.nullable().optional(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  })
+  .strict();
+export type V3InternalAgentDataPagePhotosResponse = z.infer<typeof V3InternalAgentDataPagePhotosResponse>;
+
+export const V3InternalAgentDataResponse = z.union([
+  V3InternalAgentDataPageInfoResponse,
+  V3InternalAgentDataChapterSearchResponse,
+  V3InternalAgentDataPagePhotosResponse,
+]);
+export type V3InternalAgentDataResponse = z.infer<typeof V3InternalAgentDataResponse>;
 
 // ───────────────── ① 分析 — POST /v3/analyze(异步 202 + callback) ─────────────────
 //
@@ -282,6 +407,9 @@ export const V3ChapterOverview = z
   .object({
     chapterId: z.string().min(1),
     description: z.string().max(600),
+    // Stage1 extracted source color. Recommend may use it as evidence, but it is
+    // not the final theme `accentColor`.
+    extractedColor: AccentColor.nullish(),
     photoDescs: z.array(z.string()).max(12), // 本章各图 sceneDescription(摘要)
   })
   .strict();
@@ -450,7 +578,7 @@ const V3AnalyzeCompleted = z
     event: z.literal('completed'),
     // 预览态产物:V3 章节树 + 套好模板/填好通用文案-色的页。
     tree: V3LayoutTree,
-    pages: z.array(Page).min(1),
+    pages: z.array(Page).min(1).optional(),
     usage: V3Usage,
   })
   .strict();

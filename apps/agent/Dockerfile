@@ -12,6 +12,8 @@ WORKDIR /app
 # Build from repo root:
 #   docker build -f apps/agent/Dockerfile .
 COPY apps/agent/pyproject.toml ./
+COPY apps/agent/alembic.ini ./alembic.ini
+COPY apps/agent/migrations ./migrations
 COPY apps/agent/src ./src
 COPY packages/contracts/templates ./packages/contracts/templates
 COPY packages/contracts/copy-examples ./packages/contracts/copy-examples

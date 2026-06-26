@@ -52,9 +52,25 @@ Required envs (see `.env.example`):
 |---|---|---|
 | `AGENT_SHARED_SECRET` | — | required; startup fails if missing |
 | `WEB_BASE_URL` | `http://localhost:3000` | Web origin (not used by mock pipeline) |
+| `DATABASE_URL` | — | required for agent-owned `agent.*` edit-loop tables and `/internal/agent-ack` |
 | `BACKGROUND_TASK_TIMEOUT_SECONDS` | `180` | soft cap for pipeline.run |
 | `PORT` | `8001` | uvicorn port |
 | `LOG_LEVEL` | `info` | structlog filtering bound logger level |
+
+## Agent-owned DB migrations
+
+The Agent owns only the independent Postgres schema `agent` for Stage3 edit-loop
+state. Web Drizzle does not manage these tables. Migration assets live in
+`apps/agent/alembic.ini` and `apps/agent/migrations/` and are copied into the
+Docker image.
+
+```bash
+cd apps/agent
+DATABASE_URL=postgresql://... alembic -c alembic.ini upgrade head
+```
+
+Production deploys must set `DATABASE_URL`; otherwise `/internal/agent-ack`
+returns an infrastructure error instead of treating the op as unknown.
 
 ## Run
 

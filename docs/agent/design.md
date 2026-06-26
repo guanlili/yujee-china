@@ -6,7 +6,7 @@
 >
 > 本文只讲 **Agent 内部如何实现五环节(V3)**:层结构、analyze pipeline、同步端点、模型 failover、prompt 分层、validation、redact。Web ↔ Agent 协议看 `contract.md`;系统切分与不变式看 `architecture.md §1·§3`。
 
-Agent 是「分层良好的无状态 LLM 服务」,不是框架型 agent。书 + 记忆(章节树、每图 `sceneDescription`、stage、积分)全在 Web 的 `draft_json` / Postgres;Agent 每次被喂够上下文 → 返回 tree/pages/patch/layout,**调用之间不留任何东西**(§3 数据归属)。
+Agent 是「分层良好的 LLM 服务」,不是框架型 agent。五环节生成 / 推荐 / finalize 路由仍按无 draft/stage 状态设计:书的真相(章节树、每图 `sceneDescription`、stage、积分)在 Web 的 `draft_json` / Postgres,Agent 每次被喂够上下文 → 返回 tree/pages/patch/layout。PR249 Stage3 edit-chat 是明确例外:会话、消息、op ack 状态由 Agent 自己写同一 Postgres 的独立 `agent` schema,迁移归 Alembic;Web Drizzle 不管理该 schema。启用这些 stateful ack/edit-loop 功能时 Agent 必须有 `DATABASE_URL`。
 
 ---
 
@@ -17,6 +17,7 @@ apps/agent/src/
 ├── main.py · settings.py · auth.py · logging_config.py   # 基建(根,入口 main:app 不动)
 ├── routes.py · errors.py · callback.py                   # transport(HTTP 边)
 ├── ai_client.py · vision_provider.py                     # model 适配(平铺)
+├── db.py                                                 # Agent-owned agent.* DB 边界
 ├── schemas.py                                            # 契约镜像(单文件)
 ├── flows/        analyze.py                              # 真层① 编排
 ├── agents/<cap>/ handler.py + *.md [+ schema.py]         # 真层② LLM 能力
@@ -84,7 +85,7 @@ prompts/  common/(红线)+ rules/(可调规则)+ __init__.py(loader)
 
 **finalize(唯一收全树):** 读 `tree` + 完整 `pages` → 把每章 `accentColor`/`artFont`(此前只活在树里)bake 进 `pages[].texts`(含 svg 接缝)→ 建 `AlbumLayoutPlan` → 跑**单一 `validate_v3`** → 返回 `{layout, usage}`。无模型调用、无 base64、不推进 stage、不动积分、**绝不让任何树形字段泄进扁平契约**(§3 树边界)。
 
-**stage 推进权在 Web:** Agent 无状态;同步端点失败走 HTTP 错误码,前端可重试不污染 stage;Web 只在校验通过的成功后才合并 patch、推进 stage、控导出闸门。
+**stage 推进权在 Web:** Agent 不持 stage;同步端点失败走 HTTP 错误码,前端可重试不污染 stage;Web 只在校验通过的成功后才合并 patch、推进 stage、控导出闸门。Stage3 edit-chat/ack 的 pending/committed 历史状态只存在 `agent.edit_sessions` / `agent.edit_messages` / `agent.edit_ops`,由 Agent Alembic 迁移和 `DATABASE_URL` 连接管理。
 
 ---
 

@@ -22,11 +22,13 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from .auth import require_bearer
 from .logging_config import get_logger
 from .schemas import (
+    AgentAckRequest,
+    AgentAckResponse,
     V3AcceptedData,
     V3AcceptedResponse,
     V3AnalyzeRequest,
@@ -61,6 +63,7 @@ from .engine.cover_v3 import CoverV3Error
 from .engine.finalize_v3 import FinalizeV3Error
 from .agents.theme_recommend import RecommendV3Error
 from .flows import analyze
+from .db import AgentDbUnavailable, agent_edit_repo
 
 router = APIRouter()
 log = get_logger("v3_album")
@@ -92,6 +95,25 @@ async def submit_analyze(
         ok=True,
         data=V3AcceptedData(requestId=req.requestId, accepted=True),
     ).model_dump(mode="json")
+
+
+# ---------- internal ack (Web → Agent, edit-loop commit confirmation) ----------
+
+
+@router.post("/internal/agent-ack", dependencies=[Depends(require_bearer)])
+async def submit_agent_ack(req: AgentAckRequest) -> dict[str, bool]:
+    try:
+        committed = await agent_edit_repo.acknowledge_op(req.opId)
+    except AgentDbUnavailable as exc:
+        log.warning("agent_ack.db_unavailable", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_DB_UNAVAILABLE", "message": str(exc)[:300]},
+            },
+        ) from exc
+    return AgentAckResponse(ok=committed).model_dump(mode="json")
 
 
 # ---------- chapter-chat (② 章节故事, sync) -----------------------------------
