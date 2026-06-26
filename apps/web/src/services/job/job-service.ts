@@ -165,8 +165,9 @@ export const jobService = {
     }
 
     await db.transaction(async (tx) => {
+      const progress = Math.max(Number.isFinite(job.progress) ? job.progress : 0, 50);
       const won = await agentJobRepo.transitionStatus(tx, job.id, 'RUNNING', ['QUEUED', 'RUNNING'], {
-        progress: 50,
+        progress,
         stage: 'layout',
         usage: (usage as Record<string, unknown> | null) ?? null,
         startedAt: new Date(),

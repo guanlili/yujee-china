@@ -147,7 +147,7 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
         if (Date.now() - startedAt > SOFT_CEILING_MS) {
           return apply({ detail, generation, phase: 'error', error: null });
         }
-        if (generation?.stage === 'layout') {
+        if (generation?.stage === 'layout' && generation.progress === 50) {
           const recipe = albumRecipe.load(uuid);
           if (!recipe?.requestId) {
             return apply({

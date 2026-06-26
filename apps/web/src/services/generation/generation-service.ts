@@ -97,6 +97,9 @@ export const generationService = {
     if (album.status !== 'AGENT_RUNNING' || job.status !== 'RUNNING' || job.stage !== 'layout') {
       throw ERRORS.ALBUM_NOT_EDITABLE();
     }
+    if (job.progress !== 50) {
+      return { albumId, requestId: input.requestId, accepted: true };
+    }
 
     const tree = readDraftTree(album.draftJson);
     const payload = buildSelectLayoutRequestFromTree({
@@ -106,9 +109,6 @@ export const generationService = {
       tree,
       refs: input.refs,
     });
-    if (job.progress !== 50) {
-      return { albumId, requestId: input.requestId, accepted: true };
-    }
     const reserved = await agentJobRepo.reserveSelectLayout(db, job.id);
     if (!reserved) {
       return { albumId, requestId: input.requestId, accepted: true };

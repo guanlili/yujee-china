@@ -243,6 +243,43 @@ test('select-layout progress cannot move the reservation marker backwards', asyn
   }
 });
 
+test('duplicate analyze/completed cannot reset a reserved select-layout job', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('v3route-analyze-duplicate-after-reserve');
+  try {
+    const { albumId, requestId } = await seed(user.id);
+    const first = await post({
+      requestId,
+      jobKind: 'analyze',
+      event: 'completed',
+      tree: TREE,
+      usage: USAGE,
+    });
+    assert.equal((await first.json()).data.accepted, true);
+
+    const job = await agentJobRepo.findByRequestId(requestId);
+    assert.ok(job);
+    await agentJobRepo.reserveSelectLayout(db, job.id);
+
+    const duplicate = await post({
+      requestId,
+      jobKind: 'analyze',
+      event: 'completed',
+      tree: TREE,
+      usage: USAGE,
+    });
+    assert.equal((await duplicate.json()).data.accepted, true);
+
+    const after = await agentJobRepo.findByRequestId(requestId);
+    assert.equal(after?.stage, 'layout');
+    assert.equal(after?.progress, 51);
+    const album = await albumRepo.findById(albumId);
+    assert.equal(album?.status, 'AGENT_RUNNING');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('analyze/failed → album FAILED + hold released, stage untouched (失败可重试不污染 stage)', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('v3route-fail');

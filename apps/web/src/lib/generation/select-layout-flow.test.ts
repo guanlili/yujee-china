@@ -24,7 +24,20 @@ test('album polling starts select-layout when analyze reaches the layout stage',
   assert.match(pollSource, /albumRecipe/);
   assert.match(pollSource, /selectLayoutRefsFromStore/);
   assert.match(pollSource, /submitSelectLayoutV3/);
-  assert.match(pollSource, /generation\?\.stage === 'layout'/);
+  assert.match(pollSource, /generation\?\.stage === 'layout' && generation\.progress === 50/);
   assert.match(pollSource, /albumRecipe\.load\(uuid\)/);
   assert.match(pollSource, /submitSelectLayoutV3\(uuid,/);
+});
+
+test('select-layout submit returns before rebuilding refs once handoff is reserved', () => {
+  const serviceSource = source('src/services/generation/generation-service.ts');
+  const progressCheck = serviceSource.indexOf('if (job.progress !== 50)');
+  const payloadBuild = serviceSource.indexOf('const payload = buildSelectLayoutRequestFromTree');
+
+  assert.ok(progressCheck > 0, 'submitSelectLayoutV3 must check the reservation marker');
+  assert.ok(payloadBuild > 0, 'submitSelectLayoutV3 must still build the payload for first handoff');
+  assert.ok(
+    progressCheck < payloadBuild,
+    'idempotent reserved handoffs must return before rebuilding/validating refs',
+  );
 });
