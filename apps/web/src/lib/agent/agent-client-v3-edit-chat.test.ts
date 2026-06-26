@@ -52,7 +52,7 @@ test('editChatV3 posts slim request and validates opId response', async (t) => {
 
 test('ackEditOp posts /internal/agent-ack and returns ok boolean', async (t) => {
   const agentClient = await loadAgentClient();
-  const captured = mockFetch(t, { ok: true, data: { ok: true } });
+  const captured = mockFetch(t, { ok: true });
   const ok = await agentClient.ackEditOp({ opId: 'op_1' });
   assert.equal(captured.url, 'http://agent.test/internal/agent-ack');
   assert.deepEqual(captured.body, { opId: 'op_1' });
