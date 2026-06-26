@@ -7,6 +7,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  ITEMS_GRID_CAPACITY,
   TEMPLATE_IDS,
   TEMPLATES,
   type TemplateDef,
@@ -17,8 +18,9 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '../../..');
 const PREVIEW_DIR = path.join(REPO_ROOT, 'packages/contracts/template-previews');
 const MANIFEST_PATH = path.join(PREVIEW_DIR, 'manifest.json');
+const ROOT_PACKAGE_PATH = path.join(REPO_ROOT, 'package.json');
+const WEB_PACKAGE_PATH = path.join(REPO_ROOT, 'apps/web/package.json');
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const ITEMS_GRID_CAPACITY = 4;
 
 type PreviewMetadata = {
   templateId: string;
@@ -39,6 +41,7 @@ type PreviewMetadata = {
 type PreviewManifest = {
   schemaVersion: number;
   generatedFrom: string;
+  itemGridCapacity: number;
   templates: PreviewMetadata[];
   capacityBuckets: {
     category: string;
@@ -87,6 +90,22 @@ function generateTempAssets(): string {
 function checkTempAssets(dir: string) {
   return runPreviewScript(['--check', '--output-dir', dir]);
 }
+
+test('template preview checks are wired into aggregate package gates', () => {
+  const rootPackage = readJson<{ scripts: Record<string, string> }>(ROOT_PACKAGE_PATH);
+  const webPackage = readJson<{ scripts: Record<string, string> }>(WEB_PACKAGE_PATH);
+
+  assert.match(
+    webPackage.scripts.test,
+    /scripts\/\*\*\/\*\.test\.ts/,
+    'web test must include script tests so pnpm -r test runs template preview guards',
+  );
+  assert.match(
+    rootPackage.scripts.typecheck,
+    /template-previews:check/,
+    'root typecheck must run template-previews:check to block stale preview assets',
+  );
+});
 
 test('every active template has a preview PNG and matching metadata', () => {
   for (const templateId of TEMPLATE_IDS) {
@@ -161,6 +180,7 @@ test('manifest capacity buckets match template JSON categories and image slot co
   const manifest = readJson<PreviewManifest>(MANIFEST_PATH);
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(manifest.generatedFrom, 'packages/contracts/templates/*.json');
+  assert.equal(manifest.itemGridCapacity, ITEMS_GRID_CAPACITY);
 
   const manifestById = new Map(manifest.templates.map((entry) => [entry.templateId, entry]));
   assert.deepEqual([...manifestById.keys()].sort(), [...TEMPLATE_IDS].sort());

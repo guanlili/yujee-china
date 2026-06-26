@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import test from 'node:test';
 
 import {
+  ITEMS_GRID_CAPACITY,
   TEMPLATE_IDS,
   TEMPLATES,
   TemplateDef,
@@ -295,5 +296,23 @@ test('slot validation accepts item bracket paths and rejects unknown slots', () 
   assert.deepEqual(validateSlotsForTemplate('mag-01', ['image'], ['headline']), {
     ok: false,
     reason: 'text slot "headline" not in template mag-01',
+  });
+});
+
+test('items-grid bracket paths are bounded by the shared grid capacity', () => {
+  assert.equal(ITEMS_GRID_CAPACITY, 4);
+  assert.deepEqual(
+    validateSlotsForTemplate('mag-10', [`image[${ITEMS_GRID_CAPACITY - 1}]`], [
+      `explain[${ITEMS_GRID_CAPACITY - 1}]`,
+    ]),
+    { ok: true },
+  );
+  assert.deepEqual(validateSlotsForTemplate('mag-10', [`image[${ITEMS_GRID_CAPACITY}]`], []), {
+    ok: false,
+    reason: `image slot "image[${ITEMS_GRID_CAPACITY}]" exceeds items-grid capacity ${ITEMS_GRID_CAPACITY} in template mag-10`,
+  });
+  assert.deepEqual(validateSlotsForTemplate('mag-10', [], [`explain[${ITEMS_GRID_CAPACITY}]`]), {
+    ok: false,
+    reason: `text slot "explain[${ITEMS_GRID_CAPACITY}]" exceeds items-grid capacity ${ITEMS_GRID_CAPACITY} in template mag-10`,
   });
 });
