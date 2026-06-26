@@ -13,5 +13,5 @@
     "year",
     "city"
   ],
-  "structureDescription": "mag-23 cover template with 1 image slot(s) (image) and 4 text slot(s) (title, subtitle, year, city). one dominant image block; 4 text slots."
+  "structureDescription": "mag-23 cover template with 1 image slot(s) (image) and 4 concrete text slot(s) (title, subtitle, year, city). one dominant image block; 4 text slots."
 }

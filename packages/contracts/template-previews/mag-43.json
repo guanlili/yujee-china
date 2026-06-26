@@ -16,5 +16,5 @@
     "subtitle",
     "caption"
   ],
-  "structureDescription": "mag-43 interior template with 5 image slot(s) (image1, image2, image3, image4, image5) and 3 text slot(s) (title, subtitle, caption). 5 image blocks in a grid; 3 text slots."
+  "structureDescription": "mag-43 interior template with 5 image slot(s) (image1, image2, image3, image4, image5) and 3 concrete text slot(s) (title, subtitle, caption). 5 image blocks in a grid; 3 text slots."
 }

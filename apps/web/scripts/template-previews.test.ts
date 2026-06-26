@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { TEMPLATE_IDS, TEMPLATES, type TemplateDef } from '@yujee/contracts/templates';
+import {
+  TEMPLATE_IDS,
+  TEMPLATES,
+  type TemplateDef,
+  validateSlotsForTemplate,
+} from '@yujee/contracts/templates';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '../../..');
@@ -21,6 +27,12 @@ type PreviewMetadata = {
   imageSlotIds: string[];
   textSlotCount: number;
   textSlotIds: string[];
+  repeatTextSlots?: {
+    id: string;
+    addressPattern: string;
+    repeat: 'fixed' | 'variable';
+    count?: number;
+  }[];
   structureDescription: string;
 };
 
@@ -44,15 +56,36 @@ function imageSlotIds(template: TemplateDef): string[] {
   return template.images.map((slot) => slot.id);
 }
 
-function textSlotIds(template: TemplateDef): string[] {
-  return [
-    ...template.texts.map((slot) => slot.id),
-    ...(template.items?.texts ?? []).map((slot) => `items.${slot.id}`),
-  ];
-}
-
 function readJson<T>(filePath: string): T {
   return JSON.parse(readFileSync(filePath, 'utf8')) as T;
+}
+
+function runPreviewScript(args: string[]) {
+  return spawnSync(
+    'pnpm',
+    ['--filter', '@yujee/web', 'exec', 'tsx', 'scripts/bake-template-previews.ts', ...args],
+    {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    },
+  );
+}
+
+function generateTempAssets(): string {
+  const dir = mkdtempSync(path.join(tmpdir(), 'template-previews-'));
+  execFileSync(
+    'pnpm',
+    ['--filter', '@yujee/web', 'exec', 'tsx', 'scripts/bake-template-previews.ts', '--output-dir', dir],
+    {
+      cwd: REPO_ROOT,
+      stdio: 'pipe',
+    },
+  );
+  return dir;
+}
+
+function checkTempAssets(dir: string) {
+  return runPreviewScript(['--check', '--output-dir', dir]);
 }
 
 test('every active template has a preview PNG and matching metadata', () => {
@@ -69,10 +102,49 @@ test('every active template has a preview PNG and matching metadata', () => {
     assert.equal(metadata.category, template.category);
     assert.deepEqual(metadata.imageSlotIds, imageSlotIds(template));
     assert.equal(metadata.imageSlotCount, metadata.imageSlotIds.length);
-    assert.deepEqual(metadata.textSlotIds, textSlotIds(template));
     assert.equal(metadata.textSlotCount, metadata.textSlotIds.length);
     assert.match(metadata.structureDescription, new RegExp(`^${templateId} `));
+
+    const slotValidation = validateSlotsForTemplate(
+      templateId,
+      metadata.imageSlotIds,
+      metadata.textSlotIds,
+    );
+    assert.deepEqual(slotValidation, { ok: true }, `${templateId} metadata slot ids must be render-addressable`);
   }
+});
+
+test('fixed repeat text metadata uses concrete render-time bracket slot ids', () => {
+  const metadata = readJson<PreviewMetadata>(path.join(PREVIEW_DIR, 'mag-10.json'));
+
+  assert.deepEqual(metadata.textSlotIds, [
+    'folio',
+    'explain[0]',
+    'explain[1]',
+    'explain[2]',
+    'explain[3]',
+  ]);
+  assert.equal(metadata.textSlotCount, 5);
+  assert.deepEqual(metadata.repeatTextSlots, [
+    {
+      id: 'explain',
+      addressPattern: 'explain[n]',
+      repeat: 'fixed',
+      count: 4,
+    },
+  ]);
+});
+
+test('variable repeat text metadata declares address pattern without fake concrete slots', () => {
+  const metadata = readJson<PreviewMetadata>(path.join(PREVIEW_DIR, 'mag-02.json'));
+
+  assert.deepEqual(metadata.textSlotIds, ['title', 'folio']);
+  assert.equal(metadata.textSlotCount, 2);
+  assert.deepEqual(metadata.repeatTextSlots, [
+    { id: 'number', addressPattern: 'number[n]', repeat: 'variable' },
+    { id: 'title', addressPattern: 'title[n]', repeat: 'variable' },
+    { id: 'description', addressPattern: 'description[n]', repeat: 'variable' },
+  ]);
 });
 
 test('preview metadata has no orphan files for inactive templates', () => {
@@ -130,4 +202,58 @@ test('template preview check command exits cleanly for generated assets', () => 
     cwd: REPO_ROOT,
     stdio: 'pipe',
   });
+});
+
+test('template preview check reports missing files in a temp output directory', () => {
+  const dir = generateTempAssets();
+  try {
+    rmSync(path.join(dir, 'mag-01.png'));
+
+    const result = checkTempAssets(dir);
+    assert.notEqual(result.status, 0);
+    assert.match(`${result.stdout}\n${result.stderr}`, /missing mag-01\.png/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('template preview check reports stale PNG bytes in a temp output directory', () => {
+  const dir = generateTempAssets();
+  try {
+    writeFileSync(path.join(dir, 'mag-01.png'), Buffer.from('not-a-preview-png'));
+
+    const result = checkTempAssets(dir);
+    assert.notEqual(result.status, 0);
+    assert.match(`${result.stdout}\n${result.stderr}`, /stale mag-01\.png/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('template preview check reports stale JSON bytes in a temp output directory', () => {
+  const dir = generateTempAssets();
+  try {
+    writeFileSync(path.join(dir, 'mag-01.json'), '{"templateId":"mag-01","stale":true}\n');
+
+    const result = checkTempAssets(dir);
+    assert.notEqual(result.status, 0);
+    assert.match(`${result.stdout}\n${result.stderr}`, /stale mag-01\.json/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('template preview check reports root and capacity-bucket orphan assets', () => {
+  const dir = generateTempAssets();
+  try {
+    writeFileSync(path.join(dir, 'orphan.json'), '{}\n');
+    writeFileSync(path.join(dir, 'capacity-buckets', 'orphan.png'), Buffer.from('orphan'));
+
+    const result = checkTempAssets(dir);
+    assert.notEqual(result.status, 0);
+    assert.match(`${result.stdout}\n${result.stderr}`, /orphan orphan\.json/);
+    assert.match(`${result.stdout}\n${result.stderr}`, /orphan capacity-buckets\/orphan\.png/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
