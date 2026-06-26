@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "templateId": "mag-47",
+  "category": "interior",
+  "imageSlotCount": 4,
+  "imageSlotIds": [
+    "image1",
+    "image2",
+    "image3",
+    "image4"
+  ],
+  "textSlotCount": 2,
+  "textSlotIds": [
+    "title",
+    "explain"
+  ],
+  "structureDescription": "mag-47 interior template with 4 image slot(s) (image1, image2, image3, image4) and 2 text slot(s) (title, explain). 4 image blocks in a grid; 2 text slots."
+}

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "templateId": "mag-02",
+  "category": "toc",
+  "imageSlotCount": 0,
+  "imageSlotIds": [],
+  "textSlotCount": 5,
+  "textSlotIds": [
+    "title",
+    "folio",
+    "items.number",
+    "items.title",
+    "items.description"
+  ],
+  "structureDescription": "mag-02 toc template with 0 image slot(s) (none) and 5 text slot(s) (title, folio, items.number, items.title, items.description). no image blocks; 5 text slots."
+}

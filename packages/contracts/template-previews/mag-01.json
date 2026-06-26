@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "templateId": "mag-01",
+  "category": "cover",
+  "imageSlotCount": 1,
+  "imageSlotIds": [
+    "image"
+  ],
+  "textSlotCount": 5,
+  "textSlotIds": [
+    "title",
+    "label",
+    "explain1",
+    "explain2",
+    "folio"
+  ],
+  "structureDescription": "mag-01 cover template with 1 image slot(s) (image) and 5 text slot(s) (title, label, explain1, explain2, folio). one dominant image block; 5 text slots."
+}

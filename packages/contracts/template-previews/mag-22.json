@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "templateId": "mag-22",
+  "category": "ending",
+  "imageSlotCount": 2,
+  "imageSlotIds": [
+    "image1",
+    "image2"
+  ],
+  "textSlotCount": 5,
+  "textSlotIds": [
+    "title",
+    "body1",
+    "explain1",
+    "body2",
+    "explain2"
+  ],
+  "structureDescription": "mag-22 ending template with 2 image slot(s) (image1, image2) and 5 text slot(s) (title, body1, explain1, body2, explain2). two balanced image blocks; 5 text slots."
+}
