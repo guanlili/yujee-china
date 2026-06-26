@@ -49,7 +49,7 @@ import {
 } from '../types';
 import {
   fetchDraftSkeleton,
-  postChapterChat,
+  postEditChat,
   postRecommend,
   postApplyTheme,
   postCover,
@@ -1619,7 +1619,7 @@ function EditorBook({
       }
       sending = true;
       if (isAuthoring) {
-        await runChapterChatTurn(txt);
+        await runEditChatTurn(txt);
       } else {
         await runEdit(txt);
       }
@@ -2554,18 +2554,11 @@ function EditorBook({
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // ② 章节故事 — one real /v3/chapter-chat turn (缺口#20). This REPLACES the
-    // legacy /draft-edit single-page loop as the authoring send path. The agent
-    // dispatches THIS turn by intent and returns kind=talk/write/edit:
-    //   • talk  → reply only — NEVER a patch (Frame 4 红线: a talk turn must not
-    //             touch pagesState; the contract makes pagesTexts/layoutPatch
-    //             optional + we ignore them on talk defensively).
-    //   • write → pagesTexts: merge each page's rewritten copy into pagesState.
-    //   • edit  → layoutPatch: fold the page patch in (same applyPatch path the
-    //             finalized editor uses) — covers text + image-slot + template moves.
-    // nameOptions (≤4) render as picker chips; picking one sends it back as the
-    // next chapter-chat message so the model can fold the chosen title in.
-    // History is browser-held (the endpoint is stateless), capped at 20 turns.
+    // ② 章节故事 — one real /v3/edit-chat turn. This is the active authoring send
+    // path; Agent owns committed history/op state and returns a commit bundle:
+    //   • pagesTexts → merge each page's rewritten copy into pagesState.
+    //   • patches    → fold page patches through the same applyPatch path the
+    //                  finalized editor uses.
     // ════════════════════════════════════════════════════════════════════════
 
     // write: merge the agent's per-page copy rewrites into pagesState + repaint.
@@ -2595,9 +2588,9 @@ function EditorBook({
       return true;
     }
 
-    // Send one chapter-chat message and apply the result. `message` is the user's
-    // text (a name-chip pick reuses this path). Returns nothing; UI side effects only.
-    async function runChapterChatTurn(message: string) {
+    // Send one edit-chat message and apply the returned commit bundle. `message` is
+    // the user's text. Returns nothing; UI side effects only.
+    async function runEditChatTurn(message: string) {
       const host = appendThinkingShell();
       const chapterId = storyGate?.currentChapterId ?? null;
       if (!chapterId) {
@@ -2615,36 +2608,29 @@ function EditorBook({
         return;
       }
       const userMessage = message.slice(0, MESSAGE_MAX);
-      const history = chapterHistory.slice(-CHAT_HISTORY_MAX);
       try {
-        const res = await postChapterChat(albumId, {
+        const res = await postEditChat(albumId, {
           language: currentLang === 'zh' ? 'zh' : 'en',
           chapterId,
-          history,
           userMessage,
           // ③ 改页: when a page is selected, "change this / this page" targets it.
           ...(selectedPageIndex != null ? { focusedPageIndex: selectedPageIndex } : {}),
         });
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(host, res.assistantReply);
-        // Frame 4 红线: a talk turn applies NO patch — only write/edit mutate pages.
         let wroteChapter = false;
-        if (res.kind === 'write' && res.pagesTexts) {
+        if (res.pagesTexts) {
           wroteChapter = applyChapterWrite(res.pagesTexts);
-        } else if (res.kind === 'edit' && res.layoutPatch) {
-          // The agent's V3LayoutPatchEntry carries images/texts; map to the browser
-          // patch shape (imagesJson/textsJson) applyPatchToPages expects.
+        }
+        if (res.patches.length > 0) {
           applyChapterEdit(
-            res.layoutPatch.map((e) => ({
+            res.patches.map((e) => ({
               pageIndex: e.pageIndex,
               ...(e.templateId !== undefined ? { templateId: e.templateId } : {}),
               ...(e.images !== undefined ? { imagesJson: e.images } : {}),
               ...(e.texts !== undefined ? { textsJson: e.texts } : {}),
             })),
           );
-        }
-        if (res.nameOptions && res.nameOptions.length > 0) {
-          appendNameChips(host, res.nameOptions);
         }
         appendTime(host);
         // Record the turn for the next round's history (user + assistant).
@@ -2811,15 +2797,13 @@ function EditorBook({
       guidedChapters.add(chapterId);
       openerInFlight.add(chapterId);
       // Hold the send lock for the opener round-trip so a user send can't race it onto
-      // the same chapter (both would POST). send()/runChapterChatTurn already respect it.
+      // the same chapter (both would POST). send()/runEditChatTurn already respect it.
       sending = true;
       const host = appendThinkingShell();
-      const history = chapterHistory.slice(-CHAT_HISTORY_MAX);
       try {
-        const res = await postChapterChat(albumId, {
+        const res = await postEditChat(albumId, {
           language: currentLang === 'zh' ? 'zh' : 'en',
           chapterId,
-          history,
           // Empty userMessage = "open the chapter": the model has nothing to write yet,
           // so it dispatches a 引导 (talk) question. contract allows max(500), no min.
           userMessage: '',
@@ -2925,11 +2909,11 @@ function EditorBook({
           sending = true;
           row.querySelectorAll('.chip-select').forEach((c) => c.classList.remove('selected'));
           chip.classList.add('selected');
-          // Echo the pick as a user bubble, then run it as a normal chapter-chat turn.
+          // Echo the pick as a user bubble, then run it as a normal edit-chat turn.
           appendUserText(aT(`就用「${name}」`, `Use "${name}"`));
           hideAwait();
           scrollChat();
-          void runChapterChatTurn(aT(`这一章就叫「${name}」`, `Name this chapter "${name}"`))
+          void runEditChatTurn(aT(`这一章就叫「${name}」`, `Name this chapter "${name}"`))
             .finally(() => { sending = false; });
         });
         row.appendChild(chip);

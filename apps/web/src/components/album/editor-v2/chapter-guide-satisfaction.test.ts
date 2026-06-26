@@ -29,7 +29,8 @@ test('B: an auto-guide opener exists and posts an empty userMessage (AI opens th
   // 引导 (talk) question rather than waiting for the user to type first.
   const fn = /async function runChapterGuideOpener\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'runChapterGuideOpener() body must be parseable');
-  assert.match(fn![0], /postChapterChat\(/, 'opener must call postChapterChat');
+  assert.match(fn![0], /postEditChat\(/, 'opener must call postEditChat');
+  assert.doesNotMatch(fn![0], /postChapterChat\(/, 'opener must not call postChapterChat');
   assert.match(fn![0], /userMessage:\s*''/, 'opener must send an empty userMessage (open-the-chapter)');
 
   // Frame 4 红线: the opener never applies a patch nor advances stage — it only renders
@@ -111,6 +112,6 @@ test('focusedPageIndex逐页 edit path is preserved (不满意 reuses it)', () =
   assert.match(
     src,
     /selectedPageIndex != null \? \{ focusedPageIndex: selectedPageIndex \}/,
-    'chapter-chat must still send focusedPageIndex for逐页 edit turns',
+    'edit-chat must still send focusedPageIndex for逐页 edit turns',
   );
 });

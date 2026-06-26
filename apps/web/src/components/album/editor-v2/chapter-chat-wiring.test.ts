@@ -4,52 +4,48 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
-// 缺口#20 source-assertion guards for the chapter-chat wiring inside EditorPort.tsx.
+// Source-assertion guards for the edit-chat wiring inside EditorPort.tsx.
 // EditorPort is one imperative DOM effect with no jsdom harness (tests run under
-// `tsx --test`); the pure logic it calls (postChapterChat, applyPatchToPages,
+// `tsx --test`); the pure logic it calls (postEditChat, applyPatchToPages,
 // album-service slice, story-progress) is covered in its own unit tests. Here we
 // lock the load-bearing wiring invariants of the editor effect itself:
-//   • authoring send() routes to the real chapter-chat turn (not the legacy stub),
-//   • talk applies NO patch (Frame 4 红线), write applies pagesTexts, edit applies
-//     layoutPatch,
+//   • authoring send() routes to the stateful edit-chat turn,
+//   • edit-chat applies every commit bundle field it receives (pagesTexts + patches),
 //   • the turn sends the current chapterId + focusedPageIndex,
-//   • nameOptions render as picker chips,
 //   • the breadcrumb is fed from story-progress.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
 const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
 
-test('authoring send() routes to the real chapter-chat turn', () => {
+test('authoring send() routes to the real edit-chat turn', () => {
   // The authoring branch of send() must call runChapterChatTurn, not the legacy
   // /draft-edit single-page loop.
   assert.match(
     src,
-    /if \(isAuthoring\) \{\s*await runChapterChatTurn\(txt\);/,
-    'authoring send() must await runChapterChatTurn',
+    /if \(isAuthoring\) \{\s*await runEditChatTurn\(txt\);/,
+    'authoring send() must await runEditChatTurn',
   );
 });
 
-test('runChapterChatTurn posts the live chapter slice (chapterId + focusedPageIndex)', () => {
-  const fn = /async function runChapterChatTurn\([\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(fn, 'runChapterChatTurn must exist');
+test('runEditChatTurn posts the slim edit-chat body (chapterId + focusedPageIndex)', () => {
+  const fn = /async function runEditChatTurn\([\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'runEditChatTurn must exist');
   const body = fn![0];
-  assert.match(body, /postChapterChat\(albumId, \{/);
+  assert.match(body, /postEditChat\(albumId, \{/);
+  assert.doesNotMatch(body, /postChapterChat\(albumId, \{/);
   assert.match(body, /chapterId,/);
   // ③ 改页: the selected page is sent as focusedPageIndex so "this page" targets it.
   assert.match(body, /selectedPageIndex != null \? \{ focusedPageIndex: selectedPageIndex \}/);
 });
 
-test('Frame 4 红线: a talk turn applies NO patch — only write/edit mutate pages', () => {
-  const fn = /async function runChapterChatTurn\([\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(fn, 'runChapterChatTurn must exist');
+test('edit-chat applies pagesTexts and patches from the commit bundle', () => {
+  const fn = /async function runEditChatTurn\([\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'runEditChatTurn must exist');
   const body = fn![0];
-  // write → pagesTexts; edit → layoutPatch; talk has no apply* branch.
-  assert.match(body, /res\.kind === 'write' && res\.pagesTexts/);
-  assert.match(body, /res\.kind === 'edit' && res\.layoutPatch/);
-  // The only patch-applying branches are guarded by write/edit. Assert talk is never
-  // a key on a branch that applies a patch: there must be no `kind === 'talk'` apply.
-  assert.doesNotMatch(body, /kind === 'talk'[\s\S]{0,80}(applyChapterWrite|applyChapterEdit)/);
+  assert.match(body, /res\.pagesTexts/);
+  assert.match(body, /res\.patches/);
+  assert.doesNotMatch(body, /res\.layoutPatch/);
 });
 
 test('write merges pagesTexts; edit folds layoutPatch via applyPatchToPages', () => {
@@ -63,14 +59,8 @@ test('write merges pagesTexts; edit folds layoutPatch via applyPatchToPages', ()
   assert.match(edit![0], /repaintBook\(\)/);
 });
 
-test('nameOptions render as picker chips that re-run a chapter-chat turn', () => {
-  const fn = /function appendNameChips\([\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(fn, 'appendNameChips must exist');
-  const body = fn![0];
-  assert.match(body, /class.*chip-select|chip-select/);
-  assert.match(body, /runChapterChatTurn\(/);
-  // The turn calls appendNameChips when the agent returns nameOptions.
-  assert.match(src, /res\.nameOptions && res\.nameOptions\.length > 0[\s\S]{0,80}appendNameChips/);
+test('edit-chat wiring no longer depends on retired nameOptions chips', () => {
+  assert.doesNotMatch(src, /res\.nameOptions/);
 });
 
 test('breadcrumb is fed from story-progress (doneChapterIds / currentChapterId)', () => {
@@ -81,13 +71,16 @@ test('breadcrumb is fed from story-progress (doneChapterIds / currentChapterId)'
   assert.match(src, /story-progress`\)/);
 });
 
-test('replayed persisted chat messages hydrate the next chapter-chat history payload', () => {
+test('legacy persisted chat replay no longer feeds the edit-chat payload', () => {
   const fn = /async function loadHistory\(\): Promise<number> \{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'loadHistory must exist');
   const body = fn![0];
   assert.match(body, /chapterHistory\.splice\(0, chapterHistory\.length\)/);
   assert.match(body, /chapterHistory\.push\(\{ role: 'user', content: c \}\)/);
   assert.match(body, /chapterHistory\.push\(\{ role: 'assistant', content: c \}\)/);
+  const run = /async function runEditChatTurn\([\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(run, 'runEditChatTurn must exist');
+  assert.doesNotMatch(run![0], /history:/);
 });
 
 test('conversation chapter prompt card uses the design .chap-card class without overriding the rail .chapter-card', () => {
