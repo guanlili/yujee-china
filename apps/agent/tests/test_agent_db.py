@@ -36,26 +36,119 @@ def test_agent_edit_boundary_migration_static_contract() -> None:
 
 
 def test_agent_edit_repo_stage3_methods_static_contract() -> None:
-    from src.db import AgentEditRepository
+    from src.db import AgentEditRepository, _SerializedTurnLease, _in_flight_is_stale
 
     assert hasattr(AgentEditRepository, "list_committed_messages")
     assert hasattr(AgentEditRepository, "create_pending_turn")
-    assert hasattr(AgentEditRepository, "serialized_turn")
+    assert hasattr(AgentEditRepository, "begin_serialized_turn")
 
     history_source = inspect.getsource(AgentEditRepository.list_committed_messages)
     pending_source = inspect.getsource(AgentEditRepository.create_pending_turn)
-    serialized_source = inspect.getsource(AgentEditRepository.serialized_turn)
+    begin_source = inspect.getsource(AgentEditRepository.begin_serialized_turn)
+    lease_create_source = inspect.getsource(_SerializedTurnLease.create_pending_turn)
+    lease_cancel_source = inspect.getsource(_SerializedTurnLease.cancel)
+    ack_source = inspect.getsource(AgentEditRepository.acknowledge_op)
+    stale_source = inspect.getsource(_in_flight_is_stale)
     assert "status = 'committed'" in history_source
     assert "order by created_at desc" in history_source
     assert "status" in pending_source
     assert "'pending'" in pending_source
     assert "agent.edit_ops" in pending_source
     assert "agent.edit_messages" in pending_source
-    assert "for update" in serialized_source.lower()
-    assert "status = 'committed'" in serialized_source
-    assert "agent.edit_sessions" in serialized_source
-    assert "agent.edit_ops" in serialized_source
-    assert "agent.edit_messages" in serialized_source
+    assert "for update" in begin_source.lower()
+    assert "status = 'committed'" in begin_source
+    assert "agent.edit_sessions" in begin_source
+    assert "inFlight" in begin_source
+    assert "startedAt" in begin_source
+    assert "_TURN_LEASE_STALE_SECONDS" in stale_source
+    assert "yield" not in begin_source
+    assert "for update" in lease_create_source.lower()
+    assert "_in_flight_turn_id" in lease_create_source
+    assert "_turnId" in lease_create_source
+    assert "inFlight" in lease_create_source
+    assert "agent.edit_ops" in lease_create_source
+    assert "agent.edit_messages" in lease_create_source
+    assert "for update" in lease_cancel_source.lower()
+    assert "_in_flight_turn_id" in lease_cancel_source
+    assert "_turnId" in ack_source
+    assert "for update" in ack_source.lower()
+    assert "_in_flight_turn_id" in ack_source
+
+
+@pytest.mark.skipif(
+    not os.environ.get("AGENT_TEST_DATABASE_URL"),
+    reason="set AGENT_TEST_DATABASE_URL to run agent DB turn-lease integration test",
+)
+def test_agent_edit_repo_begin_turn_lease_waits_without_interleaving(monkeypatch) -> None:
+    database_url = os.environ["AGENT_TEST_DATABASE_URL"]
+    env = {**os.environ, "DATABASE_URL": database_url}
+    migration = subprocess.run(
+        [sys.executable, "-m", "alembic", "-c", str(AGENT_DIR / "alembic.ini"), "upgrade", "head"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert migration.returncode == 0, migration.stderr[-1000:]
+
+    import psycopg  # type: ignore[import-not-found]
+
+    from src import settings as settings_module
+    from src.db import AgentEditRepository
+
+    album_id = f"album-{uuid4()}"
+
+    def cleanup() -> None:
+        with psycopg.connect(database_url) as conn:  # type: ignore[attr-defined]
+            with conn.cursor() as cur:
+                cur.execute("delete from agent.edit_messages where album_id = %s", (album_id,))
+                cur.execute("delete from agent.edit_ops where album_id = %s", (album_id,))
+                cur.execute("delete from agent.edit_sessions where album_id = %s", (album_id,))
+            conn.commit()
+
+    cleanup()
+    try:
+        monkeypatch.setenv("DATABASE_URL", database_url)
+        settings_module.reset_settings_cache()
+        repo = AgentEditRepository()
+
+        async def scenario() -> str:
+            first = await repo.begin_serialized_turn(album_id, chapter_id="c1", limit=20)
+            second_task = asyncio.create_task(
+                repo.begin_serialized_turn(album_id, chapter_id="c1", limit=20)
+            )
+            await asyncio.sleep(0.2)
+            assert second_task.done() is False
+            await first.cancel()
+            second = await asyncio.wait_for(second_task, timeout=5)
+            return await second.create_pending_turn(
+                album_id=album_id,
+                chapter_id="c1",
+                user_content="u",
+                assistant_content="a",
+                kind="edit_text",
+                payload={"patches": []},
+                usage={"durationMs": 1},
+            )
+
+        op_id = asyncio.run(scenario())
+
+        with psycopg.connect(database_url) as conn:  # type: ignore[attr-defined]
+            with conn.cursor() as cur:
+                cur.execute("select status from agent.edit_ops where op_id = %s", (op_id,))
+                assert cur.fetchone()[0] == "pending"
+                cur.execute("select session_json from agent.edit_sessions where album_id = %s", (album_id,))
+                assert "inFlight" in cur.fetchone()[0]
+
+        assert asyncio.run(repo.acknowledge_op(op_id)) is True
+        with psycopg.connect(database_url) as conn:  # type: ignore[attr-defined]
+            with conn.cursor() as cur:
+                cur.execute("select session_json from agent.edit_sessions where album_id = %s", (album_id,))
+                assert "inFlight" not in cur.fetchone()[0]
+    finally:
+        cleanup()
+        settings_module.reset_settings_cache()
 
 
 @pytest.mark.skipif(

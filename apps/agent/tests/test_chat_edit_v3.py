@@ -141,7 +141,8 @@ class FakeRepo:
         self.committed = committed or []
         self.created: list[dict[str, Any]] = []
         self.history_args: dict[str, Any] | None = None
-        self.serialized_args: dict[str, Any] | None = None
+        self.begin_args: dict[str, Any] | None = None
+        self.cancelled = 0
 
     async def list_committed_messages(self, album_id: str, *, chapter_id: str | None, limit: int = 20) -> list[dict[str, str]]:
         self.history_args = {"album_id": album_id, "chapter_id": chapter_id, "limit": limit}
@@ -151,9 +152,8 @@ class FakeRepo:
         self.created.append({**kwargs, "status": "pending"})
         return self.op_id
 
-    @asynccontextmanager
-    async def serialized_turn(self, album_id: str, *, chapter_id: str | None, limit: int = 20):
-        self.serialized_args = {"album_id": album_id, "chapter_id": chapter_id, "limit": limit}
+    async def begin_serialized_turn(self, album_id: str, *, chapter_id: str | None, limit: int = 20):
+        self.begin_args = {"album_id": album_id, "chapter_id": chapter_id, "limit": limit}
 
         class Turn:
             history = self.committed
@@ -162,7 +162,14 @@ class FakeRepo:
                 self.created.append({**kwargs, "status": "pending", "serialized": True})
                 return self.op_id
 
-        yield Turn()
+            async def cancel(_) -> None:
+                self.cancelled += 1
+
+        return Turn()
+
+    @asynccontextmanager
+    async def serialized_turn(self, album_id: str, *, chapter_id: str | None, limit: int = 20):
+        raise AssertionError("edit-chat must not hold a DB connection/row lock across the turn")
 
 
 class FakeTools:
@@ -307,8 +314,46 @@ def test_edit_chat_history_reads_only_committed_messages():
         )
     )
 
-    assert repo.serialized_args == {"album_id": "alb_v3", "chapter_id": "c1", "limit": 20}
+    assert repo.begin_args == {"album_id": "alb_v3", "chapter_id": "c1", "limit": 20}
     assert repo.created[0]["serialized"] is True
+
+
+def test_edit_chat_cancels_serialized_turn_when_generation_fails():
+    repo = FakeRepo(committed=[{"role": "assistant", "content": "committed prompt"}])
+
+    with pytest.raises(edit_handler.EditChatError, match="chapter edit failed"):
+        asyncio.run(
+            edit_handler.run(
+                _edit_req("rewrite this chapter"),
+                repo=repo,
+                tools=FakeTools(),
+                complete=_fake_complete({"kind": "talk", "assistantReply": "unused"}),
+            )
+        )
+
+    assert repo.cancelled == 1
+    assert repo.created == []
+
+
+def test_edit_chat_cancels_serialized_turn_when_cancelled():
+    repo = FakeRepo(committed=[{"role": "assistant", "content": "committed prompt"}])
+    chapter = _chapter().model_copy(update={"chapterId": "c1"})
+
+    async def cancelled_complete(*, messages, max_tokens, temperature):  # noqa: ANN001
+        raise asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(
+            edit_handler.run(
+                _edit_req("rewrite this chapter"),
+                repo=repo,
+                tools=FakeTools(page_info={"chapter": chapter, "pages": _pages()}),
+                complete=cancelled_complete,
+            )
+        )
+
+    assert repo.cancelled == 1
+    assert repo.created == []
 
 
 def test_edit_chat_write_turn_fetches_page_info_and_returns_pages_texts():
@@ -348,7 +393,7 @@ def test_edit_chat_confirm_turn_returns_progress_decision():
 
     resp = asyncio.run(
         edit_handler.run(
-            _edit_req("Looks great — next chapter", chapter_id="c1", page_index=None),
+            _edit_req("[confirm-chapter]", chapter_id="c1", page_index=None),
             repo=repo,
             tools=FakeTools(),
         )
@@ -363,6 +408,52 @@ def test_edit_chat_confirm_turn_returns_progress_decision():
         "chapterDone": True,
         "advanceTo": "theme",
     }
+
+
+def test_edit_chat_does_not_confirm_when_praise_also_requests_an_edit():
+    repo = FakeRepo(op_id="op_edit")
+    chapter = _chapter().model_copy(update={"chapterId": "c1"})
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("Looks great, now make the title bigger", chapter_id="c1", page_index=None),
+            repo=repo,
+            tools=FakeTools(page_info={"chapter": chapter, "pages": _pages()}),
+            complete=_fake_complete(
+                {
+                    "kind": "write",
+                    "assistantReply": "I made the title stronger.",
+                    "pagesTexts": _write_pages_texts(),
+                }
+            ),
+        )
+    )
+
+    assert resp.progressDecision is None
+    assert resp.pagesTexts is not None
+    assert repo.created[0]["kind"] != "advance"
+
+
+def test_edit_chat_does_not_swap_layout_when_layout_wording_is_the_edit_target():
+    tools = FakeTools(page_info={"chapter": _chapter().model_copy(update={"chapterId": "c1"}), "pages": _pages()})
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("I don't like this layout's wording, rewrite the caption", chapter_id="c1", page_index=1),
+            repo=FakeRepo(op_id="op_wording"),
+            tools=tools,
+            complete=_fake_complete(
+                {
+                    "kind": "write",
+                    "assistantReply": "I rewrote the caption.",
+                    "pagesTexts": _write_pages_texts(),
+                }
+            ),
+        )
+    )
+
+    assert resp.pagesTexts is not None
+    assert tools.page_photo_requests == []
 
 
 def test_edit_chat_case4_fetches_page_photos_via_agent_data_and_calls_gemini(monkeypatch):

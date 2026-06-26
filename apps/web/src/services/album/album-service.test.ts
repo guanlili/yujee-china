@@ -1708,6 +1708,48 @@ test('editChatTurn applies pagesTexts patches and acks after album transaction',
   }
 });
 
+test('editChatTurn keeps committed album changes when ack fails after the transaction', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-ack-fails-after-commit');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 2);
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'edit' as const,
+      assistantReply: 'Updated, but ack will fail.',
+      pagesTexts: [{ pageIndex: 0, texts: { headline: 'Committed Before Ack' } }],
+      patches: [{ pageIndex: 1, texts: { body: 'This survives ack failure' } }],
+      progressDecision: { chapterDone: true },
+      opId: 'op_ack_after_commit',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => {
+      throw new Error('agent ack unavailable');
+    });
+
+    await assert.rejects(
+      () =>
+        albumService.editChatTurn(user.id, albumId, {
+          language: 'en',
+          chapterId: 'c1',
+          userMessage: 'write and finish',
+          focusedPageIndex: 1,
+        }),
+      /agent ack unavailable/,
+    );
+
+    const draft = (await albumRepo.findById(albumId))!.draftJson as V3StoryDraft;
+    assert.equal(draft.pages?.[0]?.texts.headline, 'Committed Before Ack');
+    assert.equal(draft.pages?.[1]?.texts.body, 'This survives ack failure');
+    assert.deepEqual(draft.progress.doneChapterIds, ['c1']);
+    assert.equal(draft.progress.currentChapterId, 'c2');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('editChatTurn never writes Web album_messages history', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');

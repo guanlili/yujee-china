@@ -44,6 +44,11 @@ test('confirming a chapter uses edit-chat, not story-progress POST', () => {
   assert.ok(fn, 'confirmCurrentChapterViaEditChat must exist');
   const body = fn![0];
   assert.match(body, /runEditChatTurn\(/, 'confirm must go through the acked edit-chat turn');
+  assert.match(
+    body,
+    /runEditChatTurn\(CONFIRM_CHAPTER_COMMAND\)/,
+    'confirm must send an explicit internal command, not natural-language praise',
+  );
   assert.doesNotMatch(src, /story-progress`, \{\s*method: 'POST'/, 'EditorPort must not POST story-progress');
 });
 

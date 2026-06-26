@@ -83,6 +83,7 @@ import './editor-port.css';
 //                 via /draft-edit (#162) — no theme→chapter dialog, no finalize CTA.
 //   • editing   → layoutJson set: the original finalized editor, untouched.
 export type EditorMode = 'building' | 'authoring' | 'editing';
+const CONFIRM_CHAPTER_COMMAND = '[confirm-chapter]';
 
 // Generation progress from the album poll (use-album-poll); only meaningful in
 // building mode, where stage drives the loading-chat copy. Optional so the other
@@ -1859,7 +1860,7 @@ function EditorBook({
       setStoryConfirming(true);
       updateStoryGateUi();
       try {
-        await runEditChatTurn(aT('满意,继续下一章', 'Looks great — next chapter'));
+        await runEditChatTurn(CONFIRM_CHAPTER_COMMAND);
       } catch (e) {
         appendAiText(
           e instanceof Error
