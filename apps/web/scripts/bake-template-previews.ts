@@ -3,14 +3,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
 
-import { TEMPLATE_IDS, TEMPLATES, type TemplateDef } from '@yujee/contracts/templates';
+import {
+  ITEMS_GRID_CAPACITY,
+  TEMPLATE_IDS,
+  TEMPLATES,
+  type TemplateDef,
+} from '@yujee/contracts/templates';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '../../..');
 const DEFAULT_PREVIEW_DIR = path.join(REPO_ROOT, 'packages/contracts/template-previews');
 const GENERATED_FROM = 'packages/contracts/templates/*.json';
 const SCHEMA_VERSION = 1;
-const ITEMS_GRID_CAPACITY = 4;
 const PREVIEW_WIDTH = 200;
 const PREVIEW_HEIGHT = 283;
 const BUCKET_CARD_WIDTH = 96;
