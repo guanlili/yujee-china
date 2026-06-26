@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "templateId": "mag-20",
+  "category": "ending",
+  "imageSlotCount": 1,
+  "imageSlotIds": [
+    "image"
+  ],
+  "textSlotCount": 0,
+  "textSlotIds": [],
+  "structureDescription": "mag-20 ending template with 1 image slot(s) (image) and 0 concrete text slot(s) (none). one dominant image block; no text slots."
+}

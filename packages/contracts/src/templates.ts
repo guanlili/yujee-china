@@ -6,6 +6,11 @@ import {
   TEMPLATES as GENERATED_TEMPLATES,
 } from './templates.generated';
 
+// `items.images` grid templates declare one repeat image base in JSON. The V3
+// selection/rendering path expands that base into exactly four addressable cells
+// to preserve mag-10's existing 4-cell grid behavior.
+export const ITEMS_GRID_CAPACITY = 4;
+
 // ── 模板分类契约 ──────────────────────────────────────────────────────────
 // V3 模板契约(v3-requirements §9):单一 `category`(cover|toc|interior|ending)
 //   取代旧 `slot` + `scene`。`scene` 整体删除;模板选择不再做 scene 过滤,改为在
@@ -146,10 +151,20 @@ export function validateSlotsForTemplate(
   const repeatTextIds = new Set(tpl.texts.filter((slot) => slot.repeat).map((slot) => slot.id));
   const itemImageIds = new Set(tpl.items?.images?.map((slot) => slot.id) ?? []);
   const itemTextIds = new Set(tpl.items?.texts?.map((slot) => slot.id) ?? []);
+  const fixedItemsGrid =
+    tpl.images.length === 0 && itemImageIds.size === 1 ? ITEMS_GRID_CAPACITY : null;
 
   for (const k of imageSlotKeys) {
-    const repeatBase = k.match(/^([A-Za-z0-9_-]+)\[\d+\]$/)?.[1];
-    if (!imageIds.has(k) && !(repeatBase && itemImageIds.has(repeatBase))) {
+    const repeatKey = parseBracketKey(k);
+    if (repeatKey && itemImageIds.has(repeatKey.base) && fixedItemsGrid !== null) {
+      if (repeatKey.index >= fixedItemsGrid) {
+        return {
+          ok: false,
+          reason: `image slot "${k}" exceeds items-grid capacity ${fixedItemsGrid} in template ${templateId}`,
+        };
+      }
+    }
+    if (!imageIds.has(k) && !(repeatKey && itemImageIds.has(repeatKey.base))) {
       return {
         ok: false,
         reason: `image slot "${k}" not in template ${templateId}`,
@@ -158,10 +173,18 @@ export function validateSlotsForTemplate(
   }
 
   for (const k of textSlotKeys) {
-    const repeatBase = k.match(/^([A-Za-z0-9_-]+)\[\d+\]$/)?.[1];
+    const repeatKey = parseBracketKey(k);
+    if (repeatKey && itemTextIds.has(repeatKey.base) && fixedItemsGrid !== null) {
+      if (repeatKey.index >= fixedItemsGrid) {
+        return {
+          ok: false,
+          reason: `text slot "${k}" exceeds items-grid capacity ${fixedItemsGrid} in template ${templateId}`,
+        };
+      }
+    }
     if (
       !textIds.has(k) &&
-      !(repeatBase && (repeatTextIds.has(repeatBase) || itemTextIds.has(repeatBase)))
+      !(repeatKey && (repeatTextIds.has(repeatKey.base) || itemTextIds.has(repeatKey.base)))
     ) {
       return {
         ok: false,
@@ -171,4 +194,10 @@ export function validateSlotsForTemplate(
   }
 
   return { ok: true };
+}
+
+function parseBracketKey(key: string): { base: string; index: number } | null {
+  const match = key.match(/^([A-Za-z0-9_-]+)\[(\d+)\]$/);
+  if (!match) return null;
+  return { base: match[1], index: Number(match[2]) };
 }

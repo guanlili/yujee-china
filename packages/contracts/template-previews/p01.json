@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "templateId": "p01",
+  "category": "cover",
+  "imageSlotCount": 1,
+  "imageSlotIds": [
+    "image"
+  ],
+  "textSlotCount": 5,
+  "textSlotIds": [
+    "title",
+    "body",
+    "label1",
+    "label2",
+    "date"
+  ],
+  "structureDescription": "p01 cover template with 1 image slot(s) (image) and 5 concrete text slot(s) (title, body, label1, label2, date). one dominant image block; 5 text slots."
+}

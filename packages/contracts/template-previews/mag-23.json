@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "templateId": "mag-23",
+  "category": "cover",
+  "imageSlotCount": 1,
+  "imageSlotIds": [
+    "image"
+  ],
+  "textSlotCount": 4,
+  "textSlotIds": [
+    "title",
+    "subtitle",
+    "year",
+    "city"
+  ],
+  "structureDescription": "mag-23 cover template with 1 image slot(s) (image) and 4 concrete text slot(s) (title, subtitle, year, city). one dominant image block; 4 text slots."
+}
