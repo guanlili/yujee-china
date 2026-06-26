@@ -475,6 +475,8 @@ class TestV3Endpoints:
                 "bookThemeOptions": [
                     {
                         "optionId": "opt-1",
+                        "label": "x" * 160,
+                        "style": "y" * 160,
                         "artFont": "serif-classic",
                         "chapters": [{"chapterId": "c1", "subject": "Spring in Kyoto", "accentColor": "#aabbcc"}],
                     },
@@ -493,6 +495,32 @@ class TestV3Endpoints:
                 "usage": {"durationMs": 1, "models": {}},
             }
         )
+        with pytest.raises(ValidationError):
+            V3RecommendResponse.model_validate(
+                {
+                    "bookThemeOptions": [
+                        {
+                            "optionId": "x" * 81,
+                            "artFont": "serif-classic",
+                            "chapters": [{"chapterId": "c1", "accentColor": "#aabbcc"}],
+                        },
+                        {
+                            "optionId": "opt-2",
+                            "label": "x" * 161,
+                            "artFont": "sans-modern",
+                            "chapters": [{"chapterId": "c1", "accentColor": "#bbccdd"}],
+                        },
+                        {
+                            "optionId": "opt-3",
+                            "style": "x" * 161,
+                            "artFont": "display-bold",
+                            "chapters": [{"chapterId": "c1", "accentColor": "#ccddee"}],
+                        },
+                    ],
+                    "assistantReply": "",
+                    "usage": {"durationMs": 1, "models": {}},
+                }
+            )
 
     def test_apply_theme_and_cover_page_level(self):
         page = {"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}
@@ -500,7 +528,7 @@ class TestV3Endpoints:
             {
                 "albumId": "a1",
                 "language": "en",
-                "chapters": [{"chapterId": "c1", "subject": "s", "accentColor": "#abc", "artFont": "sans-modern"}],
+                "chapters": [{"chapterId": "c1", "accentColor": "#abc", "artFont": "sans-modern"}],
                 "pages": [page],
             }
         )

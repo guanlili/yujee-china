@@ -148,6 +148,20 @@ def test_coerces_to_exactly_three_options_and_stable_fallback_option_ids():
     V3RecommendResponse(**resp.model_dump(exclude_none=True))
 
 
+def test_option_ids_are_unique_after_truncation():
+    long_prefix = "x" * 80
+    payload = _good_payload()
+    payload["bookThemeOptions"] = [
+        {**_option(f"{long_prefix}a"), "chapters": [{"chapterId": "ch_1", "accentColor": "#abc"}]},
+        {**_option(f"{long_prefix}b"), "chapters": [{"chapterId": "ch_1", "accentColor": "#def"}]},
+        _option("third"),
+    ]
+    resp = _run(_req(), payload)
+
+    assert [o.optionId for o in resp.bookThemeOptions] == [long_prefix, "opt-2", "third"]
+    V3RecommendResponse(**resp.model_dump(exclude_none=True))
+
+
 def test_missing_options_and_invalid_colors_get_deterministic_fallbacks():
     payload = {
         "bookThemeOptions": [

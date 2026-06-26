@@ -563,7 +563,6 @@ class V3ChapterOverview(_V3Strict):
     # not the final theme `accentColor`.
     extractedColor: AccentColor | None = None
     photoDescs: list[str] = Field(max_length=12)
-    extractedColor: AccentColor | None = None
 
 
 class V3RecommendRequest(_V3Strict):
@@ -582,11 +581,11 @@ class V3ChapterThemeColor(_V3Strict):
 
 
 class V3BookThemeOption(_V3Strict):
-    optionId: str = Field(min_length=1)
+    optionId: str = Field(min_length=1, max_length=80)
     artFont: ArtFontPack
     chapters: list[V3ChapterThemeColor] = Field(min_length=1)
-    style: str | None = Field(default=None, min_length=1)
-    label: str | None = Field(default=None, min_length=1)
+    style: str | None = Field(default=None, min_length=1, max_length=160)
+    label: str | None = Field(default=None, min_length=1, max_length=160)
 
 
 class V3RecommendResponse(_V3Strict):
@@ -601,11 +600,11 @@ class V3RecommendResponse(_V3Strict):
 class V3ChapterThemeChoice(_V3Strict):
     """用户选定的每章主题/色/字体。
 
-    `subject` = 用户确认的该章标题(一句话主题);apply-theme 把它持久化到该章 title
-    角色文字槽(问题5 方向 A 变体 / #236),并把色/字体刷到 variableDecor 槽。"""
+    `subject` 存在时 = 用户确认的该章标题(一句话主题);apply-theme 只在它存在且 title
+    槽为空时持久化,并把色/字体刷到 variableDecor 槽。"""
 
     chapterId: str = Field(min_length=1)
-    subject: str = Field(min_length=1)
+    subject: str | None = Field(default=None, min_length=1)
     accentColor: AccentColor
     artFont: ArtFontPack
 

@@ -50,6 +50,8 @@ test('each 应用 action expands selected option to per-chapter choices', () => 
   assert.match(body, /subject: c\.subject/);
   assert.match(body, /accentColor: c\.accentColor/);
   assert.match(body, /artFont: option\.artFont/);
+  assert.doesNotMatch(body, /Untitled Chapter/);
+  assert.doesNotMatch(body, /未命名章节/);
 });
 
 test('runApplyTheme has NO auto-apply fallback (缺口#20: 删掉自动套兜底)', () => {

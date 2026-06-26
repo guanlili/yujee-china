@@ -51,9 +51,10 @@ CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
 # V3RecommendResponse 校验。
 _ART_FONTS: tuple[str, ...] = tuple(get_args(ArtFontPack))
 _DEFAULT_FONT = "serif-classic"
-# 契约里 subject(章节标题)是 min(1);钳到一个合理的标题长度,免得漂移的长 subject 撑爆
-# 槽位。Fallback 文本外置在可手调的 replies.md(subject_fallback),保持响应有效。
+# subject(章节标题)可选;若模型给出则钳到合理长度,免得漂移的长 subject 撑爆槽位。
 _MAX_SUBJECT_LEN = 80
+_MAX_OPTION_ID_LEN = 80
+_MAX_OPTION_TEXT_LEN = 160
 
 
 class RecommendV3Error(Exception):
@@ -235,10 +236,10 @@ def _coerce_book_theme_options(
 
 
 def _coerce_option_id(raw: Any, fallback: str, used: set[str]) -> str:
-    candidate = _text(raw)
+    candidate = _text(raw)[:_MAX_OPTION_ID_LEN]
     if not candidate or candidate in used:
         return fallback
-    return candidate[:80]
+    return candidate
 
 
 def _optional_text_fields(item: dict[str, Any]) -> dict[str, str]:
@@ -246,7 +247,7 @@ def _optional_text_fields(item: dict[str, Any]) -> dict[str, str]:
     for key in ("style", "label"):
         value = _text(item.get(key))
         if value:
-            out[key] = value[:160]
+            out[key] = value[:_MAX_OPTION_TEXT_LEN]
     return out
 
 

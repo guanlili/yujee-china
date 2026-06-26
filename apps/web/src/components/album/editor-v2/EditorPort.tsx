@@ -1997,7 +1997,7 @@ function EditorBook({
           void runApplyTheme({
             chapters: option.chapters.map((c) => ({
               chapterId: c.chapterId,
-              subject: c.subject ?? aT('未命名章节', 'Untitled Chapter'),
+              ...(c.subject ? { subject: c.subject } : {}),
               accentColor: c.accentColor,
               artFont: option.artFont,
             })),
@@ -2096,8 +2096,8 @@ function EditorBook({
 
     // ③ 主题/章节色 · 应用: send the per-chapter {subject, accentColor, artFont} to
     // /v3/apply-theme, fold the returned patch into the canvas, advance stage theme→cover.
-    // Each subject is persisted as its chapter title (#236). Driven only by a user click on
-    // the palette-card「应用」— there is NO "auto-apply" fallback (缺口#20). If called with no
+    // A provided subject can be persisted as its chapter title (#236). Driven only by a user
+    // click on the palette-card「应用」— there is NO "auto-apply" fallback (缺口#20). If called with no
     // selection (e.g. no recommendation yet), we fetch a recommendation so the user gets the
     // card, and apply nothing.
     async function runApplyTheme(selection?: { chapters: V3ChapterThemeChoice[] }) {

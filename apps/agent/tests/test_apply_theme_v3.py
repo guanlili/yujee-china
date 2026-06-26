@@ -162,6 +162,15 @@ def test_subject_written_into_title_when_slot_is_empty_string():
     assert resp.layoutPatch[0].texts["title"] == _SUBJECT[: _title_max_chars("mag-08")]
 
 
+def test_missing_subject_does_not_write_generic_title_into_empty_title_slot():
+    page = _page("mag-08", texts={"title": "", "body": "x"}, images={"image": "p1"})
+    choice = V3ChapterThemeChoice(chapterId="c1", accentColor=_ACCENT, artFont=_FONT)
+    resp = at.apply_theme(_request([page], chapters=[choice]))
+
+    assert resp.layoutPatch[0].texts["title"] == ""
+    assert resp.layoutPatch[0].texts["title"] != "Untitled Chapter"
+
+
 def test_user_authored_title_is_preserved_not_overwritten_by_subject():
     # The user hand-named the chapter in the story stage (nameOptions → title slot).
     # apply-theme must NOT clobber it with the subject (保留用户手起章名).

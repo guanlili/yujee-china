@@ -1691,6 +1691,7 @@ async function seedThemeCoverAlbum(userId: string) {
       {
         chapterId: 'c1',
         description: 'a sunlit week by the coast',
+        extractedColor: '#C8894A',
         accentColor: null,
         artFont: null,
         photos: [
@@ -1758,7 +1759,7 @@ test('recommendTheme: re-slices the per-chapter overview server-side (no base64,
     assert.equal(payload.userMessage, 'warmer');
     // Server re-sliced the overview from draft_json: chapterId + description + photo descs.
     assert.deepEqual(payload.chapters, [
-      { chapterId: 'c1', description: 'a sunlit week by the coast', photoDescs: ['beach at dawn'] },
+      { chapterId: 'c1', description: 'a sunlit week by the coast', photoDescs: ['beach at dawn'], extractedColor: '#C8894A' },
     ]);
     assert.equal(res.bookThemeOptions[0]!.chapters[0]!.subject, 'By the Sea');
   } finally {

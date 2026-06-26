@@ -43,7 +43,7 @@ export type ChapterState =
 export interface DraftSkeletonChapter {
   chapterId: string;
   label: string;
-  // The chapter's title (its theme `subject`, persisted into the title slot at
+  // The chapter's title (optional theme `subject`, persisted into an empty title slot at
   // apply-theme, #236). Absent/empty until the theme stage runs — fall back to `label`.
   subject?: string;
   role: 'opening' | 'body' | 'closing';

@@ -107,11 +107,13 @@ test('V3Chapter holds null placeholders for accentColor/artFont at analysis time
   const chapter = {
     chapterId: 'c1',
     description: 'a quiet spring morning in an old town',
+    extractedColor: '#c8894a',
     accentColor: null,
     artFont: null,
     photos: [baseChapterPhoto],
   };
   assert.equal(V3Chapter.safeParse(chapter).success, true);
+  assert.equal(V3Chapter.safeParse({ ...chapter, extractedColor: null }).success, true);
   // theme 环节填值后仍合法
   assert.equal(
     V3Chapter.safeParse({ ...chapter, accentColor: '#aabbcc', artFont: 'sans-modern' }).success,
@@ -120,6 +122,7 @@ test('V3Chapter holds null placeholders for accentColor/artFont at analysis time
   // 非法字体 / 非法色被边界拦下
   assert.equal(V3Chapter.safeParse({ ...chapter, artFont: 'nope' }).success, false);
   assert.equal(V3Chapter.safeParse({ ...chapter, accentColor: 'blue' }).success, false);
+  assert.equal(V3Chapter.safeParse({ ...chapter, extractedColor: 'blue' }).success, false);
 });
 
 test('test_v3_chapter_carries_extracted_color', () => {
@@ -606,8 +609,8 @@ test('V3RecommendResponse returns exactly three book theme options', () => {
     bookThemeOptions: [
       {
         optionId: 'opt-1',
-        label: 'Warm',
-        style: 'Warm editorial',
+        label: 'x'.repeat(160),
+        style: 'y'.repeat(160),
         artFont: 'serif-classic',
         chapters: [{ chapterId: 'c1', subject: 'Spring in Kyoto', accentColor: '#aabbcc' }],
       },
@@ -649,6 +652,32 @@ test('V3RecommendResponse returns exactly three book theme options', () => {
     }).success,
     false,
   );
+  assert.equal(
+    V3RecommendResponse.safeParse({
+      bookThemeOptions: [
+        {
+          optionId: 'x'.repeat(81),
+          artFont: 'serif-classic',
+          chapters: [{ chapterId: 'c1', accentColor: '#aabbcc' }],
+        },
+        {
+          optionId: 'opt-2',
+          label: 'x'.repeat(161),
+          artFont: 'sans-modern',
+          chapters: [{ chapterId: 'c1', accentColor: '#bbccdd' }],
+        },
+        {
+          optionId: 'opt-3',
+          style: 'x'.repeat(161),
+          artFont: 'display-bold',
+          chapters: [{ chapterId: 'c1', accentColor: '#ccddee' }],
+        },
+      ],
+      assistantReply: '',
+      usage: { durationMs: 1, models: {} },
+    }).success,
+    false,
+  );
 });
 
 test('test_v3_chapter_overview_carries_extracted_color', () => {
@@ -670,7 +699,7 @@ test('V3ApplyThemeRequest + V3CoverRequest carry page-level patches (not tree fi
     V3ApplyThemeRequest.safeParse({
       albumId: 'a1',
       language: 'en',
-      chapters: [{ chapterId: 'c1', subject: 's', accentColor: '#abc', artFont: 'sans-modern' }],
+      chapters: [{ chapterId: 'c1', accentColor: '#abc', artFont: 'sans-modern' }],
       pages: [page],
     }).success,
     true,
