@@ -26,7 +26,7 @@
 | POST   | `/api/v3/albums/[uuid]/apply-theme` | user | ③ 应用主题/章节色/字体(确定性,代理 `/v3/apply-theme`)|
 | POST   | `/api/v3/albums/[uuid]/cover` | user | ④ 生成/跳过封面封尾(确定性,代理 `/v3/cover`)|
 | POST   | `/api/v3/albums/[uuid]/finalize` | user | ⑤ 拍平成 `AlbumLayoutPlan` 落 `album_pages`(代理 `/v3/finalize`)|
-| POST   | `/api/v3/internal/job-progress` | agent | `/v3/analyze` 的 progress/completed/failed 回调 sink(Bearer `AGENT_SHARED_SECRET`)|
+| POST   | `/api/v3/internal/job-progress` | agent | `/v3/analyze` 与 `/v3/select-layout` 的 progress/completed/failed 回调 sink(Bearer `AGENT_SHARED_SECRET`)|
 
 > `/api/v3/albums` 只有 `POST`(建册)。**相册列表是 `GET /api/v1/albums`**(见下),不在 v3 命名空间。
 
@@ -91,8 +91,9 @@
    → 服务端:建 album(status=AGENT_RUNNING)+ 建 job + 按张实扣积分 hold + 派 /v3/analyze
    → 返回 { albumId, requestId }(派发失败也返回 albumId,前端打开可重试失败卡)
 4. router.push(/album/${albumId})
-5. Agent 后台跑 analyze,回推 POST /api/v3/internal/job-progress(progress/completed/failed)
-6. 浏览器轮询 GET /api/v1/albums/[uuid],按 album.status 驱动界面(见 §5)
+5. Agent 后台跑 analyze,回推 POST /api/v3/internal/job-progress(progress/completed/failed);completed 只带 tree
+6. Web 在 tree ready 后派 `/v3/select-layout`,Agent 回推同一个 job-progress sink;completed 带 pages
+7. 浏览器轮询 GET /api/v1/albums/[uuid],按 album.status 驱动界面(见 §5)
 ```
 
 约束(`POST /api/v3/albums` body,zod 校验):`photos.length ∈ [1, 30]`;每张 base64 ≤ 800KB;`prompt` ≤ 500 字;`takenAt` 是**唯一**允许的 EXIF 字段(§3 隐私,不收坐标)。

@@ -163,7 +163,7 @@ export const agentClient = {
 };
 ```
 
-> Agent 端点全在 `/v3/*`(1 异步 `analyze` + 5 同步);req/res 形状以 `packages/contracts`(`V3*Request` / `V3*Response`)为单一真相源,client 直接 import 这些类型。把 HTTP status 翻成 `ERRORS.XXX()`(`AGENT_*`)而不是裸 `Error`。
+> Agent 端点全在 `/v3/*`(2 个异步初始化端点:`analyze`/`select-layout`,加同步/内部编辑与定稿端点);req/res 形状以 `packages/contracts`(`V3*Request` / `V3*Response`)为单一真相源,client 直接 import 这些类型。把 HTTP status 翻成 `ERRORS.XXX()`(`AGENT_*`)而不是裸 `Error`。
 
 **Lib 的硬规则**:
 - 不知道"相册""积分"是什么(无业务知识)

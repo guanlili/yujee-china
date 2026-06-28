@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "web:dev": "pnpm --filter @yujee/web dev",
-    "agent:dev": "cd apps/agent && uvicorn src.main:app --reload --port 8001",
+    "agent:dev": "cd apps/agent && .venv/bin/uvicorn src.main:app --reload --port ${PORT:-8001}",
     "templates:generate": "pnpm --filter @yujee/contracts templates:generate",
     "templates:check": "pnpm --filter @yujee/contracts templates:check",
     "template-previews:check": "pnpm --filter @yujee/web template-previews:check",

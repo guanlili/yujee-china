@@ -88,21 +88,26 @@
 
 > 详细 req/res、错误码、状态机 → [`docs/agent/contract.md`](./agent/contract.md);Agent 内部分层、pipeline、failover、redact → [`docs/agent/design.md`](./agent/design.md)。
 
-Agent 暴露**一个异步端点 + 五个同步端点**,均 Bearer 鉴权(`AGENT_SHARED_SECRET`),只被 Web 调用、不被浏览器直调。
+Agent 暴露**两个异步端点 + 七个同步/内部端点**,均 Bearer 鉴权(`AGENT_SHARED_SECRET`),只被 Web 调用、不被浏览器直调。
 
-### 2.1 分析 — `POST /v3/analyze`(异步,唯一异步端点)
-- **为什么异步**:多图识图 1–2 min;支撑「点下一个 ≤0.5s 进编辑器 + 后台分析」。
-- Agent 接单即 `202`,后台跑(`flows/analyze.py`),回推 `POST /api/v3/internal/job-progress`(`progress`/`completed`/`failed`)。
+### 2.1 初始化 — `POST /v3/analyze` + `POST /v3/select-layout`(异步)
+- **为什么异步**:多图识图和批量选模板都可能耗时;支撑「点下一个 ≤0.5s 进编辑器 + 后台分析/排版」。
+- `/v3/analyze` 接单即 `202`,后台跑(`flows/analyze.py`),回推 `POST /api/v3/internal/job-progress`(`progress`/`completed`/`failed`)。
 - **入参**:base64 + EXIF(只 `takenAt`,无地点)+ 可选 `clusterId`。
-- **出参(回调)**:套模板 + 通用文案/通用色的**预览态 layout 树** + pages。
+- **出参(回调)**:tree-only `V3LayoutTree`;不返回 pages。
+- `/v3/select-layout` 接收 Stage1 tree + 浏览器保留的 200px refs,后台跑(`flows/select_layout.py`),回推同一个 `job-progress` sink。
+- **出参(回调)**:`Page[]` + usage;Web 合并 tree/pages 后推进到 `story`。
 - 浏览器轮询相册状态,不开 SSE(理由见 2.3)。
 
-### 2.2 其余四环节 — 同步端点(秒级,前端转圈)
+### 2.2 其余环节 — 同步/内部端点(秒级,前端转圈)
 
 | 环节 | 端点 | 模型 |
 |---|---|---|
-| 章节故事 | `POST /v3/chapter-chat` | 文案模型(改图时升级识图模型出意图)|
-| 主题/章节色 · 推荐 | `POST /v3/recommend` | 识图模型 |
+| 章节故事(主路径) | `POST /v3/edit-chat` | 文案模型;版面 swap 时可用识图模型 |
+| 章节故事(无状态能力面) | `POST /v3/chapter-chat` | 文案模型 |
+| 聚焦页编辑 | `POST /v3/page-edit` | 文案模型;版面 swap 时可用识图模型 |
+| 编辑确认回执 | `POST /internal/agent-ack` | 无(Agent DB 状态推进)|
+| 主题/章节色 · 推荐 | `POST /v3/recommend` | 文案模型输出 3 组 bookThemeOptions |
 | 主题/章节色 · 应用 | `POST /v3/apply-theme` | 无(确定性)|
 | 书籍设计(封面/封尾)| `POST /v3/cover` | 无(确定性)|
 | 待导出 | `POST /v3/finalize` | 无(确定性 flatten + 单一 validate)|
@@ -117,7 +122,7 @@ Agent 暴露**一个异步端点 + 五个同步端点**,均 Bearer 鉴权(`AGENT
 - **失败语义**:异步走回调 `failed`(带 stage);同步走 HTTP 错误码;前端可重试,不污染 `stage`。
 - **为什么不用 SSE**:Vercel 多 lambda 实例,进程内 EventEmitter 无法跨实例;轮询零依赖、Vercel 上必然工作,1000 用户够用。
 
-**Web 侧编排路由**:`POST /api/v3/albums`(建册+扣费+派 analyze)、`/api/v3/internal/job-progress`(回调 sink)、`albums/:id/{draft,story-progress,chapter-chat,recommend,apply-theme,cover,finalize,retry}`。
+**Web 侧编排路由**:`POST /api/v3/albums`(建册+扣费+派 analyze/select-layout)、`/api/v3/internal/job-progress`(回调 sink)、`albums/:id/{draft,story-progress,chapter-chat,recommend,apply-theme,cover,finalize,retry}`。
 
 ---
 
@@ -182,7 +187,7 @@ memoir-agent-rebuild/
 | Postgres | Neon | Web Drizzle 管 public schema(`apps/web/src/db/migrations`);Agent Alembic 管独立 `agent` schema(`apps/agent/migrations`,需 `DATABASE_URL`) |
 | R2 / CDN | Cloudflare | PDF presigned 上传 |
 
-环境变量完整清单 → 见各子文档结尾。本地起服务:Agent `cd apps/agent && .venv/bin/uvicorn src.main:app --port 8001`(读 `.env`);Web `next dev`(用 nvm node,见记忆)。
+环境变量完整清单 → 见各子文档结尾。本地起服务:Agent `pnpm agent:dev`(读 `apps/agent/.env`);若 `8001` 已被旧进程占用,用 `PORT=8011 pnpm agent:dev`;Web `next dev`(用 nvm node,见记忆)。
 
 ---
 
@@ -203,7 +208,7 @@ memoir-agent-rebuild/
 
 > 这些是已**实施完成**的决策(非待办)。早期「V3 拍板」的迁移细节已落地,这里只留仍然成立的结论。
 
-1. **Agent 端点全 `/v3/*`**:1 异步 `/v3/analyze` + 5 同步(+ `/health`);Agent 的 v1/v2 整删,无兼容层。Web 端 `/api/v2/*` 与 v1 生成链路(`/v1/layout` 等)已删,**`/api/v1/*` 基建端点保留**(相册 CRUD、pages、PDF presigned、字体 subset、积分/Creem webhook、auth、admin、job 轮询)。
+1. **Agent 端点全 `/v3/*`**:2 个异步初始化端点(`/v3/analyze`, `/v3/select-layout`) + 7 个同步/内部端点(`/v3/edit-chat`, `/v3/chapter-chat`, `/v3/page-edit`, `/v3/recommend`, `/v3/apply-theme`, `/v3/cover`, `/v3/finalize`, `/internal/agent-ack`) + `/health`;Agent 的 v1/v2 整删,无兼容层。Web 端 `/api/v2/*` 与 v1 生成链路(`/v1/layout` 等)已删,**`/api/v1/*` 基建端点保留**(相册 CRUD、pages、PDF presigned、字体 subset、积分/Creem webhook、auth、admin、job 轮询)。
 2. **两类模型 + 识图模型当主控**:识图模型(ark/openai 双槽 failover)既分析又主控版面;文案模型(deepseek 槽)只管文案;详见 §1.1。
 3. **隐私:Stage 0 只读 `takenAt`,不抽 GPS、无地点字段**;分章只用时间 + `clusterId` + 画面整体性;redact 保留坐标键作防御红线。
 4. **`albums.stage`(五环节状态主控)**:`album_stage` pgEnum = `('analysing','story','theme','cover','ready')`,Web 唯一真相源,与 `albums.status`(init 生命周期 + 积分)**正交并存、互不派生**。导出闸门 = 章节故事全章完成即解锁,主题/封面不卡导出。

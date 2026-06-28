@@ -22,6 +22,10 @@ __pycache__/
 # LLM I/O 调试追踪(dev 默认常开,本地产物,绝不入库)
 llm-trace.txt
 apps/agent/llm-trace.txt
+apps/agent/llm-trace*.txt
+
+# Local agent/Claude workspace metadata
+.claude/
 
 # Local SQLite dev DB
 *.db

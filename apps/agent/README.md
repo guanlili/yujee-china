@@ -1,38 +1,35 @@
 # Yujee Agent (FastAPI)
 
-Stateless layout service. Web posts `POST /v1/layout`, Agent 202-accepts and runs
-the pipeline on a `BackgroundTask`, then pushes `progress` / `completed` / `failed`
-events to the caller's `callbackUrl`.
+FastAPI service for the V3 album authoring flow. The current service surface is
+V3 only; the retired `/v1/layout` mock pipeline is no longer part of the app.
 
-Source of truth: [`docs/agent/contract.md`](../../docs/agent/contract.md).
+Source of truth:
 
-This first version ships a **mock pipeline** — no Volc / DeepSeek calls. It walks
-the three stages (`vision` -> `writing` -> `composing`), pauses 1 s per step,
-and emits a synthetic `AlbumLayoutPlan` so Web can dogfood the full callback /
-polling loop end to end.
+- HTTP contract: [`docs/agent/contract.md`](../../docs/agent/contract.md)
+- Internal design: [`docs/agent/design.md`](../../docs/agent/design.md)
+- Current operation audit: [`docs/agent/actual-operation-2026-06-27.md`](../../docs/agent/actual-operation-2026-06-27.md)
 
-## Layout
+## Runtime Shape
 
 ```
 apps/agent/
 ├── pyproject.toml
 ├── .env.example
-├── tests/
-│   └── test_e2e.sh          # spins up agent + sink, asserts callback counts
-└── src/
-    ├── main.py              # FastAPI app, middleware, exception handlers
-    ├── settings.py          # pydantic-settings
-    ├── auth.py              # Bearer dependency
-    ├── schemas.py           # request + AlbumLayoutPlan + callback envelope
-    ├── logging_config.py    # structlog + requestId contextvar
-    ├── routes/
-    │   ├── health.py        # GET /health
-    │   └── layout.py        # POST /v1/layout (202 + BackgroundTasks)
-    └── services/
-        ├── pipeline.py      # orchestrates vision -> writing -> composing
-        ├── vision_mock.py   # synthetic PhotoAnalysis
-        ├── planning_mock.py # synthetic AlbumLayoutPlan
-        └── callback.py      # httpx POST, 10s timeout, 2 retries (1s/4s)
+├── alembic.ini
+├── migrations/              # Agent-owned agent.* edit-loop schema
+├── src/
+│   ├── main.py              # FastAPI app, middleware, exception handlers
+│   ├── routes.py            # /health, /v3/*, /internal/agent-ack
+│   ├── settings.py          # pydantic-settings
+│   ├── auth.py              # Bearer dependency
+│   ├── schemas.py           # Python mirror of packages/contracts/src/v3.ts
+│   ├── callback.py          # async job callback poster
+│   ├── db.py                # Agent-owned edit session/op/message boundary
+│   ├── flows/               # async orchestration: analyze, select-layout
+│   ├── agents/              # model-backed capabilities
+│   ├── engine/              # deterministic transforms
+│   └── prompts/             # common rules and capability prompts
+└── tests/
 ```
 
 ## Setup
@@ -41,36 +38,25 @@ apps/agent/
 cd apps/agent
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e ".[dev]"
 cp .env.example .env
-echo "AGENT_SHARED_SECRET=dev_secret_$(date +%s)" >> .env
 ```
 
-Required envs (see `.env.example`):
+Required local `.env` fields:
 
-| name | default | note |
-|---|---|---|
-| `AGENT_SHARED_SECRET` | — | required; startup fails if missing |
-| `WEB_BASE_URL` | `http://localhost:3000` | Web origin (not used by mock pipeline) |
-| `DATABASE_URL` | — | required for agent-owned `agent.*` edit-loop tables and `/internal/agent-ack` |
-| `BACKGROUND_TASK_TIMEOUT_SECONDS` | `180` | soft cap for pipeline.run |
-| `PORT` | `8001` | uvicorn port |
-| `LOG_LEVEL` | `info` | structlog filtering bound logger level |
+| name | note |
+|---|---|
+| `AGENT_SHARED_SECRET` | required; bearer secret shared with Web |
+| `WEB_BASE_URL` | Web origin for edit-chat internal data calls |
+| `DATABASE_URL` | required for `/v3/edit-chat` and `/internal/agent-ack`; optional for deterministic endpoints |
+| `AGENT_PIPELINE_MODE` | `mock` or `real`; production must use `real` |
+| `AGENT_ENV` | `development`, `staging`, or `production` |
+| `ARK_API_KEY` | required at startup when `AGENT_PIPELINE_MODE=real` |
+| `DEEPSEEK_API_KEY` | required at startup when `AGENT_PIPELINE_MODE=real` |
+| `PORT` | default local port is `8001` |
 
-## Agent-owned DB migrations
-
-The Agent owns only the independent Postgres schema `agent` for Stage3 edit-loop
-state. Web Drizzle does not manage these tables. Migration assets live in
-`apps/agent/alembic.ini` and `apps/agent/migrations/` and are copied into the
-Docker image.
-
-```bash
-cd apps/agent
-DATABASE_URL=postgresql://... alembic -c alembic.ini upgrade head
-```
-
-Production deploys must set `DATABASE_URL`; otherwise `/internal/agent-ack`
-returns an infrastructure error instead of treating the op as unknown.
+`.env.example` contains a non-empty development placeholder for
+`AGENT_SHARED_SECRET`; replace it when connecting to Web.
 
 ## Run
 
@@ -80,85 +66,97 @@ From repo root:
 pnpm agent:dev
 ```
 
-Or directly:
+If `8001` is already occupied, keep the existing service running or choose a
+different port:
 
 ```bash
-cd apps/agent && source .venv/bin/activate
-uvicorn src.main:app --reload --port 8001
+PORT=8011 pnpm agent:dev
+curl http://127.0.0.1:8011/health
 ```
 
-Smoke:
+Directly from `apps/agent`:
 
 ```bash
-curl http://localhost:8001/health
-# {"ok":true,"version":"1.0.0","timestamp":"..."}
+.venv/bin/uvicorn src.main:app --reload --port "${PORT:-8001}"
 ```
 
-## End-to-end verification
+Health response:
 
-`tests/test_e2e.sh` starts a local sink on `:8002`, starts the agent on `:8001`,
-fires a happy-path request and a `prompt=="FAIL_TEST"` request, then asserts the
-sink received >= 9 progress callbacks, >= 1 completed, and >= 1 failed.
+```json
+{"ok":true,"version":"1.0.0","timestamp":"..."}
+```
+
+## Endpoint Surface
+
+| Endpoint | Mode | Purpose |
+|---|---:|---|
+| `GET /health` | sync | health check |
+| `POST /v3/analyze` | async 202 + callback | Stage1 tree-only analysis from browser base64 |
+| `POST /v3/select-layout` | async 202 + callback | Stage2 page selection from browser 200px refs |
+| `POST /v3/chapter-chat` | sync | stateless single-chapter turn |
+| `POST /v3/edit-chat` | sync + DB | current stateful authoring turn with pending op |
+| `POST /v3/page-edit` | sync | focused page edit helper with safe talk fallback |
+| `POST /v3/recommend` | sync | three book-level theme options |
+| `POST /v3/apply-theme` | sync deterministic | apply selected theme to page patches |
+| `POST /v3/cover` | sync awaited async | optional cover/ending design or skip |
+| `POST /v3/finalize` | sync deterministic | flatten tree + pages into `AlbumLayoutPlan` |
+| `POST /internal/agent-ack` | sync + DB | mark Web-committed edit op as committed |
+
+All business endpoints require:
+
+```http
+Authorization: Bearer <AGENT_SHARED_SECRET>
+Content-Type: application/json
+```
+
+## Stage Flow
+
+```text
+Web -> /v3/analyze
+Web <- callback jobKind=analyze completed: V3LayoutTree only
+Web -> /v3/select-layout
+Web <- callback jobKind=select-layout completed: Page[]
+Web -> /v3/edit-chat
+Web -> /internal/agent-ack
+Web -> /v3/recommend
+Web -> /v3/apply-theme
+Web -> /v3/cover
+Web -> /v3/finalize
+```
+
+`/v3/analyze` no longer returns pages. Web keeps the init job open after the
+tree callback and moves the album into editing only after `/v3/select-layout`
+returns pages.
+
+## Agent-Owned DB Migrations
+
+The Agent owns only the independent Postgres schema `agent` for Stage3
+edit-loop state. Web Drizzle does not manage these tables.
 
 ```bash
-bash apps/agent/tests/test_e2e.sh
+cd apps/agent
+DATABASE_URL=postgresql://... alembic -c alembic.ini upgrade head
 ```
 
-Expected tail:
+Production deploys must set `DATABASE_URL`; otherwise `/v3/edit-chat` and
+`/internal/agent-ack` return infrastructure errors.
 
-```
-[summary] progress=9 completed=1 failed=1
-PASS
-```
+## Tests
 
-Last verified run on this machine (2026-05-27):
+Run Python tests from the repo root so the local `apps/agent/.env` does not
+pollute provider-key isolation tests:
 
-```
-[test] GET /health
-{"ok":true,"version":"1.0.0","timestamp":"2026-05-26T18:25:51.332677Z"}
-
-[test] POST /v1/layout (happy path)
-{"ok":true,"data":{"requestId":"req_e2e_ok","accepted":true}}
-
-[test] POST /v1/layout (FAIL_TEST)
-{"ok":true,"data":{"requestId":"req_e2e_fail","accepted":true}}
-
-CALLBACK {"requestId":"req_e2e_ok","event":"progress","stage":"vision","progress":0}
-CALLBACK {"requestId":"req_e2e_fail","event":"failed","error":{"code":"AGENT_VISION_FAILED","message":"forced failure for test"}}
-CALLBACK {"requestId":"req_e2e_ok","event":"progress","stage":"vision","progress":50}
-CALLBACK {"requestId":"req_e2e_ok","event":"progress","stage":"vision","progress":100}
-CALLBACK {"requestId":"req_e2e_ok","event":"progress","stage":"writing","progress":0}
-CALLBACK {"requestId":"req_e2e_ok","event":"progress","stage":"writing","progress":50}
-CALLBACK {"requestId":"req_e2e_ok","event":"progress","stage":"writing","progress":100}
-CALLBACK {"requestId":"req_e2e_ok","event":"progress","stage":"composing","progress":0}
-CALLBACK {"requestId":"req_e2e_ok","event":"progress","stage":"composing","progress":50}
-CALLBACK {"requestId":"req_e2e_ok","event":"progress","stage":"composing","progress":100}
-CALLBACK {"requestId":"req_e2e_ok","event":"completed","layout":{...full AlbumLayoutPlan...}}
-
-[summary] progress=9 completed=1 failed=1
-PASS
+```bash
+PYTHONPATH=apps/agent apps/agent/.venv/bin/python -m pytest apps/agent/tests
 ```
 
-## Mock pipeline behaviour
+Useful focused checks:
 
-For each request the background task emits, per stage in
-`vision -> writing -> composing`:
+```bash
+PYTHONPATH=apps/agent apps/agent/.venv/bin/python -m pytest apps/agent/tests/test_v3_route_surface.py -q
+PYTHONPATH=apps/agent apps/agent/.venv/bin/python -m pytest apps/agent/tests/test_startup_config.py -q
+pnpm --filter @yujee/web exec tsx --test scripts/agent-dev-script.test.ts
+```
 
-1. `event=progress progress=0` -> sleep 1s
-2. `event=progress progress=50` -> sleep 1s
-3. `event=progress progress=100`
-
-Then a synthetic `AlbumLayoutPlan` (cover-01 + spread-01 + spread-02 pages) and
-`event=completed` with `usage.durationMs`.
-
-Test hook: `prompt == "FAIL_TEST"` skips the stages and emits a single
-`event=failed` with `code=AGENT_VISION_FAILED`.
-
-Total wall time per request: ~6-7 s.
-
-## Hot points
-
-- No state: the process holds no DB / disk / cache. Restarts drop in-flight tasks.
-- Callbacks: 10 s timeout, 2 retries with 1 s / 4 s backoff, then log and drop.
-  Web has its own zombie-job sweeper as the safety net.
-- Bearer secret is read from env at module import. It is not logged.
+If you intentionally run tests from `apps/agent`, be aware that
+`Settings(env_file=".env")` will read `apps/agent/.env`.

@@ -27,12 +27,10 @@ class DescribeResult:
 
 @dataclass(frozen=True)
 class V3AnalyzeResult:
-    """统一识图调用(读图 + 分章 + 分页选模板,合一)的输出。
+    """旧的一体化识图调用输出,保留给未迁移内部引用。
 
-    `tree` 承载 LLM 撰写的章节字段(description / 每图 sceneDescription)+ 代码填充的
-    确定性照片属性;`pages` 是【已经过确定性合法性护栏】的扁平正文页 dict 列表(形如
-    `schemas.Page`:pageIndex/templateId/images/texts,texts 为空 —— 通用文案/色稍后叠加)。
-    封面/封底由调用方的 `wrap_with_cover_ending` 在这些正文页前后补齐。
+    当前对外 `/v3/analyze` callback 是 tree-only;pages 由 `/v3/select-layout`
+    单独产生。这里的 `pages` 只表示旧内部组合结果,不等于对外 analyze callback。
 
     `model` 是实际命中的 slot(使 Usage.models.vision 反映真实 provider,而非写死)。"""
 
@@ -44,6 +42,6 @@ class V3AnalyzeResult:
     call_count: int = 1
 
 
-# 向后兼容别名:旧名 V3DescribeResult 在重构前是只含 tree 的「describe」结果。统一调用后
-# 它就是 V3AnalyzeResult(同时承载 tree + pages)。保留别名以免外部引用炸裂。
+# 向后兼容别名:旧名 V3DescribeResult 在重构前是只含 tree 的「describe」结果。
+# 现在保留为旧内部组合结果别名;对外 analyze callback 仍只返回 tree。
 V3DescribeResult = V3AnalyzeResult
