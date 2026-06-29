@@ -151,11 +151,7 @@ def _assemble_result(parsed: Any) -> UnplacedAssignments:
         ]
         if len(photo_ids) != len(raw_photo_ids):
             raise VisionError(f"refine-unplaced {chapter_id}.photoIds contain invalid id")
-        description = _required_text(
-            raw.get("description"),
-            field=f"{chapter_id}.description",
-            max_len=600,
-        )
+        # 新建章节不写 description(目录占位,后期写目录才填):只取标题/关键词/视觉摘要。
         title_hint = _required_text(
             raw.get("titleHint"),
             field=f"{chapter_id}.titleHint",
@@ -171,7 +167,6 @@ def _assemble_result(parsed: Any) -> UnplacedAssignments:
             NewChapter(
                 chapterId=chapter_id,
                 photoIds=photo_ids,
-                description=description,
                 chapterTitleHint=title_hint,
                 chapterKeywords=keywords,
                 chapterVisualSummary=visual_summary,

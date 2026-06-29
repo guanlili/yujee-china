@@ -16,7 +16,6 @@
     {
       "chapterId": "new_ch_1",
       "photoIds": ["2"],
-      "description": "...",
       "titleHint": "...",
       "keywords": ["..."],
       "visualSummary": "..."
@@ -27,7 +26,6 @@
 `assignments` 必须覆盖每一张散落照片,且每张照片只能出现一次。目标章节只能是已有 `chapterId`,或者你在 `newChapters` 里创建的新 `chapterId`。
 
 如果创建新章节,必须为它写:
-- `description`: 一段紧凑的章节画面/情绪概括。
 - `titleHint`: 一个短标题方向。
 - `keywords`: 3 到 6 个具体关键词。
 - `visualSummary`: 一句视觉摘要。

@@ -1,5 +1,7 @@
 import pytest
 
+from src.agents import select_layout as select_layout_agent
+from src.engine import skeleton_v3, templates
 from src.flows import select_layout
 from src.schemas import SelectLayoutRequest
 
@@ -62,7 +64,7 @@ def _chapter(chapter_id: str, photo_ids: list[str]) -> dict:
 
 
 def _interior_template_with_capacity(capacity: int) -> str:
-    ids = select_layout.skeleton_v3.candidate_ids("interior", capacity)
+    ids = skeleton_v3.candidate_ids("interior", capacity)
     if not ids:
         pytest.skip(f"template registry has no interior capacity {capacity}")
     return ids[0]
@@ -71,9 +73,7 @@ def _interior_template_with_capacity(capacity: int) -> str:
 def _raw_page_for_chapter(chapter) -> dict:  # noqa: ANN001
     photos = list(chapter.photos)
     template_id = _interior_template_with_capacity(len(photos))
-    slots = select_layout.skeleton_v3.image_slot_keys(
-        select_layout.gemini_layout.templates.TEMPLATES[template_id]
-    )
+    slots = skeleton_v3.image_slot_keys(templates.TEMPLATES[template_id])
     return {
         "chapterId": chapter.chapterId,
         "templateId": template_id,
@@ -86,13 +86,14 @@ async def test_select_layout_falls_back_wraps_and_fills_generic_copy(monkeypatch
     async def fail_gemini(*args, **kwargs):  # noqa: ANN002, ANN003
         raise RuntimeError("Gemini unavailable")
 
-    monkeypatch.setattr(select_layout.gemini_layout, "gemini_layout", fail_gemini)
+    monkeypatch.setattr(select_layout.select_layout_agent, "gemini_layout", fail_gemini)
 
     pages, usage = await select_layout.select_pages(_request())
 
     assert [page["pageIndex"] for page in pages] == list(range(len(pages)))
-    assert len(pages) >= 3
-    assert set(pages[1]["images"].values()) == {"p1", "p2"}
+    # 封面/封底不再在排版这步生成:Stage2 只产 interior 页,首页即第一张 interior。
+    assert len(pages) >= 1
+    assert {pid for page in pages for pid in page["images"].values()} == {"p1", "p2"}
     assert any(value for page in pages for key, value in page["texts"].items() if key == "folio")
     assert usage.geminiCallCount == 0
 
@@ -105,7 +106,7 @@ async def test_select_layout_fallback_writes_trace_marker(monkeypatch, tmp_path)
     async def fail_gemini(*args, **kwargs):  # noqa: ANN002, ANN003
         raise RuntimeError("Gemini unavailable")
 
-    monkeypatch.setattr(select_layout.gemini_layout, "gemini_layout", fail_gemini)
+    monkeypatch.setattr(select_layout.select_layout_agent, "gemini_layout", fail_gemini)
 
     await select_layout.select_pages(_request())
 
@@ -151,7 +152,7 @@ async def test_select_layout_run_writes_full_chain_trace_without_image_payload(m
         return True
 
     async def fake_gemini(chapters, **kwargs):  # noqa: ANN001, ANN003
-        return select_layout.gemini_layout.GeminiLayoutResult(
+        return select_layout_agent.GeminiLayoutResult(
             pages=[_raw_page_for_chapter(chapter) for chapter in chapters],
             call_count=1,
             model="gemini-test",
@@ -160,7 +161,7 @@ async def test_select_layout_run_writes_full_chain_trace_without_image_payload(m
         )
 
     monkeypatch.setattr(select_layout.callback, "post", capture_post)
-    monkeypatch.setattr(select_layout.gemini_layout, "gemini_layout", fake_gemini)
+    monkeypatch.setattr(select_layout.select_layout_agent, "gemini_layout", fake_gemini)
 
     await select_layout.run_with_timeout(_request())
 
@@ -181,7 +182,7 @@ async def test_select_layout_batches_chapters_by_max_images_per_batch(monkeypatc
 
     async def fake_gemini(chapters, **kwargs):  # noqa: ANN001, ANN003
         calls.append([chapter.chapterId for chapter in chapters])
-        return select_layout.gemini_layout.GeminiLayoutResult(
+        return select_layout_agent.GeminiLayoutResult(
             pages=[_raw_page_for_chapter(chapter) for chapter in chapters],
             call_count=1,
             model="gemini-test",
@@ -189,7 +190,7 @@ async def test_select_layout_batches_chapters_by_max_images_per_batch(monkeypatc
             output_tokens=2,
         )
 
-    monkeypatch.setattr(select_layout.gemini_layout, "gemini_layout", fake_gemini)
+    monkeypatch.setattr(select_layout.select_layout_agent, "gemini_layout", fake_gemini)
 
     await select_layout.select_pages(
         _multi_request(
@@ -213,7 +214,7 @@ async def test_select_layout_fallbacks_only_the_failed_batch(monkeypatch):
     async def fake_gemini(chapters, **kwargs):  # noqa: ANN001, ANN003
         if [chapter.chapterId for chapter in chapters] == ["ch_2"]:
             raise RuntimeError("batch failed")
-        return select_layout.gemini_layout.GeminiLayoutResult(
+        return select_layout_agent.GeminiLayoutResult(
             pages=[_raw_page_for_chapter(chapter) for chapter in chapters],
             call_count=1,
             model="gemini-ok",
@@ -221,7 +222,7 @@ async def test_select_layout_fallbacks_only_the_failed_batch(monkeypatch):
             output_tokens=2,
         )
 
-    monkeypatch.setattr(select_layout.gemini_layout, "gemini_layout", fake_gemini)
+    monkeypatch.setattr(select_layout.select_layout_agent, "gemini_layout", fake_gemini)
 
     pages, usage = await select_layout.select_pages(
         _multi_request(
@@ -254,7 +255,7 @@ async def test_select_layout_splits_a_single_oversized_chapter_by_max_images_per
     async def fake_gemini(chapters, **kwargs):  # noqa: ANN001, ANN003
         assert len(chapters) == 1
         calls.append([photo.photoId for photo in chapters[0].photos])
-        return select_layout.gemini_layout.GeminiLayoutResult(
+        return select_layout_agent.GeminiLayoutResult(
             pages=[_raw_page_for_chapter(chapters[0])],
             call_count=1,
             model="gemini-test",
@@ -262,7 +263,7 @@ async def test_select_layout_splits_a_single_oversized_chapter_by_max_images_per
             output_tokens=1,
         )
 
-    monkeypatch.setattr(select_layout.gemini_layout, "gemini_layout", fake_gemini)
+    monkeypatch.setattr(select_layout.select_layout_agent, "gemini_layout", fake_gemini)
 
     await select_layout.select_pages(
         _multi_request([_chapter("ch_big", ["p1", "p2", "p3", "p4", "p5"])])

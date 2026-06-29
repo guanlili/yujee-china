@@ -1,36 +1,15 @@
-"""Gemini-assisted Stage2 layout selection.
+"""Stage2 排版的确定性部分:候选目录构造 + Gemini 选版结果的合法化夹紧。
 
-The module owns candidate construction from templates + preview assets and the
-deterministic legalizer that preserves legal Gemini slot mappings. Callers use
-`gemini_layout()` for model intent and `legalize_layout()` before returning pages.
+这层只做确定性逻辑(包在 `skeleton_v3` 外的一层薄壳),零 LLM/agent import。
+LLM 调用在 `agents/select_layout/`。两端共用的章节/照片字段读取辅助也放这里。
 """
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from typing import Any
 
-from .. import ai_client
-from ..logging_config import get_logger
-from ..settings import get_settings
-from . import simple_id, skeleton_v3, template_previews, templates
-
-log = get_logger("gemini_layout")
-
-
-class GeminiLayoutUnavailable(Exception):
-    """Raised when the Gemini layout provider is not configured or failed."""
-
-
-@dataclass(frozen=True)
-class GeminiLayoutResult:
-    pages: list[dict[str, Any]]
-    call_count: int = 0
-    model: str | None = None
-    input_tokens: int = 0
-    output_tokens: int = 0
+from . import skeleton_v3, template_previews, templates
 
 
 def _get(obj: Mapping[str, Any] | Any, key: str, default: Any = None) -> Any:
@@ -123,7 +102,9 @@ def _fallback_chapter_pages(chapter: Any) -> list[dict[str, Any]]:
     return pages
 
 
-def _raw_pages_for_chapter(raw_pages: Sequence[Mapping[str, Any]], chapter_id: str) -> list[Mapping[str, Any]]:
+def _raw_pages_for_chapter(
+    raw_pages: Sequence[Mapping[str, Any]], chapter_id: str
+) -> list[Mapping[str, Any]]:
     return [
         page
         for page in raw_pages
@@ -187,125 +168,3 @@ def legalize_layout(
     for idx, page in enumerate(out):
         page["pageIndex"] = idx
     return out
-
-
-def _unit_payload(chapter: Any, id_map: dict[str, str]) -> dict[str, Any]:
-    photos: list[dict[str, Any]] = []
-    for photo in _photos(chapter):
-        pid = _photo_id(photo)
-        simple = next(k for k, v in id_map.items() if v == pid)
-        photos.append(
-            {
-                "photoId": simple,
-                "orientation": _get(photo, "orientation"),
-                "takenAt": _get(photo, "takenAt"),
-            }
-        )
-    return {
-        "chapterId": _chapter_id(chapter),
-        "structureHint": _get(chapter, "structureHint", None),
-        "photos": photos,
-        "candidates": [
-            {key: value for key, value in candidate.items() if key != "previewImage"}
-            for candidate in build_candidate_catalog("interior", len(photos))
-        ],
-    }
-
-
-def _messages(chapters: Sequence[Any], id_map: dict[str, str]) -> list[dict[str, Any]]:
-    text_payload = {
-        "mode": "select",
-        "allowAddPages": True,
-        "units": [_unit_payload(chapter, id_map) for chapter in chapters],
-        "output": {
-            "pages": [
-                {
-                    "chapterId": "chapter id",
-                    "templateId": "one candidate templateId",
-                    "slots": {"slotId": "simple photoId"},
-                }
-            ]
-        },
-    }
-    content: list[dict[str, Any]] = [
-        {
-            "type": "text",
-            "text": (
-                "Select legal interior templates and map photos to image slots. "
-                "Return STRICT JSON only matching the requested output shape. "
-                "Use only candidate templateId values and simple photo IDs.\n"
-                f"{json.dumps(text_payload, ensure_ascii=False)}"
-            ),
-        }
-    ]
-    previews = template_previews.load_template_previews()
-    for chapter in chapters:
-        for photo in _photos(chapter):
-            ref = _photo_ref(photo)
-            if ref:
-                content.append({"type": "image_url", "image_url": {"url": ref}})
-        cap = min(len(_photos(chapter)), skeleton_v3.max_capacity("interior"))
-        for capacity in range(1, cap + 1):
-            image = previews.bucket_images.get(("interior", capacity))
-            if image:
-                content.append({"type": "image_url", "image_url": {"url": image}})
-
-    return [
-        {
-            "role": "system",
-            "content": "You are a magazine layout selector. Output JSON only.",
-        },
-        {"role": "user", "content": content},
-    ]
-
-
-async def gemini_layout(
-    chapters: Sequence[Mapping[str, Any] | Any],
-    *,
-    mode: str = "select",
-    allowAddPages: bool = True,
-) -> GeminiLayoutResult:
-    if mode not in {"select", "case4-swap"} or not allowAddPages:
-        raise ValueError("gemini_layout expects mode='select' or 'case4-swap' and allowAddPages=True")
-
-    settings = get_settings()
-    api_key = getattr(settings, "select_layout_api_key", None)
-    if not api_key:
-        raise GeminiLayoutUnavailable("SELECT_LAYOUT_API_KEY missing")
-
-    photo_ids = [_photo_id(photo) for chapter in chapters for photo in _photos(chapter)]
-    _, id_map = simple_id.to_simple(photo_ids)
-    response = await ai_client.chat_completion(
-        base_url=getattr(settings, "select_layout_base_url"),
-        api_key=api_key,
-        model=getattr(settings, "select_layout_model"),
-        messages=_messages(chapters, id_map),
-        timeout_seconds=getattr(settings, "select_layout_timeout_seconds"),
-        response_format=(
-            {"type": "json_object"} if getattr(settings, "select_layout_use_json_object") else None
-        ),
-        max_tokens=getattr(settings, "select_layout_max_output_tokens"),
-        temperature=0.1,
-        extra_body=(
-            {"reasoning_effort": "none"}
-            if getattr(settings, "select_layout_disable_thinking")
-            else None
-        ),
-    )
-    parsed = ai_client.parse_json_loose(ai_client.extract_text(response))
-    pages = parsed.get("pages") if isinstance(parsed, Mapping) else None
-    if not isinstance(pages, list):
-        raise ValueError("Gemini layout response missing pages[]")
-    real_pages = simple_id.from_simple_at_paths(
-        pages,
-        id_map,
-        value_paths=(("*", "slots", "*"),),
-    )
-    input_tokens, output_tokens = ai_client.extract_usage(response)
-    return GeminiLayoutResult(
-        pages=[page for page in real_pages if isinstance(page, dict)],
-        call_count=1,
-        model=getattr(settings, "select_layout_model"),
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-    )

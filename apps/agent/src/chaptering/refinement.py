@@ -110,8 +110,6 @@ def _validate_refinement(
 def _validate_new_chapter(chapter: NewChapter) -> None:
     if not chapter.chapterId:
         raise ValueError("AI new chapter id is required")
-    if not chapter.description.strip():
-        raise ValueError(f"AI new chapter description is required: {chapter.chapterId}")
     if not chapter.chapterVisualSummary.strip():
         raise ValueError(f"AI new chapter visual summary is required: {chapter.chapterId}")
     if not chapter.chapterKeywords:

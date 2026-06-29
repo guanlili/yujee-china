@@ -58,7 +58,6 @@ def test_refinement_accepts_ai_new_chapter_assignments() -> None:
                 NewChapter(
                     chapterId="new_ch_1",
                     photoIds=["p3"],
-                    description="A family dinner chapter.",
                     chapterTitleHint="Family dinner",
                     chapterKeywords=["family", "restaurant", "dinner"],
                     chapterVisualSummary="A warm indoor dinner scene.",
@@ -107,7 +106,6 @@ def test_tree_builder_adds_ai_created_chapters() -> None:
             NewChapter(
                 chapterId="new_ch_1",
                 photoIds=["p2"],
-                description="A family dinner chapter.",
                 chapterTitleHint="Family dinner",
                 chapterKeywords=["family", "restaurant", "dinner"],
                 chapterVisualSummary="A warm indoor dinner scene.",
@@ -118,6 +116,7 @@ def test_tree_builder_adds_ai_created_chapters() -> None:
     tree = tree_builder.assemble_stage1_tree(grouping, descriptions, assignments, photos)
 
     assert [chapter.chapterId for chapter in tree.chapters] == ["ch_1", "new_ch_1"]
-    assert tree.chapters[1].description == "A family dinner chapter."
+    # 章节 description 是目录占位:分析期统一留空。
+    assert tree.chapters[1].description == ""
     assert tree.chapters[1].photos[0].photoId == "p2"
     assert tree.chapters[1].photos[0].sceneDescription == "A warm indoor dinner scene."

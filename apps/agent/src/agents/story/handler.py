@@ -161,11 +161,10 @@ def _slot_spec(slot: dict[str, Any], *, slot_id: str, repeat_index: int | None =
 
 
 def _scene_background(chapter: Any) -> dict[str, Any]:
-    """画面背景 (§4.2(4)):chapter description + 逐照片 sceneDescription,取自请求承载的
-    §4.1 analysis 树。在构造上隐私干净 —— `V3ChapterPhoto`(`_V3Strict`)在解析时就禁止
-    任何 GPS/place 字段。"""
+    """画面背景 (§4.2(4)):逐照片 sceneDescription,取自请求承载的 §4.1 analysis 树。
+    章节 description 是目录(TOC)占位、分析期留空,不进写作上下文(省 token)。
+    在构造上隐私干净 —— `V3ChapterPhoto`(`_V3Strict`)在解析时就禁止任何 GPS/place 字段。"""
     return {
-        "chapterDescription": chapter.description,
         "photos": [
             {"photoId": p.photoId, "sceneDescription": p.sceneDescription}
             for p in chapter.photos
@@ -276,11 +275,11 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
     #   写作 Skill → system(write_chapter),引导 Skill → system(guide_chapter)
     #   逐槽 hint  → pageSlots[].hint(经 page_slot_specs 从模板透传)
     #   输出示例  → pageOutputExamples(每页模板示例文案,例驱动写作的核心)
-    #   画面背景  → sceneBackground(章节描述 + 逐照片 sceneDescription)
+    #   画面背景  → sceneBackground(逐照片 sceneDescription)
     #   页面结构  → pageSlots(每页 id/lang/hint)+ pageImages(每页放哪些图)
     payload: dict[str, Any] = {
         "language": req.language,
-        # 画面背景 (§4.1 analysis 树):章节描述 + 逐照片场景。
+        # 画面背景 (§4.1 analysis 树):逐照片场景。
         "sceneBackground": _scene_background(req.chapter),
         # 页面结构:逐页的创作槽规格(id/lang/hint;无 role/maxChars —— 例驱动)……
         "pageSlots": {str(idx): specs for idx, specs in slot_specs.items()},

@@ -292,23 +292,14 @@ def _matching_text_keys(texts: dict[str, str], base_slot: str) -> list[str]:
 
 
 def _magazine(request: V3FinalizeRequest, language: str) -> Magazine:
-    title = _first_nonempty_description(request) or _DEFAULT_TITLE.get(
-        language, _DEFAULT_TITLE["en"]
-    )
+    # 章节 description 是目录占位、分析期留空,不再作为副标题来源:直接走默认标题。
+    title = _DEFAULT_TITLE.get(language, _DEFAULT_TITLE["en"])
     return Magazine(
         title=_clamp(title, 60),
         subtitle=None,
         style="editorial",
         language=language,
     )
-
-
-def _first_nonempty_description(request: V3FinalizeRequest) -> str:
-    for chapter in request.tree.chapters:
-        text = (chapter.description or "").strip()
-        if text:
-            return text
-    return ""
 
 
 def _clamp(text: str, max_chars: int) -> str:

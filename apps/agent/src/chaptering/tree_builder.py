@@ -139,20 +139,8 @@ def _chapter_description(
     descriptions: DescribeResult,
     new_by_id: Mapping[str, Any],
 ) -> str:
-    if chapter_id in descriptions.chapterDescriptions:
-        return _required_text(
-            descriptions.chapterDescriptions.get(chapter_id),
-            field=f"{chapter_id}.description",
-            max_len=600,
-        )
-    new_chapter = new_by_id.get(chapter_id)
-    if new_chapter is not None:
-        return _required_text(
-            new_chapter.description,
-            field=f"{chapter_id}.description",
-            max_len=600,
-        )
-    raise ValueError(f"{chapter_id}.description is required")
+    # 章节 description 是目录(TOC)占位:分析期统一留空,后期写目录环节才填。
+    return ""
 
 
 def _photo_scene_description(
@@ -171,15 +159,12 @@ def _photo_scene_description(
     new_chapter = new_by_id.get(chapter_id)
     if new_chapter is not None:
         return _required_text(
-            new_chapter.chapterVisualSummary or new_chapter.description,
+            new_chapter.chapterVisualSummary,
             field=f"{photo_id}.sceneDescription",
             max_len=300,
         )
 
-    fallback = (
-        descriptions.chapterVisualSummaries.get(chapter_id)
-        or descriptions.chapterDescriptions.get(chapter_id)
-    )
+    fallback = descriptions.chapterVisualSummaries.get(chapter_id)
     return _required_text(
         fallback,
         field=f"{photo_id}.sceneDescription",

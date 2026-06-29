@@ -157,25 +157,21 @@ def _assemble_result(parsed: Any, grouping: GroupingResult) -> DescribeResult:
         if not isinstance(scenes, dict):
             raise VisionError(f"describe-chapters {chapter.chapterId} scenes must be an object")
 
-        description = _required_text(
-            raw.get("description"),
-            field=f"{chapter.chapterId}.description",
-            max_len=600,
-        )
+        # 章节 description 不再由识图阶段写:留作目录(TOC)占位,后期写目录才填。
         title_hint = _optional_text(
             raw.get("titleHint"),
             field=f"{chapter.chapterId}.titleHint",
             max_len=120,
         )
-        visual_summary = _optional_text(
+        # visualSummary 仍必填:它是逐照片 sceneDescription 的兜底来源(原先由 description
+        # 兜底,description 取消后由 visualSummary 顶上),缺失触发 recoverable 重试。
+        visual_summary = _required_text(
             raw.get("visualSummary"),
             field=f"{chapter.chapterId}.visualSummary",
             max_len=300,
-            fallback=description,
         )
         keywords = _keyword_list(raw.get("keywords"), field=f"{chapter.chapterId}.keywords")
 
-        chapter_descriptions[chapter.chapterId] = description
         chapter_title_hints[chapter.chapterId] = title_hint
         chapter_keywords[chapter.chapterId] = keywords
         chapter_visual_summaries[chapter.chapterId] = visual_summary
@@ -217,7 +213,6 @@ def _is_recoverable_error(exc: VisionError) -> bool:
     msg = str(exc)
     return (
         "omitted chapterId" in msg
-        or ".description" in msg
         or ".keywords" in msg
         or ".visualSummary" in msg
     )

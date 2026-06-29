@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from ...engine import gemini_layout
+from .. import select_layout as select_layout_agent
+from ...engine import legalize
 from ...schemas import V3EditChatRequest, V3LayoutPatchEntry
 
 
@@ -76,9 +77,17 @@ async def swap_layout(
         return []
 
     chapters = [{"chapterId": chapter_id, "structureHint": req.userMessage, "photos": photos}]
-    result = await gemini_layout.gemini_layout(chapters, mode="case4-swap", allowAddPages=True)
-    legal_pages = gemini_layout.legalize_layout(chapters, result.pages)
+    result = await select_layout_agent.gemini_layout(
+        chapters, mode="case4-swap", allowAddPages=True
+    )
+    legal_pages = legalize.legalize_layout(chapters, result.pages)
     return patches_from_pages(legal_pages, page_indexes=page_indexes)
 
 
-__all__ = ["LayoutDataTools", "gemini_layout", "patches_from_pages", "swap_layout"]
+__all__ = [
+    "LayoutDataTools",
+    "legalize",
+    "patches_from_pages",
+    "select_layout_agent",
+    "swap_layout",
+]

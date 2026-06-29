@@ -140,14 +140,15 @@ export type V3ChapterPhoto = z.infer<typeof V3ChapterPhoto>;
 
 /**
  * 章节(v3-requirements §4.1):一图一章不跨章,五环节全程复用、绝不重生成。
- *   LLM 写:`description`(主要画面/人物/情绪氛围/地点场景,一段)+ 选图归章。
+ *   `description`:目录(TOC)专用占位,分析期留空,后期写目录环节才填;
+ *     分析/识图阶段不写,也不进下游 AI 上下文(省 token)。
  *   theme 环节填:`accentColor`(取色)+ `artFont`(字体包内选一);分析期为 null 占位。
  * `accentColor`/`artFont` 与品牌正文字体无关,是排版专用点缀色/艺术字落点。
  */
 export const V3Chapter = z
   .object({
     chapterId: z.string().min(1),
-    description: z.string().max(600), // LLM 写,章节画面/情绪概述
+    description: z.string().max(600).default(""), // 目录占位,分析期留空,后期写目录才填
     // Stage1 extracted source color. Distinct from final theme `accentColor`.
     // Migration field: older trees omit it; Stage1 PR249 trees may carry null.
     extractedColor: AccentColor.nullish(),
