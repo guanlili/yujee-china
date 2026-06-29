@@ -38,16 +38,15 @@ apps/agent/src/
 │   ├── cover_v3.py
 │   ├── finalize_v3.py
 │   └── finalize_color.py
-└── prompts/
-    ├── common/
-    └── rules/
+└── skills/
+    └── replies/
 ```
 
 职责:
 
 - `routes.py`: HTTP 边界,只做 auth 后的请求解析、调用 flow/agent/engine、包 envelope、写 accepted/completed log。
 - `flows/`: 唯一多步异步编排。当前是 `/v3/analyze` 和 `/v3/select-layout`。
-- `agents/<cap>/`: 模型能力。组 prompt、调模型、解析/校验/clamp 输出,不直接写 Web draft。
+- `agents/<cap>/`: 模型能力。组 prompt、调模型、解析/校验/clamp 输出,不直接写 Web draft。共置 `.md` 只描述角色、输入范围、输出 JSON/字段契约和硬格式要求。
 - `engine/`: 确定性变换,不调模型,纯函数可单测。
 - `db.py`: Agent-owned `agent.*` edit-loop schema 边界,不读写 `public.albums`。
 - `schemas.py`: Pydantic mirror of `packages/contracts/src/v3.ts`。
@@ -220,11 +219,17 @@ DeepSeek slot (`DEEPSEEK_*`) 用于:
 
 ## 6. Prompt System
 
-`load_prompt(path, *, common=(...), **slots)` 按路径加载 prompt fragment。
+`load_prompt(path, *, skills=(...), **slots)` 按路径加载 prompt fragment。
 
-- `agents/<cap>/*.md`: 能力的固定任务定义和 JSON 输出契约。
-- `prompts/common/`: `json_only`, `grounding`, `privacy`, `persona` 等跨能力红线。
-- `prompts/rules/`: `writing_style`, `guidance_style`, `theme_colors`, `cluster_grouping` 等可调规则。
+- `agents/<cap>/*.md`: 固定 agent 契约,只写角色、输入、输出 JSON/字段形状和硬格式要求。
+- `skills/*.md`: 人为可调技能/规则/风格/红线,例如 `grounding`, `chapter_grouping`, `writing_style`, `theme_colors`。
+- `skills/replies/*.md`: 可手调的兜底/默认回复。
+
+`json_only`, `persona`, `privacy` 不再是独立 skill 文件:
+
+- 严格 JSON 输出属于 agents 共置 `.md` 的硬格式契约。
+- 人设语气不再全局注入。
+- 隐私边界由 schema strict、输入结构和 logging redact 承担。
 
 `{KEY}` 占位符用 `str.replace`,不是 `str.format`,避免破坏 JSON 示例里的 `{}`。
 

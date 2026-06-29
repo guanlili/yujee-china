@@ -38,7 +38,7 @@ from ...schemas import (
 )
 from ...engine.finalize_color import finalize_color
 from ...settings import get_settings
-from ...prompts import RULES_DIR, load_prompt, load_replies
+from ...skills import SKILLS_DIR, load_prompt, load_replies
 from ... import ai_client
 
 _PROMPT_DIR = Path(__file__).resolve().parent
@@ -93,14 +93,14 @@ def build_messages(req: V3RecommendRequest) -> list[dict[str, str]]:
     的语言不再强制(SUBJECT/assistantReply 跟随用户语言)。"""
     lang_name = _lang_name(req.language)
     system = (
-        load_prompt(_PROMPT_DIR / "recommend_theme.md")
+        load_prompt(_PROMPT_DIR / "recommend_theme.md", skills=("book_theme_options",))
         # === 章节配色与艺术字体 === 标题已并入 theme_colors.md 顶部,这里只拼接。
         + "\n\n"
         + load_prompt(
-            RULES_DIR / "theme_colors.md",
+            SKILLS_DIR / "theme_colors.md",
             LANGUAGE=lang_name,
             ART_FONTS=", ".join(_ART_FONTS),
-            common=("json_only", "grounding", "privacy"),
+            skills=("grounding",),
         )
     )
     payload: dict[str, Any] = {
@@ -286,8 +286,8 @@ def _coerce_option_chapters(
 
 
 def _replies() -> dict[str, str]:
-    """recommend 的兜底/默认文案(可手调,replies.md;按路径缓存)。"""
-    return load_replies(_PROMPT_DIR / "replies.md")
+    """recommend 的兜底/默认文案(skills/replies/theme_recommend.md;按路径缓存)。"""
+    return load_replies(SKILLS_DIR / "replies" / "theme_recommend.md")
 
 
 def _coerce_subject(raw: Any) -> str:
@@ -314,6 +314,6 @@ def _text(value: Any) -> str:
 
 
 def _default_reply(language: str) -> str:
-    """从可手调的 replies.md 读兜底回复(`reply.语言`),按路径缓存。"""
+    """从 skills/replies/theme_recommend.md 读兜底回复(`reply.语言`),按路径缓存。"""
     lang = "zh" if language == "zh" else "en"
     return _replies().get(f"reply.{lang}", "")

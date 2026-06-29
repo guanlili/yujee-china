@@ -260,7 +260,7 @@ export const V3AnalyzeRequest = z
     callbackUrl: HttpCallbackUrl,
     language: V3Language,
     meta: z.object({ promptHint: z.string().max(500).optional() }).strict().optional(),
-    photos: z.array(V3AnalyzePhoto).min(1).max(30),
+    photos: z.array(V3AnalyzePhoto).min(1).max(100),
   })
   .strict();
 export type V3AnalyzeRequest = z.infer<typeof V3AnalyzeRequest>;

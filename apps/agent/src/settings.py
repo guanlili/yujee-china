@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     background_task_timeout_seconds: int = 600
     port: int = 8001
     log_level: str = "info"
+    agent_enable_analyze: bool = True
+    # Only the dedicated 2GB CLIP service enables this internal endpoint.
+    agent_enable_clip_embeddings: bool = False
 
     # mode switches (see docs/agent/design.md)
     agent_pipeline_mode: PipelineMode = "mock"
@@ -121,6 +124,19 @@ class Settings(BaseSettings):
     describe_concurrency_threshold_lo: int = 20
     describe_concurrency_threshold_hi: int = 40
     describe_max_concurrency: int = 3
+
+    # Stage1 本地分章:CLIP 图片 embedding + 灰度/颜色距离。
+    # grouping_clip_model_path 支持本地权重;未设置时 open_clip 按 model/pretrained
+    # 配置加载。
+    grouping_clip_model_name: str = "ViT-B-32"
+    grouping_clip_pretrained: str = "openai"
+    grouping_clip_model_path: str | None = None
+    grouping_pythonpath: str | None = None
+    # Normal 1GB Agent can call a separate 2GB CLIP service for embeddings.
+    # When unset, embeddings are computed locally.
+    grouping_clip_base_url: str | None = None
+    grouping_clip_secret: str | None = None
+    grouping_clip_timeout_seconds: int = 180
 
     # Stage2 select-layout: Gemini via OpenAI-compatible /chat/completions.
     # Missing key is non-fatal for the stage: flows/select_layout.py catches it

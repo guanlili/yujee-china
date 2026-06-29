@@ -18,13 +18,15 @@ the photo list and never logged or returned (§3 隐私).
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 
-from .auth import require_bearer
+from .auth import require_bearer, require_clip_bearer
 from .logging_config import get_logger
 from .schemas import (
     AgentAckRequest,
@@ -69,9 +71,15 @@ from .engine.finalize_v3 import FinalizeV3Error
 from .agents.theme_recommend import RecommendV3Error
 from .flows import analyze, select_layout
 from .db import AgentDbUnavailable, agent_edit_repo
+from .settings import get_settings
+from .chaptering import features as chapter_features
 
 router = APIRouter()
 log = get_logger("v3_album")
+
+
+class ClipEmbeddingRequest(BaseModel):
+    images: list[str] = Field(min_length=1, max_length=30)
 
 
 # ---------- health ------------------------------------------------------------
@@ -93,6 +101,18 @@ async def health() -> dict:
 async def submit_analyze(
     req: V3AnalyzeRequest, background_tasks: BackgroundTasks
 ) -> dict[str, Any]:
+    if not get_settings().agent_enable_analyze:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "AGENT_INTERNAL_ERROR",
+                    "message": "analyze is disabled on this Agent instance",
+                },
+            },
+        )
+
     # base64 is read into the background task only; never logged (§3 隐私).
     log.info("v3_analyze.accepted", photo_count=len(req.photos), language=req.language)
     background_tasks.add_task(analyze.run_with_timeout, req)
@@ -100,6 +120,25 @@ async def submit_analyze(
         ok=True,
         data=V3AcceptedData(requestId=req.requestId, accepted=True),
     ).model_dump(mode="json")
+
+
+@router.post("/internal/open-clip/embeddings", dependencies=[Depends(require_clip_bearer)])
+async def submit_open_clip_embeddings(req: ClipEmbeddingRequest) -> dict[str, Any]:
+    settings = get_settings()
+    if not settings.agent_enable_clip_embeddings:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "AGENT_INTERNAL_ERROR",
+                    "message": "open_clip embeddings are disabled on this Agent instance",
+                },
+            },
+        )
+    images = [chapter_features.image_from_data_url(image) for image in req.images]
+    embeddings = await asyncio.to_thread(chapter_features.clip_embeddings, images)
+    return {"ok": True, "data": {"embeddings": embeddings}}
 
 
 @router.post("/v3/select-layout", status_code=202, dependencies=[Depends(require_bearer)])

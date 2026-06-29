@@ -404,11 +404,9 @@ def test_assembly_carries_all_section_4_2_4_items():
     system, user = _system_user(_req(user_message="write it"))
 
     # 写作 Skill + 引导 Skill loaded into the system prompt (not inlined code).
-    assert "WRITING STYLE" in system and "GUIDANCE STYLE" in system
-    # A line unique to the (now example-driven) writing-style asset (proves it loaded).
-    # The old role/maxChars/VOICE wording is gone; the asset now points at the per-page
-    # 输出示例 (EXAMPLE-DRIVEN) instead.
-    assert "EXAMPLE-DRIVEN" in system or "输出示例" in system
+    assert "写作风格" in system and "引导风格" in system
+    # A line unique to the example-driven writing-style asset (proves it loaded).
+    assert "输出示例" in system
 
     payload = json.loads(user)
     # 用户信息: this turn's message + history channel present.
@@ -523,7 +521,7 @@ def test_v3_write_path_has_no_role_guides_creative_residue():
 
 
 def test_assembly_loads_style_assets_without_language_pinning():
-    # 写作/引导风格已外置到 prompts/rules/(人为可调规则),作为 prompt 资产按路径加载。
+    # 写作/引导风格已外置到 src/skills/(人为可调 skill),作为 prompt 资产按路径加载。
     # 语言不再被 {LANGUAGE} 强制 —— 槽位的 lang 标记决定语言(lang=user 跟随用户语言),
     # 所以两份风格资产都【原样】(无任何语言填充)出现在 system 里。
     extra = {"language": "zh"}
@@ -536,7 +534,7 @@ def test_assembly_loads_style_assets_without_language_pinning():
         **extra,
     )
     system, _ = _system_user(req)
-    from src.prompts import RULES_DIR, load_prompt
+    from src.skills import SKILLS_DIR, load_prompt
 
-    assert load_prompt(RULES_DIR / "writing_style.md", common=("grounding",)) in system
-    assert load_prompt(RULES_DIR / "guidance_style.md") in system
+    assert load_prompt(SKILLS_DIR / "writing_style.md", skills=("grounding",)) in system
+    assert load_prompt(SKILLS_DIR / "guidance_style.md") in system

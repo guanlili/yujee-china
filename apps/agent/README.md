@@ -28,7 +28,7 @@ apps/agent/
 │   ├── flows/               # async orchestration: analyze, select-layout
 │   ├── agents/              # model-backed capabilities
 │   ├── engine/              # deterministic transforms
-│   └── prompts/             # common rules and capability prompts
+│   └── skills/              # human-authored skills loaded into agent prompts
 └── tests/
 ```
 

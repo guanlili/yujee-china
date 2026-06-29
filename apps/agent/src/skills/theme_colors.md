@@ -1,4 +1,4 @@
-=== 主题方案配色与艺术字体(BOOK THEME OPTIONS)===
+=== 主题方案配色与艺术字体 ===
 
 为每个 `bookThemeOptions` 方案选择一个全书统一 `artFont`,并在该方案的 `chapters[]` 里为【每一个】章节(用它确切的 `chapterId`)给出最终 `accentColor`。
 

@@ -32,7 +32,7 @@
 │ 不抽 GPS · 无地点维度     │ ───► │ 转发 base64,不落盘        │ ───► │  flows / agents / engine  │
 │ 五环节 UI/面包屑/加载动画 │      │ 持 draft_json 树 + stage  │      │ 识图模型(版面主控)+      │
 │ 章节故事交互组件          │ ◄─── │ (五环节状态唯一真相源)    │ ◄─── │ 文案模型 + 确定性引擎      │
-│ 封面/封尾单独成页(画板)   │      │ 调度各环节对 Agent 调用   │      │ prompt 分层(common/rules)│
+│ 封面/封尾单独成页(画板)   │      │ 调度各环节对 Agent 调用   │      │ prompt/skill 分层        │
 │ 本地渲染 PDF → 直传 R2    │      │ 积分:init 成功即按张扣    │      │ agent schema 记 edit-loop │
 └──────────────────────────┘      └──────────────────────────┘      └──────────────────────────┘
                                               │
@@ -64,11 +64,11 @@
 **Agent (FastAPI)** —— 不持 `draft_json` / stage / public album 数据;仅 Stage3 edit-loop 状态写同一 Postgres 的独立 `agent` schema(Alembic)。内部 = **三真层 + 平铺边**(详见 [`design.md`](./agent/design.md)):
 - **transport**(`routes.py` + `errors.py` + `callback.py`):`/v3/*` 端点,瘦——解析 → 调 flow/agent/engine → 套信封;`errors.py` 统一同步端点错误映射。
 - **flows**(`flows/analyze.py`):唯一真多步编排(describe→group→template→preview + 回调),无状态。
-- **agents**(`agents/<cap>/`):LLM 能力,每个 = `handler.py` + 共置 prompt `.md`(+ 需要时 `schema.py`):`image_understanding`(识图分章)、`writing`(章节文案/对话)、`group_pages`(章内按效果重分页)、`theme_recommend`(主题/章节色)、`template_select`(挑模板)、`layout_plan`(版面规划)、`image_edit_intent`(改图意图)、`page_edit`(页级编辑·两段式意图路由→执行)。
+- **agents**(`agents/<cap>/`):LLM 能力,每个 = `handler.py` + 共置 prompt `.md`(+ 需要时 `schema.py`)。共置 `.md` 只写角色、输入范围、输出 JSON/字段契约和硬格式要求;不放人为规则。
 - **engine**(`engine/`):确定性引擎,不调模型——`templates` / `skeleton`(挑模板+排图)/ `generic_copy` / `apply_theme` / `cover` / `finalize`(拍平 + 单一 validate)。
 - **agent DB boundary**(`db.py` + `migrations/`):只拥有 `agent.edit_sessions` / `agent.edit_messages` / `agent.edit_ops`;`DATABASE_URL` 必须指向同一 Postgres,Web Drizzle 不管理该 schema。
 - **平铺边**:`ai_client.py`(HTTP/JSON/usage)+ `vision_provider.py`(provider/failover/超时)= 模型适配;`schemas.py` = 契约镜像;`main/settings/auth/logging`。
-- **prompts**(`prompts/`):分层组装——`agents/<cap>/*.md`(固定结构:任务 + JSON 形状)+ `common/`(跨能力红线:`json_only`/`grounding`/`privacy`/`persona`,handler 用 `common=` 声明)+ `rules/`(按能力可调规则:分章/写作·引导风格/颜色字体,`RULES_DIR` 加载)。
+- **skills**(`skills/`):分层组装——`agents/<cap>/*.md`(固定 agent 契约)+ `skills/*.md`(人为可调规则、风格、红线、兜底回复,handler 用 `skills=` 或 `SKILLS_DIR` 显式加载)。
 
 **承载的模型(provider 槽可配):**
 - **识图模型 = 版面主控**:火山 doubao-vision(`ARK_*` 槽,默认 `doubao-seed-1-6-vision`)/ OpenAI GPT(`OPENAI_*` 槽,`gpt-5.5-mini`),两槽**互为 failover**。既做图片分析,又主控一切改变版面观感的判断(分章/套模板/主题/章节色/改图意图)。
@@ -160,9 +160,9 @@ memoir-agent-rebuild/
 │       └── src/                   #   三真层 + 平铺边:
 │           ├── routes.py · errors.py · callback.py    # transport(HTTP 边)
 │           ├── flows/             #     编排(analyze)
-│           ├── agents/<cap>/      #     LLM 能力三件套(handler + *.md [+ schema])
+│           ├── agents/<cap>/      #     LLM 能力三件套(handler + contract *.md [+ schema])
 │           ├── engine/            #     确定性引擎(templates/skeleton/.../finalize)
-│           ├── prompts/           #     common/(红线)+ rules/(可调规则)+ 加载器
+│           ├── skills/            #     人为规则/风格/红线/回复 + 加载器
 │           ├── ai_client.py · vision_provider.py      # model 适配
 │           └── schemas.py · main · settings · auth · logging
 ├── packages/
@@ -215,7 +215,7 @@ memoir-agent-rebuild/
 5. **契约单一真相源:TS 先行,Python 镜像**:`packages/contracts`(zod)是真相源,Agent `schemas.py` 逐字段镜像(`.strict()` / `extra='forbid'`)。
 6. **模板契约标准化**:模板 JSON = `category | pairing | images | svgs | texts | items | variableDecor`;旧 `slot+scene` / `quality`/`orientation` 硬约束已废,排图由 `template_select` 出意图 + 引擎在合法候选兜底(横竖比错配交 center-cover 渲染)。
 7. **校验单一真相源**:finalize 单一 `validate_v3`(认 svgs/items/variableDecor/章节色/字体);无 page0-必须-cover 规则(封面可选可跳)。
-8. **Agent 三真层重构(2026-06,PR #240)**:扁平 `services/` → `flows / agents / engine` + 平铺边 + `prompts`(common/rules 分层);删历史孤儿(tools.py / layout_rules 等)+ 消状态泄漏;行为零变更(契约/不变式不动)。详见 [`design.md`](./agent/design.md)。
+8. **Agent 三真层重构(2026-06,PR #240)**:扁平 `services/` → `flows / agents / engine` + 平铺边 + `skills` 分层;删历史孤儿(tools.py / layout_rules 等)+ 消状态泄漏;行为零变更(契约/不变式不动)。详见 [`design.md`](./agent/design.md)。
 9. **planner(未来 · 第二期)**:自然语言指令 → 自主规划调用 agents/engine 工具面;坐在现在这套无状态分层之上(stateful 仅一条指令内)。当前是 planner-ready 地基,尚未实现。
 10. **中途加图**:main 上**尚未实现**;目标设计 = Web 侧可重入派生闸(分析新批次 + 合并不覆盖 + 按章补完,新章未完成则导出闸自动重关)。
 

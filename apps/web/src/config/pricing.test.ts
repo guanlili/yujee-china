@@ -58,6 +58,10 @@ test('creditsForPhotos: ceil(N / PHOTOS_PER_CREDIT), floored at 1 (§6.7 single 
   assert.ok(MAX_PHOTOS_PER_GENERATION >= PHOTOS_PER_CREDIT);
 });
 
+test('analyze generation request accepts up to 100 photos', () => {
+  assert.equal(MAX_PHOTOS_PER_GENERATION, 100);
+});
+
 test('subscription plans are removed — only the free plan remains', () => {
   assert.deepEqual(
     PLANS.map((p) => p.id),

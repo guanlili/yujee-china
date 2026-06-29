@@ -10,12 +10,15 @@ primary_region = "nrt"
   #   fly deploy -c apps/agent/fly.toml --dockerfile apps/agent/Dockerfile .
 
 # Non-secret config only. Secrets are set out-of-band and never committed:
-#   fly secrets set AGENT_SHARED_SECRET=... ARK_API_KEY=... DEEPSEEK_API_KEY=...
+#   fly secrets set AGENT_SHARED_SECRET=... GROUPING_CLIP_SECRET=... ARK_API_KEY=... DEEPSEEK_API_KEY=...
 [env]
   PORT = "8001"
   AGENT_ENV = "production"
   AGENT_PIPELINE_MODE = "real"
+  AGENT_ENABLE_ANALYZE = "true"
+  AGENT_ENABLE_CLIP_EMBEDDINGS = "false"
   WEB_BASE_URL = "https://yujeeai.com"
+  GROUPING_CLIP_BASE_URL = "https://yujee-agent-clip.fly.dev"
   ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
   ARK_VISION_MODEL = "doubao-seed-1-6-vision-250815"
   # DeepSeek slot points at Volcano Ark doubao in prod (same key as ARK_API_KEY).
@@ -38,4 +41,6 @@ primary_region = "nrt"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  # MVP normal Agent service: 1GB. /v3/analyze runs here, but CLIP embedding is
+  # delegated to yujee-agent-clip.
+  memory = "1024mb"

@@ -389,6 +389,24 @@ class TestV3AnalyzePrivacy:
             }
         )
 
+    def test_accepts_100_photos_and_rejects_101_photos(self):
+        photos = [
+            {**self.base["photos"][0], "photoId": f"p{i + 1}"}
+            for i in range(100)
+        ]
+
+        V3AnalyzeRequest.model_validate({**self.base, "photos": photos})
+        with pytest.raises(ValidationError):
+            V3AnalyzeRequest.model_validate(
+                {
+                    **self.base,
+                    "photos": [
+                        *photos,
+                        {**self.base["photos"][0], "photoId": "p101"},
+                    ],
+                }
+            )
+
     def test_rejects_non_http_callback_url(self):
         with pytest.raises(ValidationError):
             V3AnalyzeRequest.model_validate({**self.base, "callbackUrl": "mailto:ops@example.com"})

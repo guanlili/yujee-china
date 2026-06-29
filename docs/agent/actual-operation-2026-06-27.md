@@ -2,6 +2,8 @@
 
 日期: 2026-06-27;启动修复与文档刷新追加:2026-06-28
 
+内部运行逻辑详版见: [`internal-operation-2026-06-28.md`](./internal-operation-2026-06-28.md)。本文保留为操作测试和启动修复记录。
+
 范围: 本文只记录当前工作区 `memoir-agent-rebuild` 里 Agent 的实际代码行为与本轮本机测试结果。测试时工作树已有本地状态: `main...origin/main [ahead 58]`, 且存在未提交/未跟踪文件;本轮未回滚这些现有改动。
 
 ## 1. 当前结论
@@ -53,6 +55,14 @@ Agent 启动时读取 `Settings(env_file=".env")`。这个 `.env` 是相对当�
 | `POST /v3/cover` | sync awaited async | 封面/封尾选择、跳过、AI copy/color 设计与确定性落页 |
 | `POST /v3/finalize` | sync deterministic | 将 tree + pages 拍平成 `AlbumLayoutPlan` 并校验 |
 | `POST /internal/agent-ack` | sync + Agent DB | Web 确认某个 edit op 已持久化后,Agent 将 pending op/message 标记为 committed |
+
+### 3.1 Prompt / skill 边界(2026-06-28 更新)
+
+- `apps/agent/src/agents/<cap>/*.md` 只承担 agent 固定契约:角色、输入范围、输出 JSON/字段形状、硬格式要求。
+- 所有人为可调规则、风格、红线、重试纠正语和默认回复都在 `apps/agent/src/skills/` 下。
+- handler 通过 `load_prompt(..., skills=(...))` 组合跨能力 skill,或通过 `SKILLS_DIR / "<name>.md"` 显式加载能力 skill。
+- 旧 `prompts/common/`, `prompts/rules`, `prompts/skills` 已提升为单层 `src/skills`;旧 agents 下的 `replies.md` 已迁到 `src/skills/replies/`。
+- `json_only`, `persona`, `privacy` 不再作为独立 skill 文件保留:严格 JSON 是 agents `.md` 的硬格式契约,隐私由 schema/redact 承担,全局人设不再注入。
 
 ## 4. 端到端流程
 

@@ -1,7 +1,7 @@
 """Stage1 tree-only analyze pipeline tests for PR249/#263.
 
 The analyze job now orchestrates fixed Stage1 primitives:
-group_photos -> describe_chapters -> regroup_unplaced -> accent_of_group.
+group_photos -> describe_chapters -> refine_unplaced -> accent_of_group.
 It stores only a V3LayoutTree in the completed callback; layout pages belong to
 Stage2.
 """
@@ -17,13 +17,12 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from src import callback as cb_mod
-from src.agents.image_grouping import handler as image_grouping
-from src.agents.image_grouping.schema import GroupingChapter, GroupingResult
-from src.agents.image_understanding import VisionError
-from src.agents.image_understanding import handler as vision
-from src.agents.image_understanding.schema import DescribeResult
-from src.agents.regroup_unplaced import handler as regroup_unplaced
-from src.agents.regroup_unplaced.schema import UnplacedAssignments
+from src.agents.chapter_describer import handler as chapter_describer
+from src.agents.chapter_describer.schema import DescribeResult
+from src.agents.vision_error import VisionError
+from src.chaptering import grouping as chapter_grouping
+from src.chaptering import refinement as chapter_refinement
+from src.chaptering.schema import GroupingChapter, GroupingResult, UnplacedAssignments
 from src.engine import accent_color
 from src.flows import analyze
 from src.schemas import (
@@ -111,8 +110,8 @@ def stage1_order(monkeypatch):
             call_count=1,
         )
 
-    def fake_group_unplaced(grouping, descriptions, photos_by_id, *, language):
-        calls.append("regroup_unplaced")
+    async def fake_refine_unplaced(grouping, descriptions, photos_by_id, *, language):
+        calls.append("refine_unplaced")
         return UnplacedAssignments(assignments={})
 
     def fake_accent_of_group(photo_ids, photos_by_id):
@@ -120,9 +119,9 @@ def stage1_order(monkeypatch):
         assert list(photo_ids)
         return "#112233"
 
-    monkeypatch.setattr(image_grouping, "group_photos", fake_group_photos)
-    monkeypatch.setattr(vision, "describe_chapters", fake_describe_chapters)
-    monkeypatch.setattr(regroup_unplaced, "group_unplaced", fake_group_unplaced)
+    monkeypatch.setattr(chapter_grouping, "group_photos", fake_group_photos)
+    monkeypatch.setattr(chapter_describer, "describe_chapters", fake_describe_chapters)
+    monkeypatch.setattr(chapter_refinement, "refine_unplaced", fake_refine_unplaced)
     monkeypatch.setattr(accent_color, "accent_of_group", fake_accent_of_group)
     return calls
 
@@ -164,7 +163,7 @@ def test_stage1_analyze_emits_tree_only_in_required_order(
     assert stage1_order == [
         "group_photos",
         "describe_chapters",
-        "regroup_unplaced",
+        "refine_unplaced",
         "accent_of_group",
         "accent_of_group",
     ]
@@ -208,6 +207,33 @@ def test_stage1_analyze_emits_tree_only_in_required_order(
     ]
 
 
+def test_stage1_analyze_runs_grouping_inside_concurrency_gate(
+    monkeypatch, captured_callbacks, stage1_order
+):
+    class RecordingGate:
+        def __init__(self) -> None:
+            self.entered = 0
+            self.exited = 0
+
+        async def __aenter__(self):
+            self.entered += 1
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            self.exited += 1
+            return False
+
+    gate = RecordingGate()
+    monkeypatch.setattr(analyze, "_GROUPING_SEMAPHORE", gate, raising=False)
+
+    asyncio.run(analyze._run_analyze(analyze._Job(_req(4))))
+
+    assert gate.entered == 1
+    assert gate.exited == 1
+    assert stage1_order[0] == "group_photos"
+    assert any(c["event"] == "completed" for c in captured_callbacks)
+
+
 def test_stage1_describe_failure_resets_describe_stage(monkeypatch, captured_callbacks):
     def fake_group_photos(photos):
         return GroupingResult(
@@ -218,8 +244,8 @@ def test_stage1_describe_failure_resets_describe_stage(monkeypatch, captured_cal
     async def boom(*args, **kwargs):
         raise VisionError("describe failed")
 
-    monkeypatch.setattr(image_grouping, "group_photos", fake_group_photos)
-    monkeypatch.setattr(vision, "describe_chapters", boom)
+    monkeypatch.setattr(chapter_grouping, "group_photos", fake_group_photos)
+    monkeypatch.setattr(chapter_describer, "describe_chapters", boom)
 
     asyncio.run(analyze._run_analyze(analyze._Job(_req(2))))
 
@@ -347,6 +373,39 @@ def test_analyze_route_returns_202(captured_callbacks, stage1_order):
         "data": {"requestId": "req_route", "accepted": True},
     }
     assert any(c["event"] == "completed" for c in captured_callbacks)
+
+
+def test_analyze_route_can_be_disabled(monkeypatch):
+    from src import settings as settings_mod
+    from src.main import app
+
+    monkeypatch.setenv("AGENT_ENABLE_ANALYZE", "false")
+    settings_mod.reset_settings_cache()
+
+    client = TestClient(app)
+    resp = client.post(
+        "/v3/analyze",
+        headers={"Authorization": "Bearer test_secret", "X-Request-Id": "req_disabled"},
+        json={
+            "requestId": "req_disabled",
+            "albumId": "alb_disabled",
+            "callbackUrl": "http://example.com/cb",
+            "language": "en",
+            "photos": [
+                {
+                    "photoId": "p1",
+                    "base64": "data:image/jpeg;base64,AA==",
+                    "width": 800,
+                    "height": 600,
+                }
+            ],
+        },
+    )
+
+    assert resp.status_code == 503
+    body = resp.json()
+    error = body.get("detail", body).get("error")
+    assert error["message"] == "analyze is disabled on this Agent instance"
 
 
 def test_analyze_route_rejects_lat_lng_in_exif():

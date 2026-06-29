@@ -85,7 +85,7 @@
 ### 3.1 ① 建册 + 分析(异步)
 
 ```
-1. 浏览器选 1–30 张照片 → Canvas 压缩 800px/q0.6 → base64;Stage0 读 EXIF 只取 takenAt
+1. 浏览器选 1–100 张照片 → Canvas 压缩 800px/q0.6 → base64;Stage0 读 EXIF 只取 takenAt
 2. 生成 requestId = crypto.randomUUID()
 3. POST /api/v3/albums { requestId, language, prompt?, photos[] }
    → 服务端:建 album(status=AGENT_RUNNING)+ 建 job + 按张实扣积分 hold + 派 /v3/analyze
@@ -96,7 +96,7 @@
 7. 浏览器轮询 GET /api/v1/albums/[uuid],按 album.status 驱动界面(见 §5)
 ```
 
-约束(`POST /api/v3/albums` body,zod 校验):`photos.length ∈ [1, 30]`;每张 base64 ≤ 800KB;`prompt` ≤ 500 字;`takenAt` 是**唯一**允许的 EXIF 字段(§3 隐私,不收坐标)。
+约束(`POST /api/v3/albums` body,zod 校验):`photos.length ∈ [1, 100]`;每张 base64 ≤ 800KB;`prompt` ≤ 500 字;`takenAt` 是**唯一**允许的 EXIF 字段(§3 隐私,不收坐标)。
 
 `retry`:`POST /api/v3/albums/[uuid]/retry`,复用 album 内的 prompt,浏览器从 IndexedDB 重传 base64;非 FAILED 态 → `ALBUM_NOT_RETRIABLE`(409)。
 

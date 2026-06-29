@@ -1,3 +1,5 @@
+import { MAX_PHOTOS_PER_GENERATION } from '@/config/pricing';
+
 export class AppError extends Error {
   constructor(
     public code: string,
@@ -22,7 +24,7 @@ export const ERRORS = {
   CREDIT_INSUFFICIENT:   () => new AppError('CREDIT_INSUFFICIENT',   'Not enough credits',          402),
   CREDIT_HOLD_FAILED:    () => new AppError('CREDIT_HOLD_FAILED',    'Failed to hold credits',      500),
 
-  PHOTO_TOO_MANY:        () => new AppError('PHOTO_TOO_MANY',        'Max 30 photos per album',     400),
+  PHOTO_TOO_MANY:        () => new AppError('PHOTO_TOO_MANY',        `Max ${MAX_PHOTOS_PER_GENERATION} photos per album`, 400),
   PHOTO_TOO_FEW:         () => new AppError('PHOTO_TOO_FEW',         'Need at least 1 photo',       400),
   PHOTO_TOO_LARGE:       () => new AppError('PHOTO_TOO_LARGE',       'Each photo > 800KB',          413),
   PROMPT_TOO_LONG:       () => new AppError('PROMPT_TOO_LONG',       'Prompt > 500 chars',          400),

@@ -5,6 +5,8 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PORT=8001
 
+ARG INSTALL_CLIP=false
+
 WORKDIR /app
 
 # Install runtime deps from pyproject. Source is needed at build time because the
@@ -18,6 +20,15 @@ COPY apps/agent/src ./src
 COPY packages/contracts/templates ./packages/contracts/templates
 COPY packages/contracts/template-previews ./packages/contracts/template-previews
 COPY packages/contracts/copy-examples ./packages/contracts/copy-examples
+
+# CLIP is only installed for the dedicated 2GB analyze worker. The normal Agent
+# service is kept lightweight and cannot run /v3/analyze in production.
+RUN if [ "$INSTALL_CLIP" = "true" ]; then \
+      pip install --index-url https://download.pytorch.org/whl/cpu \
+        torch==2.12.1 \
+        torchvision==0.27.1 && \
+      pip install "open_clip_torch>=2.26.0"; \
+    fi
 RUN pip install .
 
 EXPOSE 8001

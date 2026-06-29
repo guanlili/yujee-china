@@ -1,7 +1,7 @@
 """V3 `/v3/analyze` Stage1 tree-only orchestration.
 
 Stage1 now builds only a V3LayoutTree:
-group_photos -> describe_chapters -> group_unplaced -> accent_of_group.
+group_photos -> describe_chapters -> refine_unplaced -> accent_of_group.
 Template selection, render pages, cover/ending wrapping, and generic copy belong to
 later stages and are not produced by this job.
 """
@@ -10,29 +10,20 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Mapping
-from typing import Any
 
 from .. import callback
-from ..agents.image_grouping import handler as image_grouping
-from ..agents.image_grouping.schema import GroupingResult
-from ..agents.image_understanding import VisionError
-from ..agents.image_understanding import handler as vision
-from ..agents.image_understanding.schema import DescribeResult
-from ..agents.regroup_unplaced import handler as regroup_unplaced
-from ..agents.regroup_unplaced.schema import UnplacedAssignments
-from ..engine import accent_color
+from ..agents.chapter_describer import handler as chapter_describer
+from ..agents.vision_error import VisionError
+from ..chaptering import grouping as chapter_grouping
+from ..chaptering import refinement as chapter_refinement
+from ..chaptering import tree_builder
 from ..logging_config import get_logger, request_id_var
 from ..schemas import (
-    V3AnalyzePhoto,
     V3AnalyzeCompleted,
     V3AnalyzeRequest,
     V3CallbackError,
-    V3Chapter,
-    V3ChapterPhoto,
     V3FailedEvent,
     V3JobStage,
-    V3LayoutTree,
     V3Models,
     V3ProgressEvent,
     V3Usage,
@@ -40,6 +31,9 @@ from ..schemas import (
 from ..settings import get_settings
 
 log = get_logger("v3_album")
+
+# 本地 CLIP/PyTorch 分组会吃 CPU/内存;单进程内一次只跑一个 embedding pass。
+_GROUPING_SEMAPHORE = asyncio.Semaphore(1)
 
 
 class _Job:
@@ -88,127 +82,6 @@ async def _emit_failure(
     await callback.post(str(job.req.callbackUrl), envelope)
 
 
-# ---------- tree assembly -----------------------------------------------------
-
-
-def _orientation(width: int, height: int) -> str:
-    if width > height * 1.05:
-        return "landscape"
-    if height > width * 1.05:
-        return "portrait"
-    return "square"
-
-
-def _required_text(value: Any, *, field: str, max_len: int) -> str:
-    if not isinstance(value, str):
-        raise ValueError(f"{field} must be a string")
-    text = value.strip()
-    if not text:
-        raise ValueError(f"{field} is required")
-    if len(text) > max_len:
-        raise ValueError(f"{field} exceeds {max_len} chars")
-    return text
-
-
-def _photo_order(
-    photo_id: str,
-    photos_by_id: Mapping[str, V3AnalyzePhoto],
-    input_index: Mapping[str, int],
-) -> tuple[int, str, int]:
-    photo = photos_by_id[photo_id]
-    taken_at = photo.exif.takenAt if photo.exif and photo.exif.takenAt else ""
-    return (0 if taken_at else 1, taken_at, input_index.get(photo_id, len(input_index)))
-
-
-def _assemble_stage1_tree(
-    grouping: GroupingResult,
-    descriptions: DescribeResult,
-    assignments: UnplacedAssignments,
-    photos_by_id: Mapping[str, V3AnalyzePhoto],
-) -> V3LayoutTree:
-    if not grouping.chapters:
-        raise ValueError("Stage1 grouping produced no chapters")
-
-    input_index = {photo_id: idx for idx, photo_id in enumerate(photos_by_id)}
-    chapter_members = {
-        chapter.chapterId: list(chapter.photoIds) for chapter in grouping.chapters
-    }
-    target_ids = set(chapter_members)
-    unplaced = set(grouping.unplacedPhotoIds)
-    assigned_ids = set(assignments.assignments)
-
-    missing = sorted(unplaced - assigned_ids)
-    unknown = sorted(assigned_ids - unplaced)
-    if missing or unknown:
-        raise ValueError(
-            f"unplaced assignments must cover exactly unplaced photos "
-            f"(missing={missing}, unknown={unknown})"
-        )
-    for photo_id, chapter_id in assignments.assignments.items():
-        if chapter_id not in target_ids:
-            raise ValueError(f"unplaced assignment target does not exist: {chapter_id}")
-        chapter_members[chapter_id].append(photo_id)
-
-    seen: list[str] = []
-    for chapter_id, members in chapter_members.items():
-        members.sort(key=lambda pid: _photo_order(pid, photos_by_id, input_index))
-        chapter_members[chapter_id] = members
-        seen.extend(members)
-
-    expected = set(photos_by_id)
-    if set(seen) != expected or len(seen) != len(set(seen)):
-        missing = sorted(expected - set(seen))
-        duplicated = sorted(pid for pid in set(seen) if seen.count(pid) > 1)
-        unknown = sorted(set(seen) - expected)
-        raise ValueError(
-            "Stage1 tree membership must cover each input photo exactly once "
-            f"(missing={missing}, duplicated={duplicated}, unknown={unknown})"
-        )
-
-    chapters: list[V3Chapter] = []
-    for source in grouping.chapters:
-        members = chapter_members[source.chapterId]
-        if not members:
-            continue
-        description = _required_text(
-            descriptions.chapterDescriptions.get(source.chapterId),
-            field=f"{source.chapterId}.description",
-            max_len=600,
-        )
-        photos: list[V3ChapterPhoto] = []
-        for photo_id in members:
-            src = photos_by_id[photo_id]
-            scene = _required_text(
-                descriptions.imageDescriptions.get(photo_id),
-                field=f"{photo_id}.sceneDescription",
-                max_len=300,
-            )
-            photos.append(
-                V3ChapterPhoto(
-                    photoId=photo_id,
-                    sceneDescription=scene,
-                    width=src.width,
-                    height=src.height,
-                    orientation=_orientation(src.width, src.height),  # type: ignore[arg-type]
-                    takenAt=src.exif.takenAt if src.exif else None,
-                )
-            )
-        chapters.append(
-            V3Chapter(
-                chapterId=source.chapterId,
-                description=description,
-                extractedColor=accent_color.accent_of_group(members, photos_by_id),
-                accentColor=None,
-                artFont=None,
-                photos=photos,
-            )
-        )
-
-    if not chapters:
-        raise ValueError("Stage1 tree produced no non-empty chapters")
-    return V3LayoutTree(chapters=chapters)
-
-
 # ---------- analyze job -------------------------------------------------------
 
 
@@ -220,7 +93,8 @@ async def _run_analyze(job: _Job) -> None:
 
     await _emit_progress(job, "group", 0)
     try:
-        grouping = image_grouping.group_photos(req.photos)
+        async with _GROUPING_SEMAPHORE:
+            grouping = await asyncio.to_thread(chapter_grouping.group_photos, req.photos)
     except Exception as exc:  # noqa: BLE001
         log.exception("v3_analyze.group_failed", error=str(exc))
         await _emit_failure(
@@ -231,7 +105,7 @@ async def _run_analyze(job: _Job) -> None:
 
     await _emit_progress(job, "describe", 0)
     try:
-        described = await vision.describe_chapters(
+        described = await chapter_describer.describe_chapters(
             grouping,
             photos_by_id,
             language=req.language,
@@ -249,10 +123,12 @@ async def _run_analyze(job: _Job) -> None:
 
     await _emit_progress(job, "group", 0)
     try:
-        assignments = regroup_unplaced.group_unplaced(
+        assignments = await chapter_refinement.refine_unplaced(
             grouping, described, photos_by_id, language=req.language
         )
-        tree = _assemble_stage1_tree(grouping, described, assignments, photos_by_id)
+        tree = tree_builder.assemble_stage1_tree(
+            grouping, described, assignments, photos_by_id
+        )
     except Exception as exc:  # noqa: BLE001
         log.exception("v3_analyze.regroup_or_assemble_failed", error=str(exc))
         await _emit_failure(

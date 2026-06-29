@@ -98,6 +98,24 @@ async def test_select_layout_falls_back_wraps_and_fills_generic_copy(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_select_layout_fallback_writes_trace_marker(monkeypatch, tmp_path):
+    trace_path = tmp_path / "llm-trace.txt"
+    monkeypatch.setenv("YUJEE_LLM_TRACE", str(trace_path))
+
+    async def fail_gemini(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise RuntimeError("Gemini unavailable")
+
+    monkeypatch.setattr(select_layout.gemini_layout, "gemini_layout", fail_gemini)
+
+    await select_layout.select_pages(_request())
+
+    trace = trace_path.read_text(encoding="utf-8")
+    assert "select-layout fallback" in trace
+    assert "Gemini unavailable" in trace
+    assert "chapterIds=['ch_1']" in trace
+
+
+@pytest.mark.asyncio
 async def test_select_layout_completed_callback_contains_pages(monkeypatch):
     events = []
 
@@ -122,6 +140,36 @@ async def test_select_layout_completed_callback_contains_pages(monkeypatch):
     assert events[-1]["pages"] == [
         {"pageIndex": 0, "templateId": "mag-08", "images": {"image": "p1"}, "texts": {}}
     ]
+
+
+@pytest.mark.asyncio
+async def test_select_layout_run_writes_full_chain_trace_without_image_payload(monkeypatch, tmp_path):
+    trace_path = tmp_path / "llm-trace.txt"
+    monkeypatch.setenv("YUJEE_LLM_TRACE", str(trace_path))
+
+    async def capture_post(url, envelope):  # noqa: ANN001
+        return True
+
+    async def fake_gemini(chapters, **kwargs):  # noqa: ANN001, ANN003
+        return select_layout.gemini_layout.GeminiLayoutResult(
+            pages=[_raw_page_for_chapter(chapter) for chapter in chapters],
+            call_count=1,
+            model="gemini-test",
+            input_tokens=10,
+            output_tokens=2,
+        )
+
+    monkeypatch.setattr(select_layout.callback, "post", capture_post)
+    monkeypatch.setattr(select_layout.gemini_layout, "gemini_layout", fake_gemini)
+
+    await select_layout.run_with_timeout(_request())
+
+    trace = trace_path.read_text(encoding="utf-8")
+    assert "select-layout input" in trace
+    assert "select-layout output" in trace
+    assert '"chapterId": "ch_1"' in trace
+    assert '"templateId":' in trace
+    assert "data:image" not in trace
 
 
 @pytest.mark.asyncio

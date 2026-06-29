@@ -164,11 +164,14 @@ export const jobService = {
       logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 analyze completed');
       return;
     }
+    const stage = job.stage ?? '';
+    if (SELECT_LAYOUT_COMPLETABLE_STAGES.has(stage) && (job.progress ?? 0) >= 51) {
+      return;
+    }
 
     await db.transaction(async (tx) => {
-      const progress = Math.max(Number.isFinite(job.progress) ? job.progress : 0, 50);
       const won = await agentJobRepo.transitionStatus(tx, job.id, 'RUNNING', ['QUEUED', 'RUNNING'], {
-        progress,
+        progress: 50,
         stage: 'layout',
         usage: (usage as Record<string, unknown> | null) ?? null,
         startedAt: new Date(),

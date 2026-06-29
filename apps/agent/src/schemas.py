@@ -475,7 +475,7 @@ class V3AnalyzeRequest(_V3Strict):
     callbackUrl: HttpUrl
     language: V3Language
     meta: V3AnalyzeMeta = None
-    photos: list[V3AnalyzePhoto] = Field(min_length=1, max_length=30)
+    photos: list[V3AnalyzePhoto] = Field(min_length=1, max_length=100)
 
 
 # ---------- v3.ts: ②0 select-layout (async 202 + callback) -------------------

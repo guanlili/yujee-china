@@ -330,6 +330,29 @@ test('V3AnalyzeRequest exif is strict — only takenAt, rejects lat/lng (§3 pri
   );
 });
 
+test('V3AnalyzeRequest accepts 100 photos and rejects 101 photos', () => {
+  const basePhoto = { photoId: 'p1', base64: 'data:image/jpeg;base64,AA==', width: 800, height: 600 };
+  const base = {
+    requestId: 'r1',
+    albumId: 'a1',
+    callbackUrl: 'https://example.com/cb',
+    language: 'en' as const,
+  };
+  const photos = Array.from({ length: 100 }, (_, index) => ({
+    ...basePhoto,
+    photoId: `p${index + 1}`,
+  }));
+
+  assert.equal(V3AnalyzeRequest.safeParse({ ...base, photos }).success, true);
+  assert.equal(
+    V3AnalyzeRequest.safeParse({
+      ...base,
+      photos: [...photos, { ...basePhoto, photoId: 'p101' }],
+    }).success,
+    false,
+  );
+});
+
 test('V3AnalyzeRequest photo accepts clusterId, rejects coordinate keys (#232 §3 privacy)', () => {
   const base = {
     requestId: 'r1',

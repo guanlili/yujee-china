@@ -1,17 +1,7 @@
-"""Stage1 grouping contract."""
+"""Compatibility shim for Stage1 chaptering intermediate contracts."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from ...chaptering.schema import GroupingChapter, GroupingParams, GroupingResult
 
-
-@dataclass(frozen=True)
-class GroupingChapter:
-    chapterId: str
-    photoIds: list[str]
-
-
-@dataclass(frozen=True)
-class GroupingResult:
-    chapters: list[GroupingChapter]
-    unplacedPhotoIds: list[str]
+__all__ = ["GroupingChapter", "GroupingParams", "GroupingResult"]

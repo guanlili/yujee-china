@@ -6,23 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...schemas import V3LayoutTree
-
-
-@dataclass(frozen=True)
-class DescribeResult:
-    """Stage1 fixed-group describe output.
-
-    The vision model writes only chapter descriptions and per-photo image
-    descriptions. It does not choose templates, pages, cover/ending, or generic
-    copy.
-    """
-
-    chapterDescriptions: dict[str, str]
-    imageDescriptions: dict[str, str]
-    tokens_billed: int = 0
-    model: str = ""
-    provider: str = ""
-    call_count: int = 0
+from ..chapter_describer.schema import DescribeResult
 
 
 @dataclass(frozen=True)

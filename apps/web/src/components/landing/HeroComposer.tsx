@@ -17,6 +17,7 @@ import {
 import { albumRecipe, generationDraft, type GenerationDraft } from '@/lib/generation/draft';
 import type { AppMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
+import { MAX_PHOTOS_PER_GENERATION } from '@/config/pricing';
 
 type LocalPhoto = {
   photoId: string;
@@ -161,7 +162,7 @@ export function HeroComposer({
     try {
       const next: LocalPhoto[] = [];
       for (const f of Array.from(files)) {
-        if (photos.length + next.length >= 30) break;
+        if (photos.length + next.length >= MAX_PHOTOS_PER_GENERATION) break;
         const photoId = crypto.randomUUID();
         const compressed = await compressFile(f, photoId);
         await photoStore.put(photoId, f);

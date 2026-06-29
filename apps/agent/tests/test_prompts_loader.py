@@ -1,11 +1,11 @@
-"""Unit tests for `src.prompts.load_replies`.
+"""Unit tests for `src.skills.load_replies`.
 
 兜底回复文件由产品手调,可能用 ASCII 冒号 `:` 或全角冒号 `：` 当分隔符。
 解析器须对两者都正确切分(取行内更靠前的那个),并保留既有宽容行为
 (裁空白 / 忽略 `#` 注释与空行 / 重复键最后一次为准)。
 """
 
-from src.prompts import load_replies
+from src.skills import load_replies
 
 
 def test_load_replies_splits_on_ascii_and_fullwidth_colon(tmp_path):

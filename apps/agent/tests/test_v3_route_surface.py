@@ -24,6 +24,7 @@ def test_agent_route_surface_keeps_health_and_v3_only() -> None:
         "/v3/cover",
         "/v3/finalize",
         "/internal/agent-ack",
+        "/internal/open-clip/embeddings",
     }.issubset(paths)
     assert not any(path.startswith("/" + "v2" + "/album") for path in paths)
 
@@ -95,6 +96,102 @@ def test_internal_agent_ack_contract_surface(monkeypatch) -> None:
     assert unknown.status_code == 200
     assert unknown.json() == {"ok": False}
     assert repo.seen == ["known-op", "unknown-op"]
+
+
+def test_internal_open_clip_embeddings_can_be_enabled(monkeypatch) -> None:
+    from src import routes
+    from src import settings as settings_module
+    from src.main import app
+
+    try:
+        monkeypatch.setenv("AGENT_ENABLE_CLIP_EMBEDDINGS", "true")
+        settings_module.reset_settings_cache()
+        monkeypatch.setattr(
+            routes.chapter_features,
+            "image_from_data_url",
+            lambda image: object(),
+        )
+        monkeypatch.setattr(
+            routes.chapter_features,
+            "clip_embeddings",
+            lambda images: [[1.0, 0.0], [0.0, 1.0]],
+        )
+
+        client = TestClient(app)
+        headers = {"Authorization": "Bearer test_secret"}
+        resp = client.post(
+            "/internal/open-clip/embeddings",
+            json={
+                "images": [
+                    "data:image/jpeg;base64,AA==",
+                    "data:image/jpeg;base64,AA==",
+                ]
+            },
+            headers=headers,
+        )
+    finally:
+        settings_module.reset_settings_cache()
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "ok": True,
+        "data": {"embeddings": [[1.0, 0.0], [0.0, 1.0]]},
+    }
+
+
+def test_internal_open_clip_embeddings_accepts_grouping_clip_secret(monkeypatch) -> None:
+    from src import routes
+    from src import settings as settings_module
+    from src.main import app
+
+    try:
+        monkeypatch.setenv("AGENT_ENABLE_CLIP_EMBEDDINGS", "true")
+        monkeypatch.setenv("GROUPING_CLIP_SECRET", "clip_secret")
+        settings_module.reset_settings_cache()
+        monkeypatch.setattr(
+            routes.chapter_features,
+            "image_from_data_url",
+            lambda image: object(),
+        )
+        monkeypatch.setattr(
+            routes.chapter_features,
+            "clip_embeddings",
+            lambda images: [[1.0, 0.0]],
+        )
+
+        client = TestClient(app)
+        resp = client.post(
+            "/internal/open-clip/embeddings",
+            json={"images": ["data:image/jpeg;base64,AA=="]},
+            headers={"Authorization": "Bearer clip_secret"},
+        )
+    finally:
+        settings_module.reset_settings_cache()
+
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "data": {"embeddings": [[1.0, 0.0]]}}
+
+
+def test_internal_open_clip_embeddings_disabled_by_default() -> None:
+    from src import settings as settings_module
+    from src.main import app
+
+    try:
+        settings_module.reset_settings_cache()
+        client = TestClient(app)
+        headers = {"Authorization": "Bearer test_secret"}
+        resp = client.post(
+            "/internal/open-clip/embeddings",
+            json={"images": ["data:image/jpeg;base64,AA=="]},
+            headers=headers,
+        )
+    finally:
+        settings_module.reset_settings_cache()
+
+    assert resp.status_code == 503
+    assert resp.json()["error"]["message"] == (
+        "open_clip embeddings are disabled on this Agent instance"
+    )
 
 
 def test_internal_agent_ack_infra_failure_is_503(monkeypatch) -> None:

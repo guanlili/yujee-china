@@ -127,6 +127,38 @@ test('analyze/completed tree-only → stores tree progress, keeps init job runni
     const job = await agentJobRepo.findByRequestId(requestId);
     assert.equal(job?.status, 'RUNNING');
     assert.equal(job?.stage, 'layout');
+    assert.equal(job?.progress, 50);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('analyze/completed resets prior analyze progress to the layout handoff marker', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('v3route-analyze-progress-marker');
+  try {
+    const { requestId } = await seed(user.id);
+    await post({
+      requestId,
+      jobKind: 'analyze',
+      event: 'progress',
+      stage: 'group',
+      progress: 100,
+    });
+
+    const res = await post({
+      requestId,
+      jobKind: 'analyze',
+      event: 'completed',
+      tree: TREE,
+      usage: USAGE,
+    });
+    assert.equal((await res.json()).data.accepted, true);
+
+    const job = await agentJobRepo.findByRequestId(requestId);
+    assert.equal(job?.status, 'RUNNING');
+    assert.equal(job?.stage, 'layout');
+    assert.equal(job?.progress, 50);
   } finally {
     await cleanupUser(user.id);
   }

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from .. import callback
+from .. import ai_client
 from ..engine import gemini_layout, generic_copy, skeleton_v3
 from ..logging_config import get_logger, request_id_var
 from ..schemas import (
@@ -74,6 +76,62 @@ def _chapter_photos(chapter: Any) -> list[Any]:
     if photos is None and isinstance(chapter, dict):
         photos = chapter.get("photos")
     return list(photos or [])
+
+
+def _value(obj: Any, key: str, default: Any = None) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def _trace_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, indent=2, default=str)
+
+
+def _trace_request_summary(req: SelectLayoutRequest) -> dict[str, Any]:
+    chapters: list[dict[str, Any]] = []
+    for chapter in req.chapters:
+        photos = _chapter_photos(chapter)
+        chapters.append(
+            {
+                "chapterId": _value(chapter, "chapterId"),
+                "structureHint": _value(chapter, "structureHint"),
+                "photoCount": len(photos),
+                "photos": [
+                    {
+                        "photoId": _value(photo, "photoId"),
+                        "orientation": _value(photo, "orientation"),
+                        "takenAt": _value(photo, "takenAt"),
+                        "hasRef200px": bool(_value(photo, "ref200px")),
+                    }
+                    for photo in photos
+                ],
+            }
+        )
+    return {
+        "requestId": req.requestId,
+        "language": req.language,
+        "chapterCount": len(req.chapters),
+        "photoCount": sum(chapter["photoCount"] for chapter in chapters),
+        "chapters": chapters,
+    }
+
+
+def _trace_pages_summary(pages: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "pageCount": len(pages),
+        "pages": [
+            {
+                "pageIndex": page.get("pageIndex"),
+                "chapterId": page.get("chapterId"),
+                "category": page.get("category"),
+                "templateId": page.get("templateId"),
+                "images": page.get("images") or {},
+                "textKeys": sorted((page.get("texts") or {}).keys()),
+            }
+            for page in pages
+        ],
+    }
 
 
 def _chapter_with_photos(chapter: Any, photos: Sequence[Any]) -> Any:
@@ -149,7 +207,14 @@ async def _select_batch(chapters: Sequence[Any]) -> _BatchResult:
             chapter_ids=[getattr(chapter, "chapterId", None) for chapter in chapters],
             error=str(exc),
         )
-        return _BatchResult(pages=_fallback_interiors(chapters))
+        pages = _fallback_interiors(chapters)
+        chapter_ids = [str(getattr(chapter, "chapterId", None)) for chapter in chapters]
+        ai_client.trace_marker(
+            "select-layout fallback",
+            input=f"chapterIds={chapter_ids}; reason={str(exc)[:300]}",
+            output=f"deterministic pages={len(pages)}",
+        )
+        return _BatchResult(pages=pages)
 
 
 async def select_pages(req: SelectLayoutRequest) -> tuple[list[dict[str, Any]], V3Usage]:
@@ -190,6 +255,11 @@ async def select_pages(req: SelectLayoutRequest) -> tuple[list[dict[str, Any]], 
 
 async def _run_select_layout(job: _Job) -> None:
     started = time.monotonic()
+    ai_client.trace_marker(
+        "select-layout input",
+        input=_trace_json(_trace_request_summary(job.req)),
+        output="进入 Stage2 排版选择。",
+    )
     await _emit_progress(job, "layout", 0)
     pages, usage = await select_pages(job.req)
     await _emit_progress(job, "legalize", 100)
@@ -202,6 +272,11 @@ async def _run_select_layout(job: _Job) -> None:
         usage=usage,
     )
     await callback.post(str(job.req.callbackUrl), envelope)
+    ai_client.trace_marker(
+        "select-layout output",
+        input=f"requestId={job.req.requestId}; geminiCallCount={usage.geminiCallCount}",
+        output=_trace_json(_trace_pages_summary(pages)),
+    )
     log.info(
         "v3_select_layout.completed",
         duration_ms=int((time.monotonic() - started) * 1000),

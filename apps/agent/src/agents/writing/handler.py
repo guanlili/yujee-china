@@ -47,15 +47,15 @@ from ...schemas import (
     V3Usage,
 )
 from ...settings import get_settings
-from ...prompts import RULES_DIR, load_prompt, load_replies
+from ...skills import SKILLS_DIR, load_prompt, load_replies
 from ... import ai_client
 from ..image_edit_intent import handler as chat_edit_v3
 from . import guides as writing_guides
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
 
-# 任务定义 + 输出 JSON 形状 + dispatch 判定:固定结构,co-located 在本 cap 目录,按显式
-# 路径加载(对照 theme_recommend/recommend_theme.md)。人为可调的文风规则另放 prompts/rules/。
+# 角色 + 输入范围 + 输出 JSON 形状:固定结构,co-located 在本 cap 目录,按显式
+# 路径加载(对照 theme_recommend/recommend_theme.md)。人为可调的分发/文风规则另放 src/skills/。
 _PROMPT_DIR = Path(__file__).resolve().parent
 
 _VALID_KINDS: tuple[str, ...] = ("talk", "write", "edit")
@@ -252,25 +252,24 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
     page_examples = _page_output_examples_by_index(req.pages, slot_specs)
     focused = req.focusedPageIndex
 
-    # Persona + STRICT JSON 契约 + 本轮 dispatch 规则。固定结构(JSON 契约/分发判定)外置
-    # 在 chapter_chat.md(co-located,显式路径加载);创作/引导文风另放 prompts/rules/
+    # STRICT JSON 契约 + 本轮 dispatch 规则。固定结构(JSON 契约)外置
+    # 在 chapter_chat.md(co-located,显式路径加载);分发/创作/引导规则另放 src/skills/
     # (writing_style / guidance_style)。旧的 `writing_guides.ROLE_GUIDES` 创作话术
     # (`guides_block()`)在 V3 路径上刻意不使用;V3 文风来自 writing_style(v2 仍留
     # ROLE_GUIDES,#197 整删)。
-    system = (
-        writing_guides.persona_block()
-        + "\n\n"
-        + load_prompt(_PROMPT_DIR / "chapter_chat.md")
+    system = load_prompt(
+        _PROMPT_DIR / "chapter_chat.md",
+        skills=("chapter_chat_turns",),
     )
     # §4.2(4): 写作风格(creative style)+ 引导风格(guidance style),都作为 prompt
-    # 资产按路径加载(外置在 prompts/rules/)。语言由槽位的 lang 标记 + 文风资产自身
+    # 资产按路径加载(外置在 src/skills/)。语言由槽位的 lang 标记 + 文风资产自身
     # 决定(跟随用户语言),不再由 {LANGUAGE} 占位符强制。
     # 段落分隔标题(=== 写作风格 === / === 引导风格 ===)已并入各 fragment 文件顶部,
     # 这里只做拼接,不再注入字符串字面量。
     system += "\n\n" + load_prompt(
-        RULES_DIR / "writing_style.md", common=("grounding",)
+        SKILLS_DIR / "writing_style.md", skills=("grounding",)
     )
-    system += "\n\n" + load_prompt(RULES_DIR / "guidance_style.md")
+    system += "\n\n" + load_prompt(SKILLS_DIR / "guidance_style.md")
 
     # §4.2(4) 写作 LM 的输入组装。需求点名的每一项都在这里:
     #   用户信息  → history + userMessage(+ 章节上下文里带的 promptHint)
@@ -633,8 +632,8 @@ def _text(value: Any) -> str:
 
 
 def _default_reply(language: str, kind: str) -> str:
-    """从可手调的 replies.md 读兜底回复(`kind.语言`),按路径缓存。未知 kind 回 talk。"""
-    replies = load_replies(_PROMPT_DIR / "replies.md")
+    """从 skills/replies/writing.md 读兜底回复(`kind.语言`),按路径缓存。未知 kind 回 talk。"""
+    replies = load_replies(SKILLS_DIR / "replies" / "writing.md")
     lang = "zh" if language == "zh" else "en"
     return (
         replies.get(f"{kind}.{lang}")

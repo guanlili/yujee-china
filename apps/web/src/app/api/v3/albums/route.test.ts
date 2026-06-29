@@ -70,3 +70,19 @@ test('/api/v3/albums rejects image payloads over 800KB before creating work', ()
 
   assert.equal(result.success, false);
 });
+
+test('/api/v3/albums accepts 100 photos and rejects 101 photos', () => {
+  const photos = Array.from({ length: 100 }, (_, index) => ({
+    ...BODY.photos[0],
+    photoId: `p${index + 1}`,
+  }));
+
+  assert.equal(BodySchema.safeParse({ ...BODY, photos }).success, true);
+  assert.equal(
+    BodySchema.safeParse({
+      ...BODY,
+      photos: [...photos, { ...BODY.photos[0], photoId: 'p101' }],
+    }).success,
+    false,
+  );
+});

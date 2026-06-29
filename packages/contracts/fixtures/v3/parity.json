@@ -185,7 +185,7 @@
       }
     },
     {
-      "name": "V3AnalyzeRequest rejects >30 photos",
+      "name": "V3AnalyzeRequest rejects empty photos",
       "schema": "V3AnalyzeRequest",
       "expectValid": false,
       "payload": {

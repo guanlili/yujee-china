@@ -1,10 +1,7 @@
-"""Stage1 unplaced-photo assignment contract."""
+"""Compatibility shim for Stage1 unplaced-photo assignment contracts."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from ...chaptering.schema import UnplacedAssignments
 
-
-@dataclass(frozen=True)
-class UnplacedAssignments:
-    assignments: dict[str, str]
+__all__ = ["UnplacedAssignments"]

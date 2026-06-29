@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# 本地起 agent 服务 + 开启 LLM 追踪。
-# 每次 AI 调用(火山识图 / DeepSeek 文案)的「系统指令 + 用户上下文(图片脱敏)+ 模型输出」
-# 都会追加到 trace 文件,实时 tail 出来,看清每一步 AI 在想什么。
+# 本地起 agent 服务 + 开启全链路追踪。
+# 每个 Agent 关键环节的输入/输出摘要,以及每次 AI 调用(火山识图 / Gemini 排版 /
+# DeepSeek 文案)的「系统指令 + 用户上下文(图片脱敏)+ 模型输出」都会追加到 trace 文件。
 #
 # 用法:
 #   bash apps/agent/dev-trace.sh            # 起服务 + 实时追踪
@@ -24,7 +24,7 @@ echo "=========================================================="
 echo "  Agent 服务   : http://localhost:$PORT"
 echo "  健康检查     : curl http://localhost:$PORT/health"
 echo "  LLM 追踪文件 : $TRACE_FILE"
-echo "  追踪内容     : 每步 AI 的 system / user / output(base64 图脱敏)"
+echo "  追踪内容     : 全链路环节 marker + AI system / user / output(base64 图脱敏)"
 echo "=========================================================="
 echo "  跑一遍编辑器流程后,下方会实时打印每个 AI 步骤的输入输出。"
 echo "  Ctrl-C 退出(服务和 tail 一起关)。"
