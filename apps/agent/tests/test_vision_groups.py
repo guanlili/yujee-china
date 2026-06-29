@@ -136,7 +136,7 @@ def test_grouping_time_gap_splits_later_units():
     assert result.unplacedPhotoIds == []
 
 
-def test_describe_chapters_retries_recoverable_missing_chapter_description(monkeypatch):
+def test_describe_chapters_retries_recoverable_invalid_chapter_keywords(monkeypatch):
     monkeypatch.setenv("AGENT_PIPELINE_MODE", "real")
     monkeypatch.setenv("VISION_PROVIDER", "openai")
     monkeypatch.setenv("OPENAI_API_KEY", "fake_oai")
@@ -155,12 +155,15 @@ def test_describe_chapters_retries_recoverable_missing_chapter_description(monke
     async def fake_completion(**kwargs):
         calls.append(kwargs["messages"])
         if len(calls) == 1:
+            # 非法 keywords(非数组)是 recoverable error,触发一次重试。
             return _completion(
                 {
                     "chapters": [
                         {
                             "chapterId": "ch_1",
-                            "scenes": {"1": "scene one"},
+                            "visualSummary": "two people on a beach",
+                            "keywords": "not-an-array",
+                            "scenes": {"p1": "scene one", "p2": "scene two"},
                         }
                     ]
                 }
@@ -170,8 +173,9 @@ def test_describe_chapters_retries_recoverable_missing_chapter_description(monke
                 "chapters": [
                     {
                         "chapterId": "ch_1",
-                        "description": "One chapter.",
-                        "scenes": {"1": "scene one", "2": "scene two"},
+                        "visualSummary": "two people on a beach",
+                        "keywords": ["beach", "trip"],
+                        "scenes": {"p1": "scene one", "p2": "scene two"},
                     }
                 ]
             }
@@ -193,13 +197,15 @@ def test_describe_chapters_retries_recoverable_missing_chapter_description(monke
         s.reset_settings_cache()
 
     assert result.imageDescriptions == {"p1": "scene one", "p2": "scene two"}
-    assert result.chapterDescriptions == {"ch_1": "One chapter."}
+    # 章节 description 不再由识图阶段写,留作目录占位。
+    assert result.chapterDescriptions == {}
+    assert result.chapterKeywords == {"ch_1": ["beach", "trip"]}
     assert result.tokens_billed == 14
     assert result.call_count == 1
     assert len(calls) == 2
     assert "describe_retry" not in calls[0][-1]["content"]
     assert len(calls[1]) == 3
-    assert "ch_1.description must be a string" in calls[1][-1]["content"]
+    assert "ch_1.keywords must be an array" in calls[1][-1]["content"]
 
 
 def test_describe_chapters_accepts_chapter_level_insights_without_photo_scenes(monkeypatch):

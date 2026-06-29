@@ -72,13 +72,13 @@ def _lang_name(language: str) -> str:
 
 
 def _chapter_payload(chapter: V3ChapterOverview) -> dict[str, Any]:
-    """一章的 recommend 输入(§8 表):description + 逐照片场景。
+    """一章的 recommend 输入(§8 表):逐照片场景 + 取色。章节 description 是目录占位、
+    分析期留空,不进 recommend 上下文(省 token)。
 
     在构造上隐私干净 —— `V3ChapterOverview`(`_V3Strict`)在解析时就禁止任何
     GPS/place 字段,而 photoDescs 是自由文本的场景句子。"""
     return {
         "chapterId": chapter.chapterId,
-        "description": chapter.description,
         "extractedColor": chapter.extractedColor,
         "photoDescs": list(chapter.photoDescs),
     }

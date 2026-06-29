@@ -22,10 +22,11 @@ class GroupingResult:
 class NewChapter:
     chapterId: str
     photoIds: list[str]
-    description: str
     chapterTitleHint: str
     chapterKeywords: list[str]
     chapterVisualSummary: str
+    # 目录(TOC)占位:新建章节也不写 description,后期写目录才填。
+    description: str = ""
 
 
 @dataclass(frozen=True)

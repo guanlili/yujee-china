@@ -267,7 +267,8 @@ class V3Chapter(_V3Strict):
     分析期为 null 占位,theme 环节填。"""
 
     chapterId: str = Field(min_length=1)
-    description: str = Field(max_length=600)
+    # 目录(TOC)专用占位:分析/识图阶段留空,后期写目录环节才填。
+    description: str = Field(default="", max_length=600)
     # Stage1 extracted source color. Distinct from final theme `accentColor`.
     # Migration field: older trees omit it; Stage1 PR249 trees may carry null.
     extractedColor: AccentColor | None = None

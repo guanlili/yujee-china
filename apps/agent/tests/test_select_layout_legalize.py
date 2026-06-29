@@ -2,7 +2,9 @@ import asyncio
 
 import pytest
 
-from src.engine import gemini_layout, skeleton_v3, template_previews, templates
+from src import settings as settings_module
+from src.agents import select_layout as select_layout_agent
+from src.engine import legalize, skeleton_v3, template_previews, templates
 from src.schemas import V3Chapter, V3ChapterPhoto
 
 
@@ -47,7 +49,7 @@ def test_template_previews_are_complete_for_interior_templates():
 
 
 def test_build_candidates_uses_capacity_buckets_not_caller_candidates():
-    candidates = gemini_layout.build_candidate_catalog("interior", max_photo_count=2)
+    candidates = legalize.build_candidate_catalog("interior", max_photo_count=2)
     assert candidates
     assert {candidate["imageSlotCount"] for candidate in candidates}.issubset({1, 2})
     assert all("previewImage" in candidate for candidate in candidates)
@@ -58,7 +60,7 @@ def test_gemini_layout_preserves_legal_slot_mapping():
     template_id = _interior_template_with_capacity(2)
     slot_a, slot_b = skeleton_v3.image_slot_keys(templates.TEMPLATES[template_id])[:2]
 
-    pages = gemini_layout.legalize_layout(
+    pages = legalize.legalize_layout(
         [chapter],
         [
             {
@@ -79,7 +81,7 @@ def test_gemini_layout_falls_back_only_for_illegal_or_missing_slots():
     template_id = _interior_template_with_capacity(2)
     slot_a = skeleton_v3.image_slot_keys(templates.TEMPLATES[template_id])[0]
 
-    pages = gemini_layout.legalize_layout(
+    pages = legalize.legalize_layout(
         [chapter],
         [
             {
@@ -96,7 +98,13 @@ def test_gemini_layout_falls_back_only_for_illegal_or_missing_slots():
 
 
 def test_gemini_layout_accepts_case4_swap_mode_without_rejecting(monkeypatch):
-    monkeypatch.setattr(gemini_layout.get_settings(), "select_layout_api_key", None, raising=False)
+    monkeypatch.setattr(
+        settings_module.get_settings(), "select_layout_api_key", None, raising=False
+    )
 
-    with pytest.raises(gemini_layout.GeminiLayoutUnavailable):
-        asyncio.run(gemini_layout.gemini_layout([_chapter(["p1"])], mode="case4-swap", allowAddPages=True))
+    with pytest.raises(select_layout_agent.GeminiLayoutUnavailable):
+        asyncio.run(
+            select_layout_agent.gemini_layout(
+                [_chapter(["p1"])], mode="case4-swap", allowAddPages=True
+            )
+        )

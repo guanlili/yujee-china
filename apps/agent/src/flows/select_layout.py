@@ -11,7 +11,8 @@ from typing import Any
 
 from .. import callback
 from .. import ai_client
-from ..engine import gemini_layout, generic_copy, skeleton_v3
+from ..agents import select_layout as select_layout_agent
+from ..engine import generic_copy, legalize, skeleton_v3
 from ..logging_config import get_logger, request_id_var
 from ..schemas import (
     SelectLayoutCompleted,
@@ -193,9 +194,9 @@ class _BatchResult:
 
 async def _select_batch(chapters: Sequence[Any]) -> _BatchResult:
     try:
-        result = await gemini_layout.gemini_layout(chapters, mode="select", allowAddPages=True)
+        result = await select_layout_agent.gemini_layout(chapters, mode="select", allowAddPages=True)
         return _BatchResult(
-            pages=gemini_layout.legalize_layout(chapters, result.pages),
+            pages=legalize.legalize_layout(chapters, result.pages),
             gemini_calls=result.call_count,
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
@@ -240,8 +241,8 @@ async def select_pages(req: SelectLayoutRequest) -> tuple[list[dict[str, Any]], 
         if model is None and result.model:
             model = result.model
 
-    wrapped = skeleton_v3.wrap_with_cover_ending(interior_pages, req.chapters)
-    pages = generic_copy.fill_generic_copy(wrapped, req.chapters)  # type: ignore[arg-type]
+    # 封面/封底不在排版这步生成,改放后续环节;Stage2 只产 interior 页。
+    pages = generic_copy.fill_generic_copy(interior_pages, req.chapters)  # type: ignore[arg-type]
     duration_ms = int((time.monotonic() - started) * 1000)
     usage = V3Usage(
         durationMs=duration_ms,

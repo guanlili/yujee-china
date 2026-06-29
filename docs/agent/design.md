@@ -146,7 +146,7 @@ Agent DB 不可用时,这条路径是基础设施失败。
 
 ### 4.1 `/v3/recommend`
 
-`theme_recommend.handler.run(...)` 调 DeepSeek。输入只有文字:章节 description、逐照片 sceneDescription、Stage1 `extractedColor`、可选 `analysisSummary/userMessage/fontHint`。
+`theme_recommend.handler.run(...)` 调 DeepSeek。输入只有文字:逐照片 sceneDescription、Stage1 `extractedColor`、可选 `analysisSummary/userMessage/fontHint`。(章节 description 是目录占位、分析期留空,不进 recommend 上下文。)
 
 输出是 3 组 `bookThemeOptions`,每组有一个 `artFont` 和覆盖所有章节的 `{chapterId, subject?, accentColor}`。模型不能输出 template/page/layout 指令。
 

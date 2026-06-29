@@ -161,11 +161,10 @@ def _slot_spec(slot: dict[str, Any], *, slot_id: str, repeat_index: int | None =
 
 
 def _scene_background(chapter: Any) -> dict[str, Any]:
-    """画面背景 (§4.2(4)):chapter description + 逐照片 sceneDescription,取自请求承载的
-    §4.1 analysis 树。在构造上隐私干净 —— `V3ChapterPhoto`(`_V3Strict`)在解析时就禁止
-    任何 GPS/place 字段。"""
+    """画面背景 (§4.2(4)):逐照片 sceneDescription,取自请求承载的 §4.1 analysis 树。
+    章节 description 是目录(TOC)占位、分析期留空,不进写作上下文(省 token)。
+    在构造上隐私干净 —— `V3ChapterPhoto`(`_V3Strict`)在解析时就禁止任何 GPS/place 字段。"""
     return {
-        "chapterDescription": chapter.description,
         "photos": [
             {"photoId": p.photoId, "sceneDescription": p.sceneDescription}
             for p in chapter.photos

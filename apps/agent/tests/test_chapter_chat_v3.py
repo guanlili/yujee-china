@@ -412,9 +412,10 @@ def test_assembly_carries_all_section_4_2_4_items():
     # 用户信息: this turn's message + history channel present.
     assert payload["userMessage"] == "write it"
     assert "history" in payload
-    # 画面背景: chapter description + per-photo sceneDescription (§4.1 tree).
+    # 画面背景: per-photo sceneDescription (§4.1 tree). 章节 description 是目录占位、
+    # 分析期留空,不进写作上下文。
     bg = payload["sceneBackground"]
-    assert bg["chapterDescription"] == "A spring trip to the coast."
+    assert "chapterDescription" not in bg
     assert bg["photos"] == [{"photoId": "p1", "sceneDescription": "two people on a beach"}]
     # 页面结构: per-page slot specs + which photos sit on each page.
     assert set(payload["pageSlots"]) == {"0", "1"}

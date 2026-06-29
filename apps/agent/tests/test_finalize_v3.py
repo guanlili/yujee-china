@@ -62,7 +62,8 @@ def test_finalize_flattens_tree_into_album_layout_plan():
 
     layout = fv3.finalize_v3(_request([chapter], pages))
 
-    assert layout.magazine.title == "A day out"
+    # 章节 description 不再作为杂志标题来源:title 走语言默认。
+    assert layout.magazine.title == "Life in photographs"
     assert layout.magazine.language == "en"
     assert {p.photoId for p in layout.photos} == {"p0", "p1", "p2"}
     assert [p.pageIndex for p in layout.pages] == list(range(len(layout.pages)))

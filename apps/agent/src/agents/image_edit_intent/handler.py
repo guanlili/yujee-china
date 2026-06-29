@@ -104,10 +104,10 @@ def _build_user_content(
     current_ids = list(page.images.values())
     current = ", ".join(current_ids) if current_ids else "(无)"
     capacity = _max_interior_capacity()
-    # 仅数据:章节描述 + 本章可用照片(id+场景)+ 当前页照片 + 本页容量上限(动态值)+
-    # 用户诉求。怎么改、硬性约束、输出 JSON 形状由 edit_image_intent.md(系统指令)统一拥有。
+    # 仅数据:本章可用照片(id+场景)+ 当前页照片 + 本页容量上限(动态值)+ 用户诉求。
+    # 章节 description 是目录占位、分析期留空,不进编辑上下文。怎么改、硬性约束、输出 JSON
+    # 形状由 edit_image_intent.md(系统指令)统一拥有。
     return (
-        f"章节:{chapter.description or '(无描述)'}\n\n"
         f"本章可用的照片(photoId | 场景):\n"
         f"{photo_lines}\n\n"
         f"当前页照片(按顺序):{current}\n\n"

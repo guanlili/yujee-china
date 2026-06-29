@@ -119,7 +119,7 @@ X-Request-Id: <uuid>
 ```ts
 {
   chapterId: string;
-  description: string;
+  description: string; // 目录(TOC)占位:分析期留空(""),后期写目录环节才填;不进下游 AI 上下文
   extractedColor?: string | null;
   accentColor: string | null;
   artFont: "serif-classic" | "sans-modern" | "script-elegant" | "display-bold" | null;
@@ -404,7 +404,7 @@ Request:
   language: "zh" | "en";
   chapters: Array<{
     chapterId: string;
-    description: string;
+    description: string; // 目录占位,分析期为空("");recommend 不再喂给模型,仅保留契约字段
     extractedColor?: string | null;
     photoDescs: string[];
   }>;

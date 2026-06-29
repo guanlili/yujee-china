@@ -7,7 +7,8 @@ from time import perf_counter
 from typing import Any, Protocol
 
 from ...db import agent_edit_repo
-from ...engine import gemini_layout
+from ...engine import legalize
+from .. import select_layout as select_layout_agent
 from ...schemas import (
     V3ChapterChatRequest,
     V3ChatTurn,
@@ -211,8 +212,8 @@ async def _case4_layout_swap(req: V3EditChatRequest, tools: EditTools) -> list[V
         return []
 
     chapters = [{"chapterId": chapter_id, "structureHint": req.userMessage, "photos": photos}]
-    result = await gemini_layout.gemini_layout(chapters, mode="case4-swap", allowAddPages=True)
-    legal_pages = gemini_layout.legalize_layout(chapters, result.pages)
+    result = await select_layout_agent.gemini_layout(chapters, mode="case4-swap", allowAddPages=True)
+    legal_pages = legalize.legalize_layout(chapters, result.pages)
     return _patches_from_pages(legal_pages, page_indexes=page_indexes)
 
 

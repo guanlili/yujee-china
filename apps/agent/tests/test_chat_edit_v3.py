@@ -40,7 +40,8 @@ from src.schemas import (
 from src.agents.editing import handler as edit_handler
 from src.agents.writing import handler as chapter_chat_v3
 from src.agents.image_edit_intent import handler as chat_edit_v3
-from src.engine import gemini_layout, skeleton_v3
+from src.agents import select_layout as select_layout_agent
+from src.engine import skeleton_v3
 
 # mag-04 is a 3-image interior template (matches test_chapter_chat_v3 baseline).
 _INTERIOR_3 = "mag-04"
@@ -472,11 +473,11 @@ def test_edit_chat_case4_fetches_page_photos_via_agent_data_and_calls_gemini(mon
 
     async def fake_gemini(chapters, *, mode, allowAddPages):  # noqa: ANN001
         calls.append((chapters, mode, allowAddPages))
-        return gemini_layout.GeminiLayoutResult(
+        return select_layout_agent.GeminiLayoutResult(
             pages=[{"chapterId": "c1", "templateId": "mag-03", "slots": {"image": "p1"}}]
         )
 
-    monkeypatch.setattr(edit_handler.gemini_layout, "gemini_layout", fake_gemini)
+    monkeypatch.setattr(edit_handler.select_layout_agent, "gemini_layout", fake_gemini)
 
     resp = asyncio.run(edit_handler.run(_edit_req("change the layout"), repo=FakeRepo(), tools=tools))
 
@@ -512,14 +513,14 @@ def test_edit_chat_case4_without_focused_page_uses_chapter_page_indexes(monkeypa
     )
 
     async def fake_gemini(chapters, *, mode, allowAddPages):  # noqa: ANN001
-        return gemini_layout.GeminiLayoutResult(
+        return select_layout_agent.GeminiLayoutResult(
             pages=[
                 {"chapterId": "c2", "templateId": "mag-13", "slots": {"image": "p1"}},
                 {"chapterId": "c2", "templateId": "mag-13", "slots": {"image": "p2"}},
             ]
         )
 
-    monkeypatch.setattr(edit_handler.gemini_layout, "gemini_layout", fake_gemini)
+    monkeypatch.setattr(edit_handler.select_layout_agent, "gemini_layout", fake_gemini)
 
     resp = asyncio.run(
         edit_handler.run(
