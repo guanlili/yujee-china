@@ -1846,7 +1846,7 @@ function EditorBook({
       }
       maybeAppendExportReadyCard();
       if (advanced && storyGate.stage !== 'theme') {
-        void runChapterGuideOpener();
+        await runChapterGuideOpener({ allowDuringSend: true });
       }
       if (storyGate.stage === 'theme') {
         confirmingStoryChapter = false;
@@ -2792,8 +2792,8 @@ function EditorBook({
       return pages.every((p) => !pageHasWritableTextSlot(p.templateId));
     }
 
-    async function runChapterGuideOpener() {
-      if (!isAuthoring || sending || awaitingSatisfaction) return;
+    async function runChapterGuideOpener(opts?: { allowDuringSend?: boolean }) {
+      if (!isAuthoring || (!opts?.allowDuringSend && sending) || awaitingSatisfaction) return;
       const chapterId = storyGate?.currentChapterId ?? null;
       if (!chapterId) return;
       // Already confirmed chapter, or already opened/conversed this session → skip.

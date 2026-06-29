@@ -23,11 +23,11 @@ test('B: an auto-guide opener exists and posts an empty userMessage (AI opens th
   const src = source('EditorPort.tsx');
 
   // The opener helper exists.
-  assert.match(src, /async function runChapterGuideOpener\(\)/, 'runChapterGuideOpener() must exist');
+  assert.match(src, /async function runChapterGuideOpener\([^)]*\)/, 'runChapterGuideOpener() must exist');
 
   // It POSTs a chapter-chat turn with an EMPTY userMessage so the model dispatches a
   // 引导 (talk) question rather than waiting for the user to type first.
-  const fn = /async function runChapterGuideOpener\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
+  const fn = /async function runChapterGuideOpener\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'runChapterGuideOpener() body must be parseable');
   assert.match(fn![0], /postEditChat\(/, 'opener must call postEditChat');
   assert.doesNotMatch(fn![0], /postChapterChat\(/, 'opener must not call postChapterChat');
@@ -55,8 +55,8 @@ test('B: the opener fires on entry (no prior history) and on advancing to the ne
   // guide turn (skipped when the last chapter advanced stage→theme).
   assert.match(
     src,
-    /if \(advanced && storyGate\.stage !== 'theme'\) \{\s*void runChapterGuideOpener\(\)/,
-    'advancing to the next story chapter must auto-fire the guide opener',
+    /if \(advanced && storyGate\.stage !== 'theme'\) \{\s*await runChapterGuideOpener\(\{ allowDuringSend: true \}\);/,
+    'advancing to the next story chapter must await the guide opener inside the confirm send lock',
   );
 
   // Guard against double-prompting: a chapter is only opened once per session.

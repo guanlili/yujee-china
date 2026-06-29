@@ -42,7 +42,7 @@ test('①: the per-chapter opener guard survives effect re-invocation (component
 
 test('①: the opener holds an in-flight guard so two same-tick calls cannot both POST', () => {
   const src = source('EditorPort.tsx');
-  const fn = /async function runChapterGuideOpener\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
+  const fn = /async function runChapterGuideOpener\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'runChapterGuideOpener() body must be parseable');
   // An in-flight set keyed by chapterId blocks a second concurrent opener for the same
   // chapter before the first finishes (guidedChapters alone is added synchronously, but

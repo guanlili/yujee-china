@@ -65,13 +65,32 @@ test('a successful confirm advances the canvas and resets per-chapter chat histo
     'advancing must reset chapterHistory + awaitingSatisfaction and flip the canvas to the new chapter',
   );
   // Advancing to a new STORY chapter auto-fires the guide opener (引导优先).
+  // This is invoked inside the confirmation send lock, so it must explicitly allow the
+  // internal chained opener and await it; otherwise runChapterGuideOpener sees
+  // sending=true and returns before appending the next chapter card.
   assert.match(
     body,
-    /if \(advanced && storyGate\.stage !== 'theme'\) \{\s*void runChapterGuideOpener\(\)/,
-    'advancing to the next story chapter must auto-fire the guide opener',
+    /if \(advanced && storyGate\.stage !== 'theme'\) \{\s*await runChapterGuideOpener\(\{ allowDuringSend: true \}\);/,
+    'advancing to the next story chapter must await the guide opener inside the confirm send lock',
   );
   // Confirming the LAST chapter (stage → theme) still hands off to the theme step.
   assert.match(body, /if \(storyGate\.stage === 'theme'\) \{[\s\S]*?await runRecommendTheme\(\);/);
+});
+
+test('runChapterGuideOpener can be explicitly chained from confirm while sending is locked', () => {
+  const fn = /async function runChapterGuideOpener\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'runChapterGuideOpener must exist');
+  const body = fn![0];
+  assert.match(
+    fn![0],
+    /async function runChapterGuideOpener\(opts\?: \{ allowDuringSend\?: boolean \}\)/,
+    'opener must expose an explicit internal-send override',
+  );
+  assert.match(
+    body,
+    /if \(!isAuthoring \|\| \(!opts\?\.allowDuringSend && sending\) \|\| awaitingSatisfaction\) return;/,
+    'only the explicit confirm-chain override may bypass the sending guard',
+  );
 });
 
 test('goToChapterById maps a chapterId to its first page via the draft skeleton', () => {
