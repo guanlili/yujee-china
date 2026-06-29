@@ -2724,7 +2724,7 @@ function EditorBook({
       chapterLine.textContent = aT(`第 ${meta.num} 章`, `Chapter ${meta.num}`);
       const metaLine = document.createElement('div');
       metaLine.className = 'cc-meta';
-      metaLine.textContent = `${meta.photoIds.length} ${t('photosWord')} · ${t('justEdited')}`;
+      metaLine.textContent = `${meta.photoIds.length} ${t('photosWord')} · ${t('nowEditing')}`;
       info.appendChild(titleRow);
       info.appendChild(chapterLine);
       info.appendChild(metaLine);

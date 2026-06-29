@@ -95,3 +95,10 @@ test('conversation chapter prompt card uses the design .chap-card class without 
   assert.equal(chapterCardRuleCount, 2, 'only the floating rail plus its scrollbar helper should own .chapter-card');
   assert.doesNotMatch(css, /\.editor-port \.chapter-card \.cc-title/);
 });
+
+test('conversation chapter prompt card says the chapter is currently being edited', () => {
+  const fn = /function appendChapterCard\(chapterId: string\) \{[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'appendChapterCard must exist');
+  assert.match(fn![0], /t\('nowEditing'\)/, 'chapter prompt card must tell users this is the active chapter');
+  assert.doesNotMatch(fn![0], /t\('justEdited'\)/, 'chapter prompt card must not say "just edited" before the user edits');
+});
