@@ -1843,6 +1843,7 @@ function EditorBook({
         chapterHistory.length = 0;
         awaitingSatisfaction = false;
         goToChapterById(advancedTo!);
+        appendChapterCard(advancedTo!);
       }
       maybeAppendExportReadyCard();
       if (advanced && storyGate.stage !== 'theme') {

@@ -57,12 +57,13 @@ test('a successful confirm advances the canvas and resets per-chapter chat histo
   assert.ok(fn, 'applyEditChatProgressDecision must exist');
   const body = fn![0];
   assert.match(body, /await loadStoryGate\(\)/, 'progressDecision handling must refresh the Web projection');
-  // On advancement, clear the running chat log + awaiting flag and flip the book to the
-  // new chapter. (§4.2: the new chapter then auto-opens with a guide turn.)
+  // On advancement, clear the running chat log + awaiting flag, flip the book to the
+  // new chapter, and append the next chapter card immediately. The chapter card must
+  // not depend on the guide opener because the opener can legitimately bail on guards.
   assert.match(
     body,
-    /const advanced = advancedTo != null && advancedTo !== prevChapterId;\s*if \(advanced\) \{[\s\S]*?chapterHistory\.length = 0;\s*awaitingSatisfaction = false;[\s\S]*?goToChapterById\(advancedTo!\);\s*\}/,
-    'advancing must reset chapterHistory + awaitingSatisfaction and flip the canvas to the new chapter',
+    /const advanced = advancedTo != null && advancedTo !== prevChapterId;\s*if \(advanced\) \{[\s\S]*?chapterHistory\.length = 0;\s*awaitingSatisfaction = false;[\s\S]*?goToChapterById\(advancedTo!\);[\s\S]*?appendChapterCard\(advancedTo!\);[\s\S]*?\}/,
+    'advancing must reset state, flip the canvas, and append the next chapter card',
   );
   // Advancing to a new STORY chapter auto-fires the guide opener (引导优先).
   // This is invoked inside the confirmation send lock, so it must explicitly allow the
