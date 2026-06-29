@@ -117,7 +117,19 @@ _ADVANCE_BOOK_TOOL = {
     "type": "function",
     "function": {
         "name": "advance_book",
-        "description": "用户说继续、下一页、下一个、好了时推进 book tree。无需参数。",
+        "description": "用户说下一页、翻页、下一个页面时推进 book tree。无需参数。",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    },
+}
+_CONFIRM_CHAPTER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "confirm_chapter",
+        "description": "用户明确确认本章内容、说这一章好了、继续下一章时完成当前章节。无需参数。",
         "parameters": {
             "type": "object",
             "properties": {},
@@ -131,6 +143,7 @@ _STORY_TOOLS = [
     _SWAP_LAYOUT_TOOL,
     _SWAP_IMAGES_TOOL,
     _ADVANCE_BOOK_TOOL,
+    _CONFIRM_CHAPTER_TOOL,
 ]
 
 
@@ -213,7 +226,14 @@ def _tool_call(response: dict[str, Any]) -> tuple[str, dict[str, Any], dict[str,
         if not isinstance(function, dict):
             continue
         name = function.get("name")
-        if name not in {"get_page_info", "get_book_tree", "swap_layout", "swap_images", "advance_book"}:
+        if name not in {
+            "get_page_info",
+            "get_book_tree",
+            "swap_layout",
+            "swap_images",
+            "advance_book",
+            "confirm_chapter",
+        }:
             continue
         try:
             args = ai_client.parse_json_loose(str(function.get("arguments") or "{}"))
@@ -405,6 +425,8 @@ async def _run_tool_router(
         if name == "advance_book":
             book_tree = await _fetch_book_tree(req, tools)
             return "advance_book", _advance_from_book_tree(req, book_tree)
+        if name == "confirm_chapter":
+            return "confirm_chapter", story_progress.chapter_done_decision()
         if name == "get_page_info":
             page_index = _tool_page_index(args, req)
             return "page_info", await _fetch_page_info(req, tools, page_index=page_index)
@@ -450,6 +472,14 @@ async def chapter_chat_bundle(
             usage(1),
             navigation=navigation,
             progress_decision=progress_decision,
+        )
+    if tool_kind == "confirm_chapter":
+        return ChapterChatBundle(
+            "这一章已确认，继续下一章。" if req.language == "zh" else "This chapter is confirmed. Moving on.",
+            None,
+            [],
+            usage(1),
+            progress_decision=tool_result,
         )
 
     page_info = tool_result

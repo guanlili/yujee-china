@@ -520,7 +520,14 @@ def test_edit_chat_story_agent_swaps_layout_through_simple_llm_tool_call(monkeyp
     )
 
     tool_names = [tool["function"]["name"] for tool in complete_calls[0]["tools"]]
-    assert tool_names == ["get_page_info", "get_book_tree", "swap_layout", "swap_images", "advance_book"]
+    assert tool_names == [
+        "get_page_info",
+        "get_book_tree",
+        "swap_layout",
+        "swap_images",
+        "advance_book",
+        "confirm_chapter",
+    ]
     schemas = {
         tool["function"]["name"]: tool["function"]["parameters"]["properties"]
         for tool in complete_calls[0]["tools"]
@@ -528,6 +535,7 @@ def test_edit_chat_story_agent_swaps_layout_through_simple_llm_tool_call(monkeyp
     swap_schema = schemas["swap_layout"]
     assert set(schemas["swap_images"]) == {"page"}
     assert set(schemas["advance_book"]) == set()
+    assert set(schemas["confirm_chapter"]) == set()
     assert set(swap_schema) == {"page", "chapter"}
     assert tools.page_info_requests == [
         {"albumId": "alb_v3", "chapterId": "c1", "scope": "page", "pageIndex": 1}
@@ -609,6 +617,50 @@ def test_edit_chat_continue_reads_book_tree_and_returns_page_navigation():
     assert resp.navigation is not None
     assert resp.navigation.pageIndex == 2
     assert resp.progressDecision is None
+
+
+def test_edit_chat_confirm_chapter_tool_returns_progress_before_last_page():
+    tools = FakeTools(
+        book_tree={
+            "progress": {"currentChapterId": "c1", "doneChapterIds": []},
+            "focusedPageIndex": 1,
+            "chapters": [
+                {"chapterId": "c1", "label": "Coast", "pageIndexes": [1, 2], "done": False},
+                {"chapterId": "c2", "label": "City", "pageIndexes": [3], "done": False},
+            ],
+            "allDone": False,
+        }
+    )
+    repo = FakeRepo(op_id="op_confirm")
+    calls: list[dict[str, Any]] = []
+
+    async def complete(**kwargs):  # noqa: ANN003
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return _fake_tool_call("get_book_tree", {})
+        return _fake_tool_call("confirm_chapter", {})
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("这一章内容可以了，继续下一章", chapter_id="c1", page_index=1),
+            repo=repo,
+            tools=tools,
+            complete=complete,
+        )
+    )
+
+    assert tools.book_tree_requests == [
+        {"albumId": "alb_v3", "chapterId": "c1", "pageIndex": 1},
+    ]
+    assert len(calls) == 2
+    assert resp.kind == "talk"
+    assert resp.navigation is None
+    assert resp.progressDecision is not None
+    assert resp.progressDecision.chapterDone is True
+    assert repo.created[0]["payload"]["progressDecision"] == {
+        "chapterDone": True,
+        "advanceTo": "theme",
+    }
 
 
 def test_edit_chat_confirm_turn_returns_progress_decision():
