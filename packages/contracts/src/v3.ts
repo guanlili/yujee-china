@@ -133,10 +133,21 @@ export const V3InternalAgentDataPagePhotosRequest = z
   .strict();
 export type V3InternalAgentDataPagePhotosRequest = z.infer<typeof V3InternalAgentDataPagePhotosRequest>;
 
+export const V3InternalAgentDataBookTreeRequest = z
+  .object({
+    type: z.literal('book-tree'),
+    albumId: z.string().min(1),
+    chapterId: z.string().min(1).optional(),
+    pageIndex: z.coerce.number().int().nonnegative().optional(),
+  })
+  .strict();
+export type V3InternalAgentDataBookTreeRequest = z.infer<typeof V3InternalAgentDataBookTreeRequest>;
+
 export const V3InternalAgentDataRequest = z.union([
   V3InternalAgentDataPageInfoRequest,
   V3InternalAgentDataChapterSearchRequest,
   V3InternalAgentDataPagePhotosRequest,
+  V3InternalAgentDataBookTreeRequest,
 ]);
 export type V3InternalAgentDataRequest = z.infer<typeof V3InternalAgentDataRequest>;
 
@@ -195,10 +206,42 @@ export const V3InternalAgentDataPagePhotosResponse = z
   .strict();
 export type V3InternalAgentDataPagePhotosResponse = z.infer<typeof V3InternalAgentDataPagePhotosResponse>;
 
+const V3InternalAgentDataStoryProgress = z
+  .object({
+    currentChapterId: z.string().min(1).nullable(),
+    doneChapterIds: z.array(z.string().min(1)),
+  })
+  .strict();
+
+export const V3InternalAgentDataBookTreeResponse = z
+  .object({
+    type: z.literal('book-tree'),
+    data: z
+      .object({
+        progress: V3InternalAgentDataStoryProgress,
+        focusedPageIndex: z.number().int().nonnegative().optional(),
+        chapters: z.array(
+          z
+            .object({
+              chapterId: z.string().min(1),
+              label: z.string(),
+              pageIndexes: z.array(z.number().int().nonnegative()),
+              done: z.boolean(),
+            })
+            .strict(),
+        ),
+        allDone: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+export type V3InternalAgentDataBookTreeResponse = z.infer<typeof V3InternalAgentDataBookTreeResponse>;
+
 export const V3InternalAgentDataResponse = z.union([
   V3InternalAgentDataPageInfoResponse,
   V3InternalAgentDataChapterSearchResponse,
   V3InternalAgentDataPagePhotosResponse,
+  V3InternalAgentDataBookTreeResponse,
 ]);
 export type V3InternalAgentDataResponse = z.infer<typeof V3InternalAgentDataResponse>;
 
@@ -419,6 +462,17 @@ export const V3EditChatRequest = z
   .strict();
 export type V3EditChatRequest = z.infer<typeof V3EditChatRequest>;
 
+export const V3EditNavigation = z
+  .object({
+    pageIndex: z.number().int().nonnegative().optional(),
+    chapterId: z.string().min(1).optional(),
+  })
+  .strict()
+  .refine((value) => value.pageIndex !== undefined || value.chapterId !== undefined, {
+    message: 'navigation requires pageIndex or chapterId',
+  });
+export type V3EditNavigation = z.infer<typeof V3EditNavigation>;
+
 export const V3EditChatResponse = z
   .object({
     kind: z.enum(['talk', 'write', 'edit']),
@@ -426,6 +480,7 @@ export const V3EditChatResponse = z
     patches: z.array(V3LayoutPatchEntry).default([]),
     pagesTexts: z.array(V3PageTextsPatch).optional(),
     progressDecision: V3EditProgressDecision.optional(),
+    navigation: V3EditNavigation.optional(),
     opId: z.string().min(1),
     usage: V3Usage,
   })

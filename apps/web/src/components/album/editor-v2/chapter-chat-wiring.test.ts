@@ -37,8 +37,10 @@ test('runEditChatTurn posts the slim edit-chat body (chapterId + focusedPageInde
   assert.match(body, /chapterId,/);
   assert.match(body, /pagePhotoRefs:/);
   assert.match(src, /async function captureChapterPagePhotoRefs/);
-  // ③ 改页: the selected page is sent as focusedPageIndex so "this page" targets it.
-  assert.match(body, /selectedPageIndex != null \? \{ focusedPageIndex: selectedPageIndex \}/);
+  // ③ 改页: the visible authoring page is sent as focusedPageIndex so "this page"
+  // still targets something even when the user has not clicked a page.
+  assert.match(body, /const focusedPageIndex = authoringFocusPageIndex\(\);/);
+  assert.match(body, /focusedPageIndex,/);
 });
 
 test('edit-chat applies pagesTexts and patches from the commit bundle', () => {
@@ -48,6 +50,14 @@ test('edit-chat applies pagesTexts and patches from the commit bundle', () => {
   assert.match(body, /res\.pagesTexts/);
   assert.match(body, /res\.patches/);
   assert.doesNotMatch(body, /res\.layoutPatch/);
+});
+
+test('edit-chat navigation response flips to the requested page', () => {
+  const fn = /async function runEditChatTurn\([\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'runEditChatTurn must exist');
+  const body = fn![0];
+  assert.match(body, /res\.navigation\?\.pageIndex !== undefined/);
+  assert.match(body, /goToPageIndex\(res\.navigation\.pageIndex\)/);
 });
 
 test('write merges pagesTexts; edit folds layoutPatch via applyPatchToPages', () => {

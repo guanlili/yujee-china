@@ -10,6 +10,7 @@ from ..db import agent_edit_repo
 from ..schemas import (
     V3EditChatRequest,
     V3EditChatResponse,
+    V3EditNavigation,
     V3EditProgressDecision,
     V3LayoutPatchEntry,
     V3PageTextsPatch,
@@ -56,6 +57,7 @@ async def run(
         layout_patches: list[V3LayoutPatchEntry] = []
         pages_texts: list[V3PageTextsPatch] | None = None
         progress_decision: V3EditProgressDecision | None = None
+        navigation: V3EditNavigation | None = None
         assistant_reply = "Tell me more about what you want to change."
         usage: V3Usage | None = None
 
@@ -64,19 +66,25 @@ async def run(
             assistant_reply = "This chapter is confirmed."
         elif req.focus.chapterId:
             try:
-                assistant_reply, pages_texts, layout_patches, usage = await context.chapter_chat_bundle(
+                bundle = await context.chapter_chat_bundle(
                     req,
                     history=history,
                     tools=tools,
                     complete=complete,
                     call_intent=call_intent,
                 )
+                assistant_reply = bundle.assistant_reply
+                pages_texts = bundle.pages_texts
+                layout_patches = bundle.layout_patches
+                usage = bundle.usage
+                navigation = bundle.navigation
+                progress_decision = bundle.progress_decision or progress_decision
             except Exception as exc:
                 raise EditChatError(f"chapter edit failed: {exc}") from exc
 
         duration_ms = max(1, int((perf_counter() - start) * 1000))
         usage = usage or patches.usage(duration_ms)
-        op_kind = patches.operation_kind(req, pages_texts, layout_patches, progress_decision)
+        op_kind = patches.operation_kind(req, pages_texts, layout_patches, progress_decision, navigation)
         payload = {
             "kind": patches.kind_from_bundle(pages_texts, layout_patches),
             "patches": [patch.model_dump(exclude_none=True, mode="json") for patch in layout_patches],
@@ -84,6 +92,7 @@ async def run(
             "progressDecision": progress_decision.model_dump(mode="json", exclude_none=True)
             if progress_decision
             else None,
+            "navigation": navigation.model_dump(mode="json", exclude_none=True) if navigation else None,
             "history": history,
         }
         op_id = await turn.create_pending_turn(
@@ -102,6 +111,7 @@ async def run(
             patches=layout_patches,
             pagesTexts=pages_texts,
             progressDecision=progress_decision,
+            navigation=navigation,
             opId=op_id,
             usage=usage,
         )

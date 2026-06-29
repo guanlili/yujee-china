@@ -112,7 +112,7 @@ test('focusedPageIndex逐页 edit path is preserved (不满意 reuses it)', () =
   // The edit turn still threads the selected page so "change this page" targets it.
   assert.match(
     src,
-    /selectedPageIndex != null \? \{ focusedPageIndex: selectedPageIndex \}/,
+    /const focusedPageIndex = authoringFocusPageIndex\(\);/,
     'edit-chat must still send focusedPageIndex for逐页 edit turns',
   );
 });

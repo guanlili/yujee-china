@@ -1396,6 +1396,23 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
     assert.deepEqual(search.data.matches, [
       { chapterId: 'c1', pageIndexes: [1, 2], label: 'coast morning', score: 3 },
     ]);
+
+    const bookTree = await albumService.getInternalAgentData({
+      type: 'book-tree',
+      albumId: album.id,
+      chapterId: 'c1',
+      pageIndex: 2,
+    });
+    assert.equal(V3InternalAgentDataResponse.safeParse(bookTree).success, true);
+    if (bookTree.type !== 'book-tree') assert.fail(`unexpected response type ${bookTree.type}`);
+    assert.deepEqual(bookTree.data.progress, { currentChapterId: 'c1', doneChapterIds: [] });
+    assert.equal(bookTree.data.focusedPageIndex, 2);
+    assert.deepEqual(bookTree.data.chapters, [
+      { chapterId: 'c1', label: 'coast morning', pageIndexes: [1, 2], done: false },
+      { chapterId: 'c2', label: 'city gallery', pageIndexes: [3], done: false },
+    ]);
+    assert.equal(bookTree.data.allDone, false);
+    assert.equal(hasForbiddenLocationKey(bookTree), false);
   } finally {
     await cleanupUser(user.id);
   }

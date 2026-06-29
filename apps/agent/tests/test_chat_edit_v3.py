@@ -209,11 +209,14 @@ class FakeTools:
         *,
         page_info: dict[str, Any] | None = None,
         page_photos: list[dict[str, Any]] | None = None,
+        book_tree: dict[str, Any] | None = None,
     ) -> None:
         self.page_info = page_info
         self.page_photos = page_photos or []
+        self.book_tree = book_tree
         self.page_info_requests: list[dict[str, Any]] = []
         self.page_photo_requests: list[dict[str, str]] = []
+        self.book_tree_requests: list[dict[str, Any]] = []
 
     async def get_page_info(
         self,
@@ -233,6 +236,20 @@ class FakeTools:
     async def get_page_photos(self, *, albumId: str, chapterId: str) -> list[dict[str, Any]]:
         self.page_photo_requests.append({"albumId": albumId, "chapterId": chapterId})
         return self.page_photos
+
+    async def get_book_tree(
+        self,
+        *,
+        albumId: str,
+        chapterId: str | None = None,
+        pageIndex: int | None = None,
+    ) -> dict[str, Any]:
+        self.book_tree_requests.append(
+            {"albumId": albumId, "chapterId": chapterId, "pageIndex": pageIndex}
+        )
+        if self.book_tree is None:
+            raise AssertionError("book-tree was not configured")
+        return self.book_tree
 
 
 class _FakeHttpResponse:
@@ -503,8 +520,14 @@ def test_edit_chat_story_agent_swaps_layout_through_simple_llm_tool_call(monkeyp
     )
 
     tool_names = [tool["function"]["name"] for tool in complete_calls[0]["tools"]]
-    assert tool_names == ["get_page_info", "swap_layout"]
-    swap_schema = complete_calls[0]["tools"][1]["function"]["parameters"]["properties"]
+    assert tool_names == ["get_page_info", "get_book_tree", "swap_layout", "swap_images", "advance_book"]
+    schemas = {
+        tool["function"]["name"]: tool["function"]["parameters"]["properties"]
+        for tool in complete_calls[0]["tools"]
+    }
+    swap_schema = schemas["swap_layout"]
+    assert set(schemas["swap_images"]) == {"page"}
+    assert set(schemas["advance_book"]) == set()
     assert set(swap_schema) == {"page", "chapter"}
     assert tools.page_info_requests == [
         {"albumId": "alb_v3", "chapterId": "c1", "scope": "page", "pageIndex": 1}
@@ -513,6 +536,79 @@ def test_edit_chat_story_agent_swaps_layout_through_simple_llm_tool_call(monkeyp
     assert resp.kind == "edit"
     assert resp.patches[0].pageIndex == 1
     assert resp.patches[0].templateId == "mag-03"
+
+
+def test_edit_chat_story_agent_swaps_images_through_simple_llm_tool_call():
+    tools = FakeTools(page_info={"chapter": _chapter(), "pages": _pages()})
+    manifests: list[str] = []
+
+    async def complete(**kwargs):  # noqa: ANN003
+        if kwargs.get("tools"):
+            return _fake_tool_call("swap_images", {"page": 2})
+        raise AssertionError("swap_images tool should execute without entering story writing")
+
+    async def fake_intent(manifest: str) -> list[str]:
+        manifests.append(manifest)
+        return ["p3"]
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("我要换图", page_index=1),
+            repo=FakeRepo(),
+            tools=tools,
+            complete=complete,
+            call_intent=fake_intent,
+        )
+    )
+
+    assert tools.page_info_requests == [
+        {"albumId": "alb_v3", "chapterId": "c1", "scope": "page", "pageIndex": 1}
+    ]
+    assert manifests and "当前页照片" in manifests[0]
+    assert resp.kind == "edit"
+    assert resp.assistantReply == "Updated the images."
+    assert resp.patches[0].pageIndex == 1
+    assert "p3" in resp.patches[0].images.values()
+
+
+def test_edit_chat_continue_reads_book_tree_and_returns_page_navigation():
+    tools = FakeTools(
+        book_tree={
+            "progress": {"currentChapterId": "c1", "doneChapterIds": []},
+            "focusedPageIndex": 1,
+            "chapters": [
+                {"chapterId": "c1", "label": "Coast", "pageIndexes": [1, 2], "done": False},
+                {"chapterId": "c2", "label": "City", "pageIndexes": [3], "done": False},
+            ],
+            "allDone": False,
+        }
+    )
+    calls: list[dict[str, Any]] = []
+
+    async def complete(**kwargs):  # noqa: ANN003
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return _fake_tool_call("get_book_tree", {})
+        return _fake_tool_call("advance_book", {})
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("下一个", chapter_id="c1", page_index=1),
+            repo=FakeRepo(),
+            tools=tools,
+            complete=complete,
+        )
+    )
+
+    assert tools.book_tree_requests == [
+        {"albumId": "alb_v3", "chapterId": "c1", "pageIndex": 1},
+        {"albumId": "alb_v3", "chapterId": "c1", "pageIndex": 1},
+    ]
+    assert len(calls) == 2
+    assert resp.kind == "talk"
+    assert resp.navigation is not None
+    assert resp.navigation.pageIndex == 2
+    assert resp.progressDecision is None
 
 
 def test_edit_chat_confirm_turn_returns_progress_decision():

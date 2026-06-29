@@ -581,6 +581,26 @@ class V3EditProgressDecision(_V3Strict):
     advanceTo: Literal["theme"] | None = None
 
 
+class V3EditNavigation(_V3Strict):
+    pageIndex: int | None = Field(default=None, ge=0)
+    chapterId: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_explicit_null_fields(cls, value):
+        if isinstance(value, dict):
+            for key in ("pageIndex", "chapterId"):
+                if key in value and value[key] is None:
+                    raise ValueError(f"{key} cannot be null")
+        return value
+
+    @model_validator(mode="after")
+    def _requires_target(self):
+        if self.pageIndex is None and self.chapterId is None:
+            raise ValueError("navigation requires pageIndex or chapterId")
+        return self
+
+
 class V3EditChatRequest(_V3Strict):
     albumId: str = Field(min_length=1)
     language: V3Language
@@ -598,6 +618,7 @@ class V3EditChatResponse(_V3Strict):
     patches: list[V3LayoutPatchEntry] = Field(default_factory=list)
     pagesTexts: list[V3PageTextsPatch] | None = None
     progressDecision: V3EditProgressDecision | None = None
+    navigation: V3EditNavigation | None = None
     opId: str = Field(min_length=1)
     usage: V3Usage
 

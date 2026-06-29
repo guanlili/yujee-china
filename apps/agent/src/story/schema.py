@@ -59,6 +59,14 @@ class EditTools(Protocol):
 
     async def get_page_photos(self, *, albumId: str, chapterId: str) -> list[dict[str, Any]]: ...
 
+    async def get_book_tree(
+        self,
+        *,
+        albumId: str,
+        chapterId: str | None = None,
+        pageIndex: int | None = None,
+    ) -> dict[str, Any]: ...
+
 
 CompleteFn = Awaitable[dict[str, Any]]
 

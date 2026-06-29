@@ -514,6 +514,31 @@ export const albumService = {
       return { type: 'chapter-search' as const, data: { matches } };
     }
 
+    if (input.type === 'book-tree') {
+      const doneSet = new Set(normalized.progress.doneChapterIds);
+      const pages = normalized.pages ?? [];
+      const chapters = normalized.tree.chapters.map((chapter) => {
+        const pageIndexes = pages
+          .filter((page) => chapterIdForDraftPage(normalized, page) === chapter.chapterId)
+          .map((page) => page.pageIndex);
+        return {
+          chapterId: chapter.chapterId,
+          label: chapter.description || chapter.chapterId,
+          pageIndexes,
+          done: doneSet.has(chapter.chapterId),
+        };
+      });
+      return {
+        type: 'book-tree' as const,
+        data: {
+          progress: normalized.progress,
+          ...(input.pageIndex !== undefined ? { focusedPageIndex: input.pageIndex } : {}),
+          chapters,
+          allDone: chapters.length > 0 && chapters.every((chapter) => chapter.done),
+        },
+      };
+    }
+
     const chapter = normalized.tree.chapters.find((item) => item.chapterId === input.chapterId);
     if (!chapter) {
       throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');

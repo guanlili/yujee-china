@@ -35,6 +35,13 @@ test('internal agent-data parser covers page-info, chapter-search, and page-phot
     ),
     { type: 'page-photos', albumId: 'a1', chapterId: 'c1' },
   );
+
+  assert.deepEqual(
+    parseAgentDataRequest(
+      new URL('http://web.test/api/v3/internal/agent-data?type=book-tree&albumId=a1&chapterId=c1&pageIndex=2'),
+    ),
+    { type: 'book-tree', albumId: 'a1', chapterId: 'c1', pageIndex: 2 },
+  );
 });
 
 test('internal agent-data parser rejects missing fields for each request type', () => {

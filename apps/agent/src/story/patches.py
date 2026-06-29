@@ -6,6 +6,7 @@ import re
 
 from ..schemas import (
     V3EditChatRequest,
+    V3EditNavigation,
     V3EditProgressDecision,
     V3LayoutPatchEntry,
     V3PageTextsPatch,
@@ -177,6 +178,7 @@ def operation_kind(
     pages_texts: list[V3PageTextsPatch] | None,
     patches: list[V3LayoutPatchEntry],
     progress: V3EditProgressDecision | None,
+    navigation: V3EditNavigation | None = None,
 ) -> str:
     text = req.userMessage.lower()
     if wants_layout_swap(req):
@@ -187,7 +189,7 @@ def operation_kind(
         return "write_chapter"
     if patches:
         return "edit_text"
-    if progress and progress.chapterDone:
+    if navigation or (progress and progress.chapterDone):
         return "advance"
     return "edit_text"
 

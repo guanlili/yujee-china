@@ -497,6 +497,15 @@ test('internal agent-data schemas cover query parsing and response envelopes', (
     }),
     { type: 'page-photos', albumId: 'a1', chapterId: 'c1' },
   );
+  assert.deepEqual(
+    V3InternalAgentDataRequest.parse({
+      type: 'book-tree',
+      albumId: 'a1',
+      chapterId: 'c1',
+      pageIndex: '2',
+    }),
+    { type: 'book-tree', albumId: 'a1', chapterId: 'c1', pageIndex: 2 },
+  );
 
   const chapter = {
     chapterId: 'c1',
@@ -531,6 +540,18 @@ test('internal agent-data schemas cover query parsing and response envelopes', (
   );
   assert.equal(
     V3InternalAgentDataResponse.safeParse({
+      type: 'book-tree',
+      data: {
+        progress: { currentChapterId: 'c1', doneChapterIds: [] },
+        focusedPageIndex: 2,
+        chapters: [{ chapterId: 'c1', label: 'coast morning', pageIndexes: [2], done: false }],
+        allDone: false,
+      },
+    }).success,
+    true,
+  );
+  assert.equal(
+    V3InternalAgentDataResponse.safeParse({
       type: 'page-info',
       data: {
         chapter: { ...chapter, photos: [{ ...baseChapterPhoto, location: 'private' }] },
@@ -539,6 +560,19 @@ test('internal agent-data schemas cover query parsing and response envelopes', (
     }).success,
     false,
   );
+});
+
+test('V3EditChatResponse can carry editor navigation without mutating book tree', () => {
+  const parsed = V3EditChatResponse.parse({
+    kind: 'talk',
+    assistantReply: 'Opening the next page.',
+    patches: [],
+    navigation: { pageIndex: 2 },
+    opId: 'op_1',
+    usage: { durationMs: 1, models: {} },
+  });
+
+  assert.deepEqual(parsed.navigation, { pageIndex: 2 });
 });
 
 test('V3ChapterChatResponse: kind drives which patch is present', () => {

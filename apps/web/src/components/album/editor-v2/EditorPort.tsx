@@ -1456,6 +1456,13 @@ function EditorBook({
       if (sp < 0) return;
       goToSpread(sp);
     }
+    function goToPageIndex(pageIndex: number) {
+      const sp = spreadIndexOfPage(spreads, pageIndex);
+      if (sp < 0) return;
+      selectedPageIndex = pageIndex;
+      goToSpread(sp);
+      updateSelectionHighlight();
+    }
 
     /* ─── Zoom + overview ─── */
     let zoom = 1;
@@ -2425,12 +2432,15 @@ function EditorBook({
     // (selectedPageIndex, else the first page of the current spread). On 'act' we
     // merge the returned pageWrite into that page locally + repaint; on 'talk' we
     // just append the reply. The agent already persisted the draft server-side.
-    function draftFocusPageIndex(): number {
+    function authoringFocusPageIndex(): number {
       if (selectedPageIndex != null) return selectedPageIndex;
       // No explicit selection → focus the first real page on the current spread
       // (left, else right). Cover sits alone on spread 0's right slot.
       const [lp, rp] = spreadPages(currentCh);
       return (lp ?? rp)?.pageIndex ?? 0;
+    }
+    function draftFocusPageIndex(): number {
+      return authoringFocusPageIndex();
     }
     // Apply a kind:'act' write locally (the server already persisted it into
     // draft_json — both pageWrite copy edits and imagePosWrite position/scale moves
@@ -2598,13 +2608,14 @@ function EditorBook({
       const userMessage = message.slice(0, MESSAGE_MAX);
       try {
         const pagePhotoRefs = await captureChapterPagePhotoRefs(chapterId);
+        const focusedPageIndex = authoringFocusPageIndex();
         const res = await postEditChat(albumId, {
           language: currentLang === 'zh' ? 'zh' : 'en',
           chapterId,
           userMessage,
           ...(Object.keys(pagePhotoRefs).length > 0 ? { pagePhotoRefs: pagePhotoRefs } : {}),
-          // ③ 改页: when a page is selected, "change this / this page" targets it.
-          ...(selectedPageIndex != null ? { focusedPageIndex: selectedPageIndex } : {}),
+          // ③ 改页/推进: no explicit selection still targets the visible spread.
+          focusedPageIndex,
         });
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(host, res.assistantReply);
@@ -2621,6 +2632,9 @@ function EditorBook({
               ...(e.texts !== undefined ? { textsJson: e.texts } : {}),
             })),
           );
+        }
+        if (res.navigation?.pageIndex !== undefined) {
+          goToPageIndex(res.navigation.pageIndex);
         }
         appendTime(host);
         // Record the turn for the next round's history (user + assistant).

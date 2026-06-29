@@ -78,6 +78,18 @@ def _fallback_photos_from_page_info(
     return photos
 
 
+def _current_template_hint(page_info: dict[str, Any]) -> str:
+    template_ids = [
+        _value(page, "templateId", None)
+        for page in list(page_info.get("pages", []) or [])
+        if isinstance(_value(page, "templateId", None), str)
+    ]
+    unique = sorted(set(template_ids))
+    if not unique:
+        return ""
+    return f"当前模板: {', '.join(unique)}。请换成不同模板,不要重复使用当前模板。"
+
+
 def patches_from_pages(
     pages: list[dict[str, Any]], *, page_indexes: list[int]
 ) -> list[V3LayoutPatchEntry]:
@@ -131,7 +143,11 @@ async def swap_layout(
     if not photos:
         return []
 
-    chapters = [{"chapterId": chapter_id, "structureHint": req.userMessage, "photos": photos}]
+    structure_hint = req.userMessage
+    current_template_hint = _current_template_hint(page_info)
+    if current_template_hint:
+        structure_hint = f"{structure_hint}\n{current_template_hint}"
+    chapters = [{"chapterId": chapter_id, "structureHint": structure_hint, "photos": photos}]
     result = await select_layout_agent.gemini_layout(
         chapters, mode="case4-swap", allowAddPages=True
     )

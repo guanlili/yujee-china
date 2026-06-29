@@ -604,6 +604,16 @@ class TestV3Endpoints:
                 progress={"doneChapterIds": []},
             )
 
+        response = schemas.V3EditChatResponse(
+            kind="talk",
+            assistantReply="Opening the next page.",
+            patches=[],
+            navigation={"pageIndex": 2},
+            opId="op_1",
+            usage={"durationMs": 1, "models": {}},
+        )
+        assert response.navigation.pageIndex == 2
+
         with pytest.raises(ValidationError):
             schemas.V3EditChatResponse(
                 kind="edit",

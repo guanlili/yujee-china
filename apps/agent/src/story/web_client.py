@@ -58,3 +58,27 @@ class WebAgentDataClient:
             resp.raise_for_status()
             body = resp.json()
         return list(_unwrap_agent_data(body, "page-photos").get("photos", []))
+
+    async def get_book_tree(
+        self,
+        *,
+        albumId: str,
+        chapterId: str | None = None,
+        pageIndex: int | None = None,
+    ) -> dict[str, Any]:
+        settings = get_settings()
+        url = f"{settings.web_base_url.rstrip('/')}/api/v3/internal/agent-data"
+        params: dict[str, Any] = {"type": "book-tree", "albumId": albumId}
+        if chapterId is not None:
+            params["chapterId"] = chapterId
+        if pageIndex is not None:
+            params["pageIndex"] = pageIndex
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                url,
+                params=params,
+                headers={"Authorization": f"Bearer {settings.agent_shared_secret}"},
+            )
+            resp.raise_for_status()
+            body = resp.json()
+        return _unwrap_agent_data(body, "book-tree")
