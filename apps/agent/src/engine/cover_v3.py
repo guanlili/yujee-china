@@ -58,7 +58,7 @@ from . import templates
 from .accent_color import accent_from_photo
 from .apply_theme_v3 import apply_page
 from .finalize_color import finalize_color
-from ..agents.writing.handler import clean_texts, page_slot_specs
+from ..agents.tools.text import clean_texts, page_slot_specs
 from .. import ai_client
 from ..logging_config import get_logger
 from ..schemas import (

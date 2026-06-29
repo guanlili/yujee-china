@@ -56,16 +56,16 @@ from .schemas import (
 )
 from .engine import apply_theme_v3
 from .errors import sync_endpoint_errors
-from .agents.editing import handler as edit_chat_v3
-from .agents.editing.handler import EditChatError
-from .agents.writing import handler as chapter_chat_v3
+from .story import flow as edit_chat_v3
+from .story.flow import EditChatError
+from .agents.story import handler as chapter_chat_v3
 from .agents.page_edit import handler as page_edit_v3
 from .agents.page_edit import PageEditError
 from .engine import cover_v3
 from .engine import finalize_v3
 from .agents.theme_recommend import handler as recommend_v3
 from .engine.apply_theme_v3 import ApplyThemeV3Error
-from .agents.writing import ChapterChatV3Error
+from .agents.story import ChapterChatV3Error
 from .engine.cover_v3 import CoverV3Error
 from .engine.finalize_v3 import FinalizeV3Error
 from .agents.theme_recommend import RecommendV3Error
