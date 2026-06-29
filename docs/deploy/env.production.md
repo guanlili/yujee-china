@@ -75,6 +75,7 @@
 | `DATABASE_URL` | 复制 | 同一 Neon Postgres 连接串(含 `?sslmode=require`);Agent Alembic 只管理独立 `agent` schema |
 | `ARK_API_KEY` | 复制 | 火山方舟 API key(doubao vision + planning 共用) |
 | `DEEPSEEK_API_KEY` | 复制 | 生产指向火山,**填同一个 ARK key** |
+| `SELECT_LAYOUT_API_KEY` | 复制 | Gemini 选版 key;漏设时 Stage2 会降级到确定性排版 |
 
 可选机密(只在切换识图主模型到 OpenAI 时才需要):
 
@@ -132,7 +133,8 @@ infrastructure failure, not as an unknown op.
 fly secrets set \
   AGENT_SHARED_SECRET=<同 web> \
   ARK_API_KEY=<火山 key> \
-  DEEPSEEK_API_KEY=<同 ARK_API_KEY>
+  DEEPSEEK_API_KEY=<同 ARK_API_KEY> \
+  SELECT_LAYOUT_API_KEY=<Gemini key>
 ```
 
 ---

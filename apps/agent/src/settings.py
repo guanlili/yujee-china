@@ -138,7 +138,8 @@ class Settings(BaseSettings):
     grouping_clip_secret: str | None = None
     grouping_clip_timeout_seconds: int = 180
 
-    # Stage2 select-layout: Gemini via OpenAI-compatible /chat/completions.
+    # Stage2 select-layout: Gemini native generateContent. The default base URL
+    # keeps the old `/openai` suffix for env compatibility; the handler strips it.
     # Missing key is non-fatal for the stage: flows/select_layout.py catches it
     # and uses the deterministic skeleton fallback.
     select_layout_api_key: str | None = None
