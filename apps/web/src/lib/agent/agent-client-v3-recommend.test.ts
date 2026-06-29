@@ -3,20 +3,16 @@ import assert from 'node:assert/strict';
 import { agentClient } from './agent-client';
 import type { V3RecommendRequest } from '@yujee/contracts';
 
-// WP3.1 (#189): the Web-side load-bearing logic for POST /v3/recommend is the
-// agent-client method — it unwraps the agent's { ok, data } envelope and validates
-// `data` against the V3RecommendResponse contract (two-end parity: v3.ts ↔
-// schemas.py). The route itself is a thin auth + ownership forwarder. These tests
-// mock fetch so no agent/network is needed.
-
 const PAYLOAD: V3RecommendRequest = {
   albumId: 'alb_v3',
   language: 'en',
+  fontHint: 'elegant serif',
   chapters: [
     {
       chapterId: 'ch_1',
       description: 'A spring trip to the coast.',
       photoDescs: ['sunlit beach', 'waves at sunset'],
+      extractedColor: '#C8894A',
     },
     { chapterId: 'ch_2', description: 'A quiet evening in town.', photoDescs: ['lantern alley'] },
   ],
@@ -31,89 +27,94 @@ function mockFetch(t: { mock: { method: typeof import('node:test').mock.method }
     })) as typeof fetch);
 }
 
-test('recommendV3 unwraps per-chapter colors + subjects and validates', async (t) => {
-  mockFetch(t, {
-    ok: true,
-    data: {
-      chapterColors: [
-        { chapterId: 'ch_1', subject: 'Spring by the sea', accentColor: '#C2410C', artFont: 'script-elegant' },
-        { chapterId: 'ch_2', subject: 'A coastal escape', accentColor: '#1E3A5F', artFont: 'serif-classic' },
-      ],
-      assistantReply: 'Here are a few picks.',
-      usage: { durationMs: 5, visionCallCount: 1, models: { vision: 'gpt-5.5-mini' } },
-    },
-  });
-  const res = await agentClient.recommendV3(PAYLOAD);
-  assert.equal(res.chapterColors.length, 2);
-  assert.equal(res.chapterColors[0].subject, 'Spring by the sea');
-  assert.deepEqual(
-    res.chapterColors.map((c) => c.chapterId),
-    ['ch_1', 'ch_2'],
-  );
-  assert.equal(res.chapterColors[0].accentColor, '#C2410C');
-  assert.equal(res.chapterColors[0].artFont, 'script-elegant');
-});
-
 const hasCode = (code: string) => (err: unknown) =>
   typeof err === 'object' && err !== null && (err as { code?: string }).code === code;
 
-function okRecommend(chapterColors: unknown[]) {
+function option(optionId: string, chapters: unknown[] = [
+  { chapterId: 'ch_1', subject: 'Spring by the sea', accentColor: '#C2410C' },
+  { chapterId: 'ch_2', subject: 'A coastal escape', accentColor: '#1E3A5F' },
+]) {
+  return {
+    optionId,
+    label: optionId,
+    style: `${optionId} style`,
+    artFont: 'script-elegant',
+    chapters,
+  };
+}
+
+function okRecommend(bookThemeOptions: unknown[]) {
   return {
     ok: true,
     data: {
-      chapterColors,
+      bookThemeOptions,
       assistantReply: 'x',
       usage: { durationMs: 5, models: {} },
     },
   };
 }
 
-test('recommendV3 rejects missing chapter color coverage', async (t) => {
+test('recommendV3 unwraps three book theme options and validates chapter coverage', async (t) => {
+  mockFetch(t, okRecommend([option('opt-1'), option('opt-2'), option('opt-3')]));
+  const res = await agentClient.recommendV3(PAYLOAD);
+  assert.equal(res.bookThemeOptions.length, 3);
+  assert.equal(res.bookThemeOptions[0].optionId, 'opt-1');
+  assert.deepEqual(
+    res.bookThemeOptions[0].chapters.map((c) => c.chapterId),
+    ['ch_1', 'ch_2'],
+  );
+  assert.equal(res.bookThemeOptions[0].chapters[0].accentColor, '#C2410C');
+  assert.equal(res.bookThemeOptions[0].artFont, 'script-elegant');
+});
+
+test('recommendV3 rejects missing chapter coverage inside an option', async (t) => {
   mockFetch(t, okRecommend([
-    { chapterId: 'ch_1', subject: 'Spring by the sea', accentColor: '#C2410C', artFont: 'script-elegant' },
+    option('opt-1', [{ chapterId: 'ch_1', accentColor: '#C2410C' }]),
+    option('opt-2'),
+    option('opt-3'),
   ]));
   await assert.rejects(agentClient.recommendV3(PAYLOAD), hasCode('AGENT_INVALID_OUTPUT'));
 });
 
-test('recommendV3 rejects extra chapter color ids', async (t) => {
+test('recommendV3 rejects extra chapter ids inside an option', async (t) => {
   mockFetch(t, okRecommend([
-    { chapterId: 'ch_1', subject: 'Spring by the sea', accentColor: '#C2410C', artFont: 'script-elegant' },
-    { chapterId: 'ch_2', subject: 'Evening in town', accentColor: '#1E3A5F', artFont: 'serif-classic' },
-    { chapterId: 'ch_3', subject: 'An extra chapter', accentColor: '#2F855A', artFont: 'sans-modern' },
+    option('opt-1', [
+      { chapterId: 'ch_1', accentColor: '#C2410C' },
+      { chapterId: 'ch_2', accentColor: '#1E3A5F' },
+      { chapterId: 'ch_3', accentColor: '#2F855A' },
+    ]),
+    option('opt-2'),
+    option('opt-3'),
   ]));
   await assert.rejects(agentClient.recommendV3(PAYLOAD), hasCode('AGENT_INVALID_OUTPUT'));
 });
 
-test('recommendV3 rejects duplicate chapter color ids', async (t) => {
+test('recommendV3 rejects duplicate chapter ids inside an option', async (t) => {
   mockFetch(t, okRecommend([
-    { chapterId: 'ch_1', subject: 'Spring by the sea', accentColor: '#C2410C', artFont: 'script-elegant' },
-    { chapterId: 'ch_1', subject: 'A duplicate', accentColor: '#1E3A5F', artFont: 'serif-classic' },
+    option('opt-1', [
+      { chapterId: 'ch_1', accentColor: '#C2410C' },
+      { chapterId: 'ch_1', accentColor: '#1E3A5F' },
+    ]),
+    option('opt-2'),
+    option('opt-3'),
   ]));
   await assert.rejects(agentClient.recommendV3(PAYLOAD), hasCode('AGENT_INVALID_OUTPUT'));
 });
 
 test('recommendV3 throws AGENT_INVALID_OUTPUT on an illegal artFont', async (t) => {
-  mockFetch(t, {
-    ok: true,
-    data: {
-      // comic-sans is not an ArtFontPack member — the contract must reject it.
-      chapterColors: [{ chapterId: 'ch_1', subject: 'Spring by the sea', accentColor: '#C2410C', artFont: 'comic-sans' }],
-      assistantReply: 'x',
-      usage: { durationMs: 5, models: {} },
-    },
-  });
+  mockFetch(t, okRecommend([{ ...option('opt-1'), artFont: 'comic-sans' }, option('opt-2'), option('opt-3')]));
   await assert.rejects(agentClient.recommendV3(PAYLOAD), hasCode('AGENT_INVALID_OUTPUT'));
 });
 
 test('recommendV3 throws AGENT_INVALID_OUTPUT on a non-hex accentColor', async (t) => {
-  mockFetch(t, {
-    ok: true,
-    data: {
-      chapterColors: [{ chapterId: 'ch_1', subject: 'Spring by the sea', accentColor: 'cornflowerblue', artFont: 'serif-classic' }],
-      assistantReply: 'x',
-      usage: { durationMs: 5, models: {} },
-    },
-  });
+  mockFetch(t, okRecommend([
+    option('opt-1', [
+      { chapterId: 'ch_1', accentColor: 'cornflowerblue' },
+      { chapterId: 'ch_2', accentColor: '#1E3A5F' },
+    ]),
+    option('opt-2'),
+    option('opt-3'),
+  ]));
   await assert.rejects(agentClient.recommendV3(PAYLOAD), hasCode('AGENT_INVALID_OUTPUT'));
 });
 

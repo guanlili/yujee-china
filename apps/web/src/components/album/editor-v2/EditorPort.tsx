@@ -49,13 +49,14 @@ import {
 } from '../types';
 import {
   fetchDraftSkeleton,
-  postChapterChat,
+  postEditChat,
   postRecommend,
   postApplyTheme,
   postCover,
   postDraftEdit,
   postInspectRender,
   type BrowserLayoutPatchEntry,
+  type CoverInput,
   type DraftEditResult,
   type DraftSkeleton,
   type DraftPageKind,
@@ -82,6 +83,7 @@ import './editor-port.css';
 //                 via /draft-edit (#162) — no theme→chapter dialog, no finalize CTA.
 //   • editing   → layoutJson set: the original finalized editor, untouched.
 export type EditorMode = 'building' | 'authoring' | 'editing';
+const CONFIRM_CHAPTER_COMMAND = '[confirm-chapter]';
 
 // Generation progress from the album poll (use-album-poll); only meaningful in
 // building mode, where stage drives the loading-chat copy. Optional so the other
@@ -645,6 +647,8 @@ function EditorBook({
     // recent turns before each send.
     const CHAT_HISTORY_MAX = 20;
     const chapterHistory: V3ChatTurn[] = [];
+    const coverHistory: V3ChatTurn[] = [];
+    let lastCoverSelection: CoverInput = {};
     // §4.2「AI 先开口提问,不擅自动笔」(引导优先). Track which chapters have already had
     // their auto-guide opener fired this session so re-renders / chapter hops don't
     // double-prompt. A chapter is "guided" once its opening引导 turn has been sent.
@@ -850,6 +854,41 @@ function EditorBook({
         return out.toDataURL('image/jpeg', 0.8);
       } finally {
         host.remove();
+      }
+    }
+
+    async function capturePhotoThumb(photoId?: string | null): Promise<string | undefined> {
+      if (!photoId) return undefined;
+      const stub = (root as unknown as {
+        __capturePhotoThumbStub?: (id: string) => Promise<string | undefined>;
+      }).__capturePhotoThumbStub;
+      if (stub) return stub(photoId);
+
+      const src = imageUrls[photoId];
+      if (!src) return undefined;
+      try {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error('cover photo thumbnail load failed'));
+          img.src = src;
+        });
+        const sourceW = img.naturalWidth || img.width;
+        const sourceH = img.naturalHeight || img.height;
+        if (sourceW <= 0 || sourceH <= 0) return undefined;
+        const scale = Math.min(1, 200 / Math.max(sourceW, sourceH));
+        const targetW = Math.max(1, Math.round(sourceW * scale));
+        const targetH = Math.max(1, Math.round(sourceH * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return undefined;
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+        return canvas.toDataURL('image/jpeg', 0.82);
+      } catch {
+        return undefined;
       }
     }
 
@@ -1563,7 +1602,6 @@ function EditorBook({
       if (!input || sending) return;
       const txt = input.value.trim();
       if (!txt) return;
-      sending = true;
       const u = document.createElement('div');
       u.className = 'msg user max-w-full';
       u.innerHTML = `<div class="bubble"></div>`;
@@ -1572,8 +1610,17 @@ function EditorBook({
       input.value = ''; input.style.height = 'auto';
       hideAwait();
       scrollChat();
+      if (isAuthoring && storyGate?.stage === 'cover') {
+        await runCover({
+          ...lastCoverSelection,
+          userMessage: txt.slice(0, MESSAGE_MAX),
+          history: coverHistory.slice(-CHAT_HISTORY_MAX),
+        });
+        return;
+      }
+      sending = true;
       if (isAuthoring) {
-        await runChapterChatTurn(txt);
+        await runEditChatTurn(txt);
       } else {
         await runEdit(txt);
       }
@@ -1777,61 +1824,43 @@ function EditorBook({
       }
     }
 
-    async function markCurrentChapterDone() {
+    async function applyEditChatProgressDecision(prevChapterId: string) {
+      await loadStoryGate();
+      if (!storyGate) return;
+
+      const advancedTo = storyGate.currentChapterId;
+      const advanced = advancedTo != null && advancedTo !== prevChapterId;
+      if (advanced) {
+        // A fresh per-chapter context: clear the running log AND the awaiting flag so
+        // the new chapter opens clean (its own引导 opener, not the old chapter's gate).
+        chapterHistory.length = 0;
+        awaitingSatisfaction = false;
+        goToChapterById(advancedTo!);
+      }
+      maybeAppendExportReadyCard();
+      if (advanced && storyGate.stage !== 'theme') {
+        void runChapterGuideOpener();
+      }
+      if (storyGate.stage === 'theme') {
+        confirmingStoryChapter = false;
+        setStoryConfirming(false);
+        await runRecommendTheme();
+      }
+    }
+
+    async function confirmCurrentChapterViaEditChat() {
       if (
         !isAuthoring ||
         confirmingStoryChapter ||
         !storyGate?.currentChapterId ||
         storyGate.chapterOrder.length === 0
       ) return;
-      const prevChapterId = storyGate.currentChapterId;
       confirmingStoryChapter = true;
+      sending = true;
       setStoryConfirming(true);
       updateStoryGateUi();
       try {
-        const res = await fetch(`/api/v3/albums/${albumId}/story-progress`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chapterId: storyGate.currentChapterId }),
-        });
-        const json = await res.json();
-        if (!json.ok) throw new Error(json.error?.message ?? 'confirm chapter failed');
-        storyGate = json.data as StoryProgress;
-        setStoryProgress(storyGate);
-        updateStoryGateUi(storyGate);
-        // ① Advance into the next chapter: the server推进了 currentChapterId (album
-        // -service.markChapterDone). Flip the canvas to the new chapter's first page and
-        // clear the running chat log so chapter-chat (which replays chapterHistory) opens
-        // a fresh per-chapter context instead of leaking the previous chapter's turns.
-        const advancedTo = storyGate.currentChapterId;
-        const advanced = advancedTo != null && advancedTo !== prevChapterId;
-        if (advanced) {
-          // A fresh per-chapter context: clear the running log AND the awaiting flag so
-          // the new chapter opens clean (its own引导 opener, not the old chapter's gate).
-          chapterHistory.length = 0;
-          awaitingSatisfaction = false;
-          goToChapterById(advancedTo!);
-        }
-        appendAiText(
-          storyGate.exportUnlocked
-            ? aT('所有章节已确定，现在可以导出 PDF。', 'All chapters are confirmed. PDF export is ready.')
-            : aT('这一章已确定，我们继续下一章。', "This chapter is confirmed. Let's continue with the next one."),
-        );
-        // #236 ⑦⑧: if confirming this chapter opened the export gate, surface the closing card.
-        maybeAppendExportReadyCard();
-        // §4.2 切到下一章 → Agent 主动开口引导新章 (only while still in the story 环节;
-        // confirming the LAST chapter advances stage→theme and is handled below).
-        if (advanced && storyGate.stage !== 'theme') {
-          void runChapterGuideOpener();
-        }
-        // ③ 确定主题: confirming the LAST chapter advances stage story → theme (album
-        // -service.markChapterDone). That's the cue to enter the theme 环节 — fetch the
-        // recommendation and surface the palette-card in the chat flow (缺口#20).
-        if (storyGate.stage === 'theme') {
-          confirmingStoryChapter = false;
-          setStoryConfirming(false);
-          await runRecommendTheme();
-        }
+        await runEditChatTurn(CONFIRM_CHAPTER_COMMAND);
       } catch (e) {
         appendAiText(
           e instanceof Error
@@ -1839,13 +1868,14 @@ function EditorBook({
             : aT('确定章节失败，请重试。', 'Could not confirm the chapter. Please try again.'),
         );
       } finally {
+        sending = false;
         confirmingStoryChapter = false;
         setStoryConfirming(false);
         updateStoryGateUi();
       }
     }
-    // §4.2: markCurrentChapterDone is invoked directly from the in-flow satisfaction
-    // card (appendSatisfactionCard, 满意 button) — no DOM-button ref/publish needed.
+    // §4.2: confirmCurrentChapterViaEditChat is invoked directly from the in-flow
+    // satisfaction card — no DOM-button ref/publish needed.
 
     // ── ③④ theme/cover drivers (缺口#20) ──────────────────────────────────────
     // These fold a returned page-level patch into pagesState the SAME way the chapter
@@ -1897,12 +1927,9 @@ function EditorBook({
     }
 
     // ─── palette-card (设计稿 palette-card,对话流内) ────────────────────────────
-    // Since #236 the contract is PURELY per-chapter: recommend returns one
-    // {chapterId, subject, accentColor, artFont} per chapter (NO album-level
-    // themeOptions). So the card lists each chapter as a ROW — its `subject` (the
-    // chapter title) as the heading + a swatch of that chapter's recommended accent —
-    // and a single「应用」action applies the whole set (each chapter's subject is
-    // persisted as its title at apply-theme). No per-theme picking; one confirm.
+    // Stage4 returns exactly three book theme options. The user picks one option; Web
+    // expands that option into per-chapter apply-theme choices using the option's single
+    // artFont plus each chapter's accentColor/subject.
     function appendPaletteCard(res: V3RecommendResponse) {
       const card = document.createElement('div');
       card.className = 'msg ai max-w-full';
@@ -1910,10 +1937,10 @@ function EditorBook({
       inner.className = 'palette-card';
       const title = document.createElement('div');
       title.className = 'pc-title';
-      title.textContent = aT('看看每章的标题与配色', 'Here are each chapter’s title and color');
+      title.textContent = aT('选择一套主题', 'Choose a theme option');
       const groups = document.createElement('div');
       groups.className = 'pc-groups';
-      res.chapterColors.forEach((c, i) => {
+      res.bookThemeOptions.forEach((option, i) => {
         const rowEl = document.createElement('div');
         rowEl.className = 'pc-chapter-row';
         const head = document.createElement('div');
@@ -1924,50 +1951,137 @@ function EditorBook({
         head.appendChild(num);
         const label = document.createElement('span');
         label.className = 'pc-group-label';
-        label.textContent = c.subject;
+        label.textContent = option.label ?? option.style ?? option.optionId;
         head.appendChild(label);
         rowEl.appendChild(head);
+        if (option.style) {
+          const style = document.createElement('div');
+          style.className = 'pc-style';
+          style.textContent = option.style;
+          rowEl.appendChild(style);
+        }
         const sw = document.createElement('div');
         sw.className = 'pc-swatches';
-        const dot = document.createElement('span');
-        dot.style.background = c.accentColor;
-        sw.appendChild(dot);
-        rowEl.appendChild(sw);
-        groups.appendChild(rowEl);
-      });
-
-      const applyBtn = document.createElement('button');
-      applyBtn.type = 'button';
-      applyBtn.className = 'pc-apply';
-      applyBtn.textContent = aT('应用这套主题', 'Apply this theme');
-      applyBtn.addEventListener('click', () => {
-        if (sending) return;
-        applyBtn.disabled = true;
-        appendUserText(aT('就用这套主题', 'Use this theme'));
-        hideAwait();
-        scrollChat();
-        void runApplyTheme({
-          chapters: res.chapterColors.map((c) => ({
-            chapterId: c.chapterId,
-            subject: c.subject,
-            accentColor: c.accentColor,
-            artFont: c.artFont,
-          })),
+        option.chapters.slice(0, 4).forEach((c) => {
+          const dot = document.createElement('span');
+          dot.style.background = c.accentColor;
+          sw.appendChild(dot);
         });
+        rowEl.appendChild(sw);
+        const applyBtn = document.createElement('button');
+        applyBtn.type = 'button';
+        applyBtn.className = 'pc-apply';
+        applyBtn.textContent = aT('应用', 'Apply');
+        applyBtn.addEventListener('click', () => {
+          if (sending) return;
+          applyBtn.disabled = true;
+          appendUserText(aT('就用这套主题', 'Use this theme'));
+          hideAwait();
+          scrollChat();
+          void runApplyTheme({
+            chapters: option.chapters.map((c) => ({
+              chapterId: c.chapterId,
+              ...(c.subject ? { subject: c.subject } : {}),
+              accentColor: c.accentColor,
+              artFont: option.artFont,
+            })),
+          });
+        });
+        rowEl.appendChild(applyBtn);
+        groups.appendChild(rowEl);
       });
 
       inner.appendChild(title);
       inner.appendChild(groups);
-      inner.appendChild(applyBtn);
       card.appendChild(inner);
       chatBody!.appendChild(card);
       scrollChat();
     }
 
+    // ─── 只读回放卡 (fix: restore chat decision cards) ──────────────────────────
+    // The theme/cover decision cards are session-only DOM and are never persisted
+    // (album_messages is text-only), so loadHistory can't rebuild them. These helpers
+    // re-derive a read-only recap from draftSkel/pagesState for stages already passed.
+    function appendThemeSummary() {
+      const chapters = draftSkel?.chapters ?? [];
+      if (chapters.length === 0) return;
+      const card = document.createElement('div');
+      card.className = 'msg ai max-w-full';
+      const inner = document.createElement('div');
+      inner.className = 'palette-card is-recap';
+      const title = document.createElement('div');
+      title.className = 'pc-title';
+      title.textContent = aT('已应用的主题 · 各章标题', 'Applied theme · chapter titles');
+      const groups = document.createElement('div');
+      groups.className = 'pc-groups';
+      chapters.forEach((c, i) => {
+        const rowEl = document.createElement('div');
+        rowEl.className = 'pc-chapter-row';
+        const head = document.createElement('div');
+        head.className = 'pc-group-head';
+        const num = document.createElement('span');
+        num.className = 'pc-chapter-num';
+        num.textContent = String(i + 1).padStart(2, '0');
+        head.appendChild(num);
+        const label = document.createElement('span');
+        label.className = 'pc-group-label';
+        label.textContent = (c.subject && c.subject.trim()) || c.label;
+        head.appendChild(label);
+        rowEl.appendChild(head);
+        groups.appendChild(rowEl);
+      });
+      inner.appendChild(title);
+      inner.appendChild(groups);
+      card.appendChild(inner);
+      chatBody!.appendChild(card);
+    }
+
+    function appendCoverSummary() {
+      const kindByPageIndex = new Map<number, DraftPageKind>();
+      for (const p of draftSkel?.pages ?? []) kindByPageIndex.set(p.pageIndex, p.kind);
+      const coverPage = pagesState.find((p) => kindByPageIndex.get(p.pageIndex) === 'cover') ?? null;
+      const endingPage = pagesState.find((p) => kindByPageIndex.get(p.pageIndex) === 'ending') ?? null;
+      const card = document.createElement('div');
+      card.className = 'msg ai max-w-full';
+      const inner = document.createElement('div');
+      inner.className = 'cover-card is-recap';
+      const title = document.createElement('div');
+      title.className = 'cv-title';
+      title.textContent = aT('已选的封面与封底', 'Chosen cover & back cover');
+      inner.appendChild(title);
+      if (!coverPage && !endingPage) {
+        const skip = document.createElement('div');
+        skip.className = 'cv-label';
+        skip.textContent = aT('已跳过封面设计', 'Cover design skipped');
+        inner.appendChild(skip);
+      } else {
+        for (const [page, zh, en] of [
+          [coverPage, '封面', 'Cover'],
+          [endingPage, '封底', 'Back cover'],
+        ] as const) {
+          if (!page) continue;
+          const sec = document.createElement('div');
+          sec.className = 'cv-section';
+          const label = document.createElement('div');
+          label.className = 'cv-label';
+          label.textContent = aT(zh, en);
+          const opt = document.createElement('div');
+          opt.className = 'cv-opt';
+          const heroPhoto = Object.values(page.imagesJson)[0] ?? null;
+          opt.innerHTML = coverOptionHTML(page.templateId, heroPhoto);
+          sec.appendChild(label);
+          sec.appendChild(opt);
+          inner.appendChild(sec);
+        }
+      }
+      card.appendChild(inner);
+      chatBody!.appendChild(card);
+    }
+
     // ③ 主题/章节色 · 应用: send the per-chapter {subject, accentColor, artFont} to
     // /v3/apply-theme, fold the returned patch into the canvas, advance stage theme→cover.
-    // Each subject is persisted as its chapter title (#236). Driven only by a user click on
-    // the palette-card「应用」— there is NO "auto-apply" fallback (缺口#20). If called with no
+    // A provided subject can be persisted as its chapter title (#236). Driven only by a user
+    // click on the palette-card「应用」— there is NO "auto-apply" fallback (缺口#20). If called with no
     // selection (e.g. no recommendation yet), we fetch a recommendation so the user gets the
     // card, and apply nothing.
     async function runApplyTheme(selection?: { chapters: V3ChapterThemeChoice[] }) {
@@ -2008,12 +2122,29 @@ function EditorBook({
     // ④ 书籍设计 — 封面/封尾: send the chosen 封面/封尾 template ids (null/absent = 跳过) to
     // /v3/cover, fold the returned patch into the canvas, advance stage cover→ready. Skip
     // (no selection) returns an empty patch and never errors (§4.4 封面可跳过).
-    async function runCover(input?: { coverTemplateId?: string | null; endingTemplateId?: string | null }) {
+    async function runCover(input?: CoverInput) {
       if (!isAuthoring || sending) return;
       sending = true;
       const host = appendThinkingShell();
       try {
-        const res = await postCover(albumId, input ?? {});
+        const payload: CoverInput = { ...(input ?? {}) };
+        if (payload.coverPhoto === undefined && payload.coverPhotoId) {
+          const thumb = await capturePhotoThumb(payload.coverPhotoId);
+          if (thumb) payload.coverPhoto = thumb;
+        }
+        if (payload.endingPhoto === undefined && payload.endingPhotoId) {
+          const thumb = await capturePhotoThumb(payload.endingPhotoId);
+          if (thumb) payload.endingPhoto = thumb;
+        }
+        const selection: CoverInput = {};
+        if (payload.coverTemplateId !== undefined) selection.coverTemplateId = payload.coverTemplateId;
+        if (payload.endingTemplateId !== undefined) selection.endingTemplateId = payload.endingTemplateId;
+        if (payload.coverPhotoId !== undefined) selection.coverPhotoId = payload.coverPhotoId;
+        if (payload.endingPhotoId !== undefined) selection.endingPhotoId = payload.endingPhotoId;
+        if (payload.coverPhoto !== undefined) selection.coverPhoto = payload.coverPhoto;
+        if (payload.endingPhoto !== undefined) selection.endingPhoto = payload.endingPhoto;
+        if (Object.keys(selection).length > 0) lastCoverSelection = selection;
+        const res = await postCover(albumId, payload);
         settleThinking(host, 'analyzedFeedback');
         const applied = applyAuthoringPatch(res.layoutPatch);
         mirrorStage(res.stage);
@@ -2025,6 +2156,11 @@ function EditorBook({
               : aT('已跳过封面设计。', 'Skipped the cover design.')),
         );
         appendTime(host);
+        const userMessage = payload.userMessage?.trim();
+        if (userMessage) coverHistory.push({ role: 'user', content: userMessage });
+        if (res.assistantReply?.trim()) {
+          coverHistory.push({ role: 'assistant', content: res.assistantReply });
+        }
       } catch (e) {
         if (authErr(host, e)) { sending = false; return; }
       }
@@ -2242,7 +2378,11 @@ function EditorBook({
           void runCover({});
           return;
         }
-        appendUserText(aT('就用这个封面设计', 'Use this cover design'));
+        // 点完「应用」即置为已应用态,按钮不再可点(同 palette-card 的 pc-apply 行为)。
+        applyBtn.disabled = true;
+        applyBtn.textContent = aT('已应用', 'Applied');
+        const userMessage = aT('就用这个封面设计', 'Use this cover design');
+        appendUserText(userMessage);
         hideAwait();
         scrollChat();
         void runCover({
@@ -2250,6 +2390,8 @@ function EditorBook({
           ...(endingTemplateId != null ? { endingTemplateId } : {}),
           ...(coverTemplateId != null && cover.photoId ? { coverPhotoId: cover.photoId } : {}),
           ...(endingTemplateId != null && ending.photoId ? { endingPhotoId: ending.photoId } : {}),
+          userMessage,
+          history: coverHistory.slice(-CHAT_HISTORY_MAX),
         });
       });
       const skipBtn = document.createElement('button');
@@ -2258,10 +2400,15 @@ function EditorBook({
       skipBtn.textContent = aT('跳过', 'Skip');
       skipBtn.addEventListener('click', () => {
         if (sending) return;
-        appendUserText(aT('先跳过封面设计', 'Skip the cover design for now'));
+        lastCoverSelection = {};
+        const userMessage = aT('先跳过封面设计', 'Skip the cover design for now');
+        appendUserText(userMessage);
         hideAwait();
         scrollChat();
-        void runCover({}); // empty selection → empty patch, never errors (§4.4)
+        void runCover({
+          userMessage,
+          history: coverHistory.slice(-CHAT_HISTORY_MAX),
+        }); // empty selection → empty patch, never errors (§4.4)
       });
       actionsRow.appendChild(skipBtn);
       actionsRow.appendChild(applyBtn);
@@ -2395,18 +2542,11 @@ function EditorBook({
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // ② 章节故事 — one real /v3/chapter-chat turn (缺口#20). This REPLACES the
-    // legacy /draft-edit single-page loop as the authoring send path. The agent
-    // dispatches THIS turn by intent and returns kind=talk/write/edit:
-    //   • talk  → reply only — NEVER a patch (Frame 4 红线: a talk turn must not
-    //             touch pagesState; the contract makes pagesTexts/layoutPatch
-    //             optional + we ignore them on talk defensively).
-    //   • write → pagesTexts: merge each page's rewritten copy into pagesState.
-    //   • edit  → layoutPatch: fold the page patch in (same applyPatch path the
-    //             finalized editor uses) — covers text + image-slot + template moves.
-    // nameOptions (≤4) render as picker chips; picking one sends it back as the
-    // next chapter-chat message so the model can fold the chosen title in.
-    // History is browser-held (the endpoint is stateless), capped at 20 turns.
+    // ② 章节故事 — one real /v3/edit-chat turn. This is the active authoring send
+    // path; Agent owns committed history/op state and returns a commit bundle:
+    //   • pagesTexts → merge each page's rewritten copy into pagesState.
+    //   • patches    → fold page patches through the same applyPatch path the
+    //                  finalized editor uses.
     // ════════════════════════════════════════════════════════════════════════
 
     // write: merge the agent's per-page copy rewrites into pagesState + repaint.
@@ -2436,9 +2576,9 @@ function EditorBook({
       return true;
     }
 
-    // Send one chapter-chat message and apply the result. `message` is the user's
-    // text (a name-chip pick reuses this path). Returns nothing; UI side effects only.
-    async function runChapterChatTurn(message: string) {
+    // Send one edit-chat message and apply the returned commit bundle. `message` is
+    // the user's text. Returns nothing; UI side effects only.
+    async function runEditChatTurn(message: string) {
       const host = appendThinkingShell();
       const chapterId = storyGate?.currentChapterId ?? null;
       if (!chapterId) {
@@ -2456,27 +2596,25 @@ function EditorBook({
         return;
       }
       const userMessage = message.slice(0, MESSAGE_MAX);
-      const history = chapterHistory.slice(-CHAT_HISTORY_MAX);
       try {
-        const res = await postChapterChat(albumId, {
+        const pagePhotoRefs = await captureChapterPagePhotoRefs(chapterId);
+        const res = await postEditChat(albumId, {
           language: currentLang === 'zh' ? 'zh' : 'en',
           chapterId,
-          history,
           userMessage,
+          ...(Object.keys(pagePhotoRefs).length > 0 ? { pagePhotoRefs: pagePhotoRefs } : {}),
           // ③ 改页: when a page is selected, "change this / this page" targets it.
           ...(selectedPageIndex != null ? { focusedPageIndex: selectedPageIndex } : {}),
         });
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(host, res.assistantReply);
-        // Frame 4 红线: a talk turn applies NO patch — only write/edit mutate pages.
         let wroteChapter = false;
-        if (res.kind === 'write' && res.pagesTexts) {
+        if (res.pagesTexts) {
           wroteChapter = applyChapterWrite(res.pagesTexts);
-        } else if (res.kind === 'edit' && res.layoutPatch) {
-          // The agent's V3LayoutPatchEntry carries images/texts; map to the browser
-          // patch shape (imagesJson/textsJson) applyPatchToPages expects.
+        }
+        if (res.patches.length > 0) {
           applyChapterEdit(
-            res.layoutPatch.map((e) => ({
+            res.patches.map((e) => ({
               pageIndex: e.pageIndex,
               ...(e.templateId !== undefined ? { templateId: e.templateId } : {}),
               ...(e.images !== undefined ? { imagesJson: e.images } : {}),
@@ -2484,20 +2622,20 @@ function EditorBook({
             })),
           );
         }
-        if (res.nameOptions && res.nameOptions.length > 0) {
-          appendNameChips(host, res.nameOptions);
-        }
         appendTime(host);
         // Record the turn for the next round's history (user + assistant).
         chapterHistory.push({ role: 'user', content: userMessage });
         chapterHistory.push({ role: 'assistant', content: res.assistantReply });
+        if (res.progressDecision?.chapterDone) {
+          await applyEditChatProgressDecision(chapterId);
+        }
         // §4.2 满意/不满意: the moment the AI finishes WRITING this chapter, offer the
-        // satisfaction choice in the flow. 满意→markChapterDone→下一章/主题;不满意→留本章
-        // 逐页调整. Not on talk/edit turns — only a fresh full-chapter write opens the gate.
+        // satisfaction choice in the flow. 满意→edit-chat progressDecision→下一章/主题;
+        // 不满意→留本章逐页调整. Not on talk/edit turns — only a fresh full-chapter write opens the gate.
         // talk turns no longer surface a write-now button: the agent decides on its own
         // when enough has been said and dispatches kind=write (handler.py 红线已撤). The
         // satisfaction card after a write is the only standing affordance.
-        if (wroteChapter) {
+        if (wroteChapter && !res.progressDecision?.chapterDone) {
           appendSatisfactionCard();
         }
       } catch (e) {
@@ -2529,6 +2667,20 @@ function EditorBook({
         ),
       ];
       return { num: idx + 1, title: (c.subject && c.subject.trim()) || c.label, tag, photoIds };
+    }
+
+    async function captureChapterPagePhotoRefs(chapterId: string): Promise<Record<string, string>> {
+      const meta = chapterMetaById(chapterId);
+      const refs: Record<string, string> = {};
+      if (!meta) return refs;
+
+      await Promise.all(
+        meta.photoIds.map(async (photoId) => {
+          const thumb = await capturePhotoThumb(photoId);
+          if (thumb) refs[photoId] = thumb;
+        }),
+      );
+      return refs;
     }
 
     // 问题③ 章节卡片: when entering a chapter, push a chapter-styled card into the chat so
@@ -2652,15 +2804,13 @@ function EditorBook({
       guidedChapters.add(chapterId);
       openerInFlight.add(chapterId);
       // Hold the send lock for the opener round-trip so a user send can't race it onto
-      // the same chapter (both would POST). send()/runChapterChatTurn already respect it.
+      // the same chapter (both would POST). send()/runEditChatTurn already respect it.
       sending = true;
       const host = appendThinkingShell();
-      const history = chapterHistory.slice(-CHAT_HISTORY_MAX);
       try {
-        const res = await postChapterChat(albumId, {
+        const res = await postEditChat(albumId, {
           language: currentLang === 'zh' ? 'zh' : 'en',
           chapterId,
-          history,
           // Empty userMessage = "open the chapter": the model has nothing to write yet,
           // so it dispatches a 引导 (talk) question. contract allows max(500), no min.
           userMessage: '',
@@ -2684,7 +2834,7 @@ function EditorBook({
     }
 
     // §4.2 满意/不满意: after the AI writes a chapter (kind=write), surface two buttons in
-    // the chat flow — 满意 confirms the chapter (markCurrentChapterDone → next chapter /
+    // the chat flow — 满意 confirms through edit-chat progressDecision (next chapter /
     // 末章→主题), 不满意 keeps this chapter and asks the user where it falls short, then the
     // existing focusedPageIndex + edit-turn machinery does逐页 adjustment (no stage推进
     // until满意, §8.3 stage 推进权在 Web service). Replaces the old always-on「确定本章」
@@ -2713,12 +2863,12 @@ function EditorBook({
       yes.addEventListener('click', () => {
         if (sending || confirmingStoryChapter) return;
         // Lock the card so a double-tap can't double-confirm; the next chapter's
-        // opener fires from markCurrentChapterDone's advance branch.
+        // opener fires after the edit-chat progressDecision updates the projection.
         row.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
         awaitingSatisfaction = false;
         appendUserText(aT('满意,继续下一章', 'Looks great — next chapter'));
         scrollChat();
-        void markCurrentChapterDone();
+        void confirmCurrentChapterViaEditChat();
       });
 
       const no = document.createElement('button');
@@ -2766,11 +2916,11 @@ function EditorBook({
           sending = true;
           row.querySelectorAll('.chip-select').forEach((c) => c.classList.remove('selected'));
           chip.classList.add('selected');
-          // Echo the pick as a user bubble, then run it as a normal chapter-chat turn.
+          // Echo the pick as a user bubble, then run it as a normal edit-chat turn.
           appendUserText(aT(`就用「${name}」`, `Use "${name}"`));
           hideAwait();
           scrollChat();
-          void runChapterChatTurn(aT(`这一章就叫「${name}」`, `Name this chapter "${name}"`))
+          void runEditChatTurn(aT(`这一章就叫「${name}」`, `Name this chapter "${name}"`))
             .finally(() => { sending = false; });
         });
         row.appendChild(chip);
@@ -2997,9 +3147,9 @@ function EditorBook({
       closeDetail,
       toggleOverview,
       resetZoom,
-      // §4.2: markCurrentChapterDone has no data-action node anymore — the standing
+      // §4.2: confirmCurrentChapterViaEditChat has no data-action node — the standing
       // 「确定本章」breadcrumb button was replaced by the in-flow satisfaction card, whose
-      // 满意 button calls markCurrentChapterDone directly (see appendSatisfactionCard).
+      // 满意 button confirms through edit-chat (see appendSatisfactionCard).
       // ③④ theme/cover drivers (缺口#20). Wired as data-action entry points.
       //   • recommendTheme → fetch candidates + render the palette-card; the user picks ONE
       //     theme on the card, which fires apply-theme (no auto-apply-first fallback).
@@ -3155,12 +3305,25 @@ function EditorBook({
         // we're currently authoring so the preview tracks the live chapter on entry.
         const liveChapterId = storyGate?.currentChapterId ?? null;
         if (liveChapterId) goToChapterById(liveChapterId);
-        if (shown === 0) {
-          void runChapterGuideOpener();
-        } else if (liveChapterId) {
-          // Returning to an in-progress chapter (prior conversation): the opener won't
-          // re-fire, but still show the chapter card so the user knows where they are.
-          appendChapterCard(liveChapterId);
+        const stage = storyGate?.stage;
+        if (liveChapterId) {
+          if (shown === 0) {
+            void runChapterGuideOpener();
+          } else {
+            // Returning to an in-progress chapter (prior conversation): the opener won't
+            // re-fire, but still show the chapter card so the user knows where they are.
+            appendChapterCard(liveChapterId);
+          }
+        } else if (stage === 'theme' || stage === 'cover' || stage === 'ready') {
+          if (stage === 'theme') {
+            void runRecommendTheme();
+          } else if (stage === 'cover') {
+            appendThemeSummary();
+            appendCoverCard();
+          } else {
+            appendThemeSummary();
+            appendCoverSummary();
+          }
         }
         // #236 ⑦⑧: entering an already-export-unlocked album → close the thread with the
         // wrap-up card. Runs after history rendered (Promise.all resolved) so it lands last.
@@ -3325,7 +3488,7 @@ function EditorBook({
 
   // §4.2: the standing「确定本章」breadcrumb button (and its post-mount click binding)
   // is removed — chapter confirmation is driven from the in-flow satisfaction card
-  // (appendSatisfactionCard → markCurrentChapterDone), which lives inside the mount
+  // (appendSatisfactionCard → confirmCurrentChapterViaEditChat), which lives inside the mount
   // effect and binds its own buttons as it appends them. No DOM-button re-binding
   // effect is needed anymore.
 
@@ -3500,7 +3663,7 @@ function EditorBook({
             {/* §4.2 满意/不满意: the standing「确定本章」breadcrumb button is gone — chapter
                 confirmation is now a per-write affordance (appendSatisfactionCard, in the
                 chat flow): the AI writes a chapter → 满意/不满意 buttons appear inline. 满意
-                → markCurrentChapterDone (advances chapter / 末章→主题); 不满意 → stays on the
+                → edit-chat progressDecision (advances chapter / 末章→主题); 不满意 → stays on the
                 chapter for逐页 adjustment. No always-on CTA in the breadcrumb. */}
 
             {/* #236 ⑦⑧: the「太棒了，你的书已经准备好了！」closing line + 导出 entry no longer

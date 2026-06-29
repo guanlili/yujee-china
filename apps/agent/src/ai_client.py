@@ -102,6 +102,30 @@ def _trace_llm_call(model: str, messages: list[dict[str, Any]], response: dict[s
         pass  # 追踪绝不能弄崩真实调用
 
 
+def trace_marker(title: str, *, input: str = "", output: str = "") -> None:
+    """把“没有真实 LLM 输出”的关键分支也写进同一份 trace。
+
+    用途是本地排障:例如某个 AI 环节因为缺 key / 无散落照片 / 模型失败而走了代码
+    fallback。它不是业务日志,生产环境仍复用 `_trace_path()` 的关闭策略。
+    """
+    path = _trace_path()
+    if not path:
+        return
+    try:
+        entry = (
+            "\n" + "=" * 90 + "\n"
+            + f"[{time.strftime('%H:%M:%S')}] marker={title}\n"
+        )
+        if input:
+            entry += "--- 输入 INPUT ---\n" + input + "\n"
+        if output:
+            entry += "--- 输出 OUTPUT ---\n" + output + "\n"
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(entry)
+    except Exception:
+        pass
+
+
 AIErrorKind = Literal["4xx", "5xx", "timeout", "transport"]
 
 

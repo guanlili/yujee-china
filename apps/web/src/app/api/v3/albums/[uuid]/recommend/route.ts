@@ -7,7 +7,7 @@ import { V3RecommendRequest } from '@yujee/contracts';
 
 // Browser-facing recommend body (③ 主题/章节色-推荐, WP3.1 #189 / 缺口#20). Invariant 12 /
 // §3 数据归属: the authoring tree NEVER round-trips through the browser, so the browser
-// holds NO chapter overview — it sends only its language (+ an optional free-text nudge).
+// holds NO chapter overview — it sends only its language (+ optional free-text/font nudges).
 // albumId comes from the URL. The Web service is the sole truth source for draft_json: it
 // re-slices the per-chapter overview (description + each photo's sceneDescription摘要, text
 // only, NO base64) SERVER-SIDE and forwards the full V3RecommendRequest to the stateless
@@ -16,6 +16,7 @@ import { V3RecommendRequest } from '@yujee/contracts';
 const BodySchema = V3RecommendRequest.pick({
   language: true,
   userMessage: true,
+  fontHint: true,
 }).strict();
 
 // POST /api/v3/albums/[uuid]/recommend — synchronous (§8). 60s budget.

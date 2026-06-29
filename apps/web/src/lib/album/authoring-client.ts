@@ -4,6 +4,7 @@ import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/cli
 import type {
   V3ChatTurn,
   V3ChapterChatResponse,
+  V3EditChatResponse,
   V3RecommendResponse,
   V3ChapterThemeChoice,
 } from '@yujee/contracts';
@@ -43,7 +44,7 @@ export type ChapterState =
 export interface DraftSkeletonChapter {
   chapterId: string;
   label: string;
-  // The chapter's title (its theme `subject`, persisted into the title slot at
+  // The chapter's title (optional theme `subject`, persisted into an empty title slot at
   // apply-theme, #236). Absent/empty until the theme stage runs — fall back to `label`.
   subject?: string;
   role: 'opening' | 'body' | 'closing';
@@ -118,16 +119,17 @@ export interface BrowserLayoutPatchEntry {
 // ③ 主题/章节色 · 推荐 — one real /v3/recommend turn (缺口#20). Invariant 12 / §3 数据归属:
 // the browser holds NO authoring tree, so it sends ONLY its language (+ an optional
 // free-text nudge); the Web route re-slices the per-chapter overview from draft_json
-// server-side. Returns the agent's per-chapter recommendations (chapterColors:
-// {chapterId, subject, accentColor, artFont}) for the user to apply — subject is the
-// chapter title (#236). Nothing is written — apply-theme writes the tree + title slots.
+// server-side. Returns three book theme options. Nothing is written — apply-theme writes
+// the tree + title slots after the user selects one option.
 export function postRecommend(
   albumId: string,
   userMessage?: string,
+  fontHint?: string,
 ): Promise<V3RecommendResponse> {
   return postJson(`/api/v3/albums/${albumId}/recommend`, {
     language: 'en',
     ...(userMessage !== undefined ? { userMessage } : {}),
+    ...(fontHint !== undefined ? { fontHint } : {}),
   });
 }
 
@@ -166,17 +168,25 @@ export interface CoverInput {
   endingTemplateId?: string | null;
   coverPhotoId?: string | null;
   endingPhotoId?: string | null;
+  coverPhoto?: string;
+  endingPhoto?: string;
+  userMessage?: string;
+  history?: V3ChatTurn[];
 }
 export function postCover(
   albumId: string,
   input: CoverInput,
-): Promise<{ stage: string; layoutPatch: BrowserLayoutPatchEntry[]; assistantReply?: string }> {
+): Promise<{ stage: string; layoutPatch: BrowserLayoutPatchEntry[]; assistantReply?: string; needsUserInput?: boolean }> {
   return postJson(`/api/v3/albums/${albumId}/cover`, {
     language: 'en',
     ...(input.coverTemplateId !== undefined ? { coverTemplateId: input.coverTemplateId } : {}),
     ...(input.endingTemplateId !== undefined ? { endingTemplateId: input.endingTemplateId } : {}),
     ...(input.coverPhotoId !== undefined ? { coverPhotoId: input.coverPhotoId } : {}),
     ...(input.endingPhotoId !== undefined ? { endingPhotoId: input.endingPhotoId } : {}),
+    ...(input.coverPhoto !== undefined ? { coverPhoto: input.coverPhoto } : {}),
+    ...(input.endingPhoto !== undefined ? { endingPhoto: input.endingPhoto } : {}),
+    ...(input.userMessage !== undefined ? { userMessage: input.userMessage } : {}),
+    ...(input.history !== undefined ? { history: input.history } : {}),
   });
 }
 
@@ -199,6 +209,18 @@ export function postChapterChat(
   input: ChapterChatInput,
 ): Promise<V3ChapterChatResponse> {
   return postJson(`/api/v3/albums/${albumId}/chapter-chat`, input);
+}
+
+export interface EditChatInput {
+  language: 'zh' | 'en';
+  chapterId?: string;
+  userMessage: string;
+  focusedPageIndex?: number;
+  pagePhotoRefs?: Record<string, string>;
+}
+
+export function postEditChat(albumId: string, input: EditChatInput): Promise<V3EditChatResponse> {
+  return postJson(`/api/v3/albums/${albumId}/edit-chat`, input);
 }
 
 export function postFinalize(

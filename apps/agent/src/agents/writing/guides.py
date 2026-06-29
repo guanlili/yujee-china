@@ -14,18 +14,6 @@ from __future__ import annotations
 from typing import Any
 
 from ...engine import templates as registry
-from ...prompts import COMMON_DIR, load_prompt
-
-
-def persona_block() -> str:
-    """水母 Yujee 的身份/语气前言,用于面向用户的 system prompt。
-
-    人设是人为可调规则,外置在 prompts/common/persona.md(跨 theme / chapter-chat /
-    edit 共享)。它只给 `assistantReply` 文本上色,绝不改变各调用方自定义的 STRICT
-    JSON 契约。"""
-    return load_prompt(COMMON_DIR / "persona.md")
-
-
 # 每个 role 该读起来如何。保持精简 —— 这段会原样进入 prompt。
 ROLE_GUIDES: dict[str, str] = {
     "title": (

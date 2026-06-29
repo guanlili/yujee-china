@@ -14,11 +14,28 @@ import {
   makeUser,
 } from '../../db/repos/__test__/setup';
 import { albumService } from './album-service';
+import { transientPagePhotoRefs } from './page-photo-refs';
 import { jobService } from '../job/job-service';
-import { type Page, type V3ChapterThemeChoice, type V3StoryDraft } from '@yujee/contracts';
+import {
+  V3InternalAgentDataResponse,
+  type Page,
+  type V3ChapterThemeChoice,
+  type V3StoryDraft,
+} from '@yujee/contracts';
 
 const hasCode = (code: string) => (err: unknown) =>
   typeof err === 'object' && err !== null && (err as { code?: string }).code === code;
+
+function hasForbiddenLocationKey(value: unknown): boolean {
+  const forbidden = new Set(['location', 'place', 'gps', 'lat', 'lng', 'coordinates']);
+  if (Array.isArray(value)) return value.some(hasForbiddenLocationKey);
+  if (value && typeof value === 'object') {
+    return Object.entries(value).some(
+      ([key, child]) => forbidden.has(key.toLowerCase()) || hasForbiddenLocationKey(child),
+    );
+  }
+  return false;
+}
 
 // Sets up an AGENT_RUNNING album with a held credit and a RUNNING job whose
 // startedAt is `startedAgoMs` in the past. Returns the ids for assertions.
@@ -1281,6 +1298,224 @@ test('chapterChatTurn: slices ONLY the named chapter node + its pages to the age
   }
 });
 
+test('getInternalAgentData page-info and chapter-search return scoped draft data without location leakage', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('internal-agent-data-read');
+  try {
+    const album = await makeAlbum(user.id);
+    const draft: V3StoryDraft = {
+      version: 'v3-story',
+      tree: {
+        chapters: [
+          {
+            chapterId: 'c1',
+            description: 'coast morning',
+            accentColor: null,
+            artFont: null,
+            photos: [
+              {
+                photoId: 'p1',
+                sceneDescription: 'coast sunrise',
+                width: 800,
+                height: 600,
+                orientation: 'landscape',
+                takenAt: '2024-03-02T10:20:30',
+              },
+              {
+                photoId: 'p2',
+                sceneDescription: 'coast details',
+                width: 600,
+                height: 800,
+                orientation: 'portrait',
+                takenAt: null,
+              },
+            ],
+          },
+          {
+            chapterId: 'c2',
+            description: 'city gallery',
+            accentColor: null,
+            artFont: null,
+            photos: [
+              {
+                photoId: 'p3',
+                sceneDescription: 'gallery wall',
+                width: 800,
+                height: 600,
+                orientation: 'landscape',
+              },
+            ],
+          },
+        ],
+      },
+      pages: [
+        { pageIndex: 0, templateId: 'mag-01', images: { hero: 'p1' }, texts: { title: 'Cover' } },
+        { pageIndex: 1, templateId: 'mag-03', images: { image: 'p1' }, texts: { title: 'One' } },
+        { pageIndex: 2, templateId: 'mag-04', images: { image: 'p2' }, texts: { title: 'Two' } },
+        { pageIndex: 3, templateId: 'mag-03', images: { image: 'p3' }, texts: { title: 'Three' } },
+        { pageIndex: 4, templateId: 'mag-20', images: { hero: 'p1' }, texts: { end: 'End' } },
+      ],
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: draft });
+
+    const chapterInfo = await albumService.getInternalAgentData({
+      type: 'page-info',
+      albumId: album.id,
+      scope: 'chapter',
+      chapterId: 'c1',
+    });
+    assert.equal(V3InternalAgentDataResponse.safeParse(chapterInfo).success, true);
+    if (chapterInfo.type !== 'page-info') assert.fail(`unexpected response type ${chapterInfo.type}`);
+    assert.equal(chapterInfo.data.chapter.chapterId, 'c1');
+    assert.deepEqual(chapterInfo.data.pages.map((page) => page.pageIndex), [1, 2]);
+    assert.equal(hasForbiddenLocationKey(chapterInfo), false);
+
+    const pageInfo = await albumService.getInternalAgentData({
+      type: 'page-info',
+      albumId: album.id,
+      scope: 'page',
+      chapterId: 'c1',
+      pageIndex: 2,
+    });
+    assert.equal(V3InternalAgentDataResponse.safeParse(pageInfo).success, true);
+    if (pageInfo.type !== 'page-info') assert.fail(`unexpected response type ${pageInfo.type}`);
+    assert.deepEqual(pageInfo.data.pages.map((page) => page.pageIndex), [2]);
+
+    const search = await albumService.getInternalAgentData({
+      type: 'chapter-search',
+      albumId: album.id,
+      query: 'coast',
+      limit: 5,
+    });
+    assert.equal(V3InternalAgentDataResponse.safeParse(search).success, true);
+    if (search.type !== 'chapter-search') assert.fail(`unexpected response type ${search.type}`);
+    assert.deepEqual(search.data.matches, [
+      { chapterId: 'c1', pageIndexes: [1, 2], label: 'coast morning', score: 3 },
+    ]);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('getInternalAgentData page-photos returns registered transient refs without persisting base64', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('internal-page-photos');
+  transientPagePhotoRefs.resetForTest();
+  try {
+    const album = await makeAlbum(user.id);
+    const draft: V3StoryDraft = {
+      version: 'v3-story',
+      tree: {
+        chapters: [
+          {
+            chapterId: 'c1',
+            description: 'chapter one',
+            accentColor: null,
+            artFont: null,
+            photos: [
+              {
+                photoId: 'p1',
+                sceneDescription: 'coast morning',
+                width: 800,
+                height: 600,
+                orientation: 'landscape',
+                takenAt: '2024-03-02T10:20:30',
+              },
+              {
+                photoId: 'p2',
+                sceneDescription: 'window portrait',
+                width: 600,
+                height: 800,
+                orientation: 'portrait',
+                takenAt: null,
+              },
+              {
+                photoId: 'p3',
+                sceneDescription: 'unregistered detail',
+                width: 700,
+                height: 700,
+                orientation: 'square',
+              },
+            ],
+          },
+          {
+            chapterId: 'c2',
+            description: 'chapter two',
+            accentColor: null,
+            artFont: null,
+            photos: [
+              {
+                photoId: 'p4',
+                sceneDescription: 'other chapter',
+                width: 800,
+                height: 600,
+                orientation: 'landscape',
+              },
+            ],
+          },
+        ],
+      },
+      pages: [],
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: draft });
+
+    assert.deepEqual(await albumService.getInternalAgentData({ type: 'page-photos', albumId: album.id, chapterId: 'c1' }), {
+      type: 'page-photos',
+      data: { photos: [] },
+    });
+
+    transientPagePhotoRefs.register({
+      albumId: album.id,
+      chapterId: 'c1',
+      refs: {
+        p1: 'data:image/jpeg;base64,AA==',
+        p2: 'data:image/jpeg;base64,BB==',
+        p4: 'data:image/jpeg;base64,OTHER==',
+      },
+    });
+
+    assert.deepEqual(await albumService.getInternalAgentData({ type: 'page-photos', albumId: album.id, chapterId: 'c1' }), {
+      type: 'page-photos',
+      data: {
+        photos: [
+          {
+            photoId: 'p1',
+            ref200px: 'data:image/jpeg;base64,AA==',
+            orientation: 'landscape',
+            takenAt: '2024-03-02T10:20:30',
+          },
+          {
+            photoId: 'p2',
+            ref200px: 'data:image/jpeg;base64,BB==',
+            orientation: 'portrait',
+            takenAt: null,
+          },
+        ],
+      },
+    });
+
+    const reloaded = await albumRepo.findById(album.id);
+    assert.equal(JSON.stringify(reloaded?.draftJson).includes('data:image'), false);
+
+    transientPagePhotoRefs.clear(album.id, 'c1');
+    assert.deepEqual(await albumService.getInternalAgentData({ type: 'page-photos', albumId: album.id, chapterId: 'c1' }), {
+      type: 'page-photos',
+      data: { photos: [] },
+    });
+  } finally {
+    transientPagePhotoRefs.resetForTest();
+    await cleanupUser(user.id);
+  }
+});
+
 test('chapterChatTurn: passes a write turn through verbatim + never mutates draft_json', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
@@ -1431,6 +1666,261 @@ test('chapterChatTurn: unknown chapterId throws VALIDATION_FAILED before any age
   }
 });
 
+test('editChatTurn applies pagesTexts patches and acks after album transaction', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-atomic');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 2);
+    const calls: string[] = [];
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'edit' as const,
+      assistantReply: 'Updated.',
+      pagesTexts: [{ pageIndex: 0, texts: { headline: 'Coast Days' } }],
+      patches: [{ pageIndex: 1, texts: { body: 'Sea air' } }],
+      progressDecision: { chapterDone: true },
+      opId: 'op_1',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async ({ opId }: { opId: string }) => {
+      calls.push(opId);
+      return true;
+    });
+
+    const res = await albumService.editChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c1',
+      userMessage: 'write and finish',
+      focusedPageIndex: 1,
+    });
+
+    assert.equal(res.opId, 'op_1');
+    assert.deepEqual(calls, ['op_1']);
+    const draft = (await albumRepo.findById(albumId))!.draftJson as V3StoryDraft;
+    assert.equal(draft.pages?.[0]?.texts.headline, 'Coast Days');
+    assert.equal(draft.pages?.[1]?.texts.body, 'Sea air');
+    assert.deepEqual(draft.progress.doneChapterIds, ['c1']);
+    assert.equal(draft.progress.currentChapterId, 'c2');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('editChatTurn keeps committed album changes when ack fails after the transaction', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-ack-fails-after-commit');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 2);
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'edit' as const,
+      assistantReply: 'Updated, but ack will fail.',
+      pagesTexts: [{ pageIndex: 0, texts: { headline: 'Committed Before Ack' } }],
+      patches: [{ pageIndex: 1, texts: { body: 'This survives ack failure' } }],
+      progressDecision: { chapterDone: true },
+      opId: 'op_ack_after_commit',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => {
+      throw new Error('agent ack unavailable');
+    });
+
+    await assert.rejects(
+      () =>
+        albumService.editChatTurn(user.id, albumId, {
+          language: 'en',
+          chapterId: 'c1',
+          userMessage: 'write and finish',
+          focusedPageIndex: 1,
+        }),
+      /agent ack unavailable/,
+    );
+
+    const draft = (await albumRepo.findById(albumId))!.draftJson as V3StoryDraft;
+    assert.equal(draft.pages?.[0]?.texts.headline, 'Committed Before Ack');
+    assert.equal(draft.pages?.[1]?.texts.body, 'This survives ack failure');
+    assert.deepEqual(draft.progress.doneChapterIds, ['c1']);
+    assert.equal(draft.progress.currentChapterId, 'c2');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('editChatTurn never writes Web album_messages history', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-no-web-history');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 1);
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'talk' as const,
+      assistantReply: 'Tell me more.',
+      patches: [],
+      opId: 'op_talk',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => true);
+
+    await albumService.editChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c1',
+      userMessage: 'hello',
+    });
+
+    const rows = await albumMessageRepo.findRecentByAlbumChapter(albumId, 'c1', 20);
+    assert.deepEqual(rows, []);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('editChatTurn maps advanceTo theme to album stage only after chapter progress write', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-theme');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 1);
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'talk' as const,
+      assistantReply: 'Ready for theme.',
+      patches: [],
+      progressDecision: { chapterDone: true, advanceTo: 'theme' as const },
+      opId: 'op_theme',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => true);
+
+    await albumService.editChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c1',
+      userMessage: 'done',
+    });
+
+    const album = await albumRepo.findById(albumId);
+    const draft = album?.draftJson as V3StoryDraft;
+    assert.equal(album?.stage, 'theme');
+    assert.deepEqual(draft.progress.doneChapterIds, ['c1']);
+    assert.equal(draft.progress.currentChapterId, null);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('editChatTurn ignores advanceTo theme until every chapter is done', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-theme-gate');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 2);
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'talk' as const,
+      assistantReply: 'First chapter done.',
+      patches: [],
+      progressDecision: { chapterDone: true, advanceTo: 'theme' as const },
+      opId: 'op_theme_early',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => true);
+
+    await albumService.editChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c1',
+      userMessage: 'done',
+    });
+
+    const album = await albumRepo.findById(albumId);
+    const draft = album?.draftJson as V3StoryDraft;
+    assert.equal(album?.stage, 'story');
+    assert.deepEqual(draft.progress.doneChapterIds, ['c1']);
+    assert.equal(draft.progress.currentChapterId, 'c2');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('editChatTurn rejects chapterDone for a non-current chapter', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-current-guard');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 2, { stage: 'story' });
+    let acked = false;
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'talk' as const,
+      assistantReply: 'Skipped ahead.',
+      patches: [],
+      progressDecision: { chapterDone: true },
+      opId: 'op_wrong_chapter',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => {
+      acked = true;
+      return true;
+    });
+
+    await assert.rejects(
+      () =>
+        albumService.editChatTurn(user.id, albumId, {
+          language: 'en',
+          chapterId: 'c2',
+          userMessage: 'done',
+        }),
+      hasCode('VALIDATION_FAILED'),
+    );
+
+    const album = await albumRepo.findById(albumId);
+    const draft = album?.draftJson as V3StoryDraft;
+    assert.equal(acked, false);
+    assert.equal(album?.stage, 'story');
+    assert.deepEqual(draft.progress.doneChapterIds, []);
+    assert.equal(draft.progress.currentChapterId, 'c1');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('editChatTurn supports case4 append page patch at next pageIndex', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-append');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 1);
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'edit' as const,
+      assistantReply: 'Added a page.',
+      patches: [{ pageIndex: 1, templateId: 'mag-03', images: { image: 'p1' }, texts: { title: 'More' } }],
+      opId: 'op_append',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => true);
+
+    await albumService.editChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c1',
+      userMessage: 'change layout and add page',
+    });
+
+    const draft = (await albumRepo.findById(albumId))!.draftJson as V3StoryDraft;
+    assert.equal(draft.pages?.some((page) => page.pageIndex === 1 && page.templateId === 'mag-03'), true);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 // ───────── ③④ theme/cover — recommendTheme / applyThemeTurn / coverTurn (缺口#20) ─────────
 //
 // The browser holds NO authoring tree / layout pages (invariant 12): it sends only its
@@ -1456,6 +1946,7 @@ async function seedThemeCoverAlbum(userId: string) {
       {
         chapterId: 'c1',
         description: 'a sunlit week by the coast',
+        extractedColor: '#C8894A',
         accentColor: null,
         artFont: null,
         photos: [
@@ -1493,7 +1984,23 @@ test('recommendTheme: re-slices the per-chapter overview server-side (no base64,
     t.mock.method(agentClient, 'recommendV3', async (p: Parameters<typeof agentClient.recommendV3>[0]) => {
       seen.push(p);
       return {
-        chapterColors: [{ chapterId: 'c1', subject: 'By the Sea', accentColor: '#1F618D', artFont: 'sans-modern' }],
+        bookThemeOptions: [
+          {
+            optionId: 'opt-1',
+            artFont: 'sans-modern',
+            chapters: [{ chapterId: 'c1', subject: 'By the Sea', accentColor: '#1F618D' }],
+          },
+          {
+            optionId: 'opt-2',
+            artFont: 'serif-classic',
+            chapters: [{ chapterId: 'c1', accentColor: '#C0392B' }],
+          },
+          {
+            optionId: 'opt-3',
+            artFont: 'display-bold',
+            chapters: [{ chapterId: 'c1', accentColor: '#2F855A' }],
+          },
+        ],
         assistantReply: 'Some themes.',
         usage: fullUsage,
       };
@@ -1507,9 +2014,9 @@ test('recommendTheme: re-slices the per-chapter overview server-side (no base64,
     assert.equal(payload.userMessage, 'warmer');
     // Server re-sliced the overview from draft_json: chapterId + description + photo descs.
     assert.deepEqual(payload.chapters, [
-      { chapterId: 'c1', description: 'a sunlit week by the coast', photoDescs: ['beach at dawn'] },
+      { chapterId: 'c1', description: 'a sunlit week by the coast', photoDescs: ['beach at dawn'], extractedColor: '#C8894A' },
     ]);
-    assert.equal(res.chapterColors[0]!.subject, 'By the Sea');
+    assert.equal(res.bookThemeOptions[0]!.chapters[0]!.subject, 'By the Sea');
   } finally {
     await cleanupUser(user.id);
   }
@@ -1574,6 +2081,7 @@ test('coverTurn: re-slices the cover/ending pages server-side + folds patch into
       return {
         layoutPatch: [{ pageIndex: 0, templateId: 'mag-01', images: { hero: 'cover-photo' }, texts: { title: 'My Book' } }],
         assistantReply: 'Cover filled.',
+        needsUserInput: false,
         usage: fullUsage,
       };
     });
@@ -1635,6 +2143,135 @@ test('coverTurn: a chosen cover/ending photo is swapped into the page sent to th
     const reloaded = await albumRepo.findById(albumId);
     const draft = reloaded?.draftJson as V3StoryDraft;
     assert.deepEqual(draft.pages?.[0]?.images, { hero: 'cover-photo' });
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('coverTurn: forwards transient cover assets, user context, and derived coverPhotoDesc without persisting base64', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('cover-transient');
+  try {
+    const albumId = await seedThemeCoverAlbum(user.id);
+    await albumRepo.update(db, albumId, { stage: 'cover' });
+    const coverPhoto = 'data:image/jpeg;base64,cover-thumb';
+    const endingPhoto = 'data:image/jpeg;base64,ending-thumb';
+    const history = [{ role: 'assistant' as const, content: 'Do you want it warm?' }];
+    const seen: Parameters<typeof agentClient.coverV3>[0][] = [];
+    t.mock.method(agentClient, 'coverV3', async (p: Parameters<typeof agentClient.coverV3>[0]) => {
+      seen.push(p);
+      return { layoutPatch: [], assistantReply: 'ok', usage: fullUsage };
+    });
+
+    await albumService.coverTurn(user.id, albumId, {
+      language: 'en',
+      coverTemplateId: 'mag-01',
+      endingTemplateId: 'mag-20',
+      coverPhotoId: 'p1',
+      endingPhotoId: 'p1',
+      coverPhoto,
+      endingPhoto,
+      userMessage: 'make the cover warmer',
+      history,
+    });
+
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0]!.coverPhoto, coverPhoto);
+    assert.equal(seen[0]!.endingPhoto, endingPhoto);
+    assert.equal(seen[0]!.coverPhotoDesc, 'beach at dawn');
+    assert.equal(seen[0]!.userMessage, 'make the cover warmer');
+    assert.deepEqual(seen[0]!.history, history);
+
+    const reloaded = await albumRepo.findById(albumId);
+    const persistedDraft = JSON.stringify(reloaded?.draftJson);
+    assert.equal(persistedDraft.includes('data:image/jpeg;base64'), false);
+    assert.equal(persistedDraft.includes('cover-thumb'), false);
+    assert.equal(persistedDraft.includes('ending-thumb'), false);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('coverTurn: forwards the selected book artFont from the draft tree to the agent', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('cover-art-font');
+  try {
+    const albumId = await seedThemeCoverAlbum(user.id);
+    const album = await albumRepo.findById(albumId);
+    const draft = album?.draftJson as V3StoryDraft;
+    await albumRepo.update(db, albumId, {
+      stage: 'cover',
+      draftJson: {
+        ...draft,
+        tree: {
+          chapters: draft.tree.chapters.map((chapter) =>
+            chapter.chapterId === 'c1'
+              ? { ...chapter, accentColor: '#C0392B', artFont: 'display-bold' }
+              : chapter,
+          ),
+        },
+      },
+    });
+    const seen: Parameters<typeof agentClient.coverV3>[0][] = [];
+    t.mock.method(agentClient, 'coverV3', async (p: Parameters<typeof agentClient.coverV3>[0]) => {
+      seen.push(p);
+      return { layoutPatch: [], assistantReply: 'ok', usage: fullUsage };
+    });
+
+    await albumService.coverTurn(user.id, albumId, {
+      language: 'en',
+      coverTemplateId: 'mag-01',
+      endingTemplateId: 'mag-20',
+    });
+
+    assert.equal(seen.length, 1);
+    assert.equal((seen[0] as { artFont?: unknown }).artFont, 'display-bold');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('coverTurn: needsUserInput true returns the agent patch but does not call cover or mutate draft/stage', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('cover-needs-input');
+  try {
+    const albumId = await seedThemeCoverAlbum(user.id);
+    await albumRepo.update(db, albumId, { stage: 'cover' });
+    const before = (await albumRepo.findById(albumId))?.draftJson;
+    const patch = [{ pageIndex: 0, templateId: 'mag-01', texts: { title: 'Draft direction' } }];
+    t.mock.method(agentClient, 'coverV3', async () => ({
+      layoutPatch: patch,
+      assistantReply: 'Which mood should the cover use?',
+      needsUserInput: true,
+      usage: fullUsage,
+    }));
+    let coverCalled = false;
+    t.mock.method(albumService, 'cover', async () => {
+      coverCalled = true;
+      return { stage: 'ready', layoutPatch: [] };
+    });
+
+    const res = await albumService.coverTurn(user.id, albumId, {
+      language: 'en',
+      coverTemplateId: 'mag-01',
+    });
+
+    assert.equal(coverCalled, false);
+    assert.equal(res.stage, 'cover');
+    assert.equal(res.assistantReply, 'Which mood should the cover use?');
+    assert.deepEqual(res.layoutPatch, patch);
+    const reloaded = await albumRepo.findById(albumId);
+    assert.equal(reloaded?.stage, 'cover');
+    assert.deepEqual(reloaded?.draftJson, before);
   } finally {
     await cleanupUser(user.id);
   }

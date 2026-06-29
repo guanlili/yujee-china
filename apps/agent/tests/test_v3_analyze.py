@@ -1,17 +1,12 @@
-"""WP1.1 接入骨架 + WP1.3 describe-content e2e for POST /v3/analyze (#180 / #182).
+"""Stage1 tree-only analyze pipeline tests for PR249/#263.
 
-Exercises the async 202 + V3 callback transport: route-level 202
-(V3AcceptedResponse), the describe→group→template→preview progress flow, the
-completed callback carrying a contract-valid 章节树 + preview pages, the §3
-privacy guard (lat/lng rejected at parse), auth, and the failure path that resets
-the failing stage (失败可重试不污染 stage).
+The analyze job now orchestrates fixed Stage1 primitives:
+group_photos -> describe_chapters -> refine_unplaced -> accent_of_group.
+It stores only a V3LayoutTree in the completed callback; layout pages belong to
+Stage2.
+"""
 
-The describe stage now runs the UNIFIED vision call (read + chapter-split + page/
-template assignment, one call); these e2e tests mock it (`vision.describe_content`)
-with a deterministic one-chapter-per-photo partition + one interior page per chapter
-so the transport + contract shapes stay the assertion focus. The unified call's own
-unit behavior (3-field authoring, per-page/per-chapter legality guards, route merge,
-failover) lives in test_vision_groups.py / test_vision_cluster_describe.py."""
+from __future__ import annotations
 
 import asyncio
 import base64
@@ -21,6 +16,14 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from src import callback as cb_mod
+from src.agents.chapter_describer import handler as chapter_describer
+from src.agents.chapter_describer.schema import DescribeResult
+from src.agents.vision_error import VisionError
+from src.chaptering import grouping as chapter_grouping
+from src.chaptering import refinement as chapter_refinement
+from src.chaptering.schema import GroupingChapter, GroupingResult, UnplacedAssignments
+from src.engine import accent_color
 from src.flows import analyze
 from src.schemas import (
     V3AnalyzeCompleted,
@@ -29,9 +32,6 @@ from src.schemas import (
     V3ChapterPhoto,
     V3LayoutTree,
 )
-from src import callback as cb_mod
-from src.agents.image_understanding import handler as vision
-from src.engine import skeleton_v3 as sk
 
 
 def _orient(w: int, h: int) -> str:
@@ -42,77 +42,18 @@ def _orient(w: int, h: int) -> str:
     return "square"
 
 
-@pytest.fixture(autouse=True)
-def _mock_describe_content(monkeypatch):
-    """Stand in for the UNIFIED vision call: one chapter per photo with a canned
-    description / sceneDescription + ONE interior page holding that photo (templateId
-    left to the deterministic engine), code-filled deterministic attrs. Mirrors what
-    vision.describe_content returns (tree + legality-guarded interior pages) so the
-    route's tree/pages/usage assertions hold without hitting an LLM."""
-
-    async def fake_describe(photos, *, language, prompt_hint=None):
-        chapters = [
-            V3Chapter(
-                chapterId=f"ch_{i + 1}",
-                description=f"Chapter {i + 1}.",
-                accentColor=None,
-                artFont=None,
-                photos=[
-                    V3ChapterPhoto(
-                        photoId=p.photoId,
-                        sceneDescription=f"scene {p.photoId}",
-                        width=p.width,
-                        height=p.height,
-                        orientation=_orient(p.width, p.height),
-                        takenAt=p.exif.takenAt if p.exif else None,
-                    )
-                ],
-            )
-            for i, p in enumerate(photos)
-        ]
-        # One interior page per chapter (the unified call's per-chapter pages, already
-        # run through the deterministic legality guards), flat + contiguous pageIndex.
-        pages = [
-            sk.build_page_v3("interior", [p.photoId], page_index=i)
-            for i, p in enumerate(photos)
-        ]
-        return vision.V3AnalyzeResult(
-            tree=V3LayoutTree(chapters=chapters),
-            pages=pages,
-            tokens_billed=18,
-            model="gpt-5.5-mini",
-            provider="openai",
-        )
-
-    monkeypatch.setattr(vision, "describe_content", fake_describe)
-
-
-@pytest.fixture
-def captured_callbacks(monkeypatch):
-    received: list[dict[str, Any]] = []
-
-    async def fake_post(callback_url: str, envelope: Any) -> bool:
-        # Capture the EXACT wire body the real poster sends (cb_mod._serialize),
-        # so the completed-envelope re-validation below tests the true two-end
-        # shape — including the required-nullable accentColor/artFont placeholders.
-        received.append(cb_mod._serialize(envelope))
-        return True
-
-    monkeypatch.setattr(cb_mod, "post", fake_post)
-    return received
-
-
 def _req(count: int, request_id: str = "req_v3_analyze") -> V3AnalyzeRequest:
     photos = []
     for i in range(count):
         photos.append(
-                {
-                    "photoId": f"p{i + 1}",
-                    "base64": "data:image/jpeg;base64,AA==",
-                    "width": 800 if i % 2 == 0 else 600,
-                    "height": 600 if i % 2 == 0 else 800,
-                    "exif": {"takenAt": f"2024-01-{(i % 28) + 1:02d}T10:00:00Z"},
-                }
+            {
+                "photoId": f"p{i + 1}",
+                "base64": "data:image/jpeg;base64,AA==",
+                "width": 800 if i % 2 == 0 else 600,
+                "height": 600 if i % 2 == 0 else 800,
+                "clusterId": f"c{(i // 2) + 1}",
+                "exif": {"takenAt": f"2024-01-{(i % 28) + 1:02d}T10:00:00Z"},
+            }
         )
     return V3AnalyzeRequest(
         requestId=request_id,
@@ -122,6 +63,252 @@ def _req(count: int, request_id: str = "req_v3_analyze") -> V3AnalyzeRequest:
         meta={"promptHint": "A spring trip"},
         photos=photos,
     )
+
+
+@pytest.fixture
+def captured_callbacks(monkeypatch):
+    received: list[dict[str, Any]] = []
+
+    async def fake_post(callback_url: str, envelope: Any) -> bool:
+        received.append(cb_mod._serialize(envelope))
+        return True
+
+    monkeypatch.setattr(cb_mod, "post", fake_post)
+    return received
+
+
+@pytest.fixture
+def stage1_order(monkeypatch):
+    calls: list[str] = []
+
+    def fake_group_photos(photos):
+        calls.append("group_photos")
+        ids = [p.photoId for p in photos]
+        chapters = [GroupingChapter(chapterId="ch_1", photoIds=ids[:2])]
+        if ids[2:]:
+            chapters.append(GroupingChapter(chapterId="ch_2", photoIds=ids[2:]))
+        return GroupingResult(chapters=chapters, unplacedPhotoIds=[])
+
+    async def fake_describe_chapters(grouping, photos_by_id, *, language, prompt_hint=None):
+        calls.append("describe_chapters")
+        assert language == "en"
+        assert prompt_hint in {"A spring trip", None}
+        image_descriptions = {
+            photo_id: f"scene {photo_id}"
+            for chapter in grouping.chapters
+            for photo_id in chapter.photoIds
+        }
+        return DescribeResult(
+            chapterDescriptions={
+                chapter.chapterId: f"Description for {chapter.chapterId}."
+                for chapter in grouping.chapters
+            },
+            imageDescriptions=image_descriptions,
+            tokens_billed=18,
+            model="gpt-5.5-mini",
+            provider="openai",
+            call_count=1,
+        )
+
+    async def fake_refine_unplaced(grouping, descriptions, photos_by_id, *, language):
+        calls.append("refine_unplaced")
+        return UnplacedAssignments(assignments={})
+
+    def fake_accent_of_group(photo_ids, photos_by_id):
+        calls.append("accent_of_group")
+        assert list(photo_ids)
+        return "#112233"
+
+    monkeypatch.setattr(chapter_grouping, "group_photos", fake_group_photos)
+    monkeypatch.setattr(chapter_describer, "describe_chapters", fake_describe_chapters)
+    monkeypatch.setattr(chapter_refinement, "refine_unplaced", fake_refine_unplaced)
+    monkeypatch.setattr(accent_color, "accent_of_group", fake_accent_of_group)
+    return calls
+
+
+def test_completed_callback_omits_absent_pages_but_keeps_tree_null_placeholders():
+    envelope = V3AnalyzeCompleted(
+        requestId="r1",
+        jobKind="analyze",
+        event="completed",
+        tree=V3LayoutTree(
+            chapters=[
+                V3Chapter(
+                    chapterId="ch_1",
+                    description="Chapter one.",
+                    extractedColor="#112233",
+                    accentColor=None,
+                    artFont=None,
+                    photos=[],
+                )
+            ]
+        ),
+        usage={"durationMs": 1, "models": {}},
+    )
+
+    body = cb_mod._serialize(envelope)
+
+    assert "pages" not in body
+    chapter = body["tree"]["chapters"][0]
+    assert chapter["extractedColor"] == "#112233"
+    assert "accentColor" in chapter and chapter["accentColor"] is None
+    assert "artFont" in chapter and chapter["artFont"] is None
+
+
+def test_stage1_analyze_emits_tree_only_in_required_order(
+    captured_callbacks, stage1_order
+):
+    asyncio.run(analyze._run_analyze(analyze._Job(_req(4))))
+
+    assert stage1_order == [
+        "group_photos",
+        "describe_chapters",
+        "refine_unplaced",
+        "accent_of_group",
+        "accent_of_group",
+    ]
+
+    progress = [
+        (c["stage"], c["progress"])
+        for c in captured_callbacks
+        if c["event"] == "progress"
+    ]
+    assert progress == [
+        ("group", 0),
+        ("group", 100),
+        ("describe", 0),
+        ("describe", 100),
+        ("group", 0),
+        ("group", 100),
+    ]
+
+    completed = next(c for c in captured_callbacks if c["event"] == "completed")
+    assert completed["jobKind"] == "analyze"
+    assert completed["requestId"] == "req_v3_analyze"
+    assert "pages" not in completed
+    assert completed["usage"]["visionCallCount"] == 1
+    assert completed["usage"]["models"]["vision"] == "gpt-5.5-mini"
+
+    envelope = V3AnalyzeCompleted(**completed)
+    tree = envelope.tree
+    assert [[p.photoId for p in c.photos] for c in tree.chapters] == [
+        ["p1", "p2"],
+        ["p3", "p4"],
+    ]
+    for chapter in tree.chapters:
+        assert chapter.extractedColor == "#112233"
+        assert chapter.accentColor is None
+        assert chapter.artFont is None
+    assert [p.sceneDescription for c in tree.chapters for p in c.photos] == [
+        "scene p1",
+        "scene p2",
+        "scene p3",
+        "scene p4",
+    ]
+
+
+def test_stage1_analyze_runs_grouping_inside_concurrency_gate(
+    monkeypatch, captured_callbacks, stage1_order
+):
+    class RecordingGate:
+        def __init__(self) -> None:
+            self.entered = 0
+            self.exited = 0
+
+        async def __aenter__(self):
+            self.entered += 1
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            self.exited += 1
+            return False
+
+    gate = RecordingGate()
+    monkeypatch.setattr(analyze, "_GROUPING_SEMAPHORE", gate, raising=False)
+
+    asyncio.run(analyze._run_analyze(analyze._Job(_req(4))))
+
+    assert gate.entered == 1
+    assert gate.exited == 1
+    assert stage1_order[0] == "group_photos"
+    assert any(c["event"] == "completed" for c in captured_callbacks)
+
+
+def test_stage1_describe_failure_resets_describe_stage(monkeypatch, captured_callbacks):
+    def fake_group_photos(photos):
+        return GroupingResult(
+            chapters=[GroupingChapter(chapterId="ch_1", photoIds=[p.photoId for p in photos])],
+            unplacedPhotoIds=[],
+        )
+
+    async def boom(*args, **kwargs):
+        raise VisionError("describe failed")
+
+    monkeypatch.setattr(chapter_grouping, "group_photos", fake_group_photos)
+    monkeypatch.setattr(chapter_describer, "describe_chapters", boom)
+
+    asyncio.run(analyze._run_analyze(analyze._Job(_req(2))))
+
+    failed = [c for c in captured_callbacks if c["event"] == "failed"]
+    assert len(failed) == 1, captured_callbacks
+    assert failed[0]["error"]["code"] == "AGENT_VISION_FAILED"
+    assert failed[0]["stage"] == "describe"
+    describe_ticks = [
+        c["progress"]
+        for c in captured_callbacks
+        if c["event"] == "progress" and c["stage"] == "describe"
+    ]
+    assert describe_ticks == [0, 0], describe_ticks
+
+
+def test_analyze_timeout_resets_the_active_stage(monkeypatch, captured_callbacks):
+    async def slow(_job):
+        await analyze._emit_progress(_job, "group", 50)
+        await asyncio.sleep(0.5)
+
+    class _Budget:
+        background_task_timeout_seconds = 0.01
+
+    monkeypatch.setattr(analyze, "_run_analyze", slow)
+    monkeypatch.setattr(analyze, "get_settings", lambda: _Budget())
+
+    asyncio.run(analyze.run_with_timeout(_req(2)))
+
+    failed = [c for c in captured_callbacks if c["event"] == "failed"]
+    assert len(failed) == 1, captured_callbacks
+    assert failed[0]["error"]["code"] == "AGENT_TIMEOUT"
+    assert failed[0]["stage"] == "group"
+    group_ticks = [
+        c["progress"]
+        for c in captured_callbacks
+        if c["event"] == "progress" and c["stage"] == "group"
+    ]
+    assert group_ticks == [50, 0], group_ticks
+
+
+def test_analyze_unhandled_error_resets_the_active_stage(monkeypatch, captured_callbacks):
+    async def boom(_job):
+        await analyze._emit_progress(_job, "describe", 25)
+        raise RuntimeError("callback-adjacent boom")
+
+    class _Budget:
+        background_task_timeout_seconds = 10
+
+    monkeypatch.setattr(analyze, "_run_analyze", boom)
+    monkeypatch.setattr(analyze, "get_settings", lambda: _Budget())
+
+    asyncio.run(analyze.run_with_timeout(_req(2)))
+
+    failed = [c for c in captured_callbacks if c["event"] == "failed"]
+    assert len(failed) == 1, captured_callbacks
+    assert failed[0]["error"]["code"] == "AGENT_INTERNAL_ERROR"
+    assert failed[0]["stage"] == "describe"
+    describe_ticks = [
+        c["progress"]
+        for c in captured_callbacks
+        if c["event"] == "progress" and c["stage"] == "describe"
+    ]
+    assert describe_ticks == [25, 0], describe_ticks
 
 
 def test_analyze_request_rejects_non_http_callback_url():
@@ -157,188 +344,7 @@ def test_analyze_photo_rejects_payloads_over_800kb():
         V3AnalyzeRequest(**data)
 
 
-@pytest.mark.parametrize("count", [1, 2, 10, 30])
-def test_analyze_mock_emits_stages_and_tree(captured_callbacks, count):
-    asyncio.run(analyze._run_analyze(analyze._Job(_req(count))))
-
-    events = [c["event"] for c in captured_callbacks]
-    assert events.count("completed") == 1, events
-    assert events.count("failed") == 0, events
-
-    # Every progress callback is an analyze job within the allowed stage set.
-    stages = {c["stage"] for c in captured_callbacks if c["event"] == "progress"}
-    assert stages, "expected at least one progress callback"
-    assert stages <= {"describe", "group", "template", "preview"}, stages
-    for c in captured_callbacks:
-        if c["event"] == "progress":
-            assert c["jobKind"] == "analyze"
-
-    # Each stage resets to 0 then reaches 100.
-    by_stage: dict[str, list[int]] = {}
-    for c in captured_callbacks:
-        if c["event"] == "progress":
-            by_stage.setdefault(c["stage"], []).append(c["progress"])
-    for stage, ticks in by_stage.items():
-        assert ticks[0] == 0, (stage, ticks)
-        assert ticks[-1] == 100, (stage, ticks)
-
-    # Stages emitted in pipeline order.
-    first_seen = [c["stage"] for c in captured_callbacks if c["event"] == "progress"]
-    ordered_uniques = list(dict.fromkeys(first_seen))
-    assert ordered_uniques == ["describe", "group", "template", "preview"], ordered_uniques
-
-    completed = next(c for c in captured_callbacks if c["event"] == "completed")
-    assert completed["jobKind"] == "analyze"
-    assert completed["requestId"] == "req_v3_analyze"
-    # describe-content ran one recognition call (WP1.3); model reported in Usage.
-    assert completed["usage"]["visionCallCount"] == 1
-    assert completed["usage"]["models"]["vision"] == "gpt-5.5-mini"
-
-    # The completed envelope must re-validate against the V3 contract (two-end
-    # shape parity: schemas.py mirrors packages/contracts/src/v3.ts).
-    envelope = V3AnalyzeCompleted(**completed)
-    tree: V3LayoutTree = envelope.tree
-    # 一图一章不跨章 (§4.1): one chapter per photo, each holding exactly that photo.
-    assert len(tree.chapters) == count
-    photo_ids = [p.photoId for ch in tree.chapters for p in ch.photos]
-    assert photo_ids == [f"p{i + 1}" for i in range(count)]
-    for chapter in tree.chapters:
-        assert len(chapter.photos) == 1
-        # accentColor/artFont are null placeholders until the theme stage (§4.1).
-        assert chapter.accentColor is None
-        assert chapter.artFont is None
-    # Preview pages re-validate as flat Page objects and cover every photo at least once.
-    assert envelope.pages, "expected at least one preview page"
-    placed = [pid for page in envelope.pages for pid in page.images.values()]
-    # Every photo appears (in its interior page). 书籍设计环节(§4.4)需要真实的封面/封底
-    # 页才能选/换封面,所以 analyze 现在在正文页前后补一张 cover 页和一张 ending 页,
-    # hero 复用整本书首/尾照片(影集封面常与正文共用同一张) —— 故首/尾照片各多出现一次。
-    assert set(placed) == {f"p{i + 1}" for i in range(count)}
-    expected_dupes = {"p1", f"p{count}"}  # 封面复用首张、封底复用尾张
-    for pid in placed:
-        if pid in expected_dupes:
-            continue
-        assert placed.count(pid) == 1, (pid, placed)
-
-    # The first page is a default cover (category=cover) reusing the first photo; the
-    # last is a default ending (category=ending) reusing the last photo. Pages are
-    # re-indexed contiguously around them (cover=0 … ending=last).
-    from src.engine import skeleton_v3 as _sk
-    from src.engine import templates as _tpl
-
-    pages_by_index = sorted(envelope.pages, key=lambda p: p.pageIndex)
-    assert [p.pageIndex for p in pages_by_index] == list(range(count + 2))
-    cover_page = pages_by_index[0]
-    ending_page = pages_by_index[-1]
-    assert _sk.template_category(_tpl.get(cover_page.templateId)) == "cover"
-    assert _sk.template_category(_tpl.get(ending_page.templateId)) == "ending"
-    assert list(cover_page.images.values()) == ["p1"]
-    assert list(ending_page.images.values()) == [f"p{count}"]
-
-    # WP1.5 (#184) preview-state: generic copy is layered onto the pages — every page
-    # whose template declares a `folio` slot carries its page-number decoration,
-    # zero-padded to the page's 1-based number (the ending template mag-20 has no text
-    # slots, so it carries none). The fixture photos all carry a takenAt, so
-    # date-bearing templates also expose a `MM/YY` dateNum. User-content slots stay
-    # EMPTY (正式文案 comes in the章节故事环节). 全链路:分析→树→套模板→封面/封底→通用文案/色→预览.
-    for page in envelope.pages:
-        folio_slots = {
-            slot["id"]
-            for slot in _tpl.text_slots(_tpl.get(page.templateId))
-            if slot["id"] == "folio"
-        }
-        if folio_slots:
-            assert page.texts.get("folio") == str(page.pageIndex + 1).zfill(2), page.texts
-        if "dateNum" in page.texts:
-            assert page.texts["dateNum"] == "01/24", page.texts
-
-
-def test_analyze_template_failure_resets_stage(monkeypatch, captured_callbacks):
-    """A failure during the template stage (the pure-code _build_preview that wraps
-    cover/ending + lays generic copy on the unified call's pages) emits failed with
-    stage='template' after resetting that stage's bar to 0 — a retry never inherits a
-    half-filled stage (失败可重试不污染 stage)."""
-    from src.engine import generic_copy
-
-    def boom(_pages, _chapters):
-        raise RuntimeError("engine exploded")
-
-    monkeypatch.setattr(generic_copy, "fill_generic_copy", boom)
-
-    asyncio.run(analyze._run_analyze(analyze._Job(_req(3))))
-
-    failed = [c for c in captured_callbacks if c["event"] == "failed"]
-    assert len(failed) == 1, captured_callbacks
-    assert failed[0]["jobKind"] == "analyze"
-    assert failed[0]["error"]["code"] == "AGENT_OUTPUT_VALIDATION"
-    assert failed[0]["stage"] == "template"
-    assert not [c for c in captured_callbacks if c["event"] == "completed"]
-    # The failing stage was reset to 0 before the failed callback (last template tick).
-    template_ticks = [
-        c["progress"]
-        for c in captured_callbacks
-        if c["event"] == "progress" and c["stage"] == "template"
-    ]
-    assert template_ticks[-1] == 0, template_ticks
-
-
-def test_analyze_timeout_resets_the_active_stage(monkeypatch, captured_callbacks):
-    """If the background budget expires after a stage has started, the failed
-    callback carries that stage and resets it so retry state is clean."""
-
-    async def slow(_job):
-        await analyze._emit_progress(_job, "template", 50)
-        await asyncio.sleep(0.5)
-
-    class _Budget:
-        background_task_timeout_seconds = 0.01
-
-    monkeypatch.setattr(analyze, "_run_analyze", slow)
-    monkeypatch.setattr(analyze, "get_settings", lambda: _Budget())
-
-    asyncio.run(analyze.run_with_timeout(_req(2)))
-
-    failed = [c for c in captured_callbacks if c["event"] == "failed"]
-    assert len(failed) == 1, captured_callbacks
-    assert failed[0]["error"]["code"] == "AGENT_TIMEOUT"
-    assert failed[0]["stage"] == "template"
-    template_ticks = [
-        c["progress"]
-        for c in captured_callbacks
-        if c["event"] == "progress" and c["stage"] == "template"
-    ]
-    assert template_ticks == [50, 0], template_ticks
-
-
-def test_analyze_unhandled_error_resets_the_active_stage(monkeypatch, captured_callbacks):
-    """Unexpected errors after progress has started preserve the active stage in
-    the terminal failed callback, matching handled stage failures."""
-
-    async def boom(_job):
-        await analyze._emit_progress(_job, "preview", 25)
-        raise RuntimeError("callback-adjacent boom")
-
-    class _Budget:
-        background_task_timeout_seconds = 10
-
-    monkeypatch.setattr(analyze, "_run_analyze", boom)
-    monkeypatch.setattr(analyze, "get_settings", lambda: _Budget())
-
-    asyncio.run(analyze.run_with_timeout(_req(2)))
-
-    failed = [c for c in captured_callbacks if c["event"] == "failed"]
-    assert len(failed) == 1, captured_callbacks
-    assert failed[0]["error"]["code"] == "AGENT_INTERNAL_ERROR"
-    assert failed[0]["stage"] == "preview"
-    preview_ticks = [
-        c["progress"]
-        for c in captured_callbacks
-        if c["event"] == "progress" and c["stage"] == "preview"
-    ]
-    assert preview_ticks == [25, 0], preview_ticks
-
-
-def test_analyze_route_returns_202(captured_callbacks):
+def test_analyze_route_returns_202(captured_callbacks, stage1_order):
     from src.main import app
 
     client = TestClient(app)
@@ -350,6 +356,7 @@ def test_analyze_route_returns_202(captured_callbacks):
             "albumId": "alb_route",
             "callbackUrl": "http://example.com/cb",
             "language": "en",
+            "meta": {"promptHint": "A spring trip"},
             "photos": [
                 {
                     "photoId": "p1",
@@ -365,12 +372,43 @@ def test_analyze_route_returns_202(captured_callbacks):
         "ok": True,
         "data": {"requestId": "req_route", "accepted": True},
     }
-    # Background task ran the full job and emitted a terminal completed callback.
     assert any(c["event"] == "completed" for c in captured_callbacks)
 
 
+def test_analyze_route_can_be_disabled(monkeypatch):
+    from src import settings as settings_mod
+    from src.main import app
+
+    monkeypatch.setenv("AGENT_ENABLE_ANALYZE", "false")
+    settings_mod.reset_settings_cache()
+
+    client = TestClient(app)
+    resp = client.post(
+        "/v3/analyze",
+        headers={"Authorization": "Bearer test_secret", "X-Request-Id": "req_disabled"},
+        json={
+            "requestId": "req_disabled",
+            "albumId": "alb_disabled",
+            "callbackUrl": "http://example.com/cb",
+            "language": "en",
+            "photos": [
+                {
+                    "photoId": "p1",
+                    "base64": "data:image/jpeg;base64,AA==",
+                    "width": 800,
+                    "height": 600,
+                }
+            ],
+        },
+    )
+
+    assert resp.status_code == 503
+    body = resp.json()
+    error = body.get("detail", body).get("error")
+    assert error["message"] == "analyze is disabled on this Agent instance"
+
+
 def test_analyze_route_rejects_lat_lng_in_exif():
-    """§3 privacy: lat/lng in exif is rejected at parse time (only takenAt allowed)."""
     from src.main import app
 
     client = TestClient(app)

@@ -75,18 +75,17 @@ test('unknown requestId → accepted:false, nothing written', async (t) => {
     jobKind: 'analyze',
     event: 'completed',
     tree: TREE,
-    pages: PAGES,
     usage: USAGE,
   });
   assert.equal(res.status, 200);
   assert.deepEqual((await res.json()).data, { accepted: false });
 });
 
-test('analyze/completed → draft_json retains tree pages + EDITING + stage story + hold settled (charge-at-init)', async (t) => {
+test('analyze/completed rejects pages because Stage1 is tree-only', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
-  const user = await makeUser('v3route-done');
+  const user = await makeUser('v3route-analyze-pages');
   try {
-    const { albumId, holdId, requestId } = await seed(user.id);
+    const { requestId } = await seed(user.id);
     const res = await post({
       requestId,
       jobKind: 'analyze',
@@ -95,18 +94,233 @@ test('analyze/completed → draft_json retains tree pages + EDITING + stage stor
       pages: PAGES,
       usage: USAGE,
     });
+    assert.equal(res.status, 400);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('analyze/completed tree-only → stores tree progress, keeps init job running and hold open', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('v3route-tree-only');
+  try {
+    const { albumId, holdId, requestId } = await seed(user.id);
+    const res = await post({
+      requestId,
+      jobKind: 'analyze',
+      event: 'completed',
+      tree: TREE,
+      usage: USAGE,
+    });
+    assert.equal((await res.json()).data.accepted, true);
+
+    const album = await albumRepo.findById(albumId);
+    assert.equal(album?.status, 'AGENT_RUNNING');
+    assert.deepEqual(album?.draftJson, {
+      version: 'v3-story',
+      tree: TREE,
+      progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
+    });
+    assert.equal(album?.stage, 'analysing');
+    const hold = await creditHoldRepo.findById(holdId);
+    assert.equal(hold?.status, 'HOLDING');
+    const job = await agentJobRepo.findByRequestId(requestId);
+    assert.equal(job?.status, 'RUNNING');
+    assert.equal(job?.stage, 'layout');
+    assert.equal(job?.progress, 50);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('analyze/completed resets prior analyze progress to the layout handoff marker', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('v3route-analyze-progress-marker');
+  try {
+    const { requestId } = await seed(user.id);
+    await post({
+      requestId,
+      jobKind: 'analyze',
+      event: 'progress',
+      stage: 'group',
+      progress: 100,
+    });
+
+    const res = await post({
+      requestId,
+      jobKind: 'analyze',
+      event: 'completed',
+      tree: TREE,
+      usage: USAGE,
+    });
+    assert.equal((await res.json()).data.accepted, true);
+
+    const job = await agentJobRepo.findByRequestId(requestId);
+    assert.equal(job?.status, 'RUNNING');
+    assert.equal(job?.stage, 'layout');
+    assert.equal(job?.progress, 50);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('select-layout/completed → merges pages + EDITING + stage story + hold settled', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('v3route-layout-done');
+  try {
+    const { albumId, holdId, requestId } = await seed(user.id);
+    await albumRepo.update(db, albumId, {
+      status: 'AGENT_RUNNING',
+      stage: 'analysing',
+      draftJson: {
+        version: 'v3-story',
+        tree: TREE,
+        progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
+      },
+    });
+    const job = await agentJobRepo.findByRequestId(requestId);
+    assert.ok(job);
+    await agentJobRepo.transitionStatus(db, job.id, 'RUNNING', ['QUEUED'], {
+      stage: 'layout',
+      progress: 51,
+      startedAt: new Date(),
+    });
+    await post({
+      requestId,
+      jobKind: 'select-layout',
+      event: 'progress',
+      stage: 'legalize',
+      progress: 100,
+    });
+    await post({
+      requestId,
+      jobKind: 'select-layout',
+      event: 'progress',
+      stage: 'wrap',
+      progress: 100,
+    });
+    const res = await post({
+      requestId,
+      jobKind: 'select-layout',
+      event: 'completed',
+      pages: PAGES,
+      usage: USAGE,
+    });
     assert.equal((await res.json()).data.accepted, true);
 
     const album = await albumRepo.findById(albumId);
     assert.equal(album?.status, 'EDITING');
-    assert.deepEqual(album?.draftJson, { ...TREE, pages: PAGES });
+    assert.deepEqual(album?.draftJson, {
+      version: 'v3-story',
+      tree: TREE,
+      pages: PAGES,
+      progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
+    });
     assert.equal(album?.layoutJson, null);
-    // WP1.5 (#184): the preview tree carries generic copy/colors → stage advances
-    // analysing → story in the same tx (stage ⟂ status; status stays EDITING).
     assert.equal(album?.stage, 'story');
-    // The single charge settles here.
     const hold = await creditHoldRepo.findById(holdId);
     assert.equal(hold?.status, 'SETTLED');
+    const completedJob = await agentJobRepo.findByRequestId(requestId);
+    assert.equal(completedJob?.status, 'COMPLETED');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('select-layout/completed before analyze tree does not complete job or album', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('v3route-layout-before-tree');
+  try {
+    const { albumId, holdId, requestId } = await seed(user.id);
+    await albumRepo.update(db, albumId, {
+      status: 'AGENT_RUNNING',
+      stage: 'analysing',
+      draftJson: null,
+    });
+    const res = await post({
+      requestId,
+      jobKind: 'select-layout',
+      event: 'completed',
+      pages: PAGES,
+      usage: USAGE,
+    });
+    assert.equal((await res.json()).data.accepted, true);
+
+    const album = await albumRepo.findById(albumId);
+    assert.equal(album?.status, 'AGENT_RUNNING');
+    assert.equal(album?.stage, 'analysing');
+    assert.equal(album?.draftJson, null);
+    const hold = await creditHoldRepo.findById(holdId);
+    assert.equal(hold?.status, 'HOLDING');
+    const job = await agentJobRepo.findByRequestId(requestId);
+    assert.notEqual(job?.status, 'COMPLETED');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('select-layout progress cannot move the reservation marker backwards', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('v3route-layout-progress-monotonic');
+  try {
+    const { requestId } = await seed(user.id);
+    const job = await agentJobRepo.findByRequestId(requestId);
+    assert.ok(job);
+    await agentJobRepo.transitionStatus(db, job.id, 'RUNNING', ['QUEUED'], {
+      stage: 'layout',
+      progress: 51,
+      startedAt: new Date(),
+    });
+
+    const res = await post({
+      requestId,
+      jobKind: 'select-layout',
+      event: 'progress',
+      stage: 'layout',
+      progress: 0,
+    });
+    assert.equal((await res.json()).data.accepted, true);
+
+    const after = await agentJobRepo.findByRequestId(requestId);
+    assert.equal(after?.stage, 'layout');
+    assert.equal(after?.progress, 51);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('duplicate analyze/completed cannot reset a reserved select-layout job', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('v3route-analyze-duplicate-after-reserve');
+  try {
+    const { albumId, requestId } = await seed(user.id);
+    const first = await post({
+      requestId,
+      jobKind: 'analyze',
+      event: 'completed',
+      tree: TREE,
+      usage: USAGE,
+    });
+    assert.equal((await first.json()).data.accepted, true);
+
+    const job = await agentJobRepo.findByRequestId(requestId);
+    assert.ok(job);
+    await agentJobRepo.reserveSelectLayout(db, job.id);
+
+    const duplicate = await post({
+      requestId,
+      jobKind: 'analyze',
+      event: 'completed',
+      tree: TREE,
+      usage: USAGE,
+    });
+    assert.equal((await duplicate.json()).data.accepted, true);
+
+    const after = await agentJobRepo.findByRequestId(requestId);
+    assert.equal(after?.stage, 'layout');
+    assert.equal(after?.progress, 51);
+    const album = await albumRepo.findById(albumId);
+    assert.equal(album?.status, 'AGENT_RUNNING');
   } finally {
     await cleanupUser(user.id);
   }

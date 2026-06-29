@@ -47,15 +47,15 @@ from ...schemas import (
     V3Usage,
 )
 from ...settings import get_settings
-from ...prompts import RULES_DIR, load_prompt, load_replies
+from ...skills import SKILLS_DIR, load_prompt, load_replies
 from ... import ai_client
 from ..image_edit_intent import handler as chat_edit_v3
 from . import guides as writing_guides
 
 CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
 
-# 任务定义 + 输出 JSON 形状 + dispatch 判定:固定结构,co-located 在本 cap 目录,按显式
-# 路径加载(对照 theme_recommend/recommend_theme.md)。人为可调的文风规则另放 prompts/rules/。
+# 角色 + 输入范围 + 输出 JSON 形状:固定结构,co-located 在本 cap 目录,按显式
+# 路径加载(对照 theme_recommend/recommend_theme.md)。人为可调的分发/文风规则另放 src/skills/。
 _PROMPT_DIR = Path(__file__).resolve().parent
 
 _VALID_KINDS: tuple[str, ...] = ("talk", "write", "edit")
@@ -80,10 +80,10 @@ def _page_slot_specs_by_index(pages: list[Page]) -> dict[int, list[dict[str, Any
     丢掉 decoration 槽(代码自动填充那些)并只暴露 LM 必须撰写的槽。WP2.2 (#186):
     `page_slot_specs` 现在原样带上每个槽的模板撰写的 `hint`,于是逐槽 hint 经这同一接缝
     到达写作 LM(§4.2(4) 逐槽 hint 透传)。"""
-    return {page.pageIndex: _page_slot_specs(page) for page in pages}
+    return {page.pageIndex: page_slot_specs(page) for page in pages}
 
 
-def _page_slot_specs(page: Page) -> list[dict[str, Any]]:
+def page_slot_specs(page: Page) -> list[dict[str, Any]]:
     """一个具体页的创作文字槽。
 
     普通槽按声明保持。repeat 槽被展开成渲染器能为本页实际图片槽寻址的 bracket key,例如
@@ -128,6 +128,9 @@ def _page_slot_specs(page: Page) -> list[dict[str, Any]]:
             for idx in all_indices:
                 specs.append(_slot_spec(slot, slot_id=f"{slot['id']}[{idx}]", repeat_index=idx))
     return specs
+
+
+_page_slot_specs = page_slot_specs
 
 
 def _bracket_indices_by_base(keys: Any) -> dict[str, list[int]]:
@@ -249,25 +252,24 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
     page_examples = _page_output_examples_by_index(req.pages, slot_specs)
     focused = req.focusedPageIndex
 
-    # Persona + STRICT JSON 契约 + 本轮 dispatch 规则。固定结构(JSON 契约/分发判定)外置
-    # 在 chapter_chat.md(co-located,显式路径加载);创作/引导文风另放 prompts/rules/
+    # STRICT JSON 契约 + 本轮 dispatch 规则。固定结构(JSON 契约)外置
+    # 在 chapter_chat.md(co-located,显式路径加载);分发/创作/引导规则另放 src/skills/
     # (writing_style / guidance_style)。旧的 `writing_guides.ROLE_GUIDES` 创作话术
     # (`guides_block()`)在 V3 路径上刻意不使用;V3 文风来自 writing_style(v2 仍留
     # ROLE_GUIDES,#197 整删)。
-    system = (
-        writing_guides.persona_block()
-        + "\n\n"
-        + load_prompt(_PROMPT_DIR / "chapter_chat.md")
+    system = load_prompt(
+        _PROMPT_DIR / "chapter_chat.md",
+        skills=("chapter_chat_turns",),
     )
     # §4.2(4): 写作风格(creative style)+ 引导风格(guidance style),都作为 prompt
-    # 资产按路径加载(外置在 prompts/rules/)。语言由槽位的 lang 标记 + 文风资产自身
+    # 资产按路径加载(外置在 src/skills/)。语言由槽位的 lang 标记 + 文风资产自身
     # 决定(跟随用户语言),不再由 {LANGUAGE} 占位符强制。
     # 段落分隔标题(=== 写作风格 === / === 引导风格 ===)已并入各 fragment 文件顶部,
     # 这里只做拼接,不再注入字符串字面量。
     system += "\n\n" + load_prompt(
-        RULES_DIR / "writing_style.md", common=("grounding",)
+        SKILLS_DIR / "writing_style.md", skills=("grounding",)
     )
-    system += "\n\n" + load_prompt(RULES_DIR / "guidance_style.md")
+    system += "\n\n" + load_prompt(SKILLS_DIR / "guidance_style.md")
 
     # §4.2(4) 写作 LM 的输入组装。需求点名的每一项都在这里:
     #   用户信息  → history + userMessage(+ 章节上下文里带的 promptHint)
@@ -496,7 +498,7 @@ def _missing_required_texts(req: V3ChapterChatRequest, pages_texts: list[V3PageT
     by_index = {patch.pageIndex: patch.texts for patch in pages_texts}
     missing: list[str] = []
     for page in req.pages:
-        specs = _page_slot_specs(page)
+        specs = page_slot_specs(page)
         required = {str(spec["id"]) for spec in specs}
         if not required:
             continue
@@ -572,16 +574,26 @@ def _raw_texts_by_index(raw: Any) -> dict[int, dict[str, Any]]:
     return by_index
 
 
-def _clean_texts(
-    raw_texts: dict[str, Any], specs: list[dict[str, Any]], *, template_id: str
+def clean_texts(
+    raw_texts: dict[str, Any], specs: list[dict[str, Any]], *, template_id: str | None = None
 ) -> dict[str, str]:
-    """只保留本页的创作槽,trim,丢空值,按模板 maxChars 钳裁。
+    """Public text cleaner for non-writing callers such as cover_v3.
 
-    漂移的模型既无法注入不存在的槽位 id(保留集 = 模板的创作槽),也无法撑爆某槽 —— maxChars
-    虽已不进 prompt(例驱动),服务端仍据模板 registry 钳裁防溢出(镜像 v2 grounding 护栏)。
-    `specs` 给「允许哪些 key」,`template_id` 给「每槽钳到多长」。"""
+    When a concrete template id is available, use the registry maxChars path. Older
+    call sites that only have already-expanded specs still get slot filtering and
+    per-spec caps.
+    """
     allowed = _authored_slot_ids(specs)
-    by_base = _template_max_chars(template_id)
+    if template_id:
+        max_chars = _template_max_chars(template_id)
+    else:
+        max_chars = {
+            str(spec["id"]): int(spec["maxChars"])
+            for spec in specs
+            if isinstance(spec.get("id"), str)
+            and isinstance(spec.get("maxChars"), int)
+            and spec["maxChars"] > 0
+        }
     out: dict[str, str] = {}
     for key, value in raw_texts.items():
         if not isinstance(key, str) or key not in allowed:
@@ -589,9 +601,12 @@ def _clean_texts(
         text = _text(value)
         if not text:
             continue
-        cap = _max_chars_for_key(key, by_base)
+        cap = _max_chars_for_key(key, max_chars) if template_id else max_chars.get(key)
         out[key] = text[:cap] if cap else text
     return out
+
+
+_clean_texts = clean_texts
 
 
 def _coerce_name_options(raw: Any) -> list[str] | None:
@@ -617,8 +632,8 @@ def _text(value: Any) -> str:
 
 
 def _default_reply(language: str, kind: str) -> str:
-    """从可手调的 replies.md 读兜底回复(`kind.语言`),按路径缓存。未知 kind 回 talk。"""
-    replies = load_replies(_PROMPT_DIR / "replies.md")
+    """从 skills/replies/writing.md 读兜底回复(`kind.语言`),按路径缓存。未知 kind 回 talk。"""
+    replies = load_replies(SKILLS_DIR / "replies" / "writing.md")
     lang = "zh" if language == "zh" else "en"
     return (
         replies.get(f"{kind}.{lang}")

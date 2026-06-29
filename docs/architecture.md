@@ -27,13 +27,13 @@
 ┌──────────────────────────┐      ┌──────────────────────────┐      ┌──────────────────────────┐
 │         Browser          │      │     Web (Next.js 15)     │      │     Agent (FastAPI)      │
 ├──────────────────────────┤      ├──────────────────────────┤      ├──────────────────────────┤
-│ 选照片 / 端内压缩 800px   │      │ 建相册 + ≤0.5s 跳编辑器   │      │ 无状态,不存任何数据       │
+│ 选照片 / 端内压缩 800px   │      │ 建相册 + ≤0.5s 跳编辑器   │      │ 不持 draft/stage          │
 │ Stage0 读 EXIF 取 takenAt │      │ (分析任务后台异步跑)      │      │ 三真层 + 平铺边:          │
 │ 不抽 GPS · 无地点维度     │ ───► │ 转发 base64,不落盘        │ ───► │  flows / agents / engine  │
 │ 五环节 UI/面包屑/加载动画 │      │ 持 draft_json 树 + stage  │      │ 识图模型(版面主控)+      │
 │ 章节故事交互组件          │ ◄─── │ (五环节状态唯一真相源)    │ ◄─── │ 文案模型 + 确定性引擎      │
-│ 封面/封尾单独成页(画板)   │      │ 调度各环节对 Agent 调用   │      │ prompt 分层(common/rules)│
-│ 本地渲染 PDF → 直传 R2    │      │ 积分:init 成功即按张扣    │      │ 调用间无状态,无副作用     │
+│ 封面/封尾单独成页(画板)   │      │ 调度各环节对 Agent 调用   │      │ prompt/skill 分层        │
+│ 本地渲染 PDF → 直传 R2    │      │ 积分:init 成功即按张扣    │      │ agent schema 记 edit-loop │
 └──────────────────────────┘      └──────────────────────────┘      └──────────────────────────┘
                                               │
                                               ▼
@@ -61,13 +61,14 @@
 - **积分扣费**:init 成功即按张实扣(`⌈张数/10⌉`),失败 `release`;其余环节免费。
 - 编排路由见 §2 端点表与 [`docs/agent/contract.md §3.2`](./agent/contract.md)。
 
-**Agent (FastAPI)** —— 无状态、无 DB、无文件持久化。内部 = **三真层 + 平铺边**(详见 [`design.md`](./agent/design.md)):
+**Agent (FastAPI)** —— 不持 `draft_json` / stage / public album 数据;仅 Stage3 edit-loop 状态写同一 Postgres 的独立 `agent` schema(Alembic)。内部 = **三真层 + 平铺边**(详见 [`design.md`](./agent/design.md)):
 - **transport**(`routes.py` + `errors.py` + `callback.py`):`/v3/*` 端点,瘦——解析 → 调 flow/agent/engine → 套信封;`errors.py` 统一同步端点错误映射。
 - **flows**(`flows/analyze.py`):唯一真多步编排(describe→group→template→preview + 回调),无状态。
-- **agents**(`agents/<cap>/`):LLM 能力,每个 = `handler.py` + 共置 prompt `.md`(+ 需要时 `schema.py`):`image_understanding`(识图分章)、`writing`(章节文案/对话)、`group_pages`(章内按效果重分页)、`theme_recommend`(主题/章节色)、`template_select`(挑模板)、`layout_plan`(版面规划)、`image_edit_intent`(改图意图)、`page_edit`(页级编辑·两段式意图路由→执行)。
+- **agents**(`agents/<cap>/`):LLM 能力,每个 = `handler.py` + 共置 prompt `.md`(+ 需要时 `schema.py`)。共置 `.md` 只写角色、输入范围、输出 JSON/字段契约和硬格式要求;不放人为规则。
 - **engine**(`engine/`):确定性引擎,不调模型——`templates` / `skeleton`(挑模板+排图)/ `generic_copy` / `apply_theme` / `cover` / `finalize`(拍平 + 单一 validate)。
+- **agent DB boundary**(`db.py` + `migrations/`):只拥有 `agent.edit_sessions` / `agent.edit_messages` / `agent.edit_ops`;`DATABASE_URL` 必须指向同一 Postgres,Web Drizzle 不管理该 schema。
 - **平铺边**:`ai_client.py`(HTTP/JSON/usage)+ `vision_provider.py`(provider/failover/超时)= 模型适配;`schemas.py` = 契约镜像;`main/settings/auth/logging`。
-- **prompts**(`prompts/`):分层组装——`agents/<cap>/*.md`(固定结构:任务 + JSON 形状)+ `common/`(跨能力红线:`json_only`/`grounding`/`privacy`/`persona`,handler 用 `common=` 声明)+ `rules/`(按能力可调规则:分章/写作·引导风格/颜色字体,`RULES_DIR` 加载)。
+- **skills**(`skills/`):分层组装——`agents/<cap>/*.md`(固定 agent 契约)+ `skills/*.md`(人为可调规则、风格、红线、兜底回复,handler 用 `skills=` 或 `SKILLS_DIR` 显式加载)。
 
 **承载的模型(provider 槽可配):**
 - **识图模型 = 版面主控**:火山 doubao-vision(`ARK_*` 槽,默认 `doubao-seed-1-6-vision`)/ OpenAI GPT(`OPENAI_*` 槽,`gpt-5.5-mini`),两槽**互为 failover**。既做图片分析,又主控一切改变版面观感的判断(分章/套模板/主题/章节色/改图意图)。
@@ -78,7 +79,7 @@
 
 1. **图片不落盘** —— 用户隐私是核心承诺。Web 和 Agent 都不存原图。
 2. **Web 不做 AI** —— Next.js serverless 不适合长任务和大依赖。
-3. **Agent 不碰用户数据** —— 只看到 base64 和文本,调用间无状态;挂掉只影响生成,不影响登录/支付/已有作品,也好水平扩展。
+3. **Agent 不碰 Web 公共用户数据** —— 只通过请求/内部回调看到必要 base64 和文本;不直连读写 `public.albums`。Stage3 仅在 `agent` schema 记录 edit-loop 会话/消息/op 状态;挂掉不影响登录/支付/已有作品。
 4. **PDF 在浏览器生成** —— 原图始终在本地;Web 只签 URL,不接 PDF 流量。
 
 ---
@@ -87,27 +88,32 @@
 
 > 详细 req/res、错误码、状态机 → [`docs/agent/contract.md`](./agent/contract.md);Agent 内部分层、pipeline、failover、redact → [`docs/agent/design.md`](./agent/design.md)。
 
-Agent 暴露**一个异步端点 + 五个同步端点**,均 Bearer 鉴权(`AGENT_SHARED_SECRET`),只被 Web 调用、不被浏览器直调。
+Agent 暴露**两个异步端点 + 七个同步/内部端点**,均 Bearer 鉴权(`AGENT_SHARED_SECRET`),只被 Web 调用、不被浏览器直调。
 
-### 2.1 分析 — `POST /v3/analyze`(异步,唯一异步端点)
-- **为什么异步**:多图识图 1–2 min;支撑「点下一个 ≤0.5s 进编辑器 + 后台分析」。
-- Agent 接单即 `202`,后台跑(`flows/analyze.py`),回推 `POST /api/v3/internal/job-progress`(`progress`/`completed`/`failed`)。
+### 2.1 初始化 — `POST /v3/analyze` + `POST /v3/select-layout`(异步)
+- **为什么异步**:多图识图和批量选模板都可能耗时;支撑「点下一个 ≤0.5s 进编辑器 + 后台分析/排版」。
+- `/v3/analyze` 接单即 `202`,后台跑(`flows/analyze.py`),回推 `POST /api/v3/internal/job-progress`(`progress`/`completed`/`failed`)。
 - **入参**:base64 + EXIF(只 `takenAt`,无地点)+ 可选 `clusterId`。
-- **出参(回调)**:套模板 + 通用文案/通用色的**预览态 layout 树** + pages。
+- **出参(回调)**:tree-only `V3LayoutTree`;不返回 pages。
+- `/v3/select-layout` 接收 Stage1 tree + 浏览器保留的 200px refs,后台跑(`flows/select_layout.py`),回推同一个 `job-progress` sink。
+- **出参(回调)**:`Page[]` + usage;Web 合并 tree/pages 后推进到 `story`。
 - 浏览器轮询相册状态,不开 SSE(理由见 2.3)。
 
-### 2.2 其余四环节 — 同步端点(秒级,前端转圈)
+### 2.2 其余环节 — 同步/内部端点(秒级,前端转圈)
 
 | 环节 | 端点 | 模型 |
 |---|---|---|
-| 章节故事 | `POST /v3/chapter-chat` | 文案模型(改图时升级识图模型出意图)|
-| 主题/章节色 · 推荐 | `POST /v3/recommend` | 识图模型 |
+| 章节故事(主路径) | `POST /v3/edit-chat` | 文案模型;版面 swap 时可用识图模型 |
+| 章节故事(无状态能力面) | `POST /v3/chapter-chat` | 文案模型 |
+| 聚焦页编辑 | `POST /v3/page-edit` | 文案模型;版面 swap 时可用识图模型 |
+| 编辑确认回执 | `POST /internal/agent-ack` | 无(Agent DB 状态推进)|
+| 主题/章节色 · 推荐 | `POST /v3/recommend` | 文案模型输出 3 组 bookThemeOptions |
 | 主题/章节色 · 应用 | `POST /v3/apply-theme` | 无(确定性)|
 | 书籍设计(封面/封尾)| `POST /v3/cover` | 无(确定性)|
 | 待导出 | `POST /v3/finalize` | 无(确定性 flatten + 单一 validate)|
 
 - 均**同步 HTTP**,纯变换「输入切片 → 输出补丁」,可重试、可水平扩展。
-- **`stage` 推进权在 Web**:Agent 无状态;Web 合并补丁、记 stage、控导出闸门。
+- **`stage` 推进权在 Web**:Agent 不持 stage;Web 合并补丁、记 stage、控导出闸门。
 - 允许封面环节从 `theme` 直接跳 `ready`(跳过 cover)。
 - layout 树**按需切片传**(②传单章;③④传相关页),全树只在 ⑤ finalize 传一次。
 
@@ -116,7 +122,7 @@ Agent 暴露**一个异步端点 + 五个同步端点**,均 Bearer 鉴权(`AGENT
 - **失败语义**:异步走回调 `failed`(带 stage);同步走 HTTP 错误码;前端可重试,不污染 `stage`。
 - **为什么不用 SSE**:Vercel 多 lambda 实例,进程内 EventEmitter 无法跨实例;轮询零依赖、Vercel 上必然工作,1000 用户够用。
 
-**Web 侧编排路由**:`POST /api/v3/albums`(建册+扣费+派 analyze)、`/api/v3/internal/job-progress`(回调 sink)、`albums/:id/{draft,story-progress,chapter-chat,recommend,apply-theme,cover,finalize,retry}`。
+**Web 侧编排路由**:`POST /api/v3/albums`(建册+扣费+派 analyze/select-layout)、`/api/v3/internal/job-progress`(回调 sink)、`albums/:id/{draft,story-progress,chapter-chat,recommend,apply-theme,cover,finalize,retry}`。
 
 ---
 
@@ -125,7 +131,7 @@ Agent 暴露**一个异步端点 + 五个同步端点**,均 Bearer 鉴权(`AGENT
 > 施工反复对照的重点只有两类:**① Server 端数据归属**、**② 积分数据变更**。其余是边界红线。
 
 **① 数据归属(重点)**
-1. **Web 是唯一真相源**:持 `draft_json`(树 + pages + progress)+ `albums.stage`;**Agent 无持久状态**(无 DB / FS / 会话),每次收完整上下文、回补丁——同步端点纯函数可水平扩展,异步 analyze 仅进程内瞬态(per-job holder,无模块全局)。
+1. **Web 是 album 真相源**:持 `draft_json`(树 + pages + progress)+ `albums.stage`;Agent 不持 draft/stage/album public 数据。Stage3 edit-loop 的会话/消息/op 状态例外归 Agent 自有 `agent` schema,只服务 pending/committed ack 与 history,不存原图/base64/draft_json。
 2. **分层归属**:Service 方法第一参数 `userId` / `actor`;Route 只编排、不 import drizzle;Service 不跨用别的 service 的 repo。
 3. **authoring 树边界**:`draft_json` + 交互期请求体**永不进渲染 / PDF / 对外契约**;`finalize` 拍平成扁平 `AlbumLayoutPlan`(章节色/字体烘进扁平页,渲染契约不加树形字段)才落 `album_pages`。
 
@@ -154,9 +160,9 @@ memoir-agent-rebuild/
 │       └── src/                   #   三真层 + 平铺边:
 │           ├── routes.py · errors.py · callback.py    # transport(HTTP 边)
 │           ├── flows/             #     编排(analyze)
-│           ├── agents/<cap>/      #     LLM 能力三件套(handler + *.md [+ schema])
+│           ├── agents/<cap>/      #     LLM 能力三件套(handler + contract *.md [+ schema])
 │           ├── engine/            #     确定性引擎(templates/skeleton/.../finalize)
-│           ├── prompts/           #     common/(红线)+ rules/(可调规则)+ 加载器
+│           ├── skills/            #     人为规则/风格/红线/回复 + 加载器
 │           ├── ai_client.py · vision_provider.py      # model 适配
 │           └── schemas.py · main · settings · auth · logging
 ├── packages/
@@ -178,10 +184,10 @@ memoir-agent-rebuild/
 |---|---|---|
 | Web | Vercel | yujeeai.com;`next.config.mjs` + `vercel.json` |
 | Agent | Fly.io | app `yujee-agent`,region `nrt`,内部端口 `8001`;`AGENT_PIPELINE_MODE=real` |
-| Postgres | Neon | Drizzle migrations 在 `apps/web/src/db/migrations`(stage 列由 `album_stage` enum 回填) |
+| Postgres | Neon | Web Drizzle 管 public schema(`apps/web/src/db/migrations`);Agent Alembic 管独立 `agent` schema(`apps/agent/migrations`,需 `DATABASE_URL`) |
 | R2 / CDN | Cloudflare | PDF presigned 上传 |
 
-环境变量完整清单 → 见各子文档结尾。本地起服务:Agent `cd apps/agent && .venv/bin/uvicorn src.main:app --port 8001`(读 `.env`);Web `next dev`(用 nvm node,见记忆)。
+环境变量完整清单 → 见各子文档结尾。本地起服务:Agent `pnpm agent:dev`(读 `apps/agent/.env`);若 `8001` 已被旧进程占用,用 `PORT=8011 pnpm agent:dev`;Web `next dev`(用 nvm node,见记忆)。
 
 ---
 
@@ -202,14 +208,14 @@ memoir-agent-rebuild/
 
 > 这些是已**实施完成**的决策(非待办)。早期「V3 拍板」的迁移细节已落地,这里只留仍然成立的结论。
 
-1. **Agent 端点全 `/v3/*`**:1 异步 `/v3/analyze` + 5 同步(+ `/health`);Agent 的 v1/v2 整删,无兼容层。Web 端 `/api/v2/*` 与 v1 生成链路(`/v1/layout` 等)已删,**`/api/v1/*` 基建端点保留**(相册 CRUD、pages、PDF presigned、字体 subset、积分/Creem webhook、auth、admin、job 轮询)。
+1. **Agent 端点全 `/v3/*`**:2 个异步初始化端点(`/v3/analyze`, `/v3/select-layout`) + 7 个同步/内部端点(`/v3/edit-chat`, `/v3/chapter-chat`, `/v3/page-edit`, `/v3/recommend`, `/v3/apply-theme`, `/v3/cover`, `/v3/finalize`, `/internal/agent-ack`) + `/health`;Agent 的 v1/v2 整删,无兼容层。Web 端 `/api/v2/*` 与 v1 生成链路(`/v1/layout` 等)已删,**`/api/v1/*` 基建端点保留**(相册 CRUD、pages、PDF presigned、字体 subset、积分/Creem webhook、auth、admin、job 轮询)。
 2. **两类模型 + 识图模型当主控**:识图模型(ark/openai 双槽 failover)既分析又主控版面;文案模型(deepseek 槽)只管文案;详见 §1.1。
 3. **隐私:Stage 0 只读 `takenAt`,不抽 GPS、无地点字段**;分章只用时间 + `clusterId` + 画面整体性;redact 保留坐标键作防御红线。
 4. **`albums.stage`(五环节状态主控)**:`album_stage` pgEnum = `('analysing','story','theme','cover','ready')`,Web 唯一真相源,与 `albums.status`(init 生命周期 + 积分)**正交并存、互不派生**。导出闸门 = 章节故事全章完成即解锁,主题/封面不卡导出。
 5. **契约单一真相源:TS 先行,Python 镜像**:`packages/contracts`(zod)是真相源,Agent `schemas.py` 逐字段镜像(`.strict()` / `extra='forbid'`)。
 6. **模板契约标准化**:模板 JSON = `category | pairing | images | svgs | texts | items | variableDecor`;旧 `slot+scene` / `quality`/`orientation` 硬约束已废,排图由 `template_select` 出意图 + 引擎在合法候选兜底(横竖比错配交 center-cover 渲染)。
 7. **校验单一真相源**:finalize 单一 `validate_v3`(认 svgs/items/variableDecor/章节色/字体);无 page0-必须-cover 规则(封面可选可跳)。
-8. **Agent 三真层重构(2026-06,PR #240)**:扁平 `services/` → `flows / agents / engine` + 平铺边 + `prompts`(common/rules 分层);删历史孤儿(tools.py / layout_rules 等)+ 消状态泄漏;行为零变更(契约/不变式不动)。详见 [`design.md`](./agent/design.md)。
+8. **Agent 三真层重构(2026-06,PR #240)**:扁平 `services/` → `flows / agents / engine` + 平铺边 + `skills` 分层;删历史孤儿(tools.py / layout_rules 等)+ 消状态泄漏;行为零变更(契约/不变式不动)。详见 [`design.md`](./agent/design.md)。
 9. **planner(未来 · 第二期)**:自然语言指令 → 自主规划调用 agents/engine 工具面;坐在现在这套无状态分层之上(stateful 仅一条指令内)。当前是 planner-ready 地基,尚未实现。
 10. **中途加图**:main 上**尚未实现**;目标设计 = Web 侧可重入派生闸(分析新批次 + 合并不覆盖 + 按章补完,新章未完成则导出闸自动重关)。
 

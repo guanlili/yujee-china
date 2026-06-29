@@ -1,8 +1,15 @@
-"""image_understanding agent: describe-content 识图环节(V3 §2)。"""
+"""image_understanding agent: 旧一体化识图能力。"""
 
 from __future__ import annotations
 
-from .handler import VisionError, describe_content
-from .schema import V3AnalyzeResult, V3DescribeResult
+from ..vision_error import VisionError
+from .handler import describe_content
+from .schema import DescribeResult, V3AnalyzeResult, V3DescribeResult
 
-__all__ = ["VisionError", "describe_content", "V3AnalyzeResult", "V3DescribeResult"]
+__all__ = [
+    "DescribeResult",
+    "VisionError",
+    "describe_content",
+    "V3AnalyzeResult",
+    "V3DescribeResult",
+]

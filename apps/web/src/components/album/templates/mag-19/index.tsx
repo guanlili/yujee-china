@@ -33,7 +33,7 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontStyle: 'italic',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
-          fontFamily: WEB_FONTS.playfair,
+          fontFamily: introTheme.webFontFamily ?? WEB_FONTS.playfair,
         }}
       >
         {introTheme.text ?? d.title ?? ''}

@@ -144,11 +144,11 @@
           },
           {
             "pageIndex": 2,
-            "templateId": "mag-04",
+            "templateId": "mag-50",
             "images": {
-              "image1": "h002",
-              "image2": "d001",
-              "image3": "f001"
+              "image1": "d001",
+              "image2": "f001",
+              "image3": "h002"
             },
             "texts": {}
           }
@@ -174,11 +174,11 @@
       },
       {
         "pageIndex": 2,
-        "templateId": "mag-04",
+        "templateId": "mag-50",
         "images": {
-          "image1": "h002",
-          "image2": "d001",
-          "image3": "f001"
+          "image1": "d001",
+          "image2": "f001",
+          "image3": "h002"
         },
         "texts": {}
       },

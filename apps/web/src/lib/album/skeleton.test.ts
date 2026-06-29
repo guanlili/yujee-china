@@ -117,13 +117,13 @@ test('exclude exhaustion falls back to legal candidates', () => {
     useCase: 'chapter',
     imageCount: 3,
     photos,
-    exclude: new Set(['mag-04']),
+    exclude: new Set(['mag-33', 'mag-50', 'mag-52']),
     albumId: 'album',
     chapterId: 'chapter',
     pageOrdinal: 0,
   });
 
-  assert.equal(templateId, 'mag-04');
+  assert.equal(templateId, 'mag-50');
   assert.equal(canPlace(templateId, photos), true);
 });
 

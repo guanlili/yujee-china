@@ -48,10 +48,9 @@ export type CreemProductEnvKey =
 // One credit covers up to PHOTOS_PER_CREDIT photos. A generation of N photos
 // costs creditsForPhotos(N) credits, charged when the layout succeeds.
 //
-// This is the ONLY place the photos-per-credit threshold is defined. Everything
-// that depends on it — the per-request photo cap, the billing math, and the UI
-// copy ("1 credit = N photos") — must derive from here, NEVER hardcode a number.
-// So changing 10 → 20 later is a one-line edit to PHOTOS_PER_CREDIT.
+// This is the ONLY place the photos-per-credit threshold is defined. Billing
+// math and UI copy ("1 credit = N photos") must derive from here, NEVER
+// hardcode a number. The per-request analyze cap is a separate product knob.
 //
 // NOTE: the exact value is still a product decision (10? 20?). 10 is a placeholder.
 export const PHOTOS_PER_CREDIT = 10;
@@ -63,9 +62,9 @@ export function creditsForPhotos(photoCount: number): number {
 }
 
 // Hard upper bound on photos accepted in a single generation request (init/add).
-// Also derived from the threshold so the two knobs never drift — a request may
-// span MAX_PHOTOS_PER_GENERATION / PHOTOS_PER_CREDIT credits at most.
-export const MAX_PHOTOS_PER_GENERATION = PHOTOS_PER_CREDIT * 3;
+// Kept as its own product knob: billing still uses PHOTOS_PER_CREDIT, while the
+// analyze entry accepts up to 100 photos per album request.
+export const MAX_PHOTOS_PER_GENERATION = 100;
 
 // DEPRECATED — kept only so existing imports compile until the per-photo charge
 // is wired in. The flat "1 credit per album" model is being replaced by

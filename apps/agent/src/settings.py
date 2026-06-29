@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     # core
     agent_shared_secret: str = Field(..., min_length=1)
     web_base_url: str = "http://localhost:3000"
+    # Shared Postgres instance. Agent-owned tables live under the independent
+    # `agent` schema and are migrated by apps/agent/migrations (Alembic).
+    database_url: str | None = None
     # Total budget for an init/finalize/layout background task. Must cover the
     # worst case of its network stage(s) including ai_client's one retry
     # (each call can take up to 2× its per-call timeout):
@@ -32,6 +35,9 @@ class Settings(BaseSettings):
     background_task_timeout_seconds: int = 600
     port: int = 8001
     log_level: str = "info"
+    agent_enable_analyze: bool = True
+    # Only the dedicated 2GB CLIP service enables this internal endpoint.
+    agent_enable_clip_embeddings: bool = False
 
     # mode switches (see docs/agent/design.md)
     agent_pipeline_mode: PipelineMode = "mock"
@@ -118,6 +124,32 @@ class Settings(BaseSettings):
     describe_concurrency_threshold_lo: int = 20
     describe_concurrency_threshold_hi: int = 40
     describe_max_concurrency: int = 3
+
+    # Stage1 本地分章:CLIP 图片 embedding + 灰度/颜色距离。
+    # grouping_clip_model_path 支持本地权重;未设置时 open_clip 按 model/pretrained
+    # 配置加载。
+    grouping_clip_model_name: str = "ViT-B-32"
+    grouping_clip_pretrained: str = "openai"
+    grouping_clip_model_path: str | None = None
+    grouping_pythonpath: str | None = None
+    # Normal 1GB Agent can call a separate 2GB CLIP service for embeddings.
+    # When unset, embeddings are computed locally.
+    grouping_clip_base_url: str | None = None
+    grouping_clip_secret: str | None = None
+    grouping_clip_timeout_seconds: int = 180
+
+    # Stage2 select-layout: Gemini via OpenAI-compatible /chat/completions.
+    # Missing key is non-fatal for the stage: flows/select_layout.py catches it
+    # and uses the deterministic skeleton fallback.
+    select_layout_api_key: str | None = None
+    select_layout_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    select_layout_model: str = "gemini-2.5-flash"
+    select_layout_timeout_seconds: int = 60
+    select_layout_max_output_tokens: int = 4096
+    select_layout_use_json_object: bool = True
+    select_layout_disable_thinking: bool = True
+    select_layout_max_images_per_batch: int = 24
+    select_layout_max_concurrency: int = Field(default=3, ge=1)
 
     # planning + chat-edit (DeepSeek slot; in prod points at Volcano Ark doubao)
     deepseek_api_key: str | None = None

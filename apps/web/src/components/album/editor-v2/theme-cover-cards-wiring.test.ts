@@ -10,8 +10,8 @@ import { test } from 'node:test';
 // applyPatchToPages, album-service slice/stage) is covered in its own unit tests. Here we
 // lock the load-bearing wiring invariants of the theme/cover selector UI:
 //   • recommend renders the palette-card from the REAL contract response,
-//   • the palette-card lists one row per chapter (subject title + accent), apply-theme
-//     fires with the per-chapter {subject, accentColor, artFont} (#236),
+//   • the palette-card lists one row per theme option, apply-theme expands the selected
+//     option into per-chapter {subject, accentColor, artFont},
 //   • there is NO "auto-apply" fallback,
 //   • confirming the last chapter (stage → theme) surfaces the palette-card,
 //   • apply-theme advancing (stage → cover) surfaces the cover-card,
@@ -28,33 +28,30 @@ test('runRecommendTheme renders the palette-card after the reply', () => {
   assert.match(body, /appendPaletteCard\(res\)/);
 });
 
-test('appendPaletteCard builds one row per chapter (subject title + accent swatch)', () => {
+test('appendPaletteCard builds one row per book theme option', () => {
   const fn = /function appendPaletteCard\(res: V3RecommendResponse\)[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'appendPaletteCard must exist');
   const body = fn![0];
-  // One palette-card; one row per chapter (#236: purely per-chapter, no themeOptions).
+  // One palette-card; one row per book theme option.
   assert.match(body, /palette-card/);
-  assert.match(body, /res\.chapterColors\.forEach/);
-  // Each row shows the chapter subject (its title) + the chapter accent swatch.
-  assert.match(body, /c\.subject/);
-  assert.match(body, /c\.accentColor/);
-  // Contract no longer carries album-level themeOptions.
-  assert.doesNotMatch(body, /themeOptions/);
-  // A single「应用」action applies the whole per-chapter theme set.
+  assert.match(body, /res\.bookThemeOptions\.forEach/);
+  assert.match(body, /option\.label/);
+  assert.match(body, /option\.style/);
+  assert.match(body, /option\.chapters\.slice\(0, 4\)/);
   assert.match(body, /pc-apply/);
 });
 
-test('the 应用 action fires apply-theme with per-chapter {subject, accentColor, artFont}', () => {
+test('each 应用 action expands selected option to per-chapter choices', () => {
   const fn = /function appendPaletteCard\(res: V3RecommendResponse\)[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'appendPaletteCard must exist');
   const body = fn![0];
   assert.match(body, /runApplyTheme\(\{/);
-  // No album-level theme is sent anymore — only the per-chapter choices.
-  assert.doesNotMatch(body, /theme: \{ subject: opt/);
-  assert.match(body, /chapters: res\.chapterColors\.map/);
+  assert.match(body, /chapters: option\.chapters\.map/);
   assert.match(body, /subject: c\.subject/);
   assert.match(body, /accentColor: c\.accentColor/);
-  assert.match(body, /artFont: c\.artFont/);
+  assert.match(body, /artFont: option\.artFont/);
+  assert.doesNotMatch(body, /Untitled Chapter/);
+  assert.doesNotMatch(body, /未命名章节/);
 });
 
 test('runApplyTheme has NO auto-apply fallback (缺口#20: 删掉自动套兜底)', () => {
@@ -65,7 +62,7 @@ test('runApplyTheme has NO auto-apply fallback (缺口#20: 删掉自动套兜底
 });
 
 test('confirming the last chapter (stage → theme) surfaces the palette-card', () => {
-  // markCurrentChapterDone reads the returned stage; when it advances to 'theme'
+  // edit-chat progressDecision refreshes the story projection; when it advances to 'theme'
   // it kicks off the recommend → palette-card flow.
   assert.match(src, /if \(storyGate\.stage === 'theme'\)\s*\{[\s\S]{0,160}runRecommendTheme\(\)/);
 });
@@ -94,4 +91,57 @@ test('cover-card 应用 sends current template ids; 跳过 sends an empty select
 
 test('skipCover action sends an empty cover selection (no auto design)', () => {
   assert.match(src, /skipCover: \(\) => \{ void runCover\(\{\}\); \}/);
+});
+
+test('cover-stage free text routes to the cover turn with cover history', () => {
+  const fn = /async function send\(\)[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'send must exist');
+  const body = fn![0];
+  assert.match(body, /storyGate\?\.stage === 'cover'/);
+  assert.match(body, /runCover\(\{[\s\S]{0,180}userMessage: txt[\s\S]{0,180}history: coverHistory\.slice\(-CHAT_HISTORY_MAX\)/);
+  assert.match(body, /return/);
+});
+
+// ─── restore chat decision cards on reload ──────────────────────────────────
+// The theme/cover cards are session-only DOM (album_messages is text-only), so on
+// re-entry they're re-derived from stage + draftSkel: past stages as read-only
+// recaps, the current stage as its live actionable card. Without this, refreshing
+// mid-theme/mid-cover left no card to continue with.
+
+test('on re-entry, the active decision card is re-emitted per stage', () => {
+  // theme → live palette card; cover → theme recap + live cover card; ready → both recaps.
+  assert.match(src, /else if \(stage === 'theme' \|\| stage === 'cover' \|\| stage === 'ready'\)/);
+  assert.match(src, /if \(stage === 'theme'\)\s*\{\s*void runRecommendTheme\(\)/);
+  // cover stage: theme recap + live cover card (the cover branch carries a multi-line
+  // legacy-auto-advance note between the calls, so the window is generous).
+  assert.match(src, /else if \(stage === 'cover'\)\s*\{[\s\S]{0,400}appendThemeSummary\(\);[\s\S]{0,400}appendCoverCard\(\)/);
+  // ready branch (the trailing else): both stages walked past → both read-only recaps.
+  assert.match(src, /appendThemeSummary\(\);[\s\S]{0,400}appendCoverSummary\(\)/);
+});
+
+test('appendThemeSummary is a READ-ONLY recap of chapter titles (no apply action)', () => {
+  const fn = /function appendThemeSummary\(\)[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'appendThemeSummary must exist');
+  const body = fn![0];
+  assert.match(body, /palette-card is-recap/);
+  assert.match(body, /draftSkel\?\.chapters/);
+  // shows each chapter's applied title (subject), falling back to its label.
+  assert.match(body, /c\.subject && c\.subject\.trim\(\)\) \|\| c\.label/);
+  // read-only: no apply button, never re-fires apply-theme.
+  assert.doesNotMatch(body, /pc-apply/);
+  assert.doesNotMatch(body, /runApplyTheme/);
+});
+
+test('appendCoverSummary is a READ-ONLY recap (preview or 跳过, no API call)', () => {
+  const fn = /function appendCoverSummary\(\)[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'appendCoverSummary must exist');
+  const body = fn![0];
+  assert.match(body, /cover-card is-recap/);
+  // cover/ending resolved by skeleton kind (same as the live card), previewed read-only.
+  assert.match(body, /kindByPageIndex\.get\(p\.pageIndex\) === 'cover'/);
+  assert.match(body, /coverOptionHTML\(page\.templateId/);
+  // 已跳过 when neither cover nor ending page exists.
+  assert.match(body, /已跳过封面设计/);
+  // read-only: never posts a cover selection.
+  assert.doesNotMatch(body, /runCover/);
 });

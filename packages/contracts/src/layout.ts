@@ -148,6 +148,9 @@ export const V3Chapter = z
   .object({
     chapterId: z.string().min(1),
     description: z.string().max(600), // LLM 写,章节画面/情绪概述
+    // Stage1 extracted source color. Distinct from final theme `accentColor`.
+    // Migration field: older trees omit it; Stage1 PR249 trees may carry null.
+    extractedColor: AccentColor.nullish(),
     accentColor: AccentColor.nullable(), // 占位 null;theme 环节填
     artFont: ArtFontPack.nullable(), // 占位 null;theme 环节填
     photos: z.array(V3ChapterPhoto),

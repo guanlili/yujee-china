@@ -1,538 +1,432 @@
+from __future__ import annotations
+
 import asyncio
+import base64
+import io
 import json
-from typing import Any
 
 import pytest
+from PIL import Image
 
-from src.schemas import V3AnalyzePhoto, V3LayoutTree
 from src import ai_client
-from src.agents.image_understanding import handler as vision
+from src.agents.image_grouping.handler import group_photos
+from src.agents.image_grouping.schema import GroupingChapter, GroupingParams, GroupingResult
+from src.agents.chapter_describer import handler as chapter_describer
+from src.agents.chapter_describer.schema import DescribeResult
+from src.agents.regroup_unplaced.handler import group_unplaced
+from src.agents.unplaced_refiner import handler as unplaced_refiner
+from src.schemas import V3AnalyzePhoto
 
 
-@pytest.fixture(autouse=True)
-def _real_vision_env(monkeypatch):
+def _data_url(color: tuple[int, int, int] = (128, 128, 128)) -> str:
+    image = Image.new("RGB", (32, 32), color)
+    buf = io.BytesIO()
+    image.save(buf, format="JPEG")
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def _photo(
+    photo_id: str,
+    *,
+    cluster_id: str | None = None,
+    taken_at: str | None = None,
+) -> V3AnalyzePhoto:
+    payload = {
+        "photoId": photo_id,
+        "base64": _data_url(),
+        "width": 32,
+        "height": 32,
+        "clusterId": cluster_id,
+    }
+    if taken_at is not None:
+        payload["exif"] = {"takenAt": taken_at}
+    return V3AnalyzePhoto.model_validate(payload)
+
+
+def _assert_partition(result: GroupingResult, expected: set[str]) -> None:
+    chapter_ids = [pid for chapter in result.chapters for pid in chapter.photoIds]
+    all_ids = chapter_ids + list(result.unplacedPhotoIds)
+    assert len(result.chapters) >= 1
+    assert set(all_ids) == expected
+    assert len(all_ids) == len(set(all_ids))
+
+
+def _chapter_photo_ids(result: GroupingResult) -> list[list[str]]:
+    return [chapter.photoIds for chapter in result.chapters]
+
+
+def test_grouping_never_returns_zero_chapters():
+    result = group_photos([])
+
+    assert len(result.chapters) == 1
+    assert result.chapters[0].chapterId == "ch_1"
+    assert result.chapters[0].photoIds == []
+    assert result.unplacedPhotoIds == []
+
+
+def test_grouping_has_full_coverage_no_duplicates():
+    photos = [
+        _photo("p1", cluster_id="c1", taken_at="2024-01-01T10:00:00Z"),
+        _photo("p2", cluster_id="c1", taken_at="2024-01-01T10:01:00Z"),
+        _photo("p3", cluster_id="c2", taken_at="2024-01-02T10:00:00Z"),
+        _photo("p4", cluster_id=None, taken_at="2024-01-03T10:00:00Z"),
+    ]
+
+    result = group_photos(photos)
+
+    _assert_partition(result, {"p1", "p2", "p3", "p4"})
+
+
+def test_grouping_keeps_cluster_atomic():
+    photos = [
+        _photo("p1", cluster_id="c1"),
+        _photo("p2", cluster_id="c1"),
+        _photo("p3", cluster_id="c2"),
+        _photo("p4", cluster_id="c2"),
+    ]
+
+    result = group_photos(photos)
+
+    owner: dict[str, str] = {}
+    for chapter in result.chapters:
+        for photo_id in chapter.photoIds:
+            owner[photo_id] = chapter.chapterId
+    for photo_id in result.unplacedPhotoIds:
+        owner[photo_id] = "__unplaced__"
+    assert owner["p1"] == owner["p2"]
+    assert owner["p3"] == owner["p4"]
+
+
+def test_grouping_splits_distinct_dates_and_clusters_into_chapters():
+    photos = [
+        _photo("p1", cluster_id="morning", taken_at="2024-01-01T09:00:00Z"),
+        _photo("p2", cluster_id="morning", taken_at="2024-01-01T09:05:00Z"),
+        _photo("p3", cluster_id="evening", taken_at="2024-01-10T18:00:00Z"),
+        _photo("p4", cluster_id="evening", taken_at="2024-01-10T18:05:00Z"),
+    ]
+
+    result = group_photos(photos)
+
+    assert _chapter_photo_ids(result) == [["p1", "p2"], ["p3", "p4"]]
+    assert result.unplacedPhotoIds == []
+
+
+def test_grouping_keeps_undated_photos_together_without_visual_subsplit():
+    photos = [_photo(f"p{i + 1}") for i in range(25)]
+
+    result = group_photos(photos, GroupingParams(subsplitMin=99))
+
+    assert _chapter_photo_ids(result) == [
+        [f"p{i + 1}" for i in range(25)],
+    ]
+    assert result.unplacedPhotoIds == []
+
+
+def test_grouping_time_gap_splits_later_units():
+    cluster_ids = [f"p{i + 1}" for i in range(25)]
+    photos = [
+        _photo(photo_id, cluster_id="oversized", taken_at="2024-01-01T10:00:00Z")
+        for photo_id in cluster_ids
+    ]
+    photos.append(_photo("p26", cluster_id="next", taken_at="2024-01-12T10:00:00Z"))
+
+    result = group_photos(photos, GroupingParams(subsplitMin=99))
+
+    assert _chapter_photo_ids(result) == [cluster_ids, ["p26"]]
+    assert result.unplacedPhotoIds == []
+
+
+def test_describe_chapters_retries_recoverable_missing_chapter_description(monkeypatch):
     monkeypatch.setenv("AGENT_PIPELINE_MODE", "real")
-    monkeypatch.setenv("ARK_API_KEY", "fake_ark")
-    from src import settings as s
-
-    s.reset_settings_cache()
-    yield
-    s.reset_settings_cache()
-
-
-# =============================================================================
-# WP1.3 describe-content (#182): 章节树 partition + 3 LLM fields + failover.
-# =============================================================================
-
-
-@pytest.fixture
-def _describe_env(monkeypatch):
-    """describe-content env with BOTH slots keyed (OpenAI primary + 火山 failover)."""
-    monkeypatch.setenv("AGENT_PIPELINE_MODE", "real")
-    # describe-content's primary IS the OpenAI slot; without pinning the provider the
-    # default (vision_provider="ark") makes ark the primary and the gpt-5.5-mini
-    # assertions below fail. This keeps the failover tests deterministic regardless of
-    # the operator's .env default.
     monkeypatch.setenv("VISION_PROVIDER", "openai")
-    monkeypatch.setenv("OPENAI_VISION_MODEL", "gpt-4o-mini")
     monkeypatch.setenv("OPENAI_API_KEY", "fake_oai")
     monkeypatch.setenv("ARK_API_KEY", "fake_ark")
     from src import settings as s
 
     s.reset_settings_cache()
-    yield
-    s.reset_settings_cache()
+    calls: list[list[dict]] = []
 
-
-def _v3_photos(count: int = 3) -> list[V3AnalyzePhoto]:
-    return [
-        V3AnalyzePhoto(
-            photoId=f"p{i + 1}",
-            base64="data:image/jpeg;base64,AA==",
-            width=800 if i % 2 == 0 else 600,
-            height=600 if i % 2 == 0 else 800,
-            exif={"takenAt": f"2024-03-{(i % 28) + 1:02d}T08:30:00"},
-        )
-        for i in range(count)
-    ]
-
-
-def _chapters_payload() -> dict[str, Any]:
-    return {
-        "chapters": [
-            {
-                "description": "Spring morning walk.",
-                "photoIds": ["p1", "p2"],
-                "scenes": {
-                    "p1": "a woman in a red coat",
-                    "p2": "snow on the old street",
-                },
-            },
-            {
-                "description": "Quiet afternoon.",
-                "photoIds": ["p3"],
-                "scenes": {"p3": "a quiet teahouse"},
-            },
-        ]
-    }
-
-
-def _completion(content: Any) -> dict[str, Any]:
-    return {
-        "choices": [{"message": {"content": json.dumps(content)}}],
-        "usage": {"prompt_tokens": 11, "completion_tokens": 7},
-    }
-
-
-def test_describe_content_builds_chapter_tree_with_llm_3_fields(_describe_env, monkeypatch):
-    async def fake_completion(**kwargs):
-        # Primary slot = OpenAI (GPT-5.5 Mini); never carries doubao's `thinking`.
-        assert kwargs["model"] == "gpt-5.5-mini"
-        assert kwargs.get("extra_body") is None
-        return _completion(_chapters_payload())
-
-    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
-
-    photos = _v3_photos(3)
-    result = asyncio.run(vision.describe_content(photos, language="en"))
-
-    assert isinstance(result.tree, V3LayoutTree)
-    assert result.provider == "openai"
-    assert result.model == "gpt-5.5-mini"
-    assert result.tokens_billed == 18
-
-    chapters = result.tree.chapters
-    assert [c.chapterId for c in chapters] == ["ch_1", "ch_2"]
-    # ① 分章 (LLM): partition honored.
-    assert [[p.photoId for p in c.photos] for c in chapters] == [["p1", "p2"], ["p3"]]
-    # ② description (LLM).
-    assert chapters[0].description == "Spring morning walk."
-    # ③ sceneDescription (LLM).
-    assert chapters[0].photos[0].sceneDescription == "a woman in a red coat"
-
-    # Code-filled deterministic attrs come from the REQUEST, not the LLM (§4.1(c)).
-    p1 = chapters[0].photos[0]
-    assert (p1.width, p1.height, p1.orientation) == (800, 600, "landscape")
-    assert p1.takenAt == "2024-03-01T08:30:00"
-    p3 = chapters[1].photos[0]
-    assert (p3.width, p3.height, p3.orientation) == (800, 600, "landscape")
-
-    # accentColor/artFont stay null placeholders (theme stage fills, §4.1).
-    for c in chapters:
-        assert c.accentColor is None and c.artFont is None
-
-
-def test_describe_content_rejects_duplicate_photo_ids(_describe_env, monkeypatch):
-    # The code must reject duplicate LLM-authored grouping, not silently keep the
-    # first occurrence or patch in its own partition.
-    payload = {
-        "chapters": [
-            {
-                "description": "A.",
-                "photoIds": ["p1", "p2"],
-                "scenes": {"p1": "one", "p2": "two"},
-            },
-            {
-                "description": "B.",
-                "photoIds": ["p1", "p3"],
-                "scenes": {"p1": "one again", "p3": "three"},
-            },
-        ]
-    }
+    def _completion(content: dict) -> dict:
+        return {
+            "choices": [{"message": {"content": json.dumps(content)}}],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 4},
+        }
 
     async def fake_completion(**kwargs):
-        return _completion(payload)
-
-    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
-
-    with pytest.raises(vision.VisionError, match="duplicated photoId"):
-        asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
-
-
-def test_describe_content_rejects_omitted_photo_ids(_describe_env, monkeypatch):
-    # Every input photo must appear once; omitted ids are invalid LLM output.
-    payload = {
-        "chapters": [
-            {
-                "description": "A.",
-                "photoIds": ["p1", "p2"],
-                "scenes": {"p1": "one", "p2": "two"},
-            }
-        ]
-    }
-
-    async def fake_completion(**kwargs):
-        return _completion(payload)
-
-    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
-
-    with pytest.raises(vision.VisionError, match="omitted photoIds"):
-        asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
-
-
-def test_describe_content_rejects_unknown_photo_ids(_describe_env, monkeypatch):
-    # The model may only reference exact photoIds from the request manifest.
-    payload = {
-        "chapters": [
-            {
-                "description": "A.",
-                "photoIds": ["p1", "p2", "p3", "p999"],
-                "scenes": {"p1": "one", "p2": "two", "p3": "three", "p999": "unknown"},
-            }
-        ]
-    }
-
-    async def fake_completion(**kwargs):
-        return _completion(payload)
-
-    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
-
-    with pytest.raises(vision.VisionError, match="unknown photoId"):
-        asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
-
-
-def test_describe_content_rejects_missing_llm_authored_text(_describe_env, monkeypatch):
-    """`description` and per-photo `sceneDescription` are LLM-authored fields.
-    Missing values are invalid model output, not code-fill opportunities."""
-    payload = {
-        "chapters": [
-            {
-                "description": "Spring morning walk.",
-                "photoIds": ["p1", "p2"],
-                "scenes": {"p1": "a woman in a red coat"},
-            },
-            {
-                "description": "",
-                "photoIds": ["p3"],
-                "scenes": {"p3": "a quiet teahouse"},
-            },
-        ]
-    }
-
-    async def fake_completion(**kwargs):
-        return _completion(payload)
-
-    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
-
-    with pytest.raises(vision.VisionError):
-        asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
-
-
-def test_describe_content_fails_over_to_ark_on_openai_5xx(_describe_env, monkeypatch):
-    calls: list[str] = []
-
-    async def fake_completion(**kwargs):
-        model = kwargs["model"]
-        calls.append(model)
-        if model == "gpt-5.5-mini":
-            raise ai_client.AIRequestError(
-                "upstream_5xx status=503", status_code=503, kind="5xx"
+        calls.append(kwargs["messages"])
+        if len(calls) == 1:
+            return _completion(
+                {
+                    "chapters": [
+                        {
+                            "chapterId": "ch_1",
+                            "scenes": {"1": "scene one"},
+                        }
+                    ]
+                }
             )
-        # Failover slot = 火山 doubao; thinking-disabled, no json_object.
-        assert model == "doubao-seed-1-6-vision-250815"
-        assert kwargs.get("response_format") is None
-        return _completion(_chapters_payload())
-
-    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
-
-    result = asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
-
-    # 先 GPT、自动降级火山: primary tried first, then failover.
-    assert calls == ["gpt-5.5-mini", "doubao-seed-1-6-vision-250815"]
-    assert result.provider == "ark"
-    assert result.model == "doubao-seed-1-6-vision-250815"
-    assert result.call_count == 2
-    assert len(result.tree.chapters) == 2
-
-
-def test_describe_content_does_not_failover_on_openai_4xx(_describe_env, monkeypatch):
-    """Auth/model/request errors are configuration or request bugs, not
-    5xx/timeout/deadline failover cases."""
-    calls: list[str] = []
-
-    async def fake_completion(**kwargs):
-        calls.append(kwargs["model"])
-        raise ai_client.AIRequestError(
-            "upstream_4xx status=401", status_code=401, kind="4xx"
+        return _completion(
+            {
+                "chapters": [
+                    {
+                        "chapterId": "ch_1",
+                        "description": "One chapter.",
+                        "scenes": {"1": "scene one", "2": "scene two"},
+                    }
+                ]
+            }
         )
 
     monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
+    try:
+        result = asyncio.run(
+            chapter_describer.describe_chapters(
+                GroupingResult(
+                    chapters=[GroupingChapter(chapterId="ch_1", photoIds=["p1", "p2"])],
+                    unplacedPhotoIds=[],
+                ),
+                {"p1": _photo("p1"), "p2": _photo("p2")},
+                language="en",
+            )
+        )
+    finally:
+        s.reset_settings_cache()
 
-    with pytest.raises(vision.VisionError):
-        asyncio.run(vision.describe_content(_v3_photos(2), language="en"))
-    assert calls == ["gpt-5.5-mini"]
-
-
-def test_describe_content_fails_over_when_primary_overruns_deadline(_describe_env, monkeypatch):
-    """A slow-but-not-erroring primary that overruns describe_batch_deadline_seconds
-    flips to 火山 (先 GPT、自动降级火山, deadline 数值可微调)."""
-    monkeypatch.setenv("DESCRIBE_BATCH_DEADLINE_SECONDS", "1")  # tight deadline
-    from src import settings as s
-
-    s.reset_settings_cache()
-    calls: list[str] = []
-
-    async def fake_completion(**kwargs):
-        model = kwargs["model"]
-        calls.append(model)
-        if model == "gpt-5.5-mini":
-            await asyncio.sleep(5)  # overruns the 1s batch deadline → failover
-            return _completion(_chapters_payload())
-        return _completion(_chapters_payload())
-
-    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
-
-    result = asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
-    assert calls == ["gpt-5.5-mini", "doubao-seed-1-6-vision-250815"]
-    assert result.provider == "ark"
+    assert result.imageDescriptions == {"p1": "scene one", "p2": "scene two"}
+    assert result.chapterDescriptions == {"ch_1": "One chapter."}
+    assert result.tokens_billed == 14
+    assert result.call_count == 1
+    assert len(calls) == 2
+    assert "describe_retry" not in calls[0][-1]["content"]
+    assert len(calls[1]) == 3
+    assert "ch_1.description must be a string" in calls[1][-1]["content"]
 
 
-def test_describe_content_raises_when_openai_unconfigured(monkeypatch):
-    # Only the 火山 key is present. V3 describe-content must not silently switch
-    # providers for a missing primary key; failover is for 5xx/timeouts/deadline.
+def test_describe_chapters_accepts_chapter_level_insights_without_photo_scenes(monkeypatch):
     monkeypatch.setenv("AGENT_PIPELINE_MODE", "real")
-    # primary IS the OpenAI slot here (vision_provider=openai); the test asserts a
-    # missing OpenAI key errors out rather than silently failing over to 火山.
     monkeypatch.setenv("VISION_PROVIDER", "openai")
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "fake_oai")
     monkeypatch.setenv("ARK_API_KEY", "fake_ark")
     from src import settings as s
 
     s.reset_settings_cache()
+    calls: list[list[dict]] = []
+
+    async def fake_completion(**kwargs):
+        calls.append(kwargs["messages"])
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "chapters": [
+                                    {
+                                        "chapterId": "ch_1",
+                                        "description": "A seaside travel chapter.",
+                                        "titleHint": "Xiamen seaside trip",
+                                        "keywords": ["Xiamen", "ocean", "couple"],
+                                        "visualSummary": "Two people near the ocean.",
+                                    }
+                                ]
+                            }
+                        )
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 4},
+        }
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
     try:
-        calls: list[str] = []
-
-        async def fake_completion(**kwargs):
-            calls.append(kwargs["model"])
-            return _completion(_chapters_payload())
-
-        monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
-
-        with pytest.raises(vision.VisionError):
-            asyncio.run(vision.describe_content(_v3_photos(2), language="en"))
-        assert calls == []
+        result = asyncio.run(
+            chapter_describer.describe_chapters(
+                GroupingResult(
+                    chapters=[GroupingChapter(chapterId="ch_1", photoIds=["p1", "p2"])],
+                    unplacedPhotoIds=[],
+                ),
+                {"p1": _photo("p1"), "p2": _photo("p2")},
+                language="en",
+            )
+        )
     finally:
         s.reset_settings_cache()
 
-
-def test_describe_content_raises_when_both_providers_fail(_describe_env, monkeypatch):
-    async def fake_completion(**kwargs):
-        raise ai_client.AIRequestError("upstream_5xx status=503", status_code=503, kind="5xx")
-
-    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
-
-    with pytest.raises(vision.VisionError):
-        asyncio.run(vision.describe_content(_v3_photos(2), language="en"))
-
-
-def test_describe_content_does_not_failover_on_unparseable_response(_describe_env, monkeypatch):
-    """A malformed (non-JSON) response is NOT a transport failure: it propagates
-    rather than burning the failover on the same bad-output class of bug."""
-    calls: list[str] = []
-
-    async def fake_completion(**kwargs):
-        calls.append(kwargs["model"])
-        return {"choices": [{"message": {"content": "not json at all"}}], "usage": {}}
-
-    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
-
-    with pytest.raises(vision.VisionError):
-        asyncio.run(vision.describe_content(_v3_photos(2), language="en"))
-    # Only the primary was hit; no failover attempt.
-    assert calls == ["gpt-5.5-mini"]
-
-
-# =============================================================================
-# Unified path (single vision call returns chapters[]{ description, scenes,
-# pages[]{ photoIds, templateId } }). The legacy flat-`photoIds` payloads above
-# only exercise chaptering; these drive REAL per-page grouping + template choice
-# through describe_content → _assemble_chapter_pages.
-# =============================================================================
-
-
-def _unified_completion(content: Any) -> dict[str, Any]:
-    return _completion(content)
-
-
-def test_describe_content_honors_model_pages_and_per_page_template(_describe_env, monkeypatch):
-    """a. Honored happy path: a unified reply whose `pages` carry a LEGAL
-    templateId per page → result.pages reflect the model's grouping AND its
-    chosen templateId per page (not overridden), every photo covered exactly
-    once, pageIndex contiguous from 0."""
-    payload = {
-        "chapters": [
-            {
-                "description": "Spring morning walk.",
-                "scenes": {"p1": "red coat", "p2": "old street", "p3": "teahouse"},
-                "pages": [
-                    # page 0: two photos → mag-04 is a LEGAL 2-slot interior template.
-                    {"photoIds": ["p1", "p2"], "templateId": "mag-04"},
-                    # page 1: one photo → mag-03 is a LEGAL 1-slot interior template.
-                    {"photoIds": ["p3"], "templateId": "mag-03"},
-                ],
-            }
-        ]
+    assert result.chapterTitleHints == {"ch_1": "Xiamen seaside trip"}
+    assert result.chapterKeywords == {"ch_1": ["Xiamen", "ocean", "couple"]}
+    assert result.chapterVisualSummaries == {"ch_1": "Two people near the ocean."}
+    assert result.imageDescriptions == {
+        "p1": "Two people near the ocean.",
+        "p2": "Two people near the ocean.",
     }
+    assert result.call_count == 1
+    assert len(calls) == 1
+
+
+def test_assign_unplaced_to_chapters_allows_ai_created_chapters(monkeypatch):
+    monkeypatch.setenv("AGENT_PIPELINE_MODE", "real")
+    monkeypatch.setenv("VISION_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "fake_oai")
+    monkeypatch.setenv("ARK_API_KEY", "fake_ark")
+    from src import settings as s
+
+    s.reset_settings_cache()
+    calls: list[list[dict]] = []
 
     async def fake_completion(**kwargs):
-        return _unified_completion(payload)
+        calls.append(kwargs["messages"])
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "assignments": {"1": "ch_1", "2": "new_ch_1"},
+                                "newChapters": [
+                                    {
+                                        "chapterId": "new_ch_1",
+                                        "photoIds": ["2"],
+                                        "description": "A family dinner chapter.",
+                                        "titleHint": "Family dinner",
+                                        "keywords": ["family", "restaurant", "dinner"],
+                                        "visualSummary": "A warm indoor dinner scene.",
+                                    }
+                                ],
+                            }
+                        )
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 4},
+        }
 
     monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
+    try:
+        result = asyncio.run(
+            unplaced_refiner.assign_unplaced_to_chapters(
+                GroupingResult(
+                    chapters=[GroupingChapter(chapterId="ch_1", photoIds=["p1"])],
+                    unplacedPhotoIds=["p2", "p3"],
+                ),
+                DescribeResult(
+                    chapterDescriptions={"ch_1": "A seaside travel chapter."},
+                    imageDescriptions={"p1": "People near the ocean."},
+                    chapterTitleHints={"ch_1": "Xiamen seaside trip"},
+                    chapterKeywords={"ch_1": ["Xiamen", "ocean", "couple"]},
+                    chapterVisualSummaries={"ch_1": "Two people near the sea."},
+                ),
+                {"p1": _photo("p1"), "p2": _photo("p2"), "p3": _photo("p3")},
+                language="en",
+            )
+        )
+    finally:
+        s.reset_settings_cache()
 
-    result = asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
+    assert result.assignments == {"p2": "ch_1", "p3": "new_ch_1"}
+    assert result.newChapters[0].photoIds == ["p3"]
+    assert result.newChapters[0].chapterTitleHint == "Family dinner"
+    assert len(calls) == 1
 
-    # Chapter membership = flatten(pages[].photoIds), in order.
-    assert [[p.photoId for p in c.photos] for c in result.tree.chapters] == [
-        ["p1", "p2", "p3"]
+
+def test_unplaced_refiner_always_uses_doubao_vision_slot(monkeypatch):
+    monkeypatch.setenv("AGENT_PIPELINE_MODE", "real")
+    monkeypatch.setenv("VISION_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "fake_oai")
+    monkeypatch.setenv("ARK_API_KEY", "fake_ark")
+    monkeypatch.setenv("ARK_BASE_URL", "https://ark.example.test/api/v3")
+    monkeypatch.setenv("ARK_VISION_MODEL", "doubao-test-vision")
+    from src import settings as s
+
+    s.reset_settings_cache()
+    calls: list[dict] = []
+
+    async def fake_completion(**kwargs):
+        calls.append(kwargs)
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "assignments": {"1": "ch_1"},
+                                "newChapters": [],
+                            }
+                        )
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 4},
+        }
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
+    try:
+        result = asyncio.run(
+            unplaced_refiner.assign_unplaced_to_chapters(
+                GroupingResult(
+                    chapters=[GroupingChapter(chapterId="ch_1", photoIds=["p1"])],
+                    unplacedPhotoIds=["p2"],
+                ),
+                DescribeResult(
+                    chapterDescriptions={"ch_1": "A seaside travel chapter."},
+                    imageDescriptions={"p1": "People near the ocean."},
+                    chapterTitleHints={"ch_1": "Xiamen seaside trip"},
+                    chapterKeywords={"ch_1": ["Xiamen", "ocean", "couple"]},
+                    chapterVisualSummaries={"ch_1": "Two people near the sea."},
+                ),
+                {"p1": _photo("p1"), "p2": _photo("p2")},
+                language="en",
+            )
+        )
+    finally:
+        s.reset_settings_cache()
+
+    assert result.assignments == {"p2": "ch_1"}
+    assert calls[0]["base_url"] == "https://ark.example.test/api/v3"
+    assert calls[0]["api_key"] == "fake_ark"
+    assert calls[0]["model"] == "doubao-test-vision"
+
+
+def test_unplaced_cluster_assignment_is_atomic_when_model_unavailable(monkeypatch):
+    photos = [
+        _photo("p1", cluster_id="c1", taken_at="2024-01-01T10:00:00Z"),
+        _photo("p2", cluster_id="c2", taken_at="2024-01-03T10:00:00Z"),
+        _photo("p3", cluster_id="c3", taken_at="2024-01-02T10:00:00Z"),
+        _photo("p4", cluster_id="c3", taken_at="2024-01-02T10:01:00Z"),
     ]
-    # Model's per-page grouping honored on the flattened pages.
-    assert [list(pg["images"].values()) for pg in result.pages] == [
-        ["p1", "p2"],
-        ["p3"],
-    ]
-    # Model's LEGAL per-page templateId honored (NOT overridden by the engine).
-    assert [pg["templateId"] for pg in result.pages] == ["mag-04", "mag-03"]
-    # pageIndex contiguous from 0.
-    assert [pg["pageIndex"] for pg in result.pages] == [0, 1]
-    # Coverage: every input photo placed exactly once across pages.
-    placed = [pid for pg in result.pages for pid in pg["images"].values()]
-    assert sorted(placed) == ["p1", "p2", "p3"]
+    grouping = GroupingResult(
+        chapters=[
+            GroupingChapter(chapterId="ch_1", photoIds=["p1"]),
+            GroupingChapter(chapterId="ch_2", photoIds=["p2"]),
+        ],
+        unplacedPhotoIds=["p3", "p4"],
+    )
+    descriptions = DescribeResult(
+        chapterDescriptions={"ch_1": "morning", "ch_2": "afternoon"},
+        imageDescriptions={
+            "p1": "morning",
+            "p2": "afternoon",
+            "p3": "middle",
+            "p4": "middle detail",
+        },
+    )
+
+    assignments = group_unplaced(
+        grouping,
+        descriptions,
+        {photo.photoId: photo for photo in photos},
+        language="en",
+    )
+
+    assert set(assignments.assignments) == {"p3", "p4"}
+    assert assignments.assignments["p3"] == assignments.assignments["p4"]
+    assert assignments.assignments["p3"] in {"ch_1", "ch_2"}
 
 
-def test_describe_content_clamps_illegal_page_template_keeps_others(_describe_env, monkeypatch):
-    """b. Per-page template clamp: a page whose templateId is illegal for its
-    photo count falls back to a deterministic legal pick_template_v3 choice,
-    while OTHER pages keep their legal model choices."""
-    from src.engine import skeleton_v3
-
-    # mag-03 is a 1-slot template → ILLEGAL for a 2-photo page (legal_candidates
-    # only widens capacity UP from N, never below; a 1-slot can't hold 2 photos).
-    illegal_for_two = "mag-03"
-    legal_for_one = "mag-03"  # the same 1-slot template is legal on a 1-photo page
-    assert illegal_for_two not in {
-        c["templateId"] for c in skeleton_v3.legal_candidates("interior", 2)
-    }
-    assert legal_for_one in {
-        c["templateId"] for c in skeleton_v3.legal_candidates("interior", 1)
-    }
-    deterministic_two = skeleton_v3.pick_template_v3("interior", 2)
-
-    payload = {
-        "chapters": [
-            {
-                "description": "A day out.",
-                "scenes": {"p1": "one", "p2": "two", "p3": "three"},
-                "pages": [
-                    # page 0: TWO photos but an illegal 1-slot templateId → clamp.
-                    {"photoIds": ["p1", "p2"], "templateId": illegal_for_two},
-                    # page 1: ONE photo with a legal 1-slot templateId → kept.
-                    {"photoIds": ["p3"], "templateId": legal_for_one},
-                ],
-            }
-        ]
-    }
-
-    async def fake_completion(**kwargs):
-        return _unified_completion(payload)
-
-    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
-
-    result = asyncio.run(vision.describe_content(_v3_photos(3), language="en"))
-
-    # Grouping preserved.
-    assert [list(pg["images"].values()) for pg in result.pages] == [["p1", "p2"], ["p3"]]
-    # Illegal page clamped to the deterministic legal pick; legal page untouched.
-    assert result.pages[0]["templateId"] == deterministic_two
-    assert result.pages[0]["templateId"] != illegal_for_two
-    assert result.pages[1]["templateId"] == legal_for_one
-    # No photo lost by the clamp.
-    placed = [pid for pg in result.pages for pid in pg["images"].values()]
-    assert sorted(placed) == ["p1", "p2", "p3"]
-
-
-def test_describe_content_chapter_pages_malformed_falls_back_to_baseline(_describe_env, monkeypatch):
-    """c. Per-chapter malformed pages → that chapter degrades to the
-    partition_photos_v3 baseline covering ALL its photos (no photo lost), while
-    OTHER chapters keep their honored model pages."""
-    from src.engine import skeleton_v3
-
-    cap = skeleton_v3.max_capacity("interior")  # interior page hard cap (9)
-    # Broken chapter has cap+1 photos in ONE page → over-capacity. Membership
-    # (flatten of pages) is intact (no dup/omit/unknown), so it passes the tree
-    # guards and reaches _assemble_chapter_pages, where validate_grouping fails on
-    # the over-capacity page → chapter-level partition_photos_v3 baseline.
-    broken_n = cap + 1
-    good_ids = ["p1", "p2"]
-    broken_ids = [f"p{i + 3}" for i in range(broken_n)]  # p3..p(broken_n+2)
-    total = 2 + broken_n
-
-    payload = {
-        "chapters": [
-            {
-                "description": "Good chapter.",
-                "scenes": {pid: f"scene {pid}" for pid in good_ids},
-                "pages": [
-                    {"photoIds": ["p1"], "templateId": "mag-03"},
-                    {"photoIds": ["p2"], "templateId": "mag-03"},
-                ],
-            },
-            {
-                "description": "Broken chapter.",
-                "scenes": {pid: f"scene {pid}" for pid in broken_ids},
-                # Malformed: a single page over the interior capacity cap →
-                # validate_grouping fails → chapter-level baseline (no photo lost).
-                "pages": [{"photoIds": list(broken_ids), "templateId": "mag-03"}],
-            },
-        ]
-    }
-
-    async def fake_completion(**kwargs):
-        return _unified_completion(payload)
-
-    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
-
-    result = asyncio.run(vision.describe_content(_v3_photos(total), language="en"))
-
-    chapters = result.tree.chapters
-    assert [c.chapterId for c in chapters] == ["ch_1", "ch_2"]
-
-    # Map flattened pages back to chapters via membership to assert per-chapter.
-    ch1_ids = {p.photoId for p in chapters[0].photos}
-    ch2_ids = {p.photoId for p in chapters[1].photos}
-    ch1_pages = [pg for pg in result.pages if set(pg["images"].values()) <= ch1_ids]
-    ch2_pages = [pg for pg in result.pages if set(pg["images"].values()) <= ch2_ids]
-
-    # Good chapter UNAFFECTED: model pages honored (two single-photo mag-03 pages).
-    assert [list(pg["images"].values()) for pg in ch1_pages] == [["p1"], ["p2"]]
-    assert [pg["templateId"] for pg in ch1_pages] == ["mag-03", "mag-03"]
-
-    # Broken chapter: degraded to the deterministic partition baseline that
-    # covers ALL its photos with no loss (cap+1 → split into cap + 1).
-    baseline = [
-        skeleton_v3.build_page_v3("interior", chunk)
-        for chunk in skeleton_v3.partition_photos_v3(broken_ids, category="interior")
-    ]
-    assert [list(pg["images"].values()) for pg in ch2_pages] == [
-        list(pg["images"].values()) for pg in baseline
-    ]
-    # The broken chapter is NOT one over-capacity page anymore — it was healed.
-    assert all(len(pg["images"]) <= cap for pg in ch2_pages)
-    # Whole-book coverage: no photo lost despite the malformed chapter.
-    placed = [pid for pg in result.pages for pid in pg["images"].values()]
-    assert sorted(placed) == sorted(p.photoId for p in _v3_photos(total))
-    # pageIndex contiguous across the whole book.
-    assert [pg["pageIndex"] for pg in result.pages] == list(range(len(result.pages)))
-
-
-def test_describe_content_manifest_carries_takenat_but_never_gps(_describe_env):
-    """§3 privacy: the user turn lists photoId + takenAt as the分章 signal and
-    contains NO GPS/coordinate/place token."""
-    photos = _v3_photos(2)
-    parts = vision._build_v3_user_content(photos, "a trip")
-    manifest = parts[0]["text"]
-
-    assert "p1" in manifest and "p2" in manifest
-    assert "2024-03-01T08:30:00" in manifest  # takenAt signal present
-    lowered = manifest.lower()
-    for banned in ("lat", "lng", "latitude", "longitude", "gps", "coordinate", "place="):
-        assert banned not in lowered, banned
+def test_unplaced_regroup_rejects_zero_target_chapters():
+    with pytest.raises(ValueError, match="at least one chapter"):
+        group_unplaced(
+            GroupingResult(chapters=[], unplacedPhotoIds=["p1"]),
+            DescribeResult(chapterDescriptions={}, imageDescriptions={"p1": "scene"}),
+            {"p1": _photo("p1")},
+            language="en",
+        )

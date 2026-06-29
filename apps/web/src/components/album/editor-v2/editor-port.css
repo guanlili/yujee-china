@@ -801,9 +801,9 @@
 }
 .editor-port .img-edit-reset:hover{ background:var(--border-soft); }
 
-/* ─── ③ palette-card (主题/配色选择,对话流内,缺口#20 / #236) ───
-   #236: purely per-chapter — one .pc-chapter-row per chapter (subject title +
-   accent swatch) + a single「应用」(.pc-apply) action. No album-level theme picker. ─── */
+/* ─── ③ palette-card (主题/配色选择,对话流内,缺口#20 / Stage4) ───
+   Stage4: one row per book theme option; applying a row expands that option into
+   per-chapter apply-theme choices. ─── */
 .editor-port .palette-card{
   border:1px solid var(--border); border-radius:16px;
   background:var(--surface); box-shadow:var(--shadow-card); max-width:100%;
@@ -815,10 +815,8 @@
 .editor-port .pc-group-label{ font-size:13px; font-weight:600; color:var(--fg); }
 .editor-port .pc-swatches{ display:flex; height:34px; border-radius:8px; overflow:hidden; }
 .editor-port .pc-swatches span{ flex:1; }
-/* #236: palette-card is now PURELY per-chapter — one read-only row per chapter
-   (subject title + its accent swatch) + a single「应用」action. */
 .editor-port .pc-chapter-row{
-  display:flex; align-items:center; gap:10px;
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
   padding:8px 10px; border:1px solid var(--border); border-radius:12px;
 }
 .editor-port .pc-chapter-row .pc-group-head{ flex:1; padding-right:0; min-width:0; }
@@ -826,8 +824,12 @@
 .editor-port .pc-chapter-row .pc-group-label{
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
+.editor-port .pc-style{
+  flex-basis:100%; color:var(--muted); font-size:12px; line-height:1.35;
+  padding-left:28px; margin-top:-4px;
+}
 .editor-port .pc-chapter-row .pc-swatches{
-  flex:none; width:34px; height:22px; border-radius:6px;
+  flex:none; width:64px; height:22px; border-radius:6px;
 }
 .editor-port .pc-apply{
   align-self:flex-start; height:34px; padding:0 16px; border:none; border-radius:9999px;

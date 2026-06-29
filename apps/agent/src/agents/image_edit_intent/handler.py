@@ -35,7 +35,7 @@ from typing import Any
 from ...logging_config import get_logger
 from ...schemas import Page, V3Chapter, V3LayoutPatchEntry
 from ...settings import get_settings
-from ...prompts import load_prompt
+from ...skills import load_prompt
 from ... import ai_client
 from ...engine import skeleton_v3
 from ...vision_provider import (
@@ -142,8 +142,11 @@ async def _call_model(slot: VisionSlot, manifest: str) -> list[str]:
     messages = [
         {
             "role": "system",
-            "content": load_prompt(
-                _PROMPT_DIR / "edit_image_intent.md", common=("json_only",)
+            "content": (
+                load_prompt(
+                    _PROMPT_DIR / "edit_image_intent.md",
+                    skills=("image_edit_selection",),
+                )
             ),
         },
         {"role": "user", "content": manifest},

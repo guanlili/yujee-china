@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   postChapterChat,
+  postEditChat,
   postRecommend,
   postApplyTheme,
   postCover,
@@ -95,6 +96,33 @@ test('postChapterChat throws CreditInsufficientError on CREDIT_INSUFFICIENT', as
   );
 });
 
+test('postEditChat POSTs slim edit-chat body to /api/v3/albums/:id/edit-chat', async (t) => {
+  const captured = mockFetch(t, {
+    ok: true,
+    data: {
+      kind: 'talk',
+      assistantReply: 'Tell me more.',
+      patches: [],
+      opId: 'op_1',
+      usage: { durationMs: 1, models: {} },
+    },
+  });
+  const res = await postEditChat('alb_1', {
+    language: 'en',
+    chapterId: 'c2',
+    userMessage: 'about it',
+    focusedPageIndex: 3,
+  });
+  assert.equal(captured.url, '/api/v3/albums/alb_1/edit-chat');
+  assert.deepEqual(captured.body, {
+    language: 'en',
+    chapterId: 'c2',
+    userMessage: 'about it',
+    focusedPageIndex: 3,
+  });
+  assert.equal(res.opId, 'op_1');
+});
+
 // ─── ③ recommend / apply-theme (缺口#20) ───
 // The browser sends ONLY its language/selection — never the chapter overview or layout
 // pages (invariant 12). The Web route re-slices draft_json server-side.
@@ -102,7 +130,23 @@ test('postChapterChat throws CreditInsufficientError on CREDIT_INSUFFICIENT', as
 const RECOMMEND = {
   ok: true,
   data: {
-    chapterColors: [{ chapterId: 'c1', subject: 'A Year Away', accentColor: '#C0392B', artFont: 'script-elegant' }],
+    bookThemeOptions: [
+      {
+        optionId: 'opt-1',
+        artFont: 'script-elegant',
+        chapters: [{ chapterId: 'c1', subject: 'A Year Away', accentColor: '#C0392B' }],
+      },
+      {
+        optionId: 'opt-2',
+        artFont: 'serif-classic',
+        chapters: [{ chapterId: 'c1', accentColor: '#1E3A5F' }],
+      },
+      {
+        optionId: 'opt-3',
+        artFont: 'display-bold',
+        chapters: [{ chapterId: 'c1', accentColor: '#2F855A' }],
+      },
+    ],
     assistantReply: 'Here are some themes.',
     usage: { durationMs: 1, models: {} },
   },
@@ -114,14 +158,20 @@ test('postRecommend POSTs only {language} (no chapter overview) to /recommend', 
   assert.equal(captured.url, '/api/v3/albums/alb_1/recommend');
   assert.equal(captured.method, 'POST');
   assert.deepEqual(captured.body, { language: 'en' }); // no chapters/analysisSummary
-  assert.equal(res.chapterColors[0]!.subject, 'A Year Away');
-  assert.equal(res.chapterColors[0]!.accentColor, '#C0392B');
+  assert.equal(res.bookThemeOptions[0]!.chapters[0]!.subject, 'A Year Away');
+  assert.equal(res.bookThemeOptions[0]!.chapters[0]!.accentColor, '#C0392B');
 });
 
 test('postRecommend forwards an optional free-text nudge', async (t) => {
   const captured = mockFetch(t, RECOMMEND);
   await postRecommend('alb_1', 'warmer please');
   assert.deepEqual(captured.body, { language: 'en', userMessage: 'warmer please' });
+});
+
+test('postRecommend forwards an optional font hint', async (t) => {
+  const captured = mockFetch(t, RECOMMEND);
+  await postRecommend('alb_1', undefined, 'classic serif');
+  assert.deepEqual(captured.body, { language: 'en', fontHint: 'classic serif' });
 });
 
 const APPLY = {
@@ -162,6 +212,34 @@ test('postCover POSTs only the template SELECTIONS to /cover', async (t) => {
     endingTemplateId: 'mag-20',
   });
   assert.equal(res.stage, 'ready');
+});
+
+test('postCover forwards transient thumbnails and cover chat context to /cover', async (t) => {
+  const captured = mockFetch(t, {
+    ok: true,
+    data: { stage: 'cover', layoutPatch: [], assistantReply: 'Which mood?', needsUserInput: true },
+  });
+  const res = await postCover('alb_1', {
+    coverTemplateId: 'mag-01',
+    coverPhotoId: 'p1',
+    endingPhotoId: 'p2',
+    coverPhoto: 'data:image/jpeg;base64,cover',
+    endingPhoto: 'data:image/jpeg;base64,ending',
+    userMessage: 'make it quieter',
+    history: [{ role: 'assistant', content: 'Do you want a quiet cover?' }],
+  });
+
+  assert.deepEqual(captured.body, {
+    language: 'en',
+    coverTemplateId: 'mag-01',
+    coverPhotoId: 'p1',
+    endingPhotoId: 'p2',
+    coverPhoto: 'data:image/jpeg;base64,cover',
+    endingPhoto: 'data:image/jpeg;base64,ending',
+    userMessage: 'make it quieter',
+    history: [{ role: 'assistant', content: 'Do you want a quiet cover?' }],
+  });
+  assert.equal(res.needsUserInput, true);
 });
 
 test('postCover skip (no selection) sends just {language} and accepts an empty patch', async (t) => {

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
@@ -34,10 +35,12 @@ from src.schemas import (
     V3ChapterChatRequest,
     V3ChapterChatResponse,
     V3ChapterPhoto,
+    V3EditChatRequest,
 )
+from src.agents.editing import handler as edit_handler
 from src.agents.writing import handler as chapter_chat_v3
 from src.agents.image_edit_intent import handler as chat_edit_v3
-from src.engine import skeleton_v3
+from src.engine import gemini_layout, skeleton_v3
 
 # mag-04 is a 3-image interior template (matches test_chapter_chat_v3 baseline).
 _INTERIOR_3 = "mag-04"
@@ -108,6 +111,428 @@ def _fake_complete(payload: dict[str, Any]):
         }
 
     return complete
+
+
+def _write_pages_texts() -> list[dict[str, Any]]:
+    return [
+        {"pageIndex": 0, "texts": {"title": "Coast Days", "explain": "A quiet day by the sea."}},
+        {"pageIndex": 1, "texts": {"explain1": "Salt and sun.", "explain2": "Dinner by the water."}},
+    ]
+
+
+def _edit_req(user_message: str, *, chapter_id: str | None = "c1", page_index: int | None = 1) -> V3EditChatRequest:
+    focus = {}
+    if chapter_id is not None:
+        focus["chapterId"] = chapter_id
+    if page_index is not None:
+        focus["pageIndex"] = page_index
+    return V3EditChatRequest(
+        albumId="alb_v3",
+        language="en",
+        userMessage=user_message,
+        focus=focus,
+        progress={"currentChapterId": chapter_id, "doneChapterIds": []},
+    )
+
+
+class FakeRepo:
+    def __init__(self, *, op_id: str = "op_fake", committed: list[dict[str, str]] | None = None) -> None:
+        self.op_id = op_id
+        self.committed = committed or []
+        self.created: list[dict[str, Any]] = []
+        self.history_args: dict[str, Any] | None = None
+        self.begin_args: dict[str, Any] | None = None
+        self.cancelled = 0
+
+    async def list_committed_messages(self, album_id: str, *, chapter_id: str | None, limit: int = 20) -> list[dict[str, str]]:
+        self.history_args = {"album_id": album_id, "chapter_id": chapter_id, "limit": limit}
+        return self.committed
+
+    async def create_pending_turn(self, **kwargs: Any) -> str:
+        self.created.append({**kwargs, "status": "pending"})
+        return self.op_id
+
+    async def begin_serialized_turn(self, album_id: str, *, chapter_id: str | None, limit: int = 20):
+        self.begin_args = {"album_id": album_id, "chapter_id": chapter_id, "limit": limit}
+
+        class Turn:
+            history = self.committed
+
+            async def create_pending_turn(_, **kwargs: Any) -> str:
+                self.created.append({**kwargs, "status": "pending", "serialized": True})
+                return self.op_id
+
+            async def cancel(_) -> None:
+                self.cancelled += 1
+
+        return Turn()
+
+    @asynccontextmanager
+    async def serialized_turn(self, album_id: str, *, chapter_id: str | None, limit: int = 20):
+        raise AssertionError("edit-chat must not hold a DB connection/row lock across the turn")
+
+
+class FakeTools:
+    def __init__(
+        self,
+        *,
+        page_info: dict[str, Any] | None = None,
+        page_photos: list[dict[str, Any]] | None = None,
+    ) -> None:
+        self.page_info = page_info
+        self.page_photos = page_photos or []
+        self.page_info_requests: list[dict[str, Any]] = []
+        self.page_photo_requests: list[dict[str, str]] = []
+
+    async def get_page_info(
+        self,
+        *,
+        albumId: str,
+        chapterId: str,
+        scope: str,
+        pageIndex: int | None = None,
+    ) -> dict[str, Any]:
+        self.page_info_requests.append(
+            {"albumId": albumId, "chapterId": chapterId, "scope": scope, "pageIndex": pageIndex}
+        )
+        if self.page_info is None:
+            raise AssertionError("page-info was not configured")
+        return self.page_info
+
+    async def get_page_photos(self, *, albumId: str, chapterId: str) -> list[dict[str, Any]]:
+        self.page_photo_requests.append({"albumId": albumId, "chapterId": chapterId})
+        return self.page_photos
+
+
+class _FakeHttpResponse:
+    def __init__(self, body: dict[str, Any]) -> None:
+        self._body = body
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict[str, Any]:
+        return self._body
+
+
+def test_web_agent_data_client_unwraps_web_ok_envelope(monkeypatch):
+    from src import settings as settings_module
+    from src.agents.editing.web_client import WebAgentDataClient
+
+    bodies = [
+        {
+            "ok": True,
+            "data": {
+                "type": "page-info",
+                "data": {"chapter": _chapter().model_copy(update={"chapterId": "c1"}), "pages": _pages()},
+            },
+        },
+        {
+            "ok": True,
+            "data": {
+                "type": "page-photos",
+                "data": {
+                    "photos": [
+                        {
+                            "photoId": "p1",
+                            "ref200px": "data:image/jpeg;base64,AA==",
+                            "orientation": "landscape",
+                            "takenAt": None,
+                        }
+                    ]
+                },
+            },
+        },
+    ]
+    calls: list[dict[str, Any]] = []
+
+    class FakeAsyncClient:
+        def __init__(self, *, timeout: int) -> None:
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url: str, *, params: dict[str, Any], headers: dict[str, str]):
+            calls.append({"url": url, "params": params, "headers": headers})
+            return _FakeHttpResponse(bodies.pop(0))
+
+    monkeypatch.setenv("AGENT_SHARED_SECRET", "shared")
+    monkeypatch.setenv("WEB_BASE_URL", "http://web.test")
+    settings_module.reset_settings_cache()
+    monkeypatch.setattr("src.agents.editing.web_client.httpx.AsyncClient", FakeAsyncClient)
+
+    client = WebAgentDataClient()
+    page_info = asyncio.run(
+        client.get_page_info(albumId="alb", chapterId="c1", scope="chapter")
+    )
+    page_photos = asyncio.run(client.get_page_photos(albumId="alb", chapterId="c1"))
+
+    assert page_info["chapter"].chapterId == "c1"
+    assert page_photos[0]["photoId"] == "p1"
+    assert calls[0]["params"]["type"] == "page-info"
+    assert calls[1]["params"]["type"] == "page-photos"
+
+
+def test_edit_chat_response_requires_op_id_for_write_turn():
+    repo = FakeRepo(op_id="op_123")
+    chapter = _chapter().model_copy(update={"chapterId": "c1"})
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("write this"),
+            repo=repo,
+            tools=FakeTools(page_info={"chapter": chapter, "pages": _pages()}),
+            complete=_fake_complete(
+                {
+                    "kind": "write",
+                    "assistantReply": "Done.",
+                    "pagesTexts": _write_pages_texts(),
+                }
+            ),
+        )
+    )
+
+    assert resp.opId == "op_123"
+    assert resp.kind == "write"
+    assert repo.created[0]["status"] == "pending"
+
+
+def test_edit_chat_history_reads_only_committed_messages():
+    repo = FakeRepo(committed=[{"role": "assistant", "content": "committed only"}])
+    chapter = _chapter().model_copy(update={"chapterId": "c1"})
+
+    asyncio.run(
+        edit_handler.run(
+            _edit_req("continue"),
+            repo=repo,
+            tools=FakeTools(page_info={"chapter": chapter, "pages": _pages()}),
+            complete=_fake_complete({"kind": "talk", "assistantReply": "Tell me more."}),
+        )
+    )
+
+    assert repo.begin_args == {"album_id": "alb_v3", "chapter_id": "c1", "limit": 20}
+    assert repo.created[0]["serialized"] is True
+
+
+def test_edit_chat_cancels_serialized_turn_when_generation_fails():
+    repo = FakeRepo(committed=[{"role": "assistant", "content": "committed prompt"}])
+
+    with pytest.raises(edit_handler.EditChatError, match="chapter edit failed"):
+        asyncio.run(
+            edit_handler.run(
+                _edit_req("rewrite this chapter"),
+                repo=repo,
+                tools=FakeTools(),
+                complete=_fake_complete({"kind": "talk", "assistantReply": "unused"}),
+            )
+        )
+
+    assert repo.cancelled == 1
+    assert repo.created == []
+
+
+def test_edit_chat_cancels_serialized_turn_when_cancelled():
+    repo = FakeRepo(committed=[{"role": "assistant", "content": "committed prompt"}])
+    chapter = _chapter().model_copy(update={"chapterId": "c1"})
+
+    async def cancelled_complete(*, messages, max_tokens, temperature):  # noqa: ANN001
+        raise asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(
+            edit_handler.run(
+                _edit_req("rewrite this chapter"),
+                repo=repo,
+                tools=FakeTools(page_info={"chapter": chapter, "pages": _pages()}),
+                complete=cancelled_complete,
+            )
+        )
+
+    assert repo.cancelled == 1
+    assert repo.created == []
+
+
+def test_edit_chat_write_turn_fetches_page_info_and_returns_pages_texts():
+    chapter = _chapter().model_copy(update={"chapterId": "c1"})
+    tools = FakeTools(page_info={"chapter": chapter, "pages": _pages()})
+    repo = FakeRepo(committed=[{"role": "assistant", "content": "committed prompt"}])
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("write this chapter"),
+            repo=repo,
+            tools=tools,
+            complete=_fake_complete(
+                {
+                    "kind": "write",
+                    "assistantReply": "Done.",
+                    "pagesTexts": _write_pages_texts(),
+                }
+            ),
+        )
+    )
+
+    assert tools.page_info_requests == [
+        {"albumId": "alb_v3", "chapterId": "c1", "scope": "chapter", "pageIndex": None}
+    ]
+    assert resp.kind == "write"
+    assert resp.pagesTexts is not None
+    assert resp.pagesTexts[0].texts == {"title": "Coast Days", "explain": "A quiet day by the sea."}
+    assert repo.created[0]["payload"]["pagesTexts"][0]["texts"] == {
+        "title": "Coast Days",
+        "explain": "A quiet day by the sea.",
+    }
+
+
+def test_edit_chat_confirm_turn_returns_progress_decision():
+    repo = FakeRepo(op_id="op_advance")
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("[confirm-chapter]", chapter_id="c1", page_index=None),
+            repo=repo,
+            tools=FakeTools(),
+        )
+    )
+
+    assert resp.kind == "talk"
+    assert resp.progressDecision is not None
+    assert resp.progressDecision.chapterDone is True
+    assert resp.progressDecision.advanceTo == "theme"
+    assert repo.created[0]["kind"] == "advance"
+    assert repo.created[0]["payload"]["progressDecision"] == {
+        "chapterDone": True,
+        "advanceTo": "theme",
+    }
+
+
+def test_edit_chat_does_not_confirm_when_praise_also_requests_an_edit():
+    repo = FakeRepo(op_id="op_edit")
+    chapter = _chapter().model_copy(update={"chapterId": "c1"})
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("Looks great, now make the title bigger", chapter_id="c1", page_index=None),
+            repo=repo,
+            tools=FakeTools(page_info={"chapter": chapter, "pages": _pages()}),
+            complete=_fake_complete(
+                {
+                    "kind": "write",
+                    "assistantReply": "I made the title stronger.",
+                    "pagesTexts": _write_pages_texts(),
+                }
+            ),
+        )
+    )
+
+    assert resp.progressDecision is None
+    assert resp.pagesTexts is not None
+    assert repo.created[0]["kind"] != "advance"
+
+
+def test_edit_chat_does_not_swap_layout_when_layout_wording_is_the_edit_target():
+    tools = FakeTools(page_info={"chapter": _chapter().model_copy(update={"chapterId": "c1"}), "pages": _pages()})
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("I don't like this layout's wording, rewrite the caption", chapter_id="c1", page_index=1),
+            repo=FakeRepo(op_id="op_wording"),
+            tools=tools,
+            complete=_fake_complete(
+                {
+                    "kind": "write",
+                    "assistantReply": "I rewrote the caption.",
+                    "pagesTexts": _write_pages_texts(),
+                }
+            ),
+        )
+    )
+
+    assert resp.pagesTexts is not None
+    assert tools.page_photo_requests == []
+
+
+def test_edit_chat_case4_fetches_page_photos_via_agent_data_and_calls_gemini(monkeypatch):
+    tools = FakeTools(
+        page_info={"chapter": _chapter().model_copy(update={"chapterId": "c1"}), "pages": _pages()},
+        page_photos=[
+            {
+                "photoId": "p1",
+                "ref200px": "data:image/jpeg;base64,AA==",
+                "orientation": "landscape",
+                "takenAt": None,
+            }
+        ]
+    )
+    calls: list[tuple[Any, str, bool]] = []
+
+    async def fake_gemini(chapters, *, mode, allowAddPages):  # noqa: ANN001
+        calls.append((chapters, mode, allowAddPages))
+        return gemini_layout.GeminiLayoutResult(
+            pages=[{"chapterId": "c1", "templateId": "mag-03", "slots": {"image": "p1"}}]
+        )
+
+    monkeypatch.setattr(edit_handler.gemini_layout, "gemini_layout", fake_gemini)
+
+    resp = asyncio.run(edit_handler.run(_edit_req("change the layout"), repo=FakeRepo(), tools=tools))
+
+    assert tools.page_photo_requests == [{"albumId": "alb_v3", "chapterId": "c1"}]
+    assert calls[0][1:] == ("case4-swap", True)
+    assert resp.patches[0].templateId == "mag-03"
+
+
+def test_edit_chat_case4_without_focused_page_uses_chapter_page_indexes(monkeypatch):
+    chapter = _chapter().model_copy(update={"chapterId": "c2"})
+    tools = FakeTools(
+        page_info={
+            "chapter": chapter,
+            "pages": [
+                Page(pageIndex=3, templateId="mag-13", images={"image": "p1"}, texts={}),
+                Page(pageIndex=4, templateId="mag-13", images={"image": "p2"}, texts={}),
+            ],
+        },
+        page_photos=[
+            {
+                "photoId": "p1",
+                "ref200px": "data:image/jpeg;base64,AA==",
+                "orientation": "landscape",
+                "takenAt": None,
+            },
+            {
+                "photoId": "p2",
+                "ref200px": "data:image/jpeg;base64,AA==",
+                "orientation": "landscape",
+                "takenAt": None,
+            },
+        ],
+    )
+
+    async def fake_gemini(chapters, *, mode, allowAddPages):  # noqa: ANN001
+        return gemini_layout.GeminiLayoutResult(
+            pages=[
+                {"chapterId": "c2", "templateId": "mag-13", "slots": {"image": "p1"}},
+                {"chapterId": "c2", "templateId": "mag-13", "slots": {"image": "p2"}},
+            ]
+        )
+
+    monkeypatch.setattr(edit_handler.gemini_layout, "gemini_layout", fake_gemini)
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("change the layout", chapter_id="c2", page_index=None),
+            repo=FakeRepo(),
+            tools=tools,
+        )
+    )
+
+    assert tools.page_info_requests == [
+        {"albumId": "alb_v3", "chapterId": "c2", "scope": "chapter", "pageIndex": None}
+    ]
+    assert [patch.pageIndex for patch in resp.patches] == [3, 4]
 
 
 # =============================================================================

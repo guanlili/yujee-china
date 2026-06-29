@@ -8,16 +8,19 @@ import { agentClient } from '@/lib/agent/agent-client';
 import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
+import { transientPagePhotoRefs } from './page-photo-refs';
 import {
   Page,
   V3LayoutTree,
   V3StoryDraft,
+  type ArtFontPack,
   type AlbumLayoutPlan,
   type ImagePos,
   type Page as V3Page,
   type V3Chapter,
   type V3ChatTurn,
   type V3ChapterChatResponse,
+  type V3EditChatResponse,
   type V3LayoutTree as V3LayoutTreeT,
   type V3Language,
   type V3StoryProgress,
@@ -27,6 +30,8 @@ import {
   type V3RecommendResponse,
   type V3ApplyThemeRequest,
   type V3ApplyThemeResponse,
+  type V3InternalAgentDataRequest,
+  type V3PageTextsPatch,
 } from '@yujee/contracts';
 
 const PDF_MAX_BYTES = 50 * 1024 * 1024; // 50MB — docs/web/api.md §3.6
@@ -127,7 +132,18 @@ function applyLayoutPatchToDraftPages(pages: V3Page[], patch: V3LayoutPatchEntry
   for (const rawEntry of patch) {
     const entry = rawEntry as V3LayoutPatchEntryWithImagePos;
     const page = next.find((p) => p.pageIndex === entry.pageIndex);
-    if (!page) continue;
+    if (!page) {
+      if (entry.pageIndex === next.length && entry.templateId && entry.images && entry.texts) {
+        next.push({
+          pageIndex: entry.pageIndex,
+          templateId: entry.templateId,
+          images: { ...entry.images },
+          texts: { ...entry.texts },
+          ...(entry.imagePos !== undefined ? { imagePos: { ...entry.imagePos } } : {}),
+        });
+      }
+      continue;
+    }
 
     if (entry.templateId && entry.templateId !== page.templateId) {
       page.templateId = entry.templateId;
@@ -154,6 +170,13 @@ function applyLayoutPatchToDraftPages(pages: V3Page[], patch: V3LayoutPatchEntry
   }
 
   return next;
+}
+
+function applyPagesTextsToDraftPages(pages: V3Page[], patches: V3PageTextsPatch[]): V3Page[] {
+  return pages.map((page) => {
+    const patch = patches.find((item) => item.pageIndex === page.pageIndex);
+    return patch ? { ...page, texts: { ...page.texts, ...patch.texts } } : page;
+  });
 }
 
 // ② 章节故事 — server-side single-chapter slice for /v3/chapter-chat (§8.3 单章切片;
@@ -194,6 +217,7 @@ function buildRecommendOverviews(tree: V3LayoutTreeT): V3ChapterOverview[] {
   return tree.chapters.map((chapter) => ({
     chapterId: chapter.chapterId,
     description: chapter.description.slice(0, 600),
+    ...(chapter.extractedColor !== undefined ? { extractedColor: chapter.extractedColor } : {}),
     photoDescs: chapter.photos.slice(0, 12).map((p) => p.sceneDescription),
   }));
 }
@@ -245,6 +269,23 @@ function withCoverEndingHeroPhotos(
   return next;
 }
 
+function photoSceneDescriptionById(tree: V3LayoutTreeT, photoId?: string | null): string | undefined {
+  if (!photoId) return undefined;
+  for (const chapter of tree.chapters) {
+    const photo = chapter.photos.find((p) => p.photoId === photoId);
+    const desc = photo?.sceneDescription?.trim();
+    if (desc) return desc;
+  }
+  return undefined;
+}
+
+function selectedBookArtFont(tree: V3LayoutTreeT): ArtFontPack | undefined {
+  for (const chapter of tree.chapters) {
+    if (chapter.artFont) return chapter.artFont;
+  }
+  return undefined;
+}
+
 // apply-theme only brushes pages whose template actually has a `variableDecor` slot
 // (svg / text), so a chapter with no themable page makes no agent call (§4.3 / §9).
 function hasVariableDecorSlot(page: V3Page): boolean {
@@ -282,6 +323,7 @@ function combineApplyThemeResponses(responses: V3ApplyThemeResponse[]): V3ApplyT
     usage: {
       durationMs: responses.reduce((sum, r) => sum + r.usage.durationMs, 0),
       visionCallCount: responses.reduce((sum, r) => sum + r.usage.visionCallCount, 0),
+      geminiCallCount: responses.reduce((sum, r) => sum + r.usage.geminiCallCount, 0),
       planningInputTokens: responses.reduce((sum, r) => sum + r.usage.planningInputTokens, 0),
       planningOutputTokens: responses.reduce((sum, r) => sum + r.usage.planningOutputTokens, 0),
       repairAttempts: responses.reduce((sum, r) => sum + r.usage.repairAttempts, 0),
@@ -428,6 +470,68 @@ export const albumService = {
         photoIds: ch.photos.map((photo) => photo.photoId),
       })),
     };
+  },
+
+  async getInternalAgentData(input: V3InternalAgentDataRequest) {
+    const album = await albumRepo.findById(input.albumId);
+    if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+
+    if (input.type === 'page-info') {
+      const slice = sliceChapterForChat(normalized, input.chapterId);
+      if (!slice) throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+      const pages =
+        input.scope === 'page'
+          ? slice.pages.filter((page) => page.pageIndex === input.pageIndex)
+          : slice.pages;
+      if (input.scope === 'page' && pages.length === 0) {
+        throw ERRORS.VALIDATION_FAILED('pageIndex not found in chapter');
+      }
+      return { type: 'page-info' as const, data: { chapter: slice.chapter, pages } };
+    }
+
+    if (input.type === 'chapter-search') {
+      const query = input.query.trim().toLowerCase();
+      const overviews = buildRecommendOverviews(normalized.tree);
+      const matches = overviews
+        .map((chapter) => {
+          const pageIndexes = (normalized.pages ?? [])
+            .filter((page) => chapterIdForDraftPage(normalized, page) === chapter.chapterId)
+            .map((page) => page.pageIndex);
+          const haystack = [chapter.description, ...chapter.photoDescs].join(' ').toLowerCase();
+          const score = haystack.split(query).length - 1;
+          return {
+            chapterId: chapter.chapterId,
+            pageIndexes,
+            label: chapter.description || chapter.chapterId,
+            score,
+          };
+        })
+        .filter((match) => match.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, input.limit);
+      return { type: 'chapter-search' as const, data: { matches } };
+    }
+
+    const chapter = normalized.tree.chapters.find((item) => item.chapterId === input.chapterId);
+    if (!chapter) {
+      throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+    }
+    const refs = transientPagePhotoRefs.get(input.albumId, input.chapterId);
+    const photos = chapter.photos.flatMap((photo) => {
+      const ref200px = refs.get(photo.photoId);
+      if (ref200px === undefined) return [];
+      return [
+        {
+          photoId: photo.photoId,
+          ref200px,
+          orientation: photo.orientation,
+          ...(photo.takenAt !== undefined ? { takenAt: photo.takenAt } : {}),
+        },
+      ];
+    });
+    return { type: 'page-photos' as const, data: { photos } };
   },
 
   // ② 章节故事完成度(WP2.4 / §4.2(1)). Web is the sole owner of stage + 当前章 +
@@ -588,6 +692,83 @@ export const albumService = {
     return result;
   },
 
+  async editChatTurn(
+    userId: string,
+    albumId: string,
+    input: {
+      language: V3Language;
+      chapterId?: string;
+      userMessage: string;
+      focusedPageIndex?: number;
+      pagePhotoRefs?: Record<string, string> | Array<{ photoId: string; ref200px: string }>;
+    },
+  ): Promise<V3EditChatResponse> {
+    const album = await this.findOwned(userId, albumId);
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+    if (input.chapterId && !normalized.tree.chapters.some((chapter) => chapter.chapterId === input.chapterId)) {
+      throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+    }
+    if (input.chapterId && input.pagePhotoRefs) {
+      transientPagePhotoRefs.register({ albumId, chapterId: input.chapterId, refs: input.pagePhotoRefs });
+    }
+
+    try {
+      const result = await agentClient.editChatV3({
+        albumId,
+        language: input.language,
+        userMessage: input.userMessage,
+        focus: {
+          ...(input.chapterId ? { chapterId: input.chapterId } : {}),
+          ...(input.focusedPageIndex !== undefined ? { pageIndex: input.focusedPageIndex } : {}),
+        },
+        progress: normalized.progress,
+      });
+
+      await db.transaction(async (tx) => {
+        const latest = await albumRepo.findByIdForUpdate(tx, albumId);
+        if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
+        const current = readStoryDraft(latest.draftJson);
+        if (!current?.pages) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft pages');
+
+        let pages = current.pages;
+        if (result.pagesTexts?.length) pages = applyPagesTextsToDraftPages(pages, result.pagesTexts);
+        if (result.patches.length > 0) pages = applyLayoutPatchToDraftPages(pages, result.patches);
+
+        const chapterOrder = current.tree.chapters.map((chapter) => chapter.chapterId);
+        const doneSet = new Set(current.progress.doneChapterIds);
+        const currentChapterIdBefore = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
+        if (result.progressDecision?.chapterDone && input.chapterId) {
+          if (!doneSet.has(input.chapterId) && input.chapterId !== currentChapterIdBefore) {
+            throw ERRORS.VALIDATION_FAILED('chapterId is not the current story chapter');
+          }
+          doneSet.add(input.chapterId);
+        }
+        const doneChapterIds = chapterOrder.filter((id) => doneSet.has(id));
+        const currentChapterId = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
+        const allDone = chapterOrder.length > 0 && chapterOrder.every((id) => doneSet.has(id));
+        const nextDraft: V3StoryDraft = {
+          version: 'v3-story',
+          tree: current.tree,
+          pages,
+          progress: { currentChapterId, doneChapterIds },
+        };
+
+        await albumRepo.update(tx, albumId, {
+          draftJson: nextDraft,
+          ...(allDone && result.progressDecision?.advanceTo === 'theme' ? { stage: 'theme' as const } : {}),
+        });
+      });
+
+      await agentClient.ackEditOp({ opId: result.opId });
+      return result;
+    } finally {
+      if (input.chapterId && input.pagePhotoRefs) {
+        transientPagePhotoRefs.clear(albumId, input.chapterId);
+      }
+    }
+  },
+
   // ③ 主题/章节色-应用 (WP3.2 / #190). The user picked, per chapter, one
   // {accentColor, artFont}; this WRITES them into the tree's V3Chapter nodes (where
   // the chapter color/font live until finalize bakes them — §3 树边界: the flat
@@ -739,7 +920,7 @@ export const albumService = {
   async recommendTheme(
     userId: string,
     albumId: string,
-    input: { language: V3Language; userMessage?: string },
+    input: { language: V3Language; userMessage?: string; fontHint?: string },
   ): Promise<V3RecommendResponse> {
     const album = await this.findOwned(userId, albumId);
     const normalized = readStoryDraft(album.draftJson);
@@ -751,6 +932,7 @@ export const albumService = {
       language: input.language,
       chapters,
       ...(input.userMessage !== undefined ? { userMessage: input.userMessage } : {}),
+      ...(input.fontHint !== undefined ? { fontHint: input.fontHint } : {}),
     });
   },
 
@@ -833,8 +1015,14 @@ export const albumService = {
       // before forwarding — the agent then auto-fills from the page's own images.
       coverPhotoId?: string | null;
       endingPhotoId?: string | null;
+      // Transient browser thumbnails/context for Stage5 cover clarification. These are
+      // forwarded only in the Agent request body and are never written into draft_json.
+      coverPhoto?: string;
+      endingPhoto?: string;
+      userMessage?: string;
+      history?: V3ChatTurn[];
     },
-  ): Promise<{ stage: string; layoutPatch: V3LayoutPatchEntry[]; assistantReply?: string }> {
+  ): Promise<{ stage: string; layoutPatch: V3LayoutPatchEntry[]; assistantReply?: string; needsUserInput: boolean }> {
     const album = await this.findOwned(userId, albumId);
     const normalized = readStoryDraft(album.draftJson);
     if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
@@ -854,14 +1042,34 @@ export const albumService = {
       input.coverPhotoId,
       input.endingPhotoId,
     );
+    const coverPhotoDesc = photoSceneDescriptionById(normalized.tree, input.coverPhotoId);
+    const artFont = selectedBookArtFont(normalized.tree);
 
     const agentResult = await agentClient.coverV3({
       albumId,
       language: input.language,
       ...(input.coverTemplateId !== undefined ? { coverTemplateId: input.coverTemplateId } : {}),
       ...(input.endingTemplateId !== undefined ? { endingTemplateId: input.endingTemplateId } : {}),
+      ...(input.coverPhoto !== undefined ? { coverPhoto: input.coverPhoto } : {}),
+      ...(input.endingPhoto !== undefined ? { endingPhoto: input.endingPhoto } : {}),
+      ...(coverPhotoDesc !== undefined ? { coverPhotoDesc } : {}),
+      ...(artFont !== undefined ? { artFont } : {}),
+      ...(input.userMessage !== undefined ? { userMessage: input.userMessage } : {}),
+      ...(input.history !== undefined ? { history: input.history } : {}),
       pages: pagesForAgent,
     });
+
+    const needsUserInput = agentResult.needsUserInput ?? false;
+    if (needsUserInput) {
+      return {
+        stage: album.stage,
+        layoutPatch: agentResult.layoutPatch,
+        needsUserInput,
+        ...(agentResult.assistantReply !== undefined
+          ? { assistantReply: agentResult.assistantReply }
+          : {}),
+      };
+    }
 
     // Persist: fold the patch into draft_json.pages + advance stage cover→ready.
     const persisted = await this.cover(userId, albumId, agentResult.layoutPatch);
@@ -869,6 +1077,7 @@ export const albumService = {
     return {
       stage: persisted.stage,
       layoutPatch: persisted.layoutPatch,
+      needsUserInput,
       ...(agentResult.assistantReply !== undefined
         ? { assistantReply: agentResult.assistantReply }
         : {}),
@@ -969,9 +1178,9 @@ export const albumService = {
         pageIndexes.length > 0
           ? pageIndexes[pageIndexes.length - 1]! + 1
           : Math.min(pageStart + 1, pages.length);
-      // The chapter title (its theme `subject`) is persisted into the chapter's title
-      // slot at apply-theme (#236). Surface it from the first of this chapter's pages
-      // that carries a `title` role slot value, so the chapter card / rail can show it.
+      // The chapter title may be persisted into an empty title slot at apply-theme (#236).
+      // Surface it from the first of this chapter's pages that carries a `title` role slot
+      // value, so the chapter card / rail can show it.
       const subject = titleOfChapterPages(
         pageIndexes.map((idx) => normalized.pages![idx]!),
       );

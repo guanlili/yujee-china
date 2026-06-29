@@ -5,10 +5,10 @@ import { jobService } from '@/services/job/job-service';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { logger } from '@/lib/log/logger';
 
-// v3 callback dispatcher (WP1.1). The agent posts analyze progress/completed/failed
-// here as a V3Callback envelope (jobKind always 'analyze'). The V3 analyze job is
-// stored under agent_jobs.kind='init' (no kind migration). V3Callback only ever
-// carries 'analyze', and the requestId already pins the exact job.
+// v3 callback dispatcher (WP1.1). The agent posts analyze and select-layout
+// progress/completed/failed here as a V3Callback envelope. Stage2 reuses the
+// original analyze/init requestId, so requestId pins the same agent_jobs row
+// across tree creation, layout page merge, and final hold settlement.
 export async function handleV3JobProgress(req: Request) {
   const payload = await parseBody(V3Callback, req);
   const job = await agentJobRepo.findByRequestId(payload.requestId);
@@ -22,7 +22,11 @@ export async function handleV3JobProgress(req: Request) {
       await jobService.handleV3Progress(payload.requestId, payload.stage, payload.progress);
       break;
     case 'completed':
-      await jobService.handleV3AnalyzeCompleted(payload.requestId, payload.tree, payload.pages, payload.usage);
+      if (payload.jobKind === 'analyze') {
+        await jobService.handleV3AnalyzeCompleted(payload.requestId, payload.tree, payload.usage);
+      } else {
+        await jobService.handleV3SelectLayoutCompleted(payload.requestId, payload.pages, payload.usage);
+      }
       break;
     case 'failed':
       await jobService.handleV3Failed(payload.requestId, payload.error);

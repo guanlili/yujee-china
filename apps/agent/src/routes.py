@@ -18,22 +18,29 @@ the photo list and never logged or returned (§3 隐私).
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 
-from .auth import require_bearer
+from .auth import require_bearer, require_clip_bearer
 from .logging_config import get_logger
 from .schemas import (
+    AgentAckRequest,
+    AgentAckResponse,
     V3AcceptedData,
     V3AcceptedResponse,
     V3AnalyzeRequest,
     V3ChapterChatRequest,
     V3ChapterChatResponse,
+    V3EditChatRequest,
+    V3EditChatResponse,
     V3PageEditRequest,
     V3PageEditResponse,
+    SelectLayoutRequest,
 )
 from .schemas import (
     V3ApplyThemeRequest,
@@ -49,6 +56,8 @@ from .schemas import (
 )
 from .engine import apply_theme_v3
 from .errors import sync_endpoint_errors
+from .agents.editing import handler as edit_chat_v3
+from .agents.editing.handler import EditChatError
 from .agents.writing import handler as chapter_chat_v3
 from .agents.page_edit import handler as page_edit_v3
 from .agents.page_edit import PageEditError
@@ -60,10 +69,17 @@ from .agents.writing import ChapterChatV3Error
 from .engine.cover_v3 import CoverV3Error
 from .engine.finalize_v3 import FinalizeV3Error
 from .agents.theme_recommend import RecommendV3Error
-from .flows import analyze
+from .flows import analyze, select_layout
+from .db import AgentDbUnavailable, agent_edit_repo
+from .settings import get_settings
+from .chaptering import features as chapter_features
 
 router = APIRouter()
 log = get_logger("v3_album")
+
+
+class ClipEmbeddingRequest(BaseModel):
+    images: list[str] = Field(min_length=1, max_length=30)
 
 
 # ---------- health ------------------------------------------------------------
@@ -85,6 +101,18 @@ async def health() -> dict:
 async def submit_analyze(
     req: V3AnalyzeRequest, background_tasks: BackgroundTasks
 ) -> dict[str, Any]:
+    if not get_settings().agent_enable_analyze:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "AGENT_INTERNAL_ERROR",
+                    "message": "analyze is disabled on this Agent instance",
+                },
+            },
+        )
+
     # base64 is read into the background task only; never logged (§3 隐私).
     log.info("v3_analyze.accepted", photo_count=len(req.photos), language=req.language)
     background_tasks.add_task(analyze.run_with_timeout, req)
@@ -92,6 +120,61 @@ async def submit_analyze(
         ok=True,
         data=V3AcceptedData(requestId=req.requestId, accepted=True),
     ).model_dump(mode="json")
+
+
+@router.post("/internal/open-clip/embeddings", dependencies=[Depends(require_clip_bearer)])
+async def submit_open_clip_embeddings(req: ClipEmbeddingRequest) -> dict[str, Any]:
+    settings = get_settings()
+    if not settings.agent_enable_clip_embeddings:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "ok": False,
+                "error": {
+                    "code": "AGENT_INTERNAL_ERROR",
+                    "message": "open_clip embeddings are disabled on this Agent instance",
+                },
+            },
+        )
+    images = [chapter_features.image_from_data_url(image) for image in req.images]
+    embeddings = await asyncio.to_thread(chapter_features.clip_embeddings, images)
+    return {"ok": True, "data": {"embeddings": embeddings}}
+
+
+@router.post("/v3/select-layout", status_code=202, dependencies=[Depends(require_bearer)])
+async def submit_select_layout(
+    req: SelectLayoutRequest, background_tasks: BackgroundTasks
+) -> dict[str, Any]:
+    log.info(
+        "v3_select_layout.accepted",
+        chapters=len(req.chapters),
+        photos=sum(len(chapter.photos) for chapter in req.chapters),
+        language=req.language,
+    )
+    background_tasks.add_task(select_layout.run_with_timeout, req)
+    return V3AcceptedResponse(
+        ok=True,
+        data=V3AcceptedData(requestId=req.requestId, accepted=True),
+    ).model_dump(mode="json")
+
+
+# ---------- internal ack (Web → Agent, edit-loop commit confirmation) ----------
+
+
+@router.post("/internal/agent-ack", dependencies=[Depends(require_bearer)])
+async def submit_agent_ack(req: AgentAckRequest) -> dict[str, bool]:
+    try:
+        committed = await agent_edit_repo.acknowledge_op(req.opId)
+    except AgentDbUnavailable as exc:
+        log.warning("agent_ack.db_unavailable", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "ok": False,
+                "error": {"code": "AGENT_DB_UNAVAILABLE", "message": str(exc)[:300]},
+            },
+        ) from exc
+    return AgentAckResponse(ok=committed).model_dump(mode="json")
 
 
 # ---------- chapter-chat (② 章节故事, sync) -----------------------------------
@@ -125,6 +208,22 @@ async def submit_chapter_chat(req: V3ChapterChatRequest) -> dict[str, Any]:
     ):
         response: V3ChapterChatResponse = await chapter_chat_v3.run(req)
     log.info("v3_chapter_chat.completed", kind=response.kind, album_id=req.albumId)
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
+
+
+# ---------- edit-chat (② Stage3 stateful authoring, sync) ---------------------
+
+
+@router.post("/v3/edit-chat", dependencies=[Depends(require_bearer)])
+async def submit_edit_chat(req: V3EditChatRequest) -> dict[str, Any]:
+    with sync_endpoint_errors(
+        log,
+        "v3_edit_chat",
+        EditChatError,
+        known_status=status.HTTP_502_BAD_GATEWAY,
+        known_code="AGENT_PLANNING_FAILED",
+    ):
+        response: V3EditChatResponse = await edit_chat_v3.run(req)
     return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
 
 
@@ -176,9 +275,9 @@ async def submit_page_edit(req: V3PageEditRequest) -> dict[str, Any]:
 async def submit_recommend(req: V3RecommendRequest) -> dict[str, Any]:
     """③ 主题/章节色-推荐 endpoint (§8 同步 / WP3.1 #189).
 
-    Synchronous (front-end spinner; §8.1 其余秒级同步). The recognition model runs
-    the recommend Skills (recommend-theme + recommend-chapter-colors) and returns one
-    {subject, accentColor, artFont} per chapter (subject = the chapter title, #236).
+    Synchronous (front-end spinner; §8.1 其余秒级同步). The planning model returns
+    exactly three book theme options; each option has one artFont and one accentColor per
+    chapter.
     Stateless (§8.3): the
     Agent only suggests — it never writes the tree (apply-theme/WP3.2 does, after the
     user picks) and never advances stage (stage 推进权在 Web). Input is TEXT ONLY
@@ -202,7 +301,7 @@ async def submit_recommend(req: V3RecommendRequest) -> dict[str, Any]:
     log.info(
         "v3_recommend.completed",
         album_id=req.albumId,
-        chapter_colors=len(response.chapterColors),
+        book_theme_options=len(response.bookThemeOptions),
     )
     return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
 
@@ -246,25 +345,18 @@ async def submit_apply_theme(req: V3ApplyThemeRequest) -> dict[str, Any]:
     return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
 
 
-# ---------- cover (④ 书籍设计 — 封面/封尾, sync, deterministic, optional) ------
+# ---------- cover (④ 书籍设计 — 封面/封尾, sync route + async orchestration) ---
 
 
 @router.post("/v3/cover", dependencies=[Depends(require_bearer)])
 async def submit_cover(req: V3CoverRequest) -> dict[str, Any]:
-    """④ 书籍设计 — 封面/封尾 endpoint (§8 同步 / 确定性 / 可选 / WP4.1 #192).
+    """④ 书籍设计 — 封面/封尾 endpoint.
 
-    Synchronous, NO model call (§8.1: 确定性). After the user (optionally) picks a 封面
-    template (category=cover) and/or a 封尾 template (category=ending), this
-    deterministically AUTO-FILLS the relevant pages into finished spreads (§4.4(b)):
-    the页's photos slot into the template in declaration order (no quality/hero match),
-    generic decoration is code-filled, user-prose stays empty (§4.1 不生成正式文案; §3
-    隐私: no place). Cover is OPTIONAL — when BOTH ids are absent it returns an EMPTY
-    patch and does NOT error (§4.4 「跳过=空」; page0 is no longer forced to be cover,
-    a rule WP0.4 already removed from the V3 engine). Stateless (§8.3): the Agent
-    returns a page-level `layoutPatch` (§3 树边界: 仍是页级); Web merges the patch +
-    advances stage cover→ready (stage 推进权在 Web). Input carries no base64 (pure
-    structural transform). An invalid template (unknown id / wrong category) answers in
-    the contract error shape (§8.3 同步端点走 HTTP 错误码; retry without polluting stage)."""
+    The route is synchronous from Web's point of view, but the cover engine is async:
+    Stage5 may run copy clarification, local thumbnail color extraction, safe color
+    design, then deterministic landing patches. The Agent remains stateless; Web owns
+    persistence and stage advancement. Base64 thumbnails are never logged or sent to
+    prompt seams; they are only used by local color extraction."""
     log.info(
         "v3_cover.accepted",
         album_id=req.albumId,
@@ -280,7 +372,7 @@ async def submit_cover(req: V3CoverRequest) -> dict[str, Any]:
         known_status=status.HTTP_422_UNPROCESSABLE_ENTITY,
         known_code="AGENT_OUTPUT_VALIDATION",
     ):
-        response: V3CoverResponse = cover_v3.build_cover(req)
+        response: V3CoverResponse = await cover_v3.build_cover(req)
     log.info(
         "v3_cover.completed",
         album_id=req.albumId,

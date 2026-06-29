@@ -47,7 +47,7 @@ from ...schemas import (
     V3Usage,
 )
 from ...settings import get_settings
-from ...prompts import RULES_DIR, load_prompt, load_replies
+from ...skills import SKILLS_DIR, load_prompt, load_replies
 from ... import ai_client
 from ...engine import skeleton_v3
 from ..writing import handler as writing
@@ -154,7 +154,10 @@ def _scene_summary(chapter: V3Chapter, page: Page | None) -> list[dict[str, str]
 
 def _build_intent_messages(req: V3PageEditRequest, completion: dict[str, Any]) -> list[dict[str, str]]:
     page = _focused_page(req)
-    system = load_prompt(_PROMPT_DIR / "intent_router.md", common=("json_only",))
+    system = load_prompt(
+        _PROMPT_DIR / "intent_router.md",
+        skills=("page_intent_routing",),
+    )
     payload = {
         "language": req.language,
         "userMessage": req.userMessage,
@@ -189,12 +192,13 @@ def _build_edit_messages(req: V3PageEditRequest, page: Page) -> list[dict[str, s
     """段二写作 prompt:写作风格 + 聚焦页全貌(槽位+逐槽 hint + slot→photoId + 照片 scene +
     【当前 texts】)+ userMessage。沿用 chapter-chat 的写作风格资产(grounding)。"""
     system = (
-        writing.writing_guides.persona_block()
-        + "\n\n"
-        + load_prompt(_PROMPT_DIR / "edit_text.md", common=("json_only",))
+        load_prompt(
+            _PROMPT_DIR / "edit_text.md",
+            skills=("page_text_editing",),
+        )
         # === 写作风格 === 标题已并入 writing_style.md 顶部,这里只拼接,不注入字面量。
         + "\n\n"
-        + load_prompt(RULES_DIR / "writing_style.md", common=("grounding",))
+        + load_prompt(SKILLS_DIR / "writing_style.md", skills=("grounding",))
     )
     payload = {
         "language": req.language,
@@ -414,8 +418,8 @@ def _text(value: Any) -> str:
 
 
 def _default_reply(language: str, intent: str) -> str:
-    """从可手调的 replies.md 读兜底回复(`intent.语言`),按路径缓存。未知意图回 talk。"""
-    replies = load_replies(_PROMPT_DIR / "replies.md")
+    """从 skills/replies/page_edit.md 读兜底回复(`intent.语言`),按路径缓存。未知意图回 talk。"""
+    replies = load_replies(SKILLS_DIR / "replies" / "page_edit.md")
     lang = "zh" if language == "zh" else "en"
     return (
         replies.get(f"{intent}.{lang}")

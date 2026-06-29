@@ -6,59 +6,6 @@ from pathlib import Path
 import pytest
 
 
-# mag-24 故意不注册(搁置中);其余 mag-* + p01 全部登记。
-EXPECTED_TEMPLATE_IDS = [
-    "mag-01",
-    "mag-02",
-    "mag-03",
-    "mag-04",
-    "mag-05",
-    "mag-06",
-    "mag-07",
-    "mag-08",
-    "mag-09",
-    "mag-10",
-    "mag-11",
-    "mag-13",
-    "mag-15",
-    "mag-18",
-    "mag-19",
-    "mag-20",
-    "mag-22",
-    "mag-23",
-    "mag-25",
-    "mag-26",
-    "mag-27",
-    "mag-28",
-    "mag-29",
-    "mag-30",
-    "mag-31",
-    "mag-32",
-    "mag-33",
-    "mag-34",
-    "mag-35",
-    "mag-36",
-    "mag-37",
-    "mag-38",
-    "mag-39",
-    "mag-40",
-    "mag-41",
-    "mag-42",
-    "mag-43",
-    "mag-44",
-    "mag-45",
-    "mag-46",
-    "mag-47",
-    "mag-48",
-    "mag-49",
-    "mag-50",
-    "mag-51",
-    "mag-52",
-    "mag-53",
-    "p01",
-]
-
-
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
@@ -68,9 +15,14 @@ def test_loader_reads_shared_template_json_count():
 
     template_dir = _repo_root() / "packages" / "contracts" / "templates"
     json_files = sorted(template_dir.glob("*.json"))
+    # Derive the expected id set straight from the shipped template JSONs so this
+    # test never goes stale when templates are added/removed.
+    expected_ids = sorted(path.stem for path in json_files)
 
     assert len(json_files) == 48
-    assert templates.TEMPLATE_IDS == EXPECTED_TEMPLATE_IDS
+    # mag-24 has no JSON, so it is (correctly) absent from the loaded registry.
+    assert "mag-24" not in expected_ids
+    assert templates.TEMPLATE_IDS == expected_ids
     assert len(templates.TEMPLATES) == len(json_files)
 
 
@@ -91,7 +43,15 @@ def test_loader_fail_fast_when_explicit_template_path_is_missing(monkeypatch, tm
 def test_cover_ids_are_derived_from_template_json():
     from src.engine import templates
 
-    assert templates.COVER_TEMPLATE_IDS == ["mag-01", "mag-13", "mag-23", "mag-32", "p01"]
+    template_dir = _repo_root() / "packages" / "contracts" / "templates"
+    expected_covers = sorted(
+        path.stem
+        for path in template_dir.glob("*.json")
+        if json.loads(path.read_text(encoding="utf-8")).get("category") == "cover"
+    )
+
+    assert expected_covers == ["mag-01", "mag-13", "mag-23", "mag-32", "p01"]
+    assert templates.COVER_TEMPLATE_IDS == expected_covers
 
 
 def test_prompt_summary_handles_optional_constraints(tmp_path):

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "templateId": "mag-37",
+  "category": "interior",
+  "imageSlotCount": 1,
+  "imageSlotIds": [
+    "image"
+  ],
+  "textSlotCount": 2,
+  "textSlotIds": [
+    "body",
+    "decor"
+  ],
+  "structureDescription": "mag-37 interior template with 1 image slot(s) (image) and 2 concrete text slot(s) (body, decor). one dominant image block; 2 text slots."
+}

@@ -11,6 +11,24 @@
       }
     },
     {
+      "name": "AgentAckRequest valid",
+      "schema": "AgentAckRequest",
+      "expectValid": true,
+      "payload": { "opId": "op_1" }
+    },
+    {
+      "name": "AgentAckRequest rejects extra",
+      "schema": "AgentAckRequest",
+      "expectValid": false,
+      "payload": { "opId": "op_1", "extra": true }
+    },
+    {
+      "name": "AgentAckResponse valid false",
+      "schema": "AgentAckResponse",
+      "expectValid": true,
+      "payload": { "ok": false }
+    },
+    {
       "name": "V3AnalyzeRequest minimal valid",
       "schema": "V3AnalyzeRequest",
       "expectValid": true,
@@ -167,7 +185,7 @@
       }
     },
     {
-      "name": "V3AnalyzeRequest rejects >30 photos",
+      "name": "V3AnalyzeRequest rejects empty photos",
       "schema": "V3AnalyzeRequest",
       "expectValid": false,
       "payload": {
@@ -278,6 +296,7 @@
       "payload": {
         "chapterId": "c1",
         "description": "d",
+        "extractedColor": "#c8894a",
         "accentColor": "#aabbcc",
         "artFont": "sans-modern",
         "photos": []
@@ -486,11 +505,29 @@
       }
     },
     {
-      "name": "V3RecommendResponse theme + per-chapter color/font",
+      "name": "V3RecommendResponse book theme options",
       "schema": "V3RecommendResponse",
       "expectValid": true,
       "payload": {
-        "chapterColors": [{ "chapterId": "c1", "subject": "Spring in Kyoto", "accentColor": "#aabbcc", "artFont": "serif-classic" }],
+        "bookThemeOptions": [
+          {
+            "optionId": "opt-1",
+            "label": "Warm",
+            "style": "Warm editorial",
+            "artFont": "serif-classic",
+            "chapters": [{ "chapterId": "c1", "subject": "Spring in Kyoto", "accentColor": "#aabbcc" }]
+          },
+          {
+            "optionId": "opt-2",
+            "artFont": "sans-modern",
+            "chapters": [{ "chapterId": "c1", "accentColor": "#bbccdd" }]
+          },
+          {
+            "optionId": "opt-3",
+            "artFont": "display-bold",
+            "chapters": [{ "chapterId": "c1", "accentColor": "#ccddee" }]
+          }
+        ],
         "assistantReply": "",
         "usage": { "durationMs": 1, "models": {} }
       }
@@ -502,7 +539,8 @@
       "payload": {
         "albumId": "a1",
         "language": "en",
-        "chapters": [{ "chapterId": "c1", "description": "d", "photoDescs": ["p"] }],
+        "fontHint": "classic",
+        "chapters": [{ "chapterId": "c1", "description": "d", "photoDescs": ["p"], "extractedColor": "#aabbcc" }],
         "analysisSummary": "quiet morning",
         "userMessage": "more classic"
       }
@@ -514,7 +552,7 @@
       "payload": {
         "albumId": "a1",
         "language": "en",
-        "chapters": [{ "chapterId": "c1", "subject": "s", "accentColor": "#abc", "artFont": "sans-modern" }],
+        "chapters": [{ "chapterId": "c1", "accentColor": "#abc", "artFont": "sans-modern" }],
         "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
       }
     },
@@ -541,11 +579,87 @@
       }
     },
     {
+      "name": "V3CoverRequest Stage5 fields ok",
+      "schema": "V3CoverRequest",
+      "expectValid": true,
+      "payload": {
+        "albumId": "a1",
+        "language": "en",
+        "coverTemplateId": "mag-01",
+        "endingTemplateId": "mag-20",
+        "coverPhoto": "data:image/jpeg;base64,AA==",
+        "endingPhoto": "data:image/png;base64,AA==",
+        "coverPhotoDesc": "a quiet portrait beside a window",
+        "hint": "keep the book tender and understated",
+        "userMessage": "Can the cover feel calmer?",
+        "history": [
+          { "role": "user", "content": "I want a calmer cover" },
+          { "role": "assistant", "content": "I can make it quieter." }
+        ],
+        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+      }
+    },
+    {
+      "name": "V3CoverRequest rejects explicit null Stage5 string",
+      "schema": "V3CoverRequest",
+      "expectValid": false,
+      "payload": {
+        "albumId": "a1",
+        "language": "en",
+        "coverPhoto": null,
+        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+      }
+    },
+    {
+      "name": "V3CoverRequest rejects history over 20",
+      "schema": "V3CoverRequest",
+      "expectValid": false,
+      "payload": {
+        "albumId": "a1",
+        "language": "en",
+        "history": [
+          { "role": "user", "content": "1" },
+          { "role": "user", "content": "2" },
+          { "role": "user", "content": "3" },
+          { "role": "user", "content": "4" },
+          { "role": "user", "content": "5" },
+          { "role": "user", "content": "6" },
+          { "role": "user", "content": "7" },
+          { "role": "user", "content": "8" },
+          { "role": "user", "content": "9" },
+          { "role": "user", "content": "10" },
+          { "role": "user", "content": "11" },
+          { "role": "user", "content": "12" },
+          { "role": "user", "content": "13" },
+          { "role": "user", "content": "14" },
+          { "role": "user", "content": "15" },
+          { "role": "user", "content": "16" },
+          { "role": "user", "content": "17" },
+          { "role": "user", "content": "18" },
+          { "role": "user", "content": "19" },
+          { "role": "user", "content": "20" },
+          { "role": "user", "content": "21" }
+        ],
+        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+      }
+    },
+    {
       "name": "V3CoverResponse skip returns empty patch",
       "schema": "V3CoverResponse",
       "expectValid": true,
       "payload": {
         "layoutPatch": [],
+        "usage": { "durationMs": 1, "models": {} }
+      }
+    },
+    {
+      "name": "V3CoverResponse clarification ok",
+      "schema": "V3CoverResponse",
+      "expectValid": true,
+      "payload": {
+        "layoutPatch": [],
+        "assistantReply": "Which cover mood should I use?",
+        "needsUserInput": true,
         "usage": { "durationMs": 1, "models": {} }
       }
     },
@@ -636,6 +750,30 @@
       "name": "V3Callback completed(analyze)",
       "schema": "V3Callback",
       "expectValid": true,
+      "payload": {
+        "requestId": "r1",
+        "jobKind": "analyze",
+        "event": "completed",
+        "tree": { "chapters": [] },
+        "usage": { "durationMs": 1, "models": {} }
+      }
+    },
+    {
+      "name": "V3Callback completed(select-layout)",
+      "schema": "V3Callback",
+      "expectValid": true,
+      "payload": {
+        "requestId": "r1",
+        "jobKind": "select-layout",
+        "event": "completed",
+        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }],
+        "usage": { "durationMs": 1, "geminiCallCount": 1, "models": { "planning": "gemini-layout" } }
+      }
+    },
+    {
+      "name": "V3Callback rejects analyze pages",
+      "schema": "V3Callback",
+      "expectValid": false,
       "payload": {
         "requestId": "r1",
         "jobKind": "analyze",

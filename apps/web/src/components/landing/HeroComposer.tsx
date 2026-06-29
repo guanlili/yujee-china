@@ -17,6 +17,7 @@ import {
 import { albumRecipe, generationDraft, type GenerationDraft } from '@/lib/generation/draft';
 import type { AppMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
+import { MAX_PHOTOS_PER_GENERATION } from '@/config/pricing';
 
 type LocalPhoto = {
   photoId: string;
@@ -89,7 +90,7 @@ export function HeroComposer({
     const cached = compressedPhotosFromCache(photoIds, cachedPhotos);
     const builtPhotos = cached ? clusterCompressedPhotos(cached) : await photosFromStore(photoIds);
     const trimmed = draft.prompt.trim();
-    const { albumId } = await submitAnalyzeV3({
+    const { albumId, requestId } = await submitAnalyzeV3({
       requestId: crypto.randomUUID(),
       language: draft.language,
       // promptHint is optional — omit when blank.
@@ -97,7 +98,7 @@ export function HeroComposer({
       photos: builtPhotos,
     });
     generationDraft.clear();
-    albumRecipe.save(albumId, { language: draft.language, photoIds });
+    albumRecipe.save(albumId, { language: draft.language, photoIds, requestId });
     router.push(`/${locale}/album/${albumId}`);
   };
 
@@ -161,7 +162,7 @@ export function HeroComposer({
     try {
       const next: LocalPhoto[] = [];
       for (const f of Array.from(files)) {
-        if (photos.length + next.length >= 30) break;
+        if (photos.length + next.length >= MAX_PHOTOS_PER_GENERATION) break;
         const photoId = crypto.randomUUID();
         const compressed = await compressFile(f, photoId);
         await photoStore.put(photoId, f);

@@ -17,6 +17,7 @@ import {
   AccentColor,
   AlbumLayoutPlan,
   Page,
+  PhotoOrientation,
   TakenAtDateTime,
   V3Chapter,
   V3LayoutTree,
@@ -27,12 +28,12 @@ import {
 export const V3Language = z.enum(['zh', 'en']);
 export type V3Language = z.infer<typeof V3Language>;
 
-/** V3 唯一异步 job = analyze;失败语义走回调 `failed`(§8.3)。 */
-export const V3JobKind = z.enum(['analyze']);
+/** V3 async jobs; failures use callback `failed`(§8.3). */
+export const V3JobKind = z.enum(['analyze', 'select-layout']);
 export type V3JobKind = z.infer<typeof V3JobKind>;
 
 /** analyze 进度子阶段(§4.1 步骤);仅用于 progress 回调展示。 */
-export const V3JobStage = z.enum(['describe', 'group', 'template', 'preview']);
+export const V3JobStage = z.enum(['describe', 'group', 'template', 'preview', 'layout', 'legalize', 'wrap']);
 export type V3JobStage = z.infer<typeof V3JobStage>;
 
 /** 统一 usage,各 `/v3/*` 端点共用(同 v2.ts Usage 形状)。 */
@@ -40,6 +41,7 @@ export const V3Usage = z
   .object({
     durationMs: z.number().int().nonnegative(),
     visionCallCount: z.number().int().nonnegative().default(0),
+    geminiCallCount: z.number().int().nonnegative().default(0),
     planningInputTokens: z.number().int().nonnegative().default(0),
     planningOutputTokens: z.number().int().nonnegative().default(0),
     repairAttempts: z.number().int().nonnegative().default(0),
@@ -75,6 +77,130 @@ export const V3PageTextsPatch = z
   })
   .strict();
 export type V3PageTextsPatch = z.infer<typeof V3PageTextsPatch>;
+
+// ───────────────── internal Agent/Web surfaces(PR249 shared boundary) ─────────────────
+
+export const V3InternalAgentAckRequest = z
+  .object({
+    opId: z.string().min(1),
+  })
+  .strict();
+export type V3InternalAgentAckRequest = z.infer<typeof V3InternalAgentAckRequest>;
+
+export const V3InternalAgentAckResponse = z
+  .object({
+    ok: z.boolean(),
+  })
+  .strict();
+export type V3InternalAgentAckResponse = z.infer<typeof V3InternalAgentAckResponse>;
+
+export const V3InternalAgentDataPageInfoRequest = z
+  .object({
+    type: z.literal('page-info'),
+    albumId: z.string().min(1),
+    scope: z.enum(['page', 'chapter']),
+    chapterId: z.string().min(1),
+    pageIndex: z.coerce.number().int().nonnegative().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.scope === 'page' && value.pageIndex === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['pageIndex'],
+        message: 'pageIndex is required when scope=page',
+      });
+    }
+  });
+export type V3InternalAgentDataPageInfoRequest = z.infer<typeof V3InternalAgentDataPageInfoRequest>;
+
+export const V3InternalAgentDataChapterSearchRequest = z
+  .object({
+    type: z.literal('chapter-search'),
+    albumId: z.string().min(1),
+    query: z.string().trim().min(1),
+    limit: z.coerce.number().int().min(1).max(20).default(5),
+  })
+  .strict();
+export type V3InternalAgentDataChapterSearchRequest = z.infer<typeof V3InternalAgentDataChapterSearchRequest>;
+
+export const V3InternalAgentDataPagePhotosRequest = z
+  .object({
+    type: z.literal('page-photos'),
+    albumId: z.string().min(1),
+    chapterId: z.string().min(1),
+  })
+  .strict();
+export type V3InternalAgentDataPagePhotosRequest = z.infer<typeof V3InternalAgentDataPagePhotosRequest>;
+
+export const V3InternalAgentDataRequest = z.union([
+  V3InternalAgentDataPageInfoRequest,
+  V3InternalAgentDataChapterSearchRequest,
+  V3InternalAgentDataPagePhotosRequest,
+]);
+export type V3InternalAgentDataRequest = z.infer<typeof V3InternalAgentDataRequest>;
+
+export const V3InternalAgentDataPageInfoResponse = z
+  .object({
+    type: z.literal('page-info'),
+    data: z
+      .object({
+        chapter: V3Chapter,
+        pages: z.array(Page),
+      })
+      .strict(),
+  })
+  .strict();
+export type V3InternalAgentDataPageInfoResponse = z.infer<typeof V3InternalAgentDataPageInfoResponse>;
+
+export const V3InternalAgentDataChapterSearchResponse = z
+  .object({
+    type: z.literal('chapter-search'),
+    data: z
+      .object({
+        matches: z.array(
+          z
+            .object({
+              chapterId: z.string().min(1),
+              pageIndexes: z.array(z.number().int().nonnegative()),
+              label: z.string(),
+              score: z.number().int().nonnegative(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  })
+  .strict();
+export type V3InternalAgentDataChapterSearchResponse = z.infer<typeof V3InternalAgentDataChapterSearchResponse>;
+
+export const V3InternalAgentDataPagePhotosResponse = z
+  .object({
+    type: z.literal('page-photos'),
+    data: z
+      .object({
+        photos: z.array(
+          z
+            .object({
+              photoId: z.string().min(1),
+              ref200px: z.string().min(1),
+              orientation: PhotoOrientation,
+              takenAt: TakenAtDateTime.nullable().optional(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  })
+  .strict();
+export type V3InternalAgentDataPagePhotosResponse = z.infer<typeof V3InternalAgentDataPagePhotosResponse>;
+
+export const V3InternalAgentDataResponse = z.union([
+  V3InternalAgentDataPageInfoResponse,
+  V3InternalAgentDataChapterSearchResponse,
+  V3InternalAgentDataPagePhotosResponse,
+]);
+export type V3InternalAgentDataResponse = z.infer<typeof V3InternalAgentDataResponse>;
 
 // ───────────────── ① 分析 — POST /v3/analyze(异步 202 + callback) ─────────────────
 //
@@ -134,10 +260,45 @@ export const V3AnalyzeRequest = z
     callbackUrl: HttpCallbackUrl,
     language: V3Language,
     meta: z.object({ promptHint: z.string().max(500).optional() }).strict().optional(),
-    photos: z.array(V3AnalyzePhoto).min(1).max(30),
+    photos: z.array(V3AnalyzePhoto).min(1).max(100),
   })
   .strict();
 export type V3AnalyzeRequest = z.infer<typeof V3AnalyzeRequest>;
+
+// ───────────────── ②0 选版式 — POST /v3/select-layout(异步 202 + callback) ─────────────────
+//
+// Stage2 consumes the Stage1 tree slice and browser-held 200px refs. The caller
+// does not provide template candidates; Agent builds legal candidates internally
+// from templates + checked-in template preview assets.
+
+export const SelectLayoutPhoto = z
+  .object({
+    photoId: z.string().min(1),
+    ref200px: V3AnalyzeImageDataUrl,
+    orientation: PhotoOrientation,
+    takenAt: TakenAtDateTime.nullable(),
+  })
+  .strict();
+export type SelectLayoutPhoto = z.infer<typeof SelectLayoutPhoto>;
+
+export const SelectLayoutChapter = z
+  .object({
+    chapterId: z.string().min(1),
+    photos: z.array(SelectLayoutPhoto).min(1),
+    structureHint: z.string().max(600).optional(),
+  })
+  .strict();
+export type SelectLayoutChapter = z.infer<typeof SelectLayoutChapter>;
+
+export const SelectLayoutRequest = z
+  .object({
+    requestId: z.string().min(1),
+    callbackUrl: HttpCallbackUrl,
+    language: V3Language,
+    chapters: z.array(SelectLayoutChapter).min(1),
+  })
+  .strict();
+export type SelectLayoutRequest = z.infer<typeof SelectLayoutRequest>;
 
 // ───────────── ② 章节故事 — POST /v3/chapter-chat(同步) ─────────────
 //
@@ -230,6 +391,47 @@ export const V3StoryDraft = z
   .strict();
 export type V3StoryDraft = z.infer<typeof V3StoryDraft>;
 
+export const V3EditChatFocus = z
+  .object({
+    chapterId: z.string().min(1).optional(),
+    pageIndex: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+export type V3EditChatFocus = z.infer<typeof V3EditChatFocus>;
+
+export const V3EditProgressDecision = z
+  .object({
+    pageDone: z.boolean().optional(),
+    chapterDone: z.boolean().optional(),
+    advanceTo: z.literal('theme').nullable().optional(),
+  })
+  .strict();
+export type V3EditProgressDecision = z.infer<typeof V3EditProgressDecision>;
+
+export const V3EditChatRequest = z
+  .object({
+    albumId: z.string().min(1),
+    language: V3Language,
+    userMessage: z.string().max(500),
+    focus: V3EditChatFocus,
+    progress: V3StoryProgress,
+  })
+  .strict();
+export type V3EditChatRequest = z.infer<typeof V3EditChatRequest>;
+
+export const V3EditChatResponse = z
+  .object({
+    kind: z.enum(['talk', 'write', 'edit']),
+    assistantReply: z.string().min(1).max(500),
+    patches: z.array(V3LayoutPatchEntry).default([]),
+    pagesTexts: z.array(V3PageTextsPatch).optional(),
+    progressDecision: V3EditProgressDecision.optional(),
+    opId: z.string().min(1),
+    usage: V3Usage,
+  })
+  .strict();
+export type V3EditChatResponse = z.infer<typeof V3EditChatResponse>;
+
 // ───────────── ②b 页级编辑 — POST /v3/page-edit(同步,两段式) ─────────────
 //
 // 两段解耦(docs/superpowers/specs/2026-06-25-page-edit-agent-loop-design.md):
@@ -273,15 +475,17 @@ export type V3PageEditResponse = z.infer<typeof V3PageEditResponse>;
 
 // ───────────── ③ 主题/章节色 · 推荐 — POST /v3/recommend(同步) ─────────────
 //
-// 承载 recommend-chapter-colors Skill(§6)。识图模型逐章产出 {subject, accentColor,
-//   artFont}:subject 是该章一句话主题(作章节标题),色/字体供用户确认。无 album 级
-//   themeOptions(问题5 改逐章 / #236)。
+// 承载 Stage4 book theme recommendation: planning model returns exactly three
+// book-wide theme options. Each option has one artFont plus one accent color per chapter.
 
 /** 章节概览(每章一条),recommend 的主输入(§8 表)。 */
 export const V3ChapterOverview = z
   .object({
     chapterId: z.string().min(1),
     description: z.string().max(600),
+    // Stage1 extracted source color. Recommend may use it as evidence, but it is
+    // not the final theme `accentColor`.
+    extractedColor: AccentColor.nullish(),
     photoDescs: z.array(z.string()).max(12), // 本章各图 sceneDescription(摘要)
   })
   .strict();
@@ -294,28 +498,34 @@ export const V3RecommendRequest = z
     chapters: z.array(V3ChapterOverview).min(1),
     analysisSummary: z.string().max(1000).optional(), // 分析摘要(全局基调)
     userMessage: z.string().max(500).optional(),
+    fontHint: z.string().max(200).optional(),
   })
   .strict();
 export type V3RecommendRequest = z.infer<typeof V3RecommendRequest>;
 
-/**
- * 每章推荐:主题句(subject,作章节标题)+ 推荐色 + 字体(用户确认后由 apply-theme
- * 写树/写标题槽)。`subject` 是 grounded 该章照片+故事的一句章节主题(英文,简短,
- * 无句末标点);它在 apply-theme 阶段被持久化为该章标题(§问题5 方向 A 变体 / #236)。
- */
-export const V3ChapterColorRecommendation = z
+export const V3ChapterThemeColor = z
   .object({
     chapterId: z.string().min(1),
-    subject: z.string().min(1),
     accentColor: AccentColor,
-    artFont: ArtFontPack,
+    subject: z.string().min(1).optional(),
   })
   .strict();
-export type V3ChapterColorRecommendation = z.infer<typeof V3ChapterColorRecommendation>;
+export type V3ChapterThemeColor = z.infer<typeof V3ChapterThemeColor>;
+
+export const V3BookThemeOption = z
+  .object({
+    optionId: z.string().min(1).max(80),
+    artFont: ArtFontPack,
+    chapters: z.array(V3ChapterThemeColor).min(1),
+    style: z.string().min(1).max(160).optional(),
+    label: z.string().min(1).max(160).optional(),
+  })
+  .strict();
+export type V3BookThemeOption = z.infer<typeof V3BookThemeOption>;
 
 export const V3RecommendResponse = z
   .object({
-    chapterColors: z.array(V3ChapterColorRecommendation).min(1),
+    bookThemeOptions: z.array(V3BookThemeOption).length(3),
     assistantReply: z.string().max(500),
     usage: V3Usage,
   })
@@ -327,14 +537,14 @@ export type V3RecommendResponse = z.infer<typeof V3RecommendResponse>;
 // 无 LLM:把用户选定的每章色/字体一键刷到所有 `variableDecor` 槽(§4.3 / §9),回 layout 补丁。
 
 /**
- * 用户选定的每章主题/色/字体(写入章节树 + 标题槽)。
- * `subject` = 用户确认的该章标题(一句话主题);apply-theme 把它持久化到该章 `title`
- * 角色文字槽(§问题5 方向 A 变体 / #236),并把色/字体刷到 variableDecor 槽。
+ * 用户选定的每章主题/色/字体(写入章节树 + 可选标题槽)。
+ * `subject` 存在时 = 用户确认的该章标题(一句话主题);apply-theme 只在它存在且 title
+ * 槽为空时持久化,并把色/字体刷到 variableDecor 槽。
  */
 export const V3ChapterThemeChoice = z
   .object({
     chapterId: z.string().min(1),
-    subject: z.string().min(1),
+    subject: z.string().min(1).optional(),
     accentColor: AccentColor,
     artFont: ArtFontPack,
   })
@@ -347,7 +557,7 @@ export const V3ApplyThemeRequest = z
     language: V3Language,
     chapters: z.array(V3ChapterThemeChoice).min(1),
     // 受影响的 layout 子树(③④传相关页,§8.3);apply 把 variableDecor 槽刷上色/字体,
-    // 并把每章 subject 写进该章 title 槽(章节标题持久化)。
+    // 并在 subject 存在时把它写进该章空 title 槽(章节标题持久化)。
     pages: z.array(Page),
   })
   .strict();
@@ -374,16 +584,30 @@ export const V3CoverRequest = z
     // 选定的封面/封尾模板;null = 跳过该项(封面可选,§4.4)。
     coverTemplateId: z.string().min(1).nullable().optional(),
     endingTemplateId: z.string().min(1).nullable().optional(),
+    // Stage5: 200px base64 thumbnails are for local color extraction only; do not
+    // forward them to LLM prompts.
+    coverPhoto: z.string().optional(),
+    endingPhoto: z.string().optional(),
+    // Textual guidance may be sent to 5a copy / 5b AI color design instead of base64.
+    coverPhotoDesc: z.string().optional(),
+    // Cover/ending pages have no chapter owner, so Stage5 carries the selected
+    // whole-book art font explicitly for page-level text carriers.
+    artFont: ArtFontPack.optional(),
+    hint: z.string().optional(),
+    userMessage: z.string().default(''),
+    history: z.array(V3ChatTurn).max(20).default([]),
     pages: z.array(Page), // 相关页(供自动填充取图/文)
   })
   .strict();
 export type V3CoverRequest = z.infer<typeof V3CoverRequest>;
+export type V3CoverRequestInput = z.input<typeof V3CoverRequest>;
 
 export const V3CoverResponse = z
   .object({
     // 封面/封尾页补丁;跳过时为空数组(§4.4「跳过=空」)。
     layoutPatch: z.array(V3LayoutPatchEntry),
     assistantReply: z.string().max(500).optional(),
+    needsUserInput: z.boolean().default(false),
     usage: V3Usage,
   })
   .strict();
@@ -412,9 +636,10 @@ export const V3FinalizeResponse = z
   .strict();
 export type V3FinalizeResponse = z.infer<typeof V3FinalizeResponse>;
 
-// ────────────────────────────── analyze callback envelope ──────────────────────────────
+// ────────────────────────────── async callback envelope ──────────────────────────────
 //
-// 沿用 v2 两级判别思路,但 V3 只有 analyze 一种 completed,故按 event 普通 union 即可。
+// 沿用 v2 两级判别思路；V3 已有 analyze/select-layout 两类 completed，
+// 这里按 event + jobKind 组成普通 union。
 
 const V3CallbackError = z.object({ code: z.string().min(1), message: z.string() }).strict();
 
@@ -434,12 +659,24 @@ const V3AnalyzeCompleted = z
     requestId: z.string().min(1),
     jobKind: z.literal('analyze'),
     event: z.literal('completed'),
-    // 预览态产物:V3 章节树 + 套好模板/填好通用文案-色的页。
+    // Stage1 tree-only: pages are created later by select-layout using this same requestId.
     tree: V3LayoutTree,
+    usage: V3Usage,
+  })
+  .strict();
+
+export const SelectLayoutCompleted = z
+  .object({
+    requestId: z.string().min(1),
+    jobKind: z.literal('select-layout'),
+    event: z.literal('completed'),
+    // Stage2 reuses the analyze/init requestId and returns the layout pages that
+    // Web merges into draft_json before settling the original job/hold.
     pages: z.array(Page).min(1),
     usage: V3Usage,
   })
   .strict();
+export type SelectLayoutCompleted = z.infer<typeof SelectLayoutCompleted>;
 
 const V3FailedEvent = z
   .object({
@@ -456,6 +693,7 @@ export const V3Callback = z.union([
   V3ProgressEvent,
   V3FailedEvent,
   V3AnalyzeCompleted,
+  SelectLayoutCompleted,
 ]);
 export type V3Callback = z.infer<typeof V3Callback>;
 

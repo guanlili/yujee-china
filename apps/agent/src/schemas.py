@@ -23,6 +23,7 @@ from pydantic import (
     Field,
     HttpUrl,
     field_validator,
+    model_validator,
 )
 
 
@@ -159,7 +160,7 @@ class JobError(_Strict):
 
 # =============================================================================
 # V3 contracts (WP0.3 / #178) — mirror of @yujee/contracts src/{enums,layout,
-# templates,v3}.ts. 五环节状态机的 `/v3/*` 端点 req/res + analyze callback。
+# templates,v3}.ts. 五环节状态机的 `/v3/*` 端点 req/res + async callback。
 #
 # All models below are `_V3Strict` (extra='forbid'), matching the TS `.strict()`
 # on every (nested) object. ★ analyze `exif` is the §3 privacy enforcement point:
@@ -267,6 +268,9 @@ class V3Chapter(_V3Strict):
 
     chapterId: str = Field(min_length=1)
     description: str = Field(max_length=600)
+    # Stage1 extracted source color. Distinct from final theme `accentColor`.
+    # Migration field: older trees omit it; Stage1 PR249 trees may carry null.
+    extractedColor: AccentColor | None = None
     accentColor: AccentColor | None  # required key; null placeholder until theme
     artFont: ArtFontPack | None  # required key; null placeholder until theme
     photos: list[V3ChapterPhoto]
@@ -386,10 +390,9 @@ class TemplateDef(_V3Strict):
 # ---------- v3.ts: shared -----------------------------------------------------
 
 V3Language = Literal["zh", "en"]
-# V3 唯一异步 job = analyze;失败语义走回调 `failed`(§8.3)。
-V3JobKind = Literal["analyze"]
+V3JobKind = Literal["analyze", "select-layout"]
 # analyze 进度子阶段(§4.1);仅用于 progress 回调展示。
-V3JobStage = Literal["describe", "group", "template", "preview"]
+V3JobStage = Literal["describe", "group", "template", "preview", "layout", "legalize", "wrap"]
 
 
 class V3Models(_V3Strict):
@@ -402,6 +405,7 @@ class V3Usage(_V3Strict):
 
     durationMs: int = Field(ge=0)
     visionCallCount: int = Field(ge=0, default=0)
+    geminiCallCount: int = Field(ge=0, default=0)
     planningInputTokens: int = Field(ge=0, default=0)
     planningOutputTokens: int = Field(ge=0, default=0)
     repairAttempts: int = Field(ge=0, default=0)
@@ -471,7 +475,33 @@ class V3AnalyzeRequest(_V3Strict):
     callbackUrl: HttpUrl
     language: V3Language
     meta: V3AnalyzeMeta = None
-    photos: list[V3AnalyzePhoto] = Field(min_length=1, max_length=30)
+    photos: list[V3AnalyzePhoto] = Field(min_length=1, max_length=100)
+
+
+# ---------- v3.ts: ②0 select-layout (async 202 + callback) -------------------
+
+
+class SelectLayoutPhoto(_V3Strict):
+    photoId: str = Field(min_length=1)
+    ref200px: str = Field(min_length=1)
+    orientation: PhotoOrientation
+    takenAt: str | None
+
+    _check_ref200px = field_validator("ref200px")(_validate_v3_analyze_image_data_url)
+    _check_taken_at = field_validator("takenAt")(_validate_iso_datetime)
+
+
+class SelectLayoutChapter(_V3Strict):
+    chapterId: str = Field(min_length=1)
+    photos: list[SelectLayoutPhoto] = Field(min_length=1)
+    structureHint: str = Field(default=None, max_length=600)
+
+
+class SelectLayoutRequest(_V3Strict):
+    requestId: str = Field(min_length=1)
+    callbackUrl: HttpUrl
+    language: V3Language
+    chapters: list[SelectLayoutChapter] = Field(min_length=1)
 
 
 # ---------- v3.ts: ② chapter-chat (sync) --------------------------------------
@@ -518,6 +548,59 @@ class V3ChapterChatResponse(_V3Strict):
         return value
 
 
+class V3StoryProgress(_V3Strict):
+    currentChapterId: str | None = Field(min_length=1)
+    doneChapterIds: list[str]
+
+    @field_validator("doneChapterIds")
+    @classmethod
+    def _done_chapter_ids_nonempty(cls, value: list[str]) -> list[str]:
+        if any(len(item) < 1 for item in value):
+            raise ValueError("doneChapterIds entries must be non-empty")
+        return value
+
+
+class V3EditChatFocus(_V3Strict):
+    chapterId: str | None = Field(default=None, min_length=1)
+    pageIndex: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_explicit_null_fields(cls, value):
+        if isinstance(value, dict):
+            for key in ("chapterId", "pageIndex"):
+                if key in value and value[key] is None:
+                    raise ValueError(f"{key} cannot be null")
+        return value
+
+
+class V3EditProgressDecision(_V3Strict):
+    pageDone: bool | None = None
+    chapterDone: bool | None = None
+    advanceTo: Literal["theme"] | None = None
+
+
+class V3EditChatRequest(_V3Strict):
+    albumId: str = Field(min_length=1)
+    language: V3Language
+    userMessage: str = Field(max_length=500)
+    focus: V3EditChatFocus
+    progress: V3StoryProgress
+
+
+V3EditChatKind = Literal["talk", "write", "edit"]
+
+
+class V3EditChatResponse(_V3Strict):
+    kind: V3EditChatKind
+    assistantReply: str = Field(min_length=1, max_length=500)
+    patches: list[V3LayoutPatchEntry] = Field(default_factory=list)
+    pagesTexts: list[V3PageTextsPatch] | None = None
+    progressDecision: V3EditProgressDecision | None = None
+    opId: str = Field(min_length=1)
+    usage: V3Usage
+
+
 # ---------- v3.ts: ②b page-edit (sync, two-stage) -----------------------------
 # 镜像 v3.ts V3PageEditRequest/Response。请求复用 V3ChapterChatRequest 同形字段;响应复用
 # V3LayoutPatchEntry(不另造补丁形状)。全 `_V3Strict`(extra='forbid')。§3 隐私:
@@ -555,6 +638,9 @@ class V3ChapterOverview(_V3Strict):
 
     chapterId: str = Field(min_length=1)
     description: str = Field(max_length=600)
+    # Stage1 extracted source color. Recommend may use it as evidence, but it is
+    # not the final theme `accentColor`.
+    extractedColor: AccentColor | None = None
     photoDescs: list[str] = Field(max_length=12)
 
 
@@ -562,24 +648,27 @@ class V3RecommendRequest(_V3Strict):
     albumId: str = Field(min_length=1)
     language: V3Language
     chapters: list[V3ChapterOverview] = Field(min_length=1)
-    analysisSummary: str = Field(default=None, max_length=1000)
-    userMessage: str = Field(default=None, max_length=500)
+    analysisSummary: str | None = Field(default=None, max_length=1000)
+    userMessage: str | None = Field(default=None, max_length=500)
+    fontHint: str | None = Field(default=None, max_length=200)
 
 
-class V3ChapterColorRecommendation(_V3Strict):
-    """每章推荐:主题句(subject,作章节标题)+ 推荐色 + 字体。
-
-    `subject` 是 grounded 该章照片+故事的一句章节主题(简短、无句末标点);它在
-    apply-theme 阶段被持久化为该章标题(问题5 方向 A 变体 / #236)。"""
-
+class V3ChapterThemeColor(_V3Strict):
     chapterId: str = Field(min_length=1)
-    subject: str = Field(min_length=1)
     accentColor: AccentColor
+    subject: str | None = Field(default=None, min_length=1)
+
+
+class V3BookThemeOption(_V3Strict):
+    optionId: str = Field(min_length=1, max_length=80)
     artFont: ArtFontPack
+    chapters: list[V3ChapterThemeColor] = Field(min_length=1)
+    style: str | None = Field(default=None, min_length=1, max_length=160)
+    label: str | None = Field(default=None, min_length=1, max_length=160)
 
 
 class V3RecommendResponse(_V3Strict):
-    chapterColors: list[V3ChapterColorRecommendation] = Field(min_length=1)
+    bookThemeOptions: list[V3BookThemeOption] = Field(min_length=3, max_length=3)
     assistantReply: str = Field(max_length=500)
     usage: V3Usage
 
@@ -590,11 +679,11 @@ class V3RecommendResponse(_V3Strict):
 class V3ChapterThemeChoice(_V3Strict):
     """用户选定的每章主题/色/字体。
 
-    `subject` = 用户确认的该章标题(一句话主题);apply-theme 把它持久化到该章 title
-    角色文字槽(问题5 方向 A 变体 / #236),并把色/字体刷到 variableDecor 槽。"""
+    `subject` 存在时 = 用户确认的该章标题(一句话主题);apply-theme 只在它存在且 title
+    槽为空时持久化,并把色/字体刷到 variableDecor 槽。"""
 
     chapterId: str = Field(min_length=1)
-    subject: str = Field(min_length=1)
+    subject: str | None = Field(default=None, min_length=1)
     accentColor: AccentColor
     artFont: ArtFontPack
 
@@ -621,12 +710,32 @@ class V3CoverRequest(_V3Strict):
     # 选定的封面/封尾模板;null = 跳过该项(封面可选,§4.4)。
     coverTemplateId: str | None = Field(default=None, min_length=1)
     endingTemplateId: str | None = Field(default=None, min_length=1)
+    # Stage5: 200px base64 thumbnails are for local color extraction only; do not
+    # forward them to LLM prompts.
+    coverPhoto: str | None = None
+    endingPhoto: str | None = None
+    # Textual guidance may be sent to 5a copy / 5b AI color design instead of base64.
+    coverPhotoDesc: str | None = None
+    # Cover/ending pages have no chapter owner, so Stage5 carries the selected
+    # whole-book art font explicitly for page-level text carriers.
+    artFont: ArtFontPack | None = None
+    hint: str | None = None
+    userMessage: str = ""
+    history: list[V3ChatTurn] = Field(default_factory=list, max_length=20)
     pages: list[Page]
+
+    @field_validator("coverPhoto", "endingPhoto", "coverPhotoDesc", "artFont", "hint", mode="before")
+    @classmethod
+    def _reject_explicit_null_stage5_optional(cls, value):
+        if value is None:
+            raise ValueError("omit Stage5 optional fields instead of sending null")
+        return value
 
 
 class V3CoverResponse(_V3Strict):
     layoutPatch: list[V3LayoutPatchEntry]  # 跳过时为空数组(§4.4「跳过=空」)。
     assistantReply: str = Field(default=None, max_length=500)
+    needsUserInput: bool = False
     usage: V3Usage
 
 
@@ -645,8 +754,8 @@ class V3FinalizeResponse(_V3Strict):
     usage: V3Usage
 
 
-# ---------- v3.ts: analyze callback envelope ----------------------------------
-# Plain union discriminated on `event` (V3 has only one completed shape: analyze).
+# ---------- v3.ts: async callback envelope ------------------------------------
+# Plain union discriminated on `event` plus `jobKind` for completed variants.
 
 
 class V3CallbackError(_V3Strict):
@@ -667,10 +776,25 @@ class V3AnalyzeCompleted(_V3Strict):
     requestId: str = Field(min_length=1)
     jobKind: Literal["analyze"]
     event: Literal["completed"]
-    # 预览态产物:V3 章节树 + 套好模板/填好通用文案-色的页。
+    # Stage1 tree-only. Stage2 select-layout is the only creator of pages.
     tree: V3LayoutTree
+    usage: V3Usage
+
+
+class SelectLayoutCompleted(_V3Strict):
+    requestId: str = Field(min_length=1)
+    jobKind: Literal["select-layout"]
+    event: Literal["completed"]
     pages: list[Page] = Field(min_length=1)
     usage: V3Usage
+
+
+class AgentAckRequest(_V3Strict):
+    opId: str = Field(min_length=1)
+
+
+class AgentAckResponse(_V3Strict):
+    ok: bool
 
 
 class V3FailedEvent(_V3Strict):
@@ -682,10 +806,7 @@ class V3FailedEvent(_V3Strict):
     progress: int = Field(default=None, ge=0, le=100)
 
 
-V3Callback = Annotated[
-    Union[V3ProgressEvent, V3FailedEvent, V3AnalyzeCompleted],
-    Field(discriminator="event"),
-]
+V3Callback = Union[V3ProgressEvent, V3FailedEvent, V3AnalyzeCompleted, SelectLayoutCompleted]
 
 
 # ---------- v3.ts: select-template legal candidate (§9 / §6) ------------------

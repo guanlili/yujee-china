@@ -78,13 +78,14 @@ def _resolve_page_chapter(
 
 
 def _decor_value_for_text_slot(
-    slot: Mapping[str, object], existing: str | None, subject: str
+    slot: Mapping[str, object], existing: str | None, subject: str | None
 ) -> str | None:
     """一个 variableDecor 文字槽的主题化取值,或返回 None 表示原样不动。
 
     * `title`(章节标题)→ 逐章 `subject`(问题5 / #236),但仅当该槽当前为空(空串或缺失)时。
       非空的 title 是用户在故事环节亲手挑的名字(nameOptions → title 槽),所以原样保留、绝不被
-      subject 覆盖(#236 保留用户手起章名)。写入时 subject 截到槽的 `maxChars`,不会溢出模板。
+      subject 覆盖(#236 保留用户手起章名)。若本次选择没有 subject,空 title 也保持原样。
+      写入时 subject 截到槽的 `maxChars`,不会溢出模板。
       这让 apply-theme 幂等:已持有 subject 的槽是非空的,重复应用同一主题不动它。
     * `body`/`explain`(用户正文)→ None:内容从不重写;颜色/字体挂在树的章节节点上(finalize 烘入)。
     * `decoration` 文字槽 → 已有或空的内容从不用颜色字符串重写。SVG variableDecor 槽是扁平页上
@@ -96,6 +97,8 @@ def _decor_value_for_text_slot(
         # 仅给空(空串/缺失)的 title 填入 subject;非空 title 是用户亲手挑的章名 → 保留(#236)。
         if existing:
             return None
+        if not subject:
+            return None
         max_chars = slot.get("maxChars")
         if isinstance(max_chars, int) and max_chars > 0:
             return subject[:max_chars]
@@ -105,7 +108,7 @@ def _decor_value_for_text_slot(
     return existing if existing is not None else None
 
 
-def _apply_page(page: Page, choice: V3ChapterThemeChoice) -> V3LayoutPatchEntry | None:
+def apply_page(page: Page, choice: V3ChapterThemeChoice) -> V3LayoutPatchEntry | None:
     """一页的 variableDecor patch,或当该页没有可主题化的槽时返回 None。
 
     读该页模板,找出哪些槽是 `variableDecor:true`,把 svg 槽 + 合格的 decoration 文字槽刷上该章
@@ -149,6 +152,9 @@ def _apply_page(page: Page, choice: V3ChapterThemeChoice) -> V3LayoutPatchEntry 
     return V3LayoutPatchEntry(pageIndex=page.pageIndex, texts=texts)
 
 
+_apply_page = apply_page
+
+
 def apply_theme(req: V3ApplyThemeRequest) -> V3ApplyThemeResponse:
     """确定性地刷给定页的每个 variableDecor 槽(§4.3/§9)。
 
@@ -168,7 +174,7 @@ def apply_theme(req: V3ApplyThemeRequest) -> V3ApplyThemeResponse:
 
     patches: list[V3LayoutPatchEntry] = []
     for page in req.pages:
-        entry = _apply_page(page, choice)
+        entry = apply_page(page, choice)
         if entry is not None:
             patches.append(entry)
 
