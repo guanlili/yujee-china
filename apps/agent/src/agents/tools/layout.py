@@ -27,6 +27,57 @@ def _page_index(page: dict[str, Any] | Any) -> int | None:
     return value if isinstance(value, int) and value >= 0 else None
 
 
+def _value(obj: dict[str, Any] | Any, key: str, default: Any = None) -> Any:
+    return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
+
+
+def _page_image_ids(page: dict[str, Any] | Any) -> list[str]:
+    images = _value(page, "images", None)
+    if not isinstance(images, dict):
+        return []
+    return [pid for pid in images.values() if isinstance(pid, str) and pid]
+
+
+def _chapter_photo_map(chapter: dict[str, Any] | Any) -> dict[str, Any]:
+    photos = _value(chapter, "photos", None)
+    out: dict[str, Any] = {}
+    for photo in list(photos or []):
+        photo_id = _value(photo, "photoId", None)
+        if isinstance(photo_id, str) and photo_id:
+            out[photo_id] = photo
+    return out
+
+
+def _fallback_photos_from_page_info(
+    page_info: dict[str, Any], *, focused_page_index: int | None
+) -> list[Any]:
+    """浏览器缩略图缺失时,回退到 page-info 里的 photoId/orientation。"""
+    chapter = page_info.get("chapter") or {}
+    by_id = _chapter_photo_map(chapter)
+    pages = list(page_info.get("pages", []) or [])
+
+    wanted_ids: list[str] = []
+    if focused_page_index is not None:
+        for page in pages:
+            if _page_index(page) == focused_page_index:
+                wanted_ids = _page_image_ids(page)
+                break
+    else:
+        for page in pages:
+            wanted_ids.extend(_page_image_ids(page))
+        if not wanted_ids:
+            wanted_ids = list(by_id)
+
+    seen: set[str] = set()
+    photos: list[Any] = []
+    for photo_id in wanted_ids:
+        if photo_id in seen:
+            continue
+        seen.add(photo_id)
+        photos.append(by_id.get(photo_id) or {"photoId": photo_id})
+    return photos
+
+
 def patches_from_pages(
     pages: list[dict[str, Any]], *, page_indexes: list[int]
 ) -> list[V3LayoutPatchEntry]:
@@ -73,6 +124,10 @@ async def swap_layout(
         return []
 
     photos = await tools.get_page_photos(albumId=req.albumId, chapterId=chapter_id)
+    if not photos:
+        photos = _fallback_photos_from_page_info(
+            page_info, focused_page_index=req.focus.pageIndex
+        )
     if not photos:
         return []
 

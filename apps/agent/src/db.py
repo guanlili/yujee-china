@@ -52,6 +52,22 @@ def _in_flight_is_stale(session_json: Any, now: float) -> bool:
     return now - float(started_at) > _TURN_LEASE_STALE_SECONDS
 
 
+def _payload_page_index(payload_json: Any) -> int | None:
+    if not isinstance(payload_json, dict):
+        return None
+    for key in ("patches", "pagesTexts"):
+        entries = payload_json.get(key)
+        if not isinstance(entries, list):
+            continue
+        for item in entries:
+            if not isinstance(item, dict):
+                continue
+            page_index = item.get("pageIndex")
+            if isinstance(page_index, int) and page_index >= 0:
+                return page_index
+    return None
+
+
 class _SerializedTurnLease:
     def __init__(
         self,
@@ -60,11 +76,13 @@ class _SerializedTurnLease:
         chapter_id: str | None,
         turn_id: str,
         history: list[dict[str, str]],
+        session_json: dict[str, Any],
     ) -> None:
         self.album_id = album_id
         self.chapter_id = chapter_id
         self.turn_id = turn_id
         self.history = history
+        self.session_json = session_json
 
     async def create_pending_turn(
         self,
@@ -242,7 +260,7 @@ class AgentEditRepository:
 
         turn_id = f"turn_{uuid4().hex}"
 
-        def run() -> list[dict[str, str]]:
+        def run() -> tuple[list[dict[str, str]], dict[str, Any]]:
             with psycopg.connect(settings.database_url) as conn:  # type: ignore[attr-defined]
                 with conn.cursor() as cur:
                     cur.execute(
@@ -265,6 +283,7 @@ class AgentEditRepository:
                         (album_id,),
                     )
                     session_id, session_json = cur.fetchone()
+                    current_session_json = _as_session_json(session_json)
                     if _in_flight_turn_id(session_json) and not _in_flight_is_stale(
                         session_json, time()
                     ):
@@ -284,7 +303,7 @@ class AgentEditRepository:
                     )
                     rows = cur.fetchall()
                     next_session_json = {
-                        **_as_session_json(session_json),
+                        **current_session_json,
                         "albumId": album_id,
                         "chapterId": chapter_id,
                         "inFlight": {
@@ -303,12 +322,15 @@ class AgentEditRepository:
                         (Jsonb(next_session_json), session_id),
                     )
                 conn.commit()
-            return [{"role": role, "content": content} for role, content in reversed(rows)]
+            return (
+                [{"role": role, "content": content} for role, content in reversed(rows)],
+                current_session_json,
+            )
 
         deadline = monotonic() + _TURN_LEASE_WAIT_SECONDS
         while True:
             try:
-                history = await asyncio.to_thread(run)
+                history, session_json = await asyncio.to_thread(run)
                 break
             except _TurnAlreadyInFlight as exc:
                 if monotonic() >= deadline:
@@ -325,6 +347,7 @@ class AgentEditRepository:
             chapter_id=chapter_id,
             turn_id=turn_id,
             history=history,
+            session_json=session_json,
         )
 
     async def list_committed_messages(
@@ -489,34 +512,38 @@ class AgentEditRepository:
                         """,
                         (op_id,),
                     )
-                    if isinstance(turn_id, str) and turn_id:
+                    cur.execute(
+                        """
+                        select session_json
+                          from agent.edit_sessions
+                         where id = %s
+                         for update
+                        """,
+                        (session_id,),
+                    )
+                    session_row = cur.fetchone()
+                    if session_row is not None:
+                        session_json = session_row[0]
+                        next_session_json = {
+                            **_as_session_json(session_json),
+                            "albumId": album_id,
+                        }
+                        if isinstance(turn_id, str) and turn_id and _in_flight_turn_id(
+                            session_json
+                        ) == turn_id:
+                            next_session_json.pop("inFlight", None)
+                        page_index = _payload_page_index(payload_json)
+                        if page_index is not None:
+                            next_session_json["lastPageIndex"] = page_index
                         cur.execute(
                             """
-                            select session_json
-                              from agent.edit_sessions
+                            update agent.edit_sessions
+                               set session_json = %s::jsonb,
+                                   updated_at = now()
                              where id = %s
-                             for update
                             """,
-                            (session_id,),
+                            (Jsonb(next_session_json), session_id),
                         )
-                        session_row = cur.fetchone()
-                        if session_row is not None:
-                            session_json = session_row[0]
-                            if _in_flight_turn_id(session_json) == turn_id:
-                                next_session_json = {
-                                    **_as_session_json(session_json),
-                                    "albumId": album_id,
-                                }
-                                next_session_json.pop("inFlight", None)
-                                cur.execute(
-                                    """
-                                    update agent.edit_sessions
-                                       set session_json = %s::jsonb,
-                                           updated_at = now()
-                                     where id = %s
-                                    """,
-                                    (Jsonb(next_session_json), session_id),
-                                )
                     conn.commit()
                     return True
 

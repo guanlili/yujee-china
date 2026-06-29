@@ -1708,6 +1708,48 @@ test('editChatTurn applies pagesTexts patches and acks after album transaction',
   }
 });
 
+test('editChatTurn persists tool layout patches into draft_json book tree', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('edit-chat-tool-patch-booktree');
+  try {
+    const albumId = await seedStoryAlbum(user.id, 1);
+    t.mock.method(agentClient, 'editChatV3', async () => ({
+      kind: 'edit' as const,
+      assistantReply: 'Updated the layout.',
+      patches: [
+        {
+          pageIndex: 0,
+          templateId: 'mag-03',
+          images: { hero: 'p1' },
+          texts: { title: 'New layout' },
+        },
+      ],
+      opId: 'op_tool_layout',
+      usage: chatUsage,
+    }));
+    t.mock.method(agentClient, 'ackEditOp', async () => true);
+
+    await albumService.editChatTurn(user.id, albumId, {
+      language: 'en',
+      chapterId: 'c1',
+      userMessage: 'change this page layout',
+      focusedPageIndex: 0,
+    });
+
+    const draft = (await albumRepo.findById(albumId))!.draftJson as V3StoryDraft;
+    assert.equal(draft.version, 'v3-story');
+    assert.equal(draft.tree.chapters[0]?.chapterId, 'c1');
+    assert.equal(draft.pages?.[0]?.templateId, 'mag-03');
+    assert.deepEqual(draft.pages?.[0]?.images, { hero: 'p1' });
+    assert.deepEqual(draft.pages?.[0]?.texts, { title: 'New layout' });
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('editChatTurn keeps committed album changes when ack fails after the transaction', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');

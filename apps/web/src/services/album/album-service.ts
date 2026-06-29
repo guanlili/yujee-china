@@ -692,6 +692,11 @@ export const albumService = {
     return result;
   },
 
+  // ② 章节故事编辑 — stateful edit-chat turn. Agent can let the LLM choose simple
+  // tools, but those tools do not own or return the authoring tree. Web folds the
+  // returned pagesTexts / page-level patches into `albums.draft_json.pages` inside
+  // this transaction, then acks the Agent op. So the book tree stays Web-owned and
+  // reload/finalize both read the same persisted draft.
   async editChatTurn(
     userId: string,
     albumId: string,

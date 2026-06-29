@@ -291,7 +291,7 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
         # 用户信息:到目前为止的对话 + 本轮消息。
         "history": [turn.model_dump() for turn in req.history],
         "userMessage": req.userMessage,
-        "focusedPageIndex": focused,
+        "focusedPageNumber": focused + 1 if focused is not None else None,
     }
     return [
         {"role": "system", "content": system},

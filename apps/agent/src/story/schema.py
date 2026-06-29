@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 class EditTurn(Protocol):
     history: list[dict[str, str]]
+    session_json: dict[str, Any]
 
     async def create_pending_turn(
         self,

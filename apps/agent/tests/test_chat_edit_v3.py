@@ -114,6 +114,28 @@ def _fake_complete(payload: dict[str, Any]):
     return complete
 
 
+def _fake_tool_call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "choices": [
+            {
+                "message": {
+                    "tool_calls": [
+                        {
+                            "id": "call_page_info",
+                            "type": "function",
+                            "function": {
+                                "name": name,
+                                "arguments": json.dumps(arguments),
+                            },
+                        }
+                    ]
+                }
+            }
+        ],
+        "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+    }
+
+
 def _write_pages_texts() -> list[dict[str, Any]]:
     return [
         {"pageIndex": 0, "texts": {"title": "Coast Days", "explain": "A quiet day by the sea."}},
@@ -137,9 +159,16 @@ def _edit_req(user_message: str, *, chapter_id: str | None = "c1", page_index: i
 
 
 class FakeRepo:
-    def __init__(self, *, op_id: str = "op_fake", committed: list[dict[str, str]] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        op_id: str = "op_fake",
+        committed: list[dict[str, str]] | None = None,
+        session_json: dict[str, Any] | None = None,
+    ) -> None:
         self.op_id = op_id
         self.committed = committed or []
+        self.session_json = session_json or {}
         self.created: list[dict[str, Any]] = []
         self.history_args: dict[str, Any] | None = None
         self.begin_args: dict[str, Any] | None = None
@@ -158,6 +187,7 @@ class FakeRepo:
 
         class Turn:
             history = self.committed
+            session_json = self.session_json
 
             async def create_pending_turn(_, **kwargs: Any) -> str:
                 self.created.append({**kwargs, "status": "pending", "serialized": True})
@@ -389,6 +419,102 @@ def test_edit_chat_write_turn_fetches_page_info_and_returns_pages_texts():
     }
 
 
+def test_edit_chat_story_agent_gets_page_info_through_llm_tool_call():
+    chapter = _chapter().model_copy(update={"chapterId": "c1"})
+    tools = FakeTools(page_info={"chapter": chapter, "pages": _pages()})
+    calls: list[dict[str, Any]] = []
+
+    async def complete(**kwargs):  # noqa: ANN003
+        calls.append(kwargs)
+        if kwargs.get("tools"):
+            return _fake_tool_call("get_page_info", {"page": 2})
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "kind": "edit",
+                                "editTarget": "text",
+                                "assistantReply": "Updated.",
+                                "pageTexts": {
+                                    "pageIndex": 1,
+                                    "texts": {"explain1": "Salt and sun."},
+                                },
+                            }
+                        )
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 11, "completion_tokens": 7},
+        }
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("make this page warmer", page_index=1),
+            repo=FakeRepo(),
+            tools=tools,
+            complete=complete,
+        )
+    )
+
+    assert calls[0]["tools"][0]["function"]["name"] == "get_page_info"
+    tool_schema = calls[0]["tools"][0]["function"]["parameters"]["properties"]
+    assert set(tool_schema) == {"page"}
+    assert tools.page_info_requests == [
+        {"albumId": "alb_v3", "chapterId": "c1", "scope": "page", "pageIndex": 1}
+    ]
+    assert resp.kind == "edit"
+    assert resp.patches[0].pageIndex == 1
+
+
+def test_edit_chat_story_agent_swaps_layout_through_simple_llm_tool_call(monkeypatch):
+    tools = FakeTools(
+        page_info={"chapter": _chapter().model_copy(update={"chapterId": "c1"}), "pages": _pages()},
+        page_photos=[
+            {
+                "photoId": "p1",
+                "ref200px": "data:image/jpeg;base64,AA==",
+                "orientation": "landscape",
+                "takenAt": None,
+            }
+        ],
+    )
+    complete_calls: list[dict[str, Any]] = []
+
+    async def complete(**kwargs):  # noqa: ANN003
+        complete_calls.append(kwargs)
+        return _fake_tool_call("swap_layout", {"page": 2})
+
+    async def fake_gemini(chapters, *, mode, allowAddPages):  # noqa: ANN001
+        return select_layout_agent.GeminiLayoutResult(
+            pages=[{"chapterId": "c1", "templateId": "mag-03", "slots": {"image": "p1"}}]
+        )
+
+    monkeypatch.setattr(edit_handler.select_layout_agent, "gemini_layout", fake_gemini)
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("换模板", page_index=None),
+            repo=FakeRepo(),
+            tools=tools,
+            complete=complete,
+        )
+    )
+
+    tool_names = [tool["function"]["name"] for tool in complete_calls[0]["tools"]]
+    assert tool_names == ["get_page_info", "swap_layout"]
+    swap_schema = complete_calls[0]["tools"][1]["function"]["parameters"]["properties"]
+    assert set(swap_schema) == {"page", "chapter"}
+    assert tools.page_info_requests == [
+        {"albumId": "alb_v3", "chapterId": "c1", "scope": "page", "pageIndex": 1}
+    ]
+    assert tools.page_photo_requests == [{"albumId": "alb_v3", "chapterId": "c1"}]
+    assert resp.kind == "edit"
+    assert resp.patches[0].pageIndex == 1
+    assert resp.patches[0].templateId == "mag-03"
+
+
 def test_edit_chat_confirm_turn_returns_progress_decision():
     repo = FakeRepo(op_id="op_advance")
 
@@ -479,7 +605,19 @@ def test_edit_chat_case4_fetches_page_photos_via_agent_data_and_calls_gemini(mon
 
     monkeypatch.setattr(edit_handler.select_layout_agent, "gemini_layout", fake_gemini)
 
-    resp = asyncio.run(edit_handler.run(_edit_req("change the layout"), repo=FakeRepo(), tools=tools))
+    async def complete(**kwargs):  # noqa: ANN003
+        if kwargs.get("tools"):
+            return _fake_tool_call("swap_layout", {"chapter": True})
+        raise AssertionError("swap_layout tool should execute without entering story writing")
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("change the layout"),
+            repo=FakeRepo(),
+            tools=tools,
+            complete=complete,
+        )
+    )
 
     assert tools.page_photo_requests == [{"albumId": "alb_v3", "chapterId": "c1"}]
     assert calls[0][1:] == ("case4-swap", True)
@@ -522,11 +660,17 @@ def test_edit_chat_case4_without_focused_page_uses_chapter_page_indexes(monkeypa
 
     monkeypatch.setattr(edit_handler.select_layout_agent, "gemini_layout", fake_gemini)
 
+    async def complete(**kwargs):  # noqa: ANN003
+        if kwargs.get("tools"):
+            return _fake_tool_call("swap_layout", {"chapter": True})
+        raise AssertionError("swap_layout tool should execute without entering story writing")
+
     resp = asyncio.run(
         edit_handler.run(
             _edit_req("change the layout", chapter_id="c2", page_index=None),
             repo=FakeRepo(),
             tools=tools,
+            complete=complete,
         )
     )
 
@@ -534,6 +678,158 @@ def test_edit_chat_case4_without_focused_page_uses_chapter_page_indexes(monkeypa
         {"albumId": "alb_v3", "chapterId": "c2", "scope": "chapter", "pageIndex": None}
     ]
     assert [patch.pageIndex for patch in resp.patches] == [3, 4]
+
+
+def test_edit_chat_case4_falls_back_to_page_info_photos_without_transient_refs(monkeypatch):
+    tools = FakeTools(page_info={"chapter": _chapter(), "pages": _pages()}, page_photos=[])
+    seen: dict[str, list[str]] = {}
+
+    async def fake_gemini(chapters, *, mode, allowAddPages):  # noqa: ANN001
+        photos = chapters[0]["photos"]
+        seen["photo_ids"] = [getattr(photo, "photoId", None) for photo in photos]
+        return select_layout_agent.GeminiLayoutResult(
+            pages=[
+                {
+                    "chapterId": "c1",
+                    "templateId": "mag-04",
+                    "slots": {"image1": "p1", "image2": "p2"},
+                }
+            ]
+        )
+
+    monkeypatch.setattr(edit_handler.select_layout_agent, "gemini_layout", fake_gemini)
+
+    async def complete(**kwargs):  # noqa: ANN003
+        if kwargs.get("tools"):
+            return _fake_tool_call("swap_layout", {"page": 2})
+        raise AssertionError("swap_layout tool should execute without entering story writing")
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("change the layout", page_index=1),
+            repo=FakeRepo(),
+            tools=tools,
+            complete=complete,
+        )
+    )
+
+    assert seen["photo_ids"] == ["p1", "p2"]
+    assert resp.kind == "edit"
+    assert resp.patches[0].pageIndex == 1
+    assert resp.patches[0].templateId == "mag-04"
+
+
+def test_edit_chat_infers_chinese_first_page_focus_for_image_edit():
+    tools = FakeTools(page_info={"chapter": _chapter(), "pages": _pages()})
+
+    async def fake_intent(_manifest: str) -> list[str]:
+        return ["p1"]
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("第一页换成大图", page_index=None),
+            repo=FakeRepo(),
+            tools=tools,
+            complete=_fake_complete(
+                {"kind": "edit", "editTarget": "image", "assistantReply": "Updated."}
+            ),
+            call_intent=fake_intent,
+        )
+    )
+
+    assert tools.page_info_requests == [
+        {"albumId": "alb_v3", "chapterId": "c1", "scope": "chapter", "pageIndex": None}
+    ]
+    assert resp.kind == "edit"
+    assert resp.patches[0].pageIndex == 0
+
+
+def test_edit_chat_infers_chinese_numbered_page_focus_for_image_edit():
+    tools = FakeTools(page_info={"chapter": _chapter(), "pages": _pages()})
+
+    async def fake_intent(_manifest: str) -> list[str]:
+        return ["p1", "p2"]
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("第2页换成大图", page_index=None),
+            repo=FakeRepo(),
+            tools=tools,
+            complete=_fake_complete(
+                {"kind": "edit", "editTarget": "image", "assistantReply": "Updated."}
+            ),
+            call_intent=fake_intent,
+        )
+    )
+
+    assert resp.kind == "edit"
+    assert resp.patches[0].pageIndex == 1
+
+
+def test_edit_chat_defaults_deictic_page_reference_to_first_page_for_image_edit():
+    tools = FakeTools(page_info={"chapter": _chapter(), "pages": _pages()})
+
+    async def fake_intent(_manifest: str) -> list[str]:
+        return ["p1"]
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("这个我要大图", page_index=None),
+            repo=FakeRepo(),
+            tools=tools,
+            complete=_fake_complete(
+                {"kind": "edit", "editTarget": "image", "assistantReply": "Updated."}
+            ),
+            call_intent=fake_intent,
+        )
+    )
+
+    assert resp.kind == "edit"
+    assert resp.patches[0].pageIndex == 0
+
+
+def test_edit_chat_uses_last_base_page_for_semantic_followup_without_frontend_focus():
+    tools = FakeTools(page_info={"chapter": _chapter(), "pages": _pages()})
+
+    async def fake_intent(_manifest: str) -> list[str]:
+        return ["p2"]
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("没变啊", page_index=None),
+            repo=FakeRepo(session_json={"lastPageIndex": 1}),
+            tools=tools,
+            complete=_fake_complete(
+                {"kind": "edit", "editTarget": "image", "assistantReply": "Updated."}
+            ),
+            call_intent=fake_intent,
+        )
+    )
+
+    assert resp.kind == "edit"
+    assert resp.patches[0].pageIndex == 1
+
+
+def test_edit_chat_defaults_semantic_followup_to_first_page_without_history_focus():
+    tools = FakeTools(page_info={"chapter": _chapter(), "pages": _pages()})
+
+    async def fake_intent(_manifest: str) -> list[str]:
+        return ["p1"]
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("还是不行", page_index=None),
+            repo=FakeRepo(session_json={}),
+            tools=tools,
+            complete=_fake_complete(
+                {"kind": "edit", "editTarget": "image", "assistantReply": "Updated."}
+            ),
+            call_intent=fake_intent,
+        )
+    )
+
+    assert resp.kind == "edit"
+    assert resp.patches[0].pageIndex == 0
 
 
 # =============================================================================
@@ -674,6 +970,25 @@ def test_image_edit_reorders_existing_photos():
     patch = resp.layoutPatch[0]
     assert list(patch.images.values()) == ["p2", "p1"]
     legal_ids = {c["templateId"] for c in skeleton_v3.legal_candidates("interior", 2)}
+    assert patch.templateId in legal_ids
+
+
+def test_image_edit_big_image_request_keeps_single_photo_even_if_model_returns_more():
+    async def fake_intent(_manifest: str) -> list[str]:
+        return ["p1", "p2"]
+
+    resp = asyncio.run(
+        chapter_chat_v3.run(
+            _req(user_message="这个我要大图，不要小图", focused=1),
+            complete=_fake_complete(
+                {"kind": "edit", "editTarget": "image", "assistantReply": "Updated."}
+            ),
+            call_intent=fake_intent,
+        )
+    )
+    patch = resp.layoutPatch[0]
+    assert list(patch.images.values()) == ["p1"]
+    legal_ids = {c["templateId"] for c in skeleton_v3.legal_candidates("interior", 1)}
     assert patch.templateId in legal_ids
 
 

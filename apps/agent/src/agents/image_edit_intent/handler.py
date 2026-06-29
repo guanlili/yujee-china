@@ -52,6 +52,22 @@ log = get_logger("chat_edit_v3")
 # 章节故事里每个聚焦页都是内页正文页;因此合法候选池始终是 interior 类别
 # (cover/toc/ending 归后续环节所有,从不在这里编辑)。
 _INTERIOR: skeleton_v3.Category = "interior"
+_SINGLE_BIG_IMAGE_TERMS = (
+    "大图",
+    "单张",
+    "一张图",
+    "一张照片",
+    "不要小图",
+    "满版",
+    "全幅",
+    "full bleed",
+    "big image",
+    "big photo",
+    "single image",
+    "single photo",
+    "one image",
+    "one photo",
+)
 
 
 class ChatEditV3Error(Exception):
@@ -191,6 +207,13 @@ def _ground_intent(chapter: V3Chapter, photo_ids: list[str]) -> list[str]:
     return grounded[:capacity] if capacity > 0 else []
 
 
+def _wants_single_big_image(user_message: str) -> bool:
+    normalized = user_message.strip().lower()
+    if not normalized:
+        return False
+    return any(term in normalized for term in _SINGLE_BIG_IMAGE_TERMS)
+
+
 def _execute_intent(page: Page, photo_ids: list[str]) -> V3LayoutPatchEntry | None:
     """在 grounded 后的 photoId 列表上跑确定性引擎 → 一份整页 patch。
 
@@ -267,6 +290,8 @@ async def run_image_edit(
         return None
 
     grounded = _ground_intent(chapter, photo_ids)
+    if _wants_single_big_image(user_message):
+        grounded = grounded[:1]
     patch = _execute_intent(page, grounded)
     if patch is not None:
         log.info(

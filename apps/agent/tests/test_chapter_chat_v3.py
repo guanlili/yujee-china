@@ -449,6 +449,14 @@ def test_model_facing_slot_specs_drop_maxchars_and_role():
             assert "lang" in spec  # language still needed
 
 
+def test_assembly_exposes_human_page_number_not_zero_based_index():
+    _, user = _system_user(_req(user_message="change this page", focused=0))
+
+    payload = json.loads(user)
+    assert payload["focusedPageNumber"] == 1
+    assert "focusedPageIndex" not in payload
+
+
 def test_page_output_examples_present_for_template_with_copy_example():
     # mag-13 (page 0) has a copy-example file → the page carries an outputExample keyed
     # by its authored slot ids; the strings are the template's static example copy.

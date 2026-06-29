@@ -49,6 +49,9 @@ async def run(
     turn = await repo.begin_serialized_turn(req.albumId, chapter_id=req.focus.chapterId, limit=20)
     try:
         history = turn.history
+        req = patches.with_contextual_page_focus(
+            req, session_json=getattr(turn, "session_json", None)
+        )
 
         layout_patches: list[V3LayoutPatchEntry] = []
         pages_texts: list[V3PageTextsPatch] | None = None
@@ -59,13 +62,6 @@ async def run(
         if progress.wants_chapter_done(req):
             progress_decision = progress.chapter_done_decision()
             assistant_reply = "This chapter is confirmed."
-        elif patches.wants_layout_swap(req):
-            try:
-                layout_patches = await layout_tool.swap_layout(req, tools)
-            except Exception as exc:
-                raise EditChatError(f"case4 layout swap failed: {exc}") from exc
-            if layout_patches:
-                assistant_reply = "Updated the layout."
         elif req.focus.chapterId:
             try:
                 assistant_reply, pages_texts, layout_patches, usage = await context.chapter_chat_bundle(
