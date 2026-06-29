@@ -18,20 +18,29 @@ _CONFIRM_CHAPTER_MESSAGES = {
     "looks good",
     "looks great",
     "满意",
+    "满意了",
     "可以",
+    "可以了",
     "好的",
     "好",
+    "好了",
     "这一章可以",
+    "这一章可以了",
     "这一章好了",
     "内容确认",
     "继续下一章",
 }
+_CONFIRM_CHAPTER_STRIP_CHARS = " \t\r\n。.!！?？,，;；:：~～…"
+
+
+def _normalize_confirm_message(message: str) -> str:
+    return message.strip().lower().strip(_CONFIRM_CHAPTER_STRIP_CHARS)
 
 
 def wants_chapter_done(req: V3EditChatRequest) -> bool:
     if not req.focus.chapterId:
         return False
-    return req.userMessage.strip().lower() in _CONFIRM_CHAPTER_MESSAGES
+    return _normalize_confirm_message(req.userMessage) in _CONFIRM_CHAPTER_MESSAGES
 
 
 def chapter_done_decision() -> V3EditProgressDecision:
