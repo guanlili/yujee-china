@@ -8,7 +8,24 @@ from __future__ import annotations
 from ..schemas import V3EditChatRequest, V3EditProgressDecision
 
 CONFIRM_CHAPTER_COMMAND = "[confirm-chapter]"
-_CONFIRM_CHAPTER_MESSAGES = {CONFIRM_CHAPTER_COMMAND}
+_CONFIRM_CHAPTER_MESSAGES = {
+    CONFIRM_CHAPTER_COMMAND,
+    "ok",
+    "okay",
+    "yes",
+    "good",
+    "great",
+    "looks good",
+    "looks great",
+    "满意",
+    "可以",
+    "好的",
+    "好",
+    "这一章可以",
+    "这一章好了",
+    "内容确认",
+    "继续下一章",
+}
 
 
 def wants_chapter_done(req: V3EditChatRequest) -> bool:

@@ -685,6 +685,34 @@ def test_edit_chat_confirm_turn_returns_progress_decision():
     }
 
 
+def test_edit_chat_simple_ok_confirms_chapter_instead_of_repeating_prior_tool():
+    repo = FakeRepo(
+        op_id="op_ok",
+        committed=[
+            {"role": "assistant", "content": "Updated the layout."},
+            {"role": "user", "content": "换模版"},
+        ],
+    )
+
+    async def complete(**kwargs):  # noqa: ANN003
+        raise AssertionError("simple acknowledgement must not enter LLM tool routing")
+
+    resp = asyncio.run(
+        edit_handler.run(
+            _edit_req("ok", chapter_id="c1", page_index=2),
+            repo=repo,
+            tools=FakeTools(),
+            complete=complete,
+        )
+    )
+
+    assert resp.kind == "talk"
+    assert resp.patches == []
+    assert resp.progressDecision is not None
+    assert resp.progressDecision.chapterDone is True
+    assert repo.created[0]["kind"] == "advance"
+
+
 def test_edit_chat_does_not_confirm_when_praise_also_requests_an_edit():
     repo = FakeRepo(op_id="op_edit")
     chapter = _chapter().model_copy(update={"chapterId": "c1"})
