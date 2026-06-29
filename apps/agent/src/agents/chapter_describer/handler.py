@@ -124,6 +124,18 @@ def _keyword_list(raw: Any, *, field: str) -> list[str]:
     return keywords
 
 
+_COMPOSITION_VALUES = {"closeup", "focal", "wide"}
+
+
+def _composition_value(raw: Any) -> str | None:
+    """宽容解析逐图构图:合法 => 值;非法/缺失 => None(交给排版兜底阶梯当『任意』)。"""
+    if isinstance(raw, str):
+        text = raw.strip().lower()
+        if text in _COMPOSITION_VALUES:
+            return text
+    return None
+
+
 def _assemble_result(parsed: Any, grouping: GroupingResult) -> DescribeResult:
     raw_chapters = parsed.get("chapters") if isinstance(parsed, dict) else None
     if not isinstance(raw_chapters, list):
@@ -143,6 +155,7 @@ def _assemble_result(parsed: Any, grouping: GroupingResult) -> DescribeResult:
 
     chapter_descriptions: dict[str, str] = {}
     image_descriptions: dict[str, str] = {}
+    image_compositions: dict[str, str] = {}
     chapter_title_hints: dict[str, str] = {}
     chapter_keywords: dict[str, list[str]] = {}
     chapter_visual_summaries: dict[str, str] = {}
@@ -156,6 +169,10 @@ def _assemble_result(parsed: Any, grouping: GroupingResult) -> DescribeResult:
             scenes = {}
         if not isinstance(scenes, dict):
             raise VisionError(f"describe-chapters {chapter.chapterId} scenes must be an object")
+
+        compositions = raw.get("compositions", {})
+        if not isinstance(compositions, dict):
+            compositions = {}
 
         # 章节 description 不再由识图阶段写:留作目录(TOC)占位,后期写目录才填。
         title_hint = _optional_text(
@@ -185,6 +202,9 @@ def _assemble_result(parsed: Any, grouping: GroupingResult) -> DescribeResult:
                     field=f"scenes.{photo_id}",
                     max_len=300,
                 )
+            composition = _composition_value(compositions.get(photo_id))
+            if composition is not None:
+                image_compositions[photo_id] = composition
 
     raw_unplaced = parsed.get("unplacedScenes", {}) if isinstance(parsed, dict) else {}
     if raw_unplaced is None:
@@ -203,6 +223,7 @@ def _assemble_result(parsed: Any, grouping: GroupingResult) -> DescribeResult:
     return DescribeResult(
         chapterDescriptions=chapter_descriptions,
         imageDescriptions=image_descriptions,
+        imageCompositions=image_compositions,
         chapterTitleHints=chapter_title_hints,
         chapterKeywords=chapter_keywords,
         chapterVisualSummaries=chapter_visual_summaries,

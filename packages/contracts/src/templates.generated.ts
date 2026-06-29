@@ -68,6 +68,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "hero",
           "detail"
+        ],
+        "composition": [
+          "focal",
+          "closeup"
         ]
       }
     ],
@@ -78,7 +82,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "user",
         "hint": "封面主标题，意象短语",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "夏日海岸"
       },
       {
         "id": "label",
@@ -86,21 +91,24 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 20,
         "lang": "en",
         "hint": "封面副标签:系列名 / 卷号 / 年份等小字",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "Series · No.01"
       },
       {
         "id": "explain1",
         "role": "explain",
         "maxChars": 40,
         "lang": "user",
-        "hint": "封面图注一"
+        "hint": "封面图注一",
+        "sample": "午后的光落在窗台上"
       },
       {
         "id": "explain2",
         "role": "explain",
         "maxChars": 40,
         "lang": "user",
-        "hint": "封面图注二，接图注一"
+        "hint": "封面图注二，接图注一",
+        "sample": "风轻轻掀起窗帘的一角"
       },
       {
         "id": "folio",
@@ -121,7 +129,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 30,
         "lang": "user",
         "hint": "目录页大标题（如「目录」「Contents」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "目录"
       },
       {
         "id": "folio",
@@ -167,6 +176,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "hero",
           "detail"
+        ],
+        "composition": [
+          "focal",
+          "closeup"
         ]
       }
     ],
@@ -177,7 +190,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "en",
         "hint": "只写地点 / 章节标签小字(上方小字 kicker),如「京都 ·」;不要带日期——日期单独走 date 槽,两者分开填",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "京都 ·"
       },
       {
         "id": "date",
@@ -185,7 +199,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 10,
         "lang": "en",
         "hint": "只写日期(下方放大显示的较大一行),如「03 / 30」或「3 月 30 号」;不要带地点——地点单独走 label 槽",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "03 / 30"
       },
       {
         "id": "folio",
@@ -207,6 +222,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "hero",
           "detail"
+        ],
+        "composition": [
+          "focal",
+          "closeup"
         ]
       },
       {
@@ -217,6 +236,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "detail",
           "fill"
+        ],
+        "composition": [
+          "wide",
+          "focal"
         ]
       }
     ],
@@ -226,14 +249,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "主图说明"
+        "hint": "主图说明",
+        "sample": "清晨的码头，海水还带着夜的凉意"
       },
       {
         "id": "explain2",
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "次图说明，接主图"
+        "hint": "次图说明，接主图",
+        "sample": "我们坐在石阶上看船一艘艘出港"
       },
       {
         "id": "date",
@@ -241,7 +266,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "en",
         "hint": "日期数字,如 04/24",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "04/24"
       },
       {
         "id": "folio",
@@ -263,6 +289,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "hero",
           "detail"
+        ],
+        "composition": [
+          "focal",
+          "closeup"
         ]
       }
     ],
@@ -273,7 +303,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 24,
         "lang": "user",
         "hint": "整页主标题，可两行",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "回到那片海"
       },
       {
         "id": "label",
@@ -281,14 +312,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 20,
         "lang": "en",
         "hint": "右上角小标签,如章节名 + 页码",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "Chapter · 05"
       },
       {
         "id": "explain",
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "整页正文段落"
+        "hint": "整页正文段落",
+        "sample": "那天的风很轻，我们沿着海边一直走，没有说太多话，只是看着浪一遍遍铺上沙滩。"
       },
       {
         "id": "folio",
@@ -310,6 +343,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "hero",
           "detail"
+        ],
+        "composition": [
+          "focal",
+          "closeup"
         ]
       }
     ],
@@ -334,6 +371,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "detail",
           "fill"
+        ],
+        "composition": [
+          "wide",
+          "focal"
         ]
       },
       {
@@ -344,6 +385,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "hero",
           "detail"
+        ],
+        "composition": [
+          "focal",
+          "closeup"
         ]
       }
     ],
@@ -354,21 +399,24 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 24,
         "lang": "user",
         "hint": "该页标题",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "山间的清晨"
       },
       {
         "id": "explain1",
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "上图说明"
+        "hint": "上图说明",
+        "sample": "雾还没散，山脊只露出淡淡的轮廓"
       },
       {
         "id": "explain2",
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "主图说明，接上图"
+        "hint": "主图说明，接上图",
+        "sample": "阳光一点点爬上来，把云染成金色"
       },
       {
         "id": "folio",
@@ -390,6 +438,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "hero",
           "detail"
+        ],
+        "composition": [
+          "focal",
+          "closeup"
         ]
       }
     ],
@@ -400,21 +452,24 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "user",
         "hint": "短意象标题（≤4 字）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "那一刻"
       },
       {
         "id": "explain1",
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "图注，点出人物或场景"
+        "hint": "图注，点出人物或场景",
+        "sample": "他回头笑了一下，正好被光照亮"
       },
       {
         "id": "explain2",
         "role": "explain",
         "maxChars": 480,
         "lang": "user",
-        "hint": "较长图注，展开这一刻；分两段（段间空行），第一段抓住瞬间、第二段回味"
+        "hint": "较长图注，展开这一刻；分两段（段间空行），第一段抓住瞬间、第二段回味",
+        "sample": "那是个很普通的下午，阳光斜斜地照进来，把整个房间都染成暖色。\n\n后来我常想起这一幕，想起当时谁也没说话，却觉得格外安心。"
       },
       {
         "id": "date",
@@ -422,7 +477,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "en",
         "hint": "日期数字,如 08/24",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "08/24"
       },
       {
         "id": "folio",
@@ -444,6 +500,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "detail",
           "fill"
+        ],
+        "composition": [
+          "wide",
+          "focal"
         ]
       },
       {
@@ -454,6 +514,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "hero",
           "detail"
+        ],
+        "composition": [
+          "focal",
+          "closeup"
         ]
       }
     ],
@@ -464,35 +528,40 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 24,
         "lang": "user",
         "hint": "该页标题，可两行",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "海边的一天"
       },
       {
         "id": "body",
         "role": "body",
         "maxChars": 80,
         "lang": "user",
-        "hint": "一句短引语"
+        "hint": "一句短引语",
+        "sample": "原来快乐可以这么简单"
       },
       {
         "id": "explain1",
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "上图说明"
+        "hint": "上图说明",
+        "sample": "退潮后留下一片湿亮的沙"
       },
       {
         "id": "explain2",
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "主图说明"
+        "hint": "主图说明",
+        "sample": "孩子追着浪花跑来跑去"
       },
       {
         "id": "explain3",
         "role": "explain",
         "maxChars": 220,
         "lang": "user",
-        "hint": "图片下方的事件说明：用 3–4 句话讲清这组照片背后的经过与情景（说明+事件叙述），比上面两条图注更长更具体"
+        "hint": "图片下方的事件说明：用 3–4 句话讲清这组照片背后的经过与情景（说明+事件叙述），比上面两条图注更长更具体",
+        "sample": "那天我们一早就到了海边，本来只打算待一会儿，却一直玩到太阳落山。捡贝壳、堆沙堡、看海鸟，谁也不愿意先走。"
       },
       {
         "id": "folio",
@@ -543,6 +612,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "hero",
           "detail"
+        ],
+        "composition": [
+          "focal",
+          "closeup"
         ]
       }
     ],
@@ -553,7 +626,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 24,
         "lang": "user",
         "hint": "该页标题，可两行",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "静物与光"
       },
       {
         "id": "label",
@@ -561,14 +635,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 20,
         "lang": "en",
         "hint": "图版标签,如「Plate · 11 / 30」",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "Plate · 11 / 30"
       },
       {
         "id": "explain",
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "图说"
+        "hint": "图说",
+        "sample": "桌上的花开了一半，光从侧面打过来"
       },
       {
         "id": "folio",
@@ -590,6 +666,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "hero",
           "detail"
+        ],
+        "composition": [
+          "focal",
+          "closeup"
         ]
       }
     ],
@@ -606,14 +686,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 24,
         "lang": "user",
         "hint": "封面主标题，可两行（作者名/作品名）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "光阴的样子"
       },
       {
         "id": "explain",
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "封面引言/简介"
+        "hint": "封面引言/简介",
+        "sample": "这是一本关于时间与记忆的小书，收着那些不愿被遗忘的片刻。"
       },
       {
         "id": "folio",
@@ -635,6 +717,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "hero",
           "detail"
+        ],
+        "composition": [
+          "focal",
+          "closeup"
         ]
       },
       {
@@ -645,6 +731,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "detail",
           "fill"
+        ],
+        "composition": [
+          "wide",
+          "focal"
         ]
       }
     ],
@@ -655,14 +745,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 24,
         "lang": "user",
         "hint": "该页标题",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "慢下来的午后"
       },
       {
         "id": "body",
         "role": "body",
         "maxChars": 80,
         "lang": "user",
-        "hint": "短正文"
+        "hint": "短正文",
+        "sample": "茶凉了又续，话说了一半就停在窗外的光里。"
       },
       {
         "id": "date",
@@ -670,7 +762,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "en",
         "hint": "日期,如 May 2026",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "May 2026"
       },
       {
         "id": "folio",
@@ -692,6 +785,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "detail",
           "fill"
+        ],
+        "composition": [
+          "wide",
+          "focal"
         ]
       },
       {
@@ -702,6 +799,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "detail",
           "fill"
+        ],
+        "composition": [
+          "wide",
+          "focal"
         ]
       }
     ],
@@ -711,14 +812,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "左图说明"
+        "hint": "左图说明",
+        "sample": "左边是清晨刚醒的街道"
       },
       {
         "id": "explain2",
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "右图说明，接左图"
+        "hint": "右图说明，接左图",
+        "sample": "右边是傍晚归家时的灯火"
       },
       {
         "id": "folio",
@@ -740,6 +843,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "detail",
           "fill"
+        ],
+        "composition": [
+          "wide",
+          "focal"
         ]
       }
     ],
@@ -750,21 +857,24 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "user",
         "hint": "极短引题（单词/2 字）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "之间"
       },
       {
         "id": "explain1",
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "左栏说明"
+        "hint": "左栏说明",
+        "sample": "左栏：去时的路又长又新鲜"
       },
       {
         "id": "explain2",
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "右栏说明"
+        "hint": "右栏说明",
+        "sample": "右栏：回来时只剩满身的风"
       },
       {
         "id": "folio",
@@ -802,35 +912,40 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 20,
         "lang": "user",
         "hint": "合集主标题，短词（如「365 Stories」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "365 Stories"
       },
       {
         "id": "body1",
         "role": "body",
         "maxChars": 180,
         "lang": "user",
-        "hint": "第一段故事正文"
+        "hint": "第一段故事正文",
+        "sample": "那年冬天特别冷，我们却总爱往外跑，回来时手是冰的，心是热的。"
       },
       {
         "id": "explain1",
         "role": "explain",
         "maxChars": 20,
         "lang": "user",
-        "hint": "第一段作者署名（如「Steven D.K」）"
+        "hint": "第一段作者署名（如「Steven D.K」）",
+        "sample": "Steven D.K"
       },
       {
         "id": "body2",
         "role": "body",
         "maxChars": 180,
         "lang": "user",
-        "hint": "第二段故事正文"
+        "hint": "第二段故事正文",
+        "sample": "她说想看海，于是我们临时决定出发，开了一整夜的车。"
       },
       {
         "id": "explain2",
         "role": "explain",
         "maxChars": 20,
         "lang": "user",
-        "hint": "第二段作者署名（如「July Zh」）"
+        "hint": "第二段作者署名（如「July Zh」）",
+        "sample": "July Zh"
       }
     ]
   },
@@ -849,7 +964,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "user",
         "hint": "封面书名，展示大字（如「YVAINE」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "YVAINE"
       },
       {
         "id": "subtitle",
@@ -857,21 +973,24 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "user",
         "hint": "副标题，接书名下方略小（如「LIFE」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "LIFE"
       },
       {
         "id": "year",
         "role": "decoration",
         "maxChars": 20,
         "lang": "en",
-        "hint": "封面年份列表，每行一个年份（换行分隔），如「2026\n2025\n2024」"
+        "hint": "封面年份列表，每行一个年份（换行分隔），如「2026\n2025\n2024」",
+        "sample": "2026\n2025\n2024"
       },
       {
         "id": "city",
         "role": "decoration",
         "maxChars": 30,
         "lang": "en",
-        "hint": "封面城市列表，每行一个城市（换行分隔），如「Shanghai\nBeijing\nDali」"
+        "hint": "封面城市列表，每行一个城市（换行分隔），如「Shanghai\nBeijing\nDali」",
+        "sample": "Shanghai\nBeijing\nDali"
       }
     ]
   },
@@ -893,21 +1012,24 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "user",
         "hint": "封底主标题，意象短词两行排（如「意外」「时光」），收束整册",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "时光"
       },
       {
         "id": "body",
         "role": "body",
         "maxChars": 80,
         "lang": "user",
-        "hint": "封底结尾，温柔收束，可留余韵（「未完待续…」）"
+        "hint": "封底结尾，温柔收束，可留余韵（「未完待续…」）",
+        "sample": "未完待续…"
       },
       {
         "id": "explain",
         "role": "explain",
         "maxChars": 20,
         "lang": "user",
-        "hint": "作者署名，竖排（如「Yavine Yun」）"
+        "hint": "作者署名，竖排（如「Yavine Yun」）",
+        "sample": "Yavine Yun"
       },
       {
         "id": "label",
@@ -915,14 +1037,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 4,
         "lang": "en",
         "hint": "大号装饰数字编号，如「26」",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "26"
       },
       {
         "id": "date",
         "role": "decoration",
         "maxChars": 12,
         "lang": "en",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "2026"
       }
     ]
   },
@@ -941,21 +1065,24 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 16,
         "lang": "user",
         "hint": "竖排大标题（如「nano / banana」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "nano / banana"
       },
       {
         "id": "explain",
         "role": "explain",
         "maxChars": 40,
         "lang": "user",
-        "hint": "正文上方导语小标题，一句"
+        "hint": "正文上方导语小标题，一句",
+        "sample": "关于一些微小而确切的快乐"
       },
       {
         "id": "body",
         "role": "body",
         "maxChars": 180,
         "lang": "user",
-        "hint": "页面主正文，接导语"
+        "hint": "页面主正文，接导语",
+        "sample": "它们藏在最寻常的日子里——一杯热茶、一阵风、一句不经意的问候。等你慢下来，才发现它们一直都在。"
       },
       {
         "id": "label1",
@@ -963,7 +1090,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 20,
         "lang": "en",
         "hint": "竖排英文装饰小字（rotate -90°），靠内侧，短句即可",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "small joys daily"
       },
       {
         "id": "label2",
@@ -971,7 +1099,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 20,
         "lang": "en",
         "hint": "竖排英文装饰小字（rotate -90°），靠外侧，短句即可",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "every single day"
       }
     ]
   },
@@ -990,49 +1119,56 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 18,
         "lang": "user",
         "hint": "左上大标题，1–2 短词分两行",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "山与海"
       },
       {
         "id": "explain1",
         "role": "explain",
         "maxChars": 24,
         "lang": "user",
-        "hint": "右上导语小标题，呼应大标题"
+        "hint": "右上导语小标题，呼应大标题",
+        "sample": "在路上遇见的光"
       },
       {
         "id": "body",
         "role": "body",
         "maxChars": 80,
         "lang": "user",
-        "hint": "右上正文导语，接小标题"
+        "hint": "右上正文导语，接小标题",
+        "sample": "一边是连绵的山，一边是无边的海，我们刚好走在中间。"
       },
       {
         "id": "explain2",
         "role": "explain",
         "maxChars": 40,
         "lang": "user",
-        "hint": "中部横图图注"
+        "hint": "中部横图图注",
+        "sample": "中午的阳光把海面晒成碎银"
       },
       {
         "id": "date",
         "role": "decoration",
         "maxChars": 12,
         "lang": "en",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "May 2026"
       },
       {
         "id": "label1",
         "role": "decoration",
         "maxChars": 12,
         "lang": "en",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "No.27"
       },
       {
         "id": "label2",
         "role": "decoration",
         "maxChars": 20,
         "lang": "en",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "On the Road"
       }
     ]
   },
@@ -1051,7 +1187,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 24,
         "lang": "user",
         "hint": "左侧大字主标题，短词分多行（如「My Secret Place」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "My Secret Place"
       },
       {
         "id": "headline",
@@ -1059,14 +1196,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 90,
         "lang": "user",
         "hint": "左侧大字陈述句，接主标题，点出这地方对「我」的意义",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "这里没人认识我，却让我觉得最像自己。"
       },
       {
         "id": "explain",
         "role": "explain",
         "maxChars": 40,
         "lang": "user",
-        "hint": "左下角小图注"
+        "hint": "左下角小图注",
+        "sample": "墙角那盏旧灯，亮了很多年"
       }
     ]
   },
@@ -1088,21 +1227,24 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 22,
         "lang": "user",
         "hint": "右对齐大标题，一句旅途主题短语",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "把整片海都装进行囊"
       },
       {
         "id": "body",
         "role": "body",
         "maxChars": 90,
         "lang": "user",
-        "hint": "右对齐图注，接上方双图"
+        "hint": "右对齐图注，接上方双图",
+        "sample": "出发那天天还没亮，海风已经先到了，我们笑着说这趟一定值得。"
       },
       {
         "id": "label",
         "role": "decoration",
         "maxChars": 12,
         "lang": "en",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "Travel"
       }
     ]
   },
@@ -1120,7 +1262,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "explain",
         "maxChars": 90,
         "lang": "user",
-        "hint": "横图右下角多行图注"
+        "hint": "横图右下角多行图注",
+        "sample": "傍晚的海退得很远\n沙滩上留下一道道波纹\n像是时间写下的字"
       }
     ]
   },
@@ -1129,22 +1272,46 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     "category": "interior",
     "images": [
       {
-        "id": "image1"
+        "id": "image1",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image2"
+        "id": "image2",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image3"
+        "id": "image3",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image4"
+        "id": "image4",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image5"
+        "id": "image5",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image6"
+        "id": "image6",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       }
     ],
     "texts": [
@@ -1153,7 +1320,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "body",
         "maxChars": 80,
         "lang": "user",
-        "hint": "底部居中图注，串起这六张照片"
+        "hint": "底部居中图注，串起这六张照片",
+        "sample": "这六张照片来自同一个下午，光影在不停变化，而我们一直在笑。"
       }
     ]
   },
@@ -1172,7 +1340,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 30,
         "lang": "user",
         "hint": "封面书名，落左下角（如「A Year of Somewhere」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "A Year of Somewhere"
       },
       {
         "id": "label",
@@ -1180,7 +1349,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "en",
         "hint": "封面地名标签，竖排沿左缘大字重复出现，如「NORWAY」",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "NORWAY"
       }
     ]
   },
@@ -1205,28 +1375,32 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 22,
         "lang": "user",
         "hint": "左侧竖排大字标题，短词（如「Three Mornings」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "Three Mornings"
       },
       {
         "id": "caption1",
         "role": "explain",
         "maxChars": 40,
         "lang": "user",
-        "hint": "第一张图图注"
+        "hint": "第一张图图注",
+        "sample": "第一个清晨，雾很重"
       },
       {
         "id": "caption2",
         "role": "explain",
         "maxChars": 40,
         "lang": "user",
-        "hint": "第二张图图注"
+        "hint": "第二张图图注",
+        "sample": "第二个清晨，下了点小雨"
       },
       {
         "id": "caption3",
         "role": "explain",
         "maxChars": 40,
         "lang": "user",
-        "hint": "第三张图图注"
+        "hint": "第三张图图注",
+        "sample": "第三个清晨，终于放晴"
       }
     ]
   },
@@ -1245,14 +1419,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 24,
         "lang": "user",
         "hint": "顶部居中大字主标题，压竖图上沿（如「All Alone」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "All Alone"
       },
       {
         "id": "explain",
         "role": "explain",
         "maxChars": 120,
         "lang": "user",
-        "hint": "底部居中收尾图注"
+        "hint": "底部居中收尾图注",
+        "sample": "一个人走了很久，才听见自己心里的声音。"
       }
     ]
   },
@@ -1271,7 +1447,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "user",
         "hint": "左上角引导小标签（如「And」「Notes」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "Notes"
       },
       {
         "id": "date",
@@ -1279,14 +1456,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 14,
         "lang": "user",
         "hint": "右上角日期/地点小标签，与左侧对仗（如「June 2026」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "June 2026"
       },
       {
         "id": "body",
         "role": "explain",
         "maxChars": 120,
         "lang": "user",
-        "hint": "图下左侧散文收束语"
+        "hint": "图下左侧散文收束语",
+        "sample": "有些话不必说出口，写下来，留给某个安静的午后慢慢读。"
       }
     ]
   },
@@ -1305,14 +1484,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 16,
         "lang": "user",
         "hint": "居中大字主标题，叠在大图上的白色面板里，地名/短词（如「Seaside」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "Seaside"
       },
       {
         "id": "explain",
         "role": "explain",
         "maxChars": 48,
         "lang": "user",
-        "hint": "左下角浅色小图注"
+        "hint": "左下角浅色小图注",
+        "sample": "海风带着咸味，吹了一整个下午"
       }
     ]
   },
@@ -1330,7 +1511,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "body",
         "maxChars": 90,
         "lang": "user",
-        "hint": "图上方左侧一小段闭合手记"
+        "hint": "图上方左侧一小段闭合手记",
+        "sample": "那天我们什么也没做，只是看着云慢慢飘过，好像时间也跟着慢了下来。"
       },
       {
         "id": "decor",
@@ -1338,7 +1520,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 44,
         "lang": "user",
         "hint": "右上角倾斜装饰短句，呼应正文里最戳人的那句",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "原来发呆也是一种幸福"
       }
     ]
   },
@@ -1360,7 +1543,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 90,
         "lang": "user",
         "hint": "居中大字陈述句，跨上下两图交界，一句心境",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "走到这里才明白，最好的风景一直都在身边。"
       }
     ]
   },
@@ -1402,22 +1586,46 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     "category": "interior",
     "images": [
       {
-        "id": "image1"
+        "id": "image1",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image2"
+        "id": "image2",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image3"
+        "id": "image3",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image4"
+        "id": "image4",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image5"
+        "id": "image5",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image6"
+        "id": "image6",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       }
     ],
     "texts": []
@@ -1427,19 +1635,39 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     "category": "interior",
     "images": [
       {
-        "id": "image1"
+        "id": "image1",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image2"
+        "id": "image2",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image3"
+        "id": "image3",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image4"
+        "id": "image4",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image5"
+        "id": "image5",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       }
     ],
     "texts": [
@@ -1449,7 +1677,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "user",
         "hint": "右中大字主标题，短词（如「Notes」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "Notes"
       },
       {
         "id": "subtitle",
@@ -1457,14 +1686,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 20,
         "lang": "user",
         "hint": "大标题续行（如「from Elsewhere」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "from Elsewhere"
       },
       {
         "id": "caption",
         "role": "explain",
         "maxChars": 120,
         "lang": "user",
-        "hint": "右上拼贴下方图注段"
+        "hint": "右上拼贴下方图注段",
+        "sample": "这些照片来自不同的地方，却拼成了同一段心情——关于远行，也关于回家。"
       }
     ]
   },
@@ -1486,21 +1717,24 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 16,
         "lang": "user",
         "hint": "左上超大字主标题，一个短词（如「Notes」「Home」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "Notes"
       },
       {
         "id": "line",
         "role": "explain",
         "maxChars": 40,
         "lang": "user",
-        "hint": "中部一行承上启下的私语"
+        "hint": "中部一行承上启下的私语",
+        "sample": "写给那些来不及说的话"
       },
       {
         "id": "caption",
         "role": "explain",
         "maxChars": 130,
         "lang": "user",
-        "hint": "右下角收尾图注段"
+        "hint": "右下角收尾图注段",
+        "sample": "翻到最后一页才发现，原来记下的不只是风景，还有当时的自己。"
       }
     ]
   },
@@ -1519,7 +1753,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 16,
         "lang": "user",
         "hint": "底部一行大号主标题，单个短词（如「Watermelon」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "Watermelon"
       }
     ]
   },
@@ -1541,14 +1776,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 30,
         "lang": "user",
         "hint": "顶部大字主标题，一句收束一天的陈述（如「then we went home,」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "then we went home,"
       },
       {
         "id": "caption",
         "role": "explain",
         "maxChars": 40,
         "lang": "user",
-        "hint": "右侧小图注，接标题"
+        "hint": "右侧小图注，接标题",
+        "sample": "路灯一盏盏亮起来"
       }
     ]
   },
@@ -1557,16 +1794,32 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     "category": "interior",
     "images": [
       {
-        "id": "image1"
+        "id": "image1",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image2"
+        "id": "image2",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image3"
+        "id": "image3",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image4"
+        "id": "image4",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       }
     ],
     "texts": [
@@ -1576,14 +1829,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 26,
         "lang": "user",
         "hint": "左上大字主标题，一句旅程收尾",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "回家的路上"
       },
       {
         "id": "explain",
         "role": "explain",
         "maxChars": 130,
         "lang": "user",
-        "hint": "标题下图注段，串起这四张照片"
+        "hint": "标题下图注段，串起这四张照片",
+        "sample": "这四张照片串起了归途——从海边到山间，再到熟悉的街角，最后停在家门口的那盏灯下。"
       }
     ]
   },
@@ -1592,31 +1847,67 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     "category": "interior",
     "images": [
       {
-        "id": "image1"
+        "id": "image1",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image2"
+        "id": "image2",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image3"
+        "id": "image3",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image4"
+        "id": "image4",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image5"
+        "id": "image5",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image6"
+        "id": "image6",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image7"
+        "id": "image7",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image8"
+        "id": "image8",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       },
       {
-        "id": "image9"
+        "id": "image9",
+        "composition": [
+          "wide",
+          "focal"
+        ]
       }
     ],
     "texts": []
@@ -1636,7 +1927,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "user",
         "hint": "顶部超大地名，横排铺满页顶（如「NORWAY」），首字母略大",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "NORWAY"
       }
     ]
   },
@@ -1661,7 +1953,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 16,
         "lang": "user",
         "hint": "右下角主标题，全大写短词（如「ANOTHER」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "ANOTHER"
       }
     ]
   },
@@ -1680,7 +1973,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 16,
         "lang": "user",
         "hint": "顶部超大地名/主标题，单行（如「NORWAY」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "NORWAY"
       }
     ]
   },
@@ -1705,7 +1999,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 40,
         "lang": "user",
         "hint": "跨页大标题，左页只露左片段（如「Notes from Elsewhere」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "Notes from Elsewhere"
       }
     ]
   },
@@ -1724,7 +2019,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 28,
         "lang": "user",
         "hint": "跨页大标题右片段，短词分多行（如「Notes from Elsewhere」）",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "Notes from Elsewhere"
       }
     ]
   },
@@ -1740,6 +2036,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "quality": [
           "hero",
           "detail"
+        ],
+        "composition": [
+          "focal",
+          "closeup"
         ]
       }
     ],
@@ -1750,14 +2050,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 24,
         "lang": "user",
         "hint": "封面主标题，可两行",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "晴日漫步"
       },
       {
         "id": "body",
         "role": "body",
         "maxChars": 80,
         "lang": "user",
-        "hint": "封面简介"
+        "hint": "封面简介",
+        "sample": "趁着好天气，我们出门走了很久，把整条街都晒得暖暖的。"
       },
       {
         "id": "label1",
@@ -1765,7 +2067,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 20,
         "lang": "en",
         "hint": "分类 / 系列标签,如「nº 01 · Portrait」",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "nº 01 · Portrait"
       },
       {
         "id": "label2",
@@ -1773,7 +2076,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 20,
         "lang": "en",
         "hint": "卷号,如 01",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "01"
       },
       {
         "id": "date",
@@ -1781,7 +2085,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "maxChars": 12,
         "lang": "en",
         "hint": "日期,如 MAY 26",
-        "variableDecor": true
+        "variableDecor": true,
+        "sample": "MAY 26"
       }
     ]
   }

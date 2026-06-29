@@ -96,19 +96,61 @@ def _slots_legal(template_id: str, page_photo_ids: Sequence[str], slots: Any) ->
 
 
 def _fallback_chapter_pages(chapter: Any) -> list[dict[str, Any]]:
-    pages: list[dict[str, Any]] = []
-    for chunk in skeleton_v3.partition_photos_v3(_photos(chapter), category="interior"):
-        pages.append(skeleton_v3.build_page_v3("interior", chunk, page_index=0))
-    return pages
+    """整章兜底:复用 candidate_gen 的『填满式』确定性切分,保证每页恰好填满模板槽位,
+    绝不选更大容量的模板留空槽(『填不满不硬塞』)。"""
+    from . import candidate_gen_v3
+
+    photos = _photos(chapter)
+    if not photos:
+        return []
+    chapter_id = str(_chapter_id(chapter))
+    candidates = candidate_gen_v3.generate_candidates(photos, seed=chapter_id, count=1)
+    pages = candidates[0] if candidates else []
+    return [
+        {"pageIndex": i, "templateId": p["templateId"], "images": p["images"], "texts": {}}
+        for i, p in enumerate(pages)
+    ]
+
+
+def _page_slots(page: Mapping[str, Any]) -> Mapping[str, Any]:
+    """页的 slot→photoId 映射。兼容两种来源:Gemini 输出用 `slots`,
+    代码候选生成器(candidate_gen_v3)产出的最终页用 `images`。"""
+    slots = page.get("slots")
+    if isinstance(slots, Mapping) and slots:
+        return slots
+    images = page.get("images")
+    return images if isinstance(images, Mapping) else {}
 
 
 def _raw_pages_for_chapter(
     raw_pages: Sequence[Mapping[str, Any]], chapter_id: str
 ) -> list[Mapping[str, Any]]:
+    # Gemini 输出按 chapterId 归页;代码候选页不带 chapterId(单章上下文),
+    # 缺失时一律归属当前章。
     return [
         page
         for page in raw_pages
-        if isinstance(page, Mapping) and page.get("chapterId") == chapter_id
+        if isinstance(page, Mapping)
+        and page.get("chapterId", chapter_id) == chapter_id
+    ]
+
+
+def finalize_candidate_pages(
+    chapter: Mapping[str, Any] | Any,
+    pages: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """最终化一个『代码随机候选』:候选由 candidate_gen 按容量拆分+按容量选模板生成,
+    天然填满、不重不漏,所以这里只重排 pageIndex,不做夹紧/重排/校验。
+    `chapter` 参数保留以对齐调用签名(当前未使用)。"""
+    del chapter  # 候选自洽,无需按章校验。
+    return [
+        {
+            "pageIndex": idx,
+            "templateId": page["templateId"],
+            "images": dict(_page_slots(page)),
+            "texts": page.get("texts") if isinstance(page.get("texts"), dict) else {},
+        }
+        for idx, page in enumerate(pages)
     ]
 
 
@@ -135,7 +177,7 @@ def legalize_layout(
         for raw in raw_for_chapter:
             slot_values = {
                 value
-                for value in (raw.get("slots") or {}).values()
+                for value in _page_slots(raw).values()
                 if isinstance(value, str)
             }
             grouping.append([pid for pid in chapter_photo_ids if pid in slot_values])
@@ -150,11 +192,12 @@ def legalize_layout(
             template_id = raw.get("templateId")
             if _template_legal_for_page(template_id, len(page_photo_ids), len(chapter_photo_ids)):
                 template_id = str(template_id)
-                if _slots_legal(template_id, page_photo_ids, raw.get("slots")):
+                page_slots = _page_slots(raw)
+                if _slots_legal(template_id, page_photo_ids, page_slots):
                     page = {
                         "pageIndex": 0,
                         "templateId": template_id,
-                        "images": dict(raw["slots"]),
+                        "images": dict(page_slots),
                         "texts": {},
                     }
                 else:

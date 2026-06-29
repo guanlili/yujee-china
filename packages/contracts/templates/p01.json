@@ -2,13 +2,13 @@
   "id": "p01",
   "category": "cover",
   "images": [
-    { "id": "image", "orientation": ["portrait"], "quality": ["hero", "detail"] }
+    { "id": "image", "orientation": ["portrait"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "封面主标题，可两行", "variableDecor": true },
-    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "hint": "封面简介" },
-    { "id": "label1", "role": "decoration", "lang": "en", "maxChars": 20, "hint": "分类 / 系列标签,如「nº 01 · Portrait」", "variableDecor": true },
-    { "id": "label2", "role": "decoration", "lang": "en", "maxChars": 20, "hint": "卷号,如 01", "variableDecor": true },
-    { "id": "date", "role": "decoration", "lang": "en", "maxChars": 12, "hint": "日期,如 MAY 26", "variableDecor": true }
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "封面主标题，可两行", "variableDecor": true, "sample": "晴日漫步" },
+    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "hint": "封面简介", "sample": "趁着好天气，我们出门走了很久，把整条街都晒得暖暖的。" },
+    { "id": "label1", "role": "decoration", "lang": "en", "maxChars": 20, "hint": "分类 / 系列标签,如「nº 01 · Portrait」", "variableDecor": true, "sample": "nº 01 · Portrait" },
+    { "id": "label2", "role": "decoration", "lang": "en", "maxChars": 20, "hint": "卷号,如 01", "variableDecor": true, "sample": "01" },
+    { "id": "date", "role": "decoration", "lang": "en", "maxChars": 12, "hint": "日期,如 MAY 26", "variableDecor": true, "sample": "MAY 26" }
   ]
 }

@@ -227,6 +227,63 @@ test('select-layout/completed → merges pages + EDITING + stage story + hold se
   }
 });
 
+test('select-layout/candidates → parks job at 52, no stage advance, hold still held (P2 phase 1)', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('v3route-candidates');
+  try {
+    const { albumId, holdId, requestId } = await seed(user.id);
+    await albumRepo.update(db, albumId, {
+      status: 'AGENT_RUNNING',
+      stage: 'analysing',
+      draftJson: {
+        version: 'v3-story',
+        tree: TREE,
+        progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
+      },
+    });
+    const job = await agentJobRepo.findByRequestId(requestId);
+    assert.ok(job);
+    // Phase-1 select-layout dispatched → reserved at progress 51.
+    await agentJobRepo.transitionStatus(db, job.id, 'RUNNING', ['QUEUED'], {
+      stage: 'layout',
+      progress: 51,
+      startedAt: new Date(),
+    });
+
+    const res = await post({
+      requestId,
+      jobKind: 'select-layout',
+      event: 'candidates',
+      units: [
+        {
+          unitKey: 'ch_1',
+          chapterId: 'ch_1',
+          candidates: [
+            { candidateIndex: 0, pages: [{ templateId: 'mag-02', images: { image: 'p1' } }] },
+            { candidateIndex: 1, pages: [{ templateId: 'mag-04', images: { image1: 'p1' } }] },
+          ],
+        },
+      ],
+      usage: USAGE,
+    });
+    assert.equal((await res.json()).data.accepted, true);
+
+    const parked = await agentJobRepo.findByRequestId(requestId);
+    assert.equal(parked?.progress, 52);
+    assert.equal(parked?.stage, 'layout');
+    assert.equal(parked?.status, 'RUNNING');
+
+    // Candidates do NOT advance album stage and keep the credit hold open.
+    const album = await albumRepo.findById(albumId);
+    assert.equal(album?.status, 'AGENT_RUNNING');
+    assert.equal(album?.stage, 'analysing');
+    const hold = await creditHoldRepo.findById(holdId);
+    assert.equal(hold?.status, 'HOLDING');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('select-layout/completed before analyze tree does not complete job or album', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('v3route-layout-before-tree');

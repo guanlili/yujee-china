@@ -13,13 +13,15 @@ const GENERATED_PATH = path.join(PACKAGE_DIR, 'src', 'templates.generated.ts');
 //   `templates:check` fails the typecheck if generated output drifts.
 const PhotoOrientation = z.enum(['portrait', 'landscape', 'square']);
 const PhotoQuality = z.enum(['hero', 'detail', 'fill']);
+const PhotoComposition = z.enum(['closeup', 'focal', 'wide']);
 
 const TemplateImageSlot = z
   .object({
     id: z.string().min(1),
-    // orientation/quality 是图位特征匹配的输入(确定性照片打分)。
+    // orientation/quality/composition 是图位特征匹配的输入(确定性照片打分)。
     orientation: z.array(PhotoOrientation).nonempty().optional(),
     quality: z.array(PhotoQuality).nonempty().optional(),
+    composition: z.array(PhotoComposition).nonempty().optional(),
   })
   .strict();
 
@@ -36,6 +38,8 @@ const TemplateTextSlot = z
     variableDecor: z.boolean().optional(),
     // 旧重复内容承载方式;引擎仍接受 repeat 槽的 bracket-path 寻址。
     repeat: z.boolean().optional(),
+    // 预览占位示例文案(用户未写文案时 Web 渲染用它占位)。
+    sample: z.string().min(1).max(600).optional(),
   })
   .strict();
 

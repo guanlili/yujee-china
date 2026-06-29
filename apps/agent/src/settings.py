@@ -151,6 +151,10 @@ class Settings(BaseSettings):
     select_layout_disable_thinking: bool = True
     select_layout_max_images_per_batch: int = 24
     select_layout_max_concurrency: int = Field(default=3, ge=1)
+    # 每章代码随机生成多少个候选交给 LLM 评委挑选(P1 新排版逻辑)。
+    select_layout_candidate_count: int = Field(default=3, ge=1)
+    # True=旧单段内联评委(裸照片+线框图,向后兼容);False=P2 两阶段(浏览器渲染真缩略图)。
+    select_layout_inline_judge: bool = False
 
     # planning + chat-edit (DeepSeek slot; in prod points at Volcano Ark doubao)
     deepseek_api_key: str | None = None

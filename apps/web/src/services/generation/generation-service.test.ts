@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { db } from '@/db/client';
@@ -7,7 +7,12 @@ import { albumRepo } from '@/db/repos/album-repo';
 import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '@/db/repos/__test__/setup';
 import { agentClient } from '@/lib/agent/agent-client';
 import { jobService } from '@/services/job/job-service';
-import { buildSelectLayoutRequestFromTree, generationService } from './generation-service';
+import { transientLayoutCandidates } from '@/services/album/layout-candidates';
+import {
+  buildJudgeLayoutRequest,
+  buildSelectLayoutRequestFromTree,
+  generationService,
+} from './generation-service';
 
 const TREE = {
   chapters: [
@@ -287,6 +292,113 @@ test('submitSelectLayoutV3 rejects malformed browser refs before reserving or po
     assert.equal(job?.stage, 'layout');
     assert.equal(job?.progress, 50);
   } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// ── P2 two-phase select-layout (docs/agent/contract.md §5.2.1) ──
+
+const CANDIDATE_UNITS = [
+  {
+    unitKey: 'ch_1',
+    chapterId: 'ch_1',
+    candidates: [
+      { candidateIndex: 0, pages: [{ templateId: 'mag-02', images: { image: 'p1' } }] },
+      { candidateIndex: 1, pages: [{ templateId: 'mag-04', images: { image1: 'p1', image2: 'p2' } }] },
+    ],
+  },
+];
+
+const JUDGE_UNITS = [
+  {
+    unitKey: 'ch_1',
+    chapterId: 'ch_1',
+    candidates: [
+      { candidateIndex: 0, thumbnail: 'data:image/jpeg;base64,AA==', pages: [{ templateId: 'mag-02', images: { image: 'p1' } }] },
+      { candidateIndex: 1, thumbnail: 'data:image/jpeg;base64,BB==', pages: [{ templateId: 'mag-04', images: { image1: 'p1', image2: 'p2' } }] },
+    ],
+  },
+];
+
+// Drive a job to the candidates-ready sentinel (progress 52) via phase-1 reserve +
+// the candidates callback, so phase-2 tests start from the real state machine.
+async function seedCandidatesReadyAlbum(userId: string, requestId: string, t: TestContext) {
+  const album = await seedLayoutReadyAlbum(userId, requestId);
+  t.mock.method(agentClient, 'submitSelectLayoutV3', async () => ({ requestId, accepted: true }));
+  await generationService.submitSelectLayoutV3(userId, album.id, { requestId, language: 'en', refs: REFS });
+  await jobService.handleV3SelectLayoutCandidates(requestId, CANDIDATE_UNITS, USAGE);
+  return album;
+}
+
+test('buildJudgeLayoutRequest validates against the strict JudgeLayoutRequest contract', () => {
+  const request = buildJudgeLayoutRequest({
+    requestId: 'judge-r1',
+    callbackUrl: 'https://web.test/api/v3/internal/job-progress',
+    language: 'en',
+    units: JUDGE_UNITS,
+  });
+  assert.equal(request.requestId, 'judge-r1');
+  assert.equal(request.units.length, 1);
+  assert.equal(request.units[0].candidates[0].thumbnail, 'data:image/jpeg;base64,AA==');
+});
+
+test('candidates callback parks the job at 52 and stashes candidates for the browser', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('judge-candidates-ready');
+  try {
+    transientLayoutCandidates.resetForTest();
+    const album = await seedCandidatesReadyAlbum(user.id, 'judge-ready', t);
+
+    const job = await agentJobRepo.findByRequestId('judge-ready');
+    assert.equal(job?.progress, 52);
+    assert.equal(job?.stage, 'layout');
+    assert.equal(job?.status, 'RUNNING');
+
+    const fetched = await generationService.getJudgeCandidates(user.id, album.id, 'judge-ready');
+    assert.equal(fetched.ready, true);
+    assert.equal(fetched.units.length, 1);
+    assert.equal(fetched.units[0].candidates.length, 2);
+  } finally {
+    transientLayoutCandidates.resetForTest();
+    await cleanupUser(user.id);
+  }
+});
+
+test('submitJudgeLayoutV3 reserves 52→53 once and posts judge-layout (no double dispatch, no re-reserve)', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('judge-dispatch');
+  try {
+    transientLayoutCandidates.resetForTest();
+    const album = await seedCandidatesReadyAlbum(user.id, 'judge-dispatch-r', t);
+
+    let posts = 0;
+    t.mock.method(agentClient, 'submitJudgeLayoutV3', async () => {
+      posts += 1;
+      return { requestId: 'judge-dispatch-r', accepted: true };
+    });
+
+    await generationService.submitJudgeLayoutV3(user.id, album.id, {
+      requestId: 'judge-dispatch-r',
+      language: 'en',
+      units: JUDGE_UNITS,
+    });
+    await generationService.submitJudgeLayoutV3(user.id, album.id, {
+      requestId: 'judge-dispatch-r',
+      language: 'en',
+      units: JUDGE_UNITS,
+    });
+
+    assert.equal(posts, 1);
+    const job = await agentJobRepo.findByRequestId('judge-dispatch-r');
+    assert.equal(job?.progress, 53);
+
+    // The same completed callback as before still merges pages (Web merge unchanged).
+    await jobService.handleV3SelectLayoutCompleted('judge-dispatch-r', PAGES, USAGE);
+    const reloaded = await albumRepo.findById(album.id);
+    assert.equal(reloaded?.status, 'EDITING');
+    assert.equal(reloaded?.stage, 'story');
+  } finally {
+    transientLayoutCandidates.resetForTest();
     await cleanupUser(user.id);
   }
 });

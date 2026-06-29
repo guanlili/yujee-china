@@ -13,21 +13,24 @@
       "maxChars": 16,
       "lang": "user",
       "hint": "竖排大标题（如「nano / banana」）",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "nano / banana"
     },
     {
       "id": "explain",
       "role": "explain",
       "maxChars": 40,
       "lang": "user",
-      "hint": "正文上方导语小标题，一句"
+      "hint": "正文上方导语小标题，一句",
+      "sample": "关于一些微小而确切的快乐"
     },
     {
       "id": "body",
       "role": "body",
       "maxChars": 180,
       "lang": "user",
-      "hint": "页面主正文，接导语"
+      "hint": "页面主正文，接导语",
+      "sample": "它们藏在最寻常的日子里——一杯热茶、一阵风、一句不经意的问候。等你慢下来，才发现它们一直都在。"
     },
     {
       "id": "label1",
@@ -35,7 +38,8 @@
       "lang": "en",
       "maxChars": 20,
       "hint": "竖排英文装饰小字（rotate -90°），靠内侧，短句即可",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "small joys daily"
     },
     {
       "id": "label2",
@@ -43,7 +47,8 @@
       "lang": "en",
       "maxChars": 20,
       "hint": "竖排英文装饰小字（rotate -90°），靠外侧，短句即可",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "every single day"
     }
   ]
 }

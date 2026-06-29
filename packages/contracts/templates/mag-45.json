@@ -13,7 +13,8 @@
       "maxChars": 16,
       "lang": "user",
       "hint": "底部一行大号主标题，单个短词（如「Watermelon」）",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "Watermelon"
     }
   ]
 }

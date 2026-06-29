@@ -4,7 +4,17 @@ import { albumRepo } from '@/db/repos/album-repo';
 import { creditService } from '@/services/credit/credit-service';
 import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
-import { V3StoryDraft } from '@yujee/contracts';
+import { transientLayoutCandidates } from '@/services/album/layout-candidates';
+import { V3StoryDraft, type SelectLayoutCandidateUnit } from '@yujee/contracts';
+
+// P2 select-layout progress sentinels on the shared agent_jobs row (stage stays
+// 'layout' the whole time, see docs/agent/contract.md §5.2.1):
+//   50  analyze done, awaiting browser select-layout dispatch (phase 1)
+//   51  select-layout dispatched (reserveSelectLayout)
+//   52  candidates callback arrived, awaiting browser judge-layout dispatch (phase 2)
+//   53  judge-layout dispatched (reserveJudgeLayout)
+//   100 completed
+export const SELECT_LAYOUT_CANDIDATES_READY_PROGRESS = 52;
 
 const ZOMBIE_TIMEOUT_MS = 5 * 60 * 1000;
 const SELECT_LAYOUT_COMPLETABLE_STAGES = new Set(['layout', 'legalize', 'wrap']);
@@ -184,6 +194,30 @@ export const jobService = {
         draftJson,
       });
     });
+  },
+
+  // P2 phase 1 (docs/agent/contract.md §5.2.1): the Agent returns candidate
+  // STRUCTURES (not pages) for the browser to render into thumbnails. Stash them in
+  // the transient store and park the job at the candidates-ready sentinel (progress
+  // 52, stage stays 'layout') — does NOT advance album stage, keeps the job/hold
+  // open. The browser polls, sees the sentinel, renders thumbnails, and POSTs phase 2.
+  // CAS-guarded 51→52 so a duplicate callback can't double-stash or regress progress.
+  async handleV3SelectLayoutCandidates(
+    requestId: string,
+    units: SelectLayoutCandidateUnit[],
+    usage: unknown,
+  ) {
+    const job = await agentJobRepo.findByRequestId(requestId);
+    if (!job) return;
+    if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
+    if (!SELECT_LAYOUT_COMPLETABLE_STAGES.has(job.stage ?? '')) return;
+
+    // Atomic CAS 51→52: only the first candidates callback for a select-layout
+    // dispatch parks the job and stashes candidates. A late/duplicate callback after
+    // phase 2 started (>=53) or completion loses the CAS and is ignored.
+    const won = await agentJobRepo.markCandidatesReady(db, job.id, mergeV3Usage(job.usage, usage));
+    if (!won) return;
+    transientLayoutCandidates.set(requestId, units);
   },
 
   async handleV3SelectLayoutCompleted(requestId: string, pages: unknown, usage: unknown) {

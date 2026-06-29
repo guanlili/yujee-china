@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import type { AlbumDetail } from '@/components/album/types';
 import {
+  fetchJudgeCandidates,
   PhotosUnavailableError,
+  renderAndSubmitJudgeLayout,
   selectLayoutRefsFromStore,
   submitSelectLayoutV3,
   UnauthorizedError,
@@ -75,7 +77,9 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
     let timer: ReturnType<typeof setInterval> | null = null;
     let transient = 0;
     let layoutSubmitInFlight = false;
+    let judgeSubmitInFlight = false;
     const submittedLayoutRequests = new Set<string>();
+    const submittedJudgeRequests = new Set<string>();
     const startedAt = Date.now();
 
     const stop = () => {
@@ -183,6 +187,38 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
             }
           }
         }
+        // P2 phase 2 (docs/agent/contract.md §5.2.1): the candidates callback parked
+        // the job at progress 52. Fetch the candidate structures, render a thumbnail per
+        // candidate (real templates, photos-in-slots, no text), and POST judge-layout.
+        // Failures here are NON-FATAL: the Agent/Web fallback finishes the album from
+        // candidate 0, so we keep polling rather than surfacing an error.
+        if (generation?.stage === 'layout' && generation.progress === 52) {
+          const recipe = albumRecipe.load(uuid);
+          if (
+            recipe?.requestId &&
+            !submittedJudgeRequests.has(recipe.requestId) &&
+            !judgeSubmitInFlight
+          ) {
+            judgeSubmitInFlight = true;
+            const requestId = recipe.requestId;
+            const language = recipe.language;
+            try {
+              const { ready, units } = await fetchJudgeCandidates(uuid, requestId);
+              if (ready && units.length > 0) {
+                await renderAndSubmitJudgeLayout(uuid, { requestId, language, units });
+                submittedJudgeRequests.add(requestId);
+              }
+            } catch (e) {
+              if (e instanceof UnauthorizedError) {
+                return apply({ ...INITIAL, phase: 'unauthorized' });
+              }
+              // Swallow render/dispatch errors — keep polling; the fallback completes.
+            } finally {
+              judgeSubmitInFlight = false;
+            }
+          }
+        }
+
         apply({ detail, generation, phase: 'running', error: null });
       } finally {
         inFlight = false;

@@ -13,7 +13,8 @@
       "variableDecor": true,
       "maxChars": 40,
       "lang": "user",
-      "hint": "跨页大标题，左页只露左片段（如「Notes from Elsewhere」）"
+      "hint": "跨页大标题，左页只露左片段（如「Notes from Elsewhere」）",
+      "sample": "Notes from Elsewhere"
     }
   ]
 }

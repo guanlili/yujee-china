@@ -13,7 +13,8 @@
       "maxChars": 28,
       "lang": "user",
       "hint": "跨页大标题右片段，短词分多行（如「Notes from Elsewhere」）",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "Notes from Elsewhere"
     }
   ]
 }

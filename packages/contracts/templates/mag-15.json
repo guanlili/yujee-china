@@ -2,13 +2,13 @@
   "id": "mag-15",
   "category": "interior",
   "images": [
-    { "id": "image1", "orientation": ["portrait"], "quality": ["hero", "detail"] },
-    { "id": "image2", "orientation": ["landscape"], "quality": ["detail", "fill"] }
+    { "id": "image1", "orientation": ["portrait"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] },
+    { "id": "image2", "orientation": ["landscape"], "quality": ["detail", "fill"], "composition": ["wide", "focal"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "该页标题", "variableDecor": true },
-    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "hint": "短正文" },
-    { "id": "date", "role": "decoration", "lang": "en", "maxChars": 12, "hint": "日期,如 May 2026", "variableDecor": true },
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "该页标题", "variableDecor": true, "sample": "慢下来的午后" },
+    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "hint": "短正文", "sample": "茶凉了又续，话说了一半就停在窗外的光里。" },
+    { "id": "date", "role": "decoration", "lang": "en", "maxChars": 12, "hint": "日期,如 May 2026", "variableDecor": true, "sample": "May 2026" },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

@@ -7,6 +7,10 @@ export type PhotoOrientation = z.infer<typeof PhotoOrientation>;
 export const PhotoQuality = z.enum(['hero', 'detail', 'fill']);
 export type PhotoQuality = z.infer<typeof PhotoQuality>;
 
+// 画面构图(识图模型输出,不可由宽高推导):特写/重点/全景。排版按此匹配模板槽位。
+export const PhotoComposition = z.enum(['closeup', 'focal', 'wide']);
+export type PhotoComposition = z.infer<typeof PhotoComposition>;
+
 // Browser EXIF DateTime is local wall time with no zone. Accept that format
 // plus UTC `Z` strings, but keep offset datetimes out so no timezone is invented.
 export const TakenAtDateTime = z.string().datetime({ local: true });
@@ -133,6 +137,7 @@ export const V3ChapterPhoto = z
     width: z.number().int().positive(), // 代码:输入宽高
     height: z.number().int().positive(), // 代码:输入宽高
     orientation: PhotoOrientation, // 代码:由宽高算
+    composition: PhotoComposition.nullable().optional(), // 识图写;排版按朝向×构图匹配槽位。旧树缺失=任意
     takenAt: TakenAtDateTime.nullable().optional(), // 代码:EXIF;缺失为 null(无 GPS)
   })
   .strict();

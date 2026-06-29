@@ -97,6 +97,7 @@ Agent 暴露**两个异步端点 + 七个同步/内部端点**,均 Bearer 鉴权
 - **出参(回调)**:tree-only `V3LayoutTree`;不返回 pages。
 - `/v3/select-layout` 接收 Stage1 tree + 浏览器保留的 200px refs,后台跑(`flows/select_layout.py`),回推同一个 `job-progress` sink。
 - **出参(回调)**:`Page[]` + usage;Web 合并 tree/pages 后推进到 `story`。
+- **P2 排版评委(浏览器渲真缩略图)**:为让 Gemini 评委看**真实排版**而非线框,`/v3/select-layout` 拆成**两段异步、浏览器驱动**:phase 1 Agent 生成候选 → 回调 `candidates`;浏览器用现成 React 模板**只渲图槽(无文字/无字体)**出小缩略图;phase 2 浏览器把缩略图 POST `/v3/judge-layout` → Agent 调 Gemini 评委选赢家 → 同一 `completed` 回调返回 pages。候选生成与评委 LLM 都留 Agent(不破「Web 不调 LLM」),渲染留浏览器(只有它有照片像素,且不触 Google Fonts)。详见 [`contract.md §5.2.1`](./agent/contract.md)。
 - 浏览器轮询相册状态,不开 SSE(理由见 2.3)。
 
 ### 2.2 其余环节 — 同步/内部端点(秒级,前端转圈)
@@ -218,6 +219,10 @@ memoir-agent-rebuild/
 8. **Agent 三真层重构(2026-06,PR #240)**:扁平 `services/` → `flows / agents / engine` + 平铺边 + `skills` 分层;删历史孤儿(tools.py / layout_rules 等)+ 消状态泄漏;行为零变更(契约/不变式不动)。详见 [`design.md`](./agent/design.md)。
 9. **planner(未来 · 第二期)**:自然语言指令 → 自主规划调用 agents/engine 工具面;坐在现在这套无状态分层之上(stateful 仅一条指令内)。当前是 planner-ready 地基,尚未实现。
 10. **中途加图**:main 上**尚未实现**;目标设计 = Web 侧可重入派生闸(分析新批次 + 合并不覆盖 + 按章补完,新章未完成则导出闸自动重关)。
+11. **排版评委看真实渲染缩略图(P2,两段式 select-layout)**:Stage2 排版评委从「结构 JSON + 裸照片 + 模板线框图」升级为看**真实排好版的候选缩略图**。三方分工硬约束:**候选生成在 Agent**(`candidate_gen_v3`,不复制引擎逻辑)、**渲染在浏览器**(现成 React 模板,只渲图槽、跳过所有文字与字体,DOM→canvas→下采样 JPEG;只有浏览器有照片像素且不触本地被墙的 Google Fonts)、**评委 LLM 在 Agent**(Gemini `judge_layout`)。
+    - **流程(浏览器驱动,沿用同 `requestId`)**:`/v3/select-layout`(phase 1,Agent 生成候选→回调 `candidates`)→ 浏览器只渲图槽出缩略图(longest edge ~320px / JPEG q~0.6 / 目标 ≤~30KB·张)→ `/v3/judge-layout`(phase 2,浏览器 POST 缩略图,Agent Gemini 评委选赢家→`completed` 回调返回 `Page[]`)。
+    - **为什么这样切**:Agent 不可同步回调 Web(不变式),所以渲染这一步必须由浏览器在两次异步之间承接,等于把既有「browser-driven select-layout」延长一跳;**未新增任何 Agent→Web 同步调用,Web 仍不调 LLM**。
+    - **降级**:任一候选渲染失败 / 无 canvas / Gemini 不可用(本地 geo-block)→ 逐 unit 退化「取候选 0」,确定性 skeleton 仍是最终兜底;不阻塞 `stage` 推进。`/v3/select-layout` 可由开关回到单段内联评委(线框图)模式向后兼容。
 
 ---
 

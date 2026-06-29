@@ -2,12 +2,12 @@
   "id": "mag-19",
   "category": "interior",
   "images": [
-    { "id": "image", "orientation": ["square"], "quality": ["detail", "fill"] }
+    { "id": "image", "orientation": ["square"], "quality": ["detail", "fill"], "composition": ["wide", "focal"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 12, "hint": "极短引题（单词/2 字）", "variableDecor": true },
-    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "左栏说明" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "右栏说明" },
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 12, "hint": "极短引题（单词/2 字）", "variableDecor": true, "sample": "之间" },
+    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "左栏说明", "sample": "左栏：去时的路又长又新鲜" },
+    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "右栏说明", "sample": "右栏：回来时只剩满身的风" },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

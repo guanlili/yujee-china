@@ -2,12 +2,12 @@
   "id": "mag-31",
   "category": "interior",
   "images": [
-    { "id": "image1" },
-    { "id": "image2" },
-    { "id": "image3" },
-    { "id": "image4" },
-    { "id": "image5" },
-    { "id": "image6" }
+    { "id": "image1", "composition": ["wide", "focal"] },
+    { "id": "image2", "composition": ["wide", "focal"] },
+    { "id": "image3", "composition": ["wide", "focal"] },
+    { "id": "image4", "composition": ["wide", "focal"] },
+    { "id": "image5", "composition": ["wide", "focal"] },
+    { "id": "image6", "composition": ["wide", "focal"] }
   ],
   "texts": [
     {
@@ -15,7 +15,8 @@
       "role": "body",
       "maxChars": 80,
       "lang": "user",
-      "hint": "底部居中图注，串起这六张照片"
+      "hint": "底部居中图注，串起这六张照片",
+      "sample": "这六张照片来自同一个下午，光影在不停变化，而我们一直在笑。"
     }
   ]
 }

@@ -13,7 +13,8 @@
       "maxChars": 12,
       "lang": "user",
       "hint": "顶部超大地名，横排铺满页顶（如「NORWAY」），首字母略大",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "NORWAY"
     }
   ]
 }

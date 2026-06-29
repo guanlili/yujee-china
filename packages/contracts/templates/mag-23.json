@@ -13,7 +13,8 @@
       "maxChars": 12,
       "lang": "user",
       "hint": "封面书名，展示大字（如「YVAINE」）",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "YVAINE"
     },
     {
       "id": "subtitle",
@@ -21,21 +22,24 @@
       "maxChars": 12,
       "lang": "user",
       "hint": "副标题，接书名下方略小（如「LIFE」）",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "LIFE"
     },
     {
       "id": "year",
       "role": "decoration",
       "maxChars": 20,
       "lang": "en",
-      "hint": "封面年份列表，每行一个年份（换行分隔），如「2026\n2025\n2024」"
+      "hint": "封面年份列表，每行一个年份（换行分隔），如「2026\n2025\n2024」",
+      "sample": "2026\n2025\n2024"
     },
     {
       "id": "city",
       "role": "decoration",
       "maxChars": 30,
       "lang": "en",
-      "hint": "封面城市列表，每行一个城市（换行分隔），如「Shanghai\nBeijing\nDali」"
+      "hint": "封面城市列表，每行一个城市（换行分隔），如「Shanghai\nBeijing\nDali」",
+      "sample": "Shanghai\nBeijing\nDali"
     }
   ]
 }

@@ -17,6 +17,7 @@ import {
   AccentColor,
   AlbumLayoutPlan,
   Page,
+  PhotoComposition,
   PhotoOrientation,
   TakenAtDateTime,
   V3Chapter,
@@ -319,6 +320,7 @@ export const SelectLayoutPhoto = z
     photoId: z.string().min(1),
     ref200px: V3AnalyzeImageDataUrl,
     orientation: PhotoOrientation,
+    composition: PhotoComposition.nullable().optional(), // 来自 Stage1 树;排版按朝向×构图匹配槽位
     takenAt: TakenAtDateTime.nullable(),
   })
   .strict();
@@ -342,6 +344,70 @@ export const SelectLayoutRequest = z
   })
   .strict();
 export type SelectLayoutRequest = z.infer<typeof SelectLayoutRequest>;
+
+// ── P2 排版评委(rendered-thumbnail judge,two-phase select-layout)──
+// Phase 1:Agent 生成候选结构,经 `candidates` 回调交回浏览器去渲染缩略图。
+// Phase 2:浏览器把渲染好的小缩略图 POST 回 Agent,Agent 调 Gemini 评委选赢家。
+
+// 候选里的单页结构(simpleId 已还原成真 photoId)。
+export const CandidatePage = z
+  .object({
+    templateId: z.string().min(1),
+    images: z.record(z.string(), z.string()), // slotId → photoId
+  })
+  .strict();
+export type CandidatePage = z.infer<typeof CandidatePage>;
+
+// Phase 1 回调里的一个候选(结构,无缩略图)。
+export const LayoutCandidate = z
+  .object({
+    candidateIndex: z.number().int().min(0),
+    pages: z.array(CandidatePage).min(1),
+  })
+  .strict();
+export type LayoutCandidate = z.infer<typeof LayoutCandidate>;
+
+// 一个排版单元(一章,或超大章拆出的一段)的候选集合。
+export const SelectLayoutCandidateUnit = z
+  .object({
+    unitKey: z.string().min(1), // chapterId 或 chapterId#段首photoId(拆段唯一)
+    chapterId: z.string().min(1),
+    candidates: z.array(LayoutCandidate).min(1),
+  })
+  .strict();
+export type SelectLayoutCandidateUnit = z.infer<typeof SelectLayoutCandidateUnit>;
+
+// Phase 2 请求里的一个候选(带渲染缩略图)。
+export const JudgeCandidate = z
+  .object({
+    candidateIndex: z.number().int().min(0),
+    thumbnail: z.string().min(1), // data:image/jpeg;base64,...(下采样、仅图槽、无文字)
+    pages: z.array(CandidatePage).min(1),
+  })
+  .strict();
+export type JudgeCandidate = z.infer<typeof JudgeCandidate>;
+
+// Phase 2 请求里的一个待评单元。chosenIndex 已定(单候选)则不调评委。
+export const JudgeLayoutUnit = z
+  .object({
+    unitKey: z.string().min(1),
+    chapterId: z.string().min(1),
+    chosenIndex: z.number().int().min(0).optional(),
+    candidates: z.array(JudgeCandidate).min(1),
+  })
+  .strict();
+export type JudgeLayoutUnit = z.infer<typeof JudgeLayoutUnit>;
+
+// POST /v3/judge-layout 请求体(async, 202 + 同一 job-progress 回调)。
+export const JudgeLayoutRequest = z
+  .object({
+    requestId: z.string().min(1),
+    callbackUrl: HttpCallbackUrl,
+    language: V3Language,
+    units: z.array(JudgeLayoutUnit).min(1),
+  })
+  .strict();
+export type JudgeLayoutRequest = z.infer<typeof JudgeLayoutRequest>;
 
 // ───────────── ② 章节故事 — POST /v3/chapter-chat(同步) ─────────────
 //
@@ -733,6 +799,18 @@ export const SelectLayoutCompleted = z
   .strict();
 export type SelectLayoutCompleted = z.infer<typeof SelectLayoutCompleted>;
 
+// P2 phase 1 回调:Agent 把候选结构交回浏览器去渲染缩略图。不推进 stage,挂住 job。
+export const SelectLayoutCandidates = z
+  .object({
+    requestId: z.string().min(1),
+    jobKind: z.literal('select-layout'),
+    event: z.literal('candidates'),
+    units: z.array(SelectLayoutCandidateUnit).min(1),
+    usage: V3Usage,
+  })
+  .strict();
+export type SelectLayoutCandidates = z.infer<typeof SelectLayoutCandidates>;
+
 const V3FailedEvent = z
   .object({
     requestId: z.string().min(1),
@@ -749,6 +827,7 @@ export const V3Callback = z.union([
   V3FailedEvent,
   V3AnalyzeCompleted,
   SelectLayoutCompleted,
+  SelectLayoutCandidates,
 ]);
 export type V3Callback = z.infer<typeof V3Callback>;
 

@@ -2,12 +2,12 @@
   "id": "mag-18",
   "category": "interior",
   "images": [
-    { "id": "image1", "orientation": ["portrait"], "quality": ["detail", "fill"] },
-    { "id": "image2", "orientation": ["portrait"], "quality": ["detail", "fill"] }
+    { "id": "image1", "orientation": ["portrait"], "quality": ["detail", "fill"], "composition": ["wide", "focal"] },
+    { "id": "image2", "orientation": ["portrait"], "quality": ["detail", "fill"], "composition": ["wide", "focal"] }
   ],
   "texts": [
-    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "左图说明" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "右图说明，接左图" },
+    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "左图说明", "sample": "左边是清晨刚醒的街道" },
+    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "右图说明，接左图", "sample": "右边是傍晚归家时的灯火" },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

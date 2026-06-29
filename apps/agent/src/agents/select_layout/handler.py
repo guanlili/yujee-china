@@ -28,7 +28,7 @@ from ...engine.simple_id import from_simple_at_paths, to_simple
 from ...logging_config import get_logger
 from ...settings import get_settings
 from ...skills import load_prompt
-from .schema import GeminiLayoutResult, GeminiLayoutUnavailable
+from .schema import GeminiLayoutResult, GeminiLayoutUnavailable, LayoutJudgeResult
 
 log = get_logger("select_layout")
 
@@ -298,6 +298,163 @@ async def _native_generate_content(
         f"model {model} failed after retry: {last_error}",
         status_code=last_status_code,
         kind=last_kind,
+    )
+
+
+def _judge_messages(
+    chapter: Any,
+    candidates: Sequence[Sequence[Mapping[str, Any]]],
+    id_map: dict[str, str],
+) -> list[dict[str, Any]]:
+    """评委输入:候选结构(simple id)+ 照片元信息 + 照片预览 + 模板线框图。"""
+    real_to_simple = {real: simple for simple, real in id_map.items()}
+
+    photos_payload: list[dict[str, Any]] = []
+    for photo in _photos(chapter):
+        pid = _photo_id(photo)
+        photos_payload.append(
+            {
+                "photoId": real_to_simple.get(pid, pid),
+                "orientation": _get(photo, "orientation"),
+                "composition": _get(photo, "composition"),
+            }
+        )
+
+    candidates_payload: list[dict[str, Any]] = []
+    used_template_ids: list[str] = []
+    for index, pages in enumerate(candidates):
+        cand_pages: list[dict[str, Any]] = []
+        for page in pages:
+            template_id = page.get("templateId")
+            if isinstance(template_id, str) and template_id not in used_template_ids:
+                used_template_ids.append(template_id)
+            simple_slots = {
+                slot_id: real_to_simple.get(photo_id, photo_id)
+                for slot_id, photo_id in (page.get("images") or {}).items()
+            }
+            cand_pages.append({"templateId": template_id, "slots": simple_slots})
+        candidates_payload.append({"index": index, "pages": cand_pages})
+
+    text_payload = {
+        "photos": photos_payload,
+        "candidates": candidates_payload,
+        "output": {"winnerIndex": 0},
+    }
+    content: list[dict[str, Any]] = [
+        {"type": "text", "text": json.dumps(text_payload, ensure_ascii=False)}
+    ]
+    for photo in _photos(chapter):
+        ref = _photo_ref(photo)
+        if ref:
+            content.append({"type": "image_url", "image_url": {"url": ref}})
+    previews = template_previews.load_template_previews()
+    for template_id in used_template_ids:
+        preview = previews.by_template.get(template_id)
+        if preview is not None and preview.previewImage:
+            content.append({"type": "image_url", "image_url": {"url": preview.previewImage}})
+
+    return [
+        {"role": "system", "content": load_prompt(_PROMPT_DIR / "judge_layout.md")},
+        {"role": "user", "content": content},
+    ]
+
+
+async def judge_layout(
+    chapter: Any,
+    candidates: Sequence[Sequence[Mapping[str, Any]]],
+) -> LayoutJudgeResult:
+    """让 Gemini 从 N 个代码随机候选里选最佳。返回 winner_index(已夹紧到合法范围)。"""
+    if not candidates:
+        raise ValueError("judge_layout requires at least one candidate")
+
+    settings = get_settings()
+    api_key = getattr(settings, "select_layout_api_key", None)
+    if not api_key:
+        raise GeminiLayoutUnavailable("SELECT_LAYOUT_API_KEY missing")
+
+    photo_ids = [_photo_id(photo) for photo in _photos(chapter)]
+    _, id_map = to_simple(photo_ids)
+    messages = _judge_messages(chapter, candidates, id_map)
+    response = await _native_generate_content(
+        base_url=getattr(settings, "select_layout_base_url"),
+        api_key=api_key,
+        model=getattr(settings, "select_layout_model"),
+        messages=messages,
+        timeout_seconds=getattr(settings, "select_layout_timeout_seconds"),
+        max_output_tokens=getattr(settings, "select_layout_max_output_tokens"),
+        use_json_object=getattr(settings, "select_layout_use_json_object"),
+        disable_thinking=getattr(settings, "select_layout_disable_thinking"),
+    )
+    parsed = ai_client.parse_json_loose(_native_text(response))
+    raw_index = parsed.get("winnerIndex") if isinstance(parsed, Mapping) else None
+    if isinstance(raw_index, bool) or not isinstance(raw_index, int):
+        raise ValueError("Gemini judge response missing integer winnerIndex")
+    # 夹紧到合法范围(模型若越界则退化为第 0 个候选)。
+    winner = raw_index if 0 <= raw_index < len(candidates) else 0
+    input_tokens, output_tokens = _native_usage(response)
+    return LayoutJudgeResult(
+        winner_index=winner,
+        call_count=1,
+        model=getattr(settings, "select_layout_model"),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
+
+
+def _judge_thumbnail_messages(thumbnails: Sequence[str]) -> list[dict[str, Any]]:
+    """P2 评委输入:N 张真实渲染缩略图(每候选一张)。模型只看图选最佳,无需结构文字。"""
+    content: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": json.dumps(
+                {
+                    "candidates": [{"index": i} for i in range(len(thumbnails))],
+                    "output": {"winnerIndex": 0},
+                },
+                ensure_ascii=False,
+            ),
+        }
+    ]
+    for thumb in thumbnails:
+        content.append({"type": "image_url", "image_url": {"url": thumb}})
+    return [
+        {"role": "system", "content": load_prompt(_PROMPT_DIR / "judge_layout.md")},
+        {"role": "user", "content": content},
+    ]
+
+
+async def judge_layout_thumbnails(thumbnails: Sequence[str]) -> LayoutJudgeResult:
+    """P2 评委:每候选一张真实渲染缩略图,Gemini 选最佳 index(夹紧到合法范围)。"""
+    if not thumbnails:
+        raise ValueError("judge_layout_thumbnails requires at least one thumbnail")
+
+    settings = get_settings()
+    api_key = getattr(settings, "select_layout_api_key", None)
+    if not api_key:
+        raise GeminiLayoutUnavailable("SELECT_LAYOUT_API_KEY missing")
+
+    response = await _native_generate_content(
+        base_url=getattr(settings, "select_layout_base_url"),
+        api_key=api_key,
+        model=getattr(settings, "select_layout_model"),
+        messages=_judge_thumbnail_messages(thumbnails),
+        timeout_seconds=getattr(settings, "select_layout_timeout_seconds"),
+        max_output_tokens=getattr(settings, "select_layout_max_output_tokens"),
+        use_json_object=getattr(settings, "select_layout_use_json_object"),
+        disable_thinking=getattr(settings, "select_layout_disable_thinking"),
+    )
+    parsed = ai_client.parse_json_loose(_native_text(response))
+    raw_index = parsed.get("winnerIndex") if isinstance(parsed, Mapping) else None
+    if isinstance(raw_index, bool) or not isinstance(raw_index, int):
+        raise ValueError("Gemini judge response missing integer winnerIndex")
+    winner = raw_index if 0 <= raw_index < len(thumbnails) else 0
+    input_tokens, output_tokens = _native_usage(response)
+    return LayoutJudgeResult(
+        winner_index=winner,
+        call_count=1,
+        model=getattr(settings, "select_layout_model"),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
     )
 
 

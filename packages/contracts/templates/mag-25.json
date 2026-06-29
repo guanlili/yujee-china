@@ -16,21 +16,24 @@
       "maxChars": 12,
       "lang": "user",
       "hint": "封底主标题，意象短词两行排（如「意外」「时光」），收束整册",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "时光"
     },
     {
       "id": "body",
       "role": "body",
       "maxChars": 80,
       "lang": "user",
-      "hint": "封底结尾，温柔收束，可留余韵（「未完待续…」）"
+      "hint": "封底结尾，温柔收束，可留余韵（「未完待续…」）",
+      "sample": "未完待续…"
     },
     {
       "id": "explain",
       "role": "explain",
       "maxChars": 20,
       "lang": "user",
-      "hint": "作者署名，竖排（如「Yavine Yun」）"
+      "hint": "作者署名，竖排（如「Yavine Yun」）",
+      "sample": "Yavine Yun"
     },
     {
       "id": "label",
@@ -38,14 +41,16 @@
       "maxChars": 4,
       "lang": "en",
       "hint": "大号装饰数字编号，如「26」",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "26"
     },
     {
       "id": "date",
       "role": "decoration",
       "maxChars": 12,
       "lang": "en",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "2026"
     }
   ]
 }

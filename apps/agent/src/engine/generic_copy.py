@@ -102,16 +102,16 @@ def _format_folio(page_index: int, max_chars: int | None) -> str:
 
 
 def _decor_for_slot(slot: Mapping[str, Any], page_index: int, page_date: str | None) -> str | None:
-    """单个装饰 slot 的确定性通用值,或返回 None 表示留
-    空。只有 `folio` 和 `date`/`dateNum` 是我们拥有的;其余每个装饰 id 都
-    留给后续环节(theme 只给它们重新着色 —— 值仍由 code 持有)。"""
+    """单个装饰 slot 的确定性通用值,或返回 None 表示留空。
+
+    仅 `folio`(页码)由 code 持有 —— 页码是真装饰,用户不会「之后填」。
+    `date`/`dateNum` 已归用户文案:预览阶段不再 code-fill,留空由 Web 用模板 `sample`
+    示例占位,等用户之后填写(`page_date` 参数保留以兼容调用签名,当前不消费)。"""
+    del page_date
     slot_id = slot.get("id", "")
     max_chars = slot.get("maxChars")
     if slot_id in _FOLIO_IDS:
         return _format_folio(page_index, max_chars)
-    if slot_id in _DATE_IDS and page_date is not None:
-        value = _format_date_decor(page_date, max_chars)
-        return value or None
     return None
 
 

@@ -7,8 +7,13 @@ import { logger } from '@/lib/log/logger';
 import { albumService } from '@/services/album/album-service';
 import { creditService } from '@/services/credit/credit-service';
 import { jobService } from '@/services/job/job-service';
-import { SelectLayoutRequest, V3LayoutTree } from '@yujee/contracts';
-import type { V3AnalyzeRequest } from '@yujee/contracts';
+import { transientLayoutCandidates } from '@/services/album/layout-candidates';
+import { JudgeLayoutRequest, SelectLayoutRequest, V3LayoutTree } from '@yujee/contracts';
+import type {
+  JudgeLayoutUnit,
+  SelectLayoutCandidateUnit,
+  V3AnalyzeRequest,
+} from '@yujee/contracts';
 
 type V3AnalyzeInput = {
   requestId: string;
@@ -35,6 +40,16 @@ type SelectLayoutInput = {
   requestId: string;
   language: 'zh' | 'en';
   refs: Record<string, string> | Array<{ photoId: string; ref200px: string }>;
+};
+
+// P2 phase 2 (docs/agent/contract.md §5.2.1): the browser sends one entry per
+// candidate unit. Each carries the unit's candidates with the browser-rendered
+// thumbnail attached (omitted/empty → Agent falls back to candidate 0). Single-
+// candidate units carry chosenIndex=0 and skip rendering.
+type JudgeLayoutInput = {
+  requestId: string;
+  language: 'zh' | 'en';
+  units: JudgeLayoutUnit[];
 };
 
 export const generationService = {
@@ -130,7 +145,98 @@ export const generationService = {
 
     return { albumId, requestId: input.requestId, accepted: true };
   },
+
+  // P2 phase 2 read (docs/agent/contract.md §5.2.1): hand the browser the candidate
+  // STRUCTURES (templateId + slot→photoId) the `candidates` callback stashed, so the
+  // browser can render a thumbnail per candidate. Ownership + job-state checked; the
+  // candidates are transient (in-memory), so a miss (different instance / evicted)
+  // returns ready=false and the browser takes the documented "candidate 0" fallback.
+  async getJudgeCandidates(
+    userId: string,
+    albumId: string,
+    requestId: string,
+  ): Promise<{ ready: boolean; units: SelectLayoutCandidateUnit[] }> {
+    const album = await albumService.findOwned(userId, albumId);
+    const job = await agentJobRepo.findByRequestId(requestId);
+    if (!job) throw ERRORS.JOB_NOT_FOUND();
+    if (job.userId !== userId || job.albumId !== albumId) throw ERRORS.JOB_NOT_OWNED();
+    if (album.status !== 'AGENT_RUNNING') throw ERRORS.ALBUM_NOT_EDITABLE();
+    const units = transientLayoutCandidates.get(requestId);
+    if (!units) return { ready: false, units: [] };
+    return { ready: true, units };
+  },
+
+  // P2 phase 2 dispatch (docs/agent/contract.md §5.2.1): the browser POSTs the
+  // candidates with rendered thumbnails attached. We CAS the job 52→53 (single
+  // dispatch) and forward to Agent /v3/judge-layout, which runs the Gemini judge and
+  // returns final pages through the SAME select-layout `completed` callback. No credit
+  // is reserved here — phase 1's select-layout already holds it (kept single).
+  async submitJudgeLayoutV3(userId: string, albumId: string, input: JudgeLayoutInput) {
+    const album = await albumService.findOwned(userId, albumId);
+    const job = await agentJobRepo.findByRequestId(input.requestId);
+    if (!job) throw ERRORS.JOB_NOT_FOUND();
+    if (job.userId !== userId || job.albumId !== albumId) throw ERRORS.JOB_NOT_OWNED();
+    if (album.status !== 'AGENT_RUNNING' || job.status !== 'RUNNING' || job.stage !== 'layout') {
+      throw ERRORS.ALBUM_NOT_EDITABLE();
+    }
+    // Not yet at the candidates-ready sentinel (or phase 2 already dispatched / done):
+    // idempotently accept so a retrying browser doesn't error.
+    if (job.progress !== 52) {
+      return { albumId, requestId: input.requestId, accepted: true };
+    }
+
+    const payload = buildJudgeLayoutRequest({
+      requestId: input.requestId,
+      callbackUrl: `${env.WEB_BASE_URL}/api/v3/internal/job-progress`,
+      language: input.language,
+      units: input.units,
+    });
+
+    const reserved = await agentJobRepo.reserveJudgeLayout(db, job.id);
+    if (!reserved) {
+      return { albumId, requestId: input.requestId, accepted: true };
+    }
+
+    try {
+      await agentClient.submitJudgeLayoutV3(payload);
+    } catch (e) {
+      logger.error(
+        { err: String(e), requestId: input.requestId },
+        'agent v3 judge-layout submit failed, marking job FAILED',
+      );
+      await jobService.handleV3Failed(input.requestId, {
+        code: 'AGENT_INTERNAL_ERROR',
+        message: 'Failed to submit judge-layout to agent',
+      });
+      return { albumId, requestId: input.requestId, accepted: true };
+    }
+
+    // Candidates served their purpose; drop the transient stash.
+    transientLayoutCandidates.clear(input.requestId);
+    return { albumId, requestId: input.requestId, accepted: true };
+  },
 };
+
+export function buildJudgeLayoutRequest(input: {
+  requestId: string;
+  callbackUrl: string;
+  language: 'zh' | 'en';
+  units: JudgeLayoutUnit[];
+}): JudgeLayoutRequest {
+  const payload = {
+    requestId: input.requestId,
+    callbackUrl: input.callbackUrl,
+    language: input.language,
+    units: input.units,
+  };
+  const parsed = JudgeLayoutRequest.safeParse(payload);
+  if (!parsed.success) {
+    throw ERRORS.VALIDATION_FAILED(
+      parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; '),
+    );
+  }
+  return parsed.data;
+}
 
 function toRefMap(refs: SelectLayoutInput['refs']): Map<string, string> {
   if (Array.isArray(refs)) return new Map(refs.map((item) => [item.photoId, item.ref200px]));

@@ -503,12 +503,11 @@ def test_edit_chat_story_agent_swaps_layout_through_simple_llm_tool_call(monkeyp
         complete_calls.append(kwargs)
         return _fake_tool_call("swap_layout", {"page": 2})
 
-    async def fake_gemini(chapters, *, mode, allowAddPages):  # noqa: ANN001
-        return select_layout_agent.GeminiLayoutResult(
-            pages=[{"chapterId": "c1", "templateId": "mag-03", "slots": {"image": "p1"}}]
-        )
+    async def fake_judge(chapter, candidates):  # noqa: ANN001
+        # case4-swap 迁到新流程:代码随机候选 + 评委选第 0 个。
+        return select_layout_agent.LayoutJudgeResult(winner_index=0)
 
-    monkeypatch.setattr(edit_handler.select_layout_agent, "gemini_layout", fake_gemini)
+    monkeypatch.setattr(edit_handler.select_layout_agent, "judge_layout", fake_judge)
 
     resp = asyncio.run(
         edit_handler.run(
@@ -543,7 +542,9 @@ def test_edit_chat_story_agent_swaps_layout_through_simple_llm_tool_call(monkeyp
     assert tools.page_photo_requests == [{"albumId": "alb_v3", "chapterId": "c1"}]
     assert resp.kind == "edit"
     assert resp.patches[0].pageIndex == 1
-    assert resp.patches[0].templateId == "mag-03"
+    # 新流程模板随机选,只断言产出了合法 patch 且含该照片(不强求具体 templateId)。
+    assert resp.patches[0].templateId
+    assert "p1" in (resp.patches[0].images or {}).values()
 
 
 def test_edit_chat_story_agent_swaps_images_through_simple_llm_tool_call():
@@ -793,15 +794,14 @@ def test_edit_chat_case4_fetches_page_photos_via_agent_data_and_calls_gemini(mon
             }
         ]
     )
-    calls: list[tuple[Any, str, bool]] = []
+    judged: list[Any] = []
 
-    async def fake_gemini(chapters, *, mode, allowAddPages):  # noqa: ANN001
-        calls.append((chapters, mode, allowAddPages))
-        return select_layout_agent.GeminiLayoutResult(
-            pages=[{"chapterId": "c1", "templateId": "mag-03", "slots": {"image": "p1"}}]
-        )
+    async def fake_judge(chapter, candidates):  # noqa: ANN001
+        # case4-swap 迁到新流程:代码随机生成候选 + 评委选。记录被评委的章节,选第 0 个。
+        judged.append(chapter)
+        return select_layout_agent.LayoutJudgeResult(winner_index=0)
 
-    monkeypatch.setattr(edit_handler.select_layout_agent, "gemini_layout", fake_gemini)
+    monkeypatch.setattr(edit_handler.select_layout_agent, "judge_layout", fake_judge)
 
     async def complete(**kwargs):  # noqa: ANN003
         if kwargs.get("tools"):
@@ -818,8 +818,9 @@ def test_edit_chat_case4_fetches_page_photos_via_agent_data_and_calls_gemini(mon
     )
 
     assert tools.page_photo_requests == [{"albumId": "alb_v3", "chapterId": "c1"}]
-    assert calls[0][1:] == ("case4-swap", True)
-    assert resp.patches[0].templateId == "mag-03"
+    # 1 张照片 => 代码生成多个单图候选 => 调评委一次,产出含该照片的 patch。
+    assert judged and judged[0]["chapterId"] == "c1"
+    assert resp.patches[0].images == {"image": "p1"} or "p1" in (resp.patches[0].images or {}).values()
 
 
 def test_edit_chat_case4_without_focused_page_uses_chapter_page_indexes(monkeypatch):
@@ -848,15 +849,18 @@ def test_edit_chat_case4_without_focused_page_uses_chapter_page_indexes(monkeypa
         ],
     )
 
-    async def fake_gemini(chapters, *, mode, allowAddPages):  # noqa: ANN001
-        return select_layout_agent.GeminiLayoutResult(
-            pages=[
-                {"chapterId": "c2", "templateId": "mag-13", "slots": {"image": "p1"}},
-                {"chapterId": "c2", "templateId": "mag-13", "slots": {"image": "p2"}},
+    # 固定候选为「2 张照片 = 2 页」,以确定性断言 patch 映射到章节页索引 [3, 4]。
+    def fixed_candidates(photos, **kwargs):  # noqa: ANN001, ANN003
+        return [
+            [
+                {"pageIndex": 0, "templateId": "mag-08", "images": {"image": "p1"}, "texts": {}},
+                {"pageIndex": 1, "templateId": "mag-08", "images": {"image": "p2"}, "texts": {}},
             ]
-        )
+        ]
 
-    monkeypatch.setattr(edit_handler.select_layout_agent, "gemini_layout", fake_gemini)
+    monkeypatch.setattr(
+        "src.agents.tools.layout.candidate_gen_v3.generate_candidates", fixed_candidates
+    )
 
     async def complete(**kwargs):  # noqa: ANN003
         if kwargs.get("tools"):
@@ -882,20 +886,14 @@ def test_edit_chat_case4_falls_back_to_page_info_photos_without_transient_refs(m
     tools = FakeTools(page_info={"chapter": _chapter(), "pages": _pages()}, page_photos=[])
     seen: dict[str, list[str]] = {}
 
-    async def fake_gemini(chapters, *, mode, allowAddPages):  # noqa: ANN001
-        photos = chapters[0]["photos"]
-        seen["photo_ids"] = [getattr(photo, "photoId", None) for photo in photos]
-        return select_layout_agent.GeminiLayoutResult(
-            pages=[
-                {
-                    "chapterId": "c1",
-                    "templateId": "mag-04",
-                    "slots": {"image1": "p1", "image2": "p2"},
-                }
-            ]
-        )
+    # 新流程:排版走 candidate_gen,捕获传入的照片(验证从 page-info 回退取到 p1/p2)。
+    def fake_candidates(photos, **kwargs):  # noqa: ANN001, ANN003
+        seen["photo_ids"] = [getattr(p, "photoId", None) or p.get("photoId") for p in photos]
+        return [[{"templateId": "mag-04", "images": {"image1": "p1", "image2": "p2"}, "texts": {}}]]
 
-    monkeypatch.setattr(edit_handler.select_layout_agent, "gemini_layout", fake_gemini)
+    monkeypatch.setattr(
+        "src.agents.tools.layout.candidate_gen_v3.generate_candidates", fake_candidates
+    )
 
     async def complete(**kwargs):  # noqa: ANN003
         if kwargs.get("tools"):

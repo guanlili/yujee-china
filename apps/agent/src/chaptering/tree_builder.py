@@ -96,6 +96,7 @@ def assemble_stage1_tree(
                     width=src.width,
                     height=src.height,
                     orientation=_orientation(src.width, src.height),  # type: ignore[arg-type]
+                    composition=descriptions.imageCompositions.get(photo_id),  # type: ignore[arg-type]
                     takenAt=src.exif.takenAt if src.exif else None,
                 )
             )

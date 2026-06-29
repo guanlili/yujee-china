@@ -95,9 +95,9 @@ def test_gemini_layout_falls_back_only_for_illegal_or_missing_slots():
         ],
     )
 
-    assert len(pages) == 1
-    assert set(pages[0]["images"].values()) == {"p1", "p2"}
-    assert pages[0]["images"] != {slot_a: "p1"}
+    # 非法 slot => fallback 重排(填满式随机拆分,页数不定但照片不重不漏)。
+    all_ids = sorted(pid for p in pages for pid in p["images"].values())
+    assert all_ids == ["p1", "p2"]
 
 
 def test_gemini_layout_accepts_case4_swap_mode_without_rejecting(monkeypatch):

@@ -1,8 +1,19 @@
-"""排版选模板 Agent: 给已分好的章节,让 Gemini 每页选模板并把照片映射到图槽。"""
+"""排版选模板 Agent。
+
+P1 新逻辑:代码随机生成 N 个整章候选,Gemini 当评委选最佳(`judge_layout`)。
+旧的「Gemini 直接排版」(`gemini_layout`)暂保留给 case4-swap 迁移期。
+"""
 
 from __future__ import annotations
 
-from .handler import gemini_layout
-from .schema import GeminiLayoutResult, GeminiLayoutUnavailable
+from .handler import gemini_layout, judge_layout, judge_layout_thumbnails
+from .schema import GeminiLayoutResult, GeminiLayoutUnavailable, LayoutJudgeResult
 
-__all__ = ["GeminiLayoutResult", "GeminiLayoutUnavailable", "gemini_layout"]
+__all__ = [
+    "GeminiLayoutResult",
+    "GeminiLayoutUnavailable",
+    "LayoutJudgeResult",
+    "gemini_layout",
+    "judge_layout",
+    "judge_layout_thumbnails",
+]

@@ -60,7 +60,8 @@ X-Request-Id: <uuid>
 |---|---|---|
 | `GET /health` | sync | Agent health check |
 | `POST /v3/analyze` | async, HTTP 202 + callback | Stage1: 接收 base64 照片,生成 tree-only `V3LayoutTree` |
-| `POST /v3/select-layout` | async, HTTP 202 + callback | Stage2: 接收 browser 200px refs,生成 `Page[]` |
+| `POST /v3/select-layout` | async, HTTP 202 + callback | Stage2 phase 1: 接收 browser 200px refs,生成候选(P2 回调 `candidates`,见 §5.2.1)|
+| `POST /v3/judge-layout` | async, HTTP 202 + callback | Stage2 phase 2: 接收 browser 渲染缩略图,Gemini 评委选赢家,生成 `Page[]`(见 §5.2.1)|
 | `POST /v3/chapter-chat` | sync | 无状态单章引导、写作、改页 turn |
 | `POST /v3/edit-chat` | sync + Agent DB | 当前主编辑 turn: pending op + Web ack |
 | `POST /v3/page-edit` | sync | 聚焦页两段式编辑 helper |
@@ -76,7 +77,8 @@ X-Request-Id: <uuid>
 |---|---|
 | `POST /api/v3/albums` | 创建相册、扣费 hold、派发 `/v3/analyze` |
 | `POST /api/v3/internal/job-progress` | Agent analyze/select-layout callback sink |
-| `POST /api/v3/albums/:id/select-layout` | 浏览器补 200px refs 后派发 `/v3/select-layout` |
+| `POST /api/v3/albums/:id/select-layout` | 浏览器补 200px refs 后派发 `/v3/select-layout`(P2 phase 1)|
+| `POST /api/v3/albums/:id/judge-layout` | 浏览器渲染完候选缩略图后派发 `/v3/judge-layout`(P2 phase 2,见 §5.2.1)|
 | `POST /api/v3/albums/:id/retry` | 对失败相册重新派发 init |
 | `GET /api/v3/albums/:id/draft` | 读取 tree + pages draft |
 | `GET/POST /api/v3/albums/:id/story-progress` | 读取/推进章节完成度 |
@@ -255,6 +257,84 @@ Completed callback:
 }
 ```
 
+#### 5.2.1 P2 — rendered-thumbnail judge (two-phase select-layout)
+
+> 目的:让 Gemini 评委看**真实排好版的候选缩略图**(真照片放进模板槽),而不是「结构 JSON + 裸照片 + 模板线框图」。约束:**浏览器**用现成 React 模板渲染候选(`apps/web/src/components/album/templates/`,与定稿同一套组件),**只渲图槽不渲文字、不加载字体**(规避 Google Fonts 本地被墙);缩略图下采样后传给 Agent;**候选生成仍在 Agent**(不复制引擎逻辑),**评委 LLM 仍在 Agent**(Web 不调 LLM)。
+
+`/v3/select-layout` 从「一发即走」拆成**两段异步**,两段都由**浏览器驱动**(因为 Agent 不可同步回调 Web,且原图/照片只在浏览器)。沿用同一 `requestId`。
+
+**Phase 1 — 候选生成(Agent → 回调 candidates)。** 请求体不变(见上),Agent 仍跑 `candidate_gen_v3` 生成每章 N 个候选,但**不再在 Agent 内调 Gemini 评委**,而是把候选**结构**经回调交回 Web:
+
+```ts
+// candidates 回调(jobKind="select-layout", event="candidates")
+{
+  requestId: string;
+  jobKind: "select-layout";
+  event: "candidates";
+  units: Array<{
+    unitKey: string;          // chapterId 或「chapterId#段首 photoId」(超大章拆段时唯一)
+    chapterId: string;
+    candidates: Array<{
+      candidateIndex: number;
+      pages: Array<{
+        templateId: string;
+        images: Record<string, string>;  // slotId → photoId(真 photoId,非 simple id)
+      }>;
+    }>;
+  }>;
+  usage: V3Usage;            // 仅候选生成耗时;judge 计数在 Phase 2 累加
+}
+```
+
+- 单候选 unit(`candidates.length === 1`)Web 可直接选中、**不进 Phase 2**(无需评委)。
+- Web 不持久化候选;暂存于内存/会话态,供浏览器渲染。
+
+**浏览器渲染(Web 侧,无契约)。** 浏览器对每个 unit 的每个候选,用对应 `templateId` 的 React 模板**仅渲染图槽**(`WebImage` 填真照片像素,跳过 title/body/explain/folio 文字与 `WebFonts`),再 `DOM → canvas → 下采样 JPEG`(同 `cover-thumbnail.ts` 套路)。得到每候选一张小缩略图(longest edge ~320px、JPEG q~0.6,目标 ≤ ~30KB/张)。
+
+**Phase 2 — 评委(浏览器 POST 缩略图回 Agent → Agent 调 Gemini → 回调 pages)。** 新端点:
+
+```
+POST /v3/judge-layout   (async, HTTP 202 + 同一 job-progress 回调)
+```
+
+Request:
+
+```ts
+{
+  requestId: string;
+  callbackUrl: string;
+  language: "zh" | "en";
+  units: Array<{
+    unitKey: string;
+    chapterId: string;
+    chosenIndex?: number;     // 单候选 unit:Web 已定,Agent 直接采用、不调评委
+    candidates: Array<{
+      candidateIndex: number;
+      thumbnail: string;      // data:image/jpeg;base64,...(下采样、仅图槽、无文字)
+      pages: Array<{
+        templateId: string;
+        images: Record<string, string>;  // 原样回传 Phase 1 的结构,作为评委裁决的落地依据
+      }>;
+    }>;
+  }>;
+}
+```
+
+Agent:对每个未定 unit 把该 unit 的 N 张缩略图发给 Gemini 评委(`judge_layout`,prompt 不变,只是图片来源换成真实渲染缩略图)选 `winnerIndex`;再用赢家 `pages` 走 `legalize.finalize_candidate_pages`,拼出整册 `pages[]`,经**同一个** `completed` 回调返回(载荷与 5.2 既有 `completed` 完全一致,Web 合并逻辑不变)。
+
+**Web 编排路由(新增):**
+
+```
+POST /api/v3/albums/:id/judge-layout   浏览器渲染完缩略图后派发 /v3/judge-layout
+```
+
+**降级 / 兜底(必须保持):**
+
+- 任一 unit 渲染失败 / 浏览器无 canvas → 该 unit 不送缩略图(`thumbnail` 缺省),Agent 评委退化为「取 candidateIndex 0」(等同现有 `candidates[0]` 兜底),全册仍能成稿。
+- Gemini 不可用(如本地 geo-block / `SELECT_LAYOUT_API_KEY` 缺失)→ 现有 `judge_layout` 抛 `GeminiLayoutUnavailable`,逐 unit 退化「取 0」。
+- Phase 1 回调失败或浏览器迟迟不发 Phase 2 → Web 可直接「全 unit 取 0」自行成稿(确定性 skeleton 仍是最终兜底),不阻塞 `stage` 推进。
+- 老客户端(不发 `/v3/judge-layout`):Agent 的 `/v3/select-layout` 行为可由开关回到「Phase 1 内联评委(裸照片 + 线框图)+ 直接 `completed`」单段模式,向后兼容。
+
 ### 5.3 Shared progress and failure callbacks
 
 Progress callback:
@@ -283,9 +363,12 @@ Failed callback:
 }
 ```
 
+> P2 引入第四种 select-layout 回调事件 `candidates`(phase 1 → Web,载荷见 §5.2.1);它不推进 `stage`,只把候选交回浏览器去渲染。最终 pages 仍由 phase 2 的 `completed` 回调返回,Web 合并逻辑不变。
+
 Web handling:
 
 - analyze completed stores the tree draft and keeps init job/credit hold open.
+- select-layout `candidates`(P2)holds the job open, stashes candidate structures for the browser to render; does **not** advance `stage`.
 - select-layout completed merges pages, sets job completed, sets album `status=EDITING`, advances `stage=story`, and settles the hold.
 - failed maps the Agent error code, marks job/album failed, and releases the credit hold.
 
@@ -610,6 +693,7 @@ Web mapping:
 
 - Base64 appears only in `/v3/analyze` request memory.
 - `/v3/select-layout` receives browser-derived 200px refs, not original images.
+- `/v3/judge-layout` (P2, §5.2.1) receives browser-rendered, downscaled candidate thumbnails (photos-in-slots, no text), not original images; they are judge prompt payload, never persisted by Web.
 - `/v3/cover` may receive bounded thumbnails for local color extraction; those are not prompt payload.
 - `exif` only allows `takenAt`.
 - `clusterId` is an opaque same-place/same-time label, never a coordinate.

@@ -97,6 +97,12 @@ export function adaptPageToTemplateData(
   const tpl = getTemplate(page.templateId);
   if (tpl) {
     for (const s of tpl.texts) {
+      // 预览占位:用户未写该文案(空/缺失)时,用模板的 sample 示例占位(纯渲染态,
+      // 不进 draft 数据)。folio/页码等 code 已填的装饰不受影响(它们已有值)。
+      const current = result[s.id];
+      if (s.sample && (current === undefined || current === '')) {
+        result[s.id] = s.sample;
+      }
       if (s.repeat === true && result[s.id] !== undefined) {
         result[s.id] = toArrayItems(result[s.id]);
       }

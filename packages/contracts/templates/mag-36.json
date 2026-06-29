@@ -13,14 +13,16 @@
       "maxChars": 16,
       "lang": "user",
       "hint": "居中大字主标题，叠在大图上的白色面板里，地名/短词（如「Seaside」）",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "Seaside"
     },
     {
       "id": "explain",
       "role": "explain",
       "maxChars": 48,
       "lang": "user",
-      "hint": "左下角浅色小图注"
+      "hint": "左下角浅色小图注",
+      "sample": "海风带着咸味，吹了一整个下午"
     }
   ]
 }

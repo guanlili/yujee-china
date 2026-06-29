@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TemplateCategory } from './enums';
-import { PhotoOrientation, PhotoQuality } from './layout';
+import { PhotoComposition, PhotoOrientation, PhotoQuality } from './layout';
 import {
   TEMPLATE_IDS as GENERATED_TEMPLATE_IDS,
   TEMPLATES as GENERATED_TEMPLATES,
@@ -27,6 +27,8 @@ export const TemplateImageSlot = z
     id: z.string().min(1),
     orientation: z.array(PhotoOrientation).nonempty().optional(),
     quality: z.array(PhotoQuality).nonempty().optional(),
+    // 槽位接受的画面构图;未声明 = 接受任意(同 orientation/quality)。
+    composition: z.array(PhotoComposition).nonempty().optional(),
   })
   .strict();
 export type TemplateImageSlot = z.infer<typeof TemplateImageSlot>;
@@ -60,6 +62,8 @@ export const TemplateTextSlot = z
     // 旧 `repeat:true` + bracket-path 的重复内容承载方式。V3 用 `items` 组替代,
     //   但当前引擎仍接受 repeat 槽的 bracket-path 寻址(见 validateSlotsForTemplate)。
     repeat: z.boolean().optional(),
+    // 预览占位示例文案:用户未写文案时,Web 渲染用它占位(纯预览,不进 draft 数据)。
+    sample: z.string().min(1).max(600).optional(),
   })
   .strict();
 export type TemplateTextSlot = z.infer<typeof TemplateTextSlot>;

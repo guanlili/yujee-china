@@ -13,7 +13,8 @@
       "maxChars": 12,
       "lang": "user",
       "hint": "左上角引导小标签（如「And」「Notes」）",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "Notes"
     },
     {
       "id": "date",
@@ -21,14 +22,16 @@
       "maxChars": 14,
       "lang": "user",
       "hint": "右上角日期/地点小标签，与左侧对仗（如「June 2026」）",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "June 2026"
     },
     {
       "id": "body",
       "role": "explain",
       "maxChars": 120,
       "lang": "user",
-      "hint": "图下左侧散文收束语"
+      "hint": "图下左侧散文收束语",
+      "sample": "有些话不必说出口，写下来，留给某个安静的午后慢慢读。"
     }
   ]
 }

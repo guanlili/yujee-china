@@ -13,49 +13,56 @@
       "maxChars": 18,
       "lang": "user",
       "hint": "左上大标题，1–2 短词分两行",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "山与海"
     },
     {
       "id": "explain1",
       "role": "explain",
       "maxChars": 24,
       "lang": "user",
-      "hint": "右上导语小标题，呼应大标题"
+      "hint": "右上导语小标题，呼应大标题",
+      "sample": "在路上遇见的光"
     },
     {
       "id": "body",
       "role": "body",
       "maxChars": 80,
       "lang": "user",
-      "hint": "右上正文导语，接小标题"
+      "hint": "右上正文导语，接小标题",
+      "sample": "一边是连绵的山，一边是无边的海，我们刚好走在中间。"
     },
     {
       "id": "explain2",
       "role": "explain",
       "maxChars": 40,
       "lang": "user",
-      "hint": "中部横图图注"
+      "hint": "中部横图图注",
+      "sample": "中午的阳光把海面晒成碎银"
     },
     {
       "id": "date",
       "role": "decoration",
       "maxChars": 12,
       "lang": "en",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "May 2026"
     },
     {
       "id": "label1",
       "role": "decoration",
       "maxChars": 12,
       "lang": "en",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "No.27"
     },
     {
       "id": "label2",
       "role": "decoration",
       "maxChars": 20,
       "lang": "en",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "On the Road"
     }
   ]
 }

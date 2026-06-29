@@ -15,6 +15,8 @@ class DescribeResult:
 
     chapterDescriptions: dict[str, str]
     imageDescriptions: dict[str, str]
+    # 逐图构图(closeup/focal/wide),识图模型输出;排版按朝向×构图匹配槽位。
+    imageCompositions: dict[str, str] = field(default_factory=dict)
     chapterTitleHints: dict[str, str] = field(default_factory=dict)
     chapterKeywords: dict[str, list[str]] = field(default_factory=dict)
     chapterVisualSummaries: dict[str, str] = field(default_factory=dict)

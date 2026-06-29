@@ -10,6 +10,10 @@
       "quality": [
         "hero",
         "detail"
+      ],
+      "composition": [
+        "focal",
+        "closeup"
       ]
     }
   ],
@@ -20,21 +24,24 @@
       "maxChars": 12,
       "lang": "user",
       "hint": "短意象标题（≤4 字）",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "那一刻"
     },
     {
       "id": "explain1",
       "role": "explain",
       "maxChars": 90,
       "lang": "user",
-      "hint": "图注，点出人物或场景"
+      "hint": "图注，点出人物或场景",
+      "sample": "他回头笑了一下，正好被光照亮"
     },
     {
       "id": "explain2",
       "role": "explain",
       "maxChars": 480,
       "lang": "user",
-      "hint": "较长图注，展开这一刻；分两段（段间空行），第一段抓住瞬间、第二段回味"
+      "hint": "较长图注，展开这一刻；分两段（段间空行），第一段抓住瞬间、第二段回味",
+      "sample": "那是个很普通的下午，阳光斜斜地照进来，把整个房间都染成暖色。\n\n后来我常想起这一幕，想起当时谁也没说话，却觉得格外安心。"
     },
     {
       "id": "date",
@@ -42,7 +49,8 @@
       "maxChars": 12,
       "lang": "en",
       "hint": "日期数字,如 08/24",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "08/24"
     },
     {
       "id": "folio",

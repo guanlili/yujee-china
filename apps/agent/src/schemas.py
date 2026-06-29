@@ -31,6 +31,8 @@ from pydantic import (
 
 PhotoOrientation = Literal["portrait", "landscape", "square"]
 PhotoQuality = Literal["hero", "detail", "fill"]
+# 画面构图(识图模型输出,不可由宽高推导):特写/重点/全景。排版按此匹配模板槽位。
+PhotoComposition = Literal["closeup", "focal", "wide"]
 Language = Literal["zh", "en"]
 ChatRole = Literal["user", "assistant"]
 PeopleCount = Literal["0", "1", "2-3", "4+"]
@@ -257,6 +259,8 @@ class V3ChapterPhoto(_V3Strict):
     width: int = Field(gt=0)
     height: int = Field(gt=0)
     orientation: PhotoOrientation
+    # 识图模型写;排版按朝向×构图匹配模板槽位。旧树无此字段 => None(视作任意)。
+    composition: PhotoComposition | None = None
     takenAt: str | None = None  # EXIF; missing => null (no GPS)
 
     _check_taken_at = field_validator("takenAt")(_validate_iso_datetime)
@@ -486,6 +490,8 @@ class SelectLayoutPhoto(_V3Strict):
     photoId: str = Field(min_length=1)
     ref200px: str = Field(min_length=1)
     orientation: PhotoOrientation
+    # 构图(来自 Stage1 树):排版随机引擎按朝向×构图匹配槽位。旧相册 => None(任意)。
+    composition: PhotoComposition | None = None
     takenAt: str | None
 
     _check_ref200px = field_validator("ref200px")(_validate_v3_analyze_image_data_url)
@@ -503,6 +509,34 @@ class SelectLayoutRequest(_V3Strict):
     callbackUrl: HttpUrl
     language: V3Language
     chapters: list[SelectLayoutChapter] = Field(min_length=1)
+
+
+# ---------- P2 排版评委(rendered-thumbnail judge,two-phase) ------------------
+
+
+class CandidatePage(_V3Strict):
+    templateId: str = Field(min_length=1)
+    images: dict[str, str]  # slotId → photoId
+
+
+class JudgeCandidate(_V3Strict):
+    candidateIndex: int = Field(ge=0)
+    thumbnail: str = Field(min_length=1)  # data:image/jpeg;base64,...(仅图槽、无文字)
+    pages: list[CandidatePage] = Field(min_length=1)
+
+
+class JudgeLayoutUnit(_V3Strict):
+    unitKey: str = Field(min_length=1)
+    chapterId: str = Field(min_length=1)
+    chosenIndex: int | None = Field(default=None, ge=0)
+    candidates: list[JudgeCandidate] = Field(min_length=1)
+
+
+class JudgeLayoutRequest(_V3Strict):
+    requestId: str = Field(min_length=1)
+    callbackUrl: HttpUrl
+    language: V3Language
+    units: list[JudgeLayoutUnit] = Field(min_length=1)
 
 
 # ---------- v3.ts: ② chapter-chat (sync) --------------------------------------
@@ -808,6 +842,27 @@ class SelectLayoutCompleted(_V3Strict):
     jobKind: Literal["select-layout"]
     event: Literal["completed"]
     pages: list[Page] = Field(min_length=1)
+    usage: V3Usage
+
+
+class LayoutCandidate(_V3Strict):
+    candidateIndex: int = Field(ge=0)
+    pages: list[CandidatePage] = Field(min_length=1)
+
+
+class SelectLayoutCandidateUnit(_V3Strict):
+    unitKey: str = Field(min_length=1)
+    chapterId: str = Field(min_length=1)
+    candidates: list[LayoutCandidate] = Field(min_length=1)
+
+
+class SelectLayoutCandidates(_V3Strict):
+    """P2 phase 1 回调:候选结构交回浏览器去渲染。不推进 stage。"""
+
+    requestId: str = Field(min_length=1)
+    jobKind: Literal["select-layout"]
+    event: Literal["candidates"]
+    units: list[SelectLayoutCandidateUnit] = Field(min_length=1)
     usage: V3Usage
 
 

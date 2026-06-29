@@ -58,14 +58,14 @@ def test_folio_uses_one_based_page_index():
 # ---------- date decoration ----------------------------------------------------
 
 
-def test_date_decor_from_taken_at():
+def test_date_decor_not_filled_left_for_sample():
     chapters = [_chapter("c1", [_photo("p1", taken_at="2024-03-15T08:30:00Z")])]
     pages = generic_copy.fill_generic_copy(
         [{"pageIndex": 0, "templateId": "mag-08", "images": {"image": "p1"}, "texts": {}}],
         chapters,
     )
-    # mag-08 has a `date` decoration slot (maxChars 12) → "03/24".
-    assert pages[0]["texts"]["date"] == "03/24"
+    # date 归用户文案,不再 code-fill(预览由 Web 用模板 sample 占位)。
+    assert "date" not in pages[0]["texts"]
     # folio still filled alongside.
     assert pages[0]["texts"]["folio"] == "01"
 
@@ -81,7 +81,8 @@ def test_date_decor_omitted_without_taken_at():
     assert pages[0]["texts"]["folio"] == "01"
 
 
-def test_date_decor_uses_earliest_taken_at_on_page():
+def test_date_decor_no_longer_code_filled():
+    # date 已归用户文案:预览阶段不再 code-fill,留空由 Web 用模板 sample 占位。
     photos = [
         _photo("p1", taken_at="2024-07-20T10:00:00Z"),
         _photo("p2", taken_at="2024-03-01T10:00:00Z"),
@@ -92,15 +93,15 @@ def test_date_decor_uses_earliest_taken_at_on_page():
         [
             {
                 "pageIndex": 0,
-                "templateId": "mag-04",  # holds 3 images + date decoration slot
+                "templateId": "mag-04",
                 "images": {"image1": "p1", "image2": "p2", "image3": "p3"},
                 "texts": {},
             }
         ],
         chapters,
     )
-    # Earliest of the three (March) wins.
-    assert pages[0]["texts"]["date"] == "03/24"
+    # date 不再被填(留给 sample / 用户);folio 仍由 code 填。
+    assert "date" not in pages[0]["texts"]
 
 
 # ---------- user-content slots stay empty (no正式文案) -------------------------
@@ -167,8 +168,8 @@ def test_filled_pages_revalidate_as_page_objects():
         chapters,
     )
     obj = Page(**pages[0])
-    assert obj.texts["folio"] == "01"
-    assert obj.texts["date"] == "03/24"
+    assert obj.texts["folio"] == "01"  # 页码仍 code-fill
+    assert "date" not in obj.texts  # date 归用户文案,不再 code-fill
 
 
 def test_chapter_color_placeholders_left_null():

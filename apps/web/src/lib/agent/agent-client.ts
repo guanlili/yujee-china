@@ -11,6 +11,7 @@ import {
   V3RecommendResponse,
 } from '@yujee/contracts';
 import type {
+  JudgeLayoutRequest,
   SelectLayoutRequest,
   V3AnalyzeRequest,
   V3ApplyThemeRequest,
@@ -80,6 +81,32 @@ export const agentClient = {
     if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected select-layout payload');
     if (!res.ok) {
       logger.error({ status: res.status, requestId: payload.requestId }, 'agent v3 select-layout non-2xx');
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+    return { requestId: payload.requestId };
+  },
+
+  async submitJudgeLayoutV3(payload: JudgeLayoutRequest): Promise<{ requestId: string }> {
+    let res: Response;
+    try {
+      res = await fetch(`${env.AGENT_BASE_URL}/v3/judge-layout`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
+          'Content-Type': 'application/json',
+          'X-Request-Id': payload.requestId,
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (e) {
+      logger.error({ err: String(e), requestId: payload.requestId }, 'agent v3 judge-layout submit failed');
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+    if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
+    if (res.status === 400) throw ERRORS.VALIDATION_FAILED('agent rejected judge-layout payload');
+    if (!res.ok) {
+      logger.error({ status: res.status, requestId: payload.requestId }, 'agent v3 judge-layout non-2xx');
       throw ERRORS.AGENT_INTERNAL_ERROR();
     }
     return { requestId: payload.requestId };

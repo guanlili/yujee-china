@@ -5,8 +5,12 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from .. import select_layout as select_layout_agent
-from ...engine import legalize
+from ...engine import candidate_gen_v3, legalize
+from ...logging_config import get_logger
 from ...schemas import V3EditChatRequest, V3LayoutPatchEntry
+from ...settings import get_settings
+
+log = get_logger("tools.layout")
 
 
 class LayoutDataTools(Protocol):
@@ -78,18 +82,6 @@ def _fallback_photos_from_page_info(
     return photos
 
 
-def _current_template_hint(page_info: dict[str, Any]) -> str:
-    template_ids = [
-        _value(page, "templateId", None)
-        for page in list(page_info.get("pages", []) or [])
-        if isinstance(_value(page, "templateId", None), str)
-    ]
-    unique = sorted(set(template_ids))
-    if not unique:
-        return ""
-    return f"当前模板: {', '.join(unique)}。请换成不同模板,不要重复使用当前模板。"
-
-
 def patches_from_pages(
     pages: list[dict[str, Any]], *, page_indexes: list[int]
 ) -> list[V3LayoutPatchEntry]:
@@ -143,15 +135,28 @@ async def swap_layout(
     if not photos:
         return []
 
-    structure_hint = req.userMessage
-    current_template_hint = _current_template_hint(page_info)
-    if current_template_hint:
-        structure_hint = f"{structure_hint}\n{current_template_hint}"
-    chapters = [{"chapterId": chapter_id, "structureHint": structure_hint, "photos": photos}]
-    result = await select_layout_agent.gemini_layout(
-        chapters, mode="case4-swap", allowAddPages=True
+    # 换图重排迁到新流程:代码随机生成 N 个候选 → LLM 评委选最佳。种子带 userMessage,
+    # 让"换一个版式"每次重排出不同结果(新流程靠随机+软偏好天然换模板,不再靠 prompt 提示)。
+    chapter = {"chapterId": chapter_id, "structureHint": req.userMessage, "photos": photos}
+    candidates = candidate_gen_v3.generate_candidates(
+        photos,
+        seed=f"{req.albumId}#{chapter_id}#{req.userMessage}",
+        count=int(get_settings().select_layout_candidate_count),
     )
-    legal_pages = legalize.legalize_layout(chapters, result.pages)
+    if not candidates:
+        return []
+    if len(candidates) == 1:
+        winner = candidates[0]
+    else:
+        try:
+            verdict = await select_layout_agent.judge_layout(chapter, candidates)
+            winner = candidates[verdict.winner_index]
+        except Exception as exc:  # noqa: BLE001
+            log.warning("tools_layout.judge_fallback", chapter_id=chapter_id, error=str(exc))
+            winner = candidates[0]
+
+    # 候选已合法(填满、不重不漏),轻量最终化即可,不走旧 Gemini 夹紧/重排。
+    legal_pages = legalize.finalize_candidate_pages(chapter, winner)
     return patches_from_pages(legal_pages, page_indexes=page_indexes)
 
 

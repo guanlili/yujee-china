@@ -16,14 +16,16 @@
       "maxChars": 30,
       "lang": "user",
       "hint": "顶部大字主标题，一句收束一天的陈述（如「then we went home,」）",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "then we went home,"
     },
     {
       "id": "caption",
       "role": "explain",
       "maxChars": 40,
       "lang": "user",
-      "hint": "右侧小图注，接标题"
+      "hint": "右侧小图注，接标题",
+      "sample": "路灯一盏盏亮起来"
     }
   ]
 }

@@ -16,21 +16,24 @@
       "maxChars": 16,
       "lang": "user",
       "hint": "左上超大字主标题，一个短词（如「Notes」「Home」）",
-      "variableDecor": true
+      "variableDecor": true,
+      "sample": "Notes"
     },
     {
       "id": "line",
       "role": "explain",
       "maxChars": 40,
       "lang": "user",
-      "hint": "中部一行承上启下的私语"
+      "hint": "中部一行承上启下的私语",
+      "sample": "写给那些来不及说的话"
     },
     {
       "id": "caption",
       "role": "explain",
       "maxChars": 130,
       "lang": "user",
-      "hint": "右下角收尾图注段"
+      "hint": "右下角收尾图注段",
+      "sample": "翻到最后一页才发现，原来记下的不只是风景，还有当时的自己。"
     }
   ]
 }

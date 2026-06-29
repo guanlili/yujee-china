@@ -21,6 +21,7 @@ from typing import Any, Literal, NotRequired, TypedDict, cast
 TemplateCategory = Literal["cover", "interior", "toc", "ending"]
 PhotoOrientation = Literal["portrait", "landscape", "square"]
 PhotoQuality = Literal["hero", "detail", "fill"]
+PhotoComposition = Literal["closeup", "focal", "wide"]
 TextRole = Literal["title", "body", "explain", "decoration"]
 TextLang = Literal["user", "en"]
 PairingSide = Literal["left", "right"]
@@ -31,6 +32,8 @@ class ImageSlot(TypedDict):
     id: str
     orientation: NotRequired[list[PhotoOrientation]]
     quality: NotRequired[list[PhotoQuality]]
+    # 槽位接受的画面构图;未声明 = 接受任意构图(与 orientation/quality 一致)。
+    composition: NotRequired[list[PhotoComposition]]
 
 
 class TextSlot(TypedDict):
@@ -43,6 +46,8 @@ class TextSlot(TypedDict):
     # 消费它们的 V3 引擎是 WP0.4。
     hint: NotRequired[str]
     variableDecor: NotRequired[bool]
+    # 预览占位示例文案:用户未写文案时,Web 渲染用它占位(不进数据,纯预览)。
+    sample: NotRequired[str]
 
 
 class SvgSlot(TypedDict):
@@ -70,6 +75,7 @@ class TemplateDef(TypedDict):
 
 _ORIENTATIONS = {"portrait", "landscape", "square"}
 _QUALITIES = {"hero", "detail", "fill"}
+_COMPOSITIONS = {"closeup", "focal", "wide"}
 _TEXT_ROLES = {"title", "body", "explain", "decoration"}
 _TEXT_LANGS = {"user", "en"}
 _CATEGORIES = {"cover", "interior", "toc", "ending"}
@@ -77,8 +83,8 @@ _CATEGORIES = {"cover", "interior", "toc", "ending"}
 _TEMPLATE_KEYS = {
     "id", "category", "pairing", "styles", "images", "texts", "svgs", "items",
 }
-_IMAGE_SLOT_KEYS = {"id", "orientation", "quality"}
-_TEXT_SLOT_KEYS = {"id", "role", "lang", "maxChars", "repeat", "hint", "variableDecor"}
+_IMAGE_SLOT_KEYS = {"id", "orientation", "quality", "composition"}
+_TEXT_SLOT_KEYS = {"id", "role", "lang", "maxChars", "repeat", "hint", "variableDecor", "sample"}
 _SVG_SLOT_KEYS = {"id", "variableDecor"}
 _ITEMS_KEYS = {"images", "texts"}
 _PAIRING_KEYS = {"forced", "with", "side"}
@@ -147,6 +153,15 @@ def _validate_image_slot(value: Any, label: str) -> ImageSlot:
             raise _fail(f"{label}.quality has unsupported values: {invalid}")
         out["quality"] = cast(list[PhotoQuality], qualities)
 
+    if "composition" in data:
+        compositions = _optional_nonempty_string_array(
+            data["composition"], f"{label}.composition"
+        )
+        invalid = sorted(set(compositions) - _COMPOSITIONS)
+        if invalid:
+            raise _fail(f"{label}.composition has unsupported values: {invalid}")
+        out["composition"] = cast(list[PhotoComposition], compositions)
+
     return out
 
 
@@ -196,6 +211,13 @@ def _validate_text_slot(value: Any, label: str) -> TextSlot:
         if not isinstance(variable_decor, bool):
             raise _fail(f"{label}.variableDecor must be a boolean")
         out["variableDecor"] = variable_decor
+    if "sample" in data:
+        sample = data["sample"]
+        if not isinstance(sample, str) or not sample:
+            raise _fail(f"{label}.sample must be a non-empty string")
+        if len(sample) > 600:
+            raise _fail(f"{label}.sample must be at most 600 characters")
+        out["sample"] = sample
     return out
 
 
