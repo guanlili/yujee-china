@@ -1498,8 +1498,12 @@ function EditorBook({
         // #158 follow-up: drop the ov-book surface fill + spine for a solo spread so
         // the empty half reads as empty space, not a white page.
         const solo = lp === null || rp === null;
+        const lpi = lp === null ? '' : String(lp.pageIndex);
+        const rpi = rp === null ? '' : String(rp.pageIndex);
+        const lSel = lp !== null && lp.pageIndex === selectedPageIndex ? ' ov-page-selected' : '';
+        const rSel = rp !== null && rp.pageIndex === selectedPageIndex ? ' ov-page-selected' : '';
         return `<div class="ov-spread${i === currentCh ? ' ov-current' : ''}" data-ovidx="${i}">
-          <div class="ov-book${solo ? ' ov-solo' : ''}"><div class="ov-page ov-left${lp === null ? ' ov-empty' : ''}" data-oface="${i}-l"></div><div class="ov-page ov-right${rp === null ? ' ov-empty' : ''}" data-oface="${i}-r"></div></div>
+          <div class="ov-book${solo ? ' ov-solo' : ''}"><div class="ov-page ov-left${lp === null ? ' ov-empty' : ''}${lSel}" data-oface="${i}-l" data-page-index="${lpi}"></div><div class="ov-page ov-right${rp === null ? ' ov-empty' : ''}${rSel}" data-oface="${i}-r" data-page-index="${rpi}"></div></div>
           <div class="ov-cap">${spreadLabel(i)}</div>
         </div>`;
       }).join('');
@@ -1508,6 +1512,17 @@ function EditorBook({
         paintEl(g.querySelector(`[data-oface="${i}-l"]`) as HTMLElement | null, lp);
         paintEl(g.querySelector(`[data-oface="${i}-r"]`) as HTMLElement | null, rp);
       }
+      // 单页选中(与正常模式一致):点某一页 => 选中该页 + 进入该跨页;空页/无 index => 整跨页跳转。
+      g.querySelectorAll('.ov-page:not(.ov-empty)').forEach((el) => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const pi = (el as HTMLElement).dataset.pageIndex;
+          const spread = el.closest('.ov-spread');
+          const ovIdx = spread ? +spread.getAttribute('data-ovidx')! : currentCh;
+          if (pi) selectedPageIndex = Number(pi);
+          openSpreadFromOverview(ovIdx);
+        });
+      });
       g.querySelectorAll('.ov-spread').forEach((el) => {
         el.addEventListener('click', () => openSpreadFromOverview(+el.getAttribute('data-ovidx')!));
       });
@@ -1534,6 +1549,8 @@ function EditorBook({
     function openSpreadFromOverview(i: number) {
       exitOverview();
       if (i !== currentCh) flipTo(i, i > currentCh ? 'next' : 'prev');
+      // 概览里选的页带回正常模式高亮(若选中页就在当前跨页,flipTo 不触发,这里补刷)。
+      updateSelectionHighlight();
     }
     const stage = $('.book-stage');
     const onWheel = (e: WheelEvent) => {

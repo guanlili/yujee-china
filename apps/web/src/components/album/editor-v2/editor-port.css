@@ -125,13 +125,23 @@
   backface-visibility: hidden;
   cursor:pointer;
 }
-/* W11: the page the user selected to talk to the AI about ("change this page"). */
-.editor-port .page.page-selected{ box-shadow: inset 0 0 0 3px var(--accent); }
+/* W11: the page the user selected to talk to the AI about ("change this page").
+   An INSET box-shadow gets painted over by full-bleed page content; an OUTSIDE
+   outline gets clipped by the parent .leaf/.book overflow:hidden. Both fail.
+   Fix: an absolutely-positioned ::after overlay INSIDE the page, hugging all four
+   edges, layered ABOVE the page content (high z-index) and BELOW the clip — a clear
+   accent box framing the whole selected page, visible on every side. */
+.editor-port .page.page-selected{ position:relative; }
+.editor-port .page.page-selected::after{
+  content:''; position:absolute; inset:0; z-index:7; pointer-events:none;
+  border:3px solid var(--accent);
+}
 /* #158 follow-up: a null half ("no page there" — left of cover, right of ending)
    renders as empty space, not a white page: no surface, shadow, border, page-num,
    and not clickable/selectable. */
 .editor-port .page.page-empty{ background:transparent; box-shadow:none; cursor:default; }
 .editor-port .page.page-empty.page-selected{ box-shadow:none; }
+.editor-port .page.page-empty.page-selected::after{ display:none; }
 .editor-port .page.page-empty .page-num{ display:none; }
 /* Solo spread (cover/ending): drop the parent backing + spine next to the empty half. */
 .editor-port .book.book-solo{ background:transparent; }
@@ -240,17 +250,25 @@
 .editor-port .ov-page.ov-empty{ padding:0; }
 .editor-port .ov-spread:hover .ov-book.ov-solo{ box-shadow:none; }
 .editor-port .ov-spread:hover .ov-book{ box-shadow:0 4px 14px rgba(0,0,0,0.08), 0 14px 36px rgba(0,0,0,0.14); }
-.editor-port .ov-page{ flex:1; overflow:hidden; }
-.editor-port .ov-left{ padding:9% 8%; display:flex; flex-direction:column; }
+.editor-port .ov-page{ flex:1; overflow:hidden; position:relative; cursor:pointer; }
+/* paintEl 把真实页(794×1123)按 clientWidth 缩放注入;.ov-left/.ov-right 若带 padding,
+   clientWidth 变小 => 缩放过小 + 从 padding 偏移处起画 => 内容右下偏移、渲染歪。去掉 padding
+   让概览页和正常 .page 一样 flush。 */
+.editor-port .ov-left{ padding:0; display:flex; flex-direction:column; }
 .editor-port .ov-eyebrow{ font-family:var(--font-mono); font-size:8px; letter-spacing:.1em; color:var(--meta); text-transform:uppercase; margin-bottom:8px; }
 .editor-port .ov-title{ font-family:var(--font-display); font-weight:800; font-size:18px; line-height:1.1; letter-spacing:-0.02em; color:var(--fg); margin-bottom:7px; }
 .editor-port .ov-meta{ font-family:var(--font-mono); font-size:8px; letter-spacing:.06em; color:var(--meta); }
-.editor-port .ov-right{ padding:7%; }
+.editor-port .ov-right{ padding:0; }
 .editor-port .ov-photos{ width:100%; height:100%; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:4px; }
 .editor-port .ov-photo{ background-size:cover; background-position:center; border-radius:4px; background-color:var(--bg); }
 .editor-port .ov-photo.span2{ grid-row:span 2; }
 .editor-port .ov-cap{ margin-top:10px; text-align:center; font-size:11px; font-family:var(--font-mono); letter-spacing:.04em; color:var(--fg-2); }
-.editor-port .ov-current .ov-book{ outline:2px solid var(--accent); outline-offset:2px; }
+/* 概览也用单页选中(与正常模式一致),不再整跨页高亮。框 = 贴该页四边的覆盖层,
+   在内容之上、裁切之内,四边都可见。 */
+.editor-port .ov-page.ov-page-selected::after{
+  content:''; position:absolute; inset:0; z-index:7; pointer-events:none;
+  border:3px solid var(--accent);
+}
 
 /* ─── Thumbnail Strip glass ─── */
 .editor-port .thumb-strip{
