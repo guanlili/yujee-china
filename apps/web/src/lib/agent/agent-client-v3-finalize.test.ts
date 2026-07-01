@@ -19,6 +19,7 @@ const PAYLOAD: V3FinalizeRequest = {
         description: 'A spring trip.',
         accentColor: null,
         artFont: null,
+        chapterContext: "",
         photos: [{ photoId: 'p1', sceneDescription: 'beach', width: 800, height: 600, orientation: 'landscape' }],
       },
     ],

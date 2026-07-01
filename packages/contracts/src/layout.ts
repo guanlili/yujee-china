@@ -154,6 +154,10 @@ export const V3Chapter = z
   .object({
     chapterId: z.string().min(1),
     description: z.string().max(600).default(""), // 目录占位,分析期留空,后期写目录才填
+    // 内容采集(分组后的采访环节)答案:一段自由文字,给排版/写文案当章节背景。
+    // Web 把已知的 EXIF 时间/反地理编码地名拼成前缀(如「时间:… 地点:…」),后接用户原话。
+    // 迁移字段:老树无此键(default "");坐标绝不进此字段(仅地名文字,§3 隐私)。
+    chapterContext: z.string().max(500).default(""),
     // Stage1 extracted source color. Distinct from final theme `accentColor`.
     // Migration field: older trees omit it; Stage1 PR249 trees may carry null.
     extractedColor: AccentColor.nullish(),

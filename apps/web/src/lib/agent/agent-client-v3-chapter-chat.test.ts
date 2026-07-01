@@ -17,6 +17,7 @@ const PAYLOAD: V3ChapterChatRequest = {
     description: 'A spring trip.',
     accentColor: null,
     artFont: null,
+    chapterContext: "",
     photos: [
       {
         photoId: 'p1',

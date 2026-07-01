@@ -152,6 +152,21 @@ export function postApplyTheme(
   });
 }
 
+// 内容采集(分组后采访)— 把每章采访答案拼成的 chapterContext 存回 draft_json.tree(§3 数据
+// 归属:tree 不经浏览器往返,浏览器只发拼好的答案字符串)。纯 draft 写回,不调 Agent、不推进
+// stage。PRIVACY:chapterContext 只含地名文字 + 用户原话,坐标止步于浏览器(见 lib/photo/geocode)。
+// 跳过的章不必出现在数组里。
+export interface ChapterContextEntry {
+  chapterId: string;
+  chapterContext: string;
+}
+export function postChapterContexts(
+  albumId: string,
+  contexts: ChapterContextEntry[],
+): Promise<{ savedChapterIds: string[] }> {
+  return postJson(`/api/v3/albums/${albumId}/chapter-context`, { contexts });
+}
+
 // ④ 书籍设计 — 封面/封尾 — one real /v3/cover turn (缺口#20). Invariant 12 / §3 数据归属:
 // the browser holds NO layout pages, so it sends ONLY its SELECTIONS (the chosen 封面/封尾
 // template ids, or null = 跳过 — 封面可选 §4.4); the Web service re-slices the relevant

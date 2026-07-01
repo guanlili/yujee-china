@@ -273,6 +273,9 @@ class V3Chapter(_V3Strict):
     chapterId: str = Field(min_length=1)
     # 目录(TOC)专用占位:分析/识图阶段留空,后期写目录环节才填。
     description: str = Field(default="", max_length=600)
+    # 内容采集(分组后采访)答案:自由文字,给排版/写文案当章节背景。
+    # Web 拼「时间:… 地点:…」前缀 + 用户原话;坐标绝不进(仅地名文字,§3 隐私)。
+    chapterContext: str = Field(default="", max_length=500)
     # Stage1 extracted source color. Distinct from final theme `accentColor`.
     # Migration field: older trees omit it; Stage1 PR249 trees may carry null.
     extractedColor: AccentColor | None = None
@@ -502,6 +505,8 @@ class SelectLayoutChapter(_V3Strict):
     chapterId: str = Field(min_length=1)
     photos: list[SelectLayoutPhoto] = Field(min_length=1)
     structureHint: str = Field(default=None, max_length=600)
+    # 章节背景(内容采集答案):评委据此选更贴合的版式(生日→温馨…)。跳过采访/老相册 => ""。
+    chapterContext: str = Field(default="", max_length=500)
 
 
 class SelectLayoutRequest(_V3Strict):

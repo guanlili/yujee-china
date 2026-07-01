@@ -57,6 +57,8 @@ def _unit_payload(chapter: Any, id_map: dict[str, str]) -> dict[str, Any]:
     return {
         "chapterId": _chapter_id(chapter),
         "structureHint": _get(chapter, "structureHint", None),
+        # 章节背景(内容采集答案):评委据此选更贴合的版式。空串=用户跳过采访。
+        "chapterContext": _get(chapter, "chapterContext", "") or "",
         "photos": photos,
         "candidates": [
             {key: value for key, value in candidate.items() if key != "previewImage"}
@@ -336,6 +338,8 @@ def _judge_messages(
         candidates_payload.append({"index": index, "pages": cand_pages})
 
     text_payload = {
+        # 章节背景(内容采集答案):评委据此在候选里选更贴合基调的版式。空串=用户跳过采访。
+        "chapterContext": _get(chapter, "chapterContext", "") or "",
         "photos": photos_payload,
         "candidates": candidates_payload,
         "output": {"winnerIndex": 0},

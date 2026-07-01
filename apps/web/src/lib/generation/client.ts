@@ -2,6 +2,7 @@
 
 import { assignClusterIds, type ClusterInput } from '@/lib/photo/cluster';
 import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
+import { representativePlaceForGroup } from '@/lib/photo/geocode';
 import { photoStore } from '@/lib/photo/store';
 
 // Browser-side client for the generation endpoints. Owns the two billing-aware
@@ -50,6 +51,62 @@ export function clusterCompressedPhotos(
     clusterId: clusterIds.get(p.photoId) ?? null,
     // NOTE: p.clusterGeo is intentionally NOT spread here — coordinates stop at clustering.
   }));
+}
+
+// 采访预填(每个 clusterId 一条):内容采集环节要给用户预填「时间:… 地点:…」。
+// 地名和时间必须在**提交时**(坐标还在浏览器内存)按 clusterId 预算好——因为 analyze
+// 一旦返回,坐标早已随聚类丢弃,再也无法反查。采访(analyze 回来后弹)按 clusterId↔章
+// 映射取用这份预填。PRIVACY:place 是反地理编码出的**城市级地名字符串**,坐标不在其中;
+// 这里读 clusterGeo 反查后即弃,坐标不进任何返回值 / 请求体 / 存储。
+export type ChapterPrefill = {
+  clusterId: string;
+  // EXIF 时间范围(该组最早/最晚 takenAt,ISO 或 null)。采访据此判断「时间是否已知」。
+  earliestTakenAt: string | null;
+  latestTakenAt: string | null;
+  // 反地理编码出的代表地名(一章一个,取众数);无 GPS / 反查失败 => null。
+  place: string | null;
+};
+
+// 按 clusterId 分组,对每组算采访预填(时间范围 + 众数地名)。坐标只在本函数内参与反查,
+// 出去的只有地名字符串。反地理编码可能慢/失败,不阻塞主流程 —— 调用方可 fire-and-forget
+// 或带 signal 取消。无 GPS 的组 place=null,采访退化为让用户手填地点。
+export async function chapterPrefillsFromCompressed(
+  compressed: readonly CompressedPhoto[],
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<ChapterPrefill[]> {
+  const inputs: ClusterInput[] = compressed.map((p) => ({
+    photoId: p.photoId,
+    takenAt: p.takenAt,
+    geo: p.clusterGeo,
+  }));
+  const clusterIds = assignClusterIds(inputs);
+
+  // 按 clusterId 聚合:该组的 takenAt 列表 + geo 列表(geo 用完即弃)。
+  const groups = new Map<
+    string,
+    { times: string[]; geos: (CompressedPhoto['clusterGeo'])[] }
+  >();
+  for (const p of compressed) {
+    const cid = clusterIds.get(p.photoId);
+    if (!cid) continue;
+    const g = groups.get(cid) ?? { times: [], geos: [] };
+    if (p.takenAt) g.times.push(p.takenAt);
+    g.geos.push(p.clusterGeo);
+    groups.set(cid, g);
+  }
+
+  const out: ChapterPrefill[] = [];
+  for (const [clusterId, { times, geos }] of groups) {
+    const sorted = [...times].sort();
+    const place = await representativePlaceForGroup(geos, { signal });
+    out.push({
+      clusterId,
+      earliestTakenAt: sorted[0] ?? null,
+      latestTakenAt: sorted[sorted.length - 1] ?? null,
+      place, // 坐标已在 representativePlaceForGroup 内消费并丢弃,这里只余地名字符串
+    });
+  }
+  return out;
 }
 
 // Reorders the in-memory compressed set to match `photoIds`, returning null if any

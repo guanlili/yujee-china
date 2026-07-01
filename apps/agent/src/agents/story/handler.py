@@ -29,7 +29,6 @@ Turn 种类(V3ChapterChatKind,镜像 packages/contracts/src/v3.ts):
 from __future__ import annotations
 
 import json
-import re
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -49,6 +48,12 @@ from ...schemas import (
 from ...settings import get_settings
 from ...skills import SKILLS_DIR, load_prompt, load_replies
 from ... import ai_client
+from ..edit_loop.helpers import (
+    _authored_slot_ids,
+    _text,
+    clean_texts,
+    page_slot_specs,
+)
 from ..tools import image_edit as chat_edit_v3
 from . import guides as writing_guides
 
@@ -59,7 +64,6 @@ CompleteFn = Callable[..., Awaitable[dict[str, Any]]]
 _PROMPT_DIR = Path(__file__).resolve().parent
 
 _VALID_KINDS: tuple[str, ...] = ("talk", "write", "edit")
-_BRACKET_KEY_RE = re.compile(r"^([A-Za-z0-9_-]+)\[(\d+)\](?:\..*)?$")
 
 
 class ChapterChatV3Error(Exception):
@@ -83,81 +87,10 @@ def _page_slot_specs_by_index(pages: list[Page]) -> dict[int, list[dict[str, Any
     return {page.pageIndex: page_slot_specs(page) for page in pages}
 
 
-def page_slot_specs(page: Page) -> list[dict[str, Any]]:
-    """一个具体页的创作文字槽。
-
-    普通槽按声明保持。repeat 槽被展开成渲染器能为本页实际图片槽寻址的 bracket key,例如
-    一个有 ``cells[0].image`` 和 ``cells[1].image`` 的 mag-10 页会暴露 ``cells[0]`` 和
-    ``cells[1]``。当未来某模板只有 V3 ``items.texts`` 声明时,用相同的图片索引把那些 item
-    key 暴露为 ``caption[0]`` 等。
-    """
-    tpl = registry.get(page.templateId)
-    if not tpl:
-        return []
-
-    base_specs = writing_guides.page_slot_specs(page.templateId)
-    indices_by_base = _bracket_indices_by_base(page.images.keys())
-    all_indices = sorted({idx for indices in indices_by_base.values() for idx in indices})
-
-    # `base_specs` 来自 writing_guides(带 role/maxChars,供代码过滤);model-facing 槽规格
-    # 一律经 `_slot_spec` 归一 —— 只留 id/lang/hint(+repeatIndex),不外泄 role/maxChars。
-    specs: list[dict[str, Any]] = []
-    expanded_bases: set[str] = set()
-    for spec in base_specs:
-        slot_id = str(spec["id"])
-        if spec.get("repeat") is True:
-            indices = indices_by_base.get(slot_id, [])
-            if indices:
-                expanded_bases.add(slot_id)
-                for idx in indices:
-                    specs.append(_slot_spec(spec, slot_id=f"{slot_id}[{idx}]", repeat_index=idx))
-                continue
-        specs.append(_slot_spec(spec, slot_id=slot_id))
-
-    # V3 items.texts 以 itemId[index] 寻址。若模板已有一个创作的顶层 repeat 槽
-    # (mag-10 的遗留 `cells`),本 WP 以那条路径作为渲染器兼容的真相源;否则 items.texts
-    # 成为每个页 item 的必填创作槽。
-    item_texts = tpl.get("items", {}).get("texts", [])
-    has_authored_repeat = bool(expanded_bases)
-    if all_indices:
-        for slot in item_texts:
-            if slot["role"] not in writing_guides.AUTHORED_ROLES:
-                continue
-            if has_authored_repeat:
-                continue
-            for idx in all_indices:
-                specs.append(_slot_spec(slot, slot_id=f"{slot['id']}[{idx}]", repeat_index=idx))
-    return specs
-
-
+# page_slot_specs / _bracket_indices_by_base / _slot_spec / _template_max_chars /
+# _max_chars_for_key / clean_texts / _authored_slot_ids / _text / _BRACKET_KEY_RE 现住在
+# agents/edit_loop/helpers.py(编辑环节自包含),此处从那里导入复用,保持单一真相源。
 _page_slot_specs = page_slot_specs
-
-
-def _bracket_indices_by_base(keys: Any) -> dict[str, list[int]]:
-    indices: dict[str, set[int]] = {}
-    for key in keys:
-        if not isinstance(key, str):
-            continue
-        match = _BRACKET_KEY_RE.fullmatch(key)
-        if not match:
-            continue
-        indices.setdefault(match.group(1), set()).add(int(match.group(2)))
-    return {base: sorted(values) for base, values in indices.items()}
-
-
-def _slot_spec(slot: dict[str, Any], *, slot_id: str, repeat_index: int | None = None) -> dict[str, Any]:
-    # 例驱动(example-driven):模型靠逐页「输出示例」+ 逐槽 hint 写作,不再靠规则约束。
-    # 故 model-facing 的槽规格只留 id/lang(语言所需)/hint(写什么)/repeatIndex;
-    # 不再带 maxChars(无字数约束进 prompt)与 role(示例已表达每槽的性质)。
-    spec: dict[str, Any] = {
-        "id": slot_id,
-        "lang": slot["lang"],
-    }
-    if slot.get("hint"):
-        spec["hint"] = slot["hint"]
-    if repeat_index is not None:
-        spec["repeatIndex"] = repeat_index
-    return spec
 
 
 def _scene_background(chapter: Any) -> dict[str, Any]:
@@ -176,10 +109,6 @@ def _page_images_by_index(pages: list[Page]) -> dict[int, dict[str, str]]:
     """页面结构 (§4.2(4)) 的「每页放了哪些图」:每页的 slot→photoId 映射,好让写作 LM
     知道哪些照片放在哪一页,并能写出真正指向它们的文案。`Page.images` 的只读回显。"""
     return {page.pageIndex: dict(page.images) for page in pages}
-
-
-def _authored_slot_ids(specs: list[dict[str, Any]]) -> set[str]:
-    return {str(spec["id"]) for spec in specs}
 
 
 def _page_output_example(page: Page, specs: list[dict[str, Any]]) -> dict[str, str]:
@@ -207,36 +136,6 @@ def _page_output_examples_by_index(
         if example:
             out[page.pageIndex] = example
     return out
-
-
-def _template_max_chars(template_id: str) -> dict[str, int]:
-    """模板各创作槽的 maxChars(按 base slot id),从 registry 直接取 —— 服务端钳长护栏的
-    真相源。maxChars 已从 model-facing 槽规格里移除(例驱动,prompt 不带字数),但服务端
-    仍据此钳裁防溢出;两件事解耦,各取所需。repeat / items.texts 的 base id 也收进来,
-    bracket key(``explain[0]``)按其 base(``explain``)查表。"""
-    tpl = registry.get(template_id)
-    if not tpl:
-        return {}
-    out: dict[str, int] = {}
-    for slot in tpl.get("texts", []):
-        max_chars = slot.get("maxChars")
-        if isinstance(max_chars, int) and max_chars > 0:
-            out[str(slot["id"])] = max_chars
-    for slot in tpl.get("items", {}).get("texts", []):
-        max_chars = slot.get("maxChars")
-        if isinstance(max_chars, int) and max_chars > 0:
-            out[str(slot["id"])] = max_chars
-    return out
-
-
-def _max_chars_for_key(key: str, by_base: dict[str, int]) -> int | None:
-    """槽 key 的 maxChars:先按整 key 查(普通槽),再按 bracket base 查(repeat / item 槽)。"""
-    if key in by_base:
-        return by_base[key]
-    match = _BRACKET_KEY_RE.fullmatch(key)
-    if match:
-        return by_base.get(match.group(1))
-    return None
 
 
 def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
@@ -279,6 +178,9 @@ def build_messages(req: V3ChapterChatRequest) -> list[dict[str, str]]:
     #   页面结构  → pageSlots(每页 id/lang/hint)+ pageImages(每页放哪些图)
     payload: dict[str, Any] = {
         "language": req.language,
+        # 章节背景(内容采集答案):用户讲的这组照片的时间/地点/人/事/心情(可能空)。
+        # 写文案的第一手真实素材——优先于识图推断,别写空泛套话。空串=用户跳过采访。
+        "chapterContext": (req.chapter.chapterContext or "") if req.chapter else "",
         # 画面背景 (§4.1 analysis 树):逐照片场景。
         "sceneBackground": _scene_background(req.chapter),
         # 页面结构:逐页的创作槽规格(id/lang/hint;无 role/maxChars —— 例驱动)……
@@ -573,38 +475,6 @@ def _raw_texts_by_index(raw: Any) -> dict[int, dict[str, Any]]:
     return by_index
 
 
-def clean_texts(
-    raw_texts: dict[str, Any], specs: list[dict[str, Any]], *, template_id: str | None = None
-) -> dict[str, str]:
-    """Public text cleaner for non-writing callers such as cover_v3.
-
-    When a concrete template id is available, use the registry maxChars path. Older
-    call sites that only have already-expanded specs still get slot filtering and
-    per-spec caps.
-    """
-    allowed = _authored_slot_ids(specs)
-    if template_id:
-        max_chars = _template_max_chars(template_id)
-    else:
-        max_chars = {
-            str(spec["id"]): int(spec["maxChars"])
-            for spec in specs
-            if isinstance(spec.get("id"), str)
-            and isinstance(spec.get("maxChars"), int)
-            and spec["maxChars"] > 0
-        }
-    out: dict[str, str] = {}
-    for key, value in raw_texts.items():
-        if not isinstance(key, str) or key not in allowed:
-            continue
-        text = _text(value)
-        if not text:
-            continue
-        cap = _max_chars_for_key(key, max_chars) if template_id else max_chars.get(key)
-        out[key] = text[:cap] if cap else text
-    return out
-
-
 _clean_texts = clean_texts
 
 
@@ -624,10 +494,6 @@ def _coerce_name_options(raw: Any) -> list[str] | None:
         if len(names) == 4:
             break
     return names or None
-
-
-def _text(value: Any) -> str:
-    return value.strip() if isinstance(value, str) and value.strip() else ""
 
 
 def _default_reply(language: str, kind: str) -> str:

@@ -290,6 +290,7 @@ async function seedDraftAlbum(userId: string) {
           description: 'first',
           accentColor: null,
           artFont: null,
+          chapterContext: "",
           photos: [{ photoId: 'p1', sceneDescription: 'sea', width: 800, height: 600, orientation: 'landscape' }],
         },
       ],
@@ -320,6 +321,7 @@ test('getDraftSkeleton: renders V3 tree+pages draft without dropping preview pag
             description: 'first',
             accentColor: null,
             artFont: null,
+            chapterContext: "",
             photos: [{ photoId: 'p1', sceneDescription: 'sea', width: 800, height: 600, orientation: 'landscape' }],
           },
           {
@@ -327,6 +329,7 @@ test('getDraftSkeleton: renders V3 tree+pages draft without dropping preview pag
             description: 'second',
             accentColor: null,
             artFont: null,
+            chapterContext: "",
             photos: [{ photoId: 'p2', sceneDescription: 'city', width: 600, height: 800, orientation: 'portrait' }],
           },
         ],
@@ -379,6 +382,7 @@ test('getDraftSkeleton: V3 body-only preview keeps first/last pages mapped to ch
             description: 'first',
             accentColor: null,
             artFont: null,
+            chapterContext: "",
             photos: [{ photoId: 'p1', sceneDescription: 'sea', width: 800, height: 600, orientation: 'landscape' }],
           },
           {
@@ -386,6 +390,7 @@ test('getDraftSkeleton: V3 body-only preview keeps first/last pages mapped to ch
             description: 'second',
             accentColor: null,
             artFont: null,
+            chapterContext: "",
             photos: [{ photoId: 'p2', sceneDescription: 'city', width: 600, height: 800, orientation: 'portrait' }],
           },
         ],
@@ -458,6 +463,7 @@ function makeStoryTree(n: number) {
       description: `chapter ${i + 1}`,
       accentColor: null,
       artFont: null,
+      chapterContext: "",
       photos: [],
     })),
   };
@@ -1234,6 +1240,7 @@ async function seedChapterChatAlbum(userId: string) {
         description: 'chapter one',
         accentColor: null,
         artFont: null,
+        chapterContext: "",
         photos: [{ photoId: 'p1', sceneDescription: 'beach', width: 800, height: 600, orientation: 'landscape' as const, takenAt: null }],
       },
       {
@@ -1241,6 +1248,7 @@ async function seedChapterChatAlbum(userId: string) {
         description: 'chapter two',
         accentColor: null,
         artFont: null,
+        chapterContext: "",
         photos: [{ photoId: 'p2', sceneDescription: 'street', width: 600, height: 800, orientation: 'portrait' as const, takenAt: null }],
       },
     ],
@@ -1315,6 +1323,7 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
             description: 'coast morning',
             accentColor: null,
             artFont: null,
+            chapterContext: "",
             photos: [
               {
                 photoId: 'p1',
@@ -1339,6 +1348,7 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
             description: 'city gallery',
             accentColor: null,
             artFont: null,
+            chapterContext: "",
             photos: [
               {
                 photoId: 'p3',
@@ -1436,6 +1446,7 @@ test('getInternalAgentData page-photos returns registered transient refs without
             description: 'chapter one',
             accentColor: null,
             artFont: null,
+            chapterContext: "",
             photos: [
               {
                 photoId: 'p1',
@@ -1467,6 +1478,7 @@ test('getInternalAgentData page-photos returns registered transient refs without
             description: 'chapter two',
             accentColor: null,
             artFont: null,
+            chapterContext: "",
             photos: [
               {
                 photoId: 'p4',
@@ -2008,6 +2020,7 @@ async function seedThemeCoverAlbum(userId: string) {
         extractedColor: '#C8894A',
         accentColor: null,
         artFont: null,
+        chapterContext: "",
         photos: [
           { photoId: 'p1', sceneDescription: 'beach at dawn', width: 800, height: 600, orientation: 'landscape' as const, takenAt: null },
         ],
@@ -2402,5 +2415,102 @@ test('recommendTheme / applyThemeTurn / coverTurn: reject a non-owner before any
   } finally {
     await cleanupUser(owner.id);
     await cleanupUser(intruder.id);
+  }
+});
+
+// ── 内容采集(采访)写回:saveChapterContexts ──────────────────────────────────
+function twoChapterDraft(): V3StoryDraft {
+  return {
+    version: 'v3-story',
+    tree: {
+      chapters: [
+        {
+          chapterId: 'c1',
+          description: 'coast morning',
+          accentColor: null,
+          artFont: null,
+          chapterContext: '',
+          photos: [
+            { photoId: 'p1', sceneDescription: 'coast', width: 800, height: 600, orientation: 'landscape', takenAt: null },
+          ],
+        },
+        {
+          chapterId: 'c2',
+          description: 'city gallery',
+          accentColor: null,
+          artFont: null,
+          chapterContext: '',
+          photos: [
+            { photoId: 'p2', sceneDescription: 'gallery', width: 600, height: 800, orientation: 'portrait', takenAt: null },
+          ],
+        },
+      ],
+    },
+    progress: { doneChapterIds: [], currentChapterId: 'c1' },
+  };
+}
+
+test('saveChapterContexts writes chapterContext into the matching chapters, leaves others empty', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('save-chapter-context');
+  try {
+    const album = await makeAlbum(user.id);
+    await albumRepo.update(db, album.id, { draftJson: twoChapterDraft() });
+
+    const result = await albumService.saveChapterContexts(user.id, album.id, [
+      { chapterId: 'c1', chapterContext: '时间：2024/03/02  地点：杭州\n（用户原话）奶奶生日。' },
+    ]);
+    assert.deepEqual(result.savedChapterIds, ['c1']);
+
+    const after = await albumRepo.findById(album.id);
+    const tree = (after!.draftJson as V3StoryDraft).tree;
+    const c1 = tree.chapters.find((c) => c.chapterId === 'c1')!;
+    const c2 = tree.chapters.find((c) => c.chapterId === 'c2')!;
+    assert.match(c1.chapterContext, /奶奶生日/);
+    assert.equal(c2.chapterContext, ''); // 未提交的章保持空(可跳过)
+    // 隐私:写进 draft 的 chapterContext 不含任何坐标键/字段。
+    assert.equal(hasForbiddenLocationKey(tree), false);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('saveChapterContexts caps chapterContext at 500 chars and rejects unknown/duplicate chapterIds', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('save-chapter-context-guards');
+  try {
+    const album = await makeAlbum(user.id);
+    await albumRepo.update(db, album.id, { draftJson: twoChapterDraft() });
+
+    // 超长裁到 500。
+    await albumService.saveChapterContexts(user.id, album.id, [
+      { chapterId: 'c1', chapterContext: 'x'.repeat(700) },
+    ]);
+    const after = await albumRepo.findById(album.id);
+    const c1 = (after!.draftJson as V3StoryDraft).tree.chapters.find((c) => c.chapterId === 'c1')!;
+    assert.equal(c1.chapterContext.length, 500);
+
+    // 未知章 => VALIDATION_FAILED。
+    await assert.rejects(
+      () => albumService.saveChapterContexts(user.id, album.id, [{ chapterId: 'nope', chapterContext: 'x' }]),
+      hasCode('VALIDATION_FAILED'),
+    );
+    // 重复章 => VALIDATION_FAILED。
+    await assert.rejects(
+      () =>
+        albumService.saveChapterContexts(user.id, album.id, [
+          { chapterId: 'c1', chapterContext: 'a' },
+          { chapterId: 'c1', chapterContext: 'b' },
+        ]),
+      hasCode('VALIDATION_FAILED'),
+    );
+  } finally {
+    await cleanupUser(user.id);
   }
 });

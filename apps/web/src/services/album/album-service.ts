@@ -881,6 +881,56 @@ export const albumService = {
     };
   },
 
+  // 内容采集(分组后采访)— 把每章的 chapterContext 写进 draft_json.tree(§3 数据归属:Web 是
+  // draft_json 唯一真相源,浏览器只发它的答案)。chapterContext 是**树字段**(章节背景,给排版/
+  // 写文案读),不是页级文字,所以写进 tree.chapters[].chapterContext,不碰 pages。
+  // 不推进 stage、不调 Agent:采访只补充章节背景,排版由浏览器随后照常触发(select-layout)。
+  // 可跳过:未提交的章保持 chapterContext=""(default),不挡流程。幂等:重复提交只覆盖同章。
+  async saveChapterContexts(
+    userId: string,
+    albumId: string,
+    contexts: { chapterId: string; chapterContext: string }[],
+  ): Promise<{ savedChapterIds: string[] }> {
+    const album = await this.findOwned(userId, albumId);
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+
+    const expectedIds = new Set(normalized.tree.chapters.map((ch) => ch.chapterId));
+    const seen = new Set<string>();
+    const byId = new Map<string, string>();
+    for (const entry of contexts) {
+      if (!expectedIds.has(entry.chapterId)) {
+        throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+      }
+      if (seen.has(entry.chapterId)) {
+        throw ERRORS.VALIDATION_FAILED('duplicate chapterId in chapter contexts');
+      }
+      seen.add(entry.chapterId);
+      // 裁到 500(与 V3Chapter.chapterContext 上限对齐);空串合法(=该章跳过采访)。
+      byId.set(entry.chapterId, entry.chapterContext.slice(0, 500));
+    }
+
+    const nextTree: typeof normalized.tree = {
+      chapters: normalized.tree.chapters.map((ch) => {
+        const ctx = byId.get(ch.chapterId);
+        return ctx !== undefined ? { ...ch, chapterContext: ctx } : ch;
+      }),
+    };
+
+    const nextDraft: V3StoryDraft = {
+      version: 'v3-story',
+      tree: nextTree,
+      ...(normalized.pages ? { pages: normalized.pages } : {}),
+      progress: normalized.progress,
+    };
+
+    await db.transaction(async (tx) => {
+      await albumRepo.update(tx, albumId, { draftJson: nextDraft });
+    });
+
+    return { savedChapterIds: [...seen] };
+  },
+
   // ④ 书籍设计 — 封面/封尾 (WP4.1 #192). After the user (optionally) picks a 封面/封尾
   // system template, the Agent deterministically auto-fills the relevant pages and
   // returns a page-level `layoutPatch` (§3 树边界: 仍是页级 — cover/ending design is a
