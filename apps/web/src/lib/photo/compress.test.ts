@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readGeoForClustering, readTakenAtFromExif } from './compress';
+import { compressFile, readGeoForClustering, readTakenAtFromExif } from './compress';
 
 type Gps = { lat: [number, number, number]; latRef: string; lng: [number, number, number]; lngRef: string };
 
@@ -178,4 +178,138 @@ test('compress.ts confines GPS to the clustering reader (static privacy guard)',
   // CompressedPhoto must NOT expose raw lat/lng keys — only the transient clusterGeo.
   assert.equal(/^\s*lat\s*[:?]/m.test(src), false);
   assert.equal(/^\s*lng\s*[:?]/m.test(src), false);
+});
+
+test('compressFile decodes via a Blob object URL instead of a full-size data URL', async () => {
+  const globals = globalThis as Record<string, unknown>;
+  const original = {
+    FileReader: globals.FileReader,
+    Image: globals.Image,
+    document: globals.document,
+    createObjectURL: URL.createObjectURL,
+    revokeObjectURL: URL.revokeObjectURL,
+  };
+
+  const seen: {
+    src?: string;
+    revoked?: string;
+    draw?: { width: number; height: number };
+    output?: { type: string; quality: number };
+  } = {};
+
+  class FakeFileReader {
+    result: ArrayBuffer | null = null;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    error: Error | null = null;
+    readAsArrayBuffer() {
+      this.result = new Uint8Array([0, 1, 2, 3]).buffer;
+      queueMicrotask(() => this.onload?.());
+    }
+  }
+
+  class FakeImage {
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    width = 1600;
+    height = 1200;
+    set src(value: string) {
+      seen.src = value;
+      queueMicrotask(() => this.onload?.());
+    }
+  }
+
+  try {
+    globals.FileReader = FakeFileReader;
+    globals.Image = FakeImage;
+    globals.document = {
+      createElement(tag: string) {
+        assert.equal(tag, 'canvas');
+        return {
+          width: 0,
+          height: 0,
+          getContext(type: string) {
+            assert.equal(type, '2d');
+            return {
+              drawImage(_img: unknown, _x: number, _y: number, width: number, height: number) {
+                seen.draw = { width, height };
+              },
+            };
+          },
+          toDataURL(type: string, quality: number) {
+            seen.output = { type, quality };
+            return 'data:image/jpeg;base64,compressed';
+          },
+        };
+      },
+    };
+    URL.createObjectURL = (() => 'blob:yujee-photo') as typeof URL.createObjectURL;
+    URL.revokeObjectURL = ((url: string) => {
+      seen.revoked = url;
+    }) as typeof URL.revokeObjectURL;
+
+    const photo = await compressFile({ type: 'image/jpeg' } as Blob, 'photo-1');
+
+    assert.equal(seen.src, 'blob:yujee-photo');
+    assert.equal(seen.revoked, 'blob:yujee-photo');
+    assert.deepEqual(seen.draw, { width: 800, height: 600 });
+    assert.deepEqual(seen.output, { type: 'image/jpeg', quality: 0.6 });
+    assert.equal(photo.base64, 'data:image/jpeg;base64,compressed');
+    assert.equal(photo.width, 800);
+    assert.equal(photo.height, 600);
+    assert.equal(photo.takenAt, null);
+    assert.equal(photo.clusterGeo, null);
+  } finally {
+    globals.FileReader = original.FileReader;
+    globals.Image = original.Image;
+    globals.document = original.document;
+    URL.createObjectURL = original.createObjectURL;
+    URL.revokeObjectURL = original.revokeObjectURL;
+  }
+});
+
+test('compressFile reports an actionable decode error when the browser cannot read an image', async () => {
+  const globals = globalThis as Record<string, unknown>;
+  const original = {
+    FileReader: globals.FileReader,
+    Image: globals.Image,
+    createObjectURL: URL.createObjectURL,
+    revokeObjectURL: URL.revokeObjectURL,
+  };
+
+  class FakeFileReader {
+    result: ArrayBuffer | null = null;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    error: Error | null = null;
+    readAsArrayBuffer() {
+      this.result = new Uint8Array([0, 1, 2, 3]).buffer;
+      queueMicrotask(() => this.onload?.());
+    }
+  }
+
+  class BrokenImage {
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    set src(_value: string) {
+      queueMicrotask(() => this.onerror?.());
+    }
+  }
+
+  try {
+    globals.FileReader = FakeFileReader;
+    globals.Image = BrokenImage;
+    URL.createObjectURL = (() => 'blob:unsupported-photo') as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+
+    await assert.rejects(
+      () => compressFile({ type: 'image/heic' } as Blob, 'photo-1'),
+      /could not decode this image/i,
+    );
+  } finally {
+    globals.FileReader = original.FileReader;
+    globals.Image = original.Image;
+    URL.createObjectURL = original.createObjectURL;
+    URL.revokeObjectURL = original.revokeObjectURL;
+  }
 });

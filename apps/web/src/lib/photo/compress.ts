@@ -36,8 +36,7 @@ export async function compressFile(
   const bytes = await readAsArrayBuffer(file);
   const takenAt = readTakenAtFromExif(bytes);
   const clusterGeo = readGeoForClustering(bytes);
-  const dataUrl = arrayBufferToDataUrl(bytes, file.type || 'image/jpeg');
-  const img = await loadImage(dataUrl);
+  const img = await loadImage(file);
   const { canvas, w, h } = drawScaled(img, options.maxLen ?? 800);
   const base64 = canvas.toDataURL('image/jpeg', options.quality ?? 0.6);
   return { photoId, base64, width: w, height: h, takenAt, clusterGeo };
@@ -52,21 +51,22 @@ function readAsArrayBuffer(file: Blob): Promise<ArrayBuffer> {
   });
 }
 
-function arrayBufferToDataUrl(bytes: ArrayBuffer, mime: string): string {
-  const view = new Uint8Array(bytes);
-  let binary = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < view.length; i += chunk) {
-    binary += String.fromCharCode(...view.subarray(i, i + chunk));
-  }
-  return `data:${mime};base64,${btoa(binary)}`;
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
+function loadImage(file: Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
+    const src = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
+    img.onload = () => {
+      URL.revokeObjectURL(src);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(src);
+      reject(
+        new Error(
+          'Browser could not decode this image for compression. Please choose a JPEG, PNG, or WebP image.',
+        ),
+      );
+    };
     img.src = src;
   });
 }
