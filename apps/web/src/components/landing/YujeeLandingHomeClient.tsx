@@ -545,7 +545,7 @@ function LandingPricing({ locale }: { locale: Locale }) {
                     {pack.books.toLocaleString(locale)} {pack.books === 1 ? t.unitSingular : t.unit}
                   </span>
                   {isBest && (
-                    <span className="rounded-full bg-[var(--fg)] px-2 py-0.5 text-[11px] font-semibold text-white">
+                    <span className="best-value-badge">
                       {bestValue}
                     </span>
                   )}
@@ -688,6 +688,7 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
         .sample-detail p, .sample-detail li { font-size: 13px; line-height: 1.5; color: #333; }
         .sample-btn { margin-top: auto; display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 9px 14px; border-radius: 9999px; background: #111; color: #fff; font-size: 13px; font-weight: 600; }
         .hero-eyebrow, .sec-label, .marquee { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #aaa; }
+        .best-value-badge { display: inline-flex; align-items: center; justify-content: center; min-height: 22px; border-radius: 9999px; padding: 2px 9px; border: 1px solid rgba(140,94,244,.24); background: linear-gradient(135deg, rgba(140,94,244,.16), rgba(19,184,166,.12) 58%, rgba(218,244,94,.18)); color: #6b35d8; font-size: 11px; font-weight: 800; line-height: 1; box-shadow: inset 0 1px 0 rgba(255,255,255,.75); white-space: nowrap; }
         .create-title { font-family: var(--landing-display-font); }
         .hero-title, .sec-title { font-family: var(--landing-display-font); font-size: clamp(28px, 4vw, 46px); line-height: 1.12; font-weight: 800; }
         .feature-title, .preview-title, .price-figure { font-family: var(--landing-display-font); }

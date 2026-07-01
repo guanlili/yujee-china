@@ -96,6 +96,23 @@ test('landing header replaces the login CTA with the account menu for signed-in 
   assert.match(userMenu, /signOut/, 'account menu should keep logout available');
 });
 
+test('pricing best-value badge uses a colorful light background with purple text', () => {
+  const client = component('YujeeLandingHomeClient.tsx');
+
+  assert.match(client, /className="best-value-badge"/, 'best-value badge should use a dedicated visual class');
+  assert.match(
+    client,
+    /\.best-value-badge \{[^}]*background: linear-gradient\(135deg, rgba\(140,94,244,\.16\), rgba\(19,184,166,\.12\) 58%, rgba\(218,244,94,\.18\)\);/s,
+    'best-value badge should use the brand color wash instead of a black fill',
+  );
+  assert.match(client, /\.best-value-badge \{[^}]*color: #6b35d8;/s, 'best-value badge text should be purple');
+  assert.doesNotMatch(
+    client,
+    /rounded-full bg-\[var\(--fg\)\][^"'`]*text-white[\s\S]{0,120}\{bestValue\}/,
+    'best-value badge must not use the old black-background treatment',
+  );
+});
+
 test('landing redesign uses local optimized assets from the supplied design folder', () => {
   const home = component('YujeeLandingHomeClient.tsx');
   for (const asset of landingAssets) {
