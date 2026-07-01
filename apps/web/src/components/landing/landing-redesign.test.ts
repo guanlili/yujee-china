@@ -135,6 +135,38 @@ test('English landing moves the AI magazine line into the hero subtitle', () => 
   assert.equal(client.split(movedLine).length - 1, 1, 'the moved English line should render from only one copy slot');
 });
 
+test('footer color accent is anchored to the page bottom on desktop and mobile', () => {
+  const client = component('YujeeLandingHomeClient.tsx');
+  const footerGlowRule = client.match(/\.footer-glow \{(?<rule>[^}]*)\}/s)?.groups?.rule ?? '';
+  const desktopFooterGlowRule = client.match(/@media \(min-width: 768px\) \{ \.footer-glow \{(?<rule>[^}]*)\} \}/s)?.groups?.rule ?? '';
+
+  assert.match(client, /\.landing-redesign \{[^}]*overflow-x: clip;/s, 'landing page should clip decorative horizontal blur overflow');
+  assert.match(footerGlowRule, /bottom: 0;/, 'footer glow should be anchored to the bottom edge by default');
+  assert.doesNotMatch(footerGlowRule, /bottom: -/, 'footer glow should not move below the footer on mobile');
+  assert.match(footerGlowRule, /left: 0; right: 0;/, 'footer glow should not create horizontal overflow while fading upward');
+  assert.match(desktopFooterGlowRule, /bottom: 0;/, 'desktop footer glow should keep the same bottom-origin behavior');
+  assert.doesNotMatch(desktopFooterGlowRule, /bottom: -/, 'desktop footer glow should not be offset upward into the footer middle');
+  assert.match(desktopFooterGlowRule, /left: 0; right: 0;/, 'desktop footer glow should not widen the page');
+  assert.match(client, /<footer className="footer-section relative pb-10 pt-14">/, 'footer should let the bottom glow fade upward beyond its top edge');
+  assert.match(client, /\.footer-section \{ overflow: visible; \}/, 'footer should not clip the upward footer glow fade');
+  assert.doesNotMatch(client, /<footer className="relative overflow-hidden pb-10 pt-14">/, 'footer should not create a hard clipped gradient line');
+  assert.match(
+    footerGlowRule,
+    /radial-gradient\(closest-side, rgba\(19,184,166,\.26\), transparent\) 12% 100%/s,
+    'the left color bloom should originate from the bottom edge',
+  );
+  assert.match(
+    footerGlowRule,
+    /radial-gradient\(closest-side, rgba\(140,94,244,\.22\), transparent\) 52% 108%/s,
+    'the center color bloom should originate just below the bottom edge',
+  );
+  assert.match(
+    footerGlowRule,
+    /radial-gradient\(closest-side, rgba\(218,244,94,\.28\), transparent\) 88% 100%/s,
+    'the right color bloom should originate from the bottom edge',
+  );
+});
+
 test('landing redesign uses local optimized assets from the supplied design folder', () => {
   const home = component('YujeeLandingHomeClient.tsx');
   for (const asset of landingAssets) {

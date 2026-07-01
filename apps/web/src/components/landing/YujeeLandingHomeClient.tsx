@@ -633,6 +633,7 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
       <style>{`
         .landing-redesign {
           background: #f5f5f5;
+          overflow-x: clip;
           --landing-art-font: 'Playfair Display', Georgia, serif;
           --landing-cjk-art-font: 'Playfair Display', 'Noto Serif SC Landing', 'Songti SC', 'Noto Serif SC', Georgia, serif;
           --landing-display-font: var(--landing-cjk-art-font);
@@ -710,8 +711,9 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
         .faq-item.open .faq-icon { transform: rotate(45deg); color: #111; }
         .faq-a { overflow: hidden; transition: max-height .3s ease; }
         .faq-a-inner { padding: 0 4px 22px; color: #333; font-size: 15px; line-height: 1.6; max-width: 62ch; }
-        .footer-glow { position: absolute; left: -24%; right: -24%; bottom: -24%; height: 560px; z-index: 0; pointer-events: none; opacity: .65; background: radial-gradient(closest-side, rgba(19,184,166,.30), transparent) 12% 76% / 50% 72% no-repeat, radial-gradient(closest-side, rgba(140,94,244,.25), transparent) 52% 94% / 54% 78% no-repeat, radial-gradient(closest-side, rgba(218,244,94,.32), transparent) 86% 72% / 48% 70% no-repeat; filter: blur(34px); mask-image: linear-gradient(to top, #000 0%, rgba(0,0,0,.72) 42%, transparent 100%); -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0,0,0,.72) 42%, transparent 100%); }
-        @media (min-width: 768px) { .footer-glow { left: -20%; right: -20%; bottom: -34%; height: 720px; filter: blur(42px); } }
+        .footer-section { overflow: visible; }
+        .footer-glow { position: absolute; left: 0; right: 0; bottom: 0; height: 560px; z-index: 0; pointer-events: none; opacity: .65; background: radial-gradient(closest-side, rgba(19,184,166,.26), transparent) 12% 100% / 54% 86% no-repeat, radial-gradient(closest-side, rgba(140,94,244,.22), transparent) 52% 108% / 58% 96% no-repeat, radial-gradient(closest-side, rgba(218,244,94,.28), transparent) 88% 100% / 54% 86% no-repeat; filter: blur(34px); mask-image: linear-gradient(to top, #000 0%, rgba(0,0,0,.72) 42%, transparent 100%); -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0,0,0,.72) 42%, transparent 100%); }
+        @media (min-width: 768px) { .footer-glow { left: 0; right: 0; bottom: 0; height: 680px; filter: blur(42px); } }
       `}</style>
 
       <aside className="fixed z-[70] flex items-center gap-1 rounded-full bg-white/45 p-1.5 shadow-[0_1px_4px_rgba(0,0,0,.06),0_4px_12px_rgba(0,0,0,.04)] backdrop-blur-xl bottom-4 left-1/2 -translate-x-1/2 md:bottom-auto md:left-4 md:top-1/2 md:translate-x-0 md:-translate-y-1/2 md:flex-col">
@@ -976,7 +978,7 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
           </div>
         </section>
 
-        <footer className="relative overflow-hidden pb-10 pt-14">
+        <footer className="footer-section relative pb-10 pt-14">
           <div className="footer-glow" aria-hidden="true" />
           <div className="wrap relative z-10">
             <div className="mb-12 grid grid-cols-2 gap-8 md:grid-cols-5 md:gap-6">
