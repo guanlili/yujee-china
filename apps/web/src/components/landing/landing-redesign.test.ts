@@ -113,6 +113,28 @@ test('pricing best-value badge uses a colorful light background with purple text
   );
 });
 
+test('English landing moves the AI magazine line into the hero subtitle', () => {
+  const client = component('YujeeLandingHomeClient.tsx');
+  const movedLine = 'YUJEE AI turns your photos, stories, memories and ideas into a beautiful magazine made just for you.';
+
+  assert.match(
+    client,
+    /heroSub:\s*'YUJEE AI turns your photos, stories, memories and ideas into a beautiful magazine made just for you\.'/,
+    'the AI magazine line should be the English hero subtitle',
+  );
+  assert.doesNotMatch(
+    client,
+    /createSub:\s*'YUJEE AI turns your photos, stories, memories and ideas into a beautiful magazine made just for you\.'/,
+    'the AI magazine line should no longer remain under the opening composer title',
+  );
+  assert.doesNotMatch(
+    client,
+    /You tell the story — the wording, layout and design are all on Yujee\./,
+    'the replaced English hero subtitle should be removed',
+  );
+  assert.equal(client.split(movedLine).length - 1, 1, 'the moved English line should render from only one copy slot');
+});
+
 test('landing redesign uses local optimized assets from the supplied design folder', () => {
   const home = component('YujeeLandingHomeClient.tsx');
   for (const asset of landingAssets) {

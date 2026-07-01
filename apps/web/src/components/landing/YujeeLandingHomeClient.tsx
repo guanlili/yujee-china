@@ -85,8 +85,7 @@ const copies: Record<Locale, Copy> = {
     login: 'Log in',
     menu: 'Menu',
     createTitle: 'Turn your scattered photos into a magazine you can read, touch, and keep',
-    createSub:
-      'YUJEE AI turns your photos, stories, memories and ideas into a beautiful magazine made just for you.',
+    createSub: '',
     sampleCta: 'See example',
     makeSame: 'Make one like this',
     heroEyebrow: 'AI photo books · from shots to bound book',
@@ -97,7 +96,7 @@ const copies: Record<Locale, Copy> = {
         into a book that&apos;s yours alone
       </>
     ),
-    heroSub: 'You tell the story — the wording, layout and design are all on Yujee.',
+    heroSub: 'YUJEE AI turns your photos, stories, memories and ideas into a beautiful magazine made just for you.',
     heroCta: 'Start creating',
     heroExamples: 'See examples',
     trust: ['No design skills needed', 'Fully editable', 'HD-ready export'],
@@ -801,7 +800,7 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
             <h1 className="create-title mx-auto text-[clamp(30px,5.4vw,54px)] font-bold leading-[1.06]">
               {c.createTitle}
             </h1>
-            <p className="mx-auto mt-4 max-w-xl text-[clamp(15px,2vw,18px)] leading-[1.55] text-[var(--muted)]">{c.createSub}</p>
+            {c.createSub ? <p className="mx-auto mt-4 max-w-xl text-[clamp(15px,2vw,18px)] leading-[1.55] text-[var(--muted)]">{c.createSub}</p> : null}
           </div>
           <div className="composer-shell relative mx-auto mt-9 max-w-2xl px-5 md:mt-11 md:px-8">
             {composer}
