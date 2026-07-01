@@ -1,11 +1,11 @@
-"""章节故事进度推进规则。
+"""编辑环节进度推进规则(从 story/progress 迁入)。
 
 AI 可以参与写作与编辑,但是否推进到下一环节必须由业务层的明确规则产出。
 """
 
 from __future__ import annotations
 
-from ..schemas import V3EditChatRequest, V3EditProgressDecision
+from ...schemas import V3EditChatRequest, V3EditProgressDecision
 
 CONFIRM_CHAPTER_COMMAND = "[confirm-chapter]"
 _CONFIRM_CHAPTER_MESSAGES = {

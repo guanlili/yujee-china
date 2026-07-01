@@ -104,7 +104,7 @@ Agent 暴露**两个异步端点 + 七个同步/内部端点**,均 Bearer 鉴权
 
 | 环节 | 端点 | 模型 |
 |---|---|---|
-| 章节故事(主路径) | `POST /v3/edit-chat` | 文案模型;版面 swap 时可用识图模型 |
+| 章节故事(主路径) | `POST /v3/edit-chat` | **控制器 AI(controller agent loop,§7.12)**:强函数调用模型(默认识图槽 ark `doubao-seed-1-6` / failover openai `gpt-5.5-mini`)单请求内多步用工具;edit_text/swap_images 仍可下挂文案/识图模型 |
 | 章节故事(无状态能力面) | `POST /v3/chapter-chat` | 文案模型 |
 | 聚焦页编辑 | `POST /v3/page-edit` | 文案模型;版面 swap 时可用识图模型 |
 | 编辑确认回执 | `POST /internal/agent-ack` | 无(Agent DB 状态推进)|
@@ -132,7 +132,7 @@ Agent 暴露**两个异步端点 + 七个同步/内部端点**,均 Bearer 鉴权
 > 施工反复对照的重点只有两类:**① Server 端数据归属**、**② 积分数据变更**。其余是边界红线。
 
 **① 数据归属(重点)**
-1. **Web 是 album 真相源**:持 `draft_json`(树 + pages + progress)+ `albums.stage`;Agent 不持 draft/stage/album public 数据。Stage3 edit-loop 的会话/消息/op 状态例外归 Agent 自有 `agent` schema,只服务 pending/committed ack 与 history,不存原图/base64/draft_json。
+1. **Web 是 album 真相源**:持 `draft_json`(树 + pages + progress)+ `albums.stage`;Agent 不持 draft/stage/album public 数据。Stage3 edit-loop 的会话/消息/op 状态例外归 Agent 自有 `agent` schema,只服务 pending/committed ack 与 history,不存原图/base64/draft_json。**Stage3 控制器 AI(§7.12)在这条不变式之下**:它每轮**现取**(`get_page_info`/`get_book_tree`)当前 draft 切片、循环结束把 patch 回 Web 落库,从不把 draft 持久化进 `agent.*`;一条用户消息 = 一个 serialized turn,内部多步工具调用最终落**一份** pending op + opId,ack 契约不变。
 2. **分层归属**:Service 方法第一参数 `userId` / `actor`;Route 只编排、不 import drizzle;Service 不跨用别的 service 的 repo。
 3. **authoring 树边界**:`draft_json` + 交互期请求体**永不进渲染 / PDF / 对外契约**;`finalize` 拍平成扁平 `AlbumLayoutPlan`(章节色/字体烘进扁平页,渲染契约不加树形字段)才落 `album_pages`。
 
@@ -223,6 +223,13 @@ memoir-agent-rebuild/
     - **流程(浏览器驱动,沿用同 `requestId`)**:`/v3/select-layout`(phase 1,Agent 生成候选→回调 `candidates`)→ 浏览器只渲图槽出缩略图(longest edge ~320px / JPEG q~0.6 / 目标 ≤~30KB·张)→ `/v3/judge-layout`(phase 2,浏览器 POST 缩略图,Agent Gemini 评委选赢家→`completed` 回调返回 `Page[]`)。
     - **为什么这样切**:Agent 不可同步回调 Web(不变式),所以渲染这一步必须由浏览器在两次异步之间承接,等于把既有「browser-driven select-layout」延长一跳;**未新增任何 Agent→Web 同步调用,Web 仍不调 LLM**。
     - **降级**:任一候选渲染失败 / 无 canvas / Gemini 不可用(本地 geo-block)→ 逐 unit 退化「取候选 0」,确定性 skeleton 仍是最终兜底;不阻塞 `stage` 推进。`/v3/select-layout` 可由开关回到单段内联评委(线框图)模式向后兼容。
+
+12. **Stage3 编辑 = 控制器 AI agent loop(2026-06,取代单发 tool router)**:`/v3/edit-chat` 的旧实现是**单发 tool 路由**——LLM 一次只挑一个工具、执行后直接返回,工具结果**不回喂**给模型,且 payload **不带聚焦页当前文案**(根因:"change to English does nothing" —— AI 蒙眼)。新实现把它换成**一个主控制器 AI**:持全上下文、知道自己的能力面与边界,在**同一个同步请求内自主多步用工具**(看页 → 决策 → 改 → 校验 → 收尾),循环到模型不再发 tool_call 或触发迭代/预算护栏才返回最终 patch + reply。
+    - **模型**:控制器跑在**识图槽**(`vision_provider`:默认 ark `doubao-seed-1-6`,failover openai `gpt-5.5-mini`)—— 这两槽是仓里唯一既支持 OpenAI 风格 `tools`/`tool_calls` 多步函数调用、又有 reasoning 的强模型;DeepSeek/doubao-lite 文案槽留给被控制器**调用**的子能力(写文案、判图意图),不当主控。`ai_client.chat_completion` 已转发 `tools`/`tool_choice`,无需新基建。控制器温度低(~0.2)、`tool_choice="auto"`。
+    - **工具面**:读工具 `get_page_info` / `get_book_tree`(已存在,现在结果**回喂**给模型);改工具 `edit_text`(**新干净工具**,把今天埋在 page-edit 里的 `edit_text.md` 逻辑提成可组合工具,**必须收 + 返当前 texts**)、`swap_layout` / `swap_images` / `advance_book` / `confirm_chapter`。语言("change to English")由控制器从 user goal + 当前 texts **推断**进 `edit_text`,不另立语言参数。
+    - **护栏(同步 in-request)**:max 工具迭代 6 步、整轮 `asyncio.wait_for` < 58s(对齐 §2.3 同步 60s);超护栏即用已成功的 patch + 保守 reply 收尾,绝不挂住 HTTP。控制器不可用(缺 key / 4xx / 超时)→ 降级回旧的保守 talk 行为,草稿零改动。
+    - **不破不变式**:Agent 仍不持 draft(经 `get_page_info`/`get_book_tree` 现取、patch 回 Web 落库);edit-loop 会话/消息/op 状态仍只在 `agent.*`(一条用户消息 = 一个 serialized turn,内部多步循环,最终一份 `create_pending_turn` + opId ack 往返,serialized-turn 契约不变)。`/v3/edit-chat` 请求/响应**外形不变**(循环全在内部);`patches`/`pagesTexts`/`progressDecision`/`navigation`/`opId` 语义照旧。
+    - **page-edit / case4-swap 不动**:`/v3/page-edit`(两段式 helper)与 `tools/layout.py` 的 case4 确定性换版是独立路径,保留;控制器仅取代 edit-chat 的 `_run_tool_router`。详见 [`contract.md §6.2`](./agent/contract.md)。
 
 ---
 

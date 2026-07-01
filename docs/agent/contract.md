@@ -63,7 +63,7 @@ X-Request-Id: <uuid>
 | `POST /v3/select-layout` | async, HTTP 202 + callback | Stage2 phase 1: 接收 browser 200px refs,生成候选(P2 回调 `candidates`,见 §5.2.1)|
 | `POST /v3/judge-layout` | async, HTTP 202 + callback | Stage2 phase 2: 接收 browser 渲染缩略图,Gemini 评委选赢家,生成 `Page[]`(见 §5.2.1)|
 | `POST /v3/chapter-chat` | sync | 无状态单章引导、写作、改页 turn |
-| `POST /v3/edit-chat` | sync + Agent DB | 当前主编辑 turn: pending op + Web ack |
+| `POST /v3/edit-chat` | sync + Agent DB | 当前主编辑 turn = **控制器 AI agent loop**(§6.2,单请求内多步用工具): pending op + Web ack |
 | `POST /v3/page-edit` | sync | 聚焦页两段式编辑 helper |
 | `POST /v3/recommend` | sync | 推荐 3 组 book theme options |
 | `POST /v3/apply-theme` | sync deterministic | 应用用户选择的主题、章节色、字体 |
@@ -411,9 +411,11 @@ Response:
 }
 ```
 
-### 6.2 `POST /v3/edit-chat`
+### 6.2 `POST /v3/edit-chat` — controller-AI agent loop
 
 Current stateful authoring turn. Agent owns pending edit op state in `agent.*`; Web owns album draft and must ack after committing.
+
+**This endpoint runs a controller-AI agent loop (architecture §7.12), not a single-shot tool router.** One `/v3/edit-chat` call drives the WHOLE loop internally and returns the final patch(es) + reply. The wire shape below is UNCHANGED — the loop is entirely internal; Web still sends one message and gets back patches + reply + opId.
 
 Request:
 
@@ -447,6 +449,54 @@ Rules:
 - Agent writes pending `agent.edit_ops` and pending `agent.edit_messages`.
 - Web must call `/internal/agent-ack` after its album transaction commits.
 - Missing `DATABASE_URL` is an infrastructure failure.
+- **One user message = one serialized turn that internally loops** (the controller may call many tools). Only the FINAL aggregated result persists: a single pending op + opId, last assistant message. Intermediate tool calls are not separate ops/messages. The serialized-turn contract is unchanged.
+
+#### 6.2.1 Controller model + slot
+
+The controller runs on the **vision slot** (`vision_provider`: default ark `doubao-seed-1-6` / failover openai `gpt-5.5-mini`) — the only configured slots that support OpenAI-style `tools`/`tool_calls` multi-step function-calling AND reasoning. The DeepSeek/doubao-lite copy slot is NOT strong enough for autonomous multi-tool composition; it stays a *callee* (used inside `edit_text` / `swap_images`), not the controller. `ai_client.chat_completion` already forwards `tools`/`tool_choice` — no new transport. Controller temperature ~0.2, `tool_choice="auto"`. If the controller slot is unavailable (missing key / 4xx / timeout), degrade to the conservative old talk behaviour with zero draft change.
+
+#### 6.2.2 The loop
+
+Implemented in a controller orchestrator (replaces `story/context.py:_run_tool_router`; lives as `story/controller.py`, called from `chapter_chat_bundle`). Per turn:
+
+1. Assemble rich context (§6.2.4): system prompt (role + capability set + boundaries), user goal, the focused page's CURRENT texts, chapter pages, slot specs (id/lang/hint/maxChars), photo scene descriptions, book-tree summary, history.
+2. Call the controller with the FULL tool registry (§6.2.3).
+3. For each returned `tool_call`: execute it deterministically and FEED the result back as a `tool` message (read tools return page/tree JSON; mutate tools return the patch + the resulting texts so the controller can VERIFY).
+4. Loop until the model emits a final answer with no tool calls, OR a guard trips.
+5. Aggregate the accumulated patches + `assistantReply` into the response.
+
+**Guards (sync, in-request):** max **6** tool iterations; whole loop wrapped in `asyncio.wait_for < 58s` (aligns with §2.3 60s sync budget). On a guard trip, return the patches already produced plus a conservative reply — never hang the HTTP call.
+
+#### 6.2.3 Controller tool set
+
+| Tool | Kind | Args (JSON schema) | Returns to controller |
+|---|---|---|---|
+| `get_page_info` | read | `{ page?: int(≥1) }` (human page number; omit → focused chapter) | `{ chapter: V3Chapter, pages: Page[] }` — pages carry CURRENT `texts` + `images` |
+| `get_book_tree` | read | `{}` | book tree: chapters / pageIndexes / completion / progress |
+| `edit_text` | mutate **(NEW)** | `{ page?: int(≥1), texts: { [slotId]: string } }` | the cleaned `{ pageIndex, texts }` patch (slot-validated, maxChars-clamped) so the controller can verify the applied copy |
+| `swap_layout` | mutate | `{ page?: int(≥1), chapter?: bool }` | `{ pageIndex, templateId, images }` patch (candidate_gen + judge) |
+| `swap_images` | mutate | `{ page?: int(≥1) }` | `{ pageIndex, templateId, images }` patch (vision photo-intent → engine) |
+| `advance_book` | mutate | `{}` | `navigation` (next page) or `progressDecision` (chapter done) |
+| `confirm_chapter` | mutate | `{}` | `progressDecision { chapterDone: true }` |
+
+- `edit_text` is the **key new tool**: today its logic is buried in `/v3/page-edit` (`page_edit/handler.py:_execute_edit_text` + `edit_text.md`). It is re-cast as a clean function-calling tool that MUST receive the page's current texts (in context) and MUST return the cleaned result so the controller can confirm the change landed. **Language ("change to English") is NOT a tool param** — the controller infers target language from the user goal + the current texts it can now see, then writes the new copy. This is the direct fix for "says done but nothing changed".
+- All patches the loop produces are the same `V3LayoutPatchEntry` / `V3PageTextsPatch` shapes already in §4.3; they round-trip to Web and persist exactly as today.
+
+#### 6.2.4 Rich context (root-cause fix: missing current texts)
+
+The old router payload had `userMessage / chapterId / focusedPageNumber / history` but **NOT the current page texts**, so the model was blind to the copy it was asked to change. The controller's context MUST include:
+
+- **Focused page current texts + the chapter's pages** — from `get_page_info` (`{ chapter, pages }`; `Page.texts` + `Page.images`). Either pre-fetched into the opening context or fetched by the controller's first `get_page_info` call.
+- **Slot specs** (id / lang / hint / maxChars) — from the template registry (reuse `writing/handler.page_slot_specs` + `_template_max_chars`).
+- **Photo scene descriptions** (photoId / orientation / scene; no base64 / GPS) — from `V3Chapter.photos[].sceneDescription`.
+- **History** — last ≤20 turns from `agent.edit_messages`.
+
+The controller can therefore SEE current copy before/while editing and VERIFY after (the mutate tools echo the applied texts back). All reads stay via `get_page_info`/`get_book_tree` (Agent-doesn't-hold-draft invariant intact).
+
+#### 6.2.5 Migration / fallback
+
+- The old single-shot tool router is replaced by the controller loop on this endpoint. The deterministic case4 layout swap in `tools/layout.py` and the `/v3/page-edit` two-stage helper (§6.3) are SEPARATE paths and stay as-is.
+- A feature flag (env) selects controller-loop vs legacy-router during rollout; default flips to controller once tests pass. Controller-slot unavailability falls back to the conservative talk behaviour (zero draft change), so a model outage never breaks the turn.
 
 ### 6.3 `POST /v3/page-edit`
 

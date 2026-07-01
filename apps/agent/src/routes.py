@@ -38,8 +38,6 @@ from .schemas import (
     V3ChapterChatResponse,
     V3EditChatRequest,
     V3EditChatResponse,
-    V3PageEditRequest,
-    V3PageEditResponse,
     JudgeLayoutRequest,
     SelectLayoutRequest,
 )
@@ -57,11 +55,9 @@ from .schemas import (
 )
 from .engine import apply_theme_v3
 from .errors import sync_endpoint_errors
-from .story import flow as edit_chat_v3
-from .story.flow import EditChatError
+from .agents.edit_loop import flow as edit_chat_v3
+from .agents.edit_loop.flow import EditChatError
 from .agents.story import handler as chapter_chat_v3
-from .agents.page_edit import handler as page_edit_v3
-from .agents.page_edit import PageEditError
 from .engine import cover_v3
 from .engine import finalize_v3
 from .agents.theme_recommend import handler as recommend_v3
@@ -243,47 +239,6 @@ async def submit_edit_chat(req: V3EditChatRequest) -> dict[str, Any]:
         known_code="AGENT_PLANNING_FAILED",
     ):
         response: V3EditChatResponse = await edit_chat_v3.run(req)
-    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
-
-
-# ---------- page-edit (②b 页级编辑, sync, 两段式) ----------------------------
-
-
-@router.post("/v3/page-edit", dependencies=[Depends(require_bearer)])
-async def submit_page_edit(req: V3PageEditRequest) -> dict[str, Any]:
-    """②b 页级编辑 endpoint (§8 同步 / 两段式 dispatch).
-
-    Synchronous (front-end spinner; <60s budget). Two-stage decoupled
-    (docs/superpowers/specs/2026-06-25-page-edit-agent-loop-design.md): stage 1 routes the
-    user's intent (edit_text|change_layout|advance|talk) in one light call; stage 2
-    executes (edit_text = one writing call with the page's CURRENT texts; change_layout =
-    deterministic legal-candidate reflow, NO model call; advance = set flag; talk = stage-1
-    reply). Editing only ever touches the focused page. Completion is computed
-    deterministically by Agent code (reusing chapter-chat's slot judgement), derived, not
-    persisted. Stateless (§8.3): the Agent returns a page-level `layoutPatch` (reuses
-    `V3LayoutPatchEntry`) + an optional `advanceIntent` (web navigates; the Agent does not);
-    Web merges the patch + advances stage. Input carries no base64 (text + photo scene
-    only; §3 隐私: no place/GPS). The handler is robust (any stage failure / parse error /
-    provider missing / timeout → safe conservative talk, zero patch, zero draft change), so
-    it never raises in practice; the contract error path (502 AGENT_PLANNING_FAILED) is wired
-    for parity with the other sync endpoints."""
-    log.info(
-        "v3_page_edit.accepted",
-        chapter_id=req.chapter.chapterId,
-        pages=len(req.pages),
-        history_len=len(req.history),
-        focused=req.focusedPageIndex,
-        language=req.language,
-    )
-    with sync_endpoint_errors(
-        log,
-        "v3_page_edit",
-        PageEditError,
-        known_status=status.HTTP_502_BAD_GATEWAY,
-        known_code="AGENT_PLANNING_FAILED",
-    ):
-        response: V3PageEditResponse = await page_edit_v3.run(req)
-    log.info("v3_page_edit.completed", intent=response.intent, chapter_id=req.chapter.chapterId)
     return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
 
 

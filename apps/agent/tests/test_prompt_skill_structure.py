@@ -21,15 +21,20 @@ def test_human_authored_prompt_assets_live_under_skills():
         "guidance_style.md",
         "theme_colors.md",
         "image_edit_selection.md",
-        "page_intent_routing.md",
-        "page_text_editing.md",
         "chapter_chat_turns.md",
         "book_theme_options.md",
-        "replies/page_edit.md",
         "replies/theme_recommend.md",
         "replies/writing.md",
     }
-    removed = {"json_only.md", "persona.md", "privacy.md"}
+    # page_edit 已被 edit_loop 吸收 —— 其专属 prompt 资产随模块删除。
+    removed = {
+        "json_only.md",
+        "persona.md",
+        "privacy.md",
+        "page_intent_routing.md",
+        "page_text_editing.md",
+        "replies/page_edit.md",
+    }
     missing = [name for name in sorted(expected) if not (SKILLS_ROOT / name).is_file()]
     lingering = [name for name in sorted(removed) if (SKILLS_ROOT / name).exists()]
     assert missing == []

@@ -7,10 +7,28 @@ import pytest
 from fastapi.testclient import TestClient
 
 
+def _all_paths(routes) -> set[str]:
+    """收集挂载在 app 上的全部路由 path。
+
+    新版 Starlette 把 include_router 的子路由包成 `_IncludedRouter`(无 `.path`,内含
+    一个子 `.router`);这里递归展开,既支持新版也兼容旧版。"""
+    paths: set[str] = set()
+    for route in routes:
+        path = getattr(route, "path", None)
+        if isinstance(path, str):
+            paths.add(path)
+        # 新版 Starlette:include_router 产生 `_IncludedRouter`,真正的子路由在
+        # `original_router.routes`(旧版直接有 `.router`)。
+        sub = getattr(route, "original_router", None) or getattr(route, "router", None)
+        if sub is not None and getattr(sub, "routes", None):
+            paths |= _all_paths(sub.routes)
+    return paths
+
+
 def test_agent_route_surface_keeps_health_and_v3_only() -> None:
     from src.main import app
 
-    paths = {route.path for route in app.routes}
+    paths = _all_paths(app.routes)
 
     assert "/health" in paths
     assert {
@@ -18,7 +36,6 @@ def test_agent_route_surface_keeps_health_and_v3_only() -> None:
         "/v3/select-layout",
         "/v3/chapter-chat",
         "/v3/edit-chat",
-        "/v3/page-edit",
         "/v3/recommend",
         "/v3/apply-theme",
         "/v3/cover",
@@ -26,6 +43,8 @@ def test_agent_route_surface_keeps_health_and_v3_only() -> None:
         "/internal/agent-ack",
         "/internal/open-clip/embeddings",
     }.issubset(paths)
+    # page_edit 已被 edit_loop 吸收 —— /v3/page-edit 不再存在。
+    assert "/v3/page-edit" not in paths
     assert not any(path.startswith("/" + "v2" + "/album") for path in paths)
 
 
