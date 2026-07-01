@@ -46,10 +46,14 @@ type SelectLayoutInput = {
 // candidate unit. Each carries the unit's candidates with the browser-rendered
 // thumbnail attached (omitted/empty → Agent falls back to candidate 0). Single-
 // candidate units carry chosenIndex=0 and skip rendering.
+// 浏览器传的 unit:只有 candidates + 缩略图,不带写文素材(photos/chapterContext)——
+// 那些由 Web 从 draft 补进 buildJudgeLayoutRequest。so 浏览器侧类型去掉这两个。
+type BrowserJudgeUnit = Omit<JudgeLayoutUnit, 'photos' | 'chapterContext'>;
+
 type JudgeLayoutInput = {
   requestId: string;
   language: 'zh' | 'en';
-  units: JudgeLayoutUnit[];
+  units: BrowserJudgeUnit[];
 };
 
 export const generationService = {
@@ -190,6 +194,7 @@ export const generationService = {
       callbackUrl: `${env.WEB_BASE_URL}/api/v3/internal/job-progress`,
       language: input.language,
       units: input.units,
+      tree: album.draftJson, // 从 draft 补写文素材(sceneDescription + chapterContext)进 judge 请求
     });
 
     const reserved = await agentJobRepo.reserveJudgeLayout(db, job.id);
@@ -221,13 +226,30 @@ export function buildJudgeLayoutRequest(input: {
   requestId: string;
   callbackUrl: string;
   language: 'zh' | 'en';
-  units: JudgeLayoutUnit[];
+  units: BrowserJudgeUnit[];
+  tree?: unknown; // draft tree:按 chapterId 给每个 unit 补写文素材(评委选完当场写文案)。
 }): JudgeLayoutRequest {
+  // 从 draft tree 建 chapterId → {photos(sceneDescription), chapterContext} 索引。
+  // 浏览器传的 units 只有 candidates/缩略图,不持 tree —— 写文素材由 Web 从 draft 补(§3 数据归属)。
+  const byChapter = new Map<string, { photos: { photoId: string; sceneDescription: string }[]; chapterContext: string }>();
+  if (input.tree !== undefined) {
+    const tree = readDraftTree(input.tree);
+    for (const chapter of tree.chapters) {
+      byChapter.set(chapter.chapterId, {
+        chapterContext: chapter.chapterContext ?? '',
+        photos: chapter.photos.map((p) => ({ photoId: p.photoId, sceneDescription: p.sceneDescription ?? '' })),
+      });
+    }
+  }
+  const units = input.units.map((unit) => {
+    const extra = byChapter.get(unit.chapterId);
+    return extra ? { ...unit, photos: extra.photos, chapterContext: extra.chapterContext } : unit;
+  });
   const payload = {
     requestId: input.requestId,
     callbackUrl: input.callbackUrl,
     language: input.language,
-    units: input.units,
+    units,
   };
   const parsed = JudgeLayoutRequest.safeParse(payload);
   if (!parsed.success) {
@@ -271,6 +293,9 @@ export function buildSelectLayoutRequestFromTree(input: {
     chapters: tree.chapters.map((chapter) => ({
       chapterId: chapter.chapterId,
       ...(chapter.description ? { structureHint: chapter.description } : {}),
+      // 采访结果:喂给排版评委(选贴合基调的版式)+ 排版后一次性写文案。之前漏传,导致
+      // chapterContext 契约字段有但从不生效 —— 这里补上。跳过采访/老树 => ""。
+      chapterContext: chapter.chapterContext ?? '',
       photos: chapter.photos.map((photo) => {
         const ref200px = refs.get(photo.photoId);
         if (!ref200px) {
@@ -281,6 +306,9 @@ export function buildSelectLayoutRequestFromTree(input: {
           ref200px,
           orientation: photo.orientation,
           takenAt: photo.takenAt ?? null,
+          // 构图 + 场景:排版按朝向×构图匹配槽;写文案 AI 据 sceneDescription grounding。
+          ...(photo.composition != null ? { composition: photo.composition } : {}),
+          sceneDescription: photo.sceneDescription ?? '',
         };
       }),
     })),

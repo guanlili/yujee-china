@@ -322,6 +322,8 @@ export const SelectLayoutPhoto = z
     orientation: PhotoOrientation,
     composition: PhotoComposition.nullable().optional(), // 来自 Stage1 树;排版按朝向×构图匹配槽位
     takenAt: TakenAtDateTime.nullable(),
+    // 照片场景(来自 Stage1 树):排版后一次性写文案时,写作 AI 据它 grounding。旧相册 => ""。
+    sceneDescription: z.string().max(300).default(''),
   })
   .strict();
 export type SelectLayoutPhoto = z.infer<typeof SelectLayoutPhoto>;
@@ -331,6 +333,8 @@ export const SelectLayoutChapter = z
     chapterId: z.string().min(1),
     photos: z.array(SelectLayoutPhoto).min(1),
     structureHint: z.string().max(600).optional(),
+    // 采访结果:评委据此选贴合基调的版式 + 排版后一次性写文案。跳过采访/老树 => ""。
+    chapterContext: z.string().max(500).default(''),
   })
   .strict();
 export type SelectLayoutChapter = z.infer<typeof SelectLayoutChapter>;
@@ -388,12 +392,26 @@ export const JudgeCandidate = z
 export type JudgeCandidate = z.infer<typeof JudgeCandidate>;
 
 // Phase 2 请求里的一个待评单元。chosenIndex 已定(单候选)则不调评委。
+// 写文案素材(评委选完版式后,当场对本章写满文案时用)。只带写作 grounding 需要的
+// 字段:photoId(对回图槽)+ sceneDescription(画面依据)。ref200px 那种重图数据不带。
+export const JudgeCopyPhoto = z
+  .object({
+    photoId: z.string().min(1),
+    sceneDescription: z.string().max(300).default(''),
+  })
+  .strict();
+export type JudgeCopyPhoto = z.infer<typeof JudgeCopyPhoto>;
+
 export const JudgeLayoutUnit = z
   .object({
     unitKey: z.string().min(1),
     chapterId: z.string().min(1),
     chosenIndex: z.number().int().min(0).optional(),
     candidates: z.array(JudgeCandidate).min(1),
+    // 写文案素材:评委选定版式后当场写满本章文案时用。Web 从 draft tree 补(浏览器不持 tree)。
+    // 老客户端不带 => 空,写文案退化为只填页码(与今天行为一致,不破坏)。
+    photos: z.array(JudgeCopyPhoto).default([]),
+    chapterContext: z.string().max(500).default(''),
   })
   .strict();
 export type JudgeLayoutUnit = z.infer<typeof JudgeLayoutUnit>;

@@ -15,12 +15,16 @@ from typing import Any
 from .. import ai_client, callback
 from ..agents import select_layout as select_layout_agent
 from ..agents.select_layout import GeminiLayoutUnavailable
+from ..agents.story import write_copy
 from ..engine import generic_copy, legalize
 from ..logging_config import get_logger, request_id_var
 from ..schemas import (
     JudgeLayoutRequest,
+    Page,
     SelectLayoutCompleted,
     V3CallbackError,
+    V3Chapter,
+    V3ChapterPhoto,
     V3FailedEvent,
     V3Models,
     V3Usage,
@@ -38,7 +42,56 @@ def _candidate_pages(candidate: Any) -> list[dict[str, Any]]:
     ]
 
 
-async def _resolve_unit(unit: Any) -> tuple[list[dict[str, Any]], int, int, int, str | None]:
+async def _write_chapter_texts(
+    unit: Any, pages: list[dict[str, Any]], language: str
+) -> tuple[list[dict[str, Any]], int, int]:
+    """版式选定后,为本章一次性写满文案,把 texts 贴回 pages。返回 (pages, in_tok, out_tok)。
+
+    unit 带写文素材(photos 的 sceneDescription + chapterContext,Web 从 draft 补)。无素材
+    (老客户端/空)时 write_chapter_copy 内部照 pageSlots 兜底或降级空文案 —— 绝不拖垮排版。
+    章内页(局部 pageIndex)写文案即可;整册重排 pageIndex 时 texts 跟着页走。"""
+    if not pages:
+        return pages, 0, 0
+    # 组本章 minimal chapter(写文案只需 chapterContext + photos 的 sceneDescription)。
+    chapter = V3Chapter(
+        chapterId=unit.chapterId,
+        chapterContext=getattr(unit, "chapterContext", "") or "",
+        accentColor=None,
+        artFont=None,
+        photos=[
+            V3ChapterPhoto(
+                photoId=p.photoId,
+                sceneDescription=getattr(p, "sceneDescription", "") or "",
+                width=1,
+                height=1,
+                orientation="landscape",
+            )
+            for p in getattr(unit, "photos", []) or []
+        ],
+    )
+    page_objs = [
+        Page(
+            pageIndex=int(pg["pageIndex"]),
+            templateId=str(pg["templateId"]),
+            images=dict(pg.get("images", {})),
+            texts=dict(pg.get("texts", {})),
+        )
+        for pg in pages
+    ]
+    patches, in_tok, out_tok = await write_copy.write_chapter_copy(
+        chapter, page_objs, language
+    )
+    texts_by_index = {patch.pageIndex: dict(patch.texts) for patch in patches}
+    out: list[dict[str, Any]] = []
+    for pg in pages:
+        merged = {**pg, "texts": {**pg.get("texts", {}), **texts_by_index.get(int(pg["pageIndex"]), {})}}
+        out.append(merged)
+    return out, in_tok, out_tok
+
+
+async def _resolve_unit(
+    unit: Any, language: str
+) -> tuple[list[dict[str, Any]], int, int, int, str | None]:
     """选出该 unit 的赢家候选并最终化成页。返回 (pages, calls, in_tok, out_tok, model)。"""
     candidates = list(unit.candidates)
     chapter = {"chapterId": unit.chapterId}
@@ -49,7 +102,8 @@ async def _resolve_unit(unit: Any) -> tuple[list[dict[str, Any]], int, int, int,
         idx = idx if 0 <= idx < len(candidates) else 0
         winner = candidates[idx]
         pages = legalize.finalize_candidate_pages(chapter, _candidate_pages(winner))
-        return pages, 0, 0, 0, None
+        pages, w_in, w_out = await _write_chapter_texts(unit, pages, language)
+        return pages, 0, w_in, w_out, None
 
     # 多候选:缩略图喂 Gemini 评委。失败退化取 0。
     thumbnails = [c.thumbnail for c in candidates]
@@ -68,7 +122,10 @@ async def _resolve_unit(unit: Any) -> tuple[list[dict[str, Any]], int, int, int,
         meta = (0, 0, 0, None)
 
     pages = legalize.finalize_candidate_pages(chapter, _candidate_pages(winner))
-    return (pages, *meta)
+    # 版式选定后当场写满本章文案(§流程重构)。写文案 token 并进 unit 的 planning 计数。
+    pages, w_in, w_out = await _write_chapter_texts(unit, pages, language)
+    calls, in_tok, out_tok, model = meta
+    return pages, calls, in_tok + w_in, out_tok + w_out, model
 
 
 async def judge_pages(req: JudgeLayoutRequest) -> tuple[list[dict[str, Any]], V3Usage]:
@@ -79,7 +136,7 @@ async def judge_pages(req: JudgeLayoutRequest) -> tuple[list[dict[str, Any]], V3
 
     async def run(unit: Any) -> tuple[list[dict[str, Any]], int, int, int, str | None]:
         async with semaphore:
-            return await _resolve_unit(unit)
+            return await _resolve_unit(unit, req.language)
 
     results = await asyncio.gather(*(run(unit) for unit in req.units))
 

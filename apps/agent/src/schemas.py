@@ -496,6 +496,8 @@ class SelectLayoutPhoto(_V3Strict):
     # 构图(来自 Stage1 树):排版随机引擎按朝向×构图匹配槽位。旧相册 => None(任意)。
     composition: PhotoComposition | None = None
     takenAt: str | None
+    # 照片场景(来自 Stage1 树):排版后一次性写文案时供写作 AI grounding。旧相册 => ""。
+    sceneDescription: str = Field(default="", max_length=300)
 
     _check_ref200px = field_validator("ref200px")(_validate_v3_analyze_image_data_url)
     _check_taken_at = field_validator("takenAt")(_validate_iso_datetime)
@@ -530,11 +532,22 @@ class JudgeCandidate(_V3Strict):
     pages: list[CandidatePage] = Field(min_length=1)
 
 
+class JudgeCopyPhoto(_V3Strict):
+    """写文案素材(评委选完版式后当场写满本章文案时用)。只带 photoId + sceneDescription。"""
+
+    photoId: str = Field(min_length=1)
+    sceneDescription: str = Field(default="", max_length=300)
+
+
 class JudgeLayoutUnit(_V3Strict):
     unitKey: str = Field(min_length=1)
     chapterId: str = Field(min_length=1)
     chosenIndex: int | None = Field(default=None, ge=0)
     candidates: list[JudgeCandidate] = Field(min_length=1)
+    # 写文案素材:评委选定版式后当场写满本章文案。Web 从 draft tree 补(浏览器不持 tree)。
+    # 老客户端不带 => 空,写文案退化为只填页码(与今天行为一致)。
+    photos: list[JudgeCopyPhoto] = Field(default_factory=list)
+    chapterContext: str = Field(default="", max_length=500)
 
 
 class JudgeLayoutRequest(_V3Strict):

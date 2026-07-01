@@ -17,6 +17,7 @@ const PAYLOAD: SelectLayoutRequest = {
           ref200px: 'data:image/jpeg;base64,AA==',
           orientation: 'landscape',
           takenAt: '2024-03-15T08:30:00',
+          sceneDescription: 'coast sunrise',
         },
       ],
     },

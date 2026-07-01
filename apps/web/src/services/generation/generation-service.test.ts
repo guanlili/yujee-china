@@ -63,18 +63,21 @@ test('buildSelectLayoutRequestFromTree sends 200px refs and never caller candida
       {
         chapterId: 'ch_1',
         structureHint: 'Coast morning',
+        chapterContext: '',
         photos: [
           {
             photoId: 'p1',
             ref200px: 'data:image/jpeg;base64,AA==',
             orientation: 'landscape',
             takenAt: '2024-03-15T08:30:00',
+            sceneDescription: 'beach',
           },
           {
             photoId: 'p2',
             ref200px: 'data:image/jpeg;base64,BB==',
             orientation: 'portrait',
             takenAt: null,
+            sceneDescription: 'portrait',
           },
         ],
       },
