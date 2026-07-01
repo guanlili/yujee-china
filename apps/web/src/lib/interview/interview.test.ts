@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   buildChapterContext,
+  buildChapterInterviews,
   classifyInterviewCase,
   formatDatePrefix,
   interviewMessages,
@@ -104,6 +105,38 @@ test('buildChapterContext caps output at 500 chars (matches V3Chapter.chapterCon
     'x'.repeat(600),
   );
   assert.equal(out.length, 500);
+});
+
+test('buildChapterInterviews aligns chapter photoIds → clusterId → prefill', () => {
+  const chapters = [
+    { chapterId: 'c1', label: '海边', photoIds: ['p1', 'p2'] },
+    { chapterId: 'c2', label: '城市', photoIds: ['p3'] },
+  ];
+  const photoToCluster = new Map([
+    ['p1', 'cl1'],
+    ['p2', 'cl1'],
+    ['p3', 'cl2'],
+  ]);
+  const prefills = [
+    { clusterId: 'cl1', earliestTakenAt: '2026-05-01T09:00', latestTakenAt: null, place: '杭州' },
+    { clusterId: 'cl2', earliestTakenAt: null, latestTakenAt: null, place: null },
+  ];
+
+  const result = buildChapterInterviews(chapters, photoToCluster, prefills);
+  assert.equal(result.length, 2);
+  // c1: 时间✓地点✓ => timeAndPlace 的三条消息。
+  assert.deepEqual(result[0]!.input, { earliestTakenAt: '2026-05-01T09:00', latestTakenAt: null, place: '杭州' });
+  assert.deepEqual(result[0]!.messages, interviewMessages('timeAndPlace'));
+  // c2: 无时间无地点 => neither。
+  assert.deepEqual(result[1]!.input, { earliestTakenAt: null, latestTakenAt: null, place: null });
+  assert.deepEqual(result[1]!.messages, interviewMessages('neither'));
+});
+
+test('buildChapterInterviews falls back to empty input when mapping is missing', () => {
+  const chapters = [{ chapterId: 'c1', label: 'x', photoIds: ['pX'] }];
+  const result = buildChapterInterviews(chapters, new Map(), []);
+  assert.deepEqual(result[0]!.input, { earliestTakenAt: null, latestTakenAt: null, place: null });
+  assert.deepEqual(result[0]!.messages, interviewMessages('neither'));
 });
 
 test('buildChapterContext never contains coordinates — place is a name string only', () => {

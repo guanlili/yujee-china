@@ -1,10 +1,11 @@
 'use client';
 
-import { use, useEffect } from 'react';
+import { use, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAlbumPoll } from '@/lib/hooks/use-album-poll';
 import { EditorPort } from '@/components/album/editor-v2/EditorPort';
 import { AlbumGeneratingShell } from '@/components/album/AlbumGeneratingShell';
+import { InterviewDialog } from '@/components/album/InterviewDialog';
 import type { AlbumDetail } from '@/components/album/types';
 import { defaultLocale, isLocale, type Locale } from '@/lib/i18n/routing';
 
@@ -39,10 +40,14 @@ export default function AlbumPage({
   const locale: Locale = isLocale(rawLocale) ? rawLocale : defaultLocale;
   const router = useRouter();
 
+  // 采访完成后 bump 它,强制重启一轮轮询(interview 是 terminal phase,轮询已停;放行后
+  // 需重跑一拍见到 isDone=true 去触发 select-layout)。
+  const [reloadKey, setReloadKey] = useState(0);
+
   // Source of truth is the album itself, addressed by uuid — not a job id from
   // the URL. A bookmarked/ready album loads immediately; a dead generation is
   // swept to FAILED server-side and surfaces here instead of spinning forever.
-  const { detail, generation, phase, error } = useAlbumPoll(uuid);
+  const { detail, generation, phase, error } = useAlbumPoll(uuid, reloadKey);
 
   // Session expired mid-generation → don't spin, send them to sign in and back.
   useEffect(() => {
@@ -70,6 +75,22 @@ export default function AlbumPage({
         mode="building"
         generation={generation}
       />
+    );
+  }
+
+  // 内容采集(采访):analyze 完成、排版前。底层照常显示 building 加载态(用户感知仍在处理),
+  // 上层叠采访对话框;完成/跳过 → bump reloadKey 重启轮询 → 放行 select-layout(§2.1a)。
+  if (phase === 'interview') {
+    return (
+      <>
+        <EditorPort
+          detail={detail ?? STUB_DETAIL(uuid)}
+          locale={locale}
+          mode="building"
+          generation={generation}
+        />
+        <InterviewDialog albumId={uuid} locale={locale} onDone={() => setReloadKey((k) => k + 1)} />
+      </>
     );
   }
 

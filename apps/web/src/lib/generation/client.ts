@@ -188,6 +188,30 @@ export async function photosFromStore(photoIds: string[]): Promise<GenerationPho
   return clusterCompressedPhotos(compressed);
 }
 
+// 采访数据(内容采集 §2.1a):从 IndexedDB 原图重算「photoId→clusterId」映射 + 每 cluster 的
+// 预填(时间范围 + 反查地名)。在 progress=50 采访弹出时当场算 —— 原图还在本地,坐标还能读。
+// assignClusterIds 确定性,与提交时同一批 photoId 得同样的 clusterId,映射稳定对得上。
+// PRIVACY:geo 在 chapterPrefillsFromCompressed 内反查后即弃,返回值只含 clusterId + 地名字符串。
+export async function interviewDataFromStore(photoIds: readonly string[]): Promise<{
+  photoToCluster: Map<string, string>;
+  prefills: ChapterPrefill[];
+}> {
+  const compressed: CompressedPhoto[] = [];
+  for (const photoId of photoIds) {
+    const blob = await photoStore.getBlob(photoId);
+    if (!blob) continue; // 采访是可选的,缺图的照片跳过,不像排版那样硬失败
+    compressed.push(await compressFile(blob, photoId));
+  }
+  const inputs: ClusterInput[] = compressed.map((p) => ({
+    photoId: p.photoId,
+    takenAt: p.takenAt,
+    geo: p.clusterGeo,
+  }));
+  const photoToCluster = assignClusterIds(inputs);
+  const prefills = await chapterPrefillsFromCompressed(compressed);
+  return { photoToCluster, prefills };
+}
+
 export async function selectLayoutRefsFromStore(photoIds: string[]): Promise<Record<string, string>> {
   const compressed: CompressedPhoto[] = [];
   const missing: string[] = [];

@@ -12,6 +12,64 @@ export type ChapterInterviewInput = {
   place: string | null;
 };
 
+/** 一章的采访条目:章标识 + 预填输入 + 该情况的三条引导短消息。UI 逐章走。 */
+export type ChapterInterview = {
+  chapterId: string;
+  label: string;
+  input: ChapterInterviewInput;
+  messages: readonly [string, string, string];
+};
+
+/** 提交时按 clusterId 预算的预填(镜像 client.ts ChapterPrefill,避免跨层耦合)。 */
+export type ClusterPrefill = {
+  clusterId: string;
+  earliestTakenAt: string | null;
+  latestTakenAt: string | null;
+  place: string | null;
+};
+
+const EMPTY_INPUT: ChapterInterviewInput = {
+  earliestTakenAt: null,
+  latestTakenAt: null,
+  place: null,
+};
+
+/**
+ * 组装每章的采访条目。把「章→photoIds」(analyze 返回的章)与「clusterId→预填」(提交时算的)
+ * 通过「photoId→clusterId」(浏览器确定性重算)对起来:一章的照片同属一个 cluster(§2.1a,
+ * clusterId 不跨章),取该章任一 photoId 的 clusterId → 拿其预填。
+ *
+ * 缺预填(无 GPS/无时间,或映射对不上)的章 => 空输入(四情况归 neither,全问)。纯函数、可测。
+ */
+export function buildChapterInterviews(
+  chapters: readonly { chapterId: string; label: string; photoIds: readonly string[] }[],
+  photoToCluster: ReadonlyMap<string, string>,
+  prefills: readonly ClusterPrefill[],
+): ChapterInterview[] {
+  const prefillByCluster = new Map(prefills.map((p) => [p.clusterId, p]));
+  return chapters.map((ch) => {
+    let input = EMPTY_INPUT;
+    for (const photoId of ch.photoIds) {
+      const clusterId = photoToCluster.get(photoId);
+      const prefill = clusterId ? prefillByCluster.get(clusterId) : undefined;
+      if (prefill) {
+        input = {
+          earliestTakenAt: prefill.earliestTakenAt,
+          latestTakenAt: prefill.latestTakenAt,
+          place: prefill.place,
+        };
+        break;
+      }
+    }
+    return {
+      chapterId: ch.chapterId,
+      label: ch.label,
+      input,
+      messages: interviewMessages(classifyInterviewCase(input)),
+    };
+  });
+}
+
 /** 四情况:按「时间已知?地点已知?」分。决定问哪套引导语、拼哪些前缀。 */
 export type InterviewCase =
   | 'timeAndPlace' // 时间✓ 地点✓ —— 只问人/事/心情

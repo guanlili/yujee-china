@@ -167,6 +167,18 @@ export function postChapterContexts(
   return postJson(`/api/v3/albums/${albumId}/chapter-context`, { contexts });
 }
 
+// 采访要用「章→photoIds」把每章对回 clusterId → 取预填。复用只读的章节摘要端点
+// (getChapterSummary),它返回派生摘要(label/role/photoIds),不含可编辑树(不变式 12)。
+export interface ChapterSummaryEntry {
+  chapterId: string;
+  label: string;
+  role: string;
+  photoIds: string[];
+}
+export function fetchChapterSummary(albumId: string): Promise<{ chapters: ChapterSummaryEntry[] }> {
+  return getJson(`/api/v1/albums/${albumId}/chapters`);
+}
+
 // ④ 书籍设计 — 封面/封尾 — one real /v3/cover turn (缺口#20). Invariant 12 / §3 数据归属:
 // the browser holds NO layout pages, so it sends ONLY its SELECTIONS (the chosen 封面/封尾
 // template ids, or null = 跳过 — 封面可选 §4.4); the Web service re-slices the relevant
