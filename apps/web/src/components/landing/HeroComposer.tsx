@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getSession } from '@/lib/auth/client';
 import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
+import { IMAGE_INPUT_ACCEPT } from '@/lib/photo/heic';
 import { photoStore } from '@/lib/photo/store';
 import {
   clusterCompressedPhotos,
@@ -279,7 +280,7 @@ export function HeroComposer({
             <label title={uploadLabel} aria-disabled={busy} className="cmp-tile">
               <input
                 type="file"
-                accept="image/*"
+                accept={IMAGE_INPUT_ACCEPT}
                 multiple
                 className="hidden"
                 disabled={busy}
@@ -392,7 +393,7 @@ export function HeroComposer({
             >
               <input
                 type="file"
-                accept="image/*"
+                accept={IMAGE_INPUT_ACCEPT}
                 multiple
                 className="hidden"
                 disabled={busy}

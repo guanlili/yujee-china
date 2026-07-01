@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { createCoverThumbnailJpeg, COVER_THUMBNAIL_HEIGHT, COVER_THUMBNAIL_WIDTH } from './cover-thumbnail';
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 test('cover thumbnail generation creates a bounded 640x480 JPEG derivative', async () => {
   const restore = installBrowserImageMocks({
@@ -32,6 +37,13 @@ test('cover thumbnail generation creates a bounded 640x480 JPEG derivative', asy
   } finally {
     restore();
   }
+});
+
+test('cover thumbnail generation prepares HEIC originals before browser decode', () => {
+  const src = readFileSync(join(here, 'cover-thumbnail.ts'), 'utf8');
+
+  assert.match(src, /prepareImageBlobForBrowserDecode/);
+  assert.match(src, /const imageBlob = await prepareImageBlobForBrowserDecode\(blob\)/);
 });
 
 test('cover thumbnail generation retries lower quality when the first JPEG is too large', async () => {
@@ -85,6 +97,23 @@ test('cover thumbnail generation fails clearly when canvas context is unavailabl
   }
 });
 
+test('cover thumbnail fallback decode wraps Image error events', async () => {
+  const restore = installBrokenImageFallbackMocks();
+  try {
+    await assert.rejects(
+      createCoverThumbnailJpeg(new Blob(['x'], { type: 'image/jpeg' })),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /could not decode cover thumbnail image/i);
+        assert.equal(err.message.includes('[object Event]'), false);
+        return true;
+      },
+    );
+  } finally {
+    restore();
+  }
+});
+
 interface DrawCall {
   sx: number;
   sy: number;
@@ -94,6 +123,49 @@ interface DrawCall {
   dy: number;
   dw: number;
   dh: number;
+}
+
+function installBrokenImageFallbackMocks(): () => void {
+  const originalCreateImageBitmap = globalThis.createImageBitmap;
+  const originalImage = globalThis.Image;
+  const hadCreateImageBitmap = 'createImageBitmap' in globalThis;
+  const hadImage = 'Image' in globalThis;
+
+  Object.defineProperty(globalThis, 'createImageBitmap', {
+    configurable: true,
+    value: async () => {
+      throw new Error('bitmap decode failed');
+    },
+  });
+  Object.defineProperty(globalThis, 'Image', {
+    configurable: true,
+    value: class BrokenImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_value: string) {
+        queueMicrotask(() => this.onerror?.());
+      }
+    },
+  });
+
+  return () => {
+    if (hadCreateImageBitmap) {
+      Object.defineProperty(globalThis, 'createImageBitmap', {
+        configurable: true,
+        value: originalCreateImageBitmap,
+      });
+    } else {
+      delete (globalThis as { createImageBitmap?: unknown }).createImageBitmap;
+    }
+    if (hadImage) {
+      Object.defineProperty(globalThis, 'Image', {
+        configurable: true,
+        value: originalImage,
+      });
+    } else {
+      delete (globalThis as { Image?: unknown }).Image;
+    }
+  };
 }
 
 interface MockCanvas {

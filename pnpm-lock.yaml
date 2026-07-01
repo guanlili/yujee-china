@@ -38,6 +38,9 @@ importers:
       drizzle-orm:
         specifier: ^0.36.4
         version: 0.36.4(@libsql/client@0.14.0)(@types/react@19.0.7)(kysely@0.28.17)(postgres@3.4.9)(react@19.2.3)
+      heic2any:
+        specifier: ^0.0.4
+        version: 0.0.4
       html2canvas-pro:
         specifier: ^2.0.4
         version: 2.0.4
@@ -1670,6 +1673,9 @@ packages:
 
   harfbuzzjs@0.10.3:
     resolution: {integrity: sha512-GJnLUrgLMadlMYrBGEXwYEimObbysy3prWT4HyPpFQERvgTU/OZ+ReUlEPOum6w4RBtFXzXiCCmECOr4sz3qwQ==}
+
+  heic2any@0.0.4:
+    resolution: {integrity: sha512-3lLnZiDELfabVH87htnRolZ2iehX9zwpRyGNz22GKXIu0fznlblf0/ftppXKNqS26dqFSeqfIBhAmAj/uSp0cA==}
 
   hsl-to-hex@1.0.0:
     resolution: {integrity: sha512-K6GVpucS5wFf44X0h2bLVRDsycgJmf9FF2elg+CrqD8GcFU8c6vYhgXn8NjUkFCwj+xDFb70qgLbTUm6sxwPmA==}
@@ -3494,6 +3500,8 @@ snapshots:
   graceful-fs@4.2.11: {}
 
   harfbuzzjs@0.10.3: {}
+
+  heic2any@0.0.4: {}
 
   hsl-to-hex@1.0.0:
     dependencies:

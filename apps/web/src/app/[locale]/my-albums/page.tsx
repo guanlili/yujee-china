@@ -10,6 +10,7 @@ import { AlbumCoverPreview, type AlbumCoverPage } from '@/components/album/Album
 import { RetryFailedButton } from '@/components/album/RetryFailedButton';
 import { photoStore } from '@/lib/photo/store';
 import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
+import { IMAGE_INPUT_ACCEPT } from '@/lib/photo/heic';
 import {
   clusterCompressedPhotos,
   submitAnalyzeV3,
@@ -394,7 +395,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
     >
       <input
         type="file"
-        accept="image/*"
+        accept={IMAGE_INPUT_ACCEPT}
         multiple
         className="hidden"
         disabled={creating}

@@ -39,6 +39,15 @@ test('PDF export uses bounded PDF data URLs, not raw original data URLs', () => 
   }
 });
 
+test('photoStore prepares HEIC originals before browser preview and export decode', () => {
+  const storeSrc = readFileSync(join(here, 'store.ts'), 'utf8');
+
+  assert.match(storeSrc, /prepareImageBlobForBrowserDecode/);
+  assert.match(storeSrc, /const displayBlob = await prepareImageBlobForBrowserDecode\(blob\)/);
+  assert.match(storeSrc, /const dataBlob = await prepareImageBlobForBrowserDecode\(blob\)/);
+  assert.match(storeSrc, /const pdfBlob = await prepareImageBlobForBrowserDecode\(blob\)/);
+});
+
 test('PDF export checks both HTTP and JSON success before accepting cloud confirm', () => {
   const albumEditor = readFileSync(
     join(srcRoot, 'components/album/AlbumEditor.tsx'),
@@ -116,11 +125,74 @@ test('PDF export data URL generation fails clearly when canvas context is unavai
   }
 });
 
+test('PDF export fallback decode wraps Image error events', async () => {
+  const restore = installBrokenImageFallbackMocks();
+  try {
+    const store = Object.create(photoStore) as typeof photoStore;
+    store.getBlob = async () => new Blob(['x'], { type: 'image/jpeg' });
+
+    await assert.rejects(
+      store.getPdfDataUrls(['bad']),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /could not decode stored photo image/i);
+        assert.equal(err.message.includes('[object Event]'), false);
+        return true;
+      },
+    );
+  } finally {
+    restore();
+  }
+});
+
 interface MockCanvas {
   width: number;
   height: number;
   getContext(type: '2d'): unknown;
   toDataURL(type: string, quality?: number): string;
+}
+
+function installBrokenImageFallbackMocks(): () => void {
+  const originalCreateImageBitmap = globalThis.createImageBitmap;
+  const originalImage = globalThis.Image;
+  const hadCreateImageBitmap = 'createImageBitmap' in globalThis;
+  const hadImage = 'Image' in globalThis;
+
+  Object.defineProperty(globalThis, 'createImageBitmap', {
+    configurable: true,
+    value: async () => {
+      throw new Error('bitmap decode failed');
+    },
+  });
+  Object.defineProperty(globalThis, 'Image', {
+    configurable: true,
+    value: class BrokenImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_value: string) {
+        queueMicrotask(() => this.onerror?.());
+      }
+    },
+  });
+
+  return () => {
+    if (hadCreateImageBitmap) {
+      Object.defineProperty(globalThis, 'createImageBitmap', {
+        configurable: true,
+        value: originalCreateImageBitmap,
+      });
+    } else {
+      delete (globalThis as { createImageBitmap?: unknown }).createImageBitmap;
+    }
+    if (hadImage) {
+      Object.defineProperty(globalThis, 'Image', {
+        configurable: true,
+        value: originalImage,
+      });
+    } else {
+      delete (globalThis as { Image?: unknown }).Image;
+    }
+  };
 }
 
 function installBrowserImageMocks({

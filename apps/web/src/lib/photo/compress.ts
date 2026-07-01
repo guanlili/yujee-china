@@ -1,6 +1,7 @@
 'use client';
 
 import type { ClusterGeo } from './cluster';
+import { prepareImageBlobForBrowserDecode, type HeicConverter } from './heic';
 
 export type CompressedPhoto = {
   photoId: string;
@@ -23,6 +24,7 @@ export type CompressedPhoto = {
 type CompressOptions = {
   maxLen?: number;
   quality?: number;
+  heicConverter?: HeicConverter;
 };
 
 // Accepts a Blob (File is a Blob) so we can re-compress originals read back from
@@ -36,7 +38,8 @@ export async function compressFile(
   const bytes = await readAsArrayBuffer(file);
   const takenAt = readTakenAtFromExif(bytes);
   const clusterGeo = readGeoForClustering(bytes);
-  const img = await loadImage(file);
+  const decodeFile = await prepareImageBlobForBrowserDecode(file, options.heicConverter);
+  const img = await loadImage(decodeFile);
   const { canvas, w, h } = drawScaled(img, options.maxLen ?? 800);
   const base64 = canvas.toDataURL('image/jpeg', options.quality ?? 0.6);
   return { photoId, base64, width: w, height: h, takenAt, clusterGeo };
@@ -46,7 +49,7 @@ function readAsArrayBuffer(file: Blob): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const fr = new FileReader();
     fr.onload = () => resolve(fr.result as ArrayBuffer);
-    fr.onerror = () => reject(fr.error);
+    fr.onerror = () => reject(fr.error ?? new Error('Browser could not read this image file.'));
     fr.readAsArrayBuffer(file);
   });
 }
@@ -63,7 +66,7 @@ function loadImage(file: Blob): Promise<HTMLImageElement> {
       URL.revokeObjectURL(src);
       reject(
         new Error(
-          'Browser could not decode this image for compression. Please choose a JPEG, PNG, or WebP image.',
+          'Browser could not decode this image for compression. Please choose a JPEG, PNG, WebP, or HEIC/HEIF image.',
         ),
       );
     };

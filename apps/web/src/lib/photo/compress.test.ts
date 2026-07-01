@@ -268,6 +268,140 @@ test('compressFile decodes via a Blob object URL instead of a full-size data URL
   }
 });
 
+test('compressFile converts HEIC/HEIF to JPEG before browser decode', async () => {
+  const globals = globalThis as Record<string, unknown>;
+  const original = {
+    FileReader: globals.FileReader,
+    Image: globals.Image,
+    document: globals.document,
+    createObjectURL: URL.createObjectURL,
+    revokeObjectURL: URL.revokeObjectURL,
+  };
+
+  const seen: {
+    convertedInput?: Blob;
+    objectUrls: string[];
+    revoked: string[];
+    draw?: { width: number; height: number };
+  } = { objectUrls: [], revoked: [] };
+
+  class FakeFileReader {
+    result: ArrayBuffer | null = null;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    error: Error | null = null;
+    readAsArrayBuffer() {
+      this.result = new Uint8Array([0, 1, 2, 3]).buffer;
+      queueMicrotask(() => this.onload?.());
+    }
+  }
+
+  class FakeImage {
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    width = 2400;
+    height = 1800;
+    set src(value: string) {
+      if (value === 'blob:converted-jpeg') queueMicrotask(() => this.onload?.());
+      else queueMicrotask(() => this.onerror?.());
+    }
+  }
+
+  try {
+    globals.FileReader = FakeFileReader;
+    globals.Image = FakeImage;
+    globals.document = {
+      createElement(tag: string) {
+        assert.equal(tag, 'canvas');
+        return {
+          width: 0,
+          height: 0,
+          getContext(type: string) {
+            assert.equal(type, '2d');
+            return {
+              drawImage(_img: unknown, _x: number, _y: number, width: number, height: number) {
+                seen.draw = { width, height };
+              },
+            };
+          },
+          toDataURL(type: string, quality: number) {
+            assert.equal(type, 'image/jpeg');
+            assert.equal(quality, 0.6);
+            return 'data:image/jpeg;base64,converted-compressed';
+          },
+        };
+      },
+    };
+    URL.createObjectURL = ((blob: Blob) => {
+      const url = blob.type === 'image/jpeg' ? 'blob:converted-jpeg' : 'blob:original-heic';
+      seen.objectUrls.push(url);
+      return url;
+    }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = ((url: string) => {
+      seen.revoked.push(url);
+    }) as typeof URL.revokeObjectURL;
+
+    const originalHeic = { type: '', name: 'IMG_0001.HEIC' } as Blob & { name: string };
+    const photo = await compressFile(originalHeic, 'photo-heic', {
+      heicConverter: async (input: Blob) => {
+        seen.convertedInput = input;
+        return new Blob([new Uint8Array([9, 8, 7])], { type: 'image/jpeg' });
+      },
+    });
+
+    assert.equal(seen.convertedInput, originalHeic);
+    assert.deepEqual(seen.objectUrls, ['blob:converted-jpeg']);
+    assert.deepEqual(seen.revoked, ['blob:converted-jpeg']);
+    assert.deepEqual(seen.draw, { width: 800, height: 600 });
+    assert.equal(photo.base64, 'data:image/jpeg;base64,converted-compressed');
+    assert.equal(photo.width, 800);
+    assert.equal(photo.height, 600);
+  } finally {
+    globals.FileReader = original.FileReader;
+    globals.Image = original.Image;
+    globals.document = original.document;
+    URL.createObjectURL = original.createObjectURL;
+    URL.revokeObjectURL = original.revokeObjectURL;
+  }
+});
+
+test('compressFile wraps HEIC conversion failures in a readable error', async () => {
+  const globals = globalThis as Record<string, unknown>;
+  const original = { FileReader: globals.FileReader };
+
+  class FakeFileReader {
+    result: ArrayBuffer | null = null;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    error: Error | null = null;
+    readAsArrayBuffer() {
+      this.result = new Uint8Array([0, 1, 2, 3]).buffer;
+      queueMicrotask(() => this.onload?.());
+    }
+  }
+
+  try {
+    globals.FileReader = FakeFileReader;
+
+    await assert.rejects(
+      () =>
+        compressFile({ type: 'image/heif' } as Blob, 'photo-heif', {
+          heicConverter: async () => {
+            throw new Event('error');
+          },
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /could not convert this HEIC\/HEIF image/i);
+        assert.equal(err.message.includes('[object Event]'), false);
+        return true;
+      },
+    );
+  } finally {
+    globals.FileReader = original.FileReader;
+  }
+});
+
 test('compressFile reports an actionable decode error when the browser cannot read an image', async () => {
   const globals = globalThis as Record<string, unknown>;
   const original = {
@@ -303,7 +437,7 @@ test('compressFile reports an actionable decode error when the browser cannot re
     URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
 
     await assert.rejects(
-      () => compressFile({ type: 'image/heic' } as Blob, 'photo-1'),
+      () => compressFile({ type: 'image/tiff' } as Blob, 'photo-1'),
       /could not decode this image/i,
     );
   } finally {

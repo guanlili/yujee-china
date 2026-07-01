@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
+import { IMAGE_INPUT_ACCEPT } from '@/lib/photo/heic';
 import { photoStore } from '@/lib/photo/store';
 import { getWebTemplate } from '../web-registry';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from '../spreads';
@@ -3796,7 +3797,7 @@ function EditorBook({
               </button>
               {/* Mid-edit add-photos (W11): the "+" opens this hidden picker; the
                   selection runs the add flow (compress → POST → poll → reload). */}
-              <input type="file" id="addPhotoInput" accept="image/*" multiple className="hidden" />
+              <input type="file" id="addPhotoInput" accept={IMAGE_INPUT_ACCEPT} multiple className="hidden" />
               <textarea className="flex-1 outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none pl-1 py-3 disabled:cursor-not-allowed" style={{ fontFamily: 'var(--font-body)' }} placeholder="" rows={1} id="msgInput" disabled={building} />
               <span className="btn-glow btn-glow-round shrink-0 m-2">
                 <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center cursor-pointer transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} id="sendBtn" data-i18n-title="send" title="发送" disabled={building}>

@@ -1,5 +1,7 @@
 'use client';
 
+import { prepareImageBlobForBrowserDecode } from './heic';
+
 // Original photos live only in the browser (architecture invariant 1). They are
 // kept in IndexedDB keyed by a globally-unique photoId so the editor and PDF
 // export can read full-resolution originals without ever re-uploading them.
@@ -71,7 +73,7 @@ function loadImageFromObjectUrl(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = reject;
+    img.onerror = () => reject(new Error('Browser could not decode stored photo image.'));
     img.src = url;
   });
 }
@@ -94,7 +96,8 @@ async function decodeBlob(blob: Blob): Promise<DecodedImage> {
 }
 
 async function blobToPdfDataUrl(blob: Blob): Promise<string> {
-  const img = await decodeBlob(blob);
+  const pdfBlob = await prepareImageBlobForBrowserDecode(blob);
+  const img = await decodeBlob(pdfBlob);
   let canvas: HTMLCanvasElement | null = null;
   try {
     const { w, h } = fitWithinMaxEdge(img.width, img.height);
@@ -139,7 +142,8 @@ export const photoStore = {
     if (cached) return cached;
     const blob = await this.getBlob(photoId);
     if (!blob) return undefined;
-    const url = URL.createObjectURL(blob);
+    const displayBlob = await prepareImageBlobForBrowserDecode(blob);
+    const url = URL.createObjectURL(displayBlob);
     urlCache.set(photoId, url);
     return url;
   },
@@ -162,7 +166,10 @@ export const photoStore = {
     await Promise.all(
       photoIds.map(async (id) => {
         const blob = await this.getBlob(id);
-        if (blob) out[id] = await blobToDataUrl(blob);
+        if (blob) {
+          const dataBlob = await prepareImageBlobForBrowserDecode(blob);
+          out[id] = await blobToDataUrl(dataBlob);
+        }
       }),
     );
     return out;

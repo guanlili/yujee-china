@@ -1,5 +1,7 @@
 'use client';
 
+import { prepareImageBlobForBrowserDecode } from './heic';
+
 export const COVER_THUMBNAIL_WIDTH = 640;
 export const COVER_THUMBNAIL_HEIGHT = 480;
 export const COVER_THUMBNAIL_CONTENT_TYPE = 'image/jpeg';
@@ -17,7 +19,7 @@ function loadImageFromObjectUrl(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = reject;
+    img.onerror = () => reject(new Error('Browser could not decode cover thumbnail image.'));
     img.src = url;
   });
 }
@@ -66,7 +68,8 @@ function coverCropSource(width: number, height: number) {
 }
 
 export async function createCoverThumbnailJpeg(blob: Blob): Promise<Blob> {
-  const img = await decodeBlob(blob);
+  const imageBlob = await prepareImageBlobForBrowserDecode(blob);
+  const img = await decodeBlob(imageBlob);
   let canvas: HTMLCanvasElement | null = null;
   try {
     canvas = document.createElement('canvas');
