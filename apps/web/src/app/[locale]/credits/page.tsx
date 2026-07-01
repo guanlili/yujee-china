@@ -167,7 +167,7 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
         </section>
 
         {/* 3 — Ledger / history */}
-        <section>
+        <section id="history" className="scroll-mt-24">
           <h2 className="text-xl font-bold tracking-tight mb-4">{t.history}</h2>
           {entries === null && <p className="text-[var(--muted)]">{tc.loading}</p>}
           {entries !== null && entries.length === 0 && (

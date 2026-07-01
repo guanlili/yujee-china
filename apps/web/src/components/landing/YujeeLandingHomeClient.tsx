@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
+import { UserMenu } from '@/components/app/UserMenu';
+import { useChromeSession } from '@/components/app/useChromeSession';
 import { ADDON_PACKS } from '@/config/pricing';
 import { useSession } from '@/lib/auth/client';
 import { getMessages } from '@/lib/i18n/messages';
@@ -583,6 +585,9 @@ function LandingPricing({ locale }: { locale: Locale }) {
 
 export function YujeeLandingHomeClient({ locale, composer }: Props) {
   const c = copies[locale];
+  const dashboard = getMessages(locale).dashboard;
+  const chrome = dashboard.chrome;
+  const chromeSession = useChromeSession();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [navScrolled, setNavScrolled] = useState(false);
@@ -611,6 +616,18 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
   const home = `/${locale}`;
   const composerHref = `${home}#homepage-composer`;
   const currentLanguageLabel = locale === 'zh' ? '中文' : 'English';
+  const accountLinks: Array<[string, string]> = chromeSession.loading
+    ? [[c.signup, composerHref]]
+    : chromeSession.user
+      ? [
+          [dashboard.nav.myAlbums, `/${locale}/my-albums`],
+          [chrome.manageSubscription, `/${locale}/credits`],
+          [chrome.creditHistory, `/${locale}/credits#history`],
+        ]
+      : [
+          [c.login, `/${locale}/login`],
+          [c.signup, composerHref],
+        ];
 
   return (
     <div className={`landing-redesign min-h-screen text-[var(--fg)] locale-${locale}`}>
@@ -738,10 +755,16 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
                 ))}
               </div>
             </div>
-            <Link href={`/${locale}/login`} className="inline-flex items-center gap-2 rounded-full bg-[var(--fg)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black md:px-5">
-              <span>{c.login}</span>
-              <ArrowIcon className="h-[15px] w-[15px]" />
-            </Link>
+            {chromeSession.loading ? (
+              <span aria-hidden="true" className="h-10 w-10 rounded-full bg-[#ececec] shadow-sm" />
+            ) : !chromeSession.user ? (
+              <Link href={`/${locale}/login`} className="inline-flex items-center gap-2 rounded-full bg-[var(--fg)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black md:px-5">
+                <span>{c.login}</span>
+                <ArrowIcon className="h-[15px] w-[15px]" />
+              </Link>
+            ) : (
+              <UserMenu user={chromeSession.user} locale={locale} />
+            )}
             <button type="button" aria-label={c.menu} aria-expanded={mobileOpen} onClick={() => setMobileOpen((open) => !open)} className="grid h-10 w-10 place-items-center rounded-full transition hover:bg-black/5 lg:hidden">
               <Icon name={mobileOpen ? 'x' : 'menu'} />
             </button>
@@ -751,7 +774,15 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
           <Link href="#outputs">{c.navExamples}</Link>
           <Link href="#pricing">{c.navPricing}</Link>
           <Link href="#faq">{c.navFaq}</Link>
-          <Link href={`/${locale}/login`}>{c.login}</Link>
+          {chromeSession.loading ? null : !chromeSession.user ? (
+            <Link href={`/${locale}/login`}>{c.login}</Link>
+          ) : (
+            <>
+              <Link href={`/${locale}/my-albums`}>{dashboard.nav.myAlbums}</Link>
+              <Link href={`/${locale}/credits`}>{chrome.manageSubscription}</Link>
+              <Link href={`/${locale}/credits#history`}>{chrome.creditHistory}</Link>
+            </>
+          )}
           <div className="m-lang">
             {languageOptions.map((l) => (
               <Link key={l} href={localizePath(pathname, l)} className={l === locale ? 'is-active' : undefined}>
@@ -969,10 +1000,7 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
                 [c.footerPrivacy, `/${locale}/privacy`],
                 [c.footerTerms, `/${locale}/terms`],
               ]} />
-              <FooterColumn title={c.footerAccount} links={[
-                [c.login, `/${locale}/login`],
-                [c.signup, composerHref],
-              ]} />
+              <FooterColumn title={c.footerAccount} links={accountLinks} />
             </div>
             <div className="flex flex-col items-start justify-between gap-4 pt-8 sm:flex-row sm:items-center">
               <div className="text-xs text-[var(--meta)]">{c.copyright}</div>

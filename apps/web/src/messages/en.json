@@ -84,7 +84,9 @@
       "navProjects": "My projects",
       "creditsPillTitle": "Buy more credits",
       "upgrade": "Buy",
+      "creditBalance": "Credit balance",
       "manageSubscription": "Credits & billing",
+      "creditHistory": "Credit history",
       "feedback": "Feedback & issues",
       "logout": "Sign out",
       "accountMenu": "Account menu"

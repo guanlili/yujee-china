@@ -84,7 +84,9 @@
       "navProjects": "我的项目",
       "creditsPillTitle": "购买更多",
       "upgrade": "购买",
+      "creditBalance": "积分余额",
       "manageSubscription": "积分与账单",
+      "creditHistory": "消耗记录",
       "feedback": "反馈与问题",
       "logout": "退出登录",
       "accountMenu": "账户菜单"

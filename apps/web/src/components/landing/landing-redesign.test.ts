@@ -74,6 +74,28 @@ test('locale homepage is replaced by the supplied landing redesign component', (
   assert.match(client, /`\/\$\{locale\}\/terms`/, 'terms footer link should point at the real route');
 });
 
+test('landing header replaces the login CTA with the account menu for signed-in users', () => {
+  const client = component('YujeeLandingHomeClient.tsx');
+  const userMenu = readFileSync(join(webSrc, 'components/app/UserMenu.tsx'), 'utf8');
+  const creditsPage = src('app/[locale]/credits/page.tsx');
+  const enMessages = src('messages/en.json');
+  const zhMessages = src('messages/zh.json');
+
+  assert.match(client, /useChromeSession/, 'landing header should read the real chrome session');
+  assert.match(client, /<UserMenu user=\{chromeSession\.user\} locale=\{locale\}/, 'signed-in landing users should see the shared account menu');
+  assert.match(client, /!\s*chromeSession\.user[\s\S]{0,120}`\/\$\{locale\}\/login`/, 'login CTA should only render for signed-out users');
+  assert.match(userMenu, /bg-\[linear-gradient\(135deg,var\(--grad-green\),var\(--grad-purple\)_55%,var\(--grad-lime\)\)\]/, 'avatar should use the requested colorful background');
+  assert.match(userMenu, /creditBalance/, 'account menu should label the credit balance');
+  assert.match(userMenu, /m\.nav\.myAlbums/, 'account menu should use the user-albums label');
+  assert.match(userMenu, /`\/\$\{locale\}\/my-albums`/, 'account menu should link to the user albums');
+  assert.match(userMenu, /`\/\$\{locale\}\/credits#history`/, 'account menu should link to credit consumption history');
+  assert.match(userMenu, /mailto:feedback@yujeeai\.com/, 'account menu should keep the existing feedback entry');
+  assert.match(creditsPage, /id="history"/, 'credit consumption history link should have a stable page anchor');
+  assert.match(enMessages, /"creditHistory": "Credit history"/, 'English menu should label consumption history');
+  assert.match(zhMessages, /"creditHistory": "消耗记录"/, 'Chinese menu should use the requested consumption history label');
+  assert.match(userMenu, /signOut/, 'account menu should keep logout available');
+});
+
 test('landing redesign uses local optimized assets from the supplied design folder', () => {
   const home = component('YujeeLandingHomeClient.tsx');
   for (const asset of landingAssets) {

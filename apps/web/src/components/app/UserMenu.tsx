@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { Locale } from '@/lib/i18n/routing';
@@ -53,7 +54,7 @@ export function UserMenu({ user, locale, onSignOut }: Props) {
         aria-label={c.accountMenu}
         className="flex items-center rounded-full p-0.5 transition-shadow hover:shadow-[0_0_0_3px_rgba(0,0,0,0.06)]"
       >
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--text-sm)] font-bold text-[var(--surface)]">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--grad-green),var(--grad-purple)_55%,var(--grad-lime))] text-[var(--text-sm)] font-bold uppercase text-white shadow-[0_2px_10px_rgba(0,0,0,0.12)]">
           {user?.avatarInitial ?? '·'}
         </span>
       </button>
@@ -63,8 +64,13 @@ export function UserMenu({ user, locale, onSignOut }: Props) {
             <div className="text-[var(--text-base)] font-semibold">{user?.name ?? user?.email ?? ''}</div>
             <div className="mt-0.5 text-[var(--text-xs)] text-[var(--meta)]">{user?.email ?? ''}</div>
           </div>
-          <div className="mb-1 flex items-center justify-between px-3 py-2.5">
-            <span className="text-[var(--text-sm)] font-medium text-[var(--fg-2)]">{balanceLabel}</span>
+          <div className="mb-1 flex items-center justify-between gap-4 px-3 py-2.5">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--meta)]">
+                {c.creditBalance}
+              </div>
+              <div className="mt-0.5 text-[var(--text-sm)] font-medium text-[var(--fg-2)]">{balanceLabel}</div>
+            </div>
             <button
               type="button"
               onClick={goPricing}
@@ -73,12 +79,24 @@ export function UserMenu({ user, locale, onSignOut }: Props) {
               {c.upgrade}
             </button>
           </div>
+          <Link href={`/${locale}/my-albums`} onClick={() => setOpen(false)} className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] px-3 py-2.5 text-left text-[var(--text-sm)] text-[var(--fg-2)] transition-colors hover:bg-[var(--bg)]">
+            <span className="flex h-[18px] w-[18px] items-center justify-center text-[var(--muted)]">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
+            </span>
+            {m.nav.myAlbums}
+          </Link>
           <button type="button" onClick={goPricing} className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] px-3 py-2.5 text-left text-[var(--text-sm)] text-[var(--fg-2)] transition-colors hover:bg-[var(--bg)]">
             <span className="flex h-[18px] w-[18px] items-center justify-center text-[var(--muted)]">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
             </span>
             {c.manageSubscription}
           </button>
+          <Link href={`/${locale}/credits#history`} onClick={() => setOpen(false)} className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] px-3 py-2.5 text-left text-[var(--text-sm)] text-[var(--fg-2)] transition-colors hover:bg-[var(--bg)]">
+            <span className="flex h-[18px] w-[18px] items-center justify-center text-[var(--muted)]">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M3 3v18h18" /><path d="M7 14l3-3 3 2 5-6" /></svg>
+            </span>
+            {c.creditHistory}
+          </Link>
           <a href="mailto:feedback@yujeeai.com" onClick={() => setOpen(false)} className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] px-3 py-2.5 text-left text-[var(--text-sm)] text-[var(--fg-2)] transition-colors hover:bg-[var(--bg)]">
             <span className="flex h-[18px] w-[18px] items-center justify-center text-[var(--muted)]">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
