@@ -58,14 +58,15 @@ test('marketing nav restores the Home 1 centered desktop menu and mobile menu', 
   assert.match(marketingNav, /locales\.map/, 'mobile menu should include language choices');
 });
 
-test('HeroComposer matches Home 1 responsive composer and send button details', () => {
+test('HeroComposer stays embedded in the landing redesign shell and keeps send button details', () => {
   const heroComposer = component('landing/HeroComposer.tsx');
-  const landingPage = src('app/[locale]/page.tsx');
-  const heroSectionClass = landingPage.match(/<section className="([^"]+)">\s*<FingerprintArt \/>/)?.[1] ?? '';
+  const landingClient = component('landing/YujeeLandingHomeClient.tsx');
+  const composerShellClass = landingClient.match(/<div className="composer-shell ([^"]+)">/)?.[1] ?? '';
 
-  assert.match(heroSectionClass, /px-5/, 'hero should use Home 1 mobile horizontal padding');
-  assert.match(heroSectionClass, /sm:px-8/, 'hero should use Home 1 desktop horizontal padding');
-  assert.doesNotMatch(heroSectionClass, /px-6|md:px-8/, 'hero should not keep the old fixed/md padding');
+  assert.match(landingClient, /\{composer\}/, 'redesigned landing shell should render the real composer');
+  assert.match(composerShellClass, /px-5/, 'composer shell should keep mobile horizontal padding');
+  assert.match(composerShellClass, /md:px-8/, 'composer shell should scale horizontal padding on desktop');
+  assert.match(composerShellClass, /max-w-2xl/, 'composer shell should keep the redesigned centered width');
 
   assert.match(heroComposer, /rounded-\[22px\]/, 'outer gradient border should use a 22px radius');
   assert.match(heroComposer, /text-left/, 'composer should restore Home 1 left text alignment');

@@ -1,0 +1,99 @@
+import assert from 'node:assert/strict';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { test } from 'node:test';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const webRoot = join(here, '..', '..', '..');
+const webSrc = join(webRoot, 'src');
+
+function src(path: string): string {
+  return readFileSync(join(webSrc, path), 'utf8');
+}
+
+function component(path: string): string {
+  return readFileSync(join(here, path), 'utf8');
+}
+
+const landingAssets = [
+  '/landing-redesign/cards/01-travel.png',
+  '/landing-redesign/cards/02-life-story.png',
+  '/landing-redesign/cards/03-year-record.png',
+  '/landing-redesign/cards/04-growth-story.png',
+  '/landing-redesign/cards/05-magazine.png',
+  '/landing-redesign/cards/06-portfolio.png',
+  '/landing-redesign/photos/kamakura-coastal-street.jpg',
+  '/landing-redesign/photos/seto-inland-sea-pier.jpg',
+  '/landing-redesign/photos/bamboo-grove-path.jpg',
+  '/landing-redesign/photos/riverside-walk.jpg',
+  '/landing-redesign/photos/riverside-before-fireworks.jpg',
+  '/landing-redesign/photos/rainy-kyoto-lane.jpg',
+  '/landing-redesign/jellyfish-loop.png',
+];
+
+test('locale homepage is replaced by the supplied landing redesign component', () => {
+  const page = src('app/[locale]/page.tsx');
+  const globals = src('styles/globals.css');
+  const home = component('YujeeLandingHome.tsx');
+  const client = component('YujeeLandingHomeClient.tsx');
+
+  assert.match(page, /YujeeLandingHome/, 'locale home should render the redesign component');
+  assert.doesNotMatch(page, /MarketingChrome|FingerprintArt|InspirationMarquee/, 'old home sections should be removed');
+  assert.match(home, /HeroComposer/, 'redesigned composer should keep the real upload/generation flow');
+  assert.match(home, /variant="redesign"/, 'home should use the landing redesign composer skin');
+  assert.match(client, /id="outputs"/, 'examples section should keep the design anchor');
+  assert.match(client, /id="features"/, 'features section should keep the design anchor');
+  assert.match(client, /id="faq"/, 'FAQ section should keep the design anchor');
+  assert.match(client, /function LandingPricing/, 'pricing should use the compact supplied landing design');
+  assert.match(client, /\/api\/v1\/billing\/checkout/, 'pricing should keep the real checkout flow');
+  assert.match(client, /className="has-menu hidden md:block"/, 'desktop language control should keep the supplied dropdown shape');
+  assert.match(client, /\.m-lang a\.is-active \{ background: #111; color: #fff; \}/, 'mobile active language button should stay readable');
+  assert.match(client, /aria-label="Weibo"/, 'footer should keep the supplied social icon set');
+  assert.match(client, /aria-label="Email"/, 'footer should keep the supplied email social icon');
+  assert.match(client, /className="footer-glow"/, 'footer should include the requested bottom color accent');
+  assert.match(client, /\.footer-glow \{[^}]*opacity: \.65;/s, 'footer color accent should use 65% opacity');
+  assert.match(globals, /font-family: 'Playfair Display'/, 'art display font should be registered from local assets');
+  assert.match(globals, /\/fonts\/PlayfairDisplay\.ttf/, 'art display font should load from the local Yujee font folder');
+  assert.match(globals, /font-family: 'Noto Serif SC Landing'/, 'Chinese landing emphasis should register the local CJK serif subset');
+  assert.match(globals, /\/fonts\/NotoSerifSC-Landing\.woff2/, 'Chinese landing emphasis should load the optimized local CJK subset');
+  assert.match(client, /--landing-art-font: 'Playfair Display'/, 'English landing emphasis should use the local art font');
+  assert.match(client, /--landing-cjk-art-font: 'Playfair Display', 'Noto Serif SC Landing', 'Songti SC'/, 'Chinese landing emphasis should use the same art-font stack with local CJK fallback');
+  assert.match(client, /--landing-display-font: var\(--landing-cjk-art-font\);/, 'all landing title typography should switch to the art font stack');
+  assert.doesNotMatch(client, /locale-en \{ --landing-display-font/, 'art title typography should no longer be English-only');
+  assert.match(client, /className="price-figure/, 'pricing emphasis should receive the English art font treatment');
+  assert.match(client, /\.footer-glow \{[^}]*mask-image: linear-gradient\(to top, #000 0%, rgba\(0,0,0,\.72\) 42%, transparent 100%\);/s, 'footer color accent should fade upward from the bottom');
+  const cjkSubset = join(webRoot, 'public/fonts/NotoSerifSC-Landing.woff2');
+  assert.equal(existsSync(cjkSubset), true, 'landing CJK serif subset should be available as a public asset');
+  assert.ok(statSync(cjkSubset).size < 120_000, 'landing CJK serif subset should stay optimized for the homepage');
+  assert.equal(existsSync(join(webRoot, 'public/fonts/NotoSerifSC-Landing-OFL.txt')), true, 'public CJK font subset should ship with its OFL text');
+  assert.doesNotMatch(`${home}\n${client}`, /design\/(?:editor|pricing|login)\.html|landing\.html|index\.html/, 'static design links must be replaced with real app routes');
+  assert.match(client, /`\/\$\{locale\}\/login`/, 'login CTA should point at the localized login route');
+  assert.match(client, /`\/\$\{locale\}\/my-albums`/, 'my projects should point at the localized albums route');
+  assert.match(client, /`\/\$\{locale\}\/privacy`/, 'privacy footer link should point at the real route');
+  assert.match(client, /`\/\$\{locale\}\/terms`/, 'terms footer link should point at the real route');
+});
+
+test('landing redesign uses local optimized assets from the supplied design folder', () => {
+  const home = component('YujeeLandingHomeClient.tsx');
+  for (const asset of landingAssets) {
+    assert.match(home, new RegExp(asset.replaceAll('/', '\\/')), `${asset} should be referenced`);
+    const file = join(webRoot, 'public', asset);
+    assert.equal(existsSync(file), true, `${asset} should exist`);
+    assert.ok(statSync(file).size < 500_000, `${asset} should be optimized for the homepage`);
+  }
+});
+
+test('landing redesign keeps interactive surfaces client-side and accessible', () => {
+  const client = component('YujeeLandingHomeClient.tsx');
+
+  assert.match(client, /'use client'/, 'interactive shell should be client-side');
+  assert.match(client, /setMobileOpen/, 'mobile menu should have an explicit open state');
+  assert.match(client, /aria-expanded=\{mobileOpen\}/, 'mobile menu button should expose expanded state');
+  assert.match(client, /setActivePreview/, 'book preview should support active chapter state');
+  assert.match(client, /setInterval/, 'book preview should auto-advance like the supplied design');
+  assert.match(client, /FAQItem/, 'FAQ should have a controlled accordion item');
+  assert.match(client, /aria-expanded=\{open\}/, 'FAQ questions should expose expanded state');
+  assert.match(client, /LandingPricing/, 'pricing buttons should keep the redesigned interactive pricing block');
+  assert.match(client, /useSession/, 'pricing should still gate checkout through the real auth state');
+});

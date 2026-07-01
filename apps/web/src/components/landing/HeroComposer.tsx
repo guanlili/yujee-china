@@ -37,6 +37,8 @@ interface Props {
   hints: { label: string; fill: string }[];
   createMessages: AppMessages['dashboard']['create'];
   resumeGeneration?: boolean;
+  variant?: 'home1' | 'redesign';
+  submitLabel?: string;
 }
 
 function inferLanguage(prompt: string): 'zh' | 'en' {
@@ -50,6 +52,8 @@ export function HeroComposer({
   hints,
   createMessages: t,
   resumeGeneration = false,
+  variant = 'home1',
+  submitLabel = t.send,
 }: Props) {
   const router = useRouter();
   const [value, setValue] = useState('');
@@ -225,6 +229,134 @@ export function HeroComposer({
       setBusy(false);
     }
   };
+
+  if (variant === 'redesign') {
+    return (
+      <>
+        <style>{`
+          #homepage-composer.landing-composer {
+            position: relative; z-index: 1; border-radius: 22px; padding: 16px 16px 14px; text-align: left;
+            background: rgba(255,255,255,.58);
+            -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
+            border: 1px solid rgba(255,255,255,.70);
+            box-shadow: 0 6px 30px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.04), inset 0 1px 0 rgba(255,255,255,.9);
+            transition: box-shadow .3s ease;
+          }
+          #homepage-composer.landing-composer:focus-within {
+            box-shadow: 0 0 0 4px rgba(19,184,166,.18), 0 12px 44px rgba(140,94,244,.16);
+          }
+          #homepage-composer .cmp-input {
+            width: 100%; border: 0; outline: none; resize: none; font-size: 15px; line-height: 1.6;
+            color: #111; background: transparent; padding: 6px 4px; font-family: inherit;
+          }
+          #homepage-composer .cmp-input::placeholder { color: #888; }
+          #homepage-composer .cmp-tile {
+            display: grid; place-items: center; margin-left: 14px; margin-top: 12px; width: 66px; aspect-ratio: 1 / 1.414;
+            flex: none; border-radius: 12px; background: rgba(17,17,17,.05); border: 0; color: #9aa0a8; cursor: pointer;
+            transform: rotate(-20deg); transition: background .15s, color .15s, transform .18s cubic-bezier(.34,1.56,.64,1);
+          }
+          #homepage-composer .cmp-tile:hover { background: rgba(17,17,17,.09); color: #555; }
+          #homepage-composer .cmp-tile:active { transform: rotate(0deg) scale(.97); }
+          #homepage-composer .btn-glow { position: relative; display: inline-block; }
+          #homepage-composer .btn-glow > button { position: relative; z-index: 1; transition: transform .2s ease, opacity .2s ease; }
+          #homepage-composer .btn-glow::after {
+            content: ''; position: absolute; z-index: 0; pointer-events: none;
+            left: 6%; right: 6%; bottom: -3px; height: 72%;
+            background: linear-gradient(90deg, var(--grad-green), var(--grad-purple), var(--grad-lime));
+            filter: blur(14px); opacity: .7; border-radius: 9999px;
+            transition: filter .3s ease, opacity .3s ease, bottom .3s ease;
+          }
+          #homepage-composer .btn-glow:not(.btn-glow-disabled):hover > button { transform: translateY(-2px); }
+          #homepage-composer .btn-glow:not(.btn-glow-disabled):hover::after { filter: blur(18px); opacity: .85; bottom: -5px; }
+          #homepage-composer .btn-glow-disabled::after { opacity: 0; }
+          #homepage-composer .cmp-submit {
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 28px; border-radius: 9999px;
+            background: #111; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; border: 0;
+          }
+        `}</style>
+        <div id="homepage-composer" className="landing-composer">
+          <div className="flex items-start gap-4">
+            <label title={uploadLabel} aria-disabled={busy} className="cmp-tile">
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                disabled={busy}
+                aria-label={uploadLabel}
+                onChange={(e) => onFiles(e.target.files)}
+              />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </label>
+            <textarea
+              rows={4}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              maxLength={500}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (busy) return;
+                  void submit();
+                }
+              }}
+              placeholder={placeholder}
+              className="cmp-input flex-1 min-w-0"
+            />
+          </div>
+          {photos.length > 0 && (
+            <div className="mt-4">
+              <div className="grid grid-cols-6 gap-2 md:grid-cols-8">
+                {photos.map((p) => (
+                  <div key={p.photoId} className="group relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.previewUrl} alt="" className="aspect-square w-full rounded-lg object-cover" />
+                    <button
+                      type="button"
+                      aria-label={t.removePhoto}
+                      onClick={() => remove(p.photoId)}
+                      className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-[var(--meta)]">
+                {t.photoCount.replace('{count}', String(photos.length))} · {t.minPhotos}
+              </p>
+            </div>
+          )}
+          <div className="flex justify-end" style={{ marginTop: '-22px' }}>
+            <div className={`btn-glow ${busy ? 'btn-glow-disabled' : ''}`}>
+              <button
+                type="button"
+                onClick={submit}
+                disabled={busy}
+                aria-label={t.send}
+                title={t.send}
+                className="cmp-submit disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                ) : (
+                  <>
+                    <span>{submitLabel}</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                      <path d="M5 12h14M13 6l6 6-6 6" />
+                    </svg>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+          {err && <p className="mt-4 text-sm text-red-600">{err}</p>}
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

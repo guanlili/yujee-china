@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/PlayfairDisplay.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Noto Serif SC Landing';
+  src: url('/fonts/NotoSerifSC-Landing.woff2') format('woff2');
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Yujee design tokens — single source of truth, mirrors
    apps/web/design-v1/design-systems/yujee/tokens.css :root (see DESIGN.md).
    Pages outside the marketing surface (/create, /album/*) also read these. */
