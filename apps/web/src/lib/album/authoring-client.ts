@@ -52,6 +52,9 @@ export interface DraftSkeletonChapter {
   askCount: number;
   pageStart: number;
   pageEnd: number;
+  // 本章照片(从 tree.chapters[].photos 取)。排版前 pages 还不存在,收集面板的章节卡片
+  // 靠它显示缩略图 + 触发 select-layout 时凑全 photoIds。
+  photoIds: string[];
 }
 
 export interface DraftTheme {

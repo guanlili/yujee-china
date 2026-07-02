@@ -39,22 +39,23 @@ test('B: runChapterGuideOpener starts the per-chapter interview (not an empty-me
     'the interview entry must not write pages nor confirm the chapter');
 });
 
-test('B: interview collects every chapter first, then writes all chapters in one pass', () => {
+test('B: interview collects every chapter first, then triggers layout (writes at layout time)', () => {
   const src = source('EditorPort.tsx');
 
-  // finishInterview 只存 chapterContext,然后进下一章 / 收尾写全部 —— 不再立刻写这一章。
+  // finishInterview 只存 chapterContext,进下一章 / 收尾触发排版 —— 不在采访阶段写文案。
   const fi = /async function finishInterview\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fi, 'finishInterview() must be parseable');
   assert.match(fi![0], /postChapterContexts\(/, 'finishInterview stores chapterContext');
   assert.match(fi![0], /nextUninterviewedChapter\(\)/, 'finishInterview advances to the next uninterviewed chapter');
-  assert.match(fi![0], /writeAllChapters\(\)/, 'finishInterview writes all chapters once collection is done');
+  assert.match(fi![0], /triggerSelectLayout\(\)/, 'finishInterview triggers layout once collection is done');
   assert.doesNotMatch(fi![0], /appendSatisfactionCard\(/, 'per-chapter satisfaction card is gone in the interview step');
 
-  // writeAllChapters 遍历所有章逐章写(postWriteChapter + applyChapterWrite)。
-  const wa = /async function writeAllChapters\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(wa, 'writeAllChapters() must be parseable');
-  assert.match(wa![0], /postWriteChapter\(/, 'writeAllChapters writes each chapter via postWriteChapter');
-  assert.match(wa![0], /applyChapterWrite\(/, 'writeAllChapters lands each chapter’s copy');
+  // triggerSelectLayout 触发排版(select-layout),文案在排版时由 judge_layout 写 —— 采访阶段
+  // 不逐章 postWriteChapter(时序反转:收集完 → 排版并一并写全部文案)。
+  const tl = /async function triggerSelectLayout\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(tl, 'triggerSelectLayout() must be parseable');
+  assert.match(tl![0], /submitSelectLayoutV3\(/, 'triggerSelectLayout dispatches select-layout');
+  assert.doesNotMatch(fi![0], /postWriteChapter\(/, 'interview step no longer writes copy per-chapter');
 
   // 采访进度是纯前端的(interviewedChapters),不靠服务端 done 推进。
   assert.match(src, /const interviewedChapters = new Set/, 'interview progress tracked client-side');

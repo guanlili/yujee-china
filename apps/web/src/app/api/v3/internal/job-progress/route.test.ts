@@ -21,6 +21,7 @@ const TREE = {
     {
       chapterId: 'ch_1',
       description: '',
+      chapterContext: '',
       accentColor: null,
       artFont: null,
       photos: [
@@ -444,6 +445,7 @@ test('rejects lat/lng leaking into a callback tree (defence in depth)', async (t
         {
           chapterId: 'ch_1',
           description: '',
+          chapterContext: '',
           accentColor: null,
           artFont: null,
           photos: [

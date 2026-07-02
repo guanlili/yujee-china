@@ -18,15 +18,20 @@ test('create flows persist the analyze requestId for the later select-layout han
   assert.match(myAlbumsSource, /albumRecipe\.save\(albumId, \{ language, photoIds, requestId \}\)/);
 });
 
-test('album polling starts select-layout when analyze reaches the layout stage', () => {
+test('editor triggers select-layout after story collection (not the poll on progress=50)', () => {
+  // 时序反转:analyze 完成(progress=50)不再自动排版。收集完所有章故事后,由编辑器
+  // triggerSelectLayout 手动触发 select-layout(排版时 judge_layout 拿 chapterContext 写全部文案)。
   const pollSource = source('src/lib/hooks/use-album-poll.ts');
+  const editorSource = source('src/components/album/editor-v2/EditorPort.tsx');
 
-  assert.match(pollSource, /albumRecipe/);
-  assert.match(pollSource, /selectLayoutRefsFromStore/);
-  assert.match(pollSource, /submitSelectLayoutV3/);
-  assert.match(pollSource, /generation\?\.stage === 'layout' && generation\.progress === 50/);
-  assert.match(pollSource, /albumRecipe\.load\(uuid\)/);
-  assert.match(pollSource, /submitSelectLayoutV3\(uuid,/);
+  // poll 不再在 progress=50 自动派 select-layout。
+  assert.doesNotMatch(pollSource, /submitSelectLayoutV3/, 'poll must not auto-dispatch select-layout at progress=50');
+
+  // 触发点搬到编辑器:收集完 → triggerSelectLayout → submitSelectLayoutV3。
+  assert.match(editorSource, /async function triggerSelectLayout\(/);
+  assert.match(editorSource, /albumRecipe\.load\(albumId\)/);
+  assert.match(editorSource, /selectLayoutRefsFromStore\(/);
+  assert.match(editorSource, /submitSelectLayoutV3\(albumId,/);
 });
 
 test('select-layout submit returns before rebuilding refs once handoff is reserved', () => {

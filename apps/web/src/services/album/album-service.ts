@@ -1259,9 +1259,14 @@ export const albumService = {
   // original per-page indexes are deliberately dropped.
   async getDraftSkeleton(userId: string, albumId: string) {
     const album = await this.findOwned(userId, albumId);
-    if (album.status !== 'EDITING' || album.layoutJson) return null;
+    // 时序反转:排版前(analyze 完、还没 select-layout)也要能拿 skeleton 去走「收集故事」面板。
+    // 那时 album.status='AGENT_RUNNING'、layoutJson=null、draftJson 有 tree 无 pages。放开 status
+    // 限制(允许 AGENT_RUNNING),layoutJson 仍必须为 null(排版完/定稿走另一路)。
+    if ((album.status !== 'EDITING' && album.status !== 'AGENT_RUNNING') || album.layoutJson) return null;
     const normalized = readStoryDraft(album.draftJson);
-    if (!normalized?.pages) return null;
+    if (!normalized) return null;
+    // 排版前 pages 尚不存在 —— 用空数组,chapters 仍从 tree 出(带 photoIds),让收集面板可用。
+    const draftPages = normalized.pages ?? [];
 
     const chapterIdForPage = (page: V3Page): string | null => {
       const refs = new Set(Object.values(page.images));
@@ -1271,7 +1276,7 @@ export const albumService = {
       return match?.chapterId ?? null;
     };
 
-    const pages = normalized.pages.map((p, i) => {
+    const pages = draftPages.map((p, i) => {
       const category = getTemplate(p.templateId)?.category;
       const kind =
         category === 'cover'
@@ -1306,7 +1311,7 @@ export const albumService = {
       // Surface it from the first of this chapter's pages that carries a `title` role slot
       // value, so the chapter card / rail can show it.
       const subject = titleOfChapterPages(
-        pageIndexes.map((idx) => normalized.pages![idx]!),
+        pageIndexes.map((idx) => draftPages[idx]!),
       );
       return {
         chapterId: ch.chapterId,
@@ -1322,6 +1327,8 @@ export const albumService = {
         askCount: 0,
         pageStart,
         pageEnd,
+        // 章节的照片直接从 tree 取 —— 排版前 pages 不存在,收集面板的章节卡片靠这个显示缩略图。
+        photoIds: ch.photos.map((p) => p.photoId),
       };
     });
 

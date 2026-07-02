@@ -61,6 +61,19 @@ export default function AlbumPage({
   // layoutJson is the draft↔finalized discriminator (mirrors the server's
   // albumAuthoringService.loadDraftAlbum). Leaving and returning via the URL
   // resumes naturally: a fresh useAlbumPoll re-derives the phase.
+  // 时序反转:analyze 分章完成(generation.stage='layout' && progress=50),排版还没跑
+  // (拆了自动排版,progress 停在 50 等收集)。此时进 authoring 走「收集故事」面板 —— 画板显示
+  // 排版中骨架(building 观感由 EditorPort authoring 态处理),左边对话面板逐章收集。收集完
+  // triggerSelectLayout 触发排版,progress 才继续走。detail 到手才切(需 draftJson/章节)。
+  if (
+    phase === 'running' &&
+    detail &&
+    generation?.stage === 'layout' &&
+    generation.progress === 50 &&
+    detail.album.layoutJson == null
+  ) {
+    return <EditorPort detail={detail} locale={locale} mode="authoring" generation={generation} />;
+  }
   if (phase === 'loading' || phase === 'running') {
     // First frame has no detail yet; building mode ignores it, so a stub is fine.
     return (

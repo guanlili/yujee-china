@@ -6,8 +6,6 @@ import {
   fetchJudgeCandidates,
   PhotosUnavailableError,
   renderAndSubmitJudgeLayout,
-  selectLayoutRefsFromStore,
-  submitSelectLayoutV3,
   UnauthorizedError,
 } from '@/lib/generation/client';
 import { albumRecipe } from '@/lib/generation/draft';
@@ -76,9 +74,7 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
     let inFlight = false;
     let timer: ReturnType<typeof setInterval> | null = null;
     let transient = 0;
-    let layoutSubmitInFlight = false;
     let judgeSubmitInFlight = false;
-    const submittedLayoutRequests = new Set<string>();
     const submittedJudgeRequests = new Set<string>();
     const startedAt = Date.now();
 
@@ -151,44 +147,10 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
         if (Date.now() - startedAt > SOFT_CEILING_MS) {
           return apply({ detail, generation, phase: 'error', error: null });
         }
-        if (generation?.stage === 'layout' && generation.progress === 50) {
-          const recipe = albumRecipe.load(uuid);
-          if (!recipe?.requestId) {
-            return apply({
-              detail,
-              generation,
-              phase: 'error',
-              error: 'Original photos are no longer available on this device.',
-            });
-          }
-          // analyze 完成(progress=50)→ 直接触发 select-layout。内容采集(采访)已移进编辑器
-          // 对话面板(进章节引导时逐章问),不再在排版前拦一道独立弹窗。
-          if (!submittedLayoutRequests.has(recipe.requestId) && !layoutSubmitInFlight) {
-            layoutSubmitInFlight = true;
-            try {
-              const refs = await selectLayoutRefsFromStore(recipe.photoIds);
-              await submitSelectLayoutV3(uuid, {
-                requestId: recipe.requestId,
-                language: recipe.language,
-                refs,
-              });
-              submittedLayoutRequests.add(recipe.requestId);
-            } catch (e) {
-              if (e instanceof UnauthorizedError) {
-                return apply({ ...INITIAL, phase: 'unauthorized' });
-              }
-              const message =
-                e instanceof PhotosUnavailableError
-                  ? 'Original photos are no longer available on this device.'
-                  : e instanceof Error
-                    ? e.message
-                    : 'Failed to start layout.';
-              return apply({ detail, generation, phase: 'error', error: message });
-            } finally {
-              layoutSubmitInFlight = false;
-            }
-          }
-        }
+        // 时序反转(§流程):analyze 完成(progress=50)**不再自动排版**。先让用户进编辑器
+        // 对话面板逐章收集故事(排版前,页还没排);所有章收集完由编辑器 triggerSelectLayout
+        // 手动触发 select-layout(排版时 judge_layout 拿 chapterContext 一并写全部文案)。
+        // 所以这里 progress=50 不做事,照常 apply(下方) phase='running' → page 进采访态。
         // P2 phase 2 (docs/agent/contract.md §5.2.1): the candidates callback parked
         // the job at progress 52. Fetch the candidate structures, render a thumbnail per
         // candidate (real templates, photos-in-slots, no text), and POST judge-layout.

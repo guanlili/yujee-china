@@ -7,6 +7,7 @@ const TREE = {
     {
       chapterId: 'ch_1',
       description: 'A quiet morning.',
+      chapterContext: '',
       extractedColor: '#112233',
       accentColor: null,
       artFont: null,

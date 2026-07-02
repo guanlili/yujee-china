@@ -69,8 +69,16 @@ import type {
   V3ChapterThemeChoice,
 } from '@yujee/contracts';
 import { getTemplate, TEMPLATE_IDS } from '@yujee/contracts/templates';
-import { UnauthorizedError, CreditInsufficientError, interviewDataFromStore } from '@/lib/generation/client';
-import { fetchChapterSummary, postChapterContexts, postWriteChapter } from '@/lib/album/authoring-client';
+import {
+  UnauthorizedError,
+  CreditInsufficientError,
+  interviewDataFromStore,
+  selectLayoutRefsFromStore,
+  submitSelectLayoutV3,
+  PhotosUnavailableError,
+} from '@/lib/generation/client';
+import { albumRecipe } from '@/lib/generation/draft';
+import { fetchChapterSummary, postChapterContexts } from '@/lib/album/authoring-client';
 import {
   buildChapterInterviews,
   buildChapterContext,
@@ -2721,13 +2729,17 @@ function EditorBook({
           : c.role === 'closing'
             ? aT('收尾', 'Closing')
             : aT('章节', 'Chapter');
-      const photoIds = [
-        ...new Set(
-          (draftSkel?.pages ?? [])
-            .filter((p) => p.chapterId === chapterId)
-            .flatMap((p) => Object.values(p.imagesJson).filter(Boolean)),
-        ),
-      ];
+      // 优先用章节自带的 photoIds(从 tree 来,排版前就有);排版后 pages 存在时用页反推也可,
+      // 但 chapters.photoIds 恒为该章全部照片,更可靠。二者都空才退化为空。
+      const photoIds = c.photoIds?.length
+        ? [...new Set(c.photoIds)]
+        : [
+            ...new Set(
+              (draftSkel?.pages ?? [])
+                .filter((p) => p.chapterId === chapterId)
+                .flatMap((p) => Object.values(p.imagesJson).filter(Boolean)),
+            ),
+          ];
       return { num: idx + 1, title: (c.subject && c.subject.trim()) || c.label, tag, photoIds };
     }
 
@@ -2921,7 +2933,7 @@ function EditorBook({
         await startChapterInterview(next, meta?.photoIds ?? []);
         return;
       }
-      await writeAllChapters();
+      await triggerSelectLayout();
     }
 
     // 遍历 storyGate.chapterOrder,返回第一个「还没采访 + 非纯图章」的章;都采访完则 null。
@@ -2936,35 +2948,42 @@ function EditorBook({
       return null;
     }
 
-    // 所有章采访完 → 一次性写全部章文案。逐章调 postWriteChapter(chapterContext 已存进 draft,
-    // Agent 强制写满该章)+ applyChapterWrite 落画板。某章失败继续下一章,不阻断整体。写完提示
-    // 可逐页调整 —— 之后是按页编辑(用户主动发消息走 runEditChatTurn + focusedPageIndex)。
-    async function writeAllChapters() {
-      const order = storyGate?.chapterOrder ?? [];
-      const targets = order.filter((cid) => !isPhotoOnlyChapter(cid));
-      sending = true;
+    // 所有章收集完 → 触发排版(select-layout)。排版时 Gemini 评委拿 chapterContext(已存进 draft)
+    // 挑版式并一并写满全部文案(judge_layout 写文,已做)。所以这里不逐章写文案 —— 收集完只
+    // 触发排版这一步,写文案在排版环节。触发后 progress 从 50 继续走(52→100),poll 推进到
+    // 排版完成 → 编辑器变成成品(有 pages+文案)→ 用户按页编辑。
+    let selectLayoutTriggered = false;
+    async function triggerSelectLayout() {
+      if (selectLayoutTriggered) return;
+      const recipe = albumRecipe.load(albumId);
       const host = appendThinkingShell();
-      let wroteAny = false;
-      try {
-        for (const cid of targets) {
-          try {
-            const res = await postWriteChapter(albumId, cid, currentLang === 'zh' ? 'zh' : 'en');
-            if (applyChapterWrite(res.pagesTexts as V3PageTextsPatch[])) wroteAny = true;
-          } catch (e) {
-            if (authErr(host, e)) { sending = false; return; }
-            // 单章写失败:跳过,继续下一章(该章留空,用户可逐页补)。
-          }
-        }
+      if (!recipe?.requestId) {
         settleThinking(host, 'analyzedFeedback');
-        appendReplyBody(
-          host,
-          wroteAny
-            ? aT('我已经根据你讲的,把整本相册的文案都写好啦!你可以逐页看看、随时改。',
-                  'I’ve written the whole album based on your stories — take a look and tweak any page anytime!')
-            : aT('文案我先照片面写好了,你可以逐页直接改。',
-                  'I’ve drafted the album from the photos — feel free to tweak any page.'),
-        );
+        appendReplyBody(host, aT('原始照片在本设备上找不到了,没法继续排版。', 'Original photos are no longer available on this device.'));
         appendTime(host);
+        return;
+      }
+      selectLayoutTriggered = true;
+      sending = true;
+      try {
+        settleThinking(host, 'analyzedFeedback');
+        appendReplyBody(host, aT('好的,我这就根据你讲的故事,为整本相册排版并写好文案,稍等一下~',
+                                 'Great — I’ll now lay out the whole album and write the copy from your stories. One moment…'));
+        appendTime(host);
+        const refs = await selectLayoutRefsFromStore(recipe.photoIds);
+        await submitSelectLayoutV3(albumId, {
+          requestId: recipe.requestId,
+          language: recipe.language,
+          refs,
+        });
+        // 排版已派发。poll(use-album-poll)会推进 progress,排版+写文完成后 page.tsx 切到成品编辑器。
+      } catch (e) {
+        selectLayoutTriggered = false; // 允许重试
+        if (authErr(host, e)) { sending = false; return; }
+        const msg = e instanceof PhotosUnavailableError
+          ? aT('原始照片在本设备上找不到了,没法继续排版。', 'Original photos are no longer available on this device.')
+          : aT('排版没能开始,稍后再试一下。', 'Couldn’t start layout — please try again in a moment.');
+        appendAiText(msg);
       } finally {
         sending = false;
         restAwait();
