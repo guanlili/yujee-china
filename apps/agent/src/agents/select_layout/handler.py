@@ -428,38 +428,72 @@ def _judge_thumbnail_messages(thumbnails: Sequence[str]) -> list[dict[str, Any]]
 
 
 async def judge_layout_thumbnails(thumbnails: Sequence[str]) -> LayoutJudgeResult:
-    """P2 评委:每候选一张真实渲染缩略图,Gemini 选最佳 index(夹紧到合法范围)。"""
+    """P2 评委:每候选一张真实渲染缩略图,选最佳 index(夹紧到合法范围)。
+
+    首选 Gemini;Gemini 不可用(缺 key / 地区墙 400 / 超时 / 解析失败)时**保底 fallback 到豆包**
+    (火山 ARK vision 槽)—— 比降级取候选0(随机)好得多。豆包也失败才让调用方降级取 0。"""
     if not thumbnails:
         raise ValueError("judge_layout_thumbnails requires at least one thumbnail")
 
     settings = get_settings()
+    messages = _judge_thumbnail_messages(thumbnails)
     api_key = getattr(settings, "select_layout_api_key", None)
-    if not api_key:
-        raise GeminiLayoutUnavailable("SELECT_LAYOUT_API_KEY missing")
 
-    response = await _native_generate_content(
-        base_url=getattr(settings, "select_layout_base_url"),
-        api_key=api_key,
-        model=getattr(settings, "select_layout_model"),
-        messages=_judge_thumbnail_messages(thumbnails),
-        timeout_seconds=getattr(settings, "select_layout_timeout_seconds"),
-        max_output_tokens=getattr(settings, "select_layout_max_output_tokens"),
-        use_json_object=getattr(settings, "select_layout_use_json_object"),
-        disable_thinking=getattr(settings, "select_layout_disable_thinking"),
-    )
-    parsed = ai_client.parse_json_loose(_native_text(response))
-    raw_index = parsed.get("winnerIndex") if isinstance(parsed, Mapping) else None
-    if isinstance(raw_index, bool) or not isinstance(raw_index, int):
-        raise ValueError("Gemini judge response missing integer winnerIndex")
-    winner = raw_index if 0 <= raw_index < len(thumbnails) else 0
-    input_tokens, output_tokens = _native_usage(response)
-    return LayoutJudgeResult(
-        winner_index=winner,
-        call_count=1,
-        model=getattr(settings, "select_layout_model"),
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-    )
+    # ① 首选 Gemini。
+    if api_key:
+        try:
+            response = await _native_generate_content(
+                base_url=getattr(settings, "select_layout_base_url"),
+                api_key=api_key,
+                model=getattr(settings, "select_layout_model"),
+                messages=messages,
+                timeout_seconds=getattr(settings, "select_layout_timeout_seconds"),
+                max_output_tokens=getattr(settings, "select_layout_max_output_tokens"),
+                use_json_object=getattr(settings, "select_layout_use_json_object"),
+                disable_thinking=getattr(settings, "select_layout_disable_thinking"),
+            )
+            winner = _parse_winner(_native_text(response), len(thumbnails))
+            in_tok, out_tok = _native_usage(response)
+            return LayoutJudgeResult(
+                winner_index=winner, call_count=1,
+                model=getattr(settings, "select_layout_model"),
+                input_tokens=in_tok, output_tokens=out_tok,
+            )
+        except Exception as exc:  # noqa: BLE001 —— Gemini 任何失败都转豆包保底
+            ai_client.trace_marker("judge_thumbnails.gemini_fallback_to_ark", input=str(exc)[:200])
+
+    # ② 保底:豆包(ARK vision)。用同一套缩略图 messages(OpenAI 兼容,豆包直接吃)。
+    try:
+        from ... import vision_provider
+        slot = vision_provider.select_vision_slot(settings)
+        response = await ai_client.chat_completion(
+            base_url=slot.base_url,
+            api_key=slot.api_key,
+            model=slot.model,
+            messages=messages,
+            timeout_seconds=slot.timeout_seconds,
+            temperature=0.2,
+            max_tokens=256,
+            response_format=slot.response_format,
+            extra_body=slot.extra_body,
+        )
+        winner = _parse_winner(ai_client.extract_text(response), len(thumbnails))
+        in_tok, out_tok = ai_client.extract_usage(response)
+        return LayoutJudgeResult(
+            winner_index=winner, call_count=1, model=slot.model,
+            input_tokens=in_tok, output_tokens=out_tok,
+        )
+    except Exception as exc:  # noqa: BLE001 —— 豆包也挂 → 让调用方降级取候选0
+        raise GeminiLayoutUnavailable(f"both gemini and ark judge unavailable: {exc}") from exc
+
+
+def _parse_winner(text: str, count: int) -> int:
+    """从评委响应解析 winnerIndex,夹紧到 [0, count)。解析不出整数则抛(触发上层 fallback/降级)。"""
+    parsed = ai_client.parse_json_loose(text)
+    raw = parsed.get("winnerIndex") if isinstance(parsed, Mapping) else None
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise ValueError("judge response missing integer winnerIndex")
+    return raw if 0 <= raw < count else 0
 
 
 async def gemini_layout(
