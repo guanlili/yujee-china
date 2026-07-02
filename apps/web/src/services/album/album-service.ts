@@ -934,6 +934,9 @@ export const albumService = {
     userId: string,
     albumId: string,
     contexts: { chapterId: string; chapterContext: string }[],
+    // 采访问答也存进 album_messages(带 chapterId),loadHistory 才能在刷新/重进后重建对话
+    // 历史(否则收集环节的 AI 问 + 用户答只在 DOM,刷新即失)。可选:跳过采访不传 messages。
+    messages?: { chapterId: string; role: 'user' | 'assistant'; content: string }[],
   ): Promise<{ savedChapterIds: string[] }> {
     const album = await this.findOwned(userId, albumId);
     const normalized = readStoryDraft(album.draftJson);
@@ -970,6 +973,18 @@ export const albumService = {
 
     await db.transaction(async (tx) => {
       await albumRepo.update(tx, albumId, { draftJson: nextDraft });
+      // 采访问答进 album_messages(带 chapterId),供 loadHistory 重建。只存该章存在的消息。
+      for (const m of messages ?? []) {
+        const content = m.content.trim();
+        if (!content || !expectedIds.has(m.chapterId)) continue;
+        await albumMessageRepo.create(tx, {
+          albumId,
+          userId,
+          chapterId: m.chapterId,
+          role: m.role,
+          content: content.slice(0, 2000),
+        });
+      }
     });
 
     return { savedChapterIds: [...seen] };

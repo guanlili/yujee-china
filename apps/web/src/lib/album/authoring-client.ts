@@ -163,11 +163,17 @@ export interface ChapterContextEntry {
   chapterId: string;
   chapterContext: string;
 }
+export interface ChapterInterviewMessage {
+  chapterId: string;
+  role: 'user' | 'assistant';
+  content: string;
+}
 export function postChapterContexts(
   albumId: string,
   contexts: ChapterContextEntry[],
+  messages?: ChapterInterviewMessage[],
 ): Promise<{ savedChapterIds: string[] }> {
-  return postJson(`/api/v3/albums/${albumId}/chapter-context`, { contexts });
+  return postJson(`/api/v3/albums/${albumId}/chapter-context`, { contexts, ...(messages?.length ? { messages } : {}) });
 }
 
 // 采访完一次性写满该章文案(§流程重构)。存完 chapterContext 后调,Web 从 draft 切本章转发

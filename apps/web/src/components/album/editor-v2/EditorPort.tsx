@@ -705,6 +705,7 @@ function EditorBook({
     let pendingInterview: {
       chapterId: string;
       input: ChapterInterviewInput;
+      questions: readonly string[]; // AI 发的三条引导语,连同用户答案一起存进 album_messages
     } | null = null;
     let storyGate: StoryProgress | null = storyProgress;
     // The effect is installed once; storyGate is refreshed by the authoring progress calls.
@@ -2990,12 +2991,18 @@ function EditorBook({
       pendingInterview = null;
       updateAuthInputPlaceholder();
       const context = buildChapterContext(pending.input, answer);
+      // 采访问答存进 album_messages,刷新/重进后 loadHistory 能重建对话历史(否则收集环节的
+      // AI 问 + 用户答只在 DOM,一刷新就没了)。AI 三条引导语合成一条 assistant,用户答一条 user。
+      const cid = pending.chapterId;
+      const interviewMsgs: { chapterId: string; role: 'user' | 'assistant'; content: string }[] = [
+        { chapterId: cid, role: 'assistant', content: pending.questions.join('\n') },
+      ];
+      if (answer.trim()) interviewMsgs.push({ chapterId: cid, role: 'user', content: answer.trim() });
       try {
-        if (context.trim().length > 0) {
-          await postChapterContexts(albumId, [{ chapterId: pending.chapterId, chapterContext: context }]);
-        }
+        // context 可能空(纯跳过),但问答仍要存 —— 用空 context 也调,把 messages 落库。
+        await postChapterContexts(albumId, [{ chapterId: cid, chapterContext: context }], interviewMsgs);
       } catch {
-        // 采访可选:存 chapterContext 失败不阻塞,照样往下走。
+        // 采访可选:存失败不阻塞,照样往下走。
       }
       interviewedChapters.add(pending.chapterId);
       chapterSummaryCache.set(pending.chapterId, { chapterContext: context });
@@ -3044,16 +3051,22 @@ function EditorBook({
       sending = true;
       try {
         settleThinking(host, 'analyzedFeedback');
-        appendReplyBody(host, aT('好的,我这就根据你讲的故事,为整本相册排版并写好文案,稍等一下~',
-                                 'Great — I’ll now lay out the whole album and write the copy from your stories. One moment…'));
+        appendReplyBody(host, aT('好的,我这就根据你讲的故事,为整本相册排版并写好文案~',
+                                 'Great — I’ll now lay out the whole album and write the copy from your stories.'));
         appendTime(host);
+        appendStep(aT('🎨 正在挑选版式…', '🎨 Choosing layouts…'));
+        appendStep(aT('✍️ 正在根据你的故事写文案…', '✍️ Writing copy from your stories…'));
         const refs = await selectLayoutRefsFromStore(recipe.photoIds);
         await submitSelectLayoutV3(albumId, {
           requestId: recipe.requestId,
           language: recipe.language,
           refs,
         });
-        // 排版已派发。poll(use-album-poll)会推进 progress,排版+写文完成后 page.tsx 切到成品编辑器。
+        // 排版+写文在后台(agent)跑,进度在服务端。这里保留一个持续的「排版中」思考态(水母转),
+        // 让用户看到 AI 在干活而不是静止;排版完成时 page.tsx 因 pages 0→N 重挂载 EditorBook,
+        // 这个思考态随旧实例销毁,自然切到成品。—— 不 settleThinking,让水母一直转到重挂载。
+        const working = appendThinkingShell();
+        void working; // 有意保留 active 态直到重挂载
       } catch (e) {
         selectLayoutTriggered = false; // 允许重试
         if (authErr(host, e)) { sending = false; return; }
@@ -3088,7 +3101,7 @@ function EditorBook({
         classifyInterviewCase(input),
         currentLang === 'zh' ? 'zh' : 'en',
       );
-      pendingInterview = { chapterId, input };
+      pendingInterview = { chapterId, input, questions: messages };
       await typeInterviewMessages(messages);
       // 提供「跳过」入口:等价于空答案 finishInterview('')。
       const skipRow = document.createElement('div');

@@ -22,6 +22,18 @@ const BodySchema = z
           .strict(),
       )
       .min(1),
+    // 采访问答(AI 引导语 + 用户答),存进 album_messages 供刷新后重建对话历史。可选。
+    messages: z
+      .array(
+        z
+          .object({
+            chapterId: z.string().min(1),
+            role: z.enum(['user', 'assistant']),
+            content: z.string().max(2000),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 
@@ -35,7 +47,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
     const body = await parseBody(BodySchema, req);
     // Ownership gate + draft write live inside the service (§3 数据归属).
     // Throws ALBUM_NOT_FOUND / ALBUM_NOT_OWNED / VALIDATION_FAILED.
-    const result = await albumService.saveChapterContexts(user.id, uuid, body.contexts);
+    const result = await albumService.saveChapterContexts(user.id, uuid, body.contexts, body.messages);
     return ok(result);
   } catch (e) {
     return fromException(e);
