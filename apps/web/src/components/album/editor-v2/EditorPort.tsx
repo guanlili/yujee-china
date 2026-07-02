@@ -234,6 +234,8 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
         // ids render as empty slots — fine.
         const ids = new Set<string>();
         for (const p of draft.pages) for (const id of Object.values(p.imagesJson)) if (id) ids.add(id);
+        // 排版前 pages 为空,照片来自章节(收集面板的章节卡片 + 画板照片平铺都要它)。
+        for (const ch of draft.chapters) for (const id of ch.photoIds ?? []) if (id) ids.add(id);
         const urls = await photoStore.getObjectUrls([...ids]);
         if (cancelled) return;
         setImageUrls(urls);
@@ -691,6 +693,8 @@ function EditorBook({
     // 非空判断,见 runChapterGuideOpener);pendingInterview 存当前正在采访的章 —— send() 若
     // 见到它,就把用户输入当采访答案处理,而不是走 runEditChatTurn。
     const interviewedChapters = new Set<string>();
+    // 采访链是否已启动(同步占坑,防挂载 effect 双跑导致章节卡片/采访重复发,问题①)。
+    let interviewChainStarted = false;
     let pendingInterview: {
       chapterId: string;
       input: ChapterInterviewInput;
@@ -723,6 +727,14 @@ function EditorBook({
       imagePosJson: { ...(p.imagePosJson ?? {}) },
     }));
     const total = initialPages.length;
+    // 收集态(排版前):authoring 且 pages 为空 —— draft 有 tree/chapters 但还没排版,
+    // 所以没有版式页可画。此时画板不渲染空的版式书,改成显示「当前正在采访的那一章」的
+    // 照片平铺网格,让用户确认这组照片(随采访推进切到下一章)。排版完成后 pages 非空,
+    // 走正常版式书渲染(pagesState 里有页,isCollectMode 恒 false)。
+    const isCollectMode = isAuthoring && total === 0;
+    // 画板当前展示的章(收集态用)。goToChapterById 在收集态更新它并重画网格;采访推进到
+    // 下一章时 finishInterview → goToChapterById(next) 已调,网格随之切换。
+    let collectChapterId: string | null = null;
     // Real-book pagination (issue #158): the cover sits alone on the recto of the
     // first spread (opens leftward), the ending sits alone on the verso of the last
     // spread (closes), interior pages pair two-up. buildSpreads owns this algorithm;
@@ -1249,6 +1261,8 @@ function EditorBook({
     }
 
     function paintSpread(i: number) {
+      // 收集态没有版式页;画板走照片网格(renderCollectGrid),不画空版式书。
+      if (isCollectMode) return;
       const [lp, rp] = spreadPages(i);
       // Layout MUST be settled BEFORE paintEl. paintEl scales the page to the cell's
       // live clientWidth/height and SKIPS a cell hidden by display:none (offsetParent
@@ -1438,6 +1452,8 @@ function EditorBook({
     // Build the bottom thumbnail strip from real spreads (replaces the design's
     // three hardcoded placeholder thumbs).
     function buildThumbs() {
+      // 收集态没有版式页,缩略图条无意义(CSS 也隐藏了它),不构建。
+      if (isCollectMode) return;
       const row = byId('thumbRow');
       if (!row) return;
       row.innerHTML = Array.from({ length: spreadCount() }, (_, i) =>
@@ -1483,6 +1499,13 @@ function EditorBook({
     // we resolve its first page, find the spread it sits on, and flip there. No-op
     // when the skeleton/chapter/spread can't be resolved (leaves the view as-is).
     function goToChapterById(chapterId: string) {
+      // 收集态:没有版式页可翻。goToChapterById 改成「把画板照片网格切到这一章」——
+      // 记住当前章 + 重画网格(采访推进到下一章时 finishInterview 调这里,网格随之切)。
+      if (isCollectMode) {
+        collectChapterId = chapterId;
+        renderCollectGrid();
+        return;
+      }
       const pageIdx = draftSkel?.pages.find((p) => p.chapterId === chapterId)?.pageIndex;
       if (pageIdx == null) return;
       const sp = spreadIndexOfPage(spreads, pageIdx);
@@ -1495,6 +1518,49 @@ function EditorBook({
       selectedPageIndex = pageIndex;
       goToSpread(sp);
       updateSelectionHighlight();
+    }
+
+    // 收集态画板:把 collectChapterId 这一章的照片平铺进 #collectBoard(命令式 DOM,
+    // 和本文件其余部分同风格)。照片来自 chapterMetaById(优先 chapter.photoIds,排版前就有);
+    // imageUrls[id] 是 IndexedDB 解出的 blob: URL(EditorAuthoring 已按 chapters.photoIds 预取,
+    // 见 §invariant 1)。URL 还没到时占位灰块。bodyEl 上的 collect-on 类由 CSS 负责隐藏版式书
+    // (#book / 缩略图条 / 缩放条 / 概览)并显示这块网格。
+    function renderCollectGrid() {
+      if (!isCollectMode) return;
+      bodyEl.classList.add('collect-on');
+      const board = byId('collectBoard');
+      if (!board) return;
+      board.innerHTML = '';
+      const meta = collectChapterId ? chapterMetaById(collectChapterId) : null;
+      // 标题条:第 N 章 · 标题 · 张数。没解析到章(还没定位)就留空网格。
+      const head = document.createElement('div');
+      head.className = 'collect-head';
+      if (meta) {
+        const title = document.createElement('div');
+        title.className = 'collect-title';
+        title.textContent = meta.title;
+        const sub = document.createElement('div');
+        sub.className = 'collect-sub';
+        sub.textContent = `${aT(`第 ${meta.num} 章`, `Chapter ${meta.num}`)} · ${meta.photoIds.length} ${t('photosWord')}`;
+        head.appendChild(title);
+        head.appendChild(sub);
+      }
+      const grid = document.createElement('div');
+      grid.className = 'collect-grid';
+      for (const photoId of meta?.photoIds ?? []) {
+        const cell = document.createElement('div');
+        cell.className = 'collect-cell';
+        const url = imageUrls[photoId];
+        if (url) {
+          cell.style.backgroundImage = `url("${url}")`;
+        } else {
+          // 原图还没从 IndexedDB 解出来 —— 占位灰块(collect-cell 底色即 --bg)。
+          cell.classList.add('collect-cell-empty');
+        }
+        grid.appendChild(cell);
+      }
+      if (meta) board.appendChild(head);
+      board.appendChild(grid);
     }
 
     /* ─── Zoom + overview ─── */
@@ -3039,6 +3105,11 @@ function EditorBook({
     async function runChapterGuideOpener(opts?: { allowDuringSend?: boolean }) {
       if (!isAuthoring || (!opts?.allowDuringSend && sending) || awaitingSatisfaction) return;
       if (pendingInterview) return; // 采访进行中,不重入
+      // 同步重入守卫(必须在任何 await 之前):挂载 effect 可能双跑(StrictMode/竞态),
+      // 而下面 loadChapterSummaryContexts 是 await —— 若守卫放 await 后,两次调用会都穿过
+      // 去双发章节卡片(问题①)。这里进函数立刻占坑。
+      if (interviewChainStarted) return;
+      interviewChainStarted = true;
       // 已有 chapterContext(重进/刷新后)的章视为已采访,别重问。
       await loadChapterSummaryContexts();
       const order = storyGate?.chapterOrder ?? [];
@@ -3053,7 +3124,7 @@ function EditorBook({
       // 找第一个待采访章启动采访。若没有(全部已采访)——可能是重进场景、也可能是按页编辑阶段
       // 章确认后回调到这里:一律不做(不重复写全部)。写全部只由 finishInterview 收尾时触发一次。
       const first = nextUninterviewedChapter();
-      if (!first) return;
+      if (!first) { interviewChainStarted = false; return; } // 没有待采访章,松开占坑
       guidedChapters.add(first);
       chapterHistory.length = 0;
       goToChapterById(first);
@@ -3656,7 +3727,12 @@ function EditorBook({
       if (stepperEl) stepperEl.style.display = 'none';
     }
 
-    if (isAuthoring) {
+    if (isCollectMode) {
+      // 收集态:没有版式页可画。画板显示当前采访章的照片网格,不碰 paintSpread/thumbs
+      // (它们对空 pagesState 会渲染出空版式框)。collect-on 类隐藏版式书 chrome。首帧网格
+      // 用初始 collectChapterId(下面 story-gate 加载后 goToChapterById 会切到 live 章)。
+      renderCollectGrid();
+    } else if (isAuthoring) {
       // Authoring pre-resolved originals from the draft skeleton (passed in as
       // initialImageUrls) — repaint with those rather than re-fetching from an
       // empty detail.pages / null layoutJson.
@@ -3813,6 +3889,12 @@ function EditorBook({
                 <div className="leaf back" id="leafBack" />
               </div>
             </div>
+
+            {/* 收集态画板:排版前(authoring + pages 为空)显示当前采访章的照片平铺网格,
+                替代空版式书。renderCollectGrid 往里填内容;bodyEl 的 collect-on 类切换可见性。
+                排版完成后 pages 非空 → 从不进收集态 → 这块始终隐藏。 */}
+            <div className="collect-board" id="collectBoard" />
+
 
             <div className="thumb-strip absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center justify-center gap-2 px-3 py-1.5 z-[6] rounded-pill max-w-[92vw]">
               <div className="thumb-nav flex items-center gap-1.5">

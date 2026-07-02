@@ -163,6 +163,34 @@
    interior odd-trailing blank half (which never gets .book-single) keeps its space. */
 .editor-port .book.book-single .page.page-empty{ display:none; }
 
+/* ─── COLLECT BOARD (排版前收集态) ───
+   authoring 且 pages 为空时,画板不画版式书,改显示当前采访章的照片平铺网格。
+   .collect-on 挂在 editor-port 根上(bodyEl):隐藏版式书 chrome(#book / 缩略图条 /
+   缩放条 / 概览),显示 #collectBoard。排版完成后从不进收集态,collect-board 恒隐藏。 */
+.editor-port .collect-board{ display:none; }
+.editor-port.collect-on .book,
+.editor-port.collect-on .thumb-strip,
+.editor-port.collect-on .zoom-ctrl,
+.editor-port.collect-on .book-overview{ display:none !important; }
+.editor-port.collect-on .collect-board{
+  display:flex; flex-direction:column;
+  width: min(94%, calc(80vh * 1.414), 1010px);
+  max-height:100%;
+}
+.editor-port .collect-head{ margin-bottom:16px; text-align:center; }
+.editor-port .collect-title{ font-size:18px; font-weight:700; color:var(--fg); }
+.editor-port .collect-sub{ margin-top:4px; font-size:13px; color:var(--muted); }
+.editor-port .collect-grid{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));
+  gap:12px; overflow:auto; padding:2px;
+}
+.editor-port .collect-cell{
+  aspect-ratio:1; border-radius:12px; background:var(--surface);
+  background-size:cover; background-position:center;
+  box-shadow:0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.05);
+}
+.editor-port .collect-cell.collect-cell-empty{ background:var(--bg); }
+
 /* Flipping leaf */
 .editor-port .flipper{
   position:absolute; top:0; bottom:0;
