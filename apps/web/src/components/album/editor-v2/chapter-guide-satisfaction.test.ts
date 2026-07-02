@@ -58,7 +58,10 @@ test('B: interview collects every chapter first, then triggers layout (writes at
   assert.doesNotMatch(fi![0], /postWriteChapter\(/, 'interview step no longer writes copy per-chapter');
 
   // 采访进度是纯前端的(interviewedChapters),不靠服务端 done 推进。
-  assert.match(src, /const interviewedChapters = new Set/, 'interview progress tracked client-side');
+  // 采访进度前端追踪,且放组件级 ref(interviewedChaptersRef)—— 跨 StrictMode 双调持久,
+  // 否则第一章会重复发(#236 同款坑)。
+  assert.match(src, /interviewedChaptersRef = useRef<Set<string>>/, 'interview progress tracked in a component-level ref');
+  assert.match(src, /const interviewedChapters = interviewedChaptersRef\.current/, 'aliased from the ref inside the effect');
 });
 
 test('C: a write turn surfaces the satisfaction card (满意/不满意), not on talk/edit', () => {

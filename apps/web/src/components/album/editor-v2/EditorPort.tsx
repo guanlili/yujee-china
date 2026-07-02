@@ -335,6 +335,14 @@ function EditorBook({
   // effect-local `new Set()` gives each invocation its own empty set, so both fire the
   // opener (the reported double开场). A shared ref survives re-invocation → one opener.
   const guidedChaptersRef = useRef<Set<string>>(new Set());
+  // 同 #236:采访状态也必须放组件级 ref,否则 StrictMode 双调 effect 时每个实例各拿一份
+  // 空状态 → 第一章采访/卡片发两次(用户实测的重复)。interviewChainStartedRef 是「采访链已
+  // 启动」的同步占坑;interviewedChaptersRef 是已采访章集合。两者都要跨 effect 双调持久。
+  const interviewChainStartedRef = useRef(false);
+  const interviewedChaptersRef = useRef<Set<string>>(new Set());
+  // 章节卡片「本会话已展示」的幂等闸也必须组件级(同 #236):effect 局部 Set 在 StrictMode
+  // 双调 / building→authoring 重挂载时又变空,挡不住重复 → 用户看到第一章卡片发两次。
+  const shownChapterCardsRef = useRef<Set<string>>(new Set());
   const [storyProgress, setStoryProgress] = useState<StoryProgress | null>(null);
   const [, setStoryProgressLoading] = useState(mode === 'authoring');
   const [, setStoryConfirming] = useState(false);
@@ -692,9 +700,8 @@ function EditorBook({
     // 融进这个对话面板。interviewedChapters 记录本会话已采访过的章(结合服务端 chapterContext
     // 非空判断,见 runChapterGuideOpener);pendingInterview 存当前正在采访的章 —— send() 若
     // 见到它,就把用户输入当采访答案处理,而不是走 runEditChatTurn。
-    const interviewedChapters = new Set<string>();
-    // 采访链是否已启动(同步占坑,防挂载 effect 双跑导致章节卡片/采访重复发,问题①)。
-    let interviewChainStarted = false;
+    // 组件级 ref alias(同 guidedChapters):跨 StrictMode 双调 effect 持久,否则第一章重复发。
+    const interviewedChapters = interviewedChaptersRef.current;
     let pendingInterview: {
       chapterId: string;
       input: ChapterInterviewInput;
@@ -2826,7 +2833,7 @@ function EditorBook({
     // 问题③ 章节卡片: when entering a chapter, push a chapter-styled card into the chat so
     // the user always knows WHICH chapter they're in (前面引导开场之前/同时出现). Fires once
     // per chapter per session (`shownChapterCards` guard) so re-entry/advance doesn't spam.
-    const shownChapterCards = new Set<string>();
+    const shownChapterCards = shownChapterCardsRef.current;
 
     // 「查看详细」: a lightweight modal overlay showing every photo in the chapter as a
     // scrollable thumbnail grid. Native DOM (same style as the rest of this file). Click
@@ -2863,12 +2870,16 @@ function EditorBook({
     }
 
     function appendChapterCard(chapterId: string) {
-      if (shownChapterCards.has(chapterId)) return;
+      // 幂等以「当前 chatBody DOM 里是否已有这章的卡」为准(而非会话内 Set)—— StrictMode 双调
+      // 或 building→authoring 重挂载都可能重跑这里,而 chatBody 是当次挂载的真相源:DOM 里已有
+      // 就不再加(防重复);DOM 是新的(重挂载后空)就允许重画(防卡片消失)。
+      if (chatBody?.querySelector(`[data-chapter-card="${chapterId}"]`)) return;
+      shownChapterCards.add(chapterId);
       const meta = chapterMetaById(chapterId);
       if (!meta) return;
-      shownChapterCards.add(chapterId);
       const card = document.createElement('div');
       card.className = 'msg ai max-w-full';
+      card.setAttribute('data-chapter-card', chapterId);
       const inner = document.createElement('div');
       inner.className = 'chap-card';
       const thumbs = document.createElement('div');
@@ -3108,8 +3119,8 @@ function EditorBook({
       // 同步重入守卫(必须在任何 await 之前):挂载 effect 可能双跑(StrictMode/竞态),
       // 而下面 loadChapterSummaryContexts 是 await —— 若守卫放 await 后,两次调用会都穿过
       // 去双发章节卡片(问题①)。这里进函数立刻占坑。
-      if (interviewChainStarted) return;
-      interviewChainStarted = true;
+      if (interviewChainStartedRef.current) return;
+      interviewChainStartedRef.current = true;
       // 已有 chapterContext(重进/刷新后)的章视为已采访,别重问。
       await loadChapterSummaryContexts();
       const order = storyGate?.chapterOrder ?? [];
@@ -3124,7 +3135,7 @@ function EditorBook({
       // 找第一个待采访章启动采访。若没有(全部已采访)——可能是重进场景、也可能是按页编辑阶段
       // 章确认后回调到这里:一律不做(不重复写全部)。写全部只由 finishInterview 收尾时触发一次。
       const first = nextUninterviewedChapter();
-      if (!first) { interviewChainStarted = false; return; } // 没有待采访章,松开占坑
+      if (!first) { interviewChainStartedRef.current = false; return; } // 没有待采访章,松开占坑
       guidedChapters.add(first);
       chapterHistory.length = 0;
       goToChapterById(first);
