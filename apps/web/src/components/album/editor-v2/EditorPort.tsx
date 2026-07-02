@@ -69,7 +69,15 @@ import type {
   V3ChapterThemeChoice,
 } from '@yujee/contracts';
 import { getTemplate, TEMPLATE_IDS } from '@yujee/contracts/templates';
-import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/client';
+import { UnauthorizedError, CreditInsufficientError, interviewDataFromStore } from '@/lib/generation/client';
+import { fetchChapterSummary, postChapterContexts, postWriteChapter } from '@/lib/album/authoring-client';
+import {
+  buildChapterInterviews,
+  buildChapterContext,
+  classifyInterviewCase,
+  interviewMessages,
+  type ChapterInterviewInput,
+} from '@/lib/interview/interview';
 import './editor-port.css';
 
 // The editor now spans the whole album lifecycle (W10 flow unification): the same
@@ -443,6 +451,9 @@ function EditorBook({
         photosWord: '张照片',
         viewChapter: '查看章节',
         viewLayout: '查看排版',
+        viewDetails: '查看详细',
+        interviewSkip: '跳过',
+        interviewClose: '关闭',
         justEdited: '刚刚编辑',
         nowEditing: '正在编辑',
         chaptersLabel: '章节',
@@ -576,6 +587,9 @@ function EditorBook({
         photosWord: 'photos',
         viewChapter: 'View chapter',
         viewLayout: 'View layout',
+        viewDetails: 'View details',
+        interviewSkip: 'Skip',
+        interviewClose: 'Close',
         justEdited: 'Just edited',
         nowEditing: 'Editing',
         chaptersLabel: 'Chapters',
@@ -663,6 +677,16 @@ function EditorBook({
     // 满意/不满意. While awaiting the choice we don't fire another auto-guide opener
     // (the satisfaction card is the live affordance).
     let awaitingSatisfaction = false;
+    // 内容采集(采访):在进章节引导前,先逐章问一遍「时间/地点/人/事/心情」,把答案拼成
+    // chapterContext 存回 draft,再触发写文案。原本是独立覆盖弹窗(InterviewDialog),现在
+    // 融进这个对话面板。interviewedChapters 记录本会话已采访过的章(结合服务端 chapterContext
+    // 非空判断,见 runChapterGuideOpener);pendingInterview 存当前正在采访的章 —— send() 若
+    // 见到它,就把用户输入当采访答案处理,而不是走 runEditChatTurn。
+    const interviewedChapters = new Set<string>();
+    let pendingInterview: {
+      chapterId: string;
+      input: ChapterInterviewInput;
+    } | null = null;
     let storyGate: StoryProgress | null = storyProgress;
     // The effect is installed once; storyGate is refreshed by the authoring progress calls.
     function isAuthoringExportLocked(progress: StoryProgress | null = storyGate) {
@@ -1635,6 +1659,11 @@ function EditorBook({
       input.value = ''; input.style.height = 'auto';
       hideAwait();
       scrollChat();
+      // 采访进行中:把用户输入当这章的采访答案,存 chapterContext + 触发写文案,不走 edit-chat。
+      if (pendingInterview) {
+        await finishInterview(txt);
+        return;
+      }
       if (isAuthoring && storyGate?.stage === 'cover') {
         await runCover({
           ...lastCoverSelection,
@@ -2720,6 +2749,41 @@ function EditorBook({
     // the user always knows WHICH chapter they're in (前面引导开场之前/同时出现). Fires once
     // per chapter per session (`shownChapterCards` guard) so re-entry/advance doesn't spam.
     const shownChapterCards = new Set<string>();
+
+    // 「查看详细」: a lightweight modal overlay showing every photo in the chapter as a
+    // scrollable thumbnail grid. Native DOM (same style as the rest of this file). Click
+    // the backdrop or the close button to dismiss. imageUrls[photoId] is the blob: URL
+    // resolved from IndexedDB (invariant 1 — originals live only in the browser).
+    function openChapterPhotosOverlay(photoIds: string[]) {
+      const ov = document.createElement('div');
+      ov.className = 'chapter-photos-overlay';
+      const sheet = document.createElement('div');
+      sheet.className = 'cpo-sheet';
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'cpo-close';
+      close.setAttribute('aria-label', t('interviewClose'));
+      close.textContent = '✕';
+      const grid = document.createElement('div');
+      grid.className = 'cpo-grid';
+      for (const photoId of photoIds) {
+        const cell = document.createElement('div');
+        cell.className = 'cpo-thumb';
+        const url = imageUrls[photoId];
+        if (url) cell.style.backgroundImage = `url("${url}")`;
+        grid.appendChild(cell);
+      }
+      const dismiss = () => ov.remove();
+      close.addEventListener('click', dismiss);
+      ov.addEventListener('click', (e) => {
+        if (e.target === ov) dismiss();
+      });
+      sheet.appendChild(close);
+      sheet.appendChild(grid);
+      ov.appendChild(sheet);
+      bodyEl.appendChild(ov);
+    }
+
     function appendChapterCard(chapterId: string) {
       if (shownChapterCards.has(chapterId)) return;
       const meta = chapterMetaById(chapterId);
@@ -2764,15 +2828,11 @@ function EditorBook({
       const view = document.createElement('button');
       view.type = 'button';
       view.className = 'cc-view';
-      view.innerHTML = `${t('viewLayout')}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`;
+      // 「查看详细」: pop a lightweight thumbnail overlay of ALL the chapter's photos
+      // (was「查看排版」→ jump the canvas to the chapter). meta.photoIds is the full list.
+      view.innerHTML = `${t('viewDetails')}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`;
       view.addEventListener('click', () => {
-        goToChapterById(chapterId);
-        const book = byId('book');
-        if (book) {
-          book.classList.remove('book-flash');
-          void book.offsetWidth;
-          book.classList.add('book-flash');
-        }
+        openChapterPhotosOverlay(meta.photoIds);
       });
       foot.appendChild(info);
       foot.appendChild(view);
@@ -2811,6 +2871,120 @@ function EditorBook({
       return pages.every((p) => !pageHasWritableTextSlot(p.templateId));
     }
 
+    // 内容采集(采访):该章是否需要采访?本会话已采访(interviewedChapters)或 draft 里
+    // chapterContext 已非空(服务端 getChapterSummary 派生)都算「采访过」→ 跳过。用 draft 而非
+    // 本地标记做真相源,刷新后不会重复采访。返回 { needed, input } —— input 供 buildChapterContext。
+    const chapterSummaryCache = new Map<string, { chapterContext: string }>();
+    async function loadChapterSummaryContexts(): Promise<void> {
+      if (chapterSummaryCache.size > 0) return;
+      try {
+        const { chapters } = await fetchChapterSummary(albumId);
+        for (const c of chapters) chapterSummaryCache.set(c.chapterId, { chapterContext: c.chapterContext });
+      } catch {
+        // 采访是可选的:摘要拉取失败就当没采访过(仍会问一次),绝不阻断引导流程。
+      }
+    }
+    // 逐条把三条引导短消息「打字」进对话面板(模仿真人一句一句发)。
+    async function typeInterviewMessages(messages: readonly [string, string, string]) {
+      for (let i = 0; i < messages.length; i += 1) {
+        appendAiText(messages[i]!);
+        if (i < messages.length - 1) await new Promise((r) => setTimeout(r, 650));
+      }
+    }
+    // 采访答案落地:拼 chapterContext → 存 draft → 标记已采访 → 触发写文案。answer 为空 = 跳过
+    // (仍存已知的时间/地点前缀,若有;然后照样让 AI 写这一章)。
+    async function finishInterview(answer: string) {
+      const pending = pendingInterview;
+      if (!pending) return;
+      pendingInterview = null;
+      updateAuthInputPlaceholder();
+      const context = buildChapterContext(pending.input, answer);
+      try {
+        if (context.trim().length > 0) {
+          await postChapterContexts(albumId, [{ chapterId: pending.chapterId, chapterContext: context }]);
+        }
+      } catch {
+        // 采访可选:存 chapterContext 失败不阻塞,照样往下写文案。
+      }
+      interviewedChapters.add(pending.chapterId);
+      chapterSummaryCache.set(pending.chapterId, { chapterContext: context });
+      // 触发写文案:调专门的写文端点(/v3/write-chapter → write_chapter_copy 强制写满整章,
+      // 不靠主控判 kind)。chapterContext 已存进 draft,Web 切本章转发 Agent 一次写满,回 pagesTexts
+      // → applyChapterWrite 落到画板。写完弹满意卡,用户可继续在面板里「改」(edit_loop 主控)。
+      sending = true;
+      const host = appendThinkingShell();
+      try {
+        const res = await postWriteChapter(
+          albumId,
+          pending.chapterId,
+          currentLang === 'zh' ? 'zh' : 'en',
+        );
+        settleThinking(host, 'analyzedFeedback');
+        const wrote = applyChapterWrite(res.pagesTexts as V3PageTextsPatch[]);
+        appendReplyBody(
+          host,
+          wrote
+            ? aT('我已经根据你说的,把这一章的文案写好啦,你看看喜不喜欢?',
+                  'I’ve written this chapter based on what you shared — take a look!')
+            : aT('这一章我先照片面写好了,你可以直接改。',
+                  'I’ve drafted this chapter from the photos — feel free to tweak.'),
+        );
+        appendTime(host);
+        chapterHistory.push({ role: 'assistant', content: '' });
+        appendSatisfactionCard();
+      } catch (e) {
+        if (!authErr(host, e)) {
+          settleThinking(host, 'analyzedFeedback');
+          appendReplyBody(host, aT('写文案时出了点问题,稍后再试一下。', 'Something went wrong writing this chapter — please try again.'));
+        }
+      } finally {
+        sending = false;
+        restAwait();
+        scrollChat();
+      }
+    }
+    // 采访开场:算出该章的时间/地点预填(interviewDataFromStore,坐标不出浏览器),发三条引导
+    // 短消息,置 pendingInterview 等用户在底部输入框作答(send() 会拦到 finishInterview)。
+    async function startChapterInterview(chapterId: string, photoIds: string[]) {
+      let input: ChapterInterviewInput = { earliestTakenAt: null, latestTakenAt: null, place: null };
+      try {
+        const data = await interviewDataFromStore(photoIds);
+        // 复用 buildChapterInterviews 做「章 photoIds → clusterId → 预填」对齐,取该章 input。
+        const [built] = buildChapterInterviews(
+          [{ chapterId, label: '', photoIds }],
+          data.photoToCluster,
+          data.prefills,
+        );
+        if (built) input = built.input;
+      } catch {
+        // 原图取不到 / 计算失败 => 空输入(neither,全问),不阻断。
+      }
+      // 四情况三条短消息,按 UI 语言取(buildChapterInterviews 内置默认中文,这里显式按 locale)。
+      const messages = interviewMessages(
+        classifyInterviewCase(input),
+        currentLang === 'zh' ? 'zh' : 'en',
+      );
+      pendingInterview = { chapterId, input };
+      await typeInterviewMessages(messages);
+      // 提供「跳过」入口:等价于空答案 finishInterview('')。
+      const skipRow = document.createElement('div');
+      skipRow.className = 'msg ai max-w-full';
+      const skipBtn = document.createElement('button');
+      skipBtn.type = 'button';
+      skipBtn.className = 'interview-skip';
+      skipBtn.textContent = t('interviewSkip');
+      skipBtn.addEventListener('click', () => {
+        if (!pendingInterview || pendingInterview.chapterId !== chapterId) return;
+        skipBtn.disabled = true;
+        void finishInterview('');
+      });
+      skipRow.appendChild(skipBtn);
+      chatBody!.appendChild(skipRow);
+      updateAuthInputPlaceholder();
+      restAwait();
+      scrollChat();
+    }
+
     async function runChapterGuideOpener(opts?: { allowDuringSend?: boolean }) {
       if (!isAuthoring || (!opts?.allowDuringSend && sending) || awaitingSatisfaction) return;
       const chapterId = storyGate?.currentChapterId ?? null;
@@ -2832,6 +3006,22 @@ function EditorBook({
       }
       // 问题③: surface the chapter card (which chapter) BEFORE the AI's opener question.
       appendChapterCard(chapterId);
+      // 内容采集(采访):进章节引导前,先看这一章有没有采访过(本会话 或 draft chapterContext
+      // 非空)。没采访过 → 就在这个对话面板里逐章采访(三条引导短消息 + 等答案),答完/跳过后
+      // finishInterview 触发写文案 —— 采访取代空消息开场问。已采访过 → 走下面的常规 AI 开场。
+      await loadChapterSummaryContexts();
+      const alreadyInterviewed =
+        interviewedChapters.has(chapterId) ||
+        (chapterSummaryCache.get(chapterId)?.chapterContext.trim().length ?? 0) > 0;
+      if (!alreadyInterviewed) {
+        // guidedChapters marks it opened-once (same dedupe the real opener uses) so a
+        // re-render / advance won't re-run the interview. The pending-answer send lock is
+        // pendingInterview itself (send() routes to finishInterview while it's set).
+        guidedChapters.add(chapterId);
+        const meta = chapterMetaById(chapterId);
+        await startChapterInterview(chapterId, meta?.photoIds ?? []);
+        return;
+      }
       // #236 ①: mark both guards synchronously, BEFORE any await, so a second same-tick
       // call (mount兜底 + advance, or a StrictMode re-mount) sees them and bails.
       guidedChapters.add(chapterId);

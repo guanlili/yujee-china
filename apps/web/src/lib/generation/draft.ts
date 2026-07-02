@@ -87,25 +87,3 @@ export const albumRecipe = {
     }
   },
 };
-
-// 内容采集(分组后采访)是否已完成/跳过的持久标记(每册一份)。采访在 analyze 完成
-// (progress=50)后、select-layout 前弹一次;这个标记让轮询知道「采访已处理过」→ 放行
-// 排版,避免重复弹、也让刷新后不再挡。跳过 == 完成(都置 true),因为采访可选(§2.1a)。
-const interviewKey = (albumId: string) => `yujee:album-interview-done:${albumId}`;
-
-export const albumInterview = {
-  isDone(albumId: string): boolean {
-    try {
-      return localStorage.getItem(interviewKey(albumId)) === '1';
-    } catch {
-      return false;
-    }
-  },
-  markDone(albumId: string): void {
-    try {
-      localStorage.setItem(interviewKey(albumId), '1');
-    } catch {
-      // ignore
-    }
-  },
-};

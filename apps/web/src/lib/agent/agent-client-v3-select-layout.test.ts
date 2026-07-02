@@ -11,6 +11,7 @@ const PAYLOAD: SelectLayoutRequest = {
     {
       chapterId: 'ch_1',
       structureHint: 'coast morning',
+      chapterContext: '',
       photos: [
         {
           photoId: 'p1',

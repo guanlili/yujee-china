@@ -664,6 +664,21 @@ class V3EditChatRequest(_V3Strict):
 V3EditChatKind = Literal["talk", "write", "edit"]
 
 
+class V3WriteChapterRequest(_V3Strict):
+    """采访完一次性写满整章文案(§流程重构)。Web 传本章切片(版式已定)+ chapterContext
+    已在 chapter 上。Agent 强制写(不判 kind),用 write_chapter_copy 一次写满每页每 slot。"""
+
+    albumId: str = Field(min_length=1)
+    language: V3Language
+    chapter: V3Chapter
+    pages: list[Page]
+
+
+class V3WriteChapterResponse(_V3Strict):
+    pagesTexts: list[V3PageTextsPatch] = Field(default_factory=list)
+    usage: V3Usage
+
+
 class V3EditChatResponse(_V3Strict):
     kind: V3EditChatKind
     assistantReply: str = Field(min_length=1, max_length=500)

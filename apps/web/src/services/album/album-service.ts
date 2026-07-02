@@ -456,7 +456,7 @@ export const albumService = {
   // summary (label / role / photoIds) — never the editable tree, so invariant 12
   // holds. Returns [] when there's no draft (e.g. a finalized album).
   async getChapterSummary(userId: string, albumId: string): Promise<{
-    chapters: { chapterId: string; label: string; role: string; photoIds: string[] }[];
+    chapters: { chapterId: string; label: string; role: string; photoIds: string[]; chapterContext: string }[];
   }> {
     const album = await this.findOwned(userId, albumId);
     const normalized = readStoryDraft(album.draftJson);
@@ -468,6 +468,8 @@ export const albumService = {
         label: ch.description || `Chapter ${i + 1}`,
         role: i === 0 ? 'opening' : i === last ? 'closing' : 'body',
         photoIds: ch.photos.map((photo) => photo.photoId),
+        // 采访门槛读取:该章 chapterContext 非空 ⇔ 已采访过(不变式 12:只读派生字段)。
+        chapterContext: ch.chapterContext ?? '',
       })),
     };
   },
@@ -797,6 +799,48 @@ export const albumService = {
         transientPagePhotoRefs.clear(albumId, input.chapterId);
       }
     }
+  },
+
+  // 采访完一次性写满整章文案(§流程重构). Web 从 draft 切本章(chapter 含 chapterContext +
+  // 已定版式的 pages)转发 /v3/write-chapter,Agent 强制写(不判 kind),回 pagesTexts,
+  // Web 合并进 draft.pages。不动 progress/done/stage —— 写文案只填字,章确认仍走后续满意卡。
+  // 幂等:重复写同章只覆盖该章页文案。§3 数据归属:tree 不经浏览器,Web 从 draft 切。
+  async writeChapterTurn(
+    userId: string,
+    albumId: string,
+    input: { language: V3Language; chapterId: string },
+  ): Promise<{ pagesTexts: V3PageTextsPatch[] }> {
+    const album = await this.findOwned(userId, albumId);
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+    const slice = sliceChapterForChat(normalized, input.chapterId);
+    if (!slice) throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+    if (slice.pages.length === 0) return { pagesTexts: [] }; // 纯图章/无页,无需写
+
+    const result = await agentClient.writeChapterV3({
+      albumId,
+      language: input.language,
+      chapter: slice.chapter,
+      pages: slice.pages,
+    });
+
+    if (result.pagesTexts.length > 0) {
+      await db.transaction(async (tx) => {
+        const latest = await albumRepo.findByIdForUpdate(tx, albumId);
+        if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
+        const current = readStoryDraft(latest.draftJson);
+        if (!current?.pages) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft pages');
+        const pages = applyPagesTextsToDraftPages(current.pages, result.pagesTexts);
+        const nextDraft: V3StoryDraft = {
+          version: 'v3-story',
+          tree: current.tree,
+          pages,
+          progress: current.progress,
+        };
+        await albumRepo.update(tx, albumId, { draftJson: nextDraft });
+      });
+    }
+    return { pagesTexts: result.pagesTexts };
   },
 
   // ③ 主题/章节色-应用 (WP3.2 / #190). The user picked, per chapter, one

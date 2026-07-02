@@ -38,6 +38,8 @@ from .schemas import (
     V3ChapterChatResponse,
     V3EditChatRequest,
     V3EditChatResponse,
+    V3WriteChapterRequest,
+    V3WriteChapterResponse,
     JudgeLayoutRequest,
     SelectLayoutRequest,
 )
@@ -58,6 +60,7 @@ from .errors import sync_endpoint_errors
 from .agents.edit_loop import flow as edit_chat_v3
 from .agents.edit_loop.flow import EditChatError
 from .agents.story import handler as chapter_chat_v3
+from .agents.story import write_copy as write_chapter_v3
 from .engine import cover_v3
 from .engine import finalize_v3
 from .agents.theme_recommend import handler as recommend_v3
@@ -239,6 +242,41 @@ async def submit_edit_chat(req: V3EditChatRequest) -> dict[str, Any]:
         known_code="AGENT_PLANNING_FAILED",
     ):
         response: V3EditChatResponse = await edit_chat_v3.run(req)
+    return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
+
+
+# ---------- write-chapter (采访完一次性写满整章, sync) -------------------------
+
+
+@router.post("/v3/write-chapter", dependencies=[Depends(require_bearer)])
+async def submit_write_chapter(req: V3WriteChapterRequest) -> dict[str, Any]:
+    """采访完一次性写满整章文案(§流程重构 / 同步 60s)。强制写(不判 kind),用
+    write_chapter_copy 一次写满本章每页每 slot。有 chapterContext(采访)据它写,没有照图写;
+    某章写失败降级空 texts,绝不 500。无状态:Web 传本章切片,合并 pagesTexts 进 draft。"""
+    log.info(
+        "v3_write_chapter.accepted",
+        album_id=req.albumId,
+        chapter_id=req.chapter.chapterId,
+        pages=len(req.pages),
+        language=req.language,
+    )
+    started = time.monotonic()
+    patches, in_tok, out_tok = await write_chapter_v3.write_chapter_copy(
+        req.chapter, req.pages, req.language
+    )
+    usage = V3Usage(
+        durationMs=int((time.monotonic() - started) * 1000),
+        planningInputTokens=in_tok,
+        planningOutputTokens=out_tok,
+        models=V3Models(),
+    )
+    response = V3WriteChapterResponse(pagesTexts=patches, usage=usage)
+    log.info(
+        "v3_write_chapter.completed",
+        album_id=req.albumId,
+        chapter_id=req.chapter.chapterId,
+        wrote_pages=len(patches),
+    )
     return {"ok": True, "data": response.model_dump(exclude_none=True, mode="json")}
 
 

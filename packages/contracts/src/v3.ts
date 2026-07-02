@@ -480,6 +480,26 @@ export const V3ChapterChatResponse = z
   .strict();
 export type V3ChapterChatResponse = z.infer<typeof V3ChapterChatResponse>;
 
+// 采访完一次性写满整章(§流程重构):强制写(不判 kind),Agent 用 write_chapter_copy
+// 一次写满本章每页每 slot。请求 = 本章切片(chapter 含 chapterContext + pages 已定版式)。
+export const V3WriteChapterRequest = z
+  .object({
+    albumId: z.string().min(1),
+    language: V3Language,
+    chapter: V3Chapter,
+    pages: z.array(Page),
+  })
+  .strict();
+export type V3WriteChapterRequest = z.infer<typeof V3WriteChapterRequest>;
+
+export const V3WriteChapterResponse = z
+  .object({
+    pagesTexts: z.array(V3PageTextsPatch),
+    usage: V3Usage,
+  })
+  .strict();
+export type V3WriteChapterResponse = z.infer<typeof V3WriteChapterResponse>;
+
 // ───────────── ② 章节故事 · Web 完成度状态(WP2.4 / §4.2(1)) ─────────────
 //
 // 这两个形状描述的是 **Web 侧 `albums.draft_json` 的存储结构**,不是 Agent 端点 req/res:

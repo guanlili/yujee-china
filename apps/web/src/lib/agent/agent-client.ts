@@ -9,6 +9,7 @@ import {
   V3FinalizeResponse,
   V3InternalAgentAckResponse,
   V3RecommendResponse,
+  V3WriteChapterResponse,
 } from '@yujee/contracts';
 import type {
   JudgeLayoutRequest,
@@ -21,6 +22,7 @@ import type {
   V3FinalizeRequest,
   V3InternalAgentAckRequest,
   V3RecommendRequest,
+  V3WriteChapterRequest,
 } from '@yujee/contracts';
 
 export type AgentPhotoInput = {
@@ -120,6 +122,12 @@ export const agentClient = {
 
   async editChatV3(payload: V3EditChatRequest): Promise<V3EditChatResponse> {
     return postSyncV3('/v3/edit-chat', payload, V3EditChatResponse, {
+      albumId: payload.albumId,
+    });
+  },
+
+  async writeChapterV3(payload: V3WriteChapterRequest): Promise<V3WriteChapterResponse> {
+    return postSyncV3('/v3/write-chapter', payload, V3WriteChapterResponse, {
       albumId: payload.albumId,
     });
   },

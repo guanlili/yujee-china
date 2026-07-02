@@ -167,6 +167,16 @@ export function postChapterContexts(
   return postJson(`/api/v3/albums/${albumId}/chapter-context`, { contexts });
 }
 
+// 采访完一次性写满该章文案(§流程重构)。存完 chapterContext 后调,Web 从 draft 切本章转发
+// Agent 强制写,回 pagesTexts(前端 applyChapterWrite 落地到画板)。只发 chapterId+language。
+export function postWriteChapter(
+  albumId: string,
+  chapterId: string,
+  language: 'zh' | 'en',
+): Promise<{ pagesTexts: { pageIndex: number; texts: Record<string, string> }[] }> {
+  return postJson(`/api/v3/albums/${albumId}/write-chapter`, { language, chapterId });
+}
+
 // 采访要用「章→photoIds」把每章对回 clusterId → 取预填。复用只读的章节摘要端点
 // (getChapterSummary),它返回派生摘要(label/role/photoIds),不含可编辑树(不变式 12)。
 export interface ChapterSummaryEntry {
@@ -174,6 +184,8 @@ export interface ChapterSummaryEntry {
   label: string;
   role: string;
   photoIds: string[];
+  // 采访门槛:该章的 chapterContext(采访答案拼出的章节背景),非空 ⇔ 已采访过。
+  chapterContext: string;
 }
 export function fetchChapterSummary(albumId: string): Promise<{ chapters: ChapterSummaryEntry[] }> {
   return getJson(`/api/v1/albums/${albumId}/chapters`);

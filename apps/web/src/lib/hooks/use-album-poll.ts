@@ -10,7 +10,7 @@ import {
   submitSelectLayoutV3,
   UnauthorizedError,
 } from '@/lib/generation/client';
-import { albumInterview, albumRecipe } from '@/lib/generation/draft';
+import { albumRecipe } from '@/lib/generation/draft';
 
 // Album is the source of truth (docs/web/api.md §3.4): we poll GET
 // /api/v1/albums/{uuid} by the addressable, ownership-checked uuid — never a
@@ -18,7 +18,6 @@ import { albumInterview, albumRecipe } from '@/lib/generation/draft';
 export type AlbumPollPhase =
   | 'loading' // first fetch in flight, nothing to show yet
   | 'running' // album AGENT_RUNNING — keep polling
-  | 'interview' // analyze done (layout/50) but 内容采集(采访)未处理 — 弹采访, 暂停轮询
   | 'ready' // EDITING / COMPLETED — render the editor
   | 'failed' // album FAILED — show the real error
   | 'unauthorized' // 401 — session gone, send to sign-in
@@ -62,9 +61,7 @@ function isTerminal(phase: AlbumPollPhase): boolean {
   return phase !== 'loading' && phase !== 'running';
 }
 
-// `reloadKey`:bump 它可强制重启一轮全新轮询(采访完成后用 —— interview 是 terminal
-// phase,轮询已 settle 停住,采访放行后需要重跑一轮见到 isDone=true 去触发 select-layout)。
-export function useAlbumPoll(uuid: string, reloadKey = 0): AlbumPollState {
+export function useAlbumPoll(uuid: string): AlbumPollState {
   const [state, setState] = useState<AlbumPollState>(INITIAL);
 
   useEffect(() => {
@@ -164,12 +161,8 @@ export function useAlbumPoll(uuid: string, reloadKey = 0): AlbumPollState {
               error: 'Original photos are no longer available on this device.',
             });
           }
-          // 内容采集闸(§2.1a):analyze 完成、排版前,先弹一次采访。采访未处理 => 停在
-          // interview phase(暂停轮询),page 渲染采访对话框;采访完成/跳过后置标记并重启
-          // 轮询,下一拍见到 isDone=true 直接放行到下面的 select-layout。采访可选,不阻塞。
-          if (!albumInterview.isDone(uuid)) {
-            return apply({ detail, generation, phase: 'interview', error: null });
-          }
+          // analyze 完成(progress=50)→ 直接触发 select-layout。内容采集(采访)已移进编辑器
+          // 对话面板(进章节引导时逐章问),不再在排版前拦一道独立弹窗。
           if (!submittedLayoutRequests.has(recipe.requestId) && !layoutSubmitInFlight) {
             layoutSubmitInFlight = true;
             try {
@@ -240,7 +233,7 @@ export function useAlbumPoll(uuid: string, reloadKey = 0): AlbumPollState {
       stopped = true;
       stop();
     };
-  }, [uuid, reloadKey]);
+  }, [uuid]);
 
   return state;
 }

@@ -476,6 +476,42 @@
 .editor-port .cc-view:hover{ gap:7px; }
 .editor-port .cc-view svg{ width:14px; height:14px; }
 
+/* ─── Chapter photos overlay ("查看详细" thumbnail grid) ─── */
+.editor-port .chapter-photos-overlay{
+  position:fixed; inset:0; z-index:60;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,0.28); backdrop-filter:blur(3px);
+  padding:24px;
+}
+.editor-port .cpo-sheet{
+  position:relative; width:min(92vw,560px); max-height:80vh; overflow:auto;
+  background:var(--surface); border-radius:16px; padding:20px;
+  box-shadow:0 8px 40px rgba(0,0,0,0.18);
+}
+.editor-port .cpo-close{
+  position:absolute; top:10px; right:12px; z-index:1;
+  width:28px; height:28px; border:none; border-radius:9999px; cursor:pointer;
+  background:var(--bg); color:var(--fg-2); font-size:14px; line-height:1;
+  display:inline-flex; align-items:center; justify-content:center;
+}
+.editor-port .cpo-close:hover{ background:var(--border-soft); }
+.editor-port .cpo-grid{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px;
+}
+.editor-port .cpo-thumb{
+  aspect-ratio:1; border-radius:10px; background:var(--bg);
+  background-size:cover; background-position:center;
+}
+
+/* Interview "skip" affordance in the conversation flow */
+.editor-port .interview-skip{
+  font-size:12px; font-weight:600; color:var(--muted);
+  background:transparent; border:none; cursor:pointer;
+  padding:2px 2px; text-decoration:underline; text-underline-offset:2px;
+}
+.editor-port .interview-skip:hover:not(:disabled){ color:var(--fg-2); }
+.editor-port .interview-skip:disabled{ opacity:0.4; cursor:default; }
+
 /* Desktop: flash the book when "view chapter" is clicked */
 .editor-port .book-flash{ animation: ep-bookFlash 0.7s var(--ease); }
 @keyframes ep-bookFlash{
