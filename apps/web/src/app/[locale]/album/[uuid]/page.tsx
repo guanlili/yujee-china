@@ -65,11 +65,17 @@ export default function AlbumPage({
   // (拆了自动排版,progress 停在 50 等收集)。此时进 authoring 走「收集故事」面板 —— 画板显示
   // 排版中骨架(building 观感由 EditorPort authoring 态处理),左边对话面板逐章收集。收集完
   // triggerSelectLayout 触发排版,progress 才继续走。detail 到手才切(需 draftJson/章节)。
+  // 收集故事 + 排版中都走 authoring(同一面板),不跳 building 重新 loading。
+  // analyze 完成 → stage='layout'、layoutJson 还没 finalize(==null):
+  //   · progress=50:等收集(画板照片平铺 + 对话面板收集)
+  //   · progress>50(收集完触发了排版,52→100):排版中 —— 仍留在 authoring 面板,画板/对话
+  //     态由 EditorPort 内部处理(排版中痕迹),排版完 pages 到手时 EditorAuthoring 内部
+  //     重挂 EditorBook(画板层),对话面板不跳、不重新 loading。
+  // 关键:不再让排版中掉进 mode=building(那是独立 loading 页,会跳、丢对话历史)。
   if (
     phase === 'running' &&
     detail &&
     generation?.stage === 'layout' &&
-    generation.progress === 50 &&
     detail.album.layoutJson == null
   ) {
     return <EditorPort detail={detail} locale={locale} mode="authoring" generation={generation} />;

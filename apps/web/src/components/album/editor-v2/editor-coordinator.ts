@@ -1,0 +1,332 @@
+'use client';
+
+/* ════════════════════════════════════════════════════════════════════════════
+   editor-coordinator — the boundary between the (stable) ChatPanel and the
+   (remount-on-layout) EditorBook canvas.
+
+   Rule from architect: STATE STAYS WHERE IT IS MUTATED; only behaviour crosses.
+   EditorBook owns pagesState + every canvas `let`; at the end of its mount effect
+   it populates a `ChatCoordinator` object of closures onto a shared ref
+   (`coordinator.current`). ChatPanel dereferences `coordinator.current.fn` at CALL
+   TIME (never caches it), so when EditorBook remounts and repopulates the
+   coordinator with fresh closures, ChatPanel keeps working transparently.
+
+   The i18n dictionary is module-level so BOTH EditorBook (whose setLang walks the
+   whole shared root) and ChatPanel (which renders its own localizable strings) read
+   the same source. Language switch does a full window navigation, so per-mount
+   locale is constant and ChatPanel can derive t/aT from its locale prop directly.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+import { createContext, type MutableRefObject } from 'react';
+import type { EditorPage } from '../types';
+import type { DraftEditResult } from '@/lib/album/authoring-client';
+import type { V3PageTextsPatch } from '@yujee/contracts';
+import type { LayoutPatchEntry } from '../types';
+
+// What EditorBook applied for a draft-edit act (so ChatPanel can narrate it without
+// owning pagesState). Mirrors the two branches of the old applyDraftAct.
+export type DraftActApplied = {
+  pageWrite?: boolean;
+  imagePos?: { x: number; y: number; scale: number };
+};
+
+// The behaviour EditorBook exposes to ChatPanel. Every function closes over
+// EditorBook's live canvas `let`s. Repopulated wholesale on each EditorBook remount.
+export type ChatCoordinator = {
+  ready: boolean;
+  // ── canvas navigation ──
+  goToChapterById: (chapterId: string) => void;
+  goToPageIndex: (pageIndex: number) => void;
+  // ── canvas mutation (touch pagesState + repaint; return whether anything applied) ──
+  applyChapterWrite: (pagesTexts: V3PageTextsPatch[]) => boolean;
+  applyChapterEdit: (layoutPatch: LayoutPatchEntry[]) => boolean;
+  applyAuthoringPatch: (patch: LayoutPatchEntry[]) => boolean;
+  applyDraftAct: (r: DraftEditResult) => DraftActApplied;
+  // ── reads / helpers ChatPanel needs ──
+  getPagesState: () => EditorPage[];
+  authoringFocusPageIndex: () => number;
+  capturePageRender: (pageIndex: number) => Promise<string>;
+  capturePhotoThumb: (photoId?: string | null) => Promise<string | undefined>;
+  coverOptionHTML: (templateId: string, photoId: string | null) => string;
+  bookPhotoIds: () => string[];
+  imageUrl: (id: string) => string | undefined;
+  // ── UI hooks ──
+  setExportGateUi: (locked: boolean) => void;
+  // ── export ──
+  exportPdf: () => Promise<void>;
+};
+
+// The context carries the ref itself (never null); `.current` is null until
+// EditorBook's mount effect populates it.
+export const ChatCoordinatorContext =
+  createContext<MutableRefObject<ChatCoordinator | null> | null>(null);
+
+// ─── i18n translations (verbatim from the original EditorPort port) ───
+export const chatI18n: Record<string, Record<string, string>> = {
+  zh: {
+    pageTitle: 'Yujee — 编辑你的纪念册',
+    backToProjects: '返回我的项目',
+    albumTitle: '2024 厦门三日游',
+    saved: '已保存',
+    undo: '撤销',
+    redo: '重做',
+    share: '分享',
+    exportPdf: '导出 PDF',
+    exportReady: '太棒了，你的书已经准备好了！',
+    exportFailTitle: '导出遇到了点小麻烦',
+    exportFailBody: '我们试了几次都没能生成你的 PDF，可能是网络不太稳。你的纪念册内容都安全保存着，稍后再点一次「导出 PDF」通常就好了。',
+    exportFailRetry: '再试一次',
+    exportFailClose: '知道了',
+    alertUndo: '撤销上一步操作',
+    alertRedo: '重做已撤销的操作',
+    alertLinkCopied: '链接已复制到剪贴板！',
+    alertExportPdf: 'PDF 导出中…\n\n杂志「2024 厦门三日游」正在生成高清 PDF，完成后将自动下载。',
+    chapters: '章节',
+    newChapter: '新增章节',
+    alertNewChapter: '新增章节 — 请输入章节标题',
+    ch1Title: '海边时光',
+    ch1Desc: '6 张照片 · 沙滩、日出、海浪',
+    ch2Title: '古街探味',
+    ch2Desc: '7 张照片 · 小巷、美食、灯笼',
+    ch3Title: '日落归途',
+    ch3Desc: '4 张照片 · 山路、晚霞、剪影',
+    prevPage: '上一页',
+    nextPage: '下一页',
+    zoomOut: '缩小',
+    zoomIn: '放大',
+    overview: '整本',
+    toggleChapters: '收起 / 展开章节',
+    fullscreen: '全屏预览',
+    aiAvatarChar: '己',
+    chatSubtitle: '和我聊聊这段回忆',
+    chatCtxCh1: '第 1 章',
+    thinkingAnalyzed: '分析了 6 张照片和地点信息',
+    aiMsg1: '我已经为「海边时光」这一章写好了叙事文案。如果你想分享更多记忆，比如那天的天气、和谁同行、当时的心情，我可以把这些融进文字里。',
+    userMsg1: '那天其实下午起风了，我还差点把帽子吹丢，能加进去吗？',
+    thinkingReorg: '重新组织第二段，融入风和帽子的细节',
+    aiMsg2: '好的，我把这个细节融进了第二段。你看看这版：',
+    aiQuote1: '那天午后风忽然大了起来，差点把帽子从你头顶卷走。我们笑着追了几步，又坐回沙滩——海浪一遍又一遍地把脚印抹平，又一遍又一遍地让我们重新走过。',
+    chipAccept: '采纳',
+    chipRewrite: '再写一版',
+    chipEditMyself: '我来改',
+    alertAccepted: '已采纳这个版本！文案已更新到杂志预览中。',
+    alertRewrite: '好的，我重新写一版...',
+    alertEditMyself: '你可以直接编辑上方文案了',
+    userMsg2: '很好。再帮我想个更有诗意的章节名？',
+    thinkingChapterName: '正在构思章节名',
+    aiMsg3: '几个备选，挑一个或告诉我感觉：',
+    chipName1: '浪把时间洗薄了',
+    chipName2: '风从海上来',
+    chipName3: '咸味的下午',
+    chipName4: '那只差点飞走的帽子',
+    alertChapterUpdated: '章节名已更新为「',
+    inputPlaceholder: '输入消息...',
+    send: '发送',
+    thinking: '正在思考',
+    analyzedFeedback: '分析了你的反馈',
+    aiReplyDefault: '收到，我重新写一版给你看看…',
+    awaitUser: '在听，随时和我说～',
+    justNow: '刚刚',
+    thinkingComplete: '构思了 4 个章节名方案',
+    railChapters: '章节',
+    addChapter: '新增章节',
+    addPhoto: '添加图片',
+    detailChapters: '详细章节',
+    balLow: '余额不足',
+    balDesc: '当前余额不足以生成新章节，充值后即可继续创作',
+    balRecharge: '去充值',
+    bpLead: '哎呀，积分不够啦，充点积分继续生成你的纪念册～',
+    bpTitle: '购买积分',
+    bpSub: '<b>1 积分</b>，可处理一批照片',
+    bpBuy: '去购买',
+    editingNow: '正在编辑',
+    chapterWord: '第',
+    photosWord: '张照片',
+    viewChapter: '查看章节',
+    viewLayout: '查看排版',
+    viewDetails: '查看详细',
+    interviewSkip: '跳过',
+    interviewClose: '关闭',
+    justEdited: '刚刚编辑',
+    nowEditing: '正在编辑',
+    chaptersLabel: '章节',
+    collapseChapters: '收起章节',
+    chatPanel: '对话',
+    collapseChat: '折叠对话',
+    expandChat: '展开对话',
+    modalTitle: '选择照片',
+    modalSub: '挑选这一章要用的照片，AI 会据此排版并撰写故事。',
+    modalUpload: '上传照片',
+    modalSelected: '已选',
+    modalCancel: '取消',
+    modalCreate: '创建章节',
+    alertUploadStub: '上传照片 — 选择本地图片（演示占位）',
+    stateLoading: '加载',
+    stateTheme: '确定主题',
+    stateStory: '章节故事',
+    loadingNewChapter: '正在创建新章节…',
+    themeThinking: '分析了这 {n} 张照片的场景与情绪',
+    themeAsk: '我从这组照片里看到几个可能的主题，你想用哪一个？',
+    themeOpt1: '海边漫步',
+    themeOpt2: '城市夜色',
+    themeOpt3: '山间清晨',
+    themeConfirmed: '好的，就用「{theme}」作为这一章的主题',
+    storyStart: '现在我们来聊聊这一章的故事吧——那天发生了什么？和谁一起？当时的心情是怎样的？',
+    newChapterMeta: '新章节 · {n} 张照片',
+    newChapterNarrative: '这一章的故事还没写。和右侧的 Yujee AI 聊聊那天的细节，我就把它写成文字。',
+    ch1TitleBook: '海边时光',
+    ch1Meta: '2024.04.06 · 厦门 · 6 张照片',
+    ch1Narrative: '那天的<span class="hl">风很轻</span>，沙子是温热的。我们沿着环岛路一直走，海浪一遍又一遍地把脚印抹平，又一遍又一遍地让我们重新走过。你说想看一次完整的潮起潮落，于是我们坐了整个下午，看远处的船像一只被慢慢拉远的风筝。后来才知道，<span class="hl">那种叫不出名字的安静</span>，就是旅行最珍贵的部分。',
+    ch1PhotoCap: '环岛路 · 上午十点',
+    ch1PageNum: '02 · 海边时光',
+    ch1Footer: '厦门 · 鼓浪屿',
+    ch1CtxTag: '第 1 章',
+    ch2TitleBook: '古街探味',
+    ch2Meta: '2024.04.07 · 中山路 · 7 张照片',
+    ch2Narrative: '老巷子里有<span class="hl">沙茶面的烟火气</span>，墙根贴着早褪色的招牌。卖花生汤的阿姨说，她在这条街做了三十二年了，她记得每一个常客的口味。我们点了一碗最老派的，她笑着多舀了一勺。<span class="hl">所谓人情味</span>，大概就是这样的一勺。',
+    ch2PhotoCap: '中山路 · 黄昏',
+    ch2PageNum: '08 · 古街探味',
+    ch2Footer: '厦门 · 中山路',
+    ch2CtxTag: '第 2 章',
+    ch3TitleBook: '日落归途',
+    ch3Meta: '2024.04.08 · 演武大桥 · 4 张照片',
+    ch3Narrative: '回程的车上，<span class="hl">夕阳把云烧成橘子味</span>。你靠在窗边睡着了，我没忍心叫你。高铁穿过一段又一段海岸，每一次海面被切开，光就跟着碎一次。我想，这趟旅行最完整的画面，<span class="hl">大概不在相机里</span>，在你睡着时窗外那片橘色里。',
+    ch3PhotoCap: '演武大桥 · 17:42',
+    ch3PageNum: '14 · 日落归途',
+    ch3Footer: '厦门 · 演武大桥',
+    ch3CtxTag: '第 3 章',
+  },
+  en: {
+    pageTitle: 'Yujee — Edit Your Album',
+    backToProjects: 'Back to projects',
+    albumTitle: '2024 Xiamen 3-Day Trip',
+    saved: 'Saved',
+    undo: 'Undo',
+    redo: 'Redo',
+    share: 'Share',
+    exportPdf: 'Export PDF',
+    exportReady: 'Wonderful — your book is ready!',
+    exportFailTitle: 'Export hit a small snag',
+    exportFailBody: "We tried a few times but couldn't generate your PDF — it may be a shaky connection. Your memoir is saved safe and sound. Tapping “Export PDF” again in a moment usually does the trick.",
+    exportFailRetry: 'Try again',
+    exportFailClose: 'Got it',
+    alertUndo: 'Undo last action',
+    alertRedo: 'Redo undone action',
+    alertLinkCopied: 'Link copied to clipboard!',
+    alertExportPdf: 'Exporting PDF...\n\nGenerating high-resolution PDF for "2024 Xiamen 3-Day Trip". It will download automatically when ready.',
+    chapters: 'Chapters',
+    newChapter: '+ New chapter',
+    alertNewChapter: 'New chapter — Enter a chapter title',
+    ch1Title: 'By the Sea',
+    ch1Desc: '6 photos · beach, sunrise, waves',
+    ch2Title: 'Old Town Flavors',
+    ch2Desc: '7 photos · alleys, food, lanterns',
+    ch3Title: 'Sunset Return',
+    ch3Desc: '4 photos · mountain road, sunset, silhouettes',
+    prevPage: 'Previous page',
+    nextPage: 'Next page',
+    zoomOut: 'Zoom out',
+    zoomIn: 'Zoom in',
+    overview: 'All',
+    toggleChapters: 'Collapse / expand chapters',
+    fullscreen: 'Fullscreen preview',
+    aiAvatarChar: 'Y',
+    chatSubtitle: 'Tell me about this memory',
+    chatCtxCh1: 'Ch. 1',
+    thinkingAnalyzed: 'Analyzed 6 photos and location info',
+    aiMsg1: 'I\'ve written the narrative for the "By the Sea" chapter. If you\'d like to share more memories — the weather that day, who you were with, how you felt — I can weave those details into the text.',
+    userMsg1: 'Actually it got windy that afternoon and I almost lost my hat — can you add that?',
+    thinkingReorg: 'Reorganizing paragraph two, adding wind and hat details',
+    aiMsg2: 'Done — I wove that detail into the second paragraph. Take a look:',
+    aiQuote1: 'That afternoon the wind picked up suddenly, nearly snatching the hat right off your head. We laughed and chased it a few steps, then sat back down on the sand — the waves erasing our footprints over and over, and over and over we walked them again.',
+    chipAccept: 'Accept',
+    chipRewrite: 'Rewrite',
+    chipEditMyself: 'Edit myself',
+    alertAccepted: 'Accepted! The copy has been updated in the magazine preview.',
+    alertRewrite: 'OK, let me rewrite a new version...',
+    alertEditMyself: 'You can now edit the text above directly',
+    userMsg2: 'Great. Can you come up with a more poetic chapter title?',
+    thinkingChapterName: 'Brainstorming chapter names',
+    aiMsg3: 'Here are some options — pick one or tell me what feels right:',
+    chipName1: 'Waves Thinning Time',
+    chipName2: 'Wind from the Sea',
+    chipName3: 'A Salty Afternoon',
+    chipName4: 'The Hat That Almost Flew Away',
+    alertChapterUpdated: 'Chapter title updated to "',
+    inputPlaceholder: 'Type a message...',
+    send: 'Send',
+    thinking: 'Thinking',
+    analyzedFeedback: 'Analyzed your feedback',
+    aiReplyDefault: 'Got it, let me rewrite a new version for you...',
+    awaitUser: "I'm listening — talk to me anytime",
+    justNow: 'Just now',
+    thinkingComplete: 'Brainstormed 4 chapter name ideas',
+    railChapters: 'Chapters',
+    addChapter: 'New chapter',
+    addPhoto: 'Add photos',
+    detailChapters: 'Chapter details',
+    balLow: 'Balance running low',
+    balDesc: 'Not enough balance to generate a new chapter — top up to keep creating',
+    balRecharge: 'Top up',
+    bpLead: 'Oops, you\'re running low on credits. Add a few more to keep creating your album.',
+    bpTitle: 'Buy credits',
+    bpSub: '<b>1 credit</b> covers one batch of photos',
+    bpBuy: 'Buy credits',
+    editingNow: 'Editing',
+    chapterWord: 'Ch.',
+    photosWord: 'photos',
+    viewChapter: 'View chapter',
+    viewLayout: 'View layout',
+    viewDetails: 'View details',
+    interviewSkip: 'Skip',
+    interviewClose: 'Close',
+    justEdited: 'Just edited',
+    nowEditing: 'Editing',
+    chaptersLabel: 'Chapters',
+    collapseChapters: 'Collapse chapters',
+    chatPanel: 'Chat',
+    collapseChat: 'Collapse',
+    expandChat: 'Chat',
+    modalTitle: 'Select photos',
+    modalSub: 'Pick the photos for this chapter — AI will lay them out and write the story.',
+    modalUpload: 'Upload',
+    modalSelected: 'Selected',
+    modalCancel: 'Cancel',
+    modalCreate: 'Create chapter',
+    alertUploadStub: 'Upload — choose local images (demo placeholder)',
+    stateLoading: 'Loading',
+    stateTheme: 'Theme',
+    stateStory: 'Story',
+    loadingNewChapter: 'Creating new chapter…',
+    themeThinking: 'Analyzed the scenes and mood across these {n} photos',
+    themeAsk: 'I see a few possible themes in these photos — which one would you like?',
+    themeOpt1: 'Seaside Walk',
+    themeOpt2: 'City Nights',
+    themeOpt3: 'Mountain Morning',
+    themeConfirmed: 'Great — using "{theme}" as this chapter\'s theme',
+    storyStart: 'Now let\'s talk about this chapter\'s story — what happened that day? Who were you with? How did it feel?',
+    newChapterMeta: 'New chapter · {n} photos',
+    newChapterNarrative: 'This chapter\'s story isn\'t written yet. Tell Yujee AI on the right about that day, and I\'ll turn it into words.',
+    ch1TitleBook: 'By the Sea',
+    ch1Meta: '2024.04.06 · Xiamen · 6 photos',
+    ch1Narrative: 'The <span class="hl">breeze was gentle</span> that day, the sand warm underfoot. We walked along the coastal road as waves erased our footprints over and over, and over and over we walked them again. You said you wanted to watch a full tide come and go, so we sat the whole afternoon, watching the boats in the distance drift like kites slowly pulled away. Only later did we realize that <span class="hl">the nameless quiet</span> was the most precious part of any journey.',
+    ch1PhotoCap: 'Coastal Road · 10 AM',
+    ch1PageNum: '02 · By the Sea',
+    ch1Footer: 'Xiamen · Gulangyu',
+    ch1CtxTag: 'Ch. 1',
+    ch2TitleBook: 'Old Town Flavors',
+    ch2Meta: '2024.04.07 · Zhongshan Rd · 7 photos',
+    ch2Narrative: 'The old alleys smelled of <span class="hl">satay noodle smoke</span>, faded signs clinging to the walls. The peanut-soup auntie said she\'d been on this street for thirty-two years; she remembered every regular\'s taste. We ordered the most old-school bowl, and she smiled, ladling an extra scoop. <span class="hl">The flavor of kindness</span> — that\'s roughly what one extra scoop tastes like.',
+    ch2PhotoCap: 'Zhongshan Rd · Dusk',
+    ch2PageNum: '08 · Old Town Flavors',
+    ch2Footer: 'Xiamen · Zhongshan Rd',
+    ch2CtxTag: 'Ch. 2',
+    ch3TitleBook: 'Sunset Return',
+    ch3Meta: '2024.04.08 · Yanwu Bridge · 4 photos',
+    ch3Narrative: 'On the ride back, the <span class="hl">sunset burned the clouds tangerine</span>. You fell asleep against the window; I didn\'t have the heart to wake you. The high-speed train cut through stretch after stretch of coast, and every time the sea was sliced open, the light shattered with it. I think the most complete picture from this trip <span class="hl">isn\'t in any camera</span> — it\'s in that tangerine glow outside the window while you slept.',
+    ch3PhotoCap: 'Yanwu Bridge · 17:42',
+    ch3PageNum: '14 · Sunset Return',
+    ch3Footer: 'Xiamen · Yanwu Bridge',
+    ch3CtxTag: 'Ch. 3',
+  },
+};
