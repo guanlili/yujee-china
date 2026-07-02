@@ -184,7 +184,10 @@ export const jobService = {
         progress: 50,
         stage: 'layout',
         usage: (usage as Record<string, unknown> | null) ?? null,
-        startedAt: new Date(),
+        // 时序反转:analyze 完成后 job 停在 RUNNING 等用户「收集故事」,这段不推进进度。清掉
+        // startedAt,让 zombie-sweeper(按 startedAt 判 10min 超时)**不把等收集的 job 当死 job**
+        // 扫成 FAILED。收集完 submitSelectLayoutV3 会重设 startedAt(排版才真正开始计时)。
+        startedAt: null,
       });
       if (!won) return;
 
