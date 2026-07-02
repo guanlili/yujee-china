@@ -114,7 +114,8 @@ def test_visual_subsplit_marks_single_outliers_as_unplaced(monkeypatch) -> None:
     assert result.unplacedPhotoIds == ["odd"]
 
 
-def test_time_groups_with_ten_or_fewer_photos_skip_clip(monkeypatch) -> None:
+def test_small_time_groups_still_run_clip_per_cell(monkeypatch) -> None:
+    # 新默认:每个时间/地点簇(≥3 张)都进 CLIP+颜色,小簇不再整簇跳过。
     photos = [
         *[
             _photo(f"early{i}", taken_at=f"2024-03-01T10:{i:02d}:00Z")
@@ -125,14 +126,21 @@ def test_time_groups_with_ten_or_fewer_photos_skip_clip(monkeypatch) -> None:
             for i in range(10)
         ],
     ]
+    seen_sizes: list[int] = []
 
-    def fail_clip_embeddings(images):
-        raise AssertionError("CLIP should not run for time groups with <=10 photos")
+    def fake_clip_embeddings(images):
+        seen_sizes.append(len(images))
+        return [[1.0, 0.0] for _ in images]
 
-    monkeypatch.setattr(features, "clip_embeddings", fail_clip_embeddings)
+    monkeypatch.setattr(features, "clip_embeddings", fake_clip_embeddings)
+    monkeypatch.setattr(features, "pix_feat", lambda image: [0.0])
 
-    result = group_photos(photos, GroupingParams(timeGapDays=7, subsplitMin=2))
+    # tauIn 足够大 → 每个簇内视觉高度相似,不切散,仍是两章。
+    result = group_photos(
+        photos, GroupingParams(timeGapDays=7, alphaIn=1.0, tauIn=0.86)
+    )
 
+    assert sorted(seen_sizes) == [6, 10]
     assert _chapter_ids(result) == [
         [f"early{i}" for i in range(6)],
         [f"late{i}" for i in range(10)],
@@ -218,6 +226,62 @@ def test_large_time_groups_process_visual_features_concurrently(monkeypatch) -> 
         [f"day1_{i}" for i in range(11)],
         [f"day2_{i}" for i in range(11)],
     ]
+
+
+def test_unbounded_concurrency_runs_all_cells_at_once(monkeypatch) -> None:
+    # visualConcurrency<=0(默认)时,有几个时间簇就并发跑几个 CLIP,不封顶。
+    days = ["2024-03-01", "2024-03-12", "2024-03-23"]
+    photos = [
+        _photo(f"day{d}_{i}", taken_at=f"{day}T10:{i:02d}:00Z")
+        for d, day in enumerate(days)
+        for i in range(3)
+    ]
+    lock = threading.Lock()
+    active = 0
+    max_active = 0
+
+    def fake_clip_embeddings(images):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.05)
+        with lock:
+            active -= 1
+        return [[1.0, 0.0] for _ in images]
+
+    monkeypatch.setattr(features, "clip_embeddings", fake_clip_embeddings)
+    monkeypatch.setattr(features, "pix_feat", lambda image: [0.0])
+
+    group_photos(
+        photos,
+        GroupingParams(timeGapDays=7, alphaIn=1.0, tauIn=0.35, visualConcurrency=0),
+    )
+
+    assert max_active == 3
+
+
+def test_small_time_cell_still_enters_clip(monkeypatch) -> None:
+    # 默认门槛 clipMinPhotos=3:3 张的时间簇也进 CLIP+颜色,不再整簇跳过。
+    photos = [
+        _photo("warm1", color=(220, 40, 35), taken_at="2024-03-01T10:00:00Z"),
+        _photo("warm2", color=(225, 45, 38), taken_at="2024-03-01T10:01:00Z"),
+        _photo("cool1", color=(30, 80, 220), taken_at="2024-03-01T10:02:00Z"),
+    ]
+    seen: list[int] = []
+
+    def fake_clip_embeddings(images):
+        seen.append(len(images))
+        return [[1.0, 0.0, 0.0], [0.98, 0.02, 0.0], [0.0, 1.0, 0.0]]
+
+    monkeypatch.setattr(features, "clip_embeddings", fake_clip_embeddings)
+
+    group_photos(
+        photos,
+        GroupingParams(timeGapDays=7, alphaIn=1.0, tauIn=0.35),
+    )
+
+    assert seen == [3]
 
 
 def test_clip_embeddings_can_use_remote_open_clip_service(monkeypatch) -> None:

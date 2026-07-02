@@ -64,7 +64,18 @@ def test_grouping_never_returns_zero_chapters():
     assert result.unplacedPhotoIds == []
 
 
-def test_grouping_has_full_coverage_no_duplicates():
+def _stub_clip_features(monkeypatch) -> None:
+    # 默认已开启每簇 CLIP+颜色子分组;本地无 torch,用同质 stub 让子分组不切散。
+    from src.chaptering import features
+
+    monkeypatch.setattr(
+        features, "clip_embeddings", lambda images: [[1.0, 0.0] for _ in images]
+    )
+    monkeypatch.setattr(features, "pix_feat", lambda image: [0.0])
+
+
+def test_grouping_has_full_coverage_no_duplicates(monkeypatch):
+    _stub_clip_features(monkeypatch)
     photos = [
         _photo("p1", cluster_id="c1", taken_at="2024-01-01T10:00:00Z"),
         _photo("p2", cluster_id="c1", taken_at="2024-01-01T10:01:00Z"),
@@ -77,7 +88,8 @@ def test_grouping_has_full_coverage_no_duplicates():
     _assert_partition(result, {"p1", "p2", "p3", "p4"})
 
 
-def test_grouping_keeps_cluster_atomic():
+def test_grouping_keeps_cluster_atomic(monkeypatch):
+    _stub_clip_features(monkeypatch)
     photos = [
         _photo("p1", cluster_id="c1"),
         _photo("p2", cluster_id="c1"),

@@ -39,11 +39,11 @@ class GroupingParams:
     alphaOut: float = 0.45
     tauOut: float = 0.72
     miscMin: int = 2
-    subsplitMin: int = 5
-    # 时间维度拆出的小章节 <=10 张时不进 CLIP,直接进入后续章节描述。
-    clipMinPhotos: int = 11
-    # 多个时间组可并发做视觉子分组,但默认不把单台 CLIP worker 打满。
-    visualConcurrency: int = 3
+    # 每个时间/地点簇都进 CLIP+颜色子分组:≥3 张即拆,2 张的簇保持一起。
+    subsplitMin: int = 3
+    clipMinPhotos: int = 3
+    # 0/None = 有几个簇就并发跑几个(不封顶);>0 时作为并发上限。
+    visualConcurrency: int = 0
 
     @classmethod
     def from_input(cls, value: Any) -> "GroupingParams":

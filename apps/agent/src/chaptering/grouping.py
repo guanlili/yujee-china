@@ -1,6 +1,8 @@
 """Stage1 确定性照片分组。
 
-先按时间和可选地点形成大段,再用 CLIP embedding + 像素颜色特征对大段做视觉子分组。
+先按时间和可选地点形成大段,再对**每个**时间/地点簇(≥3 张)用 CLIP embedding +
+像素颜色特征做视觉子分组;各簇的 CLIP 并发异步跑(visualConcurrency<=0 不封顶)。
+子分组切出的单张离群照片进 unplaced,交给后续 AI 分章补完。
 """
 
 from __future__ import annotations
@@ -65,8 +67,13 @@ def group_photos(
         )
         for cell in chapter_cells
     ]
-    if len(jobs) > 1 and options.visualConcurrency > 1:
-        max_workers = min(options.visualConcurrency, len(jobs))
+    if len(jobs) > 1:
+        # visualConcurrency <= 0 表示不封顶:有几个时间/地点簇就同时并发跑几个 CLIP。
+        max_workers = (
+            len(jobs)
+            if options.visualConcurrency <= 0
+            else min(options.visualConcurrency, len(jobs))
+        )
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             grouped_cells = list(
                 executor.map(
