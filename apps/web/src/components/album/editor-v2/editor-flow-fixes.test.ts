@@ -12,7 +12,15 @@ import { test } from 'node:test';
 // branch and its real behavior is verified in spreads.test.ts, not here.
 
 const here = dirname(fileURLToPath(import.meta.url));
+// Chat/interview logic moved out of EditorPort.tsx into ChatPanel.tsx and the
+// canvas↔chat bridge editor-coordinator.ts. These structural guards don't care
+// which of the three a symbol lives in, so a request for the editor source returns
+// the three merged; assertions still hit and doesNotMatch guards hold across all three.
+const EDITOR_SOURCES = ['EditorPort.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts'];
 function source(file: string): string {
+  if (file === 'EditorPort.tsx') {
+    return EDITOR_SOURCES.map((f) => readFileSync(join(here, f), 'utf8')).join('\n\n');
+  }
   return readFileSync(join(here, file), 'utf8');
 }
 
@@ -127,7 +135,9 @@ test('⑧: the closing chat card carries an export entry point that runs the exi
   const card = /function appendExportReadyCard\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(card, 'appendExportReadyCard() body must be parseable');
   // The closing card must render an export button wired to the existing exportPdf() path.
-  assert.match(card![0], /exportPdf\(\)/, 'the closing card export button must call exportPdf()');
+  // Post-refactor the chat panel reaches the canvas export via the coordinator bridge
+  // (co()?.exportPdf?.()), so accept either the bare call or the coordinator-routed one.
+  assert.match(card![0], /exportPdf(?:\?\.)?\(\)/, 'the closing card export button must call exportPdf()');
 });
 
 test('⑧: the export-ready card is shown once when the export gate opens (guarded against repeats)', () => {

@@ -18,7 +18,13 @@ import { test } from 'node:test';
 //   • the cover-card 应用 sends template ids and 跳过 sends an empty selection.
 
 const here = dirname(fileURLToPath(import.meta.url));
-const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+// The theme/cover-card wiring moved out of EditorPort.tsx into ChatPanel.tsx
+// (dialogue) and editor-coordinator.ts (the canvas↔chat bridge). These structural
+// guards don't care which of the three a symbol lives in, so `src` is the three
+// merged; the doesNotMatch guards still hold across all three.
+const src = ['EditorPort.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts']
+  .map((f) => readFileSync(join(here, f), 'utf8'))
+  .join('\n\n');
 
 test('runRecommendTheme renders the palette-card after the reply', () => {
   const fn = /async function runRecommendTheme\([\s\S]*?\n {4}\}/.exec(src);
@@ -90,7 +96,12 @@ test('cover-card 应用 sends current template ids; 跳过 sends an empty select
 });
 
 test('skipCover action sends an empty cover selection (no auto design)', () => {
-  assert.match(src, /skipCover: \(\) => \{ void runCover\(\{\}\); \}/);
+  // Pre-refactor this was a programmatic `skipCover: () => { void runCover({}); }`
+  // action-map entry (no DOM binding — "kept for callers that bypass the picker").
+  // The ChatPanel extraction dropped that dead action-map wrapper; the skip INTENT
+  // survives in the cover card itself: when no cover/ending page resolves the card
+  // short-circuits to an empty selection, `void runCover({})`. Lock that path instead.
+  assert.match(src, /void runCover\(\{\}\);/);
 });
 
 test('cover-stage free text routes to the cover turn with cover history', () => {
@@ -139,7 +150,9 @@ test('appendCoverSummary is a READ-ONLY recap (preview or 跳过, no API call)',
   assert.match(body, /cover-card is-recap/);
   // cover/ending resolved by skeleton kind (same as the live card), previewed read-only.
   assert.match(body, /kindByPageIndex\.get\(p\.pageIndex\) === 'cover'/);
-  assert.match(body, /coverOptionHTML\(page\.templateId/);
+  // Post-refactor the option HTML is rendered via the coordinator bridge
+  // (co()?.coverOptionHTML?.(…)), so accept the optional-chained coordinator call.
+  assert.match(body, /coverOptionHTML(?:\?\.)?\(page\.templateId/);
   // 已跳过 when neither cover nor ending page exists.
   assert.match(body, /已跳过封面设计/);
   // read-only: never posts a cover selection.

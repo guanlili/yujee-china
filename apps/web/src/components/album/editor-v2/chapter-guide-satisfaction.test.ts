@@ -15,7 +15,16 @@ import { test } from 'node:test';
 //      button + its post-mount binding effect are gone.
 
 const here = dirname(fileURLToPath(import.meta.url));
+// The chat/interview logic was extracted out of EditorPort.tsx into ChatPanel.tsx
+// (dialogue/interview) and editor-coordinator.ts (the canvas↔chat bridge). These
+// structural guards don't care which of the three files a symbol lives in, so a
+// request for the editor source returns the three merged — the assertions still
+// hit, and doesNotMatch guards still hold across all three.
+const EDITOR_SOURCES = ['EditorPort.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts'];
 function source(file: string): string {
+  if (file === 'EditorPort.tsx') {
+    return EDITOR_SOURCES.map((f) => readFileSync(join(here, f), 'utf8')).join('\n\n');
+  }
   return readFileSync(join(here, file), 'utf8');
 }
 

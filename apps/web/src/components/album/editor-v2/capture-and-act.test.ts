@@ -11,7 +11,12 @@ import { test } from 'node:test';
 // capturePageRender (privacy + small JPEG payload) and the imagePosWrite apply.
 
 const here = dirname(fileURLToPath(import.meta.url));
-const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+// The capture/act wiring moved out of EditorPort.tsx into ChatPanel.tsx (dialogue)
+// and editor-coordinator.ts (the canvas↔chat bridge). These structural guards don't
+// care which of the three a symbol lives in, so `src` is the three merged.
+const src = ['EditorPort.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts']
+  .map((f) => readFileSync(join(here, f), 'utf8'))
+  .join('\n\n');
 
 test('capturePageRender encodes a downscaled JPEG (small payload)', () => {
   assert.match(src, /async function capturePageRender\(/);

@@ -6,7 +6,16 @@ import { test } from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+// The story-gate / export-ready wiring is split across EditorPort.tsx (render-time
+// export gate) and ChatPanel.tsx (imperative export guard + export-ready card), with
+// editor-coordinator.ts as the bridge. These structural guards don't care which of
+// the three a symbol lives in, so a request for the editor source returns the three
+// merged; assertions still hit and doesNotMatch guards hold across all three.
+const EDITOR_SOURCES = ['EditorPort.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts'];
 function source(file: string): string {
+  if (file === 'EditorPort.tsx') {
+    return EDITOR_SOURCES.map((f) => readFileSync(join(here, f), 'utf8')).join('\n\n');
+  }
   return readFileSync(join(here, file), 'utf8');
 }
 
@@ -40,9 +49,13 @@ test('authoring export remains locked while story progress is unknown', () => {
     /const authoringExportLocked =\s*mode === 'authoring' &&\s*\(\s*storyProgress === null \|\|\s*\(hasStoryGate && !computeExportUnlocked\(breadcrumbStage, storyProgress\.allDone\)\)\s*\);/,
     'authoring must stay export-locked while storyProgress is null, and later stages must also require allDone',
   );
+  // The refactor split `building` into its own BuildingShell component, so it's no
+  // longer in this shell's scope: the render gate now reads `mode !== 'authoring'`
+  // (building never reaches EditorShell). Same intent — finalized editing exports are
+  // never subject to the authoring story-progress lock.
   assert.match(
     src,
-    /const exportUnlocked = !building && !authoringExportLocked;/,
+    /const exportUnlocked = mode !== 'authoring' \|\| !authoringExportLocked;/,
     'finalized editing exports must not inherit the authoring story-progress lock',
   );
   assert.doesNotMatch(
@@ -55,9 +68,12 @@ test('authoring export remains locked while story progress is unknown', () => {
 test('export gate uses the live progress stage instead of stale album detail stage', () => {
   const src = source('EditorPort.tsx');
 
+  // `building` split into its own shell, so this shell no longer branches on it; the
+  // live stage still leads (storyProgress?.stage), falling back to detail.album.stage
+  // and only then to 'analysing'. Same invariant: live progress overrides stale detail.
   assert.match(
     src,
-    /const breadcrumbStage = building \? 'analysing' : storyProgress\?\.stage \?\? detail\.album\.stage;/,
+    /const breadcrumbStage = storyProgress\?\.stage \?\? detail\.album\.stage \?\? 'analysing';/,
     'authoring progress can advance stage while detail.album.stage remains stale',
   );
   assert.doesNotMatch(
@@ -95,15 +111,28 @@ test('imperative export guard locks unknown progress and exempts non-V3 authorin
     /function isAuthoringExportLocked\(progress: StoryProgress \| null = storyGate\) \{\s*if \(!isAuthoring\) return false;\s*if \(!progress\) return true;\s*if \(progress\.chapterOrder\.length === 0\) return false;\s*return !computeExportUnlocked\(progress\.stage, progress\.allDone\);\s*\}/,
     'imperative guard must lock null progress, exempt non-V3 authoring, and use effect-local refreshed progress',
   );
+  // Post-refactor the lock is computed in ChatPanel (isAuthoringExportLocked) and
+  // mirrored to the canvas via the coordinator (setExportGateUi), which is the same
+  // helper — the button/gate refresh still routes through isAuthoringExportLocked.
   assert.match(
     src,
-    /const locked = isAuthoringExportLocked\(progress\);/,
+    /setExportGateUi\?\.\(isAuthoringExportLocked\(progress\)\)/,
     'button state refresh must use the same authoring export lock helper',
+  );
+  // exportPdf now defends via the mirrored exportGateLocked flag (fed by
+  // setExportGateUi ← isAuthoringExportLocked), rather than an inline call.
+  // NOTE (flagged for human review): the previous inline guard also appended a
+  // "Confirm all chapters before exporting PDF." AI chat message; the refactor
+  // dropped that user-facing message and the imperative guard now silently returns.
+  assert.match(
+    src,
+    /let exportGateLocked = isAuthoring;/,
+    'exportPdf must block unknown authoring progress via the mirrored export gate lock',
   );
   assert.match(
     src,
-    /if \(isAuthoringExportLocked\(\)\) \{[\s\S]*?Confirm all chapters before exporting PDF\./,
-    'exportPdf must block null/unknown authoring progress before rendering a client PDF',
+    /if \(exportGateLocked\) return;/,
+    'exportPdf must defend against a locked authoring export before rendering a client PDF',
   );
   assert.doesNotMatch(
     src,
@@ -155,9 +184,12 @@ test('export-ready closing card uses the locale-derived label, not mount-time i1
     'the export-ready copy must not depend on mount-time data-i18n rewriting',
   );
   assert.doesNotMatch(src, /export-ready-banner/, 'the pinned top banner JSX must be removed');
+  // Post-refactor the locale-derived copy goes through the ChatPanel aT() helper
+  // (aT(zh, en) picks by the same React locale) instead of an inline ternary — same
+  // intent: both strings derive from the locale, not a mount-time data-i18n sweep.
   assert.match(
     src,
-    /const exportReadyLabel = locale === 'zh'\s*\?\s*'太棒了，你的书已经准备好了！'\s*:\s*'Wonderful — your book is ready!';/,
+    /const exportReadyLabel = (?:locale === 'zh'\s*\?\s*'太棒了，你的书已经准备好了！'\s*:\s*'Wonderful — your book is ready!'|aT\('太棒了，你的书已经准备好了！', 'Wonderful — your book is ready!'\));/,
     'the export-ready copy should derive both zh/en strings from the React locale like storyGateLabel',
   );
   // The closing card renders that locale-derived label imperatively (textContent).

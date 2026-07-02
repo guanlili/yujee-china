@@ -12,7 +12,13 @@ import { test } from 'node:test';
 // source assertions.
 
 const here = dirname(fileURLToPath(import.meta.url));
-const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+// The confirm→advance / interview wiring moved out of EditorPort.tsx into
+// ChatPanel.tsx (dialogue) and editor-coordinator.ts (the canvas↔chat bridge).
+// These structural guards don't care which of the three a symbol lives in, so `src`
+// is the three merged; the doesNotMatch guards still hold across all three.
+const src = ['EditorPort.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts']
+  .map((f) => readFileSync(join(here, f), 'utf8'))
+  .join('\n\n');
 
 test('confirm-chapter has no breadcrumb button: it is driven by the in-flow satisfaction card', () => {
   // §4.2: the standing「确定本章」button is gone. Confirm must NOT be wired
@@ -62,7 +68,9 @@ test('a successful confirm advances the canvas and resets per-chapter chat histo
   // not depend on the guide opener because the opener can legitimately bail on guards.
   assert.match(
     body,
-    /const advanced = advancedTo != null && advancedTo !== prevChapterId;\s*if \(advanced\) \{[\s\S]*?chapterHistory\.length = 0;\s*awaitingSatisfaction = false;[\s\S]*?goToChapterById\(advancedTo!\);[\s\S]*?appendChapterCard\(advancedTo!\);[\s\S]*?\}/,
+    // Post-refactor the canvas flip is routed through the coordinator bridge
+    // (co()?.goToChapterById?.(…)), so accept the optional-chained coordinator call.
+    /const advanced = advancedTo != null && advancedTo !== prevChapterId;\s*if \(advanced\) \{[\s\S]*?chapterHistory\.length = 0;\s*awaitingSatisfaction = false;[\s\S]*?goToChapterById(?:\?\.)?\(advancedTo!\);[\s\S]*?appendChapterCard\(advancedTo!\);[\s\S]*?\}/,
     'advancing must reset state, flip the canvas, and append the next chapter card',
   );
   // Advancing to a new STORY chapter auto-fires the guide opener (引导优先).

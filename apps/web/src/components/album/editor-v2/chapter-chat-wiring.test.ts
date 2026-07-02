@@ -15,7 +15,13 @@ import { test } from 'node:test';
 //   • the breadcrumb is fed from story-progress.
 
 const here = dirname(fileURLToPath(import.meta.url));
-const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+// The edit-chat / interview wiring moved out of EditorPort.tsx into ChatPanel.tsx
+// (dialogue) and editor-coordinator.ts (the canvas↔chat bridge). These structural
+// guards don't care which of the three a symbol lives in, so `src` is the three
+// merged; the doesNotMatch guards still hold across all three.
+const src = ['EditorPort.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts']
+  .map((f) => readFileSync(join(here, f), 'utf8'))
+  .join('\n\n');
 const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
 
 test('authoring send() routes to the real edit-chat turn', () => {
@@ -57,7 +63,9 @@ test('edit-chat navigation response flips to the requested page', () => {
   assert.ok(fn, 'runEditChatTurn must exist');
   const body = fn![0];
   assert.match(body, /res\.navigation\?\.pageIndex !== undefined/);
-  assert.match(body, /goToPageIndex\(res\.navigation\.pageIndex\)/);
+  // Post-refactor the page flip is routed through the coordinator bridge
+  // (co()?.goToPageIndex?.(…)), so accept the optional-chained coordinator call too.
+  assert.match(body, /goToPageIndex(?:\?\.)?\(res\.navigation\.pageIndex\)/);
 });
 
 test('write merges pagesTexts; edit folds layoutPatch via applyPatchToPages', () => {

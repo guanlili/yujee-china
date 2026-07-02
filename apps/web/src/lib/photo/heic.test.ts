@@ -60,7 +60,8 @@ test('photo file pickers explicitly accept HEIC/HEIF files', () => {
   const files = [
     join(srcRoot, 'components/landing/HeroComposer.tsx'),
     join(srcRoot, 'app/[locale]/my-albums/page.tsx'),
-    join(srcRoot, 'components/album/editor-v2/EditorPort.tsx'),
+    // 编辑器的中途加图 file input 随对话面板抽离到了 ChatPanel(重构);accept 仍用共享串。
+    join(srcRoot, 'components/album/editor-v2/ChatPanel.tsx'),
   ];
   for (const file of files) {
     const src = readFileSync(file, 'utf8');

@@ -27,11 +27,13 @@ test('editor triggers select-layout after story collection (not the poll on prog
   // poll 不再在 progress=50 自动派 select-layout。
   assert.doesNotMatch(pollSource, /submitSelectLayoutV3/, 'poll must not auto-dispatch select-layout at progress=50');
 
-  // 触发点搬到编辑器:收集完 → triggerSelectLayout → submitSelectLayoutV3。
-  assert.match(editorSource, /async function triggerSelectLayout\(/);
-  assert.match(editorSource, /albumRecipe\.load\(albumId\)/);
-  assert.match(editorSource, /selectLayoutRefsFromStore\(/);
-  assert.match(editorSource, /submitSelectLayoutV3\(albumId,/);
+  // 触发点搬到编辑器对话面板:收集完 → triggerSelectLayout → submitSelectLayoutV3。
+  // 对话/采访逻辑已从 EditorPort 抽到 ChatPanel,所以断言在两文件合并源码里找。
+  const chatSource = editorSource + '\n\n' + source('src/components/album/editor-v2/ChatPanel.tsx');
+  assert.match(chatSource, /async function triggerSelectLayout\(/);
+  assert.match(chatSource, /albumRecipe\.load\(albumId\)/);
+  assert.match(chatSource, /selectLayoutRefsFromStore\(/);
+  assert.match(chatSource, /submitSelectLayoutV3\(albumId,/);
 });
 
 test('select-layout submit returns before rebuilding refs once handoff is reserved', () => {

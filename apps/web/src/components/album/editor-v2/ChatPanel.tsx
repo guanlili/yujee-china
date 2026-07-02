@@ -27,8 +27,8 @@
 
 import { useEffect, useRef, type RefObject } from 'react';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
+import { IMAGE_INPUT_ACCEPT } from '@/lib/photo/heic';
 import {
-  ChatCoordinatorContext,
   chatI18n,
   type ChatCoordinator,
 } from './editor-coordinator';
@@ -1095,7 +1095,6 @@ export function ChatPanel({
     }
 
     const shownChapterCards = shownChapterCardsRef.current;
-    void shownChapterCards;
 
     function openChapterPhotosOverlay(photoIds: string[]) {
       const ov = document.createElement('div');
@@ -1414,7 +1413,6 @@ export function ChatPanel({
       chatBody!.appendChild(card);
       scrollChat();
     }
-    void appendSatisfactionCard;
 
     function appendNameChips(host: HTMLElement, names: string[]) {
       const row = document.createElement('div');
@@ -1685,6 +1683,9 @@ export function ChatPanel({
           <button className="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg m-2 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted" data-action="pickAddPhotos" data-i18n-title="addPhoto" title="添加图片" aria-label="添加图片">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           </button>
+          {/* 中途加图(W11):"+" 打开这个隐藏 picker;accept 用共享的 HEIC-aware 串,和主上传口
+              一致(#284)。加图流程本身在 V3 上仍是占位(见 pickAddPhotos),但选择器格式要对。 */}
+          <input type="file" id="addPhotoInput" accept={IMAGE_INPUT_ACCEPT} multiple className="hidden" />
           <textarea className="flex-1 outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none pl-1 py-3 disabled:cursor-not-allowed" style={{ fontFamily: 'var(--font-body)' }} placeholder="" rows={1} id="msgInput" />
           <span className="btn-glow btn-glow-round shrink-0 m-2">
             <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center cursor-pointer transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} id="sendBtn" data-i18n-title="send" title="发送">
@@ -1696,8 +1697,3 @@ export function ChatPanel({
     </div>
   );
 }
-
-// Silence "assigned but never read" for the coordinator context import — ChatPanel
-// consumes coordinator via prop (the shell provides it); the context export exists so
-// tests/other consumers can read it.
-void ChatCoordinatorContext;
