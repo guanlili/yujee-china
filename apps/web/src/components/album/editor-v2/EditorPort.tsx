@@ -2893,6 +2893,8 @@ function EditorBook({
     }
     // 采访答案落地:拼 chapterContext → 存 draft → 标记已采访 → 触发写文案。answer 为空 = 跳过
     // (仍存已知的时间/地点前缀,若有;然后照样让 AI 写这一章)。
+    // 逐章收集补充说明:答完一章只存 chapterContext,不写文案。找到下一个还没采访的章就继续
+    // 采访;所有章都采访完了才一次性写全部章文案(writeAllChapters)。UI 不变(还是三条气泡)。
     async function finishInterview(answer: string) {
       const pending = pendingInterview;
       if (!pending) return;
@@ -2904,39 +2906,65 @@ function EditorBook({
           await postChapterContexts(albumId, [{ chapterId: pending.chapterId, chapterContext: context }]);
         }
       } catch {
-        // 采访可选:存 chapterContext 失败不阻塞,照样往下写文案。
+        // 采访可选:存 chapterContext 失败不阻塞,照样往下走。
       }
       interviewedChapters.add(pending.chapterId);
       chapterSummaryCache.set(pending.chapterId, { chapterContext: context });
-      // 触发写文案:调专门的写文端点(/v3/write-chapter → write_chapter_copy 强制写满整章,
-      // 不靠主控判 kind)。chapterContext 已存进 draft,Web 切本章转发 Agent 一次写满,回 pagesTexts
-      // → applyChapterWrite 落到画板。写完弹满意卡,用户可继续在面板里「改」(edit_loop 主控)。
+
+      // 还有没采访的章 → 进下一章采访(章节卡片 + 三条气泡);否则所有章收集完 → 写全部。
+      const next = nextUninterviewedChapter();
+      if (next) {
+        chapterHistory.length = 0;
+        goToChapterById(next);
+        appendChapterCard(next);
+        const meta = chapterMetaById(next);
+        await startChapterInterview(next, meta?.photoIds ?? []);
+        return;
+      }
+      await writeAllChapters();
+    }
+
+    // 遍历 storyGate.chapterOrder,返回第一个「还没采访 + 非纯图章」的章;都采访完则 null。
+    // 采访进度是纯前端的(interviewedChapters),不碰服务端 done/storyGate 推进 —— 采访只收集。
+    function nextUninterviewedChapter(): string | null {
+      const order = storyGate?.chapterOrder ?? [];
+      for (const cid of order) {
+        if (interviewedChapters.has(cid)) continue;
+        if (isPhotoOnlyChapter(cid)) { interviewedChapters.add(cid); continue; } // 纯图章无文案,跳过
+        return cid;
+      }
+      return null;
+    }
+
+    // 所有章采访完 → 一次性写全部章文案。逐章调 postWriteChapter(chapterContext 已存进 draft,
+    // Agent 强制写满该章)+ applyChapterWrite 落画板。某章失败继续下一章,不阻断整体。写完提示
+    // 可逐页调整 —— 之后是按页编辑(用户主动发消息走 runEditChatTurn + focusedPageIndex)。
+    async function writeAllChapters() {
+      const order = storyGate?.chapterOrder ?? [];
+      const targets = order.filter((cid) => !isPhotoOnlyChapter(cid));
       sending = true;
       const host = appendThinkingShell();
+      let wroteAny = false;
       try {
-        const res = await postWriteChapter(
-          albumId,
-          pending.chapterId,
-          currentLang === 'zh' ? 'zh' : 'en',
-        );
+        for (const cid of targets) {
+          try {
+            const res = await postWriteChapter(albumId, cid, currentLang === 'zh' ? 'zh' : 'en');
+            if (applyChapterWrite(res.pagesTexts as V3PageTextsPatch[])) wroteAny = true;
+          } catch (e) {
+            if (authErr(host, e)) { sending = false; return; }
+            // 单章写失败:跳过,继续下一章(该章留空,用户可逐页补)。
+          }
+        }
         settleThinking(host, 'analyzedFeedback');
-        const wrote = applyChapterWrite(res.pagesTexts as V3PageTextsPatch[]);
         appendReplyBody(
           host,
-          wrote
-            ? aT('我已经根据你说的,把这一章的文案写好啦,你看看喜不喜欢?',
-                  'I’ve written this chapter based on what you shared — take a look!')
-            : aT('这一章我先照片面写好了,你可以直接改。',
-                  'I’ve drafted this chapter from the photos — feel free to tweak.'),
+          wroteAny
+            ? aT('我已经根据你讲的,把整本相册的文案都写好啦!你可以逐页看看、随时改。',
+                  'I’ve written the whole album based on your stories — take a look and tweak any page anytime!')
+            : aT('文案我先照片面写好了,你可以逐页直接改。',
+                  'I’ve drafted the album from the photos — feel free to tweak any page.'),
         );
         appendTime(host);
-        chapterHistory.push({ role: 'assistant', content: '' });
-        appendSatisfactionCard();
-      } catch (e) {
-        if (!authErr(host, e)) {
-          settleThinking(host, 'analyzedFeedback');
-          appendReplyBody(host, aT('写文案时出了点问题,稍后再试一下。', 'Something went wrong writing this chapter — please try again.'));
-        }
       } finally {
         sending = false;
         restAwait();
@@ -2985,75 +3013,34 @@ function EditorBook({
       scrollChat();
     }
 
+    // 采访链的入口(编辑器挂载时触发一次)。新流程:逐章收集补充说明 → 全部收集完 writeAllChapters
+    // → 之后按页编辑。这里只负责「启动」采访链:找第一个还没采访的章,弹卡片 + 三条气泡。
+    // 之后每答完一章由 finishInterview 自己驱动进下一章 / 收尾写全部。UI 不变。
+    // 采访进度是纯前端的(interviewedChapters),不碰服务端 done/storyGate 推进。
     async function runChapterGuideOpener(opts?: { allowDuringSend?: boolean }) {
       if (!isAuthoring || (!opts?.allowDuringSend && sending) || awaitingSatisfaction) return;
-      const chapterId = storyGate?.currentChapterId ?? null;
-      if (!chapterId) return;
-      // Already confirmed chapter, or already opened/conversed this session → skip.
-      if (storyGate?.doneChapterIds.includes(chapterId)) return;
-      if (guidedChapters.has(chapterId) || openerInFlight.has(chapterId) || chapterHistory.length > 0) return;
-      // PHOTO-ONLY chapter: there's nothing to write, so the Agent would only ever talk and
-      // the post-write satisfaction card never fires. Skip the (pointless) guide opener and
-      // surface the satisfaction/next-chapter card directly so the user can confirm → advance
-      // through the satisfaction card's existing confirm path. guidedChapters marks it
-      // done-once so re-entry/advance/re-render won't re-append (same dedupe the real opener
-      // uses). The card itself (not this branch) is what advances — Frame 4 红线 intact.
-      if (isPhotoOnlyChapter(chapterId)) {
-        guidedChapters.add(chapterId);
-        appendChapterCard(chapterId);
-        appendSatisfactionCard({ photoOnly: true });
-        return;
-      }
-      // 问题③: surface the chapter card (which chapter) BEFORE the AI's opener question.
-      appendChapterCard(chapterId);
-      // 内容采集(采访):进章节引导前,先看这一章有没有采访过(本会话 或 draft chapterContext
-      // 非空)。没采访过 → 就在这个对话面板里逐章采访(三条引导短消息 + 等答案),答完/跳过后
-      // finishInterview 触发写文案 —— 采访取代空消息开场问。已采访过 → 走下面的常规 AI 开场。
+      if (pendingInterview) return; // 采访进行中,不重入
+      // 已有 chapterContext(重进/刷新后)的章视为已采访,别重问。
       await loadChapterSummaryContexts();
-      const alreadyInterviewed =
-        interviewedChapters.has(chapterId) ||
-        (chapterSummaryCache.get(chapterId)?.chapterContext.trim().length ?? 0) > 0;
-      if (!alreadyInterviewed) {
-        // guidedChapters marks it opened-once (same dedupe the real opener uses) so a
-        // re-render / advance won't re-run the interview. The pending-answer send lock is
-        // pendingInterview itself (send() routes to finishInterview while it's set).
-        guidedChapters.add(chapterId);
-        const meta = chapterMetaById(chapterId);
-        await startChapterInterview(chapterId, meta?.photoIds ?? []);
-        return;
+      const order = storyGate?.chapterOrder ?? [];
+      for (const cid of order) {
+        if (interviewedChapters.has(cid)) continue;
+        if ((chapterSummaryCache.get(cid)?.chapterContext.trim().length ?? 0) > 0) {
+          interviewedChapters.add(cid);
+          continue;
+        }
+        if (isPhotoOnlyChapter(cid)) { interviewedChapters.add(cid); continue; }
       }
-      // #236 ①: mark both guards synchronously, BEFORE any await, so a second same-tick
-      // call (mount兜底 + advance, or a StrictMode re-mount) sees them and bails.
-      guidedChapters.add(chapterId);
-      openerInFlight.add(chapterId);
-      // Hold the send lock for the opener round-trip so a user send can't race it onto
-      // the same chapter (both would POST). send()/runEditChatTurn already respect it.
-      sending = true;
-      const host = appendThinkingShell();
-      try {
-        const res = await postEditChat(albumId, {
-          language: currentLang === 'zh' ? 'zh' : 'en',
-          chapterId,
-          // Empty userMessage = "open the chapter": the model has nothing to write yet,
-          // so it dispatches a 引导 (talk) question. contract allows max(500), no min.
-          userMessage: '',
-        });
-        settleThinking(host, 'analyzedFeedback');
-        appendReplyBody(host, res.assistantReply);
-        appendTime(host);
-        // Frame 4 红线: the opener is引导 only. A drifted model that still tried to
-        // write/edit is ignored here — the opener never applies a patch nor advances.
-        chapterHistory.push({ role: 'user', content: '' });
-        chapterHistory.push({ role: 'assistant', content: res.assistantReply });
-      } catch (e) {
-        // A failed opener shouldn't strand the chapter: let the user type to retry.
-        guidedChapters.delete(chapterId);
-        if (authErr(host, e)) { sending = false; openerInFlight.delete(chapterId); return; }
-      }
-      openerInFlight.delete(chapterId);
-      sending = false;
-      restAwait();
-      scrollChat();
+      // 找第一个待采访章启动采访。若没有(全部已采访)——可能是重进场景、也可能是按页编辑阶段
+      // 章确认后回调到这里:一律不做(不重复写全部)。写全部只由 finishInterview 收尾时触发一次。
+      const first = nextUninterviewedChapter();
+      if (!first) return;
+      guidedChapters.add(first);
+      chapterHistory.length = 0;
+      goToChapterById(first);
+      appendChapterCard(first);
+      const meta = chapterMetaById(first);
+      await startChapterInterview(first, meta?.photoIds ?? []);
     }
 
     // §4.2 满意/不满意: after the AI writes a chapter (kind=write), surface two buttons in

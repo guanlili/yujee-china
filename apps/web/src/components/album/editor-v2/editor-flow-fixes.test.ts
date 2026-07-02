@@ -40,14 +40,12 @@ test('①: the per-chapter opener guard survives effect re-invocation (component
   );
 });
 
-test('①: the opener holds an in-flight guard so two same-tick calls cannot both POST', () => {
+test('①: the interview entry guards against re-entry while an interview is pending', () => {
   const src = source('EditorPort.tsx');
   const fn = /async function runChapterGuideOpener\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'runChapterGuideOpener() body must be parseable');
-  // An in-flight set keyed by chapterId blocks a second concurrent opener for the same
-  // chapter before the first finishes (guidedChapters alone is added synchronously, but
-  // the in-flight guard makes the intent explicit + covers the advance path too).
-  assert.match(fn![0], /openerInFlight/, 'the opener must track an in-flight guard');
+  // 新流程:采访进行中(pendingInterview 已置)时,重复调用直接返回,避免同一 tick 双启采访。
+  assert.match(fn![0], /if \(pendingInterview\) return/, 'the interview entry must bail while an interview is pending');
 });
 
 // ───────────────────────── ④ agent decides when to write (no write-now button) ─────────────────────────

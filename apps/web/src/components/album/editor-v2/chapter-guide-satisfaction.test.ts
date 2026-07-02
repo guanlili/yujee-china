@@ -19,48 +19,45 @@ function source(file: string): string {
   return readFileSync(join(here, file), 'utf8');
 }
 
-test('B: an auto-guide opener exists and posts an empty userMessage (AI opens the chapter)', () => {
+// 新流程(逐章收集补充说明 → 全部收集完一次性写全部 → 按页编辑):
+// runChapterGuideOpener 现在是「采访链的入口」,启动逐章采访(章节卡片 + startChapterInterview
+// 的三条引导气泡);它不再发空 userMessage 让 AI 开场写作。答完一章由 finishInterview 驱动进
+// 下一章 / 收尾 writeAllChapters。
+test('B: runChapterGuideOpener starts the per-chapter interview (not an empty-message write opener)', () => {
   const src = source('EditorPort.tsx');
 
-  // The opener helper exists.
   assert.match(src, /async function runChapterGuideOpener\([^)]*\)/, 'runChapterGuideOpener() must exist');
-
-  // It POSTs a chapter-chat turn with an EMPTY userMessage so the model dispatches a
-  // 引导 (talk) question rather than waiting for the user to type first.
   const fn = /async function runChapterGuideOpener\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'runChapterGuideOpener() body must be parseable');
-  assert.match(fn![0], /postEditChat\(/, 'opener must call postEditChat');
-  assert.doesNotMatch(fn![0], /postChapterChat\(/, 'opener must not call postChapterChat');
-  assert.match(fn![0], /userMessage:\s*''/, 'opener must send an empty userMessage (open-the-chapter)');
 
-  // Frame 4 红线: the opener never applies a patch nor advances stage — it only renders
-  // the reply. (No applyChapterWrite/applyChapterEdit/markCurrentChapterDone inside it.)
-  assert.doesNotMatch(fn![0], /applyChapterWrite|applyChapterEdit|markCurrentChapterDone/,
-    'the guide opener must not write/edit pages or confirm the chapter (Frame 4 红线)');
+  // 它启动采访(startChapterInterview),而不是发空 userMessage 让 AI 开场写作。
+  assert.match(fn![0], /startChapterInterview\(/, 'opener must start the interview');
+  assert.doesNotMatch(fn![0], /userMessage:\s*''/, 'opener no longer sends an empty-message write opener');
+
+  // 采访阶段不写文案/不确认章(收集完才统一写)。
+  assert.doesNotMatch(fn![0], /applyChapterWrite|markCurrentChapterDone/,
+    'the interview entry must not write pages nor confirm the chapter');
 });
 
-test('B: the opener fires on entry (no prior history) and on advancing to the next chapter', () => {
+test('B: interview collects every chapter first, then writes all chapters in one pass', () => {
   const src = source('EditorPort.tsx');
 
-  // Entry: after loading history + story-gate, fire the opener only when the chapter has
-  // no prior conversation (shown === 0). (#236 added an else-branch that still shows the
-  // chapter card on re-entry, but the opener itself stays gated on shown === 0.)
-  assert.match(
-    src,
-    /if \(shown === 0\) \{\s*void runChapterGuideOpener\(\);/,
-    'on entry the opener must fire only when this chapter has no prior history',
-  );
+  // finishInterview 只存 chapterContext,然后进下一章 / 收尾写全部 —— 不再立刻写这一章。
+  const fi = /async function finishInterview\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fi, 'finishInterview() must be parseable');
+  assert.match(fi![0], /postChapterContexts\(/, 'finishInterview stores chapterContext');
+  assert.match(fi![0], /nextUninterviewedChapter\(\)/, 'finishInterview advances to the next uninterviewed chapter');
+  assert.match(fi![0], /writeAllChapters\(\)/, 'finishInterview writes all chapters once collection is done');
+  assert.doesNotMatch(fi![0], /appendSatisfactionCard\(/, 'per-chapter satisfaction card is gone in the interview step');
 
-  // Advance: confirming a chapter that advances to a NEW story chapter opens it with a
-  // guide turn (skipped when the last chapter advanced stage→theme).
-  assert.match(
-    src,
-    /if \(advanced && storyGate\.stage !== 'theme'\) \{\s*await runChapterGuideOpener\(\{ allowDuringSend: true \}\);/,
-    'advancing to the next story chapter must await the guide opener inside the confirm send lock',
-  );
+  // writeAllChapters 遍历所有章逐章写(postWriteChapter + applyChapterWrite)。
+  const wa = /async function writeAllChapters\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(wa, 'writeAllChapters() must be parseable');
+  assert.match(wa![0], /postWriteChapter\(/, 'writeAllChapters writes each chapter via postWriteChapter');
+  assert.match(wa![0], /applyChapterWrite\(/, 'writeAllChapters lands each chapter’s copy');
 
-  // Guard against double-prompting: a chapter is only opened once per session.
-  assert.match(src, /guidedChapters\.has\(chapterId\)/, 'opener must not re-fire for an already-opened chapter');
+  // 采访进度是纯前端的(interviewedChapters),不靠服务端 done 推进。
+  assert.match(src, /const interviewedChapters = new Set/, 'interview progress tracked client-side');
 });
 
 test('C: a write turn surfaces the satisfaction card (满意/不满意), not on talk/edit', () => {
