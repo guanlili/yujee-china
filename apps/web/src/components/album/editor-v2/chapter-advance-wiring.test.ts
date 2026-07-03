@@ -58,7 +58,7 @@ test('confirming a chapter uses edit-chat, not story-progress POST', () => {
   assert.doesNotMatch(src, /story-progress`, \{\s*method: 'POST'/, 'EditorPort must not POST story-progress');
 });
 
-test('laid-out story chapters restore the in-flow satisfaction card', () => {
+test('laid-out story chapters enter the edit-loop chat, not the confirmation card', () => {
   assert.match(
     src,
     /latestAuthoringRef\.current = \{ draftChapters, storyProgress, mode \};/,
@@ -66,8 +66,13 @@ test('laid-out story chapters restore the in-flow satisfaction card', () => {
   );
   assert.match(
     src,
-    /function maybeAppendStorySatisfactionCard\(\)[\s\S]*?currentChapterHasDraftPages\(\)[\s\S]*?appendSatisfactionCard/,
-    'laid-out unconfirmed story chapters must surface the satisfaction card',
+    /function appendEditLoopReadyCard\(chapterId: string\)[\s\S]*?data-edit-loop-ready/,
+    'laid-out chapters must surface the edit-loop opening prompt',
+  );
+  assert.doesNotMatch(
+    src,
+    /function maybeAppendStorySatisfactionCard\(\)[\s\S]*?appendSatisfactionCard/,
+    'layout completion must not auto-open the chapter confirmation card',
   );
   assert.match(
     src,
@@ -76,8 +81,8 @@ test('laid-out story chapters restore the in-flow satisfaction card', () => {
   );
   assert.match(
     src,
-    /const onAuthoringPagesReady = \(\) => \{[\s\S]*?await loadStoryGate\(\);[\s\S]*?maybeAppendStorySatisfactionCard\(\);/,
-    'pages-ready must refresh story-progress before deciding whether to show the satisfaction card',
+    /const onAuthoringPagesReady = \(\) => \{[\s\S]*?await loadStoryGate\(\);[\s\S]*?appendEditLoopReadyCard\(currentChapterId\);/,
+    'pages-ready must refresh story-progress before opening the edit-loop prompt',
   );
 });
 
@@ -96,14 +101,12 @@ test('a successful confirm advances the canvas and resets per-chapter chat histo
     /const advanced = advancedTo != null && advancedTo !== prevChapterId;\s*if \(advanced\) \{[\s\S]*?chapterHistory\.length = 0;\s*awaitingSatisfaction = false;[\s\S]*?goToChapterById(?:\?\.)?\(advancedTo!\);[\s\S]*?appendChapterCard\(advancedTo!\);[\s\S]*?\}/,
     'advancing must reset state, flip the canvas, and append the next chapter card',
   );
-  // Advancing to a new STORY chapter auto-fires the guide opener (引导优先).
-  // This is invoked inside the confirmation send lock, so it must explicitly allow the
-  // internal chained opener and await it; otherwise runChapterGuideOpener sees
-  // sending=true and returns before appending the next chapter card.
+  // Advancing to a new story chapter after layout should enter the edit-loop chat.
+  // Only pre-layout chapters fall back to the interview opener.
   assert.match(
     body,
-    /if \(advanced && storyGate\.stage !== 'theme'\) \{\s*await runChapterGuideOpener\(\{ allowDuringSend: true \}\);/,
-    'advancing to the next story chapter must await the guide opener inside the confirm send lock',
+    /if \(advanced && storyGate\.stage !== 'theme'\) \{[\s\S]*?if \(currentChapterHasDraftPages\(\)\) \{[\s\S]*?appendEditLoopReadyCard\(advancedTo!\);[\s\S]*?\} else \{[\s\S]*?await runChapterGuideOpener\(\{ allowDuringSend: true \}\);/,
+    'advancing after layout must open edit-loop chat; pre-layout advancement may still await the guide opener',
   );
   // Confirming the LAST chapter (stage → theme) still hands off to the theme step.
   assert.match(

@@ -427,7 +427,11 @@ export function ChatPanel({
       }
       maybeAppendExportReadyCard();
       if (advanced && storyGate.stage !== 'theme') {
-        await runChapterGuideOpener({ allowDuringSend: true });
+        if (currentChapterHasDraftPages()) {
+          appendEditLoopReadyCard(advancedTo!);
+        } else {
+          await runChapterGuideOpener({ allowDuringSend: true });
+        }
       }
       if (storyGate.stage === 'theme') {
         confirmingStoryChapter = false;
@@ -1462,17 +1466,30 @@ export function ChatPanel({
       scrollChat();
     }
 
-    function maybeAppendStorySatisfactionCard() {
-      const latest = latestAuthoringRef.current;
-      if (!isAuthoring || latest.mode !== 'authoring') return;
+    function appendEditLoopReadyCard(chapterId: string) {
+      if (!isAuthoring || latestAuthoringRef.current.mode !== 'authoring') return;
       if (awaitingSatisfaction || pendingInterview || confirmingStoryChapter) return;
-      if (chatBody?.querySelector('.satisfaction-card')) return;
-      storyGate = latest.storyProgress ?? storyGate;
-      const currentChapterId = storyGate?.currentChapterId ?? null;
-      if (!storyGate || storyGate.stage !== 'story' || !currentChapterId) return;
-      if (storyGate.doneChapterIds.includes(currentChapterId)) return;
+      if (!storyGate || storyGate.stage !== 'story') return;
+      if (storyGate.doneChapterIds.includes(chapterId)) return;
       if (!currentChapterHasDraftPages()) return;
-      appendSatisfactionCard({ photoOnly: isPhotoOnlyChapter(currentChapterId) });
+      if (chatBody?.querySelector(`[data-edit-loop-ready="${chapterId}"]`)) return;
+      const card = document.createElement('div');
+      card.className = 'msg ai max-w-full';
+      card.setAttribute('data-edit-loop-ready', chapterId);
+      const body = document.createElement('div');
+      body.className = 'ai-text edit-loop-ready';
+      body.textContent = aT(
+        '排版完成了。现在直接告诉我这一章哪里要改；如果满意，说“可以了”就会继续下一步。',
+        'The layout is ready. Tell me what to change in this chapter, or say “looks good” to continue.',
+      );
+      card.appendChild(body);
+      const time = document.createElement('div');
+      time.className = 'name-time';
+      time.textContent = t('justNow');
+      card.appendChild(time);
+      chatBody!.appendChild(card);
+      restAwait();
+      scrollChat();
     }
 
     function appendNameChips(host: HTMLElement, names: string[]) {
@@ -1573,7 +1590,8 @@ export function ChatPanel({
     const onAuthoringPagesReady = () => {
       void (async () => {
         await loadStoryGate();
-        maybeAppendStorySatisfactionCard();
+        const currentChapterId = storyGate?.currentChapterId ?? null;
+        if (currentChapterId) appendEditLoopReadyCard(currentChapterId);
       })();
     };
     root.addEventListener('yujee:authoring-pages-ready', onAuthoringPagesReady);
@@ -1600,7 +1618,7 @@ export function ChatPanel({
         if (liveChapterId) {
           appendChapterCard(liveChapterId);
           if (currentChapterHasDraftPages()) {
-            maybeAppendStorySatisfactionCard();
+            appendEditLoopReadyCard(liveChapterId);
           } else if (shown === 0) {
             void runChapterGuideOpener();
           }
