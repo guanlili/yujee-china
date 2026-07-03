@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
+import { safeAuthRedirect } from '@/lib/auth/redirect';
 import type { AppMessages } from '@/lib/i18n/messages';
 
 type AuthMessages = AppMessages['auth'];
@@ -28,7 +29,7 @@ export function LoginForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const dest = from && from.startsWith('/') ? from : `/${locale}/my-albums`;
+  const dest = safeAuthRedirect(from, `/${locale}/my-albums`);
 
   const onGoogle = async () => {
     setBusy(true);
@@ -47,7 +48,7 @@ export function LoginForm({
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const { error: signInError } = await authClient.signIn.email({ email, password });
+    const { error: signInError } = await authClient.signIn.email({ email, password, callbackURL: dest });
     if (signInError) {
       setError(messages.loginError);
       setBusy(false);

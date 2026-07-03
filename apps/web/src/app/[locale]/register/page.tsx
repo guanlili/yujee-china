@@ -11,8 +11,15 @@ const authBackground =
   'radial-gradient(ellipse 70% 50% at 100% 20%, rgba(218,244,94,0.06) 0%, transparent 70%),' +
   'var(--bg)';
 
-export default async function RegisterPage({ params }: { params: Promise<{ locale: Locale }> }) {
+export default async function RegisterPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: Locale }>;
+  searchParams: Promise<{ from?: string }>;
+}) {
   const { locale } = await params;
+  const { from } = await searchParams;
   const messages = getMessages(locale).auth;
 
   return (
@@ -23,7 +30,7 @@ export default async function RegisterPage({ params }: { params: Promise<{ local
 
       <main className="flex flex-1 items-center justify-center px-5 pb-16 pt-6">
         <div className="w-full max-w-[420px] rounded-[var(--radius-lg)] bg-[var(--surface)] p-6 pb-7 shadow-[var(--shadow-card)] sm:px-9 sm:pb-8 sm:pt-10">
-          <RegisterForm messages={messages} locale={locale} />
+          <RegisterForm messages={messages} locale={locale} from={from} />
         </div>
       </main>
     </div>

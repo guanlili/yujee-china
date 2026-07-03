@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Brand, BrandMark } from '@/components/app/Brand';
 import { LanguageSwitcher } from '@/components/app/LanguageSwitcher';
+import { authHrefWithFrom } from '@/lib/auth/redirect';
 import { getMessages } from '@/lib/i18n/messages';
 import { type Locale } from '@/lib/i18n/routing';
 import { LoginForm } from './login-form';
@@ -15,6 +16,7 @@ export default async function LoginPage({
   const { locale } = await params;
   const { from } = await searchParams;
   const messages = getMessages(locale).auth;
+  const registerHref = authHrefWithFrom(`/${locale}/register`, from);
 
   return (
     <div
@@ -46,7 +48,7 @@ export default async function LoginPage({
 
           <p className="mt-6 text-center text-[13px] text-[var(--muted)]">
             {messages.noAccount}{' '}
-            <Link className="font-semibold text-[var(--fg)] hover:underline" href={`/${locale}/register`}>
+            <Link className="font-semibold text-[var(--fg)] hover:underline" href={registerHref}>
               {messages.signUpFree}
             </Link>
           </p>

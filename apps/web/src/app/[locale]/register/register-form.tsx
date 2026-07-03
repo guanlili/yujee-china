@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { BrandMark } from '@/components/app/Brand';
 import { authClient } from '@/lib/auth/client';
+import { authHrefWithFrom, safeAuthRedirect } from '@/lib/auth/redirect';
 import type { AppMessages } from '@/lib/i18n/messages';
 
 type AuthMessages = AppMessages['auth'];
@@ -14,19 +15,29 @@ const fieldClass =
 // /sign-up/email returns JSON, not a redirect. With requireEmailVerification the
 // signup creates no session, so on success we show a "check your email" panel
 // rather than routing into the app.
-export function RegisterForm({ messages, locale }: { messages: AuthMessages; locale: string }) {
+export function RegisterForm({
+  messages,
+  locale,
+  from,
+}: {
+  messages: AuthMessages;
+  locale: string;
+  from?: string;
+}) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const dest = safeAuthRedirect(from, `/${locale}/my-albums`);
+  const loginHref = authHrefWithFrom(`/${locale}/login`, from);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const { error: signUpError } = await authClient.signUp.email({ name, email, password });
+    const { error: signUpError } = await authClient.signUp.email({ name, email, password, callbackURL: dest });
     if (signUpError) {
       setError(messages.registerError);
       setBusy(false);
@@ -54,7 +65,7 @@ export function RegisterForm({ messages, locale }: { messages: AuthMessages; loc
         <p className="mt-4 text-[var(--text-base)] text-[var(--fg-2)]">{messages.verifyEmailBody}</p>
         <p className="mt-3 text-[var(--text-sm)] text-[var(--meta)]">{messages.verifyEmailHint}</p>
         <p className="mt-6 text-[var(--text-sm)]">
-          <Link className="font-semibold text-[var(--fg)] hover:underline" href={`/${locale}/login`}>
+          <Link className="font-semibold text-[var(--fg)] hover:underline" href={loginHref}>
             {messages.backToLogin}
           </Link>
         </p>
@@ -124,7 +135,7 @@ export function RegisterForm({ messages, locale }: { messages: AuthMessages; loc
 
       <p className="mt-6 text-center text-[var(--text-sm)] text-[var(--muted)]">
         {messages.switchToLogin}{' '}
-        <Link className="font-semibold text-[var(--fg)] hover:underline" href={`/${locale}/login`}>
+        <Link className="font-semibold text-[var(--fg)] hover:underline" href={loginHref}>
           {messages.loginAction}
         </Link>
       </p>
