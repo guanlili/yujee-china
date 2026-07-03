@@ -186,7 +186,8 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    async function loadDraftSkeleton() {
       try {
         const { draft } = await fetchDraftSkeleton(detail.album.id);
         if (cancelled) return;
@@ -208,9 +209,17 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
       } catch {
         if (!cancelled) setLoadState('error');
       }
-    })();
+    }
+
+    const onAuthoringPagesReady = () => {
+      void loadDraftSkeleton();
+    };
+
+    void loadDraftSkeleton();
+    window.addEventListener('yujee:authoring-pages-ready', onAuthoringPagesReady);
     return () => {
       cancelled = true;
+      window.removeEventListener('yujee:authoring-pages-ready', onAuthoringPagesReady);
     };
   }, [detail.album.id, detail.album.stage, detail.album.status]);
 

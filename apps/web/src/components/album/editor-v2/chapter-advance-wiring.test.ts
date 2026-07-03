@@ -86,6 +86,29 @@ test('laid-out story chapters enter the edit-loop chat, not the confirmation car
   );
 });
 
+test('layout-ready notifications refresh the authoring draft projection for the canvas', () => {
+  assert.match(
+    src,
+    /async function loadDraftSkeleton\(\)[\s\S]*?fetchDraftSkeleton\(detail\.album\.id\)[\s\S]*?setSkeleton\(draft\)[\s\S]*?setLoadState\('ready'\)/,
+    'EditorAuthoring must be able to refetch the draft projection after layout completes',
+  );
+  assert.match(
+    src,
+    /window\.addEventListener\('yujee:authoring-pages-ready', onAuthoringPagesReady\)/,
+    'EditorAuthoring must listen for layout-ready notifications outside ChatPanel',
+  );
+  assert.match(
+    src,
+    /window\.dispatchEvent\(new CustomEvent\('yujee:authoring-pages-ready'\)\)/,
+    'ChatPanel must notify the React authoring shell, not only its own DOM root',
+  );
+  assert.match(
+    src,
+    /<EditorBook[\s\S]*?key=\{initialPages\.length\}/,
+    'refetched pages must remount EditorBook so collect mode is recomputed from non-empty pages',
+  );
+});
+
 test('a successful confirm advances the canvas and resets per-chapter chat history', () => {
   const fn = /async function applyEditChatProgressDecision\(prevChapterId: string\)[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'applyEditChatProgressDecision must exist');

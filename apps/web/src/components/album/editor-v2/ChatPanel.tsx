@@ -1683,6 +1683,7 @@ export function ChatPanel({
     const root = outerRootRef.current;
     if (!root) return;
     root.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+    window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
   }, [
     mode,
     outerRootRef,
