@@ -56,6 +56,27 @@ test('①: the interview entry guards against re-entry while an interview is pen
   assert.match(fn![0], /if \(pendingInterview\) return/, 'the interview entry must bail while an interview is pending');
 });
 
+test('①: stale StrictMode interview effects cannot leave visible chat bound to a dead closure', () => {
+  const src = source('ChatPanel.tsx');
+
+  assert.match(src, /let disposed = false;/, 'the mount effect must own a disposed flag');
+  assert.match(
+    src,
+    /async function typeInterviewMessages\([^)]*\): Promise<boolean> \{[\s\S]*?if \(disposed\) return false;[\s\S]*?return !disposed;/,
+    'async interview typing must stop when its effect has been cleaned up',
+  );
+  assert.match(
+    src,
+    /if \(!\(await typeInterviewMessages\(messages\)\)\) return;/,
+    'startChapterInterview must abort before appending controls from a stale effect',
+  );
+  assert.match(
+    src,
+    /return \(\) => \{[\s\S]*?disposed = true;[\s\S]*?shownChapterCardsRef\.current\.clear\(\);[\s\S]*?interviewChainStartedRef\.current = false;/,
+    'cleanup must release StrictMode fake-mount claims so the live effect can own the interview',
+  );
+});
+
 // ───────────────────────── ④ agent decides when to write (no write-now button) ─────────────────────────
 // The old "write it now" chip existed because the system prompt forbade the model from
 // writing unprompted (硬规则), stranding the user in a talk loop. That 红线 is gone: the

@@ -196,6 +196,14 @@ export const jobService = {
       await albumRepo.update(tx, job.albumId, {
         draftJson,
       });
+
+      // 扣费时机(用户拍板):选完照片建相册即扣。analyze 完成 = 相册真正成形,
+      // 在此结算 hold(HOLDING→SETTLED)。后续「收集故事→排版」不再动积分。
+      // 副作用红利:hold 结算后,draft-expiry sweeper(谓词含 HOLDING)天然把
+      // 「采访中」的 EDITING+draftJson+layoutJson==null 相册排除,不误伤在途收集。
+      if (album.creditHoldId) {
+        await creditService.settle(tx, job.userId, album.creditHoldId);
+      }
     });
   },
 
@@ -234,16 +242,25 @@ export const jobService = {
       return;
     }
     const parsedDraft = V3StoryDraft.safeParse(album.draftJson);
-    if (!SELECT_LAYOUT_COMPLETABLE_STAGES.has(job.stage ?? '') || album.status !== 'AGENT_RUNNING' || !parsedDraft.success) {
+    // 时序反转:收集完才排版,此刻 album 恒为 EDITING(不再翻 AGENT_RUNNING)——所以「排版
+    // 是否已启动」不能再靠 album.status 判,改用 job 哨兵:stage∈completable 且 progress≥51
+    // (select-layout 已被 reserve 过,50→51)。这样能挡掉「analyze 刚完 progress=50」时一个
+    // 错乱的 completed 回调把没排版的 album 直接推 story。tree 就绪由 parsedDraft 保证。
+    if (
+      !SELECT_LAYOUT_COMPLETABLE_STAGES.has(job.stage ?? '') ||
+      (job.progress ?? 0) < 51 ||
+      !parsedDraft.success
+    ) {
       logger.warn(
         {
           requestId,
           albumId: job.albumId,
           jobStage: job.stage,
+          jobProgress: job.progress,
           albumStatus: album.status,
           hasStoryDraft: parsedDraft.success,
         },
-        'ignored select-layout completed callback before analyze tree was ready',
+        'ignored select-layout completed callback before layout was reserved',
       );
       return;
     }
@@ -265,9 +282,7 @@ export const jobService = {
         stage: 'story',
       });
 
-      if (album.creditHoldId) {
-        await creditService.settle(tx, job.userId, album.creditHoldId);
-      }
+      // 积分已在 analyze 完成时结算(选完照片即扣),这里不再 settle,避免重复结算。
     });
   },
 

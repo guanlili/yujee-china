@@ -1275,8 +1275,9 @@ export const albumService = {
   async getDraftSkeleton(userId: string, albumId: string) {
     const album = await this.findOwned(userId, albumId);
     // 时序反转:排版前(analyze 完、还没 select-layout)也要能拿 skeleton 去走「收集故事」面板。
-    // 那时 album.status='AGENT_RUNNING'、layoutJson=null、draftJson 有 tree 无 pages。放开 status
-    // 限制(允许 AGENT_RUNNING),layoutJson 仍必须为 null(排版完/定稿走另一路)。
+    // 那时 album.status='EDITING'(analyze 完成后保持 EDITING,不翻 AGENT_RUNNING)、layoutJson=null、
+    // draftJson 有 tree 无 pages。status 允许 EDITING/AGENT_RUNNING(后者兼容老时序),
+    // layoutJson 仍必须为 null(排版完/定稿走另一路)。
     if ((album.status !== 'EDITING' && album.status !== 'AGENT_RUNNING') || album.layoutJson) return null;
     const normalized = readStoryDraft(album.draftJson);
     if (!normalized) return null;

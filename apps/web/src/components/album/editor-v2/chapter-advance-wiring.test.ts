@@ -58,6 +58,29 @@ test('confirming a chapter uses edit-chat, not story-progress POST', () => {
   assert.doesNotMatch(src, /story-progress`, \{\s*method: 'POST'/, 'EditorPort must not POST story-progress');
 });
 
+test('laid-out story chapters restore the in-flow satisfaction card', () => {
+  assert.match(
+    src,
+    /latestAuthoringRef\.current = \{ draftChapters, storyProgress, mode \};/,
+    'ChatPanel must keep latest authoring props visible to its stable DOM effect',
+  );
+  assert.match(
+    src,
+    /function maybeAppendStorySatisfactionCard\(\)[\s\S]*?currentChapterHasDraftPages\(\)[\s\S]*?appendSatisfactionCard/,
+    'laid-out unconfirmed story chapters must surface the satisfaction card',
+  );
+  assert.match(
+    src,
+    /yujee:authoring-pages-ready/,
+    'draft page changes must notify the stable ChatPanel effect',
+  );
+  assert.match(
+    src,
+    /const onAuthoringPagesReady = \(\) => \{[\s\S]*?await loadStoryGate\(\);[\s\S]*?maybeAppendStorySatisfactionCard\(\);/,
+    'pages-ready must refresh story-progress before deciding whether to show the satisfaction card',
+  );
+});
+
 test('a successful confirm advances the canvas and resets per-chapter chat history', () => {
   const fn = /async function applyEditChatProgressDecision\(prevChapterId: string\)[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'applyEditChatProgressDecision must exist');
@@ -83,7 +106,10 @@ test('a successful confirm advances the canvas and resets per-chapter chat histo
     'advancing to the next story chapter must await the guide opener inside the confirm send lock',
   );
   // Confirming the LAST chapter (stage → theme) still hands off to the theme step.
-  assert.match(body, /if \(storyGate\.stage === 'theme'\) \{[\s\S]*?await runRecommendTheme\(\);/);
+  assert.match(
+    body,
+    /if \(storyGate\.stage === 'theme'\) \{[\s\S]*?await runRecommendTheme\(undefined, \{ allowDuringSend: true \}\);/,
+  );
 });
 
 test('runChapterGuideOpener can be explicitly chained from confirm while sending is locked', () => {

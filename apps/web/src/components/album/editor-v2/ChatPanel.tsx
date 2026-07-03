@@ -113,6 +113,9 @@ export function ChatPanel({
   setStoryProgressLoading: (v: boolean) => void;
   setStoryConfirming: (v: boolean) => void;
 }) {
+  const latestAuthoringRef = useRef({ draftChapters, storyProgress, mode });
+  latestAuthoringRef.current = { draftChapters, storyProgress, mode };
+
   // #236 ①: the per-chapter guide-opener dedup set lives at COMPONENT scope (a ref),
   // not inside the mount effect, so React StrictMode's double-invoke doesn't hand each
   // invocation its own empty set (which fires the opener twice). A shared ref survives
@@ -121,10 +124,12 @@ export function ChatPanel({
   const interviewChainStartedRef = useRef(false);
   const interviewedChaptersRef = useRef<Set<string>>(new Set());
   const shownChapterCardsRef = useRef<Set<string>>(new Set());
+  const recommendInFlightRef = useRef(false);
 
   useEffect(() => {
     const root = outerRootRef.current;
     if (!root) return;
+    let disposed = false;
 
     // ── scoped equivalents of document.* from the original script ──
     const $ = (s: string) => root.querySelector(s) as HTMLElement | null;
@@ -418,7 +423,7 @@ export function ChatPanel({
       if (storyGate.stage === 'theme') {
         confirmingStoryChapter = false;
         setStoryConfirming(false);
-        await runRecommendTheme();
+        await runRecommendTheme(undefined, { allowDuringSend: true });
       }
     }
 
@@ -460,8 +465,11 @@ export function ChatPanel({
       maybeAppendExportReadyCard();
     }
 
-    async function runRecommendTheme(userMessage?: string) {
-      if (!isAuthoring || sending) return;
+    async function runRecommendTheme(userMessage?: string, opts?: { allowDuringSend?: boolean }) {
+      if (!isAuthoring || (!opts?.allowDuringSend && sending)) return;
+      if (recommendInFlightRef.current) return;
+      if (!userMessage && chatBody?.querySelector('.palette-card:not(.is-recap)')) return;
+      recommendInFlightRef.current = true;
       sending = true;
       const host = appendThinkingShell();
       try {
@@ -472,9 +480,10 @@ export function ChatPanel({
         appendTime(host);
         appendPaletteCard(res);
       } catch (e) {
-        if (authErr(host, e)) { sending = false; return; }
+        if (authErr(host, e)) { sending = false; recommendInFlightRef.current = false; return; }
       }
       sending = false;
+      recommendInFlightRef.current = false;
       restAwait();
       scrollChat();
     }
@@ -1194,9 +1203,19 @@ export function ChatPanel({
       return itemTexts.some((slot) => AUTHORED_TEXT_ROLES.has(slot.role));
     }
     function isPhotoOnlyChapter(chapterId: string): boolean {
-      const pages = (draftSkel?.pages ?? []).filter((p) => p.chapterId === chapterId);
+      const pages = (latestAuthoringRef.current.draftChapters?.pages ?? draftSkel?.pages ?? []).filter(
+        (p) => p.chapterId === chapterId,
+      );
       if (pages.length === 0) return false;
       return pages.every((p) => !pageHasWritableTextSlot(p.templateId));
+    }
+
+    function currentChapterHasDraftPages(): boolean {
+      const cid = storyGate?.currentChapterId;
+      if (!cid) return false;
+      return (latestAuthoringRef.current.draftChapters?.pages ?? draftSkel?.pages ?? []).some(
+        (p) => p.chapterId === cid,
+      );
     }
 
     const chapterSummaryCache = new Map<string, { chapterContext: string }>();
@@ -1209,13 +1228,16 @@ export function ChatPanel({
         // 采访是可选的:摘要拉取失败就当没采访过(仍会问一次),绝不阻断引导流程。
       }
     }
-    async function typeInterviewMessages(messages: readonly [string, string, string]) {
+    async function typeInterviewMessages(messages: readonly [string, string, string]): Promise<boolean> {
       for (let i = 0; i < messages.length; i += 1) {
+        if (disposed) return false;
         appendAiText(messages[i]!);
         if (i < messages.length - 1) await new Promise((r) => setTimeout(r, 650));
       }
+      return !disposed;
     }
     async function finishInterview(answer: string) {
+      if (disposed) return;
       const pending = pendingInterview;
       if (!pending) return;
       pendingInterview = null;
@@ -1231,6 +1253,7 @@ export function ChatPanel({
       } catch {
         // 采访可选:存失败不阻塞,照样往下走。
       }
+      if (disposed) return;
       interviewedChapters.add(pending.chapterId);
       chapterSummaryCache.set(pending.chapterId, { chapterContext: context });
 
@@ -1258,6 +1281,7 @@ export function ChatPanel({
 
     let selectLayoutTriggered = false;
     async function triggerSelectLayout() {
+      if (disposed) return;
       if (selectLayoutTriggered) return;
       const recipe = albumRecipe.load(albumId);
       const host = appendThinkingShell();
@@ -1277,14 +1301,17 @@ export function ChatPanel({
         appendStep(aT('🎨 正在挑选版式…', '🎨 Choosing layouts…'));
         appendStep(aT('✍️ 正在根据你的故事写文案…', '✍️ Writing copy from your stories…'));
         const refs = await selectLayoutRefsFromStore(recipe.photoIds);
+        if (disposed) return;
         await submitSelectLayoutV3(albumId, {
           requestId: recipe.requestId,
           language: recipe.language,
           refs,
         });
+        if (disposed) return;
         const working = appendThinkingShell();
         void working;
       } catch (e) {
+        if (disposed) return;
         selectLayoutTriggered = false;
         if (authErr(host, e)) { sending = false; return; }
         const msg = e instanceof PhotosUnavailableError
@@ -1293,11 +1320,14 @@ export function ChatPanel({
         appendAiText(msg);
       } finally {
         sending = false;
-        restAwait();
-        scrollChat();
+        if (!disposed) {
+          restAwait();
+          scrollChat();
+        }
       }
     }
     async function startChapterInterview(chapterId: string, photoIds: string[]) {
+      if (disposed) return;
       let input: ChapterInterviewInput = { earliestTakenAt: null, latestTakenAt: null, place: null };
       try {
         const data = await interviewDataFromStore(photoIds);
@@ -1314,8 +1344,10 @@ export function ChatPanel({
         classifyInterviewCase(input),
         currentLang === 'zh' ? 'zh' : 'en',
       );
+      if (disposed) return;
       pendingInterview = { chapterId, input, questions: messages };
-      await typeInterviewMessages(messages);
+      if (!(await typeInterviewMessages(messages))) return;
+      if (disposed || pendingInterview?.chapterId !== chapterId) return;
       const skipRow = document.createElement('div');
       skipRow.className = 'msg ai max-w-full';
       const skipBtn = document.createElement('button');
@@ -1335,11 +1367,13 @@ export function ChatPanel({
     }
 
     async function runChapterGuideOpener(opts?: { allowDuringSend?: boolean }) {
+      if (disposed) return;
       if (!isAuthoring || (!opts?.allowDuringSend && sending) || awaitingSatisfaction) return;
       if (pendingInterview) return;
       if (interviewChainStartedRef.current) return;
       interviewChainStartedRef.current = true;
       await loadChapterSummaryContexts();
+      if (disposed) return;
       const order = storyGate?.chapterOrder ?? [];
       for (const cid of order) {
         if (interviewedChapters.has(cid)) continue;
@@ -1412,6 +1446,19 @@ export function ChatPanel({
       card.appendChild(inner);
       chatBody!.appendChild(card);
       scrollChat();
+    }
+
+    function maybeAppendStorySatisfactionCard() {
+      const latest = latestAuthoringRef.current;
+      if (!isAuthoring || latest.mode !== 'authoring') return;
+      if (awaitingSatisfaction || pendingInterview || confirmingStoryChapter) return;
+      if (chatBody?.querySelector('.satisfaction-card')) return;
+      storyGate = latest.storyProgress ?? storyGate;
+      const currentChapterId = storyGate?.currentChapterId ?? null;
+      if (!storyGate || storyGate.stage !== 'story' || !currentChapterId) return;
+      if (storyGate.doneChapterIds.includes(currentChapterId)) return;
+      if (!currentChapterHasDraftPages()) return;
+      appendSatisfactionCard({ photoOnly: isPhotoOnlyChapter(currentChapterId) });
     }
 
     function appendNameChips(host: HTMLElement, names: string[]) {
@@ -1509,6 +1556,13 @@ export function ChatPanel({
         actionHandlers.push({ el, fn });
       });
     }
+    const onAuthoringPagesReady = () => {
+      void (async () => {
+        await loadStoryGate();
+        maybeAppendStorySatisfactionCard();
+      })();
+    };
+    root.addEventListener('yujee:authoring-pages-ready', onAuthoringPagesReady);
 
     // ── Init: clear the design's demo chat, then run the mode-specific opening. ──
     chatBody?.querySelectorAll('.msg').forEach((n) => n.remove());
@@ -1529,10 +1583,11 @@ export function ChatPanel({
         if (liveChapterId) co()?.goToChapterById?.(liveChapterId);
         const stage = storyGate?.stage;
         if (liveChapterId) {
-          if (shown === 0) {
+          appendChapterCard(liveChapterId);
+          if (currentChapterHasDraftPages()) {
+            maybeAppendStorySatisfactionCard();
+          } else if (shown === 0) {
             void runChapterGuideOpener();
-          } else {
-            appendChapterCard(liveChapterId);
           }
         } else if (stage === 'theme' || stage === 'cover' || stage === 'ready') {
           if (stage === 'theme') {
@@ -1574,14 +1629,35 @@ export function ChatPanel({
         }, 3000);
 
     return () => {
+      disposed = true;
       sendBtnEl?.removeEventListener('click', send);
       input?.removeEventListener('keydown', onKeydown);
       input?.removeEventListener('input', onInput);
       actionHandlers.forEach(({ el, fn }) => el.removeEventListener('click', fn));
+      root.removeEventListener('yujee:authoring-pages-ready', onAuthoringPagesReady);
+      guidedChaptersRef.current.clear();
+      interviewedChaptersRef.current.clear();
+      shownChapterCardsRef.current.clear();
+      interviewChainStartedRef.current = false;
+      recommendInFlightRef.current = false;
       clearTimeout(completeTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (mode !== 'authoring') return;
+    const root = outerRootRef.current;
+    if (!root) return;
+    root.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+  }, [
+    mode,
+    outerRootRef,
+    draftChapters?.pages.length,
+    storyProgress?.stage,
+    storyProgress?.currentChapterId,
+    storyProgress?.doneChapterIds.join('|'),
+  ]);
 
   return (
     <div className="pane-chat-col md:order-1 md:w-[360px] shrink-0 md:flex">

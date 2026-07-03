@@ -30,6 +30,8 @@ test('runRecommendTheme renders the palette-card after the reply', () => {
   const fn = /async function runRecommendTheme\([\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'runRecommendTheme must exist');
   const body = fn![0];
+  assert.match(body, /recommendInFlightRef\.current/, 'recommend should be guarded against StrictMode duplicate sends');
+  assert.match(body, /querySelector\('\.palette-card:not\(\.is-recap\)'\)/, 'recommend should not append duplicate live palette cards');
   assert.match(body, /postRecommend\(albumId/);
   assert.match(body, /appendPaletteCard\(res\)/);
 });
@@ -70,7 +72,20 @@ test('runApplyTheme has NO auto-apply fallback (缺口#20: 删掉自动套兜底
 test('confirming the last chapter (stage → theme) surfaces the palette-card', () => {
   // edit-chat progressDecision refreshes the story projection; when it advances to 'theme'
   // it kicks off the recommend → palette-card flow.
-  assert.match(src, /if \(storyGate\.stage === 'theme'\)\s*\{[\s\S]{0,160}runRecommendTheme\(\)/);
+  assert.match(
+    src,
+    /if \(storyGate\.stage === 'theme'\)\s*\{[\s\S]{0,220}runRecommendTheme\(undefined, \{ allowDuringSend: true \}\)/,
+  );
+  assert.match(
+    src,
+    /runRecommendTheme\(undefined, \{ allowDuringSend: true \}\)/,
+    'the confirm-chain recommendation must bypass the internal send lock',
+  );
+  assert.match(
+    src,
+    /async function runRecommendTheme\(userMessage\?: string, opts\?: \{ allowDuringSend\?: boolean \}\)/,
+    'runRecommendTheme must expose an explicit internal-send override',
+  );
 });
 
 test('apply-theme advancing (stage → cover) surfaces the cover-card', () => {

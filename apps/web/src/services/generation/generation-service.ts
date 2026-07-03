@@ -113,7 +113,13 @@ export const generationService = {
     const job = await agentJobRepo.findByRequestId(input.requestId);
     if (!job) throw ERRORS.JOB_NOT_FOUND();
     if (job.userId !== userId || job.albumId !== albumId) throw ERRORS.JOB_NOT_OWNED();
-    if (album.status !== 'AGENT_RUNNING' || job.status !== 'RUNNING' || job.stage !== 'layout') {
+    // 时序反转:收集完才排版,此刻 album 恒为 EDITING(不再翻 AGENT_RUNNING);AGENT_RUNNING
+    // 保留以兼容老时序/回退开关。真正的并发闸是下面的 progress 哨兵 + reserve*() CAS,不靠 status。
+    if (
+      !(album.status === 'EDITING' || album.status === 'AGENT_RUNNING') ||
+      job.status !== 'RUNNING' ||
+      job.stage !== 'layout'
+    ) {
       throw ERRORS.ALBUM_NOT_EDITABLE();
     }
     if (job.progress !== 50) {
@@ -164,7 +170,9 @@ export const generationService = {
     const job = await agentJobRepo.findByRequestId(requestId);
     if (!job) throw ERRORS.JOB_NOT_FOUND();
     if (job.userId !== userId || job.albumId !== albumId) throw ERRORS.JOB_NOT_OWNED();
-    if (album.status !== 'AGENT_RUNNING') throw ERRORS.ALBUM_NOT_EDITABLE();
+    // 时序反转:排版期 album 恒为 EDITING(P2 缩略图轮询也在 EDITING 下发生)。放宽以取回候选。
+    if (!(album.status === 'EDITING' || album.status === 'AGENT_RUNNING'))
+      throw ERRORS.ALBUM_NOT_EDITABLE();
     const units = transientLayoutCandidates.get(requestId);
     if (!units) return { ready: false, units: [] };
     return { ready: true, units };
@@ -180,7 +188,13 @@ export const generationService = {
     const job = await agentJobRepo.findByRequestId(input.requestId);
     if (!job) throw ERRORS.JOB_NOT_FOUND();
     if (job.userId !== userId || job.albumId !== albumId) throw ERRORS.JOB_NOT_OWNED();
-    if (album.status !== 'AGENT_RUNNING' || job.status !== 'RUNNING' || job.stage !== 'layout') {
+    // 时序反转:收集完才排版,此刻 album 恒为 EDITING(不再翻 AGENT_RUNNING);AGENT_RUNNING
+    // 保留以兼容老时序/回退开关。真正的并发闸是下面的 progress 哨兵 + reserve*() CAS,不靠 status。
+    if (
+      !(album.status === 'EDITING' || album.status === 'AGENT_RUNNING') ||
+      job.status !== 'RUNNING' ||
+      job.stage !== 'layout'
+    ) {
       throw ERRORS.ALBUM_NOT_EDITABLE();
     }
     // Not yet at the candidates-ready sentinel (or phase 2 already dispatched / done):

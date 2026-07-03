@@ -212,7 +212,7 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
     return () => {
       cancelled = true;
     };
-  }, [detail.album.id]);
+  }, [detail.album.id, detail.album.stage, detail.album.status]);
 
   if (loadState === 'error' || loadState === 'gone') {
     // Don't sit on the "tidying up" screen forever — surface the real dead-end and
