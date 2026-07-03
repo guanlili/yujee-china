@@ -278,9 +278,18 @@ export function ChatPanel({
         msgs.sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')));
         chapterHistory.splice(0, chapterHistory.length);
         let shown = 0;
+        let lastCardChapterId: string | null = null;
         for (const m of msgs) {
           const c = (m.content ?? '').trim();
           if (!c || c.startsWith('[inspection of page')) continue;
+          // 章节卡片也是对话历史的一部分:采访时每章开头先出卡片(缩略图+查看详细)再出问句气泡。
+          // 卡片不单独存库(能从 chapterId 经 chapterMetaById 完全重建),所以重建历史时,在该章
+          // 第一条消息之前补插一次卡片,还原「卡片→问1→问2→问3→答」的原始顺序。appendChapterCard
+          // 自身按 data-chapter-card 幂等,重复调用安全。
+          if (m.chapterId && m.chapterId !== lastCardChapterId) {
+            appendChapterCard(m.chapterId);
+            lastCardChapterId = m.chapterId;
+          }
           if (m.role === 'user') {
             appendUserText(c);
             if (!m.chapterId || !storyGate?.currentChapterId || m.chapterId === storyGate.currentChapterId) {
@@ -1244,9 +1253,14 @@ export function ChatPanel({
       updateAuthInputPlaceholder();
       const context = buildChapterContext(pending.input, answer);
       const cid = pending.chapterId;
-      const interviewMsgs: { chapterId: string; role: 'user' | 'assistant'; content: string }[] = [
-        { chapterId: cid, role: 'assistant', content: pending.questions.join('\n') },
-      ];
+      // 采访的三条气泡(伪装成对话的表单问句)按「显示即存储」的粒度落库:每条问句存成一条
+      // 独立 assistant 消息,而非 join 成一条。这样刷新/重进后 loadHistory 逐条渲染,重建出的
+      // 历史与实时一模一样(三个气泡 + 回答),而不是塌成一个多行气泡。
+      const interviewMsgs: { chapterId: string; role: 'user' | 'assistant'; content: string }[] =
+        pending.questions
+          .map((q) => q.trim())
+          .filter((q) => q.length > 0)
+          .map((q) => ({ chapterId: cid, role: 'assistant' as const, content: q }));
       if (answer.trim()) interviewMsgs.push({ chapterId: cid, role: 'user', content: answer.trim() });
       try {
         await postChapterContexts(albumId, [{ chapterId: cid, chapterContext: context }], interviewMsgs);
@@ -1569,8 +1583,9 @@ export function ChatPanel({
     if (isAuthoring) hideAwait();
     else {
       restAwait();
-      void loadHistory().then(() => restAwait());
-      void loadStoryGate();
+      // 先 loadStoryGate 再 loadHistory:历史重建要补插章节卡片(appendChapterCard 依赖
+      // chapterMetaById→storyGate/draftSkel);storyGate 未就绪时卡片会插不出来。
+      void loadStoryGate().then(() => loadHistory()).then(() => restAwait());
     }
 
     if (isAuthoring) {

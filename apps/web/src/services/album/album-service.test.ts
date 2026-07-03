@@ -2478,6 +2478,55 @@ test('saveChapterContexts writes chapterContext into the matching chapters, leav
   }
 });
 
+// 采访对话历史必须完整可重建:三条问句气泡各自独立落库(非 join 成一条)、用户回答在后,
+// 且 created_at 严格递增 —— 否则 loadHistory 的 sort(by createdAt) 无法稳定还原
+// 「问1→问2→问3→答」的顺序(Postgres defaultNow() 在同一事务里对所有 INSERT 返回同一
+// 时间戳,会塌成同一刻)。这是「采访信息作为对话历史留在面板」的存储侧保证。
+test('saveChapterContexts persists interview bubbles as separate, strictly time-ordered messages', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('save-interview-msgs');
+  try {
+    const album = await makeAlbum(user.id);
+    await albumRepo.update(db, album.id, { draftJson: twoChapterDraft() });
+
+    const questions = ['When and where?', 'Who was with you?', 'What made it special?'];
+    const messages = [
+      ...questions.map((q) => ({ chapterId: 'c1', role: 'assistant' as const, content: q })),
+      { chapterId: 'c1', role: 'user' as const, content: 'Kyoto, summer 2024, with my sister.' },
+    ];
+    await albumService.saveChapterContexts(
+      user.id,
+      album.id,
+      [{ chapterId: 'c1', chapterContext: 'Kyoto 2024' }],
+      messages,
+    );
+
+    // findByAlbum orders by created_at asc — the exact source loadHistory reads.
+    const rows = await albumMessageRepo.findByAlbum(album.id);
+    assert.equal(rows.length, 4, 'three question bubbles + one answer, each a separate row (not joined)');
+
+    // 三条问句是独立行且保持原序(不是一条塞了 \n 的合并气泡)。
+    const ai = rows.filter((r) => r.role === 'assistant');
+    assert.deepEqual(ai.map((r) => r.content), questions);
+    // 回答排在三条问句之后。
+    assert.equal(rows[3]?.role, 'user');
+    assert.match(rows[3]!.content, /my sister/);
+
+    // created_at 严格递增,保证刷新后顺序稳定。
+    for (let i = 1; i < rows.length; i += 1) {
+      assert.ok(
+        new Date(rows[i]!.createdAt).getTime() > new Date(rows[i - 1]!.createdAt).getTime(),
+        `message ${i} must have a strictly later created_at than message ${i - 1}`,
+      );
+    }
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('saveChapterContexts caps chapterContext at 500 chars and rejects unknown/duplicate chapterIds', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');

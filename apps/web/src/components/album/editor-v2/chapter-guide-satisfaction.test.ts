@@ -73,6 +73,45 @@ test('B: interview collects every chapter first, then triggers layout (writes at
   assert.match(src, /const interviewedChapters = interviewedChaptersRef\.current/, 'aliased from the ref inside the effect');
 });
 
+// 采访对话 = 系统表单伪装成 AI 对话;它的三条问句气泡 + 章节卡片 + 用户回答都必须作为
+// 历史留在对话面板,刷新/重进后可完整重建。守住三个实现点,防回退:
+//   ① finishInterview 把三条问句拆成独立 assistant 消息(不 join 成一条多行气泡);
+//   ② loadHistory 重建时,每章第一条消息前补插一次章节卡片(卡片不入库,从 chapterId 重建);
+//   ③ loadHistory 先等 storyGate 就绪再跑(卡片重建依赖 chapterMetaById→storyGate)。
+test('interview history is fully reconstructable: separate bubbles + chapter cards on reload', () => {
+  const src = source('EditorPort.tsx');
+
+  // ① 三条问句气泡各自独立落库 —— 用 questions.map(...→assistant) 而非 questions.join。
+  const fi = /async function finishInterview\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fi, 'finishInterview() must be parseable');
+  assert.match(
+    fi![0],
+    /pending\.questions[\s\S]*?\.map\(\([^)]*\)\s*=>\s*\(\{[^}]*role:\s*'assistant'/,
+    'each interview question must be stored as its own assistant message',
+  );
+  assert.doesNotMatch(
+    fi![0],
+    /pending\.questions\.join\(/,
+    'interview questions must NOT be collapsed into one joined bubble',
+  );
+
+  // ② loadHistory 每章首消息前补插章节卡片,还原「卡片→问→答」的原始顺序。
+  const lh = /async function loadHistory\([^)]*\)[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(lh, 'loadHistory() must be parseable');
+  assert.match(
+    lh![0],
+    /m\.chapterId !== lastCardChapterId[\s\S]*?appendChapterCard\(m\.chapterId\)/,
+    'loadHistory must re-insert the chapter card before each chapter\'s first message',
+  );
+
+  // ③ 非 authoring 路径也先 loadStoryGate 再 loadHistory(否则卡片重建拿不到 chapter meta)。
+  assert.match(
+    src,
+    /loadStoryGate\(\)\.then\(\(\)\s*=>\s*loadHistory\(\)\)/,
+    'loadHistory must run after storyGate is ready so chapter cards can be rebuilt',
+  );
+});
+
 test('C: a write turn surfaces the satisfaction card (满意/不满意), not on talk/edit', () => {
   const src = source('EditorPort.tsx');
 
