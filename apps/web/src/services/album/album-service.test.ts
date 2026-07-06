@@ -2479,10 +2479,10 @@ test('saveChapterContexts writes chapterContext into the matching chapters, leav
 });
 
 // 采访对话历史必须完整可重建:三条问句气泡各自独立落库(非 join 成一条)、用户回答在后,
-// 且 created_at 严格递增 —— 否则 loadHistory 的 sort(by createdAt) 无法稳定还原
-// 「问1→问2→问3→答」的顺序(Postgres defaultNow() 在同一事务里对所有 INSERT 返回同一
-// 时间戳,会塌成同一刻)。这是「采访信息作为对话历史留在面板」的存储侧保证。
-test('saveChapterContexts persists interview bubbles as separate, strictly time-ordered messages', async (t) => {
+// 且 seq 严格递增 —— loadHistory 按 seq(追加序 = 用户操作序)稳定还原「问1→问2→问3→答」。
+// seq 由 repo.create 分配,不再依赖 created_at(同事务 defaultNow 会塌成同一刻)。这是
+// 「采访信息作为对话历史留在面板」的存储侧保证。
+test('saveChapterContexts persists interview bubbles as separate, strictly seq-ordered messages', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
     return;
@@ -2504,7 +2504,7 @@ test('saveChapterContexts persists interview bubbles as separate, strictly time-
       messages,
     );
 
-    // findByAlbum orders by created_at asc — the exact source loadHistory reads.
+    // findByAlbum orders by seq asc — the exact source loadHistory reads.
     const rows = await albumMessageRepo.findByAlbum(album.id);
     assert.equal(rows.length, 4, 'three question bubbles + one answer, each a separate row (not joined)');
 
@@ -2515,11 +2515,11 @@ test('saveChapterContexts persists interview bubbles as separate, strictly time-
     assert.equal(rows[3]?.role, 'user');
     assert.match(rows[3]!.content, /my sister/);
 
-    // created_at 严格递增,保证刷新后顺序稳定。
+    // seq 严格递增(追加序 = 用户操作序),保证刷新后顺序稳定 —— 不再靠 created_at 凑序。
     for (let i = 1; i < rows.length; i += 1) {
       assert.ok(
-        new Date(rows[i]!.createdAt).getTime() > new Date(rows[i - 1]!.createdAt).getTime(),
-        `message ${i} must have a strictly later created_at than message ${i - 1}`,
+        rows[i]!.seq > rows[i - 1]!.seq,
+        `message ${i} must have a strictly greater seq than message ${i - 1}`,
       );
     }
   } finally {

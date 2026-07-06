@@ -973,12 +973,9 @@ export const albumService = {
 
     await db.transaction(async (tx) => {
       await albumRepo.update(tx, albumId, { draftJson: nextDraft });
-      // 采访问答进 album_messages(带 chapterId),供 loadHistory 重建。只存该章存在的消息。
-      // createdAt 显式按序 +1ms 递增:Postgres defaultNow() 在同一事务里对所有 INSERT 返回
-      // 同一个事务时间戳,若不手动错开,三条采访气泡 + 回答会拿到相同 created_at,loadHistory
-      // 的 sort(by createdAt) 就无法稳定还原「问1→问2→问3→答」的顺序(会乱序甚至答插到问中间)。
-      const base = Date.now();
-      let seq = 0;
+      // 采访问答进 album_messages(带 chapterId),供 loadHistory 按 seq 顺序重建。只存该章存在
+      // 的消息。顺序由 repo.create 分配的单调 seq 保证(写入顺序 = 回放顺序),不再手工错开
+      // createdAt —— 「问1→问2→问3→答」按这里的循环顺序落库即可。
       for (const m of messages ?? []) {
         const content = m.content.trim();
         if (!content || !expectedIds.has(m.chapterId)) continue;
@@ -988,9 +985,7 @@ export const albumService = {
           chapterId: m.chapterId,
           role: m.role,
           content: content.slice(0, 2000),
-          createdAt: new Date(base + seq),
         });
-        seq += 1;
       }
     });
 

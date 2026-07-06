@@ -1,6 +1,6 @@
 // Pure 导出闸门逻辑(WP5.2 / §4.5a),split out of EditorPort.tsx so it can be
 // unit-tested under `tsx --test` without importing the JSX/React component tree
-// (same pattern as stage-breadcrumb-util.ts / zoom-util.ts).
+// (same pattern as zoom-util.ts).
 //
 // 真相源 = WP2.4 的 exportUnlocked 口径(album-service.getStoryProgress):导出解锁
 // ⇔「章节故事」全部章节完成(allDone)且 albums.stage 已推进过 'story'。主题(theme)/

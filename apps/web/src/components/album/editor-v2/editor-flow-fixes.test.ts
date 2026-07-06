@@ -166,3 +166,18 @@ test('⑧: the export-ready card is shown once when the export gate opens (guard
   // A one-shot guard so re-running mirrorStage / story-gate refresh doesn't spam the card.
   assert.match(src, /exportReadyCardShown/, 'a one-shot guard must gate the export-ready card');
 });
+
+// ───────── collect→layout remount: the canvas effect must reset collect-on ─────────
+// collect-on 活在共享 outer root 上(跨 EditorBook remount 存活)。排版完成时画板以新 key
+// (pages 0→N)重挂,新 effect 走版式分支画好了书;但若不摘掉收集态遗留的 collect-on,CSS
+// 会继续藏住版式书 → 画板空白(排完版加载不出来的真凶)。锁住:每次挂载都在分支前无条件
+// 复位这个类,收集态再由 renderCollectGrid 加回。
+test('collect→layout remount authoritatively clears the stale collect-on class before painting', () => {
+  const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+  // The unconditional reset must sit before the isCollectMode branch (renderCollectGrid re-adds it).
+  assert.match(
+    src,
+    /bodyEl\.classList\.remove\('collect-on'\);\s*\n\s*if \(isCollectMode\) \{/,
+    'the mount must remove collect-on before the isCollectMode branch so a layout remount unhides the book',
+  );
+});

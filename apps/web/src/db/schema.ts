@@ -41,7 +41,9 @@ export const agentJobStatusEnum = pgEnum('agent_job_status', [
 // failure/zombie semantics are OPPOSITE (init failure → FAILED + release;
 // finalize failure → back to EDITING + keep hold), so sweeper/callback branch
 // on this. See docs/agent/rebuild-architecture.md §5.
-export const agentJobKindEnum = pgEnum('agent_job_kind', ['init', 'finalize', 'add']);
+// init = 识图分析(建相册时起,analyze 完成即 COMPLETED);layout = 排版(用户采访完主动
+// 触发时另起的独立 job,与 init 解耦,不共用 requestId、不挂积分 hold)。finalize/add 保留。
+export const agentJobKindEnum = pgEnum('agent_job_kind', ['init', 'finalize', 'add', 'layout']);
 
 export const creditHoldStatusEnum = pgEnum('credit_hold_status', [
   'HOLDING',
@@ -275,15 +277,19 @@ export const albumMessages = pgTable(
     usage: jsonb('usage'),
     // v2 rebuild: groups per-chapter (Stage 4) dialogue. null = v1 chat-edit message.
     chapterId: text('chapter_id'),
+    // 会话历史顺序的单一真相:每相册单调自增(repo.create 赋值)。历史按「发生即追加」
+    // 的顺序写入并按 seq 回放,不再靠 created_at 排序(同事务 INSERT 时间戳相同会乱序)。
+    seq: integer('seq').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    albumCreated: index('idx_album_messages_album_created').on(t.albumId, t.createdAt),
+    // 排序主索引 + 物理保证「一相册内 seq 不重」,并发重复写会撞唯一约束而非静默乱序。
+    albumSeq: uniqueIndex('uq_album_messages_album_seq').on(t.albumId, t.seq),
     userCreated: index('idx_album_messages_user_created').on(t.userId, t.createdAt.desc()),
-    albumChapterCreated: index('idx_album_messages_album_chapter_created').on(
+    albumChapterSeq: index('idx_album_messages_album_chapter_seq').on(
       t.albumId,
       t.chapterId,
-      t.createdAt,
+      t.seq,
     ),
   }),
 );

@@ -34,7 +34,6 @@ import {
   SCALE_MAX,
   type ImagePosValue,
 } from './image-edit-util';
-import { StageBreadcrumb } from './StageBreadcrumb';
 import { computeExportUnlocked } from './export-gate-util';
 import { runExportWithRetry, buildExportFailureLog, ExportError } from './export-retry-util';
 import { logger } from '@/lib/log/logger';
@@ -530,7 +529,6 @@ function BuildingShell({
 
         <div className="pane-chat-col md:order-1 md:w-[360px] shrink-0 md:flex">
           <aside className="pane pane-right chat-card relative flex flex-col overflow-hidden bg-surface md:flex-1">
-            <StageBreadcrumb stage="analysing" locale={locale} chapterProgress={null} />
             <div className="chat-body flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-6" id="chatBody" style={{ gap: '24px' }}>
               <div className="msg ai max-w-full">
                 <div className="thinking-block active">
@@ -2076,6 +2074,11 @@ function EditorBook({
     setLang(currentLang); // also runs renderRail + buildThumbs + paintSpread; walks
     // the shared outer root so it localizes topbar + chat + canvas.
 
+    // collect-on 活在共享 outer root 上(它跨 remount 存活)。排版完成时 EditorBook 会以
+    // 新 key(pages 0→N)重挂:新 effect 必须按自己的 isCollectMode 权威地复位这个类,否则
+    // 收集态遗留的 collect-on 会继续用 CSS 藏住刚画好的版式书 → 画板空白。收集态由下面的
+    // renderCollectGrid 重新加回。
+    bodyEl.classList.remove('collect-on');
     if (isCollectMode) {
       // 收集态:没有版式页可画。画板显示当前采访章的照片网格,不碰 paintSpread/thumbs
       // (它们对空 pagesState 会渲染出空版式框)。collect-on 类隐藏版式书 chrome。首帧网格

@@ -36,15 +36,6 @@ test('editor triggers select-layout after story collection (not the poll on prog
   assert.match(chatSource, /submitSelectLayoutV3\(albumId,/);
 });
 
-test('select-layout submit returns before rebuilding refs once handoff is reserved', () => {
-  const serviceSource = source('src/services/generation/generation-service.ts');
-  const progressCheck = serviceSource.indexOf('if (job.progress !== 50)');
-  const payloadBuild = serviceSource.indexOf('const payload = buildSelectLayoutRequestFromTree');
-
-  assert.ok(progressCheck > 0, 'submitSelectLayoutV3 must check the reservation marker');
-  assert.ok(payloadBuild > 0, 'submitSelectLayoutV3 must still build the payload for first handoff');
-  assert.ok(
-    progressCheck < payloadBuild,
-    'idempotent reserved handoffs must return before rebuilding/validating refs',
-  );
-});
+// 解耦后:排版另起独立 layout job,幂等由 unique(album, layout, active) 约束保证(建重复 job
+// 冲突即幂等接受),不再靠「progress!==50 提前返回」优化。重复触发只派发一次的行为覆盖见
+// generation-service.test.ts 的 duplicate-posts 测试。

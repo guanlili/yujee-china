@@ -110,32 +110,36 @@ export const generationService = {
 
   async submitSelectLayoutV3(userId: string, albumId: string, input: SelectLayoutInput) {
     const album = await albumService.findOwned(userId, albumId);
-    const job = await agentJobRepo.findByRequestId(input.requestId);
-    if (!job) throw ERRORS.JOB_NOT_FOUND();
-    if (job.userId !== userId || job.albumId !== albumId) throw ERRORS.JOB_NOT_OWNED();
-    // 时序反转:收集完才排版,此刻 album 恒为 EDITING(不再翻 AGENT_RUNNING);AGENT_RUNNING
-    // 保留以兼容老时序/回退开关。真正的并发闸是下面的 progress 哨兵 + reserve*() CAS,不靠 status。
-    if (
-      !(album.status === 'EDITING' || album.status === 'AGENT_RUNNING') ||
-      job.status !== 'RUNNING' ||
-      job.stage !== 'layout'
-    ) {
+    // 解耦:排版是独立操作,不再依赖 analyze 的 init job(analyze 完它已 COMPLETED)。闸门改看
+    // 相册态 + 草稿树:必须 EDITING、还没定稿(layoutJson==null),且草稿里有可排版的章节树。
+    if (album.status !== 'EDITING' || album.layoutJson != null) {
       throw ERRORS.ALBUM_NOT_EDITABLE();
     }
-    if (job.progress !== 50) {
-      return { albumId, requestId: input.requestId, accepted: true };
-    }
+    const tree = readDraftTree(album.draftJson); // 无树(还没 analyze 完)会抛,挡住误触发
 
-    const tree = readDraftTree(album.draftJson);
+    // 排版另起独立 layout job:自己的 requestId、kind='layout'、不碰积分。
+    const layoutRequestId = crypto.randomUUID();
+    // 先构造载荷(校验 refs)—— 坏 refs 在建 job 前就抛,不留孤儿 layout job。
     const payload = buildSelectLayoutRequestFromTree({
-      requestId: input.requestId,
+      requestId: layoutRequestId,
       callbackUrl: `${env.WEB_BASE_URL}/api/v3/internal/job-progress`,
       language: input.language,
       tree,
       refs: input.refs,
     });
-    const reserved = await agentJobRepo.reserveSelectLayout(db, job.id);
-    if (!reserved) {
+
+    // unique(album, layout, QUEUED/RUNNING) 防重复触发 —— 已有在跑的排版就幂等接受、不起第二个。
+    try {
+      await db.transaction(async (tx) => {
+        const created = await jobService.createGenerationJob(tx, {
+          userId,
+          albumId,
+          requestId: layoutRequestId,
+          kind: 'layout',
+        });
+        await jobService.markRunning(tx, created.id);
+      });
+    } catch {
       return { albumId, requestId: input.requestId, accepted: true };
     }
 
@@ -143,10 +147,10 @@ export const generationService = {
       await agentClient.submitSelectLayoutV3(payload);
     } catch (e) {
       logger.error(
-        { err: String(e), requestId: input.requestId },
-        'agent v3 select-layout submit failed, marking job FAILED',
+        { err: String(e), requestId: layoutRequestId },
+        'agent v3 select-layout submit failed, marking layout job FAILED',
       );
-      await jobService.handleV3Failed(input.requestId, {
+      await jobService.handleV3Failed(layoutRequestId, {
         code: 'AGENT_INTERNAL_ERROR',
         message: 'Failed to submit select-layout to agent',
       });

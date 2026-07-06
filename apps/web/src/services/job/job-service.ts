@@ -7,17 +7,12 @@ import { logger } from '@/lib/log/logger';
 import { transientLayoutCandidates } from '@/services/album/layout-candidates';
 import { V3StoryDraft, type SelectLayoutCandidateUnit } from '@yujee/contracts';
 
-// P2 select-layout progress sentinels on the shared agent_jobs row (stage stays
-// 'layout' the whole time, see docs/agent/contract.md §5.2.1):
-//   50  analyze done, awaiting browser select-layout dispatch (phase 1)
-//   51  select-layout dispatched (reserveSelectLayout)
-//   52  candidates callback arrived, awaiting browser judge-layout dispatch (phase 2)
-//   53  judge-layout dispatched (reserveJudgeLayout)
-//   100 completed
+// 解耦后 analyze 与 layout 是两个独立 job:init job(analyze,0→100)与 layout job(排版,
+// 0→100)各自独立,不再共享一行 agent_jobs 用 50/51/52 哨兵串联。两段式候选流(如重启用)
+// 仍用 candidates-ready 进度标记。
 export const SELECT_LAYOUT_CANDIDATES_READY_PROGRESS = 52;
 
 const ZOMBIE_TIMEOUT_MS = 5 * 60 * 1000;
-const SELECT_LAYOUT_COMPLETABLE_STAGES = new Set(['layout', 'legalize', 'wrap']);
 
 export type GenerationResolution =
   | { kind: 'progress'; stage: string | null; progress: number }
@@ -120,6 +115,12 @@ export const jobService = {
         completedAt: now,
       });
 
+      // layout job 卡死:相册留 EDITING(草稿完好),用户重触发排版即可;不标相册 FAILED、不动
+      // 积分。只有 init(analyze)卡死才把相册标 FAILED + 释放 hold。
+      if (job.kind === 'layout') {
+        return { swept: true, releasedHold: false };
+      }
+
       const album = await albumRepo.findById(job.albumId);
       const holdId = album?.creditHoldId ?? null;
       await albumRepo.update(tx, job.albumId, {
@@ -148,7 +149,7 @@ export const jobService = {
 
   async createGenerationJob(
     tx: DbOrTx,
-    input: { userId: string; albumId: string; requestId: string; kind: 'init' },
+    input: { userId: string; albumId: string; requestId: string; kind: 'init' | 'layout' },
   ) {
     return agentJobRepo.create(tx, {
       userId: input.userId,
@@ -174,33 +175,29 @@ export const jobService = {
       logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 analyze completed');
       return;
     }
-    const stage = job.stage ?? '';
-    if (SELECT_LAYOUT_COMPLETABLE_STAGES.has(stage) && (job.progress ?? 0) >= 51) {
-      return;
-    }
-
     await db.transaction(async (tx) => {
-      const won = await agentJobRepo.transitionStatus(tx, job.id, 'RUNNING', ['QUEUED', 'RUNNING'], {
-        progress: 50,
-        stage: 'layout',
+      // 解耦:analyze 是 init job 的交付物,完成即 COMPLETED —— 不再停在 layout「等收集」。
+      // 相册直接进 EDITING/story(收集态),用户由此进采访编辑器(page.tsx: EDITING &
+      // layoutJson==null → authoring)。排版由用户采访完另起独立 layout job 触发。于是采访
+      // 期间没有任何 RUNNING job,相册隔多久回来都不会被僵尸检查误杀。
+      const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
+        progress: 100,
+        stage: 'wrap',
         usage: (usage as Record<string, unknown> | null) ?? null,
-        // 时序反转:analyze 完成后 job 停在 RUNNING 等用户「收集故事」,这段不推进进度。清掉
-        // startedAt,让 zombie-sweeper(按 startedAt 判 10min 超时)**不把等收集的 job 当死 job**
-        // 扫成 FAILED。收集完 submitSelectLayoutV3 会重设 startedAt(排版才真正开始计时)。
-        startedAt: null,
+        completedAt: new Date(),
       });
       if (!won) return;
 
       const draftJson = buildAnalyzeDraftJson(tree);
 
       await albumRepo.update(tx, job.albumId, {
+        status: 'EDITING',
+        stage: 'story',
         draftJson,
       });
 
       // 扣费时机(用户拍板):选完照片建相册即扣。analyze 完成 = 相册真正成形,
       // 在此结算 hold(HOLDING→SETTLED)。后续「收集故事→排版」不再动积分。
-      // 副作用红利:hold 结算后,draft-expiry sweeper(谓词含 HOLDING)天然把
-      // 「采访中」的 EDITING+draftJson+layoutJson==null 相册排除,不误伤在途收集。
       if (album.creditHoldId) {
         await creditService.settle(tx, job.userId, album.creditHoldId);
       }
@@ -221,11 +218,8 @@ export const jobService = {
     const job = await agentJobRepo.findByRequestId(requestId);
     if (!job) return;
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
-    if (!SELECT_LAYOUT_COMPLETABLE_STAGES.has(job.stage ?? '')) return;
-
-    // Atomic CAS 51→52: only the first candidates callback for a select-layout
-    // dispatch parks the job and stashes candidates. A late/duplicate callback after
-    // phase 2 started (>=53) or completion loses the CAS and is ignored.
+    // 解耦后 job 是独立 layout job(不再是共享 init job 的 50/51/52 哨兵)。两段式候选流本地
+    // 未启用(inline judge),此处仅在被调用时暂存候选、不崩;两段式重启用需另行适配。
     const won = await agentJobRepo.markCandidatesReady(db, job.id, mergeV3Usage(job.usage, usage));
     if (!won) return;
     transientLayoutCandidates.set(requestId, units);
@@ -242,25 +236,12 @@ export const jobService = {
       return;
     }
     const parsedDraft = V3StoryDraft.safeParse(album.draftJson);
-    // 时序反转:收集完才排版,此刻 album 恒为 EDITING(不再翻 AGENT_RUNNING)——所以「排版
-    // 是否已启动」不能再靠 album.status 判,改用 job 哨兵:stage∈completable 且 progress≥51
-    // (select-layout 已被 reserve 过,50→51)。这样能挡掉「analyze 刚完 progress=50」时一个
-    // 错乱的 completed 回调把没排版的 album 直接推 story。tree 就绪由 parsedDraft 保证。
-    if (
-      !SELECT_LAYOUT_COMPLETABLE_STAGES.has(job.stage ?? '') ||
-      (job.progress ?? 0) < 51 ||
-      !parsedDraft.success
-    ) {
+    // 解耦:这是独立 layout job 的完成回调。只需草稿已就绪(analyze 已写树)即可合并排版页;
+    // 相册在 analyze 完成时就已 EDITING/story,这里不再改 status/stage,只补 pages。
+    if (!parsedDraft.success) {
       logger.warn(
-        {
-          requestId,
-          albumId: job.albumId,
-          jobStage: job.stage,
-          jobProgress: job.progress,
-          albumStatus: album.status,
-          hasStoryDraft: parsedDraft.success,
-        },
-        'ignored select-layout completed callback before layout was reserved',
+        { requestId, albumId: job.albumId, albumStatus: album.status },
+        'select-layout completed but album has no v3-story draft',
       );
       return;
     }
@@ -276,13 +257,9 @@ export const jobService = {
 
       const draftJson = mergeSelectLayoutPages(album.draftJson, pages);
 
-      await albumRepo.update(tx, job.albumId, {
-        status: 'EDITING',
-        draftJson,
-        stage: 'story',
-      });
+      await albumRepo.update(tx, job.albumId, { draftJson });
 
-      // 积分已在 analyze 完成时结算(选完照片即扣),这里不再 settle,避免重复结算。
+      // 积分已在 analyze 完成时结算,这里不动积分(layout job 不挂 hold)。
     });
   },
 
@@ -298,6 +275,9 @@ export const jobService = {
         completedAt: new Date(),
       });
       if (!won) return;
+      // layout job 失败:相册已是 EDITING(草稿完好),保持可编辑,用户可重触发排版。不标相册
+      // FAILED、不动积分(积分在 analyze 时已结算,layout job 不挂 hold)。只有 init 失败才失败相册。
+      if (job.kind === 'layout') return;
       await albumRepo.update(tx, job.albumId, { status: 'FAILED', errorMessage: error.message });
       await creditService.releaseByAlbum(tx, job.albumId);
     });

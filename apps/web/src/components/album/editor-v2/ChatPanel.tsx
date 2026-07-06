@@ -68,7 +68,7 @@ import {
   PhotosUnavailableError,
 } from '@/lib/generation/client';
 import { albumRecipe } from '@/lib/generation/draft';
-import { fetchChapterSummary, postChapterContexts } from '@/lib/album/authoring-client';
+import { fetchChapterSummary, fetchDraftSkeleton, postChapterContexts } from '@/lib/album/authoring-client';
 import {
   buildChapterInterviews,
   buildChapterContext,
@@ -76,7 +76,6 @@ import {
   interviewMessages,
   type ChapterInterviewInput,
 } from '@/lib/interview/interview';
-import { StageBreadcrumb } from './StageBreadcrumb';
 
 const CONFIRM_CHAPTER_COMMAND = '[confirm-chapter]';
 
@@ -270,12 +269,18 @@ export function ChatPanel({
         const j = await res.json();
         if (!j?.ok) return 0;
         const msgs = (j.data?.messages ?? []) as Array<{
+          seq?: number;
           role: string;
           content: string;
           chapterId?: string | null;
           createdAt?: string;
         }>;
-        msgs.sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')));
+        // 按追加序 seq 回放(写入顺序 = 用户操作顺序);seq 缺省时退回 createdAt。
+        msgs.sort((a, b) =>
+          a.seq != null && b.seq != null
+            ? a.seq - b.seq
+            : String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')),
+        );
         chapterHistory.splice(0, chapterHistory.length);
         let shown = 0;
         let lastCardChapterId: string | null = null;
@@ -1327,7 +1332,12 @@ export function ChatPanel({
         });
         if (disposed) return;
         const working = appendThinkingShell();
-        void working;
+        // select-layout runs async on the Agent (inline → completed 直接;two-phase →
+        // candidates→judge). Either path lands the finished pages in the server-side
+        // draft. Poll it and, once pages appear, fire yujee:authoring-pages-ready so the
+        // canvas refreshes IN PLACE (EditorPort refetches; only EditorBook remounts).
+        // ChatPanel keeps its state — no full reload, so no re-run/duplication.
+        void waitForLayoutThenRefresh(working);
       } catch (e) {
         if (disposed) return;
         selectLayoutTriggered = false;
@@ -1342,6 +1352,42 @@ export function ChatPanel({
           restAwait();
           scrollChat();
         }
+      }
+    }
+    // 排版是 Agent 异步跑的,完成的页落进服务端 draft(inline / 两段式都如此)。
+    // 轮询 draft,pages 一出现就派发 `yujee:authoring-pages-ready`:EditorPort 收到后重取
+    // 草稿,canvas(按 pages.length key)只重挂自己渲染出版面;ChatPanel(按 album.id key)
+    // 不重挂,保留对话历史 —— 所以不会像整页 reload 那样重复采访/错乱顺序。以 draft.pages
+    // 为准,不依赖具体评委路径。
+    async function waitForLayoutThenRefresh(host: HTMLElement) {
+      // 兜底封顶:Agent 自身预算 600s,但排版通常 < 1 分钟落地。
+      const deadline = Date.now() + 3 * 60 * 1000;
+      while (!disposed && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2500));
+        if (disposed) return;
+        try {
+          const { draft } = await fetchDraftSkeleton(albumId);
+          if (draft && draft.pages.length > 0) {
+            if (disposed) return;
+            // 收掉「排版中」的 thinking,原地刷画板(不整页 reload)。
+            settleThinking(host, 'analyzedFeedback');
+            const root = outerRootRef.current;
+            root?.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+            window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+            return;
+          }
+        } catch (e) {
+          if (e instanceof UnauthorizedError) return; // 会话没了:停轮询,下一次用户操作会跳登录
+          // 其它瞬时错误:继续轮询到封顶,不把错误灌进对话
+        }
+      }
+      if (!disposed) {
+        settleThinking(host, 'analyzedFeedback');
+        appendReplyBody(
+          host,
+          aT('排版好像慢了点,刷新一下页面看看结果。', 'Layout is taking a while — refresh the page to see the result.'),
+        );
+        appendTime(host);
       }
     }
     async function startChapterInterview(chapterId: string, photoIds: string[]) {
@@ -1705,14 +1751,6 @@ export function ChatPanel({
             <span data-i18n="detailChapters">详细章节</span>
           </button>
         </div>
-
-        {mode !== 'editing' && (
-          <StageBreadcrumb
-            stage={breadcrumbStage}
-            locale={locale}
-            chapterProgress={storyProgress}
-          />
-        )}
 
         <div className="chat-body flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-6" id="chatBody" style={{ gap: '24px' }}>
           <>

@@ -113,11 +113,12 @@ async function seedLayoutReadyAlbum(userId: string, requestId: string) {
   return album;
 }
 
-test('submitSelectLayoutV3 rejects a missing job before posting to Agent', async (t) => {
+test('submitSelectLayoutV3 rejects when album is not in EDITING state', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('select-layout-missing-job');
   try {
     const album = await makeAlbum(user.id);
+    // 解耦:排版闸门看相册态(必须 EDITING),不再靠 job。AGENT_RUNNING(分析中)必须被拒。
     await albumRepo.update(db, album.id, {
       status: 'AGENT_RUNNING',
       stage: 'analysing',
@@ -126,51 +127,18 @@ test('submitSelectLayoutV3 rejects a missing job before posting to Agent', async
     let posted = false;
     t.mock.method(agentClient, 'submitSelectLayoutV3', async () => {
       posted = true;
-      return { requestId: 'missing-layout-job', accepted: true };
+      return { requestId: 'x', accepted: true };
     });
 
     await assert.rejects(
       generationService.submitSelectLayoutV3(user.id, album.id, {
-        requestId: 'missing-layout-job',
+        requestId: 'x',
         language: 'en',
         refs: REFS,
       }),
-      (err: unknown) => (err as { code?: string }).code === 'JOB_NOT_FOUND',
+      (err: unknown) => (err as { code?: string }).code === 'ALBUM_NOT_EDITABLE',
     );
     assert.equal(posted, false);
-  } finally {
-    await cleanupUser(user.id);
-  }
-});
-
-test('submitSelectLayoutV3 rejects a requestId that belongs to another album', async (t) => {
-  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
-  const user = await makeUser('select-layout-wrong-job');
-  try {
-    const album = await makeAlbum(user.id);
-    await albumRepo.update(db, album.id, {
-      status: 'AGENT_RUNNING',
-      stage: 'analysing',
-      draftJson: { version: 'v3-story', tree: TREE, progress: { currentChapterId: 'ch_1', doneChapterIds: [] } },
-    });
-    const other = await seedLayoutReadyAlbum(user.id, 'layout-other-album');
-    let posted = false;
-    t.mock.method(agentClient, 'submitSelectLayoutV3', async () => {
-      posted = true;
-      return { requestId: 'layout-other-album', accepted: true };
-    });
-
-    await assert.rejects(
-      generationService.submitSelectLayoutV3(user.id, album.id, {
-        requestId: 'layout-other-album',
-        language: 'en',
-        refs: REFS,
-      }),
-      (err: unknown) => (err as { code?: string }).code === 'JOB_NOT_OWNED',
-    );
-    assert.equal(posted, false);
-    const otherJob = await agentJobRepo.findByRequestId('layout-other-album');
-    assert.equal(otherJob?.albumId, other.id);
   } finally {
     await cleanupUser(user.id);
   }
@@ -212,30 +180,37 @@ test('submitSelectLayoutV3 requires the existing job to be in layout progress', 
   }
 });
 
-test('submitSelectLayoutV3 reuses the analyze job requestId so the select-layout callback lands', async (t) => {
+test('submitSelectLayoutV3 starts a fresh layout job whose requestId the select-layout callback lands on', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('select-layout-callback');
   try {
-    const album = await seedLayoutReadyAlbum(user.id, 'layout-ready');
+    const album = await seedLayoutReadyAlbum(user.id, 'layout-ready'); // EDITING/story, init job COMPLETED
     const posted: unknown[] = [];
     t.mock.method(agentClient, 'submitSelectLayoutV3', async (payload: unknown) => {
       posted.push(payload);
-      return { requestId: 'layout-ready', accepted: true };
+      return { requestId: (payload as { requestId: string }).requestId, accepted: true };
     });
 
-    const result = await generationService.submitSelectLayoutV3(user.id, album.id, {
-      requestId: 'layout-ready',
+    await generationService.submitSelectLayoutV3(user.id, album.id, {
+      requestId: 'ignored-by-server',
       language: 'en',
       refs: REFS,
     });
-    assert.deepEqual(result, { albumId: album.id, requestId: 'layout-ready', accepted: true });
     assert.equal(posted.length, 1);
-    assert.equal((posted[0] as { requestId?: string }).requestId, 'layout-ready');
+    // 解耦:服务端另起独立 layout job,用自己新生成的 requestId(不复用 analyze 的)。
+    const layoutRequestId = (posted[0] as { requestId: string }).requestId;
+    assert.ok(layoutRequestId && layoutRequestId !== 'ignored-by-server' && layoutRequestId !== 'layout-ready');
+    const layoutJob = await agentJobRepo.findByRequestId(layoutRequestId);
+    assert.equal(layoutJob?.kind, 'layout');
+    assert.equal(layoutJob?.status, 'RUNNING');
 
-    await jobService.handleV3SelectLayoutCompleted('layout-ready', PAGES, USAGE);
+    // 用这个新 requestId 的 completed 回调把页合并进草稿(相册已 EDITING/story,只补页)。
+    await jobService.handleV3SelectLayoutCompleted(layoutRequestId, PAGES, USAGE);
     const reloaded = await albumRepo.findById(album.id);
     assert.equal(reloaded?.status, 'EDITING');
     assert.deepEqual((reloaded?.draftJson as { pages?: unknown }).pages, PAGES);
+    const completedLayoutJob = await agentJobRepo.findByRequestId(layoutRequestId);
+    assert.equal(completedLayoutJob?.status, 'COMPLETED');
   } finally {
     await cleanupUser(user.id);
   }
@@ -289,11 +264,11 @@ test('submitSelectLayoutV3 rejects malformed browser refs before reserving or po
       (err: unknown) => (err as { code?: string }).code === 'VALIDATION_FAILED',
     );
 
-    const job = await agentJobRepo.findByRequestId('layout-bad-ref');
+    // 坏 refs 在构造载荷时就抛(建 layout job 之前),所以没派发、也不留孤儿 job。
     assert.equal(posted, false);
-    assert.equal(job?.status, 'RUNNING');
-    assert.equal(job?.stage, 'layout');
-    assert.equal(job?.progress, 50);
+    // seed 的 init job 仍是 COMPLETED(analyze 已完成),未被这次失败触动。
+    const initJob = await agentJobRepo.findByRequestId('layout-bad-ref');
+    assert.equal(initJob?.status, 'COMPLETED');
   } finally {
     await cleanupUser(user.id);
   }
@@ -345,63 +320,6 @@ test('buildJudgeLayoutRequest validates against the strict JudgeLayoutRequest co
   assert.equal(request.units[0].candidates[0].thumbnail, 'data:image/jpeg;base64,AA==');
 });
 
-test('candidates callback parks the job at 52 and stashes candidates for the browser', async (t) => {
-  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
-  const user = await makeUser('judge-candidates-ready');
-  try {
-    transientLayoutCandidates.resetForTest();
-    const album = await seedCandidatesReadyAlbum(user.id, 'judge-ready', t);
-
-    const job = await agentJobRepo.findByRequestId('judge-ready');
-    assert.equal(job?.progress, 52);
-    assert.equal(job?.stage, 'layout');
-    assert.equal(job?.status, 'RUNNING');
-
-    const fetched = await generationService.getJudgeCandidates(user.id, album.id, 'judge-ready');
-    assert.equal(fetched.ready, true);
-    assert.equal(fetched.units.length, 1);
-    assert.equal(fetched.units[0].candidates.length, 2);
-  } finally {
-    transientLayoutCandidates.resetForTest();
-    await cleanupUser(user.id);
-  }
-});
-
-test('submitJudgeLayoutV3 reserves 52→53 once and posts judge-layout (no double dispatch, no re-reserve)', async (t) => {
-  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
-  const user = await makeUser('judge-dispatch');
-  try {
-    transientLayoutCandidates.resetForTest();
-    const album = await seedCandidatesReadyAlbum(user.id, 'judge-dispatch-r', t);
-
-    let posts = 0;
-    t.mock.method(agentClient, 'submitJudgeLayoutV3', async () => {
-      posts += 1;
-      return { requestId: 'judge-dispatch-r', accepted: true };
-    });
-
-    await generationService.submitJudgeLayoutV3(user.id, album.id, {
-      requestId: 'judge-dispatch-r',
-      language: 'en',
-      units: JUDGE_UNITS,
-    });
-    await generationService.submitJudgeLayoutV3(user.id, album.id, {
-      requestId: 'judge-dispatch-r',
-      language: 'en',
-      units: JUDGE_UNITS,
-    });
-
-    assert.equal(posts, 1);
-    const job = await agentJobRepo.findByRequestId('judge-dispatch-r');
-    assert.equal(job?.progress, 53);
-
-    // The same completed callback as before still merges pages (Web merge unchanged).
-    await jobService.handleV3SelectLayoutCompleted('judge-dispatch-r', PAGES, USAGE);
-    const reloaded = await albumRepo.findById(album.id);
-    assert.equal(reloaded?.status, 'EDITING');
-    assert.equal(reloaded?.stage, 'story');
-  } finally {
-    transientLayoutCandidates.resetForTest();
-    await cleanupUser(user.id);
-  }
-});
+// NOTE: 解耦后两段式(candidates 52 / judge 52→53)的 job 哨兵机制不再适用(排版是独立
+// layout job)。本地走 inline judge、不用两段式,故此处移除旧的两段式 job-sentinel 测试;
+// 两段式若重新启用,需按 layout job 模型另行覆盖(见解耦 plan 后续项)。

@@ -101,7 +101,7 @@ test('analyze/completed rejects pages because Stage1 is tree-only', async (t) =>
   }
 });
 
-test('analyze/completed tree-only → stores tree, parks job at layout handoff, SETTLES hold (charge at build)', async (t) => {
+test('analyze/completed tree-only → stores tree, album EDITING/story, init job COMPLETED, SETTLES hold', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('v3route-tree-only');
   try {
@@ -116,28 +116,27 @@ test('analyze/completed tree-only → stores tree, parks job at layout handoff, 
     assert.equal((await res.json()).data.accepted, true);
 
     const album = await albumRepo.findById(albumId);
-    // analyze 完成不改 album.status —— 收集期由 album.status(EDITING,前端建相册即置)驱动;
-    // 这里 seed 的是 AGENT_RUNNING(旧兼容),handleV3AnalyzeCompleted 不动它。
+    // 解耦:analyze 完成 → 相册直接 EDITING/story(用户由此进采访编辑器),init job COMPLETED。
     assert.deepEqual(album?.draftJson, {
       version: 'v3-story',
       tree: TREE,
       progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
     });
-    assert.equal(album?.stage, 'analysing');
-    // 扣费时机(用户拍板):选完照片建相册即扣 —— analyze 完成 = 相册成形,在此结算 hold。
-    // 收集/排版不再动积分;hold 结算后也不会落进 draft-expiry sweeper(谓词含 HOLDING)。
+    assert.equal(album?.status, 'EDITING');
+    assert.equal(album?.stage, 'story');
+    // 扣费时机(用户拍板):analyze 完成 = 相册成形,在此结算 hold。
     const hold = await creditHoldRepo.findById(holdId);
     assert.equal(hold?.status, 'SETTLED');
     const job = await agentJobRepo.findByRequestId(requestId);
-    assert.equal(job?.status, 'RUNNING');
-    assert.equal(job?.stage, 'layout');
-    assert.equal(job?.progress, 50);
+    assert.equal(job?.status, 'COMPLETED');
+    assert.equal(job?.stage, 'wrap');
+    assert.equal(job?.progress, 100);
   } finally {
     await cleanupUser(user.id);
   }
 });
 
-test('analyze/completed resets prior analyze progress to the layout handoff marker', async (t) => {
+test('analyze/completed completes the init job regardless of prior progress', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('v3route-analyze-progress-marker');
   try {
@@ -160,9 +159,9 @@ test('analyze/completed resets prior analyze progress to the layout handoff mark
     assert.equal((await res.json()).data.accepted, true);
 
     const job = await agentJobRepo.findByRequestId(requestId);
-    assert.equal(job?.status, 'RUNNING');
-    assert.equal(job?.stage, 'layout');
-    assert.equal(job?.progress, 50);
+    assert.equal(job?.status, 'COMPLETED');
+    assert.equal(job?.stage, 'wrap');
+    assert.equal(job?.progress, 100);
   } finally {
     await cleanupUser(user.id);
   }
@@ -235,12 +234,12 @@ test('select-layout/completed under EDITING (时序反转) → merges pages + st
   }
 });
 
-test('select-layout/completed at progress=50 (未 reserve) is ignored — 不把没排版的 album 推 story', async (t) => {
+test('select-layout/completed on a terminal (init) job requestId is ignored — 不给 album 补 pages', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('v3route-premature-complete');
   try {
     const { albumId, requestId } = await seed(user.id);
-    // 收集中:album=EDITING,job 停在 analyze 交接标记 layout/50(尚未 reserveSelectLayout → 51)。
+    // 解耦:收集期 album=EDITING/story,init job 已 COMPLETED(排版是另一个独立 layout job)。
     await albumRepo.update(db, albumId, {
       status: 'EDITING',
       stage: 'story',
@@ -252,13 +251,14 @@ test('select-layout/completed at progress=50 (未 reserve) is ignored — 不把
     });
     const job = await agentJobRepo.findByRequestId(requestId);
     assert.ok(job);
-    await agentJobRepo.transitionStatus(db, job.id, 'RUNNING', ['QUEUED'], {
-      stage: 'layout',
-      progress: 50,
-      startedAt: null,
+    await agentJobRepo.transitionStatus(db, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
+      stage: 'wrap',
+      progress: 100,
+      completedAt: new Date(),
     });
 
-    // 一个错乱/超前的 completed 回调(排版从未被 reserve)必须被丢弃,不能推进 album。
+    // 用 init 的 requestId 发来的 select-layout completed 是错乱回调(该 job 已终态),必须被
+    // 丢弃,不能给 album 补 pages。
     const res = await post({
       requestId,
       jobKind: 'select-layout',
@@ -269,12 +269,8 @@ test('select-layout/completed at progress=50 (未 reserve) is ignored — 不把
     assert.equal((await res.json()).data.accepted, true);
 
     const album = await albumRepo.findById(albumId);
-    // 仍停在收集态:stage 未被推到 story-with-pages,draftJson 无 pages,job 未 COMPLETED。
     assert.equal(album?.stage, 'story');
     assert.equal((album?.draftJson as { pages?: unknown } | null)?.pages, undefined);
-    const stillRunning = await agentJobRepo.findByRequestId(requestId);
-    assert.equal(stillRunning?.status, 'RUNNING');
-    assert.equal(stillRunning?.progress, 50);
   } finally {
     await cleanupUser(user.id);
   }
@@ -399,7 +395,7 @@ test('select-layout progress cannot move the reservation marker backwards', asyn
   }
 });
 
-test('duplicate analyze/completed cannot reset a reserved select-layout job', async (t) => {
+test('duplicate analyze/completed is idempotent — no-op on the already-completed init job', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('v3route-analyze-duplicate-after-reserve');
   try {
@@ -413,10 +409,8 @@ test('duplicate analyze/completed cannot reset a reserved select-layout job', as
     });
     assert.equal((await first.json()).data.accepted, true);
 
-    const job = await agentJobRepo.findByRequestId(requestId);
-    assert.ok(job);
-    await agentJobRepo.reserveSelectLayout(db, job.id);
-
+    // 首次 analyze completed 已把 init job 标 COMPLETED、相册 EDITING/story。重复的 analyze
+    // completed 必须幂等 no-op(命中 job 终态守卫),不能把 job/相册退回。
     const duplicate = await post({
       requestId,
       jobKind: 'analyze',
@@ -427,10 +421,12 @@ test('duplicate analyze/completed cannot reset a reserved select-layout job', as
     assert.equal((await duplicate.json()).data.accepted, true);
 
     const after = await agentJobRepo.findByRequestId(requestId);
-    assert.equal(after?.stage, 'layout');
-    assert.equal(after?.progress, 51);
+    assert.equal(after?.status, 'COMPLETED');
+    assert.equal(after?.stage, 'wrap');
+    assert.equal(after?.progress, 100);
     const album = await albumRepo.findById(albumId);
-    assert.equal(album?.status, 'AGENT_RUNNING');
+    assert.equal(album?.status, 'EDITING');
+    assert.equal(album?.stage, 'story');
   } finally {
     await cleanupUser(user.id);
   }

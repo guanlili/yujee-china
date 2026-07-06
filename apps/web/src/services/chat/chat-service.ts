@@ -8,6 +8,7 @@ export const chatService = {
     return {
       messages: rows.map((m) => ({
         id: m.id,
+        seq: m.seq,
         role: m.role,
         content: m.content,
         layoutPatch: m.layoutPatch ?? null,

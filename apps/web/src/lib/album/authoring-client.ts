@@ -74,7 +74,9 @@ export interface DraftSkeleton {
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(path);
+  // draft/story-progress 是随排版/编辑不断变化的动态数据,绝不能吃缓存 —— 否则原地重取
+  // (排版完成后刷画板)会命中 collect 阶段那次 0 页的旧响应,画板一直空(#layout-refresh)。
+  const res = await fetch(path, { cache: 'no-store' });
   const json = await res.json();
   if (!json.ok) {
     if (res.status === 401 || json.error?.code === 'UNAUTHORIZED') throw new UnauthorizedError();

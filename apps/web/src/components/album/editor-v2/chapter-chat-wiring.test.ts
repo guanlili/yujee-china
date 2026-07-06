@@ -83,13 +83,9 @@ test('edit-chat wiring no longer depends on retired nameOptions chips', () => {
   assert.doesNotMatch(src, /res\.nameOptions/);
 });
 
-test('breadcrumb is fed from story-progress (doneChapterIds / currentChapterId)', () => {
-  // StageBreadcrumb receives the live story-progress object, which carries the
-  // chapter-story gate state (currentChapterId + done set) loaded from GET
-  // /api/v3/.../story-progress.
-  assert.match(src, /chapterProgress=\{storyProgress\}/);
-  assert.match(src, /story-progress`\)/);
-});
+// (已移除)对话框顶部的五环节状态栏(StageBreadcrumb)已从 ChatPanel 撤下,相应的
+// 「breadcrumb is fed from story-progress」渲染测试随之删除。story-progress 仍由
+// loadStoryGate 拉取供采访门控使用。
 
 test('legacy persisted chat replay no longer feeds the edit-chat payload', () => {
   const fn = /async function loadHistory\(\): Promise<number> \{[\s\S]*?\n {4}\}/.exec(src);

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."agent_job_kind" ADD VALUE 'layout';
