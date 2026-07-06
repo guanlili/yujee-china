@@ -46,7 +46,7 @@ memoir-agent-rebuild/
 
 - Web 是 album 和 job 状态的真相源;Agent 不推进 Web 的 `stage`。
 - 原图由 Browser 持有;Web/Agent 不把 base64 落库、落 R2 或写日志。
-- 跨服务字段先看 `packages/contracts/src/v3.ts`,Python 镜像在 `apps/agent/src/schemas.py`。
+- 跨服务字段先看 `packages/contracts/src/v3.ts`,Python 镜像在 `engine/src/schemas.py`。
 - 模板 JSON 在 `packages/contracts/templates/*.json`;生成文件不要手改。
 - 新增顶层目录、跨服务协议、数据库 schema、外部 API 或依赖前,先说明影响面。
 
@@ -63,11 +63,11 @@ pnpm test
 Agent 测试从仓根跑更稳:
 
 ```bash
-PYTHONPATH=apps/agent apps/agent/.venv/bin/python -m pytest apps/agent/tests
+PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests
 ```
 
 ## 继续阅读
 
 - Web: [`apps/web/README.md`](apps/web/README.md)
-- Agent: [`apps/agent/README.md`](apps/agent/README.md)
+- Agent: [`engine/README.md`](engine/README.md)
 - Contracts/templates: [`packages/contracts/templates/README.md`](packages/contracts/templates/README.md)

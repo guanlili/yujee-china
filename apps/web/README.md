@@ -121,4 +121,4 @@ Defaults live in `src/lib/env.ts`. Common fields:
 - Keep browser-only photo/GPS logic out of server services.
 - Do not store base64 image payloads in Postgres or R2.
 - Keep Web as the owner of album/job persistence and callback merging.
-- When changing a Web route that calls Agent, check `apps/agent/src/routes.py` first; removed Agent routes should not be described as active behavior.
+- When changing a Web route that calls Agent, check `engine/src/routes.py` first; removed Agent routes should not be described as active behavior.

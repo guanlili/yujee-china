@@ -1,5 +1,5 @@
 {
-  "_comment": "Cross-language contract parity fixtures (WP0.3 / #178). Each case is parsed by BOTH the TS zod contract (packages/contracts/src/v3.ts, layout.ts, templates.ts, enums.ts) and the Python pydantic mirror (apps/agent/src/schemas.py). `expectValid` is the single shared verdict — if TS and Python disagree with it, the contract has drifted (architecture §6.8 第 5 条). Run TS side: `tsx packages/contracts/scripts/parity-check.ts`; Python side: `pytest apps/agent/tests/test_schemas.py -k parity`.",
+  "_comment": "Cross-language contract parity fixtures (WP0.3 / #178). Each case is parsed by BOTH the TS zod contract (packages/contracts/src/v3.ts, layout.ts, templates.ts, enums.ts) and the Python pydantic mirror (engine/src/schemas.py). `expectValid` is the single shared verdict — if TS and Python disagree with it, the contract has drifted (architecture §6.8 第 5 条). Run TS side: `tsx packages/contracts/scripts/parity-check.ts`; Python side: `pytest engine/tests/test_schemas.py -k parity`.",
   "cases": [
     {
       "name": "V3AcceptedResponse valid",

@@ -15,8 +15,8 @@ Browser -> Web (Next.js) -> Agent (FastAPI)
 
 1. 仓根 `README.md`:系统总框架和当前工作流。
 2. 做 Web 相关任务:再读 `apps/web/README.md`。
-3. 做 Agent 相关任务:再读 `apps/agent/README.md`。
-4. 改跨服务字段:读 `packages/contracts/src/v3.ts` 和 `apps/agent/src/schemas.py`。
+3. 做 Agent 相关任务:再读 `engine/README.md`。
+4. 改跨服务字段:读 `packages/contracts/src/v3.ts` 和 `engine/src/schemas.py`。
 5. 改模板:读 `packages/contracts/templates/README.md` 和对应 JSON。
 
 ## 当前重要现实

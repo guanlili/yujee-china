@@ -7,7 +7,7 @@ truth**; `pnpm --filter @yujee/contracts templates:generate` regenerates
 Keep JSON pretty-printed with 2-space indentation.
 
 The contract shape is defined by `src/templates.ts` (zod) and mirrored by the
-Python loader `apps/agent/src/engine/templates.py`. The project-level technical
+Python loader `engine/src/engine/templates.py`. The project-level technical
 context lives in the root `README.md`.
 
 ## V3 fields
