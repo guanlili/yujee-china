@@ -11,8 +11,8 @@ from typing import Any
 
 from .. import callback
 from .. import ai_client
-from ..agents import select_layout as select_layout_agent
-from ..engine import candidate_gen_v3, generic_copy, legalize, skeleton_v3
+from .core.layout import select_layout as select_layout_agent
+from .core.layout import candidate_gen_v3, generic_copy, legalize, skeleton_v3
 from ..logging_config import get_logger, request_id_var
 from ..schemas import (
     CandidatePage,

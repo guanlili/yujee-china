@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from src.engine import templates
+from src.workflows.core.layout import templates
 from src.schemas import V3TemplateCandidate
-from src.engine import skeleton_v3 as sk
+from src.workflows.core.layout import skeleton_v3 as sk
 
 
 def _greedy_pack(total: int, max_capacity: int) -> list[int]:

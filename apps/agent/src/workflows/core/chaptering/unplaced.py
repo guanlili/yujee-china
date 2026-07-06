@@ -10,8 +10,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import datetime
 
-from ..agents.chapter_describer.schema import DescribeResult
-from ..schemas import V3AnalyzePhoto
+from .chapter_describer.schema import DescribeResult
+from ....schemas import V3AnalyzePhoto
 from .schema import GroupingResult, UnplacedAssignments
 
 

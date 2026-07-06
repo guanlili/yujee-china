@@ -12,11 +12,11 @@ import asyncio
 import time
 
 from .. import callback
-from ..agents.chapter_describer import handler as chapter_describer
-from ..agents.vision_error import VisionError
-from ..chaptering import grouping as chapter_grouping
-from ..chaptering import refinement as chapter_refinement
-from ..chaptering import tree_builder
+from .core.chaptering.chapter_describer import handler as chapter_describer
+from .core.chaptering.vision_error import VisionError
+from .core.chaptering import grouping as chapter_grouping
+from .core.chaptering import refinement as chapter_refinement
+from .core.chaptering import tree_builder
 from ..logging_config import get_logger, request_id_var
 from ..schemas import (
     V3AnalyzeCompleted,

@@ -81,7 +81,7 @@ def pix_feat(image: Image.Image) -> list[float]:
 
 
 def clip_embeddings(images: list[Image.Image]) -> list[list[float]]:
-    from ..settings import get_settings
+    from ....settings import get_settings
 
     settings = get_settings()
     if settings.grouping_clip_base_url:
@@ -131,7 +131,7 @@ def _image_to_data_url(image: Image.Image) -> str:
 
 @lru_cache(maxsize=1)
 def _load_clip() -> tuple[Any, Any]:
-    from ..settings import get_settings
+    from ....settings import get_settings
 
     _prepend_grouping_pythonpath()
     import open_clip
@@ -156,7 +156,7 @@ def _load_clip() -> tuple[Any, Any]:
 
 
 def _prepend_grouping_pythonpath() -> None:
-    from ..settings import get_settings
+    from ....settings import get_settings
 
     value = getattr(get_settings(), "grouping_pythonpath", None)
     if not value:

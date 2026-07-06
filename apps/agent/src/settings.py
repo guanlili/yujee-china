@@ -140,7 +140,7 @@ class Settings(BaseSettings):
 
     # Stage2 select-layout: Gemini native generateContent. The default base URL
     # keeps the old `/openai` suffix for env compatibility; the handler strips it.
-    # Missing key is non-fatal for the stage: flows/select_layout.py catches it
+    # Missing key is non-fatal for the stage: workflows/select_layout.py catches it
     # and uses the deterministic skeleton fallback.
     select_layout_api_key: str | None = None
     select_layout_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"

@@ -17,14 +17,14 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from src import callback as cb_mod
-from src.agents.chapter_describer import handler as chapter_describer
-from src.agents.chapter_describer.schema import DescribeResult
-from src.agents.vision_error import VisionError
-from src.chaptering import grouping as chapter_grouping
-from src.chaptering import refinement as chapter_refinement
-from src.chaptering.schema import GroupingChapter, GroupingResult, UnplacedAssignments
-from src.engine import accent_color
-from src.flows import analyze
+from src.workflows.core.chaptering.chapter_describer import handler as chapter_describer
+from src.workflows.core.chaptering.chapter_describer.schema import DescribeResult
+from src.workflows.core.chaptering.vision_error import VisionError
+from src.workflows.core.chaptering import grouping as chapter_grouping
+from src.workflows.core.chaptering import refinement as chapter_refinement
+from src.workflows.core.chaptering.schema import GroupingChapter, GroupingResult, UnplacedAssignments
+from src.workflows.core.layout import accent_color
+from src.workflows import analyze
 from src.schemas import (
     V3AnalyzeCompleted,
     V3AnalyzeRequest,

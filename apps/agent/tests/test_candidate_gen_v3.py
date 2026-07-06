@@ -1,7 +1,7 @@
 """排版随机候选生成 + 图槽匹配的确定性/合法性测试(P1)。"""
 
-from src.engine import candidate_gen_v3 as gen
-from src.engine import slot_matcher_v3 as matcher
+from src.workflows.core.layout import candidate_gen_v3 as gen
+from src.workflows.core.layout import slot_matcher_v3 as matcher
 
 
 def _photos(n: int, *, orientation: str = "landscape", composition: str | None = "wide"):

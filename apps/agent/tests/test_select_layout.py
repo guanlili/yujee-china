@@ -1,8 +1,8 @@
 import pytest
 
-from src.agents import select_layout as select_layout_agent
-from src.engine import skeleton_v3, templates
-from src.flows import select_layout
+from src.workflows.core.layout import select_layout as select_layout_agent
+from src.workflows.core.layout import skeleton_v3, templates
+from src.workflows import select_layout
 from src.schemas import SelectLayoutRequest
 
 

@@ -13,9 +13,9 @@ import time
 from typing import Any
 
 from .. import ai_client, callback
-from ..agents import select_layout as select_layout_agent
-from ..agents.select_layout import GeminiLayoutUnavailable
-from ..engine import generic_copy, legalize
+from .core.layout import select_layout as select_layout_agent
+from .core.layout.select_layout import GeminiLayoutUnavailable
+from .core.layout import generic_copy, legalize
 from ..logging_config import get_logger, request_id_var
 from ..schemas import (
     JudgeLayoutRequest,

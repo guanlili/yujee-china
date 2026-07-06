@@ -9,9 +9,9 @@ import time
 from PIL import Image
 
 from src import settings as settings_mod
-from src.chaptering import features
-from src.chaptering.grouping import group_photos
-from src.chaptering.schema import GroupingParams
+from src.workflows.core.chaptering import features
+from src.workflows.core.chaptering.grouping import group_photos
+from src.workflows.core.chaptering.schema import GroupingParams
 from src.schemas import V3AnalyzePhoto
 
 

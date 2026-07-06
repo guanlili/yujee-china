@@ -5,6 +5,8 @@ AGENT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = AGENT_ROOT / "src"
 SKILLS_ROOT = SRC_ROOT / "skills"
 AGENTS_ROOT = SRC_ROOT / "agents"
+# 识图/排版的模型调用单元已并入 workflow 内核层(chaptering/layout 下)。
+CHAPTERING_ROOT = SRC_ROOT / "workflows" / "core" / "chaptering"
 
 
 def test_human_authored_prompt_assets_live_under_skills():
@@ -62,10 +64,10 @@ def test_agents_markdown_only_describes_role_input_and_output_contracts():
 
 def test_chapter_describer_and_unplaced_refiner_have_separate_prompts():
     chapter_prompt = (
-        AGENTS_ROOT / "chapter_describer" / "describe_chapters.md"
+        CHAPTERING_ROOT / "chapter_describer" / "describe_chapters.md"
     ).read_text(encoding="utf-8")
     refiner_prompt = (
-        AGENTS_ROOT / "unplaced_refiner" / "refine_unplaced.md"
+        CHAPTERING_ROOT / "unplaced_refiner" / "refine_unplaced.md"
     ).read_text(encoding="utf-8")
 
     assert "章节级理解" in chapter_prompt

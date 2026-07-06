@@ -10,19 +10,19 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from ... import ai_client
-from ...logging_config import get_logger
-from ...schemas import V3AnalyzePhoto
-from ...settings import get_settings
-from ...skills import SKILLS_DIR, load_prompt
-from ...engine.simple_id import from_simple_at_paths, to_simple
-from ...vision_provider import (
+from ..... import ai_client
+from .....logging_config import get_logger
+from .....schemas import V3AnalyzePhoto
+from .....settings import get_settings
+from .....skills import SKILLS_DIR, load_prompt
+from ...layout.simple_id import from_simple_at_paths, to_simple
+from .....vision_provider import (
     VisionSlot,
     VisionSlotError,
     ark_vision_slot,
     openai_vision_slot,
 )
-from ..image_grouping.schema import GroupingResult
+from ..schema import GroupingResult
 from ..vision_error import VisionError
 from .schema import DescribeResult
 

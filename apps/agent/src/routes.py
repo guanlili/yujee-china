@@ -9,7 +9,7 @@
 
 编辑 / 主题 / 封面 / finalize 等后续环节已从这个最小版剥离,后面再接。
 
-Thin layer: 只做路由 + accepted/completed 信封 + 日志。async 编排在 `src/flows/*`。
+Thin layer: 只做路由 + accepted/completed 信封 + 日志。async 编排在 `src/workflows/*`。
 Stateless(§数据归属):Agent 不持 draft/stage;base64 只在 analyze 请求内存里,永不落盘/日志。
 """
 
@@ -29,7 +29,7 @@ from .schemas import (
     V3AcceptedResponse,
     V3AnalyzeRequest,
 )
-from .flows import analyze, judge_layout, select_layout
+from .workflows import analyze, judge_layout, select_layout
 from .settings import get_settings
 
 router = APIRouter()

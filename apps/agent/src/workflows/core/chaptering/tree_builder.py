@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from ..agents.chapter_describer.schema import DescribeResult
-from ..engine import accent_color
-from ..schemas import (
+from .chapter_describer.schema import DescribeResult
+from ..layout import accent_color
+from ....schemas import (
     V3AnalyzePhoto,
     V3Chapter,
     V3ChapterPhoto,

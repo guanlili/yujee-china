@@ -5,9 +5,9 @@ from types import SimpleNamespace
 import pytest
 
 from src import settings as settings_module
-from src.agents import select_layout as select_layout_agent
-from src.agents.select_layout import handler as select_layout_handler
-from src.engine import legalize, skeleton_v3, template_previews, templates
+from src.workflows.core.layout import select_layout as select_layout_agent
+from src.workflows.core.layout.select_layout import handler as select_layout_handler
+from src.workflows.core.layout import legalize, skeleton_v3, template_previews, templates
 from src.schemas import V3Chapter, V3ChapterPhoto
 
 

@@ -1,7 +1,7 @@
 """AI 辅助分章修正。
 
 这个模块只负责分章业务规则:散落照片可以进已有章节,也可以形成 AI 新增章节。
-真实模型调用由 `agents.unplaced_refiner` 提供;模型失败或输出不合法时回退
+真实模型调用由 `unplaced_refiner`(本包内) 提供;模型失败或输出不合法时回退
 `unplaced.py` 的确定性归章策略。
 """
 
@@ -10,10 +10,10 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping
 from typing import TypeAlias
 
-from .. import ai_client
-from ..agents.chapter_describer.schema import DescribeResult
-from ..logging_config import get_logger
-from ..schemas import V3AnalyzePhoto
+from .... import ai_client
+from .chapter_describer.schema import DescribeResult
+from ....logging_config import get_logger
+from ....schemas import V3AnalyzePhoto
 from .schema import GroupingResult, NewChapter, UnplacedAssignments
 from .unplaced import group_unplaced
 
@@ -43,7 +43,7 @@ async def refine_unplaced(
         return UnplacedAssignments(assignments={})
 
     if assigner is None:
-        from ..agents.unplaced_refiner import handler as unplaced_refiner
+        from .unplaced_refiner import handler as unplaced_refiner
 
         assigner = unplaced_refiner.assign_unplaced_to_chapters
 

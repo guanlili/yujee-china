@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 
-from src.agents.chapter_describer.schema import DescribeResult
-from src.chaptering import refinement, tree_builder
-from src.chaptering.schema import (
+from src.workflows.core.chaptering.chapter_describer.schema import DescribeResult
+from src.workflows.core.chaptering import refinement, tree_builder
+from src.workflows.core.chaptering.schema import (
     GroupingChapter,
     GroupingResult,
     NewChapter,

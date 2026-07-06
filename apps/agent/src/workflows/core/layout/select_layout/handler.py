@@ -2,7 +2,7 @@
 
 把【已分组章节的照片信息 + 合法模板候选目录 + 照片/模板预览图】发给 Gemini,
 让模型每页选一个模板并把照片映射到图槽,返回原始 pages。确定性的候选目录构造与
-合法化夹紧在 `engine/legalize.py`;prompt 在 `select_layout.md`。
+合法化夹紧在 `layout/legalize.py`;prompt 在 `select_layout.md`。
 """
 
 from __future__ import annotations
@@ -15,19 +15,19 @@ from typing import Any
 
 import httpx
 
-from ... import ai_client
-from ...engine import skeleton_v3, template_previews
-from ...engine.legalize import (
+from ..... import ai_client
+from .. import skeleton_v3, template_previews
+from ..legalize import (
     _chapter_id,
     _photo_id,
     _photo_ref,
     _photos,
     build_candidate_catalog,
 )
-from ...engine.simple_id import from_simple_at_paths, to_simple
-from ...logging_config import get_logger
-from ...settings import get_settings
-from ...skills import load_prompt
+from ..simple_id import from_simple_at_paths, to_simple
+from .....logging_config import get_logger
+from .....settings import get_settings
+from .....skills import load_prompt
 from .schema import GeminiLayoutResult, GeminiLayoutUnavailable, LayoutJudgeResult
 
 log = get_logger("select_layout")
@@ -464,7 +464,7 @@ async def judge_layout_thumbnails(thumbnails: Sequence[str]) -> LayoutJudgeResul
 
     # ② 保底:豆包(ARK vision)。用同一套缩略图 messages(OpenAI 兼容,豆包直接吃)。
     try:
-        from ... import vision_provider
+        from ..... import vision_provider
         slot = vision_provider.select_vision_slot(settings)
         response = await ai_client.chat_completion(
             base_url=slot.base_url,

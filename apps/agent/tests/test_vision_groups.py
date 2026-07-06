@@ -9,11 +9,11 @@ import pytest
 from PIL import Image
 
 from src import ai_client
-from src.agents.image_grouping.handler import group_photos
-from src.agents.image_grouping.schema import GroupingChapter, GroupingParams, GroupingResult
-from src.agents.chapter_describer import handler as chapter_describer
-from src.agents.chapter_describer.schema import DescribeResult
-from src.agents.unplaced_refiner import handler as unplaced_refiner
+from src.workflows.core.chaptering.grouping import group_photos
+from src.workflows.core.chaptering.schema import GroupingChapter, GroupingParams, GroupingResult
+from src.workflows.core.chaptering.chapter_describer import handler as chapter_describer
+from src.workflows.core.chaptering.chapter_describer.schema import DescribeResult
+from src.workflows.core.chaptering.unplaced_refiner import handler as unplaced_refiner
 from src.schemas import V3AnalyzePhoto
 
 
@@ -65,7 +65,7 @@ def test_grouping_never_returns_zero_chapters():
 
 def _stub_clip_features(monkeypatch) -> None:
     # 默认已开启每簇 CLIP+颜色子分组;本地无 torch,用同质 stub 让子分组不切散。
-    from src.chaptering import features
+    from src.workflows.core.chaptering import features
 
     monkeypatch.setattr(
         features, "clip_embeddings", lambda images: [[1.0, 0.0] for _ in images]

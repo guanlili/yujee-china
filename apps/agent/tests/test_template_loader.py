@@ -11,7 +11,7 @@ def _repo_root() -> Path:
 
 
 def test_loader_reads_shared_template_json_count():
-    from src.engine import templates
+    from src.workflows.core.layout import templates
 
     template_dir = _repo_root() / "packages" / "contracts" / "templates"
     json_files = sorted(template_dir.glob("*.json"))
@@ -29,19 +29,19 @@ def test_loader_reads_shared_template_json_count():
 def test_loader_fail_fast_when_explicit_template_path_is_missing(monkeypatch, tmp_path):
     missing = tmp_path / "missing-templates"
     monkeypatch.setenv("YUJEE_TEMPLATE_DIR", str(missing))
-    sys.modules.pop("src.engine.templates", None)
+    sys.modules.pop("src.workflows.core.layout.templates", None)
 
     try:
         with pytest.raises(RuntimeError, match="YUJEE_TEMPLATE_DIR"):
-            importlib.import_module("src.engine.templates")
+            importlib.import_module("src.workflows.core.layout.templates")
     finally:
         monkeypatch.delenv("YUJEE_TEMPLATE_DIR", raising=False)
-        sys.modules.pop("src.engine.templates", None)
-        importlib.import_module("src.engine.templates")
+        sys.modules.pop("src.workflows.core.layout.templates", None)
+        importlib.import_module("src.workflows.core.layout.templates")
 
 
 def test_cover_ids_are_derived_from_template_json():
-    from src.engine import templates
+    from src.workflows.core.layout import templates
 
     template_dir = _repo_root() / "packages" / "contracts" / "templates"
     expected_covers = sorted(
@@ -55,7 +55,7 @@ def test_cover_ids_are_derived_from_template_json():
 
 
 def test_prompt_summary_handles_optional_constraints(tmp_path):
-    from src.engine import templates
+    from src.workflows.core.layout import templates
 
     template_file = tmp_path / "optional-01.json"
     template_file.write_text(
@@ -88,7 +88,7 @@ def test_prompt_summary_handles_optional_constraints(tmp_path):
 
 
 def test_loader_accepts_category_only_v3_template(tmp_path):
-    from src.engine import templates
+    from src.workflows.core.layout import templates
 
     template_file = tmp_path / "v3-only.json"
     template_file.write_text(
@@ -137,7 +137,7 @@ def test_loader_accepts_category_only_v3_template(tmp_path):
 
 
 def test_loader_rejects_invalid_v3_nested_fields(tmp_path):
-    from src.engine import templates
+    from src.workflows.core.layout import templates
 
     def write_template(template_id: str, **overrides):
         data = {
@@ -162,7 +162,7 @@ def test_loader_rejects_invalid_v3_nested_fields(tmp_path):
 
 
 def test_loader_mirrors_template_def_edge_constraints(tmp_path):
-    from src.engine import templates
+    from src.workflows.core.layout import templates
 
     def write_template(template_id: str, **overrides):
         data = {
@@ -248,15 +248,15 @@ def test_optional_image_slot_hints_treated_as_any(monkeypatch, tmp_path):
     )
 
     monkeypatch.setenv("YUJEE_TEMPLATE_DIR", str(tmp_path))
-    sys.modules.pop("src.engine.templates", None)
+    sys.modules.pop("src.workflows.core.layout.templates", None)
 
     try:
-        templates = importlib.import_module("src.engine.templates")
+        templates = importlib.import_module("src.workflows.core.layout.templates")
         assert templates.image_slot_map(templates.TEMPLATES["optional-01"])["image"] == {"id": "image"}
     finally:
         monkeypatch.delenv("YUJEE_TEMPLATE_DIR", raising=False)
-        sys.modules.pop("src.engine.templates", None)
-        importlib.import_module("src.engine.templates")
+        sys.modules.pop("src.workflows.core.layout.templates", None)
+        importlib.import_module("src.workflows.core.layout.templates")
 
 
 # ---------- 示例文案(copy-examples)加载 -------------------------------------
@@ -265,7 +265,7 @@ def test_optional_image_slot_hints_treated_as_any(monkeypatch, tmp_path):
 
 
 def test_copy_example_returns_slot_texts_map():
-    from src.engine import templates as registry
+    from src.workflows.core.layout import templates as registry
 
     # mag-01 ships example copy keyed by slot id (examples[0].texts).
     example = registry.copy_example("mag-01")
@@ -274,7 +274,7 @@ def test_copy_example_returns_slot_texts_map():
 
 
 def test_copy_example_repeat_group_keys_use_brackets():
-    from src.engine import templates as registry
+    from src.workflows.core.layout import templates as registry
 
     # mag-10's repeat group example keys as explain[0..3] — same bracket shape the
     # writing-side per-page expansion produces.
@@ -284,7 +284,7 @@ def test_copy_example_repeat_group_keys_use_brackets():
 
 
 def test_copy_example_missing_file_returns_empty_dict():
-    from src.engine import templates as registry
+    from src.workflows.core.layout import templates as registry
 
     # mag-20 has no copy-example file → empty dict (graceful degrade, never KeyError).
     assert registry.copy_example("mag-20") == {}

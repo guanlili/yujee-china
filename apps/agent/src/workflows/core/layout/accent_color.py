@@ -11,7 +11,7 @@ from typing import Any
 
 from PIL import Image, UnidentifiedImageError
 
-from ..schemas import V3AnalyzePhoto
+from ....schemas import V3AnalyzePhoto
 
 _FALLBACK_ACCENT = "#8A8174"
 _HUE_BUCKETS = 24

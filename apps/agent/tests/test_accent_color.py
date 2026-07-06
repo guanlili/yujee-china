@@ -6,7 +6,7 @@ import re
 
 from PIL import Image
 
-from src.engine.accent_color import accent_from_photo, accent_of_group
+from src.workflows.core.layout.accent_color import accent_from_photo, accent_of_group
 from src.schemas import V3AnalyzePhoto
 
 _HEX6_RE = re.compile(r"^#[0-9A-F]{6}$")

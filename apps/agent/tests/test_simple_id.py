@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.engine.simple_id import from_simple, to_simple
+from src.workflows.core.layout.simple_id import from_simple, to_simple
 
 
 def test_to_simple_assigns_one_based_ids_and_mapping():

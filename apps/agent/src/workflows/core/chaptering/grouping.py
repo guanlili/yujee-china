@@ -16,7 +16,7 @@ from typing import Any
 
 from PIL import Image
 
-from ..schemas import V3AnalyzePhoto
+from ....schemas import V3AnalyzePhoto
 from . import features
 from .schema import GroupingChapter, GroupingParams, GroupingResult
 
