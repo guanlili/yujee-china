@@ -13,7 +13,6 @@ from src.agents.image_grouping.handler import group_photos
 from src.agents.image_grouping.schema import GroupingChapter, GroupingParams, GroupingResult
 from src.agents.chapter_describer import handler as chapter_describer
 from src.agents.chapter_describer.schema import DescribeResult
-from src.agents.regroup_unplaced.handler import group_unplaced
 from src.agents.unplaced_refiner import handler as unplaced_refiner
 from src.schemas import V3AnalyzePhoto
 
@@ -402,49 +401,3 @@ def test_unplaced_refiner_always_uses_doubao_vision_slot(monkeypatch):
     assert calls[0]["base_url"] == "https://ark.example.test/api/v3"
     assert calls[0]["api_key"] == "fake_ark"
     assert calls[0]["model"] == "doubao-test-vision"
-
-
-def test_unplaced_cluster_assignment_is_atomic_when_model_unavailable(monkeypatch):
-    photos = [
-        _photo("p1", cluster_id="c1", taken_at="2024-01-01T10:00:00Z"),
-        _photo("p2", cluster_id="c2", taken_at="2024-01-03T10:00:00Z"),
-        _photo("p3", cluster_id="c3", taken_at="2024-01-02T10:00:00Z"),
-        _photo("p4", cluster_id="c3", taken_at="2024-01-02T10:01:00Z"),
-    ]
-    grouping = GroupingResult(
-        chapters=[
-            GroupingChapter(chapterId="ch_1", photoIds=["p1"]),
-            GroupingChapter(chapterId="ch_2", photoIds=["p2"]),
-        ],
-        unplacedPhotoIds=["p3", "p4"],
-    )
-    descriptions = DescribeResult(
-        chapterDescriptions={"ch_1": "morning", "ch_2": "afternoon"},
-        imageDescriptions={
-            "p1": "morning",
-            "p2": "afternoon",
-            "p3": "middle",
-            "p4": "middle detail",
-        },
-    )
-
-    assignments = group_unplaced(
-        grouping,
-        descriptions,
-        {photo.photoId: photo for photo in photos},
-        language="en",
-    )
-
-    assert set(assignments.assignments) == {"p3", "p4"}
-    assert assignments.assignments["p3"] == assignments.assignments["p4"]
-    assert assignments.assignments["p3"] in {"ch_1", "ch_2"}
-
-
-def test_unplaced_regroup_rejects_zero_target_chapters():
-    with pytest.raises(ValueError, match="at least one chapter"):
-        group_unplaced(
-            GroupingResult(chapters=[], unplacedPhotoIds=["p1"]),
-            DescribeResult(chapterDescriptions={}, imageDescriptions={"p1": "scene"}),
-            {"p1": _photo("p1")},
-            language="en",
-        )

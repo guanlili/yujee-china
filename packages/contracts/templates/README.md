@@ -7,8 +7,8 @@ truth**; `pnpm --filter @yujee/contracts templates:generate` regenerates
 Keep JSON pretty-printed with 2-space indentation.
 
 The contract shape is defined by `src/templates.ts` (zod) and mirrored by the
-Python loader `apps/agent/src/templates.py`. See `docs/agent/v3-requirements.md`
-§9 for the full V3 spec.
+Python loader `apps/agent/src/engine/templates.py`. The project-level technical
+context lives in the root `README.md`.
 
 ## V3 fields
 
@@ -53,13 +53,10 @@ Python loader `apps/agent/src/templates.py`. See `docs/agent/v3-requirements.md`
 - **`items`** — the one repeat group; its `images[]` / `texts[]` slots are
   addressed at render time as `<slotId>[<n>]`.
 
-## Transitional note (WP0.2)
+## Current engine note
 
-These templates currently carry the V3 fields **alongside** their legacy fields
-(`slot`, `scene`, image `orientation` / `quality`, and `repeat` text slots). The
-deterministic template-picking engine — a shared TS↔Python contract locked by the
-golden fixtures in `packages/contracts/fixtures/skeleton/` — still reads the legacy
-fields, so they are kept until that engine is rewritten onto `category` / `items`
-(together with the Python consumer rewrite, WP0.4). This is an implementation
-bridge only; `docs/agent/v3-requirements.md` §9 remains the final V3 contract.
-Once both ends switch over, the legacy fields are removed.
+Templates are category-only: `category` replaces the legacy `slot` / `scene`
+split. Image-slot `orientation`, `quality`, and `composition` are still current:
+the deterministic selection and assignment engine uses them to match photos to
+slots. The generated registry is locked by template checks and skeleton fixtures
+under `packages/contracts/fixtures/skeleton/`.

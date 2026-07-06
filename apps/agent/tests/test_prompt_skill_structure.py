@@ -61,9 +61,6 @@ def test_agents_markdown_only_describes_role_input_and_output_contracts():
 
 
 def test_chapter_describer_and_unplaced_refiner_have_separate_prompts():
-    describe_content = (
-        AGENTS_ROOT / "image_understanding" / "describe_content.md"
-    ).read_text(encoding="utf-8")
     chapter_prompt = (
         AGENTS_ROOT / "chapter_describer" / "describe_chapters.md"
     ).read_text(encoding="utf-8")
@@ -71,8 +68,6 @@ def test_chapter_describer_and_unplaced_refiner_have_separate_prompts():
         AGENTS_ROOT / "unplaced_refiner" / "refine_unplaced.md"
     ).read_text(encoding="utf-8")
 
-    assert "prompt:describe_chapters" not in describe_content
-    assert "prompt:refine_unplaced" not in describe_content
     assert "章节级理解" in chapter_prompt
     assert "你是补充分章使徒" not in chapter_prompt
     assert "你是补充分章使徒" in refiner_prompt

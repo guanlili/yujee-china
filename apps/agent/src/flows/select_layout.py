@@ -17,21 +17,17 @@ from ..logging_config import get_logger, request_id_var
 from ..schemas import (
     CandidatePage,
     LayoutCandidate,
-    Page,
     SelectLayoutCandidates,
     SelectLayoutCandidateUnit,
     SelectLayoutCompleted,
     SelectLayoutRequest,
     V3CallbackError,
-    V3Chapter,
-    V3ChapterPhoto,
     V3FailedEvent,
     V3JobStage,
     V3Models,
     V3ProgressEvent,
     V3Usage,
 )
-from ..agents.story import write_copy
 from ..settings import get_settings
 
 log = get_logger("v3_album")
@@ -287,63 +283,6 @@ async def _select_batch(chapters: Sequence[Any], *, seed: str) -> _BatchResult:
         return _BatchResult(pages=pages)
 
 
-async def _write_all_chapters_copy(
-    chapters: Sequence[Any], pages: list[dict[str, Any]], language: str
-) -> tuple[list[dict[str, Any]], int, int]:
-    """排版定版式后,为每一章一次性写满文案(单段路径)。把 texts 贴回对应页。
-
-    pages(fill_generic_copy 产物)不带 chapterId —— 按「页的图槽照片 ∈ 该章照片集」归属到章。
-    每章据 chapterContext(采访)+ sceneDescription 写(write_chapter_copy);失败降级空,不拖垮排版。
-    返回 (pages, in_tok, out_tok)。"""
-    in_tok = out_tok = 0
-    # chapterId → 该章照片集(判页归属)。
-    for chapter in chapters:
-        photo_ids = {_value(p, "photoId") for p in _chapter_photos(chapter)}
-        # 本章的页:页的任一图槽照片属于本章。
-        chapter_pages_idx = [
-            i
-            for i, pg in enumerate(pages)
-            if photo_ids & set((pg.get("images") or {}).values())
-        ]
-        if not chapter_pages_idx:
-            continue
-        # 组 V3Chapter(写文案只需 chapterContext + photos 的 sceneDescription)。
-        chapter_obj = V3Chapter(
-            chapterId=str(_value(chapter, "chapterId")),
-            chapterContext=str(_value(chapter, "chapterContext", "") or ""),
-            accentColor=None,
-            artFont=None,
-            photos=[
-                V3ChapterPhoto(
-                    photoId=_value(p, "photoId"),
-                    sceneDescription=str(_value(p, "sceneDescription", "") or ""),
-                    width=1,
-                    height=1,
-                    orientation="landscape",
-                )
-                for p in _chapter_photos(chapter)
-            ],
-        )
-        page_objs = [
-            Page(
-                pageIndex=int(pages[i]["pageIndex"]),
-                templateId=str(pages[i]["templateId"]),
-                images=dict(pages[i].get("images", {})),
-                texts=dict(pages[i].get("texts", {})),
-            )
-            for i in chapter_pages_idx
-        ]
-        patches, ci, co = await write_copy.write_chapter_copy(chapter_obj, page_objs, language)
-        in_tok += ci
-        out_tok += co
-        texts_by_index = {patch.pageIndex: dict(patch.texts) for patch in patches}
-        for i in chapter_pages_idx:
-            idx = int(pages[i]["pageIndex"])
-            if idx in texts_by_index:
-                pages[i]["texts"] = {**pages[i].get("texts", {}), **texts_by_index[idx]}
-    return pages, in_tok, out_tok
-
-
 async def select_pages(req: SelectLayoutRequest) -> tuple[list[dict[str, Any]], V3Usage]:
     started = time.monotonic()
     settings = get_settings()
@@ -368,12 +307,8 @@ async def select_pages(req: SelectLayoutRequest) -> tuple[list[dict[str, Any]], 
             model = result.model
 
     # 封面/封底不在排版这步生成,改放后续环节;Stage2 只产 interior 页。
+    # 纯排版:只产版面(templateId + 图槽 + 页码/日期),texts 留空,交由后续编辑 agent 写。
     pages = generic_copy.fill_generic_copy(interior_pages, req.chapters)  # type: ignore[arg-type]
-    # 排版定版式后一并写满文案(§流程重构):inline-judge 单段路径也要写(否则本地/降级时文案空)。
-    # 每章据 chapterContext(采访结果)写;无则照 sceneDescription 写;单章失败降级空,不拖垮排版。
-    pages, w_in, w_out = await _write_all_chapters_copy(req.chapters, pages, req.language)
-    output_tokens += w_out
-    input_tokens += w_in
     duration_ms = int((time.monotonic() - started) * 1000)
     usage = V3Usage(
         durationMs=duration_ms,

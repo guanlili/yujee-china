@@ -10,7 +10,7 @@
 | [`design/pricing.html`](./design/pricing.html) | `/[locale]/(marketing)/pricing/page.tsx` | 定价页 |
 | [`design/editor.html`](./design/editor.html) | `/[locale]/(tool)/album/[uuid]/page.tsx` | 相册编辑器(**v2 重设计版**,见下) |
 
-> 路由归属见 [`../../../docs/web/directory.md`](../../../docs/web/directory.md) §2。
+> 当前路由和架构入口见仓根 [`../../../README.md`](../../../README.md)。实际构建入口以 `apps/web/src/app` 为准。
 
 ### 编辑器 v2 重设计(issue #143)
 
@@ -31,7 +31,7 @@
 2. **CSS tokens 是权威**——`yujee-home2.html` 顶部 `:root { --bg, --fg, --accent, ... }` 是设计 token 源,React 化时抽到 `apps/web/src/styles/theme.css` 或 Tailwind config,**值不许改**。
 3. **i18n 文案**——HTML 里所有 `data-i18n="xxx"` / `data-i18n-title="xxx"` 的 key 是 i18n 锚点,React 化时一一对应到 `apps/web/src/messages/{en,zh}.json`。
 4. **页面间链接**——HTML 用 `href="design/pricing.html"` 这类相对路径互链,React 化时改为 Next.js `<Link href="/pricing">`。
-5. **未接数据的部分**——HTML 里写死的项目卡片、积分余额、用户名等都是占位数据,React 化时按 [`../../../docs/web/api.md`](../../../docs/web/api.md) 的接口接真数据。
+5. **未接数据的部分**——HTML 里写死的项目卡片、积分余额、用户名等都是占位数据,React 化时按 `apps/web/src/app/api` 和 `apps/web/src/services` 的真实接口接数据。
 
 ## 在浏览器里看
 

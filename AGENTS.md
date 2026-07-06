@@ -1,66 +1,35 @@
-# Yujee(遇己)
+# Yujee(遇己) Agent 起手约束
 
-AI 人生纪念册 Web 应用,海外市场。选照片 → 秒级进编辑器 → AI 五环节(分析 → 章节故事 → 主题与章节色 → 书籍设计 → 待导出)→ 浏览器导出 PDF。
+本仓是 AI 人生纪念册应用:
 
-- **域名**:yujeeai.com · **UI**:英文 · **付费**:Creem · **初期目标**:1000 用户(简单优先)
-
-## 三个组件
-
-```
-Browser ──► Web (Next.js) ──► Agent (FastAPI)
-                │
-                ▼
-          Postgres + R2
+```text
+Browser -> Web (Next.js) -> Agent (FastAPI)
+             |
+             v
+       Postgres + Cloudflare R2
 ```
 
-- **Browser** — 唯一有原图的地方。压缩到 800px base64 发出;本地 `@react-pdf/renderer` 生成 PDF 直传 R2。
-- **Web**(Next.js 15 + Drizzle + better-auth)— 页面 / 登录 / 积分 / 支付。base64 **不落盘**,直接转发 Agent;只存排版 JSON + PDF 元数据。
-- **Agent**(Python + FastAPI)— 三真层(flows/agents/engine)+ 平铺边。识图模型做分析 + 版面主控,DeepSeek 写文案,确定性引擎做分组 / 套模板 / flatten / 校验。Agent 不持 `draft_json`/stage;仅 Stage3 edit-loop 状态归独立 Postgres `agent` schema(Alembic)。
+`docs/` 已删除。不要再引用或恢复旧 docs 体系。
 
-## 技术栈
+## 必读顺序
 
-| 层 | 选型 |
-|---|---|
-| Web | Next.js 15 + React 19 + TypeScript |
-| ORM / DB | Web Drizzle + Neon Postgres;Agent Alembic owns only `agent.*` |
-| Auth | better-auth |
-| Agent | Python 3.12 + FastAPI |
-| 识图 / 版面 | 火山 doubao-vision(`ARK_*`,默认)/ OpenAI GPT(`OPENAI_*`)双槽 failover |
-| 章节文案 | DeepSeek 槽(`DEEPSEEK_*`)|
-| 排版引擎 | repo 内 React 模板(`apps/web/src/components/album/templates/`)|
-| 对象存储 | Cloudflare R2(只存 PDF)|
-| 部署 | Web → Vercel,Agent → Fly.io |
+1. 仓根 `README.md`:系统总框架和当前工作流。
+2. 做 Web 相关任务:再读 `apps/web/README.md`。
+3. 做 Agent 相关任务:再读 `apps/agent/README.md`。
+4. 改跨服务字段:读 `packages/contracts/src/v3.ts` 和 `apps/agent/src/schemas.py`。
+5. 改模板:读 `packages/contracts/templates/README.md` 和对应 JSON。
 
-## 仓库结构
+## 当前重要现实
 
-```
-memoir-agent-rebuild/
-├── apps/web/            # Next.js
-├── apps/agent/          # FastAPI
-├── packages/contracts/  # 跨服务 zod schema + TS 类型
-└── docs/                # 架构与约定文档(见下)
-```
+- Agent 当前 route surface 是最小识图 + 排版 scaffold: `/v3/analyze`, `/v3/select-layout`, `/v3/judge-layout`。
+- 旧 edit-chat/theme/cover/finalize 等 Agent 能力已经从当前路由层剥离;不要把旧文档或旧假设写成现状。
+- Web 仍可能保留更完整的路由/client 壳。判断端到端能力时必须同时看 Web caller 和 Agent `routes.py`。
 
-> 新增顶层目录(`infra/`、`scripts/`、新 `packages/*`)先由架构师在 `docs/architecture.md` 登记,别自己建。
+## 动手规则
 
-## 文档(都在 `docs/`,按需查,不用预读)
-
-- **architecture.md** — 架构骨架 + §3 不变式(数据归属 / 积分变更;动手前自查)
-- **agent/contract.md** — Web↔Agent 契约:req/res、错误码、状态机、Web 编排路由图
-- **agent/design.md** — Agent 内部:pipeline、failover、校验、隐私 redact
-- **web/layering.md** — Web 分层与边界(route / service / repo)
-- **web/directory.md** — Web 目录约定
-- **web/conventions.md** — Web 代码约定
-- **web/database.md** — 表结构 / Drizzle / repo
-- **web/errors.md** — 错误码与错误处理
-- **web/api.md** — Web 对外 API(PDF / 营销 / 账单)
-- **deploy/env.production.md** — 生产环境变量
-
-## 必须先问架构师
-
-加表 / 改 schema / 加顶层目录 / 加依赖 / 改对外 API / 改 Web↔Agent 协议 / 改不变式。
-
-## 两条铁律
-
-- **临时文件用完即删** — 调试 / 验证 / 一次性脚本用完立刻删,`git status` 不留临时产物;测试进正式套件,文档进 `docs/`。
-- **改动 review + 推送** — 建分支 → 改 → review → 测试过 → 推 GitHub 开 PR;没过不推,不把工作留本地。
+- 先读真实文件和 `git status`;不要按记忆或旧 docs 下结论。
+- 不恢复用户删除的文件,除非用户明确要求。
+- 新增顶层目录、依赖、数据库 schema、外部 API、Web<->Agent 协议前,先说明影响面。
+- 临时脚本、验证产物、trace 文件用完即删。
+- 长期说明放在仓根 README、对应 app README,或靠近模块的小 README;不要重新扩张大 `docs/` 树。
+- 推送/PR/合并前先跑相应验证;没验证不要声称通过。
