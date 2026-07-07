@@ -84,7 +84,7 @@ test('landing header replaces the login CTA with the account menu for signed-in 
   assert.match(client, /useChromeSession/, 'landing header should read the real chrome session');
   assert.match(client, /<UserMenu user=\{chromeSession\.user\} locale=\{locale\}/, 'signed-in landing users should see the shared account menu');
   assert.match(client, /!\s*chromeSession\.user[\s\S]{0,120}`\/\$\{locale\}\/login`/, 'login CTA should only render for signed-out users');
-  assert.match(userMenu, /bg-\[linear-gradient\(135deg,var\(--grad-green\),var\(--grad-purple\)_55%,var\(--grad-lime\)\)\]/, 'avatar should use the requested colorful background');
+  assert.match(userMenu, /<UserAvatar initial=\{user\?\.avatarInitial\} size=\{40\}/, 'account avatar should use the shared black avatar with gradient ring');
   assert.match(userMenu, /creditBalance/, 'account menu should label the credit balance');
   assert.match(userMenu, /m\.nav\.myAlbums/, 'account menu should use the user-albums label');
   assert.match(userMenu, /`\/\$\{locale\}\/my-albums`/, 'account menu should link to the user albums');

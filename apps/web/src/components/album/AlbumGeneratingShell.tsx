@@ -4,8 +4,9 @@ import Link from 'next/link';
 import type { Locale } from '@/lib/i18n/routing';
 import { getMessages } from '@/lib/i18n/messages';
 import { Brand } from '@/components/app/Brand';
+import { UserAvatar } from '@/components/app/UserAvatar';
+import { YujeeState } from '@/components/app/YujeeState';
 import { RetryFailedButton } from './RetryFailedButton';
-import { PAGE } from './templates/constants';
 
 type ShellPhase = 'loading' | 'running' | 'failed' | 'gone' | 'error';
 
@@ -52,46 +53,13 @@ function DisabledSendIcon({ label }: { label: string }) {
   );
 }
 
-function PageSkeleton({ progress }: { progress: number }) {
-  const scale = 0.42;
-  return (
-    <div className="group relative">
-      <div
-        className="relative overflow-hidden bg-[var(--surface)] shadow-[var(--shadow-card)]"
-        style={{ width: PAGE.width * scale, height: PAGE.height * scale }}
-        aria-hidden
-      >
-        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-[var(--surface)] via-[var(--bg)] to-[var(--border-soft)]" />
-        <div className="absolute inset-x-10 top-10 h-28 rounded-[var(--radius-md)] bg-[var(--border-soft)]" />
-        <div className="absolute left-10 top-44 h-5 w-32 rounded-full bg-[var(--border)]" />
-        <div className="absolute left-10 right-10 top-56 space-y-3">
-          <div className="h-3 rounded-full bg-[var(--border-soft)]" />
-          <div className="h-3 rounded-full bg-[var(--border-soft)]" />
-          <div className="h-3 w-3/4 rounded-full bg-[var(--border-soft)]" />
-        </div>
-        <div className="absolute bottom-14 left-10 right-10 grid grid-cols-2 gap-4">
-          <div className="h-24 rounded-[var(--radius-md)] bg-[var(--border-soft)]" />
-          <div className="h-24 rounded-[var(--radius-md)] bg-[var(--border-soft)]" />
-        </div>
-      </div>
-      <div className="absolute -bottom-9 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[rgba(255,255,255,0.85)] px-3 py-1.5 shadow-[0_2px_12px_rgba(0,0,0,0.08)] backdrop-blur-md">
-        <span className="h-1.5 w-24 overflow-hidden rounded-full bg-[var(--border)]">
-          <span
-            className="block h-full rounded-full bg-[var(--accent)] transition-all duration-700"
-            style={{ width: `${progress}%` }}
-          />
-        </span>
-        <span className="font-mono text-[10px] font-medium tabular-nums text-[var(--fg-2)]">{progress}%</span>
-      </div>
-    </div>
-  );
-}
-
 export function AlbumGeneratingShell({ locale, albumId, phase, generation, error }: Props) {
   const t = getMessages(locale).dashboard.editor;
   const progress = Math.max(0, Math.min(100, generation?.progress ?? 0));
   const stageLabel = resolveGenerationStageLabel(generation?.stage, t.stage);
   const isGenerating = phase === 'loading' || phase === 'running';
+  const isNetworkError = /lost connection|network/i.test(error ?? '');
+  const networkMessage = locale === 'zh' ? '网络异常，检查网络' : 'Network error. Check your connection.';
   const stateLabel = phase === 'loading' ? t.stateLoading : t.stateGenerating;
   const statusLabel =
     phase === 'failed' ? t.failedTitle : phase === 'gone' ? t.goneTitle : phase === 'error' ? t.slowTitle : stateLabel;
@@ -129,10 +97,7 @@ export function AlbumGeneratingShell({ locale, albumId, phase, generation, error
       <div className="relative grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[1fr_340px]">
         <main className="relative flex items-center justify-center overflow-auto bg-[var(--bg)] p-8">
           {phase === 'failed' ? (
-            <div className="max-w-md text-center">
-              <p className="text-3xl font-bold text-[#c44]">{t.failedTitle}</p>
-              <p className="mt-3 text-[var(--muted)]">{error ?? t.failedBodyDefault}</p>
-              <p className="mt-1 text-[var(--text-sm)] text-[var(--muted)]">{t.failedNoCharge}</p>
+            <YujeeState variant="error" title={t.failedTitle} message={`${error ?? t.failedBodyDefault} ${t.failedNoCharge}`}>
               <div className="flex justify-center">
                 <RetryFailedButton albumId={albumId} />
               </div>
@@ -142,34 +107,32 @@ export function AlbumGeneratingShell({ locale, albumId, phase, generation, error
               >
                 {t.backToProjects}
               </Link>
-            </div>
+            </YujeeState>
           ) : phase === 'gone' ? (
-            <div className="max-w-md text-center">
-              <p className="text-3xl font-bold text-[#c44]">{t.goneTitle}</p>
-              <p className="mt-3 text-[var(--muted)]">{t.goneBody}</p>
+            <YujeeState variant="error" title={t.goneTitle} message={t.goneBody}>
               <Link
                 href={`/${locale}/my-albums`}
                 className="mt-6 inline-block text-[var(--text-sm)] text-[var(--accent)] underline underline-offset-2"
               >
                 {t.backToProjects}
               </Link>
-            </div>
+            </YujeeState>
           ) : phase === 'error' ? (
-            <div className="max-w-md text-center">
-              <p className="text-3xl font-bold">{t.slowTitle}</p>
-              <p className="mt-3 text-[var(--muted)]">{error ?? t.slowBody}</p>
-            </div>
+            <YujeeState variant="error" title={t.slowTitle} message={isNetworkError ? networkMessage : error ?? t.slowBody} />
           ) : (
-            <PageSkeleton progress={progress} />
+            <YujeeState
+              variant="loading"
+              title={stageLabel}
+              message={progress > 0 ? `${progress}%` : stateLabel}
+              showDots
+            />
           )}
         </main>
 
         <aside className="hidden border-l border-[var(--border-soft)] lg:block">
           <div className="flex h-full flex-col bg-[var(--surface)]">
             <div className="flex flex-shrink-0 items-center gap-3 px-5 py-4">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--text-sm)] font-bold text-white">
-                {t.aiAvatarChar}
-              </span>
+              <UserAvatar initial={t.aiAvatarChar} size={38} />
               <div className="min-w-0">
                 <h3 className="text-[var(--text-sm)] font-bold tracking-tight">{t.aiName}</h3>
                 <div className="text-[var(--text-xs)] text-[var(--muted)]">{t.chatSubtitle}</div>

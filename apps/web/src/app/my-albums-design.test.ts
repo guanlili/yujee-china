@@ -13,6 +13,12 @@ const getRunningBranch = () => {
   return match[1];
 };
 
+const getFailedBranch = () => {
+  const match = page.match(/if \(a\.status === 'FAILED'\) \{([\s\S]*?)\n    \/\/ COMPLETED \/ EDITING/);
+  assert.ok(match, 'FAILED branch should exist');
+  return match[1];
+};
+
 test('my-albums uses the supplied standalone Yujee gallery shell', () => {
   assert.doesNotMatch(page, /<AppChrome/, 'the page should not be wrapped in the old dashboard shell');
   assert.doesNotMatch(page, /from '@\/components\/app\/AppChrome'/);
@@ -33,7 +39,12 @@ test('my-albums cards match the poster-grid design states', () => {
   assert.match(page, /album-status-chip/, 'status chips should use a shared pill treatment');
   assert.match(page, /new-album-tile[^`]*album-poster-card[^`]*h-full[^`]*self-stretch/, 'the create entry should fill the full poster card height');
   assert.doesNotMatch(page, /new-album-tile[^`]*aspect-\[3\/4\]/, 'the create entry must not keep the cover-only aspect ratio');
-  assert.match(page, /cover-skeleton/, 'running albums should use the shimmer skeleton cover state');
+  assert.match(page, /YujeeState/, 'my-albums should use the shared state illustration component');
+  assert.match(page, /variant="loading"/, 'running albums should use the loading jellyfish state');
+  assert.match(page, /variant="empty"/, 'empty albums should use the empty-state illustration');
+  assert.match(page, /variant="error"/, 'album-list failures should use the shared error-state illustration');
+  assert.doesNotMatch(page, /cover-skeleton/, 'running albums must not use the old skeleton cover state');
+  assert.doesNotMatch(page, /sk-block/, 'running albums must not keep old skeleton blocks');
   assert.match(page, /cover-fail/, 'failed albums should use the dark retry cover state');
 });
 
@@ -53,13 +64,23 @@ test('my-albums wires the real generating status from API data into the card UI'
   assert.match(page, /if \(status === 'AGENT_RUNNING'\) return \{ chip: 'bg-black\/\[0\.05\] text-\[#555\]', dot: '#8C5EF4' \}/, 'running chip should keep the supplied gray pill with purple dot');
   assert.match(page, /isRunning \? 'animate-\[cover-sweep_1\.2s_linear_infinite\]' : ''/, 'running chip dot should keep the supplied animated state');
   assert.match(runningBranch, /className=\{`\$\{POSTER_CARD_CLASS\} cover-running`\}/, 'running branch should render a distinct generating card shell');
-  assert.match(runningBranch, /cover-skeleton/, 'running branch should use the design skeleton cover state');
-  assert.match(runningBranch, /doing-glow/, 'running branch should keep the design glow animation layer');
-  assert.match(runningBranch, /sk-block/, 'running branch should keep design skeleton blocks');
-  assert.match(runningBranch, /animate-\[cover-sweep_1\.5s_ease-in-out_infinite\]/, 'running branch should keep the sweep animation');
+  assert.match(runningBranch, /variant="loading"/, 'running branch should use the supplied loading jellyfish');
+  assert.match(runningBranch, /showDots/, 'running branch should show animated theme-color dots');
+  assert.doesNotMatch(runningBranch, /cover-skeleton/, 'running branch must not use the old skeleton cover state');
+  assert.doesNotMatch(runningBranch, /doing-glow|sk-block|animate-\[cover-sweep_1\.5s_ease-in-out_infinite\]/, 'running branch must not keep old skeleton shimmer pieces');
   assert.match(runningBranch, /正在排版 · 约 1 分钟/, 'running branch should keep the design generating copy');
   assert.match(runningBranch, /Laying out · about 1 min/, 'running branch should keep the English generating copy');
   assert.match(runningBranch, /\{statusChip\(a\.status\)\}/, 'running branch should show the backend status chip');
   assert.doesNotMatch(runningBranch, /<AlbumCoverPreview/, 'running branch should not render the normal cover preview');
   assert.doesNotMatch(runningBranch, /\{a\.title\}/, 'running branch should not render a normal album title overlay');
+});
+
+test('my-albums keeps album generation failures separate from global page errors', () => {
+  const failedBranch = getFailedBranch();
+
+  assert.match(page, /albums !== null && err && albums\.length === 0[\s\S]*variant="error"/, 'empty album-list failures should use the global error illustration');
+  assert.match(failedBranch, /cover-fail/, 'album generation failures should keep the dark retry cover state');
+  assert.match(failedBranch, /<RetryFailedButton albumId=\{a\.id\} variant="card" \/>/, 'failed album cards should keep retry wired to the failed album');
+  assert.doesNotMatch(failedBranch, /YujeeState/, 'album generation failures must not use the global error-state component');
+  assert.doesNotMatch(failedBranch, /variant="error"/, 'album generation failures must not use the global page error illustration');
 });

@@ -250,10 +250,6 @@ export function ChatPanel({
       body.className = 'ai-text';
       body.textContent = text;
       a.appendChild(body);
-      const time = document.createElement('div');
-      time.className = 'name-time';
-      time.textContent = t('justNow');
-      a.appendChild(time);
       chatBody!.appendChild(a);
       scrollChat();
     }
@@ -288,7 +284,7 @@ export function ChatPanel({
         for (const m of msgs) {
           const c = (m.content ?? '').trim();
           if (!c || c.startsWith('[inspection of page')) continue;
-          // 章节卡片也是对话历史的一部分:采访时每章开头先出卡片(缩略图+查看详细)再出问句气泡。
+          // 章节卡片也是对话历史的一部分:采访时每章开头先出卡片(缩略图+查看排版)再出问句气泡。
           // 卡片不单独存库(能从 chapterId 经 chapterMetaById 完全重建),所以重建历史时,在该章
           // 第一条消息之前补插一次卡片,还原「卡片→问1→问2→问3→答」的原始顺序。appendChapterCard
           // 自身按 data-chapter-card 幂等,重复调用安全。
@@ -347,12 +343,6 @@ export function ChatPanel({
       body.textContent = reply;
       host.appendChild(body);
       return body;
-    }
-    function appendTime(host: HTMLElement) {
-      const time = document.createElement('div');
-      time.className = 'name-time';
-      time.textContent = t('justNow');
-      host.appendChild(time);
     }
     function authErr(host: HTMLElement, e: unknown): boolean {
       host.querySelector('.thinking-block')?.classList.remove('active');
@@ -553,7 +543,6 @@ export function ChatPanel({
         lastRecommend = res;
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(host, res.assistantReply);
-        appendTime(host);
         appendPaletteCard(res);
       } catch (e) {
         if (authErr(host, e)) { sending = false; recommendInFlightRef.current = false; return; }
@@ -728,7 +717,6 @@ export function ChatPanel({
           res.assistantReply ??
             aT('已应用主题色与字体。', 'Applied the theme colors and fonts.'),
         );
-        appendTime(host);
         if (res.stage === 'cover') {
           sending = false;
           appendCoverCard();
@@ -774,7 +762,6 @@ export function ChatPanel({
               ? aT('已应用封面与封尾设计。', 'Applied the cover and ending design.')
               : aT('已跳过封面设计。', 'Skipped the cover design.')),
         );
-        appendTime(host);
         const userMessage = payload.userMessage?.trim();
         if (userMessage) coverHistory.push({ role: 'user', content: userMessage });
         if (res.assistantReply?.trim()) {
@@ -1059,7 +1046,6 @@ export function ChatPanel({
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(host, r.assistantReply);
         if (r.kind === 'act') applyDraftAct(r);
-        appendTime(host);
       } catch (e) {
         if (authErr(host, e)) return;
       }
@@ -1091,7 +1077,6 @@ export function ChatPanel({
           aT('这一章已经确定了——你可以继续下一步，或者从左侧选另一章来调整。',
              "This chapter is already confirmed — move on, or pick another chapter on the left to tweak."),
         );
-        appendTime(host);
         restAwait();
         scrollChat();
         return;
@@ -1126,7 +1111,6 @@ export function ChatPanel({
         if (res.navigation?.pageIndex !== undefined) {
           co()?.goToPageIndex?.(res.navigation.pageIndex);
         }
-        appendTime(host);
         chapterHistory.push({ role: 'user', content: userMessage });
         chapterHistory.push({ role: 'assistant', content: res.assistantReply });
         if (res.progressDecision?.chapterDone) {
@@ -1155,7 +1139,6 @@ export function ChatPanel({
           if (res.navigation?.pageIndex !== undefined) {
             co()?.goToPageIndex?.(res.navigation.pageIndex);
           }
-          appendTime(host);
           chapterHistory.push({ role: 'user', content: userMessage });
           chapterHistory.push({ role: 'assistant', content: res.assistantReply });
           if (wroteChapter) appendSatisfactionCard();
@@ -1170,12 +1153,7 @@ export function ChatPanel({
       const idx = draftSkel?.chapters.findIndex((c) => c.chapterId === chapterId) ?? -1;
       if (idx < 0) return null;
       const c = draftSkel!.chapters[idx]!;
-      const tag =
-        c.role === 'opening'
-          ? aT('开篇', 'Opening')
-          : c.role === 'closing'
-            ? aT('收尾', 'Closing')
-            : aT('章节', 'Chapter');
+      const tag = aT(`第 ${idx + 1} 章`, `Chapter ${idx + 1}`);
       const photoIds = c.photoIds?.length
         ? [...new Set(c.photoIds)]
         : [
@@ -1203,38 +1181,6 @@ export function ChatPanel({
     }
 
     const shownChapterCards = shownChapterCardsRef.current;
-
-    function openChapterPhotosOverlay(photoIds: string[]) {
-      const ov = document.createElement('div');
-      ov.className = 'chapter-photos-overlay';
-      const sheet = document.createElement('div');
-      sheet.className = 'cpo-sheet';
-      const close = document.createElement('button');
-      close.type = 'button';
-      close.className = 'cpo-close';
-      close.setAttribute('aria-label', t('interviewClose'));
-      close.textContent = '✕';
-      const grid = document.createElement('div');
-      grid.className = 'cpo-grid';
-      for (const photoId of photoIds) {
-        const cell = document.createElement('div');
-        cell.className = 'cpo-thumb';
-        const url = imageUrl(photoId);
-        if (url) cell.style.backgroundImage = `url("${url}")`;
-        grid.appendChild(cell);
-      }
-      const dismiss = () => ov.remove();
-      close.addEventListener('click', dismiss);
-      ov.addEventListener('click', (e) => {
-        if (e.target === ov) dismiss();
-      });
-      sheet.appendChild(close);
-      sheet.appendChild(grid);
-      ov.appendChild(sheet);
-      // The overlay is a whole-viewport modal; append it to the shared outer root so it
-      // covers the entire editor (same as the original bodyEl scope).
-      outerRootRef.current?.appendChild(ov);
-    }
 
     function appendChapterCard(chapterId: string) {
       if (chatBody?.querySelector(`[data-chapter-card="${chapterId}"]`)) return;
@@ -1269,21 +1215,18 @@ export function ChatPanel({
       tag.textContent = meta.tag;
       titleRow.appendChild(title);
       titleRow.appendChild(tag);
-      const chapterLine = document.createElement('div');
-      chapterLine.className = 'cc-meta';
-      chapterLine.textContent = aT(`第 ${meta.num} 章`, `Chapter ${meta.num}`);
       const metaLine = document.createElement('div');
       metaLine.className = 'cc-meta';
-      metaLine.textContent = `${meta.photoIds.length} ${t('photosWord')} · ${t('nowEditing')}`;
+      metaLine.textContent = `${meta.photoIds.length} ${t('photosWord')}`;
       info.appendChild(titleRow);
-      info.appendChild(chapterLine);
       info.appendChild(metaLine);
       const view = document.createElement('button');
       view.type = 'button';
       view.className = 'cc-view';
-      view.innerHTML = `${t('viewDetails')}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`;
+      view.setAttribute('aria-label', t('viewLayout'));
+      view.innerHTML = `${t('viewLayout')}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`;
       view.addEventListener('click', () => {
-        openChapterPhotosOverlay(meta.photoIds);
+        co()?.goToChapterById?.(chapterId);
       });
       foot.appendChild(info);
       foot.appendChild(view);
@@ -1392,7 +1335,6 @@ export function ChatPanel({
       if (!recipe?.requestId) {
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(host, aT('原始照片在本设备上找不到了,没法继续排版。', 'Original photos are no longer available on this device.'));
-        appendTime(host);
         return;
       }
       selectLayoutTriggered = true;
@@ -1401,7 +1343,6 @@ export function ChatPanel({
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(host, aT('好的,我这就根据你讲的故事,为整本相册排版并写好文案~',
                                  'Great — I’ll now lay out the whole album and write the copy from your stories.'));
-        appendTime(host);
         appendStep(aT('🎨 正在挑选版式…', '🎨 Choosing layouts…'));
         appendStep(aT('✍️ 正在根据你的故事写文案…', '✍️ Writing copy from your stories…'));
         const refs = await selectLayoutRefsFromStore(recipe.photoIds);
@@ -1455,6 +1396,10 @@ export function ChatPanel({
             const root = outerRootRef.current;
             root?.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
             window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+            appendReplyBody(
+              host,
+              aT('排版完成了，我已经把画板刷新出来。你可以直接在对话里继续调整。', 'Layout is ready — I refreshed the canvas. You can keep adjusting it here in chat.'),
+            );
             return;
           }
         } catch (e) {
@@ -1468,7 +1413,6 @@ export function ChatPanel({
           host,
           aT('排版好像慢了点,刷新一下页面看看结果。', 'Layout is taking a while — refresh the page to see the result.'),
         );
-        appendTime(host);
       }
     }
     async function startChapterInterview(chapterId: string, photoIds: string[]) {
@@ -1610,10 +1554,6 @@ export function ChatPanel({
         'The layout is ready. Tell me what to change in this chapter, or say “looks good” to continue.',
       );
       card.appendChild(body);
-      const time = document.createElement('div');
-      time.className = 'name-time';
-      time.textContent = t('justNow');
-      card.appendChild(time);
       chatBody!.appendChild(card);
       restAwait();
       scrollChat();
@@ -1778,6 +1718,7 @@ export function ChatPanel({
 
       const onDragDown = (e: PointerEvent) => {
         if (!desktop() || e.button !== 0) return;
+        if ((e.target as HTMLElement | null)?.closest('[data-action], button, a, input, textarea, select')) return;
         e.preventDefault();
         clearActiveMotion();
         const start = chatColEl.getBoundingClientRect();
@@ -1959,7 +1900,7 @@ export function ChatPanel({
         <div className="chat-drag hidden md:flex items-center gap-2 px-3.5 h-11 border-b border-bdsoft flex-shrink-0" id="chatDrag">
           <span className="chat-grip"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></svg></span>
           <span className="text-[13px] font-semibold text-fg2">{locale === 'zh' ? '对话' : 'Chat'}</span>
-          <button className="chat-fold-btn chat-fold-collapse ml-auto" data-action="toggleChat" data-i18n-title="collapseChat" title="折叠对话" aria-label="折叠对话">
+          <button type="button" className="chat-fold-btn chat-fold-collapse ml-auto" data-action="toggleChat" data-i18n-title="collapseChat" title="折叠对话" aria-label="折叠对话">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="15 18 9 12 15 6" /></svg>
           </button>
         </div>
@@ -1979,7 +1920,6 @@ export function ChatPanel({
               <div className="ai-text" data-i18n="aiMsg1">
                 我已经为「海边时光」这一章写好了叙事文案。如果你想分享更多记忆，比如那天的天气、和谁同行、当时的心情，我可以把这些融进文字里。
               </div>
-              <div className="name-time">10:41</div>
             </div>
 
             <div className="msg user max-w-full" data-demo-chat>
@@ -2002,7 +1942,6 @@ export function ChatPanel({
                 <button className="chip" data-i18n="chipRewrite" data-chip="rewrite">再写一版</button>
                 <button className="chip" data-i18n="chipEditMyself" data-chip="editMyself">我来改</button>
               </div>
-              <div className="name-time">10:42</div>
             </div>
 
             <div className="msg ai max-w-full" data-demo-chat>
@@ -2037,7 +1976,6 @@ export function ChatPanel({
                 <h4 data-i18n="docH3">尾声 · 离别</h4>
                 <ul><li data-i18n="docL3">{'演武大桥的黄昏 -> 最后一晚 -> 清晨返程'}</li></ul>
               </div>
-              <div className="name-time">10:43</div>
             </div>
 
             <div className="msg user max-w-full" data-demo-chat>
@@ -2057,7 +1995,6 @@ export function ChatPanel({
                 <button className="chip-select" data-i18n="chipName3" data-name-chip>咸味的下午</button>
                 <button className="chip-select" data-i18n="chipName4" data-name-chip>那只差点飞走的帽子</button>
               </div>
-              <div className="name-time">10:43</div>
             </div>
 
             <div className="await-user" id="awaitUser">
@@ -2096,7 +2033,7 @@ export function ChatPanel({
           </div>
         </div>
         <div className="chat-resize" id="chatResize" aria-hidden="true">
-          <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M6 15h9V6" /><path d="M10 15h5v-5" /></svg>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15 15 21M21 9 9 21" /></svg>
         </div>
       </aside>
     </div>

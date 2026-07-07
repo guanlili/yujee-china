@@ -33,6 +33,25 @@ export function RetryFailedButton({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const locale = detectLocale(pathname);
+  const copy =
+    locale === 'zh'
+      ? {
+          tryAgain: '重试一次',
+          retrying: '重试中…',
+          unavailable: '照片已不在这台设备上。',
+          startNew: '重新新建',
+          unavailableLong: '这些照片已不在这台设备上。',
+          startNewLong: '重新创建一本相册',
+        }
+      : {
+          tryAgain: 'Try again',
+          retrying: 'Retrying…',
+          unavailable: 'Photos no longer on this device.',
+          startNew: 'Start new',
+          unavailableLong: 'These photos are no longer on this device.',
+          startNewLong: 'Start a new memoir',
+        };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
@@ -77,7 +96,6 @@ export function RetryFailedButton({
         // the album stays FAILED with its recipe persisted, so after top-up the
         // user returns to this still-FAILED card and retries the SAME album
         // (§6.5.3) — a /create draft would wrongly spin up a new album instead.
-        const locale = detectLocale(pathname);
         router.push(`/${locale}/credits?from=album`);
         return;
       }
@@ -90,18 +108,18 @@ export function RetryFailedButton({
     if (variant === 'card') {
       return (
         <p className="px-3 text-center text-[11px] leading-snug text-white/85">
-          Photos no longer on this device.{' '}
-          <a href={`/${detectLocale(pathname)}#homepage-composer`} className="underline">
-            Start new
+          {copy.unavailable}{' '}
+          <a href={`/${locale}#homepage-composer`} className="underline">
+            {copy.startNew}
           </a>
         </p>
       );
     }
     return (
       <p className="mt-6 text-sm text-[var(--muted)]">
-        These photos are no longer on this device.{' '}
-        <a href={`/${detectLocale(pathname)}#homepage-composer`} className="underline">
-          Start a new memoir
+        {copy.unavailableLong}{' '}
+        <a href={`/${locale}#homepage-composer`} className="underline">
+          {copy.startNewLong}
         </a>
         .
       </p>
@@ -130,7 +148,7 @@ export function RetryFailedButton({
             <polyline points="23 4 23 10 17 10" />
             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
           </svg>
-          {busy ? 'Retrying…' : 'Try again'}
+          {busy ? copy.retrying : copy.tryAgain}
         </button>
         {error && <p className="mt-1.5 px-3 text-center text-[11px] text-red-200">{error}</p>}
       </>
@@ -158,7 +176,7 @@ export function RetryFailedButton({
           <polyline points="23 4 23 10 17 10" />
           <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
         </svg>
-        {busy ? 'Retrying…' : 'Try again'}
+        {busy ? copy.retrying : copy.tryAgain}
       </button>
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
     </div>

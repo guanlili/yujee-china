@@ -20,6 +20,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore } from '@/lib/photo/store';
+import { UserAvatar } from '@/components/app/UserAvatar';
+import { YujeeState } from '@/components/app/YujeeState';
 import { getWebTemplate } from '../web-registry';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
@@ -126,9 +128,9 @@ function buildingStageLabel(stage: string | null | undefined, locale: Locale): s
     // V3 分析环节 (五环节状态机, WP1.5/#184): the /v3/analyze job streams these stage
     // labels via the progress callback (agent V3JobStage: describe→group→template→
     // preview). 'describe' is the first beat the user sees after the ≤0.5s nav, so it
-    // carries the "正在分析照片…" copy the acceptance calls for.
+    // carries the "正在看照片…" copy the loading chat needs.
     case 'describe':
-      return zh ? '正在分析照片…' : 'Looking at your photos…';
+      return zh ? '正在看照片…' : 'Looking at your photos…';
     case 'group':
       return zh ? '正在整理这些瞬间…' : 'Grouping your moments…';
     case 'template':
@@ -137,7 +139,7 @@ function buildingStageLabel(stage: string | null | undefined, locale: Locale): s
       return zh ? '正在生成预览…' : 'Building your preview…';
     // V2 stage labels (kept until the v1/v2 teardown, #197).
     case 'vision':
-      return zh ? '正在分析你的照片…' : 'Looking at your photos…';
+      return zh ? '正在看你的照片…' : 'Looking at your photos…';
     case 'grouping':
       return zh ? '正在整理这些瞬间…' : 'Grouping your moments…';
     case 'skeleton':
@@ -147,32 +149,20 @@ function buildingStageLabel(stage: string | null | undefined, locale: Locale): s
     case 'finalize':
       return zh ? '正在生成终稿…' : 'Putting the final touches…';
     default:
-      return zh ? '正在分析照片…' : 'Looking at your photos…';
+      return zh ? '正在看照片…' : 'Looking at your photos…';
   }
 }
 
-// building: a single magazine-cover page rendered as a skeleton screen (shimmer +
-// placeholder blocks). It mirrors the editor's page surface (radius/shadow) so the
-// loading canvas reads as the same book — just not painted yet. No spread,
-// thumbnails, zoom or chapter rail: the cover is the whole canvas while we wait.
-function CoverSkeleton({ locale }: { locale: Locale }) {
-  const scale = 0.5;
+// building: keep the board itself generic while the chat rail carries the live
+// AI progress copy.
+function BuildingCanvasState({ locale }: { locale: Locale }) {
   return (
     <div
-      className="relative overflow-hidden bg-surface"
-      style={{ width: PAGE.width * scale, height: PAGE.height * scale, borderRadius: '2px', boxShadow: '0 2px 8px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.08)' }}
-      role="img"
-      aria-label={locale === 'zh' ? '正在加载封面' : 'Loading cover'}
-      aria-busy="true"
+      className="building-canvas-loading rounded-full bg-white/80 px-5 py-2.5 text-[14px] font-medium text-[var(--muted)] shadow-[0_8px_24px_rgba(0,0,0,0.08)] backdrop-blur"
+      role="status"
+      aria-live="polite"
     >
-      <div className="absolute inset-0 animate-pulse" style={{ background: 'linear-gradient(135deg, var(--surface), var(--bg) 50%, var(--border-soft))' }} />
-      {/* hero image */}
-      <div className="absolute inset-x-8 top-8 rounded-md bg-bdsoft" style={{ height: '46%' }} />
-      {/* title + subtitle */}
-      <div className="absolute left-8 right-16 rounded-full" style={{ top: '64%', height: '22px', backgroundColor: 'var(--border)' }} />
-      <div className="absolute left-8 right-28 rounded-full bg-bdsoft" style={{ top: '71%', height: '14px' }} />
-      {/* byline */}
-      <div className="absolute left-8 rounded-full bg-bdsoft" style={{ bottom: '7%', height: '10px', width: '42%' }} />
+      {locale === 'zh' ? '加载中' : 'Loading'}
     </div>
   );
 }
@@ -227,15 +217,18 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
     // let the user refresh (a fresh load re-polls and re-derives the mode).
     const zh = locale === 'zh';
     return (
-      <div className="editor-port flex h-screen flex-col items-center justify-center gap-3 bg-bg text-center">
-        <p className="text-muted text-[14px]">
-          {loadState === 'gone'
+      <div className="editor-port flex h-screen flex-col items-center justify-center bg-bg text-center">
+        <YujeeState
+          variant="error"
+          title={zh ? '出错了' : 'Something went wrong'}
+          message={loadState === 'gone'
             ? zh ? '这本相册还没有草稿，或已经完成。' : 'This album has no draft yet, or it is already finished.'
             : zh ? '草稿加载失败。' : 'Failed to load the draft.'}
-        </p>
-        <button onClick={() => window.location.reload()} className="text-accent underline underline-offset-2 text-[13px]">
+        >
+          <button onClick={() => window.location.reload()} className="text-accent underline underline-offset-2 text-[13px]">
           {zh ? '刷新重试' : 'Refresh'}
-        </button>
+          </button>
+        </YujeeState>
       </div>
     );
   }
@@ -411,7 +404,7 @@ function EditorTopbar({
 
         <div className="user-menu" id="userMenu">
           <button className="user-trigger flex items-center rounded-pill transition-transform hover:-translate-y-px" data-action="toggleUserMenu" aria-label={locale === 'zh' ? '账户' : 'Account'}>
-            <span className="avatar-ring"><span className="grid place-items-center w-8 h-8 rounded-full bg-fg text-white font-semibold text-[13px]">L</span></span>
+            <UserAvatar initial="L" size={40} />
           </button>
           <div className="user-dropdown">
             <div className="dropdown-header p-3 border-b border-bdsoft mb-1">
@@ -525,15 +518,43 @@ function BuildingShell({
       </div>
 
       <div className="workspace flex-1 overflow-hidden relative md:flex" style={{ height: 'calc(100vh - 56px)' }}>
+        <button
+          type="button"
+          className="chat-fold-expand"
+          title={locale === 'zh' ? '展开对话' : 'Expand chat'}
+          aria-label={locale === 'zh' ? '展开对话' : 'Expand chat'}
+          onClick={(e) => e.currentTarget.closest('.editor-port')?.classList.remove('chat-collapsed')}
+        >
+          <img className="fab-jelly" src="/jellyfish-icon.png" alt="" />
+          <svg className="fab-chat-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+          <span>{locale === 'zh' ? '对话' : 'Chat'}</span>
+        </button>
+
         <main className="pane pane-center flex flex-col overflow-hidden relative md:order-3 md:flex-1" id="paneCenter">
           <div className="book-stage w-full flex-1 flex items-center justify-center px-4 pt-8 pb-16 overflow-auto relative">
-            <div className="canvas-hint">{locale === 'zh' ? '正在准备画布' : 'Preparing canvas'}</div>
-            <CoverSkeleton locale={locale} />
+            <BuildingCanvasState locale={locale} />
           </div>
         </main>
 
         <div className="pane-chat-col md:order-1 md:w-[360px] shrink-0 md:flex">
           <aside className="pane pane-right chat-card relative flex flex-col overflow-hidden bg-surface md:flex-1">
+            <div className="chat-drag hidden md:flex items-center gap-2 px-3.5 h-11 border-b border-bdsoft flex-shrink-0" id="chatDrag">
+              <span className="chat-grip"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></svg></span>
+              <span className="text-[13px] font-semibold text-fg2">{locale === 'zh' ? '对话' : 'Chat'}</span>
+              <button
+                type="button"
+                className="chat-fold-btn chat-fold-collapse ml-auto"
+                title={locale === 'zh' ? '折叠对话' : 'Collapse chat'}
+                aria-label={locale === 'zh' ? '折叠对话' : 'Collapse chat'}
+                onClick={(e) => e.currentTarget.closest('.editor-port')?.classList.add('chat-collapsed')}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="15 18 9 12 15 6" /></svg>
+              </button>
+            </div>
+            <div className="chat-mobile-handle md:hidden flex flex-shrink-0 items-center justify-center pt-2.5 pb-1.5">
+              <span className="block w-9 h-1 rounded-full" style={{ background: 'var(--border)' }} />
+            </div>
+
             <div className="chat-body flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-6" id="chatBody" style={{ gap: '24px' }}>
               <div className="msg ai max-w-full">
                 <div className="thinking-block active">
@@ -543,16 +564,25 @@ function BuildingShell({
                 </div>
               </div>
             </div>
-            <div className="chat-input m-3 shrink-0 bg-surface border border-bdsoft rounded-pill flex items-end transition-all" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)', opacity: 0.6 }}>
-              <button className="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted m-2 disabled:cursor-not-allowed" title={locale === 'zh' ? '添加图片' : 'Add photos'} aria-label={locale === 'zh' ? '添加图片' : 'Add photos'} disabled>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-              </button>
-              <textarea className="flex-1 outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none pl-1 py-3 disabled:cursor-not-allowed" style={{ fontFamily: 'var(--font-body)' }} placeholder="" rows={1} disabled />
-              <span className="btn-glow btn-glow-round shrink-0 m-2">
-                <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center transition-transform disabled:cursor-not-allowed disabled:opacity-40" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} title={locale === 'zh' ? '发送' : 'Send'} disabled>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
-                </button>
-              </span>
+
+            <div className="composer-group shrink-0">
+              <div className="chat-input shrink-0 bg-surface border border-bdsoft flex flex-col transition-all" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)', opacity: 0.6 }}>
+                <textarea className="w-full outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none px-4 pt-3.5 pb-1 disabled:cursor-not-allowed" style={{ fontFamily: 'var(--font-body)' }} placeholder="" rows={1} disabled />
+                <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-0.5">
+                  <button className="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted disabled:cursor-not-allowed disabled:opacity-40" title={locale === 'zh' ? '添加图片' : 'Add photos'} aria-label={locale === 'zh' ? '添加图片' : 'Add photos'} disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                  </button>
+                  <span className="flex-1" />
+                  <span className="btn-glow btn-glow-round shrink-0">
+                    <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center transition-transform disabled:cursor-not-allowed disabled:opacity-40" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} title={locale === 'zh' ? '发送' : 'Send'} disabled>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[17px] h-[17px]"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>
+                    </button>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="chat-resize" id="chatResize" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15 15 21M21 9 9 21" /></svg>
             </div>
           </aside>
         </div>
@@ -728,6 +758,28 @@ function EditorBook({
         `</div></div>`
       );
     }
+    function normalizedText(value: string | null | undefined) {
+      return (value ?? '').replace(/\s+/g, ' ').trim();
+    }
+    function markEditableTextKeys(host: HTMLElement, page: EditorPage) {
+      const remaining = new Map<string, string>();
+      for (const [key, value] of Object.entries(page.textsJson)) {
+        const normalized = normalizedText(value);
+        if (normalized) remaining.set(key, normalized);
+      }
+      host.querySelectorAll<HTMLElement>('[data-editable]:not(img)').forEach((node) => {
+        if (node.dataset.textKey) return;
+        const actual = normalizedText(node.textContent);
+        if (!actual) return;
+        for (const [key, expected] of remaining.entries()) {
+          if (actual === expected) {
+            node.dataset.textKey = key;
+            remaining.delete(key);
+            return;
+          }
+        }
+      });
+    }
     function paintEl(el: HTMLElement | null, page: EditorPage | null, attempt = 0) {
       if (!el) return;
       // #158 follow-up: a null page is "no page there" (the empty half of a solo
@@ -749,6 +801,7 @@ function EditorBook({
       el.querySelectorAll<HTMLElement>('img[data-image-slot], .ch-mark, .ch-narrative, .photo .cap').forEach((node) => {
         node.setAttribute('data-editable', '');
       });
+      markEditableTextKeys(el, page);
     }
     // Repaint every surface that shows page content after an edit.
     function repaintBook() {
@@ -1647,6 +1700,12 @@ function EditorBook({
       if (editBarAnchor.matches('[data-editable]:not(img)')) return [editBarAnchor];
       return Array.from(editBarAnchor.querySelectorAll<HTMLElement>('[data-editable]:not(img)'));
     }
+    function pageForEditableText(textEl: HTMLElement): EditorPage | null {
+      const host = textEl.closest<HTMLElement>('.page, .leaf, .ov-page, .thumb-img-left, .thumb-img-right');
+      const pageIndex = host?.dataset.pageIndex;
+      if (pageIndex === undefined) return null;
+      return pageByIndex(Number(pageIndex)) ?? null;
+    }
     function updateEditSizeLabel(targets = selectedTextTargets()) {
       const label = byId('ebSize');
       if (!label) return;
@@ -1674,6 +1733,29 @@ function EditorBook({
           imagePosJson: page.imagePosJson ?? {},
         }),
       }).catch(() => {});
+    }
+    function editSelectedText() {
+      const textEl = selectedTextTargets()[0];
+      if (!textEl) return;
+      const textKey = textEl.dataset.textKey;
+      const page = pageForEditableText(textEl);
+      textEl.setAttribute('contenteditable', 'true');
+      textEl.style.cursor = 'text';
+      textEl.focus();
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(textEl);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      const finish = () => {
+        textEl.removeAttribute('contenteditable');
+        textEl.style.cursor = '';
+        if (!textKey || !page) return;
+        page.textsJson = { ...page.textsJson, [textKey]: textEl.textContent ?? '' };
+        persistPagePatch(page);
+        repaintBook();
+      };
+      textEl.addEventListener('blur', finish, { once: true });
     }
     function applyTextToolbarAction(action: string) {
       const targets = selectedTextTargets();
@@ -1734,6 +1816,18 @@ function EditorBook({
       persistPagePatch(page);
       flashEditFeedback(aT('已换', 'Swapped'));
     }
+    function deleteSelectedPhoto() {
+      if (!imgEdit) return;
+      const page = pageByIndex(imgEdit.pageIndex);
+      if (!page) return;
+      delete page.imagesJson[imgEdit.slotId];
+      page.imagePosJson = { ...(page.imagePosJson ?? {}) };
+      delete page.imagePosJson[imgEdit.slotId];
+      clearImageSelection();
+      repaintBook();
+      persistPagePatch(page);
+      flashEditFeedback(aT('已删', 'Deleted'));
+    }
     function toggleSelectedPhotoFilter() {
       if (!imgEdit) return;
       const active = imgEdit.imgEl.dataset.mockFilter === 'mono';
@@ -1756,8 +1850,12 @@ function EditorBook({
         commitImagePos();
       } else if (action === 'replace-photo') {
         replaceSelectedPhoto();
+      } else if (action === 'delete-photo') {
+        deleteSelectedPhoto();
       } else if (action === 'photo-filter') {
         toggleSelectedPhotoFilter();
+      } else if (action === 'edit-text') {
+        editSelectedText();
       } else {
         applyTextToolbarAction(action);
       }
@@ -2211,7 +2309,7 @@ function EditorBook({
         if (nameEl && u.name) nameEl.textContent = u.name;
         const emailEl = $('.dropdown-header-email');
         if (emailEl && u.email) emailEl.textContent = u.email;
-        const av = $('.user-avatar');
+        const av = $('.user-avatar-initial');
         if (av) av.textContent = String(u.name?.[0] ?? u.email?.[0] ?? 'U').toUpperCase();
       })
       .catch(() => {});
@@ -2459,6 +2557,8 @@ function EditorBook({
             <span className="eb-swatch" style={{ background: '#13B8A6' }} data-edit-action="color-teal" title={locale === 'zh' ? '青色' : 'Teal'} role="button" aria-label={locale === 'zh' ? '青色' : 'Teal'} />
             <span className="eb-swatch" style={{ background: '#8C5EF4' }} data-edit-action="color-purple" title={locale === 'zh' ? '紫色' : 'Purple'} role="button" aria-label={locale === 'zh' ? '紫色' : 'Purple'} />
             <span className="eb-swatch" style={{ background: '#999999' }} data-edit-action="color-gray" title={locale === 'zh' ? '灰色' : 'Gray'} role="button" aria-label={locale === 'zh' ? '灰色' : 'Gray'} />
+            <span className="eb-sep" />
+            <button type="button" className="eb-btn" data-edit-action="edit-text" title={locale === 'zh' ? '编辑文字' : 'Edit text'} aria-label={locale === 'zh' ? '编辑文字' : 'Edit text'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg><span>{locale === 'zh' ? '文字' : 'Text'}</span></button>
           </div>
           <div className="eb-group" data-group="photo" style={{ display: 'none' }}>
             <button type="button" className="eb-btn" data-edit-action="replace-photo" title={locale === 'zh' ? '更换照片' : 'Replace photo'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg><span>{locale === 'zh' ? '更换' : 'Replace'}</span></button>
@@ -2466,6 +2566,8 @@ function EditorBook({
             <button type="button" className="eb-btn" data-edit-action="reset-photo" title={locale === 'zh' ? '复位照片' : 'Reset photo'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 3v6h6" /></svg><span>{locale === 'zh' ? '复位' : 'Reset'}</span></button>
             <span className="eb-sep" />
             <button type="button" className="eb-btn" data-edit-action="photo-filter" title={locale === 'zh' ? '滤镜' : 'Filter'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none" /></svg><span>{locale === 'zh' ? '滤镜' : 'Filter'}</span></button>
+            <span className="eb-sep" />
+            <button type="button" className="eb-btn danger" data-edit-action="delete-photo" title={locale === 'zh' ? '删除照片' : 'Delete photo'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg><span>{locale === 'zh' ? '删除' : 'Delete'}</span></button>
           </div>
         </div>
       </div>

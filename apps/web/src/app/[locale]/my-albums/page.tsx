@@ -8,6 +8,7 @@ import type { Locale } from '@/lib/i18n/routing';
 import { Brand } from '@/components/app/Brand';
 import { ChromeStatusBar } from '@/components/app/ChromeStatusBar';
 import { Sidebar } from '@/components/app/Sidebar';
+import { YujeeState } from '@/components/app/YujeeState';
 import { AlbumCoverPreview, type AlbumCoverPage } from '@/components/album/AlbumCoverPreview';
 import { RetryFailedButton } from '@/components/album/RetryFailedButton';
 import { photoStore } from '@/lib/photo/store';
@@ -53,6 +54,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
   const router = useRouter();
   const [albums, setAlbums] = useState<Album[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [errKind, setErrKind] = useState<'network' | 'other' | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const coverThumbnailAttemptsRef = useRef<Set<string>>(new Set());
@@ -60,17 +62,20 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
 
   const load = async () => {
     setErr(null);
+    setErrKind(null);
     try {
       const res = await fetch('/api/v1/albums');
       const json = await res.json();
       if (!json.ok) {
         setErr(json.error?.message ?? t.common.error);
+        setErrKind('other');
         setAlbums([]);
         return;
       }
       setAlbums(json.data);
     } catch {
-      setErr(t.common.error);
+      setErr(locale === 'zh' ? '网络异常，检查网络' : 'Network error. Check your connection.');
+      setErrKind('network');
       setAlbums([]);
     }
   };
@@ -170,9 +175,11 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         setAlbums((prev) => (prev ?? []).filter((a) => a.id !== id));
       } else {
         setErr(json.error?.message ?? t.common.error);
+        setErrKind('other');
       }
     } catch {
-      setErr(t.common.error);
+      setErr(locale === 'zh' ? '网络异常，检查网络' : 'Network error. Check your connection.');
+      setErrKind('network');
     } finally {
       setDeleting(null);
     }
@@ -283,12 +290,13 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           className={`${POSTER_CARD_CLASS} cover-running`}
         >
           <Link href={`/${locale}/album/${a.id}`} className="block text-inherit no-underline">
-            <div className="cover-skeleton relative aspect-[3/4] overflow-hidden bg-[#ececec]">
-              <div className="doing-glow absolute inset-0 bg-[radial-gradient(70%_50%_at_50%_40%,rgba(140,94,244,0.14),transparent_62%)]" />
-              <div className="absolute inset-0 -translate-x-full animate-[cover-sweep_1.5s_ease-in-out_infinite] bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.65),transparent)]" />
-              <div className="sk-block absolute left-4 right-4 top-5 h-11 rounded-lg bg-[#e2e2e2]" />
-              <div className="sk-block absolute bottom-16 left-4 h-3.5 w-[60%] rounded bg-[#e2e2e2]" />
-              <div className="sk-block absolute bottom-10 left-4 h-3.5 w-[44%] rounded bg-[#e2e2e2]" />
+            <div className="cover-loading relative grid aspect-[3/4] place-items-center overflow-hidden bg-[#f4f4f4] px-4">
+              <YujeeState
+                variant="loading"
+                compact
+                showDots
+                message={locale === 'zh' ? '正在加载画板' : 'Loading canvas'}
+              />
             </div>
           </Link>
           <div className="flex min-h-[52px] items-center justify-between gap-2 px-3.5 py-3">
@@ -412,6 +420,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         return;
       }
       setErr(e instanceof PhotosUnavailableError ? t.create.errPhotosUnavailable : e instanceof Error ? e.message : t.common.error);
+      setErrKind('other');
       setCreating(false);
     }
   };
@@ -440,7 +449,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
       />
       <span className="relative z-10 grid flex-1 place-items-center text-center">
         {creating ? (
-          <span className="h-10 w-10 animate-spin rounded-full border-[3px] border-[var(--border)] border-t-[var(--grad-green)]" />
+          <YujeeState variant="loading" compact showDots message={locale === 'zh' ? '正在新建' : 'Creating'} />
         ) : (
           <span>
             <svg
@@ -515,11 +524,66 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           </div>
         </div>
 
-        {err && <p className="mb-6 text-sm text-red-600">{err}</p>}
+        {creating && (
+          <div className="fixed inset-0 z-[80] grid place-items-center bg-[rgba(245,245,245,0.76)] backdrop-blur-[12px]">
+            <YujeeState
+              variant="loading"
+              title={locale === 'zh' ? '正在创建相册' : 'Creating album'}
+              message={locale === 'zh' ? '正在加载画板内容…' : 'Loading the canvas…'}
+              showDots
+            />
+          </div>
+        )}
 
-        {albums === null && <p className="text-[var(--muted)]">{t.common.loading}</p>}
+        {err && (albums?.length ?? 0) > 0 && <p className="mb-6 text-sm text-red-600">{err}</p>}
 
-        {albums !== null && (
+        {albums === null && (
+          <div className="min-h-[420px]">
+            <YujeeState
+              variant="loading"
+              title={t.common.loading}
+              message={locale === 'zh' ? '正在加载相册' : 'Loading albums'}
+              showDots
+            />
+          </div>
+        )}
+
+        {albums !== null && err && albums.length === 0 && (
+          <div className="min-h-[420px]">
+            <YujeeState
+              variant="error"
+              title={locale === 'zh' ? '出错了' : 'Something went wrong'}
+              message={errKind === 'network' ? (locale === 'zh' ? '网络异常，检查网络' : 'Network error. Check your connection.') : err}
+            />
+          </div>
+        )}
+
+        {albums !== null && !err && albums.length === 0 && (
+          <div className="min-h-[420px]">
+            <YujeeState
+              variant="empty"
+              title={locale === 'zh' ? '还没有相册' : 'No albums yet'}
+              message={locale === 'zh' ? '上传照片，开始创建一本新的回忆相册。' : 'Upload photos to start a new memoir.'}
+            >
+              <label className={`inline-flex cursor-pointer items-center justify-center rounded-full bg-[var(--fg)] px-8 py-3.5 text-[15px] font-semibold text-white shadow-[0_8px_22px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-black ${creating ? 'pointer-events-none opacity-60' : ''}`}>
+                <input
+                  type="file"
+                  accept={IMAGE_INPUT_ACCEPT}
+                  multiple
+                  className="hidden"
+                  disabled={creating}
+                  onChange={(e) => {
+                    void startNewAlbum(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+                {locale === 'zh' ? '新建' : 'New'}
+              </label>
+            </YujeeState>
+          </div>
+        )}
+
+        {albums !== null && !err && albums.length > 0 && (
           <div className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 sm:gap-x-7 sm:gap-y-9 lg:grid-cols-4 xl:grid-cols-5">
             {newCard}
             {albums.map((a) => card(a))}

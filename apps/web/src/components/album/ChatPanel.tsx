@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Locale } from '@/lib/i18n/routing';
 import { getMessages } from '@/lib/i18n/messages';
+import { UserAvatar } from '@/components/app/UserAvatar';
 import type { ChatMessage, LayoutPatchEntry } from './types';
 
 interface Props {
@@ -100,9 +101,7 @@ export function ChatPanel({ albumId, locale }: Props) {
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--surface)]">
       {/* head */}
       <div className="flex flex-shrink-0 items-center gap-3 px-5 py-4">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--text-sm)] font-bold text-white">
-          {t.aiAvatarChar}
-        </span>
+        <UserAvatar initial={t.aiAvatarChar} size={38} />
         <div className="min-w-0">
           <h3 className="text-[var(--text-sm)] font-bold tracking-tight">{t.aiName}</h3>
           <div className="text-[var(--text-xs)] text-[var(--muted)]">{t.chatSubtitle}</div>

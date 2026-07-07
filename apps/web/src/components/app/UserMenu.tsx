@@ -7,6 +7,7 @@ import type { Locale } from '@/lib/i18n/routing';
 import { getMessages } from '@/lib/i18n/messages';
 import { signOut } from '@/lib/auth/client';
 import type { ChromeUser } from './useChromeSession';
+import { UserAvatar } from './UserAvatar';
 
 interface Props {
   user: ChromeUser | null;
@@ -54,9 +55,7 @@ export function UserMenu({ user, locale, onSignOut }: Props) {
         aria-label={c.accountMenu}
         className="flex items-center rounded-full p-0.5 transition-shadow hover:shadow-[0_0_0_3px_rgba(0,0,0,0.06)]"
       >
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--grad-green),var(--grad-purple)_55%,var(--grad-lime))] text-[var(--text-sm)] font-bold uppercase text-white shadow-[0_2px_10px_rgba(0,0,0,0.12)]">
-          {user?.avatarInitial ?? '·'}
-        </span>
+        <UserAvatar initial={user?.avatarInitial} size={40} />
       </button>
       {open && (
         <div className="absolute top-[calc(100%+8px)] right-0 min-w-[240px] rounded-[var(--radius-lg)] bg-[var(--surface)] p-2 shadow-[var(--shadow-card-hover)] z-[200]">

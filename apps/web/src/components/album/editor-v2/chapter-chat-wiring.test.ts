@@ -110,9 +110,31 @@ test('conversation chapter prompt card uses the design .chap-card class without 
   assert.doesNotMatch(css, /\.editor-port \.chapter-card \.cc-title/);
 });
 
-test('conversation chapter prompt card says the chapter is currently being edited', () => {
+test('conversation chapter prompt card matches the layout-entry design', () => {
   const fn = /function appendChapterCard\(chapterId: string\) \{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'appendChapterCard must exist');
-  assert.match(fn![0], /t\('nowEditing'\)/, 'chapter prompt card must tell users this is the active chapter');
-  assert.doesNotMatch(fn![0], /t\('justEdited'\)/, 'chapter prompt card must not say "just edited" before the user edits');
+  assert.match(fn![0], /metaLine\.textContent = `\$\{meta\.photoIds\.length\} \$\{t\('photosWord'\)\}`/, 'chapter prompt card must show photo count without fake time');
+  assert.match(fn![0], /t\('viewLayout'\)/, 'chapter prompt card CTA must enter layout view');
+  assert.match(fn![0], /goToChapterById(?:\?\.)?\(chapterId\)/, 'layout CTA must navigate the canvas to this chapter');
+  assert.match(fn![0], /meta\.photoIds\.slice\(0, 4\)/, 'chapter prompt card must keep the design cap of four thumbnails');
+  assert.doesNotMatch(fn![0], /t\('justEdited'\)/, 'chapter prompt card must not render fake edited time');
+  assert.doesNotMatch(fn![0], /t\('nowEditing'\)/, 'chapter prompt card must not use the old active-editing label');
+  assert.doesNotMatch(fn![0], /t\('viewDetails'\)/, 'chapter prompt card must not use the old details label');
+});
+
+test('conversation chat does not render fake message timestamps', () => {
+  assert.doesNotMatch(src, /className="name-time"/, 'static demo chat must not include hard-coded times');
+  assert.doesNotMatch(src, /className = 'name-time'/, 'runtime chat must not create fake time rows');
+  assert.doesNotMatch(src, /t\('justNow'\)/, 'runtime chat must not render "just now" as a fake timestamp');
+  assert.doesNotMatch(css, /\.editor-port \.msg \.name-time/, 'timestamp CSS should be removed with the timestamp UI');
+});
+
+test('conversation chapter prompt card keeps the supplied editor.html sizing', () => {
+  assert.match(css, /\.editor-port \.msg\.user \.bubble\{[\s\S]*?radial-gradient\(58% 78% at 0% 0%, rgba\(19,184,166,\.11\), transparent 60%\)/);
+  assert.match(css, /\.editor-port \.msg\.user \.bubble\{[\s\S]*?border-radius: 16px 4px 16px 16px;/);
+  assert.match(css, /\.editor-port \.chap-card\{[\s\S]*?border:1px solid var\(--border-soft\); border-radius:16px;/);
+  assert.match(css, /\.editor-port \.chap-card\{[\s\S]*?box-shadow:0 1px 3px rgba\(0,0,0,\.04\); max-width:100%;/);
+  assert.match(css, /\.editor-port \.cc-thumbs\{ display:flex; gap:8px; \}/);
+  assert.match(css, /\.editor-port \.cc-title\{[\s\S]*?font-size:15px; font-weight:700;/);
+  assert.match(css, /\.editor-port \.cc-view svg\{ width:14px; height:14px; \}/);
 });

@@ -393,14 +393,17 @@
 /* ─── CHAT message structure ─── */
 .editor-port .msg.user{display:flex; justify-content:flex-end;}
 .editor-port .msg.user .bubble{
-  background: var(--bg); color: var(--fg);
+  background:
+    radial-gradient(58% 78% at 0% 0%, rgba(19,184,166,.11), transparent 60%),
+    radial-gradient(58% 78% at 100% 100%, rgba(140,94,244,.10), transparent 60%),
+    var(--bg);
+  border:1px solid var(--border-soft);
+  color: var(--fg);
   border-radius: 16px 4px 16px 16px;
   padding:10px 16px; font-size:13.5px;
   line-height:1.7; max-width:80%;
 }
 .editor-port .msg.ai .ai-text{ font-size:13.5px; line-height:1.8; color:var(--fg-2); }
-.editor-port .msg .name-time{ font-size:10px; color:var(--meta); margin:6px 0 0; font-family:var(--font-mono); }
-.editor-port .msg.ai .name-time{ margin-top:10px; }
 /* #165: per-step status line exposing what the AI is doing (inspect→adjust). */
 .editor-port .ep-step{
   font-size:12px; line-height:1.6; color:var(--muted);
@@ -518,8 +521,13 @@
 
 /* ─── Chapter card (in conversation flow) ─── */
 .editor-port .chap-card{
-  border:1px solid var(--border); border-radius:16px;
-  background:var(--surface); box-shadow:var(--shadow-card); max-width:100%;
+  border:1px solid var(--border-soft); border-radius:16px;
+  background:
+    radial-gradient(30% 55% at 0% 50%, rgba(19,184,166,.13), transparent 55%),
+    radial-gradient(30% 55% at 100% 42%, rgba(140,94,244,.12), transparent 55%),
+    radial-gradient(34% 42% at 100% 100%, rgba(218,244,94,.14), transparent 58%),
+    var(--bg);
+  box-shadow:0 1px 3px rgba(0,0,0,.04); max-width:100%;
   display:flex; flex-direction:column; gap:12px; padding:14px;
 }
 .editor-port .cc-thumbs{ display:flex; gap:8px; }
@@ -547,33 +555,6 @@
 }
 .editor-port .cc-view:hover{ gap:7px; }
 .editor-port .cc-view svg{ width:14px; height:14px; }
-
-/* ─── Chapter photos overlay ("查看详细" thumbnail grid) ─── */
-.editor-port .chapter-photos-overlay{
-  position:fixed; inset:0; z-index:60;
-  display:flex; align-items:center; justify-content:center;
-  background:rgba(0,0,0,0.28); backdrop-filter:blur(3px);
-  padding:24px;
-}
-.editor-port .cpo-sheet{
-  position:relative; width:min(92vw,560px); max-height:80vh; overflow:auto;
-  background:var(--surface); border-radius:16px; padding:20px;
-  box-shadow:0 8px 40px rgba(0,0,0,0.18);
-}
-.editor-port .cpo-close{
-  position:absolute; top:10px; right:12px; z-index:1;
-  width:28px; height:28px; border:none; border-radius:9999px; cursor:pointer;
-  background:var(--bg); color:var(--fg-2); font-size:14px; line-height:1;
-  display:inline-flex; align-items:center; justify-content:center;
-}
-.editor-port .cpo-close:hover{ background:var(--border-soft); }
-.editor-port .cpo-grid{
-  display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px;
-}
-.editor-port .cpo-thumb{
-  aspect-ratio:1; border-radius:10px; background:var(--bg);
-  background-size:cover; background-position:center;
-}
 
 /* Interview "skip" affordance in the conversation flow */
 .editor-port .interview-skip{
@@ -872,6 +853,7 @@
   transition:color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
 }
 .editor-port .chat-fold-btn:hover{ color:var(--fg); background:var(--bg); }
+.editor-port .chat-fold-expand{ display:none; }
 @media (min-width:768px){
   .editor-port .chat-fold-collapse{ display:flex; position:absolute; top:11px; right:11px; z-index:30; }
   .editor-port.chat-collapsed .chat-fold-collapse{ display:none; }
@@ -1117,6 +1099,7 @@
   white-space:nowrap;
 }
 .editor-port .eb-btn:hover{ background:var(--bg); color:var(--fg); }
+.editor-port .eb-btn.danger:hover{ background:#fef2f2; color:#c44; }
 .editor-port .eb-btn svg{ width:15px; height:15px; }
 .editor-port .eb-sep{ width:1px; height:20px; background:var(--border-soft); margin:0 3px; flex:none; }
 .editor-port .eb-sel{
@@ -1185,8 +1168,9 @@
 }
 .editor-port .chat-resize{
   position:absolute; right:4px; bottom:4px; width:20px; height:20px; z-index:50;
-  display:none; align-items:center; justify-content:center;
+  display:none; align-items:flex-end; justify-content:flex-end; padding:2px;
   color:var(--meta); cursor:se-resize; touch-action:none;
+  transition:color var(--motion-fast) var(--ease);
 }
 .editor-port .chat-resize:hover{
   color:var(--fg-2);
@@ -1221,9 +1205,9 @@
     width:auto; min-width:88px; height:44px; padding:0 15px 0 35px;
     align-items:center; justify-content:center; gap:7px;
     border-radius:9999px; color:#fff;
-    background:linear-gradient(135deg, var(--grad-green), var(--grad-purple) 58%, var(--grad-lime));
+    background:var(--fg);
     border:none; z-index:80;
-    box-shadow:0 8px 20px rgba(19,184,166,.34), 0 14px 34px rgba(140,94,244,.28), 0 2px 6px rgba(0,0,0,.18);
+    box-shadow:0 10px 24px rgba(0,0,0,.22), 0 2px 6px rgba(0,0,0,.16);
     transition:transform var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease);
   }
   .editor-port.chat-collapsed .chat-fold-expand{
@@ -1231,7 +1215,7 @@
   }
   .editor-port .chat-fold-expand:hover{
     transform:translateY(-2px);
-    box-shadow:0 10px 22px rgba(19,184,166,.40), 0 16px 40px rgba(140,94,244,.40), 0 2px 6px rgba(0,0,0,.22);
+    box-shadow:0 12px 28px rgba(0,0,0,.26), 0 2px 7px rgba(0,0,0,.18);
   }
   body.chat-dragging,
   body.chat-dragging *{
