@@ -1103,21 +1103,49 @@ export function ChatPanel({
       update_page_images: ['调整图片', 'Adjusting images'],
       set_chapter_theme: ['设定章节配色', 'Setting the chapter color'],
     };
-    const OP_ICON_SVG =
+    const WRITE_TOOLS = new Set([
+      'update_page_texts',
+      'swap_page_template',
+      'update_page_images',
+      'set_chapter_theme',
+    ]);
+    const OP_PENCIL_SVG =
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
     const OP_CHECK_SVG =
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    // 富回执卡的绿色圆圈勾（对齐 demo 设计）。
+    const OP_CIRCLE_CHECK_SVG =
+      '<svg class="op-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="M8.3 12.4l2.6 2.6 4.7-5.3"/></svg>';
     function designToolLabel(toolName: string): string {
       const label = DESIGN_TOOL_LABEL[toolName];
       return label ? aT(label[0], label[1]) : toolName;
     }
+    // 写类工具的具体动作描述（从工具入参生成，落在回执卡的 op-label）。
+    function designWriteDescription(toolName: string, input: unknown): string {
+      const rec = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+      const pageNo = typeof rec.pageNo === 'number' ? rec.pageNo : undefined;
+      const pageLabel = pageNo !== undefined ? aT(`第 ${pageNo + 1} 页`, `page ${pageNo + 1}`) : '';
+      switch (toolName) {
+        case 'update_page_texts':
+          return pageLabel ? aT(`更新${pageLabel}的文案`, `Updated ${pageLabel} copy`) : aT('更新页面文案', 'Updated page copy');
+        case 'swap_page_template':
+          return pageLabel ? aT(`重新排版${pageLabel}`, `Re-laid out ${pageLabel}`) : aT('更换页面版式', 'Swapped the template');
+        case 'update_page_images':
+          return pageLabel ? aT(`调整${pageLabel}的图片`, `Adjusted ${pageLabel} images`) : aT('调整页面图片', 'Adjusted images');
+        case 'set_chapter_theme':
+          return aT('设定章节主题色', 'Set the chapter color');
+        default:
+          return designToolLabel(toolName);
+      }
+    }
 
-    // 底部钉着水母的流式操作面板。ops 逐条插在水母上方；结束时收掉水母。
+    // 底部钉着水母的流式操作面板。读类工具冒出轻量行（转圈→打勾）；写类工具执行成功后
+    // 替换成富回执卡（op-ic 图标 + 「已执行」+ 具体描述 + 绿色圆圈勾）。结束时收掉水母。
     function createDesignStreamHost(): {
       host: HTMLElement;
       jelly: HTMLElement;
-      startOp: (toolCallId: string, toolName: string) => void;
-      finishOp: (toolCallId: string, isError: boolean) => void;
+      startOp: (toolCallId: string, toolName: string, input: unknown) => void;
+      finishOp: (toolCallId: string, toolName: string, isError: boolean) => void;
       settle: () => void;
     } {
       hideAwait();
@@ -1134,24 +1162,47 @@ export function ChatPanel({
       scrollChat();
 
       const rowByCall = new Map<string, HTMLElement>();
+      const inputByCall = new Map<string, unknown>();
       return {
         host,
         jelly,
-        startOp(toolCallId, toolName) {
+        startOp(toolCallId, toolName, input) {
           const row = document.createElement('div');
           row.className = 'ep-op running';
           row.innerHTML =
-            `<span class="ep-op-ic">${OP_ICON_SVG}</span>` +
+            `<span class="ep-op-ic">${OP_PENCIL_SVG}</span>` +
             `<span class="ep-op-label"></span>` +
             `<span class="ep-op-status"></span>`;
-          (row.querySelector('.ep-op-label') as HTMLElement).textContent = designToolLabel(toolName);
+          (row.querySelector('.ep-op-label') as HTMLElement).textContent = WRITE_TOOLS.has(toolName)
+            ? designWriteDescription(toolName, input)
+            : designToolLabel(toolName);
           host.insertBefore(row, jelly); // 冒在水母上方，水母保持最底
-          if (toolCallId) rowByCall.set(toolCallId, row);
+          if (toolCallId) {
+            rowByCall.set(toolCallId, row);
+            inputByCall.set(toolCallId, input);
+          }
           scrollChat();
         },
-        finishOp(toolCallId, isError) {
+        finishOp(toolCallId, toolName, isError) {
           const row = toolCallId ? rowByCall.get(toolCallId) : undefined;
           if (!row) return;
+          // 写类工具执行成功 → 替换成富回执卡。
+          if (!isError && WRITE_TOOLS.has(toolName)) {
+            const card = document.createElement('div');
+            card.className = 'op-card';
+            card.innerHTML =
+              `<div class="op-ic">${OP_PENCIL_SVG}</div>` +
+              `<div class="op-body"><div class="op-kicker">${aT('已执行', 'Done')}</div><div class="op-label"></div></div>` +
+              OP_CIRCLE_CHECK_SVG;
+            (card.querySelector('.op-label') as HTMLElement).textContent = designWriteDescription(
+              toolName,
+              inputByCall.get(toolCallId),
+            );
+            row.replaceWith(card);
+            scrollChat();
+            return;
+          }
+          // 读类工具 / 出错 → 轻量行原地标记。
           row.classList.remove('running');
           row.classList.add(isError ? 'err' : 'done');
           const status = row.querySelector('.ep-op-status') as HTMLElement | null;
@@ -1209,9 +1260,9 @@ export function ChatPanel({
         await readDesignChatStream(res, (event) => {
           const toolCallId = typeof event.toolCallId === 'string' ? event.toolCallId : '';
           if (event.type === 'tool_call' && typeof event.toolName === 'string') {
-            stream.startOp(toolCallId, event.toolName);
-          } else if (event.type === 'tool_result') {
-            stream.finishOp(toolCallId, event.isError === true);
+            stream.startOp(toolCallId, event.toolName, event.input);
+          } else if (event.type === 'tool_result' && typeof event.toolName === 'string') {
+            stream.finishOp(toolCallId, event.toolName, event.isError === true);
           } else if (event.type === 'done') {
             outcome.final = event.response as { assistantReply: string; committed: boolean };
           } else if (event.type === 'error') {

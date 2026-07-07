@@ -1194,7 +1194,7 @@
 @keyframes ep-holoShift{ 0%{ background-position:0% 50%; } 100%{ background-position:300% 50%; } }
 .editor-port .composer-group.thinking::before{
   content:''; position:absolute; left:-12px; right:-12px; bottom:-12px;
-  height:260px; z-index:-1; pointer-events:none;
+  height:104px; z-index:-1; pointer-events:none;
   background:linear-gradient(90deg,#13B8A6,#8C5EF4,#DAF45E,#8C5EF4,#13B8A6);
   background-size:300% 100%; animation:ep-holoShift 4s linear infinite;
   -webkit-mask:linear-gradient(0deg, #000 0%, rgba(0,0,0,.5) 34%, transparent 82%);
