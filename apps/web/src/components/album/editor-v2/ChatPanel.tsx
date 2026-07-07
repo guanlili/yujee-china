@@ -336,6 +336,9 @@ export function ChatPanel({
       chatBody!.appendChild(d);
       scrollChat();
     }
+    function setComposerThinking(on: boolean) {
+      root?.querySelector('.composer-group')?.classList.toggle('thinking', on);
+    }
     function appendThinkingShell(): HTMLElement {
       hideAwait();
       const a = document.createElement('div');
@@ -1190,6 +1193,7 @@ export function ChatPanel({
 
     async function runDesignChatTurn(message: string) {
       const host = appendThinkingShell();
+      setComposerThinking(true);
       const userMessage = message.slice(0, MESSAGE_MAX);
       try {
         const res = await fetch(`/api/v3/albums/${albumId}/design-chat?stream=1`, {
@@ -1242,6 +1246,7 @@ export function ChatPanel({
         chapterHistory.push({ role: 'user', content: userMessage });
         chapterHistory.push({ role: 'assistant', content: final.assistantReply });
       } catch (e) {
+        setComposerThinking(false);
         if (authErr(host, e)) return;
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(
@@ -1250,6 +1255,7 @@ export function ChatPanel({
             (e instanceof Error && e.message ? `（${e.message}）` : ''),
         );
       }
+      setComposerThinking(false);
       restAwait();
       scrollChat();
       updateAuthInputPlaceholder();
