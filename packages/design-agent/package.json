@@ -1,0 +1,42 @@
+{
+	"name": "@smalldog/design-agent",
+	"version": "0.1.0",
+	"description": "Design-focused agent shell built on the PI agent core",
+	"type": "module",
+	"bin": {
+		"design-agent": "./dist/cli.js"
+	},
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"scripts": {
+		"clean": "shx rm -rf dist",
+		"build": "tsgo -p tsconfig.build.json && shx chmod +x dist/cli.js",
+		"web": "tsx src/web/server.ts --host 127.0.0.1 --port 8787",
+		"test": "node --test test/*.test.ts"
+	},
+	"dependencies": {
+		"@earendil-works/pi-agent-core": "workspace:*",
+		"@earendil-works/pi-ai": "workspace:*",
+		"typebox": "1.1.38"
+	},
+	"devDependencies": {
+		"@types/node": "22.19.19",
+		"@typescript/native-preview": "7.0.0-dev.20260120.1",
+		"shx": "0.4.0",
+		"tsx": "4.22.1",
+		"typescript": "5.9.3"
+	},
+	"engines": {
+		"node": ">=22.19.0"
+	}
+}

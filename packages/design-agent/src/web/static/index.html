@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Design Agent Web</title>
+		<link rel="stylesheet" href="/styles.css" />
+	</head>
+	<body>
+		<main class="workspace">
+			<section class="panel chat-panel">
+				<header>对话</header>
+				<div id="messages" class="messages"></div>
+				<form id="chat-form" class="composer">
+					<textarea id="prompt" rows="4" placeholder="输入设计需求，例如：把标题改成 星河工作室"></textarea>
+					<button type="submit">发送</button>
+				</form>
+			</section>
+			<section class="panel artifact-panel">
+				<header>
+					<span>预览</span>
+					<span id="design-meta" class="panel-meta">版本 1</span>
+				</header>
+				<iframe id="preview-frame" class="preview-frame" title="Design preview" src="/preview"></iframe>
+			</section>
+			<section class="panel trace-panel">
+				<header>LLM 输入 / 输出</header>
+				<div id="traces" class="traces"></div>
+			</section>
+		</main>
+		<script type="module" src="/app.js"></script>
+	</body>
+</html>
