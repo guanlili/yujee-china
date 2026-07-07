@@ -410,6 +410,29 @@
   margin:3px 0 3px 2px; font-family:var(--font-mono); white-space:pre-wrap;
 }
 
+/* 流式操作行：AI 每调用一个工具冒出一行，running 转圈 → done 打勾。 */
+.editor-port .ep-op{
+  display:flex; align-items:center; gap:9px; margin:5px 0;
+  font-size:12.5px; color:var(--fg-2); font-family:var(--font-body);
+  animation: ep-op-in .28s var(--ease) both;
+}
+.editor-port .ep-op-ic{
+  width:22px; height:22px; border-radius:7px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; color:var(--grad-purple);
+  background:linear-gradient(135deg, rgba(19,184,166,.14), rgba(140,94,244,.14));
+}
+.editor-port .ep-op-ic svg{ width:13px; height:13px; }
+.editor-port .ep-op-label{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.editor-port .ep-op.running{ color:var(--muted); }
+.editor-port .ep-op-status{ flex-shrink:0; width:16px; height:16px; display:flex; align-items:center; justify-content:center; }
+.editor-port .ep-op.running .ep-op-status{
+  border:2px solid var(--border-soft); border-top-color:var(--grad-purple);
+  border-radius:50%; animation: ep-spin .7s linear infinite;
+}
+.editor-port .ep-op.done .ep-op-status{ color:var(--grad-green); }
+.editor-port .ep-op.done .ep-op-status svg{ width:15px; height:15px; }
+.editor-port .ep-op.err .ep-op-status{ color:var(--meta); font-size:13px; }
+
 /* ─── Thinking indicator + animations ─── */
 .editor-port .thinking-block{
   margin-bottom:8px;

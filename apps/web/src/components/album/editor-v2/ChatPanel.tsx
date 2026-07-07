@@ -1089,82 +1089,78 @@ export function ChatPanel({
     }
 
     // 设计 Agent 全书对话（阶段3接线，NDJSON 流式）。渲染遵循 editor 设计语言：
-    // - 读类工具（看书/查模板/读规则）汇入可折叠的「思考过程」(thinking-detail)；
-    // - 写类工具执行成功后弹出操作回执卡 (.op-card ✓)；
-    // - 一轮结束后思考态折叠成历史，committed 时派发刷新事件让画板重取草稿。
-    // done 时 pages 已在服务端写回 draft_json。整书视角，无章节门槛。
-    const DESIGN_READ_STEP: Record<string, [string, string]> = {
+    // 动态小水母始终钉在对话最底部；AI 每调用一个工具，就在水母上方流式冒出一行
+    // 可见的操作（读/写都暴露），工具返回时该行打勾 ✓；一轮结束后收掉水母、贴出
+    // 回复。committed 时派发刷新事件让画板重取草稿。done 时 pages 已写回 draft_json。
+    const DESIGN_TOOL_LABEL: Record<string, [string, string]> = {
       get_book_summary: ['翻阅整本相册', 'Reading the whole album'],
       read_page: ['查看页面内容', 'Reading a page'],
       search_book: ['在全书中检索', 'Searching the book'],
       list_templates: ['挑选合适的版式', 'Browsing templates'],
       read_skill: ['查阅设计规则', 'Consulting design rules'],
+      update_page_texts: ['写页面文字', 'Writing page copy'],
+      swap_page_template: ['更换版式', 'Swapping the template'],
+      update_page_images: ['调整图片', 'Adjusting images'],
+      set_chapter_theme: ['设定章节配色', 'Setting the chapter color'],
     };
-    // 写类工具的回执卡文案：[kicker, 中文 label, 英文 label]。
-    const DESIGN_WRITE_OP: Record<string, [string, string, string]> = {
-      update_page_texts: ['更新文案', '写好了页面文字', 'Wrote the page copy'],
-      swap_page_template: ['更换版式', '换了页面模板', 'Swapped the page template'],
-      update_page_images: ['调整图片', '调整了页面图片', 'Adjusted the page images'],
-      set_chapter_theme: ['设定配色', '定了这一章的主题色', 'Set the chapter theme color'],
-    };
-    const OP_CHECK_SVG =
-      '<svg class="op-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
     const OP_ICON_SVG =
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+    const OP_CHECK_SVG =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    function designToolLabel(toolName: string): string {
+      const label = DESIGN_TOOL_LABEL[toolName];
+      return label ? aT(label[0], label[1]) : toolName;
+    }
 
-    // 思考过程容器：懒创建，紧跟在 thinking-block 之后（相邻兄弟，供 .open 展开）。
-    function designThinkingDetail(host: HTMLElement): HTMLElement {
-      let detail = host.querySelector<HTMLElement>('.thinking-detail');
-      if (!detail) {
-        detail = document.createElement('div');
-        detail.className = 'thinking-detail';
-        host.querySelector('.thinking-block')?.after(detail);
-      }
-      return detail;
-    }
-    function designAddThinkStep(host: HTMLElement, toolName: string) {
-      const label = DESIGN_READ_STEP[toolName];
-      const step = document.createElement('div');
-      step.className = 'ep-step';
-      step.textContent = label ? aT(label[0], label[1]) : toolName;
-      designThinkingDetail(host).appendChild(step);
+    // 底部钉着水母的流式操作面板。ops 逐条插在水母上方；结束时收掉水母。
+    function createDesignStreamHost(): {
+      host: HTMLElement;
+      jelly: HTMLElement;
+      startOp: (toolCallId: string, toolName: string) => void;
+      finishOp: (toolCallId: string, isError: boolean) => void;
+      settle: () => void;
+    } {
+      hideAwait();
+      const host = document.createElement('div');
+      host.className = 'msg ai max-w-full';
+      const jelly = document.createElement('div');
+      jelly.className = 'thinking-block active ep-stream-jelly';
+      jelly.innerHTML =
+        `<img class="think-jelly" src="/jellyfish-loop.png" alt="">` +
+        `<span class="thinking-label">${t('thinking')}</span>` +
+        `<span class="thinking-dots"><span></span><span></span><span></span></span>`;
+      host.appendChild(jelly);
+      chatBody!.appendChild(host);
       scrollChat();
-    }
-    function designAddOpCard(host: HTMLElement, toolName: string) {
-      const spec = DESIGN_WRITE_OP[toolName];
-      if (!spec) return;
-      const card = document.createElement('div');
-      card.className = 'op-card';
-      card.innerHTML =
-        `<div class="op-ic">${OP_ICON_SVG}</div>` +
-        `<div class="op-body"><div class="op-kicker"></div><div class="op-label"></div></div>` +
-        OP_CHECK_SVG;
-      (card.querySelector('.op-kicker') as HTMLElement).textContent = spec[0];
-      (card.querySelector('.op-label') as HTMLElement).textContent = aT(spec[1], spec[2]);
-      host.appendChild(card);
-      scrollChat();
-    }
-    // 一轮结束：把思考态折叠成可点开的历史（仅当有思考步骤时）。
-    function designCollapseThinking(host: HTMLElement, stepCount: number) {
-      const block = host.querySelector<HTMLElement>('.thinking-block');
-      if (!block) return;
-      block.classList.remove('active');
-      const label = block.querySelector('.thinking-label') as HTMLElement | null;
-      if (stepCount === 0) {
-        if (label) label.textContent = t('analyzedFeedback');
-        return;
-      }
-      if (label) {
-        label.textContent = aT(`已完成 · 看了 ${stepCount} 处`, `Done · reviewed ${stepCount} step${stepCount > 1 ? 's' : ''}`);
-      }
-      if (!block.querySelector('.thinking-arrow')) {
-        const arrow = document.createElement('span');
-        arrow.className = 'thinking-arrow';
-        arrow.textContent = '▸';
-        block.appendChild(arrow);
-      }
-      block.classList.add('collapsible');
-      block.addEventListener('click', () => block.classList.toggle('open'));
+
+      const rowByCall = new Map<string, HTMLElement>();
+      return {
+        host,
+        jelly,
+        startOp(toolCallId, toolName) {
+          const row = document.createElement('div');
+          row.className = 'ep-op running';
+          row.innerHTML =
+            `<span class="ep-op-ic">${OP_ICON_SVG}</span>` +
+            `<span class="ep-op-label"></span>` +
+            `<span class="ep-op-status"></span>`;
+          (row.querySelector('.ep-op-label') as HTMLElement).textContent = designToolLabel(toolName);
+          host.insertBefore(row, jelly); // 冒在水母上方，水母保持最底
+          if (toolCallId) rowByCall.set(toolCallId, row);
+          scrollChat();
+        },
+        finishOp(toolCallId, isError) {
+          const row = toolCallId ? rowByCall.get(toolCallId) : undefined;
+          if (!row) return;
+          row.classList.remove('running');
+          row.classList.add(isError ? 'err' : 'done');
+          const status = row.querySelector('.ep-op-status') as HTMLElement | null;
+          if (status) status.innerHTML = isError ? '↻' : OP_CHECK_SVG;
+        },
+        settle() {
+          jelly.remove(); // 收掉底部水母
+        },
+      };
     }
 
     async function readDesignChatStream(
@@ -1192,7 +1188,7 @@ export function ChatPanel({
     }
 
     async function runDesignChatTurn(message: string) {
-      const host = appendThinkingShell();
+      const stream = createDesignStreamHost();
       setComposerThinking(true);
       const userMessage = message.slice(0, MESSAGE_MAX);
       try {
@@ -1210,23 +1206,12 @@ export function ChatPanel({
           final: { assistantReply: string; committed: boolean } | null;
           error: string | null;
         } = { final: null, error: null };
-        let thinkStepCount = 0;
         await readDesignChatStream(res, (event) => {
+          const toolCallId = typeof event.toolCallId === 'string' ? event.toolCallId : '';
           if (event.type === 'tool_call' && typeof event.toolName === 'string') {
-            if (event.toolName in DESIGN_READ_STEP) {
-              designAddThinkStep(host, event.toolName);
-              thinkStepCount += 1;
-            }
-          } else if (event.type === 'tool_result' && typeof event.toolName === 'string') {
-            if (event.isError) {
-              const step = document.createElement('div');
-              step.className = 'ep-step';
-              step.textContent = aT('写入被校验打回，正在修正…', 'A write was rejected — retrying…');
-              designThinkingDetail(host).appendChild(step);
-              thinkStepCount += 1;
-            } else if (event.toolName in DESIGN_WRITE_OP) {
-              designAddOpCard(host, event.toolName);
-            }
+            stream.startOp(toolCallId, event.toolName);
+          } else if (event.type === 'tool_result') {
+            stream.finishOp(toolCallId, event.isError === true);
           } else if (event.type === 'done') {
             outcome.final = event.response as { assistantReply: string; committed: boolean };
           } else if (event.type === 'error') {
@@ -1236,8 +1221,8 @@ export function ChatPanel({
         if (outcome.error) throw new Error(outcome.error);
         const final = outcome.final;
         if (!final) throw new Error('stream ended without result');
-        designCollapseThinking(host, thinkStepCount);
-        appendReplyBody(host, final.assistantReply);
+        stream.settle();
+        appendReplyBody(stream.host, final.assistantReply);
         if (final.committed) {
           const root = outerRootRef.current;
           root?.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
@@ -1246,11 +1231,11 @@ export function ChatPanel({
         chapterHistory.push({ role: 'user', content: userMessage });
         chapterHistory.push({ role: 'assistant', content: final.assistantReply });
       } catch (e) {
+        stream.settle();
         setComposerThinking(false);
-        if (authErr(host, e)) return;
-        settleThinking(host, 'analyzedFeedback');
+        if (authErr(stream.host, e)) return;
         appendReplyBody(
-          host,
+          stream.host,
           aT('设计助手暂时不可用，请稍后再试。', 'The design assistant is unavailable right now — please try again shortly.') +
             (e instanceof Error && e.message ? `（${e.message}）` : ''),
         );
