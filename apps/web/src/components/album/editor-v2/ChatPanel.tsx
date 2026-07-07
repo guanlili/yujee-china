@@ -82,6 +82,14 @@ const CONFIRM_CHAPTER_COMMAND = '[confirm-chapter]';
 
 export type ChatMode = 'authoring' | 'editing';
 
+type HistoryMessage = {
+  seq?: number;
+  role: string;
+  content: string;
+  chapterId?: string | null;
+  createdAt?: string;
+};
+
 // ════════════════════════════════════════════════════════════════════════════
 // ChatPanel — stable chat rail. Keyed by album.id in the shell so it survives an
 // EditorBook (canvas) remount. Its mount effect runs the imperative chat engine
@@ -126,6 +134,7 @@ export function ChatPanel({
   const shownChapterCardsRef = useRef<Set<string>>(new Set());
   const recommendInFlightRef = useRef(false);
   const historyReplaySeqRef = useRef(0);
+  const historyFetchPromiseRef = useRef<Promise<HistoryMessage[]> | null>(null);
 
   useEffect(() => {
     const root = outerRootRef.current;
@@ -267,22 +276,24 @@ export function ChatPanel({
     async function loadHistory(): Promise<number> {
       const replaySeq = ++historyReplaySeqRef.current;
       try {
-        const res = await fetch(`/api/v1/albums/${albumId}/messages?limit=50`);
-        const j = await res.json();
-        if (!j?.ok) return 0;
-        const msgs = (j.data?.messages ?? []) as Array<{
-          seq?: number;
-          role: string;
-          content: string;
-          chapterId?: string | null;
-          createdAt?: string;
-        }>;
-        // 按追加序 seq 回放(写入顺序 = 用户操作顺序);seq 缺省时退回 createdAt。
-        msgs.sort((a, b) =>
-          a.seq != null && b.seq != null
-            ? a.seq - b.seq
-            : String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')),
-        );
+        historyFetchPromiseRef.current ??= fetch(`/api/v1/albums/${albumId}/messages?limit=50`)
+          .then(async (res) => {
+            const j = await res.json();
+            if (!j?.ok) return [];
+            const msgs = (j.data?.messages ?? []) as HistoryMessage[];
+            // 按追加序 seq 回放(写入顺序 = 用户操作顺序);seq 缺省时退回 createdAt。
+            msgs.sort((a, b) =>
+              a.seq != null && b.seq != null
+                ? a.seq - b.seq
+                : String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')),
+            );
+            return msgs;
+          })
+          .catch(() => {
+            historyFetchPromiseRef.current = null;
+            return [];
+          });
+        const msgs = await historyFetchPromiseRef.current;
         if (disposed || replaySeq !== historyReplaySeqRef.current) return 0;
         chatBody?.querySelectorAll('[data-history-replay]').forEach((n) => n.remove());
         chapterHistory.splice(0, chapterHistory.length);
@@ -1754,19 +1765,6 @@ export function ChatPanel({
         actionHandlers.push({ el, fn });
       });
     }
-    const clearDemoChat = () => {
-      chatBody?.querySelectorAll('[data-demo-chat]').forEach((n) => n.remove());
-    };
-    const demoThinkingHandlers: { el: Element; fn: EventListener }[] = [];
-    chatBody?.querySelectorAll('.thinking-block.collapsible').forEach((el) => {
-      const fn = (e: Event) => {
-        e.preventDefault();
-        el.classList.toggle('open');
-      };
-      el.addEventListener('click', fn);
-      demoThinkingHandlers.push({ el, fn });
-    });
-
     function bindChatMotion() {
       const rootEl = root;
       if (!rootEl) return () => {};
@@ -1895,9 +1893,7 @@ export function ChatPanel({
     };
     root.addEventListener('yujee:authoring-pages-ready', onAuthoringPagesReady);
 
-    // ── Init: clear the design's demo chat, then run the mode-specific opening. ──
     if (isAuthoring) {
-      clearDemoChat();
       hideAwait();
     }
     else {
@@ -1905,7 +1901,6 @@ export function ChatPanel({
       // 先 loadStoryGate 再 loadHistory:历史重建要补插章节卡片(appendChapterCard 依赖
       // chapterMetaById→storyGate/draftSkel);storyGate 未就绪时卡片会插不出来。
       void loadStoryGate().then(() => loadHistory()).then((shown) => {
-        if (shown > 0) clearDemoChat();
         restAwait();
       });
     }
@@ -1952,26 +1947,12 @@ export function ChatPanel({
       if (stepperEl) stepperEl.style.display = 'none';
     }
 
-    // Demo-seed safety net (editing only): the seeded chat had a perpetually "active"
-    // thinking block. Authoring manages its own thinking lifecycle, so skip it there.
-    const completeTimer = isAuthoring
-      ? (undefined as unknown as ReturnType<typeof setTimeout>)
-      : setTimeout(() => {
-          const active = $('.thinking-block.active');
-          if (active) {
-            active.classList.remove('active');
-            const label = active.querySelector('.thinking-label');
-            if (label) label.textContent = t('thinkingComplete');
-          }
-        }, 3000);
-
     return () => {
       disposed = true;
       sendBtnEl?.removeEventListener('click', send);
       input?.removeEventListener('keydown', onKeydown);
       input?.removeEventListener('input', onInput);
       actionHandlers.forEach(({ el, fn }) => el.removeEventListener('click', fn));
-      demoThinkingHandlers.forEach(({ el, fn }) => el.removeEventListener('click', fn));
       cleanupChatMotion();
       root.removeEventListener('yujee:authoring-pages-ready', onAuthoringPagesReady);
       guidedChaptersRef.current.clear();
@@ -1979,7 +1960,6 @@ export function ChatPanel({
       shownChapterCardsRef.current.clear();
       interviewChainStartedRef.current = false;
       recommendInFlightRef.current = false;
-      clearTimeout(completeTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -2014,99 +1994,10 @@ export function ChatPanel({
         </div>
 
         <div className="chat-body flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-6" id="chatBody" style={{ gap: '24px' }}>
-          <>
-            <div className="msg ai max-w-full" data-demo-chat>
-              <div className="thinking-block collapsible">
-                <span className="thinking-icon" />
-                <span className="thinking-label" data-i18n="thinkingAnalyzed">分析了 6 张照片和地点信息</span>
-                <span className="thinking-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg></span>
-              </div>
-              <div className="thinking-detail" data-i18n="thinkingAnalyzedDetail">读取 6 张照片的时间与定位 · 识别环岛路 / 鼓浪屿场景 · 匹配「海边时光」的叙事语气</div>
-              <div className="ai-text" data-i18n="aiMsg1">
-                我已经为「海边时光」这一章写好了叙事文案。如果你想分享更多记忆，比如那天的天气、和谁同行、当时的心情，我可以把这些融进文字里。
-              </div>
-            </div>
-
-            <div className="msg user max-w-full" data-demo-chat>
-              <div className="bubble" data-i18n="userMsg1">那天其实下午起风了，我还差点把帽子吹丢，能加进去吗？</div>
-            </div>
-
-            <div className="msg ai max-w-full" data-demo-chat>
-              <div className="thinking-block collapsible">
-                <span className="thinking-icon" />
-                <span className="thinking-label" data-i18n="thinkingReorg">重新组织第二段，融入风和帽子的细节</span>
-                <span className="thinking-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg></span>
-              </div>
-              <div className="thinking-detail" data-i18n="thinkingReorgDetail">定位到第二段 · 插入「起风、帽子被吹」的细节 · 微调句子节奏，保持口吻一致</div>
-              <div className="ai-text" data-i18n="aiMsg2">好的，我把这个细节融进了第二段。你看看这版：</div>
-              <div className="ai-quote" data-i18n="aiQuote1">
-                那天午后风忽然大了起来，差点把帽子从你头顶卷走。我们笑着追了几步，又坐回沙滩——海浪一遍又一遍地把脚印抹平，又一遍又一遍地让我们重新走过。
-              </div>
-              <div className="ai-actions flex gap-2 mt-3.5 flex-wrap">
-                <button className="chip" data-i18n="chipAccept" data-chip="accept">采纳</button>
-                <button className="chip" data-i18n="chipRewrite" data-chip="rewrite">再写一版</button>
-                <button className="chip" data-i18n="chipEditMyself" data-chip="editMyself">我来改</button>
-              </div>
-            </div>
-
-            <div className="msg ai max-w-full" data-demo-chat>
-              <div className="thinking-block collapsible">
-                <span className="thinking-icon" />
-                <span className="thinking-label" data-i18n="thinkApplied">已把这份细节同步到整章</span>
-                <span className="thinking-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg></span>
-              </div>
-              <div className="thinking-detail" data-i18n="thinkAppliedDetail">逐章检查语气一致性 · 更新正文与页面排版 · 生成整本框架概览</div>
-              <div className="ai-text" data-i18n="aiMsgOps">都改好了，这几处我已经帮你落定：</div>
-              <div className="op-card">
-                <span className="op-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
-                <div className="op-body"><div className="op-kicker" data-i18n="opDone">已执行</div><div className="op-label" data-i18n="opCard1">更新「海边时光」正文文案</div></div>
-                <svg className="op-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" /></svg>
-              </div>
-              <div className="op-card">
-                <span className="op-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
-                <div className="op-body"><div className="op-kicker" data-i18n="opDone">已执行</div><div className="op-label" data-i18n="opCard2">把「风与帽子」的细节写进第二段</div></div>
-                <svg className="op-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" /></svg>
-              </div>
-              <div className="op-card">
-                <span className="op-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
-                <div className="op-body"><div className="op-kicker" data-i18n="opDone">已执行</div><div className="op-label" data-i18n="opCard3">重新排版第 2-3 页</div></div>
-                <svg className="op-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" /></svg>
-              </div>
-              <div className="ai-text mt-3.5" data-i18n="aiMsgDoc">整本《2024 厦门三日游》现在的框架是这样：</div>
-              <div className="ai-doc">
-                <h4 data-i18n="docH1">上半程 · 到达与海</h4>
-                <ul><li data-i18n="docL1">{'抵达厦门 -> 环岛路散步 -> 鼓浪屿落日'}</li></ul>
-                <h4 data-i18n="docH2">中段 · 街与人</h4>
-                <ul><li data-i18n="docL2">{'中山路沙茶面 -> 花生汤阿姨 -> 褪色的老招牌'}</li></ul>
-                <h4 data-i18n="docH3">尾声 · 离别</h4>
-                <ul><li data-i18n="docL3">{'演武大桥的黄昏 -> 最后一晚 -> 清晨返程'}</li></ul>
-              </div>
-            </div>
-
-            <div className="msg user max-w-full" data-demo-chat>
-              <div className="bubble" data-i18n="userMsg2">很好。再帮我想个更有诗意的章节名？</div>
-            </div>
-
-            <div className="msg ai max-w-full" data-demo-chat>
-              <div className="thinking-block active">
-                <img className="think-jelly" src="/jellyfish-loop.png" alt="" />
-                <span className="thinking-label" data-i18n="thinkingChapterName">正在构思章节名</span>
-                <span className="thinking-dots"><span /><span /><span /></span>
-              </div>
-              <div className="ai-text" data-i18n="aiMsg3">几个备选，挑一个或告诉我感觉：</div>
-              <div className="ai-actions flex gap-2 mt-3.5 flex-wrap">
-                <button className="chip-select" data-i18n="chipName1" data-name-chip>浪把时间洗薄了</button>
-                <button className="chip-select" data-i18n="chipName2" data-name-chip>风从海上来</button>
-                <button className="chip-select" data-i18n="chipName3" data-name-chip>咸味的下午</button>
-                <button className="chip-select" data-i18n="chipName4" data-name-chip>那只差点飞走的帽子</button>
-              </div>
-            </div>
-
-            <div className="await-user" id="awaitUser">
-              <img className="await-jelly" src="/jellyfish-icon.png" alt="" style={{ width: '40px', height: '40px' }} />
-              <span className="await-label" data-i18n="awaitUser">{locale === 'zh' ? '在听，随时和我说～' : "I'm listening - talk to me anytime"}</span>
-            </div>
-          </>
+          <div className="await-user" id="awaitUser">
+            <img className="await-jelly" src="/jellyfish-icon.png" alt="" style={{ width: '40px', height: '40px' }} />
+            <span className="await-label" data-i18n="awaitUser">{locale === 'zh' ? '在听，随时和我说～' : "I'm listening - talk to me anytime"}</span>
+          </div>
         </div>
 
         <div className="composer-group shrink-0">

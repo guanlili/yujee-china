@@ -54,13 +54,15 @@ test('editor chat rail uses the refreshed draggable card and collapsed jellyfish
   assert.match(chatPanel, /resizeHandle(?:El)?\.addEventListener\('pointerdown'/, 'desktop resize handle should listen for pointer resize');
   assert.match(chatPanel, /className="composer-group/, 'composer and purchase banner should be grouped for the overlap treatment');
   assert.match(chatPanel, /className="buy-banner"/, 'purchase prompt should use the refreshed banner instead of the old card');
-  assert.match(chatPanel, /data-demo-chat/, 'editing mode should keep deterministic mock messages when no real history exists');
+  assert.doesNotMatch(chatPanel, /data-demo-chat/, 'production chat rail must not ship design-demo transcript bubbles');
+  assert.doesNotMatch(chatPanel, /clearDemoChat/, 'demo transcript cleanup should not be needed when the demo transcript is not rendered');
+  assert.doesNotMatch(chatPanel, /thinkingAnalyzed|aiMsg1|userMsg1/, 'demo transcript i18n keys should not be referenced by ChatPanel markup');
   assert.match(chatPanel, /function mockEditChatResponse\(/, 'authoring edit-chat should have a deterministic local mock fallback');
   assert.match(chatPanel, /function shouldUseMockEditFallback\(/, 'mock fallback should be gated so auth and credit errors keep their real behavior');
   assert.match(chatPanel, /appendMockToolReceipt\(/, 'mock fallback should still expose an AI tool-call receipt state');
-  assert.match(chatPanel, /thinking-block collapsible/, 'mock AI thoughts should be expandable intermediate states');
-  assert.match(chatPanel, /className="op-card"/, 'mock AI tool-call receipts should be rendered');
-  assert.match(chatPanel, /className="ai-doc"/, 'mock AI summary should render as document-style markdown');
+  assert.match(chatPanel, /function appendStep\(/, 'runtime AI tool progress should be emitted by real step rows');
+  assert.match(chatPanel, /card\.className = 'op-card'/, 'mock AI tool-call receipts should be rendered at runtime');
+  assert.doesNotMatch(chatPanel, /className="ai-doc"/, 'design-demo document summaries should not ship in the chat rail');
 });
 
 test('building loading keeps the canvas generic and puts photo-reading status inside the refreshed chat panel', () => {

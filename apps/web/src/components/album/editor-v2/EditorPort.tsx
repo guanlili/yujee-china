@@ -124,15 +124,13 @@ export function EditorPort({
 }
 
 function EditorLoadingState({ locale }: { locale: Locale }) {
-  const zh = locale === 'zh';
   return (
     <div className="editor-port font-sans antialiased leading-relaxed bg-bg text-fg" data-screen-label="02 Yujee Editor Loading">
       <div className="page-glow" aria-hidden="true" />
       <div className="ed-loader" role="status" aria-live="polite">
         <YujeeState
           variant="loading"
-          title={zh ? '加载中' : 'Loading'}
-          message={zh ? '正在加载画板资源…' : 'Loading editor resources…'}
+          title="Loading"
           showDots
         />
       </div>

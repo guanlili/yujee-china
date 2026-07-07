@@ -295,7 +295,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
                 variant="loading"
                 compact
                 showDots
-                message={locale === 'zh' ? '正在加载画板' : 'Loading canvas'}
+                title="Loading"
               />
             </div>
           </Link>
@@ -449,7 +449,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
       />
       <span className="relative z-10 grid flex-1 place-items-center text-center">
         {creating ? (
-          <YujeeState variant="loading" compact showDots message={locale === 'zh' ? '正在新建' : 'Creating'} />
+          <YujeeState variant="loading" compact showDots title="Loading" />
         ) : (
           <span>
             <svg
@@ -528,8 +528,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           <div className="fixed inset-0 z-[80] grid place-items-center bg-[rgba(245,245,245,0.76)] backdrop-blur-[12px]">
             <YujeeState
               variant="loading"
-              title={locale === 'zh' ? '正在创建相册' : 'Creating album'}
-              message={locale === 'zh' ? '正在加载画板内容…' : 'Loading the canvas…'}
+              title="Loading"
               showDots
             />
           </div>
@@ -541,8 +540,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           <div className="min-h-[420px]">
             <YujeeState
               variant="loading"
-              title={t.common.loading}
-              message={locale === 'zh' ? '正在加载相册' : 'Loading albums'}
+              title="Loading"
               showDots
             />
           </div>

@@ -75,6 +75,12 @@ test('my-albums wires the real generating status from API data into the card UI'
   assert.doesNotMatch(runningBranch, /\{a\.title\}/, 'running branch should not render a normal album title overlay');
 });
 
+test('my-albums shared loading states keep copy minimal', () => {
+  assert.doesNotMatch(page, /Creating album|正在创建相册/, 'full-screen create loading should not show detailed creation copy');
+  assert.doesNotMatch(page, /Loading the canvas|正在加载画板内容|Loading albums|正在加载相册|Loading canvas|正在加载画板/, 'shared loading states should not show detailed resource copy');
+  assert.match(page, /title="Loading"/, 'shared loading states should render the single Loading label');
+});
+
 test('my-albums keeps album generation failures separate from global page errors', () => {
   const failedBranch = getFailedBranch();
 

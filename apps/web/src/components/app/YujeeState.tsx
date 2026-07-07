@@ -49,10 +49,10 @@ export function YujeeState({
           className={`${compact ? 'w-[150px]' : 'w-[220px] sm:w-[260px]'} h-auto select-none`}
           draggable={false}
         />
-        {showDots && (
-          <YujeeLoadingDots className="absolute left-1/2 top-[58%] -translate-x-1/2 rounded-full bg-white/45 px-2.5 py-1 shadow-[0_4px_12px_rgba(0,0,0,0.08)] backdrop-blur-sm" />
-        )}
       </div>
+      {showDots && (
+        <YujeeLoadingDots className={compact ? 'mt-2' : 'mt-3'} />
+      )}
       {title && (
         <div className={`${compact ? 'mt-2 text-sm' : 'mt-4 text-lg'} font-semibold text-[var(--fg)]`}>
           {title}

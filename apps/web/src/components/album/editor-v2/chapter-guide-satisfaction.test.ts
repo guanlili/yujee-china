@@ -123,9 +123,19 @@ test('history replay is idempotent across StrictMode mount replays', () => {
     'history replay must use a component-scope sequence ref that survives StrictMode effect replays',
   );
   assert.match(
+    src,
+    /historyFetchPromiseRef = useRef<Promise<HistoryMessage\[]> \| null>\(null\)/,
+    'history fetch must be cached at component scope so StrictMode replay does not issue duplicate network requests',
+  );
+  assert.match(
     lh![0],
     /const replaySeq = \+\+historyReplaySeqRef\.current;/,
     'each loadHistory run must claim a new replay sequence',
+  );
+  assert.match(
+    lh![0],
+    /historyFetchPromiseRef\.current \?\?=/,
+    'loadHistory must reuse an in-flight history fetch across effect replays',
   );
   assert.match(
     lh![0],
