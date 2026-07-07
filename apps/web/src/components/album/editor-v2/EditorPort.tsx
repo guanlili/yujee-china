@@ -617,7 +617,7 @@ function EditorBook({
       }
       return [...seen];
     };
-    const bodyEl = root; // original toggled body classes (overview-on / detail-open / chat-collapsed / rail-collapsed); scoped to root here.
+    const bodyEl = root; // original toggled body classes (overview-on / chat-collapsed / rail-collapsed); scoped to root here.
 
     /* ─── i18n translations (verbatim; shared module dict) ─── */
     const i18n: Record<string, Record<string, string>> = chatI18n;
@@ -1251,7 +1251,6 @@ function EditorBook({
       // Rail items key off their target spread (data-ch), which for AI chapters is
       // a non-contiguous spread index — compare by that, not by list position.
       $$('.chapter').forEach((el) => el.classList.toggle('active', +el.getAttribute('data-ch')! === i));
-      $$('.m-chapter-chip').forEach((el) => el.classList.toggle('active', +el.getAttribute('data-ch')! === i));
       updateThumbUI(i);
     }
 
@@ -1378,25 +1377,8 @@ function EditorBook({
         });
       }
 
-      const mbar = byId('mobileChapterBar');
-      if (mbar) {
-        mbar.innerHTML = items
-          .map(
-            (it) =>
-              `<button class="m-chapter-chip${it.idx === currentCh ? ' active' : ''}" data-ch="${it.idx}">${esc(it.label)}</button>`,
-          )
-          .join('');
-        mbar.querySelectorAll('.m-chapter-chip').forEach((el) => {
-          el.addEventListener('click', () => {
-            const i = +el.getAttribute('data-ch')!;
-            if (i !== currentCh) flipTo(i, i > currentCh ? 'next' : 'prev');
-          });
-        });
-      }
     }
 
-    const openDetail = () => bodyEl.classList.add('detail-open');
-    const closeDetail = () => bodyEl.classList.remove('detail-open');
     const toggleChat = () => bodyEl.classList.toggle('chat-collapsed');
     const toggleRail = () => bodyEl.classList.toggle('rail-collapsed');
 
@@ -2119,15 +2101,14 @@ function EditorBook({
     /* ─── Wire the canvas/topbar/modal data-action handlers ───
        Scoped to EditorBook's OWN subtree (topbar + #paneCenter + .chat-fold-expand +
        modals) so it never double-binds the chat-owned actions that ChatPanel binds
-       inside its aside (buyShells / pickAddPhotos / toggleChat-collapse / openDetail). */
+       inside its aside (buyShells / pickAddPhotos / toggleChat-collapse). */
     const actions: Record<string, () => void> = {
       exportPdf,
       toggleUserMenu,
       // .chat-fold-expand lives in the shell (canvas scope) and toggles the shared
-      // body class; the .chat-fold-collapse + openDetail buttons in the aside are
+      // body class; the .chat-fold-collapse button in the aside is
       // bound by ChatPanel.
       toggleChat,
-      closeDetail,
       toggleOverview,
       resetZoom,
       openPhotoPicker,
@@ -2142,7 +2123,7 @@ function EditorBook({
     $$scoped('[data-action]').forEach((el) => {
       const name = el.getAttribute('data-action')!;
       // Only bind the canvas/topbar/modal actions; chat-owned actions (buyShells,
-      // pickAddPhotos, and the aside's toggleChat/openDetail) are bound by ChatPanel.
+      // pickAddPhotos, and the aside's toggleChat) are bound by ChatPanel.
       if (!(name in actions)) return;
       const fn = (e: Event) => {
         e.stopPropagation();
@@ -2395,15 +2376,6 @@ function EditorBook({
   // and scopes its effect to the shared outer root. ──
   return (
     <main className="pane pane-center flex flex-col overflow-hidden relative md:order-3 md:flex-1" id="paneCenter">
-
-      <div className="detail-mobile-bar items-center justify-between px-4 h-12 bg-surface border-b border-bdsoft shrink-0">
-        <span className="font-display text-[14px] font-bold" data-i18n="detailChapters">详细章节</span>
-        <button data-action="closeDetail" className="w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg transition-colors" aria-label="close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-        </button>
-      </div>
-      <div className="mobile-chapter-bar gap-2 px-4 py-2.5 overflow-x-auto bg-surface border-b border-bdsoft shrink-0" id="mobileChapterBar" />
-
       <div className="book-stage w-full flex-1 flex items-center justify-center px-4 pt-8 pb-16 overflow-auto relative">
         <div className="canvas-hint" data-i18n="canvasHint">
           {locale === 'zh' ? '拖拽平移 · ⌘/Ctrl+滚轮缩放 · 点击元素可编辑' : 'Drag to pan · Cmd/Ctrl+wheel to zoom · Click to edit'}

@@ -842,16 +842,6 @@
 }
 .editor-port .bp-buy:hover{ transform:translateY(-1px); }
 
-.editor-port .detail-mobile-bar{ display:none; }
-/* Chapter selector bar — mobile-only */
-.editor-port .mobile-chapter-bar{ display:none; }
-.editor-port .m-chapter-chip{
-  flex-shrink:0; padding:6px 13px; border-radius:9999px;
-  background:var(--bg); font-size:12.5px; font-weight:600; color:var(--fg-2);
-  white-space:nowrap; cursor:pointer; transition: all var(--motion-fast) var(--ease);
-}
-.editor-port .m-chapter-chip:hover{ background:var(--border-soft); color:var(--fg); }
-.editor-port .m-chapter-chip.active{ background:var(--fg); color:#fff; }
 @media (max-width:767px){
   .editor-port .pane-right{
     position:fixed; left:0; right:0; top:52px; bottom:0;
@@ -859,13 +849,8 @@
   }
   .editor-port .pane-center{
     position:fixed; left:0; right:0; top:52px; bottom:0;
-    transform: translateY(100%);
-    transition: transform var(--motion-base) var(--ease);
     z-index:120;
   }
-  .editor-port.detail-open .pane-center{ transform: translateY(0); }
-  .editor-port .detail-mobile-bar{ display:flex; }
-  .editor-port .mobile-chapter-bar{ display:flex; }
 }
 
 /* ─── Desktop 3-column workspace ─── */
@@ -1264,9 +1249,6 @@
   .editor-port .pane-center{
     position:fixed; left:0; right:0; top:56px; bottom:0;
     transform:none; transition:none; z-index:20;
-  }
-  .editor-port.detail-open .pane-center{
-    transform:none;
   }
   .editor-port .book-stage{
     padding:20px 12px 220px;

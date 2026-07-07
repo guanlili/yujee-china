@@ -1686,19 +1686,14 @@ export function ChatPanel({
 
     // ── data-action handlers within ChatPanel's OWN subtree only (the aside). The
     // canvas/topbar/modals bind their own data-action nodes in EditorBook, so we scope
-    // the sweep to the chat column to avoid double-binding. The chrome toggles that live
-    // in the aside (toggleChat-collapse / openDetail) toggle body classes on the shared
-    // outer root — consistent with EditorBook toggling the same classes for its own
-    // chrome nodes (chat-fold-expand / closeDetail). ──
+    // the sweep to the chat column to avoid double-binding. ──
     const asideRoot = root.querySelector('.pane-chat-col') as HTMLElement | null;
     const actions: Record<string, () => void> = {
       buyShells: () => { window.location.href = `/${locale}/credits`; },
       // 中途加图 authoring-dormant: the "+" during authoring is a no-op (the dormant
       // picker + real add-photos flow live in EditorBook's modal/topbar scope).
       pickAddPhotos: () => { /* authoring: dormant */ },
-      // chrome toggles on the shared body root (the aside owns these nodes):
       toggleChat: () => root.classList.toggle('chat-collapsed'),
-      openDetail: () => root.classList.add('detail-open'),
     };
     const actionHandlers: { el: Element; fn: EventListener }[] = [];
     if (asideRoot) {
