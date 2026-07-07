@@ -1167,15 +1167,16 @@ export function ChatPanel({
         host,
         jelly,
         startOp(toolCallId, toolName, input) {
+          const isRead = !WRITE_TOOLS.has(toolName);
           const row = document.createElement('div');
-          row.className = 'ep-op running';
+          row.className = isRead ? 'ep-op ep-op-read running' : 'ep-op running';
           row.innerHTML =
             `<span class="ep-op-ic">${OP_PENCIL_SVG}</span>` +
             `<span class="ep-op-label"></span>` +
             `<span class="ep-op-status"></span>`;
-          (row.querySelector('.ep-op-label') as HTMLElement).textContent = WRITE_TOOLS.has(toolName)
-            ? designWriteDescription(toolName, input)
-            : designToolLabel(toolName);
+          (row.querySelector('.ep-op-label') as HTMLElement).textContent = isRead
+            ? designToolLabel(toolName)
+            : designWriteDescription(toolName, input);
           host.insertBefore(row, jelly); // 冒在水母上方，水母保持最底
           if (toolCallId) {
             rowByCall.set(toolCallId, row);
@@ -1209,6 +1210,30 @@ export function ChatPanel({
           if (status) status.innerHTML = isError ? '↻' : OP_CHECK_SVG;
         },
         settle() {
+          // 逐条流式的读类操作折叠成一条可展开的思考汇总（复用 editor 既有
+          // .thinking-block.collapsible + .thinking-detail；写类回执卡保持独立）。
+          const readRows = Array.from(host.querySelectorAll<HTMLElement>('.ep-op-read'));
+          if (readRows.length > 0) {
+            const labels = readRows.map(
+              (row) => (row.querySelector('.ep-op-label') as HTMLElement | null)?.textContent ?? '',
+            );
+            const anchor = readRows[0]!;
+            const block = document.createElement('div');
+            block.className = 'thinking-block collapsible';
+            block.innerHTML =
+              `<span class="thinking-label"></span>` +
+              `<span class="thinking-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></span>`;
+            (block.querySelector('.thinking-label') as HTMLElement).textContent = aT(
+              `翻阅相册 · ${labels.length} 步`,
+              `Reviewed the album · ${labels.length} step${labels.length > 1 ? 's' : ''}`,
+            );
+            const detail = document.createElement('div');
+            detail.className = 'thinking-detail';
+            detail.textContent = labels.filter(Boolean).join(' · ');
+            block.addEventListener('click', () => block.classList.toggle('open'));
+            anchor.before(block, detail);
+            for (const row of readRows) row.remove();
+          }
           jelly.remove(); // 收掉底部水母
         },
       };
