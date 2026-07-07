@@ -24,13 +24,13 @@ const src = ['EditorPort.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts']
   .join('\n\n');
 const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
 
-test('authoring send() routes to the real edit-chat turn', () => {
-  // The authoring branch of send() must call runChapterChatTurn, not the legacy
+test('authoring send() routes to the design chat turn', () => {
+  // The authoring branch of send() must call the design-chat turn, not the legacy
   // /draft-edit single-page loop.
   assert.match(
     src,
-    /if \(isAuthoring\) \{\s*await runEditChatTurn\(txt\);/,
-    'authoring send() must await runEditChatTurn',
+    /if \(isAuthoring\) \{\s*\/\/[^\n]*\n\s*await runDesignChatTurn\(txt\);/,
+    'authoring send() must await runDesignChatTurn',
   );
 });
 

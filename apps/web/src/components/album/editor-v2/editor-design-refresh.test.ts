@@ -9,6 +9,7 @@ const editorPort = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
 const chatPanel = readFileSync(join(here, 'ChatPanel.tsx'), 'utf8');
 const coordinator = readFileSync(join(here, 'editor-coordinator.ts'), 'utf8');
 const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
+const albumPage = readFileSync(join(here, '../../../app/[locale]/album/[uuid]/page.tsx'), 'utf8');
 const src = `${editorPort}\n\n${chatPanel}`;
 
 function escapeRegex(value: string): string {
@@ -18,6 +19,12 @@ function escapeRegex(value: string): string {
 function buildingShellSource(): string {
   const match = editorPort.match(/function BuildingShell\([\s\S]*?\n}\n\n\/\/ ═+[\s\S]*?EditorBook/);
   assert.ok(match, 'BuildingShell should exist before EditorBook');
+  return match[0];
+}
+
+function editorAuthoringSource(): string {
+  const match = editorPort.match(/function EditorAuthoring\([\s\S]*?\n}\n\n\/\/ ═+[\s\S]*?EditorShell/);
+  assert.ok(match, 'EditorAuthoring should exist before EditorShell');
   return match[0];
 }
 
@@ -73,6 +80,20 @@ test('building loading keeps the canvas generic and puts photo-reading status in
   assert.doesNotMatch(building, /<BuildingCanvasState locale=\{locale\} generation=\{generation\}/, 'canvas should not receive stage-specific photo-reading copy');
   assert.doesNotMatch(building, /className="canvas-hint"/, 'building canvas should not show a second loading hint');
   assert.doesNotMatch(editorPort.match(/function BuildingCanvasState[\s\S]*?\n}\n\n\/\/ ── authoring/)?.[0] ?? '', /buildingStageLabel/, 'canvas loading must not reuse photo-reading stage labels');
+});
+
+test('resource loading uses the full-screen loading state before showing canvas or chat', () => {
+  const authoring = editorAuthoringSource();
+
+  assert.match(editorPort, /export type EditorMode = 'loading' \| 'building' \| 'authoring' \| 'editing'/, 'EditorPort should distinguish resource loading from AI waiting');
+  assert.match(editorPort, /function EditorLoadingState\(/, 'editor should have a full-screen resource loader');
+  assert.match(editorPort, /<YujeeState\s+variant="loading"/, 'full-screen resource loading should use the supplied loading illustration');
+  assert.match(editorPort, /if \(mode === 'loading'\) \{[\s\S]*?<EditorLoadingState locale=\{locale\} \/>/, 'loading mode should render only the full-screen loading state');
+  assert.match(albumPage, /if \(phase === 'loading'\) \{[\s\S]*?mode="loading"/, 'first poll frame should show the full-screen resource loader');
+  assert.match(albumPage, /if \(phase === 'running'\) \{[\s\S]*?mode="building"/, 'AI running should still use the building/chat waiting state');
+  assert.doesNotMatch(albumPage, /phase === 'loading' \|\| phase === 'running'/, 'resource loading and AI waiting must not share one editor state');
+  assert.match(authoring, /if \(loadState !== 'ready' \|\| !skeleton\) \{[\s\S]*?return <EditorLoadingState locale=\{locale\} \/>/, 'draft skeleton/image resource loading should be full-screen');
+  assert.doesNotMatch(authoring, /return <BuildingShell detail=\{detail\} locale=\{locale\} generation=\{null\} \/>/, 'draft resource loading must not show the AI waiting chat panel');
 });
 
 test('chat collapse button is clickable inside the draggable header', () => {

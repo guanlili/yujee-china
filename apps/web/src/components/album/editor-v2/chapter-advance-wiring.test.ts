@@ -104,8 +104,8 @@ test('layout-ready notifications refresh the authoring draft projection for the 
   );
   assert.match(
     src,
-    /<EditorBook[\s\S]*?key=\{initialPages\.length\}/,
-    'refetched pages must remount EditorBook so collect mode is recomputed from non-empty pages',
+    /<EditorBook[\s\S]*?key=\{`\$\{initialPages\.length\}:\$\{canvasEpoch \?\? 0\}`\}/,
+    'refetched pages/text changes must remount EditorBook so collect mode and rendered copy are recomputed',
   );
 });
 

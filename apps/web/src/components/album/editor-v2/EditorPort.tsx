@@ -67,14 +67,14 @@ import './editor-port.css';
 // EditorPort chrome renders for a still-generating album (building), a draft being
 // authored (authoring), and a finalized album being edited (editing). page.tsx
 // derives the mode from album.status + layoutJson and always mounts EditorPort.
-//   • building  → AGENT_RUNNING / first load: flipbook shows a loading placeholder,
-//                 chat rail is a non-interactive "tidying up" notice.
+//   • loading   → editor resources are still loading: full-screen app loader only.
+//   • building  → AGENT_RUNNING / AI waiting: canvas shell + chat thinking notice.
 //   • authoring → EDITING & layoutJson==null: draft skeleton (read-only, invariant
 //                 12) feeds the flipbook + rail; init (#161) already wrote the full
 //                 first draft, so the chat rail does pointed single-page copy edits
 //                 via /draft-edit (#162) — no theme→chapter dialog, no finalize CTA.
 //   • editing   → layoutJson set: the original finalized editor, untouched.
-export type EditorMode = 'building' | 'authoring' | 'editing';
+export type EditorMode = 'loading' | 'building' | 'authoring' | 'editing';
 const CONFIRM_CHAPTER_COMMAND = '[confirm-chapter]';
 
 // Generation progress from the album poll (use-album-poll); only meaningful in
@@ -93,6 +93,11 @@ export function EditorPort({
   mode?: EditorMode;
   generation?: GenerationProgress;
 }) {
+  // loading: UI/editor resources are not ready yet. Do not show half-loaded canvas
+  // or chat chrome; those appear only after the resource load resolves.
+  if (mode === 'loading') {
+    return <EditorLoadingState locale={locale} />;
+  }
   // building: nothing to render yet — same editor chrome in its building state:
   // cover skeleton + a static loading-chat notice. The poll in page.tsx flips us to
   // authoring/editing, which remounts into the real (stable-shell) editor.
@@ -115,6 +120,23 @@ export function EditorPort({
       draftChapters={null}
       initialImageUrls={{}}
     />
+  );
+}
+
+function EditorLoadingState({ locale }: { locale: Locale }) {
+  const zh = locale === 'zh';
+  return (
+    <div className="editor-port font-sans antialiased leading-relaxed bg-bg text-fg" data-screen-label="02 Yujee Editor Loading">
+      <div className="page-glow" aria-hidden="true" />
+      <div className="ed-loader" role="status" aria-live="polite">
+        <YujeeState
+          variant="loading"
+          title={zh ? '加载中' : 'Loading'}
+          message={zh ? '正在加载画板资源…' : 'Loading editor resources…'}
+          showDots
+        />
+      </div>
+    </div>
   );
 }
 
@@ -237,10 +259,7 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
     );
   }
   if (loadState !== 'ready' || !skeleton) {
-    // A READY draft's skeleton fetch is sub-second — reuse the building state so the
-    // chrome is identical. It remounts into the authoring shell once the skeleton
-    // resolves.
-    return <BuildingShell detail={detail} locale={locale} generation={null} />;
+    return <EditorLoadingState locale={locale} />;
   }
 
   // Feed the skeleton's flattened page list straight into the flipbook (its shape

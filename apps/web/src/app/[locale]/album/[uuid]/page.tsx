@@ -8,8 +8,8 @@ import { AlbumGeneratingShell } from '@/components/album/AlbumGeneratingShell';
 import type { AlbumDetail } from '@/components/album/types';
 import { defaultLocale, isLocale, type Locale } from '@/lib/i18n/routing';
 
-// building mode renders the editor chrome + a loading book and never reads page
-// content, so the first (pre-detail) poll frame can hand it this minimal stub.
+// Loading/building modes never read page content, so the first poll frame can
+// hand them this minimal stub.
 const STUB_DETAIL = (uuid: string): AlbumDetail => ({
   album: {
     id: uuid,
@@ -55,7 +55,8 @@ export default function AlbumPage({
   // The editor is the single page across the whole album lifecycle (W10 flow
   // unification): EditorPort renders for every non-terminal phase, switching mode
   // internally. page.tsx owns just the mode decision:
-  //   • loading / running (AGENT_RUNNING) → building: loading book + "tidying up".
+  //   • loading                         → full-screen editor resource loader.
+  //   • running (AGENT_RUNNING)         → AI waiting state: canvas shell + chat.
   //   • EDITING & layoutJson == null      → authoring: draft skeleton + agent chat.
   //   • layoutJson set (EDITING/COMPLETED)→ editing: the finalized editor.
   // layoutJson is the draft↔finalized discriminator (mirrors the server's
@@ -63,9 +64,19 @@ export default function AlbumPage({
   // resumes naturally: a fresh useAlbumPoll re-derives the phase.
   // 解耦后:analyze 完成 → 相册直接 EDITING/story(不再靠 init job 停在 stage='layout' 驱动)。
   // 收集故事 + 排版中都在 EDITING 态,由下面 phase==='ready' 的 authoring 分支处理(采访面板 +
-  // 排版完 EditorPort 内部重挂 EditorBook)。这里的 running 只剩「分析进行中」→ building loading。
-  if (phase === 'loading' || phase === 'running') {
-    // First frame has no detail yet; building mode ignores it, so a stub is fine.
+  // 排版完 EditorPort 内部重挂 EditorBook)。这里的 running 只剩「分析进行中」→ building/AI waiting。
+  if (phase === 'loading') {
+    return (
+      <EditorPort
+        detail={detail ?? STUB_DETAIL(uuid)}
+        locale={locale}
+        mode="loading"
+        generation={generation}
+      />
+    );
+  }
+
+  if (phase === 'running') {
     return (
       <EditorPort
         detail={detail ?? STUB_DETAIL(uuid)}
