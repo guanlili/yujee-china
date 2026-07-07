@@ -11,7 +11,7 @@ import {
 	renderAlbumBookPreviewHtml,
 	validateAlbumBook,
 } from "../core/album/book-state.ts";
-import { createDefaultAlbumSkills } from "../core/album/skills.ts";
+import { loadAlbumSkills } from "../core/album/skills-loader.ts";
 import { buildAlbumSystemPrompt } from "../core/album/system-prompt.ts";
 import { loadTemplateCatalog, type TemplateCatalog } from "../core/album/templates-catalog.ts";
 import { createAlbumTools } from "../core/album/tools.ts";
@@ -92,6 +92,7 @@ interface SharedRuntimeDeps {
 	catalog: TemplateCatalog;
 	models: Awaited<ReturnType<typeof createDesignAgentModelRuntime>>;
 	cwd: string;
+	env: Record<string, string | undefined>;
 }
 
 async function createSharedDeps(options: AlbumAgentWebServerOptions): Promise<SharedRuntimeDeps> {
@@ -101,6 +102,7 @@ async function createSharedDeps(options: AlbumAgentWebServerOptions): Promise<Sh
 		catalog: loadTemplateCatalog({ contractsDir: options.contractsDir, env }),
 		models: await createDesignAgentModelRuntime({ cwd, env }),
 		cwd,
+		env,
 	};
 }
 
@@ -110,7 +112,7 @@ async function createAlbumRuntime(
 	initialBook: AlbumBookState,
 ): Promise<AlbumRuntime> {
 	let bookState = cloneAlbumBookState(initialBook);
-	const skills = createDefaultAlbumSkills();
+	const skills = loadAlbumSkills({ env: deps.env });
 	const sessionRepo = new InMemorySessionRepo();
 	const harnessSession = await sessionRepo.create();
 	const traces = new TraceStore();

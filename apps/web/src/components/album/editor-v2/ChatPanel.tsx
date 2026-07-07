@@ -125,6 +125,7 @@ export function ChatPanel({
   const interviewedChaptersRef = useRef<Set<string>>(new Set());
   const shownChapterCardsRef = useRef<Set<string>>(new Set());
   const recommendInFlightRef = useRef(false);
+  const historyReplaySeqRef = useRef(0);
 
   useEffect(() => {
     const root = outerRootRef.current;
@@ -244,9 +245,10 @@ export function ChatPanel({
       sending = false;
     }
 
-    function appendAiText(text: string) {
+    function appendAiText(text: string, opts?: { historyReplay?: boolean }) {
       const a = document.createElement('div');
       a.className = 'msg ai max-w-full';
+      if (opts?.historyReplay) a.dataset.historyReplay = 'true';
       const body = document.createElement('div');
       body.className = 'ai-text';
       body.textContent = text;
@@ -254,14 +256,16 @@ export function ChatPanel({
       chatBody!.appendChild(a);
       scrollChat();
     }
-    function appendUserText(text: string) {
+    function appendUserText(text: string, opts?: { historyReplay?: boolean }) {
       const u = document.createElement('div');
       u.className = 'msg user max-w-full';
+      if (opts?.historyReplay) u.dataset.historyReplay = 'true';
       u.innerHTML = `<div class="bubble"></div>`;
       u.querySelector('.bubble')!.textContent = text;
       chatBody!.appendChild(u);
     }
     async function loadHistory(): Promise<number> {
+      const replaySeq = ++historyReplaySeqRef.current;
       try {
         const res = await fetch(`/api/v1/albums/${albumId}/messages?limit=50`);
         const j = await res.json();
@@ -279,6 +283,8 @@ export function ChatPanel({
             ? a.seq - b.seq
             : String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')),
         );
+        if (disposed || replaySeq !== historyReplaySeqRef.current) return 0;
+        chatBody?.querySelectorAll('[data-history-replay]').forEach((n) => n.remove());
         chapterHistory.splice(0, chapterHistory.length);
         let shown = 0;
         let lastCardChapterId: string | null = null;
@@ -294,12 +300,12 @@ export function ChatPanel({
             lastCardChapterId = m.chapterId;
           }
           if (m.role === 'user') {
-            appendUserText(c);
+            appendUserText(c, { historyReplay: true });
             if (!m.chapterId || !storyGate?.currentChapterId || m.chapterId === storyGate.currentChapterId) {
               chapterHistory.push({ role: 'user', content: c });
             }
           } else {
-            appendAiText(c);
+            appendAiText(c, { historyReplay: true });
             if (!m.chapterId || !storyGate?.currentChapterId || m.chapterId === storyGate.currentChapterId) {
               chapterHistory.push({ role: 'assistant', content: c });
             }

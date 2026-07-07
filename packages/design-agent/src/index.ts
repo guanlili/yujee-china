@@ -1,4 +1,5 @@
 export * from "./core/album/book-state.ts";
+export * from "./core/album/skills-loader.ts";
 export * from "./core/album/skills.ts";
 export * from "./core/album/system-prompt.ts";
 export * from "./core/album/templates-catalog.ts";

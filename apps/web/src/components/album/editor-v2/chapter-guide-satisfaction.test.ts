@@ -112,6 +112,43 @@ test('interview history is fully reconstructable: separate bubbles + chapter car
   );
 });
 
+test('history replay is idempotent across StrictMode mount replays', () => {
+  const src = source('EditorPort.tsx');
+  const lh = /async function loadHistory\(\): Promise<number> \{[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(lh, 'loadHistory() must be parseable');
+
+  assert.match(
+    src,
+    /historyReplaySeqRef = useRef\(0\)/,
+    'history replay must use a component-scope sequence ref that survives StrictMode effect replays',
+  );
+  assert.match(
+    lh![0],
+    /const replaySeq = \+\+historyReplaySeqRef\.current;/,
+    'each loadHistory run must claim a new replay sequence',
+  );
+  assert.match(
+    lh![0],
+    /if \(disposed \|\| replaySeq !== historyReplaySeqRef\.current\) return 0;/,
+    'stale history fetches must not append bubbles after a newer replay starts',
+  );
+  assert.match(
+    lh![0],
+    /chatBody\?\.querySelectorAll\('\[data-history-replay\]'\)\.forEach\(\(n\) => n\.remove\(\)\);/,
+    'a fresh replay must replace previous replayed bubbles instead of appending duplicates',
+  );
+  assert.match(
+    lh![0],
+    /appendUserText\(c, \{ historyReplay: true \}\)/,
+    'replayed user bubbles must be tagged as history replay nodes',
+  );
+  assert.match(
+    lh![0],
+    /appendAiText\(c, \{ historyReplay: true \}\)/,
+    'replayed assistant bubbles must be tagged as history replay nodes',
+  );
+});
+
 test('C: a write turn surfaces the satisfaction card (满意/不满意), not on talk/edit', () => {
   const src = source('EditorPort.tsx');
 
