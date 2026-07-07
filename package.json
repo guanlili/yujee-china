@@ -7,6 +7,7 @@
     "web:dev": "pnpm --filter @yujee/web dev",
     "agent:dev": "cd engine && .venv/bin/uvicorn src.main:app --reload --port ${PORT:-8001}",
     "design:dev": "pnpm --filter @smalldog/design-agent web",
+    "design:album": "pnpm --filter @smalldog/design-agent web:album",
     "design:build": "pnpm --filter @earendil-works/pi-ai build && pnpm --filter @earendil-works/pi-agent-core build && pnpm --filter @smalldog/design-agent build",
     "design:test": "pnpm --filter @earendil-works/pi-ai test && pnpm --filter @earendil-works/pi-agent-core test && pnpm --filter @smalldog/design-agent test",
     "templates:generate": "pnpm --filter @yujee/contracts templates:generate",

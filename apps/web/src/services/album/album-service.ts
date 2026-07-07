@@ -5,6 +5,7 @@ import { albumPageRepo } from '@/db/repos/album-page-repo';
 import { jobService } from '@/services/job/job-service';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
 import { agentClient } from '@/lib/agent/agent-client';
+import { designAgentClient } from '@/lib/agent/design-agent-client';
 import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
@@ -717,6 +718,52 @@ export const albumService = {
       });
     });
     return result;
+  },
+
+  // ②b 设计 Agent 全书对话（packages/design-agent album server）。每轮先把 draft 的
+  // tree+pages 装进 Agent 画布（Web/Postgres 永远是书的真相源），再发对话；Agent 的
+  // 写入工具只改它画布里的书，Web 拿回 pages 逐页过 contracts Page strict 校验后
+  // 整替 draft_json.pages。读-答轮次（committed=false）不落库。
+  async designChatTurn(
+    userId: string,
+    albumId: string,
+    input: { userMessage: string },
+  ): Promise<{ assistantReply: string; committed: boolean; pageCount: number }> {
+    const album = await this.findOwned(userId, albumId);
+    const normalized = readStoryDraft(album.draftJson);
+    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+    if (!normalized.pages || normalized.pages.length === 0) {
+      throw ERRORS.VALIDATION_FAILED('album has no layout pages yet');
+    }
+
+    await designAgentClient.loadBook(albumId, {
+      chapters: normalized.tree.chapters,
+      pages: normalized.pages,
+    });
+    const result = await designAgentClient.chat(albumId, input.userMessage);
+
+    if (result.committed) {
+      const pages = result.book.pages.map((page) => Page.parse(page));
+      await db.transaction(async (tx) => {
+        const latest = await albumRepo.findByIdForUpdate(tx, albumId);
+        if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
+        const current = readStoryDraft(latest.draftJson);
+        if (!current?.pages) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft pages');
+        const nextDraft: V3StoryDraft = {
+          version: 'v3-story',
+          tree: current.tree,
+          pages,
+          progress: current.progress,
+        };
+        await albumRepo.update(tx, albumId, { draftJson: nextDraft });
+      });
+    }
+
+    return {
+      assistantReply: result.assistantReply,
+      committed: result.committed,
+      pageCount: result.book.pages.length,
+    };
   },
 
   // ② 章节故事编辑 — stateful edit-chat turn. Agent can let the LLM choose simple

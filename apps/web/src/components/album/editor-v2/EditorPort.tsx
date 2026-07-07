@@ -172,6 +172,9 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
   const [skeleton, setSkeleton] = useState<DraftSkeleton | null>(null);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error' | 'gone'>('loading');
+  // 每次 pages-ready 刷新自增：设计对话可能只改文字（页数不变），canvasEpoch 进
+  // EditorBook 的 key 保证画板仍会重挂重绘。
+  const [canvasEpoch, setCanvasEpoch] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -201,6 +204,7 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
     }
 
     const onAuthoringPagesReady = () => {
+      setCanvasEpoch((epoch) => epoch + 1);
       void loadDraftSkeleton();
     };
 
@@ -259,6 +263,7 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
       initialPages={pages}
       draftChapters={skeleton}
       initialImageUrls={imageUrls}
+      canvasEpoch={canvasEpoch}
     />
   );
 }
@@ -280,6 +285,7 @@ function EditorShell({
   initialPages,
   draftChapters,
   initialImageUrls,
+  canvasEpoch,
 }: {
   detail: AlbumDetail;
   locale: Locale;
@@ -287,6 +293,7 @@ function EditorShell({
   initialPages: EditorPage[];
   draftChapters: DraftSkeleton | null;
   initialImageUrls: Record<string, string>;
+  canvasEpoch?: number;
 }) {
   const outerRootRef = useRef<HTMLDivElement>(null);
   const coordinator = useRef<ChatCoordinator | null>(null);
@@ -326,7 +333,7 @@ function EditorShell({
           {/* Canvas: keyed by pages.length so a layout completion (0→N) remounts ONLY
               the canvas. EditorBook scopes its effect to the shared outer root. */}
           <EditorBook
-            key={initialPages.length}
+            key={`${initialPages.length}:${canvasEpoch ?? 0}`}
             mode={mode}
             detail={detail}
             locale={locale}

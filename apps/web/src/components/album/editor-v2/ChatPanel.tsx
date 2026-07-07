@@ -41,6 +41,7 @@ import type {
   StoryProgress,
 } from '../types';
 import {
+  postDesignChat,
   postEditChat,
   postRecommend,
   postApplyTheme,
@@ -236,7 +237,8 @@ export function ChatPanel({
       }
       sending = true;
       if (isAuthoring) {
-        await runEditChatTurn(txt);
+        // 阶段3：authoring 期的对话改书走设计 Agent（原 runEditChatTurn 保留备切换）。
+        await runDesignChatTurn(txt);
       } else {
         await runEdit(txt);
       }
@@ -1065,6 +1067,37 @@ export function ChatPanel({
       const applied = co()?.applyChapterEdit?.(layoutPatch) ?? false;
       if (applied) appendStep(aT('🛠️ 已更新这一页的排版。', '🛠️ Updated this page’s layout.'));
       return applied;
+    }
+
+    // 设计 Agent 全书对话（阶段3接线）：pages 由服务端写回 draft_json，前端只负责
+    // 展示回复 + committed 时派发刷新事件让画板重取草稿。整书视角，无章节门槛。
+    async function runDesignChatTurn(message: string) {
+      const host = appendThinkingShell();
+      const userMessage = message.slice(0, MESSAGE_MAX);
+      try {
+        const res = await postDesignChat(albumId, { userMessage });
+        settleThinking(host, 'analyzedFeedback');
+        appendReplyBody(host, res.assistantReply);
+        if (res.committed) {
+          appendStep(aT('🎨 画板已更新。', '🎨 Canvas updated.'));
+          const root = outerRootRef.current;
+          root?.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+          window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+        }
+        chapterHistory.push({ role: 'user', content: userMessage });
+        chapterHistory.push({ role: 'assistant', content: res.assistantReply });
+      } catch (e) {
+        if (authErr(host, e)) return;
+        settleThinking(host, 'analyzedFeedback');
+        appendReplyBody(
+          host,
+          aT('设计助手暂时不可用，请稍后再试。', 'The design assistant is unavailable right now — please try again shortly.') +
+            (e instanceof Error && e.message ? `（${e.message}）` : ''),
+        );
+      }
+      restAwait();
+      scrollChat();
+      updateAuthInputPlaceholder();
     }
 
     async function runEditChatTurn(message: string) {

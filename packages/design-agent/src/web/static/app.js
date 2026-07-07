@@ -6,6 +6,12 @@ import {
 	createTokenSummary,
 } from "./trace-presenter.js";
 
+// ?albumId=<uuid> 时面板跟踪该相册的书与 trace（web 编辑器对话也记在这里）。
+// 注意：从本面板直接发消息会绕过 Web 的落库——改动只进 Agent 画布，编辑器下一轮
+// 对话会用 Postgres 的书覆盖它。看 trace 用，别当编辑入口。
+const albumId = new URLSearchParams(location.search).get("albumId");
+const albumQuery = albumId ? `albumId=${encodeURIComponent(albumId)}` : "";
+
 const form = document.querySelector("#chat-form");
 const promptInput = document.querySelector("#prompt");
 const messages = document.querySelector("#messages");
@@ -209,7 +215,7 @@ function renderTraces(items) {
 }
 
 function refreshPreview() {
-	previewFrame.src = `/preview?t=${Date.now()}`;
+	previewFrame.src = `/preview?t=${Date.now()}${albumQuery ? `&${albumQuery}` : ""}`;
 }
 
 function renderDesignMeta(design) {
@@ -218,12 +224,12 @@ function renderDesignMeta(design) {
 }
 
 async function loadState() {
-	const response = await fetch("/api/state");
+	const response = await fetch(`/api/state${albumQuery ? `?${albumQuery}` : ""}`);
 	const payload = await response.json();
 	if (!response.ok) {
 		throw new Error(payload.error || "State request failed");
 	}
-	renderDesignMeta(payload.design);
+	renderDesignMeta(payload.design ?? payload.book);
 	renderTraces(payload.traces || []);
 	refreshPreview();
 }
@@ -242,7 +248,7 @@ form.addEventListener("submit", async (event) => {
 		const response = await fetch("/api/chat?stream=1", {
 			method: "POST",
 			headers: { accept: "application/x-ndjson", "content-type": "application/json" },
-			body: JSON.stringify({ message: prompt }),
+			body: JSON.stringify({ message: prompt, ...(albumId ? { albumId } : {}) }),
 		});
 		if (!response.ok) {
 			const payload = await response.json();
@@ -269,7 +275,7 @@ form.addEventListener("submit", async (event) => {
 			}
 			if (streamEvent.type === "done") {
 				const payload = streamEvent.response;
-				renderDesignMeta(payload.design);
+				renderDesignMeta(payload.design ?? payload.book);
 				renderTraces(payload.traces);
 				refreshPreview();
 				return;

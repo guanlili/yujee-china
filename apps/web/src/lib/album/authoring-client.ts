@@ -273,6 +273,21 @@ export function postEditChat(albumId: string, input: EditChatInput): Promise<V3E
   return postJson(`/api/v3/albums/${albumId}/edit-chat`, input);
 }
 
+// 设计 Agent 全书对话（design-chat 路由）。committed=true 表示 pages 已在服务端写回
+// draft_json —— 前端只需派发 yujee:authoring-pages-ready 让画板重取草稿。
+export interface DesignChatResult {
+  assistantReply: string;
+  committed: boolean;
+  pageCount: number;
+}
+
+export function postDesignChat(
+  albumId: string,
+  input: { userMessage: string },
+): Promise<DesignChatResult> {
+  return postJson(`/api/v3/albums/${albumId}/design-chat`, input);
+}
+
 export function postFinalize(
   albumId: string,
 ): Promise<{ albumId: string; requestId: string; accepted: true }> {

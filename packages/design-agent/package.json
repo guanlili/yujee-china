@@ -22,7 +22,8 @@
 		"clean": "shx rm -rf dist",
 		"build": "tsgo -p tsconfig.build.json && shx chmod +x dist/cli.js",
 		"web": "tsx src/web/server.ts --host 127.0.0.1 --port 8787",
-		"test": "node --test test/*.test.ts"
+		"web:album": "tsx src/web/album-server.ts --host 127.0.0.1 --port 8787",
+		"test": "tsx --test test/*.test.ts"
 	},
 	"dependencies": {
 		"@earendil-works/pi-agent-core": "workspace:*",
@@ -31,6 +32,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "22.19.19",
+		"@yujee/contracts": "workspace:*",
 		"@typescript/native-preview": "7.0.0-dev.20260120.1",
 		"shx": "0.4.0",
 		"tsx": "4.22.1",

@@ -149,6 +149,7 @@ function stripArtifactContent(text: string): string {
 	return text
 		.replace(/<artifact\b[^>]*>[\s\S]*?<\/artifact>/gi, "[HTML artifact omitted]")
 		.replace(/```html\s*[\s\S]*?```/gi, "[HTML artifact omitted]")
+		.replace(/```json\s*[\s\S]*?```/gi, "[JSON omitted]")
 		.replace(/"artifactHtml"\s*:\s*"(?:(?:\\.|[^"\\])*)"/gi, '"artifactHtml":"[HTML artifact omitted]"')
 		.replace(/<!doctype html[\s\S]*?<\/html>/gi, "[HTML artifact omitted]")
 		.replace(/<html\b[\s\S]*?<\/html>/gi, "[HTML artifact omitted]")

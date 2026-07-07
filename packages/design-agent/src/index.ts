@@ -1,3 +1,8 @@
+export * from "./core/album/book-state.ts";
+export * from "./core/album/skills.ts";
+export * from "./core/album/system-prompt.ts";
+export * from "./core/album/templates-catalog.ts";
+export * from "./core/album/tools.ts";
 export * from "./core/artifacts/design-demo.ts";
 export * from "./core/design-agent-runtime.ts";
 export * from "./core/design-agent-session.ts";
@@ -10,6 +15,7 @@ export * from "./core/tools/index.ts";
 export * from "./modes/interactive-mode.ts";
 export * from "./modes/print-mode.ts";
 export * from "./modes/rpc-mode.ts";
+export * from "./web/album-server.ts";
 export * from "./web/chat-response.ts";
 export * from "./web/server.ts";
 export * from "./web/traces.ts";

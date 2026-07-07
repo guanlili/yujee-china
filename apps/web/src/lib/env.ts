@@ -8,6 +8,9 @@ const EnvSchema = z.object({
     .default('postgresql://yujee:yujee@localhost:5432/yujee_dev'),
   AGENT_BASE_URL: z.string().url().default('http://localhost:8001'),
   AGENT_SHARED_SECRET: z.string().min(8).default('dev_secret_replace_me'),
+  // 设计 Agent（packages/design-agent album server，对话式改书）。secret 未设 => 不带鉴权头（本地 dev）。
+  DESIGN_AGENT_BASE_URL: z.string().url().default('http://localhost:8787'),
+  DESIGN_AGENT_SHARED_SECRET: z.string().optional(),
   WEB_BASE_URL: z.string().url().default('http://localhost:3000'),
   BETTER_AUTH_SECRET: z.string().min(16).default('dev_better_auth_secret_change_me'),
 
