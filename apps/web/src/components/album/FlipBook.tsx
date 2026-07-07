@@ -7,7 +7,7 @@ import { buildSpreads, isSoloSpread, spreadIndexOfPage } from './spreads';
 import { PAGE } from './templates/constants';
 import type { EditorPage } from './types';
 
-// UI-1b 3D flipbook (design-v1 editor.html): a 1.414:1 two-page spread with a
+// UI-1b 3D flipbook: a 1.414:1 two-page spread with a
 // center-spine shadow, perspective transform, and a page-turn animation between
 // spreads. A bottom glassmorphism thumbnail strip (prev/next + indicator +
 // per-spread thumbnails) drives navigation. This is the preview/navigation

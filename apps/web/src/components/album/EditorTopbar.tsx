@@ -19,7 +19,7 @@ interface Props {
   onExport: () => void;
 }
 
-// Editor-specific solid topbar (design-v1 editor.html .topbar). It is NOT the
+// Editor-specific solid topbar. It is NOT the
 // app-wide AppChrome (sidebar + blurred nav); it self-assembles from the UI-0
 // atoms (Brand / LanguageSwitcher / UserMenu) plus editor-only
 // chrome: back button, contenteditable title, autosave badge, export button.

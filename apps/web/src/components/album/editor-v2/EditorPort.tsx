@@ -320,11 +320,14 @@ function EditorShell({
         className="editor-port font-sans antialiased leading-relaxed"
         data-screen-label="02 Yujee Editor"
       >
+        <div className="page-glow" aria-hidden="true" />
         <EditorTopbar locale={locale} exportUnlocked={exportUnlocked} coordinator={coordinator} />
 
-        <div className="workspace flex-1 overflow-hidden relative md:flex" style={{ height: 'calc(100vh - 53px)' }}>
-          <button className="chat-fold-btn chat-fold-expand" data-action="toggleChat" data-i18n-title="expandChat" title="展开对话" aria-label="展开对话">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="m6 17 5-5-5-5" /><path d="m13 17 5-5-5-5" /></svg>
+        <div className="workspace flex-1 overflow-hidden relative md:flex" style={{ height: 'calc(100vh - 56px)' }}>
+          <button className="chat-fold-expand" data-action="toggleChat" data-i18n-title="expandChat" title="展开对话" aria-label="展开对话">
+            <img className="fab-jelly" src="/jellyfish-icon.png" alt="" />
+            <svg className="fab-chat-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+            <span>{locale === 'zh' ? '对话' : 'Chat'}</span>
           </button>
 
           {/* Canvas: keyed by pages.length so a layout completion (0→N) remounts ONLY
@@ -380,12 +383,12 @@ function EditorTopbar({
 }) {
   void coordinator; // the export button's data-action is wired by EditorBook via the shared root
   return (
-    <div className="topbar h-[52px] flex items-center justify-between px-3 sm:px-6 bg-surface border-b border-bdsoft shrink-0">
-      <div className="top-left flex items-center gap-2 sm:gap-4 min-w-0">
-        <a href="#" className="back-btn flex items-center justify-center w-8 h-8 rounded-pill text-muted no-underline transition-colors hover:bg-bg hover:text-fg shrink-0" data-i18n-title="backToProjects" title="返回我的项目">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><polyline points="15 18 9 12 15 6" /></svg>
+    <div className="topbar nav-shell sticky top-0 z-50 h-14 flex items-center justify-between px-3 sm:px-6 shrink-0">
+      <div className="top-left flex items-center gap-2 sm:gap-3 min-w-0">
+        <a href={`/${locale}/my-albums`} className="back-btn flex items-center justify-center w-9 h-9 rounded-pill text-fg2 no-underline transition-colors hover:bg-black/[.05] shrink-0" data-i18n-title="backToDetail" title={locale === 'zh' ? '返回书本明细' : 'Back to albums'}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><polyline points="15 18 9 12 15 6" /></svg>
         </a>
-        <a href="#" className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '30px', width: 'auto', display: 'block' }} /></a>
+        <a href={`/${locale}`} className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '26px', width: 'auto', display: 'block' }} /></a>
         <span className="crumb text-meta text-[13px] hidden sm:inline">/</span>
         <span className="album-title font-display font-bold text-[14px] text-fg px-2 py-1 rounded-pill border border-transparent transition-colors hover:bg-bg cursor-text truncate" contentEditable suppressContentEditableWarning data-i18n="albumTitle">2024 厦门三日游</span>
         <span className="save-badge text-[11px] text-muted hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-bg rounded-pill" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)', fontFamily: 'var(--font-mono)', letterSpacing: '0.02em' }}><span className="pulse w-1.5 h-1.5 rounded-full bg-gg" /><span data-i18n="saved">已保存</span></span>
@@ -402,13 +405,13 @@ function EditorTopbar({
             title={exportUnlocked ? undefined : (locale === 'zh' ? '先把每一章都「确定」，才能导出 PDF' : 'Confirm every chapter before exporting the PDF')}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-            <span className="hidden sm:inline" data-i18n="exportPdf">导出 PDF</span>
+            <span className="hidden sm:inline" data-i18n="exportPdf">{locale === 'zh' ? '导出' : 'Export'}</span>
           </button>
         </span>
 
         <div className="user-menu" id="userMenu">
-          <button className="user-trigger flex items-center p-1 rounded-pill transition-colors hover:bg-black/[0.04]" data-action="toggleUserMenu">
-            <span className="user-avatar w-9 h-9 rounded-full bg-accent text-surface flex items-center justify-center text-[13px] font-bold shrink-0">L</span>
+          <button className="user-trigger flex items-center rounded-pill transition-transform hover:-translate-y-px" data-action="toggleUserMenu" aria-label={locale === 'zh' ? '账户' : 'Account'}>
+            <span className="avatar-ring"><span className="grid place-items-center w-8 h-8 rounded-full bg-fg text-white font-semibold text-[13px]">L</span></span>
           </button>
           <div className="user-dropdown">
             <div className="dropdown-header p-3 border-b border-bdsoft mb-1">
@@ -506,12 +509,13 @@ function BuildingShell({
   void detail;
   return (
     <div className="editor-port font-sans antialiased leading-relaxed" data-screen-label="02 Yujee Editor">
-      <div className="topbar h-[52px] flex items-center justify-between px-3 sm:px-6 bg-surface border-b border-bdsoft shrink-0">
-        <div className="top-left flex items-center gap-2 sm:gap-4 min-w-0">
-          <a href={`/${locale}/my-albums`} className="back-btn flex items-center justify-center w-8 h-8 rounded-pill text-muted no-underline transition-colors hover:bg-bg hover:text-fg shrink-0" title={locale === 'zh' ? '返回我的项目' : 'Back to projects'}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><polyline points="15 18 9 12 15 6" /></svg>
+      <div className="page-glow" aria-hidden="true" />
+      <div className="topbar nav-shell sticky top-0 z-50 h-14 flex items-center justify-between px-3 sm:px-6 shrink-0">
+        <div className="top-left flex items-center gap-2 sm:gap-3 min-w-0">
+          <a href={`/${locale}/my-albums`} className="back-btn flex items-center justify-center w-9 h-9 rounded-pill text-fg2 no-underline transition-colors hover:bg-black/[.05] shrink-0" title={locale === 'zh' ? '返回书本明细' : 'Back to albums'}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><polyline points="15 18 9 12 15 6" /></svg>
           </a>
-          <a href={`/${locale}/my-albums`} className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '30px', width: 'auto', display: 'block' }} /></a>
+          <a href={`/${locale}`} className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '26px', width: 'auto', display: 'block' }} /></a>
           <span className="crumb text-meta text-[13px] hidden sm:inline">/</span>
           <span className="flex items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-[11px] text-muted" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
             <span className="w-1.5 h-1.5 rounded-full bg-gg animate-pulse" />
@@ -520,9 +524,10 @@ function BuildingShell({
         </div>
       </div>
 
-      <div className="workspace flex-1 overflow-hidden relative md:flex" style={{ height: 'calc(100vh - 53px)' }}>
-        <main className="pane pane-center flex flex-col overflow-hidden bg-bg relative md:order-3 md:flex-1" id="paneCenter">
-          <div className="book-stage w-full flex-1 flex items-center justify-center px-4 pt-8 pb-16 overflow-auto bg-bg relative">
+      <div className="workspace flex-1 overflow-hidden relative md:flex" style={{ height: 'calc(100vh - 56px)' }}>
+        <main className="pane pane-center flex flex-col overflow-hidden relative md:order-3 md:flex-1" id="paneCenter">
+          <div className="book-stage w-full flex-1 flex items-center justify-center px-4 pt-8 pb-16 overflow-auto relative">
+            <div className="canvas-hint">{locale === 'zh' ? '正在准备画布' : 'Preparing canvas'}</div>
             <CoverSkeleton locale={locale} />
           </div>
         </main>
@@ -741,6 +746,9 @@ function EditorBook({
         return;
       }
       el.innerHTML = faceHTML(page, el.clientWidth, el.clientHeight);
+      el.querySelectorAll<HTMLElement>('img[data-image-slot], .ch-mark, .ch-narrative, .photo .cap').forEach((node) => {
+        node.setAttribute('data-editable', '');
+      });
     }
     // Repaint every surface that shows page content after an edit.
     function repaintBook() {
@@ -941,6 +949,8 @@ function EditorBook({
       // Switching/deselecting a page tears down any open image-edit overlay.
       clearImageSelection();
       updateSelectionHighlight();
+      if (selectedPageIndex === idx) showElementToolbar(el, 'text');
+      else hideElementToolbar();
     };
 
     // ════════════════════════════════════════════════════════════════════════
@@ -1070,6 +1080,7 @@ function EditorBook({
       if (imgEditSlider) imgEditSlider.value = String(imgEdit.pos.scale);
       ov.style.display = '';
       positionImgEditOverlay();
+      showElementToolbar(imgEl.parentElement ?? imgEl, 'photo');
     }
     function clearImageSelection() {
       if (imgEdit) imgEdit.imgEl.classList.remove('img-editing');
@@ -1163,6 +1174,7 @@ function EditorBook({
       const pi = hostEl.dataset.pageIndex;
       const target = e.target as HTMLElement;
       const img = target.closest('img[data-image-slot]') as HTMLImageElement | null;
+      const editableText = target.closest<HTMLElement>('[data-editable]:not(img)');
       // Image click is only meaningful once the page is selected (two-step: select
       // the page, then pick a photo) — keeps single clicks as page selection.
       if (img && pi !== undefined && Number(pi) === selectedPageIndex) {
@@ -1177,6 +1189,13 @@ function EditorBook({
           }
           return;
         }
+      }
+      if (editableText && pi !== undefined && Number(pi) === selectedPageIndex) {
+        e.stopPropagation();
+        clearImageSelection();
+        showElementToolbar(editableText, 'text');
+        updateEditSizeLabel([editableText]);
+        return;
       }
       onPageSelect(hostEl);
     };
@@ -1222,6 +1241,11 @@ function EditorBook({
       if (rp) pageRight.dataset.pageIndex = String(rp.pageIndex);
       else delete pageRight.dataset.pageIndex;
       updateSelectionHighlight();
+      if (!imgEdit && selectedPageIndex != null) {
+        const selectedHost = [pageLeft, pageRight].find((host) => host.dataset.pageIndex === String(selectedPageIndex));
+        if (selectedHost) showElementToolbar(selectedHost, 'text');
+        else hideElementToolbar();
+      }
       if (pageInd) pageInd.textContent = (i + 1) + ' / ' + spreadCount();
       if (ctxBadge) ctxBadge.textContent = spreadLabel(i);
       // Rail items key off their target spread (data-ch), which for AI chapters is
@@ -1512,15 +1536,18 @@ function EditorBook({
 
     /* ─── Zoom + overview ─── */
     let zoom = 1;
+    let panX = 0;
+    let panY = 0;
     // ZMIN is the visible lower bound: zooming out clamps the book here (the
     // spread stays scaled + visible). Overview is reachable *only* via ovBtn,
     // never by crossing the zoom floor (issue #157).
     const ZMIN = 0.25, ZMAX = 2, ZSTEP = 0.25;
     function applyZoom() {
       const bk = byId('book');
-      if (bk) bk.style.transform = 'scale(' + zoom + ')';
+      if (bk) bk.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
       const p = byId('zoomPct');
       if (p) p.textContent = Math.round(zoom * 100) + '%';
+      positionElementToolbar();
     }
     function zoomBy(d: number) {
       if (bodyEl.classList.contains('overview-on')) {
@@ -1534,7 +1561,7 @@ function EditorBook({
     }
     function resetZoom() {
       if (bodyEl.classList.contains('overview-on')) { exitOverview(); return; }
-      zoom = 1; applyZoom();
+      zoom = 1; panX = 0; panY = 0; applyZoom();
     }
     function renderOverview() {
       const g = byId('ovGrid');
@@ -1587,7 +1614,7 @@ function EditorBook({
     function exitOverview() {
       bodyEl.classList.remove('overview-on');
       byId('ovBtn')?.classList.remove('active');
-      zoom = 1; applyZoom();
+      zoom = 1; panX = 0; panY = 0; applyZoom();
     }
     function toggleOverview() {
       bodyEl.classList.contains('overview-on') ? exitOverview() : enterOverview();
@@ -1598,11 +1625,214 @@ function EditorBook({
       // 概览里选的页带回正常模式高亮(若选中页就在当前跨页,flipTo 不触发,这里补刷)。
       updateSelectionHighlight();
     }
-    const stage = $('.book-stage');
+    const stage = $('.book-stage') as HTMLElement | null;
     const onWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomBy(e.deltaY < 0 ? ZSTEP : -ZSTEP); }
     };
     stage?.addEventListener('wheel', onWheel, { passive: false });
+
+    const editBar = byId('elBar') as HTMLElement | null;
+    let editBarAnchor: HTMLElement | null = null;
+    function setEditBarGroup(group: 'text' | 'photo') {
+      editBar?.querySelectorAll<HTMLElement>('[data-group]').forEach((el) => {
+        el.style.display = el.dataset.group === group ? 'flex' : 'none';
+      });
+    }
+    function positionElementToolbar() {
+      if (!editBar || !editBar.classList.contains('show') || !editBarAnchor) return;
+      const rect = editBarAnchor.getBoundingClientRect();
+      const top = Math.max(62, rect.top - editBar.offsetHeight - 10);
+      const left = Math.min(
+        window.innerWidth - editBar.offsetWidth - 10,
+        Math.max(10, rect.left + rect.width / 2 - editBar.offsetWidth / 2),
+      );
+      editBar.style.left = `${left}px`;
+      editBar.style.top = `${top}px`;
+    }
+    function showElementToolbar(anchor: HTMLElement, group: 'text' | 'photo') {
+      if (!editBar) return;
+      editBarAnchor = anchor;
+      setEditBarGroup(group);
+      editBar.classList.add('show');
+      requestAnimationFrame(positionElementToolbar);
+    }
+    function hideElementToolbar() {
+      editBarAnchor = null;
+      editBar?.classList.remove('show');
+    }
+    function selectedTextTargets(): HTMLElement[] {
+      if (!editBarAnchor || imgEdit) return [];
+      if (editBarAnchor.matches('[data-editable]:not(img)')) return [editBarAnchor];
+      return Array.from(editBarAnchor.querySelectorAll<HTMLElement>('[data-editable]:not(img)'));
+    }
+    function updateEditSizeLabel(targets = selectedTextTargets()) {
+      const label = byId('ebSize');
+      if (!label) return;
+      const first = targets[0];
+      if (!first) {
+        label.textContent = '--';
+        return;
+      }
+      label.textContent = `${Math.round(parseFloat(getComputedStyle(first).fontSize) || 14)}`;
+    }
+    function flashEditFeedback(text: string) {
+      const label = byId('ebSize');
+      if (!label) return;
+      const prev = label.textContent ?? '--';
+      label.textContent = text;
+      window.setTimeout(() => { if (label.isConnected) label.textContent = prev; }, 900);
+    }
+    function persistPagePatch(page: EditorPage) {
+      void fetch(`/api/v1/albums/${albumId}/pages/${page.pageIndex}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imagesJson: page.imagesJson,
+          textsJson: page.textsJson,
+          imagePosJson: page.imagePosJson ?? {},
+        }),
+      }).catch(() => {});
+    }
+    function applyTextToolbarAction(action: string) {
+      const targets = selectedTextTargets();
+      if (targets.length === 0) return;
+      const colorMap: Record<string, string> = {
+        'color-ink': '#111111',
+        'color-teal': '#13B8A6',
+        'color-purple': '#8C5EF4',
+        'color-gray': '#777777',
+      };
+      const fontMap: Record<string, string> = {
+        display: 'var(--font-display)',
+        playfair: 'Playfair Display, Georgia, serif',
+        body: 'var(--font-body)',
+        mono: 'var(--font-mono)',
+      };
+      if (action === 'font-family') {
+        const sel = editBar?.querySelector<HTMLSelectElement>('.eb-sel');
+        const family = sel ? fontMap[sel.value] : undefined;
+        if (family) targets.forEach((el) => { el.style.fontFamily = family; });
+      } else if (action === 'font-plus' || action === 'font-minus') {
+        targets.forEach((el) => {
+          const current = parseFloat(getComputedStyle(el).fontSize) || 14;
+          const next = Math.min(72, Math.max(10, current + (action === 'font-plus' ? 2 : -2)));
+          el.style.fontSize = `${next}px`;
+        });
+      } else if (action === 'bold') {
+        targets.forEach((el) => { el.style.fontWeight = getComputedStyle(el).fontWeight === '700' ? '' : '700'; });
+      } else if (action === 'italic') {
+        targets.forEach((el) => { el.style.fontStyle = getComputedStyle(el).fontStyle === 'italic' ? '' : 'italic'; });
+      } else if (action.startsWith('align-')) {
+        const value = action.replace('align-', '') as 'left' | 'center' | 'right';
+        targets.forEach((el) => { el.style.textAlign = value; });
+      } else if (colorMap[action]) {
+        targets.forEach((el) => { el.style.color = colorMap[action]; });
+      }
+      updateEditSizeLabel(targets);
+      positionElementToolbar();
+    }
+    function replaceSelectedPhoto() {
+      if (!imgEdit) return;
+      const page = pageByIndex(imgEdit.pageIndex);
+      if (!page) return;
+      const pool = bookPhotoIds();
+      const current = page.imagesJson[imgEdit.slotId];
+      const next = pool.length > 1
+        ? pool[(Math.max(0, pool.indexOf(current ?? '')) + 1) % pool.length]
+        : undefined;
+      if (!next || next === current) {
+        flashEditFeedback(aT('无照片', 'No photos'));
+        return;
+      }
+      page.imagesJson = { ...page.imagesJson, [imgEdit.slotId]: next };
+      page.imagePosJson = { ...(page.imagePosJson ?? {}) };
+      delete page.imagePosJson[imgEdit.slotId];
+      imgEdit.pos = { ...DEFAULT_IMAGE_POS };
+      repaintBook();
+      persistPagePatch(page);
+      flashEditFeedback(aT('已换', 'Swapped'));
+    }
+    function toggleSelectedPhotoFilter() {
+      if (!imgEdit) return;
+      const active = imgEdit.imgEl.dataset.mockFilter === 'mono';
+      imgEdit.imgEl.dataset.mockFilter = active ? '' : 'mono';
+      imgEdit.imgEl.style.filter = active ? '' : 'grayscale(1) contrast(1.08)';
+      flashEditFeedback(active ? aT('原图', 'Raw') : aT('滤镜', 'Filter'));
+    }
+    const onEditBarPointerDown = (e: Event) => e.stopPropagation();
+    const onEditBarClick = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const target = e.target as HTMLElement;
+      const action = target.closest<HTMLElement>('[data-edit-action]')?.dataset.editAction;
+      if (!action) return;
+      if (action === 'reset-photo') {
+        if (!imgEdit) return;
+        imgEdit.pos = { ...DEFAULT_IMAGE_POS };
+        applyLiveImagePos(imgEdit.imgEl, imgEdit.pos);
+        if (imgEditSlider) imgEditSlider.value = String(imgEdit.pos.scale);
+        commitImagePos();
+      } else if (action === 'replace-photo') {
+        replaceSelectedPhoto();
+      } else if (action === 'photo-filter') {
+        toggleSelectedPhotoFilter();
+      } else {
+        applyTextToolbarAction(action);
+      }
+    };
+    const onEditBarChange = (e: Event) => {
+      const target = e.target as HTMLElement;
+      const action = target.closest<HTMLElement>('[data-edit-action]')?.dataset.editAction;
+      if (action) applyTextToolbarAction(action);
+    };
+    editBar?.addEventListener('pointerdown', onEditBarPointerDown);
+    editBar?.addEventListener('click', onEditBarClick);
+    editBar?.addEventListener('change', onEditBarChange);
+    const onWindowResize = () => positionElementToolbar();
+    window.addEventListener('resize', onWindowResize);
+
+    let canvasDragging = false;
+    let canvasStartX = 0;
+    let canvasStartY = 0;
+    let canvasOriginX = 0;
+    let canvasOriginY = 0;
+    const shouldSkipCanvasPan = (target: HTMLElement | null) =>
+      !target ||
+      !!target.closest('.el-bar, .img-edit-overlay, .thumb-strip, .zoom-ctrl, .book-overview, .chapter-card, .mobile-chapter-bar, button, a, input, textarea, select, [contenteditable="true"]');
+    const onCanvasPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0 || shouldSkipCanvasPan(e.target as HTMLElement | null)) return;
+      canvasDragging = true;
+      canvasOriginX = panX;
+      canvasOriginY = panY;
+      canvasStartX = e.clientX;
+      canvasStartY = e.clientY;
+      hideElementToolbar();
+      stage?.classList.add('panning');
+      stage?.setPointerCapture?.(e.pointerId);
+    };
+    const onCanvasPointerMove = (e: PointerEvent) => {
+      if (!canvasDragging) return;
+      panX = canvasOriginX + e.clientX - canvasStartX;
+      panY = canvasOriginY + e.clientY - canvasStartY;
+      applyZoom();
+    };
+    const endCanvasPan = (e: PointerEvent) => {
+      if (!canvasDragging) return;
+      canvasDragging = false;
+      stage?.classList.remove('panning');
+      stage?.releasePointerCapture?.(e.pointerId);
+    };
+    const onCanvasDoubleClick = (e: MouseEvent) => {
+      if (shouldSkipCanvasPan(e.target as HTMLElement | null)) return;
+      panX = 0;
+      panY = 0;
+      applyZoom();
+    };
+    stage?.addEventListener('pointerdown', onCanvasPointerDown);
+    stage?.addEventListener('pointermove', onCanvasPointerMove);
+    stage?.addEventListener('pointerup', endCanvasPan);
+    stage?.addEventListener('pointercancel', endCanvasPan);
+    stage?.addEventListener('dblclick', onCanvasDoubleClick);
 
     /* ─── Photo picker ─── */
     const PICK_PHOTOS = [
@@ -1954,7 +2184,7 @@ function EditorBook({
 
     /* ─── Topbar links → real routes ─── */
     $('.back-btn')?.setAttribute('href', `/${locale}/my-albums`);
-    $('.brand')?.setAttribute('href', `/${locale}/my-albums`);
+    $('.brand')?.setAttribute('href', `/${locale}`);
 
     // Logout (better-auth): sign out, then to the login page.
     const logoutBtn = $('.dropdown-item.danger');
@@ -2134,6 +2364,15 @@ function EditorBook({
     return () => {
       document.removeEventListener('click', onDocClick);
       stage?.removeEventListener('wheel', onWheel);
+      stage?.removeEventListener('pointerdown', onCanvasPointerDown);
+      stage?.removeEventListener('pointermove', onCanvasPointerMove);
+      stage?.removeEventListener('pointerup', endCanvasPan);
+      stage?.removeEventListener('pointercancel', endCanvasPan);
+      stage?.removeEventListener('dblclick', onCanvasDoubleClick);
+      editBar?.removeEventListener('pointerdown', onEditBarPointerDown);
+      editBar?.removeEventListener('click', onEditBarClick);
+      editBar?.removeEventListener('change', onEditBarChange);
+      window.removeEventListener('resize', onWindowResize);
       actionHandlers.forEach(({ el, fn }) => el.removeEventListener('click', fn));
       // #168 manual image editor teardown.
       if (wheelCommitTimer) clearTimeout(wheelCommitTimer);
@@ -2155,7 +2394,7 @@ function EditorBook({
   // and modals are rendered by the stable shell; this component only owns the canvas
   // and scopes its effect to the shared outer root. ──
   return (
-    <main className="pane pane-center flex flex-col overflow-hidden bg-bg relative md:order-3 md:flex-1" id="paneCenter">
+    <main className="pane pane-center flex flex-col overflow-hidden relative md:order-3 md:flex-1" id="paneCenter">
 
       <div className="detail-mobile-bar items-center justify-between px-4 h-12 bg-surface border-b border-bdsoft shrink-0">
         <span className="font-display text-[14px] font-bold" data-i18n="detailChapters">详细章节</span>
@@ -2165,7 +2404,10 @@ function EditorBook({
       </div>
       <div className="mobile-chapter-bar gap-2 px-4 py-2.5 overflow-x-auto bg-surface border-b border-bdsoft shrink-0" id="mobileChapterBar" />
 
-      <div className="book-stage w-full flex-1 flex items-center justify-center px-4 pt-8 pb-16 overflow-auto bg-bg relative">
+      <div className="book-stage w-full flex-1 flex items-center justify-center px-4 pt-8 pb-16 overflow-auto relative">
+        <div className="canvas-hint" data-i18n="canvasHint">
+          {locale === 'zh' ? '拖拽平移 · ⌘/Ctrl+滚轮缩放 · 点击元素可编辑' : 'Drag to pan · Cmd/Ctrl+wheel to zoom · Click to edit'}
+        </div>
         <div className="book bg-surface flex relative overflow-hidden" id="book">
           <div className="page page-left bg-surface" id="pageLeft" />
           <div className="page page-right bg-surface" id="pageRight" />
@@ -2219,6 +2461,40 @@ function EditorBook({
           <button className="zoom-btn" id="ovBtn" data-action="toggleOverview" data-i18n-title="overview" title="整本杂志" aria-label="整本杂志">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
           </button>
+        </div>
+
+        <div className="el-bar" id="elBar" role="toolbar" aria-label={locale === 'zh' ? '元素编辑工具' : 'Element editing tools'}>
+          <div className="eb-group" data-group="text">
+            <select className="eb-sel" data-edit-action="font-family" title={locale === 'zh' ? '字体' : 'Font'} aria-label={locale === 'zh' ? '字体' : 'Font'} defaultValue="display">
+              <option value="display">{locale === 'zh' ? '思源宋体' : 'Display'}</option>
+              <option value="playfair">Playfair</option>
+              <option value="body">{locale === 'zh' ? '系统体' : 'System'}</option>
+              <option value="mono">{locale === 'zh' ? '等宽' : 'Mono'}</option>
+            </select>
+            <span className="eb-sep" />
+            <button type="button" className="eb-btn" data-edit-action="font-minus" title={locale === 'zh' ? '缩小字号' : 'Smaller'} aria-label={locale === 'zh' ? '缩小字号' : 'Smaller'}><span style={{ fontSize: 11 }}>A</span>-</button>
+            <span className="eb-num" id="ebSize">--</span>
+            <button type="button" className="eb-btn" data-edit-action="font-plus" title={locale === 'zh' ? '放大字号' : 'Larger'} aria-label={locale === 'zh' ? '放大字号' : 'Larger'}><span style={{ fontSize: 15 }}>A</span>+</button>
+            <span className="eb-sep" />
+            <button type="button" className="eb-btn" data-edit-action="bold" title={locale === 'zh' ? '加粗' : 'Bold'} aria-label={locale === 'zh' ? '加粗' : 'Bold'}><b>B</b></button>
+            <button type="button" className="eb-btn" data-edit-action="italic" title={locale === 'zh' ? '斜体' : 'Italic'} aria-label={locale === 'zh' ? '斜体' : 'Italic'}><i style={{ fontFamily: 'Georgia,serif' }}>I</i></button>
+            <span className="eb-sep" />
+            <button type="button" className="eb-btn" data-edit-action="align-left" title={locale === 'zh' ? '左对齐' : 'Align left'} aria-label={locale === 'zh' ? '左对齐' : 'Align left'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="15" y2="12" /><line x1="3" y1="18" x2="18" y2="18" /></svg></button>
+            <button type="button" className="eb-btn" data-edit-action="align-center" title={locale === 'zh' ? '居中' : 'Center'} aria-label={locale === 'zh' ? '居中' : 'Center'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="6" y1="12" x2="18" y2="12" /><line x1="5" y1="18" x2="19" y2="18" /></svg></button>
+            <button type="button" className="eb-btn" data-edit-action="align-right" title={locale === 'zh' ? '右对齐' : 'Align right'} aria-label={locale === 'zh' ? '右对齐' : 'Align right'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="9" y1="12" x2="21" y2="12" /><line x1="6" y1="18" x2="21" y2="18" /></svg></button>
+            <span className="eb-sep" />
+            <span className="eb-swatch" style={{ background: '#111111' }} data-edit-action="color-ink" title={locale === 'zh' ? '墨色' : 'Ink'} role="button" aria-label={locale === 'zh' ? '墨色' : 'Ink'} />
+            <span className="eb-swatch" style={{ background: '#13B8A6' }} data-edit-action="color-teal" title={locale === 'zh' ? '青色' : 'Teal'} role="button" aria-label={locale === 'zh' ? '青色' : 'Teal'} />
+            <span className="eb-swatch" style={{ background: '#8C5EF4' }} data-edit-action="color-purple" title={locale === 'zh' ? '紫色' : 'Purple'} role="button" aria-label={locale === 'zh' ? '紫色' : 'Purple'} />
+            <span className="eb-swatch" style={{ background: '#999999' }} data-edit-action="color-gray" title={locale === 'zh' ? '灰色' : 'Gray'} role="button" aria-label={locale === 'zh' ? '灰色' : 'Gray'} />
+          </div>
+          <div className="eb-group" data-group="photo" style={{ display: 'none' }}>
+            <button type="button" className="eb-btn" data-edit-action="replace-photo" title={locale === 'zh' ? '更换照片' : 'Replace photo'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg><span>{locale === 'zh' ? '更换' : 'Replace'}</span></button>
+            <span className="eb-sep" />
+            <button type="button" className="eb-btn" data-edit-action="reset-photo" title={locale === 'zh' ? '复位照片' : 'Reset photo'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 3v6h6" /></svg><span>{locale === 'zh' ? '复位' : 'Reset'}</span></button>
+            <span className="eb-sep" />
+            <button type="button" className="eb-btn" data-edit-action="photo-filter" title={locale === 'zh' ? '滤镜' : 'Filter'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none" /></svg><span>{locale === 'zh' ? '滤镜' : 'Filter'}</span></button>
+          </div>
         </div>
       </div>
 

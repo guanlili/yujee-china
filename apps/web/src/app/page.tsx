@@ -1,14 +1,8 @@
-import { loadDesignPage } from './_design-page/load-design-page';
-import { DesignPageMount } from './_design-page/DesignPageMount';
+import { redirect } from 'next/navigation';
+import { defaultLocale } from '@/lib/i18n/routing';
 
 export const dynamic = 'force-dynamic';
 
 export default function HomePage() {
-  const { style, body, scripts } = loadDesignPage('design-v1/yujee-home2.html');
-  return (
-    <>
-      <style dangerouslySetInnerHTML={{ __html: style }} />
-      <DesignPageMount body={body} scripts={scripts} />
-    </>
-  );
+  redirect(`/${defaultLocale}`);
 }

@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 
-// Concentric fingerprint rings, hand-ported from design-v1/yujee-home2.html.
+// Concentric fingerprint rings for the landing art field.
 // A blob outline is sampled, smoothed into a closed bezier path, then shrunk
 // toward a moving focal point ring-by-ring; the whole field slowly drifts.
 function blobShape(samples: number, seed: number): [number, number][] {

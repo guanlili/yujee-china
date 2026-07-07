@@ -19,7 +19,7 @@ export const BRAND_LOGO_SRC = '/brand/yujee-logo.svg';
 
 // The brand asset is the full "Yujee" wordmark (wide SVG lockup), used standalone
 // per the v1 design — render it at a fixed height with auto width, never boxed
-// into a square. See design-v1/design-systems/yujee/DESIGN.md.
+// into a square.
 export function BrandMark({ className = '', size = 30, alt = '' }: BrandMarkProps) {
   return (
     <img

@@ -3,8 +3,7 @@ import { getMessages } from '@/lib/i18n/messages';
 import { type Locale } from '@/lib/i18n/routing';
 import { RegisterForm } from './register-form';
 
-// Layered radial wash mirrors design-v1/design/login.html so /register and
-// /login share one auth surface.
+// Layered radial wash keeps /register and /login on one auth surface.
 const authBackground =
   'radial-gradient(ellipse 80% 60% at 0% 0%, rgba(19,184,166,0.07) 0%, transparent 70%),' +
   'radial-gradient(ellipse 60% 70% at 50% 100%, rgba(19,184,166,0.06) 0%, transparent 70%),' +

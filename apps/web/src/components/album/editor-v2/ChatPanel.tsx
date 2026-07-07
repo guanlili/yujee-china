@@ -54,6 +54,7 @@ import {
 } from '@/lib/album/authoring-client';
 import type {
   V3ChatTurn,
+  V3EditChatResponse,
   V3PageTextsPatch,
   V3RecommendResponse,
   V3ChapterThemeChoice,
@@ -365,6 +366,63 @@ export function ChatPanel({
       }
       appendAiText(e instanceof Error ? e.message : String(e));
       return false;
+    }
+
+    function shouldUseMockEditFallback(e: unknown): boolean {
+      return !(e instanceof UnauthorizedError) && !(e instanceof CreditInsufficientError);
+    }
+
+    function mockEditChatResponse(
+      userMessage: string,
+      chapterId: string,
+      focusedPageIndex: number,
+    ): V3EditChatResponse {
+      const pages = co()?.getPagesState?.() ?? [];
+      const page = pages.find((p) => p.pageIndex === focusedPageIndex) ?? pages[0] ?? null;
+      const textKey = page
+        ? ['body', 'explain', 'title', 'label']
+            .find((key) => typeof page.textsJson?.[key] === 'string' && page.textsJson[key]!.trim().length > 0)
+          ?? Object.keys(page.textsJson ?? {}).find((key) => typeof page.textsJson?.[key] === 'string')
+        : undefined;
+      const isConfirm = userMessage === CONFIRM_CHAPTER_COMMAND;
+      const mockCopy = aT(
+        '我先用本地 mock 帮你接住这一步：把这段回忆压成更柔和的语气，保留你刚补充的细节。等 AI 服务恢复后，可以继续让我精修。',
+        'I caught this with a local mock for now: softer wording, keeping the detail you just added. Once AI is back, I can polish it further.',
+      );
+      return {
+        kind: textKey && page && !isConfirm ? 'write' : 'talk',
+        assistantReply: isConfirm
+          ? aT('我先记下这个确认动作。当前 AI 服务不可用，正式推进章节时需要再点一次确认。', 'I noted that confirmation locally. AI is unavailable, so confirm again once the service is back to advance the chapter.')
+          : aT('AI 服务暂时不可用，我先用本地 mock 给你一版可编辑结果。', 'AI is temporarily unavailable, so I generated a local mock result you can keep editing.'),
+        patches: [],
+        ...(textKey && page && !isConfirm
+          ? { pagesTexts: [{ pageIndex: page.pageIndex, texts: { [textKey]: mockCopy } }] }
+          : {}),
+        navigation: page ? { pageIndex: page.pageIndex } : { chapterId },
+        opId: `mock-edit-chat-${chapterId}-${focusedPageIndex}`,
+        usage: {
+          durationMs: 0,
+          visionCallCount: 0,
+          geminiCallCount: 0,
+          planningInputTokens: 0,
+          planningOutputTokens: 0,
+          repairAttempts: 0,
+          models: { planning: 'local-mock' },
+        },
+      };
+    }
+
+    function appendMockToolReceipt(host: HTMLElement, label: string) {
+      const card = document.createElement('div');
+      card.className = 'op-card';
+      card.innerHTML =
+        `<div class="op-icon">⌁</div>` +
+        `<div class="op-body"><div class="op-kicker">${aT('Mock 已执行', 'Mock executed')}</div>` +
+        `<div class="op-label"></div></div>` +
+        `<div class="op-check">✓</div>`;
+      const labelEl = card.querySelector('.op-label') as HTMLElement | null;
+      if (labelEl) labelEl.textContent = label;
+      host.appendChild(card);
     }
 
     function updateStoryGateUi(progress: StoryProgress | null = storyGate) {
@@ -1039,9 +1097,9 @@ export function ChatPanel({
         return;
       }
       const userMessage = message.slice(0, MESSAGE_MAX);
+      const focusedPageIndex = authoringFocusPageIndex();
       try {
         const pagePhotoRefs = await captureChapterPagePhotoRefs(chapterId);
-        const focusedPageIndex = authoringFocusPageIndex();
         const res = await postEditChat(albumId, {
           language: currentLang === 'zh' ? 'zh' : 'en',
           chapterId,
@@ -1078,7 +1136,30 @@ export function ChatPanel({
           appendSatisfactionCard();
         }
       } catch (e) {
-        if (authErr(host, e)) return;
+        if (!shouldUseMockEditFallback(e)) {
+          if (authErr(host, e)) return;
+        } else {
+          const res = mockEditChatResponse(userMessage, chapterId, focusedPageIndex);
+          settleThinking(host, 'analyzedFeedback');
+          appendReplyBody(host, res.assistantReply);
+          appendMockToolReceipt(
+            host,
+            res.pagesTexts?.length
+              ? aT('生成本地 mock 文案并同步到当前页', 'Generated local mock copy and synced it to the current page')
+              : aT('记录本地 mock 对话回合', 'Recorded a local mock chat turn'),
+          );
+          let wroteChapter = false;
+          if (res.pagesTexts) {
+            wroteChapter = applyChapterWrite(res.pagesTexts);
+          }
+          if (res.navigation?.pageIndex !== undefined) {
+            co()?.goToPageIndex?.(res.navigation.pageIndex);
+          }
+          appendTime(host);
+          chapterHistory.push({ role: 'user', content: userMessage });
+          chapterHistory.push({ role: 'assistant', content: res.assistantReply });
+          if (wroteChapter) appendSatisfactionCard();
+        }
       }
       restAwait();
       scrollChat();
@@ -1633,6 +1714,137 @@ export function ChatPanel({
         actionHandlers.push({ el, fn });
       });
     }
+    const clearDemoChat = () => {
+      chatBody?.querySelectorAll('[data-demo-chat]').forEach((n) => n.remove());
+    };
+    const demoThinkingHandlers: { el: Element; fn: EventListener }[] = [];
+    chatBody?.querySelectorAll('.thinking-block.collapsible').forEach((el) => {
+      const fn = (e: Event) => {
+        e.preventDefault();
+        el.classList.toggle('open');
+      };
+      el.addEventListener('click', fn);
+      demoThinkingHandlers.push({ el, fn });
+    });
+
+    function bindChatMotion() {
+      const rootEl = root;
+      if (!rootEl) return () => {};
+      const chatCol = rootEl.querySelector('.pane-chat-col') as HTMLElement | null;
+      const dragHandle = byId('chatDrag');
+      const resizeHandle = byId('chatResize');
+      if (!chatCol || !dragHandle || !resizeHandle) return () => {};
+      const chatColEl = chatCol;
+      const dragHandleEl = dragHandle;
+      const resizeHandleEl = resizeHandle;
+
+      const desktop = () => window.matchMedia('(min-width: 768px)').matches;
+      const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), Math.max(min, max));
+      const margin = 14;
+      let activeCleanup: Array<() => void> = [];
+
+      function clearActiveMotion() {
+        activeCleanup.forEach((fn) => fn());
+        activeCleanup = [];
+        document.body.classList.remove('chat-dragging');
+      }
+
+      function freezeRect(rect = chatColEl.getBoundingClientRect()) {
+        chatColEl.style.left = `${rect.left}px`;
+        chatColEl.style.top = `${rect.top}px`;
+        chatColEl.style.width = `${rect.width}px`;
+        chatColEl.style.height = `${rect.height}px`;
+        chatColEl.style.right = 'auto';
+        chatColEl.style.bottom = 'auto';
+      }
+
+      function resetChatPos() {
+        clearActiveMotion();
+        chatColEl.style.removeProperty('left');
+        chatColEl.style.removeProperty('top');
+        chatColEl.style.removeProperty('right');
+        chatColEl.style.removeProperty('bottom');
+        chatColEl.style.removeProperty('width');
+        chatColEl.style.removeProperty('height');
+      }
+
+      function resetForViewport() {
+        if (!desktop()) resetChatPos();
+      }
+
+      function bindWindowMove(move: (e: PointerEvent) => void, end: (e: PointerEvent) => void) {
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
+        activeCleanup.push(() => window.removeEventListener('pointermove', move));
+        activeCleanup.push(() => window.removeEventListener('pointerup', end));
+        activeCleanup.push(() => window.removeEventListener('pointercancel', end));
+      }
+
+      const onDragDown = (e: PointerEvent) => {
+        if (!desktop() || e.button !== 0) return;
+        e.preventDefault();
+        clearActiveMotion();
+        const start = chatColEl.getBoundingClientRect();
+        freezeRect(start);
+        const offsetX = e.clientX - start.left;
+        const offsetY = e.clientY - start.top;
+        document.body.classList.add('chat-dragging');
+        dragHandleEl.setPointerCapture?.(e.pointerId);
+
+        const move = (ev: PointerEvent) => {
+          const maxLeft = window.innerWidth - start.width - margin;
+          const maxTop = window.innerHeight - start.height - margin;
+          chatColEl.style.left = `${clamp(ev.clientX - offsetX, margin, maxLeft)}px`;
+          chatColEl.style.top = `${clamp(ev.clientY - offsetY, 64, maxTop)}px`;
+        };
+        const end = (ev: PointerEvent) => {
+          dragHandleEl.releasePointerCapture?.(ev.pointerId);
+          clearActiveMotion();
+        };
+        bindWindowMove(move, end);
+      };
+
+      const onResizeDown = (e: PointerEvent) => {
+        if (!desktop() || e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        clearActiveMotion();
+        const start = chatColEl.getBoundingClientRect();
+        freezeRect(start);
+        document.body.classList.add('chat-dragging');
+        resizeHandleEl.setPointerCapture?.(e.pointerId);
+
+        const move = (ev: PointerEvent) => {
+          const maxWidth = window.innerWidth - start.left - margin;
+          const maxHeight = window.innerHeight - start.top - margin;
+          chatColEl.style.width = `${clamp(start.width + ev.clientX - e.clientX, 308, maxWidth)}px`;
+          chatColEl.style.height = `${clamp(start.height + ev.clientY - e.clientY, 320, maxHeight)}px`;
+        };
+        const end = (ev: PointerEvent) => {
+          resizeHandleEl.releasePointerCapture?.(ev.pointerId);
+          clearActiveMotion();
+        };
+        bindWindowMove(move, end);
+      };
+
+      dragHandleEl.addEventListener('pointerdown', onDragDown);
+      dragHandleEl.addEventListener('dblclick', resetChatPos);
+      resizeHandleEl.addEventListener('pointerdown', onResizeDown);
+      window.addEventListener('resize', resetForViewport);
+      resetForViewport();
+
+      return () => {
+        clearActiveMotion();
+        dragHandleEl.removeEventListener('pointerdown', onDragDown);
+        dragHandleEl.removeEventListener('dblclick', resetChatPos);
+        resizeHandleEl.removeEventListener('pointerdown', onResizeDown);
+        window.removeEventListener('resize', resetForViewport);
+      };
+    }
+
+    const cleanupChatMotion = bindChatMotion();
+
     const onAuthoringPagesReady = () => {
       void (async () => {
         await loadStoryGate();
@@ -1643,13 +1855,18 @@ export function ChatPanel({
     root.addEventListener('yujee:authoring-pages-ready', onAuthoringPagesReady);
 
     // ── Init: clear the design's demo chat, then run the mode-specific opening. ──
-    chatBody?.querySelectorAll('.msg').forEach((n) => n.remove());
-    if (isAuthoring) hideAwait();
+    if (isAuthoring) {
+      clearDemoChat();
+      hideAwait();
+    }
     else {
       restAwait();
       // 先 loadStoryGate 再 loadHistory:历史重建要补插章节卡片(appendChapterCard 依赖
       // chapterMetaById→storyGate/draftSkel);storyGate 未就绪时卡片会插不出来。
-      void loadStoryGate().then(() => loadHistory()).then(() => restAwait());
+      void loadStoryGate().then(() => loadHistory()).then((shown) => {
+        if (shown > 0) clearDemoChat();
+        restAwait();
+      });
     }
 
     if (isAuthoring) {
@@ -1713,6 +1930,8 @@ export function ChatPanel({
       input?.removeEventListener('keydown', onKeydown);
       input?.removeEventListener('input', onInput);
       actionHandlers.forEach(({ el, fn }) => el.removeEventListener('click', fn));
+      demoThinkingHandlers.forEach(({ el, fn }) => el.removeEventListener('click', fn));
+      cleanupChatMotion();
       root.removeEventListener('yujee:authoring-pages-ready', onAuthoringPagesReady);
       guidedChaptersRef.current.clear();
       interviewedChaptersRef.current.clear();
@@ -1742,40 +1961,43 @@ export function ChatPanel({
   return (
     <div className="pane-chat-col md:order-1 md:w-[360px] shrink-0 md:flex">
       <aside className="pane pane-right chat-card relative flex flex-col overflow-hidden bg-surface md:flex-1">
-        <button className="chat-fold-btn chat-fold-collapse" data-action="toggleChat" data-i18n-title="collapseChat" title="折叠对话" aria-label="折叠对话">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="m18 17-5-5 5-5" /><path d="m11 17-5-5 5-5" /></svg>
-        </button>
-        <div className="md:hidden flex items-center px-4 py-3 border-b border-bdsoft flex-shrink-0">
-          <button className="ml-auto flex items-center gap-1.5 pl-3 pr-3.5 py-1.5 rounded-pill bg-bg text-fg2 text-[12.5px] font-semibold hover:bg-border-soft transition-colors shrink-0" data-action="openDetail">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
-            <span data-i18n="detailChapters">详细章节</span>
+        <div className="chat-drag hidden md:flex items-center gap-2 px-3.5 h-11 border-b border-bdsoft flex-shrink-0" id="chatDrag">
+          <span className="chat-grip"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></svg></span>
+          <span className="text-[13px] font-semibold text-fg2">{locale === 'zh' ? '对话' : 'Chat'}</span>
+          <button className="chat-fold-btn chat-fold-collapse ml-auto" data-action="toggleChat" data-i18n-title="collapseChat" title="折叠对话" aria-label="折叠对话">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="15 18 9 12 15 6" /></svg>
           </button>
+        </div>
+        <div className="chat-mobile-handle md:hidden flex flex-shrink-0 items-center justify-center pt-2.5 pb-1.5">
+          <span className="block w-9 h-1 rounded-full" style={{ background: 'var(--border)' }} />
         </div>
 
         <div className="chat-body flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-6" id="chatBody" style={{ gap: '24px' }}>
           <>
-            <div className="msg ai max-w-full">
-              <div className="thinking-block">
+            <div className="msg ai max-w-full" data-demo-chat>
+              <div className="thinking-block collapsible">
                 <span className="thinking-icon" />
                 <span className="thinking-label" data-i18n="thinkingAnalyzed">分析了 6 张照片和地点信息</span>
                 <span className="thinking-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg></span>
               </div>
+              <div className="thinking-detail" data-i18n="thinkingAnalyzedDetail">读取 6 张照片的时间与定位 · 识别环岛路 / 鼓浪屿场景 · 匹配「海边时光」的叙事语气</div>
               <div className="ai-text" data-i18n="aiMsg1">
                 我已经为「海边时光」这一章写好了叙事文案。如果你想分享更多记忆，比如那天的天气、和谁同行、当时的心情，我可以把这些融进文字里。
               </div>
               <div className="name-time">10:41</div>
             </div>
 
-            <div className="msg user max-w-full">
+            <div className="msg user max-w-full" data-demo-chat>
               <div className="bubble" data-i18n="userMsg1">那天其实下午起风了，我还差点把帽子吹丢，能加进去吗？</div>
             </div>
 
-            <div className="msg ai max-w-full">
-              <div className="thinking-block">
+            <div className="msg ai max-w-full" data-demo-chat>
+              <div className="thinking-block collapsible">
                 <span className="thinking-icon" />
                 <span className="thinking-label" data-i18n="thinkingReorg">重新组织第二段，融入风和帽子的细节</span>
                 <span className="thinking-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg></span>
               </div>
+              <div className="thinking-detail" data-i18n="thinkingReorgDetail">定位到第二段 · 插入「起风、帽子被吹」的细节 · 微调句子节奏，保持口吻一致</div>
               <div className="ai-text" data-i18n="aiMsg2">好的，我把这个细节融进了第二段。你看看这版：</div>
               <div className="ai-quote" data-i18n="aiQuote1">
                 那天午后风忽然大了起来，差点把帽子从你头顶卷走。我们笑着追了几步，又坐回沙滩——海浪一遍又一遍地把脚印抹平，又一遍又一遍地让我们重新走过。
@@ -1788,11 +2010,46 @@ export function ChatPanel({
               <div className="name-time">10:42</div>
             </div>
 
-            <div className="msg user max-w-full">
+            <div className="msg ai max-w-full" data-demo-chat>
+              <div className="thinking-block collapsible">
+                <span className="thinking-icon" />
+                <span className="thinking-label" data-i18n="thinkApplied">已把这份细节同步到整章</span>
+                <span className="thinking-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg></span>
+              </div>
+              <div className="thinking-detail" data-i18n="thinkAppliedDetail">逐章检查语气一致性 · 更新正文与页面排版 · 生成整本框架概览</div>
+              <div className="ai-text" data-i18n="aiMsgOps">都改好了，这几处我已经帮你落定：</div>
+              <div className="op-card">
+                <span className="op-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
+                <div className="op-body"><div className="op-kicker" data-i18n="opDone">已执行</div><div className="op-label" data-i18n="opCard1">更新「海边时光」正文文案</div></div>
+                <svg className="op-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" /></svg>
+              </div>
+              <div className="op-card">
+                <span className="op-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
+                <div className="op-body"><div className="op-kicker" data-i18n="opDone">已执行</div><div className="op-label" data-i18n="opCard2">把「风与帽子」的细节写进第二段</div></div>
+                <svg className="op-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" /></svg>
+              </div>
+              <div className="op-card">
+                <span className="op-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
+                <div className="op-body"><div className="op-kicker" data-i18n="opDone">已执行</div><div className="op-label" data-i18n="opCard3">重新排版第 2-3 页</div></div>
+                <svg className="op-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" /></svg>
+              </div>
+              <div className="ai-text mt-3.5" data-i18n="aiMsgDoc">整本《2024 厦门三日游》现在的框架是这样：</div>
+              <div className="ai-doc">
+                <h4 data-i18n="docH1">上半程 · 到达与海</h4>
+                <ul><li data-i18n="docL1">{'抵达厦门 -> 环岛路散步 -> 鼓浪屿落日'}</li></ul>
+                <h4 data-i18n="docH2">中段 · 街与人</h4>
+                <ul><li data-i18n="docL2">{'中山路沙茶面 -> 花生汤阿姨 -> 褪色的老招牌'}</li></ul>
+                <h4 data-i18n="docH3">尾声 · 离别</h4>
+                <ul><li data-i18n="docL3">{'演武大桥的黄昏 -> 最后一晚 -> 清晨返程'}</li></ul>
+              </div>
+              <div className="name-time">10:43</div>
+            </div>
+
+            <div className="msg user max-w-full" data-demo-chat>
               <div className="bubble" data-i18n="userMsg2">很好。再帮我想个更有诗意的章节名？</div>
             </div>
 
-            <div className="msg ai max-w-full">
+            <div className="msg ai max-w-full" data-demo-chat>
               <div className="thinking-block active">
                 <img className="think-jelly" src="/jellyfish-loop.png" alt="" />
                 <span className="thinking-label" data-i18n="thinkingChapterName">正在构思章节名</span>
@@ -1808,38 +2065,43 @@ export function ChatPanel({
               <div className="name-time">10:43</div>
             </div>
 
-            <div className="balance-alert" id="balanceAlert">
-              <div className="bp-lead" data-i18n="bpLead">哎呀，积分不够啦，充点积分继续生成你的纪念册～</div>
-              <div className="bp-card">
-                <span className="bp-ic">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[26px] h-[26px]"><circle cx="12" cy="12" r="10" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /><line x1="2" y1="12" x2="22" y2="12" /></svg>
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="bp-title" data-i18n="bpTitle">购买积分</div>
-                  <div className="bp-sub" data-i18n-html="bpSub"><b>1 积分</b>，可处理一批照片</div>
-                </div>
-                <button className="bp-buy" data-action="buyShells" data-i18n="bpBuy">去购买</button>
-              </div>
-            </div>
             <div className="await-user" id="awaitUser">
               <img className="await-jelly" src="/jellyfish-icon.png" alt="" style={{ width: '40px', height: '40px' }} />
+              <span className="await-label" data-i18n="awaitUser">{locale === 'zh' ? '在听，随时和我说～' : "I'm listening - talk to me anytime"}</span>
             </div>
           </>
         </div>
 
-        <div className="chat-input m-3 shrink-0 bg-surface border border-bdsoft rounded-pill flex items-end transition-all" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-          <button className="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg m-2 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted" data-action="pickAddPhotos" data-i18n-title="addPhoto" title="添加图片" aria-label="添加图片">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-          </button>
-          {/* 中途加图(W11):"+" 打开这个隐藏 picker;accept 用共享的 HEIC-aware 串,和主上传口
-              一致(#284)。加图流程本身在 V3 上仍是占位(见 pickAddPhotos),但选择器格式要对。 */}
-          <input type="file" id="addPhotoInput" accept={IMAGE_INPUT_ACCEPT} multiple className="hidden" />
-          <textarea className="flex-1 outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none pl-1 py-3 disabled:cursor-not-allowed" style={{ fontFamily: 'var(--font-body)' }} placeholder="" rows={1} id="msgInput" />
-          <span className="btn-glow btn-glow-round shrink-0 m-2">
-            <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center cursor-pointer transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} id="sendBtn" data-i18n-title="send" title="发送">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
-            </button>
-          </span>
+        <div className="composer-group shrink-0">
+          <div className="buy-banner" id="balanceAlert">
+            <div className="buy-banner-row">
+              <div className="buy-banner-title flex-1 min-w-0" data-i18n="bpLead">{locale === 'zh' ? '积分已用完，补充积分继续' : 'Out of credits. Top up to continue.'}</div>
+              <button className="buy-banner-btn" data-action="buyShells" data-i18n="bpBuy">{locale === 'zh' ? '去购买' : 'Buy'}</button>
+              <button className="buy-close" type="button" onClick={(e) => (e.currentTarget.closest('#balanceAlert') as HTMLElement | null)?.style.setProperty('display', 'none')} aria-label={locale === 'zh' ? '关闭' : 'Close'}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
+          </div>
+          <div className="chat-input shrink-0 bg-surface border border-bdsoft flex flex-col transition-all" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <textarea className="w-full outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none px-4 pt-3.5 pb-1 disabled:cursor-not-allowed" style={{ fontFamily: 'var(--font-body)' }} placeholder="" rows={1} id="msgInput" />
+            <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-0.5">
+              <button className="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted" data-action="pickAddPhotos" data-i18n-title="addPhoto" title="添加图片" aria-label="添加图片">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+              </button>
+              {/* 中途加图(W11):"+" 打开这个隐藏 picker;accept 用共享的 HEIC-aware 串,和主上传口
+                  一致(#284)。加图流程本身在 V3 上仍是占位(见 pickAddPhotos),但选择器格式要对。 */}
+              <input type="file" id="addPhotoInput" accept={IMAGE_INPUT_ACCEPT} multiple className="hidden" />
+              <span className="flex-1" />
+              <span className="btn-glow btn-glow-round shrink-0">
+                <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center cursor-pointer transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} id="sendBtn" data-i18n-title="send" title="发送">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[17px] h-[17px]"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>
+                </button>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="chat-resize" id="chatResize" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M6 15h9V6" /><path d="M10 15h5v-5" /></svg>
         </div>
       </aside>
     </div>

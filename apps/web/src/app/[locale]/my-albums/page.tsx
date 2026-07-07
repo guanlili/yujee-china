@@ -5,7 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
-import { AppChrome } from '@/components/app/AppChrome';
+import { Brand } from '@/components/app/Brand';
+import { ChromeStatusBar } from '@/components/app/ChromeStatusBar';
+import { Sidebar } from '@/components/app/Sidebar';
 import { AlbumCoverPreview, type AlbumCoverPage } from '@/components/album/AlbumCoverPreview';
 import { RetryFailedButton } from '@/components/album/RetryFailedButton';
 import { photoStore } from '@/lib/photo/store';
@@ -35,13 +37,14 @@ type Album = {
   coverPage: AlbumCoverPage | null;
 };
 
-// Decorative cover tints cycled by index — albums have no cover image yet, so
-// each card gets a calm placeholder "page" like the design mockup.
-const COVER_TINTS = ['#e8e8e8', '#eaeaea', '#e5e5e5', '#ececec', '#e7e7e7'];
+// Single quiet fallback used before a browser-derived cover thumbnail exists.
+const DEFAULT_COVER_TINT = 'linear-gradient(135deg,#e7eee9,#d7dedf)';
 
 // How often to re-poll the list while a card is still generating, so a finished
 // or swept album flips to its editing/failed skin without a manual refresh.
 const POLL_MS = 4000;
+const POSTER_CARD_CLASS =
+  'album-poster-card group relative flex h-full min-w-0 flex-col overflow-hidden rounded-[18px] bg-[var(--surface)] shadow-[var(--elev-card)] transition duration-300 hover:-translate-y-1 hover:shadow-[var(--elev-card-hover)]';
 
 export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = use(params);
@@ -178,13 +181,55 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
   const formatDate = (iso: string) => {
     try {
       return new Date(iso).toLocaleDateString(locale, {
-        year: 'numeric',
         month: 'short',
         day: 'numeric',
       });
     } catch {
       return '';
     }
+  };
+
+  const albumCount = albums?.length ?? 0;
+  const runningCount = (albums ?? []).filter((a) => a.status === 'AGENT_RUNNING').length;
+  const albumSummary =
+    locale === 'zh'
+      ? `共 ${albumCount} 本 · ${runningCount} 本正在生成`
+      : `${albumCount} album${albumCount === 1 ? '' : 's'} · ${runningCount} generating`;
+
+  const pageUnit = (count: number) =>
+    locale === 'zh'
+      ? `${count} 页`
+      : `${count} page${count === 1 ? '' : 's'}`;
+
+  const cardKicker = (a: Album) =>
+    locale === 'zh'
+      ? `${a.photoCount} 张照片`
+      : `${a.photoCount} photo${a.photoCount === 1 ? '' : 's'}`;
+
+  const albumFoot = (a: Album) => {
+    const date = formatDate(a.createdAt);
+    const pages = pageUnit(a.pageCount);
+    return date ? `${date} · ${pages}` : pages;
+  };
+
+  const statusTone = (status: Album['status']) => {
+    if (status === 'FAILED') return { chip: 'bg-[rgba(224,60,60,0.10)] text-[#c0392b]', dot: '#e03c3c' };
+    if (status === 'AGENT_RUNNING') return { chip: 'bg-black/[0.05] text-[#555]', dot: '#8C5EF4' };
+    return { chip: 'bg-[rgba(19,184,166,0.12)] text-[var(--accent-active)]', dot: 'var(--grad-green)' };
+  };
+
+  const statusChip = (status: Album['status']) => {
+    const tone = statusTone(status);
+    const isRunning = status === 'AGENT_RUNNING';
+    return (
+      <span className={`album-status-chip inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${tone.chip}`}>
+        <span
+          className={`h-1.5 w-1.5 rounded-full ${isRunning ? 'animate-[cover-sweep_1.2s_linear_infinite]' : ''}`}
+          style={{ background: tone.dot }}
+        />
+        {t.myAlbums.status[status]}
+      </span>
+    );
   };
 
   // Hover-revealed delete control. Rendered as a card-level sibling that sits
@@ -217,56 +262,41 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
     </div>
   );
 
-  const coverDecor = (i: number) => (
-    <div className="flex h-full w-full items-center justify-center">
-      <div
-        className="relative h-[65%] w-[55%] rounded-[var(--radius-sm)]"
-        style={{ background: COVER_TINTS[i % COVER_TINTS.length] }}
-      >
-        <span className="absolute left-[18%] top-[24%] h-[6px] w-[55%] rounded bg-black/10" />
-        <span className="absolute left-[18%] top-[40%] h-[5px] w-[70%] rounded bg-black/[0.06]" />
+  const coverDecor = () => (
+    <div
+      className="flex h-full w-full items-center justify-center"
+      style={{ background: DEFAULT_COVER_TINT }}
+    >
+      <div className="relative h-[62%] w-[58%] rounded-[10px] bg-white/35 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.45)]">
+        <span className="absolute left-[16%] top-[22%] h-[7px] w-[58%] rounded bg-black/10" />
+        <span className="absolute left-[16%] top-[38%] h-[5px] w-[68%] rounded bg-black/[0.07]" />
+        <span className="absolute bottom-[18%] left-[16%] h-[5px] w-[44%] rounded bg-black/[0.08]" />
       </div>
     </div>
   );
 
-  const card = (a: Album, i: number) => {
-    const date = (
-      <>
-        <div className="truncate text-[15px] font-semibold">{a.title}</div>
-        <div className="mt-0.5 text-xs text-[var(--meta)]">
-          {t.myAlbums.createdOn.replace('{date}', formatDate(a.createdAt))}
-        </div>
-      </>
-    );
-
+  const card = (a: Album) => {
     if (a.status === 'AGENT_RUNNING') {
       return (
         <div
           key={a.id}
-          className="group relative block overflow-hidden rounded-[var(--radius-lg)] bg-[var(--surface)] shadow-[var(--shadow-card)] transition-transform duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)]"
+          className={`${POSTER_CARD_CLASS} cover-running`}
         >
-          <Link href={`/${locale}/album/${a.id}`} className="block">
-            <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg)]">
-              <AlbumCoverPreview
-                coverPage={a.coverPage}
-                coverThumbnailUrl={a.coverThumbnailUrl}
-                pageCount={a.pageCount}
-                fallback={coverDecor(i)}
-              />
-              <div className="absolute inset-0 z-[2] bg-[rgba(245,245,245,0.62)] backdrop-blur-[2px]" />
-              <div className="absolute left-2 top-2 z-[4] inline-flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold leading-none shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur">
-                <span className="badge-spin" />
-                {t.myAlbums.status.AGENT_RUNNING}
-              </div>
-              <div className="absolute inset-0 z-[3] flex flex-col items-center justify-center gap-2.5 text-center">
-                <span className="gen-ring" />
-                <div className="text-[13px] font-semibold text-[var(--fg-2)]">
-                  {t.myAlbums.generatingLabel}
-                </div>
-              </div>
+          <Link href={`/${locale}/album/${a.id}`} className="block text-inherit no-underline">
+            <div className="cover-skeleton relative aspect-[3/4] overflow-hidden bg-[#ececec]">
+              <div className="doing-glow absolute inset-0 bg-[radial-gradient(70%_50%_at_50%_40%,rgba(140,94,244,0.14),transparent_62%)]" />
+              <div className="absolute inset-0 -translate-x-full animate-[cover-sweep_1.5s_ease-in-out_infinite] bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.65),transparent)]" />
+              <div className="sk-block absolute left-4 right-4 top-5 h-11 rounded-lg bg-[#e2e2e2]" />
+              <div className="sk-block absolute bottom-16 left-4 h-3.5 w-[60%] rounded bg-[#e2e2e2]" />
+              <div className="sk-block absolute bottom-10 left-4 h-3.5 w-[44%] rounded bg-[#e2e2e2]" />
             </div>
           </Link>
-          <div className="px-3.5 py-3">{date}</div>
+          <div className="flex min-h-[52px] items-center justify-between gap-2 px-3.5 py-3">
+            <span className="min-w-0 truncate text-[12.5px] text-[var(--muted)]">
+              {locale === 'zh' ? '正在排版 · 约 1 分钟' : 'Laying out · about 1 min'}
+            </span>
+            {statusChip(a.status)}
+          </div>
         </div>
       );
     }
@@ -275,24 +305,13 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
       return (
         <div
           key={a.id}
-          className="group relative block overflow-hidden rounded-[var(--radius-lg)] bg-[var(--surface)] shadow-[var(--shadow-card)] transition-transform duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)]"
+          className={POSTER_CARD_CLASS}
         >
           {deleteButton(a)}
-          <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg)]">
-            <AlbumCoverPreview
-              coverPage={a.coverPage}
-              coverThumbnailUrl={a.coverThumbnailUrl}
-              pageCount={a.pageCount}
-              fallback={coverDecor(i)}
-            />
-            <div className="absolute inset-0 z-[2] bg-[rgba(17,17,17,0.55)] backdrop-blur-[2px]" />
-            <div className="absolute left-2 top-2 z-[4] inline-flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold leading-none shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur">
-              <span className="h-[7px] w-[7px] rounded-full bg-[#E5484D]" />
-              {t.myAlbums.status.FAILED}
-            </div>
-            <div className="absolute inset-0 z-[3] flex flex-col items-center justify-center gap-2 px-3 text-center">
+          <div className="cover-fail relative grid aspect-[3/4] place-items-center overflow-hidden bg-[#2a2a2e] px-5 text-center">
+            <div>
               <svg
-                className="h-[30px] w-[30px] text-white/90"
+                className="mx-auto h-[34px] w-[34px] text-white/90"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -305,11 +324,16 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
                 <line x1="12" y1="9" x2="12" y2="13" />
                 <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
-              <div className="text-[13px] font-semibold text-white">{t.myAlbums.failedLabel}</div>
+              <div className="mt-3 text-sm text-white/90">{t.myAlbums.failedLabel}</div>
               <RetryFailedButton albumId={a.id} variant="card" />
             </div>
           </div>
-          <div className="px-3.5 py-3">{date}</div>
+          <div className="flex min-h-[52px] items-center justify-between gap-2 px-3.5 py-3">
+            <span className="min-w-0 truncate text-[12.5px] text-[var(--muted)]">
+              {a.title} · {formatDate(a.createdAt)}
+            </span>
+            {statusChip(a.status)}
+          </div>
         </div>
       );
     }
@@ -318,22 +342,32 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
     return (
       <div
         key={a.id}
-        className="group relative block overflow-hidden rounded-[var(--radius-lg)] bg-[var(--surface)] shadow-[var(--shadow-card)] transition-transform duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)]"
+        className={POSTER_CARD_CLASS}
       >
         {deleteButton(a)}
-        <Link href={`/${locale}/album/${a.id}`} className="block">
-          <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg)]">
+        <Link href={`/${locale}/album/${a.id}`} className="block text-inherit no-underline">
+          <div className="relative aspect-[3/4] overflow-hidden bg-[var(--bg)]">
             <AlbumCoverPreview
               coverPage={a.coverPage}
               coverThumbnailUrl={a.coverThumbnailUrl}
               pageCount={a.pageCount}
-              fallback={coverDecor(i)}
+              fallback={coverDecor()}
             />
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.05)_0%,transparent_34%,transparent_52%,rgba(10,8,20,0.62)_100%)]" />
+            <span className="cover-kicker absolute left-4 top-4 font-mono text-[10.5px] uppercase tracking-[0.16em] text-white/90 [text-shadow:0_1px_3px_rgba(0,0,0,0.4)]">
+              {cardKicker(a)}
+            </span>
+            <div className="cover-title absolute bottom-4 left-[18px] right-[18px] font-['Playfair_Display','Noto_Serif_SC_Landing',Georgia,serif] text-[22px] font-bold leading-[1.14] text-white [text-shadow:0_2px_12px_rgba(0,0,0,0.45)] sm:text-2xl">
+              {a.title}
+            </div>
           </div>
         </Link>
-        <Link href={`/${locale}/album/${a.id}`} className="block px-3.5 py-3 text-inherit">
-          {date}
-        </Link>
+        <div className="flex min-h-[52px] items-center justify-between gap-2 px-3.5 py-3">
+          <span className="min-w-0 truncate text-[12.5px] text-[var(--muted)]">
+            {albumFoot(a)}
+          </span>
+          {statusChip(a.status)}
+        </div>
       </div>
     );
   };
@@ -384,14 +418,14 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
 
   // Grid-first "+" entry. Clicking opens the OS photo picker directly; selecting
   // photos starts the album and navigates away. Sized h-full to match the album
-  // cards beside it (design-v1 Home 1).
+  // cards beside it in the supplied gallery shell.
   const newCard = (
     <label
       key="__new__"
       title={t.myAlbums.create}
       aria-label={t.myAlbums.create}
       aria-busy={creating}
-      className={`group grid h-full cursor-pointer place-items-center rounded-[var(--radius-lg)] bg-[var(--surface)] border-2 border-solid border-[var(--border)] text-[var(--muted)] shadow-[var(--shadow-card)] transition hover:shadow-[var(--shadow-card-hover)] hover:-translate-y-0.5 hover:border-[var(--grad-green)] hover:text-[var(--grad-green)] ${creating ? 'pointer-events-none opacity-60' : ''}`}
+      className={`new-album-tile album-poster-card group relative flex h-full min-h-full self-stretch cursor-pointer flex-col place-items-center overflow-hidden rounded-[18px] bg-[var(--surface)] text-[#bbb] shadow-[var(--elev-card)] transition duration-300 after:absolute after:inset-0 after:rounded-[18px] after:border-2 after:border-dashed after:border-[#dcdcdc] after:content-[''] hover:-translate-y-1 hover:text-[var(--accent-active)] hover:shadow-[var(--elev-card-hover)] hover:after:border-[var(--grad-green)] ${creating ? 'pointer-events-none opacity-60' : ''}`}
     >
       <input
         type="file"
@@ -404,31 +438,81 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           e.target.value = '';
         }}
       />
-      {creating ? (
-        <span className="h-10 w-10 animate-spin rounded-full border-[3px] border-[var(--border)] border-t-[var(--grad-green)]" />
-      ) : (
-        <svg
-          className="w-12 h-12 transition-transform group-hover:scale-110"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.75"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <line x1="5" y1="12" x2="19" y2="12" />
-          <line x1="12" y1="5" x2="12" y2="19" />
-        </svg>
-      )}
+      <span className="relative z-10 grid flex-1 place-items-center text-center">
+        {creating ? (
+          <span className="h-10 w-10 animate-spin rounded-full border-[3px] border-[var(--border)] border-t-[var(--grad-green)]" />
+        ) : (
+          <span>
+            <svg
+              className="mx-auto h-[34px] w-[34px] transition-transform group-hover:scale-110"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <line x1="12" y1="5" x2="12" y2="19" />
+            </svg>
+            <span className="mt-3 block text-sm font-medium">{t.myAlbums.create}</span>
+          </span>
+        )}
+      </span>
     </label>
   );
 
   return (
-    <AppChrome locale={locale} activeNav="projects">
-      <div className="mx-auto w-full max-w-[1200px] px-10 py-8">
-        <div className="mb-7">
-          <h1 className="text-2xl font-bold tracking-tight">{t.myAlbums.title}</h1>
+    <div className="relative min-h-screen overflow-x-hidden bg-[var(--bg)] text-[var(--fg)]">
+      <div
+        className="page-glow"
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          top: '-160px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '900px',
+          height: '420px',
+          zIndex: 0,
+          pointerEvents: 'none',
+          background:
+            'radial-gradient(50% 60% at 25% 40%, rgba(19,184,166,.16), transparent 60%), radial-gradient(50% 60% at 75% 40%, rgba(140,94,244,.16), transparent 60%), radial-gradient(60% 50% at 50% 90%, rgba(218,244,94,.14), transparent 60%)',
+          filter: 'blur(30px)',
+          opacity: 0.7,
+        }}
+      />
+      <Sidebar locale={locale} activeNav="projects" />
+      <header className="nav-shell fixed left-0 right-0 top-0 z-50 border-b border-black/[0.04] bg-[rgba(245,245,245,0.78)] backdrop-blur-[18px]">
+        <div className="mx-auto flex h-16 max-w-[1320px] items-center justify-between px-5 md:px-8">
+          <Brand href={`/${locale}`} markSize={24} />
+          <ChromeStatusBar locale={locale} />
+        </div>
+      </header>
+
+      <main className="relative z-10 mx-auto max-w-[1320px] px-5 pb-24 pt-[120px] md:px-8">
+        <div className="mb-8 flex items-end justify-between gap-6 md:mb-10">
+          <div>
+            <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--meta)]">
+              {locale === 'zh' ? '我的作品' : 'My work'}
+            </div>
+            <h1 className="font-['Playfair_Display','Noto_Serif_SC_Landing',Georgia,serif] font-extrabold leading-[1.02] text-[var(--fg)] text-[clamp(36px,6vw,60px)]">
+              {t.myAlbums.title}
+            </h1>
+            <p className="mt-3 text-[15px] text-[var(--muted)]">{albumSummary}</p>
+          </div>
+          <div className="hidden items-center gap-2 sm:flex">
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 rounded-full border border-black/10 px-4 py-2.5 text-sm font-medium text-[var(--fg-2)] transition hover:bg-black/[0.05]"
+              aria-label={locale === 'zh' ? '最近修改' : 'Recently modified'}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 6h18M6 12h12M10 18h4" />
+              </svg>
+              {locale === 'zh' ? '最近修改' : 'Recent'}
+            </button>
+          </div>
         </div>
 
         {err && <p className="mb-6 text-sm text-red-600">{err}</p>}
@@ -436,12 +520,12 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         {albums === null && <p className="text-[var(--muted)]">{t.common.loading}</p>}
 
         {albums !== null && (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-5">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 sm:gap-x-7 sm:gap-y-9 lg:grid-cols-4 xl:grid-cols-5">
             {newCard}
-            {albums.map((a, i) => card(a, i))}
+            {albums.map((a) => card(a))}
           </div>
         )}
-      </div>
-    </AppChrome>
+      </main>
+    </div>
   );
 }

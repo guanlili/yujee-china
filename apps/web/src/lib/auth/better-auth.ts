@@ -17,6 +17,12 @@ type BetterAuthSchema = {
 };
 
 const requiredTableExports = ['users', 'sessions', 'accounts', 'verifications'] as const;
+const LOCAL_TRUSTED_ORIGINS = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:3210',
+  'http://127.0.0.1:3210',
+];
 
 export function getBetterAuthSchema(schemaModule: Partial<SchemaModule>): BetterAuthSchema {
   const missing = requiredTableExports.filter((key) => !schemaModule[key]);
@@ -35,6 +41,7 @@ export function getBetterAuthSchema(schemaModule: Partial<SchemaModule>): Better
 export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAuthOptions {
   return {
     baseURL: env.WEB_BASE_URL,
+    trustedOrigins: LOCAL_TRUSTED_ORIGINS,
     basePath: '/api/auth',
     secret: env.BETTER_AUTH_SECRET,
     database: drizzleAdapter(db, {

@@ -22,7 +22,7 @@ interface Props {
   locale: Locale;
 }
 
-// Album editor (design-v1 editor.html): solid topbar + 3D perspective flipbook
+// Album editor: solid topbar + 3D perspective flipbook
 // preview (UI-1b) + per-page edit drawer + rich AI chat + browser-side PDF
 // export. The flipbook is the preview/navigation layer only — all UI-1a
 // functionality (editing, chat, export, topbar, retry) is unchanged; pages

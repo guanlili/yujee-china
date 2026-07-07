@@ -63,4 +63,20 @@ describe('better-auth schema bridge', () => {
 
     assert.equal(options.plugins?.length, 1);
   });
+
+  it('trusts common local dev origins used by alternate ports', () => {
+    const options = createAuthOptions({
+      users: {},
+      sessions: {},
+      accounts: {},
+      verifications: {},
+    });
+
+    assert.deepEqual(options.trustedOrigins, [
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'http://localhost:3210',
+      'http://127.0.0.1:3210',
+    ]);
+  });
 });

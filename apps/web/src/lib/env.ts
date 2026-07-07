@@ -21,6 +21,7 @@ const EnvSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   DEMO_USER_ID: z.string().default('demo-user-001'),
   DEMO_USER_EMAIL: z.string().default('demo@yujee.local'),
+  DEMO_USER_PASSWORD: z.string().min(8).default('demo-password-123'),
 
   // Vercel cron auth bypass for admin routes (recover-stuck / cleanup-photos).
   // Vercel injects `Authorization: Bearer <CRON_SECRET>` on cron invocations.

@@ -15,8 +15,7 @@
   font-display: swap;
 }
 
-/* Yujee design tokens — single source of truth, mirrors
-   apps/web/design-v1/design-systems/yujee/tokens.css :root (see DESIGN.md).
+/* Yujee design tokens — single source of truth for app surfaces.
    Pages outside the marketing surface (/create, /album/*) also read these. */
 :root {
   /* ─── Surface ─────────────────────────────────────────────────── */
@@ -127,7 +126,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Editor chat — AI thinking indicator (design-v1 editor.html). */
+/* Editor chat — AI thinking indicator. */
 @keyframes yujee-dot-bounce {
   0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
   40% { opacity: 1; transform: translateY(-3px); }
@@ -139,18 +138,22 @@ body {
   100% { border-color: var(--grad-green); opacity: 1; }
 }
 
-/* Editor chat — resting jellyfish gentle float (design-v1 editor.html .await-jelly). */
+/* Editor chat — resting jellyfish gentle float. */
 @keyframes yujee-jelly-float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-3px); }
 }
 
-/* Album cover status spinners (/my-albums) — conic-gradient rings the design
-   draws with mask + keyframes, which Tailwind utilities can't express inline.
-   Mirrors design-v1/yujee-home2.html .gen-ring / .badge-spin. */
+/* Album cover status spinners (/my-albums) — conic-gradient rings drawn with
+   mask + keyframes, which Tailwind utilities can't express inline. */
 @keyframes cover-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+@keyframes cover-sweep {
+  to {
+    transform: translateX(100%);
   }
 }
 .gen-ring {
