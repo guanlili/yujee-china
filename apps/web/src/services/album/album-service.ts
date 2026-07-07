@@ -729,21 +729,46 @@ export const albumService = {
     albumId: string,
     input: { userMessage: string },
   ): Promise<{ assistantReply: string; committed: boolean; pageCount: number }> {
+    await this.prepareDesignChat(userId, albumId);
+    const result = await designAgentClient.chat(albumId, input.userMessage);
+    await this.persistDesignChat(userId, albumId, {
+      userMessage: input.userMessage,
+      assistantReply: result.assistantReply,
+      committed: result.committed,
+      pages: result.book.pages,
+    });
+    return {
+      assistantReply: result.assistantReply,
+      committed: result.committed,
+      pageCount: result.book.pages.length,
+    };
+  },
+
+  // 装书前置：所有权校验 + draft 校验 + 把当前书推给设计 Agent。流式与同步两条
+  // 路径共用。
+  async prepareDesignChat(userId: string, albumId: string): Promise<void> {
     const album = await this.findOwned(userId, albumId);
     const normalized = readStoryDraft(album.draftJson);
     if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
     if (!normalized.pages || normalized.pages.length === 0) {
       throw ERRORS.VALIDATION_FAILED('album has no layout pages yet');
     }
-
     await designAgentClient.loadBook(albumId, {
       chapters: normalized.tree.chapters,
       pages: normalized.pages,
     });
-    const result = await designAgentClient.chat(albumId, input.userMessage);
+  },
 
-    if (result.committed) {
-      const pages = result.book.pages.map((page) => Page.parse(page));
+  // 对话结果落库：committed 时 pages 逐页过 contracts Page strict 后事务写回
+  // draft_json；聊天历史进 album_messages（与 chapter-chat 同表，design chat 全书
+  // 视角不挂 chapterId）。
+  async persistDesignChat(
+    userId: string,
+    albumId: string,
+    input: { userMessage: string; assistantReply: string; committed: boolean; pages: unknown[] },
+  ): Promise<void> {
+    if (input.committed) {
+      const pages = input.pages.map((page) => Page.parse(page));
       await db.transaction(async (tx) => {
         const latest = await albumRepo.findByIdForUpdate(tx, albumId);
         if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
@@ -759,11 +784,22 @@ export const albumService = {
       });
     }
 
-    return {
-      assistantReply: result.assistantReply,
-      committed: result.committed,
-      pageCount: result.book.pages.length,
-    };
+    await db.transaction(async (tx) => {
+      if (input.userMessage.trim()) {
+        await albumMessageRepo.create(tx, {
+          albumId,
+          userId,
+          role: 'user',
+          content: input.userMessage,
+        });
+      }
+      await albumMessageRepo.create(tx, {
+        albumId,
+        userId,
+        role: 'assistant',
+        content: input.assistantReply,
+      });
+    });
   },
 
   // ② 章节故事编辑 — stateful edit-chat turn. Agent can let the LLM choose simple

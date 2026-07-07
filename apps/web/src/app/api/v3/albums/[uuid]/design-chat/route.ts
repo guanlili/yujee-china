@@ -4,8 +4,11 @@ import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
 import { albumService } from '@/services/album/album-service';
+import { designAgentClient } from '@/lib/agent/design-agent-client';
 
-// 设计 Agent 全书对话：装书 → 对话 → committed 时 pages 已在 service 里写回 draft_json。
+// 设计 Agent 全书对话。默认同步 JSON；?stream=1 时把 8787 的 NDJSON 事件流逐行
+// 转发给浏览器（tool_call/tool_result 实时可见），在 done 事件时服务端先落库
+// （pages 写回 draft_json + 聊天历史进 album_messages）再转发精简版结果。
 const BodySchema = z
   .object({
     userMessage: z.string().min(1).max(500),
@@ -20,10 +23,79 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
     const user = await requireAuth(req);
     const { uuid } = await ctx.params;
     const body = await parseBody(BodySchema, req);
-    const result = await albumService.designChatTurn(user.id, uuid, {
-      userMessage: body.userMessage,
+    const stream = new URL(req.url).searchParams.get('stream') === '1';
+
+    if (!stream) {
+      const result = await albumService.designChatTurn(user.id, uuid, {
+        userMessage: body.userMessage,
+      });
+      return ok(result);
+    }
+
+    await albumService.prepareDesignChat(user.id, uuid);
+    const upstream = await designAgentClient.chatStream(uuid, body.userMessage);
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const emit = (event: unknown) => {
+          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        };
+        const reader = upstream.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        const handleLine = async (line: string) => {
+          const trimmed = line.trim();
+          if (!trimmed) return;
+          const event = JSON.parse(trimmed) as Record<string, unknown>;
+          if (event.type !== 'done') {
+            emit(event);
+            return;
+          }
+          const response = (event.response ?? {}) as {
+            assistant?: { text?: unknown };
+            committed?: unknown;
+            book?: { pages?: unknown };
+          };
+          const assistantReply =
+            typeof response.assistant?.text === 'string' ? response.assistant.text : '';
+          const committed = response.committed === true;
+          const pages = Array.isArray(response.book?.pages) ? response.book.pages : [];
+          await albumService.persistDesignChat(user.id, uuid, {
+            userMessage: body.userMessage,
+            assistantReply,
+            committed,
+            pages,
+          });
+          emit({
+            type: 'done',
+            response: { assistantReply, committed, pageCount: pages.length },
+          });
+        };
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+            for (const line of lines) await handleLine(line);
+          }
+          buffer += decoder.decode();
+          if (buffer.trim()) await handleLine(buffer);
+        } catch (e) {
+          emit({ type: 'error', error: e instanceof Error ? e.message : String(e) });
+        } finally {
+          controller.close();
+        }
+      },
     });
-    return ok(result);
+    return new Response(readable, {
+      headers: {
+        'cache-control': 'no-store',
+        'content-type': 'application/x-ndjson; charset=utf-8',
+        'x-accel-buffering': 'no',
+      },
+    });
   } catch (e) {
     return fromException(e);
   }

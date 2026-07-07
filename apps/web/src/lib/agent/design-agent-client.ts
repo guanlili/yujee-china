@@ -50,6 +50,33 @@ async function postDesign(path: string, payload: unknown, timeoutMs: number): Pr
 }
 
 export const designAgentClient = {
+  // 流式对话：返回原始 NDJSON Response（body 为 design-agent 的事件流），由调用方
+  // （design-chat 路由）逐行转发给浏览器并在 done 事件时落库。
+  async chatStream(albumId: string, message: string): Promise<Response> {
+    let res: Response;
+    try {
+      res = await fetch(`${env.DESIGN_AGENT_BASE_URL}/api/chat?stream=1`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(env.DESIGN_AGENT_SHARED_SECRET
+            ? { Authorization: `Bearer ${env.DESIGN_AGENT_SHARED_SECRET}` }
+            : {}),
+        },
+        body: JSON.stringify({ albumId, message }),
+        signal: AbortSignal.timeout(180_000),
+      });
+    } catch (e) {
+      if (e instanceof Error && e.name === 'TimeoutError') throw ERRORS.AGENT_TIMEOUT();
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+    if (!res.ok || !res.body) {
+      if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
+      throw ERRORS.AGENT_CHAT_FAILED();
+    }
+    return res;
+  },
+
   // 装书：Web 的 draft（tree.chapters + pages）→ Agent 画布。每轮对话前调用，
   // 保证 Agent 看到的书永远是 Postgres 里的最新真相。
   async loadBook(albumId: string, book: DesignAgentBookPayload): Promise<void> {

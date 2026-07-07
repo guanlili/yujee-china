@@ -41,7 +41,6 @@ import type {
   StoryProgress,
 } from '../types';
 import {
-  postDesignChat,
   postEditChat,
   postRecommend,
   postApplyTheme,
@@ -1069,23 +1068,90 @@ export function ChatPanel({
       return applied;
     }
 
-    // 设计 Agent 全书对话（阶段3接线）：pages 由服务端写回 draft_json，前端只负责
-    // 展示回复 + committed 时派发刷新事件让画板重取草稿。整书视角，无章节门槛。
+    // 设计 Agent 全书对话（阶段3接线，NDJSON 流式）：工具调用实时渲染为步骤，
+    // done 时 pages 已在服务端写回 draft_json，前端只负责展示回复 + committed 时
+    // 派发刷新事件让画板重取草稿。整书视角，无章节门槛。
+    function designToolLabel(toolName: string): string {
+      const labels: Record<string, [string, string]> = {
+        get_book_summary: ['📖 读取全书概览', '📖 Reading the book overview'],
+        read_page: ['🔍 读取页面', '🔍 Reading a page'],
+        search_book: ['🔎 搜索全书', '🔎 Searching the book'],
+        list_templates: ['📐 查询模板库', '📐 Browsing templates'],
+        update_page_texts: ['✏️ 更新页面文字', '✏️ Updating page copy'],
+        swap_page_template: ['🔁 更换页面模板', '🔁 Swapping the page template'],
+        update_page_images: ['🖼️ 调整页面图片', '🖼️ Adjusting page images'],
+        read_skill: ['📚 查阅设计规则', '📚 Consulting design rules'],
+      };
+      const label = labels[toolName];
+      return label ? aT(label[0], label[1]) : `🔧 ${toolName}`;
+    }
+
+    async function readDesignChatStream(
+      res: Response,
+      onEvent: (event: Record<string, unknown>) => void,
+    ): Promise<void> {
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const consume = (chunk: string) => {
+        buffer += chunk;
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (line.trim()) onEvent(JSON.parse(line) as Record<string, unknown>);
+        }
+      };
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        consume(decoder.decode(value, { stream: true }));
+      }
+      consume(decoder.decode());
+      if (buffer.trim()) onEvent(JSON.parse(buffer) as Record<string, unknown>);
+    }
+
     async function runDesignChatTurn(message: string) {
       const host = appendThinkingShell();
       const userMessage = message.slice(0, MESSAGE_MAX);
       try {
-        const res = await postDesignChat(albumId, { userMessage });
+        const res = await fetch(`/api/v3/albums/${albumId}/design-chat?stream=1`, {
+          method: 'POST',
+          headers: { accept: 'application/x-ndjson', 'content-type': 'application/json' },
+          body: JSON.stringify({ userMessage }),
+        });
+        if (!res.ok || !res.body) {
+          if (res.status === 401) throw new UnauthorizedError();
+          const payload = await res.json().catch(() => null);
+          throw new Error(payload?.error?.message ?? 'Request failed');
+        }
+        const outcome: {
+          final: { assistantReply: string; committed: boolean } | null;
+          error: string | null;
+        } = { final: null, error: null };
+        await readDesignChatStream(res, (event) => {
+          if (event.type === 'tool_call' && typeof event.toolName === 'string') {
+            appendStep(designToolLabel(event.toolName));
+          } else if (event.type === 'tool_result' && event.isError) {
+            appendStep(aT('⚠️ 写入被契约校验打回，正在修正…', '⚠️ A write was rejected by validation — retrying…'));
+          } else if (event.type === 'done') {
+            outcome.final = event.response as { assistantReply: string; committed: boolean };
+          } else if (event.type === 'error') {
+            outcome.error = typeof event.error === 'string' ? event.error : 'stream failed';
+          }
+        });
+        if (outcome.error) throw new Error(outcome.error);
+        const final = outcome.final;
+        if (!final) throw new Error('stream ended without result');
         settleThinking(host, 'analyzedFeedback');
-        appendReplyBody(host, res.assistantReply);
-        if (res.committed) {
+        appendReplyBody(host, final.assistantReply);
+        if (final.committed) {
           appendStep(aT('🎨 画板已更新。', '🎨 Canvas updated.'));
           const root = outerRootRef.current;
           root?.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
           window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
         }
         chapterHistory.push({ role: 'user', content: userMessage });
-        chapterHistory.push({ role: 'assistant', content: res.assistantReply });
+        chapterHistory.push({ role: 'assistant', content: final.assistantReply });
       } catch (e) {
         if (authErr(host, e)) return;
         settleThinking(host, 'analyzedFeedback');
