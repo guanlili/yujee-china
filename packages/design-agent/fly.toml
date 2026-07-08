@@ -1,0 +1,48 @@
+# Album Design Agent — Fly.io deploy config.
+# Region nrt (Tokyo): low latency to the Volcano Ark API (cn-beijing) the model
+# provider depends on — same as the engine (yujee-agent). Create with:
+#   fly launch --no-deploy   (or: fly apps create yujee-design-agent)
+# Deploy from repo root (pass --ha=false: this service is SINGLE-MACHINE — see below):
+#   fly deploy -c packages/design-agent/fly.toml --dockerfile packages/design-agent/Dockerfile --ha=false .
+#
+# SINGLE MACHINE ONLY. Per-album sessions/trace/book live in process memory, and
+# the web caller does POST /api/book then POST /api/chat per turn — those two
+# requests must hit the same machine, so Fly's per-request load balancing across
+# multiple machines would break editing. Keep exactly one machine
+# (`fly scale count 1`); do not let HA spin up a second.
+app = "yujee-design-agent"
+primary_region = "nrt"
+
+[build]
+
+# Non-secret config only. Secrets set out-of-band, never committed:
+#   fly secrets set ARK_API_KEY=... DESIGN_AGENT_SHARED_SECRET=... -a yujee-design-agent
+[env]
+  PORT = "8787"
+  NODE_ENV = "production"
+  # Provider = Volcano Ark (base URL hardcoded in the volcengine-ark provider);
+  # only ARK_API_KEY is secret. Model mirrors the local dev config.
+  DESIGN_AGENT_PROVIDER = "volcengine"
+  DESIGN_AGENT_MODEL = "deepseek-v4-flash-260425"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  # In-memory per-album sessions/trace live in the process — do NOT auto-stop, or
+  # active editing sessions would be dropped. Keep one machine warm.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "3s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/health"
+
+# Streaming NDJSON chat turns (multi-tool rounds) can run long; give the machine
+# room. 1GB is comfortable for the Node process + template catalog in memory.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

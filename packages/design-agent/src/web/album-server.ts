@@ -547,6 +547,11 @@ export async function createAlbumAgentWebServer(options: AlbumAgentWebServerOpti
 				sendJson(response, 401, { error: "unauthorized" });
 				return;
 			}
+			// 免鉴权健康探针（Fly http check 用；不在 /api/ 下，故不过 Bearer 门）。
+			if (request.method === "GET" && url.pathname === "/health") {
+				sendJson(response, 200, { status: "ok" });
+				return;
+			}
 			if (request.method === "POST" && url.pathname === "/api/chat") {
 				await handleAlbumChat(manager, request, response, {
 					stream: url.searchParams.get("stream") === "1",

@@ -1,0 +1,15 @@
+# Keep the build context lean. All workspace package.json files must remain (pnpm
+# frozen-lockfile validates the whole workspace graph), but node_modules, build
+# artifacts, the Python engine, and web assets are not needed to run the design
+# agent — its deps are installed fresh and the pi packages are built in-image.
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/*.tsbuildinfo
+.git
+engine
+apps/web/public
+**/.env.local
+*.log
+.DS_Store
