@@ -366,6 +366,11 @@ export function ChatPanel({
       const label = host.querySelector('.thinking-label') as HTMLElement | null;
       if (label) label.textContent = t(labelKey);
     }
+    // 保持水母 active，只把灰色 label 换成当前操作文案（workflow 进度用）。
+    function setThinkingLabel(host: HTMLElement, text: string) {
+      const label = host.querySelector('.thinking-label') as HTMLElement | null;
+      if (label) label.textContent = text;
+    }
     function appendReplyBody(host: HTMLElement, reply: string): HTMLElement {
       const body = document.createElement('div');
       body.className = 'ai-text';
@@ -1576,17 +1581,18 @@ export function ChatPanel({
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(host, aT('好的,我这就根据你讲的故事,为整本相册排版并写好文案~',
                                  'Great — I’ll now lay out the whole album and write the copy from your stories.'));
-        appendStep(aT('🎨 正在挑选版式…', '🎨 Choosing layouts…'));
-        appendStep(aT('✍️ 正在根据你的故事写文案…', '✍️ Writing copy from your stories…'));
+        // workflow 进度：一个水母，灰色 label 依次显示两个固定操作（英文即可）。
+        const working = appendThinkingShell();
+        setThinkingLabel(working, 'Choosing layouts…');
         const refs = await selectLayoutRefsFromStore(recipe.photoIds);
         if (disposed) return;
+        setThinkingLabel(working, 'Writing copy from your stories…');
         await submitSelectLayoutV3(albumId, {
           requestId: recipe.requestId,
           language: recipe.language,
           refs,
         });
         if (disposed) return;
-        const working = appendThinkingShell();
         // select-layout runs async on the Agent (inline → completed 直接;two-phase →
         // candidates→judge). Either path lands the finished pages in the server-side
         // draft. Poll it and, once pages appear, fire yujee:authoring-pages-ready so the
