@@ -6,6 +6,14 @@ import { fromException } from '@/lib/api/from-exception';
 import { albumService } from '@/services/album/album-service';
 import { designAgentClient } from '@/lib/agent/design-agent-client';
 
+// 写类工具：其操作在历史里以 op-card 呈现，需随 assistant 消息落库（存 layout_patch）。
+const DESIGN_WRITE_TOOLS = new Set([
+  'update_page_texts',
+  'swap_page_template',
+  'update_page_images',
+  'set_chapter_theme',
+]);
+
 // 设计 Agent 全书对话。默认同步 JSON；?stream=1 时把 8787 的 NDJSON 事件流逐行
 // 转发给浏览器（tool_call/tool_result 实时可见），在 done 事件时服务端先落库
 // （pages 写回 draft_json + 聊天历史进 album_messages）再转发精简版结果。
@@ -43,12 +51,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
         const reader = upstream.body!.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        // 收集成功执行的写类操作（{toolName, input}），随 assistant 消息落库供历史回放。
+        const pendingWrite = new Map<string, { toolName: string; input: unknown }>();
+        const writeOps: Array<{ toolName: string; input: unknown }> = [];
         const handleLine = async (line: string) => {
           const trimmed = line.trim();
           if (!trimmed) return;
           const event = JSON.parse(trimmed) as Record<string, unknown>;
           if (event.type !== 'done') {
             emit(event);
+            const toolCallId = typeof event.toolCallId === 'string' ? event.toolCallId : '';
+            if (event.type === 'tool_call' && typeof event.toolName === 'string' && DESIGN_WRITE_TOOLS.has(event.toolName)) {
+              pendingWrite.set(toolCallId, { toolName: event.toolName, input: event.input });
+            } else if (event.type === 'tool_result' && event.isError !== true) {
+              const op = pendingWrite.get(toolCallId);
+              if (op) writeOps.push(op);
+            }
             return;
           }
           const response = (event.response ?? {}) as {
@@ -65,6 +83,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
             assistantReply,
             committed,
             pages,
+            ops: writeOps,
           });
           emit({
             type: 'done',

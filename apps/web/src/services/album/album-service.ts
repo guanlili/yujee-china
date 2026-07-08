@@ -765,7 +765,13 @@ export const albumService = {
   async persistDesignChat(
     userId: string,
     albumId: string,
-    input: { userMessage: string; assistantReply: string; committed: boolean; pages: unknown[] },
+    input: {
+      userMessage: string;
+      assistantReply: string;
+      committed: boolean;
+      pages: unknown[];
+      ops?: Array<{ toolName: string; input: unknown }>;
+    },
   ): Promise<void> {
     if (input.committed) {
       const pages = input.pages.map((page) => Page.parse(page));
@@ -798,6 +804,8 @@ export const albumService = {
         userId,
         role: 'assistant',
         content: input.assistantReply,
+        // 写类操作摘要存进 layout_patch（design chat 专用形状），供历史回放重建 op-card。
+        layoutPatch: input.ops && input.ops.length > 0 ? { designOps: input.ops } : null,
       });
     });
   },

@@ -88,6 +88,8 @@ type HistoryMessage = {
   content: string;
   chapterId?: string | null;
   createdAt?: string;
+  // design chat 写类操作摘要（{ designOps: [{toolName, input}] }），用于历史回放 op-card。
+  layoutPatch?: unknown;
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -316,6 +318,12 @@ export function ChatPanel({
               chapterHistory.push({ role: 'user', content: c });
             }
           } else {
+            // design chat 的写类操作回执卡：贴在这条 AI 回复之前（还原「op-card→回复」顺序）。
+            for (const op of readDesignOps(m.layoutPatch)) {
+              const card = buildDesignOpCard(op.toolName, op.input);
+              card.setAttribute('data-history-replay', '1');
+              chatBody?.appendChild(card);
+            }
             appendAiText(c, { historyReplay: true });
             if (!m.chapterId || !storyGate?.currentChapterId || m.chapterId === storyGate.currentChapterId) {
               chapterHistory.push({ role: 'assistant', content: c });
@@ -1136,6 +1144,27 @@ export function ChatPanel({
           return designToolLabel(toolName);
       }
     }
+    // 写类工具的富回执卡（流式与历史回放共用）。
+    function buildDesignOpCard(toolName: string, input: unknown): HTMLElement {
+      const card = document.createElement('div');
+      card.className = 'op-card';
+      card.innerHTML =
+        `<div class="op-ic">${OP_PENCIL_SVG}</div>` +
+        `<div class="op-body"><div class="op-kicker">${aT('已执行', 'Done')}</div><div class="op-label"></div></div>` +
+        OP_CIRCLE_CHECK_SVG;
+      (card.querySelector('.op-label') as HTMLElement).textContent = designWriteDescription(toolName, input);
+      return card;
+    }
+    // 从落库的 layout_patch 里解析 design chat 写操作（{ designOps: [{toolName, input}] }）。
+    function readDesignOps(layoutPatch: unknown): Array<{ toolName: string; input: unknown }> {
+      if (!layoutPatch || typeof layoutPatch !== 'object') return [];
+      const ops = (layoutPatch as { designOps?: unknown }).designOps;
+      if (!Array.isArray(ops)) return [];
+      return ops.filter(
+        (op): op is { toolName: string; input: unknown } =>
+          !!op && typeof op === 'object' && typeof (op as { toolName?: unknown }).toolName === 'string',
+      );
+    }
 
     // 底部钉着水母的流式操作面板。读类工具冒出轻量行（转圈→打勾）；写类工具执行成功后
     // 替换成富回执卡（op-ic 图标 + 「已执行」+ 具体描述 + 绿色圆圈勾）。结束时收掉水母。
@@ -1176,16 +1205,7 @@ export function ChatPanel({
         finishOp(toolCallId, toolName, isError) {
           // 只有写类工具执行成功留下富回执卡；读类是纯思考，随水母灰字过一下、不留痕。
           if (isError || !WRITE_TOOLS.has(toolName)) return;
-          const card = document.createElement('div');
-          card.className = 'op-card';
-          card.innerHTML =
-            `<div class="op-ic">${OP_PENCIL_SVG}</div>` +
-            `<div class="op-body"><div class="op-kicker">${aT('已执行', 'Done')}</div><div class="op-label"></div></div>` +
-            OP_CIRCLE_CHECK_SVG;
-          (card.querySelector('.op-label') as HTMLElement).textContent = designWriteDescription(
-            toolName,
-            inputByCall.get(toolCallId),
-          );
+          const card = buildDesignOpCard(toolName, inputByCall.get(toolCallId));
           host.insertBefore(card, jelly); // 回执卡冒在水母上方，水母保持最底
           setLabel(t('thinking')); // 回执卡插入后灰字回到「思考中」
           scrollChat();

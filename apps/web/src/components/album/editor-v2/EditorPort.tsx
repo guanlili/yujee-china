@@ -218,13 +218,16 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
         setImageUrls(urls);
         setSkeleton(draft);
         setLoadState('ready');
+        // 关键：epoch 在新草稿设好之后才自增，保证 EditorBook 的 key 变化时拿到的是
+        // 最新 pages。若在 fetch 之前自增，只改文字（页数不变）时 key 会先用旧数据
+        // 重挂、新数据到达时 key 又相同 → 画板停在旧内容不刷新。
+        setCanvasEpoch((epoch) => epoch + 1);
       } catch {
         if (!cancelled) setLoadState('error');
       }
     }
 
     const onAuthoringPagesReady = () => {
-      setCanvasEpoch((epoch) => epoch + 1);
       void loadDraftSkeleton();
     };
 
