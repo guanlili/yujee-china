@@ -1111,8 +1111,6 @@ export function ChatPanel({
     ]);
     const OP_PENCIL_SVG =
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
-    const OP_CHECK_SVG =
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
     // 富回执卡的绿色圆圈勾（对齐 demo 设计）。
     const OP_CIRCLE_CHECK_SVG =
       '<svg class="op-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="M8.3 12.4l2.6 2.6 4.7-5.3"/></svg>';
@@ -1161,80 +1159,39 @@ export function ChatPanel({
       chatBody!.appendChild(host);
       scrollChat();
 
-      const rowByCall = new Map<string, HTMLElement>();
+      const labelEl = jelly.querySelector('.thinking-label') as HTMLElement | null;
       const inputByCall = new Map<string, unknown>();
+      const setLabel = (text: string) => {
+        if (labelEl) labelEl.textContent = text;
+      };
       return {
         host,
         jelly,
         startOp(toolCallId, toolName, input) {
-          const isRead = !WRITE_TOOLS.has(toolName);
-          const row = document.createElement('div');
-          row.className = isRead ? 'ep-op ep-op-read running' : 'ep-op running';
-          row.innerHTML =
-            `<span class="ep-op-ic">${OP_PENCIL_SVG}</span>` +
-            `<span class="ep-op-label"></span>` +
-            `<span class="ep-op-status"></span>`;
-          (row.querySelector('.ep-op-label') as HTMLElement).textContent = isRead
-            ? designToolLabel(toolName)
-            : designWriteDescription(toolName, input);
-          host.insertBefore(row, jelly); // 冒在水母上方，水母保持最底
-          if (toolCallId) {
-            rowByCall.set(toolCallId, row);
-            inputByCall.set(toolCallId, input);
-          }
+          // 读/写都只更新水母旁的灰色小字（当前在做什么），不单独做行样式。
+          setLabel(WRITE_TOOLS.has(toolName) ? designWriteDescription(toolName, input) : designToolLabel(toolName));
+          if (toolCallId) inputByCall.set(toolCallId, input);
           scrollChat();
         },
         finishOp(toolCallId, toolName, isError) {
-          const row = toolCallId ? rowByCall.get(toolCallId) : undefined;
-          if (!row) return;
-          // 写类工具执行成功 → 替换成富回执卡。
-          if (!isError && WRITE_TOOLS.has(toolName)) {
-            const card = document.createElement('div');
-            card.className = 'op-card';
-            card.innerHTML =
-              `<div class="op-ic">${OP_PENCIL_SVG}</div>` +
-              `<div class="op-body"><div class="op-kicker">${aT('已执行', 'Done')}</div><div class="op-label"></div></div>` +
-              OP_CIRCLE_CHECK_SVG;
-            (card.querySelector('.op-label') as HTMLElement).textContent = designWriteDescription(
-              toolName,
-              inputByCall.get(toolCallId),
-            );
-            row.replaceWith(card);
-            scrollChat();
-            return;
-          }
-          // 读类工具 / 出错 → 轻量行原地标记。
-          row.classList.remove('running');
-          row.classList.add(isError ? 'err' : 'done');
-          const status = row.querySelector('.ep-op-status') as HTMLElement | null;
-          if (status) status.innerHTML = isError ? '↻' : OP_CHECK_SVG;
+          // 只有写类工具执行成功留下富回执卡；读类是纯思考，随水母灰字过一下、不留痕。
+          if (isError || !WRITE_TOOLS.has(toolName)) return;
+          const card = document.createElement('div');
+          card.className = 'op-card';
+          card.innerHTML =
+            `<div class="op-ic">${OP_PENCIL_SVG}</div>` +
+            `<div class="op-body"><div class="op-kicker">${aT('已执行', 'Done')}</div><div class="op-label"></div></div>` +
+            OP_CIRCLE_CHECK_SVG;
+          (card.querySelector('.op-label') as HTMLElement).textContent = designWriteDescription(
+            toolName,
+            inputByCall.get(toolCallId),
+          );
+          host.insertBefore(card, jelly); // 回执卡冒在水母上方，水母保持最底
+          setLabel(t('thinking')); // 回执卡插入后灰字回到「思考中」
+          scrollChat();
         },
         settle() {
-          // 逐条流式的读类操作折叠成一条可展开的思考汇总（复用 editor 既有
-          // .thinking-block.collapsible + .thinking-detail；写类回执卡保持独立）。
-          const readRows = Array.from(host.querySelectorAll<HTMLElement>('.ep-op-read'));
-          if (readRows.length > 0) {
-            const labels = readRows.map(
-              (row) => (row.querySelector('.ep-op-label') as HTMLElement | null)?.textContent ?? '',
-            );
-            const anchor = readRows[0]!;
-            const block = document.createElement('div');
-            block.className = 'thinking-block collapsible';
-            block.innerHTML =
-              `<span class="thinking-label"></span>` +
-              `<span class="thinking-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></span>`;
-            (block.querySelector('.thinking-label') as HTMLElement).textContent = aT(
-              `翻阅相册 · ${labels.length} 步`,
-              `Reviewed the album · ${labels.length} step${labels.length > 1 ? 's' : ''}`,
-            );
-            const detail = document.createElement('div');
-            detail.className = 'thinking-detail';
-            detail.textContent = labels.filter(Boolean).join(' · ');
-            block.addEventListener('click', () => block.classList.toggle('open'));
-            anchor.before(block, detail);
-            for (const row of readRows) row.remove();
-          }
-          jelly.remove(); // 收掉底部水母
+          jelly.remove(); // 收掉底部水母（读类灰字随之消失，不留痕）
         },
       };
     }
