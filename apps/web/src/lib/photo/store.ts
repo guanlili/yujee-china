@@ -11,6 +11,8 @@ const STORE = 'originals';
 const VERSION = 1;
 
 export const PDF_IMAGE_MAX_EDGE = 1600;
+// 栅格 PDF（html2canvas 高倍截图）用：满页图槽在 scale 3 下要 ~3369px 长边，故喂到 3400。
+export const RASTER_PDF_IMAGE_MAX_EDGE = 3400;
 const PDF_IMAGE_QUALITY = 0.82;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -95,12 +97,12 @@ async function decodeBlob(blob: Blob): Promise<DecodedImage> {
   }
 }
 
-async function blobToPdfDataUrl(blob: Blob): Promise<string> {
+async function blobToPdfDataUrl(blob: Blob, maxEdge = PDF_IMAGE_MAX_EDGE): Promise<string> {
   const pdfBlob = await prepareImageBlobForBrowserDecode(blob);
   const img = await decodeBlob(pdfBlob);
   let canvas: HTMLCanvasElement | null = null;
   try {
-    const { w, h } = fitWithinMaxEdge(img.width, img.height);
+    const { w, h } = fitWithinMaxEdge(img.width, img.height, maxEdge);
     canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
@@ -175,14 +177,19 @@ export const photoStore = {
     return out;
   },
 
-  // PDF export is memory-bound in the browser: never hand @react-pdf original
-  // phone-photo data URLs. Decode from Blob, cap size locally, and process photos
-  // sequentially so peak memory stays bounded before pdf().toBlob().
-  async getPdfDataUrls(photoIds: string[]): Promise<Record<string, string>> {
+  // PDF export is memory-bound in the browser: never hand original phone-photo
+  // data URLs. Decode from Blob, cap size locally, and process photos sequentially
+  // so peak memory stays bounded before the PDF is assembled.
+  // maxEdge：矢量导出（@react-pdf）用默认 1600 足够；栅格导出（html2canvas 高倍截图）
+  // 传 RASTER_PDF_IMAGE_MAX_EDGE，否则源图被降到 1600 后放大 3-4 倍会糊。
+  async getPdfDataUrls(
+    photoIds: string[],
+    maxEdge = PDF_IMAGE_MAX_EDGE,
+  ): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
     for (const id of photoIds) {
       const blob = await this.getBlob(id);
-      if (blob) out[id] = await blobToPdfDataUrl(blob);
+      if (blob) out[id] = await blobToPdfDataUrl(blob, maxEdge);
     }
     return out;
   },

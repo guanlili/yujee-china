@@ -19,7 +19,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
-import { photoStore } from '@/lib/photo/store';
+import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
 import { UserAvatar } from '@/components/app/UserAvatar';
 import { YujeeState } from '@/components/app/YujeeState';
 import { getWebTemplate } from '../web-registry';
@@ -2137,13 +2137,15 @@ function EditorBook({
           templateId: p.templateId, images: p.imagesJson, texts: p.textsJson, imagePos: p.imagePosJson,
         }));
         const ids = collectPhotoIds(adaptable);
-        const dataUrls = await photoStore.getPdfDataUrls(ids);
         // 收敛单渲染器试点：NEXT_PUBLIC_PDF_RASTER=1 时走栅格 PDF（截屏幕渲染，与画布
-        // 像素级一致，消除 index↔pdf 分歧）；否则维持现有 @react-pdf 矢量导出。
+        // 像素级一致，消除 index↔pdf 分歧）；否则维持现有 @react-pdf 矢量导出。栅格导出
+        // 喂高分辨率原图（否则 1600px 源图被放大 3 倍会糊）。
         if (process.env.NEXT_PUBLIC_PDF_RASTER === '1') {
+          const dataUrls = await photoStore.getPdfDataUrls(ids, RASTER_PDF_IMAGE_MAX_EDGE);
           const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
           return await renderAlbumPdfRaster(adaptable, (id) => dataUrls[id], { scale: 3 });
         }
+        const dataUrls = await photoStore.getPdfDataUrls(ids);
         const { renderAlbumPdf } = await import('@/lib/pdf/render');
         return await renderAlbumPdf(adaptable, (id) => dataUrls[id]);
       } catch (e) {
