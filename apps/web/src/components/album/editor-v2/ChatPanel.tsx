@@ -1130,7 +1130,8 @@ export function ChatPanel({
     function designWriteDescription(toolName: string, input: unknown): string {
       const rec = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
       const pageNo = typeof rec.pageNo === 'number' ? rec.pageNo : undefined;
-      const pageLabel = pageNo !== undefined ? aT(`第 ${pageNo + 1} 页`, `page ${pageNo + 1}`) : '';
+      // pageNo 已是 1 起（与工具口径一致），直接用。
+      const pageLabel = pageNo !== undefined ? aT(`第 ${pageNo} 页`, `page ${pageNo}`) : '';
       switch (toolName) {
         case 'update_page_texts':
           return pageLabel ? aT(`更新${pageLabel}的文案`, `Updated ${pageLabel} copy`) : aT('更新页面文案', 'Updated page copy');

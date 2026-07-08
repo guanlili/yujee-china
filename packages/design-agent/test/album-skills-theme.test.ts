@@ -53,7 +53,7 @@ test("set_chapter_theme：章节色散布到该章页面的 variableDecor 槽并
 	const book = getBook();
 	assert.equal(book.chapters.find((c) => c.chapterId === "ch-seaside")?.accentColor, "#2c6e8f");
 
-	// 封面页（pageNo 0，mag-01：title/label 为 variableDecor）应带 carrier 键。
+	// 第 1 页（数组 pages[0]，mag-01：title/label 为 variableDecor）应带 carrier 键。
 	const cover = book.pages[0]!;
 	assert.equal(cover.texts["title#accentColor"], "#2c6e8f");
 	assert.equal(cover.texts["label#accentColor"], "#2c6e8f");

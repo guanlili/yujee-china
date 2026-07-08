@@ -57,9 +57,9 @@ export interface AlbumBookSummary {
 		contextPreview?: string;
 	}[];
 	pages: {
-		/** 书内顺序号（数组位置，从 0 开始）——工具寻址用它，全书唯一。 */
+		/** 页码（从 1 开始，第 1 页 = 第一页）——工具寻址与对用户口径统一用它，全书唯一。 */
 		pageNo: number;
-		/** 管线产出的原始 pageIndex（按章节计数，可能重复），仅作数据保留。 */
+		/** 管线产出的原始 pageIndex（按章节计数，从 0 起、可能重复），仅作数据保留。 */
 		pageIndex: number;
 		templateId: string;
 		category: string;
@@ -137,12 +137,12 @@ export function summarizeAlbumBook(state: AlbumBookState, catalog: TemplateCatal
 			accentColor: chapter.accentColor,
 			contextPreview: chapter.chapterContext ? truncate(chapter.chapterContext, 60) : undefined,
 		})),
-		pages: state.pages.map((page, pageNo) => {
+		pages: state.pages.map((page, index) => {
 			const template = catalog.get(page.templateId);
 			const concreteTextSlots = template?.textSlotIds ?? [];
 			const filledTextSlots = concreteTextSlots.filter((slotId) => (page.texts[slotId] ?? "").trim().length > 0);
 			return {
-				pageNo,
+				pageNo: index + 1, // 1 起，与用户口径一致
 				pageIndex: page.pageIndex,
 				templateId: page.templateId,
 				category: template?.category ?? "unknown",
@@ -177,9 +177,10 @@ export function buildPhotoToChapterMap(state: AlbumBookState): Map<string, strin
 }
 
 /** 按书内顺序号（数组位置）取页——唯一寻址方式。 */
+/** 按页码（1 起）取页——工具寻址唯一入口，内部转数组下标 pageNo-1。 */
 export function findAlbumPageByNo(state: AlbumBookState, pageNo: number): AlbumPage | undefined {
-	if (!Number.isInteger(pageNo) || pageNo < 0) return undefined;
-	return state.pages[pageNo];
+	if (!Number.isInteger(pageNo) || pageNo < 1) return undefined;
+	return state.pages[pageNo - 1];
 }
 
 export function findAlbumPhoto(state: AlbumBookState, photoId: string): AlbumChapterPhoto | undefined {

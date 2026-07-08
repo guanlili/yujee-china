@@ -27,7 +27,7 @@ export interface AlbumToolsOptions {
 const getBookSummarySchema = Type.Object({});
 
 const readPageSchema = Type.Object({
-	pageNo: Type.Number({ description: "要读取的书内页序号（pageNo，从 0 开始，见 get_book_summary）。" }),
+	pageNo: Type.Number({ description: "页码（从 1 开始，第 1 页 = 第一页；见 get_book_summary）。" }),
 });
 
 const searchBookSchema = Type.Object({
@@ -36,19 +36,19 @@ const searchBookSchema = Type.Object({
 });
 
 const updatePageTextsSchema = Type.Object({
-	pageNo: Type.Number({ description: "要修改的书内页序号（pageNo）。" }),
+	pageNo: Type.Number({ description: "要修改的页码（从 1 开始）。" }),
 	texts: Type.Record(Type.String(), Type.String(), {
 		description: "槽 id → 新文字内容。只需给出要修改的槽；每个槽必须遵守模板的 maxChars 限制。",
 	}),
 });
 
 const swapPageTemplateSchema = Type.Object({
-	pageNo: Type.Number({ description: "要换模板的书内页序号（pageNo）。" }),
+	pageNo: Type.Number({ description: "要换模板的页码（从 1 开始）。" }),
 	templateId: Type.String({ description: "新模板 id（用 list_templates 查询同类目、同图槽数的候选）。" }),
 });
 
 const updatePageImagesSchema = Type.Object({
-	pageNo: Type.Number({ description: "要调整图片的书内页序号（pageNo）。" }),
+	pageNo: Type.Number({ description: "要调整图片的页码（从 1 开始）。" }),
 	images: Type.Record(Type.String(), Type.String(), {
 		description: "完整的槽 id → photoId 映射（整页替换）：模板所有图槽都要填，照片必须存在于本书章节。",
 	}),
@@ -318,7 +318,7 @@ function createSwapPageTemplateTool(
 			const currentTemplate = requireTemplate(options.catalog, page.templateId);
 			const nextTemplate = options.catalog.get(params.templateId.trim());
 			if (!nextTemplate) throw new Error(`未知模板 "${params.templateId}"。用 list_templates 查询可用模板。`);
-			if (nextTemplate.id === page.templateId) throw new Error(`第 ${params.pageNo} 页（pageNo）已经在使用模板 ${nextTemplate.id}`);
+			if (nextTemplate.id === page.templateId) throw new Error(`第 ${params.pageNo} 页已经在使用模板 ${nextTemplate.id}`);
 			if (nextTemplate.category !== currentTemplate.category) {
 				throw new Error(
 					`类目不匹配：当前页是 ${currentTemplate.category}，目标模板 ${nextTemplate.id} 是 ${nextTemplate.category}。只能换同类目模板。`,
@@ -334,7 +334,7 @@ function createSwapPageTemplateTool(
 			const notes: string[] = [];
 			const nextPage = migratePageToTemplate(page, nextTemplate, notes);
 			const nextState = cloneAlbumBookState(state);
-			nextState.pages[params.pageNo] = nextPage;
+			nextState.pages[params.pageNo - 1] = nextPage;
 			return commitWrite(options, nextState, {
 				pageNo: params.pageNo,
 				operations: [`template:${currentTemplate.id}->${nextTemplate.id}`],
@@ -428,7 +428,7 @@ function createSetChapterThemeTool(
 
 			const photoToChapter = buildPhotoToChapterMap(nextState);
 			const affectedPageNos: number[] = [];
-			for (const [pageNo, page] of nextState.pages.entries()) {
+			for (const [index, page] of nextState.pages.entries()) {
 				if (derivePageChapterId(page, photoToChapter) !== chapterId) continue;
 				const template = options.catalog.get(page.templateId);
 				if (!template) continue;
@@ -446,7 +446,7 @@ function createSetChapterThemeTool(
 					if (params.artFont) page.texts[`${slotId}#artFont`] = params.artFont;
 					touched = true;
 				}
-				if (touched) affectedPageNos.push(pageNo);
+				if (touched) affectedPageNos.push(index + 1);
 			}
 
 			if (affectedPageNos.length === 0) {
@@ -458,7 +458,7 @@ function createSetChapterThemeTool(
 			return commitWrite(options, nextState, {
 				pageNo: affectedPageNos[0] ?? 0,
 				operations: [`theme:${chapterId}:${accentColor}`],
-				notes: [`已散布到 ${affectedPageNos.length} 页（pageNo: ${affectedPageNos.join(", ")}）`],
+				notes: [`已散布到 ${affectedPageNos.length} 页（第 ${affectedPageNos.join("、")} 页）`],
 			});
 		},
 	};
@@ -598,10 +598,10 @@ function searchAlbumBook(state: AlbumBookState, query: string, limit: number): B
 		return matches.length >= limit;
 	};
 
-	for (const [pageNo, page] of state.pages.entries()) {
+	for (const [index, page] of state.pages.entries()) {
 		for (const [slotId, value] of Object.entries(page.texts)) {
 			if (value.toLowerCase().includes(lowerQuery)) {
-				if (push({ where: "pageText", pageNo, slotId, preview: preview(value, query) })) {
+				if (push({ where: "pageText", pageNo: index + 1, slotId, preview: preview(value, query) })) {
 					return matches;
 				}
 			}
@@ -659,7 +659,7 @@ function requirePage(state: AlbumBookState, pageNo: number): AlbumPage {
 	const page = findAlbumPageByNo(state, pageNo);
 	if (!page) {
 		throw new Error(
-			`没有 pageNo 为 ${pageNo} 的页。本书共 ${state.pages.length} 页，pageNo 取值 0..${state.pages.length - 1}（见 get_book_summary）。`,
+			`没有第 ${pageNo} 页。本书共 ${state.pages.length} 页，页码取值 1..${state.pages.length}（见 get_book_summary）。`,
 		);
 	}
 	return page;

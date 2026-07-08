@@ -15,7 +15,7 @@ export function buildAlbumSystemPrompt(context: DesignSystemPromptContext): stri
 		"",
 		"## 画布",
 		"- 画布是一本书：章节（照片 + 背景故事）+ 页面（版式模板 + 图片槽 + 文字槽）。",
-		"- 页面一律用 pageNo（书内顺序号，从 0 开始，见 get_book_summary）寻址；数据里的 pageIndex 按章节计数、可能重复，不用于寻址。",
+		"- 页面一律用 pageNo（页码，从 1 开始，第 1 页 = 第一页，见 get_book_summary）寻址；对用户提到页码时也用这个数（和用户口径一致）。数据里的 pageIndex 按章节计数、可能重复，不用于寻址。",
 		"- 每页由一个版式模板定义结构；文字槽有角色（标题/正文/装饰）和 maxChars 字数上限，必须遵守。",
 		"- 修改只能通过写入工具（update_page_texts / swap_page_template / update_page_images）落地；写入会做契约校验，报错时按错误信息修正后重试。",
 		"",

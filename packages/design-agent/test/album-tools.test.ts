@@ -83,7 +83,7 @@ test("get_book_summary 返回章节与页面概览", async () => {
 
 test("read_page 返回槽位定义与章节背景", async () => {
 	const { tools } = createHarness();
-	const page = JSON.parse(await run(tools, "read_page", { pageIndex: 1 }));
+	const page = JSON.parse(await run(tools, "read_page", { pageNo: 2 }));
 	assert.equal(page.templateId, "mag-05");
 	assert.equal(page.chapter.chapterId, "ch-seaside");
 	assert.ok(page.chapter.chapterContext.includes("青岛"));
@@ -97,7 +97,7 @@ test("update_page_texts 合法写入并递增版本", async () => {
 	const before = getBook().version;
 	const details = JSON.parse(
 		await run(tools, "update_page_texts", {
-			pageIndex: 1,
+			pageNo: 2,
 			texts: { title: "海的那一边", explain: "爸爸在海边站了很久，什么也没说。" },
 		}),
 	);
@@ -112,7 +112,7 @@ test("update_page_texts 超出 maxChars 被拒绝且报错包含限制", async (
 	const before = getBook().version;
 	await assert.rejects(
 		run(tools, "update_page_texts", {
-			pageIndex: 1,
+			pageNo: 2,
 			texts: { title: "这是一个远远超过二十四个字符上限的超长标题所以必须被契约校验拒绝掉" },
 		}),
 		/maxChars 24/,
@@ -122,20 +122,20 @@ test("update_page_texts 超出 maxChars 被拒绝且报错包含限制", async (
 
 test("update_page_texts 未知槽被拒绝并列出可用槽", async () => {
 	const { tools } = createHarness();
-	await assert.rejects(run(tools, "update_page_texts", { pageIndex: 4, texts: { headline: "x" } }), /没有文字槽 "headline"/);
+	await assert.rejects(run(tools, "update_page_texts", { pageNo: 5, texts: { headline: "x" } }), /没有文字槽 "headline"/);
 });
 
 test("update_page_texts 接受主题 carrier 键", async () => {
 	const { tools, getBook } = createHarness();
-	await run(tools, "update_page_texts", { pageIndex: 1, texts: { "title#accentColor": "#2c6e8f" } });
+	await run(tools, "update_page_texts", { pageNo: 2, texts: { "title#accentColor": "#2c6e8f" } });
 	const page = getBook().pages.find((candidate) => candidate.pageIndex === 1);
 	assert.equal(page?.texts["title#accentColor"], "#2c6e8f");
 });
 
 test("swap_page_template 同类目同图槽数迁移，多余文字槽丢弃并报告", async () => {
 	const { tools, getBook } = createHarness();
-	await run(tools, "update_page_texts", { pageIndex: 3, texts: { title: "灶台边", explain: "案板上的五花肉和冰糖。" } });
-	const details = JSON.parse(await run(tools, "swap_page_template", { pageIndex: 3, templateId: "mag-53" }));
+	await run(tools, "update_page_texts", { pageNo: 4, texts: { title: "灶台边", explain: "案板上的五花肉和冰糖。" } });
+	const details = JSON.parse(await run(tools, "swap_page_template", { pageNo: 4, templateId: "mag-53" }));
 	assert.deepEqual(details.operations, ["template:mag-05->mag-53"]);
 	assert.ok(details.notes.some((note: string) => note.includes('"explain"')), "应报告 explain 被移除");
 	const page = getBook().pages.find((candidate) => candidate.pageIndex === 3);
@@ -147,33 +147,33 @@ test("swap_page_template 同类目同图槽数迁移，多余文字槽丢弃并�
 
 test("swap_page_template 拒绝跨类目与图槽数不匹配", async () => {
 	const { tools } = createHarness();
-	await assert.rejects(run(tools, "swap_page_template", { pageIndex: 1, templateId: "mag-01" }), /类目不匹配/);
-	await assert.rejects(run(tools, "swap_page_template", { pageIndex: 1, templateId: "mag-10" }), /图槽数不匹配/);
+	await assert.rejects(run(tools, "swap_page_template", { pageNo: 2, templateId: "mag-01" }), /类目不匹配/);
+	await assert.rejects(run(tools, "swap_page_template", { pageNo: 2, templateId: "mag-10" }), /图槽数不匹配/);
 });
 
 test("update_page_images 整页替换并校验槽位齐全/照片存在/不重复", async () => {
 	const { tools, getBook } = createHarness();
 	await run(tools, "update_page_images", {
-		pageIndex: 2,
+		pageNo: 3,
 		images: { "image[0]": "p-sea-04", "image[1]": "p-sea-02", "image[2]": "p-sea-03", "image[3]": "p-sea-05" },
 	});
 	const page = getBook().pages.find((candidate) => candidate.pageIndex === 2);
 	assert.equal(page?.images["image[0]"], "p-sea-04");
 
 	await assert.rejects(
-		run(tools, "update_page_images", { pageIndex: 2, images: { "image[0]": "p-sea-04" } }),
+		run(tools, "update_page_images", { pageNo: 3, images: { "image[0]": "p-sea-04" } }),
 		/缺少图片槽/,
 	);
 	await assert.rejects(
 		run(tools, "update_page_images", {
-			pageIndex: 2,
+			pageNo: 3,
 			images: { "image[0]": "p-sea-04", "image[1]": "p-sea-04", "image[2]": "p-sea-03", "image[3]": "p-sea-05" },
 		}),
 		/同时出现在槽/,
 	);
 	await assert.rejects(
 		run(tools, "update_page_images", {
-			pageIndex: 2,
+			pageNo: 3,
 			images: { "image[0]": "p-nope", "image[1]": "p-sea-02", "image[2]": "p-sea-03", "image[3]": "p-sea-05" },
 		}),
 		/不存在于这本书/,
@@ -182,7 +182,7 @@ test("update_page_images 整页替换并校验槽位齐全/照片存在/不重�
 
 test("search_book 命中页文字、照片描述与章节背景", async () => {
 	const { tools } = createHarness();
-	await run(tools, "update_page_texts", { pageIndex: 4, texts: { explain: "奶奶的手覆着我的手，锅铲一起一落。" } });
+	await run(tools, "update_page_texts", { pageNo: 5, texts: { explain: "奶奶的手覆着我的手，锅铲一起一落。" } });
 	const hits = (await run(tools, "search_book", { query: "奶奶" }))
 		.split("\n")
 		.map((line) => JSON.parse(line) as { where: string });
@@ -204,7 +204,7 @@ test("写入工具带 terminate 语义", async () => {
 	const { tools } = createHarness();
 	const tool = tools.get("update_page_texts");
 	assert.ok(tool);
-	const result = await tool.execute("test-call", { pageNo: 4, texts: { explain: "短句。" } } as never);
+	const result = await tool.execute("test-call", { pageNo: 5, texts: { explain: "短句。" } } as never);
 	assert.equal(result.terminate, true);
 });
 
@@ -233,18 +233,18 @@ test("pageNo 寻址在 pageIndex 重复时仍然可用（真实管线按章节�
 	assert.deepEqual(
 		summary.pages.map((p: { pageNo: number; pageIndex: number }) => [p.pageNo, p.pageIndex]),
 		[
-			[0, 0],
 			[1, 0],
+			[2, 0],
 		],
 	);
 
-	const page1 = JSON.parse(await run(tools, "read_page", { pageNo: 1 }));
+	const page1 = JSON.parse(await run(tools, "read_page", { pageNo: 2 }));
 	assert.equal(page1.images.image.photoId, "pb");
 
-	await run(tools, "update_page_texts", { pageNo: 1, texts: { explain: "第二本的图注。" } });
+	await run(tools, "update_page_texts", { pageNo: 2, texts: { explain: "第二本的图注。" } });
 	assert.equal(book.pages[1]?.texts.explain, "第二本的图注。");
 	assert.equal(book.pages[0]?.texts.explain, "");
 	assert.equal(book.pages[1]?.pageIndex, 0, "原始 pageIndex 字段保持不变");
 
-	await assert.rejects(run(tools, "read_page", { pageNo: 2 }), /pageNo 取值 0\.\.1/);
+	await assert.rejects(run(tools, "read_page", { pageNo: 3 }), /页码取值 1\.\.2/);
 });
