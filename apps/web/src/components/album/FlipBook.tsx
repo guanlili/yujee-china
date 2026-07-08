@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getWebTemplate } from './web-registry';
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
+import { renderPageHtml } from './templates/html/fill-template';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from './spreads';
 import { PAGE } from './templates/constants';
 import type { EditorPage } from './types';
@@ -55,11 +56,19 @@ function PageFace({
   if (!page) {
     return <div style={{ width, height, background: 'var(--surface)' }} />;
   }
-  const Template = getWebTemplate(page.templateId);
-  const data = adaptPageToTemplateData(
-    { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson },
+  // HTML 模板已迁移的走单一渲染器（dangerouslySetInnerHTML），未迁的回退 React 组件。
+  const html = renderPageHtml(
+    { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson, imagePos: page.imagePosJson },
     resolveImage,
   );
+  const Template = html === undefined ? getWebTemplate(page.templateId) : null;
+  const data =
+    Template != null
+      ? adaptPageToTemplateData(
+          { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson },
+          resolveImage,
+        )
+      : null;
   const scale = Math.min(width / PAGE.width, height / PAGE.height);
   return (
     <div style={{ width, height, overflow: 'hidden', background: '#fff' }}>
@@ -71,7 +80,9 @@ function PageFace({
           height: PAGE.height,
         }}
       >
-        {Template ? (
+        {html !== undefined ? (
+          <div dangerouslySetInnerHTML={{ __html: html }} />
+        ) : Template && data ? (
           <Template data={data} totalPages={totalPages} imagePos={page.imagePosJson} />
         ) : (
           <div style={{ padding: 24, fontSize: 14 }}>Unknown template: {page.templateId}</div>

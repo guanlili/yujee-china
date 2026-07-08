@@ -25,6 +25,7 @@ import { YujeeState } from '@/components/app/YujeeState';
 import { getWebTemplate } from '../web-registry';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
+import { renderPageHtml } from '../templates/html/fill-template';
 import { PAGE } from '../templates/constants';
 import { clampZoom, paintDecision } from './zoom-util';
 import {
@@ -761,8 +762,14 @@ function EditorBook({
 
     // Render a real album page through its web template (the same path the live
     // editor/PDF use) as static markup we can drop into the imperative book.
+    // HTML 模板已迁移的（如 mag-01）走单一 HTML 渲染器；未迁的回退现有 React 组件。
     function faceInner(page: EditorPage | null): string {
       if (!page) return '';
+      const html = renderPageHtml(
+        { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson, imagePos: page.imagePosJson },
+        resolveImage,
+      );
+      if (html !== undefined) return html;
       const Template = getWebTemplate(page.templateId);
       if (!Template) {
         return `<div style="padding:24px;font-size:14px">Unknown template: ${page.templateId}</div>`;
@@ -2131,6 +2138,12 @@ function EditorBook({
         }));
         const ids = collectPhotoIds(adaptable);
         const dataUrls = await photoStore.getPdfDataUrls(ids);
+        // 收敛单渲染器试点：NEXT_PUBLIC_PDF_RASTER=1 时走栅格 PDF（截屏幕渲染，与画布
+        // 像素级一致，消除 index↔pdf 分歧）；否则维持现有 @react-pdf 矢量导出。
+        if (process.env.NEXT_PUBLIC_PDF_RASTER === '1') {
+          const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
+          return await renderAlbumPdfRaster(adaptable, (id) => dataUrls[id], { scale: 3 });
+        }
         const { renderAlbumPdf } = await import('@/lib/pdf/render');
         return await renderAlbumPdf(adaptable, (id) => dataUrls[id]);
       } catch (e) {
