@@ -54,10 +54,14 @@ const updatePageImagesSchema = Type.Object({
 	}),
 });
 
-const setChapterThemeSchema = Type.Object({
-	chapterId: Type.String({ description: "要设定主题色的章节 id（从 get_book_summary 获得）。" }),
-	accentColor: Type.String({ description: "章节主题色，#RGB 或 #RRGGBB 十六进制。" }),
-	artFont: Type.Optional(Type.String({ description: "可选的艺术字体包名；不确定时不要传。" })),
+const setTextColorsSchema = Type.Object({
+	titleColor: Type.Optional(
+		Type.String({
+			description: "标题色（同时用于 decoration 装饰槽：英文标签、页码等），#RGB 或 #RRGGBB 十六进制。",
+		}),
+	),
+	bodyColor: Type.Optional(Type.String({ description: "正文色，#RGB 或 #RRGGBB 十六进制。" })),
+	captionColor: Type.Optional(Type.String({ description: "注释/图注色，#RGB 或 #RRGGBB 十六进制。" })),
 });
 
 const listTemplatesSchema = Type.Object({
@@ -74,7 +78,7 @@ type SearchBookInput = Static<typeof searchBookSchema>;
 type UpdatePageTextsInput = Static<typeof updatePageTextsSchema>;
 type SwapPageTemplateInput = Static<typeof swapPageTemplateSchema>;
 type UpdatePageImagesInput = Static<typeof updatePageImagesSchema>;
-type SetChapterThemeInput = Static<typeof setChapterThemeSchema>;
+type SetTextColorsInput = Static<typeof setTextColorsSchema>;
 type ListTemplatesInput = Static<typeof listTemplatesSchema>;
 type ReadSkillInput = Static<typeof readSkillSchema>;
 
@@ -90,7 +94,7 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 		createUpdatePageTextsTool(options),
 		createSwapPageTemplateTool(options),
 		createUpdatePageImagesTool(options),
-		createSetChapterThemeTool(options),
+		createSetTextColorsTool(options),
 		createReadSkillTool(options),
 	];
 }
@@ -383,67 +387,67 @@ function createUpdatePageImagesTool(
 
 const ACCENT_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
-function createSetChapterThemeTool(
+/** 文字角色 → 三类配色的映射。decoration（英文标签/页码等）跟标题同色。 */
+const ROLE_TO_COLOR_KIND: Record<string, "title" | "body" | "caption"> = {
+	title: "title",
+	decoration: "title",
+	body: "body",
+	explain: "caption",
+};
+
+function createSetTextColorsTool(
 	options: AlbumToolsOptions,
-): AgentTool<typeof setChapterThemeSchema, AlbumWriteDetails> {
+): AgentTool<typeof setTextColorsSchema, AlbumWriteDetails> {
 	return {
-		name: "set_chapter_theme",
-		label: "设定章节主题色",
+		name: "set_text_colors",
+		label: "设定文字配色",
 		description:
-			"给指定章节设定主题色（一章一主色）：写入章节 accentColor，并自动散布到该章所有页面的装饰槽（variableDecor 文字槽的 carrier 键、SVG 装饰槽）。配色需求一律用它，不要手工逐页写 carrier 键。",
-		parameters: setChapterThemeSchema,
-		prepareArguments(args: unknown): SetChapterThemeInput {
-			if (!isRecord(args)) return { chapterId: "", accentColor: "" };
+			"整本书一键配色：按文字角色设定颜色——标题（含装饰槽：英文标签/页码）、正文、注释三类各一个色。全书对应角色的文字槽会被一次刷到底。至少给一类颜色；只改一类就只传那一类。配色需求一律用它，不要手工逐页写 carrier 键。",
+		parameters: setTextColorsSchema,
+		prepareArguments(args: unknown): SetTextColorsInput {
+			if (!isRecord(args)) return {};
+			const pick = (value: unknown): string | undefined =>
+				typeof value === "string" && value.trim() ? value.trim() : undefined;
 			return {
-				chapterId: typeof args.chapterId === "string" ? args.chapterId : "",
-				accentColor: typeof args.accentColor === "string" ? args.accentColor : "",
-				artFont: typeof args.artFont === "string" && args.artFont.trim() ? args.artFont.trim() : undefined,
+				titleColor: pick(args.titleColor),
+				bodyColor: pick(args.bodyColor),
+				captionColor: pick(args.captionColor),
 			};
 		},
 		async execute(
 			_toolCallId: string,
-			params: SetChapterThemeInput,
+			params: SetTextColorsInput,
 		): Promise<AgentToolResult<AlbumWriteDetails>> {
-			const state = options.getBookState();
-			const chapterId = params.chapterId.trim();
-			const chapter = state.chapters.find((candidate) => candidate.chapterId === chapterId);
-			if (!chapter) {
-				throw new Error(
-					`没有 chapterId 为 "${chapterId}" 的章节。现有章节：${state.chapters.map((c) => c.chapterId).join(", ")}`,
-				);
+			const kindColors: Record<"title" | "body" | "caption", string | undefined> = {
+				title: params.titleColor,
+				body: params.bodyColor,
+				caption: params.captionColor,
+			};
+			const provided = Object.entries(kindColors).filter(([, color]) => color !== undefined);
+			if (provided.length === 0) {
+				throw new Error("至少要给 titleColor / bodyColor / captionColor 中的一个颜色。");
 			}
-			const accentColor = params.accentColor.trim();
-			if (!ACCENT_COLOR_PATTERN.test(accentColor)) {
-				throw new Error(`accentColor 必须是 #RGB/#RRGGBB 十六进制，收到："${accentColor}"`);
-			}
-
-			// 章节色写进画布的树（供后续轮次读取）；持久化效果靠散布到页面的
-			// carrier 键 —— Web 只把 pages 写回 draft_json，树由 Web 侧流程管理。
-			const nextState = cloneAlbumBookState(state);
-			const nextChapter = nextState.chapters.find((candidate) => candidate.chapterId === chapterId);
-			if (nextChapter) {
-				nextChapter.accentColor = accentColor;
-				if (params.artFont) nextChapter.artFont = params.artFont;
+			for (const [kind, color] of provided) {
+				if (!ACCENT_COLOR_PATTERN.test(color as string)) {
+					throw new Error(`${kind} 颜色必须是 #RGB/#RRGGBB 十六进制，收到："${color}"`);
+				}
 			}
 
-			const photoToChapter = buildPhotoToChapterMap(nextState);
+			const nextState = cloneAlbumBookState(options.getBookState());
+			const affectedByKind: Record<string, number> = {};
 			const affectedPageNos: number[] = [];
 			for (const [index, page] of nextState.pages.entries()) {
-				if (derivePageChapterId(page, photoToChapter) !== chapterId) continue;
 				const template = options.catalog.get(page.templateId);
 				if (!template) continue;
 				let touched = false;
-				// SVG variableDecor 槽：值即色（theme-carrier 约定 ①）。
-				for (const svgSlotId of template.svgSlotIds) {
-					page.texts[svgSlotId] = accentColor;
-					touched = true;
-				}
-				// TEXT variableDecor 槽：sibling carrier 键（约定 ②），槽内容原样保留。
-				for (const slotId of template.textSlotIds) {
-					const def = template.textDefsByBase.get(slotBaseIdForTheme(slotId));
-					if (!def?.variableDecor) continue;
-					page.texts[`${slotId}#accentColor`] = accentColor;
-					if (params.artFont) page.texts[`${slotId}#artFont`] = params.artFont;
+				for (const slotId of collectColorableSlots(page, template)) {
+					const role = template.textDefsByBase.get(slotBaseIdForTheme(slotId))?.role ?? "text";
+					const kind = ROLE_TO_COLOR_KIND[role];
+					if (!kind) continue;
+					const color = kindColors[kind];
+					if (!color) continue;
+					page.texts[`${slotId}#accentColor`] = color;
+					affectedByKind[kind] = (affectedByKind[kind] ?? 0) + 1;
 					touched = true;
 				}
 				if (touched) affectedPageNos.push(index + 1);
@@ -451,14 +455,20 @@ function createSetChapterThemeTool(
 
 			if (affectedPageNos.length === 0) {
 				throw new Error(
-					`章节 "${chapterId}" 的页面里没有任何 variableDecor 装饰槽，主题色无处落地。先确认页面模板是否带装饰槽（list_templates 查看）。`,
+					"全书没有匹配这些角色的文字槽，配色无处落地。用 get_book_summary / list_templates 确认页面结构。",
 				);
 			}
 
+			const operations = provided.map(([kind, color]) => `color:${kind}=${color}`);
+			const kindLabel: Record<string, string> = { title: "标题", body: "正文", caption: "注释" };
+			const notes = provided
+				.filter(([kind]) => affectedByKind[kind])
+				.map(([kind]) => `${kindLabel[kind]}色刷了 ${affectedByKind[kind]} 个槽`);
+			notes.push(`共影响 ${affectedPageNos.length} 页`);
 			return commitWrite(options, nextState, {
 				pageNo: affectedPageNos[0] ?? 0,
-				operations: [`theme:${chapterId}:${accentColor}`],
-				notes: [`已散布到 ${affectedPageNos.length} 页（第 ${affectedPageNos.join("、")} 页）`],
+				operations,
+				notes,
 			});
 		},
 	};
@@ -466,6 +476,19 @@ function createSetChapterThemeTool(
 
 function slotBaseIdForTheme(slotId: string): string {
 	return slotId.replace(/\[\d+\]/g, "");
+}
+
+/**
+ * 一页里所有可配色的文字槽 id：模板定义的具体槽 + 页面上已有的重复槽（items[n]），
+ * 排除 carrier 键（`slot#accentColor` 之类）本身。
+ */
+function collectColorableSlots(page: AlbumPage, template: TemplateCatalogEntry): string[] {
+	const slots = new Set<string>(template.textSlotIds);
+	for (const key of Object.keys(page.texts)) {
+		if (parseThemeCarrierKey(key)) continue;
+		slots.add(key);
+	}
+	return [...slots];
 }
 
 function createReadSkillTool(options: AlbumToolsOptions): AgentTool<typeof readSkillSchema, { name: string }> {
