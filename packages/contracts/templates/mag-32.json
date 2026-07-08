@@ -12,7 +12,6 @@
       "role": "title",
       "maxChars": 30,
       "lang": "user",
-      "hint": "封面书名，落左下角（如「A Year of Somewhere」）",
       "variableDecor": true,
       "sample": "A Year of Somewhere"
     },
@@ -21,7 +20,6 @@
       "role": "decoration",
       "maxChars": 12,
       "lang": "en",
-      "hint": "封面地名标签，竖排沿左缘大字重复出现，如「NORWAY」",
       "variableDecor": true,
       "sample": "NORWAY"
     }

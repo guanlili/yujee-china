@@ -81,7 +81,6 @@ type AnySlot = {
   role?: string;
   lang?: string;
   maxChars?: number;
-  hint?: string;
   variableDecor?: boolean;
 };
 
@@ -91,12 +90,6 @@ function checkTextSlot(id: string, slot: AnySlot): void {
   assert.ok(slot.lang === 'user' || slot.lang === 'en', `${id}.${slot.id} lang should be valid`);
   if (slot.maxChars !== undefined) {
     assert.ok(slot.maxChars > 0, `${id}.${slot.id} maxChars should be positive`);
-  }
-  if (slot.hint !== undefined) {
-    assert.ok(
-      typeof slot.hint === 'string' && slot.hint.length > 0,
-      `${id}.${slot.id} hint should be a non-empty string`,
-    );
   }
   if (slot.variableDecor !== undefined) {
     assert.ok(
@@ -128,9 +121,8 @@ test('image and text slot schemas accept the id-keyed shape', () => {
       maxChars: 12,
       lang: 'user',
       variableDecor: true,
-      hint: '主标题',
     }),
-    { id: 'title', role: 'title', maxChars: 12, lang: 'user', variableDecor: true, hint: '主标题' },
+    { id: 'title', role: 'title', maxChars: 12, lang: 'user', variableDecor: true },
   );
 });
 

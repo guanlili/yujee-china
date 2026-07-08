@@ -6,11 +6,11 @@
     { "id": "image2", "orientation": ["square"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "该页标题，可两行", "variableDecor": true, "sample": "海边的一天" },
-    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "hint": "一句短引语", "sample": "原来快乐可以这么简单" },
-    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "hint": "上图说明", "sample": "退潮后留下一片湿亮的沙" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "hint": "主图说明", "sample": "孩子追着浪花跑来跑去" },
-    { "id": "explain3", "role": "explain", "lang": "user", "maxChars": 220, "hint": "图片下方的事件说明：用 3–4 句话讲清这组照片背后的经过与情景（说明+事件叙述），比上面两条图注更长更具体", "sample": "那天我们一早就到了海边，本来只打算待一会儿，却一直玩到太阳落山。捡贝壳、堆沙堡、看海鸟，谁也不愿意先走。" },
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "variableDecor": true, "sample": "海边的一天" },
+    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "sample": "原来快乐可以这么简单" },
+    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "sample": "退潮后留下一片湿亮的沙" },
+    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "sample": "孩子追着浪花跑来跑去" },
+    { "id": "explain3", "role": "explain", "lang": "user", "maxChars": 220, "sample": "那天我们一早就到了海边，本来只打算待一会儿，却一直玩到太阳落山。捡贝壳、堆沙堡、看海鸟，谁也不愿意先走。" },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

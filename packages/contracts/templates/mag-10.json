@@ -10,7 +10,7 @@
       { "id": "image" }
     ],
     "texts": [
-      { "id": "explain", "role": "explain", "lang": "user", "maxChars": 90, "hint": "每格图说:一句话点出这张照片" }
+      { "id": "explain", "role": "explain", "lang": "user", "maxChars": 90 }
     ]
   }
 }

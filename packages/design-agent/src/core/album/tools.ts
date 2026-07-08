@@ -1,6 +1,5 @@
 import type { AgentTool, AgentToolResult, Skill } from "@earendil-works/pi-agent-core";
 import { type Static, Type } from "typebox";
-import { createDefaultDesignSkills } from "../skills/index.ts";
 import {
 	type AlbumBookState,
 	type AlbumPage,
@@ -14,6 +13,7 @@ import {
 	validateImagesMap,
 	validateTextsPatch,
 } from "./book-state.ts";
+import { createDefaultAlbumSkills } from "./skills.ts";
 import { parseThemeCarrierKey, type TemplateCatalog, type TemplateCatalogEntry } from "./templates-catalog.ts";
 
 export interface AlbumToolsOptions {
@@ -115,7 +115,7 @@ function createReadPageTool(options: AlbumToolsOptions): AgentTool<typeof readPa
 	return {
 		name: "read_page",
 		label: "读取单页",
-		description: "读取指定页的完整内容：图片槽（含照片描述）、文字槽（含模板对每个槽的角色/字数限制/提示），以及该页所属章节的背景信息。",
+		description: "读取指定页的完整内容：图片槽（含照片描述）、文字槽（含模板对每个槽的角色/字数限制/示范文案 sample），以及该页所属章节的背景信息。",
 		parameters: readPageSchema,
 		prepareArguments(args: unknown): ReadPageInput {
 			return { pageNo: isRecord(args) ? (readNumber(args.pageNo) ?? readNumber(args.pageIndex) ?? -1) : -1 };
@@ -480,7 +480,7 @@ function createReadSkillTool(options: AlbumToolsOptions): AgentTool<typeof readS
 		async execute(_toolCallId: string, params: ReadSkillInput): Promise<AgentToolResult<{ name: string }>> {
 			const skillName = params.name.trim();
 			if (!skillName) throw new Error("name 是必填项");
-			const skills = options.skills ?? createDefaultDesignSkills();
+			const skills = options.skills ?? createDefaultAlbumSkills();
 			const skill = skills.find((candidate) => candidate.name === skillName);
 			if (!skill) throw new Error(`未知 skill：${skillName}`);
 			return {

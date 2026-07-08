@@ -12,7 +12,6 @@
       "role": "title",
       "maxChars": 24,
       "lang": "user",
-      "hint": "左侧大字主标题，短词分多行（如「My Secret Place」）",
       "variableDecor": true,
       "sample": "My Secret Place"
     },
@@ -21,7 +20,6 @@
       "role": "title",
       "maxChars": 90,
       "lang": "user",
-      "hint": "左侧大字陈述句，接主标题，点出这地方对「我」的意义",
       "variableDecor": true,
       "sample": "这里没人认识我，却让我觉得最像自己。"
     },
@@ -30,7 +28,6 @@
       "role": "explain",
       "maxChars": 40,
       "lang": "user",
-      "hint": "左下角小图注",
       "sample": "墙角那盏旧灯，亮了很多年"
     }
   ]

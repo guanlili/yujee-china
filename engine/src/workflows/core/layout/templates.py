@@ -42,9 +42,6 @@ class TextSlot(TypedDict):
     lang: TextLang
     maxChars: NotRequired[int]
     repeat: NotRequired[bool]
-    # V3(WP0.2,增量):逐 slot 写作指引 + themable-decoration 标志。
-    # 消费它们的 V3 引擎是 WP0.4。
-    hint: NotRequired[str]
     variableDecor: NotRequired[bool]
     # 预览占位示例文案:用户未写文案时,Web 渲染用它占位(不进数据,纯预览)。
     sample: NotRequired[str]
@@ -84,7 +81,7 @@ _TEMPLATE_KEYS = {
     "id", "category", "pairing", "styles", "images", "texts", "svgs", "items",
 }
 _IMAGE_SLOT_KEYS = {"id", "orientation", "quality", "composition"}
-_TEXT_SLOT_KEYS = {"id", "role", "lang", "maxChars", "repeat", "hint", "variableDecor", "sample"}
+_TEXT_SLOT_KEYS = {"id", "role", "lang", "maxChars", "repeat", "variableDecor", "sample"}
 _SVG_SLOT_KEYS = {"id", "variableDecor"}
 _ITEMS_KEYS = {"images", "texts"}
 _PAIRING_KEYS = {"forced", "with", "side"}
@@ -198,14 +195,6 @@ def _validate_text_slot(value: Any, label: str) -> TextSlot:
         if not isinstance(repeat, bool):
             raise _fail(f"{label}.repeat must be a boolean")
         out["repeat"] = repeat
-    # V3(WP0.2,增量):透传 guidance/decoration 标志。
-    if "hint" in data:
-        hint = data["hint"]
-        if not isinstance(hint, str) or not hint:
-            raise _fail(f"{label}.hint must be a non-empty string")
-        if len(hint) > 200:
-            raise _fail(f"{label}.hint must be at most 200 characters")
-        out["hint"] = hint
     if "variableDecor" in data:
         variable_decor = data["variableDecor"]
         if not isinstance(variable_decor, bool):
@@ -535,7 +524,7 @@ def _summarize_templates_for_prompt(templates: dict[str, TemplateDef]) -> str:
 
 TEMPLATES: dict[str, TemplateDef] = _load_default_templates()
 # 逐模板的示例文案:``templateId -> {slotId: 示例串}``(``examples[0].texts``)。
-# 缺示例的模板不在此 map 里 —— 写作侧据此优雅降级(omit 示例,仍发 hint+lang)。
+# 缺示例的模板不在此 map 里 —— 写作侧据此优雅降级(omit 示例,仍发 lang)。
 COPY_EXAMPLES: dict[str, dict[str, str]] = _load_default_copy_examples()
 COVER_TEMPLATE_IDS = sorted(
     tid for tid, t in TEMPLATES.items() if t["category"] == "cover"

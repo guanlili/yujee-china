@@ -13,7 +13,6 @@
       "role": "title",
       "maxChars": 26,
       "lang": "user",
-      "hint": "左上大字主标题，一句旅程收尾",
       "variableDecor": true,
       "sample": "回家的路上"
     },
@@ -22,7 +21,6 @@
       "role": "explain",
       "maxChars": 130,
       "lang": "user",
-      "hint": "标题下图注段，串起这四张照片",
       "sample": "这四张照片串起了归途——从海边到山间，再到熟悉的街角，最后停在家门口的那盏灯下。"
     }
   ]

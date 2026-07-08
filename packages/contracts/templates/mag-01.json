@@ -5,10 +5,10 @@
     { "id": "image", "orientation": ["landscape", "square"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 12, "hint": "封面主标题，意象短语", "variableDecor": true, "sample": "夏日海岸" },
-    { "id": "label", "role": "decoration", "lang": "en", "maxChars": 20, "hint": "封面副标签:系列名 / 卷号 / 年份等小字", "variableDecor": true, "sample": "Series · No.01" },
-    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 40, "hint": "封面图注一", "sample": "午后的光落在窗台上" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 40, "hint": "封面图注二，接图注一", "sample": "风轻轻掀起窗帘的一角" },
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 12, "variableDecor": true, "sample": "夏日海岸" },
+    { "id": "label", "role": "decoration", "lang": "en", "maxChars": 20, "variableDecor": true, "sample": "Series · No.01" },
+    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 40, "sample": "午后的光落在窗台上" },
+    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 40, "sample": "风轻轻掀起窗帘的一角" },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

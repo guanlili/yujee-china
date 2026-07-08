@@ -198,14 +198,13 @@ test('AlbumLayoutPlan photos are the strict external render shape', () => {
 
 // ───────────────────────── 模板新字段(§9) ─────────────────────────
 
-test('TemplateTextSlot accepts hint + variableDecor', () => {
+test('TemplateTextSlot：hint 字段已删除，带 hint 的槽被 strict 拒绝', () => {
   assert.deepEqual(
-    TemplateTextSlot.parse({ id: 'title', role: 'title', lang: 'user', hint: 'one line', variableDecor: true }),
-    { id: 'title', role: 'title', lang: 'user', hint: 'one line', variableDecor: true },
+    TemplateTextSlot.parse({ id: 'title', role: 'title', lang: 'user', variableDecor: true }),
+    { id: 'title', role: 'title', lang: 'user', variableDecor: true },
   );
-  // hint maxChars boundary
   assert.equal(
-    TemplateTextSlot.safeParse({ id: 't', role: 'body', lang: 'user', hint: 'x'.repeat(201) }).success,
+    TemplateTextSlot.safeParse({ id: 't', role: 'body', lang: 'user', hint: 'x' }).success,
     false,
   );
 });
@@ -230,7 +229,7 @@ test('TemplateDef is category-only — legacy slot/scene are rejected', () => {
       category: 'interior',
       images: [{ id: 'image', quality: ['hero'], orientation: ['portrait'] }],
       svgs: [{ id: 'divider', variableDecor: true }],
-      texts: [{ id: 'title', role: 'title', lang: 'user', variableDecor: true, hint: 'h' }],
+      texts: [{ id: 'title', role: 'title', lang: 'user', variableDecor: true }],
       items: { texts: [{ id: 'explain', role: 'explain', lang: 'user', maxChars: 70 }] },
     }).success,
     true,

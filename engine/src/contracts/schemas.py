@@ -292,7 +292,7 @@ class V3LayoutTree(_V3Strict):
 
 # ---------- templates.ts ------------------------------------------------------
 # 模板契约:category | pairing | images | svgs | texts | items | variableDecor
-#   | hint。单一 `category` 取代旧 slot+scene;图片槽 quality/orientation 保留,
+#   | sample。单一 `category` 取代旧 slot+scene;图片槽 quality/orientation 保留,
 #   作为图位特征匹配(确定性照片打分)的输入。packages/contracts/templates/*.json
 #   是真相源。
 
@@ -334,8 +334,6 @@ class TemplateTextSlot(_V3Strict):
     role: TemplateTextRole
     maxChars: int = Field(default=None, gt=0)
     lang: TemplateTextLang
-    # V3:逐槽文案指引,透传给写作 LM(§4.2(4))。
-    hint: str = Field(default=None, min_length=1, max_length=200)
     # V3:渲染变量落点(§9)。standalone 装饰槽被 apply-theme 一键刷。
     variableDecor: bool = None
     # @deprecated `repeat` — V3 用 `items` 组承载重复内容(§9)。WP0.4 后删除。

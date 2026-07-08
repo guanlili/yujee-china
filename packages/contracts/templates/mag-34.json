@@ -12,7 +12,6 @@
       "role": "title",
       "maxChars": 24,
       "lang": "user",
-      "hint": "顶部居中大字主标题，压竖图上沿（如「All Alone」）",
       "variableDecor": true,
       "sample": "All Alone"
     },
@@ -21,7 +20,6 @@
       "role": "explain",
       "maxChars": 120,
       "lang": "user",
-      "hint": "底部居中收尾图注",
       "sample": "一个人走了很久，才听见自己心里的声音。"
     }
   ]

@@ -5,9 +5,9 @@
     { "id": "image", "orientation": ["portrait"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "hint": "该页标题，可两行", "variableDecor": true, "sample": "静物与光" },
-    { "id": "label", "role": "decoration", "lang": "en", "maxChars": 20, "hint": "图版标签,如「Plate · 11 / 30」", "variableDecor": true, "sample": "Plate · 11 / 30" },
-    { "id": "explain", "role": "explain", "lang": "user", "maxChars": 90, "hint": "图说", "sample": "桌上的花开了一半，光从侧面打过来" },
+    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "variableDecor": true, "sample": "静物与光" },
+    { "id": "label", "role": "decoration", "lang": "en", "maxChars": 20, "variableDecor": true, "sample": "Plate · 11 / 30" },
+    { "id": "explain", "role": "explain", "lang": "user", "maxChars": 90, "sample": "桌上的花开了一半，光从侧面打过来" },
     { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

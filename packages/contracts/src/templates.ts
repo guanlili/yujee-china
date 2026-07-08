@@ -54,8 +54,6 @@ export const TemplateTextSlot = z
     role: TemplateTextRole,
     maxChars: z.number().int().positive().optional(),
     lang: TemplateTextLang,
-    // V3:逐槽文案指引,透传给写作 LM(§4.2(4));模板维护方填,Agent 不自编。
-    hint: z.string().min(1).max(200).optional(),
     // V3:渲染变量落点(§9)。standalone 装饰槽(章节色/艺术字字体/花字/点缀)
     //   被 `apply-theme` 一键刷;普通正文槽不带此标记、不被刷。
     variableDecor: z.boolean().optional(),

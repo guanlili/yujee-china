@@ -23,7 +23,6 @@
       "role": "decoration",
       "maxChars": 12,
       "lang": "en",
-      "hint": "只写地点 / 章节标签小字(上方小字 kicker),如「京都 ·」;不要带日期——日期单独走 date 槽,两者分开填",
       "variableDecor": true,
       "sample": "京都 ·"
     },
@@ -32,7 +31,6 @@
       "role": "decoration",
       "maxChars": 10,
       "lang": "en",
-      "hint": "只写日期(下方放大显示的较大一行),如「03 / 30」或「3 月 30 号」;不要带地点——地点单独走 label 槽",
       "variableDecor": true,
       "sample": "03 / 30"
     },

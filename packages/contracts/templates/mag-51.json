@@ -12,7 +12,6 @@
       "role": "title",
       "maxChars": 16,
       "lang": "user",
-      "hint": "顶部超大地名/主标题，单行（如「NORWAY」）",
       "variableDecor": true,
       "sample": "NORWAY"
     }

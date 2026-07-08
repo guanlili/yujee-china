@@ -104,7 +104,6 @@ def test_loader_accepts_category_only_v3_template(tmp_path):
                         "role": "title",
                         "lang": "user",
                         "maxChars": 24,
-                        "hint": "Write a concise page title.",
                     }
                 ],
                 "items": {
@@ -200,11 +199,12 @@ def test_loader_mirrors_template_def_edge_constraints(tmp_path):
     for path in tmp_path.glob("*.json"):
         path.unlink()
 
+    # hint 字段已从契约删除：带 hint 的槽应作为未知字段被拒。
     write_template(
         "bad-hint",
-        texts=[{"id": "body", "role": "body", "lang": "user", "hint": "x" * 201}],
+        texts=[{"id": "body", "role": "body", "lang": "user", "hint": "x"}],
     )
-    with pytest.raises(RuntimeError, match=r"bad-hint\.json\.texts\[0\]\.hint"):
+    with pytest.raises(RuntimeError, match=r"unsupported fields.*hint"):
         templates._load_templates_from_dir(tmp_path)
 
     for path in tmp_path.glob("*.json"):

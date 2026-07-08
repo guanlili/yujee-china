@@ -15,7 +15,6 @@
       "role": "title",
       "maxChars": 20,
       "lang": "user",
-      "hint": "合集主标题，短词（如「365 Stories」）",
       "variableDecor": true,
       "sample": "365 Stories"
     },
@@ -24,7 +23,6 @@
       "role": "body",
       "maxChars": 180,
       "lang": "user",
-      "hint": "第一段故事正文",
       "sample": "那年冬天特别冷，我们却总爱往外跑，回来时手是冰的，心是热的。"
     },
     {
@@ -32,7 +30,6 @@
       "role": "explain",
       "maxChars": 20,
       "lang": "user",
-      "hint": "第一段作者署名（如「Steven D.K」）",
       "sample": "Steven D.K"
     },
     {
@@ -40,7 +37,6 @@
       "role": "body",
       "maxChars": 180,
       "lang": "user",
-      "hint": "第二段故事正文",
       "sample": "她说想看海，于是我们临时决定出发，开了一整夜的车。"
     },
     {
@@ -48,7 +44,6 @@
       "role": "explain",
       "maxChars": 20,
       "lang": "user",
-      "hint": "第二段作者署名（如「July Zh」）",
       "sample": "July Zh"
     }
   ]

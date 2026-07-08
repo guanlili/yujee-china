@@ -18,7 +18,6 @@
       "role": "title",
       "maxChars": 22,
       "lang": "user",
-      "hint": "左侧竖排大字标题，短词（如「Three Mornings」）",
       "variableDecor": true,
       "sample": "Three Mornings"
     },
@@ -27,7 +26,6 @@
       "role": "explain",
       "maxChars": 40,
       "lang": "user",
-      "hint": "第一张图图注",
       "sample": "第一个清晨，雾很重"
     },
     {
@@ -35,7 +33,6 @@
       "role": "explain",
       "maxChars": 40,
       "lang": "user",
-      "hint": "第二张图图注",
       "sample": "第二个清晨，下了点小雨"
     },
     {
@@ -43,7 +40,6 @@
       "role": "explain",
       "maxChars": 40,
       "lang": "user",
-      "hint": "第三张图图注",
       "sample": "第三个清晨，终于放晴"
     }
   ]

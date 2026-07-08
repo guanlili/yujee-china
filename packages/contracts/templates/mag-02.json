@@ -8,7 +8,6 @@
       "role": "title",
       "maxChars": 30,
       "lang": "user",
-      "hint": "目录页大标题（如「目录」「Contents」）",
       "variableDecor": true,
       "sample": "目录"
     },

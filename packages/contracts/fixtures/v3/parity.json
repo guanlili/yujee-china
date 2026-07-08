@@ -7,26 +7,36 @@
       "expectValid": true,
       "payload": {
         "ok": true,
-        "data": { "requestId": "r1", "accepted": true }
+        "data": {
+          "requestId": "r1",
+          "accepted": true
+        }
       }
     },
     {
       "name": "AgentAckRequest valid",
       "schema": "AgentAckRequest",
       "expectValid": true,
-      "payload": { "opId": "op_1" }
+      "payload": {
+        "opId": "op_1"
+      }
     },
     {
       "name": "AgentAckRequest rejects extra",
       "schema": "AgentAckRequest",
       "expectValid": false,
-      "payload": { "opId": "op_1", "extra": true }
+      "payload": {
+        "opId": "op_1",
+        "extra": true
+      }
     },
     {
       "name": "AgentAckResponse valid false",
       "schema": "AgentAckResponse",
       "expectValid": true,
-      "payload": { "ok": false }
+      "payload": {
+        "ok": false
+      }
     },
     {
       "name": "V3AnalyzeRequest minimal valid",
@@ -38,7 +48,12 @@
         "callbackUrl": "https://example.com/cb",
         "language": "en",
         "photos": [
-          { "photoId": "p1", "base64": "data:image/jpeg;base64,AA==", "width": 800, "height": 600 }
+          {
+            "photoId": "p1",
+            "base64": "data:image/jpeg;base64,AA==",
+            "width": 800,
+            "height": 600
+          }
         ]
       }
     },
@@ -52,7 +67,12 @@
         "callbackUrl": "mailto:ops@example.com",
         "language": "en",
         "photos": [
-          { "photoId": "p1", "base64": "data:image/jpeg;base64,AA==", "width": 800, "height": 600 }
+          {
+            "photoId": "p1",
+            "base64": "data:image/jpeg;base64,AA==",
+            "width": 800,
+            "height": 600
+          }
         ]
       }
     },
@@ -66,7 +86,12 @@
         "callbackUrl": "https://example.com/cb",
         "language": "en",
         "photos": [
-          { "photoId": "p1", "base64": "AA==", "width": 800, "height": 600 }
+          {
+            "photoId": "p1",
+            "base64": "AA==",
+            "width": 800,
+            "height": 600
+          }
         ]
       }
     },
@@ -80,7 +105,12 @@
         "callbackUrl": "https://example.com/cb",
         "language": "en",
         "photos": [
-          { "photoId": "p1", "base64": "data:image/jpeg;base64,AA=A", "width": 800, "height": 600 }
+          {
+            "photoId": "p1",
+            "base64": "data:image/jpeg;base64,AA=A",
+            "width": 800,
+            "height": 600
+          }
         ]
       }
     },
@@ -99,7 +129,9 @@
             "base64": "data:image/jpeg;base64,AA==",
             "width": 800,
             "height": 600,
-            "exif": { "takenAt": "2024-03-15T08:30:00.000Z" }
+            "exif": {
+              "takenAt": "2024-03-15T08:30:00.000Z"
+            }
           }
         ]
       }
@@ -119,7 +151,9 @@
             "base64": "data:image/jpeg;base64,AA==",
             "width": 800,
             "height": 600,
-            "exif": { "takenAt": "2024-03-15T08:30:00" }
+            "exif": {
+              "takenAt": "2024-03-15T08:30:00"
+            }
           }
         ]
       }
@@ -139,7 +173,9 @@
             "base64": "data:image/jpeg;base64,AA==",
             "width": 800,
             "height": 600,
-            "exif": { "takenAt": "2024-03-15T08:30:00+08:00" }
+            "exif": {
+              "takenAt": "2024-03-15T08:30:00+08:00"
+            }
           }
         ]
       }
@@ -179,7 +215,11 @@
             "base64": "data:image/jpeg;base64,AA==",
             "width": 800,
             "height": 600,
-            "exif": { "takenAt": null, "lat": 1, "lng": 2 }
+            "exif": {
+              "takenAt": null,
+              "lat": 1,
+              "lng": 2
+            }
           }
         ]
       }
@@ -206,7 +246,12 @@
         "callbackUrl": "https://example.com/cb",
         "language": "en",
         "photos": [
-          { "photoId": "p1", "base64": "data:image/jpeg;base64,AA==", "width": "800", "height": 600 }
+          {
+            "photoId": "p1",
+            "base64": "data:image/jpeg;base64,AA==",
+            "width": "800",
+            "height": 600
+          }
         ]
       }
     },
@@ -285,7 +330,14 @@
         "accentColor": null,
         "artFont": null,
         "photos": [
-          { "photoId": "p1", "sceneDescription": "x", "width": 800, "height": 1200, "orientation": "portrait", "takenAt": null }
+          {
+            "photoId": "p1",
+            "sceneDescription": "x",
+            "width": 800,
+            "height": 1200,
+            "orientation": "portrait",
+            "takenAt": null
+          }
         ]
       }
     },
@@ -330,13 +382,18 @@
       "name": "V3LayoutTree round-trips",
       "schema": "V3LayoutTree",
       "expectValid": true,
-      "payload": { "chapters": [] }
+      "payload": {
+        "chapters": []
+      }
     },
     {
       "name": "V3LayoutTree rejects extra key",
       "schema": "V3LayoutTree",
       "expectValid": false,
-      "payload": { "chapters": [], "extra": 1 }
+      "payload": {
+        "chapters": [],
+        "extra": 1
+      }
     },
     {
       "name": "TemplateDef rejects removed legacy slot/scene fields",
@@ -346,21 +403,68 @@
         "id": "mag-x",
         "slot": "interior",
         "scene": "portrait",
-        "images": [{ "id": "image", "quality": ["hero"], "orientation": ["portrait"] }],
-        "texts": [{ "id": "body", "role": "body", "lang": "user" }]
+        "images": [
+          {
+            "id": "image",
+            "quality": [
+              "hero"
+            ],
+            "orientation": [
+              "portrait"
+            ]
+          }
+        ],
+        "texts": [
+          {
+            "id": "body",
+            "role": "body",
+            "lang": "user"
+          }
+        ]
       }
     },
     {
-      "name": "TemplateDef accepts category/svgs/items/variableDecor/hint + image orientation/quality",
+      "name": "TemplateDef accepts category/svgs/items/variableDecor + image orientation/quality",
       "schema": "TemplateDef",
       "expectValid": true,
       "payload": {
         "id": "mag-y",
         "category": "interior",
-        "images": [{ "id": "image", "quality": ["hero"], "orientation": ["portrait"] }],
-        "svgs": [{ "id": "divider", "variableDecor": true }],
-        "texts": [{ "id": "title", "role": "title", "lang": "user", "variableDecor": true, "hint": "h" }],
-        "items": { "texts": [{ "id": "explain", "role": "explain", "lang": "user", "maxChars": 70 }] }
+        "images": [
+          {
+            "id": "image",
+            "quality": [
+              "hero"
+            ],
+            "orientation": [
+              "portrait"
+            ]
+          }
+        ],
+        "svgs": [
+          {
+            "id": "divider",
+            "variableDecor": true
+          }
+        ],
+        "texts": [
+          {
+            "id": "title",
+            "role": "title",
+            "lang": "user",
+            "variableDecor": true
+          }
+        ],
+        "items": {
+          "texts": [
+            {
+              "id": "explain",
+              "role": "explain",
+              "lang": "user",
+              "maxChars": 70
+            }
+          ]
+        }
       }
     },
     {
@@ -369,8 +473,18 @@
       "expectValid": false,
       "payload": {
         "id": "mag-z",
-        "images": [{ "id": "image" }],
-        "texts": [{ "id": "title", "role": "title", "lang": "user" }]
+        "images": [
+          {
+            "id": "image"
+          }
+        ],
+        "texts": [
+          {
+            "id": "title",
+            "role": "title",
+            "lang": "user"
+          }
+        ]
       }
     },
     {
@@ -380,9 +494,19 @@
       "payload": {
         "id": "mag-null",
         "category": "interior",
-        "images": [{ "id": "image" }],
+        "images": [
+          {
+            "id": "image"
+          }
+        ],
         "svgs": null,
-        "texts": [{ "id": "title", "role": "title", "lang": "user" }]
+        "texts": [
+          {
+            "id": "title",
+            "role": "title",
+            "lang": "user"
+          }
+        ]
       }
     },
     {
@@ -392,15 +516,20 @@
       "payload": {
         "id": "mag-bool",
         "category": "interior",
-        "images": [{ "id": "image" }],
-        "texts": [{ "id": "title", "role": "title", "lang": "user", "variableDecor": "true" }]
+        "images": [
+          {
+            "id": "image"
+          }
+        ],
+        "texts": [
+          {
+            "id": "title",
+            "role": "title",
+            "lang": "user",
+            "variableDecor": "true"
+          }
+        ]
       }
-    },
-    {
-      "name": "TemplateTextSlot rejects hint over 200 chars",
-      "schema": "TemplateTextSlot",
-      "expectValid": false,
-      "payload": { "id": "t", "role": "body", "lang": "user", "hint": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
     },
     {
       "name": "V3ChapterChatRequest valid",
@@ -415,11 +544,30 @@
           "accentColor": null,
           "artFont": null,
           "photos": [
-            { "photoId": "p1", "sceneDescription": "x", "width": 800, "height": 1200, "orientation": "portrait", "takenAt": null }
+            {
+              "photoId": "p1",
+              "sceneDescription": "x",
+              "width": 800,
+              "height": 1200,
+              "orientation": "portrait",
+              "takenAt": null
+            }
           ]
         },
-        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }],
-        "history": [{ "role": "user", "content": "hello" }],
+        "pages": [
+          {
+            "pageIndex": 0,
+            "templateId": "mag-08",
+            "images": {},
+            "texts": {}
+          }
+        ],
+        "history": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
         "userMessage": "write this chapter",
         "focusedPageIndex": 0
       }
@@ -438,7 +586,14 @@
           "artFont": null,
           "photos": []
         },
-        "pages": [{ "pageIndex": "0", "templateId": "mag-08", "images": {}, "texts": {} }],
+        "pages": [
+          {
+            "pageIndex": "0",
+            "templateId": "mag-08",
+            "images": {},
+            "texts": {}
+          }
+        ],
         "history": [],
         "userMessage": "write this chapter"
       }
@@ -457,7 +612,15 @@
           "artFont": null,
           "photos": []
         },
-        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}, "extra": true }],
+        "pages": [
+          {
+            "pageIndex": 0,
+            "templateId": "mag-08",
+            "images": {},
+            "texts": {},
+            "extra": true
+          }
+        ],
         "history": [],
         "userMessage": "write this chapter"
       }
@@ -469,8 +632,18 @@
       "payload": {
         "kind": "write",
         "assistantReply": "done",
-        "pagesTexts": [{ "pageIndex": 0, "texts": { "body": "hi" } }],
-        "usage": { "durationMs": 1, "models": {} }
+        "pagesTexts": [
+          {
+            "pageIndex": 0,
+            "texts": {
+              "body": "hi"
+            }
+          }
+        ],
+        "usage": {
+          "durationMs": 1,
+          "models": {}
+        }
       }
     },
     {
@@ -480,7 +653,10 @@
       "payload": {
         "kind": "talk",
         "assistantReply": "tell me more",
-        "usage": { "durationMs": 1, "models": {} }
+        "usage": {
+          "durationMs": 1,
+          "models": {}
+        }
       }
     },
     {
@@ -491,7 +667,10 @@
         "kind": "talk",
         "assistantReply": "tell me more",
         "pagesTexts": null,
-        "usage": { "durationMs": 1, "models": {} }
+        "usage": {
+          "durationMs": 1,
+          "models": {}
+        }
       }
     },
     {
@@ -501,7 +680,10 @@
       "payload": {
         "kind": "sing",
         "assistantReply": "x",
-        "usage": { "durationMs": 1, "models": {} }
+        "usage": {
+          "durationMs": 1,
+          "models": {}
+        }
       }
     },
     {
@@ -515,21 +697,40 @@
             "label": "Warm",
             "style": "Warm editorial",
             "artFont": "serif-classic",
-            "chapters": [{ "chapterId": "c1", "subject": "Spring in Kyoto", "accentColor": "#aabbcc" }]
+            "chapters": [
+              {
+                "chapterId": "c1",
+                "subject": "Spring in Kyoto",
+                "accentColor": "#aabbcc"
+              }
+            ]
           },
           {
             "optionId": "opt-2",
             "artFont": "sans-modern",
-            "chapters": [{ "chapterId": "c1", "accentColor": "#bbccdd" }]
+            "chapters": [
+              {
+                "chapterId": "c1",
+                "accentColor": "#bbccdd"
+              }
+            ]
           },
           {
             "optionId": "opt-3",
             "artFont": "display-bold",
-            "chapters": [{ "chapterId": "c1", "accentColor": "#ccddee" }]
+            "chapters": [
+              {
+                "chapterId": "c1",
+                "accentColor": "#ccddee"
+              }
+            ]
           }
         ],
         "assistantReply": "",
-        "usage": { "durationMs": 1, "models": {} }
+        "usage": {
+          "durationMs": 1,
+          "models": {}
+        }
       }
     },
     {
@@ -540,7 +741,16 @@
         "albumId": "a1",
         "language": "en",
         "fontHint": "classic",
-        "chapters": [{ "chapterId": "c1", "description": "d", "photoDescs": ["p"], "extractedColor": "#aabbcc" }],
+        "chapters": [
+          {
+            "chapterId": "c1",
+            "description": "d",
+            "photoDescs": [
+              "p"
+            ],
+            "extractedColor": "#aabbcc"
+          }
+        ],
         "analysisSummary": "quiet morning",
         "userMessage": "more classic"
       }
@@ -552,8 +762,21 @@
       "payload": {
         "albumId": "a1",
         "language": "en",
-        "chapters": [{ "chapterId": "c1", "accentColor": "#abc", "artFont": "sans-modern" }],
-        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+        "chapters": [
+          {
+            "chapterId": "c1",
+            "accentColor": "#abc",
+            "artFont": "sans-modern"
+          }
+        ],
+        "pages": [
+          {
+            "pageIndex": 0,
+            "templateId": "mag-08",
+            "images": {},
+            "texts": {}
+          }
+        ]
       }
     },
     {
@@ -561,9 +784,19 @@
       "schema": "V3ApplyThemeResponse",
       "expectValid": true,
       "payload": {
-        "layoutPatch": [{ "pageIndex": 0, "texts": { "title": "Spring" } }],
+        "layoutPatch": [
+          {
+            "pageIndex": 0,
+            "texts": {
+              "title": "Spring"
+            }
+          }
+        ],
         "assistantReply": "applied",
-        "usage": { "durationMs": 1, "models": {} }
+        "usage": {
+          "durationMs": 1,
+          "models": {}
+        }
       }
     },
     {
@@ -575,7 +808,14 @@
         "language": "en",
         "coverTemplateId": null,
         "endingTemplateId": null,
-        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+        "pages": [
+          {
+            "pageIndex": 0,
+            "templateId": "mag-08",
+            "images": {},
+            "texts": {}
+          }
+        ]
       }
     },
     {
@@ -593,10 +833,23 @@
         "hint": "keep the book tender and understated",
         "userMessage": "Can the cover feel calmer?",
         "history": [
-          { "role": "user", "content": "I want a calmer cover" },
-          { "role": "assistant", "content": "I can make it quieter." }
+          {
+            "role": "user",
+            "content": "I want a calmer cover"
+          },
+          {
+            "role": "assistant",
+            "content": "I can make it quieter."
+          }
         ],
-        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+        "pages": [
+          {
+            "pageIndex": 0,
+            "templateId": "mag-08",
+            "images": {},
+            "texts": {}
+          }
+        ]
       }
     },
     {
@@ -607,7 +860,14 @@
         "albumId": "a1",
         "language": "en",
         "coverPhoto": null,
-        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+        "pages": [
+          {
+            "pageIndex": 0,
+            "templateId": "mag-08",
+            "images": {},
+            "texts": {}
+          }
+        ]
       }
     },
     {
@@ -618,29 +878,99 @@
         "albumId": "a1",
         "language": "en",
         "history": [
-          { "role": "user", "content": "1" },
-          { "role": "user", "content": "2" },
-          { "role": "user", "content": "3" },
-          { "role": "user", "content": "4" },
-          { "role": "user", "content": "5" },
-          { "role": "user", "content": "6" },
-          { "role": "user", "content": "7" },
-          { "role": "user", "content": "8" },
-          { "role": "user", "content": "9" },
-          { "role": "user", "content": "10" },
-          { "role": "user", "content": "11" },
-          { "role": "user", "content": "12" },
-          { "role": "user", "content": "13" },
-          { "role": "user", "content": "14" },
-          { "role": "user", "content": "15" },
-          { "role": "user", "content": "16" },
-          { "role": "user", "content": "17" },
-          { "role": "user", "content": "18" },
-          { "role": "user", "content": "19" },
-          { "role": "user", "content": "20" },
-          { "role": "user", "content": "21" }
+          {
+            "role": "user",
+            "content": "1"
+          },
+          {
+            "role": "user",
+            "content": "2"
+          },
+          {
+            "role": "user",
+            "content": "3"
+          },
+          {
+            "role": "user",
+            "content": "4"
+          },
+          {
+            "role": "user",
+            "content": "5"
+          },
+          {
+            "role": "user",
+            "content": "6"
+          },
+          {
+            "role": "user",
+            "content": "7"
+          },
+          {
+            "role": "user",
+            "content": "8"
+          },
+          {
+            "role": "user",
+            "content": "9"
+          },
+          {
+            "role": "user",
+            "content": "10"
+          },
+          {
+            "role": "user",
+            "content": "11"
+          },
+          {
+            "role": "user",
+            "content": "12"
+          },
+          {
+            "role": "user",
+            "content": "13"
+          },
+          {
+            "role": "user",
+            "content": "14"
+          },
+          {
+            "role": "user",
+            "content": "15"
+          },
+          {
+            "role": "user",
+            "content": "16"
+          },
+          {
+            "role": "user",
+            "content": "17"
+          },
+          {
+            "role": "user",
+            "content": "18"
+          },
+          {
+            "role": "user",
+            "content": "19"
+          },
+          {
+            "role": "user",
+            "content": "20"
+          },
+          {
+            "role": "user",
+            "content": "21"
+          }
         ],
-        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+        "pages": [
+          {
+            "pageIndex": 0,
+            "templateId": "mag-08",
+            "images": {},
+            "texts": {}
+          }
+        ]
       }
     },
     {
@@ -649,7 +979,10 @@
       "expectValid": true,
       "payload": {
         "layoutPatch": [],
-        "usage": { "durationMs": 1, "models": {} }
+        "usage": {
+          "durationMs": 1,
+          "models": {}
+        }
       }
     },
     {
@@ -660,7 +993,10 @@
         "layoutPatch": [],
         "assistantReply": "Which cover mood should I use?",
         "needsUserInput": true,
-        "usage": { "durationMs": 1, "models": {} }
+        "usage": {
+          "durationMs": 1,
+          "models": {}
+        }
       }
     },
     {
@@ -670,8 +1006,17 @@
       "payload": {
         "albumId": "a1",
         "language": "en",
-        "tree": { "chapters": [] },
-        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+        "tree": {
+          "chapters": []
+        },
+        "pages": [
+          {
+            "pageIndex": 0,
+            "templateId": "mag-08",
+            "images": {},
+            "texts": {}
+          }
+        ]
       }
     },
     {
@@ -680,11 +1025,25 @@
       "expectValid": true,
       "payload": {
         "layout": {
-          "magazine": { "title": "My Book", "style": "warm-film", "language": "en" },
+          "magazine": {
+            "title": "My Book",
+            "style": "warm-film",
+            "language": "en"
+          },
           "photos": [],
-          "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+          "pages": [
+            {
+              "pageIndex": 0,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            }
+          ]
         },
-        "usage": { "durationMs": 1, "models": {} }
+        "usage": {
+          "durationMs": 1,
+          "models": {}
+        }
       }
     },
     {
@@ -693,7 +1052,11 @@
       "expectValid": false,
       "payload": {
         "layout": {
-          "magazine": { "title": "My Book", "style": "warm-film", "language": "en" },
+          "magazine": {
+            "title": "My Book",
+            "style": "warm-film",
+            "language": "en"
+          },
           "photos": [
             {
               "photoId": "p1",
@@ -704,9 +1067,19 @@
               "peopleCount": "1"
             }
           ],
-          "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }]
+          "pages": [
+            {
+              "pageIndex": 0,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            }
+          ]
         },
-        "usage": { "durationMs": 1, "models": {} }
+        "usage": {
+          "durationMs": 1,
+          "models": {}
+        }
       }
     },
     {
@@ -715,36 +1088,134 @@
       "expectValid": true,
       "payload": {
         "layout": {
-          "magazine": { "title": "My Book", "style": "warm-film", "language": "en" },
+          "magazine": {
+            "title": "My Book",
+            "style": "warm-film",
+            "language": "en"
+          },
           "photos": [],
           "pages": [
-            { "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 1, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 2, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 3, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 4, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 5, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 6, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 7, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 8, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 9, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 10, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 11, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 12, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 13, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 14, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 15, "templateId": "mag-08", "images": {}, "texts": {} },
-            { "pageIndex": 16, "templateId": "mag-08", "images": {}, "texts": {} }
+            {
+              "pageIndex": 0,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 1,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 2,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 3,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 4,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 5,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 6,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 7,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 8,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 9,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 10,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 11,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 12,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 13,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 14,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 15,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            },
+            {
+              "pageIndex": 16,
+              "templateId": "mag-08",
+              "images": {},
+              "texts": {}
+            }
           ]
         },
-        "usage": { "durationMs": 1, "models": {} }
+        "usage": {
+          "durationMs": 1,
+          "models": {}
+        }
       }
     },
     {
       "name": "V3Callback progress",
       "schema": "V3Callback",
       "expectValid": true,
-      "payload": { "requestId": "r1", "jobKind": "analyze", "event": "progress", "stage": "describe", "progress": 40 }
+      "payload": {
+        "requestId": "r1",
+        "jobKind": "analyze",
+        "event": "progress",
+        "stage": "describe",
+        "progress": 40
+      }
     },
     {
       "name": "V3Callback completed(analyze)",
@@ -754,8 +1225,13 @@
         "requestId": "r1",
         "jobKind": "analyze",
         "event": "completed",
-        "tree": { "chapters": [] },
-        "usage": { "durationMs": 1, "models": {} }
+        "tree": {
+          "chapters": []
+        },
+        "usage": {
+          "durationMs": 1,
+          "models": {}
+        }
       }
     },
     {
@@ -766,8 +1242,21 @@
         "requestId": "r1",
         "jobKind": "select-layout",
         "event": "completed",
-        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }],
-        "usage": { "durationMs": 1, "geminiCallCount": 1, "models": { "planning": "gemini-layout" } }
+        "pages": [
+          {
+            "pageIndex": 0,
+            "templateId": "mag-08",
+            "images": {},
+            "texts": {}
+          }
+        ],
+        "usage": {
+          "durationMs": 1,
+          "geminiCallCount": 1,
+          "models": {
+            "planning": "gemini-layout"
+          }
+        }
       }
     },
     {
@@ -778,28 +1267,56 @@
         "requestId": "r1",
         "jobKind": "analyze",
         "event": "completed",
-        "tree": { "chapters": [] },
-        "pages": [{ "pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {} }],
-        "usage": { "durationMs": 1, "models": {} }
+        "tree": {
+          "chapters": []
+        },
+        "pages": [
+          {
+            "pageIndex": 0,
+            "templateId": "mag-08",
+            "images": {},
+            "texts": {}
+          }
+        ],
+        "usage": {
+          "durationMs": 1,
+          "models": {}
+        }
       }
     },
     {
       "name": "V3Callback failed",
       "schema": "V3Callback",
       "expectValid": true,
-      "payload": { "requestId": "r1", "jobKind": "analyze", "event": "failed", "error": { "code": "AGENT_TIMEOUT", "message": "timeout" } }
+      "payload": {
+        "requestId": "r1",
+        "jobKind": "analyze",
+        "event": "failed",
+        "error": {
+          "code": "AGENT_TIMEOUT",
+          "message": "timeout"
+        }
+      }
     },
     {
       "name": "V3Callback rejects unknown event",
       "schema": "V3Callback",
       "expectValid": false,
-      "payload": { "requestId": "r1", "jobKind": "analyze", "event": "bogus" }
+      "payload": {
+        "requestId": "r1",
+        "jobKind": "analyze",
+        "event": "bogus"
+      }
     },
     {
       "name": "V3TemplateCandidate legal candidate",
       "schema": "V3TemplateCandidate",
       "expectValid": true,
-      "payload": { "templateId": "mag-08", "category": "interior", "imageSlotCount": 3 }
+      "payload": {
+        "templateId": "mag-08",
+        "category": "interior",
+        "imageSlotCount": 3
+      }
     }
   ]
 }

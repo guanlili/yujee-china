@@ -14,7 +14,6 @@
       "role": "title",
       "maxChars": 12,
       "lang": "user",
-      "hint": "右中大字主标题，短词（如「Notes」）",
       "variableDecor": true,
       "sample": "Notes"
     },
@@ -23,7 +22,6 @@
       "role": "title",
       "maxChars": 20,
       "lang": "user",
-      "hint": "大标题续行（如「from Elsewhere」）",
       "variableDecor": true,
       "sample": "from Elsewhere"
     },
@@ -32,7 +30,6 @@
       "role": "explain",
       "maxChars": 120,
       "lang": "user",
-      "hint": "右上拼贴下方图注段",
       "sample": "这些照片来自不同的地方，却拼成了同一段心情——关于远行，也关于回家。"
     }
   ]

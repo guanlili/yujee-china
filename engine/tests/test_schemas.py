@@ -320,7 +320,7 @@ class TestV3TemplateCategoryOnly:
                 "images": [{"id": "image"}],
                 "svgs": [{"id": "divider", "variableDecor": True}],
                 "texts": [
-                    {"id": "title", "role": "title", "lang": "user", "variableDecor": True, "hint": "h"}
+                    {"id": "title", "role": "title", "lang": "user", "variableDecor": True}
                 ],
                 "items": {"texts": [{"id": "caption", "role": "explain", "lang": "user", "maxChars": 70}]},
             }
@@ -349,13 +349,14 @@ class TestV3TemplateCategoryOnly:
         assert tpl.pairing is not None
         assert tpl.pairing.with_ == "mag-2"
 
-    def test_text_slot_hint_max_chars(self):
+    def test_text_slot_rejects_removed_hint(self):
+        # hint 字段已从契约删除：带 hint 的槽应被 extra='forbid' 拒绝。
         TemplateTextSlot.model_validate(
-            {"id": "title", "role": "title", "lang": "user", "hint": "one line", "variableDecor": True}
+            {"id": "title", "role": "title", "lang": "user", "variableDecor": True}
         )
         with pytest.raises(ValidationError):
             TemplateTextSlot.model_validate(
-                {"id": "t", "role": "body", "lang": "user", "hint": "x" * 201}
+                {"id": "t", "role": "body", "lang": "user", "hint": "x"}
             )
 
 

@@ -18,7 +18,6 @@
       "role": "title",
       "maxChars": 16,
       "lang": "user",
-      "hint": "右下角主标题，全大写短词（如「ANOTHER」）",
       "variableDecor": true,
       "sample": "ANOTHER"
     }
