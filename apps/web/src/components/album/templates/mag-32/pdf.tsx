@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { PAGE, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 // 封面（PDF 端，与 index.tsx 同一版面 / 同一坐标）。白底覆盖 Shell 暖纸色；
 // 满高大图（偏右）铺满整页；左下大号主标题；左缘竖排大地名 NORWAY。文字全为陶土红 #1c1b18、Inter。
@@ -14,6 +15,8 @@ const CLAY = '#1c1b18';
 export function PdfMag32({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
   const label = d['label'] || 'NORWAY';
+  const labelTheme = resolveThemeCarrier(data, 'label');
+  const titleTheme = resolveThemeCarrier(data, 'title');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -24,11 +27,11 @@ export function PdfMag32({ data, imagePos }: TemplateRenderProps) {
 
       {/* ── 主竖排大地名 NORWAY（槽 label，左缘 rotate 90°，variableDecor） ── */}
       <View style={{ position: 'absolute', left: 18, top: 160, transform: 'rotate(90deg)', transformOrigin: 'top left' }}>
-        <Text style={{ width: 800, fontFamily: PDF_FONTS.interEn, fontWeight: 'bold', fontSize: 85, lineHeight: 1, letterSpacing: 8.5, color: CLAY }}>{label}</Text>
+        <Text style={{ width: 800, fontFamily: PDF_FONTS.interEn, fontWeight: 'bold', fontSize: 85, lineHeight: 1, letterSpacing: 8.5, color: labelTheme.accentColor ?? CLAY }}>{label}</Text>
       </View>
 
       {/* ── 主标题（槽 title，左下角大展示字） ── */}
-      <Text style={{ position: 'absolute', left: 56, top: 710, width: 300, fontFamily: PDF_FONTS.interEn, fontWeight: 'bold', fontSize: 96, lineHeight: 1.05, color: CLAY }}>{d['title']}</Text>
+      <Text style={{ position: 'absolute', left: 56, top: 710, width: 300, fontFamily: PDF_FONTS.interEn, fontWeight: 'bold', fontSize: 96, lineHeight: 1.05, color: titleTheme.accentColor ?? CLAY }}>{d['title']}</Text>
 
       {/* ── 固定装饰：左下竖排小 NORWAY（furniture，非槽位，rotate 90°） ── */}
       <View style={{ position: 'absolute', left: 50, top: 760, transform: 'rotate(90deg)', transformOrigin: 'top left' }}>

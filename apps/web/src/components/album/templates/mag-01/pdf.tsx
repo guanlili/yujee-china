@@ -17,6 +17,8 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
   };
   const headingTheme = resolveThemeCarrier(data, 'title');
   const sideTextTheme = resolveThemeCarrier(data, 'label');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2');
   const titleText = headingTheme.text ?? d.title ?? 'VENUES';
   const titleFont = hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.playfair;
   return (
@@ -88,7 +90,7 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
           left: 130,
           top: 720,
           lineHeight: 1.7,
-          color: COLORS.ink2,
+          color: explain1Theme.accentColor ?? COLORS.ink2,
           fontSize: 18,
           width: 360,
         }}
@@ -101,7 +103,7 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
           left: 130,
           top: 840,
           lineHeight: 1.7,
-          color: COLORS.ink2,
+          color: explain2Theme.accentColor ?? COLORS.ink2,
           textAlign: 'justify',
           fontSize: 18,
           width: 360,

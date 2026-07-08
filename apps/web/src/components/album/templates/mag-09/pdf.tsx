@@ -19,6 +19,11 @@ export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
     folio?: string;
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
+  const bodyTheme = resolveThemeCarrier(data, 'body');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2');
+  const explain3Theme = resolveThemeCarrier(data, 'explain3');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage
@@ -29,7 +34,7 @@ export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
       <View style={{ position: 'absolute', top: 130, right: 60, width: 230 }}>
         <Text
           style={{ position: 'absolute', left: 504, top: 130, width: 230, lineHeight: 1.7,
-            color: COLORS.ink2,
+            color: bodyTheme.accentColor ?? COLORS.ink2,
             textAlign: 'justify',
             fontSize: 18 }}
         >
@@ -54,17 +59,17 @@ export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
         position={imagePos?.['image2']}
       />
       <View style={{ position: 'absolute', top: 620, left: 60, width: 280 }}>
-        <Text style={{ position: 'absolute', left: 60, top: 620, width: 280, fontFamily: PDF_FONTS.montserrat, lineHeight: 1.75, color: COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
+        <Text style={{ position: 'absolute', left: 60, top: 620, width: 280, fontFamily: PDF_FONTS.montserrat, lineHeight: 1.75, color: explain1Theme.accentColor ?? COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
           {d.explain1 || ''}
         </Text>
-        <Text style={{ position: 'absolute', left: 60, top: 664, width: 280, fontFamily: PDF_FONTS.montserrat, lineHeight: 1.75, color: COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
+        <Text style={{ position: 'absolute', left: 60, top: 664, width: 280, fontFamily: PDF_FONTS.montserrat, lineHeight: 1.75, color: explain2Theme.accentColor ?? COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
           {d.explain2 || ''}
         </Text>
-        <Text style={{ marginTop: 12, fontFamily: PDF_FONTS.montserrat, lineHeight: 1.6, color: COLORS.ink2, textAlign: 'justify', fontSize: 13 }}>
+        <Text style={{ marginTop: 12, fontFamily: PDF_FONTS.montserrat, lineHeight: 1.6, color: explain3Theme.accentColor ?? COLORS.ink2, textAlign: 'justify', fontSize: 13 }}>
           {d.explain3 || ''}
         </Text>
       </View>
-      <PdfFolio folio={d.folio} totalPages={totalPages} fallback="09" />
+      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="09" />
     </PdfPageShell>
   );
 }

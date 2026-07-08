@@ -20,6 +20,7 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
   const categoryTheme = resolveThemeCarrier(data, 'label1');
   const volTheme = resolveThemeCarrier(data, 'label2');
   const dateTheme = resolveThemeCarrier(data, 'date');
+  const bodyTheme = resolveThemeCarrier(data, 'body');
   // PDF 不支持 mixBlendMode,顶部白文字直接半透明渲染,深色背景下仍可读。
   return (
     <PdfPageShell dark fontFamily={PDF_FONTS.serifCn}>
@@ -129,7 +130,7 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
             marginTop: 22,
             fontFamily: hasCjk(d.body) ? PDF_FONTS.serifCn : PDF_FONTS.lora,
             lineHeight: 1.85,
-            color: COLORS.paper78,
+            color: bodyTheme.accentColor ?? COLORS.paper78,
             textAlign: 'justify',
             fontSize: 18,
           }}

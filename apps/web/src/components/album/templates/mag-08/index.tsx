@@ -14,6 +14,9 @@ export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
   };
   const dateTheme = resolveThemeCarrier(data, 'date');
   const titleTheme = resolveThemeCarrier(data, 'title');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   const dn = (d.date || '08/24').split('/');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
@@ -46,7 +49,7 @@ export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
         style={{ position: 'absolute', left: 70, top: 670, width: 360, height: 24, fontSize: 18,
           fontFamily: WEB_FONTS.montserrat,
           lineHeight: 1.7,
-          color: COLORS.ink2,
+          color: explain1Theme.accentColor ?? COLORS.ink2,
           letterSpacing: '0.04em',
           textAlign: 'justify' }}
       >
@@ -57,7 +60,7 @@ export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
         style={{ position: 'absolute', left: 470, top: 300, width: 250, fontSize: 16,
           fontFamily: WEB_FONTS.montserrat,
           lineHeight: 1.7,
-          color: COLORS.ink2,
+          color: explain2Theme.accentColor ?? COLORS.ink2,
           letterSpacing: '0.04em',
           textAlign: 'justify' }}
       >
@@ -77,7 +80,7 @@ export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         {titleTheme.text ?? d.title ?? 'EVENT'}
       </h1>
-      <WebFolio folio={d.folio} totalPages={totalPages} fallback="08" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="08" />
     </WebPage>
   );
 }

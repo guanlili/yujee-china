@@ -17,6 +17,9 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
   };
   const dateTheme = resolveThemeCarrier(data, 'date');
   const titleTheme = resolveThemeCarrier(data, 'title');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   const titleText = titleTheme.text ?? d.title ?? 'EVENT';
   const titleFont = titleTheme.pdfFontFamily ?? (hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.abril);
   const dn = (d.date || '08/24').split('/');
@@ -68,14 +71,14 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
       />
       {/* 左侧说明：与照片左缘对齐、宽度等于照片宽度 */}
       <View style={{ position: 'absolute', top: 670, left: 70, width: 360 }}>
-        <Text style={{ position: 'absolute', left: 70, top: 670, width: 360, fontFamily: hasCjk(d.explain1) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat, fontSize: 18, lineHeight: 1.7, color: COLORS.ink2, textAlign: 'justify' }}>
+        <Text style={{ position: 'absolute', left: 70, top: 670, width: 360, fontFamily: hasCjk(d.explain1) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat, fontSize: 18, lineHeight: 1.7, color: explain1Theme.accentColor ?? COLORS.ink2, textAlign: 'justify' }}>
           {d.explain1 || ''}
         </Text>
       </View>
       {/* 右侧说明：移到照片右缘之外、收窄宽度，避免与照片重叠；分两段渲染 */}
       <View style={{ position: 'absolute', top: 300, left: 470, width: 250 }}>
         {(d.explain2 || '').split('\n\n').map((para, i) => (
-          <Text key={i} style={{ marginTop: i === 0 ? 0 : 14, fontFamily: hasCjk(d.explain2) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat, fontSize: 16, lineHeight: 1.7, color: COLORS.ink2, textAlign: 'justify' }}>
+          <Text key={i} style={{ marginTop: i === 0 ? 0 : 14, fontFamily: hasCjk(d.explain2) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat, fontSize: 16, lineHeight: 1.7, color: explain2Theme.accentColor ?? COLORS.ink2, textAlign: 'justify' }}>
             {para}
           </Text>
         ))}
@@ -89,7 +92,7 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         {titleText}
       </Text>
-      <PdfFolio folio={d.folio} totalPages={totalPages} fallback="08" />
+      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="08" />
     </PdfPageShell>
   );
 }

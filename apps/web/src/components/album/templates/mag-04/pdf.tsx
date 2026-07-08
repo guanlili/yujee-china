@@ -16,6 +16,9 @@ export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
     folio?: string;
   };
   const dateTheme = resolveThemeCarrier(data, 'date');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   const dateText = dateTheme.text ?? d.date ?? '04/24';
   const dn = dateText.split('/');
   // 展示主元素：大号日期用 Bebas Neue（纯拉丁安全）；含中文回退 serifCn 避免豆腐块
@@ -65,7 +68,7 @@ export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           width: 347,
           fontFamily: hasCjk(d.explain1) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat,
           lineHeight: 1.75,
-          color: COLORS.ink2,
+          color: explain1Theme.accentColor ?? COLORS.ink2,
           textAlign: 'justify',
           fontSize: 18,
         }}
@@ -92,14 +95,14 @@ export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           width: 347,
           fontFamily: hasCjk(d.explain2) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat,
           lineHeight: 1.75,
-          color: COLORS.ink2,
+          color: explain2Theme.accentColor ?? COLORS.ink2,
           textAlign: 'justify',
           fontSize: 18,
         }}
       >
         {d.explain2 || ''}
       </Text>
-      <PdfFolio folio={d.folio} totalPages={totalPages} fallback="04" />
+      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="04" />
     </PdfPageShell>
   );
 }

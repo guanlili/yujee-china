@@ -16,6 +16,8 @@ export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
   const topRightTheme = resolveThemeCarrier(data, 'label');
+  const explainTheme = resolveThemeCarrier(data, 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   const titleText = titleTheme.text ?? d.title ?? "LET'S GO RIDE\nA BIKE";
   const titleFont = titleTheme.pdfFontFamily ?? (hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.bebas);
   return (
@@ -54,7 +56,7 @@ export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
         <Text
           style={{
             lineHeight: 1.75,
-            color: COLORS.ink2,
+            color: explainTheme.accentColor ?? COLORS.ink2,
             textAlign: 'justify',
             fontSize: 18,
           }}
@@ -63,7 +65,7 @@ export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
         </Text>
       </View>
       <PdfImage src={d.image} style={{ position: 'absolute', top: 430, left: 50, right: 50, height: 600 }} position={imagePos?.['image']} />
-      <PdfFolio folio={d.folio} totalPages={totalPages} fallback="05" />
+      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="05" />
     </PdfPageShell>
   );
 }

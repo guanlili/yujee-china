@@ -1,6 +1,7 @@
 import type { TemplateRenderProps } from '../types';
 import { PAGE, WEB_FONTS } from '../constants';
 import { WebImage } from '../web-utils';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 // 内页 · 拼贴三图 + 右下角标签骨架（category: interior，3 图）。白底；三张矩形图错落拼贴
 // （左满高竖图 + 中横图 + 右上竖图），右下角一组固定骨架标签词 when/where/who/what（硬编码 furniture，
@@ -11,6 +12,7 @@ const INK = '#1c1b18';
 
 export function WebMag50({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
+  const titleTheme = resolveThemeCarrier(data, 'title');
   const labelStyle = {
     position: 'absolute' as const,
     fontFamily: WEB_FONTS.sansEn,
@@ -38,7 +40,7 @@ export function WebMag50({ data, imagePos }: TemplateRenderProps) {
       <div style={{ ...labelStyle, left: 595, top: 818 }}>what</div>
 
       {/* 主标题（title 槽，全大写） */}
-      <div style={{ position: 'absolute', left: 436, top: 843, width: 320, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 18, lineHeight: 1.0, color: INK, textTransform: 'uppercase', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
+      <div style={{ position: 'absolute', left: 436, top: 843, width: 320, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 18, lineHeight: 1.0, color: titleTheme.accentColor ?? INK, textTransform: 'uppercase', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
     </div>
   );
 }

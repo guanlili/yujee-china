@@ -147,9 +147,10 @@ interface PdfFolioProps {
   folio?: string;
   totalPages?: number;
   fallback: string;
+  accentColor?: string;
 }
 
-export function PdfFolio({ folio, totalPages, fallback }: PdfFolioProps) {
+export function PdfFolio({ folio, totalPages, fallback, accentColor }: PdfFolioProps) {
   return (
     <View
       style={{
@@ -164,7 +165,7 @@ export function PdfFolio({ folio, totalPages, fallback }: PdfFolioProps) {
           fontFamily: PDF_FONTS.serifEn,
           fontStyle: 'italic',
           fontSize: 22,
-          color: COLORS.ink,
+          color: accentColor ?? COLORS.ink,
         }}
       >
         {folio || fallback}

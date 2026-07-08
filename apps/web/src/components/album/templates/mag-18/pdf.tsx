@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 // 图注含中文回退 serifCn（Noto SC）避免豆腐块，纯英文走 Montserrat（指定艺术字，与 web 一致）。
 const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
@@ -15,6 +16,9 @@ export function PdfMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
     explain2?: string;
     folio?: string;
   };
+  const explain1Theme = resolveThemeCarrier(data, 'explain1');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage
@@ -44,7 +48,7 @@ export function PdfMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
           style={{
             fontFamily: capFont(d.explain1 || ''),
             lineHeight: 1.75,
-            color: COLORS.ink2,
+            color: explain1Theme.accentColor ?? COLORS.ink2,
             textAlign: 'justify',
             letterSpacing: 0.3,
             fontSize: 15,
@@ -70,7 +74,7 @@ export function PdfMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
           style={{
             fontFamily: capFont(d.explain2 || ''),
             lineHeight: 1.75,
-            color: COLORS.ink2,
+            color: explain2Theme.accentColor ?? COLORS.ink2,
             textAlign: 'justify',
             letterSpacing: 0.3,
             fontSize: 15,
@@ -79,7 +83,7 @@ export function PdfMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
           {d.explain2 || ''}
         </Text>
       </View>
-      <PdfFolio folio={d.folio} totalPages={totalPages} fallback="18" />
+      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="18" />
     </PdfPageShell>
   );
 }

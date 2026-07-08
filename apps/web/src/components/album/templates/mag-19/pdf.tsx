@@ -17,6 +17,9 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
   const introTheme = resolveThemeCarrier(data, 'title');
   const introText = introTheme.text ?? d.title ?? '';
   const introFont = hasCjk(introText) ? PDF_FONTS.serifCn : PDF_FONTS.playfair;
+  const explain1Theme = resolveThemeCarrier(data, 'explain1');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   // PDF 不支持 writingMode: vertical-rl,Frame 提示退化为水平摆放
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
@@ -48,7 +51,7 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           left: 60,
           width: 300,
           lineHeight: 1.7,
-          color: COLORS.ink2,
+          color: explain1Theme.accentColor ?? COLORS.ink2,
           fontSize: 18,
           fontFamily: PDF_FONTS.montserrat,
         }}
@@ -62,7 +65,7 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           right: 60,
           width: 300,
           lineHeight: 1.7,
-          color: COLORS.ink2,
+          color: explain2Theme.accentColor ?? COLORS.ink2,
           textAlign: 'right',
           fontSize: 18,
           fontFamily: PDF_FONTS.montserrat,
@@ -78,12 +81,12 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           width: 20,
           fontSize: 10,
           letterSpacing: 4,
-          color: COLORS.ink3,
+          color: folioTheme.accentColor ?? COLORS.ink3,
         }}
       >
         {`FRAME ${d.folio || '19'} / 30`}
       </Text>
-      <PdfFolio folio={d.folio} totalPages={totalPages} fallback="19" />
+      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="19" />
     </PdfPageShell>
   );
 }

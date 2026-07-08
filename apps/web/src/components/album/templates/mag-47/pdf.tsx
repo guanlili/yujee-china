@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { PAGE, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 // 错落四图 + 左上叙事文内页（PDF 端，与 index.tsx 同一版面 / 同一坐标）。来自 A4-19 (node 12:66)。
 // 白底覆盖 Shell 暖纸色；四张等大横图错落（image1 右上 / image2 左中 / image3 右下 / image4 左下），
@@ -15,6 +16,8 @@ export function PdfMag47({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
   const titleFont = hasCjk(d['title']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
   const explainFont = hasCjk(d['explain']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
+  const titleTheme = resolveThemeCarrier(data, 'title');
+  const explainTheme = resolveThemeCarrier(data, 'explain');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -27,10 +30,10 @@ export function PdfMag47({ data, imagePos }: TemplateRenderProps) {
       <PdfImage src={d['image4']} style={{ position: 'absolute', left: 89, top: 739, width: 320, height: 235 }} position={imagePos?.['image4']} />
 
       {/* 左上大字主标题 */}
-      <Text style={{ position: 'absolute', left: 89, top: 296, width: 480, fontFamily: titleFont, fontWeight: 'bold', fontSize: 33, lineHeight: 1.1, color: INK }}>{d['title']}</Text>
+      <Text style={{ position: 'absolute', left: 89, top: 296, width: 480, fontFamily: titleFont, fontWeight: 'bold', fontSize: 33, lineHeight: 1.1, color: titleTheme.accentColor ?? INK }}>{d['title']}</Text>
 
       {/* 标题下方小字图注段 */}
-      <Text style={{ position: 'absolute', left: 89, top: 368, width: 396, fontFamily: explainFont, fontSize: 18, lineHeight: 1.4, color: INK }}>{d['explain']}</Text>
+      <Text style={{ position: 'absolute', left: 89, top: 368, width: 396, fontFamily: explainFont, fontSize: 18, lineHeight: 1.4, color: explainTheme.accentColor ?? INK }}>{d['explain']}</Text>
     </PdfPageShell>
   );
 }

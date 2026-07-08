@@ -16,6 +16,8 @@ export function PdfMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
   const labelTheme = resolveThemeCarrier(data, 'label');
+  const explainTheme = resolveThemeCarrier(data, 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   const titleText = titleTheme.text ?? d.title ?? 'CHERRY\nBUCKET';
   const titleFont = titleTheme.pdfFontFamily ?? (hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.playfair);
   return (
@@ -62,14 +64,14 @@ export function PdfMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
           right: 50,
           width: 200,
           lineHeight: 1.75,
-          color: COLORS.ink2,
+          color: explainTheme.accentColor ?? COLORS.ink2,
           textAlign: 'justify',
           fontSize: 18,
         }}
       >
         {d.explain || ''}
       </Text>
-      <PdfFolio folio={d.folio} totalPages={totalPages} fallback="11" />
+      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="11" />
     </PdfPageShell>
   );
 }

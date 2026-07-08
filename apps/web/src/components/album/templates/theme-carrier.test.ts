@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 import * as React from 'react';
 import { createElement } from 'react';
@@ -248,27 +248,89 @@ test('web templates consume every text variableDecor carrier as style only', () 
   }
 });
 
-test('web templates ignore carriers for non-variableDecor text slots', () => {
-  const data = adaptPageToTemplateData(
-    {
-      templateId: 'p01',
-      images: { image: 'p0' },
-      texts: {
-        body: 'Body copy is not variable decor.',
-        'body#accentColor': '#0BAD0B',
-        'body#artFont': 'display-bold',
-      },
-    },
-    (photoId) => `/photos/${photoId}.jpg`,
+// variableDecor 门控已废弃：所有文字槽都按角色接受配色 carrier（set_text_colors 一键刷）。
+// 下面这条通用一致性测试守着新铁律——每个被渲染的文字槽都必须 resolveThemeCarrier，
+// 不允许写死 color 而无视 carrier。它是全量模板配色改造的工单与安全网。
+
+const CONTRACTS_TEMPLATES_DIR = new URL(
+  '../../../../../../packages/contracts/templates/',
+  import.meta.url,
+);
+
+interface TemplateTextSlot {
+  base: string;
+  repeat: boolean;
+  role: string;
+}
+
+function readTemplateTextSlots(templateId: string): TemplateTextSlot[] {
+  const raw = JSON.parse(
+    readFileSync(new URL(`${templateId}.json`, CONTRACTS_TEMPLATES_DIR), 'utf8'),
+  ) as {
+    texts?: { id?: string; role?: string }[];
+    items?: { texts?: { id?: string; role?: string }[] };
+  };
+  const slots: TemplateTextSlot[] = [];
+  for (const s of raw.texts ?? []) {
+    if (s?.id) slots.push({ base: s.id, repeat: false, role: s.role ?? 'text' });
+  }
+  for (const s of raw.items?.texts ?? []) {
+    if (s?.id) slots.push({ base: s.id, repeat: true, role: s.role ?? 'text' });
+  }
+  return slots;
+}
+
+function listTemplateIds(): string[] {
+  return readdirSync(new URL('.', import.meta.url), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name !== 'html')
+    .map((entry) => entry.name)
+    .sort();
+}
+
+// 源码是否把该槽当数据渲染（heuristic：出现 d.base / data.base / data['base'] / data[`base）。
+function referencesSlot(source: string, base: string): boolean {
+  const b = escapeRegExp(base);
+  return new RegExp(`\\b(?:d|data)(?:\\.${b}\\b|\\[['"\`]${b}\\b)`).test(source);
+}
+
+// 源码是否为该槽解析了主题 carrier（普通槽用引号名，重复槽用反引号 base[ 形式）。
+function resolvesCarrier(source: string, slot: TemplateTextSlot): boolean {
+  const b = escapeRegExp(slot.base);
+  const pattern = slot.repeat
+    ? new RegExp(`resolveThemeCarrier\\(\\s*data\\s*,\\s*\`${b}\\[`)
+    : new RegExp(`resolveThemeCarrier\\(\\s*data\\s*,\\s*['"]${b}['"]\\s*\\)`);
+  return pattern.test(source);
+}
+
+test('every rendered text slot consumes its accent carrier (web + pdf)', () => {
+  const missing: string[] = [];
+  for (const templateId of listTemplateIds()) {
+    let slots: TemplateTextSlot[];
+    try {
+      slots = readTemplateTextSlots(templateId);
+    } catch {
+      continue; // 无对应 contracts JSON 的目录跳过。
+    }
+    for (const renderer of ['index.tsx', 'pdf.tsx'] as const) {
+      let source: string;
+      try {
+        source = readFileSync(new URL(`./${templateId}/${renderer}`, import.meta.url), 'utf8');
+      } catch {
+        continue;
+      }
+      for (const slot of slots) {
+        if (!referencesSlot(source, slot.base)) continue;
+        if (!resolvesCarrier(source, slot)) {
+          missing.push(`${templateId}/${renderer} :: ${slot.base}${slot.repeat ? '[n]' : ''} (role=${slot.role})`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(
+    missing,
+    [],
+    `这些文字槽写死了颜色、没有 resolveThemeCarrier（需接入 set_text_colors 配色）：\n${missing.join('\n')}`,
   );
-  const Template = getWebTemplate('p01');
-  assert.ok(Template, 'p01 web template must resolve');
-
-  const html = renderToStaticMarkup(createElement(Template!, { data, totalPages: 5, imagePos: {} }));
-
-  assert.match(html, /Body copy is not variable decor\./);
-  assert.doesNotMatch(html, /#0BAD0B/);
-  assert.doesNotMatch(html, new RegExp(escapeRegExp(DISPLAY_BOLD_WEB_FONT_NEEDLE)));
 });
 
 test('PDF templates resolve every text variableDecor carrier in source', () => {

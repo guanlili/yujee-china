@@ -18,6 +18,11 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
     folio?: string;
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
+  const bodyTheme = resolveThemeCarrier(data, 'body');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2');
+  const explain3Theme = resolveThemeCarrier(data, 'explain3');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -30,7 +35,7 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
       <div style={{ position: 'absolute', top: 130, right: 60, width: 230 }}>
         <p
           style={{ position: 'absolute', left: 504, top: 130, width: 230, height: 31, lineHeight: 1.7,
-            color: COLORS.ink2,
+            color: bodyTheme.accentColor ?? COLORS.ink2,
             letterSpacing: '0.02em',
             textAlign: 'justify',
             fontSize: 18 }}
@@ -79,11 +84,11 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
           textAlign: 'justify',
         }}
       >
-        <p style={{ position: 'absolute', left: 60, top: 620, width: 280, height: 32, fontSize: 18 }}>{d.explain1 || ''}</p>
-        <p style={{ position: 'absolute', left: 60, top: 664, width: 280, height: 32, fontSize: 18 }}>{d.explain2 || ''}</p>
-        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 13, lineHeight: 1.6 }}>{d.explain3 || ''}</p>
+        <p style={{ position: 'absolute', left: 60, top: 620, width: 280, height: 32, fontSize: 18, color: explain1Theme.accentColor ?? COLORS.ink2 }}>{d.explain1 || ''}</p>
+        <p style={{ position: 'absolute', left: 60, top: 664, width: 280, height: 32, fontSize: 18, color: explain2Theme.accentColor ?? COLORS.ink2 }}>{d.explain2 || ''}</p>
+        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 13, lineHeight: 1.6, color: explain3Theme.accentColor ?? COLORS.ink2 }}>{d.explain3 || ''}</p>
       </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} fallback="09" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="09" />
     </WebPage>
   );
 }

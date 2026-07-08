@@ -13,6 +13,8 @@ export function WebMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
   const labelTheme = resolveThemeCarrier(data, 'label');
+  const explainTheme = resolveThemeCarrier(data, 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -65,9 +67,9 @@ export function WebMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
           textAlign: 'justify',
         }}
       >
-        <p style={{ margin: 0, fontSize: 18 }}>{d.explain || ''}</p>
+        <p style={{ margin: 0, fontSize: 18, color: explainTheme.accentColor ?? COLORS.ink2 }}>{d.explain || ''}</p>
       </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} fallback="11" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="11" />
     </WebPage>
   );
 }

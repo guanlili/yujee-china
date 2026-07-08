@@ -1,6 +1,7 @@
 import type { TemplateRenderProps } from '../types';
 import { WEB_FONTS } from '../constants';
 import { WebImage } from '../web-utils';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 // 内页 · 旅行手记（category: interior，1 图）。来自「排版板式」旅行相册库。
 // 白底；上方一段「手写矢量草书」装饰标题、中部一张横图、右下角多行图注。
@@ -20,6 +21,7 @@ const HANDWRITING_SVG =
 
 export function WebMag30({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
+  const explainTheme = resolveThemeCarrier(data, 'explain');
   return (
     <div style={{ position: 'relative', width: 794, height: 1123, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 手写草书矢量标题（固定装饰，内联 Figma 原 SVG，不进契约） */}
@@ -48,7 +50,7 @@ export function WebMag30({ data, imagePos }: TemplateRenderProps) {
           fontWeight: 400,
           fontSize: 21,
           lineHeight: 1.6,
-          color: INK,
+          color: explainTheme.accentColor ?? INK,
           whiteSpace: 'pre-wrap',
           overflow: 'hidden',
         }}

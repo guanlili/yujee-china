@@ -1,6 +1,7 @@
 import type { TemplateRenderProps } from '../types';
 import { PAGE, WEB_FONTS } from '../constants';
 import { WebImage } from '../web-utils';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 // 内页 · 三联横图（category: interior，3 图）。白底；三张等大横图（376×247）
 // 垂直堆叠、水平居中偏左，左侧留白放竖排大字标题，每张图右侧留白放小图注。
@@ -11,6 +12,10 @@ const INK = '#1c1b18';
 
 export function WebMag33({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
+  const titleTheme = resolveThemeCarrier(data, 'title');
+  const caption1Theme = resolveThemeCarrier(data, 'caption1');
+  const caption2Theme = resolveThemeCarrier(data, 'caption2');
+  const caption3Theme = resolveThemeCarrier(data, 'caption3');
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 三张等大横图（垂直堆叠） */}
@@ -19,12 +24,12 @@ export function WebMag33({ data, imagePos }: TemplateRenderProps) {
       <WebImage src={d['image3']} style={{ position: 'absolute', left: 200, top: 717, width: 376, height: 247, objectFit: 'cover' }} position={imagePos?.['image3']} slotId="image3" />
 
       {/* 左侧竖排大字标题（在三联图左侧留白） */}
-      <div style={{ position: 'absolute', left: 28, top: 159, width: 150, fontFamily: WEB_FONTS.sansEn, fontWeight: 800, fontSize: 44, lineHeight: 1.05, color: INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
+      <div style={{ position: 'absolute', left: 28, top: 159, width: 150, fontFamily: WEB_FONTS.sansEn, fontWeight: 800, fontSize: 44, lineHeight: 1.05, color: titleTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
 
       {/* 每张图右侧小图注（在右侧留白） */}
-      <div style={{ position: 'absolute', left: 596, top: 159, width: 178, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 16, lineHeight: 1.35, color: INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['caption1']}</div>
-      <div style={{ position: 'absolute', left: 596, top: 438, width: 178, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 16, lineHeight: 1.35, color: INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['caption2']}</div>
-      <div style={{ position: 'absolute', left: 596, top: 717, width: 178, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 16, lineHeight: 1.35, color: INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['caption3']}</div>
+      <div style={{ position: 'absolute', left: 596, top: 159, width: 178, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 16, lineHeight: 1.35, color: caption1Theme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['caption1']}</div>
+      <div style={{ position: 'absolute', left: 596, top: 438, width: 178, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 16, lineHeight: 1.35, color: caption2Theme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['caption2']}</div>
+      <div style={{ position: 'absolute', left: 596, top: 717, width: 178, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 16, lineHeight: 1.35, color: caption3Theme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['caption3']}</div>
     </div>
   );
 }

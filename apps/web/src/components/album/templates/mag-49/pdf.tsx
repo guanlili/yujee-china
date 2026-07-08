@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { PAGE, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 // 顶部超大标题 + 单张近方大图内页（PDF 端，与 index.tsx 同一版面 / 同一坐标）。白底覆盖 Shell 暖纸色；
 // 页顶横排超大主标题（槽 title，占位「NORWAY」，首字母 N 略大）；标题负空间嵌固定骨架标签
@@ -18,6 +19,7 @@ export function PdfMag49({ data, imagePos }: TemplateRenderProps) {
   const head = title.charAt(0);
   const rest = title.slice(1);
   const titleFont = hasCjk(title) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
+  const titleTheme = resolveThemeCarrier(data, 'title');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -25,8 +27,8 @@ export function PdfMag49({ data, imagePos }: TemplateRenderProps) {
 
       {/* ── 顶部超大主标题（槽 title，占位 NORWAY，首字母略大，variableDecor） ── */}
       <View style={{ position: 'absolute', left: 28, top: 150, width: 738, height: 155, flexDirection: 'row', alignItems: 'flex-end' }}>
-        <Text style={{ fontFamily: titleFont, fontWeight: 'bold', fontSize: 155, lineHeight: 1, color: INK }}>{head}</Text>
-        <Text style={{ fontFamily: titleFont, fontWeight: 'bold', fontSize: 124, lineHeight: 1, color: INK }}>{rest}</Text>
+        <Text style={{ fontFamily: titleFont, fontWeight: 'bold', fontSize: 155, lineHeight: 1, color: titleTheme.accentColor ?? INK }}>{head}</Text>
+        <Text style={{ fontFamily: titleFont, fontWeight: 'bold', fontSize: 124, lineHeight: 1, color: titleTheme.accentColor ?? INK }}>{rest}</Text>
       </View>
 
       {/* ── 固定骨架标签 when / where / who / what（furniture，2×2，非槽位） ── */}

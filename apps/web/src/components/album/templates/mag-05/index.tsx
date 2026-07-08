@@ -13,6 +13,8 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
   const topRightTheme = resolveThemeCarrier(data, 'label');
+  const explainTheme = resolveThemeCarrier(data, 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <h1
@@ -54,7 +56,7 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
           style={{
             margin: 0,
             lineHeight: 1.75,
-            color: COLORS.ink2,
+            color: explainTheme.accentColor ?? COLORS.ink2,
             textAlign: 'justify',
             letterSpacing: '0.02em',
             fontSize: 18,
@@ -70,7 +72,7 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
         position={imagePos?.['image']}
         slotId="image"
       />
-      <WebFolio folio={d.folio} totalPages={totalPages} fallback="05" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="05" />
     </WebPage>
   );
 }

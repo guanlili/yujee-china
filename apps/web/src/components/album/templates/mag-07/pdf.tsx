@@ -16,6 +16,9 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
     folio?: string;
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   const titleText = titleTheme.text ?? d.title ?? 'FUSHI\nINARI';
   // 主标题：指定艺术字 Bebas Neue（高瘦大写，配地名旅行大字）；含中文回退 serifCn 避免豆腐块。
   const titleFont = hasCjk(titleText)
@@ -32,8 +35,8 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
   };
   // 图注：Montserrat（含中文回退 sansCn），保持可读字号 / 行距。
   const capFont = (text: string) => (hasCjk(text) ? PDF_FONTS.sansCn : PDF_FONTS.montserrat);
-  const cap = (text: string, fontSize: number) => (
-    <Text style={{ fontFamily: capFont(text), lineHeight: 1.7, color: COLORS.ink2, textAlign: 'justify', fontSize }}>
+  const cap = (text: string, fontSize: number, color?: string) => (
+    <Text style={{ fontFamily: capFont(text), lineHeight: 1.7, color: color ?? COLORS.ink2, textAlign: 'justify', fontSize }}>
       {text}
     </Text>
   );
@@ -48,7 +51,7 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
           height: LAYOUT.caption1.h,
         }}
       >
-        {cap(d.explain1 || '', LAYOUT.caption1.fontSize)}
+        {cap(d.explain1 || '', LAYOUT.caption1.fontSize, explain1Theme.accentColor ?? undefined)}
       </View>
       <PdfImage
         src={d.image1}
@@ -64,7 +67,7 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
           height: LAYOUT.caption2.h,
         }}
       >
-        {cap(d.explain2 || '', LAYOUT.caption2.fontSize)}
+        {cap(d.explain2 || '', LAYOUT.caption2.fontSize, explain2Theme.accentColor ?? undefined)}
       </View>
       <PdfImage
         src={d.image2}
@@ -80,7 +83,7 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         {titleText}
       </Text>
-      <PdfFolio folio={d.folio} totalPages={totalPages} fallback="07" />
+      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="07" />
     </PdfPageShell>
   );
 }

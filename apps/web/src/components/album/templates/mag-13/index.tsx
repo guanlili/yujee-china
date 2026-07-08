@@ -12,6 +12,7 @@ export function WebMag13({ data, imagePos }: TemplateRenderProps) {
     folio?: string;
   };
   const titleTheme = resolveThemeCarrier(data, 'title');
+  const explainTheme = resolveThemeCarrier(data, 'explain');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <div
@@ -57,7 +58,7 @@ export function WebMag13({ data, imagePos }: TemplateRenderProps) {
           margin: 0,
           textAlign: 'center',
           lineHeight: 1.75,
-          color: COLORS.ink2,
+          color: explainTheme.accentColor ?? COLORS.ink2,
           letterSpacing: '0.02em',
           fontSize: 15,
         }}

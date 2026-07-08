@@ -19,6 +19,7 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
   const categoryTheme = resolveThemeCarrier(data, 'label1');
   const volTheme = resolveThemeCarrier(data, 'label2');
   const dateTheme = resolveThemeCarrier(data, 'date');
+  const bodyTheme = resolveThemeCarrier(data, 'body');
   return (
     <WebPage dark fontFamily={WEB_FONTS.serifCn}>
       <WebImage
@@ -121,7 +122,7 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
               margin: 0,
               fontFamily: hasCjk(d.body) ? WEB_FONTS.serifCn : WEB_FONTS.lora,
               lineHeight: 1.85,
-              color: COLORS.paper78,
+              color: bodyTheme.accentColor ?? COLORS.paper78,
               textAlign: 'justify',
               fontSize: 18,
             }}

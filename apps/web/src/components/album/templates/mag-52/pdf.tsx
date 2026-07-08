@@ -2,6 +2,7 @@ import { Path, Svg, Text, View } from '@react-pdf/renderer';
 import { PAGE, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 // 内页（PDF 端，与 index.tsx 同一版面 / 同一坐标）。来自 Figma A4-7 跨页（node 11:271）左半页 x∈[0,595]。
 // 白底覆盖 Shell 暖纸色。手写矢量（Figma node 11:331）是固定装饰、不进契约：把 16 条 path 搬进
@@ -13,6 +14,7 @@ const INK = '#1c1b18';
 
 export function PdfMag52({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
+  const titleTheme = resolveThemeCarrier(data, 'title');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -69,7 +71,7 @@ export function PdfMag52({ data, imagePos }: TemplateRenderProps) {
           fontFamily: PDF_FONTS.sansEn,
           fontSize: 108,
           lineHeight: 1.05,
-          color: INK,
+          color: titleTheme.accentColor ?? INK,
         }}
       >
         {d['title']}

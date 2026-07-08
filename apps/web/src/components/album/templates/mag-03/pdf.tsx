@@ -15,6 +15,8 @@ export function PdfMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
     image?: string;
   };
   const labelTheme = resolveThemeCarrier(data, 'label');
+  const dateTheme = resolveThemeCarrier(data, 'date');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   const labelText = labelTheme.text ?? d.label ?? '';
   const labelFont =
     labelTheme.pdfFontFamily ?? (hasCjk(labelText) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat);
@@ -73,7 +75,7 @@ export function PdfMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
               // 日期(03 / 30):字号 30,下方较大的一部分,与 web 一致。
               marginTop: 6,
               letterSpacing: 2,
-              color: labelTheme.accentColor ?? COLORS.ink,
+              color: dateTheme.accentColor ?? labelTheme.accentColor ?? COLORS.ink,
               fontSize: 30,
               fontWeight: 600,
               fontFamily: dateFont,
@@ -83,7 +85,7 @@ export function PdfMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
           </Text>
         ) : null}
       </View>
-      <PdfFolio folio={d.folio} totalPages={totalPages} fallback="03" />
+      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="03" />
     </PdfPageShell>
   );
 }

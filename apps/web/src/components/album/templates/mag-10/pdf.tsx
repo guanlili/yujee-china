@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { COLORS, PDF_FONTS } from '../constants';
 import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { GridCell, TemplateData, TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 // 重复组 items:image 寻址 image[i]、图说文字寻址 explain[i]。adapt-layout 把
 // image[i]/explain[i] 还原成 data.image / data.explain 两个并列数组(元素为
@@ -45,6 +46,7 @@ export function PdfMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
     };
   });
   const cellW = (794 - 60 * 2 - 50) / 2;
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       {merged.map((c, i) => {
@@ -52,6 +54,7 @@ export function PdfMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
         const row = Math.floor(i / 2);
         const x = 60 + col * (cellW + 50);
         const y = 130 + row * (28 + 280 + 12 + 80);
+        const cellTheme = resolveThemeCarrier(data, `explain[${i}]`);
         return (
           <View key={c.n ?? i} style={{ position: 'absolute', top: y, left: x, width: cellW }}>
             <Text
@@ -71,7 +74,7 @@ export function PdfMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
                 fontFamily: hasCjk(c.caption) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat,
                 lineHeight: 1.7,
                 letterSpacing: 0.5,
-                color: COLORS.ink,
+                color: cellTheme.accentColor ?? COLORS.ink,
                 textAlign: 'justify',
                 fontSize: 13,
               }}
@@ -81,7 +84,7 @@ export function PdfMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
           </View>
         );
       })}
-      <PdfFolio folio={d.folio} totalPages={totalPages} fallback="10" />
+      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="10" />
     </PdfPageShell>
   );
 }

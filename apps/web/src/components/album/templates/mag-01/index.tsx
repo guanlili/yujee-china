@@ -14,6 +14,8 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
   };
   const headingTheme = resolveThemeCarrier(data, 'title');
   const sideTextTheme = resolveThemeCarrier(data, 'label');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <div
@@ -85,7 +87,7 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
           left: 130,
           top: 720,
           lineHeight: 1.7,
-          color: COLORS.ink2,
+          color: explain1Theme.accentColor ?? COLORS.ink2,
           letterSpacing: '0.02em',
           fontSize: 18,
           width: 360,
@@ -99,7 +101,7 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
           left: 130,
           top: 840,
           lineHeight: 1.7,
-          color: COLORS.ink2,
+          color: explain2Theme.accentColor ?? COLORS.ink2,
           textAlign: 'justify',
           letterSpacing: '0.02em',
           fontSize: 18,

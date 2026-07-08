@@ -16,6 +16,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
     folio?: string;
   };
   const headingTheme = resolveThemeCarrier(data, 'title');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   // 顶层标题与重复项 title[i] 共享 base key `title`:有重复项时 data.title 是数组,
   // 顶层标题退回默认值。仅当 data.title 是字符串时才作为顶层大标题用。
   const headingText = typeof d.title === 'string' ? d.title : undefined;
@@ -96,6 +97,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
         const y = 338 + row * 360;
         const numberTheme = resolveThemeCarrier(data, `number[${i}]`);
         const titleTheme = resolveThemeCarrier(data, `title[${i}]`);
+        const descriptionTheme = resolveThemeCarrier(data, `description[${i}]`);
         const titleResolved = slotText(titles?.[i]) || legacy[i]?.title || '';
         // 把编号(如 "01")拆成前导 0(lead)与主数字(rest):前导 0 小号、上移半个字符,
         // 主数字放大,形成"0¹/"的层次。无前导 0 时 lead 为空,只显示主数字。
@@ -173,7 +175,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
             <Text
               style={{
                 lineHeight: 1.7,
-                color: COLORS.ink2,
+                color: descriptionTheme.accentColor ?? COLORS.ink2,
                 textAlign: 'justify',
                 fontSize: 16,
               }}
@@ -183,7 +185,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
           </View>
         );
       })}
-      <PdfFolio folio={d.folio} totalPages={totalPages} fallback="02" />
+      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="02" />
     </PdfPageShell>
   );
 }

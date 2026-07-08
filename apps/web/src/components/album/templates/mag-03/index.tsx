@@ -11,6 +11,8 @@ export function WebMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
     image?: string;
   };
   const labelTheme = resolveThemeCarrier(data, 'label');
+  const dateTheme = resolveThemeCarrier(data, 'date');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   // 装饰：与标签同色（参与主题换肤）的四角框线，压在图片之上（类似杂志取景角标）。
   const decorColor = labelTheme.accentColor ?? COLORS.ink;
   const corners = [
@@ -68,7 +70,7 @@ export function WebMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
               // 日期(03 / 30):字号 30,作为下方较大的一部分。
               marginTop: 6,
               letterSpacing: '0.1em',
-              color: labelTheme.accentColor ?? COLORS.ink,
+              color: dateTheme.accentColor ?? labelTheme.accentColor ?? COLORS.ink,
               fontSize: 30,
               fontWeight: 600,
               fontFamily: labelTheme.webFontFamily ?? WEB_FONTS.montserrat,
@@ -78,7 +80,7 @@ export function WebMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
           </div>
         ) : null}
       </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} fallback="03" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="03" />
     </WebPage>
   );
 }

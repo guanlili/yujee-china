@@ -1,9 +1,11 @@
 import { WEB_FONTS } from '../constants';
 import { WebFolio, WebImage, WebPage } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag06({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as { folio?: string; image?: string };
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -13,7 +15,7 @@ export function WebMag06({ data, totalPages, imagePos }: TemplateRenderProps) {
         position={imagePos?.['image']}
         slotId="image"
       />
-      <WebFolio folio={d.folio} totalPages={totalPages} fallback="06" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="06" />
     </WebPage>
   );
 }

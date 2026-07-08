@@ -1,6 +1,7 @@
 import { Text, View } from '@react-pdf/renderer';
 import { PAGE, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
+import { resolveThemeCarrier } from '../theme-carrier';
 import type { TemplateRenderProps } from '../types';
 
 // 上下满版双图叠字内页（PDF 端，与 index.tsx 同一版面 / 同一坐标）。来自 A4-13 (node 11:485)。
@@ -14,6 +15,7 @@ const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 export function PdfMag38({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
   const bodyFont = hasCjk(d['body']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
+  const bodyTheme = resolveThemeCarrier(data, 'body');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -26,7 +28,7 @@ export function PdfMag38({ data, imagePos }: TemplateRenderProps) {
       <PdfImage src={d['image2']} style={{ position: 'absolute', left: 0, top: 511, width: 794, height: 612 }} position={imagePos?.['image2']} />
 
       {/* 居中大字陈述句（跨在两图交界处） */}
-      <Text style={{ position: 'absolute', left: 87, top: 284, width: 620, textAlign: 'center', fontFamily: bodyFont, fontWeight: 'bold', fontSize: 48, lineHeight: 1.15, color: INK }}>{d['body']}</Text>
+      <Text style={{ position: 'absolute', left: 87, top: 284, width: 620, textAlign: 'center', fontFamily: bodyFont, fontWeight: 'bold', fontSize: 48, lineHeight: 1.15, color: bodyTheme.accentColor ?? INK }}>{d['body']}</Text>
     </PdfPageShell>
   );
 }

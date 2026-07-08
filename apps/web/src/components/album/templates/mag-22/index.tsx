@@ -2,6 +2,7 @@ import type { TemplateRenderProps } from '../types';
 import { COLORS, PAGE, WEB_FONTS } from '../constants';
 import { WebImage } from '../web-utils';
 import { YUJEE_LOGO_SVG } from '../brand-logo';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 // 内页 · 故事合集（category: interior，2 图）。白底；顶部合集主标题；
 // 两组「左图 + 右段落 + 作者署名」纵向排列；底部固定品牌落款（logo + 版权 + 社媒图标）。
@@ -12,20 +13,25 @@ const BRAND_INK = '#292929';
 export function WebMag22({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
   const year = new Date().getFullYear();
+  const titleTheme = resolveThemeCarrier(data, 'title');
+  const body1Theme = resolveThemeCarrier(data, 'body1');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1');
+  const body2Theme = resolveThemeCarrier(data, 'body2');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2');
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 合集主标题 */}
-      <div style={{ position: 'absolute', left: 271, top: 95, width: 480, height: 80, fontFamily: WEB_FONTS.playfair, fontWeight: 800, fontSize: 60, lineHeight: 1.1, color: COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
+      <div style={{ position: 'absolute', left: 271, top: 95, width: 480, height: 80, fontFamily: WEB_FONTS.playfair, fontWeight: 800, fontSize: 60, lineHeight: 1.1, color: titleTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
 
       {/* 故事一：图 + 正文 + 署名 */}
       <WebImage src={d['image1']} style={{ position: 'absolute', left: 72, top: 272, width: 240, height: 249, objectFit: 'cover' }} position={imagePos?.['image1']} slotId="image1" />
-      <div style={{ position: 'absolute', left: 354, top: 296, width: 314, height: 170, fontFamily: WEB_FONTS.serifCn, fontSize: 18, lineHeight: 1.6, color: COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body1']}</div>
-      <div style={{ position: 'absolute', left: 352, top: 478, width: 304, height: 28, fontFamily: WEB_FONTS.playfair, fontWeight: 700, fontSize: 24, lineHeight: 1.1, color: COLORS.ink, overflow: 'hidden' }}>{d['explain1']}</div>
+      <div style={{ position: 'absolute', left: 354, top: 296, width: 314, height: 170, fontFamily: WEB_FONTS.serifCn, fontSize: 18, lineHeight: 1.6, color: body1Theme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body1']}</div>
+      <div style={{ position: 'absolute', left: 352, top: 478, width: 304, height: 28, fontFamily: WEB_FONTS.playfair, fontWeight: 700, fontSize: 24, lineHeight: 1.1, color: explain1Theme.accentColor ?? COLORS.ink, overflow: 'hidden' }}>{d['explain1']}</div>
 
       {/* 故事二：图 + 正文 + 署名 */}
       <WebImage src={d['image2']} style={{ position: 'absolute', left: 72, top: 536, width: 240, height: 244, objectFit: 'cover' }} position={imagePos?.['image2']} slotId="image2" />
-      <div style={{ position: 'absolute', left: 351, top: 558, width: 314, height: 170, fontFamily: WEB_FONTS.serifCn, fontSize: 18, lineHeight: 1.6, color: COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body2']}</div>
-      <div style={{ position: 'absolute', left: 354, top: 738, width: 304, height: 28, fontFamily: WEB_FONTS.playfair, fontWeight: 700, fontSize: 24, lineHeight: 1.1, color: COLORS.ink, overflow: 'hidden' }}>{d['explain2']}</div>
+      <div style={{ position: 'absolute', left: 351, top: 558, width: 314, height: 170, fontFamily: WEB_FONTS.serifCn, fontSize: 18, lineHeight: 1.6, color: body2Theme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body2']}</div>
+      <div style={{ position: 'absolute', left: 354, top: 738, width: 304, height: 28, fontFamily: WEB_FONTS.playfair, fontWeight: 700, fontSize: 24, lineHeight: 1.1, color: explain2Theme.accentColor ?? COLORS.ink, overflow: 'hidden' }}>{d['explain2']}</div>
 
       {/* ── 固定品牌落款（非槽位，同 mag-20） ── */}
       {/* 左下角：品牌 logo */}

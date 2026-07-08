@@ -1,6 +1,7 @@
 import { Text, View } from '@react-pdf/renderer';
 import { PAGE, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
+import { resolveThemeCarrier } from '../theme-carrier';
 import type { TemplateRenderProps } from '../types';
 
 // 留白收束内页（PDF 端，与 index.tsx 同一版面 / 同一坐标）。来自 A4-10 (node 11:456)。
@@ -15,6 +16,8 @@ export function PdfMag37({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
   const bodyFont = hasCjk(d['body']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
   const decorFont = hasCjk(d['decor']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
+  const bodyTheme = resolveThemeCarrier(data, 'body');
+  const decorTheme = resolveThemeCarrier(data, 'decor');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -24,11 +27,11 @@ export function PdfMag37({ data, imagePos }: TemplateRenderProps) {
       <PdfImage src={d['image']} style={{ position: 'absolute', left: 119, top: 562, width: 532, height: 512 }} position={imagePos?.['image']} />
 
       {/* 图上方左侧闭合手记（正文） */}
-      <Text style={{ position: 'absolute', left: 133, top: 426, width: 252, fontFamily: bodyFont, fontSize: 21, lineHeight: 1.35, color: INK }}>{d['body']}</Text>
+      <Text style={{ position: 'absolute', left: 133, top: 426, width: 252, fontFamily: bodyFont, fontSize: 21, lineHeight: 1.35, color: bodyTheme.accentColor ?? INK }}>{d['body']}</Text>
 
       {/* 右上角倾斜装饰短句（-22°，variableDecor） */}
       <View style={{ position: 'absolute', left: 438, top: 387, transform: 'rotate(-22deg)', transformOrigin: 'left top' }}>
-        <Text style={{ width: 280, fontFamily: decorFont, fontSize: 21, lineHeight: 1.35, color: INK }}>{d['decor']}</Text>
+        <Text style={{ width: 280, fontFamily: decorFont, fontSize: 21, lineHeight: 1.35, color: decorTheme.accentColor ?? INK }}>{d['decor']}</Text>
       </View>
     </PdfPageShell>
   );

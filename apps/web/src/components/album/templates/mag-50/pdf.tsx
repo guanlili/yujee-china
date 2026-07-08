@@ -2,6 +2,7 @@ import { Text, View } from '@react-pdf/renderer';
 import { PAGE, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 // 拼贴三图 + 右下角标签骨架内页（PDF 端，与 index.tsx 同一版面 / 同一坐标）。白底覆盖 Shell 暖纸色；
 // 三张矩形图错落拼贴，右下角固定骨架标签词 when/where/who/what（硬编码 furniture），下方叠全大写主标题。
@@ -14,6 +15,7 @@ const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 export function PdfMag50({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
   const titleFont = hasCjk(d['title']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
+  const titleTheme = resolveThemeCarrier(data, 'title');
   const label = (left: number, top: number, txt: string) => (
     <Text style={{ position: 'absolute', left, top, fontFamily: PDF_FONTS.interEn, fontSize: 18, lineHeight: 1.0, color: INK }}>{txt}</Text>
   );
@@ -38,7 +40,7 @@ export function PdfMag50({ data, imagePos }: TemplateRenderProps) {
       {label(595, 818, 'what')}
 
       {/* 主标题（title 槽，全大写） */}
-      <Text style={{ position: 'absolute', left: 436, top: 843, width: 320, fontFamily: titleFont, fontSize: 18, lineHeight: 1.0, color: INK, textTransform: 'uppercase' }}>{d['title']}</Text>
+      <Text style={{ position: 'absolute', left: 436, top: 843, width: 320, fontFamily: titleFont, fontSize: 18, lineHeight: 1.0, color: titleTheme.accentColor ?? INK, textTransform: 'uppercase' }}>{d['title']}</Text>
     </PdfPageShell>
   );
 }

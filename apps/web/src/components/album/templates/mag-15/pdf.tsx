@@ -20,6 +20,8 @@ export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
   const titleText = titleTheme.text ?? d.title ?? 'HAPPY\nCHOFU';
   const titleFont =
     titleTheme.pdfFontFamily ?? (hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.poppins);
+  const bodyTheme = resolveThemeCarrier(data, 'body');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <Text
@@ -29,7 +31,7 @@ export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
           left: 70,
           width: 280,
           lineHeight: 1.7,
-          color: COLORS.ink2,
+          color: bodyTheme.accentColor ?? COLORS.ink2,
           textAlign: 'justify',
           fontSize: 18,
         }}
@@ -76,7 +78,7 @@ export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         {(dateTheme.text ?? d.date ?? '').toUpperCase()}
       </Text>
-      <PdfFolio folio={d.folio} totalPages={totalPages} fallback="15" />
+      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="15" />
     </PdfPageShell>
   );
 }

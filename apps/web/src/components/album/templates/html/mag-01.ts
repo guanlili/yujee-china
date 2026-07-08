@@ -18,6 +18,6 @@ export const MAG_01_HTML = `<div data-template="mag-01" style="position:relative
   <div data-image-slot="image" style="position:absolute;top:240px;right:0;width:660px;height:460px;overflow:hidden">
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>
-  <div data-text-key="explain1" style="position:absolute;left:130px;top:720px;line-height:1.7;color:#5a574f;letter-spacing:0.02em;font-size:18px;width:360px">{{TEXT:explain1}}</div>
-  <div data-text-key="explain2" style="position:absolute;left:130px;top:840px;line-height:1.7;color:#5a574f;text-align:justify;letter-spacing:0.02em;font-size:18px;width:360px">{{TEXT:explain2}}</div>
+  <div data-text-key="explain1" style="position:absolute;left:130px;top:720px;line-height:1.7;color:{{COLOR:explain1|#5a574f}};letter-spacing:0.02em;font-size:18px;width:360px">{{TEXT:explain1}}</div>
+  <div data-text-key="explain2" style="position:absolute;left:130px;top:840px;line-height:1.7;color:{{COLOR:explain2|#5a574f}};text-align:justify;letter-spacing:0.02em;font-size:18px;width:360px">{{TEXT:explain2}}</div>
 </div>`;

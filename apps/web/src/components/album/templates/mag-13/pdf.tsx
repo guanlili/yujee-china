@@ -17,6 +17,7 @@ export function PdfMag13({ data, imagePos }: TemplateRenderProps) {
   const titleTheme = resolveThemeCarrier(data, 'title');
   const titleText = titleTheme.text ?? d.title ?? 'YUICHI TOKUDA\nPHOTOGRAPHY';
   const titleFont = titleTheme.pdfFontFamily ?? (hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat);
+  const explainTheme = resolveThemeCarrier(data, 'explain');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <Text
@@ -59,7 +60,7 @@ export function PdfMag13({ data, imagePos }: TemplateRenderProps) {
           right: 130,
           textAlign: 'center',
           lineHeight: 1.75,
-          color: COLORS.ink2,
+          color: explainTheme.accentColor ?? COLORS.ink2,
           fontSize: 15,
         }}
       >

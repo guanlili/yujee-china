@@ -111,9 +111,10 @@ interface WebFolioProps {
   folio?: string;
   totalPages?: number;
   fallback: string;
+  accentColor?: string;
 }
 
-export function WebFolio({ folio, totalPages, fallback }: WebFolioProps) {
+export function WebFolio({ folio, totalPages, fallback, accentColor }: WebFolioProps) {
   return (
     <div
       style={{
@@ -123,7 +124,7 @@ export function WebFolio({ folio, totalPages, fallback }: WebFolioProps) {
         fontFamily: WEB_FONTS.serifEn,
         fontStyle: 'italic',
         fontSize: 22,
-        color: COLORS.ink,
+        color: accentColor ?? COLORS.ink,
       }}
     >
       {folio || fallback}

@@ -2,6 +2,7 @@ import { Path, Svg, Text, View } from '@react-pdf/renderer';
 import { PAGE, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
+import { resolveThemeCarrier } from '../theme-carrier';
 
 // 旅行手记内页（PDF 端，与 index.tsx 同一版面 / 同一坐标）。白底覆盖 Shell 暖纸色。
 // 手写草书标题是固定矢量装饰、不进契约：把 Figma node 11:223 的 27 条 path 搬进 @react-pdf
@@ -13,6 +14,7 @@ const INK = '#1c1b18';
 
 export function PdfMag30({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
+  const explainTheme = resolveThemeCarrier(data, 'explain');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -66,7 +68,7 @@ export function PdfMag30({ data, imagePos }: TemplateRenderProps) {
           fontFamily: PDF_FONTS.sansEn,
           fontSize: 21,
           lineHeight: 1.6,
-          color: INK,
+          color: explainTheme.accentColor ?? INK,
         }}
       >
         {d['explain']}

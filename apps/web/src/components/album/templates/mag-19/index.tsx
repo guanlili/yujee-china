@@ -12,6 +12,9 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
     folio?: string;
   };
   const introTheme = resolveThemeCarrier(data, 'title');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2');
+  const folioTheme = resolveThemeCarrier(data, 'folio');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <p
@@ -53,7 +56,7 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           width: 300,
           margin: 0,
           lineHeight: 1.7,
-          color: COLORS.ink2,
+          color: explain1Theme.accentColor ?? COLORS.ink2,
           letterSpacing: '0.02em',
           textAlign: 'left',
           fontSize: 18,
@@ -70,7 +73,7 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           width: 300,
           margin: 0,
           lineHeight: 1.7,
-          color: COLORS.ink2,
+          color: explain2Theme.accentColor ?? COLORS.ink2,
           letterSpacing: '0.02em',
           textAlign: 'right',
           fontSize: 18,
@@ -86,14 +89,14 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           right: 80,
           fontSize: 10,
           letterSpacing: '0.32em',
-          color: COLORS.ink3,
+          color: folioTheme.accentColor ?? COLORS.ink3,
           textTransform: 'uppercase',
           writingMode: 'vertical-rl',
         }}
       >
         Frame {d.folio || '19'} / 30
       </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} fallback="19" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="19" />
     </WebPage>
   );
 }
