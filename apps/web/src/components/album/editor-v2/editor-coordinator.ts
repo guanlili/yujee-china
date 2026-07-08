@@ -41,6 +41,8 @@ export type ChatCoordinator = {
   applyChapterWrite: (pagesTexts: V3PageTextsPatch[]) => boolean;
   applyChapterEdit: (layoutPatch: LayoutPatchEntry[]) => boolean;
   applyAuthoringPatch: (patch: LayoutPatchEntry[]) => boolean;
+  // 整书原地替换 + 重绘（设计对话 committed 后用，替代重挂式刷新）。
+  replacePages: (pages: EditorPage[]) => boolean;
   applyDraftAct: (r: DraftEditResult) => DraftActApplied;
   // ── reads / helpers ChatPanel needs ──
   getPagesState: () => EditorPage[];

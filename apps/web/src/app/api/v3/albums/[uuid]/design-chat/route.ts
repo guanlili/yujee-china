@@ -87,7 +87,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
           });
           emit({
             type: 'done',
-            response: { assistantReply, committed, pageCount: pages.length },
+            // committed 时把新页一并回给前端，用于画板原地重绘（无重挂闪屏）；未 committed 不带。
+            response: {
+              assistantReply,
+              committed,
+              pageCount: pages.length,
+              ...(committed ? { pages } : {}),
+            },
           });
         };
         try {

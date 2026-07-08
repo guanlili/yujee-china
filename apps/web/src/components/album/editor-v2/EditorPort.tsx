@@ -2115,6 +2115,22 @@ function EditorBook({
       return true;
     }
 
+    // 设计对话整书刷新：直接用服务端回来的新页整体替换 pagesState，原地重绘（用已加载
+    // 的图 URL，不重挂 EditorBook、不重载图，避免"全局刷新闪一下"）。页数不变时当前位置保持。
+    function replacePages(pages: EditorPage[]): boolean {
+      if (pages.length === 0) return false;
+      pagesState = pages.map((p) => ({
+        pageIndex: p.pageIndex,
+        templateId: p.templateId,
+        imagesJson: { ...p.imagesJson },
+        textsJson: { ...p.textsJson },
+        imagePosJson: { ...(p.imagePosJson ?? {}) },
+      }));
+      rebuildSpreads();
+      repaintBook();
+      return true;
+    }
+
     // Export: render the PDF in the browser (@react-pdf), download it locally,
     // and upload straight to R2 (bytes never touch the Web tier — invariant 4).
     // WP5.3 / §4.5d:连续 3 次导出失败后的安抚弹框开/关。复用编辑器既有的
@@ -2470,6 +2486,7 @@ function EditorBook({
       applyChapterWrite,
       applyChapterEdit,
       applyAuthoringPatch,
+      replacePages,
       applyDraftAct,
       getPagesState: () => pagesState,
       authoringFocusPageIndex,

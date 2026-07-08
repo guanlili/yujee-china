@@ -1264,7 +1264,17 @@ export function ChatPanel({
           throw new Error(payload?.error?.message ?? 'Request failed');
         }
         const outcome: {
-          final: { assistantReply: string; committed: boolean } | null;
+          final: {
+            assistantReply: string;
+            committed: boolean;
+            pages?: Array<{
+              pageIndex: number;
+              templateId: string;
+              images?: Record<string, string>;
+              texts?: Record<string, string>;
+              imagePos?: Record<string, { x: number; y: number; scale: number }> | null;
+            }>;
+          } | null;
           error: string | null;
         } = { final: null, error: null };
         await readDesignChatStream(res, (event) => {
@@ -1274,7 +1284,17 @@ export function ChatPanel({
           } else if (event.type === 'tool_result' && typeof event.toolName === 'string') {
             stream.finishOp(toolCallId, event.toolName, event.isError === true);
           } else if (event.type === 'done') {
-            outcome.final = event.response as { assistantReply: string; committed: boolean };
+            outcome.final = event.response as {
+              assistantReply: string;
+              committed: boolean;
+              pages?: Array<{
+                pageIndex: number;
+                templateId: string;
+                images?: Record<string, string>;
+                texts?: Record<string, string>;
+                imagePos?: Record<string, { x: number; y: number; scale: number }> | null;
+              }>;
+            };
           } else if (event.type === 'error') {
             outcome.error = typeof event.error === 'string' ? event.error : 'stream failed';
           }
@@ -1285,9 +1305,25 @@ export function ChatPanel({
         stream.settle();
         appendReplyBody(stream.host, final.assistantReply);
         if (final.committed) {
-          const root = outerRootRef.current;
-          root?.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
-          window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+          // 原地重绘：把服务端回来的新页整体喂给画板（不重挂、不重载图，无"全局刷新闪一下"）。
+          // 拿不到 pages 或 coordinator 未就绪时，回退到旧的重挂式刷新事件。
+          const applied =
+            final.pages && final.pages.length > 0
+              ? (co()?.replacePages?.(
+                  final.pages.map((p) => ({
+                    pageIndex: p.pageIndex,
+                    templateId: p.templateId,
+                    imagesJson: { ...(p.images ?? {}) },
+                    textsJson: { ...(p.texts ?? {}) },
+                    imagePosJson: { ...(p.imagePos ?? {}) },
+                  })),
+                ) ?? false)
+              : false;
+          if (!applied) {
+            const root = outerRootRef.current;
+            root?.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+            window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+          }
         }
         chapterHistory.push({ role: 'user', content: userMessage });
         chapterHistory.push({ role: 'assistant', content: final.assistantReply });
