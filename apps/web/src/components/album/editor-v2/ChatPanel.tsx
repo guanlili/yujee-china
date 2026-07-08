@@ -1114,13 +1114,13 @@ export function ChatPanel({
       update_page_texts: ['写页面文字', 'Writing page copy'],
       swap_page_template: ['更换版式', 'Swapping the template'],
       update_page_images: ['调整图片', 'Adjusting images'],
-      set_chapter_theme: ['设定章节配色', 'Setting the chapter color'],
+      set_text_colors: ['设定文字配色', 'Setting text colors'],
     };
     const WRITE_TOOLS = new Set([
       'update_page_texts',
       'swap_page_template',
       'update_page_images',
-      'set_chapter_theme',
+      'set_text_colors',
     ]);
     const OP_PENCIL_SVG =
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
@@ -1144,8 +1144,8 @@ export function ChatPanel({
           return pageLabel ? aT(`重新排版${pageLabel}`, `Re-laid out ${pageLabel}`) : aT('更换页面版式', 'Swapped the template');
         case 'update_page_images':
           return pageLabel ? aT(`调整${pageLabel}的图片`, `Adjusted ${pageLabel} images`) : aT('调整页面图片', 'Adjusted images');
-        case 'set_chapter_theme':
-          return aT('设定章节主题色', 'Set the chapter color');
+        case 'set_text_colors':
+          return aT('设定文字配色', 'Set text colors');
         default:
           return designToolLabel(toolName);
       }
@@ -1212,7 +1212,9 @@ export function ChatPanel({
           // 只有写类工具执行成功留下富回执卡；读类是纯思考，随水母灰字过一下、不留痕。
           if (isError || !WRITE_TOOLS.has(toolName)) return;
           const card = buildDesignOpCard(toolName, inputByCall.get(toolCallId));
-          host.insertBefore(card, jelly); // 回执卡冒在水母上方，水母保持最底
+          // 回执卡冒在水母上方；jelly 仍是 host 子节点才用 insertBefore，否则直接追加（防 DOM 抛错）。
+          if (jelly.parentNode === host) host.insertBefore(card, jelly);
+          else host.appendChild(card);
           setLabel(t('thinking')); // 回执卡插入后灰字回到「思考中」
           scrollChat();
         },
