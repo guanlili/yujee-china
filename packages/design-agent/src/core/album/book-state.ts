@@ -233,7 +233,7 @@ export function validateTextsPatch(
 			const charCount = [...value].length;
 			if (charCount > def.maxChars) {
 				errors.push(
-					`槽 "${key}" 超出字数限制：${charCount} > maxChars ${def.maxChars}（${def.hint ?? def.role}）。请精简后重试。`,
+					`槽 "${key}" 超出字数限制：${charCount} > maxChars ${def.maxChars}（${def.role}）。请精简后重试。`,
 				);
 			}
 		}

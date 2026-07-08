@@ -643,14 +643,14 @@ function preview(text: string, query: string): string {
 function describeTextSlot(
 	template: TemplateCatalogEntry,
 	slotId: string,
-): { slotId: string; role: string; lang?: string; maxChars?: number; hint?: string; sample?: string } {
+): { slotId: string; role: string; lang?: string; maxChars?: number; sample?: string } {
 	const def = template.textDefsByBase.get(slotIdBase(slotId));
+	// 不再暴露 hint（抽象指引效果差）；只给 sample 示范文案，让 AI 照着改。
 	return {
 		slotId,
 		role: def?.role ?? "text",
 		lang: def?.lang,
 		maxChars: def?.maxChars,
-		hint: def?.hint,
 		sample: def?.sample,
 	};
 }
