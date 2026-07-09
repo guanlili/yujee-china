@@ -28,13 +28,16 @@ function createHarness() {
 	return { tools, getBook: () => book, catalog };
 }
 
-test("文件化 skills 从 skills/ 目录加载三个技能", () => {
+test("文件化 skills 从 skills/ 目录加载四个技能", () => {
 	const skills = loadAlbumSkills();
 	const names = skills.map((skill) => skill.name).sort();
-	assert.deepEqual(names, ["相册排版", "相册文案", "相册配色"].sort());
+	assert.deepEqual(names, ["相册字体", "相册排版", "相册文案", "相册配色"].sort());
 	const color = skills.find((skill) => skill.name === "相册配色");
 	assert.ok(color?.content.includes("set_text_colors"), "配色技能应指向 set_text_colors 工具");
 	assert.ok(color?.filePath.endsWith("SKILL.md"));
+	const font = skills.find((skill) => skill.name === "相册字体");
+	assert.ok(font?.content.includes("set_text_fonts"), "字体技能应指向 set_text_fonts 工具");
+	assert.ok(font?.filePath.endsWith("SKILL.md"));
 });
 
 test("SKILL.md frontmatter 解析：缺字段/无 frontmatter 返回 undefined", () => {

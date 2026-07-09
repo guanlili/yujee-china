@@ -58,5 +58,26 @@ export function createDefaultAlbumSkills(): Skill[] {
 				"- 写入后用一句话说明选色理由，不要罗列受影响的槽位。",
 			].join("\n"),
 		},
+		{
+			name: "相册字体",
+			description: "用于设定或调整全书文字字体，或用户提出「换个字体/字型」类需求。",
+			filePath: "/virtual/design-agent/skills/album-font/SKILL.md",
+			content: [
+				"# 相册字体",
+				"",
+				"给相册定文字字体时，使用这个技能。",
+				"",
+				"规则：",
+				"- 全书按三类角色各设一个字体，用 set_text_fonts 一键刷到底：titleFont（标题）、bodyFont（正文，图注 explain 跟正文同字体）、decorationFont（装饰槽：英文标签/页码/点缀）。装饰独立于标题。只改一类就只传那一类。",
+				"- 字体值必须是合法字体 id 且属于该角色（选错角色工具会打回）。菜单：",
+				"  · 标题：noto-serif-sc/zcool-xiaowei/lxgw-wenkai/smiley-sans/zcool-qingke-huangyou/long-cang/zhi-mang-xing/liu-jian-mao-cao（中）· playfair-display/cormorant-garamond/bebas-neue/archivo-black/abril-fatface/montserrat（英）",
+				"  · 正文：noto-sans-sc/noto-serif-sc/lxgw-wenkai/zcool-xiaowei（中）· eb-garamond/source-serif-4/lora/libre-baskerville/inter/work-sans/dm-sans/poppins/raleway/montserrat（英）",
+				"  · 装饰：noto-serif-sc/lxgw-wenkai/long-cang/zhi-mang-xing/liu-jian-mao-cao（中）· ibm-plex-mono/jetbrains-mono/great-vibes/dancing-script/sacramento/parisienne（英）",
+				"- 不要用 update_page_texts 手工写 #artFont carrier 键（会漏页漏槽）。",
+				"- 经典搭配：正文 1 款求稳（优先思源黑/宋体、衬线英文）+ 标题 1 款可有性格 + 装饰 1 款点缀；全书最多一个性格字体（草书/花体/展示体）。页码/英文标签走 mono，签名点缀走 script。",
+				"- 按调性取字：婚礼/情感→great-vibes 或 lxgw-wenkai；旅行/都市→montserrat/inter；家庭/怀旧→noto-serif-sc/eb-garamond；封面张扬→smiley-sans/bebas-neue。中英各挑一套、气质接近。",
+				"- 用户给了明确字体偏好时以用户为准，只做合法性把关。写入后一句话说明选字理由，不罗列槽位。",
+			].join("\n"),
+		},
 	];
 }

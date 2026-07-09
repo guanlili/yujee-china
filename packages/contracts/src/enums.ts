@@ -47,15 +47,56 @@ export type TemplateCategory = z.infer<typeof TemplateCategory>;
 // ────────────────────────────── V3 字体包 ──────────────────────────────
 
 /**
- * 艺术字字体包(v3-requirements §4.3):品牌字体库固定、就那么几个,用户在主题环节选其一,
- * 写入每章 `artFont`。**与品牌正文字体无关**,是排版专用的艺术字落点。
- * ⚠️ 成员清单由模板维护方最终敲定(v3-implementation-plan §3 WP0.1 风险项);
- *    此处先按现行模板资产登记一组占位合法集,WP0.2 模板维护方确认后可增删。
+ * 艺术字字体 id：既是每章 `artFont` 的取值，也是设计 Agent 写进 `${slot}#artFont`
+ * carrier 的值、web `theme-carrier` 的映射键。**与品牌正文字体无关**，是排版专用艺术字落点。
+ *
+ * B1 定稿（2026-07）：从 4 个抽象包扩成**真实字体库**（中文 9 + 英文，按角色 标题/正文/装饰
+ * 分工，见 design-agent `font-registry.ts` 与「相册字体」技能）。设计 Agent 不 import 本文件
+ * （避免破坏 tsgo 构建），故 id 清单在 contracts / design-agent `font-registry.ts` /
+ * web `theme-carrier.ts` 三处**手工对齐**，增删字体三处同步。
+ *
+ * 旧的 4 个抽象包（serif-classic 等）保留以兼容 dormant 的 theme/finalize 流与既有 fixtures，
+ * 待确认该流彻底废弃后可移除。
  */
 export const ArtFontPack = z.enum([
-  'serif-classic', // 经典衬线
-  'sans-modern', // 现代无衬线
-  'script-elegant', // 优雅手写体
-  'display-bold', // 标题展示体
+  // —— 旧占位包（兼容保留，勿新用）——
+  'serif-classic',
+  'sans-modern',
+  'script-elegant',
+  'display-bold',
+  // —— 中文（9）——
+  'noto-serif-sc', // 思源宋体
+  'noto-sans-sc', // 思源黑体
+  'zcool-xiaowei', // 站酷小薇
+  'lxgw-wenkai', // 霞鹜文楷
+  'smiley-sans', // 得意黑
+  'zcool-qingke-huangyou', // 站酷庆科黄油体
+  'long-cang', // 龙藏
+  'zhi-mang-xing', // 志莽行书
+  'liu-jian-mao-cao', // 柳建毛草
+  // —— 英文 · 正文 ——
+  'eb-garamond',
+  'source-serif-4',
+  'lora',
+  'libre-baskerville',
+  'inter',
+  'work-sans',
+  'dm-sans',
+  'poppins',
+  'raleway',
+  // —— 英文 · 标题 ——
+  'playfair-display',
+  'cormorant-garamond',
+  'bebas-neue',
+  'archivo-black',
+  'abril-fatface',
+  'montserrat',
+  // —— 英文 · 装饰 ——
+  'ibm-plex-mono',
+  'jetbrains-mono',
+  'great-vibes',
+  'dancing-script',
+  'sacramento',
+  'parisienne',
 ]);
 export type ArtFontPack = z.infer<typeof ArtFontPack>;

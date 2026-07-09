@@ -14,6 +14,7 @@ import {
 	validateTextsPatch,
 } from "./book-state.ts";
 import { createDefaultAlbumSkills } from "./skills.ts";
+import { type FontRole, fontAllowsRole, fontsForRole, getFontEntry } from "./font-registry.ts";
 import { parseThemeCarrierKey, type TemplateCatalog, type TemplateCatalogEntry } from "./templates-catalog.ts";
 
 export interface AlbumToolsOptions {
@@ -64,6 +65,18 @@ const setTextColorsSchema = Type.Object({
 	captionColor: Type.Optional(Type.String({ description: "注释/图注色，#RGB 或 #RRGGBB 十六进制。" })),
 });
 
+const setTextFontsSchema = Type.Object({
+	titleFont: Type.Optional(
+		Type.String({ description: "标题字体 id（须是标题角色的合法字体，用 read_skill 相册字体 查菜单）。" }),
+	),
+	bodyFont: Type.Optional(
+		Type.String({ description: "正文字体 id（含图注，须是正文角色的合法字体）。" }),
+	),
+	decorationFont: Type.Optional(
+		Type.String({ description: "装饰字体 id（英文标签/页码/点缀，须是装饰角色的合法字体）。" }),
+	),
+});
+
 const listTemplatesSchema = Type.Object({
 	category: Type.Optional(Type.String({ description: "按类目过滤：cover / toc / interior / ending。" })),
 	imageSlotCount: Type.Optional(Type.Number({ description: "按图槽数量过滤。" })),
@@ -79,6 +92,7 @@ type UpdatePageTextsInput = Static<typeof updatePageTextsSchema>;
 type SwapPageTemplateInput = Static<typeof swapPageTemplateSchema>;
 type UpdatePageImagesInput = Static<typeof updatePageImagesSchema>;
 type SetTextColorsInput = Static<typeof setTextColorsSchema>;
+type SetTextFontsInput = Static<typeof setTextFontsSchema>;
 type ListTemplatesInput = Static<typeof listTemplatesSchema>;
 type ReadSkillInput = Static<typeof readSkillSchema>;
 
@@ -95,6 +109,7 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 		createSwapPageTemplateTool(options),
 		createUpdatePageImagesTool(options),
 		createSetTextColorsTool(options),
+		createSetTextFontsTool(options),
 		createReadSkillTool(options),
 	];
 }
@@ -387,12 +402,23 @@ function createUpdatePageImagesTool(
 
 const ACCENT_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
-/** 文字角色 → 三类配色的映射。decoration（英文标签/页码等）跟标题同色。 */
+/** 配色：文字角色 → 三类色（标题/正文/注释）。decoration（英文标签/页码等）跟标题同色。 */
 const ROLE_TO_COLOR_KIND: Record<string, "title" | "body" | "caption"> = {
 	title: "title",
 	decoration: "title",
 	body: "body",
 	explain: "caption",
+};
+
+/**
+ * 字体：文字角色 → 三类字体（标题/正文/装饰）。**与配色不同**——装饰自成一档
+ * （页码走 mono、点缀走 script，跟标题字体不是一回事），图注 explain 跟正文同字体。
+ */
+const ROLE_TO_FONT_KIND: Record<string, FontRole> = {
+	title: "title",
+	decoration: "decoration",
+	body: "body",
+	explain: "body",
 };
 
 function createSetTextColorsTool(
@@ -440,7 +466,7 @@ function createSetTextColorsTool(
 				const template = options.catalog.get(page.templateId);
 				if (!template) continue;
 				let touched = false;
-				for (const slotId of collectColorableSlots(page, template)) {
+				for (const slotId of collectThemeableSlots(page, template)) {
 					const role = template.textDefsByBase.get(slotBaseIdForTheme(slotId))?.role ?? "text";
 					const kind = ROLE_TO_COLOR_KIND[role];
 					if (!kind) continue;
@@ -474,15 +500,104 @@ function createSetTextColorsTool(
 	};
 }
 
+const FONT_KIND_LABEL: Record<FontRole, string> = { title: "标题", body: "正文", decoration: "装饰" };
+
+function createSetTextFontsTool(
+	options: AlbumToolsOptions,
+): AgentTool<typeof setTextFontsSchema, AlbumWriteDetails> {
+	return {
+		name: "set_text_fonts",
+		label: "设定文字字体",
+		description:
+			"整本书一键选字体：按角色设定艺术字——标题、正文（含图注）、装饰（英文标签/页码/点缀）三类各一个字体。全书对应角色的文字槽一次刷到底。至少给一类；只改一类就只传那一类。字体值必须是合法字体 id 且属于该角色（选错角色会打回）；菜单见「相册字体」技能。不要手工逐页写 carrier 键。",
+		parameters: setTextFontsSchema,
+		prepareArguments(args: unknown): SetTextFontsInput {
+			if (!isRecord(args)) return {};
+			const pick = (value: unknown): string | undefined =>
+				typeof value === "string" && value.trim() ? value.trim() : undefined;
+			return {
+				titleFont: pick(args.titleFont),
+				bodyFont: pick(args.bodyFont),
+				decorationFont: pick(args.decorationFont),
+			};
+		},
+		async execute(
+			_toolCallId: string,
+			params: SetTextFontsInput,
+		): Promise<AgentToolResult<AlbumWriteDetails>> {
+			const kindFonts: Record<FontRole, string | undefined> = {
+				title: params.titleFont,
+				body: params.bodyFont,
+				decoration: params.decorationFont,
+			};
+			const provided = Object.entries(kindFonts).filter(([, font]) => font !== undefined) as [
+				FontRole,
+				string,
+			][];
+			if (provided.length === 0) {
+				throw new Error("至少要给 titleFont / bodyFont / decorationFont 中的一个字体。");
+			}
+			for (const [kind, font] of provided) {
+				if (!getFontEntry(font)) {
+					throw new Error(`${FONT_KIND_LABEL[kind]}字体 "${font}" 不是合法字体 id；用 read_skill 相册字体 查菜单。`);
+				}
+				if (!fontAllowsRole(font, kind)) {
+					const menu = fontsForRole(kind)
+						.map((f) => f.id)
+						.join(" / ");
+					throw new Error(`字体 "${font}" 不适合${FONT_KIND_LABEL[kind]}角色。${FONT_KIND_LABEL[kind]}可选：${menu}。`);
+				}
+			}
+
+			const nextState = cloneAlbumBookState(options.getBookState());
+			const affectedByKind: Partial<Record<FontRole, number>> = {};
+			const affectedPageNos: number[] = [];
+			for (const [index, page] of nextState.pages.entries()) {
+				const template = options.catalog.get(page.templateId);
+				if (!template) continue;
+				let touched = false;
+				for (const slotId of collectThemeableSlots(page, template)) {
+					const role = template.textDefsByBase.get(slotBaseIdForTheme(slotId))?.role ?? "text";
+					const kind = ROLE_TO_FONT_KIND[role];
+					if (!kind) continue;
+					const font = kindFonts[kind];
+					if (!font) continue;
+					page.texts[`${slotId}#artFont`] = font;
+					affectedByKind[kind] = (affectedByKind[kind] ?? 0) + 1;
+					touched = true;
+				}
+				if (touched) affectedPageNos.push(index + 1);
+			}
+
+			if (affectedPageNos.length === 0) {
+				throw new Error(
+					"全书没有匹配这些角色的文字槽，字体无处落地。用 get_book_summary / list_templates 确认页面结构。",
+				);
+			}
+
+			const operations = provided.map(([kind, font]) => `font:${kind}=${font}`);
+			const notes = provided
+				.filter(([kind]) => affectedByKind[kind])
+				.map(([kind]) => `${FONT_KIND_LABEL[kind]}字体刷了 ${affectedByKind[kind]} 个槽`);
+			notes.push(`共影响 ${affectedPageNos.length} 页`);
+			return commitWrite(options, nextState, {
+				pageNo: affectedPageNos[0] ?? 0,
+				operations,
+				notes,
+			});
+		},
+	};
+}
+
 function slotBaseIdForTheme(slotId: string): string {
 	return slotId.replace(/\[\d+\]/g, "");
 }
 
 /**
- * 一页里所有可配色的文字槽 id：模板定义的具体槽 + 页面上已有的重复槽（items[n]），
- * 排除 carrier 键（`slot#accentColor` 之类）本身。
+ * 一页里所有可套主题（配色/字体）的文字槽 id：模板定义的具体槽 + 页面上已有的重复槽（items[n]），
+ * 排除 carrier 键（`slot#accentColor` / `slot#artFont` 之类）本身。
  */
-function collectColorableSlots(page: AlbumPage, template: TemplateCatalogEntry): string[] {
+function collectThemeableSlots(page: AlbumPage, template: TemplateCatalogEntry): string[] {
 	const slots = new Set<string>(template.textSlotIds);
 	for (const key of Object.keys(page.texts)) {
 		if (parseThemeCarrierKey(key)) continue;

@@ -237,8 +237,49 @@ class _V3Strict(BaseModel):
 AlbumStage = Literal["analysing", "story", "theme", "cover", "ready"]
 # 模板分类(§9):替代旧 slot + scene。
 TemplateCategory = Literal["cover", "interior", "toc", "ending"]
-# 艺术字字体包(§4.3)。closed legal set;成员清单由模板维护方敲定。
-ArtFontPack = Literal["serif-classic", "sans-modern", "script-elegant", "display-bold"]
+# 艺术字字体 id(§4.3)。closed legal set;镜像 contracts/src/enums.ts ArtFontPack。
+# B1 定稿:旧 4 抽象包(兼容保留)+ 真实字体库(中文 9 + 英文,按角色分工)。三处手工对齐。
+ArtFontPack = Literal[
+    # 旧占位包(兼容保留,勿新用)
+    "serif-classic",
+    "sans-modern",
+    "script-elegant",
+    "display-bold",
+    # 中文(9)
+    "noto-serif-sc",
+    "noto-sans-sc",
+    "zcool-xiaowei",
+    "lxgw-wenkai",
+    "smiley-sans",
+    "zcool-qingke-huangyou",
+    "long-cang",
+    "zhi-mang-xing",
+    "liu-jian-mao-cao",
+    # 英文·正文
+    "eb-garamond",
+    "source-serif-4",
+    "lora",
+    "libre-baskerville",
+    "inter",
+    "work-sans",
+    "dm-sans",
+    "poppins",
+    "raleway",
+    # 英文·标题
+    "playfair-display",
+    "cormorant-garamond",
+    "bebas-neue",
+    "archivo-black",
+    "abril-fatface",
+    "montserrat",
+    # 英文·装饰
+    "ibm-plex-mono",
+    "jetbrains-mono",
+    "great-vibes",
+    "dancing-script",
+    "sacramento",
+    "parisienne",
+]
 
 
 # ---------- layout.ts (V3 authoring 章节树) -----------------------------------
