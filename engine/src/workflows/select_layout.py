@@ -13,6 +13,7 @@ from ..api import callback
 from ..providers import ai_client
 from .core.layout import select_layout as select_layout_agent
 from .core.layout import candidate_gen_v3, generic_copy, legalize, skeleton_v3
+from .core.layout import write_copy as write_copy_agent
 from ..logging_config import get_logger, request_id_var
 from ..contracts.schemas import (
     CandidatePage,
@@ -196,7 +197,34 @@ class _BatchResult:
     model: str | None = None
 
 
-async def _judge_unit(unit: Any, *, seed: str) -> _BatchResult:
+async def _apply_write_copy(unit: Any, pages: list[dict[str, Any]], *, language: str) -> list[dict[str, Any]]:
+    """排版选定之后,豆包把文案写进本单元每页的非 decoration 文字槽(#AI copy writer)。
+
+    写文案是叠加合并:只覆盖返回了文案的槽位,其余页面/字段原样保留。`write_copy`
+    自身对任何失败(缺 ARK key / HTTP / JSON 解析)都已经返回空结果而不抛错;这里再兜一层
+    `except Exception`,确保写文案这一步无论如何都不会打断排版主流程。
+    """
+    try:
+        result = await write_copy_agent.write_copy(unit, pages, language=language)
+    except Exception as exc:  # noqa: BLE001 — 写文案绝不能打断排版
+        log.warning("v3_select_layout.write_copy_failed", error=str(exc))
+        return pages
+    if not result.pages_texts:
+        return pages
+
+    merged: list[dict[str, Any]] = []
+    for page in pages:
+        texts = result.pages_texts.get(page.get("pageIndex"))
+        if texts:
+            new_page = dict(page)
+            new_page["texts"] = {**(page.get("texts") or {}), **texts}
+            merged.append(new_page)
+        else:
+            merged.append(page)
+    return merged
+
+
+async def _judge_unit(unit: Any, *, seed: str, language: str) -> _BatchResult:
     """一个排版单元(一章或超大章的一段):代码随机生成 N 个候选 → LLM 评委选最佳。
 
     任何环节失败都回退确定性 skeleton,保证不空手。legalize 仍做最终合法化夹紧。
@@ -243,6 +271,10 @@ async def _judge_unit(unit: Any, *, seed: str) -> _BatchResult:
 
     # 候选已由 candidate_gen 保证合法(填满、不重不漏),只做轻量校验 + reindex,不重排。
     pages = legalize.finalize_candidate_pages(unit, winner)
+    # 版式已定 → 豆包把文案写进本单元每页(#AI copy writer)。generic_copy 的装饰
+    # 文案(folio/date)仍在 select_pages 里之后统一叠加,两者写不同的槽位(role 分流),
+    # 互不冲突。
+    pages = await _apply_write_copy(unit, pages, language=language)
     return _BatchResult(
         pages=pages,
         gemini_calls=calls,
@@ -252,10 +284,12 @@ async def _judge_unit(unit: Any, *, seed: str) -> _BatchResult:
     )
 
 
-async def _select_batch(chapters: Sequence[Any], *, seed: str) -> _BatchResult:
+async def _select_batch(chapters: Sequence[Any], *, seed: str, language: str) -> _BatchResult:
     """一个并发批次:逐 unit 走『随机候选 + 评委』,拼接结果。"""
     try:
-        unit_results = [await _judge_unit(unit, seed=seed) for unit in chapters]
+        unit_results = [
+            await _judge_unit(unit, seed=seed, language=language) for unit in chapters
+        ]
         pages: list[dict[str, Any]] = []
         for r in unit_results:
             pages.extend(r.pages)
@@ -292,7 +326,7 @@ async def select_pages(req: SelectLayoutRequest) -> tuple[list[dict[str, Any]], 
 
     async def run_batch(batch: Sequence[Any]) -> _BatchResult:
         async with semaphore:
-            return await _select_batch(batch, seed=req.requestId)
+            return await _select_batch(batch, seed=req.requestId, language=req.language)
 
     results = await asyncio.gather(*(run_batch(batch) for batch in batches))
 
