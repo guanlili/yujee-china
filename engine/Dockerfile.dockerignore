@@ -1,0 +1,18 @@
+# Dockerfile-specific ignore for the ENGINE agent build (BuildKit prefers
+# <dockerfile>.dockerignore over the repo-root .dockerignore). The root
+# .dockerignore excludes `engine` because it targets the design-agent image;
+# the engine agent image NEEDS engine/, so this file keeps it and drops the
+# design-agent-only exclusion. Excludes only what the engine image never uses.
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/*.tsbuildinfo
+.git
+apps/web
+packages/design-agent
+packages/agent
+packages/ai
+**/.env.local
+*.log
+.DS_Store
