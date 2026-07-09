@@ -184,7 +184,7 @@ async def test_select_layout_inline_writes_full_chain_trace_without_image_payloa
         return select_layout_agent.LayoutJudgeResult(winner_index=0)
 
     monkeypatch.setattr(select_layout.callback, "post", capture_post)
-    monkeypatch.setattr(select_layout.select_layout_agent, "judge_layout", fake_judge)
+    monkeypatch.setattr(select_layout.select_layout_agent, "judge_layout_doubao", fake_judge)
 
     await select_layout.run_with_timeout(_request())
 
@@ -244,7 +244,7 @@ async def test_select_layout_judge_failure_falls_back_per_chapter(monkeypatch):
             output_tokens=2,
         )
 
-    monkeypatch.setattr(select_layout.select_layout_agent, "judge_layout", fake_judge)
+    monkeypatch.setattr(select_layout.select_layout_agent, "judge_layout_doubao", fake_judge)
 
     pages, usage = await select_layout.select_pages(
         _multi_request(

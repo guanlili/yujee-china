@@ -16,6 +16,7 @@ from typing import Any
 import httpx
 
 from .....providers import ai_client
+from .....providers.vision_provider import VisionSlotError, ark_vision_slot
 from .. import skeleton_v3, template_previews
 from ..legalize import (
     _chapter_id,
@@ -400,6 +401,53 @@ async def judge_layout(
         winner_index=winner,
         call_count=1,
         model=getattr(settings, "select_layout_model"),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
+
+
+_JUDGE_DOUBAO_MAX_OUTPUT_TOKENS = 200
+
+
+async def judge_layout_doubao(
+    chapter: Any,
+    candidates: Sequence[Sequence[Mapping[str, Any]]],
+) -> LayoutJudgeResult:
+    """豆包(火山 Ark)版排版评委:gemini 在国内地区墙 400 时的替代,不是兜底 ——
+    直接顶替 gemini 做『选择』这一步。豆包是 OpenAI 兼容协议,`_judge_messages`
+    产出的 OpenAI 风格 messages 可以原样喂给它,不需要 gemini 那层 native 转换。
+    返回 winner_index 已夹紧到合法范围。"""
+    if not candidates:
+        raise ValueError("judge_layout_doubao requires at least one candidate")
+
+    slot = ark_vision_slot(get_settings())  # 缺 ARK_API_KEY 时抛 VisionSlotError
+
+    photo_ids = [_photo_id(photo) for photo in _photos(chapter)]
+    _, id_map = to_simple(photo_ids)
+    messages = _judge_messages(chapter, candidates, id_map)
+    response = await ai_client.chat_completion(
+        base_url=slot.base_url,
+        api_key=slot.api_key,
+        model=slot.model,
+        messages=messages,
+        timeout_seconds=slot.timeout_seconds,
+        temperature=0.2,
+        max_tokens=_JUDGE_DOUBAO_MAX_OUTPUT_TOKENS,
+        response_format=slot.response_format,
+        extra_body=slot.extra_body,
+    )
+    input_tokens, output_tokens = ai_client.extract_usage(response)
+    parsed = ai_client.parse_json_loose(ai_client.extract_text(response))
+    raw_index = parsed.get("winnerIndex") if isinstance(parsed, Mapping) else None
+    if isinstance(raw_index, bool) or not isinstance(raw_index, int):
+        raise ValueError("doubao judge response missing integer winnerIndex")
+    # 夹紧到合法范围(模型若越界则退化为最后一个候选,而非第 0 个 —— 与
+    # `_parse_winner`/`judge_layout` 的越界=0 语义不同,按需求文档明确要求 clamp 到边界)。
+    winner = max(0, min(raw_index, len(candidates) - 1))
+    return LayoutJudgeResult(
+        winner_index=winner,
+        call_count=1,
+        model=slot.model,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
     )

@@ -6,7 +6,7 @@ P1 新逻辑:代码随机生成 N 个整章候选,Gemini 当评委选最佳(`jud
 
 from __future__ import annotations
 
-from .handler import gemini_layout, judge_layout, judge_layout_thumbnails
+from .handler import gemini_layout, judge_layout, judge_layout_doubao, judge_layout_thumbnails
 from .schema import GeminiLayoutResult, GeminiLayoutUnavailable, LayoutJudgeResult
 
 __all__ = [
@@ -15,5 +15,6 @@ __all__ = [
     "LayoutJudgeResult",
     "gemini_layout",
     "judge_layout",
+    "judge_layout_doubao",
     "judge_layout_thumbnails",
 ]

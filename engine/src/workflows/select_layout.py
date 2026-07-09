@@ -243,12 +243,12 @@ async def _judge_unit(unit: Any, *, seed: str, language: str) -> _BatchResult:
     if not candidates:
         return _BatchResult(pages=[])
 
-    # 单候选无需评委;否则让 Gemini 选。
+    # 单候选无需评委;否则让豆包(火山 Ark)当评委选(gemini 国内地区墙 400,豆包顶替)。
     if len(candidates) == 1:
         winner, calls, in_tok, out_tok, model = candidates[0], 0, 0, 0, None
     else:
         try:
-            verdict = await select_layout_agent.judge_layout(unit, candidates)
+            verdict = await select_layout_agent.judge_layout_doubao(unit, candidates)
             winner = candidates[verdict.winner_index]
             calls, in_tok, out_tok, model = (
                 verdict.call_count,
