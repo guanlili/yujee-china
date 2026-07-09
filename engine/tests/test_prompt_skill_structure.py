@@ -13,12 +13,9 @@ def test_human_authored_prompt_assets_live_under_skills():
     assert SKILLS_ROOT.is_dir()
     assert not (SRC_ROOT / "prompts").exists()
 
-    # skills/ 只保留 3 个公共 skill(设计+颜色 / 写作 / 排版规则),各一文件。
-    expected = {
-        "theme_colors.md",
-        "writing_style.md",
-        "layout_rules.md",
-    }
+    # skills/ 现在只剩 prompt 加载器(__init__.py);三份人为 skill 已随各自 skills= 消费方
+    # 一起废弃,无 handler 用 skills= 加载它们,全部删除。
+    expected: set[str] = set()
     removed = {
         # 旧 page_edit(edit_loop 吸收后删)
         "json_only.md",
@@ -41,6 +38,10 @@ def test_human_authored_prompt_assets_live_under_skills():
         "book_theme_options.md",
         "guidance_style.md",
         "page_assignment.md",
+        # 无 skills= 消费方,孤儿删除:设计+颜色 / 写作 / 排版规则三份
+        "theme_colors.md",
+        "writing_style.md",
+        "layout_rules.md",
     }
     missing = [name for name in sorted(expected) if not (SKILLS_ROOT / name).is_file()]
     lingering = [name for name in sorted(removed) if (SKILLS_ROOT / name).exists()]
