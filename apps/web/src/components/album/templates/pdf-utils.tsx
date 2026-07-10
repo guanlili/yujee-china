@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Font, Image, Page, Text, View } from '@react-pdf/renderer';
+import type { CjkFontId } from '@/services/font/font-manifest';
 import { COLORS, PAGE, PDF_FONTS } from './constants';
 
 // Per-album subset TTFs come from POST /api/v1/fonts/subset (~17MB full fonts
@@ -56,9 +57,18 @@ function registerLatin(family: string, file: string): void {
 
 // Called by lib/pdf/render.ts right before pdf().toBlob(). Re-registering a
 // family replaces its sources, so each export uses that album's own subset.
-export function registerPdfFonts(subset: { sans: string; serif: string }): void {
+export interface PdfFontSubset {
+  sans: string;
+  serif: string;
+  artFonts?: Partial<Record<CjkFontId, { family: string; base64: string }>>;
+}
+
+export function registerPdfFonts(subset: PdfFontSubset): void {
   registerCjk('NotoSerifSC', `data:font/ttf;base64,${subset.serif}`);
   registerCjk('NotoSansSC', `data:font/ttf;base64,${subset.sans}`);
+  for (const font of Object.values(subset.artFonts ?? {})) {
+    if (font) registerCjk(font.family, `data:font/ttf;base64,${font.base64}`);
+  }
   for (const [fam, file] of LATIN_PDF_FONTS) registerLatin(fam, file);
 }
 
