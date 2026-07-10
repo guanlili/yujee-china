@@ -3,6 +3,8 @@ import test from 'node:test';
 import { basename } from 'node:path';
 
 import { CJK_FONT_IDS, subsetFontSet } from './font-service';
+import { CJK_FONT_MANIFEST } from './font-manifest';
+import { FONT_CATALOG } from '@/components/album/templates/font-catalog';
 
 test('CJK subset manifest is closed over the nine selectable Chinese fonts', () => {
   assert.deepEqual(CJK_FONT_IDS, [
@@ -16,6 +18,15 @@ test('CJK subset manifest is closed over the nine selectable Chinese fonts', () 
     'zhi-mang-xing',
     'liu-jian-mao-cao',
   ]);
+});
+
+test('CJK manifest names match the actual Web stack and PDF catalog family', () => {
+  for (const id of CJK_FONT_IDS) {
+    const entry = FONT_CATALOG[id];
+    const webPrimary = entry.webFontFamily.match(/^"([^"]+)"/)?.[1];
+    assert.equal(CJK_FONT_MANIFEST[id].webFamily, webPrimary, `${id} Web family`);
+    assert.equal(CJK_FONT_MANIFEST[id].pdfFamily, entry.pdfFontFamily, `${id} PDF family`);
+  }
 });
 
 test('subsetFontSet cuts defaults plus unique requested fonts and reuses Noto bytes', async () => {

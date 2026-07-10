@@ -12,6 +12,7 @@ const pages = [{
   texts: {
     title: '春日记',
     'title#artFont': 'long-cang',
+    'label#artFont': 'noto-serif-sc',
   },
 }];
 
@@ -29,7 +30,10 @@ test('loadAlbumFonts memoizes an identical request and installs defaults plus ar
       return {
         sansBase64: 'SANS',
         serifBase64: 'SERIF',
-        artFonts: { 'long-cang': { family: 'Long Cang', base64: 'LONG' } },
+        artFonts: {
+          'long-cang': { family: 'Long Cang', base64: 'LONG' },
+          'noto-serif-sc': { family: 'NotoSerifSC', base64: 'SERIF' },
+        },
       };
     },
     createFontFace: (family, source, descriptors) => {
@@ -51,8 +55,11 @@ test('loadAlbumFonts memoizes an identical request and installs defaults plus ar
   await loadAlbumFonts(pages, env);
 
   assert.equal(fetchCount, 1);
-  assert.deepEqual((requestBody as { fontIds: string[] }).fontIds, ['long-cang']);
-  assert.deepEqual(installed.sort(), ['Long Cang', 'NotoSansSC', 'NotoSerifSC']);
+  assert.deepEqual(
+    (requestBody as { fontIds: string[] }).fontIds,
+    ['long-cang', 'noto-serif-sc'],
+  );
+  assert.deepEqual(installed.sort(), ['Long Cang', 'Noto Sans SC', 'Noto Serif SC']);
   assert.equal(loaded.length, 3);
   assert.ok(loaded.some((item) => item.includes('base64,LONG')));
   assert.equal(unicodeRanges.length, 3);

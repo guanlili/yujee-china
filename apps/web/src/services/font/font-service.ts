@@ -59,7 +59,7 @@ export async function subsetFontSet(
   const artFonts: SubsetFontBytes['artFonts'] = {};
   await Promise.all(fontIds.map(async (id) => {
     artFonts[id] = {
-      family: CJK_FONT_MANIFEST[id].family,
+      family: CJK_FONT_MANIFEST[id].pdfFamily,
       bytes: await subsetById.get(id)!,
     };
   }));

@@ -14,21 +14,37 @@ export type CjkFontId = (typeof CJK_FONT_IDS)[number];
 
 export const CJK_FONT_MANIFEST: Record<
   CjkFontId,
-  { family: string; file: string }
+  { webFamily: string; pdfFamily: string; file: string }
 > = {
-  'noto-serif-sc': { family: 'NotoSerifSC', file: 'NotoSerifSC-Regular.ttf' },
-  'noto-sans-sc': { family: 'NotoSansSC', file: 'NotoSansSC-Regular.ttf' },
-  'zcool-xiaowei': { family: 'ZCOOL XiaoWei', file: 'art/ZCOOLXiaoWei-Regular.ttf' },
-  'lxgw-wenkai': { family: 'LXGW WenKai', file: 'art/LXGWWenKai-Regular.ttf' },
-  'smiley-sans': { family: 'Smiley Sans', file: 'art/SmileySans-Oblique.ttf' },
+  'noto-serif-sc': {
+    webFamily: 'Noto Serif SC', pdfFamily: 'NotoSerifSC', file: 'NotoSerifSC-Regular.ttf',
+  },
+  'noto-sans-sc': {
+    webFamily: 'Noto Sans SC', pdfFamily: 'NotoSansSC', file: 'NotoSansSC-Regular.ttf',
+  },
+  'zcool-xiaowei': {
+    webFamily: 'ZCOOL XiaoWei', pdfFamily: 'ZCOOL XiaoWei', file: 'art/ZCOOLXiaoWei-Regular.ttf',
+  },
+  'lxgw-wenkai': {
+    webFamily: 'LXGW WenKai', pdfFamily: 'LXGW WenKai', file: 'art/LXGWWenKai-Regular.ttf',
+  },
+  'smiley-sans': {
+    webFamily: 'Smiley Sans', pdfFamily: 'Smiley Sans', file: 'art/SmileySans-Oblique.ttf',
+  },
   'zcool-qingke-huangyou': {
-    family: 'ZCOOL QingKe HuangYou',
+    webFamily: 'ZCOOL QingKe HuangYou',
+    pdfFamily: 'ZCOOL QingKe HuangYou',
     file: 'art/ZCOOLQingKeHuangYou-Regular.ttf',
   },
-  'long-cang': { family: 'Long Cang', file: 'art/LongCang-Regular.ttf' },
-  'zhi-mang-xing': { family: 'Zhi Mang Xing', file: 'art/ZhiMangXing-Regular.ttf' },
+  'long-cang': {
+    webFamily: 'Long Cang', pdfFamily: 'Long Cang', file: 'art/LongCang-Regular.ttf',
+  },
+  'zhi-mang-xing': {
+    webFamily: 'Zhi Mang Xing', pdfFamily: 'Zhi Mang Xing', file: 'art/ZhiMangXing-Regular.ttf',
+  },
   'liu-jian-mao-cao': {
-    family: 'Liu Jian Mao Cao',
+    webFamily: 'Liu Jian Mao Cao',
+    pdfFamily: 'Liu Jian Mao Cao',
     file: 'art/LiuJianMaoCao-Regular.ttf',
   },
 };

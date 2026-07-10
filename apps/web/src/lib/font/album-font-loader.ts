@@ -6,7 +6,11 @@ import {
   type AlbumFontRequest,
   type AlbumFontRequestPage,
 } from './album-font-request';
-import type { CjkFontId } from '@/services/font/font-manifest';
+import {
+  CJK_FONT_MANIFEST,
+  isCjkFontId,
+  type CjkFontId,
+} from '@/services/font/font-manifest';
 
 interface FontSubsetPayload {
   sansBase64: string;
@@ -96,11 +100,13 @@ async function installSubset(
   const subset = await env.fetchSubset(request);
   const descriptors = { unicodeRange: unicodeRangeForCharset(request.charset) };
   const families = new Map<string, string>([
-    ['NotoSansSC', subset.sansBase64],
-    ['NotoSerifSC', subset.serifBase64],
+    [CJK_FONT_MANIFEST['noto-sans-sc'].webFamily, subset.sansBase64],
+    [CJK_FONT_MANIFEST['noto-serif-sc'].webFamily, subset.serifBase64],
   ]);
-  for (const font of Object.values(subset.artFonts ?? {})) {
-    if (font) families.set(font.family, font.base64);
+  for (const [id, font] of Object.entries(subset.artFonts ?? {})) {
+    if (font && isCjkFontId(id)) {
+      families.set(CJK_FONT_MANIFEST[id].webFamily, font.base64);
+    }
   }
 
   await Promise.all([...families].map(async ([family, base64]) => {

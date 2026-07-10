@@ -72,7 +72,7 @@ export interface PdfFontSubset {
 }
 
 export function registerPdfFonts(subset: PdfFontSubset): void {
-  for (const font of Object.values(CJK_FONT_MANIFEST)) removeRegisteredFamily(font.family);
+  for (const font of Object.values(CJK_FONT_MANIFEST)) removeRegisteredFamily(font.pdfFamily);
   for (const [family] of LATIN_PDF_FONTS) removeRegisteredFamily(family);
 
   registerCjk('NotoSerifSC', `data:font/ttf;base64,${subset.serif}`);
