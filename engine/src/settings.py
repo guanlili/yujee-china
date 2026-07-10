@@ -152,6 +152,11 @@ class Settings(BaseSettings):
     select_layout_candidate_count: int = Field(default=3, ge=1)
     # True=旧单段内联评委(裸照片+线框图,向后兼容);False=P2 两阶段(浏览器渲染真缩略图)。
     select_layout_inline_judge: bool = False
+    # Gemini 判图的网络出口:未设=沿用环境代理(HTTPS_PROXY,httpx trust_env 默认);
+    # "direct"=强制直连、忽略环境代理(本机能直达 Gemini 但 shell 全局代理出口被
+    # Gemini 地区墙拒时用这个);其他值=显式代理 URL(如 http://127.0.0.1:7890)。
+    # 只影响 Gemini 判图这一个 httpx client,Ark/DeepSeek 的出口行为不变。
+    select_layout_proxy: str | None = None
 
     # planning + chat-edit (DeepSeek slot; in prod points at Volcano Ark doubao)
     deepseek_api_key: str | None = None

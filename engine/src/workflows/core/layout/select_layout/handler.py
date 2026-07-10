@@ -153,6 +153,21 @@ def _trace_native_call(
         pass
 
 
+def _gemini_client_kwargs(proxy_setting: str | None, timeout_seconds: int) -> dict[str, Any]:
+    """Gemini httpx client 的网络出口参数。
+
+    未设 → 沿用环境代理(trust_env 默认);"direct" → 强制直连、忽略环境代理
+    (本机可直达 Gemini、但 shell 全局代理出口被地区墙拒时用);其他 → 显式代理 URL。"""
+    kwargs: dict[str, Any] = {"timeout": timeout_seconds}
+    proxy = (proxy_setting or "").strip()
+    if proxy.lower() == "direct":
+        kwargs["trust_env"] = False
+    elif proxy:
+        kwargs["proxy"] = proxy
+        kwargs["trust_env"] = False
+    return kwargs
+
+
 async def _native_generate_content(
     *,
     base_url: str,
@@ -163,6 +178,7 @@ async def _native_generate_content(
     max_output_tokens: int | None,
     use_json_object: bool,
     disable_thinking: bool,
+    proxy: str | None = None,
 ) -> dict[str, Any]:
     url = f"{_native_base_url(base_url)}/models/{_native_model_path(model)}:generateContent"
     body = _native_payload(
@@ -176,9 +192,10 @@ async def _native_generate_content(
     last_error = ""
     last_status_code: int | None = None
     last_kind: ai_client.AIErrorKind | None = None
+    client_kwargs = _gemini_client_kwargs(proxy, timeout_seconds)
     for attempt in (1, 2):
         try:
-            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            async with httpx.AsyncClient(**client_kwargs) as client:
                 resp = await client.post(
                     url,
                     params={"key": api_key},
@@ -326,6 +343,7 @@ async def judge_layout(
         max_output_tokens=getattr(settings, "select_layout_max_output_tokens"),
         use_json_object=getattr(settings, "select_layout_use_json_object"),
         disable_thinking=getattr(settings, "select_layout_disable_thinking"),
+        proxy=getattr(settings, "select_layout_proxy", None),
     )
     parsed = ai_client.parse_json_loose(_native_text(response))
     raw_index = parsed.get("winnerIndex") if isinstance(parsed, Mapping) else None
@@ -474,6 +492,7 @@ async def judge_layout_thumbnails(
                 max_output_tokens=getattr(settings, "select_layout_max_output_tokens"),
                 use_json_object=getattr(settings, "select_layout_use_json_object"),
                 disable_thinking=getattr(settings, "select_layout_disable_thinking"),
+                proxy=getattr(settings, "select_layout_proxy", None),
             )
             winner = _parse_winner(_native_text(response), len(thumbnails))
             in_tok, out_tok = _native_usage(response)
