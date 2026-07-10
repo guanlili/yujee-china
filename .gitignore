@@ -35,4 +35,4 @@ apps/agent/llm-trace*.txt
 *.tsbuildinfo
 .gstack/
 .vercel
-engine/ai-trace*.jsonl
+ai-trace*.jsonl
