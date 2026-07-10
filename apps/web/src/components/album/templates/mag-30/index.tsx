@@ -1,5 +1,4 @@
 import type { TemplateRenderProps } from '../types';
-import { WEB_FONTS } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
 
@@ -21,7 +20,7 @@ const HANDWRITING_SVG =
 
 export function WebMag30({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const explainTheme = resolveThemeCarrier(data, 'explain');
+  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
   return (
     <div style={{ position: 'relative', width: 794, height: 1123, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 手写草书矢量标题（固定装饰，内联 Figma 原 SVG，不进契约） */}
@@ -46,7 +45,7 @@ export function WebMag30({ data, imagePos }: TemplateRenderProps) {
           left: 495,
           top: 780,
           width: 232,
-          fontFamily: WEB_FONTS.sansEn,
+          fontFamily: explainTheme.webFontFamily,
           fontWeight: 400,
           fontSize: 21,
           lineHeight: 1.6,

@@ -433,9 +433,86 @@ function resolvesCarrier(source: string, slot: TemplateTextSlot): boolean {
   const b = escapeRegExp(slot.base);
   const pattern = slot.repeat
     ? new RegExp(`resolveThemeCarrier\\(\\s*data\\s*,\\s*\`${b}\\[`)
-    : new RegExp(`resolveThemeCarrier\\(\\s*data\\s*,\\s*['"]${b}['"]\\s*\\)`);
+    : new RegExp(
+        `resolveThemeCarrier\\(\\s*data\\s*,\\s*['"]${b}['"](?:\\s*,\\s*['"](?:title|body|explain|decoration)['"])?\\s*\\)`,
+      );
   return pattern.test(source);
 }
+
+interface ResolvedCarrierDeclaration {
+  themeVar: string;
+  role?: string;
+}
+
+function resolvedCarrierDeclaration(
+  source: string,
+  slot: TemplateTextSlot,
+): ResolvedCarrierDeclaration | undefined {
+  const b = escapeRegExp(slot.base);
+  const pattern = slot.repeat
+    ? new RegExp(
+        'const\\s+(\\w+)\\s*=\\s*resolveThemeCarrier\\(\\s*data\\s*,\\s*`'
+          + b
+          + '\\[\\$\\{[^}]+\\}\\]`(?:\\s*,\\s*[\'\"]([^\'\"]+)[\'\"])?\\s*\\)',
+      )
+    : new RegExp(
+        `const\\s+(\\w+)\\s*=\\s*resolveThemeCarrier\\(\\s*data\\s*,\\s*['"]${b}['"](?:\\s*,\\s*['"]([^'"]+)['"])?\\s*\\)`,
+      );
+  const match = pattern.exec(source);
+  return match ? { themeVar: match[1]!, role: match[2] } : undefined;
+}
+
+test('every Web text carrier resolves its contract role and applies its resolved font', () => {
+  const missing: string[] = [];
+
+  for (const templateId of listTemplateIds()) {
+    let slots: TemplateTextSlot[];
+    let source: string;
+    try {
+      slots = readTemplateTextSlots(templateId);
+      source = readFileSync(new URL(`./${templateId}/index.tsx`, import.meta.url), 'utf8');
+    } catch {
+      continue;
+    }
+
+    for (const slot of slots) {
+      if (!referencesSlot(source, slot.base)) continue;
+      const renderedSlot = `${slot.base}${slot.repeat ? '[n]' : ''}`;
+      const declaration = resolvedCarrierDeclaration(source, slot);
+      if (!declaration) {
+        missing.push(`${templateId}/index.tsx :: ${renderedSlot} missing theme resolver`);
+        continue;
+      }
+
+      const label = `${templateId}/index.tsx :: ${renderedSlot} (${declaration.themeVar})`;
+      if (declaration.role !== slot.role) {
+        missing.push(
+          `${label} resolves role=${declaration.role ?? '<missing>'}; expected role=${slot.role}`,
+        );
+      }
+      if (!new RegExp(`\\b${escapeRegExp(declaration.themeVar)}\\.webFontFamily\\b`).test(source)) {
+        missing.push(`${label} does not apply ${declaration.themeVar}.webFontFamily`);
+      }
+    }
+  }
+
+  const webUtilsSource = readFileSync(new URL('./web-utils.tsx', import.meta.url), 'utf8');
+  if (!/interface WebFolioProps\s*{[^}]*fontFamily\?: string;/s.test(webUtilsSource)) {
+    missing.push('web-utils.tsx :: WebFolioProps.fontFamily is missing');
+  }
+  if (!/function WebFolio\(\s*{[^}]*fontFamily[^}]*}\s*:\s*WebFolioProps\s*\)/s.test(webUtilsSource)) {
+    missing.push('web-utils.tsx :: WebFolio does not consume its fontFamily prop');
+  }
+  if (!/fontFamily:\s*fontFamily\s*\?\?\s*WEB_FONTS\.serifEn/.test(webUtilsSource)) {
+    missing.push('web-utils.tsx :: WebFolio does not apply its fontFamily prop');
+  }
+
+  assert.deepEqual(
+    missing,
+    [],
+    `Web 文字槽未完整接入合同 role 和解析后字体：\n${missing.join('\n')}`,
+  );
+});
 
 test('every rendered text slot consumes its accent carrier (web + pdf)', () => {
   const missing: string[] = [];

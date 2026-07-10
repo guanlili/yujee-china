@@ -10,9 +10,9 @@ export function WebMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
     folio?: string;
     image?: string;
   };
-  const labelTheme = resolveThemeCarrier(data, 'label');
-  const dateTheme = resolveThemeCarrier(data, 'date');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const labelTheme = resolveThemeCarrier(data, 'label', 'decoration');
+  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   // 装饰：与标签同色（参与主题换肤）的四角框线，压在图片之上（类似杂志取景角标）。
   const decorColor = labelTheme.accentColor ?? COLORS.ink;
   const corners = [
@@ -59,7 +59,7 @@ export function WebMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
             textTransform: 'uppercase',
             fontSize: 15,
             fontWeight: 600,
-            fontFamily: labelTheme.webFontFamily ?? WEB_FONTS.montserrat,
+            fontFamily: labelTheme.webFontFamily,
           }}
         >
           {labelTheme.text ?? d.label ?? ''}
@@ -73,14 +73,14 @@ export function WebMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
               color: dateTheme.accentColor ?? labelTheme.accentColor ?? COLORS.ink,
               fontSize: 30,
               fontWeight: 600,
-              fontFamily: labelTheme.webFontFamily ?? WEB_FONTS.montserrat,
+              fontFamily: dateTheme.webFontFamily,
             }}
           >
             {d.date}
           </div>
         ) : null}
       </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="03" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="03" />
     </WebPage>
   );
 }

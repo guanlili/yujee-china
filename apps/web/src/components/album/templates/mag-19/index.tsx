@@ -11,10 +11,10 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
     explain2?: string;
     folio?: string;
   };
-  const introTheme = resolveThemeCarrier(data, 'title');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const introTheme = resolveThemeCarrier(data, 'title', 'title');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <p
@@ -36,7 +36,7 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontStyle: 'italic',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
-          fontFamily: introTheme.webFontFamily ?? WEB_FONTS.playfair,
+          fontFamily: introTheme.webFontFamily,
         }}
       >
         {introTheme.text ?? d.title ?? ''}
@@ -60,7 +60,7 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           letterSpacing: '0.02em',
           textAlign: 'left',
           fontSize: 18,
-          fontFamily: WEB_FONTS.montserrat,
+          fontFamily: explain1Theme.webFontFamily,
         }}
       >
         {d.explain1 || ''}
@@ -77,7 +77,7 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           letterSpacing: '0.02em',
           textAlign: 'right',
           fontSize: 18,
-          fontFamily: WEB_FONTS.montserrat,
+          fontFamily: explain2Theme.webFontFamily,
         }}
       >
         {d.explain2 || ''}
@@ -90,13 +90,14 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 10,
           letterSpacing: '0.32em',
           color: folioTheme.accentColor ?? COLORS.ink3,
+          fontFamily: folioTheme.webFontFamily,
           textTransform: 'uppercase',
           writingMode: 'vertical-rl',
         }}
       >
         Frame {d.folio || '19'} / 30
       </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="19" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="19" />
     </WebPage>
   );
 }

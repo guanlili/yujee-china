@@ -12,10 +12,10 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
     date?: string;
     folio?: string;
   };
-  const dateTheme = resolveThemeCarrier(data, 'date');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   const dn = (dateTheme.text ?? d.date ?? '04/24').split('/');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
@@ -34,7 +34,7 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           left: 424,
           width: 320,
           height: 120,
-          fontFamily: dateTheme.webFontFamily ?? WEB_FONTS.bebas,
+          fontFamily: dateTheme.webFontFamily,
           fontSize: 108,
           lineHeight: 1,
           color: dateTheme.accentColor ?? COLORS.ink,
@@ -53,7 +53,7 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           top: 500,
           left: 60,
           width: 347,
-          fontFamily: WEB_FONTS.montserrat,
+          fontFamily: explain1Theme.webFontFamily,
           lineHeight: 1.75,
           color: explain1Theme.accentColor ?? COLORS.ink2,
           textAlign: 'justify',
@@ -87,7 +87,7 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           top: 760,
           left: 60,
           width: 347,
-          fontFamily: WEB_FONTS.montserrat,
+          fontFamily: explain2Theme.webFontFamily,
           lineHeight: 1.75,
           color: explain2Theme.accentColor ?? COLORS.ink2,
           textAlign: 'justify',
@@ -97,7 +97,7 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         {d.explain2 || ''}
       </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="04" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="04" />
     </WebPage>
   );
 }

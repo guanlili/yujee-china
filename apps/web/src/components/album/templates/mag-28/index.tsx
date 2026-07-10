@@ -1,5 +1,5 @@
 import type { TemplateRenderProps } from '../types';
-import { PAGE, WEB_FONTS } from '../constants';
+import { PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
 
@@ -12,22 +12,22 @@ const TERRACOTTA = '#1c1b18';
 
 export function WebMag28({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const headlineTheme = resolveThemeCarrier(data, 'headline');
-  const explainTheme = resolveThemeCarrier(data, 'explain');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const headlineTheme = resolveThemeCarrier(data, 'headline', 'title');
+  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 右侧满高大图（先渲染，文字叠其上） */}
       <WebImage src={d['image']} style={{ position: 'absolute', left: 133, top: 67, width: 661, height: 990, objectFit: 'cover' }} position={imagePos?.['image']} slotId="image" />
 
       {/* 左侧大字主标题（叠在图上方） */}
-      <div style={{ position: 'absolute', left: 28, top: 69, width: 627, fontFamily: WEB_FONTS.sansEn, fontWeight: 800, fontSize: 64, lineHeight: 1.05, color: titleTheme.accentColor ?? TERRACOTTA, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
+      <div style={{ position: 'absolute', left: 28, top: 69, width: 627, fontFamily: titleTheme.webFontFamily, fontWeight: 800, fontSize: 64, lineHeight: 1.05, color: titleTheme.accentColor ?? TERRACOTTA, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
 
       {/* 左侧大字陈述句 / 引语（叠在图上方） */}
-      <div style={{ position: 'absolute', left: 28, top: 307, width: 627, fontFamily: WEB_FONTS.sansEn, fontWeight: 800, fontSize: 64, lineHeight: 1.05, color: headlineTheme.accentColor ?? TERRACOTTA, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['headline']}</div>
+      <div style={{ position: 'absolute', left: 28, top: 307, width: 627, fontFamily: headlineTheme.webFontFamily, fontWeight: 800, fontSize: 64, lineHeight: 1.05, color: headlineTheme.accentColor ?? TERRACOTTA, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['headline']}</div>
 
       {/* 左下角小图注 */}
-      <div style={{ position: 'absolute', left: 28, bottom: 66, width: 255, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 21, lineHeight: 1.35, color: explainTheme.accentColor ?? TERRACOTTA, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['explain']}</div>
+      <div style={{ position: 'absolute', left: 28, bottom: 66, width: 255, fontFamily: explainTheme.webFontFamily, fontWeight: 400, fontSize: 21, lineHeight: 1.35, color: explainTheme.accentColor ?? TERRACOTTA, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['explain']}</div>
     </div>
   );
 }

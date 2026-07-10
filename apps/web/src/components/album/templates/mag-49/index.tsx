@@ -16,11 +16,11 @@ export function WebMag49({ data, imagePos }: TemplateRenderProps) {
   const title = d['title'] || 'NORWAY';
   const head = title.charAt(0);
   const rest = title.slice(1);
-  const titleTheme = resolveThemeCarrier(data, 'title');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* ── 顶部超大主标题（槽 title，占位 NORWAY，首字母略大，variableDecor） ── */}
-      <div style={{ position: 'absolute', left: 28, top: 150, width: 738, height: 155, fontFamily: WEB_FONTS.sansEn, fontWeight: 700, lineHeight: 1, color: titleTheme.accentColor ?? INK, whiteSpace: 'nowrap', overflow: 'hidden', display: 'flex', alignItems: 'baseline' }}>
+      <div style={{ position: 'absolute', left: 28, top: 150, width: 738, height: 155, fontFamily: titleTheme.webFontFamily, fontWeight: 700, lineHeight: 1, color: titleTheme.accentColor ?? INK, whiteSpace: 'nowrap', overflow: 'hidden', display: 'flex', alignItems: 'baseline' }}>
         <span style={{ fontSize: 155 }}>{head}</span>
         <span style={{ fontSize: 124 }}>{rest}</span>
       </div>

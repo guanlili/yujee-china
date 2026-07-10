@@ -39,7 +39,7 @@ export function WebMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
       caption: cellText(explains?.[i]) || legacy?.caption || '',
     };
   });
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <div
@@ -55,7 +55,7 @@ export function WebMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
         }}
       >
         {merged.map((c, i) => {
-          const cellTheme = resolveThemeCarrier(data, `explain[${i}]`);
+          const cellTheme = resolveThemeCarrier(data, `explain[${i}]`, 'explain');
           return (
           <div key={c.n ?? i}>
             <div
@@ -79,7 +79,7 @@ export function WebMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
             <p
               style={{
                 margin: '12px 0 0',
-                fontFamily: WEB_FONTS.montserrat,
+                fontFamily: cellTheme.webFontFamily,
                 lineHeight: 1.7,
                 color: cellTheme.accentColor ?? COLORS.ink,
                 letterSpacing: '0.05em',
@@ -93,7 +93,7 @@ export function WebMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
           );
         })}
       </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="10" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="10" />
     </WebPage>
   );
 }

@@ -12,10 +12,10 @@ export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
     date?: string;
     folio?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const dateTheme = resolveThemeCarrier(data, 'date');
-  const bodyTheme = resolveThemeCarrier(data, 'body');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <p
@@ -27,6 +27,7 @@ export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
           margin: 0,
           lineHeight: 1.7,
           color: bodyTheme.accentColor ?? COLORS.ink2,
+          fontFamily: bodyTheme.webFontFamily,
           letterSpacing: '0.02em',
           textAlign: 'justify',
           fontSize: 18,
@@ -56,7 +57,7 @@ export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
           width: 460,
           margin: 0,
           textAlign: 'right',
-          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.poppins,
+          fontFamily: titleTheme.webFontFamily,
           fontWeight: 800,
           fontSize: 84,
           letterSpacing: '0.01em',
@@ -80,7 +81,7 @@ export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         {dateTheme.text ?? d.date ?? ''}
       </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="15" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="15" />
     </WebPage>
   );
 }

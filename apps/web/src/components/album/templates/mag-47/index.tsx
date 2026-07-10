@@ -1,5 +1,5 @@
 import type { TemplateRenderProps } from '../types';
-import { PAGE, WEB_FONTS } from '../constants';
+import { PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
 
@@ -13,8 +13,8 @@ const INK = '#1c1b18';
 
 export function WebMag47({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const explainTheme = resolveThemeCarrier(data, 'explain');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 四张错落横图 */}
@@ -24,10 +24,10 @@ export function WebMag47({ data, imagePos }: TemplateRenderProps) {
       <WebImage src={d['image4']} style={{ position: 'absolute', left: 89, top: 739, width: 320, height: 235, objectFit: 'cover' }} position={imagePos?.['image4']} slotId="image4" />
 
       {/* 左上大字主标题 */}
-      <div style={{ position: 'absolute', left: 89, top: 296, width: 480, fontFamily: WEB_FONTS.sansEn, fontWeight: 600, fontSize: 33, lineHeight: 1.1, color: titleTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
+      <div style={{ position: 'absolute', left: 89, top: 296, width: 480, fontFamily: titleTheme.webFontFamily, fontWeight: 600, fontSize: 33, lineHeight: 1.1, color: titleTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
 
       {/* 标题下方小字图注段 */}
-      <div style={{ position: 'absolute', left: 89, top: 368, width: 396, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 18, lineHeight: 1.4, color: explainTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden' }}>{d['explain']}</div>
+      <div style={{ position: 'absolute', left: 89, top: 368, width: 396, fontFamily: explainTheme.webFontFamily, fontWeight: 400, fontSize: 18, lineHeight: 1.4, color: explainTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden' }}>{d['explain']}</div>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import type { TemplateRenderProps } from '../types';
-import { PAGE, WEB_FONTS } from '../constants';
+import { PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
 
@@ -11,18 +11,18 @@ const INK = '#1c1b18';
 
 export function WebMag34({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const explainTheme = resolveThemeCarrier(data, 'explain');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 中央竖图（先渲染，文字叠其上） */}
       <WebImage src={d['image']} style={{ position: 'absolute', left: 163, top: 234, width: 470, height: 737, objectFit: 'cover' }} position={imagePos?.['image']} slotId="image" />
 
       {/* 顶部居中大字主标题（压在图上沿） */}
-      <div style={{ position: 'absolute', left: 35, top: 187, width: 726, fontFamily: WEB_FONTS.sansEn, fontWeight: 800, fontSize: 56, lineHeight: 1.05, color: titleTheme.accentColor ?? INK, textAlign: 'center', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
+      <div style={{ position: 'absolute', left: 35, top: 187, width: 726, fontFamily: titleTheme.webFontFamily, fontWeight: 800, fontSize: 56, lineHeight: 1.05, color: titleTheme.accentColor ?? INK, textAlign: 'center', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
 
       {/* 底部居中图注 */}
-      <div style={{ position: 'absolute', left: 44, top: 970, width: 707, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 21, lineHeight: 1.35, color: explainTheme.accentColor ?? INK, textAlign: 'center', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['explain']}</div>
+      <div style={{ position: 'absolute', left: 44, top: 970, width: 707, fontFamily: explainTheme.webFontFamily, fontWeight: 400, fontSize: 21, lineHeight: 1.35, color: explainTheme.accentColor ?? INK, textAlign: 'center', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['explain']}</div>
     </div>
   );
 }

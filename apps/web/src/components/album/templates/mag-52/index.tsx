@@ -1,5 +1,4 @@
 import type { TemplateRenderProps } from '../types';
-import { WEB_FONTS } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
 
@@ -21,7 +20,7 @@ const HANDWRITING_SVG =
 
 export function WebMag52({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleTheme = resolveThemeCarrier(data, 'title');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
   return (
     <div style={{ position: 'relative', width: 794, height: 1123, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 左上小图 1（slot image1 = Figma 11:273） */}
@@ -62,7 +61,7 @@ export function WebMag52({ data, imagePos }: TemplateRenderProps) {
           left: 614,
           top: 823,
           width: 1265,
-          fontFamily: WEB_FONTS.sansEn,
+          fontFamily: titleTheme.webFontFamily,
           fontWeight: 400,
           fontSize: 108,
           lineHeight: 1.05,

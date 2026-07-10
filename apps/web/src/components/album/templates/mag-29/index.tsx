@@ -1,5 +1,5 @@
 import type { TemplateRenderProps } from '../types';
-import { PAGE, WEB_FONTS } from '../constants';
+import { PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
 
@@ -12,9 +12,9 @@ const CLAY = '#1c1b18';
 
 export function WebMag29({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const bodyTheme = resolveThemeCarrier(data, 'body');
-  const labelTheme = resolveThemeCarrier(data, 'label');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
+  const labelTheme = resolveThemeCarrier(data, 'label', 'decoration');
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 上方并排双图 */}
@@ -22,13 +22,13 @@ export function WebMag29({ data, imagePos }: TemplateRenderProps) {
       <WebImage src={d['image2']} style={{ position: 'absolute', left: 362, top: 67, width: 330, height: 464, objectFit: 'cover' }} position={imagePos?.['image2']} slotId="image2" />
 
       {/* 右对齐大标题 */}
-      <div style={{ position: 'absolute', left: 49, top: 694, width: 726, height: 70, fontFamily: WEB_FONTS.sansEn, fontWeight: 700, fontSize: 64, lineHeight: 1.1, color: titleTheme.accentColor ?? CLAY, textAlign: 'right', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
+      <div style={{ position: 'absolute', left: 49, top: 694, width: 726, height: 70, fontFamily: titleTheme.webFontFamily, fontWeight: 700, fontSize: 64, lineHeight: 1.1, color: titleTheme.accentColor ?? CLAY, textAlign: 'right', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
 
       {/* 右对齐图注 */}
-      <div style={{ position: 'absolute', left: 347, top: 762, width: 431, height: 32, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 21, lineHeight: 1.5, color: bodyTheme.accentColor ?? CLAY, textAlign: 'right', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body']}</div>
+      <div style={{ position: 'absolute', left: 347, top: 762, width: 431, height: 32, fontFamily: bodyTheme.webFontFamily, fontWeight: 400, fontSize: 21, lineHeight: 1.5, color: bodyTheme.accentColor ?? CLAY, textAlign: 'right', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body']}</div>
 
       {/* 右对齐地名（装饰标签） */}
-      <div style={{ position: 'absolute', left: 49, top: 1007, width: 726, height: 53, fontFamily: WEB_FONTS.sansEn, fontWeight: 700, fontSize: 48, lineHeight: 1.1, color: labelTheme.accentColor ?? CLAY, textAlign: 'right', overflow: 'hidden' }}>{d['label']}</div>
+      <div style={{ position: 'absolute', left: 49, top: 1007, width: 726, height: 53, fontFamily: labelTheme.webFontFamily, fontWeight: 700, fontSize: 48, lineHeight: 1.1, color: labelTheme.accentColor ?? CLAY, textAlign: 'right', overflow: 'hidden' }}>{d['label']}</div>
     </div>
   );
 }

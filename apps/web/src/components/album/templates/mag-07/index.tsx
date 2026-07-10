@@ -12,10 +12,10 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
     title?: string;
     folio?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   // ── 各槽位几何（直接改这里的数字即可调 位置/宽高/字号）──
   // 坐标系：整页 794×1123 px，左上角 (0,0)，单位 px。
   const LAYOUT = {
@@ -27,7 +27,6 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
   };
   const captionStyle = {
     margin: 0,
-    fontFamily: WEB_FONTS.montserrat, // 图注：Montserrat（带中文回退），保持可读
     lineHeight: 1.7,
     color: COLORS.ink2,
     textAlign: 'justify' as const,
@@ -44,7 +43,7 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
           height: LAYOUT.caption1.h,
         }}
       >
-        <p style={{ position: 'absolute', left: 10, top: 20, width: 240, height: 27, ...captionStyle, color: explain1Theme.accentColor ?? COLORS.ink2, fontSize: LAYOUT.caption1.fontSize }}>{d.explain1 || ''}</p>
+        <p style={{ position: 'absolute', left: 10, top: 20, width: 240, height: 27, ...captionStyle, color: explain1Theme.accentColor ?? COLORS.ink2, fontFamily: explain1Theme.webFontFamily, fontSize: LAYOUT.caption1.fontSize }}>{d.explain1 || ''}</p>
       </div>
       <WebImage
         src={d.image1}
@@ -62,7 +61,7 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
           height: LAYOUT.caption2.h,
         }}
       >
-        <p style={{ position: 'absolute', left: 10, top: 60, width: 240, height: 37, ...captionStyle, color: explain2Theme.accentColor ?? COLORS.ink2, fontSize: LAYOUT.caption2.fontSize }}>{d.explain2 || ''}</p>
+        <p style={{ position: 'absolute', left: 10, top: 60, width: 240, height: 37, ...captionStyle, color: explain2Theme.accentColor ?? COLORS.ink2, fontFamily: explain2Theme.webFontFamily, fontSize: LAYOUT.caption2.fontSize }}>{d.explain2 || ''}</p>
       </div>
       <WebImage
         src={d.image2}
@@ -79,7 +78,7 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
           width: 300,
           margin: 0,
           // 主标题：指定艺术字 Bebas Neue（高瘦大写，带中文回退）
-          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.bebas,
+          fontFamily: titleTheme.webFontFamily,
           fontSize: LAYOUT.title.fontSize,
           letterSpacing: '0.02em',
           lineHeight: 0.92,
@@ -89,7 +88,7 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         {brToReact(titleTheme.text ?? d.title ?? 'FUSHI\nINARI')}
       </h1>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="07" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="07" />
     </WebPage>
   );
 }

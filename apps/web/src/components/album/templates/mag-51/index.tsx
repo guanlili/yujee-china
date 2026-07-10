@@ -1,5 +1,5 @@
 import type { TemplateRenderProps } from '../types';
-import { PAGE, WEB_FONTS } from '../constants';
+import { PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
 
@@ -12,11 +12,11 @@ const INK = '#1c1b18';
 export function WebMag51({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
   const title = d['title'] || 'NORWAY';
-  const titleTheme = resolveThemeCarrier(data, 'title');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 顶部超大地名主标题（槽 title，variableDecor） */}
-      <div style={{ position: 'absolute', left: 60, top: 44, width: 734, height: 116, fontFamily: WEB_FONTS.sansEn, fontWeight: 700, fontSize: 92, lineHeight: 1, letterSpacing: '2px', color: titleTheme.accentColor ?? INK, whiteSpace: 'nowrap', overflow: 'hidden' }}>{title}</div>
+      <div style={{ position: 'absolute', left: 60, top: 44, width: 734, height: 116, fontFamily: titleTheme.webFontFamily, fontWeight: 700, fontSize: 92, lineHeight: 1, letterSpacing: '2px', color: titleTheme.accentColor ?? INK, whiteSpace: 'nowrap', overflow: 'hidden' }}>{title}</div>
 
       {/* 满幅竖向大图（槽 image） */}
       <WebImage src={d['image']} style={{ position: 'absolute', left: 60, top: 120, width: 674, height: 917, objectFit: 'cover' }} position={imagePos?.['image']} slotId="image" />

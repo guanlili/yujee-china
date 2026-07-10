@@ -5,7 +5,7 @@ import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag06({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as { folio?: string; image?: string };
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -15,7 +15,7 @@ export function WebMag06({ data, totalPages, imagePos }: TemplateRenderProps) {
         position={imagePos?.['image']}
         slotId="image"
       />
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="06" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="06" />
     </WebPage>
   );
 }

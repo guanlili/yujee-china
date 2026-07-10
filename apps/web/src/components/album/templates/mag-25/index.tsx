@@ -11,11 +11,11 @@ import { resolveThemeCarrier } from '../theme-carrier';
 export function WebMag25({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
   const year = new Date().getFullYear();
-  const labelTheme = resolveThemeCarrier(data, 'label');
-  const explainTheme = resolveThemeCarrier(data, 'explain');
-  const dateTheme = resolveThemeCarrier(data, 'date');
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const bodyTheme = resolveThemeCarrier(data, 'body');
+  const labelTheme = resolveThemeCarrier(data, 'label', 'decoration');
+  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
+  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 左上大图 */}
@@ -25,19 +25,19 @@ export function WebMag25({ data, imagePos }: TemplateRenderProps) {
       <WebImage src={d['image2']} style={{ position: 'absolute', left: 0, top: 692, width: 426, height: 375, objectFit: 'cover' }} position={imagePos?.['image2']} slotId="image2" />
 
       {/* 右上：大号装饰数字编号 */}
-      <div style={{ position: 'absolute', left: 613, top: 120, width: 120, height: 70, fontFamily: WEB_FONTS.playfair, fontWeight: 800, fontSize: 64, lineHeight: 1, color: labelTheme.accentColor ?? COLORS.ink, overflow: 'hidden' }}>{d['label']}</div>
+      <div style={{ position: 'absolute', left: 613, top: 120, width: 120, height: 70, fontFamily: labelTheme.webFontFamily, fontWeight: 800, fontSize: 64, lineHeight: 1, color: labelTheme.accentColor ?? COLORS.ink, overflow: 'hidden' }}>{d['label']}</div>
 
       {/* 竖排作者署名（rotate -90°，沿右半左缘自下而上） */}
-      <div style={{ position: 'absolute', left: 443, top: 250, width: 160, height: 24, transform: 'rotate(-90deg)', transformOrigin: 'top left', fontFamily: WEB_FONTS.serifCn, fontSize: 19, lineHeight: 1, letterSpacing: '0.04em', color: explainTheme.accentColor ?? COLORS.ink, whiteSpace: 'nowrap' }}>{d['explain']}</div>
+      <div style={{ position: 'absolute', left: 443, top: 250, width: 160, height: 24, transform: 'rotate(-90deg)', transformOrigin: 'top left', fontFamily: explainTheme.webFontFamily, fontSize: 19, lineHeight: 1, letterSpacing: '0.04em', color: explainTheme.accentColor ?? COLORS.ink, whiteSpace: 'nowrap' }}>{d['explain']}</div>
 
       {/* 日期 */}
-      <div style={{ position: 'absolute', left: 621, top: 189, width: 90, height: 24, fontFamily: WEB_FONTS.serifCn, fontSize: 19, lineHeight: 1, color: dateTheme.accentColor ?? COLORS.ink, overflow: 'hidden' }}>{d['date']}</div>
+      <div style={{ position: 'absolute', left: 621, top: 189, width: 90, height: 24, fontFamily: dateTheme.webFontFamily, fontSize: 19, lineHeight: 1, color: dateTheme.accentColor ?? COLORS.ink, overflow: 'hidden' }}>{d['date']}</div>
 
       {/* 两行主标题 */}
-      <div style={{ position: 'absolute', left: 495, top: 349, width: 160, height: 164, fontFamily: WEB_FONTS.serifCn, fontSize: 59, lineHeight: 1.25, color: titleTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
+      <div style={{ position: 'absolute', left: 495, top: 349, width: 160, height: 164, fontFamily: titleTheme.webFontFamily, fontSize: 59, lineHeight: 1.25, color: titleTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
 
       {/* 结尾文案 */}
-      <div style={{ position: 'absolute', left: 496, top: 592, width: 210, height: 110, fontFamily: WEB_FONTS.serifCn, fontSize: 19, lineHeight: 1.6, color: bodyTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body']}</div>
+      <div style={{ position: 'absolute', left: 496, top: 592, width: 210, height: 110, fontFamily: bodyTheme.webFontFamily, fontSize: 19, lineHeight: 1.6, color: bodyTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body']}</div>
 
       {/* ── 固定品牌落款（非槽位，同 mag-20；右下角） ── */}
       {/* 品牌 logo */}
