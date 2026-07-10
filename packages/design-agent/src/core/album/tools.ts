@@ -9,7 +9,6 @@ import {
 	derivePageChapterId,
 	findAlbumPageByNo,
 	findAlbumPhoto,
-	summarizeAlbumBook,
 	validateImagesMap,
 	validateTextsPatch,
 } from "./book-state.ts";
@@ -24,10 +23,12 @@ export interface AlbumToolsOptions {
 	skills?: Skill[];
 }
 
-const getBookSummarySchema = Type.Object({});
-
-const readPageSchema = Type.Object({
-	pageNo: Type.Number({ description: "页码（从 1 开始，第 1 页 = 第一页；见 get_book_summary）。" }),
+const readPagesSchema = Type.Object({
+	pageNos: Type.Optional(
+		Type.Array(Type.Number(), {
+			description: "要读取的页码数组（从 1 开始）。省略或空数组 = 读取全书所有页（用于了解全书）。",
+		}),
+	),
 });
 
 const searchBookSchema = Type.Object({
@@ -36,10 +37,15 @@ const searchBookSchema = Type.Object({
 });
 
 const updatePageTextsSchema = Type.Object({
-	pageNo: Type.Number({ description: "要修改的页码（从 1 开始）。" }),
-	texts: Type.Record(Type.String(), Type.String(), {
-		description: "槽 id → 新文字内容。只需给出要修改的槽；每个槽必须遵守模板的 maxChars 限制。",
-	}),
+	updates: Type.Array(
+		Type.Object({
+			pageNo: Type.Number({ description: "要修改的页码（从 1 开始）。" }),
+			texts: Type.Record(Type.String(), Type.String(), {
+				description: "槽 id → 新文字内容。只需给出要修改的槽；每个槽必须遵守模板的 maxChars 限制。",
+			}),
+		}),
+		{ description: "一次可提交多页、每页多槽的文字修改。" },
+	),
 });
 
 const swapPageTemplateSchema = Type.Object({
@@ -48,10 +54,15 @@ const swapPageTemplateSchema = Type.Object({
 });
 
 const updatePageImagesSchema = Type.Object({
-	pageNo: Type.Number({ description: "要调整图片的页码（从 1 开始）。" }),
-	images: Type.Record(Type.String(), Type.String(), {
-		description: "完整的槽 id → photoId 映射（整页替换）：模板所有图槽都要填，照片必须存在于本书章节。",
-	}),
+	updates: Type.Array(
+		Type.Object({
+			pageNo: Type.Number({ description: "要调整图片的页码（从 1 开始）。" }),
+			images: Type.Record(Type.String(), Type.String(), {
+				description: "完整的槽 id → photoId 映射（整页替换）：模板所有图槽都要填，照片必须存在于本书章节。",
+			}),
+		}),
+		{ description: "一次可提交多页的图片替换。" },
+	),
 });
 
 const setTextColorsSchema = Type.Object({
@@ -73,7 +84,7 @@ const readSkillSchema = Type.Object({
 	name: Type.String({ description: "需要读取完整内容的 skill 名称。" }),
 });
 
-type ReadPageInput = Static<typeof readPageSchema>;
+type ReadPagesInput = Static<typeof readPagesSchema>;
 type SearchBookInput = Static<typeof searchBookSchema>;
 type UpdatePageTextsInput = Static<typeof updatePageTextsSchema>;
 type SwapPageTemplateInput = Static<typeof swapPageTemplateSchema>;
@@ -87,8 +98,7 @@ const MAX_SEARCH_LIMIT = 30;
 
 export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 	return [
-		createGetBookSummaryTool(options),
-		createReadPageTool(options),
+		createReadPagesTool(options),
 		createSearchBookTool(options),
 		createListTemplatesTool(options),
 		createUpdatePageTextsTool(options),
@@ -99,71 +109,67 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 	];
 }
 
-function createGetBookSummaryTool(options: AlbumToolsOptions): AgentTool<typeof getBookSummarySchema> {
+function readPagePayload(state: AlbumBookState, catalog: TemplateCatalog, pageNo: number): Record<string, unknown> {
+	const page = requirePage(state, pageNo);
+	const template = requireTemplate(catalog, page.templateId);
+	const photoToChapter = buildPhotoToChapterMap(state);
+	const chapterId = derivePageChapterId(page, photoToChapter);
+	const chapter = state.chapters.find((candidate) => candidate.chapterId === chapterId);
 	return {
-		name: "get_book_summary",
-		label: "获取书摘要",
-		description: "返回整本书概览：版本、章节（照片数/主题色）、每页的模板/类目/图文槽填充情况。开始任何任务前先用它了解全书。",
-		parameters: getBookSummarySchema,
-		async execute(): Promise<AgentToolResult<undefined>> {
-			const state = options.getBookState();
-			return {
-				content: [{ type: "text", text: JSON.stringify(summarizeAlbumBook(state, options.catalog), null, 1) }],
-				details: undefined,
-			};
-		},
+		pageNo,
+		pageIndex: page.pageIndex,
+		templateId: page.templateId,
+		category: template.category,
+		chapter: chapter
+			? {
+					chapterId: chapter.chapterId,
+					chapterContext: chapter.chapterContext ?? "",
+					accentColor: chapter.accentColor,
+				}
+			: undefined,
+		images: Object.fromEntries(
+			Object.entries(page.images).map(([slotId, photoId]) => {
+				const photo = findAlbumPhoto(state, photoId);
+				return [
+					slotId,
+					{
+						photoId,
+						sceneDescription: photo?.sceneDescription ?? "",
+						orientation: photo?.orientation,
+						takenAt: photo?.takenAt ?? undefined,
+					},
+				];
+			}),
+		),
+		texts: page.texts,
+		textSlotDefs: template.textSlotIds.map((slotId) => describeTextSlot(template, slotId)),
+		repeatTextSlotBases: template.repeatTextSlotBases.map((base) => `${base}[n]`),
 	};
 }
 
-function createReadPageTool(options: AlbumToolsOptions): AgentTool<typeof readPageSchema, { pageNo: number }> {
+function createReadPagesTool(options: AlbumToolsOptions): AgentTool<typeof readPagesSchema, { pageNos: number[] }> {
 	return {
 		name: "read_page",
-		label: "读取单页",
-		description: "读取指定页的完整内容：图片槽（含照片描述）、文字槽（含模板对每个槽的角色/字数限制/示范文案 sample），以及该页所属章节的背景信息。",
-		parameters: readPageSchema,
-		prepareArguments(args: unknown): ReadPageInput {
-			return { pageNo: isRecord(args) ? (readNumber(args.pageNo) ?? readNumber(args.pageIndex) ?? -1) : -1 };
+		label: "读取页面",
+		description:
+			"读取一页或多页的完整内容（图片 + 文字 + 该页所属分组背景）：传 pageNos 指定多页；省略 pageNos = 读取全书所有页（用于了解全书）。",
+		parameters: readPagesSchema,
+		prepareArguments(args: unknown): ReadPagesInput {
+			if (!isRecord(args)) return {};
+			// 兼容单页/别名：pageNos 数组优先；否则 pageNo/pageIndex 单值包成数组；都没有 = 全书。
+			const list = readNumberArray(args.pageNos);
+			if (list.length > 0) return { pageNos: list };
+			const single = readNumber(args.pageNo) ?? readNumber(args.pageIndex);
+			return single !== undefined ? { pageNos: [single] } : {};
 		},
-		async execute(_toolCallId: string, params: ReadPageInput): Promise<AgentToolResult<{ pageNo: number }>> {
+		async execute(_toolCallId: string, params: ReadPagesInput): Promise<AgentToolResult<{ pageNos: number[] }>> {
 			const state = options.getBookState();
-			const page = requirePage(state, params.pageNo);
-			const template = requireTemplate(options.catalog, page.templateId);
-			const photoToChapter = buildPhotoToChapterMap(state);
-			const chapterId = derivePageChapterId(page, photoToChapter);
-			const chapter = state.chapters.find((candidate) => candidate.chapterId === chapterId);
-			const payload = {
-				pageNo: params.pageNo,
-				pageIndex: page.pageIndex,
-				templateId: page.templateId,
-				category: template.category,
-				chapter: chapter
-					? {
-							chapterId: chapter.chapterId,
-							chapterContext: chapter.chapterContext ?? "",
-							accentColor: chapter.accentColor,
-						}
-					: undefined,
-				images: Object.fromEntries(
-					Object.entries(page.images).map(([slotId, photoId]) => {
-						const photo = findAlbumPhoto(state, photoId);
-						return [
-							slotId,
-							{
-								photoId,
-								sceneDescription: photo?.sceneDescription ?? "",
-								orientation: photo?.orientation,
-								takenAt: photo?.takenAt ?? undefined,
-							},
-						];
-					}),
-				),
-				texts: page.texts,
-				textSlotDefs: template.textSlotIds.map((slotId) => describeTextSlot(template, slotId)),
-				repeatTextSlotBases: template.repeatTextSlotBases.map((base) => `${base}[n]`),
-			};
+			const pageNos =
+				params.pageNos && params.pageNos.length > 0 ? params.pageNos : state.pages.map((_, index) => index + 1);
+			const pages = pageNos.map((pageNo) => readPagePayload(state, options.catalog, pageNo));
 			return {
-				content: [{ type: "text", text: JSON.stringify(payload, null, 1) }],
-				details: { pageNo: params.pageNo },
+				content: [{ type: "text", text: JSON.stringify({ pages }, null, 1) }],
+				details: { pageNos },
 			};
 		},
 	};
@@ -175,7 +181,7 @@ function createSearchBookTool(
 	return {
 		name: "search_book",
 		label: "搜索全书",
-		description: "在全书页文字、照片描述和章节背景中搜索文本，返回命中位置（页码/槽 id/照片 id）。用于修改前定位内容。",
+		description: "在全书页文字、照片描述和章节背景中搜索文本，返回命中位置（页码/槽 id/照片 id）。用于修改定位内容。",
 		parameters: searchBookSchema,
 		prepareArguments(args: unknown): SearchBookInput {
 			if (isRecord(args)) {
@@ -214,7 +220,7 @@ function createListTemplatesTool(
 	return {
 		name: "list_templates",
 		label: "查询模板库",
-		description: "列出可用版式模板（可按类目 cover/toc/interior/ending 和图槽数过滤）。换模板前先用它确认候选的图槽数与文字槽结构。",
+		description: "可用版式模板信息，（可按类目 cover/toc/interior/ending 和图槽数过滤）。换模板前先用它确认候选的图槽数与文字槽结构。",
 		parameters: listTemplatesSchema,
 		prepareArguments(args: unknown): ListTemplatesInput {
 			if (isRecord(args)) {
@@ -264,35 +270,36 @@ function createUpdatePageTextsTool(
 		name: "update_page_texts",
 		label: "更新页面文字",
 		description:
-			"修改指定页的文字槽内容（只传要改的槽）。写入前会按模板校验槽 id 与 maxChars，非法写入会报错并说明限制。一次调用可同时改同一页的多个槽。",
+			"修改指定页的文字内容（只传要改的槽）。写入前会按模板校验槽 id ，非法写入会报错并说明限制。一次调用可同时改多页多槽。",
 		parameters: updatePageTextsSchema,
 		prepareArguments(args: unknown): UpdatePageTextsInput {
-			if (!isRecord(args)) return { pageNo: -1, texts: {} };
-			return {
-				pageNo: readNumber(args.pageNo) ?? readNumber(args.pageIndex) ?? -1,
-				texts: readStringRecord(args.texts),
-			};
+			return { updates: readTextUpdates(args) };
 		},
 		async execute(
 			_toolCallId: string,
 			params: UpdatePageTextsInput,
 		): Promise<AgentToolResult<AlbumWriteDetails>> {
 			const state = options.getBookState();
-			const page = requirePage(state, params.pageNo);
-			const template = requireTemplate(options.catalog, page.templateId);
-			if (Object.keys(params.texts).length === 0) throw new Error("texts 至少要包含一个槽");
-			const errors = validateTextsPatch(template, params.texts);
-			if (errors.length > 0) throw new Error(`文字写入不合法：\n${errors.join("\n")}`);
+			if (params.updates.length === 0) throw new Error("updates 至少要包含一页");
+			// 先整批校验：任一页非法则整批拒绝，不改状态。
+			for (const update of params.updates) {
+				const page = requirePage(state, update.pageNo);
+				const template = requireTemplate(options.catalog, page.templateId);
+				if (Object.keys(update.texts).length === 0) throw new Error(`第 ${update.pageNo} 页 texts 至少要包含一个槽`);
+				const errors = validateTextsPatch(template, update.texts);
+				if (errors.length > 0) throw new Error(`第 ${update.pageNo} 页文字写入不合法：\n${errors.join("\n")}`);
+			}
 
 			const nextState = cloneAlbumBookState(state);
-			const nextPage = requirePage(nextState, params.pageNo);
-			for (const [slotId, value] of Object.entries(params.texts)) {
-				nextPage.texts[slotId] = value;
+			const operations: string[] = [];
+			for (const update of params.updates) {
+				const nextPage = requirePage(nextState, update.pageNo);
+				for (const [slotId, value] of Object.entries(update.texts)) {
+					nextPage.texts[slotId] = value;
+					operations.push(`p${update.pageNo}:texts.${slotId}`);
+				}
 			}
-			return commitWrite(options, nextState, {
-				pageNo: params.pageNo,
-				operations: Object.keys(params.texts).map((slotId) => `texts.${slotId}`),
-			});
+			return commitWrite(options, nextState, { pageNo: params.updates[0].pageNo, operations });
 		},
 	};
 }
@@ -358,29 +365,30 @@ function createUpdatePageImagesTool(
 			"整页替换图片槽映射（槽 id → photoId）：模板所有图槽必须填满、照片必须来自本书章节、同页不能重复。用于调换图片顺序或替换照片。",
 		parameters: updatePageImagesSchema,
 		prepareArguments(args: unknown): UpdatePageImagesInput {
-			if (!isRecord(args)) return { pageNo: -1, images: {} };
-			return {
-				pageNo: readNumber(args.pageNo) ?? readNumber(args.pageIndex) ?? -1,
-				images: readStringRecord(args.images),
-			};
+			return { updates: readImageUpdates(args) };
 		},
 		async execute(
 			_toolCallId: string,
 			params: UpdatePageImagesInput,
 		): Promise<AgentToolResult<AlbumWriteDetails>> {
 			const state = options.getBookState();
-			const page = requirePage(state, params.pageNo);
-			const template = requireTemplate(options.catalog, page.templateId);
-			const errors = validateImagesMap(template, params.images, state);
-			if (errors.length > 0) throw new Error(`图片写入不合法：\n${errors.join("\n")}`);
+			if (params.updates.length === 0) throw new Error("updates 至少要包含一页");
+			// 先整批校验：任一页非法则整批拒绝，不改状态。
+			for (const update of params.updates) {
+				const page = requirePage(state, update.pageNo);
+				const template = requireTemplate(options.catalog, page.templateId);
+				const errors = validateImagesMap(template, update.images, state);
+				if (errors.length > 0) throw new Error(`第 ${update.pageNo} 页图片写入不合法：\n${errors.join("\n")}`);
+			}
 
 			const nextState = cloneAlbumBookState(state);
-			const nextPage = requirePage(nextState, params.pageNo);
-			nextPage.images = { ...params.images };
-			return commitWrite(options, nextState, {
-				pageNo: params.pageNo,
-				operations: ["images"],
-			});
+			const operations: string[] = [];
+			for (const update of params.updates) {
+				const nextPage = requirePage(nextState, update.pageNo);
+				nextPage.images = { ...update.images };
+				operations.push(`p${update.pageNo}:images`);
+			}
+			return commitWrite(options, nextState, { pageNo: params.updates[0].pageNo, operations });
 		},
 	};
 }
@@ -402,7 +410,7 @@ function createSetTextColorsTool(
 		name: "set_text_colors",
 		label: "设定文字配色",
 		description:
-			"整本书一键配色：按文字角色设定颜色——标题（含装饰槽：英文标签/页码）、正文、注释三类各一个色。全书对应角色的文字槽会被一次刷到底。至少给一类颜色；只改一类就只传那一类。配色需求一律用它，不要手工逐页写 carrier 键。",
+			"整本书一键配色：按文字角色设定颜色——标题（含装饰槽：英文标签/页码）、正文、注释三类各一个色。工具一键刷新",
 		parameters: setTextColorsSchema,
 		prepareArguments(args: unknown): SetTextColorsInput {
 			if (!isRecord(args)) return {};
@@ -455,7 +463,7 @@ function createSetTextColorsTool(
 
 			if (affectedPageNos.length === 0) {
 				throw new Error(
-					"全书没有匹配这些角色的文字槽，配色无处落地。用 get_book_summary / list_templates 确认页面结构。",
+					"全书没有匹配这些角色的文字槽，配色无处落地。用 read_page / list_templates 确认页面结构。",
 				);
 			}
 
@@ -682,7 +690,7 @@ function requirePage(state: AlbumBookState, pageNo: number): AlbumPage {
 	const page = findAlbumPageByNo(state, pageNo);
 	if (!page) {
 		throw new Error(
-			`没有第 ${pageNo} 页。本书共 ${state.pages.length} 页，页码取值 1..${state.pages.length}（见 get_book_summary）。`,
+			`没有第 ${pageNo} 页。本书共 ${state.pages.length} 页，页码取值 1..${state.pages.length}。`,
 		);
 	}
 	return page;
@@ -713,4 +721,42 @@ function readStringRecord(value: unknown): Record<string, string> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readNumberArray(value: unknown): number[] {
+	if (!Array.isArray(value)) return [];
+	const out: number[] = [];
+	for (const entry of value) {
+		const n = readNumber(entry);
+		if (n !== undefined) out.push(n);
+	}
+	return out;
+}
+
+// 兼容：既接受批量 { updates: [{pageNo, texts}] }，也接受单页 { pageNo, texts }。
+function readTextUpdates(args: unknown): Array<{ pageNo: number; texts: Record<string, string> }> {
+	if (!isRecord(args)) return [];
+	if (Array.isArray(args.updates)) {
+		return args.updates.filter(isRecord).map((update) => ({
+			pageNo: readNumber(update.pageNo) ?? readNumber(update.pageIndex) ?? -1,
+			texts: readStringRecord(update.texts),
+		}));
+	}
+	const pageNo = readNumber(args.pageNo) ?? readNumber(args.pageIndex);
+	if (pageNo !== undefined && isRecord(args.texts)) return [{ pageNo, texts: readStringRecord(args.texts) }];
+	return [];
+}
+
+// 兼容：既接受批量 { updates: [{pageNo, images}] }，也接受单页 { pageNo, images }。
+function readImageUpdates(args: unknown): Array<{ pageNo: number; images: Record<string, string> }> {
+	if (!isRecord(args)) return [];
+	if (Array.isArray(args.updates)) {
+		return args.updates.filter(isRecord).map((update) => ({
+			pageNo: readNumber(update.pageNo) ?? readNumber(update.pageIndex) ?? -1,
+			images: readStringRecord(update.images),
+		}));
+	}
+	const pageNo = readNumber(args.pageNo) ?? readNumber(args.pageIndex);
+	if (pageNo !== undefined && isRecord(args.images)) return [{ pageNo, images: readStringRecord(args.images) }];
+	return [];
 }

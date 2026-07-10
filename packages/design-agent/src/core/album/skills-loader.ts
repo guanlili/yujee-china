@@ -11,7 +11,7 @@ import { createDefaultAlbumSkills } from "./skills.ts";
  */
 
 export interface AlbumSkillsLoaderOptions {
-	/** skills 根目录；默认为包内 skills/（可用 YUJEE_DESIGN_SKILLS_DIR 覆盖）。 */
+	/** skills 根目录；默认为共享的 packages/contracts/skills/（可用 YUJEE_DESIGN_SKILLS_DIR 覆盖）。 */
 	skillsDir?: string;
 	env?: Record<string, string | undefined>;
 }
@@ -21,8 +21,9 @@ const moduleDir = dirname(fileURLToPath(import.meta.url));
 export function defaultSkillsDir(env: Record<string, string | undefined> = process.env): string {
 	const fromEnv = env.YUJEE_DESIGN_SKILLS_DIR?.trim();
 	if (fromEnv) return fromEnv;
-	// src/core/album 与 dist/core/album 深度一致，上三层即包根。
-	return join(moduleDir, "..", "..", "..", "skills");
+	// 共享真相源:packages/contracts/skills/<name>/SKILL.md(与 templates 同机制,engine/agent 共用一份)。
+	// src/core/album 与 dist/core/album 深度一致,上四层到 packages/,再进 contracts/skills。
+	return join(moduleDir, "..", "..", "..", "..", "contracts", "skills");
 }
 
 export function loadAlbumSkills(options: AlbumSkillsLoaderOptions = {}): Skill[] {

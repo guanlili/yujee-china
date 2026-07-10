@@ -75,13 +75,21 @@ test("工具写入之后所有页仍然契约合法", async () => {
 	assert.ok(updateTexts && swapTemplate && updateImages);
 
 	await updateTexts.execute("t1", {
-		pageNo: 1,
-		texts: { title: "我们仨的夏天", label: "SUMMER · 2019", explain1: "青岛的海风", explain2: "和第一次看海的爸妈" },
+		updates: [
+			{
+				pageNo: 1,
+				texts: { title: "我们仨的夏天", label: "SUMMER · 2019", explain1: "青岛的海风", explain2: "和第一次看海的爸妈" },
+			},
+		],
 	} as never);
 	await swapTemplate.execute("t2", { pageNo: 4, templateId: "mag-30" } as never);
 	await updateImages.execute("t3", {
-		pageNo: 3,
-		images: { "image[0]": "p-sea-05", "image[1]": "p-sea-04", "image[2]": "p-sea-02", "image[3]": "p-sea-03" },
+		updates: [
+			{
+				pageNo: 3,
+				images: { "image[0]": "p-sea-05", "image[1]": "p-sea-04", "image[2]": "p-sea-02", "image[3]": "p-sea-03" },
+			},
+		],
 	} as never);
 
 	assert.equal(book.version, 4);

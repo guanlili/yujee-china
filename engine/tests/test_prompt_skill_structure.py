@@ -9,42 +9,14 @@ AGENTS_ROOT = SRC_ROOT / "agents"
 CHAPTERING_ROOT = SRC_ROOT / "workflows" / "core" / "chaptering"
 
 
-def test_human_authored_prompt_assets_live_under_skills():
+def test_no_markdown_assets_left_under_skills():
     assert SKILLS_ROOT.is_dir()
     assert not (SRC_ROOT / "prompts").exists()
 
-    # skills/ 只保留 3 个公共 skill(设计+颜色 / 写作 / 排版规则),各一文件。
-    expected = {
-        "theme_colors.md",
-        "writing_style.md",
-        "layout_rules.md",
-    }
-    removed = {
-        # 旧 page_edit(edit_loop 吸收后删)
-        "json_only.md",
-        "persona.md",
-        "privacy.md",
-        "page_intent_routing.md",
-        "page_text_editing.md",
-        "replies/page_edit.md",
-        # skills 归置:孤儿删除(消费方已在瘦身时删)
-        "grounding.md",
-        "chapter_grouping.md",
-        "cluster_grouping.md",
-        "image_edit_selection.md",
-        "chapter_chat_turns.md",
-        "replies/theme_recommend.md",
-        "replies/writing.md",
-        # 角色 prompt 搬进核心模块,不再在 skills/ 下
-        "describe_retry.md",
-        # 再精简:主题选项/引导风格删除;page_assignment 正名为 layout_rules
-        "book_theme_options.md",
-        "guidance_style.md",
-        "page_assignment.md",
-    }
-    missing = [name for name in sorted(expected) if not (SKILLS_ROOT / name).is_file()]
-    lingering = [name for name in sorted(removed) if (SKILLS_ROOT / name).exists()]
-    assert missing == []
+    # 写作/排版/主题这类共享 skill 的单一真相源已迁到
+    # packages/contracts/skills/<name>/SKILL.md(带 frontmatter,只有 design-agent 消费)。
+    # engine 侧 skills/ 只剩 prompt 加载器;各 workflow 的 prompt 正文放在自己模块目录下。
+    lingering = sorted(str(p.relative_to(SKILLS_ROOT)) for p in SKILLS_ROOT.glob("**/*.md"))
     assert lingering == []
 
 
