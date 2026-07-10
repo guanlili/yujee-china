@@ -19,9 +19,17 @@ export interface AlbumFontFace {
   load(): Promise<AlbumFontFace>;
 }
 
+export interface AlbumFontFaceDescriptors {
+  unicodeRange: string;
+}
+
 export interface AlbumFontEnvironment {
   fetchSubset(request: AlbumFontRequest): Promise<FontSubsetPayload>;
-  createFontFace(family: string, source: string): AlbumFontFace;
+  createFontFace(
+    family: string,
+    source: string,
+    descriptors: AlbumFontFaceDescriptors,
+  ): AlbumFontFace;
   addFontFace(face: AlbumFontFace): void;
   fontsReady(): Promise<unknown>;
 }
@@ -46,8 +54,12 @@ function browserEnvironment(): AlbumFontEnvironment {
       }
       return json.data as FontSubsetPayload;
     },
-    createFontFace(family, source) {
-      return new FontFace(family, source, { style: 'normal', weight: '400' }) as AlbumFontFace;
+    createFontFace(family, source, descriptors) {
+      return new FontFace(family, source, {
+        style: 'normal',
+        weight: '400',
+        unicodeRange: descriptors.unicodeRange,
+      }) as AlbumFontFace;
     },
     addFontFace(face) {
       document.fonts.add(face as FontFace);
@@ -58,11 +70,31 @@ function browserEnvironment(): AlbumFontEnvironment {
   };
 }
 
+export function unicodeRangeForCharset(charset: string): string {
+  const points = [...new Set([...charset].map((char) => char.codePointAt(0)!))]
+    .sort((a, b) => a - b);
+  const ranges: string[] = [];
+  for (let index = 0; index < points.length;) {
+    const start = points[index]!;
+    let end = start;
+    while (index + 1 < points.length && points[index + 1] === end + 1) {
+      index += 1;
+      end = points[index]!;
+    }
+    const from = start.toString(16).toUpperCase();
+    const to = end.toString(16).toUpperCase();
+    ranges.push(start === end ? `U+${from}` : `U+${from}-${to}`);
+    index += 1;
+  }
+  return ranges.join(', ');
+}
+
 async function installSubset(
   request: AlbumFontRequest,
   env: AlbumFontEnvironment,
 ): Promise<void> {
   const subset = await env.fetchSubset(request);
+  const descriptors = { unicodeRange: unicodeRangeForCharset(request.charset) };
   const families = new Map<string, string>([
     ['NotoSansSC', subset.sansBase64],
     ['NotoSerifSC', subset.serifBase64],
@@ -72,7 +104,11 @@ async function installSubset(
   }
 
   await Promise.all([...families].map(async ([family, base64]) => {
-    const face = env.createFontFace(family, `url(data:font/ttf;base64,${base64})`);
+    const face = env.createFontFace(
+      family,
+      `url(data:font/ttf;base64,${base64})`,
+      descriptors,
+    );
     const loaded = await face.load();
     env.addFontFace(loaded);
   }));

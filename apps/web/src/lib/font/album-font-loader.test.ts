@@ -21,6 +21,7 @@ test('loadAlbumFonts memoizes an identical request and installs defaults plus ar
   let requestBody: unknown;
   const loaded: string[] = [];
   const installed: string[] = [];
+  const unicodeRanges: string[] = [];
   const env: AlbumFontEnvironment = {
     fetchSubset: async (body) => {
       fetchCount += 1;
@@ -31,14 +32,17 @@ test('loadAlbumFonts memoizes an identical request and installs defaults plus ar
         artFonts: { 'long-cang': { family: 'Long Cang', base64: 'LONG' } },
       };
     },
-    createFontFace: (family, source) => ({
+    createFontFace: (family, source, descriptors) => {
+      unicodeRanges.push(descriptors.unicodeRange);
+      return ({
       family,
       source,
       async load() {
         loaded.push(`${family}:${source}`);
         return this;
       },
-    }),
+      });
+    },
     addFontFace: (face) => installed.push(face.family),
     fontsReady: async () => undefined,
   };
@@ -51,6 +55,8 @@ test('loadAlbumFonts memoizes an identical request and installs defaults plus ar
   assert.deepEqual(installed.sort(), ['Long Cang', 'NotoSansSC', 'NotoSerifSC']);
   assert.equal(loaded.length, 3);
   assert.ok(loaded.some((item) => item.includes('base64,LONG')));
+  assert.equal(unicodeRanges.length, 3);
+  assert.ok(unicodeRanges.every((range) => range.includes('U+6625')));
 });
 
 test('loadAlbumFonts evicts failed requests so a later render can retry', async () => {
