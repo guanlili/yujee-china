@@ -6,12 +6,14 @@ gemini 优先、豆包兜底);单页换版式复用同一评委(`judge_page_temp
 
 from __future__ import annotations
 
-from .handler import judge_layout_thumbnails, judge_page_template
-from .schema import GeminiLayoutUnavailable, LayoutJudgeResult
+from .handler import judge_layout_thumbnails, judge_page_template, judge_thumbnails_batch
+from .schema import GeminiLayoutUnavailable, LayoutBatchJudgeResult, LayoutJudgeResult
 
 __all__ = [
     "GeminiLayoutUnavailable",
+    "LayoutBatchJudgeResult",
     "LayoutJudgeResult",
     "judge_layout_thumbnails",
     "judge_page_template",
+    "judge_thumbnails_batch",
 ]
