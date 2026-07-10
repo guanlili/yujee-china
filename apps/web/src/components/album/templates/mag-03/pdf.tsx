@@ -5,7 +5,6 @@ import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
 // @react-pdf 无逐字回退：标签默认 Montserrat（与 web 一致），含中文则切 serifCn(Noto SC) 避免豆腐块。
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -14,14 +13,11 @@ export function PdfMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
     folio?: string;
     image?: string;
   };
-  const labelTheme = resolveThemeCarrier(data, 'label');
-  const dateTheme = resolveThemeCarrier(data, 'date');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const labelTheme = resolveThemeCarrier(data, 'label', 'decoration');
+  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   const labelText = labelTheme.text ?? d.label ?? '';
-  const labelFont =
-    labelTheme.pdfFontFamily ?? (hasCjk(labelText) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat);
   const dateText = d.date ?? '';
-  const dateFont = hasCjk(dateText) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat;
   // 装饰：与标签同色（参与主题换肤）的四角框线，压在图片之上（与 web 一致）。
   const decorColor = labelTheme.accentColor ?? COLORS.ink;
   const corners = [
@@ -64,7 +60,7 @@ export function PdfMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
             textTransform: 'uppercase',
             fontSize: 15,
             fontWeight: 600,
-            fontFamily: labelFont,
+            fontFamily: labelTheme.pdfFontFamily,
           }}
         >
           {labelText}
@@ -78,14 +74,14 @@ export function PdfMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
               color: dateTheme.accentColor ?? labelTheme.accentColor ?? COLORS.ink,
               fontSize: 30,
               fontWeight: 600,
-              fontFamily: dateFont,
+              fontFamily: dateTheme.pdfFontFamily,
             }}
           >
             {dateText}
           </Text>
         ) : null}
       </View>
-      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="03" />
+      <PdfFolio fontFamily={folioTheme.pdfFontFamily} folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="03" />
     </PdfPageShell>
   );
 }

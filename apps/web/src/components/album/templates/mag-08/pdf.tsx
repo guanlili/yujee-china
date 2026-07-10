@@ -4,7 +4,6 @@ import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -15,13 +14,12 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
     title?: string;
     folio?: string;
   };
-  const dateTheme = resolveThemeCarrier(data, 'date');
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   const titleText = titleTheme.text ?? d.title ?? 'EVENT';
-  const titleFont = titleTheme.pdfFontFamily ?? (hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.abril);
   const dn = (d.date || '08/24').split('/');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
@@ -35,7 +33,7 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         <Text
           style={{
-            fontFamily: dateTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
+            fontFamily: dateTheme.pdfFontFamily,
             fontStyle: 'italic',
             fontSize: 46,
             color: dateTheme.accentColor ?? COLORS.ink,
@@ -45,7 +43,7 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
         </Text>
         <Text
           style={{
-            fontFamily: dateTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
+            fontFamily: dateTheme.pdfFontFamily,
             fontStyle: 'italic',
             fontSize: 46,
             color: dateTheme.accentColor ?? COLORS.ink2,
@@ -55,7 +53,7 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
         </Text>
         <Text
           style={{
-            fontFamily: dateTheme.pdfFontFamily ?? PDF_FONTS.serifEn,
+            fontFamily: dateTheme.pdfFontFamily,
             fontStyle: 'italic',
             fontSize: 46,
             color: dateTheme.accentColor ?? COLORS.ink,
@@ -71,20 +69,20 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
       />
       {/* 左侧说明：与照片左缘对齐、宽度等于照片宽度 */}
       <View style={{ position: 'absolute', top: 670, left: 70, width: 360 }}>
-        <Text style={{ position: 'absolute', left: 70, top: 670, width: 360, fontFamily: hasCjk(d.explain1) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat, fontSize: 18, lineHeight: 1.7, color: explain1Theme.accentColor ?? COLORS.ink2, textAlign: 'justify' }}>
+        <Text style={{ position: 'absolute', left: 70, top: 670, width: 360, fontFamily: explain1Theme.pdfFontFamily, fontSize: 18, lineHeight: 1.7, color: explain1Theme.accentColor ?? COLORS.ink2, textAlign: 'justify' }}>
           {d.explain1 || ''}
         </Text>
       </View>
       {/* 右侧说明：移到照片右缘之外、收窄宽度，避免与照片重叠；分两段渲染 */}
       <View style={{ position: 'absolute', top: 300, left: 470, width: 250 }}>
         {(d.explain2 || '').split('\n\n').map((para, i) => (
-          <Text key={i} style={{ marginTop: i === 0 ? 0 : 14, fontFamily: hasCjk(d.explain2) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat, fontSize: 16, lineHeight: 1.7, color: explain2Theme.accentColor ?? COLORS.ink2, textAlign: 'justify' }}>
+          <Text key={i} style={{ marginTop: i === 0 ? 0 : 14, fontFamily: explain2Theme.pdfFontFamily, fontSize: 16, lineHeight: 1.7, color: explain2Theme.accentColor ?? COLORS.ink2, textAlign: 'justify' }}>
             {para}
           </Text>
         ))}
       </View>
       <Text
-        style={{ position: 'absolute', left: 70, top: 920, width: 280, fontFamily: titleFont,
+        style={{ position: 'absolute', left: 70, top: 920, width: 280, fontFamily: titleTheme.pdfFontFamily,
           fontSize: 78,
           lineHeight: 1.05,
           letterSpacing: 1,
@@ -92,7 +90,7 @@ export function PdfMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         {titleText}
       </Text>
-      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="08" />
+      <PdfFolio fontFamily={folioTheme.pdfFontFamily} folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="08" />
     </PdfPageShell>
   );
 }

@@ -5,7 +5,6 @@ import type { TemplateArrayItem, TemplateRenderProps, ToCItem } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
 // 文字含中文时切到 serifCn(Noto SC)避免豆腐块,纯英文走 montserrat(与 web 一致)。
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
   const d = data as {
@@ -15,8 +14,8 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
     items?: ToCItem[];
     folio?: string;
   };
-  const headingTheme = resolveThemeCarrier(data, 'title');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const headingTheme = resolveThemeCarrier(data, 'title', 'title');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   // 顶层标题与重复项 title[i] 共享 base key `title`:有重复项时 data.title 是数组,
   // 顶层标题退回默认值。仅当 data.title 是字符串时才作为顶层大标题用。
   const headingText = typeof d.title === 'string' ? d.title : undefined;
@@ -68,9 +67,6 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
   // 4 项 2×2,简单 absolute 网格
   const cellW = (794 - 56 * 2 - 80) / 2;
   const headingResolved = headingTheme.text ?? headingText ?? 'CONTENTS';
-  const anyTitleCjk = rows.some((_, i) =>
-    hasCjk(slotText(titles?.[i]) || legacy[i]?.title || ''),
-  );
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <Text
@@ -83,9 +79,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
           lineHeight: 1,
           letterSpacing: 3,
           color: headingTheme.accentColor ?? COLORS.ink,
-          fontFamily:
-            headingTheme.pdfFontFamily ??
-            (hasCjk(headingResolved) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat),
+          fontFamily: headingTheme.pdfFontFamily,
         }}
       >
         {headingResolved}
@@ -95,9 +89,9 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
         const row = Math.floor(i / 2);
         const x = 56 + col * (cellW + 80);
         const y = 338 + row * 360;
-        const numberTheme = resolveThemeCarrier(data, `number[${i}]`);
-        const titleTheme = resolveThemeCarrier(data, `title[${i}]`);
-        const descriptionTheme = resolveThemeCarrier(data, `description[${i}]`);
+        const numberTheme = resolveThemeCarrier(data, `number[${i}]`, 'decoration');
+        const titleTheme = resolveThemeCarrier(data, `title[${i}]`, 'title');
+        const descriptionTheme = resolveThemeCarrier(data, `description[${i}]`, 'explain');
         const titleResolved = slotText(titles?.[i]) || legacy[i]?.title || '';
         // 把编号(如 "01")拆成前导 0(lead)与主数字(rest):前导 0 小号、上移半个字符,
         // 主数字放大,形成"0¹/"的层次。无前导 0 时 lead 为空,只显示主数字。
@@ -127,7 +121,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
                     style={{
                       fontSize: 50,
                       marginRight: 5,
-                      fontFamily: numberTheme.pdfFontFamily ?? PDF_FONTS.montserrat,
+                      fontFamily: numberTheme.pdfFontFamily,
                       color: numberTheme.accentColor ?? COLORS.ink,
                     }}
                   >
@@ -137,7 +131,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
                 <Text
                   style={{
                     fontSize: 64,
-                    fontFamily: numberTheme.pdfFontFamily ?? PDF_FONTS.montserrat,
+                    fontFamily: numberTheme.pdfFontFamily,
                     color: numberTheme.accentColor ?? COLORS.ink,
                   }}
                 >
@@ -150,7 +144,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
                   fontSize: 17,
                   fontWeight: 400,
                   marginLeft: 12,
-                  fontFamily: numberTheme.pdfFontFamily ?? PDF_FONTS.montserrat,
+                  fontFamily: numberTheme.pdfFontFamily,
                   color: numberTheme.accentColor ?? COLORS.ink,
                 }}
               >
@@ -165,9 +159,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
                 color: titleTheme.accentColor ?? COLORS.ink,
                 marginBottom: 10,
                 textTransform: 'uppercase',
-                fontFamily:
-                  titleTheme.pdfFontFamily ??
-                  (anyTitleCjk ? PDF_FONTS.serifCn : PDF_FONTS.montserrat),
+                fontFamily: titleTheme.pdfFontFamily,
               }}
             >
               {titleResolved}
@@ -175,6 +167,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
             <Text
               style={{
                 lineHeight: 1.7,
+                fontFamily: descriptionTheme.pdfFontFamily,
                 color: descriptionTheme.accentColor ?? COLORS.ink2,
                 textAlign: 'justify',
                 fontSize: 16,
@@ -185,7 +178,7 @@ export function PdfMag02({ data, totalPages }: TemplateRenderProps) {
           </View>
         );
       })}
-      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="02" />
+      <PdfFolio fontFamily={folioTheme.pdfFontFamily} folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="02" />
     </PdfPageShell>
   );
 }

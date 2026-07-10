@@ -11,10 +11,10 @@ import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag23({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const yearTheme = resolveThemeCarrier(data, 'year');
-  const cityTheme = resolveThemeCarrier(data, 'city');
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const subtitleTheme = resolveThemeCarrier(data, 'subtitle');
+  const yearTheme = resolveThemeCarrier(data, 'year', 'decoration');
+  const cityTheme = resolveThemeCarrier(data, 'city', 'decoration');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const subtitleTheme = resolveThemeCarrier(data, 'subtitle', 'title');
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* ── 固定装饰：左上四个渐深小方块（furniture，非槽位） ── */}
@@ -31,16 +31,16 @@ export function WebMag23({ data, imagePos }: TemplateRenderProps) {
       <div style={{ position: 'absolute', left: 536, top: 125, fontFamily: WEB_FONTS.sansCn, fontWeight: 400, fontSize: 12, lineHeight: 1, color: COLORS.ink }}>City</div>
 
       {/* ── 年份列表（槽 year，换行分隔） ── */}
-      <div style={{ position: 'absolute', left: 467, top: 123, width: 60, fontFamily: WEB_FONTS.sansCn, fontWeight: 300, fontSize: 12, lineHeight: 1.6, color: yearTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['year']}</div>
+      <div style={{ position: 'absolute', left: 467, top: 123, width: 60, fontFamily: yearTheme.webFontFamily, fontWeight: 300, fontSize: 12, lineHeight: 1.6, color: yearTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['year']}</div>
 
       {/* ── 城市列表（槽 city，换行分隔） ── */}
-      <div style={{ position: 'absolute', left: 576, top: 123, width: 130, fontFamily: WEB_FONTS.sansCn, fontWeight: 300, fontSize: 12, lineHeight: 1.6, color: cityTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['city']}</div>
+      <div style={{ position: 'absolute', left: 576, top: 123, width: 130, fontFamily: cityTheme.webFontFamily, fontWeight: 300, fontSize: 12, lineHeight: 1.6, color: cityTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['city']}</div>
 
       {/* ── 主标题（槽 title，宽体展示字） ── */}
-      <div style={{ position: 'absolute', left: 57, top: 201, width: 400, height: 80, fontFamily: WEB_FONTS.montserrat, fontWeight: 800, fontSize: 75, lineHeight: 1, letterSpacing: '0.06em', color: titleTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
+      <div style={{ position: 'absolute', left: 57, top: 201, width: 400, height: 80, fontFamily: titleTheme.webFontFamily, fontWeight: 800, fontSize: 75, lineHeight: 1, letterSpacing: '0.06em', color: titleTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
 
       {/* ── 副标题（槽 subtitle，略小） ── */}
-      <div style={{ position: 'absolute', left: 67, top: 287, width: 300, height: 56, fontFamily: WEB_FONTS.montserrat, fontWeight: 800, fontSize: 53, lineHeight: 1, letterSpacing: '0.06em', color: subtitleTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['subtitle']}</div>
+      <div style={{ position: 'absolute', left: 67, top: 287, width: 300, height: 56, fontFamily: subtitleTheme.webFontFamily, fontWeight: 800, fontSize: 53, lineHeight: 1, letterSpacing: '0.06em', color: subtitleTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['subtitle']}</div>
 
       {/* ── 固定装饰：中部小方块（furniture，非槽位） ── */}
       <div style={{ position: 'absolute', left: 354, top: 327, width: 13, height: 13, background: 'rgba(0,0,0,0.8)' }} />

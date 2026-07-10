@@ -14,7 +14,7 @@ const INK = '#1c1b18';
 
 export function PdfMag52({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleTheme = resolveThemeCarrier(data, 'title');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -68,7 +68,7 @@ export function PdfMag52({ data, imagePos }: TemplateRenderProps) {
           left: 614,
           top: 823,
           width: 1265,
-          fontFamily: PDF_FONTS.sansEn,
+          fontFamily: titleTheme.pdfFontFamily,
           fontSize: 108,
           lineHeight: 1.05,
           color: titleTheme.accentColor ?? INK,

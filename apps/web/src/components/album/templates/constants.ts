@@ -29,6 +29,27 @@ export const WEB_FONTS = {
   worksans: '"Work Sans", "Noto Sans SC", "PingFang SC", sans-serif',
   raleway: '"Raleway", "Noto Sans SC", "PingFang SC", sans-serif',
   bebas: '"Bebas Neue", "Noto Sans SC", Impact, sans-serif',
+  // ── 艺术字库（B1 定稿）：中文 9 + 英文补充。均带中文回退防豆腐。字体二进制未 vendor 前
+  // 首选族缺失会优雅回退到 Noto/系统字，不崩；vendor + @font-face 后即忠实显示。 ──
+  // 中文（noto-serif-sc/noto-sans-sc 复用 serifCn/sansCn）
+  zcoolXiaowei: '"ZCOOL XiaoWei", "Noto Serif SC", "Songti SC", serif',
+  lxgwWenkai: '"LXGW WenKai", "Noto Serif SC", "Songti SC", serif',
+  smileySans: '"Smiley Sans", "Noto Sans SC", "PingFang SC", sans-serif',
+  zcoolQingke: '"ZCOOL QingKe HuangYou", "Noto Sans SC", "PingFang SC", sans-serif',
+  longCang: '"Long Cang", "Noto Serif SC", "Songti SC", serif',
+  zhiMangXing: '"Zhi Mang Xing", "Noto Serif SC", "Songti SC", serif',
+  liuJianMaoCao: '"Liu Jian Mao Cao", "Noto Serif SC", "Songti SC", serif',
+  // 英文补充（inter/eb-garamond/jetbrains/lora/montserrat/poppins/raleway/abril/bebas/playfair 复用上面）
+  sourceSerif: '"Source Serif 4", "Noto Serif SC", "Songti SC", serif',
+  libreBaskerville: '"Libre Baskerville", "Noto Serif SC", "Songti SC", serif',
+  dmSans: '"DM Sans", "Noto Sans SC", "PingFang SC", sans-serif',
+  cormorant: '"Cormorant Garamond", "Noto Serif SC", "Songti SC", serif',
+  archivoBlack: '"Archivo Black", "Noto Sans SC", "PingFang SC", sans-serif',
+  ibmPlexMono: '"IBM Plex Mono", "Noto Sans SC", "Menlo", monospace',
+  greatVibes: '"Great Vibes", "Noto Serif SC", "Songti SC", cursive',
+  dancingScript: '"Dancing Script", "Noto Serif SC", "Songti SC", cursive',
+  sacramento: '"Sacramento", "Noto Serif SC", "Songti SC", cursive',
+  parisienne: '"Parisienne", "Noto Serif SC", "Songti SC", cursive',
 } as const;
 
 // 字体在导出时由 pdf-utils.tsx 的 registerPdfFonts 动态注册(POST /api/v1/fonts/subset
@@ -40,6 +61,13 @@ export const WEB_FONTS = {
 export const PDF_FONTS = {
   serifCn: 'NotoSerifSC',
   sansCn: 'NotoSansSC',
+  zcoolXiaowei: 'ZCOOL XiaoWei',
+  lxgwWenkai: 'LXGW WenKai',
+  smileySans: 'Smiley Sans',
+  zcoolQingke: 'ZCOOL QingKe HuangYou',
+  longCang: 'Long Cang',
+  zhiMangXing: 'Zhi Mang Xing',
+  liuJianMaoCao: 'Liu Jian Mao Cao',
   serifEn: 'NotoSerifSC',
   sansEn: 'NotoSansSC',
   mono: 'Courier',
@@ -55,6 +83,17 @@ export const PDF_FONTS = {
   worksans: 'Work Sans',
   raleway: 'Raleway',
   bebas: 'Bebas Neue',
+  sourceSerif: 'Source Serif 4',
+  libreBaskerville: 'Libre Baskerville',
+  dmSans: 'DM Sans',
+  cormorant: 'Cormorant Garamond',
+  archivoBlack: 'Archivo Black',
+  ibmPlexMono: 'IBM Plex Mono',
+  jetbrainsMono: 'JetBrains Mono',
+  greatVibes: 'Great Vibes',
+  dancingScript: 'Dancing Script',
+  sacramento: 'Sacramento',
+  parisienne: 'Parisienne',
 } as const;
 
 // A4 @ 96dpi = 794 × 1123 px;PDF 也使用同样数字作 page size(pt),

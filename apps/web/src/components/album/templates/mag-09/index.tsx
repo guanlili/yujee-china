@@ -3,9 +3,6 @@ import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-// 主标题用 Bebas Neue（高瘦大写艺术字，配城市地名展示大字）；含中文回退（见 WEB_FONTS.bebas / pdf 端 serifCn）。
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
-
 export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image1?: string;
@@ -17,12 +14,12 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
     explain3?: string;
     folio?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const bodyTheme = resolveThemeCarrier(data, 'body');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2');
-  const explain3Theme = resolveThemeCarrier(data, 'explain3');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
+  const explain3Theme = resolveThemeCarrier(data, 'explain3', 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -36,6 +33,7 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
         <p
           style={{ position: 'absolute', left: 504, top: 130, width: 230, height: 31, lineHeight: 1.7,
             color: bodyTheme.accentColor ?? COLORS.ink2,
+            fontFamily: bodyTheme.webFontFamily,
             letterSpacing: '0.02em',
             textAlign: 'justify',
             fontSize: 18 }}
@@ -52,9 +50,7 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
           height: 224,
           margin: 0,
           overflow: 'hidden',
-          fontFamily:
-            titleTheme.webFontFamily ??
-            (hasCjk(titleTheme.text ?? d.title) ? WEB_FONTS.serifCn : WEB_FONTS.bebas),
+          fontFamily: titleTheme.webFontFamily,
           fontWeight: 400,
           fontSize: 116,
           letterSpacing: '0.02em',
@@ -77,18 +73,17 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
           top: 620,
           left: 60,
           width: 280,
-          fontFamily: WEB_FONTS.montserrat,
           lineHeight: 1.75,
           color: COLORS.ink2,
           letterSpacing: '0.02em',
           textAlign: 'justify',
         }}
       >
-        <p style={{ position: 'absolute', left: 60, top: 620, width: 280, height: 32, fontSize: 18, color: explain1Theme.accentColor ?? COLORS.ink2 }}>{d.explain1 || ''}</p>
-        <p style={{ position: 'absolute', left: 60, top: 664, width: 280, height: 32, fontSize: 18, color: explain2Theme.accentColor ?? COLORS.ink2 }}>{d.explain2 || ''}</p>
-        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 13, lineHeight: 1.6, color: explain3Theme.accentColor ?? COLORS.ink2 }}>{d.explain3 || ''}</p>
+        <p style={{ position: 'absolute', left: 60, top: 620, width: 280, height: 32, fontSize: 18, color: explain1Theme.accentColor ?? COLORS.ink2, fontFamily: explain1Theme.webFontFamily }}>{d.explain1 || ''}</p>
+        <p style={{ position: 'absolute', left: 60, top: 664, width: 280, height: 32, fontSize: 18, color: explain2Theme.accentColor ?? COLORS.ink2, fontFamily: explain2Theme.webFontFamily }}>{d.explain2 || ''}</p>
+        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 13, lineHeight: 1.6, color: explain3Theme.accentColor ?? COLORS.ink2, fontFamily: explain3Theme.webFontFamily }}>{d.explain3 || ''}</p>
       </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="09" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="09" />
     </WebPage>
   );
 }

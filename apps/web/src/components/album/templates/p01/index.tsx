@@ -3,8 +3,6 @@ import { WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-const hasCjk = (s?: string) => /[一-鿿]/.test(s || '');
-
 export function WebP01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
@@ -15,11 +13,11 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
     label2?: string;
     date?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const categoryTheme = resolveThemeCarrier(data, 'label1');
-  const volTheme = resolveThemeCarrier(data, 'label2');
-  const dateTheme = resolveThemeCarrier(data, 'date');
-  const bodyTheme = resolveThemeCarrier(data, 'body');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const categoryTheme = resolveThemeCarrier(data, 'label1', 'decoration');
+  const volTheme = resolveThemeCarrier(data, 'label2', 'decoration');
+  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
   return (
     <WebPage dark fontFamily={WEB_FONTS.serifCn}>
       <WebImage
@@ -71,7 +69,7 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
           position: 'absolute',
           top: 70,
           right: 56,
-          fontFamily: volTheme.webFontFamily ?? WEB_FONTS.playfair,
+          fontFamily: volTheme.webFontFamily,
           fontStyle: 'italic',
           fontSize: 100,
           lineHeight: 0.9,
@@ -93,7 +91,7 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
       >
         <div
           style={{
-            fontFamily: categoryTheme.webFontFamily ?? WEB_FONTS.playfair,
+            fontFamily: categoryTheme.webFontFamily,
             fontStyle: 'italic',
             letterSpacing: '0.04em',
             color: categoryTheme.accentColor ?? d.label1Color ?? COLORS.vermilionSoft,
@@ -105,8 +103,7 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
         <h1
           style={{
             margin: '8px 0 0',
-            fontFamily:
-              titleTheme.webFontFamily ?? (hasCjk(titleTheme.text ?? d.title) ? WEB_FONTS.serifCn : WEB_FONTS.playfair),
+            fontFamily: titleTheme.webFontFamily,
             fontWeight: 500,
             letterSpacing: '0.04em',
             lineHeight: 1.15,
@@ -120,7 +117,7 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
           <p
             style={{
               margin: 0,
-              fontFamily: hasCjk(d.body) ? WEB_FONTS.serifCn : WEB_FONTS.lora,
+              fontFamily: bodyTheme.webFontFamily,
               lineHeight: 1.85,
               color: bodyTheme.accentColor ?? COLORS.paper78,
               textAlign: 'justify',

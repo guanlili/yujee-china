@@ -11,18 +11,13 @@ import { resolveThemeCarrier } from '../theme-carrier';
 // 来自 Figma A4-2 (node 5:21)，595×842 → ×1.3344 → 794×1123。
 
 const INK = '#1c1b18';
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag33({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleFont = hasCjk(d['title']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const cap1Font = hasCjk(d['caption1']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const cap2Font = hasCjk(d['caption2']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const cap3Font = hasCjk(d['caption3']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const caption1Theme = resolveThemeCarrier(data, 'caption1');
-  const caption2Theme = resolveThemeCarrier(data, 'caption2');
-  const caption3Theme = resolveThemeCarrier(data, 'caption3');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const caption1Theme = resolveThemeCarrier(data, 'caption1', 'explain');
+  const caption2Theme = resolveThemeCarrier(data, 'caption2', 'explain');
+  const caption3Theme = resolveThemeCarrier(data, 'caption3', 'explain');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -34,12 +29,12 @@ export function PdfMag33({ data, imagePos }: TemplateRenderProps) {
       <PdfImage src={d['image3']} style={{ position: 'absolute', left: 200, top: 717, width: 376, height: 247 }} position={imagePos?.['image3']} />
 
       {/* 左侧竖排大字标题（在三联图左侧留白） */}
-      <Text style={{ position: 'absolute', left: 28, top: 159, width: 150, fontFamily: titleFont, fontWeight: 'bold', fontSize: 44, lineHeight: 1.05, color: titleTheme.accentColor ?? INK }}>{d['title']}</Text>
+      <Text style={{ position: 'absolute', left: 28, top: 159, width: 150, fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 44, lineHeight: 1.05, color: titleTheme.accentColor ?? INK }}>{d['title']}</Text>
 
       {/* 每张图右侧小图注（在右侧留白） */}
-      <Text style={{ position: 'absolute', left: 596, top: 159, width: 178, fontFamily: cap1Font, fontSize: 16, lineHeight: 1.35, color: caption1Theme.accentColor ?? INK }}>{d['caption1']}</Text>
-      <Text style={{ position: 'absolute', left: 596, top: 438, width: 178, fontFamily: cap2Font, fontSize: 16, lineHeight: 1.35, color: caption2Theme.accentColor ?? INK }}>{d['caption2']}</Text>
-      <Text style={{ position: 'absolute', left: 596, top: 717, width: 178, fontFamily: cap3Font, fontSize: 16, lineHeight: 1.35, color: caption3Theme.accentColor ?? INK }}>{d['caption3']}</Text>
+      <Text style={{ position: 'absolute', left: 596, top: 159, width: 178, fontFamily: caption1Theme.pdfFontFamily, fontSize: 16, lineHeight: 1.35, color: caption1Theme.accentColor ?? INK }}>{d['caption1']}</Text>
+      <Text style={{ position: 'absolute', left: 596, top: 438, width: 178, fontFamily: caption2Theme.pdfFontFamily, fontSize: 16, lineHeight: 1.35, color: caption2Theme.accentColor ?? INK }}>{d['caption2']}</Text>
+      <Text style={{ position: 'absolute', left: 596, top: 717, width: 178, fontFamily: caption3Theme.pdfFontFamily, fontSize: 16, lineHeight: 1.35, color: caption3Theme.accentColor ?? INK }}>{d['caption3']}</Text>
     </PdfPageShell>
   );
 }

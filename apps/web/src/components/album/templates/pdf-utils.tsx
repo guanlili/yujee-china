@@ -1,5 +1,9 @@
 import type { ReactNode } from 'react';
 import { Font, Image, Page, Text, View } from '@react-pdf/renderer';
+import {
+  CJK_FONT_MANIFEST,
+  type CjkFontId,
+} from '@/services/font/font-manifest';
 import { COLORS, PAGE, PDF_FONTS } from './constants';
 
 // Per-album subset TTFs come from POST /api/v1/fonts/subset (~17MB full fonts
@@ -24,9 +28,27 @@ function registerCjk(family: string, src: string): void {
 // 拉丁装饰字体（仅英文）：从 /fonts/*.ttf 注册，和 web @font-face 同一份文件 → 导出与预览一致。
 // 这些字无中文字形，只用于英文槽（canvas codegen 已按 lang 区分，中文槽走 Noto）。
 const LATIN_PDF_FONTS: [string, string][] = [
-  ['EB Garamond', 'EBGaramond.ttf'], ['Inter', 'Inter.ttf'], ['Playfair Display', 'PlayfairDisplay.ttf'],
-  ['Lora', 'Lora.ttf'], ['Abril Fatface', 'AbrilFatface.ttf'], ['Montserrat', 'Montserrat.ttf'],
-  ['Poppins', 'Poppins.ttf'], ['Work Sans', 'WorkSans.ttf'], ['Raleway', 'Raleway.ttf'], ['Bebas Neue', 'BebasNeue.ttf'],
+  [PDF_FONTS.garamond, 'EBGaramond.ttf'],
+  [PDF_FONTS.sourceSerif, 'SourceSerif4.ttf'],
+  [PDF_FONTS.lora, 'Lora.ttf'],
+  [PDF_FONTS.libreBaskerville, 'LibreBaskerville.ttf'],
+  [PDF_FONTS.interEn, 'Inter.ttf'],
+  [PDF_FONTS.worksans, 'WorkSans.ttf'],
+  [PDF_FONTS.dmSans, 'DMSans.ttf'],
+  [PDF_FONTS.poppins, 'Poppins.ttf'],
+  [PDF_FONTS.raleway, 'Raleway.ttf'],
+  [PDF_FONTS.playfair, 'PlayfairDisplay.ttf'],
+  [PDF_FONTS.cormorant, 'CormorantGaramond.ttf'],
+  [PDF_FONTS.bebas, 'BebasNeue.ttf'],
+  [PDF_FONTS.archivoBlack, 'ArchivoBlack.ttf'],
+  [PDF_FONTS.abril, 'AbrilFatface.ttf'],
+  [PDF_FONTS.montserrat, 'Montserrat.ttf'],
+  [PDF_FONTS.ibmPlexMono, 'IBMPlexMono.ttf'],
+  [PDF_FONTS.jetbrainsMono, 'JetBrainsMono.ttf'],
+  [PDF_FONTS.greatVibes, 'GreatVibes.ttf'],
+  [PDF_FONTS.dancingScript, 'DancingScript.ttf'],
+  [PDF_FONTS.sacramento, 'Sacramento.ttf'],
+  [PDF_FONTS.parisienne, 'Parisienne.ttf'],
 ];
 function registerLatin(family: string, file: string): void {
   const src = `/fonts/${file}`;
@@ -36,12 +58,49 @@ function registerLatin(family: string, file: string): void {
   });
 }
 
-// Called by lib/pdf/render.ts right before pdf().toBlob(). Re-registering a
-// family replaces its sources, so each export uses that album's own subset.
-export function registerPdfFonts(subset: { sans: string; serif: string }): void {
+function removeRegisteredFamily(family: string): void {
+  delete Font.getRegisteredFonts()[family];
+}
+
+// @react-pdf's FontStore appends duplicate family sources and resolves the first
+// exact match. Remove our owned families before each export so album B cannot
+// accidentally reuse album A's character subset. Built-ins such as Courier stay.
+export interface PdfFontSubset {
+  sans: string;
+  serif: string;
+  artFonts?: Partial<Record<CjkFontId, { family: string; base64: string }>>;
+}
+
+export function registerPdfFonts(subset: PdfFontSubset): void {
+  for (const font of Object.values(CJK_FONT_MANIFEST)) removeRegisteredFamily(font.pdfFamily);
+  for (const [family] of LATIN_PDF_FONTS) removeRegisteredFamily(family);
+
   registerCjk('NotoSerifSC', `data:font/ttf;base64,${subset.serif}`);
   registerCjk('NotoSansSC', `data:font/ttf;base64,${subset.sans}`);
+  for (const font of Object.values(subset.artFonts ?? {})) {
+    if (font) registerCjk(font.family, `data:font/ttf;base64,${font.base64}`);
+  }
   for (const [fam, file] of LATIN_PDF_FONTS) registerLatin(fam, file);
+}
+
+// The renderer owns one global FontStore. Keep registration + layout inside one
+// critical section so simultaneous exports cannot replace each other's subsets.
+let pdfFontQueue: Promise<void> = Promise.resolve();
+
+export async function withRegisteredPdfFonts<T>(
+  subset: PdfFontSubset,
+  render: () => Promise<T>,
+): Promise<T> {
+  let release!: () => void;
+  const previous = pdfFontQueue;
+  pdfFontQueue = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try {
+    registerPdfFonts(subset);
+    return await render();
+  } finally {
+    release();
+  }
 }
 
 // CJK lines have no spaces; @react-pdf won't wrap them on its own. Treat each
@@ -148,9 +207,10 @@ interface PdfFolioProps {
   totalPages?: number;
   fallback: string;
   accentColor?: string;
+  fontFamily?: string;
 }
 
-export function PdfFolio({ folio, totalPages, fallback, accentColor }: PdfFolioProps) {
+export function PdfFolio({ folio, totalPages, fallback, accentColor, fontFamily }: PdfFolioProps) {
   return (
     <View
       style={{
@@ -162,7 +222,7 @@ export function PdfFolio({ folio, totalPages, fallback, accentColor }: PdfFolioP
     >
       <Text
         style={{
-          fontFamily: PDF_FONTS.serifEn,
+          fontFamily: fontFamily ?? PDF_FONTS.serifEn,
           fontStyle: 'italic',
           fontSize: 22,
           color: accentColor ?? COLORS.ink,
@@ -172,7 +232,7 @@ export function PdfFolio({ folio, totalPages, fallback, accentColor }: PdfFolioP
       </Text>
       <Text
         style={{
-          fontFamily: PDF_FONTS.serifEn,
+          fontFamily: fontFamily ?? PDF_FONTS.serifEn,
           fontStyle: 'italic',
           fontSize: 22,
           color: COLORS.ink3,

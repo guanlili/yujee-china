@@ -10,16 +10,14 @@ import { resolveThemeCarrier } from '../theme-carrier';
 // 竖排文字用 @react-pdf transform rotate(-90deg) 近似 web。引号 / 细线固定、不进契约。
 
 const INK = '#1c1b18';
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag26({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleFont = hasCjk(d['title']) ? PDF_FONTS.sansCn : PDF_FONTS.sansEn;
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const label1Theme = resolveThemeCarrier(data, 'label1');
-  const label2Theme = resolveThemeCarrier(data, 'label2');
-  const explainTheme = resolveThemeCarrier(data, 'explain');
-  const bodyTheme = resolveThemeCarrier(data, 'body');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const label1Theme = resolveThemeCarrier(data, 'label1', 'decoration');
+  const label2Theme = resolveThemeCarrier(data, 'label2', 'decoration');
+  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -30,17 +28,17 @@ export function PdfMag26({ data, imagePos }: TemplateRenderProps) {
 
       {/* 竖排大标题（rotate -90°，沿左侧自下而上） */}
       <View style={{ position: 'absolute', left: 130, top: 404, transform: 'rotate(-90deg)', transformOrigin: 'top left' }}>
-        <Text style={{ width: 333, fontFamily: titleFont, fontWeight: 'bold', fontSize: 75, lineHeight: 1, color: titleTheme.accentColor ?? INK }}>{d['title']}</Text>
+        <Text style={{ width: 333, fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 75, lineHeight: 1, color: titleTheme.accentColor ?? INK }}>{d['title']}</Text>
       </View>
 
       {/* 竖排英文装饰小字 · 靠内侧（rotate -90°） */}
       <View style={{ position: 'absolute', left: 43, top: 460, transform: 'rotate(-90deg)', transformOrigin: 'top left' }}>
-        <Text style={{ fontFamily: PDF_FONTS.serifCn, fontSize: 24, lineHeight: 1, color: label1Theme.accentColor ?? INK }}>{d['label1']}</Text>
+        <Text style={{ fontFamily: label1Theme.pdfFontFamily, fontSize: 24, lineHeight: 1, color: label1Theme.accentColor ?? INK }}>{d['label1']}</Text>
       </View>
 
       {/* 竖排英文装饰小字 · 靠外侧（rotate -90°） */}
       <View style={{ position: 'absolute', left: 76, top: 440, transform: 'rotate(-90deg)', transformOrigin: 'top left' }}>
-        <Text style={{ fontFamily: PDF_FONTS.serifCn, fontSize: 24, lineHeight: 1, color: label2Theme.accentColor ?? INK }}>{d['label2']}</Text>
+        <Text style={{ fontFamily: label2Theme.pdfFontFamily, fontSize: 24, lineHeight: 1, color: label2Theme.accentColor ?? INK }}>{d['label2']}</Text>
       </View>
 
       {/* 固定 furniture · 引号装饰字形（非槽位） */}
@@ -50,10 +48,10 @@ export function PdfMag26({ data, imagePos }: TemplateRenderProps) {
       <View style={{ position: 'absolute', left: 53, top: 710, width: 227, height: 1, backgroundColor: INK }} />
 
       {/* 导语小标题（横排） */}
-      <Text style={{ position: 'absolute', left: 53, top: 587, width: 243, fontFamily: PDF_FONTS.serifCn, fontSize: 24, lineHeight: 1.3, color: explainTheme.accentColor ?? INK }}>{d['explain']}</Text>
+      <Text style={{ position: 'absolute', left: 53, top: 587, width: 243, fontFamily: explainTheme.pdfFontFamily, fontSize: 24, lineHeight: 1.3, color: explainTheme.accentColor ?? INK }}>{d['explain']}</Text>
 
       {/* 正文段落 */}
-      <Text style={{ position: 'absolute', left: 56, top: 754, width: 240, fontFamily: PDF_FONTS.sansCn, fontSize: 19, lineHeight: 1.6, color: bodyTheme.accentColor ?? INK }}>{d['body']}</Text>
+      <Text style={{ position: 'absolute', left: 56, top: 754, width: 240, fontFamily: bodyTheme.pdfFontFamily, fontSize: 19, lineHeight: 1.6, color: bodyTheme.accentColor ?? INK }}>{d['body']}</Text>
     </PdfPageShell>
   );
 }

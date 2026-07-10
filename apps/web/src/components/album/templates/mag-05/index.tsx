@@ -11,10 +11,10 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
     folio?: string;
     image?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const topRightTheme = resolveThemeCarrier(data, 'label');
-  const explainTheme = resolveThemeCarrier(data, 'explain');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const topRightTheme = resolveThemeCarrier(data, 'label', 'decoration');
+  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <h1
@@ -24,7 +24,7 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
           left: 50,
           right: 240,
           margin: 0,
-          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.bebas,
+          fontFamily: titleTheme.webFontFamily,
           fontSize: 88,
           letterSpacing: '0.02em',
           lineHeight: 0.92,
@@ -46,7 +46,7 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
           letterSpacing: '0.3em',
           color: topRightTheme.accentColor ?? COLORS.ink2,
           textTransform: 'uppercase',
-          fontFamily: topRightTheme.webFontFamily ?? WEB_FONTS.montserrat,
+          fontFamily: topRightTheme.webFontFamily,
         }}
       >
         {topRightTheme.text ?? d.label ?? ''}
@@ -57,6 +57,7 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
             margin: 0,
             lineHeight: 1.75,
             color: explainTheme.accentColor ?? COLORS.ink2,
+            fontFamily: explainTheme.webFontFamily,
             textAlign: 'justify',
             letterSpacing: '0.02em',
             fontSize: 18,
@@ -72,7 +73,7 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
         position={imagePos?.['image']}
         slotId="image"
       />
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="05" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="05" />
     </WebPage>
   );
 }

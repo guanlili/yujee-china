@@ -12,7 +12,7 @@ const INK = '#1c1b18';
 
 export function WebMag50({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleTheme = resolveThemeCarrier(data, 'title');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
   const labelStyle = {
     position: 'absolute' as const,
     fontFamily: WEB_FONTS.sansEn,
@@ -40,7 +40,7 @@ export function WebMag50({ data, imagePos }: TemplateRenderProps) {
       <div style={{ ...labelStyle, left: 595, top: 818 }}>what</div>
 
       {/* 主标题（title 槽，全大写） */}
-      <div style={{ position: 'absolute', left: 436, top: 843, width: 320, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 18, lineHeight: 1.0, color: titleTheme.accentColor ?? INK, textTransform: 'uppercase', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
+      <div style={{ position: 'absolute', left: 436, top: 843, width: 320, fontFamily: titleTheme.webFontFamily, fontWeight: 400, fontSize: 18, lineHeight: 1.0, color: titleTheme.accentColor ?? INK, textTransform: 'uppercase', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
     </div>
   );
 }

@@ -4,7 +4,6 @@ import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -14,12 +13,11 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
     explain2?: string;
     folio?: string;
   };
-  const introTheme = resolveThemeCarrier(data, 'title');
+  const introTheme = resolveThemeCarrier(data, 'title', 'title');
   const introText = introTheme.text ?? d.title ?? '';
-  const introFont = hasCjk(introText) ? PDF_FONTS.serifCn : PDF_FONTS.playfair;
-  const explain1Theme = resolveThemeCarrier(data, 'explain1');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   // PDF 不支持 writingMode: vertical-rl,Frame 提示退化为水平摆放
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
@@ -34,7 +32,7 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           color: introTheme.accentColor ?? COLORS.ink,
           fontSize: 72,
           fontStyle: 'italic',
-          fontFamily: introFont,
+          fontFamily: introTheme.pdfFontFamily,
         }}
       >
         {introText}
@@ -53,7 +51,7 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           lineHeight: 1.7,
           color: explain1Theme.accentColor ?? COLORS.ink2,
           fontSize: 18,
-          fontFamily: PDF_FONTS.montserrat,
+          fontFamily: explain1Theme.pdfFontFamily,
         }}
       >
         {d.explain1 || ''}
@@ -68,7 +66,7 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           color: explain2Theme.accentColor ?? COLORS.ink2,
           textAlign: 'right',
           fontSize: 18,
-          fontFamily: PDF_FONTS.montserrat,
+          fontFamily: explain2Theme.pdfFontFamily,
         }}
       >
         {d.explain2 || ''}
@@ -81,12 +79,13 @@ export function PdfMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           width: 20,
           fontSize: 10,
           letterSpacing: 4,
+          fontFamily: folioTheme.pdfFontFamily,
           color: folioTheme.accentColor ?? COLORS.ink3,
         }}
       >
         {`FRAME ${d.folio || '19'} / 30`}
       </Text>
-      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="19" />
+      <PdfFolio fontFamily={folioTheme.pdfFontFamily} folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="19" />
     </PdfPageShell>
   );
 }

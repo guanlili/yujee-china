@@ -4,8 +4,6 @@ import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
-
 export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image1?: string;
@@ -15,15 +13,11 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
     title?: string;
     folio?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   const titleText = titleTheme.text ?? d.title ?? 'FUSHI\nINARI';
-  // 主标题：指定艺术字 Bebas Neue（高瘦大写，配地名旅行大字）；含中文回退 serifCn 避免豆腐块。
-  const titleFont = hasCjk(titleText)
-    ? PDF_FONTS.serifCn
-    : titleTheme.pdfFontFamily ?? PDF_FONTS.bebas;
   // ── 各槽位几何（与 index.tsx 保持一致；直接改这里的数字）──
   // 坐标系：整页 794×1123 px，左上角 (0,0)，单位 px。
   const LAYOUT = {
@@ -33,10 +27,8 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
     image1: { x: 364, y: 90, w: 380, h: 330 }, // 上方横图
     image2: { x: 364, y: 450, w: 380, h: 480 }, // 下方竖图（大）
   };
-  // 图注：Montserrat（含中文回退 sansCn），保持可读字号 / 行距。
-  const capFont = (text: string) => (hasCjk(text) ? PDF_FONTS.sansCn : PDF_FONTS.montserrat);
-  const cap = (text: string, fontSize: number, color?: string) => (
-    <Text style={{ fontFamily: capFont(text), lineHeight: 1.7, color: color ?? COLORS.ink2, textAlign: 'justify', fontSize }}>
+  const cap = (text: string, fontSize: number, fontFamily?: string, color?: string) => (
+    <Text style={{ fontFamily, lineHeight: 1.7, color: color ?? COLORS.ink2, textAlign: 'justify', fontSize }}>
       {text}
     </Text>
   );
@@ -51,7 +43,12 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
           height: LAYOUT.caption1.h,
         }}
       >
-        {cap(d.explain1 || '', LAYOUT.caption1.fontSize, explain1Theme.accentColor ?? undefined)}
+        {cap(
+          d.explain1 || '',
+          LAYOUT.caption1.fontSize,
+          explain1Theme.pdfFontFamily,
+          explain1Theme.accentColor ?? undefined,
+        )}
       </View>
       <PdfImage
         src={d.image1}
@@ -67,7 +64,12 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
           height: LAYOUT.caption2.h,
         }}
       >
-        {cap(d.explain2 || '', LAYOUT.caption2.fontSize, explain2Theme.accentColor ?? undefined)}
+        {cap(
+          d.explain2 || '',
+          LAYOUT.caption2.fontSize,
+          explain2Theme.pdfFontFamily,
+          explain2Theme.accentColor ?? undefined,
+        )}
       </View>
       <PdfImage
         src={d.image2}
@@ -75,7 +77,7 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
         position={imagePos?.['image2']}
       />
       <Text
-        style={{ position: 'absolute', left: 50, bottom: LAYOUT.title.bottom, width: 300, fontFamily: titleFont,
+        style={{ position: 'absolute', left: 50, bottom: LAYOUT.title.bottom, width: 300, fontFamily: titleTheme.pdfFontFamily,
           fontSize: LAYOUT.title.fontSize,
           letterSpacing: 1,
           lineHeight: 0.92,
@@ -83,7 +85,7 @@ export function PdfMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         {titleText}
       </Text>
-      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="07" />
+      <PdfFolio fontFamily={folioTheme.pdfFontFamily} folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="07" />
     </PdfPageShell>
   );
 }

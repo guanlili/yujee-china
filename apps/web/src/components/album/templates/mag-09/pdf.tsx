@@ -5,7 +5,6 @@ import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
 // 主标题用 Bebas Neue（高瘦大写艺术字）；含中文切 serifCn（Noto SC）避免豆腐块，与 web 一致。
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -18,12 +17,12 @@ export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
     explain3?: string;
     folio?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const bodyTheme = resolveThemeCarrier(data, 'body');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2');
-  const explain3Theme = resolveThemeCarrier(data, 'explain3');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
+  const explain3Theme = resolveThemeCarrier(data, 'explain3', 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage
@@ -34,6 +33,7 @@ export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
       <View style={{ position: 'absolute', top: 130, right: 60, width: 230 }}>
         <Text
           style={{ position: 'absolute', left: 504, top: 130, width: 230, lineHeight: 1.7,
+            fontFamily: bodyTheme.pdfFontFamily,
             color: bodyTheme.accentColor ?? COLORS.ink2,
             textAlign: 'justify',
             fontSize: 18 }}
@@ -43,9 +43,7 @@ export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
       </View>
       <Text
         style={{ position: 'absolute', left: 60, top: 396, width: 300,
-          fontFamily:
-            titleTheme.pdfFontFamily ??
-            (hasCjk(titleTheme.text ?? d.title) ? PDF_FONTS.serifCn : PDF_FONTS.bebas),
+          fontFamily: titleTheme.pdfFontFamily,
           fontSize: 116,
           letterSpacing: 2,
           lineHeight: 0.92,
@@ -59,17 +57,17 @@ export function PdfMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
         position={imagePos?.['image2']}
       />
       <View style={{ position: 'absolute', top: 620, left: 60, width: 280 }}>
-        <Text style={{ position: 'absolute', left: 60, top: 620, width: 280, fontFamily: PDF_FONTS.montserrat, lineHeight: 1.75, color: explain1Theme.accentColor ?? COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
+        <Text style={{ position: 'absolute', left: 60, top: 620, width: 280, fontFamily: explain1Theme.pdfFontFamily, lineHeight: 1.75, color: explain1Theme.accentColor ?? COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
           {d.explain1 || ''}
         </Text>
-        <Text style={{ position: 'absolute', left: 60, top: 664, width: 280, fontFamily: PDF_FONTS.montserrat, lineHeight: 1.75, color: explain2Theme.accentColor ?? COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
+        <Text style={{ position: 'absolute', left: 60, top: 664, width: 280, fontFamily: explain2Theme.pdfFontFamily, lineHeight: 1.75, color: explain2Theme.accentColor ?? COLORS.ink2, textAlign: 'justify', fontSize: 18 }}>
           {d.explain2 || ''}
         </Text>
-        <Text style={{ marginTop: 12, fontFamily: PDF_FONTS.montserrat, lineHeight: 1.6, color: explain3Theme.accentColor ?? COLORS.ink2, textAlign: 'justify', fontSize: 13 }}>
+        <Text style={{ marginTop: 12, fontFamily: explain3Theme.pdfFontFamily, lineHeight: 1.6, color: explain3Theme.accentColor ?? COLORS.ink2, textAlign: 'justify', fontSize: 13 }}>
           {d.explain3 || ''}
         </Text>
       </View>
-      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="09" />
+      <PdfFolio fontFamily={folioTheme.pdfFontFamily} folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="09" />
     </PdfPageShell>
   );
 }

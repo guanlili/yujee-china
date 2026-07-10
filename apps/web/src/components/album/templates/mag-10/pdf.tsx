@@ -8,7 +8,6 @@ import { resolveThemeCarrier } from '../theme-carrier';
 // image[i]/explain[i] 还原成 data.image / data.explain 两个并列数组(元素为
 // 字符串或 {body,caption} 对象)。
 // 图注含中文时切到 serifCn（Noto SC）避免豆腐块，纯英文走 Montserrat（与 web 一致）。
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 function cellText(v: unknown): string {
   if (v == null) return '';
@@ -46,7 +45,7 @@ export function PdfMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
     };
   });
   const cellW = (794 - 60 * 2 - 50) / 2;
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       {merged.map((c, i) => {
@@ -54,7 +53,7 @@ export function PdfMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
         const row = Math.floor(i / 2);
         const x = 60 + col * (cellW + 50);
         const y = 130 + row * (28 + 280 + 12 + 80);
-        const cellTheme = resolveThemeCarrier(data, `explain[${i}]`);
+        const cellTheme = resolveThemeCarrier(data, `explain[${i}]`, 'explain');
         return (
           <View key={c.n ?? i} style={{ position: 'absolute', top: y, left: x, width: cellW }}>
             <Text
@@ -71,7 +70,7 @@ export function PdfMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
             <Text
               style={{
                 marginTop: 12,
-                fontFamily: hasCjk(c.caption) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat,
+                fontFamily: cellTheme.pdfFontFamily,
                 lineHeight: 1.7,
                 letterSpacing: 0.5,
                 color: cellTheme.accentColor ?? COLORS.ink,
@@ -84,7 +83,7 @@ export function PdfMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
           </View>
         );
       })}
-      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="10" />
+      <PdfFolio fontFamily={folioTheme.pdfFontFamily} folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="10" />
     </PdfPageShell>
   );
 }

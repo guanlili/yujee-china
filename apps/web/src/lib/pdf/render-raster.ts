@@ -8,6 +8,7 @@ import {
 import { renderPageHtml } from '@/components/album/templates/html/fill-template';
 import { PAGE } from '@/components/album/templates/constants';
 import { getWebTemplate } from '@/components/album/web-registry';
+import { loadAlbumFonts } from '@/lib/font/album-font-loader';
 
 // 栅格 PDF 渲染器（收敛单渲染器）：逐页把「屏幕渲染」离屏渲成 794×1123 → html2canvas
 // 高倍截图 → jsPDF 每页贴图。PDF 因此与屏幕像素级一致，index↔pdf 两套渲染器的分歧
@@ -45,6 +46,9 @@ export async function renderAlbumPdfRaster(
   resolveImage: ResolveImage,
   options: RasterPdfOptions = {},
 ): Promise<Blob> {
+  // Install the same per-album CJK subsets used by the live preview before any
+  // off-screen HTML is measured. Failure degrades to the existing CSS fallback.
+  await loadAlbumFonts(pages).catch(() => undefined);
   const scale = options.scale ?? 3;
   const jpegQuality = options.jpegQuality ?? 0.92;
   const total = pages.length;

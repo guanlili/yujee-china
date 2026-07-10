@@ -12,10 +12,10 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
     folio?: string;
     image?: string;
   };
-  const headingTheme = resolveThemeCarrier(data, 'title');
-  const sideTextTheme = resolveThemeCarrier(data, 'label');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2');
+  const headingTheme = resolveThemeCarrier(data, 'title', 'title');
+  const sideTextTheme = resolveThemeCarrier(data, 'label', 'decoration');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <div
@@ -37,7 +37,7 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
             lineHeight: 1,
             whiteSpace: 'nowrap',
             color: headingTheme.accentColor,
-            fontFamily: headingTheme.webFontFamily ?? WEB_FONTS.playfair,
+            fontFamily: headingTheme.webFontFamily,
           }}
         >
           {headingTheme.text ?? d.title ?? 'VENUES'}
@@ -88,6 +88,7 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
           top: 720,
           lineHeight: 1.7,
           color: explain1Theme.accentColor ?? COLORS.ink2,
+          fontFamily: explain1Theme.webFontFamily,
           letterSpacing: '0.02em',
           fontSize: 18,
           width: 360,
@@ -102,6 +103,7 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
           top: 840,
           lineHeight: 1.7,
           color: explain2Theme.accentColor ?? COLORS.ink2,
+          fontFamily: explain2Theme.webFontFamily,
           textAlign: 'justify',
           letterSpacing: '0.02em',
           fontSize: 18,

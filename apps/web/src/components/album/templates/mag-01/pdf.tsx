@@ -4,7 +4,6 @@ import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-const hasCjk = (s?: string) => /[一-鿿]/.test(s || '');
 
 export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -15,12 +14,11 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
     folio?: string;
     image?: string;
   };
-  const headingTheme = resolveThemeCarrier(data, 'title');
-  const sideTextTheme = resolveThemeCarrier(data, 'label');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2');
+  const headingTheme = resolveThemeCarrier(data, 'title', 'title');
+  const sideTextTheme = resolveThemeCarrier(data, 'label', 'decoration');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
   const titleText = headingTheme.text ?? d.title ?? 'VENUES';
-  const titleFont = hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.playfair;
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <View
@@ -40,7 +38,7 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
             fontWeight: 700,
             lineHeight: 1,
             color: headingTheme.accentColor ?? COLORS.ink,
-            fontFamily: titleFont,
+            fontFamily: headingTheme.pdfFontFamily,
           }}
         >
           {titleText}
@@ -90,6 +88,7 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
           left: 130,
           top: 720,
           lineHeight: 1.7,
+          fontFamily: explain1Theme.pdfFontFamily,
           color: explain1Theme.accentColor ?? COLORS.ink2,
           fontSize: 18,
           width: 360,
@@ -103,6 +102,7 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
           left: 130,
           top: 840,
           lineHeight: 1.7,
+          fontFamily: explain2Theme.pdfFontFamily,
           color: explain2Theme.accentColor ?? COLORS.ink2,
           textAlign: 'justify',
           fontSize: 18,

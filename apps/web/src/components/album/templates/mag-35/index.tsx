@@ -1,5 +1,5 @@
 import type { TemplateRenderProps } from '../types';
-import { PAGE, WEB_FONTS } from '../constants';
+import { PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
 
@@ -12,9 +12,9 @@ const INK = '#1c1b18';
 
 export function WebMag35({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const labelTheme = resolveThemeCarrier(data, 'label');
-  const dateTheme = resolveThemeCarrier(data, 'date');
-  const bodyTheme = resolveThemeCarrier(data, 'body');
+  const labelTheme = resolveThemeCarrier(data, 'label', 'title');
+  const dateTheme = resolveThemeCarrier(data, 'date', 'title');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'explain');
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 整页绿色底色块（Figma Rectangle 7 满版填充 #81a46d） */}
@@ -24,13 +24,13 @@ export function WebMag35({ data, imagePos }: TemplateRenderProps) {
       <WebImage src={d['image']} style={{ position: 'absolute', left: 148, top: 160, width: 318, height: 408, objectFit: 'cover' }} position={imagePos?.['image']} slotId="image" />
 
       {/* 左上小标签 */}
-      <div style={{ position: 'absolute', left: 156, top: 160, width: 135, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 21, lineHeight: 1.3, color: labelTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['label']}</div>
+      <div style={{ position: 'absolute', left: 156, top: 160, width: 135, fontFamily: labelTheme.webFontFamily, fontWeight: 400, fontSize: 21, lineHeight: 1.3, color: labelTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['label']}</div>
 
       {/* 右上日期小标签（右对齐） */}
-      <div style={{ position: 'absolute', left: 330, top: 160, width: 135, textAlign: 'right', fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 21, lineHeight: 1.3, color: dateTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['date']}</div>
+      <div style={{ position: 'absolute', left: 330, top: 160, width: 135, textAlign: 'right', fontFamily: dateTheme.webFontFamily, fontWeight: 400, fontSize: 21, lineHeight: 1.3, color: dateTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['date']}</div>
 
       {/* 图下散文式收束语 */}
-      <div style={{ position: 'absolute', left: 156, top: 220, width: 242, fontFamily: WEB_FONTS.sansEn, fontWeight: 400, fontSize: 21, lineHeight: 1.35, color: bodyTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body']}</div>
+      <div style={{ position: 'absolute', left: 156, top: 220, width: 242, fontFamily: bodyTheme.webFontFamily, fontWeight: 400, fontSize: 21, lineHeight: 1.35, color: bodyTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body']}</div>
     </div>
   );
 }

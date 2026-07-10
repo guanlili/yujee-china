@@ -10,12 +10,10 @@ import type { TemplateRenderProps } from '../types';
 // 全套文字 #1c1b18。
 
 const INK = '#1c1b18';
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag38({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const bodyFont = hasCjk(d['body']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const bodyTheme = resolveThemeCarrier(data, 'body');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'title');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -28,7 +26,7 @@ export function PdfMag38({ data, imagePos }: TemplateRenderProps) {
       <PdfImage src={d['image2']} style={{ position: 'absolute', left: 0, top: 511, width: 794, height: 612 }} position={imagePos?.['image2']} />
 
       {/* 居中大字陈述句（跨在两图交界处） */}
-      <Text style={{ position: 'absolute', left: 87, top: 284, width: 620, textAlign: 'center', fontFamily: bodyFont, fontWeight: 'bold', fontSize: 48, lineHeight: 1.15, color: bodyTheme.accentColor ?? INK }}>{d['body']}</Text>
+      <Text style={{ position: 'absolute', left: 87, top: 284, width: 620, textAlign: 'center', fontFamily: bodyTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 48, lineHeight: 1.15, color: bodyTheme.accentColor ?? INK }}>{d['body']}</Text>
     </PdfPageShell>
   );
 }

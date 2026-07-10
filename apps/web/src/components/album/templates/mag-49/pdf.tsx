@@ -11,15 +11,13 @@ import { resolveThemeCarrier } from '../theme-carrier';
 // 全套文字陶土红 #1c1b18。版式来自 Figma 稿 A4-22（node 12:228）。
 
 const INK = '#1c1b18';
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag49({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
   const title = d['title'] || 'NORWAY';
   const head = title.charAt(0);
   const rest = title.slice(1);
-  const titleFont = hasCjk(title) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const titleTheme = resolveThemeCarrier(data, 'title');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -27,8 +25,8 @@ export function PdfMag49({ data, imagePos }: TemplateRenderProps) {
 
       {/* ── 顶部超大主标题（槽 title，占位 NORWAY，首字母略大，variableDecor） ── */}
       <View style={{ position: 'absolute', left: 28, top: 150, width: 738, height: 155, flexDirection: 'row', alignItems: 'flex-end' }}>
-        <Text style={{ fontFamily: titleFont, fontWeight: 'bold', fontSize: 155, lineHeight: 1, color: titleTheme.accentColor ?? INK }}>{head}</Text>
-        <Text style={{ fontFamily: titleFont, fontWeight: 'bold', fontSize: 124, lineHeight: 1, color: titleTheme.accentColor ?? INK }}>{rest}</Text>
+        <Text style={{ fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 155, lineHeight: 1, color: titleTheme.accentColor ?? INK }}>{head}</Text>
+        <Text style={{ fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 124, lineHeight: 1, color: titleTheme.accentColor ?? INK }}>{rest}</Text>
       </View>
 
       {/* ── 固定骨架标签 when / where / who / what（furniture，2×2，非槽位） ── */}

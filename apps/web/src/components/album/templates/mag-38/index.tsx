@@ -1,5 +1,5 @@
 import type { TemplateRenderProps } from '../types';
-import { PAGE, WEB_FONTS } from '../constants';
+import { PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
 
@@ -12,7 +12,7 @@ const INK = '#1c1b18';
 
 export function WebMag38({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const bodyTheme = resolveThemeCarrier(data, 'body');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'title');
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 上方满宽图（先渲染，文字叠其上） */}
@@ -22,7 +22,7 @@ export function WebMag38({ data, imagePos }: TemplateRenderProps) {
       <WebImage src={d['image2']} style={{ position: 'absolute', left: 0, top: 511, width: 794, height: 612, objectFit: 'cover' }} position={imagePos?.['image2']} slotId="image2" />
 
       {/* 居中大字陈述句（跨在两图交界处） */}
-      <div style={{ position: 'absolute', left: 87, top: 284, width: 620, textAlign: 'center', fontFamily: WEB_FONTS.sansEn, fontWeight: 700, fontSize: 48, lineHeight: 1.15, color: bodyTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body']}</div>
+      <div style={{ position: 'absolute', left: 87, top: 284, width: 620, textAlign: 'center', fontFamily: bodyTheme.webFontFamily, fontWeight: 700, fontSize: 48, lineHeight: 1.15, color: bodyTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body']}</div>
     </div>
   );
 }

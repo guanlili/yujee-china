@@ -17,7 +17,7 @@ const ROW_BOTTOM = 403;
 
 export function PdfMag31({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const bodyTheme = resolveThemeCarrier(data, 'body');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
   return (
     <PdfPageShell>
       {/* 上排：image1 / image2 / image3 */}
@@ -31,7 +31,7 @@ export function PdfMag31({ data, imagePos }: TemplateRenderProps) {
       <PdfImage src={d['image6']} style={{ position: 'absolute', left: 538, top: 403, width: 230, height: 351 }} position={imagePos?.['image6']} />
 
       {/* 底部居中图注 */}
-      <Text style={{ position: 'absolute', left: 167, top: 800, width: 460, fontFamily: PDF_FONTS.interEn, fontSize: 18, lineHeight: 1.5, color: bodyTheme.accentColor ?? TERRACOTTA, textAlign: 'center' }}>{d['body']}</Text>
+      <Text style={{ position: 'absolute', left: 167, top: 800, width: 460, fontFamily: bodyTheme.pdfFontFamily, fontSize: 18, lineHeight: 1.5, color: bodyTheme.accentColor ?? TERRACOTTA, textAlign: 'center' }}>{d['body']}</Text>
     </PdfPageShell>
   );
 }

@@ -10,16 +10,12 @@ import { resolveThemeCarrier } from '../theme-carrier';
 // 全套文字陶土红 #1c1b18。
 
 const TERRACOTTA = '#1c1b18';
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag28({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleFont = hasCjk(d['title']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const headlineFont = hasCjk(d['headline']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const explainFont = hasCjk(d['explain']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const headlineTheme = resolveThemeCarrier(data, 'headline');
-  const explainTheme = resolveThemeCarrier(data, 'explain');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const headlineTheme = resolveThemeCarrier(data, 'headline', 'title');
+  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -29,13 +25,13 @@ export function PdfMag28({ data, imagePos }: TemplateRenderProps) {
       <PdfImage src={d['image']} style={{ position: 'absolute', left: 133, top: 67, width: 661, height: 990 }} position={imagePos?.['image']} />
 
       {/* 左侧大字主标题（叠在图上方） */}
-      <Text style={{ position: 'absolute', left: 28, top: 69, width: 627, fontFamily: titleFont, fontWeight: 'bold', fontSize: 64, lineHeight: 1.05, color: titleTheme.accentColor ?? TERRACOTTA }}>{d['title']}</Text>
+      <Text style={{ position: 'absolute', left: 28, top: 69, width: 627, fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 64, lineHeight: 1.05, color: titleTheme.accentColor ?? TERRACOTTA }}>{d['title']}</Text>
 
       {/* 左侧大字陈述句 / 引语（叠在图上方） */}
-      <Text style={{ position: 'absolute', left: 28, top: 307, width: 627, fontFamily: headlineFont, fontWeight: 'bold', fontSize: 64, lineHeight: 1.05, color: headlineTheme.accentColor ?? TERRACOTTA }}>{d['headline']}</Text>
+      <Text style={{ position: 'absolute', left: 28, top: 307, width: 627, fontFamily: headlineTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 64, lineHeight: 1.05, color: headlineTheme.accentColor ?? TERRACOTTA }}>{d['headline']}</Text>
 
       {/* 左下角小图注 */}
-      <Text style={{ position: 'absolute', left: 28, bottom: 66, width: 255, fontFamily: explainFont, fontSize: 21, lineHeight: 1.35, color: explainTheme.accentColor ?? TERRACOTTA }}>{d['explain']}</Text>
+      <Text style={{ position: 'absolute', left: 28, bottom: 66, width: 255, fontFamily: explainTheme.pdfFontFamily, fontSize: 21, lineHeight: 1.35, color: explainTheme.accentColor ?? TERRACOTTA }}>{d['explain']}</Text>
     </PdfPageShell>
   );
 }

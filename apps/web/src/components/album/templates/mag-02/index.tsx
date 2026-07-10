@@ -11,8 +11,8 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
     items?: ToCItem[];
     folio?: string;
   };
-  const headingTheme = resolveThemeCarrier(data, 'title');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const headingTheme = resolveThemeCarrier(data, 'title', 'title');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   // 顶层标题与重复项 title[i] 共享 base key `title`:有重复项时 data.title 是数组,
   // 顶层标题退回默认值。仅当 data.title 是字符串时才作为顶层大标题用。
   const headingText =
@@ -72,7 +72,7 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
           lineHeight: 1,
           letterSpacing: '0.04em',
           color: headingTheme.accentColor ?? COLORS.ink,
-          fontFamily: headingTheme.webFontFamily ?? WEB_FONTS.montserrat,
+          fontFamily: headingTheme.webFontFamily,
         }}
       >
         {headingTheme.text ?? headingText ?? 'CONTENTS'}
@@ -90,9 +90,9 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
         }}
       >
         {rows.map((_, i) => {
-          const numberTheme = resolveThemeCarrier(data, `number[${i}]`);
-          const titleTheme = resolveThemeCarrier(data, `title[${i}]`);
-          const descriptionTheme = resolveThemeCarrier(data, `description[${i}]`);
+          const numberTheme = resolveThemeCarrier(data, `number[${i}]`, 'decoration');
+          const titleTheme = resolveThemeCarrier(data, `title[${i}]`, 'title');
+          const descriptionTheme = resolveThemeCarrier(data, `description[${i}]`, 'explain');
           // 把编号(如 "01")拆成前导 0(lead)与主数字(rest):前导 0 小号、上移半个字符,
           // 主数字放大,形成"0¹/"的层次。无前导 0 时 lead 为空,只显示主数字。
           const numRaw =
@@ -117,7 +117,7 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
                   gap: 5,
                   lineHeight: 1,
                   transform: 'skewX(-8deg)',
-                  fontFamily: numberTheme.webFontFamily ?? WEB_FONTS.montserrat,
+                  fontFamily: numberTheme.webFontFamily,
                   color: numberTheme.accentColor ?? COLORS.ink,
                 }}
               >
@@ -130,7 +130,7 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
                   fontSize: 17,
                   fontWeight: 400,
                   lineHeight: 1,
-                  fontFamily: numberTheme.webFontFamily ?? WEB_FONTS.montserrat,
+                  fontFamily: numberTheme.webFontFamily,
                   color: numberTheme.accentColor ?? COLORS.ink,
                 }}
               >
@@ -145,7 +145,7 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
                 textTransform: 'uppercase',
                 color: titleTheme.accentColor ?? COLORS.ink,
                 marginBottom: 10,
-                fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.montserrat,
+                fontFamily: titleTheme.webFontFamily,
               }}
             >
               {slotText(titles?.[i]) ?? legacy[i]?.title ?? ''}
@@ -154,6 +154,7 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
               style={{
                 lineHeight: 1.7,
                 color: descriptionTheme.accentColor ?? COLORS.ink2,
+                fontFamily: descriptionTheme.webFontFamily,
                 textAlign: 'justify',
                 letterSpacing: '0.02em',
                 fontSize: 16,
@@ -165,7 +166,7 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
           );
         })}
       </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="02" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="02" />
     </WebPage>
   );
 }

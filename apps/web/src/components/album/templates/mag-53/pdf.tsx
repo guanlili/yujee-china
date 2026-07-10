@@ -11,13 +11,11 @@ import { resolveThemeCarrier } from '../theme-carrier';
 // 全套文字陶土黑 #1c1b18。
 
 const INK = '#1c1b18';
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag53({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
   const title = d['title'] || 'Notes from Elsewhere';
-  const titleFont = hasCjk(title) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const titleTheme = resolveThemeCarrier(data, 'title');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -27,7 +25,7 @@ export function PdfMag53({ data, imagePos }: TemplateRenderProps) {
       <PdfImage src={d['image']} style={{ position: 'absolute', left: -180, top: 61, width: 907, height: 1001 }} position={imagePos?.['image']} />
 
       {/* 跨页大标题右片段（槽 title，11:327；负 left 显示右片段大展示字） */}
-      <Text style={{ position: 'absolute', left: -180, top: 823, width: 1265, height: 346, fontFamily: titleFont, fontSize: 120, lineHeight: 1.05, color: titleTheme.accentColor ?? INK }}>{title}</Text>
+      <Text style={{ position: 'absolute', left: -180, top: 823, width: 1265, height: 346, fontFamily: titleTheme.pdfFontFamily, fontSize: 120, lineHeight: 1.05, color: titleTheme.accentColor ?? INK }}>{title}</Text>
     </PdfPageShell>
   );
 }

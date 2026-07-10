@@ -4,7 +4,6 @@ import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -15,14 +14,13 @@ export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
     date?: string;
     folio?: string;
   };
-  const dateTheme = resolveThemeCarrier(data, 'date');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   const dateText = dateTheme.text ?? d.date ?? '04/24';
   const dn = dateText.split('/');
   // 展示主元素：大号日期用 Bebas Neue（纯拉丁安全）；含中文回退 serifCn 避免豆腐块
-  const dateFont = dateTheme.pdfFontFamily ?? (hasCjk(dateText) ? PDF_FONTS.serifCn : PDF_FONTS.bebas);
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage src={d.image1} style={{ position: 'absolute', top: 60, left: 50, width: 380, height: 360 }} position={imagePos?.['image1']} />
@@ -40,7 +38,7 @@ export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         <Text
           style={{
-            fontFamily: dateFont,
+            fontFamily: dateTheme.pdfFontFamily,
             fontSize: 108,
             letterSpacing: 4,
             color: dateTheme.accentColor ?? COLORS.ink,
@@ -50,7 +48,7 @@ export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
         </Text>
         <Text
           style={{
-            fontFamily: dateFont,
+            fontFamily: dateTheme.pdfFontFamily,
             fontSize: 108,
             letterSpacing: 4,
             marginLeft: 8,
@@ -66,7 +64,7 @@ export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           top: 500,
           left: 60,
           width: 347,
-          fontFamily: hasCjk(d.explain1) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat,
+          fontFamily: explain1Theme.pdfFontFamily,
           lineHeight: 1.75,
           color: explain1Theme.accentColor ?? COLORS.ink2,
           textAlign: 'justify',
@@ -93,7 +91,7 @@ export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           top: 760,
           left: 60,
           width: 347,
-          fontFamily: hasCjk(d.explain2) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat,
+          fontFamily: explain2Theme.pdfFontFamily,
           lineHeight: 1.75,
           color: explain2Theme.accentColor ?? COLORS.ink2,
           textAlign: 'justify',
@@ -102,7 +100,7 @@ export function PdfMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         {d.explain2 || ''}
       </Text>
-      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="04" />
+      <PdfFolio fontFamily={folioTheme.pdfFontFamily} folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="04" />
     </PdfPageShell>
   );
 }

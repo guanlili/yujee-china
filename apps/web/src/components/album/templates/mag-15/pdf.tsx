@@ -4,7 +4,6 @@ import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -15,13 +14,11 @@ export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
     date?: string;
     folio?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const dateTheme = resolveThemeCarrier(data, 'date');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
   const titleText = titleTheme.text ?? d.title ?? 'HAPPY\nCHOFU';
-  const titleFont =
-    titleTheme.pdfFontFamily ?? (hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.poppins);
-  const bodyTheme = resolveThemeCarrier(data, 'body');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <Text
@@ -31,6 +28,7 @@ export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
           left: 70,
           width: 280,
           lineHeight: 1.7,
+          fontFamily: bodyTheme.pdfFontFamily,
           color: bodyTheme.accentColor ?? COLORS.ink2,
           textAlign: 'justify',
           fontSize: 18,
@@ -55,7 +53,7 @@ export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
           right: 70,
           width: 460,
           textAlign: 'right',
-          fontFamily: titleFont,
+          fontFamily: titleTheme.pdfFontFamily,
           fontWeight: 'bold',
           fontSize: 84,
           letterSpacing: 1,
@@ -78,7 +76,7 @@ export function PdfMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         {(dateTheme.text ?? d.date ?? '').toUpperCase()}
       </Text>
-      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="15" />
+      <PdfFolio fontFamily={folioTheme.pdfFontFamily} folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="15" />
     </PdfPageShell>
   );
 }

@@ -10,16 +10,12 @@ import type { TemplateRenderProps } from '../types';
 // 全套文字 #1c1b18。
 
 const INK = '#1c1b18';
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag44({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleFont = hasCjk(d['title']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const lineFont = hasCjk(d['line']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const captionFont = hasCjk(d['caption']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const lineTheme = resolveThemeCarrier(data, 'line');
-  const captionTheme = resolveThemeCarrier(data, 'caption');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const lineTheme = resolveThemeCarrier(data, 'line', 'explain');
+  const captionTheme = resolveThemeCarrier(data, 'caption', 'explain');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -32,13 +28,13 @@ export function PdfMag44({ data, imagePos }: TemplateRenderProps) {
       <PdfImage src={d['image2']} style={{ position: 'absolute', left: 28, top: 555, width: 364, height: 536 }} position={imagePos?.['image2']} />
 
       {/* 左上超大字主标题（12:55 "Notes"） */}
-      <Text style={{ position: 'absolute', left: 28, top: 28, width: 480, fontFamily: titleFont, fontWeight: 'bold', fontSize: 108, lineHeight: 1.0, color: titleTheme.accentColor ?? INK }}>{d['title']}</Text>
+      <Text style={{ position: 'absolute', left: 28, top: 28, width: 480, fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 108, lineHeight: 1.0, color: titleTheme.accentColor ?? INK }}>{d['title']}</Text>
 
       {/* 中部一行短句（12:57） */}
-      <Text style={{ position: 'absolute', left: 28, top: 508, width: 334, fontFamily: lineFont, fontSize: 21, lineHeight: 1.35, color: lineTheme.accentColor ?? INK }}>{d['line']}</Text>
+      <Text style={{ position: 'absolute', left: 28, top: 508, width: 334, fontFamily: lineTheme.pdfFontFamily, fontSize: 21, lineHeight: 1.35, color: lineTheme.accentColor ?? INK }}>{d['line']}</Text>
 
       {/* 右下角图注段（12:59） */}
-      <Text style={{ position: 'absolute', left: 405, top: 965, width: 356, fontFamily: captionFont, fontSize: 21, lineHeight: 1.35, color: captionTheme.accentColor ?? INK }}>{d['caption']}</Text>
+      <Text style={{ position: 'absolute', left: 405, top: 965, width: 356, fontFamily: captionTheme.pdfFontFamily, fontSize: 21, lineHeight: 1.35, color: captionTheme.accentColor ?? INK }}>{d['caption']}</Text>
     </PdfPageShell>
   );
 }

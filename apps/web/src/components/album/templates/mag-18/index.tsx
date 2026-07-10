@@ -11,9 +11,9 @@ export function WebMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
     explain2?: string;
     folio?: string;
   };
-  const explain1Theme = resolveThemeCarrier(data, 'explain1');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -45,7 +45,7 @@ export function WebMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
         <p
           style={{
             margin: 0,
-            fontFamily: WEB_FONTS.montserrat,
+            fontFamily: explain1Theme.webFontFamily,
             lineHeight: 1.75,
             color: explain1Theme.accentColor ?? COLORS.ink2,
             letterSpacing: '0.02em',
@@ -71,7 +71,7 @@ export function WebMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
         <p
           style={{
             margin: 0,
-            fontFamily: WEB_FONTS.montserrat,
+            fontFamily: explain2Theme.webFontFamily,
             lineHeight: 1.75,
             color: explain2Theme.accentColor ?? COLORS.ink2,
             letterSpacing: '0.02em',
@@ -82,7 +82,7 @@ export function WebMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
           {d.explain2 || ''}
         </p>
       </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="18" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="18" />
     </WebPage>
   );
 }

@@ -11,10 +11,10 @@ export function WebMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
     explain?: string;
     folio?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const labelTheme = resolveThemeCarrier(data, 'label');
-  const explainTheme = resolveThemeCarrier(data, 'explain');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const labelTheme = resolveThemeCarrier(data, 'label', 'decoration');
+  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -31,7 +31,7 @@ export function WebMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
           left: 50,
           margin: 0,
           width: 360,
-          fontFamily: titleTheme.webFontFamily ?? WEB_FONTS.playfair,
+          fontFamily: titleTheme.webFontFamily,
           fontWeight: 700,
           fontSize: 76,
           letterSpacing: '0.01em',
@@ -48,7 +48,7 @@ export function WebMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
             letterSpacing: '0.3em',
             color: labelTheme.accentColor ?? COLORS.ink,
             textTransform: 'uppercase',
-            fontFamily: labelTheme.webFontFamily ?? WEB_FONTS.montserrat,
+            fontFamily: labelTheme.webFontFamily,
             fontWeight: 600,
           }}
         >
@@ -67,9 +67,9 @@ export function WebMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
           textAlign: 'justify',
         }}
       >
-        <p style={{ margin: 0, fontSize: 18, color: explainTheme.accentColor ?? COLORS.ink2 }}>{d.explain || ''}</p>
+        <p style={{ margin: 0, fontSize: 18, color: explainTheme.accentColor ?? COLORS.ink2, fontFamily: explainTheme.webFontFamily }}>{d.explain || ''}</p>
       </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="11" />
+      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="11" />
     </WebPage>
   );
 }

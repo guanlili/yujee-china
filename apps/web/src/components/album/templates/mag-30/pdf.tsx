@@ -14,7 +14,7 @@ const INK = '#1c1b18';
 
 export function PdfMag30({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const explainTheme = resolveThemeCarrier(data, 'explain');
+  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -65,7 +65,7 @@ export function PdfMag30({ data, imagePos }: TemplateRenderProps) {
           left: 495,
           top: 780,
           width: 232,
-          fontFamily: PDF_FONTS.sansEn,
+          fontFamily: explainTheme.pdfFontFamily,
           fontSize: 21,
           lineHeight: 1.6,
           color: explainTheme.accentColor ?? INK,

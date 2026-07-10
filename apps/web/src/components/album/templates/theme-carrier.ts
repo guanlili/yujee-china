@@ -3,60 +3,70 @@ import {
   THEME_ACCENT_CARRIER_SUFFIX,
   THEME_FONT_CARRIER_SUFFIX,
 } from '@yujee/contracts';
-import { PDF_FONTS, WEB_FONTS } from './constants';
+import {
+  DEFAULT_ALBUM_FONT,
+  FONT_CATALOG,
+  type AlbumFontCatalogEntry,
+  type AlbumTextRole,
+} from './font-catalog';
 import type { TemplateData } from './types';
-
-type WebFontFamily = (typeof WEB_FONTS)[keyof typeof WEB_FONTS];
-type PdfFontFamily = (typeof PDF_FONTS)[keyof typeof PDF_FONTS];
 
 export interface ResolvedThemeCarrier {
   text?: string;
   accentColor?: string;
   artFont?: ArtFontPack;
-  webFontFamily?: WebFontFamily;
-  pdfFontFamily?: PdfFontFamily;
+  webFontFamily?: AlbumFontCatalogEntry['webFontFamily'];
+  pdfFontFamily?: AlbumFontCatalogEntry['pdfFontFamily'];
 }
-
-const WEB_ART_FONT: Record<ArtFontPack, WebFontFamily> = {
-  'serif-classic': WEB_FONTS.serifEn,
-  'sans-modern': WEB_FONTS.sansEn,
-  'script-elegant': WEB_FONTS.playfair,
-  'display-bold': WEB_FONTS.bebas,
-};
-
-const PDF_ART_FONT: Record<ArtFontPack, PdfFontFamily> = {
-  'serif-classic': PDF_FONTS.serifEn,
-  'sans-modern': PDF_FONTS.sansEn,
-  'script-elegant': PDF_FONTS.serifEn,
-  'display-bold': PDF_FONTS.bebas,
-};
 
 function textValue(value: TemplateData[string]): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
 function artFontValue(value: TemplateData[string]): ArtFontPack | undefined {
-  if (
-    value === 'serif-classic' ||
-    value === 'sans-modern' ||
-    value === 'script-elegant' ||
-    value === 'display-bold'
-  ) {
-    return value;
-  }
-  return undefined;
+  return typeof value === 'string' && Object.hasOwn(FONT_CATALOG, value)
+    ? (value as ArtFontPack)
+    : undefined;
 }
 
-export function resolveThemeCarrier(data: TemplateData, slotId: string): ResolvedThemeCarrier {
+function fontForSlot(
+  text: string | undefined,
+  artFont: ArtFontPack | undefined,
+  role: AlbumTextRole,
+): AlbumFontCatalogEntry {
+  const script = text
+    && /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(text)
+    ? 'cjk'
+    : 'latin';
+  const explicit: AlbumFontCatalogEntry | undefined = artFont
+    ? FONT_CATALOG[artFont]
+    : undefined;
+  const canRenderText = script === 'latin' || explicit?.script === 'cjk';
+  const allowsRole = explicit?.roles.includes(role) ?? false;
+  const resolvedId = artFont && explicit && canRenderText && allowsRole
+    ? artFont
+    : DEFAULT_ALBUM_FONT[script][role];
+
+  return FONT_CATALOG[resolvedId];
+}
+
+export function resolveThemeCarrier(
+  data: TemplateData,
+  slotId: string,
+  role?: AlbumTextRole,
+): ResolvedThemeCarrier {
   const text = textValue(data[slotId]);
   const accentColor = textValue(data[`${slotId}${THEME_ACCENT_CARRIER_SUFFIX}`]);
   const artFont = artFontValue(data[`${slotId}${THEME_FONT_CARRIER_SUFFIX}`]);
+  const font = role ? fontForSlot(text, artFont, role) : artFont ? FONT_CATALOG[artFont] : undefined;
 
   return {
     text,
     accentColor,
     artFont,
-    webFontFamily: artFont ? WEB_ART_FONT[artFont] : undefined,
-    pdfFontFamily: artFont ? PDF_ART_FONT[artFont] : undefined,
+    webFontFamily: font?.webFontFamily,
+    pdfFontFamily: font?.pdfFontFamily,
   };
 }
+
+export type { AlbumTextRole } from './font-catalog';
