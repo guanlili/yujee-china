@@ -36,6 +36,9 @@ type Album = {
   coverThumbnailUrl: string | null;
   createdAt: string;
   coverPage: AlbumCoverPage | null;
+  // 无封面页时的兜底:项目里的照片 id(草稿排版页图槽优先,其次章节原图),
+  // 本机 photoStore 能解出哪张就用哪张当封面缩略图。
+  fallbackPhotoIds?: string[];
 };
 
 // Single quiet fallback used before a browser-derived cover thumbnail exists.
@@ -107,13 +110,18 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
     if (!albums) return;
 
     for (const album of albums) {
-      if (album.coverThumbnailUrl || !album.coverPage) continue;
+      if (album.coverThumbnailUrl) continue;
+      // 有封面页用封面页图槽;没有(未定稿的草稿相册)用项目里的照片兜底,
+      // 卡片不再停在空报刊占位上。
+      const candidatePhotoIds = album.coverPage
+        ? Object.values(album.coverPage.imagesJson ?? {}).filter(Boolean)
+        : (album.fallbackPhotoIds ?? []);
+      if (candidatePhotoIds.length === 0) continue;
       if (coverThumbnailAttemptsRef.current.has(album.id)) continue;
       coverThumbnailAttemptsRef.current.add(album.id);
 
       void (async () => {
-        const photoIds = Object.values(album.coverPage?.imagesJson ?? {}).filter(Boolean);
-        for (const photoId of photoIds) {
+        for (const photoId of candidatePhotoIds) {
           const original = await photoStore.getBlob(photoId);
           if (!original) continue;
 

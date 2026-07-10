@@ -1457,6 +1457,46 @@ export const albumService = {
     };
   },
 
+  // 没有真正封面页(album_pages 未定稿)也没有已存缩略图时,从草稿里挑一组
+  // "项目里的照片" id 给 my-albums 卡片兜底:优先草稿已排版页的图槽(更贴近成品),
+  // 其次章节相簿原图顺序。浏览器侧从 photoStore 逐个解析,第一张解得出来的当封面
+  // 缩略图上传 —— 卡片不再是空报刊。只传 id,不碰图像数据(原图只在浏览器)。
+  fallbackCoverPhotoIds(draftJson: unknown, cap = 8): string[] {
+    if (!draftJson || typeof draftJson !== 'object') return [];
+    const root = draftJson as {
+      tree?: { chapters?: unknown };
+      chapters?: unknown;
+      pages?: unknown;
+    };
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    const push = (value: unknown) => {
+      if (typeof value === 'string' && value && !seen.has(value) && ids.length < cap) {
+        seen.add(value);
+        ids.push(value);
+      }
+    };
+    if (Array.isArray(root.pages)) {
+      for (const page of root.pages) {
+        const images = (page as { images?: unknown })?.images;
+        if (images && typeof images === 'object') {
+          for (const v of Object.values(images as Record<string, unknown>)) push(v);
+        }
+        if (ids.length >= cap) return ids;
+      }
+    }
+    const chapters = root.tree?.chapters ?? root.chapters;
+    if (Array.isArray(chapters)) {
+      for (const chapter of chapters) {
+        const photos = (chapter as { photos?: unknown })?.photos;
+        if (!Array.isArray(photos)) continue;
+        for (const photo of photos) push((photo as { photoId?: unknown })?.photoId);
+        if (ids.length >= cap) return ids;
+      }
+    }
+    return ids;
+  },
+
   async listByUser(userId: string) {
     const rows = await albumRepo.findByUser(userId);
     const coverRows = await albumPageRepo.findFirstByAlbumIds(rows.map((a) => a.id));
@@ -1491,6 +1531,7 @@ export const albumService = {
         // draft is kept), so status is unaffected — only the credit hold moves.
         await draftExpirySweeper.sweepAlbumOnRead(a.id);
       }
+      const coverPage = coverByAlbumId.get(a.id) ?? null;
       out.push({
         id: a.id,
         title: a.title,
@@ -1500,7 +1541,10 @@ export const albumService = {
         pdfUrl: a.pdfUrl,
         coverThumbnailUrl: a.coverThumbnailUrl ?? null,
         createdAt: a.createdAt,
-        coverPage: coverByAlbumId.get(a.id) ?? null,
+        coverPage,
+        // 已有封面页或已存缩略图就不用兜底,省掉无谓的 draft 解析与线上负载。
+        fallbackPhotoIds:
+          coverPage || a.coverThumbnailUrl ? [] : this.fallbackCoverPhotoIds(a.draftJson),
       });
     }
     return out;

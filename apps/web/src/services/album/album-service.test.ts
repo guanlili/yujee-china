@@ -278,6 +278,57 @@ test('listByUser: includes only the first page cover data for card previews', as
   }
 });
 
+test('listByUser: coverless draft album exposes fallbackPhotoIds from its draft', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('list-cover-fallback');
+  try {
+    const album = await makeAlbum(user.id, { title: 'Draft Album' });
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      draftJson: {
+        version: 'v3-story',
+        tree: {
+          chapters: [
+            { chapterId: 'ch_1', photos: [{ photoId: 'p-tree-1' }, { photoId: 'p-tree-2' }] },
+          ],
+        },
+        // 草稿已排版页的图槽优先于章节原图。
+        pages: [{ templateId: 'mag-01', images: { hero: 'p-page-1' }, texts: {} }],
+      },
+    });
+
+    const rows = await albumService.listByUser(user.id);
+    const row = rows.find((r) => r.id === album.id);
+
+    assert.equal(row?.coverPage, null);
+    assert.deepEqual(row?.fallbackPhotoIds, ['p-page-1', 'p-tree-1', 'p-tree-2']);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('fallbackCoverPhotoIds: 残缺/非法草稿返回空,数量按 cap 截断、跨来源去重', () => {
+  assert.deepEqual(albumService.fallbackCoverPhotoIds(null), []);
+  assert.deepEqual(albumService.fallbackCoverPhotoIds('junk'), []);
+  assert.deepEqual(albumService.fallbackCoverPhotoIds({ tree: {} }), []);
+  const many = {
+    tree: {
+      chapters: [{ photos: Array.from({ length: 12 }, (_, i) => ({ photoId: `p${i}` })) }],
+    },
+  };
+  assert.equal(albumService.fallbackCoverPhotoIds(many).length, 8);
+  assert.deepEqual(
+    albumService.fallbackCoverPhotoIds({
+      tree: { chapters: [{ photos: [{ photoId: 'dup' }] }] },
+      pages: [{ images: { a: 'dup' } }],
+    }),
+    ['dup'],
+  );
+});
+
 test('updateTitle: renames an owned album (trimmed)', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
