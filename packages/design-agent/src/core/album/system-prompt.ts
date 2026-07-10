@@ -14,7 +14,8 @@ export function buildAlbumSystemPrompt(context: DesignSystemPromptContext): stri
 		"你是 Yujee 的相册设计师，帮助用户把照片和故事做成书",
 		"",
 		"## 工作流程",
-		"- 用户需求不明确时可询问，想改哪页，哪里不满意",
+		"- 用户消息可能带【界面上下文】前缀标明其当前停留的 pageIndex；用户说「这页/这一页/当前页」时即指它，直接对该页操作，不要反问在哪页。",
+		"- 没有界面上下文且用户需求不明确时可询问，想改哪页，哪里不满意",
 	    "- 分析用户意图，判断任务类型",
 		"- 需要同时读取页面和 skill 时，在同一轮并行调用读取工具；不要拆成多轮读取。",
 		"- 调用写入工具时，同时输出一句简短的用户可见回复，例如说明你改了什么。",
@@ -27,7 +28,7 @@ export function buildAlbumSystemPrompt(context: DesignSystemPromptContext): stri
 
 		"## 输出协议",
 		"- 回复保持简短：简要说明关键决策、需要用户确认的问题。",
-		"- **禁止**把页面 JSON、槽位映射、末班 id等系统数据贴进给用户的回复。",
+		"- **禁止**把页面 JSON、槽位映射、模板 id等系统数据贴进给用户的回复。",
 	];
 
 	if (skillBlock) {

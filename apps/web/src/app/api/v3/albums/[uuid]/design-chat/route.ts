@@ -20,6 +20,8 @@ const DESIGN_WRITE_TOOLS = new Set([
 const BodySchema = z
   .object({
     userMessage: z.string().min(1).max(500),
+    // 用户当前停留的编辑器页(可选):透传给设计 agent 消解"这页"类指代。
+    currentPageIndex: z.number().int().min(0).optional(),
   })
   .strict();
 
@@ -36,12 +38,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
     if (!stream) {
       const result = await albumService.designChatTurn(user.id, uuid, {
         userMessage: body.userMessage,
+        currentPageIndex: body.currentPageIndex,
       });
       return ok(result);
     }
 
     await albumService.prepareDesignChat(user.id, uuid);
-    const upstream = await designAgentClient.chatStream(uuid, body.userMessage);
+    const upstream = await designAgentClient.chatStream(uuid, body.userMessage, body.currentPageIndex);
     const encoder = new TextEncoder();
     const readable = new ReadableStream<Uint8Array>({
       async start(controller) {

@@ -734,10 +734,10 @@ export const albumService = {
   async designChatTurn(
     userId: string,
     albumId: string,
-    input: { userMessage: string },
+    input: { userMessage: string; currentPageIndex?: number },
   ): Promise<{ assistantReply: string; committed: boolean; pageCount: number }> {
     await this.prepareDesignChat(userId, albumId);
-    const result = await designAgentClient.chat(albumId, input.userMessage);
+    const result = await designAgentClient.chat(albumId, input.userMessage, input.currentPageIndex);
     await this.persistDesignChat(userId, albumId, {
       userMessage: input.userMessage,
       assistantReply: result.assistantReply,

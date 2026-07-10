@@ -1256,7 +1256,9 @@ export function ChatPanel({
         const res = await fetch(`/api/v3/albums/${albumId}/design-chat?stream=1`, {
           method: 'POST',
           headers: { accept: 'application/x-ndjson', 'content-type': 'application/json' },
-          body: JSON.stringify({ userMessage }),
+          // currentPageIndex:用户此刻停留的页(选中页,否则当前跨页首页)。agent 用它
+          // 消解"这页/当前页"指代,不再反问用户在哪页。
+          body: JSON.stringify({ userMessage, currentPageIndex: authoringFocusPageIndex() }),
         });
         if (!res.ok || !res.body) {
           if (res.status === 401) throw new UnauthorizedError();

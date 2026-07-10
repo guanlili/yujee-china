@@ -332,10 +332,19 @@ class AlbumRuntimeManager {
 	}
 }
 
+// 把「用户正看着哪页」拼进本轮用户消息:模型据此消解"这页/这一页/当前页"的指代,
+// 不再瞎猜。作为消息前缀(而非独立 system 轮)进入会话历史 —— 历史里保留"说这句话时
+// 用户停在哪页"本身就是有效语境;Web 落库的聊天记录存的是原始 userMessage,不受影响。
+export function composeChatTurn(message: string, currentPageIndex: number | undefined): string {
+	if (currentPageIndex == null) return message;
+	return `【界面上下文】用户当前停留在 pageIndex=${currentPageIndex}(第 ${currentPageIndex + 1} 页)。用户说"这页/这一页/当前页"时即指它。\n\n${message}`;
+}
+
 async function runAlbumChat(
 	runtime: AlbumRuntime,
 	message: string,
 	stream: ((event: AlbumStreamEvent) => void) | undefined,
+	currentPageIndex?: number,
 ): Promise<AlbumChatResponse> {
 	const trace = runtime.traces.startTrace({ prompt: message });
 	runtime.setActiveTrace(trace.id);
@@ -345,11 +354,12 @@ async function runAlbumChat(
 	runtime.traces.recordProviderPayload(trace.id, {
 		type: "album_input",
 		userMessage: message,
+		currentPageIndex: currentPageIndex ?? null,
 		bookVersion: bookBefore.version,
 	});
 
 	try {
-		const assistantMessage = await runtime.session.prompt(message);
+		const assistantMessage = await runtime.session.prompt(composeChatTurn(message, currentPageIndex));
 		runtime.traces.recordAssistantMessage(trace.id, assistantMessage);
 		const assistantText = extractAssistantText(assistantMessage);
 		const bookAfter = runtime.getBook();
@@ -457,6 +467,12 @@ async function handleAlbumChat(
 		sendJson(response, 400, { error: "message is required" });
 		return;
 	}
+	// 用户当前停留页(编辑器焦点页,可选):用于"这页"类指代消解。非法值按未提供处理。
+	const rawPageIndex = parsed.currentPageIndex;
+	const currentPageIndex =
+		typeof rawPageIndex === "number" && Number.isInteger(rawPageIndex) && rawPageIndex >= 0
+			? rawPageIndex
+			: undefined;
 	const albumId = readAlbumId(parsed);
 	const runtime = await resolveRuntime(manager, albumId, response);
 	if (!runtime) return;
@@ -473,7 +489,7 @@ async function handleAlbumChat(
 				response.write(`${JSON.stringify(event)}\n`);
 			};
 			try {
-				const result = await runAlbumChat(runtime, message, write);
+				const result = await runAlbumChat(runtime, message, write, currentPageIndex);
 				write({ type: "done", response: result });
 			} catch (error) {
 				write({ type: "error", error: error instanceof Error ? error.message : String(error) });
@@ -483,7 +499,7 @@ async function handleAlbumChat(
 			return;
 		}
 		try {
-			const result = await runAlbumChat(runtime, message, undefined);
+			const result = await runAlbumChat(runtime, message, undefined, currentPageIndex);
 			sendJson(response, 200, result);
 		} catch (error) {
 			sendJson(response, 500, {

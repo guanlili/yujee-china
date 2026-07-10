@@ -52,7 +52,7 @@ async function postDesign(path: string, payload: unknown, timeoutMs: number): Pr
 export const designAgentClient = {
   // 流式对话：返回原始 NDJSON Response（body 为 design-agent 的事件流），由调用方
   // （design-chat 路由）逐行转发给浏览器并在 done 事件时落库。
-  async chatStream(albumId: string, message: string): Promise<Response> {
+  async chatStream(albumId: string, message: string, currentPageIndex?: number): Promise<Response> {
     let res: Response;
     try {
       res = await fetch(`${env.DESIGN_AGENT_BASE_URL}/api/chat?stream=1`, {
@@ -63,7 +63,8 @@ export const designAgentClient = {
             ? { Authorization: `Bearer ${env.DESIGN_AGENT_SHARED_SECRET}` }
             : {}),
         },
-        body: JSON.stringify({ albumId, message }),
+        // currentPageIndex:用户在编辑器里停留的页,供 agent 消解"这页"类指代。
+        body: JSON.stringify({ albumId, message, currentPageIndex }),
         signal: AbortSignal.timeout(180_000),
       });
     } catch (e) {
@@ -83,8 +84,12 @@ export const designAgentClient = {
     await postDesign('/api/book', { albumId, book }, 15_000);
   },
 
-  async chat(albumId: string, message: string): Promise<DesignAgentChatResult> {
-    const raw = await postDesign('/api/chat', { albumId, message }, 180_000);
+  async chat(
+    albumId: string,
+    message: string,
+    currentPageIndex?: number,
+  ): Promise<DesignAgentChatResult> {
+    const raw = await postDesign('/api/chat', { albumId, message, currentPageIndex }, 180_000);
     const assistant = raw.assistant as { text?: unknown } | undefined;
     const book = raw.book as { pages?: unknown; version?: unknown } | undefined;
     if (typeof assistant?.text !== 'string' || !Array.isArray(book?.pages)) {
