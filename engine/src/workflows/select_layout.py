@@ -197,33 +197,6 @@ class _BatchResult:
     model: str | None = None
 
 
-async def _apply_write_copy(unit: Any, pages: list[dict[str, Any]], *, language: str) -> list[dict[str, Any]]:
-    """排版选定之后,豆包把文案写进本单元每页的非 decoration 文字槽(#AI copy writer)。
-
-    写文案是叠加合并:只覆盖返回了文案的槽位,其余页面/字段原样保留。`write_copy`
-    自身对任何失败(缺 ARK key / HTTP / JSON 解析)都已经返回空结果而不抛错;这里再兜一层
-    `except Exception`,确保写文案这一步无论如何都不会打断排版主流程。
-    """
-    try:
-        result = await write_copy_agent.write_copy(unit, pages, language=language)
-    except Exception as exc:  # noqa: BLE001 — 写文案绝不能打断排版
-        log.warning("v3_select_layout.write_copy_failed", error=str(exc))
-        return pages
-    if not result.pages_texts:
-        return pages
-
-    merged: list[dict[str, Any]] = []
-    for page in pages:
-        texts = result.pages_texts.get(page.get("pageIndex"))
-        if texts:
-            new_page = dict(page)
-            new_page["texts"] = {**(page.get("texts") or {}), **texts}
-            merged.append(new_page)
-        else:
-            merged.append(page)
-    return merged
-
-
 async def _judge_unit(unit: Any, *, seed: str, language: str) -> _BatchResult:
     """一个排版单元(一章或超大章的一段):代码随机生成 N 个候选 → LLM 评委选最佳。
 
@@ -274,7 +247,7 @@ async def _judge_unit(unit: Any, *, seed: str, language: str) -> _BatchResult:
     # 版式已定 → 豆包把文案写进本单元每页(#AI copy writer)。generic_copy 的装饰
     # 文案(folio/date)仍在 select_pages 里之后统一叠加,两者写不同的槽位(role 分流),
     # 互不冲突。
-    pages = await _apply_write_copy(unit, pages, language=language)
+    pages = await write_copy_agent.apply_write_copy(unit, pages, language=language)
     return _BatchResult(
         pages=pages,
         gemini_calls=calls,

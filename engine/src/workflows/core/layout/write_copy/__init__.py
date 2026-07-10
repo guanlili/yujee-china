@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .handler import write_copy
+from .handler import apply_write_copy, write_copy
 from .schema import WriteCopyResult
 
-__all__ = ["write_copy", "WriteCopyResult"]
+__all__ = ["apply_write_copy", "write_copy", "WriteCopyResult"]

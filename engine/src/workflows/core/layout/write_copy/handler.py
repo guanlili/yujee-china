@@ -39,7 +39,7 @@ def _get(obj: Any, key: str, default: Any = None) -> Any:
 
 
 def _writable_text_slots(page: dict[str, Any]) -> list[dict[str, Any]]:
-    """本页非 decoration 的文字槽规格(id/role/maxChars?/sample?)。
+    """本页非 decoration 的文字槽规格(id/role/sample?)。
     模板未知或该页没有非 decoration 槽 → 空列表(调用方据此跳过整页)。"""
     template_id = page.get("templateId")
     template = templates.get(template_id) if isinstance(template_id, str) else None
@@ -51,9 +51,6 @@ def _writable_text_slots(page: dict[str, Any]) -> list[dict[str, Any]]:
         if slot.get("role") == "decoration":
             continue
         spec: dict[str, Any] = {"id": slot["id"], "role": slot["role"]}
-        max_chars = slot.get("maxChars")
-        if max_chars:
-            spec["maxChars"] = max_chars
         sample = examples.get(slot["id"])
         if sample:
             spec["sample"] = sample
@@ -64,12 +61,6 @@ def _writable_text_slots(page: dict[str, Any]) -> list[dict[str, Any]]:
 def _page_photo_ids(page: dict[str, Any]) -> list[str]:
     images = page.get("images") or {}
     return [pid for pid in images.values() if isinstance(pid, str) and pid]
-
-
-def _clamp(text: str, max_chars: int | None) -> str:
-    if max_chars is not None and len(text) > max_chars:
-        return text[:max_chars]
-    return text
 
 
 def _build_payload_and_messages(
@@ -131,11 +122,9 @@ def _parse_result(
         return {}
 
     writable_ids_by_page: dict[int, set[str]] = {}
-    max_chars_by_page: dict[int, dict[str, int | None]] = {}
     for spec in page_specs:
         idx = spec["pageIndex"]
         writable_ids_by_page[idx] = {s["id"] for s in spec["textSlots"]}
-        max_chars_by_page[idx] = {s["id"]: s.get("maxChars") for s in spec["textSlots"]}
 
     out: dict[int, dict[str, str]] = {}
     for raw_page in raw_pages:
@@ -152,7 +141,7 @@ def _parse_result(
         for slot_id, text in texts.items():
             if slot_id not in writable_ids or not isinstance(text, str):
                 continue
-            page_texts[slot_id] = _clamp(text, max_chars_by_page[idx].get(slot_id))
+            page_texts[slot_id] = text
         if page_texts:
             out[idx] = page_texts
     return out
@@ -222,3 +211,33 @@ async def write_copy(
         output_tokens=output_tokens,
         model=slot.model,
     )
+
+
+async def apply_write_copy(
+    unit: Any,
+    pages: list[dict[str, Any]],
+    *,
+    language: str = "zh",
+) -> list[dict[str, Any]]:
+    """写文案并按「叠加合并」应用到 `pages`:只覆盖返回了文案的槽位,其余原样保留。
+
+    `write_copy` 自身对任何失败都返回空结果;这里再兜一层 `except Exception`,
+    确保写文案无论如何都不会打断排版主流程(内联评委与 P2 判图两条路共用)。"""
+    try:
+        result = await write_copy(unit, pages, language=language)
+    except Exception as exc:  # noqa: BLE001 — 写文案绝不能打断排版
+        log.warning("write_copy.apply_failed", error=str(exc))
+        return pages
+    if not result.pages_texts:
+        return pages
+
+    merged: list[dict[str, Any]] = []
+    for page in pages:
+        texts = result.pages_texts.get(page.get("pageIndex"))
+        if texts:
+            new_page = dict(page)
+            new_page["texts"] = {**(page.get("texts") or {}), **texts}
+            merged.append(new_page)
+        else:
+            merged.append(page)
+    return merged

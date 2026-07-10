@@ -94,6 +94,27 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
       }
     };
 
+    // 展示同款 state 但**不进终态、不停循环**。authoring 阶段(EDITING 且未定稿)必须用
+    // 这个:排版是用户在编辑器里待了几分钟后才触发的,若首个 tick 就把 ready 定为终态,
+    // 循环早死,后面 candidates 停在 52 哨兵时没人取候选/渲染缩略图/派发 phase-2 ——
+    // 排版永远完不成。定稿(layoutJson 落地)后才允许 ready 终态收口。
+    // 信号没变就不 setState:15s 一次的存活轮询不该让编辑器整树跟着重渲染。
+    let lastLiveSig = '';
+    const applyLive = (next: AlbumPollState) => {
+      if (stopped || settled) return;
+      const album = next.detail?.album;
+      const sig = [
+        next.phase,
+        album?.status ?? '',
+        album?.layoutJson == null ? 'draft' : 'final',
+        next.generation?.stage ?? '',
+        next.generation?.progress ?? '',
+      ].join('|');
+      if (sig === lastLiveSig) return;
+      lastLiveSig = sig;
+      setState(next);
+    };
+
     const tick = async () => {
       if (stopped || settled || inFlight) return;
       inFlight = true;
@@ -137,25 +158,11 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
         transient = 0;
         const { generation, ...detail } = json.data;
         const status = detail.album.status;
-        if (status === 'EDITING' || status === 'COMPLETED') {
-          return apply({ detail, generation: null, phase: 'ready', error: null });
-        }
-        if (status === 'FAILED') {
-          return apply({ detail, generation: null, phase: 'failed', error: detail.album.errorMessage });
-        }
-        // AGENT_RUNNING: keep polling unless we've crossed the soft ceiling.
-        if (Date.now() - startedAt > SOFT_CEILING_MS) {
-          return apply({ detail, generation, phase: 'error', error: null });
-        }
-        // 时序反转(§流程):analyze 完成(progress=50)**不再自动排版**。先让用户进编辑器
-        // 对话面板逐章收集故事(排版前,页还没排);所有章收集完由编辑器 triggerSelectLayout
-        // 手动触发 select-layout(排版时 judge_layout 拿 chapterContext 一并写全部文案)。
-        // 所以这里 progress=50 不做事,照常 apply(下方) phase='running' → page 进采访态。
-        // P2 phase 2 (docs/agent/contract.md §5.2.1): the candidates callback parked
-        // the job at progress 52. Fetch the candidate structures, render a thumbnail per
-        // candidate (real templates, photos-in-slots, no text), and POST judge-layout.
-        // Failures here are NON-FATAL: the Agent/Web fallback finishes the album from
-        // candidate 0, so we keep polling rather than surfacing an error.
+        // P2 phase 2 (docs/agent/contract.md §5.2.1): the `candidates` callback parked the
+        // 独立 layout job at progress 52(解耦后这发生在相册 EDITING 下,不再是 AGENT_RUNNING)。
+        // 一旦看到 candidates-ready 哨兵(layout,52)就取候选 → 渲染"照片填槽"缩略图 → POST judge-layout。
+        // **必须在状态分支之前驱动**:否则 EDITING 会被下面的 early-return 拦掉,phase-2 永不触发。
+        // 失败非致命:Agent/Web 兜底从候选 0 收尾,继续轮询即可。
         if (generation?.stage === 'layout' && generation.progress === 52) {
           const recipe = albumRecipe.load(uuid);
           if (
@@ -181,8 +188,25 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
               judgeSubmitInFlight = false;
             }
           }
+          // 排版进行中:phase 保持 ready(解耦后用户就在编辑器里,切 running 会闪回
+          // building 壳),但不进终态 —— 循环要活着等 completed 落 draft。
+          return applyLive({ detail, generation, phase: 'ready', error: null });
         }
-
+        if (status === 'EDITING' || status === 'COMPLETED') {
+          const authoring = status === 'EDITING' && detail.album.layoutJson == null;
+          if (authoring || generation != null) {
+            // 未定稿(authoring)或仍有活跃 layout job:保持轮询,phase-2 哨兵靠本循环驱动。
+            return applyLive({ detail, generation, phase: 'ready', error: null });
+          }
+          return apply({ detail, generation: null, phase: 'ready', error: null });
+        }
+        if (status === 'FAILED') {
+          return apply({ detail, generation: null, phase: 'failed', error: detail.album.errorMessage });
+        }
+        // AGENT_RUNNING: keep polling unless we've crossed the soft ceiling.
+        if (Date.now() - startedAt > SOFT_CEILING_MS) {
+          return apply({ detail, generation, phase: 'error', error: null });
+        }
         apply({ detail, generation, phase: 'running', error: null });
       } finally {
         inFlight = false;

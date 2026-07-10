@@ -12,8 +12,8 @@
     {
       "pageIndex": 0,
       "textSlots": [
-        {"id": "title", "role": "title", "maxChars": 24, "sample": "示例文案(风格参考,别照抄)"},
-        {"id": "body", "role": "body", "maxChars": 80}
+        {"id": "title", "role": "title", "sample": "示例文案(风格参考,别照抄)"},
+        {"id": "body", "role": "body"}
       ],
       "photos": [
         {"photoId": "p1", "sceneDescription": "两个人在海边看日落"}
@@ -29,8 +29,7 @@ JSON 之后可能跟着这些 `photos` 对应的实际照片图片,按页面顺�
 
 - 每个 `textSlot` 都要写一句或一段贴合该章背景(`chapterContext`)和照片内容(`sceneDescription` /
   图片)的文案。
-- **严格不超过 `maxChars`**(按字符数,含标点)。
-- `role=title` 写短标题;`role=body`、`role=explain` 写正文,长度贴合 `maxChars`。
+- `role=title` 写短标题;`role=body`、`role=explain` 写正文。
 - 语气自然、真实、不空洞;不要写成广告文案或套话。
 - 参考 `sample` 的语气和篇幅风格,但要写全新内容,不要照抄 `sample`。
 - **不要编造具体日期、地名、人名**(隐私红线)——只按照片和背景里已有的信息写,没提到的

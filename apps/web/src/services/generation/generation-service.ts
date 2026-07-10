@@ -168,16 +168,17 @@ export const generationService = {
   async getJudgeCandidates(
     userId: string,
     albumId: string,
-    requestId: string,
+    _requestId: string,
   ): Promise<{ ready: boolean; units: SelectLayoutCandidateUnit[] }> {
     const album = await albumService.findOwned(userId, albumId);
-    const job = await agentJobRepo.findByRequestId(requestId);
-    if (!job) throw ERRORS.JOB_NOT_FOUND();
-    if (job.userId !== userId || job.albumId !== albumId) throw ERRORS.JOB_NOT_OWNED();
     // 时序反转:排版期 album 恒为 EDITING(P2 缩略图轮询也在 EDITING 下发生)。放宽以取回候选。
     if (!(album.status === 'EDITING' || album.status === 'AGENT_RUNNING'))
       throw ERRORS.ALBUM_NOT_EDITABLE();
-    const units = transientLayoutCandidates.get(requestId);
+    // 解耦:按 album 定位活跃 layout job,用它真实的 requestId 取候选 —— 浏览器传的 _requestId 是
+    // analyze 的,对不上按 layout-requestId 暂存的候选(gap4)。没在跑 layout job 就 ready=false。
+    const job = await agentJobRepo.findActiveLayoutByAlbum(albumId);
+    if (!job) return { ready: false, units: [] };
+    const units = transientLayoutCandidates.get(job.requestId);
     if (!units) return { ready: false, units: [] };
     return { ready: true, units };
   },
@@ -189,9 +190,10 @@ export const generationService = {
   // is reserved here — phase 1's select-layout already holds it (kept single).
   async submitJudgeLayoutV3(userId: string, albumId: string, input: JudgeLayoutInput) {
     const album = await albumService.findOwned(userId, albumId);
-    const job = await agentJobRepo.findByRequestId(input.requestId);
+    // 解耦:按 album 定位活跃 layout job,用它真实的 requestId 回调引擎(浏览器传的 input.requestId
+    // 是 analyze 的,对不上 gap4)。engine 的 completed 回调靠这个 requestId 落回本 layout job。
+    const job = await agentJobRepo.findActiveLayoutByAlbum(albumId);
     if (!job) throw ERRORS.JOB_NOT_FOUND();
-    if (job.userId !== userId || job.albumId !== albumId) throw ERRORS.JOB_NOT_OWNED();
     // 时序反转:收集完才排版,此刻 album 恒为 EDITING(不再翻 AGENT_RUNNING);AGENT_RUNNING
     // 保留以兼容老时序/回退开关。真正的并发闸是下面的 progress 哨兵 + reserve*() CAS,不靠 status。
     if (
@@ -204,11 +206,11 @@ export const generationService = {
     // Not yet at the candidates-ready sentinel (or phase 2 already dispatched / done):
     // idempotently accept so a retrying browser doesn't error.
     if (job.progress !== 52) {
-      return { albumId, requestId: input.requestId, accepted: true };
+      return { albumId, requestId: job.requestId, accepted: true };
     }
 
     const payload = buildJudgeLayoutRequest({
-      requestId: input.requestId,
+      requestId: job.requestId,
       callbackUrl: `${env.WEB_BASE_URL}/api/v3/internal/job-progress`,
       language: input.language,
       units: input.units,
@@ -217,26 +219,26 @@ export const generationService = {
 
     const reserved = await agentJobRepo.reserveJudgeLayout(db, job.id);
     if (!reserved) {
-      return { albumId, requestId: input.requestId, accepted: true };
+      return { albumId, requestId: job.requestId, accepted: true };
     }
 
     try {
       await agentClient.submitJudgeLayoutV3(payload);
     } catch (e) {
       logger.error(
-        { err: String(e), requestId: input.requestId },
+        { err: String(e), requestId: job.requestId },
         'agent v3 judge-layout submit failed, marking job FAILED',
       );
-      await jobService.handleV3Failed(input.requestId, {
+      await jobService.handleV3Failed(job.requestId, {
         code: 'AGENT_INTERNAL_ERROR',
         message: 'Failed to submit judge-layout to agent',
       });
-      return { albumId, requestId: input.requestId, accepted: true };
+      return { albumId, requestId: job.requestId, accepted: true };
     }
 
     // Candidates served their purpose; drop the transient stash.
-    transientLayoutCandidates.clear(input.requestId);
-    return { albumId, requestId: input.requestId, accepted: true };
+    transientLayoutCandidates.clear(job.requestId);
+    return { albumId, requestId: job.requestId, accepted: true };
   },
 };
 

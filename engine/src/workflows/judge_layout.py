@@ -1,9 +1,11 @@
-"""V3 `/v3/judge-layout` Stage2 phase 2:浏览器渲染缩略图 → Gemini 评委选赢家 → pages。
+"""V3 `/v3/judge-layout` Stage2 phase 2:浏览器渲染缩略图 → 评委选赢家 → 写文案 → pages。
 
-phase 1(`/v3/select-layout`)已把候选结构交回浏览器,浏览器渲染成小缩略图后 POST 到这里。
-本流程对每个未定 unit 把 N 张缩略图发给 Gemini 评委选最佳;赢家候选走
-`legalize.finalize_candidate_pages` 拼成整册 pages,经与 phase 1 相同的 `completed` 回调返回。
-评委失败 / 缩略图缺失 → 该 unit 退化「取候选 0」,全册仍成稿。
+phase 1(`/v3/select-layout`)已把候选结构交回浏览器,浏览器用真实模板 + 真照片渲染成
+缩略图后 POST 到这里。本流程对每个未定 unit 把 N 张缩略图 + chapterContext 发给评委
+(gemini,保底豆包)选最佳;赢家候选走 `legalize.finalize_candidate_pages` 拼成页后,
+豆包把文案写进非 decoration 文字槽(素材 = unit.photos + chapterContext),经与 phase 1
+相同的 `completed` 回调返回。评委失败 / 缩略图缺失 → 该 unit 退化「取候选 0」;
+写文案失败 → texts 保持原样;全册始终成稿。
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from ..providers import ai_client
 from .core.layout import select_layout as select_layout_agent
 from .core.layout.select_layout import GeminiLayoutUnavailable
 from .core.layout import generic_copy, legalize
+from .core.layout import write_copy as write_copy_agent
 from ..logging_config import get_logger, request_id_var
 from ..contracts.schemas import (
     JudgeLayoutRequest,
@@ -44,7 +47,9 @@ async def _resolve_unit(
 ) -> tuple[list[dict[str, Any]], int, int, int, str | None]:
     """选出该 unit 的赢家候选并最终化成页。返回 (pages, calls, in_tok, out_tok, model)。
 
-    纯排版:只产版面(templateId + 图槽),texts 留空,交由后续编辑 agent 写。"""
+    评委看的是浏览器渲染的真实缩略图(照片已排进版式);选定后豆包当场把文案写进
+    本单元每页的非 decoration 文字槽(素材 = unit.photos 的 sceneDescription +
+    chapterContext,由 Web 从 draft tree 补齐)。写文案失败不阻断,texts 保持原样。"""
     candidates = list(unit.candidates)
     chapter = {"chapterId": unit.chapterId}
 
@@ -53,26 +58,30 @@ async def _resolve_unit(
         idx = unit.chosenIndex if unit.chosenIndex is not None else 0
         idx = idx if 0 <= idx < len(candidates) else 0
         winner = candidates[idx]
-        pages = legalize.finalize_candidate_pages(chapter, _candidate_pages(winner))
-        return pages, 0, 0, 0, None
-
-    # 多候选:缩略图喂 Gemini 评委。失败退化取 0。
-    thumbnails = [c.thumbnail for c in candidates]
-    try:
-        verdict = await select_layout_agent.judge_layout_thumbnails(thumbnails)
-        winner = candidates[verdict.winner_index]
-        meta = (verdict.call_count, verdict.input_tokens, verdict.output_tokens, verdict.model)
-    except (GeminiLayoutUnavailable, Exception) as exc:  # noqa: BLE001
-        log.warning("v3_judge_layout.judge_fallback", chapter_id=unit.chapterId, error=str(exc))
-        ai_client.trace_marker(
-            "judge-layout fallback",
-            input=f"chapterId={unit.chapterId}; reason={str(exc)[:300]}",
-            output="评委失败,取第 0 个候选。",
-        )
-        winner = candidates[0]
         meta = (0, 0, 0, None)
+    else:
+        # 多候选:真实渲染缩略图 + chapterContext 喂评委(gemini,保底豆包)。失败退化取 0。
+        thumbnails = [c.thumbnail for c in candidates]
+        try:
+            verdict = await select_layout_agent.judge_layout_thumbnails(
+                thumbnails, chapter_context=unit.chapterContext or ""
+            )
+            winner = candidates[verdict.winner_index]
+            meta = (verdict.call_count, verdict.input_tokens, verdict.output_tokens, verdict.model)
+        except (GeminiLayoutUnavailable, Exception) as exc:  # noqa: BLE001
+            log.warning("v3_judge_layout.judge_fallback", chapter_id=unit.chapterId, error=str(exc))
+            ai_client.trace_marker(
+                "judge-layout fallback",
+                input=f"chapterId={unit.chapterId}; reason={str(exc)[:300]}",
+                output="评委失败,取第 0 个候选。",
+            )
+            winner = candidates[0]
+            meta = (0, 0, 0, None)
 
     pages = legalize.finalize_candidate_pages(chapter, _candidate_pages(winner))
+    # 版式已定 → 写文案(#AI copy writer)。与内联评委路径共用同一 helper;
+    # generic_copy 之后只叠 decoration 槽(页码/日期),role 分流互不冲突。
+    pages = await write_copy_agent.apply_write_copy(unit, pages, language=language)
     calls, in_tok, out_tok, model = meta
     return pages, calls, in_tok, out_tok, model
 

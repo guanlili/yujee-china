@@ -82,12 +82,8 @@ def _raw_page_for_chapter(chapter) -> dict:  # noqa: ANN001
 
 
 @pytest.mark.asyncio
-async def test_select_layout_falls_back_wraps_and_fills_generic_copy(monkeypatch):
-    async def fail_gemini(*args, **kwargs):  # noqa: ANN002, ANN003
-        raise RuntimeError("Gemini unavailable")
-
-    monkeypatch.setattr(select_layout.select_layout_agent, "gemini_layout", fail_gemini)
-
+async def test_select_layout_falls_back_wraps_and_fills_generic_copy():
+    # 默认路径(未开 inline judge)不调评委 → 代码直接包裹候选并补 generic_copy。
     pages, usage = await select_layout.select_pages(_request())
 
     assert [page["pageIndex"] for page in pages] == list(range(len(pages)))

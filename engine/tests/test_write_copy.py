@@ -115,7 +115,8 @@ def test_write_copy_fills_title_and_body_slots(monkeypatch):
     assert image_parts[0]["image_url"]["url"] == "data:image/jpeg;base64,AAAA"
 
 
-def test_write_copy_clamps_text_exceeding_max_chars(monkeypatch):
+def test_write_copy_does_not_clamp_text(monkeypatch):
+    # maxChars 已从写文案链路移除:AI 自然成文,不再按字数硬截断(长文原样透传)。
     _set_ark_key(monkeypatch)
 
     long_title = "这是一段远超过标题最大字符数限制的超长标题文本用来测试裁剪逻辑是否生效"
@@ -150,8 +151,8 @@ def test_write_copy_clamps_text_exceeding_max_chars(monkeypatch):
 
     result = asyncio.run(write_copy_handler.write_copy(unit, pages, language="zh"))
 
-    assert result.pages_texts[0]["title"] == long_title[:24]
-    assert len(result.pages_texts[0]["title"]) == 24
+    # 原样返回,不截断。
+    assert result.pages_texts[0]["title"] == long_title
     assert result.pages_texts[0]["body"] == "正常长度的正文。"
 
 

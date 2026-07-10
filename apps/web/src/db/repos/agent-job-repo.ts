@@ -60,6 +60,25 @@ export const agentJobRepo = {
     return rows[0];
   },
 
+  // 解耦后 select-layout 是独立 layout job(自己的 requestId,浏览器不知道)。两段式 phase-2 靠
+  // album 唯一定位这个活跃 layout job(uq_agent_jobs_album_kind_active 保证每 album 至多一个),
+  // 用它真实的 requestId 取回按 layout-requestId 暂存的候选并回调引擎 —— 不再依赖浏览器传对 requestId。
+  findActiveLayoutByAlbum: async (albumId: string): Promise<AgentJob | undefined> => {
+    const rows = await db
+      .select()
+      .from(agentJobs)
+      .where(
+        and(
+          eq(agentJobs.albumId, albumId),
+          eq(agentJobs.kind, 'layout'),
+          inArray(agentJobs.status, ['QUEUED', 'RUNNING']),
+        ),
+      )
+      .orderBy(desc(agentJobs.createdAt), desc(agentJobs.id))
+      .limit(1);
+    return rows[0];
+  },
+
   // Non-terminal jobs with no activity past `olderThan`. startedAt is refreshed
   // on every progress callback (a liveness heartbeat), so for RUNNING this means
   // "no progress since olderThan", not "started before olderThan". QUEUED has no
@@ -114,6 +133,9 @@ export const agentJobRepo = {
     id: string,
     usage: Record<string, unknown> | null,
   ): Promise<boolean> => {
+    // 解耦后 select-layout 是独立 layout job(RUNNING, stage=layout, progress=0),不再走旧的
+    // 50→51 哨兵。CAS 只要"仍在 phase-1(progress<52)"就置 candidates-ready 哨兵 52;重复回调
+    // 会看到已是 52(不 <52)从而不匹配 → 不会二次暂存/回退。
     const rows = await tx
       .update(agentJobs)
       .set({ progress: 52, stage: 'layout', usage, startedAt: new Date() })
@@ -121,8 +143,7 @@ export const agentJobRepo = {
         and(
           eq(agentJobs.id, id),
           eq(agentJobs.status, 'RUNNING'),
-          eq(agentJobs.stage, 'layout'),
-          eq(agentJobs.progress, 51),
+          lt(agentJobs.progress, 52),
         ),
       )
       .returning({ id: agentJobs.id });

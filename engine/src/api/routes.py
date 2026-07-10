@@ -24,12 +24,16 @@ from .auth import require_bearer
 from ..logging_config import get_logger
 from ..contracts.schemas import (
     JudgeLayoutRequest,
+    JudgePageTemplateData,
+    JudgePageTemplateRequest,
+    JudgePageTemplateResponse,
     SelectLayoutRequest,
     V3AcceptedData,
     V3AcceptedResponse,
     V3AnalyzeRequest,
 )
 from ..workflows import analyze, judge_layout, select_layout
+from ..workflows.core.layout import select_layout as select_layout_agent
 from ..settings import get_settings
 
 router = APIRouter()
@@ -114,4 +118,27 @@ async def submit_judge_layout(
     return V3AcceptedResponse(
         ok=True,
         data=V3AcceptedData(requestId=req.requestId, accepted=True),
+    ).model_dump(mode="json")
+
+
+# ---------- 单页 relayout 视觉判图 (sync,编辑器换版式用) ----------------------
+
+
+@router.post("/v3/judge-page-template", dependencies=[Depends(require_bearer)])
+async def submit_judge_page_template(req: JudgePageTemplateRequest) -> dict[str, Any]:
+    """编辑器换版式:该页照片(ref200px)+ 同图槽数候选模板 → 视觉评委(先 gemini,失败保底豆包)
+    选最贴合的模板 id。**同步**返回赢家,不走 callback。"""
+    winner_id, result = await select_layout_agent.judge_page_template(
+        [photo.model_dump(mode="json") for photo in req.photos],
+        req.candidateTemplateIds,
+    )
+    log.info(
+        "v3_judge_page_template.done",
+        candidates=len(req.candidateTemplateIds),
+        winner=winner_id,
+        model=result.model,
+    )
+    return JudgePageTemplateResponse(
+        ok=True,
+        data=JudgePageTemplateData(winnerTemplateId=winner_id),
     ).model_dump(mode="json")

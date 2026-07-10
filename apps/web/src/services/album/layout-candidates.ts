@@ -13,7 +13,12 @@ import type { SelectLayoutCandidateUnit } from '@yujee/contracts';
 // the deterministic skeleton still finishes the album). Mirrors
 // `transientPagePhotoRefs`; #265 can add TTL/cap management later.
 
-const unitsByRequest = new Map<string, SelectLayoutCandidateUnit[]>();
+// 钉在 globalThis 上(prisma/db 单例同款手法):next dev 里写方(job-progress 路由)和
+// 读方(judge-layout 路由)是两个编译入口,各自实例化本模块 —— 裸模块级 Map 会变成两份,
+// 回调暂存的候选对轮询侧永远不可见(GET 恒 ready:false,job 最终被僵尸清扫收走)。
+// globalThis 每进程一份,跨路由图、跨 HMR 重编译存活;生产单实例行为不变。
+const g = globalThis as { __yujeeLayoutCandidates?: Map<string, SelectLayoutCandidateUnit[]> };
+const unitsByRequest = (g.__yujeeLayoutCandidates ??= new Map<string, SelectLayoutCandidateUnit[]>());
 
 export const transientLayoutCandidates = {
   set(requestId: string, units: SelectLayoutCandidateUnit[]): void {

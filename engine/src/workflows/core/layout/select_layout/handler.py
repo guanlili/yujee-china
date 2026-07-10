@@ -1,8 +1,8 @@
-"""Gemini-assisted Stage2 layout selection (LLM 调用层)。
+"""Stage2 排版选模板评委(LLM 调用层)。
 
-把【已分组章节的照片信息 + 合法模板候选目录 + 照片/模板预览图】发给 Gemini,
-让模型每页选一个模板并把照片映射到图槽,返回原始 pages。确定性的候选目录构造与
-合法化夹紧在 `layout/legalize.py`;prompt 在 `select_layout.md`。
+代码确定性地随机生成 N 个整章候选(候选目录构造 + 合法化夹紧在 `layout/legalize.py`),
+把【照片信息 + 候选方案 + 照片/模板预览图】发给评委,让模型选出最佳候选 index。
+生产走豆包(`judge_layout_doubao`),prompt 在 `judge_layout.md`。
 """
 
 from __future__ import annotations
@@ -17,19 +17,17 @@ import httpx
 
 from .....providers import ai_client
 from .....providers.vision_provider import VisionSlotError, ark_vision_slot
-from .. import skeleton_v3, template_previews
+from .. import template_previews, templates
 from ..legalize import (
-    _chapter_id,
     _photo_id,
     _photo_ref,
     _photos,
-    build_candidate_catalog,
 )
-from ..simple_id import from_simple_at_paths, to_simple
+from ..simple_id import to_simple
 from .....logging_config import get_logger
 from .....settings import get_settings
 from .....skills import load_prompt
-from .schema import GeminiLayoutResult, GeminiLayoutUnavailable, LayoutJudgeResult
+from .schema import GeminiLayoutUnavailable, LayoutJudgeResult
 
 log = get_logger("select_layout")
 
@@ -41,67 +39,6 @@ def _get(obj: Mapping[str, Any] | Any, key: str, default: Any = None) -> Any:
     if isinstance(obj, Mapping):
         return obj.get(key, default)
     return getattr(obj, key, default)
-
-
-def _unit_payload(chapter: Any, id_map: dict[str, str]) -> dict[str, Any]:
-    photos: list[dict[str, Any]] = []
-    for photo in _photos(chapter):
-        pid = _photo_id(photo)
-        simple = next(k for k, v in id_map.items() if v == pid)
-        photos.append(
-            {
-                "photoId": simple,
-                "orientation": _get(photo, "orientation"),
-                "takenAt": _get(photo, "takenAt"),
-            }
-        )
-    return {
-        "chapterId": _chapter_id(chapter),
-        "structureHint": _get(chapter, "structureHint", None),
-        # 章节背景(内容采集答案):评委据此选更贴合的版式。空串=用户跳过采访。
-        "chapterContext": _get(chapter, "chapterContext", "") or "",
-        "photos": photos,
-        "candidates": [
-            {key: value for key, value in candidate.items() if key != "previewImage"}
-            for candidate in build_candidate_catalog("interior", len(photos))
-        ],
-    }
-
-
-def _messages(chapters: Sequence[Any], id_map: dict[str, str]) -> list[dict[str, Any]]:
-    text_payload = {
-        "mode": "select",
-        "allowAddPages": True,
-        "units": [_unit_payload(chapter, id_map) for chapter in chapters],
-        "output": {
-            "pages": [
-                {
-                    "chapterId": "chapter id",
-                    "templateId": "one candidate templateId",
-                    "slots": {"slotId": "simple photoId"},
-                }
-            ]
-        },
-    }
-    content: list[dict[str, Any]] = [
-        {"type": "text", "text": json.dumps(text_payload, ensure_ascii=False)}
-    ]
-    previews = template_previews.load_template_previews()
-    for chapter in chapters:
-        for photo in _photos(chapter):
-            ref = _photo_ref(photo)
-            if ref:
-                content.append({"type": "image_url", "image_url": {"url": ref}})
-        cap = min(len(_photos(chapter)), skeleton_v3.max_capacity("interior"))
-        for capacity in range(1, cap + 1):
-            image = previews.bucket_images.get(("interior", capacity))
-            if image:
-                content.append({"type": "image_url", "image_url": {"url": image}})
-
-    return [
-        {"role": "system", "content": load_prompt(_PROMPT_DIR / "select_layout.md")},
-        {"role": "user", "content": content},
-    ]
 
 
 def _native_base_url(base_url: str) -> str:
@@ -453,29 +390,67 @@ async def judge_layout_doubao(
     )
 
 
-def _judge_thumbnail_messages(thumbnails: Sequence[str]) -> list[dict[str, Any]]:
-    """P2 评委输入:N 张真实渲染缩略图(每候选一张)。模型只看图选最佳,无需结构文字。"""
+async def judge_page_template(
+    photos: Sequence[Mapping[str, Any]],
+    candidate_template_ids: Sequence[str],
+) -> tuple[str, LayoutJudgeResult]:
+    """单页 relayout 评委:给该页照片(带 ref200px)+ N 个候选模板(同图槽数),
+    视觉评委选最合适的模板 id。复用整章判图:合成「单页 chapter + 每候选一页 candidates」,
+    先 gemini,失败保底豆包;两者都不可用则退化为第 0 个候选(不阻断)。"""
+    if not candidate_template_ids:
+        raise ValueError("judge_page_template requires at least one candidate template")
+    chapter = {"chapterContext": "", "photos": list(photos)}
+    photo_ids = [_photo_id(photo) for photo in photos]
+    candidates: list[list[dict[str, Any]]] = []
+    for template_id in candidate_template_ids:
+        template = templates.get(template_id)
+        if template is None:
+            raise ValueError(f"unknown candidate template: {template_id}")
+        slot_ids = templates.image_slot_ids(template)
+        candidates.append([{"templateId": template_id, "images": dict(zip(slot_ids, photo_ids, strict=False))}])
+
+    try:
+        result = await judge_layout(chapter, candidates)
+    except Exception as exc:  # noqa: BLE001 — gemini 缺 key/地区墙/超时/解析失败都保底豆包
+        log.info("judge_page_template.gemini_fallback_doubao", error=str(exc))
+        try:
+            result = await judge_layout_doubao(chapter, candidates)
+        except Exception as exc2:  # noqa: BLE001 — 豆包也不可用则退化取第 0 个,不阻断 relayout
+            log.warning("judge_page_template.both_unavailable_default0", error=str(exc2))
+            result = LayoutJudgeResult(winner_index=0)
+    return candidate_template_ids[result.winner_index], result
+
+
+def _judge_thumbnail_messages(
+    thumbnails: Sequence[str], *, chapter_context: str = ""
+) -> list[dict[str, Any]]:
+    """P2 评委输入:N 张真实渲染缩略图(每候选一张,前置「候选 i」文本标记防串位),
+    加 chapterContext 供贴合基调。模型直接看图选最佳。prompt 在 `judge_thumbnails.md`。"""
     content: list[dict[str, Any]] = [
         {
             "type": "text",
             "text": json.dumps(
                 {
-                    "candidates": [{"index": i} for i in range(len(thumbnails))],
+                    "chapterContext": chapter_context or "",
+                    "candidateCount": len(thumbnails),
                     "output": {"winnerIndex": 0},
                 },
                 ensure_ascii=False,
             ),
         }
     ]
-    for thumb in thumbnails:
+    for i, thumb in enumerate(thumbnails):
+        content.append({"type": "text", "text": f"候选 {i}"})
         content.append({"type": "image_url", "image_url": {"url": thumb}})
     return [
-        {"role": "system", "content": load_prompt(_PROMPT_DIR / "judge_layout.md")},
+        {"role": "system", "content": load_prompt(_PROMPT_DIR / "judge_thumbnails.md")},
         {"role": "user", "content": content},
     ]
 
 
-async def judge_layout_thumbnails(thumbnails: Sequence[str]) -> LayoutJudgeResult:
+async def judge_layout_thumbnails(
+    thumbnails: Sequence[str], *, chapter_context: str = ""
+) -> LayoutJudgeResult:
     """P2 评委:每候选一张真实渲染缩略图,选最佳 index(夹紧到合法范围)。
 
     首选 Gemini;Gemini 不可用(缺 key / 地区墙 400 / 超时 / 解析失败)时**保底 fallback 到豆包**
@@ -484,7 +459,7 @@ async def judge_layout_thumbnails(thumbnails: Sequence[str]) -> LayoutJudgeResul
         raise ValueError("judge_layout_thumbnails requires at least one thumbnail")
 
     settings = get_settings()
-    messages = _judge_thumbnail_messages(thumbnails)
+    messages = _judge_thumbnail_messages(thumbnails, chapter_context=chapter_context)
     api_key = getattr(settings, "select_layout_api_key", None)
 
     # ① 首选 Gemini。
@@ -542,50 +517,3 @@ def _parse_winner(text: str, count: int) -> int:
     if isinstance(raw, bool) or not isinstance(raw, int):
         raise ValueError("judge response missing integer winnerIndex")
     return raw if 0 <= raw < count else 0
-
-
-async def gemini_layout(
-    chapters: Sequence[Mapping[str, Any] | Any],
-    *,
-    mode: str = "select",
-    allowAddPages: bool = True,
-) -> GeminiLayoutResult:
-    if mode not in {"select", "case4-swap"} or not allowAddPages:
-        raise ValueError("gemini_layout expects mode='select' or 'case4-swap' and allowAddPages=True")
-
-    settings = get_settings()
-    api_key = getattr(settings, "select_layout_api_key", None)
-    if not api_key:
-        raise GeminiLayoutUnavailable("SELECT_LAYOUT_API_KEY missing")
-
-    photo_ids = [_photo_id(photo) for chapter in chapters for photo in _photos(chapter)]
-    _, id_map = to_simple(photo_ids)
-    messages = _messages(chapters, id_map)
-    response = await _native_generate_content(
-        base_url=getattr(settings, "select_layout_base_url"),
-        api_key=api_key,
-        model=getattr(settings, "select_layout_model"),
-        messages=messages,
-        timeout_seconds=getattr(settings, "select_layout_timeout_seconds"),
-        max_output_tokens=getattr(settings, "select_layout_max_output_tokens"),
-        use_json_object=getattr(settings, "select_layout_use_json_object"),
-        disable_thinking=getattr(settings, "select_layout_disable_thinking"),
-    )
-    raw_text = _native_text(response)
-    parsed = ai_client.parse_json_loose(raw_text)
-    pages = parsed.get("pages") if isinstance(parsed, Mapping) else None
-    if not isinstance(pages, list):
-        raise ValueError("Gemini layout response missing pages[]")
-    real_pages = from_simple_at_paths(
-        pages,
-        id_map,
-        value_paths=(("*", "slots", "*"),),
-    )
-    input_tokens, output_tokens = _native_usage(response)
-    return GeminiLayoutResult(
-        pages=[page for page in real_pages if isinstance(page, dict)],
-        call_count=1,
-        model=getattr(settings, "select_layout_model"),
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-    )

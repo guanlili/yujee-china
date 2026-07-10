@@ -333,6 +333,57 @@ test('select-layout/candidates → parks job at 52, no stage advance, hold still
   }
 });
 
+// 解耦后的真实态:相册 EDITING、独立 layout job 刚 markRunning(progress=0,还没到旧的 51 哨兵)。
+// candidates 回调必须仍能把它停到 candidates-ready 哨兵 52(旧 CAS 死要 51 会永不匹配 → 两段式卡死)。
+test('select-layout/candidates → parks a decoupled layout job (EDITING, progress 0) at 52', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('v3route-candidates-decoupled');
+  try {
+    const { albumId, requestId } = await seed(user.id);
+    await albumRepo.update(db, albumId, {
+      status: 'EDITING',
+      stage: 'story',
+      draftJson: {
+        version: 'v3-story',
+        tree: TREE,
+        progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
+      },
+    });
+    const job = await agentJobRepo.findByRequestId(requestId);
+    assert.ok(job);
+    // 独立 layout job:RUNNING、stage=layout、progress=0(engine 首个 progress 回调后的态)。
+    await agentJobRepo.transitionStatus(db, job.id, 'RUNNING', ['QUEUED'], {
+      stage: 'layout',
+      progress: 0,
+      startedAt: new Date(),
+    });
+
+    const res = await post({
+      requestId,
+      jobKind: 'select-layout',
+      event: 'candidates',
+      units: [
+        {
+          unitKey: 'ch_1',
+          chapterId: 'ch_1',
+          candidates: [{ candidateIndex: 0, pages: [{ templateId: 'mag-02', images: { image: 'p1' } }] }],
+        },
+      ],
+      usage: USAGE,
+    });
+    assert.equal((await res.json()).data.accepted, true);
+
+    const parked = await agentJobRepo.findByRequestId(requestId);
+    assert.equal(parked?.progress, 52, 'progress=0 的解耦 layout job 也要停到 candidates-ready 哨兵 52');
+    assert.equal(parked?.stage, 'layout');
+    assert.equal(parked?.status, 'RUNNING');
+    const album = await albumRepo.findById(albumId);
+    assert.equal(album?.status, 'EDITING', '候选不推进相册 status');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('select-layout/completed before analyze tree does not complete job or album', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('v3route-layout-before-tree');
