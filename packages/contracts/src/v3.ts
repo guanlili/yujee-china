@@ -882,3 +882,49 @@ export const V3TemplateCandidate = z
   })
   .strict();
 export type V3TemplateCandidate = z.infer<typeof V3TemplateCandidate>;
+
+// ───────────── ③ 设计环节 — POST /v3/design(同步) ─────────────
+//
+// 用户选定封面组后调用:engine 只出决策(字体/颜色/封面封尾文案),
+// 应用(carrier sweep/组页/落库)在 Web(状态真相源)。
+
+export const V3DesignTextSlotSpec = z
+  .object({
+    id: z.string().min(1),
+    role: z.string().min(1),
+    sample: z.string().max(300).default(''),
+  })
+  .strict();
+export type V3DesignTextSlotSpec = z.infer<typeof V3DesignTextSlotSpec>;
+
+export const V3DesignRequest = z
+  .object({
+    language: V3Language,
+    albumTitle: z.string().max(120).default(''),
+    chapterContexts: z.array(z.string()).default([]),
+    coverSlots: z.array(V3DesignTextSlotSpec).default([]),
+    endingSlots: z.array(V3DesignTextSlotSpec).default([]),
+  })
+  .strict();
+export type V3DesignRequest = z.infer<typeof V3DesignRequest>;
+
+export const V3DesignResponse = z
+  .object({
+    ok: z.literal(true),
+    data: z
+      .object({
+        fonts: z.object({ title: ArtFontPack, body: ArtFontPack, decoration: ArtFontPack }).strict(),
+        colors: z
+          .object({
+            title: z.string().regex(/^#[0-9a-f]{6}$/),
+            body: z.string().regex(/^#[0-9a-f]{6}$/),
+            explain: z.string().regex(/^#[0-9a-f]{6}$/),
+          })
+          .strict(),
+        coverTexts: z.record(z.string(), z.string()),
+        endingTexts: z.record(z.string(), z.string()),
+      })
+      .strict(),
+  })
+  .strict();
+export type V3DesignResponse = z.infer<typeof V3DesignResponse>;

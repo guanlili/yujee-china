@@ -10,6 +10,7 @@ import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
 import { transientPagePhotoRefs } from './page-photo-refs';
+import { assembleDesignedPages, slotSpecs, templateCategory } from './design-apply';
 import {
   Page,
   V3LayoutTree,
@@ -1548,6 +1549,76 @@ export const albumService = {
       });
     }
     return out;
+  },
+
+  // 设计环节:用户在对话框选定封面组后调用。engine 出决策(字体/颜色/封面封尾文案),
+  // 这里确定性应用:组封面/封尾页 + carrier sweep + 页序 [cover,...interior,ending]
+  // 重排,落回 draft。幂等:重复调用会先剔除旧 cover/ending 再装新的。
+  async applyDesign(
+    userId: string,
+    albumId: string,
+    input: {
+      language: 'zh' | 'en';
+      coverTemplateId: string;
+      coverPhotoId: string;
+      endingTemplateId: string;
+      endingPhotoId: string;
+    },
+  ): Promise<{ pages: Page[] }> {
+    const album = await this.findOwned(userId, albumId);
+    if (album.status !== 'EDITING') throw ERRORS.ALBUM_NOT_EDITABLE();
+    if (templateCategory(input.coverTemplateId) !== 'cover')
+      throw ERRORS.VALIDATION_FAILED(`not a cover template: ${input.coverTemplateId}`);
+    if (templateCategory(input.endingTemplateId) !== 'ending')
+      throw ERRORS.VALIDATION_FAILED(`not an ending template: ${input.endingTemplateId}`);
+
+    const root = album.draftJson as { tree?: { chapters?: unknown }; pages?: unknown } | null;
+    const chapters = Array.isArray((root?.tree as { chapters?: unknown })?.chapters)
+      ? ((root!.tree as { chapters: unknown[] }).chapters as Array<{
+          chapterContext?: string;
+          photos?: Array<{ photoId: string }>;
+        }>)
+      : [];
+    const rawPages = Array.isArray(root?.pages) ? (root!.pages as Page[]) : [];
+    if (rawPages.length === 0) throw ERRORS.VALIDATION_FAILED('design requires laid-out pages');
+    const treePhotoIds = new Set(
+      chapters.flatMap((c) => (c.photos ?? []).map((p) => p.photoId)),
+    );
+    if (!treePhotoIds.has(input.coverPhotoId) || !treePhotoIds.has(input.endingPhotoId))
+      throw ERRORS.VALIDATION_FAILED('cover/ending photo not in this album');
+
+    // 幂等重入:已应用过设计则剔除旧封面/封尾,内页原样保留。
+    const interiorPages = rawPages.filter(
+      (page) => templateCategory(page.templateId) === 'interior',
+    );
+
+    const design = await agentClient.designV3(albumId, {
+      language: input.language,
+      albumTitle: (album.title ?? '').slice(0, 120),
+      chapterContexts: chapters.map((c) => c.chapterContext ?? ''),
+      coverSlots: slotSpecs(input.coverTemplateId),
+      endingSlots: slotSpecs(input.endingTemplateId),
+    });
+
+    const pages = assembleDesignedPages({
+      interiorPages,
+      set: {
+        coverTemplateId: input.coverTemplateId,
+        coverPhotoId: input.coverPhotoId,
+        endingTemplateId: input.endingTemplateId,
+        endingPhotoId: input.endingPhotoId,
+      },
+      coverTexts: design.data.coverTexts,
+      endingTexts: design.data.endingTexts,
+      fonts: design.data.fonts,
+      colors: design.data.colors,
+    });
+
+    await albumRepo.update(db, album.id, {
+      draftJson: { ...(root ?? {}), pages },
+      pageCount: pages.length,
+    });
+    return { pages };
   },
 
   // Hard delete. FK ON DELETE CASCADE drops pages / messages / jobs / holds in
