@@ -5,7 +5,7 @@ import { resolveThemeCarrier } from '../theme-carrier';
 
 export function PdfMag06({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as { folio?: string; image?: string };
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage
@@ -13,7 +13,7 @@ export function PdfMag06({ data, totalPages, imagePos }: TemplateRenderProps) {
         style={{ position: 'absolute', left: 83, top: 90, width: 628, height: 943 }}
         position={imagePos?.['image']}
       />
-      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="06" />
+      <PdfFolio fontFamily={folioTheme.pdfFontFamily} folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="06" />
     </PdfPageShell>
   );
 }

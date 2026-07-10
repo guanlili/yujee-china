@@ -10,16 +10,12 @@ import type { TemplateRenderProps } from '../types';
 // 全套文字 #1c1b18。
 
 const INK = '#1c1b18';
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag43({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleFont = hasCjk(d['title']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const subtitleFont = hasCjk(d['subtitle']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const captionFont = hasCjk(d['caption']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const captionTheme = resolveThemeCarrier(data, 'caption');
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const subtitleTheme = resolveThemeCarrier(data, 'subtitle');
+  const captionTheme = resolveThemeCarrier(data, 'caption', 'explain');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const subtitleTheme = resolveThemeCarrier(data, 'subtitle', 'title');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -31,11 +27,11 @@ export function PdfMag43({ data, imagePos }: TemplateRenderProps) {
       <PdfImage src={d['image3']} style={{ position: 'absolute', left: 40, top: 291, width: 181, height: 268 }} position={imagePos?.['image3']} />
 
       {/* 右上拼贴下方图注段落 */}
-      <Text style={{ position: 'absolute', left: 444, top: 466, width: 334, fontFamily: captionFont, fontSize: 19, lineHeight: 1.4, color: captionTheme.accentColor ?? INK }}>{d['caption']}</Text>
+      <Text style={{ position: 'absolute', left: 444, top: 466, width: 334, fontFamily: captionTheme.pdfFontFamily, fontSize: 19, lineHeight: 1.4, color: captionTheme.accentColor ?? INK }}>{d['caption']}</Text>
 
       {/* 下半部大字标题（主标题 + 续行） */}
-      <Text style={{ position: 'absolute', left: 418, top: 647, width: 360, fontFamily: titleFont, fontWeight: 'bold', fontSize: 88, lineHeight: 1.0, color: titleTheme.accentColor ?? INK }}>{d['title']}</Text>
-      <Text style={{ position: 'absolute', left: 128, top: 767, width: 650, fontFamily: subtitleFont, fontWeight: 'bold', fontSize: 80, lineHeight: 1.0, color: subtitleTheme.accentColor ?? INK }}>{d['subtitle']}</Text>
+      <Text style={{ position: 'absolute', left: 418, top: 647, width: 360, fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 88, lineHeight: 1.0, color: titleTheme.accentColor ?? INK }}>{d['title']}</Text>
+      <Text style={{ position: 'absolute', left: 128, top: 767, width: 650, fontFamily: subtitleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 80, lineHeight: 1.0, color: subtitleTheme.accentColor ?? INK }}>{d['subtitle']}</Text>
 
       {/* 底部左右两张方图 */}
       <PdfImage src={d['image4']} style={{ position: 'absolute', left: 221, top: 901, width: 181, height: 184 }} position={imagePos?.['image4']} />

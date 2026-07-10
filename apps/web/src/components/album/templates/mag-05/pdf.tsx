@@ -4,7 +4,6 @@ import { PdfFolio, PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -14,12 +13,11 @@ export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
     folio?: string;
     image?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const topRightTheme = resolveThemeCarrier(data, 'label');
-  const explainTheme = resolveThemeCarrier(data, 'explain');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const topRightTheme = resolveThemeCarrier(data, 'label', 'decoration');
+  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   const titleText = titleTheme.text ?? d.title ?? "LET'S GO RIDE\nA BIKE";
-  const titleFont = titleTheme.pdfFontFamily ?? (hasCjk(titleText) ? PDF_FONTS.serifCn : PDF_FONTS.bebas);
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <Text
@@ -28,7 +26,7 @@ export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
           top: 96,
           left: 50,
           right: 240,
-          fontFamily: titleFont,
+          fontFamily: titleTheme.pdfFontFamily,
           fontSize: 88,
           letterSpacing: 1.5,
           lineHeight: 0.92,
@@ -47,7 +45,7 @@ export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 13,
           letterSpacing: 4,
           color: topRightTheme.accentColor ?? COLORS.ink2,
-          fontFamily: topRightTheme.pdfFontFamily ?? (hasCjk(topRightTheme.text ?? d.label) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat),
+          fontFamily: topRightTheme.pdfFontFamily,
         }}
       >
         {(topRightTheme.text ?? d.label ?? '').toUpperCase()}
@@ -56,6 +54,7 @@ export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
         <Text
           style={{
             lineHeight: 1.75,
+            fontFamily: explainTheme.pdfFontFamily,
             color: explainTheme.accentColor ?? COLORS.ink2,
             textAlign: 'justify',
             fontSize: 18,
@@ -65,7 +64,7 @@ export function PdfMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
         </Text>
       </View>
       <PdfImage src={d.image} style={{ position: 'absolute', top: 430, left: 50, right: 50, height: 600 }} position={imagePos?.['image']} />
-      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="05" />
+      <PdfFolio fontFamily={folioTheme.pdfFontFamily} folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="05" />
     </PdfPageShell>
   );
 }

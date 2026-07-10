@@ -10,14 +10,12 @@ import { resolveThemeCarrier } from '../theme-carrier';
 // 右对齐元素用 textAlign:right，与 web 一致。
 
 const CLAY = '#1c1b18';
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag29({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleFont = hasCjk(d['title']) ? PDF_FONTS.sansCn : PDF_FONTS.interEn;
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const bodyTheme = resolveThemeCarrier(data, 'body');
-  const labelTheme = resolveThemeCarrier(data, 'label');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
+  const labelTheme = resolveThemeCarrier(data, 'label', 'decoration');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -28,13 +26,13 @@ export function PdfMag29({ data, imagePos }: TemplateRenderProps) {
       <PdfImage src={d['image2']} style={{ position: 'absolute', left: 362, top: 67, width: 330, height: 464 }} position={imagePos?.['image2']} />
 
       {/* 右对齐大标题 */}
-      <Text style={{ position: 'absolute', left: 49, top: 694, width: 726, fontFamily: titleFont, fontWeight: 'bold', fontSize: 64, lineHeight: 1.1, color: titleTheme.accentColor ?? CLAY, textAlign: 'right' }}>{d['title']}</Text>
+      <Text style={{ position: 'absolute', left: 49, top: 694, width: 726, fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 64, lineHeight: 1.1, color: titleTheme.accentColor ?? CLAY, textAlign: 'right' }}>{d['title']}</Text>
 
       {/* 右对齐图注 */}
-      <Text style={{ position: 'absolute', left: 347, top: 762, width: 431, fontFamily: PDF_FONTS.sansCn, fontSize: 21, lineHeight: 1.5, color: bodyTheme.accentColor ?? CLAY, textAlign: 'right' }}>{d['body']}</Text>
+      <Text style={{ position: 'absolute', left: 347, top: 762, width: 431, fontFamily: bodyTheme.pdfFontFamily, fontSize: 21, lineHeight: 1.5, color: bodyTheme.accentColor ?? CLAY, textAlign: 'right' }}>{d['body']}</Text>
 
       {/* 右对齐地名（装饰标签） */}
-      <Text style={{ position: 'absolute', left: 49, top: 1007, width: 726, fontFamily: PDF_FONTS.interEn, fontWeight: 'bold', fontSize: 48, lineHeight: 1.1, color: labelTheme.accentColor ?? CLAY, textAlign: 'right' }}>{d['label']}</Text>
+      <Text style={{ position: 'absolute', left: 49, top: 1007, width: 726, fontFamily: labelTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 48, lineHeight: 1.1, color: labelTheme.accentColor ?? CLAY, textAlign: 'right' }}>{d['label']}</Text>
     </PdfPageShell>
   );
 }

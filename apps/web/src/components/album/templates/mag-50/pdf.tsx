@@ -10,12 +10,10 @@ import { resolveThemeCarrier } from '../theme-carrier';
 // 全套文字 #1c1b18。版式来自 A4-23 (node 12:229)。
 
 const INK = '#1c1b18';
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag50({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleFont = hasCjk(d['title']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const titleTheme = resolveThemeCarrier(data, 'title');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
   const label = (left: number, top: number, txt: string) => (
     <Text style={{ position: 'absolute', left, top, fontFamily: PDF_FONTS.interEn, fontSize: 18, lineHeight: 1.0, color: INK }}>{txt}</Text>
   );
@@ -40,7 +38,7 @@ export function PdfMag50({ data, imagePos }: TemplateRenderProps) {
       {label(595, 818, 'what')}
 
       {/* 主标题（title 槽，全大写） */}
-      <Text style={{ position: 'absolute', left: 436, top: 843, width: 320, fontFamily: titleFont, fontSize: 18, lineHeight: 1.0, color: titleTheme.accentColor ?? INK, textTransform: 'uppercase' }}>{d['title']}</Text>
+      <Text style={{ position: 'absolute', left: 436, top: 843, width: 320, fontFamily: titleTheme.pdfFontFamily, fontSize: 18, lineHeight: 1.0, color: titleTheme.accentColor ?? INK, textTransform: 'uppercase' }}>{d['title']}</Text>
     </PdfPageShell>
   );
 }

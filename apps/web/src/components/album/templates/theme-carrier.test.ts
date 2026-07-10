@@ -514,6 +514,66 @@ test('every Web text carrier resolves its contract role and applies its resolved
   );
 });
 
+test('every PDF text carrier resolves its contract role and applies its resolved font', () => {
+  const missing: string[] = [];
+
+  for (const templateId of listTemplateIds()) {
+    let slots: TemplateTextSlot[];
+    let source: string;
+    try {
+      slots = readTemplateTextSlots(templateId);
+      source = readFileSync(new URL(`./${templateId}/pdf.tsx`, import.meta.url), 'utf8');
+    } catch {
+      continue;
+    }
+
+    for (const slot of slots) {
+      if (!referencesSlot(source, slot.base)) continue;
+      const renderedSlot = `${slot.base}${slot.repeat ? '[n]' : ''}`;
+      const declaration = resolvedCarrierDeclaration(source, slot);
+      if (!declaration) {
+        missing.push(`${templateId}/pdf.tsx :: ${renderedSlot} missing theme resolver`);
+        continue;
+      }
+
+      const label = `${templateId}/pdf.tsx :: ${renderedSlot} (${declaration.themeVar})`;
+      if (declaration.role !== slot.role) {
+        missing.push(
+          `${label} resolves role=${declaration.role ?? '<missing>'}; expected role=${slot.role}`,
+        );
+      }
+      if (!new RegExp(`\\b${escapeRegExp(declaration.themeVar)}\\.pdfFontFamily\\b`).test(source)) {
+        missing.push(`${label} does not apply ${declaration.themeVar}.pdfFontFamily`);
+      }
+      if (
+        slot.base === 'folio'
+        && !new RegExp(
+          `<PdfFolio(?=[^>]*\\bfontFamily=\\{${escapeRegExp(declaration.themeVar)}\\.pdfFontFamily\\})[^>]*/>`,
+        ).test(source)
+      ) {
+        missing.push(`${label} does not pass its font to PdfFolio`);
+      }
+    }
+  }
+
+  const pdfUtilsSource = readFileSync(new URL('./pdf-utils.tsx', import.meta.url), 'utf8');
+  if (!/interface PdfFolioProps\s*{[^}]*fontFamily\?: string;/s.test(pdfUtilsSource)) {
+    missing.push('pdf-utils.tsx :: PdfFolioProps.fontFamily is missing');
+  }
+  if (!/function PdfFolio\(\s*{[^}]*fontFamily[^}]*}\s*:\s*PdfFolioProps\s*\)/s.test(pdfUtilsSource)) {
+    missing.push('pdf-utils.tsx :: PdfFolio does not consume its fontFamily prop');
+  }
+  if (!/fontFamily:\s*fontFamily\s*\?\?\s*PDF_FONTS\.serifEn/.test(pdfUtilsSource)) {
+    missing.push('pdf-utils.tsx :: PdfFolio does not apply its fontFamily prop');
+  }
+
+  assert.deepEqual(
+    missing,
+    [],
+    `PDF 文字槽未完整接入合同 role 和解析后字体：\n${missing.join('\n')}`,
+  );
+});
+
 test('mag-18 applies explanation fonts to the dynamic text nodes only', () => {
   const source = readFileSync(new URL('./mag-18/index.tsx', import.meta.url), 'utf8');
 
@@ -534,6 +594,30 @@ test('mag-18 applies explanation fonts to the dynamic text nodes only', () => {
         `<p\\s+style=\\{\\{\\s*margin: 0,\\s*fontFamily: explain${index}Theme\\.webFontFamily,[\\s\\S]*?>\\s*\\{d\\.explain${index} \\|\\| ''\\}\\s*</p>`,
       ),
       `mag-18 should apply explain${index}Theme.webFontFamily to d.explain${index}`,
+    );
+  }
+});
+
+test('mag-18 PDF applies explanation fonts to the dynamic text nodes only', () => {
+  const source = readFileSync(new URL('./mag-18/pdf.tsx', import.meta.url), 'utf8');
+
+  for (const plate of ['I', 'II']) {
+    assert.match(
+      source,
+      new RegExp(
+        `<Text\\s+style=\\{\\{[\\s\\S]*?fontFamily:\\s*PDF_FONTS\\.montserrat,[\\s\\S]*?\\}\\}\\s*>\\s*PLATE ${plate}\\s*</Text>`,
+      ),
+      `mag-18 PDF should preserve the static PLATE ${plate} font`,
+    );
+  }
+
+  for (const index of [1, 2]) {
+    assert.match(
+      source,
+      new RegExp(
+        `<Text\\s+style=\\{\\{[\\s\\S]*?fontFamily:\\s*explain${index}Theme\\.pdfFontFamily,[\\s\\S]*?\\}\\}\\s*>\\s*\\{d\\.explain${index} \\|\\| ''\\}\\s*</Text>`,
+      ),
+      `mag-18 PDF should apply explain${index}Theme.pdfFontFamily to d.explain${index}`,
     );
   }
 });
@@ -573,9 +657,17 @@ test('PDF templates resolve every text variableDecor carrier in source', () => {
   for (const [templateId, slots] of Object.entries(PDF_TEXT_CARRIER_SLOTS)) {
     const source = readFileSync(new URL(`./${templateId}/pdf.tsx`, import.meta.url), 'utf8');
     for (const slotId of slots) {
+      const contractSlot = readTemplateTextSlots(templateId).find(
+        (slot) => slot.base === slotId.replace('[${i}]', ''),
+      );
+      assert.ok(contractSlot, `${templateId}.${slotId} must have a contract role`);
       const pattern = slotId.includes('${i}')
-        ? new RegExp(`resolveThemeCarrier\\(data,\\s*\`${escapeRegExp(slotId)}\`\\)`)
-        : new RegExp(`resolveThemeCarrier\\(data,\\s*['"]${escapeRegExp(slotId)}['"]\\)`);
+        ? new RegExp(
+            `resolveThemeCarrier\\(data,\\s*\`${escapeRegExp(slotId)}\`,\\s*['"]${contractSlot.role}['"]\\)`,
+          )
+        : new RegExp(
+            `resolveThemeCarrier\\(data,\\s*['"]${escapeRegExp(slotId)}['"],\\s*['"]${contractSlot.role}['"]\\)`,
+          );
       assert.match(source, pattern, `${templateId}.pdf should resolve carrier for ${slotId}`);
     }
   }

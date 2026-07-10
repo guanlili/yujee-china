@@ -14,7 +14,7 @@ const INK = '#1c1b18';
 export function PdfMag45({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
   const title = d['title'] || 'Watermelon';
-  const titleTheme = resolveThemeCarrier(data, 'title');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -24,7 +24,7 @@ export function PdfMag45({ data, imagePos }: TemplateRenderProps) {
       <PdfImage src={d['image']} style={{ position: 'absolute', left: 148, top: 35, width: 606, height: 927 }} position={imagePos?.['image']} />
 
       {/* ── 底部大号主标题（槽 title，variableDecor） ── */}
-      <Text style={{ position: 'absolute', left: 31, top: 969, width: 723, fontFamily: PDF_FONTS.interEn, fontWeight: 'bold', fontSize: 120, lineHeight: 1, color: titleTheme.accentColor ?? INK }}>{title}</Text>
+      <Text style={{ position: 'absolute', left: 31, top: 969, width: 723, fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 120, lineHeight: 1, color: titleTheme.accentColor ?? INK }}>{title}</Text>
     </PdfPageShell>
   );
 }

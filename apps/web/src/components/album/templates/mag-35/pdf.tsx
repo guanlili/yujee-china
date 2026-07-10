@@ -10,16 +10,12 @@ import type { TemplateRenderProps } from '../types';
 // 全套文字墨色 #1c1b18。版式来自 A4-6（node 11:263）。
 
 const INK = '#1c1b18';
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag35({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const labelFont = hasCjk(d['label']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const dateFont = hasCjk(d['date']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const bodyFont = hasCjk(d['body']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const labelTheme = resolveThemeCarrier(data, 'label');
-  const dateTheme = resolveThemeCarrier(data, 'date');
-  const bodyTheme = resolveThemeCarrier(data, 'body');
+  const labelTheme = resolveThemeCarrier(data, 'label', 'title');
+  const dateTheme = resolveThemeCarrier(data, 'date', 'title');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'explain');
   return (
     <PdfPageShell>
       {/* 整页绿色底块（覆盖 Shell 暖纸色，Figma Rectangle 7 满版填充 #81a46d） */}
@@ -29,13 +25,13 @@ export function PdfMag35({ data, imagePos }: TemplateRenderProps) {
       <PdfImage src={d['image']} style={{ position: 'absolute', left: 148, top: 160, width: 318, height: 408 }} position={imagePos?.['image']} />
 
       {/* 左上小标签 */}
-      <Text style={{ position: 'absolute', left: 156, top: 160, width: 135, fontFamily: labelFont, fontSize: 21, lineHeight: 1.3, color: labelTheme.accentColor ?? INK }}>{d['label']}</Text>
+      <Text style={{ position: 'absolute', left: 156, top: 160, width: 135, fontFamily: labelTheme.pdfFontFamily, fontSize: 21, lineHeight: 1.3, color: labelTheme.accentColor ?? INK }}>{d['label']}</Text>
 
       {/* 右上日期小标签（右对齐） */}
-      <Text style={{ position: 'absolute', left: 330, top: 160, width: 135, textAlign: 'right', fontFamily: dateFont, fontSize: 21, lineHeight: 1.3, color: dateTheme.accentColor ?? INK }}>{d['date']}</Text>
+      <Text style={{ position: 'absolute', left: 330, top: 160, width: 135, textAlign: 'right', fontFamily: dateTheme.pdfFontFamily, fontSize: 21, lineHeight: 1.3, color: dateTheme.accentColor ?? INK }}>{d['date']}</Text>
 
       {/* 图下散文式收束语 */}
-      <Text style={{ position: 'absolute', left: 156, top: 220, width: 242, fontFamily: bodyFont, fontSize: 21, lineHeight: 1.35, color: bodyTheme.accentColor ?? INK }}>{d['body']}</Text>
+      <Text style={{ position: 'absolute', left: 156, top: 220, width: 242, fontFamily: bodyTheme.pdfFontFamily, fontSize: 21, lineHeight: 1.35, color: bodyTheme.accentColor ?? INK }}>{d['body']}</Text>
     </PdfPageShell>
   );
 }

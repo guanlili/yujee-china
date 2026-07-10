@@ -13,14 +13,14 @@ const INK = '#1c1b18';
 export function PdfMag51({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
   const title = d['title'] || 'NORWAY';
-  const titleTheme = resolveThemeCarrier(data, 'title');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
       <View style={{ position: 'absolute', left: 0, top: 0, width: PAGE.width, height: PAGE.height, backgroundColor: '#FFFFFF' }} />
 
       {/* 顶部超大地名主标题（槽 title，variableDecor） */}
-      <Text style={{ position: 'absolute', left: 60, top: 44, width: 734, fontFamily: PDF_FONTS.interEn, fontWeight: 'bold', fontSize: 92, lineHeight: 1, letterSpacing: 2, color: titleTheme.accentColor ?? INK }}>{title}</Text>
+      <Text style={{ position: 'absolute', left: 60, top: 44, width: 734, fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 92, lineHeight: 1, letterSpacing: 2, color: titleTheme.accentColor ?? INK }}>{title}</Text>
 
       {/* 满幅竖向大图（槽 image） */}
       <PdfImage src={d['image']} style={{ position: 'absolute', left: 60, top: 120, width: 674, height: 917 }} position={imagePos?.['image']} />

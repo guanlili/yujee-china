@@ -10,14 +10,11 @@ import type { TemplateRenderProps } from '../types';
 // 文字含中文时切到 serifCn（Noto SC）避免豆腐块，纯英文走 interEn（Inter，与 web 一致）。
 // 全套深墨文字色 #1c1b18（图注用其 70% 透明），标题为白色叠在面板上。
 
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
 
 export function PdfMag36({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleFont = hasCjk(d['title']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const explainFont = hasCjk(d['explain']) ? PDF_FONTS.serifCn : PDF_FONTS.interEn;
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const explainTheme = resolveThemeCarrier(data, 'explain');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
   return (
     <PdfPageShell>
       {/* 纯白底（覆盖 Shell 暖纸色） */}
@@ -30,10 +27,10 @@ export function PdfMag36({ data, imagePos }: TemplateRenderProps) {
       <View style={{ position: 'absolute', left: 72, top: 436, width: 650, height: 251, backgroundColor: 'rgba(255,255,255,0.55)' }} />
 
       {/* 居中大字标题（叠在面板上方） */}
-      <Text style={{ position: 'absolute', left: 156, top: 520, width: 483, textAlign: 'center', fontFamily: titleFont, fontWeight: 'bold', fontSize: 64, lineHeight: 1.05, color: titleTheme.accentColor ?? '#FFFFFF' }}>{d['title']}</Text>
+      <Text style={{ position: 'absolute', left: 156, top: 520, width: 483, textAlign: 'center', fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 64, lineHeight: 1.05, color: titleTheme.accentColor ?? '#FFFFFF' }}>{d['title']}</Text>
 
       {/* 左下角浅色小图注 */}
-      <Text style={{ position: 'absolute', left: 72, top: 540, width: 320, fontFamily: explainFont, fontSize: 14, lineHeight: 1.4, color: explainTheme.accentColor ?? 'rgba(28,27,24,0.7)' }}>{d['explain']}</Text>
+      <Text style={{ position: 'absolute', left: 72, top: 540, width: 320, fontFamily: explainTheme.pdfFontFamily, fontSize: 14, lineHeight: 1.4, color: explainTheme.accentColor ?? 'rgba(28,27,24,0.7)' }}>{d['explain']}</Text>
     </PdfPageShell>
   );
 }

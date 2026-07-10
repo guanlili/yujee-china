@@ -4,8 +4,6 @@ import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
-const hasCjk = (s?: string) => /[一-鿿]/.test(s || '');
-
 export function PdfP01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
@@ -16,11 +14,11 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
     label2?: string;
     date?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title');
-  const categoryTheme = resolveThemeCarrier(data, 'label1');
-  const volTheme = resolveThemeCarrier(data, 'label2');
-  const dateTheme = resolveThemeCarrier(data, 'date');
-  const bodyTheme = resolveThemeCarrier(data, 'body');
+  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const categoryTheme = resolveThemeCarrier(data, 'label1', 'decoration');
+  const volTheme = resolveThemeCarrier(data, 'label2', 'decoration');
+  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
+  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
   // PDF 不支持 mixBlendMode,顶部白文字直接半透明渲染,深色背景下仍可读。
   return (
     <PdfPageShell dark fontFamily={PDF_FONTS.serifCn}>
@@ -82,7 +80,7 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
           position: 'absolute',
           top: 70,
           right: 56,
-          fontFamily: volTheme.pdfFontFamily ?? PDF_FONTS.playfair,
+          fontFamily: volTheme.pdfFontFamily,
           fontStyle: 'italic',
           fontSize: 100,
           color: volTheme.accentColor ?? '#ffffff',
@@ -105,7 +103,7 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
       >
         <Text
           style={{
-            fontFamily: categoryTheme.pdfFontFamily ?? PDF_FONTS.playfair,
+            fontFamily: categoryTheme.pdfFontFamily,
             fontStyle: 'italic',
             color: categoryTheme.accentColor ?? d.label1Color ?? COLORS.vermilionSoft,
             fontSize: 16,
@@ -116,8 +114,7 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
         <Text
           style={{
             marginTop: 8,
-            fontFamily:
-              titleTheme.pdfFontFamily ?? (hasCjk(titleTheme.text ?? d.title) ? PDF_FONTS.serifCn : PDF_FONTS.playfair),
+            fontFamily: titleTheme.pdfFontFamily,
             lineHeight: 1.15,
             color: titleTheme.accentColor ?? COLORS.paper,
             fontSize: 56,
@@ -128,7 +125,7 @@ export function PdfP01({ data, imagePos }: TemplateRenderProps) {
         <Text
           style={{
             marginTop: 22,
-            fontFamily: hasCjk(d.body) ? PDF_FONTS.serifCn : PDF_FONTS.lora,
+            fontFamily: bodyTheme.pdfFontFamily,
             lineHeight: 1.85,
             color: bodyTheme.accentColor ?? COLORS.paper78,
             textAlign: 'justify',

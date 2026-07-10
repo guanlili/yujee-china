@@ -5,8 +5,6 @@ import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
 
 // 图注含中文回退 serifCn（Noto SC）避免豆腐块，纯英文走 Montserrat（指定艺术字，与 web 一致）。
-const hasCjk = (s: string | undefined) => /[一-鿿]/.test(s || '');
-const capFont = (text: string) => (hasCjk(text) ? PDF_FONTS.serifCn : PDF_FONTS.montserrat);
 
 export function PdfMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -16,9 +14,9 @@ export function PdfMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
     explain2?: string;
     folio?: string;
   };
-  const explain1Theme = resolveThemeCarrier(data, 'explain1');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2');
-  const folioTheme = resolveThemeCarrier(data, 'folio');
+  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
+  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   return (
     <PdfPageShell fontFamily={PDF_FONTS.sansEn}>
       <PdfImage
@@ -46,7 +44,7 @@ export function PdfMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
         </Text>
         <Text
           style={{
-            fontFamily: capFont(d.explain1 || ''),
+            fontFamily: explain1Theme.pdfFontFamily,
             lineHeight: 1.75,
             color: explain1Theme.accentColor ?? COLORS.ink2,
             textAlign: 'justify',
@@ -72,7 +70,7 @@ export function PdfMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
         </Text>
         <Text
           style={{
-            fontFamily: capFont(d.explain2 || ''),
+            fontFamily: explain2Theme.pdfFontFamily,
             lineHeight: 1.75,
             color: explain2Theme.accentColor ?? COLORS.ink2,
             textAlign: 'justify',
@@ -83,7 +81,7 @@ export function PdfMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
           {d.explain2 || ''}
         </Text>
       </View>
-      <PdfFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="18" />
+      <PdfFolio fontFamily={folioTheme.pdfFontFamily} folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fallback="18" />
     </PdfPageShell>
   );
 }
