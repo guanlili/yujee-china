@@ -102,6 +102,114 @@ test('resolveThemeCarrier returns sibling accent/font without changing base text
   assert.equal(carrier.webFontFamily, '"EB Garamond", "Noto Serif SC", "Songti SC", serif');
 });
 
+test('resolveThemeCarrier defaults each role by the slot text language', () => {
+  const cases = [
+    {
+      role: 'title' as const,
+      text: '我们的夏天',
+      webFontFamily: '"Noto Serif SC", "Source Han Serif SC", "Songti SC", serif',
+      pdfFontFamily: 'NotoSerifSC',
+    },
+    {
+      role: 'body' as const,
+      text: '风从海上来。',
+      webFontFamily: '"Noto Sans SC", "PingFang SC", "Heiti SC", sans-serif',
+      pdfFontFamily: 'NotoSansSC',
+    },
+    {
+      role: 'explain' as const,
+      text: '拍摄于上海',
+      webFontFamily: '"Noto Sans SC", "PingFang SC", "Heiti SC", sans-serif',
+      pdfFontFamily: 'NotoSansSC',
+    },
+    {
+      role: 'decoration' as const,
+      text: '第一章',
+      webFontFamily: '"Noto Sans SC", "PingFang SC", "Heiti SC", sans-serif',
+      pdfFontFamily: 'NotoSansSC',
+    },
+    {
+      role: 'title' as const,
+      text: 'A Summer Together',
+      webFontFamily: '"Playfair Display", "Noto Serif SC", "Songti SC", serif',
+      pdfFontFamily: 'Playfair Display',
+    },
+    {
+      role: 'body' as const,
+      text: 'The wind came in from the sea.',
+      webFontFamily: '"Inter", "Noto Sans SC", "PingFang SC", sans-serif',
+      pdfFontFamily: 'Inter',
+    },
+    {
+      role: 'explain' as const,
+      text: 'Photographed in Shanghai',
+      webFontFamily: '"Inter", "Noto Sans SC", "PingFang SC", sans-serif',
+      pdfFontFamily: 'Inter',
+    },
+    {
+      role: 'decoration' as const,
+      text: 'CHAPTER ONE',
+      webFontFamily: '"Inter", "Noto Sans SC", "PingFang SC", sans-serif',
+      pdfFontFamily: 'Inter',
+    },
+  ];
+
+  for (const renderCase of cases) {
+    const carrier = resolveThemeCarrier({ title: renderCase.text }, 'title', renderCase.role);
+    assert.equal(carrier.text, renderCase.text);
+    assert.equal(carrier.webFontFamily, renderCase.webFontFamily);
+    assert.equal(carrier.pdfFontFamily, renderCase.pdfFontFamily);
+  }
+});
+
+test('resolveThemeCarrier lets an explicit role-compatible font render English text', () => {
+  const carrier = resolveThemeCarrier(
+    {
+      body: 'A quiet morning',
+      'body#accentColor': '#C0392B',
+      'body#artFont': 'lora',
+    },
+    'body',
+    'body',
+  );
+
+  assert.equal(carrier.text, 'A quiet morning');
+  assert.equal(carrier.accentColor, '#C0392B');
+  assert.equal(carrier.artFont, 'lora');
+  assert.equal(carrier.webFontFamily, '"Lora", "Noto Serif SC", "Songti SC", serif');
+  assert.equal(carrier.pdfFontFamily, 'Lora');
+});
+
+test('resolveThemeCarrier ignores an explicit font that is incompatible with the role', () => {
+  const carrier = resolveThemeCarrier(
+    { title: 'Homecoming', 'title#artFont': 'inter' },
+    'title',
+    'title',
+  );
+
+  assert.equal(carrier.artFont, 'inter');
+  assert.equal(carrier.webFontFamily, '"Playfair Display", "Noto Serif SC", "Songti SC", serif');
+  assert.equal(carrier.pdfFontFamily, 'Playfair Display');
+});
+
+test('resolveThemeCarrier falls back from English-only fonts for Chinese and mixed text', () => {
+  const chineseTitle = resolveThemeCarrier(
+    { title: '归家', 'title#artFont': 'playfair-display' },
+    'title',
+    'title',
+  );
+  const mixedBody = resolveThemeCarrier(
+    { body: 'Summer 在上海', 'body#artFont': 'lora' },
+    'body',
+    'body',
+  );
+
+  assert.equal(chineseTitle.webFontFamily, '"Noto Serif SC", "Source Han Serif SC", "Songti SC", serif');
+  assert.equal(chineseTitle.pdfFontFamily, 'NotoSerifSC');
+  assert.equal(mixedBody.webFontFamily, '"Noto Sans SC", "PingFang SC", "Heiti SC", sans-serif');
+  assert.equal(mixedBody.pdfFontFamily, 'NotoSansSC');
+});
+
 test('mag-03 consumes location carrier as style without rendering raw color text', () => {
   const data = adaptPageToTemplateData(
     {
