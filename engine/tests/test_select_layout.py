@@ -106,10 +106,8 @@ def test_select_candidates_splits_oversized_chapter_by_max_images(monkeypatch):
     )
 
     assert segments == [["p1", "p2"], ["p3", "p4"], ["p5"]]
-    # 封面 unit 在最前,随后三段章节 unit(unitKey 带段首 photoId 区分)。
-    assert units[0].kind == "cover" and units[0].unitKey == "__cover__"
-    chapter_units = [u for u in units if u.kind == "chapter"]
-    assert [u.unitKey for u in chapter_units] == ["ch_big#p1", "ch_big#p3", "ch_big#p5"]
+    # 三段 => 三个 unit,unitKey 带段首 photoId 区分。
+    assert [u.unitKey for u in units] == ["ch_big#p1", "ch_big#p3", "ch_big#p5"]
     assert usage.geminiCallCount == 0
 
 
@@ -133,30 +131,3 @@ def test_select_candidates_seed_is_per_unit_deterministic(monkeypatch):
     assert first == ["layout-r1#ch_1#p1", "layout-r1#ch_2#p2"]
     assert seen == first
 
-
-def test_select_candidates_emits_cover_unit_first():
-    # 设计步封面候选:cover 类目单图模板 × hero 照片(focal 优先),单页候选,kind='cover'。
-    units, _ = select_layout.select_candidates(
-        _multi_request(
-            [
-                {
-                    "chapterId": "ch_1",
-                    "structureHint": "s",
-                    "photos": [
-                        {"photoId": "pw", "ref200px": "data:image/jpeg;base64,AA==",
-                         "orientation": "landscape", "takenAt": None, "composition": "wide"},
-                        {"photoId": "pf", "ref200px": "data:image/jpeg;base64,BB==",
-                         "orientation": "portrait", "takenAt": None, "composition": "focal"},
-                    ],
-                }
-            ]
-        )
-    )
-    cover = units[0]
-    assert cover.kind == "cover" and cover.chapterId == "__cover__"
-    assert 2 <= len(cover.candidates) <= 4
-    for cand in cover.candidates:
-        assert len(cand.pages) == 1  # 封面候选恒为单页
-    # hero 排序:focal 照片进候选(排在 wide 前)。
-    first_photo = list(cover.candidates[0].pages[0].images.values())[0]
-    assert first_photo == "pf"

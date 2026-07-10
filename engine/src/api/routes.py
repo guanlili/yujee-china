@@ -23,6 +23,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from .auth import require_bearer
 from ..logging_config import get_logger
 from ..contracts.schemas import (
+    DesignColors,
+    DesignData,
+    DesignFonts,
+    DesignRequest,
+    DesignResponse,
     JudgeLayoutRequest,
     JudgePageTemplateData,
     JudgePageTemplateRequest,
@@ -33,6 +38,7 @@ from ..contracts.schemas import (
     V3AnalyzeRequest,
 )
 from ..workflows import analyze, judge_layout, select_layout
+from ..workflows.core import design as design_agent
 from ..workflows.core.layout import select_layout as select_layout_agent
 from ..settings import get_settings
 
@@ -141,4 +147,35 @@ async def submit_judge_page_template(req: JudgePageTemplateRequest) -> dict[str,
     return JudgePageTemplateResponse(
         ok=True,
         data=JudgePageTemplateData(winnerTemplateId=winner_id),
+    ).model_dump(mode="json")
+
+
+# ---------- 设计环节 (sync,用户选定封面组后) -----------------------------------
+
+
+@router.post("/v3/design", dependencies=[Depends(require_bearer)])
+async def submit_design(req: DesignRequest) -> dict[str, Any]:
+    """用户选定封面组后的设计决策:①全书字体+颜色(ark) ②封面/封尾文案(deepseek),
+    并发跑、任一失败落默认值,**同步**返回;应用(sweep/组页/落库)在 Web 侧。"""
+    result = await design_agent.run_design(
+        language=req.language,
+        album_title=req.albumTitle,
+        chapter_contexts=list(req.chapterContexts),
+        cover_slots=[slot.model_dump(mode="json") for slot in req.coverSlots],
+        ending_slots=[slot.model_dump(mode="json") for slot in req.endingSlots],
+    )
+    log.info(
+        "v3_design.done",
+        fonts=result["fonts"],
+        colors=result["colors"],
+        models=result["models"],
+    )
+    return DesignResponse(
+        ok=True,
+        data=DesignData(
+            fonts=DesignFonts(**result["fonts"]),
+            colors=DesignColors(**result["colors"]),
+            coverTexts=result["coverTexts"],
+            endingTexts=result["endingTexts"],
+        ),
     ).model_dump(mode="json")

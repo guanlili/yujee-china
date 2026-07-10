@@ -10,7 +10,7 @@ from typing import Any
 
 from ..api import callback
 from ..providers import ai_client
-from .core.layout import candidate_gen_v3, skeleton_v3, templates
+from .core.layout import candidate_gen_v3
 from ..logging_config import get_logger, request_id_var
 from ..contracts.schemas import (
     CandidatePage,
@@ -150,35 +150,6 @@ def _unit_key(unit: Any) -> str:
     return f"{chapter_id}#{first_pid}" if first_pid else chapter_id
 
 
-def _cover_unit(req: SelectLayoutRequest) -> SelectLayoutCandidateUnit | None:
-    """设计步的封面候选 unit:cover 类目单图模板 × hero 照片(构图 focal>closeup>首图),
-    最多 2×2=4 个单页候选。浏览器与章节 unit 一起渲染缩略图,phase 2 同一批判图选出。
-    模板轮换按 requestId 确定性取样,保证同请求可复现、跨相册有变化。"""
-    photos = [p for ch in req.chapters for p in _chapter_photos(ch)]
-    if not photos:
-        return None
-    rank = {"focal": 0, "closeup": 1}
-    heroes = sorted(photos, key=lambda p: rank.get(_value(p, "composition") or "", 2))[:2]
-    template_ids = skeleton_v3.candidate_ids("cover", 1)
-    if not template_ids:
-        return None
-    offset = sum(ord(c) for c in req.requestId) % len(template_ids)
-    rotated = template_ids[offset:] + template_ids[:offset]
-    chosen_templates = rotated[:2]
-    candidates: list[LayoutCandidate] = []
-    for template_id in chosen_templates:
-        slot = templates.image_slot_ids(templates.get(template_id))[0]
-        for photo in heroes:
-            candidates.append(
-                LayoutCandidate(
-                    candidateIndex=len(candidates),
-                    pages=[CandidatePage(templateId=template_id, images={slot: _value(photo, "photoId")})],
-                )
-            )
-    return SelectLayoutCandidateUnit(
-        unitKey="__cover__", chapterId="__cover__", kind="cover", candidates=candidates
-    )
-
 
 def select_candidates(req: SelectLayoutRequest) -> tuple[list[SelectLayoutCandidateUnit], V3Usage]:
     """P2 phase 1:逐 unit 代码随机生成候选结构(不调 Gemini),交回浏览器渲染。"""
@@ -188,9 +159,6 @@ def select_candidates(req: SelectLayoutRequest) -> tuple[list[SelectLayoutCandid
     count = int(settings.select_layout_candidate_count)
 
     out_units: list[SelectLayoutCandidateUnit] = []
-    cover = _cover_unit(req)
-    if cover is not None:
-        out_units.append(cover)  # 封面 unit 在最前,赢家页天然落在 pages[0]
     for unit in units:
         chapter_id = str(getattr(unit, "chapterId", None) or _value(unit, "chapterId"))
         photos = _chapter_photos(unit)

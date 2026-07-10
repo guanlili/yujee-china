@@ -278,17 +278,11 @@ export function submitSelectLayoutV3(
 
 type CandidatePageStruct = { templateId: string; images: Record<string, string> };
 type CandidateStruct = { candidateIndex: number; pages: CandidatePageStruct[] };
-type CandidateUnit = {
-  unitKey: string;
-  chapterId: string;
-  kind?: 'chapter' | 'cover'; // 'cover' = 设计步封面候选 unit,透传给判图
-  candidates: CandidateStruct[];
-};
+type CandidateUnit = { unitKey: string; chapterId: string; candidates: CandidateStruct[] };
 type JudgeCandidate = CandidateStruct & { thumbnail: string };
 type JudgeUnit = {
   unitKey: string;
   chapterId: string;
-  kind?: 'chapter' | 'cover';
   chosenIndex?: number;
   candidates: JudgeCandidate[];
 };
@@ -303,7 +297,6 @@ function fallbackUnit(unit: CandidateUnit): JudgeUnit {
   return {
     unitKey: unit.unitKey,
     chapterId: unit.chapterId,
-    kind: unit.kind,
     chosenIndex: 0,
     candidates: unit.candidates.map((c) => ({ ...c, thumbnail: PLACEHOLDER_THUMBNAIL })),
   };
@@ -373,7 +366,7 @@ export async function renderAndSubmitJudgeLayout(
     // No candidate rendered → let the Agent take candidate 0 for this unit.
     units.push(
       anyThumbnail
-        ? { unitKey: unit.unitKey, chapterId: unit.chapterId, kind: unit.kind, candidates: judged }
+        ? { unitKey: unit.unitKey, chapterId: unit.chapterId, candidates: judged }
         : fallbackUnit(unit),
     );
   }

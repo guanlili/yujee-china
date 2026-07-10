@@ -583,6 +583,50 @@ class JudgePageTemplateResponse(_V3Strict):
     data: JudgePageTemplateData
 
 
+# ---------- 设计环节(sync,用户选定封面组后) -----------------------------------
+
+
+class DesignTextSlotSpec(_V3Strict):
+    """封面/封尾模板的一个文字槽规格(Web 从模板 JSON 提取后传入)。"""
+
+    id: str = Field(min_length=1)
+    role: str = Field(min_length=1)
+    sample: str = Field(default="", max_length=300)
+
+
+class DesignRequest(_V3Strict):
+    language: V3Language
+    albumTitle: str = Field(default="", max_length=120)
+    # 全书各章背景(与章序一致;跳过采访的章为空串)。
+    chapterContexts: list[str] = Field(default_factory=list)
+    coverSlots: list[DesignTextSlotSpec] = Field(default_factory=list)
+    endingSlots: list[DesignTextSlotSpec] = Field(default_factory=list)
+
+
+class DesignFonts(_V3Strict):
+    title: ArtFontPack
+    body: ArtFontPack
+    decoration: ArtFontPack
+
+
+class DesignColors(_V3Strict):
+    title: str = Field(pattern=r"^#[0-9a-f]{6}$")
+    body: str = Field(pattern=r"^#[0-9a-f]{6}$")
+    explain: str = Field(pattern=r"^#[0-9a-f]{6}$")
+
+
+class DesignData(_V3Strict):
+    fonts: DesignFonts
+    colors: DesignColors
+    coverTexts: dict[str, str]
+    endingTexts: dict[str, str]
+
+
+class DesignResponse(_V3Strict):
+    ok: bool
+    data: DesignData
+
+
 # ---------- P2 排版评委(rendered-thumbnail judge,two-phase) ------------------
 
 
@@ -607,8 +651,6 @@ class JudgeCopyPhoto(_V3Strict):
 class JudgeLayoutUnit(_V3Strict):
     unitKey: str = Field(min_length=1)
     chapterId: str = Field(min_length=1)
-    # 'cover' unit 的赢家页 category=cover,不进逐章写文案;镜像 v3.ts。
-    kind: Literal["chapter", "cover"] = "chapter"
     chosenIndex: int | None = Field(default=None, ge=0)
     candidates: list[JudgeCandidate] = Field(min_length=1)
     # 写文案素材:评委选定版式后当场写满本章文案。Web 从 draft tree 补(浏览器不持 tree)。
@@ -953,8 +995,6 @@ class LayoutCandidate(_V3Strict):
 class SelectLayoutCandidateUnit(_V3Strict):
     unitKey: str = Field(min_length=1)
     chapterId: str = Field(min_length=1)
-    # 'cover':设计步的封面候选 unit(哨兵 chapterId="__cover__");镜像 v3.ts。
-    kind: Literal["chapter", "cover"] = "chapter"
     candidates: list[LayoutCandidate] = Field(min_length=1)
 
 
