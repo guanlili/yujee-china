@@ -87,5 +87,15 @@ test('all browser render entrypoints request album fonts before final rendering'
   assert.match(sources.PagePreview, /useAlbumFonts\(/);
   assert.match(sources.FlipBook, /useAlbumFonts\(/);
   assert.match(sources.EditorPort, /useAlbumFonts\(/);
+  assert.match(
+    sources.EditorPort,
+    /page\.textsJson\s*=\s*\{ \.\.\.page\.textsJson, \[textKey\]: textEl\.textContent \?\? '' \};\s*ensureCurrentFonts\(\);/,
+    'contenteditable commits must refresh the current subset',
+  );
+  assert.match(
+    sources.EditorPort,
+    /page\.textsJson\s*=\s*\{ \.\.\.page\.textsJson, \.\.\.r\.pageWrite\.texts \};\s*ensureCurrentFonts\(\);/,
+    'draft pageWrite commits must refresh the current subset',
+  );
   assert.match(sources.raster, /await loadAlbumFonts\(pages\)/);
 });

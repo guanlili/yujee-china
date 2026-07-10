@@ -1793,6 +1793,7 @@ function EditorBook({
         textEl.style.cursor = '';
         if (!textKey || !page) return;
         page.textsJson = { ...page.textsJson, [textKey]: textEl.textContent ?? '' };
+        ensureCurrentFonts();
         persistPagePatch(page);
         repaintBook();
       };
@@ -2071,6 +2072,7 @@ function EditorBook({
         const page = pageByIndex(r.pageWrite.pageIndex);
         if (page) {
           page.textsJson = { ...page.textsJson, ...r.pageWrite.texts };
+          ensureCurrentFonts();
           repaintBook();
           return { pageWrite: true };
         }

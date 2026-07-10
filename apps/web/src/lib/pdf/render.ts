@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { Document, pdf } from '@react-pdf/renderer';
 import { PDF_TEMPLATE_REGISTRY } from '@/components/album/pdf-registry';
-import { registerPdfFonts } from '@/components/album/templates/pdf-utils';
+import { withRegisteredPdfFonts } from '@/components/album/templates/pdf-utils';
 import type { PdfFontSubset } from '@/components/album/templates/pdf-utils';
 import {
   adaptPageToTemplateData,
@@ -37,18 +37,18 @@ export async function renderAlbumPdf(
   resolveImage: ResolveImage,
 ): Promise<Blob> {
   const subset = await fetchSubsetFonts(collectAlbumFontRequest(pages));
-  registerPdfFonts(subset);
+  return withRegisteredPdfFonts(subset, async () => {
+    const total = pages.length;
+    const children = pages
+      .map((page, i) => {
+        const PdfTemplate = PDF_TEMPLATE_REGISTRY[page.templateId];
+        if (!PdfTemplate) return null;
+        const data = adaptPageToTemplateData(page, resolveImage);
+        return createElement(PdfTemplate, { key: i, data, totalPages: total, imagePos: page.imagePos });
+      })
+      .filter((child): child is NonNullable<typeof child> => child !== null);
 
-  const total = pages.length;
-  const children = pages
-    .map((page, i) => {
-      const PdfTemplate = PDF_TEMPLATE_REGISTRY[page.templateId];
-      if (!PdfTemplate) return null;
-      const data = adaptPageToTemplateData(page, resolveImage);
-      return createElement(PdfTemplate, { key: i, data, totalPages: total, imagePos: page.imagePos });
-    })
-    .filter((child): child is NonNullable<typeof child> => child !== null);
-
-  const doc = createElement(Document, {}, ...children);
-  return pdf(doc).toBlob();
+    const doc = createElement(Document, {}, ...children);
+    return pdf(doc).toBlob();
+  });
 }

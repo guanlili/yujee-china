@@ -1,6 +1,9 @@
 import type { ReactNode } from 'react';
 import { Font, Image, Page, Text, View } from '@react-pdf/renderer';
-import type { CjkFontId } from '@/services/font/font-manifest';
+import {
+  CJK_FONT_MANIFEST,
+  type CjkFontId,
+} from '@/services/font/font-manifest';
 import { COLORS, PAGE, PDF_FONTS } from './constants';
 
 // Per-album subset TTFs come from POST /api/v1/fonts/subset (~17MB full fonts
@@ -55,8 +58,13 @@ function registerLatin(family: string, file: string): void {
   });
 }
 
-// Called by lib/pdf/render.ts right before pdf().toBlob(). Re-registering a
-// family replaces its sources, so each export uses that album's own subset.
+function removeRegisteredFamily(family: string): void {
+  delete Font.getRegisteredFonts()[family];
+}
+
+// @react-pdf's FontStore appends duplicate family sources and resolves the first
+// exact match. Remove our owned families before each export so album B cannot
+// accidentally reuse album A's character subset. Built-ins such as Courier stay.
 export interface PdfFontSubset {
   sans: string;
   serif: string;
@@ -64,12 +72,35 @@ export interface PdfFontSubset {
 }
 
 export function registerPdfFonts(subset: PdfFontSubset): void {
+  for (const font of Object.values(CJK_FONT_MANIFEST)) removeRegisteredFamily(font.family);
+  for (const [family] of LATIN_PDF_FONTS) removeRegisteredFamily(family);
+
   registerCjk('NotoSerifSC', `data:font/ttf;base64,${subset.serif}`);
   registerCjk('NotoSansSC', `data:font/ttf;base64,${subset.sans}`);
   for (const font of Object.values(subset.artFonts ?? {})) {
     if (font) registerCjk(font.family, `data:font/ttf;base64,${font.base64}`);
   }
   for (const [fam, file] of LATIN_PDF_FONTS) registerLatin(fam, file);
+}
+
+// The renderer owns one global FontStore. Keep registration + layout inside one
+// critical section so simultaneous exports cannot replace each other's subsets.
+let pdfFontQueue: Promise<void> = Promise.resolve();
+
+export async function withRegisteredPdfFonts<T>(
+  subset: PdfFontSubset,
+  render: () => Promise<T>,
+): Promise<T> {
+  let release!: () => void;
+  const previous = pdfFontQueue;
+  pdfFontQueue = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try {
+    registerPdfFonts(subset);
+    return await render();
+  } finally {
+    release();
+  }
 }
 
 // CJK lines have no spaces; @react-pdf won't wrap them on its own. Treat each
