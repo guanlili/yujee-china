@@ -514,6 +514,30 @@ test('every Web text carrier resolves its contract role and applies its resolved
   );
 });
 
+test('mag-18 applies explanation fonts to the dynamic text nodes only', () => {
+  const source = readFileSync(new URL('./mag-18/index.tsx', import.meta.url), 'utf8');
+
+  for (const plate of ['I', 'II']) {
+    assert.match(
+      source,
+      new RegExp(
+        `<p\\s+style=\\{\\{\\s*margin: '0 0 7px',\\s*fontFamily: WEB_FONTS\\.montserrat,[\\s\\S]*?>\\s*PLATE ${plate}\\s*</p>`,
+      ),
+      `mag-18 should preserve the static PLATE ${plate} font`,
+    );
+  }
+
+  for (const index of [1, 2]) {
+    assert.match(
+      source,
+      new RegExp(
+        `<p\\s+style=\\{\\{\\s*margin: 0,\\s*fontFamily: explain${index}Theme\\.webFontFamily,[\\s\\S]*?>\\s*\\{d\\.explain${index} \\|\\| ''\\}\\s*</p>`,
+      ),
+      `mag-18 should apply explain${index}Theme.webFontFamily to d.explain${index}`,
+    );
+  }
+});
+
 test('every rendered text slot consumes its accent carrier (web + pdf)', () => {
   const missing: string[] = [];
   for (const templateId of listTemplateIds()) {

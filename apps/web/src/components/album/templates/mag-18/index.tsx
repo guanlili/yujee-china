@@ -34,7 +34,7 @@ export function WebMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
         <p
           style={{
             margin: '0 0 7px',
-            fontFamily: explain1Theme.webFontFamily,
+            fontFamily: WEB_FONTS.montserrat,
             fontSize: 8,
             letterSpacing: '0.3em',
             color: COLORS.ink3,
@@ -45,7 +45,7 @@ export function WebMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
         <p
           style={{
             margin: 0,
-            fontFamily: explain2Theme.webFontFamily,
+            fontFamily: explain1Theme.webFontFamily,
             lineHeight: 1.75,
             color: explain1Theme.accentColor ?? COLORS.ink2,
             letterSpacing: '0.02em',
@@ -71,7 +71,7 @@ export function WebMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
         <p
           style={{
             margin: 0,
-            fontFamily: WEB_FONTS.montserrat,
+            fontFamily: explain2Theme.webFontFamily,
             lineHeight: 1.75,
             color: explain2Theme.accentColor ?? COLORS.ink2,
             letterSpacing: '0.02em',
