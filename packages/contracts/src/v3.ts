@@ -374,8 +374,10 @@ export type LayoutCandidate = z.infer<typeof LayoutCandidate>;
 // 一个排版单元(一章,或超大章拆出的一段)的候选集合。
 export const SelectLayoutCandidateUnit = z
   .object({
-    unitKey: z.string().min(1), // chapterId 或 chapterId#段首photoId(拆段唯一)
-    chapterId: z.string().min(1),
+    unitKey: z.string().min(1), // chapterId 或 chapterId#段首photoId(拆段唯一);封面 unit 为 "__cover__"
+    chapterId: z.string().min(1), // 封面 unit 无章节语义,用哨兵 "__cover__"
+    // 'cover':设计步的封面候选(单页,cover 类目模板);缺省 = 'chapter'(老端兼容)。
+    kind: z.enum(['chapter', 'cover']).optional(),
     candidates: z.array(LayoutCandidate).min(1),
   })
   .strict();
@@ -406,6 +408,8 @@ export const JudgeLayoutUnit = z
   .object({
     unitKey: z.string().min(1),
     chapterId: z.string().min(1),
+    // 'cover' unit 的赢家页 category=cover,不进逐章写文案;缺省 = 'chapter'(老端兼容)。
+    kind: z.enum(['chapter', 'cover']).optional(),
     chosenIndex: z.number().int().min(0).optional(),
     candidates: z.array(JudgeCandidate).min(1),
     // 写文案素材:评委选定版式后当场写满本章文案时用。Web 从 draft tree 补(浏览器不持 tree)。

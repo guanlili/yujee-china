@@ -607,6 +607,8 @@ class JudgeCopyPhoto(_V3Strict):
 class JudgeLayoutUnit(_V3Strict):
     unitKey: str = Field(min_length=1)
     chapterId: str = Field(min_length=1)
+    # 'cover' unit 的赢家页 category=cover,不进逐章写文案;镜像 v3.ts。
+    kind: Literal["chapter", "cover"] = "chapter"
     chosenIndex: int | None = Field(default=None, ge=0)
     candidates: list[JudgeCandidate] = Field(min_length=1)
     # 写文案素材:评委选定版式后当场写满本章文案。Web 从 draft tree 补(浏览器不持 tree)。
@@ -951,6 +953,8 @@ class LayoutCandidate(_V3Strict):
 class SelectLayoutCandidateUnit(_V3Strict):
     unitKey: str = Field(min_length=1)
     chapterId: str = Field(min_length=1)
+    # 'cover':设计步的封面候选 unit(哨兵 chapterId="__cover__");镜像 v3.ts。
+    kind: Literal["chapter", "cover"] = "chapter"
     candidates: list[LayoutCandidate] = Field(min_length=1)
 
 

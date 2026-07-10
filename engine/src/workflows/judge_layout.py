@@ -77,6 +77,9 @@ async def _finalize_unit(unit: Any, winner_index: int, language: str) -> list[di
     pages = legalize.finalize_candidate_pages(
         {"chapterId": unit.chapterId}, _candidate_pages(winner)
     )
+    # 封面 unit 不进逐章写文案:标题/字体/颜色由设计步统一写。
+    if getattr(unit, "kind", "chapter") == "cover":
+        return pages
     # 版式已定 → 写文案(#AI copy writer);generic_copy 之后只叠 decoration 槽,互不冲突。
     return await write_copy_agent.apply_write_copy(unit, pages, language=language)
 
