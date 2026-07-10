@@ -35,11 +35,11 @@ export function PdfMag32({ data, imagePos }: TemplateRenderProps) {
 
       {/* ── 固定装饰：左下竖排小 NORWAY（furniture，非槽位，rotate 90°） ── */}
       <View style={{ position: 'absolute', left: 50, top: 760, transform: 'rotate(90deg)', transformOrigin: 'top left' }}>
-        <Text style={{ width: 300, fontFamily: PDF_FONTS.interEn, fontSize: 43, lineHeight: 1, letterSpacing: 4, color: CLAY }}>{label}</Text>
+        <Text style={{ width: 300, fontFamily: labelTheme.pdfFontFamily, fontSize: 43, lineHeight: 1, letterSpacing: 4, color: CLAY }}>{label}</Text>
       </View>
 
       {/* ── 固定装饰：底部横排小 NORWAY（furniture，非槽位） ── */}
-      <Text style={{ position: 'absolute', left: 56, top: 1066, width: 300, fontFamily: PDF_FONTS.interEn, fontSize: 43, lineHeight: 1, letterSpacing: 4, color: CLAY }}>{label}</Text>
+      <Text style={{ position: 'absolute', left: 56, top: 1066, width: 300, fontFamily: labelTheme.pdfFontFamily, fontSize: 43, lineHeight: 1, letterSpacing: 4, color: CLAY }}>{label}</Text>
     </PdfPageShell>
   );
 }
