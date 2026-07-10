@@ -164,28 +164,29 @@ export function HeroComposer({
     if (!files) return;
     setBusy(true);
     setErr(null);
-    try {
-      const next: LocalPhoto[] = [];
-      for (const f of Array.from(files)) {
-        if (photos.length + next.length >= MAX_PHOTOS_PER_GENERATION) break;
-        const photoId = crypto.randomUUID();
+    const next: LocalPhoto[] = [];
+    for (const f of Array.from(files)) {
+      if (photos.length + next.length >= MAX_PHOTOS_PER_GENERATION) break;
+      const photoId = crypto.randomUUID();
+      try {
+        // compressFile 内部会把 HEIC/HEIF 转成 JPEG 再解码(见 lib/photo/heic.ts)。
         const compressed = await compressFile(f, photoId);
         await photoStore.put(photoId, f);
-        const previewUrl = (await photoStore.getObjectUrl(photoId)) ?? '';
         next.push({
           photoId,
-          previewUrl,
+          // 预览用转换后的 JPEG(compressed.base64),而非原始文件 —— 这样 HEIC/HEIF 也能显示
+          // (浏览器 <img> 不认原始 HEIC)。
+          previewUrl: compressed.base64,
           width: compressed.width,
           height: compressed.height,
           compressed,
         });
+      } catch {
+        // 无法解码/不支持的文件(含个别坏 HEIC)静默跳过 —— 不打断整批,不报错。
       }
-      setPhotos((prev) => [...prev, ...next]);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
     }
+    setPhotos((prev) => [...prev, ...next]);
+    setBusy(false);
   };
 
   const remove = (photoId: string) =>

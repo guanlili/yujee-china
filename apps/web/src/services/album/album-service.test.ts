@@ -84,6 +84,69 @@ test('getDetail: fresh RUNNING job → surfaces live stage/progress, no sweep', 
   }
 });
 
+// 解耦后 select-layout 是独立 layout job,相册仍 EDITING。两段式判图靠 poll 看到 candidates-ready
+// 哨兵(stage=layout,progress=52)驱动 phase 2 —— 所以 EDITING 下也必须透出在跑 layout job 的进度。
+test('getDetail: EDITING album with a running layout job → surfaces layout stage/progress', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('detail-editing-layout');
+  try {
+    const album = await makeAlbum(user.id);
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story' });
+    const job = await agentJobRepo.create(db, {
+      userId: user.id,
+      albumId: album.id,
+      requestId: `album-svc-layout-${Date.now()}`,
+      status: 'QUEUED',
+      progress: 0,
+    });
+    await agentJobRepo.update(db, job.id, {
+      status: 'RUNNING',
+      stage: 'layout',
+      progress: 52,
+      startedAt: new Date(), // 刚上报 → 不会被扫僵尸
+    });
+
+    const detail = await albumService.getDetail(user.id, album.id);
+    assert.equal(detail.album.status, 'EDITING');
+    assert.deepEqual(detail.generation, { stage: 'layout', progress: 52 });
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('getDetail: EDITING album with only a completed init job → generation stays null', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('detail-editing-idle');
+  try {
+    const album = await makeAlbum(user.id);
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story' });
+    const job = await agentJobRepo.create(db, {
+      userId: user.id,
+      albumId: album.id,
+      requestId: `album-svc-init-${Date.now()}`,
+      status: 'QUEUED',
+      progress: 0,
+    });
+    await agentJobRepo.update(db, job.id, {
+      status: 'COMPLETED',
+      stage: 'wrap',
+      progress: 100,
+      completedAt: new Date(),
+    });
+
+    const detail = await albumService.getDetail(user.id, album.id);
+    assert.equal(detail.generation, null, '采访态(无在跑 layout job)不该冒出 generation');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('getDetail: stale RUNNING job → opportunistic sweep to FAILED + credit released', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');

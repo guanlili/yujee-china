@@ -83,7 +83,7 @@ export function ChatPanel({ albumId, locale }: Props) {
         role: 'assistant',
         content:
           locale === 'zh'
-            ? '旧版聊天改稿已下线，不会再改动当前版面。请继续使用 V3 流程：确认章节故事、选择主题与封面，然后导出 PDF。'
+            ? '旧版聊天改稿已下线，不会再改动当前版面。请继续使用 V3 流程：确认分组故事、选择主题与封面，然后导出 PDF。'
             : 'Legacy chat editing has been retired and will no longer change this layout. Continue with the V3 flow: confirm chapter stories, choose the theme and cover, then export the PDF.',
         layoutPatch: null,
         createdAt: '',

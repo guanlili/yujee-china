@@ -11,7 +11,7 @@ import { test } from 'node:test';
 //   B. 进章自动引导: an empty-userMessage chapter-chat opener fires on entering an
 //      unfinished chapter and on advancing to the next one (AI opens, never auto-writes).
 //   C. 满意/不满意: a write turn surfaces the in-flow satisfaction card; 满意 confirms the
-//      chapter, 不满意 stays for逐页 adjustment — and the standing「确定本章」breadcrumb
+//      chapter, 不满意 stays for逐页 adjustment — and the standing「确定本组」breadcrumb
 //      button + its post-mount binding effect are gone.
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -192,12 +192,12 @@ test('C: 满意 confirms the chapter; 不满意 stays for逐页 adjustment (no s
     '不满意 must NOT confirm the chapter (stays for逐页 adjustment, no stage推进)');
 });
 
-test('C: the standing「确定本章」breadcrumb button + its binding effect are removed', () => {
+test('C: the standing「确定本组」breadcrumb button + its binding effect are removed', () => {
   const src = source('EditorPort.tsx');
 
   // No story-gate button JSX, no markCurrentChapterDone data-action node, no ref/bind effect.
   assert.doesNotMatch(src, /data-action="markCurrentChapterDone"/,
-    'the breadcrumb「确定本章」button (data-action) must be gone');
+    'the breadcrumb「确定本组」button (data-action) must be gone');
   assert.doesNotMatch(src, /story-gate-btn/, 'the story-gate button class must no longer be rendered');
   assert.doesNotMatch(src, /markChapterDoneRef/,
     'the post-render ref/binding for the breadcrumb button must be gone');

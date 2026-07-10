@@ -421,6 +421,13 @@ export const albumService = {
       // release — kept as a harmless safety net (see draft-expiry-sweeper.ts). The album
       // stays EDITING with its draft_json intact (no status change, nothing to reload).
       await draftExpirySweeper.sweepAlbumOnRead(albumId);
+      // 解耦后 select-layout 是独立 layout job,相册仍是 EDITING。若有在跑的 layout job,把它的
+      // stage/progress 透出 —— 两段式 poll 靠此看到 candidates-ready 哨兵(stage=layout,progress=52)
+      // 并驱动 phase 2(渲染缩略图→judge-layout)。非 layout 的残留 job 不透出。
+      const resolved = await jobService.resolveGeneration(albumId);
+      if (resolved?.kind === 'progress' && resolved.stage === 'layout') {
+        generation = { stage: resolved.stage, progress: resolved.progress };
+      }
     }
 
     const pages = await albumPageRepo.findByAlbum(albumId);

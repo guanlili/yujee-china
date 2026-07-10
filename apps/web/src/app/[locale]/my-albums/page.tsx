@@ -396,9 +396,20 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
     try {
       for (const f of Array.from(files).slice(0, 30)) {
         const photoId = crypto.randomUUID();
-        compressed.push(await compressFile(f, photoId));
-        await photoStore.put(photoId, f);
-        photoIds.push(photoId);
+        try {
+          // compressFile 内部把 HEIC/HEIF 转成 JPEG 再解码(见 lib/photo/heic.ts)。
+          const c = await compressFile(f, photoId);
+          await photoStore.put(photoId, f);
+          compressed.push(c);
+          photoIds.push(photoId);
+        } catch {
+          // 无法解码/不支持的文件(含个别坏 HEIC)静默跳过 —— 不打断整批,不报错。
+        }
+      }
+      // 选中的全是不支持的格式 → 没有可用照片。静默退出,不建册、不报错。
+      if (compressed.length === 0) {
+        setCreating(false);
+        return;
       }
       // Cluster the whole set + drop transient geo → photos carry clusterId only.
       const builtPhotos = clusterCompressedPhotos(compressed);

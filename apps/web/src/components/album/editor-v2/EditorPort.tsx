@@ -423,7 +423,7 @@ function EditorTopbar({
             data-testid="export-pdf-btn"
             disabled={!exportUnlocked}
             aria-disabled={!exportUnlocked}
-            title={exportUnlocked ? undefined : (locale === 'zh' ? '先把每一章都「确定」，才能导出 PDF' : 'Confirm every chapter before exporting the PDF')}
+            title={exportUnlocked ? undefined : (locale === 'zh' ? '先把每一组都「确定」，才能导出 PDF' : 'Confirm every chapter before exporting the PDF')}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
             <span className="hidden sm:inline" data-i18n="exportPdf">{locale === 'zh' ? '导出' : 'Export'}</span>
@@ -463,7 +463,7 @@ function EditorModals() {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
-            <p className="text-[12.5px] text-muted mt-1" data-i18n="modalSub">挑选这一章要用的照片，AI 会据此排版并撰写故事。</p>
+            <p className="text-[12.5px] text-muted mt-1" data-i18n="modalSub">挑选这一组要用的照片，AI 会据此排版并撰写故事。</p>
           </div>
           <div className="px-6 py-5 overflow-y-auto flex-1">
             <div className="pick-grid" id="pickGrid">
@@ -479,7 +479,7 @@ function EditorModals() {
               <button className="px-5 py-2.5 rounded-pill text-[13px] font-medium text-fg2 border border-bd transition-colors hover:bg-bg" data-action="closePhotoPicker" data-i18n="modalCancel">取消</button>
               <span className="btn-glow">
                 <button className="btn-create-ch px-5 py-2.5 rounded-pill text-[13px] font-semibold bg-fg text-white transition-transform hover:-translate-y-px disabled:opacity-40 disabled:cursor-not-allowed disabled:translate-y-0" id="createChBtn" style={{ boxShadow: '0 1px 3px rgba(0,0,0,.12)' }} data-action="confirmNewChapter" disabled>
-                  <span data-i18n="modalCreate">创建章节</span>
+                  <span data-i18n="modalCreate">创建分组</span>
                 </button>
               </span>
             </div>
@@ -1581,7 +1581,7 @@ function EditorBook({
         title.textContent = meta.title;
         const sub = document.createElement('div');
         sub.className = 'collect-sub';
-        sub.textContent = `${aT(`第 ${meta.num} 章`, `Chapter ${meta.num}`)} · ${meta.photoIds.length} ${t('photosWord')}`;
+        sub.textContent = `${aT(`第 ${meta.num} 组`, `Chapter ${meta.num}`)} · ${meta.photoIds.length} ${t('photosWord')}`;
         head.appendChild(title);
         head.appendChild(sub);
       }

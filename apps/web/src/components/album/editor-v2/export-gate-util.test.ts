@@ -9,11 +9,11 @@ test('computeExportUnlocked: analysing → 锁(导出不可用)', () => {
   assert.equal(computeExportUnlocked('analysing', true), false);
 });
 
-test('computeExportUnlocked: story → 锁(章节故事未全章 done)', () => {
+test('computeExportUnlocked: story → 锁(分组故事未全组 done)', () => {
   assert.equal(computeExportUnlocked('story', true), false);
 });
 
-test('computeExportUnlocked: theme → 开(全章 done 后解锁)', () => {
+test('computeExportUnlocked: theme → 开(全组 done 后解锁)', () => {
   assert.equal(computeExportUnlocked('theme', true), true);
 });
 
