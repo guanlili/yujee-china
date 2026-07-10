@@ -1677,8 +1677,10 @@ export function ChatPanel({
             window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
             appendReplyBody(
               host,
-              aT('排版完成了，我已经把画板刷新出来。你可以直接在对话里继续调整。', 'Layout is ready — I refreshed the canvas. You can keep adjusting it here in chat.'),
+              aT('排版完成了，我已经把画板刷新出来。', 'Layout is ready — I refreshed the canvas.'),
             );
+            // 设计环节 phase 0:排版落地后立刻给封面组选择卡(用户选定 = 设计触发时机)。
+            void offerDesignCard();
             return;
           }
         } catch (e) {
@@ -1694,6 +1696,126 @@ export function ChatPanel({
         );
       }
     }
+    // 设计环节:封面组选择卡。规则组(服务端 GET)→ 用户点选一组 → POST /design
+    // (engine 出字体/颜色/封面封尾文案,Web 落 draft)→ 刷画板。幂等:已设计过不再弹。
+    let designOfferShown = false;
+    async function offerDesignCard() {
+      if (disposed || designOfferShown) return;
+      let sets: Array<{ coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string }> = [];
+      try {
+        const res = await fetch(`/api/v3/albums/${albumId}/design`);
+        const json = await res.json();
+        if (!json.ok) return;
+        if (json.data.designed || !json.data.hasPages) return;
+        sets = json.data.sets ?? [];
+      } catch {
+        return; // 拿不到选项就静默不弹,不打断编辑
+      }
+      if (disposed || sets.length === 0) return;
+      designOfferShown = true;
+
+      const card = document.createElement('div');
+      card.className = 'msg ai max-w-full';
+      const inner = document.createElement('div');
+      inner.className = 'cover-card';
+      const title = document.createElement('div');
+      title.className = 'cv-title';
+      title.textContent = aT('最后一步:挑一组封面吧(含封底)', 'Last step: pick a cover set (with back cover)');
+      inner.appendChild(title);
+
+      let selected = 0;
+      const row = document.createElement('div');
+      row.className = 'cv-row';
+      const opts: HTMLButtonElement[] = [];
+      const repaint = () => {
+        opts.forEach((opt, i) => {
+          const set = sets[i];
+          opt.innerHTML =
+            (co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId) ?? '');
+          opt.classList.toggle('selected', i === selected);
+        });
+      };
+      sets.forEach((_, i) => {
+        const opt = document.createElement('button');
+        opt.type = 'button';
+        opt.className = 'cv-opt';
+        opt.addEventListener('click', () => {
+          selected = i;
+          repaint();
+        });
+        opts.push(opt);
+        row.appendChild(opt);
+      });
+      inner.appendChild(row);
+      const hint = document.createElement('div');
+      hint.className = 'cv-sublabel';
+      hint.textContent = aT('选定后我会为全书定字体和颜色,并写好封面封底文案。', 'I will then set fonts & colors for the whole book and write the cover copy.');
+      inner.appendChild(hint);
+
+      const actionsRow = document.createElement('div');
+      actionsRow.className = 'cv-actions';
+      const applyBtn = document.createElement('button');
+      applyBtn.type = 'button';
+      applyBtn.className = 'cv-action cv-action-primary';
+      applyBtn.textContent = aT('就这组,开始设计', 'Use this set — design it');
+      applyBtn.addEventListener('click', () => {
+        if (sending) return;
+        void runApplyDesign(sets[selected], card);
+      });
+      const skipBtn = document.createElement('button');
+      skipBtn.type = 'button';
+      skipBtn.className = 'cv-action cv-action-ghost';
+      skipBtn.textContent = aT('先跳过', 'Skip for now');
+      skipBtn.addEventListener('click', () => {
+        card.remove();
+        appendAiText(aT('好,先不做封面。想做的时候跟我说"设计封面"。', 'OK, skipping the cover for now — just say "design the cover" whenever.'));
+      });
+      actionsRow.appendChild(skipBtn);
+      actionsRow.appendChild(applyBtn);
+      inner.appendChild(actionsRow);
+      card.appendChild(inner);
+      chatBody!.appendChild(card);
+      repaint();
+      scrollChat();
+    }
+
+    async function runApplyDesign(
+      set: { coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string },
+      card: HTMLElement,
+    ) {
+      sending = true;
+      card.remove();
+      appendUserText(aT('就用这组封面', 'Use this cover set'));
+      const host = appendThinkingShell();
+      setThinkingLabel(host, 'Designing fonts, colors & cover…');
+      try {
+        const res = await fetch(`/api/v3/albums/${albumId}/design`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ language: currentLang === 'zh' ? 'zh' : 'en', ...set }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.ok) throw new Error(json.error?.message ?? 'design failed');
+        settleThinking(host, 'analyzedFeedback');
+        const root = outerRootRef.current;
+        root?.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+        window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+        appendReplyBody(
+          host,
+          aT('设计好了:封面封底就位,全书字体和配色也统一刷好了。不满意随时在对话里改。', 'Design done — cover & back cover are in, fonts and colors applied across the book. Ask me here to tweak anything.'),
+        );
+      } catch (e) {
+        settleThinking(host, 'analyzedFeedback');
+        if (e instanceof UnauthorizedError) return;
+        appendReplyBody(host, aT('设计这步没跑成,稍后再试一下。', 'The design step failed — try again in a moment.'));
+        designOfferShown = false;
+        void offerDesignCard();
+      } finally {
+        sending = false;
+        if (!disposed) { restAwait(); scrollChat(); }
+      }
+    }
+
     async function startChapterInterview(chapterId: string, photoIds: string[]) {
       if (disposed) return;
       let input: ChapterInterviewInput = { earliestTakenAt: null, latestTakenAt: null, place: null };

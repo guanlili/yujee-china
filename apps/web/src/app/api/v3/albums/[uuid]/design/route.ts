@@ -31,3 +31,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
     return fromException(e);
   }
 }
+
+export async function GET(req: Request, ctx: { params: Promise<{ uuid: string }> }) {
+  try {
+    const user = await requireAuth(req);
+    const { uuid } = await ctx.params;
+    return ok(await albumService.listCoverSets(user.id, uuid));
+  } catch (e) {
+    return fromException(e);
+  }
+}

@@ -10,7 +10,7 @@ import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
 import { transientPagePhotoRefs } from './page-photo-refs';
-import { assembleDesignedPages, slotSpecs, templateCategory } from './design-apply';
+import { assembleDesignedPages, buildCoverSets, slotSpecs, templateCategory } from './design-apply';
 import {
   Page,
   V3LayoutTree,
@@ -1549,6 +1549,25 @@ export const albumService = {
       });
     }
     return out;
+  },
+
+  // 设计环节 phase 0:封面组选项(规则生成,零 AI)。designed=draft 里已有 cover 页
+  // (幂等重入信号,ChatPanel 据此不再重复弹选择卡)。
+  async listCoverSets(userId: string, albumId: string) {
+    const album = await this.findOwned(userId, albumId);
+    const root = album.draftJson as { tree?: { chapters?: unknown }; pages?: unknown } | null;
+    const chapters = Array.isArray((root?.tree as { chapters?: unknown })?.chapters)
+      ? ((root!.tree as { chapters: unknown[] }).chapters as Array<{
+          photos?: Array<{ photoId: string; composition?: string | null }>;
+        }>)
+      : [];
+    const rawPages = Array.isArray(root?.pages) ? (root!.pages as Page[]) : [];
+    const designed = rawPages.some((page) => templateCategory(page.templateId) === 'cover');
+    return {
+      sets: buildCoverSets(albumId, chapters.map((c) => ({ photos: c.photos ?? [] }))),
+      designed,
+      hasPages: rawPages.length > 0,
+    };
   },
 
   // 设计环节:用户在对话框选定封面组后调用。engine 出决策(字体/颜色/封面封尾文案),
