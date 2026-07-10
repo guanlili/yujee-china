@@ -1,4 +1,22 @@
+import { appendFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+
+// 统一 AI 观测 JSONL（与 engine 共写一份，给 :8788 trace 观测台）。AI_TRACE_JSONL 覆盖；
+// 未设则按模块位置定位仓内 engine/ai-trace.jsonl（src/web 与 dist/web 深度一致，上四层到仓根）。
+const moduleDir = dirname(fileURLToPath(import.meta.url));
+const AI_TRACE_JSONL =
+	process.env.AI_TRACE_JSONL ??
+	join(moduleDir, "..", "..", "..", "..", "engine", "ai-trace.jsonl");
+
+function assistantText(message: AssistantMessage): string {
+	return (message.content ?? [])
+		.map((part) => (part && (part as { type?: string }).type === "text" ? (part as { text?: string }).text ?? "" : ""))
+		.filter(Boolean)
+		.join("\n");
+}
 
 export interface ProviderResponseTrace {
 	status: number;
@@ -62,6 +80,27 @@ export class TraceStore {
 		const trace = this.findTrace(traceId);
 		if (!trace) return;
 		trace.endedAt = new Date().toISOString();
+		// 收尾时把每条 assistant 消息落进统一观测 JSONL（真实 token + pi-ai 已算好的成本）。追踪失败绝不影响业务。
+		try {
+			for (const message of trace.assistantMessages) {
+				const usage = message.usage as { input?: number; output?: number; cost?: { total?: number } } | undefined;
+				const rec = {
+					ts: Date.now() / 1000,
+					time: new Date().toTimeString().slice(0, 8),
+					source: "design-agent",
+					model: message.model,
+					input: trace.prompt,
+					output: assistantText(message),
+					inputTokens: usage?.input ?? null,
+					outputTokens: usage?.output ?? null,
+					costUsd: usage?.cost?.total ?? null,
+					imageCount: 0,
+				};
+				appendFileSync(AI_TRACE_JSONL, `${JSON.stringify(rec)}\n`);
+			}
+		} catch {
+			// swallow
+		}
 	}
 
 	list(): LlmTrace[] {

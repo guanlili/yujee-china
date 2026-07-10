@@ -47,6 +47,23 @@ def _redact_messages(messages: list[dict[str, Any]]) -> str:
     return "\n".join(out)
 
 
+def _extract_image_urls(messages: list[dict[str, Any]]) -> list[str]:
+    """抽出发给视觉模型的图片(image_url.url，通常是 base64 data URL)，
+    供本地观测台把「视觉 AI 到底收到了什么」直接渲染出来。"""
+    urls: list[str] = []
+    for m in messages:
+        content = m.get("content")
+        if not isinstance(content, list):
+            continue
+        for p in content:
+            if isinstance(p, dict) and p.get("type") == "image_url":
+                slot = p.get("image_url")
+                url = slot.get("url") if isinstance(slot, dict) else None
+                if isinstance(url, str) and url:
+                    urls.append(url)
+    return urls
+
+
 # 监控默认写到这里:相对本文件定位到 apps/agent/llm-trace.txt,与启动 CWD 无关。
 _DEFAULT_TRACE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "llm-trace.txt")
 
@@ -80,9 +97,61 @@ def _trace_path() -> str | None:
     return None if _is_production() else _DEFAULT_TRACE_PATH
 
 
+def _jsonl_path() -> str | None:
+    """结构化 trace(JSONL,含真实 token usage,给 :8787 观测台用)。
+    `AI_TRACE_JSONL=/path` 覆盖;`=off` 关;未设则跟随文本 trace 目录写 ai-trace.jsonl。"""
+    raw = os.environ.get("AI_TRACE_JSONL")
+    if raw is not None:
+        return None if raw.strip().lower() in _TRACE_OFF_VALUES else raw.strip()
+    base = _trace_path()
+    return os.path.join(os.path.dirname(base), "ai-trace.jsonl") if base else None
+
+
+def _extract_usage(response: Any) -> tuple[int | None, int | None]:
+    """从响应里取真实 (输入 token, 输出 token)。兼容 OpenAI(usage.prompt/completion_tokens)
+    与 Gemini native(usageMetadata.promptTokenCount/candidatesTokenCount)。"""
+    if not isinstance(response, dict):
+        return None, None
+    u = response.get("usage")
+    if isinstance(u, dict) and u.get("prompt_tokens") is not None:
+        return u.get("prompt_tokens"), u.get("completion_tokens")
+    um = response.get("usageMetadata")
+    if isinstance(um, dict):
+        return um.get("promptTokenCount"), um.get("candidatesTokenCount")
+    return None, None
+
+
+def _write_jsonl(source: str, model: str, messages: list[dict[str, Any]], output: str, response: Any) -> None:
+    path = _jsonl_path()
+    if not path:
+        return
+    try:
+        redacted = _redact_messages(messages)
+        images = _extract_image_urls(messages)
+        in_tok, out_tok = _extract_usage(response)
+        rec = {
+            "ts": time.time(),
+            "time": time.strftime("%H:%M:%S"),
+            "source": source,
+            "model": model,
+            "input": redacted,
+            "output": output,
+            "inputTokens": in_tok,
+            "outputTokens": out_tok,
+            "imageCount": len(images),
+            # 实际发给视觉 AI 的图(base64 data URL)，本地观测台直接渲染。仅本地 dev 写盘。
+            "images": images,
+        }
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 def _trace_llm_call(model: str, messages: list[dict[str, Any]], response: dict[str, Any]) -> None:
     path = _trace_path()
     if not path:
+        _write_jsonl("workflow", model, messages, "", response)
         return
     try:
         try:
@@ -98,6 +167,7 @@ def _trace_llm_call(model: str, messages: list[dict[str, Any]], response: dict[s
         )
         with open(path, "a", encoding="utf-8") as f:
             f.write(entry)
+        _write_jsonl("workflow", model, messages, output or "", response)
     except Exception:
         pass  # 追踪绝不能弄崩真实调用
 

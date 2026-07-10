@@ -9,8 +9,9 @@ import {
 // ?albumId=<uuid> 时面板跟踪该相册的书与 trace（web 编辑器对话也记在这里）。
 // 注意：从本面板直接发消息会绕过 Web 的落库——改动只进 Agent 画布，编辑器下一轮
 // 对话会用 Postgres 的书覆盖它。看 trace 用，别当编辑入口。
-const albumId = new URLSearchParams(location.search).get("albumId");
-const albumQuery = albumId ? `albumId=${encodeURIComponent(albumId)}` : "";
+// 没显式带 ?albumId= 时，会在启动时自动认「最近活跃」的相册（见 detectAlbumIfNeeded）。
+let albumId = new URLSearchParams(location.search).get("albumId");
+let albumQuery = albumId ? `albumId=${encodeURIComponent(albumId)}` : "";
 
 const form = document.querySelector("#chat-form");
 const promptInput = document.querySelector("#prompt");
@@ -231,6 +232,7 @@ async function loadState() {
 	}
 	renderDesignMeta(payload.design ?? payload.book);
 	renderTraces(payload.traces || []);
+	lastTraceSig = traceSignature(payload.traces);
 	refreshPreview();
 }
 
@@ -277,6 +279,7 @@ form.addEventListener("submit", async (event) => {
 				const payload = streamEvent.response;
 				renderDesignMeta(payload.design ?? payload.book);
 				renderTraces(payload.traces);
+				lastTraceSig = traceSignature(payload.traces);
 				refreshPreview();
 				return;
 			}
@@ -291,7 +294,67 @@ form.addEventListener("submit", async (event) => {
 	}
 });
 
-loadState().catch((error) => {
+// 未指定 albumId 时，自动挑选「最近活跃」（最近一轮 trace 最新）的相册来跟踪。
+// 这样直接开 http://localhost:8787/ 就能看到刚在 Web 编辑器里那本的 AI 步骤。
+async function detectAlbumIfNeeded() {
+	if (albumId) return;
+	try {
+		const response = await fetch("/api/albums");
+		if (!response.ok) return;
+		const { albums = [] } = await response.json();
+		const active = albums
+			.filter((a) => a.traceCount > 0 && a.lastStartedAt)
+			.sort((a, b) => String(b.lastStartedAt).localeCompare(String(a.lastStartedAt)));
+		if (active.length > 0) {
+			albumId = active[0].albumId;
+			albumQuery = `albumId=${encodeURIComponent(albumId)}`;
+			appendMessage(
+				"assistant",
+				`已自动跟踪最近活跃相册 ${albumId}（每 2.5s 自动刷新）。看别的相册用 ?albumId=<uuid>。`,
+			);
+		} else {
+			appendMessage(
+				"assistant",
+				"还没有编辑记录。去 http://localhost:3000 里对某本相册做一次对话编辑，这里会自动出现 AI 的详细步骤。",
+			);
+		}
+	} catch {
+		// 探测失败不阻断，退回默认 runtime。
+	}
+}
+
+// 变更保护：仅当 trace 内容有变化时才重渲染，避免自动刷新把滚动位置/展开态冲掉。
+let lastTraceSig = "";
+function traceSignature(traces) {
+	return (traces || [])
+		.map(
+			(t) =>
+				`${t.id}:${(t.requestPayloads || []).length}:${(t.assistantMessages || []).length}:${t.endedAt || ""}`,
+		)
+		.join("|");
+}
+
+async function pollState() {
+	try {
+		const response = await fetch(`/api/state${albumQuery ? `?${albumQuery}` : ""}`);
+		if (!response.ok) return;
+		const payload = await response.json();
+		const sig = traceSignature(payload.traces);
+		if (sig === lastTraceSig) return; // 无变化：不动 DOM，保住滚动/展开
+		lastTraceSig = sig;
+		renderDesignMeta(payload.design ?? payload.book);
+		renderTraces(payload.traces || []);
+		refreshPreview();
+	} catch {
+		// 轮询失败静默重试
+	}
+}
+
+(async () => {
+	await detectAlbumIfNeeded();
+	await loadState(); // 内部已记录 lastTraceSig，首个 poll 只在真有变化时才重渲染
+	setInterval(pollState, 2500);
+})().catch((error) => {
 	const message = error instanceof Error ? error.message : String(error);
 	appendMessage("assistant", `Error: ${message}`);
 });

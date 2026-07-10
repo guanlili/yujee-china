@@ -279,6 +279,22 @@ class AlbumRuntimeManager {
 		return this.runtimes.get(albumId);
 	}
 
+	/** 观测用：列出各 albumId 的 trace 概览（含最近一轮时间/指令），供观测台自动认最近活跃相册。 */
+	listAlbums(): Array<{ albumId: string; traceCount: number; lastStartedAt: string | null; lastPrompt: string | null }> {
+		const out: Array<{ albumId: string; traceCount: number; lastStartedAt: string | null; lastPrompt: string | null }> = [];
+		for (const [albumId, runtime] of this.runtimes) {
+			const traces = runtime.traces.list();
+			const last = traces.at(-1);
+			out.push({
+				albumId,
+				traceCount: traces.length,
+				lastStartedAt: last?.startedAt ?? null,
+				lastPrompt: last?.prompt ?? null,
+			});
+		}
+		return out;
+	}
+
 	/** 装书：runtime 已存在则只换书（保留对话上下文），否则新建。 */
 	async loadBook(albumId: string, book: AlbumBookState): Promise<AlbumRuntime> {
 		const existing = this.runtimes.get(albumId);
@@ -560,6 +576,10 @@ export async function createAlbumAgentWebServer(options: AlbumAgentWebServerOpti
 			}
 			if (request.method === "POST" && url.pathname === "/api/book") {
 				await handleLoadBook(manager, deps.catalog, request, response);
+				return;
+			}
+			if (request.method === "GET" && url.pathname === "/api/albums") {
+				sendJson(response, 200, { albums: manager.listAlbums() });
 				return;
 			}
 			if (request.method === "GET" && url.pathname === "/api/traces") {
