@@ -908,23 +908,19 @@ export const V3DesignRequest = z
   .strict();
 export type V3DesignRequest = z.infer<typeof V3DesignRequest>;
 
-export const V3DesignResponse = z
+// postSyncV3 对 `json.data` 做校验,故这里是数据层 schema(与兄弟端点惯例一致)。
+export const V3DesignData = z
   .object({
-    ok: z.literal(true),
-    data: z
+    fonts: z.object({ title: ArtFontPack, body: ArtFontPack, decoration: ArtFontPack }).strict(),
+    colors: z
       .object({
-        fonts: z.object({ title: ArtFontPack, body: ArtFontPack, decoration: ArtFontPack }).strict(),
-        colors: z
-          .object({
-            title: z.string().regex(/^#[0-9a-f]{6}$/),
-            body: z.string().regex(/^#[0-9a-f]{6}$/),
-            explain: z.string().regex(/^#[0-9a-f]{6}$/),
-          })
-          .strict(),
-        coverTexts: z.record(z.string(), z.string()),
-        endingTexts: z.record(z.string(), z.string()),
+        title: z.string().regex(/^#[0-9a-f]{6}$/),
+        body: z.string().regex(/^#[0-9a-f]{6}$/),
+        explain: z.string().regex(/^#[0-9a-f]{6}$/),
       })
       .strict(),
+    coverTexts: z.record(z.string(), z.string()),
+    endingTexts: z.record(z.string(), z.string()),
   })
   .strict();
-export type V3DesignResponse = z.infer<typeof V3DesignResponse>;
+export type V3DesignData = z.infer<typeof V3DesignData>;

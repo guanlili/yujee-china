@@ -2,8 +2,8 @@ import { env } from '@/lib/env';
 import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
 import {
+  V3DesignData,
   V3DesignRequest,
-  V3DesignResponse,
   V3ApplyThemeResponse,
   V3ChapterChatResponse,
   V3CoverResponse,
@@ -117,8 +117,8 @@ export const agentClient = {
   },
 
   // 设计环节(同步):字体/颜色/封面封尾文案决策。应用在 Web 侧。
-  async designV3(albumId: string, payload: V3DesignRequest): Promise<V3DesignResponse> {
-    return postSyncV3('/v3/design', payload, V3DesignResponse, { albumId });
+  async designV3(albumId: string, payload: V3DesignRequest): Promise<V3DesignData> {
+    return postSyncV3('/v3/design', payload, V3DesignData, { albumId });
   },
 
   async chapterChatV3(payload: V3ChapterChatRequest): Promise<V3ChapterChatResponse> {

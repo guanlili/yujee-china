@@ -1627,10 +1627,10 @@ export const albumService = {
         endingTemplateId: input.endingTemplateId,
         endingPhotoId: input.endingPhotoId,
       },
-      coverTexts: design.data.coverTexts,
-      endingTexts: design.data.endingTexts,
-      fonts: design.data.fonts,
-      colors: design.data.colors,
+      coverTexts: design.coverTexts,
+      endingTexts: design.endingTexts,
+      fonts: design.fonts,
+      colors: design.colors,
     });
 
     await albumRepo.update(db, album.id, {
