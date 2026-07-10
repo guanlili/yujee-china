@@ -12,6 +12,8 @@ test('HTML renderer applies contract roles to CJK defaults and incompatible carr
         title: '春日相册',
         'title#artFont': 'inter',
         label: '序章',
+        explain1: 'Summer 在上海',
+        explain2: '风吹过窗台',
       },
     },
     () => undefined,
@@ -33,4 +35,11 @@ test('HTML renderer applies contract roles to CJK defaults and incompatible carr
     /data-text-key="title"[^>]*font-family:&quot;Inter&quot;/,
     'a body-only Inter carrier must not override a title slot',
   );
+  for (const slot of ['explain1', 'explain2']) {
+    assert.match(
+      html,
+      new RegExp(`data-text-key="${slot}"[^>]*font-family:&quot;Noto Sans SC&quot;`),
+      `${slot} must use one CJK family for the whole mixed/CJK explanation slot`,
+    );
+  }
 });
