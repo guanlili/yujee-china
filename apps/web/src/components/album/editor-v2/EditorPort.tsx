@@ -40,6 +40,7 @@ import {
 import { computeExportUnlocked } from './export-gate-util';
 import { runExportWithRetry, buildExportFailureLog, ExportError } from './export-retry-util';
 import { logger } from '@/lib/log/logger';
+import { loadAlbumFonts, useAlbumFonts } from '@/lib/font/album-font-loader';
 import {
   extractPhotoIds,
   applyPatchToPages,
@@ -316,6 +317,7 @@ function EditorShell({
   initialImageUrls: Record<string, string>;
   canvasEpoch?: number;
 }) {
+  const fontsReady = useAlbumFonts(initialPages.map((page) => ({ texts: page.textsJson })));
   const outerRootRef = useRef<HTMLDivElement>(null);
   const coordinator = useRef<ChatCoordinator | null>(null);
   const [storyProgress, setStoryProgress] = useState<StoryProgress | null>(null);
@@ -338,6 +340,7 @@ function EditorShell({
     <ChatCoordinatorContext.Provider value={coordinator}>
       <div
         ref={outerRootRef}
+        data-album-fonts-ready={fontsReady}
         className="editor-port font-sans antialiased leading-relaxed"
         data-screen-label="02 Yujee Editor"
       >
@@ -717,6 +720,10 @@ function EditorBook({
       textsJson: { ...p.textsJson },
       imagePosJson: { ...(p.imagePosJson ?? {}) },
     }));
+    const ensureCurrentFonts = () => {
+      void loadAlbumFonts(pagesState.map((page) => ({ texts: page.textsJson })))
+        .catch(() => undefined);
+    };
     const total = initialPages.length;
     // 收集态(排版前):authoring 且 pages 为空 —— draft 有 tree/chapters 但还没排版,
     // 所以没有版式页可画。此时画板不渲染空的版式书,改成显示「当前正在采访的那一章」的
@@ -2003,6 +2010,7 @@ function EditorBook({
     function applyAuthoringPatch(patch: LayoutPatchEntry[]): boolean {
       if (patch.length === 0) return false;
       pagesState = applyPatchToPages(pagesState, patch);
+      ensureCurrentFonts();
       rebuildSpreads();
       repaintBook();
       return true;
@@ -2101,7 +2109,10 @@ function EditorBook({
         page.textsJson = { ...page.textsJson, ...pt.texts };
         applied = true;
       }
-      if (applied) repaintBook();
+      if (applied) {
+        ensureCurrentFonts();
+        repaintBook();
+      }
       return applied;
     }
 
@@ -2110,6 +2121,7 @@ function EditorBook({
     function applyChapterEdit(layoutPatch: LayoutPatchEntry[]): boolean {
       if (layoutPatch.length === 0) return false;
       pagesState = applyPatchToPages(pagesState, layoutPatch);
+      ensureCurrentFonts();
       rebuildSpreads();
       repaintBook();
       return true;
@@ -2126,6 +2138,7 @@ function EditorBook({
         textsJson: { ...p.textsJson },
         imagePosJson: { ...(p.imagePosJson ?? {}) },
       }));
+      ensureCurrentFonts();
       rebuildSpreads();
       repaintBook();
       return true;

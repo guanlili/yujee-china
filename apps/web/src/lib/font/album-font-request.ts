@@ -2,7 +2,6 @@ import {
   THEME_ACCENT_CARRIER_SUFFIX,
   THEME_FONT_CARRIER_SUFFIX,
 } from '@yujee/contracts';
-import type { AdaptablePage } from '@/components/album/adapt-layout';
 import { isCjkFontId, type CjkFontId } from '@/services/font/font-manifest';
 
 // Printable ASCII plus common CJK punctuation keeps template furniture and
@@ -26,7 +25,15 @@ export interface AlbumFontRequest {
   fontIds: CjkFontId[];
 }
 
-export function collectAlbumFontRequest(pages: AdaptablePage[]): AlbumFontRequest {
+export interface AlbumFontRequestPage {
+  templateId?: string;
+  images?: Record<string, string>;
+  texts: Record<string, string>;
+}
+
+export function collectAlbumFontRequest(
+  pages: readonly AlbumFontRequestPage[],
+): AlbumFontRequest {
   const chars = new Set(BASE_CHARS);
   const fontIds = new Set<CjkFontId>();
 

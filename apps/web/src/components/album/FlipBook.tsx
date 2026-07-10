@@ -7,6 +7,7 @@ import { renderPageHtml } from './templates/html/fill-template';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from './spreads';
 import { PAGE } from './templates/constants';
 import type { EditorPage } from './types';
+import { useAlbumFonts } from '@/lib/font/album-font-loader';
 
 // UI-1b 3D flipbook: a 1.414:1 two-page spread with a
 // center-spine shadow, perspective transform, and a page-turn animation between
@@ -115,6 +116,7 @@ export function FlipBook({
   t,
 }: Props) {
   const reducedMotion = usePrefersReducedMotion();
+  const fontsReady = useAlbumFonts(pages.map((page) => ({ texts: page.textsJson })));
 
   // Canvas model: cover/ending sit on their own solo spread; interior pages pair
   // two-up. `spreads` holds the array indices on each spread (null = blank half).
@@ -344,6 +346,7 @@ export function FlipBook({
   return (
     <div
       ref={stageRef}
+      data-album-fonts-ready={fontsReady}
       className="relative flex h-full w-full items-center justify-center overflow-hidden"
       style={{ perspective: 2400 }}
     >

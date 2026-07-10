@@ -11,8 +11,9 @@
 //   {{IMG_POS:slotId|50% 50%}} 图片 object-position
 //   {{IMG_TF:slotId}}          图片缩放 transform（scale>1 时），否则空
 import { adaptPageToTemplateData } from '../../adapt-layout';
+import { getTemplate } from '@yujee/contracts/templates';
 import type { ResolveImage } from '../../adapt-layout';
-import { resolveThemeCarrier } from '../theme-carrier';
+import { resolveThemeCarrier, type AlbumTextRole } from '../theme-carrier';
 import type { ImagePos, TemplateData } from '../types';
 import { getHtmlTemplate } from './registry';
 
@@ -31,21 +32,26 @@ export function fillTemplateHtml(templateHtml: string, page: FillablePage, resol
     resolveImage,
   );
   const imagePos = page.imagePos ?? {};
+  const template = getTemplate(page.templateId);
+  const roleFor = (slot: string): AlbumTextRole | undefined => {
+    const baseSlot = slot.replace(/\[\d+\]$/, '');
+    return template?.texts.find((text) => text.id === baseSlot)?.role as AlbumTextRole | undefined;
+  };
 
   return templateHtml.replace(TOKEN_RE, (_full, type: string, slotRaw: string, def?: string) => {
     const slot = slotRaw.trim();
     const fallback = def ?? '';
     switch (type) {
       case 'TEXT': {
-        const carrier = resolveThemeCarrier(data, slot);
+        const carrier = resolveThemeCarrier(data, slot, roleFor(slot));
         return escapeHtml(carrier.text ?? stringOf(data[slot]));
       }
       case 'COLOR': {
-        const carrier = resolveThemeCarrier(data, slot);
+        const carrier = resolveThemeCarrier(data, slot, roleFor(slot));
         return escapeAttr(carrier.accentColor ?? fallback);
       }
       case 'FONT': {
-        const carrier = resolveThemeCarrier(data, slot);
+        const carrier = resolveThemeCarrier(data, slot, roleFor(slot));
         return escapeAttr(carrier.webFontFamily ?? fallback);
       }
       case 'IMG_SRC':
