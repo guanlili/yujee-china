@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { Text as PdfText } from '@react-pdf/renderer';
 import * as React from 'react';
@@ -884,4 +885,62 @@ test('PDF templates uppercase carrier text for decoration slots in source', () =
       `${renderCase.templateId}.pdf should uppercase ${renderCase.dataProp} carrier/base text`,
     );
   }
+});
+
+test('every concrete album font has a real asset and matching Web/PDF registration', () => {
+  const webRoot = fileURLToPath(new URL('../../../../', import.meta.url));
+  const css = readFileSync(new URL('../../../styles/globals.css', import.meta.url), 'utf8');
+  const pdfUtils = readFileSync(new URL('./pdf-utils.tsx', import.meta.url), 'utf8');
+  const sources = readFileSync(new URL('../../../../fonts/SOURCES.md', import.meta.url), 'utf8');
+  const legacyPacks = new Set([
+    'serif-classic',
+    'sans-modern',
+    'script-elegant',
+    'display-bold',
+  ]);
+
+  for (const [pack, rawEntry] of Object.entries(FONT_CATALOG)) {
+    if (legacyPacks.has(pack)) continue;
+    const entry = rawEntry as typeof rawEntry & {
+      asset?: { delivery: 'server-subset' | 'public'; file: string };
+    };
+    assert.ok(entry.asset, `${pack} must declare its concrete font asset`);
+    const asset = entry.asset!;
+    const expectedDelivery = entry.script === 'cjk' ? 'server-subset' : 'public';
+    assert.equal(asset.delivery, expectedDelivery, `${pack} must use ${expectedDelivery} delivery`);
+
+    const assetPath = asset.delivery === 'server-subset'
+      ? `${webRoot}fonts/${asset.file}`
+      : `${webRoot}public/fonts/${asset.file}`;
+    assert.ok(existsSync(assetPath), `${pack} asset is missing: ${assetPath}`);
+    assert.match(sources, new RegExp(escapeRegExp(asset.file)), `${pack} source must be recorded`);
+
+    const primaryWebFamily = entry.webFontFamily.match(/^"([^"]+)"/)?.[1];
+    assert.ok(primaryWebFamily, `${pack} must name a concrete primary Web family`);
+    const normalizedPdfFamily = entry.pdfFontFamily.replace(/\s+/g, '').toLowerCase();
+    const normalizedWebFamily = primaryWebFamily.replace(/\s+/g, '').toLowerCase();
+    assert.equal(
+      normalizedPdfFamily,
+      normalizedWebFamily,
+      `${pack} PDF family must be the same real family as Web, not a surrogate`,
+    );
+
+    if (asset.delivery === 'public') {
+      const face = new RegExp(
+        `@font-face\\s*\\{(?=[^}]*font-family:\\s*['"]${escapeRegExp(primaryWebFamily)}['"])(?=[^}]*url\\(['"]?\\/fonts\\/${escapeRegExp(asset.file)}['"]?\\))(?=[^}]*font-display:\\s*swap)[^}]*\\}`,
+        's',
+      );
+      assert.match(css, face, `${pack} must have a font-display: swap Web registration`);
+      assert.match(
+        pdfUtils,
+        new RegExp(`['"]${escapeRegExp(asset.file)}['"]`),
+        `${pack} must have a PDF registration for its real asset`,
+      );
+    }
+  }
+
+  assert.ok(
+    existsSync(`${webRoot}public/fonts/OFL-1.1.txt`),
+    'public album fonts must ship the OFL-1.1 license',
+  );
 });

@@ -24,9 +24,27 @@ function registerCjk(family: string, src: string): void {
 // 拉丁装饰字体（仅英文）：从 /fonts/*.ttf 注册，和 web @font-face 同一份文件 → 导出与预览一致。
 // 这些字无中文字形，只用于英文槽（canvas codegen 已按 lang 区分，中文槽走 Noto）。
 const LATIN_PDF_FONTS: [string, string][] = [
-  ['EB Garamond', 'EBGaramond.ttf'], ['Inter', 'Inter.ttf'], ['Playfair Display', 'PlayfairDisplay.ttf'],
-  ['Lora', 'Lora.ttf'], ['Abril Fatface', 'AbrilFatface.ttf'], ['Montserrat', 'Montserrat.ttf'],
-  ['Poppins', 'Poppins.ttf'], ['Work Sans', 'WorkSans.ttf'], ['Raleway', 'Raleway.ttf'], ['Bebas Neue', 'BebasNeue.ttf'],
+  [PDF_FONTS.garamond, 'EBGaramond.ttf'],
+  [PDF_FONTS.sourceSerif, 'SourceSerif4.ttf'],
+  [PDF_FONTS.lora, 'Lora.ttf'],
+  [PDF_FONTS.libreBaskerville, 'LibreBaskerville.ttf'],
+  [PDF_FONTS.interEn, 'Inter.ttf'],
+  [PDF_FONTS.worksans, 'WorkSans.ttf'],
+  [PDF_FONTS.dmSans, 'DMSans.ttf'],
+  [PDF_FONTS.poppins, 'Poppins.ttf'],
+  [PDF_FONTS.raleway, 'Raleway.ttf'],
+  [PDF_FONTS.playfair, 'PlayfairDisplay.ttf'],
+  [PDF_FONTS.cormorant, 'CormorantGaramond.ttf'],
+  [PDF_FONTS.bebas, 'BebasNeue.ttf'],
+  [PDF_FONTS.archivoBlack, 'ArchivoBlack.ttf'],
+  [PDF_FONTS.abril, 'AbrilFatface.ttf'],
+  [PDF_FONTS.montserrat, 'Montserrat.ttf'],
+  [PDF_FONTS.ibmPlexMono, 'IBMPlexMono.ttf'],
+  [PDF_FONTS.jetbrainsMono, 'JetBrainsMono.ttf'],
+  [PDF_FONTS.greatVibes, 'GreatVibes.ttf'],
+  [PDF_FONTS.dancingScript, 'DancingScript.ttf'],
+  [PDF_FONTS.sacramento, 'Sacramento.ttf'],
+  [PDF_FONTS.parisienne, 'Parisienne.ttf'],
 ];
 function registerLatin(family: string, file: string): void {
   const src = `/fonts/${file}`;
