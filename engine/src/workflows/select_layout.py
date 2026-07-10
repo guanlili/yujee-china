@@ -6,21 +6,17 @@ import asyncio
 import json
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import Any
 
 from ..api import callback
 from ..providers import ai_client
-from .core.layout import select_layout as select_layout_agent
-from .core.layout import candidate_gen_v3, generic_copy, legalize, skeleton_v3
-from .core.layout import write_copy as write_copy_agent
+from .core.layout import candidate_gen_v3
 from ..logging_config import get_logger, request_id_var
 from ..contracts.schemas import (
     CandidatePage,
     LayoutCandidate,
     SelectLayoutCandidates,
     SelectLayoutCandidateUnit,
-    SelectLayoutCompleted,
     SelectLayoutRequest,
     V3CallbackError,
     V3FailedEvent,
@@ -73,9 +69,6 @@ def _chapter_payload(chapter: Any) -> dict[str, Any]:
     return chapter.model_dump(mode="json") if hasattr(chapter, "model_dump") else dict(chapter)
 
 
-def _chapter_photo_count(chapter: Any) -> int:
-    return len(_chapter_photos(chapter))
-
 
 def _chapter_photos(chapter: Any) -> list[Any]:
     photos = getattr(chapter, "photos", None)
@@ -123,22 +116,6 @@ def _trace_request_summary(req: SelectLayoutRequest) -> dict[str, Any]:
     }
 
 
-def _trace_pages_summary(pages: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    return {
-        "pageCount": len(pages),
-        "pages": [
-            {
-                "pageIndex": page.get("pageIndex"),
-                "chapterId": page.get("chapterId"),
-                "category": page.get("category"),
-                "templateId": page.get("templateId"),
-                "images": page.get("images") or {},
-                "textKeys": sorted((page.get("texts") or {}).keys()),
-            }
-            for page in pages
-        ],
-    }
-
 
 def _chapter_with_photos(chapter: Any, photos: Sequence[Any]) -> Any:
     next_photos = list(photos)
@@ -163,168 +140,6 @@ def _layout_units(chapters: Sequence[Any], max_images_per_batch: int) -> list[An
             units.append(_chapter_with_photos(chapter, photos[start : start + max_images]))
     return units
 
-
-def _chapter_batches(chapters: Sequence[Any], max_images_per_batch: int) -> list[list[Any]]:
-    max_images = max(1, int(max_images_per_batch))
-    batches: list[list[Any]] = []
-    current: list[Any] = []
-    current_images = 0
-
-    for chapter in chapters:
-        chapter_images = _chapter_photo_count(chapter)
-        if current and current_images + chapter_images > max_images:
-            batches.append(current)
-            current = []
-            current_images = 0
-        current.append(chapter)
-        current_images += chapter_images
-
-    if current:
-        batches.append(current)
-    return batches
-
-
-def _fallback_interiors(chapters: Sequence[Any]) -> list[dict[str, Any]]:
-    return skeleton_v3.build_skeleton_v3([_chapter_payload(chapter) for chapter in chapters])
-
-
-@dataclass(frozen=True)
-class _BatchResult:
-    pages: list[dict[str, Any]]
-    gemini_calls: int = 0
-    input_tokens: int = 0
-    output_tokens: int = 0
-    model: str | None = None
-
-
-async def _judge_unit(unit: Any, *, seed: str, language: str) -> _BatchResult:
-    """一个排版单元(一章或超大章的一段):代码随机生成 N 个候选 → LLM 评委选最佳。
-
-    任何环节失败都回退确定性 skeleton,保证不空手。legalize 仍做最终合法化夹紧。
-    `seed` 已含 requestId + chapterId + 段索引,保证同章拆多段时各段候选不同。
-    """
-    chapter_id = str(getattr(unit, "chapterId", None) or _value(unit, "chapterId"))
-    photos = _chapter_photos(unit)
-    # seed 唯一性:requestId + chapterId + 段首照片 id(同章拆多段时各段照片不同 => 候选不同)。
-    first_pid = _value(photos[0], "photoId") if photos else ""
-    unit_seed = f"{seed}#{chapter_id}#{first_pid}"
-    candidates = candidate_gen_v3.generate_candidates(
-        photos,
-        seed=unit_seed,
-        count=int(get_settings().select_layout_candidate_count),
-    )
-    if not candidates:
-        return _BatchResult(pages=[])
-
-    # 单候选无需评委;否则让豆包(火山 Ark)当评委选(gemini 国内地区墙 400,豆包顶替)。
-    if len(candidates) == 1:
-        winner, calls, in_tok, out_tok, model = candidates[0], 0, 0, 0, None
-    else:
-        try:
-            verdict = await select_layout_agent.judge_layout_doubao(unit, candidates)
-            winner = candidates[verdict.winner_index]
-            calls, in_tok, out_tok, model = (
-                verdict.call_count,
-                verdict.input_tokens,
-                verdict.output_tokens,
-                verdict.model,
-            )
-        except Exception as exc:  # noqa: BLE001
-            log.warning(
-                "v3_select_layout.judge_fallback",
-                chapter_id=chapter_id,
-                error=str(exc),
-            )
-            ai_client.trace_marker(
-                "select-layout judge fallback",
-                input=f"chapterId={chapter_id}; reason={str(exc)[:300]}",
-                output="评委失败,取第 0 个随机候选。",
-            )
-            winner, calls, in_tok, out_tok, model = candidates[0], 0, 0, 0, None
-
-    # 候选已由 candidate_gen 保证合法(填满、不重不漏),只做轻量校验 + reindex,不重排。
-    pages = legalize.finalize_candidate_pages(unit, winner)
-    # 版式已定 → 豆包把文案写进本单元每页(#AI copy writer)。generic_copy 的装饰
-    # 文案(folio/date)仍在 select_pages 里之后统一叠加,两者写不同的槽位(role 分流),
-    # 互不冲突。
-    pages = await write_copy_agent.apply_write_copy(unit, pages, language=language)
-    return _BatchResult(
-        pages=pages,
-        gemini_calls=calls,
-        input_tokens=in_tok,
-        output_tokens=out_tok,
-        model=model,
-    )
-
-
-async def _select_batch(chapters: Sequence[Any], *, seed: str, language: str) -> _BatchResult:
-    """一个并发批次:逐 unit 走『随机候选 + 评委』,拼接结果。"""
-    try:
-        unit_results = [
-            await _judge_unit(unit, seed=seed, language=language) for unit in chapters
-        ]
-        pages: list[dict[str, Any]] = []
-        for r in unit_results:
-            pages.extend(r.pages)
-        model = next((r.model for r in unit_results if r.model), None)
-        return _BatchResult(
-            pages=pages,
-            gemini_calls=sum(r.gemini_calls for r in unit_results),
-            input_tokens=sum(r.input_tokens for r in unit_results),
-            output_tokens=sum(r.output_tokens for r in unit_results),
-            model=model,
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.warning(
-            "v3_select_layout.batch_fallback",
-            chapter_ids=[getattr(chapter, "chapterId", None) for chapter in chapters],
-            error=str(exc),
-        )
-        pages = _fallback_interiors(chapters)
-        chapter_ids = [str(getattr(chapter, "chapterId", None)) for chapter in chapters]
-        ai_client.trace_marker(
-            "select-layout fallback",
-            input=f"chapterIds={chapter_ids}; reason={str(exc)[:300]}",
-            output=f"deterministic pages={len(pages)}",
-        )
-        return _BatchResult(pages=pages)
-
-
-async def select_pages(req: SelectLayoutRequest) -> tuple[list[dict[str, Any]], V3Usage]:
-    started = time.monotonic()
-    settings = get_settings()
-    units = _layout_units(req.chapters, settings.select_layout_max_images_per_batch)
-    batches = _chapter_batches(units, settings.select_layout_max_images_per_batch)
-    semaphore = asyncio.Semaphore(max(1, int(settings.select_layout_max_concurrency)))
-
-    async def run_batch(batch: Sequence[Any]) -> _BatchResult:
-        async with semaphore:
-            return await _select_batch(batch, seed=req.requestId, language=req.language)
-
-    results = await asyncio.gather(*(run_batch(batch) for batch in batches))
-
-    interior_pages: list[dict[str, Any]] = []
-    gemini_calls = sum(result.gemini_calls for result in results)
-    input_tokens = sum(result.input_tokens for result in results)
-    output_tokens = sum(result.output_tokens for result in results)
-    model: str | None = None
-    for result in results:
-        interior_pages.extend(result.pages)
-        if model is None and result.model:
-            model = result.model
-
-    # 封面/封底不在排版这步生成,改放后续环节;Stage2 只产 interior 页。
-    # 纯排版:只产版面(templateId + 图槽 + 页码/日期),texts 留空,交由后续编辑 agent 写。
-    pages = generic_copy.fill_generic_copy(interior_pages, req.chapters)  # type: ignore[arg-type]
-    duration_ms = int((time.monotonic() - started) * 1000)
-    usage = V3Usage(
-        durationMs=duration_ms,
-        geminiCallCount=gemini_calls,
-        planningInputTokens=input_tokens,
-        planningOutputTokens=output_tokens,
-        models=V3Models(**({"planning": model} if model else {})),
-    )
-    return pages, usage
 
 
 def _unit_key(unit: Any) -> str:
@@ -387,35 +202,8 @@ async def _run_select_layout(job: _Job) -> None:
     )
     await _emit_progress(job, "layout", 0)
 
-    # 向后兼容:开关为 True 时走旧单段内联评委(裸照片+线框图),直接 completed。
-    if getattr(get_settings(), "select_layout_inline_judge", False):
-        pages, usage = await select_pages(job.req)
-        await _emit_progress(job, "legalize", 100)
-        await _emit_progress(job, "wrap", 100)
-        await callback.post(
-            str(job.req.callbackUrl),
-            SelectLayoutCompleted(
-                event="completed",
-                jobKind="select-layout",
-                requestId=job.req.requestId,
-                pages=pages,
-                usage=usage,
-            ),
-        )
-        ai_client.trace_marker(
-            "select-layout output",
-            input=f"requestId={job.req.requestId}; geminiCallCount={usage.geminiCallCount}",
-            output=_trace_json(_trace_pages_summary(pages)),
-        )
-        log.info(
-            "v3_select_layout.completed",
-            duration_ms=int((time.monotonic() - started) * 1000),
-            chapters=len(job.req.chapters),
-            pages=len(pages),
-        )
-        return
-
     # P2 phase 1:生成候选结构,经 candidates 回调交回浏览器去渲染缩略图。
+    # (旧单段内联评委——线框结构判图——已整条移除,排版统一真图缩略图逻辑。)
     units, usage = select_candidates(job.req)
     await callback.post(
         str(job.req.callbackUrl),

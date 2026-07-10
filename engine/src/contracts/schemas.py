@@ -560,20 +560,18 @@ class SelectLayoutRequest(_V3Strict):
 # ---------- 单页 relayout 视觉判图(sync,编辑器换版式用)------------------------
 
 
-class JudgePageTemplatePhoto(_V3Strict):
-    photoId: str = Field(min_length=1)
-    ref200px: str = Field(min_length=1)
-    orientation: PhotoOrientation
-    composition: PhotoComposition | None = None
+class JudgePageTemplateCandidate(_V3Strict):
+    """一个候选:浏览器把该页照片按此模板渲染成的真图缩略图(与整书排版评委同款输入)。"""
 
-    _check_ref200px = field_validator("ref200px")(_validate_v3_analyze_image_data_url)
+    templateId: str = Field(min_length=1)
+    thumbnail: str = Field(min_length=1)  # data:image/jpeg;base64,...(照片已排入图槽)
 
 
 class JudgePageTemplateRequest(_V3Strict):
-    # 该页当前照片(带 ref200px,由浏览器按需现算)。
-    photos: list[JudgePageTemplatePhoto] = Field(min_length=1)
-    # 同类目、同图槽数的候选模板 id;评委从中选最贴合这些照片的一个。
-    candidateTemplateIds: list[str] = Field(min_length=1)
+    # 每候选一张真实渲染缩略图;评委直接看图选最贴合的模板。
+    candidates: list[JudgePageTemplateCandidate] = Field(min_length=1)
+    # 章节背景(可选):评委据此贴合基调。
+    chapterContext: str = Field(default="", max_length=500)
 
 
 class JudgePageTemplateData(_V3Strict):

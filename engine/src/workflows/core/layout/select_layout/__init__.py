@@ -1,19 +1,17 @@
-"""排版选模板 Agent。
+"""排版评委 Agent——统一真图缩略图逻辑。
 
-代码随机生成 N 个整章候选,LLM 评委选最佳:生产走豆包(`judge_layout_doubao`),
-另有 gemini 评委(`judge_layout` / `judge_layout_thumbnails`)。
+代码随机生成候选,浏览器渲染真图缩略图,评委看图选最佳(`judge_layout_thumbnails`,
+gemini 优先、豆包兜底);单页换版式复用同一评委(`judge_page_template`)。
 """
 
 from __future__ import annotations
 
-from .handler import judge_layout, judge_layout_doubao, judge_layout_thumbnails, judge_page_template
+from .handler import judge_layout_thumbnails, judge_page_template
 from .schema import GeminiLayoutUnavailable, LayoutJudgeResult
 
 __all__ = [
     "GeminiLayoutUnavailable",
     "LayoutJudgeResult",
-    "judge_layout",
-    "judge_layout_doubao",
     "judge_layout_thumbnails",
     "judge_page_template",
 ]

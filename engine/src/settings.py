@@ -150,8 +150,6 @@ class Settings(BaseSettings):
     select_layout_max_concurrency: int = Field(default=3, ge=1)
     # 每章代码随机生成多少个候选交给 LLM 评委挑选(P1 新排版逻辑)。
     select_layout_candidate_count: int = Field(default=3, ge=1)
-    # True=旧单段内联评委(裸照片+线框图,向后兼容);False=P2 两阶段(浏览器渲染真缩略图)。
-    select_layout_inline_judge: bool = False
     # Gemini 判图的网络出口:未设=沿用环境代理(HTTPS_PROXY,httpx trust_env 默认);
     # "direct"=强制直连、忽略环境代理(本机能直达 Gemini 但 shell 全局代理出口被
     # Gemini 地区墙拒时用这个);其他值=显式代理 URL(如 http://127.0.0.1:7890)。

@@ -126,15 +126,15 @@ async def submit_judge_layout(
 
 @router.post("/v3/judge-page-template", dependencies=[Depends(require_bearer)])
 async def submit_judge_page_template(req: JudgePageTemplateRequest) -> dict[str, Any]:
-    """编辑器换版式:该页照片(ref200px)+ 同图槽数候选模板 → 视觉评委(先 gemini,失败保底豆包)
-    选最贴合的模板 id。**同步**返回赢家,不走 callback。"""
+    """编辑器换版式:浏览器把该页照片按每个候选模板渲染成真图缩略图 POST 过来,
+    视觉评委(gemini 优先,保底豆包)看图选最贴合的模板 id。**同步**返回赢家,不走 callback。"""
     winner_id, result = await select_layout_agent.judge_page_template(
-        [photo.model_dump(mode="json") for photo in req.photos],
-        req.candidateTemplateIds,
+        [candidate.model_dump(mode="json") for candidate in req.candidates],
+        chapter_context=req.chapterContext,
     )
     log.info(
         "v3_judge_page_template.done",
-        candidates=len(req.candidateTemplateIds),
+        candidates=len(req.candidates),
         winner=winner_id,
         model=result.model,
     )
