@@ -210,6 +210,33 @@ test('resolveThemeCarrier falls back from English-only fonts for Chinese and mix
   assert.equal(mixedBody.pdfFontFamily, 'NotoSansSC');
 });
 
+test('resolveThemeCarrier falls back from an English title font for Kana-only Japanese', () => {
+  const resolvedFamilies = ['なつのおもいで', 'ナツノオモイデ'].map((text) => {
+    const carrier = resolveThemeCarrier(
+      { title: text, 'title#artFont': 'playfair-display' },
+      'title',
+      'title',
+    );
+    return [carrier.webFontFamily, carrier.pdfFontFamily];
+  });
+
+  assert.deepEqual(resolvedFamilies, [
+    ['"Noto Serif SC", "Source Han Serif SC", "Songti SC", serif', 'NotoSerifSC'],
+    ['"Noto Serif SC", "Source Han Serif SC", "Songti SC", serif', 'NotoSerifSC'],
+  ]);
+});
+
+test('resolveThemeCarrier falls back from an English title font for Hangul-only Korean', () => {
+  const carrier = resolveThemeCarrier(
+    { title: '우리의 여름', 'title#artFont': 'playfair-display' },
+    'title',
+    'title',
+  );
+
+  assert.equal(carrier.webFontFamily, '"Noto Serif SC", "Source Han Serif SC", "Songti SC", serif');
+  assert.equal(carrier.pdfFontFamily, 'NotoSerifSC');
+});
+
 test('mag-03 consumes location carrier as style without rendering raw color text', () => {
   const data = adaptPageToTemplateData(
     {

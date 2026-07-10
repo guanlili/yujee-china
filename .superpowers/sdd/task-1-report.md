@@ -92,7 +92,7 @@ The first typecheck exposed two local union-narrowing errors in the new resolver
 
 - `FONT_CATALOG` is compile-time complete through `satisfies Record<ArtFontPack, AlbumFontCatalogEntry>`.
 - Role defaults match the approved matrix: Chinese title uses Noto Serif SC; other Chinese roles use Noto Sans SC; English title uses Playfair Display; other English roles use Inter.
-- Han detection applies the Chinese family to the entire mixed-language slot.
+- Han, Hiragana, Katakana, and Hangul detection applies the CJK family to the entire slot.
 - Explicit families win only when their catalog role is compatible and their script coverage can render the content.
 - `text`, `accentColor`, and the original `artFont` carrier value are preserved; only the resolved Web/PDF families fall back.
 - The role argument is optional for now so existing two-argument template callers retain their pre-Task-2 behavior and Web typecheck stays green. Task 2 remains responsible for wiring explicit roles into every renderer.
@@ -102,3 +102,63 @@ The first typecheck exposed two local union-narrowing errors in the new resolver
 
 - Several catalog entries intentionally retain the existing nearest registered Web/PDF family until Task 3 vendors and registers every real asset.
 - Templates do not receive role defaults until Task 2 supplies the role argument at each render call.
+
+## Reviewer follow-up: Kana and Hangul safety
+
+The reviewer found that the initial script check recognized only Han, allowing Kana-only Japanese and Hangul-only Korean through the Latin-font path.
+
+### RED
+
+Focused cases were added for Hiragana-only, Katakana-only, and Hangul-only titles carrying `playfair-display` before changing the resolver.
+
+Command:
+
+```bash
+pnpm --filter @yujee/web exec tsx --test src/components/album/templates/theme-carrier.test.ts
+```
+
+Exit: `1`
+
+Output summary:
+
+```text
+✖ resolveThemeCarrier falls back from an English title font for Kana-only Japanese
+  actual: Playfair Display
+  expected: Noto Serif SC
+✖ resolveThemeCarrier falls back from an English title font for Hangul-only Korean
+  actual: Playfair Display
+  expected: Noto Serif SC
+ℹ tests 15
+ℹ pass 13
+ℹ fail 2
+```
+
+### GREEN
+
+The resolver's CJK check was expanded to the Unicode Han, Hiragana, Katakana, and Hangul script classes.
+
+Command:
+
+```bash
+pnpm --filter @yujee/web exec tsx --test src/components/album/templates/theme-carrier.test.ts
+```
+
+Exit: `0`
+
+Output summary:
+
+```text
+✔ resolveThemeCarrier falls back from an English title font for Kana-only Japanese
+✔ resolveThemeCarrier falls back from an English title font for Hangul-only Korean
+ℹ tests 15
+ℹ pass 15
+ℹ fail 0
+```
+
+Type verification:
+
+```bash
+pnpm --filter @yujee/web typecheck
+```
+
+Exit: `0`

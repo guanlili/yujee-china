@@ -34,7 +34,10 @@ function fontForSlot(
   artFont: ArtFontPack | undefined,
   role: AlbumTextRole,
 ): AlbumFontCatalogEntry {
-  const script = text && /\p{Script=Han}/u.test(text) ? 'cjk' : 'latin';
+  const script = text
+    && /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(text)
+    ? 'cjk'
+    : 'latin';
   const explicit: AlbumFontCatalogEntry | undefined = artFont
     ? FONT_CATALOG[artFont]
     : undefined;
