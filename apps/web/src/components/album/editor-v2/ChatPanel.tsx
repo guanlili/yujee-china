@@ -2218,13 +2218,16 @@ export function ChatPanel({
     void appendNameChips;
 
     function showPurchaseCard() {
+      // 横幅固定在 composer-group 内(输入框正上方),只切显隐、绝不搬进消息流;
+      // 同时禁用发送按钮 —— 没积分就别让消息发出去再报错。
       const card = byId('balanceAlert');
       if (card) {
         card.style.display = '';
-        chatBody!.appendChild(card);
       } else {
         appendAiText(aT('积分不足，去充值后即可继续。', 'Out of credits — top up to keep creating.'));
       }
+      const send = byId('sendBtn') as HTMLButtonElement | null;
+      if (send) send.disabled = true;
       scrollChat();
     }
 
@@ -2544,7 +2547,11 @@ export function ChatPanel({
             <div className="buy-banner-row">
               <div className="buy-banner-title flex-1 min-w-0" data-i18n="bpLead">{locale === 'zh' ? '积分已用完，补充积分继续' : 'Out of credits. Top up to continue.'}</div>
               <button className="buy-banner-btn" data-action="buyShells" data-i18n="bpBuy">{locale === 'zh' ? '去购买' : 'Buy'}</button>
-              <button className="buy-close" type="button" onClick={(e) => (e.currentTarget.closest('#balanceAlert') as HTMLElement | null)?.style.setProperty('display', 'none')} aria-label={locale === 'zh' ? '关闭' : 'Close'}>
+              <button className="buy-close" type="button" onClick={(e) => {
+                (e.currentTarget.closest('#balanceAlert') as HTMLElement | null)?.style.setProperty('display', 'none');
+                const send = document.getElementById('sendBtn') as HTMLButtonElement | null;
+                if (send) send.disabled = false;
+              }} aria-label={locale === 'zh' ? '关闭' : 'Close'}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
