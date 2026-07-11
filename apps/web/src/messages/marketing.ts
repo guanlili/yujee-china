@@ -104,7 +104,7 @@ const en: MarketingMessages = {
     howTitle: 'Three steps to your own magazine',
     howSteps: [
       { num: '01', title: 'Choose photos', desc: 'Pick the photos worth keeping — a few or a few hundred. Just drag them in.' },
-      { num: '02', title: 'AI lays out, writes & tells the story', desc: 'It reads your photos, auto-chapters them, writes copy and builds magazine-grade spreads.' },
+      { num: '02', title: 'AI lays out, writes & tells the story', desc: 'It reads your photos, auto-groups them, writes copy and builds magazine-grade spreads.' },
       { num: '03', title: 'You polish & adjust', desc: 'One sentence to AI rewrites copy, swaps photos or tweaks layout. Then export.' },
     ],
     whatYouGetTitle: 'Not just an album — a real magazine',

@@ -119,9 +119,9 @@ const copies: Record<Locale, Copy> = {
         icon: 'layout',
       },
       {
-        title: 'Smart chapters + captions',
+        title: 'Smart groups + captions',
         body:
-          'It detects time and scenes to split chapters automatically, and drafts an editable title and description for each. You set the tone; it writes the first draft.',
+          'It detects time and scenes to group your photos automatically, and drafts an editable title and description for each. You set the tone; it writes the first draft.',
         icon: 'spark',
       },
       {
@@ -139,7 +139,7 @@ const copies: Record<Locale, Copy> = {
     faq: [
       {
         q: 'Do I need design skills?',
-        a: 'Not at all. You just pick photos; the AI handles layout, chapters and a first draft of captions. Everything stays editable — be as hands-on as you like.',
+        a: 'Not at all. You just pick photos; the AI handles layout, grouping and a first draft of captions. Everything stays editable — be as hands-on as you like.',
       },
       {
         q: 'What export formats are there?',
@@ -195,15 +195,15 @@ const copies: Record<Locale, Copy> = {
         title: 'Life story',
         brief: 'Your milestones, into a life story',
         body:
-          'Lay milestones along a timeline: birth, school, people, and journeys. Each chapter gets editable short essays, bound like a biography.',
-        bullets: ['Auto-chaptered by life stage', 'Long-form text and pull quotes per chapter', 'Great as a birthday or memorial gift'],
+          'Lay milestones along a timeline: birth, school, people, and journeys. Each group gets editable short essays, bound like a biography.',
+        bullets: ['Auto-grouped by life stage', 'Long-form text and pull quotes per group', 'Great as a birthday or memorial gift'],
         image: '/landing-redesign/cards/02-life-story.png',
       },
       {
         title: 'Travel',
         brief: 'A trip, auto-bound into a journal',
         body:
-          'Auto-chaptered by date, with places and order sorted for you. One spread per day, with room to breathe between photos.',
+          'Auto-grouped by date, with places and order sorted for you. One spread per day, with room to breathe between photos.',
         bullets: ['Auto-split by timeline', 'Add map pages and route notes', 'Share an online link with travel mates'],
         image: '/landing-redesign/cards/01-travel.png',
       },
@@ -228,7 +228,7 @@ const copies: Record<Locale, Copy> = {
         brief: 'A page a month, every change',
         body:
           'Filed by month into a growth timeline. Quick notes like height, weight, and firsts land on the right page.',
-        bullets: ['Auto-chaptered by month or milestone', 'Add little data cards', 'Keep adding; the album grows over time'],
+        bullets: ['Auto-grouped by month or milestone', 'Add little data cards', 'Keep adding; the album grows over time'],
         image: '/landing-redesign/cards/04-growth-story.png',
       },
     ],
@@ -888,7 +888,7 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
                         <div className="mt-2 h-2 w-1/2 rounded-full bg-black/5" />
                       </div>
                       <div className="p-4">
-                        <div className="marquee mb-2 text-[11px]">Chapter 0{activePreview + 1}</div>
+                        <div className="marquee mb-2 text-[11px]">Group 0{activePreview + 1}</div>
                         <div className="preview-title mb-2 text-lg font-bold leading-tight">{preview.title}</div>
                         <img src={preview.right} alt="" className="mb-3 aspect-[4/3] w-full rounded-xl object-cover transition-opacity duration-500" />
                         <div className="space-y-1.5">
