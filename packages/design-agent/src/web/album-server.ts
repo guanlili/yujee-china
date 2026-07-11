@@ -336,9 +336,30 @@ class AlbumRuntimeManager {
 // 把「用户正看着哪页」拼进本轮用户消息:模型据此消解"这页/这一页/当前页"的指代,
 // 不再瞎猜。作为消息前缀(而非独立 system 轮)进入会话历史 —— 历史里保留"说这句话时
 // 用户停在哪页"本身就是有效语境;Web 落库的聊天记录存的是原始 userMessage,不受影响。
-export function composeChatTurn(message: string, currentPageIndex: number | undefined): string {
-	if (currentPageIndex == null) return message;
-	return `【界面上下文】用户当前停留在 pageIndex=${currentPageIndex}(第 ${currentPageIndex + 1} 页)。用户说"这页/这一页/当前页"时即指它。\n\n${message}`;
+export function composeChatTurn(
+	message: string,
+	currentPageIndex: number | undefined,
+	brief?: import("../core/album/book-state.ts").AlbumBookBrief,
+): string {
+	const parts: string[] = [];
+	// 书级设计简报:AI 的全局语境(主题/配色主题/封面氛围)。chapter 概念不进上下文。
+	if (brief && (brief.theme || brief.palette || brief.coverMood)) {
+		const briefBits: string[] = [];
+		if (brief.theme) briefBits.push(`主题:${brief.theme}`);
+		if (brief.palette?.colors) {
+			briefBits.push(`配色:${Object.entries(brief.palette.colors).map(([k, v]) => `${k}=${v}`).join(" ")}`);
+		}
+		if (brief.palette?.fonts) {
+			briefBits.push(`字体:${Object.entries(brief.palette.fonts).map(([k, v]) => `${k}=${v}`).join(" ")}`);
+		}
+		if (brief.coverMood) briefBits.push(`封面氛围:${brief.coverMood}`);
+		parts.push(`【设计简报】${briefBits.join(";")}`);
+	}
+	if (currentPageIndex != null) {
+		parts.push(`【界面上下文】用户当前停留在 pageIndex=${currentPageIndex}(第 ${currentPageIndex + 1} 页)。用户说"这页/这一页/当前页"时即指它。`);
+	}
+	if (parts.length === 0) return message;
+	return `${parts.join("\n")}\n\n${message}`;
 }
 
 async function runAlbumChat(
@@ -360,7 +381,9 @@ async function runAlbumChat(
 	});
 
 	try {
-		const assistantMessage = await runtime.session.prompt(composeChatTurn(message, currentPageIndex));
+		const assistantMessage = await runtime.session.prompt(
+			composeChatTurn(message, currentPageIndex, runtime.getBook().brief),
+		);
 		runtime.traces.recordAssistantMessage(trace.id, assistantMessage);
 		const assistantText = extractAssistantText(assistantMessage);
 		const bookAfter = runtime.getBook();

@@ -86,12 +86,12 @@ test("read_page 多页一次返回", async () => {
 	assert.equal(result.pages[1].pageNo, 3);
 });
 
-test("read_page 返回槽位定义与章节背景", async () => {
+test("read_page 返回槽位定义,且不暴露 chapter 概念(AI 上下文去冗余)", async () => {
 	const { tools } = createHarness();
 	const page = JSON.parse(await run(tools, "read_page", { pageNo: 2 })).pages[0];
 	assert.equal(page.templateId, "mag-05");
-	assert.equal(page.chapter.chapterId, "ch-seaside");
-	assert.ok(page.chapter.chapterContext.includes("青岛"));
+	// chapter 是分簇/写文案的内部工具,不进 AI 上下文(2026-07-11 拍板)。
+	assert.equal(page.chapter, undefined);
 	const titleDef = page.textSlotDefs.find((def: { slotId: string }) => def.slotId === "title");
 	assert.equal(titleDef.maxChars, 24);
 	assert.ok(page.images.image.sceneDescription.includes("海平线"));
@@ -216,7 +216,7 @@ test("update_page_images 整页替换并校验槽位齐全/照片存在/不重�
 	);
 });
 
-test("search_book 命中页文字、照片描述与章节背景", async () => {
+test("search_book 命中页文字与照片描述;章节背景不再进搜索面", async () => {
 	const { tools } = createHarness();
 	await run(tools, "update_page_texts", { pageNo: 5, texts: { explain: "奶奶的手覆着我的手，锅铲一起一落。" } });
 	const hits = (await run(tools, "search_book", { query: "奶奶" }))
@@ -224,7 +224,8 @@ test("search_book 命中页文字、照片描述与章节背景", async () => {
 		.map((line) => JSON.parse(line) as { where: string });
 	assert.ok(hits.some((hit) => hit.where === "pageText"));
 	assert.ok(hits.some((hit) => hit.where === "photo"));
-	assert.ok(hits.some((hit) => hit.where === "chapter"));
+	// chapter 概念不进 AI 上下文:章节背景不参与搜索,命中结果也不再带 chapter 项。
+	assert.equal(hits.some((hit) => hit.where === "chapter"), false);
 });
 
 test("list_templates 按类目和图槽数过滤", async () => {

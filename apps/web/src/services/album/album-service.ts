@@ -788,9 +788,27 @@ export const albumService = {
     if (!normalized.pages || normalized.pages.length === 0) {
       throw ERRORS.VALIDATION_FAILED('album has no layout pages yet');
     }
+    // 书级设计简报:AI 的全局语境四件套之三(主题/配色主题/封面氛围;第四件=每页
+    // 内容本身)。chapter 概念不进 AI 上下文 —— chapters 仍随书传(照片池校验用)。
+    const design = (album.draftJson as { design?: { fonts?: Record<string, string>; colors?: Record<string, string> } } | null)
+      ?.design;
+    const coverPage = normalized.pages.find((p) => templateCategory(p.templateId) === 'cover');
+    const coverMood = coverPage
+      ? Object.entries(coverPage.texts)
+          .filter(([key, value]) => !key.includes('#') && value)
+          .slice(0, 3)
+          .map(([, value]) => value)
+          .join(' / ')
+          .slice(0, 120)
+      : '';
     await designAgentClient.loadBook(albumId, {
       chapters: normalized.tree.chapters,
       pages: normalized.pages,
+      brief: {
+        theme: [album.title, album.prompt].filter(Boolean).join(' — ').slice(0, 200) || undefined,
+        ...(design ? { palette: { fonts: design.fonts, colors: design.colors } } : {}),
+        ...(coverMood ? { coverMood } : {}),
+      },
     });
   },
 
@@ -1663,7 +1681,8 @@ export const albumService = {
     });
 
     await albumRepo.update(db, album.id, {
-      draftJson: { ...(root ?? {}), pages },
+      // design 决策快照随 draft 落库:设计对话的书级简报(配色主题)从这里取。
+      draftJson: { ...(root ?? {}), pages, design: { fonts: design.fonts, colors: design.colors } },
       pageCount: pages.length,
     });
     return { pages };

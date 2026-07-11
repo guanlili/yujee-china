@@ -41,11 +41,20 @@ export interface AlbumPage {
 	html?: string;
 }
 
+/** 书级设计简报(AI 的全局语境四件套之三:主题/配色主题/封面氛围;第四件=每页内容本身)。
+ * chapter 概念不进 AI 上下文 —— 它只是分簇/写文案管线的内部工具(2026-07-11 用户拍板)。 */
+export interface AlbumBookBrief {
+	theme?: string;
+	palette?: { fonts?: Record<string, string>; colors?: Record<string, string> };
+	coverMood?: string;
+}
+
 export interface AlbumBookState {
 	chapters: AlbumChapter[];
 	pages: AlbumPage[];
 	version: number;
 	updatedAt: string;
+	brief?: AlbumBookBrief;
 }
 
 export interface AlbumBookSummary {
@@ -79,6 +88,7 @@ export function cloneAlbumBookState(state: AlbumBookState): AlbumBookState {
 		pages: state.pages.map(clonePage),
 		version: state.version,
 		updatedAt: state.updatedAt,
+		brief: state.brief ? JSON.parse(JSON.stringify(state.brief)) as AlbumBookBrief : undefined,
 	};
 }
 
@@ -116,12 +126,23 @@ export function parseAlbumBookInput(raw: unknown, now = new Date()): ParseAlbumB
 		seenPageIndex.add(page.pageIndex);
 	}
 
+	// 书级设计简报(可选):主题/配色主题/封面氛围。宽松解析,非法即忽略。
+	const briefRaw = isRecord(raw.brief) ? raw.brief : undefined;
+	const brief: AlbumBookBrief | undefined = briefRaw
+		? {
+				theme: typeof briefRaw.theme === "string" && briefRaw.theme ? briefRaw.theme : undefined,
+				palette: isRecord(briefRaw.palette) ? (briefRaw.palette as AlbumBookBrief["palette"]) : undefined,
+				coverMood: typeof briefRaw.coverMood === "string" && briefRaw.coverMood ? briefRaw.coverMood : undefined,
+			}
+		: undefined;
+
 	return {
 		book: {
 			chapters,
 			pages,
 			version: typeof raw.version === "number" ? raw.version : 1,
 			updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : now.toISOString(),
+			brief,
 		},
 		warnings,
 	};

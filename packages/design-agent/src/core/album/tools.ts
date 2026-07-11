@@ -3,10 +3,8 @@ import { type Static, Type } from "typebox";
 import {
 	type AlbumBookState,
 	type AlbumPage,
-	buildPhotoToChapterMap,
 	cloneAlbumBookState,
 	clonePage,
-	derivePageChapterId,
 	findAlbumPageByNo,
 	findAlbumPhoto,
 	validateImagesMap,
@@ -130,21 +128,13 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 function readPagePayload(state: AlbumBookState, catalog: TemplateCatalog, pageNo: number): Record<string, unknown> {
 	const page = requirePage(state, pageNo);
 	const template = requireTemplate(catalog, page.templateId);
-	const photoToChapter = buildPhotoToChapterMap(state);
-	const chapterId = derivePageChapterId(page, photoToChapter);
-	const chapter = state.chapters.find((candidate) => candidate.chapterId === chapterId);
+	// chapter 概念不进 AI 上下文(分簇/写文案的内部工具);AI 的全局语境走书级
+	// 设计简报(主题/配色/封面氛围,见 composeChatTurn),页面语境 = html + 照片描述。
 	return {
 		pageNo,
 		pageIndex: page.pageIndex,
 		templateId: page.templateId,
 		category: template.category,
-		chapter: chapter
-			? {
-					chapterId: chapter.chapterId,
-					chapterContext: chapter.chapterContext ?? "",
-					accentColor: chapter.accentColor,
-				}
-			: undefined,
 		images: Object.fromEntries(
 			Object.entries(page.images).map(([slotId, photoId]) => {
 				const photo = findAlbumPhoto(state, photoId);
@@ -851,25 +841,20 @@ function searchAlbumBook(state: AlbumBookState, query: string, limit: number): B
 			}
 		}
 	}
+	// chapter 概念不进 AI 上下文:照片池仍按内部结构遍历,但命中结果不暴露 chapterId,
+	// 章节背景(chapterContext)不再参与搜索(写文案素材已烘进页面 html/texts)。
 	for (const chapter of state.chapters) {
 		for (const photo of chapter.photos) {
 			if (photo.sceneDescription.toLowerCase().includes(lowerQuery)) {
 				if (
 					push({
 						where: "photo",
-						chapterId: chapter.chapterId,
 						photoId: photo.photoId,
 						preview: preview(photo.sceneDescription, query),
 					})
 				) {
 					return matches;
 				}
-			}
-		}
-		const context = chapter.chapterContext ?? "";
-		if (context.toLowerCase().includes(lowerQuery)) {
-			if (push({ where: "chapter", chapterId: chapter.chapterId, preview: preview(context, query) })) {
-				return matches;
 			}
 		}
 	}

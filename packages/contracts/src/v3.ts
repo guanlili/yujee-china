@@ -534,6 +534,14 @@ export const V3StoryDraft = z
     // preview/finalize.
     pages: z.array(Page).optional(),
     progress: V3StoryProgress,
+    // 设计环节决策快照(字体三键/颜色三键):设计对话的书级简报(配色主题)从这里取。
+    // web 内部消费,engine 不读 draft。
+    design: z
+      .object({
+        fonts: z.record(z.string(), z.string()),
+        colors: z.record(z.string(), z.string()),
+      })
+      .optional(),
   })
   .strict();
 export type V3StoryDraft = z.infer<typeof V3StoryDraft>;
