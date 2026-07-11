@@ -150,8 +150,5 @@ export function assembleDesignedPages(input: {
   const swept = sweepCarriers(ordered, input.fonts, input.colors);
   // C 方案:carrier sweep 改了 texts,已烘的 html 失效 —— 清掉重烘,设计结果
   // (字体/颜色/封面封尾文案)烘进页面真相。lenient 为迁移过渡期(见 bake-html)。
-  return bakePagesHtml(
-    swept.map((page) => ({ ...page, html: undefined })),
-    { strict: false },
-  ) as Page[];
+  return bakePagesHtml(swept.map((page) => ({ ...page, html: undefined }))) as Page[];
 }

@@ -1,4 +1,5 @@
-import { bakePagesHtml, type BakeablePage } from './bake-html';
+import { bakePageHtml, bakePagesHtml, type BakeablePage } from './bake-html';
+import { patchHtmlText } from '@/components/album/page-html-dom';
 import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
@@ -185,14 +186,26 @@ function applyLayoutPatchToDraftPages(pages: V3Page[], patch: V3LayoutPatchEntry
 }
 
 function applyPagesTextsToDraftPages(pages: V3Page[], patches: V3PageTextsPatch[]): V3Page[] {
-  // 同上:文字槽被改的页重烘 html。
-  return bakePagesHtml(
-    pages.map((page) => {
-      const patch = patches.find((item) => item.pageIndex === page.pageIndex);
-      return patch ? { ...page, texts: { ...page.texts, ...patch.texts }, html: undefined } : page;
-    }),
-    { strict: false },
-  ) as V3Page[];
+  // 文字槽修改:优先在存库 html 上原位打补丁(保留 AI/用户的手工版面);
+  // 锚点缺失或无 html 基线时回退整页重烘。
+  return pages.map((page) => {
+    const patch = patches.find((item) => item.pageIndex === page.pageIndex);
+    if (!patch) return page;
+    const next: V3Page = { ...page, texts: { ...page.texts, ...patch.texts } };
+    if (typeof next.html === 'string' && next.html.length > 0) {
+      let html: string | null = next.html;
+      for (const [slotId, value] of Object.entries(patch.texts)) {
+        const patched = patchHtmlText(html, slotId, value);
+        if (patched === null) {
+          html = null;
+          break;
+        }
+        html = patched;
+      }
+      if (html !== null) return { ...next, html };
+    }
+    return bakePageHtml({ ...next, html: undefined }, { strict: false }) as V3Page;
+  });
 }
 
 // ② 章节故事 — server-side single-chapter slice for /v3/chapter-chat (§8.3 单章切片;
@@ -1423,6 +1436,8 @@ export const albumService = {
         imagesJson: p.images,
         textsJson: p.texts,
         imagePosJson: p.imagePos ?? {},
+        // 页面 HTML 真相(C 方案):readStoryDraft 已兜底烘制,画板优先渲染它。
+        htmlJson: (p as { html?: string }).html,
         kind,
         chapterId: kind === 'chapter' ? chapterIdForPage(p) : null,
       };

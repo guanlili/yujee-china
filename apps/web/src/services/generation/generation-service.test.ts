@@ -43,6 +43,16 @@ const TREE = {
   ],
 };
 
+
+// C 方案:落库页面带烘出的 html;槽位断言剥掉它逐一比对。
+function stripPagesHtml(pages: unknown): unknown {
+  if (!Array.isArray(pages)) return pages;
+  return pages.map((p) => {
+    const { html: _html, ...rest } = p as Record<string, unknown>;
+    return rest;
+  });
+}
+
 test('buildSelectLayoutRequestFromTree sends 200px refs and never caller candidates', () => {
   const request = buildSelectLayoutRequestFromTree({
     requestId: 'layout-r1',
@@ -208,7 +218,7 @@ test('submitSelectLayoutV3 starts a fresh layout job whose requestId the select-
     await jobService.handleV3SelectLayoutCompleted(layoutRequestId, PAGES, USAGE);
     const reloaded = await albumRepo.findById(album.id);
     assert.equal(reloaded?.status, 'EDITING');
-    assert.deepEqual((reloaded?.draftJson as { pages?: unknown }).pages, PAGES);
+    assert.deepEqual(stripPagesHtml((reloaded?.draftJson as { pages?: unknown }).pages), PAGES);
     const completedLayoutJob = await agentJobRepo.findByRequestId(layoutRequestId);
     assert.equal(completedLayoutJob?.status, 'COMPLETED');
   } finally {

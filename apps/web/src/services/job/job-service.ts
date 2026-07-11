@@ -44,10 +44,8 @@ export function mergeSelectLayoutPages(draftJson: unknown, pages: unknown) {
     throw ERRORS.VALIDATION_FAILED('select-layout completion requires an existing v3-story draft');
   }
   // C 方案:落库前逐页烘 HTML(页面真相)。pages 已过 V3Callback 契约校验。
-  // strict:false 为迁移过渡期(HTML 模板未全量注册);全量后收紧为 strict。
-  const baked = Array.isArray(pages)
-    ? bakePagesHtml(pages as BakeablePage[], { strict: false })
-    : pages;
+  // HTML 模板已全量注册,strict:漏模板直接失败,不允许无 html 的页落库。
+  const baked = Array.isArray(pages) ? bakePagesHtml(pages as BakeablePage[]) : pages;
   return { ...parsed.data, pages: baked };
 }
 

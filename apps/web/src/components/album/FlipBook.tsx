@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getWebTemplate } from './web-registry';
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
-import { renderPageHtml } from './templates/html/fill-template';
+import { preferredPageHtml } from './page-html-dom';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from './spreads';
 import { PAGE } from './templates/constants';
 import type { EditorPage } from './types';
@@ -57,11 +57,8 @@ function PageFace({
   if (!page) {
     return <div style={{ width, height, background: 'var(--surface)' }} />;
   }
-  // HTML 模板已迁移的走单一渲染器（dangerouslySetInnerHTML），未迁的回退 React 组件。
-  const html = renderPageHtml(
-    { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson, imagePos: page.imagePosJson },
-    resolveImage,
-  );
+  // 页面真相 = 存库 html(含手工版面);缺失时模板即时渲染,再缺回退 React 组件。
+  const html = preferredPageHtml(page, resolveImage);
   const Template = html === undefined ? getWebTemplate(page.templateId) : null;
   const data =
     Template != null

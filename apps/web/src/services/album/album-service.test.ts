@@ -64,6 +64,16 @@ async function runningAlbumWithJob(userId: string, startedAgoMs: number) {
   return { album, hold, job };
 }
 
+
+// C 方案:落库页面带烘出的 html;槽位断言剥掉它逐一比对。
+function stripPagesHtml(pages: unknown): unknown {
+  if (!Array.isArray(pages)) return pages;
+  return pages.map((p) => {
+    const { html: _html, ...rest } = p as Record<string, unknown>;
+    return rest;
+  });
+}
+
 test('getDetail: fresh RUNNING job → surfaces live stage/progress, no sweep', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
@@ -894,7 +904,7 @@ test('applyTheme: writes per-chapter color/font into the tree + advances stage=c
       { ...previewPages[0]!, texts: { ...previewPages[0]!.texts, divider: '#C0392B', title: 'X' } },
       previewPages[1]!,
     ];
-    assert.deepEqual(draft.pages, expectedPages, 'applyTheme folds the theme patch into draft_json pages');
+    assert.deepEqual(stripPagesHtml(draft.pages), expectedPages, 'applyTheme folds the theme patch into draft_json pages');
     const byId = new Map(draft.tree.chapters.map((c) => [c.chapterId, c]));
     assert.equal(byId.get('c1')?.accentColor, '#C0392B');
     assert.equal(byId.get('c1')?.artFont, 'script-elegant');
@@ -1282,8 +1292,8 @@ test('finalize: uses draft_json.pages even when album_pages differs', async (t) 
     });
 
     const res = await albumService.finalize(user.id, albumId, 'en');
-    assert.deepEqual(res.layout.pages, albumPages);
-    assert.deepEqual(payload.pages, albumPages);
+    assert.deepEqual(stripPagesHtml(res.layout.pages), albumPages);
+    assert.deepEqual(stripPagesHtml(payload.pages), albumPages);
   } finally {
     await cleanupUser(user.id);
   }

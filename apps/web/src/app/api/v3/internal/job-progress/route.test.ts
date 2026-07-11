@@ -60,6 +60,16 @@ async function seed(userId: string) {
   return { albumId: album.id, holdId: hold.id, requestId };
 }
 
+
+// C 方案:落库页面带烘出的 html;槽位断言剥掉它逐一比对。
+function stripPagesHtml(pages: unknown): unknown {
+  if (!Array.isArray(pages)) return pages;
+  return pages.map((p) => {
+    const { html: _html, ...rest } = p as Record<string, unknown>;
+    return rest;
+  });
+}
+
 test('rejects a wrong shared secret with 401', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const res = await post(
@@ -215,7 +225,8 @@ test('select-layout/completed under EDITING (时序反转) → merges pages + st
 
     const album = await albumRepo.findById(albumId);
     assert.equal(album?.status, 'EDITING');
-    assert.deepEqual(album?.draftJson, {
+    const draftJson = album?.draftJson as { pages?: unknown } & Record<string, unknown>;
+    assert.deepEqual({ ...draftJson, pages: stripPagesHtml(draftJson.pages) }, {
       version: 'v3-story',
       tree: TREE,
       pages: PAGES,

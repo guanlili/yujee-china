@@ -13,6 +13,9 @@ export interface EditorPage {
   textsJson: Record<string, string>;
   // Optional per-slot position/scale overrides. Absent => render default 50/50/1.
   imagePosJson?: Record<string, ImagePos>;
+  // 页面 HTML 真相(C 方案):存在时画板优先渲染它(含 AI/用户手工版面);
+  // 图片 src 为 {{IMG_SRC:slotId}} token,展示前经 page-html-dom 解析。
+  htmlJson?: string;
 }
 
 export interface AlbumInfo {

@@ -276,6 +276,7 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
     imagesJson: { ...p.imagesJson },
     textsJson: { ...p.textsJson },
     imagePosJson: { ...(p.imagePosJson ?? {}) },
+    htmlJson: p.htmlJson,
   }));
   return (
     <EditorShell
@@ -2139,6 +2140,7 @@ function EditorBook({
         imagesJson: { ...p.imagesJson },
         textsJson: { ...p.textsJson },
         imagePosJson: { ...(p.imagePosJson ?? {}) },
+        htmlJson: p.htmlJson,
       }));
       ensureCurrentFonts();
       rebuildSpreads();
