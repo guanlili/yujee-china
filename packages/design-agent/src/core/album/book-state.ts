@@ -36,6 +36,9 @@ export interface AlbumPage {
 	images: Record<string, string>;
 	texts: Record<string, string>;
 	imagePos?: Record<string, { x: number; y: number; scale: number }> | null;
+	/** 页面 HTML 真相(C 方案,契约 Page.html 镜像):存在时渲染/AI 读写以它为准,
+	 * texts 降级为派生缓存。图片 src 保持 {{IMG_SRC:slotId}} token。 */
+	html?: string;
 }
 
 export interface AlbumBookState {

@@ -14,6 +14,8 @@ import {
 } from "./book-state.ts";
 import { createDefaultAlbumSkills } from "./skills.ts";
 import { type FontRole, fontAllowsRole, fontsForRole, getFontEntry } from "./font-registry.ts";
+import { derivePageTexts, patchHtmlText, validatePageHtml } from "./html-guard.ts";
+import { bakeAlbumPageHtml, ensureAlbumPageHtml } from "./page-html.ts";
 import { parseThemeCarrierKey, type TemplateCatalog, type TemplateCatalogEntry } from "./templates-catalog.ts";
 
 export interface AlbumToolsOptions {
@@ -116,6 +118,7 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 		createSearchBookTool(options),
 		createListTemplatesTool(options),
 		createUpdatePageTextsTool(options),
+		createWritePageHtmlTool(options),
 		createSwapPageTemplateTool(options),
 		createUpdatePageImagesTool(options),
 		createSetTextColorsTool(options),
@@ -159,6 +162,9 @@ function readPagePayload(state: AlbumBookState, catalog: TemplateCatalog, pageNo
 		texts: page.texts,
 		textSlotDefs: template.textSlotIds.map((slotId) => describeTextSlot(template, slotId)),
 		repeatTextSlotBases: template.repeatTextSlotBases.map((base) => `${base}[n]`),
+		// 页面真相:完整 HTML(C 方案)。改版面/内容优先用 write_page_html 整页交回;
+		// 只改文字用 update_page_texts 更省。图片 src 是 {{IMG_SRC:slotId}} token,别动。
+		html: ensureAlbumPageHtml(page),
 	};
 }
 
@@ -307,14 +313,93 @@ function createUpdatePageTextsTool(
 
 			const nextState = cloneAlbumBookState(state);
 			const operations: string[] = [];
+			const notes: string[] = [];
 			for (const update of params.updates) {
 				const nextPage = requirePage(nextState, update.pageNo);
+				let carrierTouched = false;
 				for (const [slotId, value] of Object.entries(update.texts)) {
 					nextPage.texts[slotId] = value;
+					if (parseThemeCarrierKey(slotId)) carrierTouched = true;
 					operations.push(`p${update.pageNo}:texts.${slotId}`);
 				}
+				// C 方案:html 是页面真相,槽位改字要同步进 html。
+				// 普通槽 → 原位 patch(保留该页手工版面);carrier 键(色/字体)烘不进
+				// 现有 html,只能重烘 → 该页手工版面改动会被模板重置,结果里告知。
+				if (carrierTouched) {
+					nextPage.html = undefined;
+					nextPage.html = bakeAlbumPageHtml(nextPage);
+					notes.push(`第 ${update.pageNo} 页涉及主题 carrier,已从模板重烘(该页手工版面改动被重置)`);
+					continue;
+				}
+				let html = ensureAlbumPageHtml(nextPage);
+				if (!html) continue; // 模板未注册(迁移过渡期):texts 已更新,html 留给渲染端回退
+				for (const [slotId, value] of Object.entries(update.texts)) {
+					const patched = patchHtmlText(html, slotId, value);
+					if (patched === null) {
+						notes.push(`第 ${update.pageNo} 页槽 ${slotId} 在 html 里没有锚点(可能被历史编辑移除),该槽文字只更新了数据层`);
+						continue;
+					}
+					html = patched;
+				}
+				nextPage.html = html;
 			}
-			return commitWrite(options, nextState, { pageNo: params.updates[0].pageNo, operations });
+			return commitWrite(options, nextState, { pageNo: params.updates[0].pageNo, operations, notes });
+		},
+	};
+}
+
+const writePageHtmlSchema = Type.Object({
+	pageNo: Type.Number({ description: "要改写的页码(从 1 开始)。" }),
+	html: Type.String({ description: "整页新 HTML(以 read_page 返回的 html 为基础修改后完整交回)。" }),
+});
+
+type WritePageHtmlInput = Static<typeof writePageHtmlSchema>;
+
+function createWritePageHtmlTool(
+	options: AlbumToolsOptions,
+): AgentTool<typeof writePageHtmlSchema, AlbumWriteDetails> {
+	return {
+		name: "write_page_html",
+		label: "改写页面 HTML",
+		description:
+			"整页改写页面 HTML(版面/内容自由编辑的首选):以 read_page 的 html 为基础修改后完整交回。硬约束:原有 data-text-key / data-image-slot 锚点一个不能删(可挪位置/改样式);图片 src 必须保持 {{IMG_SRC:slotId}} token;禁 script/事件属性/外链;根节点 data-template 不可改(换排版用 swap_page_template)。违反会被拒绝并返回原因。",
+		parameters: writePageHtmlSchema,
+		prepareArguments(args: unknown): WritePageHtmlInput {
+			if (!isRecord(args)) return { pageNo: -1, html: "" };
+			return {
+				pageNo: readNumber(args.pageNo) ?? readNumber(args.pageIndex) ?? -1,
+				html: typeof args.html === "string" ? args.html : "",
+			};
+		},
+		async execute(
+			_toolCallId: string,
+			params: WritePageHtmlInput,
+		): Promise<AgentToolResult<AlbumWriteDetails>> {
+			const state = options.getBookState();
+			const page = requirePage(state, params.pageNo);
+			if (!params.html.trim()) throw new Error("html 不能为空。以 read_page 返回的 html 为基础修改后完整交回。");
+			const prevHtml = ensureAlbumPageHtml(page);
+			if (!prevHtml) {
+				throw new Error(`第 ${params.pageNo} 页的模板 ${page.templateId} 尚无 HTML 基线,暂不能整页改写。`);
+			}
+			const errors = validatePageHtml(prevHtml, params.html, page.templateId);
+			if (errors.length > 0) {
+				throw new Error(`页面 HTML 校验未通过:\n${errors.map((e) => `- ${e}`).join("\n")}`);
+			}
+
+			const nextState = cloneAlbumBookState(state);
+			const nextPage = requirePage(nextState, params.pageNo);
+			nextPage.html = params.html.trim();
+			// texts 从 html 派生(装书校验/搜索用);carrier 键(#accentColor 等)保留原值。
+			const derived = derivePageTexts(nextPage.html);
+			for (const [slotId, value] of Object.entries(derived)) {
+				nextPage.texts[slotId] = value;
+			}
+			return commitWrite(options, nextState, {
+				pageNo: params.pageNo,
+				operations: [`p${params.pageNo}:html`],
+				notes: [`texts 已从 html 派生同步(${Object.keys(derived).length} 个槽)`],
+			});
 		},
 	};
 }
@@ -359,6 +444,10 @@ function createSwapPageTemplateTool(
 
 			const notes: string[] = [];
 			const nextPage = migratePageToTemplate(page, nextTemplate, notes);
+			// 结构性操作:从新模板重新生成页面 HTML,旧页(含手工版面改动)整体重置。
+			nextPage.html = undefined;
+			nextPage.html = bakeAlbumPageHtml(nextPage);
+			notes.push("页面 HTML 已按新模板重新生成(原手工版面改动被重置)");
 			const nextState = cloneAlbumBookState(state);
 			nextState.pages[params.pageNo - 1] = nextPage;
 			return commitWrite(options, nextState, {
@@ -484,7 +573,12 @@ function createSetTextColorsTool(
 					affectedByKind[kind] = (affectedByKind[kind] ?? 0) + 1;
 					touched = true;
 				}
-				if (touched) affectedPageNos.push(index + 1);
+				if (touched) {
+					affectedPageNos.push(index + 1);
+					// 主题一键渲染是结构性操作:烘进 html(该页手工版面改动被模板重置)。
+					page.html = undefined;
+					page.html = bakeAlbumPageHtml(page);
+				}
 			}
 
 			if (affectedPageNos.length === 0) {
@@ -574,7 +668,11 @@ function createSetTextFontsTool(
 					affectedByKind[kind] = (affectedByKind[kind] ?? 0) + 1;
 					touched = true;
 				}
-				if (touched) affectedPageNos.push(index + 1);
+				if (touched) {
+					affectedPageNos.push(index + 1);
+					page.html = undefined;
+					page.html = bakeAlbumPageHtml(page);
+				}
 			}
 
 			if (affectedPageNos.length === 0) {
