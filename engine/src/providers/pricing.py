@@ -64,6 +64,7 @@ _PRICING: dict[str, _ModelPricing] = {
         ),
     ),
     "deepseek-v4-pro": _flat("USD", 0.435, 0.87),
+    "deepseek-v4-flash": _flat("USD", 0.14, 0.28),
     "gpt-5-4-mini": _flat("USD", 0.75, 4.5),
     "gemini-2-5-flash": _flat("USD", 0.30, 2.50),
 }

@@ -36,6 +36,11 @@ def test_deepseek_and_dotted_model_ids():
     }
 
 
+def test_deepseek_v4_flash():
+    cost = estimate_cost("deepseek-v4-flash-260425", 1_000_000, 1_000_000)
+    assert cost == {"currency": "USD", "input": 0.14, "output": 0.28, "total": 0.42}
+
+
 def test_seed_2_0_lite_prefix_beats_shorter_match():
     cost = estimate_cost("doubao-seed-2-0-lite-260428", 10_000, 10_000)
     assert cost is not None
