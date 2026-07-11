@@ -5,6 +5,7 @@ import {
   type AdaptablePage,
   type ResolveImage,
 } from '@/components/album/adapt-layout';
+import { resolveDisplayHtml } from '@/components/album/page-html-dom';
 import { renderPageHtml } from '@/components/album/templates/html/fill-template';
 import { PAGE } from '@/components/album/templates/constants';
 import { getWebTemplate } from '@/components/album/web-registry';
@@ -26,8 +27,16 @@ export interface RasterPdfOptions {
   onProgress?: (done: number, total: number) => void;
 }
 
-// 一页 → 屏幕渲染的 HTML 字符串（HTML 模板优先，未迁回退 React 组件——与 faceInner 同源）。
-function renderFaceHtml(page: AdaptablePage, resolveImage: ResolveImage, total: number): string {
+// 一页 → 屏幕渲染的 HTML 字符串:存库 html(页面真相,含手工版面)优先,
+// 缺失回退模板即时渲染,再缺回退 React 组件(与画板同源)。
+function renderFaceHtml(
+  page: AdaptablePage & { html?: string },
+  resolveImage: ResolveImage,
+  total: number,
+): string {
+  if (typeof page.html === 'string' && page.html.length > 0) {
+    return resolveDisplayHtml(page.html, page.images, resolveImage);
+  }
   const html = renderPageHtml(
     { templateId: page.templateId, images: page.images, texts: page.texts, imagePos: page.imagePos },
     resolveImage,
@@ -42,7 +51,7 @@ function renderFaceHtml(page: AdaptablePage, resolveImage: ResolveImage, total: 
 }
 
 export async function renderAlbumPdfRaster(
-  pages: AdaptablePage[],
+  pages: (AdaptablePage & { html?: string })[],
   resolveImage: ResolveImage,
   options: RasterPdfOptions = {},
 ): Promise<Blob> {

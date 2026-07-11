@@ -2148,8 +2148,8 @@ function EditorBook({
       return true;
     }
 
-    // Export: render the PDF in the browser (@react-pdf), download it locally,
-    // and upload straight to R2 (bytes never touch the Web tier — invariant 4).
+    // Export: render the PDF in the browser (raster screenshot), download it
+    // locally, and upload straight to R2 (bytes never touch the Web tier — invariant 4).
     // WP5.3 / §4.5d:连续 3 次导出失败后的安抚弹框开/关。复用编辑器既有的
     // .modal-overlay/.open 视觉(同 photoModal),只读 i18n 文案,不碰积分/不发飞书。
     function openExportFailModal() { byId('exportFailModal')?.classList.add('open'); }
@@ -2168,19 +2168,14 @@ function EditorBook({
       try {
         const adaptable = pagesState.map((p) => ({
           templateId: p.templateId, images: p.imagesJson, texts: p.textsJson, imagePos: p.imagePosJson,
+          html: p.htmlJson,
         }));
         const ids = collectPhotoIds(adaptable);
-        // 收敛单渲染器试点：NEXT_PUBLIC_PDF_RASTER=1 时走栅格 PDF（截屏幕渲染，与画布
-        // 像素级一致，消除 index↔pdf 分歧）；否则维持现有 @react-pdf 矢量导出。栅格导出
-        // 喂高分辨率原图（否则 1600px 源图被放大 3 倍会糊）。
-        if (process.env.NEXT_PUBLIC_PDF_RASTER === '1') {
-          const dataUrls = await photoStore.getPdfDataUrls(ids, RASTER_PDF_IMAGE_MAX_EDGE);
-          const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
-          return await renderAlbumPdfRaster(adaptable, (id) => dataUrls[id], { scale: 3 });
-        }
-        const dataUrls = await photoStore.getPdfDataUrls(ids);
-        const { renderAlbumPdf } = await import('@/lib/pdf/render');
-        return await renderAlbumPdf(adaptable, (id) => dataUrls[id]);
+        // C 方案:PDF 导出 = 栅格截屏幕渲染(存库 html 优先,与画布像素级一致)。
+        // 矢量导出路径已退役(消费不了自由 HTML)。喂高分辨率原图,防放大糊。
+        const dataUrls = await photoStore.getPdfDataUrls(ids, RASTER_PDF_IMAGE_MAX_EDGE);
+        const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
+        return await renderAlbumPdfRaster(adaptable, (id) => dataUrls[id], { scale: 3 });
       } catch (e) {
         throw new ExportError('render', e instanceof Error ? e.message : String(e));
       }

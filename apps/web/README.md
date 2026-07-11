@@ -78,7 +78,7 @@ Key files:
 - 用户改字走 html 原位补丁(锚点 `data-text-key`),AI/用户手工版面不被覆盖;
   换模板/主题一键会从模板重烘(手工版面重置,属预期)。
 - PDF 导出只剩栅格路径(`lib/pdf/render-raster.ts`,html2canvas 截存库 html);
-  @react-pdf 矢量路径已退役。
+  矢量 PDF 路径已退役。
 
 ## Database Boundary
 

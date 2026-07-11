@@ -7,7 +7,7 @@ import { WebImage } from '../web-utils';
 // 手写矢量节点 = Figma node 12:196（viewBox 0 0 274 207，22 条 path，原 fill #36312B → 改黑 #1c1b18）。
 // web 端把那段原始 SVG 内联(dangerouslySetInnerHTML)到绝对定位的 div，按帧 12:196 的 x162 y168
 // w274 h207 ×1.3344 摆放，SVG viewBox 自身缩放填满。6 个图框各按 x/y/w/h ×1.3344 绝对定位。
-// PDF 端（pdf.tsx）把同一批 path 搬进 @react-pdf 的 <Svg>/<Path>，同坐标同版面。
+// (矢量 PDF 端已退役,导出走栅格截屏,同坐标同版面。)
 
 // 手写草书矢量副标题（Figma node 12:196，viewBox 0 0 274 207，22 条 path，ink #1c1b18）。
 // 固定装饰，非文字槽、不可填。

@@ -12,9 +12,9 @@ export type {
   GridCell,
 } from '@yujee/contracts/render';
 
+// 矢量 PDF 渲染器已退役(C 方案:页面真相 = HTML,导出走栅格截屏),条目只剩 web 组件。
 export interface TemplateEntry {
   id: string;
   label: string;
   WebTemplate: ComponentType<TemplateRenderProps>;
-  PdfTemplate: ComponentType<TemplateRenderProps>;
 }

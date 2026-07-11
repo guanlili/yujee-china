@@ -1,9 +1,8 @@
 import type { ComponentType } from 'react';
 import type { TemplateRenderProps } from './templates/types';
 
-// Web templates only — none of these import @react-pdf/renderer. The editor
-// imports this (not templates/registry.ts, which pulls in every pdf.tsx) so
-// the editor's first-load JS stays free of the PDF runtime (B8 review item 2).
+// Web templates only。矢量 PDF 渲染已退役(C 方案:页面真相 = HTML,导出走栅格
+// 截屏),这里是唯一的渲染真相注册表:编辑器画板和导出截屏渲染的都是它。
 
 import { WebMag01 } from './templates/mag-01';
 import { WebMag02 } from './templates/mag-02';

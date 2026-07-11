@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Locale } from '@/lib/i18n/routing';
 import { getMessages } from '@/lib/i18n/messages';
-import { photoStore } from '@/lib/photo/store';
+import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
 import { collectPhotoIds } from './adapt-layout';
 import { FlipBook } from './FlipBook';
 import { PageEditPanel } from './PageEditPanel';
@@ -138,9 +138,9 @@ export function AlbumEditor({ detail, locale }: Props) {
     setExportErr(null);
     try {
       const ids = collectPhotoIds(adaptable);
-      const dataUrls = await photoStore.getPdfDataUrls(ids);
-      const { renderAlbumPdf } = await import('@/lib/pdf/render');
-      const blob = await renderAlbumPdf(adaptable, (id) => dataUrls[id]);
+      const dataUrls = await photoStore.getPdfDataUrls(ids, RASTER_PDF_IMAGE_MAX_EDGE);
+      const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
+      const blob = await renderAlbumPdfRaster(adaptable, (id) => dataUrls[id], { scale: 3 });
 
       // Always offer the locally-rendered file so export is useful even if R2
       // isn't configured (e.g. local mock runs).

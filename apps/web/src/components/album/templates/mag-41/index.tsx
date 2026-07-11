@@ -10,7 +10,7 @@ import { WebImage } from '../web-utils';
 // 由最外层 overflow:hidden 裁掉。手写矢量是固定 furniture、**不进契约**：web 端把这段
 // 原始 SVG 标记直接内联（dangerouslySetInnerHTML）到一个按 12:4 帧 x/y/w/h ×1.3344
 // 绝对定位的 div（top 为负、溢出被裁），SVG 自身的 viewBox 缩放填满该框。
-// PDF 端把同一批 path 搬进 @react-pdf 的 <Svg>/<Path>（见 pdf.tsx），同一坐标同一版面。
+// (矢量 PDF 端已退役,导出走栅格截屏,同一坐标同一版面。)
 
 // 手写草书矢量「be here now」（Figma node 12:4 子内容，9 条 path，原 #36312B → ink
 // #1c1b18）。path 导出时被剪到内容顶端（y≈6..63），而它在 12:4 帧本地坐标里其实在

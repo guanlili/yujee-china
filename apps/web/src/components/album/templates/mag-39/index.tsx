@@ -9,7 +9,7 @@ import { WebImage } from '../web-utils';
 // 手写矢量是固定 furniture、**不进契约**——web 端把 node 11:403 导出的原始 SVG
 // （viewBox 0 0 395 265，27 条 path，原 fill #36312B→改成黑 #1c1b18）直接内联
 // (dangerouslySetInnerHTML) 到绝对定位的 div，按 figure 节点 x150 y83 w395 h265 ×1.3344
-// 摆放（left200 top111 w527 h354）。PDF 端把同一批 path 搬进 @react-pdf 的 <Svg>/<Path>。
+// 摆放（left200 top111 w527 h354）。(矢量 PDF 端已退役,导出走栅格截屏。)
 
 const INK = '#1c1b18';
 

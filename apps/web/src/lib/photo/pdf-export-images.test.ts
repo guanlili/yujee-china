@@ -34,7 +34,13 @@ test('PDF export uses bounded PDF data URLs, not raw original data URLs', () => 
     ['AlbumEditor', albumEditor],
     ['EditorPort', editorPort],
   ] as const) {
-    assert.match(src, /photoStore\.getPdfDataUrls\(ids\)/, `${name} must use PDF-sized images`);
+    // 栅格导出（html2canvas 高倍截图）需要更高的上限,但仍必须走有界的
+    // getPdfDataUrls 通道,绝不直接喂原图 data URL。
+    assert.match(
+      src,
+      /photoStore\.getPdfDataUrls\(ids, RASTER_PDF_IMAGE_MAX_EDGE\)/,
+      `${name} must use PDF-sized images`,
+    );
     assert.doesNotMatch(src, /photoStore\.getDataUrls\(ids\)/, `${name} must not export raw originals`);
   }
 });

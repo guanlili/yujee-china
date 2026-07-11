@@ -52,10 +52,11 @@ export const WEB_FONTS = {
   parisienne: '"Parisienne", "Noto Serif SC", "Songti SC", cursive',
 } as const;
 
-// 字体在导出时由 pdf-utils.tsx 的 registerPdfFonts 动态注册(POST /api/v1/fonts/subset
-// 按本册实际用字现切的 Noto SC subset,见 #31)。
-// 模板里 serif* / sans* 槽位承载动态文案,语言不固定(中/英都可能),而
-// @react-pdf 没有逐字回退 —— 所以 serif/sans 一律指向覆盖拉丁+中文的 Noto SC,
+// (历史:矢量 PDF 导出时代由 registerPdfFonts 动态注册,POST /api/v1/fonts/subset
+// 按本册实际用字现切的 Noto SC subset,见 #31。矢量路径已退役,导出走栅格截屏,
+// 但这些 family 名仍是 theme-carrier pdfFontFamily 语义的一部分。)
+// 模板里 serif* / sans* 槽位承载动态文案,语言不固定(中/英都可能),旧矢量渲染器
+// 没有逐字回退 —— 所以 serif/sans 一律指向覆盖拉丁+中文的 Noto SC,
 // 任何槽位收到中文都不再回退成「口口」。Noto SC 自带高质量拉丁字形,英文版式不受损。
 // mono 只用于 VOL/日期/「MEMOIR」等拉丁装饰标签,保留内置 Courier。
 export const PDF_FONTS = {
@@ -71,8 +72,8 @@ export const PDF_FONTS = {
   serifEn: 'NotoSerifSC',
   sansEn: 'NotoSansSC',
   mono: 'Courier',
-  // 真拉丁字体（仅英文安全，无中文字形）——画布模板的英文槽用，和 web 一致；
-  // 由 pdf-utils registerPdfFonts 从 /fonts/*.ttf 注册（与 web @font-face 同一份文件）。
+  // 真拉丁字体（仅英文安全，无中文字形）——画布模板的英文槽用，和 web 一致
+  // （与 web @font-face 同一份 /fonts/*.ttf 文件）。
   garamond: 'EB Garamond',
   interEn: 'Inter',
   playfair: 'Playfair Display',
