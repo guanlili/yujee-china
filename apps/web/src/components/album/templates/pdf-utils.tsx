@@ -124,6 +124,11 @@ export function PdfPageShell({ children, dark, fontFamily }: PdfPageProps) {
   return (
     <Page
       size={[PAGE.width, PAGE.height]}
+      // 相册页全部是固定 A4 绝对定位版面,永远单页:关掉 @react-pdf 的自动分页。
+      // 开着时,底边超出页高的绝对定位 Text(如 mag-45/53 的大标题换行后)会让
+      // 分页器陷入死循环 —— 导出按钮点了主线程直接卡死(实测)。溢出内容按
+      // web 同义裁切在页内。
+      wrap={false}
       style={{
         position: 'relative',
         backgroundColor: dark ? COLORS.ink : '#FFFFFF',

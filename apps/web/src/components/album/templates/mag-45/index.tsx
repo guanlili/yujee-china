@@ -1,5 +1,5 @@
 import type { TemplateRenderProps } from '../types';
-import { PAGE } from '../constants';
+import { fitDisplayFontSize, PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
 
@@ -21,7 +21,7 @@ export function WebMag45({ data, imagePos }: TemplateRenderProps) {
       <WebImage src={d['image']} style={{ position: 'absolute', left: 148, top: 35, width: 606, height: 927, objectFit: 'cover' }} position={imagePos?.['image']} slotId="image" />
 
       {/* ── 底部大号主标题（槽 title，variableDecor） ── */}
-      <div style={{ position: 'absolute', left: 31, top: 969, width: 723, height: 155, fontFamily: titleTheme.webFontFamily, fontWeight: 700, fontSize: 120, lineHeight: 1, color: titleTheme.accentColor ?? INK, whiteSpace: 'nowrap', overflow: 'hidden' }}>{title}</div>
+      <div style={{ position: 'absolute', left: 31, top: 969, width: 723, height: 155, fontFamily: titleTheme.webFontFamily, fontWeight: 700, fontSize: fitDisplayFontSize(title, 700, 120, 40), lineHeight: 1, color: titleTheme.accentColor ?? INK, whiteSpace: 'nowrap', overflow: 'hidden' }}>{title}</div>
     </div>
   );
 }

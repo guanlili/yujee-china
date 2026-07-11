@@ -1,5 +1,5 @@
 import { Text, View } from '@react-pdf/renderer';
-import { PAGE, PDF_FONTS } from '../constants';
+import { fitDisplayFontSize, PAGE, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
 import type { TemplateRenderProps } from '../types';
@@ -24,7 +24,7 @@ export function PdfMag45({ data, imagePos }: TemplateRenderProps) {
       <PdfImage src={d['image']} style={{ position: 'absolute', left: 148, top: 35, width: 606, height: 927 }} position={imagePos?.['image']} />
 
       {/* ── 底部大号主标题（槽 title，variableDecor） ── */}
-      <Text style={{ position: 'absolute', left: 31, top: 969, width: 723, fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 120, lineHeight: 1, color: titleTheme.accentColor ?? INK }}>{title}</Text>
+      <Text style={{ position: 'absolute', left: 31, top: 969, width: 723, fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: fitDisplayFontSize(title, 700, 120, 40), lineHeight: 1, color: titleTheme.accentColor ?? INK }}>{title}</Text>
     </PdfPageShell>
   );
 }
