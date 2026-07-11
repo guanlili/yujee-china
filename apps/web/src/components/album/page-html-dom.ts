@@ -61,3 +61,44 @@ export function patchHtmlText(html: string, slotId: string, value: string): stri
   if (end === -1) return null;
   return html.slice(0, start) + escapeHtmlText(value) + html.slice(end);
 }
+
+// ── 页签(folio)覆盖层 ─────────────────────────────────────────────────────
+// 页码不再依赖烘进 html 的 folio 槽(重排页序后必然过期):展示层每次按当前页序
+// 计算,统一小样式固定右下角;封面/目录/封尾不编号。模板遗留的 folio 槽元素在
+// 展示时隐藏(存库 html 不动,锚点契约不受影响)。
+
+import { getTemplate } from '@yujee/contracts/templates';
+
+const NON_FOLIO_CATEGORIES = new Set(['cover', 'toc', 'ending']);
+
+/** 按当前页序给每页算页签:内页从 1 连续编号,封面/目录/封尾为 null。 */
+export function pageFolioNumbers(templateIds: string[]): (number | null)[] {
+  let n = 0;
+  return templateIds.map((id) => {
+    const category = getTemplate(id)?.category;
+    if (category && NON_FOLIO_CATEGORIES.has(category)) return null;
+    n += 1;
+    return n;
+  });
+}
+
+const FOLIO_ANCHOR_OPEN_RE = /<([a-z0-9]+)((?:[^>]*?)data-text-key="folio(?:\[\d+\])?"[^>]*)>/gi;
+
+/** 展示层页签:隐藏模板遗留 folio 元素;folio 非 null 时在右下角注入统一页码。 */
+export function applyFolioOverlay(html: string, folio: number | null): string {
+  let out = html.replace(FOLIO_ANCHOR_OPEN_RE, (_full, tag: string, attrs: string) => {
+    const nextAttrs = attrs.includes('style="')
+      ? attrs.replace('style="', 'style="display:none;')
+      : `${attrs} style="display:none"`;
+    return `<${tag}${nextAttrs}>`;
+  });
+  if (folio !== null) {
+    const overlay =
+      `<div data-page-folio="true" style="position:absolute;right:36px;bottom:26px;` +
+      `font-size:12px;letter-spacing:0.12em;color:#a09b8e;` +
+      `font-family:'Inter','Noto Sans SC',sans-serif;pointer-events:none">${folio}</div>`;
+    const closeAt = out.lastIndexOf('</div>');
+    if (closeAt >= 0) out = out.slice(0, closeAt) + overlay + out.slice(closeAt);
+  }
+  return out;
+}

@@ -25,7 +25,7 @@ import { YujeeState } from '@/components/app/YujeeState';
 import { getWebTemplate } from '../web-registry';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
-import { renderPageHtml } from '../templates/html/fill-template';
+import { applyFolioOverlay, pageFolioNumbers, preferredPageHtml } from '../page-html-dom';
 import { PAGE } from '../templates/constants';
 import { clampZoom, paintDecision } from './zoom-util';
 import {
@@ -773,11 +773,12 @@ function EditorBook({
     // HTML 模板已迁移的（如 mag-01）走单一 HTML 渲染器；未迁的回退现有 React 组件。
     function faceInner(page: EditorPage | null): string {
       if (!page) return '';
-      const html = renderPageHtml(
-        { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson, imagePos: page.imagePosJson },
-        resolveImage,
-      );
-      if (html !== undefined) return html;
+      // 页面真相 = 存库 html(含 AI/用户手工版面);页签按当前页序展示层计算,
+      // 覆盖模板遗留 folio(封面/封尾不编号)。
+      const folios = pageFolioNumbers(pagesState.map((p) => p.templateId));
+      const folio = folios[pagesState.indexOf(page)] ?? null;
+      const html = preferredPageHtml(page, resolveImage);
+      if (html !== undefined) return applyFolioOverlay(html, folio);
       const Template = getWebTemplate(page.templateId);
       if (!Template) {
         return `<div style="padding:24px;font-size:14px">Unknown template: ${page.templateId}</div>`;
@@ -786,8 +787,9 @@ function EditorBook({
         { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson },
         resolveImage,
       );
-      return renderToStaticMarkup(
-        <Template data={data} totalPages={total} imagePos={page.imagePosJson} />,
+      return applyFolioOverlay(
+        renderToStaticMarkup(<Template data={data} totalPages={total} imagePos={page.imagePosJson} />),
+        folio,
       );
     }
     // The 794×1123 page scaled to fill the given box (matches FlipBook PageFace).

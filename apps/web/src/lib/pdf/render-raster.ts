@@ -5,7 +5,7 @@ import {
   type AdaptablePage,
   type ResolveImage,
 } from '@/components/album/adapt-layout';
-import { resolveDisplayHtml } from '@/components/album/page-html-dom';
+import { applyFolioOverlay, pageFolioNumbers, resolveDisplayHtml } from '@/components/album/page-html-dom';
 import { renderPageHtml } from '@/components/album/templates/html/fill-template';
 import { PAGE } from '@/components/album/templates/constants';
 import { getWebTemplate } from '@/components/album/web-registry';
@@ -33,15 +33,16 @@ function renderFaceHtml(
   page: AdaptablePage & { html?: string },
   resolveImage: ResolveImage,
   total: number,
+  folio: number | null = null,
 ): string {
   if (typeof page.html === 'string' && page.html.length > 0) {
-    return resolveDisplayHtml(page.html, page.images, resolveImage);
+    return applyFolioOverlay(resolveDisplayHtml(page.html, page.images, resolveImage), folio);
   }
   const html = renderPageHtml(
     { templateId: page.templateId, images: page.images, texts: page.texts, imagePos: page.imagePos },
     resolveImage,
   );
-  if (html !== undefined) return html;
+  if (html !== undefined) return applyFolioOverlay(html, folio);
   const Template = getWebTemplate(page.templateId);
   if (!Template) return `<div style="padding:24px;font-size:14px">Unknown template: ${page.templateId}</div>`;
   const data = adaptPageToTemplateData(page, resolveImage);
@@ -69,6 +70,8 @@ export async function renderAlbumPdfRaster(
 
   const doc = new jsPDF({ unit: 'px', format: [PAGE.width, PAGE.height], orientation: 'portrait' });
 
+  // 页签按导出页序计算(内页 1..N;封面/封尾/目录 null),与画板同一套覆盖层。
+  const folios = pageFolioNumbers(pages.map((p) => p.templateId));
   for (let i = 0; i < pages.length; i++) {
     const page = pages[i]!;
     // 离屏 host：固定 794×1123、移出视口，独立于当前缩放/翻页状态。
@@ -76,7 +79,7 @@ export async function renderAlbumPdfRaster(
     host.style.cssText =
       `position:fixed;left:-99999px;top:0;width:${PAGE.width}px;height:${PAGE.height}px;` +
       `overflow:hidden;background:#fff`;
-    host.innerHTML = renderFaceHtml(page, resolveImage, total);
+    host.innerHTML = renderFaceHtml(page, resolveImage, total, folios[i] ?? null);
     document.body.appendChild(host);
     try {
       // 字体就绪后再截，避免中文/艺术字掉成回退字。
