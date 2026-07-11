@@ -423,7 +423,7 @@ export function ChatPanel({
       return {
         kind: textKey && page && !isConfirm ? 'write' : 'talk',
         assistantReply: isConfirm
-          ? aT('我先记下这个确认动作。当前 AI 服务不可用，正式推进分组时需要再点一次确认。', 'I noted that confirmation locally. AI is unavailable, so confirm again once the service is back to advance the chapter.')
+          ? aT('我先记下这个确认动作。当前 AI 服务不可用，正式推进分组时需要再点一次确认。', 'I noted that confirmation locally. AI is unavailable, so confirm again once the service is back to advance the group.')
           : aT('AI 服务暂时不可用，我先用本地 mock 给你一版可编辑结果。', 'AI is temporarily unavailable, so I generated a local mock result you can keep editing.'),
         patches: [],
         ...(textKey && page && !isConfirm
@@ -551,7 +551,7 @@ export function ChatPanel({
         appendAiText(
           e instanceof Error
             ? e.message
-            : aT('确定分组失败，请重试。', 'Could not confirm the chapter. Please try again.'),
+            : aT('确定分组失败，请重试。', 'Could not confirm the group. Please try again.'),
         );
       } finally {
         sending = false;
@@ -671,7 +671,7 @@ export function ChatPanel({
       inner.className = 'palette-card is-recap';
       const title = document.createElement('div');
       title.className = 'pc-title';
-      title.textContent = aT('已应用的主题 · 各组标题', 'Applied theme · chapter titles');
+      title.textContent = aT('已应用的主题 · 各组标题', 'Applied theme · group titles');
       const groups = document.createElement('div');
       groups.className = 'pc-groups';
       chapters.forEach((c, i) => {
@@ -1118,7 +1118,7 @@ export function ChatPanel({
 
     function applyChapterWrite(pagesTexts: V3PageTextsPatch[]): boolean {
       const applied = co()?.applyChapterWrite?.(pagesTexts) ?? false;
-      if (applied) appendStep(aT('✏️ 已为本组写好文案。', '✏️ Wrote this chapter’s copy.'));
+      if (applied) appendStep(aT('✏️ 已为本组写好文案。', '✏️ Wrote this group’s copy.'));
       return applied;
     }
 
@@ -1380,7 +1380,7 @@ export function ChatPanel({
         appendReplyBody(
           host,
           aT('这一组已经确定了——你可以继续下一步，或者从左侧选另一组来调整。',
-             "This chapter is already confirmed — move on, or pick another chapter on the left to tweak."),
+             "This group is already confirmed — move on, or pick another group on the left to tweak."),
         );
         restAwait();
         scrollChat();
@@ -1461,7 +1461,7 @@ export function ChatPanel({
       const idx = skel?.chapters.findIndex((c) => c.chapterId === chapterId) ?? -1;
       if (idx < 0) return null;
       const c = skel!.chapters[idx]!;
-      const tag = aT(`第 ${idx + 1} 组`, `Chapter ${idx + 1}`);
+      const tag = aT(`第 ${idx + 1} 组`, `Group ${idx + 1}`);
       const photoIds = c.photoIds?.length
         ? [...new Set(c.photoIds)]
         : [
@@ -2126,8 +2126,8 @@ export function ChatPanel({
       title.className = 'sc-title';
       title.textContent = opts?.photoOnly
         ? aT('这一组只有照片,准备好进入下一组了吗?',
-             'This chapter is photo-only — ready for the next one?')
-        : aT('这一组写好了,你满意吗?', "Here's this chapter — happy with it?");
+             'This group is photo-only — ready for the next one?')
+        : aT('这一组写好了,你满意吗?', "Here's this group — happy with it?");
       const row = document.createElement('div');
       row.className = 'sc-actions';
 
@@ -2139,7 +2139,7 @@ export function ChatPanel({
         if (sending || confirmingStoryChapter) return;
         row.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
         awaitingSatisfaction = false;
-        appendUserText(aT('满意,继续下一组', 'Looks great — next chapter'));
+        appendUserText(aT('满意,继续下一组', 'Looks great — next group'));
         scrollChat();
         void confirmCurrentChapterViaEditChat();
       });
@@ -2155,7 +2155,7 @@ export function ChatPanel({
         appendUserText(aT('还想再改改', "I'd like to tweak it"));
         appendAiText(
           aT('好的,这一组先留着。哪里不太满意?点开那一页,告诉我想怎么改。',
-             "Sure — let's keep this chapter. What's not quite right? Tap the page you mean and tell me what to change."),
+             "Sure — let's keep this group. What's not quite right? Tap the page you mean and tell me what to change."),
         );
         restAwait();
         scrollChat();
@@ -2184,7 +2184,7 @@ export function ChatPanel({
       body.className = 'ai-text edit-loop-ready';
       body.textContent = aT(
         '排版完成了。现在直接告诉我这一组哪里要改；如果满意，说“可以了”就会继续下一步。',
-        'The layout is ready. Tell me what to change in this chapter, or say “looks good” to continue.',
+        'The layout is ready. Tell me what to change in this group, or say “looks good” to continue.',
       );
       card.appendChild(body);
       chatBody!.appendChild(card);
@@ -2240,7 +2240,7 @@ export function ChatPanel({
       appendAiText(
         aT(
           '旧版聊天改稿已下线，不会再改动当前版面。请继续使用 V3 流程：确认分组故事、选择主题与封面，然后导出 PDF。',
-          'Legacy chat editing has been retired and will no longer change this layout. Continue with the V3 flow: confirm chapter stories, choose the theme and cover, then export the PDF.',
+          'Legacy chat editing has been retired and will no longer change this layout. Continue with the V3 flow: confirm group stories, choose the theme and cover, then export the PDF.',
         ),
       );
       restAwait();

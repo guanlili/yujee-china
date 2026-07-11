@@ -398,7 +398,7 @@ function buildToc(chapters: SkeletonChapterOutput[]): SkeletonPage {
   const texts: Record<string, string> = { title: 'CONTENTS', folio: '02' };
   chapters.forEach((chapter, idx) => {
     texts[`number[${idx}]`] = String(idx + 1).padStart(2, '0');
-    texts[`title[${idx}]`] = String(chapter.cluster?.label ?? chapter.chapterId ?? `Chapter ${idx + 1}`);
+    texts[`title[${idx}]`] = String(chapter.cluster?.label ?? chapter.chapterId ?? `Group ${idx + 1}`);
   });
   return { pageIndex: 0, templateId: TOC_TEMPLATE_ID, images: {}, texts };
 }

@@ -503,7 +503,7 @@ export const albumService = {
     return {
       chapters: normalized.tree.chapters.map((ch, i) => ({
         chapterId: ch.chapterId,
-        label: ch.description || `Chapter ${i + 1}`,
+        label: ch.description || `Group ${i + 1}`,
         role: i === 0 ? 'opening' : i === last ? 'closing' : 'body',
         photoIds: ch.photos.map((photo) => photo.photoId),
         // 采访门槛读取:该章 chapterContext 非空 ⇔ 已采访过(不变式 12:只读派生字段)。
@@ -1481,7 +1481,7 @@ export const albumService = {
       );
       return {
         chapterId: ch.chapterId,
-        label: `Chapter ${i + 1}`,
+        label: `Group ${i + 1}`,
         ...(subject ? { subject } : {}),
         role:
           i === 0
