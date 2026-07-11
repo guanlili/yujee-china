@@ -47,6 +47,11 @@ memoir-agent-rebuild/
 - Web 是 album 和 job 状态的真相源;Agent 不推进 Web 的 `stage`。
 - 原图由 Browser 持有;Web/Agent 不把 base64 落库、落 R2 或写日志。
 - 跨服务字段先看 `packages/contracts/src/v3.ts`,Python 镜像在 `engine/src/schemas.py`。
+- **页面真相 = HTML**:每页 draft 存完整 794×1123 HTML(`Page.html`),画板/PDF/设计对话
+  都消费它;锚点契约 `data-text-key`/`data-image-slot`,图片 src 一律 `{{IMG_SRC:slotId}}`
+  token(渲染时解析,base64 绝不落库)。槽位字段(templateId/images/texts)保留:photo
+  引用、换排版重生成、装书校验的依据;texts 由 html 派生。渲染簇与 48 个 HTML 模板在
+  `packages/contracts/src/render/`。
 - 模板 JSON 在 `packages/contracts/templates/*.json`;生成文件不要手改。
 - 新增顶层目录、跨服务协议、数据库 schema、外部 API 或依赖前,先说明影响面。
 

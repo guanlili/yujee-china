@@ -427,6 +427,8 @@ function parsePage(raw: unknown, index: number): AlbumPage {
 		images: parseStringRecord(raw.images, `pages[${index}].images`),
 		texts: parseStringRecord(raw.texts, `pages[${index}].texts`),
 		imagePos: isRecord(raw.imagePos) ? (raw.imagePos as AlbumPage["imagePos"]) : null,
+		// 页面 HTML 真相(C 方案):Web 落库时已烘;缺失(存量数据)由 page-html 兜底现场烘。
+		html: typeof raw.html === "string" && raw.html.length > 0 ? raw.html : undefined,
 	};
 }
 
