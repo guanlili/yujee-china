@@ -10,6 +10,7 @@ import { renderPageHtml } from '@/components/album/templates/html/fill-template'
 import { PAGE } from '@/components/album/templates/constants';
 import { getWebTemplate } from '@/components/album/web-registry';
 import { loadAlbumFonts } from '@/lib/font/album-font-loader';
+import { injectDocumentFontsInto } from '@/lib/font/clone-document-fonts';
 
 // 栅格 PDF 渲染器（收敛单渲染器）：逐页把「屏幕渲染」离屏渲成 794×1123 → html2canvas
 // 高倍截图 → jsPDF 每页贴图。PDF 因此与屏幕像素级一致，index↔pdf 两套渲染器的分歧
@@ -91,6 +92,8 @@ export async function renderAlbumPdfRaster(
         backgroundColor: '#ffffff',
         useCORS: true,
         logging: false,
+        // 动态字体注入克隆文档,否则克隆里用回退字体测宽 → 词距错位(详见该模块注释)。
+        onclone: injectDocumentFontsInto,
       });
       const img = canvas.toDataURL('image/jpeg', jpegQuality);
       if (i > 0) doc.addPage([PAGE.width, PAGE.height], 'portrait');

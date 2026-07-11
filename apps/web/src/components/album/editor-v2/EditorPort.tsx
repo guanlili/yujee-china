@@ -920,6 +920,7 @@ function EditorBook({
         // throws on modern CSS color functions (oklch/lab/color-mix) that Tailwind
         // v4 emits, which silently broke the inspect→adjust capture.
         const html2canvas = (await import('html2canvas-pro')).default;
+        const { injectDocumentFontsInto } = await import('@/lib/font/clone-document-fonts');
         const canvas = await html2canvas(host, {
           width: PAGE.width,
           height: PAGE.height,
@@ -927,6 +928,8 @@ function EditorBook({
           scale: 1,
           useCORS: true,
           logging: false,
+          // 相册子集字体注入克隆文档,防止截图里文字词距错位(clone-document-fonts)。
+          onclone: injectDocumentFontsInto,
         });
         // Downscale to ~840px wide (payload stays small; plenty for a crop read).
         const targetW = Math.min(840, canvas.width);
