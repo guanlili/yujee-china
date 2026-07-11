@@ -28,6 +28,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { IMAGE_INPUT_ACCEPT } from '@/lib/photo/heic';
+import { renderMarkdownSafe } from '@/lib/markdown/render';
 import {
   chatI18n,
   type ChatCoordinator,
@@ -262,7 +263,8 @@ export function ChatPanel({
       if (opts?.historyReplay) a.dataset.historyReplay = 'true';
       const body = document.createElement('div');
       body.className = 'ai-text';
-      body.textContent = text;
+      // AI 文本按 markdown 渲染(renderMarkdownSafe 已消毒);用户气泡仍走 textContent。
+      body.innerHTML = renderMarkdownSafe(text);
       a.appendChild(body);
       chatBody!.appendChild(a);
       scrollChat();
@@ -374,7 +376,7 @@ export function ChatPanel({
     function appendReplyBody(host: HTMLElement, reply: string): HTMLElement {
       const body = document.createElement('div');
       body.className = 'ai-text';
-      body.textContent = reply;
+      body.innerHTML = renderMarkdownSafe(reply);
       host.appendChild(body);
       return body;
     }
