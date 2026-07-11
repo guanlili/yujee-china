@@ -374,3 +374,158 @@ test('buildJudgeLayoutRequest validates against the strict JudgeLayoutRequest co
 // NOTE: 解耦后两段式(candidates 52 / judge 52→53)的 job 哨兵机制不再适用(排版是独立
 // layout job)。本地走 inline judge、不用两段式,故此处移除旧的两段式 job-sentinel 测试;
 // 两段式若重新启用,需按 layout job 模型另行覆盖(见解耦 plan 后续项)。
+
+// ───────────────── 加照片增量重跑(spec §1):submitAddPhotosV3 + append 回调分支 ─────────────────
+
+const APPEND_PHOTOS = [
+  { photoId: 'np1', base64: 'data:image/jpeg;base64,AA==', width: 800, height: 600, takenAt: null },
+];
+
+const APPEND_TREE = {
+  chapters: [
+    {
+      chapterId: 'ch_1', // 故意与既有 draft 的 ch_1 撞号,验证重映射
+      description: 'New trip',
+      accentColor: null,
+      artFont: null,
+      photos: [
+        {
+          photoId: 'np1',
+          sceneDescription: 'new scene',
+          width: 800,
+          height: 600,
+          orientation: 'landscape' as const,
+          takenAt: null,
+        },
+      ],
+    },
+  ],
+};
+
+// 已排版完的 EDITING 相册(v3-story 包裹 + pages + 全章 done + stage ready)。
+async function seedPagedAlbum(userId: string) {
+  const album = await makeAlbum(userId, { photoCount: 2 });
+  await albumRepo.update(db, album.id, {
+    status: 'EDITING',
+    stage: 'ready',
+    draftJson: {
+      version: 'v3-story',
+      tree: TREE,
+      pages: PAGES,
+      progress: { currentChapterId: null, doneChapterIds: ['ch_1'] },
+    },
+  });
+  return album;
+}
+
+test('submitAddPhotosV3: hold 积分 + kind=add job;analyze 完成合并树/结算/photoCount 累加', async (t: TestContext) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const { creditHoldRepo } = await import('@/db/repos/credit-hold-repo');
+  const { creditService } = await import('@/services/credit/credit-service');
+  const user = await makeUser('add-photos-happy');
+  try {
+    const album = await seedPagedAlbum(user.id);
+    t.mock.method(agentClient, 'submitAnalyzeV3', async () => ({ requestId: 'append-r1' }));
+
+    const before = await creditService.getBalance(user.id);
+    await generationService.submitAddPhotosV3(user.id, album.id, {
+      requestId: 'append-r1',
+      language: 'en',
+      photos: APPEND_PHOTOS,
+    });
+
+    const job = await agentJobRepo.findByRequestId('append-r1');
+    assert.equal(job?.kind, 'add');
+    const held = await albumRepo.findById(album.id);
+    assert.ok(held?.creditHoldId, 'append hold linked on album');
+    const hold = await creditHoldRepo.findById(held!.creditHoldId!);
+    assert.equal(hold?.status, 'HOLDING');
+    assert.equal(hold?.amount, 1); // 1 张 → ceil(1/10)=1
+    assert.equal(await creditService.getBalance(user.id), before); // hold 不动余额
+
+    await jobService.handleV3AnalyzeCompleted('append-r1', APPEND_TREE, USAGE);
+
+    const after = await albumRepo.findById(album.id);
+    const draft = after?.draftJson as {
+      tree: { chapters: Array<{ chapterId: string }> };
+      pages: unknown[];
+      progress: { currentChapterId: string | null; doneChapterIds: string[] };
+    };
+    assert.equal(draft.tree.chapters.length, 2); // 合并,不覆盖
+    assert.equal(draft.tree.chapters[0].chapterId, 'ch_1'); // 老章原样
+    assert.match(draft.tree.chapters[1].chapterId, /^add[0-9a-f]{0,8}.*ch_1$/); // 重映射防撞
+    assert.equal(draft.progress.currentChapterId, draft.tree.chapters[1].chapterId); // cursor 指新章
+    assert.deepEqual(draft.progress.doneChapterIds, ['ch_1']); // 老章 done 不动
+    assert.equal(draft.pages.length, PAGES.length); // 原页保留
+    assert.equal(after?.status, 'EDITING');
+    assert.equal(after?.stage, 'ready'); // 追加不回退 stage
+    assert.equal(after?.photoCount, 3); // 2 + 1
+    const settled = await creditHoldRepo.findById(held!.creditHoldId!);
+    assert.equal(settled?.status, 'SETTLED');
+    assert.equal(await creditService.getBalance(user.id), before - 1); // 结算扣 1
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('submitAddPhotosV3: 无排版页拒绝;在途追加拒绝', async (t: TestContext) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('add-photos-guards');
+  try {
+    // 无 pages 的 draft → VALIDATION_FAILED
+    const bare = await makeAlbum(user.id);
+    await albumRepo.update(db, bare.id, {
+      status: 'EDITING',
+      stage: 'story',
+      draftJson: {
+        version: 'v3-story',
+        tree: TREE,
+        progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
+      },
+    });
+    await assert.rejects(
+      () => generationService.submitAddPhotosV3(user.id, bare.id, {
+        requestId: 'append-g1', language: 'en', photos: APPEND_PHOTOS,
+      }),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+
+    // 在途追加(active add job)→ ALBUM_NOT_EDITABLE
+    const paged = await seedPagedAlbum(user.id);
+    t.mock.method(agentClient, 'submitAnalyzeV3', async () => ({ requestId: 'x' }));
+    await generationService.submitAddPhotosV3(user.id, paged.id, {
+      requestId: 'append-g2', language: 'en', photos: APPEND_PHOTOS,
+    });
+    await assert.rejects(
+      () => generationService.submitAddPhotosV3(user.id, paged.id, {
+        requestId: 'append-g3', language: 'en', photos: APPEND_PHOTOS,
+      }),
+      (err: { code?: string }) => err.code === 'ALBUM_NOT_EDITABLE',
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('append 失败:释放 hold、相册保持 EDITING 不标 FAILED', async (t: TestContext) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const { creditHoldRepo } = await import('@/db/repos/credit-hold-repo');
+  const user = await makeUser('add-photos-fail');
+  try {
+    const album = await seedPagedAlbum(user.id);
+    t.mock.method(agentClient, 'submitAnalyzeV3', async () => ({ requestId: 'append-f1' }));
+    await generationService.submitAddPhotosV3(user.id, album.id, {
+      requestId: 'append-f1', language: 'en', photos: APPEND_PHOTOS,
+    });
+    const held = await albumRepo.findById(album.id);
+
+    await jobService.handleV3Failed('append-f1', { code: 'AGENT_INTERNAL_ERROR', message: 'boom' });
+
+    const after = await albumRepo.findById(album.id);
+    assert.equal(after?.status, 'EDITING'); // 不标 FAILED
+    const hold = await creditHoldRepo.findById(held!.creditHoldId!);
+    assert.equal(hold?.status, 'RELEASED'); // 不扣钱
+  } finally {
+    await cleanupUser(user.id);
+  }
+});

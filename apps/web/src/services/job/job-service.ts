@@ -5,7 +5,12 @@ import { creditService } from '@/services/credit/credit-service';
 import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
 import { transientLayoutCandidates } from '@/services/album/layout-candidates';
-import { V3StoryDraft, type SelectLayoutCandidateUnit } from '@yujee/contracts';
+import { V3LayoutTree, V3StoryDraft, type SelectLayoutCandidateUnit } from '@yujee/contracts';
+import {
+  countTreePhotos,
+  mergeAppendTree,
+  remapAppendChapterIds,
+} from '@/services/album/append-photos';
 
 // 解耦后 analyze 与 layout 是两个独立 job:init job(analyze,0→100)与 layout job(排版,
 // 0→100)各自独立,不再共享一行 agent_jobs 用 50/51/52 哨兵串联。两段式候选流(如重启用)
@@ -120,6 +125,13 @@ export const jobService = {
       if (job.kind === 'layout') {
         return { swept: true, releasedHold: false };
       }
+      // 追加卡死:老书完好,释放追加 hold(不扣钱),相册保持 EDITING 可重试。
+      if (job.kind === 'add') {
+        const appendAlbum = await albumRepo.findById(job.albumId);
+        const appendHoldId = appendAlbum?.creditHoldId ?? null;
+        if (appendHoldId) await creditService.release(tx, appendHoldId);
+        return { swept: true, releasedHold: !!appendHoldId };
+      }
 
       const album = await albumRepo.findById(job.albumId);
       const holdId = album?.creditHoldId ?? null;
@@ -183,6 +195,52 @@ export const jobService = {
       logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 analyze completed');
       return;
     }
+
+    // 追加照片(kind='add'):新章节树「合并」进既有 draft,不覆盖、不动 status/stage。
+    // 新 chapterId 重映射防撞号;photoCount 累加;积分照搬首次口径 analyze 完成即 settle
+    // (hold 在 submitAddPhotosV3 挂到 album.creditHoldId)。
+    if (job.kind === 'add') {
+      const parsedDraft = V3StoryDraft.safeParse(album.draftJson);
+      const parsedTree = V3LayoutTree.safeParse(tree);
+      if (!parsedDraft.success || !parsedTree.success) {
+        logger.warn(
+          { requestId, albumId: job.albumId },
+          'append analyze completed but draft/tree failed to parse',
+        );
+        await this.handleV3Failed(requestId, {
+          code: 'AGENT_INVALID_OUTPUT',
+          message: 'append tree merge failed',
+        });
+        return;
+      }
+      await db.transaction(async (tx) => {
+        const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
+          progress: 100,
+          stage: 'wrap',
+          usage: (usage as Record<string, unknown> | null) ?? null,
+          completedAt: new Date(),
+        });
+        if (!won) return;
+
+        const existingIds = new Set(parsedDraft.data.tree.chapters.map((c) => c.chapterId));
+        const remapped = remapAppendChapterIds(
+          parsedTree.data.chapters,
+          existingIds,
+          `add${job.requestId.replace(/-/g, '').slice(0, 8)}`,
+        );
+        const draftJson = mergeAppendTree(parsedDraft.data, remapped);
+
+        await albumRepo.update(tx, job.albumId, {
+          draftJson,
+          photoCount: album.photoCount + countTreePhotos(remapped),
+        });
+        if (album.creditHoldId) {
+          await creditService.settle(tx, job.userId, album.creditHoldId);
+        }
+      });
+      return;
+    }
+
     await db.transaction(async (tx) => {
       // 解耦:analyze 是 init job 的交付物,完成即 COMPLETED —— 不再停在 layout「等收集」。
       // 相册直接进 EDITING/story(收集态),用户由此进采访编辑器(page.tsx: EDITING &
@@ -286,6 +344,11 @@ export const jobService = {
       // layout job 失败:相册已是 EDITING(草稿完好),保持可编辑,用户可重触发排版。不标相册
       // FAILED、不动积分(积分在 analyze 时已结算,layout job 不挂 hold)。只有 init 失败才失败相册。
       if (job.kind === 'layout') return;
+      // 追加失败:老书完好,只释放追加 hold,不标 FAILED;用户重新点「+」再来一次。
+      if (job.kind === 'add') {
+        await creditService.releaseByAlbum(tx, job.albumId);
+        return;
+      }
       await albumRepo.update(tx, job.albumId, { status: 'FAILED', errorMessage: error.message });
       await creditService.releaseByAlbum(tx, job.albumId);
     });

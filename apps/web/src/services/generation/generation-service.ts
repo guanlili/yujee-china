@@ -8,7 +8,7 @@ import { albumService } from '@/services/album/album-service';
 import { creditService } from '@/services/credit/credit-service';
 import { jobService } from '@/services/job/job-service';
 import { transientLayoutCandidates } from '@/services/album/layout-candidates';
-import { JudgeLayoutRequest, SelectLayoutRequest, V3LayoutTree } from '@yujee/contracts';
+import { JudgeLayoutRequest, SelectLayoutRequest, V3LayoutTree, V3StoryDraft } from '@yujee/contracts';
 import type {
   JudgeLayoutUnit,
   SelectLayoutCandidateUnit,
@@ -108,6 +108,43 @@ export const generationService = {
       language: input.language,
       photos: input.photos,
       ...(album.prompt ? { promptHint: album.prompt } : {}),
+    });
+  },
+
+  // 追加照片(加图增量重跑 spec §1):只把新照片发给 analyze;kind='add' 独立 job;
+  // 积分按新增张数 hold,analyze 完成即 settle(照搬首次生成口径,job-service append 分支)。
+  // (album,kind) 活跃唯一索引兜底防并发追加;书里必须已有排版页(排版完成后才可加图)。
+  async submitAddPhotosV3(
+    userId: string,
+    albumId: string,
+    input: { requestId: string; language: 'zh' | 'en'; photos: V3AnalyzeInput['photos'] },
+  ) {
+    const album = await albumService.findOwned(userId, albumId);
+    if (album.status !== 'EDITING' || album.layoutJson != null) throw ERRORS.ALBUM_NOT_EDITABLE();
+    const draft = V3StoryDraft.safeParse(album.draftJson);
+    if (!draft.success || !draft.data.pages || draft.data.pages.length === 0) {
+      throw ERRORS.VALIDATION_FAILED('add-photos requires laid-out pages');
+    }
+    const amount = creditService.cost(input.photos.length);
+    await creditService.precheck(userId, amount);
+    try {
+      await db.transaction(async (tx) => {
+        await jobService.createGenerationJob(tx, {
+          userId,
+          albumId,
+          requestId: input.requestId,
+          kind: 'add',
+        });
+        await creditService.hold(tx, userId, amount, albumId);
+      });
+    } catch {
+      // (album,'add') 活跃唯一索引撞上 = 已有在途追加;按不可编辑返回,前端提示稍后再试。
+      throw ERRORS.ALBUM_NOT_EDITABLE();
+    }
+    return dispatchAnalyzeV3(albumId, {
+      requestId: input.requestId,
+      language: input.language,
+      photos: input.photos,
     });
   },
 

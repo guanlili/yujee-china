@@ -253,6 +253,15 @@ export function submitAnalyzeV3(input: {
   return postJobs('/api/v3/albums', input);
 }
 
+// 加照片增量重跑(spec §1):只发新照片,服务端 hold 积分并转发 analyze;后续采访/
+// 排版由 ChatPanel 复用既有链路。402 → CreditInsufficientError(buy-banner)。
+export function submitAddPhotosV3(
+  albumId: string,
+  input: { requestId: string; language: 'zh' | 'en'; photos: GenerationPhoto[] },
+): Promise<SubmitResult> {
+  return postJobs(`/api/v3/albums/${albumId}/add-photos`, input);
+}
+
 export function retryGeneration(
   albumId: string,
   input: { requestId: string; language: 'zh' | 'en'; photos: GenerationPhoto[] },
