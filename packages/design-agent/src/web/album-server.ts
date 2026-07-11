@@ -6,6 +6,7 @@ import { InMemorySessionRepo } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import {
 	type AlbumBookState,
+	clampOverLimitTexts,
 	cloneAlbumBookState,
 	parseAlbumBookInput,
 	renderAlbumBookPreviewHtml,
@@ -525,13 +526,21 @@ async function handleLoadBook(
 		// 兼容两种形态：{albumId, book: {...}} 或直接就是书对象。
 		const bookInput = isRecord(parsed.book) ? parsed.book : parsed;
 		const { book, warnings } = parseAlbumBookInput(bookInput);
+		// 超 maxChars 的文案截断降级（上游 AI 自然成文不硬截断，落库可能超限）——
+		// 不能因此把整本书挡在设计对话外。结构性错误仍硬失败。
+		const clampNotes = clampOverLimitTexts(book, catalog);
 		const errors = validateAlbumBook(book, catalog);
 		if (errors.length > 0) {
 			sendJson(response, 422, { error: "book 契约不合法", details: errors });
 			return;
 		}
 		await manager.loadBook(albumId, book);
-		sendJson(response, 200, { ok: true, albumId, warnings, version: book.version });
+		sendJson(response, 200, {
+			ok: true,
+			albumId,
+			warnings: [...warnings, ...clampNotes],
+			version: book.version,
+		});
 	} catch (error) {
 		sendJson(response, 400, { error: error instanceof Error ? error.message : String(error) });
 	}

@@ -39,8 +39,9 @@ def _get(obj: Any, key: str, default: Any = None) -> Any:
 
 
 def _writable_text_slots(page: dict[str, Any]) -> list[dict[str, Any]]:
-    """本页非 decoration 的文字槽规格(id/role/sample?)。
-    模板未知或该页没有非 decoration 槽 → 空列表(调用方据此跳过整页)。"""
+    """本页非 decoration 的文字槽规格(id/role/maxChars?/sample?)。
+    模板未知或该页没有非 decoration 槽 → 空列表(调用方据此跳过整页)。
+    maxChars 是给模型的字数预算(提示词硬规则);输出端不做硬截断。"""
     template_id = page.get("templateId")
     template = templates.get(template_id) if isinstance(template_id, str) else None
     if template is None:
@@ -51,6 +52,9 @@ def _writable_text_slots(page: dict[str, Any]) -> list[dict[str, Any]]:
         if slot.get("role") == "decoration":
             continue
         spec: dict[str, Any] = {"id": slot["id"], "role": slot["role"]}
+        max_chars = slot.get("maxChars")
+        if isinstance(max_chars, int) and not isinstance(max_chars, bool) and max_chars > 0:
+            spec["maxChars"] = max_chars
         sample = examples.get(slot["id"])
         if sample:
             spec["sample"] = sample

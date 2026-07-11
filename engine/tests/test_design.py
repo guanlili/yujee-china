@@ -26,7 +26,7 @@ def _set_keys(monkeypatch) -> None:
     s.reset_settings_cache()
 
 
-_COVER_SLOTS = [{"id": "title", "role": "title", "sample": "My Story"}]
+_COVER_SLOTS = [{"id": "title", "role": "title", "maxChars": 12, "sample": "My Story"}]
 _ENDING_SLOTS = [{"id": "closing", "role": "body", "sample": "…"}]
 
 
@@ -44,9 +44,12 @@ def test_sanitize_style_rejects_illegal_values():
 def test_run_design_happy_path(monkeypatch):
     _set_keys(monkeypatch)
     calls: list[str] = []
+    copy_user_payloads: list[str] = []
 
     async def fake_completion(**kwargs):
         system = kwargs["messages"][0]["content"]
+        if "风格设计师" not in system:
+            copy_user_payloads.append(kwargs["messages"][1]["content"])
         if "风格设计师" in system:
             calls.append("style")
             return _completion(
@@ -73,6 +76,9 @@ def test_run_design_happy_path(monkeypatch):
     )
 
     assert sorted(calls) == ["copy", "style"]  # 两次调用(并发)
+    # 字数预算随槽规格进了文案调用的 payload(提示词约束;输出不硬截断)。
+    copy_payload = json.loads(copy_user_payloads[0])
+    assert copy_payload["coverSlots"][0]["maxChars"] == 12
     assert result["fonts"]["title"] == "zcool-xiaowei"
     assert result["colors"]["title"] == "#2b4a6f"
     assert result["coverTexts"] == {"title": "海边的夏天"}

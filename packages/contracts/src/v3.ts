@@ -893,6 +893,8 @@ export const V3DesignTextSlotSpec = z
     id: z.string().min(1),
     role: z.string().min(1),
     sample: z.string().max(300).default(''),
+    // 模板声明的字数上限(Unicode 字符),给文案模型当预算;可选,缺省=不限。
+    maxChars: z.number().int().positive().optional(),
   })
   .strict();
 export type V3DesignTextSlotSpec = z.infer<typeof V3DesignTextSlotSpec>;

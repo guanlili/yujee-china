@@ -73,13 +73,20 @@ export function buildCoverSets(albumId: string, chapters: TreeChapter[]): CoverS
 }
 
 // 模板文字槽 spec(engine DesignRequest 的 coverSlots/endingSlots 入参)。
-export function slotSpecs(templateId: string): Array<{ id: string; role: string; sample: string }> {
+export function slotSpecs(
+  templateId: string,
+): Array<{ id: string; role: string; sample: string; maxChars?: number }> {
   const template = templateOf(templateId);
-  return (template?.texts ?? []).map((slot) => ({
-    id: slot.id,
-    role: slot.role,
-    sample: typeof (slot as { sample?: unknown }).sample === 'string' ? (slot as { sample: string }).sample : '',
-  }));
+  return (template?.texts ?? []).map((slot) => {
+    const maxChars = (slot as { maxChars?: unknown }).maxChars;
+    return {
+      id: slot.id,
+      role: slot.role,
+      sample: typeof (slot as { sample?: unknown }).sample === 'string' ? (slot as { sample: string }).sample : '',
+      // 字数预算透传给文案模型(可选;模板没声明就不传)。
+      ...(typeof maxChars === 'number' && Number.isInteger(maxChars) && maxChars > 0 ? { maxChars } : {}),
+    };
+  });
 }
 
 // carrier sweep:按模板声明的文字槽 role,把三键字体/颜色写成 `${slotId}#artFont` /

@@ -592,6 +592,8 @@ class DesignTextSlotSpec(_V3Strict):
     id: str = Field(min_length=1)
     role: str = Field(min_length=1)
     sample: str = Field(default="", max_length=300)
+    # 模板声明的字数上限(Unicode 字符),给文案模型当预算;可选,缺省=不限。
+    maxChars: int | None = Field(default=None, gt=0)
 
 
 class DesignRequest(_V3Strict):

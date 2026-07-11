@@ -272,6 +272,30 @@ export function validateImagesMap(
 	return errors;
 }
 
+/** 装书容错：把超出模板 maxChars 的文字槽截到上限（按 Unicode 字符），返回警告。
+ * 上游文案是 AI 自然成文、不硬截断，落库可能超限；装书时截断降级而不是把整本书
+ * 挡在设计对话外。只动超限文本；结构性错误（未知模板/缺图槽）留给 validateAlbumBook 硬失败。 */
+export function clampOverLimitTexts(state: AlbumBookState, catalog: TemplateCatalog): string[] {
+	const notes: string[] = [];
+	for (const page of state.pages) {
+		const template = catalog.get(page.templateId);
+		if (!template) continue;
+		for (const [key, value] of Object.entries(page.texts)) {
+			if (typeof value !== "string") continue;
+			if (parseThemeCarrierKey(key)) continue;
+			const def = template.textDefsByBase.get(slotBaseId(key));
+			if (!def || def.maxChars === undefined) continue;
+			const chars = [...value];
+			if (chars.length <= def.maxChars) continue;
+			page.texts[key] = chars.slice(0, def.maxChars).join("");
+			notes.push(
+				`第 ${page.pageIndex} 页：槽 "${key}" 超出 maxChars ${def.maxChars}（实际 ${chars.length}），装书时已截断`,
+			);
+		}
+	}
+	return notes;
+}
+
 /** 全书契约体检（fixture 加载与测试用）。 */
 export function validateAlbumBook(state: AlbumBookState, catalog: TemplateCatalog): string[] {
 	const errors: string[] = [];

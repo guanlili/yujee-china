@@ -109,6 +109,10 @@ def test_write_copy_fills_title_and_body_slots(monkeypatch):
     assert payload["pages"][0]["pageIndex"] == 0
     sent_slot_ids = {slot["id"] for slot in payload["pages"][0]["textSlots"]}
     assert sent_slot_ids == {"title", "body"}
+    # 字数预算随槽规格给到模型(提示词约束;输出端仍不硬截断)。
+    slots_by_id = {slot["id"]: slot for slot in payload["pages"][0]["textSlots"]}
+    assert slots_by_id["title"]["maxChars"] == 24
+    assert slots_by_id["body"]["maxChars"] == 80
     # ref200px images get attached alongside the text part.
     image_parts = [p for p in sent_messages[1]["content"] if p.get("type") == "image_url"]
     assert len(image_parts) == 1

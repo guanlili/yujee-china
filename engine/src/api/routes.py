@@ -161,8 +161,8 @@ async def submit_design(req: DesignRequest) -> dict[str, Any]:
         language=req.language,
         album_title=req.albumTitle,
         chapter_contexts=list(req.chapterContexts),
-        cover_slots=[slot.model_dump(mode="json") for slot in req.coverSlots],
-        ending_slots=[slot.model_dump(mode="json") for slot in req.endingSlots],
+        cover_slots=[slot.model_dump(mode="json", exclude_none=True) for slot in req.coverSlots],
+        ending_slots=[slot.model_dump(mode="json", exclude_none=True) for slot in req.endingSlots],
     )
     log.info(
         "v3_design.done",
