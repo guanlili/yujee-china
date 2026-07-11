@@ -487,7 +487,11 @@ export function ChatPanel({
       scrollChat();
     }
     function maybeAppendExportReadyCard() {
-      if (isAuthoring && storyGate?.stage === 'ready') appendExportReadyCard();
+      // 与右上角导出按钮同口径(computeExportUnlocked):卡片出现 ⇔ 按钮可点,
+      // 避免"聊天里能导、右上角禁用"的割裂。
+      if (isAuthoring && storyGate && computeExportUnlocked(storyGate.stage, storyGate.allDone)) {
+        appendExportReadyCard();
+      }
     }
 
     async function loadStoryGate() {

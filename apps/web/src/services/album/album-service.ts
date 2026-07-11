@@ -1689,9 +1689,20 @@ export const albumService = {
       extraEndingPhotoIds,
     });
 
+    // 选定封面 = 故事环节收官:把现存章节全部记 done(产品口径:选完封面导出即可用)。
+    // allDone 闸门保留 —— 之后追加照片引入未 done 的新章会自动重锁导出,
+    // 追加排版完成(新章记 done)后自动恢复。
+    const doneChapterIds = ((root?.tree as { chapters?: Array<{ chapterId?: string }> } | undefined)?.chapters ?? [])
+      .map((c) => c.chapterId)
+      .filter((id): id is string => typeof id === 'string');
     await albumRepo.update(db, album.id, {
       // design 决策快照随 draft 落库:设计对话的书级简报(配色主题)从这里取。
-      draftJson: { ...(root ?? {}), pages, design: { fonts: design.fonts, colors: design.colors } },
+      draftJson: {
+        ...(root ?? {}),
+        pages,
+        design: { fonts: design.fonts, colors: design.colors },
+        progress: { currentChapterId: null, doneChapterIds },
+      },
       pageCount: pages.length,
       // 设计完成 → 待导出(导出闸门的唯一开门钥匙)。story 阶段到不了这里(design 要求
       // 已排版页,入口在 theme 之后);幂等重设计时已是 ready 则维持不动。
