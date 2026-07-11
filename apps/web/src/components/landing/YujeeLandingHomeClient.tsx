@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { UserMenu } from '@/components/app/UserMenu';
 import { useChromeSession } from '@/components/app/useChromeSession';
-import { ADDON_PACKS } from '@/config/pricing';
+import { ADDON_PACKS, PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { useSession } from '@/lib/auth/client';
 import { getMessages } from '@/lib/i18n/messages';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
@@ -127,7 +127,7 @@ const copies: Record<Locale, Copy> = {
       {
         title: 'Flip-book preview · HD export',
         body:
-          'Flip through a 3D preview, page by page — what you see is what you get. Export a 300 DPI print-ready PDF, or a shareable online album link.',
+          'Flip through a 3D preview, page by page — what you see is what you get. Export a 300 DPI print-ready PDF you can print and bind anytime.',
         icon: 'book',
       },
     ],
@@ -143,11 +143,11 @@ const copies: Record<Locale, Copy> = {
       },
       {
         q: 'What export formats are there?',
-        a: 'Two: a 300 DPI print-ready PDF (ready to print and bind), and a shareable online album link anyone can flip through in a browser.',
+        a: 'A 300 DPI print-ready PDF — download it, share it, or send it straight to a print shop to bind.',
       },
       {
         q: 'Are my photos safe?',
-        a: 'Photos are only used to build your own album — never made public or used for training. Online album links are private by default and you can disable them anytime.',
+        a: 'Original photos are never uploaded — only compressed previews go to the AI for layout planning. Our servers keep your layout data and the PDF and cover you export, so you can reopen and download your book anytime. Your albums are visible only to you and are never made public.',
       },
       {
         q: 'How long does a book take?',
@@ -161,11 +161,13 @@ const copies: Record<Locale, Copy> = {
         q: 'Is it free?',
         a: (
           <>
-            Creating and previewing are free. Premium features like HD export and printing are billed by plan — see the{' '}
+            Sign-up comes with a free credit — enough for a first book of up to {PHOTOS_PER_CREDIT} photos.
+            Generating a book uses credits based on how many photos you add ({PHOTOS_PER_CREDIT} photos per
+            credit) — see the{' '}
             <Link href="/en#pricing" className="underline underline-offset-2">
-              pricing page
+              pricing section
             </Link>
-            .
+            . No subscription.
           </>
         ),
       },
@@ -204,7 +206,7 @@ const copies: Record<Locale, Copy> = {
         brief: 'A trip, auto-bound into a journal',
         body:
           'Auto-chaptered by date, with places and order sorted for you. One spread per day, with room to breathe between photos.',
-        bullets: ['Auto-split by timeline', 'Add map pages and route notes', 'Share an online link with travel mates'],
+        bullets: ['Auto-split by timeline', 'Add map pages and route notes', 'Export a PDF to share with travel mates'],
         image: '/landing-redesign/cards/01-travel.png',
       },
       {
@@ -212,7 +214,7 @@ const copies: Record<Locale, Copy> = {
         brief: 'Your work, lined up quietly',
         body:
           'Photography, illustration, design: aligned to a grid with consistent margins so the work stays the star.',
-        bullets: ['Strict grid and uniform margins', 'Title, medium, and year per page', 'One click to a submittable link'],
+        bullets: ['Strict grid and uniform margins', 'Title, medium, and year per page', 'Export a submittable PDF portfolio'],
         image: '/landing-redesign/cards/06-portfolio.png',
       },
       {
@@ -298,30 +300,31 @@ const copies: Record<Locale, Copy> = {
       },
       {
         title: '翻书预览 · 高清导出',
-        body: '3D 翻书逐页预览，所见即所得。导出 300DPI 印刷级 PDF，或生成一条可分享的在线相册链接。',
+        body: '3D 翻书逐页预览，所见即所得。导出 300DPI 印刷级 PDF，随时打印装订成实体相册。',
         icon: 'book',
       },
     ],
     ctaTitle: '那些照片，别再躺在相册里了',
-    ctaSub: '几分钟，做出第一本。免费开始，满意了再考虑导出与送印。',
+    ctaSub: '几分钟，做出第一本。免费开始，满意了再导出打印。',
     start: '免费开始',
     faqLabel: '常见问题',
-    faqTitle: '因何犹豫的',
+    faqTitle: '还在犹豫？',
     faq: [
       { q: '需要会设计才能用吗？', a: '完全不需要。你只要选照片，AI 负责排版、分组和配文初稿。所有结果都能再手动调整。' },
-      { q: '支持导出哪些格式？', a: '两种：300DPI 的印刷级 PDF，以及一条可分享的在线相册链接。' },
-      { q: '我的照片安全吗？', a: '原图只在浏览器内保存；生成时只发送压缩预览，服务端只保存排版 JSON 与导出元数据。' },
+      { q: '支持导出哪些格式？', a: '300DPI 的印刷级 PDF，可以下载分享，也可以直接送打印装订。' },
+      { q: '我的照片安全吗？', a: '原图不会上传：生成时只发送压缩预览给 AI 用于排版。服务端保存排版数据，以及你导出的成品 PDF 和封面缩略图，供你随时重新打开和下载。相册只有你自己可见，不会公开。' },
       { q: '做一本大概要多久？', a: '上传后几分钟内就能拿到一本可翻阅的样书。之后想精修多久都行。' },
       { q: '可以中途修改、继续添加照片吗？', a: '可以。每一页都能手动调整，也能随时加入新照片。' },
       {
         q: '免费吗？',
         a: (
           <>
-            创建和预览免费。导出高清成品、送印等增值功能按积分计费，具体见{' '}
+            注册即送 1 积分，可免费做一本 {PHOTOS_PER_CREDIT} 张照片以内的册子。生成相册按照片数量消耗积分（每{' '}
+            {PHOTOS_PER_CREDIT} 张照片 1 积分），具体见{' '}
             <Link href="/zh#pricing" className="underline underline-offset-2">
               定价区
             </Link>
-            。
+            。没有订阅、没有月费。
           </>
         ),
       },
@@ -357,14 +360,14 @@ const copies: Record<Locale, Copy> = {
         title: '旅行',
         brief: '一趟旅行，自动收成一本游记',
         body: '按日期自动分组，地点、天气、行程顺序都帮你理好。每一天一个跨页，照片之间留出呼吸。',
-        bullets: ['按时间线自动分日分组', '可加地图页与路线标注', '导出在线链接，旅伴扫码同看'],
+        bullets: ['按时间线自动分日分组', '可加地图页与路线标注', '导出 PDF，和旅伴一起翻看'],
         image: '/landing-redesign/cards/01-travel.png',
       },
       {
         title: '作品集',
         brief: '让作品安静地排成一册',
         body: '摄影、插画、设计：网格对齐、统一留白，弱化装饰，让作品本身是主角。',
-        bullets: ['严格网格与统一边距', '每页可附标题 / 媒介 / 年份', '一键生成可投递的在线链接'],
+        bullets: ['严格网格与统一边距', '每页可附标题 / 媒介 / 年份', '导出可直接投递的 PDF 作品集'],
         image: '/landing-redesign/cards/06-portfolio.png',
       },
       {
