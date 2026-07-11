@@ -64,11 +64,16 @@ import { getTemplate, TEMPLATE_IDS } from '@yujee/contracts/templates';
 import {
   UnauthorizedError,
   CreditInsufficientError,
+  clusterCompressedPhotos,
   interviewDataFromStore,
   selectLayoutRefsFromStore,
+  submitAddPhotosV3,
   submitSelectLayoutV3,
   PhotosUnavailableError,
 } from '@/lib/generation/client';
+import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
+import { photoStore } from '@/lib/photo/store';
+import { MAX_PHOTOS_PER_GENERATION } from '@/config/pricing';
 import { albumRecipe } from '@/lib/generation/draft';
 import { fetchChapterSummary, fetchDraftSkeleton, postChapterContexts } from '@/lib/album/authoring-client';
 import {
@@ -1430,15 +1435,18 @@ export function ChatPanel({
     }
 
     function chapterMetaById(chapterId: string): { num: number; title: string; tag: string; photoIds: string[] } | null {
-      const idx = draftSkel?.chapters.findIndex((c) => c.chapterId === chapterId) ?? -1;
+      // 优先读活骨架(EditorPort 每次 pages-ready 重取后经 prop 更新):追加照片的新章节
+      // 只存在于活骨架里,mount 时捕获的 draftSkel 是旧的。
+      const skel = latestAuthoringRef.current.draftChapters ?? draftSkel;
+      const idx = skel?.chapters.findIndex((c) => c.chapterId === chapterId) ?? -1;
       if (idx < 0) return null;
-      const c = draftSkel!.chapters[idx]!;
+      const c = skel!.chapters[idx]!;
       const tag = aT(`第 ${idx + 1} 组`, `Chapter ${idx + 1}`);
       const photoIds = c.photoIds?.length
         ? [...new Set(c.photoIds)]
         : [
             ...new Set(
-              (draftSkel?.pages ?? [])
+              (skel?.pages ?? [])
                 .filter((p) => p.chapterId === chapterId)
                 .flatMap((p) => Object.values(p.imagesJson).filter(Boolean)),
             ),
@@ -1606,9 +1614,17 @@ export function ChatPanel({
       return null;
     }
 
+    // 加照片增量重跑(spec §1):追加范围 —— 采访链尽头据此转向增量排版而非全书重排。
+    let appendScope: { chapterIds: string[]; photoIds: string[]; prevPageCount: number } | null = null;
+    let appendInFlight = false;
+
     let selectLayoutTriggered = false;
     async function triggerSelectLayout() {
       if (disposed) return;
+      if (appendScope) {
+        await triggerAppendSelectLayout();
+        return;
+      }
       if (selectLayoutTriggered) return;
       const recipe = albumRecipe.load(albumId);
       const host = appendThinkingShell();
@@ -1662,27 +1678,44 @@ export function ChatPanel({
     // 草稿,canvas(按 pages.length key)只重挂自己渲染出版面;ChatPanel(按 album.id key)
     // 不重挂,保留对话历史 —— 所以不会像整页 reload 那样重复采访/错乱顺序。以 draft.pages
     // 为准,不依赖具体评委路径。
-    async function waitForLayoutThenRefresh(host: HTMLElement) {
+    async function waitForLayoutThenRefresh(
+      host: HTMLElement,
+      opts?: { minPages?: number; append?: boolean },
+    ) {
       // 兜底封顶:Agent 自身预算 600s,但排版通常 < 1 分钟落地。
       const deadline = Date.now() + 3 * 60 * 1000;
+      const minPages = opts?.minPages ?? 1;
       while (!disposed && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 2500));
         if (disposed) return;
         try {
           const { draft } = await fetchDraftSkeleton(albumId);
-          if (draft && draft.pages.length > 0) {
+          if (draft && draft.pages.length >= minPages) {
             if (disposed) return;
             // 收掉「排版中」的 thinking,原地刷画板(不整页 reload)。
             settleThinking(host, 'analyzedFeedback');
             const root = outerRootRef.current;
             root?.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
             window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
-            appendReplyBody(
-              host,
-              aT('排版完成了，我已经把画板刷新出来。', 'Layout is ready — I refreshed the canvas.'),
-            );
-            // 设计环节 phase 0:排版落地后立刻给封面组选择卡(用户选定 = 设计触发时机)。
-            void offerDesignCard();
+            if (opts?.append) {
+              // 追加完成:新章已被服务端记 done,闸门随 allDone 恢复;设计过的书样式已继承。
+              appendScope = null;
+              appendInFlight = false;
+              appendReplyBody(
+                host,
+                aT('新照片排进书里了,样式跟全书保持一致。想调整就在对话里告诉我。',
+                   'The new photos are in — styled to match the rest of the book. Ask me here to tweak anything.'),
+              );
+              await loadStoryGate();
+              maybeAppendExportReadyCard();
+            } else {
+              appendReplyBody(
+                host,
+                aT('排版完成了，我已经把画板刷新出来。', 'Layout is ready — I refreshed the canvas.'),
+              );
+              // 设计环节 phase 0:排版落地后立刻给封面组选择卡(用户选定 = 设计触发时机)。
+              void offerDesignCard();
+            }
             return;
           }
         } catch (e) {
@@ -1691,11 +1724,136 @@ export function ChatPanel({
         }
       }
       if (!disposed) {
+        if (opts?.append) {
+          appendScope = null;
+          appendInFlight = false;
+        }
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(
           host,
           aT('排版好像慢了点,刷新一下页面看看结果。', 'Layout is taking a while — refresh the page to see the result.'),
         );
+      }
+    }
+
+    // ── 加照片增量重跑(spec §1):压缩入库 → add-photos 提交 → 等新章节 → 采访 → 增量排版 ──
+
+    async function triggerAppendSelectLayout() {
+      if (disposed || !appendScope) return;
+      const scope = appendScope;
+      const host = appendThinkingShell();
+      setThinkingLabel(host, 'Laying out the new photos…');
+      sending = true;
+      try {
+        const refs = await selectLayoutRefsFromStore(scope.photoIds);
+        if (disposed) return;
+        await submitSelectLayoutV3(albumId, {
+          requestId: albumRecipe.load(albumId)?.requestId ?? crypto.randomUUID(),
+          language: currentLang === 'zh' ? 'zh' : 'en',
+          refs,
+          chapterIds: scope.chapterIds,
+        });
+        if (disposed) return;
+        void waitForLayoutThenRefresh(host, { minPages: scope.prevPageCount + 1, append: true });
+      } catch (e) {
+        if (disposed) return;
+        appendScope = null;
+        appendInFlight = false;
+        if (authErr(host, e)) { sending = false; return; }
+        appendAiText(e instanceof PhotosUnavailableError
+          ? aT('新照片在本设备上找不到了,没法排版。', 'The new photos are no longer available on this device.')
+          : aT('新照片排版没能开始,稍后再试一下。', "Couldn't start laying out the new photos — try again in a moment."));
+      } finally {
+        sending = false;
+        if (!disposed) { restAwait(); scrollChat(); }
+      }
+    }
+
+    // 轮询 story-progress 等追加的新章节出现(analyze 合并完成),随后走既有采访链;
+    // 采访链尽头 finishInterview→triggerSelectLayout,由 appendScope 转向增量排版。
+    async function waitForAppendChapters(prevOrder: string[], photoIds: string[], prevPageCount: number, host: HTMLElement) {
+      const known = new Set(prevOrder);
+      const deadline = Date.now() + 3 * 60 * 1000;
+      while (!disposed && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2500));
+        if (disposed) return;
+        await loadStoryGate();
+        const fresh = (storyGate?.chapterOrder ?? []).filter((id) => !known.has(id));
+        if (fresh.length === 0) continue;
+
+        appendScope = { chapterIds: fresh, photoIds, prevPageCount };
+        // 旧章节一律视为已采访(页面刷新后重进时 in-memory 集合是空的,不补标会把
+        // 老章节重新采访一遍)。追加只采访 fresh 里的新章。
+        for (const cid of storyGate?.chapterOrder ?? []) {
+          if (!fresh.includes(cid)) interviewedChapters.add(cid);
+        }
+        settleThinking(host, 'analyzedFeedback');
+        // 刷活骨架:EditorPort 重取草稿(新章节 photoIds/新照片 objectUrl),章节卡才有料。
+        window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+        await new Promise((r) => setTimeout(r, 600));
+        if (disposed) return;
+
+        const first = fresh.find((cid) => !interviewedChapters.has(cid) && !isPhotoOnlyChapter(cid)) ?? null;
+        if (first) {
+          chapterHistory.length = 0;
+          co()?.goToChapterById?.(first);
+          appendChapterCard(first);
+          const meta = chapterMetaById(first);
+          await startChapterInterview(first, meta?.photoIds ?? photoIds);
+        } else {
+          // 没有可采访的新章(photo-only 等):直接进增量排版。
+          fresh.forEach((cid) => interviewedChapters.add(cid));
+          await triggerSelectLayout();
+        }
+        return;
+      }
+      if (!disposed) {
+        appendInFlight = false;
+        settleThinking(host, 'analyzedFeedback');
+        appendReplyBody(host, aT('新照片处理超时了,请刷新页面再试一次。', 'Processing the new photos timed out — refresh and try again.'));
+      }
+    }
+
+    async function handleAddPhotos(files: File[]) {
+      if (!files.length || appendInFlight || disposed) return;
+      appendInFlight = true;
+      const prevOrder = storyGate?.chapterOrder ?? [];
+      const prevPageCount = co()?.getPagesState?.()?.length ?? 0;
+      const taking = files.slice(0, MAX_PHOTOS_PER_GENERATION);
+      appendUserText(aT(`添加了 ${taking.length} 张照片`, `Added ${taking.length} photo${taking.length > 1 ? 's' : ''}`));
+      hideAwait();
+      scrollChat();
+      const host = appendThinkingShell();
+      setThinkingLabel(host, 'Understanding new photos…');
+      try {
+        // 压缩 + 原图入 IndexedDB(HeroComposer.onFiles 同款链路;原图绝不上服务器)。
+        const compressed: CompressedPhoto[] = [];
+        for (const file of taking) {
+          const photoId = crypto.randomUUID();
+          compressed.push(await compressFile(file, photoId));
+          await photoStore.put(photoId, file);
+        }
+        const photos = clusterCompressedPhotos(compressed);
+        const newPhotoIds = photos.map((p) => p.photoId);
+        await submitAddPhotosV3(albumId, {
+          requestId: crypto.randomUUID(),
+          language: currentLang === 'zh' ? 'zh' : 'en',
+          photos,
+        });
+        // recipe 追加新 photoIds:排版 refs/重试都从 IndexedDB 按这份清单重建。
+        const recipe = albumRecipe.load(albumId);
+        if (recipe) albumRecipe.save(albumId, { ...recipe, photoIds: [...recipe.photoIds, ...newPhotoIds] });
+        appendReplyBody(host, aT('收到!我先看看这些新照片,然后问你几个问题,再把它们排进书里。',
+          'Got them! Let me study the new photos, ask you a couple of questions, then lay them into the book.'));
+        void waitForAppendChapters(prevOrder, newPhotoIds, prevPageCount, host);
+      } catch (e) {
+        appendInFlight = false;
+        settleThinking(host, 'analyzedFeedback');
+        if (!authErr(host, e)) {
+          appendAiText(aT('照片没能加进来,稍后再试一下。', "Couldn't add the photos — please try again in a moment."));
+        }
+        restAwait();
+        scrollChat();
       }
     }
     // 设计环节:封面组选择卡。规则组(服务端 GET)→ 用户点选一组 → POST /design
@@ -2030,15 +2188,32 @@ export function ChatPanel({
     input?.addEventListener('keydown', onKeydown);
     input?.addEventListener('input', onInput);
 
+    // 中途加图:隐藏 picker 的 change → 增量追加链路(压缩入库→提交→采访→排版)。
+    const addPhotoInputEl = byId('addPhotoInput') as HTMLInputElement | null;
+    const onAddPhotosChange = () => {
+      const files = Array.from(addPhotoInputEl?.files ?? []);
+      if (addPhotoInputEl) addPhotoInputEl.value = '';
+      void handleAddPhotos(files);
+    };
+    addPhotoInputEl?.addEventListener('change', onAddPhotosChange);
+
     // ── data-action handlers within ChatPanel's OWN subtree only (the aside). The
     // canvas/topbar/modals bind their own data-action nodes in EditorBook, so we scope
     // the sweep to the chat column to avoid double-binding. ──
     const asideRoot = root.querySelector('.pane-chat-col') as HTMLElement | null;
     const actions: Record<string, () => void> = {
       buyShells: () => { window.location.href = `/${locale}/credits`; },
-      // 中途加图 authoring-dormant: the "+" during authoring is a no-op (the dormant
-      // picker + real add-photos flow live in EditorBook's modal/topbar scope).
-      pickAddPhotos: () => { /* authoring: dormant */ },
+      // 中途加图(spec §1):排版完成后可用;采访/发送/追加进行中不响应。
+      pickAddPhotos: () => {
+        if (!isAuthoring || sending || appendInFlight || pendingInterview) return;
+        if ((co()?.getPagesState?.()?.length ?? 0) === 0) {
+          appendAiText(aT('先等这本书排版完成,再来添加照片哦。', 'Please wait until the book is laid out before adding photos.'));
+          restAwait();
+          scrollChat();
+          return;
+        }
+        (byId('addPhotoInput') as HTMLInputElement | null)?.click();
+      },
       toggleChat: () => root.classList.toggle('chat-collapsed'),
     };
     const actionHandlers: { el: Element; fn: EventListener }[] = [];
@@ -2242,6 +2417,7 @@ export function ChatPanel({
       sendBtnEl?.removeEventListener('click', send);
       input?.removeEventListener('keydown', onKeydown);
       input?.removeEventListener('input', onInput);
+      addPhotoInputEl?.removeEventListener('change', onAddPhotosChange);
       actionHandlers.forEach(({ el, fn }) => el.removeEventListener('click', fn));
       cleanupChatMotion();
       root.removeEventListener('yujee:authoring-pages-ready', onAuthoringPagesReady);
