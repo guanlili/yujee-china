@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "web:dev": "pnpm --filter @yujee/web dev",
-    "agent:dev": "cd engine && .venv/bin/python -m uvicorn src.main:app --reload --port ${PORT:-8001}",
+    "agent:dev": "cd engine && AI_TRACE_JSONL=${AI_TRACE_JSONL:-ai-trace.jsonl} .venv/bin/python -m uvicorn src.main:app --reload --port ${PORT:-8001}",
     "design:dev": "pnpm --filter @smalldog/design-agent web",
     "design:album": "pnpm --filter @smalldog/design-agent web:album",
     "design:build": "pnpm --filter @earendil-works/pi-ai build && pnpm --filter @earendil-works/pi-agent-core build && pnpm --filter @smalldog/design-agent build",

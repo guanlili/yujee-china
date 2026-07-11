@@ -7,7 +7,8 @@ HTTP 服务把它变成可视页面 —— 重点是把「视觉评委到底收�
     .venv/bin/python trace-viewer.py            # http://127.0.0.1:8788
     .venv/bin/python trace-viewer.py --port 8788 --file /path/to/ai-trace.jsonl
 
-无第三方依赖;只读不写,杀掉即走。AI_TRACE_JSONL 环境变量可代替 --file。
+无第三方依赖,杀掉即走。AI_TRACE_JSONL 环境变量可代替 --file。
+只读展示 + 唯一的写操作是「清空」按钮(POST /api/clear 截断 trace 文件)。
 """
 
 from __future__ import annotations
@@ -63,16 +64,28 @@ _PAGE = """<!doctype html>
   <span class="meta" id="meta">…</span>
   <label><input type="checkbox" id="auto" checked> 自动刷新</label>
   <label>来源 <select id="source"><option value="">全部</option></select></label>
+  <button id="clear" title="清空 trace 文件(不可恢复)" style="margin-left:auto;background:#3a1f22;color:#e8a0a6;border:1px solid #5c2b30;border-radius:6px;padding:4px 12px;font:inherit;cursor:pointer">清空</button>
 </header>
 <main id="list"><div class="empty">等待 trace …</div></main>
 <script>
 const state = { recs: [], open: new Set(), sources: new Set() };
 
+function fmtCost(r) {
+  // engine 记录:cost + costCurrency(CNY/USD);design-agent 记录:costUsd。
+  if (r.cost != null) {
+    const sym = r.costCurrency === "CNY" ? "¥" : r.costCurrency === "USD" ? "$" : (r.costCurrency || "") + " ";
+    return `${sym}${Number(r.cost).toFixed(4)}`;
+  }
+  if (r.costUsd != null) return `$${Number(r.costUsd).toFixed(4)}`;
+  return null;
+}
+
 function fmtTok(r) {
   const parts = [];
   if (r.inputTokens != null) parts.push(`in ${r.inputTokens}`);
   if (r.outputTokens != null) parts.push(`out ${r.outputTokens}`);
-  if (r.costUsd != null) parts.push(`$${Number(r.costUsd).toFixed(4)}`);
+  const cost = fmtCost(r);
+  if (cost) parts.push(cost);
   return parts.join(" · ");
 }
 
@@ -115,8 +128,18 @@ async function tick() {
   try {
     const res = await fetch("/api/traces");
     const data = await res.json();
+    // 已加载记录的累计成本(按币种分开;engine=cost/costCurrency,design-agent=costUsd)。
+    const sums = {};
+    for (const r of state.recs) {
+      if (r.cost != null) sums[r.costCurrency || "?"] = (sums[r.costCurrency || "?"] || 0) + Number(r.cost);
+      else if (r.costUsd != null) sums.USD = (sums.USD || 0) + Number(r.costUsd);
+    }
+    const costText = Object.entries(sums)
+      .map(([cur, v]) => `${cur === "CNY" ? "¥" : cur === "USD" ? "$" : cur + " "}${v.toFixed(4)}`)
+      .join(" + ");
     document.getElementById("meta").textContent =
-      `${data.file} · ${(data.bytes / 1024).toFixed(0)} KB · ${data.total} 条(显示末 ${data.records.length} 条)`;
+      `${data.file} · ${(data.bytes / 1024).toFixed(0)} KB · ${data.total} 条(显示末 ${data.records.length} 条)` +
+      (costText ? ` · 累计 ${costText}` : "");
     const sel = document.getElementById("source");
     for (const r of data.records) {
       if (r.source && !state.sources.has(r.source)) {
@@ -133,6 +156,18 @@ async function tick() {
 }
 
 document.getElementById("source").addEventListener("change", render);
+document.getElementById("clear").addEventListener("click", async () => {
+  if (!confirm("清空全部 trace 历史?文件会被截断,不可恢复。")) return;
+  try {
+    const res = await fetch("/api/clear", { method: "POST" });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "clear failed");
+    state.recs = [];
+    state.open.clear();
+    render();
+    tick();
+  } catch (e) { alert(`清空失败: ${e}`); }
+});
 tick();
 setInterval(() => { if (document.getElementById("auto").checked) tick(); }, 2000);
 </script>
@@ -185,6 +220,22 @@ class _Handler(BaseHTTPRequestHandler):
                 "records": records,
             }
             self._respond(200, "application/json", json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        else:
+            self._respond(404, "text/plain; charset=utf-8", b"not found")
+
+    def do_POST(self) -> None:  # noqa: N802 - stdlib 命名
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/clear":
+            # 一键清空:截断 trace 文件(engine/design-agent 均为 append 打开,
+            # 清空后新记录照常追加)。仅本地观测台使用。
+            try:
+                self.trace_file.parent.mkdir(parents=True, exist_ok=True)
+                with self.trace_file.open("w", encoding="utf-8"):
+                    pass
+                self._respond(200, "application/json", b'{"ok": true}')
+            except Exception as exc:  # noqa: BLE001 - 观测台失败只回错误,不抛
+                body = json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False).encode("utf-8")
+                self._respond(500, "application/json", body)
         else:
             self._respond(404, "text/plain; charset=utf-8", b"not found")
 

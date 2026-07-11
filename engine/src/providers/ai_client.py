@@ -12,6 +12,7 @@ from typing import Any, Literal
 import httpx
 
 from ..logging_config import get_logger
+from . import pricing
 
 log = get_logger("ai_client")
 
@@ -129,6 +130,7 @@ def _write_jsonl(source: str, model: str, messages: list[dict[str, Any]], output
         redacted = _redact_messages(messages)
         images = _extract_image_urls(messages)
         in_tok, out_tok = _extract_usage(response)
+        cost = pricing.estimate_cost(model, in_tok, out_tok)
         rec = {
             "ts": time.time(),
             "time": time.strftime("%H:%M:%S"),
@@ -138,6 +140,9 @@ def _write_jsonl(source: str, model: str, messages: list[dict[str, Any]], output
             "output": output,
             "inputTokens": in_tok,
             "outputTokens": out_tok,
+            # 单次调用成本(tokens×价目表快照,见 providers/pricing.py);未知模型为 null。
+            "cost": cost["total"] if cost else None,
+            "costCurrency": cost["currency"] if cost else None,
             "imageCount": len(images),
             # 实际发给视觉 AI 的图(base64 data URL)，本地观测台直接渲染。仅本地 dev 写盘。
             "images": images,
