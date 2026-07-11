@@ -81,8 +81,8 @@ def _passthrough_write_copy(captured: list):
 def test_batch_messages_carry_units_markers_and_dedicated_prompt():
     messages = h._judge_thumbnails_batch_messages(
         [
-            {"thumbnails": [_THUMB, _THUMB], "chapterContext": "厦门海边"},
-            {"thumbnails": [_THUMB], "chapterContext": ""},
+            {"thumbnails": [_THUMB, _THUMB]},
+            {"thumbnails": [_THUMB]},
         ]
     )
 
@@ -95,7 +95,8 @@ def test_batch_messages_carry_units_markers_and_dedicated_prompt():
     payload = json.loads(content[0]["text"])
     assert [u["unitIndex"] for u in payload["units"]] == [0, 1]
     assert [u["candidateCount"] for u in payload["units"]] == [2, 1]
-    assert payload["units"][0]["chapterContext"] == "厦门海边"
+    # layout 评委纯视觉:payload 不携带任何章节信息(chapter 只属于分簇/写文案)。
+    assert "chapterContext" not in payload["units"][0]
 
     # 每张图前置「单元 u 候选 i」标记,防多图串位。
     texts = [part["text"] for part in content if part["type"] == "text"][1:]
@@ -144,9 +145,9 @@ def test_judge_pages_merges_units_into_one_judge_session(monkeypatch):
         )
     )
 
-    # 两章合并进同一次评委会话(一批一次调用),chapterContext 逐单元携带。
+    # 两个单元合并进同一次评委会话(一批一次调用);评委输入不携带章节信息。
     assert len(batches) == 1 and len(batches[0]) == 2
-    assert [u["chapterContext"] for u in batches[0]] == ["海边", "山里"]
+    assert all("chapterContext" not in u for u in batches[0])
     assert usage.geminiCallCount == 1
     # 写文案仍逐 unit 执行,页面拿到文案。
     assert [w[0] for w in written] == ["ch_1", "ch_2"]

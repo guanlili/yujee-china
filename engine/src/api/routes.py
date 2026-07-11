@@ -134,9 +134,10 @@ async def submit_judge_layout(
 async def submit_judge_page_template(req: JudgePageTemplateRequest) -> dict[str, Any]:
     """编辑器换版式:浏览器把该页照片按每个候选模板渲染成真图缩略图 POST 过来,
     视觉评委(gemini 优先,保底豆包)看图选最贴合的模板 id。**同步**返回赢家,不走 callback。"""
+    # req.chapterContext 契约字段保留但不再进评委上下文 —— layout 环节纯视觉判断,
+    # chapter 概念只属于分簇/写文案(2026-07-11 用户拍板)。
     winner_id, result = await select_layout_agent.judge_page_template(
         [candidate.model_dump(mode="json") for candidate in req.candidates],
-        chapter_context=req.chapterContext,
     )
     log.info(
         "v3_judge_page_template.done",
