@@ -316,6 +316,9 @@ export const agentJobs = pgTable(
     stage: text('stage'),
     progress: integer('progress').notNull().default(0),
     usage: jsonb('usage'),
+    // 追加照片(加图增量重跑):layout job 用 { appendChapterIds: string[] } 标记追加
+    // 范围,完成回调据此走「插入合并」而非整表替换。普通全书排版为 null。
+    meta: jsonb('meta'),
     error: jsonb('error'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     // Set when QUEUED→RUNNING, then refreshed on every progress callback — it is

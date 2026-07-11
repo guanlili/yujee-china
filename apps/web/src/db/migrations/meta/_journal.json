@@ -85,6 +85,13 @@
       "when": 1783348743449,
       "tag": "0011_flowery_champions",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783749627163,
+      "tag": "0012_bumpy_the_professor",
+      "breakpoints": true
     }
   ]
 }

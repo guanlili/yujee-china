@@ -149,7 +149,14 @@ export const jobService = {
 
   async createGenerationJob(
     tx: DbOrTx,
-    input: { userId: string; albumId: string; requestId: string; kind: 'init' | 'layout' },
+    input: {
+      userId: string;
+      albumId: string;
+      requestId: string;
+      kind: 'init' | 'layout' | 'add';
+      // layout job 的追加范围标记({ appendChapterIds }),见 schema.agentJobs.meta。
+      meta?: Record<string, unknown>;
+    },
   ) {
     return agentJobRepo.create(tx, {
       userId: input.userId,
@@ -158,6 +165,7 @@ export const jobService = {
       kind: input.kind,
       status: 'QUEUED',
       progress: 0,
+      ...(input.meta ? { meta: input.meta } : {}),
     });
   },
 

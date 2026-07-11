@@ -98,6 +98,57 @@ test('buildSelectLayoutRequestFromTree requires every tree photo to have a brows
   );
 });
 
+// 追加照片(加图增量重跑):chapterIds 子集只装那些章节,refs 也只需覆盖它们的照片。
+test('buildSelectLayoutRequestFromTree: chapterIds 子集只装范围内章节', () => {
+  const twoChapterTree = {
+    chapters: [
+      TREE.chapters[0],
+      {
+        ...TREE.chapters[0],
+        chapterId: 'add1-ch_1',
+        photos: [
+          {
+            photoId: 'p9',
+            sceneDescription: 'new photo',
+            width: 800,
+            height: 600,
+            orientation: 'landscape' as const,
+            takenAt: null,
+          },
+        ],
+      },
+    ],
+  };
+  const request = buildSelectLayoutRequestFromTree({
+    requestId: 'layout-r2',
+    callbackUrl: 'https://web.test/api/v3/internal/job-progress',
+    language: 'en',
+    tree: twoChapterTree,
+    refs: { p9: 'data:image/jpeg;base64,CC==' }, // 只给新章节照片的 ref
+    chapterIds: ['add1-ch_1'],
+  });
+  assert.deepEqual(request.chapters.map((c) => c.chapterId), ['add1-ch_1']);
+  assert.equal(request.chapters[0].photos[0].photoId, 'p9');
+});
+
+test('buildSelectLayoutRequestFromTree: 未知 chapterId 范围直接抛', () => {
+  assert.throws(
+    () =>
+      buildSelectLayoutRequestFromTree({
+        requestId: 'layout-r3',
+        callbackUrl: 'https://web.test/api/v3/internal/job-progress',
+        language: 'en',
+        tree: TREE,
+        refs: {
+          p1: 'data:image/jpeg;base64,AA==',
+          p2: 'data:image/jpeg;base64,BB==',
+        },
+        chapterIds: ['nope'],
+      }),
+    (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+  );
+});
+
 const REFS = {
   p1: 'data:image/jpeg;base64,AA==',
   p2: 'data:image/jpeg;base64,BB==',

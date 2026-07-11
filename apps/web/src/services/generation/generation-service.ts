@@ -40,6 +40,9 @@ type SelectLayoutInput = {
   requestId: string;
   language: 'zh' | 'en';
   refs: Record<string, string> | Array<{ photoId: string; ref200px: string }>;
+  // 追加照片(加图增量重跑):只排这些章节;完成回调按 job.meta.appendChapterIds 走
+  // 「插入合并」。省略 = 全书排版(替换 draft.pages)。
+  chapterIds?: string[];
 };
 
 // P2 phase 2 (docs/agent/contract.md §5.2.1): the browser sends one entry per
@@ -126,6 +129,7 @@ export const generationService = {
       language: input.language,
       tree,
       refs: input.refs,
+      ...(input.chapterIds ? { chapterIds: input.chapterIds } : {}),
     });
 
     // unique(album, layout, QUEUED/RUNNING) 防重复触发 —— 已有在跑的排版就幂等接受、不起第二个。
@@ -136,6 +140,7 @@ export const generationService = {
           albumId,
           requestId: layoutRequestId,
           kind: 'layout',
+          ...(input.chapterIds ? { meta: { appendChapterIds: input.chapterIds } } : {}),
         });
         await jobService.markRunning(tx, created.id);
       });
@@ -303,14 +308,21 @@ export function buildSelectLayoutRequestFromTree(input: {
   language: 'zh' | 'en';
   tree: unknown;
   refs: SelectLayoutInput['refs'];
+  // 追加照片:只装这些章节(refs 也只需覆盖它们的照片)。省略 = 全书。
+  chapterIds?: string[];
 }): SelectLayoutRequest {
   const tree = V3LayoutTree.parse(input.tree);
   const refs = toRefMap(input.refs);
+  const scope = input.chapterIds ? new Set(input.chapterIds) : null;
+  const chapters = scope ? tree.chapters.filter((c) => scope.has(c.chapterId)) : tree.chapters;
+  if (scope && chapters.length !== scope.size) {
+    throw ERRORS.VALIDATION_FAILED('unknown chapterId in select-layout scope');
+  }
   const payload = {
     requestId: input.requestId,
     callbackUrl: input.callbackUrl,
     language: input.language,
-    chapters: tree.chapters.map((chapter) => ({
+    chapters: chapters.map((chapter) => ({
       chapterId: chapter.chapterId,
       ...(chapter.description ? { structureHint: chapter.description } : {}),
       // 采访结果:喂给排版评委(选贴合基调的版式)+ 排版后一次性写文案。之前漏传,导致

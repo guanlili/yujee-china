@@ -266,6 +266,8 @@ export function submitSelectLayoutV3(
     requestId: string;
     language: 'zh' | 'en';
     refs: Record<string, string> | Array<{ photoId: string; ref200px: string }>;
+    // 追加照片(加图增量重跑):只排这些新章节,新页由服务端插进成书。省略 = 全书。
+    chapterIds?: string[];
   },
 ): Promise<SubmitResult> {
   return postJobs(`/api/v3/albums/${albumId}/select-layout`, input);

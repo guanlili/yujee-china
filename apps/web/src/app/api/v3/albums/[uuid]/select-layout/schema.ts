@@ -18,5 +18,7 @@ export const SelectLayoutBodySchema = z
     requestId: z.string().min(1),
     language: V3Language,
     refs: BrowserRefs,
+    // 追加照片(加图增量重跑):只排这些章节,新页由完成回调插进成书。省略 = 全书排版。
+    chapterIds: z.array(z.string().min(1)).min(1).optional(),
   })
   .strict();
