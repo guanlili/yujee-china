@@ -24,7 +24,13 @@ export function lintTemplateHtml(tpl: TemplateDef, html: string): string[] {
     if (!html.includes(`data-image-slot="${slot.id}"`)) errors.push(`${tpl.id}: 图槽 ${slot.id} 缺 data-image-slot 锚点`);
     if (!html.includes(`{{IMG_SRC:${slot.id}}}`)) errors.push(`${tpl.id}: 图槽 ${slot.id} 缺 {{IMG_SRC:}} token`);
   }
-  const declared = new Set([...tpl.texts.map((s) => s.id), ...tpl.images.map((s) => s.id)]);
+  const declared = new Set([
+    ...tpl.texts.map((s) => s.id),
+    ...tpl.images.map((s) => s.id),
+    // items 重复组(V3 网格模板):base[i] bracket 路径寻址,基名视为已声明。
+    ...(tpl.items?.texts?.map((s) => s.id) ?? []),
+    ...(tpl.items?.images?.map((s) => s.id) ?? []),
+  ]);
   for (const m of html.matchAll(/\{\{(?:TEXT|COLOR|FONT|IMG_SRC|IMG_POS|IMG_TF):([^}|]+)(?:\|[^}]*)?\}\}/g)) {
     const slotId = m[1]!.trim().replace(/\[\d+\]$/, '');
     if (!declared.has(slotId)) errors.push(`${tpl.id}: HTML 引用了未声明的槽 "${slotId}"`);

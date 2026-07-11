@@ -10,6 +10,17 @@ import { MAG_07_HTML } from './mag-07';
 import { MAG_08_HTML } from './mag-08';
 import { MAG_09_HTML } from './mag-09';
 
+import { MAG_10_HTML } from './mag-10';
+import { MAG_11_HTML } from './mag-11';
+import { MAG_13_HTML } from './mag-13';
+import { MAG_15_HTML } from './mag-15';
+import { MAG_18_HTML } from './mag-18';
+import { MAG_19_HTML } from './mag-19';
+import { MAG_20_HTML } from './mag-20';
+import { MAG_22_HTML } from './mag-22';
+import { MAG_23_HTML } from './mag-23';
+import { MAG_25_HTML } from './mag-25';
+
 const HTML_TEMPLATE_REGISTRY: Record<string, string> = {
   'mag-01': MAG_01_HTML,
   'mag-02': MAG_02_HTML,
@@ -20,6 +31,16 @@ const HTML_TEMPLATE_REGISTRY: Record<string, string> = {
   'mag-07': MAG_07_HTML,
   'mag-08': MAG_08_HTML,
   'mag-09': MAG_09_HTML,
+  'mag-10': MAG_10_HTML,
+  'mag-11': MAG_11_HTML,
+  'mag-13': MAG_13_HTML,
+  'mag-15': MAG_15_HTML,
+  'mag-18': MAG_18_HTML,
+  'mag-19': MAG_19_HTML,
+  'mag-20': MAG_20_HTML,
+  'mag-22': MAG_22_HTML,
+  'mag-23': MAG_23_HTML,
+  'mag-25': MAG_25_HTML,
 };
 
 export function getHtmlTemplate(id: string): string | undefined {

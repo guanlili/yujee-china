@@ -38,6 +38,20 @@ export function fillTemplateHtml(templateHtml: string, page: FillablePage, resol
     return template?.texts.find((text) => text.id === baseSlot)?.role as AlbumTextRole | undefined;
   };
 
+  // items 组的 bracket 路径(image[0]/explain[1]):adapt 已把值折进嵌套数组,
+  // 这里为模板引用到的 bracket 槽补一份扁平键,下游 carrier/取值逻辑保持不变。
+  for (const m of templateHtml.matchAll(TOKEN_RE)) {
+    const slot = m[2]!.trim();
+    if (!slot.includes('[') || data[slot] !== undefined) continue;
+    const path = slot.match(/^([^[]+)\[(\d+)\]$/);
+    if (!path) continue;
+    const arr = data[path[1]!];
+    const item = Array.isArray(arr) ? arr[Number(path[2]!)] : undefined;
+    if (item !== undefined && (typeof item === 'string' || typeof item === 'number')) {
+      data[slot] = item;
+    }
+  }
+
   return templateHtml.replace(TOKEN_RE, (_full, type: string, slotRaw: string, def?: string) => {
     const slot = slotRaw.trim();
     const fallback = def ?? '';
