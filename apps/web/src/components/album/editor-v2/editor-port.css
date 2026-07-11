@@ -972,6 +972,9 @@
 }
 .editor-port .cv-opt:hover{ box-shadow:0 0 0 1.5px var(--fg-2); }
 .editor-port .cv-opt.selected{ box-shadow:0 0 0 2px var(--grad-purple); }
+/* 只读回执(已选封面组):无交互态 */
+.editor-port .cv-opt.is-recap{ cursor:default; }
+.editor-port .cv-opt.is-recap:hover{ box-shadow:0 0 0 1px var(--border); }
 /* 封面/封底成对小预览:真模板缩放渲染 + 左下角小标签 */
 .editor-port .cv-face{
   position:relative; display:block; width:92px; height:122px;

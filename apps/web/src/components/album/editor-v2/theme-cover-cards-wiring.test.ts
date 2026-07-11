@@ -158,18 +158,23 @@ test('appendThemeSummary is a READ-ONLY recap of chapter titles (no apply action
   assert.doesNotMatch(body, /runApplyTheme/);
 });
 
-test('appendCoverSummary is a READ-ONLY recap (preview or 跳过, no API call)', () => {
+test('appendCoverSummary is a READ-ONLY recap (preview only, no API call)', () => {
   const fn = /function appendCoverSummary\(\)[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'appendCoverSummary must exist');
   const body = fn![0];
-  assert.match(body, /cover-card is-recap/);
+  // 2026-07 重构:回执统一走 buildCoverRecapCard(chap-card 体系,封面+封底成对小预览)。
+  assert.match(body, /buildCoverRecapCard\(/);
   // cover/ending resolved by skeleton kind (same as the live card), previewed read-only.
   assert.match(body, /kindByPageIndex\.get\(p\.pageIndex\) === 'cover'/);
-  // Post-refactor the option HTML is rendered via the coordinator bridge
-  // (co()?.coverOptionHTML?.(…)), so accept the optional-chained coordinator call.
-  assert.match(body, /coverOptionHTML(?:\?\.)?\(page\.templateId/);
-  // 已跳过 when neither cover nor ending page exists.
-  assert.match(body, /已跳过封面设计/);
   // read-only: never posts a cover selection.
-  assert.doesNotMatch(body, /runCover/);
+  assert.doesNotMatch(body, /runCover\(/);
+  assert.doesNotMatch(body, /runApplyDesign/);
+
+  // 回执卡构建器:只读(is-recap),封面/封底经 coordinator 桥渲染,无任何交互监听。
+  const builder = /function buildCoverRecapCard\([\s\S]*?return card;\n {4}\}/.exec(src);
+  assert.ok(builder, 'buildCoverRecapCard must exist');
+  assert.match(builder![0], /cv-opt is-recap/);
+  assert.match(builder![0], /coverOptionHTML\?\.\(set\.coverTemplateId/);
+  assert.match(builder![0], /coverOptionHTML\?\.\(set\.endingTemplateId/);
+  assert.doesNotMatch(builder![0], /addEventListener/);
 });

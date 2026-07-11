@@ -696,47 +696,67 @@ export function ChatPanel({
       chatBody!.appendChild(card);
     }
 
-    function appendCoverSummary() {
-      const kindByPageIndex = new Map<number, DraftPageKind>();
-      for (const p of draftSkel?.pages ?? []) kindByPageIndex.set(p.pageIndex, p.kind);
-      const pagesState = co()?.getPagesState?.() ?? [];
-      const coverPage = pagesState.find((p) => kindByPageIndex.get(p.pageIndex) === 'cover') ?? null;
-      const endingPage = pagesState.find((p) => kindByPageIndex.get(p.pageIndex) === 'ending') ?? null;
+    // 已选封面组回执卡(只读):与选择卡同一套 chap-card 体系,封面+封底成对小预览。
+    // 选完后原位替换选择卡留在历史里;刷新后 stage=ready 的历史重建也用它。
+    function buildCoverRecapCard(set: {
+      coverTemplateId: string | null;
+      coverPhotoId: string | null;
+      endingTemplateId: string | null;
+      endingPhotoId: string | null;
+    }): HTMLElement {
       const card = document.createElement('div');
       card.className = 'msg ai max-w-full';
       const inner = document.createElement('div');
-      inner.className = 'cover-card is-recap';
-      const title = document.createElement('div');
-      title.className = 'cv-title';
+      inner.className = 'chap-card cv-card';
+      const titleRow = document.createElement('div');
+      titleRow.className = 'cc-title-row';
+      const title = document.createElement('span');
+      title.className = 'cc-title';
       title.textContent = aT('已选的封面与封底', 'Chosen cover & back cover');
-      inner.appendChild(title);
-      if (!coverPage && !endingPage) {
-        const skip = document.createElement('div');
-        skip.className = 'cv-label';
-        skip.textContent = aT('已跳过封面设计', 'Cover design skipped');
-        inner.appendChild(skip);
-      } else {
-        for (const [page, zh, en] of [
-          [coverPage, '封面', 'Cover'],
-          [endingPage, '封底', 'Back cover'],
-        ] as const) {
-          if (!page) continue;
-          const sec = document.createElement('div');
-          sec.className = 'cv-section';
-          const label = document.createElement('div');
-          label.className = 'cv-label';
-          label.textContent = aT(zh, en);
-          const opt = document.createElement('div');
-          opt.className = 'cv-opt';
-          const heroPhoto = Object.values(page.imagesJson)[0] ?? null;
-          opt.innerHTML = co()?.coverOptionHTML?.(page.templateId, heroPhoto) ?? '';
-          sec.appendChild(label);
-          sec.appendChild(opt);
-          inner.appendChild(sec);
-        }
+      const tag = document.createElement('span');
+      tag.className = 'cc-tag';
+      tag.textContent = aT('设计', 'Design');
+      titleRow.appendChild(title);
+      titleRow.appendChild(tag);
+      inner.appendChild(titleRow);
+      const row = document.createElement('div');
+      row.className = 'cv-row';
+      const pair = document.createElement('div');
+      pair.className = 'cv-opt is-recap';
+      let html = '';
+      if (set.coverTemplateId) {
+        html +=
+          `<span class="cv-face">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 92, 122) ?? ''}` +
+          `<i class="cv-face-tag">${aT('封面', 'Cover')}</i></span>`;
       }
+      if (set.endingTemplateId) {
+        html +=
+          `<span class="cv-face">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 92, 122) ?? ''}` +
+          `<i class="cv-face-tag">${aT('封底', 'Back')}</i></span>`;
+      }
+      pair.innerHTML = html;
+      row.appendChild(pair);
+      inner.appendChild(row);
       card.appendChild(inner);
-      chatBody!.appendChild(card);
+      return card;
+    }
+
+    function appendCoverSummary() {
+      const kindByPageIndex = new Map<number, DraftPageKind>();
+      const skel = latestAuthoringRef.current.draftChapters ?? draftSkel;
+      for (const p of skel?.pages ?? []) kindByPageIndex.set(p.pageIndex, p.kind);
+      const pagesState = co()?.getPagesState?.() ?? [];
+      const coverPage = pagesState.find((p) => kindByPageIndex.get(p.pageIndex) === 'cover') ?? null;
+      const endingPage = pagesState.find((p) => kindByPageIndex.get(p.pageIndex) === 'ending') ?? null;
+      if (!coverPage && !endingPage) return; // 设计已必选;老数据没有封面就不渲染占位
+      chatBody!.appendChild(
+        buildCoverRecapCard({
+          coverTemplateId: coverPage?.templateId ?? null,
+          coverPhotoId: coverPage ? (Object.values(coverPage.imagesJson)[0] ?? null) : null,
+          endingTemplateId: endingPage?.templateId ?? null,
+          endingPhotoId: endingPage ? (Object.values(endingPage.imagesJson)[0] ?? null) : null,
+        }),
+      );
     }
 
     async function runApplyTheme(selection?: { chapters: V3ChapterThemeChoice[] }) {
@@ -1990,7 +2010,9 @@ export function ChatPanel({
       card: HTMLElement,
     ) {
       sending = true;
-      card.remove();
+      // 选择卡原位换成只读回执卡:选了哪组封面封底留在历史里可回看。
+      const recap = buildCoverRecapCard(set);
+      card.replaceWith(recap);
       appendUserText(aT('就用这组封面', 'Use this cover set'));
       const host = appendThinkingShell();
       setThinkingLabel(host, 'Designing fonts, colors & cover…');
@@ -2016,6 +2038,7 @@ export function ChatPanel({
       } catch (e) {
         settleThinking(host, 'analyzedFeedback');
         if (e instanceof UnauthorizedError) return;
+        recap.remove(); // 设计没成:回执撤掉,重新给选择卡
         appendReplyBody(host, aT('设计这步没跑成,稍后再试一下。', 'The design step failed — try again in a moment.'));
         designOfferShown = false;
         void offerDesignCard();
