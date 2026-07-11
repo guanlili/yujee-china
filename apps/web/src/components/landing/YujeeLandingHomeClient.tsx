@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { UserMenu } from '@/components/app/UserMenu';
 import { useChromeSession } from '@/components/app/useChromeSession';
 import { ADDON_PACKS, PHOTOS_PER_CREDIT } from '@/config/pricing';
@@ -21,6 +21,7 @@ type Sample = {
   body: string;
   bullets: string[];
   image: string;
+  video: string;
 };
 
 type PreviewChapter = {
@@ -192,6 +193,7 @@ const copies: Record<Locale, Copy> = {
           'Pack a whole year into one book. Holidays, trips, and everyday moments are laid out by month and continued year after year.',
         bullets: ['Grouped by month or event', 'One click for the year-end book', 'Same style, a matching set each year'],
         image: '/landing-redesign/cards/03-year-record.png',
+        video: '/landing-redesign/cards/03-year-record.mp4',
       },
       {
         title: 'Life story',
@@ -200,6 +202,7 @@ const copies: Record<Locale, Copy> = {
           'Lay milestones along a timeline: birth, school, people, and journeys. Each chapter gets editable short essays, bound like a biography.',
         bullets: ['Auto-chaptered by life stage', 'Long-form text and pull quotes per chapter', 'Great as a birthday or memorial gift'],
         image: '/landing-redesign/cards/02-life-story.png',
+        video: '/landing-redesign/cards/02-life-story.mp4',
       },
       {
         title: 'Travel',
@@ -208,6 +211,7 @@ const copies: Record<Locale, Copy> = {
           'Auto-chaptered by date, with places and order sorted for you. One spread per day, with room to breathe between photos.',
         bullets: ['Auto-split by timeline', 'Add map pages and route notes', 'Export a PDF to share with travel mates'],
         image: '/landing-redesign/cards/01-travel.png',
+        video: '/landing-redesign/cards/01-travel.mp4',
       },
       {
         title: 'Portfolio',
@@ -216,6 +220,7 @@ const copies: Record<Locale, Copy> = {
           'Photography, illustration, design: aligned to a grid with consistent margins so the work stays the star.',
         bullets: ['Strict grid and uniform margins', 'Title, medium, and year per page', 'Export a submittable PDF portfolio'],
         image: '/landing-redesign/cards/06-portfolio.png',
+        video: '/landing-redesign/cards/06-portfolio.mp4',
       },
       {
         title: 'Magazine',
@@ -224,6 +229,7 @@ const copies: Record<Locale, Copy> = {
           'More than an album: cover, contents, features, and pull quotes on a magazine skeleton. Turn life into an issue.',
         bullets: ['Cover, contents, and feature templates', 'Editorial layout with headlines and quotes', 'Print-ready export for a physical issue'],
         image: '/landing-redesign/cards/05-magazine.png',
+        video: '/landing-redesign/cards/05-magazine.mp4',
       },
       {
         title: 'Growth story',
@@ -232,6 +238,7 @@ const copies: Record<Locale, Copy> = {
           'Filed by month into a growth timeline. Quick notes like height, weight, and firsts land on the right page.',
         bullets: ['Auto-chaptered by month or milestone', 'Add little data cards', 'Keep adding; the album grows over time'],
         image: '/landing-redesign/cards/04-growth-story.png',
+        video: '/landing-redesign/cards/04-growth-story.mp4',
       },
     ],
     previewChapters: [
@@ -348,6 +355,7 @@ const copies: Record<Locale, Copy> = {
         body: '把一整年塞进一本。节日、出游、日常按月铺开，年底一键成册，年年续上一本。',
         bullets: ['按月 / 按事件自动归类', '年底一键生成年度册', '风格沿用，逐年成套'],
         image: '/landing-redesign/cards/03-year-record.png',
+        video: '/landing-redesign/cards/03-year-record.mp4',
       },
       {
         title: '人生故事',
@@ -355,6 +363,7 @@ const copies: Record<Locale, Copy> = {
         body: '按时间轴铺开重要节点：出生、求学、相遇、远行。每段配一篇可编辑短文，做成传记式相册。',
         bullets: ['按人生阶段自动分组', '每组可配长文与引言', '适合做生日 / 纪念礼物'],
         image: '/landing-redesign/cards/02-life-story.png',
+        video: '/landing-redesign/cards/02-life-story.mp4',
       },
       {
         title: '旅行',
@@ -362,6 +371,7 @@ const copies: Record<Locale, Copy> = {
         body: '按日期自动分组，地点、天气、行程顺序都帮你理好。每一天一个跨页，照片之间留出呼吸。',
         bullets: ['按时间线自动分日分组', '可加地图页与路线标注', '导出 PDF，和旅伴一起翻看'],
         image: '/landing-redesign/cards/01-travel.png',
+        video: '/landing-redesign/cards/01-travel.mp4',
       },
       {
         title: '作品集',
@@ -369,6 +379,7 @@ const copies: Record<Locale, Copy> = {
         body: '摄影、插画、设计：网格对齐、统一留白，弱化装饰，让作品本身是主角。',
         bullets: ['严格网格与统一边距', '每页可附标题 / 媒介 / 年份', '导出可直接投递的 PDF 作品集'],
         image: '/landing-redesign/cards/06-portfolio.png',
+        video: '/landing-redesign/cards/06-portfolio.mp4',
       },
       {
         title: '杂志',
@@ -376,6 +387,7 @@ const copies: Record<Locale, Copy> = {
         body: '不只是相册：封面、目录、专题、引言，按真正的杂志骨架排版，把生活做成一期刊物。',
         bullets: ['封面 / 目录 / 专题模板', '大标题 + 引言的编辑式排版', '导出印刷级，可做成实体刊'],
         image: '/landing-redesign/cards/05-magazine.png',
+        video: '/landing-redesign/cards/05-magazine.mp4',
       },
       {
         title: '成长故事',
@@ -383,6 +395,7 @@ const copies: Record<Locale, Copy> = {
         body: '按月份归档，自动生成成长时间线。身高体重、第一次的瞬间，都能落在对应的页上。',
         bullets: ['按月 / 按里程碑自动归组', '可加身高体重等小数据卡', '持续添加，相册随时间长大'],
         image: '/landing-redesign/cards/04-growth-story.png',
+        video: '/landing-redesign/cards/04-growth-story.mp4',
       },
     ],
     previewChapters: [
@@ -481,6 +494,87 @@ function FAQItem({
         <div className="faq-a-inner">{a}</div>
       </div>
     </div>
+  );
+}
+
+function SampleCard({
+  sample,
+  sampleCta,
+  makeSame,
+  composerHref,
+}: {
+  sample: Sample;
+  sampleCta: string;
+  makeSame: string;
+  composerHref: string;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const play = () => {
+    videoRef.current?.play().catch(() => {});
+  };
+  const stop = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.pause();
+    video.currentTime = 0;
+  };
+
+  return (
+    <article
+      className="sample-card"
+      tabIndex={0}
+      onMouseEnter={play}
+      onMouseLeave={stop}
+      onFocus={play}
+      onBlur={(event) => {
+        // 焦点仍在卡片内部(如详情里的链接)时不打断播放
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) stop();
+      }}
+    >
+      <div
+        className="sample-bg"
+        style={{
+          background: `url(${sample.image}) no-repeat right bottom / 75%, linear-gradient(90deg, transparent, #fff) left center/16% 100% no-repeat, linear-gradient(90deg, #fff, transparent) right center/16% 100% no-repeat, linear-gradient(180deg, rgba(61,160,149,.09), rgba(148,120,210,.09), rgba(205,221,131,.09)) left center/16% 100% no-repeat, linear-gradient(180deg, rgba(61,160,149,.09), rgba(148,120,210,.09), rgba(205,221,131,.09)) right center/16% 100% no-repeat, #fff`,
+        }}
+      />
+      <div className="sample-front">
+        <div>
+          <div className="case-title">{sample.title}</div>
+          <p className="sample-brief">{sample.brief}</p>
+        </div>
+        <span className="case-cta">
+          {sampleCta}
+          <ArrowIcon className="h-3.5 w-3.5" />
+        </span>
+      </div>
+      <div className="sample-detail">
+        <video
+          ref={videoRef}
+          className="sample-shot"
+          src={sample.video}
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          aria-hidden
+        />
+        <div className="case-title">{sample.title}</div>
+        <p>{sample.body}</p>
+        <ul className="flex flex-col gap-1.5">
+          {sample.bullets.map((bullet) => (
+            <li key={bullet} className="flex gap-2">
+              <span className="text-[var(--accent)]">·</span>
+              <span>{bullet}</span>
+            </li>
+          ))}
+        </ul>
+        <Link href={composerHref} className="sample-btn">
+          {makeSame}
+          <ArrowIcon className="h-[15px] w-[15px]" />
+        </Link>
+      </div>
+    </article>
   );
 }
 
@@ -684,7 +778,7 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
         .sample-card:hover .sample-front, .sample-card:focus-within .sample-front { opacity: 0; }
         .sample-detail { position: absolute; top: 0; left: 0; right: 0; height: 100%; padding: 16px; display: flex; flex-direction: column; gap: 9px; overflow: hidden; border-radius: 18px; background: #fff; box-shadow: 0 0 0 rgba(0,0,0,0); opacity: 0; pointer-events: none; transition: opacity .22s ease, left .46s cubic-bezier(.22,.8,.24,1), right .46s cubic-bezier(.22,.8,.24,1), height .46s cubic-bezier(.22,.8,.24,1), box-shadow .46s ease; }
         .sample-card:hover .sample-detail, .sample-card:focus-within .sample-detail { opacity: 1; left: -5%; right: -5%; height: 200%; pointer-events: auto; box-shadow: 0 4px 14px rgba(0,0,0,.08), 0 26px 60px rgba(0,0,0,.22); }
-        .sample-shot { width: 100%; flex: 0 0 46%; border-radius: 12px; background: linear-gradient(125deg, rgba(140,94,244,.55), rgba(19,184,166,.40) 50%, rgba(218,244,94,.45)), #dfe3e6; }
+        .sample-shot { display: block; width: 100%; flex: 0 0 46%; min-height: 0; border-radius: 12px; object-fit: cover; background: linear-gradient(125deg, rgba(140,94,244,.55), rgba(19,184,166,.40) 50%, rgba(218,244,94,.45)), #dfe3e6; }
         .case-title { font-family: var(--landing-display-font); font-weight: 800; font-size: clamp(18px,2vw,22px); line-height: 1.08; color: #111; }
         .sample-brief { font-size: 13px; line-height: 1.45; color: #444; margin-top: 7px; max-width: 56%; }
         .case-cta { font-size: 13px; font-weight: 600; color: #111; display: inline-flex; align-items: center; gap: 5px; }
@@ -816,41 +910,13 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
           <div className="wrap">
             <div className="sample-grid gap-4 md:gap-5">
               {c.samples.map((sample) => (
-                <article key={sample.title} className="sample-card" tabIndex={0}>
-                  <div
-                    className="sample-bg"
-                    style={{
-                      background: `url(${sample.image}) no-repeat right bottom / 75%, linear-gradient(90deg, transparent, #fff) left center/16% 100% no-repeat, linear-gradient(90deg, #fff, transparent) right center/16% 100% no-repeat, linear-gradient(180deg, rgba(61,160,149,.09), rgba(148,120,210,.09), rgba(205,221,131,.09)) left center/16% 100% no-repeat, linear-gradient(180deg, rgba(61,160,149,.09), rgba(148,120,210,.09), rgba(205,221,131,.09)) right center/16% 100% no-repeat, #fff`,
-                    }}
-                  />
-                  <div className="sample-front">
-                    <div>
-                      <div className="case-title">{sample.title}</div>
-                      <p className="sample-brief">{sample.brief}</p>
-                    </div>
-                    <span className="case-cta">
-                      {c.sampleCta}
-                      <ArrowIcon className="h-3.5 w-3.5" />
-                    </span>
-                  </div>
-                  <div className="sample-detail">
-                    <div className="sample-shot" />
-                    <div className="case-title">{sample.title}</div>
-                    <p>{sample.body}</p>
-                    <ul className="flex flex-col gap-1.5">
-                      {sample.bullets.map((bullet) => (
-                        <li key={bullet} className="flex gap-2">
-                          <span className="text-[var(--accent)]">·</span>
-                          <span>{bullet}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Link href={composerHref} className="sample-btn">
-                      {c.makeSame}
-                      <ArrowIcon className="h-[15px] w-[15px]" />
-                    </Link>
-                  </div>
-                </article>
+                <SampleCard
+                  key={sample.title}
+                  sample={sample}
+                  sampleCta={c.sampleCta}
+                  makeSame={c.makeSame}
+                  composerHref={composerHref}
+                />
               ))}
             </div>
           </div>
