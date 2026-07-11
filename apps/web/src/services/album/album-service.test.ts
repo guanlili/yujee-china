@@ -706,7 +706,8 @@ test('markChapterDone: advances cursor; last chapter → stage=theme + export un
     assert.equal(b.currentChapterId, null); // all done
     assert.equal(b.allDone, true);
     assert.equal(b.stage, 'theme'); // 全章确定 → 进下一环
-    assert.equal(b.exportUnlocked, true);
+    // 2026-07 收紧:设计(stage=ready)才是导出钥匙,全章 done 仅是必要条件。
+    assert.equal(b.exportUnlocked, false);
 
     // Persisted: re-reading shows theme + unlocked; status untouched (⟂ stage).
     const reloaded = await albumRepo.findById(albumId);
@@ -714,8 +715,13 @@ test('markChapterDone: advances cursor; last chapter → stage=theme + export un
     assert.equal(reloaded?.status, 'EDITING'); // markChapterDone never touches status
 
     const p = await albumService.getStoryProgress(user.id, albumId);
-    assert.equal(p.exportUnlocked, true);
+    assert.equal(p.exportUnlocked, false); // 设计未做,仍锁
     assert.equal(p.allDone, true);
+
+    // 设计完成(stage=ready)后才解锁 —— 直接落 stage 模拟 applyDesign 的推进。
+    await albumRepo.update(db, albumId, { stage: 'ready' });
+    const afterDesign = await albumService.getStoryProgress(user.id, albumId);
+    assert.equal(afterDesign.exportUnlocked, true);
   } finally {
     await cleanupUser(user.id);
   }
@@ -803,9 +809,72 @@ test('markChapterDone: after gate opened (stage past story) is a no-op', async (
     await albumRepo.update(db, albumId, { stage: 'cover' }); // user moved further on
     const after = await albumService.markChapterDone(user.id, albumId, 'c1');
     assert.equal(after.stage, 'cover'); // no regression
-    assert.equal(after.exportUnlocked, true);
+    assert.equal(after.exportUnlocked, false); // cover ≠ ready:设计未完成仍锁
     const reloaded = await albumRepo.findById(albumId);
     assert.equal(reloaded?.stage, 'cover');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('applyDesign: success advances stage theme → ready (export gate key)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('design-stage-ready');
+  try {
+    const { TEMPLATES } = await import('@yujee/contracts');
+    const templates = Object.values(TEMPLATES) as Array<{ id: string; category?: string }>;
+    const coverId = templates.find((tp) => tp.category === 'cover')!.id;
+    const endingId = templates.find((tp) => tp.category === 'ending')!.id;
+
+    const album = await makeAlbum(user.id);
+    const tree = {
+      chapters: [
+        {
+          chapterId: 'c1',
+          description: 'chapter 1',
+          accentColor: null,
+          artFont: null,
+          chapterContext: '',
+          photos: [
+            { photoId: 'p1', sceneDescription: '', width: 800, height: 600, orientation: 'landscape' },
+          ],
+        },
+      ],
+    };
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      stage: 'theme',
+      draftJson: {
+        version: 'v3-story',
+        tree,
+        pages: makePreviewPages(1),
+        progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+      },
+    });
+
+    t.mock.method(agentClient, 'designV3', async () => ({
+      fonts: { title: 'Fraunces', body: 'Inter', decoration: 'Caveat' },
+      colors: { title: '#222222', body: '#333333', explain: '#666666' },
+      coverTexts: {},
+      endingTexts: {},
+      usage: { durationMs: 1, models: {} },
+    }));
+
+    await albumService.applyDesign(user.id, album.id, {
+      language: 'zh',
+      coverTemplateId: coverId,
+      coverPhotoId: 'p1',
+      endingTemplateId: endingId,
+      endingPhotoId: 'p1',
+    });
+
+    const reloaded = await albumRepo.findById(album.id);
+    assert.equal(reloaded?.stage, 'ready'); // 设计完成 = 导出闸门钥匙
+    const progress = await albumService.getStoryProgress(user.id, album.id);
+    assert.equal(progress.exportUnlocked, true);
   } finally {
     await cleanupUser(user.id);
   }
@@ -1248,7 +1317,12 @@ test('finalize: uses draft_json.pages even when album_pages differs', async (t) 
     const albumPages = [
       { pageIndex: 0, templateId: 'mag-02', images: { hero: 'draft-photo-1' }, texts: { title: 'Draft page' } },
     ];
-    const { albumId } = await seedWrappedStoryAlbum(user.id, 1, { pages: albumPages, done: true });
+    // 2026-07 闸门收紧:导出/finalize 需要设计完成(stage=ready),done 仅到 theme。
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 1, {
+      pages: albumPages,
+      done: true,
+      stage: 'ready',
+    });
     await albumPageRepo.bulkInsert(db, [
       {
         albumId,

@@ -346,9 +346,11 @@ function storyProgressFrom(stage: string, normalized: NormalizedStoryDraft | nul
     doneChapterIds: chapterOrder.filter((id) => doneSet.has(id)),
     currentChapterId: normalized?.progress.currentChapterId ?? null,
     allDone,
-    // Theme/cover are downstream optional steps and do not re-lock export, but
-    // stage alone is not enough: every current chapter must be done.
-    exportUnlocked: allDone && stage !== 'analysing' && stage !== 'story',
+    // 2026-07 设计环节收紧:导出解锁 ⇔ allDone 且设计已完成(stage='ready',由
+    // applyDesign 推进)。theme/cover 不再解锁;stage 也不够 —— 每章都必须 done
+    // (追加照片的新章在追加排版完成前会令 allDone=false,导出自动重锁)。
+    // 前端镜像:editor-v2/export-gate-util.computeExportUnlocked,两处同改。
+    exportUnlocked: allDone && stage === 'ready',
   };
 }
 
@@ -358,7 +360,7 @@ function assertStoryExportUnlocked(album: Awaited<ReturnType<typeof albumRepo.fi
   // V1/V2/finalized rows do not use the V3 story gate.
   if (!normalized) return;
   if (!storyProgressFrom(album.stage, normalized).exportUnlocked) {
-    throw ERRORS.VALIDATION_FAILED('finish all story chapters before export');
+    throw ERRORS.VALIDATION_FAILED('finish all story chapters and the design step before export');
   }
 }
 
@@ -1636,6 +1638,9 @@ export const albumService = {
     await albumRepo.update(db, album.id, {
       draftJson: { ...(root ?? {}), pages },
       pageCount: pages.length,
+      // 设计完成 → 待导出(导出闸门的唯一开门钥匙)。story 阶段到不了这里(design 要求
+      // 已排版页,入口在 theme 之后);幂等重设计时已是 ready 则维持不动。
+      ...(album.stage === 'theme' || album.stage === 'cover' ? { stage: 'ready' as const } : {}),
     });
     return { pages };
   },

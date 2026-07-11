@@ -66,6 +66,17 @@ test('v3 export gate: PDF sign/confirm reject until all story chapters are done'
     );
 
     await albumService.markChapterDone(user.id, album.id, 'c2');
+    // 2026-07 收紧:全章 done 但设计未完成(stage=theme)仍拒绝。
+    await assert.rejects(
+      () => albumService.signPdfUpload(user.id, album.id, {
+        contentType: 'application/pdf',
+        size: 4,
+      }),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+
+    // 设计完成(applyDesign 推 stage=ready)后放行 —— 直接落 stage 模拟。
+    await albumRepo.update(db, album.id, { stage: 'ready' });
     const sign = await albumService.signPdfUpload(user.id, album.id, {
       contentType: 'application/pdf',
       size: 4,

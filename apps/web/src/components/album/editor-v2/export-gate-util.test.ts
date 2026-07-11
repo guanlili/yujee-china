@@ -2,91 +2,45 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { computeExportUnlocked } from './export-gate-util';
 
-// 闸门真值表(WP5.2 / §4.5a)。口径必须与 WP2.4 的 exportUnlocked 一致:
-// 导出解锁 ⇔ allDone && stage ∉ {analysing, story}。
+// 闸门真值表(2026-07 设计环节收紧)。口径必须与 album-service.storyProgressFrom 的
+// exportUnlocked 一致:导出解锁 ⇔ allDone 且 stage === 'ready'(设计已完成)。
+// theme/cover 不再解锁 —— 没做封面封尾/字体文案设计就不能导。
 
-test('computeExportUnlocked: analysing → 锁(导出不可用)', () => {
-  assert.equal(computeExportUnlocked('analysing', true), false);
-});
-
-test('computeExportUnlocked: story → 锁(分组故事未全组 done)', () => {
-  assert.equal(computeExportUnlocked('story', true), false);
-});
-
-test('computeExportUnlocked: theme → 开(全组 done 后解锁)', () => {
-  assert.equal(computeExportUnlocked('theme', true), true);
-});
-
-test('computeExportUnlocked: cover → 开(主题/封面不重新锁闸门)', () => {
-  assert.equal(computeExportUnlocked('cover', true), true);
-});
-
-test('computeExportUnlocked: ready → 开', () => {
+test('computeExportUnlocked: 仅 stage=ready 且 allDone 解锁', () => {
   assert.equal(computeExportUnlocked('ready', true), true);
 });
 
-test('computeExportUnlocked: 主题/封面跳过不影响导出可用', () => {
-  // §4.5a:story → theme 一解锁,之后无论停在 theme、cover 还是 ready(跳过主题/
-  // 封面),导出始终可用 —— 全是 true。
-  for (const s of ['theme', 'cover', 'ready']) {
-    assert.equal(computeExportUnlocked(s, true), true, `stage=${s} 应解锁`);
-  }
+test('computeExportUnlocked: analysing/story → 锁', () => {
+  assert.equal(computeExportUnlocked('analysing', true), false);
+  assert.equal(computeExportUnlocked('story', true), false);
 });
 
-test('computeExportUnlocked: allDone=false 时 theme/cover/ready 仍锁', () => {
-  for (const s of ['theme', 'cover', 'ready']) {
+test('computeExportUnlocked: theme/cover(设计未完成)→ 锁', () => {
+  assert.equal(computeExportUnlocked('theme', true), false);
+  assert.equal(computeExportUnlocked('cover', true), false);
+});
+
+test('computeExportUnlocked: allDone=false 时任何 stage 都锁(含 ready)', () => {
+  for (const s of ['analysing', 'story', 'theme', 'cover', 'ready'] as const) {
     assert.equal(computeExportUnlocked(s, false), false, `stage=${s} allDone=false 应锁`);
   }
 });
 
-test('computeExportUnlocked: 缺失/空 stage → 锁(没相册可导出)', () => {
-  // 唯一的额外护栏(前端 stage 类型是 string|undefined)。服务端 album.stage 永远是
-  // 合法 enum,不会走到这里。
-  for (const bad of [undefined, null, '']) {
+test('computeExportUnlocked: 缺失/空/未知 stage → 锁', () => {
+  for (const bad of [undefined, null, '', 'bogus'] as const) {
     assert.equal(computeExportUnlocked(bad, true), false, `stage=${String(bad)} 应锁`);
   }
 });
 
-test('computeExportUnlocked: 非空未知 stage 走 WP2.4 公式(只 analysing/story 锁)', () => {
-  // 复用 WP2.4 口径而非另造一套:任何非空字符串都用同一公式判定,跟服务端一致。
-  assert.equal(computeExportUnlocked('bogus', true), true);
-  assert.equal(computeExportUnlocked('bogus', false), false);
-});
-
-test('computeExportUnlocked: 真值表与 WP2.4 album-service 口径逐项一致', () => {
-  // 镜像 album-service.ts `allDone && stage !== 'analysing' && stage !== 'story'`。
-  const truthTable: Array<{ stage: string; allDone: boolean }> = [
-    { stage: 'analysing', allDone: false },
-    { stage: 'analysing', allDone: true },
-    { stage: 'story', allDone: false },
-    { stage: 'story', allDone: true },
-    { stage: 'theme', allDone: false },
-    { stage: 'theme', allDone: true },
-    { stage: 'cover', allDone: false },
-    { stage: 'cover', allDone: true },
-    { stage: 'ready', allDone: false },
-    { stage: 'ready', allDone: true },
-  ];
-  for (const { stage, allDone } of truthTable) {
-    const mirror = allDone && stage !== 'analysing' && stage !== 'story';
-    assert.equal(
-      computeExportUnlocked(stage, allDone),
-      mirror,
-      `stage=${stage} allDone=${String(allDone)} 应与 service 公式一致`,
-    );
-  }
-});
-
-test('computeExportUnlocked: allDone 必须参与 unlock 判定,不能只看 stage', () => {
-  const serverCases: Record<string, boolean> = {
-    analysing: false,
-    story: false,
-    theme: true,
-    cover: true,
-    ready: true,
-  };
-  for (const [stage, expectedWhenDone] of Object.entries(serverCases)) {
-    assert.equal(computeExportUnlocked(stage, false), false, `stage=${stage} allDone=false 应锁`);
-    assert.equal(computeExportUnlocked(stage, true), expectedWhenDone, `stage=${stage} allDone=true`);
+test('computeExportUnlocked: 真值表与 album-service 口径逐项一致', () => {
+  const serverFormula = (stage: string, allDone: boolean) => allDone && stage === 'ready';
+  for (const stage of ['analysing', 'story', 'theme', 'cover', 'ready']) {
+    for (const allDone of [true, false]) {
+      assert.equal(
+        computeExportUnlocked(stage, allDone),
+        serverFormula(stage, allDone),
+        `stage=${stage} allDone=${allDone}`,
+      );
+    }
   }
 });

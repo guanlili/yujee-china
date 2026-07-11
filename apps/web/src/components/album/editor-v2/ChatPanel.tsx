@@ -1806,6 +1806,9 @@ export function ChatPanel({
           host,
           aT('设计好了:封面封底就位,全书字体和配色也统一刷好了。不满意随时在对话里改。', 'Design done — cover & back cover are in, fonts and colors applied across the book. Ask me here to tweak anything.'),
         );
+        // 设计完成 = stage 已推进到 ready:同步前端闸门(顶栏导出按钮),并弹导出就绪卡。
+        await loadStoryGate();
+        maybeAppendExportReadyCard();
       } catch (e) {
         settleThinking(host, 'analyzedFeedback');
         if (e instanceof UnauthorizedError) return;
