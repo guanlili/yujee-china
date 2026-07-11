@@ -100,7 +100,7 @@ test('legacy persisted chat replay no longer feeds the edit-chat payload', () =>
 });
 
 test('conversation chapter prompt card uses the design .chap-card class without overriding the rail .chapter-card', () => {
-  const fn = /function appendChapterCard\(chapterId: string\) \{[\s\S]*?\n {4}\}/.exec(src);
+  const fn = /function appendChapterCard\(chapterId: string, attempt = 0\) \{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'appendChapterCard must exist');
   assert.match(fn![0], /inner\.className = 'chap-card'/);
   assert.doesNotMatch(fn![0], /inner\.className = 'chapter-card'/);
@@ -111,7 +111,7 @@ test('conversation chapter prompt card uses the design .chap-card class without 
 });
 
 test('conversation chapter prompt card matches the layout-entry design', () => {
-  const fn = /function appendChapterCard\(chapterId: string\) \{[\s\S]*?\n {4}\}/.exec(src);
+  const fn = /function appendChapterCard\(chapterId: string, attempt = 0\) \{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'appendChapterCard must exist');
   assert.match(fn![0], /metaLine\.textContent = `\$\{meta\.photoIds\.length\} \$\{t\('photosWord'\)\}`/, 'chapter prompt card must show photo count without fake time');
   assert.match(fn![0], /t\('viewLayout'\)/, 'chapter prompt card CTA must enter layout view');

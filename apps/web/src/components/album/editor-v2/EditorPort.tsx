@@ -197,9 +197,13 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
   // 每次 pages-ready 刷新自增：设计对话可能只改文字（页数不变），canvasEpoch 进
   // EditorBook 的 key 保证画板仍会重挂重绘。
   const [canvasEpoch, setCanvasEpoch] = useState(0);
+  // 已加载草稿的内容指纹:pages-ready 事件来源很多(storyProgress 每次变化都会派发),
+  // 内容没变时跳过「换 objectUrl + epoch 重挂」,消除采访/确认阶段画板一闪一闪。
+  const draftFingerprintRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    draftFingerprintRef.current = null; // 换相册/换阶段重置,首次必加载
 
     async function loadDraftSkeleton() {
       try {
@@ -209,6 +213,9 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
           setLoadState('gone');
           return;
         }
+        // 内容未变 → 不换 URL、不重挂(objectUrl 每次都是新串,盲目 setState 会闪)。
+        const fingerprint = JSON.stringify(draft);
+        if (fingerprint === draftFingerprintRef.current) return;
         // Resolve originals (invariant 1: photos live only in the browser). Missing
         // ids render as empty slots — fine.
         const ids = new Set<string>();
@@ -217,6 +224,7 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
         for (const ch of draft.chapters) for (const id of ch.photoIds ?? []) if (id) ids.add(id);
         const urls = await photoStore.getObjectUrls([...ids]);
         if (cancelled) return;
+        draftFingerprintRef.current = fingerprint;
         setImageUrls(urls);
         setSkeleton(draft);
         setLoadState('ready');

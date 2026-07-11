@@ -1470,11 +1470,39 @@ export function ChatPanel({
 
     const shownChapterCards = shownChapterCardsRef.current;
 
-    function appendChapterCard(chapterId: string) {
-      if (chatBody?.querySelector(`[data-chapter-card="${chapterId}"]`)) return;
-      shownChapterCards.add(chapterId);
+    // 章节卡缩略图补填:卡片创建时画板骨架/objectUrl 可能还没就绪(首次进入的第一张卡、
+    // 追加照片刚合并完新章节),缺图的 thumb 带 data-photo-id 占位,这里有界轮询补上。
+    function fillChapterCardThumbs(chapterId: string, attempt = 0) {
+      if (disposed || attempt > 30) return;
+      const card = chatBody?.querySelector(`[data-chapter-card="${chapterId}"]`);
+      if (!card) return;
+      const pending = [...card.querySelectorAll<HTMLElement>('.cc-thumb[data-photo-id]')];
+      if (pending.length === 0) return;
+      let missing = 0;
+      for (const thumb of pending) {
+        const url = imageUrl(thumb.dataset.photoId!);
+        if (url) {
+          thumb.style.backgroundImage = `url("${url}")`;
+          thumb.removeAttribute('data-photo-id');
+        } else {
+          missing += 1;
+        }
+      }
+      if (missing > 0) setTimeout(() => fillChapterCardThumbs(chapterId, attempt + 1), 500);
+    }
+
+    function appendChapterCard(chapterId: string, attempt = 0) {
+      if (chatBody?.querySelector(`[data-chapter-card="${chapterId}"]`)) {
+        fillChapterCardThumbs(chapterId); // 已有卡片:只补缺失的缩略图
+        return;
+      }
       const meta = chapterMetaById(chapterId);
-      if (!meta) return;
+      if (!meta) {
+        // 画板骨架还没加载完(首次进入/追加合并的竞态):有界重试,而不是放弃导致卡片永远缺失。
+        if (!disposed && attempt < 30) setTimeout(() => appendChapterCard(chapterId, attempt + 1), 500);
+        return;
+      }
+      shownChapterCards.add(chapterId);
       const card = document.createElement('div');
       card.className = 'msg ai max-w-full';
       card.setAttribute('data-chapter-card', chapterId);
@@ -1482,11 +1510,17 @@ export function ChatPanel({
       inner.className = 'chap-card';
       const thumbs = document.createElement('div');
       thumbs.className = 'cc-thumbs';
+      let missingThumb = false;
       for (const photoId of meta.photoIds.slice(0, 4)) {
         const thumb = document.createElement('div');
         thumb.className = 'cc-thumb';
         const url = imageUrl(photoId);
-        if (url) thumb.style.backgroundImage = `url("${url}")`;
+        if (url) {
+          thumb.style.backgroundImage = `url("${url}")`;
+        } else {
+          thumb.setAttribute('data-photo-id', photoId); // 占位,fillChapterCardThumbs 补填
+          missingThumb = true;
+        }
         thumbs.appendChild(thumb);
       }
       const foot = document.createElement('div');
@@ -1523,6 +1557,7 @@ export function ChatPanel({
       card.appendChild(inner);
       chatBody!.appendChild(card);
       scrollChat();
+      if (missingThumb) setTimeout(() => fillChapterCardThumbs(chapterId), 500);
     }
 
     const AUTHORED_TEXT_ROLES = new Set(['title', 'body', 'explain']);
