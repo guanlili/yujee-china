@@ -2048,14 +2048,15 @@ function EditorBook({
       return slots[0]?.id ?? 'image';
     }
     // Render a {template, photo} choice through its real web template into the .cv-opt box.
-    function coverOptionHTML(templateId: string, photoId: string | null): string {
+    // boxW/boxH 可选:设计选择卡的封面+封底并排小预览用更小的盒(默认保持 132×176)。
+    function coverOptionHTML(templateId: string, photoId: string | null, boxW = 132, boxH = 176): string {
       const page: EditorPage = {
         pageIndex: 0,
         templateId,
         imagesJson: photoId ? { [heroSlotId(templateId)]: photoId } : {},
         textsJson: {},
       };
-      return faceHTML(page, 132, 176);
+      return faceHTML(page, boxW, boxH);
     }
     // #162 draft-edit turn: the draft-period chat is a pointed single-page edit,
     // talk/act physically split (no theme→chapter machine, no auto-advance). The

@@ -49,7 +49,7 @@ export type ChatCoordinator = {
   authoringFocusPageIndex: () => number;
   capturePageRender: (pageIndex: number) => Promise<string>;
   capturePhotoThumb: (photoId?: string | null) => Promise<string | undefined>;
-  coverOptionHTML: (templateId: string, photoId: string | null) => string;
+  coverOptionHTML: (templateId: string, photoId: string | null, boxW?: number, boxH?: number) => string;
   bookPhotoIds: () => string[];
   imageUrl: (id: string) => string | undefined;
   // ── UI hooks ──

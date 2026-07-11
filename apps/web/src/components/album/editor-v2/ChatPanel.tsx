@@ -1909,24 +1909,39 @@ export function ChatPanel({
       if (disposed || sets.length === 0) return;
       designOfferShown = true;
 
+      // 样式对齐章节卡(chap-card)模块:同一渐变底卡片、cc-title 标题、cc-view 紫色
+      // 链接式按钮。每个候选是「封面+封底」成对小预览(92×122),一屏约 1.5 组提示可横滑。
       const card = document.createElement('div');
       card.className = 'msg ai max-w-full';
       const inner = document.createElement('div');
-      inner.className = 'cover-card';
-      const title = document.createElement('div');
-      title.className = 'cv-title';
-      title.textContent = aT('最后一步:挑一组封面吧(含封底)', 'Last step: pick a cover set (with back cover)');
-      inner.appendChild(title);
+      inner.className = 'chap-card cv-card';
+      const titleRow = document.createElement('div');
+      titleRow.className = 'cc-title-row';
+      const title = document.createElement('span');
+      title.className = 'cc-title';
+      title.textContent = aT('挑一组封面与封底', 'Pick a cover & back cover');
+      const tag = document.createElement('span');
+      tag.className = 'cc-tag';
+      tag.textContent = aT('最后一步', 'Last step');
+      titleRow.appendChild(title);
+      titleRow.appendChild(tag);
+      inner.appendChild(titleRow);
 
       let selected = 0;
       const row = document.createElement('div');
       row.className = 'cv-row';
       const opts: HTMLButtonElement[] = [];
+      const CHECK_SVG =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
       const repaint = () => {
         opts.forEach((opt, i) => {
           const set = sets[i];
           opt.innerHTML =
-            (co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId) ?? '');
+            `<span class="cv-face">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 92, 122) ?? ''}` +
+            `<i class="cv-face-tag">${aT('封面', 'Cover')}</i></span>` +
+            `<span class="cv-face">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 92, 122) ?? ''}` +
+            `<i class="cv-face-tag">${aT('封底', 'Back')}</i></span>` +
+            `<span class="cv-check">${CHECK_SVG}</span>`;
           opt.classList.toggle('selected', i === selected);
         });
       };
@@ -1942,24 +1957,28 @@ export function ChatPanel({
         row.appendChild(opt);
       });
       inner.appendChild(row);
-      const hint = document.createElement('div');
-      hint.className = 'cv-sublabel';
-      hint.textContent = aT('选定后我会为全书定字体和颜色,并写好封面封底文案。', 'I will then set fonts & colors for the whole book and write the cover copy.');
-      inner.appendChild(hint);
 
-      const actionsRow = document.createElement('div');
-      actionsRow.className = 'cv-actions';
-      const applyBtn = document.createElement('button');
-      applyBtn.type = 'button';
-      applyBtn.className = 'cv-action cv-action-primary';
-      applyBtn.textContent = aT('就这组,开始设计', 'Use this set — design it');
-      applyBtn.addEventListener('click', () => {
+      // 底部与章节卡同构:左侧说明文字 + 右侧紫色链接式按钮(必选,无跳过)。
+      const foot = document.createElement('div');
+      foot.className = 'cc-foot';
+      const info = document.createElement('div');
+      info.className = 'cc-info';
+      const meta = document.createElement('div');
+      meta.className = 'cc-meta';
+      meta.style.whiteSpace = 'normal';
+      meta.textContent = aT('选定后统一全书字体颜色,写好封面封底文案。', 'Fonts, colors and cover copy follow your pick.');
+      info.appendChild(meta);
+      const go = document.createElement('button');
+      go.type = 'button';
+      go.className = 'cc-view';
+      go.innerHTML = `${aT('就这组,开始设计', 'Design it')}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`;
+      go.addEventListener('click', () => {
         if (sending) return;
         void runApplyDesign(sets[selected], card);
       });
-      // 封面必选(导出闸门收紧后设计是必经步骤):不提供跳过。
-      actionsRow.appendChild(applyBtn);
-      inner.appendChild(actionsRow);
+      foot.appendChild(info);
+      foot.appendChild(go);
+      inner.appendChild(foot);
       card.appendChild(inner);
       chatBody!.appendChild(card);
       repaint();

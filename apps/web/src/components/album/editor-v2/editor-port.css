@@ -961,16 +961,28 @@
 .editor-port .cv-section{ display:flex; flex-direction:column; gap:7px; }
 .editor-port .cv-label{ font-size:12px; font-weight:600; color:var(--muted); }
 .editor-port .cv-sublabel{ font-size:11px; font-weight:500; color:var(--muted); margin-top:2px; }
-.editor-port .cv-row{ display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; }
+/* 设计选择卡(chap-card 同构):padding 给选中描边留位,滚动容器不再裁掉外圈。 */
+.editor-port .cv-row{ display:flex; gap:8px; overflow-x:auto; padding:3px 3px 5px; }
 .editor-port .cv-opt{
-  position:relative; flex:0 0 auto; width:132px; aspect-ratio:3/4; border-radius:10px;
-  background-color:var(--bg);
-  border:none; cursor:pointer; padding:0; overflow:hidden;
-  box-shadow:0 0 0 1px var(--border) inset;
+  position:relative; flex:0 0 auto; display:flex; gap:6px;
+  padding:6px; border-radius:12px; background:var(--surface);
+  border:none; cursor:pointer;
+  box-shadow:0 0 0 1px var(--border);
   transition: all var(--motion-fast) var(--ease);
 }
-.editor-port .cv-opt:hover{ box-shadow:0 0 0 1.5px var(--fg-2) inset; }
-.editor-port .cv-opt.selected{ box-shadow:0 0 0 2px var(--fg); }
+.editor-port .cv-opt:hover{ box-shadow:0 0 0 1.5px var(--fg-2); }
+.editor-port .cv-opt.selected{ box-shadow:0 0 0 2px var(--grad-purple); }
+/* 封面/封底成对小预览:真模板缩放渲染 + 左下角小标签 */
+.editor-port .cv-face{
+  position:relative; display:block; width:92px; height:122px;
+  border-radius:8px; overflow:hidden; background:var(--bg);
+  box-shadow:0 0 0 1px var(--border-soft) inset;
+}
+.editor-port .cv-face-tag{
+  position:absolute; left:4px; bottom:4px; font-style:normal;
+  font-size:9px; font-weight:600; line-height:1; color:var(--fg-2);
+  background:rgba(255,255,255,.85); padding:2px 6px; border-radius:9999px;
+}
 /* hero-photo picker: a small horizontal strip of the book's photos */
 .editor-port .cv-photos{ display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; }
 .editor-port .cv-photo{
@@ -982,8 +994,8 @@
 .editor-port .cv-photo:hover{ box-shadow:0 0 0 1.5px var(--fg-2) inset; }
 .editor-port .cv-photo.selected{ box-shadow:0 0 0 2px var(--fg); }
 .editor-port .cv-check{
-  position:absolute; top:6px; right:6px;
-  width:18px; height:18px; border-radius:50%; background:var(--fg); color:#fff;
+  position:absolute; top:2px; right:2px;
+  width:18px; height:18px; border-radius:50%; background:var(--grad-purple); color:#fff;
   display:grid; place-items:center; opacity:0; transform:scale(.7);
   transition: all var(--motion-fast) var(--ease);
 }
