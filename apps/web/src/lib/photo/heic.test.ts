@@ -69,3 +69,28 @@ test('photo file pickers explicitly accept HEIC/HEIF files', () => {
     assert.match(src, /IMAGE_INPUT_ACCEPT/, `${file} must use the shared HEIC-aware accept string`);
   }
 });
+
+test('prepareImageBlobForBrowserDecode rejects when the converter never settles (timeout guard)', async () => {
+  const heic = new Blob(['heic'], { type: 'image/heic' });
+  await assert.rejects(
+    () =>
+      prepareImageBlobForBrowserDecode(
+        heic,
+        () => new Promise<Blob>(() => {}), // 永不 resolve —— 模拟解码 wasm 挂死
+        50,
+      ),
+    (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.match(err.message, /could not convert this HEIC\/HEIF image/i);
+      assert.match(err.message, /timed out/i);
+      return true;
+    },
+  );
+});
+
+test('prepareImageBlobForBrowserDecode resolves normally well within the timeout', async () => {
+  const heic = new Blob(['heic'], { type: 'image/heic' });
+  const jpeg = new Blob(['jpeg'], { type: 'image/jpeg' });
+  const out = await prepareImageBlobForBrowserDecode(heic, async () => jpeg, 5_000);
+  assert.equal(out, jpeg);
+});
