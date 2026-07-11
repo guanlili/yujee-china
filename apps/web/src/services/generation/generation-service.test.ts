@@ -539,3 +539,36 @@ test('append 失败:释放 hold、相册保持 EDITING 不标 FAILED', async (t:
     await cleanupUser(user.id);
   }
 });
+
+test('候选跨实例可见:内存 miss 时从 agent_jobs.meta 兜底(Vercel 多实例回归)', async (t: TestContext) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('p2-meta-candidates');
+  try {
+    const requestId = crypto.randomUUID();
+    const album = await seedLayoutReadyAlbum(user.id, requestId);
+    // phase-1:layout job 到位并收到 candidates 回调(落内存 + 落 meta)
+    const layoutRequestId = crypto.randomUUID();
+    await jobService.createGenerationJob(db, { userId: user.id, albumId: album.id, requestId: layoutRequestId, kind: 'layout' });
+    const layoutJob = await agentJobRepo.findByRequestId(layoutRequestId);
+    await jobService.markRunning(db, layoutJob!.id);
+    await agentJobRepo.update(db, layoutJob!.id, { stage: 'layout' });
+    const units = [
+      { chapterId: 'c1', unitKey: 'c1', candidates: [
+        { templateId: 'mag-05', pages: [{ pageIndex: 0, templateId: 'mag-05', images: { image: 'p1' }, texts: {} }] },
+        { templateId: 'mag-06', pages: [{ pageIndex: 0, templateId: 'mag-06', images: { image: 'p1' }, texts: {} }] },
+      ] },
+    ] as never[];
+    await jobService.handleV3SelectLayoutCandidates(layoutRequestId, units as never, USAGE);
+
+    // 模拟"另一个实例":清空本进程内存暂存 → 只能靠库
+    transientLayoutCandidates.resetForTest();
+    const result = await generationService.getJudgeCandidates(user.id, album.id, requestId);
+    assert.equal(result.ready, true, '内存 miss 时必须从 meta 兜底(线上 2026-07-12 事故回归)');
+    assert.equal(result.units.length, 1);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
