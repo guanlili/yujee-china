@@ -19,6 +19,8 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   AUTH_EMAIL_FROM: z.string().min(1).default('Yujee <noreply@yujeeai.com>'),
+  // 用户反馈转发收件箱(运营者私人邮箱;发件人复用 AUTH_EMAIL_FROM)。
+  FEEDBACK_INBOX: z.string().min(3).default('1658152285@qq.com'),
   EMAIL_DELIVERY: z.enum(['capture', 'console', 'resend']).default('capture'),
   EMAIL_CAPTURE_FILE: z.string().min(1).default('.tmp/email-capture.jsonl'),
   RESEND_API_KEY: z.string().optional(),

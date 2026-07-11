@@ -89,7 +89,9 @@ test('landing header replaces the login CTA with the account menu for signed-in 
   assert.match(userMenu, /m\.nav\.myAlbums/, 'account menu should use the user-albums label');
   assert.match(userMenu, /`\/\$\{locale\}\/my-albums`/, 'account menu should link to the user albums');
   assert.match(userMenu, /`\/\$\{locale\}\/credits#history`/, 'account menu should link to credit consumption history');
-  assert.match(userMenu, /mailto:feedback@yujeeai\.com/, 'account menu should keep the existing feedback entry');
+  // 反馈从 mailto 死链改为应用内表单(POST /api/v1/feedback,落库+转发运营邮箱)。
+  assert.match(userMenu, /setFeedbackOpen\(true\)/, 'account menu should open the in-app feedback form');
+  assert.match(userMenu, /\/api\/v1\/feedback/, 'feedback form should post to the feedback API');
   assert.match(creditsPage, /id="history"/, 'credit consumption history link should have a stable page anchor');
   assert.match(enMessages, /"creditHistory": "Credit history"/, 'English menu should label consumption history');
   assert.match(zhMessages, /"creditHistory": "消耗记录"/, 'Chinese menu should use the requested consumption history label');

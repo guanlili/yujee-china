@@ -24,7 +24,34 @@ export function UserMenu({ user, locale, onSignOut }: Props) {
     balance === 1 ? m.credits.unitSingular : m.credits.unit
   }`;
   const [open, setOpen] = useState(false);
+  // 反馈弹层:提交到 /api/v1/feedback(落库+转发运营邮箱),替代原 mailto 死链。
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [feedbackState, setFeedbackState] = useState<'idle' | 'sending' | 'done' | 'fail'>('idle');
   const ref = useRef<HTMLDivElement>(null);
+
+  const submitFeedback = async () => {
+    const message = feedbackText.trim();
+    if (!message || feedbackState === 'sending') return;
+    setFeedbackState('sending');
+    try {
+      const res = await fetch('/api/v1/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, page: window.location.pathname }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error('feedback failed');
+      setFeedbackState('done');
+      setFeedbackText('');
+      setTimeout(() => {
+        setFeedbackOpen(false);
+        setFeedbackState('idle');
+      }, 1600);
+    } catch {
+      setFeedbackState('fail');
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -96,12 +123,19 @@ export function UserMenu({ user, locale, onSignOut }: Props) {
             </span>
             {c.creditHistory}
           </Link>
-          <a href="mailto:feedback@yujeeai.com" onClick={() => setOpen(false)} className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] px-3 py-2.5 text-left text-[var(--text-sm)] text-[var(--fg-2)] transition-colors hover:bg-[var(--bg)]">
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              setFeedbackOpen(true);
+            }}
+            className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] px-3 py-2.5 text-left text-[var(--text-sm)] text-[var(--fg-2)] transition-colors hover:bg-[var(--bg)]"
+          >
             <span className="flex h-[18px] w-[18px] items-center justify-center text-[var(--muted)]">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
             </span>
             {c.feedback}
-          </a>
+          </button>
           <div className="my-1 h-px bg-[var(--border-soft)]" />
           <button type="button" onClick={handleSignOut} className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] px-3 py-2.5 text-left text-[var(--text-sm)] text-[#c44] transition-colors hover:bg-[var(--bg)]">
             <span className="flex h-[18px] w-[18px] items-center justify-center">
@@ -109,6 +143,44 @@ export function UserMenu({ user, locale, onSignOut }: Props) {
             </span>
             {c.logout}
           </button>
+        </div>
+      )}
+      {feedbackOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4" onClick={() => feedbackState !== 'sending' && setFeedbackOpen(false)}>
+          <div
+            className="w-full max-w-md rounded-[18px] bg-[var(--surface)] p-5 shadow-[var(--elev-card-hover)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 text-[15px] font-semibold text-[var(--fg)]">{c.feedbackTitle}</div>
+            {feedbackState === 'done' ? (
+              <div className="py-6 text-center text-[var(--text-sm)] text-[var(--fg-2)]">{c.feedbackDone}</div>
+            ) : (
+              <>
+                <textarea
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  placeholder={c.feedbackPlaceholder}
+                  maxLength={2000}
+                  rows={5}
+                  autoFocus
+                  className="w-full resize-none rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--bg)] p-3 text-[var(--text-sm)] text-[var(--fg)] outline-none focus:border-[var(--accent-active)]"
+                />
+                {feedbackState === 'fail' && (
+                  <div className="mt-2 text-[12.5px] text-[#c44]">{c.feedbackFail}</div>
+                )}
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={submitFeedback}
+                    disabled={feedbackState === 'sending' || !feedbackText.trim()}
+                    className="rounded-full bg-[var(--fg)] px-5 py-2 text-[var(--text-sm)] text-white transition-opacity disabled:opacity-40"
+                  >
+                    {feedbackState === 'sending' ? c.feedbackSending : c.feedbackSubmit}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

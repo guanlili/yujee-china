@@ -89,7 +89,13 @@
       "creditHistory": "消耗记录",
       "feedback": "反馈与问题",
       "logout": "退出登录",
-      "accountMenu": "账户菜单"
+      "accountMenu": "账户菜单",
+      "feedbackTitle": "反馈与问题",
+      "feedbackPlaceholder": "遇到什么问题,或者希望哪里做得更好…",
+      "feedbackSubmit": "发送反馈",
+      "feedbackSending": "发送中…",
+      "feedbackDone": "收到啦,每条反馈我们都会看。",
+      "feedbackFail": "暂时没发出去,稍后再试一下。"
     },
     "nav": {
       "myAlbums": "我的相册",
@@ -112,10 +118,22 @@
       "errPromptEmpty": "请输入一句故事描述。",
       "errPhotosUnavailable": "部分照片在此设备上已不可用，请重新添加。",
       "hints": [
-        { "label": "旅行纪念册", "prompt": "一本记录我和妈妈京都春日旅行的影集" },
-        { "label": "宝宝成长记录", "prompt": "女儿的第一年，按月记录的成长点滴" },
-        { "label": "毕业纪念", "prompt": "四年大学时光，定格在毕业那天" },
-        { "label": "美食手帐", "prompt": "一个夏天的家常菜和小馆子" }
+        {
+          "label": "旅行纪念册",
+          "prompt": "一本记录我和妈妈京都春日旅行的影集"
+        },
+        {
+          "label": "宝宝成长记录",
+          "prompt": "女儿的第一年，按月记录的成长点滴"
+        },
+        {
+          "label": "毕业纪念",
+          "prompt": "四年大学时光，定格在毕业那天"
+        },
+        {
+          "label": "美食手帐",
+          "prompt": "一个夏天的家常菜和小馆子"
+        }
       ]
     },
     "myAlbums": {

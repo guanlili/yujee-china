@@ -77,6 +77,7 @@ test('web keeps the v1 infrastructure route whitelist used by V3', () => {
     'apps/web/src/app/api/v1/albums/route.ts',
     'apps/web/src/app/api/v1/billing/checkout/route.ts',
     'apps/web/src/app/api/v1/credit/balance/route.ts',
+    'apps/web/src/app/api/v1/feedback/route.ts',
     'apps/web/src/app/api/v1/credit/history/route.ts',
     'apps/web/src/app/api/v1/fonts/subset/route.ts',
     'apps/web/src/app/api/v1/health/route.ts',
