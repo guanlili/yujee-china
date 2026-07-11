@@ -1695,7 +1695,10 @@ export const albumService = {
       pageCount: pages.length,
       // 设计完成 → 待导出(导出闸门的唯一开门钥匙)。story 阶段到不了这里(design 要求
       // 已排版页,入口在 theme 之后);幂等重设计时已是 ready 则维持不动。
-      ...(album.stage === 'theme' || album.stage === 'cover' ? { stage: 'ready' as const } : {}),
+      // 用户选定封面组 = 设计环节完成 ⇒ 推 stage='ready'(导出闸门解锁条件之一)。
+      // 现行流程选封面发生在 story 阶段(排版完即弹卡,不经过旧 theme/cover),
+      // 只要能走到这里(EDITING + 已有排版页)就该进 ready;幂等重入保持 ready。
+      ...(album.stage !== 'ready' ? { stage: 'ready' as const } : {}),
     });
     return { pages };
   },

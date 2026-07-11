@@ -827,7 +827,7 @@ test('markChapterDone: after gate opened (stage past story) is a no-op', async (
   }
 });
 
-test('applyDesign: success advances stage theme → ready (export gate key)', async (t) => {
+test('applyDesign: success advances stage story → ready (export gate key; 现行流程选封面发生在 story)', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
     return;
@@ -856,7 +856,7 @@ test('applyDesign: success advances stage theme → ready (export gate key)', as
     };
     await albumRepo.update(db, album.id, {
       status: 'EDITING',
-      stage: 'theme',
+      stage: 'story',
       draftJson: {
         version: 'v3-story',
         tree,
