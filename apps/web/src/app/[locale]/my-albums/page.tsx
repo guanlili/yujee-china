@@ -407,11 +407,18 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         try {
           // compressFile 内部把 HEIC/HEIF 转成 JPEG 再解码(见 lib/photo/heic.ts)。
           const c = await compressFile(f, photoId);
-          await photoStore.put(photoId, f);
+          try {
+            await photoStore.put(photoId, f);
+          } catch (storeErr) {
+            // 本地原图存不进 IndexedDB(Safari 对 file-backed Blob 的各种边界)不丢照片:
+            // 生成用 compressed 就够;重试/高清导出走既有的原图缺失降级。
+            console.warn('[photo] original not stored locally', photoId, storeErr);
+          }
           compressed.push(c);
           photoIds.push(photoId);
-        } catch {
-          // 无法解码/不支持的文件(含个别坏 HEIC)静默跳过 —— 不打断整批,不报错。
+        } catch (e) {
+          // 真正无法解码/不支持的文件(含个别坏 HEIC)跳过,不打断整批;留痕便于排查。
+          console.warn('[photo] skipped undecodable file', photoId, e);
         }
       }
       // 选中的全是不支持的格式 → 没有可用照片。静默退出,不建册、不报错。

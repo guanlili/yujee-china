@@ -171,7 +171,13 @@ export function HeroComposer({
       try {
         // compressFile 内部会把 HEIC/HEIF 转成 JPEG 再解码(见 lib/photo/heic.ts)。
         const compressed = await compressFile(f, photoId);
-        await photoStore.put(photoId, f);
+        try {
+          await photoStore.put(photoId, f);
+        } catch (storeErr) {
+          // 本地原图存不进 IndexedDB(Safari 对 file-backed Blob 的各种边界)不丢照片:
+          // 生成用 compressed 就够;重试/高清导出走既有的原图缺失降级。
+          console.warn('[photo] original not stored locally', photoId, storeErr);
+        }
         next.push({
           photoId,
           // 预览用转换后的 JPEG(compressed.base64),而非原始文件 —— 这样 HEIC/HEIF 也能显示
@@ -181,8 +187,9 @@ export function HeroComposer({
           height: compressed.height,
           compressed,
         });
-      } catch {
-        // 无法解码/不支持的文件(含个别坏 HEIC)静默跳过 —— 不打断整批,不报错。
+      } catch (e) {
+        // 真正无法解码/不支持的文件(含个别坏 HEIC)跳过,不打断整批;留痕便于排查。
+        console.warn('[photo] skipped undecodable file', photoId, e);
       }
     }
     setPhotos((prev) => [...prev, ...next]);

@@ -121,15 +121,32 @@ async function blobToPdfDataUrl(blob: Blob, maxEdge = PDF_IMAGE_MAX_EDGE): Promi
   }
 }
 
+// Safari/WebKit cannot reliably store file-backed File/Blob objects (as handed
+// out by <input type=file>, especially iOS photo-library temp copies) in
+// IndexedDB: the transaction commit re-reads the source file and can throw
+// UnknownError "Error preparing Blob/File data to be stored in object store".
+// Reading the bytes into memory first and storing a memory-backed copy avoids
+// the file reference entirely. `name` is preserved because HEIC sniffing on
+// read-back falls back to the filename when the MIME type is empty (heic.ts).
+async function toMemoryBackedBlob(blob: Blob): Promise<Blob> {
+  const bytes = await blob.arrayBuffer();
+  const name = (blob as File).name;
+  return typeof name === 'string' && name
+    ? new File([bytes], name, { type: blob.type })
+    : new Blob([bytes], { type: blob.type });
+}
+
 export const photoStore = {
   async put(photoId: string, blob: Blob): Promise<void> {
+    const copy = await toMemoryBackedBlob(blob);
     const store = await tx('readwrite');
-    await asPromise(store.put(blob, photoId));
+    await asPromise(store.put(copy, photoId));
   },
 
   async putMany(items: { photoId: string; blob: Blob }[]): Promise<void> {
+    const copies = await Promise.all(items.map((it) => toMemoryBackedBlob(it.blob)));
     const store = await tx('readwrite');
-    await Promise.all(items.map((it) => asPromise(store.put(it.blob, it.photoId))));
+    await Promise.all(copies.map((copy, i) => asPromise(store.put(copy, items[i].photoId))));
   },
 
   async getBlob(photoId: string): Promise<Blob | undefined> {
