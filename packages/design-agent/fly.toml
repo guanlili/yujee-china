@@ -23,7 +23,7 @@ primary_region = "nrt"
   # Provider = Volcano Ark (base URL hardcoded in the volcengine-ark provider);
   # only ARK_API_KEY is secret. Model mirrors the local dev config.
   DESIGN_AGENT_PROVIDER = "volcengine"
-  DESIGN_AGENT_MODEL = "deepseek-v4-flash-260425"
+  DESIGN_AGENT_MODEL = "deepseek-v4-pro-260425"
 
 [http_service]
   internal_port = 8787
