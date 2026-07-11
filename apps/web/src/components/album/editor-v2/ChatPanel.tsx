@@ -2387,6 +2387,10 @@ export function ChatPanel({
             void runChapterGuideOpener();
           }
         } else if (stage === 'theme' || stage === 'cover' || stage === 'ready') {
+          // 设计环节可重入(导出闸门收紧后设计是必经步骤):刷新后回到 theme/cover 也要
+          // 能重新拿到封面组选择卡。offerDesignCard 自查 designed/hasPages,已设计过或
+          // 无排版页则静默不弹,幂等安全。旧 theme/cover 流程分支保留(Web 残留 surface)。
+          void offerDesignCard();
           if (stage === 'theme') {
             void runRecommendTheme();
           } else if (stage === 'cover') {
