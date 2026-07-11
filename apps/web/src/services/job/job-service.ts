@@ -5,12 +5,15 @@ import { creditService } from '@/services/credit/credit-service';
 import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
 import { transientLayoutCandidates } from '@/services/album/layout-candidates';
-import { V3LayoutTree, V3StoryDraft, type SelectLayoutCandidateUnit } from '@yujee/contracts';
+import { Page, V3LayoutTree, V3StoryDraft, type SelectLayoutCandidateUnit } from '@yujee/contracts';
 import {
   countTreePhotos,
+  extractDesignFromPages,
+  insertAppendPages,
   mergeAppendTree,
   remapAppendChapterIds,
 } from '@/services/album/append-photos';
+import { sweepCarriers } from '@/services/album/design-apply';
 
 // 解耦后 analyze 与 layout 是两个独立 job:init job(analyze,0→100)与 layout job(排版,
 // 0→100)各自独立,不再共享一行 agent_jobs 用 50/51/52 哨兵串联。两段式候选流(如重启用)
@@ -48,6 +51,47 @@ export function mergeSelectLayoutPages(draftJson: unknown, pages: unknown) {
     throw ERRORS.VALIDATION_FAILED('select-layout completion requires an existing v3-story draft');
   }
   return { ...parsed.data, pages };
+}
+
+// 追加排版完成(加图增量重跑 spec §1):新页插到封尾前 + 继承全书设计 carrier + 新章
+// 直接记 done(追加不走逐章确认循环,导出闸门靠 allDone 自动恢复)。老页/老章一律不动。
+export function mergeAppendLayoutPages(
+  draftJson: unknown,
+  pages: unknown,
+  appendChapterIds: string[],
+) {
+  const parsed = V3StoryDraft.safeParse(draftJson);
+  if (!parsed.success || !parsed.data.pages || parsed.data.pages.length === 0) {
+    throw ERRORS.VALIDATION_FAILED('append layout completion requires an existing paged draft');
+  }
+  const existingPages = parsed.data.pages;
+  let appended = Page.array().parse(pages);
+  const design = extractDesignFromPages(existingPages);
+  if (design) appended = sweepCarriers(appended, design.fonts, design.colors);
+  const mergedPages = insertAppendPages(existingPages, appended);
+
+  const chapterOrder = parsed.data.tree.chapters.map((c) => c.chapterId);
+  const doneSet = new Set(parsed.data.progress.doneChapterIds);
+  for (const id of appendChapterIds) if (chapterOrder.includes(id)) doneSet.add(id);
+  const nextCurrent = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
+
+  return {
+    ...parsed.data,
+    pages: mergedPages,
+    progress: {
+      currentChapterId: nextCurrent,
+      doneChapterIds: chapterOrder.filter((id) => doneSet.has(id)),
+    },
+  };
+}
+
+// layout job 的追加范围标记(agent_jobs.meta.appendChapterIds);非追加/坏形状 → null。
+export function readAppendChapterIds(meta: unknown): string[] | null {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null;
+  const ids = (meta as { appendChapterIds?: unknown }).appendChapterIds;
+  return Array.isArray(ids) && ids.length > 0 && ids.every((x) => typeof x === 'string')
+    ? (ids as string[])
+    : null;
 }
 
 function recordOrEmpty(value: unknown): Record<string, unknown> {
@@ -321,7 +365,11 @@ export const jobService = {
       });
       if (!won) return;
 
-      const draftJson = mergeSelectLayoutPages(album.draftJson, pages);
+      // 追加排版(job.meta.appendChapterIds)走插入合并;普通全书排版整表替换 pages。
+      const appendChapterIds = readAppendChapterIds(job.meta);
+      const draftJson = appendChapterIds
+        ? mergeAppendLayoutPages(album.draftJson, pages, appendChapterIds)
+        : mergeSelectLayoutPages(album.draftJson, pages);
 
       await albumRepo.update(tx, job.albumId, { draftJson });
 
