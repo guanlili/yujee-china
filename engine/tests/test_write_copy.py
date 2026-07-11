@@ -46,15 +46,15 @@ def _completion(content: dict) -> dict:
     }
 
 
-def _set_ark_key(monkeypatch) -> None:
-    monkeypatch.setenv("ARK_API_KEY", "fake_ark")
+def _set_deepseek_key(monkeypatch) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "fake_deep")
     from src import settings as s
 
     s.reset_settings_cache()
 
 
 def test_write_copy_fills_title_and_body_slots(monkeypatch):
-    _set_ark_key(monkeypatch)
+    _set_deepseek_key(monkeypatch)
     calls: list[dict] = []
 
     async def fake_completion(**kwargs):
@@ -102,7 +102,8 @@ def test_write_copy_fills_title_and_body_slots(monkeypatch):
     # sanity: payload sent to the model carries chapterContext + language + the
     # page's writable slot specs (decoration excluded — covered by another test).
     sent_messages = calls[0]["messages"]
-    user_text = sent_messages[1]["content"][0]["text"]
+    user_text = sent_messages[1]["content"]
+    assert isinstance(user_text, str)  # 纯文本调用:不再组 parts、不附图
     payload = json.loads(user_text)
     assert payload["chapterContext"] == "厦门海边度假,轻松愉快"
     assert payload["language"] == "zh"
@@ -113,15 +114,18 @@ def test_write_copy_fills_title_and_body_slots(monkeypatch):
     slots_by_id = {slot["id"]: slot for slot in payload["pages"][0]["textSlots"]}
     assert slots_by_id["title"]["maxChars"] == 24
     assert slots_by_id["body"]["maxChars"] == 80
-    # ref200px images get attached alongside the text part.
-    image_parts = [p for p in sent_messages[1]["content"] if p.get("type") == "image_url"]
-    assert len(image_parts) == 1
-    assert image_parts[0]["image_url"]["url"] == "data:image/jpeg;base64,AAAA"
+    # deepseek 纯文本:照片以 sceneDescription 进上下文,photoId 一律短 id,
+    # 真实 UUID 绝不进模型 payload(约定:给 AI 的 id 都要转换)。
+    photos = payload["pages"][0]["photos"]
+    assert photos[0]["photoId"] == "1"
+    assert photos[0]["sceneDescription"] == "两个人在海边看日落"
+    assert "p1" not in user_text  # 真实 photoId 不出现
+    assert "image_url" not in user_text
 
 
 def test_write_copy_does_not_clamp_text(monkeypatch):
     # maxChars 已从写文案链路移除:AI 自然成文,不再按字数硬截断(长文原样透传)。
-    _set_ark_key(monkeypatch)
+    _set_deepseek_key(monkeypatch)
 
     long_title = "这是一段远超过标题最大字符数限制的超长标题文本用来测试裁剪逻辑是否生效"
     assert len(long_title) > 24
@@ -161,7 +165,7 @@ def test_write_copy_does_not_clamp_text(monkeypatch):
 
 
 def test_write_copy_never_requests_or_returns_decoration_slots(monkeypatch):
-    _set_ark_key(monkeypatch)
+    _set_deepseek_key(monkeypatch)
     calls: list[dict] = []
 
     async def fake_completion(**kwargs):
@@ -202,7 +206,8 @@ def test_write_copy_never_requests_or_returns_decoration_slots(monkeypatch):
     assert "folio" not in result.pages_texts[0]
 
     sent_messages = calls[0]["messages"]
-    user_text = sent_messages[1]["content"][0]["text"]
+    user_text = sent_messages[1]["content"]
+    assert isinstance(user_text, str)  # 纯文本调用:不再组 parts、不附图
     payload = json.loads(user_text)
     sent_slot_ids = {slot["id"] for slot in payload["pages"][0]["textSlots"]}
     assert "date" not in sent_slot_ids
@@ -210,7 +215,7 @@ def test_write_copy_never_requests_or_returns_decoration_slots(monkeypatch):
 
 
 def test_write_copy_provider_error_returns_empty_result(monkeypatch):
-    _set_ark_key(monkeypatch)
+    _set_deepseek_key(monkeypatch)
 
     async def fake_completion(**kwargs):
         raise ai_client.AIRequestError("boom", status_code=500, kind="5xx")
@@ -234,7 +239,7 @@ def test_write_copy_provider_error_returns_empty_result(monkeypatch):
 
 
 def test_write_copy_page_with_only_decoration_slots_is_skipped_no_call(monkeypatch):
-    _set_ark_key(monkeypatch)
+    _set_deepseek_key(monkeypatch)
     calls: list[dict] = []
 
     async def fake_completion(**kwargs):
@@ -260,9 +265,9 @@ def test_write_copy_page_with_only_decoration_slots_is_skipped_no_call(monkeypat
     assert len(calls) == 0
 
 
-def test_write_copy_missing_ark_key_returns_empty_no_call(monkeypatch):
-    # ARK_API_KEY intentionally left unset — ark_vision_slot must raise
-    # VisionSlotError, and write_copy must swallow it (never raise).
+def test_write_copy_missing_deepseek_key_returns_empty_no_call(monkeypatch):
+    # DEEPSEEK_API_KEY intentionally left unset — write_copy must degrade to an
+    # empty result without calling the model (never raise).
     calls: list[dict] = []
 
     async def fake_completion(**kwargs):
