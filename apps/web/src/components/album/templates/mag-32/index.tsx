@@ -1,5 +1,5 @@
 import type { TemplateRenderProps } from '../types';
-import { PAGE } from '../constants';
+import { fitDisplayFontSize, PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
 
@@ -17,6 +17,9 @@ export function WebMag32({ data, imagePos }: TemplateRenderProps) {
   const title = d['title'] || 'North\nLight';
   const labelTheme = resolveThemeCarrier(data, 'label', 'decoration');
   const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  // 标题盒避开左缘竖排装饰(x≈50-93),宽度放大到 620;字号按最长行自适应(实测
+  // "My Memoir" 在旧 300px 盒 + 96px 固定字号下被裁成 "My Memoi")。
+  const titleFontSize = fitDisplayFontSize(title, 620, 96);
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* ── 封面满高大图（槽 image，偏右铺满整页高度） ── */}
@@ -25,8 +28,8 @@ export function WebMag32({ data, imagePos }: TemplateRenderProps) {
       {/* ── 主竖排大地名 NORWAY（槽 label，左缘旋转 90°，variableDecor） ── */}
       <div style={{ position: 'absolute', left: 95, top: 160, width: 800, fontFamily: labelTheme.webFontFamily, fontWeight: 700, fontSize: 85, lineHeight: 1, letterSpacing: '8.5px', color: labelTheme.accentColor ?? CLAY, whiteSpace: 'nowrap', transform: 'rotate(90deg)', transformOrigin: 'left top' }}>{label}</div>
 
-      {/* ── 主标题（槽 title，左下角大展示字） ── */}
-      <div style={{ position: 'absolute', left: 56, top: 710, width: 300, height: 360, fontFamily: titleTheme.webFontFamily, fontWeight: 700, fontSize: 96, lineHeight: 1.05, color: titleTheme.accentColor ?? CLAY, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{title}</div>
+      {/* ── 主标题（槽 title，左下角大展示字；避开竖排装饰、字号自适应不裁字） ── */}
+      <div style={{ position: 'absolute', left: 110, top: 710, width: 620, height: 360, fontFamily: titleTheme.webFontFamily, fontWeight: 700, fontSize: titleFontSize, lineHeight: 1.05, color: titleTheme.accentColor ?? CLAY, whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden' }}>{title}</div>
 
       {/* ── 固定装饰：左下竖排小 NORWAY（furniture，非槽位，旋转 90°） ── */}
       <div style={{ position: 'absolute', left: 50, top: 760, width: 300, fontFamily: labelTheme.webFontFamily, fontWeight: 400, fontSize: 43, lineHeight: 1, letterSpacing: '4px', color: CLAY, whiteSpace: 'nowrap', transform: 'rotate(90deg)', transformOrigin: 'left top' }}>{label}</div>

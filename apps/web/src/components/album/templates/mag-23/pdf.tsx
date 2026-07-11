@@ -1,5 +1,5 @@
 import { Text, View } from '@react-pdf/renderer';
-import { PAGE, PDF_FONTS } from '../constants';
+import { fitDisplayFontSize, PAGE, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
@@ -41,10 +41,10 @@ export function PdfMag23({ data, imagePos }: TemplateRenderProps) {
       <Text style={{ position: 'absolute', left: 576, top: 123, width: 130, fontFamily: cityTheme.pdfFontFamily, fontSize: 12, lineHeight: 1.6, color: cityTheme.accentColor ?? INK }}>{d['city']}</Text>
 
       {/* ── 主标题（槽 title，宽体展示字） ── */}
-      <Text style={{ position: 'absolute', left: 57, top: 201, width: 400, fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 75, lineHeight: 1, letterSpacing: 4.5, color: titleTheme.accentColor ?? INK }}>{d['title']}</Text>
+      <Text style={{ position: 'absolute', left: 57, top: 201, width: 400, fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: fitDisplayFontSize(d['title'] ?? '', 380, 75, 32), lineHeight: 1, letterSpacing: 4.5, color: titleTheme.accentColor ?? INK }}>{d['title']}</Text>
 
       {/* ── 副标题（槽 subtitle，略小） ── */}
-      <Text style={{ position: 'absolute', left: 67, top: 287, width: 300, fontFamily: subtitleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 53, lineHeight: 1, letterSpacing: 3.2, color: subtitleTheme.accentColor ?? INK }}>{d['subtitle']}</Text>
+      <Text style={{ position: 'absolute', left: 67, top: 287, width: 300, fontFamily: subtitleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: fitDisplayFontSize(d['subtitle'] ?? '', 285, 53, 24), lineHeight: 1, letterSpacing: 3.2, color: subtitleTheme.accentColor ?? INK }}>{d['subtitle']}</Text>
 
       {/* ── 固定装饰：中部小方块（furniture，非槽位） ── */}
       <View style={{ position: 'absolute', left: 354, top: 327, width: 13, height: 13, backgroundColor: 'rgba(0,0,0,0.8)' }} />

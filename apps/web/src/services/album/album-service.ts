@@ -10,7 +10,7 @@ import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
 import { transientPagePhotoRefs } from './page-photo-refs';
-import { assembleDesignedPages, buildCoverSets, slotSpecs, templateCategory } from './design-apply';
+import { assembleDesignedPages, buildCoverSets, pickHeroPhotos, slotSpecs, templateCategory } from './design-apply';
 import {
   Page,
   V3LayoutTree,
@@ -1621,6 +1621,12 @@ export const albumService = {
       endingSlots: slotSpecs(input.endingTemplateId),
     });
 
+    // 封底可能有多个图槽(mag-25 两图):hero 池按构图排序取前 4,剔除封面/封尾主图后补槽。
+    const extraEndingPhotoIds = pickHeroPhotos(
+      chapters.map((c) => ({ photos: (c.photos ?? []) as { photoId: string }[] })),
+      4,
+    ).filter((id) => id !== input.endingPhotoId && id !== input.coverPhotoId);
+
     const pages = assembleDesignedPages({
       interiorPages,
       set: {
@@ -1633,6 +1639,7 @@ export const albumService = {
       endingTexts: design.endingTexts,
       fonts: design.fonts,
       colors: design.colors,
+      extraEndingPhotoIds,
     });
 
     await albumRepo.update(db, album.id, {

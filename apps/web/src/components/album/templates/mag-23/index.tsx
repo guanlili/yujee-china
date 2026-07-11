@@ -1,5 +1,5 @@
 import type { TemplateRenderProps } from '../types';
-import { COLORS, PAGE, WEB_FONTS } from '../constants';
+import { COLORS, fitDisplayFontSize, PAGE, WEB_FONTS } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
 
@@ -36,11 +36,11 @@ export function WebMag23({ data, imagePos }: TemplateRenderProps) {
       {/* ── 城市列表（槽 city，换行分隔） ── */}
       <div style={{ position: 'absolute', left: 576, top: 123, width: 130, fontFamily: cityTheme.webFontFamily, fontWeight: 300, fontSize: 12, lineHeight: 1.6, color: cityTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['city']}</div>
 
-      {/* ── 主标题（槽 title，宽体展示字） ── */}
-      <div style={{ position: 'absolute', left: 57, top: 201, width: 400, height: 80, fontFamily: titleTheme.webFontFamily, fontWeight: 800, fontSize: 75, lineHeight: 1, letterSpacing: '0.06em', color: titleTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
+      {/* ── 主标题（槽 title，宽体展示字；字号按行宽自适应,不再裁字） ── */}
+      <div style={{ position: 'absolute', left: 57, top: 201, width: 400, height: 80, fontFamily: titleTheme.webFontFamily, fontWeight: 800, fontSize: fitDisplayFontSize(d['title'] ?? '', 380, 75, 32), lineHeight: 1, letterSpacing: '0.06em', color: titleTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
 
-      {/* ── 副标题（槽 subtitle，略小） ── */}
-      <div style={{ position: 'absolute', left: 67, top: 287, width: 300, height: 56, fontFamily: subtitleTheme.webFontFamily, fontWeight: 800, fontSize: 53, lineHeight: 1, letterSpacing: '0.06em', color: subtitleTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['subtitle']}</div>
+      {/* ── 副标题（槽 subtitle，略小；同上自适应） ── */}
+      <div style={{ position: 'absolute', left: 67, top: 287, width: 300, height: 56, fontFamily: subtitleTheme.webFontFamily, fontWeight: 800, fontSize: fitDisplayFontSize(d['subtitle'] ?? '', 285, 53, 24), lineHeight: 1, letterSpacing: '0.06em', color: subtitleTheme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['subtitle']}</div>
 
       {/* ── 固定装饰：中部小方块（furniture，非槽位） ── */}
       <div style={{ position: 'absolute', left: 354, top: 327, width: 13, height: 13, background: 'rgba(0,0,0,0.8)' }} />

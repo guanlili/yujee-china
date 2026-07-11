@@ -72,3 +72,58 @@ test('assembleDesignedPages: 页序 [封面,...内页,封尾] 且 pageIndex 重�
   assert.equal(Object.values(pages[0].images)[0], set.coverPhotoId);
   assert.equal(Object.values(pages[3].images)[0], set.endingPhotoId);
 });
+
+// ── 封尾模板与多图槽(2026-07 封面封尾调整) ──
+
+test('pickEndingTemplateId: 优先带文字槽的封底,engine 封尾文案有槽可落', async () => {
+  const { pickEndingTemplateId } = await import('./design-apply');
+  const { TEMPLATES } = await import('@yujee/contracts');
+  for (const albumId of ['album-a', 'album-b', 'album-c', 'x']) {
+    const id = pickEndingTemplateId(albumId)!;
+    const t = (TEMPLATES as Record<string, { category?: string; texts?: unknown[] }>)[id];
+    assert.equal(t.category, 'ending');
+    assert.ok((t.texts ?? []).length > 0, `${id} 应有文字槽(纯图 mag-20 不该被选)`);
+  }
+});
+
+test('assembleDesignedPages: 封底多图槽全部填上,第 1 槽是 endingPhotoId', async () => {
+  const { assembleDesignedPages, pickEndingTemplateId } = await import('./design-apply');
+  const { TEMPLATES } = await import('@yujee/contracts');
+  const endingId = pickEndingTemplateId('album-a')!;
+  const endingSlots = ((TEMPLATES as Record<string, { images?: { id: string }[] }>)[endingId].images ?? []).map((s) => s.id);
+  const pages = assembleDesignedPages({
+    interiorPages: [{ pageIndex: 0, templateId: 'mag-02', images: {}, texts: {} }],
+    set: { coverTemplateId: 'mag-32', coverPhotoId: 'hero-1', endingTemplateId: endingId, endingPhotoId: 'hero-2' },
+    coverTexts: {},
+    endingTexts: {},
+    fonts: { title: 'Fraunces', body: 'Inter', decoration: 'Caveat' },
+    colors: { title: '#111', body: '#222', explain: '#333' },
+    extraEndingPhotoIds: ['hero-3', 'hero-4'],
+  });
+  const ending = pages[pages.length - 1];
+  assert.equal(ending.templateId, endingId);
+  assert.equal(Object.keys(ending.images).length, endingSlots.length, '图槽一个不落');
+  assert.equal(ending.images[endingSlots[0]], 'hero-2');
+  if (endingSlots.length > 1) {
+    assert.equal(ending.images[endingSlots[1]], 'hero-3'); // 补充照片按序进后续槽
+  }
+});
+
+test('assembleDesignedPages: 无补充照片时后续图槽复用 endingPhotoId 不留空', async () => {
+  const { assembleDesignedPages, pickEndingTemplateId } = await import('./design-apply');
+  const { TEMPLATES } = await import('@yujee/contracts');
+  const endingId = pickEndingTemplateId('album-a')!;
+  const endingSlots = ((TEMPLATES as Record<string, { images?: { id: string }[] }>)[endingId].images ?? []).map((s) => s.id);
+  const pages = assembleDesignedPages({
+    interiorPages: [{ pageIndex: 0, templateId: 'mag-02', images: {}, texts: {} }],
+    set: { coverTemplateId: 'mag-32', coverPhotoId: 'hero-1', endingTemplateId: endingId, endingPhotoId: 'hero-2' },
+    coverTexts: {},
+    endingTexts: {},
+    fonts: { title: 'Fraunces', body: 'Inter', decoration: 'Caveat' },
+    colors: { title: '#111', body: '#222', explain: '#333' },
+  });
+  const ending = pages[pages.length - 1];
+  for (const slotId of endingSlots) {
+    assert.equal(ending.images[slotId], 'hero-2');
+  }
+});

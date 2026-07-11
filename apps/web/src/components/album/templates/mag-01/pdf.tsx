@@ -1,5 +1,5 @@
 import { Text, View } from '@react-pdf/renderer';
-import { COLORS, PDF_FONTS } from '../constants';
+import { COLORS, fitDisplayFontSize, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
@@ -34,7 +34,8 @@ export function PdfMag01({ data, imagePos }: TemplateRenderProps) {
         <Text
           style={{
             letterSpacing: 2.9,
-            fontSize: 72,
+            // 与 web 同步:长标题按行宽缩字。
+            fontSize: fitDisplayFontSize(titleText, 440, 72, 32),
             fontWeight: 700,
             lineHeight: 1,
             color: headingTheme.accentColor ?? COLORS.ink,

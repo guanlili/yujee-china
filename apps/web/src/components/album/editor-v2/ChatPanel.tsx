@@ -1957,15 +1957,7 @@ export function ChatPanel({
         if (sending) return;
         void runApplyDesign(sets[selected], card);
       });
-      const skipBtn = document.createElement('button');
-      skipBtn.type = 'button';
-      skipBtn.className = 'cv-action cv-action-ghost';
-      skipBtn.textContent = aT('先跳过', 'Skip for now');
-      skipBtn.addEventListener('click', () => {
-        card.remove();
-        appendAiText(aT('好,先不做封面。想做的时候跟我说"设计封面"。', 'OK, skipping the cover for now — just say "design the cover" whenever.'));
-      });
-      actionsRow.appendChild(skipBtn);
+      // 封面必选(导出闸门收紧后设计是必经步骤):不提供跳过。
       actionsRow.appendChild(applyBtn);
       inner.appendChild(actionsRow);
       card.appendChild(inner);

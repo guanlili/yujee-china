@@ -47,17 +47,27 @@ export function pickHeroPhotos(chapters: TreeChapter[], count: number): string[]
     .map((p) => p.photoId);
 }
 
+// 封尾模板:优先「有文字槽」的封底(engine 写的封尾文案要有槽可落;纯图 ending 会让
+// 文案全部落空),按 albumId 确定性轮换;库里没有带文字槽的 ending 才退回纯图。
+export function pickEndingTemplateId(albumId: string): string | undefined {
+  const all = templateIdsByCategory('ending').filter((id) => firstImageSlotId(id));
+  const withText = all.filter((id) => (templateOf(id)?.texts ?? []).length > 0);
+  const pool = withText.length > 0 ? withText : all;
+  if (pool.length === 0) return undefined;
+  const offset = [...albumId].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % pool.length;
+  return pool[offset];
+}
+
 // 封面组规则生成:cover 模板(按 albumId 确定性轮换取 2)× hero 照片(2)= 至多 4 组;
-// 封尾统一(ending 类目当前仅 mag-20),配第二张 hero(与该组封面不同则用之,否则同张)。
+// 封尾统一用 pickEndingTemplateId(带文字槽优先),配第二张 hero(与该组封面不同则用之,否则同张)。
 export function buildCoverSets(albumId: string, chapters: TreeChapter[]): CoverSet[] {
   const heroes = pickHeroPhotos(chapters, 2);
   if (heroes.length === 0) return [];
   const coverIds = templateIdsByCategory('cover').filter((id) => firstImageSlotId(id));
-  const endingIds = templateIdsByCategory('ending');
-  if (coverIds.length === 0 || endingIds.length === 0) return [];
+  const ending = pickEndingTemplateId(albumId);
+  if (coverIds.length === 0 || !ending) return [];
   const offset = [...albumId].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % coverIds.length;
   const rotated = [...coverIds.slice(offset), ...coverIds.slice(0, offset)].slice(0, 2);
-  const ending = endingIds[0];
   const sets: CoverSet[] = [];
   for (const coverTemplateId of rotated) {
     for (const coverPhotoId of heroes) {
@@ -120,6 +130,8 @@ export function sweepCarriers(pages: Page[], fonts: DesignFonts, colors: DesignC
 }
 
 // 成书组装:封面在前、封尾在后,内页居中,pageIndex 全书重排。
+// extraEndingPhotoIds:封底模板可能有多个图槽(如 mag-25 两图),第 1 槽用 endingPhotoId,
+// 其余槽按序取补充照片,不够则复用最后一张 —— 图槽绝不留空。
 export function assembleDesignedPages(input: {
   interiorPages: Page[];
   set: CoverSet;
@@ -127,9 +139,14 @@ export function assembleDesignedPages(input: {
   endingTexts: Record<string, string>;
   fonts: DesignFonts;
   colors: DesignColors;
+  extraEndingPhotoIds?: string[];
 }): Page[] {
   const coverSlot = firstImageSlotId(input.set.coverTemplateId);
-  const endingSlot = firstImageSlotId(input.set.endingTemplateId);
+  const endingSlotIds = (templateOf(input.set.endingTemplateId)?.images ?? []).map((s) => s.id);
+  const endingPool = [
+    input.set.endingPhotoId,
+    ...(input.extraEndingPhotoIds ?? []).filter((id) => id !== input.set.endingPhotoId),
+  ];
   const cover: Page = {
     pageIndex: 0,
     templateId: input.set.coverTemplateId,
@@ -139,7 +156,9 @@ export function assembleDesignedPages(input: {
   const ending: Page = {
     pageIndex: 0,
     templateId: input.set.endingTemplateId,
-    images: endingSlot ? { [endingSlot]: input.set.endingPhotoId } : {},
+    images: Object.fromEntries(
+      endingSlotIds.map((slotId, i) => [slotId, endingPool[Math.min(i, endingPool.length - 1)]]),
+    ),
     texts: { ...input.endingTexts },
   };
   const ordered = [cover, ...input.interiorPages, ending].map((page, idx) => ({

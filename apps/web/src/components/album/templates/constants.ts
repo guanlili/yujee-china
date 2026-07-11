@@ -102,3 +102,25 @@ export const PAGE = {
   width: 794,
   height: 1123,
 } as const;
+
+// 展示级大标题自适应字号:按最长行的视觉宽度(CJK 记 1 全宽、其余记 0.62)把字号
+// 缩到盒宽内,下限保住展示感。封面/封底这类超大字模板用;web 与 PDF 共用同一函数,
+// 两端字号一致。maxChars 契约挡不住"字数合法但一行放不下"(如 96px 里的长英文标题)。
+export function fitDisplayFontSize(
+  text: string,
+  boxWidth: number,
+  maxSize: number,
+  minSize = 44,
+): number {
+  const lines = (text || '').split('\n');
+  const widest = Math.max(
+    1,
+    ...lines.map((line) =>
+      [...line].reduce(
+        (w, ch) => w + (/[⺀-鿿豈-﫿＀-￯]/.test(ch) ? 1 : 0.62),
+        0,
+      ),
+    ),
+  );
+  return Math.max(minSize, Math.min(maxSize, Math.floor(boxWidth / widest)));
+}

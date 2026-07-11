@@ -1,4 +1,4 @@
-import { COLORS, WEB_FONTS } from '../constants';
+import { COLORS, fitDisplayFontSize, WEB_FONTS } from '../constants';
 import { WebImage, WebPage } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
@@ -33,7 +33,8 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
           style={{
             letterSpacing: '0.04em',
             fontWeight: 700,
-            fontSize: 72,
+            // nowrap 大字:长标题(尤其 CJK)按行宽缩字,避免顶出页面(web/PDF 同函数)。
+            fontSize: fitDisplayFontSize(headingTheme.text ?? d.title ?? 'VENUES', 440, 72, 32),
             lineHeight: 1,
             whiteSpace: 'nowrap',
             color: headingTheme.accentColor,

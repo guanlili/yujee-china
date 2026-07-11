@@ -1,5 +1,5 @@
 import { Text, View } from '@react-pdf/renderer';
-import { PAGE, PDF_FONTS } from '../constants';
+import { fitDisplayFontSize, PAGE, PDF_FONTS } from '../constants';
 import { PdfImage, PdfPageShell } from '../pdf-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
@@ -30,8 +30,8 @@ export function PdfMag32({ data, imagePos }: TemplateRenderProps) {
         <Text style={{ width: 800, fontFamily: labelTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 85, lineHeight: 1, letterSpacing: 8.5, color: labelTheme.accentColor ?? CLAY }}>{label}</Text>
       </View>
 
-      {/* ── 主标题（槽 title，左下角大展示字） ── */}
-      <Text style={{ position: 'absolute', left: 56, top: 710, width: 300, fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: 96, lineHeight: 1.05, color: titleTheme.accentColor ?? CLAY }}>{d['title']}</Text>
+      {/* ── 主标题（槽 title，左下角大展示字；与 web 同步:避开竖排装饰、字号自适应） ── */}
+      <Text style={{ position: 'absolute', left: 110, top: 710, width: 620, fontFamily: titleTheme.pdfFontFamily, fontWeight: 'bold', fontSize: fitDisplayFontSize(d['title'] || 'North\nLight', 620, 96), lineHeight: 1.05, color: titleTheme.accentColor ?? CLAY }}>{d['title']}</Text>
 
       {/* ── 固定装饰：左下竖排小 NORWAY（furniture，非槽位，rotate 90°） ── */}
       <View style={{ position: 'absolute', left: 50, top: 760, transform: 'rotate(90deg)', transformOrigin: 'top left' }}>
