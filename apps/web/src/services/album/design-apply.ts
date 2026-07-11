@@ -1,5 +1,6 @@
 import { TEMPLATES, THEME_ACCENT_CARRIER_SUFFIX, THEME_FONT_CARRIER_SUFFIX } from '@yujee/contracts';
 import type { Page } from '@yujee/contracts';
+import { bakePagesHtml } from './bake-html';
 
 // 设计环节的确定性应用层(纯函数,零 AI):封面组规则生成、模板文字槽 spec 提取、
 // carrier sweep、成书页序组装。AI 决策(字体/颜色/封面封尾文案)在 engine /v3/design;
@@ -146,5 +147,11 @@ export function assembleDesignedPages(input: {
     ...page,
     pageIndex: idx,
   }));
-  return sweepCarriers(ordered, input.fonts, input.colors);
+  const swept = sweepCarriers(ordered, input.fonts, input.colors);
+  // C 方案:carrier sweep 改了 texts,已烘的 html 失效 —— 清掉重烘,设计结果
+  // (字体/颜色/封面封尾文案)烘进页面真相。lenient 为迁移过渡期(见 bake-html)。
+  return bakePagesHtml(
+    swept.map((page) => ({ ...page, html: undefined })),
+    { strict: false },
+  ) as Page[];
 }

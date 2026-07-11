@@ -5,6 +5,7 @@ import { creditService } from '@/services/credit/credit-service';
 import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
 import { transientLayoutCandidates } from '@/services/album/layout-candidates';
+import { bakePagesHtml, type BakeablePage } from '@/services/album/bake-html';
 import { V3StoryDraft, type SelectLayoutCandidateUnit } from '@yujee/contracts';
 
 // 解耦后 analyze 与 layout 是两个独立 job:init job(analyze,0→100)与 layout job(排版,
@@ -42,7 +43,12 @@ export function mergeSelectLayoutPages(draftJson: unknown, pages: unknown) {
   if (!parsed.success) {
     throw ERRORS.VALIDATION_FAILED('select-layout completion requires an existing v3-story draft');
   }
-  return { ...parsed.data, pages };
+  // C 方案:落库前逐页烘 HTML(页面真相)。pages 已过 V3Callback 契约校验。
+  // strict:false 为迁移过渡期(HTML 模板未全量注册);全量后收紧为 strict。
+  const baked = Array.isArray(pages)
+    ? bakePagesHtml(pages as BakeablePage[], { strict: false })
+    : pages;
+  return { ...parsed.data, pages: baked };
 }
 
 function recordOrEmpty(value: unknown): Record<string, unknown> {

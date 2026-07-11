@@ -1,3 +1,4 @@
+import { bakePagesHtml, type BakeablePage } from './bake-html';
 import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
@@ -94,7 +95,11 @@ function readStoryDraft(draftJson: unknown): NormalizedStoryDraft | null {
   if (wrapped.success) {
     return {
       tree: wrapped.data.tree,
-      pages: wrapped.data.pages,
+      // C 方案读路径兜底:存量 draft(烘 HTML 上线前落库)的页缺 html,读出时
+      // 现场烘一遍(不回写库;之后任何写路径落库即固化)。lenient 见 bake-html。
+      pages: wrapped.data.pages
+        ? (bakePagesHtml(wrapped.data.pages as BakeablePage[], { strict: false }) as typeof wrapped.data.pages)
+        : wrapped.data.pages,
       progress: wrapped.data.progress,
     };
   }
@@ -171,14 +176,23 @@ function applyLayoutPatchToDraftPages(pages: V3Page[], patch: V3LayoutPatchEntry
     }
   }
 
-  return next;
+  // C 方案:被 patch 摸过的页,槽位变了 → 旧 html 失效,重烘固化进页面真相。
+  const touched = new Set<number>(patch.map((entry) => entry.pageIndex));
+  return bakePagesHtml(
+    next.map((page) => (touched.has(page.pageIndex) ? { ...page, html: undefined } : page)),
+    { strict: false },
+  ) as V3Page[];
 }
 
 function applyPagesTextsToDraftPages(pages: V3Page[], patches: V3PageTextsPatch[]): V3Page[] {
-  return pages.map((page) => {
-    const patch = patches.find((item) => item.pageIndex === page.pageIndex);
-    return patch ? { ...page, texts: { ...page.texts, ...patch.texts } } : page;
-  });
+  // 同上:文字槽被改的页重烘 html。
+  return bakePagesHtml(
+    pages.map((page) => {
+      const patch = patches.find((item) => item.pageIndex === page.pageIndex);
+      return patch ? { ...page, texts: { ...page.texts, ...patch.texts }, html: undefined } : page;
+    }),
+    { strict: false },
+  ) as V3Page[];
 }
 
 // ② 章节故事 — server-side single-chapter slice for /v3/chapter-chat (§8.3 单章切片;
