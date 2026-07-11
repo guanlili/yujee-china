@@ -16,23 +16,21 @@ def _candidates(*template_ids: str) -> list[dict]:
 def test_judge_page_template_picks_winner_via_thumbnail_judge(monkeypatch):
     captured: dict = {}
 
-    async def fake_judge(thumbnails, *, chapter_context=""):
+    async def fake_judge(thumbnails):
         captured["thumbnails"] = list(thumbnails)
-        captured["chapter_context"] = chapter_context
         return LayoutJudgeResult(winner_index=1, call_count=1, model="judge-x")
 
     monkeypatch.setattr(h, "judge_layout_thumbnails", fake_judge)
 
     winner, result = asyncio.run(
         h.judge_page_template(
-            _candidates("mag-11", "mag-15", "mag-33"), chapter_context="厦门海边"
+            _candidates("mag-11", "mag-15", "mag-33")
         )
     )
 
     assert winner == "mag-15"
     assert result.model == "judge-x"
     assert len(captured["thumbnails"]) == 3
-    assert captured["chapter_context"] == "厦门海边"
 
 
 def test_judge_page_template_single_candidate_skips_judge(monkeypatch):

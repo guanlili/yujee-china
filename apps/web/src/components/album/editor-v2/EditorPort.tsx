@@ -25,7 +25,7 @@ import { YujeeState } from '@/components/app/YujeeState';
 import { getWebTemplate } from '../web-registry';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
-import { renderPageHtml } from '../templates/html/fill-template';
+import { applyFolioOverlay, pageFolioNumbers, preferredPageHtml } from '../page-html-dom';
 import { PAGE } from '../templates/constants';
 import { clampZoom, paintDecision } from './zoom-util';
 import {
@@ -284,6 +284,7 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
     imagesJson: { ...p.imagesJson },
     textsJson: { ...p.textsJson },
     imagePosJson: { ...(p.imagePosJson ?? {}) },
+    htmlJson: p.htmlJson,
   }));
   return (
     <EditorShell
@@ -780,11 +781,12 @@ function EditorBook({
     // HTML 模板已迁移的（如 mag-01）走单一 HTML 渲染器；未迁的回退现有 React 组件。
     function faceInner(page: EditorPage | null): string {
       if (!page) return '';
-      const html = renderPageHtml(
-        { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson, imagePos: page.imagePosJson },
-        resolveImage,
-      );
-      if (html !== undefined) return html;
+      // 页面真相 = 存库 html(含 AI/用户手工版面);页签按当前页序展示层计算,
+      // 覆盖模板遗留 folio(封面/封尾不编号)。
+      const folios = pageFolioNumbers(pagesState.map((p) => p.templateId));
+      const folio = folios[pagesState.indexOf(page)] ?? null;
+      const html = preferredPageHtml(page, resolveImage);
+      if (html !== undefined) return applyFolioOverlay(html, folio);
       const Template = getWebTemplate(page.templateId);
       if (!Template) {
         return `<div style="padding:24px;font-size:14px">Unknown template: ${page.templateId}</div>`;
@@ -793,8 +795,9 @@ function EditorBook({
         { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson },
         resolveImage,
       );
-      return renderToStaticMarkup(
-        <Template data={data} totalPages={total} imagePos={page.imagePosJson} />,
+      return applyFolioOverlay(
+        renderToStaticMarkup(<Template data={data} totalPages={total} imagePos={page.imagePosJson} />),
+        folio,
       );
     }
     // The 794×1123 page scaled to fill the given box (matches FlipBook PageFace).
@@ -2148,6 +2151,7 @@ function EditorBook({
         imagesJson: { ...p.imagesJson },
         textsJson: { ...p.textsJson },
         imagePosJson: { ...(p.imagePosJson ?? {}) },
+        htmlJson: p.htmlJson,
       }));
       ensureCurrentFonts();
       rebuildSpreads();
@@ -2155,8 +2159,8 @@ function EditorBook({
       return true;
     }
 
-    // Export: render the PDF in the browser (@react-pdf), download it locally,
-    // and upload straight to R2 (bytes never touch the Web tier — invariant 4).
+    // Export: render the PDF in the browser (raster screenshot), download it
+    // locally, and upload straight to R2 (bytes never touch the Web tier — invariant 4).
     // WP5.3 / §4.5d:连续 3 次导出失败后的安抚弹框开/关。复用编辑器既有的
     // .modal-overlay/.open 视觉(同 photoModal),只读 i18n 文案,不碰积分/不发飞书。
     function openExportFailModal() { byId('exportFailModal')?.classList.add('open'); }
@@ -2175,19 +2179,14 @@ function EditorBook({
       try {
         const adaptable = pagesState.map((p) => ({
           templateId: p.templateId, images: p.imagesJson, texts: p.textsJson, imagePos: p.imagePosJson,
+          html: p.htmlJson,
         }));
         const ids = collectPhotoIds(adaptable);
-        // 收敛单渲染器试点：NEXT_PUBLIC_PDF_RASTER=1 时走栅格 PDF（截屏幕渲染，与画布
-        // 像素级一致，消除 index↔pdf 分歧）；否则维持现有 @react-pdf 矢量导出。栅格导出
-        // 喂高分辨率原图（否则 1600px 源图被放大 3 倍会糊）。
-        if (process.env.NEXT_PUBLIC_PDF_RASTER === '1') {
-          const dataUrls = await photoStore.getPdfDataUrls(ids, RASTER_PDF_IMAGE_MAX_EDGE);
-          const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
-          return await renderAlbumPdfRaster(adaptable, (id) => dataUrls[id], { scale: 3 });
-        }
-        const dataUrls = await photoStore.getPdfDataUrls(ids);
-        const { renderAlbumPdf } = await import('@/lib/pdf/render');
-        return await renderAlbumPdf(adaptable, (id) => dataUrls[id]);
+        // C 方案:PDF 导出 = 栅格截屏幕渲染(存库 html 优先,与画布像素级一致)。
+        // 矢量导出路径已退役(消费不了自由 HTML)。喂高分辨率原图,防放大糊。
+        const dataUrls = await photoStore.getPdfDataUrls(ids, RASTER_PDF_IMAGE_MAX_EDGE);
+        const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
+        return await renderAlbumPdfRaster(adaptable, (id) => dataUrls[id], { scale: 3 });
       } catch (e) {
         throw new ExportError('render', e instanceof Error ? e.message : String(e));
       }

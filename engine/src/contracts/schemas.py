@@ -146,6 +146,9 @@ class Page(_Strict):
     texts: dict[str, str]
     # Optional per-slot position/scale overrides. Absent => render default 50/50/1.
     imagePos: dict[str, ImagePos] | None = None
+    # 页面 HTML 真相(C 方案,zod 镜像):engine 不生成也不消费它,仅为契约对齐;
+    # 图片 src 保持 {{IMG_SRC:slotId}} token,base64 绝不入库。
+    html: str | None = Field(default=None, max_length=65536)
 
 
 class AlbumLayoutPlan(_Strict):

@@ -1130,3 +1130,11 @@ test('V3StoryDraft: draft_json 包裹形(tree + preview pages + progress)', () =
   // 裸 V3LayoutTree(WP1.5 写入态)不是包裹形 —— 由 service 归一化,不当 V3StoryDraft 解
   assert.equal(V3StoryDraft.safeParse({ chapters: [] }).success, false);
 });
+
+test('Page.html:可选、64KB 上限(C 方案页面真相字段)', async () => {
+  const { Page } = await import('./layout');
+  const base = { pageIndex: 0, templateId: 'mag-01', images: {}, texts: {} };
+  assert.equal(Page.parse(base).html, undefined);
+  assert.equal(Page.parse({ ...base, html: '<div data-template="mag-01"></div>' }).html?.startsWith('<div'), true);
+  assert.throws(() => Page.parse({ ...base, html: 'x'.repeat(65537) }));
+});

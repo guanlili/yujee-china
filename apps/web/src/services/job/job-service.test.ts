@@ -18,6 +18,16 @@ const TREE = {
 
 const PAGES = [{ pageIndex: 0, templateId: 'mag-02', images: { image: 'p1' }, texts: {} }];
 
+
+// C 方案:落库/外发页面带烘出的 html;槽位断言剥掉它逐一比对。
+function stripPagesHtml(pages: unknown): unknown {
+  if (!Array.isArray(pages)) return pages;
+  return pages.map((p) => {
+    const { html: _html, ...rest } = p as Record<string, unknown>;
+    return rest;
+  });
+}
+
 test('buildAnalyzeDraftJson wraps tree-only analyze output as V3StoryDraft', () => {
   assert.deepEqual(buildAnalyzeDraftJson(TREE), {
     version: 'v3-story',
@@ -29,7 +39,8 @@ test('buildAnalyzeDraftJson wraps tree-only analyze output as V3StoryDraft', () 
 test('mergeSelectLayoutPages adds pages without mutating the Stage1 tree/progress', () => {
   const draft = buildAnalyzeDraftJson(TREE);
 
-  assert.deepEqual(mergeSelectLayoutPages(draft, PAGES), {
+  const merged = mergeSelectLayoutPages(draft, PAGES) as { pages: unknown[] } & Record<string, unknown>;
+  assert.deepEqual({ ...merged, pages: stripPagesHtml(merged.pages) }, {
     version: 'v3-story',
     tree: TREE,
     pages: PAGES,

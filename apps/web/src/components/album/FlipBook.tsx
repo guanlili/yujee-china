@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getWebTemplate } from './web-registry';
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
-import { renderPageHtml } from './templates/html/fill-template';
+import { applyFolioOverlay, pageFolioNumbers, preferredPageHtml } from './page-html-dom';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from './spreads';
 import { PAGE } from './templates/constants';
 import type { EditorPage } from './types';
@@ -47,21 +47,22 @@ function PageFace({
   resolveImage,
   width,
   height,
+  folio = null,
 }: {
   page: EditorPage | null;
   totalPages: number;
   resolveImage: ResolveImage;
   width: number;
   height: number;
+  // 展示层页签:按当前页序计算(封面/封尾 null),覆盖模板遗留 folio。
+  folio?: number | null;
 }) {
   if (!page) {
     return <div style={{ width, height, background: 'var(--surface)' }} />;
   }
-  // HTML 模板已迁移的走单一渲染器（dangerouslySetInnerHTML），未迁的回退 React 组件。
-  const html = renderPageHtml(
-    { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson, imagePos: page.imagePosJson },
-    resolveImage,
-  );
+  // 页面真相 = 存库 html(含手工版面);缺失时模板即时渲染,再缺回退 React 组件。
+  const rawHtml = preferredPageHtml(page, resolveImage);
+  const html = rawHtml !== undefined ? applyFolioOverlay(rawHtml, folio) : undefined;
   const Template = html === undefined ? getWebTemplate(page.templateId) : null;
   const data =
     Template != null
@@ -121,6 +122,12 @@ export function FlipBook({
   // Canvas model: cover/ending sit on their own solo spread; interior pages pair
   // two-up. `spreads` holds the array indices on each spread (null = blank half).
   const spreads = useMemo(() => buildSpreads(pages), [pages]);
+  // 展示层页签:每次按当前页序自动计算(内页 1..N;封面/目录/封尾 null)。
+  const folios = useMemo(() => pageFolioNumbers(pages.map((p) => p.templateId)), [pages]);
+  const folioOf = useCallback(
+    (page: EditorPage | null) => (page ? (folios[pages.indexOf(page)] ?? null) : null),
+    [folios, pages],
+  );
   const spreadCount = Math.max(1, spreads.length);
   const spreadOf = useCallback(
     (arrayIndex: number) => {
@@ -312,7 +319,7 @@ export function FlipBook({
       className="group/half relative"
       style={{ width: halfW, height: book.h, background: 'var(--surface)' }}
     >
-      <PageFace page={page} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} />
+      <PageFace page={page} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(page)} />
       {page && (
         <>
           <button
@@ -415,7 +422,7 @@ export function FlipBook({
                 className="absolute inset-0"
                 style={{ backfaceVisibility: 'hidden', background: 'var(--surface)' }}
               >
-                <PageFace page={leafFront} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} />
+                <PageFace page={leafFront} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(leafFront)} />
                 {/* page-turn shading on the leaf front */}
                 <div
                   className="absolute inset-0"
@@ -431,7 +438,7 @@ export function FlipBook({
                 className="absolute inset-0"
                 style={{ backfaceVisibility: 'hidden', background: 'var(--surface)', transform: 'rotateY(180deg)' }}
               >
-                <PageFace page={leafBack} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} />
+                <PageFace page={leafBack} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(leafBack)} />
               </div>
             </div>
           )}

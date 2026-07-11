@@ -178,8 +178,8 @@ export const photoStore = {
     return out;
   },
 
-  // Data URL — react-pdf's image loader needs a fetchable/data URL, blob: URLs
-  // are unreliable inside the PDF renderer, so PDF export resolves to these.
+  // Data URL — the PDF export pipeline needs fetchable/data URLs (blob: URLs
+  // are unreliable inside detached render surfaces), so it resolves to these.
   async getDataUrls(photoIds: string[]): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
     await Promise.all(
@@ -197,8 +197,8 @@ export const photoStore = {
   // PDF export is memory-bound in the browser: never hand original phone-photo
   // data URLs. Decode from Blob, cap size locally, and process photos sequentially
   // so peak memory stays bounded before the PDF is assembled.
-  // maxEdge：矢量导出（@react-pdf）用默认 1600 足够；栅格导出（html2canvas 高倍截图）
-  // 传 RASTER_PDF_IMAGE_MAX_EDGE，否则源图被降到 1600 后放大 3-4 倍会糊。
+  // maxEdge：栅格导出（html2canvas 高倍截图）传 RASTER_PDF_IMAGE_MAX_EDGE，
+  // 否则源图被降到默认 1600 后放大 3-4 倍会糊。
   async getPdfDataUrls(
     photoIds: string[],
     maxEdge = PDF_IMAGE_MAX_EDGE,

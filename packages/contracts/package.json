@@ -12,13 +12,15 @@
     "./api": "./src/api.ts",
     "./enums": "./src/enums.ts",
     "./templates": "./src/templates.ts",
-    "./v3": "./src/v3.ts"
+    "./v3": "./src/v3.ts",
+    "./render": "./src/render/index.ts",
+    "./render/*": "./src/render/*.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
     "templates:generate": "tsx scripts/gen-templates.ts",
-    "templates:check": "tsx scripts/gen-templates.ts --check",
-    "test": "tsx --test src/*.test.ts",
+    "templates:check": "tsx scripts/gen-templates.ts --check && HTML_TEMPLATES_REQUIRE_ALL=1 tsx scripts/check-html-templates.ts",
+    "test": "tsx --test \"src/*.test.ts\" \"src/render/*.test.ts\"",
     "typecheck": "pnpm templates:check && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

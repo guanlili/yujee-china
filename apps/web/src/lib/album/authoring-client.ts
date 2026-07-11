@@ -27,6 +27,8 @@ export interface DraftSkeletonPage {
   textsJson: Record<string, string>;
   // #165 per-slot position/scale overrides. Absent => render default 50/50/1.
   imagePosJson?: Record<string, { x: number; y: number; scale: number }>;
+  // 页面 HTML 真相(C 方案):画板优先渲染;图片 src 为 {{IMG_SRC}} token。
+  htmlJson?: string;
   kind: DraftPageKind;
   chapterId: string | null;
 }

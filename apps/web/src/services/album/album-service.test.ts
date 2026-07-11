@@ -64,6 +64,16 @@ async function runningAlbumWithJob(userId: string, startedAgoMs: number) {
   return { album, hold, job };
 }
 
+
+// C 方案:落库页面带烘出的 html;槽位断言剥掉它逐一比对。
+function stripPagesHtml(pages: unknown): unknown {
+  if (!Array.isArray(pages)) return pages;
+  return pages.map((p) => {
+    const { html: _html, ...rest } = p as Record<string, unknown>;
+    return rest;
+  });
+}
+
 test('getDetail: fresh RUNNING job → surfaces live stage/progress, no sweep', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
@@ -963,7 +973,7 @@ test('applyTheme: writes per-chapter color/font into the tree + advances stage=c
       { ...previewPages[0]!, texts: { ...previewPages[0]!.texts, divider: '#C0392B', title: 'X' } },
       previewPages[1]!,
     ];
-    assert.deepEqual(draft.pages, expectedPages, 'applyTheme folds the theme patch into draft_json pages');
+    assert.deepEqual(stripPagesHtml(draft.pages), expectedPages, 'applyTheme folds the theme patch into draft_json pages');
     const byId = new Map(draft.tree.chapters.map((c) => [c.chapterId, c]));
     assert.equal(byId.get('c1')?.accentColor, '#C0392B');
     assert.equal(byId.get('c1')?.artFont, 'script-elegant');
@@ -1281,7 +1291,15 @@ test('cover: persists patched draft pages so finalize sends cover design', async
     const afterCover = await albumRepo.findById(albumId);
     const afterCoverDraft = afterCover?.draftJson as V3StoryDraft;
     assert.equal(afterCover?.stage, 'ready');
-    assert.deepEqual(afterCoverDraft.pages, expectedPages);
+    // C 方案:落库页带烘出的 html(页面真相)。槽位字段逐一比对;已注册 HTML
+    // 模板的页(mag-01)断言 html 已固化。
+    const stripHtml = (pages: unknown[]) =>
+      pages.map((p) => {
+        const { html: _html, ...rest } = p as Record<string, unknown>;
+        return rest;
+      });
+    assert.deepEqual(stripHtml(afterCoverDraft.pages ?? []), expectedPages);
+    assert.equal(typeof (afterCoverDraft.pages?.[0] as { html?: unknown })?.html, 'string');
     assert.deepEqual(afterCoverDraft.tree, beforeDraft.tree);
     assert.deepEqual(afterCoverDraft.progress, beforeDraft.progress);
 
@@ -1299,7 +1317,8 @@ test('cover: persists patched draft pages so finalize sends cover design', async
     });
 
     await albumService.finalize(user.id, albumId, 'en');
-    assert.deepEqual(payload.pages, expectedPages);
+    // C 方案:finalize 发出的 pages 同样携带 html(页面真相);槽位字段不变。
+    assert.deepEqual(stripHtml((payload.pages as unknown[]) ?? []), expectedPages);
   } finally {
     await cleanupUser(user.id);
   }
@@ -1347,8 +1366,8 @@ test('finalize: uses draft_json.pages even when album_pages differs', async (t) 
     });
 
     const res = await albumService.finalize(user.id, albumId, 'en');
-    assert.deepEqual(res.layout.pages, albumPages);
-    assert.deepEqual(payload.pages, albumPages);
+    assert.deepEqual(stripPagesHtml(res.layout.pages), albumPages);
+    assert.deepEqual(stripPagesHtml(payload.pages), albumPages);
   } finally {
     await cleanupUser(user.id);
   }

@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { Text as PdfText } from '@react-pdf/renderer';
 import * as React from 'react';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -10,12 +9,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 (globalThis as { React?: typeof React }).React = React;
 
 import { adaptPageToTemplateData } from '../adapt-layout';
-import { getPdfTemplate, PDF_TEMPLATE_REGISTRY } from '../pdf-registry';
 import { getWebTemplate } from '../web-registry';
-import { PDF_FONTS } from './constants';
-import { FONT_CATALOG, type AlbumTextRole } from './font-catalog';
+import { FONT_CATALOG } from './font-catalog';
 import { resolveThemeCarrier } from './theme-carrier';
-import type { TemplateData } from './types';
 
 const DISPLAY_BOLD_WEB_FONT_NEEDLE = 'Bebas Neue';
 
@@ -58,22 +54,6 @@ const TEXT_CARRIER_RENDER_CASES: TextCarrierRenderCase[] = [
   { templateId: 'p01', slotId: 'label2', text: '77', images: { image: 'p0' } },
   { templateId: 'p01', slotId: 'date', text: '2030', images: { image: 'p0' } },
 ];
-
-const PDF_TEXT_CARRIER_SLOTS: Record<string, string[]> = {
-  'mag-01': ['title', 'label'],
-  'mag-02': ['title', 'number[${i}]', 'title[${i}]'],
-  'mag-03': ['label'],
-  'mag-04': ['date'],
-  'mag-05': ['title', 'label'],
-  'mag-07': ['title'],
-  'mag-08': ['date', 'title'],
-  'mag-09': ['title'],
-  'mag-11': ['title', 'label'],
-  'mag-13': ['title'],
-  'mag-15': ['title', 'date'],
-  'mag-19': ['title'],
-  p01: ['title', 'label1', 'label2', 'date'],
-};
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -468,152 +448,6 @@ function resolvedCarrierDeclaration(
   return match ? { themeVar: match[1]!, role: match[2] } : undefined;
 }
 
-interface ExpandedPdfNode {
-  type: unknown;
-  props: Record<string, unknown>;
-  children: ExpandedPdfNode[];
-  text?: string;
-}
-
-function expandPdfTree(value: React.ReactNode): ExpandedPdfNode[] {
-  if (value === null || value === undefined || typeof value === 'boolean') return [];
-  if (Array.isArray(value)) return value.flatMap(expandPdfTree);
-  if (typeof value === 'string' || typeof value === 'number') {
-    return [{ type: '#text', props: {}, children: [], text: String(value) }];
-  }
-  if (!React.isValidElement(value)) return [];
-
-  const element = value as React.ReactElement<Record<string, unknown>>;
-  if (typeof element.type === 'function') {
-    const render = element.type as (props: Record<string, unknown>) => React.ReactNode;
-    return expandPdfTree(render(element.props));
-  }
-
-  return [{
-    type: element.type,
-    props: element.props,
-    children: expandPdfTree(element.props.children as React.ReactNode),
-  }];
-}
-
-function pdfNodeText(node: ExpandedPdfNode): string {
-  return node.text ?? node.children.map(pdfNodeText).join('');
-}
-
-function normalizedPdfNodeText(node: ExpandedPdfNode): string {
-  return pdfNodeText(node).replace(/\s+/g, '');
-}
-
-function allPdfTextNodes(nodes: ExpandedPdfNode[]): ExpandedPdfNode[] {
-  const found: ExpandedPdfNode[] = [];
-  for (const node of nodes) {
-    if (node.type === PdfText) found.push(node);
-    found.push(...allPdfTextNodes(node.children));
-  }
-  return found;
-}
-
-function deepestPdfTextNodesContaining(
-  nodes: ExpandedPdfNode[],
-  marker: string,
-): ExpandedPdfNode[] {
-  return allPdfTextNodes(nodes).filter((node) => (
-    normalizedPdfNodeText(node).includes(marker)
-    && !allPdfTextNodes(node.children).some((child) => normalizedPdfNodeText(child).includes(marker))
-  ));
-}
-
-function findPdfParent(
-  nodes: ExpandedPdfNode[],
-  target: ExpandedPdfNode,
-): ExpandedPdfNode | undefined {
-  for (const node of nodes) {
-    if (node.children.includes(target)) return node;
-    const parent = findPdfParent(node.children, target);
-    if (parent) return parent;
-  }
-  return undefined;
-}
-
-function pdfNodeFontFamily(node: ExpandedPdfNode): unknown {
-  const style = node.props.style;
-  const styles = Array.isArray(style) ? style : [style];
-  let fontFamily: unknown;
-  for (const entry of styles) {
-    if (typeof entry === 'object' && entry !== null && 'fontFamily' in entry) {
-      fontFamily = (entry as { fontFamily?: unknown }).fontFamily;
-    }
-  }
-  return fontFamily;
-}
-
-interface PdfSentinelCase {
-  slotId: string;
-  role: AlbumTextRole;
-  marker: string;
-  expectedFontFamily: string;
-}
-
-function buildPdfSentinelData(
-  templateId: string,
-  slots: TemplateTextSlot[],
-): { data: TemplateData; cases: PdfSentinelCase[] } {
-  const texts: Record<string, string> = {};
-  const usedFamilies = new Set<string>();
-  const cases: PdfSentinelCase[] = [];
-
-  for (const slot of slots) {
-    const role = slot.role as AlbumTextRole;
-    const candidate = Object.entries(FONT_CATALOG).find(([, entry]) => (
-      (entry.roles as readonly AlbumTextRole[]).includes(role)
-      && !usedFamilies.has(entry.pdfFontFamily)
-    ));
-    assert.ok(candidate, `${templateId}.${slot.base} needs a distinct compatible PDF font`);
-
-    const slotId = slot.repeat ? `${slot.base}[0]` : slot.base;
-    const marker = `PDFMARKER_${templateId}_${slotId}`.replace(/[^A-Z0-9_]/gi, '_').toUpperCase();
-    texts[slotId] = `X${marker}`;
-    texts[`${slotId}#artFont`] = candidate[0];
-    usedFamilies.add(candidate[1].pdfFontFamily);
-  }
-
-  const data = adaptPageToTemplateData(
-    { templateId, images: {}, texts },
-    () => undefined,
-  );
-  for (const slot of slots) {
-    const slotId = slot.repeat ? `${slot.base}[0]` : slot.base;
-    const marker = `PDFMARKER_${templateId}_${slotId}`.replace(/[^A-Z0-9_]/gi, '_').toUpperCase();
-    const expectedFontFamily = resolveThemeCarrier(
-      data,
-      slotId,
-      slot.role as AlbumTextRole,
-    ).pdfFontFamily;
-    assert.ok(expectedFontFamily, `${templateId}.${slotId} must resolve a PDF font`);
-    cases.push({
-      slotId,
-      role: slot.role as AlbumTextRole,
-      marker,
-      expectedFontFamily,
-    });
-  }
-
-  return { data, cases };
-}
-
-function groupPdfSlotsWithoutBaseCollisions(slots: TemplateTextSlot[]): TemplateTextSlot[][] {
-  const groups: TemplateTextSlot[][] = [];
-  for (const slot of slots) {
-    let group = groups.find((candidate) => !candidate.some((item) => item.base === slot.base));
-    if (!group) {
-      group = [];
-      groups.push(group);
-    }
-    group.push(slot);
-  }
-  return groups.length > 0 ? groups : [[]];
-}
-
 test('every Web text carrier resolves its contract role and applies its resolved font', () => {
   const missing: string[] = [];
 
@@ -666,115 +500,6 @@ test('every Web text carrier resolves its contract role and applies its resolved
   );
 });
 
-test('every PDF text carrier resolves its contract role and applies its resolved font', () => {
-  const missing: string[] = [];
-
-  for (const templateId of listTemplateIds()) {
-    let slots: TemplateTextSlot[];
-    let source: string;
-    try {
-      slots = readTemplateTextSlots(templateId);
-      source = readFileSync(new URL(`./${templateId}/pdf.tsx`, import.meta.url), 'utf8');
-    } catch {
-      continue;
-    }
-
-    for (const slot of slots) {
-      if (!referencesSlot(source, slot.base)) continue;
-      const renderedSlot = `${slot.base}${slot.repeat ? '[n]' : ''}`;
-      const declaration = resolvedCarrierDeclaration(source, slot);
-      if (!declaration) {
-        missing.push(`${templateId}/pdf.tsx :: ${renderedSlot} missing theme resolver`);
-        continue;
-      }
-
-      const label = `${templateId}/pdf.tsx :: ${renderedSlot} (${declaration.themeVar})`;
-      if (declaration.role !== slot.role) {
-        missing.push(
-          `${label} resolves role=${declaration.role ?? '<missing>'}; expected role=${slot.role}`,
-        );
-      }
-      if (!new RegExp(`\\b${escapeRegExp(declaration.themeVar)}\\.pdfFontFamily\\b`).test(source)) {
-        missing.push(`${label} does not apply ${declaration.themeVar}.pdfFontFamily`);
-      }
-      if (
-        slot.base === 'folio'
-        && !new RegExp(
-          `<PdfFolio(?=[^>]*\\bfontFamily=\\{${escapeRegExp(declaration.themeVar)}\\.pdfFontFamily\\})[^>]*/>`,
-        ).test(source)
-      ) {
-        missing.push(`${label} does not pass its font to PdfFolio`);
-      }
-    }
-  }
-
-  const pdfUtilsSource = readFileSync(new URL('./pdf-utils.tsx', import.meta.url), 'utf8');
-  if (!/interface PdfFolioProps\s*{[^}]*fontFamily\?: string;/s.test(pdfUtilsSource)) {
-    missing.push('pdf-utils.tsx :: PdfFolioProps.fontFamily is missing');
-  }
-  if (!/function PdfFolio\(\s*{[^}]*fontFamily[^}]*}\s*:\s*PdfFolioProps\s*\)/s.test(pdfUtilsSource)) {
-    missing.push('pdf-utils.tsx :: PdfFolio does not consume its fontFamily prop');
-  }
-  if (!/fontFamily:\s*fontFamily\s*\?\?\s*PDF_FONTS\.serifEn/.test(pdfUtilsSource)) {
-    missing.push('pdf-utils.tsx :: PdfFolio does not apply its fontFamily prop');
-  }
-
-  assert.deepEqual(
-    missing,
-    [],
-    `PDF 文字槽未完整接入合同 role 和解析后字体：\n${missing.join('\n')}`,
-  );
-});
-
-test('every rendered PDF sentinel uses its exact resolved Text node font', () => {
-  for (const templateId of Object.keys(PDF_TEMPLATE_REGISTRY).sort()) {
-    const source = readFileSync(new URL(`./${templateId}/pdf.tsx`, import.meta.url), 'utf8');
-    const renderedSlots = readTemplateTextSlots(templateId).filter(
-      (slot) => referencesSlot(source, slot.base),
-    );
-    const Template = getPdfTemplate(templateId);
-    assert.ok(Template, `${templateId} PDF template must resolve`);
-    for (const slotGroup of groupPdfSlotsWithoutBaseCollisions(renderedSlots)) {
-      const { data, cases } = buildPdfSentinelData(templateId, slotGroup);
-      const tree = expandPdfTree(createElement(Template, { data, totalPages: 37, imagePos: {} }));
-
-      for (const renderCase of cases) {
-        const label = `${templateId}.${renderCase.slotId} (${renderCase.role})`;
-        const textNodes = deepestPdfTextNodesContaining(tree, renderCase.marker);
-        assert.ok(textNodes.length > 0, `${label} sentinel must reach a PDF Text node`);
-        for (const textNode of textNodes) {
-          assert.equal(
-            pdfNodeFontFamily(textNode),
-            renderCase.expectedFontFamily,
-            `${label} must apply its resolved family to the exact Text node`,
-          );
-        }
-
-        if (renderCase.slotId === 'folio') {
-          const folioNode = textNodes.find((node) => {
-            const parent = findPdfParent(tree, node);
-            return parent?.children.some(
-              (child) => child.type === PdfText && normalizedPdfNodeText(child) === '/37',
-            );
-          });
-          assert.ok(folioNode, `${label} must render through PdfFolio`);
-          const folioParent = findPdfParent(tree, folioNode);
-          assert.ok(folioParent, `${label} PdfFolio parent must resolve`);
-          const folioTexts = folioParent.children.filter((child) => child.type === PdfText);
-          assert.equal(folioTexts.length, 2, `${label} PdfFolio must render folio and /total Text nodes`);
-          for (const textNode of folioTexts) {
-            assert.equal(
-              pdfNodeFontFamily(textNode),
-              renderCase.expectedFontFamily,
-              `${label} must apply its resolved family to both PdfFolio Text nodes`,
-            );
-          }
-        }
-      }
-    }
-  }
-});
-
 test('mag-18 applies explanation fonts to the dynamic text nodes only', () => {
   const source = readFileSync(new URL('./mag-18/index.tsx', import.meta.url), 'utf8');
 
@@ -799,25 +524,7 @@ test('mag-18 applies explanation fonts to the dynamic text nodes only', () => {
   }
 });
 
-test('mag-18 PDF tree preserves the static PLATE label family', () => {
-  const Template = getPdfTemplate('mag-18');
-  assert.ok(Template, 'mag-18 PDF template must resolve');
-  const tree = expandPdfTree(createElement(Template, { data: {}, totalPages: 37, imagePos: {} }));
-
-  for (const plate of ['I', 'II']) {
-    const textNodes = allPdfTextNodes(tree).filter(
-      (node) => normalizedPdfNodeText(node) === `PLATE${plate}`,
-    );
-    assert.equal(textNodes.length, 1, `mag-18 PDF should render one static PLATE ${plate} label`);
-    assert.equal(
-      pdfNodeFontFamily(textNodes[0]!),
-      PDF_FONTS.montserrat,
-      `mag-18 PDF should preserve the static PLATE ${plate} font`,
-    );
-  }
-});
-
-test('every rendered text slot consumes its accent carrier (web + pdf)', () => {
+test('every rendered text slot consumes its accent carrier (web)', () => {
   const missing: string[] = [];
   for (const templateId of listTemplateIds()) {
     let slots: TemplateTextSlot[];
@@ -826,18 +533,16 @@ test('every rendered text slot consumes its accent carrier (web + pdf)', () => {
     } catch {
       continue; // 无对应 contracts JSON 的目录跳过。
     }
-    for (const renderer of ['index.tsx', 'pdf.tsx'] as const) {
-      let source: string;
-      try {
-        source = readFileSync(new URL(`./${templateId}/${renderer}`, import.meta.url), 'utf8');
-      } catch {
-        continue;
-      }
-      for (const slot of slots) {
-        if (!referencesSlot(source, slot.base)) continue;
-        if (!resolvesCarrier(source, slot)) {
-          missing.push(`${templateId}/${renderer} :: ${slot.base}${slot.repeat ? '[n]' : ''} (role=${slot.role})`);
-        }
+    let source: string;
+    try {
+      source = readFileSync(new URL(`./${templateId}/index.tsx`, import.meta.url), 'utf8');
+    } catch {
+      continue;
+    }
+    for (const slot of slots) {
+      if (!referencesSlot(source, slot.base)) continue;
+      if (!resolvesCarrier(source, slot)) {
+        missing.push(`${templateId}/index.tsx :: ${slot.base}${slot.repeat ? '[n]' : ''} (role=${slot.role})`);
       }
     }
   }
@@ -848,49 +553,9 @@ test('every rendered text slot consumes its accent carrier (web + pdf)', () => {
   );
 });
 
-test('PDF templates resolve every text variableDecor carrier in source', () => {
-  for (const [templateId, slots] of Object.entries(PDF_TEXT_CARRIER_SLOTS)) {
-    const source = readFileSync(new URL(`./${templateId}/pdf.tsx`, import.meta.url), 'utf8');
-    for (const slotId of slots) {
-      const contractSlot = readTemplateTextSlots(templateId).find(
-        (slot) => slot.base === slotId.replace('[${i}]', ''),
-      );
-      assert.ok(contractSlot, `${templateId}.${slotId} must have a contract role`);
-      const pattern = slotId.includes('${i}')
-        ? new RegExp(
-            `resolveThemeCarrier\\(data,\\s*\`${escapeRegExp(slotId)}\`,\\s*['"]${contractSlot.role}['"]\\)`,
-          )
-        : new RegExp(
-            `resolveThemeCarrier\\(data,\\s*['"]${escapeRegExp(slotId)}['"],\\s*['"]${contractSlot.role}['"]\\)`,
-          );
-      assert.match(source, pattern, `${templateId}.pdf should resolve carrier for ${slotId}`);
-    }
-  }
-});
-
-test('PDF templates uppercase carrier text for decoration slots in source', () => {
-  const cases = [
-    { templateId: 'mag-11', themeVar: 'labelTheme', dataProp: 'label' },
-    { templateId: 'mag-15', themeVar: 'dateTheme', dataProp: 'date' },
-  ];
-
-  for (const renderCase of cases) {
-    const source = readFileSync(new URL(`./${renderCase.templateId}/pdf.tsx`, import.meta.url), 'utf8');
-    const pattern = new RegExp(
-      `\\(${renderCase.themeVar}\\.text\\s*\\?\\?\\s*d\\.${renderCase.dataProp}\\s*\\?\\?\\s*''\\)\\.toUpperCase\\(\\)`,
-    );
-    assert.match(
-      source,
-      pattern,
-      `${renderCase.templateId}.pdf should uppercase ${renderCase.dataProp} carrier/base text`,
-    );
-  }
-});
-
-test('every concrete album font has a real asset and matching Web/PDF registration', () => {
+test('every concrete album font has a real asset and matching Web registration', () => {
   const webRoot = fileURLToPath(new URL('../../../../', import.meta.url));
   const css = readFileSync(new URL('../../../styles/globals.css', import.meta.url), 'utf8');
-  const pdfUtils = readFileSync(new URL('./pdf-utils.tsx', import.meta.url), 'utf8');
   const sources = readFileSync(new URL('../../../../fonts/SOURCES.md', import.meta.url), 'utf8');
   const legacyPacks = new Set([
     'serif-classic',
@@ -931,11 +596,6 @@ test('every concrete album font has a real asset and matching Web/PDF registrati
         's',
       );
       assert.match(css, face, `${pack} must have a font-display: swap Web registration`);
-      assert.match(
-        pdfUtils,
-        new RegExp(`['"]${escapeRegExp(asset.file)}['"]`),
-        `${pack} must have a PDF registration for its real asset`,
-      );
     }
   }
 

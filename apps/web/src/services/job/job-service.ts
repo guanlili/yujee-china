@@ -14,6 +14,7 @@ import {
   remapAppendChapterIds,
 } from '@/services/album/append-photos';
 import { sweepCarriers } from '@/services/album/design-apply';
+import { bakePagesHtml, type BakeablePage } from '@/services/album/bake-html';
 
 // 解耦后 analyze 与 layout 是两个独立 job:init job(analyze,0→100)与 layout job(排版,
 // 0→100)各自独立,不再共享一行 agent_jobs 用 50/51/52 哨兵串联。两段式候选流(如重启用)
@@ -50,7 +51,10 @@ export function mergeSelectLayoutPages(draftJson: unknown, pages: unknown) {
   if (!parsed.success) {
     throw ERRORS.VALIDATION_FAILED('select-layout completion requires an existing v3-story draft');
   }
-  return { ...parsed.data, pages };
+  // C 方案:落库前逐页烘 HTML(页面真相)。pages 已过 V3Callback 契约校验。
+  // HTML 模板已全量注册,strict:漏模板直接失败,不允许无 html 的页落库。
+  const baked = Array.isArray(pages) ? bakePagesHtml(pages as BakeablePage[]) : pages;
+  return { ...parsed.data, pages: baked };
 }
 
 // 追加排版完成(加图增量重跑 spec §1):新页插到封尾前 + 继承全书设计 carrier + 新章
@@ -68,6 +72,10 @@ export function mergeAppendLayoutPages(
   let appended = Page.array().parse(pages);
   const design = extractDesignFromPages(existingPages);
   if (design) appended = sweepCarriers(appended, design.fonts, design.colors);
+  // C 方案:追加页烘 HTML 落库(carrier 已刷,旧 html 一律作废重烘);老页不动。
+  appended = bakePagesHtml(
+    appended.map((page) => ({ ...page, html: undefined })),
+  ) as typeof appended;
   const mergedPages = insertAppendPages(existingPages, appended);
 
   const chapterOrder = parsed.data.tree.chapters.map((c) => c.chapterId);

@@ -1,7 +1,7 @@
 """V3 `/v3/judge-layout` Stage2 phase 2:浏览器渲染缩略图 → 评委选赢家 → 写文案 → pages。
 
 phase 1(`/v3/select-layout`)已把候选结构交回浏览器,浏览器用真实模板 + 真照片渲染成
-缩略图后 POST 到这里。本流程对每个未定 unit 把 N 张缩略图 + chapterContext 发给评委
+缩略图后 POST 到这里。本流程对每个未定 unit 把 N 张缩略图发给评委(纯视觉,不带章节信息)
 (gemini,保底豆包)选最佳;赢家候选走 `legalize.finalize_candidate_pages` 拼成页后,
 豆包把文案写进非 decoration 文字槽(素材 = unit.photos + chapterContext),经与 phase 1
 相同的 `completed` 回调返回。评委失败 / 缩略图缺失 → 该 unit 退化「取候选 0」;
@@ -110,10 +110,7 @@ async def judge_pages(req: JudgeLayoutRequest) -> tuple[list[dict[str, Any]], V3
     async def run_batch(batch: list[tuple[int, Any]]) -> tuple[list[int], Any | None]:
         async with semaphore:
             payload = [
-                {
-                    "thumbnails": [c.thumbnail for c in unit.candidates],
-                    "chapterContext": unit.chapterContext or "",
-                }
+                {"thumbnails": [c.thumbnail for c in unit.candidates]}
                 for _, unit in batch
             ]
             try:

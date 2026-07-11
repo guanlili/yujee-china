@@ -50,9 +50,9 @@ the whole slot so browser and PDF output remain deterministic and glyph-safe.
 - Store the small English font files under `apps/web/public/fonts/` with their
   license files.
 - Register each family through `@font-face` with `font-display: swap` for browser
-  rendering.
-- Register the same files with `@react-pdf/renderer` so preview and export use
-  the same family.
+  rendering. The raster PDF export screenshots the same browser rendering, so
+  preview and export use the same family by construction. (The retired vector
+  PDF path used to require a separate renderer-side font registration.)
 
 ### Rendering
 

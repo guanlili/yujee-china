@@ -246,8 +246,6 @@ async def _native_generate_content(
 
 async def judge_page_template(
     candidates: Sequence[Mapping[str, Any]],
-    *,
-    chapter_context: str = "",
 ) -> tuple[str, LayoutJudgeResult]:
     """单页换版式评委:浏览器把该页照片按每个候选模板渲染成真图缩略图,评委看图
     选最贴合的一张 —— 与整书排版同一套 `judge_layout_thumbnails` 逻辑,不再走线框。
@@ -261,7 +259,7 @@ async def judge_page_template(
         return template_ids[0], LayoutJudgeResult(winner_index=0)
     thumbnails = [str(c["thumbnail"]) for c in candidates]
     try:
-        result = await judge_layout_thumbnails(thumbnails, chapter_context=chapter_context)
+        result = await judge_layout_thumbnails(thumbnails)
     except Exception as exc:  # noqa: BLE001 — 评委不可用则退化取第 0 个,不阻断换版式
         log.warning("judge_page_template.judge_unavailable_default0", error=str(exc))
         result = LayoutJudgeResult(winner_index=0)
@@ -271,15 +269,15 @@ async def judge_page_template(
 def _judge_thumbnails_batch_messages(
     units: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
-    """批量判图输入:多个章节单元合并进一次会话(有些章一共就两三页,逐章开会话
-    纯浪费)。每单元若干张真实渲染候选缩略图,前置「单元 u 候选 i」标记防串位;
-    chapterContext 逐单元携带。prompt 在 `judge_thumbnails.md`。"""
+    """批量判图输入:多个单元合并进一次会话(有些单元一共就两三页,逐单元开会话
+    纯浪费)。每单元若干张真实渲染候选缩略图,前置「单元 u 候选 i」标记防串位。
+    评委只看页面(纯视觉判断)—— chapter 概念是分簇/写文案的内部事,不进评委上下文。
+    prompt 在 `judge_thumbnails.md`。"""
     payload = {
         "units": [
             {
                 "unitIndex": u,
                 "candidateCount": len(unit["thumbnails"]),
-                "chapterContext": str(unit.get("chapterContext") or ""),
             }
             for u, unit in enumerate(units)
         ],
@@ -303,7 +301,7 @@ async def judge_thumbnails_batch(
 ) -> LayoutBatchJudgeResult:
     """批量真图评委:一次会话逐单元选最佳(winners[i] 对应第 i 个输入单元)。
 
-    units 元素为 {thumbnails: [dataUrl...], chapterContext?: str}。
+    units 元素为 {thumbnails: [dataUrl...]}(纯视觉,不携带章节信息)。
     首选 Gemini;Gemini 不可用(缺 key / 地区墙 400 / 超时 / 解析失败)时**保底
     fallback 到豆包**(火山 ARK vision 槽)。豆包也失败才抛,由调用方逐单元降级取 0。"""
     if not units or any(not unit["thumbnails"] for unit in units):
@@ -364,11 +362,11 @@ async def judge_thumbnails_batch(
 
 
 async def judge_layout_thumbnails(
-    thumbnails: Sequence[str], *, chapter_context: str = ""
+    thumbnails: Sequence[str],
 ) -> LayoutJudgeResult:
     """单单元判图:批量评委的 1 单元特例(单页换版式 judge_page_template 在用)。"""
     result = await judge_thumbnails_batch(
-        [{"thumbnails": list(thumbnails), "chapterContext": chapter_context}]
+        [{"thumbnails": list(thumbnails)}]
     )
     return LayoutJudgeResult(
         winner_index=result.winners[0],

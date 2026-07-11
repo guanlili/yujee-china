@@ -8,7 +8,7 @@ import { WebImage } from '../web-utils';
 // 手写短语是 Figma 里被渲染成矢量(13 条 path，原 fill #36312B→改成 ink #1c1b18)的草书，
 // 手写矢量 node 11:499（其内 figure_1=11:500）。它是固定 furniture、**不进契约**——web 端把
 // 那段原始 SVG 标记直接内联(dangerouslySetInnerHTML)到绝对定位的 div，按 Figma 帧
-// x183 y487 w381 h221 ×1.3344 摆放。PDF 端把同一批 path 搬进 @react-pdf 的 <Svg>/<Path>(见 pdf.tsx)。
+// x183 y487 w381 h221 ×1.3344 摆放。(矢量 PDF 端已退役,导出走栅格截屏。)
 
 const INK = '#1c1b18';
 

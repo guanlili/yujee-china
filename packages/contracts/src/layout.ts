@@ -95,6 +95,14 @@ export const Page = z.object({
   // carry `null` here — accept it (renderer reads `imagePos?.[slot]`, so null and
   // absent are equivalent). Was `.optional()`, which rejected the agent's `null`.
   imagePos: z.record(z.string(), ImagePos).nullish(),
+  /**
+   * 页面 HTML 真相(C 方案):已填充的整页 HTML(锚点契约 data-template/
+   * data-text-key/data-image-slot;图片 src 一律保持 `{{IMG_SRC:slotId}}` token,
+   * 真实 src 渲染时解析 —— base64 绝不落库)。过渡期可选:存量 draft 没有该字段,
+   * 读路径按 templateId 现场烘;新落库一律携带。存在 html 时它优先于
+   * templateId+texts 的模板渲染,texts 降级为派生缓存(装书校验/搜索用)。
+   */
+  html: z.string().max(65536).optional(),
 }).strict();
 export type Page = z.infer<typeof Page>;
 

@@ -1,3 +1,5 @@
+import { bakePageHtml, bakePagesHtml, type BakeablePage } from './bake-html';
+import { patchHtmlText } from '@/components/album/page-html-dom';
 import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
@@ -94,7 +96,11 @@ function readStoryDraft(draftJson: unknown): NormalizedStoryDraft | null {
   if (wrapped.success) {
     return {
       tree: wrapped.data.tree,
-      pages: wrapped.data.pages,
+      // C 方案读路径兜底:存量 draft(烘 HTML 上线前落库)的页缺 html,读出时
+      // 现场烘一遍(不回写库;之后任何写路径落库即固化)。lenient 见 bake-html。
+      pages: wrapped.data.pages
+        ? (bakePagesHtml(wrapped.data.pages as BakeablePage[], { strict: false }) as typeof wrapped.data.pages)
+        : wrapped.data.pages,
       progress: wrapped.data.progress,
     };
   }
@@ -171,13 +177,34 @@ function applyLayoutPatchToDraftPages(pages: V3Page[], patch: V3LayoutPatchEntry
     }
   }
 
-  return next;
+  // C 方案:被 patch 摸过的页,槽位变了 → 旧 html 失效,重烘固化进页面真相。
+  const touched = new Set<number>(patch.map((entry) => entry.pageIndex));
+  return bakePagesHtml(
+    next.map((page) => (touched.has(page.pageIndex) ? { ...page, html: undefined } : page)),
+    { strict: false },
+  ) as V3Page[];
 }
 
 function applyPagesTextsToDraftPages(pages: V3Page[], patches: V3PageTextsPatch[]): V3Page[] {
+  // 文字槽修改:优先在存库 html 上原位打补丁(保留 AI/用户的手工版面);
+  // 锚点缺失或无 html 基线时回退整页重烘。
   return pages.map((page) => {
     const patch = patches.find((item) => item.pageIndex === page.pageIndex);
-    return patch ? { ...page, texts: { ...page.texts, ...patch.texts } } : page;
+    if (!patch) return page;
+    const next: V3Page = { ...page, texts: { ...page.texts, ...patch.texts } };
+    if (typeof next.html === 'string' && next.html.length > 0) {
+      let html: string | null = next.html;
+      for (const [slotId, value] of Object.entries(patch.texts)) {
+        const patched = patchHtmlText(html, slotId, value);
+        if (patched === null) {
+          html = null;
+          break;
+        }
+        html = patched;
+      }
+      if (html !== null) return { ...next, html };
+    }
+    return bakePageHtml({ ...next, html: undefined }, { strict: false }) as V3Page;
   });
 }
 
@@ -763,9 +790,27 @@ export const albumService = {
     if (!normalized.pages || normalized.pages.length === 0) {
       throw ERRORS.VALIDATION_FAILED('album has no layout pages yet');
     }
+    // 书级设计简报:AI 的全局语境四件套之三(主题/配色主题/封面氛围;第四件=每页
+    // 内容本身)。chapter 概念不进 AI 上下文 —— chapters 仍随书传(照片池校验用)。
+    const design = (album.draftJson as { design?: { fonts?: Record<string, string>; colors?: Record<string, string> } } | null)
+      ?.design;
+    const coverPage = normalized.pages.find((p) => templateCategory(p.templateId) === 'cover');
+    const coverMood = coverPage
+      ? Object.entries(coverPage.texts)
+          .filter(([key, value]) => !key.includes('#') && value)
+          .slice(0, 3)
+          .map(([, value]) => value)
+          .join(' / ')
+          .slice(0, 120)
+      : '';
     await designAgentClient.loadBook(albumId, {
       chapters: normalized.tree.chapters,
       pages: normalized.pages,
+      brief: {
+        theme: [album.title, album.prompt].filter(Boolean).join(' — ').slice(0, 200) || undefined,
+        ...(design ? { palette: { fonts: design.fonts, colors: design.colors } } : {}),
+        ...(coverMood ? { coverMood } : {}),
+      },
     });
   },
 
@@ -1411,6 +1456,8 @@ export const albumService = {
         imagesJson: p.images,
         textsJson: p.texts,
         imagePosJson: p.imagePos ?? {},
+        // 页面 HTML 真相(C 方案):readStoryDraft 已兜底烘制,画板优先渲染它。
+        htmlJson: (p as { html?: string }).html,
         kind,
         chapterId: kind === 'chapter' ? chapterIdForPage(p) : null,
       };
@@ -1643,7 +1690,8 @@ export const albumService = {
     });
 
     await albumRepo.update(db, album.id, {
-      draftJson: { ...(root ?? {}), pages },
+      // design 决策快照随 draft 落库:设计对话的书级简报(配色主题)从这里取。
+      draftJson: { ...(root ?? {}), pages, design: { fonts: design.fonts, colors: design.colors } },
       pageCount: pages.length,
       // 设计完成 → 待导出(导出闸门的唯一开门钥匙)。story 阶段到不了这里(design 要求
       // 已排版页,入口在 theme 之后);幂等重设计时已是 ready 则维持不动。

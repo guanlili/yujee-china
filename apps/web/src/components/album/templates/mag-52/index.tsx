@@ -9,7 +9,7 @@ import { resolveThemeCarrier } from '../theme-carrier';
 //
 // 手写矢量（node 11:331，viewBox 0 0 415 313，16 条 path，原 fill #36312B→改成 INK #1c1b18）是固定
 // furniture、不进契约 —— web 端把那段 SVG 直接内联（dangerouslySetInnerHTML）到绝对定位的 div，
-// 按 Figma 帧 x160 y98 w415 h313 ×1.3344 摆放。PDF 端把同一批 path 搬进 @react-pdf 的 <Svg>/<Path>（见 pdf.tsx）。
+// 按 Figma 帧 x160 y98 w415 h313 ×1.3344 摆放。(矢量 PDF 端已退役,导出走栅格截屏。)
 
 const INK = '#1c1b18';
 

@@ -8,6 +8,8 @@ import { ERRORS } from '@/lib/api/error-codes';
 interface DesignAgentBookPayload {
   chapters: unknown[];
   pages: unknown[];
+  // 书级设计简报(主题/配色主题/封面氛围)—— chapter 概念不进 AI 上下文的替代语境。
+  brief?: { theme?: string; palette?: { fonts?: Record<string, string>; colors?: Record<string, string> }; coverMood?: string };
 }
 
 export interface DesignAgentChatResult {

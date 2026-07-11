@@ -2,7 +2,7 @@
 
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
 import { PAGE } from './templates/constants';
-import { renderPageHtml } from './templates/html/fill-template';
+import { preferredPageHtml } from './page-html-dom';
 import type { EditorPage } from './types';
 import { getWebTemplate } from './web-registry';
 import { useAlbumFonts } from '@/lib/font/album-font-loader';
@@ -18,11 +18,8 @@ interface Props {
 // editor uses FlipBook; this compact renderer is still needed for album cards.
 export function PagePreview({ page, totalPages, resolveImage, scale = 0.46 }: Props) {
   const fontsReady = useAlbumFonts([{ texts: page.textsJson }]);
-  // HTML 模板已迁移的走单一渲染器（dangerouslySetInnerHTML），未迁的回退 React 组件。
-  const html = renderPageHtml(
-    { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson, imagePos: page.imagePosJson },
-    resolveImage,
-  );
+  // 页面真相 = 存库 html(含手工版面);缺失时模板即时渲染,再缺回退 React 组件。
+  const html = preferredPageHtml(page, resolveImage);
   const Template = html === undefined ? getWebTemplate(page.templateId) : null;
   const data =
     Template != null

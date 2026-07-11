@@ -69,6 +69,17 @@ Key files:
 - `src/lib/photo/candidate-thumbnail.tsx` renders real template thumbnails for layout judging.
 - PDF export is browser-side; Web only issues R2 presigned URLs.
 
+## Page HTML Truth (C 方案)
+
+- 排版/设计落库时每页烘成 HTML(`services/album/bake-html.ts`),draft 页的 `html`
+  是页面唯一真相;读路径对存量 draft 现场烘(`readStoryDraft`)。
+- 画板(PagePreview/FlipBook)优先渲染存库 html(`components/album/page-html-dom.ts`
+  解析 `{{IMG_SRC}}` token → blob URL);无 html 回退模板即时渲染,再缺回退 React 组件。
+- 用户改字走 html 原位补丁(锚点 `data-text-key`),AI/用户手工版面不被覆盖;
+  换模板/主题一键会从模板重烘(手工版面重置,属预期)。
+- PDF 导出只剩栅格路径(`lib/pdf/render-raster.ts`,html2canvas 截存库 html);
+  矢量 PDF 路径已退役。
+
 ## Database Boundary
 
 Drizzle schema lives in `src/db/schema.ts`.
