@@ -32,6 +32,9 @@ importers:
       better-auth:
         specifier: 1.4.17
         version: 1.4.17(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@libsql/client@0.14.0)(@opentelemetry/api@1.9.0)(@types/react@19.0.7)(kysely@0.28.17)(postgres@3.4.9)(react@19.2.3))(next@15.5.9(@opentelemetry/api@1.9.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.9)
+      dompurify:
+        specifier: ^3.4.11
+        version: 3.4.11
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1
@@ -47,6 +50,9 @@ importers:
       jspdf:
         specifier: ^4.2.1
         version: 4.2.1
+      marked:
+        specifier: ^18.0.6
+        version: 18.0.6
       next:
         specifier: 15.5.9
         version: 15.5.9(@opentelemetry/api@1.9.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -2553,6 +2559,11 @@ packages:
     resolution: {integrity: sha512-hXdUTZYIVOt1Ex//jAQi+wTZZpUpwBj/0QsOzqegb3rGMMeJiSEu5xLHnYfBrRV4RH2+OCSOO95Is/7x1WJ4bw==}
     engines: {node: '>=10'}
 
+  marked@18.0.6:
+    resolution: {integrity: sha512-MrV5puXBfuiy6wl6DLaq3BtIJQAJToAd5zt/ZKhRfGRAuFPALE7/4Y7jnxRQoEgK/pBgurGqLyAuRgZ2xOjr6w==}
+    engines: {node: '>= 20'}
+    hasBin: true
+
   media-engine@1.0.3:
     resolution: {integrity: sha512-aa5tG6sDoK+k70B9iEX1NeyfT8ObCKhNDs6lJVpwF6r8vhUfuKMslIcirq6HIUYuuUYLefcEQOn9bSBOvawtwg==}
 
@@ -4874,7 +4885,6 @@ snapshots:
   dompurify@3.4.11:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
-    optional: true
 
   dotenv@16.6.1: {}
 
@@ -5380,6 +5390,8 @@ snapshots:
   make-dir@4.0.0:
     dependencies:
       semver: 7.8.1
+
+  marked@18.0.6: {}
 
   media-engine@1.0.3: {}
 
