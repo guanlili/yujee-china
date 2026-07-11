@@ -9,12 +9,14 @@ type Gps = { lat: [number, number, number]; latRef: string; lng: [number, number
 // ("MM") TIFF layout by default. Optionally injects a real GPS IFD (0x8825) with
 // lat/lng rationals so we can assert (a) takenAt reader ignores GPS and (b) the
 // dedicated GPS reader parses it for in-memory clustering only.
-function buildJpegWithExif(opts: {
+type ExifOpts = {
   dateOriginal?: string;
   withGpsPointer?: boolean;
   gps?: Gps;
   byteOrder?: 'II' | 'MM';
-}): ArrayBuffer {
+};
+
+function buildJpegWithExif(opts: ExifOpts): ArrayBuffer {
   const little = opts.byteOrder === 'II';
   const tiff: number[] = [];
   const u16 = (v: number) => (little ? [v & 0xff, (v >> 8) & 0xff] : [(v >> 8) & 0xff, v & 0xff]);
@@ -105,6 +107,46 @@ function buildJpegWithExif(opts: {
   return new Uint8Array(jpeg).buffer;
 }
 
+// Minimal-but-faithful HEIF (ISO BMFF) container carrying the same TIFF as an
+// 'Exif' metadata item: ftyp + meta{hdlr, iinf/infe, iloc} + mdat. iloc uses
+// version 0 with 4-byte absolute extent offsets — the layout Apple/libheif
+// emit for photos. The Exif item payload is ExifDataBlock:
+// [u32 exif_tiff_header_offset]["Exif\0\0"][TIFF].
+function buildHeicWithExif(opts: ExifOpts & { omitExifItem?: boolean }): ArrayBuffer {
+  // Reuse the JPEG builder's TIFF: it sits after SOI(2)+APP1 marker(2)+len(2)+"Exif\0\0"(6).
+  const jpeg = new Uint8Array(buildJpegWithExif(opts));
+  const tiff = [...jpeg.slice(12, jpeg.length - 2)];
+
+  const be16 = (v: number) => [(v >> 8) & 0xff, v & 0xff];
+  const be32 = (v: number) => [(v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff];
+  const fourcc = (s: string) => [...s].map((c) => c.charCodeAt(0));
+  const box = (type: string, body: number[]) => [...be32(8 + body.length), ...fourcc(type), ...body];
+  const fullbox = (type: string, version: number, body: number[]) =>
+    box(type, [version, 0, 0, 0, ...body]);
+
+  const itemId = 1;
+  // exif_tiff_header_offset=6:从该字段之后跳过 "Exif\0\0" 到 TIFF header。
+  const payload = [...be32(6), ...fourcc('Exif'), 0, 0, ...tiff];
+
+  const hdlr = fullbox('hdlr', 0, [...be32(0), ...fourcc('pict'), ...be32(0), ...be32(0), ...be32(0), 0]);
+  const infe = fullbox('infe', 2, [...be16(itemId), ...be16(0), ...fourcc(opts.omitExifItem ? 'mime' : 'Exif'), 0]);
+  const iinf = fullbox('iinf', 0, [...be16(1), ...infe]);
+  // iloc v0: offset_size=4/length_size=4, base_offset_size=0; 1 item, 1 extent。
+  const ilocBody = (extentOffset: number) => [
+    0x44, 0x00,
+    ...be16(1),
+    ...be16(itemId), ...be16(0), ...be16(1),
+    ...be32(extentOffset), ...be32(payload.length),
+  ];
+  const ftyp = box('ftyp', [...fourcc('heic'), ...be32(0), ...fourcc('heic')]);
+  const metaSize = fullbox('meta', 0, [...hdlr, ...iinf, ...fullbox('iloc', 0, ilocBody(0))]).length;
+  const extentOffset = ftyp.length + metaSize + 8; // mdat body 的绝对文件偏移
+  const meta = fullbox('meta', 0, [...hdlr, ...iinf, ...fullbox('iloc', 0, ilocBody(extentOffset))]);
+  const mdat = box('mdat', payload);
+
+  return new Uint8Array([...ftyp, ...meta, ...mdat]).buffer;
+}
+
 test('readTakenAtFromExif reads DateTimeOriginal as ISO local datetime (MM/big-endian)', () => {
   const buf = buildJpegWithExif({ dateOriginal: '2024:03:15 08:30:00', byteOrder: 'MM' });
   assert.equal(readTakenAtFromExif(buf), '2024-03-15T08:30:00');
@@ -150,6 +192,35 @@ test('readGeoForClustering returns null when no GPS IFD is present', () => {
   assert.equal(readGeoForClustering(buf), null);
   // And for a non-JPEG buffer.
   assert.equal(readGeoForClustering(new Uint8Array([0x00, 0x01]).buffer), null);
+});
+
+test('readTakenAtFromExif reads DateTimeOriginal from a HEIC container (MM)', () => {
+  const buf = buildHeicWithExif({ dateOriginal: '2024:03:15 08:30:00', byteOrder: 'MM' });
+  assert.equal(readTakenAtFromExif(buf), '2024-03-15T08:30:00');
+});
+
+test('readTakenAtFromExif reads DateTimeOriginal from a HEIC container (II)', () => {
+  const buf = buildHeicWithExif({ dateOriginal: '2021:12:31 23:59:59', byteOrder: 'II' });
+  assert.equal(readTakenAtFromExif(buf), '2021-12-31T23:59:59');
+});
+
+test('readGeoForClustering parses GPS out of a HEIC container', () => {
+  const buf = buildHeicWithExif({
+    gps: { lat: [40, 30, 0], latRef: 'N', lng: [74, 0, 0], lngRef: 'W' },
+  });
+  const geo = readGeoForClustering(buf);
+  assert.ok(geo);
+  assert.ok(Math.abs(geo!.lat - 40.5) < 1e-9);
+  assert.ok(Math.abs(geo!.lng - -74) < 1e-9);
+});
+
+test('HEIC without an Exif item yields null takenAt/geo and never throws', () => {
+  const buf = buildHeicWithExif({ dateOriginal: '2024:03:15 08:30:00', omitExifItem: true });
+  assert.equal(readTakenAtFromExif(buf), null);
+  assert.equal(readGeoForClustering(buf), null);
+  // Truncated HEIF header.
+  const truncated = buildHeicWithExif({ dateOriginal: '2024:03:15 08:30:00' }).slice(0, 40);
+  assert.equal(readTakenAtFromExif(truncated), null);
 });
 
 test('readTakenAtFromExif returns null for a non-JPEG / no-EXIF buffer', () => {

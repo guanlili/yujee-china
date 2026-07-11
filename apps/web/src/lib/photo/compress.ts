@@ -88,8 +88,10 @@ function drawScaled(img: HTMLImageElement, maxLen: number) {
 
 // --- EXIF parser (takenAt + GPS-for-clustering ONLY) ------------------------
 //
-// Minimal, dependency-free JPEG APP1/EXIF parser. It walks the TIFF IFD0 +
-// Exif sub-IFD and returns the capture timestamp from one of three tags:
+// Minimal, dependency-free EXIF parser for both containers the pickers hand us:
+// JPEG (APP1 segment) and HEIC/HEIF ('Exif' metadata item — iPhone default).
+// It walks the TIFF IFD0 + Exif sub-IFD and returns the capture timestamp from
+// one of three tags:
 //   - 0x9003 DateTimeOriginal   (preferred)
 //   - 0x9004 DateTimeDigitized  (fallback)
 //   - 0x0132 DateTime           (fallback)
@@ -116,32 +118,182 @@ const TAG_GPS_LNG = 0x0004; // 3 rationals: deg, min, sec
 export function readTakenAtFromExif(bytes: ArrayBuffer): string | null {
   try {
     const view = new DataView(bytes);
-    if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null; // not a JPEG (SOI marker)
-
-    // Find the APP1 (0xFFE1) segment carrying the "Exif\0\0" header.
-    let offset = 2;
-    while (offset + 4 <= view.byteLength) {
-      if (view.getUint8(offset) !== 0xff) break;
-      const marker = view.getUint8(offset + 1);
-      if (marker === 0xda) break; // start of scan — no metadata beyond here
-      const segLen = view.getUint16(offset + 2);
-      if (segLen < 2) break;
-      if (marker === 0xe1) {
-        const tiffStart = offset + 4 + 6; // skip "Exif\0\0"
-        if (
-          offset + 4 + 6 <= view.byteLength &&
-          view.getUint32(offset + 4) === 0x45786966 && // "Exif"
-          view.getUint16(offset + 8) === 0x0000
-        ) {
-          return readDateFromTiff(view, tiffStart);
-        }
-      }
-      offset += 2 + segLen;
-    }
-    return null;
+    const tiffStart = findExifTiffStart(view);
+    return tiffStart === null ? null : readDateFromTiff(view, tiffStart);
   } catch {
     return null; // any malformed EXIF → treat as no timestamp, never throw
   }
+}
+
+// Locates the EXIF TIFF header in either container format the photo pickers
+// hand us: JPEG (APP1 segment) or HEIC/HEIF (ISO BMFF 'Exif' metadata item —
+// iPhone default since iOS 11). Returns null when the container carries no EXIF.
+function findExifTiffStart(view: DataView): number | null {
+  if (view.byteLength >= 4 && view.getUint16(0) === 0xffd8) return findExifTiffStartInJpeg(view);
+  return findExifTiffStartInHeif(view);
+}
+
+// JPEG: walk segments for the APP1 (0xFFE1) carrying the "Exif\0\0" header.
+function findExifTiffStartInJpeg(view: DataView): number | null {
+  let offset = 2;
+  while (offset + 4 <= view.byteLength) {
+    if (view.getUint8(offset) !== 0xff) break;
+    const marker = view.getUint8(offset + 1);
+    if (marker === 0xda) break; // start of scan — no metadata beyond here
+    const segLen = view.getUint16(offset + 2);
+    if (segLen < 2) break;
+    if (marker === 0xe1) {
+      if (
+        offset + 4 + 6 <= view.byteLength &&
+        view.getUint32(offset + 4) === 0x45786966 && // "Exif"
+        view.getUint16(offset + 8) === 0x0000
+      ) {
+        return offset + 4 + 6; // skip "Exif\0\0"
+      }
+    }
+    offset += 2 + segLen;
+  }
+  return null;
+}
+
+// --- HEIF (ISO BMFF) EXIF item locator ---------------------------------------
+//
+// HEIC photos store EXIF as a metadata item, not a JPEG segment:
+//   meta → iinf/infe (find the item_ID whose item_type is 'Exif')
+//   meta → iloc      (that item's absolute file offset)
+//   payload = ExifDataBlock: [u32 exif_tiff_header_offset][…usually "Exif\0\0"][TIFF]
+// Only construction_method 0 (file offset) and data_reference 0 (this file) are
+// handled — that is what Apple and libheif emit for photos. Anything unexpected
+// returns null; callers already treat null as "no EXIF".
+
+const FOURCC_FTYP = 0x66747970;
+const FOURCC_META = 0x6d657461;
+const FOURCC_IINF = 0x69696e66;
+const FOURCC_ILOC = 0x696c6f63;
+const FOURCC_INFE = 0x696e6665;
+const FOURCC_EXIF = 0x45786966;
+
+function findExifTiffStartInHeif(view: DataView): number | null {
+  if (view.byteLength < 12 || view.getUint32(4) !== FOURCC_FTYP) return null;
+  const meta = findBmffBox(view, 0, view.byteLength, FOURCC_META);
+  if (!meta) return null;
+  const content = meta.start + 4; // skip FullBox version/flags
+  const iinf = findBmffBox(view, content, meta.end, FOURCC_IINF);
+  const iloc = findBmffBox(view, content, meta.end, FOURCC_ILOC);
+  if (!iinf || !iloc) return null;
+  const exifItemId = findHeifExifItemId(view, iinf);
+  if (exifItemId === null) return null;
+  const itemPos = findHeifItemOffset(view, iloc, exifItemId);
+  if (itemPos === null || itemPos + 4 > view.byteLength) return null;
+  const tiffStart = itemPos + 4 + view.getUint32(itemPos);
+  return tiffStart + 8 <= view.byteLength ? tiffStart : null;
+}
+
+function findBmffBox(
+  view: DataView,
+  start: number,
+  end: number,
+  type: number,
+): { start: number; end: number } | null {
+  let offset = start;
+  while (offset + 8 <= end) {
+    let size = view.getUint32(offset);
+    let header = 8;
+    if (size === 1) {
+      // 64-bit largesize; >4GB unsupported (photos never are).
+      if (offset + 16 > end || view.getUint32(offset + 8) !== 0) return null;
+      size = view.getUint32(offset + 12);
+      header = 16;
+    } else if (size === 0) {
+      size = end - offset; // box extends to end of enclosing scope
+    }
+    if (size < header || offset + size > end) return null;
+    if (view.getUint32(offset + 4) === type) return { start: offset + header, end: offset + size };
+    offset += size;
+  }
+  return null;
+}
+
+function findHeifExifItemId(view: DataView, iinf: { start: number; end: number }): number | null {
+  const version = view.getUint8(iinf.start);
+  let offset = iinf.start + 4;
+  const count = version === 0 ? view.getUint16(offset) : view.getUint32(offset);
+  offset += version === 0 ? 2 : 4;
+  for (let i = 0; i < count && offset + 8 <= iinf.end; i++) {
+    let size = view.getUint32(offset);
+    if (size === 0) size = iinf.end - offset;
+    if (size < 8 || offset + size > iinf.end) return null;
+    if (view.getUint32(offset + 4) === FOURCC_INFE) {
+      const v = view.getUint8(offset + 8);
+      if (v >= 2) {
+        // infe v2: item_ID u16 / v3: u32, then protection u16, then item_type 4cc.
+        const idSize = v === 2 ? 2 : 4;
+        const base = offset + 12;
+        const itemId = v === 2 ? view.getUint16(base) : view.getUint32(base);
+        if (view.getUint32(base + idSize + 2) === FOURCC_EXIF) return itemId;
+      }
+    }
+    offset += size;
+  }
+  return null;
+}
+
+function findHeifItemOffset(
+  view: DataView,
+  iloc: { start: number; end: number },
+  itemId: number,
+): number | null {
+  const version = view.getUint8(iloc.start);
+  let offset = iloc.start + 4;
+  const offsetSize = view.getUint8(offset) >> 4;
+  const lengthSize = view.getUint8(offset) & 0xf;
+  const baseOffsetSize = view.getUint8(offset + 1) >> 4;
+  const indexSize = version === 1 || version === 2 ? view.getUint8(offset + 1) & 0xf : 0;
+  offset += 2;
+  let count: number;
+  if (version < 2) {
+    count = view.getUint16(offset);
+    offset += 2;
+  } else {
+    count = view.getUint32(offset);
+    offset += 4;
+  }
+  // Reads a 0/4/8-byte unsigned field; 8-byte values above 2^32 are rejected.
+  const readSized = (pos: number, n: number): number | null => {
+    if (n === 0) return 0;
+    if (n === 4) return view.getUint32(pos);
+    if (n === 8) return view.getUint32(pos) === 0 ? view.getUint32(pos + 4) : null;
+    return null;
+  };
+  for (let i = 0; i < count; i++) {
+    let id: number;
+    if (version < 2) {
+      id = view.getUint16(offset);
+      offset += 2;
+    } else {
+      id = view.getUint32(offset);
+      offset += 4;
+    }
+    let constructionMethod = 0;
+    if (version === 1 || version === 2) {
+      constructionMethod = view.getUint16(offset) & 0xf;
+      offset += 2;
+    }
+    const dataReferenceIndex = view.getUint16(offset);
+    offset += 2;
+    const baseOffset = readSized(offset, baseOffsetSize);
+    offset += baseOffsetSize;
+    const extentCount = view.getUint16(offset);
+    offset += 2;
+    if (id === itemId) {
+      if (constructionMethod !== 0 || dataReferenceIndex !== 0 || extentCount < 1) return null;
+      const extentOffset = readSized(offset + indexSize, offsetSize);
+      if (baseOffset === null || extentOffset === null) return null;
+      return baseOffset + extentOffset;
+    }
+    offset += extentCount * (indexSize + offsetSize + lengthSize);
+  }
+  return null;
 }
 
 function readDateFromTiff(view: DataView, tiffStart: number): string | null {
@@ -179,28 +331,8 @@ function readDateFromTiff(view: DataView, tiffStart: number): string | null {
 export function readGeoForClustering(bytes: ArrayBuffer): ClusterGeo | null {
   try {
     const view = new DataView(bytes);
-    if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null;
-
-    let offset = 2;
-    while (offset + 4 <= view.byteLength) {
-      if (view.getUint8(offset) !== 0xff) break;
-      const marker = view.getUint8(offset + 1);
-      if (marker === 0xda) break; // start of scan — no metadata beyond here
-      const segLen = view.getUint16(offset + 2);
-      if (segLen < 2) break;
-      if (marker === 0xe1) {
-        const tiffStart = offset + 4 + 6; // skip "Exif\0\0"
-        if (
-          offset + 4 + 6 <= view.byteLength &&
-          view.getUint32(offset + 4) === 0x45786966 && // "Exif"
-          view.getUint16(offset + 8) === 0x0000
-        ) {
-          return readGeoFromTiff(view, tiffStart);
-        }
-      }
-      offset += 2 + segLen;
-    }
-    return null;
+    const tiffStart = findExifTiffStart(view);
+    return tiffStart === null ? null : readGeoFromTiff(view, tiffStart);
   } catch {
     return null; // malformed EXIF → treat as no GPS, never throw
   }
