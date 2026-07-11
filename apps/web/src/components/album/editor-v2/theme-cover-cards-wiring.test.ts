@@ -135,14 +135,36 @@ test('cover-stage free text routes to the cover turn with cover history', () => 
 // mid-theme/mid-cover left no card to continue with.
 
 test('on re-entry, the active decision card is re-emitted per stage', () => {
-  // theme → live palette card; cover → theme recap + live cover card; ready → both recaps.
+  // theme → live palette card; cover → theme recap + live cover card; ready → in-place
+  // replay via designApplied marker, with a tail recap ONLY as legacy fallback.
   assert.match(src, /else if \(stage === 'theme' \|\| stage === 'cover' \|\| stage === 'ready'\)/);
   assert.match(src, /if \(stage === 'theme'\)\s*\{\s*void runRecommendTheme\(\)/);
   // cover stage: theme recap + live cover card (the cover branch carries a multi-line
   // legacy-auto-advance note between the calls, so the window is generous).
   assert.match(src, /else if \(stage === 'cover'\)\s*\{[\s\S]{0,400}appendThemeSummary\(\);[\s\S]{0,400}appendCoverCard\(\)/);
-  // ready branch (the trailing else): both stages walked past → both read-only recaps.
-  assert.match(src, /appendThemeSummary\(\);[\s\S]{0,400}appendCoverSummary\(\)/);
+  // ready branch: NO theme recap (the new design flow has no theme step); the cover
+  // recap is only appended when history replay did NOT already rebuild it in place.
+  const readyBranch =
+    /\} else \{[\s\S]{0,700}?if \(!historyHadCoverRecap && !chatBody\?\.querySelector\('\.cv-opt\.is-recap'\)\) \{\s*appendCoverSummary\(\);/.exec(src);
+  assert.ok(readyBranch, 'ready branch must gate the tail cover recap on historyHadCoverRecap');
+  assert.doesNotMatch(readyBranch![0], /appendThemeSummary/);
+});
+
+// ─── in-place cover recap replay (designApplied marker) ─────────────────────
+// applyDesign persists the selection as a user message with layoutPatch.designApplied;
+// loadHistory rebuilds the read-only recap card AT ITS RECORDED POSITION (before the
+// user bubble), so refreshing no longer teleports the recap to the bottom of the chat.
+
+test('loadHistory rebuilds the cover recap in place from the designApplied marker', () => {
+  // reader validates the marker shape and bails to null on junk.
+  assert.match(src, /function readDesignApplied\(layoutPatch: unknown\)/);
+  // user branch: marker → recap card (history-replay tagged) appended BEFORE the bubble.
+  assert.match(
+    src,
+    /const applied = readDesignApplied\(m\.layoutPatch\);[\s\S]{0,300}buildCoverRecapCard\(applied\)[\s\S]{0,200}appendUserText\(c, \{ historyReplay: true \}\)/,
+  );
+  // the flag is reset on每次 replay 清场 so a re-run can't leak a stale true.
+  assert.match(src, /data-history-replay[\s\S]{0,120}historyHadCoverRecap = false;/);
 });
 
 test('appendThemeSummary is a READ-ONLY recap of chapter titles (no apply action)', () => {

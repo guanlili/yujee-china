@@ -1711,6 +1711,34 @@ export const albumService = {
       // 只要能走到这里(EDITING + 已有排版页)就该进 ready;幂等重入保持 ready。
       ...(album.stage !== 'ready' ? { stage: 'ready' as const } : {}),
     });
+    // 封面选择本身进会话历史(seq 追加序):刷新回放时回执卡按真实发生位置原位重建,
+    // 不再靠 stage 推断在末尾补卡(旧行为导致回执卡"跑到最下边")。user 消息带
+    // designApplied 标记(回放识别),assistant 消息与前端实时回复同文案。
+    await db.transaction(async (tx) => {
+      await albumMessageRepo.create(tx, {
+        albumId,
+        userId,
+        role: 'user',
+        content: input.language === 'zh' ? '就用这组封面' : 'Use this cover set',
+        layoutPatch: {
+          designApplied: {
+            coverTemplateId: input.coverTemplateId,
+            coverPhotoId: input.coverPhotoId,
+            endingTemplateId: input.endingTemplateId,
+            endingPhotoId: input.endingPhotoId,
+          },
+        },
+      });
+      await albumMessageRepo.create(tx, {
+        albumId,
+        userId,
+        role: 'assistant',
+        content:
+          input.language === 'zh'
+            ? '设计好了:封面封底就位,全书字体和配色也统一刷好了。不满意随时在对话里改。'
+            : 'Design done — cover & back cover are in, fonts and colors applied across the book. Ask me here to tweak anything.',
+      });
+    });
     return { pages };
   },
 

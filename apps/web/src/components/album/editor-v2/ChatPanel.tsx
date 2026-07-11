@@ -282,6 +282,30 @@ export function ChatPanel({
       u.querySelector('.bubble')!.textContent = text;
       chatBody!.appendChild(u);
     }
+    // 历史里是否已原位重建过封面回执卡(designApplied 标记):有则 ready 分支不再尾部补卡。
+    let historyHadCoverRecap = false;
+    // applyDesign 落库的封面选择标记(album-service):形状不对就当没有,退回老行为。
+    function readDesignApplied(layoutPatch: unknown): {
+      coverTemplateId: string | null;
+      coverPhotoId: string | null;
+      endingTemplateId: string | null;
+      endingPhotoId: string | null;
+    } | null {
+      if (!layoutPatch || typeof layoutPatch !== 'object') return null;
+      const applied = (layoutPatch as { designApplied?: unknown }).designApplied;
+      if (!applied || typeof applied !== 'object') return null;
+      const pick = (key: string): string | null => {
+        const v = (applied as Record<string, unknown>)[key];
+        return typeof v === 'string' && v ? v : null;
+      };
+      const set = {
+        coverTemplateId: pick('coverTemplateId'),
+        coverPhotoId: pick('coverPhotoId'),
+        endingTemplateId: pick('endingTemplateId'),
+        endingPhotoId: pick('endingPhotoId'),
+      };
+      return set.coverTemplateId || set.endingTemplateId ? set : null;
+    }
     async function loadHistory(): Promise<number> {
       const replaySeq = ++historyReplaySeqRef.current;
       try {
@@ -305,6 +329,7 @@ export function ChatPanel({
         const msgs = await historyFetchPromiseRef.current;
         if (disposed || replaySeq !== historyReplaySeqRef.current) return 0;
         chatBody?.querySelectorAll('[data-history-replay]').forEach((n) => n.remove());
+        historyHadCoverRecap = false;
         chapterHistory.splice(0, chapterHistory.length);
         let shown = 0;
         let lastCardChapterId: string | null = null;
@@ -320,6 +345,15 @@ export function ChatPanel({
             lastCardChapterId = m.chapterId;
           }
           if (m.role === 'user') {
+            // 封面选择消息(applyDesign 落库,layoutPatch.designApplied):先原位重建
+            // 只读回执卡,再放用户气泡 —— 还原实时时「回执卡→就用这组封面」的顺序。
+            const applied = readDesignApplied(m.layoutPatch);
+            if (applied) {
+              historyHadCoverRecap = true;
+              const recap = buildCoverRecapCard(applied);
+              recap.setAttribute('data-history-replay', '1');
+              chatBody?.appendChild(recap);
+            }
             appendUserText(c, { historyReplay: true });
             if (!m.chapterId || !storyGate?.currentChapterId || m.chapterId === storyGate.currentChapterId) {
               chapterHistory.push({ role: 'user', content: c });
@@ -463,12 +497,13 @@ export function ChatPanel({
       if (isAuthoring) co()?.setExportGateUi?.(isAuthoringExportLocked(progress));
     }
 
-    let exportReadyCardShown = false;
     function appendExportReadyCard() {
-      if (exportReadyCardShown) return;
-      exportReadyCardShown = true;
+      // 幂等看 DOM 不看 closure:dev 双挂载/效果重跑时两个实例各持 closure 标志,
+      // 会各append一张;DOM 里已有就不再加。
+      if (chatBody?.querySelector('[data-export-ready-card]')) return;
       const card = document.createElement('div');
       card.className = 'msg ai max-w-full';
+      card.setAttribute('data-export-ready-card', '1');
       const inner = document.createElement('div');
       inner.className = 'export-ready-card';
       const line = document.createElement('div');
@@ -2442,6 +2477,7 @@ export function ChatPanel({
       // 先 loadStoryGate 再 loadHistory:历史重建要补插章节卡片(appendChapterCard 依赖
       // chapterMetaById→storyGate/draftSkel);storyGate 未就绪时卡片会插不出来。
       void loadStoryGate().then(() => loadHistory()).then((shown) => {
+        if (disposed) return;
         restAwait();
       });
     }
@@ -2451,6 +2487,9 @@ export function ChatPanel({
       setChatState(3);
       updateAuthInputPlaceholder();
       void loadStoryGate().then(() => loadHistory()).then((shown) => {
+        // dev 双挂载/快速路由切换:被清理实例的异步链在这之后还会 resolve,
+        // 不拦会把回执卡/导出卡追加到新实例的 DOM 里(实测出现重复卡)。
+        if (disposed) return;
         restAwait();
         const liveChapterId = storyGate?.currentChapterId ?? null;
         if (liveChapterId) co()?.goToChapterById?.(liveChapterId);
@@ -2473,8 +2512,12 @@ export function ChatPanel({
             appendThemeSummary();
             appendCoverCard();
           } else {
-            appendThemeSummary();
-            appendCoverSummary();
+            // 新流程(封面组选择卡)没有 theme 步,不再凭空追加旧 theme 回执卡。
+            // 封面回执:designApplied 标记落库后由 loadHistory 原位重建;这里只给
+            // 标记落库前设计完的老相册兜底(尾部补一张,别让回执彻底消失)。
+            if (!historyHadCoverRecap && !chatBody?.querySelector('.cv-opt.is-recap')) {
+              appendCoverSummary();
+            }
           }
         }
         maybeAppendExportReadyCard();
