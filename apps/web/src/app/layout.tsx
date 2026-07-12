@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { getRequestLocale } from '@/lib/i18n/server-locale';
+import { SITE_URL } from '@/lib/seo/site';
 import '@/styles/globals.css';
 
 // Display / heading typeface (DESIGN.md §3) was loaded via next/font/google
@@ -9,13 +11,20 @@ import '@/styles/globals.css';
 // restore the brand font without the network fetch.
 
 export const metadata: Metadata = {
+  // Resolves every relative canonical/OG URL against the apex rather than the
+  // deployment host.
+  metadataBase: new URL(SITE_URL),
   title: 'Yujee — Your AI Memoir',
   description: 'Turn your photos and stories into a printable keepsake magazine.',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Was hardcoded to "en", so /zh declared itself English to every crawler and
+  // screen reader.
+  const locale = await getRequestLocale();
+
   return (
-    <html lang="en">
+    <html lang={locale}>
       <body>{children}</body>
     </html>
   );

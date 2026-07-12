@@ -1,10 +1,26 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Brand, BrandMark } from '@/components/app/Brand';
 import { LanguageSwitcher } from '@/components/app/LanguageSwitcher';
 import { authHrefWithFrom } from '@/lib/auth/redirect';
 import { getMessages } from '@/lib/i18n/messages';
 import { type Locale } from '@/lib/i18n/routing';
+import { NOINDEX } from '@/lib/seo/metadata';
 import { LoginForm } from './login-form';
+
+// An auth form has no search value and was previously indexable, inheriting the
+// root layout's English marketing title verbatim — on /zh/login too.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  return {
+    title: getMessages(locale).auth.loginTitle,
+    robots: NOINDEX,
+  };
+}
 
 export default async function LoginPage({
   params,

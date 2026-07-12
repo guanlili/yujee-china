@@ -27,6 +27,7 @@ export interface MarketingMessages {
   };
   privacy: {
     metaTitle: string;
+    metaDesc: string;
     title: string;
     effective: string;
     sections: { h: string; body: string }[];
@@ -34,6 +35,7 @@ export interface MarketingMessages {
   };
   terms: {
     metaTitle: string;
+    metaDesc: string;
     title: string;
     effective: string;
     sections: { h: string; body: string }[];
@@ -88,6 +90,8 @@ const en: MarketingMessages = {
   },
   privacy: {
     metaTitle: 'Yujee — Privacy Policy',
+    metaDesc:
+      'How Yujee handles your photos and personal data. Original photos are never uploaded — only compressed previews go to the AI for layout planning, and your albums stay private to you.',
     title: 'Privacy Policy',
     effective: 'Effective Date: May 27, 2026',
     sections: [
@@ -132,6 +136,8 @@ const en: MarketingMessages = {
   },
   terms: {
     metaTitle: 'Yujee — Terms of Service',
+    metaDesc:
+      'The terms you agree to when using Yujee to turn your photos into an AI-laid-out memoir: accounts, credits, exports, and the rights you keep over your own content.',
     title: 'Terms of Service',
     effective: 'Effective Date: May 27, 2026',
     sections: [
@@ -233,6 +239,8 @@ const zh: MarketingMessages = {
   },
   privacy: {
     metaTitle: 'Yujee — 隐私政策',
+    metaDesc:
+      'Yujee 如何处理你的照片和个人数据：原图不会上传，只发送压缩预览给 AI 用于排版，相册只有你自己可见。',
     title: '隐私政策',
     effective: '生效日期：2026 年 5 月 27 日',
     sections: [
@@ -277,6 +285,8 @@ const zh: MarketingMessages = {
   },
   terms: {
     metaTitle: 'Yujee — 服务条款',
+    metaDesc:
+      '使用 Yujee 把照片做成 AI 排版纪念册时你所同意的条款：账户、积分、导出，以及你对自己内容保留的权利。',
     title: '服务条款',
     effective: '生效日期：2026 年 5 月 27 日',
     sections: [

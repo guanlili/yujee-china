@@ -1,7 +1,21 @@
+import type { Metadata } from 'next';
 import { Brand } from '@/components/app/Brand';
 import { getMessages } from '@/lib/i18n/messages';
 import { type Locale } from '@/lib/i18n/routing';
+import { NOINDEX } from '@/lib/seo/metadata';
 import { RegisterForm } from './register-form';
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  return {
+    title: getMessages(locale).auth.registerTitle,
+    robots: NOINDEX,
+  };
+}
 
 // Layered radial wash keeps /register and /login on one auth surface.
 const authBackground =
