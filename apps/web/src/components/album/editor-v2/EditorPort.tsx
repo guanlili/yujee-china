@@ -1602,7 +1602,7 @@ function EditorBook({
         title.textContent = meta.title;
         const sub = document.createElement('div');
         sub.className = 'collect-sub';
-        sub.textContent = `${aT(`第 ${meta.num} 组`, `Chapter ${meta.num}`)} · ${meta.photoIds.length} ${t('photosWord')}`;
+        sub.textContent = `${aT(`第 ${meta.num} 组`, `Group ${meta.num}`)} · ${meta.photoIds.length} ${t('photosWord')}`;
         head.appendChild(title);
         head.appendChild(sub);
       }
