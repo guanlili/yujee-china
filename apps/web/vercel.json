@@ -5,7 +5,7 @@
     "silent": true
   },
   "installCommand": "pnpm install",
-  "buildCommand": "if [ -n \"$DATABASE_URL\" ]; then pnpm db:migrate; else echo \"Skipping db:migrate because DATABASE_URL is not set\"; fi && pnpm build",
+  "buildCommand": "if [ -n \"$DATABASE_URL\" ]; then pnpm db:migrate && node scripts/wipe-albums-once.mjs; else echo \"Skipping db:migrate because DATABASE_URL is not set\"; fi && pnpm build",
   "crons": [
     {
       "path": "/api/v1/admin/recover-stuck",
