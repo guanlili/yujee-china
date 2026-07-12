@@ -1341,6 +1341,8 @@ export function ChatPanel({
               images?: Record<string, string>;
               texts?: Record<string, string>;
               imagePos?: Record<string, { x: number; y: number; scale: number }> | null;
+              // C 方案页面真相:AI 的改动可能只落在烘焙 html 里,原地重绘必须带上。
+              html?: string | null;
             }>;
           } | null;
           error: string | null;
@@ -1361,6 +1363,7 @@ export function ChatPanel({
                 images?: Record<string, string>;
                 texts?: Record<string, string>;
                 imagePos?: Record<string, { x: number; y: number; scale: number }> | null;
+                html?: string | null;
               }>;
             };
           } else if (event.type === 'error') {
@@ -1384,6 +1387,9 @@ export function ChatPanel({
                     imagesJson: { ...(p.images ?? {}) },
                     textsJson: { ...(p.texts ?? {}) },
                     imagePosJson: { ...(p.imagePos ?? {}) },
+                    // 关键:画板按 preferredPageHtml 优先渲染烘焙 html。丢了它,AI 写进
+                    // html 的改动就"应用了但画面没变",要整页刷新才能看到(实测根因)。
+                    ...(typeof p.html === 'string' && p.html.length > 0 ? { htmlJson: p.html } : {}),
                   })),
                 ) ?? false)
               : false;
