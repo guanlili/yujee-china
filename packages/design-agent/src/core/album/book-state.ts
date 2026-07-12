@@ -69,10 +69,9 @@ export interface AlbumBookSummary {
 		contextPreview?: string;
 	}[];
 	pages: {
-		/** 页码（从 1 开始，第 1 页 = 第一页）——工具寻址与对用户口径统一用它，全书唯一。 */
-		pageNo: number;
-		/** 管线产出的原始 pageIndex（按章节计数，从 0 起、可能重复），仅作数据保留。 */
-		pageIndex: number;
+		/** 用户口径页码 = 用户画面上看到的页码:内页 1..M;封面/目录/封尾用类别名,不占号。
+		 * 工具寻址与对用户口径统一用它(见 pageUserRefs/resolvePageUserRef)。 */
+		pageNo: PageUserRef;
 		templateId: string;
 		category: string;
 		chapterId?: string;
@@ -150,6 +149,7 @@ export function parseAlbumBookInput(raw: unknown, now = new Date()): ParseAlbumB
 
 export function summarizeAlbumBook(state: AlbumBookState, catalog: TemplateCatalog): AlbumBookSummary {
 	const photoToChapter = buildPhotoToChapterMap(state);
+	const userRefs = pageUserRefs(state, (templateId) => catalog.get(templateId)?.category);
 	return {
 		version: state.version,
 		updatedAt: state.updatedAt,
@@ -166,8 +166,9 @@ export function summarizeAlbumBook(state: AlbumBookState, catalog: TemplateCatal
 			const concreteTextSlots = template?.textSlotIds ?? [];
 			const filledTextSlots = concreteTextSlots.filter((slotId) => (page.texts[slotId] ?? "").trim().length > 0);
 			return {
-				pageNo: index + 1, // 1 起，与用户口径一致
-				pageIndex: page.pageIndex,
+				// 用户口径:内页 1..M,封面/目录/封尾用类别名(与用户画面完全一致);
+				// 管线原始 pageIndex(章节计数、可重复)不再喂给模型,避免两套数字互相打架。
+				pageNo: userRefs[index],
 				templateId: page.templateId,
 				category: template?.category ?? "unknown",
 				chapterId: derivePageChapterId(page, photoToChapter),
@@ -205,6 +206,70 @@ export function buildPhotoToChapterMap(state: AlbumBookState): Map<string, strin
 export function findAlbumPageByNo(state: AlbumBookState, pageNo: number): AlbumPage | undefined {
 	if (!Number.isInteger(pageNo) || pageNo < 1) return undefined;
 	return state.pages[pageNo - 1];
+}
+
+// ───────────────────────── 用户口径页码 ─────────────────────────
+//
+// 铁律:喂给 AI 的页码必须等于用户在画面上看到的页码。Web 展示层的 folio 规则
+// (page-html-dom.pageFolioNumbers)是:封面/目录/封尾不编号,内页从 1 连续编号。
+// AI 侧完全对齐 —— 内页用数字(1..M),封面/目录/封尾用类别名指代,绝不占号。
+
+export type PageUserRef = number | "cover" | "toc" | "ending";
+
+const NON_NUMBERED_PAGE_CATEGORIES = new Set(["cover", "toc", "ending"]);
+
+/** 每页(按数组序)的用户口径页码:内页 1..M;封面/目录/封尾返回类别名。 */
+export function pageUserRefs(
+	state: AlbumBookState,
+	categoryOf: (templateId: string) => string | undefined,
+): PageUserRef[] {
+	let interiorNo = 0;
+	return state.pages.map((page) => {
+		const category = categoryOf(page.templateId) ?? "";
+		if (NON_NUMBERED_PAGE_CATEGORIES.has(category)) return category as PageUserRef;
+		interiorNo += 1;
+		return interiorNo;
+	});
+}
+
+/** 用户口径页码 → 中文称呼(对用户/模型说话用)。 */
+export function formatPageUserRef(ref: PageUserRef): string {
+	if (ref === "cover") return "封面";
+	if (ref === "toc") return "目录";
+	if (ref === "ending") return "封尾";
+	return `第 ${ref} 页`;
+}
+
+/** 用户口径页码 → 内部 1 基数组位置;找不到返回 undefined。
+ * 数字 = 第 n 个内页;"cover"/"toc"/"ending" = 对应类别的第一页。 */
+export function resolvePageUserRef(
+	state: AlbumBookState,
+	categoryOf: (templateId: string) => string | undefined,
+	ref: unknown,
+): number | undefined {
+	const refs = pageUserRefs(state, categoryOf);
+	if (typeof ref === "string") {
+		const key = ref.trim().toLowerCase();
+		// 类别名(含中文别名)寻址
+		const alias: Record<string, PageUserRef> = {
+			cover: "cover", 封面: "cover",
+			toc: "toc", 目录: "toc",
+			ending: "ending", 封底: "ending", 封尾: "ending",
+		};
+		const target = alias[key] ?? alias[ref.trim()];
+		if (target) {
+			const index = refs.indexOf(target);
+			return index === -1 ? undefined : index + 1;
+		}
+		const numeric = Number(key);
+		if (Number.isInteger(numeric)) return resolvePageUserRef(state, categoryOf, numeric);
+		return undefined;
+	}
+	if (typeof ref === "number" && Number.isInteger(ref) && ref >= 1) {
+		const index = refs.indexOf(ref);
+		return index === -1 ? undefined : index + 1;
+	}
+	return undefined;
 }
 
 export function findAlbumPhoto(state: AlbumBookState, photoId: string): AlbumChapterPhoto | undefined {

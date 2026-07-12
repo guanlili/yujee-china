@@ -7,6 +7,10 @@ import {
 	clonePage,
 	findAlbumPageByNo,
 	findAlbumPhoto,
+	formatPageUserRef,
+	type PageUserRef,
+	pageUserRefs,
+	resolvePageUserRef,
 	validateImagesMap,
 	validateTextsPatch,
 } from "./book-state.ts";
@@ -24,10 +28,42 @@ export interface AlbumToolsOptions {
 	skills?: Skill[];
 }
 
+// ── 用户口径页码(铁律:模型看到/传入的页码 = 用户画面上看到的页码)──
+// 内页用数字(1 起,与画面右下角页码一致);封面/目录/封尾不占号,用类别名指代。
+const PAGE_REF_DESCRIPTION =
+	'用户口径页码,与用户画面上看到的页码一致:内页用数字(从 1 开始);封面传 "cover"、目录传 "toc"、封尾传 "ending"(这些页不占数字页码)。';
+const PageRefSchema = Type.Union([Type.Number(), Type.String()], { description: PAGE_REF_DESCRIPTION });
+
+function catalogCategoryOf(catalog: TemplateCatalog): (templateId: string) => string | undefined {
+	return (templateId) => catalog.get(templateId)?.category;
+}
+
+// 模型传入的用户口径页码 → 内部 1 基数组位置。解析失败返回 -1(requirePage 统一报错)。
+function resolveRefToInternal(options: AlbumToolsOptions, value: unknown): number {
+	if (value === undefined || value === null) return -1;
+	return resolvePageUserRef(options.getBookState(), catalogCategoryOf(options.catalog), value) ?? -1;
+}
+
+// 内部页位 → 用户称呼(报错/回执对模型说人话,与用户所见一致)。
+function pageLabelOf(options: AlbumToolsOptions, state: AlbumBookState, internalNo: number): string {
+	const ref = pageUserRefs(state, catalogCategoryOf(options.catalog))[internalNo - 1];
+	return ref === undefined ? `#${internalNo}` : formatPageUserRef(ref);
+}
+
+// 本书可用页码清单(报错提示用)。
+function pageRefRangeText(options: AlbumToolsOptions, state: AlbumBookState): string {
+	const refs = pageUserRefs(state, catalogCategoryOf(options.catalog));
+	const interiorCount = refs.filter((ref) => typeof ref === "number").length;
+	const specials = refs.filter((ref): ref is Exclude<PageUserRef, number> => typeof ref === "string");
+	const parts: string[] = specials.map((ref) => `${formatPageUserRef(ref)}("${ref}")`);
+	if (interiorCount > 0) parts.push(`内页 1..${interiorCount}`);
+	return parts.join("、");
+}
+
 const readPagesSchema = Type.Object({
 	pageNos: Type.Optional(
-		Type.Array(Type.Number(), {
-			description: "要读取的页码数组（从 1 开始）。省略或空数组 = 读取全书所有页（用于了解全书）。",
+		Type.Array(PageRefSchema, {
+			description: "要读取的页码数组。省略或空数组 = 读取全书所有页（用于了解全书）。",
 		}),
 	),
 });
@@ -40,7 +76,7 @@ const searchBookSchema = Type.Object({
 const updatePageTextsSchema = Type.Object({
 	updates: Type.Array(
 		Type.Object({
-			pageNo: Type.Number({ description: "要修改的页码（从 1 开始）。" }),
+			pageNo: PageRefSchema,
 			texts: Type.Record(Type.String(), Type.String(), {
 				description: "槽 id → 新文字内容。只需给出要修改的槽；每个槽必须遵守模板的 maxChars 限制。",
 			}),
@@ -50,14 +86,14 @@ const updatePageTextsSchema = Type.Object({
 });
 
 const swapPageTemplateSchema = Type.Object({
-	pageNo: Type.Number({ description: "要换模板的页码（从 1 开始）。" }),
+	pageNo: PageRefSchema,
 	templateId: Type.String({ description: "新模板 id（用 list_templates 查询同类目、同图槽数的候选）。" }),
 });
 
 const updatePageImagesSchema = Type.Object({
 	updates: Type.Array(
 		Type.Object({
-			pageNo: Type.Number({ description: "要调整图片的页码（从 1 开始）。" }),
+			pageNo: PageRefSchema,
 			images: Type.Record(Type.String(), Type.String(), {
 				description: "完整的槽 id → photoId 映射（整页替换）：模板所有图槽都要填，照片必须存在于本书章节。",
 			}),
@@ -125,14 +161,14 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 	];
 }
 
-function readPagePayload(state: AlbumBookState, catalog: TemplateCatalog, pageNo: number): Record<string, unknown> {
-	const page = requirePage(state, pageNo);
-	const template = requireTemplate(catalog, page.templateId);
+function readPagePayload(options: AlbumToolsOptions, state: AlbumBookState, internalNo: number): Record<string, unknown> {
+	const page = requirePage(options, state, internalNo);
+	const template = requireTemplate(options.catalog, page.templateId);
 	// chapter 概念不进 AI 上下文(分簇/写文案的内部工具);AI 的全局语境走书级
 	// 设计简报(主题/配色/封面氛围,见 composeChatTurn),页面语境 = html + 照片描述。
+	// pageNo = 用户口径(内页数字/封面目录封尾类别名);管线原始 pageIndex 不喂模型。
 	return {
-		pageNo,
-		pageIndex: page.pageIndex,
+		pageNo: pageUserRefs(state, catalogCategoryOf(options.catalog))[internalNo - 1],
 		templateId: page.templateId,
 		category: template.category,
 		images: Object.fromEntries(
@@ -168,16 +204,25 @@ function createReadPagesTool(options: AlbumToolsOptions): AgentTool<typeof readP
 		prepareArguments(args: unknown): ReadPagesInput {
 			if (!isRecord(args)) return {};
 			// 兼容单页/别名：pageNos 数组优先；否则 pageNo/pageIndex 单值包成数组；都没有 = 全书。
-			const list = readNumberArray(args.pageNos);
-			if (list.length > 0) return { pageNos: list };
-			const single = readNumber(args.pageNo) ?? readNumber(args.pageIndex);
-			return single !== undefined ? { pageNos: [single] } : {};
+			// 入参是用户口径页码(数字=内页序号,"cover"/"toc"/"ending"=封面/目录/封尾),此处转内部页位。
+			// 无效引用保留为 -1 透传:requirePage 会带可用页码清单报错,绝不静默回退成读全书。
+			const rawList = Array.isArray(args.pageNos) ? args.pageNos : undefined;
+			if (rawList && rawList.length > 0) {
+				return { pageNos: rawList.map((entry) => resolveRefToInternal(options, entry)) };
+			}
+			const rawSingle = args.pageNo ?? args.pageIndex;
+			if (rawSingle !== undefined && rawSingle !== null) {
+				return { pageNos: [resolveRefToInternal(options, rawSingle)] };
+			}
+			return {};
 		},
 		async execute(_toolCallId: string, params: ReadPagesInput): Promise<AgentToolResult<{ pageNos: number[] }>> {
 			const state = options.getBookState();
 			const pageNos =
-				params.pageNos && params.pageNos.length > 0 ? params.pageNos : state.pages.map((_, index) => index + 1);
-			const pages = pageNos.map((pageNo) => readPagePayload(state, options.catalog, pageNo));
+				params.pageNos && params.pageNos.length > 0
+					? params.pageNos.map(Number)
+					: state.pages.map((_, index) => index + 1);
+			const pages = pageNos.map((pageNo) => readPagePayload(options, state, pageNo));
 			return {
 				content: [{ type: "text", text: JSON.stringify({ pages }, null, 1) }],
 				details: { pageNos },
@@ -211,7 +256,7 @@ function createSearchBookTool(
 			if (!query) throw new Error("query 是必填项");
 			const limit = clampInteger(params.limit ?? DEFAULT_SEARCH_LIMIT, 1, MAX_SEARCH_LIMIT);
 			const state = options.getBookState();
-			const matches = searchAlbumBook(state, query, limit);
+			const matches = searchAlbumBook(state, catalogCategoryOf(options.catalog), query, limit);
 			return {
 				content: [
 					{
@@ -284,7 +329,7 @@ function createUpdatePageTextsTool(
 			"修改指定页的文字内容（只传要改的槽）。写入前会按模板校验槽 id ，非法写入会报错并说明限制。一次调用可同时改多页多槽。",
 		parameters: updatePageTextsSchema,
 		prepareArguments(args: unknown): UpdatePageTextsInput {
-			return { updates: readTextUpdates(args) };
+			return { updates: readTextUpdates(options, args) };
 		},
 		async execute(
 			_toolCallId: string,
@@ -294,23 +339,27 @@ function createUpdatePageTextsTool(
 			if (params.updates.length === 0) throw new Error("updates 至少要包含一页");
 			// 先整批校验：任一页非法则整批拒绝，不改状态。
 			for (const update of params.updates) {
-				const page = requirePage(state, update.pageNo);
+				const internalNo = Number(update.pageNo);
+				const page = requirePage(options, state, internalNo);
 				const template = requireTemplate(options.catalog, page.templateId);
-				if (Object.keys(update.texts).length === 0) throw new Error(`第 ${update.pageNo} 页 texts 至少要包含一个槽`);
+				if (Object.keys(update.texts).length === 0)
+					throw new Error(`${pageLabelOf(options, state, internalNo)} texts 至少要包含一个槽`);
 				const errors = validateTextsPatch(template, update.texts);
-				if (errors.length > 0) throw new Error(`第 ${update.pageNo} 页文字写入不合法：\n${errors.join("\n")}`);
+				if (errors.length > 0)
+					throw new Error(`${pageLabelOf(options, state, internalNo)}文字写入不合法：\n${errors.join("\n")}`);
 			}
 
 			const nextState = cloneAlbumBookState(state);
 			const operations: string[] = [];
 			const notes: string[] = [];
 			for (const update of params.updates) {
-				const nextPage = requirePage(nextState, update.pageNo);
+				const internalNo = Number(update.pageNo);
+				const nextPage = requirePage(options, nextState, internalNo);
 				let carrierTouched = false;
 				for (const [slotId, value] of Object.entries(update.texts)) {
 					nextPage.texts[slotId] = value;
 					if (parseThemeCarrierKey(slotId)) carrierTouched = true;
-					operations.push(`p${update.pageNo}:texts.${slotId}`);
+					operations.push(`p${internalNo}:texts.${slotId}`);
 				}
 				// C 方案:html 是页面真相,槽位改字要同步进 html。
 				// 普通槽 → 原位 patch(保留该页手工版面);carrier 键(色/字体)烘不进
@@ -318,7 +367,7 @@ function createUpdatePageTextsTool(
 				if (carrierTouched) {
 					nextPage.html = undefined;
 					nextPage.html = bakeAlbumPageHtml(nextPage);
-					notes.push(`第 ${update.pageNo} 页涉及主题 carrier,已从模板重烘(该页手工版面改动被重置)`);
+					notes.push(`${pageLabelOf(options, state, internalNo)}涉及主题 carrier,已从模板重烘(该页手工版面改动被重置)`);
 					continue;
 				}
 				let html = ensureAlbumPageHtml(nextPage);
@@ -326,20 +375,20 @@ function createUpdatePageTextsTool(
 				for (const [slotId, value] of Object.entries(update.texts)) {
 					const patched = patchHtmlText(html, slotId, value);
 					if (patched === null) {
-						notes.push(`第 ${update.pageNo} 页槽 ${slotId} 在 html 里没有锚点(可能被历史编辑移除),该槽文字只更新了数据层`);
+						notes.push(`${pageLabelOf(options, state, internalNo)}槽 ${slotId} 在 html 里没有锚点(可能被历史编辑移除),该槽文字只更新了数据层`);
 						continue;
 					}
 					html = patched;
 				}
 				nextPage.html = html;
 			}
-			return commitWrite(options, nextState, { pageNo: params.updates[0].pageNo, operations, notes });
+			return commitWrite(options, nextState, { pageNo: Number(params.updates[0].pageNo), operations, notes });
 		},
 	};
 }
 
 const writePageHtmlSchema = Type.Object({
-	pageNo: Type.Number({ description: "要改写的页码(从 1 开始)。" }),
+	pageNo: PageRefSchema,
 	html: Type.String({ description: "整页新 HTML(以 read_page 返回的 html 为基础修改后完整交回)。" }),
 });
 
@@ -357,7 +406,7 @@ function createWritePageHtmlTool(
 		prepareArguments(args: unknown): WritePageHtmlInput {
 			if (!isRecord(args)) return { pageNo: -1, html: "" };
 			return {
-				pageNo: readNumber(args.pageNo) ?? readNumber(args.pageIndex) ?? -1,
+				pageNo: resolveRefToInternal(options, args.pageNo ?? args.pageIndex),
 				html: typeof args.html === "string" ? args.html : "",
 			};
 		},
@@ -366,11 +415,12 @@ function createWritePageHtmlTool(
 			params: WritePageHtmlInput,
 		): Promise<AgentToolResult<AlbumWriteDetails>> {
 			const state = options.getBookState();
-			const page = requirePage(state, params.pageNo);
+			const internalNo = Number(params.pageNo);
+			const page = requirePage(options, state, internalNo);
 			if (!params.html.trim()) throw new Error("html 不能为空。以 read_page 返回的 html 为基础修改后完整交回。");
 			const prevHtml = ensureAlbumPageHtml(page);
 			if (!prevHtml) {
-				throw new Error(`第 ${params.pageNo} 页的模板 ${page.templateId} 尚无 HTML 基线,暂不能整页改写。`);
+				throw new Error(`${pageLabelOf(options, state, internalNo)}的模板 ${page.templateId} 尚无 HTML 基线,暂不能整页改写。`);
 			}
 			const errors = validatePageHtml(prevHtml, params.html, page.templateId);
 			if (errors.length > 0) {
@@ -378,7 +428,7 @@ function createWritePageHtmlTool(
 			}
 
 			const nextState = cloneAlbumBookState(state);
-			const nextPage = requirePage(nextState, params.pageNo);
+			const nextPage = requirePage(options, nextState, internalNo);
 			nextPage.html = params.html.trim();
 			// texts 从 html 派生(装书校验/搜索用);carrier 键(#accentColor 等)保留原值。
 			const derived = derivePageTexts(nextPage.html);
@@ -386,8 +436,8 @@ function createWritePageHtmlTool(
 				nextPage.texts[slotId] = value;
 			}
 			return commitWrite(options, nextState, {
-				pageNo: params.pageNo,
-				operations: [`p${params.pageNo}:html`],
+				pageNo: internalNo,
+				operations: [`p${internalNo}:html`],
 				notes: [`texts 已从 html 派生同步(${Object.keys(derived).length} 个槽)`],
 			});
 		},
@@ -406,7 +456,7 @@ function createSwapPageTemplateTool(
 		prepareArguments(args: unknown): SwapPageTemplateInput {
 			if (!isRecord(args)) return { pageNo: -1, templateId: "" };
 			return {
-				pageNo: readNumber(args.pageNo) ?? readNumber(args.pageIndex) ?? -1,
+				pageNo: resolveRefToInternal(options, args.pageNo ?? args.pageIndex),
 				templateId: typeof args.templateId === "string" ? args.templateId : "",
 			};
 		},
@@ -415,11 +465,13 @@ function createSwapPageTemplateTool(
 			params: SwapPageTemplateInput,
 		): Promise<AgentToolResult<AlbumWriteDetails>> {
 			const state = options.getBookState();
-			const page = requirePage(state, params.pageNo);
+			const internalNo = Number(params.pageNo);
+			const page = requirePage(options, state, internalNo);
 			const currentTemplate = requireTemplate(options.catalog, page.templateId);
 			const nextTemplate = options.catalog.get(params.templateId.trim());
 			if (!nextTemplate) throw new Error(`未知模板 "${params.templateId}"。用 list_templates 查询可用模板。`);
-			if (nextTemplate.id === page.templateId) throw new Error(`第 ${params.pageNo} 页已经在使用模板 ${nextTemplate.id}`);
+			if (nextTemplate.id === page.templateId)
+				throw new Error(`${pageLabelOf(options, state, internalNo)}已经在使用模板 ${nextTemplate.id}`);
 			if (nextTemplate.category !== currentTemplate.category) {
 				throw new Error(
 					`类目不匹配：当前页是 ${currentTemplate.category}，目标模板 ${nextTemplate.id} 是 ${nextTemplate.category}。只能换同类目模板。`,
@@ -439,9 +491,9 @@ function createSwapPageTemplateTool(
 			nextPage.html = bakeAlbumPageHtml(nextPage);
 			notes.push("页面 HTML 已按新模板重新生成(原手工版面改动被重置)");
 			const nextState = cloneAlbumBookState(state);
-			nextState.pages[params.pageNo - 1] = nextPage;
+			nextState.pages[internalNo - 1] = nextPage;
 			return commitWrite(options, nextState, {
-				pageNo: params.pageNo,
+				pageNo: internalNo,
 				operations: [`template:${currentTemplate.id}->${nextTemplate.id}`],
 				notes,
 			});
@@ -459,7 +511,7 @@ function createUpdatePageImagesTool(
 			"整页替换图片槽映射（槽 id → photoId）：模板所有图槽必须填满、照片必须来自本书章节、同页不能重复。用于调换图片顺序或替换照片。",
 		parameters: updatePageImagesSchema,
 		prepareArguments(args: unknown): UpdatePageImagesInput {
-			return { updates: readImageUpdates(args) };
+			return { updates: readImageUpdates(options, args) };
 		},
 		async execute(
 			_toolCallId: string,
@@ -469,20 +521,23 @@ function createUpdatePageImagesTool(
 			if (params.updates.length === 0) throw new Error("updates 至少要包含一页");
 			// 先整批校验：任一页非法则整批拒绝，不改状态。
 			for (const update of params.updates) {
-				const page = requirePage(state, update.pageNo);
+				const internalNo = Number(update.pageNo);
+				const page = requirePage(options, state, internalNo);
 				const template = requireTemplate(options.catalog, page.templateId);
 				const errors = validateImagesMap(template, update.images, state);
-				if (errors.length > 0) throw new Error(`第 ${update.pageNo} 页图片写入不合法：\n${errors.join("\n")}`);
+				if (errors.length > 0)
+					throw new Error(`${pageLabelOf(options, state, internalNo)}图片写入不合法：\n${errors.join("\n")}`);
 			}
 
 			const nextState = cloneAlbumBookState(state);
 			const operations: string[] = [];
 			for (const update of params.updates) {
-				const nextPage = requirePage(nextState, update.pageNo);
+				const internalNo = Number(update.pageNo);
+				const nextPage = requirePage(options, nextState, internalNo);
 				nextPage.images = { ...update.images };
-				operations.push(`p${update.pageNo}:images`);
+				operations.push(`p${internalNo}:images`);
 			}
-			return commitWrite(options, nextState, { pageNo: params.updates[0].pageNo, operations });
+			return commitWrite(options, nextState, { pageNo: Number(params.updates[0].pageNo), operations });
 		},
 	};
 }
@@ -817,15 +872,22 @@ function slotIdBase(slotId: string): string {
 
 interface BookSearchMatch {
 	where: "pageText" | "photo" | "chapter";
-	pageNo?: number;
+	/** 用户口径页码(内页数字/封面目录封尾类别名),与用户画面一致。 */
+	pageNo?: PageUserRef;
 	slotId?: string;
 	photoId?: string;
 	chapterId?: string;
 	preview: string;
 }
 
-function searchAlbumBook(state: AlbumBookState, query: string, limit: number): BookSearchMatch[] {
+function searchAlbumBook(
+	state: AlbumBookState,
+	categoryOf: (templateId: string) => string | undefined,
+	query: string,
+	limit: number,
+): BookSearchMatch[] {
 	const matches: BookSearchMatch[] = [];
+	const userRefs = pageUserRefs(state, categoryOf);
 	const lowerQuery = query.toLowerCase();
 	const push = (match: BookSearchMatch): boolean => {
 		matches.push(match);
@@ -835,7 +897,7 @@ function searchAlbumBook(state: AlbumBookState, query: string, limit: number): B
 	for (const [index, page] of state.pages.entries()) {
 		for (const [slotId, value] of Object.entries(page.texts)) {
 			if (value.toLowerCase().includes(lowerQuery)) {
-				if (push({ where: "pageText", pageNo: index + 1, slotId, preview: preview(value, query) })) {
+				if (push({ where: "pageText", pageNo: userRefs[index], slotId, preview: preview(value, query) })) {
 					return matches;
 				}
 			}
@@ -884,12 +946,10 @@ function describeTextSlot(
 	};
 }
 
-function requirePage(state: AlbumBookState, pageNo: number): AlbumPage {
-	const page = findAlbumPageByNo(state, pageNo);
+function requirePage(options: AlbumToolsOptions, state: AlbumBookState, internalNo: number): AlbumPage {
+	const page = findAlbumPageByNo(state, internalNo);
 	if (!page) {
-		throw new Error(
-			`没有第 ${pageNo} 页。本书共 ${state.pages.length} 页，页码取值 1..${state.pages.length}。`,
-		);
+		throw new Error(`没有找到目标页。本书可用页码:${pageRefRangeText(options, state)}。${PAGE_REF_DESCRIPTION}`);
 	}
 	return page;
 }
@@ -921,40 +981,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function readNumberArray(value: unknown): number[] {
-	if (!Array.isArray(value)) return [];
-	const out: number[] = [];
-	for (const entry of value) {
-		const n = readNumber(entry);
-		if (n !== undefined) out.push(n);
-	}
-	return out;
-}
-
 // 兼容：既接受批量 { updates: [{pageNo, texts}] }，也接受单页 { pageNo, texts }。
-function readTextUpdates(args: unknown): Array<{ pageNo: number; texts: Record<string, string> }> {
+// pageNo 是用户口径页码(数字=内页,"cover"/"toc"/"ending"=封面/目录/封尾),此处转内部页位。
+function readTextUpdates(
+	options: AlbumToolsOptions,
+	args: unknown,
+): Array<{ pageNo: number; texts: Record<string, string> }> {
 	if (!isRecord(args)) return [];
 	if (Array.isArray(args.updates)) {
 		return args.updates.filter(isRecord).map((update) => ({
-			pageNo: readNumber(update.pageNo) ?? readNumber(update.pageIndex) ?? -1,
+			pageNo: resolveRefToInternal(options, update.pageNo ?? update.pageIndex),
 			texts: readStringRecord(update.texts),
 		}));
 	}
-	const pageNo = readNumber(args.pageNo) ?? readNumber(args.pageIndex);
-	if (pageNo !== undefined && isRecord(args.texts)) return [{ pageNo, texts: readStringRecord(args.texts) }];
+	const pageNo = resolveRefToInternal(options, args.pageNo ?? args.pageIndex);
+	if (pageNo > 0 && isRecord(args.texts)) return [{ pageNo, texts: readStringRecord(args.texts) }];
 	return [];
 }
 
 // 兼容：既接受批量 { updates: [{pageNo, images}] }，也接受单页 { pageNo, images }。
-function readImageUpdates(args: unknown): Array<{ pageNo: number; images: Record<string, string> }> {
+// pageNo 是用户口径页码,同 readTextUpdates。
+function readImageUpdates(
+	options: AlbumToolsOptions,
+	args: unknown,
+): Array<{ pageNo: number; images: Record<string, string> }> {
 	if (!isRecord(args)) return [];
 	if (Array.isArray(args.updates)) {
 		return args.updates.filter(isRecord).map((update) => ({
-			pageNo: readNumber(update.pageNo) ?? readNumber(update.pageIndex) ?? -1,
+			pageNo: resolveRefToInternal(options, update.pageNo ?? update.pageIndex),
 			images: readStringRecord(update.images),
 		}));
 	}
-	const pageNo = readNumber(args.pageNo) ?? readNumber(args.pageIndex);
-	if (pageNo !== undefined && isRecord(args.images)) return [{ pageNo, images: readStringRecord(args.images) }];
+	const pageNo = resolveRefToInternal(options, args.pageNo ?? args.pageIndex);
+	if (pageNo > 0 && isRecord(args.images)) return [{ pageNo, images: readStringRecord(args.images) }];
 	return [];
 }

@@ -44,7 +44,7 @@ async function run(tools: Map<string, AgentTool>, name: string, input: unknown):
 
 test("read_page 返回页面 html(存量页现场烘)", async () => {
 	const { tools } = createHarness();
-	const text = await run(tools, "read_page", { pageNos: [1] });
+	const text = await run(tools, "read_page", { pageNos: ["cover"] });
 	const payload = JSON.parse(text) as { pages: Array<{ html?: string; templateId: string }> };
 	const page = payload.pages[0]!;
 	assert.equal(typeof page.html, "string");
@@ -54,7 +54,7 @@ test("read_page 返回页面 html(存量页现场烘)", async () => {
 
 test("write_page_html:合法整页改写落库,texts 从 html 派生", async () => {
 	const { tools, getBook } = createHarness();
-	const read = JSON.parse(await run(tools, "read_page", { pageNos: [1] })) as {
+	const read = JSON.parse(await run(tools, "read_page", { pageNos: ["cover"] })) as {
 		pages: Array<{ html: string }>;
 	};
 	const custom = read.pages[0]!.html
@@ -65,7 +65,7 @@ test("write_page_html:合法整页改写落库,texts 从 html 派生", async () 
 		"$1盐与海风的下午",
 	);
 
-	await run(tools, "write_page_html", { pageNo: 1, html: withNewTitle });
+	await run(tools, "write_page_html", { pageNo: "cover", html: withNewTitle });
 
 	const book = getBook();
 	assert.ok(book.pages[0]!.html!.includes("data-ai-touched"));
@@ -74,13 +74,13 @@ test("write_page_html:合法整页改写落库,texts 从 html 派生", async () 
 
 test("write_page_html:删锚点被拒且不改状态", async () => {
 	const { tools, getBook } = createHarness();
-	const read = JSON.parse(await run(tools, "read_page", { pageNos: [1] })) as {
+	const read = JSON.parse(await run(tools, "read_page", { pageNos: ["cover"] })) as {
 		pages: Array<{ html: string }>;
 	};
 	const before = JSON.stringify(getBook().pages[0]);
 	const broken = read.pages[0]!.html.replace(/<[^>]*data-text-key="title"[^>]*>[^<]*<\/[a-z0-9]+>/, "");
 	await assert.rejects(
-		() => run(tools, "write_page_html", { pageNo: 1, html: broken }),
+		() => run(tools, "write_page_html", { pageNo: "cover", html: broken }),
 		/title/,
 	);
 	assert.equal(JSON.stringify(getBook().pages[0]), before);
@@ -88,16 +88,16 @@ test("write_page_html:删锚点被拒且不改状态", async () => {
 
 test("update_page_texts:原位 patch html,保留手工版面标记", async () => {
 	const { tools, getBook } = createHarness();
-	const read = JSON.parse(await run(tools, "read_page", { pageNos: [1] })) as {
+	const read = JSON.parse(await run(tools, "read_page", { pageNos: ["cover"] })) as {
 		pages: Array<{ html: string }>;
 	};
 	const custom = read.pages[0]!.html.replace(
 		'data-text-key="title"',
 		'data-text-key="title" data-ai-touched="1"',
 	);
-	await run(tools, "write_page_html", { pageNo: 1, html: custom });
+	await run(tools, "write_page_html", { pageNo: "cover", html: custom });
 
-	await run(tools, "update_page_texts", { updates: [{ pageNo: 1, texts: { title: "改字不丢版面" } }] });
+	await run(tools, "update_page_texts", { updates: [{ pageNo: "cover", texts: { title: "改字不丢版面" } }] });
 
 	const page = getBook().pages[0]!;
 	assert.ok(page.html!.includes('data-ai-touched="1"'), "手工版面标记被丢了(不该重烘)");
@@ -115,7 +115,7 @@ test("swap_page_template:html 按新模板重烘", async () => {
 		.find((tpl) => tpl.id !== page0.templateId);
 	if (!alternative) return; // fixture 无同类候选则跳过
 
-	const text = await run(tools, "swap_page_template", { pageNo: 1, templateId: alternative.id });
+	const text = await run(tools, "swap_page_template", { pageNo: "cover", templateId: alternative.id });
 	assert.match(text, /重新生成/);
 	const page = getBook().pages[0]!;
 	assert.ok(page.html!.includes(`data-template="${alternative.id}"`));

@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { InMemorySessionRepo } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import {
+	formatPageUserRef,
+	pageUserRefs,
 	type AlbumBookState,
 	clampOverLimitTexts,
 	cloneAlbumBookState,
@@ -80,6 +82,8 @@ interface AlbumRuntime {
 	albumId: string;
 	session: DesignAgentSession;
 	traces: TraceStore;
+	/** 模板目录:用户口径页码换算(封面/目录/封尾不占号)需要模板类目。 */
+	catalog: TemplateCatalog;
 	getBook(): AlbumBookState;
 	setBook(state: AlbumBookState): void;
 	renderPreview(): string;
@@ -244,6 +248,7 @@ async function createAlbumRuntime(
 		albumId,
 		session,
 		traces,
+		catalog: deps.catalog,
 		getBook(): AlbumBookState {
 			return cloneAlbumBookState(bookState);
 		},
@@ -340,6 +345,9 @@ export function composeChatTurn(
 	message: string,
 	currentPageIndex: number | undefined,
 	brief?: import("../core/album/book-state.ts").AlbumBookBrief,
+	// 用户口径称呼(封面/目录/封尾/第 N 页):由调用方按书状态+模板类目换算;
+	// 缺省时退化为自然页序(仅测试/异常兜底)。
+	currentPageLabel?: string,
 ): string {
 	const parts: string[] = [];
 	// 书级设计简报:AI 的全局语境(主题/配色主题/封面氛围)。chapter 概念不进上下文。
@@ -356,7 +364,11 @@ export function composeChatTurn(
 		parts.push(`【设计简报】${briefBits.join(";")}`);
 	}
 	if (currentPageIndex != null) {
-		parts.push(`【界面上下文】用户当前停留在 pageIndex=${currentPageIndex}(第 ${currentPageIndex + 1} 页)。用户说"这页/这一页/当前页"时即指它。`);
+		const label = currentPageLabel ?? `第 ${currentPageIndex + 1} 页`;
+		parts.push(
+			`【界面上下文】用户当前停留在${label}。用户说"这页/这一页/当前页"时即指它。` +
+				`对用户提及页码一律用用户口径(内页第 N 页,封面/目录/封尾不占页码),不要提内部 pageIndex。`,
+		);
 	}
 	if (parts.length === 0) return message;
 	return `${parts.join("\n")}\n\n${message}`;
@@ -381,8 +393,17 @@ async function runAlbumChat(
 	});
 
 	try {
+		const currentPageLabel =
+			currentPageIndex != null
+				? (() => {
+						const ref = pageUserRefs(bookBefore, (templateId) => runtime.catalog.get(templateId)?.category)[
+							currentPageIndex
+						];
+						return ref === undefined ? undefined : formatPageUserRef(ref);
+					})()
+				: undefined;
 		const assistantMessage = await runtime.session.prompt(
-			composeChatTurn(message, currentPageIndex, runtime.getBook().brief),
+			composeChatTurn(message, currentPageIndex, runtime.getBook().brief, currentPageLabel),
 		);
 		runtime.traces.recordAssistantMessage(trace.id, assistantMessage);
 		const assistantText = extractAssistantText(assistantMessage);
