@@ -1689,9 +1689,20 @@ export const albumService = {
       extraEndingPhotoIds,
     });
 
+    // 选定封面 = 故事环节收官:把现存章节全部记 done(产品口径:选完封面导出即可用)。
+    // allDone 闸门保留 —— 之后追加照片引入未 done 的新章会自动重锁导出,
+    // 追加排版完成(新章记 done)后自动恢复。
+    const doneChapterIds = ((root?.tree as { chapters?: Array<{ chapterId?: string }> } | undefined)?.chapters ?? [])
+      .map((c) => c.chapterId)
+      .filter((id): id is string => typeof id === 'string');
     await albumRepo.update(db, album.id, {
       // design 决策快照随 draft 落库:设计对话的书级简报(配色主题)从这里取。
-      draftJson: { ...(root ?? {}), pages, design: { fonts: design.fonts, colors: design.colors } },
+      draftJson: {
+        ...(root ?? {}),
+        pages,
+        design: { fonts: design.fonts, colors: design.colors },
+        progress: { currentChapterId: null, doneChapterIds },
+      },
       pageCount: pages.length,
       // 设计完成 → 待导出(导出闸门的唯一开门钥匙)。story 阶段到不了这里(design 要求
       // 已排版页,入口在 theme 之后);幂等重设计时已是 ready 则维持不动。
@@ -1699,6 +1710,34 @@ export const albumService = {
       // 现行流程选封面发生在 story 阶段(排版完即弹卡,不经过旧 theme/cover),
       // 只要能走到这里(EDITING + 已有排版页)就该进 ready;幂等重入保持 ready。
       ...(album.stage !== 'ready' ? { stage: 'ready' as const } : {}),
+    });
+    // 封面选择本身进会话历史(seq 追加序):刷新回放时回执卡按真实发生位置原位重建,
+    // 不再靠 stage 推断在末尾补卡(旧行为导致回执卡"跑到最下边")。user 消息带
+    // designApplied 标记(回放识别),assistant 消息与前端实时回复同文案。
+    await db.transaction(async (tx) => {
+      await albumMessageRepo.create(tx, {
+        albumId,
+        userId,
+        role: 'user',
+        content: input.language === 'zh' ? '就用这组封面' : 'Use this cover set',
+        layoutPatch: {
+          designApplied: {
+            coverTemplateId: input.coverTemplateId,
+            coverPhotoId: input.coverPhotoId,
+            endingTemplateId: input.endingTemplateId,
+            endingPhotoId: input.endingPhotoId,
+          },
+        },
+      });
+      await albumMessageRepo.create(tx, {
+        albumId,
+        userId,
+        role: 'assistant',
+        content:
+          input.language === 'zh'
+            ? '设计好了:封面封底就位,全书字体和配色也统一刷好了。不满意随时在对话里改。'
+            : 'Design done — cover & back cover are in, fonts and colors applied across the book. Ask me here to tweak anything.',
+      });
     });
     return { pages };
   },

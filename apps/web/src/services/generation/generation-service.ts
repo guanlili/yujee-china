@@ -220,9 +220,14 @@ export const generationService = {
     // analyze 的,对不上按 layout-requestId 暂存的候选(gap4)。没在跑 layout job 就 ready=false。
     const job = await agentJobRepo.findActiveLayoutByAlbum(albumId);
     if (!job) return { ready: false, units: [] };
-    const units = transientLayoutCandidates.get(job.requestId);
-    if (!units) return { ready: false, units: [] };
-    return { ready: true, units };
+    const cached = transientLayoutCandidates.get(job.requestId);
+    if (cached) return { ready: true, units: cached };
+    // 内存 miss(Vercel 多实例/进程重启):从 agent_jobs.meta 兜底 —— 候选的真相在库里。
+    const meta = job.meta as { candidateUnits?: SelectLayoutCandidateUnit[] } | null;
+    if (meta?.candidateUnits && Array.isArray(meta.candidateUnits) && meta.candidateUnits.length > 0) {
+      return { ready: true, units: meta.candidateUnits };
+    }
+    return { ready: false, units: [] };
   },
 
   // P2 phase 2 dispatch (docs/agent/contract.md §5.2.1): the browser POSTs the
@@ -278,8 +283,14 @@ export const generationService = {
       return { albumId, requestId: job.requestId, accepted: true };
     }
 
-    // Candidates served their purpose; drop the transient stash.
+    // Candidates served their purpose; drop both the memory stash and the DB copy
+    // (keep the rest of meta — e.g. appendChapterIds drives the append merge path).
     transientLayoutCandidates.clear(job.requestId);
+    const jobMeta = (job.meta && typeof job.meta === 'object' && !Array.isArray(job.meta) ? job.meta : {}) as Record<string, unknown>;
+    if ('candidateUnits' in jobMeta) {
+      const { candidateUnits: _dropped, ...restMeta } = jobMeta;
+      await agentJobRepo.update(db, job.id, { meta: restMeta });
+    }
     return { albumId, requestId: job.requestId, accepted: true };
   },
 };

@@ -163,8 +163,14 @@ test('⑧: the closing chat card carries an export entry point that runs the exi
 
 test('⑧: the export-ready card is shown once when the export gate opens (guarded against repeats)', () => {
   const src = source('EditorPort.tsx');
-  // A one-shot guard so re-running mirrorStage / story-gate refresh doesn't spam the card.
-  assert.match(src, /exportReadyCardShown/, 'a one-shot guard must gate the export-ready card');
+  // DOM-level idempotence(2026-07):closure 标志在 dev 双挂载/效果重跑时两实例各持
+  // 一份会重复出卡,改为看 DOM 里有没有 data-export-ready-card。
+  assert.match(
+    src,
+    /querySelector\('\[data-export-ready-card\]'\)/,
+    'the export-ready card must be gated by a DOM presence check',
+  );
+  assert.match(src, /setAttribute\('data-export-ready-card', '1'\)/);
 });
 
 // ───────── collect→layout remount: the canvas effect must reset collect-on ─────────

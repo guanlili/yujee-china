@@ -20,6 +20,7 @@ import { createElement } from 'react';
 import html2canvas from 'html2canvas-pro';
 import { adaptPageToTemplateData } from '@/components/album/adapt-layout';
 import { getWebTemplate } from '@/components/album/web-registry';
+import { injectDocumentFontsInto } from '@/lib/font/clone-document-fonts';
 import { PAGE } from '@/components/album/templates/constants';
 import { photoStore } from '@/lib/photo/store';
 import type { CandidatePage } from '@yujee/contracts';
@@ -179,6 +180,8 @@ export async function renderCandidateThumbnail(
         scale: 1,
         useCORS: true,
         logging: false,
+        // 动态字体注入克隆文档,评委看到的缩略图词距才和真实渲染一致(clone-document-fonts)。
+        onclone: injectDocumentFontsInto,
       });
       return downscaleToJpeg(canvas);
     };

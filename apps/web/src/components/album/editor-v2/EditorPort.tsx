@@ -435,7 +435,7 @@ function EditorTopbar({
             data-testid="export-pdf-btn"
             disabled={!exportUnlocked}
             aria-disabled={!exportUnlocked}
-            title={exportUnlocked ? undefined : (locale === 'zh' ? '先把每一组都「确定」，才能导出 PDF' : 'Confirm every group before exporting the PDF')}
+            title={exportUnlocked ? undefined : (locale === 'zh' ? '完成故事并选定封面后即可导出 PDF' : 'Finish the story and pick a cover to export the PDF')}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
             <span className="hidden sm:inline" data-i18n="exportPdf">{locale === 'zh' ? '导出' : 'Export'}</span>
@@ -920,6 +920,7 @@ function EditorBook({
         // throws on modern CSS color functions (oklch/lab/color-mix) that Tailwind
         // v4 emits, which silently broke the inspect→adjust capture.
         const html2canvas = (await import('html2canvas-pro')).default;
+        const { injectDocumentFontsInto } = await import('@/lib/font/clone-document-fonts');
         const canvas = await html2canvas(host, {
           width: PAGE.width,
           height: PAGE.height,
@@ -927,6 +928,8 @@ function EditorBook({
           scale: 1,
           useCORS: true,
           logging: false,
+          // 相册子集字体注入克隆文档,防止截图里文字词距错位(clone-document-fonts)。
+          onclone: injectDocumentFontsInto,
         });
         // Downscale to ~840px wide (payload stays small; plenty for a crop read).
         const targetW = Math.min(840, canvas.width);
@@ -1599,7 +1602,7 @@ function EditorBook({
         title.textContent = meta.title;
         const sub = document.createElement('div');
         sub.className = 'collect-sub';
-        sub.textContent = `${aT(`第 ${meta.num} 组`, `Group ${meta.num}`)} · ${meta.photoIds.length} ${t('photosWord')}`;
+        sub.textContent = `${aT(`第 ${meta.num} 组`, `Chapter ${meta.num}`)} · ${meta.photoIds.length} ${t('photosWord')}`;
         head.appendChild(title);
         head.appendChild(sub);
       }

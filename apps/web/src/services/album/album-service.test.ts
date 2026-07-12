@@ -861,7 +861,9 @@ test('applyDesign: success advances stage story → ready (export gate key; 现�
         version: 'v3-story',
         tree,
         pages: makePreviewPages(1),
-        progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+        // 故意留一章未 done:选定封面(applyDesign)应把现存章节全部记 done,
+        // 导出闸门(allDone && ready)随之打开 —— 用户口径:选完封面导出即可用。
+        progress: { currentChapterId: 'c1', doneChapterIds: [] },
       },
     });
 

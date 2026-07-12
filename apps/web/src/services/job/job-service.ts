@@ -340,6 +340,11 @@ export const jobService = {
     // 未启用(inline judge),此处仅在被调用时暂存候选、不崩;两段式重启用需另行适配。
     const won = await agentJobRepo.markCandidatesReady(db, job.id, mergeV3Usage(job.usage, usage));
     if (!won) return;
+    // 候选必须落库(agent_jobs.meta.candidateUnits):Vercel 多实例下回调与轮询
+    // 落在不同实例,内存暂存跨实例不可见 → phase-2 永不触发、job 被僵尸清扫收走
+    // (2026-07-12 线上事故)。内存仅作同实例快路径。
+    const meta = (job.meta && typeof job.meta === 'object' && !Array.isArray(job.meta) ? job.meta : {}) as Record<string, unknown>;
+    await agentJobRepo.update(db, job.id, { meta: { ...meta, candidateUnits: units } });
     transientLayoutCandidates.set(requestId, units);
   },
 
