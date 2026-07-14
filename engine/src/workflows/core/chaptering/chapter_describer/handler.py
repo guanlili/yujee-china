@@ -14,7 +14,7 @@ from .....providers import ai_client
 from .....logging_config import get_logger
 from .....contracts.schemas import V3AnalyzePhoto
 from .....settings import get_settings
-from .....skills import load_prompt
+from ....prompts import load_prompt
 from ...layout.simple_id import from_simple_at_paths, to_simple
 from .....providers.vision_provider import (
     VisionSlot,

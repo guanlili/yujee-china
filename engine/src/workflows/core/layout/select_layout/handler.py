@@ -18,7 +18,7 @@ import httpx
 from .....providers import ai_client
 from .....logging_config import get_logger
 from .....settings import get_settings
-from .....skills import load_prompt
+from ....prompts import load_prompt
 from .schema import GeminiLayoutUnavailable, LayoutBatchJudgeResult, LayoutJudgeResult
 
 log = get_logger("select_layout")

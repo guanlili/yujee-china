@@ -18,7 +18,7 @@ from ....logging_config import get_logger
 from ....providers import ai_client
 from ....providers.vision_provider import ark_vision_slot
 from ....settings import get_settings
-from ....skills import load_prompt
+from ...prompts import load_prompt
 
 log = get_logger("design")
 

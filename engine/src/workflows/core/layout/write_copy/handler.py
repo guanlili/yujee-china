@@ -20,7 +20,7 @@ from typing import Any
 from .....logging_config import get_logger
 from .....providers import ai_client
 from .....settings import get_settings
-from .....skills import load_prompt
+from ....prompts import load_prompt
 from .. import templates
 from ..legalize import _photo_id, _photos
 from ..simple_id import to_simple
