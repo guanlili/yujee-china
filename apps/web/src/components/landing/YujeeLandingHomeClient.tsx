@@ -6,15 +6,16 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { UserMenu } from '@/components/app/UserMenu';
 import { useChromeSession } from '@/components/app/useChromeSession';
 import { ADDON_PACKS, PHOTOS_PER_CREDIT } from '@/config/pricing';
+import { SOCIAL_LINKS, SUPPORT_EMAIL } from '@/config/social';
+import { useSession } from '@/lib/auth/client';
+import { getMessages } from '@/lib/i18n/messages';
+import { localizePath, type Locale } from '@/lib/i18n/routing';
+import { getFaqEntries } from '@/lib/seo/faq';
 
 // Pricing copy states the rule through a {photos} token so the number can only
 // ever come from PHOTOS_PER_CREDIT. Rendering the raw message would ship the
 // literal "{photos}" to users — which is exactly what happened once.
 const withPhotoRule = (copy: string) => copy.replaceAll('{photos}', String(PHOTOS_PER_CREDIT));
-import { useSession } from '@/lib/auth/client';
-import { getMessages } from '@/lib/i18n/messages';
-import { localizePath, type Locale } from '@/lib/i18n/routing';
-import { getFaqEntries } from '@/lib/seo/faq';
 
 type Props = {
   locale: Locale;
@@ -71,9 +72,6 @@ type Copy = {
   footerResources: string;
   footerCompany: string;
   footerAccount: string;
-  footerGuide: string;
-  footerTemplates: string;
-  footerAbout: string;
   footerPrivacy: string;
   footerTerms: string;
   signup: string;
@@ -178,9 +176,6 @@ const copies: Record<Locale, Copy> = {
     footerResources: 'Resources',
     footerCompany: 'Company',
     footerAccount: 'Account',
-    footerGuide: 'Guides',
-    footerTemplates: 'Templates',
-    footerAbout: 'About',
     footerPrivacy: 'Privacy',
     footerTerms: 'Terms',
     signup: 'Sign up free',
@@ -322,9 +317,6 @@ const copies: Record<Locale, Copy> = {
     footerResources: '资源',
     footerCompany: '公司',
     footerAccount: '账户',
-    footerGuide: '使用指南',
-    footerTemplates: '模板库',
-    footerAbout: '关于',
     footerPrivacy: '隐私政策',
     footerTerms: '服务条款',
     signup: '免费注册',
@@ -1047,13 +1039,14 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
                 [c.heroCta, composerHref],
                 [c.navPricing, '#pricing'],
               ]} />
+              {/* Only link to surfaces that exist. "使用指南" / "模板库" / "关于" used to
+                  sit here pointing at #features / #outputs — the pages were never built, so
+                  clicking "关于" just scrolled back to "它能做什么". Worse than a 404, which
+                  at least tells the truth. Re-add each label the day its page ships. */}
               <FooterColumn title={c.footerResources} links={[
                 [c.navFaq, '#faq'],
-                [c.footerGuide, '#features'],
-                [c.footerTemplates, '#outputs'],
               ]} />
               <FooterColumn title={c.footerCompany} links={[
-                [c.footerAbout, '#features'],
                 [c.footerPrivacy, `/${locale}/privacy`],
                 [c.footerTerms, `/${locale}/terms`],
               ]} />
@@ -1061,14 +1054,25 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
             </div>
             <div className="flex flex-col items-start justify-between gap-4 pt-8 sm:flex-row sm:items-center">
               <div className="text-xs text-[var(--meta)]">{c.copyright}</div>
+              {/* Accounts come from @/config/social — an entry with no href is not
+                  rendered. The Weibo icon that used to sit here pointed at weibo.com's
+                  homepage, not an account. Email is always real, so it always shows. */}
               <div className="flex items-center gap-3">
-                <a href="https://weibo.com" target="_blank" rel="noreferrer" aria-label="Weibo" className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-[var(--muted)] shadow-[var(--shadow-card)] transition hover:text-[var(--fg)]">
-                  <svg aria-hidden width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="9" cy="13" r="5" />
-                    <path d="M16 6c2 0 3 1 3 3" />
-                  </svg>
-                </a>
-                <a href="mailto:support@yujeeai.com" aria-label="Email" className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-[var(--muted)] shadow-[var(--shadow-card)] transition hover:text-[var(--fg)]">
+                {SOCIAL_LINKS.filter((s) => s.href).map((s) => (
+                  <a
+                    key={s.label}
+                    href={s.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={s.label}
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-[var(--muted)] shadow-[var(--shadow-card)] transition hover:text-[var(--fg)]"
+                  >
+                    <svg aria-hidden width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+                      <path d={s.path} />
+                    </svg>
+                  </a>
+                ))}
+                <a href={`mailto:${SUPPORT_EMAIL}`} aria-label="Email" className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-[var(--muted)] shadow-[var(--shadow-card)] transition hover:text-[var(--fg)]">
                   <svg aria-hidden width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2" />
                     <path d="m3 7 9 6 9-6" />

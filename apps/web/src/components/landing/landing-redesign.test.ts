@@ -55,7 +55,12 @@ test('locale homepage is replaced by the supplied landing redesign component', (
   assert.match(client, /\/api\/v1\/billing\/checkout/, 'pricing should keep the real checkout flow');
   assert.match(client, /className="has-menu hidden md:block"/, 'desktop language control should keep the supplied dropdown shape');
   assert.match(client, /\.m-lang a\.is-active \{ background: #111; color: #fff; \}/, 'mobile active language button should stay readable');
-  assert.match(client, /aria-label="Weibo"/, 'footer should keep the supplied social icon set');
+  // Social icons come from @/config/social, which renders nothing for an account
+  // that doesn't exist. This assertion used to demand a hardcoded Weibo icon —
+  // whose href was weibo.com's homepage, i.e. dead on click. Never pin a
+  // placeholder in a test; pin the source of truth instead.
+  assert.match(client, /SOCIAL_LINKS\.filter\(\(s\) => s\.href\)/, 'footer should render only social accounts that exist');
+  assert.doesNotMatch(client, /href="https:\/\/weibo\.com"/, 'footer must not link a platform homepage as if it were an account');
   assert.match(client, /aria-label="Email"/, 'footer should keep the supplied email social icon');
   assert.match(client, /className="footer-glow"/, 'footer should include the requested bottom color accent');
   assert.match(client, /\.footer-glow \{[^}]*opacity: \.65;/s, 'footer color accent should use 65% opacity');
