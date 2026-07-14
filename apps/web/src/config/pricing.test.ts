@@ -8,6 +8,8 @@ import {
   CREDIT_COST_PER_ALBUM,
   FREE_PLAN_CREDITS,
   MAX_PHOTOS_PER_GENERATION,
+  PAGES_PER_CREDIT,
+  PAGES_PER_CREDIT_LABEL,
   PHOTOS_PER_CREDIT,
   PLANS,
   buildCheckoutReturnUrls,
@@ -82,7 +84,6 @@ test('pricing copy states the photos-per-credit rule via {photos}, never a typed
 
     const stating = [
       messages.pricing.subtitle,
-      messages.pricing.creditRule,
       messages.dashboard.credits.rechargeSub,
     ];
 
@@ -107,7 +108,9 @@ test('withPhotoRule substitutes every {photos} token — no placeholder reaches 
   const { fileURLToPath } = await import('node:url');
 
   const withPhotoRule = (copy: string) =>
-    copy.replaceAll('{photos}', String(PHOTOS_PER_CREDIT));
+    copy
+      .replaceAll('{photos}', String(PHOTOS_PER_CREDIT))
+      .replaceAll('{pages}', PAGES_PER_CREDIT_LABEL);
 
   for (const locale of ['zh', 'en']) {
     const path = fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url));
@@ -115,7 +118,6 @@ test('withPhotoRule substitutes every {photos} token — no placeholder reaches 
 
     for (const copy of [
       messages.pricing.subtitle,
-      messages.pricing.creditRule,
       messages.dashboard.credits.rechargeSub,
     ]) {
       const rendered = withPhotoRule(copy);
@@ -129,4 +131,50 @@ test('withPhotoRule substitutes every {photos} token — no placeholder reaches 
       );
     }
   }
+});
+
+// Public pricing copy must STATE the rule, not PROMISE behaviour. Lines like
+// "charged only once the layout succeeds" or "editing / chat / PDF export are
+// free" describe today's implementation; the moment billing changes, that copy
+// is a broken promise sitting on the marketing page. Ruled out 2026-07-14 —
+// keep the copy to what a credit buys.
+test('pricing copy makes no operational promises — only states what a credit buys', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const { getFaqEntries } = await import('../lib/seo/faq');
+  const { buildLlmsTxt } = await import('../lib/seo/llms');
+
+  const FORBIDDEN = [
+    /排版成功后才扣/,
+    /导出\s*PDF\s*都?免费/,
+    /编辑、对话[^。]*免费/,
+    /charged (only )?once the layout succeeds/i,
+    /charged when the layout succeeds/i,
+    /editing[^.]*\bfree\b/i,
+  ];
+
+  // Only the copy a user actually reads — not the file source, which contains
+  // unrelated prose (and the very comments explaining this rule).
+  const surfaces: string[] = [buildLlmsTxt()];
+  for (const locale of ['zh', 'en'] as const) {
+    const path = fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url));
+    const m = JSON.parse(readFileSync(path, 'utf8'));
+    surfaces.push(m.pricing.subtitle, m.dashboard.credits.rechargeSub);
+    for (const entry of getFaqEntries(locale)) surfaces.push(entry.a);
+  }
+
+  for (const copy of surfaces) {
+    for (const banned of FORBIDDEN) {
+      assert.doesNotMatch(
+        copy,
+        banned,
+        `pricing copy promises operational behaviour (${banned}): "${copy}"`,
+      );
+    }
+  }
+});
+
+test('pricing copy states the typical page range from the constant', () => {
+  assert.equal(PAGES_PER_CREDIT_LABEL, `${PAGES_PER_CREDIT.min}-${PAGES_PER_CREDIT.max}`);
+  assert.ok(PAGES_PER_CREDIT.min < PAGES_PER_CREDIT.max, 'page range must be a real range');
 });

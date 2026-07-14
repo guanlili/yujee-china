@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import robots from '@/app/robots';
 import sitemap from '@/app/sitemap';
-import { ADDON_PACKS, FREE_PLAN_CREDITS, PHOTOS_PER_CREDIT } from '@/config/pricing';
+import { ADDON_PACKS, FREE_PLAN_CREDITS, PAGES_PER_CREDIT_LABEL, PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { locales } from '@/lib/i18n/routing';
 import { getFaqEntries } from './faq';
 import { buildLlmsTxt } from './llms';
@@ -163,8 +163,8 @@ test('sitemap omits lastModified rather than claiming every page changed on ever
 // "10 photos". It is generated now — these tests keep it that way.
 test('llms.txt derives the photos-per-credit rule from the constant, never a typed number', () => {
   const txt = buildLlmsTxt();
-  assert.match(txt, new RegExp(`up to ${PHOTOS_PER_CREDIT} photos`));
-  assert.match(txt, new RegExp(`covers up to ${PHOTOS_PER_CREDIT} photos`));
+  assert.match(txt, new RegExp(`1 credit = ${PHOTOS_PER_CREDIT} photos`));
+  assert.match(txt, new RegExp(`usually ${PAGES_PER_CREDIT_LABEL} pages`));
   assert.match(txt, new RegExp(`${FREE_PLAN_CREDITS} free credit`));
 
   // No OTHER photo count may appear — a stale hardcoded number would show up here.

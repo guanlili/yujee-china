@@ -5,17 +5,20 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { UserMenu } from '@/components/app/UserMenu';
 import { useChromeSession } from '@/components/app/useChromeSession';
-import { ADDON_PACKS, PHOTOS_PER_CREDIT } from '@/config/pricing';
+import { ADDON_PACKS, PAGES_PER_CREDIT_LABEL, PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { SOCIAL_LINKS, SUPPORT_EMAIL } from '@/config/social';
 import { useSession } from '@/lib/auth/client';
 import { getMessages } from '@/lib/i18n/messages';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { getFaqEntries } from '@/lib/seo/faq';
 
-// Pricing copy states the rule through a {photos} token so the number can only
-// ever come from PHOTOS_PER_CREDIT. Rendering the raw message would ship the
+// Pricing copy states the rule through {photos}/{pages} tokens so the numbers can
+// only ever come from the constants. Rendering the raw message would ship the
 // literal "{photos}" to users — which is exactly what happened once.
-const withPhotoRule = (copy: string) => copy.replaceAll('{photos}', String(PHOTOS_PER_CREDIT));
+const withPhotoRule = (copy: string) =>
+  copy
+    .replaceAll('{photos}', String(PHOTOS_PER_CREDIT))
+    .replaceAll('{pages}', PAGES_PER_CREDIT_LABEL);
 
 type Props = {
   locale: Locale;
@@ -559,7 +562,6 @@ function LandingPricing({ locale }: { locale: Locale }) {
   // did nothing on the Chinese home. Don't reintroduce a per-locale literal.
   const priceTitle = t.title;
   const priceSubtitle = withPhotoRule(t.subtitle);
-  const priceRule = withPhotoRule(t.creditRule);
   const bestValue = t.bestValue;
   const { data: session, isPending } = useSession();
   const [busy, setBusy] = useState<string | null>(null);
@@ -601,7 +603,6 @@ function LandingPricing({ locale }: { locale: Locale }) {
           <div className="sec-label">{locale === 'zh' ? '价格' : 'Pricing'}</div>
           <h2 className="sec-title mt-3">{priceTitle}</h2>
           <p className="mt-3 text-sm text-[var(--muted)]">{priceSubtitle}</p>
-          <p className="mt-1.5 text-xs text-[var(--meta)]">{priceRule}</p>
         </div>
         {err && <p className="mb-5 text-center text-sm text-red-600">{err}</p>}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-5">

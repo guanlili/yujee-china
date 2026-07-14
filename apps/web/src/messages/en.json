@@ -58,8 +58,7 @@
   },
   "pricing": {
     "title": "Simple per-credit pricing",
-    "subtitle": "1 credit = {photos} photos. Pay only for the credits you use. No subscription.",
-    "creditRule": "A book over {photos} photos costs 1 credit per {photos} photos, charged only once the layout succeeds.",
+    "subtitle": "1 credit = {photos} photos, usually {pages} pages.",
     "unit": "credits",
     "unitSingular": "credit",
     "perBook": "/ credit",
@@ -161,7 +160,7 @@
       "unit": "credits",
       "unitSingular": "credit",
       "rechargeTitle": "Buy more credits",
-      "rechargeSub": "1 credit = {photos} photos, charged only once the layout succeeds. Editing, chat and PDF export are free.",
+      "rechargeSub": "1 credit = {photos} photos, usually {pages} pages.",
       "buy": "Buy",
       "redirecting": "Redirecting…",
       "history": "Transaction history",

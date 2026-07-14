@@ -1,4 +1,9 @@
-import { ADDON_PACKS, FREE_PLAN_CREDITS, PHOTOS_PER_CREDIT } from '@/config/pricing';
+import {
+  ADDON_PACKS,
+  FREE_PLAN_CREDITS,
+  PAGES_PER_CREDIT_LABEL,
+  PHOTOS_PER_CREDIT,
+} from '@/config/pricing';
 import { absoluteUrl } from '@/lib/seo/site';
 
 /**
@@ -18,13 +23,17 @@ function pricingLines(): string[] {
     (pack) =>
       `- ${pack.books} credit${pack.books === 1 ? '' : 's'} — $${pack.priceUsd}`,
   );
+  // State the rule, promise nothing. Lines like "charged only once the layout
+  // succeeds" or "editing and export are free" describe today's implementation,
+  // not a commitment — and public copy that outlives the implementation is a
+  // liability. Keep this to what a credit buys.
   return [
     'No subscription. Credits are bought once and do not expire.',
     '',
-    `- Sign-up includes ${FREE_PLAN_CREDITS} free credit (enough for a book of up to ${PHOTOS_PER_CREDIT} photos)`,
+    `- Sign-up includes ${FREE_PLAN_CREDITS} free credit (${PHOTOS_PER_CREDIT} photos)`,
     ...packs,
     '',
-    `One credit covers up to ${PHOTOS_PER_CREDIT} photos in a generated book. A book of N photos costs ceil(N / ${PHOTOS_PER_CREDIT}) credits, charged when the layout succeeds.`,
+    `1 credit = ${PHOTOS_PER_CREDIT} photos, usually ${PAGES_PER_CREDIT_LABEL} pages.`,
   ];
 }
 

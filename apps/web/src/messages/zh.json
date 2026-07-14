@@ -58,8 +58,7 @@
   },
   "pricing": {
     "title": "按积分计费,简单透明",
-    "subtitle": "1 积分 = {photos} 张照片。只为你用的积分付费,无需订阅。",
-    "creditRule": "超过 {photos} 张的册子按每 {photos} 张 1 积分计费,排版成功后才扣。",
+    "subtitle": "1 积分 = {photos} 张照片,大多数时候有 {pages} 页。",
     "unit": "积分",
     "unitSingular": "积分",
     "perBook": "/ 积分",
@@ -161,7 +160,7 @@
       "unit": "积分",
       "unitSingular": "积分",
       "rechargeTitle": "购买更多",
-      "rechargeSub": "1 积分 = {photos} 张照片,排版成功后才扣。编辑、对话、导出 PDF 都免费。",
+      "rechargeSub": "1 积分 = {photos} 张照片,大多数时候有 {pages} 页。",
       "buy": "购买",
       "redirecting": "跳转中…",
       "history": "购买记录",

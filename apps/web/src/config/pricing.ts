@@ -58,6 +58,12 @@ export type CreemProductEnvKey =
 // public copy.
 export const PHOTOS_PER_CREDIT = 20;
 
+// What PHOTOS_PER_CREDIT photos typically becomes once laid out. Public copy says
+// "1 credit = N photos, usually 8–12 pages" — a descriptive range, NOT a promise:
+// the layout decides the real count. Never phrase it as a guarantee.
+export const PAGES_PER_CREDIT = { min: 8, max: 12 } as const;
+export const PAGES_PER_CREDIT_LABEL = `${PAGES_PER_CREDIT.min}-${PAGES_PER_CREDIT.max}`;
+
 // Credits charged for a generation of `photoCount` photos: ceil(N / PHOTOS_PER_CREDIT),
 // floored at 1 so any non-empty upload always costs at least one credit.
 export function creditsForPhotos(photoCount: number): number {

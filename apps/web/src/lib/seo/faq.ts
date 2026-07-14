@@ -1,4 +1,8 @@
-import { PHOTOS_PER_CREDIT } from '@/config/pricing';
+import {
+  FREE_PLAN_CREDITS,
+  PAGES_PER_CREDIT_LABEL,
+  PHOTOS_PER_CREDIT,
+} from '@/config/pricing';
 import type { Locale } from '@/lib/i18n/routing';
 
 /**
@@ -40,7 +44,7 @@ const EN: readonly FaqEntry[] = [
   },
   {
     q: 'Is it free?',
-    a: `Sign-up comes with a free credit — enough for a first book of up to ${PHOTOS_PER_CREDIT} photos. Generating a book uses credits based on how many photos you add (${PHOTOS_PER_CREDIT} photos per credit). No subscription.`,
+    a: `Sign-up comes with ${FREE_PLAN_CREDITS} free credit. 1 credit = ${PHOTOS_PER_CREDIT} photos, usually ${PAGES_PER_CREDIT_LABEL} pages. No subscription.`,
   },
 ];
 
@@ -67,7 +71,7 @@ const ZH: readonly FaqEntry[] = [
   },
   {
     q: '免费吗？',
-    a: `注册即送 1 积分，可免费做一本 ${PHOTOS_PER_CREDIT} 张照片以内的册子。生成相册按照片数量消耗积分（每 ${PHOTOS_PER_CREDIT} 张照片 1 积分）。没有订阅、没有月费。`,
+    a: `注册即送 ${FREE_PLAN_CREDITS} 积分。1 积分 = ${PHOTOS_PER_CREDIT} 张照片，大多数时候有 ${PAGES_PER_CREDIT_LABEL} 页。没有订阅。`,
   },
 ];
 
