@@ -14,6 +14,19 @@ const nextConfig = {
       bodySizeLimit: "25mb",
     },
   },
+  async redirects() {
+    return [
+      // www and the apex both served byte-identical 200s with no canonical, so
+      // Google saw two complete copies of the site competing with each other.
+      // 308 keeps the method and tells crawlers the apex is the real one.
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "www.yujeeai.com" }],
+        destination: "https://yujeeai.com/:path*",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

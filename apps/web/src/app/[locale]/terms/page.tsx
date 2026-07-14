@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { MarketingChrome } from '@/components/marketing/MarketingChrome';
 import { isLocale, type Locale } from '@/lib/i18n/routing';
+import { publicPageMetadata } from '@/lib/seo/metadata';
 import { getMarketingMessages } from '@/messages/marketing';
 
 interface Props {
@@ -11,7 +12,8 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
-  return { title: getMarketingMessages(locale).terms.metaTitle };
+  const m = getMarketingMessages(locale).terms;
+  return publicPageMetadata('/terms', locale, m.metaTitle, m.metaDesc);
 }
 
 export default async function TermsPage({ params }: Props) {
