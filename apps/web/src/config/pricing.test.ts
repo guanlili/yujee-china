@@ -97,3 +97,36 @@ test('pricing copy states the photos-per-credit rule via {photos}, never a typed
     }
   }
 });
+
+// The JSON-side guard above only proves the copy CONTAINS {photos}. It says
+// nothing about whether the component substitutes it — and it didn't: the
+// English home shipped the literal "1 credit = {photos} photos" to users because
+// LandingPricing rendered t.subtitle raw. Assert the substitution itself.
+test('withPhotoRule substitutes every {photos} token — no placeholder reaches the page', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+
+  const withPhotoRule = (copy: string) =>
+    copy.replaceAll('{photos}', String(PHOTOS_PER_CREDIT));
+
+  for (const locale of ['zh', 'en']) {
+    const path = fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url));
+    const messages = JSON.parse(readFileSync(path, 'utf8'));
+
+    for (const copy of [
+      messages.pricing.subtitle,
+      messages.pricing.creditRule,
+      messages.dashboard.credits.rechargeSub,
+    ]) {
+      const rendered = withPhotoRule(copy);
+      assert.ok(
+        !rendered.includes('{'),
+        `${locale}: "${rendered}" still carries an unsubstituted placeholder`,
+      );
+      assert.ok(
+        rendered.includes(String(PHOTOS_PER_CREDIT)),
+        `${locale}: "${rendered}" should state the real photo count`,
+      );
+    }
+  }
+});

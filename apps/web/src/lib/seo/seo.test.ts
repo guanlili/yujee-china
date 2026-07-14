@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildLlmsTxt } from '@/app/llms.txt/route';
 import robots from '@/app/robots';
 import sitemap from '@/app/sitemap';
 import { ADDON_PACKS, FREE_PLAN_CREDITS, PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { locales } from '@/lib/i18n/routing';
 import { getFaqEntries } from './faq';
+import { buildLlmsTxt } from './llms';
 import { INDEXABLE_ROUTES, NOINDEX_ROUTES } from './routes';
 import { faqPageSchema, organizationSchema, softwareApplicationSchema } from './schema';
 import { absoluteUrl, SITE_URL } from './site';

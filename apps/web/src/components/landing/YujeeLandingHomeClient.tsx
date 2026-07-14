@@ -5,7 +5,12 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { UserMenu } from '@/components/app/UserMenu';
 import { useChromeSession } from '@/components/app/useChromeSession';
-import { ADDON_PACKS } from '@/config/pricing';
+import { ADDON_PACKS, PHOTOS_PER_CREDIT } from '@/config/pricing';
+
+// Pricing copy states the rule through a {photos} token so the number can only
+// ever come from PHOTOS_PER_CREDIT. Rendering the raw message would ship the
+// literal "{photos}" to users — which is exactly what happened once.
+const withPhotoRule = (copy: string) => copy.replaceAll('{photos}', String(PHOTOS_PER_CREDIT));
 import { useSession } from '@/lib/auth/client';
 import { getMessages } from '@/lib/i18n/messages';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
@@ -557,9 +562,13 @@ function SampleCard({
 function LandingPricing({ locale }: { locale: Locale }) {
   const t = getMessages(locale).pricing;
   const tc = getMessages(locale).dashboard.common;
-  const priceTitle = locale === 'zh' ? '按积分付费，简单透明' : t.title;
-  const priceSubtitle = locale === 'zh' ? '只为用到的积分付费，无需订阅' : t.subtitle;
-  const bestValue = locale === 'zh' ? '最超值' : t.bestValue;
+  // Copy comes from messages/*.json for BOTH locales. The zh strings used to be
+  // hardcoded here, which quietly shadowed zh.json — so a copy edit in the JSON
+  // did nothing on the Chinese home. Don't reintroduce a per-locale literal.
+  const priceTitle = t.title;
+  const priceSubtitle = withPhotoRule(t.subtitle);
+  const priceRule = withPhotoRule(t.creditRule);
+  const bestValue = t.bestValue;
   const { data: session, isPending } = useSession();
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -600,6 +609,7 @@ function LandingPricing({ locale }: { locale: Locale }) {
           <div className="sec-label">{locale === 'zh' ? '价格' : 'Pricing'}</div>
           <h2 className="sec-title mt-3">{priceTitle}</h2>
           <p className="mt-3 text-sm text-[var(--muted)]">{priceSubtitle}</p>
+          <p className="mt-1.5 text-xs text-[var(--meta)]">{priceRule}</p>
         </div>
         {err && <p className="mb-5 text-center text-sm text-red-600">{err}</p>}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-5">
