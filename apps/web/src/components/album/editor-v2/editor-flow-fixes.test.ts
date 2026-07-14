@@ -101,46 +101,7 @@ test('④: the manual write-now chip is fully removed (agent self-dispatches kin
   );
 });
 
-test('④: the satisfaction card opens only after a real chapter write, never on a talk turn', () => {
-  const src = source('EditorPort.tsx');
-  // 满意/想改 is a per-write affordance: it is gated on wroteChapter, so a talk turn (the
-  // agent still gathering material) never shows it. This is the only standing confirmation.
-  assert.match(
-    src,
-    /if \(wroteChapter && !res\.progressDecision\?\.chapterDone\)\s*\{\s*appendSatisfactionCard\(\);/,
-    'appendSatisfactionCard() must be gated on wroteChapter (a fresh full-chapter write)',
-  );
-});
-
 // ───────────────────────── ⑥ cover apply/skip not reversed ─────────────────────────
-test('⑥: "apply" only sends real (non-null) template ids; a null lookup degrades, never silently skips', () => {
-  const src = source('EditorPort.tsx');
-  const fn = /function appendCoverCard\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(fn, 'appendCoverCard() body must be parseable');
-  // The apply handler must guard against a null cover/ending lookup: if BOTH ids are null
-  // the card must NOT pretend to apply (which the agent reads as 跳过). We assert the apply
-  // path only fires runCover with ids when at least one id resolved.
-  assert.match(
-    fn![0],
-    /coverTemplateId != null \|\| endingTemplateId != null/,
-    'apply must check that at least one template id resolved before sending it as an apply',
-  );
-});
-
-test('⑥: the cover card is only offered when there is a real cover/ending page to apply', () => {
-  const src = source('EditorPort.tsx');
-  const fn = /function appendCoverCard\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(fn, 'appendCoverCard() body must be parseable');
-  // When neither a cover nor an ending page exists in the skeleton, there's nothing to
-  // apply — advance straight through (auto-skip) rather than show an apply button that
-  // resolves to null ids and looks like a skip.
-  assert.match(
-    fn![0],
-    /if \(coverTemplateId == null && endingTemplateId == null\)/,
-    'appendCoverCard must short-circuit when no cover/ending page exists',
-  );
-});
-
 // ───────────────────────── ⑦ final copy moves into the chat flow ─────────────────────────
 test('⑦: the export-ready line is appended to the chat flow, not pinned as a fixed banner', () => {
   const src = source('EditorPort.tsx');

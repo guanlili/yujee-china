@@ -1,68 +1,164 @@
 {
-  "version": 1,
-  "chapters": [
-    {
-      "chapterId": "ch-seaside",
-      "chapterContext": "时间：2019 年夏。地点：青岛。带爸妈第一次看海，爸爸在海边站了很久没说话。",
-      "accentColor": "#2c6e8f",
-      "artFont": null,
-      "photos": [
-        { "photoId": "p-sea-01", "sceneDescription": "父亲背对镜头站在海边，望着远处的海平线", "orientation": "landscape", "composition": "wide", "takenAt": "2019-07-14T09:20:00" },
-        { "photoId": "p-sea-02", "sceneDescription": "母亲在沙滩上笑着捡贝壳，裤脚卷起", "orientation": "portrait", "composition": "focal", "takenAt": "2019-07-14T10:05:00" },
-        { "photoId": "p-sea-03", "sceneDescription": "一家三口在礁石上的合影，风把头发吹乱了", "orientation": "landscape", "composition": "focal", "takenAt": "2019-07-14T16:40:00" },
-        { "photoId": "p-sea-04", "sceneDescription": "傍晚的海面，橘色的落日和归航的渔船", "orientation": "landscape", "composition": "wide", "takenAt": "2019-07-14T18:55:00" },
-        { "photoId": "p-sea-05", "sceneDescription": "沙滩上用树枝写的字，已经被浪冲掉一半", "orientation": "square", "composition": "closeup", "takenAt": "2019-07-14T17:30:00" }
-      ]
-    },
-    {
-      "chapterId": "ch-kitchen",
-      "chapterContext": "时间：2020-2022 年。地点：家里的老厨房。奶奶教我做她拿手的红烧肉，那是她最后几年最开心的时光。",
-      "accentColor": "#a4552e",
-      "artFont": null,
-      "photos": [
-        { "photoId": "p-kit-01", "sceneDescription": "奶奶戴着老花镜在灶台前翻炒，锅里冒着热气", "orientation": "portrait", "composition": "focal", "takenAt": "2020-11-08T11:30:00" },
-        { "photoId": "p-kit-02", "sceneDescription": "案板上切好的五花肉和一碗冰糖", "orientation": "landscape", "composition": "closeup", "takenAt": "2020-11-08T10:50:00" },
-        { "photoId": "p-kit-03", "sceneDescription": "奶奶的手握着我的手教我颠勺", "orientation": "landscape", "composition": "closeup", "takenAt": "2021-01-24T12:10:00" },
-        { "photoId": "p-kit-04", "sceneDescription": "一桌年夜饭，红烧肉摆在正中间", "orientation": "landscape", "composition": "wide", "takenAt": "2022-01-31T18:20:00" }
-      ]
-    }
-  ],
-  "pages": [
-    {
-      "pageIndex": 0,
-      "templateId": "mag-01",
-      "images": { "image": "p-sea-03" },
-      "texts": { "title": "", "label": "", "explain1": "", "explain2": "", "folio": "" }
-    },
-    {
-      "pageIndex": 1,
-      "templateId": "mag-05",
-      "images": { "image": "p-sea-01" },
-      "texts": { "title": "", "label": "", "explain": "", "folio": "1" }
-    },
-    {
-      "pageIndex": 2,
-      "templateId": "mag-10",
-      "images": { "image[0]": "p-sea-02", "image[1]": "p-sea-04", "image[2]": "p-sea-05", "image[3]": "p-sea-03" },
-      "texts": { "folio": "2", "explain[0]": "", "explain[1]": "", "explain[2]": "", "explain[3]": "" }
-    },
-    {
-      "pageIndex": 3,
-      "templateId": "mag-05",
-      "images": { "image": "p-kit-02" },
-      "texts": { "title": "", "label": "", "explain": "", "folio": "3" }
-    },
-    {
-      "pageIndex": 4,
-      "templateId": "mag-30",
-      "images": { "image": "p-kit-03" },
-      "texts": { "explain": "" }
-    },
-    {
-      "pageIndex": 5,
-      "templateId": "mag-25",
-      "images": { "image1": "p-kit-04", "image2": "p-kit-01" },
-      "texts": { "title": "", "body": "", "explain": "", "label": "", "date": "" }
-    }
-  ]
+	"version": 1,
+	"chapters": [
+		{
+			"chapterId": "ch-seaside",
+			"chapterContext": "时间：2019 年夏。地点：青岛。带爸妈第一次看海，爸爸在海边站了很久没说话。",
+			"accentColor": "#2c6e8f",
+			"artFont": null,
+			"photos": [
+				{
+					"photoId": "p-sea-01",
+					"sceneDescription": "父亲背对镜头站在海边，望着远处的海平线",
+					"orientation": "landscape",
+					"composition": "wide",
+					"takenAt": "2019-07-14T09:20:00"
+				},
+				{
+					"photoId": "p-sea-02",
+					"sceneDescription": "母亲在沙滩上笑着捡贝壳，裤脚卷起",
+					"orientation": "portrait",
+					"composition": "focal",
+					"takenAt": "2019-07-14T10:05:00"
+				},
+				{
+					"photoId": "p-sea-03",
+					"sceneDescription": "一家三口在礁石上的合影，风把头发吹乱了",
+					"orientation": "landscape",
+					"composition": "focal",
+					"takenAt": "2019-07-14T16:40:00"
+				},
+				{
+					"photoId": "p-sea-04",
+					"sceneDescription": "傍晚的海面，橘色的落日和归航的渔船",
+					"orientation": "landscape",
+					"composition": "wide",
+					"takenAt": "2019-07-14T18:55:00"
+				},
+				{
+					"photoId": "p-sea-05",
+					"sceneDescription": "沙滩上用树枝写的字，已经被浪冲掉一半",
+					"orientation": "square",
+					"composition": "closeup",
+					"takenAt": "2019-07-14T17:30:00"
+				}
+			]
+		},
+		{
+			"chapterId": "ch-kitchen",
+			"chapterContext": "时间：2020-2022 年。地点：家里的老厨房。奶奶教我做她拿手的红烧肉，那是她最后几年最开心的时光。",
+			"accentColor": "#a4552e",
+			"artFont": null,
+			"photos": [
+				{
+					"photoId": "p-kit-01",
+					"sceneDescription": "奶奶戴着老花镜在灶台前翻炒，锅里冒着热气",
+					"orientation": "portrait",
+					"composition": "focal",
+					"takenAt": "2020-11-08T11:30:00"
+				},
+				{
+					"photoId": "p-kit-02",
+					"sceneDescription": "案板上切好的五花肉和一碗冰糖",
+					"orientation": "landscape",
+					"composition": "closeup",
+					"takenAt": "2020-11-08T10:50:00"
+				},
+				{
+					"photoId": "p-kit-03",
+					"sceneDescription": "奶奶的手握着我的手教我颠勺",
+					"orientation": "landscape",
+					"composition": "closeup",
+					"takenAt": "2021-01-24T12:10:00"
+				},
+				{
+					"photoId": "p-kit-04",
+					"sceneDescription": "一桌年夜饭，红烧肉摆在正中间",
+					"orientation": "landscape",
+					"composition": "wide",
+					"takenAt": "2022-01-31T18:20:00"
+				}
+			]
+		}
+	],
+	"pages": [
+		{
+			"pageIndex": 0,
+			"templateId": "mag-01",
+			"images": {
+				"image": "p-sea-03"
+			},
+			"texts": {
+				"title": "",
+				"label": "",
+				"body": "",
+				"explain": ""
+			}
+		},
+		{
+			"pageIndex": 1,
+			"templateId": "mag-05",
+			"images": {
+				"image": "p-sea-01"
+			},
+			"texts": {
+				"title": "",
+				"explain": "",
+				"body": ""
+			}
+		},
+		{
+			"pageIndex": 2,
+			"templateId": "mag-10",
+			"images": {
+				"image[0]": "p-sea-02",
+				"image[1]": "p-sea-04",
+				"image[2]": "p-sea-05",
+				"image[3]": "p-sea-03"
+			},
+			"texts": {
+				"explain[0]": "",
+				"explain[1]": "",
+				"explain[2]": "",
+				"explain[3]": ""
+			}
+		},
+		{
+			"pageIndex": 3,
+			"templateId": "mag-05",
+			"images": {
+				"image": "p-kit-02"
+			},
+			"texts": {
+				"title": "",
+				"explain": "",
+				"body": ""
+			}
+		},
+		{
+			"pageIndex": 4,
+			"templateId": "mag-30",
+			"images": {
+				"image": "p-kit-03"
+			},
+			"texts": {
+				"body": ""
+			}
+		},
+		{
+			"pageIndex": 5,
+			"templateId": "mag-22",
+			"images": {
+				"image1": "p-kit-04",
+				"image2": "p-kit-01"
+			},
+			"texts": {
+				"title": "",
+				"body": "",
+				"explain": "",
+				"body2": "",
+				"explain2": ""
+			}
+		}
+	]
 }

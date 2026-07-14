@@ -6,13 +6,14 @@
   "imageSlotIds": [
     "image"
   ],
-  "textSlotCount": 5,
+  "textSlotCount": 6,
   "textSlotIds": [
     "title",
     "body",
-    "label1",
+    "label",
     "label2",
-    "date"
+    "label3",
+    "label4"
   ],
-  "structureDescription": "p01 cover template with 1 image slot(s) (image) and 5 concrete text slot(s) (title, body, label1, label2, date). one dominant image block; 5 text slots."
+  "structureDescription": "p01 cover template with 1 image slot(s) (image) and 6 concrete text slot(s) (title, body, label, label2, label3, label4). one dominant image block; 6 text slots."
 }

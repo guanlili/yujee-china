@@ -10,7 +10,7 @@
 const PLAYFAIR = '&quot;Playfair Display&quot;, &quot;Noto Serif SC&quot;, &quot;Songti SC&quot;, serif';
 
 export const MAG_51_HTML = `<div data-template="mag-51" style="position:relative;width:794px;height:1123px;background:#FFFFFF;overflow:hidden">
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:60px;top:44px;width:734px;height:116px;font-weight:700;font-size:92px;line-height:1;letter-spacing:2px;white-space:nowrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}}">{{TEXT:title}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;left:60px;top:44px;width:674px;height:70px;font-weight:700;font-size:92px;line-height:1;letter-spacing:2px;white-space:pre;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}}">{{TEXT:title}}</div>
   <div data-image-slot="image" style="position:absolute;left:60px;top:120px;width:674px;height:917px;overflow:hidden">
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>

@@ -62,6 +62,30 @@ export function patchHtmlText(html: string, slotId: string, value: string): stri
   return html.slice(0, start) + escapeHtmlText(value) + html.slice(end);
 }
 
+// ── 文字自适应(fit-text)展示层 pass ──────────────────────────────────────
+// 文字槽带固定 height(模板源码里烘定)时,内容装不下则逐步缩小字号直到塞进框。
+// 只动展示 DOM(与 folio 覆盖同层),存库 html 真相不变;画板、缩略图、栅格 PDF
+// 截图前都要跑同一个 pass,保证屏幕和导出一致。
+
+const FIT_TEXT_MIN_PX = 9;
+
+/** 对 root 内所有固定高度的文字槽做字号自适应。幂等,可在重绘后反复调用。 */
+export function fitTextBoxes(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>('[data-text-key]').forEach((el) => {
+    if (el.tagName === 'IMG') return;
+    if (!el.style.height) return; // 只处理模板里显式固定高度的框
+    if (el.style.display === 'none') return; // folio 等被展示层隐藏的槽
+    const overflows = () =>
+      el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1;
+    if (!overflows()) return;
+    let size = parseFloat(window.getComputedStyle(el).fontSize) || 16;
+    while (size > FIT_TEXT_MIN_PX && overflows()) {
+      size -= 1;
+      el.style.fontSize = `${size}px`;
+    }
+  });
+}
+
 // ── 页签(folio)覆盖层 ─────────────────────────────────────────────────────
 // 页码不再依赖烘进 html 的 folio 槽(重排页序后必然过期):展示层每次按当前页序
 // 计算,统一小样式固定右下角;封面/目录/封尾不编号。模板遗留的 folio 槽元素在

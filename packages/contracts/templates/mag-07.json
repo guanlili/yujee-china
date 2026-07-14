@@ -6,9 +6,8 @@
     { "id": "image2", "orientation": ["portrait"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "variableDecor": true, "sample": "山间的清晨" },
-    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "sample": "雾还没散，山脊只露出淡淡的轮廓" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "sample": "阳光一点点爬上来，把云染成金色" },
-    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
+    { "id": "title", "role": "title", "lang": "user", "variableDecor": true, "sample": "THE\nCALL                                " },
+    { "id": "body", "role": "body", "lang": "user", "sample": "She learned to video call in October, at seventy-one.\n My father still refuses." },
+    { "id": "body2", "role": "body", "lang": "user", "sample": " Now she calls every Sunday. We mostly see her ceiling, sometimes half a forehead. She talks the whole time and never asks if we can see her. My father sits off screen and says nothing." }
   ]
 }

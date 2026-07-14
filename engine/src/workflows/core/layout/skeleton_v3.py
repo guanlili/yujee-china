@@ -366,9 +366,8 @@ def wrap_with_cover_ending(
       * 封底 = 默认 ending 模板(`default_ending_template_id`),hero 槽放整本书最后一张照片。
 
     封面/封底 hero 复用首/尾照片(照片可同时出现在封面与正文 —— 真实影集封面常如此);
-    封底与封面在只有一张照片时仍各自成页(都放那一张)。补出的页 ``texts`` 留空,通用
-    装饰(folio/date)由调用方随后的 `generic_copy.fill_generic_copy` 统一叠加,与正文页
-    一致。
+    封底与封面在只有一张照片时仍各自成页(都放那一张)。补出的页 ``texts`` 留空,随后由写文案
+    agent 统一填(含 decoration 装饰槽),与正文页一致。
 
     无可用 cover/ending 模板,或整本书没有照片时,对应页跳过(优雅降级,绝不抛错);
     封面在最前、封底在最后,中间正文页保持原相对顺序。返回 pageIndex 从 0 起连续的

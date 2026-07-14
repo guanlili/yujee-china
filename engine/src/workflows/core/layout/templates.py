@@ -40,7 +40,6 @@ class TextSlot(TypedDict):
     id: str
     role: TextRole
     lang: TextLang
-    maxChars: NotRequired[int]
     repeat: NotRequired[bool]
     variableDecor: NotRequired[bool]
     # 预览占位示例文案:用户未写文案时,Web 渲染用它占位(不进数据,纯预览)。
@@ -81,7 +80,7 @@ _TEMPLATE_KEYS = {
     "id", "category", "pairing", "styles", "images", "texts", "svgs", "items",
 }
 _IMAGE_SLOT_KEYS = {"id", "orientation", "quality", "composition"}
-_TEXT_SLOT_KEYS = {"id", "role", "lang", "maxChars", "repeat", "variableDecor", "sample"}
+_TEXT_SLOT_KEYS = {"id", "role", "lang", "repeat", "variableDecor", "sample"}
 _SVG_SLOT_KEYS = {"id", "variableDecor"}
 _ITEMS_KEYS = {"images", "texts"}
 _PAIRING_KEYS = {"forced", "with", "side"}
@@ -185,11 +184,6 @@ def _validate_text_slot(value: Any, label: str) -> TextSlot:
         "role": cast(TextRole, role),
         "lang": cast(TextLang, lang),
     }
-    if "maxChars" in data:
-        max_chars = data["maxChars"]
-        if isinstance(max_chars, bool) or not isinstance(max_chars, int) or max_chars <= 0:
-            raise _fail(f"{label}.maxChars must be a positive integer")
-        out["maxChars"] = max_chars
     if "repeat" in data:
         repeat = data["repeat"]
         if not isinstance(repeat, bool):
@@ -384,60 +378,6 @@ def _resolve_template_dir() -> Path:
     )
 
 
-# ---------- 示例文案(copy-examples)加载 -------------------------------------
-# 示例文案与模板分文件、并列存放(packages/contracts/copy-examples/<templateId>.json),
-# 形状 ``{"examples":[{"texts":{"<slotId>":"<示例串>"}}]}``。它们是静态模板串(无用户
-# 数据,隐私安全),给写作 LM 做「输出示例」用 —— 让模型照例子写、而非靠规则约束。
-# 通过与模板【同一】机制到达 Agent:从 copy-examples/ 目录直接加载(模板兄弟目录)。
-
-
-def _resolve_copy_examples_dir(template_dir: Path) -> Path | None:
-    """示例文案目录,与已解析的模板目录并列(同一来源机制)。缺失则返回 None
-    (示例是叠加性的;没有也不能让模板/写作崩)。"""
-    explicit = os.environ.get("YUJEE_COPY_EXAMPLES_DIR")
-    if explicit:
-        path = Path(explicit)
-        return path if path.is_dir() else None
-    candidate = template_dir.parent / "copy-examples"
-    return candidate if candidate.is_dir() else None
-
-
-def _load_copy_examples_from_dir(examples_dir: Path) -> dict[str, dict[str, str]]:
-    """从目录读 ``<templateId> -> {slotId: 示例串}``(取 ``examples[0].texts``)。
-
-    宽容解析:任何不合规的文件被静默跳过(示例是叠加性的,绝不让坏示例阻断启动或写作)。
-    repeat-group 示例像 ``explain[0]``/``explain[1]`` 一样直接用 bracket key 入键,与
-    写作侧逐页展开出的 bracket id 对齐。"""
-    out: dict[str, dict[str, str]] = {}
-    if not examples_dir.is_dir():
-        return out
-    for path in sorted(examples_dir.glob("*.json")):
-        template_id = path.stem
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        if not isinstance(raw, dict):
-            continue
-        examples = raw.get("examples")
-        if not isinstance(examples, list) or not examples:
-            continue
-        first = examples[0]
-        if not isinstance(first, dict):
-            continue
-        texts = first.get("texts")
-        if not isinstance(texts, dict):
-            continue
-        cleaned = {
-            str(k): v
-            for k, v in texts.items()
-            if isinstance(k, str) and isinstance(v, str) and v
-        }
-        if cleaned:
-            out[template_id] = cleaned
-    return out
-
-
 def _load_default_templates() -> dict[str, TemplateDef]:
     explicit = os.environ.get("YUJEE_TEMPLATE_DIR")
     template_dir = _resolve_template_dir()
@@ -447,14 +387,6 @@ def _load_default_templates() -> dict[str, TemplateDef]:
         if explicit:
             raise RuntimeError(f"YUJEE_TEMPLATE_DIR invalid: {explicit}; {exc}") from exc
         raise
-
-
-def _load_default_copy_examples() -> dict[str, dict[str, str]]:
-    template_dir = _resolve_template_dir()
-    examples_dir = _resolve_copy_examples_dir(template_dir)
-    if examples_dir is None:
-        return {}
-    return _load_copy_examples_from_dir(examples_dir)
 
 
 # ---------- read helpers(dict→array 适配)------------------------------------
@@ -513,7 +445,7 @@ def _summarize_templates_for_prompt(templates: dict[str, TemplateDef]) -> str:
         # (英文子标签);两者都被排除在 prompt 的文字摘要之外,
         # 与此前 `type != 'meta'` 排除页码 slot 的做法一致。
         txt = ", ".join(
-            f"{slot['id']}<={slot.get('maxChars', '?')}c"
+            f"{slot['id']}({slot['role']})"
             for slot in tpl["texts"]
             if slot["role"] != "decoration"
         )
@@ -523,9 +455,6 @@ def _summarize_templates_for_prompt(templates: dict[str, TemplateDef]) -> str:
 
 
 TEMPLATES: dict[str, TemplateDef] = _load_default_templates()
-# 逐模板的示例文案:``templateId -> {slotId: 示例串}``(``examples[0].texts``)。
-# 缺示例的模板不在此 map 里 —— 写作侧据此优雅降级(omit 示例,仍发 lang)。
-COPY_EXAMPLES: dict[str, dict[str, str]] = _load_default_copy_examples()
 COVER_TEMPLATE_IDS = sorted(
     tid for tid, t in TEMPLATES.items() if t["category"] == "cover"
 )
@@ -538,14 +467,6 @@ def is_known(template_id: str) -> bool:
 
 def get(template_id: str) -> TemplateDef | None:
     return TEMPLATES.get(template_id)
-
-
-def copy_example(template_id: str) -> dict[str, str]:
-    """模板的示例文案 ``{slotId: 示例串}``(``examples[0].texts``)。
-
-    无示例文件的模板返回空 dict —— 调用方据此优雅降级(omit 示例),绝不崩。
-    repeat-group 示例以 bracket key(``explain[0]`` 等)入键,与写作侧逐页展开的 id 对齐。"""
-    return COPY_EXAMPLES.get(template_id, {})
 
 
 def summarize_for_prompt() -> str:

@@ -10,10 +10,12 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 12,
       "lang": "user",
-      "variableDecor": true,
-      "sample": "NORWAY"
-    }
+      "variableDecor": true, "sample": "New Life Birth"
+    },
+    { "id": "explain", "role": "explain", "lang": "user", "sample": "William" },
+    { "id": "explain2", "role": "explain", "lang": "user", "sample": "Jan.28 1997" },
+    { "id": "explain3", "role": "explain", "lang": "user", "sample": "los ageles" },
+    { "id": "explain4", "role": "explain", "lang": "user", "sample": "Snow night" }
   ]
 }

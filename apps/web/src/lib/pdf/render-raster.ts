@@ -5,7 +5,7 @@ import {
   type AdaptablePage,
   type ResolveImage,
 } from '@/components/album/adapt-layout';
-import { applyFolioOverlay, pageFolioNumbers, resolveDisplayHtml } from '@/components/album/page-html-dom';
+import { applyFolioOverlay, fitTextBoxes, pageFolioNumbers, resolveDisplayHtml } from '@/components/album/page-html-dom';
 import { renderPageHtml } from '@/components/album/templates/html/fill-template';
 import { PAGE } from '@/components/album/templates/constants';
 import { getWebTemplate } from '@/components/album/web-registry';
@@ -85,6 +85,8 @@ export async function renderAlbumPdfRaster(
     try {
       // 字体就绪后再截，避免中文/艺术字掉成回退字。
       await documentFontsReady();
+      // 字体确定后再做固定高度文字槽的字号自适应,与画板同一 pass,屏幕/导出一致。
+      fitTextBoxes(host);
       const canvas = await html2canvas(host, {
         width: PAGE.width,
         height: PAGE.height,

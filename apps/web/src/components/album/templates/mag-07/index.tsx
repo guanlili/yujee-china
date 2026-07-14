@@ -1,21 +1,20 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
+import {WebImage, WebPage, brToReact} from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image1?: string;
     image2?: string;
-    explain1?: string;
-    explain2?: string;
+    body?: string;
+    body2?: string;
     title?: string;
-    folio?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
-  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-07', 'title'));
+  const explain1Theme = resolveThemeCarrier(data, 'body', contractRole('mag-07', 'body'));
+  const explain2Theme = resolveThemeCarrier(data, 'body2', contractRole('mag-07', 'body2'));
   // ── 各槽位几何（直接改这里的数字即可调 位置/宽高/字号）──
   // 坐标系：整页 794×1123 px，左上角 (0,0)，单位 px。
   const LAYOUT = {
@@ -43,7 +42,7 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
           height: LAYOUT.caption1.h,
         }}
       >
-        <p style={{ position: 'absolute', left: 10, top: 20, width: 240, height: 27, ...captionStyle, color: explain1Theme.accentColor ?? COLORS.ink2, fontFamily: explain1Theme.webFontFamily, fontSize: LAYOUT.caption1.fontSize }}>{d.explain1 || ''}</p>
+        <p style={{ position: 'absolute', left: 10, top: 20, width: 240, height: 27, ...captionStyle, color: explain1Theme.accentColor ?? COLORS.ink2, fontFamily: explain1Theme.webFontFamily, fontSize: LAYOUT.caption1.fontSize }}>{d.body || ''}</p>
       </div>
       <WebImage
         src={d.image1}
@@ -61,7 +60,7 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
           height: LAYOUT.caption2.h,
         }}
       >
-        <p style={{ position: 'absolute', left: 10, top: 60, width: 240, height: 37, ...captionStyle, color: explain2Theme.accentColor ?? COLORS.ink2, fontFamily: explain2Theme.webFontFamily, fontSize: LAYOUT.caption2.fontSize }}>{d.explain2 || ''}</p>
+        <p style={{ position: 'absolute', left: 10, top: 60, width: 240, height: 37, ...captionStyle, color: explain2Theme.accentColor ?? COLORS.ink2, fontFamily: explain2Theme.webFontFamily, fontSize: LAYOUT.caption2.fontSize }}>{d.body2 || ''}</p>
       </div>
       <WebImage
         src={d.image2}
@@ -87,8 +86,6 @@ export function WebMag07({ data, totalPages, imagePos }: TemplateRenderProps) {
         }}
       >
         {brToReact(titleTheme.text ?? d.title ?? 'FUSHI\nINARI')}
-      </h1>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="07" />
-    </WebPage>
+      </h1></WebPage>
   );
 }

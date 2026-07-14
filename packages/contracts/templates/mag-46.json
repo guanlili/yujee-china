@@ -13,17 +13,13 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 30,
       "lang": "user",
-      "variableDecor": true,
-      "sample": "then we went home,"
+      "variableDecor": true, "sample": "Go home\nSnow night"
     },
     {
-      "id": "caption",
+      "id": "explain",
       "role": "explain",
-      "maxChars": 40,
-      "lang": "user",
-      "sample": "路灯一盏盏亮起来"
+      "lang": "user", "sample": "We were not posing, just moving to stay warm."
     }
   ]
 }

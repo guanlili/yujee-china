@@ -32,7 +32,6 @@ const TemplateTextSlot = z
   .object({
     id: z.string().min(1),
     role: TemplateTextRole,
-    maxChars: z.number().int().positive().optional(),
     lang: TemplateTextLang,
     variableDecor: z.boolean().optional(),
     // 旧重复内容承载方式;引擎仍接受 repeat 槽的 bracket-path 寻址。

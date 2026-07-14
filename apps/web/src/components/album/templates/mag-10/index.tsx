@@ -1,7 +1,8 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebImage, WebPage } from '../web-utils';
+import {WebImage, WebPage} from '../web-utils';
 import type { GridCell, TemplateData, TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 // 重复组 items:image 寻址 image[i]、图说文字寻址 explain[i]。adapt-layout 把
 // image[i]/explain[i] 还原成 data.image / data.explain 两个并列数组(元素为
@@ -21,7 +22,6 @@ export function WebMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
     cells?: GridCell[];
     image?: unknown[];
     explain?: unknown[];
-    folio?: string;
   };
   const images = Array.isArray(d.image) ? d.image : undefined;
   const explains = Array.isArray(d.explain) ? d.explain : undefined;
@@ -39,7 +39,6 @@ export function WebMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
       caption: cellText(explains?.[i]) || legacy?.caption || '',
     };
   });
-  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <div
@@ -92,8 +91,6 @@ export function WebMag10({ data, totalPages, imagePos }: TemplateRenderProps) {
           </div>
           );
         })}
-      </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="10" />
-    </WebPage>
+      </div></WebPage>
   );
 }

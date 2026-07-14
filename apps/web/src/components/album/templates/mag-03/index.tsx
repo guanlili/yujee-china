@@ -1,18 +1,17 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebImage, WebPage } from '../web-utils';
+import {WebImage, WebPage} from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 export function WebMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     label?: string;
-    date?: string;
-    folio?: string;
+    label2?: string;
     image?: string;
   };
-  const labelTheme = resolveThemeCarrier(data, 'label', 'decoration');
-  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
-  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
+  const labelTheme = resolveThemeCarrier(data, 'label', contractRole('mag-03', 'label'));
+  const dateTheme = resolveThemeCarrier(data, 'label2', contractRole('mag-03', 'label2'));
   // 装饰：与标签同色（参与主题换肤）的四角框线，压在图片之上（类似杂志取景角标）。
   const decorColor = labelTheme.accentColor ?? COLORS.ink;
   const corners = [
@@ -64,7 +63,7 @@ export function WebMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
         >
           {labelTheme.text ?? d.label ?? ''}
         </div>
-        {d.date ? (
+        {d.label2 ? (
           <div
             style={{
               // 日期(03 / 30):字号 30,作为下方较大的一部分。
@@ -76,11 +75,9 @@ export function WebMag03({ data, totalPages, imagePos }: TemplateRenderProps) {
               fontFamily: dateTheme.webFontFamily,
             }}
           >
-            {d.date}
+            {d.label2}
           </div>
         ) : null}
-      </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="03" />
-    </WebPage>
+      </div></WebPage>
   );
 }

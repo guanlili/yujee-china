@@ -7,12 +7,11 @@
     "image1",
     "image2"
   ],
-  "textSlotCount": 4,
+  "textSlotCount": 3,
   "textSlotIds": [
     "title",
-    "explain1",
-    "explain2",
-    "folio"
+    "body",
+    "body2"
   ],
-  "structureDescription": "mag-07 interior template with 2 image slot(s) (image1, image2) and 4 concrete text slot(s) (title, explain1, explain2, folio). two balanced image blocks; 4 text slots."
+  "structureDescription": "mag-07 interior template with 2 image slot(s) (image1, image2) and 3 concrete text slot(s) (title, body, body2). two balanced image blocks; 3 text slots."
 }

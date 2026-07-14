@@ -8,11 +8,9 @@
   ],
   "texts": [
     {
-      "id": "explain",
-      "role": "explain",
-      "maxChars": 90,
-      "lang": "user",
-      "sample": "傍晚的海退得很远\n沙滩上留下一道道波纹\n像是时间写下的字"
+      "id": "body",
+      "role": "body",
+      "lang": "user", "sample": "The tide went out further than we expected.\n It left the sand wet and hard.\nYou could walk on it without sinking."
     }
   ]
 }

@@ -13,24 +13,18 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 16,
       "lang": "user",
-      "variableDecor": true,
-      "sample": "Notes"
+      "variableDecor": true, "sample": "Secret Place"
     },
     {
-      "id": "line",
+      "id": "explain",
       "role": "explain",
-      "maxChars": 40,
-      "lang": "user",
-      "sample": "写给那些来不及说的话"
+      "lang": "user", "sample": "Xinjiang ,Photo by Apple"
     },
     {
-      "id": "caption",
-      "role": "explain",
-      "maxChars": 130,
-      "lang": "user",
-      "sample": "翻到最后一页才发现，原来记下的不只是风景，还有当时的自己。"
+      "id": "body",
+      "role": "body",
+      "lang": "user", "sample": " In four of them someone is walking away from the camera. \nWe were not posing, just moving to stay warm."
     }
   ]
 }

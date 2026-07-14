@@ -42,24 +42,13 @@ import type {
   StoryProgress,
 } from '../types';
 import {
-  postEditChat,
-  postRecommend,
-  postApplyTheme,
-  postCover,
   postDraftEdit,
   postInspectRender,
-  type CoverInput,
   type DraftEditResult,
   type DraftSkeleton,
   type DraftPageKind,
 } from '@/lib/album/authoring-client';
-import type {
-  V3ChatTurn,
-  V3EditChatResponse,
-  V3PageTextsPatch,
-  V3RecommendResponse,
-  V3ChapterThemeChoice,
-} from '@yujee/contracts';
+import type { V3ChatTurn } from '@yujee/contracts';
 import { getTemplate, TEMPLATE_IDS } from '@yujee/contracts/templates';
 import {
   UnauthorizedError,
@@ -83,8 +72,6 @@ import {
   interviewMessages,
   type ChapterInterviewInput,
 } from '@/lib/interview/interview';
-
-const CONFIRM_CHAPTER_COMMAND = '[confirm-chapter]';
 
 export type ChatMode = 'authoring' | 'editing';
 
@@ -115,7 +102,6 @@ export function ChatPanel({
   storyProgress,
   setStoryProgress,
   setStoryProgressLoading,
-  setStoryConfirming,
 }: {
   detail: AlbumDetail;
   locale: Locale;
@@ -127,7 +113,6 @@ export function ChatPanel({
   storyProgress: StoryProgress | null;
   setStoryProgress: (p: StoryProgress | null) => void;
   setStoryProgressLoading: (v: boolean) => void;
-  setStoryConfirming: (v: boolean) => void;
 }) {
   const latestAuthoringRef = useRef({ draftChapters, storyProgress, mode });
   latestAuthoringRef.current = { draftChapters, storyProgress, mode };
@@ -177,11 +162,8 @@ export function ChatPanel({
     const co = () => coordinator.current;
 
     const chapterHistory: V3ChatTurn[] = [];
-    const coverHistory: V3ChatTurn[] = [];
-    let lastCoverSelection: CoverInput = {};
     const guidedChapters = guidedChaptersRef.current;
     const openerInFlight = new Set<string>();
-    let awaitingSatisfaction = false;
     const interviewedChapters = interviewedChaptersRef.current;
     let pendingInterview: {
       chapterId: string;
@@ -195,9 +177,6 @@ export function ChatPanel({
       if (progress.chapterOrder.length === 0) return false;
       return !computeExportUnlocked(progress.stage, progress.allDone);
     }
-    let confirmingStoryChapter = false;
-    let lastRecommend: V3RecommendResponse | null = null;
-    void lastRecommend;
 
     const exportReadyLabel = aT('太棒了，你的书已经准备好了！', 'Wonderful — your book is ready!');
 
@@ -220,7 +199,7 @@ export function ChatPanel({
     function restAwait() {
       const w = byId('awaitUser');
       if (!w) return;
-      if (awaitingSatisfaction || chatBody?.querySelector('.thinking-block.active')) {
+      if (chatBody?.querySelector('.thinking-block.active')) {
         w.style.display = 'none';
         return;
       }
@@ -244,17 +223,9 @@ export function ChatPanel({
         await finishInterview(txt);
         return;
       }
-      if (isAuthoring && storyGate?.stage === 'cover') {
-        await runCover({
-          ...lastCoverSelection,
-          userMessage: txt.slice(0, MESSAGE_MAX),
-          history: coverHistory.slice(-CHAT_HISTORY_MAX),
-        });
-        return;
-      }
       sending = true;
       if (isAuthoring) {
-        // 阶段3：authoring 期的对话改书走设计 Agent（原 runEditChatTurn 保留备切换）。
+        // authoring 期的对话改书统一走设计 Agent。
         await runDesignChatTurn(txt);
       } else {
         await runEdit(txt);
@@ -433,63 +404,6 @@ export function ChatPanel({
       return false;
     }
 
-    function shouldUseMockEditFallback(e: unknown): boolean {
-      return !(e instanceof UnauthorizedError) && !(e instanceof CreditInsufficientError);
-    }
-
-    function mockEditChatResponse(
-      userMessage: string,
-      chapterId: string,
-      focusedPageIndex: number,
-    ): V3EditChatResponse {
-      const pages = co()?.getPagesState?.() ?? [];
-      const page = pages.find((p) => p.pageIndex === focusedPageIndex) ?? pages[0] ?? null;
-      const textKey = page
-        ? ['body', 'explain', 'title', 'label']
-            .find((key) => typeof page.textsJson?.[key] === 'string' && page.textsJson[key]!.trim().length > 0)
-          ?? Object.keys(page.textsJson ?? {}).find((key) => typeof page.textsJson?.[key] === 'string')
-        : undefined;
-      const isConfirm = userMessage === CONFIRM_CHAPTER_COMMAND;
-      const mockCopy = aT(
-        '我先用本地 mock 帮你接住这一步：把这段回忆压成更柔和的语气，保留你刚补充的细节。等 AI 服务恢复后，可以继续让我精修。',
-        'I caught this with a local mock for now: softer wording, keeping the detail you just added. Once AI is back, I can polish it further.',
-      );
-      return {
-        kind: textKey && page && !isConfirm ? 'write' : 'talk',
-        assistantReply: isConfirm
-          ? aT('我先记下这个确认动作。当前 AI 服务不可用，正式推进分组时需要再点一次确认。', 'I noted that confirmation locally. AI is unavailable, so confirm again once the service is back to advance the group.')
-          : aT('AI 服务暂时不可用，我先用本地 mock 给你一版可编辑结果。', 'AI is temporarily unavailable, so I generated a local mock result you can keep editing.'),
-        patches: [],
-        ...(textKey && page && !isConfirm
-          ? { pagesTexts: [{ pageIndex: page.pageIndex, texts: { [textKey]: mockCopy } }] }
-          : {}),
-        navigation: page ? { pageIndex: page.pageIndex } : { chapterId },
-        opId: `mock-edit-chat-${chapterId}-${focusedPageIndex}`,
-        usage: {
-          durationMs: 0,
-          visionCallCount: 0,
-          geminiCallCount: 0,
-          planningInputTokens: 0,
-          planningOutputTokens: 0,
-          repairAttempts: 0,
-          models: { planning: 'local-mock' },
-        },
-      };
-    }
-
-    function appendMockToolReceipt(host: HTMLElement, label: string) {
-      const card = document.createElement('div');
-      card.className = 'op-card';
-      card.innerHTML =
-        `<div class="op-icon">⌁</div>` +
-        `<div class="op-body"><div class="op-kicker">${aT('Mock 已执行', 'Mock executed')}</div>` +
-        `<div class="op-label"></div></div>` +
-        `<div class="op-check">✓</div>`;
-      const labelEl = card.querySelector('.op-label') as HTMLElement | null;
-      if (labelEl) labelEl.textContent = label;
-      host.appendChild(card);
-    }
-
     function updateStoryGateUi(progress: StoryProgress | null = storyGate) {
       // §4.2: only the export-lock UI is gate-driven now. The topbar export button lives
       // in the stable shell; toggle it via the coordinator so its disabled/glow口径 tracks
@@ -546,195 +460,9 @@ export function ChatPanel({
       }
     }
 
-    async function applyEditChatProgressDecision(prevChapterId: string) {
-      await loadStoryGate();
-      if (!storyGate) return;
-
-      const advancedTo = storyGate.currentChapterId;
-      const advanced = advancedTo != null && advancedTo !== prevChapterId;
-      if (advanced) {
-        chapterHistory.length = 0;
-        awaitingSatisfaction = false;
-        co()?.goToChapterById?.(advancedTo!);
-        appendChapterCard(advancedTo!);
-      }
-      maybeAppendExportReadyCard();
-      if (advanced && storyGate.stage !== 'theme') {
-        if (currentChapterHasDraftPages()) {
-          appendEditLoopReadyCard(advancedTo!);
-        } else {
-          await runChapterGuideOpener({ allowDuringSend: true });
-        }
-      }
-      if (storyGate.stage === 'theme') {
-        confirmingStoryChapter = false;
-        setStoryConfirming(false);
-        await runRecommendTheme(undefined, { allowDuringSend: true });
-      }
-    }
-
-    async function confirmCurrentChapterViaEditChat() {
-      if (
-        !isAuthoring ||
-        confirmingStoryChapter ||
-        !storyGate?.currentChapterId ||
-        storyGate.chapterOrder.length === 0
-      ) return;
-      confirmingStoryChapter = true;
-      sending = true;
-      setStoryConfirming(true);
-      updateStoryGateUi();
-      try {
-        await runEditChatTurn(CONFIRM_CHAPTER_COMMAND);
-      } catch (e) {
-        appendAiText(
-          e instanceof Error
-            ? e.message
-            : aT('确定分组失败，请重试。', 'Could not confirm the group. Please try again.'),
-        );
-      } finally {
-        sending = false;
-        confirmingStoryChapter = false;
-        setStoryConfirming(false);
-        updateStoryGateUi();
-      }
-    }
-
     function applyAuthoringPatch(patch: LayoutPatchEntry[]): boolean {
       return co()?.applyAuthoringPatch?.(patch) ?? false;
     }
-    function mirrorStage(stage: string) {
-      if (!storyGate || storyGate.stage === stage) return;
-      storyGate = { ...storyGate, stage };
-      setStoryProgress(storyGate);
-      updateStoryGateUi(storyGate);
-      maybeAppendExportReadyCard();
-    }
-
-    async function runRecommendTheme(userMessage?: string, opts?: { allowDuringSend?: boolean }) {
-      if (!isAuthoring || (!opts?.allowDuringSend && sending)) return;
-      if (recommendInFlightRef.current) return;
-      if (!userMessage && chatBody?.querySelector('.palette-card:not(.is-recap)')) return;
-      recommendInFlightRef.current = true;
-      sending = true;
-      const host = appendThinkingShell();
-      try {
-        const res = await postRecommend(albumId, userMessage);
-        lastRecommend = res;
-        settleThinking(host, 'analyzedFeedback');
-        appendReplyBody(host, res.assistantReply);
-        appendPaletteCard(res);
-      } catch (e) {
-        if (authErr(host, e)) { sending = false; recommendInFlightRef.current = false; return; }
-      }
-      sending = false;
-      recommendInFlightRef.current = false;
-      restAwait();
-      scrollChat();
-    }
-
-    function appendPaletteCard(res: V3RecommendResponse) {
-      const card = document.createElement('div');
-      card.className = 'msg ai max-w-full';
-      const inner = document.createElement('div');
-      inner.className = 'palette-card';
-      const title = document.createElement('div');
-      title.className = 'pc-title';
-      title.textContent = aT('选择一套主题', 'Choose a theme option');
-      const groups = document.createElement('div');
-      groups.className = 'pc-groups';
-      res.bookThemeOptions.forEach((option, i) => {
-        const rowEl = document.createElement('div');
-        rowEl.className = 'pc-chapter-row';
-        const head = document.createElement('div');
-        head.className = 'pc-group-head';
-        const num = document.createElement('span');
-        num.className = 'pc-chapter-num';
-        num.textContent = String(i + 1).padStart(2, '0');
-        head.appendChild(num);
-        const label = document.createElement('span');
-        label.className = 'pc-group-label';
-        label.textContent = option.label ?? option.style ?? option.optionId;
-        head.appendChild(label);
-        rowEl.appendChild(head);
-        if (option.style) {
-          const style = document.createElement('div');
-          style.className = 'pc-style';
-          style.textContent = option.style;
-          rowEl.appendChild(style);
-        }
-        const sw = document.createElement('div');
-        sw.className = 'pc-swatches';
-        option.chapters.slice(0, 4).forEach((c) => {
-          const dot = document.createElement('span');
-          dot.style.background = c.accentColor;
-          sw.appendChild(dot);
-        });
-        rowEl.appendChild(sw);
-        const applyBtn = document.createElement('button');
-        applyBtn.type = 'button';
-        applyBtn.className = 'pc-apply';
-        applyBtn.textContent = aT('应用', 'Apply');
-        applyBtn.addEventListener('click', () => {
-          if (sending) return;
-          applyBtn.disabled = true;
-          appendUserText(aT('就用这套主题', 'Use this theme'));
-          hideAwait();
-          scrollChat();
-          void runApplyTheme({
-            chapters: option.chapters.map((c) => ({
-              chapterId: c.chapterId,
-              ...(c.subject ? { subject: c.subject } : {}),
-              accentColor: c.accentColor,
-              artFont: option.artFont,
-            })),
-          });
-        });
-        rowEl.appendChild(applyBtn);
-        groups.appendChild(rowEl);
-      });
-
-      inner.appendChild(title);
-      inner.appendChild(groups);
-      card.appendChild(inner);
-      chatBody!.appendChild(card);
-      scrollChat();
-    }
-
-    function appendThemeSummary() {
-      const chapters = draftSkel?.chapters ?? [];
-      if (chapters.length === 0) return;
-      const card = document.createElement('div');
-      card.className = 'msg ai max-w-full';
-      const inner = document.createElement('div');
-      inner.className = 'palette-card is-recap';
-      const title = document.createElement('div');
-      title.className = 'pc-title';
-      title.textContent = aT('已应用的主题 · 各组标题', 'Applied theme · group titles');
-      const groups = document.createElement('div');
-      groups.className = 'pc-groups';
-      chapters.forEach((c, i) => {
-        const rowEl = document.createElement('div');
-        rowEl.className = 'pc-chapter-row';
-        const head = document.createElement('div');
-        head.className = 'pc-group-head';
-        const num = document.createElement('span');
-        num.className = 'pc-chapter-num';
-        num.textContent = String(i + 1).padStart(2, '0');
-        head.appendChild(num);
-        const label = document.createElement('span');
-        label.className = 'pc-group-label';
-        label.textContent = (c.subject && c.subject.trim()) || c.label;
-        head.appendChild(label);
-        rowEl.appendChild(head);
-        groups.appendChild(rowEl);
-      });
-      inner.appendChild(title);
-      inner.appendChild(groups);
-      card.appendChild(inner);
-      chatBody!.appendChild(card);
-    }
-
     // 已选封面组回执卡(只读):与选择卡同一套 chap-card 体系,封面+封底成对小预览。
     // 选完后原位替换选择卡留在历史里;刷新后 stage=ready 的历史重建也用它。
     function buildCoverRecapCard(set: {
@@ -798,277 +526,9 @@ export function ChatPanel({
       );
     }
 
-    async function runApplyTheme(selection?: { chapters: V3ChapterThemeChoice[] }) {
-      if (!isAuthoring || sending) return;
-      const chapters = selection?.chapters;
-      if (!chapters || chapters.length === 0) {
-        await runRecommendTheme();
-        return;
-      }
-      sending = true;
-      const host = appendThinkingShell();
-      try {
-        const res = await postApplyTheme(albumId, { chapters });
-        settleThinking(host, 'analyzedFeedback');
-        applyAuthoringPatch(res.layoutPatch as LayoutPatchEntry[]);
-        mirrorStage(res.stage);
-        appendReplyBody(
-          host,
-          res.assistantReply ??
-            aT('已应用主题色与字体。', 'Applied the theme colors and fonts.'),
-        );
-        if (res.stage === 'cover') {
-          sending = false;
-          appendCoverCard();
-        }
-      } catch (e) {
-        if (authErr(host, e)) { sending = false; return; }
-      }
-      sending = false;
-      restAwait();
-      scrollChat();
-    }
-
-    async function runCover(input?: CoverInput) {
-      if (!isAuthoring || sending) return;
-      sending = true;
-      const host = appendThinkingShell();
-      try {
-        const payload: CoverInput = { ...(input ?? {}) };
-        if (payload.coverPhoto === undefined && payload.coverPhotoId) {
-          const thumb = await co()?.capturePhotoThumb?.(payload.coverPhotoId);
-          if (thumb) payload.coverPhoto = thumb;
-        }
-        if (payload.endingPhoto === undefined && payload.endingPhotoId) {
-          const thumb = await co()?.capturePhotoThumb?.(payload.endingPhotoId);
-          if (thumb) payload.endingPhoto = thumb;
-        }
-        const selection: CoverInput = {};
-        if (payload.coverTemplateId !== undefined) selection.coverTemplateId = payload.coverTemplateId;
-        if (payload.endingTemplateId !== undefined) selection.endingTemplateId = payload.endingTemplateId;
-        if (payload.coverPhotoId !== undefined) selection.coverPhotoId = payload.coverPhotoId;
-        if (payload.endingPhotoId !== undefined) selection.endingPhotoId = payload.endingPhotoId;
-        if (payload.coverPhoto !== undefined) selection.coverPhoto = payload.coverPhoto;
-        if (payload.endingPhoto !== undefined) selection.endingPhoto = payload.endingPhoto;
-        if (Object.keys(selection).length > 0) lastCoverSelection = selection;
-        const res = await postCover(albumId, payload);
-        settleThinking(host, 'analyzedFeedback');
-        const applied = applyAuthoringPatch(res.layoutPatch as LayoutPatchEntry[]);
-        mirrorStage(res.stage);
-        appendReplyBody(
-          host,
-          res.assistantReply ??
-            (applied
-              ? aT('已应用封面与封尾设计。', 'Applied the cover and ending design.')
-              : aT('已跳过封面设计。', 'Skipped the cover design.')),
-        );
-        const userMessage = payload.userMessage?.trim();
-        if (userMessage) coverHistory.push({ role: 'user', content: userMessage });
-        if (res.assistantReply?.trim()) {
-          coverHistory.push({ role: 'assistant', content: res.assistantReply });
-        }
-      } catch (e) {
-        if (authErr(host, e)) { sending = false; return; }
-      }
-      sending = false;
-      restAwait();
-      scrollChat();
-    }
-
-    // The book's photo ids (deduped, in page order) — the hero-photo picker pool.
-    function bookPhotoIds(): string[] {
-      return co()?.bookPhotoIds?.() ?? [];
-    }
-    function templateIdsByCategory(category: 'cover' | 'ending'): string[] {
-      return TEMPLATE_IDS.filter((id) => getTemplate(id)?.category === category);
-    }
-    function coverOptionHTML(templateId: string, photoId: string | null): string {
-      return co()?.coverOptionHTML?.(templateId, photoId) ?? '';
-    }
     function imageUrl(id: string): string | undefined {
       return co()?.imageUrl?.(id);
     }
-    function appendCoverCard() {
-      const kindByPageIndex = new Map<number, DraftPageKind>();
-      for (const p of draftSkel?.pages ?? []) kindByPageIndex.set(p.pageIndex, p.kind);
-      const pagesState = co()?.getPagesState?.() ?? [];
-      const coverPage = pagesState.find((p) => kindByPageIndex.get(p.pageIndex) === 'cover') ?? null;
-      const endingPage = pagesState.find((p) => kindByPageIndex.get(p.pageIndex) === 'ending') ?? null;
-      const coverTemplateId = coverPage?.templateId ?? null;
-      const endingTemplateId = endingPage?.templateId ?? null;
-      if (coverTemplateId == null && endingTemplateId == null) {
-        void runCover({});
-        return;
-      }
-      const checkSvg =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" ' +
-        'stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-
-      const card = document.createElement('div');
-      card.className = 'msg ai max-w-full';
-      const inner = document.createElement('div');
-      inner.className = 'cover-card';
-
-      const title = document.createElement('div');
-      title.className = 'cv-title';
-      title.textContent = aT('挑一个封面和封底吧', 'Pick a cover and back cover');
-      inner.appendChild(title);
-
-      const photos = bookPhotoIds();
-
-      const section = (
-        labelZh: string,
-        labelEn: string,
-        category: 'cover' | 'ending',
-        page: EditorPage | null,
-      ): (() => { templateId: string | null; photoId: string | null }) => {
-        const candidateIds = templateIdsByCategory(category);
-        let selTemplateId: string | null =
-          page?.templateId ?? candidateIds[0] ?? null;
-        let selPhotoId: string | null =
-          (page ? Object.values(page.imagesJson)[0] : undefined) ??
-          photos[0] ??
-          null;
-
-        const sec = document.createElement('div');
-        sec.className = 'cv-section';
-        const label = document.createElement('div');
-        label.className = 'cv-label';
-        label.textContent = aT(labelZh, labelEn);
-        sec.appendChild(label);
-
-        const row = document.createElement('div');
-        row.className = 'cv-row';
-        const optByTemplate = new Map<string, HTMLButtonElement>();
-        const repaintOptions = () => {
-          for (const [tid, opt] of optByTemplate) {
-            opt.innerHTML = coverOptionHTML(tid, selPhotoId);
-            opt.classList.toggle('selected', tid === selTemplateId);
-            const check = document.createElement('span');
-            check.className = 'cv-check';
-            check.innerHTML = checkSvg;
-            opt.appendChild(check);
-            if (tid === (page?.templateId ?? candidateIds[0])) {
-              const reco = document.createElement('span');
-              reco.className = 'cv-reco';
-              reco.textContent = aT('推荐', 'Recommended');
-              opt.appendChild(reco);
-            }
-          }
-        };
-        for (const tid of candidateIds) {
-          const opt = document.createElement('button');
-          opt.type = 'button';
-          opt.className = 'cv-opt';
-          opt.addEventListener('click', () => {
-            selTemplateId = tid;
-            repaintOptions();
-          });
-          optByTemplate.set(tid, opt);
-          row.appendChild(opt);
-        }
-        sec.appendChild(row);
-
-        if (photos.length > 1) {
-          const photoLabel = document.createElement('div');
-          photoLabel.className = 'cv-sublabel';
-          photoLabel.textContent = aT('换一张照片', 'Change photo');
-          sec.appendChild(photoLabel);
-          const photoRow = document.createElement('div');
-          photoRow.className = 'cv-photos';
-          const thumbByPhoto = new Map<string, HTMLButtonElement>();
-          const repaintPhotos = () => {
-            for (const [pid, thumb] of thumbByPhoto) {
-              thumb.classList.toggle('selected', pid === selPhotoId);
-            }
-          };
-          for (const pid of photos) {
-            const thumb = document.createElement('button');
-            thumb.type = 'button';
-            thumb.className = 'cv-photo';
-            const url = imageUrl(pid);
-            if (url) thumb.style.backgroundImage = `url("${url}")`;
-            thumb.addEventListener('click', () => {
-              selPhotoId = pid;
-              repaintPhotos();
-              repaintOptions();
-            });
-            thumbByPhoto.set(pid, thumb);
-            photoRow.appendChild(thumb);
-          }
-          sec.appendChild(photoRow);
-          repaintPhotos();
-        }
-
-        repaintOptions();
-        inner.appendChild(sec);
-        return () => ({ templateId: selTemplateId, photoId: selPhotoId });
-      };
-
-      const getCover = coverPage
-        ? section('封面', 'Cover', 'cover', coverPage)
-        : () => ({ templateId: null as string | null, photoId: null as string | null });
-      const getEnding = endingPage
-        ? section('封底', 'Back cover', 'ending', endingPage)
-        : () => ({ templateId: null as string | null, photoId: null as string | null });
-
-      const actionsRow = document.createElement('div');
-      actionsRow.className = 'cv-actions';
-      const applyBtn = document.createElement('button');
-      applyBtn.type = 'button';
-      applyBtn.className = 'cv-action cv-action-primary';
-      applyBtn.textContent = aT('应用封面设计', 'Apply cover design');
-      applyBtn.addEventListener('click', () => {
-        if (sending) return;
-        const cover = getCover();
-        const ending = getEnding();
-        const coverTemplateId = cover.templateId;
-        const endingTemplateId = ending.templateId;
-        const hasSelection = coverTemplateId != null || endingTemplateId != null;
-        if (!hasSelection) {
-          void runCover({});
-          return;
-        }
-        applyBtn.disabled = true;
-        applyBtn.textContent = aT('已应用', 'Applied');
-        const userMessage = aT('就用这个封面设计', 'Use this cover design');
-        appendUserText(userMessage);
-        hideAwait();
-        scrollChat();
-        void runCover({
-          ...(coverTemplateId != null ? { coverTemplateId } : {}),
-          ...(endingTemplateId != null ? { endingTemplateId } : {}),
-          ...(coverTemplateId != null && cover.photoId ? { coverPhotoId: cover.photoId } : {}),
-          ...(endingTemplateId != null && ending.photoId ? { endingPhotoId: ending.photoId } : {}),
-          userMessage,
-          history: coverHistory.slice(-CHAT_HISTORY_MAX),
-        });
-      });
-      const skipBtn = document.createElement('button');
-      skipBtn.type = 'button';
-      skipBtn.className = 'cv-action cv-action-ghost';
-      skipBtn.textContent = aT('跳过', 'Skip');
-      skipBtn.addEventListener('click', () => {
-        if (sending) return;
-        lastCoverSelection = {};
-        const userMessage = aT('先跳过封面设计', 'Skip the cover design for now');
-        appendUserText(userMessage);
-        hideAwait();
-        scrollChat();
-        void runCover({
-          userMessage,
-          history: coverHistory.slice(-CHAT_HISTORY_MAX),
-        });
-      });
-      actionsRow.appendChild(skipBtn);
-      actionsRow.appendChild(applyBtn);
-      inner.appendChild(actionsRow);
-
-      card.appendChild(inner);
-      chatBody!.appendChild(card);
-      scrollChat();
-    }
-
     function authoringFocusPageIndex(): number {
       return co()?.authoringFocusPageIndex?.() ?? 0;
     }
@@ -1154,18 +614,6 @@ export function ChatPanel({
       updateAuthInputPlaceholder();
     }
     void runDraftEditTurn;
-
-    function applyChapterWrite(pagesTexts: V3PageTextsPatch[]): boolean {
-      const applied = co()?.applyChapterWrite?.(pagesTexts) ?? false;
-      if (applied) appendStep(aT('✏️ 已为本组写好文案。', '✏️ Wrote this group’s copy.'));
-      return applied;
-    }
-
-    function applyChapterEdit(layoutPatch: LayoutPatchEntry[]): boolean {
-      const applied = co()?.applyChapterEdit?.(layoutPatch) ?? false;
-      if (applied) appendStep(aT('🛠️ 已更新这一页的排版。', '🛠️ Updated this page’s layout.'));
-      return applied;
-    }
 
     // 设计 Agent 全书对话（阶段3接线，NDJSON 流式）。渲染遵循 editor 设计语言：
     // 动态小水母始终钉在对话最底部；AI 每调用一个工具，就在水母上方流式冒出一行
@@ -1417,88 +865,6 @@ export function ChatPanel({
       updateAuthInputPlaceholder();
     }
 
-    async function runEditChatTurn(message: string) {
-      const host = appendThinkingShell();
-      const chapterId = storyGate?.currentChapterId ?? null;
-      if (!chapterId) {
-        settleThinking(host, 'analyzedFeedback');
-        appendReplyBody(
-          host,
-          aT('这一组已经确定了——你可以继续下一步，或者从左侧选另一组来调整。',
-             "This group is already confirmed — move on, or pick another group on the left to tweak."),
-        );
-        restAwait();
-        scrollChat();
-        return;
-      }
-      const userMessage = message.slice(0, MESSAGE_MAX);
-      const focusedPageIndex = authoringFocusPageIndex();
-      try {
-        const pagePhotoRefs = await captureChapterPagePhotoRefs(chapterId);
-        const res = await postEditChat(albumId, {
-          language: currentLang === 'zh' ? 'zh' : 'en',
-          chapterId,
-          userMessage,
-          ...(Object.keys(pagePhotoRefs).length > 0 ? { pagePhotoRefs: pagePhotoRefs } : {}),
-          focusedPageIndex,
-        });
-        settleThinking(host, 'analyzedFeedback');
-        appendReplyBody(host, res.assistantReply);
-        let wroteChapter = false;
-        if (res.pagesTexts) {
-          wroteChapter = applyChapterWrite(res.pagesTexts);
-        }
-        if (res.patches.length > 0) {
-          applyChapterEdit(
-            res.patches.map((e) => ({
-              pageIndex: e.pageIndex,
-              ...(e.templateId !== undefined ? { templateId: e.templateId } : {}),
-              ...(e.images !== undefined ? { imagesJson: e.images } : {}),
-              ...(e.texts !== undefined ? { textsJson: e.texts } : {}),
-            })),
-          );
-        }
-        if (res.navigation?.pageIndex !== undefined) {
-          co()?.goToPageIndex?.(res.navigation.pageIndex);
-        }
-        chapterHistory.push({ role: 'user', content: userMessage });
-        chapterHistory.push({ role: 'assistant', content: res.assistantReply });
-        if (res.progressDecision?.chapterDone) {
-          await applyEditChatProgressDecision(chapterId);
-        }
-        if (wroteChapter && !res.progressDecision?.chapterDone) {
-          appendSatisfactionCard();
-        }
-      } catch (e) {
-        if (!shouldUseMockEditFallback(e)) {
-          if (authErr(host, e)) return;
-        } else {
-          const res = mockEditChatResponse(userMessage, chapterId, focusedPageIndex);
-          settleThinking(host, 'analyzedFeedback');
-          appendReplyBody(host, res.assistantReply);
-          appendMockToolReceipt(
-            host,
-            res.pagesTexts?.length
-              ? aT('生成本地 mock 文案并同步到当前页', 'Generated local mock copy and synced it to the current page')
-              : aT('记录本地 mock 对话回合', 'Recorded a local mock chat turn'),
-          );
-          let wroteChapter = false;
-          if (res.pagesTexts) {
-            wroteChapter = applyChapterWrite(res.pagesTexts);
-          }
-          if (res.navigation?.pageIndex !== undefined) {
-            co()?.goToPageIndex?.(res.navigation.pageIndex);
-          }
-          chapterHistory.push({ role: 'user', content: userMessage });
-          chapterHistory.push({ role: 'assistant', content: res.assistantReply });
-          if (wroteChapter) appendSatisfactionCard();
-        }
-      }
-      restAwait();
-      scrollChat();
-      updateAuthInputPlaceholder();
-    }
-
     function chapterMetaById(chapterId: string): { num: number; title: string; tag: string; photoIds: string[] } | null {
       // 优先读活骨架(EditorPort 每次 pages-ready 重取后经 prop 更新):追加照片的新章节
       // 只存在于活骨架里,mount 时捕获的 draftSkel 是旧的。
@@ -1517,20 +883,6 @@ export function ChatPanel({
             ),
           ];
       return { num: idx + 1, title: (c.subject && c.subject.trim()) || c.label, tag, photoIds };
-    }
-
-    async function captureChapterPagePhotoRefs(chapterId: string): Promise<Record<string, string>> {
-      const meta = chapterMetaById(chapterId);
-      const refs: Record<string, string> = {};
-      if (!meta) return refs;
-
-      await Promise.all(
-        meta.photoIds.map(async (photoId) => {
-          const thumb = await co()?.capturePhotoThumb?.(photoId);
-          if (thumb) refs[photoId] = thumb;
-        }),
-      );
-      return refs;
     }
 
     const shownChapterCards = shownChapterCardsRef.current;
@@ -2135,7 +1487,7 @@ export function ChatPanel({
 
     async function runChapterGuideOpener(opts?: { allowDuringSend?: boolean }) {
       if (disposed) return;
-      if (!isAuthoring || (!opts?.allowDuringSend && sending) || awaitingSatisfaction) return;
+      if (!isAuthoring || (!opts?.allowDuringSend && sending)) return;
       if (pendingInterview) return;
       if (interviewChainStartedRef.current) return;
       interviewChainStartedRef.current = true;
@@ -2161,63 +1513,9 @@ export function ChatPanel({
     }
     void openerInFlight;
 
-    function appendSatisfactionCard(opts?: { photoOnly?: boolean }) {
-      awaitingSatisfaction = true;
-      const card = document.createElement('div');
-      card.className = 'msg ai max-w-full';
-      const inner = document.createElement('div');
-      inner.className = 'satisfaction-card';
-      const title = document.createElement('div');
-      title.className = 'sc-title';
-      title.textContent = opts?.photoOnly
-        ? aT('这一组只有照片,准备好进入下一组了吗?',
-             'This group is photo-only — ready for the next one?')
-        : aT('这一组写好了,你满意吗?', "Here's this group — happy with it?");
-      const row = document.createElement('div');
-      row.className = 'sc-actions';
-
-      const yes = document.createElement('button');
-      yes.type = 'button';
-      yes.className = 'sc-btn sc-yes';
-      yes.textContent = aT('满意,下一组', 'Looks great');
-      yes.addEventListener('click', () => {
-        if (sending || confirmingStoryChapter) return;
-        row.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
-        awaitingSatisfaction = false;
-        appendUserText(aT('满意,继续下一组', 'Looks great — next group'));
-        scrollChat();
-        void confirmCurrentChapterViaEditChat();
-      });
-
-      const no = document.createElement('button');
-      no.type = 'button';
-      no.className = 'sc-btn sc-no';
-      no.textContent = aT('想改改', 'Tweak it');
-      no.addEventListener('click', () => {
-        if (sending) return;
-        row.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
-        awaitingSatisfaction = false;
-        appendUserText(aT('还想再改改', "I'd like to tweak it"));
-        appendAiText(
-          aT('好的,这一组先留着。哪里不太满意?点开那一页,告诉我想怎么改。',
-             "Sure — let's keep this group. What's not quite right? Tap the page you mean and tell me what to change."),
-        );
-        restAwait();
-        scrollChat();
-      });
-
-      row.appendChild(yes);
-      row.appendChild(no);
-      inner.appendChild(title);
-      inner.appendChild(row);
-      card.appendChild(inner);
-      chatBody!.appendChild(card);
-      scrollChat();
-    }
-
     function appendEditLoopReadyCard(chapterId: string) {
       if (!isAuthoring || latestAuthoringRef.current.mode !== 'authoring') return;
-      if (awaitingSatisfaction || pendingInterview || confirmingStoryChapter) return;
+      if (pendingInterview) return;
       if (!storyGate || storyGate.stage !== 'story') return;
       if (storyGate.doneChapterIds.includes(chapterId)) return;
       if (!currentChapterHasDraftPages()) return;
@@ -2237,30 +1535,6 @@ export function ChatPanel({
       scrollChat();
     }
 
-    function appendNameChips(host: HTMLElement, names: string[]) {
-      const row = document.createElement('div');
-      row.className = 'chips';
-      for (const name of names.slice(0, 4)) {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'chip-select';
-        chip.textContent = name;
-        chip.addEventListener('click', () => {
-          if (sending) return;
-          sending = true;
-          row.querySelectorAll('.chip-select').forEach((c) => c.classList.remove('selected'));
-          chip.classList.add('selected');
-          appendUserText(aT(`就用「${name}」`, `Use "${name}"`));
-          hideAwait();
-          scrollChat();
-          void runEditChatTurn(aT(`这一组就叫「${name}」`, `Name this chapter "${name}"`))
-            .finally(() => { sending = false; });
-        });
-        row.appendChild(chip);
-      }
-      host.appendChild(row);
-    }
-    void appendNameChips;
 
     function showPurchaseCard() {
       // 横幅固定在 composer-group 内(输入框正上方),只切显隐、绝不搬进消息流;
@@ -2507,18 +1781,12 @@ export function ChatPanel({
           } else if (shown === 0) {
             void runChapterGuideOpener();
           }
-        } else if (stage === 'theme' || stage === 'cover' || stage === 'ready') {
-          // 设计环节可重入(导出闸门收紧后设计是必经步骤):刷新后回到 theme/cover 也要
-          // 能重新拿到封面组选择卡。offerDesignCard 自查 designed/hasPages,已设计过或
-          // 无排版页则静默不弹,幂等安全。旧 theme/cover 流程分支保留(Web 残留 surface)。
+        } else if (stage === 'theme' || stage === 'ready') {
+          // 设计环节可重入(导出闸门收紧后设计是必经步骤):采访做完(stage=theme)或刷新后
+          // 回到 ready,都要能重新拿到封面组选择卡。offerDesignCard 自查 designed/hasPages,
+          // 已设计过或无排版页则静默不弹,幂等安全。
           void offerDesignCard();
-          if (stage === 'theme') {
-            void runRecommendTheme();
-          } else if (stage === 'cover') {
-            appendThemeSummary();
-            appendCoverCard();
-          } else {
-            // 新流程(封面组选择卡)没有 theme 步,不再凭空追加旧 theme 回执卡。
+          if (stage === 'ready') {
             // 封面回执:designApplied 标记落库后由 loadHistory 原位重建;这里只给
             // 标记落库前设计完的老相册兜底(尾部补一张,别让回执彻底消失)。
             if (!historyHadCoverRecap && !chatBody?.querySelector('.cv-opt.is-recap')) {

@@ -6,11 +6,10 @@
     { "id": "image2", "orientation": ["square"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "variableDecor": true, "sample": "海边的一天" },
-    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "sample": "原来快乐可以这么简单" },
-    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "sample": "退潮后留下一片湿亮的沙" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "sample": "孩子追着浪花跑来跑去" },
-    { "id": "explain3", "role": "explain", "lang": "user", "maxChars": 220, "sample": "那天我们一早就到了海边，本来只打算待一会儿，却一直玩到太阳落山。捡贝壳、堆沙堡、看海鸟，谁也不愿意先走。" },
-    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
+    { "id": "title", "role": "title", "lang": "user", "variableDecor": true, "sample": "THE GATE" },
+    { "id": "body", "role": "body", "lang": "user", "sample": "原来快乐可以这么简单" },
+    { "id": "explain", "role": "explain", "lang": "user", "sample": "退潮后留下一片湿亮的沙" },
+    { "id": "explain2", "role": "explain", "lang": "user", "sample": "孩子追着浪花跑来跑去" },
+    { "id": "body2", "role": "body", "lang": "user", "sample": "He is four centimetres taller than last September. In March he stopped letting me hold his hand at the school gate. He did not announce it. He just put both hands in his pockets and walked in." }
   ]
 }

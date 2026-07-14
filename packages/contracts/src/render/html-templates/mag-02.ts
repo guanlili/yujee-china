@@ -7,8 +7,8 @@
 // 与 React 版的已知差异（均为现行 token/lint 能力边界，非几何偏差）：
 // ① items 重复组（number[i]/title[i]/description[i]）未 token 化：html-template-lint 的
 //    declared 集只含顶层 texts（title/folio），bracket token 会报「未声明的槽」；且
-//    adapt-layout 把 texts['number[0]'] 这类 bracket 键折叠成 data.number 数组，
-//    fill-template 按 data['number[0]'] 取值必为空。因此 2×2 目录格照 React 无数据时的
+//    adapt-layout 把 texts['label[0]'] 这类 bracket 键折叠成 data.number 数组，
+//    fill-template 按 data['label[0]'] 取值必为空。因此 2×2 目录格照 React 无数据时的
 //    SAMPLE_* 预览样例静态写死（字体/颜色与 React resolveThemeCarrier 对空数据的计算
 //    结果一致：编号/斜杠 = latin decoration 默认 Inter 栈 + #1c1b18，行标题 = latin
 //    title 默认 Playfair 栈，描述 = latin explain 默认 Inter 栈 + #5a574f），锚点与
@@ -23,7 +23,7 @@ const PLAYFAIR = '&quot;Playfair Display&quot;, &quot;Noto Serif SC&quot;, &quot
 const SERIF_EN = '&quot;EB Garamond&quot;, &quot;Noto Serif SC&quot;, &quot;Songti SC&quot;, serif';
 
 export const MAG_02_HTML = `<div data-template="mag-02" style="position:relative;width:794px;height:1123px;background:#fff;color:#1c1b18;overflow:hidden;box-sizing:border-box;font-family:${SANS_EN}">
-  <div data-text-key="title" data-variable-decor style="position:absolute;top:96px;left:56px;font-size:36px;font-weight:800;line-height:1;letter-spacing:0.04em;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}}">{{TEXT:title}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;top:96px;left:56px;font-size:36px;font-weight:800;line-height:1;letter-spacing:0.04em;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}};white-space:pre-wrap">{{TEXT:title}}</div>
   <div style="position:absolute;top:338px;left:56px;right:56px;display:grid;grid-template-columns:1fr 1fr;row-gap:96px;column-gap:80px">
     <div>
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
@@ -58,5 +58,4 @@ export const MAG_02_HTML = `<div data-template="mag-02" style="position:relative
       <div style="line-height:1.7;color:#5a574f;font-family:${SANS_EN};text-align:justify;letter-spacing:0.02em;font-size:16px">A gentle pause to gather what mattered most before turning the page.</div>
     </div>
   </div>
-  <div data-text-key="folio" style="position:absolute;bottom:40px;right:50px;font-family:{{FONT:folio|${SERIF_EN}}};font-style:italic;font-size:22px;color:{{COLOR:folio|#1c1b18}}">{{TEXT:folio}}<span style="color:#a09b8e">/</span></div>
 </div>`;

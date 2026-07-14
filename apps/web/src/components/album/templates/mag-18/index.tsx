@@ -1,19 +1,18 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebImage, WebPage } from '../web-utils';
+import {WebImage, WebPage} from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 export function WebMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image1?: string;
     image2?: string;
-    explain1?: string;
+    explain?: string;
     explain2?: string;
-    folio?: string;
   };
-  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
-  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
+  const explainTheme = resolveThemeCarrier(data, 'explain', contractRole('mag-18', 'explain'));
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', contractRole('mag-18', 'explain2'));
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -45,15 +44,15 @@ export function WebMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
         <p
           style={{
             margin: 0,
-            fontFamily: explain1Theme.webFontFamily,
+            fontFamily: explainTheme.webFontFamily,
             lineHeight: 1.75,
-            color: explain1Theme.accentColor ?? COLORS.ink2,
+            color: explainTheme.accentColor ?? COLORS.ink2,
             letterSpacing: '0.02em',
             textAlign: 'justify',
             fontSize: 15,
           }}
         >
-          {d.explain1 || ''}
+          {d.explain || ''}
         </p>
       </div>
       <div style={{ position: 'absolute', top: 778, right: 70, width: 320 }}>
@@ -81,8 +80,6 @@ export function WebMag18({ data, totalPages, imagePos }: TemplateRenderProps) {
         >
           {d.explain2 || ''}
         </p>
-      </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="18" />
-    </WebPage>
+      </div></WebPage>
   );
 }

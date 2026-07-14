@@ -1,20 +1,19 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
+import {WebImage, WebPage, brToReact} from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     title?: string;
-    label?: string;
     explain?: string;
-    folio?: string;
+    body?: string;
     image?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
-  const topRightTheme = resolveThemeCarrier(data, 'label', 'decoration');
-  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
-  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-05', 'title'));
+  const topRightTheme = resolveThemeCarrier(data, 'explain', contractRole('mag-05', 'explain'));
+  const explainTheme = resolveThemeCarrier(data, 'body', contractRole('mag-05', 'body'));
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <h1
@@ -49,7 +48,7 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontFamily: topRightTheme.webFontFamily,
         }}
       >
-        {topRightTheme.text ?? d.label ?? ''}
+        {topRightTheme.text ?? d.explain ?? ''}
       </div>
       <div style={{ position: 'absolute', top: 290, left: 50, width: 320 }}>
         <p
@@ -72,8 +71,6 @@ export function WebMag05({ data, totalPages, imagePos }: TemplateRenderProps) {
         style={{ position: 'absolute', top: 430, left: 50, right: 50, height: 600 }}
         position={imagePos?.['image']}
         slotId="image"
-      />
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="05" />
-    </WebPage>
+      /></WebPage>
   );
 }

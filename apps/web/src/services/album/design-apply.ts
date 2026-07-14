@@ -86,18 +86,15 @@ export function buildCoverSets(albumId: string, chapters: TreeChapter[]): CoverS
 // 模板文字槽 spec(engine DesignRequest 的 coverSlots/endingSlots 入参)。
 export function slotSpecs(
   templateId: string,
-): Array<{ id: string; role: string; sample: string; maxChars?: number }> {
+): Array<{ id: string; role: string; sample: string }> {
   const template = templateOf(templateId);
-  return (template?.texts ?? []).map((slot) => {
-    const maxChars = (slot as { maxChars?: unknown }).maxChars;
-    return {
-      id: slot.id,
-      role: slot.role,
-      sample: typeof (slot as { sample?: unknown }).sample === 'string' ? (slot as { sample: string }).sample : '',
-      // 字数预算透传给文案模型(可选;模板没声明就不传)。
-      ...(typeof maxChars === 'number' && Number.isInteger(maxChars) && maxChars > 0 ? { maxChars } : {}),
-    };
-  });
+  // 不传字数上限:模板不再声明。篇幅由 sample 示范(它就是该槽在版面上的实际长度参考),
+  // 写长了不裁 —— 渲染层的 fit-text 会自动缩字号装下。
+  return (template?.texts ?? []).map((slot) => ({
+    id: slot.id,
+    role: slot.role,
+    sample: typeof (slot as { sample?: unknown }).sample === 'string' ? (slot as { sample: string }).sample : '',
+  }));
 }
 
 // carrier sweep:按模板声明的文字槽 role,把三键字体/颜色写成 `${slotId}#artFont` /
@@ -131,7 +128,7 @@ export function sweepCarriers(pages: Page[], fonts: DesignFonts, colors: DesignC
 }
 
 // 成书组装:封面在前、封尾在后,内页居中,pageIndex 全书重排。
-// extraEndingPhotoIds:封底模板可能有多个图槽(如 mag-25 两图),第 1 槽用 endingPhotoId,
+// extraEndingPhotoIds:封底模板可能有多个图槽(如 mag-22 两图),第 1 槽用 endingPhotoId,
 // 其余槽按序取补充照片,不够则复用最后一张 —— 图槽绝不留空。
 export function assembleDesignedPages(input: {
   interiorPages: Page[];

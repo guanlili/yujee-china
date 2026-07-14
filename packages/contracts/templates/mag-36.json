@@ -10,7 +10,6 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 16,
       "lang": "user",
       "variableDecor": true,
       "sample": "Seaside"
@@ -18,7 +17,6 @@
     {
       "id": "explain",
       "role": "explain",
-      "maxChars": 48,
       "lang": "user",
       "sample": "海风带着咸味，吹了一整个下午"
     }

@@ -159,39 +159,6 @@ test('history replay is idempotent across StrictMode mount replays', () => {
   );
 });
 
-test('C: a write turn surfaces the satisfaction card (满意/不满意), not on talk/edit', () => {
-  const src = source('EditorPort.tsx');
-
-  assert.match(src, /function appendSatisfactionCard\(/, 'appendSatisfactionCard() must exist');
-
-  // Only a real full-chapter WRITE opens the gate — the card is appended behind the
-  // wroteChapter flag set by applyChapterWrite's return.
-  assert.match(src, /wroteChapter = applyChapterWrite\(res\.pagesTexts\)/,
-    'the write-turn result must drive the wroteChapter flag');
-  // (#236 ④: the write branch now also drops the write-now exit before the satisfaction
-  // card, so the satisfaction card lives inside an `if (wroteChapter) { … }` block.)
-  assert.match(src, /if \(wroteChapter && !res\.progressDecision\?\.chapterDone\) \{[\s\S]*?appendSatisfactionCard\(\);/,
-    'the satisfaction card must appear only after a successful write turn');
-});
-
-test('C: 满意 confirms the chapter; 不满意 stays for逐页 adjustment (no stage推进)', () => {
-  const src = source('EditorPort.tsx');
-  const card = /function appendSatisfactionCard\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(card, 'appendSatisfactionCard() body must be parseable');
-
-  // 满意 → edit-chat progressDecision (advance chapter / 末章→主题) inside the acked bundle.
-  assert.match(card![0], /confirmCurrentChapterViaEditChat\(\)/,
-    '满意 must confirm through edit-chat');
-
-  // 不满意 → stays on the chapter and asks the user which page to change (a talk/引导 ask);
-  // it must NOT confirm the chapter or push stage. The existing focusedPageIndex + edit
-  // turn machinery then does the逐页 adjustment — so the 不满意 branch itself applies no
-  // patch and never advances.
-  const noBranch = card![0].slice(card![0].indexOf('sc-no'));
-  assert.doesNotMatch(noBranch, /confirmCurrentChapterViaEditChat/,
-    '不满意 must NOT confirm the chapter (stays for逐页 adjustment, no stage推进)');
-});
-
 test('C: the standing「确定本组」breadcrumb button + its binding effect are removed', () => {
   const src = source('EditorPort.tsx');
 
@@ -203,12 +170,3 @@ test('C: the standing「确定本组」breadcrumb button + its binding effect ar
     'the post-render ref/binding for the breadcrumb button must be gone');
 });
 
-test('focusedPageIndex逐页 edit path is preserved (不满意 reuses it)', () => {
-  const src = source('EditorPort.tsx');
-  // The edit turn still threads the selected page so "change this page" targets it.
-  assert.match(
-    src,
-    /const focusedPageIndex = authoringFocusPageIndex\(\);/,
-    'edit-chat must still send focusedPageIndex for逐页 edit turns',
-  );
-});

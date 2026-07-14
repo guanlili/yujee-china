@@ -20,7 +20,6 @@
 import { createContext, type MutableRefObject } from 'react';
 import type { EditorPage } from '../types';
 import type { DraftEditResult } from '@/lib/album/authoring-client';
-import type { V3PageTextsPatch } from '@yujee/contracts';
 import type { LayoutPatchEntry } from '../types';
 
 // What EditorBook applied for a draft-edit act (so ChatPanel can narrate it without
@@ -38,8 +37,6 @@ export type ChatCoordinator = {
   goToChapterById: (chapterId: string) => void;
   goToPageIndex: (pageIndex: number) => void;
   // ── canvas mutation (touch pagesState + repaint; return whether anything applied) ──
-  applyChapterWrite: (pagesTexts: V3PageTextsPatch[]) => boolean;
-  applyChapterEdit: (layoutPatch: LayoutPatchEntry[]) => boolean;
   applyAuthoringPatch: (patch: LayoutPatchEntry[]) => boolean;
   // 整书原地替换 + 重绘（设计对话 committed 后用，替代重挂式刷新）。
   replacePages: (pages: EditorPage[]) => boolean;

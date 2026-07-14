@@ -2,6 +2,7 @@ import type { TemplateRenderProps } from '../types';
 import { PAGE, WEB_FONTS } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 // 内页 · 顶部超大标题 + 单张近方大图（category: interior，1 图）。白底；页顶横排超大展示主标题
 // （槽 title，占位「NORWAY」，首字母 N 略大、其余略小，但内容为同一个槽）；标题字内负空间里
@@ -16,7 +17,7 @@ export function WebMag49({ data, imagePos }: TemplateRenderProps) {
   const title = d['title'] || 'NORWAY';
   const head = title.charAt(0);
   const rest = title.slice(1);
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-49', 'title'));
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* ── 顶部超大主标题（槽 title，占位 NORWAY，首字母略大，variableDecor） ── */}

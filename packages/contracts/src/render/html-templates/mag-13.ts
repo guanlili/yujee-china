@@ -18,10 +18,10 @@ const SANS_EN = '&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&
 const PLAYFAIR = '&quot;Playfair Display&quot;, &quot;Noto Serif SC&quot;, &quot;Songti SC&quot;, serif';
 
 export const MAG_13_HTML = `<div data-template="mag-13" style="position:relative;width:794px;height:1123px;background:#fff;color:#1c1b18;overflow:hidden;box-sizing:border-box;font-family:${SANS_EN}">
-  <div data-text-key="title" data-variable-decor style="position:absolute;top:110px;left:90px;right:90px;font-weight:800;font-size:56px;letter-spacing:0.12em;text-align:center;line-height:1.12;white-space:pre-line;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}}">{{TEXT:title}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;top:150px;left:200px;right:90px;font-weight:800;font-size:56px;letter-spacing:0.12em;text-align:center;line-height:1.12;white-space:pre-line;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}};width:400px;height:80px">{{TEXT:title}}</div>
   <div style="position:absolute;top:242px;left:260px;right:260px;height:2px;background-color:#5a574f"></div>
   <div data-image-slot="image" style="position:absolute;top:300px;left:90px;right:90px;height:520px;overflow:hidden">
-    <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
+    <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:656px;height:800px;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}};top:0px" />
   </div>
-  <p data-text-key="explain" style="position:absolute;top:855px;left:130px;right:130px;margin:0;text-align:center;line-height:1.75;color:{{COLOR:explain|#5a574f}};font-family:{{FONT:explain|${SANS_EN}}};letter-spacing:0.02em;font-size:15px">{{TEXT:explain}}</p>
+  <p data-text-key="body" style="position:absolute;top:855px;left:130px;right:130px;margin:0;text-align:center;line-height:1.75;color:{{COLOR:body|#5a574f}};font-family:{{FONT:body|${SANS_EN}}};letter-spacing:0.02em;font-size:15px;white-space:pre-wrap;width:534px;height:60px">{{TEXT:body}}</p>
 </div>`;

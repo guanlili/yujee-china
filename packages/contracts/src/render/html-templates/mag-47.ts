@@ -24,6 +24,6 @@ export const MAG_47_HTML = `<div data-template="mag-47" style="position:relative
   <div data-image-slot="image4" style="position:absolute;left:89px;top:739px;width:320px;height:235px;overflow:hidden">
     <img data-image-slot="image4" src="{{IMG_SRC:image4}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image4|50% 50%}};{{IMG_TF:image4}}" />
   </div>
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:89px;top:296px;width:480px;font-weight:600;font-size:33px;line-height:1.1;white-space:pre-wrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${SERIF_CN}}}">{{TEXT:title}}</div>
-  <div data-text-key="explain" style="position:absolute;left:89px;top:368px;width:396px;font-weight:400;font-size:18px;line-height:1.4;white-space:pre-wrap;word-break:break-word;overflow:hidden;color:{{COLOR:explain|#1c1b18}};font-family:{{FONT:explain|${SANS_CN}}}">{{TEXT:explain}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;left:89px;top:296px;width:348px;font-weight:600;font-size:33px;line-height:1.1;white-space:pre-wrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${SERIF_CN}}};height:50px">{{TEXT:title}}</div>
+  <div data-text-key="explain" style="position:absolute;left:89px;top:368px;width:345px;font-weight:400;font-size:18px;line-height:1.4;white-space:pre-wrap;word-break:break-word;overflow:hidden;color:{{COLOR:explain|#1c1b18}};font-family:{{FONT:explain|${SANS_CN}}};height:50px">{{TEXT:explain}}</div>
 </div>`;

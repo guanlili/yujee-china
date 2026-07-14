@@ -1,7 +1,8 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
+import {WebImage, WebPage, brToReact} from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
@@ -9,17 +10,15 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
     image2?: string;
     body?: string;
     title?: string;
-    explain1?: string;
+    explain?: string;
     explain2?: string;
-    explain3?: string;
-    folio?: string;
+    body2?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
-  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
-  const explain3Theme = resolveThemeCarrier(data, 'explain3', 'explain');
-  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-09', 'title'));
+  const bodyTheme = resolveThemeCarrier(data, 'body', contractRole('mag-09', 'body'));
+  const explain1Theme = resolveThemeCarrier(data, 'explain', contractRole('mag-09', 'explain'));
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', contractRole('mag-09', 'explain2'));
+  const explain3Theme = resolveThemeCarrier(data, 'body2', contractRole('mag-09', 'body2'));
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -79,11 +78,9 @@ export function WebMag09({ data, totalPages, imagePos }: TemplateRenderProps) {
           textAlign: 'justify',
         }}
       >
-        <p style={{ position: 'absolute', left: 60, top: 620, width: 280, height: 32, fontSize: 18, color: explain1Theme.accentColor ?? COLORS.ink2, fontFamily: explain1Theme.webFontFamily }}>{d.explain1 || ''}</p>
+        <p style={{ position: 'absolute', left: 60, top: 620, width: 280, height: 32, fontSize: 18, color: explain1Theme.accentColor ?? COLORS.ink2, fontFamily: explain1Theme.webFontFamily }}>{d.explain || ''}</p>
         <p style={{ position: 'absolute', left: 60, top: 664, width: 280, height: 32, fontSize: 18, color: explain2Theme.accentColor ?? COLORS.ink2, fontFamily: explain2Theme.webFontFamily }}>{d.explain2 || ''}</p>
-        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 13, lineHeight: 1.6, color: explain3Theme.accentColor ?? COLORS.ink2, fontFamily: explain3Theme.webFontFamily }}>{d.explain3 || ''}</p>
-      </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="09" />
-    </WebPage>
+        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 13, lineHeight: 1.6, color: explain3Theme.accentColor ?? COLORS.ink2, fontFamily: explain3Theme.webFontFamily }}>{d.body2 || ''}</p>
+      </div></WebPage>
   );
 }

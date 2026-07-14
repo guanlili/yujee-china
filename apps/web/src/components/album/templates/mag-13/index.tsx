@@ -1,18 +1,18 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebImage, WebPage, brToReact } from '../web-utils';
+import {WebImage, WebPage, brToReact} from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 export function WebMag13({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     title?: string;
     divider?: string;
-    explain?: string;
-    folio?: string;
+    body?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
-  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-13', 'title'));
+  const explainTheme = resolveThemeCarrier(data, 'body', contractRole('mag-13', 'body'));
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <div
@@ -64,7 +64,7 @@ export function WebMag13({ data, imagePos }: TemplateRenderProps) {
           fontSize: 15,
         }}
       >
-        {d.explain || ''}
+        {d.body || ''}
       </p>
     </WebPage>
   );

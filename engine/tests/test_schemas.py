@@ -28,23 +28,13 @@ from src.contracts.schemas import (
     TemplateDef,
     TemplateTextSlot,
     V3AcceptedResponse,
-    V3ApplyThemeResponse,
     V3AnalyzeCompleted,
     V3AnalyzeRequest,
-    V3ApplyThemeRequest,
     V3Callback,
     V3Chapter,
-    V3ChapterChatRequest,
-    V3ChapterChatResponse,
     V3ChapterOverview,
     V3ChapterPhoto,
-    V3CoverRequest,
-    V3CoverResponse,
-    V3FinalizeRequest,
-    V3FinalizeResponse,
     V3LayoutTree,
-    V3RecommendRequest,
-    V3RecommendResponse,
     SelectLayoutCompleted,
     SelectLayoutRequest,
     V3TemplateCandidate,
@@ -322,7 +312,7 @@ class TestV3TemplateCategoryOnly:
                 "texts": [
                     {"id": "title", "role": "title", "lang": "user", "variableDecor": True}
                 ],
-                "items": {"texts": [{"id": "caption", "role": "explain", "lang": "user", "maxChars": 70}]},
+                "items": {"texts": [{"id": "caption", "role": "explain", "lang": "user"}]},
             }
         )
 
@@ -549,254 +539,7 @@ class TestSelectLayoutRequest:
 
 
 class TestV3Endpoints:
-    def test_chapter_chat_kind_drives_patch(self):
-        usage = {"durationMs": 1, "models": {}}
-        V3ChapterChatResponse.model_validate(
-            {"kind": "write", "assistantReply": "done", "pagesTexts": [{"pageIndex": 0, "texts": {"body": "hi"}}], "usage": usage}
-        )
-        V3ChapterChatResponse.model_validate({"kind": "talk", "assistantReply": "tell me more", "usage": usage})
-        with pytest.raises(ValidationError):
-            V3ChapterChatResponse.model_validate({"kind": "sing", "assistantReply": "x", "usage": usage})
 
-    def test_v3_edit_chat_requires_op_id_and_rejects_inline_pages(self) -> None:
-        req = schemas.V3EditChatRequest(
-            albumId="alb_1",
-            language="en",
-            userMessage="write it",
-            focus={"chapterId": "c1", "pageIndex": 1},
-            progress={"currentChapterId": "c1", "doneChapterIds": []},
-        )
-        assert req.focus.chapterId == "c1"
-
-        with pytest.raises(ValidationError):
-            schemas.V3EditChatRequest(
-                albumId="alb_1",
-                language="en",
-                userMessage="write it",
-                focus={"chapterId": "c1"},
-                progress={"currentChapterId": "c1", "doneChapterIds": []},
-                pages=[],
-            )
-
-        with pytest.raises(ValidationError):
-            schemas.V3EditChatRequest(
-                albumId="alb_1",
-                language="en",
-                userMessage="write it",
-                focus={"chapterId": None},
-                progress={"currentChapterId": "c1", "doneChapterIds": []},
-            )
-
-        with pytest.raises(ValidationError):
-            schemas.V3EditChatRequest(
-                albumId="alb_1",
-                language="en",
-                userMessage="write it",
-                focus={"pageIndex": None},
-                progress={"currentChapterId": "c1", "doneChapterIds": []},
-            )
-
-        with pytest.raises(ValidationError):
-            schemas.V3EditChatRequest(
-                albumId="alb_1",
-                language="en",
-                userMessage="write it",
-                focus={},
-                progress={"doneChapterIds": []},
-            )
-
-        response = schemas.V3EditChatResponse(
-            kind="talk",
-            assistantReply="Opening the next page.",
-            patches=[],
-            navigation={"pageIndex": 2},
-            opId="op_1",
-            usage={"durationMs": 1, "models": {}},
-        )
-        assert response.navigation.pageIndex == 2
-
-        with pytest.raises(ValidationError):
-            schemas.V3EditChatResponse(
-                kind="edit",
-                assistantReply="Updated.",
-                patches=[],
-                usage={"durationMs": 1, "models": {}},
-            )
-
-    def test_recommend_response_legal_sets(self):
-        V3RecommendResponse.model_validate(
-            {
-                "bookThemeOptions": [
-                    {
-                        "optionId": "opt-1",
-                        "label": "x" * 160,
-                        "style": "y" * 160,
-                        "artFont": "serif-classic",
-                        "chapters": [{"chapterId": "c1", "subject": "Spring in Kyoto", "accentColor": "#aabbcc"}],
-                    },
-                    {
-                        "optionId": "opt-2",
-                        "artFont": "sans-modern",
-                        "chapters": [{"chapterId": "c1", "accentColor": "#bbccdd"}],
-                    },
-                    {
-                        "optionId": "opt-3",
-                        "artFont": "display-bold",
-                        "chapters": [{"chapterId": "c1", "accentColor": "#ccddee"}],
-                    },
-                ],
-                "assistantReply": "",
-                "usage": {"durationMs": 1, "models": {}},
-            }
-        )
-        with pytest.raises(ValidationError):
-            V3RecommendResponse.model_validate(
-                {
-                    "bookThemeOptions": [
-                        {
-                            "optionId": "x" * 81,
-                            "artFont": "serif-classic",
-                            "chapters": [{"chapterId": "c1", "accentColor": "#aabbcc"}],
-                        },
-                        {
-                            "optionId": "opt-2",
-                            "label": "x" * 161,
-                            "artFont": "sans-modern",
-                            "chapters": [{"chapterId": "c1", "accentColor": "#bbccdd"}],
-                        },
-                        {
-                            "optionId": "opt-3",
-                            "style": "x" * 161,
-                            "artFont": "display-bold",
-                            "chapters": [{"chapterId": "c1", "accentColor": "#ccddee"}],
-                        },
-                    ],
-                    "assistantReply": "",
-                    "usage": {"durationMs": 1, "models": {}},
-                }
-            )
-
-    def test_apply_theme_and_cover_page_level(self):
-        page = {"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}
-        V3ApplyThemeRequest.model_validate(
-            {
-                "albumId": "a1",
-                "language": "en",
-                "chapters": [{"chapterId": "c1", "accentColor": "#abc", "artFont": "sans-modern"}],
-                "pages": [page],
-            }
-        )
-        V3CoverRequest.model_validate(
-            {"albumId": "a1", "language": "en", "coverTemplateId": None, "endingTemplateId": None, "pages": [page]}
-        )
-
-    def test_cover_request_stage5_fields_and_chat_context(self):
-        page = {"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}
-        req = V3CoverRequest.model_validate(
-            {
-                "albumId": "a1",
-                "language": "en",
-                "coverTemplateId": "mag-01",
-                "endingTemplateId": "mag-20",
-                "coverPhoto": "data:image/jpeg;base64,AA==",
-                "endingPhoto": "data:image/png;base64,AA==",
-                "coverPhotoDesc": "a quiet portrait beside a window",
-                "artFont": "display-bold",
-                "hint": "keep the whole book tender and understated",
-                "userMessage": "Could the cover feel calmer?",
-                "history": [
-                    {"role": "user", "content": "I want a calmer cover"},
-                    {"role": "assistant", "content": "I can make it quieter."},
-                ],
-                "pages": [page],
-            }
-        )
-
-        assert req.coverPhoto == "data:image/jpeg;base64,AA=="
-        assert req.endingPhoto == "data:image/png;base64,AA=="
-        assert req.coverPhotoDesc == "a quiet portrait beside a window"
-        assert req.artFont == "display-bold"
-        assert req.hint == "keep the whole book tender and understated"
-        assert req.userMessage == "Could the cover feel calmer?"
-        assert [turn.model_dump() for turn in req.history] == [
-            {"role": "user", "content": "I want a calmer cover"},
-            {"role": "assistant", "content": "I can make it quieter."},
-        ]
-
-    def test_cover_request_defaults_chat_fields_and_caps_history(self):
-        page = {"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}
-        req = V3CoverRequest.model_validate(
-            {"albumId": "a1", "language": "en", "coverTemplateId": None, "endingTemplateId": None, "pages": [page]}
-        )
-
-        assert req.userMessage == ""
-        assert req.history == []
-        with pytest.raises(ValidationError):
-            V3CoverRequest.model_validate(
-                {
-                    "albumId": "a1",
-                    "language": "en",
-                    "history": [{"role": "user", "content": "x"} for _ in range(21)],
-                    "pages": [page],
-                }
-            )
-
-    @pytest.mark.parametrize("field", ["coverPhoto", "endingPhoto", "coverPhotoDesc", "hint"])
-    def test_cover_request_stage5_optional_strings_reject_explicit_null(self, field):
-        page = {"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}
-        omitted = V3CoverRequest.model_validate(
-            {"albumId": "a1", "language": "en", "coverTemplateId": None, "endingTemplateId": None, "pages": [page]}
-        )
-        assert getattr(omitted, field) is None
-
-        with pytest.raises(ValidationError):
-            V3CoverRequest.model_validate(
-                {
-                    "albumId": "a1",
-                    "language": "en",
-                    "coverTemplateId": None,
-                    "endingTemplateId": None,
-                    "pages": [page],
-                    field: None,
-                }
-            )
-
-    def test_cover_response_clarification_state_without_public_text_payloads(self):
-        usage = {"durationMs": 1, "models": {}}
-        normal = V3CoverResponse.model_validate({"layoutPatch": [], "usage": usage})
-        assert normal.needsUserInput is False
-
-        clarification = V3CoverResponse.model_validate(
-            {
-                "layoutPatch": [],
-                "assistantReply": "Which cover mood should I use?",
-                "needsUserInput": True,
-                "usage": usage,
-            }
-        )
-        assert clarification.needsUserInput is True
-        assert clarification.assistantReply == "Which cover mood should I use?"
-
-        with pytest.raises(ValidationError):
-            V3CoverResponse.model_validate(
-                {"layoutPatch": [], "assistantReply": "done", "coverTexts": {}, "usage": usage}
-            )
-        with pytest.raises(ValidationError):
-            V3CoverResponse.model_validate(
-                {"layoutPatch": [], "assistantReply": "done", "endingTexts": {}, "usage": usage}
-            )
-
-    def test_finalize_returns_flat_layout(self):
-        V3FinalizeResponse.model_validate(
-            {
-                "layout": {
-                    "magazine": {"title": "My Book", "style": "warm-film", "language": "en"},
-                    "photos": [],
-                    "pages": [{"pageIndex": 0, "templateId": "mag-08", "images": {}, "texts": {}}],
-                },
-                "usage": {"durationMs": 1, "models": {}},
-            }
-        )
 
     def test_template_candidate(self):
         V3TemplateCandidate.model_validate({"templateId": "mag-08", "category": "interior", "imageSlotCount": 3})
@@ -887,26 +630,14 @@ _PARITY_FIXTURE = _REPO_ROOT / "packages" / "contracts" / "fixtures" / "v3" / "p
 _PY_SCHEMAS = {
     "V3AcceptedResponse": V3AcceptedResponse,
     "V3AnalyzeRequest": V3AnalyzeRequest,
-    "V3ApplyThemeResponse": V3ApplyThemeResponse,
-    "V3ApplyThemeRequest": V3ApplyThemeRequest,
     "V3Chapter": V3Chapter,
-    "V3ChapterChatRequest": V3ChapterChatRequest,
-    "V3ChapterChatResponse": V3ChapterChatResponse,
     "V3ChapterPhoto": V3ChapterPhoto,
-    "V3CoverRequest": V3CoverRequest,
-    "V3CoverResponse": V3CoverResponse,
-    "V3FinalizeRequest": V3FinalizeRequest,
-    "V3FinalizeResponse": V3FinalizeResponse,
     "V3LayoutTree": V3LayoutTree,
-    "V3RecommendRequest": V3RecommendRequest,
-    "V3RecommendResponse": V3RecommendResponse,
     "SelectLayoutRequest": SelectLayoutRequest,
     "SelectLayoutCompleted": SelectLayoutCompleted,
     "V3TemplateCandidate": V3TemplateCandidate,
     "TemplateDef": TemplateDef,
     "TemplateTextSlot": TemplateTextSlot,
-    "AgentAckRequest": AgentAckRequest,
-    "AgentAckResponse": AgentAckResponse,
 }
 _PY_ADAPTERS = {"V3Callback": _CALLBACK}
 

@@ -6,8 +6,7 @@
     { "id": "image2", "orientation": ["portrait"], "quality": ["detail", "fill"], "composition": ["wide", "focal"] }
   ],
   "texts": [
-    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "sample": "左边是清晨刚醒的街道" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "sample": "右边是傍晚归家时的灯火" },
-    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
+    { "id": "explain", "role": "explain", "lang": "user", "sample": "My father, who still will not video call." },
+    { "id": "explain2", "role": "explain", "lang": "user", "sample": "My mother, who calls every Sunday at seven." }
   ]
 }

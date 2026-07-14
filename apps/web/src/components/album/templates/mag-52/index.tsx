@@ -1,6 +1,7 @@
 import type { TemplateRenderProps } from '../types';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 // 内页（category: interior，3 图 + 1 标题）。来自 Figma A4-7 跨页拼版（fileKey 5uKJQlCURRrrCBU1pd1QT6
 // / node 11:271，1190×842）的【左半页 x∈[0,595]】，单独落成一张标准 A4（595×842 → ×1.3344 → 794×1123）。
@@ -20,7 +21,7 @@ const HANDWRITING_SVG =
 
 export function WebMag52({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-52', 'title'));
   return (
     <div style={{ position: 'relative', width: 794, height: 1123, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 左上小图 1（slot image1 = Figma 11:273） */}

@@ -6,9 +6,8 @@
     { "id": "image2", "orientation": ["square"], "quality": ["detail", "fill"], "composition": ["wide", "focal"] }
   ],
   "texts": [
-    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "sample": "清晨的码头，海水还带着夜的凉意" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "sample": "我们坐在石阶上看船一艘艘出港" },
-    { "id": "date", "role": "decoration", "lang": "en", "maxChars": 12, "variableDecor": true, "sample": "04/24" },
-    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
+    { "id": "explain", "role": "explain", "lang": "user", "sample": "March. The last morning in the old flat, before the truck came. " },
+    { "id": "body", "role": "body", "lang": "user", "sample": " We packed everything into boxes and then stood around not knowing what to do with our hands. \n\nThe boy asked if the newplace would have the same door.\n\n I said no. He thought about it and said okay. \n\nThat was the only conversation we ever had about leaving. " },
+    { "id": "title", "role": "title", "lang": "en", "sample": "26/04" }
   ]
 }

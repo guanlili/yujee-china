@@ -136,14 +136,14 @@ test('every active template has a preview PNG and matching metadata', () => {
 test('fixed repeat text metadata uses concrete render-time bracket slot ids', () => {
   const metadata = readJson<PreviewMetadata>(path.join(PREVIEW_DIR, 'mag-10.json'));
 
+  // 页码已不是模板槽位(展示层按页序统一生成),所以这里只剩重复组展开出的 bracket id。
   assert.deepEqual(metadata.textSlotIds, [
-    'folio',
     'explain[0]',
     'explain[1]',
     'explain[2]',
     'explain[3]',
   ]);
-  assert.equal(metadata.textSlotCount, 5);
+  assert.equal(metadata.textSlotCount, 4);
   assert.deepEqual(metadata.repeatTextSlots, [
     {
       id: 'explain',
@@ -157,12 +157,12 @@ test('fixed repeat text metadata uses concrete render-time bracket slot ids', ()
 test('variable repeat text metadata declares address pattern without fake concrete slots', () => {
   const metadata = readJson<PreviewMetadata>(path.join(PREVIEW_DIR, 'mag-02.json'));
 
-  assert.deepEqual(metadata.textSlotIds, ['title', 'folio']);
-  assert.equal(metadata.textSlotCount, 2);
+  assert.deepEqual(metadata.textSlotIds, ['title']);
+  assert.equal(metadata.textSlotCount, 1);
   assert.deepEqual(metadata.repeatTextSlots, [
-    { id: 'number', addressPattern: 'number[n]', repeat: 'variable' },
-    { id: 'title', addressPattern: 'title[n]', repeat: 'variable' },
-    { id: 'description', addressPattern: 'description[n]', repeat: 'variable' },
+    { id: 'label', addressPattern: 'label[n]', repeat: 'variable' },
+    { id: 'title2', addressPattern: 'title2[n]', repeat: 'variable' },
+    { id: 'explain', addressPattern: 'explain[n]', repeat: 'variable' },
   ]);
 });
 

@@ -19,7 +19,6 @@ import { MAG_19_HTML } from './mag-19';
 import { MAG_20_HTML } from './mag-20';
 import { MAG_22_HTML } from './mag-22';
 import { MAG_23_HTML } from './mag-23';
-import { MAG_25_HTML } from './mag-25';
 
 import { MAG_26_HTML } from './mag-26';
 import { MAG_27_HTML } from './mag-27';
@@ -30,11 +29,8 @@ import { MAG_31_HTML } from './mag-31';
 import { MAG_32_HTML } from './mag-32';
 import { MAG_33_HTML } from './mag-33';
 import { MAG_34_HTML } from './mag-34';
-import { MAG_35_HTML } from './mag-35';
 import { MAG_36_HTML } from './mag-36';
-import { MAG_37_HTML } from './mag-37';
 
-import { MAG_38_HTML } from './mag-38';
 import { MAG_39_HTML } from './mag-39';
 import { MAG_40_HTML } from './mag-40';
 import { MAG_41_HTML } from './mag-41';
@@ -46,7 +42,6 @@ import { MAG_46_HTML } from './mag-46';
 import { MAG_47_HTML } from './mag-47';
 import { MAG_48_HTML } from './mag-48';
 import { MAG_49_HTML } from './mag-49';
-import { MAG_50_HTML } from './mag-50';
 import { MAG_51_HTML } from './mag-51';
 import { MAG_52_HTML } from './mag-52';
 import { MAG_53_HTML } from './mag-53';
@@ -71,7 +66,6 @@ const HTML_TEMPLATE_REGISTRY: Record<string, string> = {
   'mag-20': MAG_20_HTML,
   'mag-22': MAG_22_HTML,
   'mag-23': MAG_23_HTML,
-  'mag-25': MAG_25_HTML,
   'mag-26': MAG_26_HTML,
   'mag-27': MAG_27_HTML,
   'mag-28': MAG_28_HTML,
@@ -81,10 +75,7 @@ const HTML_TEMPLATE_REGISTRY: Record<string, string> = {
   'mag-32': MAG_32_HTML,
   'mag-33': MAG_33_HTML,
   'mag-34': MAG_34_HTML,
-  'mag-35': MAG_35_HTML,
   'mag-36': MAG_36_HTML,
-  'mag-37': MAG_37_HTML,
-  'mag-38': MAG_38_HTML,
   'mag-39': MAG_39_HTML,
   'mag-40': MAG_40_HTML,
   'mag-41': MAG_41_HTML,
@@ -96,7 +87,6 @@ const HTML_TEMPLATE_REGISTRY: Record<string, string> = {
   'mag-47': MAG_47_HTML,
   'mag-48': MAG_48_HTML,
   'mag-49': MAG_49_HTML,
-  'mag-50': MAG_50_HTML,
   'mag-51': MAG_51_HTML,
   'mag-52': MAG_52_HTML,
   'mag-53': MAG_53_HTML,

@@ -8,7 +8,6 @@ import {
 	formatPageUserRef,
 	pageUserRefs,
 	type AlbumBookState,
-	clampOverLimitTexts,
 	cloneAlbumBookState,
 	parseAlbumBookInput,
 	renderAlbumBookPreviewHtml,
@@ -570,9 +569,9 @@ async function handleLoadBook(
 		// 兼容两种形态：{albumId, book: {...}} 或直接就是书对象。
 		const bookInput = isRecord(parsed.book) ? parsed.book : parsed;
 		const { book, warnings } = parseAlbumBookInput(bookInput);
-		// 超 maxChars 的文案截断降级（上游 AI 自然成文不硬截断，落库可能超限）——
-		// 不能因此把整本书挡在设计对话外。结构性错误仍硬失败。
-		const clampNotes = clampOverLimitTexts(book, catalog);
+		// 文案一律原样装书，不做任何字数校验（模板已不声明字数上限）。版面装不下由渲染层
+		// 的 fit-text 解决（固定高度的文字框自动缩字号），而不是砍掉用户/AI 写的字。
+		// 结构性错误仍硬失败。
 		const errors = validateAlbumBook(book, catalog);
 		if (errors.length > 0) {
 			sendJson(response, 422, { error: "book 契约不合法", details: errors });
@@ -582,7 +581,7 @@ async function handleLoadBook(
 		sendJson(response, 200, {
 			ok: true,
 			albumId,
-			warnings: [...warnings, ...clampNotes],
+			warnings,
 			version: book.version,
 		});
 	} catch (error) {

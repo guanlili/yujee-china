@@ -12,7 +12,6 @@ export interface CatalogTextSlotDef {
 	id: string;
 	role: string;
 	lang?: string;
-	maxChars?: number;
 	hint?: string;
 	sample?: string;
 	variableDecor?: boolean;
@@ -119,7 +118,6 @@ interface RawTemplateTextSlot {
 	id: string;
 	role?: string;
 	lang?: string;
-	maxChars?: number;
 	hint?: string;
 	sample?: string;
 	variableDecor?: boolean;

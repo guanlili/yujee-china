@@ -2,6 +2,7 @@ import type { TemplateRenderProps } from '../types';
 import { PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 // 内页 · 错落四图 + 左上叙事文（category: interior，4 图）。来自 A4-19 (node 12:66)。
 // 白底；左上一段大字标题 + 小字图注段，四张等大横图（240×176 → 320×235）错落排布：
@@ -13,8 +14,8 @@ const INK = '#1c1b18';
 
 export function WebMag47({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
-  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-47', 'title'));
+  const explainTheme = resolveThemeCarrier(data, 'explain', contractRole('mag-47', 'explain'));
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 四张错落横图 */}

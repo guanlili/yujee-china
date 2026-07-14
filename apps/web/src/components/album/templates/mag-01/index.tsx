@@ -1,21 +1,21 @@
 import { COLORS, fitDisplayFontSize, WEB_FONTS } from '../constants';
-import { WebImage, WebPage } from '../web-utils';
+import {WebImage, WebPage} from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 export function WebMag01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     title?: string;
     label?: string;
-    explain1?: string;
-    explain2?: string;
-    folio?: string;
+    body?: string;
+    explain?: string;
     image?: string;
   };
-  const headingTheme = resolveThemeCarrier(data, 'title', 'title');
-  const sideTextTheme = resolveThemeCarrier(data, 'label', 'decoration');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
+  const headingTheme = resolveThemeCarrier(data, 'title', contractRole('mag-01', 'title'));
+  const sideTextTheme = resolveThemeCarrier(data, 'label', contractRole('mag-01', 'label'));
+  const explain1Theme = resolveThemeCarrier(data, 'body', contractRole('mag-01', 'body'));
+  const explain2Theme = resolveThemeCarrier(data, 'explain', contractRole('mag-01', 'explain'));
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <div
@@ -95,7 +95,7 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
           width: 360,
         }}
       >
-        {d.explain1 || ''}
+        {d.body || ''}
       </div>
       <div
         style={{
@@ -111,7 +111,7 @@ export function WebMag01({ data, imagePos }: TemplateRenderProps) {
           width: 360,
         }}
       >
-        {d.explain2 || ''}
+        {d.explain || ''}
       </div>
     </WebPage>
   );

@@ -6,9 +6,8 @@
     { "id": "image2", "orientation": ["landscape"], "quality": ["detail", "fill"], "composition": ["wide", "focal"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "variableDecor": true, "sample": "慢下来的午后" },
-    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "sample": "茶凉了又续，话说了一半就停在窗外的光里。" },
-    { "id": "date", "role": "decoration", "lang": "en", "maxChars": 12, "variableDecor": true, "sample": "May 2026" },
-    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
+    { "id": "title", "role": "title", "lang": "user", "variableDecor": true, "sample": "Casual Afternoon" },
+    { "id": "explain", "role": "explain", "lang": "user", "sample": "The tea went cold. Nobody got up to make more." },
+    { "id": "explain2", "role": "explain", "lang": "en", "sample": "May 2026" }
   ]
 }

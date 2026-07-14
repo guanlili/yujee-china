@@ -12,8 +12,8 @@ test('HTML renderer applies contract roles to CJK defaults and incompatible carr
         title: '春日相册',
         'title#artFont': 'inter',
         label: '序章',
-        explain1: 'Summer 在上海',
-        explain2: '风吹过窗台',
+        body: 'Summer 在上海',
+        explain: '风吹过窗台',
       },
     },
     () => undefined,
@@ -27,15 +27,21 @@ test('HTML renderer applies contract roles to CJK defaults and incompatible carr
   );
   assert.match(
     html,
-    /data-text-key="label"[^>]*font-family:&quot;Noto Sans SC&quot;/,
-    'Chinese decoration must use the decoration-role Noto Sans default',
+    /data-text-key="label"[^>]*font-family:&quot;Zhi Mang Xing&quot;/,
+    'Chinese decoration must use the decoration-role art font (三组策略:衬线/黑体/艺术字)',
   );
   assert.doesNotMatch(
     html,
     /data-text-key="title"[^>]*font-family:&quot;Inter&quot;/,
     'a body-only Inter carrier must not override a title slot',
   );
-  for (const slot of ['explain1', 'explain2']) {
+  // 模板作者可能删掉某个 explain 层（契约允许文字槽锚点+token 成对省略），
+  // 所以只对 HTML 里实际渲染出来的 explain 槽断言，别写死。
+  const explainSlots = ['body', 'explain'].filter((slot) =>
+    html.includes(`data-text-key="${slot}"`),
+  );
+  assert.ok(explainSlots.length > 0, 'mag-01 至少要渲染一个正文/说明槽');
+  for (const slot of explainSlots) {
     assert.match(
       html,
       new RegExp(`data-text-key="${slot}"[^>]*font-family:&quot;Noto Sans SC&quot;`),

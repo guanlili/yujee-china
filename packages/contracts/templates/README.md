@@ -20,14 +20,14 @@ context lives in the root `README.md`.
   "images": [ { "id": "image" } ], // image slots — id only
   "svgs":   [ { "id": "divider", "variableDecor": true } ], // optional decoration vector slots
   "texts": [
-    { "id": "title", "role": "title",      "lang": "user", "maxChars": 12,  "hint": "…", "variableDecor": true },
-    { "id": "body",  "role": "body",       "lang": "user", "maxChars": 180, "hint": "…" },
-    { "id": "date",  "role": "decoration", "lang": "en",   "maxChars": 12,  "variableDecor": true },
-    { "id": "folio", "role": "decoration", "lang": "en",   "maxChars": 2 }
+    { "id": "title", "role": "title",      "lang": "user",  "hint": "…", "variableDecor": true },
+    { "id": "body",  "role": "body",       "lang": "user", "hint": "…" },
+    { "id": "date",  "role": "decoration", "lang": "en",  "variableDecor": true },
+    { "id": "folio", "role": "decoration", "lang": "en" }
   ],
   "items": {                       // optional: the single repeat group (renders N times)
     "images": [ { "id": "image" } ],
-    "texts":  [ { "id": "caption", "role": "explain", "lang": "user", "maxChars": 70, "hint": "…" } ]
+    "texts":  [ { "id": "caption", "role": "explain", "lang": "user", "hint": "…" } ]
   }
 }
 ```
@@ -39,12 +39,10 @@ context lives in the root `README.md`.
   reading order.
 - **`svgs[]`** — decorative vector slots (icon / divider / flourish). Pure
   decoration, never filled with user content.
-- **`texts[]`** — `{ id, role, lang, maxChars?, hint?, variableDecor? }`.
   - `role`: `title | body | explain | decoration` (captions are always `explain`,
     prose is always `body`; `decoration` ids use function names `folio`/`date`/`label`).
   - `lang`: `user` (follows the user's language) or `en` (fixed English, used for
     decoration like dates/numbers/labels).
-  - `maxChars`: hard length cap, tuned against the physical layout height.
   - `hint`: natural-language writing guidance fed to the slot-filling LLM (what to
     write + how). Disambiguates multiple same-role slots. Does not affect layout.
   - `variableDecor`: optional boolean (default false). Marks slots whose colour /

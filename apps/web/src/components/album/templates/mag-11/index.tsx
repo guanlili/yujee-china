@@ -1,20 +1,19 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
+import {WebImage, WebPage, brToReact} from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 export function WebMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     title?: string;
-    label?: string;
     explain?: string;
-    folio?: string;
+    body?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
-  const labelTheme = resolveThemeCarrier(data, 'label', 'decoration');
-  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
-  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-11', 'title'));
+  const labelTheme = resolveThemeCarrier(data, 'explain', contractRole('mag-11', 'explain'));
+  const explainTheme = resolveThemeCarrier(data, 'body', contractRole('mag-11', 'body'));
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -52,7 +51,7 @@ export function WebMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
             fontWeight: 600,
           }}
         >
-          {labelTheme.text ?? d.label ?? ''}
+          {labelTheme.text ?? d.explain ?? ''}
         </div>
       </div>
       <div
@@ -68,8 +67,6 @@ export function WebMag11({ data, totalPages, imagePos }: TemplateRenderProps) {
         }}
       >
         <p style={{ margin: 0, fontSize: 18, color: explainTheme.accentColor ?? COLORS.ink2, fontFamily: explainTheme.webFontFamily }}>{d.explain || ''}</p>
-      </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="11" />
-    </WebPage>
+      </div></WebPage>
   );
 }

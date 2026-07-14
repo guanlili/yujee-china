@@ -2,6 +2,7 @@ import type { TemplateRenderProps } from '../types';
 import { PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 // 内页 · 旅行相册六宫格（category: interior，6 图）。白底；2 行 ×3 列等大竖图，
 // 行优先编号 image1..image6（上排左→右，下排左→右）；底部居中图注（body）。
@@ -19,7 +20,7 @@ const ROW_BOTTOM = 403;
 
 export function WebMag31({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
+  const bodyTheme = resolveThemeCarrier(data, 'body', contractRole('mag-31', 'body'));
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 上排：image1 / image2 / image3 */}

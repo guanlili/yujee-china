@@ -10,10 +10,8 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 28,
       "lang": "user",
-      "variableDecor": true,
-      "sample": "Notes from Elsewhere"
+      "variableDecor": true, "sample": "Elsewhere"
     }
   ]
 }

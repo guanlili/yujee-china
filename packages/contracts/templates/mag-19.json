@@ -5,9 +5,8 @@
     { "id": "image", "orientation": ["square"], "quality": ["detail", "fill"], "composition": ["wide", "focal"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 12, "variableDecor": true, "sample": "之间" },
-    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 90, "sample": "左栏：去时的路又长又新鲜" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 90, "sample": "右栏：回来时只剩满身的风" },
-    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
+    { "id": "title", "role": "title", "lang": "user", "variableDecor": true, "sample": "We Danced Badly" },
+    { "id": "explain", "role": "explain", "lang": "user", "sample": "photo by sam" },
+    { "id": "explain2", "role": "explain", "lang": "user", "sample": " 2026/04/01" }
   ]
 }

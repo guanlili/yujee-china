@@ -1,20 +1,19 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebImage, WebPage } from '../web-utils';
+import {WebImage, WebPage} from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     title?: string;
-    explain1?: string;
+    explain?: string;
     explain2?: string;
-    folio?: string;
   };
-  const introTheme = resolveThemeCarrier(data, 'title', 'title');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
-  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
+  const introTheme = resolveThemeCarrier(data, 'title', contractRole('mag-19', 'title'));
+  const explain1Theme = resolveThemeCarrier(data, 'explain', contractRole('mag-19', 'explain'));
+  const explain2Theme = resolveThemeCarrier(data, 'explain2', contractRole('mag-19', 'explain2'));
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <p
@@ -63,7 +62,7 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontFamily: explain1Theme.webFontFamily,
         }}
       >
-        {d.explain1 || ''}
+        {d.explain || ''}
       </p>
       <p
         style={{
@@ -82,22 +81,6 @@ export function WebMag19({ data, totalPages, imagePos }: TemplateRenderProps) {
       >
         {d.explain2 || ''}
       </p>
-      <div
-        style={{
-          position: 'absolute',
-          top: 420,
-          right: 80,
-          fontSize: 10,
-          letterSpacing: '0.32em',
-          color: folioTheme.accentColor ?? COLORS.ink3,
-          fontFamily: folioTheme.webFontFamily,
-          textTransform: 'uppercase',
-          writingMode: 'vertical-rl',
-        }}
-      >
-        Frame {d.folio || '19'} / 30
-      </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="19" />
-    </WebPage>
+      </WebPage>
   );
 }

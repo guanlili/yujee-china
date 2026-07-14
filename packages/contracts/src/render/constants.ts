@@ -106,7 +106,7 @@ export const PAGE = {
 
 // 展示级大标题自适应字号:按最长行的视觉宽度(CJK 记 1 全宽、其余记 0.62)把字号
 // 缩到盒宽内,下限保住展示感。封面/封底这类超大字模板用;web 与 PDF 共用同一函数,
-// 两端字号一致。maxChars 契约挡不住"字数合法但一行放不下"(如 96px 里的长英文标题)。
+// 两端字号一致(模板已不声明字数上限,长标题一律靠自适应字号装下)。
 export function fitDisplayFontSize(
   text: string,
   boxWidth: number,

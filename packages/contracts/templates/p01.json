@@ -5,10 +5,11 @@
     { "id": "image", "orientation": ["portrait"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "variableDecor": true, "sample": "晴日漫步" },
-    { "id": "body", "role": "body", "lang": "user", "maxChars": 80, "sample": "趁着好天气，我们出门走了很久，把整条街都晒得暖暖的。" },
-    { "id": "label1", "role": "decoration", "lang": "en", "maxChars": 20, "variableDecor": true, "sample": "nº 01 · Portrait" },
-    { "id": "label2", "role": "decoration", "lang": "en", "maxChars": 20, "variableDecor": true, "sample": "01" },
-    { "id": "date", "role": "decoration", "lang": "en", "maxChars": 12, "variableDecor": true, "sample": "MAY 26" }
+    { "id": "title", "role": "title", "lang": "user", "variableDecor": true, "sample": "Everything\nThat Happened " },
+    { "id": "body", "role": "body", "lang": "user", "sample": " We moved twice, lost the cat once, and still made it to the table in December." },
+    { "id": "label", "role": "decoration", "lang": "en", "variableDecor": true, "sample": "37N · 114E · Beijing" },
+    { "id": "label2", "role": "decoration", "lang": "en", "variableDecor": true, "sample": "02" },
+    { "id": "label3", "role": "decoration", "lang": "en", "variableDecor": true, "sample": "MAY 26" },
+    { "id": "label4", "role": "decoration", "lang": "user", "variableDecor": true, "sample": "VOL. 2026" }
   ]
 }

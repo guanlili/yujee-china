@@ -1,22 +1,21 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebImage, WebPage } from '../web-utils';
+import {WebImage, WebPage} from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image1?: string;
     image2?: string;
-    explain1?: string;
-    explain2?: string;
-    date?: string;
-    folio?: string;
+    explain?: string;
+    body?: string;
+    title?: string;
   };
-  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
-  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
-  const dn = (dateTheme.text ?? d.date ?? '04/24').split('/');
+  const dateTheme = resolveThemeCarrier(data, 'title', contractRole('mag-04', 'title'));
+  const explain1Theme = resolveThemeCarrier(data, 'explain', contractRole('mag-04', 'explain'));
+  const explain2Theme = resolveThemeCarrier(data, 'body', contractRole('mag-04', 'body'));
+  const dn = (dateTheme.text ?? d.title ?? '04/24').split('/');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <WebImage
@@ -61,7 +60,7 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 18,
         }}
       >
-        {d.explain1 || ''}
+        {d.explain || ''}
       </div>
       <WebImage
         src={d.image2}
@@ -70,7 +69,7 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
         position={imagePos?.['image2']}
         slotId="image2"
       />
-      {/* explain2 左侧加粗竖线，上下与两行文字对齐（18×1.75×2 ≈ 63px） */}
+      {/* body 左侧加粗竖线，上下与两行文字对齐（18×1.75×2 ≈ 63px） */}
       <div
         style={{
           position: 'absolute',
@@ -95,9 +94,7 @@ export function WebMag04({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 18,
         }}
       >
-        {d.explain2 || ''}
-      </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="04" />
-    </WebPage>
+        {d.body || ''}
+      </div></WebPage>
   );
 }

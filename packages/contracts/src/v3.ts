@@ -70,30 +70,7 @@ export const V3AcceptedResponse = z
   .strict();
 export type V3AcceptedResponse = z.infer<typeof V3AcceptedResponse>;
 
-/** 一页文案补丁(章节故事 / 改页回写)。 */
-export const V3PageTextsPatch = z
-  .object({
-    pageIndex: z.number().int().nonnegative(),
-    texts: z.record(z.string(), z.string()),
-  })
-  .strict();
-export type V3PageTextsPatch = z.infer<typeof V3PageTextsPatch>;
-
 // ───────────────── internal Agent/Web surfaces(PR249 shared boundary) ─────────────────
-
-export const V3InternalAgentAckRequest = z
-  .object({
-    opId: z.string().min(1),
-  })
-  .strict();
-export type V3InternalAgentAckRequest = z.infer<typeof V3InternalAgentAckRequest>;
-
-export const V3InternalAgentAckResponse = z
-  .object({
-    ok: z.boolean(),
-  })
-  .strict();
-export type V3InternalAgentAckResponse = z.infer<typeof V3InternalAgentAckResponse>;
 
 export const V3InternalAgentDataPageInfoRequest = z
   .object({
@@ -431,28 +408,6 @@ export type JudgeLayoutRequest = z.infer<typeof JudgeLayoutRequest>;
 //
 // Web 每次只送单章切片(§8.3),含本章 layout 子树(骨架页)+ history + userMessage。
 
-export const V3ChapterChatRequest = z
-  .object({
-    albumId: z.string().min(1),
-    language: V3Language,
-    // 本章切片:章节树节点(description/photos/accentColor/artFont)+ 本章骨架页。
-    chapter: V3Chapter,
-    pages: z.array(Page), // 本章 layout 子树(骨架页,slotId→photoId + 文案槽)
-    history: z.array(V3ChatTurn).max(20),
-    userMessage: z.string().max(500),
-    // 用户在编辑器里选中的那一页(③ 改页):有它时「改这里/这页」指向该页。
-    focusedPageIndex: z.number().int().nonnegative().optional(),
-  })
-  .strict();
-export type V3ChapterChatRequest = z.infer<typeof V3ChapterChatRequest>;
-
-/**
- * chapter-chat turn 动作(§4.2(2)):引导/写/改自由交错,Agent 按本次意图分派。
- *   talk = 引导(纯对话,不回补丁);write = 写满全章文案;edit = 改页(文/图)。
- */
-export const V3ChapterChatKind = z.enum(['talk', 'write', 'edit']);
-export type V3ChapterChatKind = z.infer<typeof V3ChapterChatKind>;
-
 // 改页的版面补丁(§4.2(3)涉图时):模型出意图、确定性引擎执行后回写整页。
 // 与扁平 Page 同形但不含 imagePos 以外的树形字段;templateId/images/texts 局部更新。
 export const V3LayoutPatchEntry = z
@@ -464,41 +419,6 @@ export const V3LayoutPatchEntry = z
   })
   .strict();
 export type V3LayoutPatchEntry = z.infer<typeof V3LayoutPatchEntry>;
-
-export const V3ChapterChatResponse = z
-  .object({
-    kind: V3ChapterChatKind,
-    assistantReply: z.string().min(1).max(500),
-    // 仅 kind=='write':一次性写满本章全部页文案(§4.2(2))。
-    pagesTexts: z.array(V3PageTextsPatch).optional(),
-    // 仅 kind=='edit' 且涉版面:确定性引擎执行后的整页补丁(§4.2(3))。
-    layoutPatch: z.array(V3LayoutPatchEntry).optional(),
-    // 本章标题候选(≤4),供前端展示挑选;不回灌树(§3 数据归属)。
-    nameOptions: z.array(z.string().min(1)).max(4).optional(),
-    usage: V3Usage,
-  })
-  .strict();
-export type V3ChapterChatResponse = z.infer<typeof V3ChapterChatResponse>;
-
-// 采访完一次性写满整章(§流程重构):强制写(不判 kind),Agent 用 write_chapter_copy
-// 一次写满本章每页每 slot。请求 = 本章切片(chapter 含 chapterContext + pages 已定版式)。
-export const V3WriteChapterRequest = z
-  .object({
-    albumId: z.string().min(1),
-    language: V3Language,
-    chapter: V3Chapter,
-    pages: z.array(Page),
-  })
-  .strict();
-export type V3WriteChapterRequest = z.infer<typeof V3WriteChapterRequest>;
-
-export const V3WriteChapterResponse = z
-  .object({
-    pagesTexts: z.array(V3PageTextsPatch),
-    usage: V3Usage,
-  })
-  .strict();
-export type V3WriteChapterResponse = z.infer<typeof V3WriteChapterResponse>;
 
 // ───────────── ② 章节故事 · Web 完成度状态(WP2.4 / §4.2(1)) ─────────────
 //
@@ -546,59 +466,6 @@ export const V3StoryDraft = z
   .strict();
 export type V3StoryDraft = z.infer<typeof V3StoryDraft>;
 
-export const V3EditChatFocus = z
-  .object({
-    chapterId: z.string().min(1).optional(),
-    pageIndex: z.number().int().nonnegative().optional(),
-  })
-  .strict();
-export type V3EditChatFocus = z.infer<typeof V3EditChatFocus>;
-
-export const V3EditProgressDecision = z
-  .object({
-    pageDone: z.boolean().optional(),
-    chapterDone: z.boolean().optional(),
-    advanceTo: z.literal('theme').nullable().optional(),
-  })
-  .strict();
-export type V3EditProgressDecision = z.infer<typeof V3EditProgressDecision>;
-
-export const V3EditChatRequest = z
-  .object({
-    albumId: z.string().min(1),
-    language: V3Language,
-    userMessage: z.string().max(500),
-    focus: V3EditChatFocus,
-    progress: V3StoryProgress,
-  })
-  .strict();
-export type V3EditChatRequest = z.infer<typeof V3EditChatRequest>;
-
-export const V3EditNavigation = z
-  .object({
-    pageIndex: z.number().int().nonnegative().optional(),
-    chapterId: z.string().min(1).optional(),
-  })
-  .strict()
-  .refine((value) => value.pageIndex !== undefined || value.chapterId !== undefined, {
-    message: 'navigation requires pageIndex or chapterId',
-  });
-export type V3EditNavigation = z.infer<typeof V3EditNavigation>;
-
-export const V3EditChatResponse = z
-  .object({
-    kind: z.enum(['talk', 'write', 'edit']),
-    assistantReply: z.string().min(1).max(500),
-    patches: z.array(V3LayoutPatchEntry).default([]),
-    pagesTexts: z.array(V3PageTextsPatch).optional(),
-    progressDecision: V3EditProgressDecision.optional(),
-    navigation: V3EditNavigation.optional(),
-    opId: z.string().min(1),
-    usage: V3Usage,
-  })
-  .strict();
-export type V3EditChatResponse = z.infer<typeof V3EditChatResponse>;
-
 // ───────────── ②b 页级编辑 — POST /v3/page-edit(同步,两段式) ─────────────
 //
 // 两段解耦(docs/superpowers/specs/2026-06-25-page-edit-agent-loop-design.md):
@@ -607,38 +474,6 @@ export type V3EditChatResponse = z.infer<typeof V3EditChatResponse>;
 // 编辑只作用于聚焦页;完成度由 Agent 代码确定性算(复用 chapter-chat 判定),派生不落库。
 // 请求复用 V3ChapterChatRequest 同形字段(降低契约面),响应复用 V3LayoutPatchEntry(不另
 //   造补丁形状)。任何 place/GPS/坐标字段禁止(§3 redact 红线;V3Chapter/Page 已 strict)。
-
-/** 段一意图(可观测,回到响应里)。单意图(本期不做多意图 plan)。 */
-export const V3PageEditIntent = z.enum(['edit_text', 'change_layout', 'advance', 'talk']);
-export type V3PageEditIntent = z.infer<typeof V3PageEditIntent>;
-
-export const V3PageEditRequest = z
-  .object({
-    language: V3Language,
-    // 聚焦页所属那一章(含 photos 的 sceneDescription/orientation),供算完成度 + 写作 grounding。
-    chapter: V3Chapter,
-    pages: z.array(Page), // 该章的页(含当前 texts)
-    focusedPageIndex: z.number().int().nonnegative(),
-    userMessage: z.string().max(500),
-    history: z.array(V3ChatTurn).max(20),
-  })
-  .strict();
-export type V3PageEditRequest = z.infer<typeof V3PageEditRequest>;
-
-export const V3PageEditResponse = z
-  .object({
-    assistantReply: z.string().min(1).max(500),
-    // 段一判定(可观测)。
-    intent: V3PageEditIntent,
-    // edit_text→一条 { pageIndex, texts };change_layout→一条 { pageIndex, templateId, images }。
-    // 复用 V3LayoutPatchEntry(与 chapter-chat 同构,web 走现有单一 patch 合并路径)。
-    layoutPatch: z.array(V3LayoutPatchEntry).optional(),
-    // intent=='advance' 时为 true:用户想进下一章 → web 导航(Agent 不导航)。
-    advanceIntent: z.boolean().optional(),
-    usage: V3Usage,
-  })
-  .strict();
-export type V3PageEditResponse = z.infer<typeof V3PageEditResponse>;
 
 // ───────────── ③ 主题/章节色 · 推荐 — POST /v3/recommend(同步) ─────────────
 //
@@ -658,150 +493,19 @@ export const V3ChapterOverview = z
   .strict();
 export type V3ChapterOverview = z.infer<typeof V3ChapterOverview>;
 
-export const V3RecommendRequest = z
-  .object({
-    albumId: z.string().min(1),
-    language: V3Language,
-    chapters: z.array(V3ChapterOverview).min(1),
-    analysisSummary: z.string().max(1000).optional(), // 分析摘要(全局基调)
-    userMessage: z.string().max(500).optional(),
-    fontHint: z.string().max(200).optional(),
-  })
-  .strict();
-export type V3RecommendRequest = z.infer<typeof V3RecommendRequest>;
-
-export const V3ChapterThemeColor = z
-  .object({
-    chapterId: z.string().min(1),
-    accentColor: AccentColor,
-    subject: z.string().min(1).optional(),
-  })
-  .strict();
-export type V3ChapterThemeColor = z.infer<typeof V3ChapterThemeColor>;
-
-export const V3BookThemeOption = z
-  .object({
-    optionId: z.string().min(1).max(80),
-    artFont: ArtFontPack,
-    chapters: z.array(V3ChapterThemeColor).min(1),
-    style: z.string().min(1).max(160).optional(),
-    label: z.string().min(1).max(160).optional(),
-  })
-  .strict();
-export type V3BookThemeOption = z.infer<typeof V3BookThemeOption>;
-
-export const V3RecommendResponse = z
-  .object({
-    bookThemeOptions: z.array(V3BookThemeOption).length(3),
-    assistantReply: z.string().max(500),
-    usage: V3Usage,
-  })
-  .strict();
-export type V3RecommendResponse = z.infer<typeof V3RecommendResponse>;
-
 // ───────────── ③ 主题/章节色 · 应用 — POST /v3/apply-theme(同步,确定性) ─────────────
 //
 // 无 LLM:把用户选定的每章色/字体一键刷到所有 `variableDecor` 槽(§4.3 / §9),回 layout 补丁。
-
-/**
- * 用户选定的每章主题/色/字体(写入章节树 + 可选标题槽)。
- * `subject` 存在时 = 用户确认的该章标题(一句话主题);apply-theme 只在它存在且 title
- * 槽为空时持久化,并把色/字体刷到 variableDecor 槽。
- */
-export const V3ChapterThemeChoice = z
-  .object({
-    chapterId: z.string().min(1),
-    subject: z.string().min(1).optional(),
-    accentColor: AccentColor,
-    artFont: ArtFontPack,
-  })
-  .strict();
-export type V3ChapterThemeChoice = z.infer<typeof V3ChapterThemeChoice>;
-
-export const V3ApplyThemeRequest = z
-  .object({
-    albumId: z.string().min(1),
-    language: V3Language,
-    chapters: z.array(V3ChapterThemeChoice).min(1),
-    // 受影响的 layout 子树(③④传相关页,§8.3);apply 把 variableDecor 槽刷上色/字体,
-    // 并在 subject 存在时把它写进该章空 title 槽(章节标题持久化)。
-    pages: z.array(Page),
-  })
-  .strict();
-export type V3ApplyThemeRequest = z.infer<typeof V3ApplyThemeRequest>;
-
-export const V3ApplyThemeResponse = z
-  .object({
-    // 刷完 variableDecor 槽(章节色/字体/SVG 点缀)后的整页补丁(§3 树边界:仍是页级)。
-    layoutPatch: z.array(V3LayoutPatchEntry).min(1),
-    assistantReply: z.string().max(500).optional(),
-    usage: V3Usage,
-  })
-  .strict();
-export type V3ApplyThemeResponse = z.infer<typeof V3ApplyThemeResponse>;
 
 // ───────────── ④ 书籍设计 — POST /v3/cover(同步,确定性,可选) ─────────────
 //
 // 选封面/封尾模板 → 自动填充成稿;封面可跳过(§4.4)。空选择 = 跳过,回空补丁。
 
-export const V3CoverRequest = z
-  .object({
-    albumId: z.string().min(1),
-    language: V3Language,
-    // 选定的封面/封尾模板;null = 跳过该项(封面可选,§4.4)。
-    coverTemplateId: z.string().min(1).nullable().optional(),
-    endingTemplateId: z.string().min(1).nullable().optional(),
-    // Stage5: 200px base64 thumbnails are for local color extraction only; do not
-    // forward them to LLM prompts.
-    coverPhoto: z.string().optional(),
-    endingPhoto: z.string().optional(),
-    // Textual guidance may be sent to 5a copy / 5b AI color design instead of base64.
-    coverPhotoDesc: z.string().optional(),
-    // Cover/ending pages have no chapter owner, so Stage5 carries the selected
-    // whole-book art font explicitly for page-level text carriers.
-    artFont: ArtFontPack.optional(),
-    hint: z.string().optional(),
-    userMessage: z.string().default(''),
-    history: z.array(V3ChatTurn).max(20).default([]),
-    pages: z.array(Page), // 相关页(供自动填充取图/文)
-  })
-  .strict();
-export type V3CoverRequest = z.infer<typeof V3CoverRequest>;
-export type V3CoverRequestInput = z.input<typeof V3CoverRequest>;
-
-export const V3CoverResponse = z
-  .object({
-    // 封面/封尾页补丁;跳过时为空数组(§4.4「跳过=空」)。
-    layoutPatch: z.array(V3LayoutPatchEntry),
-    assistantReply: z.string().max(500).optional(),
-    needsUserInput: z.boolean().default(false),
-    usage: V3Usage,
-  })
-  .strict();
-export type V3CoverResponse = z.infer<typeof V3CoverResponse>;
 
 // ───────────── ⑤ 待导出 — POST /v3/finalize(同步,确定性) ─────────────
 //
 // 唯一传全树的端点(§8.3):整棵 V3 章节树 → flatten 成扁平 `AlbumLayoutPlan`(烘焙章节色/
 //   字体进扁平页,§3 树边界),供 Browser 出 PDF。
-
-export const V3FinalizeRequest = z
-  .object({
-    albumId: z.string().min(1),
-    language: V3Language,
-    tree: V3LayoutTree, // 整棵章节树(无 base64)
-    pages: z.array(Page).min(1), // 全部 layout 页(各章骨架页 + 封面/封尾)
-  })
-  .strict();
-export type V3FinalizeRequest = z.infer<typeof V3FinalizeRequest>;
-
-export const V3FinalizeResponse = z
-  .object({
-    layout: AlbumLayoutPlan, // 扁平定稿(对外渲染契约,不加树形字段)
-    usage: V3Usage,
-  })
-  .strict();
-export type V3FinalizeResponse = z.infer<typeof V3FinalizeResponse>;
 
 // ────────────────────────────── async callback envelope ──────────────────────────────
 //
@@ -901,8 +605,6 @@ export const V3DesignTextSlotSpec = z
     id: z.string().min(1),
     role: z.string().min(1),
     sample: z.string().max(300).default(''),
-    // 模板声明的字数上限(Unicode 字符),给文案模型当预算;可选,缺省=不限。
-    maxChars: z.number().int().positive().optional(),
   })
   .strict();
 export type V3DesignTextSlotSpec = z.infer<typeof V3DesignTextSlotSpec>;

@@ -3,6 +3,7 @@
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
 import { PAGE } from './templates/constants';
 import { preferredPageHtml } from './page-html-dom';
+import { FittedPageHtml } from './FittedPageHtml';
 import type { EditorPage } from './types';
 import { getWebTemplate } from './web-registry';
 import { useAlbumFonts } from '@/lib/font/album-font-loader';
@@ -49,7 +50,7 @@ export function PagePreview({ page, totalPages, resolveImage, scale = 0.46 }: Pr
         }}
       >
         {html !== undefined ? (
-          <div dangerouslySetInnerHTML={{ __html: html }} />
+          <FittedPageHtml html={html} />
         ) : Template && data ? (
           <Template data={data} totalPages={totalPages} imagePos={page.imagePosJson} />
         ) : (

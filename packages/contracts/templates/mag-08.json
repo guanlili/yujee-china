@@ -21,38 +21,24 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 12,
       "lang": "user",
-      "variableDecor": true,
-      "sample": "那一刻"
+      "variableDecor": true, "sample": "Carry .LA\n"
     },
     {
-      "id": "explain1",
+      "id": "explain",
       "role": "explain",
-      "maxChars": 90,
-      "lang": "user",
-      "sample": "他回头笑了一下，正好被光照亮"
+      "lang": "user", "sample": "March. The last morning in the old flat, before the truck came. "
     },
     {
-      "id": "explain2",
-      "role": "explain",
-      "maxChars": 480,
-      "lang": "user",
-      "sample": "那是个很普通的下午，阳光斜斜地照进来，把整个房间都染成暖色。\n\n后来我常想起这一幕，想起当时谁也没说话，却觉得格外安心。"
+      "id": "body",
+      "role": "body",
+      "lang": "user", "sample": "We packed everything into boxes and then stood around not knowing what to do with our hands. \n\nThe boy asked if the newplace would have the same door.\n\n I said no. He thought about it and said okay. "
     },
     {
-      "id": "date",
+      "id": "label",
       "role": "decoration",
-      "maxChars": 12,
       "lang": "en",
-      "variableDecor": true,
-      "sample": "08/24"
-    },
-    {
-      "id": "folio",
-      "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
+      "variableDecor": true, "sample": "08/24"
     }
   ]
 }

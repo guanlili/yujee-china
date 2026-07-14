@@ -17,5 +17,4 @@ export const MAG_06_HTML = `<div data-template="mag-06" style="position:relative
   <div data-image-slot="image" style="position:absolute;left:83px;top:90px;width:628px;height:943px;overflow:hidden">
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>
-  <div data-text-key="folio" style="position:absolute;bottom:40px;right:50px;font-style:italic;font-size:22px;color:{{COLOR:folio|#1c1b18}};font-family:{{FONT:folio|${SERIF_EN}}}">{{TEXT:folio}}<span style="color:#a09b8e">/</span></div>
 </div>`;

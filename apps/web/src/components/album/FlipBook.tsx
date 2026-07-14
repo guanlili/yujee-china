@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { getWebTemplate } from './web-registry';
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
 import { applyFolioOverlay, pageFolioNumbers, preferredPageHtml } from './page-html-dom';
+import { FittedPageHtml } from './FittedPageHtml';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from './spreads';
 import { PAGE } from './templates/constants';
 import type { EditorPage } from './types';
@@ -83,7 +84,7 @@ function PageFace({
         }}
       >
         {html !== undefined ? (
-          <div dangerouslySetInnerHTML={{ __html: html }} />
+          <FittedPageHtml html={html} />
         ) : Template && data ? (
           <Template data={data} totalPages={totalPages} imagePos={page.imagePosJson} />
         ) : (

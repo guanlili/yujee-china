@@ -1,21 +1,20 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebImage, WebPage, brToReact } from '../web-utils';
+import {WebImage, WebPage, brToReact} from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image1?: string;
     image2?: string;
-    body?: string;
+    explain?: string;
     title?: string;
-    date?: string;
-    folio?: string;
+    explain2?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
-  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
-  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
-  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-15', 'title'));
+  const dateTheme = resolveThemeCarrier(data, 'explain2', contractRole('mag-15', 'explain2'));
+  const bodyTheme = resolveThemeCarrier(data, 'explain', contractRole('mag-15', 'explain'));
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <p
@@ -33,7 +32,7 @@ export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontSize: 18,
         }}
       >
-        {d.body || ''}
+        {d.explain || ''}
       </p>
       <WebImage
         src={d.image1}
@@ -79,9 +78,7 @@ export function WebMag15({ data, totalPages, imagePos }: TemplateRenderProps) {
           fontFamily: dateTheme.webFontFamily,
         }}
       >
-        {dateTheme.text ?? d.date ?? ''}
-      </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="15" />
-    </WebPage>
+        {dateTheme.text ?? d.explain2 ?? ''}
+      </div></WebPage>
   );
 }

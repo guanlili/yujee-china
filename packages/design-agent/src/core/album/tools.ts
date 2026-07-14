@@ -78,7 +78,8 @@ const updatePageTextsSchema = Type.Object({
 		Type.Object({
 			pageNo: PageRefSchema,
 			texts: Type.Record(Type.String(), Type.String(), {
-				description: "槽 id → 新文字内容。只需给出要修改的槽；每个槽必须遵守模板的 maxChars 限制。",
+				description:
+					"槽 id → 新文字内容。只需给出要修改的槽。写多长都行——版面会自动缩字号装下；照着 sample 的篇幅量级即可。",
 			}),
 		}),
 		{ description: "一次可提交多页、每页多槽的文字修改。" },
@@ -299,7 +300,7 @@ function createListTemplatesTool(
 					imageSlotCount: entry.imageSlotIds.length,
 					textSlots: entry.textSlotIds.map((slotId) => {
 						const def = describeTextSlot(entry, slotId);
-						return `${slotId}(${def.role}${def.maxChars !== undefined ? `,≤${def.maxChars}` : ""})`;
+						return `${slotId}(${def.role})`;
 					}),
 					structure: entry.structureDescription,
 				}),
@@ -834,7 +835,8 @@ function migratePageToTemplate(page: AlbumPage, nextTemplate: TemplateCatalogEnt
 		nextPage.imagePos = Object.keys(nextImagePos).length > 0 ? nextImagePos : null;
 	}
 
-	// 文字迁移：槽 id 相同者保留（超长截断并报告），carrier 随基础槽走，其余丢弃并报告。
+	// 文字迁移：槽 id 在新模板里存在者原样保留（多长都不截断），carrier 随基础槽走，
+	// 其余丢弃并报告。
 	const nextTexts: Record<string, string> = {};
 	const keptSlots = new Set<string>();
 	for (const [slotId, value] of Object.entries(page.texts)) {
@@ -845,15 +847,7 @@ function migratePageToTemplate(page: AlbumPage, nextTemplate: TemplateCatalogEnt
 			keptSlots.add(slotId);
 			continue;
 		}
-		const def = nextTemplate.textDefsByBase.get(slotIdBase(slotId));
-		if (def?.maxChars !== undefined && [...value].length > def.maxChars) {
-			const truncated = [...value].slice(0, def.maxChars).join("");
-			nextTexts[slotId] = truncated;
-			keptSlots.add(slotId);
-			notes.push(`槽 "${slotId}" 超出新模板 maxChars ${def.maxChars}，已截断为："${truncated}"`);
-		} else {
-			notes.push(`槽 "${slotId}" 在新模板中不存在，内容已移除："${value.length > 30 ? `${value.slice(0, 30)}…` : value}"`);
-		}
+		notes.push(`槽 "${slotId}" 在新模板中不存在，内容已移除："${value.length > 30 ? `${value.slice(0, 30)}…` : value}"`);
 	}
 	for (const [slotId, value] of Object.entries(page.texts)) {
 		const carrier = parseThemeCarrierKey(slotId);
@@ -934,14 +928,13 @@ function preview(text: string, query: string): string {
 function describeTextSlot(
 	template: TemplateCatalogEntry,
 	slotId: string,
-): { slotId: string; role: string; lang?: string; maxChars?: number; sample?: string } {
+): { slotId: string; role: string; lang?: string; sample?: string } {
 	const def = template.textDefsByBase.get(slotIdBase(slotId));
 	// 不再暴露 hint（抽象指引效果差）；只给 sample 示范文案，让 AI 照着改。
 	return {
 		slotId,
 		role: def?.role ?? "text",
 		lang: def?.lang,
-		maxChars: def?.maxChars,
 		sample: def?.sample,
 	};
 }

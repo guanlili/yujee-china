@@ -8,20 +8,17 @@
   ],
   "texts": [
     {
-      "id": "title",
-      "role": "title",
-      "maxChars": 30,
-      "lang": "user",
-      "variableDecor": true,
-      "sample": "A Year of Somewhere"
+      "id": "body",
+      "role": "body",
+      "lang": "user", "sample": "A Year of Somewhere"
     },
     {
-      "id": "label",
-      "role": "decoration",
-      "maxChars": 12,
+      "id": "title",
+      "role": "title",
       "lang": "en",
       "variableDecor": true,
       "sample": "NORWAY"
-    }
+    },
+    { "id": "explain", "role": "explain", "lang": "user", "sample": "2026 year record" }
   ]
 }

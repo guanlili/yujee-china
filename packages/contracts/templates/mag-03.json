@@ -21,24 +21,15 @@
     {
       "id": "label",
       "role": "decoration",
-      "maxChars": 12,
       "lang": "en",
-      "variableDecor": true,
-      "sample": "京都 ·"
+      "variableDecor": true, "sample": "京都 · 2026/04/01"
     },
     {
-      "id": "date",
+      "id": "label2",
       "role": "decoration",
-      "maxChars": 10,
       "lang": "en",
       "variableDecor": true,
       "sample": "03 / 30"
-    },
-    {
-      "id": "folio",
-      "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
     }
   ]
 }

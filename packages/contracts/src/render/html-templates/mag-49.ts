@@ -17,12 +17,16 @@ const SANS_EN = '&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&
 const PLAYFAIR = '&quot;Playfair Display&quot;, &quot;Noto Serif SC&quot;, &quot;Songti SC&quot;, serif';
 
 export const MAG_49_HTML = `<div data-template="mag-49" style="position:relative;width:794px;height:1123px;background:#FFFFFF;overflow:hidden">
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:28px;top:150px;width:738px;height:155px;font-weight:700;font-size:124px;line-height:1;white-space:nowrap;overflow:hidden;display:flex;align-items:baseline;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}}">{{TEXT:title}}</div>
-  <div style="position:absolute;left:119px;top:44px;width:93px;font-family:${SANS_EN};font-weight:400;font-size:21px;line-height:1.2;color:#1c1b18">when</div>
-  <div style="position:absolute;left:239px;top:44px;width:93px;font-family:${SANS_EN};font-weight:400;font-size:21px;line-height:1.2;color:#1c1b18">where</div>
-  <div style="position:absolute;left:119px;top:70px;width:93px;font-family:${SANS_EN};font-weight:400;font-size:21px;line-height:1.2;color:#1c1b18">who</div>
-  <div style="position:absolute;left:239px;top:70px;width:93px;font-family:${SANS_EN};font-weight:400;font-size:21px;line-height:1.2;color:#1c1b18">what</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;left:30px;top:150px;width:660px;height:155px;font-weight:700;font-size:124px;line-height:1;white-space:pre;overflow:hidden;display:flex;align-items:baseline;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}}">{{TEXT:title}}</div>
   <div data-image-slot="image" style="position:absolute;left:28px;top:306px;width:674px;height:699px;overflow:hidden">
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>
+
+  <div data-text-key="explain" style="position:absolute;left:60px;top:60px;width:320px;font-size:14px;line-height:1.6;letter-spacing:0.02em;color:{{COLOR:explain|#5a574f}};font-family:{{FONT:explain|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:26px">{{TEXT:explain}}</div>
+
+  <div data-text-key="explain2" style="position:absolute;left:60px;top:90px;width:320px;font-size:14px;line-height:1.6;letter-spacing:0.02em;color:{{COLOR:explain2|#5a574f}};font-family:{{FONT:explain2|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:26px">{{TEXT:explain2}}</div>
+
+  <div data-text-key="explain3" style="position:absolute;left:260px;top:60px;width:320px;font-size:18px;line-height:1.7;letter-spacing:0.02em;color:{{COLOR:explain3|#3a3833}};font-family:{{FONT:explain3|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:26px">{{TEXT:explain3}}</div>
+
+  <div data-text-key="explain4" style="position:absolute;left:260px;top:90px;width:320px;font-size:18px;line-height:1.7;letter-spacing:0.02em;color:{{COLOR:explain4|#3a3833}};font-family:{{FONT:explain4|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:26px">{{TEXT:explain4}}</div>
 </div>`;

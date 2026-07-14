@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 
+import { TEMPLATE_IDS, TEMPLATES } from '@yujee/contracts/templates';
 import {
   buildSkeleton,
   canPlace,
@@ -113,17 +114,27 @@ test('seeded pick is reproducible and attempt rerolls are reversible', () => {
 
 test('exclude exhaustion falls back to legal candidates', () => {
   const photos = [photo(1, 'hero'), photo(2, 'fill'), photo(3, 'fill')];
+  // 排除【全部】3 图槽内页候选,把可选集抽干 —— id 从注册表派生,别写死(模板会被增删)。
+  const threeImageIds: string[] = TEMPLATE_IDS.filter(
+    (id) => TEMPLATES[id]?.category === 'interior' && TEMPLATES[id]?.images.length === 3,
+  );
+  assert.ok(threeImageIds.length > 0, '至少要有一个 3 图槽内页模板');
+
   const templateId = pickTemplate({
     useCase: 'chapter',
     imageCount: 3,
     photos,
-    exclude: new Set(['mag-33', 'mag-50', 'mag-52']),
+    exclude: new Set(threeImageIds),
     albumId: 'album',
     chapterId: 'chapter',
     pageOrdinal: 0,
   });
 
-  assert.equal(templateId, 'mag-50');
+  // 候选被排干净时仍要回退到一个【放得下】的模板,而不是崩、或返回塞不下的版式。
+  assert.ok(
+    threeImageIds.includes(templateId),
+    `回退结果 ${templateId} 应该仍是合法的 3 图槽内页模板`,
+  );
   assert.equal(canPlace(templateId, photos), true);
 });
 

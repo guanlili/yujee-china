@@ -6,12 +6,13 @@
   "imageSlotIds": [
     "image"
   ],
-  "textSlotCount": 4,
+  "textSlotCount": 5,
   "textSlotIds": [
     "title",
-    "subtitle",
-    "year",
-    "city"
+    "title2",
+    "body",
+    "body2",
+    "explain"
   ],
-  "structureDescription": "mag-23 cover template with 1 image slot(s) (image) and 4 concrete text slot(s) (title, subtitle, year, city). one dominant image block; 4 text slots."
+  "structureDescription": "mag-23 cover template with 1 image slot(s) (image) and 5 concrete text slot(s) (title, title2, body, body2, explain). one dominant image block; 5 text slots."
 }

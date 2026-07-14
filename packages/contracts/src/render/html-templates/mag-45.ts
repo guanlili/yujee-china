@@ -13,5 +13,5 @@ export const MAG_45_HTML = `<div data-template="mag-45" style="position:relative
   <div data-image-slot="image" style="position:absolute;left:148px;top:35px;width:606px;height:927px;overflow:hidden">
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:31px;top:969px;width:723px;height:155px;font-weight:700;font-size:{{FIT_SIZE:title|700,120,40}}px;line-height:1;white-space:nowrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}}">{{TEXT:title}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;left:31px;top:969px;width:600px;height:100px;font-weight:700;font-size:{{FIT_SIZE:title|700,120,40}}px;line-height:1;white-space:pre;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}}">{{TEXT:title}}</div>
 </div>`;

@@ -13,36 +13,29 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 20,
       "lang": "user",
       "variableDecor": true,
       "sample": "365 Stories"
     },
     {
-      "id": "body1",
+      "id": "body",
       "role": "body",
-      "maxChars": 180,
-      "lang": "user",
-      "sample": "那年冬天特别冷，我们却总爱往外跑，回来时手是冰的，心是热的。"
+      "lang": "user", "sample": "I did not want to make this book. I thought a year this ordinary was not worth printing. Then I laid the photographs"
     },
     {
-      "id": "explain1",
+      "id": "explain",
       "role": "explain",
-      "maxChars": 20,
       "lang": "user",
       "sample": "Steven D.K"
     },
     {
       "id": "body2",
       "role": "body",
-      "maxChars": 180,
-      "lang": "user",
-      "sample": "她说想看海，于是我们临时决定出发，开了一整夜的车。"
+      "lang": "user", "sample": "She printed forty. I would have printed four hundred. We argued about it for a week, and in the end she let me keep the one of the cat under the neighbour's car."
     },
     {
       "id": "explain2",
       "role": "explain",
-      "maxChars": 20,
       "lang": "user",
       "sample": "July Zh"
     }

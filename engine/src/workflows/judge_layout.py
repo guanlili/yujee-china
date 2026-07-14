@@ -18,7 +18,7 @@ from ..api import callback
 from ..providers import ai_client
 from .core.layout import select_layout as select_layout_agent
 from .core.layout.select_layout import GeminiLayoutUnavailable
-from .core.layout import generic_copy, legalize
+from .core.layout import legalize
 from .core.layout import write_copy as write_copy_agent
 from ..logging_config import get_logger, request_id_var
 from ..contracts.schemas import (
@@ -77,12 +77,12 @@ async def _finalize_unit(unit: Any, winner_index: int, language: str) -> list[di
     pages = legalize.finalize_candidate_pages(
         {"chapterId": unit.chapterId}, _candidate_pages(winner)
     )
-    # 版式已定 → 写文案(#AI copy writer);generic_copy 之后只叠 decoration 槽,互不冲突。
+    # 版式已定 → 写文案(#AI copy writer),含 decoration 槽。
     return await write_copy_agent.apply_write_copy(unit, pages, language=language)
 
 
 async def judge_pages(req: JudgeLayoutRequest) -> tuple[list[dict[str, Any]], V3Usage]:
-    """逐 unit 选赢家(多单元合并进同一次评委会话),拼成整册 interior 页 + 填页码。
+    """逐 unit 选赢家(多单元合并进同一次评委会话),拼成整册 interior 页。
 
     评委看的是浏览器渲染的真实缩略图(照片已排进版式);批量判图按
     select_layout_judge_batch_max_images 组批,批与批之间并发(受
@@ -151,8 +151,8 @@ async def judge_pages(req: JudgeLayoutRequest) -> tuple[list[dict[str, Any]], V3
     for pages in unit_pages:
         interior_pages.extend(pages)
 
-    # generic_copy 需要 chapters 取 takenAt 填日期;这里没有完整章节信息,传空(只填页码)。
-    pages = generic_copy.fill_generic_copy(interior_pages, [])  # type: ignore[arg-type]
+    # 页码不再是模板槽位:展示层按当前页序统一生成(全书固定右下角一处),这里无需 code-fill。
+    pages = interior_pages
     usage = V3Usage(
         durationMs=int((time.monotonic() - started) * 1000),
         geminiCallCount=calls,

@@ -78,21 +78,6 @@ test('restAwait() refuses to show the float while a thinking block is still acti
   );
 });
 
-test('restAwait() refuses to show the float while awaiting a satisfaction choice', () => {
-  const src = source('EditorPort.tsx');
-
-  // After a write turn the satisfaction card (满意/不满意) is the live affordance — the AI is
-  // NOT idly "listening", so the float must stay hidden until the user picks. restAwait()
-  // gates on awaitingSatisfaction so the trailing restAwait() of the write turn (which runs
-  // right after appendSatisfactionCard set the flag) cannot float the jellyfish over the card.
-  const body = fnBody(src, /function restAwait\(\)/);
-  assert.match(
-    body,
-    /awaitingSatisfaction/,
-    'restAwait() must stay hidden while awaitingSatisfaction is true (card is the affordance)',
-  );
-});
-
 test('the idle float and the thinking spinner are distinct elements (no shared toggle)', () => {
   const src = source('EditorPort.tsx');
 

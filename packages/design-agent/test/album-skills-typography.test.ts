@@ -54,26 +54,38 @@ test("set_text_fonts：三类字体按角色刷满全书，装饰独立于标题
 	assert.equal(result.terminate, true);
 
 	const book = getBook();
-	// page0 mag-01：title(title)→标题；label/folio(decoration)→装饰；explain1/2(explain)→正文。
-	const cover = book.pages[0]!;
-	assert.equal(cover.texts["title#artFont"], TITLE);
-	assert.equal(cover.texts["label#artFont"], DECO);
-	assert.equal(cover.texts["folio#artFont"], DECO);
-	assert.equal(cover.texts["explain1#artFont"], BODY);
-	assert.equal(cover.texts["explain2#artFont"], BODY);
-	// page2 mag-10：重复槽 explain[n]→正文；folio→装饰。
-	const repeatPage = book.pages[2]!;
-	assert.equal(repeatPage.texts["explain[0]#artFont"], BODY);
-	assert.equal(repeatPage.texts["explain[3]#artFont"], BODY);
-	assert.equal(repeatPage.texts["folio#artFont"], DECO);
-	// page5 mag-25：body→正文；date(decoration)→装饰；title→标题；explain→正文。
-	const richPage = book.pages[5]!;
-	assert.equal(richPage.texts["body#artFont"], BODY);
-	assert.equal(richPage.texts["date#artFont"], DECO);
-	assert.equal(richPage.texts["title#artFont"], TITLE);
-	assert.equal(richPage.texts["explain#artFont"], BODY);
+	const catalog = loadTemplateCatalog();
+	// role → 字体的映射:title→标题字;body/explain→正文字;decoration→装饰字。
+	// 【不写死哪个槽是什么 role】—— 模板台能改 role、槽 id 也按 role 派号,写死必烂。
+	const fontForRole: Record<string, string> = {
+		title: TITLE,
+		body: BODY,
+		explain: BODY,
+		decoration: DECO,
+	};
+	const expectFontsByContractRole = (pageNo: number) => {
+		const page = book.pages[pageNo]!;
+		const template = catalog.get(page.templateId);
+		assert.ok(template, `模板 ${page.templateId} 不在目录里`);
+		for (const [slotId, def] of template.textDefsByBase) {
+			for (const key of Object.keys(page.texts)) {
+				if (!key.endsWith("#artFont")) continue;
+				const base = key.slice(0, -"#artFont".length).replace(/\[\d+\]$/, "");
+				if (base !== slotId) continue;
+				assert.equal(
+					page.texts[key],
+					fontForRole[def.role],
+					`page${pageNo} ${page.templateId}/${key}(${def.role}) 的字体不对`,
+				);
+			}
+		}
+	};
+	expectFontsByContractRole(0);   // 封面:title/decoration/body/explain 四种 role 齐全
+	expectFontsByContractRole(2);   // 重复槽页:explain[n] 每个都要刷到
+	expectFontsByContractRole(5);
 
-	assert.equal(typeof cover.texts.title, "string");
+	// 文字内容本身不被动过。
+	assert.equal(typeof book.pages[0]!.texts.title, "string");
 	for (const page of book.pages) {
 		const parsed = Page.safeParse(page);
 		assert.ok(parsed.success, JSON.stringify(parsed.success ? "" : parsed.error.issues));
@@ -87,11 +99,19 @@ test("set_text_fonts：只给装饰字体时，标题/正文槽不被改字体",
 	await tool.execute("t1", { decorationFont: "jetbrains-mono" } as never);
 
 	const book = getBook();
+	const catalog = loadTemplateCatalog();
 	const cover = book.pages[0]!;
-	assert.equal(cover.texts["label#artFont"], "jetbrains-mono");
-	assert.equal(cover.texts["folio#artFont"], "jetbrains-mono");
-	assert.equal(cover.texts["title#artFont"], undefined);
-	assert.equal(cover.texts["explain1#artFont"], undefined);
+	// 只有 decoration 槽被改字体;其余 role 一律不动。从契约取 role,别写死槽 id。
+	const template = catalog.get(cover.templateId);
+	assert.ok(template);
+	for (const [slotId, def] of template.textDefsByBase) {
+		if (!(slotId in cover.texts)) continue;
+		assert.equal(
+			cover.texts[`${slotId}#artFont`],
+			def.role === "decoration" ? "jetbrains-mono" : undefined,
+			`${cover.templateId}/${slotId}(${def.role}) 的字体不该被动`,
+		);
+	}
 });
 
 test("set_text_fonts：配色与字体互不干扰，各写各的 carrier", async () => {

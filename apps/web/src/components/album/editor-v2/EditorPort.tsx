@@ -25,7 +25,7 @@ import { YujeeState } from '@/components/app/YujeeState';
 import { getWebTemplate } from '../web-registry';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
-import { applyFolioOverlay, pageFolioNumbers, preferredPageHtml } from '../page-html-dom';
+import { applyFolioOverlay, fitTextBoxes, pageFolioNumbers, preferredPageHtml } from '../page-html-dom';
 import { PAGE } from '../templates/constants';
 import { clampZoom, paintDecision } from './zoom-util';
 import {
@@ -54,7 +54,6 @@ import {
   type DraftEditResult,
   type DraftSkeleton,
 } from '@/lib/album/authoring-client';
-import type { V3PageTextsPatch } from '@yujee/contracts';
 import { getTemplate, TEMPLATE_IDS } from '@yujee/contracts/templates';
 import { ChatPanel, type ChatMode } from './ChatPanel';
 import {
@@ -331,7 +330,6 @@ function EditorShell({
   const coordinator = useRef<ChatCoordinator | null>(null);
   const [storyProgress, setStoryProgress] = useState<StoryProgress | null>(null);
   const [, setStoryProgressLoading] = useState(mode === 'authoring');
-  const [, setStoryConfirming] = useState(false);
 
   const breadcrumbStage = storyProgress?.stage ?? detail.album.stage ?? 'analysing';
   // §4.2: chapter confirmation moved off the breadcrumb into the in-flow satisfaction
@@ -391,7 +389,6 @@ function EditorShell({
             storyProgress={storyProgress}
             setStoryProgress={setStoryProgress}
             setStoryProgressLoading={setStoryProgressLoading}
-            setStoryConfirming={setStoryConfirming}
           />
         </div>
 
@@ -854,6 +851,7 @@ function EditorBook({
         node.setAttribute('data-editable', '');
       });
       markEditableTextKeys(el, page);
+      fitTextBoxes(el);
     }
     // Repaint every surface that shows page content after an edit.
     function repaintBook() {
@@ -915,6 +913,7 @@ function EditorBook({
         `overflow:hidden;background:#fff`;
       host.innerHTML = faceInner(page);
       document.body.appendChild(host);
+      fitTextBoxes(host);
       try {
         // html2canvas-pro (not the unmaintained html2canvas@1.4.1) — the latter
         // throws on modern CSS color functions (oklch/lab/color-mix) that Tailwind
@@ -2109,40 +2108,6 @@ function EditorBook({
       return {};
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    // ② 章节故事 — one real /v3/edit-chat turn. This is the active authoring send
-    // path; Agent owns committed history/op state and returns a commit bundle:
-    //   • pagesTexts → merge each page's rewritten copy into pagesState.
-    //   • patches    → fold page patches through the same applyPatch path the
-    //                  finalized editor uses.
-    // ════════════════════════════════════════════════════════════════════════
-
-    // write: merge the agent's per-page copy rewrites into pagesState + repaint.
-    function applyChapterWrite(pagesTexts: V3PageTextsPatch[]): boolean {
-      let applied = false;
-      for (const pt of pagesTexts) {
-        const page = pageByIndex(pt.pageIndex);
-        if (!page) continue;
-        page.textsJson = { ...page.textsJson, ...pt.texts };
-        applied = true;
-      }
-      if (applied) {
-        ensureCurrentFonts();
-        repaintBook();
-      }
-      return applied;
-    }
-
-    // edit: fold the agent's deterministic page patch into pagesState via the same
-    // applyPatchToPages used by the finalized editor (text / image-slot / template).
-    function applyChapterEdit(layoutPatch: LayoutPatchEntry[]): boolean {
-      if (layoutPatch.length === 0) return false;
-      pagesState = applyPatchToPages(pagesState, layoutPatch);
-      ensureCurrentFonts();
-      rebuildSpreads();
-      repaintBook();
-      return true;
-    }
 
     // 设计对话整书刷新：直接用服务端回来的新页整体替换 pagesState，原地重绘（用已加载
     // 的图 URL，不重挂 EditorBook、不重载图，避免"全局刷新闪一下"）。页数不变时当前位置保持。
@@ -2509,8 +2474,6 @@ function EditorBook({
       ready: true,
       goToChapterById,
       goToPageIndex,
-      applyChapterWrite,
-      applyChapterEdit,
       applyAuthoringPatch,
       replacePages,
       applyDraftAct,

@@ -2,6 +2,7 @@ import type { TemplateRenderProps } from '../types';
 import { PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 // 内页 · 满版大图叠字（category: interior，1 图）。来自 A4-8 (node 11:359)。
 // 一张近乎铺满整页的满版背景大图（溢出画布部分被最外层 overflow:hidden 裁掉）；
@@ -12,8 +13,8 @@ import { resolveThemeCarrier } from '../theme-carrier';
 
 export function WebMag36({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
-  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-36', 'title'));
+  const explainTheme = resolveThemeCarrier(data, 'explain', contractRole('mag-36', 'explain'));
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 满版背景大图（先渲染，溢出部分被裁；文字 / 面板叠其上） */}

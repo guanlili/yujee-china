@@ -2,6 +2,7 @@ import type { TemplateRenderProps } from '../types';
 import { PAGE, WEB_FONTS } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 // 内页 · 拼贴对角双图叠标签骨架（category: interior，2 图）。来自 A4-18 (node 12:65)。
 // 白底；顶部陶土红大字主标题，下面 when/where/who/what 四个固定骨架标签词（硬编码
@@ -13,8 +14,8 @@ const INK = '#1c1b18';
 
 export function WebMag46({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
-  const captionTheme = resolveThemeCarrier(data, 'caption', 'explain');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-46', 'title'));
+  const captionTheme = resolveThemeCarrier(data, 'explain', contractRole('mag-46', 'explain'));
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 顶部大字主标题 */}
@@ -27,7 +28,7 @@ export function WebMag46({ data, imagePos }: TemplateRenderProps) {
       <div style={{ position: 'absolute', left: 231, top: 153, fontFamily: WEB_FONTS.sansEn, fontWeight: 600, fontSize: 16, lineHeight: 1.2, color: INK }}>what</div>
 
       {/* 右侧小图注（承接标题） */}
-      <div style={{ position: 'absolute', left: 231, top: 299, width: 334, fontFamily: captionTheme.webFontFamily, fontWeight: 400, fontSize: 16, lineHeight: 1.35, color: captionTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['caption']}</div>
+      <div style={{ position: 'absolute', left: 231, top: 299, width: 334, fontFamily: captionTheme.webFontFamily, fontWeight: 400, fontSize: 16, lineHeight: 1.35, color: captionTheme.accentColor ?? INK, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['explain']}</div>
 
       {/* 左侧竖图（先渲染） */}
       <WebImage src={d['image1']} style={{ position: 'absolute', left: 91, top: 331, width: 467, height: 730, objectFit: 'cover' }} position={imagePos?.['image1']} slotId="image1" />

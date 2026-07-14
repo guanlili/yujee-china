@@ -2,6 +2,7 @@ import type { TemplateRenderProps } from '../types';
 import { fitDisplayFontSize, PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 // 内页（category: interior，1 图 + 1 大标题）。来自 A4-17 (node 12:47)。
 // 白底；上方一张居中竖图（槽 image）；底部一行大号展示主标题（槽 title，variableDecor）。
@@ -14,7 +15,7 @@ const INK = '#1c1b18';
 export function WebMag45({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
   const title = d['title'] || 'Watermelon';
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-45', 'title'));
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* ── 居中大图（槽 image，竖图） ── */}

@@ -5,10 +5,9 @@
     { "id": "image", "orientation": ["landscape", "square"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 12, "variableDecor": true, "sample": "夏日海岸" },
-    { "id": "label", "role": "decoration", "lang": "en", "maxChars": 20, "variableDecor": true, "sample": "Series · No.01" },
-    { "id": "explain1", "role": "explain", "lang": "user", "maxChars": 40, "sample": "午后的光落在窗台上" },
-    { "id": "explain2", "role": "explain", "lang": "user", "maxChars": 40, "sample": "风轻轻掀起窗帘的一角" },
-    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
+    { "id": "title", "role": "title", "lang": "user", "variableDecor": true, "sample": "DUE NORTH" },
+    { "id": "label", "role": "decoration", "lang": "en", "variableDecor": true, "sample": "NORWAY · 21 DAYS " },
+    { "id": "body", "role": "body", "lang": "user", "sample": "I went north alone, with a man who has never left his province.\n\nHe called at seven every morning to ask about the weather, never\nabout what I saw. Twenty-one days, and the light never fully went\nout.\n\n I have never been so far from home.\n I have never been so easy\nto reach." },
+    { "id": "explain", "role": "explain", "lang": "user", "sample": "风轻轻掀起窗帘的一角" }
   ]
 }

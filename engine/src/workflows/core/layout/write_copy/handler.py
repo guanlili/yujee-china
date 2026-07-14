@@ -1,11 +1,14 @@
-"""排版选定之后,写文案 agent(§ AI copy writer):对已选定版式的页面,把每个
-非 decoration 文字槽写成贴合章节背景 + 照片内容的真实文案。
+"""排版选定之后,写文案 agent(§ AI copy writer):对已选定版式的页面,把【每个】
+文字槽写成贴合章节背景 + 照片内容的真实文案。
+
+decoration 槽也写:「Series · No.01」「Chapter · 05」这类装饰文案装饰属性强,
+但仍然是需要写的文案。真正不该 AI 写的是页码 —— 而页码已经不是模板槽位了
+(展示层按当前页序统一生成,全书固定右下角一处)。
 
 走 deepseek slot(纯文本;豆包 vision 指令遵从太差,2026-07-11 用户拍板换掉)。
-照片内容通过 `sceneDescription` 文字进入上下文,不再附图。`decoration` 槽
-(folio/date 等)绝不在这里写 —— 那些由 `generic_copy` 之类的 code 路径确定性
-填充。写文案是叠加性的一步:任何环节失败(缺 DEEPSEEK key / HTTP 出错 / 模型
-JSON 解析不出)都吞掉异常、返回空结果,绝不让排版流程因为文案写不出来而崩。
+照片内容通过 `sceneDescription` 文字进入上下文,不再附图。写文案是叠加性的一步:
+任何环节失败(缺 DEEPSEEK key / HTTP 出错 / 模型 JSON 解析不出)都吞掉异常、返回
+空结果,绝不让排版流程因为文案写不出来而崩。
 """
 
 from __future__ import annotations
@@ -40,23 +43,27 @@ def _get(obj: Any, key: str, default: Any = None) -> Any:
 
 
 def _writable_text_slots(page: dict[str, Any]) -> list[dict[str, Any]]:
-    """本页非 decoration 的文字槽规格(id/role/maxChars?/sample?)。
-    模板未知或该页没有非 decoration 槽 → 空列表(调用方据此跳过整页)。
-    maxChars 是给模型的字数预算(提示词硬规则);输出端不做硬截断。"""
+    """本页【全部】文字槽的规格(id/role/sample?)。
+    模板未知或该页没有文字槽 → 空列表(调用方据此跳过整页)。
+
+    decoration 槽也要写:它们是「Series · No.01」「Chapter · 05」这类装饰文案 ——
+    装饰属性强,但仍然是需要写的文案。真正不该 AI 写的是页码,而页码已经不再是
+    模板槽位了(展示层按当前页序统一生成,全书固定在右下角一个位置)。
+
+    不发字数上限:模板不再声明任何字数限制,篇幅由 sample 示范,渲染层的
+    fit-text(固定高度文字框自动缩字号)负责装下。
+
+    sample 直接取槽位自己的 `sample` 字段(模板 JSON 的单一真相):同一个串既是 Web
+    画板的预览占位,也是写作 LM 的输出示例 —— 让模型照例子写、而非靠规则约束。
+    曾经并存的 copy-examples/ 目录已删除(两套示例=信息误差)。"""
     template_id = page.get("templateId")
     template = templates.get(template_id) if isinstance(template_id, str) else None
     if template is None:
         return []
-    examples = templates.copy_example(template_id)
     specs: list[dict[str, Any]] = []
     for slot in templates.text_slots(template):
-        if slot.get("role") == "decoration":
-            continue
         spec: dict[str, Any] = {"id": slot["id"], "role": slot["role"]}
-        max_chars = slot.get("maxChars")
-        if isinstance(max_chars, int) and not isinstance(max_chars, bool) and max_chars > 0:
-            spec["maxChars"] = max_chars
-        sample = examples.get(slot["id"])
+        sample = slot.get("sample")
         if sample:
             spec["sample"] = sample
         specs.append(spec)

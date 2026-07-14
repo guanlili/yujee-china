@@ -11,15 +11,12 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 26,
       "lang": "user",
-      "variableDecor": true,
-      "sample": "回家的路上"
+      "variableDecor": true, "sample": "Go home at snow night"
     },
     {
       "id": "explain",
       "role": "explain",
-      "maxChars": 130,
       "lang": "user",
       "sample": "这四张照片串起了归途——从海边到山间，再到熟悉的街角，最后停在家门口的那盏灯下。"
     }

@@ -9,8 +9,8 @@
   "textSlotCount": 3,
   "textSlotIds": [
     "title",
-    "headline",
+    "title2",
     "explain"
   ],
-  "structureDescription": "mag-28 interior template with 1 image slot(s) (image) and 3 concrete text slot(s) (title, headline, explain). one dominant image block; 3 text slots."
+  "structureDescription": "mag-28 interior template with 1 image slot(s) (image) and 3 concrete text slot(s) (title, title2, explain). one dominant image block; 3 text slots."
 }

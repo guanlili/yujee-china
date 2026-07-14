@@ -45,9 +45,11 @@ _FONT_MENU = {
     ],
 }
 
+# role → 默认字体的三组策略(与 contracts DEFAULT_ALBUM_FONT 对齐):
+#   title 衬线 / body(含 explain) 黑体 / decoration 艺术字体。
 _DEFAULT_FONTS = {
-    "zh": {"title": "noto-serif-sc", "body": "noto-sans-sc", "decoration": "noto-sans-sc"},
-    "en": {"title": "playfair-display", "body": "inter", "decoration": "inter"},
+    "zh": {"title": "noto-serif-sc", "body": "noto-sans-sc", "decoration": "zhi-mang-xing"},
+    "en": {"title": "playfair-display", "body": "inter", "decoration": "great-vibes"},
 }
 _DEFAULT_COLORS = {"title": "#1c1b18", "body": "#1c1b18", "explain": "#6b675f"}
 

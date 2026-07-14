@@ -3,14 +3,13 @@
   "category": "interior",
   "images": [],
   "texts": [
-    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ],
   "items": {
     "images": [
       { "id": "image" }
     ],
     "texts": [
-      { "id": "explain", "role": "explain", "lang": "user", "maxChars": 90 }
+      { "id": "explain", "role": "explain", "lang": "user", "sample": "something/where/someone" }
     ]
   }
 }

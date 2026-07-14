@@ -5,9 +5,8 @@
     { "id": "image", "orientation": ["portrait"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "variableDecor": true, "sample": "静物与光" },
-    { "id": "label", "role": "decoration", "lang": "en", "maxChars": 20, "variableDecor": true, "sample": "Plate · 11 / 30" },
-    { "id": "explain", "role": "explain", "lang": "user", "maxChars": 90, "sample": "桌上的花开了一半，光从侧面打过来" },
-    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
+    { "id": "title", "role": "title", "lang": "user", "variableDecor": true, "sample": "Mother'Day" },
+    { "id": "explain", "role": "explain", "lang": "en", "sample": "Beijing · 11 / 30" },
+    { "id": "body", "role": "body", "lang": "user", "sample": "The flowers she said not to buy." }
   ]
 }

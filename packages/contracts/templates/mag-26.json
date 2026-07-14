@@ -10,40 +10,31 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 16,
       "lang": "user",
-      "variableDecor": true,
-      "sample": "nano / banana"
+      "variableDecor": true, "sample": "Working on\nthe Road\n"
     },
     {
       "id": "explain",
       "role": "explain",
-      "maxChars": 40,
-      "lang": "user",
-      "sample": "关于一些微小而确切的快乐"
+      "lang": "user", "sample": "May. 2026"
     },
     {
       "id": "body",
       "role": "body",
-      "maxChars": 180,
-      "lang": "user",
-      "sample": "它们藏在最寻常的日子里——一杯热茶、一阵风、一句不经意的问候。等你慢下来，才发现它们一直都在。"
+      "lang": "user", "sample": "I took two calls from a car park in Big Sur. The signal died halfway through the second one. \nNobody called back. We drove down to the water instead, and by the time the emails found me it was Tuesday."
     },
     {
-      "id": "label1",
+      "id": "label",
       "role": "decoration",
       "lang": "en",
-      "maxChars": 20,
       "variableDecor": true,
       "sample": "small joys daily"
     },
     {
-      "id": "label2",
-      "role": "decoration",
+      "id": "title2",
+      "role": "title",
       "lang": "en",
-      "maxChars": 20,
-      "variableDecor": true,
-      "sample": "every single day"
+      "variableDecor": true, "sample": "hello, California Dream"
     }
   ]
 }

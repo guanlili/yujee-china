@@ -2,22 +2,23 @@ import { COLORS, WEB_FONTS } from '../constants';
 import { WebImage, WebPage, brToReact } from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 export function WebP01({ data, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
     title?: string;
     body?: string;
-    label1?: string;
+    label?: string;
     label1Color?: string;
     label2?: string;
-    date?: string;
+    label3?: string;
   };
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
-  const categoryTheme = resolveThemeCarrier(data, 'label1', 'decoration');
-  const volTheme = resolveThemeCarrier(data, 'label2', 'decoration');
-  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
-  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('p01', 'title'));
+  const categoryTheme = resolveThemeCarrier(data, 'label', contractRole('p01', 'label'));
+  const volTheme = resolveThemeCarrier(data, 'label2', contractRole('p01', 'label2'));
+  const dateTheme = resolveThemeCarrier(data, 'label3', contractRole('p01', 'label3'));
+  const bodyTheme = resolveThemeCarrier(data, 'body', contractRole('p01', 'body'));
   return (
     <WebPage dark fontFamily={WEB_FONTS.serifCn}>
       <WebImage
@@ -59,7 +60,7 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
               fontFamily: dateTheme.webFontFamily,
             }}
           >
-            {dateTheme.text ?? d.date ?? '2026'}
+            {dateTheme.text ?? d.label3 ?? '2026'}
           </span>
         </span>
         <span>MEMOIR</span>
@@ -98,7 +99,7 @@ export function WebP01({ data, imagePos }: TemplateRenderProps) {
             fontSize: 16,
           }}
         >
-          {categoryTheme.text ?? d.label1 ?? 'nº 01 · Portrait'}
+          {categoryTheme.text ?? d.label ?? 'nº 01 · Portrait'}
         </div>
         <h1
           style={{

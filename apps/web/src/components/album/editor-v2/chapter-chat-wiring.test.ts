@@ -34,51 +34,6 @@ test('authoring send() routes to the design chat turn', () => {
   );
 });
 
-test('runEditChatTurn posts the slim edit-chat body (chapterId + focusedPageIndex)', () => {
-  const fn = /async function runEditChatTurn\([\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(fn, 'runEditChatTurn must exist');
-  const body = fn![0];
-  assert.match(body, /postEditChat\(albumId, \{/);
-  assert.doesNotMatch(body, /postChapterChat\(albumId, \{/);
-  assert.match(body, /chapterId,/);
-  assert.match(body, /pagePhotoRefs:/);
-  assert.match(src, /async function captureChapterPagePhotoRefs/);
-  // ③ 改页: the visible authoring page is sent as focusedPageIndex so "this page"
-  // still targets something even when the user has not clicked a page.
-  assert.match(body, /const focusedPageIndex = authoringFocusPageIndex\(\);/);
-  assert.match(body, /focusedPageIndex,/);
-});
-
-test('edit-chat applies pagesTexts and patches from the commit bundle', () => {
-  const fn = /async function runEditChatTurn\([\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(fn, 'runEditChatTurn must exist');
-  const body = fn![0];
-  assert.match(body, /res\.pagesTexts/);
-  assert.match(body, /res\.patches/);
-  assert.doesNotMatch(body, /res\.layoutPatch/);
-});
-
-test('edit-chat navigation response flips to the requested page', () => {
-  const fn = /async function runEditChatTurn\([\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(fn, 'runEditChatTurn must exist');
-  const body = fn![0];
-  assert.match(body, /res\.navigation\?\.pageIndex !== undefined/);
-  // Post-refactor the page flip is routed through the coordinator bridge
-  // (co()?.goToPageIndex?.(…)), so accept the optional-chained coordinator call too.
-  assert.match(body, /goToPageIndex(?:\?\.)?\(res\.navigation\.pageIndex\)/);
-});
-
-test('write merges pagesTexts; edit folds layoutPatch via applyPatchToPages', () => {
-  const write = /function applyChapterWrite\([\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(write, 'applyChapterWrite must exist');
-  assert.match(write![0], /page\.textsJson = \{ \.\.\.page\.textsJson, \.\.\.pt\.texts \}/);
-
-  const edit = /function applyChapterEdit\([\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(edit, 'applyChapterEdit must exist');
-  assert.match(edit![0], /pagesState = applyPatchToPages\(pagesState, layoutPatch\)/);
-  assert.match(edit![0], /repaintBook\(\)/);
-});
-
 test('edit-chat wiring no longer depends on retired nameOptions chips', () => {
   assert.doesNotMatch(src, /res\.nameOptions/);
 });
@@ -86,18 +41,6 @@ test('edit-chat wiring no longer depends on retired nameOptions chips', () => {
 // (已移除)对话框顶部的五环节状态栏(StageBreadcrumb)已从 ChatPanel 撤下,相应的
 // 「breadcrumb is fed from story-progress」渲染测试随之删除。story-progress 仍由
 // loadStoryGate 拉取供采访门控使用。
-
-test('legacy persisted chat replay no longer feeds the edit-chat payload', () => {
-  const fn = /async function loadHistory\(\): Promise<number> \{[\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(fn, 'loadHistory must exist');
-  const body = fn![0];
-  assert.match(body, /chapterHistory\.splice\(0, chapterHistory\.length\)/);
-  assert.match(body, /chapterHistory\.push\(\{ role: 'user', content: c \}\)/);
-  assert.match(body, /chapterHistory\.push\(\{ role: 'assistant', content: c \}\)/);
-  const run = /async function runEditChatTurn\([\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(run, 'runEditChatTurn must exist');
-  assert.doesNotMatch(run![0], /history:/);
-});
 
 test('conversation chapter prompt card uses the design .chap-card class without overriding the rail .chapter-card', () => {
   const fn = /function appendChapterCard\(chapterId: string, attempt = 0\) \{[\s\S]*?\n {4}\}/.exec(src);

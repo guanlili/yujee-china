@@ -52,7 +52,6 @@ export const TemplateTextSlot = z
   .object({
     id: z.string().min(1),
     role: TemplateTextRole,
-    maxChars: z.number().int().positive().optional(),
     lang: TemplateTextLang,
     // V3:渲染变量落点(§9)。standalone 装饰槽(章节色/艺术字字体/花字/点缀)
     //   被 `apply-theme` 一键刷;普通正文槽不带此标记、不被刷。

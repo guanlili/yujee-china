@@ -13,9 +13,7 @@
     {
       "id": "body",
       "role": "body",
-      "maxChars": 80,
-      "lang": "user",
-      "sample": "这六张照片来自同一个下午，光影在不停变化，而我们一直在笑。"
+      "lang": "user", "sample": "Six photographs, one afternoon. In four of them someone is walking away from the camera. \nWe were not posing, just moving to stay warm."
     }
   ]
 }

@@ -61,24 +61,39 @@ test("set_text_colors：三类颜色按角色刷满全书，decoration 跟标题
 	assert.equal(result.terminate, true);
 
 	const book = getBook();
-	// page0 mag-01：title(title)/label(decoration)/folio(decoration) → 标题色；explain1/2(explain) → 注释色。
+	// role → 色的映射:title/decoration → 标题色;body → 正文色;explain → 注释色。
+	// 【不写死哪个槽是什么 role】—— 模板台能改 role,写死会烂成假前提。从契约取。
+	const catalog = loadTemplateCatalog();
+	const colorForRole: Record<string, string> = {
+		title: TITLE,
+		decoration: TITLE,
+		body: BODY,
+		explain: CAPTION,
+	};
+	const expectColorsByContractRole = (pageNo: number) => {
+		const page = book.pages[pageNo]!;
+		const template = catalog.get(page.templateId);
+		assert.ok(template, `模板 ${page.templateId} 不在目录里`);
+		for (const [slotId, def] of template.textDefsByBase) {
+			const key = `${slotId}#accentColor`;
+			if (!(key in page.texts)) continue; // 该页没渲染这个槽
+			assert.equal(
+				page.texts[key],
+				colorForRole[def.role],
+				`page${pageNo} ${page.templateId}/${slotId}(${def.role}) 的强调色不对`,
+			);
+		}
+	};
+	expectColorsByContractRole(0);
+	expectColorsByContractRole(5);
 	const cover = book.pages[0]!;
 	assert.equal(cover.texts["title#accentColor"], TITLE);
 	assert.equal(cover.texts["label#accentColor"], TITLE);
-	assert.equal(cover.texts["folio#accentColor"], TITLE);
-	assert.equal(cover.texts["explain1#accentColor"], CAPTION);
-	assert.equal(cover.texts["explain2#accentColor"], CAPTION);
 	// page2 mag-10：重复槽 explain[n] 每个都要上注释色。
 	const repeatPage = book.pages[2]!;
 	assert.equal(repeatPage.texts["explain[0]#accentColor"], CAPTION);
 	assert.equal(repeatPage.texts["explain[3]#accentColor"], CAPTION);
-	assert.equal(repeatPage.texts["folio#accentColor"], TITLE);
-	// page5 mag-25：body(body) → 正文色；date(decoration) → 标题色。
-	const richPage = book.pages[5]!;
-	assert.equal(richPage.texts["body#accentColor"], BODY);
-	assert.equal(richPage.texts["date#accentColor"], TITLE);
-	assert.equal(richPage.texts["title#accentColor"], TITLE);
-	assert.equal(richPage.texts["explain#accentColor"], CAPTION);
+	// page5 的逐槽核对已由上面的 expectColorsByContractRole(5) 覆盖。
 
 	// 文字内容本身不被动过。
 	assert.equal(typeof cover.texts.title, "string");
@@ -97,13 +112,32 @@ test("set_text_colors：只给注释色时，标题/正文/装饰槽不被染色
 	await tool.execute("t1", { captionColor: "#8a8577" } as never);
 
 	const book = getBook();
+	const catalog = loadTemplateCatalog();
 	const cover = book.pages[0]!;
-	assert.equal(cover.texts["explain1#accentColor"], "#8a8577");
-	assert.equal(cover.texts["title#accentColor"], undefined);
-	assert.equal(cover.texts["label#accentColor"], undefined);
+	// 只有 explain 槽被染色;title/body/decoration 一律不动。从契约取 role,别写死。
+	const coverTemplate = catalog.get(cover.templateId);
+	assert.ok(coverTemplate);
+	for (const [slotId, def] of coverTemplate.textDefsByBase) {
+		const key = `${slotId}#accentColor`;
+		if (!(slotId in cover.texts)) continue;
+		assert.equal(
+			cover.texts[key],
+			def.role === "explain" ? "#8a8577" : undefined,
+			`${cover.templateId}/${slotId}(${def.role}) 的染色不对`,
+		);
+	}
+	// page5 同样逐槽核对（explain 槽染色，其余不动）。
 	const richPage = book.pages[5]!;
-	assert.equal(richPage.texts["body#accentColor"], undefined);
-	assert.equal(richPage.texts["explain#accentColor"], "#8a8577");
+	const richTemplate = catalog.get(richPage.templateId);
+	assert.ok(richTemplate);
+	for (const [slotId, def] of richTemplate.textDefsByBase) {
+		if (!(slotId in richPage.texts)) continue;
+		assert.equal(
+			richPage.texts[`${slotId}#accentColor`],
+			def.role === "explain" ? "#8a8577" : undefined,
+			`${richPage.templateId}/${slotId}(${def.role}) 的染色不对`,
+		);
+	}
 });
 
 test("set_text_colors：一个颜色都不给 / 非法十六进制被拒绝", async () => {

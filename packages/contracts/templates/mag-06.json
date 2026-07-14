@@ -5,6 +5,5 @@
     { "id": "image", "orientation": ["portrait"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] }
   ],
   "texts": [
-    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
   ]
 }

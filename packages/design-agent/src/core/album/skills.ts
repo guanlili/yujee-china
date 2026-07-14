@@ -36,7 +36,7 @@ export function createDefaultAlbumSkills(): Skill[] {
 				"为相册页面写文字槽内容时，使用这个技能。",
 				"",
 				"规则：",
-				"- 先 read_page 拿到每个槽的角色、maxChars 和 sample 示范文案，再动笔；字数按 Unicode 字符计。",
+				"- 先 read_page 拿到每个槽的角色和 sample 示范文案，再动笔；照着 sample 的篇幅量级写，写长了不会被裁。",
 				"- 以 sample 示范文案为范本：保留它的长度感和调性，换成贴合这本书真实故事的内容，别脱离示范另起炉灶、也别照抄 sample 具体内容。",
 				"- 文案素材优先级：用户原话 > 书级设计简报（主题/封面氛围）> 页面现有文字与照片描述（sceneDescription）。",
 				"- 标题要具体、有画面感，避免「美好回忆」「温馨时光」这类空话。",

@@ -6,12 +6,11 @@
   "imageSlotIds": [
     "image"
   ],
-  "textSlotCount": 4,
+  "textSlotCount": 3,
   "textSlotIds": [
     "title",
-    "label",
     "explain",
-    "folio"
+    "body"
   ],
-  "structureDescription": "mag-11 interior template with 1 image slot(s) (image) and 4 concrete text slot(s) (title, label, explain, folio). one dominant image block; 4 text slots."
+  "structureDescription": "mag-11 interior template with 1 image slot(s) (image) and 3 concrete text slot(s) (title, explain, body). one dominant image block; 3 text slots."
 }

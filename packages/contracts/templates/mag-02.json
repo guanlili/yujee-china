@@ -6,38 +6,28 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 30,
       "lang": "user",
       "variableDecor": true,
       "sample": "目录"
-    },
-    {
-      "id": "folio",
-      "role": "decoration",
-      "maxChars": 2,
-      "lang": "en"
     }
   ],
   "items": {
     "texts": [
       {
-        "id": "number",
+        "id": "label",
         "role": "decoration",
-        "maxChars": 3,
         "lang": "en",
         "variableDecor": true
       },
       {
-        "id": "title",
+        "id": "title2",
         "role": "title",
-        "maxChars": 24,
         "lang": "user",
         "variableDecor": true
       },
       {
-        "id": "description",
+        "id": "explain",
         "role": "explain",
-        "maxChars": 90,
         "lang": "user"
       }
     ]

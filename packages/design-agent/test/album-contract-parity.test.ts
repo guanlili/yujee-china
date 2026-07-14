@@ -78,7 +78,7 @@ test("工具写入之后所有页仍然契约合法", async () => {
 		updates: [
 			{
 				pageNo: 1,
-				texts: { title: "我们仨的夏天", label: "SUMMER · 2019", explain1: "青岛的海风", explain2: "和第一次看海的爸妈" },
+				texts: { title: "我们仨的夏天", label: "SUMMER · 2019", body: "青岛的海风", explain: "和第一次看海的爸妈" },
 			},
 		],
 	} as never);

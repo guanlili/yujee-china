@@ -5,9 +5,8 @@
     { "id": "image", "orientation": ["landscape"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] }
   ],
   "texts": [
-    { "id": "title", "role": "title", "lang": "user", "maxChars": 24, "variableDecor": true, "sample": "回到那片海" },
-    { "id": "label", "role": "decoration", "lang": "en", "maxChars": 20, "variableDecor": true, "sample": "Chapter · 05" },
-    { "id": "explain", "role": "explain", "lang": "user", "maxChars": 90, "sample": "那天的风很轻，我们沿着海边一直走，没有说太多话，只是看着浪一遍遍铺上沙滩。" },
-    { "id": "folio", "role": "decoration", "lang": "en", "maxChars": 2 }
+    { "id": "title", "role": "title", "lang": "user", "variableDecor": true, "sample": "THE CAT" },
+    { "id": "explain", "role": "explain", "lang": "en", "sample": "May ·2025" },
+    { "id": "body", "role": "body", "lang": "user", "sample": "She was gone eleven hours. We found her at midnight under the neighbour's car, three metres from our door. " }
   ]
 }

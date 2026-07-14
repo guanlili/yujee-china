@@ -10,25 +10,19 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 24,
       "lang": "user",
       "variableDecor": true,
       "sample": "My Secret Place"
     },
     {
-      "id": "headline",
+      "id": "title2",
       "role": "title",
-      "maxChars": 90,
-      "lang": "user",
-      "variableDecor": true,
-      "sample": "这里没人认识我，却让我觉得最像自己。"
+      "lang": "user", "sample": "I have never brought anyone here.   "
     },
     {
       "id": "explain",
       "role": "explain",
-      "maxChars": 40,
-      "lang": "user",
-      "sample": "墙角那盏旧灯，亮了很多年"
+      "lang": "user", "sample": "Xinjiang \nPhoto by Apple"
     }
   ]
 }

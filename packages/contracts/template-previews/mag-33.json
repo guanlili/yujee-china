@@ -11,9 +11,9 @@
   "textSlotCount": 4,
   "textSlotIds": [
     "title",
-    "caption1",
-    "caption2",
-    "caption3"
+    "explain",
+    "explain2",
+    "explain3"
   ],
-  "structureDescription": "mag-33 interior template with 3 image slot(s) (image1, image2, image3) and 4 concrete text slot(s) (title, caption1, caption2, caption3). one lead block plus two supporting blocks; 4 text slots."
+  "structureDescription": "mag-33 interior template with 3 image slot(s) (image1, image2, image3) and 4 concrete text slot(s) (title, explain, explain2, explain3). one lead block plus two supporting blocks; 4 text slots."
 }

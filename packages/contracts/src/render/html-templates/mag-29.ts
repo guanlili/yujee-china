@@ -9,7 +9,7 @@
 // React 根节点是裸 div（无 color/box-sizing/font-family），照抄。
 // FONT 默认栈按 React 无 artFont 时的 DEFAULT_ALBUM_FONT 解析：title（role title，
 // lang user→cjk）= serifCn；body（role body，lang user→cjk）= sansCn；
-// label（role decoration，lang en→latin）= sansEn（同 mag-25 惯例）。
+// label（role decoration，lang en→latin）= sansEn（decoration+en 的既有惯例）。
 const SANS_EN = '&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif';
 const SANS_CN = '&quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, &quot;Heiti SC&quot;, sans-serif';
 const SERIF_CN = '&quot;Noto Serif SC&quot;, &quot;Source Han Serif SC&quot;, &quot;Songti SC&quot;, serif';
@@ -21,7 +21,7 @@ export const MAG_29_HTML = `<div data-template="mag-29" style="position:relative
   <div data-image-slot="image2" style="position:absolute;left:362px;top:67px;width:330px;height:464px;overflow:hidden">
     <img data-image-slot="image2" src="{{IMG_SRC:image2}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image2|50% 50%}};{{IMG_TF:image2}}" />
   </div>
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:49px;top:694px;width:726px;height:70px;font-weight:700;font-size:64px;line-height:1.1;text-align:right;white-space:pre-wrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${SERIF_CN}}}">{{TEXT:title}}</div>
-  <div data-text-key="body" style="position:absolute;left:347px;top:762px;width:431px;height:32px;font-weight:400;font-size:21px;line-height:1.5;text-align:right;white-space:pre-wrap;overflow:hidden;color:{{COLOR:body|#1c1b18}};font-family:{{FONT:body|${SANS_CN}}}">{{TEXT:body}}</div>
-  <div data-text-key="label" data-variable-decor style="position:absolute;left:49px;top:1007px;width:726px;height:53px;font-weight:700;font-size:48px;line-height:1.1;text-align:right;overflow:hidden;color:{{COLOR:label|#1c1b18}};font-family:{{FONT:label|${SANS_EN}}}">{{TEXT:label}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;left:295px;top:580px;width:400px;height:70px;font-weight:700;font-size:64px;line-height:1.1;text-align:right;white-space:pre-wrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${SERIF_CN}}}">{{TEXT:title}}</div>
+  <div data-text-key="body" style="position:absolute;left:280px;top:680px;width:460px;height:200px;font-weight:400;font-size:21px;line-height:1.5;text-align:right;white-space:pre-wrap;overflow:hidden;color:{{COLOR:body|#1c1b18}};font-family:{{FONT:body|${SANS_CN}}};right:200px">{{TEXT:body}}</div>
+  <div data-text-key="label" data-variable-decor style="position:absolute;left:390px;top:1007px;width:370px;height:40px;font-weight:700;font-size:48px;line-height:1.1;text-align:right;overflow:hidden;color:{{COLOR:label|#1c1b18}};font-family:{{FONT:label|${SANS_EN}}};white-space:pre-wrap">{{TEXT:label}}</div>
 </div>`;

@@ -17,12 +17,10 @@ const SERIF_EN = '&quot;EB Garamond&quot;, &quot;Noto Serif SC&quot;, &quot;Song
 const PLAYFAIR = '&quot;Playfair Display&quot;, &quot;Noto Serif SC&quot;, &quot;Songti SC&quot;, serif';
 
 export const MAG_19_HTML = `<div data-template="mag-19" style="position:relative;width:794px;height:1123px;background:#fff;color:#1c1b18;overflow:hidden;box-sizing:border-box;font-family:${SANS_EN}">
-  <p data-text-key="title" data-variable-decor style="position:absolute;top:70px;left:60px;width:674px;height:90px;margin:0;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.05;letter-spacing:0.01em;font-size:72px;font-style:italic;white-space:nowrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}}">{{TEXT:title}}</p>
+  <p data-text-key="title" data-variable-decor style="position:absolute;top:80px;left:60px;width:674px;height:72px;margin:0;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.05;letter-spacing:0.01em;font-size:72px;font-style:italic;white-space:pre;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}}">{{TEXT:title}}</p>
   <div data-image-slot="image" style="position:absolute;top:170px;left:60px;width:674px;height:674px;overflow:hidden">
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>
-  <p data-text-key="explain1" style="position:absolute;top:868px;left:60px;width:300px;margin:0;line-height:1.7;letter-spacing:0.02em;text-align:left;font-size:18px;color:{{COLOR:explain1|#5a574f}};font-family:{{FONT:explain1|${SANS_EN}}}">{{TEXT:explain1}}</p>
-  <p data-text-key="explain2" style="position:absolute;top:868px;right:60px;width:300px;margin:0;line-height:1.7;letter-spacing:0.02em;text-align:right;font-size:18px;color:{{COLOR:explain2|#5a574f}};font-family:{{FONT:explain2|${SANS_EN}}}">{{TEXT:explain2}}</p>
-  <div style="position:absolute;top:420px;right:80px;font-size:10px;letter-spacing:0.32em;text-transform:uppercase;writing-mode:vertical-rl;color:{{COLOR:folio|#a09b8e}};font-family:{{FONT:folio|${SANS_EN}}}">Frame {{TEXT:folio}} / 30</div>
-  <div data-text-key="folio" style="position:absolute;bottom:40px;right:50px;font-style:italic;font-size:22px;color:{{COLOR:folio|#1c1b18}};font-family:{{FONT:folio|${SERIF_EN}}}">{{TEXT:folio}}<span style="color:#a09b8e">/</span></div>
+  <p data-text-key="explain" style="position:absolute;top:868px;left:60px;width:300px;margin:0;line-height:1.7;letter-spacing:0.02em;text-align:left;font-size:18px;color:{{COLOR:explain|#5a574f}};font-family:{{FONT:explain|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain}}</p>
+  <p data-text-key="explain2" style="position:absolute;top:868px;right:60px;width:300px;margin:0;line-height:1.7;letter-spacing:0.02em;text-align:right;font-size:18px;color:{{COLOR:explain2|#5a574f}};font-family:{{FONT:explain2|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain2}}</p>
 </div>`;

@@ -9,12 +9,12 @@
   "textSlotCount": 7,
   "textSlotIds": [
     "title",
-    "explain1",
+    "explain",
     "body",
     "explain2",
-    "date",
-    "label1",
-    "label2"
+    "explain3",
+    "explain4",
+    "label"
   ],
-  "structureDescription": "mag-27 interior template with 1 image slot(s) (image) and 7 concrete text slot(s) (title, explain1, body, explain2, date, label1, label2). one dominant image block; 7 text slots."
+  "structureDescription": "mag-27 interior template with 1 image slot(s) (image) and 7 concrete text slot(s) (title, explain, body, explain2, explain3, explain4, label). one dominant image block; 7 text slots."
 }

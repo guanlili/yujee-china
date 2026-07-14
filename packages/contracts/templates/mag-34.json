@@ -10,7 +10,6 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 24,
       "lang": "user",
       "variableDecor": true,
       "sample": "All Alone"
@@ -18,7 +17,6 @@
     {
       "id": "explain",
       "role": "explain",
-      "maxChars": 120,
       "lang": "user",
       "sample": "一个人走了很久，才听见自己心里的声音。"
     }

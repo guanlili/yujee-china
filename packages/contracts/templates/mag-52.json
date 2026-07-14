@@ -11,9 +11,7 @@
       "id": "title",
       "role": "title",
       "variableDecor": true,
-      "maxChars": 40,
-      "lang": "user",
-      "sample": "Notes from Elsewhere"
+      "lang": "user", "sample": "No"
     }
   ]
 }

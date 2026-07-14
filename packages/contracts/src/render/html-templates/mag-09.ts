@@ -19,16 +19,15 @@ export const MAG_09_HTML = `<div data-template="mag-09" style="position:relative
     <img data-image-slot="image1" src="{{IMG_SRC:image1}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image1|50% 50%}};{{IMG_TF:image1}}" />
   </div>
   <div style="position:absolute;top:130px;right:60px;width:230px">
-    <p data-text-key="body" style="position:absolute;left:504px;top:130px;width:230px;height:31px;line-height:1.7;color:{{COLOR:body|#5a574f}};font-family:{{FONT:body|${SANS_EN}}};letter-spacing:0.02em;text-align:justify;font-size:18px">{{TEXT:body}}</p>
+    <p data-text-key="body" style="position:absolute;left:504px;top:130px;width:230px;height:31px;line-height:1.7;color:{{COLOR:body|#5a574f}};font-family:{{FONT:body|${SANS_EN}}};letter-spacing:0.02em;text-align:justify;font-size:18px;white-space:pre-wrap">{{TEXT:body}}</p>
   </div>
-  <h1 data-text-key="title" data-variable-decor style="position:absolute;top:396px;left:60px;width:300px;height:224px;margin:0;overflow:hidden;font-family:{{FONT:title|${PLAYFAIR}}};font-weight:400;font-size:116px;letter-spacing:0.02em;line-height:0.92;color:{{COLOR:title|#1c1b18}};white-space:pre-line">{{TEXT:title}}</h1>
+  <h1 data-text-key="title" data-variable-decor style="position:absolute;top:415px;left:60px;width:280px;height:180px;margin:0;overflow:hidden;font-family:{{FONT:title|${PLAYFAIR}}};font-weight:400;font-size:116px;letter-spacing:0.02em;line-height:0.92;color:{{COLOR:title|#1c1b18}};white-space:pre-line">{{TEXT:title}}</h1>
   <div data-image-slot="image2" style="position:absolute;left:374px;top:400px;width:370px;height:600px;overflow:hidden">
     <img data-image-slot="image2" src="{{IMG_SRC:image2}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image2|50% 50%}};{{IMG_TF:image2}}" />
   </div>
   <div style="position:absolute;top:620px;left:60px;width:280px;line-height:1.75;color:#5a574f;letter-spacing:0.02em;text-align:justify">
-    <p data-text-key="explain1" style="position:absolute;left:60px;top:620px;width:280px;height:32px;font-size:18px;color:{{COLOR:explain1|#5a574f}};font-family:{{FONT:explain1|${SANS_EN}}}">{{TEXT:explain1}}</p>
-    <p data-text-key="explain2" style="position:absolute;left:60px;top:664px;width:280px;height:32px;font-size:18px;color:{{COLOR:explain2|#5a574f}};font-family:{{FONT:explain2|${SANS_EN}}}">{{TEXT:explain2}}</p>
-    <p data-text-key="explain3" style="margin-top:12px;margin-bottom:0;font-size:13px;line-height:1.6;color:{{COLOR:explain3|#5a574f}};font-family:{{FONT:explain3|${SANS_EN}}}">{{TEXT:explain3}}</p>
+    <p data-text-key="explain" style="position:absolute;left:60px;top:620px;width:280px;height:32px;font-size:18px;color:{{COLOR:explain|#5a574f}};font-family:{{FONT:explain|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain}}</p>
+    <p data-text-key="explain2" style="position:absolute;left:60px;top:664px;width:280px;height:32px;font-size:18px;color:{{COLOR:explain2|#5a574f}};font-family:{{FONT:explain2|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain2}}</p>
+    <p data-text-key="body2" style="margin-top:12px;margin-bottom:0;font-size:13px;line-height:1.6;color:{{COLOR:body2|#5a574f}};font-family:{{FONT:body2|${SANS_EN}}};white-space:pre-wrap;width:280px;height:200px;top:11px">{{TEXT:body2}}</p>
   </div>
-  <div data-text-key="folio" style="position:absolute;bottom:40px;right:50px;font-family:{{FONT:folio|${SANS_EN}}};font-style:italic;font-size:22px;color:{{COLOR:folio|#1c1b18}}">{{TEXT:folio}}<span style="color:#a09b8e">/</span></div>
 </div>`;

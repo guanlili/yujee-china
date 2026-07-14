@@ -103,12 +103,9 @@ export function PageEditPanel({
     );
   };
 
-  const renderText = (
-    slot: string,
-    meta?: { role: string; lang: string; maxChars?: number },
-  ) => {
+  // 不显示字数计数/上限：模板不再声明字数限制，用户写多长都行（版面自动缩字号装下）。
+  const renderText = (slot: string, meta?: { role: string; lang: string }) => {
     const value = drafts[slot] ?? '';
-    const over = meta?.maxChars != null && value.length > meta.maxChars;
     return (
       <label key={slot} className="block">
         <span className="flex items-center gap-1.5">
@@ -117,13 +114,6 @@ export function PageEditPanel({
             <>
               <Badge>{meta.role}</Badge>
               <Badge>{meta.lang}</Badge>
-              {meta.maxChars != null && (
-                <span
-                  className={`font-mono text-[9px] ${over ? 'text-[var(--danger,#c0392b)]' : 'text-[var(--meta)]'}`}
-                >
-                  {value.length}/{meta.maxChars}
-                </span>
-              )}
             </>
           )}
         </span>
@@ -162,7 +152,7 @@ export function PageEditPanel({
         <div className="space-y-3">
           <p className="text-[var(--text-sm)] font-semibold text-[var(--fg)]">{t.text}</p>
           {textSlots.map((s) =>
-            renderText(s.id, { role: s.role, lang: s.lang, maxChars: s.maxChars }),
+            renderText(s.id, { role: s.role, lang: s.lang }),
           )}
           {extraTextIds.map((id) => renderText(id))}
         </div>

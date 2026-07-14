@@ -10,7 +10,6 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 16,
       "lang": "user",
       "variableDecor": true,
       "sample": "NORWAY"

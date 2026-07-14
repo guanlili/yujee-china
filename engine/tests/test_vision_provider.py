@@ -16,10 +16,25 @@ from src.providers.vision_provider import (
 )
 
 
+# 测试必须与开发机的 .env 完全隔离。
+# Settings 用 pydantic-settings 的 env_file=".env" 【直接读文件】—— monkeypatch 环境变量
+# 盖不住它。所以这里把 env_file 关掉,让 Settings 只认环境变量 + 源码默认值:
+#   · 无 key 降级:开发机 .env 里有真 key,不关掉就永远模拟不出「无 key」
+#     (那些用例只会在 CI 无 .env 时碰巧过)。
+#   · 默认模型:开发机 .env 覆盖了 OPENAI_VISION_MODEL 之类,断言【源码默认值】的用例会挂。
+# 需要某个 key/模型的用例自己显式传进来。
+_API_KEY_ENVS = ("ARK_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY")
+
+
 @pytest.fixture
 def _real_env(monkeypatch):
-    monkeypatch.setenv("AGENT_PIPELINE_MODE", "real")
     from src import settings as s
+
+    monkeypatch.setitem(s.Settings.model_config, "env_file", None)  # 不读 .env
+    monkeypatch.setenv("AGENT_SHARED_SECRET", "test-secret")        # 唯一必填字段
+    monkeypatch.setenv("AGENT_PIPELINE_MODE", "real")
+    for key in _API_KEY_ENVS:
+        monkeypatch.setenv(key, "")                                 # 判空是 `if not ...`,空串=无 key
 
     def _apply(**env):
         for k, v in env.items():

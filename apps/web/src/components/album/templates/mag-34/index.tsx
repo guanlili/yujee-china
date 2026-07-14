@@ -2,6 +2,7 @@ import type { TemplateRenderProps } from '../types';
 import { PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 // 内页 · 居中竖图 + 上下居中文字（category: interior，1 图）。来自 A4-5 (node 10:115)。
 // 白底；中央一张竖图，顶部居中大字主标题压在图上沿，底部居中图注收尾。
@@ -11,8 +12,8 @@ const INK = '#1c1b18';
 
 export function WebMag34({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
-  const explainTheme = resolveThemeCarrier(data, 'explain', 'explain');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-34', 'title'));
+  const explainTheme = resolveThemeCarrier(data, 'explain', contractRole('mag-34', 'explain'));
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 中央竖图（先渲染，文字叠其上） */}

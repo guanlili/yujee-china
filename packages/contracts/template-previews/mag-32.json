@@ -6,10 +6,11 @@
   "imageSlotIds": [
     "image"
   ],
-  "textSlotCount": 2,
+  "textSlotCount": 3,
   "textSlotIds": [
+    "body",
     "title",
-    "label"
+    "explain"
   ],
-  "structureDescription": "mag-32 cover template with 1 image slot(s) (image) and 2 concrete text slot(s) (title, label). one dominant image block; 2 text slots."
+  "structureDescription": "mag-32 cover template with 1 image slot(s) (image) and 3 concrete text slot(s) (body, title, explain). one dominant image block; 3 text slots."
 }

@@ -376,7 +376,6 @@ class TemplateImageSlot(_V3Strict):
 class TemplateTextSlot(_V3Strict):
     id: str = Field(min_length=1)
     role: TemplateTextRole
-    maxChars: int = Field(default=None, gt=0)
     lang: TemplateTextLang
     # V3:渲染变量落点(§9)。standalone 装饰槽被 apply-theme 一键刷。
     variableDecor: bool = None
@@ -477,13 +476,6 @@ class V3AcceptedResponse(_V3Strict):
 
     ok: Literal[True]
     data: V3AcceptedData
-
-
-class V3PageTextsPatch(_V3Strict):
-    """一页文案补丁(章节故事 / 改页回写)。"""
-
-    pageIndex: int = Field(ge=0)
-    texts: dict[str, str]
 
 
 # ---------- v3.ts: ① analyze (async 202 + callback) ---------------------------
@@ -596,7 +588,6 @@ class DesignTextSlotSpec(_V3Strict):
     role: str = Field(min_length=1)
     sample: str = Field(default="", max_length=300)
     # 模板声明的字数上限(Unicode 字符),给文案模型当预算;可选,缺省=不限。
-    maxChars: int | None = Field(default=None, gt=0)
 
 
 class DesignRequest(_V3Strict):
@@ -674,19 +665,6 @@ class JudgeLayoutRequest(_V3Strict):
 # ---------- v3.ts: ② chapter-chat (sync) --------------------------------------
 
 
-class V3ChapterChatRequest(_V3Strict):
-    albumId: str = Field(min_length=1)
-    language: V3Language
-    chapter: V3Chapter
-    pages: list[Page]
-    history: list[V3ChatTurn] = Field(max_length=20)
-    userMessage: str = Field(max_length=500)
-    focusedPageIndex: int = Field(default=None, ge=0)
-
-
-V3ChapterChatKind = Literal["talk", "write", "edit"]
-
-
 class V3LayoutPatchEntry(_V3Strict):
     """改页的版面补丁(§4.2(3))。templateId/images/texts 局部更新。"""
 
@@ -694,25 +672,6 @@ class V3LayoutPatchEntry(_V3Strict):
     templateId: str = Field(default=None, min_length=1)
     images: dict[str, str] = None
     texts: dict[str, str] = None
-
-
-class V3ChapterChatResponse(_V3Strict):
-    kind: V3ChapterChatKind
-    assistantReply: str = Field(min_length=1, max_length=500)
-    # 仅 kind=='write':一次性写满本章全部页文案(§4.2(2))。
-    pagesTexts: list[V3PageTextsPatch] = None
-    # 仅 kind=='edit' 且涉版面:确定性引擎执行后的整页补丁(§4.2(3))。
-    layoutPatch: list[V3LayoutPatchEntry] = None
-    # 本章标题候选(≤4),供前端展示挑选;不回灌树(§3 数据归属)。
-    nameOptions: list[str] = Field(default=None, max_length=4)
-    usage: V3Usage
-
-    @field_validator("nameOptions")
-    @classmethod
-    def _name_options_nonempty(cls, value: list[str] | None) -> list[str] | None:
-        if value is not None and any(len(s) < 1 for s in value):
-            raise ValueError("nameOptions entries must be non-empty")
-        return value
 
 
 class V3StoryProgress(_V3Strict):
@@ -727,110 +686,10 @@ class V3StoryProgress(_V3Strict):
         return value
 
 
-class V3EditChatFocus(_V3Strict):
-    chapterId: str | None = Field(default=None, min_length=1)
-    pageIndex: int | None = Field(default=None, ge=0)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _reject_explicit_null_fields(cls, value):
-        if isinstance(value, dict):
-            for key in ("chapterId", "pageIndex"):
-                if key in value and value[key] is None:
-                    raise ValueError(f"{key} cannot be null")
-        return value
-
-
-class V3EditProgressDecision(_V3Strict):
-    pageDone: bool | None = None
-    chapterDone: bool | None = None
-    advanceTo: Literal["theme"] | None = None
-
-
-class V3EditNavigation(_V3Strict):
-    pageIndex: int | None = Field(default=None, ge=0)
-    chapterId: str | None = Field(default=None, min_length=1)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _reject_explicit_null_fields(cls, value):
-        if isinstance(value, dict):
-            for key in ("pageIndex", "chapterId"):
-                if key in value and value[key] is None:
-                    raise ValueError(f"{key} cannot be null")
-        return value
-
-    @model_validator(mode="after")
-    def _requires_target(self):
-        if self.pageIndex is None and self.chapterId is None:
-            raise ValueError("navigation requires pageIndex or chapterId")
-        return self
-
-
-class V3EditChatRequest(_V3Strict):
-    albumId: str = Field(min_length=1)
-    language: V3Language
-    userMessage: str = Field(max_length=500)
-    focus: V3EditChatFocus
-    progress: V3StoryProgress
-
-
-V3EditChatKind = Literal["talk", "write", "edit"]
-
-
-class V3WriteChapterRequest(_V3Strict):
-    """采访完一次性写满整章文案(§流程重构)。Web 传本章切片(版式已定)+ chapterContext
-    已在 chapter 上。Agent 强制写(不判 kind),用 write_chapter_copy 一次写满每页每 slot。"""
-
-    albumId: str = Field(min_length=1)
-    language: V3Language
-    chapter: V3Chapter
-    pages: list[Page]
-
-
-class V3WriteChapterResponse(_V3Strict):
-    pagesTexts: list[V3PageTextsPatch] = Field(default_factory=list)
-    usage: V3Usage
-
-
-class V3EditChatResponse(_V3Strict):
-    kind: V3EditChatKind
-    assistantReply: str = Field(min_length=1, max_length=500)
-    patches: list[V3LayoutPatchEntry] = Field(default_factory=list)
-    pagesTexts: list[V3PageTextsPatch] | None = None
-    progressDecision: V3EditProgressDecision | None = None
-    navigation: V3EditNavigation | None = None
-    opId: str = Field(min_length=1)
-    usage: V3Usage
-
-
 # ---------- v3.ts: ②b page-edit (sync, two-stage) -----------------------------
 # 镜像 v3.ts V3PageEditRequest/Response。请求复用 V3ChapterChatRequest 同形字段;响应复用
 # V3LayoutPatchEntry(不另造补丁形状)。全 `_V3Strict`(extra='forbid')。§3 隐私:
 # V3Chapter/Page 本身已 strict,拒任何 place/GPS/坐标 key。
-
-
-# 段一意图(可观测)。单意图(本期不做多意图 plan)。
-V3PageEditIntent = Literal["edit_text", "change_layout", "advance", "talk"]
-
-
-class V3PageEditRequest(_V3Strict):
-    language: V3Language
-    chapter: V3Chapter
-    pages: list[Page]
-    focusedPageIndex: int = Field(ge=0)
-    userMessage: str = Field(max_length=500)
-    history: list[V3ChatTurn] = Field(max_length=20)
-
-
-class V3PageEditResponse(_V3Strict):
-    assistantReply: str = Field(min_length=1, max_length=500)
-    intent: V3PageEditIntent
-    # edit_text→一条 {pageIndex, texts};change_layout→一条 {pageIndex, templateId, images}。
-    layoutPatch: list[V3LayoutPatchEntry] = None
-    # intent=='advance' 时为 True:用户想进下一章 → web 导航(Agent 不导航)。
-    advanceIntent: bool = None
-    usage: V3Usage
 
 
 # ---------- v3.ts: ③ recommend (sync) -----------------------------------------
@@ -847,114 +706,13 @@ class V3ChapterOverview(_V3Strict):
     photoDescs: list[str] = Field(max_length=12)
 
 
-class V3RecommendRequest(_V3Strict):
-    albumId: str = Field(min_length=1)
-    language: V3Language
-    chapters: list[V3ChapterOverview] = Field(min_length=1)
-    analysisSummary: str | None = Field(default=None, max_length=1000)
-    userMessage: str | None = Field(default=None, max_length=500)
-    fontHint: str | None = Field(default=None, max_length=200)
-
-
-class V3ChapterThemeColor(_V3Strict):
-    chapterId: str = Field(min_length=1)
-    accentColor: AccentColor
-    subject: str | None = Field(default=None, min_length=1)
-
-
-class V3BookThemeOption(_V3Strict):
-    optionId: str = Field(min_length=1, max_length=80)
-    artFont: ArtFontPack
-    chapters: list[V3ChapterThemeColor] = Field(min_length=1)
-    style: str | None = Field(default=None, min_length=1, max_length=160)
-    label: str | None = Field(default=None, min_length=1, max_length=160)
-
-
-class V3RecommendResponse(_V3Strict):
-    bookThemeOptions: list[V3BookThemeOption] = Field(min_length=3, max_length=3)
-    assistantReply: str = Field(max_length=500)
-    usage: V3Usage
-
-
 # ---------- v3.ts: ③ apply-theme (sync, deterministic) ------------------------
-
-
-class V3ChapterThemeChoice(_V3Strict):
-    """用户选定的每章主题/色/字体。
-
-    `subject` 存在时 = 用户确认的该章标题(一句话主题);apply-theme 只在它存在且 title
-    槽为空时持久化,并把色/字体刷到 variableDecor 槽。"""
-
-    chapterId: str = Field(min_length=1)
-    subject: str | None = Field(default=None, min_length=1)
-    accentColor: AccentColor
-    artFont: ArtFontPack
-
-
-class V3ApplyThemeRequest(_V3Strict):
-    albumId: str = Field(min_length=1)
-    language: V3Language
-    chapters: list[V3ChapterThemeChoice] = Field(min_length=1)
-    pages: list[Page]
-
-
-class V3ApplyThemeResponse(_V3Strict):
-    layoutPatch: list[V3LayoutPatchEntry] = Field(min_length=1)
-    assistantReply: str = Field(default=None, max_length=500)
-    usage: V3Usage
 
 
 # ---------- v3.ts: ④ cover (sync, deterministic, optional) --------------------
 
 
-class V3CoverRequest(_V3Strict):
-    albumId: str = Field(min_length=1)
-    language: V3Language
-    # 选定的封面/封尾模板;null = 跳过该项(封面可选,§4.4)。
-    coverTemplateId: str | None = Field(default=None, min_length=1)
-    endingTemplateId: str | None = Field(default=None, min_length=1)
-    # Stage5: 200px base64 thumbnails are for local color extraction only; do not
-    # forward them to LLM prompts.
-    coverPhoto: str | None = None
-    endingPhoto: str | None = None
-    # Textual guidance may be sent to 5a copy / 5b AI color design instead of base64.
-    coverPhotoDesc: str | None = None
-    # Cover/ending pages have no chapter owner, so Stage5 carries the selected
-    # whole-book art font explicitly for page-level text carriers.
-    artFont: ArtFontPack | None = None
-    hint: str | None = None
-    userMessage: str = ""
-    history: list[V3ChatTurn] = Field(default_factory=list, max_length=20)
-    pages: list[Page]
-
-    @field_validator("coverPhoto", "endingPhoto", "coverPhotoDesc", "artFont", "hint", mode="before")
-    @classmethod
-    def _reject_explicit_null_stage5_optional(cls, value):
-        if value is None:
-            raise ValueError("omit Stage5 optional fields instead of sending null")
-        return value
-
-
-class V3CoverResponse(_V3Strict):
-    layoutPatch: list[V3LayoutPatchEntry]  # 跳过时为空数组(§4.4「跳过=空」)。
-    assistantReply: str = Field(default=None, max_length=500)
-    needsUserInput: bool = False
-    usage: V3Usage
-
-
 # ---------- v3.ts: ⑤ finalize (sync, deterministic) ---------------------------
-
-
-class V3FinalizeRequest(_V3Strict):
-    albumId: str = Field(min_length=1)
-    language: V3Language
-    tree: V3LayoutTree  # 整棵章节树(无 base64)
-    pages: list[Page] = Field(min_length=1)
-
-
-class V3FinalizeResponse(_V3Strict):
-    layout: AlbumLayoutPlan  # 扁平定稿(对外渲染契约,不加树形字段)
-    usage: V3Usage
 
 
 # ---------- v3.ts: async callback envelope ------------------------------------

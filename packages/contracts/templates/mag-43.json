@@ -12,25 +12,20 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 12,
       "lang": "user",
-      "variableDecor": true,
-      "sample": "Notes"
+      "variableDecor": true, "sample": "Low Tide\nPhilip  "
     },
     {
-      "id": "subtitle",
+      "id": "title2",
       "role": "title",
-      "maxChars": 20,
       "lang": "user",
       "variableDecor": true,
       "sample": "from Elsewhere"
     },
     {
-      "id": "caption",
-      "role": "explain",
-      "maxChars": 120,
-      "lang": "user",
-      "sample": "这些照片来自不同的地方，却拼成了同一段心情——关于远行，也关于回家。"
+      "id": "body",
+      "role": "body",
+      "lang": "user", "sample": "The tide went out further than we expected.\nThe water was too cold to swim "
     }
   ]
 }

@@ -17,7 +17,7 @@ export const MAG_28_HTML = `<div data-template="mag-28" style="position:relative
   <div data-image-slot="image" style="position:absolute;left:133px;top:67px;width:661px;height:990px;overflow:hidden">
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:28px;top:69px;width:627px;font-family:{{FONT:title|${PLAYFAIR}}};font-weight:800;font-size:64px;line-height:1.05;color:{{COLOR:title|#1c1b18}};white-space:pre-wrap;overflow:hidden">{{TEXT:title}}</div>
-  <div data-text-key="headline" data-variable-decor style="position:absolute;left:28px;top:307px;width:627px;font-family:{{FONT:headline|${SERIF_CN}}};font-weight:800;font-size:64px;line-height:1.05;color:{{COLOR:headline|#1c1b18}};white-space:pre-wrap;overflow:hidden">{{TEXT:headline}}</div>
-  <div data-text-key="explain" style="position:absolute;left:28px;bottom:66px;width:255px;font-family:{{FONT:explain|${SANS_CN}}};font-weight:400;font-size:21px;line-height:1.35;color:{{COLOR:explain|#1c1b18}};white-space:pre-wrap;overflow:hidden">{{TEXT:explain}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;left:28px;top:69px;width:460px;font-family:{{FONT:title|${PLAYFAIR}}};font-weight:800;font-size:64px;line-height:1.05;color:{{COLOR:title|#1c1b18}};white-space:pre-wrap;overflow:hidden;height:134px">{{TEXT:title}}</div>
+  <div data-text-key="title2" data-variable-decor style="position:absolute;left:28px;top:307px;width:300px;font-family:{{FONT:title2|${SERIF_CN}}};font-weight:800;font-size:64px;line-height:1.05;color:{{COLOR:title2|#1c1b18}};white-space:pre-wrap;overflow:hidden;height:120px">{{TEXT:title2}}</div>
+  <div data-text-key="explain" style="position:absolute;left:28px;bottom:66px;width:120px;font-family:{{FONT:explain|${SANS_CN}}};font-weight:400;font-size:21px;line-height:1.35;color:{{COLOR:explain|#1c1b18}};white-space:pre-wrap;overflow:hidden;height:43px">{{TEXT:explain}}</div>
 </div>`;

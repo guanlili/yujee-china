@@ -1,30 +1,11 @@
 import { env } from '@/lib/env';
 import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
-import {
-  V3DesignData,
-  V3DesignRequest,
-  V3ApplyThemeResponse,
-  V3ChapterChatResponse,
-  V3CoverResponse,
-  V3EditChatResponse,
-  V3FinalizeResponse,
-  V3InternalAgentAckResponse,
-  V3RecommendResponse,
-  V3WriteChapterResponse,
-} from '@yujee/contracts';
+import { V3DesignData, V3DesignRequest } from '@yujee/contracts';
 import type {
   JudgeLayoutRequest,
   SelectLayoutRequest,
   V3AnalyzeRequest,
-  V3ApplyThemeRequest,
-  V3ChapterChatRequest,
-  V3CoverRequestInput,
-  V3EditChatRequest,
-  V3FinalizeRequest,
-  V3InternalAgentAckRequest,
-  V3RecommendRequest,
-  V3WriteChapterRequest,
 } from '@yujee/contracts';
 
 export type AgentPhotoInput = {
@@ -121,104 +102,7 @@ export const agentClient = {
     return postSyncV3('/v3/design', payload, V3DesignData, { albumId });
   },
 
-  async chapterChatV3(payload: V3ChapterChatRequest): Promise<V3ChapterChatResponse> {
-    return postSyncV3('/v3/chapter-chat', payload, V3ChapterChatResponse, {
-      albumId: payload.albumId,
-    });
-  },
-
-  async editChatV3(payload: V3EditChatRequest): Promise<V3EditChatResponse> {
-    return postSyncV3('/v3/edit-chat', payload, V3EditChatResponse, {
-      albumId: payload.albumId,
-    });
-  },
-
-  async writeChapterV3(payload: V3WriteChapterRequest): Promise<V3WriteChapterResponse> {
-    return postSyncV3('/v3/write-chapter', payload, V3WriteChapterResponse, {
-      albumId: payload.albumId,
-    });
-  },
-
-  async ackEditOp(payload: V3InternalAgentAckRequest): Promise<boolean> {
-    return postInternalAgentAck(payload);
-  },
-
-  async recommendV3(payload: V3RecommendRequest): Promise<V3RecommendResponse> {
-    const data = await postSyncV3('/v3/recommend', payload, V3RecommendResponse, {
-      albumId: payload.albumId,
-    });
-    assertRecommendChapterCoverage(payload, data);
-    return data;
-  },
-
-  async applyThemeV3(payload: V3ApplyThemeRequest): Promise<V3ApplyThemeResponse> {
-    return postSyncV3('/v3/apply-theme', payload, V3ApplyThemeResponse, {
-      albumId: payload.albumId,
-    });
-  },
-
-  async coverV3(payload: V3CoverRequestInput): Promise<V3CoverResponse> {
-    return postSyncV3('/v3/cover', payload, V3CoverResponse, {
-      albumId: payload.albumId,
-    });
-  },
-
-  async finalizeV3(payload: V3FinalizeRequest): Promise<V3FinalizeResponse> {
-    return postSyncV3Finalize('/v3/finalize', payload, V3FinalizeResponse, {
-      albumId: payload.albumId,
-    });
-  },
 };
-
-async function postInternalAgentAck(payload: V3InternalAgentAckRequest): Promise<boolean> {
-  let res: Response;
-  try {
-    res = await fetch(`${env.AGENT_BASE_URL}/internal/agent-ack`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
-        'Content-Type': 'application/json',
-        'X-Request-Id': crypto.randomUUID(),
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(30_000),
-    });
-  } catch (e) {
-    logger.error(
-      { err: String(e), api: 'v3', path: '/internal/agent-ack', opId: payload.opId },
-      'agent ack call failed',
-    );
-    throw ERRORS.AGENT_INTERNAL_ERROR();
-  }
-  if (res.status === 401) throw ERRORS.AGENT_UNAUTHORIZED();
-  if (!res.ok) {
-    logger.error(
-      { status: res.status, api: 'v3', path: '/internal/agent-ack', opId: payload.opId },
-      'agent ack non-2xx',
-    );
-    throw ERRORS.AGENT_INTERNAL_ERROR();
-  }
-
-  let json: unknown;
-  try {
-    json = await res.json();
-  } catch (e) {
-    logger.error(
-      { err: String(e), api: 'v3', path: '/internal/agent-ack', opId: payload.opId },
-      'agent ack response JSON parse failed',
-    );
-    throw ERRORS.AGENT_INTERNAL_ERROR();
-  }
-  const parsed = V3InternalAgentAckResponse.safeParse(json);
-  if (!parsed.success) {
-    logger.error(
-      { api: 'v3', path: '/internal/agent-ack', opId: payload.opId },
-      'agent ack response off-contract',
-    );
-    throw ERRORS.AGENT_INVALID_OUTPUT();
-  }
-  return parsed.data.ok;
-}
 
 async function postSyncV3<T>(
   path: string,
@@ -264,58 +148,6 @@ async function postSyncV3<T>(
   return parsed.data;
 }
 
-async function postSyncV3Finalize<T>(
-  path: string,
-  payload: unknown,
-  schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
-  logCtx: Record<string, unknown>,
-): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${env.AGENT_BASE_URL}${path}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.AGENT_SHARED_SECRET}`,
-        'Content-Type': 'application/json',
-        'X-Request-Id': crypto.randomUUID(),
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(60_000),
-    });
-  } catch (e) {
-    logger.error({ err: String(e), api: 'v3', path, ...logCtx }, 'agent sync call failed');
-    throw ERRORS.AGENT_INTERNAL_ERROR();
-  }
-  if (!res.ok) {
-    logger.error({ status: res.status, api: 'v3', path, ...logCtx }, 'agent sync non-2xx');
-    if (res.status === 422) {
-      const code = await readAgentErrorCode(res);
-      if (code && mapAgentErrorCode(code) === 'AGENT_INVALID_OUTPUT') {
-        throw ERRORS.AGENT_INVALID_OUTPUT();
-      }
-      throw ERRORS.VALIDATION_FAILED('agent rejected sync payload');
-    }
-    throw ERRORS.AGENT_INTERNAL_ERROR();
-  }
-  let json: unknown;
-  try {
-    json = await res.json();
-  } catch (e) {
-    logger.error({ err: String(e), api: 'v3', path, ...logCtx }, 'agent sync response JSON parse failed');
-    throw ERRORS.AGENT_INTERNAL_ERROR();
-  }
-  if (!json || typeof json !== 'object' || Array.isArray(json) || !(json as { ok?: boolean }).ok) {
-    logger.error({ api: 'v3', path, ...logCtx }, 'agent sync non-ok envelope');
-    throw ERRORS.AGENT_INTERNAL_ERROR();
-  }
-  const parsed = schema.safeParse((json as { data?: unknown }).data);
-  if (!parsed.success) {
-    logger.error({ api: 'v3', path, ...logCtx }, 'agent sync response off-contract');
-    throw ERRORS.AGENT_INVALID_OUTPUT();
-  }
-  return parsed.data;
-}
-
 async function readAgentErrorCode(res: Response): Promise<string | null> {
   try {
     const body = await res.json() as {
@@ -329,34 +161,3 @@ async function readAgentErrorCode(res: Response): Promise<string | null> {
   }
 }
 
-function assertRecommendChapterCoverage(
-  payload: V3RecommendRequest,
-  response: V3RecommendResponse,
-): void {
-  const expected = payload.chapters.map((chapter) => chapter.chapterId);
-  for (const option of response.bookThemeOptions) {
-    const seen = new Set<string>();
-    for (const rec of option.chapters) {
-      if (seen.has(rec.chapterId)) {
-        logger.error(
-          { albumId: payload.albumId, optionId: option.optionId, chapterId: rec.chapterId },
-          'agent v3 recommend duplicate option chapter color',
-        );
-        throw ERRORS.AGENT_INVALID_OUTPUT();
-      }
-      seen.add(rec.chapterId);
-    }
-    if (option.chapters.length !== expected.length || expected.some((chapterId) => !seen.has(chapterId))) {
-      logger.error(
-        {
-          albumId: payload.albumId,
-          optionId: option.optionId,
-          expectedChapterIds: expected,
-          returnedChapterIds: [...seen],
-        },
-        'agent v3 recommend option chapter color coverage mismatch',
-      );
-      throw ERRORS.AGENT_INVALID_OUTPUT();
-    }
-  }
-}

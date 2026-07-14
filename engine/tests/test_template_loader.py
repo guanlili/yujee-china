@@ -19,7 +19,7 @@ def test_loader_reads_shared_template_json_count():
     # test never goes stale when templates are added/removed.
     expected_ids = sorted(path.stem for path in json_files)
 
-    assert len(json_files) == 48
+    assert len(json_files) == 43
     # mag-24 has no JSON, so it is (correctly) absent from the loaded registry.
     assert "mag-24" not in expected_ids
     assert templates.TEMPLATE_IDS == expected_ids
@@ -50,7 +50,9 @@ def test_cover_ids_are_derived_from_template_json():
         if json.loads(path.read_text(encoding="utf-8")).get("category") == "cover"
     )
 
-    assert expected_covers == ["mag-01", "mag-13", "mag-23", "mag-32", "p01"]
+    # 不写死 id:模板会被重新归类(Web 模板台的页面类型下拉框直接改模板 JSON 的
+    # category)。守不变式:COVER_TEMPLATE_IDS 必须与模板 JSON 派生出来的一致且非空。
+    assert expected_covers, "至少要有一个封面模板"
     assert templates.COVER_TEMPLATE_IDS == expected_covers
 
 
@@ -69,8 +71,8 @@ def test_prompt_summary_handles_optional_constraints(tmp_path):
                 ],
                 "texts": [
                     {"id": "caption", "role": "explain", "lang": "user"},
-                    {"id": "title", "role": "title", "lang": "user", "maxChars": 24},
-                    {"id": "folio", "role": "decoration", "lang": "en", "maxChars": 2},
+                    {"id": "title", "role": "title", "lang": "user"},
+                    {"id": "folio", "role": "decoration", "lang": "en"},
                 ],
             }
         ),
@@ -83,8 +85,8 @@ def test_prompt_summary_handles_optional_constraints(tmp_path):
     assert "optional-01 [interior]" in summary
     assert "image(any)" in summary
     assert "thumb(quality~detail)" in summary
-    assert "caption<=?c" in summary
-    assert "title<=24c" in summary
+    assert "caption(explain)" in summary
+    assert "title(title)" in summary
 
 
 def test_loader_accepts_category_only_v3_template(tmp_path):
@@ -103,7 +105,6 @@ def test_loader_accepts_category_only_v3_template(tmp_path):
                         "id": "title",
                         "role": "title",
                         "lang": "user",
-                        "maxChars": 24,
                     }
                 ],
                 "items": {
@@ -113,7 +114,6 @@ def test_loader_accepts_category_only_v3_template(tmp_path):
                             "id": "caption",
                             "role": "explain",
                             "lang": "user",
-                            "maxChars": 70,
                         }
                     ],
                 },
@@ -131,7 +131,7 @@ def test_loader_accepts_category_only_v3_template(tmp_path):
     assert template["svgs"] == [{"id": "divider", "variableDecor": True}]
     assert template["items"] == {
         "images": [{"id": "itemImage"}],
-        "texts": [{"id": "caption", "role": "explain", "lang": "user", "maxChars": 70}],
+        "texts": [{"id": "caption", "role": "explain", "lang": "user"}],
     }
 
 
@@ -259,33 +259,40 @@ def test_optional_image_slot_hints_treated_as_any(monkeypatch, tmp_path):
         importlib.import_module("src.workflows.core.layout.templates")
 
 
-# ---------- 示例文案(copy-examples)加载 -------------------------------------
-# 示例文案与模板分文件、并列存放(packages/contracts/copy-examples/),通过与模板【同一】
-# 机制到达 Agent。它们给写作 LM 做「输出示例」(例驱动);缺失须优雅降级,绝不崩。
+# ---------- 示例文案:槽位自带的 sample(单一真相)------------------------------
+# 示例文案就是模板 JSON 里槽位自己的 `sample` 字段 —— 同一个串既是 Web 画板的预览
+# 占位,也是写作 LM 的输出示例(例驱动)。曾经并存的 copy-examples/ 目录已删除:两套
+# 示例=信息误差。缺 sample 的槽须优雅降级(写作侧 omit 示例,绝不崩)。
 
 
-def test_copy_example_returns_slot_texts_map():
+def test_text_slot_sample_is_loaded_from_template_json():
     from src.workflows.core.layout import templates as registry
 
-    # mag-01 ships example copy keyed by slot id (examples[0].texts).
-    example = registry.copy_example("mag-01")
-    assert example["title"] == "VENUES"
-    assert example["explain1"] and example["explain2"]
+    template = registry.get("mag-01")
+    assert template is not None
+    by_id = {slot["id"]: slot for slot in registry.text_slots(template)}
+    # 这个串同时是画板占位和写作示例(单一真相)。
+    assert by_id["title"].get("sample")
+    assert by_id["body"].get("sample")
 
 
-def test_copy_example_repeat_group_keys_use_brackets():
+def test_text_slot_without_sample_loads_fine(tmp_path):
     from src.workflows.core.layout import templates as registry
 
-    # mag-10's repeat group example keys as explain[0..3] — same bracket shape the
-    # writing-side per-page expansion produces.
-    example = registry.copy_example("mag-10")
-    assert example["explain[0]"] == "Low tide at dawn."
-    assert "explain[3]" in example
+    # sample 是可选的:没有它的槽照样加载(写作侧据此 omit 示例,绝不崩)。
+    template_file = tmp_path / "no-sample.json"
+    template_file.write_text(
+        json.dumps(
+            {
+                "id": "no-sample",
+                "category": "interior",
+                "images": [{"id": "image"}],
+                "texts": [{"id": "body", "role": "body", "lang": "user"}],
+            }
+        ),
+        encoding="utf-8",
+    )
 
-
-def test_copy_example_missing_file_returns_empty_dict():
-    from src.workflows.core.layout import templates as registry
-
-    # mag-20 has no copy-example file → empty dict (graceful degrade, never KeyError).
-    assert registry.copy_example("mag-20") == {}
-    assert registry.copy_example("does-not-exist") == {}
+    loaded = registry._load_templates_from_dir(tmp_path)
+    slot = registry.text_slots(loaded["no-sample"])[0]
+    assert slot.get("sample") is None

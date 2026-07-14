@@ -1,13 +1,6 @@
 'use client';
 
 import { UnauthorizedError, CreditInsufficientError } from '@/lib/generation/client';
-import type {
-  V3ChatTurn,
-  V3ChapterChatResponse,
-  V3EditChatResponse,
-  V3RecommendResponse,
-  V3ChapterThemeChoice,
-} from '@yujee/contracts';
 
 // Browser-side client for the V3 authoring surface. The read-only draft skeleton
 // remains server-derived from draft_json; legacy draft chat endpoints were removed
@@ -123,42 +116,6 @@ export interface BrowserLayoutPatchEntry {
   textsJson?: Record<string, string>;
 }
 
-// ③ 主题/章节色 · 推荐 — one real /v3/recommend turn (缺口#20). Invariant 12 / §3 数据归属:
-// the browser holds NO authoring tree, so it sends ONLY its language (+ an optional
-// free-text nudge); the Web route re-slices the per-chapter overview from draft_json
-// server-side. Returns three book theme options. Nothing is written — apply-theme writes
-// the tree + title slots after the user selects one option.
-export function postRecommend(
-  albumId: string,
-  userMessage?: string,
-  fontHint?: string,
-): Promise<V3RecommendResponse> {
-  return postJson(`/api/v3/albums/${albumId}/recommend`, {
-    language: 'en',
-    ...(userMessage !== undefined ? { userMessage } : {}),
-    ...(fontHint !== undefined ? { fontHint } : {}),
-  });
-}
-
-// ③ 主题/章节色 · 应用 — one real /v3/apply-theme turn (缺口#20). Invariant 12 / §3 数据
-// 归属: the browser holds NO layout pages, so it sends ONLY its SELECTIONS (per-chapter
-// {subject, accentColor, artFont}); the Web service re-slices each chapter's themable
-// pages from draft_json server-side, runs the deterministic brush, writes the tree
-// color/font + persists each subject into its chapter title slot (#236) + advances stage
-// theme→cover. Returns the page-level layoutPatch the browser applies live + new stage.
-export interface ApplyThemeInput {
-  chapters: V3ChapterThemeChoice[];
-}
-export function postApplyTheme(
-  albumId: string,
-  input: ApplyThemeInput,
-): Promise<{ stage: string; layoutPatch: BrowserLayoutPatchEntry[]; assistantReply?: string }> {
-  return postJson(`/api/v3/albums/${albumId}/apply-theme`, {
-    language: 'en',
-    chapters: input.chapters,
-  });
-}
-
 // 内容采集(分组后采访)— 把每章采访答案拼成的 chapterContext 存回 draft_json.tree(§3 数据
 // 归属:tree 不经浏览器往返,浏览器只发拼好的答案字符串)。纯 draft 写回,不调 Agent、不推进
 // stage。PRIVACY:chapterContext 只含地名文字 + 用户原话,坐标止步于浏览器(见 lib/photo/geocode)。
@@ -180,16 +137,6 @@ export function postChapterContexts(
   return postJson(`/api/v3/albums/${albumId}/chapter-context`, { contexts, ...(messages?.length ? { messages } : {}) });
 }
 
-// 采访完一次性写满该章文案(§流程重构)。存完 chapterContext 后调,Web 从 draft 切本章转发
-// Agent 强制写,回 pagesTexts(前端 applyChapterWrite 落地到画板)。只发 chapterId+language。
-export function postWriteChapter(
-  albumId: string,
-  chapterId: string,
-  language: 'zh' | 'en',
-): Promise<{ pagesTexts: { pageIndex: number; texts: Record<string, string> }[] }> {
-  return postJson(`/api/v3/albums/${albumId}/write-chapter`, { language, chapterId });
-}
-
 // 采访要用「章→photoIds」把每章对回 clusterId → 取预填。复用只读的章节摘要端点
 // (getChapterSummary),它返回派生摘要(label/role/photoIds),不含可编辑树(不变式 12)。
 export interface ChapterSummaryEntry {
@@ -202,77 +149,6 @@ export interface ChapterSummaryEntry {
 }
 export function fetchChapterSummary(albumId: string): Promise<{ chapters: ChapterSummaryEntry[] }> {
   return getJson(`/api/v1/albums/${albumId}/chapters`);
-}
-
-// ④ 书籍设计 — 封面/封尾 — one real /v3/cover turn (缺口#20). Invariant 12 / §3 数据归属:
-// the browser holds NO layout pages, so it sends ONLY its SELECTIONS (the chosen 封面/封尾
-// template ids, or null = 跳过 — 封面可选 §4.4); the Web service re-slices the relevant
-// pages from draft_json server-side, runs the deterministic auto-fill, folds the patch
-// into draft_json.pages + advances stage cover→ready. A skip returns an EMPTY patch and
-// never errors. Returns the browser-shaped layoutPatch to apply live + the new stage.
-// `coverPhotoId`/`endingPhotoId` (optional) let the user pick WHICH photo sits on the
-// cover/ending hero. They never touch the Agent /v3/cover contract: the Web service swaps
-// the chosen photo into the re-sliced cover/ending page BEFORE forwarding to the stateless
-// agent (which auto-fills from the page's own images). Absent = keep whatever analyze put
-// there (book's first/last photo).
-export interface CoverInput {
-  coverTemplateId?: string | null;
-  endingTemplateId?: string | null;
-  coverPhotoId?: string | null;
-  endingPhotoId?: string | null;
-  coverPhoto?: string;
-  endingPhoto?: string;
-  userMessage?: string;
-  history?: V3ChatTurn[];
-}
-export function postCover(
-  albumId: string,
-  input: CoverInput,
-): Promise<{ stage: string; layoutPatch: BrowserLayoutPatchEntry[]; assistantReply?: string; needsUserInput?: boolean }> {
-  return postJson(`/api/v3/albums/${albumId}/cover`, {
-    language: 'en',
-    ...(input.coverTemplateId !== undefined ? { coverTemplateId: input.coverTemplateId } : {}),
-    ...(input.endingTemplateId !== undefined ? { endingTemplateId: input.endingTemplateId } : {}),
-    ...(input.coverPhotoId !== undefined ? { coverPhotoId: input.coverPhotoId } : {}),
-    ...(input.endingPhotoId !== undefined ? { endingPhotoId: input.endingPhotoId } : {}),
-    ...(input.coverPhoto !== undefined ? { coverPhoto: input.coverPhoto } : {}),
-    ...(input.endingPhoto !== undefined ? { endingPhoto: input.endingPhoto } : {}),
-    ...(input.userMessage !== undefined ? { userMessage: input.userMessage } : {}),
-    ...(input.history !== undefined ? { history: input.history } : {}),
-  });
-}
-
-// ② 章节故事 — one real /v3/chapter-chat turn (缺口#20). Invariant 12 / §3 数据归属:
-// the browser holds NO authoring tree, so it sends ONLY the chapter it's on (chapterId)
-// + history + userMessage (+ the focused page); the Web route re-slices draft_json
-// server-side into the single-chapter V3ChapterChatRequest the agent needs. Returns the
-// agent's turn verbatim: kind=talk/write/edit + assistantReply, plus pagesTexts (write),
-// layoutPatch (edit), nameOptions (chapter-title chips). The caller applies the patch by
-// kind (talk NEVER carries one — Frame 4 红线 is enforced agent-side via the contract).
-export interface ChapterChatInput {
-  language: 'zh' | 'en';
-  chapterId: string;
-  history: V3ChatTurn[];
-  userMessage: string;
-  focusedPageIndex?: number;
-}
-export function postChapterChat(
-  albumId: string,
-  input: ChapterChatInput,
-): Promise<V3ChapterChatResponse> {
-  return postJson(`/api/v3/albums/${albumId}/chapter-chat`, input);
-}
-
-export interface EditChatInput {
-  language: 'zh' | 'en';
-  chapterId?: string;
-  userMessage: string;
-  focusedPageIndex?: number;
-  pagePhotoRefs?: Record<string, string>;
-}
-
-export function postEditChat(albumId: string, input: EditChatInput): Promise<V3EditChatResponse> {
-  return postJson(`/api/v3/albums/${albumId}/edit-chat`, input);
 }
 
 // 设计 Agent 全书对话（design-chat 路由）。committed=true 表示 pages 已在服务端写回
@@ -288,12 +164,6 @@ export function postDesignChat(
   input: { userMessage: string },
 ): Promise<DesignChatResult> {
   return postJson(`/api/v3/albums/${albumId}/design-chat`, input);
-}
-
-export function postFinalize(
-  albumId: string,
-): Promise<{ albumId: string; requestId: string; accepted: true }> {
-  return Promise.resolve({ albumId, requestId: crypto.randomUUID(), accepted: true });
 }
 
 // Legacy draft-period free-text editing is no longer backed by Agent V2.

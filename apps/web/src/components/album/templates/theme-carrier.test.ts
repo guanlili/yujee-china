@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { TEMPLATES } from '@yujee/contracts/templates';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -27,18 +28,15 @@ interface TextCarrierRenderCase {
 const TEXT_CARRIER_RENDER_CASES: TextCarrierRenderCase[] = [
   { templateId: 'mag-01', slotId: 'title', text: 'Heading Carrier', images: { image: 'p0' } },
   { templateId: 'mag-01', slotId: 'label', text: 'Side Carrier', images: { image: 'p0' } },
-  { templateId: 'mag-02', slotId: 'number[0]', text: '42', expectedText: '42' },
-  { templateId: 'mag-02', slotId: 'title[0]', text: 'Chapter Carrier' },
+  { templateId: 'mag-02', slotId: 'label[0]', text: '42', expectedText: '42' },
+  { templateId: 'mag-02', slotId: 'title2[0]', text: 'Chapter Carrier' },
   { templateId: 'mag-03', slotId: 'label', text: 'Location Carrier', images: { image: 'p0' } },
-  { templateId: 'mag-04', slotId: 'date', text: '44/24', expectedText: '44', images: { image1: 'p1', image2: 'p2', image3: 'p3' } },
   { templateId: 'mag-05', slotId: 'title', text: 'Title Carrier', images: { image: 'p0' } },
-  { templateId: 'mag-05', slotId: 'label', text: 'Top Right Carrier', images: { image: 'p0' } },
   { templateId: 'mag-07', slotId: 'title', text: 'Title Carrier', images: { image1: 'p0', image2: 'p1' } },
-  { templateId: 'mag-08', slotId: 'date', text: '88/24', expectedText: '88', images: { image: 'p0' } },
+  { templateId: 'mag-08', slotId: 'label', text: '88/24', expectedText: '88', images: { image: 'p0' } },
   { templateId: 'mag-08', slotId: 'title', text: 'Title Carrier', images: { image: 'p0' } },
   { templateId: 'mag-09', slotId: 'title', text: 'Title Carrier', images: { image1: 'p0', image2: 'p1' } },
   { templateId: 'mag-11', slotId: 'title', text: 'Title Carrier', images: { image: 'p0' } },
-  { templateId: 'mag-11', slotId: 'label', text: 'Plate Carrier', images: { image: 'p0' } },
   {
     templateId: 'mag-13',
     slotId: 'title',
@@ -47,12 +45,11 @@ const TEXT_CARRIER_RENDER_CASES: TextCarrierRenderCase[] = [
     extraTexts: { divider: '#112233' },
   },
   { templateId: 'mag-15', slotId: 'title', text: 'Title Carrier', images: { image1: 'p0', image2: 'p1' } },
-  { templateId: 'mag-15', slotId: 'date', text: 'Date Carrier', images: { image1: 'p0', image2: 'p1' } },
   { templateId: 'mag-19', slotId: 'title', text: 'Intro Carrier', images: { image: 'p0' } },
   { templateId: 'p01', slotId: 'title', text: 'Title Carrier', images: { image: 'p0' } },
-  { templateId: 'p01', slotId: 'label1', text: 'Category Carrier', images: { image: 'p0' } },
+  { templateId: 'p01', slotId: 'label', text: 'Category Carrier', images: { image: 'p0' } },
   { templateId: 'p01', slotId: 'label2', text: '77', images: { image: 'p0' } },
-  { templateId: 'p01', slotId: 'date', text: '2030', images: { image: 'p0' } },
+  { templateId: 'p01', slotId: 'label3', text: '2030', images: { image: 'p0' } },
 ];
 
 function escapeRegExp(value: string): string {
@@ -109,10 +106,11 @@ test('resolveThemeCarrier defaults each role by the slot text language', () => {
       pdfFontFamily: 'NotoSansSC',
     },
     {
+      // decoration 默认走艺术字体(三组策略:title 衬线 / body+explain 黑体 / decoration 艺术字)。
       role: 'decoration' as const,
       text: '第一章',
-      webFontFamily: '"Noto Sans SC", "PingFang SC", "Heiti SC", sans-serif',
-      pdfFontFamily: 'NotoSansSC',
+      webFontFamily: '"Zhi Mang Xing", "Noto Serif SC", "Songti SC", serif',
+      pdfFontFamily: 'Zhi Mang Xing',
     },
     {
       role: 'title' as const,
@@ -135,8 +133,8 @@ test('resolveThemeCarrier defaults each role by the slot text language', () => {
     {
       role: 'decoration' as const,
       text: 'CHAPTER ONE',
-      webFontFamily: '"Inter", "Noto Sans SC", "PingFang SC", sans-serif',
-      pdfFontFamily: 'Inter',
+      webFontFamily: '"Great Vibes", "Noto Serif SC", "Songti SC", cursive',
+      pdfFontFamily: 'Great Vibes',
     },
   ];
 
@@ -251,18 +249,18 @@ test('resolveThemeCarrier reads repeat-slot carriers without clobbering repeat t
       templateId: 'mag-02',
       images: {},
       texts: {
-        'number[0]': '01',
-        'number[0]#accentColor': '#C0392B',
-        'number[0]#artFont': 'sans-modern',
+        'label[0]': '01',
+        'label[0]#accentColor': '#C0392B',
+        'label[0]#artFont': 'sans-modern',
       },
     },
     () => undefined,
   );
 
-  const carrier = resolveThemeCarrier(data, 'number[0]');
+  const carrier = resolveThemeCarrier(data, 'label[0]');
   assert.equal(carrier.accentColor, '#C0392B');
   assert.equal(carrier.webFontFamily, '"Inter", "Noto Sans SC", "PingFang SC", sans-serif');
-  assert.deepEqual(data.number, ['01']);
+  assert.deepEqual(data.label, ['01']);
 });
 
 test('mag-08 consumes title carrier while preserving title text', () => {
@@ -295,12 +293,12 @@ test('mag-02 web resolves repeat title carriers per row', () => {
       templateId: 'mag-02',
       images: {},
       texts: {
-        'title[0]': 'First Row',
-        'title[0]#accentColor': '#111111',
-        'title[0]#artFont': 'sans-modern',
-        'title[1]': 'Second Row',
-        'title[1]#accentColor': '#C0392B',
-        'title[1]#artFont': 'display-bold',
+        'title2[0]': 'First Row',
+        'title2[0]#accentColor': '#111111',
+        'title2[0]#artFont': 'sans-modern',
+        'title2[1]': 'Second Row',
+        'title2[1]#accentColor': '#C0392B',
+        'title2[1]#artFont': 'display-bold',
       },
     },
     () => undefined,
@@ -313,6 +311,22 @@ test('mag-02 web resolves repeat title carriers per row', () => {
   assert.match(html, />Second Row</);
   assert.match(html, /color:#C0392B/);
   assert.match(html, new RegExp(escapeRegExp(DISPLAY_BOLD_WEB_FONT_NEEDLE)));
+});
+
+// 前置断言:这张用例表只覆盖【variableDecor 槽】(主题一键刷色/刷字体只作用于
+// title/decoration)。模板台能改 role —— 一旦某个槽不再是 variableDecor,这里会立刻
+// 明确报错,而不是隐晦地在字体断言上挂掉。
+test('fixture premise: every carrier render case targets a variableDecor slot', () => {
+  for (const renderCase of TEXT_CARRIER_RENDER_CASES) {
+    const base = renderCase.slotId.replace(/\[\d+\]$/, '');
+    const tpl = TEMPLATES[renderCase.templateId];
+    const slot =
+      tpl?.texts.find((s) => s.id === base) ?? tpl?.items?.texts?.find((s) => s.id === base);
+    assert.ok(
+      slot?.variableDecor,
+      `${renderCase.templateId}.${renderCase.slotId} 已不是 variableDecor 槽 —— 从用例表里移除它`,
+    );
+  }
 });
 
 test('web templates consume every text variableDecor carrier as style only', () => {
@@ -415,12 +429,18 @@ function referencesSlot(source: string, base: string): boolean {
 }
 
 // 源码是否为该槽解析了主题 carrier（普通槽用引号名，重复槽用反引号 base[ 形式）。
+// 第三个参数(role)有两种合法形态:
+//   ① contractRole('<tpl>', '<slot>') —— 从契约查表【推荐】。模板台能改 role,
+//      写死会烂;查表在结构上就不可能漂移。
+//   ② 'title' | 'body' | ... —— 字面量(遗留形态,仍会与契约逐一比对)。
+const ROLE_ARG = `(?:['"](?:title|body|explain|decoration)['"]|contractRole\\([^)]*\\))`;
+
 function resolvesCarrier(source: string, slot: TemplateTextSlot): boolean {
   const b = escapeRegExp(slot.base);
   const pattern = slot.repeat
     ? new RegExp(`resolveThemeCarrier\\(\\s*data\\s*,\\s*\`${b}\\[`)
     : new RegExp(
-        `resolveThemeCarrier\\(\\s*data\\s*,\\s*['"]${b}['"](?:\\s*,\\s*['"](?:title|body|explain|decoration)['"])?\\s*\\)`,
+        `resolveThemeCarrier\\(\\s*data\\s*,\\s*['"]${b}['"](?:\\s*,\\s*${ROLE_ARG})?\\s*\\)`,
       );
   return pattern.test(source);
 }
@@ -428,6 +448,10 @@ function resolvesCarrier(source: string, slot: TemplateTextSlot): boolean {
 interface ResolvedCarrierDeclaration {
   themeVar: string;
   role?: string;
+  /** true = role 从契约查表拿(contractRole(...)),不可能与契约漂移。 */
+  derived?: boolean;
+  /** 查表实参,用来核对确实指向本模板本槽。 */
+  derivedArgs?: string;
 }
 
 function resolvedCarrierDeclaration(
@@ -435,17 +459,21 @@ function resolvedCarrierDeclaration(
   slot: TemplateTextSlot,
 ): ResolvedCarrierDeclaration | undefined {
   const b = escapeRegExp(slot.base);
+  const roleGroup = `(?:['"]([^'"]+)['"]|contractRole\\(([^)]*)\\))`;
   const pattern = slot.repeat
     ? new RegExp(
         'const\\s+(\\w+)\\s*=\\s*resolveThemeCarrier\\(\\s*data\\s*,\\s*`'
           + b
-          + '\\[\\$\\{[^}]+\\}\\]`(?:\\s*,\\s*[\'\"]([^\'\"]+)[\'\"])?\\s*\\)',
+          + '\\[\\$\\{[^}]+\\}\\]`(?:\\s*,\\s*' + roleGroup + ')?\\s*\\)',
       )
     : new RegExp(
-        `const\\s+(\\w+)\\s*=\\s*resolveThemeCarrier\\(\\s*data\\s*,\\s*['"]${b}['"](?:\\s*,\\s*['"]([^'"]+)['"])?\\s*\\)`,
+        `const\\s+(\\w+)\\s*=\\s*resolveThemeCarrier\\(\\s*data\\s*,\\s*['"]${b}['"](?:\\s*,\\s*${roleGroup})?\\s*\\)`,
       );
   const match = pattern.exec(source);
-  return match ? { themeVar: match[1]!, role: match[2] } : undefined;
+  if (!match) return undefined;
+  return match[3] !== undefined
+    ? { themeVar: match[1]!, derived: true, derivedArgs: match[3] }
+    : { themeVar: match[1]!, role: match[2] };
 }
 
 test('every Web text carrier resolves its contract role and applies its resolved font', () => {
@@ -471,7 +499,13 @@ test('every Web text carrier resolves its contract role and applies its resolved
       }
 
       const label = `${templateId}/index.tsx :: ${renderedSlot} (${declaration.themeVar})`;
-      if (declaration.role !== slot.role) {
+      if (declaration.derived) {
+        // 从契约查表 —— 结构上不可能漂移,只核对实参确实指向本模板本槽。
+        const args = declaration.derivedArgs ?? '';
+        if (!args.includes(`'${templateId}'`) || !args.includes(`'${slot.base}'`)) {
+          missing.push(`${label} contractRole(${args}) 没指向 ${templateId}/${slot.base}`);
+        }
+      } else if (declaration.role !== slot.role) {
         missing.push(
           `${label} resolves role=${declaration.role ?? '<missing>'}; expected role=${slot.role}`,
         );
@@ -513,13 +547,14 @@ test('mag-18 applies explanation fonts to the dynamic text nodes only', () => {
     );
   }
 
-  for (const index of [1, 2]) {
+  // 槽 id 按 role 派号后是 explain / explain2（原 explain1 / explain2）。
+  for (const slot of ['explain', 'explain2']) {
     assert.match(
       source,
       new RegExp(
-        `<p\\s+style=\\{\\{\\s*margin: 0,\\s*fontFamily: explain${index}Theme\\.webFontFamily,[\\s\\S]*?>\\s*\\{d\\.explain${index} \\|\\| ''\\}\\s*</p>`,
+        `<p\\s+style=\\{\\{\\s*margin: 0,\\s*fontFamily: ${slot}Theme\\.webFontFamily,[\\s\\S]*?>\\s*\\{d\\.${slot} \\|\\| ''\\}\\s*</p>`,
       ),
-      `mag-18 should apply explain${index}Theme.webFontFamily to d.explain${index}`,
+      `mag-18 should apply ${slot}Theme.webFontFamily to d.${slot}`,
     );
   }
 });

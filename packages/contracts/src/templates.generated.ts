@@ -22,7 +22,6 @@ export const TEMPLATE_IDS = [
   "mag-20",
   "mag-22",
   "mag-23",
-  "mag-25",
   "mag-26",
   "mag-27",
   "mag-28",
@@ -32,10 +31,7 @@ export const TEMPLATE_IDS = [
   "mag-32",
   "mag-33",
   "mag-34",
-  "mag-35",
   "mag-36",
-  "mag-37",
-  "mag-38",
   "mag-39",
   "mag-40",
   "mag-41",
@@ -47,7 +43,6 @@ export const TEMPLATE_IDS = [
   "mag-47",
   "mag-48",
   "mag-49",
-  "mag-50",
   "mag-51",
   "mag-52",
   "mag-53",
@@ -79,38 +74,28 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 12,
         "lang": "user",
         "variableDecor": true,
-        "sample": "夏日海岸"
+        "sample": "DUE NORTH"
       },
       {
         "id": "label",
         "role": "decoration",
-        "maxChars": 20,
         "lang": "en",
         "variableDecor": true,
-        "sample": "Series · No.01"
+        "sample": "NORWAY · 21 DAYS "
       },
       {
-        "id": "explain1",
-        "role": "explain",
-        "maxChars": 40,
+        "id": "body",
+        "role": "body",
         "lang": "user",
-        "sample": "午后的光落在窗台上"
+        "sample": "I went north alone, with a man who has never left his province.\n\nHe called at seven every morning to ask about the weather, never\nabout what I saw. Twenty-one days, and the light never fully went\nout.\n\n I have never been so far from home.\n I have never been so easy\nto reach."
       },
       {
-        "id": "explain2",
+        "id": "explain",
         "role": "explain",
-        "maxChars": 40,
         "lang": "user",
         "sample": "风轻轻掀起窗帘的一角"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
       }
     ]
   },
@@ -122,38 +107,28 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 30,
         "lang": "user",
         "variableDecor": true,
         "sample": "目录"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
       }
     ],
     "items": {
       "texts": [
         {
-          "id": "number",
+          "id": "label",
           "role": "decoration",
-          "maxChars": 3,
           "lang": "en",
           "variableDecor": true
         },
         {
-          "id": "title",
+          "id": "title2",
           "role": "title",
-          "maxChars": 24,
           "lang": "user",
           "variableDecor": true
         },
         {
-          "id": "description",
+          "id": "explain",
           "role": "explain",
-          "maxChars": 90,
           "lang": "user"
         }
       ]
@@ -182,24 +157,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "label",
         "role": "decoration",
-        "maxChars": 12,
         "lang": "en",
         "variableDecor": true,
-        "sample": "京都 ·"
+        "sample": "京都 · 2026/04/01"
       },
       {
-        "id": "date",
+        "id": "label2",
         "role": "decoration",
-        "maxChars": 10,
         "lang": "en",
         "variableDecor": true,
         "sample": "03 / 30"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
       }
     ]
   },
@@ -238,32 +205,22 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     ],
     "texts": [
       {
-        "id": "explain1",
+        "id": "explain",
         "role": "explain",
-        "maxChars": 90,
         "lang": "user",
-        "sample": "清晨的码头，海水还带着夜的凉意"
+        "sample": "March. The last morning in the old flat, before the truck came. "
       },
       {
-        "id": "explain2",
-        "role": "explain",
-        "maxChars": 90,
+        "id": "body",
+        "role": "body",
         "lang": "user",
-        "sample": "我们坐在石阶上看船一艘艘出港"
+        "sample": " We packed everything into boxes and then stood around not knowing what to do with our hands. \n\nThe boy asked if the newplace would have the same door.\n\n I said no. He thought about it and said okay. \n\nThat was the only conversation we ever had about leaving. "
       },
       {
-        "id": "date",
-        "role": "decoration",
-        "maxChars": 12,
+        "id": "title",
+        "role": "title",
         "lang": "en",
-        "variableDecor": true,
-        "sample": "04/24"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
+        "sample": "26/04"
       }
     ]
   },
@@ -290,31 +247,21 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 24,
         "lang": "user",
         "variableDecor": true,
-        "sample": "回到那片海"
-      },
-      {
-        "id": "label",
-        "role": "decoration",
-        "maxChars": 20,
-        "lang": "en",
-        "variableDecor": true,
-        "sample": "Chapter · 05"
+        "sample": "THE CAT"
       },
       {
         "id": "explain",
         "role": "explain",
-        "maxChars": 90,
-        "lang": "user",
-        "sample": "那天的风很轻，我们沿着海边一直走，没有说太多话，只是看着浪一遍遍铺上沙滩。"
+        "lang": "en",
+        "sample": "May ·2025"
       },
       {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
+        "id": "body",
+        "role": "body",
+        "lang": "user",
+        "sample": "She was gone eleven hours. We found her at midnight under the neighbour's car, three metres from our door. "
       }
     ]
   },
@@ -337,14 +284,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         ]
       }
     ],
-    "texts": [
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
-      }
-    ]
+    "texts": []
   },
   "mag-07": {
     "id": "mag-07",
@@ -383,30 +323,21 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 24,
         "lang": "user",
         "variableDecor": true,
-        "sample": "山间的清晨"
+        "sample": "THE\nCALL                                "
       },
       {
-        "id": "explain1",
-        "role": "explain",
-        "maxChars": 90,
+        "id": "body",
+        "role": "body",
         "lang": "user",
-        "sample": "雾还没散，山脊只露出淡淡的轮廓"
+        "sample": "She learned to video call in October, at seventy-one.\n My father still refuses."
       },
       {
-        "id": "explain2",
-        "role": "explain",
-        "maxChars": 90,
+        "id": "body2",
+        "role": "body",
         "lang": "user",
-        "sample": "阳光一点点爬上来，把云染成金色"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
+        "sample": " Now she calls every Sunday. We mostly see her ceiling, sometimes half a forehead. She talks the whole time and never asks if we can see her. My father sits off screen and says nothing."
       }
     ]
   },
@@ -433,38 +364,28 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 12,
         "lang": "user",
         "variableDecor": true,
-        "sample": "那一刻"
+        "sample": "Carry .LA\n"
       },
       {
-        "id": "explain1",
+        "id": "explain",
         "role": "explain",
-        "maxChars": 90,
         "lang": "user",
-        "sample": "他回头笑了一下，正好被光照亮"
+        "sample": "March. The last morning in the old flat, before the truck came. "
       },
       {
-        "id": "explain2",
-        "role": "explain",
-        "maxChars": 480,
+        "id": "body",
+        "role": "body",
         "lang": "user",
-        "sample": "那是个很普通的下午，阳光斜斜地照进来，把整个房间都染成暖色。\n\n后来我常想起这一幕，想起当时谁也没说话，却觉得格外安心。"
+        "sample": "We packed everything into boxes and then stood around not knowing what to do with our hands. \n\nThe boy asked if the newplace would have the same door.\n\n I said no. He thought about it and said okay. "
       },
       {
-        "id": "date",
+        "id": "label",
         "role": "decoration",
-        "maxChars": 12,
         "lang": "en",
         "variableDecor": true,
         "sample": "08/24"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
       }
     ]
   },
@@ -505,44 +426,33 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 24,
         "lang": "user",
         "variableDecor": true,
-        "sample": "海边的一天"
+        "sample": "THE GATE"
       },
       {
         "id": "body",
         "role": "body",
-        "maxChars": 80,
         "lang": "user",
         "sample": "原来快乐可以这么简单"
       },
       {
-        "id": "explain1",
+        "id": "explain",
         "role": "explain",
-        "maxChars": 90,
         "lang": "user",
         "sample": "退潮后留下一片湿亮的沙"
       },
       {
         "id": "explain2",
         "role": "explain",
-        "maxChars": 90,
         "lang": "user",
         "sample": "孩子追着浪花跑来跑去"
       },
       {
-        "id": "explain3",
-        "role": "explain",
-        "maxChars": 220,
+        "id": "body2",
+        "role": "body",
         "lang": "user",
-        "sample": "那天我们一早就到了海边，本来只打算待一会儿，却一直玩到太阳落山。捡贝壳、堆沙堡、看海鸟，谁也不愿意先走。"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
+        "sample": "He is four centimetres taller than last September. In March he stopped letting me hold his hand at the school gate. He did not announce it. He just put both hands in his pockets and walked in."
       }
     ]
   },
@@ -550,14 +460,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     "id": "mag-10",
     "category": "interior",
     "images": [],
-    "texts": [
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
-      }
-    ],
+    "texts": [],
     "items": {
       "images": [
         {
@@ -568,8 +471,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         {
           "id": "explain",
           "role": "explain",
-          "maxChars": 90,
-          "lang": "user"
+          "lang": "user",
+          "sample": "something/where/someone"
         }
       ]
     }
@@ -597,37 +500,27 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 24,
         "lang": "user",
         "variableDecor": true,
-        "sample": "静物与光"
-      },
-      {
-        "id": "label",
-        "role": "decoration",
-        "maxChars": 20,
-        "lang": "en",
-        "variableDecor": true,
-        "sample": "Plate · 11 / 30"
+        "sample": "Mother'Day"
       },
       {
         "id": "explain",
         "role": "explain",
-        "maxChars": 90,
-        "lang": "user",
-        "sample": "桌上的花开了一半，光从侧面打过来"
+        "lang": "en",
+        "sample": "Beijing · 11 / 30"
       },
       {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
+        "id": "body",
+        "role": "body",
+        "lang": "user",
+        "sample": "The flowers she said not to buy."
       }
     ]
   },
   "mag-13": {
     "id": "mag-13",
-    "category": "cover",
+    "category": "interior",
     "images": [
       {
         "id": "image",
@@ -654,23 +547,15 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 24,
         "lang": "user",
         "variableDecor": true,
-        "sample": "光阴的样子"
+        "sample": "NEW YORK"
       },
       {
-        "id": "explain",
-        "role": "explain",
-        "maxChars": 90,
+        "id": "body",
+        "role": "body",
         "lang": "user",
-        "sample": "这是一本关于时间与记忆的小书，收着那些不愿被遗忘的片刻。"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
+        "sample": "We drove four hours to see the lake and spent the first hour arguing about where to park. The lake was still there when we finally got down to it. "
       }
     ]
   },
@@ -711,31 +596,21 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 24,
         "lang": "user",
         "variableDecor": true,
-        "sample": "慢下来的午后"
+        "sample": "Casual Afternoon"
       },
       {
-        "id": "body",
-        "role": "body",
-        "maxChars": 80,
+        "id": "explain",
+        "role": "explain",
         "lang": "user",
-        "sample": "茶凉了又续，话说了一半就停在窗外的光里。"
+        "sample": "The tea went cold. Nobody got up to make more."
       },
       {
-        "id": "date",
-        "role": "decoration",
-        "maxChars": 12,
+        "id": "explain2",
+        "role": "explain",
         "lang": "en",
-        "variableDecor": true,
         "sample": "May 2026"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
       }
     ]
   },
@@ -774,24 +649,16 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     ],
     "texts": [
       {
-        "id": "explain1",
+        "id": "explain",
         "role": "explain",
-        "maxChars": 90,
         "lang": "user",
-        "sample": "左边是清晨刚醒的街道"
+        "sample": "My father, who still will not video call."
       },
       {
         "id": "explain2",
         "role": "explain",
-        "maxChars": 90,
         "lang": "user",
-        "sample": "右边是傍晚归家时的灯火"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
+        "sample": "My mother, who calls every Sunday at seven."
       }
     ]
   },
@@ -818,30 +685,21 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 12,
         "lang": "user",
         "variableDecor": true,
-        "sample": "之间"
+        "sample": "We Danced Badly"
       },
       {
-        "id": "explain1",
+        "id": "explain",
         "role": "explain",
-        "maxChars": 90,
         "lang": "user",
-        "sample": "左栏：去时的路又长又新鲜"
+        "sample": "photo by sam"
       },
       {
         "id": "explain2",
         "role": "explain",
-        "maxChars": 90,
         "lang": "user",
-        "sample": "右栏：回来时只剩满身的风"
-      },
-      {
-        "id": "folio",
-        "role": "decoration",
-        "maxChars": 2,
-        "lang": "en"
+        "sample": " 2026/04/01"
       }
     ]
   },
@@ -870,36 +728,31 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 20,
         "lang": "user",
         "variableDecor": true,
         "sample": "365 Stories"
       },
       {
-        "id": "body1",
+        "id": "body",
         "role": "body",
-        "maxChars": 180,
         "lang": "user",
-        "sample": "那年冬天特别冷，我们却总爱往外跑，回来时手是冰的，心是热的。"
+        "sample": "I did not want to make this book. I thought a year this ordinary was not worth printing. Then I laid the photographs"
       },
       {
-        "id": "explain1",
+        "id": "explain",
         "role": "explain",
-        "maxChars": 20,
         "lang": "user",
         "sample": "Steven D.K"
       },
       {
         "id": "body2",
         "role": "body",
-        "maxChars": 180,
         "lang": "user",
-        "sample": "她说想看海，于是我们临时决定出发，开了一整夜的车。"
+        "sample": "She printed forty. I would have printed four hundred. We argued about it for a week, and in the end she let me keep the one of the cat under the neighbour's car."
       },
       {
         "id": "explain2",
         "role": "explain",
-        "maxChars": 20,
         "lang": "user",
         "sample": "July Zh"
       }
@@ -917,84 +770,34 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 12,
         "lang": "user",
         "variableDecor": true,
-        "sample": "YVAINE"
+        "sample": "NORWAY"
       },
       {
-        "id": "subtitle",
+        "id": "title2",
         "role": "title",
-        "maxChars": 12,
         "lang": "user",
         "variableDecor": true,
-        "sample": "LIFE"
-      },
-      {
-        "id": "year",
-        "role": "decoration",
-        "maxChars": 20,
-        "lang": "en",
-        "sample": "2026\n2025\n2024"
-      },
-      {
-        "id": "city",
-        "role": "decoration",
-        "maxChars": 30,
-        "lang": "en",
-        "sample": "Shanghai\nBeijing\nDali"
-      }
-    ]
-  },
-  "mag-25": {
-    "id": "mag-25",
-    "category": "ending",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 12,
-        "lang": "user",
-        "variableDecor": true,
-        "sample": "时光"
+        "sample": "Record"
       },
       {
         "id": "body",
         "role": "body",
-        "maxChars": 80,
-        "lang": "user",
-        "sample": "未完待续…"
+        "lang": "en",
+        "sample": "2026\n2025\n2024"
+      },
+      {
+        "id": "body2",
+        "role": "body",
+        "lang": "en",
+        "sample": "Shanghai \nBeijing\nDali"
       },
       {
         "id": "explain",
         "role": "explain",
-        "maxChars": 20,
         "lang": "user",
-        "sample": "Yavine Yun"
-      },
-      {
-        "id": "label",
-        "role": "decoration",
-        "maxChars": 4,
-        "lang": "en",
-        "variableDecor": true,
-        "sample": "26"
-      },
-      {
-        "id": "date",
-        "role": "decoration",
-        "maxChars": 12,
-        "lang": "en",
-        "variableDecor": true,
-        "sample": "2026"
+        "sample": "City"
       }
     ]
   },
@@ -1010,40 +813,35 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 16,
         "lang": "user",
         "variableDecor": true,
-        "sample": "nano / banana"
+        "sample": "Working on\nthe Road\n"
       },
       {
         "id": "explain",
         "role": "explain",
-        "maxChars": 40,
         "lang": "user",
-        "sample": "关于一些微小而确切的快乐"
+        "sample": "May. 2026"
       },
       {
         "id": "body",
         "role": "body",
-        "maxChars": 180,
         "lang": "user",
-        "sample": "它们藏在最寻常的日子里——一杯热茶、一阵风、一句不经意的问候。等你慢下来，才发现它们一直都在。"
+        "sample": "I took two calls from a car park in Big Sur. The signal died halfway through the second one. \nNobody called back. We drove down to the water instead, and by the time the emails found me it was Tuesday."
       },
       {
-        "id": "label1",
+        "id": "label",
         "role": "decoration",
-        "maxChars": 20,
         "lang": "en",
         "variableDecor": true,
         "sample": "small joys daily"
       },
       {
-        "id": "label2",
-        "role": "decoration",
-        "maxChars": 20,
+        "id": "title2",
+        "role": "title",
         "lang": "en",
         "variableDecor": true,
-        "sample": "every single day"
+        "sample": "hello, California Dream"
       }
     ]
   },
@@ -1059,54 +857,44 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 18,
         "lang": "user",
         "variableDecor": true,
-        "sample": "山与海"
+        "sample": "Just Travel"
       },
       {
-        "id": "explain1",
+        "id": "explain",
         "role": "explain",
-        "maxChars": 24,
         "lang": "user",
-        "sample": "在路上遇见的光"
+        "sample": "Told\nNo one"
       },
       {
         "id": "body",
         "role": "body",
-        "maxChars": 80,
         "lang": "user",
-        "sample": "一边是连绵的山，一边是无边的海，我们刚好走在中间。"
+        "sample": "I said I had a conference.\nI took the train the other way."
       },
       {
         "id": "explain2",
         "role": "explain",
-        "maxChars": 40,
         "lang": "user",
-        "sample": "中午的阳光把海面晒成碎银"
+        "sample": "Nobody asked where."
       },
       {
-        "id": "date",
-        "role": "decoration",
-        "maxChars": 12,
+        "id": "explain3",
+        "role": "explain",
         "lang": "en",
-        "variableDecor": true,
-        "sample": "May 2026"
+        "sample": "Paris"
       },
       {
-        "id": "label1",
-        "role": "decoration",
-        "maxChars": 12,
+        "id": "explain4",
+        "role": "explain",
         "lang": "en",
-        "variableDecor": true,
-        "sample": "No.27"
+        "sample": "May 2025"
       },
       {
-        "id": "label2",
+        "id": "label",
         "role": "decoration",
-        "maxChars": 20,
         "lang": "en",
-        "variableDecor": true,
         "sample": "On the Road"
       }
     ]
@@ -1123,25 +911,21 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 24,
         "lang": "user",
         "variableDecor": true,
         "sample": "My Secret Place"
       },
       {
-        "id": "headline",
+        "id": "title2",
         "role": "title",
-        "maxChars": 90,
         "lang": "user",
-        "variableDecor": true,
-        "sample": "这里没人认识我，却让我觉得最像自己。"
+        "sample": "I have never brought anyone here.   "
       },
       {
         "id": "explain",
         "role": "explain",
-        "maxChars": 40,
         "lang": "user",
-        "sample": "墙角那盏旧灯，亮了很多年"
+        "sample": "Xinjiang \nPhoto by Apple"
       }
     ]
   },
@@ -1160,25 +944,22 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 22,
         "lang": "user",
         "variableDecor": true,
-        "sample": "把整片海都装进行囊"
+        "sample": "Low Tide  "
       },
       {
         "id": "body",
         "role": "body",
-        "maxChars": 90,
         "lang": "user",
-        "sample": "出发那天天还没亮，海风已经先到了，我们笑着说这趟一定值得。"
+        "sample": "The tide went out further than we expected.\nWe went in November because it was cheaper. \nThe water was too cold to swim and the ice cream place was shut. We walked the whole beach twice and did not meet anyone. It was the best three days of the year."
       },
       {
         "id": "label",
         "role": "decoration",
-        "maxChars": 12,
         "lang": "en",
         "variableDecor": true,
-        "sample": "Travel"
+        "sample": "Where are my mind"
       }
     ]
   },
@@ -1192,11 +973,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     ],
     "texts": [
       {
-        "id": "explain",
-        "role": "explain",
-        "maxChars": 90,
+        "id": "body",
+        "role": "body",
         "lang": "user",
-        "sample": "傍晚的海退得很远\n沙滩上留下一道道波纹\n像是时间写下的字"
+        "sample": "The tide went out further than we expected.\n It left the sand wet and hard.\nYou could walk on it without sinking."
       }
     ]
   },
@@ -1251,9 +1031,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "body",
         "role": "body",
-        "maxChars": 80,
         "lang": "user",
-        "sample": "这六张照片来自同一个下午，光影在不停变化，而我们一直在笑。"
+        "sample": "Six photographs, one afternoon. In four of them someone is walking away from the camera. \nWe were not posing, just moving to stay warm."
       }
     ]
   },
@@ -1267,20 +1046,23 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     ],
     "texts": [
       {
-        "id": "title",
-        "role": "title",
-        "maxChars": 30,
+        "id": "body",
+        "role": "body",
         "lang": "user",
-        "variableDecor": true,
         "sample": "A Year of Somewhere"
       },
       {
-        "id": "label",
-        "role": "decoration",
-        "maxChars": 12,
+        "id": "title",
+        "role": "title",
         "lang": "en",
         "variableDecor": true,
         "sample": "NORWAY"
+      },
+      {
+        "id": "explain",
+        "role": "explain",
+        "lang": "user",
+        "sample": "2026 year record"
       }
     ]
   },
@@ -1302,29 +1084,25 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 22,
         "lang": "user",
         "variableDecor": true,
         "sample": "Three Mornings"
       },
       {
-        "id": "caption1",
+        "id": "explain",
         "role": "explain",
-        "maxChars": 40,
         "lang": "user",
         "sample": "第一个清晨，雾很重"
       },
       {
-        "id": "caption2",
+        "id": "explain2",
         "role": "explain",
-        "maxChars": 40,
         "lang": "user",
         "sample": "第二个清晨，下了点小雨"
       },
       {
-        "id": "caption3",
+        "id": "explain3",
         "role": "explain",
-        "maxChars": 40,
         "lang": "user",
         "sample": "第三个清晨，终于放晴"
       }
@@ -1342,7 +1120,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 24,
         "lang": "user",
         "variableDecor": true,
         "sample": "All Alone"
@@ -1350,43 +1127,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "explain",
         "role": "explain",
-        "maxChars": 120,
         "lang": "user",
         "sample": "一个人走了很久，才听见自己心里的声音。"
-      }
-    ]
-  },
-  "mag-35": {
-    "id": "mag-35",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "label",
-        "role": "title",
-        "maxChars": 12,
-        "lang": "user",
-        "variableDecor": true,
-        "sample": "Notes"
-      },
-      {
-        "id": "date",
-        "role": "title",
-        "maxChars": 14,
-        "lang": "user",
-        "variableDecor": true,
-        "sample": "June 2026"
-      },
-      {
-        "id": "body",
-        "role": "explain",
-        "maxChars": 120,
-        "lang": "user",
-        "sample": "有些话不必说出口，写下来，留给某个安静的午后慢慢读。"
       }
     ]
   },
@@ -1402,7 +1144,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 16,
         "lang": "user",
         "variableDecor": true,
         "sample": "Seaside"
@@ -1410,57 +1151,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "explain",
         "role": "explain",
-        "maxChars": 48,
         "lang": "user",
         "sample": "海风带着咸味，吹了一整个下午"
-      }
-    ]
-  },
-  "mag-37": {
-    "id": "mag-37",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image"
-      }
-    ],
-    "texts": [
-      {
-        "id": "body",
-        "role": "body",
-        "maxChars": 90,
-        "lang": "user",
-        "sample": "那天我们什么也没做，只是看着云慢慢飘过，好像时间也跟着慢了下来。"
-      },
-      {
-        "id": "decor",
-        "role": "title",
-        "maxChars": 44,
-        "lang": "user",
-        "variableDecor": true,
-        "sample": "原来发呆也是一种幸福"
-      }
-    ]
-  },
-  "mag-38": {
-    "id": "mag-38",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
-      },
-      {
-        "id": "image2"
-      }
-    ],
-    "texts": [
-      {
-        "id": "body",
-        "role": "title",
-        "maxChars": 90,
-        "lang": "user",
-        "variableDecor": true,
-        "sample": "走到这里才明白，最好的风景一直都在身边。"
       }
     ]
   },
@@ -1590,25 +1282,22 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 12,
         "lang": "user",
         "variableDecor": true,
-        "sample": "Notes"
+        "sample": "Low Tide\nPhilip  "
       },
       {
-        "id": "subtitle",
+        "id": "title2",
         "role": "title",
-        "maxChars": 20,
         "lang": "user",
         "variableDecor": true,
         "sample": "from Elsewhere"
       },
       {
-        "id": "caption",
-        "role": "explain",
-        "maxChars": 120,
+        "id": "body",
+        "role": "body",
         "lang": "user",
-        "sample": "这些照片来自不同的地方，却拼成了同一段心情——关于远行，也关于回家。"
+        "sample": "The tide went out further than we expected.\nThe water was too cold to swim "
       }
     ]
   },
@@ -1627,24 +1316,21 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 16,
         "lang": "user",
         "variableDecor": true,
-        "sample": "Notes"
+        "sample": "Secret Place"
       },
       {
-        "id": "line",
+        "id": "explain",
         "role": "explain",
-        "maxChars": 40,
         "lang": "user",
-        "sample": "写给那些来不及说的话"
+        "sample": "Xinjiang ,Photo by Apple"
       },
       {
-        "id": "caption",
-        "role": "explain",
-        "maxChars": 130,
+        "id": "body",
+        "role": "body",
         "lang": "user",
-        "sample": "翻到最后一页才发现，原来记下的不只是风景，还有当时的自己。"
+        "sample": " In four of them someone is walking away from the camera. \nWe were not posing, just moving to stay warm."
       }
     ]
   },
@@ -1660,10 +1346,9 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 16,
         "lang": "user",
         "variableDecor": true,
-        "sample": "Watermelon"
+        "sample": "Mind Place"
       }
     ]
   },
@@ -1682,17 +1367,15 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 30,
         "lang": "user",
         "variableDecor": true,
-        "sample": "then we went home,"
+        "sample": "Go home\nSnow night"
       },
       {
-        "id": "caption",
+        "id": "explain",
         "role": "explain",
-        "maxChars": 40,
         "lang": "user",
-        "sample": "路灯一盏盏亮起来"
+        "sample": "We were not posing, just moving to stay warm."
       }
     ]
   },
@@ -1733,15 +1416,13 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 26,
         "lang": "user",
         "variableDecor": true,
-        "sample": "回家的路上"
+        "sample": "Go home at snow night"
       },
       {
         "id": "explain",
         "role": "explain",
-        "maxChars": 130,
         "lang": "user",
         "sample": "这四张照片串起了归途——从海边到山间，再到熟悉的街角，最后停在家门口的那盏灯下。"
       }
@@ -1829,35 +1510,33 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 12,
         "lang": "user",
         "variableDecor": true,
-        "sample": "NORWAY"
-      }
-    ]
-  },
-  "mag-50": {
-    "id": "mag-50",
-    "category": "interior",
-    "images": [
-      {
-        "id": "image1"
+        "sample": "New Life Birth"
       },
       {
-        "id": "image2"
-      },
-      {
-        "id": "image3"
-      }
-    ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "maxChars": 16,
+        "id": "explain",
+        "role": "explain",
         "lang": "user",
-        "variableDecor": true,
-        "sample": "ANOTHER"
+        "sample": "William"
+      },
+      {
+        "id": "explain2",
+        "role": "explain",
+        "lang": "user",
+        "sample": "Jan.28 1997"
+      },
+      {
+        "id": "explain3",
+        "role": "explain",
+        "lang": "user",
+        "sample": "los ageles"
+      },
+      {
+        "id": "explain4",
+        "role": "explain",
+        "lang": "user",
+        "sample": "Snow night"
       }
     ]
   },
@@ -1873,7 +1552,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 16,
         "lang": "user",
         "variableDecor": true,
         "sample": "NORWAY"
@@ -1898,10 +1576,9 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 40,
         "lang": "user",
         "variableDecor": true,
-        "sample": "Notes from Elsewhere"
+        "sample": "No"
       }
     ]
   },
@@ -1917,10 +1594,9 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 28,
         "lang": "user",
         "variableDecor": true,
-        "sample": "Notes from Elsewhere"
+        "sample": "Elsewhere"
       }
     ]
   },
@@ -1947,41 +1623,43 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "maxChars": 24,
         "lang": "user",
         "variableDecor": true,
-        "sample": "晴日漫步"
+        "sample": "Everything\nThat Happened "
       },
       {
         "id": "body",
         "role": "body",
-        "maxChars": 80,
         "lang": "user",
-        "sample": "趁着好天气，我们出门走了很久，把整条街都晒得暖暖的。"
+        "sample": " We moved twice, lost the cat once, and still made it to the table in December."
       },
       {
-        "id": "label1",
+        "id": "label",
         "role": "decoration",
-        "maxChars": 20,
         "lang": "en",
         "variableDecor": true,
-        "sample": "nº 01 · Portrait"
+        "sample": "37N · 114E · Beijing"
       },
       {
         "id": "label2",
         "role": "decoration",
-        "maxChars": 20,
         "lang": "en",
         "variableDecor": true,
-        "sample": "01"
+        "sample": "02"
       },
       {
-        "id": "date",
+        "id": "label3",
         "role": "decoration",
-        "maxChars": 12,
         "lang": "en",
         "variableDecor": true,
         "sample": "MAY 26"
+      },
+      {
+        "id": "label4",
+        "role": "decoration",
+        "lang": "user",
+        "variableDecor": true,
+        "sample": "VOL. 2026"
       }
     ]
   }

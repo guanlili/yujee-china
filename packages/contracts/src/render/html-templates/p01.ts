@@ -23,15 +23,15 @@ export const P01_HTML = `<div data-template="p01" style="position:relative;width
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>
   <div style="position:absolute;top:36px;left:56px;right:56px;display:flex;justify-content:space-between;align-items:baseline;font-family:${MONO};letter-spacing:0.3em;color:#ffffff;font-size:14px">
-    <span>VOL. <span style="color:{{COLOR:label2|#ffffff}};font-family:{{FONT:label2|${MONO}}}">{{TEXT:label2}}</span> · <span data-text-key="date" data-variable-decor style="color:{{COLOR:date|#ffffff}};font-family:{{FONT:date|${MONO}}}">{{TEXT:date}}</span></span>
-    <span>MEMOIR</span>
   </div>
-  <div data-text-key="label2" data-variable-decor style="position:absolute;top:70px;right:56px;font-style:italic;font-size:100px;line-height:0.9;color:{{COLOR:label2|#ffffff}};font-family:{{FONT:label2|${SERIF_CN}}}">{{TEXT:label2}}</div>
+  <div data-text-key="label2" data-variable-decor style="position:absolute;top:70px;right:56px;font-style:italic;font-size:100px;line-height:0.9;color:{{COLOR:label2|#ffffff}};font-family:{{FONT:label2|${SERIF_CN}}};white-space:pre-wrap">{{TEXT:label2}}</div>
   <div style="position:absolute;bottom:0;left:0;right:0;height:320px;background:#1c1b18;padding:40px 56px 0">
-    <div data-text-key="label1" data-variable-decor style="font-style:italic;letter-spacing:0.04em;font-size:16px;color:{{COLOR:label1|#d27b62}};font-family:{{FONT:label1|${SERIF_CN}}}">{{TEXT:label1}}</div>
-    <h1 data-text-key="title" data-variable-decor style="margin:8px 0 0;font-weight:500;letter-spacing:0.04em;line-height:1.15;font-size:56px;white-space:pre-line;color:{{COLOR:title|#f6f1e7}};font-family:{{FONT:title|${SERIF_CN}}}">{{TEXT:title}}</h1>
+    <div data-text-key="label" data-variable-decor style="font-style:italic;letter-spacing:0.04em;font-size:16px;color:{{COLOR:label|#d27b62}};font-family:{{FONT:label|${SERIF_CN}}};white-space:pre-wrap;width:300px;height:24px">{{TEXT:label}}</div>
+    <h1 data-text-key="title" data-variable-decor style="margin:8px 0 0;font-weight:500;letter-spacing:0.04em;line-height:1.15;font-size:56px;white-space:pre-line;color:{{COLOR:title|#f6f1e7}};font-family:{{FONT:title|${SERIF_CN}}};width:400px;height:130px">{{TEXT:title}}</h1>
     <div style="margin-top:22px">
-      <p data-text-key="body" style="margin:0;line-height:1.85;text-align:justify;font-size:18px;color:{{COLOR:body|rgba(246,241,231,0.78)}};font-family:{{FONT:body|${SERIF_CN}}}">{{TEXT:body}}</p>
+      <p data-text-key="body" style="margin:0;line-height:1.85;text-align:justify;font-size:18px;color:{{COLOR:body|rgba(246,241,231,0.78)}};font-family:{{FONT:body|${SERIF_CN}}};white-space:pre-wrap;width:700px;height:66px">{{TEXT:body}}</p>
     </div>
   </div>
+
+  <div data-text-key="label4" style="position:absolute;left:60px;top:60px;width:200px;font-size:12px;letter-spacing:0.2em;text-transform:uppercase;color:{{COLOR:label4|#a09b8e}};font-family:{{FONT:label4|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:30px">{{TEXT:label4}}</div>
 </div>`;

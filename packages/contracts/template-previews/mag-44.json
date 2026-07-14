@@ -10,8 +10,8 @@
   "textSlotCount": 3,
   "textSlotIds": [
     "title",
-    "line",
-    "caption"
+    "explain",
+    "body"
   ],
-  "structureDescription": "mag-44 interior template with 2 image slot(s) (image1, image2) and 3 concrete text slot(s) (title, line, caption). two balanced image blocks; 3 text slots."
+  "structureDescription": "mag-44 interior template with 2 image slot(s) (image1, image2) and 3 concrete text slot(s) (title, explain, body). two balanced image blocks; 3 text slots."
 }

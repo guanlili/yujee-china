@@ -22,8 +22,4 @@ export const MAG_33_HTML = `<div data-template="mag-33" style="position:relative
   <div data-image-slot="image3" style="position:absolute;left:200px;top:717px;width:376px;height:247px;overflow:hidden">
     <img data-image-slot="image3" src="{{IMG_SRC:image3}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image3|50% 50%}};{{IMG_TF:image3}}" />
   </div>
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:28px;top:159px;width:150px;font-family:{{FONT:title|${PLAYFAIR}}};font-weight:800;font-size:44px;line-height:1.05;color:{{COLOR:title|#1c1b18}};white-space:pre-wrap;overflow:hidden">{{TEXT:title}}</div>
-  <div data-text-key="caption1" style="position:absolute;left:596px;top:159px;width:178px;font-family:{{FONT:caption1|${SANS_CN}}};font-weight:400;font-size:16px;line-height:1.35;color:{{COLOR:caption1|#1c1b18}};white-space:pre-wrap;overflow:hidden">{{TEXT:caption1}}</div>
-  <div data-text-key="caption2" style="position:absolute;left:596px;top:438px;width:178px;font-family:{{FONT:caption2|${SANS_CN}}};font-weight:400;font-size:16px;line-height:1.35;color:{{COLOR:caption2|#1c1b18}};white-space:pre-wrap;overflow:hidden">{{TEXT:caption2}}</div>
-  <div data-text-key="caption3" style="position:absolute;left:596px;top:717px;width:178px;font-family:{{FONT:caption3|${SANS_CN}}};font-weight:400;font-size:16px;line-height:1.35;color:{{COLOR:caption3|#1c1b18}};white-space:pre-wrap;overflow:hidden">{{TEXT:caption3}}</div>
 </div>`;

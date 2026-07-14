@@ -1,27 +1,26 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebPage } from '../web-utils';
+import {WebPage} from '../web-utils';
 import type { TemplateArrayItem, TemplateRenderProps, ToCItem } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 export function WebMag02({ data, totalPages }: TemplateRenderProps) {
   const d = data as {
-    title?: string | TemplateArrayItem[];
-    number?: TemplateArrayItem[];
-    description?: TemplateArrayItem[];
+    title?: string;                   // 顶层大标题
+    title2?: TemplateArrayItem[];     // 重复组条目标题（寻址 title2[i]）
+    label?: TemplateArrayItem[];      // 重复组条目编号
+    explain?: TemplateArrayItem[];    // 重复组条目描述
     items?: ToCItem[];
-    folio?: string;
   };
-  const headingTheme = resolveThemeCarrier(data, 'title', 'title');
-  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
-  // 顶层标题与重复项 title[i] 共享 base key `title`:有重复项时 data.title 是数组,
-  // 顶层标题退回默认值。仅当 data.title 是字符串时才作为顶层大标题用。
-  const headingText =
-    typeof d.title === 'string' ? d.title : undefined;
-  // 重复组 items 三个并列可编辑槽位 number/title/description(寻址 number[i]/title[i]/
-  // description[i]);兼容旧的 items 对象数组数据
-  const rawNumbers = Array.isArray(d.number) ? d.number : undefined;
-  const rawTitles = Array.isArray(d.title) ? d.title : undefined;
-  const rawDescriptions = Array.isArray(d.description) ? d.description : undefined;
+  const headingTheme = resolveThemeCarrier(data, 'title', contractRole('mag-02', 'title'));
+  // 顶层标题与重复项条目标题曾共享 base key `title`（有条目时 data.title 被顶成数组，
+  // 顶层标题就丢了）。槽已改名为 title / title2，两者彻底分开，这个坑不复存在。
+  const headingText = d.title;
+  // 重复组三个并列可编辑槽位 label/title2/explain（寻址 label[i]/title2[i]/
+  // explain[i]）；兼容旧的 items 对象数组数据
+  const rawNumbers = Array.isArray(d.label) ? d.label : undefined;
+  const rawTitles = Array.isArray(d.title2) ? d.title2 : undefined;
+  const rawDescriptions = Array.isArray(d.explain) ? d.explain : undefined;
   const legacy = d.items ?? [];
   // 真实相册数据里,repeat 文字槽经 adapt-layout 会被包成 {body, caption} 对象
   // (SAMPLE_*/legacy 仍是纯字符串)。两种形状都取成字符串,绝不把对象塞进 JSX
@@ -90,9 +89,9 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
         }}
       >
         {rows.map((_, i) => {
-          const numberTheme = resolveThemeCarrier(data, `number[${i}]`, 'decoration');
-          const titleTheme = resolveThemeCarrier(data, `title[${i}]`, 'title');
-          const descriptionTheme = resolveThemeCarrier(data, `description[${i}]`, 'explain');
+          const numberTheme = resolveThemeCarrier(data, `label[${i}]`, 'decoration');
+          const titleTheme = resolveThemeCarrier(data, `title2[${i}]`, 'title');
+          const descriptionTheme = resolveThemeCarrier(data, `explain[${i}]`, 'explain');
           // 把编号(如 "01")拆成前导 0(lead)与主数字(rest):前导 0 小号、上移半个字符,
           // 主数字放大,形成"0¹/"的层次。无前导 0 时 lead 为空,只显示主数字。
           const numRaw =
@@ -165,8 +164,6 @@ export function WebMag02({ data, totalPages }: TemplateRenderProps) {
           </div>
           );
         })}
-      </div>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="02" />
-    </WebPage>
+      </div></WebPage>
   );
 }

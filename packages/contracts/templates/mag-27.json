@@ -10,55 +10,37 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 18,
       "lang": "user",
-      "variableDecor": true,
-      "sample": "山与海"
+      "variableDecor": true, "sample": "Just Travel"
     },
     {
-      "id": "explain1",
+      "id": "explain",
       "role": "explain",
-      "maxChars": 24,
-      "lang": "user",
-      "sample": "在路上遇见的光"
+      "lang": "user", "sample": "Told\nNo one"
     },
     {
       "id": "body",
       "role": "body",
-      "maxChars": 80,
-      "lang": "user",
-      "sample": "一边是连绵的山，一边是无边的海，我们刚好走在中间。"
+      "lang": "user", "sample": "I said I had a conference.\nI took the train the other way."
     },
     {
       "id": "explain2",
       "role": "explain",
-      "maxChars": 40,
-      "lang": "user",
-      "sample": "中午的阳光把海面晒成碎银"
+      "lang": "user", "sample": "Nobody asked where."
     },
     {
-      "id": "date",
-      "role": "decoration",
-      "maxChars": 12,
-      "lang": "en",
-      "variableDecor": true,
-      "sample": "May 2026"
+      "id": "explain3",
+      "role": "explain",
+      "lang": "en", "sample": "Paris" },
+    {
+      "id": "explain4",
+      "role": "explain",
+      "lang": "en", "sample": "May 2025"
     },
     {
-      "id": "label1",
+      "id": "label",
       "role": "decoration",
-      "maxChars": 12,
-      "lang": "en",
-      "variableDecor": true,
-      "sample": "No.27"
-    },
-    {
-      "id": "label2",
-      "role": "decoration",
-      "maxChars": 20,
-      "lang": "en",
-      "variableDecor": true,
-      "sample": "On the Road"
+      "lang": "en", "sample": "On the Road"
     }
   ]
 }

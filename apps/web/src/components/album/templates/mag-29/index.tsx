@@ -2,6 +2,7 @@ import type { TemplateRenderProps } from '../types';
 import { PAGE } from '../constants';
 import { WebImage } from '../web-utils';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 // 内页 · 旅行相册（category: interior，2 图）。白底；上方并排双图，下方右对齐的
 // 大标题 / 地名 / 图注。全套文字陶土红 #1c1b18，字体 Inter（sansEn）。
@@ -12,9 +13,9 @@ const CLAY = '#1c1b18';
 
 export function WebMag29({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
-  const bodyTheme = resolveThemeCarrier(data, 'body', 'body');
-  const labelTheme = resolveThemeCarrier(data, 'label', 'decoration');
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-29', 'title'));
+  const bodyTheme = resolveThemeCarrier(data, 'body', contractRole('mag-29', 'body'));
+  const labelTheme = resolveThemeCarrier(data, 'label', contractRole('mag-29', 'label'));
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 上方并排双图 */}

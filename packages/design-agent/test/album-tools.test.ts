@@ -57,7 +57,7 @@ test("模板目录层加载全部模板并展开重复槽", () => {
 	assert.deepEqual(mag10.imageSlotIds, ["image[0]", "image[1]", "image[2]", "image[3]"]);
 	const explainDef = mag10.textDefsByBase.get("explain");
 	assert.ok(explainDef, "items.texts 的 explain 定义应可查到");
-	assert.equal(explainDef.maxChars, 90);
+	assert.equal(explainDef.role, "explain");
 
 	const interiorSingles = catalog.list({ category: "interior", imageSlotCount: 1 });
 	assert.ok(interiorSingles.length >= 2);
@@ -93,7 +93,9 @@ test("read_page 返回槽位定义,且不暴露 chapter 概念(AI 上下文去�
 	// chapter 是分簇/写文案的内部工具,不进 AI 上下文(2026-07-11 拍板)。
 	assert.equal(page.chapter, undefined);
 	const titleDef = page.textSlotDefs.find((def: { slotId: string }) => def.slotId === "title");
-	assert.equal(titleDef.maxChars, 24);
+	// 槽位定义只有角色和示范文案 —— 没有字数上限(模板已不声明)。
+	assert.equal(titleDef.role, "title");
+	assert.ok(!("maxChars" in titleDef), "不该再给 AI 发字数上限");
 	assert.ok(page.images.image.sceneDescription.includes("海平线"));
 });
 
@@ -109,20 +111,17 @@ test("update_page_texts 合法写入并递增版本", async () => {
 	assert.equal(details.version, before + 1);
 	const page = getBook().pages.find((candidate) => candidate.pageIndex === 1);
 	assert.equal(page?.texts.title, "海的那一边");
-	assert.equal(page?.texts.folio, "1");
 });
 
-test("update_page_texts 超出 maxChars 被拒绝且报错包含限制", async () => {
+test("update_page_texts 超长文案照收,一字不改(不做字数校验)", async () => {
+	// 全链路无字数校验:写多长都不拒收、不截断,
+	// 版面装不下由渲染层的 fit-text(固定高度文字框自动缩字号)解决。
 	const { tools, getBook } = createHarness();
-	const before = getBook().version;
-	await assert.rejects(
-		run(tools, "update_page_texts", {
-			pageNo: 1,
-			texts: { title: "这是一个远远超过二十四个字符上限的超长标题所以必须被契约校验拒绝掉" },
-		}),
-		/maxChars 24/,
-	);
-	assert.equal(getBook().version, before, "非法写入不应改变状态");
+	const long = "这是一个远远超过二十四个字符上限的超长标题所以过去会被契约校验拒绝掉";
+
+	await run(tools, "update_page_texts", { pageNo: 1, texts: { title: long } });
+
+	assert.equal(getBook().pages[1].texts.title, long, "原文必须一字不动地存下来");
 });
 
 test("update_page_texts 未知槽被拒绝并列出可用槽", async () => {
@@ -144,26 +143,27 @@ test("update_page_texts 一次改多页多槽", async () => {
 		await run(tools, "update_page_texts", {
 			updates: [
 				{ pageNo: 1, texts: { title: "海的那一边" } },
-				{ pageNo: 4, texts: { explain: "奶奶在灶台边忙碌。" } },
+				{ pageNo: 4, texts: { body: "奶奶在灶台边忙碌。" } },
 			],
 		}),
 	);
 	assert.equal(details.version, before + 1, "多页写入只递增一次版本");
 	assert.equal(getBook().pages[1]?.texts.title, "海的那一边");
-	assert.equal(getBook().pages[4]?.texts.explain, "奶奶在灶台边忙碌。");
+	assert.equal(getBook().pages[4]?.texts.body, "奶奶在灶台边忙碌。");
 });
 
 test("update_page_texts 批量中任一页非法则整批拒绝", async () => {
+	// 原子性仍然守住。非法 = 结构性错误(槽不存在),不再是「字数超了」。
 	const { tools, getBook } = createHarness();
 	const before = getBook().version;
 	await assert.rejects(
 		run(tools, "update_page_texts", {
 			updates: [
 				{ pageNo: 1, texts: { title: "合法标题" } },
-				{ pageNo: 1, texts: { title: "这是一个远远超过二十四个字符上限的超长标题所以必须被契约校验拒绝掉" } },
+				{ pageNo: 1, texts: { headline: "这个槽在模板里不存在" } },
 			],
 		}),
-		/maxChars 24/,
+		/没有文字槽 "headline"/,
 	);
 	assert.equal(getBook().version, before, "整批非法不改变状态");
 });
@@ -218,7 +218,7 @@ test("update_page_images 整页替换并校验槽位齐全/照片存在/不重�
 
 test("search_book 命中页文字与照片描述;章节背景不再进搜索面", async () => {
 	const { tools } = createHarness();
-	await run(tools, "update_page_texts", { pageNo: 4, texts: { explain: "奶奶的手覆着我的手，锅铲一起一落。" } });
+	await run(tools, "update_page_texts", { pageNo: 4, texts: { body: "奶奶的手覆着我的手，锅铲一起一落。" } });
 	const hits = (await run(tools, "search_book", { query: "奶奶" }))
 		.split("\n")
 		.map((line) => JSON.parse(line) as { where: string });
@@ -241,7 +241,7 @@ test("写入工具带 terminate 语义", async () => {
 	const { tools } = createHarness();
 	const tool = tools.get("update_page_texts");
 	assert.ok(tool);
-	const result = await tool.execute("test-call", { updates: [{ pageNo: 4, texts: { explain: "短句。" } }] } as never);
+	const result = await tool.execute("test-call", { updates: [{ pageNo: 4, texts: { body: "短句。" } }] } as never);
 	assert.equal(result.terminate, true);
 });
 
@@ -253,8 +253,8 @@ test("pageNo 寻址在 pageIndex 重复时仍然可用（真实管线按章节�
 			{ chapterId: "c2", photos: [{ photoId: "pb", sceneDescription: "照片B" }] },
 		],
 		pages: [
-			{ pageIndex: 0, templateId: "mag-30", images: { image: "pa" }, texts: { explain: "" } },
-			{ pageIndex: 0, templateId: "mag-30", images: { image: "pb" }, texts: { explain: "" } },
+			{ pageIndex: 0, templateId: "mag-30", images: { image: "pa" }, texts: { body: "" } },
+			{ pageIndex: 0, templateId: "mag-30", images: { image: "pb" }, texts: { body: "" } },
 		],
 	}).book;
 	const options: AlbumToolsOptions = {
@@ -279,9 +279,9 @@ test("pageNo 寻址在 pageIndex 重复时仍然可用（真实管线按章节�
 	const page1 = JSON.parse(await run(tools, "read_page", { pageNo: 2 })).pages[0];
 	assert.equal(page1.images.image.photoId, "pb");
 
-	await run(tools, "update_page_texts", { pageNo: 2, texts: { explain: "第二本的图注。" } });
-	assert.equal(book.pages[1]?.texts.explain, "第二本的图注。");
-	assert.equal(book.pages[0]?.texts.explain, "");
+	await run(tools, "update_page_texts", { pageNo: 2, texts: { body: "第二本的图注。" } });
+	assert.equal(book.pages[1]?.texts.body, "第二本的图注。");
+	assert.equal(book.pages[0]?.texts.body, "");
 	assert.equal(book.pages[1]?.pageIndex, 0, "原始 pageIndex 字段保持不变");
 
 	await assert.rejects(run(tools, "read_page", { pageNo: 3 }), /内页 1\.\.2/);

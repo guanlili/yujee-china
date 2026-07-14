@@ -57,30 +57,6 @@ export interface AlbumBookState {
 	brief?: AlbumBookBrief;
 }
 
-export interface AlbumBookSummary {
-	version: number;
-	updatedAt: string;
-	chapterCount: number;
-	pageCount: number;
-	chapters: {
-		chapterId: string;
-		photoCount: number;
-		accentColor?: string | null;
-		contextPreview?: string;
-	}[];
-	pages: {
-		/** 用户口径页码 = 用户画面上看到的页码:内页 1..M;封面/目录/封尾用类别名,不占号。
-		 * 工具寻址与对用户口径统一用它(见 pageUserRefs/resolvePageUserRef)。 */
-		pageNo: PageUserRef;
-		templateId: string;
-		category: string;
-		chapterId?: string;
-		imageCount: number;
-		filledTextSlots: number;
-		totalTextSlots: number;
-	}[];
-}
-
 export function cloneAlbumBookState(state: AlbumBookState): AlbumBookState {
 	return {
 		chapters: state.chapters.map((chapter) => ({ ...chapter, photos: chapter.photos.map((photo) => ({ ...photo })) })),
@@ -144,39 +120,6 @@ export function parseAlbumBookInput(raw: unknown, now = new Date()): ParseAlbumB
 			brief,
 		},
 		warnings,
-	};
-}
-
-export function summarizeAlbumBook(state: AlbumBookState, catalog: TemplateCatalog): AlbumBookSummary {
-	const photoToChapter = buildPhotoToChapterMap(state);
-	const userRefs = pageUserRefs(state, (templateId) => catalog.get(templateId)?.category);
-	return {
-		version: state.version,
-		updatedAt: state.updatedAt,
-		chapterCount: state.chapters.length,
-		pageCount: state.pages.length,
-		chapters: state.chapters.map((chapter) => ({
-			chapterId: chapter.chapterId,
-			photoCount: chapter.photos.length,
-			accentColor: chapter.accentColor,
-			contextPreview: chapter.chapterContext ? truncate(chapter.chapterContext, 60) : undefined,
-		})),
-		pages: state.pages.map((page, index) => {
-			const template = catalog.get(page.templateId);
-			const concreteTextSlots = template?.textSlotIds ?? [];
-			const filledTextSlots = concreteTextSlots.filter((slotId) => (page.texts[slotId] ?? "").trim().length > 0);
-			return {
-				// 用户口径:内页 1..M,封面/目录/封尾用类别名(与用户画面完全一致);
-				// 管线原始 pageIndex(章节计数、可重复)不再喂给模型,避免两套数字互相打架。
-				pageNo: userRefs[index],
-				templateId: page.templateId,
-				category: template?.category ?? "unknown",
-				chapterId: derivePageChapterId(page, photoToChapter),
-				imageCount: Object.keys(page.images).length,
-				filledTextSlots: filledTextSlots.length,
-				totalTextSlots: concreteTextSlots.length,
-			};
-		}),
 	};
 }
 
@@ -318,14 +261,9 @@ export function validateTextsPatch(
 			);
 			continue;
 		}
-		if (def.maxChars !== undefined) {
-			const charCount = [...value].length;
-			if (charCount > def.maxChars) {
-				errors.push(
-					`槽 "${key}" 超出字数限制：${charCount} > maxChars ${def.maxChars}（${def.role}）。请精简后重试。`,
-				);
-			}
-		}
+		// 不校验字数 —— 模板已不再声明任何字数上限。用户和 AI 写多长都照收，
+		// 版面装不下由渲染层的 fit-text 解决（固定高度的文字框自动缩字号），
+		// 而不是拒收或砍掉已经写好的字。
 	}
 	return errors;
 }
@@ -359,30 +297,6 @@ export function validateImagesMap(
 		usedPhotos.set(photoId, slotId);
 	}
 	return errors;
-}
-
-/** 装书容错：把超出模板 maxChars 的文字槽截到上限（按 Unicode 字符），返回警告。
- * 上游文案是 AI 自然成文、不硬截断，落库可能超限；装书时截断降级而不是把整本书
- * 挡在设计对话外。只动超限文本；结构性错误（未知模板/缺图槽）留给 validateAlbumBook 硬失败。 */
-export function clampOverLimitTexts(state: AlbumBookState, catalog: TemplateCatalog): string[] {
-	const notes: string[] = [];
-	for (const page of state.pages) {
-		const template = catalog.get(page.templateId);
-		if (!template) continue;
-		for (const [key, value] of Object.entries(page.texts)) {
-			if (typeof value !== "string") continue;
-			if (parseThemeCarrierKey(key)) continue;
-			const def = template.textDefsByBase.get(slotBaseId(key));
-			if (!def || def.maxChars === undefined) continue;
-			const chars = [...value];
-			if (chars.length <= def.maxChars) continue;
-			page.texts[key] = chars.slice(0, def.maxChars).join("");
-			notes.push(
-				`第 ${page.pageIndex} 页：槽 "${key}" 超出 maxChars ${def.maxChars}（实际 ${chars.length}），装书时已截断`,
-			);
-		}
-	}
-	return notes;
 }
 
 /** 全书契约体检（fixture 加载与测试用）。 */

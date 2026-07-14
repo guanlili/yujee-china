@@ -269,17 +269,22 @@ export const FONT_CATALOG = {
   },
 } as const satisfies Record<ArtFontPack, AlbumFontCatalogEntry>;
 
+// role → 默认字体的三组策略(2026-07-13 用户拍板):
+//   title            → 衬线(宋体 / Playfair)
+//   body + explain   → 黑体(思源黑体 / Inter)
+//   decoration       → 【艺术字体】(志莽行书 / Great Vibes)—— 装饰槽装的是
+//                      「Series · No.01」「Chapter · 05」这类小标,要跟正文拉开质感。
 export const DEFAULT_ALBUM_FONT = {
   cjk: {
     title: 'noto-serif-sc',
     body: 'noto-sans-sc',
     explain: 'noto-sans-sc',
-    decoration: 'noto-sans-sc',
+    decoration: 'zhi-mang-xing',
   },
   latin: {
     title: 'playfair-display',
     body: 'inter',
     explain: 'inter',
-    decoration: 'inter',
+    decoration: 'great-vibes',
   },
 } as const satisfies Record<AlbumFontScript, Record<AlbumTextRole, ArtFontPack>>;

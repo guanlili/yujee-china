@@ -6,9 +6,13 @@
   "imageSlotIds": [
     "image"
   ],
-  "textSlotCount": 1,
+  "textSlotCount": 5,
   "textSlotIds": [
-    "title"
+    "title",
+    "explain",
+    "explain2",
+    "explain3",
+    "explain4"
   ],
-  "structureDescription": "mag-49 interior template with 1 image slot(s) (image) and 1 concrete text slot(s) (title). one dominant image block; one text slot."
+  "structureDescription": "mag-49 interior template with 1 image slot(s) (image) and 5 concrete text slot(s) (title, explain, explain2, explain3, explain4). one dominant image block; 5 text slots."
 }

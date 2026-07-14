@@ -15,13 +15,12 @@ const PLAYFAIR = '&quot;Playfair Display&quot;, &quot;Noto Serif SC&quot;, &quot
 
 export const MAG_26_HTML = `<div data-template="mag-26" style="position:relative;width:794px;height:1123px;background:#FFFFFF;overflow:hidden">
   <div data-image-slot="image" style="position:absolute;left:330px;top:52px;width:426px;height:1015px;overflow:hidden">
-    <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
+    <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:500px;height:1015px;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}};left:-30px" />
   </div>
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:130px;top:404px;width:333px;height:150px;transform:rotate(-90deg);transform-origin:top left;font-weight:800;font-size:75px;line-height:1;white-space:pre-wrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}}">{{TEXT:title}}</div>
-  <div data-text-key="label1" data-variable-decor style="position:absolute;left:43px;top:460px;width:200px;height:24px;transform:rotate(-90deg);transform-origin:top left;font-size:24px;line-height:1;white-space:nowrap;overflow:hidden;color:{{COLOR:label1|#1c1b18}};font-family:{{FONT:label1|${SANS_EN}}}">{{TEXT:label1}}</div>
-  <div data-text-key="label2" data-variable-decor style="position:absolute;left:76px;top:440px;width:240px;height:24px;transform:rotate(-90deg);transform-origin:top left;font-size:24px;line-height:1;white-space:nowrap;overflow:hidden;color:{{COLOR:label2|#1c1b18}};font-family:{{FONT:label2|${SANS_EN}}}">{{TEXT:label2}}</div>
-  <div style="position:absolute;left:183px;top:452px;width:113px;height:85px;font-family:${SERIF_EN};font-size:120px;line-height:1;color:#1c1b18;user-select:none;overflow:hidden">&rdquo;</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;left:120px;top:500px;width:445px;height:160px;transform:rotate(-90deg);transform-origin:top left;font-weight:800;font-size:75px;line-height:1;white-space:pre-wrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}}">{{TEXT:title}}</div>
+  <div data-text-key="title2" data-variable-decor style="position:absolute;left:53px;top:440px;width:240px;height:24px;transform:rotate(-90deg);transform-origin:top left;font-size:24px;line-height:1;white-space:pre;overflow:hidden;color:{{COLOR:title2|#1c1b18}};font-family:{{FONT:title2|${SANS_EN}}}">{{TEXT:title2}}</div>
+  <div style="position:absolute;left:183px;top:550px;width:113px;height:85px;font-family:${SERIF_EN};font-size:120px;line-height:1;color:#1c1b18;user-select:none;overflow:hidden">&rdquo;</div>
   <div style="position:absolute;left:53px;top:710px;width:227px;height:1px;background:#1c1b18"></div>
-  <div data-text-key="explain" style="position:absolute;left:53px;top:587px;width:243px;height:25px;font-size:24px;line-height:1.3;white-space:pre-wrap;overflow:hidden;color:{{COLOR:explain|#1c1b18}};font-family:{{FONT:explain|${SANS_CN}}}">{{TEXT:explain}}</div>
-  <div data-text-key="body" style="position:absolute;left:56px;top:754px;width:240px;height:267px;font-size:19px;line-height:1.6;white-space:pre-wrap;overflow:hidden;color:{{COLOR:body|#1c1b18}};font-family:{{FONT:body|${SANS_CN}}}">{{TEXT:body}}</div>
+  <div data-text-key="explain" style="position:absolute;left:53px;top:680px;width:240px;height:25px;font-size:24px;line-height:1.3;white-space:pre-wrap;overflow:hidden;color:{{COLOR:explain|#1c1b18}};font-family:{{FONT:explain|${SANS_CN}}}">{{TEXT:explain}}</div>
+  <div data-text-key="body" style="position:absolute;left:53px;top:754px;width:240px;height:300px;font-size:19px;line-height:1.6;white-space:pre-wrap;overflow:hidden;color:{{COLOR:body|#1c1b18}};font-family:{{FONT:body|${SANS_CN}}}">{{TEXT:body}}</div>
 </div>`;

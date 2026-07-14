@@ -1,23 +1,22 @@
 import { COLORS, WEB_FONTS } from '../constants';
-import { WebFolio, WebImage, WebPage } from '../web-utils';
+import {WebImage, WebPage} from '../web-utils';
 import type { TemplateRenderProps } from '../types';
 import { resolveThemeCarrier } from '../theme-carrier';
+import { contractRole } from '../contract-role';
 
 export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
   const d = data as {
     image?: string;
-    date?: string;
-    explain1?: string;
-    explain2?: string;
+    label?: string;
+    explain?: string;
+    body?: string;
     title?: string;
-    folio?: string;
   };
-  const dateTheme = resolveThemeCarrier(data, 'date', 'decoration');
-  const titleTheme = resolveThemeCarrier(data, 'title', 'title');
-  const explain1Theme = resolveThemeCarrier(data, 'explain1', 'explain');
-  const explain2Theme = resolveThemeCarrier(data, 'explain2', 'explain');
-  const folioTheme = resolveThemeCarrier(data, 'folio', 'decoration');
-  const dn = (d.date || '08/24').split('/');
+  const dateTheme = resolveThemeCarrier(data, 'label', contractRole('mag-08', 'label'));
+  const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-08', 'title'));
+  const explain1Theme = resolveThemeCarrier(data, 'explain', contractRole('mag-08', 'explain'));
+  const explain2Theme = resolveThemeCarrier(data, 'body', contractRole('mag-08', 'body'));
+  const dn = (d.label || '08/24').split('/');
   return (
     <WebPage fontFamily={WEB_FONTS.sansEn}>
       <div
@@ -53,7 +52,7 @@ export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
           letterSpacing: '0.04em',
           textAlign: 'justify' }}
       >
-        {d.explain1 || ''}
+        {d.explain || ''}
       </p>
       {/* 右侧说明：移到照片右缘之外、收窄宽度，避免与照片重叠；分两段渲染 */}
       <div
@@ -64,7 +63,7 @@ export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
           letterSpacing: '0.04em',
           textAlign: 'justify' }}
       >
-        {(d.explain2 || '').split('\n\n').map((para, i) => (
+        {(d.body || '').split('\n\n').map((para, i) => (
           <p key={i} style={{ margin: i === 0 ? 0 : '14px 0 0' }}>{para}</p>
         ))}
       </div>
@@ -79,8 +78,6 @@ export function WebMag08({ data, totalPages, imagePos }: TemplateRenderProps) {
           overflow: 'hidden' }}
       >
         {titleTheme.text ?? d.title ?? 'EVENT'}
-      </h1>
-      <WebFolio folio={d.folio} totalPages={totalPages} accentColor={folioTheme.accentColor} fontFamily={folioTheme.webFontFamily} fallback="08" />
-    </WebPage>
+      </h1></WebPage>
   );
 }

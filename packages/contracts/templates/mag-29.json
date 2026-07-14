@@ -13,25 +13,19 @@
     {
       "id": "title",
       "role": "title",
-      "maxChars": 22,
       "lang": "user",
-      "variableDecor": true,
-      "sample": "把整片海都装进行囊"
+      "variableDecor": true, "sample": "Low Tide  "
     },
     {
       "id": "body",
       "role": "body",
-      "maxChars": 90,
-      "lang": "user",
-      "sample": "出发那天天还没亮，海风已经先到了，我们笑着说这趟一定值得。"
+      "lang": "user", "sample": "The tide went out further than we expected.\nWe went in November because it was cheaper. \nThe water was too cold to swim and the ice cream place was shut. We walked the whole beach twice and did not meet anyone. It was the best three days of the year."
     },
     {
       "id": "label",
       "role": "decoration",
-      "maxChars": 12,
       "lang": "en",
-      "variableDecor": true,
-      "sample": "Travel"
+      "variableDecor": true, "sample": "Where are my mind"
     }
   ]
 }

@@ -1,18 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { TEMPLATE_IDS, TEMPLATES } from '@yujee/contracts/templates';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from './spreads';
 import type { EditorPage } from './types';
 
-// Real template ids carry the slot we group by: mag-01/p01 = cover, current
-// non-cover templates (mag-03/05/06...) = interior.
+// Real template ids carry the category we group by. Cover ids are derived from the
+// registry, not hardcoded — templates get re-categorized (the dev template bench
+// writes `category` straight into the template JSON), and a hardcoded "this id is
+// a cover" would silently rot into a false premise.
+const COVER_IDS = TEMPLATE_IDS.filter((id) => TEMPLATES[id]?.category === 'cover');
+const [COVER_A, COVER_B] = COVER_IDS;
+
+test('fixture premise: at least two cover templates exist', () => {
+  assert.ok(COVER_A && COVER_B, `需要至少两个封面模板，当前只有：${COVER_IDS.join(', ') || '(无)'}`);
+});
+
 function page(templateId: string, pageIndex: number): EditorPage {
   return { pageIndex, templateId, imagesJson: {}, textsJson: {} };
 }
 
 test('cover opens recto, interior pages pair in between', () => {
   const pages = [
-    page('mag-01', 0), // cover
+    page(COVER_A!, 0), // cover
     page('mag-03', 1), // interior
     page('mag-05', 2), // interior
     page('mag-06', 3), // interior
@@ -26,7 +36,7 @@ test('cover opens recto, interior pages pair in between', () => {
 });
 
 test('cover + one interior leaves the interior with a blank facing half', () => {
-  const pages = [page('p01', 0), page('mag-03', 1)];
+  const pages = [page(COVER_A!, 0), page('mag-03', 1)];
   assert.deepEqual(buildSpreads(pages), [
     { left: null, right: 0 },
     { left: 1, right: null },
@@ -46,7 +56,7 @@ test('interior-only pairs two-up, odd gets a blank half', () => {
 
 test('spreadIndexOfPage finds the spread holding a page index', () => {
   const spreads = buildSpreads([
-    page('mag-01', 0),
+    page(COVER_A!, 0),
     page('mag-03', 1),
     page('mag-05', 2),
   ]);
@@ -57,12 +67,12 @@ test('spreadIndexOfPage finds the spread holding a page index', () => {
 });
 
 // ── issue #158 parity regression: cover/ending are solo half-pages, so any
-// extra cover (mag-13/p01) or a mid-document ending shifts the parity of every
+// extra cover or a mid-document ending shifts the parity of every
 // following interior pair. The old flat ceil/floor pagination got this wrong.
 
 test('ending closes verso; full cover→interior→ending lays out solo + paired', () => {
   const pages = [
-    page('mag-01', 0), // cover (solo recto)
+    page(COVER_A!, 0), // cover (solo recto)
     page('mag-03', 1), // interior
     page('mag-05', 2), // interior
     page('mag-06', 3), // interior
@@ -78,9 +88,9 @@ test('ending closes verso; full cover→interior→ending lays out solo + paired
 
 test('a second cover mid-document re-aligns following interior parity', () => {
   const pages = [
-    page('mag-01', 0), // cover
+    page(COVER_A!, 0), // cover
     page('mag-03', 1), // interior
-    page('mag-13', 2), // second cover (mid-document) — forces a solo spread
+    page(COVER_B!, 2), // second cover (mid-document) — forces a solo spread
     page('mag-05', 3), // interior
     page('mag-06', 4), // interior
   ];
@@ -97,7 +107,7 @@ test('a second cover mid-document re-aligns following interior parity', () => {
 
 test('an ending mid-document forces the next interior onto a fresh pair', () => {
   const pages = [
-    page('mag-01', 0), // cover
+    page(COVER_A!, 0), // cover
     page('mag-03', 1), // interior
     page('mag-20', 2), // ending mid-document — solo verso
     page('mag-05', 3), // interior after the ending
@@ -134,7 +144,7 @@ test('skip cover: an album with no cover starts straight into a paired interior 
 
 test('skip ending: an album with a cover but no ending closes on a paired interior spread', () => {
   const pages = [
-    page('mag-01', 0), // cover (solo recto)
+    page(COVER_A!, 0), // cover (solo recto)
     page('mag-03', 1), // interior
     page('mag-05', 2), // interior
   ];
@@ -174,7 +184,7 @@ test('empty book: zero pages yields zero spreads (no crash, no blank page)', () 
 // "a half is null".
 
 test('isSoloSpread: cover-solo (left null, right=cover) is solo', () => {
-  const pages = [page('mag-01', 0), page('mag-03', 1), page('mag-05', 2)];
+  const pages = [page(COVER_A!, 0), page('mag-03', 1), page('mag-05', 2)];
   const spreads = buildSpreads(pages);
   // [{ left: null, right: 0 }, { left: 1, right: 2 }]
   assert.equal(isSoloSpread(spreads[0], pages), true);
@@ -182,7 +192,7 @@ test('isSoloSpread: cover-solo (left null, right=cover) is solo', () => {
 
 test('isSoloSpread: ending-solo (left=ending, right null) is solo', () => {
   const pages = [
-    page('mag-01', 0), // cover
+    page(COVER_A!, 0), // cover
     page('mag-03', 1), // interior
     page('mag-05', 2), // interior
     page('mag-20', 3), // ending (solo verso)
@@ -214,7 +224,7 @@ test('isSoloSpread: a paired interior spread is never solo', () => {
 });
 
 test('isSoloSpread: undefined / out-of-range spread is not solo (no crash)', () => {
-  const pages = [page('mag-01', 0)];
+  const pages = [page(COVER_A!, 0)];
   assert.equal(isSoloSpread(undefined, pages), false);
   assert.equal(isSoloSpread({ left: 99, right: null }, pages), false);
 });

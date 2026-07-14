@@ -53,6 +53,21 @@ def _set_deepseek_key(monkeypatch) -> None:
     s.reset_settings_cache()
 
 
+def _clear_deepseek_key(monkeypatch) -> None:
+    """真正清掉 key。
+
+    Settings 用 pydantic-settings 的 env_file=".env" 【直接读文件】—— 光「不设环境变量」
+    是盖不住的:开发机 .env 里有真 key,「无 key 降级」永远模拟不出来(只会在 CI 无 .env
+    时碰巧过)。所以这里把 env_file 关掉,只认环境变量 + 源码默认值。
+    """
+    from src import settings as s
+
+    monkeypatch.setitem(s.Settings.model_config, "env_file", None)
+    monkeypatch.setenv("AGENT_SHARED_SECRET", "test-secret")  # 唯一必填字段
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "")               # 判空是 `if not ...`
+    s.reset_settings_cache()
+
+
 def test_write_copy_fills_title_and_body_slots(monkeypatch):
     _set_deepseek_key(monkeypatch)
     calls: list[dict] = []
@@ -66,7 +81,7 @@ def test_write_copy_fills_title_and_body_slots(monkeypatch):
                         "pageIndex": 0,
                         "texts": {
                             "title": "海边黄昏",
-                            "body": "夕阳把海水染成金色,我们并肩坐在沙滩上。",
+                            "explain": "夕阳把海水染成金色,我们并肩坐在沙滩上。",
                         },
                     }
                 ]
@@ -90,7 +105,7 @@ def test_write_copy_fills_title_and_body_slots(monkeypatch):
     assert result.pages_texts == {
         0: {
             "title": "海边黄昏",
-            "body": "夕阳把海水染成金色,我们并肩坐在沙滩上。",
+            "explain": "夕阳把海水染成金色,我们并肩坐在沙滩上。",
         }
     }
     assert result.call_count == 1
@@ -108,12 +123,14 @@ def test_write_copy_fills_title_and_body_slots(monkeypatch):
     assert payload["chapterContext"] == "厦门海边度假,轻松愉快"
     assert payload["language"] == "zh"
     assert payload["pages"][0]["pageIndex"] == 0
+    # decoration 槽(如 date)也送给模型 —— 装饰文案也要写。页码不在此列:它已经
+    # 不是模板槽位了(展示层按页序统一生成)。
     sent_slot_ids = {slot["id"] for slot in payload["pages"][0]["textSlots"]}
-    assert sent_slot_ids == {"title", "body"}
-    # 字数预算随槽规格给到模型(提示词约束;输出端仍不硬截断)。
-    slots_by_id = {slot["id"]: slot for slot in payload["pages"][0]["textSlots"]}
-    assert slots_by_id["title"]["maxChars"] == 24
-    assert slots_by_id["body"]["maxChars"] == 80
+    assert {"title", "explain"} <= sent_slot_ids
+    assert "folio" not in sent_slot_ids
+    # 不再给模型任何字数上限:模板已不声明 maxChars,篇幅由 sample 示范。
+    for slot in payload["pages"][0]["textSlots"]:
+        assert "maxChars" not in slot
     # deepseek 纯文本:照片以 sceneDescription 进上下文,photoId 一律短 id,
     # 真实 UUID 绝不进模型 payload(约定:给 AI 的 id 都要转换)。
     photos = payload["pages"][0]["photos"]
@@ -124,7 +141,7 @@ def test_write_copy_fills_title_and_body_slots(monkeypatch):
 
 
 def test_write_copy_does_not_clamp_text(monkeypatch):
-    # maxChars 已从写文案链路移除:AI 自然成文,不再按字数硬截断(长文原样透传)。
+    # 全链路无字数校验:AI 自然成文,长文原样透传(渲染层 fit-text 负责装下)。
     _set_deepseek_key(monkeypatch)
 
     long_title = "这是一段远超过标题最大字符数限制的超长标题文本用来测试裁剪逻辑是否生效"
@@ -138,7 +155,7 @@ def test_write_copy_does_not_clamp_text(monkeypatch):
                         "pageIndex": 0,
                         "texts": {
                             "title": long_title,
-                            "body": "正常长度的正文。",
+                            "explain": "正常长度的正文。",
                         },
                     }
                 ]
@@ -161,16 +178,18 @@ def test_write_copy_does_not_clamp_text(monkeypatch):
 
     # 原样返回,不截断。
     assert result.pages_texts[0]["title"] == long_title
-    assert result.pages_texts[0]["body"] == "正常长度的正文。"
+    assert result.pages_texts[0]["explain"] == "正常长度的正文。"
 
 
-def test_write_copy_never_requests_or_returns_decoration_slots(monkeypatch):
+def test_write_copy_writes_decoration_slots_but_not_unknown_ones(monkeypatch):
+    """decoration 槽也写(装饰文案装饰属性强,但仍然是要写的文案)。
+    模型返回模板里【没有】的槽仍然被丢弃(只认本页槽位规格)。
+    页码不在此列 —— 它已经不是模板槽位了(展示层按当前页序统一生成)。"""
     _set_deepseek_key(monkeypatch)
     calls: list[dict] = []
 
     async def fake_completion(**kwargs):
         calls.append(kwargs)
-        # 即便模型「越界」尝试写 decoration 槽(date/folio),也必须被过滤掉。
         return _completion(
             {
                 "pages": [
@@ -178,9 +197,9 @@ def test_write_copy_never_requests_or_returns_decoration_slots(monkeypatch):
                         "pageIndex": 0,
                         "texts": {
                             "title": "海边黄昏",
-                            "body": "夕阳把海水染成金色。",
-                            "date": "05/24",
-                            "folio": "01",
+                            "explain": "夕阳把海水染成金色。",
+                            "date": "05/24",          # decoration 槽 → 收下
+                            "notASlot": "越界内容",    # 模板里没有 → 丢掉
                         },
                     }
                 ]
@@ -193,7 +212,7 @@ def test_write_copy_never_requests_or_returns_decoration_slots(monkeypatch):
     pages = [
         {
             "pageIndex": 0,
-            "templateId": "mag-15",  # title/body/date(decoration)/folio(decoration)
+            "templateId": "mag-15",  # title / body / date(decoration)
             "images": {"main": "p1"},
             "texts": {},
         }
@@ -201,17 +220,14 @@ def test_write_copy_never_requests_or_returns_decoration_slots(monkeypatch):
 
     result = asyncio.run(write_copy_handler.write_copy(unit, pages, language="zh"))
 
-    assert set(result.pages_texts[0].keys()) == {"title", "body"}
-    assert "date" not in result.pages_texts[0]
-    assert "folio" not in result.pages_texts[0]
+    
+    assert result.pages_texts[0]["title"] == "海边黄昏"
+    assert "notASlot" not in result.pages_texts[0], "模板里没有的槽必须丢弃"
 
-    sent_messages = calls[0]["messages"]
-    user_text = sent_messages[1]["content"]
-    assert isinstance(user_text, str)  # 纯文本调用:不再组 parts、不附图
-    payload = json.loads(user_text)
+    # 请求侧:decoration 槽也发给模型。
+    payload = json.loads(calls[0]["messages"][1]["content"])
     sent_slot_ids = {slot["id"] for slot in payload["pages"][0]["textSlots"]}
-    assert "date" not in sent_slot_ids
-    assert "folio" not in sent_slot_ids
+    assert "folio" not in sent_slot_ids, "页码不该出现在任何模板槽位里"
 
 
 def test_write_copy_provider_error_returns_empty_result(monkeypatch):
@@ -266,8 +282,8 @@ def test_write_copy_page_with_only_decoration_slots_is_skipped_no_call(monkeypat
 
 
 def test_write_copy_missing_deepseek_key_returns_empty_no_call(monkeypatch):
-    # DEEPSEEK_API_KEY intentionally left unset — write_copy must degrade to an
-    # empty result without calling the model (never raise).
+    # 无 DEEPSEEK_API_KEY 时,write_copy 必须优雅降级成空结果、不调模型、不抛异常。
+    _clear_deepseek_key(monkeypatch)
     calls: list[dict] = []
 
     async def fake_completion(**kwargs):
@@ -290,3 +306,43 @@ def test_write_copy_missing_deepseek_key_returns_empty_no_call(monkeypatch):
 
     assert result.pages_texts == {}
     assert len(calls) == 0
+
+
+# ---------- 示例文案来源:槽位自己的 sample(单一真相)-------------------------
+# 同一个 sample 串既是 Web 画板的预览占位,也是这里喂给写作 LM 的输出示例。
+# 曾经并存的 copy-examples/ 目录已删除(两套示例=信息误差)。
+
+
+def test_writable_slot_spec_takes_sample_from_the_template_slot():
+    # mag-01 的 title 槽在模板 JSON 里带 sample → spec 里必须原样带上,供模型照着写。
+    # 注意用 handler 自己绑定的 templates 模块:别的测试会 reload 该模块,
+    # 直接 import 拿到的可能是另一个模块对象。
+    registry = write_copy_handler.templates
+
+    template = registry.get("mag-01")
+    assert template is not None
+    declared = {slot["id"]: slot.get("sample") for slot in registry.text_slots(template)}
+
+    specs = write_copy_handler._writable_text_slots({"templateId": "mag-01"})
+    by_id = {spec["id"]: spec for spec in specs}
+
+    assert by_id["title"]["sample"] == declared["title"]
+    assert by_id["body"]["sample"] == declared["body"]
+
+
+def test_writable_slot_spec_omits_sample_when_slot_has_none(monkeypatch):
+    # 无 sample 的槽:spec 不带 sample 键(优雅降级,绝不 KeyError)。
+    registry = write_copy_handler.templates
+
+    fake = {
+        "id": "no-sample",
+        "category": "interior",
+        "images": [{"id": "image"}],
+        "texts": [{"id": "body", "role": "body", "lang": "user"}],
+    }
+    monkeypatch.setitem(registry.TEMPLATES, "no-sample", fake)
+
+    specs = write_copy_handler._writable_text_slots({"templateId": "no-sample"})
+
+    assert specs == [{"id": "body", "role": "body"}]
+    assert "sample" not in specs[0]

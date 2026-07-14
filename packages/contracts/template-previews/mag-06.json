@@ -6,9 +6,7 @@
   "imageSlotIds": [
     "image"
   ],
-  "textSlotCount": 1,
-  "textSlotIds": [
-    "folio"
-  ],
-  "structureDescription": "mag-06 interior template with 1 image slot(s) (image) and 1 concrete text slot(s) (folio). one dominant image block; one text slot."
+  "textSlotCount": 0,
+  "textSlotIds": [],
+  "structureDescription": "mag-06 interior template with 1 image slot(s) (image) and 0 concrete text slot(s) (none). one dominant image block; no text slots."
 }

@@ -12,23 +12,10 @@ import {
 } from './layout';
 import {
   V3AnalyzeRequest,
-  V3ApplyThemeRequest,
   V3Callback,
-  V3ChapterChatResponse,
   V3ChapterOverview,
-  V3CoverRequest,
-  V3CoverResponse,
-  V3EditChatRequest,
-  V3EditChatResponse,
-  V3FinalizeResponse,
-  V3InternalAgentAckRequest,
-  V3InternalAgentAckResponse,
   V3InternalAgentDataRequest,
   V3InternalAgentDataResponse,
-  V3PageEditRequest,
-  V3PageEditResponse,
-  V3RecommendRequest,
-  V3RecommendResponse,
   SelectLayoutCompleted,
   SelectLayoutRequest,
   V3StoryDraft,
@@ -149,7 +136,16 @@ test('V3LayoutTree round-trips through strict parse', () => {
       { chapterId: 'c1', description: 'd', accentColor: null, artFont: null, photos: [baseChapterPhoto] },
     ],
   };
-  assert.deepEqual(V3LayoutTree.parse(tree), tree);
+  // chapterContext 有 .default('')：parse 会补上它，所以 round-trip 的产物比输入多这一个键。
+  // 这是 schema 的既定行为(缺省章节背景 = 空串)，不是丢失/污染。
+  assert.deepEqual(V3LayoutTree.parse(tree), {
+    chapters: [{ ...tree.chapters[0], chapterContext: '' }],
+  });
+  // 输入里显式给了 chapterContext 时原样保留(默认值不覆盖真实值)。
+  const withContext = {
+    chapters: [{ ...tree.chapters[0], chapterContext: '厦门海边度假' }],
+  };
+  assert.deepEqual(V3LayoutTree.parse(withContext), withContext);
   assert.equal(V3LayoutTree.safeParse({ chapters: [], extra: 1 }).success, false);
 });
 
@@ -216,7 +212,7 @@ test('TemplateSvgSlot + TemplateItems parse the V3 decoration/repeat shapes', ()
   });
   const items = {
     images: [{ id: 'image' }],
-    texts: [{ id: 'caption', role: 'explain' as const, lang: 'user' as const, maxChars: 70 }],
+    texts: [{ id: 'caption', role: 'explain' as const, lang: 'user' as const }],
   };
   assert.deepEqual(TemplateItems.parse(items), items);
 });
@@ -230,7 +226,7 @@ test('TemplateDef is category-only — legacy slot/scene are rejected', () => {
       images: [{ id: 'image', quality: ['hero'], orientation: ['portrait'] }],
       svgs: [{ id: 'divider', variableDecor: true }],
       texts: [{ id: 'title', role: 'title', lang: 'user', variableDecor: true }],
-      items: { texts: [{ id: 'explain', role: 'explain', lang: 'user', maxChars: 70 }] },
+      items: { texts: [{ id: 'explain', role: 'explain', lang: 'user' }] },
     }).success,
     true,
   );
@@ -453,13 +449,6 @@ test('SelectLayoutRequest carries 200px refs and takenAt, and rejects caller can
   );
 });
 
-test('internal agent ack schemas parse request and response', () => {
-  assert.deepEqual(V3InternalAgentAckRequest.parse({ opId: 'op_1' }), { opId: 'op_1' });
-  assert.deepEqual(V3InternalAgentAckResponse.parse({ ok: false }), { ok: false });
-  assert.equal(V3InternalAgentAckRequest.safeParse({ opId: 'op_1', extra: true }).success, false);
-  assert.equal(V3InternalAgentAckResponse.safeParse({ ok: true, data: {} }).success, false);
-});
-
 test('internal agent-data schemas cover query parsing and response envelopes', () => {
   assert.deepEqual(
     V3InternalAgentDataRequest.parse({
@@ -561,90 +550,6 @@ test('internal agent-data schemas cover query parsing and response envelopes', (
   );
 });
 
-test('V3EditChatResponse can carry editor navigation without mutating book tree', () => {
-  const parsed = V3EditChatResponse.parse({
-    kind: 'talk',
-    assistantReply: 'Opening the next page.',
-    patches: [],
-    navigation: { pageIndex: 2 },
-    opId: 'op_1',
-    usage: { durationMs: 1, models: {} },
-  });
-
-  assert.deepEqual(parsed.navigation, { pageIndex: 2 });
-});
-
-test('V3ChapterChatResponse: kind drives which patch is present', () => {
-  const usage = { durationMs: 1, models: {} };
-  // write turn carries pagesTexts
-  assert.equal(
-    V3ChapterChatResponse.safeParse({
-      kind: 'write',
-      assistantReply: 'done',
-      pagesTexts: [{ pageIndex: 0, texts: { body: 'hi' } }],
-      usage,
-    }).success,
-    true,
-  );
-  // talk turn carries neither patch
-  assert.equal(
-    V3ChapterChatResponse.safeParse({ kind: 'talk', assistantReply: 'tell me more', usage }).success,
-    true,
-  );
-  assert.equal(V3ChapterChatResponse.safeParse({ kind: 'sing', assistantReply: 'x', usage }).success, false);
-});
-
-test('V3EditChatResponse requires opId and supports commit bundle fields', () => {
-  assert.equal(
-    V3EditChatResponse.safeParse({
-      kind: 'edit',
-      assistantReply: 'Updated.',
-      patches: [{ pageIndex: 2, texts: { body: 'New copy' } }],
-      pagesTexts: [{ pageIndex: 1, texts: { title: 'Coast' } }],
-      progressDecision: { pageDone: true, chapterDone: true, advanceTo: 'theme' },
-      opId: 'op_1',
-      usage: { durationMs: 1, models: {} },
-    }).success,
-    true,
-  );
-
-  assert.equal(
-    V3EditChatResponse.safeParse({
-      kind: 'edit',
-      assistantReply: 'Updated.',
-      patches: [],
-      usage: { durationMs: 1, models: {} },
-    }).success,
-    false,
-  );
-});
-
-test('V3EditChatRequest is slim and does not carry chapter pages or history', () => {
-  assert.equal(
-    V3EditChatRequest.safeParse({
-      albumId: 'alb_1',
-      language: 'en',
-      userMessage: 'write this chapter',
-      focus: { chapterId: 'c1', pageIndex: 3 },
-      progress: { currentChapterId: 'c1', doneChapterIds: [] },
-    }).success,
-    true,
-  );
-
-  assert.equal(
-    V3EditChatRequest.safeParse({
-      albumId: 'alb_1',
-      language: 'en',
-      userMessage: 'write this chapter',
-      focus: { chapterId: 'c1' },
-      progress: { currentChapterId: 'c1', doneChapterIds: [] },
-      history: [],
-      pages: [],
-    }).success,
-    false,
-  );
-});
-
 // ───────────────────── ②b 页级编辑 — POST /v3/page-edit ─────────────────────
 
 const pageEditChapter = {
@@ -654,195 +559,6 @@ const pageEditChapter = {
   artFont: null,
   photos: [baseChapterPhoto],
 };
-
-test('V3PageEditRequest mirrors chapter-chat fields, focusedPageIndex required', () => {
-  const base = {
-    language: 'en' as const,
-    chapter: pageEditChapter,
-    pages: [{ pageIndex: 0, templateId: 'mag-08', images: { image: 'p1' }, texts: {} }],
-    focusedPageIndex: 0,
-    userMessage: 'tighten the caption',
-    history: [{ role: 'user' as const, content: 'hi' }],
-  };
-  assert.equal(V3PageEditRequest.safeParse(base).success, true);
-  // focusedPageIndex is required (no optional default — page-edit always targets a page)
-  const { focusedPageIndex, ...noFocus } = base;
-  assert.equal(V3PageEditRequest.safeParse(noFocus).success, false);
-  // strict: unknown key rejected
-  assert.equal(V3PageEditRequest.safeParse({ ...base, albumId: 'a1' }).success, false);
-  // §3 privacy: a place/GPS key on the chapter photo is rejected by strict()
-  assert.equal(
-    V3PageEditRequest.safeParse({
-      ...base,
-      chapter: { ...pageEditChapter, photos: [{ ...baseChapterPhoto, lat: 1 }] },
-    }).success,
-    false,
-  );
-});
-
-test('V3PageEditResponse: intent + optional layoutPatch (reuses V3LayoutPatchEntry)', () => {
-  const usage = { durationMs: 1, models: {} };
-  // edit_text → texts-only patch entry
-  assert.equal(
-    V3PageEditResponse.safeParse({
-      assistantReply: 'done',
-      intent: 'edit_text',
-      layoutPatch: [{ pageIndex: 0, texts: { title: 'New Title' } }],
-      usage,
-    }).success,
-    true,
-  );
-  // change_layout → templateId + images patch entry
-  assert.equal(
-    V3PageEditResponse.safeParse({
-      assistantReply: 'reflowed',
-      intent: 'change_layout',
-      layoutPatch: [{ pageIndex: 0, templateId: 'mag-04', images: { image1: 'p1', image2: 'p2' } }],
-      usage,
-    }).success,
-    true,
-  );
-  // advance → advanceIntent, no patch
-  assert.equal(
-    V3PageEditResponse.safeParse({
-      assistantReply: 'moving on',
-      intent: 'advance',
-      advanceIntent: true,
-      usage,
-    }).success,
-    true,
-  );
-  // talk → reply only
-  assert.equal(
-    V3PageEditResponse.safeParse({ assistantReply: 'tell me more', intent: 'talk', usage }).success,
-    true,
-  );
-  // unknown intent rejected
-  assert.equal(
-    V3PageEditResponse.safeParse({ assistantReply: 'x', intent: 'sing', usage }).success,
-    false,
-  );
-  // strict: unknown key rejected
-  assert.equal(
-    V3PageEditResponse.safeParse({ assistantReply: 'x', intent: 'talk', usage, extra: 1 }).success,
-    false,
-  );
-});
-
-test('V3RecommendRequest accepts fontHint and per-chapter extractedColor basis', () => {
-  assert.equal(
-    V3ChapterOverview.safeParse({
-      chapterId: 'c1',
-      description: 'Spring in Kyoto',
-      photoDescs: ['red lanterns'],
-      extractedColor: '#aabbcc',
-    }).success,
-    true,
-  );
-  assert.equal(
-    V3ChapterOverview.safeParse({
-      chapterId: 'c1',
-      description: 'Spring in Kyoto',
-      photoDescs: [],
-      extractedColor: null,
-    }).success,
-    true,
-  );
-  assert.equal(
-    V3RecommendRequest.safeParse({
-      albumId: 'a1',
-      language: 'en',
-      fontHint: 'classic but not too formal',
-      chapters: [{ chapterId: 'c1', description: 'Spring in Kyoto', photoDescs: [] }],
-    }).success,
-    true,
-  );
-  assert.equal(
-    V3RecommendRequest.safeParse({
-      albumId: 'a1',
-      language: 'en',
-      fontHint: 'x'.repeat(201),
-      chapters: [{ chapterId: 'c1', description: 'Spring in Kyoto', photoDescs: [] }],
-    }).success,
-    false,
-  );
-});
-
-test('V3RecommendResponse returns exactly three book theme options', () => {
-  const ok = V3RecommendResponse.safeParse({
-    bookThemeOptions: [
-      {
-        optionId: 'opt-1',
-        label: 'x'.repeat(160),
-        style: 'y'.repeat(160),
-        artFont: 'serif-classic',
-        chapters: [{ chapterId: 'c1', subject: 'Spring in Kyoto', accentColor: '#aabbcc' }],
-      },
-      {
-        optionId: 'opt-2',
-        artFont: 'sans-modern',
-        chapters: [{ chapterId: 'c1', subject: 'Spring in Kyoto', accentColor: '#bbccdd' }],
-      },
-      {
-        optionId: 'opt-3',
-        artFont: 'display-bold',
-        chapters: [{ chapterId: 'c1', subject: 'Spring in Kyoto', accentColor: '#ccddee' }],
-      },
-    ],
-    assistantReply: '',
-    usage: { durationMs: 1, models: {} },
-  });
-  assert.equal(ok.success, true);
-  // Old chapterColors and non-3 option counts are rejected.
-  assert.equal(
-    V3RecommendResponse.safeParse({
-      chapterColors: [{ chapterId: 'c1', subject: 'x', accentColor: '#aabbcc', artFont: 'serif-classic' }],
-      assistantReply: '',
-      usage: { durationMs: 1, models: {} },
-    }).success,
-    false,
-  );
-  assert.equal(
-    V3RecommendResponse.safeParse({
-      bookThemeOptions: [
-        {
-          optionId: 'opt-1',
-          artFont: 'serif-classic',
-          chapters: [{ chapterId: 'c1', accentColor: '#aabbcc' }],
-        },
-      ],
-      assistantReply: '',
-      usage: { durationMs: 1, models: {} },
-    }).success,
-    false,
-  );
-  assert.equal(
-    V3RecommendResponse.safeParse({
-      bookThemeOptions: [
-        {
-          optionId: 'x'.repeat(81),
-          artFont: 'serif-classic',
-          chapters: [{ chapterId: 'c1', accentColor: '#aabbcc' }],
-        },
-        {
-          optionId: 'opt-2',
-          label: 'x'.repeat(161),
-          artFont: 'sans-modern',
-          chapters: [{ chapterId: 'c1', accentColor: '#bbccdd' }],
-        },
-        {
-          optionId: 'opt-3',
-          style: 'x'.repeat(161),
-          artFont: 'display-bold',
-          chapters: [{ chapterId: 'c1', accentColor: '#ccddee' }],
-        },
-      ],
-      assistantReply: '',
-      usage: { durationMs: 1, models: {} },
-    }).success,
-    false,
-  );
-});
 
 test('test_v3_chapter_overview_carries_extracted_color', () => {
   const overview = {
@@ -855,150 +571,6 @@ test('test_v3_chapter_overview_carries_extracted_color', () => {
   assert.equal(V3ChapterOverview.safeParse(overview).success, true);
   assert.equal(V3ChapterOverview.safeParse({ ...overview, extractedColor: null }).success, true);
   assert.equal(V3ChapterOverview.safeParse({ ...overview, extractedColor: 'red' }).success, false);
-});
-
-test('V3ApplyThemeRequest + V3CoverRequest carry page-level patches (not tree fields)', () => {
-  const page = { pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} };
-  assert.equal(
-    V3ApplyThemeRequest.safeParse({
-      albumId: 'a1',
-      language: 'en',
-      chapters: [{ chapterId: 'c1', accentColor: '#abc', artFont: 'sans-modern' }],
-      pages: [page],
-    }).success,
-    true,
-  );
-  // cover can be skipped (null) — §4.4
-  assert.equal(
-    V3CoverRequest.safeParse({
-      albumId: 'a1',
-      language: 'en',
-      coverTemplateId: null,
-      endingTemplateId: null,
-      pages: [page],
-    }).success,
-    true,
-  );
-});
-
-test('V3CoverRequest accepts Stage5 photo guidance and chat context', () => {
-  const page = { pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} };
-  const parsed = V3CoverRequest.parse({
-    albumId: 'a1',
-    language: 'en',
-    coverTemplateId: 'mag-01',
-    endingTemplateId: 'mag-20',
-    coverPhoto: 'data:image/jpeg;base64,AA==',
-    endingPhoto: 'data:image/png;base64,AA==',
-    coverPhotoDesc: 'a quiet portrait beside a window',
-    artFont: 'display-bold',
-    hint: 'keep the whole book tender and understated',
-    userMessage: 'Could the cover feel calmer?',
-    history: [
-      { role: 'user', content: 'I want a calmer cover' },
-      { role: 'assistant', content: 'I can make it quieter.' },
-    ],
-    pages: [page],
-  });
-
-  assert.equal(parsed.coverPhoto, 'data:image/jpeg;base64,AA==');
-  assert.equal(parsed.endingPhoto, 'data:image/png;base64,AA==');
-  assert.equal(parsed.coverPhotoDesc, 'a quiet portrait beside a window');
-  assert.equal(parsed.artFont, 'display-bold');
-  assert.equal(parsed.hint, 'keep the whole book tender and understated');
-  assert.equal(parsed.userMessage, 'Could the cover feel calmer?');
-  assert.deepEqual(parsed.history, [
-    { role: 'user', content: 'I want a calmer cover' },
-    { role: 'assistant', content: 'I can make it quieter.' },
-  ]);
-});
-
-test('V3CoverRequest defaults chat fields and caps history at 20 turns', () => {
-  const page = { pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} };
-  const parsed = V3CoverRequest.parse({
-    albumId: 'a1',
-    language: 'en',
-    coverTemplateId: null,
-    endingTemplateId: null,
-    pages: [page],
-  });
-
-  assert.equal(parsed.userMessage, '');
-  assert.deepEqual(parsed.history, []);
-  assert.equal(
-    V3CoverRequest.safeParse({
-      albumId: 'a1',
-      language: 'en',
-      history: Array.from({ length: 21 }, () => ({ role: 'user' as const, content: 'x' })),
-      pages: [page],
-    }).success,
-    false,
-  );
-});
-
-test('V3CoverRequest rejects explicit null for Stage5 optional string fields', () => {
-  const page = { pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} };
-  for (const key of ['coverPhoto', 'endingPhoto', 'coverPhotoDesc', 'hint'] as const) {
-    assert.equal(
-      V3CoverRequest.safeParse({
-        albumId: 'a1',
-        language: 'en',
-        pages: [page],
-        [key]: null,
-      }).success,
-      false,
-      `${key}: null must be rejected; omit the key instead`,
-    );
-  }
-});
-
-test('V3CoverResponse carries clarification state without public text payloads', () => {
-  const usage = { durationMs: 1, models: {} };
-  const normal = V3CoverResponse.parse({
-    layoutPatch: [],
-    usage,
-  });
-  assert.equal(normal.needsUserInput, false);
-
-  const clarification = V3CoverResponse.parse({
-    layoutPatch: [],
-    assistantReply: 'Which cover mood should I use?',
-    needsUserInput: true,
-    usage,
-  });
-  assert.equal(clarification.needsUserInput, true);
-  assert.equal(clarification.assistantReply, 'Which cover mood should I use?');
-
-  assert.equal(
-    V3CoverResponse.safeParse({
-      layoutPatch: [],
-      assistantReply: 'done',
-      coverTexts: {},
-      usage,
-    }).success,
-    false,
-  );
-  assert.equal(
-    V3CoverResponse.safeParse({
-      layoutPatch: [],
-      assistantReply: 'done',
-      endingTexts: {},
-      usage,
-    }).success,
-    false,
-  );
-});
-
-test('V3FinalizeResponse returns the flat AlbumLayoutPlan (render contract)', () => {
-  const ok = V3FinalizeResponse.safeParse({
-    layout: {
-      magazine: { title: 'My Book', style: 'warm-film', language: 'en' },
-      photos: [],
-      pages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }],
-    },
-    usage: { durationMs: 1, models: {} },
-  });
-  assert.equal(ok.success, true);
 });
 
 test('V3Callback union: analyze progress / analyze completed / select-layout completed / failed', () => {

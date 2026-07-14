@@ -57,9 +57,6 @@ test('editor chat rail uses the refreshed draggable card and collapsed jellyfish
   assert.doesNotMatch(chatPanel, /data-demo-chat/, 'production chat rail must not ship design-demo transcript bubbles');
   assert.doesNotMatch(chatPanel, /clearDemoChat/, 'demo transcript cleanup should not be needed when the demo transcript is not rendered');
   assert.doesNotMatch(chatPanel, /thinkingAnalyzed|aiMsg1|userMsg1/, 'demo transcript i18n keys should not be referenced by ChatPanel markup');
-  assert.match(chatPanel, /function mockEditChatResponse\(/, 'authoring edit-chat should have a deterministic local mock fallback');
-  assert.match(chatPanel, /function shouldUseMockEditFallback\(/, 'mock fallback should be gated so auth and credit errors keep their real behavior');
-  assert.match(chatPanel, /appendMockToolReceipt\(/, 'mock fallback should still expose an AI tool-call receipt state');
   assert.match(chatPanel, /function appendStep\(/, 'runtime AI tool progress should be emitted by real step rows');
   assert.match(chatPanel, /card\.className = 'op-card'/, 'mock AI tool-call receipts should be rendered at runtime');
   assert.doesNotMatch(chatPanel, /className="ai-doc"/, 'design-demo document summaries should not ship in the chat rail');

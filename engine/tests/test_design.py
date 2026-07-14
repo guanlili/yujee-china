@@ -26,7 +26,7 @@ def _set_keys(monkeypatch) -> None:
     s.reset_settings_cache()
 
 
-_COVER_SLOTS = [{"id": "title", "role": "title", "maxChars": 12, "sample": "My Story"}]
+_COVER_SLOTS = [{"id": "title", "role": "title", "sample": "My Story"}]
 _ENDING_SLOTS = [{"id": "closing", "role": "body", "sample": "…"}]
 
 
@@ -78,7 +78,6 @@ def test_run_design_happy_path(monkeypatch):
     assert sorted(calls) == ["copy", "style"]  # 两次调用(并发)
     # 字数预算随槽规格进了文案调用的 payload(提示词约束;输出不硬截断)。
     copy_payload = json.loads(copy_user_payloads[0])
-    assert copy_payload["coverSlots"][0]["maxChars"] == 12
     assert result["fonts"]["title"] == "zcool-xiaowei"
     assert result["colors"]["title"] == "#2b4a6f"
     assert result["coverTexts"] == {"title": "海边的夏天"}
@@ -104,7 +103,8 @@ def test_run_design_falls_back_and_uses_album_title(monkeypatch):
     )
 
     # 双失败:字体颜色落英文默认;封面标题槽兜相册标题;封尾空串(Web 侧留空)。
-    assert result["fonts"] == {"title": "playfair-display", "body": "inter", "decoration": "inter"}
+    # decoration 默认走艺术字体(与正文拉开质感;三组策略:衬线/黑体/艺术字)。
+    assert result["fonts"] == {"title": "playfair-display", "body": "inter", "decoration": "great-vibes"}
     assert result["colors"] == {"title": "#1c1b18", "body": "#1c1b18", "explain": "#6b675f"}
     assert result["coverTexts"] == {"title": "Summer by the Sea"}
     assert result["endingTexts"] == {"closing": ""}
