@@ -52,9 +52,11 @@ export type CreemProductEnvKey =
 // math and UI copy ("1 credit = N photos") must derive from here, NEVER
 // hardcode a number. The per-request analyze cap is a separate product knob.
 //
-// Confirmed product rule (2026-07): 10 photos per credit. The landing FAQ
-// interpolates this constant, so changing it also changes the public copy.
-export const PHOTOS_PER_CREDIT = 10;
+// Confirmed product rule (2026-07-14): 20 photos per credit. At the $3 entry
+// pack (1 credit) that is $3 per 20 photos, which still clears cost. The landing
+// FAQ and JSON-LD interpolate this constant, so changing it also changes the
+// public copy.
+export const PHOTOS_PER_CREDIT = 20;
 
 // Credits charged for a generation of `photoCount` photos: ceil(N / PHOTOS_PER_CREDIT),
 // floored at 1 so any non-empty upload always costs at least one credit.

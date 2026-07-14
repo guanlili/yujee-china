@@ -3,8 +3,13 @@
 import { useState } from 'react';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
-import { ADDON_PACKS } from '@/config/pricing';
+import { ADDON_PACKS, PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { useSession } from '@/lib/auth/client';
+
+// The one place the pricing block states what a credit actually buys. The number
+// comes from PHOTOS_PER_CREDIT — never type it into the message JSON, or it goes
+// stale the next time the rule moves (it already did once: 10 → 20).
+const withPhotoRule = (copy: string) => copy.replaceAll('{photos}', String(PHOTOS_PER_CREDIT));
 
 // Shared pricing block rendered inline on both Homes (#pricing anchor). Reuses
 // the original PricingView checkout flow verbatim: signed-out visitors still see
@@ -78,7 +83,10 @@ export function PricingSection({ locale }: { locale: Locale }) {
         <h2 className="mb-3 text-center text-2xl font-bold tracking-tight md:text-[32px]">
           {t.title}
         </h2>
-        <p className="mb-10 text-center text-[var(--muted)] sm:mb-12">{t.subtitle}</p>
+        <p className="mb-2 text-center text-[var(--muted)]">{withPhotoRule(t.subtitle)}</p>
+        <p className="mb-10 text-center text-sm text-[var(--meta)] sm:mb-12">
+          {withPhotoRule(t.creditRule)}
+        </p>
 
         {err && <p className="mb-6 text-center text-sm text-red-600">{err}</p>}
 

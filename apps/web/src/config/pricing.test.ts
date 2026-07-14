@@ -68,3 +68,32 @@ test('subscription plans are removed — only the free plan remains', () => {
     ['free'],
   );
 });
+
+// The photos-per-credit rule is stated in UI copy via a {photos} placeholder that
+// the component substitutes from PHOTOS_PER_CREDIT. A typed number in the JSON
+// would silently go stale — it already did once (10 → 20). Guard both directions.
+test('pricing copy states the photos-per-credit rule via {photos}, never a typed number', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+
+  for (const locale of ['zh', 'en']) {
+    const path = fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url));
+    const messages = JSON.parse(readFileSync(path, 'utf8'));
+
+    const stating = [
+      messages.pricing.subtitle,
+      messages.pricing.creditRule,
+      messages.dashboard.credits.rechargeSub,
+    ];
+
+    for (const copy of stating) {
+      assert.ok(
+        copy.includes('{photos}'),
+        `${locale}: "${copy}" must state the rule through {photos}, not a fixed number`,
+      );
+      // No stray photo count typed alongside the placeholder.
+      const typed = [...copy.matchAll(/(\d+)\s*(张照片|photos)/g)];
+      assert.equal(typed.length, 0, `${locale}: "${copy}" hardcodes a photo count`);
+    }
+  }
+});

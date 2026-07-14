@@ -7,6 +7,7 @@ import type { Locale } from '@/lib/i18n/routing';
 import {
   ADDON_PACKS,
   type CheckoutSource,
+  PHOTOS_PER_CREDIT,
 } from '@/config/pricing';
 import { AppChrome } from '@/components/app/AppChrome';
 
@@ -138,7 +139,9 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
         {/* 2 — Recharge (reuses pricing's addon-card style) */}
         <section className="mb-12">
           <h2 className="text-xl font-bold tracking-tight mb-1">{t.rechargeTitle}</h2>
-          <p className="text-sm text-[var(--muted)] mb-7">{t.rechargeSub}</p>
+          <p className="text-sm text-[var(--muted)] mb-7">
+            {t.rechargeSub.replaceAll('{photos}', String(PHOTOS_PER_CREDIT))}
+          </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {ADDON_PACKS.map((pack) => (
               <div

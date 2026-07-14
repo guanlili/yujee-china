@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { buildLlmsTxt } from '@/app/llms.txt/route';
 import robots from '@/app/robots';
 import sitemap from '@/app/sitemap';
-import { ADDON_PACKS } from '@/config/pricing';
+import { ADDON_PACKS, FREE_PLAN_CREDITS, PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { locales } from '@/lib/i18n/routing';
 import { getFaqEntries } from './faq';
 import { INDEXABLE_ROUTES, NOINDEX_ROUTES } from './routes';
@@ -155,4 +156,45 @@ test('sitemap omits lastModified rather than claiming every page changed on ever
   for (const entry of sitemap()) {
     assert.equal(entry.lastModified, undefined);
   }
+});
+
+// llms.txt used to be a hand-written public/llms.txt. It went stale the moment
+// PHOTOS_PER_CREDIT moved (10 → 20): the constant changed, the file kept saying
+// "10 photos". It is generated now — these tests keep it that way.
+test('llms.txt derives the photos-per-credit rule from the constant, never a typed number', () => {
+  const txt = buildLlmsTxt();
+  assert.match(txt, new RegExp(`up to ${PHOTOS_PER_CREDIT} photos`));
+  assert.match(txt, new RegExp(`covers up to ${PHOTOS_PER_CREDIT} photos`));
+  assert.match(txt, new RegExp(`${FREE_PLAN_CREDITS} free credit`));
+
+  // No OTHER photo count may appear — a stale hardcoded number would show up here.
+  const counts = [...txt.matchAll(/(\d+) photos/g)].map((m) => Number(m[1]));
+  assert.ok(counts.length > 0, 'llms.txt should state the photo rule at all');
+  for (const n of counts) {
+    assert.equal(n, PHOTOS_PER_CREDIT, `llms.txt states "${n} photos" but the rule is ${PHOTOS_PER_CREDIT}`);
+  }
+});
+
+test('llms.txt lists every pack from ADDON_PACKS at its real price — no hand-typed prices', () => {
+  const txt = buildLlmsTxt();
+  for (const pack of ADDON_PACKS) {
+    const plural = pack.books === 1 ? '' : 's';
+    assert.match(
+      txt,
+      new RegExp(`- ${pack.books} credit${plural} — \\$${pack.priceUsd}$`, 'm'),
+      `pack ${pack.id} missing or mispriced in llms.txt`,
+    );
+  }
+  // Every "$N" in the file must be a real pack price.
+  const prices = [...txt.matchAll(/\$(\d+)/g)].map((m) => Number(m[1]));
+  const real = new Set<number>(ADDON_PACKS.map((p) => p.priceUsd));
+  for (const p of prices) assert.ok(real.has(p), `llms.txt quotes $${p}, which is not an ADDON_PACKS price`);
+});
+
+test('llms.txt promises no shipment and no subscription — both were ruled out', () => {
+  const txt = buildLlmsTxt();
+  assert.match(txt, /No subscription\./);
+  assert.doesNotMatch(txt, /\b(monthly|per month|\/mo|subscribe)\b/i);
+  // We hand over a PDF; we do not print and ship it.
+  assert.match(txt, /not a shipment/);
 });
