@@ -17,7 +17,6 @@ COPY engine/pyproject.toml ./
 COPY engine/src ./src
 COPY packages/contracts/templates ./packages/contracts/templates
 COPY packages/contracts/template-previews ./packages/contracts/template-previews
-COPY packages/contracts/copy-examples ./packages/contracts/copy-examples
 
 # CLIP is only installed for the dedicated 2GB analyze worker. The normal Agent
 # service is kept lightweight and cannot run /v3/analyze in production.
