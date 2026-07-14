@@ -129,11 +129,24 @@ def _trace_native_call(
     messages: list[dict[str, Any]],
     response: Mapping[str, Any],
 ) -> None:
+    """把这次 Gemini native 调用写进统一 trace。
+
+    重点是【必须把 usageMetadata 原样带上】。这里原本只把响应重包成
+    {"choices":[{"message":{"content": ...}}]},usageMetadata 整个丢掉 ——
+    于是 ai_client 取不到 token,select-layout(每次生成都跑、带全部照片的那次调用)
+    的成本一路是 null,在观测台上等于【不花钱】。
+    """
     try:
+        envelope: dict[str, Any] = {
+            "choices": [{"message": {"content": _native_text(response)}}]
+        }
+        usage = response.get("usageMetadata")
+        if usage is not None:
+            envelope["usageMetadata"] = usage
         ai_client._trace_llm_call(  # noqa: SLF001 - reuse the shared redaction path.
             model,
             messages,
-            {"choices": [{"message": {"content": _native_text(response)}}]},
+            envelope,
         )
     except Exception:
         pass

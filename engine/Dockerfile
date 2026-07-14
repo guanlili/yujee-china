@@ -17,6 +17,9 @@ COPY engine/pyproject.toml ./
 COPY engine/src ./src
 COPY packages/contracts/templates ./packages/contracts/templates
 COPY packages/contracts/template-previews ./packages/contracts/template-previews
+# 模型单价表(成本估算的单一真相)。providers/pricing.py 在运行时读它 —— 漏 COPY
+# 的话镜像里就找不到,成本一律记为 null。
+COPY packages/contracts/pricing ./packages/contracts/pricing
 
 # CLIP is only installed for the dedicated 2GB analyze worker. The normal Agent
 # service is kept lightweight and cannot run /v3/analyze in production.

@@ -1,19 +1,20 @@
 """单次模型调用成本估算(给 ai-trace 观测台):tokens × 官方单价。
 
-价目是人工维护的快照(2026-07-11 查证),调价/新模型在 `_PRICING` 里补一条即可。
-金额单位为每 1,000,000 token;方舟系按输入长度分档(千 token 口径)。
+价目表是 `packages/contracts/pricing/model-prices.json` —— 【单一真相】,
+engine(这里) 和 design-agent(TS) 共读同一份,调价只改那一个文件。
 
-来源:
-- doubao-seed-1.6 系(含 vision):火山方舟定价页,三档 0.8/8、1.2/16、2.4/24 CNY。
-- doubao-seed-2.0 系:方舟费用参考(lite 0.6/3.6 起,pro 3.2/16 起)。
-- deepseek-v4-pro:官方 2026-05-31 后正式价 $0.435/$0.87。
-- gpt-5.4-mini:OpenAI 定价页 $0.75/$4.50。
-- gemini-2.5-flash:Google AI 定价 $0.30/$2.50。
+在此之前有三份各写各的:本文件一份、vision_provider.py 一份(死表,只剩已下线的
+gpt-4o)、packages/ai 的方舟 provider 把所有模型单价写死为 0(于是 design-agent
+的花费在账上永远是 $0)。三份自然会漂移,已合并。
 """
 
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 
 __all__ = ["estimate_cost"]
 
@@ -25,6 +26,8 @@ class _Tier:
     max_input_tokens: int | None
     input_per_m: float
     output_per_m: float
+    # 缓存命中的输入单价。None = 与 input_per_m 同价(即该模型不打折)。
+    cache_read_per_m: float | None = None
 
 
 @dataclass(frozen=True)
@@ -33,41 +36,53 @@ class _ModelPricing:
     tiers: tuple[_Tier, ...]  # 按 max_input_tokens 升序;最后一档可为 None(不限)
 
 
-def _flat(currency: str, input_per_m: float, output_per_m: float) -> _ModelPricing:
-    return _ModelPricing(currency, (_Tier(None, input_per_m, output_per_m),))
+def _repo_prices_from_file() -> Path | None:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "packages" / "contracts" / "pricing" / "model-prices.json"
+        if candidate.is_file():
+            return candidate
+    return None
 
 
-# 键与模型 id 做前缀匹配(id 先归一化:小写、"." → "-");取能匹配的最长键。
-_PRICING: dict[str, _ModelPricing] = {
-    "doubao-seed-1-6": _ModelPricing(
-        "CNY",
-        (
-            _Tier(32_000, 0.8, 8.0),
-            _Tier(128_000, 1.2, 16.0),
-            _Tier(None, 2.4, 24.0),
-        ),
-    ),
-    "doubao-seed-2-0-lite": _ModelPricing(
-        "CNY",
-        (
-            _Tier(32_000, 0.6, 3.6),
-            _Tier(128_000, 0.9, 5.4),
-            _Tier(None, 1.8, 10.8),
-        ),
-    ),
-    "doubao-seed-2-0-pro": _ModelPricing(
-        "CNY",
-        (
-            _Tier(32_000, 3.2, 16.0),
-            _Tier(128_000, 4.8, 24.0),
-            _Tier(None, 9.6, 48.0),
-        ),
-    ),
-    "deepseek-v4-pro": _flat("USD", 0.435, 0.87),
-    "deepseek-v4-flash": _flat("USD", 0.14, 0.28),
-    "gpt-5-4-mini": _flat("USD", 0.75, 4.5),
-    "gemini-2-5-flash": _flat("USD", 0.30, 2.50),
-}
+def _resolve_prices_path() -> Path:
+    """定位价目表。与模板目录同一套解析方式(env 覆盖 → 容器路径 → 仓内查找)。"""
+    explicit = os.environ.get("YUJEE_MODEL_PRICES")
+    if explicit:
+        path = Path(explicit)
+        if not path.is_file():
+            raise RuntimeError(f"YUJEE_MODEL_PRICES points to a missing file: {path}")
+        return path
+
+    container_path = Path("/app/packages/contracts/pricing/model-prices.json")
+    if container_path.is_file():
+        return container_path
+
+    repo_path = _repo_prices_from_file()
+    if repo_path is not None:
+        return repo_path
+
+    raise RuntimeError("model-prices.json not found (set YUJEE_MODEL_PRICES)")
+
+
+@lru_cache(maxsize=1)
+def _pricing_table() -> dict[str, _ModelPricing]:
+    raw = json.loads(_resolve_prices_path().read_text(encoding="utf-8"))
+    table: dict[str, _ModelPricing] = {}
+    for key, entry in raw["models"].items():
+        tiers = tuple(
+            _Tier(
+                max_input_tokens=t["maxInputTokens"],
+                input_per_m=float(t["input"]),
+                output_per_m=float(t["output"]),
+                cache_read_per_m=(
+                    float(t["cacheRead"]) if t.get("cacheRead") is not None else None
+                ),
+            )
+            for t in entry["tiers"]
+        )
+        table[key] = _ModelPricing(entry["currency"], tiers)
+    return table
 
 
 def _normalize(model: str) -> str:
@@ -77,16 +92,23 @@ def _normalize(model: str) -> str:
 def _lookup(model: str) -> _ModelPricing | None:
     name = _normalize(model)
     best_key: str | None = None
-    for key in _PRICING:
+    for key in _pricing_table():
         if name.startswith(key) and (best_key is None or len(key) > len(best_key)):
             best_key = key
-    return _PRICING[best_key] if best_key else None
+    return _pricing_table()[best_key] if best_key else None
 
 
 def estimate_cost(
-    model: str, input_tokens: int | None, output_tokens: int | None
+    model: str,
+    input_tokens: int | None,
+    output_tokens: int | None,
+    cached_input_tokens: int | None = None,
 ) -> dict[str, object] | None:
     """按价目表估算一次调用的成本。
+
+    `input_tokens` 是【总】输入 token(含缓存命中的部分,provider 就是这么报的);
+    `cached_input_tokens` 是其中命中缓存的部分 —— 命中部分按 cacheRead 价、
+    其余按 input 价。不传 = 当作零命中(此前的行为,缓存命中时会【高估】)。
 
     返回 {"currency", "input", "output", "total"}(金额,保留 6 位小数);
     模型不在价目表或 token 数缺失时返回 None —— 调用方把 cost 记为 null,
@@ -99,12 +121,19 @@ def estimate_cost(
     pricing = _lookup(model)
     if pricing is None:
         return None
+
     tier = pricing.tiers[-1]
     for candidate in pricing.tiers:
         if candidate.max_input_tokens is None or input_tokens <= candidate.max_input_tokens:
             tier = candidate
             break
-    cost_in = input_tokens * tier.input_per_m / 1_000_000
+
+    cached = cached_input_tokens if isinstance(cached_input_tokens, int) else 0
+    cached = max(0, min(cached, input_tokens))  # provider 偶发脏数据不该把成本算成负的
+    fresh = input_tokens - cached
+    cache_rate = tier.cache_read_per_m if tier.cache_read_per_m is not None else tier.input_per_m
+
+    cost_in = (fresh * tier.input_per_m + cached * cache_rate) / 1_000_000
     cost_out = output_tokens * tier.output_per_m / 1_000_000
     return {
         "currency": pricing.currency,

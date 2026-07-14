@@ -36,38 +36,6 @@ class VisionSlotError(Exception):
     """The configured vision slot is unusable (e.g. its API key is missing)."""
 
 
-# --- Cost observation (#166) -------------------------------------------------
-# Per-MILLION-token list prices in **USD**, keyed by the model id we send. Used
-# only to log an estimated per-call cost so prod can eyeball spend per provider;
-# it is NOT part of any cross-service contract (Usage carries token counts, not
-# cents — see docs/agent/design.md). Keep in sync with provider price pages.
-#
-# OpenAI gpt-4o-mini (2024-07): $0.15 / 1M input, $0.60 / 1M output.
-# OpenAI gpt-4o      (2024-08): $2.50 / 1M input, $10.00 / 1M output.
-# Volcano doubao-seed-1-6-vision bills primarily per *image*, not per token, so
-# we leave its token unit price at 0.0 (token-based estimate would understate
-# it); the real doubao cost is reconciled Web-side per the design doc. Add a
-# token price here only if Volcano switches that model to token billing.
-_VISION_PRICE_USD_PER_MTOK: dict[str, tuple[float, float]] = {
-    # model id -> (input_usd_per_million, output_usd_per_million)
-    "gpt-4o-mini": (0.15, 0.60),
-    "gpt-4o": (2.50, 10.00),
-    "gpt-4o-2024-08-06": (2.50, 10.00),
-    "gpt-4o-mini-2024-07-18": (0.15, 0.60),
-}
-
-
-def estimate_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float | None:
-    """Best-effort USD estimate for one vision call from its token usage. Returns
-    None when the model has no token price entry (e.g. doubao's per-image billing),
-    so callers can omit the cost rather than log a misleading 0."""
-    price = _VISION_PRICE_USD_PER_MTOK.get(model)
-    if price is None:
-        return None
-    in_usd, out_usd = price
-    return (prompt_tokens * in_usd + completion_tokens * out_usd) / 1_000_000
-
-
 @dataclass(frozen=True)
 class VisionSlot:
     """Resolved per-call wiring for one vision provider. Fields line up 1:1 with

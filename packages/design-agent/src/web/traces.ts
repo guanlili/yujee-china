@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { estimateCost } from "../core/model-cost.ts";
 
 // 统一 AI 观测 JSONL（与 engine 共写一份，给 :8788 trace 观测台）。AI_TRACE_JSONL 覆盖；
 // 未设则按模块位置定位仓内 engine/ai-trace.jsonl（src/web 与 dist/web 深度一致，上四层到仓根）。
@@ -80,10 +81,22 @@ export class TraceStore {
 		const trace = this.findTrace(traceId);
 		if (!trace) return;
 		trace.endedAt = new Date().toISOString();
-		// 收尾时把每条 assistant 消息落进统一观测 JSONL（真实 token + pi-ai 已算好的成本）。追踪失败绝不影响业务。
+		// 收尾时把每条 assistant 消息落进统一观测 JSONL（真实 token + 自己按价目表算的成本）。
+		// 【不要用 pi-ai 的 message.usage.cost】：design-agent 走火山方舟，而 packages/ai 的方舟
+		// provider 把所有模型单价写死为 0，那个 cost 恒为 0 —— 不是 null，是零，观测台会把它当
+		// 免费累加进总额。成本一律从 packages/contracts 的价目表算，与 engine 同一张表。
+		// 追踪失败绝不影响业务。
 		try {
 			for (const message of trace.assistantMessages) {
-				const usage = message.usage as { input?: number; output?: number; cost?: { total?: number } } | undefined;
+				const usage = message.usage as
+					| { input?: number; output?: number; cacheRead?: number }
+					| undefined;
+				const cost = estimateCost(
+					message.model,
+					usage?.input ?? null,
+					usage?.output ?? null,
+					usage?.cacheRead ?? null,
+				);
 				const rec = {
 					ts: Date.now() / 1000,
 					time: new Date().toTimeString().slice(0, 8),
@@ -93,7 +106,8 @@ export class TraceStore {
 					output: assistantText(message),
 					inputTokens: usage?.input ?? null,
 					outputTokens: usage?.output ?? null,
-					costUsd: usage?.cost?.total ?? null,
+					cost: cost?.total ?? null,
+					costCurrency: cost?.currency ?? null,
 					imageCount: 0,
 				};
 				appendFileSync(AI_TRACE_JSONL, `${JSON.stringify(rec)}\n`);

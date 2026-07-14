@@ -1,0 +1,63 @@
+{
+  "$comment": [
+    "模型单价表 —— 成本估算的【单一真相】,engine(Python) 和 design-agent(TS) 共读。",
+    "此前是三份各写各的:engine/src/providers/pricing.py 一份、vision_provider.py 一份(死表,只有已下线的 gpt-4o)、",
+    "packages/ai 的 volcengine-ark provider 把所有方舟模型单价写死为 0 —— 于是 design-agent 的花费在账上永远是 $0。",
+    "",
+    "金额单位:每 1,000,000 token。tiers 按 maxInputTokens 升序;maxInputTokens=null 为兜底档(不限)。",
+    "方舟(火山)系按【输入长度】分档计价,故用 tiers;其余为单档。",
+    "cacheRead 为【缓存命中】的输入单价(命中部分按此价,未命中按 input 价);缺省 = 与 input 同价(即不打折)。",
+    "",
+    "key 与模型 id 做前缀匹配(id 先归一化:小写、'.'→'-'),取能匹配的最长 key。",
+    "所以 'deepseek-v4-pro-260425' 命中 'deepseek-v4-pro','doubao-seed-1-6-vision-250815' 命中 'doubao-seed-1-6'。"
+  ],
+  "$sources": {
+    "doubao-seed-1-6": "火山方舟定价页(2026-07-11 查证):三档 0.8/8、1.2/16、2.4/24 CNY。视觉输入按 token 计(图片会被 token 化)。",
+    "doubao-seed-2-0": "方舟费用参考:lite 0.6/3.6 起,pro 3.2/16 起。",
+    "deepseek-v4": "DeepSeek 官方 2026-05-31 后正式价。缓存命中价为官方 cache-hit 价。",
+    "gpt-5-4-mini": "OpenAI 定价页 $0.75/$4.50。",
+    "gemini-2-5-flash": "Google AI 定价 $0.30/$2.50。"
+  },
+  "models": {
+    "doubao-seed-1-6": {
+      "currency": "CNY",
+      "tiers": [
+        { "maxInputTokens": 32000, "input": 0.8, "output": 8.0 },
+        { "maxInputTokens": 128000, "input": 1.2, "output": 16.0 },
+        { "maxInputTokens": null, "input": 2.4, "output": 24.0 }
+      ]
+    },
+    "doubao-seed-2-0-lite": {
+      "currency": "CNY",
+      "tiers": [
+        { "maxInputTokens": 32000, "input": 0.6, "output": 3.6 },
+        { "maxInputTokens": 128000, "input": 0.9, "output": 5.4 },
+        { "maxInputTokens": null, "input": 1.8, "output": 10.8 }
+      ]
+    },
+    "doubao-seed-2-0-pro": {
+      "currency": "CNY",
+      "tiers": [
+        { "maxInputTokens": 32000, "input": 3.2, "output": 16.0 },
+        { "maxInputTokens": 128000, "input": 4.8, "output": 24.0 },
+        { "maxInputTokens": null, "input": 9.6, "output": 48.0 }
+      ]
+    },
+    "deepseek-v4-pro": {
+      "currency": "USD",
+      "tiers": [{ "maxInputTokens": null, "input": 0.435, "output": 0.87, "cacheRead": 0.003625 }]
+    },
+    "deepseek-v4-flash": {
+      "currency": "USD",
+      "tiers": [{ "maxInputTokens": null, "input": 0.14, "output": 0.28, "cacheRead": 0.0028 }]
+    },
+    "gpt-5-4-mini": {
+      "currency": "USD",
+      "tiers": [{ "maxInputTokens": null, "input": 0.75, "output": 4.5 }]
+    },
+    "gemini-2-5-flash": {
+      "currency": "USD",
+      "tiers": [{ "maxInputTokens": null, "input": 0.3, "output": 2.5 }]
+    }
+  }
+}

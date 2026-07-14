@@ -10,7 +10,6 @@ import pytest
 
 from src.providers.vision_provider import (
     VisionSlotError,
-    estimate_cost_usd,
     resolved_vision_model,
     select_vision_slot,
 )
@@ -93,15 +92,3 @@ def test_resolved_vision_model_tracks_provider_without_key(_real_env):
     # (startup logging uses it before keys are validated).
     assert resolved_vision_model(_real_env()) == "doubao-seed-1-6-vision-250815"
     assert resolved_vision_model(_real_env(VISION_PROVIDER="openai")) == "gpt-4o-mini"
-
-
-# ---- cost estimate ----------------------------------------------------------
-
-
-def test_estimate_cost_gpt4o_mini():
-    # 1M input @ $0.15 + 1M output @ $0.60 = $0.75
-    assert estimate_cost_usd("gpt-4o-mini", 1_000_000, 1_000_000) == pytest.approx(0.75)
-
-
-def test_estimate_cost_unknown_model_is_none():
-    assert estimate_cost_usd("doubao-seed-1-6-vision-250815", 1000, 1000) is None

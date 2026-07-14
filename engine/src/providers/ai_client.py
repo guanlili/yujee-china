@@ -108,18 +108,48 @@ def _jsonl_path() -> str | None:
     return os.path.join(os.path.dirname(base), "ai-trace.jsonl") if base else None
 
 
-def _extract_usage(response: Any) -> tuple[int | None, int | None]:
-    """从响应里取真实 (输入 token, 输出 token)。兼容 OpenAI(usage.prompt/completion_tokens)
-    与 Gemini native(usageMetadata.promptTokenCount/candidatesTokenCount)。"""
+def _as_int(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _extract_usage(response: Any) -> tuple[int | None, int | None, int | None]:
+    """从响应里取真实 (输入 token, 输出 token, 其中缓存命中的输入 token)。
+
+    兼容 OpenAI 系(usage.prompt/completion_tokens)与 Gemini native(usageMetadata)。
+
+    两个容易算错的地方:
+
+    * 缓存命中:DeepSeek 报 `prompt_cache_hit_tokens`、方舟/OpenAI 报
+      `prompt_tokens_details.cached_tokens`、Gemini 报 `cachedContentTokenCount`。
+      命中部分单价低得多(deepseek 是 1/50),按全价算会【高估】。第三个返回值就是它。
+    * Gemini 思考 token:`thoughtsTokenCount` 按 output 计费,却【不含】在
+      candidatesTokenCount 里。不加上就会【低估】输出成本。
+    """
     if not isinstance(response, dict):
-        return None, None
+        return None, None, None
+
     u = response.get("usage")
     if isinstance(u, dict) and u.get("prompt_tokens") is not None:
-        return u.get("prompt_tokens"), u.get("completion_tokens")
+        cached = _as_int(u.get("prompt_cache_hit_tokens"))
+        if cached is None:
+            details = u.get("prompt_tokens_details")
+            if isinstance(details, dict):
+                cached = _as_int(details.get("cached_tokens"))
+        return _as_int(u.get("prompt_tokens")), _as_int(u.get("completion_tokens")), cached
+
     um = response.get("usageMetadata")
     if isinstance(um, dict):
-        return um.get("promptTokenCount"), um.get("candidatesTokenCount")
-    return None, None
+        out = _as_int(um.get("candidatesTokenCount"))
+        thoughts = _as_int(um.get("thoughtsTokenCount"))
+        if out is not None and thoughts is not None:
+            out += thoughts
+        return (
+            _as_int(um.get("promptTokenCount")),
+            out,
+            _as_int(um.get("cachedContentTokenCount")),
+        )
+
+    return None, None, None
 
 
 def _write_jsonl(source: str, model: str, messages: list[dict[str, Any]], output: str, response: Any) -> None:
@@ -129,8 +159,8 @@ def _write_jsonl(source: str, model: str, messages: list[dict[str, Any]], output
     try:
         redacted = _redact_messages(messages)
         images = _extract_image_urls(messages)
-        in_tok, out_tok = _extract_usage(response)
-        cost = pricing.estimate_cost(model, in_tok, out_tok)
+        in_tok, out_tok, cached_tok = _extract_usage(response)
+        cost = pricing.estimate_cost(model, in_tok, out_tok, cached_tok)
         rec = {
             "ts": time.time(),
             "time": time.strftime("%H:%M:%S"),
