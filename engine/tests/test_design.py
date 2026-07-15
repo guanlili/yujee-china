@@ -38,7 +38,7 @@ def test_sanitize_style_rejects_illegal_values():
     assert out["fonts"]["title"] == "noto-serif-sc"  # 非法 id 落默认
     assert out["fonts"]["body"] == "lora"  # 合法保留
     assert out["colors"]["title"] == "#1c1b18"  # 非 hex 落默认
-    assert out["colors"]["body"] == "#a1b2c3"  # 合法归一小写
+    assert out["colors"]["body"] == "#2d2a32"  # 合法 hex → 归一到正文精选板最近色
 
 
 def test_run_design_happy_path(monkeypatch):
@@ -79,7 +79,7 @@ def test_run_design_happy_path(monkeypatch):
     # 字数预算随槽规格进了文案调用的 payload(提示词约束;输出不硬截断)。
     copy_payload = json.loads(copy_user_payloads[0])
     assert result["fonts"]["title"] == "zcool-xiaowei"
-    assert result["colors"]["title"] == "#2b4a6f"
+    assert result["colors"]["title"] == "#3e5c76"  # #2b4a6f 归一到同色相石板蓝
     assert result["coverTexts"] == {"title": "海边的夏天"}
     assert result["endingTexts"] == {"closing": "潮声不止,记忆常新。"}
 
@@ -173,3 +173,72 @@ def test_slot_texts_only_accepts_declared_slots():
         {"coverTexts": {"title": "A", "hacker": "B"}}, "coverTexts", _COVER_SLOTS
     )
     assert out == {"title": "A"}
+
+
+# ── 字体气质组合 + 颜色归一(2026-07-15,框架版待精调) ────────────────────────
+
+def test_font_presets_are_subsets_of_role_menus():
+    """组合里的每款字体必须在对应 role 的全量菜单里 —— 精调组合时手滑写错 id,
+    这里当场红,而不是线上 sanitize 静默落默认字体。"""
+    from src.workflows.core.design.handler import _FONT_MENU, _FONT_PRESETS
+
+    for name, preset in _FONT_PRESETS.items():
+        assert preset["vibe"], f"{name} 缺 vibe 描述"
+        for role in ("title", "body", "decoration"):
+            stray = [f for f in preset[role] if f not in _FONT_MENU[role]]
+            assert not stray, f"组合 {name}.{role} 有菜单外字体: {stray}"
+
+
+def test_snap_color_hue_faithful_and_idempotent():
+    from src.workflows.core.design.handler import _CURATED_COLORS, _snap_color
+
+    # 幂等:板上的色原样通过。
+    for role, palette in _CURATED_COLORS.items():
+        for color in palette:
+            assert _snap_color(role, color) == color
+    # 色相忠实:钢蓝归石板蓝(曾因亮度加权归到墨绿 —— 色相跑偏是归一的头号禁忌)。
+    assert _snap_color("title", "#2b4a6f") == "#3e5c76"
+    # 荧光色被拽回稳色。
+    assert _snap_color("title", "#00ff00") == "#4a6653"
+    # 未知 role 不误伤。
+    assert _snap_color("unknown", "#123456") == "#123456"
+
+
+def test_body_palette_stays_dark_for_readability():
+    """正文板全深色是「正文比照片主色更深更稳」的代码兜底 —— 精调色板时
+    往正文板里塞浅色,这里会红。"""
+    from src.workflows.core.design.handler import _CURATED_COLORS
+
+    for color in _CURATED_COLORS["body"]:
+        v = color.lstrip("#")
+        r, g, b = int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16)
+        luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        assert luminance < 90, f"正文板出现浅色 {color}(亮度 {luminance:.0f}),白底长文不可读"
+
+
+def test_style_payload_carries_font_presets(monkeypatch):
+    """设计载荷带 fontPresets(组合选字的输入);fontMenu 仍在(兜底+校验口径)。"""
+    _set_keys(monkeypatch)
+    captured: list[str] = []
+
+    async def fake_chat_completion(**kwargs):
+        captured.append(kwargs["messages"][1]["content"])
+        return {"choices": [{"message": {"content": json.dumps({
+            "fonts": {"title": "playfair-display", "body": "lora", "decoration": "great-vibes"},
+            "colors": {"title": "#7a4b2a", "body": "#1c1b18", "explain": "#6b675f"},
+        })}}]}
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_chat_completion)
+    result = asyncio.run(
+        design.run_design(
+            language="zh",
+            album_title="测试册",
+            chapter_contexts=["复古胶片旅行"],
+            cover_slots=[],
+            ending_slots=[],
+        )
+    )
+    payload = json.loads(captured[0])
+    assert "fontPresets" in payload and "vintage" in payload["fontPresets"]
+    assert "fontMenu" in payload
+    assert result["fonts"]["title"] == "playfair-display"
