@@ -2613,11 +2613,15 @@ function EditorBook({
 
     // Language switch (decision: in the user menu). Inject EN / 中文 links; going
     // to the other locale re-renders the whole editor in that language.
+    // 幂等注入:本 effect 随画布 remount(pages.length/canvasEpoch 变化)重跑,而
+    // topbar 挂在稳定壳里不重挂 —— 不先清旧行,画布每重挂一次菜单就多一排 EN/中文。
     const dropdown = $('.user-dropdown');
     const header = dropdown?.querySelector('.dropdown-header');
     if (dropdown && header) {
+      dropdown.querySelectorAll('[data-lang-row]').forEach((el) => el.remove());
       const row = document.createElement('div');
       row.className = 'flex gap-1 px-3 py-2';
+      row.setAttribute('data-lang-row', '');
       (['en', 'zh'] as const).forEach((l) => {
         const a = document.createElement('a');
         a.href = localizePath(window.location.pathname, l);
