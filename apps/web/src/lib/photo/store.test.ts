@@ -90,3 +90,29 @@ test('putMany stores memory-backed copies for every item', async () => {
   assert.equal((stored.get('m1') as File).name, 'x.heic');
   assert.deepEqual(new Uint8Array(await (stored.get('m2') as Blob).arrayBuffer()), new Uint8Array([2]));
 });
+
+// ── 屏显派生分级(P0 性能):getTierUrl(s) ─────────────────────────────────────
+// node 测试环境没有 canvas/Image,派生降采样必然失败 —— 契约是"任何失败回退
+// 原图 URL,绝不白屏"。这里锁的就是这个回退路径 + URL 结果的缓存复用。
+
+test('getTierUrl falls back to the original object URL when derivation is impossible', async () => {
+  const file = new File([new Uint8Array([1, 2, 3])], 'tier.jpg', { type: 'image/jpeg' });
+  await photoStore.put('t1', file);
+
+  const url = await photoStore.getTierUrl('t1', 'display');
+  assert.ok(url, 'fallback must still yield a usable URL');
+  assert.match(url!, /^blob:/);
+
+  // 同一 photoId 再取(经 getObjectUrl 的原图缓存)不再新建 URL。
+  const again = await photoStore.getTierUrl('t1', 'display');
+  assert.equal(again, url);
+});
+
+test('getTierUrls returns a map and skips unknown photoIds', async () => {
+  const file = new File([new Uint8Array([4])], 'tier2.jpg', { type: 'image/jpeg' });
+  await photoStore.put('t2', file);
+
+  const map = await photoStore.getTierUrls(['t2', 'missing-id'], 'thumb');
+  assert.ok(map['t2']);
+  assert.equal(map['missing-id'], undefined);
+});

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getWebTemplate } from './web-registry';
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
 import { applyFolioOverlay, pageFolioNumbers, preferredPageHtml } from './page-html-dom';
@@ -31,6 +31,8 @@ interface Props {
   pages: EditorPage[];
   totalPages: number;
   resolveImage: ResolveImage;
+  /** 缩略图条用的低清解析器(~240px 派生图)。缺省回退 resolveImage。 */
+  resolveThumbImage?: ResolveImage;
   /** Currently selected page (array index into `pages`). */
   selected: number;
   /** Select a page by array index (also moves the book to its spread). */
@@ -42,13 +44,17 @@ interface Props {
 
 // One album page rendered through its real web template, scaled to fill a half
 // of the spread (or a thumbnail). `box` is the rendered pixel size of the page.
-function PageFace({
+// memo 化(性能):翻页/选中变化触发 FlipBook 全量重渲,20+ 页的缩略图条若每次都
+// 重建完整页面 DOM 会拖垮交互帧;props 未变的 PageFace 直接复用。
+// fitText=false(缩略图)跳过 fit-text 强制重排。
+const PageFace = memo(function PageFace({
   page,
   totalPages,
   resolveImage,
   width,
   height,
   folio = null,
+  fitText = true,
 }: {
   page: EditorPage | null;
   totalPages: number;
@@ -57,6 +63,7 @@ function PageFace({
   height: number;
   // 展示层页签:按当前页序计算(封面/封尾 null),覆盖模板遗留 folio。
   folio?: number | null;
+  fitText?: boolean;
 }) {
   if (!page) {
     return <div style={{ width, height, background: 'var(--surface)' }} />;
@@ -84,7 +91,7 @@ function PageFace({
         }}
       >
         {html !== undefined ? (
-          <FittedPageHtml html={html} />
+          <FittedPageHtml html={html} fit={fitText} />
         ) : Template && data ? (
           <Template data={data} totalPages={totalPages} imagePos={page.imagePosJson} />
         ) : (
@@ -93,7 +100,7 @@ function PageFace({
       </div>
     </div>
   );
-}
+});
 
 function usePrefersReducedMotion() {
   const [reduced, setReduced] = useState(false);
@@ -112,11 +119,13 @@ export function FlipBook({
   pages,
   totalPages,
   resolveImage,
+  resolveThumbImage,
   selected,
   onSelect,
   onEditPage,
   t,
 }: Props) {
+  const thumbResolver = resolveThumbImage ?? resolveImage;
   const reducedMotion = usePrefersReducedMotion();
   const fontsReady = useAlbumFonts(pages.map((page) => ({ texts: page.textsJson })));
 
@@ -517,15 +526,15 @@ export function FlipBook({
                 >
                   {solo ? (
                     <div className="h-full w-full overflow-hidden">
-                      <PageFace page={soloThumb} totalPages={totalPages} resolveImage={resolveImage} width={26} height={34} />
+                      <PageFace page={soloThumb} totalPages={totalPages} resolveImage={thumbResolver} fitText={false} width={26} height={34} />
                     </div>
                   ) : (
                     <>
                       <div className="h-full flex-1 overflow-hidden">
-                        <PageFace page={tl} totalPages={totalPages} resolveImage={resolveImage} width={26} height={34} />
+                        <PageFace page={tl} totalPages={totalPages} resolveImage={thumbResolver} fitText={false} width={26} height={34} />
                       </div>
                       <div className="h-full flex-1 overflow-hidden">
-                        <PageFace page={tr} totalPages={totalPages} resolveImage={resolveImage} width={26} height={34} />
+                        <PageFace page={tr} totalPages={totalPages} resolveImage={thumbResolver} fitText={false} width={26} height={34} />
                       </div>
                       <div
                         aria-hidden

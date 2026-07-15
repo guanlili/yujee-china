@@ -34,6 +34,7 @@ export function AlbumEditor({ detail, locale }: Props) {
 
   const [pages, setPages] = useState<EditorPage[]>(detail.pages);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [title, setTitle] = useState(detail.album.title);
@@ -63,8 +64,14 @@ export function AlbumEditor({ detail, locale }: Props) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const urls = await photoStore.getObjectUrls(photoKey ? photoKey.split(',') : []);
-      if (!cancelled) setImageUrls(urls);
+      const ids = photoKey ? photoKey.split(',') : [];
+      // 屏显分级(性能):主画布用 ~1600px display 派生图,缩略图条用 ~240px thumb
+      // 派生图;原图只留给 PDF 导出。thumb 后到,先用 display 顶着。
+      const urls = await photoStore.getTierUrls(ids, 'display');
+      if (cancelled) return;
+      setImageUrls(urls);
+      const thumbs = await photoStore.getTierUrls(ids, 'thumb');
+      if (!cancelled) setThumbUrls(thumbs);
     })();
     return () => {
       cancelled = true;
@@ -72,6 +79,10 @@ export function AlbumEditor({ detail, locale }: Props) {
   }, [photoKey]);
 
   const resolveImage = useCallback((photoId: string) => imageUrls[photoId], [imageUrls]);
+  const resolveThumbImage = useCallback(
+    (photoId: string) => thumbUrls[photoId] ?? imageUrls[photoId],
+    [thumbUrls, imageUrls],
+  );
 
   // One save lane for the whole editor: every persisting action drives the
   // topbar autosave badge so "Saved" is honest across title, page, and chat edits.
@@ -214,6 +225,7 @@ export function AlbumEditor({ detail, locale }: Props) {
             pages={pages}
             totalPages={total}
             resolveImage={resolveImage}
+            resolveThumbImage={resolveThumbImage}
             selected={clampedSelected}
             onSelect={setSelected}
             onEditPage={(i) => {

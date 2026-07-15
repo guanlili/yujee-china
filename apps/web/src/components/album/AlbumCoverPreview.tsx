@@ -46,7 +46,8 @@ export function AlbumCoverPreview({ coverPage, coverThumbnailUrl, pageCount, fal
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const urls = await photoStore.getObjectUrls(photoKey ? photoKey.split(',') : []);
+      // 相册卡片封面:display 派生图(~1600px)足够,不解码原图。
+      const urls = await photoStore.getTierUrls(photoKey ? photoKey.split(',') : [], 'display');
       if (!cancelled) setImageUrls(urls);
     })();
     return () => {

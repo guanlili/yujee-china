@@ -215,13 +215,14 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
         // 内容未变 → 不换 URL、不重挂(objectUrl 每次都是新串,盲目 setState 会闪)。
         const fingerprint = JSON.stringify(draft);
         if (fingerprint === draftFingerprintRef.current) return;
-        // Resolve originals (invariant 1: photos live only in the browser). Missing
-        // ids render as empty slots — fine.
+        // Resolve display-tier urls (invariant 1: photos live only in the browser;
+        // 屏显用 ~1600px 派生图,原图只留给 PDF 导出)。Missing ids render as empty
+        // slots — fine.
         const ids = new Set<string>();
         for (const p of draft.pages) for (const id of Object.values(p.imagesJson)) if (id) ids.add(id);
         // 排版前 pages 为空,照片来自章节(收集面板的章节卡片 + 画板照片平铺都要它)。
         for (const ch of draft.chapters) for (const id of ch.photoIds ?? []) if (id) ids.add(id);
-        const urls = await photoStore.getObjectUrls([...ids]);
+        const urls = await photoStore.getTierUrls([...ids], 'display');
         if (cancelled) return;
         draftFingerprintRef.current = fingerprint;
         setImageUrls(urls);
@@ -748,6 +749,8 @@ function EditorBook({
     let spreads = buildSpreads(pagesState);
     const rebuildSpreads = () => {
       spreads = buildSpreads(pagesState);
+      // pagesState 变了 → 页签缓存作废(模板类别变化会改变内页编号)。
+      foliosCache = null;
       // A slot-flip patch can shrink the spread count without changing page
       // count (no remount); clamp the cursor so we never sit on a dropped spread.
       if (currentCh >= spreadCount()) currentCh = spreadCount() - 1;
@@ -767,22 +770,46 @@ function EditorBook({
     const spreadLabel = (i: number) =>
       currentLang === 'zh' ? '跨页 ' + (i + 1) : 'Spread ' + (i + 1);
 
-    // Original photos live only in the browser (invariant 1). Resolve photoId →
-    // blob: URL from IndexedDB; URLs load async, so we repaint once they arrive.
-    // Authoring pre-resolves them (passed in); editing fetches them below.
+    // Photos live only in the browser (invariant 1). 屏显分级(性能):主画布/翻页叶
+    // 用 display 派生图(~1600px),缩略图条/总览格用 thumb 派生图(~240px);原图只
+    // 留给 PDF 导出。thumb 还没解出来时回退 display,绝不回退原图。
     let imageUrls: Record<string, string> = { ...initialImageUrls };
     const resolveImage: ResolveImage = (id) => imageUrls[id];
+    let thumbUrls: Record<string, string> = {};
+    const resolveThumbImage: ResolveImage = (id) => thumbUrls[id] ?? imageUrls[id];
+    // thumb 派生批量预取(IndexedDB 有缓存则秒回),到货后重刷缩略图条/总览。
+    function prefetchThumbTier() {
+      const ids = [
+        ...new Set(
+          pagesState.flatMap((p) => Object.values(p.imagesJson)).filter(Boolean),
+        ),
+      ];
+      if (ids.length === 0) return;
+      void photoStore.getTierUrls(ids, 'thumb').then((urls) => {
+        thumbUrls = urls;
+        buildThumbs();
+        if (bodyEl.classList.contains('overview-on')) renderOverview();
+      });
+    }
+
+    // 展示层页签缓存:faceInner 每页都要 folio,此前每次调用都全量重算
+    // (O(页数) map + indexOf → 全量 repaint 时 O(n²))。页序只在 pagesState
+    // 重排时变,rebuildSpreads()/replace 处置空缓存。
+    let foliosCache: (number | null)[] | null = null;
+    const foliosOfBook = () => {
+      if (!foliosCache) foliosCache = pageFolioNumbers(pagesState.map((p) => p.templateId));
+      return foliosCache;
+    };
 
     // Render a real album page through its web template (the same path the live
     // editor/PDF use) as static markup we can drop into the imperative book.
     // HTML 模板已迁移的（如 mag-01）走单一 HTML 渲染器；未迁的回退现有 React 组件。
-    function faceInner(page: EditorPage | null): string {
+    function faceInner(page: EditorPage | null, resolve: ResolveImage = resolveImage): string {
       if (!page) return '';
       // 页面真相 = 存库 html(含 AI/用户手工版面);页签按当前页序展示层计算,
       // 覆盖模板遗留 folio(封面/封尾不编号)。
-      const folios = pageFolioNumbers(pagesState.map((p) => p.templateId));
-      const folio = folios[pagesState.indexOf(page)] ?? null;
-      const html = preferredPageHtml(page, resolveImage);
+      const folio = foliosOfBook()[pagesState.indexOf(page)] ?? null;
+      const html = preferredPageHtml(page, resolve);
       if (html !== undefined) return applyFolioOverlay(html, folio);
       const Template = getWebTemplate(page.templateId);
       if (!Template) {
@@ -790,7 +817,7 @@ function EditorBook({
       }
       const data = adaptPageToTemplateData(
         { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson },
-        resolveImage,
+        resolve,
       );
       return applyFolioOverlay(
         renderToStaticMarkup(<Template data={data} totalPages={total} imagePos={page.imagePosJson} />),
@@ -798,12 +825,17 @@ function EditorBook({
       );
     }
     // The 794×1123 page scaled to fill the given box (matches FlipBook PageFace).
-    function faceHTML(page: EditorPage | null, boxW: number, boxH: number): string {
+    function faceHTML(
+      page: EditorPage | null,
+      boxW: number,
+      boxH: number,
+      resolve: ResolveImage = resolveImage,
+    ): string {
       const scale = Math.min(boxW / PAGE.width, boxH / PAGE.height) || 1;
       return (
         `<div style="width:${boxW}px;height:${boxH}px;overflow:hidden;background:#fff">` +
         `<div style="transform:scale(${scale});transform-origin:top left;width:${PAGE.width}px;height:${PAGE.height}px">` +
-        faceInner(page) +
+        faceInner(page, resolve) +
         `</div></div>`
       );
     }
@@ -829,7 +861,12 @@ function EditorBook({
         }
       });
     }
-    function paintEl(el: HTMLElement | null, page: EditorPage | null, attempt = 0) {
+    function paintEl(
+      el: HTMLElement | null,
+      page: EditorPage | null,
+      attempt = 0,
+      opts: { thumb?: boolean } = {},
+    ) {
       if (!el) return;
       // #158 follow-up: a null page is "no page there" (the empty half of a solo
       // cover/ending spread). Render nothing — faceHTML would otherwise inject a
@@ -843,10 +880,18 @@ function EditorBook({
       const action = paintDecision(el.offsetParent === null, el.clientWidth, el.clientHeight, attempt, 30);
       if (action === 'skip') return;
       if (action === 'defer') {
-        requestAnimationFrame(() => paintEl(el, page, attempt + 1));
+        requestAnimationFrame(() => paintEl(el, page, attempt + 1, opts));
         return;
       }
-      el.innerHTML = faceHTML(page, el.clientWidth, el.clientHeight);
+      // thumb 表面(缩略图条/总览格):用 240px 派生图,且跳过 fitTextBoxes——
+      // 几十 px 下文字自适应不可见,省掉的是每格一串强制重排。
+      el.innerHTML = faceHTML(
+        page,
+        el.clientWidth,
+        el.clientHeight,
+        opts.thumb ? resolveThumbImage : resolveImage,
+      );
+      if (opts.thumb) return;
       el.querySelectorAll<HTMLElement>('img[data-image-slot], .ch-mark, .ch-narrative, .photo .cap').forEach((node) => {
         node.setAttribute('data-editable', '');
       });
@@ -862,6 +907,30 @@ function EditorBook({
       // manually edited, re-bind the overlay to the fresh node for its slot; if
       // that slot no longer exists on the page (an AI edit swapped the photo /
       // template), tear the overlay down so it can't point at a detached node.
+      reattachImgEdit();
+    }
+    // 脏页重绘:单页编辑(改字/换图/挪图)只重画受影响 spread 的画布格+缩略图格
+    // (+总览格),不再全书 innerHTML 重建 —— 20+ 页时全量 repaint 是主卡顿源之一。
+    // 前提:页数/页序没变(变了走 repaintBook)。
+    function repaintPages(pageIndices: number[]) {
+      const dirtySpreads = new Set<number>();
+      for (const pi of pageIndices) {
+        const arrayIdx = pagesState.findIndex((p) => p.pageIndex === pi);
+        if (arrayIdx === -1) continue;
+        const s = spreadIndexOfPage(spreads, arrayIdx);
+        if (s >= 0) dirtySpreads.add(s);
+      }
+      if (dirtySpreads.size === 0) return;
+      if (dirtySpreads.has(currentCh)) paintSpread(currentCh);
+      for (const s of dirtySpreads) paintThumbCell(s);
+      if (bodyEl.classList.contains('overview-on')) {
+        const g = byId('ovGrid');
+        for (const s of dirtySpreads) {
+          const [lp, rp] = spreadPages(s);
+          paintEl(g?.querySelector(`[data-oface="${s}-l"]`) as HTMLElement | null, lp, 0, { thumb: true });
+          paintEl(g?.querySelector(`[data-oface="${s}-r"]`) as HTMLElement | null, rp, 0, { thumb: true });
+        }
+      }
       reattachImgEdit();
     }
     // Re-grab the live <img> for the active image-edit selection after a repaint,
@@ -1205,9 +1274,8 @@ function EditorBook({
       const clamped = clampImagePos(pos);
       imgEdit.pos = clamped;
       page.imagePosJson = { ...(page.imagePosJson ?? {}), [slotId]: clamped };
-      // repaintBook() replaces the painted <img> nodes; reattachImgEdit (run
-      // inside it) re-binds the overlay to the fresh node for this slot.
-      repaintBook();
+      // 脏页重绘替换全书重绘;reattachImgEdit(在里面跑)re-binds overlay。
+      repaintPages([pageIndex]);
       // Persist via the same single-page PATCH channel as inline text edits.
       void fetch(`/api/v1/albums/${albumId}/pages/${pageIndex}`, {
         method: 'PATCH',
@@ -1492,30 +1560,47 @@ function EditorBook({
     /* ─── Thumbnail strip ─── */
     // Build the bottom thumbnail strip from real spreads (replaces the design's
     // three hardcoded placeholder thumbs).
+    // 空闲帧调度:缩略图/总览的批量 paint 不挡交互帧。连发时取消上一批,只跑最新。
+    const idleHandles = new Map<string, number>();
+    function scheduleIdle(key: string, run: () => void) {
+      const prev = idleHandles.get(key);
+      const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
+        .requestIdleCallback;
+      const cic = (window as unknown as { cancelIdleCallback?: (h: number) => void }).cancelIdleCallback;
+      if (prev !== undefined) (cic ?? window.clearTimeout)(prev);
+      const handle = ric ? ric(() => run(), { timeout: 300 }) : window.setTimeout(run, 0);
+      idleHandles.set(key, handle);
+    }
+    // 单格缩略图重绘(脏页路径):结构已在,只重画对应 spread 的两半。
+    function paintThumbCell(i: number) {
+      const row = byId('thumbRow');
+      if (!row) return;
+      const [lp, rp] = spreadPages(i);
+      const tl = row.querySelector(`[data-tface="${i}-l"]`) as HTMLElement | null;
+      const tr = row.querySelector(`[data-tface="${i}-r"]`) as HTMLElement | null;
+      if (!tl && !tr) { buildThumbs(); return; }
+      tl?.classList.toggle('thumb-empty', lp === null);
+      tr?.classList.toggle('thumb-empty', rp === null);
+      (tl?.closest('.thumb-img') as HTMLElement | null)?.classList.toggle('thumb-solo', lp === null || rp === null);
+      paintEl(tl, lp, 0, { thumb: true });
+      paintEl(tr, rp, 0, { thumb: true });
+    }
     function buildThumbs() {
       // 收集态没有版式页,缩略图条无意义(CSS 也隐藏了它),不构建。
       if (isCollectMode) return;
       const row = byId('thumbRow');
       if (!row) return;
+      // 结构同步建(便宜,导航立即可点);逐格 paint 挪到空闲帧,不挡当前交互。
       row.innerHTML = Array.from({ length: spreadCount() }, (_, i) =>
         `<div class="thumb-item${i === currentCh ? ' active' : ''} shrink-0 w-[52px] cursor-pointer" data-gospread="${i}">
           <div class="thumb-img"><div class="thumb-img-left" data-tface="${i}-l"></div><div class="thumb-img-right" data-tface="${i}-r"></div></div>
         </div>`,
       ).join('');
-      for (let i = 0; i < spreadCount(); i++) {
-        const [lp, rp] = spreadPages(i);
-        const tl = row.querySelector(`[data-tface="${i}-l"]`) as HTMLElement | null;
-        const tr = row.querySelector(`[data-tface="${i}-r"]`) as HTMLElement | null;
-        // #158 follow-up: an empty half is blank space (no surface fill); drop the
-        // thumb spine divider when either half is empty (solo cover/ending thumb).
-        tl?.classList.toggle('thumb-empty', lp === null);
-        tr?.classList.toggle('thumb-empty', rp === null);
-        (tl?.closest('.thumb-img') as HTMLElement | null)?.classList.toggle('thumb-solo', lp === null || rp === null);
-        paintEl(tl, lp);
-        paintEl(tr, rp);
-      }
       row.querySelectorAll('[data-gospread]').forEach((el) => {
         el.addEventListener('click', () => goToSpread(parseInt(el.getAttribute('data-gospread')!, 10)));
+      });
+      scheduleIdle('thumbs', () => {
+        for (let i = 0; i < spreadCount(); i++) paintThumbCell(i);
       });
     }
     function updateThumbUI(chIdx: number) {
@@ -1669,10 +1754,27 @@ function EditorBook({
           <div class="ov-cap">${spreadLabel(i)}</div>
         </div>`;
       }).join('');
-      for (let i = 0; i < spreadCount(); i++) {
+      // 懒 paint:格子进入视口才渲(20+ 页的总览一次性全渲是强制重排+解码风暴)。
+      // IntersectionObserver 不可用(旧引擎/jsdom)时回退空闲帧全量渲。
+      const paintOvSpread = (i: number) => {
         const [lp, rp] = spreadPages(i);
-        paintEl(g.querySelector(`[data-oface="${i}-l"]`) as HTMLElement | null, lp);
-        paintEl(g.querySelector(`[data-oface="${i}-r"]`) as HTMLElement | null, rp);
+        paintEl(g.querySelector(`[data-oface="${i}-l"]`) as HTMLElement | null, lp, 0, { thumb: true });
+        paintEl(g.querySelector(`[data-oface="${i}-r"]`) as HTMLElement | null, rp, 0, { thumb: true });
+      };
+      if (typeof IntersectionObserver === 'function') {
+        const io = new IntersectionObserver((entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            io.unobserve(entry.target);
+            const i = +(entry.target.getAttribute('data-ovidx') ?? '-1');
+            if (i >= 0) paintOvSpread(i);
+          }
+        }, { rootMargin: '200px' });
+        g.querySelectorAll('.ov-spread').forEach((el) => io.observe(el));
+      } else {
+        scheduleIdle('overview', () => {
+          for (let i = 0; i < spreadCount(); i++) paintOvSpread(i);
+        });
       }
       // 单页选中(与正常模式一致):点某一页 => 选中该页 + 进入该跨页;空页/无 index => 整跨页跳转。
       g.querySelectorAll('.ov-page:not(.ov-empty)').forEach((el) => {
@@ -1808,7 +1910,7 @@ function EditorBook({
         page.textsJson = { ...page.textsJson, [textKey]: textEl.textContent ?? '' };
         ensureCurrentFonts();
         persistPagePatch(page);
-        repaintBook();
+        repaintPages([page.pageIndex]);
       };
       textEl.addEventListener('blur', finish, { once: true });
     }
@@ -1867,19 +1969,20 @@ function EditorBook({
       page.imagePosJson = { ...(page.imagePosJson ?? {}) };
       delete page.imagePosJson[imgEdit.slotId];
       imgEdit.pos = { ...DEFAULT_IMAGE_POS };
-      repaintBook();
+      repaintPages([imgEdit.pageIndex]);
       persistPagePatch(page);
       flashEditFeedback(aT('已换', 'Swapped'));
     }
     function deleteSelectedPhoto() {
       if (!imgEdit) return;
-      const page = pageByIndex(imgEdit.pageIndex);
+      const pageIndex = imgEdit.pageIndex;
+      const page = pageByIndex(pageIndex);
       if (!page) return;
       delete page.imagesJson[imgEdit.slotId];
       page.imagePosJson = { ...(page.imagePosJson ?? {}) };
       delete page.imagePosJson[imgEdit.slotId];
       clearImageSelection();
-      repaintBook();
+      repaintPages([pageIndex]);
       persistPagePatch(page);
       flashEditFeedback(aT('已删', 'Deleted'));
     }
@@ -2023,10 +2126,16 @@ function EditorBook({
     // shape-compatible with LayoutPatchEntry.
     function applyAuthoringPatch(patch: LayoutPatchEntry[]): boolean {
       if (patch.length === 0) return false;
+      const prevSpreadCount = spreadCount();
       pagesState = applyPatchToPages(pagesState, patch);
       ensureCurrentFonts();
       rebuildSpreads();
-      repaintBook();
+      // spread 结构没变 → 只重绘补丁涉及的页;变了(slot-flip 改模板类别)→ 全量。
+      if (spreadCount() === prevSpreadCount) {
+        repaintPages(patch.map((entry) => entry.pageIndex));
+      } else {
+        repaintBook();
+      }
       return true;
     }
     // The book's photo ids (deduped, in page order) — the hero-photo picker pool.
@@ -2087,7 +2196,7 @@ function EditorBook({
         if (page) {
           page.textsJson = { ...page.textsJson, ...r.pageWrite.texts };
           ensureCurrentFonts();
-          repaintBook();
+          repaintPages([r.pageWrite.pageIndex]);
           return { pageWrite: true };
         }
       }
@@ -2101,7 +2210,7 @@ function EditorBook({
             ...(page.imagePosJson ?? {}),
             [w.imageId]: { x: w.x, y: w.y, scale: w.scale },
           };
-          repaintBook();
+          repaintPages([w.pageIndex]);
           return { imagePos: { x: w.x, y: w.y, scale: w.scale } };
         }
       }
@@ -2443,12 +2552,13 @@ function EditorBook({
       // 用初始 collectChapterId(下面 story-gate 加载后 goToChapterById 会切到 live 章)。
       renderCollectGrid();
     } else if (isAuthoring) {
-      // Authoring pre-resolved originals from the draft skeleton (passed in as
-      // initialImageUrls) — repaint with those rather than re-fetching from an
-      // empty detail.pages / null layoutJson.
+      // Authoring pre-resolved display-tier urls from the draft skeleton (passed in
+      // as initialImageUrls) — repaint with those rather than re-fetching from an
+      // empty detail.pages / null layoutJson. thumb 派生随后异步预取。
       paintSpread(currentCh);
       buildThumbs();
       if (bodyEl.classList.contains('overview-on')) renderOverview();
+      prefetchThumbTier();
     } else {
       const photoIds = [
         ...new Set([
@@ -2458,11 +2568,12 @@ function EditorBook({
           ),
         ]),
       ];
-      void photoStore.getObjectUrls(photoIds).then((urls) => {
+      void photoStore.getTierUrls(photoIds, 'display').then((urls) => {
         imageUrls = urls;
         paintSpread(currentCh);
         buildThumbs();
         if (bodyEl.classList.contains('overview-on')) renderOverview();
+        prefetchThumbTier();
       });
     }
 

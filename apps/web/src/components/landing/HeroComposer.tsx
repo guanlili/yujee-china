@@ -117,7 +117,8 @@ export function HeroComposer({
     setErr(null);
     setValue(draft.prompt);
     (async () => {
-      const urls = await photoStore.getObjectUrls(draft.photoIds);
+      // 首页拼贴预览:display 派生图足够,不解码原图。
+      const urls = await photoStore.getTierUrls(draft.photoIds, 'display');
       const restored = draft.photoIds
         .filter((id) => urls[id])
         .map((id) => ({ photoId: id, previewUrl: urls[id]!, width: 0, height: 0 }));
