@@ -255,13 +255,15 @@
 .editor-port .zoom-sep{ width:1px; height:16px; background:var(--border-soft); margin:0 3px; }
 
 /* ─── Overview: the whole magazine at once ─── */
-.editor-port .book-overview{ display:none; position:absolute; inset:0; overflow-y:auto; padding:40px 28px 80px; }
-.editor-port .book-overview::-webkit-scrollbar{ width:6px; }
-.editor-port .book-overview::-webkit-scrollbar-thumb{ background:var(--border); border-radius:6px; }
+/* 画板 = 无限画布:不再滚动(overflow hidden),平移/缩放由 #ovGrid 的 transform 承担;
+   touch-action:none 把双指捏合从浏览器手里接管过来(否则触屏上是页面级缩放)。 */
+.editor-port .book-overview{ display:none; position:absolute; inset:0; overflow:hidden; padding:40px 28px 80px; cursor:grab; touch-action:none; }
+.editor-port .book-overview.panning{ cursor:grabbing; }
+.editor-port .book-overview.panning *{ pointer-events:none; }
 .editor-port.overview-on .book{ display:none; }
 .editor-port.overview-on .book-overview{ display:block; }
 .editor-port.overview-on .thumb-strip{ display:none; }
-.editor-port .ov-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:24px; align-content:start; max-width:1100px; margin:0 auto; }
+.editor-port .ov-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:24px; align-content:start; max-width:1100px; margin:0 auto; transform-origin:0 0; will-change:transform; }
 .editor-port .ov-spread{ cursor:pointer; transition:transform var(--motion-fast) var(--ease); }
 .editor-port .ov-spread:hover{ transform:translateY(-3px); }
 .editor-port .ov-book{ aspect-ratio:1.414/1; display:flex; background:var(--surface); border-radius:3px; overflow:hidden;

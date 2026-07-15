@@ -870,6 +870,14 @@ function EditorBook({
     // inline text edit, and the manual commit itself).
     function reattachImgEdit() {
       if (!imgEdit) return;
+      // 画板格子由 renderOverview 整体 innerHTML 重建 —— 旧宿主节点会失联。
+      // 按页号在画板里重找同一页,编辑态(overlay/选中)无缝续上。
+      if (!imgEdit.hostEl.isConnected) {
+        const fresh = byId('ovGrid')?.querySelector<HTMLElement>(
+          `.ov-page[data-page-index="${imgEdit.pageIndex}"]`,
+        );
+        if (fresh) imgEdit.hostEl = fresh;
+      }
       const fresh = imgEdit.hostEl.querySelector(
         `img[data-image-slot="${CSS.escape(imgEdit.slotId)}"]`,
       ) as HTMLImageElement | null;
@@ -1047,6 +1055,12 @@ function EditorBook({
         const pi = el.dataset.pageIndex;
         el.classList.toggle('page-selected', pi !== undefined && Number(pi) === selectedPageIndex);
       }
+      // 画板(overview)上的同一页也要亮:画板即工作面,选中态两边同步。
+      byId('ovGrid')
+        ?.querySelectorAll<HTMLElement>('.ov-page[data-page-index]')
+        .forEach((el) => {
+          el.classList.toggle('ov-page-selected', Number(el.dataset.pageIndex) === selectedPageIndex);
+        });
     }
     const onPageSelect = (el: HTMLElement) => {
       const pi = el.dataset.pageIndex;
@@ -1270,7 +1284,7 @@ function EditorBook({
     };
     // A click anywhere on a selected page: if it's on an editable image, enter
     // image-edit mode for that slot; otherwise fall through to page select/deselect.
-    const onHostClick = (hostEl: HTMLElement) => (e: MouseEvent) => {
+    const surfaceClick = (hostEl: HTMLElement, e: MouseEvent) => {
       // A pan gesture ends with a synthetic click — swallow it so a drag doesn't
       // also toggle the image/page selection.
       if (dragMoved) {
@@ -1306,6 +1320,7 @@ function EditorBook({
       }
       onPageSelect(hostEl);
     };
+    const onHostClick = (hostEl: HTMLElement) => (e: MouseEvent) => surfaceClick(hostEl, e);
     for (const hostEl of [pageLeft, pageRight]) {
       hostEl.addEventListener('click', onHostClick(hostEl));
       hostEl.addEventListener('pointerdown', onImgPointerDown);
@@ -1639,8 +1654,12 @@ function EditorBook({
       positionElementToolbar();
     }
     function zoomBy(d: number) {
+      // 画板是无限画布:+/− 就地缩放画布,【绝不】跳回单跨页书籍视图 ——
+      // 「放大 = 换视图」正是用户点名要去掉的行为。
       if (bodyEl.classList.contains('overview-on')) {
-        if (d > 0) exitOverview();
+        const ovEl = byId('bookOverview');
+        const r = ovEl?.getBoundingClientRect();
+        ovZoomAt(r ? r.left + r.width / 2 : 0, r ? r.top + r.height / 2 : 0, d > 0 ? 1.25 : 0.8);
         return;
       }
       // Clamp to [ZMIN, ZMAX]. Zooming out past the floor just stops at ZMIN;
@@ -1649,7 +1668,10 @@ function EditorBook({
       applyZoom();
     }
     function resetZoom() {
-      if (bodyEl.classList.contains('overview-on')) { exitOverview(); return; }
+      if (bodyEl.classList.contains('overview-on')) {
+        ovZoom = 1; ovPanX = 0; ovPanY = 0; applyOvTransform();
+        return;
+      }
       zoom = 1; panX = 0; panY = 0; applyZoom();
     }
     function renderOverview() {
@@ -1674,20 +1696,9 @@ function EditorBook({
         paintEl(g.querySelector(`[data-oface="${i}-l"]`) as HTMLElement | null, lp);
         paintEl(g.querySelector(`[data-oface="${i}-r"]`) as HTMLElement | null, rp);
       }
-      // 单页选中(与正常模式一致):点某一页 => 选中该页 + 进入该跨页;空页/无 index => 整跨页跳转。
-      g.querySelectorAll('.ov-page:not(.ov-empty)').forEach((el) => {
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const pi = (el as HTMLElement).dataset.pageIndex;
-          const spread = el.closest('.ov-spread');
-          const ovIdx = spread ? +spread.getAttribute('data-ovidx')! : currentCh;
-          if (pi) selectedPageIndex = Number(pi);
-          openSpreadFromOverview(ovIdx);
-        });
-      });
-      g.querySelectorAll('.ov-spread').forEach((el) => {
-        el.addEventListener('click', () => openSpreadFromOverview(+el.getAttribute('data-ovidx')!));
-      });
+      // 点击不再「跳回书籍视图」:画板就是工作面,选中/编辑全部就地发生
+      // (委托绑定在 #ovGrid 上,见下方 canvas editing 段)。双击跨页仍可进书籍
+      // 视图翻页 —— 那是逃生门,不是主路径。
     }
     function enterOverview() {
       // Show the overview container *before* rendering: while .book-overview is
@@ -1698,7 +1709,7 @@ function EditorBook({
       void byId('bookOverview')?.getBoundingClientRect();
       renderOverview();
       byId('ovBtn')?.classList.add('active');
-      const p = byId('zoomPct'); if (p) p.textContent = t('overview');
+      applyOvTransform();
     }
     function exitOverview() {
       bodyEl.classList.remove('overview-on');
@@ -1708,6 +1719,156 @@ function EditorBook({
     function toggleOverview() {
       bodyEl.classList.contains('overview-on') ? exitOverview() : enterOverview();
     }
+
+    /* ─── 画板 = 无限画布(用户拍板 2026-07-15) ───────────────────────────────
+       手指捏合/触控板捏合/⌘+滚轮 → 就地缩放;拖空白处 → 平移;所有编辑工具
+       (选页 → 选图拖动/缩放、点文字 → 工具条/内联改字)直接在画板上用 ——
+       缩放永不切换视图。书籍视图仍在:双击某跨页进去翻页,属逃生门。 */
+    let ovZoom = 1;
+    let ovPanX = 0;
+    let ovPanY = 0;
+    const OV_ZMIN = 0.2, OV_ZMAX = 3;
+    const ovGridEl = byId('ovGrid');
+    const ovStageEl = byId('bookOverview');
+    function applyOvTransform() {
+      if (ovGridEl) {
+        ovGridEl.style.transformOrigin = '0 0';
+        ovGridEl.style.transform = `translate(${ovPanX}px, ${ovPanY}px) scale(${ovZoom})`;
+      }
+      const pct = byId('zoomPct');
+      if (pct && bodyEl.classList.contains('overview-on')) pct.textContent = `${Math.round(ovZoom * 100)}%`;
+      positionElementToolbar();
+      positionImgEditOverlay();
+    }
+    // 以屏幕坐标 (cx,cy) 为锚点缩放:锚点处的内容在缩放前后钉在原地。
+    function ovZoomAt(cx: number, cy: number, factor: number) {
+      const stageRect = ovStageEl?.getBoundingClientRect();
+      if (!stageRect) return;
+      const nextZoom = clampZoom(ovZoom * factor, OV_ZMIN, OV_ZMAX);
+      if (nextZoom === ovZoom) return;
+      const px = cx - stageRect.left;
+      const py = cy - stageRect.top;
+      ovPanX = px - ((px - ovPanX) / ovZoom) * nextZoom;
+      ovPanY = py - ((py - ovPanY) / ovZoom) * nextZoom;
+      ovZoom = nextZoom;
+      applyOvTransform();
+    }
+    const onOvWheel = (e: WheelEvent) => {
+      if (!bodyEl.classList.contains('overview-on')) return;
+      e.preventDefault();
+      // 画板嵌在 .book-stage 里,stage 自己也监听 ctrl+wheel(书籍视图缩放)——
+      // 不拦住冒泡就是一次手势两处缩放。
+      e.stopPropagation();
+      if (e.ctrlKey || e.metaKey) {
+        // 触控板捏合会被浏览器合成为 ctrlKey+wheel —— 这就是「手指放大缩小」的桌面形态。
+        ovZoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.08 : 1 / 1.08);
+      } else {
+        ovPanX -= e.deltaX;
+        ovPanY -= e.deltaY;
+        applyOvTransform();
+      }
+    };
+    ovStageEl?.addEventListener('wheel', onOvWheel, { passive: false });
+
+    // 单指(左键)拖空白 → 平移;双指(触屏)→ 捏合缩放。编辑中的图片按下不抢
+    //(onImgPointerDown 先于本处理器在 #ovGrid 上运行并置 dragging)。
+    const ovPointers = new Map<number, { x: number; y: number }>();
+    let ovPanning = false;
+    let ovPanMoved = false;
+    let ovPanOrigin = { x: 0, y: 0, panX: 0, panY: 0 };
+    let ovPinchStart: { dist: number; zoom: number; cx: number; cy: number } | null = null;
+    const ovInteractive = (target: HTMLElement | null) =>
+      !!target?.closest(
+        '.el-bar, .img-edit-overlay, button, a, input, textarea, select, [contenteditable="true"]',
+      );
+    const onOvPointerDown = (e: PointerEvent) => {
+      if (!bodyEl.classList.contains('overview-on')) return;
+      if (dragging) return; // 图片拖动进行中,画布不动
+      if (ovInteractive(e.target as HTMLElement | null)) return;
+      ovPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (ovPointers.size === 2) {
+        const [a, b] = [...ovPointers.values()];
+        ovPinchStart = {
+          dist: Math.hypot(a.x - b.x, a.y - b.y),
+          zoom: ovZoom,
+          cx: (a.x + b.x) / 2,
+          cy: (a.y + b.y) / 2,
+        };
+        ovPanning = false;
+      } else if (ovPointers.size === 1 && (e.pointerType !== 'mouse' || e.button === 0)) {
+        ovPanning = true;
+        ovPanMoved = false;
+        ovPanOrigin = { x: e.clientX, y: e.clientY, panX: ovPanX, panY: ovPanY };
+        ovStageEl?.setPointerCapture?.(e.pointerId);
+        ovStageEl?.classList.add('panning');
+      }
+    };
+    const onOvPointerMove = (e: PointerEvent) => {
+      if (!ovPointers.has(e.pointerId)) return;
+      ovPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (ovPinchStart && ovPointers.size === 2) {
+        const [a, b] = [...ovPointers.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (dist > 0 && ovPinchStart.dist > 0) {
+          const target = clampZoom(ovPinchStart.zoom * (dist / ovPinchStart.dist), OV_ZMIN, OV_ZMAX);
+          ovZoomAt(ovPinchStart.cx, ovPinchStart.cy, target / ovZoom);
+        }
+        return;
+      }
+      if (!ovPanning) return;
+      if (Math.abs(e.clientX - ovPanOrigin.x) > 3 || Math.abs(e.clientY - ovPanOrigin.y) > 3) ovPanMoved = true;
+      ovPanX = ovPanOrigin.panX + e.clientX - ovPanOrigin.x;
+      ovPanY = ovPanOrigin.panY + e.clientY - ovPanOrigin.y;
+      applyOvTransform();
+    };
+    const endOvPointer = (e: PointerEvent) => {
+      ovPointers.delete(e.pointerId);
+      if (ovPointers.size < 2) ovPinchStart = null;
+      if (ovPanning && ovPointers.size === 0) {
+        ovPanning = false;
+        ovStageEl?.releasePointerCapture?.(e.pointerId);
+        ovStageEl?.classList.remove('panning');
+      }
+    };
+    ovStageEl?.addEventListener('pointerdown', onOvPointerDown);
+    ovStageEl?.addEventListener('pointermove', onOvPointerMove);
+    ovStageEl?.addEventListener('pointerup', endOvPointer);
+    ovStageEl?.addEventListener('pointercancel', endOvPointer);
+
+    // 编辑委托:格子内容由 innerHTML 重建,监听绑在恒存的 #ovGrid 上。
+    // 点击链路与书籍视图【同一套】(surfaceClick):选页 → 点图进入图片编辑
+    // (拖动 pan / 滚轮缩放,rect 比例换算天然抗画布 scale)、点文字弹工具条。
+    ovGridEl?.addEventListener('click', (e) => {
+      if (ovPanMoved) {
+        // 平移收尾的合成 click 不当作选页。
+        ovPanMoved = false;
+        e.stopPropagation();
+        return;
+      }
+      const host = (e.target as HTMLElement).closest<HTMLElement>(
+        '.ov-page[data-page-index]:not(.ov-empty)',
+      );
+      if (host && host.dataset.pageIndex !== '') {
+        surfaceClick(host, e);
+        return;
+      }
+      // 点空白 → 全部取消选中(与书籍视图点页面外行为一致)。
+      selectedPageIndex = null;
+      clearImageSelection();
+      hideElementToolbar();
+      updateSelectionHighlight();
+    });
+    ovGridEl?.addEventListener('pointerdown', onImgPointerDown);
+    ovGridEl?.addEventListener('pointermove', onImgPointerMove);
+    ovGridEl?.addEventListener('pointerup', onImgPointerUp);
+    ovGridEl?.addEventListener('wheel', onImgWheel, { passive: false });
+    ovGridEl?.addEventListener('dblclick', (e) => {
+      // 逃生门:双击跨页进入书籍视图翻页。编辑元素上的双击不触发(留给内联编辑)。
+      const target = e.target as HTMLElement;
+      if (target.closest('[data-editable], img[data-image-slot]')) return;
+      const spread = target.closest<HTMLElement>('.ov-spread[data-ovidx]');
+      if (spread) openSpreadFromOverview(Number(spread.dataset.ovidx));
+    });
     function openSpreadFromOverview(i: number) {
       exitOverview();
       if (i !== currentCh) flipTo(i, i > currentCh ? 'next' : 'prev');
