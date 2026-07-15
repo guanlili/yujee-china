@@ -2202,8 +2202,28 @@ function EditorBook({
     editBar?.addEventListener('pointerdown', onEditBarPointerDown);
     editBar?.addEventListener('click', onEditBarClick);
     editBar?.addEventListener('change', onEditBarChange);
-    const onWindowResize = () => positionElementToolbar();
+    // 响应式整体缩放:.book 尺寸是纯 CSS(min(94%, 80vh*1.414, 1010px) + aspect-ratio),
+    // 随视口/容器缩放;但页内容的 scale 是 paintEl/faceHTML 在 paint 那一刻按 clientWidth
+    // 算死写进 innerHTML 的,不重绘就不跟随 —— 手机/平板整体缩放时内容溢出/不缩。
+    // 视口 resize + book-stage 容器尺寸变(聊天面板 resize/折叠改 --canvas-inset → book 缩)
+    // 都 debounced 重绘当前 spread(按新 clientWidth 重算 scale);总览态重绘总览。
+    let resizeRepaintTimer: number | null = null;
+    const debouncedRepaint = () => {
+      if (resizeRepaintTimer !== null) clearTimeout(resizeRepaintTimer);
+      resizeRepaintTimer = window.setTimeout(() => {
+        resizeRepaintTimer = null;
+        if (isCollectMode) return; // 收集态是 CSS 自适应照片网格,无需重绘
+        if (bodyEl.classList.contains('overview-on')) renderOverview();
+        else paintSpread(currentCh);
+      }, 120);
+    };
+    const onWindowResize = () => { positionElementToolbar(); debouncedRepaint(); };
     window.addEventListener('resize', onWindowResize);
+    // ResizeObserver 比 window resize 更全:容器宽度变化(聊天面板 resize/折叠导致的
+    // --canvas-inset 变、断点切换)不改视口、window resize 抓不到,但会缩 book。transform
+    // 的 zoom 是视觉缩放、不改 layout 尺寸,故 zoom/pan 不会误触发重绘。
+    const stageRO = stage ? new ResizeObserver(debouncedRepaint) : null;
+    if (stage) stageRO?.observe(stage);
 
     let canvasDragging = false;
     let canvasStartX = 0;
@@ -2790,6 +2810,8 @@ function EditorBook({
       editBar?.removeEventListener('click', onEditBarClick);
       editBar?.removeEventListener('change', onEditBarChange);
       window.removeEventListener('resize', onWindowResize);
+      if (resizeRepaintTimer !== null) clearTimeout(resizeRepaintTimer);
+      stageRO?.disconnect();
       actionHandlers.forEach(({ el, fn }) => el.removeEventListener('click', fn));
       // #168 manual image editor teardown.
       if (wheelCommitTimer) clearTimeout(wheelCommitTimer);
