@@ -100,10 +100,18 @@ def assemble_stage1_tree(
                     takenAt=src.exif.takenAt if src.exif else None,
                 )
             )
+        # 识图关键词落树:此前 analyze 用完即丢,设计环节(字体/颜色)要用它当内容画像。
+        new_chapter = new_by_id.get(source.chapterId)
+        keywords = (
+            list(new_chapter.chapterKeywords)
+            if new_chapter is not None
+            else list(descriptions.chapterKeywords.get(source.chapterId, []))
+        )
         chapters.append(
             V3Chapter(
                 chapterId=source.chapterId,
                 description=description,
+                keywords=keywords,
                 extractedColor=accent_color.accent_of_group(members, photos_by_id),
                 accentColor=None,
                 artFont=None,

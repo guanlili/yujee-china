@@ -328,6 +328,8 @@ class V3Chapter(_V3Strict):
     # 拍摄地点:城市级地名文字(浏览器本地反地理编码,坐标不出浏览器,§3 2026-07 口径)。
     # 章不跨 cluster(#232)故挂章级;采访提交时写回。跳过采访/老树 => ""。
     place: str = Field(default="", max_length=100)
+    # 识图分章关键词(chapter_describer 产物)落树,设计环节当每组内容画像。老树 => []。
+    keywords: list[str] = Field(default_factory=list)
     # Stage1 extracted source color. Distinct from final theme `accentColor`.
     # Migration field: older trees omit it; Stage1 PR249 trees may carry null.
     extractedColor: AccentColor | None = None
@@ -598,11 +600,21 @@ class DesignTextSlotSpec(_V3Strict):
     # 模板声明的字数上限(Unicode 字符),给文案模型当预算;可选,缺省=不限。
 
 
+class DesignChapterProfile(_V3Strict):
+    """每章设计画像:采访背景 + 识图关键词 + 分组取色。design_style 选字体/颜色的依据。"""
+
+    chapterContext: str = Field(default="", max_length=500)
+    keywords: list[str] = Field(default_factory=list)
+    extractedColor: AccentColor | None = None
+
+
 class DesignRequest(_V3Strict):
     language: V3Language
     albumTitle: str = Field(default="", max_length=120)
-    # 全书各章背景(与章序一致;跳过采访的章为空串)。
+    # 兼容字段:全书各章背景(与章序一致;跳过采访的章为空串)。
     chapterContexts: list[str] = Field(default_factory=list)
+    # 新 caller 送这个(带 keywords/extractedColor),优先于 chapterContexts。
+    chapterProfiles: list[DesignChapterProfile] | None = None
     coverSlots: list[DesignTextSlotSpec] = Field(default_factory=list)
     endingSlots: list[DesignTextSlotSpec] = Field(default_factory=list)
 

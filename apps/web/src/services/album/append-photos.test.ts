@@ -33,6 +33,7 @@ function chapter(chapterId: string, photoCount = 1) {
     description: '',
     chapterContext: '',
     place: '',
+    keywords: [],
     accentColor: null,
     artFont: null,
     photos: Array.from({ length: photoCount }, (_, i) => ({

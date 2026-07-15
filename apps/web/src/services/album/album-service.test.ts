@@ -417,6 +417,7 @@ async function seedDraftAlbum(userId: string) {
           artFont: null,
           chapterContext: "",
           place: '',
+          keywords: [],
           photos: [{ photoId: 'p1', sceneDescription: 'sea', width: 800, height: 600, orientation: 'landscape' }],
         },
       ],
@@ -449,6 +450,7 @@ test('getDraftSkeleton: renders V3 tree+pages draft without dropping preview pag
             artFont: null,
             chapterContext: "",
             place: '',
+            keywords: [],
             photos: [{ photoId: 'p1', sceneDescription: 'sea', width: 800, height: 600, orientation: 'landscape' }],
           },
           {
@@ -458,6 +460,7 @@ test('getDraftSkeleton: renders V3 tree+pages draft without dropping preview pag
             artFont: null,
             chapterContext: "",
             place: '',
+            keywords: [],
             photos: [{ photoId: 'p2', sceneDescription: 'city', width: 600, height: 800, orientation: 'portrait' }],
           },
         ],
@@ -512,6 +515,7 @@ test('getDraftSkeleton: V3 body-only preview keeps first/last pages mapped to ch
             artFont: null,
             chapterContext: "",
             place: '',
+            keywords: [],
             photos: [{ photoId: 'p1', sceneDescription: 'sea', width: 800, height: 600, orientation: 'landscape' }],
           },
           {
@@ -521,6 +525,7 @@ test('getDraftSkeleton: V3 body-only preview keeps first/last pages mapped to ch
             artFont: null,
             chapterContext: "",
             place: '',
+            keywords: [],
             photos: [{ photoId: 'p2', sceneDescription: 'city', width: 600, height: 800, orientation: 'portrait' }],
           },
         ],
@@ -595,6 +600,7 @@ function makeStoryTree(n: number) {
       artFont: null,
       chapterContext: "",
       place: '',
+      keywords: [],
       photos: [],
     })),
   };
@@ -856,6 +862,7 @@ test('applyDesign: success advances stage story → ready (export gate key; 现�
           artFont: null,
           chapterContext: '',
           place: '',
+          keywords: [],
           photos: [
             { photoId: 'p1', sceneDescription: '', width: 800, height: 600, orientation: 'landscape' },
           ],
@@ -985,6 +992,7 @@ async function seedChapterChatAlbum(userId: string) {
         artFont: null,
         chapterContext: "",
         place: '',
+        keywords: [],
         photos: [{ photoId: 'p1', sceneDescription: 'beach', width: 800, height: 600, orientation: 'landscape' as const, takenAt: null }],
       },
       {
@@ -994,6 +1002,7 @@ async function seedChapterChatAlbum(userId: string) {
         artFont: null,
         chapterContext: "",
         place: '',
+        keywords: [],
         photos: [{ photoId: 'p2', sceneDescription: 'street', width: 600, height: 800, orientation: 'portrait' as const, takenAt: null }],
       },
     ],
@@ -1033,6 +1042,7 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
             artFont: null,
             chapterContext: "",
             place: '',
+            keywords: [],
             photos: [
               {
                 photoId: 'p1',
@@ -1059,6 +1069,7 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
             artFont: null,
             chapterContext: "",
             place: '',
+            keywords: [],
             photos: [
               {
                 photoId: 'p3',
@@ -1158,6 +1169,7 @@ test('getInternalAgentData page-photos returns registered transient refs without
             artFont: null,
             chapterContext: "",
             place: '',
+            keywords: [],
             photos: [
               {
                 photoId: 'p1',
@@ -1191,6 +1203,7 @@ test('getInternalAgentData page-photos returns registered transient refs without
             artFont: null,
             chapterContext: "",
             place: '',
+            keywords: [],
             photos: [
               {
                 photoId: 'p4',
@@ -1287,6 +1300,7 @@ async function seedThemeCoverAlbum(userId: string) {
         artFont: null,
         chapterContext: "",
         place: '',
+        keywords: [],
         photos: [
           { photoId: 'p1', sceneDescription: 'beach at dawn', width: 800, height: 600, orientation: 'landscape' as const, takenAt: null },
         ],
@@ -1323,6 +1337,7 @@ function twoChapterDraft(): V3StoryDraft {
           artFont: null,
           chapterContext: '',
           place: '',
+          keywords: [],
           photos: [
             { photoId: 'p1', sceneDescription: 'coast', width: 800, height: 600, orientation: 'landscape', takenAt: null },
           ],
@@ -1334,6 +1349,7 @@ function twoChapterDraft(): V3StoryDraft {
           artFont: null,
           chapterContext: '',
           place: '',
+          keywords: [],
           photos: [
             { photoId: 'p2', sceneDescription: 'gallery', width: 600, height: 800, orientation: 'portrait', takenAt: null },
           ],

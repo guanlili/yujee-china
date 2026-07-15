@@ -23,6 +23,7 @@ const TREE = {
       description: '',
       chapterContext: '',
       place: '',
+      keywords: [],
       accentColor: null,
       artFont: null,
       photos: [

@@ -616,11 +616,25 @@ export const V3DesignTextSlotSpec = z
   .strict();
 export type V3DesignTextSlotSpec = z.infer<typeof V3DesignTextSlotSpec>;
 
+// 每章的设计画像:采访背景 + 识图关键词(V3Chapter.keywords)+ 分组取色
+// (V3Chapter.extractedColor)。design_style 据此选贴合内容的字体/颜色。
+export const V3DesignChapterProfile = z
+  .object({
+    chapterContext: z.string().max(500).default(''),
+    keywords: z.array(z.string().max(40)).default([]),
+    extractedColor: AccentColor.nullish(),
+  })
+  .strict();
+export type V3DesignChapterProfile = z.infer<typeof V3DesignChapterProfile>;
+
 export const V3DesignRequest = z
   .object({
     language: V3Language,
     albumTitle: z.string().max(120).default(''),
+    // 兼容字段:老 caller 只送 contexts。新 caller 送 chapterProfiles(带 keywords/
+    // extractedColor),engine 优先用它。
     chapterContexts: z.array(z.string()).default([]),
+    chapterProfiles: z.array(V3DesignChapterProfile).optional(),
     coverSlots: z.array(V3DesignTextSlotSpec).default([]),
     endingSlots: z.array(V3DesignTextSlotSpec).default([]),
   })

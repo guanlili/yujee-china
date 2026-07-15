@@ -173,6 +173,9 @@ export const V3Chapter = z
     // (坐标不出浏览器,§3 新口径「地名文字可出」)。章不跨 cluster(#232),故地名挂章级,
     // 写文案时逐照片下发。采访提交时随 chapterContext 一并写回;跳过采访/老树 => ""。
     place: z.string().max(100).default(""),
+    // 识图分章关键词(chapter_describer 产物):此前 analyze 用完即丢,现在落树,
+    // 设计环节(字体/颜色决策)当每组内容画像用。老树无此键 => []。
+    keywords: z.array(z.string().max(40)).default([]),
     // Stage1 extracted source color. Distinct from final theme `accentColor`.
     // Migration field: older trees omit it; Stage1 PR249 trees may carry null.
     extractedColor: AccentColor.nullish(),

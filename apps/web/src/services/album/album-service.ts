@@ -948,6 +948,8 @@ export const albumService = {
     const chapters = Array.isArray((root?.tree as { chapters?: unknown })?.chapters)
       ? ((root!.tree as { chapters: unknown[] }).chapters as Array<{
           chapterContext?: string;
+          keywords?: string[];
+          extractedColor?: string | null;
           photos?: Array<{ photoId: string }>;
         }>)
       : [];
@@ -968,6 +970,13 @@ export const albumService = {
       language: input.language,
       albumTitle: (album.title ?? '').slice(0, 120),
       chapterContexts: chapters.map((c) => c.chapterContext ?? ''),
+      // 每章设计画像:采访背景 + 识图关键词(keywords)+ 分组代码取色(extractedColor)。
+      // design_style 据此贴合照片真实色调/题材选字体颜色;老树缺字段则给空/null。
+      chapterProfiles: chapters.map((c) => ({
+        chapterContext: c.chapterContext ?? '',
+        keywords: Array.isArray(c.keywords) ? c.keywords : [],
+        extractedColor: c.extractedColor ?? null,
+      })),
       coverSlots: slotSpecs(input.coverTemplateId),
       endingSlots: slotSpecs(input.endingTemplateId),
     });
