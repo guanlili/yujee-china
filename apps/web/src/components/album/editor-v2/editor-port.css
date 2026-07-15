@@ -264,7 +264,12 @@
 .editor-port.overview-on .book-overview{ display:block; }
 .editor-port.overview-on .thumb-strip{ display:none; }
 .editor-port .ov-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:24px; align-content:start; max-width:1100px; margin:0 auto; transform-origin:0 0; will-change:transform; }
-.editor-port .ov-spread{ cursor:pointer; transition:transform var(--motion-fast) var(--ease); }
+/* 性能:视口外的总览格跳过渲染/布局(20+ 页时总览是一堵完整页面 DOM 墙)。
+   contain-intrinsic-size 撑住占位高度(300px 宽列 × 1.414 比例 ≈ 212 + 页签),
+   避免懒渲染时占位塌陷。content-visibility 的可见性判定基于 transform 后的
+   视口位置,与无限画布的平移/缩放兼容。 */
+.editor-port .ov-spread{ cursor:pointer; transition:transform var(--motion-fast) var(--ease);
+  content-visibility:auto; contain-intrinsic-size:auto 240px; }
 .editor-port .ov-spread:hover{ transform:translateY(-3px); }
 .editor-port .ov-book{ aspect-ratio:1.414/1; display:flex; background:var(--surface); border-radius:3px; overflow:hidden;
   box-shadow:0 2px 8px rgba(0,0,0,0.06), 0 10px 26px rgba(0,0,0,0.10); position:relative; }
@@ -309,7 +314,9 @@
 }
 .editor-port .thumb-row{ scrollbar-width: none; }
 .editor-port .thumb-row::-webkit-scrollbar{ display:none; }
-.editor-port .thumb-item{ transition: transform var(--motion-fast) var(--ease); }
+/* 性能:滚出条外的缩略图格不参与布局/绘制。 */
+.editor-port .thumb-item{ transition: transform var(--motion-fast) var(--ease);
+  content-visibility:auto; contain-intrinsic-size:52px 44px; }
 .editor-port .thumb-item:hover{ transform: translateY(-1px); }
 .editor-port .thumb-img{
   width:52px; height:34px; border-radius:3px;

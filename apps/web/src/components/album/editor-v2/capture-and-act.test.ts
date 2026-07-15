@@ -41,7 +41,8 @@ test('imagePosWrite folds {x,y,scale} into the page imagePosJson[imageId] + repa
   const body = fn![0];
   // pageWrite path merges texts; imagePosWrite path merges the single slot pos.
   assert.match(body, /imagePosJson\s*=\s*\{[\s\S]*\[w\.imageId\]:\s*\{ x: w\.x, y: w\.y, scale: w\.scale \}/);
-  assert.match(body, /repaintBook\(\)/);
+  // 单页写回走脏页重绘(repaintPages);整书路径仍是 repaintBook。两者都算"repaints"。
+  assert.match(body, /repaint(Pages|Book)\(/);
 });
 
 test('the draft-edit turn delegates to the pure inspect→adjust loop', () => {

@@ -135,20 +135,61 @@ export function patchHtmlImagePos(
 
 const FIT_TEXT_MIN_PX = 9;
 
+// 记忆化:同一(槽 key + class + 初始字号 + 框尺寸 + 文本)的收敛字号是确定的。
+// 命中直接写字号,零测量(每次 scrollHeight 读取都是一次强制同步 reflow,这是
+// 20+ 页 repaint 的主要 CPU 开销之一)。字体异步加载会改变换行,故 key 掺入
+// document.fonts.status:loading 期不与 loaded 期互相污染。上限防长会话膨胀。
+const FIT_MEMO_MAX = 4000;
+const fitMemo = new Map<string, number>();
+
+function memoSet(key: string, size: number): void {
+  fitMemo.set(key, size);
+  if (fitMemo.size <= FIT_MEMO_MAX) return;
+  for (const oldKey of fitMemo.keys()) {
+    if (fitMemo.size <= FIT_MEMO_MAX) break;
+    fitMemo.delete(oldKey);
+  }
+}
+
 /** 对 root 内所有固定高度的文字槽做字号自适应。幂等,可在重绘后反复调用。 */
 export function fitTextBoxes(root: HTMLElement): void {
+  const fontsStatus = (document as { fonts?: { status?: string } }).fonts?.status ?? 'na';
   root.querySelectorAll<HTMLElement>('[data-text-key]').forEach((el) => {
     if (el.tagName === 'IMG') return;
     if (!el.style.height) return; // 只处理模板里显式固定高度的框
     if (el.style.display === 'none') return; // folio 等被展示层隐藏的槽
+    const initial = parseFloat(el.style.fontSize) || 0;
+    const key =
+      `${el.getAttribute('data-text-key')}|${el.className}|${el.style.width}x${el.style.height}` +
+      `|${initial}|${fontsStatus}|${el.textContent ?? ''}`;
+    const memo = fitMemo.get(key);
+    if (memo !== undefined) {
+      if (memo > 0) el.style.fontSize = `${memo}px`;
+      return;
+    }
     const overflows = () =>
       el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1;
-    if (!overflows()) return;
-    let size = parseFloat(window.getComputedStyle(el).fontSize) || 16;
-    while (size > FIT_TEXT_MIN_PX && overflows()) {
-      size -= 1;
-      el.style.fontSize = `${size}px`;
+    if (!overflows()) {
+      memoSet(key, 0); // 0 = 初始字号本来就装得下,不动
+      return;
     }
+    // 二分收敛:字号→溢出是单调的。逐像素递减是 O(初始字号) 次强制重排,
+    // 二分是 O(log) 次。找「不溢出的最大字号」,全都溢出则取下限。
+    let lo = FIT_TEXT_MIN_PX;
+    let hi = Math.max(FIT_TEXT_MIN_PX, Math.floor(parseFloat(window.getComputedStyle(el).fontSize) || 16) - 1);
+    el.style.fontSize = `${lo}px`;
+    if (overflows()) {
+      memoSet(key, lo);
+      return;
+    }
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi + 1) / 2);
+      el.style.fontSize = `${mid}px`;
+      if (overflows()) hi = mid - 1;
+      else lo = mid;
+    }
+    el.style.fontSize = `${lo}px`;
+    memoSet(key, lo);
   });
 }
 
