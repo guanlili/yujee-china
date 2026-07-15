@@ -30,15 +30,21 @@ _COVER_SLOTS = [{"id": "title", "role": "title", "sample": "My Story"}]
 _ENDING_SLOTS = [{"id": "closing", "role": "body", "sample": "…"}]
 
 
-def test_sanitize_style_rejects_illegal_values():
+def test_sanitize_style_scene_fonts_and_color_snap():
+    # 字体:AI 只给 scene,代码按 场景×语言 查表填(AI 不碰字体 id)。
     out = design._sanitize_style(
-        {"fonts": {"title": "comic-sans", "body": "lora"}, "colors": {"title": "red", "body": "#A1B2C3"}},
+        {"scene": "日式清新", "colors": {"title": "red", "body": "#A1B2C3"}},
         "zh",
     )
-    assert out["fonts"]["title"] == "noto-serif-sc"  # 非法 id 落默认
-    assert out["fonts"]["body"] == "lora"  # 合法保留
+    assert out["fonts"] == {"title": "smiley-sans", "body": "noto-sans-sc", "decoration": "sacramento"}
     assert out["colors"]["title"] == "#1c1b18"  # 非 hex 落默认
     assert out["colors"]["body"] == "#2d2a32"  # 合法 hex → 归一到正文精选板最近色
+
+
+def test_sanitize_style_unknown_scene_falls_back():
+    out = design._sanitize_style({"scene": "不存在的场景", "colors": {}}, "en")
+    # 兜底场景(法式复古)的英文搭配。
+    assert out["fonts"] == {"title": "playfair-display", "body": "eb-garamond", "decoration": "great-vibes"}
 
 
 def test_run_design_happy_path(monkeypatch):
@@ -54,7 +60,7 @@ def test_run_design_happy_path(monkeypatch):
             calls.append("style")
             return _completion(
                 {
-                    "fonts": {"title": "zcool-xiaowei", "body": "lxgw-wenkai", "decoration": "smiley-sans"},
+                    "scene": "法式清新",
                     "colors": {"title": "#2b4a6f", "body": "#1c1b18", "explain": "#6b675f"},
                 }
             )
@@ -78,7 +84,7 @@ def test_run_design_happy_path(monkeypatch):
     assert sorted(calls) == ["copy", "style"]  # 两次调用(并发)
     # 字数预算随槽规格进了文案调用的 payload(提示词约束;输出不硬截断)。
     copy_payload = json.loads(copy_user_payloads[0])
-    assert result["fonts"]["title"] == "zcool-xiaowei"
+    assert result["fonts"] == {"title": "zcool-xiaowei", "body": "lxgw-wenkai", "decoration": "parisienne"}  # 法式清新·中文
     assert result["colors"]["title"] == "#3e5c76"  # #2b4a6f 归一到同色相石板蓝
     assert result["coverTexts"] == {"title": "海边的夏天"}
     assert result["endingTexts"] == {"closing": "潮声不止,记忆常新。"}
@@ -96,7 +102,7 @@ def test_run_design_sends_chapter_profiles_to_style_model(monkeypatch):
             style_user_payloads.append(kwargs["messages"][1]["content"])
             return _completion(
                 {
-                    "fonts": {"title": "zcool-xiaowei", "body": "lxgw-wenkai", "decoration": "smiley-sans"},
+                    "scene": "法式清新",
                     "colors": {"title": "#2b4a6f", "body": "#1c1b18", "explain": "#6b675f"},
                 }
             )
@@ -122,7 +128,7 @@ def test_run_design_sends_chapter_profiles_to_style_model(monkeypatch):
     style_payload = json.loads(style_user_payloads[0])
     assert style_payload["chapters"] == profiles
     assert "chapterContexts" not in style_payload
-    assert "fontMenu" in style_payload
+    assert "scenes" in style_payload and any(sc["name"] == "法式清新" for sc in style_payload["scenes"])
 
     # 老 caller:不送 profiles → 由 contexts 降级组画像。
     style_user_payloads.clear()
@@ -177,16 +183,36 @@ def test_slot_texts_only_accepts_declared_slots():
 
 # ── 字体气质组合 + 颜色归一(2026-07-15,框架版待精调) ────────────────────────
 
-def test_font_presets_are_subsets_of_role_menus():
-    """组合里的每款字体必须在对应 role 的全量菜单里 —— 精调组合时手滑写错 id,
-    这里当场红,而不是线上 sanitize 静默落默认字体。"""
-    from src.workflows.core.design.handler import _FONT_MENU, _FONT_PRESETS
+def test_scene_presets_wellformed_and_legal():
+    """场景表守卫:精调场景/字体时手滑写错 id、漏 role、装饰用错字体,当场红。"""
+    from src.workflows.core.design.handler import (
+        _DECORATION_SCRIPTS,
+        _DEFAULT_SCENE,
+        _LEGAL_FONTS,
+        _SCENE_PRESETS,
+    )
 
-    for name, preset in _FONT_PRESETS.items():
-        assert preset["vibe"], f"{name} 缺 vibe 描述"
-        for role in ("title", "body", "decoration"):
-            stray = [f for f in preset[role] if f not in _FONT_MENU[role]]
-            assert not stray, f"组合 {name}.{role} 有菜单外字体: {stray}"
+    assert _DEFAULT_SCENE in _SCENE_PRESETS, "兜底场景必须在表里"
+    for name, preset in _SCENE_PRESETS.items():
+        assert preset["keywords"], f"{name} 缺触发关键词"
+        for lang in ("zh", "en"):
+            trio = preset[lang]
+            assert set(trio) == {"title", "body", "decoration"}, f"{name}.{lang} 三 role 不齐"
+            for role, font in trio.items():
+                assert font in _LEGAL_FONTS, f"{name}.{lang}.{role} 非法字体 id: {font}"
+            assert trio["decoration"] in _DECORATION_SCRIPTS, (
+                f"{name}.{lang} 装饰字体 {trio['decoration']} 不在 4 款拉丁花体里"
+            )
+
+
+def test_resolve_scene_by_language_and_fallback():
+    from src.workflows.core.design.handler import _resolve_scene
+
+    assert _resolve_scene("法式清新", "zh")["title"] == "zcool-xiaowei"
+    assert _resolve_scene("法式清新", "en")["title"] == "cormorant-garamond"
+    # 未知场景 → 兜底场景(法式复古)。
+    assert _resolve_scene("瞎编的", "en")["title"] == "playfair-display"
+    assert _resolve_scene(None, "zh")["title"] == "noto-serif-sc"
 
 
 def test_snap_color_hue_faithful_and_idempotent():
@@ -216,15 +242,15 @@ def test_body_palette_stays_dark_for_readability():
         assert luminance < 90, f"正文板出现浅色 {color}(亮度 {luminance:.0f}),白底长文不可读"
 
 
-def test_style_payload_carries_font_presets(monkeypatch):
-    """设计载荷带 fontPresets(组合选字的输入);fontMenu 仍在(兜底+校验口径)。"""
+def test_style_payload_carries_scenes_and_resolves_fonts(monkeypatch):
+    """设计载荷带场景菜单(name+keywords,不含字体);AI 输出 scene,代码按 场景×语言 填字体。"""
     _set_keys(monkeypatch)
     captured: list[str] = []
 
     async def fake_chat_completion(**kwargs):
         captured.append(kwargs["messages"][1]["content"])
         return {"choices": [{"message": {"content": json.dumps({
-            "fonts": {"title": "playfair-display", "body": "lora", "decoration": "great-vibes"},
+            "scene": "法式复古",
             "colors": {"title": "#7a4b2a", "body": "#1c1b18", "explain": "#6b675f"},
         })}}]}
 
@@ -239,6 +265,8 @@ def test_style_payload_carries_font_presets(monkeypatch):
         )
     )
     payload = json.loads(captured[0])
-    assert "fontPresets" in payload and "vintage" in payload["fontPresets"]
-    assert "fontMenu" in payload
-    assert result["fonts"]["title"] == "playfair-display"
+    assert "scenes" in payload and any(sc["name"] == "法式复古" for sc in payload["scenes"])
+    # 载荷不含字体 id(AI 不接触字体)。
+    assert "fontMenu" not in payload and "fontPresets" not in payload
+    # 法式复古·中文搭配由代码填。
+    assert result["fonts"] == {"title": "noto-serif-sc", "body": "noto-serif-sc", "decoration": "great-vibes"}

@@ -12,6 +12,17 @@ from pathlib import Path
 AGENT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = AGENT_ROOT / "src"
 WORKFLOWS_ROOT = SRC_ROOT / "workflows"
+
+
+def _prompt_mds():
+    """workflows 下的【提示词】.md。排除纯文档(README / *-reference.md)——
+    它们紧挨模块放是为了就近参考,不是喂 AI 的 prompt,不必被 handler 加载。"""
+    for md in sorted(WORKFLOWS_ROOT.glob("**/*.md")):
+        if md.name == "README.md" or md.name.endswith("-reference.md"):
+            continue
+        yield md
+
+
 CHAPTERING_ROOT = WORKFLOWS_ROOT / "core" / "chaptering"
 
 
@@ -27,7 +38,7 @@ def test_every_prompt_sits_next_to_its_handler():
     集中放 prompt 的代价是:改一个环节的 AI 行为要跨目录找文件,而且很容易改错另一个
     环节的 prompt。就地存放让"改哪个环节就在哪个环节的目录里改"成为结构上的必然。
     """
-    prompts = sorted(WORKFLOWS_ROOT.glob("**/*.md"))
+    prompts = list(_prompt_mds())
     assert prompts, "workflows 下一份 prompt 都没有,肯定哪里错了"
 
     orphans = [
@@ -44,7 +55,7 @@ def test_every_prompt_is_actually_loaded_by_its_handler():
     改了 prompt 却没人读,或删了调用却留下 .md —— 两种都会让人以为某段提示词还在生效。
     """
     unreferenced: list[str] = []
-    for prompt in sorted(WORKFLOWS_ROOT.glob("**/*.md")):
+    for prompt in _prompt_mds():
         handler = prompt.parent / "handler.py"
         if not handler.is_file():
             continue  # 上一个测试会报它

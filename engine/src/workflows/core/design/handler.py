@@ -27,23 +27,6 @@ _HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 _LEGAL_FONTS: frozenset[str] = frozenset(get_args(ArtFontPack))
 
 # 按角色分组的字体菜单(与 packages/contracts enums / design-agent font-registry 三处对齐)。
-_FONT_MENU = {
-    "title": [
-        "noto-serif-sc", "zcool-xiaowei", "smiley-sans", "zcool-qingke-huangyou",
-        "long-cang", "playfair-display", "cormorant-garamond", "bebas-neue",
-        "archivo-black", "abril-fatface", "montserrat",
-    ],
-    "body": [
-        "noto-serif-sc", "noto-sans-sc", "lxgw-wenkai", "eb-garamond",
-        "source-serif-4", "lora", "libre-baskerville", "inter", "work-sans",
-        "dm-sans", "poppins", "raleway",
-    ],
-    "decoration": [
-        "noto-sans-sc", "smiley-sans", "zhi-mang-xing", "liu-jian-mao-cao",
-        "ibm-plex-mono", "jetbrains-mono", "great-vibes", "dancing-script",
-        "sacramento", "parisienne",
-    ],
-}
 
 # role → 默认字体的三组策略(与 contracts DEFAULT_ALBUM_FONT 对齐):
 #   title 衬线 / body(含 explain) 黑体 / decoration 艺术字体。
@@ -53,48 +36,65 @@ _DEFAULT_FONTS = {
 }
 _DEFAULT_COLORS = {"title": "#1c1b18", "body": "#1c1b18", "explain": "#6b675f"}
 
-# ── 字体气质组合(框架版,用户后续精调) ─────────────────────────────────────────
-# 按相册常见气质把 _FONT_MENU 预排成组合:AI 先判断这本书的语言/气质选一个组合,
-# 再从组合内为三个 role 各挑一款。每组字体必须是对应 role 菜单的子集
-# (test_design 有守卫);组合选不出时模型仍可退回 fontMenu 全集,校验不变。
-_FONT_PRESETS = {
-    "vintage": {
-        "vibe": "复古怀旧:老照片、胶片、故人故事、年代感",
-        "title": ["playfair-display", "cormorant-garamond", "zcool-xiaowei", "long-cang"],
-        "body": ["eb-garamond", "libre-baskerville", "lora", "lxgw-wenkai", "noto-serif-sc"],
-        "decoration": ["great-vibes", "sacramento", "parisienne", "zhi-mang-xing"],
+# ── 场景字体预设(用户拍板 2026-07-15) ──────────────────────────────────────────
+# AI 只做一件事:读懂这本书(各章 title/keywords/context)→ 判断最贴的【场景】→
+# 输出场景名。字体由代码按【场景 × 语言】查本表填,AI 永远不接触字体 id,
+# 也就不会选错字体。中英文书各一套(拉丁字体不含中文字形,反之亦然)。
+# 装饰位统一从 4 款拉丁花体选(装饰基本是英文日期/编号/标签,见 _DECORATION_SCRIPTS)。
+# 内容(场景名/关键词/字体搭配)是可精调的框架,守卫测试保证不越界。
+_SCENE_PRESETS: dict[str, dict[str, Any]] = {
+    "法式清新": {
+        "keywords": ["草地", "蓝天", "白云", "白裙", "花", "野餐", "阳光"],
+        "zh": {"title": "zcool-xiaowei", "body": "lxgw-wenkai", "decoration": "parisienne"},
+        "en": {"title": "cormorant-garamond", "body": "lora", "decoration": "parisienne"},
     },
-    "modern": {
-        "vibe": "现代时尚:都市、简约、设计感、杂志大片",
-        "title": ["montserrat", "bebas-neue", "archivo-black", "smiley-sans"],
-        "body": ["inter", "dm-sans", "work-sans", "poppins", "noto-sans-sc"],
-        "decoration": ["ibm-plex-mono", "jetbrains-mono", "smiley-sans", "noto-sans-sc"],
+    "法式复古": {
+        "keywords": ["老照片", "胶片", "暖调", "旧物", "街角", "旧时光", "怀旧"],
+        "zh": {"title": "noto-serif-sc", "body": "noto-serif-sc", "decoration": "great-vibes"},
+        "en": {"title": "playfair-display", "body": "eb-garamond", "decoration": "great-vibes"},
     },
-    "warm-family": {
-        "vibe": "温馨家庭:亲子、日常、团聚、柔软的生活流水",
-        "title": ["noto-serif-sc", "zcool-xiaowei", "long-cang"],
-        "body": ["lxgw-wenkai", "noto-serif-sc", "source-serif-4", "lora"],
-        "decoration": ["dancing-script", "zhi-mang-xing", "noto-sans-sc"],
+    "日式清新": {
+        "keywords": ["和风", "极简", "留白", "原木", "抹茶", "安静", "侘寂"],
+        "zh": {"title": "smiley-sans", "body": "noto-sans-sc", "decoration": "sacramento"},
+        "en": {"title": "montserrat", "body": "work-sans", "decoration": "sacramento"},
     },
-    "quiet-literary": {
-        "vibe": "文艺安静:独处、旅途随笔、植物、光影、慢节奏",
-        "title": ["cormorant-garamond", "noto-serif-sc", "long-cang"],
-        "body": ["source-serif-4", "eb-garamond", "noto-serif-sc", "lora"],
-        "decoration": ["great-vibes", "liu-jian-mao-cao", "sacramento"],
+    "中式古典": {
+        "keywords": ["水墨", "书法", "庭院", "茶", "古风", "山水", "写意"],
+        "zh": {"title": "zhi-mang-xing", "body": "lxgw-wenkai", "decoration": "sacramento"},
+        "en": {"title": "cormorant-garamond", "body": "eb-garamond", "decoration": "sacramento"},
     },
-    "playful": {
-        "vibe": "活力童趣:孩子成长、宠物、生日、明快跳脱",
-        "title": ["zcool-qingke-huangyou", "smiley-sans", "abril-fatface"],
-        "body": ["poppins", "raleway", "noto-sans-sc", "dm-sans"],
-        "decoration": ["dancing-script", "smiley-sans", "liu-jian-mao-cao"],
+    "现代时尚": {
+        "keywords": ["都市", "杂志", "简约", "设计感", "黑白", "街拍", "时尚"],
+        "zh": {"title": "smiley-sans", "body": "noto-sans-sc", "decoration": "dancing-script"},
+        "en": {"title": "bebas-neue", "body": "inter", "decoration": "dancing-script"},
     },
-    "bold-edge": {
-        "vibe": "硬朗酷感:汽车机械、运动、街头、黑白高对比",
-        "title": ["bebas-neue", "archivo-black", "montserrat", "zcool-qingke-huangyou"],
-        "body": ["inter", "work-sans", "dm-sans"],
-        "decoration": ["jetbrains-mono", "ibm-plex-mono", "noto-sans-sc"],
+    "温馨童趣": {
+        "keywords": ["孩子", "宝宝", "宠物", "生日", "明快", "圆润", "笑"],
+        "zh": {"title": "zcool-qingke-huangyou", "body": "noto-sans-sc", "decoration": "dancing-script"},
+        "en": {"title": "poppins", "body": "dm-sans", "decoration": "dancing-script"},
+    },
+    "旅行随记": {
+        "keywords": ["旅途", "风景", "地图", "路上", "远方", "海", "山"],
+        "zh": {"title": "long-cang", "body": "lxgw-wenkai", "decoration": "dancing-script"},
+        "en": {"title": "montserrat", "body": "work-sans", "decoration": "dancing-script"},
     },
 }
+# 匹配不到 / AI 乱填时的兜底场景(经典百搭)。
+_DEFAULT_SCENE = "法式复古"
+# 装饰位允许的字体(4 款拉丁花体);守卫测试用它卡住每个场景的 decoration。
+_DECORATION_SCRIPTS = frozenset({"great-vibes", "dancing-script", "sacramento", "parisienne"})
+
+
+def _scene_menu() -> list[dict[str, Any]]:
+    """喂给 AI 的场景菜单:只给名字 + 触发关键词,不给字体(AI 按关键词匹配场景)。"""
+    return [{"name": name, "keywords": p["keywords"]} for name, p in _SCENE_PRESETS.items()]
+
+
+def _resolve_scene(scene: str | None, language: str) -> dict[str, str]:
+    """场景名 + 语言 → 三款字体 id。未知场景落兜底场景。"""
+    preset = _SCENE_PRESETS.get(scene or "") or _SCENE_PRESETS[_DEFAULT_SCENE]
+    lang = "zh" if language == "zh" else "en"
+    return dict(preset[lang])
 
 # ── 精选色板(hex 归一工具的目标色值,用户后续精调) ────────────────────────────
 # AI 只负责按色彩策略选【方向】;它给出的 hex 一律被 _snap_color 归一到本板上
@@ -148,14 +148,15 @@ def _default_style(language: str) -> dict[str, dict[str, str]]:
 
 
 def _sanitize_style(parsed: Any, language: str) -> dict[str, dict[str, str]]:
-    """逐键校验模型输出:非法字体 id / 非法 hex 落回默认,绝不透传脏值。"""
+    """把模型输出组装成最终风格。
+
+    字体:AI 只输出 `scene`(场景名),代码按 场景×语言 查表填三款 —— AI 不接触
+    字体 id,未知场景落兜底场景,永不透传脏字体。
+    颜色:AI 输出方向 hex,代码归一到精选色板(_snap_color)。
+    """
     out = _default_style(language)
-    fonts = parsed.get("fonts") if isinstance(parsed, dict) else None
-    if isinstance(fonts, dict):
-        for key in ("title", "body", "decoration"):
-            value = fonts.get(key)
-            if isinstance(value, str) and value in _LEGAL_FONTS:
-                out["fonts"][key] = value
+    scene = parsed.get("scene") if isinstance(parsed, dict) else None
+    out["fonts"] = _resolve_scene(scene if isinstance(scene, str) else None, language)
     colors = parsed.get("colors") if isinstance(parsed, dict) else None
     if isinstance(colors, dict):
         for key in ("title", "body", "explain"):
@@ -188,9 +189,9 @@ async def _select_style(
         "albumTitle": album_title,
         # 每章画像:采访背景 + 识图关键词 + 分组取色(照片真实色调的硬信号)。
         "chapters": chapter_profiles,
-        "fontMenu": _FONT_MENU,
-        # 气质组合:AI 先选组合再在组合内挑字体(见 design_style.md)。
-        "fontPresets": _FONT_PRESETS,
+        # 场景菜单:AI 按各章关键词匹配一个场景,输出场景名(见 design_style.md)。
+        # 字体由代码按 场景×语言 查表填,不发字体给 AI。
+        "scenes": _scene_menu(),
     }
     messages = [
         {"role": "system", "content": load_prompt(_PROMPT_DIR / "design_style.md")},
