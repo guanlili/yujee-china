@@ -247,7 +247,9 @@
   display:flex; align-items:center; gap:8px;
 }
 .editor-port .zoom-ctrl{
-  position:absolute; bottom:14px; left:50%; transform:translateX(-50%); z-index:8;
+  /* 底部居中 pill 跟书一起居中于面板右侧可见区(50% + inset/2)。 */
+  position:absolute; bottom:14px; left:calc(50% + var(--canvas-inset, 0px) / 2); transform:translateX(-50%); z-index:8;
+  transition:left var(--motion-base) var(--ease);
 }
 .editor-port .zoom-ctrl, .editor-port .view-ctrl{
   display:flex; align-items:center; gap:1px;
@@ -1075,6 +1077,12 @@
   background:
     radial-gradient(circle at 22% 12%, rgba(19,184,166,.05), transparent 34%),
     radial-gradient(circle at 80% 22%, rgba(140,94,244,.05), transparent 32%);
+  /* 聊天面板是左侧浮层(position:fixed),脱离文档流 —— 书用 flex 居中会偏到面板底下。
+     --canvas-inset(JS 按面板实时宽度维护,默认 0)让画板左侧让出面板占据的宽度,
+     书就居中于面板右侧的可见区。JSX 的 px-4 被这里接管(左右 padding 统一在此)。 */
+  padding-left:calc(16px + var(--canvas-inset, 0px));
+  padding-right:16px;
+  transition:padding-left var(--motion-base) var(--ease);
 }
 .editor-port .book-stage.panning{
   cursor:grabbing;
@@ -1087,7 +1095,9 @@
   transition:none;
 }
 .editor-port .canvas-hint{
-  position:absolute; left:50%; top:12px; transform:translateX(-50%);
+  /* 居中于面板右侧可见区(同书):50% + inset/2。 */
+  position:absolute; left:calc(50% + var(--canvas-inset, 0px) / 2); top:12px; transform:translateX(-50%);
+  transition:left var(--motion-base) var(--ease);
   z-index:9; opacity:.62; pointer-events:none; user-select:none;
   padding:6px 12px; border-radius:9999px;
   background:rgba(255,255,255,.74);

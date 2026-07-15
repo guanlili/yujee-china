@@ -569,7 +569,7 @@ function BuildingShell({
         </button>
 
         <main className="pane pane-center flex flex-col overflow-hidden relative md:order-3 md:flex-1" id="paneCenter">
-          <div className="book-stage w-full flex-1 flex items-center justify-center px-4 pt-8 pb-16 overflow-auto relative">
+          <div className="book-stage w-full flex-1 flex items-center justify-center pt-8 pb-16 overflow-auto relative">
             <BuildingCanvasState locale={locale} />
           </div>
         </main>

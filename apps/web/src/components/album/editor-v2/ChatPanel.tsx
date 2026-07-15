@@ -1693,8 +1693,31 @@ export function ChatPanel({
         chatColEl.style.removeProperty('height');
       }
 
+      // 画板中线补偿:聊天面板是左侧浮层(position:fixed,脱离文档流),书用 flex 居中
+      // 会偏到面板底下。把面板实时占据的左侧宽度写进 root 的 --canvas-inset,book-stage /
+      // 底部居中 pill / 顶部提示条据它右移,居中于面板右侧的可见区(见 editor-port.css)。
+      // 折叠 / 移动端 / 面板被拖到右半区 => 0(不补偿)。
+      const canvasInset = () => {
+        if (!desktop() || root.classList.contains('chat-collapsed')) return 0;
+        const r = chatColEl.getBoundingClientRect();
+        if (r.width < 1) return 0;
+        if (r.left > window.innerWidth * 0.4) return 0; // 面板不在左侧停靠区,不挡中线
+        return Math.max(0, Math.round(r.right + margin));
+      };
+      const updateCanvasInset = () => {
+        root.style.setProperty('--canvas-inset', `${canvasInset()}px`);
+      };
+      // ResizeObserver 抓面板宽度变化(resize 手柄 / 折叠展开的 width 动画 / 断点切换);
+      // MutationObserver 抓 root 的 class 变化(折叠 chat-collapsed 即时归零);拖动改
+      // inline left 不改尺寸,由 drag move 里手动调用兜住。
+      const insetRO = new ResizeObserver(updateCanvasInset);
+      insetRO.observe(chatColEl);
+      const insetMO = new MutationObserver(updateCanvasInset);
+      insetMO.observe(root, { attributes: true, attributeFilter: ['class'] });
+
       function resetForViewport() {
         if (!desktop()) resetChatPos();
+        updateCanvasInset();
       }
 
       function bindWindowMove(move: (e: PointerEvent) => void, end: (e: PointerEvent) => void) {
@@ -1723,6 +1746,7 @@ export function ChatPanel({
           const maxTop = window.innerHeight - start.height - margin;
           chatColEl.style.left = `${clamp(ev.clientX - offsetX, margin, maxLeft)}px`;
           chatColEl.style.top = `${clamp(ev.clientY - offsetY, 64, maxTop)}px`;
+          updateCanvasInset(); // 拖动只改 left,ResizeObserver 不触发,手动跟随
         };
         const end = (ev: PointerEvent) => {
           dragHandleEl.releasePointerCapture?.(ev.pointerId);
@@ -1762,6 +1786,9 @@ export function ChatPanel({
 
       return () => {
         clearActiveMotion();
+        insetRO.disconnect();
+        insetMO.disconnect();
+        root.style.removeProperty('--canvas-inset');
         dragHandleEl.removeEventListener('pointerdown', onDragDown);
         dragHandleEl.removeEventListener('dblclick', resetChatPos);
         resizeHandleEl.removeEventListener('pointerdown', onResizeDown);
