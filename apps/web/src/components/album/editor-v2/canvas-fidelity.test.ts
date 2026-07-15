@@ -36,9 +36,20 @@ test('repaintPages 的画板格更新同样全保真', () => {
   assert.doesNotMatch(repaint, /oface[\s\S]{0,200}thumb:\s*true/, '脏页重绘的画板格不得 thumb 降级');
 });
 
-test('底部缩略图条保留 thumb 降级(那才是真缩略图)', () => {
-  const thumbs = fnBody('paintThumbCell');
-  assert.match(thumbs, /thumb:\s*true/);
+test('迷你页面预览条已移除:不再有 thumb 降级表面(2026-07-15 拍板)', () => {
+  // 底部栏只剩页面切换 ‹ n/N › + 缩放 + 视图切换;20+ 页时缩略图条是一排完整
+  // 页面 DOM,纯性能负担。paintEl 全表面统一全保真。
+  assert.doesNotMatch(src, /function buildThumbs|function paintThumbCell|thumbRow/, '缩略图机器必须整体移除');
+  assert.doesNotMatch(src, /thumb:\s*true/, 'paintEl 不再有 thumb 降级模式');
+});
+
+test('底部栏最右是视图切换两档,悬停出气泡(预览模式/画布模式)', () => {
+  assert.match(src, /id="viewBookBtn"[\s\S]{0,200}data-i18n-tip="previewMode"/);
+  assert.match(src, /id="viewCanvasBtn"[\s\S]{0,200}data-i18n-tip="canvasMode"/);
+  assert.match(src, /viewBook:.*exitOverview|viewBook:[\s\S]{0,120}exitOverview/, '预览模式按钮退出画布');
+  assert.match(src, /viewCanvas:[\s\S]{0,120}enterOverview/, '画布模式按钮进入无限画布');
+  const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
+  assert.match(css, /\[data-tip\]:hover::after/, '悬停气泡由 [data-tip] CSS 提供');
 });
 
 test('画板 will-change 只在手势窗口内挂,不得常驻(常驻 = 放大永远糊)', () => {

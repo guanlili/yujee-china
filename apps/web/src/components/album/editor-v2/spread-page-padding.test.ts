@@ -90,8 +90,8 @@ test('an empty solo half drops its surface on every editor surface (no white bla
 
 test('a solo spread drops the center spine on every editor surface', () => {
   const css = source('editor-port.css');
-  // Main canvas + overview hide the spine via display:none on the ::before rule;
-  // the thumbnail spine is an ::after. Assert each solo variant suppresses it.
+  // Main canvas + overview hide the spine via display:none on the ::before rule.
+  // (迷你缩略图条已移除,2026-07-15 —— thumb 表面不复存在。)
   assert.match(
     ruleBody(css, '.editor-port .book.book-solo::before'),
     /display:\s*none/,
@@ -101,11 +101,6 @@ test('a solo spread drops the center spine on every editor surface', () => {
     ruleBody(css, '.editor-port .ov-book.ov-solo::before'),
     /display:\s*none/,
     'ov-solo must hide the overview spine line',
-  );
-  assert.match(
-    ruleBody(css, '.editor-port .thumb-img.thumb-solo::after'),
-    /display:\s*none/,
-    'thumb-solo must hide the thumbnail spine divider',
   );
 });
 

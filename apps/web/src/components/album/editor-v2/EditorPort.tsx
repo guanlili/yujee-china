@@ -775,22 +775,6 @@ function EditorBook({
     // 留给 PDF 导出。thumb 还没解出来时回退 display,绝不回退原图。
     let imageUrls: Record<string, string> = { ...initialImageUrls };
     const resolveImage: ResolveImage = (id) => imageUrls[id];
-    let thumbUrls: Record<string, string> = {};
-    const resolveThumbImage: ResolveImage = (id) => thumbUrls[id] ?? imageUrls[id];
-    // thumb 派生批量预取(IndexedDB 有缓存则秒回),到货后重刷缩略图条/总览。
-    function prefetchThumbTier() {
-      const ids = [
-        ...new Set(
-          pagesState.flatMap((p) => Object.values(p.imagesJson)).filter(Boolean),
-        ),
-      ];
-      if (ids.length === 0) return;
-      void photoStore.getTierUrls(ids, 'thumb').then((urls) => {
-        thumbUrls = urls;
-        buildThumbs();
-        if (bodyEl.classList.contains('overview-on')) renderOverview();
-      });
-    }
 
     // 展示层页签缓存:faceInner 每页都要 folio,此前每次调用都全量重算
     // (O(页数) map + indexOf → 全量 repaint 时 O(n²))。页序只在 pagesState
@@ -861,37 +845,26 @@ function EditorBook({
         }
       });
     }
-    function paintEl(
-      el: HTMLElement | null,
-      page: EditorPage | null,
-      attempt = 0,
-      opts: { thumb?: boolean } = {},
-    ) {
+    function paintEl(el: HTMLElement | null, page: EditorPage | null, attempt = 0) {
       if (!el) return;
       // #158 follow-up: a null page is "no page there" (the empty half of a solo
       // cover/ending spread). Render nothing — faceHTML would otherwise inject a
-      // white (#fff) box. The .page-empty/.leaf-empty/.thumb-empty/.ov-solo classes
-      // strip the surrounding surface/shadow/spine so the half reads as empty space.
+      // white (#fff) box. The .page-empty/.leaf-empty/.ov-solo classes strip the
+      // surrounding surface/shadow/spine so the half reads as empty space.
       if (!page) { el.innerHTML = ''; return; }
       // offsetParent === null ⇔ a `display:none` ancestor hides the cell (these
-      // page/thumb cells are never position:fixed). See paintDecision for why each
+      // page cells are never position:fixed). See paintDecision for why each
       // branch behaves as it does — notably 'skip' on hidden avoids a per-frame
       // rAF loop that the issue #157 fix would otherwise spin while overview-on.
       const action = paintDecision(el.offsetParent === null, el.clientWidth, el.clientHeight, attempt, 30);
       if (action === 'skip') return;
       if (action === 'defer') {
-        requestAnimationFrame(() => paintEl(el, page, attempt + 1, opts));
+        requestAnimationFrame(() => paintEl(el, page, attempt + 1));
         return;
       }
-      // thumb 表面(缩略图条/总览格):用 240px 派生图,且跳过 fitTextBoxes——
-      // 几十 px 下文字自适应不可见,省掉的是每格一串强制重排。
-      el.innerHTML = faceHTML(
-        page,
-        el.clientWidth,
-        el.clientHeight,
-        opts.thumb ? resolveThumbImage : resolveImage,
-      );
-      if (opts.thumb) return;
+      // 全表面统一全保真:display 派生图 + 可编辑标记 + fitTextBoxes(记忆化)。
+      // (迷你缩略图条已移除,不再有 thumb 降级表面。)
+      el.innerHTML = faceHTML(page, el.clientWidth, el.clientHeight, resolveImage);
       el.querySelectorAll<HTMLElement>('img[data-image-slot], .ch-mark, .ch-narrative, .photo .cap').forEach((node) => {
         node.setAttribute('data-editable', '');
       });
@@ -901,7 +874,7 @@ function EditorBook({
     // Repaint every surface that shows page content after an edit.
     function repaintBook() {
       paintSpread(currentCh);
-      buildThumbs();
+      updateThumbUI(currentCh);
       if (bodyEl.classList.contains('overview-on')) renderOverview();
       // A repaint replaces the painted <img> nodes (#168). If an image is being
       // manually edited, re-bind the overlay to the fresh node for its slot; if
@@ -922,7 +895,6 @@ function EditorBook({
       }
       if (dirtySpreads.size === 0) return;
       if (dirtySpreads.has(currentCh)) paintSpread(currentCh);
-      for (const s of dirtySpreads) paintThumbCell(s);
       if (bodyEl.classList.contains('overview-on')) {
         const g = byId('ovGrid');
         for (const s of dirtySpreads) {
@@ -1074,6 +1046,12 @@ function EditorBook({
         const val = t(key);
         if (val) el.setAttribute('title', val);
       });
+      // 悬停气泡(视图切换等 [data-tip] 元素)的文案跟随语言切换。
+      $$('[data-i18n-tip]').forEach((el) => {
+        const key = el.getAttribute('data-i18n-tip')!;
+        const val = t(key);
+        if (val) el.setAttribute('data-tip', val);
+      });
       $$('[data-i18n-placeholder]').forEach((el) => {
         const key = el.getAttribute('data-i18n-placeholder')!;
         const val = t(key);
@@ -1086,7 +1064,7 @@ function EditorBook({
       });
 
       renderRail();
-      buildThumbs();
+      updateThumbUI(currentCh);
       paintSpread(currentCh);
     }
 
@@ -1576,10 +1554,10 @@ function EditorBook({
     const toggleChat = () => bodyEl.classList.toggle('chat-collapsed');
     const toggleRail = () => bodyEl.classList.toggle('rail-collapsed');
 
-    /* ─── Thumbnail strip ─── */
-    // Build the bottom thumbnail strip from real spreads (replaces the design's
-    // three hardcoded placeholder thumbs).
-    // 空闲帧调度:缩略图/总览的批量 paint 不挡交互帧。连发时取消上一批,只跑最新。
+    /* ─── Bottom nav (页面切换 ‹ n/N ›) ─── */
+    // 迷你页面预览条已移除(2026-07-15):20+ 页时那是一排完整页面 DOM,纯性能
+    // 负担;全书总览的职责归画布模式。这里只剩页码指示与前后翻页。
+    // 空闲帧调度:画布模式的批量 paint 不挡交互帧。连发时取消上一批,只跑最新。
     const idleHandles = new Map<string, number>();
     function scheduleIdle(key: string, run: () => void) {
       const prev = idleHandles.get(key);
@@ -1590,40 +1568,7 @@ function EditorBook({
       const handle = ric ? ric(() => run(), { timeout: 300 }) : window.setTimeout(run, 0);
       idleHandles.set(key, handle);
     }
-    // 单格缩略图重绘(脏页路径):结构已在,只重画对应 spread 的两半。
-    function paintThumbCell(i: number) {
-      const row = byId('thumbRow');
-      if (!row) return;
-      const [lp, rp] = spreadPages(i);
-      const tl = row.querySelector(`[data-tface="${i}-l"]`) as HTMLElement | null;
-      const tr = row.querySelector(`[data-tface="${i}-r"]`) as HTMLElement | null;
-      if (!tl && !tr) { buildThumbs(); return; }
-      tl?.classList.toggle('thumb-empty', lp === null);
-      tr?.classList.toggle('thumb-empty', rp === null);
-      (tl?.closest('.thumb-img') as HTMLElement | null)?.classList.toggle('thumb-solo', lp === null || rp === null);
-      paintEl(tl, lp, 0, { thumb: true });
-      paintEl(tr, rp, 0, { thumb: true });
-    }
-    function buildThumbs() {
-      // 收集态没有版式页,缩略图条无意义(CSS 也隐藏了它),不构建。
-      if (isCollectMode) return;
-      const row = byId('thumbRow');
-      if (!row) return;
-      // 结构同步建(便宜,导航立即可点);逐格 paint 挪到空闲帧,不挡当前交互。
-      row.innerHTML = Array.from({ length: spreadCount() }, (_, i) =>
-        `<div class="thumb-item${i === currentCh ? ' active' : ''} shrink-0 w-[52px] cursor-pointer" data-gospread="${i}">
-          <div class="thumb-img"><div class="thumb-img-left" data-tface="${i}-l"></div><div class="thumb-img-right" data-tface="${i}-r"></div></div>
-        </div>`,
-      ).join('');
-      row.querySelectorAll('[data-gospread]').forEach((el) => {
-        el.addEventListener('click', () => goToSpread(parseInt(el.getAttribute('data-gospread')!, 10)));
-      });
-      scheduleIdle('thumbs', () => {
-        for (let i = 0; i < spreadCount(); i++) paintThumbCell(i);
-      });
-    }
     function updateThumbUI(chIdx: number) {
-      $$('.thumb-item').forEach((el, i) => el.classList.toggle('active', i === chIdx));
       const ti = byId('thumbInd');
       if (ti) ti.textContent = (chIdx + 1) + ' / ' + spreadCount();
     }
@@ -1817,12 +1762,14 @@ function EditorBook({
       bodyEl.classList.add('overview-on');
       void byId('bookOverview')?.getBoundingClientRect();
       renderOverview();
-      byId('ovBtn')?.classList.add('active');
+      byId('viewCanvasBtn')?.classList.add('active');
+      byId('viewBookBtn')?.classList.remove('active');
       applyOvTransform();
     }
     function exitOverview() {
       bodyEl.classList.remove('overview-on');
-      byId('ovBtn')?.classList.remove('active');
+      byId('viewCanvasBtn')?.classList.remove('active');
+      byId('viewBookBtn')?.classList.add('active');
       zoom = 1; panX = 0; panY = 0; applyZoom();
     }
     function toggleOverview() {
@@ -2595,6 +2542,9 @@ function EditorBook({
       // bound by ChatPanel.
       toggleChat,
       toggleOverview,
+      // 视图切换两档(底部栏最右):预览模式 = 翻页书,画布模式 = 无限画布。
+      viewBook: () => { if (bodyEl.classList.contains('overview-on')) exitOverview(); },
+      viewCanvas: () => { if (!bodyEl.classList.contains('overview-on')) enterOverview(); },
       resetZoom,
       openPhotoPicker,
       closePhotoPicker,
@@ -2645,8 +2595,6 @@ function EditorBook({
       el.addEventListener('click', fn);
       actionHandlers.push({ el, fn });
     });
-    // (thumb items: buildThumbs() rebuilds #thumbRow from real spreads and binds
-    // their data-gospread clicks there, so no static binding is needed here.)
 
     /* ─── Topbar links → real routes ─── */
     $('.back-btn')?.setAttribute('href', `/${locale}/my-albums`);
@@ -2767,7 +2715,7 @@ function EditorBook({
         .catch(() => {});
     }
 
-    setLang(currentLang); // also runs renderRail + buildThumbs + paintSpread; walks
+    setLang(currentLang); // also runs renderRail + updateThumbUI + paintSpread; walks
     // the shared outer root so it localizes topbar + chat + canvas.
 
     // collect-on 活在共享 outer root 上(它跨 remount 存活)。排版完成时 EditorBook 会以
@@ -2783,11 +2731,10 @@ function EditorBook({
     } else if (isAuthoring) {
       // Authoring pre-resolved display-tier urls from the draft skeleton (passed in
       // as initialImageUrls) — repaint with those rather than re-fetching from an
-      // empty detail.pages / null layoutJson. thumb 派生随后异步预取。
+      // empty detail.pages / null layoutJson.
       paintSpread(currentCh);
-      buildThumbs();
+      updateThumbUI(currentCh);
       if (bodyEl.classList.contains('overview-on')) renderOverview();
-      prefetchThumbTier();
     } else {
       const photoIds = [
         ...new Set([
@@ -2800,9 +2747,8 @@ function EditorBook({
       void photoStore.getTierUrls(photoIds, 'display').then((urls) => {
         imageUrls = urls;
         paintSpread(currentCh);
-        buildThumbs();
+        updateThumbUI(currentCh);
         if (bodyEl.classList.contains('overview-on')) renderOverview();
-        prefetchThumbTier();
       });
     }
 
@@ -2890,18 +2836,9 @@ function EditorBook({
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5"><polyline points="9 18 15 12 9 6" /></svg>
             </button>
           </div>
-          <div className="thumb-row flex gap-1.5 overflow-x-auto max-w-full p-0.5" id="thumbRow">
-            <div className="thumb-item active shrink-0 w-[52px] cursor-pointer" data-gospread="0">
-              <div className="thumb-img"><div className="thumb-img-left" style={{ background: 'linear-gradient(180deg, #e8e8e8 40%, #d0d0d0 100%)' }} /><div className="thumb-img-right" style={{ background: 'linear-gradient(135deg, #ddd 30%, #c8c8c8 100%)' }} /></div>
-            </div>
-            <div className="thumb-item shrink-0 w-[52px] cursor-pointer" data-gospread="1">
-              <div className="thumb-img"><div className="thumb-img-left" style={{ background: 'linear-gradient(180deg, #e2e2e2 50%, #ccc 100%)' }} /><div className="thumb-img-right" style={{ background: 'linear-gradient(90deg, #e5e5e5, #d5d5d5)' }} /></div>
-            </div>
-            <div className="thumb-item shrink-0 w-[52px] cursor-pointer" data-gospread="2">
-              <div className="thumb-img"><div className="thumb-img-left" style={{ background: 'linear-gradient(180deg, #e0e0e0 40%, #d2d2d2 100%)' }} /><div className="thumb-img-right" style={{ background: 'linear-gradient(135deg, #e8e8e8, #d8d8d8)' }} /></div>
-            </div>
-          </div>
         </div>
+        {/* 迷你页面预览条已移除(2026-07-15 拍板):20+ 页时它是一排完整页面 DOM,
+            纯浪费性能;页面切换靠 ‹ n/N ›,全书总览走画布模式。 */}
 
         <div className="book-overview" id="bookOverview">
           <div className="ov-grid" id="ovGrid" />
@@ -2916,7 +2853,26 @@ function EditorBook({
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           </button>
           <span className="zoom-sep" />
-          <button className="zoom-btn" id="ovBtn" data-action="toggleOverview" data-i18n-title="overview" title="整本杂志" aria-label="整本杂志">
+          {/* 视图切换两档:预览模式(翻页书)/ 画布模式(无限画布)。悬停气泡由
+              [data-tip] CSS 出;运行时换语言走 data-i18n-tip(setLang 同步)。 */}
+          <button
+            className="zoom-btn view-btn active"
+            id="viewBookBtn"
+            data-action="viewBook"
+            data-tip={locale === 'zh' ? '预览模式' : 'Preview mode'}
+            data-i18n-tip="previewMode"
+            aria-label={locale === 'zh' ? '预览模式' : 'Preview mode'}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2Z" /><path d="M22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8Z" /></svg>
+          </button>
+          <button
+            className="zoom-btn view-btn"
+            id="viewCanvasBtn"
+            data-action="viewCanvas"
+            data-tip={locale === 'zh' ? '画布模式' : 'Canvas mode'}
+            data-i18n-tip="canvasMode"
+            aria-label={locale === 'zh' ? '画布模式' : 'Canvas mode'}
+          >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
           </button>
         </div>

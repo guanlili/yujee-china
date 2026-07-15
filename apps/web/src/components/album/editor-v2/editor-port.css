@@ -310,46 +310,23 @@
   border:3px solid var(--accent);
 }
 
-/* ─── Thumbnail Strip glass ─── */
+/* ─── 底部页面切换栏(玻璃 pill;迷你页面预览已移除,2026-07-15) ─── */
 .editor-port .thumb-strip{
   background: rgba(255,255,255,0.8);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   box-shadow: 0 2px 12px rgba(0,0,0,0.08);
 }
-.editor-port .thumb-row{ scrollbar-width: none; }
-.editor-port .thumb-row::-webkit-scrollbar{ display:none; }
-/* 性能:滚出条外的缩略图格不参与布局/绘制。 */
-.editor-port .thumb-item{ transition: transform var(--motion-fast) var(--ease);
-  content-visibility:auto; contain-intrinsic-size:52px 44px; }
-.editor-port .thumb-item:hover{ transform: translateY(-1px); }
-.editor-port .thumb-img{
-  width:52px; height:34px; border-radius:3px;
-  background: var(--bg);
-  border: 1.5px solid transparent;
-  overflow:hidden; position:relative; display:flex;
-  transition: border-color var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease);
+
+/* ─── 悬停气泡([data-tip]:视图切换等控件) ─── */
+.editor-port [data-tip]{ position:relative; }
+.editor-port [data-tip]:hover::after{
+  content:attr(data-tip);
+  position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%);
+  padding:4px 8px; border-radius:6px; white-space:nowrap;
+  font-size:11px; line-height:1; color:#fff; background:rgba(20,20,20,0.92);
+  box-shadow:0 2px 8px rgba(0,0,0,0.18); pointer-events:none; z-index:30;
 }
-.editor-port .thumb-img::after{
-  content:''; position:absolute;
-  top:4px; bottom:4px; left:50%;
-  width:1px; background: var(--border-soft);
-  transform: translateX(-50%); z-index:1;
-}
-.editor-port .thumb-item.active .thumb-img{
-  border-color: var(--fg);
-  box-shadow: 0 0 0 1.5px rgba(0,0,0,0.08);
-}
-.editor-port .thumb-img-left, .editor-port .thumb-img-right{
-  flex:1; height:100%;
-  background-size:cover; background-position:center;
-  background-color: var(--surface);
-}
-/* #158 follow-up: an empty thumb half is blank space (no surface fill); a solo
-   thumb (cover/ending) also drops its center spine divider. */
-.editor-port .thumb-img-left.thumb-empty, .editor-port .thumb-img-right.thumb-empty{ background-color: transparent; }
-.editor-port .thumb-img.thumb-solo::after{ display:none; }
-.editor-port .thumb-label{ display:none; }
 
 /* ─── Left page content (chapter cover) ─── */
 .editor-port .ch-eyebrow{
