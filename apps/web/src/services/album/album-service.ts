@@ -4,6 +4,7 @@ import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
+import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { jobService } from '@/services/job/job-service';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
 import { agentClient } from '@/lib/agent/agent-client';
@@ -213,6 +214,17 @@ function storyProgressFrom(stage: string, normalized: NormalizedStoryDraft | nul
     // 前端镜像:editor-v2/export-gate-util.computeExportUnlocked,两处同改。
     exportUnlocked: allDone && stage === 'ready',
   };
+}
+
+// 排版续跑止血:某 album 的 layout job 处于哪种态。有在跑的(QUEUED/RUNNING)→ 'running';
+// 否则最近一条 layout job 是 FAILED → 'failed';都没有(没排过 / 上次成功落页)→ 'idle'。
+// ChatPanel 重进时据此决定:接着等 / 自动重排 / 不动(有页就正常进设计)。刻意不把 pages
+// 塞进响应 —— 前端自查画板页数(co().getPagesState()),Web 只回 job 层的排版态。
+type LayoutState = 'running' | 'failed' | 'idle';
+async function resolveLayoutState(albumId: string): Promise<LayoutState> {
+  if (await agentJobRepo.findActiveLayoutByAlbum(albumId)) return 'running';
+  const latest = await agentJobRepo.findLatestLayoutByAlbum(albumId);
+  return latest?.status === 'FAILED' ? 'failed' : 'idle';
 }
 
 function assertStoryExportUnlocked(album: Awaited<ReturnType<typeof albumRepo.findById>>): void {
@@ -448,9 +460,16 @@ export const albumService = {
     currentChapterId: string | null;
     allDone: boolean;
     exportUnlocked: boolean;
+    // 排版续跑信号(story gate 只读派生,与 story 完成度正交):见 resolveLayoutState。
+    // markChapterDone 等其它调用方不透出此字段(它们不触碰排版态),故只在这里追加,
+    // storyProgressFrom 保持纯同步不变 —— 侵入最小。
+    layoutState: LayoutState;
   }> {
     const album = await this.findOwned(userId, albumId);
-    return storyProgressFrom(album.stage, readStoryDraft(album.draftJson));
+    return {
+      ...storyProgressFrom(album.stage, readStoryDraft(album.draftJson)),
+      layoutState: await resolveLayoutState(albumId),
+    };
   },
 
   // Mark ONE chapter 确定 (done) — the "一章一确定" action (§4.2(1)). Advances the
