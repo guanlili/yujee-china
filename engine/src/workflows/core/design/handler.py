@@ -34,7 +34,9 @@ _DEFAULT_FONTS = {
     "zh": {"title": "noto-serif-sc", "body": "noto-sans-sc", "decoration": "zhi-mang-xing"},
     "en": {"title": "playfair-display", "body": "inter", "decoration": "great-vibes"},
 }
-_DEFAULT_COLORS = {"title": "#1c1b18", "body": "#1c1b18", "explain": "#6b675f"}
+# 正文/图注/无点缀时统一用这个墨黑(以黑色为主,用户拍板 2026-07-16)。
+_INK_BLACK = "#1c1b18"
+_DEFAULT_COLORS = {"title": _INK_BLACK, "body": _INK_BLACK, "explain": _INK_BLACK}
 
 # ── 场景字体预设(用户拍板 2026-07-15) ──────────────────────────────────────────
 # AI 只做一件事:读懂这本书(各章 title/keywords/context)→ 判断最贴的【场景】→
@@ -157,13 +159,14 @@ def _sanitize_style(parsed: Any, language: str) -> dict[str, dict[str, str]]:
     out = _default_style(language)
     scene = parsed.get("scene") if isinstance(parsed, dict) else None
     out["fonts"] = _resolve_scene(scene if isinstance(scene, str) else None, language)
-    colors = parsed.get("colors") if isinstance(parsed, dict) else None
-    if isinstance(colors, dict):
-        for key in ("title", "body", "explain"):
-            value = colors.get(key)
-            if isinstance(value, str) and _HEX_RE.fullmatch(value.strip()):
-                # AI 定方向,代码定终值:归一到精选色板(见 _snap_color)。
-                out["colors"][key] = _snap_color(key, value.strip().lower())
+    # 颜色(用户拍板 2026-07-16):只让 AI 选【一个点缀色】,染 title
+    # (design-apply 里 decoration 跟着 title 色 —— 标题+装饰小标签着色);
+    # 正文 body、图注 explain 一律墨黑,以黑为主。AI 只给方向,代码归一到标题色板。
+    accent = parsed.get("accentColor") if isinstance(parsed, dict) else None
+    if isinstance(accent, str) and _HEX_RE.fullmatch(accent.strip()):
+        out["colors"]["title"] = _snap_color("title", accent.strip().lower())
+    out["colors"]["body"] = _INK_BLACK
+    out["colors"]["explain"] = _INK_BLACK
     return out
 
 

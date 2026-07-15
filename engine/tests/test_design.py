@@ -33,16 +33,18 @@ _ENDING_SLOTS = [{"id": "closing", "role": "body", "sample": "…"}]
 def test_sanitize_style_scene_fonts_and_color_snap():
     # 字体:AI 只给 scene,代码按 场景×语言 查表填(AI 不碰字体 id)。
     out = design._sanitize_style(
-        {"scene": "日式清新", "colors": {"title": "red", "body": "#A1B2C3"}},
+        {"scene": "日式清新", "accentColor": "#2b4a6f"},
         "zh",
     )
     assert out["fonts"] == {"title": "smiley-sans", "body": "noto-sans-sc", "decoration": "sacramento"}
-    assert out["colors"]["title"] == "#1c1b18"  # 非 hex 落默认
-    assert out["colors"]["body"] == "#2d2a32"  # 合法 hex → 归一到正文精选板最近色
+    # 点缀色染 title(归一到标题色板);正文/图注恒墨黑。
+    assert out["colors"]["title"] == "#3e5c76"  # #2b4a6f 归一到同色相石板蓝
+    assert out["colors"]["body"] == "#1c1b18"
+    assert out["colors"]["explain"] == "#1c1b18"
 
 
 def test_sanitize_style_unknown_scene_falls_back():
-    out = design._sanitize_style({"scene": "不存在的场景", "colors": {}}, "en")
+    out = design._sanitize_style({"scene": "不存在的场景"}, "en")  # 无 accentColor → 全黑
     # 兜底场景(法式复古)的英文搭配。
     assert out["fonts"] == {"title": "playfair-display", "body": "eb-garamond", "decoration": "great-vibes"}
 
@@ -61,7 +63,7 @@ def test_run_design_happy_path(monkeypatch):
             return _completion(
                 {
                     "scene": "法式清新",
-                    "colors": {"title": "#2b4a6f", "body": "#1c1b18", "explain": "#6b675f"},
+                    "accentColor": "#2b4a6f",
                 }
             )
         calls.append("copy")
@@ -85,7 +87,8 @@ def test_run_design_happy_path(monkeypatch):
     # 字数预算随槽规格进了文案调用的 payload(提示词约束;输出不硬截断)。
     copy_payload = json.loads(copy_user_payloads[0])
     assert result["fonts"] == {"title": "zcool-xiaowei", "body": "lxgw-wenkai", "decoration": "parisienne"}  # 法式清新·中文
-    assert result["colors"]["title"] == "#3e5c76"  # #2b4a6f 归一到同色相石板蓝
+    assert result["colors"]["title"] == "#3e5c76"  # 点缀色 #2b4a6f 归一到同色相石板蓝
+    assert result["colors"]["body"] == "#1c1b18" and result["colors"]["explain"] == "#1c1b18"  # 其余黑
     assert result["coverTexts"] == {"title": "海边的夏天"}
     assert result["endingTexts"] == {"closing": "潮声不止,记忆常新。"}
 
@@ -103,7 +106,7 @@ def test_run_design_sends_chapter_profiles_to_style_model(monkeypatch):
             return _completion(
                 {
                     "scene": "法式清新",
-                    "colors": {"title": "#2b4a6f", "body": "#1c1b18", "explain": "#6b675f"},
+                    "accentColor": "#2b4a6f",
                 }
             )
         return _completion({"coverTexts": {}, "endingTexts": {}})
@@ -168,7 +171,7 @@ def test_run_design_falls_back_and_uses_album_title(monkeypatch):
     # 双失败:字体颜色落英文默认;封面标题槽兜相册标题;封尾空串(Web 侧留空)。
     # decoration 默认走艺术字体(与正文拉开质感;三组策略:衬线/黑体/艺术字)。
     assert result["fonts"] == {"title": "playfair-display", "body": "inter", "decoration": "great-vibes"}
-    assert result["colors"] == {"title": "#1c1b18", "body": "#1c1b18", "explain": "#6b675f"}
+    assert result["colors"] == {"title": "#1c1b18", "body": "#1c1b18", "explain": "#1c1b18"}  # 无 AI 输出 → 全黑
     assert result["coverTexts"] == {"title": "Summer by the Sea"}
     assert result["endingTexts"] == {"closing": ""}
     assert result["models"] == {"style": None, "copy": None}
@@ -251,7 +254,7 @@ def test_style_payload_carries_scenes_and_resolves_fonts(monkeypatch):
         captured.append(kwargs["messages"][1]["content"])
         return {"choices": [{"message": {"content": json.dumps({
             "scene": "法式复古",
-            "colors": {"title": "#7a4b2a", "body": "#1c1b18", "explain": "#6b675f"},
+            "accentColor": "#7a4b2a",
         })}}]}
 
     monkeypatch.setattr(ai_client, "chat_completion", fake_chat_completion)
