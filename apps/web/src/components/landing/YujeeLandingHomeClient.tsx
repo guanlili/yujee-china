@@ -890,10 +890,6 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
 
         <section id="outputs" className="py-14 md:py-20">
           <div className="wrap">
-            {/* 明示官方演示,不是用户作品 —— 没有这行,样书区读起来就是"客户案例"
-                (Creem 审核 2026-07-15 据此判定 social proof:账上零客户,页面却在展示
-                六本"成书")。标注后它是产品演示,不再是社交证明。 */}
-            <p className="mb-4 text-center text-xs text-[var(--meta)]">{c.samplesNote}</p>
             <div className="sample-grid gap-4 md:gap-5">
               {c.samples.map((sample) => (
                 <SampleCard
@@ -905,6 +901,10 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
                 />
               ))}
             </div>
+            {/* 明示官方演示,不是用户作品 —— 没有这行,样书区读起来就是"客户案例"
+                (Creem 审核 2026-07-15 据此判定 social proof:账上零客户,页面却在展示
+                六本"成书")。标注后它是产品演示,不再是社交证明。放网格下方,小字。 */}
+            <p className="mt-4 text-center text-xs text-[var(--meta)]">{c.samplesNote}</p>
           </div>
         </section>
 
