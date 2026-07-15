@@ -137,7 +137,7 @@ def test_run_design_sends_chapter_profiles_to_style_model(monkeypatch):
     )
     fallback_payload = json.loads(style_user_payloads[0])
     assert fallback_payload["chapters"] == [
-        {"chapterContext": "公园散步", "keywords": [], "extractedColor": None}
+        {"title": "", "chapterContext": "公园散步", "keywords": [], "extractedColor": None}
     ]
 
 

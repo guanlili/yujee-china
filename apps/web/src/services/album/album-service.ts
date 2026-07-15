@@ -970,13 +970,22 @@ export const albumService = {
       language: input.language,
       albumTitle: (album.title ?? '').slice(0, 120),
       chapterContexts: chapters.map((c) => c.chapterContext ?? ''),
-      // 每章设计画像:采访背景 + 识图关键词(keywords)+ 分组代码取色(extractedColor)。
-      // design_style 据此贴合照片真实色调/题材选字体颜色;老树缺字段则给空/null。
-      chapterProfiles: chapters.map((c) => ({
-        chapterContext: c.chapterContext ?? '',
-        keywords: Array.isArray(c.keywords) ? c.keywords : [],
-        extractedColor: c.extractedColor ?? null,
-      })),
+      // 每章设计画像:章标题(写文案写进本章页面 title 槽的值,titleOfChapterPages
+      // 同章节卡片一个来源)+ 采访背景 + 识图关键词(keywords)+ 分组代码取色
+      // (extractedColor)。design_style 据此贴合照片真实色调/题材选字体颜色;
+      // 老树缺字段则给空/null。
+      chapterProfiles: chapters.map((c) => {
+        const photoIds = new Set((c.photos ?? []).map((p) => p.photoId));
+        const chapterPages = rawPages.filter((page) =>
+          Object.values(page.images).some((pid) => photoIds.has(pid)),
+        );
+        return {
+          title: titleOfChapterPages(chapterPages) ?? '',
+          chapterContext: c.chapterContext ?? '',
+          keywords: Array.isArray(c.keywords) ? c.keywords : [],
+          extractedColor: c.extractedColor ?? null,
+        };
+      }),
       coverSlots: slotSpecs(input.coverTemplateId),
       endingSlots: slotSpecs(input.endingTemplateId),
     });

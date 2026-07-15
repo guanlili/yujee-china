@@ -178,7 +178,7 @@ async def run_design(
         chapter_profiles
         if chapter_profiles is not None
         else [
-            {"chapterContext": ctx, "keywords": [], "extractedColor": None}
+            {"title": "", "chapterContext": ctx, "keywords": [], "extractedColor": None}
             for ctx in chapter_contexts
         ]
     )

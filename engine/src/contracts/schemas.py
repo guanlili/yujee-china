@@ -601,8 +601,10 @@ class DesignTextSlotSpec(_V3Strict):
 
 
 class DesignChapterProfile(_V3Strict):
-    """每章设计画像:采访背景 + 识图关键词 + 分组取色。design_style 选字体/颜色的依据。"""
+    """每章设计画像:章标题 + 采访背景 + 识图关键词 + 分组取色。design_style 选字体/颜色的依据。"""
 
+    # 章标题(写文案写进本章页面 title 槽的值,与章节卡片同源)。老 caller/排版未出 => ""。
+    title: str = Field(default="", max_length=120)
     chapterContext: str = Field(default="", max_length=500)
     keywords: list[str] = Field(default_factory=list)
     extractedColor: AccentColor | None = None

@@ -620,6 +620,9 @@ export type V3DesignTextSlotSpec = z.infer<typeof V3DesignTextSlotSpec>;
 // (V3Chapter.extractedColor)。design_style 据此选贴合内容的字体/颜色。
 export const V3DesignChapterProfile = z
   .object({
+    // 章标题:写文案环节写进本章页面 title 槽的值(与章节卡片同源)。排版未出/无
+    // title 槽 => ''。
+    title: z.string().max(120).default(''),
     chapterContext: z.string().max(500).default(''),
     keywords: z.array(z.string().max(40)).default([]),
     extractedColor: AccentColor.nullish(),
