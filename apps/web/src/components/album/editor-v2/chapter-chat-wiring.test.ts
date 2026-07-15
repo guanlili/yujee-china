@@ -26,10 +26,10 @@ const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
 
 test('authoring send() routes to the design chat turn', () => {
   // The authoring branch of send() must call the design-chat turn, not the legacy
-  // /draft-edit single-page loop.
+  // /draft-edit single-page loop. (排版为空的异常恢复分支在它之前,见下一个测试。)
   assert.match(
     src,
-    /if \(isAuthoring\) \{\s*\/\/[^\n]*\n\s*await runDesignChatTurn\(txt\);/,
+    /if \(isAuthoring\) \{[\s\S]{0,1600}?await runDesignChatTurn\(txt\);/,
     'authoring send() must await runDesignChatTurn',
   );
 });
@@ -80,4 +80,23 @@ test('conversation chapter prompt card keeps the supplied editor.html sizing', (
   assert.match(css, /\.editor-port \.cc-thumbs\{ display:flex; gap:8px; \}/);
   assert.match(css, /\.editor-port \.cc-title\{[\s\S]*?font-size:15px; font-weight:700;/);
   assert.match(css, /\.editor-port \.cc-view svg\{ width:14px; height:14px; \}/);
+});
+
+test('排版中断恢复:排版为空时用户消息触发重新排版,而不是把 422 抛回对话', () => {
+  // 场景(用户拍板 2026-07-15):排版环节断网 → 草稿有章节树但零页面 → 用户回来
+  // 唯一入口是对话框。设计 Agent 对空书只会报「book 契约不合法」;这条消息必须
+  // 变成重新排版的触发器。
+  assert.match(
+    src,
+    /pagesNow\.length === 0 && storyGate\?\.allDone[\s\S]{0,400}?selectLayoutTriggered = false;[\s\S]{0,100}?await triggerSelectLayout\(\);/,
+    'authoring 空排版 + 采访已完成 → 消息应触发 triggerSelectLayout',
+  );
+  // 排版轮询超时后必须复位触发开关,否则本会话内永远无法重试。
+  assert.match(
+    src,
+    /排版好像慢了点[\s\S]{0,300}?我会重新排版/,
+    '超时文案应告诉用户「发消息即可重新排版」',
+  );
+  const timeoutBlock = /selectLayoutTriggered = false;[\s\S]{0,400}?排版好像慢了点/;
+  assert.match(src, timeoutBlock, '超时路径必须先复位 selectLayoutTriggered 再提示');
 });

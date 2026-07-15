@@ -225,6 +225,25 @@ export function ChatPanel({
       }
       sending = true;
       if (isAuthoring) {
+        // 异常恢复(用户拍板 2026-07-15):排版环节断网/失败后,草稿有章节树但一页
+        // 都没有 —— 用户回来唯一的入口就是这个对话框,而设计 Agent 对空书只会
+        // 422(「book 契约不合法:没有页面」)。这种状态下把用户消息当作
+        // 【重新排版】的触发器,而不是把异常抛回对话。
+        // 正在跑的排版不受影响:服务端对 QUEUED/RUNNING 幂等去重,重复触发只是
+        // 接上轮询;两段式断在候选阶段的恢复由 use-album-poll 的 52 哨兵负责。
+        const pagesNow = co()?.getPagesState?.() ?? [];
+        if (pagesNow.length === 0 && storyGate?.allDone) {
+          appendAiText(
+            aT(
+              '上次排版没有完成（可能是网络中断）。我现在重新排版，稍等片刻~',
+              'The last layout run didn’t finish (possibly a network drop). Restarting the layout now — one moment.',
+            ),
+          );
+          sending = false;
+          selectLayoutTriggered = false; // 上次半途而废的触发不该挡住这次
+          await triggerSelectLayout();
+          return;
+        }
         // authoring 期的对话改书统一走设计 Agent。
         await runDesignChatTurn(txt);
       } else {
@@ -1181,9 +1200,15 @@ export function ChatPanel({
           appendInFlight = false;
         }
         settleThinking(host, 'analyzedFeedback');
+        // 复位触发开关:排版可能真的失败了(而非慢)。不复位的话本会话内
+        // selectLayoutTriggered 永远为 true,用户在对话里怎么发消息都无法重试。
+        selectLayoutTriggered = false;
         appendReplyBody(
           host,
-          aT('排版好像慢了点,刷新一下页面看看结果。', 'Layout is taking a while — refresh the page to see the result.'),
+          aT(
+            '排版好像慢了点。可以刷新页面看看结果；如果还是空白，在对话里随便发一条消息，我会重新排版。',
+            'Layout is taking a while — refresh to check. If the canvas is still empty, send any message here and I’ll restart the layout.',
+          ),
         );
       }
     }
