@@ -1570,7 +1570,7 @@ function EditorBook({
     }
     function updateThumbUI(chIdx: number) {
       const ti = byId('thumbInd');
-      if (ti) ti.textContent = (chIdx + 1) + ' / ' + spreadCount();
+      if (ti) ti.textContent = (chIdx + 1) + '/' + spreadCount();
     }
     function goToSpread(chIdx: number) {
       if (chIdx === currentCh || chIdx < 0 || chIdx >= spreadCount()) return;
@@ -2212,7 +2212,7 @@ function EditorBook({
     let canvasOriginY = 0;
     const shouldSkipCanvasPan = (target: HTMLElement | null) =>
       !target ||
-      !!target.closest('.el-bar, .img-edit-overlay, .thumb-strip, .zoom-ctrl, .book-overview, .chapter-card, .mobile-chapter-bar, button, a, input, textarea, select, [contenteditable="true"]');
+      !!target.closest('.el-bar, .img-edit-overlay, .ctrl-dock, .book-overview, .chapter-card, .mobile-chapter-bar, button, a, input, textarea, select, [contenteditable="true"]');
     const onCanvasPointerDown = (e: PointerEvent) => {
       if (e.button !== 0 || shouldSkipCanvasPan(e.target as HTMLElement | null)) return;
       canvasDragging = true;
@@ -2830,55 +2830,57 @@ function EditorBook({
             排版完成后 pages 非空 → 从不进收集态 → 这块始终隐藏。 */}
         <div className="collect-board" id="collectBoard" />
 
-        <div className="thumb-strip absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center justify-center gap-2 px-3 py-1.5 z-[6] rounded-pill max-w-[92vw]">
-          <div className="thumb-nav flex items-center gap-1.5">
-            <button className="thumb-nav-btn w-5 h-5 rounded-full flex items-center justify-center text-muted transition-colors hover:text-fg hover:bg-bg" data-thumbnav="-1">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5"><polyline points="15 18 9 12 15 6" /></svg>
-            </button>
-            <span className="thumb-page-ind text-[10px] font-medium text-fg2 min-w-[36px] text-center" style={{ fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-mono)' }} id="thumbInd">1 / 3</span>
-            <button className="thumb-nav-btn w-5 h-5 rounded-full flex items-center justify-center text-muted transition-colors hover:text-fg hover:bg-bg" data-thumbnav="1">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5"><polyline points="9 18 15 12 9 6" /></svg>
-            </button>
-          </div>
-        </div>
-        {/* 迷你页面预览条已移除(2026-07-15 拍板):20+ 页时它是一排完整页面 DOM,
-            纯浪费性能;页面切换靠 ‹ n/N ›,全书总览走画布模式。 */}
-
         <div className="book-overview" id="bookOverview">
           <div className="ov-grid" id="ovGrid" />
         </div>
 
-        <div className="zoom-ctrl">
-          <button className="zoom-btn" data-zoom="-0.25" data-i18n-title="zoomOut" title="缩小" aria-label="缩小">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="5" y1="12" x2="19" y2="12" /></svg>
-          </button>
-          <span className="zoom-pct" id="zoomPct" data-action="resetZoom" title="100%">100%</span>
-          <button className="zoom-btn" data-zoom="0.25" data-i18n-title="zoomIn" title="放大" aria-label="放大">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-          </button>
-          <span className="zoom-sep" />
-          {/* 视图切换两档:预览模式(翻页书)/ 画布模式(无限画布)。悬停气泡由
-              [data-tip] CSS 出;运行时换语言走 data-i18n-tip(setLang 同步)。 */}
-          <button
-            className="zoom-btn view-btn active"
-            id="viewBookBtn"
-            data-action="viewBook"
-            data-tip={locale === 'zh' ? '预览模式' : 'Preview mode'}
-            data-i18n-tip="previewMode"
-            aria-label={locale === 'zh' ? '预览模式' : 'Preview mode'}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2Z" /><path d="M22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8Z" /></svg>
-          </button>
-          <button
-            className="zoom-btn view-btn"
-            id="viewCanvasBtn"
-            data-action="viewCanvas"
-            data-tip={locale === 'zh' ? '画布模式' : 'Canvas mode'}
-            data-i18n-tip="canvasMode"
-            aria-label={locale === 'zh' ? '画布模式' : 'Canvas mode'}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
-          </button>
+        {/* 底部控制坞(2026-07-15 拍板):翻页和缩放合成一个 pill(纯数字指示);
+            视图切换单独一个 pill、按钮更大。迷你页面预览条已移除(20+ 页时是一排
+            完整页面 DOM,纯浪费性能),全书总览走画布模式。 */}
+        <div className="ctrl-dock">
+          <div className="zoom-ctrl">
+            <span className="nav-seg flex items-center">
+              <button className="zoom-btn" data-thumbnav="-1" data-i18n-title="prevPage" title={locale === 'zh' ? '上一页' : 'Previous page'} aria-label={locale === 'zh' ? '上一页' : 'Previous page'}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="15 18 9 12 15 6" /></svg>
+              </button>
+              <span className="zoom-pct" id="thumbInd" style={{ fontVariantNumeric: 'tabular-nums' }}>1/3</span>
+              <button className="zoom-btn" data-thumbnav="1" data-i18n-title="nextPage" title={locale === 'zh' ? '下一页' : 'Next page'} aria-label={locale === 'zh' ? '下一页' : 'Next page'}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="9 18 15 12 9 6" /></svg>
+              </button>
+              <span className="zoom-sep" />
+            </span>
+            <button className="zoom-btn" data-zoom="-0.25" data-i18n-title="zoomOut" title="缩小" aria-label="缩小">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            </button>
+            <span className="zoom-pct" id="zoomPct" data-action="resetZoom" title="100%">100%</span>
+            <button className="zoom-btn" data-zoom="0.25" data-i18n-title="zoomIn" title="放大" aria-label="放大">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            </button>
+          </div>
+          <div className="view-ctrl">
+            {/* 视图切换两档:预览模式(翻页书)/ 画布模式(无限画布)。悬停气泡由
+                [data-tip] CSS 出;运行时换语言走 data-i18n-tip(setLang 同步)。 */}
+            <button
+              className="zoom-btn view-btn active"
+              id="viewBookBtn"
+              data-action="viewBook"
+              data-tip={locale === 'zh' ? '预览模式' : 'Preview mode'}
+              data-i18n-tip="previewMode"
+              aria-label={locale === 'zh' ? '预览模式' : 'Preview mode'}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2Z" /><path d="M22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8Z" /></svg>
+            </button>
+            <button
+              className="zoom-btn view-btn"
+              id="viewCanvasBtn"
+              data-action="viewCanvas"
+              data-tip={locale === 'zh' ? '画布模式' : 'Canvas mode'}
+              data-i18n-tip="canvasMode"
+              aria-label={locale === 'zh' ? '画布模式' : 'Canvas mode'}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
+            </button>
+          </div>
         </div>
 
         <div className="el-bar" id="elBar" role="toolbar" aria-label={locale === 'zh' ? '元素编辑工具' : 'Element editing tools'}>
