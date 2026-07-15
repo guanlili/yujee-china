@@ -182,6 +182,8 @@ type WriteResult = {
   applied: number;
   failed: string[];
   notes?: string[];
+  /** 改 role 触发的 id 顺位改名（id 按 role 派号，API 自动做，JSON+HTML 同步）。 */
+  renames?: { templateId: string; from: string; to: string }[];
   regenerated?: boolean;
 };
 
@@ -415,6 +417,8 @@ export default function TemplateWallPage() {
 
   // 改文字类型（role）。写回模板 JSON；若新 role 不是 title/decoration 而该槽带着
   // variableDecor（主题一键刷色/刷字体的标记），API 会连带摘掉它并在 notes 里说明。
+  // id 按 role 派号：role 变了 API 会自动顺位改 id（JSON + HTML 同事务），renames
+  // 里带回新 id —— 这里跟着更新选中态，否则面板还握着旧 id，下一次操作全打空。
   async function changeRole(role: Role) {
     if (!selection || selection.kind !== 'text' || !selection.slotKey) return;
     setStatus(`把 ${selection.slotKey} 改成${ROLE_LABEL[role]}…`);
@@ -426,10 +430,22 @@ export default function TemplateWallPage() {
         setStatus(`失败：${r.failed.join('; ')}`);
         return;
       }
+      const oldBase = selection.slotKey.replace(/\[\d+\]$/, '');
+      const rename = r.renames?.find(
+        (item) => item.templateId === selection.templateId && item.from === oldBase,
+      );
+      const nextSlotKey = rename
+        ? selection.slotKey.replace(oldBase, rename.to)
+        : selection.slotKey;
       const dropped = !VARIABLE_DECOR_ROLES.has(role) && selection.variableDecor;
-      setSelection({ ...selection, role, variableDecor: dropped ? false : selection.variableDecor });
+      setSelection({
+        ...selection,
+        slotKey: nextSlotKey,
+        role,
+        variableDecor: dropped ? false : selection.variableDecor,
+      });
       setStatus(
-        `${selection.slotKey} → ${ROLE_LABEL[role]}${r.notes?.length ? `。${r.notes.join('；')}` : ''}，热更后生效`,
+        `${selection.slotKey} → ${ROLE_LABEL[role]}${rename ? `（id 已顺位改名 ${rename.from} → ${rename.to}）` : ''}${r.notes?.length ? `。${r.notes.join('；')}` : ''}，热更后生效`,
       );
     } catch (e) {
       setStatus(`失败：${e instanceof Error ? e.message : String(e)}`);

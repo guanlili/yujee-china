@@ -45,6 +45,14 @@ const LANGS = ['user', 'en'] as const;
 type Lang = (typeof LANGS)[number];
 // `variableDecor`(主题一键刷色/刷字体的标记)只允许挂在这两个 role 上。
 const VARIABLE_DECOR_ROLES = new Set<Role>(['title', 'decoration']);
+// 槽 id 按 role 派号(与 template-slot 新增、contracts 命名守卫同一套规则)。
+const BASE_ID_BY_ROLE: Record<Role, string> = {
+  title: 'title',
+  body: 'body',
+  explain: 'explain',
+  decoration: 'label',
+};
+const HTML_TEMPLATE_DIR = path.join(CONTRACTS_DIR, 'src', 'render', 'html-templates');
 
 type CopyOp = {
   templateId: string;
@@ -181,6 +189,56 @@ function setRole(
     }
   }
   return null;
+}
+
+/** role 变了,id 必须跟着顺位改名(id 按 role 派号,contracts 守卫测试会红)。
+ *  返回新 id;当前 id 已符合新 role 的派号模式(如 body2 改成 body 角色)则原样保留;
+ *  base ~ base99 全被占时返回 null(和 template-slot 新增同一个上限)。 */
+function nextIdForRole(takenIds: Set<string>, role: Role, currentId: string): string | null {
+  const base = BASE_ID_BY_ROLE[role];
+  if (new RegExp(`^${base}\\d*$`).test(currentId)) return currentId;
+  if (!takenIds.has(base)) return base;
+  for (let i = 2; i <= 99; i += 1) {
+    const candidate = `${base}${i}`;
+    if (!takenIds.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+/** JSON 里把槽的 `"id"` 从 oldId 改成 newId(只动那一个槽对象里的 id 字段)。 */
+function renameSlotId(src: string, oldId: string, newId: string): string | null {
+  const idNeedle = new RegExp(`("id"\\s*:\\s*)"${escapeForRegExp(oldId)}"`);
+  for (const arr of textArraySpans(src)) {
+    for (const [start, end] of objectsIn(src, arr)) {
+      const obj = src.slice(start, end);
+      if (!idNeedle.test(obj)) continue;
+      return src.slice(0, start) + obj.replace(idNeedle, `$1"${newId}"`) + src.slice(end);
+    }
+  }
+  return null;
+}
+
+/** HTML 模板源码里把一个槽 id 的所有锚点/token 改名。
+ *  逐个带定界符替换(`"`/`}}`/`|`/`[`),绝不裸替字符串 —— `title` 是 `title2` 的前缀,
+ *  裸替会把别的槽也改了。返回 [新 html, 替换次数]。 */
+function renameInHtml(html: string, oldId: string, newId: string): [string, number] {
+  let count = 0;
+  let out = html;
+  const pairs: [string, string][] = [];
+  for (const bound of ['"', '[']) {
+    pairs.push([`data-text-key="${oldId}${bound}`, `data-text-key="${newId}${bound}`]);
+  }
+  for (const token of ['TEXT', 'COLOR', 'FONT', 'FIT_SIZE']) {
+    for (const bound of ['}}', '|', '[']) {
+      pairs.push([`{{${token}:${oldId}${bound}`, `{{${token}:${newId}${bound}`]);
+    }
+  }
+  for (const [from, to] of pairs) {
+    if (!out.includes(from)) continue;
+    count += out.split(from).length - 1;
+    out = out.split(from).join(to);
+  }
+  return [out, count];
 }
 
 /** 目标文字槽的 `lang`:'user' = 用用户语言写,'en' = 保持英文(日期/编号/标签类装饰)。
@@ -334,6 +392,7 @@ export async function POST(request: Request) {
 
   const failed: string[] = [];
   const notes: string[] = [];
+  const renames: { templateId: string; from: string; to: string }[] = [];
   let applied = 0;
   let categoryChanged = false;
 
@@ -350,6 +409,8 @@ export async function POST(request: Request) {
       continue;
     }
     let touched = 0;
+    // role 改名的 HTML 侧变更:与 JSON 同事务 —— JSON 校验过了才一起写盘。
+    let htmlSrc: string | null | undefined; // undefined = 还没读;null = 文件读不到
     for (const op of templateOps) {
       let next: string | null;
       if (op.category !== undefined) {
@@ -374,12 +435,71 @@ export async function POST(request: Request) {
         }
         next = setVariableDecor(src, baseId, op.variableDecor);
       } else if (op.role !== undefined) {
-        const result = setRole(src, op.slotKey!.replace(/\[\d+\]$/, ''), op.role);
+        const baseId = op.slotKey!.replace(/\[\d+\]$/, '');
+        const roleBefore = currentRole(src, baseId);
+        const result = setRole(src, baseId, op.role);
         next = result?.src ?? null;
         if (result?.droppedDecor) {
           notes.push(
             `${templateId}/${op.slotKey}:${op.role} 不能带 variableDecor(主题一键刷色/刷字体只作用于 title/decoration),已摘掉该标记`,
           );
+        }
+
+        // id 按 role 派号 —— role 变了,id 必须跟着顺位改名,否则 contracts 的命名
+        // 守卫测试会红,而且下游按 id 前缀猜角色的逻辑会拿到打架的信息。
+        // JSON 与 HTML 一起改;React 回退组件不自动动(任意 TSX 裸替太危险),
+        // 有残留引用时提示出来。
+        if (next !== null && roleBefore !== null && roleBefore !== op.role) {
+          let parsed: {
+            texts?: { id?: string }[];
+            items?: { texts?: { id?: string }[] };
+          };
+          try {
+            parsed = JSON.parse(next);
+          } catch {
+            parsed = {};
+          }
+          const taken = new Set(
+            [...(parsed.texts ?? []), ...(parsed.items?.texts ?? [])]
+              .map((s) => s.id)
+              .filter((id): id is string => typeof id === 'string' && id !== baseId),
+          );
+          const newId = nextIdForRole(taken, op.role, baseId);
+          if (newId === null) {
+            failed.push(`${templateId}/${baseId}: ${op.role} 的派号 2~99 全被占,id 未改名`);
+          } else if (newId !== baseId) {
+            if (htmlSrc === undefined) {
+              htmlSrc = await readFile(path.join(HTML_TEMPLATE_DIR, `${templateId}.ts`), 'utf8').catch(
+                () => null,
+              );
+            }
+            const renamedJson = renameSlotId(next, baseId, newId);
+            const [renamedHtml, htmlCount] =
+              htmlSrc !== null ? renameInHtml(htmlSrc, baseId, newId) : [null, 0];
+            if (renamedJson === null || renamedHtml === null || htmlCount === 0) {
+              // 任何一侧改不动就整体不改名(role 本身的修改保留)——半改名比不改更糟。
+              failed.push(
+                `${templateId}/${baseId} → ${newId}: id 改名失败(json=${renamedJson !== null}, html锚点=${htmlCount}),命名守卫会红,请手动改`,
+              );
+            } else {
+              next = renamedJson;
+              htmlSrc = renamedHtml;
+              renames.push({ templateId, from: baseId, to: newId });
+              notes.push(`${templateId}/${baseId} → ${newId}(id 随 role 顺位改名,HTML ${htmlCount} 处锚点/token 已同步)`);
+              const compFile = path.join(
+                WEB_DIR,
+                'src/components/album/templates',
+                templateId,
+                'index.tsx',
+              );
+              const comp = await readFile(compFile, 'utf8').catch(() => null);
+              if (comp !== null && (comp.includes(`'${baseId}'`) || comp.includes(`"${baseId}"`))) {
+                notes.push(
+                  `${templateId} 的 React 回退组件仍引用旧 id "${baseId}",请手动同步(回退路径退役前它只影响未注册模板的渲染)`,
+                );
+              }
+            }
+          }
         }
       } else if (op.lang !== undefined) {
         next = setLang(src, op.slotKey!.replace(/\[\d+\]$/, ''), op.lang);
@@ -403,6 +523,10 @@ export async function POST(request: Request) {
       continue;
     }
     await writeFile(file, src, 'utf8');
+    // role 改名牵动的 HTML 与 JSON 一起落盘(JSON 校验没过时上面已 continue)。
+    if (typeof htmlSrc === 'string') {
+      await writeFile(path.join(HTML_TEMPLATE_DIR, `${templateId}.ts`), htmlSrc, 'utf8');
+    }
     applied += touched;
   }
 
@@ -421,6 +545,7 @@ export async function POST(request: Request) {
     applied,
     failed,
     notes,
+    renames,
     regenerated,
     categoryChanged,
   });
