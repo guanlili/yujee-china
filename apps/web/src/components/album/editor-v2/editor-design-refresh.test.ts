@@ -117,7 +117,8 @@ test('editor motion and toolbar controls are functional, not empty chrome', () =
   assert.match(editorPort, /function applyTextToolbarAction\(action: string\)/, 'text toolbar actions should be implemented');
   assert.match(editorPort, /function editSelectedText\(\)/, 'text edit button should enter real contenteditable editing');
   assert.match(editorPort, /setAttribute\('contenteditable', 'true'\)/, 'text edit mode should mark the selected text as contenteditable');
-  assert.match(editorPort, /page\.textsJson = \{ \.\.\.page\.textsJson, \[textKey\]: textEl\.textContent \?\? '' \}/, 'text edit blur should persist edited copy through textsJson');
+  assert.match(editorPort, /page\.textsJson = \{ \.\.\.page\.textsJson, \[textKey\]: nextText \}/, 'text edit blur should persist edited copy through textsJson');
+  assert.match(editorPort, /syncPageHtml\(page, \(html\) => patchHtmlText\(html, textKey, nextText\)\)/, 'text edit blur must also patch the html truth (C 方案:只写 textsJson 会被旧 html 吃掉)');
   assert.match(editorPort, /font-plus[\s\S]*font-minus/, 'toolbar should implement font size changes');
   assert.match(editorPort, /action === 'bold'/, 'toolbar should implement bold');
   assert.match(editorPort, /action === 'italic'/, 'toolbar should implement italic');

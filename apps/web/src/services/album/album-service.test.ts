@@ -1439,3 +1439,93 @@ test('saveChapterContexts caps chapterContext at 500 chars and rejects unknown/d
     await cleanupUser(user.id);
   }
 });
+
+// ── updatePage 的 C 方案分叉:draft 相册的手工编辑必须落 draft_json 的 html 真相 ──
+// 此前 updatePage 无条件写 album_pages 表,而 authoring 读/AI/导出只认
+// albums.draft_json(页含 html)—— 手工编辑全部进了一张没人读的表,刷新即回退。
+test('updatePage(draft 相册):文本/图位/样式全部落 draft_json,且同步进 html 真相', async () => {
+  const user = await makeUser('wp-updatepage-draft');
+  try {
+    const album = await makeAlbum(user.id);
+    const tree = makeStoryTree(1);
+    const html =
+      '<div data-template="mag-01">' +
+      '<img data-image-slot="image" src="{{IMG_SRC:image}}" style="object-fit:cover;object-position:50% 50%" />' +
+      '<div data-text-key="title" style="font-size:36px">OLD TITLE</div>' +
+      '</div>';
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree,
+      pages: [
+        {
+          pageIndex: 0,
+          templateId: 'mag-01',
+          images: { image: 'p1' },
+          texts: { title: 'OLD TITLE' },
+          html,
+        } as Page,
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+
+    await albumService.updatePage(user.id, album.id, 0, {
+      textsJson: { title: '新标题' },
+      imagePosJson: { image: { x: 30, y: 70, scale: 1.4 } },
+      textStyles: { title: { 'font-size': '48px', 'font-weight': '700' } },
+    });
+
+    const after = await albumRepo.findById(album.id);
+    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
+    const page = draft.pages[0]!;
+    assert.equal(page.texts.title, '新标题');
+    assert.deepEqual(page.imagePos, { image: { x: 30, y: 70, scale: 1.4 } });
+    // html 真相同步:AI(derivePageTexts)和导出读的就是它,不同步等于白改。
+    assert.match(page.html!, /新标题/);
+    assert.doesNotMatch(page.html!, /OLD TITLE/);
+    assert.match(page.html!, /font-size:48px/);
+    assert.match(page.html!, /font-weight:700/);
+    assert.match(page.html!, /object-position:30% 70%/);
+    assert.match(page.html!, /transform:scale\(1\.4\)/);
+    assert.match(page.html!, /\{\{IMG_SRC:image\}\}/, 'IMG_SRC token 保留,显示时才解析');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('updatePage(draft 相册):html 锚点失配 → 整页重烘,新文本仍然可见', async () => {
+  const user = await makeUser('wp-updatepage-rebake');
+  try {
+    const album = await makeAlbum(user.id);
+    const tree = makeStoryTree(1);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree,
+      pages: [
+        {
+          pageIndex: 0,
+          templateId: 'mag-01',
+          images: {},
+          // html 里根本没有 body 槽的锚点(模拟槽位漂移/手工版面被破坏)。
+          texts: { title: 'T', body: '' },
+          html: '<div data-template="mag-01"><div data-text-key="title">T</div></div>',
+        } as Page,
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+
+    await albumService.updatePage(user.id, album.id, 0, {
+      textsJson: { title: 'T', body: '正文来了' },
+    });
+
+    const after = await albumRepo.findById(album.id);
+    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
+    const page = draft.pages[0]!;
+    assert.equal(page.texts.body, '正文来了');
+    // 宁可整页重烘也不显示旧内容:重烘后的 html 必须带新文本。
+    assert.match(page.html!, /正文来了/);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});

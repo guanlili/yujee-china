@@ -12,10 +12,19 @@ const BodySchema = z
     textsJson: z.record(z.string(), z.string()).optional(),
     // #165: per-slot position/scale overrides (clamp bounds enforced by ImagePos).
     imagePosJson: z.record(z.string(), ImagePos).optional(),
+    // 工具条样式(字号/字体/对齐/颜色等):slotKey → { css属性: 值|null(移除) }。
+    // 值层面的注入护栏在 patchHtmlTextStyle(属性名白名单式正则 + 禁 ;{}<>")。
+    textStyles: z
+      .record(z.string().max(64), z.record(z.string().max(32), z.string().max(200).nullable()))
+      .optional(),
   })
   .refine(
-    (b) => b.imagesJson !== undefined || b.textsJson !== undefined || b.imagePosJson !== undefined,
-    { message: 'imagesJson, textsJson or imagePosJson required' },
+    (b) =>
+      b.imagesJson !== undefined ||
+      b.textsJson !== undefined ||
+      b.imagePosJson !== undefined ||
+      b.textStyles !== undefined,
+    { message: 'imagesJson, textsJson, imagePosJson or textStyles required' },
   );
 
 export async function PATCH(

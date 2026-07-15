@@ -62,6 +62,72 @@ export function patchHtmlText(html: string, slotId: string, value: string): stri
   return html.slice(0, start) + escapeHtmlText(value) + html.slice(end);
 }
 
+// ── 手工编辑固化进存库 html(C 方案:页面真相 = html) ─────────────────────────
+// 编辑器的字号/字体/图片位置操作先改画出来的 DOM 节点(即时反馈),但那只是
+// innerHTML 幻影 —— 不把同样的改动写回 page.html,任何重绘/刷新都会回退,
+// AI(读 draft html)和导出(渲 draft html)也永远看不到。以下两个 patcher 是
+// 编辑器(本地即时同步)与 albumService.updatePage(落库)共用的唯一实现。
+
+const STYLE_PROP_RE = /^[a-z-]+$/;
+const STYLE_VALUE_BAN = /[;{}<>"]/; // 允许单引号:font-family 栈里的 'Segoe UI' 等多词字体名需要它
+
+function upsertStyleAttr(openTag: string, props: Record<string, string | null>): string | null {
+  for (const [prop, value] of Object.entries(props)) {
+    if (!STYLE_PROP_RE.test(prop)) return null;
+    if (value !== null && STYLE_VALUE_BAN.test(value)) return null; // style 属性注入护栏
+  }
+  const styleMatch = /style="([^"]*)"/.exec(openTag);
+  const decls = new Map<string, string>();
+  if (styleMatch) {
+    for (const part of styleMatch[1]!.split(';')) {
+      const idx = part.indexOf(':');
+      if (idx > 0) decls.set(part.slice(0, idx).trim(), part.slice(idx + 1).trim());
+    }
+  }
+  for (const [prop, value] of Object.entries(props)) {
+    if (value === null) decls.delete(prop);
+    else decls.set(prop, value);
+  }
+  const nextStyle = [...decls.entries()].map(([k, v]) => `${k}:${v}`).join(';');
+  if (styleMatch) return openTag.replace(styleMatch[0], `style="${nextStyle}"`);
+  return openTag.replace(/>$/, ` style="${nextStyle}">`);
+}
+
+/** 文字槽元素的行内 style 覆写(value=null 移除该属性)。找不到锚点/非法值返回 null。 */
+export function patchHtmlTextStyle(
+  html: string,
+  slotId: string,
+  props: Record<string, string | null>,
+): string | null {
+  const escapedSlot = slotId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const openRe = new RegExp(`<[a-z0-9]+\\b[^>]*data-text-key="${escapedSlot}"[^>]*>`, 'i');
+  const m = openRe.exec(html);
+  if (!m) return null;
+  const patched = upsertStyleAttr(m[0], props);
+  if (patched === null) return null;
+  return html.slice(0, m.index) + patched + html.slice(m.index + m[0].length);
+}
+
+/** 图片位置/缩放固化(IMG_POS/IMG_TF 烘制后是具体值,必须回写)。与编辑器
+ *  applyLiveImagePos 写的 CSS 逐字一致:objectPosition + scale>1 时 transform。 */
+export function patchHtmlImagePos(
+  html: string,
+  slotId: string,
+  pos: { x: number; y: number; scale: number },
+): string | null {
+  const escapedSlot = slotId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const openRe = new RegExp(`<img\\b[^>]*data-image-slot="${escapedSlot}"[^>]*>`, 'i');
+  const m = openRe.exec(html);
+  if (!m) return null;
+  const patched = upsertStyleAttr(m[0], {
+    'object-position': `${pos.x}% ${pos.y}%`,
+    transform: pos.scale > 1 ? `scale(${pos.scale})` : null,
+    'transform-origin': pos.scale > 1 ? `${pos.x}% ${pos.y}%` : null,
+  });
+  if (patched === null) return null;
+  return html.slice(0, m.index) + patched + html.slice(m.index + m[0].length);
+}
+
 // ── 文字自适应(fit-text)展示层 pass ──────────────────────────────────────
 // 文字槽带固定 height(模板源码里烘定)时,内容装不下则逐步缩小字号直到塞进框。
 // 只动展示 DOM(与 folio 覆盖同层),存库 html 真相不变;画板、缩略图、栅格 PDF

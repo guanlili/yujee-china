@@ -1,5 +1,5 @@
 import { bakePageHtml, bakePagesHtml, type BakeablePage } from './bake-html';
-import { patchHtmlText } from '@/components/album/page-html-dom';
+import { patchHtmlImagePos, patchHtmlText, patchHtmlTextStyle } from '@/components/album/page-html-dom';
 import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
@@ -1047,6 +1047,12 @@ export const albumService = {
 
   // Editor saves a single page (docs/web/api.md §3.5). The whole layout_json is
   // owned by generation/chat; direct edits only touch the per-page row.
+  //
+  // 【C 方案分叉】authoring 草稿的唯一真相是 albums.draft_json(页含 html),
+  // AI(design-agent 读 draft)和导出(渲 draft html)都只认它。此前这里无条件写
+  // album_pages 表 —— 草稿相册的手工编辑(改字/挪图/样式)全部进了一张没人读的
+  // 表,刷新即回退。现在:有 draft → patch draft_json(texts 同步 + html 槽位级
+  // patch,锚点失配整页重烘);没 draft(老/finalized 相册)→ 维持 album_pages。
   async updatePage(
     userId: string,
     albumId: string,
@@ -1058,11 +1064,86 @@ export const albumService = {
       // photo-swap reset (clearing a slot's entry when its photoId changed) via
       // applyPatchToPages before persisting, so the server stores what it sends.
       imagePosJson?: Record<string, ImagePos>;
+      // 工具条样式(字号/字体/加粗/对齐/颜色):slotKey → CSS 属性(null=移除)。
+      // 只对 html 真相有意义,album_pages 旧路径忽略它。
+      textStyles?: Record<string, Record<string, string | null>>;
     },
   ): Promise<{ updated: true }> {
-    await this.findOwned(userId, albumId);
+    const album = await this.findOwned(userId, albumId);
+    const hasDraft = !!readStoryDraft(album.draftJson)?.pages?.length;
+
+    if (!hasDraft) {
+      await db.transaction(async (tx) => {
+        await albumPageRepo.updateOne(tx, albumId, pageIndex, {
+          imagesJson: patch.imagesJson,
+          textsJson: patch.textsJson,
+          imagePosJson: patch.imagePosJson,
+        });
+      });
+      return { updated: true };
+    }
+
     await db.transaction(async (tx) => {
-      await albumPageRepo.updateOne(tx, albumId, pageIndex, patch);
+      const latest = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
+      const current = readStoryDraft(latest.draftJson);
+      const pages = current?.pages ? [...current.pages] : null;
+      const existing = pages?.[pageIndex];
+      if (!current || !pages || !existing) {
+        throw ERRORS.VALIDATION_FAILED(`draft page ${pageIndex} not found`);
+      }
+
+      const page = { ...existing } as V3Page & { html?: string };
+      // html 逐笔 patch;任何一笔失配 → 置 null,收尾整页重烘(宁可丢手工版面
+      // 微调,不能让页面显示旧内容)。
+      let html: string | null =
+        typeof page.html === 'string' && page.html.length > 0 ? page.html : null;
+
+      if (patch.textsJson) {
+        const before = page.texts ?? {};
+        for (const [key, value] of Object.entries(patch.textsJson)) {
+          if (html !== null && before[key] !== value && !key.includes('#')) {
+            html = patchHtmlText(html, key, value);
+          }
+        }
+        page.texts = patch.textsJson;
+      }
+      if (patch.imagesJson) {
+        // 存库 html 的图片位保留 {{IMG_SRC:slot}} token,显示时按 images 解析 ——
+        // 换图/删图只动数据层,html 无需 patch。
+        page.images = patch.imagesJson;
+      }
+      if (patch.imagePosJson) {
+        const before = page.imagePos ?? {};
+        for (const [slot, pos] of Object.entries(patch.imagePosJson)) {
+          const prev = before[slot];
+          if (html !== null && (!prev || prev.x !== pos.x || prev.y !== pos.y || prev.scale !== pos.scale)) {
+            html = patchHtmlImagePos(html, slot, pos);
+          }
+        }
+        page.imagePos = patch.imagePosJson;
+      }
+      if (patch.textStyles) {
+        for (const [slot, props] of Object.entries(patch.textStyles)) {
+          if (html !== null) html = patchHtmlTextStyle(html, slot, props);
+        }
+      }
+
+      if (html !== null) {
+        page.html = html;
+      } else {
+        const rebaked = bakePageHtml({ ...page, html: undefined }, { strict: false });
+        page.html = rebaked.html;
+      }
+
+      pages[pageIndex] = page;
+      const nextDraft: V3StoryDraft = {
+        version: 'v3-story',
+        tree: current.tree,
+        pages,
+        progress: current.progress,
+      };
+      await albumRepo.update(tx, albumId, { draftJson: nextDraft });
     });
     return { updated: true };
   },

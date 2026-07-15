@@ -25,7 +25,7 @@ import { YujeeState } from '@/components/app/YujeeState';
 import { getWebTemplate } from '../web-registry';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
-import { applyFolioOverlay, fitTextBoxes, pageFolioNumbers, preferredPageHtml } from '../page-html-dom';
+import { applyFolioOverlay, fitTextBoxes, pageFolioNumbers, patchHtmlImagePos, patchHtmlText, patchHtmlTextStyle, preferredPageHtml } from '../page-html-dom';
 import { PAGE } from '../templates/constants';
 import { clampZoom, paintDecision } from './zoom-util';
 import {
@@ -1219,6 +1219,9 @@ function EditorBook({
       const clamped = clampImagePos(pos);
       imgEdit.pos = clamped;
       page.imagePosJson = { ...(page.imagePosJson ?? {}), [slotId]: clamped };
+      // 位置固化进 html 真相(必须在 repaint 之前 —— repaint 走 preferredPageHtml,
+      // html 不更新的话这一笔拖动当场回退)。服务端 updatePage 对 draft 做同样 patch。
+      syncPageHtml(page, (html) => patchHtmlImagePos(html, slotId, clamped));
       // repaintBook() replaces the painted <img> nodes; reattachImgEdit (run
       // inside it) re-binds the overlay to the fresh node for this slot.
       repaintBook();
@@ -1938,7 +1941,10 @@ function EditorBook({
       label.textContent = text;
       window.setTimeout(() => { if (label.isConnected) label.textContent = prev; }, 900);
     }
-    function persistPagePatch(page: EditorPage) {
+    function persistPagePatch(
+      page: EditorPage,
+      textStyles?: Record<string, Record<string, string | null>>,
+    ) {
       void fetch(`/api/v1/albums/${albumId}/pages/${page.pageIndex}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -1946,8 +1952,17 @@ function EditorBook({
           imagesJson: page.imagesJson,
           textsJson: page.textsJson,
           imagePosJson: page.imagePosJson ?? {},
+          ...(textStyles ? { textStyles } : {}),
         }),
       }).catch(() => {});
+    }
+    // 手工编辑固化进本地 htmlJson(与服务端 updatePage 同一套 patcher)。
+    // C 方案:页面真相 = html —— 只写 textsJson 的话,下一次重绘 preferredPageHtml
+    // 又渲染旧 html,编辑当场回退。patch 失败(锚点缺失等)则丢弃 htmlJson,
+    // 让渲染回退到「模板 + 数据」现场重烘,宁可丢版面微调也不显示旧内容。
+    function syncPageHtml(page: EditorPage, apply: (html: string) => string | null) {
+      if (typeof page.htmlJson !== 'string' || page.htmlJson.length === 0) return;
+      page.htmlJson = apply(page.htmlJson) ?? undefined;
     }
     function editSelectedText() {
       const textEl = selectedTextTargets()[0];
@@ -1966,7 +1981,9 @@ function EditorBook({
         textEl.removeAttribute('contenteditable');
         textEl.style.cursor = '';
         if (!textKey || !page) return;
-        page.textsJson = { ...page.textsJson, [textKey]: textEl.textContent ?? '' };
+        const nextText = textEl.textContent ?? '';
+        page.textsJson = { ...page.textsJson, [textKey]: nextText };
+        syncPageHtml(page, (html) => patchHtmlText(html, textKey, nextText));
         ensureCurrentFonts();
         persistPagePatch(page);
         repaintBook();
@@ -1982,32 +1999,66 @@ function EditorBook({
         'color-purple': '#8C5EF4',
         'color-gray': '#777777',
       };
+      // 具体字体栈,不用 var(--…):这些值现在会写进 html 真相,而导出/AI 渲染
+      // 环境没有编辑器的 CSS 变量 —— var() 出去就是回退字体。
       const fontMap: Record<string, string> = {
-        display: 'var(--font-display)',
-        playfair: 'Playfair Display, Georgia, serif',
-        body: 'var(--font-body)',
-        mono: 'var(--font-mono)',
+        display: "'Playfair Display', 'Noto Serif SC', Georgia, serif",
+        playfair: "'Playfair Display', Georgia, serif",
+        body: "system-ui, -apple-system, 'Segoe UI', sans-serif",
+        mono: "ui-monospace, 'JetBrains Mono', Menlo, monospace",
       };
-      if (action === 'font-family') {
-        const sel = editBar?.querySelector<HTMLSelectElement>('.eb-sel');
-        const family = sel ? fontMap[sel.value] : undefined;
-        if (family) targets.forEach((el) => { el.style.fontFamily = family; });
-      } else if (action === 'font-plus' || action === 'font-minus') {
-        targets.forEach((el) => {
+      // 每个动作除了改画出来的 DOM(即时反馈),还要把同样的 style 写回 html 真相
+      // 并落库 —— 此前这些按钮只改 innerHTML 幻影,任何重绘/刷新全部回退,
+      // AI 和导出更是从未见过这些调整。styleFor 返回「写进 html 的 CSS」;
+      // var(--…) 这类编辑器内部变量不能进 html(导出环境没有这些变量),
+      // font-family 一律用具体字体栈。
+      const styleFor = (el: HTMLElement): Record<string, string | null> | null => {
+        if (action === 'font-family') {
+          const sel = editBar?.querySelector<HTMLSelectElement>('.eb-sel');
+          const family = sel ? fontMap[sel.value] : undefined;
+          if (!family) return null;
+          el.style.fontFamily = family;
+          return { 'font-family': family };
+        }
+        if (action === 'font-plus' || action === 'font-minus') {
           const current = parseFloat(getComputedStyle(el).fontSize) || 14;
           const next = Math.min(72, Math.max(10, current + (action === 'font-plus' ? 2 : -2)));
           el.style.fontSize = `${next}px`;
-        });
-      } else if (action === 'bold') {
-        targets.forEach((el) => { el.style.fontWeight = getComputedStyle(el).fontWeight === '700' ? '' : '700'; });
-      } else if (action === 'italic') {
-        targets.forEach((el) => { el.style.fontStyle = getComputedStyle(el).fontStyle === 'italic' ? '' : 'italic'; });
-      } else if (action.startsWith('align-')) {
-        const value = action.replace('align-', '') as 'left' | 'center' | 'right';
-        targets.forEach((el) => { el.style.textAlign = value; });
-      } else if (colorMap[action]) {
-        targets.forEach((el) => { el.style.color = colorMap[action]; });
+          return { 'font-size': `${next}px` };
+        }
+        if (action === 'bold') {
+          const on = getComputedStyle(el).fontWeight !== '700';
+          el.style.fontWeight = on ? '700' : '';
+          return { 'font-weight': on ? '700' : null };
+        }
+        if (action === 'italic') {
+          const on = getComputedStyle(el).fontStyle !== 'italic';
+          el.style.fontStyle = on ? 'italic' : '';
+          return { 'font-style': on ? 'italic' : null };
+        }
+        if (action.startsWith('align-')) {
+          const value = action.replace('align-', '');
+          el.style.textAlign = value;
+          return { 'text-align': value };
+        }
+        if (colorMap[action]) {
+          el.style.color = colorMap[action]!;
+          return { color: colorMap[action]! };
+        }
+        return null;
+      };
+      const styledPages = new Map<EditorPage, Record<string, Record<string, string | null>>>();
+      for (const el of targets) {
+        const props = styleFor(el);
+        const textKey = el.dataset.textKey;
+        const page = pageForEditableText(el);
+        if (!props || !textKey || !page) continue;
+        syncPageHtml(page, (html) => patchHtmlTextStyle(html, textKey, props));
+        const perPage = styledPages.get(page) ?? {};
+        perPage[textKey] = { ...(perPage[textKey] ?? {}), ...props };
+        styledPages.set(page, perPage);
       }
+      for (const [page, textStyles] of styledPages) persistPagePatch(page, textStyles);
       updateEditSizeLabel(targets);
       positionElementToolbar();
     }

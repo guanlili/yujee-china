@@ -102,7 +102,7 @@ test('all browser render entrypoints request album fonts before final rendering'
   assert.match(sources.EditorPort, /useAlbumFonts\(/);
   assert.match(
     sources.EditorPort,
-    /page\.textsJson\s*=\s*\{ \.\.\.page\.textsJson, \[textKey\]: textEl\.textContent \?\? '' \};\s*ensureCurrentFonts\(\);/,
+    /page\.textsJson\s*=\s*\{ \.\.\.page\.textsJson, \[textKey\]: nextText \};[\s\S]{0,200}?ensureCurrentFonts\(\);/,
     'contenteditable commits must refresh the current subset',
   );
   assert.match(
