@@ -32,19 +32,19 @@ _ENDING_SLOTS = [{"id": "closing", "role": "body", "sample": "…"}]
 
 def test_sanitize_style_scene_fonts_and_color_snap():
     # 字体:AI 只给 scene,代码按 场景×语言 查表填(AI 不碰字体 id)。
+    # 3 章偏绿 → 主色系绿;日式清新是莫兰迪色板;同类 → 莫兰迪绿。AI 不给 hex。
+    greenish = [{"extractedColor": c} for c in ("#3f9d5a", "#4a8a3e", "#5fa872")]
     out = design._sanitize_style(
-        {"scene": "日式清新", "accentColor": "#2b4a6f"},
-        "zh",
+        {"scene": "日式清新", "colorMode": "analogous"}, "zh", greenish
     )
     assert out["fonts"] == {"title": "smiley-sans", "body": "noto-sans-sc", "decoration": "sacramento"}
-    # 点缀色染 title(归一到标题色板);正文/图注恒墨黑。
-    assert out["colors"]["title"] == "#3e5c76"  # #2b4a6f 归一到同色相石板蓝
+    assert out["colors"]["title"] == "#6e8570"  # 莫兰迪绿(主色系绿·同类)
     assert out["colors"]["body"] == "#1c1b18"
     assert out["colors"]["explain"] == "#1c1b18"
 
 
 def test_sanitize_style_unknown_scene_falls_back():
-    out = design._sanitize_style({"scene": "不存在的场景"}, "en")  # 无 accentColor → 全黑
+    out = design._sanitize_style({"scene": "不存在的场景"}, "en")  # 无章节色 → 点缀色也黑
     # 兜底场景(法式复古)的英文搭配。
     assert out["fonts"] == {"title": "playfair-display", "body": "eb-garamond", "decoration": "great-vibes"}
 
@@ -63,7 +63,7 @@ def test_run_design_happy_path(monkeypatch):
             return _completion(
                 {
                     "scene": "法式清新",
-                    "accentColor": "#2b4a6f",
+                    "colorMode": "complementary",
                 }
             )
         calls.append("copy")
@@ -87,8 +87,8 @@ def test_run_design_happy_path(monkeypatch):
     # 字数预算随槽规格进了文案调用的 payload(提示词约束;输出不硬截断)。
     copy_payload = json.loads(copy_user_payloads[0])
     assert result["fonts"] == {"title": "zcool-xiaowei", "body": "lxgw-wenkai", "decoration": "parisienne"}  # 法式清新·中文
-    assert result["colors"]["title"] == "#3e5c76"  # 点缀色 #2b4a6f 归一到同色相石板蓝
-    assert result["colors"]["body"] == "#1c1b18" and result["colors"]["explain"] == "#1c1b18"  # 其余黑
+    # chapter_contexts=["海边度假",""] 无 extractedColor → 主色系算不出 → 点缀色黑。
+    assert result["colors"]["body"] == "#1c1b18" and result["colors"]["explain"] == "#1c1b18"
     assert result["coverTexts"] == {"title": "海边的夏天"}
     assert result["endingTexts"] == {"closing": "潮声不止,记忆常新。"}
 
@@ -106,7 +106,7 @@ def test_run_design_sends_chapter_profiles_to_style_model(monkeypatch):
             return _completion(
                 {
                     "scene": "法式清新",
-                    "accentColor": "#2b4a6f",
+                    "colorMode": "analogous",
                 }
             )
         return _completion({"coverTexts": {}, "endingTexts": {}})
@@ -218,31 +218,36 @@ def test_resolve_scene_by_language_and_fallback():
     assert _resolve_scene(None, "zh")["title"] == "noto-serif-sc"
 
 
-def test_snap_color_hue_faithful_and_idempotent():
-    from src.workflows.core.design.handler import _CURATED_COLORS, _snap_color
+def test_dominant_hue_from_chapters():
+    from src.workflows.core.design.handler import _dominant_hue
 
-    # 幂等:板上的色原样通过。
-    for role, palette in _CURATED_COLORS.items():
-        for color in palette:
-            assert _snap_color(role, color) == color
-    # 色相忠实:钢蓝归石板蓝(曾因亮度加权归到墨绿 —— 色相跑偏是归一的头号禁忌)。
-    assert _snap_color("title", "#2b4a6f") == "#3e5c76"
-    # 荧光色被拽回稳色。
-    assert _snap_color("title", "#00ff00") == "#4a6653"
-    # 未知 role 不误伤。
-    assert _snap_color("unknown", "#123456") == "#123456"
+    # 3 绿 1 蓝 → 主色系绿(~135°)。
+    greenish = [{"extractedColor": c} for c in ("#3f9d5a", "#4a8a3e", "#5fa872", "#7fa8c9")]
+    assert 90 <= _dominant_hue(greenish) <= 165
+    # 近中性色(灰墙/白裙)不算数;全中性 → None。
+    assert _dominant_hue([{"extractedColor": "#888888"}, {"extractedColor": "#eeeeee"}]) is None
+    assert _dominant_hue([]) is None
 
 
-def test_body_palette_stays_dark_for_readability():
-    """正文板全深色是「正文比照片主色更深更稳」的代码兜底 —— 精调色板时
-    往正文板里塞浅色,这里会红。"""
-    from src.workflows.core.design.handler import _CURATED_COLORS
+def test_accent_color_mode_and_palette():
+    from src.workflows.core.design.handler import _accent_color
 
-    for color in _CURATED_COLORS["body"]:
-        v = color.lstrip("#")
-        r, g, b = int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16)
-        luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
-        assert luminance < 90, f"正文板出现浅色 {color}(亮度 {luminance:.0f}),白底长文不可读"
+    greenish = [{"extractedColor": c} for c in ("#3f9d5a", "#4a8a3e", "#5fa872")]
+    # 莫兰迪·同类 → 莫兰迪绿;互补 → 主色系互补方向(玫瑰/品红)。
+    assert _accent_color(greenish, "analogous", "morandi") == "#6e8570"
+    assert _accent_color(greenish, "complementary", "morandi") == "#a87d8a"
+    # 鲜亮色板同一主色系 → 鲜绿(饱和更高)。
+    assert _accent_color(greenish, "analogous", "vivid") == "#2f9550"
+    # 算不出主色系 → 点缀色落黑(以黑为主)。
+    assert _accent_color([{"extractedColor": "#888888"}], "analogous", "morandi") == "#1c1b18"
+
+
+def test_scene_palettes_are_valid():
+    """每个场景的 palette 必须是 morandi/vivid;守卫精调时写错。"""
+    from src.workflows.core.design.handler import _ACCENT_PALETTES, _SCENE_PRESETS
+
+    for name, preset in _SCENE_PRESETS.items():
+        assert preset.get("palette") in _ACCENT_PALETTES, f"{name} 的 palette 非法"
 
 
 def test_style_payload_carries_scenes_and_resolves_fonts(monkeypatch):
@@ -254,7 +259,7 @@ def test_style_payload_carries_scenes_and_resolves_fonts(monkeypatch):
         captured.append(kwargs["messages"][1]["content"])
         return {"choices": [{"message": {"content": json.dumps({
             "scene": "法式复古",
-            "accentColor": "#7a4b2a",
+            "colorMode": "analogous",
         })}}]}
 
     monkeypatch.setattr(ai_client, "chat_completion", fake_chat_completion)
