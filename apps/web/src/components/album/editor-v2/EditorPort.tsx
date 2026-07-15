@@ -2212,7 +2212,7 @@ function EditorBook({
     let canvasOriginY = 0;
     const shouldSkipCanvasPan = (target: HTMLElement | null) =>
       !target ||
-      !!target.closest('.el-bar, .img-edit-overlay, .ctrl-dock, .book-overview, .chapter-card, .mobile-chapter-bar, button, a, input, textarea, select, [contenteditable="true"]');
+      !!target.closest('.el-bar, .img-edit-overlay, .ctrl-dock, .zoom-ctrl, .book-overview, .chapter-card, .mobile-chapter-bar, button, a, input, textarea, select, [contenteditable="true"]');
     const onCanvasPointerDown = (e: PointerEvent) => {
       if (e.button !== 0 || shouldSkipCanvasPan(e.target as HTMLElement | null)) return;
       canvasDragging = true;
@@ -2834,29 +2834,23 @@ function EditorBook({
           <div className="ov-grid" id="ovGrid" />
         </div>
 
-        {/* 底部控制坞(2026-07-15 拍板):翻页和缩放合成一个 pill(纯数字指示);
-            视图切换单独一个 pill、按钮更大。迷你页面预览条已移除(20+ 页时是一排
-            完整页面 DOM,纯浪费性能),全书总览走画布模式。 */}
+        {/* 底部控制(2026-07-15 拍板):翻页 pill 居中挂在预览下方,缩放只留一个
+            百分比数字(点它复位;缩放操作走 ⌘/Ctrl+滚轮/捏合,+/− 按钮删除);
+            视图切换单独一个 pill 在右下、按钮更大。 */}
+        <div className="zoom-ctrl">
+          <span className="nav-seg flex items-center">
+            <button className="zoom-btn" data-thumbnav="-1" data-i18n-title="prevPage" title={locale === 'zh' ? '上一页' : 'Previous page'} aria-label={locale === 'zh' ? '上一页' : 'Previous page'}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="15 18 9 12 15 6" /></svg>
+            </button>
+            <span className="zoom-pct" id="thumbInd" style={{ fontVariantNumeric: 'tabular-nums' }}>1/3</span>
+            <button className="zoom-btn" data-thumbnav="1" data-i18n-title="nextPage" title={locale === 'zh' ? '下一页' : 'Next page'} aria-label={locale === 'zh' ? '下一页' : 'Next page'}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
+            <span className="zoom-sep" />
+          </span>
+          <span className="zoom-pct" id="zoomPct" data-action="resetZoom" data-i18n-title="resetZoom" title={locale === 'zh' ? '点击复位缩放' : 'Click to reset zoom'}>100%</span>
+        </div>
         <div className="ctrl-dock">
-          <div className="zoom-ctrl">
-            <span className="nav-seg flex items-center">
-              <button className="zoom-btn" data-thumbnav="-1" data-i18n-title="prevPage" title={locale === 'zh' ? '上一页' : 'Previous page'} aria-label={locale === 'zh' ? '上一页' : 'Previous page'}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="15 18 9 12 15 6" /></svg>
-              </button>
-              <span className="zoom-pct" id="thumbInd" style={{ fontVariantNumeric: 'tabular-nums' }}>1/3</span>
-              <button className="zoom-btn" data-thumbnav="1" data-i18n-title="nextPage" title={locale === 'zh' ? '下一页' : 'Next page'} aria-label={locale === 'zh' ? '下一页' : 'Next page'}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="9 18 15 12 9 6" /></svg>
-              </button>
-              <span className="zoom-sep" />
-            </span>
-            <button className="zoom-btn" data-zoom="-0.25" data-i18n-title="zoomOut" title="缩小" aria-label="缩小">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            </button>
-            <span className="zoom-pct" id="zoomPct" data-action="resetZoom" title="100%">100%</span>
-            <button className="zoom-btn" data-zoom="0.25" data-i18n-title="zoomIn" title="放大" aria-label="放大">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            </button>
-          </div>
           <div className="view-ctrl">
             {/* 视图切换两档:预览模式(翻页书)/ 画布模式(无限画布)。悬停气泡由
                 [data-tip] CSS 出;运行时换语言走 data-i18n-tip(setLang 同步)。 */}
