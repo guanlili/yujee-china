@@ -40,3 +40,15 @@ test('底部缩略图条保留 thumb 降级(那才是真缩略图)', () => {
   const thumbs = fnBody('paintThumbCell');
   assert.match(thumbs, /thumb:\s*true/);
 });
+
+test('画板 will-change 只在手势窗口内挂,不得常驻(常驻 = 放大永远糊)', () => {
+  // 常驻 will-change:transform 让合成器按 ~200px 布局尺寸缓存位图,放大 3x 是在
+  // 放大低分辨率快照。必须手势中挂(.ov-gesturing)、停手后摘掉触发重新光栅化。
+  const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
+  const ovGridBase = /\.ov-grid\{[^}]*\}/.exec(css)?.[0] ?? '';
+  assert.ok(ovGridBase, '.ov-grid base rule must exist');
+  assert.doesNotMatch(ovGridBase, /will-change/, '.ov-grid 基础规则不得常驻 will-change');
+  assert.match(css, /\.ov-grid\.ov-gesturing\{[^}]*will-change:transform/, '手势态才挂 will-change');
+  assert.match(src, /classList\.add\('ov-gesturing'\)/);
+  assert.match(src, /classList\.remove\('ov-gesturing'\)/);
+});

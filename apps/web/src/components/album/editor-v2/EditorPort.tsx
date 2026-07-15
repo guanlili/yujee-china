@@ -1839,8 +1839,21 @@ function EditorBook({
     const OV_ZMIN = 0.2, OV_ZMAX = 3;
     const ovGridEl = byId('ovGrid');
     const ovStageEl = byId('bookOverview');
+    // 手势窗口内挂 will-change(合成层跟手),停 180ms 摘掉让浏览器按最终缩放比
+    // 重新光栅化 —— 否则画板放大是在放大低分辨率位图快照,永远糊(见 CSS 注释)。
+    let ovGestureTimer: number | null = null;
+    function markOvGesture() {
+      if (!ovGridEl) return;
+      ovGridEl.classList.add('ov-gesturing');
+      if (ovGestureTimer) window.clearTimeout(ovGestureTimer);
+      ovGestureTimer = window.setTimeout(() => {
+        ovGridEl.classList.remove('ov-gesturing');
+        ovGestureTimer = null;
+      }, 180);
+    }
     function applyOvTransform() {
       if (ovGridEl) {
+        markOvGesture();
         ovGridEl.style.transformOrigin = '0 0';
         ovGridEl.style.transform = `translate(${ovPanX}px, ${ovPanY}px) scale(${ovZoom})`;
       }

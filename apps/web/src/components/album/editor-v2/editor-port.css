@@ -263,7 +263,12 @@
 .editor-port.overview-on .book{ display:none; }
 .editor-port.overview-on .book-overview{ display:block; }
 .editor-port.overview-on .thumb-strip{ display:none; }
-.editor-port .ov-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:24px; align-content:start; max-width:1100px; margin:0 auto; transform-origin:0 0; will-change:transform; }
+/* ⚠️ will-change 只在手势进行中挂(.ov-gesturing,JS 手势停 180ms 后摘):常驻
+   will-change 会让合成器按布局尺寸(~200px 格)缓存一张位图,放大 3x 就是放大
+   低分辨率快照 —— 画板放大永远糊。摘掉后浏览器按最终缩放比重新光栅化,文字
+   回矢量清晰度。 */
+.editor-port .ov-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:24px; align-content:start; max-width:1100px; margin:0 auto; transform-origin:0 0; }
+.editor-port .ov-grid.ov-gesturing{ will-change:transform; }
 /* 性能:视口外的总览格跳过渲染/布局(20+ 页时总览是一堵完整页面 DOM 墙)。
    contain-intrinsic-size 撑住占位高度(300px 宽列 × 1.414 比例 ≈ 212 + 页签),
    避免懒渲染时占位塌陷。content-visibility 的可见性判定基于 transform 后的
