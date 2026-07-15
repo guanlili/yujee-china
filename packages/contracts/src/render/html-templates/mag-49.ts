@@ -22,11 +22,11 @@ export const MAG_49_HTML = `<div data-template="mag-49" style="position:relative
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>
 
-  <div data-text-key="explain" style="position:absolute;left:60px;top:60px;width:320px;font-size:14px;line-height:1.6;letter-spacing:0.02em;color:{{COLOR:explain|#5a574f}};font-family:{{FONT:explain|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:26px">{{TEXT:explain}}</div>
+  <div data-text-key="body" style="position:absolute;left:60px;top:60px;width:320px;font-size:14px;line-height:1.6;letter-spacing:0.02em;color:{{COLOR:body|#5a574f}};font-family:{{FONT:body|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:28px">{{TEXT:body}}</div>
 
-  <div data-text-key="explain2" style="position:absolute;left:60px;top:90px;width:320px;font-size:14px;line-height:1.6;letter-spacing:0.02em;color:{{COLOR:explain2|#5a574f}};font-family:{{FONT:explain2|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:26px">{{TEXT:explain2}}</div>
+  <div data-text-key="body2" style="position:absolute;left:60px;top:90px;width:320px;font-size:14px;line-height:1.6;letter-spacing:0.02em;color:{{COLOR:body2|#5a574f}};font-family:{{FONT:body2|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:28px">{{TEXT:body2}}</div>
 
-  <div data-text-key="explain3" style="position:absolute;left:260px;top:60px;width:320px;font-size:18px;line-height:1.7;letter-spacing:0.02em;color:{{COLOR:explain3|#3a3833}};font-family:{{FONT:explain3|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:26px">{{TEXT:explain3}}</div>
+  <div data-text-key="body3" style="position:absolute;left:460px;top:60px;width:320px;font-size:18px;line-height:1.7;letter-spacing:0.02em;color:{{COLOR:body3|#3a3833}};font-family:{{FONT:body3|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:28px">{{TEXT:body3}}</div>
 
-  <div data-text-key="explain4" style="position:absolute;left:260px;top:90px;width:320px;font-size:18px;line-height:1.7;letter-spacing:0.02em;color:{{COLOR:explain4|#3a3833}};font-family:{{FONT:explain4|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:26px">{{TEXT:explain4}}</div>
+  <div data-text-key="body4" style="position:absolute;left:460px;top:90px;width:320px;font-size:18px;line-height:1.7;letter-spacing:0.02em;color:{{COLOR:body4|#3a3833}};font-family:{{FONT:body4|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:28px">{{TEXT:body4}}</div>
 </div>`;

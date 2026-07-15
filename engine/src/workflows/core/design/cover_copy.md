@@ -4,8 +4,8 @@
 
 # 输入
 
-- `language`:zh 或 en —— 用这个语言写。
-- `albumTitle`:相册标题。**非空时封面标题槽必须原样使用它,不要改写**;为空才自己起一个短标题。
+- `language`:用模板规定的语言写。用户语言是{language}
+- `albumTitle`:相册标题。**非空时封面标题槽原样使用它**;为空才起一个短标题。
 - `chapterContexts`:各章背景,提炼全书的情绪和主题。
 - `coverSlots` / `endingSlots`:两页各自的文字槽规格 [{id, role, sample}]。sample 是风格参考,别照抄。
 

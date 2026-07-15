@@ -3,7 +3,7 @@
   "category": "interior",
   "images": [
     {
-      "id": "image"
+      "id": "image", "orientation": ["portrait"]
     }
   ],
   "texts": [
@@ -15,8 +15,8 @@
       "sample": "All Alone"
     },
     {
-      "id": "explain",
-      "role": "explain",
+      "id": "body",
+      "role": "body",
       "lang": "user",
       "sample": "一个人走了很久，才听见自己心里的声音。"
     }

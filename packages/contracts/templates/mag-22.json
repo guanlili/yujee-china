@@ -23,8 +23,8 @@
       "lang": "user", "sample": "I did not want to make this book. I thought a year this ordinary was not worth printing. Then I laid the photographs"
     },
     {
-      "id": "explain",
-      "role": "explain",
+      "id": "title2",
+      "role": "title",
       "lang": "user",
       "sample": "Steven D.K"
     },
@@ -34,8 +34,8 @@
       "lang": "user", "sample": "She printed forty. I would have printed four hundred. We argued about it for a week, and in the end she let me keep the one of the cat under the neighbour's car."
     },
     {
-      "id": "explain2",
-      "role": "explain",
+      "id": "title3",
+      "role": "title",
       "lang": "user",
       "sample": "July Zh"
     }

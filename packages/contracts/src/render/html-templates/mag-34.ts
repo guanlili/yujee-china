@@ -5,7 +5,7 @@
 // color / box-sizing，此处照抄不加。
 //
 // 槽位：title（顶部居中大标题，variableDecor：色/字体可主题）、image（中央竖图）、
-// explain（底部居中图注，非 variableDecor 但 React 走 resolveThemeCarrier，给
+// body（底部居中图注，非 variableDecor 但 React 走 resolveThemeCarrier，给
 // COLOR/FONT token 不加 data-variable-decor）。JSON 三槽全渲染，无省略。
 const SANS_EN = '&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif';
 const PLAYFAIR = '&quot;Playfair Display&quot;, &quot;Noto Serif SC&quot;, &quot;Songti SC&quot;, serif';
@@ -15,5 +15,5 @@ export const MAG_34_HTML = `<div data-template="mag-34" style="position:relative
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>
   <div data-text-key="title" data-variable-decor style="position:absolute;left:35px;top:187px;width:726px;font-family:{{FONT:title|${PLAYFAIR}}};font-weight:800;font-size:56px;line-height:1.05;color:{{COLOR:title|#1c1b18}};text-align:center;white-space:pre-wrap;overflow:hidden">{{TEXT:title}}</div>
-  <div data-text-key="explain" style="position:absolute;left:44px;top:970px;width:707px;font-family:{{FONT:explain|${SANS_EN}}};font-weight:400;font-size:21px;line-height:1.35;color:{{COLOR:explain|#1c1b18}};text-align:center;white-space:pre-wrap;overflow:hidden">{{TEXT:explain}}</div>
+  <div data-text-key="body" style="position:absolute;left:140px;top:970px;width:500px;font-family:{{FONT:body|${SANS_EN}}};font-weight:400;font-size:21px;line-height:1.35;color:{{COLOR:body|#1c1b18}};text-align:center;white-space:pre-wrap;overflow:hidden;height:50px">{{TEXT:body}}</div>
 </div>`;

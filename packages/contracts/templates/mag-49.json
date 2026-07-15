@@ -13,9 +13,9 @@
       "lang": "user",
       "variableDecor": true, "sample": "New Life Birth"
     },
-    { "id": "explain", "role": "explain", "lang": "user", "sample": "William" },
-    { "id": "explain2", "role": "explain", "lang": "user", "sample": "Jan.28 1997" },
-    { "id": "explain3", "role": "explain", "lang": "user", "sample": "los ageles" },
-    { "id": "explain4", "role": "explain", "lang": "user", "sample": "Snow night" }
+    { "id": "body", "role": "body", "lang": "user", "sample": "William" },
+    { "id": "body2", "role": "body", "lang": "user", "sample": "Jan.28 1997" },
+    { "id": "body3", "role": "body", "lang": "user", "sample": "los ageles" },
+    { "id": "body4", "role": "body", "lang": "user", "sample": "Snow night" }
   ]
 }

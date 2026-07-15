@@ -726,8 +726,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "sample": "I did not want to make this book. I thought a year this ordinary was not worth printing. Then I laid the photographs"
       },
       {
-        "id": "explain",
-        "role": "explain",
+        "id": "title2",
+        "role": "title",
         "lang": "user",
         "sample": "Steven D.K"
       },
@@ -738,8 +738,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "sample": "She printed forty. I would have printed four hundred. We argued about it for a week, and in the end she let me keep the one of the cat under the neighbour's car."
       },
       {
-        "id": "explain2",
-        "role": "explain",
+        "id": "title3",
+        "role": "title",
         "lang": "user",
         "sample": "July Zh"
       }
@@ -1061,7 +1061,10 @@ export const TEMPLATES: Record<string, TemplateDef> = {
     "category": "interior",
     "images": [
       {
-        "id": "image"
+        "id": "image",
+        "orientation": [
+          "portrait"
+        ]
       }
     ],
     "texts": [
@@ -1073,8 +1076,8 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "sample": "All Alone"
       },
       {
-        "id": "explain",
-        "role": "explain",
+        "id": "body",
+        "role": "body",
         "lang": "user",
         "sample": "一个人走了很久，才听见自己心里的声音。"
       }
@@ -1450,26 +1453,26 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "sample": "New Life Birth"
       },
       {
-        "id": "explain",
-        "role": "explain",
+        "id": "body",
+        "role": "body",
         "lang": "user",
         "sample": "William"
       },
       {
-        "id": "explain2",
-        "role": "explain",
+        "id": "body2",
+        "role": "body",
         "lang": "user",
         "sample": "Jan.28 1997"
       },
       {
-        "id": "explain3",
-        "role": "explain",
+        "id": "body3",
+        "role": "body",
         "lang": "user",
         "sample": "los ageles"
       },
       {
-        "id": "explain4",
-        "role": "explain",
+        "id": "body4",
+        "role": "body",
         "lang": "user",
         "sample": "Snow night"
       }

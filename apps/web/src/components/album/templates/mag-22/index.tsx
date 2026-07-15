@@ -16,9 +16,9 @@ export function WebMag22({ data, imagePos }: TemplateRenderProps) {
   const year = new Date().getFullYear();
   const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-22', 'title'));
   const body1Theme = resolveThemeCarrier(data, 'body', contractRole('mag-22', 'body'));
-  const explain1Theme = resolveThemeCarrier(data, 'explain', contractRole('mag-22', 'explain'));
+  const title21Theme = resolveThemeCarrier(data, 'title2', contractRole('mag-22', 'title2'));
   const body2Theme = resolveThemeCarrier(data, 'body2', contractRole('mag-22', 'body2'));
-  const explain2Theme = resolveThemeCarrier(data, 'explain2', contractRole('mag-22', 'explain2'));
+  const title3Theme = resolveThemeCarrier(data, 'title3', contractRole('mag-22', 'title3'));
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 合集主标题 */}
@@ -27,12 +27,12 @@ export function WebMag22({ data, imagePos }: TemplateRenderProps) {
       {/* 故事一：图 + 正文 + 署名 */}
       <WebImage src={d['image1']} style={{ position: 'absolute', left: 72, top: 272, width: 240, height: 249, objectFit: 'cover' }} position={imagePos?.['image1']} slotId="image1" />
       <div style={{ position: 'absolute', left: 354, top: 296, width: 314, height: 170, fontFamily: body1Theme.webFontFamily, fontSize: 18, lineHeight: 1.6, color: body1Theme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body']}</div>
-      <div style={{ position: 'absolute', left: 352, top: 478, width: 304, height: 28, fontFamily: explain1Theme.webFontFamily, fontWeight: 700, fontSize: 24, lineHeight: 1.1, color: explain1Theme.accentColor ?? COLORS.ink, overflow: 'hidden' }}>{d['explain']}</div>
+      <div style={{ position: 'absolute', left: 352, top: 478, width: 304, height: 28, fontFamily: title21Theme.webFontFamily, fontWeight: 700, fontSize: 24, lineHeight: 1.1, color: title21Theme.accentColor ?? COLORS.ink, overflow: 'hidden' }}>{d['title2']}</div>
 
       {/* 故事二：图 + 正文 + 署名 */}
       <WebImage src={d['image2']} style={{ position: 'absolute', left: 72, top: 536, width: 240, height: 244, objectFit: 'cover' }} position={imagePos?.['image2']} slotId="image2" />
       <div style={{ position: 'absolute', left: 351, top: 558, width: 314, height: 170, fontFamily: body2Theme.webFontFamily, fontSize: 18, lineHeight: 1.6, color: body2Theme.accentColor ?? COLORS.ink, whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body2']}</div>
-      <div style={{ position: 'absolute', left: 354, top: 738, width: 304, height: 28, fontFamily: explain2Theme.webFontFamily, fontWeight: 700, fontSize: 24, lineHeight: 1.1, color: explain2Theme.accentColor ?? COLORS.ink, overflow: 'hidden' }}>{d['explain2']}</div>
+      <div style={{ position: 'absolute', left: 354, top: 738, width: 304, height: 28, fontFamily: title3Theme.webFontFamily, fontWeight: 700, fontSize: 24, lineHeight: 1.1, color: title3Theme.accentColor ?? COLORS.ink, overflow: 'hidden' }}>{d['title3']}</div>
 
       {/* ── 固定品牌落款（非槽位，同 mag-20） ── */}
       {/* 左下角：品牌 logo */}

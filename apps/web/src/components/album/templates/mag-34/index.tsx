@@ -13,7 +13,7 @@ const INK = '#1c1b18';
 export function WebMag34({ data, imagePos }: TemplateRenderProps) {
   const d = data as Record<string, string>;
   const titleTheme = resolveThemeCarrier(data, 'title', contractRole('mag-34', 'title'));
-  const explainTheme = resolveThemeCarrier(data, 'explain', contractRole('mag-34', 'explain'));
+  const bodyTheme = resolveThemeCarrier(data, 'body', contractRole('mag-34', 'body'));
   return (
     <div style={{ position: 'relative', width: PAGE.width, height: PAGE.height, background: '#FFFFFF', overflow: 'hidden' }}>
       {/* 中央竖图（先渲染，文字叠其上） */}
@@ -23,7 +23,7 @@ export function WebMag34({ data, imagePos }: TemplateRenderProps) {
       <div style={{ position: 'absolute', left: 35, top: 187, width: 726, fontFamily: titleTheme.webFontFamily, fontWeight: 800, fontSize: 56, lineHeight: 1.05, color: titleTheme.accentColor ?? INK, textAlign: 'center', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['title']}</div>
 
       {/* 底部居中图注 */}
-      <div style={{ position: 'absolute', left: 44, top: 970, width: 707, fontFamily: explainTheme.webFontFamily, fontWeight: 400, fontSize: 21, lineHeight: 1.35, color: explainTheme.accentColor ?? INK, textAlign: 'center', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['explain']}</div>
+      <div style={{ position: 'absolute', left: 44, top: 970, width: 707, fontFamily: bodyTheme.webFontFamily, fontWeight: 400, fontSize: 21, lineHeight: 1.35, color: bodyTheme.accentColor ?? INK, textAlign: 'center', whiteSpace: 'pre-wrap', overflow: 'hidden' }}>{d['body']}</div>
     </div>
   );
 }
