@@ -417,7 +417,7 @@ function EditorTopbar({
   void coordinator; // the export button's data-action is wired by EditorBook via the shared root
   // 账户菜单统一为 <UserMenu>(与 landing / my-albums 同一组件):真实姓名/邮箱、
   // 积分余额、我的相册、消耗记录、反馈、退出全在。此前编辑页是手搓静态 demo
-  // (Liam Chen / liam@example.com)+ 命令式补真名 + 命令式注入语言行,三套逻辑
+  // (写死的占位姓名/邮箱)+ 命令式补真名 + 命令式注入语言行,三套逻辑
   // 打架且缺积分/相册/记录。showLangSwitch 保留编辑页菜单内的 EN/中文 切换。
   const session = useChromeSession();
   return (

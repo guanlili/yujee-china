@@ -32,7 +32,9 @@ test('editor shell uses the supplied unified top chrome and canvas hints', () =>
   assert.match(src, /className="page-glow"/, 'editor should render the shared top glow');
   assert.match(src, /className="topbar nav-shell sticky top-0 z-50 h-14/, 'topbar should use the refreshed translucent nav shell');
   assert.match(src, /height: 'calc\(100vh - 56px\)'/, 'workspace height should match the 56px refreshed topbar');
-  assert.match(editorPort, /<UserAvatar initial="L" size=\{40\}/, 'user avatar should use the shared black avatar with gradient ring');
+  // 账户菜单统一为 <UserMenu>(与 landing/my-albums 同组件);头像在 UserMenu 内部,
+  // 编辑页开 showLangSwitch 保留菜单内 EN/中文 切换。
+  assert.match(editorPort, /<UserMenu user=\{session\.user\} locale=\{locale\} showLangSwitch \/>/, 'editor account menu should use the unified UserMenu');
   assert.match(editorPort, /<BuildingCanvasState locale=\{locale\} \/>/, 'building editor canvas should stay generic while chat shows AI progress');
   assert.match(editorPort, /className="canvas-hint"/, 'canvas should expose the drag/zoom/edit hint from the design');
   assert.match(editorPort, /let panX = 0;\s*let panY = 0;/, 'canvas should keep whole-board pan state');
