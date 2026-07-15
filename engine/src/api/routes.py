@@ -164,6 +164,11 @@ async def submit_design(req: DesignRequest) -> dict[str, Any]:
         chapter_contexts=list(req.chapterContexts),
         cover_slots=[slot.model_dump(mode="json", exclude_none=True) for slot in req.coverSlots],
         ending_slots=[slot.model_dump(mode="json", exclude_none=True) for slot in req.endingSlots],
+        chapter_profiles=(
+            [profile.model_dump(mode="json") for profile in req.chapterProfiles]
+            if req.chapterProfiles is not None
+            else None
+        ),
     )
     log.info(
         "v3_design.done",

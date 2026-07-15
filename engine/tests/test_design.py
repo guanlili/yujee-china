@@ -84,6 +84,63 @@ def test_run_design_happy_path(monkeypatch):
     assert result["endingTexts"] == {"closing": "潮声不止,记忆常新。"}
 
 
+def test_run_design_sends_chapter_profiles_to_style_model(monkeypatch):
+    # 每章画像(采访背景+识图关键词+分组取色)进 design_style 载荷;老 caller 只送
+    # contexts 时降级为空 keywords/null 色。
+    _set_keys(monkeypatch)
+    style_user_payloads: list[str] = []
+
+    async def fake_completion(**kwargs):
+        system = kwargs["messages"][0]["content"]
+        if "风格设计师" in system:
+            style_user_payloads.append(kwargs["messages"][1]["content"])
+            return _completion(
+                {
+                    "fonts": {"title": "zcool-xiaowei", "body": "lxgw-wenkai", "decoration": "smiley-sans"},
+                    "colors": {"title": "#2b4a6f", "body": "#1c1b18", "explain": "#6b675f"},
+                }
+            )
+        return _completion({"coverTexts": {}, "endingTexts": {}})
+
+    monkeypatch.setattr(ai_client, "chat_completion", fake_completion)
+
+    profiles = [
+        {"chapterContext": "海边度假", "keywords": ["沙滩", "日落"], "extractedColor": "#c96f3b"},
+        {"chapterContext": "", "keywords": ["雪山"], "extractedColor": None},
+    ]
+    asyncio.run(
+        design.run_design(
+            language="zh",
+            album_title="",
+            chapter_contexts=["海边度假", ""],
+            cover_slots=_COVER_SLOTS,
+            ending_slots=_ENDING_SLOTS,
+            chapter_profiles=profiles,
+        )
+    )
+
+    style_payload = json.loads(style_user_payloads[0])
+    assert style_payload["chapters"] == profiles
+    assert "chapterContexts" not in style_payload
+    assert "fontMenu" in style_payload
+
+    # 老 caller:不送 profiles → 由 contexts 降级组画像。
+    style_user_payloads.clear()
+    asyncio.run(
+        design.run_design(
+            language="zh",
+            album_title="",
+            chapter_contexts=["公园散步"],
+            cover_slots=_COVER_SLOTS,
+            ending_slots=_ENDING_SLOTS,
+        )
+    )
+    fallback_payload = json.loads(style_user_payloads[0])
+    assert fallback_payload["chapters"] == [
+        {"chapterContext": "公园散步", "keywords": [], "extractedColor": None}
+    ]
+
+
 def test_run_design_falls_back_and_uses_album_title(monkeypatch):
     _set_keys(monkeypatch)
 

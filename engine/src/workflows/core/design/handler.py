@@ -95,14 +95,15 @@ def _slot_texts(parsed: Any, key: str, slots: list[dict[str, Any]]) -> dict[str,
 
 
 async def _select_style(
-    language: str, album_title: str, chapter_contexts: list[str]
+    language: str, album_title: str, chapter_profiles: list[dict[str, Any]]
 ) -> tuple[dict[str, dict[str, str]], str | None]:
     settings = get_settings()
     slot = ark_vision_slot(settings)  # 文本任务用同一 ark slot(生产=豆包)
     payload = {
         "language": language,
         "albumTitle": album_title,
-        "chapterContexts": chapter_contexts,
+        # 每章画像:采访背景 + 识图关键词 + 分组取色(照片真实色调的硬信号)。
+        "chapters": chapter_profiles,
         "fontMenu": _FONT_MENU,
     }
     messages = [
@@ -167,12 +168,24 @@ async def run_design(
     chapter_contexts: list[str],
     cover_slots: list[dict[str, Any]],
     ending_slots: list[dict[str, Any]],
+    chapter_profiles: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """设计决策:并发跑风格与文案,任一失败落回默认值(不阻断)。"""
+    """设计决策:并发跑风格与文案,任一失败落回默认值(不阻断)。
+
+    chapter_profiles(每章 chapterContext+keywords+extractedColor)优先;老 caller
+    只送 chapter_contexts 时降级为纯背景画像。"""
+    profiles = (
+        chapter_profiles
+        if chapter_profiles is not None
+        else [
+            {"chapterContext": ctx, "keywords": [], "extractedColor": None}
+            for ctx in chapter_contexts
+        ]
+    )
 
     async def style_safe() -> tuple[dict[str, dict[str, str]], str | None]:
         try:
-            return await _select_style(language, album_title, chapter_contexts)
+            return await _select_style(language, album_title, profiles)
         except Exception as exc:  # noqa: BLE001 — 设计环节绝不阻断
             log.warning("design.style_fallback", error=str(exc))
             return _default_style(language), None

@@ -641,7 +641,7 @@ export const albumService = {
   async saveChapterContexts(
     userId: string,
     albumId: string,
-    contexts: { chapterId: string; chapterContext: string }[],
+    contexts: { chapterId: string; chapterContext: string; place?: string }[],
     // 采访问答也存进 album_messages(带 chapterId),loadHistory 才能在刷新/重进后重建对话
     // 历史(否则收集环节的 AI 问 + 用户答只在 DOM,刷新即失)。可选:跳过采访不传 messages。
     messages?: { chapterId: string; role: 'user' | 'assistant'; content: string }[],
@@ -652,7 +652,7 @@ export const albumService = {
 
     const expectedIds = new Set(normalized.tree.chapters.map((ch) => ch.chapterId));
     const seen = new Set<string>();
-    const byId = new Map<string, string>();
+    const byId = new Map<string, { chapterContext: string; place?: string }>();
     for (const entry of contexts) {
       if (!expectedIds.has(entry.chapterId)) {
         throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
@@ -662,13 +662,23 @@ export const albumService = {
       }
       seen.add(entry.chapterId);
       // 裁到 500(与 V3Chapter.chapterContext 上限对齐);空串合法(=该章跳过采访)。
-      byId.set(entry.chapterId, entry.chapterContext.slice(0, 500));
+      // place 是城市级地名文字(V3Chapter.place,§3:坐标不出浏览器,地名文字可出),
+      // 裁到 100;未传 = 不改该章现有 place。
+      byId.set(entry.chapterId, {
+        chapterContext: entry.chapterContext.slice(0, 500),
+        ...(entry.place !== undefined ? { place: entry.place.slice(0, 100) } : {}),
+      });
     }
 
     const nextTree: typeof normalized.tree = {
       chapters: normalized.tree.chapters.map((ch) => {
-        const ctx = byId.get(ch.chapterId);
-        return ctx !== undefined ? { ...ch, chapterContext: ctx } : ch;
+        const update = byId.get(ch.chapterId);
+        if (update === undefined) return ch;
+        return {
+          ...ch,
+          chapterContext: update.chapterContext,
+          ...(update.place !== undefined ? { place: update.place } : {}),
+        };
       }),
     };
 
@@ -938,6 +948,8 @@ export const albumService = {
     const chapters = Array.isArray((root?.tree as { chapters?: unknown })?.chapters)
       ? ((root!.tree as { chapters: unknown[] }).chapters as Array<{
           chapterContext?: string;
+          keywords?: string[];
+          extractedColor?: string | null;
           photos?: Array<{ photoId: string }>;
         }>)
       : [];
@@ -958,6 +970,13 @@ export const albumService = {
       language: input.language,
       albumTitle: (album.title ?? '').slice(0, 120),
       chapterContexts: chapters.map((c) => c.chapterContext ?? ''),
+      // 每章设计画像:采访背景 + 识图关键词(keywords)+ 分组代码取色(extractedColor)。
+      // design_style 据此贴合照片真实色调/题材选字体颜色;老树缺字段则给空/null。
+      chapterProfiles: chapters.map((c) => ({
+        chapterContext: c.chapterContext ?? '',
+        keywords: Array.isArray(c.keywords) ? c.keywords : [],
+        extractedColor: c.extractedColor ?? null,
+      })),
       coverSlots: slotSpecs(input.coverTemplateId),
       endingSlots: slotSpecs(input.endingTemplateId),
     });

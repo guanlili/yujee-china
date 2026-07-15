@@ -123,6 +123,8 @@ export interface BrowserLayoutPatchEntry {
 export interface ChapterContextEntry {
   chapterId: string;
   chapterContext: string;
+  // 拍摄地点:城市级地名文字(clusterId 预填反查所得,坐标不出浏览器)。可选。
+  place?: string;
 }
 export interface ChapterInterviewMessage {
   chapterId: string;

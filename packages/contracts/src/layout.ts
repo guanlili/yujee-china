@@ -120,9 +120,11 @@ export type AlbumLayoutPlan = z.infer<typeof AlbumLayoutPlan>;
 //   **扁平渲染契约不新增任何树形字段**。故 V3 章节树字段全部落在这里、不进 `Page` /
 //   `AlbumLayoutPlan`。
 //
-// §3 隐私红线:**绝不含 `location`/`place`/GPS/坐标/经纬度任何真实位置字段**。Stage 0 只读
-//   `takenAt`(architecture §3 / §6.8 第 3 条);分章另可借浏览器派生的不透明 `clusterId`
-//   共址/共时标签(#232,见 analyze 入参,绝非坐标)+ 画面整体性信号。允许 clusterId,坐标仍禁。
+// §3 隐私红线(2026-07 更新版:「地名文字可出、坐标止步浏览器」):**坐标(lat/lng/GPS/
+//   经纬度)任何形式仍严禁**;**城市级地名字符串**已放开 —— 浏览器本地反地理编码
+//   (lib/photo/geocode.ts)得出的「杭州」这类文字可以入树(`V3Chapter.place` +
+//   `chapterContext` 前缀),坐标本身绝不离开浏览器。分章另可借浏览器派生的不透明
+//   `clusterId` 共址/共时标签(#232,见 analyze 入参,绝非坐标)。
 
 /**
  * 章节点缀色(accentColor):每章一个主色,theme 环节由识图模型挑代表图 + 取色工具采样得出,
@@ -135,8 +137,9 @@ export type AccentColor = z.infer<typeof AccentColor>;
  * 章节树里的单张照片(v3-requirements §4.1)。
  *   LLM 写:`sceneDescription`(一句画面描述)。
  *   代码批量填:`width`/`height`/`orientation`(输入宽高算)、`takenAt`(EXIF)。
- * ⚠️ 无 `location`/`place`/GPS/坐标/经纬度任何真实位置字段(§3 隐私)。簇分组所用的不透明
- *   `clusterId`(#232)只活在 analyze 入参,绝非坐标;此处章节树不携带它。
+ * ⚠️ 坐标(lat/lng/GPS/经纬度)任何形式禁止(§3 隐私);地名走章级 `V3Chapter.place`
+ *   (城市级文字),照片级不重复存。簇分组所用的不透明 `clusterId`(#232)只活在
+ *   analyze 入参,绝非坐标;此处章节树不携带它。
  */
 export const V3ChapterPhoto = z
   .object({
@@ -166,6 +169,13 @@ export const V3Chapter = z
     // Web 把已知的 EXIF 时间/反地理编码地名拼成前缀(如「时间:… 地点:…」),后接用户原话。
     // 迁移字段:老树无此键(default "");坐标绝不进此字段(仅地名文字,§3 隐私)。
     chapterContext: z.string().max(500).default(""),
+    // 拍摄地点:城市级地名字符串(如「杭州」「Kyoto」),浏览器本地反地理编码得出
+    // (坐标不出浏览器,§3 新口径「地名文字可出」)。章不跨 cluster(#232),故地名挂章级,
+    // 写文案时逐照片下发。采访提交时随 chapterContext 一并写回;跳过采访/老树 => ""。
+    place: z.string().max(100).default(""),
+    // 识图分章关键词(chapter_describer 产物):此前 analyze 用完即丢,现在落树,
+    // 设计环节(字体/颜色决策)当每组内容画像用。老树无此键 => []。
+    keywords: z.array(z.string().max(40)).default([]),
     // Stage1 extracted source color. Distinct from final theme `accentColor`.
     // Migration field: older trees omit it; Stage1 PR249 trees may carry null.
     extractedColor: AccentColor.nullish(),

@@ -302,15 +302,29 @@ export function buildJudgeLayoutRequest(input: {
   units: BrowserJudgeUnit[];
   tree?: unknown; // draft tree:按 chapterId 给每个 unit 补写文素材(评委选完当场写文案)。
 }): JudgeLayoutRequest {
-  // 从 draft tree 建 chapterId → {photos(sceneDescription), chapterContext} 索引。
+  // 从 draft tree 建 chapterId → {photos(sceneDescription/takenAt/place), chapterContext} 索引。
   // 浏览器传的 units 只有 candidates/缩略图,不持 tree —— 写文素材由 Web 从 draft 补(§3 数据归属)。
-  const byChapter = new Map<string, { photos: { photoId: string; sceneDescription: string }[]; chapterContext: string }>();
+  // takenAt 取自树上照片(EXIF);place 是章级城市地名(V3Chapter.place,章不跨 cluster),
+  // 逐照片同值下发给写文案 AI。
+  const byChapter = new Map<
+    string,
+    {
+      photos: { photoId: string; sceneDescription: string; takenAt: string | null; place: string | null }[];
+      chapterContext: string;
+    }
+  >();
   if (input.tree !== undefined) {
     const tree = readDraftTree(input.tree);
     for (const chapter of tree.chapters) {
+      const place = chapter.place?.trim() ? chapter.place.trim() : null;
       byChapter.set(chapter.chapterId, {
         chapterContext: chapter.chapterContext ?? '',
-        photos: chapter.photos.map((p) => ({ photoId: p.photoId, sceneDescription: p.sceneDescription ?? '' })),
+        photos: chapter.photos.map((p) => ({
+          photoId: p.photoId,
+          sceneDescription: p.sceneDescription ?? '',
+          takenAt: p.takenAt ?? null,
+          place,
+        })),
       });
     }
   }

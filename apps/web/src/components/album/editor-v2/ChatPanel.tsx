@@ -1055,7 +1055,13 @@ export function ChatPanel({
           .map((q) => ({ chapterId: cid, role: 'assistant' as const, content: q }));
       if (answer.trim()) interviewMsgs.push({ chapterId: cid, role: 'user', content: answer.trim() });
       try {
-        await postChapterContexts(albumId, [{ chapterId: cid, chapterContext: context }], interviewMsgs);
+        // place 随采访一并写回树(V3Chapter.place):城市级地名文字,写文案 AI 逐照片用。
+        const place = pending.input.place?.trim();
+        await postChapterContexts(
+          albumId,
+          [{ chapterId: cid, chapterContext: context, ...(place ? { place } : {}) }],
+          interviewMsgs,
+        );
       } catch {
         // 采访可选:存失败不阻塞,照样往下走。
       }

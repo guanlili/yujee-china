@@ -22,6 +22,8 @@ const TREE = {
       chapterId: 'ch_1',
       description: '',
       chapterContext: '',
+      place: '',
+      keywords: [],
       accentColor: null,
       artFont: null,
       photos: [

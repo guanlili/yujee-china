@@ -5,9 +5,11 @@
 //
 // 硬约定(沿用 v2.ts):本文所有对象一律 `.strict()`(含嵌套),拒未知字段。
 //   zod3 的 `.strict()` 只作用于当前层,故每层 object 都显式 `.strict()`。
-//   ★ analyze 的 `exif` 必须 strict —— §3 隐私边界执行点(只收 takenAt,拒 lat/lng/place)。
+//   ★ analyze 的 `exif` 必须 strict —— §3 隐私边界执行点(只收 takenAt,拒 lat/lng 坐标;
+//     地名也不走 analyze,它经内容采集进树,见 layout.ts V3Chapter.place/chapterContext)。
 //   ★ analyze 的 photo 允许 `clusterId`(浏览器本地从 EXIF 时间/GPS 派生的不透明共址/
-//     共时标签,c1/c2/…),仍严禁 location/place/GPS/坐标/经纬度任何真实位置字段(#232)。
+//     共时标签,c1/c2/…)。§3 2026-07 更新版:**坐标/经纬度任何形式仍严禁**;城市级
+//     **地名文字**已放开(浏览器本地反查,坐标不出浏览器),结构化落点只在章节树。
 //
 // §3 树边界:`/v3/analyze` 回调 + chapter-chat 子树流转用 V3 章节树(authoring);
 //   只有 `/v3/finalize` 回扁平 `AlbumLayoutPlan`(渲染契约,不加树形字段)。
@@ -375,6 +377,10 @@ export const JudgeCopyPhoto = z
   .object({
     photoId: z.string().min(1),
     sceneDescription: z.string().max(300).default(''),
+    // 拍摄时间(EXIF,来自树)+ 拍摄地点(城市级地名文字,来自 V3Chapter.place,章不跨
+    // cluster 故逐照片同值下发)。写文案 AI 据此把时间/地点写进图注。老客户端不带 => null。
+    takenAt: TakenAtDateTime.nullable().optional(),
+    place: z.string().max(100).nullable().optional(),
   })
   .strict();
 export type JudgeCopyPhoto = z.infer<typeof JudgeCopyPhoto>;
@@ -473,7 +479,8 @@ export type V3StoryDraft = z.infer<typeof V3StoryDraft>;
 //   (edit_text=一次写作调用 / change_layout=纯确定性 / advance=置标志 / talk=段一 reply)。
 // 编辑只作用于聚焦页;完成度由 Agent 代码确定性算(复用 chapter-chat 判定),派生不落库。
 // 请求复用 V3ChapterChatRequest 同形字段(降低契约面),响应复用 V3LayoutPatchEntry(不另
-//   造补丁形状)。任何 place/GPS/坐标字段禁止(§3 redact 红线;V3Chapter/Page 已 strict)。
+//   造补丁形状)。坐标/GPS/经纬度字段禁止(§3 redact 红线;V3Chapter/Page 已 strict。
+//   地名文字按 2026-07 口径可出,结构化落点在 V3Chapter.place,不在本端点新增)。
 
 // ───────────── ③ 主题/章节色 · 推荐 — POST /v3/recommend(同步) ─────────────
 //
@@ -609,11 +616,25 @@ export const V3DesignTextSlotSpec = z
   .strict();
 export type V3DesignTextSlotSpec = z.infer<typeof V3DesignTextSlotSpec>;
 
+// 每章的设计画像:采访背景 + 识图关键词(V3Chapter.keywords)+ 分组取色
+// (V3Chapter.extractedColor)。design_style 据此选贴合内容的字体/颜色。
+export const V3DesignChapterProfile = z
+  .object({
+    chapterContext: z.string().max(500).default(''),
+    keywords: z.array(z.string().max(40)).default([]),
+    extractedColor: AccentColor.nullish(),
+  })
+  .strict();
+export type V3DesignChapterProfile = z.infer<typeof V3DesignChapterProfile>;
+
 export const V3DesignRequest = z
   .object({
     language: V3Language,
     albumTitle: z.string().max(120).default(''),
+    // 兼容字段:老 caller 只送 contexts。新 caller 送 chapterProfiles(带 keywords/
+    // extractedColor),engine 优先用它。
     chapterContexts: z.array(z.string()).default([]),
+    chapterProfiles: z.array(V3DesignChapterProfile).optional(),
     coverSlots: z.array(V3DesignTextSlotSpec).default([]),
     endingSlots: z.array(V3DesignTextSlotSpec).default([]),
   })
