@@ -17,10 +17,12 @@
 
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { localizePath, type Locale } from '@/lib/i18n/routing';
+import { type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
 import { UserAvatar } from '@/components/app/UserAvatar';
+import { UserMenu } from '@/components/app/UserMenu';
+import { useChromeSession } from '@/components/app/useChromeSession';
 import { YujeeState } from '@/components/app/YujeeState';
 import { getWebTemplate } from '../web-registry';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from '../spreads';
@@ -413,6 +415,11 @@ function EditorTopbar({
   coordinator: RefObject<ChatCoordinator | null>;
 }) {
   void coordinator; // the export button's data-action is wired by EditorBook via the shared root
+  // 账户菜单统一为 <UserMenu>(与 landing / my-albums 同一组件):真实姓名/邮箱、
+  // 积分余额、我的相册、消耗记录、反馈、退出全在。此前编辑页是手搓静态 demo
+  // (Liam Chen / liam@example.com)+ 命令式补真名 + 命令式注入语言行,三套逻辑
+  // 打架且缺积分/相册/记录。showLangSwitch 保留编辑页菜单内的 EN/中文 切换。
+  const session = useChromeSession();
   return (
     <div className="topbar nav-shell sticky top-0 z-50 h-14 flex items-center justify-between px-3 sm:px-6 shrink-0">
       <div className="top-left flex items-center gap-2 sm:gap-3 min-w-0">
@@ -440,20 +447,7 @@ function EditorTopbar({
           </button>
         </span>
 
-        <div className="user-menu" id="userMenu">
-          <button className="user-trigger flex items-center rounded-pill transition-transform hover:-translate-y-px" data-action="toggleUserMenu" aria-label={locale === 'zh' ? '账户' : 'Account'}>
-            <UserAvatar initial="L" size={40} />
-          </button>
-          <div className="user-dropdown">
-            <div className="dropdown-header p-3 border-b border-bdsoft mb-1">
-              <div className="dropdown-header-name text-[15px] font-semibold">Liam Chen</div>
-              <div className="dropdown-header-email text-[12px] text-meta mt-0.5">liam@example.com</div>
-            </div>
-            <button className="dropdown-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] text-fg2 w-full text-left transition-colors hover:bg-bg"><span className="dropdown-icon w-[18px] h-[18px] flex items-center justify-center text-muted"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg></span><span>反馈与问题</span></button>
-            <div className="dropdown-sep h-px bg-bdsoft my-1" />
-            <button className="dropdown-item danger flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] w-full text-left transition-colors text-[#c44] hover:bg-[#fef2f2]"><span className="dropdown-icon w-[18px] h-[18px] flex items-center justify-center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg></span><span>退出登录</span></button>
-          </div>
-        </div>
+        <UserMenu user={session.user} locale={locale} showLangSwitch />
       </div>
     </div>
   );
@@ -1067,19 +1061,6 @@ function EditorBook({
       updateThumbUI(currentCh);
       paintSpread(currentCh);
     }
-
-    /* ─── Nav dropdown helpers ─── */
-    const toggleUserMenu = () => {
-      byId('userMenu')?.classList.toggle('open');
-      byId('langSelect')?.classList.remove('open');
-    };
-    const onDocClick = (e: MouseEvent) => {
-      const ls = byId('langSelect');
-      const um = byId('userMenu');
-      if (ls && !ls.contains(e.target as Node)) ls.classList.remove('open');
-      if (um && !um.contains(e.target as Node)) um.classList.remove('open');
-    };
-    document.addEventListener('click', onDocClick);
 
     /* ─── Book / spread ─── */
     const ctxBadge = $('.chat-context');
@@ -2536,7 +2517,6 @@ function EditorBook({
        inside its aside (buyShells / pickAddPhotos / toggleChat-collapse). */
     const actions: Record<string, () => void> = {
       exportPdf,
-      toggleUserMenu,
       // .chat-fold-expand lives in the shell (canvas scope) and toggles the shared
       // body class; the .chat-fold-collapse button in the aside is
       // bound by ChatPanel.
@@ -2611,47 +2591,9 @@ function EditorBook({
       actionHandlers.push({ el: logoutBtn, fn });
     }
 
-    // Language switch (decision: in the user menu). Inject EN / 中文 links; going
-    // to the other locale re-renders the whole editor in that language.
-    // 幂等注入:本 effect 随画布 remount(pages.length/canvasEpoch 变化)重跑,而
-    // topbar 挂在稳定壳里不重挂 —— 不先清旧行,画布每重挂一次菜单就多一排 EN/中文。
-    const dropdown = $('.user-dropdown');
-    const header = dropdown?.querySelector('.dropdown-header');
-    if (dropdown && header) {
-      dropdown.querySelectorAll('[data-lang-row]').forEach((el) => el.remove());
-      const row = document.createElement('div');
-      row.className = 'flex gap-1 px-3 py-2';
-      row.setAttribute('data-lang-row', '');
-      (['en', 'zh'] as const).forEach((l) => {
-        const a = document.createElement('a');
-        a.href = localizePath(window.location.pathname, l);
-        a.textContent = l === 'zh' ? '中文' : 'EN';
-        a.className =
-          'flex-1 text-center px-2 py-1 rounded-lg text-[12px] no-underline ' +
-          (l === locale ? 'bg-bg font-semibold text-fg' : 'text-fg2 hover:bg-bg');
-        row.appendChild(a);
-      });
-      header.after(row);
-    }
-
     // Chat init (history/opener/interview chain) now runs ONCE inside ChatPanel's
     // own mount effect — it is no longer part of the canvas mount. The canvas below
     // only paints the book + rail and populates the coordinator.
-
-    // Real account identity in the user menu (design ships demo placeholders).
-    void fetch('/api/v1/user/me')
-      .then((r) => r.json())
-      .then((j) => {
-        if (!j?.ok) return;
-        const u = j.data ?? {};
-        const nameEl = $('.dropdown-header-name');
-        if (nameEl && u.name) nameEl.textContent = u.name;
-        const emailEl = $('.dropdown-header-email');
-        if (emailEl && u.email) emailEl.textContent = u.email;
-        const av = $('.user-avatar-initial');
-        if (av) av.textContent = String(u.name?.[0] ?? u.email?.[0] ?? 'U').toUpperCase();
-      })
-      .catch(() => {});
 
     // Editable album title: show the real title (not the demo i18n string) and
     // persist renames via PATCH /albums/:id.
@@ -2779,8 +2721,7 @@ function EditorBook({
     };
 
     return () => {
-      document.removeEventListener('click', onDocClick);
-      stage?.removeEventListener('wheel', onWheel);
+        stage?.removeEventListener('wheel', onWheel);
       stage?.removeEventListener('pointerdown', onCanvasPointerDown);
       stage?.removeEventListener('pointermove', onCanvasPointerMove);
       stage?.removeEventListener('pointerup', endCanvasPan);

@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import type { Locale } from '@/lib/i18n/routing';
+import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { getMessages } from '@/lib/i18n/messages';
 import { signOut } from '@/lib/auth/client';
 import type { ChromeUser } from './useChromeSession';
@@ -13,10 +13,14 @@ interface Props {
   user: ChromeUser | null;
   locale: Locale;
   onSignOut?: () => void;
+  /** 在菜单内渲染 EN/中文 语言切换行。编辑页开(它没有独立的语言切换器);
+   *  landing/my-albums 不开(它们在菜单外已有 LanguageSwitcher)。 */
+  showLangSwitch?: boolean;
 }
 
-export function UserMenu({ user, locale, onSignOut }: Props) {
+export function UserMenu({ user, locale, onSignOut, showLangSwitch = false }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const m = getMessages(locale).dashboard;
   const c = m.chrome;
   const balance = user?.creditBalance ?? 0;
@@ -90,6 +94,24 @@ export function UserMenu({ user, locale, onSignOut }: Props) {
             <div className="text-[var(--text-base)] font-semibold">{user?.name ?? user?.email ?? ''}</div>
             <div className="mt-0.5 text-[var(--text-xs)] text-[var(--meta)]">{user?.email ?? ''}</div>
           </div>
+          {showLangSwitch && (
+            <div className="mb-1 flex gap-1 px-3 py-2">
+              {(['en', 'zh'] as const).map((l) => (
+                <Link
+                  key={l}
+                  href={localizePath(pathname, l)}
+                  onClick={() => setOpen(false)}
+                  className={`flex-1 rounded-[var(--radius-md)] px-2 py-1 text-center text-[var(--text-xs)] no-underline transition-colors ${
+                    l === locale
+                      ? 'bg-[var(--bg)] font-semibold text-[var(--fg)]'
+                      : 'text-[var(--fg-2)] hover:bg-[var(--bg)]'
+                  }`}
+                >
+                  {l === 'zh' ? '中文' : 'EN'}
+                </Link>
+              ))}
+            </div>
+          )}
           <div className="mb-1 flex items-center justify-between gap-4 px-3 py-2.5">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--meta)]">
