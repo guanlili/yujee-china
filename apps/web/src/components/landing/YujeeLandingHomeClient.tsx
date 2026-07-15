@@ -52,6 +52,7 @@ type Copy = {
   createSub: string;
   sampleCta: string;
   makeSame: string;
+  samplesNote: string;
   heroEyebrow: string;
   heroTitle: ReactNode;
   heroSub: string;
@@ -125,6 +126,7 @@ const copies: Record<Locale, Copy> = {
     createSub: '',
     sampleCta: 'See example',
     makeSame: 'Make one like this',
+    samplesNote: 'Demo books made by the Yujee team to show what the product can do — fictional content, not customer work.',
     heroEyebrow: 'AI photo books · from shots to bound book',
     heroTitle: (
       <>
@@ -269,6 +271,7 @@ const copies: Record<Locale, Copy> = {
     createSub: 'YUJEE AI 将您的照片、故事、回忆和想法变成一本专为您制作的精美杂志。',
     sampleCta: '查看示例',
     makeSame: '做同款',
+    samplesNote: '以下样书均为遇己官方制作的演示作品（内容为虚构示例），非真实用户创作。',
     heroEyebrow: 'AI 相册创作 · 从照片到成册',
     heroTitle: (
       <>
@@ -887,6 +890,10 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
 
         <section id="outputs" className="py-14 md:py-20">
           <div className="wrap">
+            {/* 明示官方演示,不是用户作品 —— 没有这行,样书区读起来就是"客户案例"
+                (Creem 审核 2026-07-15 据此判定 social proof:账上零客户,页面却在展示
+                六本"成书")。标注后它是产品演示,不再是社交证明。 */}
+            <p className="mb-4 text-center text-xs text-[var(--meta)]">{c.samplesNote}</p>
             <div className="sample-grid gap-4 md:gap-5">
               {c.samples.map((sample) => (
                 <SampleCard
