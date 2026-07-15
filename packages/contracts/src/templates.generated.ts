@@ -90,12 +90,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "body",
         "lang": "user",
         "sample": "I went north alone, with a man who has never left his province.\n\nHe called at seven every morning to ask about the weather, never\nabout what I saw. Twenty-one days, and the light never fully went\nout.\n\n I have never been so far from home.\n I have never been so easy\nto reach."
-      },
-      {
-        "id": "explain",
-        "role": "explain",
-        "lang": "user",
-        "sample": "风轻轻掀起窗帘的一角"
       }
     ]
   },
@@ -160,13 +154,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "lang": "en",
         "variableDecor": true,
         "sample": "京都 · 2026/04/01"
-      },
-      {
-        "id": "label2",
-        "role": "decoration",
-        "lang": "en",
-        "variableDecor": true,
-        "sample": "03 / 30"
       }
     ]
   },
@@ -191,7 +178,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "image2",
         "orientation": [
-          "square"
+          "portrait"
         ],
         "quality": [
           "detail",
@@ -410,7 +397,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "image2",
         "orientation": [
-          "square"
+          "portrait"
         ],
         "quality": [
           "hero",
@@ -484,7 +471,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "image",
         "orientation": [
-          "portrait"
+          "landscape"
         ],
         "quality": [
           "hero",
@@ -525,7 +512,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "image",
         "orientation": [
-          "landscape"
+          "portrait"
         ],
         "quality": [
           "hero",
@@ -566,7 +553,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "image1",
         "orientation": [
-          "portrait"
+          "landscape"
         ],
         "quality": [
           "hero",
@@ -784,20 +771,14 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "body",
         "role": "body",
-        "lang": "en",
+        "lang": "user",
         "sample": "2026\n2025\n2024"
       },
       {
         "id": "body2",
         "role": "body",
-        "lang": "en",
-        "sample": "Shanghai \nBeijing\nDali"
-      },
-      {
-        "id": "explain",
-        "role": "explain",
         "lang": "user",
-        "sample": "City"
+        "sample": "Shanghai \nBeijing\nDali"
       }
     ]
   },
@@ -828,13 +809,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "body",
         "lang": "user",
         "sample": "I took two calls from a car park in Big Sur. The signal died halfway through the second one. \nNobody called back. We drove down to the water instead, and by the time the emails found me it was Tuesday."
-      },
-      {
-        "id": "label",
-        "role": "decoration",
-        "lang": "en",
-        "variableDecor": true,
-        "sample": "small joys daily"
       },
       {
         "id": "title2",
@@ -1054,7 +1028,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       {
         "id": "title",
         "role": "title",
-        "lang": "en",
+        "lang": "user",
         "variableDecor": true,
         "sample": "NORWAY"
       },
@@ -1080,33 +1054,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "image3"
       }
     ],
-    "texts": [
-      {
-        "id": "title",
-        "role": "title",
-        "lang": "user",
-        "variableDecor": true,
-        "sample": "Three Mornings"
-      },
-      {
-        "id": "explain",
-        "role": "explain",
-        "lang": "user",
-        "sample": "第一个清晨，雾很重"
-      },
-      {
-        "id": "explain2",
-        "role": "explain",
-        "lang": "user",
-        "sample": "第二个清晨，下了点小雨"
-      },
-      {
-        "id": "explain3",
-        "role": "explain",
-        "lang": "user",
-        "sample": "第三个清晨，终于放晴"
-      }
-    ]
+    "texts": []
   },
   "mag-34": {
     "id": "mag-34",
@@ -1147,12 +1095,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "lang": "user",
         "variableDecor": true,
         "sample": "Seaside"
-      },
-      {
-        "id": "explain",
-        "role": "explain",
-        "lang": "user",
-        "sample": "海风带着咸味，吹了一整个下午"
       }
     ]
   },
@@ -1285,13 +1227,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "lang": "user",
         "variableDecor": true,
         "sample": "Low Tide\nPhilip  "
-      },
-      {
-        "id": "title2",
-        "role": "title",
-        "lang": "user",
-        "variableDecor": true,
-        "sample": "from Elsewhere"
       },
       {
         "id": "body",
@@ -1651,13 +1586,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "label3",
         "role": "decoration",
         "lang": "en",
-        "variableDecor": true,
-        "sample": "MAY 26"
-      },
-      {
-        "id": "label4",
-        "role": "decoration",
-        "lang": "user",
         "variableDecor": true,
         "sample": "VOL. 2026"
       }

@@ -106,13 +106,6 @@ pnpm --filter @yujee/web db:generate
 pnpm --filter @yujee/web db:migrate
 ```
 
-Template preview checks from the repo root:
-
-```bash
-pnpm template-previews:check
-pnpm template-previews:test
-```
-
 ## Environment
 
 Defaults live in `src/lib/env.ts`. Common fields:

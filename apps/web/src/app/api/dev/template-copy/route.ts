@@ -25,8 +25,6 @@ import { NextResponse } from 'next/server';
 // 写回后的连带同步(不做就会脏):
 //   - 任何改动 → 重跑 templates:generate,否则 templates.generated.ts(Web 实际读的)过期、
 //     templates:check 变红。
-//   - 改 category → 还要重跑 template-previews:generate。烘焙产物按 `category:图槽数`
-//     分桶(排版 AI 看的就是这些图),不重烘 template-previews:check 会红。
 //
 // 生产环境 404(只服务本地模板微调)。
 
@@ -43,6 +41,8 @@ const CATEGORIES = ['cover', 'toc', 'interior', 'ending'] as const;
 type Category = (typeof CATEGORIES)[number];
 const ROLES = ['title', 'body', 'explain', 'decoration'] as const;
 type Role = (typeof ROLES)[number];
+const LANGS = ['user', 'en'] as const;
+type Lang = (typeof LANGS)[number];
 // `variableDecor`(主题一键刷色/刷字体的标记)只允许挂在这两个 role 上。
 const VARIABLE_DECOR_ROLES = new Set<Role>(['title', 'decoration']);
 
@@ -51,6 +51,7 @@ type CopyOp = {
   slotKey?: string;
   text?: string;
   role?: Role;
+  lang?: Lang;
   variableDecor?: boolean;
   category?: Category;
 };
@@ -182,6 +183,24 @@ function setRole(
   return null;
 }
 
+/** 目标文字槽的 `lang`:'user' = 用用户语言写,'en' = 保持英文(日期/编号/标签类装饰)。
+ *  engine write_copy 把它原样发给写作 AI —— 这是硬约束,不是展示偏好。
+ *  返回 null = 槽位没找到或没有 lang 字段(契约必填,正常不会缺)。 */
+function setLang(src: string, baseId: string, lang: Lang): string | null {
+  const idNeedle = new RegExp(`"id"\\s*:\\s*"${escapeForRegExp(baseId)}"`);
+  for (const arr of textArraySpans(src)) {
+    for (const [start, end] of objectsIn(src, arr)) {
+      const obj = src.slice(start, end);
+      if (!idNeedle.test(obj)) continue;
+
+      const langRe = /("lang"\s*:\s*)"[^"]*"/;
+      if (!langRe.test(obj)) return null;
+      return src.slice(0, start) + obj.replace(langRe, `$1"${lang}"`) + src.slice(end);
+    }
+  }
+  return null;
+}
+
 /** 目标文字槽的 `variableDecor`(能否被主题一键刷色/刷字体)。契约只允许它挂在
  *  title/decoration 上,所以打开前调用方要先确认 role 合规。 */
 function setVariableDecor(src: string, baseId: string, on: boolean): string | null {
@@ -283,17 +302,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `bad templateId: ${op.templateId}` }, { status: 400 });
     }
     const isRole = op.slotKey !== undefined && op.role !== undefined;
+    const isLang = op.slotKey !== undefined && op.lang !== undefined;
     const isDecor = op.slotKey !== undefined && op.variableDecor !== undefined;
     const isSample = op.slotKey !== undefined && op.text !== undefined;
     const isCategory = op.category !== undefined;
-    if ([isSample, isRole, isDecor, isCategory].filter(Boolean).length !== 1) {
+    if ([isSample, isRole, isLang, isDecor, isCategory].filter(Boolean).length !== 1) {
       return NextResponse.json(
-        { error: '每个 op 只能做一件事:改 sample / 改 role / 改 variableDecor / 改 category' },
+        { error: '每个 op 只能做一件事:改 sample / 改 role / 改 lang / 改 variableDecor / 改 category' },
         { status: 400 },
       );
     }
-    if ((isSample || isRole || isDecor) && !SLOT_KEY_RE.test(op.slotKey!)) {
+    if ((isSample || isRole || isLang || isDecor) && !SLOT_KEY_RE.test(op.slotKey!)) {
       return NextResponse.json({ error: `bad slotKey: ${op.slotKey}` }, { status: 400 });
+    }
+    if (isLang && !LANGS.includes(op.lang!)) {
+      return NextResponse.json({ error: `bad lang: ${op.lang}` }, { status: 400 });
     }
     if (isSample) {
       // 与 contracts/engine 两侧的 sample 校验一致:≤600 字(空串=清除)。
@@ -358,6 +381,8 @@ export async function POST(request: Request) {
             `${templateId}/${op.slotKey}:${op.role} 不能带 variableDecor(主题一键刷色/刷字体只作用于 title/decoration),已摘掉该标记`,
           );
         }
+      } else if (op.lang !== undefined) {
+        next = setLang(src, op.slotKey!.replace(/\[\d+\]$/, ''), op.lang);
       } else {
         next = setSample(src, op.slotKey!.replace(/\[\d+\]$/, ''), op.text!);
       }
@@ -382,22 +407,12 @@ export async function POST(request: Request) {
   }
 
   let regenerated = false;
-  let previewsBaked = false;
   if (applied > 0) {
     const genErr = await run('npx', ['tsx', 'scripts/gen-templates.ts'], CONTRACTS_DIR);
     if (genErr) {
       failed.push('templates:generate 失败,请手动跑 pnpm --filter @yujee/contracts templates:generate');
     } else {
       regenerated = true;
-    }
-    // category 决定预览的分桶键,改了必须重烘,否则 template-previews:check 会红。
-    if (categoryChanged && regenerated) {
-      const bakeErr = await run('npx', ['tsx', 'scripts/bake-template-previews.ts'], WEB_DIR);
-      if (bakeErr) {
-        failed.push('template-previews:generate 失败,请手动跑 pnpm --filter @yujee/web template-previews:generate');
-      } else {
-        previewsBaked = true;
-      }
     }
   }
 
@@ -407,7 +422,6 @@ export async function POST(request: Request) {
     failed,
     notes,
     regenerated,
-    previewsBaked,
     categoryChanged,
   });
 }

@@ -16,13 +16,6 @@
       "variableDecor": true, "sample": "Low Tide\nPhilip  "
     },
     {
-      "id": "title2",
-      "role": "title",
-      "lang": "user",
-      "variableDecor": true,
-      "sample": "from Elsewhere"
-    },
-    {
       "id": "body",
       "role": "body",
       "lang": "user", "sample": "The tide went out further than we expected.\nThe water was too cold to swim "

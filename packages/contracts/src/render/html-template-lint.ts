@@ -12,12 +12,24 @@ export function lintTemplateHtml(tpl: TemplateDef, html: string): string[] {
   for (const slot of tpl.texts) {
     const hasToken = html.includes(`{{TEXT:${slot.id}}}`);
     const hasAnchor = html.includes(`data-text-key="${slot.id}"`);
-    if (hasToken !== hasAnchor) {
-      errors.push(`${tpl.id}: 文字槽 ${slot.id} 锚点与 token 不成对(anchor=${hasAnchor}, token=${hasToken})`);
+    // 声明了就必须渲染。曾允许「锚点和 token 一起缺」,结果攒出 13 个哑槽:
+    // JSON 声明着、AI 给它写文案、页面上却一个字不显示 —— 用户付 token 买看不见的字。
+    // 工作台删图层现在会级联删掉 JSON 声明(dev/template-box),所以「留声明不渲染」
+    // 不再有合法场景。
+    if (!hasToken || !hasAnchor) {
+      errors.push(
+        `${tpl.id}: 文字槽 ${slot.id} 声明了但 HTML 不渲染(anchor=${hasAnchor}, token=${hasToken})——删声明或补锚点`,
+      );
     }
     if (slot.variableDecor && hasToken) {
       if (!html.includes(`{{COLOR:${slot.id}`)) errors.push(`${tpl.id}: variableDecor 槽 ${slot.id} 缺 {{COLOR:}} token`);
       if (!html.includes(`{{FONT:${slot.id}`)) errors.push(`${tpl.id}: variableDecor 槽 ${slot.id} 缺 {{FONT:}} token`);
+    }
+  }
+  // items 重复组的文字槽:至少第 0 个实例要在 HTML 里渲染(mag-10/mag-02 先例)。
+  for (const slot of tpl.items?.texts ?? []) {
+    if (!html.includes(`data-text-key="${slot.id}[0]"`) || !html.includes(`{{TEXT:${slot.id}[0]}}`)) {
+      errors.push(`${tpl.id}: items 文字槽 ${slot.id} 声明了但 HTML 连 ${slot.id}[0] 都不渲染`);
     }
   }
   for (const slot of tpl.images) {

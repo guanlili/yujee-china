@@ -15,7 +15,7 @@
     {
       "id": "title",
       "role": "title",
-      "lang": "en",
+      "lang": "user",
       "variableDecor": true,
       "sample": "NORWAY"
     },

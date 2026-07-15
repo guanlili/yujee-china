@@ -70,7 +70,7 @@
         "pages": [
           {
             "pageIndex": 1,
-            "templateId": "mag-11",
+            "templateId": "mag-13",
             "images": {
               "image": "p001"
             },
@@ -90,7 +90,7 @@
       },
       {
         "pageIndex": 1,
-        "templateId": "mag-11",
+        "templateId": "mag-13",
         "images": {
           "image": "p001"
         },

@@ -24,13 +24,6 @@
       "lang": "user", "sample": "I took two calls from a car park in Big Sur. The signal died halfway through the second one. \nNobody called back. We drove down to the water instead, and by the time the emails found me it was Tuesday."
     },
     {
-      "id": "label",
-      "role": "decoration",
-      "lang": "en",
-      "variableDecor": true,
-      "sample": "small joys daily"
-    },
-    {
       "id": "title2",
       "role": "title",
       "lang": "en",

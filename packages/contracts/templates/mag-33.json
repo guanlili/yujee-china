@@ -13,30 +13,9 @@
     }
   ],
   "texts": [
-    {
-      "id": "title",
-      "role": "title",
-      "lang": "user",
-      "variableDecor": true,
-      "sample": "Three Mornings"
-    },
-    {
-      "id": "explain",
-      "role": "explain",
-      "lang": "user",
-      "sample": "第一个清晨，雾很重"
-    },
-    {
-      "id": "explain2",
-      "role": "explain",
-      "lang": "user",
-      "sample": "第二个清晨，下了点小雨"
-    },
-    {
-      "id": "explain3",
-      "role": "explain",
-      "lang": "user",
-      "sample": "第三个清晨，终于放晴"
-    }
+    
+    
+    
+    
   ]
 }

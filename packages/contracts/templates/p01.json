@@ -9,7 +9,6 @@
     { "id": "body", "role": "body", "lang": "user", "sample": " We moved twice, lost the cat once, and still made it to the table in December." },
     { "id": "label", "role": "decoration", "lang": "en", "variableDecor": true, "sample": "37N · 114E · Beijing" },
     { "id": "label2", "role": "decoration", "lang": "en", "variableDecor": true, "sample": "02" },
-    { "id": "label3", "role": "decoration", "lang": "en", "variableDecor": true, "sample": "MAY 26" },
-    { "id": "label4", "role": "decoration", "lang": "user", "variableDecor": true, "sample": "VOL. 2026" }
+    { "id": "label3", "role": "decoration", "lang": "en", "variableDecor": true, "sample": "VOL. 2026" }
   ]
 }

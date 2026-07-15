@@ -33,5 +33,5 @@ export const P01_HTML = `<div data-template="p01" style="position:relative;width
     </div>
   </div>
 
-  <div data-text-key="label4" style="position:absolute;left:60px;top:60px;width:200px;font-size:12px;letter-spacing:0.2em;text-transform:uppercase;color:{{COLOR:label4|#a09b8e}};font-family:{{FONT:label4|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:30px">{{TEXT:label4}}</div>
+  <div data-text-key="label3" style="position:absolute;left:60px;top:60px;width:200px;font-size:12px;letter-spacing:0.2em;text-transform:uppercase;color:{{COLOR:label3|#a09b8e}};font-family:{{FONT:label3|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:30px">{{TEXT:label3}}</div>
 </div>`;

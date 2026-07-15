@@ -22,13 +22,12 @@
     {
       "id": "body",
       "role": "body",
-      "lang": "en", "sample": "2026\n2025\n2024"
+      "lang": "user", "sample": "2026\n2025\n2024"
     },
     {
       "id": "body2",
       "role": "body",
-      "lang": "en", "sample": "Shanghai \nBeijing\nDali"
-    },
-    { "id": "explain", "role": "explain", "lang": "user", "sample": "City" }
+      "lang": "user", "sample": "Shanghai \nBeijing\nDali"
+    }
   ]
 }

@@ -14,6 +14,7 @@ decoration 槽也写:「Series · No.01」「Chapter · 05」这类装饰文案�
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -60,13 +61,39 @@ def _writable_text_slots(page: dict[str, Any]) -> list[dict[str, Any]]:
     template = templates.get(template_id) if isinstance(template_id, str) else None
     if template is None:
         return []
-    specs: list[dict[str, Any]] = []
-    for slot in templates.text_slots(template):
-        spec: dict[str, Any] = {"id": slot["id"], "role": slot["role"]}
+
+    def _spec(slot: Mapping[str, Any], slot_id: str) -> dict[str, Any]:
+        # lang 是槽的硬约束(契约里必填):'user' = 用用户语言写,'en' = 保持英文
+        # (日期/编号/标签这类装饰默认 en)。不发的话,标 en 的槽会被 AI 用中文写。
+        spec: dict[str, Any] = {
+            "id": slot_id,
+            "role": slot["role"],
+            "lang": slot.get("lang", "user"),
+        }
         sample = slot.get("sample")
         if sample:
             spec["sample"] = sample
-        specs.append(spec)
+        return spec
+
+    specs = [_spec(slot, slot["id"]) for slot in templates.text_slots(template)]
+
+    # items 重复组的文字槽:按本页实际格数展开成 `base[i]`。
+    # 格数从页面 images 的 `image[i]` 键推(items 的图片展开就是这么生成的);
+    # 每格的 explain[i] 对应第 i 张照片。曾经完全没喂 —— mag-10(顶层零文字、
+    # 全部文字在 items)整页一个字都不写,页面上四个 explain 全是空串。
+    items = template.get("items") or {}
+    item_texts = items.get("texts") or []
+    if item_texts:
+        image_bases = {s["id"] for s in (items.get("images") or [])}
+        instance_count = 0
+        for key in (page.get("images") or {}):
+            base, _, rest = str(key).partition("[")
+            if base in image_bases and rest.endswith("]"):
+                instance_count = max(instance_count, int(rest[:-1]) + 1)
+        for slot in item_texts:
+            for i in range(instance_count):
+                specs.append(_spec(slot, f"{slot['id']}[{i}]"))
+
     return specs
 
 

@@ -3,7 +3,7 @@
 # Runs the album-server via tsx directly on source (no compile step for this
 # package). Its workspace deps (@earendil-works/pi-ai, pi-agent-core) resolve to
 # their dist/ via package exports, so those two ARE built here. Templates are
-# read from disk (packages/contracts/{templates,template-previews}) exactly like
+# read from disk (packages/contracts/templates) exactly like
 # the Python engine, so those dirs must be present in the image.
 #
 # Build from repo ROOT so the monorepo (pnpm workspace) is the build context:

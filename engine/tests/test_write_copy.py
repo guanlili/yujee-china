@@ -115,7 +115,7 @@ def test_write_copy_fills_title_and_body_slots(monkeypatch):
     assert len(calls) == 1
 
     # sanity: payload sent to the model carries chapterContext + language + the
-    # page's writable slot specs (decoration excluded — covered by another test).
+    # page's writable slot specs(decoration 也在内 —— 装饰文案 AI 也写,页码除外)。
     sent_messages = calls[0]["messages"]
     user_text = sent_messages[1]["content"]
     assert isinstance(user_text, str)  # 纯文本调用:不再组 parts、不附图
@@ -344,5 +344,59 @@ def test_writable_slot_spec_omits_sample_when_slot_has_none(monkeypatch):
 
     specs = write_copy_handler._writable_text_slots({"templateId": "no-sample"})
 
-    assert specs == [{"id": "body", "role": "body"}]
+    # lang 是契约必填,必须原样带上(标 en 的槽不发就会被 AI 用中文写);sample 无则省略。
+    assert specs == [{"id": "body", "role": "body", "lang": "user"}]
     assert "sample" not in specs[0]
+
+
+def test_writable_slot_spec_forwards_lang(monkeypatch):
+    # lang 决定该槽写用户语言还是英文。曾经【完全没发】,于是标 en 的装饰槽
+    #(日期/编号/英文标签)被 AI 用中文写。这条守护它一直在 payload 里。
+    registry = write_copy_handler.templates
+    fake = {
+        "id": "with-en",
+        "category": "interior",
+        "images": [{"id": "image"}],
+        "texts": [
+            {"id": "title", "role": "title", "lang": "user", "sample": "标题示例"},
+            {"id": "label", "role": "decoration", "lang": "en", "sample": "No.01"},
+        ],
+    }
+    monkeypatch.setitem(registry.TEMPLATES, "with-en", fake)
+
+    specs = write_copy_handler._writable_text_slots({"templateId": "with-en"})
+
+    by_id = {s["id"]: s for s in specs}
+    assert by_id["title"]["lang"] == "user"
+    assert by_id["label"]["lang"] == "en"
+    # 每个 spec 都必须带 lang —— 不是可选。
+    assert all("lang" in s for s in specs)
+
+
+def test_writable_slot_spec_expands_items_texts_per_page_instance():
+    """items 重复组的文字槽按页面实际格数展开成 base[i]。
+    曾经完全没喂 —— mag-10(顶层零文字、全部文字在 items)整页一个字都不写。"""
+    page = {
+        "templateId": "mag-10",
+        "images": {"image[0]": "p1", "image[1]": "p2", "image[2]": "p3", "image[3]": "p4"},
+        "texts": {},
+    }
+    specs = write_copy_handler._writable_text_slots(page)
+    ids = [s["id"] for s in specs]
+    assert ids == ["explain[0]", "explain[1]", "explain[2]", "explain[3]"], ids
+    # 每个展开实例都继承 base 槽的 role/lang/sample。
+    for s in specs:
+        assert s["role"] == "explain"
+        assert s["lang"] == "user"
+        assert s.get("sample"), "mag-10 的 explain 声明了 sample,展开后不该丢"
+
+
+def test_writable_slot_spec_items_expansion_follows_actual_photo_count():
+    """页面只放了 2 张照片 → 只展开 explain[0..1],不多写空格子的文案。"""
+    page = {
+        "templateId": "mag-10",
+        "images": {"image[0]": "p1", "image[1]": "p2"},
+        "texts": {},
+    }
+    ids = [s["id"] for s in write_copy_handler._writable_text_slots(page)]
+    assert ids == ["explain[0]", "explain[1]"], ids

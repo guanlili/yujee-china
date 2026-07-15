@@ -311,15 +311,14 @@
         "images": {},
         "texts": {
           "title": "CONTENTS",
-          "folio": "02",
-          "number[0]": "01",
-          "title[0]": "Chapter 1",
-          "number[1]": "02",
-          "title[1]": "Chapter 2",
-          "number[2]": "03",
-          "title[2]": "Chapter 3",
-          "number[3]": "04",
-          "title[3]": "Chapter 4"
+          "label[0]": "01",
+          "title2[0]": "Chapter 1",
+          "label[1]": "02",
+          "title2[1]": "Chapter 2",
+          "label[2]": "03",
+          "title2[2]": "Chapter 3",
+          "label[3]": "04",
+          "title2[3]": "Chapter 4"
         }
       },
       "ending": {
@@ -472,15 +471,14 @@
         "images": {},
         "texts": {
           "title": "CONTENTS",
-          "folio": "02",
-          "number[0]": "01",
-          "title[0]": "Chapter 1",
-          "number[1]": "02",
-          "title[1]": "Chapter 2",
-          "number[2]": "03",
-          "title[2]": "Chapter 3",
-          "number[3]": "04",
-          "title[3]": "Chapter 4"
+          "label[0]": "01",
+          "title2[0]": "Chapter 1",
+          "label[1]": "02",
+          "title2[1]": "Chapter 2",
+          "label[2]": "03",
+          "title2[2]": "Chapter 3",
+          "label[3]": "04",
+          "title2[3]": "Chapter 4"
         }
       },
       {

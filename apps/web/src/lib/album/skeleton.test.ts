@@ -49,7 +49,15 @@ test('partition repairs all-fill 3-up chunks and preserves every photo once', ()
 });
 
 test('chapter 1-up template picking excludes cover and closing templates', () => {
-  const forbidden = new Set(['mag-01', 'mag-13', 'p01']);
+  // 禁选集从契约推导:非 interior(cover/toc/ending)一律不许被章节内页选中。
+  // 这里曾硬编码 {mag-01, mag-13, p01} —— mag-13 是 interior,写它进来是因为旧的
+  // 错误朝向提示(假横框)让它从来配不上竖照,「从没被选中」被误当成「禁选」。
+  // 提示修正后 mag-13 正常被竖照选中,假前提当场爆炸。模板元数据永远从契约取,别手抄。
+  const forbidden = new Set(
+    Object.values(TEMPLATES)
+      .filter((t) => t.category !== 'interior')
+      .map((t) => t.id),
+  );
 
   for (let attempt = 0; attempt < 12; attempt += 1) {
     assert.equal(

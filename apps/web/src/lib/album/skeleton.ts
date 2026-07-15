@@ -392,13 +392,20 @@ const TOC_TEMPLATE_ID = [...TEMPLATE_IDS]
   .sort()
   .find((templateId) => TEMPLATES[templateId].category === 'toc');
 
+// mag-02 的 2×2 目录格,HTML 里固定四格。
+const TOC_ENTRY_CAPACITY = 4;
+
 function buildToc(chapters: SkeletonChapterOutput[]): SkeletonPage {
   if (!TOC_TEMPLATE_ID) throw new Error('no toc-category template in registry');
-  // New mag-02 ids: top-level `title` (page heading) + items number/title/description.
-  const texts: Record<string, string> = { title: 'CONTENTS', folio: '02' };
-  chapters.forEach((chapter, idx) => {
-    texts[`number[${idx}]`] = String(idx + 1).padStart(2, '0');
-    texts[`title[${idx}]`] = String(chapter.cluster?.label ?? chapter.chapterId ?? `Group ${idx + 1}`);
+  // 槽 id 与模板契约一致:顶层 `title`(页标题) + items label/title2/explain。
+  // 这里曾写死已改名前的旧键(number[i]/title[i],后者还与顶层 title 撞名)外加已
+  // 废除的 folio(页码由展示层统一生成,不再是槽) —— 槽 id 大改名时漏了本函数,
+  // 目录页的文字全写进模板没有的键里,页面上一个字都出不来。键名永远对着
+  // packages/contracts/templates/mag-02.json 核对,别凭记忆写。
+  const texts: Record<string, string> = { title: 'CONTENTS' };
+  chapters.slice(0, TOC_ENTRY_CAPACITY).forEach((chapter, idx) => {
+    texts[`label[${idx}]`] = String(idx + 1).padStart(2, '0');
+    texts[`title2[${idx}]`] = String(chapter.cluster?.label ?? chapter.chapterId ?? `Group ${idx + 1}`);
   });
   return { pageIndex: 0, templateId: TOC_TEMPLATE_ID, images: {}, texts };
 }

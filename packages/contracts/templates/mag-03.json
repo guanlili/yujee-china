@@ -23,13 +23,6 @@
       "role": "decoration",
       "lang": "en",
       "variableDecor": true, "sample": "京都 · 2026/04/01"
-    },
-    {
-      "id": "label2",
-      "role": "decoration",
-      "lang": "en",
-      "variableDecor": true,
-      "sample": "03 / 30"
     }
   ]
 }

@@ -2,7 +2,7 @@
   "id": "mag-13",
   "category": "interior",
   "images": [
-    { "id": "image", "orientation": ["landscape"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] }
+    { "id": "image", "orientation": ["portrait"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] }
   ],
   "svgs": [
     { "id": "divider", "variableDecor": true }

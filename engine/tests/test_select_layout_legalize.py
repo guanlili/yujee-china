@@ -1,93 +1,45 @@
-import pytest
+"""legalize.finalize_candidate_pages —— 评委赢家候选 → 最终页。
 
-from src.workflows.core.layout import legalize, skeleton_v3, template_previews, templates
-from src.contracts.schemas import V3Chapter, V3ChapterPhoto
+这个文件此前有 4 个测试,全部在测【旧线框评委流程】的死代码
+(build_candidate_catalog / legalize_layout / template_previews 完整性),而生产
+真正在用的 finalize_candidate_pages 反而零覆盖。旧流程已随「真图缩略图评委」上线
+而整条拆除,测试重写为守护活代码。
+"""
 
-
-def _chapter(photo_ids: list[str]) -> V3Chapter:
-    return V3Chapter(
-        chapterId="ch_1",
-        description="A quiet coast morning",
-        accentColor=None,
-        artFont=None,
-        photos=[
-            V3ChapterPhoto(
-                photoId=pid,
-                sceneDescription=f"scene {pid}",
-                width=800,
-                height=600,
-                orientation="landscape",
-                takenAt="2024-03-15T08:30:00" if idx == 0 else None,
-            )
-            for idx, pid in enumerate(photo_ids)
-        ],
-    )
+from src.workflows.core.layout import legalize
 
 
-def _interior_template_with_capacity(capacity: int) -> str:
-    ids = skeleton_v3.candidate_ids("interior", capacity)
-    if not ids:
-        pytest.skip(f"template registry has no interior capacity {capacity}")
-    return ids[0]
-
-
-def test_template_previews_are_complete_for_interior_templates():
-    previews = template_previews.load_template_previews()
-    interior_ids = {
-        template_id
-        for template_id, template in templates.TEMPLATES.items()
-        if template["category"] == "interior"
-    }
-
-    assert interior_ids.issubset(previews.by_template.keys())
-    for capacity in skeleton_v3.POOLS.get("interior", {}):
-        assert ("interior", capacity) in previews.bucket_images
-
-
-def test_build_candidates_uses_capacity_buckets_not_caller_candidates():
-    candidates = legalize.build_candidate_catalog("interior", max_photo_count=2)
-    assert candidates
-    assert {candidate["imageSlotCount"] for candidate in candidates}.issubset({1, 2})
-    assert all("previewImage" in candidate for candidate in candidates)
-
-
-def test_legalize_preserves_legal_slot_mapping():
-    chapter = _chapter(["p1", "p2"])
-    template_id = _interior_template_with_capacity(2)
-    slot_a, slot_b = skeleton_v3.image_slot_keys(templates.TEMPLATES[template_id])[:2]
-
-    pages = legalize.legalize_layout(
-        [chapter],
+def test_finalize_reindexes_pages_and_normalizes_images():
+    pages = legalize.finalize_candidate_pages(
+        {"chapterId": "ch_1"},
         [
-            {
-                "chapterId": "ch_1",
-                "templateId": template_id,
-                "slots": {slot_a: "p2", slot_b: "p1"},
-            }
+            {"pageIndex": 7, "templateId": "mag-15", "images": {"image1": "p2", "image2": "p1"}},
+            {"pageIndex": 3, "templateId": "mag-23", "slots": {"main": "p3"}},
         ],
     )
 
-    assert len(pages) == 1
-    assert pages[0]["templateId"] == template_id
-    assert pages[0]["images"] == {slot_a: "p2", slot_b: "p1"}
+    assert [p["pageIndex"] for p in pages] == [0, 1]
+    assert pages[0]["images"] == {"image1": "p2", "image2": "p1"}
+    # Gemini 侧的 `slots` 键也被归一成 `images`。
+    assert pages[1]["images"] == {"main": "p3"}
+    assert all(isinstance(p["texts"], dict) for p in pages)
 
 
-def test_legalize_falls_back_only_for_illegal_or_missing_slots():
-    chapter = _chapter(["p1", "p2"])
-    template_id = _interior_template_with_capacity(2)
-    slot_a = skeleton_v3.image_slot_keys(templates.TEMPLATES[template_id])[0]
-
-    pages = legalize.legalize_layout(
-        [chapter],
+def test_finalize_keeps_existing_texts_and_defaults_to_empty():
+    pages = legalize.finalize_candidate_pages(
+        None,  # chapter 参数保留签名,当前未用
         [
-            {
-                "chapterId": "ch_1",
-                "templateId": template_id,
-                "slots": {slot_a: "p1"},
-            }
+            {"templateId": "mag-10", "images": {"image[0]": "p1"}, "texts": {"explain[0]": "已有文案"}},
+            {"templateId": "mag-15", "images": {"image1": "p2"}, "texts": "不是字典"},
         ],
     )
 
-    # 非法 slot => fallback 重排(填满式随机拆分,页数不定但照片不重不漏)。
-    all_ids = sorted(pid for p in pages for pid in p["images"].values())
-    assert all_ids == ["p1", "p2"]
+    assert pages[0]["texts"] == {"explain[0]": "已有文案"}
+    assert pages[1]["texts"] == {}  # 非法 texts 归空,不透传脏数据
+
+
+def test_photo_helpers_shared_with_write_copy():
+    # write_copy 从这里借 _photos/_photo_id(公共章节字段读取);签名别悄悄变。
+    chapter = {"photos": [{"photoId": "p1"}, {"photoId": "p2"}]}
+    photos = legalize._photos(chapter)
+    assert [legalize._photo_id(p) for p in photos] == ["p1", "p2"]

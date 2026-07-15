@@ -161,6 +161,7 @@ type Selection = {
   box: Record<Side, string>; // 输入框字符串态；空串 = 该属性未设置
   sample: string;
   role: Role | null; // 文字槽才有
+  lang: 'user' | 'en' | null; // 'user' = 用户语言;'en' = 保持英文(写作 AI 的硬约束)
   variableDecor: boolean; // 该槽能否被主题一键刷色/刷字体
 };
 
@@ -182,7 +183,6 @@ type WriteResult = {
   failed: string[];
   notes?: string[];
   regenerated?: boolean;
-  previewsBaked?: boolean;
 };
 
 /** 元素当前的行内 style 里显式写了哪些边（没写的不填，避免把 auto 变成硬数值）。 */
@@ -312,6 +312,7 @@ export default function TemplateWallPage() {
       box: readBox(el),
       sample: slot?.sample ?? '',
       role: (slot?.role as Role | undefined) ?? null,
+      lang: (slot?.lang as 'user' | 'en' | undefined) ?? null,
       variableDecor: Boolean(slot?.variableDecor),
     });
     setStatus('');
@@ -404,7 +405,7 @@ export default function TemplateWallPage() {
       });
       setStatus(
         r.ok
-          ? `${templateId} → ${CATEGORY_SHORT[category]}${r.previewsBaked ? '（已重烘预览）' : ''}，热更后卡片会移到新分组`
+          ? `${templateId} → ${CATEGORY_SHORT[category]}，热更后卡片会移到新分组`
           : `失败：${r.failed.join('; ')}`,
       );
     } catch (e) {
@@ -430,6 +431,26 @@ export default function TemplateWallPage() {
       setStatus(
         `${selection.slotKey} → ${ROLE_LABEL[role]}${r.notes?.length ? `。${r.notes.join('；')}` : ''}，热更后生效`,
       );
+    } catch (e) {
+      setStatus(`失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // 槽的语言约束：user = 用用户语言写；en = 保持英文（日期/编号/标签类装饰）。
+  // engine write_copy 把它原样发给写作 AI —— 是硬约束，不是展示偏好。
+  async function changeLang(lang: 'user' | 'en') {
+    if (!selection || selection.kind !== 'text' || !selection.slotKey) return;
+    setStatus(`把 ${selection.slotKey} 的语言改成 ${lang}…`);
+    try {
+      const r = await postJson<WriteResult>('/api/dev/template-copy', {
+        ops: [{ templateId: selection.templateId, slotKey: selection.slotKey, lang }],
+      });
+      if (!r.ok) {
+        setStatus(`失败：${r.failed.join('; ')}`);
+        return;
+      }
+      setSelection({ ...selection, lang });
+      setStatus(`${selection.slotKey} 语言 → ${lang}，热更后生效`);
     } catch (e) {
       setStatus(`失败：${e instanceof Error ? e.message : String(e)}`);
     }
@@ -492,6 +513,7 @@ export default function TemplateWallPage() {
               box: { width: '320', height: '', top: '60', left: '60', right: '', bottom: '' },
               sample,
               role,
+              lang: newSlot.lang,
               variableDecor: false,
             },
       );
@@ -828,7 +850,7 @@ export default function TemplateWallPage() {
               <label style={{ display: 'block', marginBottom: 10, fontWeight: 600 }}>
                 文字类型
                 <div style={{ fontWeight: 400, color: '#888', fontSize: 11, marginBottom: 4 }}>
-                  决定主题怎么刷这个槽、AI 写不写它（装饰槽 AI 不写）
+                  决定字体/配色策略和 AI 的写法（装饰槽也由 AI 写；页码除外，代码统一生成）
                 </div>
                 <select
                   value={selection.role ?? 'body'}
@@ -840,6 +862,21 @@ export default function TemplateWallPage() {
                       {ROLE_LABEL[role]}
                     </option>
                   ))}
+                </select>
+              </label>
+
+              <label style={{ display: 'block', marginBottom: 10, fontWeight: 600 }}>
+                语言（lang）
+                <div style={{ fontWeight: 400, color: '#888', fontSize: 11, marginBottom: 4 }}>
+                  AI 写这个槽用什么语言：用户语言，或固定英文（日期/编号/标签类装饰）
+                </div>
+                <select
+                  value={selection.lang ?? 'user'}
+                  onChange={(e) => changeLang(e.target.value as 'user' | 'en')}
+                  style={{ width: '100%', padding: '5px 6px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13 }}
+                >
+                  <option value="user">用户语言（user）</option>
+                  <option value="en">固定英文（en）</option>
                 </select>
               </label>
 

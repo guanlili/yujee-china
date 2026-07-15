@@ -3,7 +3,7 @@
   "category": "interior",
   "images": [
     { "id": "image1", "orientation": ["square"], "quality": ["hero", "detail"], "composition": ["focal", "closeup"] },
-    { "id": "image2", "orientation": ["square"], "quality": ["detail", "fill"], "composition": ["wide", "focal"] }
+    { "id": "image2", "orientation": ["portrait"], "quality": ["detail", "fill"], "composition": ["wide", "focal"] }
   ],
   "texts": [
     { "id": "explain", "role": "explain", "lang": "user", "sample": "March. The last morning in the old flat, before the truck came. " },

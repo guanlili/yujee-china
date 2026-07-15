@@ -5,6 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
+import { getHtmlTemplate } from './render/html-templates/registry';
+import { lintTemplateHtml } from './render/html-template-lint';
 import {
   ITEMS_GRID_CAPACITY,
   TEMPLATE_IDS,
@@ -332,4 +334,65 @@ test('items-grid bracket paths are bounded by the shared grid capacity', () => {
     ok: false,
     reason: `text slot "explain[${ITEMS_GRID_CAPACITY}]" exceeds items-grid capacity ${ITEMS_GRID_CAPACITY} in template mag-10`,
   });
+});
+
+// ── 配图提示 vs HTML 几何:不许打架 ─────────────────────────────────────────────
+// slot_matcher(engine)至今按 JSON 的 orientation 提示决定「竖照进竖槽」,但几何
+// 真相在 HTML 里 —— 工作台改的是 HTML 框的宽高,JSON 提示不会自动跟上。曾经漂出
+// 3 处真实矛盾(mag-11/13/15:提示只收竖照,框却是横的),后果是竖照被塞进横框裁头,
+// 再被排版评委按「照片完整」扣分 —— 自己生产废候选。这条测试让漂移当场红。
+test('image-slot orientation hints never contradict the HTML box aspect', () => {
+  const RATIO = 1.15; // 与 dev/template-box 回写用同一阈值;介于两者之间视作方形,谁都不冲突
+  const offenders: string[] = [];
+
+  for (const id of TEMPLATE_IDS) {
+    const tpl = getTemplate(id);
+    const html = getHtmlTemplate(id);
+    if (!tpl || !html) continue;
+
+    const boxes = new Map<string, { w: number; h: number }>();
+    for (const m of html.matchAll(/<[^>]*data-image-slot="([^"]+)"[^>]*>/g)) {
+      const style = /style="([^"]*)"/.exec(m[0])?.[1] ?? '';
+      const w = /(?:^|;)\s*width:\s*([\d.]+)px/.exec(style)?.[1];
+      const h = /(?:^|;)\s*height:\s*([\d.]+)px/.exec(style)?.[1];
+      if (w && h) boxes.set(m[1], { w: Number(w), h: Number(h) });
+    }
+
+    const slots = [...tpl.images, ...(tpl.items?.images ?? [])];
+    for (const slot of slots) {
+      const hint = slot.orientation;
+      if (!hint || hint.length !== 1) continue; // 收多种朝向的槽跟谁都不矛盾
+      for (const [key, box] of boxes) {
+        if (key !== slot.id && !key.startsWith(`${slot.id}[`)) continue;
+        const aspect = box.w / box.h;
+        const boxShape = aspect > RATIO ? 'landscape' : aspect < 1 / RATIO ? 'portrait' : 'square';
+        if (boxShape === 'square') continue;
+        if (boxShape !== hint[0]) {
+          offenders.push(
+            `${id}/${key}: JSON 提示只收 ${hint[0]},HTML 框 ${box.w}×${box.h} 却是 ${boxShape}`,
+          );
+        }
+      }
+    }
+  }
+  assert.deepEqual(offenders, []);
+});
+
+// ── 每个模板的 HTML 必须通过 lint(哑槽在此现形) ────────────────────────────────
+// 「声明了但 HTML 不渲染」曾攒到 13 个槽:AI 给它们写文案、用户付 token、页面上
+// 一个字不显示。lint 已改为声明必须渲染;这条测试把 42 个模板全部过一遍,
+// 新哑槽(不管来自手改 JSON 还是工作台删图层漏了级联)当场红。
+test('every template HTML passes lint — no declared-but-unrendered slots', () => {
+  const failures: string[] = [];
+  for (const id of TEMPLATE_IDS) {
+    const tpl = getTemplate(id);
+    const html = getHtmlTemplate(id);
+    if (!tpl) continue;
+    if (!html) {
+      failures.push(`${id}: 模板已注册但没有 HTML`);
+      continue;
+    }
+    failures.push(...lintTemplateHtml(tpl, html));
+  }
+  assert.deepEqual(failures, []);
 });
