@@ -927,8 +927,9 @@ function EditorBook({
         const g = byId('ovGrid');
         for (const s of dirtySpreads) {
           const [lp, rp] = spreadPages(s);
-          paintEl(g?.querySelector(`[data-oface="${s}-l"]`) as HTMLElement | null, lp, 0, { thumb: true });
-          paintEl(g?.querySelector(`[data-oface="${s}-r"]`) as HTMLElement | null, rp, 0, { thumb: true });
+          // 画板格全保真(同 renderOverview):它是主编辑表面,不是缩略图。
+          paintEl(g?.querySelector(`[data-oface="${s}-l"]`) as HTMLElement | null, lp);
+          paintEl(g?.querySelector(`[data-oface="${s}-r"]`) as HTMLElement | null, rp);
         }
       }
       reattachImgEdit();
@@ -1781,10 +1782,13 @@ function EditorBook({
       }).join('');
       // 懒 paint:格子进入视口才渲(20+ 页的总览一次性全渲是强制重排+解码风暴)。
       // IntersectionObserver 不可用(旧引擎/jsdom)时回退空闲帧全量渲。
+      // ⚠️ 全保真模式,不是 thumb:总览网格就是主画板(无限画布,可缩放到 3x,
+      // 编辑工具直接在上面用),必须和书籍视图渲染一致 —— display 派生图 +
+      // fitTextBoxes(记忆化命中,近零成本)+ data-editable 标记。
       const paintOvSpread = (i: number) => {
         const [lp, rp] = spreadPages(i);
-        paintEl(g.querySelector(`[data-oface="${i}-l"]`) as HTMLElement | null, lp, 0, { thumb: true });
-        paintEl(g.querySelector(`[data-oface="${i}-r"]`) as HTMLElement | null, rp, 0, { thumb: true });
+        paintEl(g.querySelector(`[data-oface="${i}-l"]`) as HTMLElement | null, lp);
+        paintEl(g.querySelector(`[data-oface="${i}-r"]`) as HTMLElement | null, rp);
       };
       if (typeof IntersectionObserver === 'function') {
         const io = new IntersectionObserver((entries) => {

@@ -158,6 +158,9 @@ export function fitTextBoxes(root: HTMLElement): void {
     if (el.tagName === 'IMG') return;
     if (!el.style.height) return; // 只处理模板里显式固定高度的框
     if (el.style.display === 'none') return; // folio 等被展示层隐藏的槽
+    // 不可测量(display:none 祖先/未布局)时 scrollHeight 恒 0,"不溢出"是假象 ——
+    // 跳过且不写 memo,防止污染各表面共享的字号缓存(画板/书籍视图必须同字号)。
+    if (el.clientHeight === 0 && el.clientWidth === 0) return;
     const initial = parseFloat(el.style.fontSize) || 0;
     const key =
       `${el.getAttribute('data-text-key')}|${el.className}|${el.style.width}x${el.style.height}` +
