@@ -169,11 +169,16 @@ class JobError(_Strict):
 #
 # All models below are `_V3Strict` (extra='forbid'), matching the TS `.strict()`
 # on every (nested) object. ★ analyze `exif` is the §3 privacy enforcement point:
-# it carries only `takenAt`, so any lat/lng/place key is rejected at parse time.
+# it carries only `takenAt`, so any lat/lng coordinate key is rejected at parse
+# time (place names don't enter via analyze either — they reach the tree through
+# the content-interview step, see V3Chapter.place / chapterContext).
 # ★ analyze photo also accepts `clusterId` (#232): an opaque co-location/co-time
 # label the browser derives locally from EXIF time/GPS (c1/c2/…) — NOT a
-# coordinate. §3 privacy red line allows it but still forbids any
-# location/place/GPS/lat/lng/coordinate field.
+# coordinate. §3 privacy red line, 2026-07 revision («地名文字可出、坐标止步浏览器»):
+# coordinates (lat/lng/GPS) in any form stay forbidden; CITY-LEVEL PLACE-NAME
+# STRINGS are allowed (browser-side reverse geocoding; the coordinates themselves
+# never leave the browser). Structured place fields: V3Chapter.place +
+# JudgeCopyPhoto.place only.
 # =============================================================================
 
 
@@ -320,6 +325,9 @@ class V3Chapter(_V3Strict):
     # 内容采集(分组后采访)答案:自由文字,给排版/写文案当章节背景。
     # Web 拼「时间:… 地点:…」前缀 + 用户原话;坐标绝不进(仅地名文字,§3 隐私)。
     chapterContext: str = Field(default="", max_length=500)
+    # 拍摄地点:城市级地名文字(浏览器本地反地理编码,坐标不出浏览器,§3 2026-07 口径)。
+    # 章不跨 cluster(#232)故挂章级;采访提交时写回。跳过采访/老树 => ""。
+    place: str = Field(default="", max_length=100)
     # Stage1 extracted source color. Distinct from final theme `accentColor`.
     # Migration field: older trees omit it; Stage1 PR249 trees may carry null.
     extractedColor: AccentColor | None = None
@@ -638,10 +646,15 @@ class JudgeCandidate(_V3Strict):
 
 
 class JudgeCopyPhoto(_V3Strict):
-    """写文案素材(评委选完版式后当场写满本章文案时用)。只带 photoId + sceneDescription。"""
+    """写文案素材(评委选完版式后当场写满本章文案时用)。photoId + sceneDescription +
+    拍摄时间/地点(地点是城市级地名文字,§3 2026-07 口径;坐标仍禁)。"""
 
     photoId: str = Field(min_length=1)
     sceneDescription: str = Field(default="", max_length=300)
+    takenAt: str | None = None  # EXIF,来自树;老客户端不带 => null
+    place: str | None = Field(default=None, max_length=100)  # 城市级地名文字
+
+    _check_taken_at = field_validator("takenAt")(_validate_iso_datetime)
 
 
 class JudgeLayoutUnit(_V3Strict):

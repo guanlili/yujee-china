@@ -130,7 +130,19 @@ def _build_payload_and_messages(
         for pid in spec["photoIds"]:
             photo = photos_by_id.get(pid)
             scene = _get(photo, "sceneDescription", "") if photo is not None else ""
-            photos_payload.append({"photoId": simple_by_real[pid], "sceneDescription": scene or ""})
+            entry: dict[str, Any] = {
+                "photoId": simple_by_real[pid],
+                "sceneDescription": scene or "",
+            }
+            # 拍摄时间(EXIF)+ 拍摄地点(城市级地名文字,§3:坐标不出浏览器)。
+            # 缺失就整个省略 key,不发 null 占位。
+            taken_at = _get(photo, "takenAt", None) if photo is not None else None
+            if taken_at:
+                entry["takenAt"] = taken_at
+            place = _get(photo, "place", None) if photo is not None else None
+            if place:
+                entry["place"] = place
+            photos_payload.append(entry)
         payload_pages.append(
             {
                 "pageIndex": spec["pageIndex"],

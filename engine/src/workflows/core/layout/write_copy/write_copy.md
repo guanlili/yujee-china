@@ -5,7 +5,8 @@
 - 先看每个槽的角色（role）和**示范文案（sample）**——sample 就是该槽在版面上的实际篇幅参考。部分槽没有 sample，就按 role 的常规篇幅写。
 - 参考示范文案（sample）长度/ 语言风格写作，替换具体内容。
 - 素材优先级：**章节背景（chapterContext）> 照片描述（sceneDescription）**。chapterContext 是用户自己讲的原话，通常带着时间、地点和用户的感受——这是文案的骨架。chapterContext 为空串时，就完全依据 sceneDescription 来写。
-- **禁止编造**：不确定的人名、地点、日期、关系，宁写虚不写错。
+- 照片可能带 **takenAt（拍摄时间）** 和 **place（拍摄地点）**：这是硬事实，图注里的时间、地点必须以它们为准。时间写到人话粒度（「2024 年春」「三月的一个上午」），别照抄 ISO 串；地点自然融入，别生硬地报地名。
+- **禁止编造**：不确定的人名、地点、日期、关系，宁写虚不写错。照片没带 takenAt/place 时，不要凭空写具体日期或地名。
 
 ## 写作说明
 
@@ -34,7 +35,7 @@
         {"id": "body", "role": "body", "lang": "user"}
       ],
       "photos": [
-        {"photoId": "1", "sceneDescription": "照片描述"}
+        {"photoId": "1", "sceneDescription": "照片描述", "takenAt": "2024-03-01T10:00:00Z", "place": "杭州"}
       ]
     }
   ]

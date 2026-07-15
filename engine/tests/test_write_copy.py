@@ -26,6 +26,7 @@ def _unit(*, chapter_context: str = "厦门海边度假,轻松愉快") -> dict:
                 "ref200px": "data:image/jpeg;base64,AAAA",
                 "orientation": "landscape",
                 "takenAt": "2024-05-01T10:00:00Z",
+                "place": "厦门",
                 "sceneDescription": "两个人在海边看日落",
             },
             {
@@ -136,6 +137,9 @@ def test_write_copy_fills_title_and_body_slots(monkeypatch):
     photos = payload["pages"][0]["photos"]
     assert photos[0]["photoId"] == "1"
     assert photos[0]["sceneDescription"] == "两个人在海边看日落"
+    # 拍摄时间/地点(城市级地名文字)进模型上下文,图注据此写时间地点;缺失则整个省略 key。
+    assert photos[0]["takenAt"] == "2024-05-01T10:00:00Z"
+    assert photos[0]["place"] == "厦门"
     assert "p1" not in user_text  # 真实 photoId 不出现
     assert "image_url" not in user_text
 

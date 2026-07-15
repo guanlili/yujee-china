@@ -18,6 +18,9 @@ const BodySchema = z
           .object({
             chapterId: z.string().min(1),
             chapterContext: z.string().max(500),
+            // 拍摄地点:城市级地名文字(V3Chapter.place)。坐标绝不在此(§3:地名文字
+            // 可出、坐标止步浏览器)。可选:老客户端/无 GPS 的章不传。
+            place: z.string().max(100).optional(),
           })
           .strict(),
       )

@@ -25,8 +25,10 @@ import {
 const hasCode = (code: string) => (err: unknown) =>
   typeof err === 'object' && err !== null && (err as { code?: string }).code === code;
 
+// §3 2026-07 口径:坐标(lat/lng/GPS)任何形式仍严禁;城市级地名文字(place)已放开
+// (V3Chapter.place,浏览器本地反查,坐标不出浏览器),故 place 不在禁键之列。
 function hasForbiddenLocationKey(value: unknown): boolean {
-  const forbidden = new Set(['location', 'place', 'gps', 'lat', 'lng', 'coordinates']);
+  const forbidden = new Set(['location', 'gps', 'lat', 'lng', 'coordinates']);
   if (Array.isArray(value)) return value.some(hasForbiddenLocationKey);
   if (value && typeof value === 'object') {
     return Object.entries(value).some(
@@ -414,6 +416,7 @@ async function seedDraftAlbum(userId: string) {
           accentColor: null,
           artFont: null,
           chapterContext: "",
+          place: '',
           photos: [{ photoId: 'p1', sceneDescription: 'sea', width: 800, height: 600, orientation: 'landscape' }],
         },
       ],
@@ -445,6 +448,7 @@ test('getDraftSkeleton: renders V3 tree+pages draft without dropping preview pag
             accentColor: null,
             artFont: null,
             chapterContext: "",
+            place: '',
             photos: [{ photoId: 'p1', sceneDescription: 'sea', width: 800, height: 600, orientation: 'landscape' }],
           },
           {
@@ -453,6 +457,7 @@ test('getDraftSkeleton: renders V3 tree+pages draft without dropping preview pag
             accentColor: null,
             artFont: null,
             chapterContext: "",
+            place: '',
             photos: [{ photoId: 'p2', sceneDescription: 'city', width: 600, height: 800, orientation: 'portrait' }],
           },
         ],
@@ -506,6 +511,7 @@ test('getDraftSkeleton: V3 body-only preview keeps first/last pages mapped to ch
             accentColor: null,
             artFont: null,
             chapterContext: "",
+            place: '',
             photos: [{ photoId: 'p1', sceneDescription: 'sea', width: 800, height: 600, orientation: 'landscape' }],
           },
           {
@@ -514,6 +520,7 @@ test('getDraftSkeleton: V3 body-only preview keeps first/last pages mapped to ch
             accentColor: null,
             artFont: null,
             chapterContext: "",
+            place: '',
             photos: [{ photoId: 'p2', sceneDescription: 'city', width: 600, height: 800, orientation: 'portrait' }],
           },
         ],
@@ -587,6 +594,7 @@ function makeStoryTree(n: number) {
       accentColor: null,
       artFont: null,
       chapterContext: "",
+      place: '',
       photos: [],
     })),
   };
@@ -847,6 +855,7 @@ test('applyDesign: success advances stage story → ready (export gate key; 现�
           accentColor: null,
           artFont: null,
           chapterContext: '',
+          place: '',
           photos: [
             { photoId: 'p1', sceneDescription: '', width: 800, height: 600, orientation: 'landscape' },
           ],
@@ -975,6 +984,7 @@ async function seedChapterChatAlbum(userId: string) {
         accentColor: null,
         artFont: null,
         chapterContext: "",
+        place: '',
         photos: [{ photoId: 'p1', sceneDescription: 'beach', width: 800, height: 600, orientation: 'landscape' as const, takenAt: null }],
       },
       {
@@ -983,6 +993,7 @@ async function seedChapterChatAlbum(userId: string) {
         accentColor: null,
         artFont: null,
         chapterContext: "",
+        place: '',
         photos: [{ photoId: 'p2', sceneDescription: 'street', width: 600, height: 800, orientation: 'portrait' as const, takenAt: null }],
       },
     ],
@@ -1021,6 +1032,7 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
             accentColor: null,
             artFont: null,
             chapterContext: "",
+            place: '',
             photos: [
               {
                 photoId: 'p1',
@@ -1046,6 +1058,7 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
             accentColor: null,
             artFont: null,
             chapterContext: "",
+            place: '',
             photos: [
               {
                 photoId: 'p3',
@@ -1144,6 +1157,7 @@ test('getInternalAgentData page-photos returns registered transient refs without
             accentColor: null,
             artFont: null,
             chapterContext: "",
+            place: '',
             photos: [
               {
                 photoId: 'p1',
@@ -1176,6 +1190,7 @@ test('getInternalAgentData page-photos returns registered transient refs without
             accentColor: null,
             artFont: null,
             chapterContext: "",
+            place: '',
             photos: [
               {
                 photoId: 'p4',
@@ -1271,6 +1286,7 @@ async function seedThemeCoverAlbum(userId: string) {
         accentColor: null,
         artFont: null,
         chapterContext: "",
+        place: '',
         photos: [
           { photoId: 'p1', sceneDescription: 'beach at dawn', width: 800, height: 600, orientation: 'landscape' as const, takenAt: null },
         ],
@@ -1306,6 +1322,7 @@ function twoChapterDraft(): V3StoryDraft {
           accentColor: null,
           artFont: null,
           chapterContext: '',
+          place: '',
           photos: [
             { photoId: 'p1', sceneDescription: 'coast', width: 800, height: 600, orientation: 'landscape', takenAt: null },
           ],
@@ -1316,6 +1333,7 @@ function twoChapterDraft(): V3StoryDraft {
           accentColor: null,
           artFont: null,
           chapterContext: '',
+          place: '',
           photos: [
             { photoId: 'p2', sceneDescription: 'gallery', width: 600, height: 800, orientation: 'portrait', takenAt: null },
           ],
