@@ -211,23 +211,26 @@ export const generationService = {
     userId: string,
     albumId: string,
     _requestId: string,
-  ): Promise<{ ready: boolean; units: SelectLayoutCandidateUnit[] }> {
+  ): Promise<{ ready: boolean; units: SelectLayoutCandidateUnit[]; requestId: string | null }> {
     const album = await albumService.findOwned(userId, albumId);
     // 时序反转:排版期 album 恒为 EDITING(P2 缩略图轮询也在 EDITING 下发生)。放宽以取回候选。
     if (!(album.status === 'EDITING' || album.status === 'AGENT_RUNNING'))
       throw ERRORS.ALBUM_NOT_EDITABLE();
     // 解耦:按 album 定位活跃 layout job,用它真实的 requestId 取候选 —— 浏览器传的 _requestId 是
     // analyze 的,对不上按 layout-requestId 暂存的候选(gap4)。没在跑 layout job 就 ready=false。
+    // 响应带回 layout job 自己的 requestId:浏览器 phase-2 派发按它去重(每次排版都换)。
+    // 追加照片回归:此前浏览器按 analyze recipe requestId 去重(跨追加不变),首次生成
+    // 派发过 judge 后,追加的增量排版停在 52 被永远挡住 → judge/write_copy 不再触发。
     const job = await agentJobRepo.findActiveLayoutByAlbum(albumId);
-    if (!job) return { ready: false, units: [] };
+    if (!job) return { ready: false, units: [], requestId: null };
     const cached = transientLayoutCandidates.get(job.requestId);
-    if (cached) return { ready: true, units: cached };
+    if (cached) return { ready: true, units: cached, requestId: job.requestId };
     // 内存 miss(Vercel 多实例/进程重启):从 agent_jobs.meta 兜底 —— 候选的真相在库里。
     const meta = job.meta as { candidateUnits?: SelectLayoutCandidateUnit[] } | null;
     if (meta?.candidateUnits && Array.isArray(meta.candidateUnits) && meta.candidateUnits.length > 0) {
-      return { ready: true, units: meta.candidateUnits };
+      return { ready: true, units: meta.candidateUnits, requestId: job.requestId };
     }
-    return { ready: false, units: [] };
+    return { ready: false, units: [], requestId: job.requestId };
   },
 
   // P2 phase 2 dispatch (docs/agent/contract.md §5.2.1): the browser POSTs the

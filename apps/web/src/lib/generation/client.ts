@@ -316,7 +316,7 @@ function fallbackUnit(unit: CandidateUnit): JudgeUnit {
 export async function fetchJudgeCandidates(
   albumId: string,
   requestId: string,
-): Promise<{ ready: boolean; units: CandidateUnit[] }> {
+): Promise<{ ready: boolean; units: CandidateUnit[]; requestId?: string | null }> {
   const res = await fetch(
     `/api/v3/albums/${albumId}/judge-layout?requestId=${encodeURIComponent(requestId)}`,
   );
@@ -325,7 +325,8 @@ export async function fetchJudgeCandidates(
     if (res.status === 401 || json.error?.code === 'UNAUTHORIZED') throw new UnauthorizedError();
     throw new Error(json.error?.message ?? 'Failed to load layout candidates');
   }
-  return json.data as { ready: boolean; units: CandidateUnit[] };
+  // data.requestId = 本次 layout job 的 requestId(每次排版都换),phase-2 派发按它去重。
+  return json.data as { ready: boolean; units: CandidateUnit[]; requestId?: string | null };
 }
 
 // Render thumbnails for every candidate unit, then POST phase 2. Fallback (REQUIRED):

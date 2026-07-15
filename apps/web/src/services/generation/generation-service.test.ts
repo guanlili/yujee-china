@@ -568,6 +568,10 @@ test('候选跨实例可见:内存 miss 时从 agent_jobs.meta 兜底(Vercel 多
     const result = await generationService.getJudgeCandidates(user.id, album.id, requestId);
     assert.equal(result.ready, true, '内存 miss 时必须从 meta 兜底(线上 2026-07-12 事故回归)');
     assert.equal(result.units.length, 1);
+    // 追加照片回归:浏览器 phase-2 派发的去重键必须是「本次 layout job」的 requestId
+    // (每次排版都换),不能是 analyze recipe 的 requestId(跨追加不变 → 第二次排版
+    // 被首次生成的去重记录挡死,judge/write_copy 永不触发)。GET 必须把它带回去。
+    assert.equal(result.requestId, layoutRequestId, 'GET judge-layout 必须返回 layout job 自己的 requestId');
   } finally {
     await cleanupUser(user.id);
   }

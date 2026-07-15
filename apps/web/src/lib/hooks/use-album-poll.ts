@@ -165,19 +165,24 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
         // 失败非致命:Agent/Web 兜底从候选 0 收尾,继续轮询即可。
         if (generation?.stage === 'layout' && generation.progress === 52) {
           const recipe = albumRecipe.load(uuid);
-          if (
-            recipe?.requestId &&
-            !submittedJudgeRequests.has(recipe.requestId) &&
-            !judgeSubmitInFlight
-          ) {
+          if (recipe?.requestId && !judgeSubmitInFlight) {
             judgeSubmitInFlight = true;
             const requestId = recipe.requestId;
             const language = recipe.language;
             try {
-              const { ready, units } = await fetchJudgeCandidates(uuid, requestId);
-              if (ready && units.length > 0) {
+              // 去重键 = GET 返回的「本次 layout job」requestId(每次排版都换),不能用
+              // recipe.requestId(analyze 的,追加照片后不变):否则首次生成派发过 judge
+              // 后,追加照片的增量排版会被永远挡在 52 —— judge/write_copy(写文案跑在
+              // judge 里)不再触发。重复 POST 由服务端 52→53 CAS 兜底,无害。
+              const { ready, units, requestId: layoutRequestId } = await fetchJudgeCandidates(uuid, requestId);
+              if (
+                ready &&
+                units.length > 0 &&
+                layoutRequestId &&
+                !submittedJudgeRequests.has(layoutRequestId)
+              ) {
                 await renderAndSubmitJudgeLayout(uuid, { requestId, language, units });
-                submittedJudgeRequests.add(requestId);
+                submittedJudgeRequests.add(layoutRequestId);
               }
             } catch (e) {
               if (e instanceof UnauthorizedError) {
