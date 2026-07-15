@@ -225,26 +225,29 @@ export function ChatPanel({
       }
       sending = true;
       if (isAuthoring) {
-        // 异常恢复(用户拍板 2026-07-15):排版环节断网/失败后,草稿有章节树但一页
-        // 都没有 —— 用户回来唯一的入口就是这个对话框,而设计 Agent 对空书只会
-        // 422(「book 契约不合法:没有页面」)。这种状态下把用户消息当作
-        // 【重新排版】的触发器,而不是把异常抛回对话。
-        // 正在跑的排版不受影响:服务端对 QUEUED/RUNNING 幂等去重,重复触发只是
-        // 接上轮询;两段式断在候选阶段的恢复由 use-album-poll 的 52 哨兵负责。
+        // 空书硬不变量(堵 422,用户拍板 2026-07-15):authoring 期一旦画板零页,这条消息
+        // 【绝不】进设计 Agent —— 它对空书只会回「book 契约不合法:没有页面」(422),异常
+        // 直接灌进对话且用户无从恢复。零页消息一律进续跑漏斗,与挂载解析器同一套判定。
         const pagesNow = co()?.getPagesState?.() ?? [];
-        if (pagesNow.length === 0 && storyGate?.allDone) {
-          appendAiText(
-            aT(
-              '上次排版没有完成（可能是网络中断）。我现在重新排版，稍等片刻~',
-              'The last layout run didn’t finish (possibly a network drop). Restarting the layout now — one moment.',
-            ),
-          );
+        if (pagesNow.length === 0) {
+          // storyGate 异步加载,挂载初期可能为 null(旧守卫读 storyGate?.allDone,未就绪时
+          // 恒为假 → 守卫失效 → 空书进设计 Agent → 422,这正是要堵的 bug #2);为 null 先取。
+          // 已判 running 的也重取一次:浏览器 3 分钟轮询超时会提示"发消息我会重新排版",
+          // 若那时 job 其实已 FAILED,不刷新会把用户永远困在 stale 的「还在排版中」里。
+          if (!storyGate || storyGate.layoutState === 'running') await loadStoryGate();
+          if (storyGate?.layoutState === 'running') {
+            appendAiText(aT('排版还在进行中,稍等片刻~', 'Layout is still running — one moment.'));
+            sending = false;
+            return;
+          }
+          // 其余(idle/failed/信号缺失)→ 采访续跑漏斗:opener 要么续下一章采访,要么(全齐了)
+          // 走链尾直接重排。先放开 sending —— opener 可能停在采访等用户回答,锁着会永久吞掉
+          // 后续消息;triggerSelectLayout 自己管理 sending。
           sending = false;
-          selectLayoutTriggered = false; // 上次半途而废的触发不该挡住这次
-          await triggerSelectLayout();
+          await runChapterGuideOpener({ allowDuringSend: true });
           return;
         }
-        // authoring 期的对话改书统一走设计 Agent。
+        // authoring 期、画板已有页:对话改书统一走设计 Agent。
         await runDesignChatTurn(txt);
       } else {
         await runEdit(txt);
@@ -1534,7 +1537,40 @@ export function ChatPanel({
         if (isPhotoOnlyChapter(cid)) { interviewedChapters.add(cid); continue; }
       }
       const first = nextUninterviewedChapter();
-      if (!first) { interviewChainStartedRef.current = false; return; }
+      if (!first) {
+        // 采访链尾巴(Phase 0 续跑修正,2026-07 复核拍板):排版此前只从"活的采访链"尾部
+        // 触发(finishInterview 最后一章 → triggerSelectLayout)。刷新/重进后链是断的:
+        // 所有章的故事都齐了(或全为 photo-only)却零页 —— 上个会话的 layout job 本会话
+        // 没人等,FAILED/没提交成功更没人重试,画板永远空白。这里把链尾补回来:零页且未在
+        // 排版中 → 当场触发整本排版。triggerSelectLayout 自带 selectLayoutTriggered 防重入、
+        // 服务端 QUEUED/RUNNING 幂等去重、recipe 缺失(原始照片不在本设备)的兜底文案。
+        // 安全边界:
+        // · chapterOrder 为空(storyGate 没加载成功/异常相册)不触发 —— 空 order 时 first
+        //   恒为 null,不挡会对"没有章节"的相册误发排版;
+        // · layoutState==='running' 不触发 —— 挂载解析器已在 waitForLayoutThenRefresh 等它;
+        // · 画板与草稿骨架双读为零才触发 —— coordinator 未就绪的瞬间不把已排好的书误判为空;
+        // · selectLayoutTriggered 已置(本会话已触发、轮询在跑)不重复提示/触发。
+        const canvasPages = co()?.getPagesState?.()?.length ?? 0;
+        const skeletonPages =
+          latestAuthoringRef.current.draftChapters?.pages.length ?? draftSkel?.pages.length ?? 0;
+        if (
+          canvasPages === 0 &&
+          skeletonPages === 0 &&
+          !selectLayoutTriggered &&
+          (storyGate?.chapterOrder.length ?? 0) > 0 &&
+          storyGate?.layoutState !== 'running'
+        ) {
+          appendAiText(
+            aT(
+              '所有章节的故事都齐了,我这就为整本书排版~',
+              'All your chapter stories are in — laying out the whole book now.',
+            ),
+          );
+          await triggerSelectLayout();
+        }
+        interviewChainStartedRef.current = false;
+        return;
+      }
       guidedChapters.add(first);
       chapterHistory.length = 0;
       co()?.goToChapterById?.(first);
@@ -1832,7 +1868,31 @@ export function ChatPanel({
         const liveChapterId = storyGate?.currentChapterId ?? null;
         if (liveChapterId) co()?.goToChapterById?.(liveChapterId);
         const stage = storyGate?.stage;
-        if (liveChapterId) {
+        // 0 页单一漏斗(Phase 0 续跑修正,2026-07 复核拍板):排版中断的真实形态是
+        // stage=story、currentChapterId 非空、allDone=false(markChapterDone 无浏览器调用方,
+        // allDone 是死信号,不能当续跑闸)—— 旧代码按 stage/shown 分支接不住它:0 页重进
+        // 会被 shown>0 的空当或 offerDesignCard 的 hasPages=false 静默 return 吞掉,画板
+        // 死白无入口。改成画板 0 页一律先进续跑漏斗,由服务端 job 真相(layoutState)+
+        // 采访完备性(runChapterGuideOpener)决定去向:
+        // · running → 接着等它落地(完成分支刷画板+弹设计卡,超时分支复位并提示);
+        // · 其余(idle/failed/信号缺失)→ opener:对 context 为空的章续采访(历史回放过的
+        //   问答不会重复),全部齐了走 opener 链尾直接重排。不受 shown===0 门限制(opener
+        //   自带 interviewChainStartedRef/pendingInterview 防重入)。
+        if ((co()?.getPagesState?.()?.length ?? 0) === 0) {
+          if (liveChapterId) appendChapterCard(liveChapterId);
+          if (storyGate?.layoutState === 'running') {
+            appendAiText(
+              aT(
+                '上次的排版还在进行中,完成后会自动出现~',
+                'Your last layout is still running — it will show up here automatically once it finishes.',
+              ),
+            );
+            const host = appendThinkingShell();
+            void waitForLayoutThenRefresh(host, { minPages: 1 });
+          } else {
+            void runChapterGuideOpener();
+          }
+        } else if (liveChapterId) {
           appendChapterCard(liveChapterId);
           if (currentChapterHasDraftPages()) {
             appendEditLoopReadyCard(liveChapterId);

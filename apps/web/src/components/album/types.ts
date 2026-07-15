@@ -48,6 +48,11 @@ export interface StoryProgress {
   currentChapterId: string | null;
   allDone: boolean;
   exportUnlocked: boolean;
+  // 排版续跑信号(album-service.getStoryProgress 透出):有在跑的 layout job → 'running';
+  // 最近一条 layout job FAILED → 'failed';没排过/已落页 → 'idle'。可选:只有 GET
+  // /story-progress 会带它,其它写回 story gate 的响应(markChapterDone)不带,取不到时
+  // 挂载解析器按"重新排版"兜底(见 ChatPanel)。
+  layoutState?: 'running' | 'failed' | 'idle';
 }
 
 export interface ChatMessage {

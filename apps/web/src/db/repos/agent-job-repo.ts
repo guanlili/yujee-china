@@ -79,6 +79,21 @@ export const agentJobRepo = {
     return rows[0];
   },
 
+  // 排版续跑止血:某 album 最近一条 layout job,**不限 status**(含 FAILED/COMPLETED)。
+  // findActiveLayoutByAlbum 只取在跑的(QUEUED/RUNNING),看不到"上次排版失败/跑完了";
+  // getStoryProgress 先看 active(→'running'),没有再看这条最近的(FAILED→'failed'),
+  // 让 ChatPanel 重进时能区分"还在排/失败要重排/没排过"。排序与 findActiveLayoutByAlbum
+  // 一致(createdAt desc, id 破平)。
+  findLatestLayoutByAlbum: async (albumId: string): Promise<AgentJob | undefined> => {
+    const rows = await db
+      .select()
+      .from(agentJobs)
+      .where(and(eq(agentJobs.albumId, albumId), eq(agentJobs.kind, 'layout')))
+      .orderBy(desc(agentJobs.createdAt), desc(agentJobs.id))
+      .limit(1);
+    return rows[0];
+  },
+
   // Non-terminal jobs with no activity past `olderThan`. startedAt is refreshed
   // on every progress callback (a liveness heartbeat), so for RUNNING this means
   // "no progress since olderThan", not "started before olderThan". QUEUED has no

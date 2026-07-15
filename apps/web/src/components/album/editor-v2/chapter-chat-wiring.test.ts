@@ -86,10 +86,20 @@ test('排版中断恢复:排版为空时用户消息触发重新排版,而不是
   // 场景(用户拍板 2026-07-15):排版环节断网 → 草稿有章节树但零页面 → 用户回来
   // 唯一入口是对话框。设计 Agent 对空书只会报「book 契约不合法」;这条消息必须
   // 变成重新排版的触发器。
+  // Phase 0 修正版:allDone 是死信号(markChapterDone 无浏览器调用方),0 页恢复统一走
+  // opener 漏斗 —— send() 零页绝不进设计 Agent,转投 runChapterGuideOpener;采访全齐时
+  // opener 链尾(if (!first) 块)直接 triggerSelectLayout。语义不变:零页消息绝不 422,
+  // 最终必能到 triggerSelectLayout(经 opener 链尾)。细粒度结构锁在
+  // layout-resume-wiring.test.ts。
   assert.match(
     src,
-    /pagesNow\.length === 0 && storyGate\?\.allDone[\s\S]{0,400}?selectLayoutTriggered = false;[\s\S]{0,100}?await triggerSelectLayout\(\);/,
-    'authoring 空排版 + 采访已完成 → 消息应触发 triggerSelectLayout',
+    /if \(pagesNow\.length === 0\)[\s\S]{0,2000}?await runChapterGuideOpener\(\{ allowDuringSend: true \}\);/,
+    'authoring 空排版 → 消息进采访续跑漏斗(opener),绝不进设计 Agent',
+  );
+  assert.match(
+    src,
+    /if \(!first\) \{[\s\S]{0,2400}?await triggerSelectLayout\(\);/,
+    'opener 链尾:采访全齐且零页 → 直接触发排版(刷新后唯一的重排入口)',
   );
   // 排版轮询超时后必须复位触发开关,否则本会话内永远无法重试。
   assert.match(

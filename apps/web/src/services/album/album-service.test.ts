@@ -702,6 +702,49 @@ test('getStoryProgress: legacy bare tree remains readable', async (t) => {
   }
 });
 
+// 排版续跑止血:getStoryProgress 透出 layoutState —— 有在跑的 layout job(QUEUED/RUNNING)
+// → 'running';否则最近一条 layout job FAILED → 'failed';都没有 → 'idle'。ChatPanel 重进
+// 时据此决定"接着等 / 自动重排 / 不动"。
+test('getStoryProgress: layoutState reflects the latest layout job (idle / running / failed)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('wp-layout-state');
+  try {
+    // idle:相册没有任何 layout job。
+    const idleId = await seedStoryAlbum(user.id, 1);
+    assert.equal((await albumService.getStoryProgress(user.id, idleId)).layoutState, 'idle');
+
+    // running:有一个 QUEUED→RUNNING 的 layout job。
+    const runningId = await seedStoryAlbum(user.id, 1);
+    const runningJob = await agentJobRepo.create(db, {
+      userId: user.id,
+      albumId: runningId,
+      requestId: `ls-run-${Date.now()}`,
+      kind: 'layout',
+      status: 'QUEUED',
+      progress: 0,
+    });
+    await jobService.markRunning(db, runningJob.id);
+    assert.equal((await albumService.getStoryProgress(user.id, runningId)).layoutState, 'running');
+
+    // failed:没有在跑的 layout job,但最近一条 layout job 是 FAILED。
+    const failedId = await seedStoryAlbum(user.id, 1);
+    await agentJobRepo.create(db, {
+      userId: user.id,
+      albumId: failedId,
+      requestId: `ls-fail-${Date.now()}`,
+      kind: 'layout',
+      status: 'FAILED',
+      progress: 0,
+    });
+    assert.equal((await albumService.getStoryProgress(user.id, failedId)).layoutState, 'failed');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('markChapterDone: advances cursor; last chapter → stage=theme + export unlocked', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
