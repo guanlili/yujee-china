@@ -26,6 +26,36 @@ log = get_logger("select_layout")
 _PROMPT_DIR = Path(__file__).resolve().parent
 _DATA_URL_RE = re.compile(r"^data:(?P<mime>[-\w.+/]+);base64,(?P<data>.+)$", re.DOTALL)
 
+# 豆包 vision 要求图片每边 ≥14px。浏览器偶发把某候选渲成 1×1(空/坏缩略图),
+# 送进豆包会整批 400、判图落空(Gemini 无此限制,但保底豆包会被它搞挂)。
+# 补边到 16×16(贴左上、白底):豆包收得下,坏图对判图无用但不再毁掉整批。
+_MIN_THUMB_EDGE = 16
+
+
+def _pad_tiny_thumbnail(data_url: str) -> str:
+    """把 <14px 的坏缩略图补边到 16×16(白底)。非 data-url/解码失败/已够大 → 原样返回。"""
+    m = _DATA_URL_RE.match(data_url)
+    if not m:
+        return data_url
+    try:
+        import base64
+        import io
+
+        from PIL import Image
+
+        raw = base64.b64decode(m.group("data"))
+        img = Image.open(io.BytesIO(raw))
+        w, h = img.size
+        if w >= 14 and h >= 14:
+            return data_url
+        canvas = Image.new("RGB", (max(w, _MIN_THUMB_EDGE), max(h, _MIN_THUMB_EDGE)), "white")
+        canvas.paste(img, (0, 0))
+        buf = io.BytesIO()
+        canvas.save(buf, format="PNG")
+        return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:  # noqa: BLE001 —— 补边失败绝不阻断判图,原样送(大不了那批落 0)
+        return data_url
+
 
 def _native_base_url(base_url: str) -> str:
     base = base_url.rstrip("/")
@@ -321,6 +351,11 @@ async def judge_thumbnails_batch(
         raise ValueError("judge_thumbnails_batch requires units with at least one thumbnail each")
 
     settings = get_settings()
+    # 坏缩略图(1×1)补边,否则豆包保底会整批 400。Gemini 无此限制,补了也无害。
+    units = [
+        {**unit, "thumbnails": [_pad_tiny_thumbnail(t) for t in unit["thumbnails"]]}
+        for unit in units
+    ]
     messages = _judge_thumbnails_batch_messages(units)
     counts = [len(unit["thumbnails"]) for unit in units]
     api_key = getattr(settings, "select_layout_api_key", None)
