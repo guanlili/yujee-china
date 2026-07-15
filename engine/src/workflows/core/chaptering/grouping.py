@@ -1,7 +1,9 @@
 """Stage1 确定性照片分组。
 
-先按时间和可选地点形成大段,再对**每个**时间/地点簇(≥3 张)用 CLIP embedding +
-像素颜色特征做视觉子分组;各簇的 CLIP 并发异步跑(visualConcurrency<=0 不封顶)。
+先按时间(有拍摄时间的默认 48h 一簇)和可选地点形成大段;簇内先走快速通道:
+相邻拍摄间隔 ≤directGapHours 且浏览器测算的共址 clusterId 相同(非空)的照片
+直接成组,不进视觉算法。剩余照片再用 CLIP embedding + 像素颜色特征做视觉
+子分组;各簇的 CLIP 并发异步跑(visualConcurrency<=0 不封顶)。
 子分组切出的单张离群照片进 unplaced,交给后续 AI 分章补完。
 """
 
@@ -28,6 +30,7 @@ class _Record:
     reliable: bool
     timestamp: float | None
     gps: tuple[float, float] | None
+    cluster: str | None
     image: Image.Image
 
 
@@ -59,13 +62,24 @@ def group_photos(
         chapter_cells.extend(_place_split(cell, records, options.placeKm))
     chapter_cells.extend(_chain(unreliable, records, options.exportGapHours * 3600))
 
+    # 簇内快速通道:相邻拍摄间隔 ≤directGapHours 且 clusterId 相同(非空)的连续
+    # 照片直接成组,不进 CLIP+颜色;剩余照片作为残余小簇继续走视觉子分组。
+    direct_runs: list[list[list[int]]] = []
+    residual_cells: list[list[int]] = []
+    for cell in chapter_cells:
+        runs, residual = _direct_runs(cell, records, options.directGapHours * 3600)
+        direct_runs.append(runs)
+        residual_cells.append(residual)
+
     jobs = [
         (
+            cell_index,
             cell,
             options.alphaIn if records[cell[0]].reliable else options.alphaOut,
             options.tauIn if records[cell[0]].reliable else options.tauOut,
         )
-        for cell in chapter_cells
+        for cell_index, cell in enumerate(residual_cells)
+        if cell
     ]
     if len(jobs) > 1:
         # visualConcurrency <= 0 表示不封顶:有几个时间/地点簇就同时并发跑几个 CLIP。
@@ -77,19 +91,26 @@ def group_photos(
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             grouped_cells = list(
                 executor.map(
-                    lambda job: _subgroups(job[0], records, options, job[1], job[2]),
+                    lambda job: (
+                        job[0],
+                        _subgroups(job[1], records, options, job[2], job[3]),
+                    ),
                     jobs,
                 )
             )
     else:
         grouped_cells = [
-            _subgroups(cell, records, options, alpha, tau)
-            for cell, alpha, tau in jobs
+            (cell_index, _subgroups(cell, records, options, alpha, tau))
+            for cell_index, cell, alpha, tau in jobs
         ]
+    grouped_by_cell = dict(grouped_cells)
 
     groups: list[list[str]] = []
     unplaced: list[str] = []
-    for subgroups, outliers in grouped_cells:
+    for cell_index, runs in enumerate(direct_runs):
+        for run in runs:
+            groups.append([records[index].photo.photoId for index in run])
+        subgroups, outliers = grouped_by_cell.get(cell_index, ([], []))
         for subgroup in subgroups:
             groups.append([records[index].photo.photoId for index in subgroup])
         unplaced.extend(records[index].photo.photoId for index in outliers)
@@ -133,6 +154,7 @@ def _record(photo: V3AnalyzePhoto, index: int) -> _Record:
         reliable=reliable,
         timestamp=timestamp,
         gps=gps,
+        cluster=photo.clusterId,
         image=features.image_from_data_url(photo.base64),
     )
 
@@ -175,6 +197,51 @@ def _chain(idxs: list[int], records: list[_Record], gap_seconds: float) -> list[
         else:
             segments[-1].append(current)
     return segments
+
+
+def _direct_runs(
+    cell: list[int], records: list[_Record], gap_seconds: float
+) -> tuple[list[list[int]], list[int]]:
+    """簇内快速通道:按时间序扫一遍,相邻拍摄间隔 ≤gap 且共址 clusterId 相同
+    (非空)的连续照片攒成一段;≥2 张的段直接成组,其余照片(含无拍摄时间/无
+    clusterId 的)按原顺序归入残余,交给视觉子分组。clusterId 是浏览器端用
+    EXIF 时间+GPS 在测算好的方位阈值内聚出的共址标签,Agent 拿不到坐标,
+    它就是地点误差判断的唯一依据。"""
+    runs: list[list[int]] = []
+    residual: list[int] = []
+    current: list[int] = []
+
+    def flush() -> None:
+        nonlocal current
+        if len(current) >= 2:
+            runs.append(current)
+        else:
+            residual.extend(current)
+        current = []
+
+    for index in cell:
+        record = records[index]
+        eligible = (
+            record.reliable
+            and record.timestamp is not None
+            and record.cluster is not None
+        )
+        if not eligible:
+            flush()
+            residual.append(index)
+            continue
+        if current:
+            prev = records[current[-1]]
+            if (
+                record.cluster == prev.cluster
+                and record.timestamp - prev.timestamp <= gap_seconds
+            ):
+                current.append(index)
+                continue
+            flush()
+        current.append(index)
+    flush()
+    return runs, residual
 
 
 def _place_split(cell: list[int], records: list[_Record], km: float) -> list[list[int]]:

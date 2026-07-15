@@ -27,6 +27,7 @@ def _photo(
     *,
     color: tuple[int, int, int] = (128, 128, 128),
     taken_at: str | None = None,
+    cluster_id: str | None = None,
 ) -> V3AnalyzePhoto:
     payload: dict[str, object] = {
         "photoId": photo_id,
@@ -36,6 +37,8 @@ def _photo(
     }
     if taken_at is not None:
         payload["exif"] = {"takenAt": taken_at}
+    if cluster_id is not None:
+        payload["clusterId"] = cluster_id
     return V3AnalyzePhoto.model_validate(payload)
 
 
@@ -53,6 +56,98 @@ def test_grouping_params_control_time_boundary() -> None:
     result = group_photos(photos, GroupingParams(timeGapDays=7, subsplitMin=99))
 
     assert _chapter_ids(result) == [["p1", "p2"], ["p3"]]
+    assert result.unplacedPhotoIds == []
+
+
+def test_default_time_gap_is_forty_eight_hours() -> None:
+    # 默认 timeGapDays=2:有拍摄时间的照片相邻间隔 ≤48h 同簇,>48h 开新簇。
+    photos = [
+        _photo("p1", taken_at="2024-03-01T10:00:00Z"),
+        _photo("p2", taken_at="2024-03-03T09:00:00Z"),  # 47h,同簇
+        _photo("p3", taken_at="2024-03-06T10:00:00Z"),  # 73h,新簇
+    ]
+
+    result = group_photos(photos, GroupingParams(subsplitMin=99))
+
+    assert _chapter_ids(result) == [["p1", "p2"], ["p3"]]
+    assert result.unplacedPhotoIds == []
+
+
+def test_direct_runs_skip_clip_for_co_located_recent_photos(monkeypatch) -> None:
+    # 相邻拍摄间隔 ≤2h 且 clusterId 相同 → 直接成组,CLIP/颜色算法完全不被调用。
+    photos = [
+        _photo("p1", taken_at="2024-03-01T10:00:00Z", cluster_id="c1"),
+        _photo("p2", taken_at="2024-03-01T11:30:00Z", cluster_id="c1"),
+        _photo("p3", taken_at="2024-03-01T13:00:00Z", cluster_id="c1"),
+        _photo("p4", taken_at="2024-03-01T14:30:00Z", cluster_id="c1"),
+    ]
+
+    def forbidden_clip(images):
+        raise AssertionError("direct runs must not enter CLIP")
+
+    monkeypatch.setattr(features, "clip_embeddings", forbidden_clip)
+
+    result = group_photos(photos)
+
+    assert _chapter_ids(result) == [["p1", "p2", "p3", "p4"]]
+    assert result.unplacedPhotoIds == []
+
+
+def test_direct_runs_split_on_time_gap_and_cluster_change(monkeypatch) -> None:
+    # 同一 48h 簇内:>2h 间隔或 clusterId 变化都会切断快速通道的连续段。
+    photos = [
+        _photo("a1", taken_at="2024-03-01T10:00:00Z", cluster_id="c1"),
+        _photo("a2", taken_at="2024-03-01T11:00:00Z", cluster_id="c1"),
+        _photo("b1", taken_at="2024-03-01T16:00:00Z", cluster_id="c1"),  # 与 a2 差 5h
+        _photo("b2", taken_at="2024-03-01T17:00:00Z", cluster_id="c2"),  # 换地点
+    ]
+
+    def forbidden_clip(images):
+        raise AssertionError("residual below clipMinPhotos must not enter CLIP")
+
+    monkeypatch.setattr(features, "clip_embeddings", forbidden_clip)
+
+    # b1/b2 各自成不了 ≥2 张的连续段 → 残余簇(2 张 < subsplitMin/clipMinPhotos
+    # 默认 3)整体保持一起,不进 CLIP。
+    result = group_photos(photos)
+
+    assert _chapter_ids(result) == [["a1", "a2"], ["b1", "b2"]]
+    assert result.unplacedPhotoIds == []
+
+
+def test_direct_runs_leave_residual_to_visual_subgrouping(monkeypatch) -> None:
+    # 快速通道抽走共址连续段后,残余照片仍走 CLIP+颜色子分组。
+    photos = [
+        _photo("run1", taken_at="2024-03-01T10:00:00Z", cluster_id="c1"),
+        _photo("run2", taken_at="2024-03-01T10:30:00Z", cluster_id="c1"),
+        _photo("warm1", color=(220, 40, 35), taken_at="2024-03-01T13:30:00Z"),
+        _photo("warm2", color=(225, 45, 38), taken_at="2024-03-01T13:40:00Z"),
+        _photo("cool1", color=(30, 80, 220), taken_at="2024-03-01T13:50:00Z"),
+        _photo("cool2", color=(35, 85, 225), taken_at="2024-03-01T14:00:00Z"),
+    ]
+
+    def fake_clip_embeddings(images):
+        # 只有 4 张残余照片进 CLIP,快速通道的 2 张不在其中。
+        assert len(images) == 4
+        return [
+            [1.0, 0.0, 0.0],
+            [0.98, 0.02, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.98, 0.02],
+        ]
+
+    monkeypatch.setattr(features, "clip_embeddings", fake_clip_embeddings)
+
+    result = group_photos(
+        photos,
+        GroupingParams(subsplitMin=2, clipMinPhotos=2, alphaIn=0.45, tauIn=0.35),
+    )
+
+    assert _chapter_ids(result) == [
+        ["run1", "run2"],
+        ["warm1", "warm2"],
+        ["cool1", "cool2"],
+    ]
     assert result.unplacedPhotoIds == []
 
 
