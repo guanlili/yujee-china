@@ -20,16 +20,20 @@ test('pickHeroPhotos: 构图 focal > closeup > 其余', () => {
   assert.deepEqual(pickHeroPhotos(CHAPTERS, 2), ['pf', 'pc']);
 });
 
-test('buildCoverSets: 2 模板 × 2 hero = 4 组,封尾配另一张 hero,同 albumId 可复现', () => {
+test('buildCoverSets: 4 个不同样式封面(按样式变不按照片变,同一 cover 照片),同 albumId 可复现', () => {
   const sets = buildCoverSets('album-1', CHAPTERS);
   assert.equal(sets.length, 4);
+  // 4 个封面模板样式各不相同 —— 推荐按样式变。
+  assert.equal(new Set(sets.map((s) => s.coverTemplateId)).size, sets.length);
+  // 封面照片统一用同一张 hero(可重复;不管图片,用户不满意自己换)。
+  assert.equal(new Set(sets.map((s) => s.coverPhotoId)).size, 1);
   for (const set of sets) {
     assert.equal(templateCategory(set.coverTemplateId), 'cover');
     assert.equal(templateCategory(set.endingTemplateId), 'ending');
     assert.notEqual(set.endingPhotoId, set.coverPhotoId); // 两张 hero 时封尾用另一张
   }
   assert.deepEqual(buildCoverSets('album-1', CHAPTERS), sets); // 确定性
-  // 不同 albumId 轮换出不同模板组合(至少 id 序不同)。
+  // 不同 albumId 轮换出不同展示顺序。
   const other = buildCoverSets('album-2', CHAPTERS);
   assert.notDeepEqual(other.map((s) => s.coverTemplateId), sets.map((s) => s.coverTemplateId));
 });

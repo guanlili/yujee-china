@@ -67,20 +67,19 @@ export function buildCoverSets(albumId: string, chapters: TreeChapter[]): CoverS
   const coverIds = templateIdsByCategory('cover').filter((id) => firstImageSlotId(id));
   const ending = pickEndingTemplateId(albumId);
   if (coverIds.length === 0 || !ending) return [];
+  // 推荐按【样式】变而非按照片变(用户拍板 2026-07-16):展示至多 4 个【不同样式】的封面,
+  // 封面照片统一用同一张 hero(可重复;用户若只是嫌图片不好会自己换)。rotate 让不同相册的
+  // 展示顺序不同,但每本都能看到全部样式。封尾配另一张 hero(只有一张时退回同一张)。
   const offset = [...albumId].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % coverIds.length;
-  const rotated = [...coverIds.slice(offset), ...coverIds.slice(0, offset)].slice(0, 2);
-  const sets: CoverSet[] = [];
-  for (const coverTemplateId of rotated) {
-    for (const coverPhotoId of heroes) {
-      sets.push({
-        coverTemplateId,
-        coverPhotoId,
-        endingTemplateId: ending,
-        endingPhotoId: heroes.find((id) => id !== coverPhotoId) ?? coverPhotoId,
-      });
-    }
-  }
-  return sets;
+  const rotated = [...coverIds.slice(offset), ...coverIds.slice(0, offset)].slice(0, 4);
+  const coverPhotoId = heroes[0];
+  const endingPhotoId = heroes.find((id) => id !== coverPhotoId) ?? coverPhotoId;
+  return rotated.map((coverTemplateId) => ({
+    coverTemplateId,
+    coverPhotoId,
+    endingTemplateId: ending,
+    endingPhotoId,
+  }));
 }
 
 // 模板文字槽 spec(engine DesignRequest 的 coverSlots/endingSlots 入参)。
