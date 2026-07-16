@@ -694,18 +694,16 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
   const home = `/${locale}`;
   const composerHref = `${home}#homepage-composer`;
   const currentLanguageLabel = locale === 'zh' ? '中文' : 'English';
-  const accountLinks: Array<[string, string]> = chromeSession.loading
-    ? [[c.signup, composerHref]]
-    : chromeSession.user
-      ? [
-          [dashboard.nav.myAlbums, `/${locale}/my-albums`],
-          [chrome.manageSubscription, `/${locale}/credits`],
-          [chrome.creditHistory, `/${locale}/credits#history`],
-        ]
-      : [
-          [c.login, `/${locale}/login`],
-          [c.signup, composerHref],
-        ];
+  const accountLinks: Array<[string, string]> = chromeSession.user
+    ? [
+        [dashboard.nav.myAlbums, `/${locale}/my-albums`],
+        [chrome.manageSubscription, `/${locale}/credits`],
+        [chrome.creditHistory, `/${locale}/credits#history`],
+      ]
+    : [
+        [c.login, `/${locale}/login`],
+        [c.signup, composerHref],
+      ];
 
   return (
     <div className={`landing-redesign min-h-screen text-[var(--fg)] locale-${locale}`}>
@@ -836,15 +834,16 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
                 ))}
               </div>
             </div>
-            {chromeSession.loading ? (
-              <span aria-hidden="true" className="h-10 w-10 rounded-full bg-[#ececec] shadow-sm" />
-            ) : !chromeSession.user ? (
+            {/* 未确认登录(加载中或已登出)一律显示登录按钮 —— 着陆页访客多为登出态,
+                绝不再退化成一个没有登录入口的头像形灰圈(线上偶发卡在加载态的死圈)。
+                仅在确认拿到 user 后才切成头像菜单。 */}
+            {chromeSession.user ? (
+              <UserMenu user={chromeSession.user} locale={locale} />
+            ) : (
               <Link href={`/${locale}/login`} className="inline-flex items-center gap-2 rounded-full bg-[var(--fg)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black md:px-5">
                 <span>{c.login}</span>
                 <ArrowIcon className="h-[15px] w-[15px]" />
               </Link>
-            ) : (
-              <UserMenu user={chromeSession.user} locale={locale} />
             )}
             <button type="button" aria-label={c.menu} aria-expanded={mobileOpen} onClick={() => setMobileOpen((open) => !open)} className="grid h-10 w-10 place-items-center rounded-full transition hover:bg-black/5 lg:hidden">
               <Icon name={mobileOpen ? 'x' : 'menu'} />
@@ -855,14 +854,14 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
           <Link href="#outputs">{c.navExamples}</Link>
           <Link href="#pricing">{c.navPricing}</Link>
           <Link href="#faq">{c.navFaq}</Link>
-          {chromeSession.loading ? null : !chromeSession.user ? (
-            <Link href={`/${locale}/login`}>{c.login}</Link>
-          ) : (
+          {chromeSession.user ? (
             <>
               <Link href={`/${locale}/my-albums`}>{dashboard.nav.myAlbums}</Link>
               <Link href={`/${locale}/credits`}>{chrome.manageSubscription}</Link>
               <Link href={`/${locale}/credits#history`}>{chrome.creditHistory}</Link>
             </>
+          ) : (
+            <Link href={`/${locale}/login`}>{c.login}</Link>
           )}
           <div className="m-lang">
             {languageOptions.map((l) => (

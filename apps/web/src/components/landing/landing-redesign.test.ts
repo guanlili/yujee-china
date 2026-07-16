@@ -94,7 +94,10 @@ test('landing header replaces the login CTA with the account menu for signed-in 
 
   assert.match(client, /useChromeSession/, 'landing header should read the real chrome session');
   assert.match(client, /<UserMenu user=\{chromeSession\.user\} locale=\{locale\}/, 'signed-in landing users should see the shared account menu');
-  assert.match(client, /!\s*chromeSession\.user[\s\S]{0,120}`\/\$\{locale\}\/login`/, 'login CTA should only render for signed-out users');
+  // 修复(线上 bug):登出/加载态不再退化成头像形灰圈 —— 登录 CTA 是「未确认登录」的默认态,
+  // 仅在确认拿到 user 后才切成 UserMenu。所以 CTA 用 `chromeSession.user ? <UserMenu> : <login>`。
+  assert.match(client, /chromeSession\.user \?[\s\S]{0,160}<UserMenu[\s\S]{0,240}`\/\$\{locale\}\/login`/, 'login CTA is the fallback whenever there is no confirmed signed-in user (including while loading)');
+  assert.doesNotMatch(client, /h-10 w-10 rounded-full bg-\[#ececec\]/, 'header must not render the dead avatar-shaped loading circle');
   assert.match(userMenu, /<UserAvatar initial=\{user\?\.avatarInitial\} size=\{40\}/, 'account avatar should use the shared black avatar with gradient ring');
   assert.match(userMenu, /creditBalance/, 'account menu should label the credit balance');
   assert.match(userMenu, /m\.nav\.myAlbums/, 'account menu should use the user-albums label');
