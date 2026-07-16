@@ -191,8 +191,13 @@ export function ChatPanel({
     // ── chat DOM handles ──
     const chatBody = byId('chatBody');
     const input = byId('msgInput') as HTMLTextAreaElement | null;
-    const sendBtnEl = byId('sendBtn');
+    const sendBtnEl = byId('sendBtn') as HTMLButtonElement | null;
     let sending = false;
+    // 送出键禁用的单一真相源:AI 在忙(sending)或积分不足(outOfCredits)任一为真即禁用。
+    // 二者都经 refreshSendDisabled 落到原生 disabled 上,于是一条 CSS :disabled 同时覆盖两种禁用。
+    let outOfCredits = false;
+    function refreshSendDisabled() { if (sendBtnEl) sendBtnEl.disabled = sending || outOfCredits; }
+    function setSending(v: boolean) { sending = v; refreshSendDisabled(); }
 
     function setChatState(n: number) {
       $$('#stateStepper .state-pill').forEach((p) => {
@@ -231,7 +236,7 @@ export function ChatPanel({
         await finishInterview(txt);
         return;
       }
-      sending = true;
+      setSending(true);
       if (isAuthoring) {
         // 空书硬不变量(堵 422,用户拍板 2026-07-15):authoring 期一旦画板零页,这条消息
         // 【绝不】进设计 Agent —— 它对空书只会回「book 契约不合法:没有页面」(422),异常
@@ -245,13 +250,13 @@ export function ChatPanel({
           if (!storyGate || storyGate.layoutState === 'running') await loadStoryGate();
           if (storyGate?.layoutState === 'running') {
             appendAiText(aT('排版还在进行中,稍等片刻~', 'Layout is still running — one moment.'));
-            sending = false;
+            setSending(false);
             return;
           }
           // 其余(idle/failed/信号缺失)→ 采访续跑漏斗:opener 要么续下一章采访,要么(全齐了)
           // 走链尾直接重排。先放开 sending —— opener 可能停在采访等用户回答,锁着会永久吞掉
           // 后续消息;triggerSelectLayout 自己管理 sending。
-          sending = false;
+          setSending(false);
           await runChapterGuideOpener({ allowDuringSend: true });
           return;
         }
@@ -260,7 +265,7 @@ export function ChatPanel({
       } else {
         await runEdit(txt);
       }
-      sending = false;
+      setSending(false);
     }
 
     function appendAiText(text: string, opts?: { historyReplay?: boolean }) {
@@ -1144,7 +1149,7 @@ export function ChatPanel({
         return;
       }
       selectLayoutTriggered = true;
-      sending = true;
+      setSending(true);
       try {
         settleThinking(host, 'analyzedFeedback');
         appendReplyBody(host, aT('好的,我这就根据你讲的故事,为整本相册排版并写好文案~',
@@ -1170,13 +1175,13 @@ export function ChatPanel({
       } catch (e) {
         if (disposed) return;
         selectLayoutTriggered = false;
-        if (authErr(host, e)) { sending = false; return; }
+        if (authErr(host, e)) { setSending(false); return; }
         const msg = e instanceof PhotosUnavailableError
           ? aT('原始照片在本设备上找不到了,没法继续排版。', 'Original photos are no longer available on this device.')
           : aT('排版没能开始,稍后再试一下。', 'Couldn’t start layout — please try again in a moment.');
         appendAiText(msg);
       } finally {
-        sending = false;
+        setSending(false);
         if (!disposed) {
           restAwait();
           scrollChat();
@@ -1259,7 +1264,7 @@ export function ChatPanel({
       const scope = appendScope;
       const host = appendThinkingShell();
       setThinkingLabel(host, 'Laying out the new photos…');
-      sending = true;
+      setSending(true);
       try {
         const refs = await selectLayoutRefsFromStore(scope.photoIds);
         if (disposed) return;
@@ -1275,12 +1280,12 @@ export function ChatPanel({
         if (disposed) return;
         appendScope = null;
         appendInFlight = false;
-        if (authErr(host, e)) { sending = false; return; }
+        if (authErr(host, e)) { setSending(false); return; }
         appendAiText(e instanceof PhotosUnavailableError
           ? aT('新照片在本设备上找不到了,没法排版。', 'The new photos are no longer available on this device.')
           : aT('新照片排版没能开始,稍后再试一下。', "Couldn't start laying out the new photos — try again in a moment."));
       } finally {
-        sending = false;
+        setSending(false);
         if (!disposed) { restAwait(); scrollChat(); }
       }
     }
@@ -1470,7 +1475,7 @@ export function ChatPanel({
       set: { coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string },
       card: HTMLElement,
     ) {
-      sending = true;
+      setSending(true);
       // 选择卡原位换成只读回执卡:选了哪组封面封底留在历史里可回看。
       const recap = buildCoverRecapCard(set);
       card.replaceWith(recap);
@@ -1504,7 +1509,7 @@ export function ChatPanel({
         designOfferShown = false;
         void offerDesignCard();
       } finally {
-        sending = false;
+        setSending(false);
         if (!disposed) { restAwait(); scrollChat(); }
       }
     }
@@ -1642,8 +1647,8 @@ export function ChatPanel({
       } else {
         appendAiText(aT('积分不足，去充值后即可继续。', 'Out of credits — top up to keep creating.'));
       }
-      const send = byId('sendBtn') as HTMLButtonElement | null;
-      if (send) send.disabled = true;
+      outOfCredits = true;
+      refreshSendDisabled();
       scrollChat();
     }
 
@@ -1655,8 +1660,8 @@ export function ChatPanel({
     toppedUpHandlerRef.current = () => {
       const alert = byId('balanceAlert');
       if (alert) alert.style.display = 'none';
-      const send = byId('sendBtn') as HTMLButtonElement | null;
-      if (send) send.disabled = false;
+      outOfCredits = false;
+      refreshSendDisabled();
       appendAiText(aT('积分已到账，继续吧～', 'Credits added — let’s keep going.'));
       restAwait();
       scrollChat();
@@ -1709,6 +1714,14 @@ export function ChatPanel({
       // tab must never leave the task. Covers both entry points (the #balanceAlert "去购买"
       // button and any showPurchaseCard() surface), since both route through data-action.
       buyShells: () => { setCreditsModalOpen(true); },
+      // #balanceAlert 的关闭按钮:收起横幅并清掉「缺积分」禁用。走 data-action(而非 JSX 内联),
+      // 才能落到 outOfCredits + refreshSendDisabled 这个单一真相源上,与 sending 统一。
+      dismissBalanceAlert: () => {
+        const alert = byId('balanceAlert');
+        if (alert) alert.style.display = 'none';
+        outOfCredits = false;
+        refreshSendDisabled();
+      },
       // 中途加图(spec §1):排版完成后可用;采访/发送/追加进行中不响应。
       pickAddPhotos: () => {
         if (!isAuthoring || sending || appendInFlight || pendingInterview) return;
@@ -2035,11 +2048,7 @@ export function ChatPanel({
             <div className="buy-banner-row">
               <div className="buy-banner-title flex-1 min-w-0" data-i18n="bpLead">{locale === 'zh' ? '积分已用完，补充积分继续' : 'Out of credits. Top up to continue.'}</div>
               <button className="buy-banner-btn" data-action="buyShells" data-i18n="bpBuy">{locale === 'zh' ? '去购买' : 'Buy'}</button>
-              <button className="buy-close" type="button" onClick={(e) => {
-                (e.currentTarget.closest('#balanceAlert') as HTMLElement | null)?.style.setProperty('display', 'none');
-                const send = document.getElementById('sendBtn') as HTMLButtonElement | null;
-                if (send) send.disabled = false;
-              }} aria-label={locale === 'zh' ? '关闭' : 'Close'}>
+              <button className="buy-close" type="button" data-action="dismissBalanceAlert" aria-label={locale === 'zh' ? '关闭' : 'Close'}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
@@ -2055,7 +2064,7 @@ export function ChatPanel({
               <input type="file" id="addPhotoInput" accept={IMAGE_INPUT_ACCEPT} multiple className="hidden" />
               <span className="flex-1" />
               <span className="btn-glow btn-glow-round shrink-0">
-                <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center cursor-pointer transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} id="sendBtn" data-i18n-title="send" title="发送">
+                <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center cursor-pointer transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:hover:translate-y-0" id="sendBtn" data-i18n-title="send" title="发送">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[17px] h-[17px]"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>
                 </button>
               </span>

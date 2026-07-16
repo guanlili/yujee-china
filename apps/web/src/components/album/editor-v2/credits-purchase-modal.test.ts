@@ -45,10 +45,17 @@ test('ChatPanel renders the modal and re-enables sending on top-up', () => {
   const handler = /toppedUpHandlerRef\.current = \(\) => \{[\s\S]*?\n {4}\};/.exec(chat);
   assert.ok(handler, 'toppedUpHandlerRef.current handler must exist');
   assert.match(handler![0], /balanceAlert/, 'top-up handler must hide #balanceAlert');
+  // Re-enable is now routed through the single disable source (outOfCredits + refreshSendDisabled)
+  // so "still busy after top-up" keeps the button disabled — never a direct send.disabled poke.
   assert.match(
     handler![0],
-    /send\.disabled\s*=\s*false/,
-    'top-up handler must re-enable #sendBtn',
+    /outOfCredits = false;\s*\n\s*refreshSendDisabled\(\)/,
+    'top-up handler must clear outOfCredits and refresh the send-button disabled state',
+  );
+  assert.doesNotMatch(
+    handler![0],
+    /send\.disabled\s*=/,
+    'top-up handler must not poke send.disabled directly anymore',
   );
 });
 

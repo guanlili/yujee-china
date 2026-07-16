@@ -619,6 +619,12 @@
 .editor-port .btn-glow-block{ display:flex; width:100%; }
 /* no glow while the wrapped button is disabled */
 .editor-port .btn-glow:has(button:disabled)::after{ opacity:0; }
+/* 送出键:正常态一条淡投影;禁用态(AI 忙 or 缺积分,统一经 refreshSendDisabled 落到 :disabled)
+   变灰、去投影。:disabled 特异性(0,3,0)高于 Tailwind .bg-fg(0,1,0);且本文件无 @layer,属
+   未分层样式,Tailwind v4 里未分层恒胜 utilities 层 —— 双保险盖住 bg-fg 的黑底。灰值走 token,
+   随浅/深色自动切换(--border/--muted 在 :root 与 @media dark 各有定义)。 */
+.editor-port .send-btn{ box-shadow:0 1px 3px rgba(0,0,0,.12); }
+.editor-port .send-btn:disabled{ background:var(--border); color:var(--muted); box-shadow:none; }
 
 /* ─── Scrollbars ─── */
 .editor-port .chat-body{ scrollbar-width:none; }
