@@ -15,10 +15,10 @@ const PLAYFAIR = '&quot;Playfair Display&quot;, &quot;Noto Serif SC&quot;, &quot
 const SERIF_EN = '&quot;EB Garamond&quot;, &quot;Noto Serif SC&quot;, &quot;Songti SC&quot;, serif';
 
 export const MAG_05_HTML = `<div data-template="mag-05" style="position:relative;width:794px;height:1123px;background:#fff;color:#1c1b18;overflow:hidden;box-sizing:border-box;font-family:${SANS_EN}">
-  <h1 data-text-key="title" data-variable-decor style="position:absolute;top:96px;left:50px;right:240px;margin:0;font-size:88px;letter-spacing:0.02em;line-height:0.92;font-weight:400;text-transform:uppercase;white-space:pre-line;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}};width:400px;height:90px">{{TEXT:title}}</h1>
-  <div data-text-key="explain" data-variable-decor style="position:absolute;top:120px;right:50px;width:190px;text-align:right;font-size:13px;letter-spacing:0.3em;text-transform:uppercase;color:{{COLOR:explain|#5a574f}};font-family:{{FONT:explain|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain}}</div>
+  <h1 data-text-key="title" data-variable-decor style="position:absolute;top:96px;left:50px;right:240px;margin:0;font-size:88px;letter-spacing:0.02em;line-height:1.1;font-weight:400;text-transform:uppercase;white-space:pre-line;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}};width:400px;height:90px">{{TEXT:title}}</h1>
+  <div data-text-key="explain" data-variable-decor style="position:absolute;top:120px;right:50px;width:190px;text-align:right;font-size:14px;letter-spacing:0.02em;text-transform:uppercase;color:{{COLOR:explain|#5a574f}};font-family:{{FONT:explain|${SANS_EN}}};white-space:pre-wrap;line-height:1.6">{{TEXT:explain}}</div>
   <div style="position:absolute;top:290px;left:50px;width:320px">
-    <p data-text-key="body" style="margin:0;line-height:1.75;text-align:justify;letter-spacing:0.02em;font-size:18px;color:{{COLOR:body|#5a574f}};font-family:{{FONT:body|${SANS_EN}}};white-space:pre-wrap;width:400px;height:95px">{{TEXT:body}}</p>
+    <p data-text-key="body" style="margin:0;line-height:1.7;text-align:justify;letter-spacing:0.02em;font-size:18px;color:{{COLOR:body|#5a574f}};font-family:{{FONT:body|${SANS_EN}}};white-space:pre-wrap;width:400px;height:95px">{{TEXT:body}}</p>
   </div>
   <div data-image-slot="image" style="position:absolute;top:430px;left:50px;right:50px;height:600px;overflow:hidden">
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />

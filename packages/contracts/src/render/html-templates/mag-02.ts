@@ -21,27 +21,27 @@ const SANS_EN = '&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&
 const PLAYFAIR = '&quot;Playfair Display&quot;, &quot;Noto Serif SC&quot;, &quot;Songti SC&quot;, serif';
 
 export const MAG_02_HTML = `<div data-template="mag-02" style="position:relative;width:794px;height:1123px;background:#fff;color:#1c1b18;overflow:hidden;box-sizing:border-box;font-family:${SANS_EN}">
-  <div data-text-key="title" data-variable-decor style="position:absolute;top:96px;left:56px;font-size:36px;font-weight:800;line-height:1;letter-spacing:0.04em;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}};white-space:pre-wrap">{{TEXT:title}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;top:96px;left:56px;font-size:36px;font-weight:800;line-height:1.1;letter-spacing:0.02em;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}};white-space:pre-wrap">{{TEXT:title}}</div>
   <div style="position:absolute;top:338px;left:56px;right:56px;display:grid;grid-template-columns:1fr 1fr;row-gap:96px;column-gap:80px">
     <div>
       <div data-text-key="label[0]" data-variable-decor style="line-height:1;transform:skewX(-8deg);font-size:58px;margin-bottom:8px;color:{{COLOR:label[0]|#1c1b18}};font-family:{{FONT:label[0]|${SANS_EN}}};white-space:pre">{{TEXT:label[0]}}</div>
-      <div data-text-key="title2[0]" data-variable-decor style="font-size:17px;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;margin-bottom:10px;color:{{COLOR:title2[0]|#1c1b18}};font-family:{{FONT:title2[0]|${PLAYFAIR}}};white-space:pre-wrap">{{TEXT:title2[0]}}</div>
-      <div data-text-key="explain[0]" style="line-height:1.7;text-align:justify;letter-spacing:0.02em;font-size:16px;color:{{COLOR:explain[0]|#5a574f}};font-family:{{FONT:explain[0]|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain[0]}}</div>
+      <div data-text-key="title2[0]" data-variable-decor style="font-size:17px;font-weight:800;letter-spacing:0.02em;text-transform:uppercase;margin-bottom:10px;color:{{COLOR:title2[0]|#1c1b18}};font-family:{{FONT:title2[0]|${PLAYFAIR}}};white-space:pre-wrap;line-height:1.1">{{TEXT:title2[0]}}</div>
+      <div data-text-key="explain[0]" style="line-height:1.6;text-align:justify;letter-spacing:0.02em;font-size:14px;color:{{COLOR:explain[0]|#5a574f}};font-family:{{FONT:explain[0]|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain[0]}}</div>
     </div>
     <div>
       <div data-text-key="label[1]" data-variable-decor style="line-height:1;transform:skewX(-8deg);font-size:58px;margin-bottom:8px;color:{{COLOR:label[1]|#1c1b18}};font-family:{{FONT:label[1]|${SANS_EN}}};white-space:pre">{{TEXT:label[1]}}</div>
-      <div data-text-key="title2[1]" data-variable-decor style="font-size:17px;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;margin-bottom:10px;color:{{COLOR:title2[1]|#1c1b18}};font-family:{{FONT:title2[1]|${PLAYFAIR}}};white-space:pre-wrap">{{TEXT:title2[1]}}</div>
-      <div data-text-key="explain[1]" style="line-height:1.7;text-align:justify;letter-spacing:0.02em;font-size:16px;color:{{COLOR:explain[1]|#5a574f}};font-family:{{FONT:explain[1]|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain[1]}}</div>
+      <div data-text-key="title2[1]" data-variable-decor style="font-size:17px;font-weight:800;letter-spacing:0.02em;text-transform:uppercase;margin-bottom:10px;color:{{COLOR:title2[1]|#1c1b18}};font-family:{{FONT:title2[1]|${PLAYFAIR}}};white-space:pre-wrap;line-height:1.1">{{TEXT:title2[1]}}</div>
+      <div data-text-key="explain[1]" style="line-height:1.6;text-align:justify;letter-spacing:0.02em;font-size:14px;color:{{COLOR:explain[1]|#5a574f}};font-family:{{FONT:explain[1]|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain[1]}}</div>
     </div>
     <div>
       <div data-text-key="label[2]" data-variable-decor style="line-height:1;transform:skewX(-8deg);font-size:58px;margin-bottom:8px;color:{{COLOR:label[2]|#1c1b18}};font-family:{{FONT:label[2]|${SANS_EN}}};white-space:pre">{{TEXT:label[2]}}</div>
-      <div data-text-key="title2[2]" data-variable-decor style="font-size:17px;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;margin-bottom:10px;color:{{COLOR:title2[2]|#1c1b18}};font-family:{{FONT:title2[2]|${PLAYFAIR}}};white-space:pre-wrap">{{TEXT:title2[2]}}</div>
-      <div data-text-key="explain[2]" style="line-height:1.7;text-align:justify;letter-spacing:0.02em;font-size:16px;color:{{COLOR:explain[2]|#5a574f}};font-family:{{FONT:explain[2]|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain[2]}}</div>
+      <div data-text-key="title2[2]" data-variable-decor style="font-size:17px;font-weight:800;letter-spacing:0.02em;text-transform:uppercase;margin-bottom:10px;color:{{COLOR:title2[2]|#1c1b18}};font-family:{{FONT:title2[2]|${PLAYFAIR}}};white-space:pre-wrap;line-height:1.1">{{TEXT:title2[2]}}</div>
+      <div data-text-key="explain[2]" style="line-height:1.6;text-align:justify;letter-spacing:0.02em;font-size:14px;color:{{COLOR:explain[2]|#5a574f}};font-family:{{FONT:explain[2]|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain[2]}}</div>
     </div>
     <div>
       <div data-text-key="label[3]" data-variable-decor style="line-height:1;transform:skewX(-8deg);font-size:58px;margin-bottom:8px;color:{{COLOR:label[3]|#1c1b18}};font-family:{{FONT:label[3]|${SANS_EN}}};white-space:pre">{{TEXT:label[3]}}</div>
-      <div data-text-key="title2[3]" data-variable-decor style="font-size:17px;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;margin-bottom:10px;color:{{COLOR:title2[3]|#1c1b18}};font-family:{{FONT:title2[3]|${PLAYFAIR}}};white-space:pre-wrap">{{TEXT:title2[3]}}</div>
-      <div data-text-key="explain[3]" style="line-height:1.7;text-align:justify;letter-spacing:0.02em;font-size:16px;color:{{COLOR:explain[3]|#5a574f}};font-family:{{FONT:explain[3]|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain[3]}}</div>
+      <div data-text-key="title2[3]" data-variable-decor style="font-size:17px;font-weight:800;letter-spacing:0.02em;text-transform:uppercase;margin-bottom:10px;color:{{COLOR:title2[3]|#1c1b18}};font-family:{{FONT:title2[3]|${PLAYFAIR}}};white-space:pre-wrap;line-height:1.1">{{TEXT:title2[3]}}</div>
+      <div data-text-key="explain[3]" style="line-height:1.6;text-align:justify;letter-spacing:0.02em;font-size:14px;color:{{COLOR:explain[3]|#5a574f}};font-family:{{FONT:explain[3]|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain[3]}}</div>
     </div>
   </div>
 </div>`;

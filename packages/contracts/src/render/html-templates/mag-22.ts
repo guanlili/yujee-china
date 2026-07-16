@@ -16,17 +16,17 @@ const LOGO = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcv
 const YEAR = new Date().getFullYear();
 
 export const MAG_22_HTML = `<div data-template="mag-22" style="position:relative;width:794px;height:1123px;background:#fff;overflow:hidden">
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:271px;top:95px;width:480px;height:80px;font-weight:800;font-size:60px;line-height:1.1;white-space:pre-wrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}}">{{TEXT:title}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;left:271px;top:95px;width:480px;height:80px;font-weight:800;font-size:60px;line-height:1.1;white-space:pre-wrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}};letter-spacing:0.02em">{{TEXT:title}}</div>
   <div data-image-slot="image1" style="position:absolute;left:72px;top:272px;width:240px;height:249px;overflow:hidden">
     <img data-image-slot="image1" src="{{IMG_SRC:image1}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image1|50% 50%}};{{IMG_TF:image1}}" />
   </div>
-  <div data-text-key="body" style="position:absolute;left:354px;top:296px;width:314px;height:170px;font-size:18px;line-height:1.6;white-space:pre-wrap;overflow:hidden;color:{{COLOR:body|#1c1b18}};font-family:{{FONT:body|${SANS_EN}}}">{{TEXT:body}}</div>
-  <div data-text-key="title2" style="position:absolute;left:352px;top:478px;width:304px;height:28px;font-weight:700;font-size:24px;line-height:1.1;overflow:hidden;color:{{COLOR:title2|#1c1b18}};font-family:{{FONT:title2|${SANS_EN}}};white-space:pre-wrap">{{TEXT:title2}}</div>
+  <div data-text-key="body" style="position:absolute;left:354px;top:296px;width:314px;height:170px;font-size:18px;line-height:1.7;white-space:pre-wrap;overflow:hidden;color:{{COLOR:body|#1c1b18}};font-family:{{FONT:body|${SANS_EN}}};letter-spacing:0.02em">{{TEXT:body}}</div>
+  <div data-text-key="title2" style="position:absolute;left:352px;top:478px;width:304px;height:28px;font-weight:700;font-size:24px;line-height:1.1;overflow:hidden;color:{{COLOR:title2|#1c1b18}};font-family:{{FONT:title2|${SANS_EN}}};white-space:pre-wrap;letter-spacing:0.02em">{{TEXT:title2}}</div>
   <div data-image-slot="image2" style="position:absolute;left:72px;top:536px;width:240px;height:244px;overflow:hidden">
     <img data-image-slot="image2" src="{{IMG_SRC:image2}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image2|50% 50%}};{{IMG_TF:image2}}" />
   </div>
-  <div data-text-key="body2" style="position:absolute;left:351px;top:558px;width:314px;height:170px;font-size:18px;line-height:1.6;white-space:pre-wrap;overflow:hidden;color:{{COLOR:body2|#1c1b18}};font-family:{{FONT:body2|${SANS_EN}}}">{{TEXT:body2}}</div>
-  <div data-text-key="title3" style="position:absolute;left:354px;top:738px;width:304px;height:28px;font-weight:700;font-size:24px;line-height:1.1;overflow:hidden;color:{{COLOR:title3|#1c1b18}};font-family:{{FONT:title3|${SANS_EN}}};white-space:pre-wrap">{{TEXT:title3}}</div>
+  <div data-text-key="body2" style="position:absolute;left:351px;top:558px;width:314px;height:170px;font-size:18px;line-height:1.7;white-space:pre-wrap;overflow:hidden;color:{{COLOR:body2|#1c1b18}};font-family:{{FONT:body2|${SANS_EN}}};letter-spacing:0.02em">{{TEXT:body2}}</div>
+  <div data-text-key="title3" style="position:absolute;left:354px;top:738px;width:304px;height:28px;font-weight:700;font-size:24px;line-height:1.1;overflow:hidden;color:{{COLOR:title3|#1c1b18}};font-family:{{FONT:title3|${SANS_EN}}};white-space:pre-wrap;letter-spacing:0.02em">{{TEXT:title3}}</div>
   <img src="${LOGO}" alt="yujee" style="position:absolute;left:56px;top:979px;width:112px;height:47px;object-fit:contain;display:block" />
   <div style="position:absolute;left:56px;top:1038px;width:140px;margin:0;font-family:${SANS_EN};font-weight:400;font-size:16px;line-height:1;color:#C2C2C2">©  ${YEAR} Yujee</div>
   <svg viewBox="0 0 24 24" width="32" height="32" fill="none" style="position:absolute;left:646px;top:992px">

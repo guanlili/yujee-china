@@ -15,7 +15,7 @@ export const MAG_32_HTML = `<div data-template="mag-32" style="position:relative
   <div data-image-slot="image" style="position:absolute;left:103px;top:0;width:691px;height:1123px;overflow:hidden">
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:691px;height:1123px;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:110px;top:160px;width:460px;font-weight:700;font-size:85px;line-height:1;letter-spacing:8.5px;white-space:pre;transform:rotate(90deg);transform-origin:left top;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${SANS_EN}}};height:100px">{{TEXT:title}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;left:110px;top:160px;width:460px;font-weight:700;font-size:85px;line-height:1.1;letter-spacing:0.02em;white-space:pre;transform:rotate(90deg);transform-origin:left top;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${SANS_EN}}};height:100px">{{TEXT:title}}</div>
   <div data-text-key="body" data-variable-decor style="position:absolute;left:56px;top:900px;width:300px;height:100px;font-weight:700;font-size:{{FIT_SIZE:body|620,96,44}}px;line-height:1.05;white-space:pre-wrap;overflow:hidden;color:{{COLOR:body|#1c1b18}};font-family:{{FONT:body|${PLAYFAIR}}}">{{TEXT:body}}</div>
 
   <div data-text-key="explain" style="position:absolute;left:60px;top:1060px;width:200px;font-size:14px;line-height:1.6;letter-spacing:0.02em;color:{{COLOR:explain|#5a574f}};font-family:{{FONT:explain|&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif}};white-space:pre-wrap;height:26px">{{TEXT:explain}}</div>

@@ -20,5 +20,5 @@ export const MAG_30_HTML = `<div data-template="mag-30" style="position:relative
   <div data-image-slot="image" style="position:absolute;left:67px;top:284px;width:660px;height:364px;overflow:hidden">
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>
-  <div data-text-key="body" style="position:absolute;left:495px;top:780px;width:232px;font-weight:400;font-size:21px;line-height:1.6;white-space:pre-wrap;overflow:hidden;color:{{COLOR:body|#1c1b18}};font-family:{{FONT:body|${SANS_EN}}}">{{TEXT:body}}</div>
+  <div data-text-key="body" style="position:absolute;left:495px;top:780px;width:232px;font-weight:400;font-size:18px;line-height:1.7;white-space:pre-wrap;overflow:hidden;color:{{COLOR:body|#1c1b18}};font-family:{{FONT:body|${SANS_EN}}};letter-spacing:0.02em">{{TEXT:body}}</div>
 </div>`;

@@ -27,5 +27,5 @@ export const MAG_07_HTML = `<div data-template="mag-07" style="position:relative
   <div data-image-slot="image2" style="position:absolute;left:364px;top:450px;width:380px;height:480px;overflow:hidden">
     <img data-image-slot="image2" src="{{IMG_SRC:image2}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image2|50% 50%}};{{IMG_TF:image2}}" />
   </div>
-  <h1 data-text-key="title" data-variable-decor style="position:absolute;bottom:70px;left:50px;width:260px;margin:0;font-size:104px;letter-spacing:0.02em;line-height:0.92;font-weight:400;white-space:pre-line;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}};height:191px">{{TEXT:title}}</h1>
+  <h1 data-text-key="title" data-variable-decor style="position:absolute;bottom:70px;left:50px;width:260px;margin:0;font-size:104px;letter-spacing:0.02em;line-height:1.1;font-weight:400;white-space:pre-line;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}};height:191px">{{TEXT:title}}</h1>
 </div>`;

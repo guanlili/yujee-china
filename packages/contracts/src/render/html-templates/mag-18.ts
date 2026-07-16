@@ -22,9 +22,9 @@ export const MAG_18_HTML = `<div data-template="mag-18" style="position:relative
     <img data-image-slot="image2" src="{{IMG_SRC:image2}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image2|50% 50%}};{{IMG_TF:image2}}" />
   </div>
   <div style="position:absolute;top:778px;left:70px;width:320px">
-    <p data-text-key="explain" style="margin:0;line-height:1.75;letter-spacing:0.02em;text-align:justify;font-size:15px;color:{{COLOR:explain|#5a574f}};font-family:{{FONT:explain|${SANS_EN}}};white-space:pre-wrap;width:320px;height:53px">{{TEXT:explain}}</p>
+    <p data-text-key="explain" style="margin:0;line-height:1.6;letter-spacing:0.02em;text-align:justify;font-size:14px;color:{{COLOR:explain|#5a574f}};font-family:{{FONT:explain|${SANS_EN}}};white-space:pre-wrap;width:320px;height:53px">{{TEXT:explain}}</p>
   </div>
   <div style="position:absolute;top:778px;right:70px;width:320px">
-    <p data-text-key="explain2" style="margin:0;line-height:1.75;letter-spacing:0.02em;text-align:justify;font-size:15px;color:{{COLOR:explain2|#5a574f}};font-family:{{FONT:explain2|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain2}}</p>
+    <p data-text-key="explain2" style="margin:0;line-height:1.6;letter-spacing:0.02em;text-align:justify;font-size:14px;color:{{COLOR:explain2|#5a574f}};font-family:{{FONT:explain2|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain2}}</p>
   </div>
 </div>`;

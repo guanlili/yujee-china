@@ -14,6 +14,6 @@ export const MAG_34_HTML = `<div data-template="mag-34" style="position:relative
   <div data-image-slot="image" style="position:absolute;left:163px;top:234px;width:470px;height:737px;overflow:hidden">
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:35px;top:187px;width:726px;font-family:{{FONT:title|${PLAYFAIR}}};font-weight:800;font-size:56px;line-height:1.05;color:{{COLOR:title|#1c1b18}};text-align:center;white-space:pre-wrap;overflow:hidden">{{TEXT:title}}</div>
-  <div data-text-key="body" style="position:absolute;left:140px;top:970px;width:500px;font-family:{{FONT:body|${SANS_EN}}};font-weight:400;font-size:21px;line-height:1.35;color:{{COLOR:body|#1c1b18}};text-align:center;white-space:pre-wrap;overflow:hidden;height:50px">{{TEXT:body}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;left:35px;top:187px;width:726px;font-family:{{FONT:title|${PLAYFAIR}}};font-weight:800;font-size:56px;line-height:1.1;color:{{COLOR:title|#1c1b18}};text-align:center;white-space:pre-wrap;overflow:hidden;letter-spacing:0.02em">{{TEXT:title}}</div>
+  <div data-text-key="body" style="position:absolute;left:140px;top:970px;width:500px;font-family:{{FONT:body|${SANS_EN}}};font-weight:400;font-size:18px;line-height:1.7;color:{{COLOR:body|#1c1b18}};text-align:center;white-space:pre-wrap;overflow:hidden;height:50px;letter-spacing:0.02em">{{TEXT:body}}</div>
 </div>`;

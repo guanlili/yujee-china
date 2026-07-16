@@ -15,13 +15,13 @@ const SANS_EN = '&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&
 const SERIF_EN = '&quot;EB Garamond&quot;, &quot;Noto Serif SC&quot;, &quot;Songti SC&quot;, serif';
 
 export const MAG_15_HTML = `<div data-template="mag-15" style="position:relative;width:794px;height:1123px;background:#fff;color:#1c1b18;overflow:hidden;box-sizing:border-box;font-family:${SANS_EN}">
-  <p data-text-key="explain" style="position:absolute;top:90px;left:70px;width:280px;margin:0;line-height:1.7;letter-spacing:0.02em;text-align:justify;font-size:18px;color:{{COLOR:explain|#5a574f}};font-family:{{FONT:explain|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain}}</p>
+  <p data-text-key="explain" style="position:absolute;top:90px;left:70px;width:280px;margin:0;line-height:1.6;letter-spacing:0.02em;text-align:justify;font-size:14px;color:{{COLOR:explain|#5a574f}};font-family:{{FONT:explain|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain}}</p>
   <div data-image-slot="image1" style="position:absolute;top:180px;right:70px;width:655px;height:440px;overflow:hidden">
     <img data-image-slot="image1" src="{{IMG_SRC:image1}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image1|50% 50%}};{{IMG_TF:image1}}" />
   </div>
   <div data-image-slot="image2" style="position:absolute;top:660px;left:70px;width:400px;height:350px;overflow:hidden">
     <img data-image-slot="image2" src="{{IMG_SRC:image2}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image2|50% 50%}};{{IMG_TF:image2}}" />
   </div>
-  <h1 data-text-key="title" data-variable-decor style="position:absolute;top:690px;right:70px;width:300px;margin:0;text-align:right;font-weight:800;font-size:84px;letter-spacing:0.01em;line-height:1.02;white-space:pre-line;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${SANS_EN}}};height:200px">{{TEXT:title}}</h1>
-  <div data-text-key="explain2" data-variable-decor style="position:absolute;bottom:95px;right:72px;font-size:11px;letter-spacing:0.3em;text-transform:uppercase;color:{{COLOR:explain2|#5a574f}};font-family:{{FONT:explain2|${SANS_EN}}};white-space:pre-wrap;width:120px;height:24px">{{TEXT:explain2}}</div>
+  <h1 data-text-key="title" data-variable-decor style="position:absolute;top:690px;right:70px;width:300px;margin:0;text-align:right;font-weight:800;font-size:84px;letter-spacing:0.02em;line-height:1.1;white-space:pre-line;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${SANS_EN}}};height:200px">{{TEXT:title}}</h1>
+  <div data-text-key="explain2" data-variable-decor style="position:absolute;bottom:95px;right:72px;font-size:14px;letter-spacing:0.02em;text-transform:uppercase;color:{{COLOR:explain2|#5a574f}};font-family:{{FONT:explain2|${SANS_EN}}};white-space:pre-wrap;width:120px;height:24px;line-height:1.6">{{TEXT:explain2}}</div>
 </div>`;

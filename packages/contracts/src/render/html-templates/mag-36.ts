@@ -16,5 +16,5 @@ export const MAG_36_HTML = `<div data-template="mag-36" style="position:relative
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>
   <div style="position:absolute;left:72px;top:436px;width:300px;height:157px;background:rgba(255,255,255,0.55)"></div>
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:72px;top:436px;width:300px;height:157px;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:700;font-size:64px;line-height:1.05;white-space:pre-wrap;overflow:hidden;color:{{COLOR:title|#FFFFFF}};font-family:{{FONT:title|${PLAYFAIR}}}">{{TEXT:title}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;left:72px;top:436px;width:300px;height:157px;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:700;font-size:64px;line-height:1.1;white-space:pre-wrap;overflow:hidden;color:{{COLOR:title|#FFFFFF}};font-family:{{FONT:title|${PLAYFAIR}}};letter-spacing:0.02em">{{TEXT:title}}</div>
 </div>`;

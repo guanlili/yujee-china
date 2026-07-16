@@ -24,8 +24,8 @@ export const MAG_43_HTML = `<div data-template="mag-43" style="position:relative
   <div data-image-slot="image3" style="position:absolute;left:40px;top:291px;width:181px;height:268px;overflow:hidden">
     <img data-image-slot="image3" src="{{IMG_SRC:image3}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image3|50% 50%}};{{IMG_TF:image3}}" />
   </div>
-  <div data-text-key="body" style="position:absolute;left:444px;top:466px;width:320px;font-family:{{FONT:body|${SANS_CN}}};font-weight:400;font-size:19px;line-height:1.4;color:{{COLOR:body|#1c1b18}};white-space:pre-wrap;word-break:break-word;overflow:hidden;height:120px">{{TEXT:body}}</div>
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:418px;top:647px;width:340px;font-family:{{FONT:title|${PLAYFAIR}}};font-weight:800;font-size:88px;line-height:1;color:{{COLOR:title|#1c1b18}};white-space:pre-wrap;overflow:hidden;height:160px">{{TEXT:title}}</div>
+  <div data-text-key="body" style="position:absolute;left:444px;top:466px;width:320px;font-family:{{FONT:body|${SANS_CN}}};font-weight:400;font-size:18px;line-height:1.7;color:{{COLOR:body|#1c1b18}};white-space:pre-wrap;word-break:break-word;overflow:hidden;height:120px;letter-spacing:0.02em">{{TEXT:body}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;left:418px;top:647px;width:340px;font-family:{{FONT:title|${PLAYFAIR}}};font-weight:800;font-size:88px;line-height:1.1;color:{{COLOR:title|#1c1b18}};white-space:pre-wrap;overflow:hidden;height:160px;letter-spacing:0.02em">{{TEXT:title}}</div>
   <div data-image-slot="image4" style="position:absolute;left:221px;top:901px;width:181px;height:184px;overflow:hidden">
     <img data-image-slot="image4" src="{{IMG_SRC:image4}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image4|50% 50%}};{{IMG_TF:image4}}" />
   </div>

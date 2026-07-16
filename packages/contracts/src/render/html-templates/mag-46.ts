@@ -13,8 +13,8 @@ const SANS_CN = '&quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, &quot;Heiti 
 const SERIF_CN = '&quot;Noto Serif SC&quot;, &quot;Source Han Serif SC&quot;, &quot;Songti SC&quot;, serif';
 
 export const MAG_46_HTML = `<div data-template="mag-46" style="position:relative;width:794px;height:1123px;background:#FFFFFF;overflow:hidden">
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:91px;top:65px;width:280px;font-weight:700;font-size:36px;line-height:1.1;white-space:pre-wrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${SERIF_CN}}};height:80px">{{TEXT:title}}</div>
-  <div data-text-key="explain" style="position:absolute;left:91px;top:260px;width:334px;font-weight:400;font-size:16px;line-height:1.35;white-space:pre-wrap;overflow:hidden;color:{{COLOR:explain|#1c1b18}};font-family:{{FONT:explain|${SANS_CN}}};height:60px">{{TEXT:explain}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;left:91px;top:65px;width:280px;font-weight:700;font-size:36px;line-height:1.1;white-space:pre-wrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${SERIF_CN}}};height:80px;letter-spacing:0.02em">{{TEXT:title}}</div>
+  <div data-text-key="explain" style="position:absolute;left:91px;top:260px;width:334px;font-weight:400;font-size:14px;line-height:1.6;white-space:pre-wrap;overflow:hidden;color:{{COLOR:explain|#1c1b18}};font-family:{{FONT:explain|${SANS_CN}}};height:60px;letter-spacing:0.02em">{{TEXT:explain}}</div>
   <div data-image-slot="image1" style="position:absolute;left:91px;top:331px;width:467px;height:730px;overflow:hidden">
     <img data-image-slot="image1" src="{{IMG_SRC:image1}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image1|50% 50%}};{{IMG_TF:image1}}" />
   </div>
