@@ -352,9 +352,11 @@ export function ChatPanel({
               chapterHistory.push({ role: 'user', content: c });
             }
           } else {
-            // design chat 的写类操作回执卡：贴在这条 AI 回复之前（还原「op-card→回复」顺序）。
-            for (const op of readDesignOps(m.layoutPatch)) {
-              const card = buildDesignOpCard(op.toolName, op.input);
+            // design chat 的「更新了什么」彩色条:按落库 designOps 的 toolName 去重成类别,贴在这条
+            // AI 回复之前(还原「更新条→回复」顺序);不再逐 op 冒卡。开场白历史未落库,回放省略。
+            const cats = designOpCategories(readDesignOps(m.layoutPatch).map((op) => op.toolName));
+            if (cats.length > 0) {
+              const card = buildDesignChangeCard(cats);
               card.setAttribute('data-history-replay', '1');
               chatBody?.appendChild(card);
             }
@@ -637,64 +639,64 @@ export function ChatPanel({
     }
     void runDraftEditTurn;
 
-    // 设计 Agent 全书对话（阶段3接线，NDJSON 流式）。渲染遵循 editor 设计语言：
-    // 动态小水母始终钉在对话最底部；AI 每调用一个工具，就在水母上方流式冒出一行
-    // 可见的操作（读/写都暴露），工具返回时该行打勾 ✓；一轮结束后收掉水母、贴出
-    // 回复。committed 时派发刷新事件让画板重取草稿。done 时 pages 已写回 draft_json。
-    const DESIGN_TOOL_LABEL: Record<string, [string, string]> = {
-      get_book_summary: ['翻阅整本相册', 'Reading the whole album'],
-      read_page: ['查看页面内容', 'Reading a page'],
-      search_book: ['在全书中检索', 'Searching the book'],
-      list_templates: ['挑选合适的版式', 'Browsing templates'],
-      read_skill: ['查阅设计规则', 'Consulting design rules'],
-      update_page_texts: ['写页面文字', 'Writing page copy'],
-      swap_page_template: ['更换版式', 'Swapping the template'],
-      update_page_images: ['调整图片', 'Adjusting images'],
-      set_text_colors: ['设定文字配色', 'Setting text colors'],
+    // 设计 Agent 全书对话（NDJSON 流式）。对话框展示锁成四段:①开场白气泡(AI 回合开头对用户
+    // 说的话,assistant_step 事件)顶在最上;②单条「使用工具中」进度条(不逐工具、不报工具名,整
+    // 回合只一条笼统状态条,工具跑完随水母收掉);③一条彩色「更新了什么」条(按类别去重,只报真正改
+    // 了的:字体/颜色/页面);④终稿总结回复置于最底。committed 时把新页原地重绘;done 时 pages 已
+    // 写回 draft_json。
+    //
+    // 写类工具 → 更新类别。本次只做字体/颜色/页面三类;封面、整体设计两类用户明确 defer,不做。
+    // set_text_fonts 与 write_page_html 也纳入(它们过去不在写工具集里,漏了会少报字体/HTML 更新)。
+    type DesignChangeCategory = 'fonts' | 'colors' | 'pages';
+    const DESIGN_CHANGE_CATEGORY: Record<string, DesignChangeCategory> = {
+      set_text_fonts: 'fonts',
+      set_text_colors: 'colors',
+      update_page_texts: 'pages',
+      swap_page_template: 'pages',
+      update_page_images: 'pages',
+      write_page_html: 'pages',
     };
-    const WRITE_TOOLS = new Set([
-      'update_page_texts',
-      'swap_page_template',
-      'update_page_images',
-      'set_text_colors',
-    ]);
-    const OP_PENCIL_SVG =
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
-    // 富回执卡的绿色圆圈勾（对齐 demo 设计）。
-    const OP_CIRCLE_CHECK_SVG =
-      '<svg class="op-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="M8.3 12.4l2.6 2.6 4.7-5.3"/></svg>';
-    function designToolLabel(toolName: string): string {
-      const label = DESIGN_TOOL_LABEL[toolName];
-      return label ? aT(label[0], label[1]) : toolName;
+    const DESIGN_CHANGE_ORDER: readonly DesignChangeCategory[] = ['fonts', 'colors', 'pages'];
+    const DESIGN_CHANGE_LABEL: Record<DesignChangeCategory, [string, string]> = {
+      fonts: ['字体', 'Fonts'],
+      colors: ['颜色', 'Colors'],
+      pages: ['页面', 'Pages'],
+    };
+    function designChangeLabel(cat: DesignChangeCategory): string {
+      const label = DESIGN_CHANGE_LABEL[cat];
+      return aT(label[0], label[1]);
     }
-    // 写类工具的具体动作描述（从工具入参生成，落在回执卡的 op-label）。
-    function designWriteDescription(toolName: string, input: unknown): string {
-      const rec = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
-      const pageNo = typeof rec.pageNo === 'number' ? rec.pageNo : undefined;
-      // pageNo 已是 1 起（与工具口径一致），直接用。
-      const pageLabel = pageNo !== undefined ? aT(`第 ${pageNo} 页`, `page ${pageNo}`) : '';
-      switch (toolName) {
-        case 'update_page_texts':
-          return pageLabel ? aT(`更新${pageLabel}的文案`, `Updated ${pageLabel} copy`) : aT('更新页面文案', 'Updated page copy');
-        case 'swap_page_template':
-          return pageLabel ? aT(`重新排版${pageLabel}`, `Re-laid out ${pageLabel}`) : aT('更换页面版式', 'Swapped the template');
-        case 'update_page_images':
-          return pageLabel ? aT(`调整${pageLabel}的图片`, `Adjusted ${pageLabel} images`) : aT('调整页面图片', 'Adjusted images');
-        case 'set_text_colors':
-          return aT('设定文字配色', 'Set text colors');
-        default:
-          return designToolLabel(toolName);
+    // 类别去重 + 固定顺序(字体 → 颜色 → 页面)。
+    function orderedChangeCategories(cats: Iterable<DesignChangeCategory>): DesignChangeCategory[] {
+      const set = cats instanceof Set ? cats : new Set(cats);
+      return DESIGN_CHANGE_ORDER.filter((c) => set.has(c));
+    }
+    // 一批 toolName → 去重后的类别列表(历史回放用;非写/未知工具跳过)。
+    function designOpCategories(toolNames: Iterable<string>): DesignChangeCategory[] {
+      const set = new Set<DesignChangeCategory>();
+      for (const name of toolNames) {
+        const cat = DESIGN_CHANGE_CATEGORY[name];
+        if (cat) set.add(cat);
       }
+      return orderedChangeCategories(set);
     }
-    // 写类工具的富回执卡（流式与历史回放共用）。
-    function buildDesignOpCard(toolName: string, input: unknown): HTMLElement {
+    // 「更新了什么」的对勾图标(op-ic 内,青紫渐变底)。
+    const OP_DONE_SVG =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    // 一条彩色「更新了什么」摘要条:复用 op-card 设计语言(渐变底)+ cc-tag 同款渐变胶囊标签。
+    // 流式与历史回放共用;categories 已去重且按固定顺序。文案走 textContent(不进 innerHTML)。
+    function buildDesignChangeCard(categories: DesignChangeCategory[]): HTMLElement {
       const card = document.createElement('div');
-      card.className = 'op-card';
+      card.className = 'op-card op-card-change';
+      const slots = categories.map(() => '<span class="op-tag"></span>').join('');
       card.innerHTML =
-        `<div class="op-ic">${OP_PENCIL_SVG}</div>` +
-        `<div class="op-body"><div class="op-kicker">${aT('已执行', 'Done')}</div><div class="op-label"></div></div>` +
-        OP_CIRCLE_CHECK_SVG;
-      (card.querySelector('.op-label') as HTMLElement).textContent = designWriteDescription(toolName, input);
+        `<div class="op-ic">${OP_DONE_SVG}</div>` +
+        `<div class="op-body"><div class="op-kicker">${aT('已更新', 'Updated')}</div>` +
+        `<div class="op-tags">${slots}</div></div>`;
+      const tagEls = card.querySelectorAll('.op-tag');
+      categories.forEach((c, i) => {
+        (tagEls[i] as HTMLElement).textContent = designChangeLabel(c);
+      });
       return card;
     }
     // 从落库的 layout_patch 里解析 design chat 写操作（{ designOps: [{toolName, input}] }）。
@@ -708,13 +710,13 @@ export function ChatPanel({
       );
     }
 
-    // 底部钉着水母的流式操作面板。读类工具冒出轻量行（转圈→打勾）；写类工具执行成功后
-    // 替换成富回执卡（op-ic 图标 + 「已执行」+ 具体描述 + 绿色圆圈勾）。结束时收掉水母。
+    // 底部钉着水母的单条进度面板。整回合只一条笼统「使用工具中」状态条:不逐工具、不报工具名;
+    // 工具跑完随水母收掉(settle)。开场白气泡(showOpening)插在进度条上方,顶在整回合最上。
+    // host 收掉水母后承载「更新了什么」条与终稿回复。
     function createDesignStreamHost(): {
       host: HTMLElement;
-      jelly: HTMLElement;
-      startOp: (toolCallId: string, toolName: string, input: unknown) => void;
-      finishOp: (toolCallId: string, toolName: string, isError: boolean) => void;
+      showOpening: (text: string) => void;
+      markToolRunning: () => void;
       settle: () => void;
     } {
       hideAwait();
@@ -731,31 +733,33 @@ export function ChatPanel({
       scrollChat();
 
       const labelEl = jelly.querySelector('.thinking-label') as HTMLElement | null;
-      const inputByCall = new Map<string, unknown>();
-      const setLabel = (text: string) => {
-        if (labelEl) labelEl.textContent = text;
-      };
+      let openingShown = false;
+      let toolRunningShown = false;
       return {
         host,
-        jelly,
-        startOp(toolCallId, toolName, input) {
-          // 读/写都只更新水母旁的灰色小字（当前在做什么），不单独做行样式。
-          setLabel(WRITE_TOOLS.has(toolName) ? designWriteDescription(toolName, input) : designToolLabel(toolName));
-          if (toolCallId) inputByCall.set(toolCallId, input);
+        // ①开场白气泡:AI 回合开头对用户说的那句话,插在进度条上方(置顶)。整回合只取第一条。
+        showOpening(text) {
+          const trimmed = text.trim();
+          if (openingShown || !trimmed) return;
+          openingShown = true;
+          const bubble = document.createElement('div');
+          bubble.className = 'msg ai max-w-full';
+          const body = document.createElement('div');
+          body.className = 'ai-text';
+          body.innerHTML = renderMarkdownSafe(trimmed);
+          bubble.appendChild(body);
+          chatBody!.insertBefore(bubble, host);
           scrollChat();
         },
-        finishOp(toolCallId, toolName, isError) {
-          // 只有写类工具执行成功留下富回执卡；读类是纯思考，随水母灰字过一下、不留痕。
-          if (isError || !WRITE_TOOLS.has(toolName)) return;
-          const card = buildDesignOpCard(toolName, inputByCall.get(toolCallId));
-          // 回执卡冒在水母上方；jelly 仍是 host 子节点才用 insertBefore，否则直接追加（防 DOM 抛错）。
-          if (jelly.parentNode === host) host.insertBefore(card, jelly);
-          else host.appendChild(card);
-          setLabel(t('thinking')); // 回执卡插入后灰字回到「思考中」
+        // ②工具开跑:把笼统状态条切到「正在使用工具…」(不含具体工具名),整回合只切一次。
+        markToolRunning() {
+          if (toolRunningShown) return;
+          toolRunningShown = true;
+          if (labelEl) labelEl.textContent = aT('正在使用工具…', 'Using tools…');
           scrollChat();
         },
         settle() {
-          jelly.remove(); // 收掉底部水母（读类灰字随之消失，不留痕）
+          jelly.remove(); // 收掉底部水母,进度条随之消失(工具跑完就收)
         },
       };
     }
@@ -788,6 +792,10 @@ export function ChatPanel({
       const stream = createDesignStreamHost();
       setComposerThinking(true);
       const userMessage = message.slice(0, MESSAGE_MAX);
+      // 本回合真正改了的类别(去重)。写类工具 tool_call 时按 toolCallId 记下待确认类别,
+      // 其 tool_result 成功(非 error)时才计入 —— 与 route 落库 designOps 的口径一致。
+      const pendingWriteCat = new Map<string, DesignChangeCategory>();
+      const changedCats = new Set<DesignChangeCategory>();
       try {
         const res = await fetch(`/api/v3/albums/${albumId}/design-chat?stream=1`, {
           method: 'POST',
@@ -819,10 +827,20 @@ export function ChatPanel({
         } = { final: null, error: null };
         await readDesignChatStream(res, (event) => {
           const toolCallId = typeof event.toolCallId === 'string' ? event.toolCallId : '';
-          if (event.type === 'tool_call' && typeof event.toolName === 'string') {
-            stream.startOp(toolCallId, event.toolName, event.input);
+          if (event.type === 'assistant_step' && typeof event.text === 'string') {
+            // ①开场白:AI 回合开头对用户说的那句话,顶在最上(整回合只第一条生效)。
+            stream.showOpening(event.text);
+          } else if (event.type === 'tool_call' && typeof event.toolName === 'string') {
+            // ②进度:整回合一条笼统状态条(不报工具名)。写类工具先记下待确认类别。
+            stream.markToolRunning();
+            const cat = DESIGN_CHANGE_CATEGORY[event.toolName];
+            if (cat && toolCallId) pendingWriteCat.set(toolCallId, cat);
           } else if (event.type === 'tool_result' && typeof event.toolName === 'string') {
-            stream.finishOp(toolCallId, event.toolName, event.isError === true);
+            // 写类工具成功执行(非 error)才算"真的改了",计入更新类别。
+            if (event.isError !== true) {
+              const cat = pendingWriteCat.get(toolCallId);
+              if (cat) changedCats.add(cat);
+            }
           } else if (event.type === 'done') {
             outcome.final = event.response as {
               assistantReply: string;
@@ -844,6 +862,10 @@ export function ChatPanel({
         const final = outcome.final;
         if (!final) throw new Error('stream ended without result');
         stream.settle();
+        // ③一条彩色「更新了什么」条:按类别去重,只报真正改了的;贴在终稿回复之前。
+        const cats = orderedChangeCategories(changedCats);
+        if (cats.length > 0) stream.host.appendChild(buildDesignChangeCard(cats));
+        // ④终稿总结回复,置于最底。
         appendReplyBody(stream.host, final.assistantReply);
         if (final.committed) {
           // 原地重绘：把服务端回来的新页整体喂给画板（不重挂、不重载图，无"全局刷新闪一下"）。

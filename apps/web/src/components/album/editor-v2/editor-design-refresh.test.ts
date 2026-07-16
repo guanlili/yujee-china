@@ -60,7 +60,7 @@ test('editor chat rail uses the refreshed draggable card and collapsed jellyfish
   assert.doesNotMatch(chatPanel, /clearDemoChat/, 'demo transcript cleanup should not be needed when the demo transcript is not rendered');
   assert.doesNotMatch(chatPanel, /thinkingAnalyzed|aiMsg1|userMsg1/, 'demo transcript i18n keys should not be referenced by ChatPanel markup');
   assert.match(chatPanel, /function appendStep\(/, 'runtime AI tool progress should be emitted by real step rows');
-  assert.match(chatPanel, /card\.className = 'op-card'/, 'mock AI tool-call receipts should be rendered at runtime');
+  assert.match(chatPanel, /card\.className = 'op-card op-card-change'/, 'design turn should render one colored “what changed” summary bar (op-card family), not per-tool receipts');
   assert.doesNotMatch(chatPanel, /className="ai-doc"/, 'design-demo document summaries should not ship in the chat rail');
 });
 
