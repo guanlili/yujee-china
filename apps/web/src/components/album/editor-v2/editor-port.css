@@ -583,6 +583,36 @@
 }
 .editor-port .interview-skip:hover:not(:disabled){ color:var(--fg-2); }
 .editor-port .interview-skip:disabled{ opacity:0.4; cursor:default; }
+/* 采访轮到用户:输入框上方一块"很淡"的渐变小卡(参考 chap-card 配色,非强调型 —— 别像购买横幅那么响)。
+   小标题 + 两颗并排白描边按钮;输入框靠一直生效的 .buy-banner:not(.hidden)+.chat-input 的 -22px 往上贴进这卡,连成一体。 */
+.editor-port .interview-skips{
+  display:flex; flex-direction:column; gap:9px; margin:0;
+  padding:12px 14px 28px; position:relative; z-index:0;
+  border-radius:16px 16px 8px 8px;
+  background:
+    radial-gradient(42% 60% at 0% 0%, rgba(19,184,166,.08), transparent 60%),
+    radial-gradient(40% 56% at 100% 26%, rgba(140,94,244,.07), transparent 60%),
+    radial-gradient(44% 48% at 100% 100%, rgba(218,244,94,.07), transparent 60%),
+    var(--bg);
+  border:1px solid var(--border-soft);
+  box-shadow:0 1px 2px rgba(0,0,0,.03);
+}
+.editor-port .iv-kicker{
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--meta); font-weight:600;
+}
+.editor-port .iv-title{ font-family:var(--font-display); font-size:14px; font-weight:700; color:var(--fg); }
+/* 两颗并排白描边按钮 —— 次要、低调,不抢输入框 */
+.editor-port .iv-skips-row{ display:flex; gap:8px; }
+.editor-port .iv-skip{
+  flex:1; text-align:center; font-family:var(--font-body); font-size:12.5px; font-weight:600;
+  color:var(--fg-2); background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:9px 10px; cursor:pointer;
+  transition: all var(--motion-fast) var(--ease);
+}
+.editor-port .iv-skip:hover:not(:disabled){ border-color:var(--fg-2); }
+.editor-port .iv-skip-ghost{ color:var(--muted); border-style:dashed; }
+.editor-port .iv-skip:disabled{ opacity:0.5; cursor:default; }
 
 /* Desktop: flash the book when "view chapter" is clicked */
 .editor-port .book-flash{ animation: ep-bookFlash 0.7s var(--ease); }
@@ -1220,6 +1250,90 @@
           mask:linear-gradient(0deg, #000 0%, rgba(0,0,0,.5) 34%, transparent 82%);
   opacity:.5; filter:blur(9px);
 }
+/* ── 必选封面:选择卡作为一层遮罩盖在输入框上(#coverDock)+ 竖排选项 + 放大镜气泡 ── */
+.editor-port .cover-dock{
+  position:absolute; left:0; right:0; bottom:0; z-index:20;
+  padding:36px 0 0; margin:0; pointer-events:none;
+  background:linear-gradient(to top, var(--surface) 72%, rgba(255,255,255,0));
+}
+.editor-port .cover-dock .cv-card{
+  pointer-events:auto; margin:0;
+  box-shadow:0 -1px 0 rgba(0,0,0,.02), 0 18px 44px -14px rgba(20,40,38,.34);
+  animation: ep-op-in .3s var(--ease) both;
+}
+.editor-port .composer-group.cover-locked .chat-input{ opacity:.5; filter:grayscale(.25); pointer-events:none; }
+/* 必选卡:全息描边 + 卡头 */
+.editor-port .cv-pick-card{ position:relative; }
+.editor-port .cv-pick-card::after{
+  content:''; position:absolute; inset:-1px; border-radius:16px; padding:1px;
+  background:linear-gradient(120deg,var(--grad-green),var(--grad-purple),var(--grad-lime));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor; mask-composite:exclude; opacity:.5; pointer-events:none;
+}
+.editor-port .cv-kicker{
+  display:flex; align-items:center; gap:6px; margin-bottom:6px;
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--grad-purple); font-weight:600;
+}
+.editor-port .cv-kicker svg{ width:12px; height:12px; }
+.editor-port .cv-head-title{ font-family:var(--font-display); font-size:16px; font-weight:720; color:var(--fg); letter-spacing:-.01em; }
+.editor-port .cv-head-sub{ font-size:12px; color:var(--muted); margin:3px 0 13px; line-height:1.5; }
+/* 竖排整行选项:[封面+封底小图] + [标签] + [右侧圆形单选] */
+.editor-port .cv-picks{ display:flex; flex-direction:column; gap:8px; }
+.editor-port .cv-pick{
+  display:flex; align-items:center; gap:11px; width:100%; text-align:left;
+  border:1.5px solid var(--border); border-radius:12px; background:var(--surface);
+  padding:8px 10px; cursor:pointer; font-family:inherit;
+  transition:border-color var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease);
+}
+.editor-port .cv-pick:hover{ border-color:#cfd6d4; }
+.editor-port .cv-pick[aria-checked="true"]{ border-color:var(--grad-purple); box-shadow:0 0 0 3px rgba(140,94,244,.16); }
+.editor-port .cv-pick:focus-visible{ outline:2px solid var(--grad-purple); outline-offset:2px; }
+.editor-port .cv-pick-thumbs{ display:flex; gap:4px; flex-shrink:0; }
+.editor-port .cv-face.sm{ width:46px; height:60px; }
+.editor-port .cv-pick-label{ flex:1; min-width:0; display:flex; flex-direction:column; font-family:var(--font-display); font-size:13px; font-weight:660; color:var(--fg); }
+.editor-port .cv-pick-label i{ font-style:normal; font-family:var(--font-body); font-size:11px; font-weight:500; color:var(--muted); margin-top:2px; }
+.editor-port .cv-radio{
+  width:18px; height:18px; border-radius:50%; border:2px solid var(--border); flex-shrink:0;
+  display:grid; place-items:center; color:#fff; transition:all var(--motion-fast) var(--ease);
+}
+.editor-port .cv-radio svg{ width:10px; height:10px; opacity:0; transition:opacity var(--motion-fast) var(--ease); }
+.editor-port .cv-pick[aria-checked="true"] .cv-radio{ border-color:var(--accent); background:var(--accent); }
+.editor-port .cv-pick[aria-checked="true"] .cv-radio svg{ opacity:1; }
+.editor-port .cv-foot2{ display:flex; justify-content:flex-end; margin-top:13px; }
+.editor-port .cv-confirm{
+  display:inline-flex; align-items:center; gap:6px; border:none; cursor:pointer;
+  background:var(--fg); color:#fff; font-size:12.5px; font-weight:660;
+  padding:9px 16px; border-radius:9999px;
+  transition:transform var(--motion-fast) var(--ease);
+}
+.editor-port .cv-confirm:hover{ transform:translateY(-1px); }
+.editor-port .cv-confirm svg{ width:14px; height:14px; }
+.editor-port .cv-zoom{
+  position:absolute; right:2px; bottom:2px; z-index:2;
+  width:15px; height:15px; border-radius:50%; padding:0; border:none; cursor:pointer;
+  display:grid; place-items:center; background:rgba(255,255,255,.94); color:#3a3a3a;
+  box-shadow:0 1px 2px rgba(0,0,0,.28); transition: all var(--motion-fast) var(--ease);
+}
+.editor-port .cv-zoom:hover{ background:var(--grad-purple); color:#fff; }
+.editor-port .cv-zoom svg{ width:9px; height:9px; }
+.editor-port .cv-zoom-layer{ position:absolute; inset:0; z-index:30; display:grid; place-items:center; }
+.editor-port .cv-bubble{
+  position:relative; background:var(--surface); border:1px solid var(--border-soft);
+  border-radius:16px; box-shadow:0 20px 50px rgba(0,0,0,.28); padding:16px;
+}
+.editor-port .cv-bubble-faces{ display:flex; gap:12px; }
+.editor-port .cv-bubble-face{
+  position:relative; display:block; width:132px; height:176px; border-radius:9px;
+  overflow:hidden; background:var(--bg); box-shadow:0 6px 20px rgba(0,0,0,.18);
+}
+.editor-port .cv-bubble-x{
+  position:absolute; top:8px; right:8px; z-index:2; width:26px; height:26px; border-radius:50%;
+  border:none; cursor:pointer; display:grid; place-items:center;
+  background:rgba(0,0,0,.05); color:var(--muted); transition: all var(--motion-fast) var(--ease);
+}
+.editor-port .cv-bubble-x:hover{ background:rgba(0,0,0,.1); color:var(--fg); }
+.editor-port .cv-bubble-x svg{ width:14px; height:14px; }
 .editor-port .chat-resize{
   position:absolute; right:4px; bottom:4px; width:20px; height:20px; z-index:50;
   display:none; align-items:flex-end; justify-content:flex-end; padding:2px;

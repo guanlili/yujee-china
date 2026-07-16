@@ -1116,6 +1116,16 @@ export function ChatPanel({
       return null;
     }
 
+    // 跳过剩下全部:所有未采访章一次性标记(参照 waitForAppendChapters 的批量补标),直接去排版。
+    async function skipRemainingInterviews() {
+      if (disposed) return;
+      pendingInterview = null;
+      updateAuthInputPlaceholder();
+      const order = storyGate?.chapterOrder ?? [];
+      order.forEach((cid) => interviewedChapters.add(cid));
+      await triggerSelectLayout();
+    }
+
     // 加照片增量重跑(spec §1):追加范围 —— 采访链尽头据此转向增量排版而非全书重排。
     let appendScope: { chapterIds: string[]; photoIds: string[]; prevPageCount: number } | null = null;
     let appendInFlight = false;
@@ -1123,6 +1133,7 @@ export function ChatPanel({
     let selectLayoutTriggered = false;
     async function triggerSelectLayout() {
       if (disposed) return;
+      setInterviewSkips(null); // 采访链结束、进入排版:收起跳过 pill,恢复普通输入框
       if (appendScope) {
         await triggerAppendSelectLayout();
         return;
@@ -1367,6 +1378,12 @@ export function ChatPanel({
     // 设计环节:封面组选择卡。规则组(服务端 GET)→ 用户点选一组 → POST /design
     // (engine 出字体/颜色/封面封尾文案,Web 落 draft)→ 刷画板。幂等:已设计过不再弹。
     let designOfferShown = false;
+    // 必选封面步骤:把选择卡盖在输入框上方(#coverDock),并锁住输入——禁用发送 + 置灰输入框。
+    function setCoverLock(on: boolean) {
+      outerRootRef.current?.querySelector('.composer-group')?.classList.toggle('cover-locked', on);
+      const send = byId('sendBtn') as HTMLButtonElement | null;
+      if (send) send.disabled = on;
+    }
     async function offerDesignCard() {
       if (disposed || designOfferShown) return;
       let sets: Array<{ coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string }> = [];
@@ -1382,90 +1399,105 @@ export function ChatPanel({
       if (disposed || sets.length === 0) return;
       designOfferShown = true;
 
-      // 样式对齐章节卡(chap-card)模块:同一渐变底卡片、cc-title 标题、cc-view 紫色
-      // 链接式按钮。每个候选是「封面+封底」成对小预览(92×122),一屏约 1.5 组提示可横滑。
-      const card = document.createElement('div');
-      card.className = 'msg ai max-w-full';
+      // 必选封面卡:盖在输入框上一层(#coverDock),竖排整行选项,对齐设计草稿。
       const inner = document.createElement('div');
-      inner.className = 'chap-card cv-card';
-      const titleRow = document.createElement('div');
-      titleRow.className = 'cc-title-row';
-      const title = document.createElement('span');
-      title.className = 'cc-title';
-      title.textContent = aT('挑一组封面与封底', 'Pick a cover & back cover');
-      const tag = document.createElement('span');
-      tag.className = 'cc-tag';
-      tag.textContent = aT('最后一步', 'Last step');
-      titleRow.appendChild(title);
-      titleRow.appendChild(tag);
-      inner.appendChild(titleRow);
+      inner.className = 'chap-card cv-card cv-pick-card';
+      const LOCK_SVG =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+      const kicker = document.createElement('div');
+      kicker.className = 'cv-kicker';
+      kicker.innerHTML = `${LOCK_SVG}<span>${aT('需要你选一个 · 封面', 'Pick one · cover')}</span>`;
+      inner.appendChild(kicker);
+      const title = document.createElement('div');
+      title.className = 'cv-head-title';
+      title.textContent = aT('选择封面 & 封尾', 'Choose cover & back cover');
+      inner.appendChild(title);
+      const sub = document.createElement('div');
+      sub.className = 'cv-head-sub';
+      sub.textContent = aT(
+        '选定后会把标题字体、配色套用到整本书 —— 这一步不能跳过',
+        'Fonts and colors apply across the whole book — this step can’t be skipped',
+      );
+      inner.appendChild(sub);
 
       let selected = 0;
-      const row = document.createElement('div');
-      row.className = 'cv-row';
-      const opts: HTMLButtonElement[] = [];
+      const list = document.createElement('div');
+      list.className = 'cv-picks';
+      const picks: HTMLButtonElement[] = [];
+      const repaint = () => {
+        picks.forEach((p, i) => p.setAttribute('aria-checked', i === selected ? 'true' : 'false'));
+      };
       const CHECK_SVG =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-      const repaint = () => {
-        opts.forEach((opt, i) => {
-          const set = sets[i];
-          opt.innerHTML =
-            `<span class="cv-face">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 92, 122) ?? ''}` +
-            `<i class="cv-face-tag">${aT('封面', 'Cover')}</i></span>` +
-            `<span class="cv-face">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 92, 122) ?? ''}` +
-            `<i class="cv-face-tag">${aT('封底', 'Back')}</i></span>` +
-            `<span class="cv-check">${CHECK_SVG}</span>`;
-          opt.classList.toggle('selected', i === selected);
-        });
-      };
-      sets.forEach((_, i) => {
-        const opt = document.createElement('button');
-        opt.type = 'button';
-        opt.className = 'cv-opt';
-        opt.addEventListener('click', () => {
+      const ZOOM_SVG =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>';
+      // 竖排整行:[封面+封底小图(封面带放大镜)] + [标签] + [右侧圆形单选]。
+      sets.forEach((set, i) => {
+        const pick = document.createElement('button');
+        pick.type = 'button';
+        pick.className = 'cv-pick';
+        pick.setAttribute('role', 'radio');
+        pick.innerHTML =
+          `<span class="cv-pick-thumbs">` +
+            `<span class="cv-face sm">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 46, 60) ?? ''}` +
+            `<button type="button" class="cv-zoom" aria-label="${aT('放大查看', 'Zoom')}" title="${aT('放大查看', 'Zoom')}">${ZOOM_SVG}</button></span>` +
+            `<span class="cv-face sm">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 46, 60) ?? ''}</span>` +
+          `</span>` +
+          `<span class="cv-pick-label">${aT('第 ' + (i + 1) + ' 套', 'Set ' + (i + 1))}<i>${aT('封面 + 封底', 'Cover + back')}</i></span>` +
+          `<span class="cv-radio">${CHECK_SVG}</span>`;
+        pick.addEventListener('click', (e) => {
+          // 点缩略图上的小放大镜 → 气泡放大;点其余任何地方 → 选中。
+          if ((e.target as HTMLElement).closest?.('.cv-zoom')) { openCoverZoom(sets[i]); return; }
           selected = i;
           repaint();
         });
-        opts.push(opt);
-        row.appendChild(opt);
+        picks.push(pick);
+        list.appendChild(pick);
       });
-      inner.appendChild(row);
+      inner.appendChild(list);
 
-      // 底部与章节卡同构:左侧说明文字 + 右侧紫色链接式按钮(必选,无跳过)。
+      // 底部:黑色「确认并继续」(必选,无跳过),带品牌光晕。
       const foot = document.createElement('div');
-      foot.className = 'cc-foot';
-      const info = document.createElement('div');
-      info.className = 'cc-info';
-      const meta = document.createElement('div');
-      meta.className = 'cc-meta';
-      meta.style.whiteSpace = 'normal';
-      meta.textContent = aT('选定后统一全书字体颜色,写好封面封底文案。', 'Fonts, colors and cover copy follow your pick.');
-      info.appendChild(meta);
+      foot.className = 'cv-foot2';
+      const ARROW_SVG =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
       const go = document.createElement('button');
       go.type = 'button';
-      go.className = 'cc-view';
-      go.innerHTML = `${aT('就这组,开始设计', 'Design it')}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`;
+      go.className = 'cv-confirm';
+      go.innerHTML = `${aT('确认并继续', 'Confirm')}${ARROW_SVG}`;
       go.addEventListener('click', () => {
         if (sending) return;
-        void runApplyDesign(sets[selected], card);
+        void runApplyDesign(sets[selected]);
       });
-      foot.appendChild(info);
-      foot.appendChild(go);
+      const glow = document.createElement('span');
+      glow.className = 'btn-glow';
+      glow.appendChild(go);
+      foot.appendChild(glow);
       inner.appendChild(foot);
-      card.appendChild(inner);
-      chatBody!.appendChild(card);
+      // 挂进输入框上方的覆盖层并锁定输入(必选,盖住 chat-input)。
+      const dock = byId('coverDock');
+      if (dock) {
+        dock.replaceChildren(inner);
+        dock.style.display = '';
+        setCoverLock(true);
+      } else {
+        chatBody!.appendChild(inner);
+      }
       repaint();
       scrollChat();
     }
 
     async function runApplyDesign(
       set: { coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string },
-      card: HTMLElement,
     ) {
       sending = true;
-      // 选择卡原位换成只读回执卡:选了哪组封面封底留在历史里可回看。
+      // 收起输入框覆盖层、解锁输入;选择作为「只读回执卡 + 用户气泡」进对话历史(与刷新回放同序)。
+      closeCoverZoom();
+      const dock = byId('coverDock');
+      if (dock) { dock.replaceChildren(); dock.style.display = 'none'; }
+      setCoverLock(false);
       const recap = buildCoverRecapCard(set);
-      card.replaceWith(recap);
+      chatBody!.appendChild(recap);
       appendUserText(aT('就用这组封面', 'Use this cover set'));
       const host = appendThinkingShell();
       setThinkingLabel(host, 'Designing fonts, colors & cover…');
@@ -1501,8 +1533,84 @@ export function ChatPanel({
       }
     }
 
+    // 封面缩略图气泡放大:无遮罩,浮层 + 透明点击关闭层。
+    function openCoverZoom(set: { coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string }) {
+      // 挂在整块聊天面板(.chat-card:relative + overflow-hidden)上居中浮现,
+      // 而不是只有输入框高的 composer-group —— 否则气泡会溢出到面板/屏幕外。
+      const host = outerRootRef.current?.querySelector('.chat-card');
+      if (!host) return;
+      closeCoverZoom();
+      const X_SVG =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      const layer = document.createElement('div');
+      layer.className = 'cv-zoom-layer';
+      layer.innerHTML =
+        `<div class="cv-bubble" role="dialog" aria-label="${aT('封面放大', 'Cover preview')}">` +
+          `<button type="button" class="cv-bubble-x" aria-label="${aT('关闭', 'Close')}">${X_SVG}</button>` +
+          `<div class="cv-bubble-faces">` +
+            `<span class="cv-bubble-face">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 132, 176) ?? ''}<i class="cv-face-tag">${aT('封面', 'Cover')}</i></span>` +
+            `<span class="cv-bubble-face">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 132, 176) ?? ''}<i class="cv-face-tag">${aT('封底', 'Back')}</i></span>` +
+          `</div>` +
+        `</div>`;
+      layer.addEventListener('click', (e) => { if (e.target === layer) closeCoverZoom(); });
+      layer.querySelector('.cv-bubble-x')?.addEventListener('click', () => closeCoverZoom());
+      host.appendChild(layer);
+    }
+    function closeCoverZoom() {
+      outerRootRef.current?.querySelector('.cv-zoom-layer')?.remove();
+    }
+
+    // 采访跳过:输入框上方并排两颗轻量小 pill(跳过本组 / 跳过剩下全部);整块 composer 变渐变容器。
+    // 传 null = 采访结束/轮到 AI,收起 pill 并恢复普通输入框。
+    function setInterviewSkips(chapterId: string | null) {
+      const cg = outerRootRef.current?.querySelector('.composer-group');
+      const slot = byId('interviewSkips');
+      if (!slot) return;
+      if (!chapterId) {
+        slot.replaceChildren();
+        slot.style.display = 'none';
+        cg?.classList.remove('interview-active');
+        return;
+      }
+      const disableSkip = () =>
+        slot.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
+      const kicker = document.createElement('div');
+      kicker.className = 'iv-kicker';
+      kicker.textContent = aT('照片故事收集 · 可跳过', 'Photo notes · optional');
+      const title = document.createElement('div');
+      title.className = 'iv-title';
+      title.textContent = aT('补充这组照片的背景', 'Add background for this group');
+      const row = document.createElement('div');
+      row.className = 'iv-skips-row';
+      const skipOne = document.createElement('button');
+      skipOne.type = 'button';
+      skipOne.className = 'iv-skip';
+      skipOne.textContent = aT('跳过本组', 'Skip this group');
+      skipOne.addEventListener('click', () => {
+        if (!pendingInterview || pendingInterview.chapterId !== chapterId) return;
+        disableSkip();
+        appendUserText(aT('这组照片背景先跳过', 'Skip this group'));
+        void finishInterview('');
+      });
+      const skipAll = document.createElement('button');
+      skipAll.type = 'button';
+      skipAll.className = 'iv-skip iv-skip-ghost';
+      skipAll.textContent = aT('跳过剩下全部', 'Skip all remaining');
+      skipAll.addEventListener('click', () => {
+        if (!pendingInterview || pendingInterview.chapterId !== chapterId) return;
+        disableSkip();
+        appendUserText(aT('剩下的照片背景都先跳过', 'Skip all remaining'));
+        void skipRemainingInterviews();
+      });
+      row.append(skipOne, skipAll);
+      slot.replaceChildren(kicker, title, row);
+      slot.style.display = '';
+      cg?.classList.add('interview-active');
+    }
+
     async function startChapterInterview(chapterId: string, photoIds: string[]) {
       if (disposed) return;
+      setInterviewSkips(null); // 轮到 AI 提问:先收起上一组的跳过 pill,答/问完再显示
       let input: ChapterInterviewInput = { earliestTakenAt: null, latestTakenAt: null, place: null };
       try {
         const data = await interviewDataFromStore(photoIds);
@@ -1523,19 +1631,8 @@ export function ChatPanel({
       pendingInterview = { chapterId, input, questions: messages };
       if (!(await typeInterviewMessages(messages))) return;
       if (disposed || pendingInterview?.chapterId !== chapterId) return;
-      const skipRow = document.createElement('div');
-      skipRow.className = 'msg ai max-w-full';
-      const skipBtn = document.createElement('button');
-      skipBtn.type = 'button';
-      skipBtn.className = 'interview-skip';
-      skipBtn.textContent = t('interviewSkip');
-      skipBtn.addEventListener('click', () => {
-        if (!pendingInterview || pendingInterview.chapterId !== chapterId) return;
-        skipBtn.disabled = true;
-        void finishInterview('');
-      });
-      skipRow.appendChild(skipBtn);
-      chatBody!.appendChild(skipRow);
+      // 采访轮到用户:composer 变成渐变容器,输入框上方并排两颗轻量小跳过 pill(输入框照常可用)。
+      setInterviewSkips(chapterId);
       updateAuthInputPlaceholder();
       restAwait();
       scrollChat();
@@ -2004,6 +2101,10 @@ export function ChatPanel({
         </div>
 
         <div className="composer-group shrink-0">
+          {/* 必选封面选择卡的挂载点:盖在输入框上方的覆盖层,offerDesignCard 填充 */}
+          <div className="cover-dock" id="coverDock" style={{ display: 'none' }} />
+          {/* 采访时输入框上方并排的两颗轻量跳过 pill,setInterviewSkips 填充 */}
+          <div className="interview-skips" id="interviewSkips" style={{ display: 'none' }} />
           <div className="buy-banner" id="balanceAlert">
             <div className="buy-banner-row">
               <div className="buy-banner-title flex-1 min-w-0" data-i18n="bpLead">{locale === 'zh' ? '积分已用完，补充积分继续' : 'Out of credits. Top up to continue.'}</div>
