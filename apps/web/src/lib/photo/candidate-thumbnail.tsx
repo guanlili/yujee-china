@@ -30,6 +30,12 @@ import type { CandidatePage } from '@yujee/contracts';
 // ~80px pages and couldn't tell crops/subjects apart. Scale relative to a single page
 // instead so every page keeps ~PAGE_MAX_EDGE of detail regardless of page count.
 const PAGE_MAX_EDGE = 320;
+// 页码标注(用户 2026-07-17):每页上方一条深色「第 N / M 页」标签 + 页间留白,让选排版评委
+// 一眼看清一个候选有几页、每页啥样(此前多页无缝竖排成一条,页界/页数难辨)。尺寸按渲染分辨率
+// 给,downscale(scale≈PAGE_MAX_EDGE/页长边)后标签仍清晰可读。
+const PAGE_LABEL_HEIGHT = 76;
+const PAGE_LABEL_FONT = 52;
+const PAGE_GAP = 28;
 const THUMBNAIL_QUALITIES = [0.6, 0.5, 0.42, 0.34, 0.3];
 export const THUMBNAIL_TARGET_BYTES = 100 * 1024;
 
@@ -81,8 +87,11 @@ function waitForImages(root: HTMLElement, timeoutMs = 5000): Promise<void> {
 
 // 快照出来的是不是"整张几乎一个颜色"(全白)。React 并发提交没落地就截图、或照片
 // 全部没解出来时会出现这种图 —— 它对评委是纯噪音,调用方应重试或放弃该候选。
-function isFlatCanvas(ctx: CanvasRenderingContext2D, w: number, h: number): boolean {
-  const data = ctx.getImageData(0, 0, w, h).data;
+// 只在给定区域抽样判白。加了页码条后必须只看【第一页内容区】(跳过深色页码条),否则页码条
+// 本身非白 → 整张恒判"非白",这个"渲染没落地/照片全没解出来 → 纯白噪音"的兜底就废了。
+function isFlatRegion(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): boolean {
+  if (w <= 0 || h <= 0) return true;
+  const data = ctx.getImageData(x, y, w, h).data;
   const first = [data[0], data[1], data[2]];
   const stride = 4 * 97; // 均匀抽样,97 素数避开条纹周期
   for (let i = stride; i < data.length; i += stride) {
@@ -113,7 +122,10 @@ function downscaleToJpeg(source: HTMLCanvasElement): { url: string; flat: boolea
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, w, h);
   ctx.drawImage(source, 0, 0, w, h);
-  const flat = isFlatCanvas(ctx, w, h);
+  // 判白只看第一页内容区(跳过顶部页码条),否则页码条使整张恒"非白"、兜底失效。
+  const bandY = Math.round(PAGE_LABEL_HEIGHT * scale);
+  const bandH = Math.min(h - bandY, Math.round(PAGE.height * scale));
+  const flat = isFlatRegion(ctx, 0, bandY, w, bandH);
 
   let last: string | null = null;
   for (const quality of THUMBNAIL_QUALITIES) {
@@ -143,6 +155,7 @@ export async function renderCandidateThumbnail(
   let root: Root | null = null;
   try {
     root = createRoot(host);
+    const totalPages = candidate.pages.length;
     const pageEls = candidate.pages.map((page, i) => {
       const Template = getWebTemplate(page.templateId);
       // texts:{} blanks every text slot (adaptPageToTemplateData fills missing text
@@ -153,8 +166,32 @@ export async function renderCandidateThumbnail(
       );
       return createElement(
         'div',
-        { key: i, style: { width: PAGE.width, height: PAGE.height, background: '#fff' } },
-        Template ? createElement(Template, { data, totalPages: candidate.pages.length }) : null,
+        { key: i, style: { width: PAGE.width, marginBottom: i < totalPages - 1 ? PAGE_GAP : 0 } },
+        // 页码标注条:烙进缩略图,评委据此数页数 + 分辨每页(第 N / M 页)。
+        createElement(
+          'div',
+          {
+            style: {
+              width: '100%',
+              height: PAGE_LABEL_HEIGHT,
+              background: '#1c1b18',
+              color: '#ffffff',
+              fontSize: PAGE_LABEL_FONT,
+              fontWeight: 800,
+              letterSpacing: '0.06em',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontFamily: '"PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
+            },
+          },
+          `第 ${i + 1} / ${totalPages} 页`,
+        ),
+        createElement(
+          'div',
+          { style: { width: PAGE.width, height: PAGE.height, background: '#fff' } },
+          Template ? createElement(Template, { data, totalPages: candidate.pages.length }) : null,
+        ),
       );
     });
     // createRoot().render() 是并发调度的异步提交:只等一帧 rAF 就截图,提交没落地时
