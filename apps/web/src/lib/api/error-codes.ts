@@ -49,6 +49,13 @@ export const ERRORS = {
   WEBHOOK_SIGNATURE_INVALID: () => new AppError('WEBHOOK_SIGNATURE_INVALID', 'Webhook signature invalid', 400),
   WEBHOOK_NOT_CONFIGURED:    () => new AppError('WEBHOOK_NOT_CONFIGURED',    'Webhook secret not configured', 500),
   BILLING_NOT_CONFIGURED:    () => new AppError('BILLING_NOT_CONFIGURED',    'Billing provider not configured', 503),
+  // Upstream (Creem) rejected the call. Surfaces the provider's HTTP status —
+  // just the number, never the raw body — so a misconfigured key/URL/product is
+  // diagnosable from the client response instead of a generic 500. A 401/403 here
+  // almost always means test-vs-live key/URL mismatch; a 404 means a bad base URL
+  // or product id.
+  BILLING_UPSTREAM_ERROR: (status: number) =>
+    new AppError('BILLING_UPSTREAM_ERROR', `Checkout provider returned ${status}`, 502),
 
   RATE_LIMITED:          () => new AppError('RATE_LIMITED',          'Too many requests',           429),
   INTERNAL_ERROR:        () => new AppError('INTERNAL_ERROR',        'Internal server error',       500),

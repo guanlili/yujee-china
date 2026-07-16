@@ -33,9 +33,19 @@ type CreemEvent = {
   };
 };
 
+// Build a Creem API URL. Our `path` args already carry the `/v1` prefix, but
+// Creem's own docs present the base URL as `https://api.creem.io/v1` — so the
+// natural mistake of copying that (or leaving a trailing slash) into
+// CREEM_API_BASE_URL would otherwise produce `…/v1/v1/checkouts` and 404.
+// Normalize the base to the bare host so host, host+`/`, and host+`/v1` all work.
+function creemUrl(path: string): string {
+  const base = env.CREEM_API_BASE_URL.replace(/\/+$/, '').replace(/\/v1$/, '');
+  return `${base}${path}`;
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   if (!env.CREEM_API_KEY) throw ERRORS.BILLING_NOT_CONFIGURED();
-  const res = await fetch(`${env.CREEM_API_BASE_URL}${path}`, {
+  const res = await fetch(creemUrl(path), {
     method: 'POST',
     headers: {
       'x-api-key': env.CREEM_API_KEY,
@@ -46,7 +56,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
     logger.warn({ status: res.status, body: text, path }, 'creem api error');
-    throw ERRORS.INTERNAL_ERROR();
+    throw ERRORS.BILLING_UPSTREAM_ERROR(res.status);
   }
   return res.json() as Promise<T>;
 }

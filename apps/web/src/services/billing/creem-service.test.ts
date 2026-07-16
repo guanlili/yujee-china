@@ -108,6 +108,42 @@ test('creemService.createPackCheckout: sends Creem-supported success URL without
   assert.equal('cancel_url' in body, false);
 });
 
+// Creem's docs list the base URL WITH /v1 (https://api.creem.io/v1), but our
+// paths already include /v1. Setting the base the docs' way — or with a trailing
+// slash — must not double the prefix into …/v1/v1/checkouts (a 404 that reads as
+// a generic 500 to the buyer). The normalizer collapses all three forms.
+for (const base of [
+  'https://api.creem.io',
+  'https://api.creem.io/',
+  'https://api.creem.io/v1',
+]) {
+  test(`createPackCheckout: base "${base}" resolves to a single /v1/checkouts`, async (t) => {
+    const requests = mockCheckoutDependencies(t);
+    useEnvPatch(t, { CREEM_API_BASE_URL: base });
+
+    await creemService.createPackCheckout('user_checkout_base', 'pack-1');
+
+    assert.equal(requests[0]?.url, 'https://api.creem.io/v1/checkouts');
+  });
+}
+
+test('createPackCheckout: surfaces Creem upstream status instead of a generic 500', async (t) => {
+  mockCheckoutDependencies(t);
+  // Override the happy-path fetch with a 401 (the shape of a test-vs-live key mismatch).
+  t.mock.method(globalThis, 'fetch', (async () =>
+    new Response('{"error":"unauthorized"}', { status: 401 })) as typeof fetch);
+
+  await assert.rejects(
+    creemService.createPackCheckout('user_checkout_401', 'pack-1'),
+    (err: any) => {
+      assert.equal(err.code, 'BILLING_UPSTREAM_ERROR');
+      assert.equal(err.status, 502);
+      assert.match(err.message, /401/);
+      return true;
+    },
+  );
+});
+
 test('creemService: subscription checkout entry is removed (per-book billing #97)', () => {
   assert.equal(
     (creemService as Record<string, unknown>).createSubscriptionCheckout,
