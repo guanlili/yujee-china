@@ -1320,3 +1320,154 @@
     margin:10px;
   }
 }
+
+/* ─── In-editor "buy credits" modal (portaled to <body>, so NOT scoped under
+   .editor-port). Visual spec = confirmed design: radio-card packs, serif $ price,
+   one "most popular" badge (cc-tag gradient recipe), pure-black CTA, top three-color
+   wash, dark-mode aware. Reuses the .modal-overlay/.modal-card reveal language. ─── */
+.credits-modal-overlay{
+  position:fixed; inset:0; z-index:400; padding:24px;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(20,22,28,.42);
+  opacity:0; visibility:hidden;
+  transition:opacity var(--motion-base) var(--ease);
+}
+.credits-modal-overlay.open{ opacity:1; visibility:visible; }
+.credits-modal-card{
+  position:relative; width:min(560px,100%);
+  background:var(--surface); border-radius:20px; overflow:hidden;
+  box-shadow:0 30px 80px rgba(0,0,0,.28);
+  transform:translateY(12px) scale(.985);
+  transition:transform var(--motion-base) var(--ease);
+}
+.credits-modal-overlay.open .credits-modal-card{ transform:none; }
+/* Top soft three-color wash (brand green → purple → lime), fading down. */
+.credits-modal-card::before{
+  content:''; position:absolute; top:0; left:0; right:0; height:230px; pointer-events:none;
+  background:linear-gradient(168deg, rgba(19,184,166,.15) 0%, rgba(140,94,244,.12) 26%,
+    rgba(218,244,94,.11) 48%, rgba(218,244,94,.045) 70%, transparent 100%);
+}
+.credits-modal-inner{ position:relative; padding:30px 30px 24px; }
+.credits-modal-close{
+  position:absolute; top:22px; right:24px; width:30px; height:30px;
+  display:flex; align-items:center; justify-content:center;
+  border:none; background:transparent; color:var(--muted); cursor:pointer;
+  border-radius:8px; transition:background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+}
+.credits-modal-close:hover{ background:rgba(0,0,0,.05); color:var(--fg); }
+.credits-modal-title{
+  margin:2px 0 12px; font-size:30px; font-weight:700; line-height:1.1; letter-spacing:.01em;
+  color:var(--fg); font-family:'Playfair Display','Noto Serif SC Landing',Georgia,serif;
+}
+.credits-modal-sub{
+  margin:0 0 22px; max-width:42ch; font-size:14px; line-height:1.65; color:var(--muted);
+}
+
+.credits-pack-list{ display:flex; flex-direction:column; gap:12px; }
+.credits-pack{
+  position:relative; display:flex; align-items:center; gap:16px; width:100%;
+  text-align:left; cursor:pointer;
+  background:var(--surface); border:1.5px solid var(--border); border-radius:var(--radius-lg);
+  padding:18px 22px;
+  transition:border-color var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease), transform var(--motion-fast) var(--ease);
+}
+.credits-pack:hover{ transform:translateY(-1px); border-color:var(--muted); }
+.credits-pack.sel{
+  border-color:var(--fg); border-width:2px; padding:17.5px 21.5px;
+  box-shadow:0 8px 26px rgba(0,0,0,.08); z-index:2;
+}
+.credits-pack-radio{
+  flex:none; position:relative; width:22px; height:22px; border-radius:50%;
+  border:2px solid var(--border); transition:border-color var(--motion-fast) var(--ease);
+}
+.credits-pack.sel .credits-pack-radio{ border-color:var(--fg); }
+.credits-pack.sel .credits-pack-radio::after{
+  content:''; position:absolute; inset:4px; border-radius:50%; background:var(--fg);
+}
+.credits-pack-info{ flex:1; min-width:0; display:flex; flex-direction:column; }
+.credits-pack-cred{ font-size:19px; font-weight:700; letter-spacing:-.01em; color:var(--fg); }
+.credits-pack-cap{ margin-top:3px; font-size:12.5px; color:var(--muted); }
+.credits-pack-price{
+  flex:none; font-size:27px; font-weight:700; color:var(--fg);
+  font-family:'Playfair Display','Noto Serif SC Landing',Georgia,serif;
+}
+.credits-pack-cur{ font-size:19px; font-weight:600; margin-right:1px; }
+/* "Most popular" badge — cc-tag three-color gradient recipe (editor-port.css:564),
+   made opaque over --surface so the selected row's border can't bleed through. */
+.credits-pack-badge{
+  position:absolute; top:-11px; right:18px; z-index:4; white-space:nowrap;
+  font-size:11px; font-weight:600; letter-spacing:.01em; color:var(--grad-purple);
+  padding:3px 10px; border-radius:var(--radius-pill);
+  background:linear-gradient(115deg, rgba(19,184,166,.18) 0%, rgba(140,94,244,.15) 50%, rgba(218,244,94,.18) 100%), var(--surface);
+  box-shadow:0 3px 10px rgba(140,94,244,.16);
+}
+
+.credits-modal-cta{
+  margin-top:22px; width:100%; border:none; border-radius:var(--radius-lg); padding:17px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  font-family:var(--font-body); font-size:16px; font-weight:700;
+  background:var(--fg); color:var(--surface);
+  box-shadow:0 10px 26px rgba(0,0,0,.16);
+  transition:transform var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease), opacity var(--motion-fast) var(--ease);
+}
+.credits-modal-cta:hover{ transform:translateY(-1px); box-shadow:0 14px 32px rgba(0,0,0,.22); }
+.credits-modal-cta:disabled{ opacity:.55; cursor:default; transform:none; box-shadow:0 10px 26px rgba(0,0,0,.16); }
+.credits-modal-cta-amt{ font-family:'Playfair Display','Noto Serif SC Landing',Georgia,serif; font-weight:700; }
+
+.credits-modal-error{
+  margin:14px 0 0; text-align:center; font-size:12.5px; line-height:1.5;
+  color:#c9483a; /* readable error accent (real --danger is greyscale, unreadable as an error) */
+}
+.credits-modal-foot{
+  margin-top:14px; text-align:center; font-size:12px; line-height:1.6; color:var(--muted);
+}
+.credits-modal-foot-sep{ margin:0 6px; opacity:.5; }
+.credits-modal-foot a{ color:var(--fg-2); text-decoration:underline; text-underline-offset:2px; }
+
+/* ── waiting-for-payment state ── */
+.credits-modal-waiting{
+  display:flex; flex-direction:column; align-items:center; gap:16px; padding:18px 6px 8px; text-align:center;
+}
+.credits-modal-spinner{
+  width:34px; height:34px; border-radius:50%;
+  border:3px solid var(--border); border-top-color:var(--accent);
+  animation:credits-spin .8s linear infinite;
+}
+@keyframes credits-spin{ to{ transform:rotate(360deg); } }
+.credits-modal-waiting-text{ margin:0; max-width:34ch; font-size:14px; line-height:1.6; color:var(--fg-2); }
+.credits-modal-paylink{ font-size:13px; font-weight:600; color:var(--grad-purple); text-decoration:underline; text-underline-offset:2px; }
+.credits-modal-refresh{
+  margin-top:2px; padding:11px 20px; border:1.5px solid var(--border); border-radius:var(--radius-pill);
+  background:var(--surface); color:var(--fg-2); font-size:13px; font-weight:600; cursor:pointer;
+  transition:border-color var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+}
+.credits-modal-refresh:hover{ border-color:var(--muted); color:var(--fg); }
+
+/* Dark mode — the app has no theme system, so mirror the confirmed design's dark
+   palette off the OS preference, locally re-binding tokens on the overlay so every
+   var(--surface/--fg/…) inside the modal resolves dark and self-consistent. */
+@media (prefers-color-scheme:dark){
+  .credits-modal-overlay{
+    background:rgba(0,0,0,.62);
+    --surface:#1e1e22; --surface-warm:#1e1e22;
+    --fg:#f3f3f4; --fg-2:#d0d0d3; --muted:#8f8f96;
+    --border:#33333a; --border-soft:#2a2a30;
+  }
+  .credits-modal-close:hover{ background:rgba(255,255,255,.08); }
+  .credits-pack-badge{
+    color:#c3a7ff;
+    background:linear-gradient(115deg, rgba(19,184,166,.28) 0%, rgba(140,94,244,.28) 50%, rgba(218,244,94,.24) 100%), var(--surface);
+  }
+  .credits-modal-error{ color:#f2a397; }
+}
+
+@media (prefers-reduced-motion:reduce){
+  .credits-modal-overlay, .credits-modal-card, .credits-pack, .credits-modal-cta, .credits-modal-close{ transition:none; }
+  .credits-modal-spinner{ animation-duration:1.6s; }
+}
+@media (max-width:420px){
+  .credits-modal-inner{ padding:24px 20px 20px; }
+  .credits-modal-title{ font-size:26px; }
+  .credits-pack{ padding:16px 18px; }
+  .credits-pack-price{ font-size:24px; }
+}

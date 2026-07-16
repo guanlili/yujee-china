@@ -25,8 +25,9 @@
    so no action is double-bound.
    ════════════════════════════════════════════════════════════════════════════ */
 
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
+import { CreditsPurchaseModal } from './CreditsPurchaseModal';
 import { IMAGE_INPUT_ACCEPT } from '@/lib/photo/heic';
 import { renderMarkdownSafe } from '@/lib/markdown/render';
 import {
@@ -128,6 +129,13 @@ export function ChatPanel({
   const recommendInFlightRef = useRef(false);
   const historyReplaySeqRef = useRef(0);
   const historyFetchPromiseRef = useRef<Promise<HistoryMessage[]> | null>(null);
+
+  // In-editor "buy credits" modal (replaces the old navigate-to-/credits jump). The
+  // imperative chat engine opens it via setCreditsModalOpen(true); on top-up the modal
+  // calls back through toppedUpHandlerRef.current(), which the mount effect populates so
+  // it can re-enable #sendBtn / hide #balanceAlert using the effect's own DOM helpers.
+  const [creditsModalOpen, setCreditsModalOpen] = useState(false);
+  const toppedUpHandlerRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     const root = outerRootRef.current;
@@ -1639,6 +1647,21 @@ export function ChatPanel({
       scrollChat();
     }
 
+    // Called by CreditsPurchaseModal once it detects the balance topped up (webhook
+    // settled). Undo showPurchaseCard(): hide the banner, re-enable send, and drop a
+    // light confirmation. We do NOT auto-resend the blocked message — the user's draft
+    // is still in the input (send was only disabled, never cleared), so re-enabling send
+    // lets them continue on their own.
+    toppedUpHandlerRef.current = () => {
+      const alert = byId('balanceAlert');
+      if (alert) alert.style.display = 'none';
+      const send = byId('sendBtn') as HTMLButtonElement | null;
+      if (send) send.disabled = false;
+      appendAiText(aT('积分已到账，继续吧～', 'Credits added — let’s keep going.'));
+      restAwait();
+      scrollChat();
+    };
+
     function updateAuthInputPlaceholder() {
       if (!input) return;
       input.setAttribute('placeholder', '');
@@ -1682,7 +1705,10 @@ export function ChatPanel({
     // the sweep to the chat column to avoid double-binding. ──
     const asideRoot = root.querySelector('.pane-chat-col') as HTMLElement | null;
     const actions: Record<string, () => void> = {
-      buyShells: () => { window.location.href = `/${locale}/credits`; },
+      // Open the in-editor purchase modal instead of navigating to /credits — the editor
+      // tab must never leave the task. Covers both entry points (the #balanceAlert "去购买"
+      // button and any showPurchaseCard() surface), since both route through data-action.
+      buyShells: () => { setCreditsModalOpen(true); },
       // 中途加图(spec §1):排版完成后可用;采访/发送/追加进行中不响应。
       pickAddPhotos: () => {
         if (!isAuthoring || sending || appendInFlight || pendingInterview) return;
@@ -1983,6 +2009,7 @@ export function ChatPanel({
   ]);
 
   return (
+    <>
     <div className="pane-chat-col md:order-1 md:w-[360px] shrink-0 md:flex">
       <aside className="pane pane-right chat-card relative flex flex-col overflow-hidden bg-surface md:flex-1">
         <div className="chat-drag hidden md:flex items-center gap-2 px-3.5 h-11 border-b border-bdsoft flex-shrink-0" id="chatDrag">
@@ -2040,5 +2067,15 @@ export function ChatPanel({
         </div>
       </aside>
     </div>
+    <CreditsPurchaseModal
+      open={creditsModalOpen}
+      locale={locale}
+      onClose={() => setCreditsModalOpen(false)}
+      onToppedUp={() => {
+        setCreditsModalOpen(false);
+        toppedUpHandlerRef.current();
+      }}
+    />
+    </>
   );
 }
