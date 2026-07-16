@@ -13,15 +13,21 @@ const here = dirname(fileURLToPath(import.meta.url));
 const chat = readFileSync(join(here, 'ChatPanel.tsx'), 'utf8');
 const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
 
-test('送出键 disabled 是单一真相源:refreshSendDisabled = sending || outOfCredits', () => {
-  // 两个标志都在闭包里。
+test('送出键 disabled 是单一真相源:refreshSendDisabled = sending || outOfCredits || coverLocked', () => {
+  // 三个标志都在闭包里(coverLocked 是 design-work 的必选封面卡锁,合并时并进同一真相源)。
   assert.match(chat, /let outOfCredits = false;/, 'outOfCredits 标志必须存在');
-  // disabled 只从这一处派生,且正是 `sending || outOfCredits` —— 缺积分到账后若仍在忙 => 仍禁用;
-  // 思考结束后若仍缺积分 => 仍禁用。这正是统一后要的行为。
+  assert.match(chat, /let coverLocked = false;/, 'coverLocked 标志必须存在');
+  // disabled 只从这一处派生 —— 缺积分到账后若仍在忙 => 仍禁用;思考结束后若仍缺积分/封面锁 => 仍禁用。
   assert.match(
     chat,
-    /function refreshSendDisabled\(\)\s*\{\s*if \(sendBtnEl\) sendBtnEl\.disabled = sending \|\| outOfCredits;/,
-    'refreshSendDisabled 必须把 disabled 设为 sending || outOfCredits',
+    /function refreshSendDisabled\(\)\s*\{\s*if \(sendBtnEl\) sendBtnEl\.disabled = sending \|\| outOfCredits \|\| coverLocked;/,
+    'refreshSendDisabled 必须把 disabled 设为 sending || outOfCredits || coverLocked',
+  );
+  // 必选封面锁不再单独摸 send.disabled,而是设 coverLocked 后走同一刷新(防合并回归)。
+  assert.match(
+    chat,
+    /function setCoverLock\(on: boolean\)\s*\{[\s\S]*?coverLocked = on;\s*refreshSendDisabled\(\);/,
+    'setCoverLock 必须设 coverLocked 并走 refreshSendDisabled(不单独摸 send.disabled)',
   );
   // setSending 是 sending 的唯一写入口,写完立刻刷新 disabled。
   assert.match(
