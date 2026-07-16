@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 from pathlib import Path
 from typing import Any, get_args
 
@@ -23,73 +22,48 @@ from ...prompts import load_prompt
 log = get_logger("design")
 
 _PROMPT_DIR = Path(__file__).resolve().parent
-_HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 _LEGAL_FONTS: frozenset[str] = frozenset(get_args(ArtFontPack))
 
-# 按角色分组的字体菜单(与 packages/contracts enums / design-agent font-registry 三处对齐)。
-
-# role → 默认字体的三组策略(与 contracts DEFAULT_ALBUM_FONT 对齐):
-#   title 衬线 / body(含 explain) 黑体 / decoration 艺术字体。
+# 总失败兜底字体(对齐「常规」场景;匹配不到场景/整个风格调用挂掉时用)。
 _DEFAULT_FONTS = {
-    "zh": {"title": "noto-serif-sc", "body": "noto-sans-sc", "decoration": "zhi-mang-xing"},
-    "en": {"title": "playfair-display", "body": "inter", "decoration": "great-vibes"},
+    "zh": {"title": "noto-serif-sc", "body": "noto-serif-sc", "decoration": "great-vibes"},
+    "en": {"title": "playfair-display", "body": "eb-garamond", "decoration": "great-vibes"},
 }
-# 正文/图注/无点缀时统一用这个墨黑(以黑色为主,用户拍板 2026-07-16)。
+# 设计环节不做彩色:标题/正文/装饰全部这个墨黑(用户拍板 2026-07-16)。
 _INK_BLACK = "#1c1b18"
 _DEFAULT_COLORS = {"title": _INK_BLACK, "body": _INK_BLACK, "explain": _INK_BLACK}
 
-# ── 场景字体预设(用户拍板 2026-07-15) ──────────────────────────────────────────
+# ── 场景字体预设(4 分类,用户拍板 2026-07-16) ────────────────────────────────
 # AI 只做一件事:读懂这本书(各章 title/keywords/context)→ 判断最贴的【场景】→
 # 输出场景名。字体由代码按【场景 × 语言】查本表填,AI 永远不接触字体 id,
 # 也就不会选错字体。中英文书各一套(拉丁字体不含中文字形,反之亦然)。
 # 装饰位统一从 4 款拉丁花体选(装饰基本是英文日期/编号/标签,见 _DECORATION_SCRIPTS)。
+# 设计环节不做彩色 —— 颜色恒黑(见 _sanitize_style),本表只管字体。
 # 内容(场景名/关键词/字体搭配)是可精调的框架,守卫测试保证不越界。
 _SCENE_PRESETS: dict[str, dict[str, Any]] = {
-    "法式清新": {
-        "palette": "morandi",
-        "keywords": ["草地", "蓝天", "白云", "白裙", "花", "野餐", "阳光"],
-        "zh": {"title": "zcool-xiaowei", "body": "lxgw-wenkai", "decoration": "parisienne"},
-        "en": {"title": "cormorant-garamond", "body": "lora", "decoration": "parisienne"},
-    },
-    "法式复古": {
-        "palette": "morandi",
-        "keywords": ["老照片", "胶片", "暖调", "旧物", "街角", "旧时光", "怀旧"],
+    "常规": {
+        "keywords": ["日常", "家居", "室内", "都市", "街道", "生活", "居家"],
         "zh": {"title": "noto-serif-sc", "body": "noto-serif-sc", "decoration": "great-vibes"},
         "en": {"title": "playfair-display", "body": "eb-garamond", "decoration": "great-vibes"},
     },
-    "日式清新": {
-        "palette": "morandi",
-        "keywords": ["和风", "极简", "留白", "原木", "抹茶", "安静", "侘寂"],
-        "zh": {"title": "smiley-sans", "body": "noto-sans-sc", "decoration": "sacramento"},
+    "清新": {
+        "keywords": ["绿树", "大海", "蓝天", "草地", "自然", "户外", "清爽", "海边", "森林"],
+        "zh": {"title": "lxgw-wenkai", "body": "lxgw-wenkai", "decoration": "dancing-script"},
         "en": {"title": "montserrat", "body": "work-sans", "decoration": "sacramento"},
     },
-    "中式古典": {
-        "palette": "morandi",
-        "keywords": ["水墨", "书法", "庭院", "茶", "古风", "山水", "写意"],
-        "zh": {"title": "zhi-mang-xing", "body": "lxgw-wenkai", "decoration": "sacramento"},
+    "优雅": {
+        "keywords": ["出游", "咖啡", "美食", "下午茶", "餐厅", "精致", "文艺", "小店"],
+        "zh": {"title": "long-cang", "body": "noto-sans-sc", "decoration": "sacramento"},
         "en": {"title": "cormorant-garamond", "body": "eb-garamond", "decoration": "sacramento"},
     },
-    "现代时尚": {
-        "palette": "vivid",
-        "keywords": ["都市", "杂志", "简约", "设计感", "黑白", "街拍", "时尚"],
-        "zh": {"title": "smiley-sans", "body": "noto-sans-sc", "decoration": "dancing-script"},
-        "en": {"title": "bebas-neue", "body": "inter", "decoration": "dancing-script"},
-    },
-    "温馨童趣": {
-        "palette": "vivid",
-        "keywords": ["孩子", "宝宝", "宠物", "生日", "明快", "圆润", "笑"],
-        "zh": {"title": "zcool-qingke-huangyou", "body": "noto-sans-sc", "decoration": "dancing-script"},
-        "en": {"title": "poppins", "body": "dm-sans", "decoration": "dancing-script"},
-    },
-    "旅行随记": {
-        "palette": "vivid",
-        "keywords": ["旅途", "风景", "地图", "路上", "远方", "海", "山"],
-        "zh": {"title": "long-cang", "body": "lxgw-wenkai", "decoration": "dancing-script"},
-        "en": {"title": "montserrat", "body": "work-sans", "decoration": "dancing-script"},
+    "艺术": {
+        "keywords": ["婚礼", "裙子", "女生", "浪漫", "唯美", "花", "礼服", "少女"],
+        "zh": {"title": "liu-jian-mao-cao", "body": "lxgw-wenkai", "decoration": "parisienne"},
+        "en": {"title": "parisienne", "body": "raleway", "decoration": "sacramento"},
     },
 }
 # 匹配不到 / AI 乱填时的兜底场景(经典百搭)。
-_DEFAULT_SCENE = "法式复古"
+_DEFAULT_SCENE = "常规"
 # 装饰位允许的字体(4 款拉丁花体);守卫测试用它卡住每个场景的 decoration。
 _DECORATION_SCRIPTS = frozenset({"great-vibes", "dancing-script", "sacramento", "parisienne"})
 
@@ -106,80 +80,6 @@ def _resolve_scene(scene: str | None, language: str) -> dict[str, str]:
     return dict(preset[lang])
 
 
-def _scene_palette(scene: str | None) -> str:
-    """场景 → 点缀色板性格(莫兰迪/鲜亮)。未知场景落兜底场景的色板。"""
-    preset = _SCENE_PRESETS.get(scene or "") or _SCENE_PRESETS[_DEFAULT_SCENE]
-    return preset.get("palette", _DEFAULT_PALETTE)
-
-# ── 点缀色管线(用户拍板 2026-07-16) ─────────────────────────────────────────────
-# 颜色不让 AI 填 hex。分三步:
-#   ① 代码从各章 extractedColor 算【主色系】(出现最多的色相家族)。
-#   ② AI 只选一个 ID:同类(analogous)/互补(complementary) —— 点缀色取主色相
-#      本身还是其互补方向。
-#   ③ 代码把目标色相 snap 到【场景色板】(莫兰迪 或 鲜亮,每个场景自带)上最近的成品色。
-# AI 全程不碰 hex;算不出主色系(照片都是中性灰)时点缀色落黑,以黑为主。
-import colorsys
-
-# 每个色相家族一款成品色,snap 时按【色相】就近取(饱和/明度由色板性格锁定)。
-_MORANDI_ACCENTS = [
-    "#a86a6a", "#b3785a", "#a89268", "#8a9a76", "#6e8570",
-    "#6d8c88", "#6b8299", "#6a6d92", "#8a7791", "#a87d8a",
-]
-_VIVID_ACCENTS = [
-    "#c23b3b", "#d1691c", "#c79320", "#2f9550", "#159084",
-    "#2668a0", "#3a3f9c", "#7a35a0", "#bf3f86", "#b3541e",
-]
-_ACCENT_PALETTES = {"morandi": _MORANDI_ACCENTS, "vivid": _VIVID_ACCENTS}
-_DEFAULT_PALETTE = "morandi"
-
-
-def _hue(hex_color: str) -> tuple[float, float]:
-    """hex → (色相 0-360, 饱和 0-1)。"""
-    v = hex_color.lstrip("#")
-    r, g, b = int(v[0:2], 16) / 255, int(v[2:4], 16) / 255, int(v[4:6], 16) / 255
-    h, _l, sat = colorsys.rgb_to_hls(r, g, b)
-    return h * 360, sat
-
-
-def _dominant_hue(chapters: list[dict[str, Any]]) -> float | None:
-    """各章 extractedColor 里出现最多的色相家族(12 桶各 30°)。
-
-    近中性色(饱和 < 0.18)不算数 —— 灰墙/白裙不代表色系。全中性/无色 → None。"""
-    buckets: dict[int, int] = {}
-    for ch in chapters:
-        color = ch.get("extractedColor")
-        if not isinstance(color, str) or not _HEX_RE.fullmatch(color.strip()):
-            continue
-        hue, sat = _hue(color.strip())
-        if sat < 0.18:
-            continue
-        b = int(hue // 30) % 12
-        buckets[b] = buckets.get(b, 0) + 1
-    if not buckets:
-        return None
-    top = max(buckets, key=lambda k: buckets[k])
-    return top * 30 + 15  # 桶中心
-
-
-def _snap_hue_to_palette(target_hue: float, palette: list[str]) -> str:
-    """把目标色相 snap 到色板里色相最近的成品色(环形色相距离)。"""
-
-    def hue_dist(hexc: str) -> float:
-        d = abs(_hue(hexc)[0] - target_hue) % 360
-        return min(d, 360 - d)
-
-    return min(palette, key=hue_dist)
-
-
-def _accent_color(chapters: list[dict[str, Any]], mode: str, palette_name: str) -> str:
-    """主色系 + 同类/互补 + 场景色板 → 点缀色。算不出主色系落黑。"""
-    dominant = _dominant_hue(chapters)
-    if dominant is None:
-        return _INK_BLACK
-    target = (dominant + 180) % 360 if mode == "complementary" else dominant
-    palette = _ACCENT_PALETTES.get(palette_name, _MORANDI_ACCENTS)
-    return _snap_hue_to_palette(target, palette)
-
 _STYLE_MAX_TOKENS = 300
 _COPY_MAX_TOKENS = 800
 
@@ -191,26 +91,17 @@ def _default_style(language: str) -> dict[str, dict[str, str]]:
     }
 
 
-def _sanitize_style(
-    parsed: Any, language: str, chapters: list[dict[str, Any]] | None = None
-) -> dict[str, dict[str, str]]:
-    """把模型输出组装成最终风格。AI 只输出两个 ID:`scene` 和 `colorMode`,其余全代码算。
+def _sanitize_style(parsed: Any, language: str) -> dict[str, dict[str, str]]:
+    """把模型输出组装成最终风格。AI 只输出一个 ID:`scene`,其余全代码算。
 
     字体:场景 × 语言 查表填三款(AI 不接触字体 id,未知场景落兜底)。
-    颜色:代码从各章 extractedColor 算主色系 → AI 选的 colorMode(同类/互补)定方向 →
-    snap 到场景色板(莫兰迪/鲜亮)→ 点缀色染 title(decoration 跟着);body/explain 恒黑。
+    颜色:设计环节不做彩色 —— 标题/正文/图注全部墨黑。
     """
     out = _default_style(language)
     scene = parsed.get("scene") if isinstance(parsed, dict) else None
     scene = scene if isinstance(scene, str) else None
     out["fonts"] = _resolve_scene(scene, language)
-
-    mode = parsed.get("colorMode") if isinstance(parsed, dict) else None
-    mode = mode if mode in ("analogous", "complementary") else "analogous"
-    accent = _accent_color(chapters or [], mode, _scene_palette(scene))
-    out["colors"]["title"] = accent
-    out["colors"]["body"] = _INK_BLACK
-    out["colors"]["explain"] = _INK_BLACK
+    out["colors"] = {"title": _INK_BLACK, "body": _INK_BLACK, "explain": _INK_BLACK}
     return out
 
 
@@ -256,7 +147,7 @@ async def _select_style(
         extra_body=slot.extra_body,
     )
     parsed = ai_client.parse_json_loose(ai_client.extract_text(response))
-    return _sanitize_style(parsed, language, chapter_profiles), slot.model
+    return _sanitize_style(parsed, language), slot.model
 
 
 async def _write_cover_copy(

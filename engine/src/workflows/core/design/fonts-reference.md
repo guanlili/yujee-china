@@ -1,7 +1,8 @@
 # 字体参考表（设计环节精调用）
 
-项目实际可用字体 **30 款**（中文 9 + 英文 21）。这份表是给人对照着调 `_FONT_PRESETS` /
-`_FONT_MENU` 用的参考，**不是喂给 AI 的 prompt**（prompt 是 design_style.md）。
+项目实际可用字体 **30 款**（中文 9 + 英文 21）。这份表是给人对照着调
+`handler.py` 里 `_SCENE_PRESETS`（4 分类,每类中英文各一套 title/body/decoration）
+用的参考，**不是喂给 AI 的 prompt**（prompt 是 design_style.md）。
 
 **状态：30 款全部 ✅ 已接入**，`FONT_CATALOG` 均有条目,AI 选中直接渲染。
 (早前一版曾把 7 款单词型字体误标"待接入",系比对脚本正则漏配裸键的 bug,已更正。)
@@ -70,7 +71,10 @@
 
 ## 精调提示
 
-- `_FONT_PRESETS` 每组的 title/body/decoration 清单里的每个 id **必须落在对应 role 的
-  `_FONT_MENU` 里**（`test_design.py::test_font_presets_are_subsets_of_role_menus` 守着）。
+- `_SCENE_PRESETS` 每个场景 zh/en 各三款（title/body/decoration）的 id **必须都在
+  `ArtFontPack` 合法集里**，且 **decoration 必须 ∈ 4 款拉丁花体**（great-vibes /
+  dancing-script / sacramento / parisienne；见 `_DECORATION_SCRIPTS`）。
+  `test_design.py::test_scene_presets_wellformed_and_legal` 守着这两条。
+- 设计环节不做彩色：标题/正文/装饰全部墨黑（`_INK_BLACK`），精调只碰字体，不碰颜色。
 - role 与字体的语义搭配（供参考，不强制）：title 用有个性的标题字，body 用可读的正文字，
-  decoration 用花体/等宽/书法这类装饰字。
+  decoration 用花体/书法这类装饰字。
