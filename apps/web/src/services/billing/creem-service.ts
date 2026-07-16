@@ -11,7 +11,7 @@ import {
   type CheckoutReturnContext,
 } from '@/config/pricing';
 import { env } from '@/lib/env';
-import { ERRORS } from '@/lib/api/error-codes';
+import { AppError, ERRORS } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
 
 // Creem.io — hosted checkout for international markets. Uses the shared
@@ -80,19 +80,34 @@ export const creemService = {
     );
 
     // Creem checkout payload. The exact field names mirror Creem's REST API
-    // (see https://docs.creem.io/api-reference/checkout-sessions/create-checkout-session).
+    // (see https://docs.creem.io/api-reference/endpoint/create-checkout).
     // Product mapping lives on Creem's side; we pass our pack id through metadata.
-    const session = await postJson<{ id: string; checkout_url: string }>(
-      '/v1/checkouts',
-      {
+    const checkoutWith = (customer: { id: string } | { email: string }) =>
+      postJson<{ id: string; checkout_url: string }>('/v1/checkouts', {
         product_id: resolveCreemProductId(pack.id),
-        customer: existing
-          ? { id: existing.externalCustomerId }
-          : { email: user.email },
+        customer,
         success_url: successUrl,
         metadata: { userId, kind: 'pack', packId },
-      },
-    );
+      });
+
+    // Prefer the stored Creem customer id so repeat purchases stay on one
+    // customer. But a stored id can be stale — created under a different Creem
+    // env/account (e.g. a test-mode customer left over from setup) — which Creem
+    // rejects with 404 "Customer not found". Fall back to email so Creem
+    // reuses/creates the live customer instead of hard-failing the buyer; the
+    // webhook then rewrites our stored id to the live one.
+    let session: { id: string; checkout_url: string };
+    if (existing) {
+      try {
+        session = await checkoutWith({ id: existing.externalCustomerId });
+      } catch (e) {
+        if (!(e instanceof AppError) || e.code !== 'BILLING_UPSTREAM_ERROR') throw e;
+        logger.warn({ userId }, 'creem stored customer rejected, retrying by email');
+        session = await checkoutWith({ email: user.email });
+      }
+    } else {
+      session = await checkoutWith({ email: user.email });
+    }
 
     if (!session.checkout_url) throw ERRORS.INTERNAL_ERROR();
     return { url: session.checkout_url };
@@ -201,6 +216,14 @@ async function applyCheckoutCompleted(event: CreemEvent): Promise<void> {
           provider: 'creem',
           externalCustomerId: obj.customer.id,
           email: obj.customer.email ?? null,
+        });
+      } else if (existing.externalCustomerId !== obj.customer.id) {
+        // A completed live checkout carries the authoritative customer id. If our
+        // stored id differs (stale test-mode / other-env leftover), rewrite it so
+        // the next checkout no longer needs the email-fallback retry.
+        await customerRepo.update(tx, existing.id, {
+          externalCustomerId: obj.customer.id,
+          email: obj.customer.email ?? existing.email,
         });
       }
     }

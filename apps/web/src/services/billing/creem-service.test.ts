@@ -144,6 +144,39 @@ test('createPackCheckout: surfaces Creem upstream status instead of a generic 50
   );
 });
 
+// A stored Creem customer id can be stale (test-mode / other-env leftover), which
+// Creem rejects with 404 "Customer not found". The buyer must not be hard-failed:
+// the checkout retries by email so Creem creates/reuses the live customer.
+test('createPackCheckout: stale stored customer id (404) falls back to email', async (t) => {
+  mockCheckoutDependencies(t);
+  t.mock.method(customerRepo, 'findByUserAndProvider', async () => ({
+    id: 'cust_row_1',
+    userId: 'user_stale',
+    provider: 'creem',
+    externalCustomerId: 'cus_from_test_mode',
+    email: 'buyer@yujee.test',
+  }) as any);
+
+  const calls: Array<{ customer: unknown }> = [];
+  t.mock.method(globalThis, 'fetch', (async (_input: unknown, init?: RequestInit) => {
+    calls.push({ customer: JSON.parse(String(init?.body)).customer });
+    if (calls.length === 1) {
+      return new Response(JSON.stringify({ message: ['Customer not found'] }), { status: 404 });
+    }
+    return new Response(
+      JSON.stringify({ id: 'checkout_ok', checkout_url: 'https://checkout.creem.test/ok' }),
+      { status: 200 },
+    );
+  }) as typeof fetch);
+
+  const result = await creemService.createPackCheckout('user_stale', 'pack-1');
+
+  assert.equal(result.url, 'https://checkout.creem.test/ok');
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].customer, { id: 'cus_from_test_mode' }); // first tries stored id
+  assert.deepEqual(calls[1].customer, { email: 'buyer@yujee.test' }); // retry by email
+});
+
 test('creemService: subscription checkout entry is removed (per-book billing #97)', () => {
   assert.equal(
     (creemService as Record<string, unknown>).createSubscriptionCheckout,
