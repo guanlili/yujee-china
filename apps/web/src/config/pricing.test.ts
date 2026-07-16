@@ -42,7 +42,7 @@ test('per-book billing: one book per album, one free welcome book, packs grant w
     [
       { id: 'pack-1', priceUsd: 3, books: 1 },
       { id: 'pack-4', priceUsd: 10, books: 4 },
-      { id: 'pack-10', priceUsd: 10, books: 10 },
+      { id: 'pack-10', priceUsd: 20, books: 10 },
     ],
   );
 });

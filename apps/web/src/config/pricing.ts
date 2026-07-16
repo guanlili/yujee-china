@@ -99,7 +99,7 @@ export const PLANS: readonly Plan[] = [
 export const ADDON_PACKS = [
   { id: 'pack-1', books: 1, priceUsd: 3 },
   { id: 'pack-4', books: 4, priceUsd: 10 },
-  { id: 'pack-10', books: 10, priceUsd: 10 },
+  { id: 'pack-10', books: 10, priceUsd: 20 },
 ] as const satisfies readonly CreditPack[];
 
 export type AddonPackId = (typeof ADDON_PACKS)[number]['id'];
