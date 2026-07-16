@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { InMemorySessionRepo } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
+import type { AssistantMessage, ToolCall } from "@earendil-works/pi-ai";
 import {
 	formatPageUserRef,
 	pageUserRefs,
@@ -58,9 +59,41 @@ type AlbumStreamEvent =
 			details: unknown;
 	  }
 	| { type: "artifact_updated"; traceId: string; committed: boolean; version: number; operations: string[] }
+	// 开场白:工具循环里第一条带【非终止(读类)tool_call】的助手消息的可见文本 —— AI 回合开头对
+	// 用户说的那句话(“好,我来帮你…先看看…”)。以前只有 tool_call 被 stream 出来、这段文本被丢。
+	| { type: "assistant_step"; traceId: string; text: string }
 	| { type: "assistant_final"; traceId: string; text: string }
 	| { type: "done"; response: AlbumChatResponse }
 	| { type: "error"; error: string };
+
+// 终止写工具:execute 走 commitWrite → 返回 terminate:true,一调用就结束本轮工具循环。这意味着
+// 带写类 tool_call 的助手消息其实是【终稿】那一步,不能被当作开场白(否则开场白气泡与终稿气泡重文)。
+export const ALBUM_WRITE_TOOL_NAMES: ReadonlySet<string> = new Set<string>([
+	"update_page_texts",
+	"write_page_html",
+	"swap_page_template",
+	"update_page_images",
+	"set_text_colors",
+	"set_text_fonts",
+]);
+
+/**
+ * 从一条助手消息里取开场白文本(没有则返回 null)。开场白 = 工具循环中间步的可见文本:
+ * - 必须带 tool_call(纯文本无工具 = 终答/终稿那一步,由 assistant_final 承载,不是开场白);
+ * - 且不含【终止写工具】(带写工具 = 这步即终稿,commitWrite 会 terminate 本轮);
+ * - 取其 text 块拼接并 trim,非空才算。
+ */
+export function pickOpeningStepText(message: AssistantMessage): string | null {
+	const toolCalls = message.content.filter((block): block is ToolCall => block.type === "toolCall");
+	if (toolCalls.length === 0) return null;
+	if (toolCalls.some((toolCall) => ALBUM_WRITE_TOOL_NAMES.has(toolCall.name))) return null;
+	const text = message.content
+		.filter((block): block is { type: "text"; text: string } => block.type === "text")
+		.map((block) => block.text)
+		.join("")
+		.trim();
+	return text.length > 0 ? text : null;
+}
 
 export interface AlbumChatResponse {
 	prompt: string;
@@ -141,6 +174,8 @@ async function createAlbumRuntime(
 	let activeTraceId: string | undefined;
 	let activeStreamSink: ((event: AlbumStreamEvent) => void) | undefined;
 	let activeLlmCallIndex = 0;
+	// 每轮只发一条开场白(第一条命中的中间步文本);轮开始时(setActiveTrace)重置。
+	let openingStepEmitted = false;
 
 	session.on("before_agent_start", (event) => {
 		if (activeTraceId) {
@@ -240,6 +275,15 @@ async function createAlbumRuntime(
 	session.subscribe((event) => {
 		if (event.type === "message_end" && event.message.role === "assistant" && activeTraceId) {
 			traces.recordAssistantMessage(activeTraceId, event.message);
+			// 工具循环里第一条【带读类 tool_call 的助手消息】的可见文本 = 开场白,stream 给前端顶在
+			// 对话最上方。终稿(带写工具或无工具的终答)不在此发,由 assistant_final/done 承载。
+			if (!openingStepEmitted) {
+				const opening = pickOpeningStepText(event.message);
+				if (opening) {
+					openingStepEmitted = true;
+					activeStreamSink?.({ type: "assistant_step", traceId: activeTraceId, text: opening });
+				}
+			}
 		}
 	});
 
@@ -259,7 +303,10 @@ async function createAlbumRuntime(
 		},
 		setActiveTrace(traceId: string | undefined): void {
 			activeTraceId = traceId;
-			if (traceId) activeLlmCallIndex = 0;
+			if (traceId) {
+				activeLlmCallIndex = 0;
+				openingStepEmitted = false;
+			}
 		},
 		setActiveStreamSink(sink: ((event: AlbumStreamEvent) => void) | undefined): void {
 			activeStreamSink = sink;
