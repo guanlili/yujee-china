@@ -39,10 +39,9 @@ export type CheckoutReturnContext = {
 };
 
 export type CreemProductEnvKey =
-  | 'CREEM_PRODUCT_ID_PACK_2400'
-  | 'CREEM_PRODUCT_ID_PACK_4800'
-  | 'CREEM_PRODUCT_ID_PACK_8000'
-  | 'CREEM_PRODUCT_ID_PACK_16000';
+  | 'CREEM_PRODUCT_ID_PACK_1'
+  | 'CREEM_PRODUCT_ID_PACK_4'
+  | 'CREEM_PRODUCT_ID_PACK_10';
 
 // ── Photo → credit accounting (SINGLE SOURCE OF TRUTH) ───────────────────────
 // One credit covers up to PHOTOS_PER_CREDIT photos. A generation of N photos
@@ -95,22 +94,20 @@ export const PLANS: readonly Plan[] = [
   },
 ] as const;
 
-// Pack ids and prices are fixed Creem products — never change them. Only the
-// granted book count changed from the old credit amounts (#97).
+// 三档一次性积分包(用户最终定价 2026-07-16)。id = 积分数;books 字段沿用旧名,
+// 语义就是积分数(#97 起「1 book = 1 credit」)。Creem 产品 id 走 env(见下映射)。
 export const ADDON_PACKS = [
-  { id: 'pack-2400', books: 1, priceUsd: 3 },
-  { id: 'pack-4800', books: 2, priceUsd: 6 },
-  { id: 'pack-8000', books: 4, priceUsd: 10 },
-  { id: 'pack-16000', books: 8, priceUsd: 18 },
+  { id: 'pack-1', books: 1, priceUsd: 3 },
+  { id: 'pack-4', books: 4, priceUsd: 10 },
+  { id: 'pack-10', books: 10, priceUsd: 10 },
 ] as const satisfies readonly CreditPack[];
 
 export type AddonPackId = (typeof ADDON_PACKS)[number]['id'];
 
 export const CREEM_PRODUCT_ENV_BY_PACK_ID: Record<AddonPackId, CreemProductEnvKey> = {
-  'pack-2400': 'CREEM_PRODUCT_ID_PACK_2400',
-  'pack-4800': 'CREEM_PRODUCT_ID_PACK_4800',
-  'pack-8000': 'CREEM_PRODUCT_ID_PACK_8000',
-  'pack-16000': 'CREEM_PRODUCT_ID_PACK_16000',
+  'pack-1': 'CREEM_PRODUCT_ID_PACK_1',
+  'pack-4': 'CREEM_PRODUCT_ID_PACK_4',
+  'pack-10': 'CREEM_PRODUCT_ID_PACK_10',
 };
 
 export function buildCheckoutReturnUrls(

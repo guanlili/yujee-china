@@ -37,10 +37,9 @@ const EnvSchema = z.object({
   CREEM_API_KEY: z.string().optional(),
   CREEM_API_BASE_URL: z.string().url().default('https://api.creem.io'),
   CREEM_WEBHOOK_SECRET: z.string().optional(),
-  CREEM_PRODUCT_ID_PACK_2400: z.string().optional(),
-  CREEM_PRODUCT_ID_PACK_4800: z.string().optional(),
-  CREEM_PRODUCT_ID_PACK_8000: z.string().optional(),
-  CREEM_PRODUCT_ID_PACK_16000: z.string().optional(),
+  CREEM_PRODUCT_ID_PACK_1: z.string().optional(),
+  CREEM_PRODUCT_ID_PACK_4: z.string().optional(),
+  CREEM_PRODUCT_ID_PACK_10: z.string().optional(),
 
   // Cloudflare R2 (S3-compatible). PDF upload-url uses presigned PUT.
   R2_ACCOUNT_ID: z.string().optional(),

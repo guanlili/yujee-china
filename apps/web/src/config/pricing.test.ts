@@ -40,10 +40,9 @@ test('per-book billing: one book per album, one free welcome book, packs grant w
   assert.deepEqual(
     ADDON_PACKS.map((p) => ({ id: p.id, priceUsd: p.priceUsd, books: p.books })),
     [
-      { id: 'pack-2400', priceUsd: 3, books: 1 },
-      { id: 'pack-4800', priceUsd: 6, books: 2 },
-      { id: 'pack-8000', priceUsd: 10, books: 4 },
-      { id: 'pack-16000', priceUsd: 18, books: 8 },
+      { id: 'pack-1', priceUsd: 3, books: 1 },
+      { id: 'pack-4', priceUsd: 10, books: 4 },
+      { id: 'pack-10', priceUsd: 10, books: 10 },
     ],
   );
 });

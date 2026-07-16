@@ -46,7 +46,7 @@ function mockCheckoutDependencies(t: any) {
     CREEM_API_KEY: 'creem-api-key-test',
     CREEM_API_BASE_URL: 'https://api.creem.test',
     WEB_BASE_URL: 'https://app.yujee.test',
-    CREEM_PRODUCT_ID_PACK_2400: 'prod_creem_pack_2400',
+    CREEM_PRODUCT_ID_PACK_1: 'prod_creem_pack_1',
   });
 
   t.mock.method(userRepo, 'findById', async (userId: string) => ({
@@ -71,7 +71,7 @@ function mockCheckoutDependencies(t: any) {
 test('creemService.createPackCheckout: authenticates with x-api-key', async (t) => {
   const requests = mockCheckoutDependencies(t);
 
-  await creemService.createPackCheckout('user_checkout_1', 'pack-2400');
+  await creemService.createPackCheckout('user_checkout_1', 'pack-1');
 
   const headers = new Headers(requests[0]?.init.headers);
   assert.equal(headers.get('x-api-key'), 'creem-api-key-test');
@@ -81,21 +81,21 @@ test('creemService.createPackCheckout: authenticates with x-api-key', async (t) 
 test('creemService.createPackCheckout: sends configured product id and keeps internal pack metadata', async (t) => {
   const requests = mockCheckoutDependencies(t);
 
-  await creemService.createPackCheckout('user_checkout_2', 'pack-2400');
+  await creemService.createPackCheckout('user_checkout_2', 'pack-1');
 
   const body = JSON.parse(String(requests[0]?.init.body));
-  assert.equal(body.product_id, 'prod_creem_pack_2400');
+  assert.equal(body.product_id, 'prod_creem_pack_1');
   assert.deepEqual(body.metadata, {
     userId: 'user_checkout_2',
     kind: 'pack',
-    packId: 'pack-2400',
+    packId: 'pack-1',
   });
 });
 
 test('creemService.createPackCheckout: sends Creem-supported success URL without cancel_url', async (t) => {
   const requests = mockCheckoutDependencies(t);
 
-  await creemService.createPackCheckout('user_checkout_3', 'pack-2400', {
+  await creemService.createPackCheckout('user_checkout_3', 'pack-1', {
     locale: 'zh',
     from: 'create',
   });
@@ -166,7 +166,7 @@ test('creemService.handleWebhook: settles real checkout.completed eventType/obje
       order: {
         id: 'ord_4aDwWXjMLpes4Kj4XqNnUA',
         customer: 'cust_1OcIK1GEuVvXZwD19tjq2z',
-        product: 'pack-2400',
+        product: 'pack-1',
         amount: 300,
         currency: 'USD',
         status: 'paid',
@@ -179,7 +179,7 @@ test('creemService.handleWebhook: settles real checkout.completed eventType/obje
       metadata: {
         userId,
         kind: 'pack',
-        packId: 'pack-2400',
+        packId: 'pack-1',
       },
       mode: 'test',
     },
@@ -241,7 +241,7 @@ test('creemService.handleWebhook: settles real checkout.completed eventType/obje
         meta: {
           provider: 'creem',
           session_id: 'ch_4l0N34kxo16AhRKUHFUuXr',
-          pack_id: 'pack-2400',
+          pack_id: 'pack-1',
           amount_cents: 300,
         },
       },
