@@ -145,7 +145,7 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
               .replaceAll('{photos}', String(PHOTOS_PER_CREDIT))
               .replaceAll('{pages}', PAGES_PER_CREDIT_LABEL)}
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {ADDON_PACKS.map((pack) => (
               <div
                 key={pack.id}

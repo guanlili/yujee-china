@@ -608,7 +608,7 @@ function LandingPricing({ locale }: { locale: Locale }) {
           <p className="mt-3 text-sm text-[var(--muted)]">{priceSubtitle}</p>
         </div>
         {err && <p className="mb-5 text-center text-sm text-red-600">{err}</p>}
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-5">
           {ADDON_PACKS.map((pack) => {
             const perBook = pack.priceUsd / pack.books;
             const savePct = Math.round((1 - perBook / baselinePerBook) * 100);
