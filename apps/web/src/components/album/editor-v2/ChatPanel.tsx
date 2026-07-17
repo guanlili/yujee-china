@@ -1352,13 +1352,23 @@ export function ChatPanel({
       setThinkingLabel(host, 'Laying out the new photos…');
       setSending(true);
       try {
-        const refs = await selectLayoutRefsFromStore(scope.photoIds);
+        // 防御性:要排的章 = 本批 fresh ∪ 仍未排版的滞留章(story-progress 里不在 doneChapterIds 的)。
+        // 一起补排,自愈之前级联卡住的章。**refs 从「要排的这些章里实际用到的 photoId」推**(并集当批)——
+        // 与 chapterIds 同源、必然对齐,不会再出现「排的章里有张照片却没带它的 200px ref」→ 服务端 400。
+        // 缺原图的照片走 PhotosUnavailableError(诚实失败),而不是让人摸不着头脑的 missing ref。
+        const lingering = (storyGate?.chapterOrder ?? []).filter(
+          (cid) => !(storyGate?.doneChapterIds ?? []).includes(cid),
+        );
+        const layoutChapterIds = [...new Set([...scope.chapterIds, ...lingering])];
+        const chapterPhotoIds = layoutChapterIds.flatMap((cid) => chapterMetaById(cid)?.photoIds ?? []);
+        const refsPhotoIds = [...new Set([...scope.photoIds, ...chapterPhotoIds])];
+        const refs = await selectLayoutRefsFromStore(refsPhotoIds);
         if (disposed) return;
         await submitSelectLayoutV3(albumId, {
           requestId: albumRecipe.load(albumId)?.requestId ?? crypto.randomUUID(),
           language: currentLang === 'zh' ? 'zh' : 'en',
           refs,
-          chapterIds: scope.chapterIds,
+          chapterIds: layoutChapterIds,
         });
         if (disposed) return;
         void withWorkflowBusy(() => waitForLayoutThenRefresh(host, { minPages: scope.prevPageCount + 1, append: true }));
