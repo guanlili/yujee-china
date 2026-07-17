@@ -15,6 +15,13 @@ import { getTemplate } from '@yujee/contracts/templates';
 import { transientPagePhotoRefs } from './page-photo-refs';
 import { assembleDesignedPages, buildCoverSets, pickHeroPhotos, slotSpecs, templateCategory } from './design-apply';
 import {
+  PHOTO_SNAPSHOT_MAX_COUNT,
+  isValidPhotoId,
+  mergeSnapshotPhotoIds,
+  photoSnapshotKey,
+  photoSnapshotUrls,
+} from './photo-snapshot-util';
+import {
   Page,
   V3LayoutTree,
   V3StoryDraft,
@@ -31,6 +38,7 @@ import {
 const PDF_MAX_BYTES = 50 * 1024 * 1024; // 50MB — docs/web/api.md §3.6
 const COVER_THUMB_CONTENT_TYPE = 'image/jpeg';
 const COVER_THUMB_MAX_BYTES = 512 * 1024;
+const PHOTO_SNAPSHOT_CONTENT_TYPE = 'image/jpeg';
 
 type AlbumCoverPage = {
   pageIndex: number;
@@ -321,6 +329,9 @@ export const albumService = {
         pageCount: album.pageCount,
         pdfUrl: album.pdfUrl,
         coverThumbnailUrl: album.coverThumbnailUrl,
+        // 手动备份过的照片的服务器压缩图 URL(photoId→url)。resolveImage 在本地原图
+        // 缺失时回退到它,让换设备/清缓存后内页不空白。未备份 → {}。
+        photoSnapshotUrls: photoSnapshotUrls(userId, album.id, album.photoSnapshot?.photoIds, r2.publicUrl),
         errorMessage: album.errorMessage,
         createdAt: album.createdAt,
       },
@@ -1285,6 +1296,59 @@ export const albumService = {
       });
     });
     return { coverThumbnailUrl };
+  },
+
+  // Manual photo backup (photo-snapshot-design.md). Returns one signed PUT per
+  // photoId so the browser uploads the display-tier compressed JPEG (~1600px)
+  // straight to R2 —原图仍不上传,invariant 4 沿用(Web 不碰字节)。photoId 进 key
+  // 前必须校验字符集,防路径穿越 / 跨 {userId}/{albumId} 命名空间。
+  async signPhotoSnapshotUpload(
+    userId: string,
+    albumId: string,
+    photoIds: string[],
+  ): Promise<{ photoId: string; putUrl: string; r2Key: string; publicUrl: string }[]> {
+    await this.findOwned(userId, albumId);
+    if (!Array.isArray(photoIds) || photoIds.length === 0) {
+      throw ERRORS.VALIDATION_FAILED('photoIds must be a non-empty array');
+    }
+    if (photoIds.length > PHOTO_SNAPSHOT_MAX_COUNT) {
+      throw ERRORS.VALIDATION_FAILED(`photoIds must be <= ${PHOTO_SNAPSHOT_MAX_COUNT}`);
+    }
+    const out: { photoId: string; putUrl: string; r2Key: string; publicUrl: string }[] = [];
+    for (const photoId of photoIds) {
+      if (!isValidPhotoId(photoId)) throw ERRORS.VALIDATION_FAILED(`invalid photoId: ${photoId}`);
+      const r2Key = photoSnapshotKey(userId, albumId, photoId);
+      const putUrl = await r2.signPutUrl(r2Key, PHOTO_SNAPSHOT_CONTENT_TYPE, 300);
+      out.push({ photoId, putUrl, r2Key, publicUrl: r2.publicUrl(r2Key) });
+    }
+    return out;
+  },
+
+  // Browser has finished the direct R2 PUTs; merge the backed-up photoIds into
+  // albums.photo_snapshot. Idempotent: photoId 不变、去重合并,重复保存无副作用。
+  // 客户端只把「确实 PUT 成功的」传进来,故这里登记的即真实已备份的。
+  async confirmPhotoSnapshot(
+    userId: string,
+    albumId: string,
+    photoIds: string[],
+  ): Promise<{ photoIds: string[] }> {
+    const album = await this.findOwned(userId, albumId);
+    if (!Array.isArray(photoIds) || photoIds.length === 0) {
+      throw ERRORS.VALIDATION_FAILED('photoIds must be a non-empty array');
+    }
+    if (photoIds.length > PHOTO_SNAPSHOT_MAX_COUNT) {
+      throw ERRORS.VALIDATION_FAILED(`photoIds must be <= ${PHOTO_SNAPSHOT_MAX_COUNT}`);
+    }
+    for (const photoId of photoIds) {
+      if (!isValidPhotoId(photoId)) throw ERRORS.VALIDATION_FAILED(`invalid photoId: ${photoId}`);
+    }
+    const merged = mergeSnapshotPhotoIds(album.photoSnapshot?.photoIds, photoIds);
+    await db.transaction(async (tx) => {
+      await albumRepo.update(tx, albumId, {
+        photoSnapshot: { photoIds: merged, updatedAt: new Date().toISOString() },
+      });
+    });
+    return { photoIds: merged };
   },
 
   async getPdfUrl(userId: string, albumId: string): Promise<{ pdfUrl: string | null }> {

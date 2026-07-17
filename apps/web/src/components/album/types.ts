@@ -32,6 +32,9 @@ export interface AlbumInfo {
   pageCount: number;
   pdfUrl: string | null;
   coverThumbnailUrl?: string | null;
+  // 手动备份过的照片的服务器压缩图 URL(photoId→url)。本地原图缺失时 resolveImage
+  // 回退到它。未备份 / building stub → 省略或 {}。
+  photoSnapshotUrls?: Record<string, string>;
   errorMessage: string | null;
   createdAt: string;
 }

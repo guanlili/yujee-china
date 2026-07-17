@@ -243,6 +243,28 @@ export const photoStore = {
     return out;
   },
 
+  // 屏显派生图的降采样 JPEG blob:先读 derived 表,缺失则从原图生成并回存。原图不在
+  // 本机(getBlob 为空)→ undefined。手动备份(photo-snapshot)复用它拿要上传 R2 的
+  // 压缩字节 —— 与屏显同一份派生图,不重复编码。IndexedDB/解码异常向上抛,由调用方处理。
+  async getTierBlob(photoId: string, tier: PhotoTier): Promise<Blob | undefined> {
+    const key = `${photoId}@${tier}`;
+    let derived = (await asPromise((await tx('readonly', DERIVED_STORE)).get(key))) as
+      | Blob
+      | undefined;
+    if (!derived) {
+      const original = await this.getBlob(photoId);
+      if (!original) return undefined;
+      derived = await downscaleToJpeg(original, TIER_MAX_EDGE[tier], TIER_QUALITY[tier]);
+      // 持久化失败不致命(隐私无新增面:派生图和原图同库同生命周期)。
+      try {
+        await asPromise((await tx('readwrite', DERIVED_STORE)).put(derived, key));
+      } catch {
+        /* keep the in-memory blob */
+      }
+    }
+    return derived;
+  },
+
   // 屏显派生图:降采样 JPEG 的 blob: URL。首次生成后持久化进 IndexedDB(derived
   // 表),之后直接读缓存。任何一步失败(无 canvas 的环境/解码失败)回退原图 URL,
   // 绝不因为派生失败白屏。
@@ -251,20 +273,8 @@ export const photoStore = {
     const cached = cachedUrl(key);
     if (cached) return cached;
     try {
-      let derived = (await asPromise((await tx('readonly', DERIVED_STORE)).get(key))) as
-        | Blob
-        | undefined;
-      if (!derived) {
-        const original = await this.getBlob(photoId);
-        if (!original) return undefined;
-        derived = await downscaleToJpeg(original, TIER_MAX_EDGE[tier], TIER_QUALITY[tier]);
-        // 持久化失败不致命(隐私无新增面:派生图和原图同库同生命周期)。
-        try {
-          await asPromise((await tx('readwrite', DERIVED_STORE)).put(derived, key));
-        } catch {
-          /* keep the in-memory URL */
-        }
-      }
+      const derived = await this.getTierBlob(photoId, tier);
+      if (!derived) return undefined;
       const url = URL.createObjectURL(derived);
       cacheUrl(key, url);
       return url;
