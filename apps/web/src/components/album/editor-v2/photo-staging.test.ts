@@ -34,8 +34,13 @@ test('加图「先攒后发」:点 + 只暂存,点发送才提交排版/扣款',
   assert.match(submit, /withWorkflowBusy\(\(\) => waitForAppendChapters/, 'submit 才进采访/排版轮询(且计入 workflowBusy)');
   assert.match(submit, /stagedPhotos = \[\];/, 'submit 后清空暂存条');
 
-  // send 有暂存照片就把它们提交出去(HeroComposer 同款)
-  assert.match(chat, /if \(stagedPhotos\.length > 0\) \{\s*void submitStagedPhotos\(\);/, 'send 有暂存照片时提交它们');
+  // send 有暂存照片就把它们提交出去(HeroComposer 同款);全程包 withWorkflowBusy,
+  // 提交/分析期间发送键一直禁用(不留空档)。
+  assert.match(
+    chat,
+    /if \(stagedPhotos\.length > 0\) \{[\s\S]*?void withWorkflowBusy\(\(\) => submitStagedPhotos\(\)\);/,
+    'send 有暂存照片时提交它们(全程 workflowBusy)',
+  );
 
   // × 可移除(关掉不发送);输入框内有暂存缩略图容器
   assert.match(chat, /stagedPhotos = stagedPhotos\.filter\(\(s\) => s\.photoId !== p\.photoId\)/, '× 从暂存里移除该照片(不发送)');

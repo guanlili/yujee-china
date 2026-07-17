@@ -46,12 +46,15 @@ test('小水母在跑(排版/加图分析)期间禁用发送 —— 后台轮询
     /function withWorkflowBusy<T>[\s\S]*?bumpWorkflowBusy\(1\);[\s\S]*?\.finally\(\(\) => bumpWorkflowBusy\(-1\)\)/,
     'withWorkflowBusy 必须进入 +1、finally -1',
   );
-  // 排版轮询 + 加图分析轮询都必须经 withWorkflowBusy 起。
+  // 排版轮询 + 加图分析轮询 + 加图提交(submitStagedPhotos:含「Understanding new photos…」那段
+  // submitAddPhotosV3,不然发送键会在分析中空档解禁)都必须经 withWorkflowBusy 起。
   assert.match(chat, /void withWorkflowBusy\(\(\) => waitForLayoutThenRefresh\(/, '排版轮询必须经 withWorkflowBusy');
   assert.match(chat, /void withWorkflowBusy\(\(\) => waitForAppendChapters\(/, '加图分析轮询必须经 withWorkflowBusy');
-  // 防回归:不得再出现「裸」后台轮询(漏包 = 那段小水母在跑却没禁用发送,正是本次修的 bug)。
+  assert.match(chat, /void withWorkflowBusy\(\(\) => submitStagedPhotos\(\)\)/, '加图提交全程必须经 withWorkflowBusy(含分析前的提交段)');
+  // 防回归:不得再出现「裸」后台轮询/提交(漏包 = 那段小水母在跑却没禁用发送,正是本次修的 bug)。
   assert.doesNotMatch(chat, /void waitForLayoutThenRefresh\(/, '不得有未包 withWorkflowBusy 的裸排版轮询');
   assert.doesNotMatch(chat, /void waitForAppendChapters\(/, '不得有未包 withWorkflowBusy 的裸加图轮询');
+  assert.doesNotMatch(chat, /void submitStagedPhotos\(\);/, '不得有未包 withWorkflowBusy 的裸加图提交');
 });
 
 test('AI 忙全程经 setSending;除声明与 setter 外无裸 sending 赋值', () => {

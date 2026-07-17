@@ -243,8 +243,10 @@ export function ChatPanel({
     async function send() {
       if (!input || sending || workflowBusy > 0) return;
       // 暂存了照片 → 发送就是把这些照片一起提交进排版(HeroComposer 同款「先攒后发」)。文字留在框里。
+      // 全程包 withWorkflowBusy:从「Understanding new photos…」到分析/排版结束,发送按钮一直禁用
+      // ——否则 submitAddPhotosV3 那段(waitForAppendChapters 之前)workflowBusy 还是 0,用户能插队发消息。
       if (stagedPhotos.length > 0) {
-        void submitStagedPhotos();
+        void withWorkflowBusy(() => submitStagedPhotos());
         return;
       }
       const txt = input.value.trim();
