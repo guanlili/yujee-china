@@ -1137,6 +1137,12 @@ export const albumService = {
           textsJson: patch.textsJson,
           imagePosJson: patch.imagePosJson,
         });
+        // 编辑一本已 COMPLETED 的书 → 退回 EDITING(photo-snapshot §5.5):导出即完成、但
+        // 不锁编辑;一旦改动,旧 PDF 不再代表当前内容,状态回 EDITING。pdfUrl 保留(那份
+        // 旧 PDF 仍可下载),重新导出时覆盖。
+        if (album.status === 'COMPLETED') {
+          await albumRepo.update(tx, albumId, { status: 'EDITING' });
+        }
       });
       return { updated: true };
     }
@@ -1201,7 +1207,11 @@ export const albumService = {
         pages,
         progress: current.progress,
       };
-      await albumRepo.update(tx, albumId, { draftJson: nextDraft });
+      await albumRepo.update(tx, albumId, {
+        draftJson: nextDraft,
+        // 编辑已 COMPLETED 的书 → 退回 EDITING(photo-snapshot §5.5,同上)。
+        ...(album.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
+      });
     });
     return { updated: true };
   },

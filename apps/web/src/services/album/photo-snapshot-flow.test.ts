@@ -11,6 +11,7 @@ process.env.R2_PUBLIC_BASE_URL ??= 'https://cdn.yujeeai.test';
 
 const { db } = await import('../../db/client');
 const { albumRepo } = await import('../../db/repos/album-repo');
+const { albumPageRepo } = await import('../../db/repos/album-page-repo');
 const { albumService } = await import('./album-service');
 const { cleanupUser, isDbReachable, makeAlbum, makeUser } = await import(
   '../../db/repos/__test__/setup'
@@ -73,6 +74,31 @@ test('photo-snapshot confirm: merges photoIds and getDetail exposes photoSnapsho
       ),
     );
     assert.equal(Object.keys(after.album.photoSnapshotUrls ?? {}).length, 3);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('editing a COMPLETED album reverts its status to EDITING (photo-snapshot §5.5)', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('photo-snap-revert');
+  try {
+    const album = await makeAlbum(user.id, { photoCount: 1 });
+    await albumRepo.update(db, album.id, { status: 'COMPLETED', pageCount: 1 });
+    await albumPageRepo.bulkInsert(db, [
+      {
+        albumId: album.id,
+        pageIndex: 0,
+        templateId: 'mag-01',
+        imagesJson: { hero: P1 },
+        textsJson: { title: 'before' },
+      },
+    ]);
+
+    await albumService.updatePage(user.id, album.id, 0, { textsJson: { title: 'after' } });
+
+    const row = await albumRepo.findById(album.id);
+    assert.equal(row?.status, 'EDITING');
   } finally {
     await cleanupUser(user.id);
   }
