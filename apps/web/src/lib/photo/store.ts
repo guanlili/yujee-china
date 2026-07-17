@@ -5,6 +5,8 @@ import { prepareImageBlobForBrowserDecode } from './heic';
 // Original photos live only in the browser (architecture invariant 1). They are
 // kept in IndexedDB keyed by a globally-unique photoId so the editor and PDF
 // export can read full-resolution originals without ever re-uploading them.
+// 放宽范围(photo-snapshot-design.md):**原图仍永不上传**;仅当用户主动点「保存」时,
+// 才把 display 档压缩派生图(getTierBlob)opt-in 直传 R2,用于换设备/清缓存后查看。
 
 const DB_NAME = 'yujee-photos';
 const STORE = 'originals';
