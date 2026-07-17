@@ -285,16 +285,15 @@ export function validateImagesMap(
 	for (const slotId of template.imageSlotIds) {
 		if (!(slotId in images)) errors.push(`缺少图片槽 "${slotId}"（模板 ${template.id} 的所有图槽都必须填充）`);
 	}
-	const usedPhotos = new Map<string, string>();
+	// 同一张照片允许出现在同一页的多个槽 —— 用户可能就是想重复用同一张。故这里不再校验
+	// 「一页内 photoId 重复」;真正需要的合法性(槽齐全 / photoId 存在)由本函数其余部分 +
+	// 排版 workflow 负责。只校验槽合法、齐全、photoId 非空且存在于本书。
 	for (const [slotId, photoId] of Object.entries(images)) {
 		if (typeof photoId !== "string" || photoId.length === 0) {
 			errors.push(`图片槽 "${slotId}" 的 photoId 必须是非空字符串`);
 			continue;
 		}
 		if (!findAlbumPhoto(state, photoId)) errors.push(`photoId "${photoId}" 不存在于这本书的任何章节`);
-		const existingSlot = usedPhotos.get(photoId);
-		if (existingSlot) errors.push(`photoId "${photoId}" 同时出现在槽 "${existingSlot}" 和 "${slotId}"`);
-		usedPhotos.set(photoId, slotId);
 	}
 	return errors;
 }
