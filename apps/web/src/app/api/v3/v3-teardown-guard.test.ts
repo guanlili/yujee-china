@@ -72,6 +72,8 @@ test('web keeps the v1 infrastructure route whitelist used by V3', () => {
     'apps/web/src/app/api/v1/albums/[uuid]/cover-thumbnail/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/messages/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/pages/[idx]/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/photo-snapshot-upload-url/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/photo-snapshot/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/pdf-upload-url/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/pdf/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/route.ts',
