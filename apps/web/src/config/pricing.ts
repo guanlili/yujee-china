@@ -51,20 +51,25 @@ export type CreemProductEnvKey =
 // math and UI copy ("1 credit = N photos") must derive from here, NEVER
 // hardcode a number. The per-request analyze cap is a separate product knob.
 //
-// Confirmed product rule (2026-07-14): 20 photos per credit. At the $3 entry
-// pack (1 credit) that is $3 per 20 photos, which still clears cost. The landing
-// FAQ and JSON-LD interpolate this constant, so changing it also changes the
-// public copy.
-export const PHOTOS_PER_CREDIT = 20;
+// Re-denominated (2026-07-17): 1 credit = 1 photo. The old model charged a whole
+// credit per batch of up to 20 photos (ceil(N/20)), which users found opaque
+// ("why 1 credit whether I upload 3 or 20?"). Strict per-photo billing is
+// clearer and fairer to small/repeat uploads. Dollars are unchanged: the $3
+// entry pack now grants 20 credits (see ADDON_PACKS), still $3 for 20 photos.
+// Existing balances/ledger/holds were multiplied ×20 in migration 0016. The
+// landing FAQ and JSON-LD interpolate this constant, so it also drives copy.
+export const PHOTOS_PER_CREDIT = 1;
 
-// What PHOTOS_PER_CREDIT photos typically becomes once laid out. Public copy says
-// "1 credit = N photos, usually 8–12 pages" — a descriptive range, NOT a promise:
-// the layout decides the real count. Never phrase it as a guarantee.
+// Typical page count for a full ~20-photo book once laid out. Public copy says
+// "a book is usually 8–12 pages" — a descriptive range, NOT a promise, and NO
+// longer tied to a single credit (a credit is now one photo). The layout decides
+// the real count. Never phrase it as a guarantee.
 export const PAGES_PER_CREDIT = { min: 8, max: 12 } as const;
 export const PAGES_PER_CREDIT_LABEL = `${PAGES_PER_CREDIT.min}-${PAGES_PER_CREDIT.max}`;
 
 // Credits charged for a generation of `photoCount` photos: ceil(N / PHOTOS_PER_CREDIT),
-// floored at 1 so any non-empty upload always costs at least one credit.
+// floored at 1 so any non-empty upload always costs at least one credit. With
+// PHOTOS_PER_CREDIT = 1 this is exactly N (strict per-photo).
 export function creditsForPhotos(photoCount: number): number {
   return Math.max(1, Math.ceil(photoCount / PHOTOS_PER_CREDIT));
 }
@@ -74,13 +79,15 @@ export function creditsForPhotos(photoCount: number): number {
 // analyze entry accepts up to 100 photos per album request.
 export const MAX_PHOTOS_PER_GENERATION = 100;
 
-// DEPRECATED — kept only so existing imports compile until the per-photo charge
-// is wired in. The flat "1 credit per album" model is being replaced by
-// creditsForPhotos(photoCount); remove this once all call sites are migrated.
+// DEPRECATED — the live charge path is per-photo via creditsForPhotos(photoCount);
+// this flat "1 credit per album" constant is kept only so lingering imports
+// compile. Remove once no call site references it.
 export const CREDIT_COST_PER_ALBUM = 1;
 
-// New users get one free credit.
-export const FREE_PLAN_CREDITS = 1;
+// New users get a free welcome grant. Re-denominated to 20 (= 20 photos, one full
+// starter book) when 1 credit became 1 photo. The users.credit_balance column
+// default is aligned to this in schema.ts / migration 0016.
+export const FREE_PLAN_CREDITS = 20;
 
 export const PLANS: readonly Plan[] = [
   {
@@ -94,12 +101,12 @@ export const PLANS: readonly Plan[] = [
   },
 ] as const;
 
-// 三档一次性积分包(用户最终定价 2026-07-16)。id = 积分数;books 字段沿用旧名,
-// 语义就是积分数(#97 起「1 book = 1 credit」)。Creem 产品 id 走 env(见下映射)。
+// 三档一次性积分包。价格 $3/$10/$20 固定(Creem 产品),books 字段沿用旧名、语义是积分数。
+// 2026-07-17 重定价:1 积分=1 张后,三档积分数 ×20 → 20/80/200(美元不变)。Creem 产品 id 走 env。
 export const ADDON_PACKS = [
-  { id: 'pack-1', books: 1, priceUsd: 3 },
-  { id: 'pack-4', books: 4, priceUsd: 10 },
-  { id: 'pack-10', books: 10, priceUsd: 20 },
+  { id: 'pack-1', books: 20, priceUsd: 3 },
+  { id: 'pack-4', books: 80, priceUsd: 10 },
+  { id: 'pack-10', books: 200, priceUsd: 20 },
 ] as const satisfies readonly CreditPack[];
 
 export type AddonPackId = (typeof ADDON_PACKS)[number]['id'];

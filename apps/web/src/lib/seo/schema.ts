@@ -91,7 +91,7 @@ export function softwareApplicationSchema(locale: Locale): SoftwareApplicationSc
       'Automatic magazine-style layout',
       'Chat-based editing',
       '300 DPI print-ready PDF export',
-      `${FREE_PLAN_CREDITS} free credit on sign-up`,
+      `${FREE_PLAN_CREDITS} free credit${FREE_PLAN_CREDITS > 1 ? 's' : ''} on sign-up`,
     ],
     offers: {
       '@type': 'AggregateOffer',
@@ -103,7 +103,7 @@ export function softwareApplicationSchema(locale: Locale): SoftwareApplicationSc
         '@type': 'Offer' as const,
         price: String(pack.priceUsd),
         priceCurrency: 'USD' as const,
-        name: pack.books === 1 ? '1 book' : `${pack.books} books`,
+        name: `${pack.books} credits`,
         url: absoluteUrl(`${localizePath('/', locale)}#pricing`),
       })),
     },

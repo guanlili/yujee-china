@@ -21,7 +21,7 @@ import { absoluteUrl } from '@/lib/seo/site';
 function pricingLines(): string[] {
   const packs = ADDON_PACKS.map(
     (pack) =>
-      `- ${pack.books} credit${pack.books === 1 ? '' : 's'} — $${pack.priceUsd}`,
+      `- ${pack.books} credit${pack.books > 1 ? 's' : ''} — $${pack.priceUsd}`,
   );
   // State the rule, promise nothing. Lines like "charged only once the layout
   // succeeds" or "editing and export are free" describe today's implementation,
@@ -30,10 +30,10 @@ function pricingLines(): string[] {
   return [
     'No subscription. Credits are bought once and do not expire.',
     '',
-    `- Sign-up includes ${FREE_PLAN_CREDITS} free credit (${PHOTOS_PER_CREDIT} photos)`,
+    `- Sign-up includes ${FREE_PLAN_CREDITS} free credit${FREE_PLAN_CREDITS > 1 ? 's' : ''}`,
     ...packs,
     '',
-    `1 credit = ${PHOTOS_PER_CREDIT} photos, usually ${PAGES_PER_CREDIT_LABEL} pages.`,
+    `1 credit = ${PHOTOS_PER_CREDIT} photo${PHOTOS_PER_CREDIT === 1 ? '' : 's'}. A book is usually ${PAGES_PER_CREDIT_LABEL} pages.`,
   ];
 }
 

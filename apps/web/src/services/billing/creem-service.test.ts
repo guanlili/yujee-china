@@ -13,6 +13,11 @@ import { userRepo } from '@/db/repos/user-repo';
 import { env } from '@/lib/env';
 import { isDbReachable } from '@/db/repos/__test__/setup';
 import { creditService } from '@/services/credit/credit-service';
+import { ADDON_PACKS } from '@/config/pricing';
+
+// The credits a pack-1 purchase grants — derived so it tracks re-denominations
+// (was 1, became 20 when 1 credit = 1 photo) instead of silently going stale.
+const PACK_1_CREDITS = ADDON_PACKS.find((p) => p.id === 'pack-1')!.books;
 
 function sign(body: string, secret: string): string {
   return createHmac('sha256', secret).update(body).digest('hex');
@@ -303,7 +308,7 @@ test('creemService.handleWebhook: settles real checkout.completed eventType/obje
     {
       txArg: tx,
       userId,
-      delta: 1,
+      delta: PACK_1_CREDITS,
       reason: 'PURCHASE',
       refs: {
         externalEventId: eventId,
