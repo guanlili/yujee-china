@@ -136,16 +136,18 @@ test('V3LayoutTree round-trips through strict parse', () => {
       { chapterId: 'c1', description: 'd', accentColor: null, artFont: null, photos: [baseChapterPhoto] },
     ],
   };
-  // chapterContext 有 .default('')：parse 会补上它，所以 round-trip 的产物比输入多这一个键。
-  // 这是 schema 的既定行为(缺省章节背景 = 空串)，不是丢失/污染。
+  // chapterContext / place / keywords 都有 .default()：parse 会补上它们，所以 round-trip 的产物比
+  // 输入多这几个键。这是 schema 的既定行为(缺省章节背景/地点 = 空串，关键词 = 空数组)，不是丢失/污染。
   assert.deepEqual(V3LayoutTree.parse(tree), {
-    chapters: [{ ...tree.chapters[0], chapterContext: '' }],
+    chapters: [{ ...tree.chapters[0], chapterContext: '', place: '', keywords: [] }],
   });
-  // 输入里显式给了 chapterContext 时原样保留(默认值不覆盖真实值)。
+  // 输入里显式给了 chapterContext 时原样保留(默认值不覆盖真实值);place/keywords 仍补默认。
   const withContext = {
     chapters: [{ ...tree.chapters[0], chapterContext: '厦门海边度假' }],
   };
-  assert.deepEqual(V3LayoutTree.parse(withContext), withContext);
+  assert.deepEqual(V3LayoutTree.parse(withContext), {
+    chapters: [{ ...withContext.chapters[0], place: '', keywords: [] }],
+  });
   assert.equal(V3LayoutTree.safeParse({ chapters: [], extra: 1 }).success, false);
 });
 
