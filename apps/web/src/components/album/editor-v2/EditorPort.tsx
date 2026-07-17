@@ -456,34 +456,36 @@ function EditorTopbar({
         <a href={`/${locale}`} className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '26px', width: 'auto', display: 'block' }} /></a>
         <span className="crumb text-meta text-[13px] hidden sm:inline">/</span>
         <span className="album-title font-display font-bold text-[14px] text-fg px-2 py-1 rounded-pill border border-transparent transition-colors hover:bg-bg cursor-text truncate" contentEditable suppressContentEditableWarning data-i18n="albumTitle">2024 厦门三日游</span>
-        {/* 备份状态徽标(photo-snapshot):「仅本机 / 备份中 / 已备份 / 失败」——诚实告诉
-            用户照片有没有备份到云端。文字/点色由 EditorBook 的 setBackupBadge 命令式更新。 */}
-        <span className="save-badge text-[11px] text-muted hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-bg rounded-pill" data-backup-state="local-only" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)', fontFamily: 'var(--font-mono)', letterSpacing: '0.02em' }}><span className="backup-dot w-1.5 h-1.5 rounded-full" style={{ background: 'var(--meta)' }} /><span data-backup-label>{locale === 'zh' ? '仅本机' : 'On this device'}</span></span>
       </div>
       <div className="top-right flex items-center gap-1 sm:gap-2 shrink-0">
-        {/* 保存到云端(photo-snapshot):备份照片压缩图,换设备/清缓存也能看到内页。
-            data-action 由 EditorBook 的效果绑到 backupPhotos。 */}
+        {/* 保存到云端(photo-snapshot):备份照片压缩图,换设备/清缓存也能看到内页。默认只
+            图标;点击后按钮上短暂显示「备份中… → 绿点已备份 / 红点备份失败」再回到默认。
+            data-action 由 EditorBook 的效果绑到 backupPhotos;备份态由 setSaveState 命令式更新。 */}
         <button
-          className="hidden sm:flex items-center gap-1.5 px-4 py-2.5 rounded-pill text-[13px] font-semibold text-fg2 border border-bd transition-colors hover:bg-bg"
+          className="save-btn hidden sm:inline-flex items-center gap-1.5 px-4 py-2.5 rounded-pill text-[13px] font-semibold text-fg2 border border-bd"
           data-action="backupPhotos"
           data-testid="backup-photos-btn"
+          data-backup-state="idle"
           title={locale === 'zh' ? '保存到云端:备份照片,换设备也能看' : 'Save to cloud: back up photos so you can view on any device'}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>
-          <span>{locale === 'zh' ? '保存' : 'Save'}</span>
+          <span className="backup-dot" aria-hidden="true" />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="save-ic w-4 h-4"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>
+          <span className="save-label" data-backup-label />
         </button>
         <span className="btn-glow" data-export-gate={exportUnlocked ? 'open' : 'locked'}>
           <button
-            className="btn-primary bg-fg text-white px-4 sm:px-7 py-2.5 rounded-pill text-[13px] font-semibold flex items-center gap-1.5 transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+            className="btn-primary bg-fg text-white px-4 py-2.5 rounded-pill text-[13px] font-semibold flex items-center gap-1.5 transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
             style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }}
             data-action="exportPdf"
             data-testid="export-pdf-btn"
+            data-i18n-title="exportPdf"
             disabled={!exportUnlocked}
             aria-disabled={!exportUnlocked}
-            title={exportUnlocked ? undefined : (locale === 'zh' ? '完成故事并选定封面后即可导出 PDF' : 'Finish the story and pick a cover to export the PDF')}
+            title={exportUnlocked ? (locale === 'zh' ? '导出 PDF' : 'Export PDF') : (locale === 'zh' ? '完成故事并选定封面后即可导出 PDF' : 'Finish the story and pick a cover to export the PDF')}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-            <span className="hidden sm:inline" data-i18n="exportPdf">{locale === 'zh' ? '导出' : 'Export'}</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+            {/* 图标按钮:文案隐藏但保留(i18n 同步 + 只读姿态换「下载 PDF」时改它的 textContent)。 */}
+            <span className="hidden" data-i18n="exportPdf">{locale === 'zh' ? '导出' : 'Export'}</span>
           </button>
         </span>
 
@@ -2702,34 +2704,39 @@ function EditorBook({
     }
     /* ─── 手动照片备份(photo-snapshot-design.md §5.1)───
        用户点顶栏「保存」→ 把书里用到、本地有、尚未备份的照片的 display 档压缩图直传 R2。
-       原图仍不上传。徽标 .save-badge[data-backup-state] 反映「是否已备份到云端」,默认「仅本机」。 */
+       原图仍不上传。备份状态直接显示在「保存」按钮上:备份中 → 绿点「已备份」/ 红点
+       「备份失败」,短暂展示后按钮回到默认(只图标)。点色由 CSS 按 data-backup-state 出。 */
     const backedUpIds = new Set(Object.keys(snapshotUrls));
-    type BackupState = 'local-only' | 'backing-up' | 'backed-up' | 'failed';
-    function setBackupBadge(state: BackupState) {
-      const badge = $('.save-badge') as HTMLElement | null;
-      if (!badge) return;
-      badge.dataset.backupState = state;
-      const label = badge.querySelector('[data-backup-label]');
-      const dot = badge.querySelector('.backup-dot') as HTMLElement | null;
+    type BackupState = 'idle' | 'backing-up' | 'backed-up' | 'failed';
+    let saveRevertTimer: ReturnType<typeof setTimeout> | null = null;
+    function setSaveState(state: BackupState) {
+      const btn = $('[data-action="backupPhotos"]') as HTMLElement | null;
+      if (!btn) return;
+      if (saveRevertTimer) {
+        clearTimeout(saveRevertTimer);
+        saveRevertTimer = null;
+      }
+      btn.dataset.backupState = state;
+      const label = btn.querySelector('[data-backup-label]');
       const text: Record<BackupState, string> = {
-        'local-only': aT('仅本机 · 未备份', 'On this device only'),
+        idle: '',
         'backing-up': aT('备份中…', 'Backing up…'),
         'backed-up': aT('已备份', 'Backed up'),
-        failed: aT('备份失败,点保存重试', 'Backup failed — tap Save'),
+        failed: aT('备份失败', 'Backup failed'),
       };
       if (label) label.textContent = text[state];
-      if (dot) {
-        dot.style.background =
-          state === 'backed-up' ? 'var(--gg)' : state === 'failed' ? 'var(--accent)' : 'var(--meta)';
+      // 成功/失败在按钮上短暂展示后,回到默认(只图标)。
+      if (state === 'backed-up' || state === 'failed') {
+        saveRevertTimer = setTimeout(() => setSaveState('idle'), state === 'failed' ? 2600 : 2000);
       }
     }
     let backingUp = false;
     async function backupPhotos() {
       if (backingUp) return;
       const todo = bookPhotoIds().filter((id) => !backedUpIds.has(id));
-      if (todo.length === 0) return setBackupBadge('backed-up');
+      if (todo.length === 0) return setSaveState('backed-up');
       backingUp = true;
-      setBackupBadge('backing-up');
+      setSaveState('backing-up');
       try {
         // 只备份本地有的:getTierBlob 为空 = 原图不在本机,跳过(那些只能在有原图的设备上备份)。
         const pairs: { photoId: string; blob: Blob }[] = [];
@@ -2737,7 +2744,8 @@ function EditorBook({
           const blob = await photoStore.getTierBlob(id, 'display').catch(() => undefined);
           if (blob) pairs.push({ photoId: id, blob });
         }
-        if (pairs.length === 0) { setBackupBadge('local-only'); return; }
+        // 一张本地都没有(比如换了设备)→ 没法备份,当失败提示。
+        if (pairs.length === 0) return setSaveState('failed');
         const signed = await signPhotoSnapshotUpload(albumId, pairs.map((p) => p.photoId));
         const urlById = new Map(signed.map((s) => [s.photoId, s.putUrl]));
         const uploaded: string[] = [];
@@ -2758,19 +2766,17 @@ function EditorBook({
           }
         };
         await Promise.all(Array.from({ length: 4 }, worker));
-        if (uploaded.length === 0) return setBackupBadge('failed');
+        if (uploaded.length === 0) return setSaveState('failed');
         await confirmPhotoSnapshot(albumId, uploaded);
         uploaded.forEach((id) => backedUpIds.add(id));
         const remaining = bookPhotoIds().filter((id) => !backedUpIds.has(id));
-        setBackupBadge(remaining.length === 0 ? 'backed-up' : 'failed');
+        setSaveState(remaining.length === 0 ? 'backed-up' : 'failed');
       } catch {
-        setBackupBadge('failed');
+        setSaveState('failed');
       } finally {
         backingUp = false;
       }
     }
-    // 初始徽标:书里用到的照片全部备份过 → 已备份;否则仅本机(诚实提示未备份)。
-    setBackupBadge(bookPhotoIds().every((id) => backedUpIds.has(id)) ? 'backed-up' : 'local-only');
 
     /* ─── 只读姿态(photo-snapshot §5.4)───
        本书任一用到照片的原图不在本机 → 出不了高清 PDF。把顶栏「导出」改成「下载 PDF」

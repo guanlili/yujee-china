@@ -268,6 +268,46 @@
 /* 画布模式下翻页无意义,藏掉坞里的翻页段(含分隔线)。 */
 .editor-port.overview-on .nav-seg{ display:none; }
 
+/* ─── 顶栏「保存」按钮(photo-snapshot):默认只图标;点击后在按钮上短暂显示备份状态
+   (备份中 → 绿点已备份 / 红点备份失败),随后回到默认。hover 参考翻页按钮(.zoom-btn)
+   的填充手感 + 轻微上浮。 ─── */
+.editor-port .save-btn{
+  transition: background var(--motion-fast) var(--ease),
+              color var(--motion-fast) var(--ease),
+              border-color var(--motion-fast) var(--ease),
+              transform var(--motion-fast) var(--ease),
+              box-shadow var(--motion-fast) var(--ease);
+}
+.editor-port .save-btn:hover{
+  background: var(--bg);
+  color: var(--fg);
+  border-color: var(--border);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+}
+.editor-port .save-btn:active{ transform: translateY(0); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+/* 状态点:默认隐藏,进入状态时显示;颜色按 data-backup-state。 */
+.editor-port .save-btn .backup-dot{
+  width: 7px; height: 7px; border-radius: 9999px; flex: 0 0 auto;
+  display: none; background: var(--meta);
+}
+.editor-port .save-btn .save-label{ display: none; }
+.editor-port .save-btn[data-backup-state="backing-up"] .backup-dot,
+.editor-port .save-btn[data-backup-state="backed-up"] .backup-dot,
+.editor-port .save-btn[data-backup-state="failed"] .backup-dot{ display: block; }
+.editor-port .save-btn[data-backup-state="backing-up"] .save-label,
+.editor-port .save-btn[data-backup-state="backed-up"] .save-label,
+.editor-port .save-btn[data-backup-state="failed"] .save-label{ display: inline; }
+.editor-port .save-btn[data-backup-state="backed-up"] .backup-dot{ background: var(--grad-green); }
+.editor-port .save-btn[data-backup-state="failed"] .backup-dot{ background: #e5484d; }
+.editor-port .save-btn[data-backup-state="backing-up"] .backup-dot{
+  animation: yujee-dot-bounce 1s ease-in-out infinite;
+}
+/* 备份中/成功/失败时,图标让位给状态点 + 文字,按钮保持紧凑。 */
+.editor-port .save-btn[data-backup-state="backing-up"] .save-ic,
+.editor-port .save-btn[data-backup-state="backed-up"] .save-ic,
+.editor-port .save-btn[data-backup-state="failed"] .save-ic{ display: none; }
+
 /* ─── Overview: the whole magazine at once ─── */
 /* 画板 = 无限画布:不再滚动(overflow hidden),平移/缩放由 #ovGrid 的 transform 承担;
    touch-action:none 把双指捏合从浏览器手里接管过来(否则触屏上是页面级缩放)。 */
