@@ -1939,7 +1939,10 @@ export function ChatPanel({
       },
       // 中途加图(spec §1):排版完成后可用;采访/发送/追加进行中不响应。
       pickAddPhotos: () => {
-        if (!isAuthoring || sending || appendInFlight || pendingInterview) return;
+        // 加图现在只「暂存」不立即提交(先攒后发),所以 AI 思考 / 排版中(sending /
+        // appendInFlight)也允许打开图库攒照片 —— 只有「发送」键在忙时禁用,「添加」不禁用。
+        // 采访轮到用户(pendingInterview)时不弹,避免和「回答问题」的发送语义打架。
+        if (!isAuthoring || pendingInterview) return;
         if ((co()?.getPagesState?.()?.length ?? 0) === 0) {
           appendAiText(aT('先等这本书排版完成,再来添加照片哦。', 'Please wait until the book is laid out before adding photos.'));
           restAwait();
