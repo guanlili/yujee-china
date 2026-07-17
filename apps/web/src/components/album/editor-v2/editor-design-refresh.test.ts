@@ -41,7 +41,12 @@ test('editor shell uses the supplied unified top chrome and canvas hints', () =>
   assert.match(editorPort, /translate\(\$\{panX\}px, \$\{panY\}px\) scale\(\$\{zoom\}\)/, 'book transform should combine pan and zoom');
   assert.match(editorPort, /stage\?\.addEventListener\('pointerdown', onCanvasPointerDown\)/, 'free canvas should wire pointer drag panning');
   assert.match(editorPort, /className="el-bar"/, 'selected elements should expose the floating edit toolbar');
-  assert.match(editorPort, /data-edit-action="reset-photo"/, 'photo toolbar should include a real reset action');
+  assert.match(editorPort, /\.className = 'img-edit-reset'/, 'photo editing overlay should include a real reset action');
+  // 画布模式下 #book 是 display:none —— 图片浮层必须挂到 .book-stage(#book 父级)且 position:fixed,
+  // 否则缩放/复位控件 0×0 不可见(回归:曾挂在 #book 上,靠合成事件驱动滑块把这个 bug 藏住了)。
+  assert.match(css, /\.img-edit-overlay\{[^}]*position:fixed/, 'photo overlay must be position:fixed so it is visible in canvas mode where #book is hidden');
+  assert.match(editorPort, /\(bookEl\.parentElement \?\? bookEl\)\.appendChild\(ov\)/, 'photo overlay must attach to the always-visible .book-stage, not the hidden #book');
+  assert.match(editorPort, /function positionImgEditOverlay\(\)[\s\S]*?setFixedPos\(ov,/, 'photo overlay must be positioned in viewport coords via setFixedPos (like #elBar)');
 });
 
 test('editor chat rail uses the refreshed draggable card and collapsed jellyfish tab', () => {
@@ -142,19 +147,30 @@ test('editor motion and toolbar controls are functional, not empty chrome', () =
   assert.match(editorPort, /setAttribute\('contenteditable', 'true'\)/, 'text edit mode should mark the selected text as contenteditable');
   assert.match(editorPort, /page\.textsJson = \{ \.\.\.page\.textsJson, \[textKey\]: nextText \}/, 'text edit blur should persist edited copy through textsJson');
   assert.match(editorPort, /syncPageHtml\(page, \(html\) => patchHtmlText\(html, textKey, nextText\)\)/, 'text edit blur must also patch the html truth (C 方案:只写 textsJson 会被旧 html 吃掉)');
-  assert.match(editorPort, /font-plus[\s\S]*font-minus/, 'toolbar should implement font size changes');
+  // 工具条 2026-07 重做:字号=可编辑输入+预设,颜色=自定义取色,字体=带搜索的项目字体面板。
+  assert.match(editorPort, /function applyFontSizeToSelection\(px: number\)/, 'toolbar should implement font size changes (editable size + presets)');
+  assert.match(editorPort, /data-edit-action="font-size-input"/, 'toolbar should expose the editable font-size input');
   assert.match(editorPort, /action === 'bold'/, 'toolbar should implement bold');
   assert.match(editorPort, /action === 'italic'/, 'toolbar should implement italic');
   assert.match(editorPort, /action\.startsWith\('align-'\)/, 'toolbar should implement alignment buttons');
-  assert.match(editorPort, /colorMap\[action\]/, 'toolbar should implement color swatches');
-  assert.match(editorPort, /data-edit-action="font-family"/, 'font selector should dispatch through the toolbar action handler');
+  assert.match(editorPort, /function applyColorToSelection\(hex: string\)/, 'toolbar should implement a custom color picker');
+  assert.match(editorPort, /data-edit-action="color-open"/, 'toolbar should expose the custom color popover trigger');
+  assert.match(editorPort, /function buildColorPanel\(\)/, 'color popover (SV + hue/alpha + swatches + hex) should be built');
+  assert.match(editorPort, /function positionEbPanel\(panel: HTMLElement\)/, 'dropdown panels should be positioned above the toolbar within the viewport');
+  assert.match(editorPort, /const EDITOR_FONTS: EditorFont\[\]/, 'font picker should list all project catalog fonts');
+  assert.match(editorPort, /function applyFontToSelection\(font: EditorFont\)/, 'selecting a font should apply its web stack + patch html');
+  assert.match(editorPort, /data-edit-action="font-open"/, 'font trigger should open the searchable font panel');
   assert.match(editorPort, /data-edit-action="edit-text"/, 'text toolbar should include the edit text control from the design');
-  assert.match(editorPort, /function replaceSelectedPhoto\(\)/, 'replace-photo should cycle a real book photo instead of being a no-op');
-  assert.match(editorPort, /function deleteSelectedPhoto\(\)/, 'delete-photo should remove the selected image from the page JSON');
-  assert.match(editorPort, /data-edit-action="delete-photo"/, 'photo toolbar should include delete-photo');
-  assert.match(editorPort, /delete page\.imagesJson\[imgEdit\.slotId\]/, 'delete-photo should delete the selected slot from imagesJson');
-  assert.match(editorPort, /body: JSON\.stringify\(\{\s*imagesJson: page\.imagesJson,/s, 'replace-photo should persist through the page patch API');
-  assert.match(editorPort, /function toggleSelectedPhotoFilter\(\)/, 'photo filter should provide visible local feedback');
+  // 图片编辑精简(用户拍板):只保留 调整尺寸(缩放滑块) + 位置(拖动平移) + 复位,全在浮层;
+  // 换照片 / 删除 / 黑白滤镜全部去掉;选中「页」不弹工具条,选中文字/图片才出工具。
+  assert.match(editorPort, /\.className = 'img-edit-zoom'/, 'photo editing keeps the zoom (size) slider in the overlay');
+  assert.match(editorPort, /\.className = 'img-edit-reset'/, 'photo editing keeps a reset (position + zoom) control');
+  assert.doesNotMatch(editorPort, /data-edit-action="photo-filter"/, 'black & white filter should be removed');
+  assert.doesNotMatch(editorPort, /toggleSelectedPhotoFilter/, 'black & white filter code should be removed');
+  assert.doesNotMatch(editorPort, /data-edit-action="delete-photo"/, 'delete-photo should be removed');
+  assert.doesNotMatch(editorPort, /data-edit-action="replace-photo"/, 'replace-photo should be removed');
+  // 单独编辑不联动:只改被选中的那一个文字节点,不 querySelectorAll 整页文字。
+  assert.match(editorPort, /return editBarAnchor\.matches\('\[data-editable\]:not\(img\)'\) \? \[editBarAnchor\] : \[\];/, 'style tools must target only the selected text, never the whole page');
   assert.match(editorPort, /editBar\?\.addEventListener\('change', onEditBarChange\)/, 'select controls should wire change events');
   assert.match(editorPort, /editBar\?\.removeEventListener\('change', onEditBarChange\)/, 'select controls should clean up change events');
 });

@@ -17,7 +17,8 @@ export interface Spread {
 
 // cover / ending sit as solo pages; everything else (toc + interior body) pairs
 // two-up. We collapse the category to that solo-vs-paired distinction here.
-function slotOf(page: EditorPage): 'cover' | 'interior' | 'ending' {
+// Exported so the editor can label a spread by what it holds (封面/封底/内页).
+export function pageSlot(page: EditorPage): 'cover' | 'interior' | 'ending' {
   const category = getTemplate(page.templateId)?.category;
   if (category === 'cover') return 'cover';
   if (category === 'ending') return 'ending';
@@ -36,7 +37,7 @@ export function buildSpreads(pages: EditorPage[]): Spread[] {
   };
 
   pages.forEach((page, i) => {
-    const slot = slotOf(page);
+    const slot = pageSlot(page);
     if (slot === 'cover' || slot === 'ending') {
       flushPending();
       // cover opens as a right-hand recto; ending closes as a left-hand verso.
@@ -80,6 +81,6 @@ export function isSoloSpread(spread: Spread | undefined, pages: EditorPage[]): b
   const idx = hasLeft ? spread.left! : spread.right!;
   const page = pages[idx];
   if (!page) return false;
-  const slot = slotOf(page);
+  const slot = pageSlot(page);
   return slot === 'cover' || slot === 'ending';
 }

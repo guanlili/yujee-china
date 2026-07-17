@@ -126,6 +126,17 @@ export function loadAlbumFonts(
   env: AlbumFontEnvironment = browserEnvironment(),
 ): Promise<void> {
   const request = collectAlbumFontRequest(pages);
+  return loadFontSubset(request, env);
+}
+
+// 按需子集化:编辑器字体选择器给中文艺术字做「预览串子集」与「选中后按正文子集」
+// 时直接传一个 {fontIds, charset} 请求(不经 page 收集)。与 loadAlbumFonts 共用同一
+// 去重缓存,重复请求零成本。
+export function loadFontSubset(
+  request: AlbumFontRequest,
+  env: AlbumFontEnvironment = browserEnvironment(),
+): Promise<void> {
+  if (request.fontIds.length === 0 || request.charset.length === 0) return Promise.resolve();
   const key = requestKey(request);
   const existing = loadCache.get(key);
   if (existing) return existing;
