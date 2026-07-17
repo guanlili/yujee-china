@@ -13,15 +13,17 @@ const here = dirname(fileURLToPath(import.meta.url));
 const chat = readFileSync(join(here, 'ChatPanel.tsx'), 'utf8');
 const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
 
-test('送出键 disabled 是单一真相源:refreshSendDisabled = sending || outOfCredits || coverLocked', () => {
-  // 三个标志都在闭包里(coverLocked 是 design-work 的必选封面卡锁,合并时并进同一真相源)。
+test('送出键 disabled 是单一真相源:refreshSendDisabled = sending || workflowBusy || outOfCredits || coverLocked', () => {
+  // 四个来源都在闭包里(coverLocked 是 design-work 的必选封面卡锁;workflowBusy 是后台
+  // 工作流「小水母在跑」计数,排版/加图分析期间 >0 → 禁用发送)。
   assert.match(chat, /let outOfCredits = false;/, 'outOfCredits 标志必须存在');
   assert.match(chat, /let coverLocked = false;/, 'coverLocked 标志必须存在');
+  assert.match(chat, /let workflowBusy = 0;/, 'workflowBusy 计数必须存在');
   // disabled 只从这一处派生 —— 缺积分到账后若仍在忙 => 仍禁用;思考结束后若仍缺积分/封面锁 => 仍禁用。
   assert.match(
     chat,
-    /function refreshSendDisabled\(\)\s*\{\s*if \(sendBtnEl\) sendBtnEl\.disabled = sending \|\| outOfCredits \|\| coverLocked;/,
-    'refreshSendDisabled 必须把 disabled 设为 sending || outOfCredits || coverLocked',
+    /function refreshSendDisabled\(\)\s*\{\s*if \(sendBtnEl\) sendBtnEl\.disabled = sending \|\| workflowBusy > 0 \|\| outOfCredits \|\| coverLocked;/,
+    'refreshSendDisabled 必须把 disabled 设为 sending || workflowBusy > 0 || outOfCredits || coverLocked',
   );
   // 必选封面锁不再单独摸 send.disabled,而是设 coverLocked 后走同一刷新(防合并回归)。
   assert.match(
@@ -35,6 +37,21 @@ test('送出键 disabled 是单一真相源:refreshSendDisabled = sending || out
     /function setSending\(v: boolean\)\s*\{\s*sending = v;\s*refreshSendDisabled\(\);/,
     'setSending 必须写 sending 后刷新 disabled',
   );
+});
+
+test('小水母在跑(排版/加图分析)期间禁用发送 —— 后台轮询都经 withWorkflowBusy', () => {
+  // withWorkflowBusy:进入 +1、finally -1(计数器,重叠也不会提前解锁)。
+  assert.match(
+    chat,
+    /function withWorkflowBusy<T>[\s\S]*?bumpWorkflowBusy\(1\);[\s\S]*?\.finally\(\(\) => bumpWorkflowBusy\(-1\)\)/,
+    'withWorkflowBusy 必须进入 +1、finally -1',
+  );
+  // 排版轮询 + 加图分析轮询都必须经 withWorkflowBusy 起。
+  assert.match(chat, /void withWorkflowBusy\(\(\) => waitForLayoutThenRefresh\(/, '排版轮询必须经 withWorkflowBusy');
+  assert.match(chat, /void withWorkflowBusy\(\(\) => waitForAppendChapters\(/, '加图分析轮询必须经 withWorkflowBusy');
+  // 防回归:不得再出现「裸」后台轮询(漏包 = 那段小水母在跑却没禁用发送,正是本次修的 bug)。
+  assert.doesNotMatch(chat, /void waitForLayoutThenRefresh\(/, '不得有未包 withWorkflowBusy 的裸排版轮询');
+  assert.doesNotMatch(chat, /void waitForAppendChapters\(/, '不得有未包 withWorkflowBusy 的裸加图轮询');
 });
 
 test('AI 忙全程经 setSending;除声明与 setter 外无裸 sending 赋值', () => {

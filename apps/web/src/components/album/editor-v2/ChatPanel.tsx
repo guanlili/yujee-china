@@ -199,7 +199,24 @@ export function ChatPanel({
     let outOfCredits = false;
     // 必选封面卡盖住输入时锁发送(design-work 的 cover-lock);并进单一真相源,不单独摸 send.disabled。
     let coverLocked = false;
-    function refreshSendDisabled() { if (sendBtnEl) sendBtnEl.disabled = sending || outOfCredits || coverLocked; }
+    // 「小水母在跑」= 后台工作流忙(排版 waitForLayoutThenRefresh / 加图分析 waitForAppendChapters)。
+    // 这些是 void 起的后台轮询,sending 早已释放(triggerSelectLayout 的 finally),若不另计,用户能在
+    // 排版中发消息 → 直接报错。用计数器(可重入/可叠加:加图分析→排版会短暂重叠),>0 即禁用发送。
+    // 采访是用户的回合(startChapterInterview 贴完问题就 restAwait 返回),故不计入 → 采访时照常可发。
+    let workflowBusy = 0;
+    function bumpWorkflowBusy(delta: number) {
+      workflowBusy = Math.max(0, workflowBusy + delta);
+      refreshSendDisabled();
+    }
+    // 把一段后台工作流(排版/加图分析)标记为「小水母在跑」:进入 +1、结束 -1,期间禁用发送。
+    // 后台轮询都经它起(void withWorkflowBusy(() => waitFor…()));.finally 保证任何退出路径都 -1。
+    function withWorkflowBusy<T>(run: () => Promise<T>): Promise<T> {
+      bumpWorkflowBusy(1);
+      return run().finally(() => bumpWorkflowBusy(-1));
+    }
+    function refreshSendDisabled() {
+      if (sendBtnEl) sendBtnEl.disabled = sending || workflowBusy > 0 || outOfCredits || coverLocked;
+    }
     function setSending(v: boolean) { sending = v; refreshSendDisabled(); }
 
     function setChatState(n: number) {
@@ -1231,7 +1248,7 @@ export function ChatPanel({
         // draft. Poll it and, once pages appear, fire yujee:authoring-pages-ready so the
         // canvas refreshes IN PLACE (EditorPort refetches; only EditorBook remounts).
         // ChatPanel keeps its state — no full reload, so no re-run/duplication.
-        void waitForLayoutThenRefresh(working);
+        void withWorkflowBusy(() => waitForLayoutThenRefresh(working));
       } catch (e) {
         if (disposed) return;
         selectLayoutTriggered = false;
@@ -1337,7 +1354,7 @@ export function ChatPanel({
           chapterIds: scope.chapterIds,
         });
         if (disposed) return;
-        void waitForLayoutThenRefresh(host, { minPages: scope.prevPageCount + 1, append: true });
+        void withWorkflowBusy(() => waitForLayoutThenRefresh(host, { minPages: scope.prevPageCount + 1, append: true }));
       } catch (e) {
         if (disposed) return;
         appendScope = null;
@@ -1431,7 +1448,7 @@ export function ChatPanel({
         if (recipe) albumRecipe.save(albumId, { ...recipe, photoIds: [...recipe.photoIds, ...newPhotoIds] });
         appendReplyBody(host, aT('收到!我先看看这些新照片,然后问你几个问题,再把它们排进书里。',
           'Got them! Let me study the new photos, ask you a couple of questions, then lay them into the book.'));
-        void waitForAppendChapters(prevOrder, newPhotoIds, prevPageCount, host);
+        void withWorkflowBusy(() => waitForAppendChapters(prevOrder, newPhotoIds, prevPageCount, host));
       } catch (e) {
         appendInFlight = false;
         settleThinking(host, 'analyzedFeedback');
@@ -2101,7 +2118,7 @@ export function ChatPanel({
               ),
             );
             const host = appendThinkingShell();
-            void waitForLayoutThenRefresh(host, { minPages: 1 });
+            void withWorkflowBusy(() => waitForLayoutThenRefresh(host, { minPages: 1 }));
           } else {
             void runChapterGuideOpener();
           }
