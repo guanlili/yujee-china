@@ -4,7 +4,6 @@ import { use, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAlbumPoll } from '@/lib/hooks/use-album-poll';
 import { EditorPort } from '@/components/album/editor-v2/EditorPort';
-import { AlbumGeneratingShell } from '@/components/album/AlbumGeneratingShell';
 import type { AlbumDetail } from '@/components/album/types';
 import { defaultLocale, isLocale, type Locale } from '@/lib/i18n/routing';
 
@@ -93,20 +92,21 @@ export default function AlbumPage({
     return <EditorPort detail={detail} locale={locale} mode={mode} />;
   }
 
-  // Terminal error states (failed / gone / error / unauthorized) still reuse the
-  // generating shell — it's now only an error/terminal surface, never the
-  // "processing" page. (unauthorized also triggers the redirect effect above.)
-  // Only failed / gone / error remain as real shell states. unauthorized (handled
-  // by the redirect effect above) and the rare ready-without-detail fall back to a
-  // neutral loading shell for the frame before navigation/re-render resolves.
-  const shellPhase = phase === 'failed' || phase === 'gone' || phase === 'error' ? phase : 'loading';
-  return (
-    <AlbumGeneratingShell
-      locale={locale}
-      albumId={uuid}
-      phase={shellPhase}
-      generation={generation}
-      error={error}
-    />
-  );
+  // Terminal error states (failed / gone / error) surface through the SAME editor
+  // chrome as building — EditorPort mode="error" (W10 flow unification): no separate
+  // full-page error layout. unauthorized (handled by the redirect effect above) and
+  // the rare ready-without-detail fall back to the neutral editor loader for the
+  // frame before navigation/re-render resolves.
+  if (phase === 'failed' || phase === 'gone' || phase === 'error') {
+    return (
+      <EditorPort
+        detail={detail ?? STUB_DETAIL(uuid)}
+        locale={locale}
+        mode="error"
+        errorKind={phase}
+        errorMessage={error}
+      />
+    );
+  }
+  return <EditorPort detail={detail ?? STUB_DETAIL(uuid)} locale={locale} mode="loading" />;
 }

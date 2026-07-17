@@ -16,9 +16,9 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function buildingShellSource(): string {
-  const match = editorPort.match(/function BuildingShell\([\s\S]*?\n}\n\n\/\/ ═+[\s\S]*?EditorBook/);
-  assert.ok(match, 'BuildingShell should exist before EditorBook');
+function funcBody(name: string): string {
+  const match = editorPort.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n}\\n\\n`));
+  assert.ok(match, `${name} should exist in EditorPort`);
   return match[0];
 }
 
@@ -65,22 +65,43 @@ test('editor chat rail uses the refreshed draggable card and collapsed jellyfish
 });
 
 test('building loading keeps the canvas generic and puts photo-reading status inside the refreshed chat panel', () => {
-  const building = buildingShellSource();
+  // The refreshed chrome (drag header, mobile handle, composer, resize grip) lives
+  // in the shared StaticEditorShell that BOTH building and the terminal-error state
+  // render through — one chrome, no stale second full-page error layout.
+  const shell = funcBody('StaticEditorShell');
+  const building = funcBody('BuildingShell');
 
+  assert.match(shell, /className="chat-drag hidden md:flex/, 'shared shell should use the refreshed draggable header');
+  assert.match(shell, /className="chat-mobile-handle md:hidden/, 'shared shell should use the refreshed mobile handle');
+  assert.match(shell, /className="composer-group shrink-0"/, 'shared shell should use the refreshed composer wrapper');
+  assert.match(shell, /className="chat-resize" id="chatResize"/, 'shared shell should keep the refreshed resize grip');
+  assert.doesNotMatch(shell, /chat-input m-3 shrink-0[^"]*rounded-pill flex items-end/, 'shared shell must not keep the old pill input shell');
+
+  // Building renders through that shell with a generic canvas + live AI status.
+  assert.match(building, /<StaticEditorShell/, 'building should render through the shared static shell');
   assert.match(building, /<BuildingCanvasState locale=\{locale\} \/>/, 'building canvas should keep only a generic loading state');
-  assert.match(building, /className="chat-drag hidden md:flex/, 'building chat rail should use the refreshed draggable header');
-  assert.match(building, /className="chat-mobile-handle md:hidden/, 'building chat rail should use the refreshed mobile handle');
-  assert.match(building, /className="composer-group shrink-0"/, 'building chat rail should use the refreshed composer wrapper');
-  assert.match(building, /className="chat-resize" id="chatResize"/, 'building chat rail should keep the refreshed resize grip');
   assert.match(building, /thinking-block active/, 'building chat rail should carry the live AI loading status');
   assert.match(building, /className="think-jelly" src="\/jellyfish-loop\.png"/, 'building chat loading should use the small jellyfish, not the big canvas illustration');
   assert.match(building, /\{buildingStageLabel\(generation\?\.stage, locale\)\}/, 'photo-reading stage copy should live inside the chat panel');
   assert.match(editorPort, /case 'describe':\s*return zh \? '正在看照片…'/, 'describe-stage copy should say the AI is looking at photos');
-  assert.doesNotMatch(building, /chat-input m-3 shrink-0[^"]*rounded-pill flex items-end/, 'building chat rail must not keep the old pill input shell');
   assert.doesNotMatch(building, /building-chat-placeholder/, 'building chat rail should not be an empty placeholder while AI is reading photos');
   assert.doesNotMatch(building, /<BuildingCanvasState locale=\{locale\} generation=\{generation\}/, 'canvas should not receive stage-specific photo-reading copy');
   assert.doesNotMatch(building, /className="canvas-hint"/, 'building canvas should not show a second loading hint');
   assert.doesNotMatch(editorPort.match(/function BuildingCanvasState[\s\S]*?\n}\n\n\/\/ ── authoring/)?.[0] ?? '', /buildingStageLabel/, 'canvas loading must not reuse photo-reading stage labels');
+});
+
+test('terminal error states render through the same static chrome as building, not a separate page layout', () => {
+  // W10 flow unification: the old full-page AlbumGeneratingShell error layout is
+  // retired. failed/gone/error all flow through EditorPort mode="error".
+  assert.doesNotMatch(albumPage, /AlbumGeneratingShell/, 'album page must not fall back to the retired generating shell');
+  assert.match(albumPage, /phase === 'failed' \|\| phase === 'gone' \|\| phase === 'error'/, 'terminal errors should be routed together');
+  assert.match(albumPage, /mode="error"[\s\S]*?errorKind=\{phase\}/, 'terminal errors should render through EditorPort mode="error"');
+
+  const errorShell = funcBody('ErrorShell');
+  assert.match(errorShell, /<StaticEditorShell/, 'error state should render through the shared static shell');
+  assert.match(errorShell, /<YujeeState variant="error"/, 'error state should use the shared error illustration');
+  assert.match(errorShell, /<RetryFailedButton albumId=\{albumId\} \/>/, 'FAILED errors should keep the retry action');
+  assert.match(editorPort, /if \(mode === 'error'\) \{[\s\S]*?<ErrorShell/, 'EditorPort should dispatch error mode to the error shell');
 });
 
 test('resource loading uses the full-screen loading state before showing canvas or chat', () => {

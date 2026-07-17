@@ -15,7 +15,7 @@
    Styling lives in ./editor-port.css (the HTML <style> block, values unchanged).
    ════════════════════════════════════════════════════════════════════════════ */
 
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
@@ -24,6 +24,7 @@ import { UserAvatar } from '@/components/app/UserAvatar';
 import { UserMenu } from '@/components/app/UserMenu';
 import { useChromeSession } from '@/components/app/useChromeSession';
 import { YujeeState } from '@/components/app/YujeeState';
+import { RetryFailedButton } from '../RetryFailedButton';
 import { getWebTemplate } from '../web-registry';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
@@ -77,7 +78,12 @@ import './editor-port.css';
 //                 first draft, so the chat rail does pointed single-page copy edits
 //                 via /draft-edit (#162) — no theme→chapter dialog, no finalize CTA.
 //   • editing   → layoutJson set: the original finalized editor, untouched.
-export type EditorMode = 'loading' | 'building' | 'authoring' | 'editing';
+//   • error     → terminal album state (FAILED / gone / transient-exhausted): the
+//                 SAME static chrome as building, error illustration on the canvas.
+export type EditorMode = 'loading' | 'building' | 'authoring' | 'editing' | 'error';
+
+// Which terminal album state produced the error surface (from useAlbumPoll's phase).
+export type EditorErrorKind = 'failed' | 'gone' | 'error';
 const CONFIRM_CHAPTER_COMMAND = '[confirm-chapter]';
 
 // Generation progress from the album poll (use-album-poll); only meaningful in
@@ -90,16 +96,32 @@ export function EditorPort({
   locale,
   mode = 'editing',
   generation = null,
+  errorKind,
+  errorMessage = null,
 }: {
   detail: AlbumDetail;
   locale: Locale;
   mode?: EditorMode;
   generation?: GenerationProgress;
+  errorKind?: EditorErrorKind;
+  errorMessage?: string | null;
 }) {
   // loading: UI/editor resources are not ready yet. Do not show half-loaded canvas
   // or chat chrome; those appear only after the resource load resolves.
   if (mode === 'loading') {
     return <EditorLoadingState locale={locale} />;
+  }
+  // error: terminal album state. Renders through the same static chrome as building
+  // (W10 flow unification) — never the retired full-page AlbumGeneratingShell.
+  if (mode === 'error') {
+    return (
+      <ErrorShell
+        locale={locale}
+        albumId={detail.album.id}
+        kind={errorKind ?? 'error'}
+        message={errorMessage ?? null}
+      />
+    );
   }
   // building: nothing to render yet — same editor chrome in its building state:
   // cover skeleton + a static loading-chat notice. The poll in page.tsx flips us to
@@ -517,21 +539,24 @@ function EditorModals() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// BuildingShell — the building state (AGENT_RUNNING / draft-skeleton fetch). Same
-// topbar chrome, but the canvas is a single cover skeleton and the chat rail is a
-// static non-interactive loading notice. No chat engine, no coordinator — the poll
-// in page.tsx flips us to authoring/editing (a full remount into EditorShell).
+// StaticEditorShell — the non-interactive editor chrome shared by the building and
+// terminal-error states (W10 flow unification): the same topbar + workspace + chat
+// rail as the live editor, but with no coordinator/effect. The three varying slots
+// (status pill, canvas body, chat body) are props so building AND error render
+// through ONE chrome — the retired AlbumGeneratingShell full-page error layout is
+// gone, so there is no second, stale error surface to drift out of sync.
 // ════════════════════════════════════════════════════════════════════════════
-function BuildingShell({
-  detail,
+function StaticEditorShell({
   locale,
-  generation,
+  status,
+  canvas,
+  chatBody,
 }: {
-  detail: AlbumDetail;
   locale: Locale;
-  generation: GenerationProgress;
+  status: { label: string; tone: 'progress' | 'error' };
+  canvas: ReactNode;
+  chatBody: ReactNode;
 }) {
-  void detail;
   return (
     <div className="editor-port font-sans antialiased leading-relaxed" data-screen-label="02 Yujee Editor">
       <div className="page-glow" aria-hidden="true" />
@@ -543,8 +568,11 @@ function BuildingShell({
           <a href={`/${locale}`} className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '26px', width: 'auto', display: 'block' }} /></a>
           <span className="crumb text-meta text-[13px] hidden sm:inline">/</span>
           <span className="flex items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-[11px] text-muted" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-gg animate-pulse" />
-            <span>{locale === 'zh' ? '整理中' : 'Tidying up'}</span>
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${status.tone === 'progress' ? 'bg-gg animate-pulse' : ''}`}
+              style={status.tone === 'error' ? { background: 'var(--accent)' } : undefined}
+            />
+            <span>{status.label}</span>
           </span>
         </div>
       </div>
@@ -564,7 +592,7 @@ function BuildingShell({
 
         <main className="pane pane-center flex flex-col overflow-hidden relative md:order-3 md:flex-1" id="paneCenter">
           <div className="book-stage w-full flex-1 flex items-center justify-center pt-8 pb-16 overflow-auto relative">
-            <BuildingCanvasState locale={locale} />
+            {canvas}
           </div>
         </main>
 
@@ -588,13 +616,7 @@ function BuildingShell({
             </div>
 
             <div className="chat-body flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-6" id="chatBody" style={{ gap: '24px' }}>
-              <div className="msg ai max-w-full">
-                <div className="thinking-block active">
-                  <img className="think-jelly" src="/jellyfish-loop.png" alt="" />
-                  <span className="thinking-label">{buildingStageLabel(generation?.stage, locale)}</span>
-                  <span className="thinking-dots"><span /><span /><span /></span>
-                </div>
-              </div>
+              {chatBody}
             </div>
 
             <div className="composer-group shrink-0">
@@ -620,6 +642,132 @@ function BuildingShell({
         </div>
       </div>
     </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BuildingShell — the building state (AGENT_RUNNING / draft-skeleton fetch): the
+// shared static chrome with a "tidying up" pill, a cover-skeleton canvas, and a
+// non-interactive loading-chat notice. No chat engine, no coordinator — the poll
+// in page.tsx flips us to authoring/editing (a full remount into EditorShell).
+// ════════════════════════════════════════════════════════════════════════════
+function BuildingShell({
+  detail,
+  locale,
+  generation,
+}: {
+  detail: AlbumDetail;
+  locale: Locale;
+  generation: GenerationProgress;
+}) {
+  void detail;
+  return (
+    <StaticEditorShell
+      locale={locale}
+      status={{ label: locale === 'zh' ? '整理中' : 'Tidying up', tone: 'progress' }}
+      canvas={<BuildingCanvasState locale={locale} />}
+      chatBody={
+        <div className="msg ai max-w-full">
+          <div className="thinking-block active">
+            <img className="think-jelly" src="/jellyfish-loop.png" alt="" />
+            <span className="thinking-label">{buildingStageLabel(generation?.stage, locale)}</span>
+            <span className="thinking-dots"><span /><span /><span /></span>
+          </div>
+        </div>
+      }
+    />
+  );
+}
+
+// Per-terminal-state copy for the error shell. EditorPort keeps its own inline
+// zh/en dictionary (no messages/*.json) — same convention as buildingStageLabel.
+// The raw backend errorMessage (e.g. "describe-chapters primary failed: upstream_4xx
+// status=403 …") is NEVER shown — users don't need the internal diagnostic. `message`
+// only distinguishes a network drop from a slow run; the real error still lives in
+// album.errorMessage / server logs for debugging.
+function errorShellCopy(kind: EditorErrorKind, message: string | null, zh: boolean) {
+  const isNetwork = /lost connection|network|连接/i.test(message ?? '');
+  switch (kind) {
+    case 'failed':
+      return {
+        status: zh ? '出错了' : 'Something went wrong',
+        title: zh ? '出错了' : 'Something went wrong',
+        body: zh
+          ? '生成时出了点问题,可以再试一次。未扣除积分。'
+          : 'Something went wrong while generating. You can try again — no credit was charged.',
+        chat: zh ? '生成时遇到了点问题,可以再试一次。' : 'Something interrupted the generation — you can try again.',
+      };
+    case 'gone':
+      return {
+        status: zh ? '无法打开' : 'Unavailable',
+        title: zh ? '无法打开这本相册' : 'Couldn’t open this album',
+        body: zh ? '它可能已被删除,或不在当前账户下。' : 'It may have been removed, or it isn’t available on this account.',
+        chat: zh ? '我找不到这本相册了。' : 'I couldn’t find this memoir.',
+      };
+    default:
+      return {
+        status: isNetwork ? (zh ? '连接中断' : 'Connection lost') : (zh ? '处理较慢' : 'Taking a while'),
+        title: zh ? '这比预期的时间长一些' : 'This is taking longer than expected',
+        body: isNetwork
+          ? (zh ? '网络异常,检查网络后刷新。' : 'Network error. Check your connection and refresh.')
+          : (zh ? '仍在处理中 —— 刷新页面再看看。' : 'Still working on it — refresh to check back.'),
+        chat: isNetwork
+          ? (zh ? '连接好像断了,刷新一下就好。' : 'The connection dropped — a refresh should bring it back.')
+          : (zh ? '还在处理,稍后刷新看看。' : 'Still processing — refresh in a moment.'),
+      };
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ErrorShell — terminal album states (FAILED / gone / transient-exhausted) render
+// through the SAME static chrome as building. The unified error illustration
+// (YujeeState, shared with the rest of the app) sits on the canvas with the
+// recovery action (retry for FAILED, refresh for transient); the chat rail carries
+// a short, calm line instead of echoing the raw upstream error string.
+// ════════════════════════════════════════════════════════════════════════════
+function ErrorShell({
+  locale,
+  albumId,
+  kind,
+  message,
+}: {
+  locale: Locale;
+  albumId: string;
+  kind: EditorErrorKind;
+  message: string | null;
+}) {
+  const zh = locale === 'zh';
+  const copy = errorShellCopy(kind, message, zh);
+  return (
+    <StaticEditorShell
+      locale={locale}
+      status={{ label: copy.status, tone: 'error' }}
+      canvas={
+        <YujeeState variant="error" title={copy.title} message={copy.body}>
+          {kind === 'failed' && (
+            <div className="flex justify-center">
+              <RetryFailedButton albumId={albumId} />
+            </div>
+          )}
+          {kind === 'error' && (
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="inline-flex items-center gap-2 rounded-full bg-fg px-8 py-3 text-[13px] font-semibold text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-transform hover:-translate-y-px"
+            >
+              {zh ? '刷新' : 'Refresh'}
+            </button>
+          )}
+          <a
+            href={`/${locale}/my-albums`}
+            className="mt-6 inline-block text-[13px] text-accent underline underline-offset-2"
+          >
+            {zh ? '返回我的项目' : 'Back to projects'}
+          </a>
+        </YujeeState>
+      }
+      chatBody={<p className="text-[13.5px] leading-relaxed text-muted">{copy.chat}</p>}
+    />
   );
 }
 

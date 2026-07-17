@@ -73,6 +73,7 @@ import {
   interviewMessages,
   type ChapterInterviewInput,
 } from '@/lib/interview/interview';
+import { YUJEE_STATE_ASSETS } from '@/components/app/YujeeState';
 
 export type ChatMode = 'authoring' | 'editing';
 
@@ -429,6 +430,53 @@ export function ChatPanel({
       host.appendChild(body);
       return body;
     }
+    // Unified in-chat error surface: the app's error identity (shared error
+    // illustration + 出错了) rendered inside the conversation, NEVER the raw
+    // upstream string (e.g. `403: {"code":"AccountOverdueError",…}`). Optional
+    // retry re-runs the failed action; the card removes itself before retrying so
+    // errors don't pile up. Mirrors EditorPort's ErrorShell so every exception
+    // surface — page and chat — reads the same.
+    function appendChatError(opts?: { message?: string; retry?: () => void }) {
+      hideAwait();
+      const wrap = document.createElement('div');
+      wrap.className = 'msg ai max-w-full';
+      const card = document.createElement('div');
+      card.className =
+        'flex flex-col items-center text-center gap-1.5 rounded-2xl border border-bdsoft bg-surface px-4 py-4';
+      const img = document.createElement('img');
+      img.src = YUJEE_STATE_ASSETS.error;
+      img.alt = '';
+      img.draggable = false;
+      img.className = 'w-[116px] h-auto select-none';
+      const title = document.createElement('div');
+      title.className = 'text-[14px] font-semibold text-fg';
+      title.textContent = aT('出错了', 'Something went wrong');
+      const msg = document.createElement('div');
+      msg.className = 'text-[12.5px] leading-relaxed text-muted max-w-[240px]';
+      msg.textContent = opts?.message ?? aT('这次没成功,点下面重试一下。', 'That didn’t go through — tap retry to try again.');
+      card.append(img, title, msg);
+      if (opts?.retry) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className =
+          'mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-fg px-4 py-2 text-[12.5px] font-semibold text-white transition-transform hover:-translate-y-px';
+        btn.innerHTML =
+          `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>` +
+          `<span>${aT('重试', 'Try again')}</span>`;
+        btn.addEventListener('click', () => {
+          wrap.remove();
+          opts.retry!();
+        });
+        card.appendChild(btn);
+      }
+      wrap.appendChild(card);
+      chatBody!.appendChild(wrap);
+      scrollChat();
+    }
+    // Handles the two special recoverable states (session gone → sign-in, no credit
+    // → purchase card) and returns true when it did. Returns false for everything
+    // else, leaving the caller to render appendChatError with its own context — the
+    // raw error string is never shown.
     function authErr(host: HTMLElement, e: unknown): boolean {
       host.querySelector('.thinking-block')?.classList.remove('active');
       if (e instanceof UnauthorizedError) {
@@ -439,7 +487,6 @@ export function ChatPanel({
         showPurchaseCard();
         return true;
       }
-      appendAiText(e instanceof Error ? e.message : String(e));
       return false;
     }
 
@@ -646,7 +693,7 @@ export function ChatPanel({
         appendReplyBody(host, r.assistantReply);
         if (r.kind === 'act') applyDraftAct(r);
       } catch (e) {
-        if (authErr(host, e)) return;
+        if (!authErr(host, e)) appendChatError({ retry: () => { void runDraftEditTurn(message); } });
       }
       restAwait();
       scrollChat();
@@ -911,12 +958,12 @@ export function ChatPanel({
       } catch (e) {
         stream.settle();
         setComposerThinking(false);
-        if (authErr(stream.host, e)) return;
-        appendReplyBody(
-          stream.host,
-          aT('设计助手暂时不可用，请稍后再试。', 'The design assistant is unavailable right now — please try again shortly.') +
-            (e instanceof Error && e.message ? `（${e.message}）` : ''),
-        );
+        if (!authErr(stream.host, e)) {
+          appendChatError({
+            message: aT('设计助手暂时不可用,请稍后再试。', 'The design assistant is unavailable right now — please try again shortly.'),
+            retry: () => { void runDesignChatTurn(userMessage); },
+          });
+        }
       }
       setComposerThinking(false);
       restAwait();
@@ -1188,11 +1235,13 @@ export function ChatPanel({
       } catch (e) {
         if (disposed) return;
         selectLayoutTriggered = false;
-        if (authErr(host, e)) { setSending(false); return; }
-        const msg = e instanceof PhotosUnavailableError
-          ? aT('原始照片在本设备上找不到了,没法继续排版。', 'Original photos are no longer available on this device.')
-          : aT('排版没能开始,稍后再试一下。', 'Couldn’t start layout — please try again in a moment.');
-        appendAiText(msg);
+        if (!authErr(host, e)) {
+          appendChatError({
+            message: e instanceof PhotosUnavailableError
+              ? aT('原始照片在本设备上找不到了,没法继续排版。', 'Original photos are no longer available on this device.')
+              : aT('排版没能开始,稍后再试一下。', 'Couldn’t start layout — please try again in a moment.'),
+          });
+        }
       } finally {
         setSending(false);
         if (!disposed) {
@@ -1293,10 +1342,13 @@ export function ChatPanel({
         if (disposed) return;
         appendScope = null;
         appendInFlight = false;
-        if (authErr(host, e)) { setSending(false); return; }
-        appendAiText(e instanceof PhotosUnavailableError
-          ? aT('新照片在本设备上找不到了,没法排版。', 'The new photos are no longer available on this device.')
-          : aT('新照片排版没能开始,稍后再试一下。', "Couldn't start laying out the new photos — try again in a moment."));
+        if (!authErr(host, e)) {
+          appendChatError({
+            message: e instanceof PhotosUnavailableError
+              ? aT('新照片在本设备上找不到了,没法排版。', 'The new photos are no longer available on this device.')
+              : aT('新照片排版没能开始,稍后再试一下。', "Couldn't start laying out the new photos — try again in a moment."),
+          });
+        }
       } finally {
         setSending(false);
         if (!disposed) { restAwait(); scrollChat(); }
@@ -1384,7 +1436,7 @@ export function ChatPanel({
         appendInFlight = false;
         settleThinking(host, 'analyzedFeedback');
         if (!authErr(host, e)) {
-          appendAiText(aT('照片没能加进来,稍后再试一下。', "Couldn't add the photos — please try again in a moment."));
+          appendChatError({ message: aT('照片没能加进来,稍后再试一下。', "Couldn't add the photos — please try again in a moment.") });
         }
         restAwait();
         scrollChat();
