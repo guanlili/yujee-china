@@ -679,7 +679,17 @@
 }
 
 /* Composer add-chapter button */
-.editor-port .add-ch-btn{ transition: all var(--motion-fast) var(--ease); }
+.editor-port .add-ch-btn{
+  transition: transform var(--motion-base) var(--ease), background var(--motion-fast) var(--ease),
+              color var(--motion-fast) var(--ease);
+}
+/* hover:放大 + 加号轻转一圈(+ 对称,转 90° 读作一个俏皮的旋入)+ 品牌青着色。 */
+.editor-port .add-ch-btn:hover:not(:disabled){
+  background: var(--bg);
+  color: var(--accent);
+  transform: scale(1.12) rotate(90deg);
+}
+.editor-port .add-ch-btn:active:not(:disabled){ transform: scale(0.95) rotate(90deg); }
 
 /* ─── Chat input focus (teal) + send button ─── */
 .editor-port .chat-input:focus-within{
