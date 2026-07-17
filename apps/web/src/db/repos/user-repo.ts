@@ -37,6 +37,17 @@ export const userRepo = {
     return rows[0];
   },
 
+  // Case/whitespace-insensitive lookup for hand-typed admin input (e.g. the
+  // credit-grant form), where the operator may not match stored casing exactly.
+  findByEmailInsensitive: async (email: string): Promise<User | undefined> => {
+    const rows = await db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.email}) = ${email.trim().toLowerCase()}`)
+      .limit(1);
+    return rows[0];
+  },
+
   upsertById: async (tx: DbOrTx, data: NewUser): Promise<User> => {
     if (data.id) {
       const existing = await tx.select().from(users).where(eq(users.id, data.id)).limit(1);

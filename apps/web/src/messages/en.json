@@ -299,7 +299,20 @@
       "admin": "Admin",
       "member": "Member",
       "noName": "—",
-      "empty": "No users yet."
+      "empty": "No users yet.",
+      "grant": {
+        "title": "Adjust credits",
+        "desc": "Add or remove credits for a user by email. Positive adds, negative deducts (for corrections).",
+        "emailLabel": "User email",
+        "emailPlaceholder": "user@example.com",
+        "amountLabel": "Amount",
+        "noteLabel": "Note (optional)",
+        "notePlaceholder": "e.g. compensation / promo",
+        "submit": "Apply",
+        "submitting": "Applying…",
+        "success": "Gave {email} {delta} credits — balance now {balance}.",
+        "error": "Something went wrong. Please try again."
+      }
     },
     "analytics": {
       "title": "Analytics",

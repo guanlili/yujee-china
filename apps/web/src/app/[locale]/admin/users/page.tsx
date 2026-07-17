@@ -4,6 +4,7 @@ import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 import { AdminNav } from '@/components/admin/AdminNav';
 import { AdminForbidden } from '@/components/admin/AdminForbidden';
+import { GrantCreditForm } from '@/components/admin/GrantCreditForm';
 
 export default async function AdminUsersPage({
   params,
@@ -21,6 +22,8 @@ export default async function AdminUsersPage({
     <main className="min-h-screen max-w-5xl mx-auto px-6 py-12">
       <AdminNav locale={locale} active="users" />
       <h1 className="serif text-4xl mb-8">{t.title}</h1>
+
+      <GrantCreditForm locale={locale} />
 
       {users.length === 0 ? (
         <p className="text-[var(--muted)]">{t.empty}</p>

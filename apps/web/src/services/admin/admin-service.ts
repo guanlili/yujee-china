@@ -3,13 +3,19 @@ import { userRepo } from '@/db/repos/user-repo';
 import { albumRepo } from '@/db/repos/album-repo';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { creditLedgerRepo } from '@/db/repos/credit-ledger-repo';
+import { creditService } from '@/services/credit/credit-service';
 import { zombieSweeper } from '@/services/job/zombie-sweeper';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
+import { ERRORS } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
 
 const STUCK_CUTOFF_MS = 5 * 60 * 1000;
 const DEFAULT_CLEANUP_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Fat-finger guard on manual grants: one click can never move more than this in
+// either direction. Positive = grant, negative = correction/deduction.
+const MAX_GRANT_MAGNITUDE = 100_000;
 
 const ALBUM_STATUSES = ['AGENT_RUNNING', 'EDITING', 'COMPLETED', 'FAILED'] as const;
 const JOB_STATUSES = ['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED'] as const;
@@ -73,6 +79,45 @@ export const adminService = {
       })),
       limit,
       offset,
+    };
+  },
+
+  // Manual credit grant/correction by email. Looks the user up
+  // case-insensitively (operator hand-types the address), validates the amount,
+  // then moves the balance through creditService.applyDelta so users.credit_balance
+  // and a credit_ledger ADMIN_ADJUST row commit together (invariant 8). The
+  // acting admin id + optional note land in the ledger meta for audit.
+  async grantCredit(
+    actorId: string,
+    input: { email: string; amount: number; note?: string },
+  ) {
+    const amount = input.amount;
+    if (!Number.isInteger(amount) || amount === 0) {
+      throw ERRORS.VALIDATION_FAILED('amount must be a non-zero integer');
+    }
+    if (Math.abs(amount) > MAX_GRANT_MAGNITUDE) {
+      throw ERRORS.VALIDATION_FAILED(`amount magnitude must be <= ${MAX_GRANT_MAGNITUDE}`);
+    }
+
+    const user = await userRepo.findByEmailInsensitive(input.email);
+    if (!user) throw ERRORS.USER_NOT_FOUND();
+
+    const note = input.note?.trim() || undefined;
+    const ledger = await db.transaction((tx) =>
+      creditService.applyDelta(tx, user.id, amount, 'ADMIN_ADJUST', {
+        meta: { actorId, ...(note ? { note } : {}) },
+      }),
+    );
+
+    logger.info(
+      { actorId, action: 'admin.grantCredit', targetUserId: user.id, amount },
+      'admin credit grant',
+    );
+
+    return {
+      email: user.email,
+      delta: amount,
+      balanceAfter: ledger.balanceAfter,
     };
   },
 

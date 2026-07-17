@@ -33,6 +33,12 @@ const EnvSchema = z.object({
   // Unset in dev => cron bypass disabled, so those routes still require admin.
   CRON_SECRET: z.string().optional(),
 
+  // Bootstrap admins without a DB write: any signed-in user whose email is in
+  // this comma-separated allowlist is treated as admin, in addition to the
+  // users.is_admin flag. Set in the Vercel dashboard (never needs the DB key).
+  // Empty => admin gated purely by the flag.
+  ADMIN_EMAILS: z.string().optional(),
+
   // Payment · Creem (海外主通道)
   CREEM_API_KEY: z.string().optional(),
   CREEM_API_BASE_URL: z.string().url().default('https://api.creem.io'),

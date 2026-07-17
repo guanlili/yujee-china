@@ -299,7 +299,20 @@
       "admin": "管理员",
       "member": "普通用户",
       "noName": "—",
-      "empty": "暂无用户。"
+      "empty": "暂无用户。",
+      "grant": {
+        "title": "手动加积分",
+        "desc": "按邮箱给用户增减积分。正数为增加,负数为扣减(纠错用)。",
+        "emailLabel": "用户邮箱",
+        "emailPlaceholder": "user@example.com",
+        "amountLabel": "积分数量",
+        "noteLabel": "备注(可选)",
+        "notePlaceholder": "如:补偿 / 活动奖励",
+        "submit": "加积分",
+        "submitting": "处理中…",
+        "success": "已给 {email} {delta} 积分,当前余额 {balance}。",
+        "error": "操作失败,请重试。"
+      }
     },
     "analytics": {
       "title": "数据",

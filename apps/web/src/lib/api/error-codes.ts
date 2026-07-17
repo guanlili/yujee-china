@@ -20,6 +20,7 @@ export const ERRORS = {
   JOB_NOT_FOUND:         () => new AppError('JOB_NOT_FOUND',         'Job not found',               404),
   JOB_NOT_OWNED:         () => new AppError('JOB_NOT_OWNED',         'Job not owned by user',       403),
   PAGE_NOT_FOUND:        () => new AppError('PAGE_NOT_FOUND',        'Page not found',              404),
+  USER_NOT_FOUND:        () => new AppError('USER_NOT_FOUND',        'No user with that email',     404),
 
   CREDIT_INSUFFICIENT:   () => new AppError('CREDIT_INSUFFICIENT',   'Not enough credits',          402),
   CREDIT_HOLD_FAILED:    () => new AppError('CREDIT_HOLD_FAILED',    'Failed to hold credits',      500),

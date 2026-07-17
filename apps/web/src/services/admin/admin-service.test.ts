@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { db } from '../../db/client';
 import { albumRepo } from '../../db/repos/album-repo';
+import { userRepo } from '../../db/repos/user-repo';
+import { creditLedgerRepo } from '../../db/repos/credit-ledger-repo';
 import { cleanupUser, isDbReachable, makeUser } from '../../db/repos/__test__/setup';
 import { adminService } from './admin-service';
 
@@ -82,6 +84,75 @@ test('adminService.cleanupAbandoned: deletes only old FAILED albums', async (t) 
     assert.equal(await albumRepo.findById(failedOld.id), undefined, 'old FAILED purged');
     assert.ok(await albumRepo.findById(failedRecent.id), 'recent FAILED kept');
     assert.ok(await albumRepo.findById(editingOld.id), 'non-FAILED kept');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('adminService.grantCredit: rejects bad amounts before any DB work', async () => {
+  const email = 'nobody@yujee.test';
+  await assert.rejects(() => adminService.grantCredit('actor', { email, amount: 0 }), /non-zero/);
+  await assert.rejects(() => adminService.grantCredit('actor', { email, amount: 1.5 }), /non-zero/);
+  await assert.rejects(
+    () => adminService.grantCredit('actor', { email, amount: 100001 }),
+    /magnitude/,
+  );
+});
+
+test('adminService.grantCredit: unknown email throws USER_NOT_FOUND', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping admin-service integration test');
+    return;
+  }
+  await assert.rejects(
+    () => adminService.grantCredit('actor', { email: `missing-${Date.now()}@yujee.test`, amount: 10 }),
+    /No user with that email/,
+  );
+});
+
+test('adminService.grantCredit: adds credits, updates balance, writes ADMIN_ADJUST ledger', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping admin-service integration test');
+    return;
+  }
+  const user = await makeUser('admin-grant'); // starts at creditBalance 100
+  try {
+    // case-insensitive lookup: pass the address upper-cased
+    const res = await adminService.grantCredit(user.id, {
+      email: user.email.toUpperCase(),
+      amount: 50,
+      note: 'welcome bonus',
+    });
+    assert.equal(res.delta, 50);
+    assert.equal(res.balanceAfter, 150);
+    assert.equal(res.email, user.email);
+
+    const fresh = await userRepo.findById(user.id);
+    assert.equal(fresh?.creditBalance, 150);
+
+    const ledger = await creditLedgerRepo.findByUser(user.id, 10);
+    const row = ledger.find((r) => r.reason === 'ADMIN_ADJUST');
+    assert.ok(row, 'an ADMIN_ADJUST ledger row should exist');
+    assert.equal(row?.delta, 50);
+    assert.equal(row?.balanceAfter, 150);
+    assert.equal((row?.meta as { actorId?: string } | null)?.actorId, user.id);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('adminService.grantCredit: negative amount deducts', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping admin-service integration test');
+    return;
+  }
+  const user = await makeUser('admin-deduct'); // starts at 100
+  try {
+    const res = await adminService.grantCredit(user.id, { email: user.email, amount: -30 });
+    assert.equal(res.delta, -30);
+    assert.equal(res.balanceAfter, 70);
+    const fresh = await userRepo.findById(user.id);
+    assert.equal(fresh?.creditBalance, 70);
   } finally {
     await cleanupUser(user.id);
   }
