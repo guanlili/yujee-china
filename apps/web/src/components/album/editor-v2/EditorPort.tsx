@@ -20,6 +20,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
+import {
+  signPhotoSnapshotUpload,
+  confirmPhotoSnapshot,
+  putSnapshotBlob,
+} from '@/lib/album/photo-snapshot-client';
 import { UserAvatar } from '@/components/app/UserAvatar';
 import { UserMenu } from '@/components/app/UserMenu';
 import { useChromeSession } from '@/components/app/useChromeSession';
@@ -451,9 +456,22 @@ function EditorTopbar({
         <a href={`/${locale}`} className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '26px', width: 'auto', display: 'block' }} /></a>
         <span className="crumb text-meta text-[13px] hidden sm:inline">/</span>
         <span className="album-title font-display font-bold text-[14px] text-fg px-2 py-1 rounded-pill border border-transparent transition-colors hover:bg-bg cursor-text truncate" contentEditable suppressContentEditableWarning data-i18n="albumTitle">2024 厦门三日游</span>
-        <span className="save-badge text-[11px] text-muted hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-bg rounded-pill" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)', fontFamily: 'var(--font-mono)', letterSpacing: '0.02em' }}><span className="pulse w-1.5 h-1.5 rounded-full bg-gg" /><span data-i18n="saved">已保存</span></span>
+        {/* 备份状态徽标(photo-snapshot):「仅本机 / 备份中 / 已备份 / 失败」——诚实告诉
+            用户照片有没有备份到云端。文字/点色由 EditorBook 的 setBackupBadge 命令式更新。 */}
+        <span className="save-badge text-[11px] text-muted hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-bg rounded-pill" data-backup-state="local-only" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)', fontFamily: 'var(--font-mono)', letterSpacing: '0.02em' }}><span className="backup-dot w-1.5 h-1.5 rounded-full" style={{ background: 'var(--meta)' }} /><span data-backup-label>{locale === 'zh' ? '仅本机' : 'On this device'}</span></span>
       </div>
       <div className="top-right flex items-center gap-1 sm:gap-2 shrink-0">
+        {/* 保存到云端(photo-snapshot):备份照片压缩图,换设备/清缓存也能看到内页。
+            data-action 由 EditorBook 的效果绑到 backupPhotos。 */}
+        <button
+          className="hidden sm:flex items-center gap-1.5 px-4 py-2.5 rounded-pill text-[13px] font-semibold text-fg2 border border-bd transition-colors hover:bg-bg"
+          data-action="backupPhotos"
+          data-testid="backup-photos-btn"
+          title={locale === 'zh' ? '保存到云端:备份照片,换设备也能看' : 'Save to cloud: back up photos so you can view on any device'}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>
+          <span>{locale === 'zh' ? '保存' : 'Save'}</span>
+        </button>
         <span className="btn-glow" data-export-gate={exportUnlocked ? 'open' : 'locked'}>
           <button
             className="btn-primary bg-fg text-white px-4 sm:px-7 py-2.5 rounded-pill text-[13px] font-semibold flex items-center gap-1.5 transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
@@ -916,7 +934,10 @@ function EditorBook({
     // 用 display 派生图(~1600px),缩略图条/总览格用 thumb 派生图(~240px);原图只
     // 留给 PDF 导出。thumb 还没解出来时回退 display,绝不回退原图。
     let imageUrls: Record<string, string> = { ...initialImageUrls };
-    const resolveImage: ResolveImage = (id) => imageUrls[id];
+    // 服务器压缩图回退(photo-snapshot §5.3):本地原图/派生没有时,用备份过的服务器
+    // 压缩图,换设备/清缓存后内页不空白。备份过才有;都没有则空槽(版面文字仍在)。
+    const snapshotUrls: Record<string, string> = detail.album.photoSnapshotUrls ?? {};
+    const resolveImage: ResolveImage = (id) => imageUrls[id] ?? snapshotUrls[id];
 
     // 展示层页签缓存:faceInner 每页都要 folio,此前每次调用都全量重算
     // (O(页数) map + indexOf → 全量 repaint 时 O(n²))。页序只在 pagesState
@@ -2679,12 +2700,123 @@ function EditorBook({
         if (btn) btn.style.opacity = '';
       }
     }
+    /* ─── 手动照片备份(photo-snapshot-design.md §5.1)───
+       用户点顶栏「保存」→ 把书里用到、本地有、尚未备份的照片的 display 档压缩图直传 R2。
+       原图仍不上传。徽标 .save-badge[data-backup-state] 反映「是否已备份到云端」,默认「仅本机」。 */
+    const backedUpIds = new Set(Object.keys(snapshotUrls));
+    type BackupState = 'local-only' | 'backing-up' | 'backed-up' | 'failed';
+    function setBackupBadge(state: BackupState) {
+      const badge = $('.save-badge') as HTMLElement | null;
+      if (!badge) return;
+      badge.dataset.backupState = state;
+      const label = badge.querySelector('[data-backup-label]');
+      const dot = badge.querySelector('.backup-dot') as HTMLElement | null;
+      const text: Record<BackupState, string> = {
+        'local-only': aT('仅本机 · 未备份', 'On this device only'),
+        'backing-up': aT('备份中…', 'Backing up…'),
+        'backed-up': aT('已备份', 'Backed up'),
+        failed: aT('备份失败,点保存重试', 'Backup failed — tap Save'),
+      };
+      if (label) label.textContent = text[state];
+      if (dot) {
+        dot.style.background =
+          state === 'backed-up' ? 'var(--gg)' : state === 'failed' ? 'var(--accent)' : 'var(--meta)';
+      }
+    }
+    let backingUp = false;
+    async function backupPhotos() {
+      if (backingUp) return;
+      const todo = bookPhotoIds().filter((id) => !backedUpIds.has(id));
+      if (todo.length === 0) return setBackupBadge('backed-up');
+      backingUp = true;
+      setBackupBadge('backing-up');
+      try {
+        // 只备份本地有的:getTierBlob 为空 = 原图不在本机,跳过(那些只能在有原图的设备上备份)。
+        const pairs: { photoId: string; blob: Blob }[] = [];
+        for (const id of todo) {
+          const blob = await photoStore.getTierBlob(id, 'display').catch(() => undefined);
+          if (blob) pairs.push({ photoId: id, blob });
+        }
+        if (pairs.length === 0) { setBackupBadge('local-only'); return; }
+        const signed = await signPhotoSnapshotUpload(albumId, pairs.map((p) => p.photoId));
+        const urlById = new Map(signed.map((s) => [s.photoId, s.putUrl]));
+        const uploaded: string[] = [];
+        const queue = [...pairs];
+        // 限并发 4 直传;单张失败不阻断其余,confirm 只登记成功的(不谎报全备份)。
+        const worker = async () => {
+          for (;;) {
+            const item = queue.shift();
+            if (!item) return;
+            const putUrl = urlById.get(item.photoId);
+            if (!putUrl) continue;
+            try {
+              await putSnapshotBlob(putUrl, item.blob);
+              uploaded.push(item.photoId);
+            } catch {
+              /* skip; reported as failed below if none succeed */
+            }
+          }
+        };
+        await Promise.all(Array.from({ length: 4 }, worker));
+        if (uploaded.length === 0) return setBackupBadge('failed');
+        await confirmPhotoSnapshot(albumId, uploaded);
+        uploaded.forEach((id) => backedUpIds.add(id));
+        const remaining = bookPhotoIds().filter((id) => !backedUpIds.has(id));
+        setBackupBadge(remaining.length === 0 ? 'backed-up' : 'failed');
+      } catch {
+        setBackupBadge('failed');
+      } finally {
+        backingUp = false;
+      }
+    }
+    // 初始徽标:书里用到的照片全部备份过 → 已备份;否则仅本机(诚实提示未备份)。
+    setBackupBadge(bookPhotoIds().every((id) => backedUpIds.has(id)) ? 'backed-up' : 'local-only');
+
+    /* ─── 只读姿态(photo-snapshot §5.4)───
+       本书任一用到照片的原图不在本机 → 出不了高清 PDF。把顶栏「导出」改成「下载 PDF」
+       (下之前已导出的那份 pdfUrl);连 PDF 都没有则禁用并提示。异步探测,不阻塞挂载。 */
+    void (async () => {
+      const ids = bookPhotoIds();
+      if (ids.length === 0) return;
+      let anyMissing = false;
+      for (const id of ids) {
+        const blob = await photoStore.getBlob(id).catch(() => undefined);
+        if (!blob) { anyMissing = true; break; }
+      }
+      if (!anyMissing) return;
+      const exportBtn = $('[data-action="exportPdf"]') as HTMLButtonElement | null;
+      if (!exportBtn) return;
+      const labelEl = exportBtn.querySelector('[data-i18n="exportPdf"]') as HTMLElement | null;
+      const pdfUrl = detail.album.pdfUrl;
+      if (pdfUrl) {
+        if (labelEl) labelEl.textContent = aT('下载 PDF', 'Download PDF');
+        exportBtn.disabled = false;
+        exportBtn.removeAttribute('aria-disabled');
+        exportBtn.title = aT('本机没有原图,下载之前导出的 PDF', 'Originals not on this device — download the exported PDF');
+        // 捕获阶段拦截,stopImmediatePropagation 挡掉冒泡阶段的 exportPdf 处理器。
+        exportBtn.addEventListener(
+          'click',
+          (e) => {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            window.open(pdfUrl, '_blank', 'noopener');
+          },
+          true,
+        );
+      } else {
+        exportBtn.disabled = true;
+        exportBtn.setAttribute('aria-disabled', 'true');
+        exportBtn.title = aT('本机没有原图,请在有原图的设备上导出', 'Originals not on this device — export where the photos are');
+      }
+    })();
+
     /* ─── Wire the canvas/topbar/modal data-action handlers ───
        Scoped to EditorBook's OWN subtree (topbar + #paneCenter + .chat-fold-expand +
        modals) so it never double-binds the chat-owned actions that ChatPanel binds
        inside its aside (buyShells / pickAddPhotos / toggleChat-collapse). */
     const actions: Record<string, () => void> = {
       exportPdf,
+      backupPhotos,
       // .chat-fold-expand lives in the shell (canvas scope) and toggles the shared
       // body class; the .chat-fold-collapse button in the aside is
       // bound by ChatPanel.
