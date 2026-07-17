@@ -48,6 +48,11 @@ test('底部栏最右是视图切换两档,悬停出气泡(预览模式/画布�
   assert.match(src, /id="viewCanvasBtn"[\s\S]{0,200}data-i18n-tip="canvasMode"/);
   assert.match(src, /viewBook:.*exitOverview|viewBook:[\s\S]{0,120}exitOverview/, '预览模式按钮退出画布');
   assert.match(src, /viewCanvas:[\s\S]{0,120}enterOverview/, '画布模式按钮进入无限画布');
+  // 排完版默认进画板:非收集态根元素首帧带 overview-on(用户拍板 2026-07-18)。
+  assert.match(src, /startOnCanvas = !\(mode === 'authoring' && initialPages\.length === 0\)/, '非收集态默认落在画板视图');
+  assert.match(src, /\$\{startOnCanvas \? ' overview-on' : ''\}/, '根元素按 startOnCanvas 条件带 overview-on,首帧即画板');
+  // 画板(编辑)按钮排在画册按钮左边 —— 源码里 viewCanvasBtn 必须出现在 viewBookBtn 之前。
+  assert.ok(src.indexOf('id="viewCanvasBtn"') < src.indexOf('id="viewBookBtn"'), '画板按钮在画册按钮左边(源码顺序在前)');
   const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
   assert.match(css, /\[data-tip\]:hover::after/, '悬停气泡由 [data-tip] CSS 提供');
 });

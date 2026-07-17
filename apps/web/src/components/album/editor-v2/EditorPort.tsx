@@ -25,7 +25,7 @@ import { UserMenu } from '@/components/app/UserMenu';
 import { useChromeSession } from '@/components/app/useChromeSession';
 import { YujeeState } from '@/components/app/YujeeState';
 import { getWebTemplate } from '../web-registry';
-import { buildSpreads, isSoloSpread, spreadIndexOfPage } from '../spreads';
+import { buildSpreads, isSoloSpread, pageSlot, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
 import { applyFolioOverlay, fitTextBoxes, pageFolioNumbers, patchHtmlImagePos, patchHtmlText, patchHtmlTextStyle, preferredPageHtml } from '../page-html-dom';
 import { PAGE } from '../templates/constants';
@@ -42,7 +42,9 @@ import {
 import { computeExportUnlocked } from './export-gate-util';
 import { runExportWithRetry, buildExportFailureLog, ExportError } from './export-retry-util';
 import { logger } from '@/lib/log/logger';
-import { loadAlbumFonts, useAlbumFonts } from '@/lib/font/album-font-loader';
+import { loadAlbumFonts, loadFontSubset, useAlbumFonts } from '@/lib/font/album-font-loader';
+import { isCjkFontId, type CjkFontId } from '@/services/font/font-manifest';
+import { FONT_CATALOG } from '@yujee/contracts/render';
 import {
   extractPhotoIds,
   applyPatchToPages,
@@ -65,6 +67,71 @@ import {
   type DraftActApplied,
 } from './editor-coordinator';
 import './editor-port.css';
+
+// ── 字体选择器数据源:项目字体目录(FONT_CATALOG = ArtFontPack,engine 与 web 同一套)
+// 去掉抽象遗留载体后的**全部真实字体**。中文 9 + 英文若干,拉丁字体 @font-face 见
+// styles/globals.css,中文走 /api/v1/fonts/subset 按需子集,均可真渲染。
+// 不按 design_style.md 裁剪(该文档字体未定稿);列全,选中即写回 html 真相。 ──
+const EDITOR_FONT_NAMES: Record<string, string> = {
+  'noto-serif-sc': '思源宋体', 'noto-sans-sc': '思源黑体', 'zcool-xiaowei': '站酷小薇',
+  'lxgw-wenkai': '霞鹜文楷', 'smiley-sans': '得意黑', 'zcool-qingke-huangyou': '站酷庆科黄油',
+  'long-cang': '龙藏', 'zhi-mang-xing': '志莽行书', 'liu-jian-mao-cao': '柳建毛草',
+  'playfair-display': 'Playfair Display', 'cormorant-garamond': 'Cormorant Garamond',
+  'eb-garamond': 'EB Garamond', 'source-serif-4': 'Source Serif 4', lora: 'Lora',
+  'libre-baskerville': 'Libre Baskerville', 'abril-fatface': 'Abril Fatface',
+  'bebas-neue': 'Bebas Neue', 'archivo-black': 'Archivo Black', montserrat: 'Montserrat',
+  inter: 'Inter', 'work-sans': 'Work Sans', 'dm-sans': 'DM Sans', poppins: 'Poppins',
+  raleway: 'Raleway', 'ibm-plex-mono': 'IBM Plex Mono', 'jetbrains-mono': 'JetBrains Mono',
+  'great-vibes': 'Great Vibes', 'dancing-script': 'Dancing Script', sacramento: 'Sacramento',
+  parisienne: 'Parisienne',
+};
+// 抽象载体不进选择器(它们只是映射到具体字体的历史别名)。
+const EDITOR_FONT_SKIP = new Set(['serif-classic', 'sans-modern', 'script-elegant', 'display-bold']);
+export interface EditorFont { id: string; name: string; script: 'cjk' | 'latin'; stack: string; cjkId?: CjkFontId; }
+const EDITOR_FONTS: EditorFont[] = Object.entries(FONT_CATALOG)
+  .filter(([id]) => !EDITOR_FONT_SKIP.has(id) && EDITOR_FONT_NAMES[id])
+  .map(([id, entry]) => ({
+    id,
+    name: EDITOR_FONT_NAMES[id]!,
+    script: entry.script,
+    // entry.webFontFamily 已是具体 web 字体栈字符串(不是 WEB_FONTS 的 key)。
+    stack: entry.webFontFamily,
+    cjkId: isCjkFontId(id) ? id : undefined,
+  }));
+// 中文项预览串:字体名 + 一句短样例(子集化只拉这些字,极小)。
+const CJK_PREVIEW_SAMPLE = '字体预览一二三';
+
+// ── 自定义取色器(参考「填充」面板设计):HSV 拾色 + 色相/透明度条 + 预设色 + hex/不透明度 ──
+// 预设色 = 项目文字用色(黑为主 + 品牌青/紫)。
+const COLOR_SWATCHES = ['#111111', '#FFFFFF', '#13B8A6', '#8C5EF4', '#C9B6F7', '#999999'];
+function clamp01(x: number) { return Math.min(1, Math.max(0, x)); }
+function hsvToRgb(h: number, s: number, v: number) {
+  h = ((h % 360) + 360) % 360;
+  const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; } else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; } else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+  return { r: Math.round((r + m) * 255), g: Math.round((g + m) * 255), b: Math.round((b + m) * 255) };
+}
+function rgbToHsv(r: number, g: number, b: number) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d) {
+    if (max === r) h = 60 * ((((g - b) / d) % 6 + 6) % 6);
+    else if (max === g) h = 60 * ((b - r) / d + 2);
+    else h = 60 * ((r - g) / d + 4);
+  }
+  return { h, s: max ? d / max : 0, v: max };
+}
+function hexToRgb(hex: string) {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
+  if (!m) return null;
+  const n = parseInt(m[1]!, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+function toHex(n: number) { return Math.round(n).toString(16).padStart(2, '0'); }
+function rgbToHex(r: number, g: number, b: number) { return `#${toHex(r)}${toHex(g)}${toHex(b)}`; }
 
 // The editor now spans the whole album lifecycle (W10 flow unification): the same
 // EditorPort chrome renders for a still-generating album (building), a draft being
@@ -345,13 +412,17 @@ function EditorShell({
     (storyProgress === null ||
       (hasStoryGate && !computeExportUnlocked(breadcrumbStage, storyProgress.allDone)));
   const exportUnlocked = mode !== 'authoring' || !authoringExportLocked;
+  // 排完版进入编辑器默认落在【画板(编辑)视图】(用户拍板 2026-07-18):非收集态(已有版式页)
+  // 首帧就带 overview-on,#ovGrid 画板直出,不再先闪一下画册预览。收集态还没版式页可编辑,
+  // 保留照片网格、不进画板。EditorBook 的 enter/exitOverview 之后再命令式增删这个类。
+  const startOnCanvas = !(mode === 'authoring' && initialPages.length === 0);
 
   return (
     <ChatCoordinatorContext.Provider value={coordinator}>
       <div
         ref={outerRootRef}
         data-album-fonts-ready={fontsReady}
-        className="editor-port font-sans antialiased leading-relaxed"
+        className={`editor-port font-sans antialiased leading-relaxed${startOnCanvas ? ' overview-on' : ''}`}
         data-screen-label="02 Yujee Editor"
       >
         <div className="page-glow" aria-hidden="true" />
@@ -761,8 +832,28 @@ function EditorBook({
     function pageByIndex(idx: number): EditorPage | undefined {
       return pagesState.find((p) => p.pageIndex === idx);
     }
-    const spreadLabel = (i: number) =>
-      currentLang === 'zh' ? '跨页 ' + (i + 1) : 'Spread ' + (i + 1);
+    // 画布格/章节栏/上下文徽标共用的跨页标题:给「人话」页位而非 Spread 序号。
+    // 封面 / 封底按页面类别判定;内页用展示层真实页码(封面/目录/封尾不计),
+    // 双页跨页给出页码区间(第 X–Y 页)。folio 全缺(如残留目录页)回退跨页序号。
+    const spreadLabel = (i: number) => {
+      const zh = currentLang === 'zh';
+      const [lp, rp] = spreadPages(i);
+      const present = [lp, rp].filter((p): p is EditorPage => p !== null);
+      const slots = present.map(pageSlot);
+      if (slots.includes('cover')) return zh ? '封面' : 'Cover';
+      if (slots.includes('ending')) return zh ? '封底' : 'Back cover';
+      const folios = foliosOfBook();
+      const nums = present
+        .map((p) => folios[pagesState.indexOf(p)])
+        .filter((n): n is number => n != null);
+      if (nums.length >= 2) {
+        const lo = nums[0];
+        const hi = nums[nums.length - 1];
+        return zh ? `第 ${lo}–${hi} 页` : `Pages ${lo}–${hi}`;
+      }
+      if (nums.length === 1) return zh ? `第 ${nums[0]} 页` : `Page ${nums[0]}`;
+      return zh ? '跨页 ' + (i + 1) : 'Spread ' + (i + 1);
+    };
 
     // Photos live only in the browser (invariant 1). 屏显分级(性能):主画布/翻页叶
     // 用 display 派生图(~1600px),缩略图条/总览格用 thumb 派生图(~240px);原图只
@@ -859,7 +950,14 @@ function EditorBook({
       // 全表面统一全保真:display 派生图 + 可编辑标记 + fitTextBoxes(记忆化)。
       // (迷你缩略图条已移除,不再有 thumb 降级表面。)
       el.innerHTML = faceHTML(page, el.clientWidth, el.clientHeight, resolveImage);
-      el.querySelectorAll<HTMLElement>('img[data-image-slot], .ch-mark, .ch-narrative, .photo .cap').forEach((node) => {
+      // 可编辑标记:图片槽 + 所有文字槽。已迁 HTML 的模板把文字渲染成
+      // `<div data-text-key=…>`(无 .ch-* 类),旧选择器只认 .ch-mark/.ch-narrative/
+      // .photo .cap → 这些模板的文字全都标不上 data-editable,导致「选不中文字/改不了
+      // 字体」。这里统一以 [data-text-key] 为文字槽的权威标记(隐藏的 folio 槽是
+      // display:none,点不到,无害)。旧类名保留,兼容未迁模板。
+      el.querySelectorAll<HTMLElement>(
+        'img[data-image-slot], [data-text-key]:not(img), .ch-mark, .ch-narrative, .photo .cap',
+      ).forEach((node) => {
         node.setAttribute('data-editable', '');
       });
       markEditableTextKeys(el, page);
@@ -1085,10 +1183,17 @@ function EditorBook({
         el.classList.toggle('page-selected', pi !== undefined && Number(pi) === selectedPageIndex);
       }
       // 画板(overview)上的同一页也要亮:画板即工作面,选中态两边同步。
+      // ⚠️ 空白半页的 data-page-index="",而 Number("")===0 —— 选中封面(pageIndex 0)
+      // 时会让全书所有空白半页都误亮成选中态(封面/封尾的空侧尤其明显)。必须先排除
+      // 空串/缺失,再比对页码。
       byId('ovGrid')
         ?.querySelectorAll<HTMLElement>('.ov-page[data-page-index]')
         .forEach((el) => {
-          el.classList.toggle('ov-page-selected', Number(el.dataset.pageIndex) === selectedPageIndex);
+          const pi = el.dataset.pageIndex;
+          el.classList.toggle(
+            'ov-page-selected',
+            pi !== undefined && pi !== '' && Number(pi) === selectedPageIndex,
+          );
         });
     }
     const onPageSelect = (el: HTMLElement) => {
@@ -1099,8 +1204,8 @@ function EditorBook({
       // Switching/deselecting a page tears down any open image-edit overlay.
       clearImageSelection();
       updateSelectionHighlight();
-      if (selectedPageIndex === idx) showElementToolbar(el, 'text');
-      else hideElementToolbar();
+      // 选中的是「页」而非具体文字/图片 → 不出工具条(用户拍板)。要编辑再点具体的文字或图片。
+      hideElementToolbar();
     };
 
     // ════════════════════════════════════════════════════════════════════════
@@ -1184,33 +1289,35 @@ function EditorBook({
       // Clicks on the controls must not bubble to the page (which would deselect).
       ov.addEventListener('click', (e) => e.stopPropagation());
       ov.addEventListener('mousedown', (e) => e.stopPropagation());
-      bookEl.appendChild(ov);
+      // 画布(编辑)模式下 #book 是 display:none —— 浮层若挂在 #book 上会 0×0 不可见,
+      // 缩放/复位控件就永远看不到。挂到 .book-stage(#book 的父级,与 #elBar 同一 fixed 包含
+      // 块,两种视图都在),position:fixed + setFixedPos 按选中图片的视口 rect 定位。
+      (bookEl.parentElement ?? bookEl).appendChild(ov);
       imgEditOverlay = ov;
       imgEditSlider = slider;
       return ov;
     }
-    // Position the overlay near the bottom edge of the selected image, in
-    // book-local (unscaled) coords. The overlay is a child of #book, which is
-    // CSS-scaled by `zoom` and clips overflow — so we (a) divide screen px by zoom
-    // and (b) anchor the overlay INSIDE the image's lower edge (not below it) so a
-    // photo flush with the page bottom doesn't push the controls into the clipped
-    // overflow region. translateX(-50%) (CSS) centers it on the computed x.
+    // Float the overlay near the bottom edge of the selected image, in VIEWPORT
+    // coords via setFixedPos (position:fixed, subtracting the perspective containing
+    // block like #elBar). Works in canvas mode where #book is hidden and the live
+    // image is an #ovGrid thumbnail — getBoundingClientRect gives the on-screen rect
+    // regardless of which view is active, so no per-view zoom math is needed.
     function positionImgEditOverlay() {
       if (!imgEdit || !imgEditOverlay) return;
-      const bookRect = bookEl.getBoundingClientRect();
+      const ov = imgEditOverlay;
       // #168: anchor to the SLOT FRAME (the overflow:hidden wrapper <div> around the
       // <img>), not the <img> itself — once scale>1 the img's rect is the zoomed
       // (larger, clipped-off) size, which would float the overlay off the frame.
-      // The wrapper's rect is the fixed frame the user sees. Fall back to the img if
-      // (defensively) it has no parent element.
       const frameEl = imgEdit.imgEl.parentElement ?? imgEdit.imgEl;
-      const imgRect = frameEl.getBoundingClientRect();
-      const z = zoom || 1;
-      const localLeft = (imgRect.left - bookRect.left) / z + imgRect.width / z / 2;
-      const localBottom = (imgRect.bottom - bookRect.top) / z;
-      // ~36px overlay height + 8px inset, anchored inside the image's bottom edge.
-      imgEditOverlay.style.left = `${localLeft}px`;
-      imgEditOverlay.style.top = `${localBottom - 44}px`;
+      const r = frameEl.getBoundingClientRect();
+      const w = ov.offsetWidth, h = ov.offsetHeight;
+      // Centered on the frame, anchored inside its lower edge (8px inset), then
+      // clamped into the viewport (and clear of the chat rail on the left).
+      let left = r.left + r.width / 2 - w / 2;
+      let top = r.bottom - h - 8;
+      left = Math.min(window.innerWidth - w - 8, Math.max(canvasLeftBound(), left));
+      top = Math.min(window.innerHeight - h - 8, Math.max(r.top + 4, top));
+      setFixedPos(ov, left, top);
     }
     function selectImage(hostEl: HTMLElement, imgEl: HTMLImageElement, slotId: string) {
       const pi = hostEl.dataset.pageIndex;
@@ -1230,7 +1337,9 @@ function EditorBook({
       if (imgEditSlider) imgEditSlider.value = String(imgEdit.pos.scale);
       ov.style.display = '';
       positionImgEditOverlay();
-      showElementToolbar(imgEl.parentElement ?? imgEl, 'photo');
+      // 图片调整 = 拖动平移(前后左右)+ 滑块/滚轮缩放(尺寸)+ 复位,全在浮层里;
+      // 不再弹 el-bar 照片工具条(换照片/黑白已按用户拍板去掉)。先收掉可能开着的文字工具条。
+      hideElementToolbar();
     }
     function clearImageSelection() {
       if (imgEdit) imgEdit.imgEl.classList.remove('img-editing');
@@ -1316,6 +1425,10 @@ function EditorBook({
     // A click anywhere on a selected page: if it's on an editable image, enter
     // image-edit mode for that slot; otherwise fall through to page select/deselect.
     const surfaceClick = (hostEl: HTMLElement, e: MouseEvent) => {
+      // 手动编辑只在画布(overview)模式发生。预览(书籍)模式是纯只读:点页面/图片/
+      // 文字都不选中、不弹工具条。#book 与 #ovGrid 各自只在自己的模式可见,但书籍视图
+      // 的 pageLeft/pageRight 也走这条链路,这里统一挡在预览态之外。
+      if (!bodyEl.classList.contains('overview-on')) return;
       // A pan gesture ends with a synthetic click — swallow it so a drag doesn't
       // also toggle the image/page selection.
       if (dragMoved) {
@@ -1323,6 +1436,8 @@ function EditorBook({
         e.stopPropagation();
         return;
       }
+      // 真实点选(非平移收尾)= 新的选取意图 → 复位工具条「已手动移动」,让它重新贴到新图层上方。
+      editBarMoved = false;
       const pi = hostEl.dataset.pageIndex;
       const target = e.target as HTMLElement;
       const img = target.closest('img[data-image-slot]') as HTMLImageElement | null;
@@ -1394,11 +1509,7 @@ function EditorBook({
       if (rp) pageRight.dataset.pageIndex = String(rp.pageIndex);
       else delete pageRight.dataset.pageIndex;
       updateSelectionHighlight();
-      if (!imgEdit && selectedPageIndex != null) {
-        const selectedHost = [pageLeft, pageRight].find((host) => host.dataset.pageIndex === String(selectedPageIndex));
-        if (selectedHost) showElementToolbar(selectedHost, 'text');
-        else hideElementToolbar();
-      }
+      // (选中「页」不再弹工具条 —— 只有具体文字/图片才出;故重绘后不为页选中态补显工具条。)
       if (pageInd) pageInd.textContent = (i + 1) + ' / ' + spreadCount();
       if (ctxBadge) ctxBadge.textContent = spreadLabel(i);
       // Rail items key off their target spread (data-ch), which for AI chapters is
@@ -1749,6 +1860,11 @@ function EditorBook({
     }
     function exitOverview() {
       bodyEl.classList.remove('overview-on');
+      // 回到预览(只读):清掉画布态下的选中页/图片编辑/浮动工具条,别把编辑残留带进预览。
+      selectedPageIndex = null;
+      clearImageSelection();
+      hideElementToolbar();
+      updateSelectionHighlight();
       byId('viewCanvasBtn')?.classList.remove('active');
       byId('viewBookBtn')?.classList.add('active');
       zoom = 1; panX = 0; panY = 0; applyZoom();
@@ -1849,8 +1965,12 @@ function EditorBook({
         ovPanning = true;
         ovPanMoved = false;
         ovPanOrigin = { x: e.clientX, y: e.clientY, panX: ovPanX, panY: ovPanY };
-        ovStageEl?.setPointerCapture?.(e.pointerId);
-        ovStageEl?.classList.add('panning');
+        // 不在 pointerdown 就抓指针 / 上 panning 态:pointer capture 会把随后的
+        // click 事件重定向到 .book-overview(#ovGrid 的父级),而 panning 态的
+        // `*{pointer-events:none}` 又让 mouseup/click 落到容器上 —— 两者都会让
+        // #ovGrid 的 click 委托收不到,真实鼠标在画布模式「点不动」(选页/编辑失效)。
+        // 改为真正拖动越过阈值时才抓指针 + 上 panning 态,见 onOvPointerMove;
+        // 单纯点击永远走不到那一步,click 照常落到 .ov-page。
       }
     };
     const onOvPointerMove = (e: PointerEvent) => {
@@ -1866,7 +1986,14 @@ function EditorBook({
         return;
       }
       if (!ovPanning) return;
-      if (Math.abs(e.clientX - ovPanOrigin.x) > 3 || Math.abs(e.clientY - ovPanOrigin.y) > 3) ovPanMoved = true;
+      if (!ovPanMoved && (Math.abs(e.clientX - ovPanOrigin.x) > 3 || Math.abs(e.clientY - ovPanOrigin.y) > 3)) {
+        // 真的开始拖了:此刻才抓指针 + 上 panning 态(子级 pointer-events:none),
+        // 保证拖出元素也能继续平移。单纯点击到不了这里,click 照常选页/编辑。
+        ovPanMoved = true;
+        ovStageEl?.setPointerCapture?.(e.pointerId);
+        ovStageEl?.classList.add('panning');
+      }
+      if (!ovPanMoved) return; // 尚未越过阈值:先不平移,给 click 让路
       ovPanX = ovPanOrigin.panX + e.clientX - ovPanOrigin.x;
       ovPanY = ovPanOrigin.panY + e.clientY - ovPanOrigin.y;
       applyOvTransform();
@@ -1876,7 +2003,8 @@ function EditorBook({
       if (ovPointers.size < 2) ovPinchStart = null;
       if (ovPanning && ovPointers.size === 0) {
         ovPanning = false;
-        ovStageEl?.releasePointerCapture?.(e.pointerId);
+        // 只有真拖动过才抓了指针 —— 没抓过就别 release(避免无谓抛错),panning 态同理。
+        if (ovStageEl?.hasPointerCapture?.(e.pointerId)) ovStageEl.releasePointerCapture(e.pointerId);
         ovStageEl?.classList.remove('panning');
       }
     };
@@ -1912,19 +2040,9 @@ function EditorBook({
     ovGridEl?.addEventListener('pointermove', onImgPointerMove);
     ovGridEl?.addEventListener('pointerup', onImgPointerUp);
     ovGridEl?.addEventListener('wheel', onImgWheel, { passive: false });
-    ovGridEl?.addEventListener('dblclick', (e) => {
-      // 逃生门:双击跨页进入书籍视图翻页。编辑元素上的双击不触发(留给内联编辑)。
-      const target = e.target as HTMLElement;
-      if (target.closest('[data-editable], img[data-image-slot]')) return;
-      const spread = target.closest<HTMLElement>('.ov-spread[data-ovidx]');
-      if (spread) openSpreadFromOverview(Number(spread.dataset.ovidx));
-    });
-    function openSpreadFromOverview(i: number) {
-      exitOverview();
-      if (i !== currentCh) flipTo(i, i > currentCh ? 'next' : 'prev');
-      // 概览里选的页带回正常模式高亮(若选中页就在当前跨页,flipTo 不触发,这里补刷)。
-      updateSelectionHighlight();
-    }
+    // 取消「双击跨页 → 跳回书籍预览」的逃生门:用户在画布(编辑)模式双击想放大/聚焦
+    // 跨页,却被弹回预览,体验割裂。要回预览走底部的「预览模式」切换按钮即可,画布模式
+    // 内不再因双击而切视图。
     const stage = $('.book-stage') as HTMLElement | null;
     const onWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomBy(e.deltaY < 0 ? ZSTEP : -ZSTEP); }
@@ -1933,37 +2051,79 @@ function EditorBook({
 
     const editBar = byId('elBar') as HTMLElement | null;
     let editBarAnchor: HTMLElement | null = null;
+    let editBarMoved = false; // 用户拖动过工具条 → 停止自动贴图层(选新图层时复位)。
+    // #elBar / 面板都是 position:fixed,但它们在 .book-stage(perspective:2400px)内 ——
+    // perspective 会成为 fixed 的包含块,style.top/left 变成【相对该祖先】而非视口。所有定位/
+    // 拖动算的都是视口坐标(getBoundingClientRect),写 style 前必须减去包含块偏移才落到对的位置。
+    function fixedContainerOffset(el: HTMLElement): { left: number; top: number } {
+      let p = el.parentElement;
+      while (p) {
+        const s = getComputedStyle(p);
+        if (s.transform !== 'none' || s.perspective !== 'none' || s.filter !== 'none' || (s.willChange || '').includes('transform')) {
+          const r = p.getBoundingClientRect();
+          return { left: r.left, top: r.top };
+        }
+        p = p.parentElement;
+      }
+      return { left: 0, top: 0 };
+    }
+    function setFixedPos(el: HTMLElement, left: number, top: number) {
+      const off = fixedContainerOffset(el);
+      el.style.left = `${left - off.left}px`;
+      el.style.top = `${top - off.top}px`;
+    }
     function setEditBarGroup(group: 'text' | 'photo') {
       editBar?.querySelectorAll<HTMLElement>('[data-group]').forEach((el) => {
         el.style.display = el.dataset.group === group ? 'flex' : 'none';
       });
     }
+    // 工具条/弹层的左安全边界:对话栏(.pane-chat-col)展开时占着画布左侧,居中贴到左侧
+    // 文字(如封面标题)会把工具条最左的颜色/字体控件塞到对话栏下面看不见。以对话栏右缘 +8
+    // 作为左边界(折叠或不存在时退回视口 10px),保证整条工具条始终露在画布可视区里。
+    function canvasLeftBound(): number {
+      if (bodyEl.classList.contains('chat-collapsed')) return 10;
+      const chat = bodyEl.querySelector('.pane-chat-col') as HTMLElement | null;
+      if (!chat) return 10;
+      const r = chat.getBoundingClientRect();
+      return r.width > 0 && r.right > 0 ? r.right + 8 : 10;
+    }
     function positionElementToolbar() {
       if (!editBar || !editBar.classList.contains('show') || !editBarAnchor) return;
+      if (editBarMoved) return; // 用户已手动挪过 → 尊重其位置,不自动贴。
       const rect = editBarAnchor.getBoundingClientRect();
-      const top = Math.max(62, rect.top - editBar.offsetHeight - 10);
+      // 工具条【始终贴在被编辑图层的正上方】:top = 图层顶 − 工具条高 − 6(≈5pt),把图层露出来。
+      // 不再往下方翻(往下会盖住图层下面的内容);顶到 62px 安全线才夹住,是极端靠顶的兜底。
+      const top = Math.max(62, rect.top - editBar.offsetHeight - 6);
+      const minLeft = canvasLeftBound();
       const left = Math.min(
         window.innerWidth - editBar.offsetWidth - 10,
-        Math.max(10, rect.left + rect.width / 2 - editBar.offsetWidth / 2),
+        Math.max(minLeft, rect.left + rect.width / 2 - editBar.offsetWidth / 2),
       );
-      editBar.style.left = `${left}px`;
-      editBar.style.top = `${top}px`;
+      setFixedPos(editBar, left, top);
     }
     function showElementToolbar(anchor: HTMLElement, group: 'text' | 'photo') {
       if (!editBar) return;
       editBarAnchor = anchor;
       setEditBarGroup(group);
       editBar.classList.add('show');
+      // 颜色圆点跟随选中文字的当前颜色。
+      if (group === 'text') {
+        const t = selectedTextTargets()[0];
+        if (t) { setColorFromCss(getComputedStyle(t).color); updateColorDot(); }
+      }
       requestAnimationFrame(positionElementToolbar);
     }
     function hideElementToolbar() {
       editBarAnchor = null;
+      editBarMoved = false;
       editBar?.classList.remove('show');
+      closeEbPanels();
     }
     function selectedTextTargets(): HTMLElement[] {
       if (!editBarAnchor || imgEdit) return [];
-      if (editBarAnchor.matches('[data-editable]:not(img)')) return [editBarAnchor];
-      return Array.from(editBarAnchor.querySelectorAll<HTMLElement>('[data-editable]:not(img)'));
+      // 只改被选中的那一个文字节点,绝不波及整页其它文字(用户拍板:单独编辑不联动)。
+      // 锚点不是具体文字(如选中的是「页」)→ 无目标,样式工具对它不生效。
+      return editBarAnchor.matches('[data-editable]:not(img)') ? [editBarAnchor] : [];
     }
     function pageForEditableText(textEl: HTMLElement): EditorPage | null {
       const host = textEl.closest<HTMLElement>('.page, .leaf, .ov-page, .thumb-img-left, .thumb-img-right');
@@ -1972,14 +2132,12 @@ function EditorBook({
       return pageByIndex(Number(pageIndex)) ?? null;
     }
     function updateEditSizeLabel(targets = selectedTextTargets()) {
-      const label = byId('ebSize');
-      if (!label) return;
+      const input = byId('ebSizeInput') as HTMLInputElement | null;
+      if (!input) return;
       const first = targets[0];
-      if (!first) {
-        label.textContent = '--';
-        return;
-      }
-      label.textContent = `${Math.round(parseFloat(getComputedStyle(first).fontSize) || 14)}`;
+      // 编辑中避免打断用户输入:输入框聚焦时不回填。
+      if (document.activeElement === input) return;
+      input.value = first ? `${Math.round(parseFloat(getComputedStyle(first).fontSize) || 14)}` : '';
     }
     function flashEditFeedback(text: string) {
       const label = byId('ebSize');
@@ -2018,7 +2176,12 @@ function EditorBook({
       const page = pageForEditableText(textEl);
       textEl.setAttribute('contenteditable', 'true');
       textEl.style.cursor = 'text';
-      textEl.focus();
+      // preventScroll:.book-stage 是 overflow:auto,默认 focus 会把这段文字滚进视口 ——
+      // 在画布模式里它会被滚到「固定定位的浮动工具条」下面,于是用户想点文字改内容时
+      // 点到的其实是工具条按钮 → 触发 blur 收尾 → 编辑当场退出(表现为「编辑文案不可用」)。
+      // 不滚动 + 随后把工具条重新贴到文字上方,文字就一直露在外面可点可改。
+      textEl.focus({ preventScroll: true });
+      requestAnimationFrame(positionElementToolbar);
       const selection = window.getSelection();
       const range = document.createRange();
       range.selectNodeContents(textEl);
@@ -2037,42 +2200,30 @@ function EditorBook({
       };
       textEl.addEventListener('blur', finish, { once: true });
     }
-    function applyTextToolbarAction(action: string) {
+    // 选中文字统一改样式:每个目标先改画出来的 DOM(即时反馈),再把同样的 CSS 写回
+    // html 真相并落库(patchHtmlTextStyle);var(--…) 不能进 html(导出/AI 渲染环境没有
+    // 编辑器变量),字体一律用具体字体栈。styleForEl 返回该元素要写的 CSS(null=跳过)。
+    function applyTextStyle(styleForEl: (el: HTMLElement) => Record<string, string | null> | null) {
       const targets = selectedTextTargets();
       if (targets.length === 0) return;
-      const colorMap: Record<string, string> = {
-        'color-ink': '#111111',
-        'color-teal': '#13B8A6',
-        'color-purple': '#8C5EF4',
-        'color-gray': '#777777',
-      };
-      // 具体字体栈,不用 var(--…):这些值现在会写进 html 真相,而导出/AI 渲染
-      // 环境没有编辑器的 CSS 变量 —— var() 出去就是回退字体。
-      const fontMap: Record<string, string> = {
-        display: "'Playfair Display', 'Noto Serif SC', Georgia, serif",
-        playfair: "'Playfair Display', Georgia, serif",
-        body: "system-ui, -apple-system, 'Segoe UI', sans-serif",
-        mono: "ui-monospace, 'JetBrains Mono', Menlo, monospace",
-      };
-      // 每个动作除了改画出来的 DOM(即时反馈),还要把同样的 style 写回 html 真相
-      // 并落库 —— 此前这些按钮只改 innerHTML 幻影,任何重绘/刷新全部回退,
-      // AI 和导出更是从未见过这些调整。styleFor 返回「写进 html 的 CSS」;
-      // var(--…) 这类编辑器内部变量不能进 html(导出环境没有这些变量),
-      // font-family 一律用具体字体栈。
-      const styleFor = (el: HTMLElement): Record<string, string | null> | null => {
-        if (action === 'font-family') {
-          const sel = editBar?.querySelector<HTMLSelectElement>('.eb-sel');
-          const family = sel ? fontMap[sel.value] : undefined;
-          if (!family) return null;
-          el.style.fontFamily = family;
-          return { 'font-family': family };
-        }
-        if (action === 'font-plus' || action === 'font-minus') {
-          const current = parseFloat(getComputedStyle(el).fontSize) || 14;
-          const next = Math.min(72, Math.max(10, current + (action === 'font-plus' ? 2 : -2)));
-          el.style.fontSize = `${next}px`;
-          return { 'font-size': `${next}px` };
-        }
+      const styledPages = new Map<EditorPage, Record<string, Record<string, string | null>>>();
+      for (const el of targets) {
+        const props = styleForEl(el);
+        const textKey = el.dataset.textKey;
+        const page = pageForEditableText(el);
+        if (!props || !textKey || !page) continue;
+        syncPageHtml(page, (html) => patchHtmlTextStyle(html, textKey, props));
+        const perPage = styledPages.get(page) ?? {};
+        perPage[textKey] = { ...(perPage[textKey] ?? {}), ...props };
+        styledPages.set(page, perPage);
+      }
+      for (const [page, textStyles] of styledPages) persistPagePatch(page, textStyles);
+      updateEditSizeLabel(targets);
+      positionElementToolbar();
+    }
+    // 加粗 / 斜体 / 对齐(开关或设定型)。
+    function applyTextToolbarAction(action: string) {
+      applyTextStyle((el): Record<string, string | null> | null => {
         if (action === 'bold') {
           const on = getComputedStyle(el).fontWeight !== '700';
           el.style.fontWeight = on ? '700' : '';
@@ -2088,101 +2239,343 @@ function EditorBook({
           el.style.textAlign = value;
           return { 'text-align': value };
         }
-        if (colorMap[action]) {
-          el.style.color = colorMap[action]!;
-          return { color: colorMap[action]! };
-        }
         return null;
-      };
-      const styledPages = new Map<EditorPage, Record<string, Record<string, string | null>>>();
-      for (const el of targets) {
-        const props = styleFor(el);
-        const textKey = el.dataset.textKey;
-        const page = pageForEditableText(el);
-        if (!props || !textKey || !page) continue;
-        syncPageHtml(page, (html) => patchHtmlTextStyle(html, textKey, props));
-        const perPage = styledPages.get(page) ?? {};
-        perPage[textKey] = { ...(perPage[textKey] ?? {}), ...props };
-        styledPages.set(page, perPage);
-      }
-      for (const [page, textStyles] of styledPages) persistPagePatch(page, textStyles);
-      updateEditSizeLabel(targets);
-      positionElementToolbar();
+      });
     }
-    function replaceSelectedPhoto() {
-      if (!imgEdit) return;
-      const page = pageByIndex(imgEdit.pageIndex);
-      if (!page) return;
-      const pool = bookPhotoIds();
-      const current = page.imagesJson[imgEdit.slotId];
-      const next = pool.length > 1
-        ? pool[(Math.max(0, pool.indexOf(current ?? '')) + 1) % pool.length]
-        : undefined;
-      if (!next || next === current) {
-        flashEditFeedback(aT('无照片', 'No photos'));
+    function applyColorToSelection(hex: string) {
+      applyTextStyle((el) => { el.style.color = hex; return { color: hex }; });
+    }
+    function applyFontSizeToSelection(px: number) {
+      const size = Math.min(200, Math.max(6, Math.round(px)));
+      applyTextStyle((el) => { el.style.fontSize = `${size}px`; return { 'font-size': `${size}px` }; });
+    }
+    // 字体:套用项目字体栈 + 更新触发按钮名;中文艺术字按选中正文的实际字符按需子集化后重绘。
+    function applyFontToSelection(font: EditorFont) {
+      const targets = selectedTextTargets();
+      applyTextStyle((el) => { el.style.fontFamily = font.stack; return { 'font-family': font.stack }; });
+      const nameEl = byId('ebFontName');
+      if (nameEl) nameEl.textContent = font.name;
+      if (font.cjkId) {
+        const charset = targets.map((el) => el.textContent ?? '').join('');
+        void loadFontSubset({ fontIds: [font.cjkId], charset }).then(() => {
+          // 字体加载完成后,浏览器会自动把已设 font-family 的活节点换成真字形 —— 不能
+          // repaintPages:它会用模板数据重烘整格、把刚设的字体丢掉(终稿页无 htmlJson 尤其),
+          // 还会把 editBarAnchor 指向的文字节点换成新节点 → 之后点「编辑文案」落到已脱离
+          // DOM 的旧节点、看起来「打不开」。改为只对受影响格重跑 fitTextBoxes(不换节点,
+          // 按新字体度量重排字号)。
+          const hosts = new Set<HTMLElement>();
+          for (const el of targets) {
+            const host = el.closest<HTMLElement>('.ov-page, .page, .leaf');
+            if (host) hosts.add(host);
+          }
+          hosts.forEach((h) => fitTextBoxes(h));
+        }).catch(() => {});
+      }
+    }
+    // ── 字体面板(带搜索,列全部项目字体,自身字体预览)+ 字号预设面板 ──
+    const SIZE_PRESETS = [12, 14, 16, 18, 24, 32, 40, 48, 64, 80, 96, 120];
+    function closeEbPanels() {
+      byId('ebFontPanel')?.classList.remove('open');
+      byId('ebSizePanel')?.classList.remove('open');
+      byId('ebColorPanel')?.classList.remove('open');
+      byId('ebFontTrigger')?.classList.remove('active');
+    }
+    // 面板定位(position:fixed),须在 .open(可测量尺寸)后调用,最后一律夹进视口不裁切:
+    // - 取色气泡:放在工具条【右侧】(右边放不下就放左侧),不遮下方图层;
+    // - 字体/字号:贴触发器、往上弹(工具条本就在图层上方,面板再往上不遮图层)。
+    function positionEbPanel(panel: HTMLElement) {
+      if (!editBar) return;
+      const bar = editBar.getBoundingClientRect();
+      const pw = panel.offsetWidth, ph = panel.offsetHeight;
+      const M = 10;
+      if (panel.id === 'ebColorPanel') {
+        let left = bar.right + M;
+        if (left + pw > window.innerWidth - M) left = bar.left - pw - M; // 右边放不下 → 左侧
+        left = Math.max(M, Math.min(left, window.innerWidth - pw - M));
+        const top = Math.max(62, Math.min(bar.top, window.innerHeight - ph - M));
+        setFixedPos(panel, left, top);
         return;
       }
-      page.imagesJson = { ...page.imagesJson, [imgEdit.slotId]: next };
-      page.imagePosJson = { ...(page.imagePosJson ?? {}) };
-      delete page.imagePosJson[imgEdit.slotId];
-      imgEdit.pos = { ...DEFAULT_IMAGE_POS };
-      repaintPages([imgEdit.pageIndex]);
-      persistPagePatch(page);
-      flashEditFeedback(aT('已换', 'Swapped'));
+      const ctrl = panel.closest<HTMLElement>('.eb-ctrl');
+      const anchorLeft = (ctrl ?? editBar).getBoundingClientRect().left;
+      const left = Math.max(M, Math.min(anchorLeft, window.innerWidth - pw - M));
+      let top = bar.top - M - ph;
+      if (top < 62) top = bar.bottom + M;
+      top = Math.max(62, Math.min(top, window.innerHeight - ph - M));
+      setFixedPos(panel, left, top);
     }
-    function deleteSelectedPhoto() {
-      if (!imgEdit) return;
-      const pageIndex = imgEdit.pageIndex;
-      const page = pageByIndex(pageIndex);
-      if (!page) return;
-      delete page.imagesJson[imgEdit.slotId];
-      page.imagePosJson = { ...(page.imagePosJson ?? {}) };
-      delete page.imagePosJson[imgEdit.slotId];
-      clearImageSelection();
-      repaintPages([pageIndex]);
-      persistPagePatch(page);
-      flashEditFeedback(aT('已删', 'Deleted'));
+    // 通用拖动:按住 handle 拖动 moveEl(position:fixed),夹进视口。onMove 用于置「已手动移动」标志。
+    function startDrag(moveEl: HTMLElement, handle: HTMLElement, e: PointerEvent, onMove?: () => void) {
+      if (e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation();
+      const r = moveEl.getBoundingClientRect();
+      const ox = r.left, oy = r.top, sx = e.clientX, sy = e.clientY;
+      handle.setPointerCapture(e.pointerId);
+      const move = (ev: PointerEvent) => {
+        onMove?.();
+        const nx = Math.max(6, Math.min(ox + ev.clientX - sx, window.innerWidth - moveEl.offsetWidth - 6));
+        const ny = Math.max(56, Math.min(oy + ev.clientY - sy, window.innerHeight - moveEl.offsetHeight - 6));
+        setFixedPos(moveEl, nx, ny);
+      };
+      const up = (ev: PointerEvent) => {
+        handle.releasePointerCapture(ev.pointerId);
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', up);
+        handle.removeEventListener('pointercancel', up);
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', up);
+      handle.addEventListener('pointercancel', up);
     }
-    function toggleSelectedPhotoFilter() {
-      if (!imgEdit) return;
-      const active = imgEdit.imgEl.dataset.mockFilter === 'mono';
-      imgEdit.imgEl.dataset.mockFilter = active ? '' : 'mono';
-      imgEdit.imgEl.style.filter = active ? '' : 'grayscale(1) contrast(1.08)';
-      flashEditFeedback(active ? aT('原图', 'Raw') : aT('滤镜', 'Filter'));
+    function buildFontPanel() {
+      const panel = byId('ebFontPanel');
+      if (!panel || panel.dataset.built) return;
+      panel.dataset.built = '1';
+      const zh = currentLang === 'zh';
+      const esc = (s: string) => s.replace(/"/g, '&quot;');
+      const item = (f: EditorFont) =>
+        `<button type="button" class="eb-font-item" data-font-id="${f.id}" data-name="${esc(f.name.toLowerCase())}" style="font-family:${esc(f.stack)}">${f.name}</button>`;
+      const group = (label: string, list: EditorFont[]) =>
+        list.length ? `<div class="eb-panel-group">${label}</div>${list.map(item).join('')}` : '';
+      panel.innerHTML =
+        `<div class="eb-panel-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>` +
+        `<input class="eb-font-search" type="text" placeholder="${zh ? '搜索字体' : 'Search fonts'}" /></div>` +
+        `<div class="eb-panel-list">` +
+        group(zh ? '中文' : 'Chinese', EDITOR_FONTS.filter((f) => f.script === 'cjk')) +
+        group(zh ? '英文' : 'Latin', EDITOR_FONTS.filter((f) => f.script === 'latin')) +
+        `</div>`;
     }
-    const onEditBarPointerDown = (e: Event) => e.stopPropagation();
-    const onEditBarClick = (e: Event) => {
-      e.preventDefault();
+    function filterFontItems(q: string) {
+      const panel = byId('ebFontPanel');
+      if (!panel) return;
+      const query = q.trim().toLowerCase();
+      panel.querySelectorAll<HTMLElement>('.eb-font-item').forEach((el) => {
+        el.style.display = !query || (el.dataset.name ?? '').includes(query) ? '' : 'none';
+      });
+      panel.querySelectorAll<HTMLElement>('.eb-panel-group').forEach((g) => {
+        let sib = g.nextElementSibling as HTMLElement | null;
+        let any = false;
+        while (sib && sib.classList.contains('eb-font-item')) {
+          if (sib.style.display !== 'none') any = true;
+          sib = sib.nextElementSibling as HTMLElement | null;
+        }
+        g.style.display = any ? '' : 'none';
+      });
+    }
+    function toggleFontPanel() {
+      const panel = byId('ebFontPanel');
+      if (!panel) return;
+      const willOpen = !panel.classList.contains('open');
+      closeEbPanels();
+      if (!willOpen) return;
+      buildFontPanel();
+      panel.classList.add('open');
+      positionEbPanel(panel);
+      byId('ebFontTrigger')?.classList.add('active');
+      // 中文艺术字预览:把所有中文项名字 + 样例串子集化,面板里就能显示真字形。
+      // /api/v1/fonts/subset 单次最多 3 个 fontId(schema max 3),必须分批,否则整批 400。
+      const cjkIds = EDITOR_FONTS.map((f) => f.cjkId).filter((v): v is CjkFontId => !!v);
+      const charset = CJK_PREVIEW_SAMPLE + EDITOR_FONTS.filter((f) => f.script === 'cjk').map((f) => f.name).join('');
+      for (let i = 0; i < cjkIds.length; i += 3) {
+        void loadFontSubset({ fontIds: cjkIds.slice(i, i + 3), charset }).catch(() => {});
+      }
+      panel.querySelector<HTMLInputElement>('.eb-font-search')?.focus({ preventScroll: true });
+    }
+    function buildSizePanel() {
+      const panel = byId('ebSizePanel');
+      if (!panel || panel.dataset.built) return;
+      panel.dataset.built = '1';
+      panel.innerHTML =
+        `<div class="eb-panel-list">${SIZE_PRESETS.map((s) => `<button type="button" class="eb-size-item" data-size="${s}">${s}</button>`).join('')}</div>`;
+    }
+    function toggleSizePanel() {
+      const panel = byId('ebSizePanel');
+      if (!panel) return;
+      const willOpen = !panel.classList.contains('open');
+      closeEbPanels();
+      if (!willOpen) return;
+      buildSizePanel();
+      panel.classList.add('open');
+      positionEbPanel(panel);
+    }
+
+    // ── 自定义取色器(「填充」弹层):HSV 方块 + 色相/透明度条 + 预设 + hex/不透明度 ──
+    const ebColor = { h: 0, s: 0, v: 0, a: 1 };
+    const ebColorRgb = () => hsvToRgb(ebColor.h, ebColor.s, ebColor.v);
+    function ebColorCss() {
+      const { r, g, b } = ebColorRgb();
+      return ebColor.a >= 1 ? rgbToHex(r, g, b) : `rgba(${r}, ${g}, ${b}, ${Math.round(ebColor.a * 100) / 100})`;
+    }
+    function updateColorDot() {
+      const dot = byId('ebColorDot');
+      if (dot) dot.style.background = ebColorCss();
+    }
+    function setColorFromCss(css: string) {
+      const rgb = hexToRgb(css);
+      if (rgb) { ebColor.a = 1; Object.assign(ebColor, rgbToHsv(rgb.r, rgb.g, rgb.b)); return; }
+      const m = /rgba?\(([^)]+)\)/.exec(css);
+      if (m) {
+        const parts = m[1]!.split(',').map((s) => parseFloat(s));
+        Object.assign(ebColor, rgbToHsv(parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0));
+        ebColor.a = parts[3] === undefined ? 1 : clamp01(parts[3]);
+      }
+    }
+    function renderColorPanel() {
+      const p = byId('ebColorPanel');
+      if (!p) return;
+      const hue = hsvToRgb(ebColor.h, 1, 1);
+      const { r, g, b } = ebColorRgb();
+      const set = (sel: string, fn: (el: HTMLElement) => void) => { const el = p.querySelector<HTMLElement>(sel); if (el) fn(el); };
+      set('[data-sv-bg]', (el) => { el.style.background = `linear-gradient(to top, #000, rgba(0,0,0,0)), linear-gradient(to right, #fff, rgb(${hue.r},${hue.g},${hue.b}))`; });
+      set('[data-sv-cursor]', (el) => { el.style.left = `${ebColor.s * 100}%`; el.style.top = `${(1 - ebColor.v) * 100}%`; });
+      set('[data-hue-thumb]', (el) => { el.style.left = `${(ebColor.h / 360) * 100}%`; });
+      set('[data-alpha-bg]', (el) => { el.style.background = `linear-gradient(to right, rgba(${r},${g},${b},0), rgb(${r},${g},${b}))`; });
+      set('[data-alpha-thumb]', (el) => { el.style.left = `${ebColor.a * 100}%`; });
+      const hex = p.querySelector<HTMLInputElement>('[data-hex]');
+      if (hex && document.activeElement !== hex) hex.value = rgbToHex(r, g, b).slice(1).toUpperCase();
+      const ai = p.querySelector<HTMLInputElement>('[data-alpha-input]');
+      if (ai && document.activeElement !== ai) ai.value = String(Math.round(ebColor.a * 100));
+      p.querySelectorAll<HTMLElement>('[data-swatch]').forEach((el) => {
+        el.classList.toggle('active', (el.dataset.swatch ?? '').toLowerCase() === rgbToHex(r, g, b).toLowerCase());
+      });
+      updateColorDot();
+    }
+    function emitColor() { applyColorToSelection(ebColorCss()); updateColorDot(); }
+    function buildColorPanel() {
+      const p = byId('ebColorPanel');
+      if (!p || p.dataset.built) return;
+      p.dataset.built = '1';
+      const zh = currentLang === 'zh';
+      p.innerHTML =
+        `<div class="eb-color-head"><span>${zh ? '填充' : 'Fill'}</span><button type="button" class="eb-color-close" data-color-close aria-label="close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>` +
+        `<div class="eb-sv" data-sv><div class="eb-sv-bg" data-sv-bg></div><div class="eb-sv-cursor" data-sv-cursor></div></div>` +
+        `<div class="eb-track eb-hue" data-hue><div class="eb-track-thumb" data-hue-thumb></div></div>` +
+        `<div class="eb-track eb-alpha" data-alpha><div class="eb-alpha-bg" data-alpha-bg></div><div class="eb-track-thumb" data-alpha-thumb></div></div>` +
+        `<div class="eb-swatch-row">${COLOR_SWATCHES.map((c) => `<button type="button" class="eb-color-swatch" data-swatch="${c}" style="background:${c}"></button>`).join('')}</div>` +
+        `<div class="eb-color-fields"><span class="eb-hex-field"><b>#</b><input class="eb-hex-input" data-hex maxlength="6" spellcheck="false" /></span><span class="eb-alpha-field"><input class="eb-alpha-input" data-alpha-input inputmode="numeric" /><b>%</b></span></div>`;
+      // 顶部「填充」标题条 = 拖动手柄,整个气泡可挪。
+      const head = p.querySelector<HTMLElement>('.eb-color-head');
+      if (head) head.addEventListener('pointerdown', (e) => {
+        if ((e.target as HTMLElement).closest('[data-color-close]')) return;
+        startDrag(p, head, e as PointerEvent);
+      });
+      const dragTrack = (track: HTMLElement | null, onRatioXY: (e: PointerEvent, r: DOMRect) => void) => {
+        if (!track) return;
+        const move = (e: PointerEvent) => { onRatioXY(e, track.getBoundingClientRect()); renderColorPanel(); emitColor(); };
+        track.addEventListener('pointerdown', (e) => { e.preventDefault(); track.setPointerCapture(e.pointerId); move(e); });
+        track.addEventListener('pointermove', (e) => { if (track.hasPointerCapture(e.pointerId)) move(e); });
+        track.addEventListener('pointerup', (e) => { if (track.hasPointerCapture(e.pointerId)) track.releasePointerCapture(e.pointerId); });
+      };
+      dragTrack(p.querySelector('[data-sv]'), (e, r) => {
+        ebColor.s = clamp01((e.clientX - r.left) / r.width);
+        ebColor.v = clamp01(1 - (e.clientY - r.top) / r.height);
+      });
+      dragTrack(p.querySelector('[data-hue]'), (e, r) => { ebColor.h = clamp01((e.clientX - r.left) / r.width) * 360; });
+      dragTrack(p.querySelector('[data-alpha]'), (e, r) => { ebColor.a = clamp01((e.clientX - r.left) / r.width); });
+      p.addEventListener('click', (e) => {
+        const t = e.target as HTMLElement;
+        if (t.closest('[data-color-close]')) { closeEbPanels(); return; }
+        const sw = t.closest<HTMLElement>('[data-swatch]');
+        if (sw?.dataset.swatch) { setColorFromCss(sw.dataset.swatch); renderColorPanel(); emitColor(); }
+      });
+      p.addEventListener('input', (e) => {
+        const t = e.target as HTMLElement;
+        if (t.matches('[data-hex]')) {
+          const rgb = hexToRgb((t as HTMLInputElement).value);
+          if (rgb) { const a = ebColor.a; Object.assign(ebColor, rgbToHsv(rgb.r, rgb.g, rgb.b)); ebColor.a = a; renderColorPanel(); emitColor(); }
+        } else if (t.matches('[data-alpha-input]')) {
+          const v = parseFloat((t as HTMLInputElement).value);
+          if (!Number.isNaN(v)) { ebColor.a = clamp01(v / 100); renderColorPanel(); emitColor(); }
+        }
+      });
+    }
+    function toggleColorPanel() {
+      const p = byId('ebColorPanel');
+      if (!p) return;
+      const willOpen = !p.classList.contains('open');
+      closeEbPanels();
+      if (!willOpen) return;
+      buildColorPanel();
+      const first = selectedTextTargets()[0];
+      if (first) setColorFromCss(getComputedStyle(first).color);
+      renderColorPanel();
+      p.classList.add('open');
+      positionEbPanel(p);
+    }
+
+    const onEditBarPointerDown = (e: Event) => {
       e.stopPropagation();
+      if (!editBar) return;
       const target = e.target as HTMLElement;
+      // 交互控件不触发拖动;在空白/分隔线上按下 → 拖动整个工具条(position:fixed)。
+      if (target.closest('button, input, select, textarea, .eb-panel, [contenteditable="true"]')) return;
+      startDrag(editBar, editBar, e as PointerEvent, () => { editBarMoved = true; closeEbPanels(); });
+    };
+    const onEditBarClick = (e: Event) => {
+      const target = e.target as HTMLElement;
+      // 输入类控件(取色/字号输入/搜索)保留原生行为:不 preventDefault,否则打不开取色器/聚焦不了。
+      if (!target.closest('input')) e.preventDefault();
+      e.stopPropagation();
+      // 字体项 → 套用
+      const fontItem = target.closest<HTMLElement>('.eb-font-item[data-font-id]');
+      if (fontItem) {
+        const f = EDITOR_FONTS.find((x) => x.id === fontItem.dataset.fontId);
+        if (f) applyFontToSelection(f);
+        closeEbPanels();
+        return;
+      }
+      // 字号预设 → 套用
+      const sizeItem = target.closest<HTMLElement>('.eb-size-item[data-size]');
+      if (sizeItem) {
+        const px = Number(sizeItem.dataset.size);
+        if (px) {
+          applyFontSizeToSelection(px);
+          const inp = byId('ebSizeInput') as HTMLInputElement | null;
+          if (inp) inp.value = String(px);
+        }
+        closeEbPanels();
+        return;
+      }
+      if (target.closest('.eb-panel-search')) return; // 点搜索框:保持面板开
       const action = target.closest<HTMLElement>('[data-edit-action]')?.dataset.editAction;
       if (!action) return;
-      if (action === 'reset-photo') {
-        if (!imgEdit) return;
-        imgEdit.pos = { ...DEFAULT_IMAGE_POS };
-        applyLiveImagePos(imgEdit.imgEl, imgEdit.pos);
-        if (imgEditSlider) imgEditSlider.value = String(imgEdit.pos.scale);
-        commitImagePos();
-      } else if (action === 'replace-photo') {
-        replaceSelectedPhoto();
-      } else if (action === 'delete-photo') {
-        deleteSelectedPhoto();
-      } else if (action === 'photo-filter') {
-        toggleSelectedPhotoFilter();
-      } else if (action === 'edit-text') {
+      if (action === 'font-open') { toggleFontPanel(); return; }
+      if (action === 'font-size-open') { toggleSizePanel(); return; }
+      if (action === 'color-open') { toggleColorPanel(); return; }
+      if (action === 'font-size-input') return; // 交给 input/change
+      closeEbPanels(); // 其它按钮点击 → 收起面板
+      if (action === 'edit-text') {
         editSelectedText();
       } else {
-        applyTextToolbarAction(action);
+        applyTextToolbarAction(action); // bold / italic / align-*
       }
+    };
+    const onEditBarInput = (e: Event) => {
+      const target = e.target as HTMLElement;
+      // 取色器内部的 hex/透明度输入由色板自己的监听处理(见 buildColorPanel);这里只管字体搜索。
+      if (target.classList.contains('eb-font-search')) { filterFontItems((target as HTMLInputElement).value); return; }
     };
     const onEditBarChange = (e: Event) => {
       const target = e.target as HTMLElement;
-      const action = target.closest<HTMLElement>('[data-edit-action]')?.dataset.editAction;
-      if (action) applyTextToolbarAction(action);
+      if (target.id === 'ebSizeInput') {
+        const px = parseFloat((target as HTMLInputElement).value);
+        if (px > 0) applyFontSizeToSelection(px);
+      }
+    };
+    const onEditBarKeydown = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (target.id === 'ebSizeInput' && (e as KeyboardEvent).key === 'Enter') {
+        e.preventDefault();
+        const px = parseFloat((target as HTMLInputElement).value);
+        if (px > 0) applyFontSizeToSelection(px);
+        (target as HTMLInputElement).blur();
+      }
     };
     editBar?.addEventListener('pointerdown', onEditBarPointerDown);
     editBar?.addEventListener('click', onEditBarClick);
+    editBar?.addEventListener('input', onEditBarInput);
     editBar?.addEventListener('change', onEditBarChange);
+    editBar?.addEventListener('keydown', onEditBarKeydown);
     // 响应式整体缩放:.book 尺寸是纯 CSS(min(94%, 80vh*1.414, 1010px) + aspect-ratio),
     // 随视口/容器缩放;但页内容的 scale 是 paintEl/faceHTML 在 paint 那一刻按 clientWidth
     // 算死写进 innerHTML 的,不重绘就不跟随 —— 手机/平板整体缩放时内容溢出/不缩。
@@ -2749,7 +3142,9 @@ function EditorBook({
       stage?.removeEventListener('dblclick', onCanvasDoubleClick);
       editBar?.removeEventListener('pointerdown', onEditBarPointerDown);
       editBar?.removeEventListener('click', onEditBarClick);
+      editBar?.removeEventListener('input', onEditBarInput);
       editBar?.removeEventListener('change', onEditBarChange);
+      editBar?.removeEventListener('keydown', onEditBarKeydown);
       window.removeEventListener('resize', onWindowResize);
       if (resizeRepaintTimer !== null) clearTimeout(resizeRepaintTimer);
       stageRO?.disconnect();
@@ -2777,7 +3172,7 @@ function EditorBook({
     <main className="pane pane-center flex flex-col overflow-hidden relative md:order-3 md:flex-1" id="paneCenter">
       <div className="book-stage w-full flex-1 flex items-center justify-center px-4 pt-8 pb-16 overflow-auto relative">
         <div className="canvas-hint" data-i18n="canvasHint">
-          {locale === 'zh' ? '拖拽平移 · ⌘/Ctrl+滚轮缩放 · 点击元素可编辑' : 'Drag to pan · Cmd/Ctrl+wheel to zoom · Click to edit'}
+          {locale === 'zh' ? '切换到编辑模式，点击可手动编辑' : 'Switch to edit mode · click to edit manually'}
         </div>
         <div className="book bg-surface flex relative overflow-hidden" id="book">
           <div className="page page-left bg-surface" id="pageLeft" />
@@ -2801,11 +3196,11 @@ function EditorBook({
             百分比数字(点它复位;缩放操作走 ⌘/Ctrl+滚轮/捏合,+/− 按钮删除);
             视图切换单独一个 pill 在右下、按钮更大。 */}
         <div className="zoom-ctrl">
-          <span className="nav-seg flex items-center">
+          {/* 预览模式只留上一页/下一页箭头,页码(#thumbInd)按用户拍板去掉。 */}
+          <span className="nav-seg flex items-center gap-1.5">
             <button className="zoom-btn" data-thumbnav="-1" data-i18n-title="prevPage" title={locale === 'zh' ? '上一页' : 'Previous page'} aria-label={locale === 'zh' ? '上一页' : 'Previous page'}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="15 18 9 12 15 6" /></svg>
             </button>
-            <span className="zoom-pct" id="thumbInd" style={{ fontVariantNumeric: 'tabular-nums' }}>1/3</span>
             <button className="zoom-btn" data-thumbnav="1" data-i18n-title="nextPage" title={locale === 'zh' ? '下一页' : 'Next page'} aria-label={locale === 'zh' ? '下一页' : 'Next page'}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="9 18 15 12 9 6" /></svg>
             </button>
@@ -2817,18 +3212,9 @@ function EditorBook({
           <div className="view-ctrl">
             {/* 视图切换两档:预览模式(翻页书)/ 画布模式(无限画布)。悬停气泡由
                 [data-tip] CSS 出;运行时换语言走 data-i18n-tip(setLang 同步)。 */}
+            {/* 画板(编辑)按钮在左、且默认 active —— 现在排完版默认进画板,主视图排首位。 */}
             <button
               className="zoom-btn view-btn active"
-              id="viewBookBtn"
-              data-action="viewBook"
-              data-tip={locale === 'zh' ? '预览模式' : 'Preview mode'}
-              data-i18n-tip="previewMode"
-              aria-label={locale === 'zh' ? '预览模式' : 'Preview mode'}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2Z" /><path d="M22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8Z" /></svg>
-            </button>
-            <button
-              className="zoom-btn view-btn"
               id="viewCanvasBtn"
               data-action="viewCanvas"
               data-tip={locale === 'zh' ? '画布模式' : 'Canvas mode'}
@@ -2837,21 +3223,44 @@ function EditorBook({
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
             </button>
+            <button
+              className="zoom-btn view-btn"
+              id="viewBookBtn"
+              data-action="viewBook"
+              data-tip={locale === 'zh' ? '预览模式' : 'Preview mode'}
+              data-i18n-tip="previewMode"
+              aria-label={locale === 'zh' ? '预览模式' : 'Preview mode'}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2Z" /><path d="M22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8Z" /></svg>
+            </button>
           </div>
         </div>
 
         <div className="el-bar" id="elBar" role="toolbar" aria-label={locale === 'zh' ? '元素编辑工具' : 'Element editing tools'}>
           <div className="eb-group" data-group="text">
-            <select className="eb-sel" data-edit-action="font-family" title={locale === 'zh' ? '字体' : 'Font'} aria-label={locale === 'zh' ? '字体' : 'Font'} defaultValue="display">
-              <option value="display">{locale === 'zh' ? '思源宋体' : 'Display'}</option>
-              <option value="playfair">Playfair</option>
-              <option value="body">{locale === 'zh' ? '系统体' : 'System'}</option>
-              <option value="mono">{locale === 'zh' ? '等宽' : 'Mono'}</option>
-            </select>
+            {/* 颜色:自定义取色器(点开「填充」弹层,见 buildColorPanel)。 */}
+            <span className="eb-ctrl">
+              <button type="button" className="eb-color-trigger" data-edit-action="color-open" title={locale === 'zh' ? '颜色' : 'Color'} aria-label={locale === 'zh' ? '文字颜色' : 'Text color'}>
+                <span className="eb-color-dot" id="ebColorDot" />
+              </button>
+              <div className="eb-panel eb-color-panel" id="ebColorPanel" />
+            </span>
             <span className="eb-sep" />
-            <button type="button" className="eb-btn" data-edit-action="font-minus" title={locale === 'zh' ? '缩小字号' : 'Smaller'} aria-label={locale === 'zh' ? '缩小字号' : 'Smaller'}><span style={{ fontSize: 11 }}>A</span>-</button>
-            <span className="eb-num" id="ebSize">--</span>
-            <button type="button" className="eb-btn" data-edit-action="font-plus" title={locale === 'zh' ? '放大字号' : 'Larger'} aria-label={locale === 'zh' ? '放大字号' : 'Larger'}><span style={{ fontSize: 15 }}>A</span>+</button>
+            {/* 字体:触发按钮 + 带搜索的字体面板(imperative 填充,见 buildFontPanel)。 */}
+            <span className="eb-ctrl">
+              <button type="button" className="eb-trigger eb-font-trigger" id="ebFontTrigger" data-edit-action="font-open" title={locale === 'zh' ? '字体' : 'Font'}>
+                <span className="eb-font-name" id="ebFontName">{locale === 'zh' ? '字体' : 'Font'}</span>
+                <svg className="eb-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+              </button>
+              <div className="eb-panel eb-font-panel" id="ebFontPanel" />
+            </span>
+            <span className="eb-sep" />
+            {/* 字号:可编辑数字 + 预设下拉。 */}
+            <span className="eb-ctrl eb-size">
+              <input className="eb-size-input" id="ebSizeInput" data-edit-action="font-size-input" inputMode="numeric" placeholder="--" aria-label={locale === 'zh' ? '字号' : 'Font size'} />
+              <button type="button" className="eb-size-caret" data-edit-action="font-size-open" title={locale === 'zh' ? '字号预设' : 'Size presets'} aria-label={locale === 'zh' ? '字号预设' : 'Size presets'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg></button>
+              <div className="eb-panel eb-size-panel" id="ebSizePanel" />
+            </span>
             <span className="eb-sep" />
             <button type="button" className="eb-btn" data-edit-action="bold" title={locale === 'zh' ? '加粗' : 'Bold'} aria-label={locale === 'zh' ? '加粗' : 'Bold'}><b>B</b></button>
             <button type="button" className="eb-btn" data-edit-action="italic" title={locale === 'zh' ? '斜体' : 'Italic'} aria-label={locale === 'zh' ? '斜体' : 'Italic'}><i style={{ fontFamily: 'Georgia,serif' }}>I</i></button>
@@ -2860,22 +3269,10 @@ function EditorBook({
             <button type="button" className="eb-btn" data-edit-action="align-center" title={locale === 'zh' ? '居中' : 'Center'} aria-label={locale === 'zh' ? '居中' : 'Center'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="6" y1="12" x2="18" y2="12" /><line x1="5" y1="18" x2="19" y2="18" /></svg></button>
             <button type="button" className="eb-btn" data-edit-action="align-right" title={locale === 'zh' ? '右对齐' : 'Align right'} aria-label={locale === 'zh' ? '右对齐' : 'Align right'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="9" y1="12" x2="21" y2="12" /><line x1="6" y1="18" x2="21" y2="18" /></svg></button>
             <span className="eb-sep" />
-            <span className="eb-swatch" style={{ background: '#111111' }} data-edit-action="color-ink" title={locale === 'zh' ? '墨色' : 'Ink'} role="button" aria-label={locale === 'zh' ? '墨色' : 'Ink'} />
-            <span className="eb-swatch" style={{ background: '#13B8A6' }} data-edit-action="color-teal" title={locale === 'zh' ? '青色' : 'Teal'} role="button" aria-label={locale === 'zh' ? '青色' : 'Teal'} />
-            <span className="eb-swatch" style={{ background: '#8C5EF4' }} data-edit-action="color-purple" title={locale === 'zh' ? '紫色' : 'Purple'} role="button" aria-label={locale === 'zh' ? '紫色' : 'Purple'} />
-            <span className="eb-swatch" style={{ background: '#999999' }} data-edit-action="color-gray" title={locale === 'zh' ? '灰色' : 'Gray'} role="button" aria-label={locale === 'zh' ? '灰色' : 'Gray'} />
-            <span className="eb-sep" />
-            <button type="button" className="eb-btn" data-edit-action="edit-text" title={locale === 'zh' ? '编辑文字' : 'Edit text'} aria-label={locale === 'zh' ? '编辑文字' : 'Edit text'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg><span>{locale === 'zh' ? '文字' : 'Text'}</span></button>
+            <button type="button" className="eb-btn eb-primary" data-edit-action="edit-text" title={locale === 'zh' ? '编辑文案' : 'Edit text'} aria-label={locale === 'zh' ? '编辑文案' : 'Edit text'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg><span>{locale === 'zh' ? '编辑文案' : 'Edit text'}</span></button>
           </div>
-          <div className="eb-group" data-group="photo" style={{ display: 'none' }}>
-            <button type="button" className="eb-btn" data-edit-action="replace-photo" title={locale === 'zh' ? '更换照片' : 'Replace photo'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg><span>{locale === 'zh' ? '更换' : 'Replace'}</span></button>
-            <span className="eb-sep" />
-            <button type="button" className="eb-btn" data-edit-action="reset-photo" title={locale === 'zh' ? '复位照片' : 'Reset photo'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 3v6h6" /></svg><span>{locale === 'zh' ? '复位' : 'Reset'}</span></button>
-            <span className="eb-sep" />
-            <button type="button" className="eb-btn" data-edit-action="photo-filter" title={locale === 'zh' ? '滤镜' : 'Filter'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none" /></svg><span>{locale === 'zh' ? '滤镜' : 'Filter'}</span></button>
-            <span className="eb-sep" />
-            <button type="button" className="eb-btn danger" data-edit-action="delete-photo" title={locale === 'zh' ? '删除照片' : 'Delete photo'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg><span>{locale === 'zh' ? '删除' : 'Delete'}</span></button>
-          </div>
+          {/* 图片编辑不再用 el-bar:选中图片=拖动平移(前后左右)+ 滑块/滚轮缩放 + 复位,
+              全在图片浮层(img-edit-overlay)里完成。换照片/黑白已去掉。 */}
         </div>
       </div>
 

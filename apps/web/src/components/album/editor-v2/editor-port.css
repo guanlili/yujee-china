@@ -123,7 +123,9 @@
   position:relative;
   overflow:hidden;
   backface-visibility: hidden;
-  cursor:pointer;
+  /* 预览(书籍)模式只读:书页只用于查看,不再是「点一下能编辑」的目标,故用默认
+     光标而非 pointer(编辑发生在画布模式的 .ov-page)。子级 [data-editable] 会继承此值。 */
+  cursor:default;
 }
 /* W11: the page the user selected to talk to the AI about ("change this page").
    An INSET box-shadow gets painted over by full-bleed page content; an OUTSIDE
@@ -895,7 +897,7 @@
   cursor:grab; outline:2px solid var(--accent); outline-offset:-2px;
 }
 .editor-port .img-edit-overlay{
-  position:absolute; z-index:9; transform:translateX(-50%);
+  position:fixed; z-index:110;
   display:flex; align-items:center; gap:10px;
   padding:6px 10px; border-radius:9999px;
   background:var(--surface); border:1px solid var(--border-soft);
@@ -1119,43 +1121,165 @@
 .editor-port .book-stage:hover .canvas-hint{
   opacity:1; transform:translateX(-50%) translateY(1px);
 }
-.editor-port [data-editable]{
+/* 手动编辑只在画布(overview)模式:预览态是纯只读,不给可编辑光标/悬停描边等暗示。 */
+.editor-port.overview-on [data-editable]{
   cursor:pointer; outline:1.5px solid transparent; outline-offset:3px;
   border-radius:2px; transition:outline-color .15s var(--ease);
 }
-.editor-port [data-editable]:hover:not(.el-sel){
+.editor-port.overview-on [data-editable]:hover:not(.el-sel){
   outline-color:rgba(19,184,166,.5); outline-style:dashed;
 }
+/* ── 文字编辑工具条(2026-07 重做,参考设计:白色圆角胶囊 + 分区竖线) ── */
 .editor-port .el-bar{
-  position:fixed; z-index:120; display:none; align-items:center; gap:2px;
-  padding:5px; background:var(--surface); border:1px solid var(--border-soft);
-  border-radius:12px; box-shadow:0 6px 26px rgba(0,0,0,.15);
+  position:fixed; z-index:120; display:none; align-items:center; gap:1px;
+  padding:6px; background:var(--surface); border:1px solid var(--border-soft);
+  border-radius:16px; box-shadow:0 10px 34px rgba(0,0,0,.16);
+  cursor:grab; /* 空白/分隔线处可拖动整条工具条;按钮/输入各自的光标覆盖此值 */
 }
+.editor-port .el-bar:active{ cursor:grabbing; }
 .editor-port .el-bar.show{ display:flex; animation:ep-op-in .16s var(--ease) both; }
-.editor-port .eb-group{ display:flex; align-items:center; gap:2px; }
+.editor-port .eb-group{ display:flex; align-items:center; gap:1px; }
 .editor-port .eb-btn{
-  height:30px; min-width:30px; padding:0 8px; border-radius:8px; border:none;
-  background:transparent; color:var(--fg-2); font-size:12.5px;
-  display:flex; align-items:center; justify-content:center; gap:5px;
-  cursor:pointer; transition:background .12s var(--ease);
+  height:34px; min-width:34px; padding:0 9px; border-radius:10px; border:none;
+  background:transparent; color:var(--fg-2); font-size:13px;
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  cursor:pointer; transition:background .12s var(--ease), color .12s var(--ease);
   white-space:nowrap;
 }
 .editor-port .eb-btn:hover{ background:var(--bg); color:var(--fg); }
 .editor-port .eb-btn.danger:hover{ background:#fef2f2; color:#c44; }
-.editor-port .eb-btn svg{ width:15px; height:15px; }
-.editor-port .eb-sep{ width:1px; height:20px; background:var(--border-soft); margin:0 3px; flex:none; }
-.editor-port .eb-sel{
-  height:30px; border:none; background:transparent; font-size:12.5px; color:var(--fg-2);
-  border-radius:8px; padding:0 6px; cursor:pointer; outline:none;
+.editor-port .eb-btn svg{ width:16px; height:16px; }
+.editor-port .eb-btn.eb-primary{ color:var(--fg); font-weight:600; }
+.editor-port .eb-sep{ width:1px; height:22px; background:var(--border-soft); margin:0 5px; flex:none; }
+
+/* 下拉/弹层控件外壳:面板相对它定位,统一向上弹(工具条在文字上方,面板再往上,不遮文字)。 */
+.editor-port .eb-ctrl{ position:relative; display:flex; align-items:center; }
+
+/* 颜色:圆点触发 + 自定义「填充」取色弹层 */
+.editor-port .eb-color-trigger{
+  width:34px; height:34px; border:none; background:transparent; border-radius:10px;
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  transition:background .12s var(--ease);
 }
-.editor-port .eb-sel:hover{ background:var(--bg); }
-.editor-port .eb-num{ min-width:24px; text-align:center; font-family:var(--font-mono); font-size:12px; color:var(--fg); }
-.editor-port .eb-swatch{
-  width:18px; height:18px; border-radius:50%; border:2px solid #fff;
-  box-shadow:0 0 0 1px var(--border); cursor:pointer; flex:none;
-  transition:transform .12s var(--ease);
+.editor-port .eb-color-trigger:hover{ background:var(--bg); }
+.editor-port .eb-color-dot{
+  width:22px; height:22px; border-radius:50%; background:#111;
+  box-shadow:0 0 0 1px var(--border), inset 0 0 0 2px #fff;
 }
-.editor-port .eb-swatch:hover{ transform:scale(1.15); }
+
+/* 触发按钮(字体) */
+.editor-port .eb-trigger{
+  height:34px; padding:0 8px 0 12px; border:none; background:transparent; border-radius:10px;
+  display:flex; align-items:center; gap:6px; cursor:pointer; color:var(--fg);
+  font-size:13px; transition:background .12s var(--ease);
+}
+.editor-port .eb-trigger:hover, .editor-port .eb-trigger.active{ background:var(--bg); }
+.editor-port .eb-font-name{ max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.editor-port .eb-caret{ width:14px; height:14px; color:var(--meta); flex:none; }
+
+/* 字号 */
+.editor-port .eb-size-input{
+  width:46px; height:34px; border:none; background:transparent; color:var(--fg);
+  font-size:13px; font-family:var(--font-mono); text-align:center; border-radius:10px 0 0 10px;
+  outline:none; -moz-appearance:textfield;
+}
+.editor-port .eb-size-input:hover, .editor-port .eb-size-input:focus{ background:var(--bg); }
+.editor-port .eb-size-caret{
+  height:34px; width:22px; border:none; background:transparent; color:var(--meta);
+  display:flex; align-items:center; justify-content:center; cursor:pointer; border-radius:0 10px 10px 0;
+}
+.editor-port .eb-size-caret:hover{ background:var(--bg); }
+.editor-port .eb-size-caret svg{ width:14px; height:14px; }
+
+/* 下拉/弹层面板:一律【向上】弹(bottom 贴触发器顶),因为工具条本身就在文字上方,
+   面板再往下会盖住正在编辑的文字。相对 .eb-ctrl 定位。 */
+.editor-port .eb-panel{
+  display:none; position:fixed; z-index:130;
+  min-width:236px; max-height:min(360px, 72vh); overflow:hidden; flex-direction:column;
+  background:var(--surface); border:1px solid var(--border-soft); border-radius:14px;
+  box-shadow:0 12px 40px rgba(0,0,0,.16);
+}
+.editor-port .eb-panel.open{ display:flex; animation:ep-op-in .14s var(--ease) both; }
+.editor-port .eb-size-panel{ min-width:104px; }
+
+/* ── 自定义「填充」取色弹层 ── */
+.editor-port .eb-color-panel{ width:236px; padding:0; }
+.editor-port .eb-color-head{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 14px; font-size:14px; font-weight:600; color:var(--fg);
+  border-bottom:1px solid var(--border-soft);
+  cursor:grab; user-select:none; /* 标题条 = 拖动手柄 */
+}
+.editor-port .eb-color-head:active{ cursor:grabbing; }
+.editor-port .eb-color-close{
+  border:none; background:transparent; color:var(--meta); cursor:pointer;
+  width:26px; height:26px; border-radius:7px; display:flex; align-items:center; justify-content:center;
+}
+.editor-port .eb-color-close:hover{ background:var(--bg); color:var(--fg); }
+.editor-port .eb-color-close svg{ width:16px; height:16px; }
+.editor-port .eb-sv{
+  position:relative; margin:12px 14px 0; height:150px; border-radius:10px; overflow:hidden;
+  cursor:crosshair; touch-action:none;
+}
+.editor-port .eb-sv-bg{ position:absolute; inset:0; }
+.editor-port .eb-sv-cursor{
+  position:absolute; width:14px; height:14px; border-radius:50%; border:2px solid #fff;
+  box-shadow:0 0 0 1px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.4);
+  transform:translate(-50%, -50%); pointer-events:none;
+}
+.editor-port .eb-track{
+  position:relative; margin:14px 14px 0; height:12px; border-radius:9999px; cursor:pointer; touch-action:none;
+}
+.editor-port .eb-hue{
+  background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);
+}
+.editor-port .eb-alpha{
+  background-image:linear-gradient(45deg,#ccc 25%,transparent 25%),linear-gradient(-45deg,#ccc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ccc 75%),linear-gradient(-45deg,transparent 75%,#ccc 75%);
+  background-size:8px 8px; background-position:0 0,0 4px,4px -4px,-4px 0;
+}
+.editor-port .eb-alpha-bg{ position:absolute; inset:0; border-radius:9999px; }
+.editor-port .eb-track-thumb{
+  position:absolute; top:50%; width:16px; height:16px; border-radius:50%; background:#fff;
+  box-shadow:0 0 0 1px rgba(0,0,0,.18), 0 1px 4px rgba(0,0,0,.35);
+  transform:translate(-50%, -50%); pointer-events:none;
+}
+.editor-port .eb-swatch-row{ display:flex; gap:9px; padding:14px 14px 4px; flex-wrap:wrap; }
+.editor-port .eb-color-swatch{
+  width:26px; height:26px; border-radius:50%; border:none; cursor:pointer;
+  box-shadow:0 0 0 1px var(--border);
+}
+.editor-port .eb-color-swatch.active{ box-shadow:0 0 0 2px var(--accent); }
+.editor-port .eb-color-fields{ display:flex; gap:8px; padding:8px 14px 14px; }
+.editor-port .eb-hex-field, .editor-port .eb-alpha-field{
+  display:flex; align-items:center; gap:4px; height:32px; padding:0 10px; border-radius:9px;
+  background:var(--bg); font-size:13px; color:var(--fg-2);
+}
+.editor-port .eb-hex-field{ flex:1; }
+.editor-port .eb-hex-field b, .editor-port .eb-alpha-field b{ color:var(--meta); font-weight:600; }
+.editor-port .eb-hex-input{ flex:1; min-width:0; border:none; background:transparent; outline:none; font-size:13px; font-family:var(--font-mono); color:var(--fg); text-transform:uppercase; }
+.editor-port .eb-alpha-field{ width:74px; }
+.editor-port .eb-alpha-input{ width:100%; border:none; background:transparent; outline:none; font-size:13px; font-family:var(--font-mono); color:var(--fg); text-align:right; }
+.editor-port .eb-panel-search{
+  display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--border-soft);
+}
+.editor-port .eb-panel-search svg{ width:16px; height:16px; color:var(--meta); flex:none; }
+.editor-port .eb-panel-search input{
+  flex:1; min-width:0; border:none; background:transparent; outline:none; font-size:13px; color:var(--fg);
+}
+.editor-port .eb-panel-list{ overflow-y:auto; padding:6px; }
+.editor-port .eb-panel-group{
+  padding:8px 10px 4px; font-size:11px; letter-spacing:.06em; color:var(--meta); text-transform:uppercase;
+}
+.editor-port .eb-font-item{
+  display:block; width:100%; text-align:left; border:none; background:transparent;
+  padding:9px 12px; border-radius:9px; cursor:pointer; color:var(--fg); font-size:17px; line-height:1.25;
+}
+.editor-port .eb-font-item:hover{ background:var(--bg); }
+.editor-port .eb-size-item{
+  display:block; width:100%; text-align:center; border:none; background:transparent;
+  padding:8px 10px; border-radius:8px; cursor:pointer; color:var(--fg); font-size:13px; font-family:var(--font-mono);
+}
+.editor-port .eb-size-item:hover{ background:var(--bg); }
 .editor-port .chat-drag{
   cursor:grab; touch-action:none;
   background:rgba(255,255,255,.84);
