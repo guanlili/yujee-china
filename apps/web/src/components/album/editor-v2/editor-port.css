@@ -308,6 +308,23 @@
 .editor-port .save-btn[data-backup-state="backed-up"] .save-ic,
 .editor-port .save-btn[data-backup-state="failed"] .save-ic{ display: none; }
 
+/* ─── 聊天输入框内「待发送照片」暂存条(加图先攒后发,HeroComposer 同款):横向缩略图 + × 移除。 ─── */
+.editor-port .staged-photos{
+  display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px 2px;
+}
+.editor-port .staged-thumb{
+  position: relative; width: 56px; height: 56px; border-radius: 10px; overflow: hidden;
+  flex: 0 0 auto; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.editor-port .staged-thumb img{ width: 100%; height: 100%; object-fit: cover; display: block; }
+.editor-port .staged-remove{
+  position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 9999px;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+  background: rgba(0,0,0,0.55); color: #fff; border: none; cursor: pointer;
+  transition: background var(--motion-fast) var(--ease);
+}
+.editor-port .staged-remove:hover{ background: rgba(0,0,0,0.8); }
+
 /* ─── Overview: the whole magazine at once ─── */
 /* 画板 = 无限画布:不再滚动(overflow hidden),平移/缩放由 #ovGrid 的 transform 承担;
    touch-action:none 把双指捏合从浏览器手里接管过来(否则触屏上是页面级缩放)。 */

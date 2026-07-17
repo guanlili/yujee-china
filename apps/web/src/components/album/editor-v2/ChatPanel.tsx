@@ -241,7 +241,12 @@ export function ChatPanel({
     }
 
     async function send() {
-      if (!input || sending) return;
+      if (!input || sending || workflowBusy > 0) return;
+      // 暂存了照片 → 发送就是把这些照片一起提交进排版(HeroComposer 同款「先攒后发」)。文字留在框里。
+      if (stagedPhotos.length > 0) {
+        void submitStagedPhotos();
+        return;
+      }
       const txt = input.value.trim();
       if (!txt) return;
       const u = document.createElement('div');
@@ -1417,26 +1422,67 @@ export function ChatPanel({
       }
     }
 
-    async function handleAddPhotos(files: File[]) {
-      if (!files.length || appendInFlight || disposed) return;
+    // 加图「先攒后发」(HeroComposer 同款):点 + 只把照片压缩后暂存进输入框上方(可反复加、可 ×
+    // 移除),点发送才提交进排版/扣款。原图仍只在浏览器。
+    type StagedPhoto = { photoId: string; previewUrl: string; compressed: CompressedPhoto };
+    let stagedPhotos: StagedPhoto[] = [];
+    function renderStagedThumbs() {
+      const box = byId('stagedPhotos');
+      if (!box) return;
+      box.style.display = stagedPhotos.length ? 'flex' : 'none';
+      box.innerHTML = '';
+      for (const p of stagedPhotos) {
+        const cell = document.createElement('div');
+        cell.className = 'staged-thumb';
+        const img = document.createElement('img');
+        img.src = p.previewUrl;
+        img.alt = '';
+        const rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'staged-remove';
+        rm.setAttribute('aria-label', aT('移除', 'Remove'));
+        rm.innerHTML =
+          '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+        rm.addEventListener('click', () => {
+          stagedPhotos = stagedPhotos.filter((s) => s.photoId !== p.photoId);
+          renderStagedThumbs();
+        });
+        cell.appendChild(img);
+        cell.appendChild(rm);
+        box.appendChild(cell);
+      }
+    }
+    // 点 +:压缩 + 原图入 IndexedDB(HeroComposer.onFiles 同款链路;原图绝不上服务器),只暂存不提交。
+    // 上限跨「已暂存」计:反复点 + 累加到 MAX 为止。
+    async function stageAddedPhotos(files: File[]) {
+      if (!files.length || disposed) return;
+      const room = MAX_PHOTOS_PER_GENERATION - stagedPhotos.length;
+      if (room <= 0) return;
+      for (const file of files.slice(0, room)) {
+        const photoId = crypto.randomUUID();
+        const compressed = await compressFile(file, photoId);
+        await photoStore.put(photoId, file);
+        if (disposed) return;
+        stagedPhotos.push({ photoId, previewUrl: compressed.base64, compressed });
+        renderStagedThumbs();
+      }
+    }
+    // 点发送:把暂存的照片一起提交 → 排版 + 扣款 + 采访。提交后清空暂存条。
+    async function submitStagedPhotos() {
+      if (!stagedPhotos.length || appendInFlight || disposed) return;
       appendInFlight = true;
+      const batch = stagedPhotos;
+      stagedPhotos = [];
+      renderStagedThumbs();
       const prevOrder = storyGate?.chapterOrder ?? [];
       const prevPageCount = co()?.getPagesState?.()?.length ?? 0;
-      const taking = files.slice(0, MAX_PHOTOS_PER_GENERATION);
-      appendUserText(aT(`添加了 ${taking.length} 张照片`, `Added ${taking.length} photo${taking.length > 1 ? 's' : ''}`));
+      appendUserText(aT(`添加了 ${batch.length} 张照片`, `Added ${batch.length} photo${batch.length > 1 ? 's' : ''}`));
       hideAwait();
       scrollChat();
       const host = appendThinkingShell();
       setThinkingLabel(host, 'Understanding new photos…');
       try {
-        // 压缩 + 原图入 IndexedDB(HeroComposer.onFiles 同款链路;原图绝不上服务器)。
-        const compressed: CompressedPhoto[] = [];
-        for (const file of taking) {
-          const photoId = crypto.randomUUID();
-          compressed.push(await compressFile(file, photoId));
-          await photoStore.put(photoId, file);
-        }
-        const photos = clusterCompressedPhotos(compressed);
+        const photos = clusterCompressedPhotos(batch.map((s) => s.compressed));
         const newPhotoIds = photos.map((p) => p.photoId);
         await submitAddPhotosV3(albumId, {
           requestId: crypto.randomUUID(),
@@ -1870,7 +1916,7 @@ export function ChatPanel({
     const onAddPhotosChange = () => {
       const files = Array.from(addPhotoInputEl?.files ?? []);
       if (addPhotoInputEl) addPhotoInputEl.value = '';
-      void handleAddPhotos(files);
+      void stageAddedPhotos(files);
     };
     addPhotoInputEl?.addEventListener('change', onAddPhotosChange);
 
@@ -2227,6 +2273,8 @@ export function ChatPanel({
             </div>
           </div>
           <div className="chat-input shrink-0 bg-surface border border-bdsoft flex flex-col transition-all" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            {/* 加图「先攒后发」:点 + 暂存的照片缩略图排这里(× 可移除),点发送才提交。renderStagedThumbs 命令式填充。 */}
+            <div className="staged-photos" id="stagedPhotos" style={{ display: 'none' }} />
             <textarea className="w-full outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none px-4 pt-3.5 pb-1 disabled:cursor-not-allowed" style={{ fontFamily: 'var(--font-body)' }} placeholder="" rows={1} id="msgInput" />
             <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-0.5">
               <button className="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted" data-action="pickAddPhotos" data-i18n-title="addPhoto" title="添加图片" aria-label="添加图片">
