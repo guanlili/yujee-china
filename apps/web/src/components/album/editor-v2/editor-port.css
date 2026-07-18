@@ -1316,6 +1316,7 @@
 
 /* ── 自定义「填充」取色弹层 ── */
 .editor-port .eb-color-panel{ width:236px; padding:0; }
+.editor-port .eb-color-grab{ display:none; } /* 顶部拖动手柄:仅移动端底部大弹窗显示 */
 .editor-port .eb-color-head{
   display:flex; align-items:center; justify-content:space-between;
   padding:12px 14px; font-size:14px; font-weight:600; color:var(--fg);
@@ -1623,11 +1624,15 @@
     top:10px; max-width:calc(100vw - 28px);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
+  /* 底部固定的高弹窗:底边钉死,高度可拖(拖手柄 = 折叠/展开面板本身的高度,不整体位移)。
+     默认 ~46vh,最高 90vh,最低 150px(仍露手柄+输入框)。高度由 JS 写 inline;拖动时无过渡。 */
   .editor-port .pane-chat-col{
     position:fixed; left:10px; right:10px; bottom:10px;
-    width:auto !important; height:min(48vh, 390px);
+    width:auto !important; height:46vh; max-height:90vh; min-height:150px;
     z-index:80; padding:0; display:flex;
+    transition:height var(--motion-base) var(--ease);
   }
+  .editor-port.chat-dragging .pane-chat-col{ transition:none; }
   .editor-port .pane-right{
     position:relative; left:auto; right:auto; top:auto; bottom:auto;
     width:100%; height:100%;
@@ -1635,18 +1640,95 @@
     border-radius:24px 24px 18px 18px;
     box-shadow:0 -18px 46px rgba(0,0,0,.16);
   }
-  .editor-port .chat-mobile-handle{
-    cursor:grab;
-  }
-  .editor-port.chat-collapsed .pane-chat-col{
-    transform:translateY(calc(100% - 58px));
-  }
+  .editor-port .chat-mobile-handle{ cursor:grab; touch-action:none; }
+  /* 完全收起:弹窗整体隐藏,黑色小气泡(FAB)出现,点它再展开 */
+  .editor-port.chat-collapsed .pane-chat-col{ display:none; }
   .editor-port.chat-collapsed .chat-fold-expand{
-    display:none;
+    display:flex; position:fixed; right:14px; bottom:16px; left:auto; top:auto;
+    width:auto; min-width:0; height:46px; padding:0 16px 0 34px;
+    align-items:center; justify-content:center; gap:7px;
+    border-radius:9999px; color:#fff; background:var(--fg); border:none; z-index:92;
+    box-shadow:0 10px 24px rgba(0,0,0,.24), 0 2px 6px rgba(0,0,0,.16);
   }
   .editor-port .composer-group{
     margin:10px;
   }
+
+  /* ── 顶栏「保存」按钮:移动端收成纯图标方块(省空间,和导出/头像并排) ── */
+  .editor-port .save-btn{ padding:0; width:38px; height:38px; justify-content:center; gap:0; }
+  .editor-port .save-btn .save-label{ display:none !important; }
+
+  /* ── 视图切换(预览 / 画板总览):右侧竖排,浮在对话上方,加大点触区(item 4/5) ── */
+  .editor-port .ctrl-dock{
+    position:fixed; right:10px; left:auto; bottom:auto; top:50%; transform:translateY(-50%);
+    z-index:88; flex-direction:column; gap:8px;
+  }
+  .editor-port .view-ctrl{ flex-direction:column; gap:2px; }
+  .editor-port .view-ctrl .zoom-btn{ width:42px; height:42px; }
+
+  /* 翻页 pill:底部居中(横排 上一页/下一页);缩放数字移动端隐藏(捏合缩放即可)。
+     只在书籍预览模式出(画布模式由 .overview-on 规则隐藏)。 */
+  .editor-port .zoom-ctrl{
+    position:fixed; left:50%; right:auto; top:auto; bottom:22px;
+    transform:translateX(-50%); z-index:88;
+  }
+  .editor-port .zoom-ctrl .nav-seg{ flex-direction:row; }
+  .editor-port .zoom-btn{ width:38px; height:38px; }
+  .editor-port .zoom-sep{ display:none; }
+  .editor-port .zoom-pct{ display:none; }
+  /* 画板(总览)模式翻页无意义(nav-seg 已隐),移动端又隐了缩放数字 → 整个 pill 空了,
+     藏掉免得右侧露一个空圆点;书籍预览模式才留翻页箭头。 */
+  .editor-port.overview-on .zoom-ctrl{ display:none !important; }
+
+  /* ── 编辑工具条:移动端固定在页面底部(定位由 JS positionElementToolbar 的 mobile 分支
+     算,补偿 .book-stage 的 perspective 包含块;这里只管外观)。整条横向可滚(item 5) ── */
+  .editor-port .el-bar.show{
+    border-radius:16px; /* 浮动条(上抬 + 左右内边距),四角都圆 */
+    justify-content:flex-start; overflow-x:auto; overflow-y:visible;
+    z-index:96;
+    padding:8px 10px;
+    box-shadow:0 8px 30px rgba(0,0,0,.18);
+    -webkit-overflow-scrolling:touch;
+  }
+  .editor-port .el-bar .eb-group{ flex-wrap:nowrap; }
+  /* 字体/字号面板:钉在底部条上方,别飞到屏幕外(取色器另走全宽底部弹窗,见下) */
+  .editor-port .eb-panel.open{ max-width:calc(100vw - 20px); }
+
+  /* ── 取色器:移动端 = 全宽底部大弹窗(参考稿:手柄 + 大 HSV + 色相条 + hex + 预设 + 透明度 + 无背景) ── */
+  .editor-port .eb-color-panel.open{
+    position:fixed; left:0; right:0; bottom:0; top:auto !important;
+    width:100vw; max-width:100vw; max-height:88vh;
+    border-radius:22px 22px 0 0;
+    padding:0 4px calc(14px + env(safe-area-inset-bottom));
+    box-shadow:0 -14px 44px rgba(0,0,0,.20);
+    z-index:130; animation:none;
+  }
+  .editor-port .eb-color-panel .eb-color-grab{ display:flex; justify-content:center; padding:11px 0 3px; }
+  .editor-port .eb-color-panel .eb-color-grab span{ width:44px; height:5px; border-radius:9999px; background:var(--border); }
+  .editor-port .eb-color-panel .eb-color-head{ padding:2px 16px 8px; border-bottom:none; }
+  .editor-port .eb-color-panel .eb-sv{ height:230px; margin:2px 16px 0; border-radius:14px; }
+  .editor-port .eb-color-panel .eb-track{ margin:14px 16px 0; height:22px; }
+  .editor-port .eb-color-panel .eb-track-thumb{ width:22px; height:22px; }
+  .editor-port .eb-color-panel .eb-swatch-row{ padding:16px 16px 4px; gap:12px; }
+  .editor-port .eb-color-panel .eb-color-swatch{ width:34px; height:34px; }
+  .editor-port .eb-color-panel .eb-color-fields{ padding:10px 16px 4px; }
+  .editor-port .eb-color-panel .eb-hex-field, .editor-port .eb-color-panel .eb-alpha-field{ height:44px; }
+  .editor-port .eb-color-panel .eb-color-none{ margin:8px 16px 2px; height:46px; }
+
+  /* ── 对话底部 sheet:拖动手柄区域更好抓;折叠时只留手柄条露头 ── */
+  .editor-port .chat-mobile-handle{
+    cursor:grab; touch-action:none; padding-top:9px; padding-bottom:7px;
+  }
+  .editor-port .chat-mobile-handle span{ width:44px; height:5px; }
+  /* 桌面的拖动/缩放手柄在移动端无意义,藏掉(否则右下角露出残角) */
+  .editor-port .chat-resize{ display:none !important; }
+  .editor-port .chat-drag{ display:none !important; }
+}
+
+/* ═══ 平板(768–1024):桌面浮动对话在这个宽度偏挤 —— 收窄对话卡、给画布让位 ═══ */
+@media (min-width:768px) and (max-width:1024px){
+  .editor-port .pane-chat-col{ width:320px; }
+  .editor-port .view-ctrl .zoom-btn{ width:38px; height:38px; }
 }
 
 /* ─── In-editor "buy credits" modal (portaled to <body>, so NOT scoped under

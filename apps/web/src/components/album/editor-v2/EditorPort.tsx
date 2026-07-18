@@ -540,7 +540,7 @@ function EditorTopbar({
             图标;点击后按钮上短暂显示「备份中… → 绿点已备份 / 红点备份失败」再回到默认。
             data-action 由 EditorBook 的效果绑到 backupPhotos;备份态由 setSaveState 命令式更新。 */}
         <button
-          className="save-btn hidden sm:inline-flex items-center gap-1.5 px-4 py-2.5 rounded-pill text-[13px] font-semibold text-fg2 border border-bd"
+          className="save-btn inline-flex items-center gap-1.5 px-4 py-2.5 rounded-pill text-[13px] font-semibold text-fg2 border border-bd"
           data-action="backupPhotos"
           data-testid="backup-photos-btn"
           data-backup-state="idle"
@@ -1048,7 +1048,7 @@ function EditorBook({
       if (!foliosCache) foliosCache = pageFolioNumbers(pagesState.map((p) => p.templateId));
       return foliosCache;
     };
-    // 页签贴订口侧(左页右下 / 右页左下),避开外缘裁切;与页码同一套缓存失效路径。
+    // 页签贴该页外侧下角(左页左下 / 右页右下);与页码同一套缓存失效路径。
     let folioSidesCache: FolioSide[] | null = null;
     const folioSidesOfBook = () => {
       if (!folioSidesCache) folioSidesCache = pageFolioSides(pagesState.map((p) => p.templateId));
@@ -2250,6 +2250,16 @@ function EditorBook({
     stage?.addEventListener('wheel', onWheel, { passive: false });
 
     const editBar = byId('elBar') as HTMLElement | null;
+    // #elBar 原挂在 .book-stage 内(perspective 包含块 + overflow 裁剪 + pane-center 的
+    // z-20 栈)。移动端底部对话 sheet 是 z-80,被困在 pane-center 里的工具条永远压在它下面
+    // (即便自身 z-96)。把工具条上提到 .editor-port 根,脱离该栈与 perspective/overflow:
+    // 桌面定位不受影响(fixedContainerOffset 无 perspective 祖先 → 返回 0,视口坐标即正解),
+    // 移动端则能盖在 sheet 之上、底部固定。面板作为其子节点一并上提。
+    if (editBar && editBar.parentElement !== root) root.appendChild(editBar);
+    // 取色器弹层同样上提到根:它原是 #elBar 的子节点,而 #elBar 开合动画(ep-op-in)带 transform
+    // → 成为 fixed 包含块,移动端底部大弹窗的 bottom:0 会落到工具条底而非视口底。挂到根即视口坐标。
+    const ebColorPanelEl = byId('ebColorPanel');
+    if (ebColorPanelEl && ebColorPanelEl.parentElement !== root) root.appendChild(ebColorPanelEl);
     let editBarAnchor: HTMLElement | null = null;
     let editBarMoved = false; // 用户拖动过工具条 → 停止自动贴图层(选新图层时复位)。
     // #elBar / 面板都是 position:fixed,但它们在 .book-stage(perspective:2400px)内 ——
@@ -2289,6 +2299,19 @@ function EditorBook({
     }
     function positionElementToolbar() {
       if (!editBar || !editBar.classList.contains('show') || !editBarAnchor) return;
+      // 移动端:工具条做成浮动条,【抬到对话气泡上方】—— 气泡常驻右下(bottom:16 高 46,顶到
+      // 视口底 62px),工具条底边抬到 76px 正好压在气泡之上、留 14px 空档不打架。左右各留 10px。
+      // #elBar 已上提到 .editor-port 根,无 perspective 祖先,fixedContainerOffset 返回 0。
+      if (window.matchMedia('(max-width: 767px)').matches) {
+        const off = fixedContainerOffset(editBar);
+        const inset = 10;
+        const bottomGap = 76;
+        editBar.style.left = `${inset - off.left}px`;
+        editBar.style.right = 'auto';
+        editBar.style.width = `${window.innerWidth - inset * 2}px`;
+        editBar.style.top = `${window.innerHeight - editBar.offsetHeight - bottomGap - off.top}px`;
+        return;
+      }
       if (editBarMoved) return; // 用户已手动挪过 → 尊重其位置,不自动贴。
       const rect = editBarAnchor.getBoundingClientRect();
       // 工具条【始终贴在被编辑图层的正上方】:top = 图层顶 − 工具条高 − 6(≈5pt),把图层露出来。
@@ -2303,6 +2326,8 @@ function EditorBook({
     }
     function showElementToolbar(anchor: HTMLElement, group: 'text' | 'photo' | 'page') {
       if (!editBar) return;
+      // 编辑工具条只在画布模式(overview-on)出;书籍(预览)模式只读,不出工具条。
+      if (!bodyEl.classList.contains('overview-on')) return;
       editBarAnchor = anchor;
       setEditBarGroup(group);
       editBar.classList.add('show');
@@ -2536,6 +2561,21 @@ function EditorBook({
       const bar = editBar.getBoundingClientRect();
       const pw = panel.offsetWidth, ph = panel.offsetHeight;
       const M = 10;
+      if (window.matchMedia('(max-width: 767px)').matches) {
+        // 取色器在移动端 = 全宽底部大弹窗(参考稿),定位交给 CSS(fixed 贴底满宽);清掉
+        // 可能残留的 inline 定位,别让桌面坐标把它顶歪。
+        if (panel.id === 'ebColorPanel') {
+          panel.style.removeProperty('left');
+          panel.style.removeProperty('top');
+          panel.style.removeProperty('width');
+          return;
+        }
+        // 字体/字号弹层:向上弹到工具条上方,横向夹进视口。
+        const left = Math.max(M, Math.min(bar.left, window.innerWidth - pw - M));
+        const top = Math.max(62, bar.top - M - ph);
+        setFixedPos(panel, left, top);
+        return;
+      }
       if (panel.id === 'ebColorPanel') {
         let left = bar.right + M;
         if (left + pw > window.innerWidth - M) left = bar.left - pw - M; // 右边放不下 → 左侧
@@ -2697,6 +2737,8 @@ function EditorBook({
       p.dataset.built = '1';
       const zh = currentLang === 'zh';
       p.innerHTML =
+        // 移动端全宽底部弹窗顶部的拖动手柄(桌面 CSS 隐藏)。
+        `<div class="eb-color-grab" aria-hidden="true"><span></span></div>` +
         `<div class="eb-color-head"><span>${zh ? '填充' : 'Fill'}</span><button type="button" class="eb-color-close" data-color-close aria-label="close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>` +
         `<div class="eb-sv" data-sv><div class="eb-sv-bg" data-sv-bg></div><div class="eb-sv-cursor" data-sv-cursor></div></div>` +
         `<div class="eb-track eb-hue" data-hue><div class="eb-track-thumb" data-hue-thumb></div></div>` +

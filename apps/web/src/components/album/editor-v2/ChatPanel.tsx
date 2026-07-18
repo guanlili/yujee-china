@@ -2105,6 +2105,55 @@ export function ChatPanel({
         bindWindowMove(move, end);
       };
 
+      // ── 移动端底部高弹窗(bottom sheet)──
+      // 底边钉死;拖动手柄 = 折叠/展开【面板自身高度】(不整体位移):下拉缩短、上拉增高
+      // (上限 90vh、下限 150px)。拖到明显低于下限 / 轻点 → 完全收起成黑色小气泡(.chat-collapsed
+      // 隐藏弹窗 + 显示 .chat-fold-expand FAB);点气泡(toggleChat)再展开,恢复上次高度。
+      const mobileHandleEl = rootEl.querySelector('.chat-mobile-handle') as HTMLElement | null;
+      let sheetRestoreH: number | null = null; // 记住手动拉出的高度,收起再展开时恢复
+      const onSheetDown = (e: PointerEvent) => {
+        if (desktop() || e.button !== 0 || !mobileHandleEl) return;
+        e.preventDefault();
+        const vh = window.innerHeight;
+        const minH = 150;
+        const maxH = Math.round(vh * 0.9);
+        const startH = chatColEl.getBoundingClientRect().height;
+        const startY = e.clientY;
+        let dy = 0;
+        let curH = startH;
+        let collapseIntent = false;
+        document.body.classList.add('chat-dragging');
+        root.classList.add('chat-dragging');
+        mobileHandleEl.setPointerCapture?.(e.pointerId);
+        const move = (ev: PointerEvent) => {
+          dy = ev.clientY - startY;
+          const raw = startH - dy; // 底部固定:下拉(dy>0)高度减小
+          collapseIntent = raw < minH - 28; // 拖到明显低于下限 → 意图完全收起
+          curH = clamp(raw, minH, maxH);
+          chatColEl.style.height = `${curH}px`;
+        };
+        const end = (ev: PointerEvent) => {
+          mobileHandleEl.releasePointerCapture?.(ev.pointerId);
+          document.body.classList.remove('chat-dragging');
+          root.classList.remove('chat-dragging');
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', end);
+          window.removeEventListener('pointercancel', end);
+          if (Math.abs(dy) <= 6 || collapseIntent) {
+            // 完全收起 → 黑色气泡;为下次展开留一个合理高度(拖没了就回落默认 46vh)
+            const restore = sheetRestoreH ?? (Math.abs(dy) <= 6 ? startH : Math.round(vh * 0.46));
+            chatColEl.style.height = `${clamp(restore, minH, maxH)}px`;
+            root.classList.add('chat-collapsed');
+            return;
+          }
+          sheetRestoreH = curH; // 记住这次拉出的高度
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
+      };
+      mobileHandleEl?.addEventListener('pointerdown', onSheetDown);
+
       dragHandleEl.addEventListener('pointerdown', onDragDown);
       dragHandleEl.addEventListener('dblclick', resetChatPos);
       resizeHandleEl.addEventListener('pointerdown', onResizeDown);
@@ -2116,6 +2165,7 @@ export function ChatPanel({
         insetRO.disconnect();
         insetMO.disconnect();
         root.style.removeProperty('--canvas-inset');
+        mobileHandleEl?.removeEventListener('pointerdown', onSheetDown);
         dragHandleEl.removeEventListener('pointerdown', onDragDown);
         dragHandleEl.removeEventListener('dblclick', resetChatPos);
         resizeHandleEl.removeEventListener('pointerdown', onResizeDown);
