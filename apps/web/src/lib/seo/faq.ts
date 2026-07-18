@@ -44,7 +44,7 @@ const EN: readonly FaqEntry[] = [
   },
   {
     q: 'Is it free?',
-    a: `Sign-up comes with ${FREE_PLAN_CREDITS} free credit. 1 credit = ${PHOTOS_PER_CREDIT} photos, usually ${PAGES_PER_CREDIT_LABEL} pages. No subscription.`,
+    a: `Sign-up comes with ${FREE_PLAN_CREDITS} free credits. 1 credit = ${PHOTOS_PER_CREDIT} photo${PHOTOS_PER_CREDIT === 1 ? '' : 's'}, and a book is usually ${PAGES_PER_CREDIT_LABEL} pages. No subscription.`,
   },
 ];
 
@@ -71,7 +71,7 @@ const ZH: readonly FaqEntry[] = [
   },
   {
     q: '免费吗？',
-    a: `注册即送 ${FREE_PLAN_CREDITS} 积分。1 积分 = ${PHOTOS_PER_CREDIT} 张照片，大多数时候有 ${PAGES_PER_CREDIT_LABEL} 页。没有订阅。`,
+    a: `注册即送 ${FREE_PLAN_CREDITS} 积分。1 积分 = ${PHOTOS_PER_CREDIT} 张照片，一本约 ${PAGES_PER_CREDIT_LABEL} 页。没有订阅。`,
   },
 ];
 

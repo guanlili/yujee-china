@@ -620,7 +620,7 @@ function LandingPricing({ locale }: { locale: Locale }) {
               <div key={pack.id} className="flex flex-col rounded-2xl bg-white p-5 shadow-[var(--shadow-card)] md:p-6">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-[var(--fg-2)]">
-                    {pack.books.toLocaleString(locale)} {pack.books === 1 ? t.unitSingular : t.unit}
+                    {pack.books.toLocaleString(locale)} {pack.books > 1 ? t.unit : t.unitSingular}
                   </span>
                   {isBest && (
                     <span className="best-value-badge">

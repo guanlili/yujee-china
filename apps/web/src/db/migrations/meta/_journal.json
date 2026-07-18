@@ -113,6 +113,13 @@
       "when": 1784280476254,
       "tag": "0015_chunky_glorian",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784310280506,
+      "tag": "0016_credit_per_photo_redenomination",
+      "breakpoints": true
     }
   ]
 }

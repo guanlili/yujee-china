@@ -58,7 +58,7 @@
   },
   "pricing": {
     "title": "按积分计费,简单透明",
-    "subtitle": "1 积分 = {photos} 张照片,大多数时候有 {pages} 页。",
+    "subtitle": "1 积分 = {photos} 张照片，一本约 {pages} 页。",
     "unit": "积分",
     "unitSingular": "积分",
     "perBook": "/ 积分",
@@ -160,7 +160,7 @@
       "unit": "积分",
       "unitSingular": "积分",
       "rechargeTitle": "购买更多",
-      "rechargeSub": "1 积分 = {photos} 张照片,大多数时候有 {pages} 页。",
+      "rechargeSub": "1 积分 = {photos} 张照片，一本约 {pages} 页。",
       "buy": "购买",
       "redirecting": "跳转中…",
       "history": "购买记录",

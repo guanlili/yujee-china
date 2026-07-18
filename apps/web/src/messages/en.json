@@ -58,7 +58,7 @@
   },
   "pricing": {
     "title": "Simple per-credit pricing",
-    "subtitle": "1 credit = {photos} photos, usually {pages} pages.",
+    "subtitle": "1 credit = {photos} photo, a book is usually {pages} pages.",
     "unit": "credits",
     "unitSingular": "credit",
     "perBook": "/ credit",
@@ -160,7 +160,7 @@
       "unit": "credits",
       "unitSingular": "credit",
       "rechargeTitle": "Buy more credits",
-      "rechargeSub": "1 credit = {photos} photos, usually {pages} pages.",
+      "rechargeSub": "1 credit = {photos} photo, a book is usually {pages} pages.",
       "buy": "Buy",
       "redirecting": "Redirecting…",
       "history": "Transaction history",

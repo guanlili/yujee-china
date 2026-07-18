@@ -79,7 +79,11 @@ export const users = pgTable('users', {
   emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'),
   isAdmin: boolean('is_admin').notNull().default(false),
-  creditBalance: integer('credit_balance').notNull().default(100),
+  // Column default aligned to FREE_PLAN_CREDITS (welcome grant). better-auth
+  // normally inserts that value explicitly; this default is the fallback for any
+  // other insert path. Re-denominated to 20 with the 1-credit-per-photo change
+  // (migration 0016). Keep in sync with FREE_PLAN_CREDITS in config/pricing.ts.
+  creditBalance: integer('credit_balance').notNull().default(20),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

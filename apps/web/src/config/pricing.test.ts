@@ -32,17 +32,20 @@ test('credit checkout routes through Creem only', () => {
   );
 });
 
-test('per-book billing: one book per album, one free welcome book, packs grant whole books', () => {
+test('per-photo billing: one credit per photo, packs grant credits, free welcome grant', () => {
+  // Flat per-album fallback stays 1 (deprecated); the live path is per-photo.
   assert.equal(CREDIT_COST_PER_ALBUM, 1);
-  assert.equal(FREE_PLAN_CREDITS, 1);
+  // Re-denominated 2026-07-17: 1 credit = 1 photo, so the welcome grant and packs
+  // are ×20 the old book counts (same dollars, same photos, clearer unit).
+  assert.equal(FREE_PLAN_CREDITS, 20);
 
-  // Pack ids + prices are fixed Creem products; only the granted book count changed.
+  // Pack ids + prices are fixed Creem products; only the granted credit count changed.
   assert.deepEqual(
     ADDON_PACKS.map((p) => ({ id: p.id, priceUsd: p.priceUsd, books: p.books })),
     [
-      { id: 'pack-1', priceUsd: 3, books: 1 },
-      { id: 'pack-4', priceUsd: 10, books: 4 },
-      { id: 'pack-10', priceUsd: 20, books: 10 },
+      { id: 'pack-1', priceUsd: 3, books: 20 },
+      { id: 'pack-4', priceUsd: 10, books: 80 },
+      { id: 'pack-10', priceUsd: 20, books: 200 },
     ],
   );
 });

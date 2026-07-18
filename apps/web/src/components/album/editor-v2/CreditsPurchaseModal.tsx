@@ -207,8 +207,8 @@ export function CreditsPurchaseModal({
             <>
               <p className="credits-modal-sub">
                 {zh
-                  ? `积分用于 AI 排版与文案生成，1 积分可处理约 ${PHOTOS_PER_CREDIT} 张照片。买得越多越划算，永久有效。`
-                  : `Credits power AI layout and writing — 1 credit handles about ${PHOTOS_PER_CREDIT} photos. Buy more to save; they never expire.`}
+                  ? `积分用于 AI 排版与文案生成，1 积分 = ${PHOTOS_PER_CREDIT} 张照片。买得越多越划算，永久有效。`
+                  : `Credits power AI layout and writing — 1 credit = ${PHOTOS_PER_CREDIT} photo${PHOTOS_PER_CREDIT === 1 ? '' : 's'}. Buy more to save; they never expire.`}
               </p>
 
               <div className="credits-pack-list" role="radiogroup" aria-label={zh ? '选择积分包' : 'Choose a credit pack'}>
