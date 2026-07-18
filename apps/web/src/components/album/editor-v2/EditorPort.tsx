@@ -2031,6 +2031,11 @@ function EditorBook({
     }
     function exitOverview() {
       bodyEl.classList.remove('overview-on');
+      // 默认进画板后 #book 一直是 display:none —— 里面的页从未按真实尺寸画过(paintEl 在
+      // offsetParent===null / 0×0 时会跳过),直接切预览会是空白。现在它变可见了,先 force
+      // reflow 再重画当前跨页(对称 enterOverview 的 issue #157 处理),预览才有内容。
+      void byId('book')?.getBoundingClientRect();
+      paintSpread(currentCh);
       // 回到预览(只读):清掉画布态下的选中页/图片编辑/浮动工具条,别把编辑残留带进预览。
       selectedPageIndex = null;
       clearImageSelection();
