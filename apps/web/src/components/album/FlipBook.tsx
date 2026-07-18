@@ -64,7 +64,7 @@ const PageFace = memo(function PageFace({
   height: number;
   // 展示层页签:按当前页序计算(封面/封尾 null),覆盖模板遗留 folio。
   folio?: number | null;
-  // 页签贴哪侧下角(左页 right / 右页 left),避开外缘裁切。
+  // 页签贴哪侧下角(左页 left / 右页 right),与物理半页一致。
   folioSide?: FolioSide;
   fitText?: boolean;
 }) {
@@ -137,7 +137,7 @@ export function FlipBook({
   const spreads = useMemo(() => buildSpreads(pages), [pages]);
   // 展示层页签:每次按当前页序自动计算(内页 1..N;封面/目录/封尾 null)。
   const folios = useMemo(() => pageFolioNumbers(pages.map((p) => p.templateId)), [pages]);
-  // 页签贴订口侧(左页右下 / 右页左下),避开外缘裁切;按真实版面推,不看页码奇偶。
+  // 页签贴该页外侧下角(左页左下 / 右页右下);侧别按真实版面推,不看页码奇偶。
   const folioSides = useMemo(() => pageFolioSides(pages.map((p) => p.templateId)), [pages]);
   const folioOf = useCallback(
     (page: EditorPage | null) => (page ? (folios[pages.indexOf(page)] ?? null) : null),

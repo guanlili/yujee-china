@@ -7,20 +7,27 @@ test('pageFolioNumbers:内页从 1 连续编号,封面/封尾/目录为 null', (
   assert.deepEqual(pageFolioNumbers(['p01', 'mag-05', 'mag-02', 'mag-06', 'mag-20']), [null, 1, null, 2, null]);
 });
 
-test('pageFolioSides:左页贴右下、右页贴左下(避开外缘裁切)', () => {
-  // cover 单页不参与配对;之后 mag-05 落左页(订口在右)、mag-06 落右页(订口在左)。
-  assert.deepEqual(pageFolioSides(['p01', 'mag-05', 'mag-06', 'mag-20']), ['right', 'right', 'left', 'right']);
+test('pageFolioSides:左页贴左下、右页贴右下(与物理半页一致)', () => {
+  // cover 是右单页;之后 mag-05 落左页(左下)、mag-06 落右页(右下)、ending 左单页。
+  assert.deepEqual(pageFolioSides(['p01', 'mag-05', 'mag-06', 'mag-20']), ['right', 'left', 'right', 'left']);
 });
 
 test('pageFolioSides:目录页整体错位一位 → 侧别按真实版面而非页码奇偶', () => {
-  // 多一张 toc 后,页码 1 的 mag-05 从左页变右页(贴左下),证明不能只看奇偶。
+  // 多一张 toc 后,页码 1 的 mag-05 从左页变右页(贴右下),证明不能只看奇偶。
   assert.deepEqual(
     pageFolioSides(['p01', 'mag-02', 'mag-05', 'mag-06', 'mag-20']),
-    ['right', 'right', 'left', 'right', 'right'],
+    ['right', 'left', 'right', 'left', 'left'],
   );
 });
 
-test('applyFolioOverlay:right 页(side=left)页码贴左下角', () => {
+test('applyFolioOverlay:右页(side=right)页码贴右下角', () => {
+  const html = `<div data-template="mag-06"><h1 data-text-key="title">T</h1></div>`;
+  const out = applyFolioOverlay(html, 2, 'right');
+  assert.ok(out.includes('right:36px'), '未贴右下角');
+  assert.equal(out.includes('left:36px'), false);
+});
+
+test('applyFolioOverlay:左页(side=left)页码贴左下角', () => {
   const html = `<div data-template="mag-05"><h1 data-text-key="title">T</h1></div>`;
   const out = applyFolioOverlay(html, 1, 'left');
   assert.ok(out.includes('left:36px'), '未贴左下角');

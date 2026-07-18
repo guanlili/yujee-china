@@ -244,27 +244,28 @@ export function pageFolioNumbers(templateIds: string[]): (number | null)[] {
   });
 }
 
-// 页签贴订口(书脊)侧,避开外缘印后裁切:左页订口在右→右下角,右页订口在左→左下角。
-// 侧别按 buildSpreads 的两两配对推出(与 spreads.ts 一致:cover 右单页/ending 左单页
-// 都单独成对、不参与配对,其余 interior+toc 顺序两两配),所以「奇偶」不等于左右——
-// 有没有目录页会整体错位一位,必须按真实版面推,不能只看页码奇偶。
+// 页签贴该页所在物理半页的外侧下角:左页→左下,右页→右下。侧别按 buildSpreads 的两两
+// 配对推出(与 spreads.ts 一致:cover 右单页/ending 左单页都单独成对、不参与配对,其余
+// interior+toc 顺序两两配),所以「奇偶」不等于左右——有没有目录页会整体错位一位,必须
+// 按真实版面推,不能只看页码奇偶。
 export type FolioSide = 'left' | 'right';
 
-/** 每页页签该贴哪侧(左页→right/右下,右页→left/左下)。folio 为 null 的页侧别无意义。 */
+/** 每页页签该贴哪侧,与该页物理半页一致(左页→left/左下,右页→right/右下)。 */
 export function pageFolioSides(templateIds: string[]): FolioSide[] {
-  // 默认 right(右下):左页/末尾落单页/兜底都贴右,与旧行为一致。
-  const sides: FolioSide[] = templateIds.map(() => 'right');
+  // 默认 left(左下):左页/末尾落单页(buildSpreads 把它当左页)/兜底都按左页。
+  const sides: FolioSide[] = templateIds.map(() => 'left');
   let pendingLeft: number | null = null;
   templateIds.forEach((id, i) => {
     const category = getTemplate(id)?.category;
     if (category === 'cover' || category === 'ending') {
-      pendingLeft = null; // 单页,冲掉未配对的左页(它保持默认 right)
+      pendingLeft = null; // 单页:cover 是右单页,ending 是左单页(见 buildSpreads)
+      sides[i] = category === 'cover' ? 'right' : 'left';
       return;
     }
     if (pendingLeft === null) {
-      pendingLeft = i; // 左页:订口在右 → 保持 'right'
+      pendingLeft = i; // 左页 → 保持 'left'
     } else {
-      sides[i] = 'left'; // 右页:订口在左 → 左下角
+      sides[i] = 'right'; // 右页 → 右下
       pendingLeft = null;
     }
   });
@@ -273,7 +274,7 @@ export function pageFolioSides(templateIds: string[]): FolioSide[] {
 
 const FOLIO_ANCHOR_OPEN_RE = /<([a-z0-9]+)((?:[^>]*?)data-text-key="folio(?:\[\d+\])?"[^>]*)>/gi;
 
-/** 展示层页签:隐藏模板遗留 folio 元素;folio 非 null 时在订口侧下角注入统一页码。 */
+/** 展示层页签:隐藏模板遗留 folio 元素;folio 非 null 时在该页对应侧下角注入统一页码。 */
 export function applyFolioOverlay(html: string, folio: number | null, side: FolioSide = 'right'): string {
   let out = html.replace(FOLIO_ANCHOR_OPEN_RE, (_full, tag: string, attrs: string) => {
     const nextAttrs = attrs.includes('style="')

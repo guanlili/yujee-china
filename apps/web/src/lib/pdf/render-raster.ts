@@ -74,7 +74,7 @@ export async function renderAlbumPdfRaster(
 
   // 页签按导出页序计算(内页 1..N;封面/封尾/目录 null),与画板同一套覆盖层。
   const folios = pageFolioNumbers(pages.map((p) => p.templateId));
-  // 页签贴订口侧,避开印后外缘裁切(左页右下 / 右页左下),与画板同一套推导。
+  // 页签贴该页外侧下角(左页左下 / 右页右下),与画板同一套推导。
   const folioSides = pageFolioSides(pages.map((p) => p.templateId));
   for (let i = 0; i < pages.length; i++) {
     const page = pages[i]!;
