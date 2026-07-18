@@ -1,5 +1,5 @@
 import { bakePageHtml, bakePagesHtml, type BakeablePage } from './bake-html';
-import { patchHtmlImagePos, patchHtmlText, patchHtmlTextStyle } from '@/components/album/page-html-dom';
+import { patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle } from '@/components/album/page-html-dom';
 import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
@@ -1138,6 +1138,9 @@ export const albumService = {
       // 工具条样式(字号/字体/加粗/对齐/颜色):slotKey → CSS 属性(null=移除)。
       // 只对 html 真相有意义,album_pages 旧路径忽略它。
       textStyles?: Record<string, Record<string, string | null>>;
+      // 页级样式(书页背景色):CSS 属性 → 值(null=移除,回落模板默认)。写页根
+      // (data-template 外框)的行内 style。同 textStyles,只对 html 真相有意义。
+      pageStyle?: Record<string, string | null>;
     },
   ): Promise<{ updated: true }> {
     const album = await this.findOwned(userId, albumId);
@@ -1204,6 +1207,9 @@ export const albumService = {
         for (const [slot, props] of Object.entries(patch.textStyles)) {
           if (html !== null) html = patchHtmlTextStyle(html, slot, props);
         }
+      }
+      if (patch.pageStyle && html !== null) {
+        html = patchHtmlPageStyle(html, patch.pageStyle);
       }
 
       if (html !== null) {

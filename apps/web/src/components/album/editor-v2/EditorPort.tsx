@@ -33,7 +33,7 @@ import { RetryFailedButton } from '../RetryFailedButton';
 import { getWebTemplate } from '../web-registry';
 import { buildSpreads, isSoloSpread, pageSlot, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
-import { applyFolioOverlay, fitTextBoxes, pageFolioNumbers, patchHtmlImagePos, patchHtmlText, patchHtmlTextStyle, preferredPageHtml } from '../page-html-dom';
+import { applyFolioOverlay, fitTextBoxes, pageFolioNumbers, pageFolioSides, patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle, preferredPageHtml, type FolioSide } from '../page-html-dom';
 import { PAGE } from '../templates/constants';
 import { clampZoom, paintDecision } from './zoom-util';
 import {
@@ -527,6 +527,13 @@ function EditorTopbar({
         <a href={`/${locale}`} className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '26px', width: 'auto', display: 'block' }} /></a>
         <span className="crumb text-meta text-[13px] hidden sm:inline">/</span>
         <span className="album-title font-display font-bold text-[14px] text-fg px-2 py-1 rounded-pill border border-transparent transition-colors hover:bg-bg cursor-text truncate" contentEditable suppressContentEditableWarning data-i18n="albumTitle">2024 厦门三日游</span>
+        {/* 相册留存状态(photo-snapshot):只讲图片安危(书本身一直在云端)。三态由
+            refreshBackupStatus 命令式更新 data-book-status(仅本地/已存云端/部分备份),
+            none=没用到图 → CSS 隐藏。点色 + 显隐由 CSS 按 data-book-status 出;整句在 title。 */}
+        <span className="book-status hidden sm:inline-flex items-center gap-1.5 text-[12px] text-fg2 px-2 py-1 rounded-pill" data-book-status="none" data-testid="book-status">
+          <span className="book-status-dot" aria-hidden="true" />
+          <span className="book-status-label" />
+        </span>
       </div>
       <div className="top-right flex items-center gap-1 sm:gap-2 shrink-0">
         {/* 保存到云端(photo-snapshot):备份照片压缩图,换设备/清缓存也能看到内页。默认只
@@ -982,8 +989,9 @@ function EditorBook({
     let spreads = buildSpreads(pagesState);
     const rebuildSpreads = () => {
       spreads = buildSpreads(pagesState);
-      // pagesState 变了 → 页签缓存作废(模板类别变化会改变内页编号)。
+      // pagesState 变了 → 页签缓存作废(模板类别变化会改变内页编号,也会改变左右侧)。
       foliosCache = null;
+      folioSidesCache = null;
       // A slot-flip patch can shrink the spread count without changing page
       // count (no remount); clamp the cursor so we never sit on a dropped spread.
       if (currentCh >= spreadCount()) currentCh = spreadCount() - 1;
@@ -1040,6 +1048,12 @@ function EditorBook({
       if (!foliosCache) foliosCache = pageFolioNumbers(pagesState.map((p) => p.templateId));
       return foliosCache;
     };
+    // 页签贴订口侧(左页右下 / 右页左下),避开外缘裁切;与页码同一套缓存失效路径。
+    let folioSidesCache: FolioSide[] | null = null;
+    const folioSidesOfBook = () => {
+      if (!folioSidesCache) folioSidesCache = pageFolioSides(pagesState.map((p) => p.templateId));
+      return folioSidesCache;
+    };
 
     // Render a real album page through its web template (the same path the live
     // editor/PDF use) as static markup we can drop into the imperative book.
@@ -1048,9 +1062,11 @@ function EditorBook({
       if (!page) return '';
       // 页面真相 = 存库 html(含 AI/用户手工版面);页签按当前页序展示层计算,
       // 覆盖模板遗留 folio(封面/封尾不编号)。
-      const folio = foliosOfBook()[pagesState.indexOf(page)] ?? null;
+      const pageIdx = pagesState.indexOf(page);
+      const folio = foliosOfBook()[pageIdx] ?? null;
+      const folioSide = folioSidesOfBook()[pageIdx] ?? 'right';
       const html = preferredPageHtml(page, resolve);
-      if (html !== undefined) return applyFolioOverlay(html, folio);
+      if (html !== undefined) return applyFolioOverlay(html, folio, folioSide);
       const Template = getWebTemplate(page.templateId);
       if (!Template) {
         return `<div style="padding:24px;font-size:14px">Unknown template: ${page.templateId}</div>`;
@@ -1062,6 +1078,7 @@ function EditorBook({
       return applyFolioOverlay(
         renderToStaticMarkup(<Template data={data} totalPages={total} imagePos={page.imagePosJson} />),
         folio,
+        folioSide,
       );
     }
     // The 794×1123 page scaled to fill the given box (matches FlipBook PageFace).
@@ -1144,6 +1161,9 @@ function EditorBook({
       // that slot no longer exists on the page (an AI edit swapped the photo /
       // template), tear the overlay down so it can't point at a detached node.
       reattachImgEdit();
+      // 页面内容变了(加图/AI 换图/换模板)→ 书里用到的图集合可能变 → 刷新留存 chip。
+      // repaintBook 只在完整初始化之后经各 act/replace 路径调用,backedUpIds 已就绪(无 TDZ)。
+      refreshBackupStatus();
     }
     // 脏页重绘:单页编辑(改字/换图/挪图)只重画受影响 spread 的画布格+缩略图格
     // (+总览格),不再全书 innerHTML 重建 —— 20+ 页时全量 repaint 是主卡顿源之一。
@@ -1329,6 +1349,8 @@ function EditorBook({
       renderRail();
       updateThumbUI(currentCh);
       paintSpread(currentCh);
+      // 留存 chip 是命令式文案(非 data-i18n),语言切换后重算一次跟上当前语言。
+      refreshBackupStatus();
     }
 
     /* ─── Book / spread ─── */
@@ -1375,8 +1397,10 @@ function EditorBook({
       // Switching/deselecting a page tears down any open image-edit overlay.
       clearImageSelection();
       updateSelectionHighlight();
-      // 选中的是「页」而非具体文字/图片 → 不出工具条(用户拍板)。要编辑再点具体的文字或图片。
-      hideElementToolbar();
+      // 选中「页」→ 出精简工具条(只有书页背景色);取消选中 → 收起。改具体文字/图片仍走
+      // 各自的选取(会覆盖成 text 组 / 图片浮层)。
+      if (selectedPageIndex == null) hideElementToolbar();
+      else showElementToolbar(el, 'page');
     };
 
     // ════════════════════════════════════════════════════════════════════════
@@ -2248,7 +2272,7 @@ function EditorBook({
       el.style.left = `${left - off.left}px`;
       el.style.top = `${top - off.top}px`;
     }
-    function setEditBarGroup(group: 'text' | 'photo') {
+    function setEditBarGroup(group: 'text' | 'photo' | 'page') {
       editBar?.querySelectorAll<HTMLElement>('[data-group]').forEach((el) => {
         el.style.display = el.dataset.group === group ? 'flex' : 'none';
       });
@@ -2277,15 +2301,21 @@ function EditorBook({
       );
       setFixedPos(editBar, left, top);
     }
-    function showElementToolbar(anchor: HTMLElement, group: 'text' | 'photo') {
+    function showElementToolbar(anchor: HTMLElement, group: 'text' | 'photo' | 'page') {
       if (!editBar) return;
       editBarAnchor = anchor;
       setEditBarGroup(group);
       editBar.classList.add('show');
-      // 颜色圆点跟随选中文字的当前颜色。
+      // 取色器作用对象随组切换:文字组=文字颜色,页组=书页背景色(带「无背景」)。
+      // 色点回填当前色。
       if (group === 'text') {
+        colorContext = textColorContext;
         const t = selectedTextTargets()[0];
         if (t) { setColorFromCss(getComputedStyle(t).color); updateColorDot(); }
+      } else if (group === 'page') {
+        colorContext = pageColorContext;
+        const init = pageColorContext.initial();
+        if (init) { setColorFromCss(init); updateColorDot(); }
       }
       requestAnimationFrame(positionElementToolbar);
     }
@@ -2325,6 +2355,7 @@ function EditorBook({
     function persistPagePatch(
       page: EditorPage,
       textStyles?: Record<string, Record<string, string | null>>,
+      pageStyle?: Record<string, string | null>,
     ) {
       void fetch(`/api/v1/albums/${albumId}/pages/${page.pageIndex}`, {
         method: 'PATCH',
@@ -2334,6 +2365,7 @@ function EditorBook({
           textsJson: page.textsJson,
           imagePosJson: page.imagePosJson ?? {},
           ...(textStyles ? { textStyles } : {}),
+          ...(pageStyle ? { pageStyle } : {}),
         }),
       }).catch(() => {});
     }
@@ -2421,6 +2453,46 @@ function EditorBook({
     function applyColorToSelection(hex: string) {
       applyTextStyle((el) => { el.style.color = hex; return { color: hex }; });
     }
+    // ── 共享取色器的「作用对象」上下文 ──
+    // 同一个「填充」取色器组件既服务【文字颜色】也服务【书页背景色】(用户拍板:两处
+    // 设计颜色用同一个组件)。切换靠这套上下文:initial 决定打开时回填的初值,apply 决定
+    // 改色写到哪,none(可选)提供「无背景」清除动作(仅书页背景有)。
+    type ColorContext = {
+      initial: () => string | null;
+      apply: (css: string) => void;
+      none: (() => void) | null;
+    };
+    const textColorContext: ColorContext = {
+      initial: () => { const t = selectedTextTargets()[0]; return t ? getComputedStyle(t).color : null; },
+      apply: applyColorToSelection,
+      none: null,
+    };
+    // 书页背景色:写选中页的页根(data-template 外框)。即时改所有已画表面的 DOM,
+    // 再固化进 html 真相并落库(patchHtmlPageStyle);null=移除 → 回落模板默认(白)。
+    function pageRootEls(pageIndex: number): HTMLElement[] {
+      const out: HTMLElement[] = [];
+      bodyEl.querySelectorAll<HTMLElement>(`[data-page-index="${pageIndex}"]`).forEach((host) => {
+        host.querySelectorAll<HTMLElement>('[data-template]').forEach((root) => out.push(root));
+      });
+      return out;
+    }
+    function applyPageBackground(value: string | null) {
+      if (selectedPageIndex == null) return;
+      const page = pageByIndex(selectedPageIndex);
+      if (!page) return;
+      // 即时反馈:直接改活节点(value=null → 清 inline background-color,露出模板 background:#fff)。
+      for (const root of pageRootEls(selectedPageIndex)) root.style.backgroundColor = value ?? '';
+      const props = { 'background-color': value };
+      syncPageHtml(page, (html) => patchHtmlPageStyle(html, props));
+      persistPagePatch(page, undefined, props);
+      updateColorDot();
+    }
+    const pageColorContext: ColorContext = {
+      initial: () => { const r = pageRootEls(selectedPageIndex ?? -1)[0]; return r ? getComputedStyle(r).backgroundColor : null; },
+      apply: applyPageBackground,
+      none: () => applyPageBackground(null),
+    };
+    let colorContext: ColorContext = textColorContext;
     function applyFontSizeToSelection(px: number) {
       const size = Math.min(200, Math.max(6, Math.round(px)));
       applyTextStyle((el) => { el.style.fontSize = `${size}px`; return { 'font-size': `${size}px` }; });
@@ -2583,8 +2655,10 @@ function EditorBook({
       return ebColor.a >= 1 ? rgbToHex(r, g, b) : `rgba(${r}, ${g}, ${b}, ${Math.round(ebColor.a * 100) / 100})`;
     }
     function updateColorDot() {
-      const dot = byId('ebColorDot');
-      if (dot) dot.style.background = ebColorCss();
+      // 文字组/页组各有一个色点,都用 data-color-dot 标记,统一回填当前色。
+      editBar?.querySelectorAll<HTMLElement>('[data-color-dot]').forEach((dot) => {
+        dot.style.background = ebColorCss();
+      });
     }
     function setColorFromCss(css: string) {
       const rgb = hexToRgb(css);
@@ -2616,7 +2690,7 @@ function EditorBook({
       });
       updateColorDot();
     }
-    function emitColor() { applyColorToSelection(ebColorCss()); updateColorDot(); }
+    function emitColor() { colorContext.apply(ebColorCss()); updateColorDot(); }
     function buildColorPanel() {
       const p = byId('ebColorPanel');
       if (!p || p.dataset.built) return;
@@ -2628,7 +2702,10 @@ function EditorBook({
         `<div class="eb-track eb-hue" data-hue><div class="eb-track-thumb" data-hue-thumb></div></div>` +
         `<div class="eb-track eb-alpha" data-alpha><div class="eb-alpha-bg" data-alpha-bg></div><div class="eb-track-thumb" data-alpha-thumb></div></div>` +
         `<div class="eb-swatch-row">${COLOR_SWATCHES.map((c) => `<button type="button" class="eb-color-swatch" data-swatch="${c}" style="background:${c}"></button>`).join('')}</div>` +
-        `<div class="eb-color-fields"><span class="eb-hex-field"><b>#</b><input class="eb-hex-input" data-hex maxlength="6" spellcheck="false" /></span><span class="eb-alpha-field"><input class="eb-alpha-input" data-alpha-input inputmode="numeric" /><b>%</b></span></div>`;
+        `<div class="eb-color-fields"><span class="eb-hex-field"><b>#</b><input class="eb-hex-input" data-hex maxlength="6" spellcheck="false" /></span><span class="eb-alpha-field"><input class="eb-alpha-input" data-alpha-input inputmode="numeric" /><b>%</b></span></div>` +
+        // 「无背景」:仅书页背景色场景显示(见 toggleColorPanel 按 colorContext.none 决定显隐),
+        // 点击清除页背景 → 回落模板默认(白)。
+        `<button type="button" class="eb-color-none" data-color-none style="display:none">${zh ? '无背景' : 'No background'}</button>`;
       // 顶部「填充」标题条 = 拖动手柄,整个气泡可挪。
       const head = p.querySelector<HTMLElement>('.eb-color-head');
       if (head) head.addEventListener('pointerdown', (e) => {
@@ -2651,6 +2728,7 @@ function EditorBook({
       p.addEventListener('click', (e) => {
         const t = e.target as HTMLElement;
         if (t.closest('[data-color-close]')) { closeEbPanels(); return; }
+        if (t.closest('[data-color-none]')) { colorContext.none?.(); closeEbPanels(); return; }
         const sw = t.closest<HTMLElement>('[data-swatch]');
         if (sw?.dataset.swatch) { setColorFromCss(sw.dataset.swatch); renderColorPanel(); emitColor(); }
       });
@@ -2672,8 +2750,11 @@ function EditorBook({
       closeEbPanels();
       if (!willOpen) return;
       buildColorPanel();
-      const first = selectedTextTargets()[0];
-      if (first) setColorFromCss(getComputedStyle(first).color);
+      // 初值从当前作用对象回填(文字色 / 页背景色);「无背景」按钮仅在有 none 动作时显示。
+      const init = colorContext.initial();
+      if (init) setColorFromCss(init);
+      const noneBtn = p.querySelector<HTMLElement>('[data-color-none]');
+      if (noneBtn) noneBtn.style.display = colorContext.none ? '' : 'none';
       renderColorPanel();
       p.classList.add('open');
       positionEbPanel(p);
@@ -3128,6 +3209,44 @@ function EditorBook({
         saveRevertTimer = setTimeout(() => setSaveState('idle'), state === 'failed' ? 2600 : 2000);
       }
     }
+    // 相册留存状态 chip(breadcrumb 处):只讲图片安危 —— 书的文字/排版一直在云端,
+    // 不会丢;有风险的是图片(未备份则仅在本机 IndexedDB)。三态按「书里用到的图」与
+    // 「已备份集合 backedUpIds」的包含关系推导。挂载 / 备份完成 / 加图重绘时刷新。
+    type BookStatus = 'none' | 'local' | 'cloud' | 'partial';
+    function refreshBackupStatus() {
+      const chip = $('.book-status') as HTMLElement | null;
+      if (!chip) return;
+      const ids = bookPhotoIds();
+      let state: BookStatus;
+      if (ids.length === 0) state = 'none';
+      else {
+        const backed = ids.filter((id) => backedUpIds.has(id)).length;
+        state = backed === 0 ? 'local' : backed === ids.length ? 'cloud' : 'partial';
+      }
+      chip.dataset.bookStatus = state;
+      const copy: Record<BookStatus, { label: string; tip: string }> = {
+        none: { label: '', tip: '' },
+        local: {
+          label: aT('仅本地', 'On this device'),
+          tip: aT(
+            '文字和排版已存云端;图片只在这台设备,清缓存或换设备会变空白。点右上「保存」备份到云端。',
+            'Text & layout are saved in the cloud; photos are only on this device — clearing cache or switching devices blanks them. Tap Save to back up.',
+          ),
+        },
+        cloud: {
+          label: aT('已存云端', 'Backed up'),
+          tip: aT('图片已备份,换设备、清缓存都能看。', 'Photos are backed up — viewable on any device.'),
+        },
+        partial: {
+          label: aT('部分备份', 'Partially backed up'),
+          tip: aT('有新加的图还没备份,点「保存」补上。', 'Some newly added photos aren’t backed up yet — tap Save.'),
+        },
+      };
+      const label = chip.querySelector('.book-status-label');
+      if (label) label.textContent = copy[state].label;
+      if (copy[state].tip) chip.title = copy[state].tip;
+      else chip.removeAttribute('title');
+    }
     let backingUp = false;
     async function backupPhotos() {
       if (backingUp) return;
@@ -3173,6 +3292,7 @@ function EditorBook({
         setSaveState('failed');
       } finally {
         backingUp = false;
+        refreshBackupStatus();
       }
     }
 
@@ -3401,6 +3521,8 @@ function EditorBook({
         if (bodyEl.classList.contains('overview-on')) renderOverview();
       });
     }
+    // 挂载/重挂(加图后 EditorBook 会按 epoch 重挂,effect 重跑)时按当前书算一次留存态。
+    refreshBackupStatus();
 
     // ── Populate the coordinator so the stable ChatPanel can drive the canvas +
     // export subsystem. On each EditorBook remount this effect re-runs and re-populates
@@ -3529,12 +3651,12 @@ function EditorBook({
 
         <div className="el-bar" id="elBar" role="toolbar" aria-label={locale === 'zh' ? '元素编辑工具' : 'Element editing tools'}>
           <div className="eb-group" data-group="text">
-            {/* 颜色:自定义取色器(点开「填充」弹层,见 buildColorPanel)。 */}
+            {/* 颜色:自定义取色器(点开「填充」弹层,见 buildColorPanel)。面板挂在 elBar 根,
+                文字组/页组共用同一个 —— 见下方 #ebColorPanel。 */}
             <span className="eb-ctrl">
               <button type="button" className="eb-color-trigger" data-edit-action="color-open" title={locale === 'zh' ? '颜色' : 'Color'} aria-label={locale === 'zh' ? '文字颜色' : 'Text color'}>
-                <span className="eb-color-dot" id="ebColorDot" />
+                <span className="eb-color-dot" data-color-dot />
               </button>
-              <div className="eb-panel eb-color-panel" id="ebColorPanel" />
             </span>
             <span className="eb-sep" />
             {/* 字体:触发按钮 + 带搜索的字体面板(imperative 填充,见 buildFontPanel)。 */}
@@ -3562,8 +3684,19 @@ function EditorBook({
             <span className="eb-sep" />
             <button type="button" className="eb-btn eb-primary" data-edit-action="edit-text" title={locale === 'zh' ? '编辑文案' : 'Edit text'} aria-label={locale === 'zh' ? '编辑文案' : 'Edit text'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg><span>{locale === 'zh' ? '编辑文案' : 'Edit text'}</span></button>
           </div>
+          {/* 页组:选中「页」时出,只有书页背景色(同一个取色器组件,带透明度 + 无背景)。 */}
+          <div className="eb-group" data-group="page" style={{ display: 'none' }}>
+            <span className="eb-ctrl">
+              <button type="button" className="eb-color-trigger" data-edit-action="color-open" title={locale === 'zh' ? '书页背景色' : 'Page background'} aria-label={locale === 'zh' ? '书页背景色' : 'Page background'}>
+                <span className="eb-color-dot" data-color-dot />
+              </button>
+            </span>
+            <span className="eb-page-label">{locale === 'zh' ? '背景色' : 'Background'}</span>
+          </div>
           {/* 图片编辑不再用 el-bar:选中图片=拖动平移(前后左右)+ 滑块/滚轮缩放 + 复位,
               全在图片浮层(img-edit-overlay)里完成。换照片/黑白已去掉。 */}
+          {/* 共享取色器面板:挂在 elBar 根(不随 text/page 组显隐),文字组与页组的色点都开它。 */}
+          <div className="eb-panel eb-color-panel" id="ebColorPanel" />
         </div>
       </div>
 

@@ -310,6 +310,15 @@
 .editor-port .save-btn[data-backup-state="backed-up"] .save-ic,
 .editor-port .save-btn[data-backup-state="failed"] .save-ic{ display: none; }
 
+/* ─── 相册留存状态 chip(breadcrumb):只讲图片安危(书本身一直在云端)。三态由
+   refreshBackupStatus 命令式写 data-book-status;none=没用到图 → 隐藏。 ─── */
+.editor-port .book-status[data-book-status="none"]{ display: none !important; }
+.editor-port .book-status{ background: var(--bg); cursor: default; user-select: none; }
+.editor-port .book-status-dot{ width: 7px; height: 7px; border-radius: 9999px; flex: 0 0 auto; background: var(--meta); }
+.editor-port .book-status[data-book-status="cloud"] .book-status-dot{ background: var(--grad-green); }
+.editor-port .book-status[data-book-status="partial"] .book-status-dot{ background: #e5a23d; }
+.editor-port .book-status-label{ white-space: nowrap; }
+
 /* ─── 聊天输入框内「待发送照片」暂存条(加图先攒后发,HeroComposer 同款):横向缩略图 + × 移除。 ─── */
 .editor-port .staged-photos{
   display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px 2px;
@@ -1362,6 +1371,14 @@
 .editor-port .eb-hex-input{ flex:1; min-width:0; border:none; background:transparent; outline:none; font-size:13px; font-family:var(--font-mono); color:var(--fg); text-transform:uppercase; }
 .editor-port .eb-alpha-field{ width:74px; }
 .editor-port .eb-alpha-input{ width:100%; border:none; background:transparent; outline:none; font-size:13px; font-family:var(--font-mono); color:var(--fg); text-align:right; }
+/* 「无背景」清除按钮(仅书页背景色场景显示) */
+.editor-port .eb-color-none{
+  margin:0 14px 14px; height:34px; border:1px solid var(--border-soft); background:var(--bg);
+  border-radius:9px; color:var(--fg-2); font-size:13px; cursor:pointer; transition:background .12s var(--ease);
+}
+.editor-port .eb-color-none:hover{ background:var(--surface); color:var(--fg); }
+/* 页组标签(背景色) */
+.editor-port .eb-page-label{ padding:0 10px 0 2px; font-size:13px; color:var(--fg-2); white-space:nowrap; }
 .editor-port .eb-panel-search{
   display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--border-soft);
 }

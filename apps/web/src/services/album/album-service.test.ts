@@ -1590,6 +1590,51 @@ test('updatePage(draft 相册):文本/图位/样式全部落 draft_json,且同�
   }
 });
 
+test('updatePage(draft 相册):pageStyle 把书页背景色写进页根 html + COMPLETED→EDITING', async () => {
+  const user = await makeUser('wp-updatepage-pagebg');
+  try {
+    const album = await makeAlbum(user.id);
+    const tree = makeStoryTree(1);
+    const html =
+      '<div data-template="mag-01" style="width:794px;height:1123px;background:#fff">' +
+      '<div data-text-key="title" style="color:#111">T</div></div>';
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree,
+      pages: [
+        { pageIndex: 0, templateId: 'mag-01', images: {}, texts: { title: 'T' }, html } as Page,
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    // 导出后的书:COMPLETED + 有草稿。设背景色是一次「改动」,状态须退回 EDITING。
+    await albumRepo.update(db, album.id, { status: 'COMPLETED', stage: 'story', draftJson: wrapped });
+
+    await albumService.updatePage(user.id, album.id, 0, {
+      pageStyle: { 'background-color': 'rgba(20, 30, 40, 0.4)' },
+    });
+
+    const after = await albumRepo.findById(album.id);
+    assert.equal(after?.status, 'EDITING');
+    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
+    const page = draft.pages[0]!;
+    // 背景色进页根,内部文字元素不受影响。
+    assert.match(page.html!, /background-color:rgba\(20, 30, 40, 0\.4\)/);
+    assert.match(page.html!, /<div data-text-key="title" style="color:#111">/);
+
+    // 无背景:移除 background-color,回落模板默认 background:#fff。
+    await albumService.updatePage(user.id, album.id, 0, {
+      pageStyle: { 'background-color': null },
+    });
+    const cleared = (await albumRepo.findById(album.id))?.draftJson as {
+      pages: Array<Page & { html?: string }>;
+    };
+    assert.doesNotMatch(cleared.pages[0]!.html!, /background-color/);
+    assert.match(cleared.pages[0]!.html!, /background:#fff/);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('updatePage(draft 相册):html 锚点失配 → 整页重烘,新文本仍然可见', async () => {
   const user = await makeUser('wp-updatepage-rebake');
   try {

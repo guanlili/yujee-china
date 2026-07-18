@@ -17,14 +17,18 @@ const BodySchema = z
     textStyles: z
       .record(z.string().max(64), z.record(z.string().max(32), z.string().max(200).nullable()))
       .optional(),
+    // 页级样式(书页背景色):CSS 属性 → 值|null(移除)。写页根(data-template 外框)。
+    // 值层面的注入护栏在 patchHtmlPageStyle(属性名白名单式正则 + 禁 ;{}<>")。
+    pageStyle: z.record(z.string().max(32), z.string().max(200).nullable()).optional(),
   })
   .refine(
     (b) =>
       b.imagesJson !== undefined ||
       b.textsJson !== undefined ||
       b.imagePosJson !== undefined ||
-      b.textStyles !== undefined,
-    { message: 'imagesJson, textsJson, imagePosJson or textStyles required' },
+      b.textStyles !== undefined ||
+      b.pageStyle !== undefined,
+    { message: 'imagesJson, textsJson, imagePosJson, textStyles or pageStyle required' },
   );
 
 export async function PATCH(

@@ -3,7 +3,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getWebTemplate } from './web-registry';
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
-import { applyFolioOverlay, pageFolioNumbers, preferredPageHtml } from './page-html-dom';
+import { applyFolioOverlay, pageFolioNumbers, pageFolioSides, preferredPageHtml, type FolioSide } from './page-html-dom';
 import { FittedPageHtml } from './FittedPageHtml';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from './spreads';
 import { PAGE } from './templates/constants';
@@ -54,6 +54,7 @@ const PageFace = memo(function PageFace({
   width,
   height,
   folio = null,
+  folioSide = 'right',
   fitText = true,
 }: {
   page: EditorPage | null;
@@ -63,6 +64,8 @@ const PageFace = memo(function PageFace({
   height: number;
   // 展示层页签:按当前页序计算(封面/封尾 null),覆盖模板遗留 folio。
   folio?: number | null;
+  // 页签贴哪侧下角(左页 right / 右页 left),避开外缘裁切。
+  folioSide?: FolioSide;
   fitText?: boolean;
 }) {
   if (!page) {
@@ -70,7 +73,7 @@ const PageFace = memo(function PageFace({
   }
   // 页面真相 = 存库 html(含手工版面);缺失时模板即时渲染,再缺回退 React 组件。
   const rawHtml = preferredPageHtml(page, resolveImage);
-  const html = rawHtml !== undefined ? applyFolioOverlay(rawHtml, folio) : undefined;
+  const html = rawHtml !== undefined ? applyFolioOverlay(rawHtml, folio, folioSide) : undefined;
   const Template = html === undefined ? getWebTemplate(page.templateId) : null;
   const data =
     Template != null
@@ -134,9 +137,15 @@ export function FlipBook({
   const spreads = useMemo(() => buildSpreads(pages), [pages]);
   // 展示层页签:每次按当前页序自动计算(内页 1..N;封面/目录/封尾 null)。
   const folios = useMemo(() => pageFolioNumbers(pages.map((p) => p.templateId)), [pages]);
+  // 页签贴订口侧(左页右下 / 右页左下),避开外缘裁切;按真实版面推,不看页码奇偶。
+  const folioSides = useMemo(() => pageFolioSides(pages.map((p) => p.templateId)), [pages]);
   const folioOf = useCallback(
     (page: EditorPage | null) => (page ? (folios[pages.indexOf(page)] ?? null) : null),
     [folios, pages],
+  );
+  const folioSideOf = useCallback(
+    (page: EditorPage | null): FolioSide => (page ? (folioSides[pages.indexOf(page)] ?? 'right') : 'right'),
+    [folioSides, pages],
   );
   const spreadCount = Math.max(1, spreads.length);
   const spreadOf = useCallback(
@@ -329,7 +338,7 @@ export function FlipBook({
       className="group/half relative"
       style={{ width: halfW, height: book.h, background: 'var(--surface)' }}
     >
-      <PageFace page={page} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(page)} />
+      <PageFace page={page} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(page)} folioSide={folioSideOf(page)} />
       {page && (
         <>
           <button
@@ -432,7 +441,7 @@ export function FlipBook({
                 className="absolute inset-0"
                 style={{ backfaceVisibility: 'hidden', background: 'var(--surface)' }}
               >
-                <PageFace page={leafFront} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(leafFront)} />
+                <PageFace page={leafFront} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(leafFront)} folioSide={folioSideOf(leafFront)} />
                 {/* page-turn shading on the leaf front */}
                 <div
                   className="absolute inset-0"
@@ -448,7 +457,7 @@ export function FlipBook({
                 className="absolute inset-0"
                 style={{ backfaceVisibility: 'hidden', background: 'var(--surface)', transform: 'rotateY(180deg)' }}
               >
-                <PageFace page={leafBack} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(leafBack)} />
+                <PageFace page={leafBack} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(leafBack)} folioSide={folioSideOf(leafBack)} />
               </div>
             </div>
           )}

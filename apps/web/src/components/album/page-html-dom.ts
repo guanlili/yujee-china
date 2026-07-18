@@ -119,6 +119,23 @@ export function patchHtmlTextStyle(
   return html.slice(0, m.index) + patched + html.slice(m.index + m[0].length);
 }
 
+/** 页级样式覆写:锚定页 html 最外层的页根元素(`data-template=…`),给它的行内
+ *  style upsert 属性(value=null 移除)。用于「书页背景色」这类整页设计(background-color)。
+ *  移除 background-color 后自动回落到模板根自带的 `background:#fff`(默认不写死白)。
+ *  找不到页根/非法值返回 null(调用方回退整页重烘或仅更新数据层,与 textStyle 同口径)。 */
+export function patchHtmlPageStyle(
+  html: string,
+  props: Record<string, string | null>,
+): string | null {
+  // 页根是 html 里第一个带 data-template 的元素(见 render/html-templates/*:794×1123 外框)。
+  const openRe = /<[a-z0-9]+\b[^>]*\bdata-template="[^"]*"[^>]*>/i;
+  const m = openRe.exec(html);
+  if (!m) return null;
+  const patched = upsertStyleAttr(m[0], props);
+  if (patched === null) return null;
+  return html.slice(0, m.index) + patched + html.slice(m.index + m[0].length);
+}
+
 /** 图片位置/缩放固化(IMG_POS/IMG_TF 烘制后是具体值,必须回写)。与编辑器
  *  applyLiveImagePos 写的 CSS 逐字一致:objectPosition + scale>1 时 transform。 */
 export function patchHtmlImagePos(
@@ -227,10 +244,37 @@ export function pageFolioNumbers(templateIds: string[]): (number | null)[] {
   });
 }
 
+// 页签贴订口(书脊)侧,避开外缘印后裁切:左页订口在右→右下角,右页订口在左→左下角。
+// 侧别按 buildSpreads 的两两配对推出(与 spreads.ts 一致:cover 右单页/ending 左单页
+// 都单独成对、不参与配对,其余 interior+toc 顺序两两配),所以「奇偶」不等于左右——
+// 有没有目录页会整体错位一位,必须按真实版面推,不能只看页码奇偶。
+export type FolioSide = 'left' | 'right';
+
+/** 每页页签该贴哪侧(左页→right/右下,右页→left/左下)。folio 为 null 的页侧别无意义。 */
+export function pageFolioSides(templateIds: string[]): FolioSide[] {
+  // 默认 right(右下):左页/末尾落单页/兜底都贴右,与旧行为一致。
+  const sides: FolioSide[] = templateIds.map(() => 'right');
+  let pendingLeft: number | null = null;
+  templateIds.forEach((id, i) => {
+    const category = getTemplate(id)?.category;
+    if (category === 'cover' || category === 'ending') {
+      pendingLeft = null; // 单页,冲掉未配对的左页(它保持默认 right)
+      return;
+    }
+    if (pendingLeft === null) {
+      pendingLeft = i; // 左页:订口在右 → 保持 'right'
+    } else {
+      sides[i] = 'left'; // 右页:订口在左 → 左下角
+      pendingLeft = null;
+    }
+  });
+  return sides;
+}
+
 const FOLIO_ANCHOR_OPEN_RE = /<([a-z0-9]+)((?:[^>]*?)data-text-key="folio(?:\[\d+\])?"[^>]*)>/gi;
 
-/** 展示层页签:隐藏模板遗留 folio 元素;folio 非 null 时在右下角注入统一页码。 */
-export function applyFolioOverlay(html: string, folio: number | null): string {
+/** 展示层页签:隐藏模板遗留 folio 元素;folio 非 null 时在订口侧下角注入统一页码。 */
+export function applyFolioOverlay(html: string, folio: number | null, side: FolioSide = 'right'): string {
   let out = html.replace(FOLIO_ANCHOR_OPEN_RE, (_full, tag: string, attrs: string) => {
     const nextAttrs = attrs.includes('style="')
       ? attrs.replace('style="', 'style="display:none;')
@@ -238,8 +282,9 @@ export function applyFolioOverlay(html: string, folio: number | null): string {
     return `<${tag}${nextAttrs}>`;
   });
   if (folio !== null) {
+    const edge = side === 'left' ? 'left:36px' : 'right:36px';
     const overlay =
-      `<div data-page-folio="true" style="position:absolute;right:36px;bottom:26px;` +
+      `<div data-page-folio="true" style="position:absolute;${edge};bottom:26px;` +
       `font-size:12px;letter-spacing:0.12em;color:#a09b8e;` +
       `font-family:'Inter','Noto Sans SC',sans-serif;pointer-events:none">${folio}</div>`;
     const closeAt = out.lastIndexOf('</div>');

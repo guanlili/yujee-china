@@ -1,10 +1,30 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyFolioOverlay, pageFolioNumbers, patchHtmlImagePos, patchHtmlText, patchHtmlTextStyle, resolveDisplayHtml } from './page-html-dom';
+import { applyFolioOverlay, pageFolioNumbers, pageFolioSides, patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle, resolveDisplayHtml } from './page-html-dom';
 
 test('pageFolioNumbers:内页从 1 连续编号,封面/封尾/目录为 null', () => {
   // p01=cover, mag-05/mag-06=interior, mag-02=toc, mag-20=ending
   assert.deepEqual(pageFolioNumbers(['p01', 'mag-05', 'mag-02', 'mag-06', 'mag-20']), [null, 1, null, 2, null]);
+});
+
+test('pageFolioSides:左页贴右下、右页贴左下(避开外缘裁切)', () => {
+  // cover 单页不参与配对;之后 mag-05 落左页(订口在右)、mag-06 落右页(订口在左)。
+  assert.deepEqual(pageFolioSides(['p01', 'mag-05', 'mag-06', 'mag-20']), ['right', 'right', 'left', 'right']);
+});
+
+test('pageFolioSides:目录页整体错位一位 → 侧别按真实版面而非页码奇偶', () => {
+  // 多一张 toc 后,页码 1 的 mag-05 从左页变右页(贴左下),证明不能只看奇偶。
+  assert.deepEqual(
+    pageFolioSides(['p01', 'mag-02', 'mag-05', 'mag-06', 'mag-20']),
+    ['right', 'right', 'left', 'right', 'right'],
+  );
+});
+
+test('applyFolioOverlay:right 页(side=left)页码贴左下角', () => {
+  const html = `<div data-template="mag-05"><h1 data-text-key="title">T</h1></div>`;
+  const out = applyFolioOverlay(html, 1, 'left');
+  assert.ok(out.includes('left:36px'), '未贴左下角');
+  assert.equal(out.includes('right:36px'), false);
 });
 
 test('applyFolioOverlay:隐藏遗留 folio 槽 + 注入右下角页码', () => {
@@ -102,7 +122,38 @@ test('patchHtmlImagePos:与编辑器 applyLiveImagePos 的 CSS 逐字一致', ()
   assert.doesNotMatch(back, /transform/);
 });
 
+test('patchHtmlPageStyle:给页根 background-color 上色,叠在模板默认 background 之后取胜', () => {
+  const html =
+    '<div data-template="mag-05" style="position:relative;width:794px;height:1123px;background:#fff;color:#1c1b18">' +
+    '<h1 data-text-key="title" style="color:#1c1b18">T</h1></div>';
+  const out = patchHtmlPageStyle(html, { 'background-color': '#f2e9d8' });
+  assert.ok(out);
+  // background-color 排在 background:#fff 之后(源序靠后取胜)
+  assert.match(out, /background:#fff;.*background-color:#f2e9d8/);
+  // 只动页根,内部文字元素不受影响
+  assert.match(out, /<h1 data-text-key="title" style="color:#1c1b18">/);
+});
+
+test('patchHtmlPageStyle:半透明 rgba 合法(透明度)', () => {
+  const html = '<div data-template="mag-01" style="width:794px;height:1123px;background:#fff">x</div>';
+  const out = patchHtmlPageStyle(html, { 'background-color': 'rgba(20, 30, 40, 0.4)' });
+  assert.ok(out);
+  assert.match(out, /background-color:rgba\(20, 30, 40, 0\.4\)/);
+});
+
+test('patchHtmlPageStyle:value=null 移除 background-color → 回落模板默认 background:#fff(无背景)', () => {
+  const html = '<div data-template="mag-01" style="width:794px;height:1123px;background:#fff;background-color:#123456">x</div>';
+  const out = patchHtmlPageStyle(html, { 'background-color': null });
+  assert.ok(out);
+  assert.doesNotMatch(out, /background-color/);
+  assert.match(out, /background:#fff/);
+});
+
 test('patchHtml*:槽位不存在返回 null(调用方回退整页重烘)', () => {
   assert.equal(patchHtmlTextStyle('<div>x</div>', 'nope', { color: '#000' }), null);
   assert.equal(patchHtmlImagePos('<div>x</div>', 'nope', { x: 50, y: 50, scale: 1 }), null);
+  // 页根无 data-template → 找不到锚点,返回 null(不产出损坏 html)
+  assert.equal(patchHtmlPageStyle('<div style="background:#fff">x</div>', { 'background-color': '#000' }), null);
+  // 注入护栏:非法值/属性名被拒
+  assert.equal(patchHtmlPageStyle('<div data-template="m">x</div>', { 'background-color': '#000;} <x>' }), null);
 });
