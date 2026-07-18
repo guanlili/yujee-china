@@ -24,7 +24,7 @@ description: 用于设定或调整全书文字字体，或用户提出"换个字
 - 英文：`playfair-display` · `cormorant-garamond` · `bebas-neue`(全大写高瘦) · `archivo-black`(厚重) · `abril-fatface` · `montserrat`
 
 **正文 bodyFont**
-- 中文：`noto-sans-sc`(思源黑体·首选) · `noto-serif-sc`(思源宋体常规) · `lxgw-wenkai`(霞鹜文楷·唯一能撑正文的手写风) · `zcool-xiaowei`(站酷小薇)
+- 中文：`noto-sans-sc`(思源黑体) · `noto-serif-sc`(思源宋体) · `lxgw-wenkai`(霞鹜文楷) 
 - 英文：`eb-garamond` · `source-serif-4` · `lora` · `libre-baskerville`(衬线) · `inter` · `work-sans` · `dm-sans` · `poppins` · `raleway` · `montserrat`(无衬线)
 
 **装饰 decorationFont**
@@ -40,6 +40,6 @@ description: 用于设定或调整全书文字字体，或用户提出"换个字
 - 中英各挑一套：一本书里中文槽和英文槽的字体气质要接近（都衬线或都无衬线）。
 - 配色和字体是一套设计语言，改字体时顺带看现有配色是否还搭（相册配色技能）。用户给了明确偏好时以用户为准，只做合法性把关。
 
-## 汇报口径
+## 回复口径
 
-- 写入后用一句话说明选字理由（"标题用 great-vibes 花体贴合婚礼，正文配 eb-garamond 保证易读，页码走 ibm-plex-mono"），不要罗列受影响的槽位。
+- 写入后用一句话说明选字理由（"标题用了艺术花体更精致，正文现在更易读了o"），不要罗列受影响的槽位。
