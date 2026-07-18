@@ -87,8 +87,11 @@ export default function AlbumPage({
   }
 
   if (phase === 'ready' && detail) {
-    const { status, layoutJson } = detail.album;
-    const mode = status === 'EDITING' && layoutJson == null ? 'authoring' : 'editing';
+    // layoutJson 才是草稿↔定稿的真判据(见上)。不能用 status==='EDITING':V3 导出 PDF 后
+    // status 翻 COMPLETED 但 layoutJson 仍为 null、页面仍只在 draft_json——若按 status 判会落进
+    // editing(读空的 album_pages),书就「消失」。只按 layoutJson 判:草稿(含导出后的 COMPLETED)
+    // 一律走 authoring 读 draft_json;定稿(layoutJson 落地)才走 editing。
+    const mode = detail.album.layoutJson == null ? 'authoring' : 'editing';
     return <EditorPort detail={detail} locale={locale} mode={mode} />;
   }
 

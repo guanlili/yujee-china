@@ -639,7 +639,12 @@ export const albumService = {
           pages,
           progress: current.progress,
         };
-        await albumRepo.update(tx, albumId, { draftJson: nextDraft });
+        // 编辑一本已 COMPLETED 的书 → 退回 EDITING(photo-snapshot §5.5,同 updatePage):
+        // 导出即完成、但不锁编辑;一旦改动,旧 PDF 不再代表当前内容,状态回 EDITING。pdfUrl 保留。
+        await albumRepo.update(tx, albumId, {
+          draftJson: nextDraft,
+          ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
+        });
       });
     }
 
@@ -758,9 +763,17 @@ export const albumService = {
     const album = await this.findOwned(userId, albumId);
     // 时序反转:排版前(analyze 完、还没 select-layout)也要能拿 skeleton 去走「收集故事」面板。
     // 那时 album.status='EDITING'(analyze 完成后保持 EDITING,不翻 AGENT_RUNNING)、layoutJson=null、
-    // draftJson 有 tree 无 pages。status 允许 EDITING/AGENT_RUNNING(后者兼容老时序),
-    // layoutJson 仍必须为 null(排版完/定稿走另一路)。
-    if ((album.status !== 'EDITING' && album.status !== 'AGENT_RUNNING') || album.layoutJson) return null;
+    // draftJson 有 tree 无 pages。status 允许 EDITING/AGENT_RUNNING(后者兼容老时序)以及
+    // COMPLETED(V3 导出 PDF 只把 status 标 COMPLETED,layoutJson 仍为 null、页面仍只在 draft_json——
+    // 导出后重新打开必须仍能渲染草稿,否则书「消失」)。layoutJson 才是草稿↔定稿的真判据:
+    // 仍必须为 null(排版完/定稿走另一路)。
+    if (
+      (album.status !== 'EDITING' &&
+        album.status !== 'AGENT_RUNNING' &&
+        album.status !== 'COMPLETED') ||
+      album.layoutJson
+    )
+      return null;
     const normalized = readStoryDraft(album.draftJson);
     if (!normalized) return null;
     // 排版前 pages 尚不存在 —— 用空数组,chapters 仍从 tree 出(带 photoIds),让收集面板可用。

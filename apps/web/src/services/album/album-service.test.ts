@@ -430,6 +430,26 @@ async function seedDraftAlbum(userId: string) {
   return album.id;
 }
 
+test('getDraftSkeleton: still renders a V3 draft after PDF export marks it COMPLETED (layoutJson null)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('w10-v3-completed-draft');
+  try {
+    const albumId = await seedDraftAlbum(user.id);
+    // PDF 导出把 V3 草稿相册标 COMPLETED,但 layoutJson 仍为 null、页面仍只在 draft_json。
+    // 打开时必须仍能拿到 skeleton(否则书「消失」)——不因导出而丢草稿。
+    await albumRepo.update(db, albumId, { status: 'COMPLETED' });
+
+    const sk = await albumService.getDraftSkeleton(user.id, albumId);
+    assert.ok(sk, 'a COMPLETED V3 draft album must still render its skeleton');
+    assert.deepEqual(sk!.pages.map((p) => p.pageIndex), [0, 1]);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('getDraftSkeleton: renders V3 tree+pages draft without dropping preview pages', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
