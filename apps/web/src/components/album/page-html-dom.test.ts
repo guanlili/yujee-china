@@ -73,6 +73,18 @@ test("patchHtmlTextStyle:font-family 栈里的单引号放行('Segoe UI' 这类�
   assert.match(out, /'Segoe UI'/);
 });
 
+test('patchHtmlTextStyle:改样式不切碎已有 &quot; 转义的 font-family 字体栈(回归)', () => {
+  // 存库 html 的 style 值里字体名的 " 转义成 HTML 实体 &quot;(末尾就是分号)。此前
+  // upsertStyleAttr 用 split(';') 解析,会把字体栈从每个 &quot; 的分号处切碎、丢掉无冒号
+  // 碎片 → font-family 损坏,表现为「改颜色/字体/字号都不保存」。
+  const html = '<div data-text-key="title" style="color:#1c1b18;font-family:&quot;Playfair Display&quot;, &quot;Noto Serif SC&quot;, serif;width:460px">HI</div>';
+  const out = patchHtmlTextStyle(html, 'title', { color: '#13b8a6' });
+  assert.ok(out);
+  assert.match(out, /color:#13b8a6/, '颜色已改');
+  assert.match(out, /font-family:&quot;Playfair Display&quot;, &quot;Noto Serif SC&quot;, serif/, 'font-family 字体栈必须完整保留');
+  assert.match(out, /width:460px/, '后续声明不能丢');
+});
+
 test('patchHtmlImagePos:与编辑器 applyLiveImagePos 的 CSS 逐字一致', () => {
   const html =
     '<img data-image-slot="image" src="{{IMG_SRC:image}}" style="object-fit:cover;object-position:50% 50%" />';

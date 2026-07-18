@@ -71,6 +71,17 @@ export function patchHtmlText(html: string, slotId: string, value: string): stri
 const STYLE_PROP_RE = /^[a-z-]+$/;
 const STYLE_VALUE_BAN = /[;{}<>"]/; // 允许单引号:font-family 栈里的 'Segoe UI' 等多词字体名需要它
 
+// 存库 html 的 style 属性值里,字体名的 `"` 被转义成了 HTML 实体 `&quot;`(否则和属性
+// 外层引号冲突)。而实体末尾的 `;` 不是 CSS 声明分隔符 —— 直接 split(';') 会把
+// font-family:&quot;A&quot;,&quot;B&quot;,serif 的字体栈从每个 &quot; 的分号处切碎、丢掉
+// 无冒号的碎片,导致 font-family 损坏(改颜色/字号等任意样式都会连带毁掉字体栈)。先把
+// 实体末尾的分号占位保护,split 后还原。
+function splitStyleDeclarations(style: string): string[] {
+  const SEMI = String.fromCharCode(0xE000); // 私有区占位符:绝不出现在 style 值里
+  const guarded = style.replace(/&#?[a-z0-9]+;/gi, (m) => m.slice(0, -1) + SEMI);
+  return guarded.split(';').map((part) => part.split(SEMI).join(';'));
+}
+
 function upsertStyleAttr(openTag: string, props: Record<string, string | null>): string | null {
   for (const [prop, value] of Object.entries(props)) {
     if (!STYLE_PROP_RE.test(prop)) return null;
@@ -79,7 +90,7 @@ function upsertStyleAttr(openTag: string, props: Record<string, string | null>):
   const styleMatch = /style="([^"]*)"/.exec(openTag);
   const decls = new Map<string, string>();
   if (styleMatch) {
-    for (const part of styleMatch[1]!.split(';')) {
+    for (const part of splitStyleDeclarations(styleMatch[1]!)) {
       const idx = part.indexOf(':');
       if (idx > 0) decls.set(part.slice(0, idx).trim(), part.slice(idx + 1).trim());
     }
