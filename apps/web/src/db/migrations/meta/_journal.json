@@ -120,6 +120,13 @@
       "when": 1784310280506,
       "tag": "0016_credit_per_photo_redenomination",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784390475810,
+      "tag": "0017_bumpy_spirit",
+      "breakpoints": true
     }
   ]
 }

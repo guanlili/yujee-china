@@ -46,7 +46,7 @@ export type ChatCoordinator = {
   authoringFocusPageIndex: () => number;
   capturePageRender: (pageIndex: number) => Promise<string>;
   capturePhotoThumb: (photoId?: string | null) => Promise<string | undefined>;
-  coverOptionHTML: (templateId: string, photoId: string | null, boxW?: number, boxH?: number) => string;
+  coverOptionHTML: (templateId: string, photoId: string | null, boxW?: number, boxH?: number, pageBackground?: string) => string;
   bookPhotoIds: () => string[];
   imageUrl: (id: string) => string | undefined;
   // ── UI hooks ──
@@ -98,6 +98,7 @@ export const chatI18n: Record<string, Record<string, string>> = {
     overview: '整本',
     previewMode: '预览模式',
     canvasMode: '画布模式',
+    boardBg: '垫底背景',
     toggleChapters: '收起 / 展开分组',
     fullscreen: '全屏预览',
     aiAvatarChar: '己',
@@ -249,6 +250,7 @@ export const chatI18n: Record<string, Record<string, string>> = {
     overview: 'All',
     previewMode: 'Preview mode',
     canvasMode: 'Canvas mode',
+    boardBg: 'Board background',
     toggleChapters: 'Collapse / expand groups',
     fullscreen: 'Fullscreen preview',
     aiAvatarChar: 'Y',

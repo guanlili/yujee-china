@@ -20,6 +20,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
+import { isDefaultPageBackground } from '@/lib/design/page-backgrounds';
+import { interiorSpreads } from '@/lib/export/collage';
+import { COLOR_PRESETS, IMAGE_PRESETS, presetImageUrl, type BoardBackground } from '@/lib/board-bg/presets';
 import {
   signPhotoSnapshotUpload,
   confirmPhotoSnapshot,
@@ -109,7 +112,8 @@ const CJK_PREVIEW_SAMPLE = '字体预览一二三';
 
 // ── 自定义取色器(参考「填充」面板设计):HSV 拾色 + 色相/透明度条 + 预设色 + hex/不透明度 ──
 // 预设色 = 项目文字用色(黑为主 + 品牌青/紫)。
-const COLOR_SWATCHES = ['#111111', '#FFFFFF', '#13B8A6', '#8C5EF4', '#C9B6F7', '#999999'];
+// 吸色工具与画板垫底背景共用同一套常用色板(保持一致)。
+const COLOR_SWATCHES = COLOR_PRESETS;
 function clamp01(x: number) { return Math.min(1, Math.max(0, x)); }
 function hsvToRgb(h: number, s: number, v: number) {
   h = ((h % 360) + 360) % 360;
@@ -493,7 +497,7 @@ function EditorShell({
           />
         </div>
 
-        <EditorModals />
+        <EditorModals locale={locale} />
       </div>
     </ChatCoordinatorContext.Provider>
   );
@@ -554,12 +558,12 @@ function EditorTopbar({
           <button
             className="btn-primary bg-fg text-white px-4 py-2.5 rounded-pill text-[13px] font-semibold flex items-center gap-1.5 transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
             style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }}
-            data-action="exportPdf"
+            data-action="openExportMenu"
             data-testid="export-pdf-btn"
             data-i18n-title="exportPdf"
             disabled={!exportUnlocked}
             aria-disabled={!exportUnlocked}
-            title={exportUnlocked ? (locale === 'zh' ? '导出 PDF' : 'Export PDF') : (locale === 'zh' ? '完成故事并选定封面后即可导出 PDF' : 'Finish the story and pick a cover to export the PDF')}
+            title={exportUnlocked ? (locale === 'zh' ? '导出' : 'Export') : (locale === 'zh' ? '完成故事并选定封面后即可导出' : 'Finish the story and pick a cover to export')}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
             {/* 图标按钮:文案隐藏但保留(i18n 同步 + 只读姿态换「下载 PDF」时改它的 textContent)。 */}
@@ -573,9 +577,11 @@ function EditorTopbar({
   );
 }
 
-// The two modals (photo picker + export-fail). Rendered by the stable shell; their
-// data-action nodes + backdrop-close are wired by EditorBook's effect.
-function EditorModals() {
+// The modals (photo picker + export-fail + export menu/collage/progress). Rendered
+// by the stable shell; their data-action nodes + backdrop-close are wired by
+// EditorBook's effect.
+function EditorModals({ locale }: { locale: Locale }) {
+  const zh = locale === 'zh';
   return (
     <>
       <div className="modal-overlay" id="photoModal" data-overlay-close>
@@ -629,6 +635,116 @@ function EditorModals() {
             <span className="btn-glow">
               <button className="px-5 py-2.5 rounded-pill text-[13px] font-semibold bg-fg text-white transition-transform hover:-translate-y-px" style={{ boxShadow: '0 1px 3px rgba(0,0,0,.12)' }} data-action="retryExportPdf" data-i18n="exportFailRetry">再试一次</button>
             </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 导出格式选择弹窗。顶栏导出按钮 → openExportMenu 打开。 */}
+      <div className="modal-overlay" id="exportMenuModal" data-overlay-close>
+        <div className="modal-card export-sheet" role="dialog" aria-modal="true" aria-labelledby="exportMenuTitle" data-testid="export-menu-modal">
+          <div className="px-6 pt-5 pb-1">
+            <h3 id="exportMenuTitle" className="font-display text-[18px] font-bold">{zh ? '导出 Flipin' : 'Export Flipin'}</h3>
+            <p className="text-[13px] text-muted mt-1">{zh ? '选一种格式导出' : 'Pick a format to export'}</p>
+          </div>
+          <div className="px-5 py-4 flex flex-col gap-2.5">
+            <button className="export-opt" data-action="openCollage" data-testid="export-opt-collage">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
+              <span>{zh ? '多跨页拼图 · JPG' : 'Spread collage · JPG'}</span>
+            </button>
+            <button className="export-opt" data-action="exportLive" data-testid="export-opt-live">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="14" height="12" rx="2" /><path d="m22 8-6 4 6 4V8Z" /></svg>
+              <span>{zh ? 'Live 图 · MP4' : 'Live · MP4'}</span>
+            </button>
+            <button className="export-opt" data-action="exportSinglePages" data-testid="export-opt-pages">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.5-3.5L9 20" /></svg>
+              <span>{zh ? '单页 JPG' : 'Single pages · JPG'}</span>
+            </button>
+            <button className="export-opt" data-action="exportPdf" data-testid="export-opt-pdf">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" /></svg>
+              <span>{zh ? '整本 PDF' : 'Full PDF'}</span>
+            </button>
+          </div>
+          <div className="px-5 pb-5">
+            <button className="export-cancel" data-action="closeExportMenu">{zh ? '取消' : 'Cancel'}</button>
+          </div>
+        </div>
+      </div>
+
+      {/* 拼图二级弹窗:一张图放几个跨页(1/2/3)。 */}
+      <div className="modal-overlay" id="collageModal" data-overlay-close>
+        <div className="modal-card collage-card" role="dialog" aria-modal="true" aria-labelledby="collageTitle" data-testid="collage-modal">
+          <button className="collage-close" data-action="closeCollage" aria-label="close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+          <div className="px-6 pt-6 text-center">
+            <h3 id="collageTitle" className="font-display text-[18px] font-bold">{zh ? '一张图里放几个跨页?' : 'How many spreads per image?'}</h3>
+            <p className="text-[13px] text-muted mt-1.5">
+              {zh ? '只导出内页(当前 ' : 'Interior spreads only (currently '}
+              <span id="collageCount" className="font-semibold text-fg">0</span>
+              {zh ? ' 个跨页),按选择自动排版' : '), auto-arranged by your choice'}
+            </p>
+          </div>
+          <div className="collage-density px-6 pt-5">
+            {[1, 2, 3, 6].map((n) => (
+              <button key={n} className="density-opt" data-collage-density={n} data-testid={`density-${n}`}>
+                <span className={`density-wire${n === 6 ? ' density-wire-grid' : ''}`} data-n={n}>
+                  {Array.from({ length: n }).map((_, i) => <span key={i} className="density-cell" />)}
+                </span>
+                <span className="density-label">{n} {zh ? '个' : ''}</span>
+              </button>
+            ))}
+          </div>
+          <div className="px-6 py-6">
+            <button className="collage-confirm" data-action="confirmCollage" data-testid="collage-confirm" disabled>{zh ? '确认导出' : 'Export'}</button>
+          </div>
+        </div>
+      </div>
+
+      {/* 导出进度浮层(拼图/单页/PDF 共用)。渲染期间不可关闭。 */}
+      <div className="modal-overlay" id="exportProgressModal" data-testid="export-progress">
+        <div className="modal-card export-progress-card" role="alertdialog" aria-modal="true" aria-live="polite">
+          <div className="px-6 py-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 id="expTitle" className="font-display text-[15px] font-semibold">{zh ? '正在导出…' : 'Exporting…'}</h3>
+              <span id="expLabel" className="text-[13px] text-muted tabular-nums">…</span>
+            </div>
+            <div className="exp-bar"><div className="exp-bar-fill" id="expBarFill" /></div>
+            <p className="text-[12px] text-muted mt-2.5">{zh ? '生成中,请稍候,别关闭页面' : 'Generating — please keep this page open'}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* 垫底背景选择 sheet:纯色色板 + 自定义取色 + 内置实拍图。选中即时应用到预览并持久化。 */}
+      <div className="modal-overlay" id="boardBgModal" data-overlay-close>
+        <div className="modal-card board-bg-sheet" role="dialog" aria-modal="true" aria-labelledby="boardBgTitle" data-testid="board-bg-modal">
+          <div className="board-bg-head">
+            <h3 id="boardBgTitle" className="font-display text-[17px] font-bold">{zh ? '垫底背景' : 'Board background'}</h3>
+            <button className="board-bg-close" data-action="closeBoardBg" aria-label="close">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            </button>
+          </div>
+          <div className="board-bg-body">
+            <div className="bbg-swatches">
+              <button className="bbg-swatch bbg-none" data-board-none data-testid="bbg-none" title={zh ? '无背景' : 'None'} aria-label={zh ? '无背景' : 'None'} />
+              {COLOR_PRESETS.map((c) => (
+                <button key={c} className="bbg-swatch" data-board-color={c} style={{ background: c }} aria-label={c} title={c} />
+              ))}
+              <label className="bbg-swatch bbg-custom" title={zh ? '自定义颜色' : 'Custom color'}>
+                <input type="color" id="boardColorInput" defaultValue="#dbe4ea" aria-label={zh ? '自定义颜色' : 'Custom color'} />
+              </label>
+            </div>
+            <p className="bbg-section-label">{zh ? '图片' : 'Images'}</p>
+            <div className="bbg-images">
+              {IMAGE_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  className="bbg-image"
+                  data-board-preset={p.id}
+                  aria-label={p.label}
+                  style={{ backgroundImage: `url("${presetImageUrl(p.id)}")` }}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -915,6 +1031,9 @@ function EditorBook({
       add(root.querySelector('.chat-fold-expand'));
       add(byId('photoModal'));
       add(byId('exportFailModal'));
+      add(byId('exportMenuModal'));
+      add(byId('collageModal'));
+      add(byId('boardBgModal'));
       return out;
     };
     const $$scoped = (sel: string): Element[] => {
@@ -3032,14 +3151,26 @@ function EditorBook({
     }
     // Render a {template, photo} choice through its real web template into the .cv-opt box.
     // boxW/boxH 可选:设计选择卡的封面+封底并排小预览用更小的盒(默认保持 132×176)。
-    function coverOptionHTML(templateId: string, photoId: string | null, boxW = 132, boxH = 176): string {
+    function coverOptionHTML(
+      templateId: string,
+      photoId: string | null,
+      boxW = 132,
+      boxH = 176,
+      pageBackground?: string,
+    ): string {
       const page: EditorPage = {
         pageIndex: 0,
         templateId,
         imagesJson: photoId ? { [heroSlotId(templateId)]: photoId } : {},
         textsJson: {},
       };
-      return faceHTML(page, boxW, boxH);
+      const html = faceHTML(page, boxW, boxH);
+      // 推荐封面自带的书页底色:染进预览页根(和真页同一 patchHtmlPageStyle 原语)。
+      // 纯白/未传 = 不写,留模板默认;锚点失配则原样返回。
+      if (pageBackground && !isDefaultPageBackground(pageBackground)) {
+        return patchHtmlPageStyle(html, { 'background-color': pageBackground }) ?? html;
+      }
+      return html;
     }
     // #162 draft-edit turn: the draft-period chat is a pointed single-page edit,
     // talk/act physically split (no theme→chapter machine, no auto-advance). The
@@ -3112,6 +3243,157 @@ function EditorBook({
     function openExportFailModal() { byId('exportFailModal')?.classList.add('open'); }
     function closeExportFailModal() { byId('exportFailModal')?.classList.remove('open'); }
 
+    // ─── 导出格式弹窗 + 拼图二级弹窗 + 进度浮层 ───
+    function openExportMenu() { if (exportGateLocked) return; byId('exportMenuModal')?.classList.add('open'); }
+    function closeExportMenu() { byId('exportMenuModal')?.classList.remove('open'); }
+    let collageDensity: 1 | 2 | 3 | 6 | null = null;
+    function openCollageModal() {
+      closeExportMenu();
+      collageDensity = null;
+      // 复位选择态 + 确认禁用 + 填「当前 N 个跨页」。
+      $$('[data-collage-density]').forEach((el) => el.classList.remove('selected'));
+      const confirm = byId('collageModal')?.querySelector('[data-action="confirmCollage"]') as HTMLButtonElement | null;
+      if (confirm) confirm.disabled = true;
+      const countEl = byId('collageCount');
+      if (countEl) countEl.textContent = String(interiorSpreads(pagesState).length);
+      byId('collageModal')?.classList.add('open');
+    }
+    function closeCollageModal() { byId('collageModal')?.classList.remove('open'); }
+    function showExportProgress(title: string) {
+      const t = byId('expTitle'); if (t) t.textContent = title;
+      setExportProgress(0, 0);
+      byId('exportProgressModal')?.classList.add('open');
+    }
+    function setExportProgress(done: number, total: number) {
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      const fill = byId('expBarFill'); if (fill) fill.style.width = pct + '%';
+      const label = byId('expLabel'); if (label) label.textContent = total > 0 ? `${done} / ${total}` : '…';
+    }
+    function hideExportProgress() { byId('exportProgressModal')?.classList.remove('open'); }
+
+    // 三条导出路径共用的输入:适配页 + 原图解析器(喂高分辨率原图,防放大糊)。
+    async function buildExportInput() {
+      const adaptable = pagesState.map((p) => ({
+        templateId: p.templateId, images: p.imagesJson, texts: p.textsJson, imagePos: p.imagePosJson,
+        html: p.htmlJson,
+      }));
+      const ids = collectPhotoIds(adaptable);
+      const dataUrls = await photoStore.getPdfDataUrls(ids, RASTER_PDF_IMAGE_MAX_EDGE);
+      return { adaptable, resolveImage: (id: string) => dataUrls[id] };
+    }
+
+    let exportingImages = false;
+    async function exportSinglePages() {
+      if (exportingImages || exportingPdf) return;
+      exportingImages = true;
+      closeExportMenu();
+      showExportProgress(aT('正在导出单页图…', 'Exporting pages…'));
+      try {
+        const { adaptable, resolveImage } = await buildExportInput();
+        const { renderPageJpegs } = await import('@/lib/export/single-pages');
+        const files = await renderPageJpegs(adaptable, resolveImage, { onProgress: setExportProgress });
+        const { downloadBlobs, safeFileStem } = await import('@/lib/export/download');
+        const stem = safeFileStem(currentTitle);
+        await downloadBlobs(files.map((f) => ({ name: `${stem}-${f.name}`, blob: f.blob })));
+      } catch (e) {
+        logger.error(buildExportFailureLog(e, { albumId, attempts: 1 }), 'single-pages export failed');
+        openExportFailModal();
+      } finally {
+        hideExportProgress();
+        exportingImages = false;
+      }
+    }
+
+    async function exportCollage(perImage: 1 | 2 | 3 | 6) {
+      if (exportingImages || exportingPdf) return;
+      exportingImages = true;
+      showExportProgress(aT('正在导出拼图…', 'Exporting collage…'));
+      try {
+        const { adaptable, resolveImage } = await buildExportInput();
+        const { renderCollages } = await import('@/lib/export/collage');
+        const blobs = await renderCollages(adaptable, resolveImage, { perImage, background: boardBg, onProgress: setExportProgress });
+        const { downloadBlob, downloadBlobs, safeFileStem } = await import('@/lib/export/download');
+        const stem = safeFileStem(currentTitle);
+        if (blobs.length === 0) {
+          alert(aT('没有内页可拼图', 'No interior pages to collage'));
+        } else if (blobs.length === 1) {
+          downloadBlob(blobs[0]!, stem + '.jpg');
+        } else {
+          await downloadBlobs(blobs.map((b, i) => ({ name: `${stem}-${String(i + 1).padStart(2, '0')}.jpg`, blob: b })));
+        }
+      } catch (e) {
+        logger.error(buildExportFailureLog(e, { albumId, attempts: 1 }), 'collage export failed');
+        openExportFailModal();
+      } finally {
+        hideExportProgress();
+        exportingImages = false;
+      }
+    }
+
+    async function exportLive() {
+      if (exportingImages || exportingPdf) return;
+      exportingImages = true;
+      closeExportMenu();
+      showExportProgress(aT('正在导出 Live 视频…', 'Exporting Live video…'));
+      try {
+        const { adaptable, resolveImage } = await buildExportInput();
+        const { renderLiveVideo, LiveUnsupportedError } = await import('@/lib/export/live-video');
+        try {
+          const blob = await renderLiveVideo(adaptable, resolveImage, { background: boardBg, onProgress: setExportProgress });
+          const { downloadBlob, safeFileStem } = await import('@/lib/export/download');
+          downloadBlob(blob, safeFileStem(currentTitle) + '-live.mp4');
+        } catch (e) {
+          if (e instanceof LiveUnsupportedError) {
+            alert(aT('当前浏览器不支持导出 Live 视频,请用 Chrome 或 Safari。', 'Live video export is not supported in this browser — please use Chrome or Safari.'));
+            return;
+          }
+          throw e;
+        }
+      } catch (e) {
+        logger.error(buildExportFailureLog(e, { albumId, attempts: 1 }), 'live export failed');
+        openExportFailModal();
+      } finally {
+        hideExportProgress();
+        exportingImages = false;
+      }
+    }
+
+    // ─── 垫底背景(相册级预览画板底;导出拼图共用同一来源)───
+    let boardBg: BoardBackground | null = detail.album.boardBackground ?? null;
+    function applyBoardBackground(bg: BoardBackground | null) {
+      const el = byId('boardBg');
+      if (!el) return;
+      if (!bg) { el.style.backgroundColor = ''; el.style.backgroundImage = ''; el.dataset.on = '0'; return; }
+      if (bg.kind === 'color') { el.style.backgroundImage = ''; el.style.backgroundColor = bg.color; }
+      else { el.style.backgroundColor = ''; el.style.backgroundImage = `url("${presetImageUrl(bg.presetId)}")`; }
+      el.dataset.on = '1';
+    }
+    function reflectBoardSelection() {
+      const cur = boardBg;
+      $$('[data-board-color]').forEach((el) =>
+        el.classList.toggle('selected', cur?.kind === 'color' && (el as HTMLElement).dataset.boardColor === cur.color));
+      $$('[data-board-preset]').forEach((el) =>
+        el.classList.toggle('selected', cur?.kind === 'preset' && (el as HTMLElement).dataset.boardPreset === cur.presetId));
+      $('[data-board-none]')?.classList.toggle('selected', cur == null);
+    }
+    function setBoardBackground(bg: BoardBackground | null) {
+      boardBg = bg;
+      applyBoardBackground(bg);
+      reflectBoardSelection();
+      // 视觉属性,持久化失败静默(下次刷新回退,不打断用户)。
+      void fetch(`/api/v1/albums/${albumId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ boardBackground: bg }),
+      }).catch(() => undefined);
+    }
+    function openBoardBgModal() {
+      // 垫底背景在预览/画板两种视图都生效,无需强制切模式。
+      reflectBoardSelection();
+      byId('boardBgModal')?.classList.add('open');
+    }
+    function closeBoardBgModal() { byId('boardBgModal')?.classList.remove('open'); }
+    applyBoardBackground(boardBg); // 挂载即应用已存背景
+
     // 导出分两段,语义【解耦】(用户诉求:本地拿到 PDF 就算导出成功):
     //   • render 段 —— 本地出 PDF + 本地下载。这才是用户眼里的「导出」:拿到文件即成功。
     //     连续 3 次 render 失败(真的没出 PDF)才弹安抚框 + 落日志。
@@ -3123,16 +3405,11 @@ function EditorBook({
     let didLocalDownload = false;
     async function renderPdfOnce(): Promise<Blob> {
       try {
-        const adaptable = pagesState.map((p) => ({
-          templateId: p.templateId, images: p.imagesJson, texts: p.textsJson, imagePos: p.imagePosJson,
-          html: p.htmlJson,
-        }));
-        const ids = collectPhotoIds(adaptable);
         // C 方案:PDF 导出 = 栅格截屏幕渲染(存库 html 优先,与画布像素级一致)。
         // 矢量导出路径已退役(消费不了自由 HTML)。喂高分辨率原图,防放大糊。
-        const dataUrls = await photoStore.getPdfDataUrls(ids, RASTER_PDF_IMAGE_MAX_EDGE);
+        const { adaptable, resolveImage } = await buildExportInput();
         const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
-        return await renderAlbumPdfRaster(adaptable, (id) => dataUrls[id], { scale: 3 });
+        return await renderAlbumPdfRaster(adaptable, resolveImage, { scale: 3, onProgress: setExportProgress });
       } catch (e) {
         throw new ExportError('render', e instanceof Error ? e.message : String(e));
       }
@@ -3186,11 +3463,11 @@ function EditorBook({
       // The topbar export button is prop-disabled when the gate is locked, and the
       // chat export-ready card only appears when unlocked — but defend anyway.
       if (exportGateLocked) return;
-      if (exportingPdf) return;
+      if (exportingPdf || exportingImages) return;
       exportingPdf = true;
       didLocalDownload = false;
-      const btn = $('[data-action="exportPdf"]') as HTMLButtonElement | null;
-      if (btn) btn.style.opacity = '0.6';
+      closeExportMenu();
+      showExportProgress(aT('正在导出 PDF…', 'Exporting PDF…'));
       try {
         // render 段:出 PDF + 本地下载,自动重试 ≤3 次。连续 3 次失败才是真·导出失败 →
         // 弹安抚框 + 落日志。计数全在前端(runExportWithRetry),**不动积分**(§5)。
@@ -3219,8 +3496,8 @@ function EditorBook({
           },
         });
       } finally {
+        hideExportProgress();
         exportingPdf = false;
-        if (btn) btn.style.opacity = '';
       }
     }
     /* ─── 手动照片备份(photo-snapshot-design.md §5.1)───
@@ -3350,7 +3627,7 @@ function EditorBook({
         if (!blob) { anyMissing = true; break; }
       }
       if (!anyMissing) return;
-      const exportBtn = $('[data-action="exportPdf"]') as HTMLButtonElement | null;
+      const exportBtn = $('[data-action="openExportMenu"]') as HTMLButtonElement | null;
       if (!exportBtn) return;
       const labelEl = exportBtn.querySelector('[data-i18n="exportPdf"]') as HTMLElement | null;
       const pdfUrl = detail.album.pdfUrl;
@@ -3397,6 +3674,16 @@ function EditorBook({
       // WP5.3 / §4.5d: 安抚弹框的两个出口。「再试一次」关弹框后重跑导出;「知道了」只关弹框。
       closeExportFail: closeExportFailModal,
       retryExportPdf: () => { closeExportFailModal(); void exportPdf(); },
+      // 导出格式弹窗 + 拼图二级弹窗。
+      openExportMenu,
+      closeExportMenu,
+      openCollage: openCollageModal,
+      closeCollage: closeCollageModal,
+      confirmCollage: () => { if (collageDensity == null) return; closeCollageModal(); void exportCollage(collageDensity); },
+      exportSinglePages: () => void exportSinglePages(),
+      exportLive: () => void exportLive(),
+      openBoardBg: openBoardBgModal,
+      closeBoardBg: closeBoardBgModal,
       uploadStub: () => alert(t('alertUploadStub')),
       confirmNewChapter,
     };
@@ -3426,6 +3713,48 @@ function EditorBook({
       const fn = (e: Event) => { if (e.target === exportFailOverlay) closeExportFailModal(); };
       exportFailOverlay.addEventListener('click', fn);
       actionHandlers.push({ el: exportFailOverlay, fn });
+    }
+    // 导出菜单/拼图弹窗/垫底背景:点背景关闭(进度浮层不给关,渲染中)。
+    [['exportMenuModal', closeExportMenu], ['collageModal', closeCollageModal], ['boardBgModal', closeBoardBgModal]].forEach(([id, close]) => {
+      const ov = byId(id as string);
+      if (!ov) return;
+      const fn = (e: Event) => { if (e.target === ov) (close as () => void)(); };
+      ov.addEventListener('click', fn);
+      actionHandlers.push({ el: ov, fn });
+    });
+    // 拼图密度选项(1/2/3):互斥选中 + 启用确认按钮。
+    root.querySelectorAll('[data-collage-density]').forEach((el) => {
+      const fn = () => {
+        collageDensity = parseInt(el.getAttribute('data-collage-density')!, 10) as 1 | 2 | 3 | 6;
+        root.querySelectorAll('[data-collage-density]').forEach((o) => o.classList.toggle('selected', o === el));
+        const confirm = byId('collageModal')?.querySelector('[data-action="confirmCollage"]') as HTMLButtonElement | null;
+        if (confirm) confirm.disabled = false;
+      };
+      el.addEventListener('click', fn);
+      actionHandlers.push({ el, fn });
+    });
+    // 垫底背景:纯色色板 / 内置实拍图 / 无 / 自定义取色 —— 选中即时应用 + 持久化。
+    $$('[data-board-color]').forEach((el) => {
+      const fn = () => setBoardBackground({ kind: 'color', color: (el as HTMLElement).dataset.boardColor! });
+      el.addEventListener('click', fn);
+      actionHandlers.push({ el, fn });
+    });
+    $$('[data-board-preset]').forEach((el) => {
+      const fn = () => setBoardBackground({ kind: 'preset', presetId: (el as HTMLElement).dataset.boardPreset! });
+      el.addEventListener('click', fn);
+      actionHandlers.push({ el, fn });
+    });
+    const boardNoneBtn = $('[data-board-none]');
+    if (boardNoneBtn) {
+      const fn = () => setBoardBackground(null);
+      boardNoneBtn.addEventListener('click', fn);
+      actionHandlers.push({ el: boardNoneBtn, fn });
+    }
+    const boardColorInput = byId('boardColorInput') as HTMLInputElement | null;
+    if (boardColorInput) {
+      const fn = () => setBoardBackground({ kind: 'color', color: boardColorInput.value });
+      boardColorInput.addEventListener('input', fn);
+      actionHandlers.push({ el: boardColorInput, fn });
     }
     // zoom buttons carry an amount
     $$('[data-zoom]').forEach((el) => {
@@ -3625,6 +3954,9 @@ function EditorBook({
   // and scopes its effect to the shared outer root. ──
   return (
     <main className="pane pane-center flex flex-col overflow-hidden relative md:order-3 md:flex-1" id="paneCenter">
+      {/* 垫底背景层:固定舞台底,书浮在其上。仅预览模式显示(overview-on 时 CSS 隐藏)。
+          applyBoardBackground 命令式设 background;data-on 控制默认中性态。 */}
+      <div className="board-bg" id="boardBg" data-on="0" aria-hidden="true" />
       <div className="book-stage w-full flex-1 flex items-center justify-center px-4 pt-8 pb-16 overflow-auto relative">
         <div className="canvas-hint" data-i18n="canvasHint">
           {locale === 'zh' ? '切换到编辑模式，点击可手动编辑' : 'Switch to edit mode · click to edit manually'}
@@ -3688,6 +4020,17 @@ function EditorBook({
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2Z" /><path d="M22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8Z" /></svg>
             </button>
+            {/* 垫底背景:给画板换个底(纯色/图片)。预览、画板视图都生效。图层符号。 */}
+            <button
+              className="zoom-btn view-btn"
+              data-action="openBoardBg"
+              data-testid="board-bg-btn"
+              data-tip={locale === 'zh' ? '垫底背景' : 'Board background'}
+              data-i18n-tip="boardBg"
+              aria-label={locale === 'zh' ? '垫底背景' : 'Board background'}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></svg>
+            </button>
           </div>
         </div>
 
@@ -3724,7 +4067,7 @@ function EditorBook({
             <button type="button" className="eb-btn" data-edit-action="align-center" title={locale === 'zh' ? '居中' : 'Center'} aria-label={locale === 'zh' ? '居中' : 'Center'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="6" y1="12" x2="18" y2="12" /><line x1="5" y1="18" x2="19" y2="18" /></svg></button>
             <button type="button" className="eb-btn" data-edit-action="align-right" title={locale === 'zh' ? '右对齐' : 'Align right'} aria-label={locale === 'zh' ? '右对齐' : 'Align right'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="9" y1="12" x2="21" y2="12" /><line x1="6" y1="18" x2="21" y2="18" /></svg></button>
             <span className="eb-sep" />
-            <button type="button" className="eb-btn eb-primary" data-edit-action="edit-text" title={locale === 'zh' ? '编辑文案' : 'Edit text'} aria-label={locale === 'zh' ? '编辑文案' : 'Edit text'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg><span>{locale === 'zh' ? '编辑文案' : 'Edit text'}</span></button>
+            <button type="button" className="eb-btn eb-primary" data-edit-action="edit-text" title={locale === 'zh' ? '编辑文案' : 'Edit text'} aria-label={locale === 'zh' ? '编辑文案' : 'Edit text'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></button>
           </div>
           {/* 页组:选中「页」时出,只有书页背景色(同一个取色器组件,带透明度 + 无背景)。 */}
           <div className="eb-group" data-group="page" style={{ display: 'none' }}>

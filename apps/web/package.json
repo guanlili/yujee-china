@@ -28,6 +28,7 @@
     "html2canvas-pro": "^2.0.4",
     "jspdf": "^4.2.1",
     "marked": "^18.0.6",
+    "mp4-muxer": "^5.2.2",
     "next": "15.5.9",
     "next-intl": "4.7.0",
     "postgres": "^3.4.4",

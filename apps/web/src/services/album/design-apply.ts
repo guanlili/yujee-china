@@ -1,6 +1,8 @@
 import { TEMPLATES, THEME_ACCENT_CARRIER_SUFFIX, THEME_FONT_CARRIER_SUFFIX } from '@yujee/contracts';
 import type { Page } from '@yujee/contracts';
 import { bakePagesHtml } from './bake-html';
+import { patchHtmlPageStyle } from '@/components/album/page-html-dom';
+import { PAGE_BACKGROUNDS, isDefaultPageBackground } from '@/lib/design/page-backgrounds';
 
 // 设计环节的确定性应用层(纯函数,零 AI):封面组规则生成、模板文字槽 spec 提取、
 // carrier sweep、成书页序组装。AI 决策(字体/颜色/封面封尾文案)在 engine /v3/design;
@@ -11,6 +13,9 @@ export type CoverSet = {
   coverPhotoId: string;
   endingTemplateId: string;
   endingPhotoId: string;
+  // 每套推荐封面自带一个书页底色(4 套 × 4 色,一一对应);选定后刷全书。
+  // 可选:老调用/内部组页(用 applyDesign 的 pageBackground 入参)不必带。
+  pageBackground?: string;
 };
 
 export type DesignFonts = { title: string; body: string; decoration: string };
@@ -74,11 +79,14 @@ export function buildCoverSets(albumId: string, chapters: TreeChapter[]): CoverS
   const rotated = [...coverIds.slice(offset), ...coverIds.slice(0, offset)].slice(0, 4);
   const coverPhotoId = heroes[0];
   const endingPhotoId = heroes.find((id) => id !== coverPhotoId) ?? coverPhotoId;
-  return rotated.map((coverTemplateId) => ({
+  // 每套按序绑一个书页底色:第 1 套→纯白、第 2 套→象牙白…(PAGE_BACKGROUNDS 顺序)。
+  // 4 套 × 4 色一一对应;用户选哪套 = 连那套底色一起刷全书。
+  return rotated.map((coverTemplateId, i) => ({
     coverTemplateId,
     coverPhotoId,
     endingTemplateId: ending,
     endingPhotoId,
+    pageBackground: PAGE_BACKGROUNDS[i % PAGE_BACKGROUNDS.length]!.hex,
   }));
 }
 
@@ -137,6 +145,9 @@ export function assembleDesignedPages(input: {
   fonts: DesignFonts;
   colors: DesignColors;
   extraEndingPhotoIds?: string[];
+  // 书页底色:用户在封面选择卡里选的 4 色之一,刷全书每页页根 background-color。
+  // 纯白/未传 = 不写(留模板默认),见 applyPageBackground。
+  pageBackground?: string;
 }): Page[] {
   const coverSlot = firstImageSlotId(input.set.coverTemplateId);
   const endingSlotIds = (templateOf(input.set.endingTemplateId)?.images ?? []).map((s) => s.id);
@@ -165,5 +176,18 @@ export function assembleDesignedPages(input: {
   const swept = sweepCarriers(ordered, input.fonts, input.colors);
   // C 方案:carrier sweep 改了 texts,已烘的 html 失效 —— 清掉重烘,设计结果
   // (字体/颜色/封面封尾文案)烘进页面真相。lenient 为迁移过渡期(见 bake-html)。
-  return bakePagesHtml(swept.map((page) => ({ ...page, html: undefined }))) as Page[];
+  const baked = bakePagesHtml(swept.map((page) => ({ ...page, html: undefined }))) as Page[];
+  return applyPageBackground(baked, input.pageBackground);
+}
+
+// 书页底色 sweep:烘完 html 后,给每页页根 [data-template] 写 background-color。
+// 与手动书页背景工具同一原语(patchHtmlPageStyle),纯字符串实现,服务端可跑。
+// 纯白/未传 = 不写(留模板自带 background:#fff);锚点失配的页原样保留(不影响其余页)。
+function applyPageBackground(pages: Page[], bg?: string): Page[] {
+  if (!bg || isDefaultPageBackground(bg)) return pages;
+  return pages.map((page) => {
+    if (typeof page.html !== 'string') return page;
+    const patched = patchHtmlPageStyle(page.html, { 'background-color': bg });
+    return patched ? { ...page, html: patched } : page;
+  });
 }

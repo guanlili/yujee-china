@@ -62,10 +62,10 @@ test('缩略图右下角小放大镜 → 无遮罩气泡放大', () => {
   assert.match(zoom, /cv-zoom-layer/, '气泡浮层');
   assert.match(
     zoom,
-    /coverOptionHTML\?\.\(set\.coverTemplateId, set\.coverPhotoId, 132, 176\)/,
-    '放大用更大尺寸渲染封面',
+    /coverOptionHTML\?\.\(set\.coverTemplateId, set\.coverPhotoId, 132, 176, set\.pageBackground\)/,
+    '放大用更大尺寸渲染封面(带每套书页底色)',
   );
-  assert.match(zoom, /coverOptionHTML\?\.\(set\.endingTemplateId, set\.endingPhotoId, 132, 176\)/, '放大封尾');
+  assert.match(zoom, /coverOptionHTML\?\.\(set\.endingTemplateId, set\.endingPhotoId, 132, 176, set\.pageBackground\)/, '放大封尾(带每套书页底色)');
   assert.doesNotMatch(
     css,
     /\.cv-zoom-layer\{[^}]*background:\s*rgba\(0,\s*0,\s*0/,

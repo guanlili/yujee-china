@@ -580,7 +580,7 @@ export function ChatPanel({
       coverPhotoId: string | null;
       endingTemplateId: string | null;
       endingPhotoId: string | null;
-    }): HTMLElement {
+    }, pageBackground?: string): HTMLElement {
       const card = document.createElement('div');
       card.className = 'msg ai max-w-full';
       const inner = document.createElement('div');
@@ -603,12 +603,12 @@ export function ChatPanel({
       let html = '';
       if (set.coverTemplateId) {
         html +=
-          `<span class="cv-face">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 92, 122) ?? ''}` +
+          `<span class="cv-face">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 92, 122, pageBackground) ?? ''}` +
           `<i class="cv-face-tag">${aT('封面', 'Cover')}</i></span>`;
       }
       if (set.endingTemplateId) {
         html +=
-          `<span class="cv-face">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 92, 122) ?? ''}` +
+          `<span class="cv-face">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 92, 122, pageBackground) ?? ''}` +
           `<i class="cv-face-tag">${aT('封底', 'Back')}</i></span>`;
       }
       pair.innerHTML = html;
@@ -626,13 +626,20 @@ export function ChatPanel({
       const coverPage = pagesState.find((p) => kindByPageIndex.get(p.pageIndex) === 'cover') ?? null;
       const endingPage = pagesState.find((p) => kindByPageIndex.get(p.pageIndex) === 'ending') ?? null;
       if (!coverPage && !endingPage) return; // 设计已必选;老数据没有封面就不渲染占位
+      // 刷新回放:从已落库页面 html 的页根读回书页底色,recap 预览也染上(和选定时一致)。
+      const bgOfPage = (page: { htmlJson?: string } | null): string | undefined => {
+        const html = page?.htmlJson;
+        if (typeof html !== 'string') return undefined;
+        const root = /<[a-z0-9]+\b[^>]*\bdata-template="[^"]*"[^>]*>/i.exec(html)?.[0] ?? '';
+        return /background-color:\s*(#[0-9a-fA-F]{6})/i.exec(root)?.[1];
+      };
       chatBody!.appendChild(
         buildCoverRecapCard({
           coverTemplateId: coverPage?.templateId ?? null,
           coverPhotoId: coverPage ? (Object.values(coverPage.imagesJson)[0] ?? null) : null,
           endingTemplateId: endingPage?.templateId ?? null,
           endingPhotoId: endingPage ? (Object.values(endingPage.imagesJson)[0] ?? null) : null,
-        }),
+        }, bgOfPage(coverPage) ?? bgOfPage(endingPage)),
       );
     }
 
@@ -1470,13 +1477,29 @@ export function ChatPanel({
       if (!files.length || disposed) return;
       const room = MAX_PHOTOS_PER_GENERATION - stagedPhotos.length;
       if (room <= 0) return;
-      for (const file of files.slice(0, room)) {
-        const photoId = crypto.randomUUID();
-        const compressed = await compressFile(file, photoId);
-        await photoStore.put(photoId, file);
-        if (disposed) return;
-        stagedPhotos.push({ photoId, previewUrl: compressed.base64, compressed });
-        renderStagedThumbs();
+      const batch = files.slice(0, room);
+      // 逐张压缩会转圈,给个「正在处理照片 N/M」进度条,别让用户盲等(和首页同口径)。
+      const prog = byId('stagedProgress');
+      const showProg = (done: number) => {
+        if (!prog) return;
+        prog.style.display = '';
+        prog.textContent = aT(`正在处理照片 ${done}/${batch.length}`, `Processing photos ${done}/${batch.length}`);
+      };
+      try {
+        showProg(0);
+        let done = 0;
+        for (const file of batch) {
+          const photoId = crypto.randomUUID();
+          const compressed = await compressFile(file, photoId);
+          await photoStore.put(photoId, file);
+          if (disposed) return;
+          stagedPhotos.push({ photoId, previewUrl: compressed.base64, compressed });
+          renderStagedThumbs();
+          done++;
+          showProg(done);
+        }
+      } finally {
+        if (prog) prog.style.display = 'none';
       }
     }
     // 点发送:把暂存的照片一起提交 → 排版 + 扣款 + 采访。提交后清空暂存条。
@@ -1528,7 +1551,7 @@ export function ChatPanel({
     }
     async function offerDesignCard() {
       if (disposed || designOfferShown) return;
-      let sets: Array<{ coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string }> = [];
+      let sets: Array<{ coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string; pageBackground?: string }> = [];
       try {
         const res = await fetch(`/api/v3/albums/${albumId}/design`);
         const json = await res.json();
@@ -1581,9 +1604,9 @@ export function ChatPanel({
         pick.setAttribute('role', 'radio');
         pick.innerHTML =
           `<span class="cv-pick-thumbs">` +
-            `<span class="cv-face sm">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 46, 60) ?? ''}` +
+            `<span class="cv-face sm">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 46, 60, set.pageBackground) ?? ''}` +
             `<button type="button" class="cv-zoom" aria-label="${aT('放大查看', 'Zoom')}" title="${aT('放大查看', 'Zoom')}">${ZOOM_SVG}</button></span>` +
-            `<span class="cv-face sm">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 46, 60) ?? ''}</span>` +
+            `<span class="cv-face sm">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 46, 60, set.pageBackground) ?? ''}</span>` +
           `</span>` +
           `<span class="cv-pick-label">${aT('第 ' + (i + 1) + ' 套', 'Set ' + (i + 1))}<i>${aT('封面 + 封底', 'Cover + back')}</i></span>` +
           `<span class="cv-radio">${CHECK_SVG}</span>`;
@@ -1598,6 +1621,9 @@ export function ChatPanel({
       });
       inner.appendChild(list);
 
+      // 书页底色不再单独选:每套推荐封面自带一个底色(见 buildCoverSets),已染进上面的
+      // 缩略图预览;用户选哪套 = 连那套底色一起刷全书(下方确认时透传 set.pageBackground)。
+
       // 底部:黑色「确认并继续」(必选,无跳过),带品牌光晕。
       const foot = document.createElement('div');
       foot.className = 'cv-foot2';
@@ -1609,7 +1635,7 @@ export function ChatPanel({
       go.innerHTML = `${aT('确认并继续', 'Confirm')}${ARROW_SVG}`;
       go.addEventListener('click', () => {
         if (sending) return;
-        void runApplyDesign(sets[selected]);
+        void runApplyDesign(sets[selected], sets[selected]?.pageBackground);
       });
       const glow = document.createElement('span');
       glow.className = 'btn-glow';
@@ -1630,7 +1656,8 @@ export function ChatPanel({
     }
 
     async function runApplyDesign(
-      set: { coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string },
+      set: { coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string; pageBackground?: string },
+      pageBackground?: string,
     ) {
       // main 的送出键单一真相源(setSending)+ design-work 的封面覆盖层清理,两者都保留。
       setSending(true);
@@ -1639,7 +1666,7 @@ export function ChatPanel({
       const dock = byId('coverDock');
       if (dock) { dock.replaceChildren(); dock.style.display = 'none'; }
       setCoverLock(false);
-      const recap = buildCoverRecapCard(set);
+      const recap = buildCoverRecapCard(set, pageBackground);
       chatBody!.appendChild(recap);
       appendUserText(aT('就用这组封面', 'Use this cover set'));
       const host = appendThinkingShell();
@@ -1648,7 +1675,7 @@ export function ChatPanel({
         const res = await fetch(`/api/v3/albums/${albumId}/design`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ language: currentLang === 'zh' ? 'zh' : 'en', ...set }),
+          body: JSON.stringify({ language: currentLang === 'zh' ? 'zh' : 'en', ...set, ...(pageBackground ? { pageBackground } : {}) }),
         });
         const json = await res.json();
         if (!res.ok || !json.ok) throw new Error(json.error?.message ?? 'design failed');
@@ -1677,7 +1704,7 @@ export function ChatPanel({
     }
 
     // 封面缩略图气泡放大:无遮罩,浮层 + 透明点击关闭层。
-    function openCoverZoom(set: { coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string }) {
+    function openCoverZoom(set: { coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string; pageBackground?: string }) {
       // 挂在整块聊天面板(.chat-card:relative + overflow-hidden)上居中浮现,
       // 而不是只有输入框高的 composer-group —— 否则气泡会溢出到面板/屏幕外。
       const host = outerRootRef.current?.querySelector('.chat-card');
@@ -1691,8 +1718,8 @@ export function ChatPanel({
         `<div class="cv-bubble" role="dialog" aria-label="${aT('封面放大', 'Cover preview')}">` +
           `<button type="button" class="cv-bubble-x" aria-label="${aT('关闭', 'Close')}">${X_SVG}</button>` +
           `<div class="cv-bubble-faces">` +
-            `<span class="cv-bubble-face">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 132, 176) ?? ''}<i class="cv-face-tag">${aT('封面', 'Cover')}</i></span>` +
-            `<span class="cv-bubble-face">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 132, 176) ?? ''}<i class="cv-face-tag">${aT('封底', 'Back')}</i></span>` +
+            `<span class="cv-bubble-face">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 132, 176, set.pageBackground) ?? ''}<i class="cv-face-tag">${aT('封面', 'Cover')}</i></span>` +
+            `<span class="cv-bubble-face">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 132, 176, set.pageBackground) ?? ''}<i class="cv-face-tag">${aT('封底', 'Back')}</i></span>` +
           `</div>` +
         `</div>`;
       layer.addEventListener('click', (e) => { if (e.target === layer) closeCoverZoom(); });
@@ -2340,6 +2367,8 @@ export function ChatPanel({
           <div className="chat-input shrink-0 bg-surface border border-bdsoft flex flex-col transition-all" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
             {/* 加图「先攒后发」:点 + 暂存的照片缩略图排这里(× 可移除),点发送才提交。renderStagedThumbs 命令式填充。 */}
             <div className="staged-photos" id="stagedPhotos" style={{ display: 'none' }} />
+            {/* 暂存压缩进度:stageAddedPhotos 逐张压缩时显示「正在处理照片 N/M」,命令式切换。 */}
+            <div className="staged-progress" id="stagedProgress" role="status" aria-live="polite" style={{ display: 'none' }} />
             <textarea className="w-full outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none px-4 pt-3.5 pb-1 disabled:cursor-not-allowed" style={{ fontFamily: 'var(--font-body)' }} placeholder="" rows={1} id="msgInput" />
             <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-0.5">
               <button className="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted" data-action="pickAddPhotos" data-i18n-title="addPhoto" title="添加图片" aria-label="添加图片">

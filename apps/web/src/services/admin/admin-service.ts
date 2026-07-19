@@ -1,4 +1,7 @@
 import { db } from '@/db/client';
+import { accounts } from '@/db/schema';
+import { getAuth } from '@/lib/auth/better-auth';
+import { FREE_PLAN_CREDITS } from '@/config/pricing';
 import { userRepo } from '@/db/repos/user-repo';
 import { albumRepo } from '@/db/repos/album-repo';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
@@ -119,6 +122,57 @@ export const adminService = {
       delta: amount,
       balanceAfter: ledger.balanceAfter,
     };
+  },
+
+  // Manual account creation for users who cannot self-register (e.g. domestic
+  // users who never receive the verification email or are blocked from Google
+  // OAuth). Creates the user pre-verified so they can log in immediately, plus a
+  // matching better-auth `credential` account holding the hashed password. The
+  // password is hashed through better-auth's own context so the resulting login
+  // is byte-for-byte identical to a normal sign-up. User row + credential account
+  // commit together so a half-created account can never exist (invariant 8).
+  async createUser(
+    actorId: string,
+    input: { email: string; password: string; name?: string },
+  ) {
+    const email = input.email.trim().toLowerCase();
+    const password = input.password;
+    const name = input.name?.trim() || undefined;
+
+    if (password.length < 8 || password.length > 128) {
+      throw ERRORS.VALIDATION_FAILED('password must be 8–128 characters');
+    }
+
+    const existing = await userRepo.findByEmailInsensitive(email);
+    if (existing) throw ERRORS.USER_EXISTS();
+
+    const ctx = await getAuth().$context;
+    const hashed = await ctx.password.hash(password);
+
+    const user = await db.transaction(async (tx) => {
+      const created = await userRepo.upsertById(tx, {
+        email,
+        name,
+        emailVerified: true,
+        creditBalance: FREE_PLAN_CREDITS,
+      });
+      await tx.insert(accounts).values({
+        userId: created.id,
+        // better-auth stores email/password logins under the `credential`
+        // provider with accountId == user id; match that exactly.
+        accountId: created.id,
+        providerId: 'credential',
+        password: hashed,
+      });
+      return created;
+    });
+
+    logger.info(
+      { actorId, action: 'admin.createUser', targetUserId: user.id },
+      'admin manual user create',
+    );
+
+    return { id: user.id, email: user.email, creditBalance: user.creditBalance };
   },
 
   async getAnalytics(_actorId: string, now: Date = new Date()) {

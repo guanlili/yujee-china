@@ -46,6 +46,87 @@ function inferLanguage(prompt: string): 'zh' | 'en' {
   return /[一-龥]/.test(prompt) ? 'zh' : 'en';
 }
 
+// 上传进度气泡的阶段:选图后逐张压缩(可数,done/total),或点发送后单发提交(不定量)。
+type UploadStage = { kind: 'compress'; done: number; total: number } | { kind: 'upload' };
+
+// 上传进度气泡:浮在 composer 上方,压缩阶段显示「正在处理照片 N/M」+ 进度条,
+// 提交阶段显示「正在上传…」+ 流动条。给用户一个「事情在动」的实感,不再盲等转圈。
+function UploadBubble({ stage, t }: { stage: UploadStage | null; t: Props['createMessages'] }) {
+  if (!stage) return null;
+  const isCompress = stage.kind === 'compress';
+  const pct = isCompress && stage.total > 0 ? Math.round((stage.done / stage.total) * 100) : 0;
+  const label = isCompress ? `${t.uploadProcessing} ${stage.done}/${stage.total}` : t.uploadSending;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="yj-up-bubble"
+      style={{
+        position: 'absolute',
+        left: '50%',
+        bottom: 'calc(100% + 12px)',
+        transform: 'translateX(-50%)',
+        zIndex: 30,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 11,
+        padding: '10px 15px',
+        borderRadius: 14,
+        background: 'rgba(20,20,22,.92)',
+        color: '#fff',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        whiteSpace: 'nowrap',
+        fontSize: 13,
+        fontWeight: 500,
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: 15,
+          height: 15,
+          flexShrink: 0,
+          borderRadius: '50%',
+          border: '2px solid rgba(255,255,255,.32)',
+          borderTopColor: '#fff',
+          animation: 'yj-up-spin .7s linear infinite',
+        }}
+      />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 128 }}>
+        <span>{label}</span>
+        <span style={{ position: 'relative', height: 3, borderRadius: 2, background: 'rgba(255,255,255,.22)', overflow: 'hidden' }}>
+          {isCompress ? (
+            <span
+              style={{
+                position: 'absolute',
+                insetBlock: 0,
+                left: 0,
+                width: `${pct}%`,
+                borderRadius: 2,
+                background: 'linear-gradient(90deg,var(--grad-green,#13b8a6),var(--grad-purple,#8c5ef4))',
+                transition: 'width .25s ease',
+              }}
+            />
+          ) : (
+            <span
+              style={{
+                position: 'absolute',
+                insetBlock: 0,
+                width: '40%',
+                borderRadius: 2,
+                background: 'linear-gradient(90deg,var(--grad-green,#13b8a6),var(--grad-purple,#8c5ef4))',
+                animation: 'yj-up-indet 1.1s ease-in-out infinite',
+              }}
+            />
+          )}
+        </span>
+      </div>
+      <style>{`.yj-up-bubble{box-shadow:0 10px 34px rgba(0,0,0,.24)}@keyframes yj-up-spin{to{transform:rotate(360deg)}}@keyframes yj-up-indet{0%{left:-40%}100%{left:100%}}`}</style>
+    </div>
+  );
+}
+
 export function HeroComposer({
   locale,
   placeholder,
@@ -61,6 +142,7 @@ export function HeroComposer({
   const [photos, setPhotos] = useState<LocalPhoto[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [uploadStage, setUploadStage] = useState<UploadStage | null>(null);
   const resumeAttempted = useRef(false);
 
   const loginResumePath = `/${locale}?resumeGeneration=1`;
@@ -163,11 +245,15 @@ export function HeroComposer({
 
   const onFiles = async (files: FileList | null) => {
     if (!files) return;
+    // 只处理还装得下的张数;total 用它做分母,气泡才不会显示 3/50 却卡在上限。
+    const room = Math.max(0, MAX_PHOTOS_PER_GENERATION - photos.length);
+    const list = Array.from(files).slice(0, room);
+    if (list.length === 0) return;
     setBusy(true);
     setErr(null);
+    setUploadStage({ kind: 'compress', done: 0, total: list.length });
     const next: LocalPhoto[] = [];
-    for (const f of Array.from(files)) {
-      if (photos.length + next.length >= MAX_PHOTOS_PER_GENERATION) break;
+    for (const f of list) {
       const photoId = crypto.randomUUID();
       try {
         // compressFile 内部会把 HEIC/HEIF 转成 JPEG 再解码(见 lib/photo/heic.ts)。
@@ -192,8 +278,11 @@ export function HeroComposer({
         // 真正无法解码/不支持的文件(含个别坏 HEIC)跳过,不打断整批;留痕便于排查。
         console.warn('[photo] skipped undecodable file', photoId, e);
       }
+      // 成功或跳过都推进进度:分母是「打算处理的张数」,进度条一定走满。
+      setUploadStage((s) => (s && s.kind === 'compress' ? { ...s, done: s.done + 1 } : s));
     }
     setPhotos((prev) => [...prev, ...next]);
+    setUploadStage(null);
     setBusy(false);
   };
 
@@ -210,6 +299,7 @@ export function HeroComposer({
     // step. If blank, the authoring flow asks the theme question first.
     setBusy(true);
     setErr(null);
+    setUploadStage({ kind: 'upload' });
     const language = inferLanguage(value);
     const photoIds = photos.map((p) => p.photoId);
     const draft = { prompt: value.trim(), language, photoIds };
@@ -221,6 +311,7 @@ export function HeroComposer({
       }
       await submitDraft(draft, photos.map((p) => p.compressed).filter((p): p is CompressedPhoto => !!p));
     } catch (e) {
+      setUploadStage(null);
       if (e instanceof CreditInsufficientError) {
         generationDraft.save(draft);
         router.push(`/${locale}/credits?from=home`);
@@ -285,6 +376,7 @@ export function HeroComposer({
           }
         `}</style>
         <div id="homepage-composer" className="landing-composer">
+          <UploadBubble stage={uploadStage} t={t} />
           <div className="flex items-start gap-4">
             <label title={uploadLabel} aria-disabled={busy} className="cmp-tile">
               <input
@@ -393,6 +485,7 @@ export function HeroComposer({
           background: 'linear-gradient(135deg, var(--grad-green), var(--grad-purple) 55%, var(--grad-lime))',
         }}
       >
+        <UploadBubble stage={uploadStage} t={t} />
         <div className="rounded-[20px] bg-[var(--surface)] p-4 sm:p-5">
           <div className="flex items-start gap-3 sm:gap-4">
             <label

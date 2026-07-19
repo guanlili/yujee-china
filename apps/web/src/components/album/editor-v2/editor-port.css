@@ -94,8 +94,16 @@
 }
 .editor-port .user-menu.open .user-dropdown{opacity:1;visibility:visible;transform:translateY(0);}
 
+/* ─── 垫底背景层(固定舞台底,书浮其上;仅预览模式) ─── */
+.editor-port .board-bg{
+  position:absolute; inset:0; z-index:0; pointer-events:none;
+  background-size:cover; background-position:center; background-repeat:no-repeat;
+  transition: background-color .2s var(--ease);
+}
+.editor-port .board-bg[data-on="0"]{ background:transparent; }
+
 /* ─── BOOK / SPREAD 3D ─── */
-.editor-port .book-stage{ perspective: 2400px; }
+.editor-port .book-stage{ perspective: 2400px; position:relative; z-index:1; }
 .editor-port .book{
   border-radius: 2px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.08);
@@ -260,11 +268,12 @@
   border:1px solid var(--border-soft); border-radius:9999px;
   padding:4px; box-shadow:0 2px 12px rgba(0,0,0,0.08);
 }
-.editor-port .zoom-btn{ width:28px; height:28px; border-radius:9999px; display:flex; align-items:center; justify-content:center; color:var(--fg-2); cursor:pointer; transition:background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease); }
+.editor-port .zoom-btn{ width:25px; height:25px; border-radius:9999px; display:flex; align-items:center; justify-content:center; color:var(--fg-2); cursor:pointer; transition:background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease); }
 .editor-port .zoom-btn:hover{ background:var(--bg); color:var(--fg); }
 .editor-port .zoom-btn.active{ background:var(--bg); color:var(--fg); }
-/* 视图切换按钮比常规控件大一号(用户拍板)。 */
-.editor-port .view-ctrl .zoom-btn{ width:36px; height:36px; }
+/* 视图切换按钮略大于翻页控件。 */
+.editor-port .view-ctrl .zoom-btn{ width:30px; height:30px; }
+.editor-port .view-ctrl .zoom-btn svg{ width:17px; height:17px; }
 .editor-port .zoom-pct{ min-width:40px; text-align:center; font-size:11px; font-family:var(--font-mono); color:var(--fg-2); cursor:pointer; user-select:none; }
 .editor-port .zoom-sep{ width:1px; height:16px; background:var(--border-soft); margin:0 3px; }
 /* 画布模式下翻页无意义,藏掉坞里的翻页段(含分隔线)。 */
@@ -335,6 +344,17 @@
   transition: background var(--motion-fast) var(--ease);
 }
 .editor-port .staged-remove:hover{ background: rgba(0,0,0,0.8); }
+/* 暂存压缩进度「正在处理照片 N/M」:低调一行,和 staged-photos 同缩进 */
+.editor-port .staged-progress{
+  padding: 8px 14px 2px; font-size: 12px; color: var(--muted);
+  display: flex; align-items: center; gap: 7px;
+}
+.editor-port .staged-progress::before{
+  content: ''; width: 12px; height: 12px; flex: none; border-radius: 50%;
+  border: 2px solid var(--border); border-top-color: var(--grad-purple);
+  animation: yj-staged-spin .7s linear infinite;
+}
+@keyframes yj-staged-spin{ to{ transform: rotate(360deg); } }
 
 /* ─── Overview: the whole magazine at once ─── */
 /* 画板 = 无限画布:不再滚动(overflow hidden),平移/缩放由 #ovGrid 的 transform 承担;
@@ -805,6 +825,120 @@
   transition: transform var(--motion-base) var(--ease);
 }
 .editor-port .modal-overlay.open .modal-card{ transform:none; }
+
+/* ─── Export format menu + collage density + progress ─── */
+.editor-port .export-sheet{ width:min(400px,100%); }
+.editor-port .export-opt{
+  width:100%; display:flex; align-items:center; justify-content:center; gap:10px;
+  padding:15px 16px; border-radius:14px; background:var(--bg);
+  font-size:15px; font-weight:600; color:var(--fg); cursor:pointer; position:relative;
+  transition: background var(--motion-fast) var(--ease), transform var(--motion-fast) var(--ease);
+}
+.editor-port .export-opt svg{ width:19px; height:19px; flex:0 0 auto; }
+.editor-port .export-opt:hover{ background:var(--border-soft); }
+.editor-port .export-opt:active{ transform:scale(.98); }
+.editor-port .export-opt-soon{ opacity:.5; cursor:not-allowed; }
+.editor-port .export-opt-soon:hover{ background:var(--bg); }
+.editor-port .export-soon-tag{
+  position:absolute; right:14px; top:50%; transform:translateY(-50%);
+  font-size:10.5px; font-weight:600; color:var(--muted);
+  background:var(--surface); border:1px solid var(--border-soft);
+  padding:2px 7px; border-radius:999px;
+}
+.editor-port .export-cancel{
+  width:100%; padding:13px; border-radius:12px; background:transparent;
+  font-size:14px; font-weight:500; color:var(--muted); cursor:pointer;
+  transition: color var(--motion-fast) var(--ease);
+}
+.editor-port .export-cancel:hover{ color:var(--fg); }
+
+.editor-port .collage-card{ width:min(440px,100%); position:relative; }
+.editor-port .collage-close{
+  position:absolute; top:16px; right:16px; width:30px; height:30px;
+  display:flex; align-items:center; justify-content:center; border-radius:50%;
+  color:var(--muted); cursor:pointer; transition: background var(--motion-fast) var(--ease);
+}
+.editor-port .collage-close svg{ width:18px; height:18px; }
+.editor-port .collage-close:hover{ background:var(--bg); color:var(--fg); }
+.editor-port .collage-density{ display:flex; gap:14px; justify-content:center; }
+.editor-port .density-opt{
+  flex:1; max-width:120px; display:flex; flex-direction:column; align-items:center; gap:10px;
+  padding:14px 10px; border-radius:16px; background:var(--bg);
+  border:2px solid transparent; cursor:pointer;
+  transition: border-color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
+}
+.editor-port .density-opt:hover{ background:var(--border-soft); }
+.editor-port .density-opt.selected{ border-color:var(--fg); background:var(--surface); }
+.editor-port .density-wire{
+  width:60px; height:80px; border-radius:8px; background:var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+  display:flex; flex-direction:column; gap:5px; padding:8px; justify-content:center;
+}
+.editor-port .density-cell{ flex:1; border-radius:4px; background:var(--border); min-height:0; }
+/* 6 = 左三右三:2 列 × 3 行网格缩略图 */
+.editor-port .density-wire-grid{ display:grid; grid-template-columns:1fr 1fr; grid-auto-rows:1fr; gap:4px; }
+.editor-port .density-wire-grid .density-cell{ flex:none; }
+.editor-port .density-label{ font-size:13px; font-weight:600; color:var(--fg); }
+.editor-port .collage-confirm{
+  width:100%; padding:14px; border-radius:14px; background:var(--fg); color:var(--surface);
+  font-size:15px; font-weight:600; cursor:pointer;
+  transition: opacity var(--motion-fast) var(--ease), transform var(--motion-fast) var(--ease);
+}
+.editor-port .collage-confirm:hover:not(:disabled){ transform:translateY(-1px); }
+.editor-port .collage-confirm:disabled{ opacity:.4; cursor:not-allowed; }
+
+.editor-port .export-progress-card{ width:min(360px,100%); }
+.editor-port .exp-bar{ width:100%; height:8px; border-radius:999px; background:var(--bg); overflow:hidden; }
+.editor-port .exp-bar-fill{ height:100%; width:0%; border-radius:999px; background:var(--fg); transition: width 180ms var(--ease); }
+
+/* ─── 垫底背景选择 sheet ─── */
+.editor-port .board-bg-sheet{ width:min(440px,100%); }
+.editor-port .board-bg-head{ display:flex; align-items:center; justify-content:space-between; padding:18px 20px 6px; }
+.editor-port .board-bg-close{
+  width:30px; height:30px; display:flex; align-items:center; justify-content:center;
+  border-radius:50%; color:var(--muted); cursor:pointer; transition: background var(--motion-fast) var(--ease);
+}
+.editor-port .board-bg-close svg{ width:18px; height:18px; }
+.editor-port .board-bg-close:hover{ background:var(--bg); color:var(--fg); }
+.editor-port .board-bg-body{ padding:8px 20px 22px; }
+.editor-port .bbg-swatches{ display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+.editor-port .bbg-swatch{
+  width:44px; height:44px; border-radius:12px; cursor:pointer; position:relative;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
+  transition: transform var(--motion-fast) var(--ease);
+}
+.editor-port .bbg-swatch:hover{ transform:translateY(-1px); }
+.editor-port .bbg-swatch.selected{ box-shadow: inset 0 0 0 1px rgba(0,0,0,.08), 0 0 0 2px var(--surface), 0 0 0 4px var(--fg); }
+/* 「无背景」= 白底 + 斜杠 */
+.editor-port .bbg-none{ background:var(--surface); }
+.editor-port .bbg-none::after{
+  content:''; position:absolute; inset:0; border-radius:12px;
+  background:linear-gradient(to top left, transparent calc(50% - 1px), #d64545 calc(50% - 1px), #d64545 calc(50% + 1px), transparent calc(50% + 1px));
+}
+/* 自定义取色:彩虹底 + 隐藏原生 color input */
+.editor-port .bbg-custom{
+  background:conic-gradient(from 0deg,#ff5f6d,#ffc371,#a8e063,#56ccf2,#a06cd5,#ff5f6d);
+  display:flex; align-items:center; justify-content:center; overflow:hidden;
+}
+.editor-port .bbg-custom input[type="color"]{
+  position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:none; padding:0; background:none;
+}
+.editor-port .bbg-section-label{ font-size:12.5px; color:var(--muted); margin:20px 0 10px; }
+.editor-port .bbg-images{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+.editor-port .bbg-image{
+  aspect-ratio:1; border-radius:12px; cursor:pointer; background-size:cover; background-position:center;
+  background-color:var(--bg); box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
+  transition: transform var(--motion-fast) var(--ease);
+}
+.editor-port .bbg-image:hover{ transform:translateY(-1px); }
+.editor-port .bbg-image.selected{ box-shadow: inset 0 0 0 1px rgba(0,0,0,.06), 0 0 0 2px var(--surface), 0 0 0 4px var(--fg); }
+@media (max-width:520px){ .editor-port .board-bg-sheet{ width:100%; } }
+
+@media (max-width:520px){
+  .editor-port .export-sheet, .editor-port .collage-card, .editor-port .export-progress-card{ width:100%; }
+  .editor-port .collage-density{ gap:10px; }
+}
+
 .editor-port .pick-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
 @media (max-width:520px){ .editor-port .pick-grid{ grid-template-columns:repeat(3,1fr); } }
 .editor-port .pick-photo{
@@ -1362,16 +1496,17 @@
   box-shadow:0 0 0 1px var(--border);
 }
 .editor-port .eb-color-swatch.active{ box-shadow:0 0 0 2px var(--accent); }
-.editor-port .eb-color-fields{ display:flex; gap:8px; padding:8px 14px 14px; }
+.editor-port .eb-color-fields{ display:flex; gap:8px; padding:8px 14px 14px; min-width:0; }
 .editor-port .eb-hex-field, .editor-port .eb-alpha-field{
   display:flex; align-items:center; gap:4px; height:32px; padding:0 10px; border-radius:9px;
-  background:var(--bg); font-size:13px; color:var(--fg-2);
+  background:var(--bg); font-size:13px; color:var(--fg-2); min-width:0;
 }
-.editor-port .eb-hex-field{ flex:1; }
-.editor-port .eb-hex-field b, .editor-port .eb-alpha-field b{ color:var(--meta); font-weight:600; }
-.editor-port .eb-hex-input{ flex:1; min-width:0; border:none; background:transparent; outline:none; font-size:13px; font-family:var(--font-mono); color:var(--fg); text-transform:uppercase; }
-.editor-port .eb-alpha-field{ width:74px; }
-.editor-port .eb-alpha-input{ width:100%; border:none; background:transparent; outline:none; font-size:13px; font-family:var(--font-mono); color:var(--fg); text-align:right; }
+.editor-port .eb-hex-field{ flex:1 1 auto; }
+.editor-port .eb-hex-field b, .editor-port .eb-alpha-field b{ color:var(--meta); font-weight:600; flex:none; }
+.editor-port .eb-hex-input{ flex:1; min-width:0; width:100%; border:none; background:transparent; outline:none; font-size:13px; font-family:var(--font-mono); color:var(--fg); text-transform:uppercase; }
+/* alpha input 必须带 min-width:0,否则 input 默认 ~20 字符固有宽把字段撑爆、溢出面板(踩过)。 */
+.editor-port .eb-alpha-field{ flex:0 0 62px; }
+.editor-port .eb-alpha-input{ flex:1; min-width:0; width:100%; border:none; background:transparent; outline:none; font-size:13px; font-family:var(--font-mono); color:var(--fg); text-align:right; }
 /* 「无背景」清除按钮(仅书页背景色场景显示) */
 .editor-port .eb-color-none{
   margin:0 14px 14px; height:34px; border:1px solid var(--border-soft); background:var(--bg);
@@ -1664,7 +1799,7 @@
     z-index:88; flex-direction:column; gap:8px;
   }
   .editor-port .view-ctrl{ flex-direction:column; gap:2px; }
-  .editor-port .view-ctrl .zoom-btn{ width:42px; height:42px; }
+  .editor-port .view-ctrl .zoom-btn{ width:36px; height:36px; }
 
   /* 翻页 pill:底部居中(横排 上一页/下一页);缩放数字移动端隐藏(捏合缩放即可)。
      只在书籍预览模式出(画布模式由 .overview-on 规则隐藏)。 */
@@ -1673,7 +1808,7 @@
     transform:translateX(-50%); z-index:88;
   }
   .editor-port .zoom-ctrl .nav-seg{ flex-direction:row; }
-  .editor-port .zoom-btn{ width:38px; height:38px; }
+  .editor-port .zoom-btn{ width:32px; height:32px; }
   .editor-port .zoom-sep{ display:none; }
   .editor-port .zoom-pct{ display:none; }
   /* 画板(总览)模式翻页无意义(nav-seg 已隐),移动端又隐了缩放数字 → 整个 pill 空了,
@@ -1728,7 +1863,7 @@
 /* ═══ 平板(768–1024):桌面浮动对话在这个宽度偏挤 —— 收窄对话卡、给画布让位 ═══ */
 @media (min-width:768px) and (max-width:1024px){
   .editor-port .pane-chat-col{ width:320px; }
-  .editor-port .view-ctrl .zoom-btn{ width:38px; height:38px; }
+  .editor-port .view-ctrl .zoom-btn{ width:32px; height:32px; }
 }
 
 /* ─── In-editor "buy credits" modal (portaled to <body>, so NOT scoped under

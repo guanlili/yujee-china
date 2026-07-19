@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { eq } from 'drizzle-orm';
 import { db } from '../../db/client';
+import { accounts } from '../../db/schema';
 import { albumRepo } from '../../db/repos/album-repo';
 import { userRepo } from '../../db/repos/user-repo';
 import { creditLedgerRepo } from '../../db/repos/credit-ledger-repo';
@@ -184,5 +186,49 @@ test('adminService.getAnalytics: returns full shape with non-negative totals', a
     assert.equal(typeof data.credits.consumed30d, 'number');
   } finally {
     await cleanupUser(user.id);
+  }
+});
+
+test('adminService.createUser: creates a verified user with a credential account', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping admin-service integration test');
+    return;
+  }
+  const actor = await makeUser('admin-create-actor');
+  const email = `manual-create-${Date.now()}@yujee.test`;
+  let createdId: string | undefined;
+  try {
+    const res = await adminService.createUser(actor.id, {
+      email,
+      password: 'supersecret',
+      name: 'Manual User',
+    });
+    createdId = res.id;
+    assert.equal(res.email, email);
+
+    const user = await userRepo.findByEmailInsensitive(email);
+    assert.ok(user, 'created user should be findable');
+    assert.equal(user?.emailVerified, true, 'user must be pre-verified so they can log in');
+
+    const acct = await db.select().from(accounts).where(eq(accounts.userId, user!.id));
+    assert.equal(acct.length, 1);
+    assert.equal(acct[0]?.providerId, 'credential');
+    assert.equal(acct[0]?.accountId, user!.id);
+    assert.ok(acct[0]?.password && acct[0].password.length > 0, 'password hash must be stored');
+
+    // Case-insensitive duplicate guard.
+    await assert.rejects(
+      adminService.createUser(actor.id, { email: email.toUpperCase(), password: 'anotherpass' }),
+      /already exists/i,
+    );
+
+    // Password policy guard.
+    await assert.rejects(
+      adminService.createUser(actor.id, { email: `short-${Date.now()}@yujee.test`, password: 'short' }),
+      /8/,
+    );
+  } finally {
+    if (createdId) await cleanupUser(createdId);
+    await cleanupUser(actor.id);
   }
 });

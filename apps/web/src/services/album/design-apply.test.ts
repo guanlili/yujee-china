@@ -38,6 +38,16 @@ test('buildCoverSets: 4 个不同样式封面(按样式变不按照片变,同一
   assert.notDeepEqual(other.map((s) => s.coverTemplateId), sets.map((s) => s.coverTemplateId));
 });
 
+test('buildCoverSets: 每套绑定一个书页底色,4 套 × 4 色一一对应', async () => {
+  const { PAGE_BACKGROUNDS } = await import('@/lib/design/page-backgrounds');
+  const sets = buildCoverSets('album-1', CHAPTERS);
+  assert.equal(sets.length, 4);
+  // 每套按 PAGE_BACKGROUNDS 顺序绑一个底色(第 1 套纯白、第 2 套象牙白…)。
+  sets.forEach((s, i) => assert.equal(s.pageBackground, PAGE_BACKGROUNDS[i]!.hex));
+  // 4 套底色互不相同(一一对应,不重复)。
+  assert.equal(new Set(sets.map((s) => s.pageBackground)).size, sets.length);
+});
+
 test('sweepCarriers: 按 role 写 #artFont/#accentColor,decoration 色跟标题色', () => {
   const pages = sweepCarriers(
     [{ pageIndex: 0, templateId: 'mag-15', images: { main: 'p1' }, texts: { title: 'T' } }],
@@ -75,6 +85,49 @@ test('assembleDesignedPages: 页序 [封面,...内页,封尾] 且 pageIndex 重�
   assert.equal(pages[0].texts['title'], '海边的夏天');
   assert.equal(Object.values(pages[0].images)[0], set.coverPhotoId);
   assert.equal(Object.values(pages[3].images)[0], set.endingPhotoId);
+});
+
+// ── 书页底色(2026-07 设计环节叠加) ──
+
+// 页根开标签 = html 里第一个带 data-template 的元素(与 patchHtmlPageStyle 同锚点)。
+const rootTag = (html?: string) =>
+  /<[a-z0-9]+\b[^>]*\bdata-template="[^"]*"[^>]*>/i.exec(html ?? '')?.[0] ?? '';
+
+test('assembleDesignedPages: 书页底色(非纯白)刷进每页页根 background-color', () => {
+  const set = buildCoverSets('album-1', CHAPTERS)[0];
+  const pages = assembleDesignedPages({
+    interiorPages: [
+      { pageIndex: 0, templateId: 'mag-15', images: { main: 'pw' }, texts: {} },
+      { pageIndex: 1, templateId: 'mag-34', images: { i1: 'pc' }, texts: {} },
+    ],
+    set,
+    coverTexts: {},
+    endingTexts: {},
+    fonts: FONTS,
+    colors: COLORS,
+    pageBackground: '#FBF8F1',
+  });
+  assert.equal(pages.length, 4); // 封面+2内页+封尾:全书每页都刷
+  for (const p of pages) {
+    assert.match(rootTag(p.html), /background-color:#FBF8F1/i, `页 ${p.pageIndex} 页根应有底色`);
+  }
+});
+
+test('assembleDesignedPages: 纯白/未传底色 → 页根不写 inline background-color(留模板默认)', () => {
+  const set = buildCoverSets('album-1', CHAPTERS)[0];
+  const base = {
+    interiorPages: [{ pageIndex: 0, templateId: 'mag-15', images: { main: 'pw' }, texts: {} }],
+    set,
+    coverTexts: {},
+    endingTexts: {},
+    fonts: FONTS,
+    colors: COLORS,
+  };
+  const white = assembleDesignedPages({ ...base, pageBackground: '#FFFFFF' });
+  const none = assembleDesignedPages(base);
+  for (const p of [...white, ...none]) {
+    assert.doesNotMatch(rootTag(p.html), /background-color/i, '纯白/未传不该写 inline 背景');
+  }
 });
 
 // ── 封尾模板与多图槽(2026-07 封面封尾调整) ──

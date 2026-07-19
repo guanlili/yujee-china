@@ -1,3 +1,5 @@
+import type { BoardBackground } from '@/lib/board-bg/presets';
+
 // Per-image render override (#165), keyed by the same slotId as imagesJson.
 // Absent slot => renderer defaults to objectPosition 50% 50%, no zoom.
 export interface ImagePos {
@@ -35,6 +37,8 @@ export interface AlbumInfo {
   // 手动备份过的照片的服务器压缩图 URL(photoId→url)。本地原图缺失时 resolveImage
   // 回退到它。未备份 / building stub → 省略或 {}。
   photoSnapshotUrls?: Record<string, string>;
+  // 预览垫底背景(相册级):书页浮在其上的画板底。null/省略 = 无。
+  boardBackground?: BoardBackground | null;
   errorMessage: string | null;
   createdAt: string;
 }

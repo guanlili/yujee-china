@@ -14,6 +14,8 @@ const BodySchema = z
     coverPhotoId: z.string().min(1),
     endingTemplateId: z.string().min(1),
     endingPhotoId: z.string().min(1),
+    // 书页底色(4 色之一,可选;具体色值合法性在 albumService.applyDesign 校验)。
+    pageBackground: z.string().min(1).optional(),
   })
   .strict();
 

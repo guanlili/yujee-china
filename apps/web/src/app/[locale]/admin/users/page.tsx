@@ -5,6 +5,7 @@ import type { Locale } from '@/lib/i18n/routing';
 import { AdminNav } from '@/components/admin/AdminNav';
 import { AdminForbidden } from '@/components/admin/AdminForbidden';
 import { GrantCreditForm } from '@/components/admin/GrantCreditForm';
+import { CreateUserForm } from '@/components/admin/CreateUserForm';
 
 export default async function AdminUsersPage({
   params,
@@ -23,6 +24,7 @@ export default async function AdminUsersPage({
       <AdminNav locale={locale} active="users" />
       <h1 className="serif text-4xl mb-8">{t.title}</h1>
 
+      <CreateUserForm locale={locale} />
       <GrantCreditForm locale={locale} />
 
       {users.length === 0 ? (

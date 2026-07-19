@@ -1,4 +1,5 @@
 import { bakePageHtml, bakePagesHtml, type BakeablePage } from './bake-html';
+import { normalizeBoardBackground, type BoardBackground } from '@/lib/board-bg/presets';
 import { patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle } from '@/components/album/page-html-dom';
 import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
@@ -14,6 +15,7 @@ import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
 import { transientPagePhotoRefs } from './page-photo-refs';
 import { assembleDesignedPages, buildCoverSets, pickHeroPhotos, slotSpecs, templateCategory } from './design-apply';
+import { isValidPageBackground } from '@/lib/design/page-backgrounds';
 import {
   PHOTO_SNAPSHOT_MAX_COUNT,
   isValidPhotoId,
@@ -332,6 +334,8 @@ export const albumService = {
         // 手动备份过的照片的服务器压缩图 URL(photoId→url)。resolveImage 在本地原图
         // 缺失时回退到它,让换设备/清缓存后内页不空白。未备份 → {}。
         photoSnapshotUrls: photoSnapshotUrls(userId, album.id, album.photoSnapshot?.photoIds, r2.publicUrl),
+        // 预览垫底背景(相册级);编辑器读它铺画板、导出拼图也读它。null = 无。
+        boardBackground: album.boardBackground ?? null,
         errorMessage: album.errorMessage,
         createdAt: album.createdAt,
       },
@@ -978,6 +982,8 @@ export const albumService = {
       coverPhotoId: string;
       endingTemplateId: string;
       endingPhotoId: string;
+      // 书页底色(4 色之一,可选;纯白/不传 = 不写,留模板默认)。
+      pageBackground?: string;
     },
   ): Promise<{ pages: Page[] }> {
     const album = await this.findOwned(userId, albumId);
@@ -986,6 +992,8 @@ export const albumService = {
       throw ERRORS.VALIDATION_FAILED(`not a cover template: ${input.coverTemplateId}`);
     if (templateCategory(input.endingTemplateId) !== 'ending')
       throw ERRORS.VALIDATION_FAILED(`not an ending template: ${input.endingTemplateId}`);
+    if (input.pageBackground && !isValidPageBackground(input.pageBackground))
+      throw ERRORS.VALIDATION_FAILED(`invalid page background: ${input.pageBackground}`);
 
     const root = album.draftJson as { tree?: { chapters?: unknown }; pages?: unknown } | null;
     const chapters = Array.isArray((root?.tree as { chapters?: unknown })?.chapters)
@@ -1052,6 +1060,7 @@ export const albumService = {
       fonts: design.fonts,
       colors: design.colors,
       extraEndingPhotoIds,
+      pageBackground: input.pageBackground,
     });
 
     // 选定封面 = 故事环节收官:把现存章节全部记 done(产品口径:选完封面导出即可用)。
@@ -1065,7 +1074,7 @@ export const albumService = {
       draftJson: {
         ...(root ?? {}),
         pages,
-        design: { fonts: design.fonts, colors: design.colors },
+        design: { fonts: design.fonts, colors: design.colors, ...(input.pageBackground ? { pageBackground: input.pageBackground } : {}) },
         progress: { currentChapterId: null, doneChapterIds },
       },
       pageCount: pages.length,
@@ -1246,6 +1255,20 @@ export const albumService = {
       await albumRepo.update(tx, albumId, { title: trimmed });
     });
     return { title: trimmed };
+  },
+
+  // 预览垫底背景(相册级视觉属性)。null = 清除。写库前收敛校验,非法当无背景。
+  async updateBoardBackground(
+    userId: string,
+    albumId: string,
+    board: unknown,
+  ): Promise<{ boardBackground: BoardBackground | null }> {
+    await this.findOwned(userId, albumId);
+    const normalized = board == null ? null : normalizeBoardBackground(board);
+    await db.transaction(async (tx) => {
+      await albumRepo.update(tx, albumId, { boardBackground: normalized });
+    });
+    return { boardBackground: normalized };
   },
 
   // Returns { putUrl, r2Key, publicUrl } so the browser can PUT a PDF directly
