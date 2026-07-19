@@ -20,6 +20,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
+import { IMAGE_INPUT_ACCEPT, prepareImageBlobForBrowserDecode } from '@/lib/photo/heic';
 import { isDefaultPageBackground } from '@/lib/design/page-backgrounds';
 import { interiorSpreads } from '@/lib/export/collage';
 import { COLOR_PRESETS, IMAGE_PRESETS, presetImageUrl, type BoardBackground } from '@/lib/board-bg/presets';
@@ -759,6 +760,11 @@ function EditorModals({ locale }: { locale: Locale }) {
                   style={{ backgroundImage: `url("${presetImageUrl(p.id)}")` }}
                 />
               ))}
+              {/* 上传自己的图当垫底背景(只存本地)。选中时格子显示这张图的缩略。 */}
+              <label className="bbg-image bbg-upload" data-board-upload title={zh ? '上传图片' : 'Upload image'}>
+                <input type="file" accept={IMAGE_INPUT_ACCEPT} className="hidden" data-board-upload-input aria-label={zh ? '上传图片' : 'Upload image'} />
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+              </label>
             </div>
           </div>
         </div>
@@ -3387,13 +3393,32 @@ function EditorBook({
 
     // ─── 垫底背景(相册级预览画板底;导出拼图共用同一来源)───
     let boardBg: BoardBackground | null = detail.album.boardBackground ?? null;
+    // 上传图只存本地(photoStore/IndexedDB);key → blob objectURL 缓存,避免重复建 URL。
+    const boardUploadUrls = new Map<string, string>();
+    async function resolveBoardUploadUrl(key: string): Promise<string | null> {
+      const cached = boardUploadUrls.get(key);
+      if (cached) return cached;
+      const blob = await photoStore.getBlob(key).catch(() => undefined);
+      if (!blob) return null; // 换设备/清缓存 → 本地没有 → 回落无背景
+      const url = URL.createObjectURL(blob);
+      boardUploadUrls.set(key, url);
+      return url;
+    }
     function applyBoardBackground(bg: BoardBackground | null) {
       const el = byId('boardBg');
       if (!el) return;
       if (!bg) { el.style.backgroundColor = ''; el.style.backgroundImage = ''; el.dataset.on = '0'; return; }
-      if (bg.kind === 'color') { el.style.backgroundImage = ''; el.style.backgroundColor = bg.color; }
-      else { el.style.backgroundColor = ''; el.style.backgroundImage = `url("${presetImageUrl(bg.presetId)}")`; }
+      if (bg.kind === 'color') { el.style.backgroundImage = ''; el.style.backgroundColor = bg.color; el.dataset.on = '1'; return; }
+      if (bg.kind === 'preset') { el.style.backgroundColor = ''; el.style.backgroundImage = `url("${presetImageUrl(bg.presetId)}")`; el.dataset.on = '1'; return; }
+      // upload:异步从本地取图,取到时再应用(若期间用户又换了背景则不覆盖)。
+      el.style.backgroundColor = '';
       el.dataset.on = '1';
+      void resolveBoardUploadUrl(bg.key).then((url) => {
+        if (boardBg?.kind === 'upload' && boardBg.key === bg.key) {
+          el.style.backgroundImage = url ? `url("${url}")` : '';
+          if (!url) el.dataset.on = '0'; // 本地没有这张 → 视作无背景
+        }
+      });
     }
     function reflectBoardSelection() {
       const cur = boardBg;
@@ -3402,6 +3427,39 @@ function EditorBook({
       $$('[data-board-preset]').forEach((el) =>
         el.classList.toggle('selected', cur?.kind === 'preset' && (el as HTMLElement).dataset.boardPreset === cur.presetId));
       $('[data-board-none]')?.classList.toggle('selected', cur == null);
+      // 上传格子:选中态 + 缩略图(当前是上传图时,格子本身显示这张图)。
+      const upTile = $('[data-board-upload]') as HTMLElement | null;
+      if (upTile) {
+        const isUp = cur?.kind === 'upload';
+        upTile.classList.toggle('selected', isUp);
+        upTile.classList.toggle('has-image', isUp);
+        if (isUp) void resolveBoardUploadUrl(cur.key).then((url) => { if (boardBg?.kind === 'upload' && boardBg.key === cur.key) upTile.style.backgroundImage = url ? `url("${url}")` : ''; });
+        else upTile.style.backgroundImage = '';
+      }
+    }
+    // 上传图当垫底背景:HEIC-aware 解码 → 缩到 ≤2000px → JPEG → 存本地 photoStore → set。
+    async function uploadBoardBgImage(file: File) {
+      try {
+        const decoded = await prepareImageBlobForBrowserDecode(file);
+        const url = URL.createObjectURL(decoded);
+        const img = await new Promise<HTMLImageElement>((res, rej) => {
+          const im = new Image();
+          im.onload = () => res(im); im.onerror = () => rej(new Error('decode failed')); im.src = url;
+        }).finally(() => URL.revokeObjectURL(url));
+        const max = 2000;
+        const scale = Math.min(1, max / Math.max(img.width, img.height) || 1);
+        const w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+        const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', 0.85));
+        if (!blob) return;
+        const key = crypto.randomUUID();
+        await photoStore.put(key, blob);
+        setBoardBackground({ kind: 'upload', key });
+      } catch (e) {
+        console.warn('[board-bg] upload failed', e);
+      }
     }
     function setBoardBackground(bg: BoardBackground | null) {
       boardBg = bg;
@@ -3782,6 +3840,16 @@ function EditorBook({
       const fn = () => setBoardBackground({ kind: 'color', color: boardColorInput.value });
       boardColorInput.addEventListener('input', fn);
       actionHandlers.push({ el: boardColorInput, fn });
+    }
+    const boardUploadInput = $('[data-board-upload-input]') as HTMLInputElement | null;
+    if (boardUploadInput) {
+      const fn = () => {
+        const file = boardUploadInput.files?.[0];
+        boardUploadInput.value = ''; // 允许再次选同一文件
+        if (file) void uploadBoardBgImage(file);
+      };
+      boardUploadInput.addEventListener('change', fn);
+      actionHandlers.push({ el: boardUploadInput, fn });
     }
     // zoom buttons carry an amount
     $$('[data-zoom]').forEach((el) => {

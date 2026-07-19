@@ -6,6 +6,16 @@ import { PAGE } from '@/components/album/templates/constants';
 import { loadAlbumFonts } from '@/lib/font/album-font-loader';
 import { renderFaceToCanvas } from '@/lib/pdf/render-raster';
 import { presetImageUrl, type BoardBackground } from '@/lib/board-bg/presets';
+import { photoStore } from '@/lib/photo/store';
+
+// 上传的垫底背景只存本地(photoStore):取 blob → 同源 objectURL → 载入(不污染导出画布)。
+// 载入完成即撤 URL(位图已解码,后续 drawImage 仍有效)。缺失(换设备)返回 null → 回落中性底。
+async function loadBoardUpload(key: string, load: (src: string) => Promise<HTMLImageElement>): Promise<HTMLImageElement | null> {
+  const blob = await photoStore.getBlob(key).catch(() => undefined);
+  if (!blob) return null;
+  const url = URL.createObjectURL(blob);
+  try { return await load(url); } catch { return null; } finally { URL.revokeObjectURL(url); }
+}
 
 // 多跨页拼图导出：把内页跨页（spread）等宽缩放、竖向堆叠到内置装饰背景上，
 // 输出小红书竖图 3:4（2160×2880 @2x）。density k∈{1,2,3} = 一张图放几个跨页，
@@ -124,6 +134,8 @@ export async function renderCollages(
   let bgImage: HTMLImageElement | null = null;
   if (bg?.kind === 'preset') {
     bgImage = await loadImage(presetImageUrl(bg.presetId)).catch(() => null);
+  } else if (bg?.kind === 'upload') {
+    bgImage = await loadBoardUpload(bg.key, loadImage);
   }
   const paintBackground = (ctx: CanvasRenderingContext2D) => {
     if (bg?.kind === 'color') { ctx.fillStyle = bg.color; ctx.fillRect(0, 0, OUT_W, OUT_H); }

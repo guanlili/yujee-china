@@ -932,6 +932,15 @@
 }
 .editor-port .bbg-image:hover{ transform:translateY(-1px); }
 .editor-port .bbg-image.selected{ box-shadow: inset 0 0 0 1px rgba(0,0,0,.06), 0 0 0 2px var(--surface), 0 0 0 4px var(--fg); }
+/* 上传格子:空态是虚线 + 号;有图时(has-image,inline backgroundImage)藏图标露缩略 */
+.editor-port .bbg-upload{
+  display:flex; align-items:center; justify-content:center;
+  border:1.5px dashed var(--border); box-shadow:none; color:var(--muted); background-color:var(--surface);
+}
+.editor-port .bbg-upload:hover{ border-color:var(--muted); color:var(--fg); }
+.editor-port .bbg-upload svg{ width:22px; height:22px; }
+.editor-port .bbg-upload.has-image{ border-style:solid; border-color:transparent; }
+.editor-port .bbg-upload.has-image svg{ display:none; }
 @media (max-width:520px){ .editor-port .board-bg-sheet{ width:100%; } }
 
 @media (max-width:520px){

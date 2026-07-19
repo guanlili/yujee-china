@@ -6,6 +6,15 @@ import { PAGE } from '@/components/album/templates/constants';
 import { loadAlbumFonts } from '@/lib/font/album-font-loader';
 import { renderFaceToCanvas } from '@/lib/pdf/render-raster';
 import { presetImageUrl, type BoardBackground } from '@/lib/board-bg/presets';
+import { photoStore } from '@/lib/photo/store';
+
+// 上传的垫底背景只存本地(photoStore):blob → 同源 objectURL → 载入(不污染导出画布)。缺失→null→中性底。
+async function loadBoardUpload(key: string, load: (src: string) => Promise<HTMLImageElement>): Promise<HTMLImageElement | null> {
+  const blob = await photoStore.getBlob(key).catch(() => undefined);
+  if (!blob) return null;
+  const url = URL.createObjectURL(blob);
+  try { return await load(url); } catch { return null; } finally { URL.revokeObjectURL(url); }
+}
 
 // Live·MP4 导出:从封面开始,双页翻页(简化 2D)一直翻到页尾,整本书浮在垫底背景上,
 // 输出 3:4 竖版 MP4(1080×1440)。渲染全在前端:每个 face 复用 renderFaceToCanvas,
@@ -158,6 +167,7 @@ export async function renderLiveVideo(
   const bg = options.background ?? null;
   let bgImage: HTMLImageElement | null = null;
   if (bg?.kind === 'preset') bgImage = await loadImage(presetImageUrl(bg.presetId)).catch(() => null);
+  else if (bg?.kind === 'upload') bgImage = await loadBoardUpload(bg.key, loadImage);
   const paintBg = (ctx: CanvasRenderingContext2D) => {
     if (bg?.kind === 'color') { ctx.fillStyle = bg.color; ctx.fillRect(0, 0, OUT_W, OUT_H); }
     else if (bgImage) {

@@ -9,6 +9,8 @@ import { albumService } from '@/services/album/album-service';
 const BoardBackgroundSchema = z.union([
   z.object({ kind: z.literal('color'), color: z.string().max(9) }),
   z.object({ kind: z.literal('preset'), presetId: z.string().max(40) }),
+  // 上传图:只存本地 blob 的 key(不上服务器);服务端只存这个字符串引用。
+  z.object({ kind: z.literal('upload'), key: z.string().max(64) }),
   z.null(),
 ]);
 const PatchSchema = z

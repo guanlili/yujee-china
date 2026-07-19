@@ -3,7 +3,10 @@
 
 export type BoardBackground =
   | { kind: 'color'; color: string }
-  | { kind: 'preset'; presetId: string };
+  | { kind: 'preset'; presetId: string }
+  // 用户上传图:仅存本地(IndexedDB via photoStore),key 是本地 blob 的 id。
+  // 只在当前设备解析得到;换设备/清缓存则解析为空、回落无背景(MVP 取舍)。
+  | { kind: 'upload'; key: string };
 
 // 共用常用色板:吸色工具(文字/页背景)与画板垫底背景两处保持一致(用户诉求)。
 // 前段是深色/品牌色(文字常用),后段是柔和中性(垫底常用);自定义取色覆盖其余。
@@ -54,6 +57,10 @@ export function normalizeBoardBackground(v: unknown): BoardBackground | null {
   }
   if (o.kind === 'preset' && typeof o.presetId === 'string' && isKnownPresetId(o.presetId)) {
     return { kind: 'preset', presetId: o.presetId };
+  }
+  // 上传图:key 是本地 blob id(uuid 级短串)。存库只留 key,解析在客户端 photoStore。
+  if (o.kind === 'upload' && typeof o.key === 'string' && o.key.length > 0 && o.key.length <= 64) {
+    return { kind: 'upload', key: o.key };
   }
   return null;
 }
