@@ -142,6 +142,21 @@ function hexToRgb(hex: string) {
 }
 function toHex(n: number) { return Math.round(n).toString(16).padStart(2, '0'); }
 function rgbToHex(r: number, g: number, b: number) { return `#${toHex(r)}${toHex(g)}${toHex(b)}`; }
+function hslToHex(h: number, s: number, l: number) {
+  s /= 100; l /= 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return rgbToHex(f(0) * 255, f(8) * 255, f(4) * 255);
+}
+// 色板/格子模式的常用色:中性列(极低饱和)+ 8 色相族 × 7 深浅 = 63 色。行主序,
+// 每行 = [中性, 8 色相]。饱和 58%、明度 92→26,柔和贴合纪念册,不花哨。
+const GRID_HUES = [8, 30, 45, 150, 190, 214, 258, 328];
+const GRID_LIGHTNESS = [92, 81, 70, 59, 48, 37, 26];
+const GRID_SWATCHES = GRID_LIGHTNESS.flatMap((l) => [
+  hslToHex(40, 6, l),
+  ...GRID_HUES.map((h) => hslToHex(h, 58, l)),
+]);
 
 // The editor now spans the whole album lifecycle (W10 flow unification): the same
 // EditorPort chrome renders for a still-generating album (building), a draft being
@@ -2859,14 +2874,23 @@ function EditorBook({
         // 移动端全宽底部弹窗顶部的拖动手柄(桌面 CSS 隐藏)。
         `<div class="eb-color-grab" aria-hidden="true"><span></span></div>` +
         `<div class="eb-color-head"><span>${zh ? '填充' : 'Fill'}</span><button type="button" class="eb-color-close" data-color-close aria-label="close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>` +
-        `<div class="eb-sv" data-sv><div class="eb-sv-bg" data-sv-bg></div><div class="eb-sv-cursor" data-sv-cursor></div></div>` +
-        `<div class="eb-track eb-hue" data-hue><div class="eb-track-thumb" data-hue-thumb></div></div>` +
-        `<div class="eb-track eb-alpha" data-alpha><div class="eb-alpha-bg" data-alpha-bg></div><div class="eb-track-thumb" data-alpha-thumb></div></div>` +
-        `<div class="eb-swatch-row">${COLOR_SWATCHES.map((c) => `<button type="button" class="eb-color-swatch" data-swatch="${c}" style="background:${c}"></button>`).join('')}</div>` +
-        `<div class="eb-color-fields"><span class="eb-hex-field"><b>#</b><input class="eb-hex-input" data-hex maxlength="6" spellcheck="false" /></span><span class="eb-alpha-field"><input class="eb-alpha-input" data-alpha-input inputmode="numeric" /><b>%</b></span></div>` +
+        // 双模式段控件:色板(点选,默认)| 拾色器(HSV 精细)。切换只改 panel 的 data-mode,显隐交给 CSS。
+        `<div class="eb-color-seg"><button type="button" data-color-mode="grid">${zh ? '色板' : 'Palette'}</button><button type="button" data-color-mode="picker">${zh ? '拾色器' : 'Picker'}</button></div>` +
+        // 色板模式:63 色格子,点一下即选(复用 [data-swatch] 选色逻辑)。
+        `<div class="eb-color-grid">${GRID_SWATCHES.map((c) => `<button type="button" class="eb-grid-cell" data-swatch="${c}" style="background:${c}"></button>`).join('')}</div>` +
+        `<div class="eb-grid-hint">${zh ? '点格子即选;想要精细色切「拾色器」' : 'Tap a cell to pick; switch to Picker for fine control'}</div>` +
+        // 拾色器模式:HSV 方块 + 色相/透明度条 + 快捷预设 + hex/透明度输入。
+        `<div class="eb-color-picker-part">` +
+          `<div class="eb-sv" data-sv><div class="eb-sv-bg" data-sv-bg></div><div class="eb-sv-cursor" data-sv-cursor></div></div>` +
+          `<div class="eb-track eb-hue" data-hue><div class="eb-track-thumb" data-hue-thumb></div></div>` +
+          `<div class="eb-track eb-alpha" data-alpha><div class="eb-alpha-bg" data-alpha-bg></div><div class="eb-track-thumb" data-alpha-thumb></div></div>` +
+          `<div class="eb-swatch-row">${COLOR_SWATCHES.map((c) => `<button type="button" class="eb-color-swatch" data-swatch="${c}" style="background:${c}"></button>`).join('')}</div>` +
+          `<div class="eb-color-fields"><span class="eb-hex-field"><b>#</b><input class="eb-hex-input" data-hex maxlength="6" spellcheck="false" /></span><span class="eb-alpha-field"><input class="eb-alpha-input" data-alpha-input inputmode="numeric" /><b>%</b></span></div>` +
+        `</div>` +
         // 「无背景」:仅书页背景色场景显示(见 toggleColorPanel 按 colorContext.none 决定显隐),
-        // 点击清除页背景 → 回落模板默认(白)。
+        // 点击清除页背景 → 回落模板默认(白)。两模式共用,放最底。
         `<button type="button" class="eb-color-none" data-color-none style="display:none">${zh ? '无背景' : 'No background'}</button>`;
+      p.dataset.mode = 'grid'; // 默认色板模式(用户拍板)
       // 顶部「填充」标题条 = 拖动手柄,整个气泡可挪。
       const head = p.querySelector<HTMLElement>('.eb-color-head');
       if (head) head.addEventListener('pointerdown', (e) => {
@@ -2890,6 +2914,8 @@ function EditorBook({
         const t = e.target as HTMLElement;
         if (t.closest('[data-color-close]')) { closeEbPanels(); return; }
         if (t.closest('[data-color-none]')) { colorContext.none?.(); closeEbPanels(); return; }
+        const modeBtn = t.closest<HTMLElement>('[data-color-mode]');
+        if (modeBtn?.dataset.colorMode) { p.dataset.mode = modeBtn.dataset.colorMode; renderColorPanel(); return; }
         const sw = t.closest<HTMLElement>('[data-swatch]');
         if (sw?.dataset.swatch) { setColorFromCss(sw.dataset.swatch); renderColorPanel(); emitColor(); }
       });
@@ -2911,6 +2937,7 @@ function EditorBook({
       closeEbPanels();
       if (!willOpen) return;
       buildColorPanel();
+      p.dataset.mode = 'grid'; // 每次打开默认回到色板模式(用户拍板)
       // 初值从当前作用对象回填(文字色 / 页背景色);「无背景」按钮仅在有 none 动作时显示。
       const init = colorContext.initial();
       if (init) setColorFromCss(init);

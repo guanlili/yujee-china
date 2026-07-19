@@ -1513,6 +1513,29 @@
   border-radius:9px; color:var(--fg-2); font-size:13px; cursor:pointer; transition:background .12s var(--ease);
 }
 .editor-port .eb-color-none:hover{ background:var(--surface); color:var(--fg); }
+/* 取色器双模式:段控件(拾色器 | 色板)+ 点选色板格子 */
+.editor-port .eb-color-seg{ display:flex; gap:3px; margin:12px 14px 0; padding:3px; background:var(--bg); border-radius:10px; }
+.editor-port .eb-color-seg button{
+  flex:1; border:none; background:transparent; padding:6px 0; border-radius:8px;
+  font-family:inherit; font-size:12.5px; font-weight:600; color:var(--meta); cursor:pointer;
+  transition:background .14s var(--ease), color .14s var(--ease);
+}
+.editor-port .eb-color-panel[data-mode="grid"] .eb-color-seg [data-color-mode="grid"],
+.editor-port .eb-color-panel[data-mode="picker"] .eb-color-seg [data-color-mode="picker"]{
+  background:var(--surface); color:var(--fg); box-shadow:0 1px 3px rgba(0,0,0,.10);
+}
+/* 模式显隐:格子模式藏拾色器那套,拾色器模式藏格子/提示 */
+.editor-port .eb-color-panel[data-mode="grid"] .eb-color-picker-part{ display:none; }
+.editor-port .eb-color-panel[data-mode="picker"] .eb-color-grid,
+.editor-port .eb-color-panel[data-mode="picker"] .eb-grid-hint{ display:none; }
+.editor-port .eb-color-grid{ display:grid; grid-template-columns:repeat(9,1fr); gap:5px; padding:12px 14px 2px; }
+.editor-port .eb-grid-cell{
+  aspect-ratio:1; border-radius:6px; border:1px solid rgba(0,0,0,.06); cursor:pointer; padding:0;
+  transition:transform .1s var(--ease);
+}
+.editor-port .eb-grid-cell:hover{ transform:scale(1.14); border-color:rgba(0,0,0,.28); }
+.editor-port .eb-grid-cell.active{ outline:2.5px solid var(--fg); outline-offset:1px; box-shadow:inset 0 0 0 1.5px #fff; position:relative; z-index:1; }
+.editor-port .eb-grid-hint{ padding:8px 14px 12px; font-size:11px; color:var(--meta); line-height:1.5; }
 /* 页组标签(背景色) */
 .editor-port .eb-page-label{ padding:0 10px 0 2px; font-size:13px; color:var(--fg-2); white-space:nowrap; }
 .editor-port .eb-panel-search{
@@ -1846,6 +1869,10 @@
   .editor-port .eb-color-panel .eb-track-thumb{ width:22px; height:22px; }
   .editor-port .eb-color-panel .eb-swatch-row{ padding:16px 16px 4px; gap:12px; }
   .editor-port .eb-color-panel .eb-color-swatch{ width:34px; height:34px; }
+  .editor-port .eb-color-panel .eb-color-seg{ margin:10px 16px 0; }
+  .editor-port .eb-color-panel .eb-color-seg button{ padding:9px 0; font-size:14px; }
+  .editor-port .eb-color-panel .eb-color-grid{ padding:14px 16px 4px; gap:7px; }
+  .editor-port .eb-color-panel .eb-grid-hint{ padding:10px 16px 4px; font-size:12px; }
   .editor-port .eb-color-panel .eb-color-fields{ padding:10px 16px 4px; }
   .editor-port .eb-color-panel .eb-hex-field, .editor-port .eb-color-panel .eb-alpha-field{ height:44px; }
   .editor-port .eb-color-panel .eb-color-none{ margin:8px 16px 2px; height:46px; }
