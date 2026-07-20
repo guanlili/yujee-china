@@ -33,6 +33,7 @@ export function MarketingNav({ locale, m }: Props) {
   }, [pathname]);
 
   const homePath = `/${locale}`;
+  const examplesPath = `/${locale}/examples`;
   const isHome = pathname === homePath || pathname === `${homePath}/`;
   const homeSectionHref = (id: string) => (isHome ? `#${id}` : `${homePath}#${id}`);
   const navItems = [
@@ -44,6 +45,12 @@ export function MarketingNav({ locale, m }: Props) {
     // #how for as long as it existed, and #how matches no section, so the item
     // was dead on click.
     { key: 'how', label: m.nav.howItWorks, href: homeSectionHref('features'), active: false },
+    {
+      key: 'examples',
+      label: m.nav.examples,
+      href: examplesPath,
+      active: pathname === examplesPath || pathname.startsWith(`${examplesPath}/`),
+    },
     { key: 'pricing', label: m.nav.pricing, href: homeSectionHref('pricing'), active: false },
   ];
 

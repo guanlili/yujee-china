@@ -35,12 +35,25 @@ export function localeAlternates(route: string, locale: Locale): Metadata['alter
   };
 }
 
-/** Open Graph + Twitter card. Without these a shared link renders as bare text. */
+/** A social preview image. Shape matches OG_IMAGE so pages can pass their own. */
+export interface SocialImage {
+  url: string;
+  width: number;
+  height: number;
+  alt: string;
+}
+
+/**
+ * Open Graph + Twitter card. Without these a shared link renders as bare text.
+ * Pass `image` to override the site-wide OG card — e.g. a showcase page that
+ * has its own relevant visual. Defaults to OG_IMAGE.
+ */
 export function socialMetadata(
   route: string,
   locale: Locale,
   title: string,
   description: string,
+  image: SocialImage = OG_IMAGE,
 ): Pick<Metadata, 'openGraph' | 'twitter'> {
   const url = absoluteUrl(localizePath(route, locale));
 
@@ -53,13 +66,13 @@ export function socialMetadata(
       url,
       locale: OG_LOCALE[locale],
       alternateLocale: locales.filter((l) => l !== locale).map((l) => OG_LOCALE[l]),
-      images: [OG_IMAGE],
+      images: [image],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: [OG_IMAGE.url],
+      images: [image.url],
     },
   };
 }
@@ -70,12 +83,13 @@ export function publicPageMetadata(
   locale: Locale,
   title: string,
   description: string,
+  image?: SocialImage,
 ): Metadata {
   return {
     title,
     description,
     alternates: localeAlternates(route, locale),
-    ...socialMetadata(route, locale, title, description),
+    ...socialMetadata(route, locale, title, description, image),
   };
 }
 
