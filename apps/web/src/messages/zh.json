@@ -281,6 +281,7 @@
     "nav": {
       "overview": "概览",
       "users": "用户",
+      "invites": "邀请码",
       "analytics": "数据",
       "settings": "设置",
       "backToApp": "返回应用"
@@ -289,6 +290,33 @@
       "title": "仅限管理员",
       "body": "你没有访问此区域的权限。",
       "home": "返回首页"
+    },
+    "invites": {
+      "title": "邀请码",
+      "empty": "还没有邀请码。",
+      "thCode": "码",
+      "thCredits": "积分",
+      "thRedeemed": "已兑换",
+      "thStatus": "状态",
+      "thExpires": "有效期至",
+      "statusLive": "生效中",
+      "statusInactive": "已停用",
+      "statusExpired": "已过期",
+      "statusExhausted": "已用完",
+      "form": {
+        "title": "创建邀请码",
+        "desc": "可分享的邀请码，新用户登录后自动到账积分。每人限兑一次。",
+        "codeLabel": "码",
+        "codePlaceholder": "如 XHS-LAUNCH",
+        "creditsLabel": "积分",
+        "expiryLabel": "有效期（天）",
+        "maxLabel": "总次数上限",
+        "maxPlaceholder": "留空=不限",
+        "submit": "创建邀请码",
+        "submitting": "创建中…",
+        "success": "已创建 {code} —— 每次兑换发 {credits} 积分。",
+        "error": "创建失败，请重试。"
+      }
     },
     "overview": {
       "title": "概览",

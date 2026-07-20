@@ -30,6 +30,7 @@ export const ERRORS = {
   INVITE_CODE_EXPIRED:   () => new AppError('INVITE_CODE_EXPIRED',   'Invite code has expired',     410),
   INVITE_CODE_USED:      () => new AppError('INVITE_CODE_USED',      'You already redeemed this code', 409),
   INVITE_CODE_EXHAUSTED: () => new AppError('INVITE_CODE_EXHAUSTED', 'Invite code fully redeemed',  409),
+  INVITE_CODE_EXISTS:    () => new AppError('INVITE_CODE_EXISTS',    'An invite code with that value already exists', 409),
 
   PHOTO_TOO_MANY:        () => new AppError('PHOTO_TOO_MANY',        `Max ${MAX_PHOTOS_PER_GENERATION} photos per album`, 400),
   PHOTO_TOO_FEW:         () => new AppError('PHOTO_TOO_FEW',         'Need at least 1 photo',       400),

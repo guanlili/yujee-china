@@ -281,6 +281,7 @@
     "nav": {
       "overview": "Overview",
       "users": "Users",
+      "invites": "Invite codes",
       "analytics": "Analytics",
       "settings": "Settings",
       "backToApp": "Back to app"
@@ -289,6 +290,33 @@
       "title": "Admin only",
       "body": "You don't have access to this area.",
       "home": "Go home"
+    },
+    "invites": {
+      "title": "Invite codes",
+      "empty": "No invite codes yet.",
+      "thCode": "Code",
+      "thCredits": "Credits",
+      "thRedeemed": "Redeemed",
+      "thStatus": "Status",
+      "thExpires": "Expires",
+      "statusLive": "Live",
+      "statusInactive": "Inactive",
+      "statusExpired": "Expired",
+      "statusExhausted": "Fully used",
+      "form": {
+        "title": "Create invite code",
+        "desc": "A shareable code that adds credits after a new user logs in. One redemption per user.",
+        "codeLabel": "Code",
+        "codePlaceholder": "e.g. XHS-LAUNCH",
+        "creditsLabel": "Credits",
+        "expiryLabel": "Valid (days)",
+        "maxLabel": "Max uses",
+        "maxPlaceholder": "blank = unlimited",
+        "submit": "Create code",
+        "submitting": "Creating…",
+        "success": "Created {code} — grants {credits} credits.",
+        "error": "Couldn't create the code. Please try again."
+      }
     },
     "overview": {
       "title": "Overview",

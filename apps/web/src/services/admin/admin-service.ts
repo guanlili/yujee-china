@@ -1,5 +1,6 @@
+import { desc, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { accounts } from '@/db/schema';
+import { accounts, inviteCodes } from '@/db/schema';
 import { getAuth } from '@/lib/auth/better-auth';
 import { FREE_PLAN_CREDITS } from '@/config/pricing';
 import { userRepo } from '@/db/repos/user-repo';
@@ -19,6 +20,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // Fat-finger guard on manual grants: one click can never move more than this in
 // either direction. Positive = grant, negative = correction/deduction.
 const MAX_GRANT_MAGNITUDE = 100_000;
+
+// Fat-finger guards on invite codes: a code can't grant more than this per
+// redemption, and can't be dated further out than a year.
+const MAX_INVITE_CREDITS = 100_000;
+const MAX_INVITE_EXPIRY_DAYS = 365;
 
 const ALBUM_STATUSES = ['AGENT_RUNNING', 'EDITING', 'COMPLETED', 'FAILED'] as const;
 const JOB_STATUSES = ['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED'] as const;
@@ -173,6 +179,72 @@ export const adminService = {
     );
 
     return { id: user.id, email: user.email, creditBalance: user.creditBalance };
+  },
+
+  // Create a shareable invite code (for referral / 小红书 campaigns). Code is
+  // normalized to the same upper+trim shape redemption compares against, so the
+  // operator can type it any case. maxRedemptions null = no cap on total uses
+  // (still one-per-user via the redemption unique index). Duplicate code is a
+  // hard 409 — codes are the public credential, silently reusing one would let a
+  // new campaign inherit an old code's spent redemptions.
+  async createInviteCode(
+    actorId: string,
+    input: { code: string; credits: number; expiryDays: number; maxRedemptions: number | null },
+  ) {
+    const code = input.code.trim().toUpperCase().slice(0, 64);
+    if (!code) throw ERRORS.VALIDATION_FAILED('code is required');
+    if (!Number.isInteger(input.credits) || input.credits <= 0 || input.credits > MAX_INVITE_CREDITS) {
+      throw ERRORS.VALIDATION_FAILED(`credits must be 1..${MAX_INVITE_CREDITS}`);
+    }
+    if (
+      !Number.isInteger(input.expiryDays) ||
+      input.expiryDays <= 0 ||
+      input.expiryDays > MAX_INVITE_EXPIRY_DAYS
+    ) {
+      throw ERRORS.VALIDATION_FAILED(`expiryDays must be 1..${MAX_INVITE_EXPIRY_DAYS}`);
+    }
+    const maxRedemptions = input.maxRedemptions;
+    if (maxRedemptions !== null && (!Number.isInteger(maxRedemptions) || maxRedemptions <= 0)) {
+      throw ERRORS.VALIDATION_FAILED('maxRedemptions must be a positive integer or empty');
+    }
+
+    const existing = await db.select().from(inviteCodes).where(eq(inviteCodes.code, code)).limit(1);
+    if (existing.length > 0) throw ERRORS.INVITE_CODE_EXISTS();
+
+    const expiresAt = new Date(Date.now() + input.expiryDays * DAY_MS);
+    const [row] = await db
+      .insert(inviteCodes)
+      .values({ code, credits: input.credits, expiresAt, maxRedemptions })
+      .returning();
+
+    logger.info(
+      { actorId, action: 'admin.createInviteCode', code, credits: input.credits },
+      'admin invite code created',
+    );
+
+    return {
+      code: row.code,
+      credits: row.credits,
+      expiresAt: row.expiresAt,
+      maxRedemptions: row.maxRedemptions,
+    };
+  },
+
+  async listInviteCodes(_actorId: string) {
+    const rows = await db
+      .select()
+      .from(inviteCodes)
+      .orderBy(desc(inviteCodes.createdAt))
+      .limit(100);
+    return rows.map((r) => ({
+      code: r.code,
+      credits: r.credits,
+      redeemedCount: r.redeemedCount,
+      maxRedemptions: r.maxRedemptions,
+      active: r.active,
+      expiresAt: r.expiresAt,
+      createdAt: r.createdAt,
+    }));
   },
 
   async getAnalytics(_actorId: string, now: Date = new Date()) {

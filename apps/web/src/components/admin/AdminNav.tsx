@@ -2,11 +2,12 @@ import Link from 'next/link';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 
-type Tab = 'overview' | 'users' | 'analytics' | 'settings';
+type Tab = 'overview' | 'users' | 'invites' | 'analytics' | 'settings';
 
 const TABS: { key: Tab; href: string }[] = [
   { key: 'overview', href: '' },
   { key: 'users', href: '/users' },
+  { key: 'invites', href: '/invite-codes' },
   { key: 'analytics', href: '/analytics' },
   { key: 'settings', href: '/settings' },
 ];
