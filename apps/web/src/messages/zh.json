@@ -23,6 +23,9 @@
     "loginError": "无法登录，请检查邮箱和密码。",
     "googleError": "无法启动 Google 登录，请重试。",
     "registerError": "无法创建账户。",
+    "inviteCodeOptional": "邀请码(可选)",
+    "inviteCodePlaceholder": "有邀请码？填这里，登录后自动到账",
+    "inviteCodePending": "邀请码积分将在你登录后自动到账。",
     "verifyEmailSent": "请查收邮件——我们已发送验证链接，点击即可完成注册。",
     "verifyEmailTitle": "请查收邮件",
     "verifyEmailLead": "我们已将验证链接发送至",
@@ -171,6 +174,7 @@
       "checkoutCancel": "已取消支付。",
       "reason": {
         "SIGNUP_BONUS": "新人赠送",
+        "INVITE_REDEEM": "邀请码兑换",
         "GENERATION_HOLD": "生成冻结",
         "GENERATION_SETTLE": "已生成纪念册",
         "GENERATION_RELEASE": "生成已退回",
@@ -197,7 +201,18 @@
       "deleteAccount": "注销账号",
       "deleteAccountBody": "注销账号将永久删除你的个人资料、你创建的全部纪念册以及剩余积分,且无法恢复。我们通过邮件处理注销申请——请用本账号的邮箱来信,我们会为你处理。",
       "deleteAccountCta": "申请注销账号",
-      "deleteAccountSubject": "账号注销申请"
+      "deleteAccountSubject": "账号注销申请",
+      "inviteTitle": "邀请码",
+      "inviteDesc": "填写邀请码,立即到账积分。",
+      "invitePlaceholder": "输入邀请码",
+      "inviteRedeem": "兑换",
+      "inviteRedeeming": "兑换中…",
+      "inviteSuccess": "已到账 {credits} 积分!当前余额 {balance}。",
+      "inviteErrInvalid": "邀请码无效。",
+      "inviteErrExpired": "邀请码已过期。",
+      "inviteErrUsed": "你已经兑换过这个码了。",
+      "inviteErrExhausted": "邀请码已被用完。",
+      "inviteErrGeneric": "兑换失败,请稍后再试。"
     },
     "editor": {
       "backToProjects": "返回我的项目",

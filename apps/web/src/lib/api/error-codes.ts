@@ -26,6 +26,11 @@ export const ERRORS = {
   CREDIT_INSUFFICIENT:   () => new AppError('CREDIT_INSUFFICIENT',   'Not enough credits',          402),
   CREDIT_HOLD_FAILED:    () => new AppError('CREDIT_HOLD_FAILED',    'Failed to hold credits',      500),
 
+  INVITE_CODE_INVALID:   () => new AppError('INVITE_CODE_INVALID',   'Invite code not found',       404),
+  INVITE_CODE_EXPIRED:   () => new AppError('INVITE_CODE_EXPIRED',   'Invite code has expired',     410),
+  INVITE_CODE_USED:      () => new AppError('INVITE_CODE_USED',      'You already redeemed this code', 409),
+  INVITE_CODE_EXHAUSTED: () => new AppError('INVITE_CODE_EXHAUSTED', 'Invite code fully redeemed',  409),
+
   PHOTO_TOO_MANY:        () => new AppError('PHOTO_TOO_MANY',        `Max ${MAX_PHOTOS_PER_GENERATION} photos per album`, 400),
   PHOTO_TOO_FEW:         () => new AppError('PHOTO_TOO_FEW',         'Need at least 1 photo',       400),
   PHOTO_TOO_LARGE:       () => new AppError('PHOTO_TOO_LARGE',       'Each photo > 800KB',          413),

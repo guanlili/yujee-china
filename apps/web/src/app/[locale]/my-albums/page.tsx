@@ -7,6 +7,7 @@ import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 import { Brand } from '@/components/app/Brand';
 import { ChromeStatusBar } from '@/components/app/ChromeStatusBar';
+import { PendingInviteRedeemer } from '@/components/app/PendingInviteRedeemer';
 import { Sidebar } from '@/components/app/Sidebar';
 import { YujeeState } from '@/components/app/YujeeState';
 import { AlbumCoverPreview, type AlbumCoverPage } from '@/components/album/AlbumCoverPreview';
@@ -499,6 +500,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-[var(--bg)] text-[var(--fg)]">
+      <PendingInviteRedeemer locale={locale} />
       <div
         className="page-glow"
         aria-hidden="true"

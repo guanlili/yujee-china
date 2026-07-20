@@ -23,6 +23,9 @@
     "loginError": "Could not log in. Check your email and password.",
     "googleError": "Could not start Google sign-in. Please try again.",
     "registerError": "Could not create your account.",
+    "inviteCodeOptional": "Invite code (optional)",
+    "inviteCodePlaceholder": "Have a code? Credits land after you log in",
+    "inviteCodePending": "Your invite bonus will be added once you log in.",
     "verifyEmailSent": "Check your inbox — we sent a link to verify your email. Click it to finish signing up.",
     "verifyEmailTitle": "Check your email",
     "verifyEmailLead": "We sent a verification link to",
@@ -171,6 +174,7 @@
       "checkoutCancel": "Checkout was canceled.",
       "reason": {
         "SIGNUP_BONUS": "Welcome credit",
+        "INVITE_REDEEM": "Invite code redeemed",
         "GENERATION_HOLD": "Generation reserved",
         "GENERATION_SETTLE": "Memoir generated",
         "GENERATION_RELEASE": "Generation refunded",
@@ -197,7 +201,18 @@
       "deleteAccount": "Delete account",
       "deleteAccountBody": "Deleting your account permanently removes your profile, every memoir you've created, and any remaining credits. This can't be undone. We handle deletion requests by email — write to us from the address on this account and we'll process it.",
       "deleteAccountCta": "Request account deletion",
-      "deleteAccountSubject": "Account deletion request"
+      "deleteAccountSubject": "Account deletion request",
+      "inviteTitle": "Invite code",
+      "inviteDesc": "Enter an invite code to add credits instantly.",
+      "invitePlaceholder": "Enter code",
+      "inviteRedeem": "Redeem",
+      "inviteRedeeming": "Redeeming…",
+      "inviteSuccess": "Added {credits} credits! Balance: {balance}.",
+      "inviteErrInvalid": "Invalid invite code.",
+      "inviteErrExpired": "This code has expired.",
+      "inviteErrUsed": "You've already redeemed this code.",
+      "inviteErrExhausted": "This code has been fully redeemed.",
+      "inviteErrGeneric": "Couldn't redeem — please try again."
     },
     "editor": {
       "backToProjects": "Back to projects",

@@ -5,6 +5,7 @@ import { useState, type FormEvent } from 'react';
 import { BrandMark } from '@/components/app/Brand';
 import { authClient } from '@/lib/auth/client';
 import { authHrefWithFrom, safeAuthRedirect } from '@/lib/auth/redirect';
+import { stashPendingInvite } from '@/lib/invite/pending-invite';
 import type { AppMessages } from '@/lib/i18n/messages';
 
 type AuthMessages = AppMessages['auth'];
@@ -27,6 +28,7 @@ export function RegisterForm({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -43,6 +45,8 @@ export function RegisterForm({
       setBusy(false);
       return;
     }
+    // 注册当下没有会话(邮箱要先验证),暂存邀请码,登录后由 PendingInviteRedeemer 自动兑换。
+    if (inviteCode.trim()) stashPendingInvite(inviteCode);
     setSentTo(email);
     setBusy(false);
   };
@@ -63,6 +67,9 @@ export function RegisterForm({
           <span className="font-semibold text-[var(--fg)]">{sentTo}</span>
         </p>
         <p className="mt-4 text-[var(--text-base)] text-[var(--fg-2)]">{messages.verifyEmailBody}</p>
+        {inviteCode.trim() && (
+          <p className="mt-3 text-[var(--text-sm)] font-medium text-[var(--accent-active)]">{messages.inviteCodePending}</p>
+        )}
         <p className="mt-3 text-[var(--text-sm)] text-[var(--meta)]">{messages.verifyEmailHint}</p>
         <p className="mt-6 text-[var(--text-sm)]">
           <Link className="font-semibold text-[var(--fg)] hover:underline" href={loginHref}>
@@ -120,6 +127,19 @@ export function RegisterForm({
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            className={fieldClass}
+          />
+        </label>
+        <label className="flex flex-col gap-[7px]">
+          <span className="text-[var(--text-sm)] font-medium text-[var(--fg-2)]">{messages.inviteCodeOptional}</span>
+          <input
+            name="inviteCode"
+            type="text"
+            autoComplete="off"
+            autoCapitalize="characters"
+            placeholder={messages.inviteCodePlaceholder}
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value)}
             className={fieldClass}
           />
         </label>

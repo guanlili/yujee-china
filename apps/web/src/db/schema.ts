@@ -65,6 +65,7 @@ export const creditLedgerReasonEnum = pgEnum('credit_ledger_reason', [
   'PURCHASE',
   'REFUND',
   'ADMIN_ADJUST',
+  'INVITE_REDEEM', // 兑换邀请码 → 加积分(见 invite_codes / invite_redemptions)
 ]);
 
 // ============================================
@@ -425,6 +426,44 @@ export const creditLedger = pgTable(
   }),
 );
 
+// 邀请码(共享兑换码):一个码可发给很多人,每个用户限兑一次(见 invite_redemptions
+// 的唯一约束),到期(expires_at)或停用(active=false)后拒绝。maxRedemptions=null
+// 表示无总次数上限。兑换 = creditService.applyDelta(+credits, 'INVITE_REDEEM')。
+export const inviteCodes = pgTable(
+  'invite_codes',
+  {
+    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    code: text('code').notNull().unique(), // 存大写规整值;兑换时用户输入 upper+trim 后比对
+    credits: integer('credits').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    maxRedemptions: integer('max_redemptions'), // null = 不限总次数(仍每人一次)
+    redeemedCount: integer('redeemed_count').notNull().default(0),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    codeIdx: uniqueIndex('uq_invite_codes_code').on(t.code),
+  }),
+);
+
+// 兑换记录:每个用户对每个码只能有一条(唯一约束防重复兑),是「每人限一次」的硬闸。
+export const inviteRedemptions = pgTable(
+  'invite_redemptions',
+  {
+    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    codeId: text('code_id')
+      .notNull()
+      .references(() => inviteCodes.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    perUser: uniqueIndex('uq_invite_redemptions_code_user').on(t.codeId, t.userId),
+  }),
+);
+
 // ============================================
 // Type exports
 // ============================================
@@ -460,3 +499,7 @@ export type CreditHold = typeof creditHolds.$inferSelect;
 export type NewCreditHold = typeof creditHolds.$inferInsert;
 export type CreditLedger = typeof creditLedger.$inferSelect;
 export type NewCreditLedger = typeof creditLedger.$inferInsert;
+export type InviteCode = typeof inviteCodes.$inferSelect;
+export type NewInviteCode = typeof inviteCodes.$inferInsert;
+export type InviteRedemption = typeof inviteRedemptions.$inferSelect;
+export type NewInviteRedemption = typeof inviteRedemptions.$inferInsert;

@@ -42,6 +42,54 @@ export default function SettingsPage({ params }: { params: Promise<{ locale: Loc
   const [pwMsg, setPwMsg] = useState<string | null>(null);
   const [pwErr, setPwErr] = useState<string | null>(null);
 
+  const [inviteCode, setInviteCode] = useState('');
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteMsg, setInviteMsg] = useState<string | null>(null);
+  const [inviteErr, setInviteErr] = useState<string | null>(null);
+
+  // 兑换失败:后端返回具体错误码 → 本地化提示;未知码回落通用提示。
+  const inviteErrorText = (code: string | undefined): string => {
+    switch (code) {
+      case 'INVITE_CODE_INVALID': return t.inviteErrInvalid;
+      case 'INVITE_CODE_EXPIRED': return t.inviteErrExpired;
+      case 'INVITE_CODE_USED': return t.inviteErrUsed;
+      case 'INVITE_CODE_EXHAUSTED': return t.inviteErrExhausted;
+      default: return t.inviteErrGeneric;
+    }
+  };
+
+  const redeemInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = inviteCode.trim();
+    if (!code || inviteBusy) return;
+    setInviteBusy(true);
+    setInviteMsg(null);
+    setInviteErr(null);
+    try {
+      const res = await fetch('/api/v1/invite/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setInviteMsg(
+          t.inviteSuccess
+            .replace('{credits}', String(json.data.credits))
+            .replace('{balance}', String(json.data.balance)),
+        );
+        setInviteCode('');
+        setMe((prev) => (prev ? { ...prev, creditBalance: json.data.balance } : prev));
+      } else {
+        setInviteErr(inviteErrorText(json.error?.code));
+      }
+    } catch {
+      setInviteErr(t.inviteErrGeneric);
+    } finally {
+      setInviteBusy(false);
+    }
+  };
+
   useEffect(() => {
     (async () => {
       try {
@@ -113,6 +161,27 @@ export default function SettingsPage({ params }: { params: Promise<{ locale: Loc
               </div>
             </dl>
           )}
+        </section>
+
+        <section className={card}>
+          <h2 className={heading}>{t.inviteTitle}</h2>
+          <p className="text-[var(--text-sm)] text-[var(--muted)] mb-4">{t.inviteDesc}</p>
+          <form onSubmit={redeemInvite} className="flex flex-wrap items-start gap-3">
+            <input
+              type="text"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
+              placeholder={t.invitePlaceholder}
+              autoCapitalize="characters"
+              spellCheck={false}
+              className={`${field} mt-0 flex-1 min-w-[200px] uppercase tracking-wide`}
+            />
+            <button type="submit" disabled={inviteBusy || !inviteCode.trim()} className={primaryBtn}>
+              {inviteBusy ? t.inviteRedeeming : t.inviteRedeem}
+            </button>
+          </form>
+          {inviteMsg && <p className="mt-3 text-[var(--text-sm)] text-emerald-700">{inviteMsg}</p>}
+          {inviteErr && <p className="mt-3 text-[var(--text-sm)] text-red-600">{inviteErr}</p>}
         </section>
 
         <section className={card}>
