@@ -900,7 +900,8 @@
 }
 .editor-port .board-bg-close svg{ width:18px; height:18px; }
 .editor-port .board-bg-close:hover{ background:var(--bg); color:var(--fg); }
-.editor-port .board-bg-body{ padding:8px 20px 22px; }
+/* body 可滚:颜色区(内联 Fill 取色器)较高时,图片/上传要能滚到、不被 modal-card 的 overflow:hidden 裁掉。 */
+.editor-port .board-bg-body{ padding:8px 20px 22px; flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; }
 .editor-port .bbg-swatches{ display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
 .editor-port .bbg-swatch{
   width:44px; height:44px; border-radius:12px; cursor:pointer; position:relative;
@@ -2051,4 +2052,149 @@
   .credits-modal-title{ font-size:26px; }
   .credits-pack{ padding:16px 18px; }
   .credits-pack-price{ font-size:24px; }
+}
+
+/* ═══ 移动端编辑弹窗(bottom sheet):替代移动端浮标做文字编辑 / 书页背景色。
+   仅在移动端由 JS 打开(showElementToolbar 分流);在 .editor-port 作用域内,
+   复用编辑器暗色令牌 var(--surface/--fg/--border-soft/…),深浅色自动跟随。 ═══ */
+.editor-port .mes-overlay{
+  display:none; position:fixed; inset:0; z-index:140;
+  align-items:flex-end; justify-content:center;
+  background:rgba(0,0,0,.34);
+}
+.editor-port .mes-overlay[data-open="1"]{ display:flex; }
+.editor-port .mes-card{
+  width:100%; max-width:560px; height:66vh; max-height:66vh; display:flex; flex-direction:column;
+  background:var(--surface); color:var(--fg);
+  border-radius:22px 22px 0 0; box-shadow:0 -14px 44px rgba(0,0,0,.22);
+  padding-bottom:calc(10px + env(safe-area-inset-bottom));
+  animation:mes-up .2s var(--ease) both;
+}
+.editor-port .mes-color-slot{ display:block; }
+@keyframes mes-up{ from{ transform:translateY(28px); opacity:.4; } to{ transform:translateY(0); opacity:1; } }
+.editor-port .mes-grab{ display:flex; justify-content:center; padding:11px 0 4px; }
+.editor-port .mes-grab span{ width:44px; height:5px; border-radius:9999px; background:var(--border); }
+.editor-port .mes-head{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:4px 12px 12px; border-bottom:1px solid var(--border-soft);
+}
+.editor-port .mes-title{ font-size:15px; font-weight:600; color:var(--fg); }
+.editor-port .mes-hbtn{
+  border:none; background:transparent; cursor:pointer; font-size:15px;
+  padding:6px 8px; border-radius:9px; color:var(--meta); min-width:52px;
+}
+.editor-port .mes-cancel{ text-align:left; }
+.editor-port .mes-done{ text-align:right; color:var(--accent); font-weight:600; }
+.editor-port .mes-hbtn:active{ background:var(--bg); }
+.editor-port .mes-body{ overflow-y:auto; -webkit-overflow-scrolling:touch; padding:14px 16px 4px; }
+
+/* 主视图:内容 textarea + 两行控件 */
+.editor-port .mes-textarea{
+  width:100%; min-height:96px; resize:none; box-sizing:border-box;
+  border:1px solid var(--border-soft); border-radius:12px; background:var(--bg);
+  color:var(--fg); font:inherit; font-size:16px; line-height:1.5; padding:12px 14px;
+}
+.editor-port .mes-textarea:focus{ outline:none; border-color:var(--accent); }
+/* 工具条:拆成 字号 / 粗斜 / 对齐 三段独立小胶囊,按内容宽度、可换行。扁平按钮与 #elBar 规范一致。 */
+.editor-port .mes-tools{ display:flex; align-items:center; gap:8px; margin-top:14px; flex-wrap:wrap; }
+.editor-port .mes-tgroup{
+  display:inline-flex; align-items:center; gap:2px;
+  border:1px solid var(--border-soft); border-radius:12px; background:var(--bg); padding:4px;
+}
+.editor-port .mes-tb{
+  min-width:40px; height:40px; border:none; background:transparent; color:var(--fg);
+  border-radius:9px; display:inline-flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:16px; padding:0 8px;
+  transition:background .12s var(--ease);
+}
+.editor-port .mes-tb:hover{ background:var(--surface-warm); }
+.editor-port .mes-tb:active, .editor-port .mes-tb.active{ background:var(--surface-warm); color:var(--fg); }
+.editor-port .mes-tb svg{ width:18px; height:18px; }
+.editor-port .mes-tb-step{ min-width:36px; padding:0; font-size:20px; color:var(--fg); }
+.editor-port .mes-tb-size{
+  width:44px; height:40px; border:none; background:transparent; color:var(--fg);
+  text-align:center; font-size:16px; font-family:var(--font-mono); outline:none; -moz-appearance:textfield;
+}
+.editor-port .mes-tsep{ width:1px; height:22px; background:var(--border-soft); margin:0 4px; flex:none; }
+
+/* 主视图漏出的常用色 / 常用字体 + 分区标签(颜色 / 字体) */
+.editor-port .mes-label{ font-size:12.5px; color:var(--muted); margin:16px 2px 9px; }
+.editor-port .mes-row-tools{ margin-top:14px; }
+.editor-port .mes-sw-row{ display:flex; gap:10px; flex-wrap:wrap; }
+.editor-port .mes-sw{
+  width:42px; height:42px; border-radius:12px; cursor:pointer; padding:0;
+  border:none; box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);
+}
+.editor-port .mes-sw.active{ box-shadow:inset 0 0 0 1px rgba(0,0,0,.08), 0 0 0 2px var(--surface), 0 0 0 4px var(--fg); }
+.editor-port .mes-sw-more{ background:conic-gradient(from 0deg,#ff5f6d,#ffc371,#a8e063,#56ccf2,#a06cd5,#ff5f6d); }
+.editor-port .mes-fontchip-row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.editor-port .mes-fontchip{
+  padding:10px 18px; border-radius:9999px; border:1px solid var(--border-soft);
+  background:var(--bg); color:var(--fg); font-size:16px; cursor:pointer; white-space:nowrap;
+}
+.editor-port .mes-fontchip.active{ border-color:var(--accent); color:var(--accent); }
+.editor-port .mes-fontchip-more{ font-family:inherit; color:var(--meta); }
+
+/* 返回(子视图)+ 提示 */
+.editor-port .mes-back{
+  border:none; background:transparent; color:var(--meta); cursor:pointer;
+  font-size:15px; padding:6px 4px 10px; display:inline-flex; align-items:center; gap:2px;
+}
+.editor-port .mes-hint{ color:var(--meta); font-size:12px; padding:10px 2px 4px; }
+
+/* 色板子视图 / 页背景主视图 */
+.editor-port .mes-color-grid{ display:grid; grid-template-columns:repeat(9,1fr); gap:8px; }
+.editor-port .mes-grid-cell{ aspect-ratio:1; border:1px solid rgba(0,0,0,.08); border-radius:9px; cursor:pointer; padding:0; }
+.editor-port .mes-grid-cell.active{ outline:2px solid var(--accent); outline-offset:2px; }
+.editor-port .mes-none{
+  margin-top:14px; width:100%; height:48px; border:1px solid var(--border-soft);
+  border-radius:12px; background:var(--bg); color:var(--fg); font-size:15px; cursor:pointer;
+}
+.editor-port .mes-none:active{ background:var(--surface-warm); }
+
+/* 字体子视图 */
+.editor-port .mes-font-list{ display:flex; flex-direction:column; }
+.editor-port .mes-font-grp{ font-size:12px; color:var(--meta); padding:12px 2px 6px; }
+.editor-port .mes-font-item{
+  text-align:left; border:none; background:transparent; color:var(--fg);
+  padding:13px 6px; font-size:19px; cursor:pointer; border-radius:9px;
+  border-bottom:1px solid var(--border-soft);
+}
+.editor-port .mes-font-item:active{ background:var(--surface-warm); }
+
+/* ═══ 画板垫底背景弹窗:内联复用共享 Fill 取色器(与文字/书页背景同一个取色器)═══
+   .eb-color-inline 用 4 个类名(比移动端底部弹窗的 3 类规则高),让取色器在弹窗内静态内联,
+   不再是 fixed 悬浮/底部大弹窗。头部/拖动手柄内联时隐藏。 */
+.editor-port .eb-color-panel.eb-color-inline.open{
+  position:static; inset:auto; width:100%; max-width:100%; max-height:none;
+  border:none; border-radius:0; box-shadow:none; padding:0; margin:0;
+  animation:none; z-index:auto;
+}
+.editor-port .eb-color-inline .eb-color-head,
+.editor-port .eb-color-inline .eb-color-grab{ display:none; }
+.editor-port .bbg-color-slot{ display:block; }
+/* 主视图 / 颜色子视图切换(默认主视图:常用色 + 图片可见) */
+.editor-port .board-bg-body[data-bbg-view="main"] .bbg-color-view{ display:none; }
+.editor-port .board-bg-body[data-bbg-view="color"] .bbg-main{ display:none; }
+/* 「更多颜色」入口:彩虹底色块,与常用色块同尺寸,展开统一 Fill 取色器 */
+.editor-port .bbg-more{
+  background:conic-gradient(from 0deg,#ff5f6d,#ffc371,#a8e063,#56ccf2,#a06cd5,#ff5f6d);
+  display:flex; align-items:center; justify-content:center; color:#fff;
+}
+.editor-port .bbg-more svg{ width:22px; height:22px; filter:drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
+/* 颜色子视图顶部返回 */
+.editor-port .bbg-back{
+  border:none; background:transparent; color:var(--meta); cursor:pointer;
+  font-size:15px; padding:2px 4px 12px; display:inline-flex; align-items:center; gap:2px;
+}
+
+/* 移动端:画板垫底背景弹窗 = 2/3 屏底部半屏弹窗(与文字/书页背景 sheet 统一)。 */
+@media (max-width:767px){
+  .editor-port #boardBgModal{ align-items:flex-end; padding:0; }
+  .editor-port #boardBgModal .modal-card{
+    width:100%; max-width:100%; height:66vh; max-height:66vh;
+    border-radius:22px 22px 0 0;
+    transform:translateY(16px);
+  }
+  .editor-port #boardBgModal.open .modal-card{ transform:none; }
 }

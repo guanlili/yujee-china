@@ -739,32 +739,41 @@ function EditorModals({ locale }: { locale: Locale }) {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
             </button>
           </div>
-          <div className="board-bg-body">
-            <div className="bbg-swatches">
-              <button className="bbg-swatch bbg-none" data-board-none data-testid="bbg-none" title={zh ? '无背景' : 'None'} aria-label={zh ? '无背景' : 'None'} />
-              {COLOR_PRESETS.map((c) => (
-                <button key={c} className="bbg-swatch" data-board-color={c} style={{ background: c }} aria-label={c} title={c} />
-              ))}
-              <label className="bbg-swatch bbg-custom" title={zh ? '自定义颜色' : 'Custom color'}>
-                <input type="color" id="boardColorInput" defaultValue="#dbe4ea" aria-label={zh ? '自定义颜色' : 'Custom color'} />
-              </label>
+          {/* 主视图:一排常用基础色 + 无背景 + 「更多颜色」(展开统一 Fill 取色器) + 图片/上传。
+              颜色子视图:内联共享 Fill 取色器(色板/拾色器),与文字/书页背景同一个组件。 */}
+          <div className="board-bg-body" data-bbg-view="main">
+            <div className="bbg-main">
+              <div className="bbg-swatches">
+                <button className="bbg-swatch bbg-none" data-board-none data-testid="bbg-none" title={zh ? '无背景' : 'None'} aria-label={zh ? '无背景' : 'None'} />
+                {COLOR_PRESETS.map((c) => (
+                  <button key={c} className="bbg-swatch" data-board-color={c} style={{ background: c }} aria-label={c} title={c} />
+                ))}
+                {/* 更多颜色:展开统一 Fill 取色器(替代原来的原生系统取色器)。 */}
+                <button type="button" className="bbg-swatch bbg-more" data-bbg-more title={zh ? '更多颜色' : 'More colors'} aria-label={zh ? '更多颜色' : 'More colors'}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 0 0 18 3 3 0 0 0 0-6 1.5 1.5 0 0 1 0-3 3 3 0 0 0 0-6Z" /><circle cx="8.5" cy="9.5" r="1" fill="currentColor" stroke="none" /><circle cx="15.5" cy="9.5" r="1" fill="currentColor" stroke="none" /><circle cx="9" cy="14.5" r="1" fill="currentColor" stroke="none" /></svg>
+                </button>
+              </div>
+              <p className="bbg-section-label">{zh ? '图片' : 'Images'}</p>
+              <div className="bbg-images">
+                {IMAGE_PRESETS.map((p) => (
+                  <button
+                    key={p.id}
+                    className="bbg-image"
+                    data-board-preset={p.id}
+                    aria-label={p.label}
+                    style={{ backgroundImage: `url("${presetImageUrl(p.id)}")` }}
+                  />
+                ))}
+                {/* 上传自己的图当垫底背景(只存本地)。选中时格子显示这张图的缩略。 */}
+                <label className="bbg-image bbg-upload" data-board-upload title={zh ? '上传图片' : 'Upload image'}>
+                  <input type="file" accept={IMAGE_INPUT_ACCEPT} className="hidden" data-board-upload-input aria-label={zh ? '上传图片' : 'Upload image'} />
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+                </label>
+              </div>
             </div>
-            <p className="bbg-section-label">{zh ? '图片' : 'Images'}</p>
-            <div className="bbg-images">
-              {IMAGE_PRESETS.map((p) => (
-                <button
-                  key={p.id}
-                  className="bbg-image"
-                  data-board-preset={p.id}
-                  aria-label={p.label}
-                  style={{ backgroundImage: `url("${presetImageUrl(p.id)}")` }}
-                />
-              ))}
-              {/* 上传自己的图当垫底背景(只存本地)。选中时格子显示这张图的缩略。 */}
-              <label className="bbg-image bbg-upload" data-board-upload title={zh ? '上传图片' : 'Upload image'}>
-                <input type="file" accept={IMAGE_INPUT_ACCEPT} className="hidden" data-board-upload-input aria-label={zh ? '上传图片' : 'Upload image'} />
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
-              </label>
+            <div className="bbg-color-view">
+              <button type="button" className="bbg-back" data-bbg-back>‹ {zh ? '返回' : 'Back'}</button>
+              <div className="bbg-color-slot" data-bbg-color-slot />
             </div>
           </div>
         </div>
@@ -2469,6 +2478,8 @@ function EditorBook({
       // 编辑工具条只在画布模式(overview-on)出;书籍(预览)模式只读,不出工具条。
       if (!bodyEl.classList.contains('overview-on')) return;
       editBarAnchor = anchor;
+      // 移动端:文字 / 书页背景走底部弹窗(sheet),不出浮标。图片仍走原浮层。
+      if (isMobileEditor() && (group === 'text' || group === 'page')) { openMobileSheet(group); return; }
       setEditBarGroup(group);
       editBar.classList.add('show');
       // 取色器作用对象随组切换:文字组=文字颜色,页组=书页背景色(带「无背景」)。
@@ -2485,6 +2496,8 @@ function EditorBook({
       requestAnimationFrame(positionElementToolbar);
     }
     function hideElementToolbar() {
+      // 移动端弹窗开着时,取消选中 = 提交并关闭(先于清 editBarAnchor,mesFinalizeText 要用)。
+      if (mesState.open) closeMobileSheet(true);
       editBarAnchor = null;
       editBarMoved = false;
       editBar?.classList.remove('show');
@@ -2656,6 +2669,13 @@ function EditorBook({
       initial: () => { const r = pageRootEls(selectedPageIndex ?? -1)[0]; return r ? getComputedStyle(r).backgroundColor : null; },
       apply: applyPageBackground,
       none: () => applyPageBackground(null),
+    };
+    // 画板垫底背景色:与文字/书页背景共用同一个取色器 —— 打开垫底背景弹窗时把共享取色器移入弹窗内联展示。
+    // 「无背景」由弹窗自带的按钮处理(none:null,不在取色器里再出一个)。
+    const boardColorContext: ColorContext = {
+      initial: () => (boardBg?.kind === 'color' ? boardBg.color : null),
+      apply: (css) => setBoardBackground({ kind: 'color', color: css }),
+      none: null,
     };
     let colorContext: ColorContext = textColorContext;
     function applyFontSizeToSelection(px: number) {
@@ -2919,7 +2939,7 @@ function EditorBook({
       p.addEventListener('click', (e) => {
         const t = e.target as HTMLElement;
         if (t.closest('[data-color-close]')) { closeEbPanels(); return; }
-        if (t.closest('[data-color-none]')) { colorContext.none?.(); closeEbPanels(); return; }
+        if (t.closest('[data-color-none]')) { colorContext.none?.(); if (p.classList.contains('eb-color-inline')) renderColorPanel(); else closeEbPanels(); return; }
         const modeBtn = t.closest<HTMLElement>('[data-color-mode]');
         if (modeBtn?.dataset.colorMode) { p.dataset.mode = modeBtn.dataset.colorMode; renderColorPanel(); return; }
         const sw = t.closest<HTMLElement>('[data-swatch]');
@@ -2953,6 +2973,326 @@ function EditorBook({
       p.classList.add('open');
       positionEbPanel(p);
     }
+
+    // ═══ 移动端编辑弹窗(bottom sheet)═══
+    // 复用桌面浮标的全部套用逻辑(applyColorToSelection/applyFontToSelection/
+    // applyFontSizeToSelection/applyTextToolbarAction/colorContext),只换外壳与触发方式:
+    // 移动端把「文字编辑 / 书页背景色」从浮标改成底部弹窗。所有操作在 sheet 内完成。
+    const isMobileEditor = () => window.matchMedia('(max-width: 767px)').matches;
+    type MesMode = 'text' | 'page';
+    type MesView = 'main' | 'color' | 'font';
+    const mesState: {
+      open: boolean;
+      mode: MesMode;
+      view: MesView;
+      fontName: string | null;
+      snap: null | {
+        page: EditorPage | null;
+        htmlJson: EditorPage['htmlJson'];
+        textsJson: EditorPage['textsJson'] | undefined;
+        textEl: HTMLElement | null;
+        styleAttr: string | null;
+        text: string | null;
+        textKey: string | undefined;
+        pageBg: Array<{ el: HTMLElement; bg: string }>;
+      };
+    } = { open: false, mode: 'text', view: 'main', fontName: null, snap: null };
+
+    function mesModeTitle(mode: MesMode): string {
+      const zh = currentLang === 'zh';
+      return mode === 'page' ? (zh ? '书页背景' : 'Page background') : (zh ? '文字' : 'Text');
+    }
+    function mesViewTitle(): string {
+      const zh = currentLang === 'zh';
+      if (mesState.view === 'color') return zh ? '颜色' : 'Color';
+      if (mesState.view === 'font') return zh ? '字体' : 'Font';
+      return mesModeTitle(mesState.mode);
+    }
+    const mesEsc = (s: string) => s.replace(/"/g, '&quot;');
+    function mesTextMainHtml(zh: boolean): string {
+      // 对齐图标:直接沿用 #elBar 的三个规范图标(避免自造坐标出错)。
+      const svg = (inner: string) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">${inner}</svg>`;
+      const alignSvg: Record<string, string> = {
+        'align-left': svg('<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/>'),
+        'align-center': svg('<line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="5" y1="18" x2="19" y2="18"/>'),
+        'align-right': svg('<line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="6" y1="18" x2="21" y2="18"/>'),
+      };
+      const tb = (action: string, label: string, inner: string) => `<button type="button" class="mes-tb" data-mes-act="${action}" aria-label="${label}">${inner}</button>`;
+      // 工具条:拆成 字号 / 粗斜 / 对齐 三段独立小胶囊(扁平按钮,与 #elBar 一致),按内容宽度、可换行。
+      const toolbar =
+        `<div class="mes-tools">` +
+          `<div class="mes-tgroup">` +
+            `<button type="button" class="mes-tb mes-tb-step" data-mes-size="dec" aria-label="${zh ? '减小字号' : 'Smaller'}">−</button>` +
+            `<input class="mes-tb-size" data-mes-size-input inputmode="numeric" placeholder="--" aria-label="${zh ? '字号' : 'Font size'}" />` +
+            `<button type="button" class="mes-tb mes-tb-step" data-mes-size="inc" aria-label="${zh ? '增大字号' : 'Larger'}">+</button>` +
+          `</div>` +
+          `<div class="mes-tgroup">` +
+            tb('bold', zh ? '加粗' : 'Bold', '<b>B</b>') +
+            tb('italic', zh ? '斜体' : 'Italic', '<i style="font-family:Georgia,serif">I</i>') +
+          `</div>` +
+          `<div class="mes-tgroup">` +
+            tb('align-left', zh ? '左对齐' : 'Align left', alignSvg['align-left']!) +
+            tb('align-center', zh ? '居中' : 'Center', alignSvg['align-center']!) +
+            tb('align-right', zh ? '右对齐' : 'Align right', alignSvg['align-right']!) +
+          `</div>` +
+        `</div>`;
+      // 颜色:主视图漏出一排常用基础色(8 个)+ 彩虹「更多」(展开完整 Fill 取色器:色板/拾色器)。
+      const colorRow =
+        COLOR_PRESETS.slice(0, 8).map((c) => `<button type="button" class="mes-sw" data-mes-color-quick="${c}" style="background:${c}" aria-label="${c}"></button>`).join('') +
+        `<button type="button" class="mes-sw mes-sw-more" data-mes-open="color" aria-label="${zh ? '更多颜色' : 'More colors'}"></button>`;
+      // 字体:主视图多漏出几排常用中文字体 + 「更多」(展开完整字体列表,含英文)。
+      const quickFonts = EDITOR_FONTS.filter((f) => f.script === 'cjk').slice(0, 8);
+      const fontRow =
+        quickFonts.map((f) => `<button type="button" class="mes-fontchip" data-mes-font-quick="${f.id}" style="font-family:${mesEsc(f.stack)}">${f.name}</button>`).join('') +
+        `<button type="button" class="mes-fontchip mes-fontchip-more" data-mes-open="font">${zh ? '更多' : 'More'}</button>`;
+      return (
+        `<textarea class="mes-textarea" data-mes-text placeholder="${zh ? '输入文字…' : 'Enter text…'}"></textarea>` +
+        toolbar +
+        `<div class="mes-label">${zh ? '颜色' : 'Color'}</div>` +
+        `<div class="mes-sw-row">${colorRow}</div>` +
+        `<div class="mes-label">${zh ? '字体' : 'Font'}</div>` +
+        `<div class="mes-fontchip-row">${fontRow}</div>`
+      );
+    }
+    function mesFontListHtml(zh: boolean): string {
+      const item = (f: EditorFont) => `<button type="button" class="mes-font-item" data-mes-font="${f.id}" style="font-family:${mesEsc(f.stack)}">${f.name}</button>`;
+      const group = (label: string, list: EditorFont[]) => (list.length ? `<div class="mes-font-grp">${label}</div>${list.map(item).join('')}` : '');
+      return (
+        `<button type="button" class="mes-back" data-mes-back>‹ ${zh ? '返回' : 'Back'}</button>` +
+        `<div class="mes-font-list">` +
+        group(zh ? '中文' : 'Chinese', EDITOR_FONTS.filter((f) => f.script === 'cjk')) +
+        group(zh ? '英文' : 'Latin', EDITOR_FONTS.filter((f) => f.script === 'latin')) +
+        `</div>`
+      );
+    }
+    // 中文艺术字面板预览:把项目所有中文字体名 + 样例串按需子集化,面板里就显示真字形(复用字体面板策略)。
+    function mesLoadFontPreviews() {
+      const cjkIds = EDITOR_FONTS.map((f) => f.cjkId).filter((v): v is CjkFontId => !!v);
+      const charset = CJK_PREVIEW_SAMPLE + EDITOR_FONTS.filter((f) => f.script === 'cjk').map((f) => f.name).join('');
+      for (let i = 0; i < cjkIds.length; i += 3) void loadFontSubset({ fontIds: cjkIds.slice(i, i + 3), charset }).catch(() => {});
+    }
+    // ── 共享 Fill 取色器(#ebColorPanel,色板 + 拾色器两模式)内联挂载到任意容器 ──
+    // 文字色 / 书页背景 / 画板背景全用它 —— 保证「同一个取色器 + 两种模式」。一次只在一处:
+    // 挂载前先从别处卸下。因为它是全局唯一节点,替换容器 innerHTML 前必须先卸下,否则会被一起销毁。
+    function mountSharedColorPicker(slot: HTMLElement, ctx: ColorContext) {
+      const panel = byId('ebColorPanel');
+      if (!panel || panel.parentElement === slot) return;
+      closeEbPanels();
+      buildColorPanel();
+      colorContext = ctx;
+      panel.dataset.mode = 'grid'; // 默认色板(用户拍板);拾色器由段控件切换
+      const init = ctx.initial();
+      if (init) setColorFromCss(init);
+      const noneBtn = panel.querySelector<HTMLElement>('[data-color-none]');
+      if (noneBtn) noneBtn.style.display = ctx.none ? '' : 'none';
+      renderColorPanel();
+      panel.classList.add('eb-color-inline', 'open');
+      slot.appendChild(panel);
+    }
+    function unmountSharedColorPicker() {
+      const panel = byId('ebColorPanel');
+      if (!panel || !panel.classList.contains('eb-color-inline')) return;
+      panel.classList.remove('eb-color-inline', 'open');
+      const noneBtn = panel.querySelector<HTMLElement>('[data-color-none]');
+      if (noneBtn) noneBtn.style.display = 'none';
+      editBar?.appendChild(panel); // 移回浮标原位
+      colorContext = textColorContext;
+    }
+    function renderMesBody() {
+      const body = byId('mesBody');
+      const title = byId('mesTitle');
+      if (!body) return;
+      // 换内容前先把内联取色器移回 #elBar,免得 innerHTML 清空把这个共享节点一起销毁。
+      unmountSharedColorPicker();
+      if (title) title.textContent = mesViewTitle();
+      const zh = currentLang === 'zh';
+      // 颜色视图(文字)/主视图(书页背景)= 内联共享 Fill 取色器(色板 + 拾色器两模式)。
+      if (mesState.mode === 'text' && mesState.view === 'color') {
+        body.innerHTML = `<button type="button" class="mes-back" data-mes-back>‹ ${zh ? '返回' : 'Back'}</button><div class="mes-color-slot" data-mes-color-slot></div>`;
+        const slot = body.querySelector<HTMLElement>('[data-mes-color-slot]');
+        if (slot) mountSharedColorPicker(slot, textColorContext);
+        return;
+      }
+      if (mesState.mode === 'text' && mesState.view === 'font') { body.innerHTML = mesFontListHtml(zh); mesLoadFontPreviews(); return; }
+      if (mesState.mode === 'page') {
+        body.innerHTML = `<div class="mes-color-slot" data-mes-color-slot></div>`;
+        const slot = body.querySelector<HTMLElement>('[data-mes-color-slot]');
+        if (slot) mountSharedColorPicker(slot, pageColorContext);
+        return;
+      }
+      body.innerHTML = mesTextMainHtml(zh);
+      mesSyncTextControls();
+      mesLoadFontPreviews(); // 让主视图漏出的中文字体块显示真字形
+    }
+    // 主视图各控件回填当前值(内容 / 字号)+ 高亮当前色/字体的常用项。输入聚焦时不回填,免打断。
+    function mesSyncTextControls() {
+      const body = byId('mesBody');
+      const el = mesState.snap?.textEl;
+      if (!body || !el) return;
+      const ta = body.querySelector<HTMLTextAreaElement>('[data-mes-text]');
+      if (ta && document.activeElement !== ta) ta.value = el.textContent ?? '';
+      const si = body.querySelector<HTMLInputElement>('[data-mes-size-input]');
+      if (si && document.activeElement !== si) si.value = String(Math.round(parseFloat(getComputedStyle(el).fontSize) || 14));
+      mesMarkQuickColor();
+      mesMarkQuickFont();
+    }
+    // 高亮主视图里「当前色」对应的常用色块(按当前取色器状态,openMobileSheet 已用文字色回填)。
+    function mesMarkQuickColor() {
+      const body = byId('mesBody');
+      if (!body) return;
+      const cur = ebColorCss().toLowerCase();
+      body.querySelectorAll<HTMLElement>('[data-mes-color-quick]').forEach((c) => {
+        c.classList.toggle('active', (c.dataset.mesColorQuick ?? '').toLowerCase() === cur);
+      });
+    }
+    function mesMarkQuickFont() {
+      const body = byId('mesBody');
+      if (!body) return;
+      body.querySelectorAll<HTMLElement>('[data-mes-font-quick]').forEach((el) => {
+        const f = EDITOR_FONTS.find((x) => x.id === el.dataset.mesFontQuick);
+        el.classList.toggle('active', !!f && f.name === mesState.fontName);
+      });
+    }
+    // 让被编辑的文字尽量露在 sheet 上方,实时预览可见(基础版:滚到滚动容器顶部附近)。
+    function mesScrollTextIntoView(el: HTMLElement) {
+      try { el.scrollIntoView({ block: 'start', inline: 'nearest' }); } catch { /* 非致命 */ }
+    }
+    function openMobileSheet(mode: MesMode) {
+      const overlay = byId('mesOverlay');
+      if (!overlay) return;
+      if (mesState.open) closeMobileSheet(true); // 切换选区:先提交上一次
+      editBar?.classList.remove('show');
+      closeEbPanels();
+      mesState.mode = mode;
+      mesState.view = 'main';
+      mesState.fontName = null;
+      colorContext = mode === 'page' ? pageColorContext : textColorContext;
+      let page: EditorPage | null = null;
+      let textEl: HTMLElement | null = null;
+      if (mode === 'text') {
+        textEl = selectedTextTargets()[0] ?? null;
+        page = textEl ? pageForEditableText(textEl) : null;
+        if (textEl) setColorFromCss(getComputedStyle(textEl).color);
+      } else {
+        page = selectedPageIndex != null ? (pageByIndex(selectedPageIndex) ?? null) : null;
+        const init = pageColorContext.initial();
+        if (init) setColorFromCss(init);
+      }
+      const pageBg = mode === 'page' && selectedPageIndex != null
+        ? pageRootEls(selectedPageIndex).map((el) => ({ el, bg: el.style.backgroundColor }))
+        : [];
+      mesState.snap = {
+        page,
+        htmlJson: page?.htmlJson,
+        textsJson: page ? { ...page.textsJson } : undefined,
+        textEl,
+        styleAttr: textEl ? textEl.getAttribute('style') : null,
+        text: textEl ? (textEl.textContent ?? '') : null,
+        textKey: textEl?.dataset.textKey,
+        pageBg,
+      };
+      mesState.open = true;
+      renderMesBody();
+      overlay.dataset.open = '1';
+      overlay.setAttribute('aria-hidden', 'false');
+      if (textEl) requestAnimationFrame(() => mesScrollTextIntoView(textEl));
+    }
+    // 完成:样式改动已随手落库,只需把「文字内容」这一改动固化 + 重绘受影响格。
+    function mesFinalizeText() {
+      const snap = mesState.snap;
+      if (!snap || mesState.mode !== 'text') return;
+      const { page, textEl, textKey } = snap;
+      if (!page || !textEl || !textKey) return;
+      const nextText = textEl.textContent ?? '';
+      if (nextText === snap.text) return; // 内容没改 → DOM 已即时反映样式,无需重绘
+      page.textsJson = { ...page.textsJson, [textKey]: nextText };
+      syncPageHtml(page, (html) => patchHtmlText(html, textKey, nextText));
+      ensureCurrentFonts();
+      persistPagePatch(page);
+      repaintPages([page.pageIndex]);
+    }
+    // 取消:把打开时快照的整页真相 + 元素样式/内容还原,并重新落库(覆盖期间的即时改动)。
+    function mesRevert() {
+      const snap = mesState.snap;
+      if (!snap) return;
+      const { page } = snap;
+      if (page) { page.htmlJson = snap.htmlJson; if (snap.textsJson) page.textsJson = snap.textsJson; }
+      if (mesState.mode === 'text') {
+        if (snap.textEl) {
+          if (snap.styleAttr === null) snap.textEl.removeAttribute('style');
+          else snap.textEl.setAttribute('style', snap.styleAttr);
+          if (snap.text !== null) snap.textEl.textContent = snap.text;
+        }
+        if (page) { persistPagePatch(page); repaintPages([page.pageIndex]); }
+      } else {
+        for (const { el, bg } of snap.pageBg) el.style.backgroundColor = bg;
+        if (page) persistPagePatch(page, undefined, { 'background-color': snap.pageBg[0]?.bg || null });
+      }
+    }
+    function closeMobileSheet(commit: boolean) {
+      const overlay = byId('mesOverlay');
+      unmountSharedColorPicker(); // 取色器移回 #elBar,免得随 sheet 隐藏被困在里面
+      if (mesState.open) {
+        if (commit) mesFinalizeText();
+        else mesRevert();
+      }
+      mesState.open = false;
+      mesState.snap = null;
+      if (overlay) { overlay.dataset.open = '0'; overlay.setAttribute('aria-hidden', 'true'); }
+    }
+    // 文字内容实时预览:只改活节点文本(视觉即时),不落库/不重绘(交给「完成」),避免每键重绘换节点。
+    function mesLiveSetText(value: string) {
+      const el = mesState.snap?.textEl;
+      if (el) el.textContent = value;
+    }
+    const onMesClick = (e: Event) => {
+      e.stopPropagation();
+      const t = e.target as HTMLElement;
+      if (t.closest('[data-mes="cancel"]')) { closeMobileSheet(false); return; }
+      if (t.closest('[data-mes="done"]')) { closeMobileSheet(true); return; }
+      if (t.closest('[data-mes-back]')) { mesState.view = 'main'; renderMesBody(); return; }
+      const open = t.closest<HTMLElement>('[data-mes-open]')?.dataset.mesOpen as MesView | undefined;
+      if (open) { mesState.view = open; renderMesBody(); return; }
+      // 主视图漏出的常用色:直选即时套用文字色。
+      const cq = t.closest<HTMLElement>('[data-mes-color-quick]')?.dataset.mesColorQuick;
+      if (cq) { setColorFromCss(cq); emitColor(); mesMarkQuickColor(); return; }
+      // 主视图漏出的常用字体:直选即时套用。
+      const fq = t.closest<HTMLElement>('[data-mes-font-quick]')?.dataset.mesFontQuick;
+      if (fq) {
+        const f = EDITOR_FONTS.find((x) => x.id === fq);
+        if (f) { applyFontToSelection(f); mesState.fontName = f.name; }
+        mesMarkQuickFont();
+        return;
+      }
+      // 色板/拾色器的精细交互由内联的共享取色器自己处理(见 buildColorPanel),这里不再拦。
+      const act = t.closest<HTMLElement>('[data-mes-act]')?.dataset.mesAct;
+      if (act) { applyTextToolbarAction(act); mesSyncTextControls(); return; }
+      const step = t.closest<HTMLElement>('[data-mes-size]')?.dataset.mesSize;
+      if (step) {
+        const si = byId('mesBody')?.querySelector<HTMLInputElement>('[data-mes-size-input]');
+        const cur = Math.round(parseFloat(si?.value || '') || (mesState.snap?.textEl ? parseFloat(getComputedStyle(mesState.snap.textEl).fontSize) : 14) || 14);
+        const nx = Math.min(200, Math.max(6, step === 'inc' ? cur + 1 : cur - 1));
+        applyFontSizeToSelection(nx);
+        if (si) si.value = String(nx);
+        return;
+      }
+      const font = t.closest<HTMLElement>('[data-mes-font]')?.dataset.mesFont;
+      if (font) {
+        const f = EDITOR_FONTS.find((x) => x.id === font);
+        if (f) { applyFontToSelection(f); mesState.fontName = f.name; }
+        mesState.view = 'main';
+        renderMesBody();
+        return;
+      }
+    };
+    const onMesInput = (e: Event) => {
+      const t = e.target as HTMLElement;
+      if (t.matches('[data-mes-text]')) { mesLiveSetText((t as HTMLTextAreaElement).value); return; }
+      if (t.matches('[data-mes-size-input]')) {
+        const px = parseFloat((t as HTMLInputElement).value);
+        if (px > 0) applyFontSizeToSelection(px);
+      }
+    };
 
     const onEditBarPointerDown = (e: Event) => {
       e.stopPropagation();
@@ -3027,6 +3367,15 @@ function EditorBook({
     editBar?.addEventListener('input', onEditBarInput);
     editBar?.addEventListener('change', onEditBarChange);
     editBar?.addEventListener('keydown', onEditBarKeydown);
+    // 移动端编辑弹窗:委托监听挂在稳定的 #mesCard/#mesOverlay 上(body 内容随 renderMesBody 重建)。
+    // 卡片上 stopPropagation,避免冒泡到文档级「点空白取消选中」而误关 sheet。
+    const mesOverlayEl = byId('mesOverlay');
+    const mesCardEl = byId('mesCard');
+    mesCardEl?.addEventListener('click', onMesClick);
+    mesCardEl?.addEventListener('input', onMesInput);
+    mesCardEl?.addEventListener('pointerdown', (e) => e.stopPropagation());
+    mesOverlayEl?.addEventListener('pointerdown', (e) => e.stopPropagation());
+    mesOverlayEl?.addEventListener('click', (e) => { if (e.target === mesOverlayEl) closeMobileSheet(true); });
     // 响应式整体缩放:.book 尺寸是纯 CSS(min(94%, 80vh*1.414, 1010px) + aspect-ratio),
     // 随视口/容器缩放;但页内容的 scale 是 paintEl/faceHTML 在 paint 那一刻按 clientWidth
     // 算死写进 innerHTML 的,不重绘就不跟随 —— 手机/平板整体缩放时内容溢出/不缩。
@@ -3471,12 +3820,33 @@ function EditorBook({
         body: JSON.stringify({ boardBackground: bg }),
       }).catch(() => undefined);
     }
+    function boardBodyEl() { return document.querySelector<HTMLElement>('.board-bg-body'); }
     function openBoardBgModal() {
-      // 垫底背景在预览/画板两种视图都生效,无需强制切模式。
+      // 垫底背景在预览/画板两种视图都生效,无需强制切模式。默认落在主视图(常用色 + 图片可见)。
       reflectBoardSelection();
+      const body = boardBodyEl();
+      if (body) body.dataset.bbgView = 'main';
       byId('boardBgModal')?.classList.add('open');
     }
-    function closeBoardBgModal() { byId('boardBgModal')?.classList.remove('open'); }
+    function closeBoardBgModal() {
+      byId('boardBgModal')?.classList.remove('open');
+      unmountSharedColorPicker(); // 取色器移回浮标 #elBar 原位
+      const body = boardBodyEl();
+      if (body) body.dataset.bbgView = 'main';
+    }
+    // 「更多颜色」→ 展开统一 Fill 取色器子视图(把共享取色器移入);「返回」→ 收回主视图。
+    function openBoardColorView() {
+      const body = boardBodyEl();
+      const slot = document.querySelector<HTMLElement>('[data-bbg-color-slot]');
+      if (!body || !slot) return;
+      body.dataset.bbgView = 'color';
+      mountSharedColorPicker(slot, boardColorContext);
+    }
+    function closeBoardColorView() {
+      unmountSharedColorPicker();
+      const body = boardBodyEl();
+      if (body) body.dataset.bbgView = 'main';
+    }
     applyBoardBackground(boardBg); // 挂载即应用已存背景
 
     // 导出分两段,语义【解耦】(用户诉求:本地拿到 PDF 就算导出成功):
@@ -3835,11 +4205,18 @@ function EditorBook({
       boardNoneBtn.addEventListener('click', fn);
       actionHandlers.push({ el: boardNoneBtn, fn });
     }
-    const boardColorInput = byId('boardColorInput') as HTMLInputElement | null;
-    if (boardColorInput) {
-      const fn = () => setBoardBackground({ kind: 'color', color: boardColorInput.value });
-      boardColorInput.addEventListener('input', fn);
-      actionHandlers.push({ el: boardColorInput, fn });
+    // 「更多颜色」/「返回」:展开/收回统一 Fill 取色器子视图。自定义色由该取色器处理,不再有原生 <input type=color>。
+    const boardMoreBtn = $('[data-bbg-more]');
+    if (boardMoreBtn) {
+      const fn = () => openBoardColorView();
+      boardMoreBtn.addEventListener('click', fn);
+      actionHandlers.push({ el: boardMoreBtn, fn });
+    }
+    const boardBackBtn = $('[data-bbg-back]');
+    if (boardBackBtn) {
+      const fn = () => closeBoardColorView();
+      boardBackBtn.addEventListener('click', fn);
+      actionHandlers.push({ el: boardBackBtn, fn });
     }
     const boardUploadInput = $('[data-board-upload-input]') as HTMLInputElement | null;
     if (boardUploadInput) {
@@ -4177,6 +4554,22 @@ function EditorBook({
               全在图片浮层(img-edit-overlay)里完成。换照片/黑白已去掉。 */}
           {/* 共享取色器面板:挂在 elBar 根(不随 text/page 组显隐),文字组与页组的色点都开它。 */}
           <div className="eb-panel eb-color-panel" id="ebColorPanel" />
+        </div>
+
+        {/* ── 移动端编辑弹窗(bottom sheet):仅 max-width:767px 时替代浮标 #elBar。
+            选中文字 → text 模式(内容 textarea + 颜色/字体/字号/粗斜体/对齐,颜色/字体为 sheet 内子视图);
+            选中书页背景 → page 模式(色板 + 无背景)。改动实时预览;取消=按打开时快照还原,完成=落库重绘。
+            PC 端此 sheet 永不打开(showElementToolbar 仅在移动端分流到这里)。 */}
+        <div className="mes-overlay" id="mesOverlay" data-open="0" aria-hidden="true">
+          <div className="mes-card" id="mesCard" role="dialog" aria-modal="true" aria-label={locale === 'zh' ? '编辑' : 'Edit'}>
+            <div className="mes-grab" aria-hidden="true"><span /></div>
+            <div className="mes-head">
+              <button type="button" className="mes-hbtn mes-cancel" data-mes="cancel">{locale === 'zh' ? '取消' : 'Cancel'}</button>
+              <span className="mes-title" id="mesTitle" />
+              <button type="button" className="mes-hbtn mes-done" data-mes="done">{locale === 'zh' ? '完成' : 'Done'}</button>
+            </div>
+            <div className="mes-body" id="mesBody" />
+          </div>
         </div>
       </div>
 
