@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Brand, BrandMark } from '@/components/app/Brand';
 import { LanguageSwitcher } from '@/components/app/LanguageSwitcher';
+import { getAppleCredentials } from '@/lib/auth/apple-client-secret';
 import { authHrefWithFrom } from '@/lib/auth/redirect';
 import { getMessages } from '@/lib/i18n/messages';
 import { type Locale } from '@/lib/i18n/routing';
@@ -33,6 +34,8 @@ export default async function LoginPage({
   const { from } = await searchParams;
   const messages = getMessages(locale).auth;
   const registerHref = authHrefWithFrom(`/${locale}/register`, from);
+  // Apple button only renders once all four APPLE_* env vars are configured.
+  const appleEnabled = getAppleCredentials() !== null;
 
   return (
     <div
@@ -60,7 +63,7 @@ export default async function LoginPage({
             <p className="text-[15px] text-[var(--muted)]">{messages.loginSubtitle}</p>
           </div>
 
-          <LoginForm messages={messages} locale={locale} from={from} />
+          <LoginForm messages={messages} locale={locale} from={from} appleEnabled={appleEnabled} />
 
           <p className="mt-6 text-center text-[13px] text-[var(--muted)]">
             {messages.noAccount}{' '}

@@ -7,6 +7,7 @@ import { sendEmail } from '@/lib/email/send-email';
 import { renderVerificationEmail } from '@/lib/email/templates';
 import { env } from '@/lib/env';
 import { FREE_PLAN_CREDITS } from '@/config/pricing';
+import { generateAppleClientSecret, getAppleCredentials } from './apple-client-secret';
 
 type SchemaModule = Record<string, unknown>;
 type BetterAuthSchema = {
@@ -38,10 +39,34 @@ export function getBetterAuthSchema(schemaModule: Partial<SchemaModule>): Better
   };
 }
 
+export function buildSocialProviders(): BetterAuthOptions['socialProviders'] {
+  const providers: NonNullable<BetterAuthOptions['socialProviders']> = {};
+
+  if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
+    providers.google = {
+      clientId: env.GOOGLE_CLIENT_ID,
+      clientSecret: env.GOOGLE_CLIENT_SECRET,
+    };
+  }
+
+  const appleCreds = getAppleCredentials();
+  if (appleCreds) {
+    // clientSecret is the ES256 JWT we mint from the .p8 (see apple-client-secret.ts).
+    providers.apple = {
+      clientId: appleCreds.clientId,
+      clientSecret: generateAppleClientSecret(appleCreds),
+    };
+  }
+
+  return Object.keys(providers).length > 0 ? providers : undefined;
+}
+
 export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAuthOptions {
   return {
     baseURL: env.WEB_BASE_URL,
-    trustedOrigins: LOCAL_TRUSTED_ORIGINS,
+    // Apple posts its callback from appleid.apple.com (response_mode=form_post);
+    // that cross-site origin must be trusted for the callback to be accepted.
+    trustedOrigins: [...LOCAL_TRUSTED_ORIGINS, 'https://appleid.apple.com'],
     basePath: '/api/auth',
     secret: env.BETTER_AUTH_SECRET,
     database: drizzleAdapter(db, {
@@ -50,15 +75,7 @@ export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAu
       transaction: true,
     }),
     plugins: [nextCookies()],
-    socialProviders:
-      env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
-        ? {
-            google: {
-              clientId: env.GOOGLE_CLIENT_ID,
-              clientSecret: env.GOOGLE_CLIENT_SECRET,
-            },
-          }
-        : undefined,
+    socialProviders: buildSocialProviders(),
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,

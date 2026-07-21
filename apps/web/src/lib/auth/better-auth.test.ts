@@ -77,6 +77,8 @@ describe('better-auth schema bridge', () => {
       'http://127.0.0.1:3000',
       'http://localhost:3210',
       'http://127.0.0.1:3210',
+      // Apple 登录:appleid.apple.com 以 form_post 跨站回调,必须列入信任(见 better-auth.ts)。
+      'https://appleid.apple.com',
     ]);
   });
 });

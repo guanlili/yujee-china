@@ -18,6 +18,20 @@ const EnvSchema = z.object({
   // disabled, email/password still works.
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+
+  // Sign in with Apple (better-auth social provider). Apple has no static
+  // client secret: it's a short-lived ES256 JWT we sign from the .p8 key on the
+  // fly (see lib/auth/apple-client-secret.ts). All four must be set to enable
+  // Apple sign-in; any missing => Apple disabled, other logins unaffected.
+  //  - APPLE_CLIENT_ID  : the Services ID (e.g. com.yujee.web), NOT the app bundle id
+  //  - APPLE_TEAM_ID    : 10-char Apple Developer Team ID
+  //  - APPLE_KEY_ID     : 10-char Key ID of the Sign-in-with-Apple key
+  //  - APPLE_PRIVATE_KEY: contents of the AuthKey_XXXX.p8 (PEM). Newlines may be
+  //    stored as literal "\n" — we normalize them before signing.
+  APPLE_CLIENT_ID: z.string().optional(),
+  APPLE_TEAM_ID: z.string().optional(),
+  APPLE_KEY_ID: z.string().optional(),
+  APPLE_PRIVATE_KEY: z.string().optional(),
   AUTH_EMAIL_FROM: z.string().min(1).default('Yujee <noreply@yujeeai.com>'),
   // 用户反馈转发收件箱(运营者私人邮箱;发件人复用 AUTH_EMAIL_FROM)。
   FEEDBACK_INBOX: z.string().min(3).default('1658152285@qq.com'),
