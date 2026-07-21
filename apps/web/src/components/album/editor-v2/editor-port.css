@@ -282,21 +282,24 @@
 /* ─── 顶栏「保存」按钮(photo-snapshot):默认只图标;点击后在按钮上短暂显示备份状态
    (备份中 → 绿点已备份 / 红点备份失败),随后回到默认。hover 参考翻页按钮(.zoom-btn)
    的填充手感 + 轻微上浮。 ─── */
-.editor-port .save-btn{
+.editor-port .save-btn,
+.editor-port .share-btn{
   transition: background var(--motion-fast) var(--ease),
               color var(--motion-fast) var(--ease),
               border-color var(--motion-fast) var(--ease),
               transform var(--motion-fast) var(--ease),
               box-shadow var(--motion-fast) var(--ease);
 }
-.editor-port .save-btn:hover{
+.editor-port .save-btn:hover,
+.editor-port .share-btn:hover{
   background: var(--bg);
   color: var(--fg);
   border-color: var(--border);
   transform: translateY(-1px);
   box-shadow: 0 4px 14px rgba(0,0,0,0.08);
 }
-.editor-port .save-btn:active{ transform: translateY(0); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.editor-port .save-btn:active,
+.editor-port .share-btn:active{ transform: translateY(0); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
 /* 状态点:默认隐藏,进入状态时显示;颜色按 data-backup-state。 */
 .editor-port .save-btn .backup-dot{
   width: 7px; height: 7px; border-radius: 9999px; flex: 0 0 auto;

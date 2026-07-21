@@ -570,6 +570,16 @@ function EditorTopbar({
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="save-ic w-4 h-4"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>
           <span className="save-label" data-backup-label />
         </button>
+        {/* 分享链接(免登只读):挨着「保存」。生成前必须把照片压缩快照上传云端(对方浏览器
+            里没有本地原图),弹窗里先说明这点、用户确认后才上传+生成;传不齐不发链接。 */}
+        <button
+          className="share-btn inline-flex items-center gap-1.5 px-4 py-2.5 rounded-pill text-[13px] font-semibold text-fg2 border border-bd"
+          data-action="shareLink"
+          data-testid="share-link-btn"
+          title={locale === 'zh' ? '分享链接:会先上传照片(压缩快照)到云端,对方才能看到' : 'Share link: uploads compressed photo snapshots first so viewers can see them'}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></svg>
+        </button>
         <span className="btn-glow" data-export-gate={exportUnlocked ? 'open' : 'locked'}>
           <button
             className="btn-primary bg-fg text-white px-4 py-2.5 rounded-pill text-[13px] font-semibold flex items-center gap-1.5 transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
@@ -659,15 +669,10 @@ function EditorModals({ locale }: { locale: Locale }) {
       <div className="modal-overlay" id="exportMenuModal" data-overlay-close>
         <div className="modal-card export-sheet" role="dialog" aria-modal="true" aria-labelledby="exportMenuTitle" data-testid="export-menu-modal">
           <div className="px-6 pt-5 pb-1">
-            <h3 id="exportMenuTitle" className="font-display text-[18px] font-bold">{zh ? '导出 Flipin' : 'Export Flipin'}</h3>
+            <h3 id="exportMenuTitle" className="font-display text-[18px] font-bold">{zh ? '导出' : 'Export'}</h3>
             <p className="text-[13px] text-muted mt-1">{zh ? '选一种格式导出' : 'Pick a format to export'}</p>
           </div>
           <div className="px-5 py-4 flex flex-col gap-2.5">
-            {/* 分享链接:生成免登只读链接(先备份照片快照,再建冻结分享)。 */}
-            <button className="export-opt" data-action="shareLink" data-testid="export-opt-share">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></svg>
-              <span>{zh ? '分享链接 · 免登只读' : 'Share link · view-only'}</span>
-            </button>
             <button className="export-opt" data-action="openCollage" data-testid="export-opt-collage">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
               <span>{zh ? '多跨页拼图 · JPG' : 'Spread collage · JPG'}</span>
@@ -691,17 +696,24 @@ function EditorModals({ locale }: { locale: Locale }) {
         </div>
       </div>
 
-      {/* 分享链接结果弹窗:显示生成的免登只读链接 + 复制。 */}
+      {/* 分享链接弹窗,两步:①说明「生成会上传照片快照,否则对方看不到」+ 确认按钮;
+          ②照片全部传齐、链接生成后,换成链接 + 复制。显隐由 shareLink/confirmShareLink 切。 */}
       <div className="modal-overlay" id="shareLinkModal" data-overlay-close>
-        <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="shareLinkTitle" data-testid="share-link-modal">
+        <div className="modal-card export-sheet" role="dialog" aria-modal="true" aria-labelledby="shareLinkTitle" data-testid="share-link-modal">
           <div className="px-6 pt-5 pb-1">
             <h3 id="shareLinkTitle" className="font-display text-[18px] font-bold">{zh ? '分享链接' : 'Share link'}</h3>
-            <p className="text-[13px] text-muted mt-1">{zh ? '任何人打开即可只读查看,无需注册。冻结当前样子,之后编辑不影响。' : 'Anyone with the link can view (read-only), no sign-up. Frozen at this moment.'}</p>
+            <p className="text-[13px] text-muted mt-1">{zh ? '生成链接分享给朋友,免注册即可查看。' : 'Create a link to share with friends — no sign-up to view.'}</p>
           </div>
           <div className="px-5 py-3">
-            <div className="flex items-center gap-2">
-              <input id="shareLinkInput" readOnly className="flex-1 rounded-lg border border-[var(--border-soft)] bg-[var(--bg)] px-3 py-2 text-[13px] text-[var(--fg)]" />
-              <button className="rounded-lg bg-[var(--fg)] px-4 py-2 text-[13px] font-semibold text-white" data-action="copyShareLink">{zh ? '复制' : 'Copy'}</button>
+            <div id="shareLinkConfirm">
+              <p className="text-[13px] leading-relaxed text-[var(--fg)]">{zh ? '生成链接会上传照片,朋友才能看到。' : 'Creating the link uploads your photos so friends can see them.'}</p>
+              <button className="mt-3 w-full rounded-lg bg-[var(--fg)] px-4 py-2.5 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45" data-action="confirmShareLink" data-testid="share-link-confirm">{zh ? '上传照片并生成链接' : 'Upload photos & create link'}</button>
+            </div>
+            <div id="shareLinkResult" className="hidden">
+              <div className="flex items-center gap-2">
+                <input id="shareLinkInput" readOnly className="flex-1 rounded-lg border border-[var(--border-soft)] bg-[var(--bg)] px-3 py-2 text-[13px] text-[var(--fg)]" />
+                <button className="rounded-lg bg-[var(--fg)] px-4 py-2 text-[13px] font-semibold text-white" data-action="copyShareLink">{zh ? '复制' : 'Copy'}</button>
+              </div>
             </div>
             <p id="shareLinkHint" className="text-[12px] text-muted mt-2" />
           </div>
@@ -1087,6 +1099,7 @@ function EditorBook({
       add(byId('photoModal'));
       add(byId('exportFailModal'));
       add(byId('exportMenuModal'));
+      add(byId('shareLinkModal'));
       add(byId('collageModal'));
       add(byId('boardBgModal'));
       return out;
@@ -4095,17 +4108,40 @@ function EditorBook({
       }
     }
 
-    // 生成免登只读分享链接:先把照片全量备份成公开快照(分享页才有图),再让服务端冻结
-    // 当前定稿为分享,返回 token → 拼成 /{locale}/s/{token},复制到剪贴板。
-    async function shareLink() {
-      closeExportMenu();
+    // 分享链接(免登只读)。分享页在对方浏览器渲染,那里没有本机 IndexedDB 的原图,所以
+    // 照片压缩快照必须全量上云对方才看得到。打开弹窗只展示说明 + 确认按钮,不做任何上传。
+    function shareLink() {
       const input = byId('shareLinkInput') as HTMLInputElement | null;
       const hint = byId('shareLinkHint');
       if (input) input.value = '';
-      if (hint) hint.textContent = aT('正在准备…先备份照片,再生成链接', 'Preparing… backing up photos, then generating');
+      if (hint) hint.textContent = '';
+      byId('shareLinkConfirm')?.classList.remove('hidden');
+      byId('shareLinkResult')?.classList.add('hidden');
+      const btn = $('[data-action="confirmShareLink"]') as HTMLButtonElement | null;
+      if (btn) btn.disabled = false;
       byId('shareLinkModal')?.classList.add('open');
+    }
+    // 用户确认后:先把照片全量备份成公开快照,传不齐就提示并停下(不发半残链接);全齐才让
+    // 服务端冻结当前定稿为分享,返回 token → 拼成 /{locale}/s/{token},复制到剪贴板。
+    async function confirmShareLink() {
+      const btn = $('[data-action="confirmShareLink"]') as HTMLButtonElement | null;
+      if (btn?.disabled) return;
+      if (btn) btn.disabled = true;
+      const input = byId('shareLinkInput') as HTMLInputElement | null;
+      const hint = byId('shareLinkHint');
       try {
-        await backupPhotos(); // 确保公开快照齐全,免登分享页才显示得出照片
+        if (hint) hint.textContent = aT('正在上传照片…', 'Uploading photos…');
+        await backupPhotos();
+        const missing = bookPhotoIds().filter((id) => !backedUpIds.has(id));
+        if (missing.length > 0) {
+          if (hint) hint.textContent = aT(
+            `还有 ${missing.length} 张照片没上传成功,先不生成链接。请重试;若原图不在这台设备,先去有原图的设备点「保存」备份。`,
+            `${missing.length} photo(s) failed to upload, so no link was created. Retry — or if the originals live on another device, tap Save there first.`,
+          );
+          if (btn) btn.disabled = false;
+          return;
+        }
+        if (hint) hint.textContent = aT('照片已上传,正在生成链接…', 'Photos uploaded — creating link…');
         const res = await fetch(`/api/v1/albums/${albumId}/share`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -4115,6 +4151,8 @@ function EditorBook({
         const token = json?.data?.token;
         if (!res.ok || !json?.ok || !token) throw new Error('share failed');
         const url = `${window.location.origin}/${locale}/s/${token}`;
+        byId('shareLinkConfirm')?.classList.add('hidden');
+        byId('shareLinkResult')?.classList.remove('hidden');
         if (input) input.value = url;
         try {
           await navigator.clipboard.writeText(url);
@@ -4124,6 +4162,7 @@ function EditorBook({
         }
       } catch {
         if (hint) hint.textContent = aT('生成失败,请重试', 'Failed to generate, please retry');
+        if (btn) btn.disabled = false;
       }
     }
     function copyShareLink() {
@@ -4195,8 +4234,9 @@ function EditorBook({
       // 导出格式弹窗 + 拼图二级弹窗。
       openExportMenu,
       closeExportMenu,
-      // 分享链接(免登只读)。
+      // 分享链接(免登只读):打开说明弹窗 → 确认上传+生成 → 复制。
       shareLink,
+      confirmShareLink: () => void confirmShareLink(),
       copyShareLink,
       closeShareLink: () => byId('shareLinkModal')?.classList.remove('open'),
       openCollage: openCollageModal,

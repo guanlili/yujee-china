@@ -48,7 +48,8 @@ test('Export + Save are icon-only, and the Save hover animation exists', () => {
   assert.doesNotMatch(editorPort, /hidden sm:inline" data-i18n="exportPdf"/, 'export button must not show its text label anymore');
   assert.match(editorPort, /className="save-label" data-backup-label/, 'Save label only shows during a backup state');
   // hover 动效(参考翻页按钮的填充 + 轻微上浮)
-  assert.match(css, /\.editor-port \.save-btn:hover\{[\s\S]*?transform: translateY\(-1px\)/, 'Save button lifts on hover');
+  // 选择器允许与 share-btn 等分组(逗号)——只锁「save-btn:hover 规则里有上浮」这件事
+  assert.match(css, /\.editor-port \.save-btn:hover[,{][\s\S]*?transform: translateY\(-1px\)/, 'Save button lifts on hover');
   assert.match(css, /\.editor-port \.save-btn\[data-backup-state="backed-up"\] \.backup-dot\{ background: var\(--grad-green\)/, 'backed-up shows a green dot');
   assert.match(css, /\.editor-port \.save-btn\[data-backup-state="failed"\] \.backup-dot\{ background: #e5484d/, 'failed shows a red dot');
 });
