@@ -37,8 +37,9 @@ interface Props {
   selected: number;
   /** Select a page by array index (also moves the book to its spread). */
   onSelect: (pageArrayIndex: number) => void;
-  /** Open the edit drawer for the page at the given array index. */
-  onEditPage: (pageArrayIndex: number) => void;
+  /** Open the edit drawer for the page at the given array index.
+   * 只读场景(免登分享页)不传:铅笔按钮不渲染,点击页面仅选中/翻页。 */
+  onEditPage?: (pageArrayIndex: number) => void;
   t: Strings;
 }
 
@@ -270,7 +271,7 @@ export function FlipBook({
   const editPage = (arrayIndex: number) => {
     if (arrayIndex < 0 || arrayIndex >= pages.length) return;
     onSelect(arrayIndex);
-    onEditPage(arrayIndex);
+    onEditPage?.(arrayIndex);
     goToSpread(spreadOf(arrayIndex));
   };
 
@@ -350,20 +351,22 @@ export function FlipBook({
             title={t.editPage}
             aria-label={t.editPage}
           />
-          <button
-            type="button"
-            onClick={() => editPage(pageArrayIndex)}
-            title={t.editPage}
-            aria-label={t.editPage}
-            className={`absolute top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--fg-2)] opacity-0 shadow-[var(--shadow-card)] transition-opacity hover:text-[var(--fg)] group-hover/half:opacity-100 ${
-              side === 'left' ? 'left-2' : 'right-2'
-            }`}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-              <path d="M12 20h9" />
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-            </svg>
-          </button>
+          {onEditPage && (
+            <button
+              type="button"
+              onClick={() => editPage(pageArrayIndex)}
+              title={t.editPage}
+              aria-label={t.editPage}
+              className={`absolute top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--fg-2)] opacity-0 shadow-[var(--shadow-card)] transition-opacity hover:text-[var(--fg)] group-hover/half:opacity-100 ${
+                side === 'left' ? 'left-2' : 'right-2'
+              }`}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+            </button>
+          )}
         </>
       )}
     </div>

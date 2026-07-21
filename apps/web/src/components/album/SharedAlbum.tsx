@@ -17,7 +17,7 @@ const STRINGS = {
   en: { prevPage: 'Previous', nextPage: 'Next', noPages: 'Nothing to show', editPage: '', pageIndicator: '{current} / {total}' },
 } as const;
 
-// 免登只读分享视图:复用编辑器的 FlipBook 翻书,但去掉编辑/选择的副作用(onEditPage 空操作)。
+// 免登只读分享视图:复用编辑器的 FlipBook 翻书;不传 onEditPage => 铅笔按钮不渲染,纯只读。
 // 图片走冻结的公开快照 URL(photoUrls),不碰本地 IndexedDB —— 别人浏览器也能看。
 export function SharedAlbum({
   pages,
@@ -57,7 +57,6 @@ export function SharedAlbum({
           resolveImage={resolveImage}
           selected={selected}
           onSelect={setSelected}
-          onEditPage={() => {}}
           t={t}
         />
       </main>
