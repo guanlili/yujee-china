@@ -80,7 +80,7 @@ type StoryProgressState = {
   exportUnlocked: boolean;
 };
 
-function readPreviewPages(draftJson: unknown): V3Page[] | undefined {
+export function readPreviewPages(draftJson: unknown): V3Page[] | undefined {
   if (!draftJson || typeof draftJson !== 'object' || Array.isArray(draftJson)) return undefined;
   const pages = (draftJson as { pages?: unknown }).pages;
   const parsed = Page.array().safeParse(pages);

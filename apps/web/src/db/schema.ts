@@ -276,6 +276,53 @@ export const albumPages = pgTable(
   }),
 );
 
+// 相册分享链接(免登只读):生成时把当前定稿「冻结」成自包含 HTML 快照(图片已换成
+// 公开 R2 快照图 URL),存这张表。公开路由 /{locale}/s/{token} 只按 token 查、不校验归属,
+// 任何人可看。原图仍只在浏览器;这里存的 html 里图片一律是公开快照 URL,免登也能显示。
+// 冻结:生成后相册继续编辑不影响已发链接;想更新就重新生成(覆盖同 albumId 的行)。
+export const albumShares = pgTable(
+  'album_shares',
+  {
+    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    // 随机不可猜的分享令牌(URL 里那段);唯一。撤销/过期本期不做,靠令牌不可猜提供基础隐私。
+    token: text('token').notNull(),
+    albumId: text('album_id')
+      .notNull()
+      .references(() => albums.id, { onDelete: 'cascade' }),
+    // 快照时的标题(相册后续改名不影响已发链接)。
+    title: text('title').notNull(),
+    // 冻结的自包含渲染:页面数据(定稿 album_pages 的快照)+ 每个 photoId 的公开快照 URL
+    // (免登也能显示)+ 画板底色 + 语言。分享页用 FlipBook 按这套数据 + photoUrls 渲染真翻书。
+    snapshotJson: jsonb('snapshot_json')
+      .notNull()
+      .$type<{
+        pages: Array<{
+          pageIndex: number;
+          templateId: string;
+          imagesJson: Record<string, string>;
+          textsJson: Record<string, string>;
+          imagePosJson?: Record<string, { x: number; y: number; scale: number }>;
+          // 页面 HTML 真相(C 方案):存在时 FlipBook 优先渲染它(保留 AI/手工版面),
+          // 图片 {{IMG_SRC}} token 由 resolveImage 换成公开快照 URL。
+          htmlJson?: string;
+        }>;
+        photoUrls: Record<string, string>;
+        boardBackground:
+          | { kind: 'color'; color: string }
+          | { kind: 'preset'; presetId: string }
+          | { kind: 'upload'; key: string }
+          | null;
+        locale: string;
+      }>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    token: uniqueIndex('uq_album_shares_token').on(t.token),
+    album: uniqueIndex('uq_album_shares_album').on(t.albumId), // 一相册一条,重新生成=覆盖
+  }),
+);
+
 // 用户反馈(用户菜单"反馈与问题"表单):落库存档 + 转发邮件到运营收件箱。
 // 限频依据:同一 user 最近一小时的行数。
 export const feedback = pgTable('feedback', {
@@ -489,6 +536,8 @@ export type Album = typeof albums.$inferSelect;
 export type NewAlbum = typeof albums.$inferInsert;
 export type AlbumPage = typeof albumPages.$inferSelect;
 export type NewAlbumPage = typeof albumPages.$inferInsert;
+export type AlbumShare = typeof albumShares.$inferSelect;
+export type NewAlbumShare = typeof albumShares.$inferInsert;
 export type AlbumMessage = typeof albumMessages.$inferSelect;
 export type NewAlbumMessage = typeof albumMessages.$inferInsert;
 

@@ -663,6 +663,11 @@ function EditorModals({ locale }: { locale: Locale }) {
             <p className="text-[13px] text-muted mt-1">{zh ? '选一种格式导出' : 'Pick a format to export'}</p>
           </div>
           <div className="px-5 py-4 flex flex-col gap-2.5">
+            {/* 分享链接:生成免登只读链接(先备份照片快照,再建冻结分享)。 */}
+            <button className="export-opt" data-action="shareLink" data-testid="export-opt-share">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></svg>
+              <span>{zh ? '分享链接 · 免登只读' : 'Share link · view-only'}</span>
+            </button>
             <button className="export-opt" data-action="openCollage" data-testid="export-opt-collage">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
               <span>{zh ? '多跨页拼图 · JPG' : 'Spread collage · JPG'}</span>
@@ -682,6 +687,26 @@ function EditorModals({ locale }: { locale: Locale }) {
           </div>
           <div className="px-5 pb-5">
             <button className="export-cancel" data-action="closeExportMenu">{zh ? '取消' : 'Cancel'}</button>
+          </div>
+        </div>
+      </div>
+
+      {/* 分享链接结果弹窗:显示生成的免登只读链接 + 复制。 */}
+      <div className="modal-overlay" id="shareLinkModal" data-overlay-close>
+        <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="shareLinkTitle" data-testid="share-link-modal">
+          <div className="px-6 pt-5 pb-1">
+            <h3 id="shareLinkTitle" className="font-display text-[18px] font-bold">{zh ? '分享链接' : 'Share link'}</h3>
+            <p className="text-[13px] text-muted mt-1">{zh ? '任何人打开即可只读查看,无需注册。冻结当前样子,之后编辑不影响。' : 'Anyone with the link can view (read-only), no sign-up. Frozen at this moment.'}</p>
+          </div>
+          <div className="px-5 py-3">
+            <div className="flex items-center gap-2">
+              <input id="shareLinkInput" readOnly className="flex-1 rounded-lg border border-[var(--border-soft)] bg-[var(--bg)] px-3 py-2 text-[13px] text-[var(--fg)]" />
+              <button className="rounded-lg bg-[var(--fg)] px-4 py-2 text-[13px] font-semibold text-white" data-action="copyShareLink">{zh ? '复制' : 'Copy'}</button>
+            </div>
+            <p id="shareLinkHint" className="text-[12px] text-muted mt-2" />
+          </div>
+          <div className="px-5 pb-5">
+            <button className="export-cancel" data-action="closeShareLink">{zh ? '关闭' : 'Close'}</button>
           </div>
         </div>
       </div>
@@ -4070,6 +4095,44 @@ function EditorBook({
       }
     }
 
+    // 生成免登只读分享链接:先把照片全量备份成公开快照(分享页才有图),再让服务端冻结
+    // 当前定稿为分享,返回 token → 拼成 /{locale}/s/{token},复制到剪贴板。
+    async function shareLink() {
+      closeExportMenu();
+      const input = byId('shareLinkInput') as HTMLInputElement | null;
+      const hint = byId('shareLinkHint');
+      if (input) input.value = '';
+      if (hint) hint.textContent = aT('正在准备…先备份照片,再生成链接', 'Preparing… backing up photos, then generating');
+      byId('shareLinkModal')?.classList.add('open');
+      try {
+        await backupPhotos(); // 确保公开快照齐全,免登分享页才显示得出照片
+        const res = await fetch(`/api/v1/albums/${albumId}/share`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ locale }),
+        });
+        const json = (await res.json().catch(() => null)) as { ok?: boolean; data?: { token?: string } } | null;
+        const token = json?.data?.token;
+        if (!res.ok || !json?.ok || !token) throw new Error('share failed');
+        const url = `${window.location.origin}/${locale}/s/${token}`;
+        if (input) input.value = url;
+        try {
+          await navigator.clipboard.writeText(url);
+          if (hint) hint.textContent = aT('已复制到剪贴板 · 任何人打开即可只读查看', 'Copied to clipboard · anyone with the link can view');
+        } catch {
+          if (hint) hint.textContent = aT('链接已生成,请手动复制', 'Link ready — copy it manually');
+        }
+      } catch {
+        if (hint) hint.textContent = aT('生成失败,请重试', 'Failed to generate, please retry');
+      }
+    }
+    function copyShareLink() {
+      const input = byId('shareLinkInput') as HTMLInputElement | null;
+      if (!input?.value) return;
+      input.select();
+      void navigator.clipboard.writeText(input.value).catch(() => {});
+    }
+
     /* ─── 只读姿态(photo-snapshot §5.4)───
        本书任一用到照片的原图不在本机 → 出不了高清 PDF。把顶栏「导出」改成「下载 PDF」
        (下之前已导出的那份 pdfUrl);连 PDF 都没有则禁用并提示。异步探测,不阻塞挂载。 */
@@ -4132,6 +4195,10 @@ function EditorBook({
       // 导出格式弹窗 + 拼图二级弹窗。
       openExportMenu,
       closeExportMenu,
+      // 分享链接(免登只读)。
+      shareLink,
+      copyShareLink,
+      closeShareLink: () => byId('shareLinkModal')?.classList.remove('open'),
       openCollage: openCollageModal,
       closeCollage: closeCollageModal,
       confirmCollage: () => { if (collageDensity == null) return; closeCollageModal(); void exportCollage(collageDensity); },
@@ -4170,7 +4237,7 @@ function EditorBook({
       actionHandlers.push({ el: exportFailOverlay, fn });
     }
     // 导出菜单/拼图弹窗/垫底背景:点背景关闭(进度浮层不给关,渲染中)。
-    [['exportMenuModal', closeExportMenu], ['collageModal', closeCollageModal], ['boardBgModal', closeBoardBgModal]].forEach(([id, close]) => {
+    [['exportMenuModal', closeExportMenu], ['collageModal', closeCollageModal], ['boardBgModal', closeBoardBgModal], ['shareLinkModal', () => byId('shareLinkModal')?.classList.remove('open')]].forEach(([id, close]) => {
       const ov = byId(id as string);
       if (!ov) return;
       const fn = (e: Event) => { if (e.target === ov) (close as () => void)(); };
