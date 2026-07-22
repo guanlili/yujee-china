@@ -1,4 +1,5 @@
 import { getTemplate } from '@yujee/contracts/templates';
+import { placePages } from './page-layout';
 import type { EditorPage } from './types';
 
 // Canvas model (docs/agent/template-redesign.md §4): every page lives on one
@@ -7,17 +8,18 @@ import type { EditorPage } from './types';
 // (toc + body) pair two-up. An odd trailing interior page gets a blank facing
 // half. A spread holds array indices into `pages` (null = a blank half).
 //
-// TODO(phase-2b): honour forced pairing (template.pairing) once any template
-// declares it — today none do, so interior simply pairs in order.
+// 配对走查本身住在 page-layout.ts(唯一真相),这里只负责把它转成 Spread 形状。
 
 export interface Spread {
   left: number | null;
   right: number | null;
+  /** 双宽(spread)模板占满整个跨页时,它的页数组下标;此时 left/right 恒为 null。 */
+  full?: number;
 }
 
 // cover / ending sit as solo pages; everything else (toc + interior body) pairs
 // two-up. We collapse the category to that solo-vs-paired distinction here.
-// Exported so the editor can label a spread by what it holds (封面/封底/内页).
+// Exported so the editor can label a spread by what it holds (封面/封底/内页)。
 export function pageSlot(page: EditorPage): 'cover' | 'interior' | 'ending' {
   const category = getTemplate(page.templateId)?.category;
   if (category === 'cover') return 'cover';
@@ -26,40 +28,24 @@ export function pageSlot(page: EditorPage): 'cover' | 'interior' | 'ending' {
 }
 
 export function buildSpreads(pages: EditorPage[]): Spread[] {
+  const placements = placePages(pages.map((p) => p.templateId));
   const spreads: Spread[] = [];
-  let pendingLeft: number | null = null;
-
-  const flushPending = () => {
-    if (pendingLeft !== null) {
-      spreads.push({ left: pendingLeft, right: null });
-      pendingLeft = null;
+  placements.forEach((placement, pageArrayIndex) => {
+    while (spreads.length <= placement.spreadIndex) {
+      spreads.push({ left: null, right: null });
     }
-  };
-
-  pages.forEach((page, i) => {
-    const slot = pageSlot(page);
-    if (slot === 'cover' || slot === 'ending') {
-      flushPending();
-      // cover opens as a right-hand recto; ending closes as a left-hand verso.
-      spreads.push(slot === 'cover' ? { left: null, right: i } : { left: i, right: null });
-      return;
-    }
-    if (pendingLeft === null) {
-      pendingLeft = i;
-    } else {
-      spreads.push({ left: pendingLeft, right: i });
-      pendingLeft = null;
-    }
+    const spread = spreads[placement.spreadIndex]!;
+    if (placement.side === 'both') spread.full = pageArrayIndex;
+    else if (placement.side === 'left') spread.left = pageArrayIndex;
+    else spread.right = pageArrayIndex;
   });
-  flushPending();
-
   return spreads;
 }
 
 // Which spread (index) holds a given page array index; -1 if not found.
 export function spreadIndexOfPage(spreads: Spread[], pageArrayIndex: number): number {
   return spreads.findIndex(
-    (s) => s.left === pageArrayIndex || s.right === pageArrayIndex,
+    (s) => s.left === pageArrayIndex || s.right === pageArrayIndex || s.full === pageArrayIndex,
   );
 }
 
@@ -74,6 +60,8 @@ export function spreadIndexOfPage(spreads: Spread[], pageArrayIndex: number): nu
 // the *category* of the single occupied page. Only category cover/ending qualify.
 export function isSoloSpread(spread: Spread | undefined, pages: EditorPage[]): boolean {
   if (!spread) return false;
+  // 双宽页占满整个跨页,不是「单页 leaf」—— 它要保持双页宽的容器。
+  if (spread.full != null) return false;
   const hasLeft = spread.left != null;
   const hasRight = spread.right != null;
   // Exactly one half occupied — a paired interior spread is never solo.
