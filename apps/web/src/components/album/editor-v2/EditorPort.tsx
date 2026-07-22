@@ -38,7 +38,7 @@ import { getWebTemplate } from '../web-registry';
 import { buildSpreads, isSoloSpread, pageSlot, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
 import { applyFolioOverlay, fitTextBoxes, pageFolioInfos, patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle, preferredPageHtml, type PageFolioInfo } from '../page-html-dom';
-import { PAGE } from '../templates/constants';
+import { PAGE, pageBox } from '../templates/constants';
 import { clampZoom, paintDecision } from './zoom-util';
 import {
   clampImagePos,
@@ -1262,17 +1262,19 @@ function EditorBook({
         folioSide,
       );
     }
-    // The 794×1123 page scaled to fill the given box (matches FlipBook PageFace).
+    // The page (A4, or double-wide for a spread template) scaled to fill the
+    // given box (matches FlipBook PageFace).
     function faceHTML(
       page: EditorPage | null,
       boxW: number,
       boxH: number,
       resolve: ResolveImage = resolveImage,
     ): string {
-      const scale = Math.min(boxW / PAGE.width, boxH / PAGE.height) || 1;
+      const box = page ? pageBox(page.templateId) : { width: PAGE.width, height: PAGE.height };
+      const scale = Math.min(boxW / box.width, boxH / box.height) || 1;
       return (
         `<div style="width:${boxW}px;height:${boxH}px;overflow:hidden;background:#fff">` +
-        `<div style="transform:scale(${scale});transform-origin:top left;width:${PAGE.width}px;height:${PAGE.height}px">` +
+        `<div style="transform:scale(${scale});transform-origin:top left;width:${box.width}px;height:${box.height}px">` +
         faceInner(page, resolve) +
         `</div></div>`
       );
@@ -1419,11 +1421,12 @@ function EditorBook({
 
       const page = pageByIndex(pageIndex);
       if (!page) throw new Error(`page ${pageIndex} not in book`);
+      const box = pageBox(page.templateId);
       // Render the page at full resolution into a detached, off-screen host (so the
       // capture is crisp and independent of the current zoom/flip state).
       const host = document.createElement('div');
       host.style.cssText =
-        `position:fixed;left:-99999px;top:0;width:${PAGE.width}px;height:${PAGE.height}px;` +
+        `position:fixed;left:-99999px;top:0;width:${box.width}px;height:${box.height}px;` +
         `overflow:hidden;background:#fff`;
       host.innerHTML = faceInner(page);
       document.body.appendChild(host);
@@ -1435,8 +1438,8 @@ function EditorBook({
         const html2canvas = (await import('html2canvas-pro')).default;
         const { injectDocumentFontsInto } = await import('@/lib/font/clone-document-fonts');
         const canvas = await html2canvas(host, {
-          width: PAGE.width,
-          height: PAGE.height,
+          width: box.width,
+          height: box.height,
           backgroundColor: '#ffffff',
           scale: 1,
           useCORS: true,

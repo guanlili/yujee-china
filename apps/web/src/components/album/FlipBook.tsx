@@ -6,7 +6,7 @@ import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
 import { applyFolioOverlay, pageFolioInfos, preferredPageHtml, type FolioSide, type PageFolio } from './page-html-dom';
 import { FittedPageHtml } from './FittedPageHtml';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from './spreads';
-import { PAGE } from './templates/constants';
+import { pageBox } from './templates/constants';
 import type { EditorPage } from './types';
 import { useAlbumFonts } from '@/lib/font/album-font-loader';
 
@@ -83,15 +83,16 @@ const PageFace = memo(function PageFace({
           resolveImage,
         )
       : null;
-  const scale = Math.min(width / PAGE.width, height / PAGE.height);
+  const box = pageBox(page.templateId);
+  const scale = Math.min(width / box.width, height / box.height);
   return (
     <div style={{ width, height, overflow: 'hidden', background: '#fff' }}>
       <div
         style={{
           transform: `scale(${scale})`,
           transformOrigin: 'top left',
-          width: PAGE.width,
-          height: PAGE.height,
+          width: box.width,
+          height: box.height,
         }}
       >
         {html !== undefined ? (

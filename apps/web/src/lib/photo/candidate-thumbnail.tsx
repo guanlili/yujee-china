@@ -21,7 +21,7 @@ import html2canvas from 'html2canvas-pro';
 import { adaptPageToTemplateData } from '@/components/album/adapt-layout';
 import { getWebTemplate } from '@/components/album/web-registry';
 import { injectDocumentFontsInto } from '@/lib/font/clone-document-fonts';
-import { PAGE } from '@/components/album/templates/constants';
+import { PAGE, pageBox } from '@/components/album/templates/constants';
 import { photoStore } from '@/lib/photo/store';
 import type { CandidatePage } from '@yujee/contracts';
 
@@ -53,12 +53,14 @@ function approxBytesOfDataUrl(dataUrl: string): number {
 
 // Off-screen but still laid out (display:none breaks measurement/paint, so we park it
 // far outside the viewport instead). One container per render, removed in finally.
-function makeOffscreenHost(): HTMLDivElement {
+// `width` (#303): the widest page box in the candidate's own page strip — a spread
+// page (double-wide) sitting among regular pages must not clip against a fixed A4 host.
+function makeOffscreenHost(width: number): HTMLDivElement {
   const host = document.createElement('div');
   host.style.position = 'fixed';
   host.style.left = '-100000px';
   host.style.top = '0';
-  host.style.width = `${PAGE.width}px`;
+  host.style.width = `${width}px`;
   host.style.background = '#ffffff';
   host.style.pointerEvents = 'none';
   host.style.zIndex = '-1';
@@ -106,10 +108,14 @@ function isFlatRegion(ctx: CanvasRenderingContext2D, x: number, y: number, w: nu
   return true;
 }
 
-function downscaleToJpeg(source: HTMLCanvasElement): { url: string; flat: boolean } | null {
-  // The source canvas renders pages at full PAGE dims, so the per-page long edge is
-  // max(PAGE.width, PAGE.height) no matter how many pages the strip stacks.
-  const pageLongEdge = Math.max(PAGE.width, PAGE.height);
+function downscaleToJpeg(
+  source: HTMLCanvasElement,
+  box: { width: number; height: number },
+): { url: string; flat: boolean } | null {
+  // The source canvas renders pages at full page-box dims (#303: box is the widest page
+  // in this candidate's strip — PAGE for every template today), so the per-page long
+  // edge is max(box.width, box.height) no matter how many pages the strip stacks.
+  const pageLongEdge = Math.max(box.width, box.height);
   const scale = Math.min(1, PAGE_MAX_EDGE / pageLongEdge);
   const w = Math.max(1, Math.round(source.width * scale));
   const h = Math.max(1, Math.round(source.height * scale));
@@ -124,7 +130,7 @@ function downscaleToJpeg(source: HTMLCanvasElement): { url: string; flat: boolea
   ctx.drawImage(source, 0, 0, w, h);
   // 判白只看第一页内容区(跳过顶部页码条),否则页码条使整张恒"非白"、兜底失效。
   const bandY = Math.round(PAGE_LABEL_HEIGHT * scale);
-  const bandH = Math.min(h - bandY, Math.round(PAGE.height * scale));
+  const bandH = Math.min(h - bandY, Math.round(box.height * scale));
   const flat = isFlatRegion(ctx, 0, bandY, w, bandH);
 
   let last: string | null = null;
@@ -151,13 +157,27 @@ export async function renderCandidateThumbnail(
 ): Promise<string | null> {
   if (typeof document === 'undefined' || typeof HTMLCanvasElement === 'undefined') return null;
 
-  const host = makeOffscreenHost();
+  // #303: a candidate's page strip can mix a spread template (double-wide) with
+  // regular pages; size the whole strip to the widest page box so nothing clips.
+  // For every template today pageBox() === PAGE, so stripBox === {PAGE.width, PAGE.height}
+  // exactly as before.
+  const pageBoxes = candidate.pages.map((page) => pageBox(page.templateId));
+  const stripBox =
+    pageBoxes.length > 0
+      ? {
+          width: Math.max(...pageBoxes.map((b) => b.width)),
+          height: Math.max(...pageBoxes.map((b) => b.height)),
+        }
+      : { width: PAGE.width, height: PAGE.height };
+
+  const host = makeOffscreenHost(stripBox.width);
   let root: Root | null = null;
   try {
     root = createRoot(host);
     const totalPages = candidate.pages.length;
     const pageEls = candidate.pages.map((page, i) => {
       const Template = getWebTemplate(page.templateId);
+      const box = pageBoxes[i];
       // texts:{} blanks every text slot (adaptPageToTemplateData fills missing text
       // with ''), so only the image slots carry real photo data-urls.
       const data = adaptPageToTemplateData(
@@ -166,7 +186,7 @@ export async function renderCandidateThumbnail(
       );
       return createElement(
         'div',
-        { key: i, style: { width: PAGE.width, marginBottom: i < totalPages - 1 ? PAGE_GAP : 0 } },
+        { key: i, style: { width: box.width, marginBottom: i < totalPages - 1 ? PAGE_GAP : 0 } },
         // 页码标注条:烙进缩略图,评委据此数页数 + 分辨每页(第 N / M 页)。
         createElement(
           'div',
@@ -189,7 +209,7 @@ export async function renderCandidateThumbnail(
         ),
         createElement(
           'div',
-          { style: { width: PAGE.width, height: PAGE.height, background: '#fff' } },
+          { style: { width: box.width, height: box.height, background: '#fff' } },
           Template ? createElement(Template, { data, totalPages: candidate.pages.length }) : null,
         ),
       );
@@ -211,8 +231,8 @@ export async function renderCandidateThumbnail(
       // Mirror EditorPort.capturePageRender: html2canvas-pro (handles oklch/lab CSS
       // colors Tailwind v4 emits), full page width, scale 1, white bg.
       const canvas = await html2canvas(host, {
-        width: PAGE.width,
-        height: host.scrollHeight || PAGE.height * candidate.pages.length,
+        width: stripBox.width,
+        height: host.scrollHeight || stripBox.height * candidate.pages.length,
         backgroundColor: '#ffffff',
         scale: 1,
         useCORS: true,
@@ -220,7 +240,7 @@ export async function renderCandidateThumbnail(
         // 动态字体注入克隆文档,评委看到的缩略图词距才和真实渲染一致(clone-document-fonts)。
         onclone: injectDocumentFontsInto,
       });
-      return downscaleToJpeg(canvas);
+      return downscaleToJpeg(canvas, stripBox);
     };
 
     let shot = await snapshot();
