@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { db } from '../../db/client';
 import { agentJobRepo } from '../../db/repos/agent-job-repo';
+import type { NewAgentJob } from '../../db/schema';
 import { albumMessageRepo } from '../../db/repos/album-message-repo';
 import { albumPageRepo } from '../../db/repos/album-page-repo';
 import { albumRepo } from '../../db/repos/album-repo';
@@ -40,7 +41,13 @@ function hasForbiddenLocationKey(value: unknown): boolean {
 
 // Sets up an AGENT_RUNNING album with a held credit and a RUNNING job whose
 // startedAt is `startedAgoMs` in the past. Returns the ids for assertions.
-async function runningAlbumWithJob(userId: string, startedAgoMs: number) {
+// `kind` defaults to 'init' (the only kind that fails the album + releases the
+// hold on sweep); pass 'compose'/'layout'/'add' to exercise the other branches.
+async function runningAlbumWithJob(
+  userId: string,
+  startedAgoMs: number,
+  kind?: NewAgentJob['kind'],
+) {
   const album = await makeAlbum(userId);
   const hold = await creditHoldRepo.create(db, {
     userId,
@@ -55,6 +62,7 @@ async function runningAlbumWithJob(userId: string, startedAgoMs: number) {
     requestId: `album-svc-${Date.now()}-${Math.round(startedAgoMs)}`,
     status: 'QUEUED',
     progress: 0,
+    ...(kind ? { kind } : {}),
   });
   await agentJobRepo.update(db, job.id, {
     status: 'RUNNING',
@@ -219,6 +227,66 @@ test('sweepStaleJob: re-check under lock declines a job with a fresh heartbeat',
     assert.deepEqual(res, { swept: false, releasedHold: false });
     assert.equal((await albumRepo.findById(album.id))?.status, 'AGENT_RUNNING');
     assert.equal((await creditHoldRepo.findById(hold.id))?.status, 'HOLDING');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('sweepStaleJob: compose job kind-aware timeout — 6min RUNNING not yet stale (12min compose default)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('sweep-compose-fresh');
+  try {
+    const { job } = await runningAlbumWithJob(user.id, 6 * 60 * 1000, 'compose'); // 6 min ago
+
+    // No timeoutMs passed — must fall back to zombieTimeoutMsFor('compose') = 12 min,
+    // not the 10 min cross-kind default. This is the regression the Important review
+    // finding pinned: zombie-sweeper used to override this with a flat 10 min.
+    const res = await jobService.sweepStaleJob(job.id, new Date());
+
+    assert.deepEqual(res, { swept: false, releasedHold: false });
+    const jobAfter = await agentJobRepo.findByRequestId(job.requestId);
+    assert.equal(jobAfter?.status, 'RUNNING');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('sweepStaleJob: compose job kind-aware timeout — 13min RUNNING is swept (past 12min compose default)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('sweep-compose-stale');
+  try {
+    const { job } = await runningAlbumWithJob(user.id, 13 * 60 * 1000, 'compose'); // 13 min ago
+
+    const res = await jobService.sweepStaleJob(job.id, new Date());
+
+    assert.deepEqual(res, { swept: true, releasedHold: false });
+    const jobAfter = await agentJobRepo.findByRequestId(job.requestId);
+    assert.equal(jobAfter?.status, 'FAILED');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('sweepStaleJob: control — non-compose job kind still uses the 5min default and is swept at 6min', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('sweep-init-6min');
+  try {
+    const { job } = await runningAlbumWithJob(user.id, 6 * 60 * 1000, 'init'); // 6 min ago
+
+    const res = await jobService.sweepStaleJob(job.id, new Date());
+
+    assert.equal(res.swept, true);
+    const jobAfter = await agentJobRepo.findByRequestId(job.requestId);
+    assert.equal(jobAfter?.status, 'FAILED');
   } finally {
     await cleanupUser(user.id);
   }
