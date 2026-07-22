@@ -163,6 +163,13 @@ function sliceChapterForChat(
 // browser sends NO chapter overview — Web re-slices it from draft_json here). Maps each
 // V3Chapter to a V3ChapterOverview (chapterId + description + each photo's
 // sceneDescription摘要, ≤12). No base64 (§3 privacy by construction): only text descs.
+// 章节展示名的单一口径:title(分析期确定性派生的章标识)→ description(写目录环节
+// 才填,老树里可能存着旧标题)→ 调用方给的兜底。老相册 draft_json 没有 title 键,
+// zod 的 .default('') 会补空串,所以这两级降级必须留着。
+function chapterLabel(chapter: { title?: string; description?: string }, fallback: string): string {
+  return chapter.title || chapter.description || fallback;
+}
+
 function buildRecommendOverviews(tree: V3LayoutTreeT): V3ChapterOverview[] {
   return tree.chapters.map((chapter) => ({
     chapterId: chapter.chapterId,
@@ -364,7 +371,9 @@ export const albumService = {
     return {
       chapters: normalized.tree.chapters.map((ch, i) => ({
         chapterId: ch.chapterId,
-        label: ch.description || `Group ${i + 1}`,
+        // 章标识优先读 title(分析期确定性派生);老树没有 title,降级 description,
+        // 再兜底 `Group N`。
+        label: chapterLabel(ch, `Group ${i + 1}`),
         role: i === 0 ? 'opening' : i === last ? 'closing' : 'body',
         photoIds: ch.photos.map((photo) => photo.photoId),
         // 采访门槛读取:该章 chapterContext 非空 ⇔ 已采访过(不变式 12:只读派生字段)。
@@ -396,16 +405,18 @@ export const albumService = {
       const query = input.query.trim().toLowerCase();
       const overviews = buildRecommendOverviews(normalized.tree);
       const matches = overviews
-        .map((chapter) => {
+        .map((chapter, i) => {
           const pageIndexes = (normalized.pages ?? [])
             .filter((page) => chapterIdForDraftPage(normalized, page) === chapter.chapterId)
             .map((page) => page.pageIndex);
+          // 检索只认内容文字(目录描述 + 照片描述)。章标识(title)是拍摄日期派生的,
+          // 进 haystack 会让「2024」这种查询命中全书每一章,所以刻意不收。
           const haystack = [chapter.description, ...chapter.photoDescs].join(' ').toLowerCase();
           const score = haystack.split(query).length - 1;
           return {
             chapterId: chapter.chapterId,
             pageIndexes,
-            label: chapter.description || chapter.chapterId,
+            label: chapterLabel(normalized.tree.chapters[i] ?? {}, chapter.chapterId),
             score,
           };
         })
@@ -418,13 +429,13 @@ export const albumService = {
     if (input.type === 'book-tree') {
       const doneSet = new Set(normalized.progress.doneChapterIds);
       const pages = normalized.pages ?? [];
-      const chapters = normalized.tree.chapters.map((chapter) => {
+      const chapters = normalized.tree.chapters.map((chapter, i) => {
         const pageIndexes = pages
           .filter((page) => chapterIdForDraftPage(normalized, page) === chapter.chapterId)
           .map((page) => page.pageIndex);
         return {
           chapterId: chapter.chapterId,
-          label: chapter.description || chapter.chapterId,
+          label: chapterLabel(chapter, chapter.chapterId),
           pageIndexes,
           done: doneSet.has(chapter.chapterId),
         };

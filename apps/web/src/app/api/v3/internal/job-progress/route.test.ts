@@ -20,6 +20,7 @@ const TREE = {
   chapters: [
     {
       chapterId: 'ch_1',
+      title: '',
       description: '',
       chapterContext: '',
       place: '',

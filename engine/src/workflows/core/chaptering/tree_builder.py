@@ -12,7 +12,7 @@ from ....contracts.schemas import (
     V3ChapterPhoto,
     V3LayoutTree,
 )
-from .schema import GroupingChapter, GroupingResult, UnplacedAssignments
+from .schema import GroupingResult, UnplacedAssignments
 
 
 # 无任何 EXIF 时间时的章标识回退文案;重名消歧也认这个常量。
@@ -96,10 +96,6 @@ def assemble_stage1_tree(
     chapter_members = {
         chapter.chapterId: list(chapter.photoIds) for chapter in grouping.chapters
     }
-    for chapter in assignments.newChapters:
-        if chapter.chapterId in chapter_members:
-            raise ValueError(f"new chapter id conflicts with existing chapter: {chapter.chapterId}")
-        chapter_members[chapter.chapterId] = []
     target_ids = set(chapter_members)
     unplaced = set(grouping.unplacedPhotoIds)
     assigned_ids = set(assignments.assignments)
@@ -133,11 +129,7 @@ def assemble_stage1_tree(
         )
 
     chapters: list[V3Chapter] = []
-    chapter_sources = list(grouping.chapters) + [
-        GroupingChapter(chapterId=chapter.chapterId, photoIds=[])
-        for chapter in assignments.newChapters
-    ]
-    for source in chapter_sources:
+    for source in grouping.chapters:
         members = chapter_members[source.chapterId]
         if not members:
             continue
@@ -160,10 +152,10 @@ def assemble_stage1_tree(
         chapters.append(
             V3Chapter(
                 chapterId=source.chapterId,
-                # 章标识:确定性派生(时间跨度 + 地名)。契约暂无 title 字段,先落在
-                # description 这个章级文本位上,后期写目录环节会覆盖它。
+                # 章标识:确定性派生(时间跨度 + 地名),落在 title。
                 # 重名(同月/同日、或都没 EXIF)在下面统一消歧。
-                description=deterministic_chapter_label(
+                # description 是写目录(TOC)环节的位置,分析期保持默认空串。
+                title=deterministic_chapter_label(
                     taken_ats=[p.takenAt or "" for p in photos],
                     # 地名由 Web 采访环节写回 chapter.place,分析期无地名可用(§3 隐私:
                     # 坐标止步于浏览器,EXIF 只带 takenAt)。
@@ -181,10 +173,10 @@ def assemble_stage1_tree(
     if not chapters:
         raise ValueError("Stage1 tree produced no non-empty chapters")
 
-    # Web 侧只在 description 为空串时才降级成 `Group N`,重名章会让用户看到一串
-    # 无法区分的标题,所以这里保证同一棵树内章标识两两不同。
-    for chapter, label in zip(chapters, _disambiguate_labels([c.description for c in chapters])):
-        chapter.description = label
+    # Web 侧只在 title 为空串时才降级(description → `Group N`),重名章会让用户看到
+    # 一串无法区分的标题,所以这里保证同一棵树内章标识两两不同。
+    for chapter, label in zip(chapters, _disambiguate_labels([c.title for c in chapters])):
+        chapter.title = label
     return V3LayoutTree(chapters=chapters)
 
 

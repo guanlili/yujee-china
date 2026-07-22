@@ -155,7 +155,7 @@ def test_tree_gives_every_chapter_a_distinct_label():
     )
 
     _assert_covers_each_photo_once(tree, photos_by_id)
-    labels = [c.description for c in tree.chapters]
+    labels = [c.title for c in tree.chapters]
     assert len(set(labels)) == len(labels), labels
     assert all(label.strip() for label in labels)
     # 标签带日期跨度,不只是年月。
@@ -181,5 +181,7 @@ def test_tree_labels_stay_distinct_without_any_exif():
     )
 
     _assert_covers_each_photo_once(tree, photos_by_id)
-    labels = [c.description for c in tree.chapters]
+    labels = [c.title for c in tree.chapters]
     assert labels == ["这一段", "这一段 2", "这一段 3"]
+    # 章标识落在 title,description 是写目录环节的位置,分析期必须留空。
+    assert [c.description for c in tree.chapters] == ["", "", ""]

@@ -223,6 +223,8 @@ export function buildSelectLayoutRequestFromTree(input: {
     language: input.language,
     chapters: chapters.map((chapter) => ({
       chapterId: chapter.chapterId,
+      // 结构提示只认 description(写目录环节才填,分析期为空)。章标识在 title 上,
+      // 那是拍摄日期派生的展示名,不是给排版的语义线索,别往这里塞。
       ...(chapter.description ? { structureHint: chapter.description } : {}),
       // 采访结果:喂给排版评委(选贴合基调的版式)+ 排版后一次性写文案。之前漏传,导致
       // chapterContext 契约字段有但从不生效 —— 这里补上。跳过采访/老树 => ""。
@@ -237,9 +239,9 @@ export function buildSelectLayoutRequestFromTree(input: {
           ref200px,
           orientation: photo.orientation,
           takenAt: photo.takenAt ?? null,
-          // 构图 + 场景:排版按朝向×构图匹配槽;写文案 AI 据 sceneDescription grounding。
+          // 构图:排版按朝向×构图匹配槽位。豆包识图已砍,照片的文字描述不再下发
+          // (compose 环节让模型直接看真实照片写文案)。
           ...(photo.composition != null ? { composition: photo.composition } : {}),
-          sceneDescription: photo.sceneDescription ?? '',
         };
       }),
     })),

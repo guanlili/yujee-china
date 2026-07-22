@@ -78,20 +78,42 @@ test('buildSelectLayoutRequestFromTree sends 200px refs and never caller candida
             ref200px: 'data:image/jpeg;base64,AA==',
             orientation: 'landscape',
             takenAt: '2024-03-15T08:30:00',
-            sceneDescription: 'beach',
           },
           {
             photoId: 'p2',
             ref200px: 'data:image/jpeg;base64,BB==',
             orientation: 'portrait',
             takenAt: null,
-            sceneDescription: 'portrait',
           },
         ],
       },
     ],
   });
   assert.equal(JSON.stringify(request).includes('candidates'), false);
+  // 豆包识图已砍:选版式入参不再带照片文字描述。
+  assert.equal(JSON.stringify(request).includes('sceneDescription'), false);
+});
+
+// 章标识搬到 title 之后,description 恢复成「写目录环节才填」:分析期为空 =>
+// 不再把日期串当 structureHint 发给排版(借位 description 时的定时炸弹)。
+test('buildSelectLayoutRequestFromTree: 章标识(title)不当 structureHint 发出', () => {
+  const request = buildSelectLayoutRequestFromTree({
+    requestId: 'layout-r1',
+    callbackUrl: 'https://web.test/api/v3/internal/job-progress',
+    language: 'en',
+    tree: {
+      chapters: [
+        { ...TREE.chapters[0], title: '2024 年 03 月 11–14 日', description: '' },
+      ],
+    },
+    refs: {
+      p1: 'data:image/jpeg;base64,AA==',
+      p2: 'data:image/jpeg;base64,BB==',
+    },
+  });
+
+  assert.equal('structureHint' in request.chapters[0], false);
+  assert.equal(JSON.stringify(request).includes('2024 年 03 月'), false);
 });
 
 test('buildSelectLayoutRequestFromTree requires every tree photo to have a browser 200px ref', () => {

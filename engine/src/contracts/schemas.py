@@ -177,8 +177,7 @@ class JobError(_Strict):
 # coordinate. §3 privacy red line, 2026-07 revision («地名文字可出、坐标止步浏览器»):
 # coordinates (lat/lng/GPS) in any form stay forbidden; CITY-LEVEL PLACE-NAME
 # STRINGS are allowed (browser-side reverse geocoding; the coordinates themselves
-# never leave the browser). Structured place fields: V3Chapter.place +
-# JudgeCopyPhoto.place only.
+# never leave the browser). Structured place field: V3Chapter.place only.
 # =============================================================================
 
 
@@ -320,8 +319,10 @@ class V3Chapter(_V3Strict):
     分析期为 null 占位,theme 环节填。"""
 
     chapterId: str = Field(min_length=1)
-    # 章级文本位:分析期先落确定性章标识(由 EXIF 时间跨度派生,同树内保证不重名),
-    # 后期写目录(TOC)环节再覆盖它。
+    # 章标识:分析期由 EXIF 时间跨度确定性派生(同树内保证不重名),UI 章节卡片/
+    # 书籍树读它。迁移字段:老树无此键 => ""(读取方降级到 description)。
+    title: str = Field(default="", max_length=120)
+    # 目录(TOC)占位:分析期留空,后期写目录环节才填。
     description: str = Field(default="", max_length=600)
     # 内容采集(分组后采访)答案:自由文字,给排版/写文案当章节背景。
     # Web 拼「时间:… 地点:…」前缀 + 用户原话;坐标绝不进(仅地名文字,§3 隐私)。
@@ -541,8 +542,6 @@ class SelectLayoutPhoto(_V3Strict):
     # 构图(来自 Stage1 树):排版随机引擎按朝向×构图匹配槽位。旧相册 => None(任意)。
     composition: PhotoComposition | None = None
     takenAt: str | None
-    # 照片场景(来自 Stage1 树):排版后一次性写文案时供写作 AI grounding。旧相册 => ""。
-    sceneDescription: str = Field(default="", max_length=300)
 
     _check_ref200px = field_validator("ref200px")(_validate_v3_analyze_image_data_url)
     _check_taken_at = field_validator("takenAt")(_validate_iso_datetime)
@@ -646,50 +645,6 @@ class DesignResponse(_V3Strict):
     data: DesignData
 
 
-# ---------- P2 排版评委(rendered-thumbnail judge,two-phase) ------------------
-
-
-class CandidatePage(_V3Strict):
-    templateId: str = Field(min_length=1)
-    images: dict[str, str]  # slotId → photoId
-
-
-class JudgeCandidate(_V3Strict):
-    candidateIndex: int = Field(ge=0)
-    thumbnail: str = Field(min_length=1)  # data:image/jpeg;base64,...(仅图槽、无文字)
-    pages: list[CandidatePage] = Field(min_length=1)
-
-
-class JudgeCopyPhoto(_V3Strict):
-    """写文案素材(评委选完版式后当场写满本章文案时用)。photoId + sceneDescription +
-    拍摄时间/地点(地点是城市级地名文字,§3 2026-07 口径;坐标仍禁)。"""
-
-    photoId: str = Field(min_length=1)
-    sceneDescription: str = Field(default="", max_length=300)
-    takenAt: str | None = None  # EXIF,来自树;老客户端不带 => null
-    place: str | None = Field(default=None, max_length=100)  # 城市级地名文字
-
-    _check_taken_at = field_validator("takenAt")(_validate_iso_datetime)
-
-
-class JudgeLayoutUnit(_V3Strict):
-    unitKey: str = Field(min_length=1)
-    chapterId: str = Field(min_length=1)
-    chosenIndex: int | None = Field(default=None, ge=0)
-    candidates: list[JudgeCandidate] = Field(min_length=1)
-    # 写文案素材:评委选定版式后当场写满本章文案。Web 从 draft tree 补(浏览器不持 tree)。
-    # 老客户端不带 => 空,写文案退化为只填页码(与今天行为一致)。
-    photos: list[JudgeCopyPhoto] = Field(default_factory=list)
-    chapterContext: str = Field(default="", max_length=500)
-
-
-class JudgeLayoutRequest(_V3Strict):
-    requestId: str = Field(min_length=1)
-    callbackUrl: HttpUrl
-    language: V3Language
-    units: list[JudgeLayoutUnit] = Field(min_length=1)
-
-
 # ---------- v3.ts: ② chapter-chat (sync) --------------------------------------
 
 
@@ -775,27 +730,6 @@ class SelectLayoutCompleted(_V3Strict):
     jobKind: Literal["select-layout"]
     event: Literal["completed"]
     pages: list[Page] = Field(min_length=1)
-    usage: V3Usage
-
-
-class LayoutCandidate(_V3Strict):
-    candidateIndex: int = Field(ge=0)
-    pages: list[CandidatePage] = Field(min_length=1)
-
-
-class SelectLayoutCandidateUnit(_V3Strict):
-    unitKey: str = Field(min_length=1)
-    chapterId: str = Field(min_length=1)
-    candidates: list[LayoutCandidate] = Field(min_length=1)
-
-
-class SelectLayoutCandidates(_V3Strict):
-    """P2 phase 1 回调:候选结构交回浏览器去渲染。不推进 stage。"""
-
-    requestId: str = Field(min_length=1)
-    jobKind: Literal["select-layout"]
-    event: Literal["candidates"]
-    units: list[SelectLayoutCandidateUnit] = Field(min_length=1)
     usage: V3Usage
 
 

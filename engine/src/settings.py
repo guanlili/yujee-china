@@ -147,12 +147,6 @@ class Settings(BaseSettings):
     select_layout_use_json_object: bool = True
     select_layout_disable_thinking: bool = True
     select_layout_max_images_per_batch: int = 24
-    select_layout_max_concurrency: int = Field(default=3, ge=1)
-    # 每章代码随机生成多少个候选交给 LLM 评委挑选(P1 新排版逻辑)。
-    select_layout_candidate_count: int = Field(default=3, ge=1)
-    # 批量判图:一次评委会话最多塞多少张候选缩略图(多个小章合并省会话;
-    # 超过按序拆批)。一个 unit 的候选不会跨批。
-    select_layout_judge_batch_max_images: int = Field(default=15, ge=1)
     # Gemini 判图的网络出口:未设=沿用环境代理(HTTPS_PROXY,httpx trust_env 默认);
     # "direct"=强制直连、忽略环境代理(本机能直达 Gemini 但 shell 全局代理出口被
     # Gemini 地区墙拒时用这个);其他值=显式代理 URL(如 http://127.0.0.1:7890)。

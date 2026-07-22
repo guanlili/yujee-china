@@ -178,9 +178,10 @@ def test_stage1_analyze_emits_tree_only_in_required_order(
         assert chapter.artFont is None
     # sceneDescription 恒为空串(契约字段还在,只是不再有识图产物填它)。
     assert [p.sceneDescription for c in tree.chapters for p in c.photos] == ["", "", "", ""]
-    # 章标识由时间/地点确定性派生,不能为空。
+    # 章标识由时间/地点确定性派生,落在 title;description 是写目录环节的位置,分析期留空。
     for chapter in tree.chapters:
-        assert chapter.description.strip() != ""
+        assert chapter.title.strip() != ""
+        assert chapter.description == ""
         assert chapter.keywords == []
 
 

@@ -32,10 +32,10 @@ export async function handleV3JobProgress(req: Request) {
       await jobService.handleV3Failed(payload.requestId, payload.error);
       break;
     default:
-      // 契约里 event 仍含 'candidates'(下个任务才删)。这条 route 从不处理它 —— Agent
-      // 若回归发出,不能悄悄吞掉当 accepted:true,打 warn 让契约漂移可观测。
+      // V3Callback 只剩 progress/completed/failed 三类事件,zod 已在解析时挡住其它值,
+      // 这个分支正常永远走不到。保留它是为了将来加事件时不会被悄悄吞成 accepted:true。
       logger.warn(
-        { requestId: payload.requestId, event: payload.event },
+        { requestId: (payload as { requestId: string }).requestId, event: (payload as { event: string }).event },
         'v3 callback event not handled by this dispatcher',
       );
       break;

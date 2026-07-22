@@ -413,6 +413,7 @@ async function seedDraftAlbum(userId: string) {
       chapters: [
         {
           chapterId: 'c1',
+          title: '',
           description: 'first',
           accentColor: null,
           artFont: null,
@@ -466,6 +467,7 @@ test('getDraftSkeleton: renders V3 tree+pages draft without dropping preview pag
         chapters: [
           {
             chapterId: 'c1',
+            title: '',
             description: 'first',
             accentColor: null,
             artFont: null,
@@ -476,6 +478,7 @@ test('getDraftSkeleton: renders V3 tree+pages draft without dropping preview pag
           },
           {
             chapterId: 'c2',
+            title: '',
             description: 'second',
             accentColor: null,
             artFont: null,
@@ -531,6 +534,7 @@ test('getDraftSkeleton: V3 body-only preview keeps first/last pages mapped to ch
         chapters: [
           {
             chapterId: 'c1',
+            title: '',
             description: 'first',
             accentColor: null,
             artFont: null,
@@ -541,6 +545,7 @@ test('getDraftSkeleton: V3 body-only preview keeps first/last pages mapped to ch
           },
           {
             chapterId: 'c2',
+            title: '',
             description: 'second',
             accentColor: null,
             artFont: null,
@@ -616,6 +621,7 @@ function makeStoryTree(n: number) {
   return {
     chapters: Array.from({ length: n }, (_, i) => ({
       chapterId: `c${i + 1}`,
+      title: '',
       description: `chapter ${i + 1}`,
       accentColor: null,
       artFont: null,
@@ -921,6 +927,7 @@ test('applyDesign: success advances stage story → ready (export gate key; 现�
       chapters: [
         {
           chapterId: 'c1',
+          title: '',
           description: 'chapter 1',
           accentColor: null,
           artFont: null,
@@ -1051,6 +1058,7 @@ async function seedChapterChatAlbum(userId: string) {
     chapters: [
       {
         chapterId: 'c1',
+        title: '',
         description: 'chapter one',
         accentColor: null,
         artFont: null,
@@ -1061,6 +1069,7 @@ async function seedChapterChatAlbum(userId: string) {
       },
       {
         chapterId: 'c2',
+        title: '',
         description: 'chapter two',
         accentColor: null,
         artFont: null,
@@ -1087,6 +1096,59 @@ async function seedChapterChatAlbum(userId: string) {
 
 const chatUsage = { durationMs: 1, models: { planning: 'deepseek-chat' } };
 
+test('章标签优先读 title,老树降级 description,都空才 Group N', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('chapter-label-fallback');
+  try {
+    const album = await makeAlbum(user.id);
+    const photo = {
+      photoId: 'p1',
+      sceneDescription: '',
+      width: 800,
+      height: 600,
+      orientation: 'landscape' as const,
+      takenAt: null,
+    };
+    const base = {
+      accentColor: null,
+      artFont: null,
+      chapterContext: '',
+      place: '',
+      keywords: [],
+    };
+    const draft = {
+      version: 'v3-story',
+      tree: {
+        chapters: [
+          // 新树:章标识落 title,description 是写目录环节的位置(此时为空)。
+          { chapterId: 'c1', title: '2024 年 03 月 11–14 日', description: '', ...base, photos: [photo] },
+          // 老树:draft_json 里根本没有 title 键,只能降级读 description。
+          { chapterId: 'c2', description: '旧章标题', ...base, photos: [{ ...photo, photoId: 'p2' }] },
+          // 两者都空:兜底 Group N。
+          { chapterId: 'c3', description: '', ...base, photos: [{ ...photo, photoId: 'p3' }] },
+        ],
+      },
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+    };
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      stage: 'story',
+      draftJson: draft as unknown as V3StoryDraft,
+    });
+
+    const summary = await albumService.getChapterSummary(user.id, album.id);
+    assert.deepEqual(
+      summary.chapters.map((c) => c.label),
+      ['2024 年 03 月 11–14 日', '旧章标题', 'Group 3'],
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('getInternalAgentData page-info and chapter-search return scoped draft data without location leakage', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
@@ -1101,6 +1163,7 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
         chapters: [
           {
             chapterId: 'c1',
+            title: '2024 年 03 月 02 日',
             description: 'coast morning',
             accentColor: null,
             artFont: null,
@@ -1128,6 +1191,7 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
           },
           {
             chapterId: 'c2',
+            title: '',
             description: 'city gallery',
             accentColor: null,
             artFont: null,
@@ -1188,9 +1252,20 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
     });
     assert.equal(V3InternalAgentDataResponse.safeParse(search).success, true);
     if (search.type !== 'chapter-search') assert.fail(`unexpected response type ${search.type}`);
+    // 命中靠 description + 照片描述;label 展示优先用 title(章标识)。
     assert.deepEqual(search.data.matches, [
-      { chapterId: 'c1', pageIndexes: [1, 2], label: 'coast morning', score: 3 },
+      { chapterId: 'c1', pageIndexes: [1, 2], label: '2024 年 03 月 02 日', score: 3 },
     ]);
+
+    // 章标识是拍摄日期派生的,不能进检索 haystack,否则搜「2024」会命中全部章节。
+    const dateSearch = await albumService.getInternalAgentData({
+      type: 'chapter-search',
+      albumId: album.id,
+      query: '2024',
+      limit: 5,
+    });
+    if (dateSearch.type !== 'chapter-search') assert.fail(`unexpected response type ${dateSearch.type}`);
+    assert.deepEqual(dateSearch.data.matches, []);
 
     const bookTree = await albumService.getInternalAgentData({
       type: 'book-tree',
@@ -1203,7 +1278,8 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
     assert.deepEqual(bookTree.data.progress, { currentChapterId: 'c1', doneChapterIds: [] });
     assert.equal(bookTree.data.focusedPageIndex, 2);
     assert.deepEqual(bookTree.data.chapters, [
-      { chapterId: 'c1', label: 'coast morning', pageIndexes: [1, 2], done: false },
+      { chapterId: 'c1', label: '2024 年 03 月 02 日', pageIndexes: [1, 2], done: false },
+      // c2 是老树形状(无 title):降级读 description。
       { chapterId: 'c2', label: 'city gallery', pageIndexes: [3], done: false },
     ]);
     assert.equal(bookTree.data.allDone, false);
@@ -1228,6 +1304,7 @@ test('getInternalAgentData page-photos returns registered transient refs without
         chapters: [
           {
             chapterId: 'c1',
+            title: '',
             description: 'chapter one',
             accentColor: null,
             artFont: null,
@@ -1262,6 +1339,7 @@ test('getInternalAgentData page-photos returns registered transient refs without
           },
           {
             chapterId: 'c2',
+            title: '',
             description: 'chapter two',
             accentColor: null,
             artFont: null,
@@ -1358,6 +1436,7 @@ async function seedThemeCoverAlbum(userId: string) {
     chapters: [
       {
         chapterId: 'c1',
+        title: '',
         description: 'a sunlit week by the coast',
         extractedColor: '#C8894A',
         accentColor: null,
@@ -1396,6 +1475,7 @@ function twoChapterDraft(): V3StoryDraft {
       chapters: [
         {
           chapterId: 'c1',
+          title: '',
           description: 'coast morning',
           accentColor: null,
           artFont: null,
@@ -1408,6 +1488,7 @@ function twoChapterDraft(): V3StoryDraft {
         },
         {
           chapterId: 'c2',
+          title: '',
           description: 'city gallery',
           accentColor: null,
           artFont: null,
