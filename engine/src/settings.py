@@ -127,8 +127,13 @@ class Settings(BaseSettings):
     #     8192 给够余量 —— 被截断的 JSON 解析不出来 = 整章文案作废(退回模板 sample)。
     #   max_concurrency:章节批次 + 全局批次全部并发跑,信号量限制同时在飞的调用数,
     #     控住 Gemini 侧速率。默认 4 是「墙钟砍成 1/4」与「不撞限流」之间的折中。
+    #   chapter_timeout_seconds:**每章各自**的预算,不是全书一刀切。单章最坏 =
+    #     2 × select_layout_timeout_seconds(60s 加一次重试)= 120s,留 60s 余量。
+    #     卡住的章按「这一章掉队」处理(保留模板 sample),其余章照常成稿 ——
+    #     外层 background_task_timeout_seconds 只当兜底,不再连坐已写完的章。
     compose_max_output_tokens: int = 8192
     compose_max_concurrency: int = Field(default=4, ge=1)
+    compose_chapter_timeout_seconds: float = Field(default=180, gt=0)
 
     # planning + chat-edit (DeepSeek slot; in prod points at Volcano Ark doubao)
     deepseek_api_key: str | None = None

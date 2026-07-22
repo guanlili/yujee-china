@@ -559,3 +559,90 @@ def test_compose_trace_summary_never_carries_base64(monkeypatch):
     summary = compose_flow._trace_request_summary(_compose_request())
     assert "base64" not in json.dumps(summary, ensure_ascii=False)
     assert summary["chapters"][0]["photos"][0]["hasRef200px"] is True
+
+
+# ── 可观测性:没有真图进上下文时必须留痕 ────────────────────────────────────
+
+
+def test_chapter_without_any_image_logs_a_warning(monkeypatch):
+    """refs 全空 = 整章「不看图写文案」,把本环节的灵魂架空,必须留一条 warning。
+
+    Web 侧拿不到 IndexedDB 缩略图(换浏览器/清站点数据/跨设备)时 refs={} 照常提交,
+    生产上除了这条日志没有任何痕迹。"""
+    warnings: list[tuple] = []
+    monkeypatch.setattr(
+        compose_handler.log,
+        "warning",
+        lambda event, **kw: warnings.append((event, kw)),
+    )
+    chapter = {**_CHAPTER, "photos": [{"photoId": "p1", "ref200px": ""}]}
+    page_specs = [{"pageIndex": 0, "textSlots": [{"id": "title"}], "photoIds": ["p1"]}]
+
+    compose_handler._build_chapter_messages(chapter, page_specs, language="zh")
+
+    assert ("compose.chapter_without_images", {"chapter_id": "c1", "photos": 1}) in warnings
+
+
+def test_chapter_with_images_does_not_warn(monkeypatch):
+    warnings: list[tuple] = []
+    monkeypatch.setattr(
+        compose_handler.log, "warning", lambda event, **kw: warnings.append((event, kw))
+    )
+    page_specs = [{"pageIndex": 0, "textSlots": [{"id": "title"}], "photoIds": ["p1"]}]
+
+    compose_handler._build_chapter_messages(_CHAPTER, page_specs, language="zh")
+
+    assert not [w for w in warnings if w[0] == "compose.chapter_without_images"]
+
+
+def test_compose_accepted_log_records_photos_total(monkeypatch):
+    """接单日志只记 chapters/language 的话,「零张真图进模型」在生产上查无对证。"""
+    from src.api import routes
+
+    seen: list[tuple] = []
+    monkeypatch.setattr(routes.log, "info", lambda event, **kw: seen.append((event, kw)))
+
+    class _Bg:
+        def add_task(self, *args, **kwargs):
+            pass
+
+    asyncio.run(routes.submit_compose(_compose_request(chapter_count=2), _Bg()))
+
+    accepted = [kw for event, kw in seen if event == "v3_compose.accepted"]
+    assert accepted and accepted[0]["photos_total"] == 2
+
+
+# ── 整体超时不许连坐:已写完的章必须成稿 ────────────────────────────────────
+
+
+def test_slow_chapter_times_out_alone_and_the_rest_still_complete(monkeypatch):
+    """某章超时 = 这一章掉队(保留模板 sample),其余章的文案照常成稿。
+
+    以前是外层一刀切 600s:一章卡住 → 整个 job failed → 已写好的 N−1 章全部作废,
+    用户拿到一本纯 sample 的书 + 一次失败。"""
+    from src.workflows import compose as compose_flow
+    from src.workflows.core.compose.schema import ComposeChapterResult, ComposeGlobalResult
+
+    seen = _capture_callbacks(monkeypatch)
+    settings = compose_flow.get_settings()
+    monkeypatch.setattr(settings, "compose_chapter_timeout_seconds", 0.05)
+
+    async def fake_chapter(chapter, *, language):
+        idx = chapter.pages[0].pageIndex
+        if idx == 1:
+            await asyncio.sleep(5)  # 这一章永远写不完
+        return ComposeChapterResult(pages_texts={idx: {"title": f"章 {idx}"}})
+
+    async def fake_global(**kwargs):
+        return ComposeGlobalResult()
+
+    monkeypatch.setattr(compose_flow.compose_agent, "compose_chapter", fake_chapter)
+    monkeypatch.setattr(compose_flow.compose_agent, "compose_global", fake_global)
+
+    asyncio.run(compose_flow.run_with_timeout(_compose_request(chapter_count=2)))
+
+    assert not [e for e in seen if e.event == "failed"]
+    completed = [e for e in seen if e.event == "completed"]
+    assert len(completed) == 1
+    # 写完的第 0 章在;超时的第 1 章缺席(Web 保留模板 sample)。
+    assert completed[0].pagesTexts == {0: {"title": "章 0"}}

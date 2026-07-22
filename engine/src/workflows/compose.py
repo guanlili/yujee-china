@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import time
 from typing import Any
 
@@ -157,7 +158,23 @@ async def _run_compose(job: _Job) -> None:
     async def chapter_task(chapter: Any):
         async with semaphore:
             try:
-                result = await compose_agent.compose_chapter(chapter, language=req.language)
+                # 超时下沉到每章:卡住的章按「这一章掉队」走 _drop_failed_chapter
+                # (保留模板 sample),不再让外层一刀切把已写完的章一起作废。
+                # wait_for 放在信号量里面,排队等待的时间不算进本章预算。
+                result = await asyncio.wait_for(
+                    compose_agent.compose_chapter(chapter, language=req.language),
+                    timeout=settings.compose_chapter_timeout_seconds,
+                )
+            except asyncio.TimeoutError:
+                # wait_for 的取消已在这里收束,不是整体超时,照常发心跳后交给
+                # return_exceptions=True 降级成空结果。
+                log.warning(
+                    "v3_compose.chapter_timeout",
+                    chapter_id=str(getattr(chapter, "chapterId", "") or ""),
+                    timeout_s=settings.compose_chapter_timeout_seconds,
+                )
+                await chapter_heartbeat()
+                raise
             except asyncio.CancelledError:
                 # 取消(整体超时)不算「这一章跑完」:不发心跳,原样抛给超时分支。
                 raise
@@ -254,6 +271,24 @@ async def _run_compose(job: _Job) -> None:
     )
 
 
+# 外层兜底的硬上限:Web 侧 job-service 的 COMPOSE_ZOMBIE_TIMEOUT_MS 是 12 分钟,
+# 超过它再回调,job 早被僵尸扫描判死,整本文案照样丢。留 60s 余量给回调本身。
+_MAX_JOB_TIMEOUT_SECONDS = 11 * 60
+
+
+def _job_timeout_seconds(req: ComposeRequest, settings: Any) -> float:
+    """外层兜底预算:按「章数 ÷ 并发 = 波数」把每章预算摊开,略宽于章级超时之和。
+
+    章级超时是主闸(卡住的章自己掉队),外层只在编排层整个卡死时才该响 —— 所以它
+    必须宽于「所有章都各自跑满预算」,否则又变回一刀切连坐。"""
+    waves = max(1, math.ceil(len(req.chapters) / max(1, settings.compose_max_concurrency)))
+    needed = waves * settings.compose_chapter_timeout_seconds + 60
+    return max(
+        float(settings.background_task_timeout_seconds),
+        min(float(needed), float(_MAX_JOB_TIMEOUT_SECONDS)),
+    )
+
+
 async def run_with_timeout(req: ComposeRequest) -> None:
     settings = get_settings()
     job = _Job(req)
@@ -261,7 +296,7 @@ async def run_with_timeout(req: ComposeRequest) -> None:
     try:
         try:
             await asyncio.wait_for(
-                _run_compose(job), timeout=settings.background_task_timeout_seconds
+                _run_compose(job), timeout=_job_timeout_seconds(req, settings)
             )
         except asyncio.TimeoutError:
             log.error("v3_compose.timeout")

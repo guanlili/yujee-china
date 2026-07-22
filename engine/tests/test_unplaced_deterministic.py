@@ -185,3 +185,29 @@ def test_tree_labels_stay_distinct_without_any_exif():
     assert labels == ["这一段", "这一段 2", "这一段 3"]
     # 章标识落在 title,description 是写目录环节的位置,分析期必须留空。
     assert [c.description for c in tree.chapters] == ["", "", ""]
+
+
+def test_tree_titles_never_exceed_the_contract_max_length(monkeypatch):
+    # 建树用的是构造后赋值(绕过 pydantic 校验),所以哪怕标签算长了,落进
+    # V3Chapter.title 的值也必须 <= 120,否则 Web 侧 zod 会把整个 analyze 打回。
+    monkeypatch.setattr(
+        "src.workflows.core.chaptering.tree_builder.deterministic_chapter_label",
+        lambda **kwargs: "长" * 300,
+    )
+    photos = [
+        _photo("p1", taken_at="2024-03-01T09:00:00Z"),
+        _photo("p2", taken_at="2024-06-01T09:00:00Z"),
+    ]
+    photos_by_id = _by_id(photos)
+    grouping = GroupingResult(
+        chapters=[
+            GroupingChapter(chapterId="ch_1", photoIds=["p1"]),
+            GroupingChapter(chapterId="ch_2", photoIds=["p2"]),
+        ],
+        unplacedPhotoIds=[],
+    )
+    tree = assemble_stage1_tree(grouping, UnplacedAssignments(assignments={}), photos_by_id)
+
+    assert all(len(c.title) <= 120 for c in tree.chapters)
+    # 截断不能把消歧吃掉:同一棵树里章标识仍要两两不同。
+    assert len({c.title for c in tree.chapters}) == len(tree.chapters)

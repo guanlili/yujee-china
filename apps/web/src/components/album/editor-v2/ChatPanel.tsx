@@ -1690,6 +1690,14 @@ export function ChatPanel({
             refs = {};
           }
         }
+        if (Object.keys(refs).length === 0) {
+          // 静默退化留痕:一张真图都没带上,整本书会变成「不看图写文案」(换浏览器、
+          // 清站点数据、跨设备继续做都会走到这)。只记录,不拦成书。
+          console.warn('[compose] no photo refs from IndexedDB — 整本书将不看图写文案', {
+            albumId,
+            photoIds: photoIds.length,
+          });
+        }
         if (disposed) return;
         const res = await fetch(`/api/v3/albums/${albumId}/design`, {
           method: 'POST',

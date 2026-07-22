@@ -85,7 +85,10 @@ Agent -> callback completed: pagesTexts + coverTexts/endingTexts + fonts
 `/v3/compose` 是全流程**唯一**的 AI 成稿调用:一章一次 Gemini(照片以真图进上下文、
 `chapterContext` 是最高优先级素材),外加一次全局调用出封面/封尾文案与字体
 (AI 只输出场景名,字体由代码按 场景×语言 查表填)。失败绝不阻断交付 —— 某章写不出来,
-该章页面就保留模板 sample 文案,不发 `failed`。
+该章页面就保留模板 sample 文案,不发 `failed`。**超时同理**:预算是按章的
+(`COMPOSE_CHAPTER_TIMEOUT_SECONDS`,默认 180s),卡住的章按「这一章掉队」处理,已经写完
+的章照常成稿;外层只留一个按「章数 ÷ 并发」摊开的兜底(封顶 11 分钟,压在 Web 侧 compose
+僵尸超时 12 分钟之内)。
 
 ## Source Of Truth
 
@@ -115,6 +118,7 @@ Important local `.env` fields:
 | `ARK_API_KEY` / `DEEPSEEK_API_KEY` | 砍掉识图后的残留槽:`mode=real` 启动仍必检,但当前没有 workflow 调用它们 |
 | `OPENAI_API_KEY` | 备用 vision 槽(`VISION_PROVIDER=openai` 时),同样无 workflow 调用 |
 | `SELECT_LAYOUT_API_KEY` | The one Gemini slot (name is historical). Its only consumer is ④ `/v3/compose`; `/v3/select-layout` itself is deterministic and needs no key. `mode=real` fails fast without it: compose degrades *silently* (green `completed`, empty `pagesTexts`, book full of template samples). |
+| `COMPOSE_CHAPTER_TIMEOUT_SECONDS` | 每章成稿的预算(默认 180 = 2 × 60s 单次调用重试上限 + 余量)。超时只让这一章掉队,不作废整本书 |
 | `PORT` | Defaults to `8001` |
 
 ## Run

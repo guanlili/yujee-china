@@ -107,7 +107,14 @@ async def submit_compose(
     文案,并出封面/封尾文案与字体。async 202 + callback。
 
     照片 base64 只在请求内存里(§隐私):进模型上下文那一次 HTTP body,永不落盘/日志。"""
-    log.info("v3_compose.accepted", chapters=len(req.chapters), language=req.language)
+    # photos_total 是「照片有没有真的进模型」的第一道线索:Web 侧拿不到缩略图时
+    # refs={} 也会照常提交,这一路只在日志里看得见(每章零图另有 warning)。
+    log.info(
+        "v3_compose.accepted",
+        chapters=len(req.chapters),
+        photos_total=sum(len(chapter.photos) for chapter in req.chapters),
+        language=req.language,
+    )
     background_tasks.add_task(compose.run_with_timeout, req)
     return V3AcceptedResponse(
         ok=True, data=V3AcceptedData(requestId=req.requestId, accepted=True)

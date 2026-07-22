@@ -212,6 +212,7 @@ def _build_chapter_messages(
     content: list[dict[str, Any]] = [
         {"type": "text", "text": json.dumps(payload, ensure_ascii=False)}
     ]
+    image_parts = 0
     for pid in ordered_ids:
         photo = photos_by_id.get(pid)
         ref = _get(photo, "ref200px", "") if photo is not None else ""
@@ -219,6 +220,17 @@ def _build_chapter_messages(
             continue  # 没有缩略图的照片就不进上下文(宁可少一张,也不发文字冒充)
         content.append({"type": "text", "text": _photo_caption(simple_by_real[pid], photo)})
         content.append({"type": "image_url", "image_url": {"url": ref}})
+        image_parts += 1
+
+    if image_parts == 0 and ordered_ids:
+        # 一张真图都没进上下文 = 这一章退化成「不看图写文案」,本环节的灵魂被架空。
+        # Web 侧拿不到 IndexedDB 缩略图(换浏览器/清站点数据/跨设备继续做)时
+        # refs={} 也会照常提交,生产上除了这条日志没有任何痕迹。
+        log.warning(
+            "compose.chapter_without_images",
+            chapter_id=str(_get(chapter, "chapterId", "") or ""),
+            photos=len(ordered_ids),
+        )
 
     return [
         {"role": "system", "content": load_prompt(_PROMPT_DIR / "compose_chapter.md")},

@@ -18,6 +18,11 @@ from .schema import GroupingResult, UnplacedAssignments
 # 无任何 EXIF 时间时的章标识回退文案;重名消歧也认这个常量。
 NO_TIME_LABEL = "这一段"
 
+# 契约上限:V3Chapter.title 的 max_length=120(Web 侧 zod 同值)。
+_TITLE_MAX_LEN = 120
+# 基础标签的预算:留出消歧序号(`… · 第 N 段`)的余量,免得加完序号又越界。
+MAX_CHAPTER_LABEL_LEN = 100
+
 
 def deterministic_chapter_label(
     *, taken_ats: Sequence[str], places: Sequence[str]
@@ -38,7 +43,11 @@ def deterministic_chapter_label(
     place_part = place[0][0] if place else ""
     time_part = _time_span_label(taken_ats)
     parts = [p for p in (time_part, place_part) if p]
-    return " · ".join(parts) if parts else NO_TIME_LABEL
+    label = " · ".join(parts) if parts else NO_TIME_LABEL
+    # 截断:地名长度不受本模块控制(采访环节写回的 place 上限 100),加上时间跨度
+    # (~40 字)就会顶破 V3Chapter.title 的 max_length=120,而越界的 title 会让 Web 侧
+    # zod 把整个 analyze 回调打回、整本书 failed。
+    return label[:MAX_CHAPTER_LABEL_LEN]
 
 
 def _time_span_label(taken_ats: Sequence[str]) -> str:
@@ -76,6 +85,11 @@ def _disambiguate_labels(labels: Sequence[str]) -> list[str]:
         used.add(candidate)
         result.append(candidate)
     return result
+
+
+def _cap_label(label: str) -> str:
+    """基础标签截到 `MAX_CHAPTER_LABEL_LEN`,给消歧序号留余量。"""
+    return label[:MAX_CHAPTER_LABEL_LEN]
 
 
 def _with_ordinal(label: str, ordinal: int) -> str:
@@ -155,12 +169,14 @@ def assemble_stage1_tree(
                 # 章标识:确定性派生(时间跨度 + 地名),落在 title。
                 # 重名(同月/同日、或都没 EXIF)在下面统一消歧。
                 # description 是写目录(TOC)环节的位置,分析期保持默认空串。
-                title=deterministic_chapter_label(
+                # 再截一次:`title=` 走的是 pydantic 校验,越界会直接把整次 analyze
+                # 打成 failed,这里不依赖上面那层截断的实现细节。
+                title=_cap_label(deterministic_chapter_label(
                     taken_ats=[p.takenAt or "" for p in photos],
                     # 地名由 Web 采访环节写回 chapter.place,分析期无地名可用(§3 隐私:
                     # 坐标止步于浏览器,EXIF 只带 takenAt)。
                     places=[],
-                ),
+                )),
                 # 关键词此前来自识图分章,砍掉后分析期为空,设计环节自行降级。
                 keywords=[],
                 extractedColor=accent_color.accent_of_group(members, photos_by_id),
@@ -176,7 +192,9 @@ def assemble_stage1_tree(
     # Web 侧只在 title 为空串时才降级(description → `Group N`),重名章会让用户看到
     # 一串无法区分的标题,所以这里保证同一棵树内章标识两两不同。
     for chapter, label in zip(chapters, _disambiguate_labels([c.title for c in chapters])):
-        chapter.title = label
+        # 构造后赋值绕过 pydantic(_V3Strict 没开 validate_assignment),契约上限只能
+        # 在这里自己守:越界的 title 会让 Web 侧 zod 把整个 analyze 回调打回。
+        chapter.title = label[:_TITLE_MAX_LEN]
     return V3LayoutTree(chapters=chapters)
 
 
