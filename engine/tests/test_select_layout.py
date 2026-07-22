@@ -4,6 +4,8 @@
 填模板 sample 文案 → 一次 `completed` 回调。全程零 AI 调用。
 """
 
+import base64
+
 import pytest
 
 from src.workflows import select_layout
@@ -40,10 +42,10 @@ def _request() -> SelectLayoutRequest:
     )
 
 
-def _multi_request(chapters: list[dict]) -> SelectLayoutRequest:
+def _multi_request(chapters: list[dict], request_id: str = "layout-r1") -> SelectLayoutRequest:
     return SelectLayoutRequest.model_validate(
         {
-            "requestId": "layout-r1",
+            "requestId": request_id,
             "callbackUrl": "https://example.com/api/v3/internal/job-progress",
             "language": "en",
             "chapters": chapters,
@@ -58,7 +60,9 @@ def _chapter(chapter_id: str, photo_ids: list[str]) -> dict:
         "photos": [
             {
                 "photoId": photo_id,
-                "ref200px": f"data:image/jpeg;base64,{idx + 1}A==",
+                # 定长合法 base64:idx 只作区分,不能破坏 padding。
+                "ref200px": "data:image/jpeg;base64,"
+                + base64.b64encode(f"px{idx}".encode()).decode(),
                 "orientation": "landscape",
                 "takenAt": None,
             }
@@ -108,22 +112,36 @@ async def test_select_layout_pages_carry_sample_texts(monkeypatch):
     await select_layout.run_with_timeout(_request())
 
     pages = events[-1]["pages"]
-    # 模板自带 sample 的文字槽必须已经填上(至少有一页有非空 texts)。
-    assert any(page["texts"] for page in pages)
+    assert pages
+    # 交付永不空页:每一页的文字槽都得有 sample(含 items 重复组展开的 explain[i])。
+    assert all(page["texts"] for page in pages)
+    # 更严格的同一条约束:凡是模板声明了带 sample 的文字槽(顶层或 items 重复组),
+    # 该页 texts 必须非空。纯图模板(mag-06/33/39… 零文字槽)本就没有文字框,
+    # 空 texts 是对的 —— 这条断言把它们排除,免得换 fixture 时误报。
+    for page in pages:
+        template = select_layout.sample_texts.templates.get(page["templateId"])
+        slots = list(template["texts"]) + list((template.get("items") or {}).get("texts") or [])
+        if any(slot.get("sample") for slot in slots):
+            assert page["texts"], f"{page['templateId']} 有 sample 槽却是空文字框"
 
 
-def test_build_pages_covers_every_photo_exactly_once():
+@pytest.mark.parametrize("request_id", ["layout-r1", "layout-r2", "layout-zzz"])
+@pytest.mark.parametrize("photo_count", [1, 5, 13])
+def test_build_pages_covers_every_photo_exactly_once(request_id, photo_count):
     # 最重要的正确性约束:每张照片恰好出现在一个页面的一个图槽里,不重不漏。
+    # 拆页依赖 _random_page_sizes 的随机拆分(按 requestId 播种),所以对 requestId
+    # 与照片数做组合采样,而不是只钉单点。
     req = _multi_request(
         [
-            _chapter("ch_1", [f"a{i}" for i in range(1, 8)]),
+            _chapter("ch_1", [f"a{i}" for i in range(1, photo_count + 1)]),
             _chapter("ch_2", [f"b{i}" for i in range(1, 4)]),
-        ]
+        ],
+        request_id=request_id,
     )
     pages, usage = select_layout.build_pages(req)
 
     used = _used_photo_ids(pages)
-    expected = [f"a{i}" for i in range(1, 8)] + [f"b{i}" for i in range(1, 4)]
+    expected = [f"a{i}" for i in range(1, photo_count + 1)] + [f"b{i}" for i in range(1, 4)]
     assert sorted(used) == sorted(expected)
     assert len(used) == len(set(used))
     assert usage.geminiCallCount == 0
@@ -141,6 +159,34 @@ def test_build_pages_covers_every_photo_exactly_once_when_chapter_is_split(monke
     assert sorted(used) == sorted(f"p{i}" for i in range(1, 8))
     assert len(used) == len(set(used))
     assert [p["pageIndex"] for p in pages] == list(range(len(pages)))
+
+
+def test_build_pages_raises_when_generator_returns_empty_for_nonempty_unit(monkeypatch):
+    # 生成器对非空 unit 返回空 = 会丢掉整章照片,必须显式炸掉而不是静默跳过。
+    monkeypatch.setattr(
+        select_layout.candidate_gen_v3, "generate_candidates", lambda photos, **kw: []
+    )
+    with pytest.raises(RuntimeError, match="ch_1"):
+        select_layout.build_pages(_multi_request([_chapter("ch_1", ["p1", "p2"])]))
+
+
+@pytest.mark.asyncio
+async def test_empty_candidates_surface_as_failed_callback(monkeypatch):
+    # 外层把这个 RuntimeError 转成 AGENT_OUTPUT_VALIDATION 失败回调,而不是照片凭空消失。
+    events = []
+
+    async def capture_post(url, envelope):  # noqa: ANN001
+        events.append(envelope.model_dump(exclude_none=True, mode="json"))
+
+    monkeypatch.setattr(select_layout.callback, "post", capture_post)
+    monkeypatch.setattr(
+        select_layout.candidate_gen_v3, "generate_candidates", lambda photos, **kw: []
+    )
+
+    await select_layout.run_with_timeout(_request())
+
+    assert events[-1]["event"] == "failed"
+    assert events[-1]["error"]["code"] == "AGENT_OUTPUT_VALIDATION"
 
 
 def test_build_pages_requests_exactly_one_candidate_per_unit(monkeypatch):

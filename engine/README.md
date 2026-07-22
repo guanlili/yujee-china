@@ -1,6 +1,6 @@
 # Yujee Agent
 
-FastAPI service for the current minimal AI pipeline: image analysis, chapter grouping, layout candidate generation, and browser-rendered thumbnail judging.
+FastAPI service for the current minimal AI pipeline: image analysis, chapter grouping, and deterministic layout selection.
 
 The previous edit-chat/theme/cover/finalize surfaces have been removed from the current Agent route surface. If Web still contains callers for those routes, treat that as a Web/Agent alignment task, not as an Agent README promise.
 
@@ -10,8 +10,7 @@ The previous edit-chat/theme/cover/finalize surfaces have been removed from the 
 |---|---:|---|
 | `GET /health` | sync | Health check |
 | `POST /v3/analyze` | async `202` + callback | Image analysis and chapter tree generation |
-| `POST /v3/select-layout` | async `202` + callback | Generate candidate page structures and return `candidates` callback |
-| `POST /v3/judge-layout` | async `202` + callback | Receive browser thumbnails, pick winners, return final layout pages |
+| `POST /v3/select-layout` | async `202` + callback | Deterministic layout selection; one `completed` callback returns final `pages` (with template sample copy) |
 
 All business endpoints require:
 
@@ -27,11 +26,8 @@ engine/
 ├── src/routes.py              # Thin HTTP surface
 ├── src/flows/
 │   ├── analyze.py             # Stage1 确定性分组 + 建树 callback(无 AI 调用)
-│   ├── select_layout.py       # Layout candidate generation callback
-│   └── judge_layout.py        # Thumbnail judge -> Page[] callback
+│   └── select_layout.py       # Deterministic layout selection -> Page[] callback
 ├── src/chaptering/            # Deterministic grouping, unplaced assignment, tree builder
-├── src/agents/
-│   └── select_layout/         # Gemini layout judging prompts/handler
 ├── src/engine/                # Deterministic candidate/template/legalize helpers
 ├── src/skills/                # Prompt support material
 ├── src/schemas.py             # Pydantic mirror of contracts
@@ -45,14 +41,10 @@ Web -> /v3/analyze
 Agent -> callback progress/completed: V3LayoutTree
 
 Web -> /v3/select-layout
-Agent -> callback candidates: candidate page structures
-
-Browser renders thumbnails
-Web -> /v3/judge-layout
 Agent -> callback completed: Page[]
 ```
 
-`/v3/judge-layout` currently produces layout pages with image slots and generic decorative text only; it does not write full chapter copy.
+`/v3/select-layout` is fully deterministic (no AI call): each unit takes a single seeded candidate, gets finalized into pages, and the template `sample` strings are filled into `texts`. It does not write real chapter copy.
 
 ## Source Of Truth
 

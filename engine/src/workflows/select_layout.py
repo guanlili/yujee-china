@@ -144,15 +144,6 @@ def _layout_units(chapters: Sequence[Any], max_images_per_batch: int) -> list[An
 
 
 
-def _unit_key(unit: Any) -> str:
-    """排版单元的唯一键:chapterId,超大章拆段时加段首 photoId 区分。"""
-    chapter_id = str(getattr(unit, "chapterId", None) or _value(unit, "chapterId"))
-    photos = _chapter_photos(unit)
-    first_pid = _value(photos[0], "photoId") if photos else ""
-    return f"{chapter_id}#{first_pid}" if first_pid else chapter_id
-
-
-
 def build_pages(req: SelectLayoutRequest) -> tuple[list[dict[str, Any]], V3Usage]:
     """确定性选版:逐 unit 取唯一候选 → 最终化成页 → 填模板 sample 文案。
 
@@ -174,7 +165,10 @@ def build_pages(req: SelectLayoutRequest) -> tuple[list[dict[str, Any]], V3Usage
         # count=1:确定性选版,不再生成多候选交评委挑。
         cands = candidate_gen_v3.generate_candidates(photos, seed=unit_seed, count=1)
         if not cands:
-            continue
+            # 不变式:每张照片必须恰好出现在一页的一个图槽里。这里静默 continue 会
+            # 一声不响吞掉整个 unit 的照片(用户表现为「照片凭空消失」),所以显式炸掉,
+            # 由 run_with_timeout 转成 AGENT_OUTPUT_VALIDATION 失败回调。
+            raise RuntimeError(f"候选生成器对非空 unit 返回空:chapterId={chapter_id}")
         interior_pages.extend(
             legalize.finalize_candidate_pages({"chapterId": chapter_id}, cands[0])
         )
