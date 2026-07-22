@@ -1,8 +1,8 @@
-# 字体参考表（设计环节精调用）
+# 字体参考表（成稿环节 `_SCENE_PRESETS` 精调用）
 
 项目实际可用字体 **30 款**（中文 9 + 英文 21）。这份表是给人对照着调
 `handler.py` 里 `_SCENE_PRESETS`（4 分类,每类中英文各一套 title/body/decoration）
-用的参考，**不是喂给 AI 的 prompt**（prompt 是 design_style.md）。
+用的参考，**不是喂给 AI 的 prompt**（prompt 是 compose_global.md，AI 只输出场景名、永不接触字体 id）。
 
 **状态：30 款全部 ✅ 已接入**，`FONT_CATALOG` 均有条目,AI 选中直接渲染。
 (早前一版曾把 7 款单词型字体误标"待接入",系比对脚本正则漏配裸键的 bug,已更正。)

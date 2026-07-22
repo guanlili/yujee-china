@@ -15,7 +15,7 @@ def _item_instance_count(template: Any, page: dict[str, Any]) -> int:
     """本页 items 重复组的实际格数。
 
     格数从页面 images 的 `image[i]` 键推导(items 的图片展开就是这么生成的),
-    与 write_copy 里 `_writable_text_slots` 的规则保持一致。
+    与 compose 里 `_writable_text_slots` 的规则保持一致。
     """
     items = template.get("items") or {}
     image_bases = {slot["id"] for slot in (items.get("images") or [])}

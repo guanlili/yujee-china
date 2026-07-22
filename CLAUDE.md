@@ -21,8 +21,9 @@ Browser -> Web (Next.js) -> Agent (FastAPI)
 
 ## 当前重要现实
 
-- Agent 当前 route surface: `/v3/analyze`, `/v3/select-layout`, `/v3/judge-page-template`, `/v3/design`。
+- Agent 当前 route surface: `/v3/analyze`, `/v3/select-layout`, `/v3/compose`。
 - 排版是**一次确定性选版**:`/v3/select-layout` 直接回调 `completed` + 完整 `pages`,没有候选缩略图/评委来回。
+- 全流程只剩**一次** AI 调用:`/v3/compose`(按章并发的 Gemini 成稿 + 一次全局封面/字体)。
 - 旧 edit-chat/theme/cover/finalize 等 Agent 能力已经从当前路由层剥离;不要把旧文档或旧假设写成现状。
 - Web 仍可能保留更完整的路由/client 壳。判断端到端能力时必须同时看 Web caller 和 Agent `routes.py`。
 

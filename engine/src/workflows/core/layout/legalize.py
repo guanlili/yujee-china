@@ -1,7 +1,7 @@
 """Stage2 排版的确定性收尾:把评委选中的『代码随机候选』最终化成页。
 
 这层只做确定性逻辑,零 LLM/agent import。两端共用的章节/照片字段读取辅助也放这里
-(write_copy 复用 `_photos` / `_photo_id`)。
+(compose 复用 `_photos` / `_photo_id`)。
 
 【已拆除的旧线框流程】这里原本还有 `build_candidate_catalog`(骨架预览目录,喂给
 旧的 slots-JSON 线框评委)和 `legalize_layout`(夹紧 Gemini 输出的 slot 映射),

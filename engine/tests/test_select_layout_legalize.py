@@ -38,8 +38,8 @@ def test_finalize_keeps_existing_texts_and_defaults_to_empty():
     assert pages[1]["texts"] == {}  # 非法 texts 归空,不透传脏数据
 
 
-def test_photo_helpers_shared_with_write_copy():
-    # write_copy 从这里借 _photos/_photo_id(公共章节字段读取);签名别悄悄变。
+def test_photo_helpers_shared_with_compose():
+    # compose 从这里借 _photos/_photo_id(公共章节字段读取);签名别悄悄变。
     chapter = {"photos": [{"photoId": "p1"}, {"photoId": "p2"}]}
     photos = legalize._photos(chapter)
     assert [legalize._photo_id(p) for p in photos] == ["p1", "p2"]

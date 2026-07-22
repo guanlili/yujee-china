@@ -86,42 +86,6 @@ class Settings(BaseSettings):
     # extra_body (400 InvalidRequest); the slot helper guarantees that.
     openai_use_json_object: bool = True
 
-    # V3 describe-content failover (architecture §6.8 第 2 条 / v3-impl-plan §6.2):
-    # the recognition model defaults to OPENAI (GPT-5.5 Mini, using the openai_*
-    # endpoint/key). ai_client already retries once on 5xx/timeouts within the
-    # per-call budget, so a 30s budget = 30s + one retry ≈ 60s worst case for the
-    # primary attempt. If the OpenAI slot still 5xx/times-out after that retry, OR
-    # the whole batch hasn't finished within describe_batch_deadline_seconds,
-    # describe-content降级火山 (the ark_* slot). Missing keys and 4xx are config /
-    # request failures, not failover cases. 数值可微调,不改「先 GPT、自动降级火山」语义。
-    describe_openai_model: str = "gpt-5.5-mini"
-    describe_openai_timeout_seconds: int = 30
-    describe_batch_deadline_seconds: int = 90
-    # The unified describe call now emits, in ONE response, per-chapter
-    # description + per-photo scene + per-page photoIds + per-page templateId
-    # (selecting templates / paging folded into the same call). That combined
-    # output is materially larger than the old describe-only reply, so the
-    # output budget needs headroom: a truncated response is non-lossy (the
-    # coverage guard rejects it) but FATAL (hard AGENT_VISION_FAILED, no graceful
-    # degrade — it propagates rather than failing over on the same bad-output
-    # class). 16384 is a conservative headroom bump accepted by both configured
-    # vision models (ark doubao-seed-1-6-vision with thinking disabled, and the
-    # openai describe slot). Route-splitting (#232) remains the primary per-call
-    # output bound; this is just headroom for dense single routes.
-    describe_max_output_tokens: int = 16384
-
-    # V3 describe cluster-aware concurrency (#232 WP-C). When the browser stamps
-    # photos with `clusterId` (EXIF time/GPS-derived), whole clusters are packed
-    # into concurrent describe routes by total photo COUNT — semantic grouping
-    # (the clusters themselves) is never re-cut by count. These thresholds only
-    # set concurrency WIDTH: ≤lo → 1 route, >lo → 2 routes, >hi → 3 routes. A
-    # single oversized cluster still gets its own route (the model sub-chapters
-    # it; the omitted-photo retry net guarantees coverage). All clusterId null →
-    # degrade to the legacy single-batch path. 数值可微调,不改语义。
-    describe_concurrency_threshold_lo: int = 20
-    describe_concurrency_threshold_hi: int = 40
-    describe_max_concurrency: int = 3
-
     # Stage1 本地分章:CLIP 图片 embedding + 灰度/颜色距离。
     # grouping_clip_model_path 支持本地权重;未设置时 open_clip 按 model/pretrained
     # 配置加载。
@@ -152,6 +116,15 @@ class Settings(BaseSettings):
     # Gemini 地区墙拒时用这个);其他值=显式代理 URL(如 http://127.0.0.1:7890)。
     # 只影响 Gemini 判图这一个 httpx client,Ark/DeepSeek 的出口行为不变。
     select_layout_proxy: str | None = None
+
+    # ④ compose(一次性成稿):复用上面那组 Gemini 槽的 endpoint/key/model/出口代理,
+    # 只有输出预算和并发是自己的。
+    #   max_output_tokens:一次要吐出整章逐页多槽的正文(判图只吐几个 index),
+    #     8192 给够余量 —— 被截断的 JSON 解析不出来 = 整章文案作废(退回模板 sample)。
+    #   max_concurrency:章节批次 + 全局批次全部并发跑,信号量限制同时在飞的调用数,
+    #     控住 Gemini 侧速率。默认 4 是「墙钟砍成 1/4」与「不撞限流」之间的折中。
+    compose_max_output_tokens: int = 8192
+    compose_max_concurrency: int = Field(default=4, ge=1)
 
     # planning + chat-edit (DeepSeek slot; in prod points at Volcano Ark doubao)
     deepseek_api_key: str | None = None

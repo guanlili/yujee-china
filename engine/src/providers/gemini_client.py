@@ -59,6 +59,7 @@ def _native_payload(
     max_output_tokens: int | None,
     use_json_object: bool,
     disable_thinking: bool,
+    temperature: float,
 ) -> dict[str, Any]:
     system = str(messages[0].get("content") or "")
     content = messages[1].get("content")
@@ -73,7 +74,7 @@ def _native_payload(
             if native is not None
         ]
 
-    generation_config: dict[str, Any] = {"temperature": 0.1}
+    generation_config: dict[str, Any] = {"temperature": temperature}
     if use_json_object:
         generation_config["response_mime_type"] = "application/json"
     if max_output_tokens is not None:
@@ -146,6 +147,14 @@ def _trace_native_call(
         pass
 
 
+def text_and_usage(response: Mapping[str, Any]) -> tuple[str, int, int]:
+    """`generate_content` 的响应 → (正文, 输入 token, 输出 token)。
+
+    业务侧唯一该用的解析入口 —— 免得每个调用点各自去碰 `_native_*` 私有函数。
+    正文缺失时抛 ValueError(由调用方的失败路径接住)。"""
+    return (_native_text(response), *_native_usage(response))
+
+
 def client_kwargs(proxy_setting: str | None, timeout_seconds: int) -> dict[str, Any]:
     """Gemini httpx client 的网络出口参数。
 
@@ -172,6 +181,9 @@ async def generate_content(
     use_json_object: bool,
     disable_thinking: bool,
     proxy: str | None = None,
+    # 判图/挑选这类任务要的是稳定(默认 0.1);写文案要的是别每章都一个腔调,
+    # 调用方按任务性质自己给。
+    temperature: float = 0.1,
 ) -> dict[str, Any]:
     url = f"{_native_base_url(base_url)}/models/{_native_model_path(model)}:generateContent"
     body = _native_payload(
@@ -179,6 +191,7 @@ async def generate_content(
         max_output_tokens=max_output_tokens,
         use_json_object=use_json_object,
         disable_thinking=disable_thinking,
+        temperature=temperature,
     )
     headers = {"Content-Type": "application/json"}
 

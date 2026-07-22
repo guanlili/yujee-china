@@ -1,6 +1,6 @@
 # Yujee Agent
 
-FastAPI service for the current minimal AI pipeline: image analysis, chapter grouping, and deterministic layout selection.
+FastAPI service for the current minimal AI pipeline: image analysis, chapter grouping, deterministic layout selection, and a single Gemini compose pass that writes the whole book's copy.
 
 The previous edit-chat/theme/cover/finalize surfaces have been removed from the current Agent route surface. If Web still contains callers for those routes, treat that as a Web/Agent alignment task, not as an Agent README promise.
 
@@ -11,6 +11,7 @@ The previous edit-chat/theme/cover/finalize surfaces have been removed from the 
 | `GET /health` | sync | Health check |
 | `POST /v3/analyze` | async `202` + callback | Image analysis and chapter tree generation |
 | `POST /v3/select-layout` | async `202` + callback | Deterministic layout selection; one `completed` callback returns final `pages` (with template sample copy) |
+| `POST /v3/compose` | async `202` + callback | 一次性成稿:按章并发让 Gemini 看真实照片 + 读用户讲的故事写满全书文案,并出封面/封尾文案与字体 |
 
 All business endpoints require:
 
@@ -42,9 +43,17 @@ Agent -> callback progress/completed: V3LayoutTree
 
 Web -> /v3/select-layout
 Agent -> callback completed: Page[]
+
+Web -> /v3/compose(用户选完设计之后)
+Agent -> callback completed: pagesTexts + coverTexts/endingTexts + fonts
 ```
 
 `/v3/select-layout` is fully deterministic (no AI call): each unit takes a single seeded candidate, gets finalized into pages, and the template `sample` strings are filled into `texts`. It does not write real chapter copy.
+
+`/v3/compose` 是全流程**唯一**的 AI 成稿调用:一章一次 Gemini(照片以真图进上下文、
+`chapterContext` 是最高优先级素材),外加一次全局调用出封面/封尾文案与字体
+(AI 只输出场景名,字体由代码按 场景×语言 查表填)。失败绝不阻断交付 —— 某章写不出来,
+该章页面就保留模板 sample 文案,不发 `failed`。
 
 ## Source Of Truth
 
