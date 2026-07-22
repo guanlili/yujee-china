@@ -1,6 +1,6 @@
 import type { AdaptablePage, ResolveImage } from '@/components/album/adapt-layout';
 import { pageFolioInfos } from '@/components/album/page-html-dom';
-import { buildSpreads, isSoloSpread, type Spread } from '@/components/album/spreads';
+import { buildSpreads, spreadFullPage, spreadPageIndices, spreadRenderKind, type Spread } from '@/components/album/spreads';
 import type { EditorPage } from '@/components/album/types';
 import { PAGE } from '@/components/album/templates/constants';
 import { loadAlbumFonts } from '@/lib/font/album-font-loader';
@@ -53,12 +53,15 @@ export interface LiveVideoOptions {
   onProgress?: (done: number, total: number) => void; // done/total 按帧计
 }
 
-// 一个「视图」= 一屏。封面/封尾是 solo 居中单页;内页是双页跨页。
+// 一个「视图」= 一屏。封面/封尾是 solo 居中单页;内页是双页跨页;
+// 双宽(#303)页是一整张双宽面铺满跨页宽(full)。
 interface View {
   solo: boolean;
+  /** 双宽页:整格一张 face,无中缝、无左右半页。 */
+  full: boolean;
   left: HTMLCanvasElement | null;
   right: HTMLCanvasElement | null;
-  page: HTMLCanvasElement | null; // solo 时的单页
+  page: HTMLCanvasElement | null; // solo / full 时的那一张 face
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -119,6 +122,10 @@ function paintViewBook(ctx: CanvasRenderingContext2D, v: View) {
   if (v.solo) {
     drawBaseRect(ctx, SOLO_X, HALF_W);
     drawFace(ctx, v.page, SOLO_X, HALF_W);
+  } else if (v.full) {
+    // 双宽页:一张 face 铺满整个跨页宽,画面连续 —— 不画中缝。
+    drawBaseRect(ctx, BOOK_X, BOOK_W);
+    drawFace(ctx, v.page, BOOK_X, BOOK_W);
   } else {
     drawBaseRect(ctx, BOOK_X, BOOK_W);
     drawFace(ctx, v.left, BOOK_X, HALF_W);
@@ -201,11 +208,22 @@ export async function renderLiveVideo(
   const asEditor = pages as unknown as EditorPage[];
   const views: View[] = [];
   for (const s of spreads) {
-    if (isSoloSpread(s, asEditor)) {
-      const idx = s.left ?? s.right; // solo 只占一半
-      views.push({ solo: true, left: null, right: null, page: await face(idx) });
-    } else {
-      views.push({ solo: false, left: await face(s.left), right: await face(s.right), page: null });
+    // 三选一的分类住在 spreads.ts(唯一真相),这里只负责把它变成一屏画面。
+    switch (spreadRenderKind(s, asEditor)) {
+      case 'full':
+        // 双宽(#303)页:一整张双宽 face,不是左右两半。
+        views.push({ solo: false, full: true, left: null, right: null, page: await face(spreadFullPage(s)) });
+        break;
+      case 'solo':
+        // 封面/封尾只占半边;取它实际占的那一页。
+        views.push({ solo: true, full: false, left: null, right: null, page: await face(spreadPageIndices(s)[0] ?? null) });
+        break;
+      default:
+        views.push({
+          solo: false, full: false, page: null,
+          left: await face(s.kind === 'pair' ? s.left : null),
+          right: await face(s.kind === 'pair' ? s.right : null),
+        });
     }
   }
 
@@ -254,7 +272,9 @@ export async function renderLiveVideo(
     // 过渡到下一视图
     if (k < n - 1) {
       const b = views[k + 1]!;
-      const canFlip = !a.solo && !b.solo; // 只有内页↔内页做翻页;含封面/封尾用淡入淡出
+      // 只有「双页跨页↔双页跨页」做翻页动画:paintFlipBook 的几何写死了半页宽的叶子。
+      // 封面/封尾(solo,单页宽)与双宽(#303,整幅无中缝)都没有可转的半页 → 用淡入淡出。
+      const canFlip = !a.solo && !b.solo && !a.full && !b.full;
       for (let f = 0; f < FLIP_FRAMES; f++) {
         const t = (f + 1) / (FLIP_FRAMES + 1);
         paintBg(ctx);
