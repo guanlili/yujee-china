@@ -349,6 +349,44 @@ class TestV3TemplateCategoryOnly:
                 {"id": "t", "role": "body", "lang": "user", "hint": "x"}
             )
 
+    def test_spread_accepted_on_interior(self):
+        # 跨页(#303):spread 只在 interior 有效,mirrors TS TemplateDef.spread。
+        tpl = TemplateDef.model_validate(
+            {
+                "id": "m-spread",
+                "category": "interior",
+                "images": [],
+                "texts": [],
+                "spread": True,
+            }
+        )
+        assert tpl.spread is True
+
+    def test_spread_rejected_on_cover(self):
+        with pytest.raises(ValidationError):
+            TemplateDef.model_validate(
+                {
+                    "id": "m-spread-cover",
+                    "category": "cover",
+                    "images": [],
+                    "texts": [],
+                    "spread": True,
+                }
+            )
+
+    def test_spread_and_pairing_are_mutually_exclusive(self):
+        with pytest.raises(ValidationError):
+            TemplateDef.model_validate(
+                {
+                    "id": "m-spread-pairing",
+                    "category": "interior",
+                    "images": [],
+                    "texts": [],
+                    "spread": True,
+                    "pairing": {"forced": True, "with": "mag-2", "side": "left"},
+                }
+            )
+
 
 class TestV3AnalyzePrivacy:
     """★ analyze exif is the §3 privacy enforcement point — only takenAt; any

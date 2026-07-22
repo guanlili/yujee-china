@@ -322,3 +322,17 @@ def test_loader_rejects_spread_on_cover(tmp_path):
 
     with pytest.raises(RuntimeError, match="spread is only valid on interior"):
         templates._load_templates_from_dir(tmp_path)
+
+
+def test_loader_rejects_spread_with_pairing(tmp_path):
+    from src.workflows.core.layout import templates
+
+    (tmp_path / "spread-pairing-bad.json").write_text(json.dumps({
+        "id": "spread-pairing-bad", "category": "interior", "spread": True,
+        "pairing": {"forced": True, "with": "some-other-id", "side": "left"},
+        "images": [{"id": "image1"}],
+        "texts": [{"id": "title", "role": "title", "lang": "user"}],
+    }), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="spread and pairing are mutually exclusive"):
+        templates._load_templates_from_dir(tmp_path)
