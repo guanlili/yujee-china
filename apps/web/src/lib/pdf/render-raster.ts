@@ -1,5 +1,6 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { isSpreadTemplate } from '@yujee/contracts/render';
 import {
   adaptPageToTemplateData,
   type AdaptablePage,
@@ -11,6 +12,7 @@ import { PAGE } from '@/components/album/templates/constants';
 import { getWebTemplate } from '@/components/album/web-registry';
 import { loadAlbumFonts } from '@/lib/font/album-font-loader';
 import { injectDocumentFontsInto } from '@/lib/font/clone-document-fonts';
+import { splitSpreadCanvas } from './split-spread-canvas';
 
 // 栅格 PDF 渲染器（收敛单渲染器）：逐页把「屏幕渲染」离屏渲成 794×1123 → html2canvas
 // 高倍截图 → jsPDF 每页贴图。PDF 因此与屏幕像素级一致，index↔pdf 两套渲染器的分歧
@@ -115,15 +117,22 @@ export async function renderAlbumPdfRaster(
 
   // 页签按导出页序计算(内页 1..N;封面/封尾/目录 null),与画板同一套覆盖层。
   const folioInfos = pageFolioInfos(pages.map((p) => p.templateId));
+  let first = true;
   for (let i = 0; i < pages.length; i++) {
-    const canvas = await renderFaceToCanvas(pages[i]!, resolveImage, {
+    const page = pages[i]!;
+    const canvas = await renderFaceToCanvas(page, resolveImage, {
       scale, total,
       folio: folioInfos[i]?.folio ?? null,
       folioSide: folioInfos[i]?.side ?? 'right',
     });
-    const img = canvas.toDataURL('image/jpeg', jpegQuality);
-    if (i > 0) doc.addPage([PAGE.width, PAGE.height], 'portrait');
-    doc.addImage(img, 'JPEG', 0, 0, PAGE.width, PAGE.height);
+    // 双宽页切成左右两张 A4 依次写入 —— PDF 保持纯竖版,可直送印刷。
+    const faces = isSpreadTemplate(page.templateId) ? splitSpreadCanvas(canvas) : [canvas];
+    for (const face of faces) {
+      const img = face.toDataURL('image/jpeg', jpegQuality);
+      if (!first) doc.addPage([PAGE.width, PAGE.height], 'portrait');
+      first = false;
+      doc.addImage(img, 'JPEG', 0, 0, PAGE.width, PAGE.height);
+    }
     options.onProgress?.(i + 1, total);
   }
 
