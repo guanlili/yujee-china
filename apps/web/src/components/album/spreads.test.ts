@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { TEMPLATE_IDS, TEMPLATES } from '@yujee/contracts/templates';
-import { buildSpreads, isSoloSpread, spreadIndexOfPage } from './spreads';
+import {
+  buildSpreads,
+  isSoloSpread,
+  spreadFullPage,
+  spreadIndexOfPage,
+  spreadPageIndices,
+  spreadRenderKind,
+} from './spreads';
 import type { EditorPage } from './types';
 
 // Real template ids carry the category we group by. Cover ids are derived from the
@@ -29,28 +36,28 @@ test('cover opens recto, interior pages pair in between', () => {
     page('mag-19', 4), // interior
   ];
   assert.deepEqual(buildSpreads(pages), [
-    { left: null, right: 0 }, // cover solo (recto)
-    { left: 1, right: 2 }, // interior pair
-    { left: 3, right: 4 }, // interior pair
+    { kind: 'pair', left: null, right: 0 }, // cover solo (recto)
+    { kind: 'pair', left: 1, right: 2 }, // interior pair
+    { kind: 'pair', left: 3, right: 4 }, // interior pair
   ]);
 });
 
 test('cover + one interior leaves the interior with a blank facing half', () => {
   const pages = [page(COVER_A!, 0), page('mag-03', 1)];
   assert.deepEqual(buildSpreads(pages), [
-    { left: null, right: 0 },
-    { left: 1, right: null },
+    { kind: 'pair', left: null, right: 0 },
+    { kind: 'pair', left: 1, right: null },
   ]);
 });
 
 test('interior-only pairs two-up, odd gets a blank half', () => {
   assert.deepEqual(
     buildSpreads([page('mag-03', 0), page('mag-05', 1)]),
-    [{ left: 0, right: 1 }],
+    [{ kind: 'pair', left: 0, right: 1 }],
   );
   assert.deepEqual(
     buildSpreads([page('mag-03', 0), page('mag-05', 1), page('mag-06', 2)]),
-    [{ left: 0, right: 1 }, { left: 2, right: null }],
+    [{ kind: 'pair', left: 0, right: 1 }, { kind: 'pair', left: 2, right: null }],
   );
 });
 
@@ -79,10 +86,10 @@ test('ending closes verso; full cover→interior→ending lays out solo + paired
     page('mag-20', 4), // ending (solo verso)
   ];
   assert.deepEqual(buildSpreads(pages), [
-    { left: null, right: 0 }, // cover solo
-    { left: 1, right: 2 }, // interior pair
-    { left: 3, right: null }, // odd interior flushed before ending → blank half
-    { left: 4, right: null }, // ending solo (verso)
+    { kind: 'pair', left: null, right: 0 }, // cover solo
+    { kind: 'pair', left: 1, right: 2 }, // interior pair
+    { kind: 'pair', left: 3, right: null }, // odd interior flushed before ending → blank half
+    { kind: 'pair', left: 4, right: null }, // ending solo (verso)
   ]);
 });
 
@@ -95,10 +102,10 @@ test('a second cover mid-document re-aligns following interior parity', () => {
     page('mag-06', 4), // interior
   ];
   assert.deepEqual(buildSpreads(pages), [
-    { left: null, right: 0 }, // cover solo
-    { left: 1, right: null }, // lone interior flushed before the second cover
-    { left: null, right: 2 }, // second cover solo recto
-    { left: 3, right: 4 }, // interior pair, parity re-based after the cover
+    { kind: 'pair', left: null, right: 0 }, // cover solo
+    { kind: 'pair', left: 1, right: null }, // lone interior flushed before the second cover
+    { kind: 'pair', left: null, right: 2 }, // second cover solo recto
+    { kind: 'pair', left: 3, right: 4 }, // interior pair, parity re-based after the cover
   ]);
   // spreadIndexOfPage must follow the shifted parity, not a flat /2.
   assert.equal(spreadIndexOfPage(buildSpreads(pages), 3), 3);
@@ -114,10 +121,10 @@ test('an ending mid-document forces the next interior onto a fresh pair', () => 
     page('mag-06', 4), // interior
   ];
   assert.deepEqual(buildSpreads(pages), [
-    { left: null, right: 0 }, // cover solo
-    { left: 1, right: null }, // lone interior flushed before the ending
-    { left: 2, right: null }, // ending solo verso
-    { left: 3, right: 4 }, // fresh interior pair after the ending
+    { kind: 'pair', left: null, right: 0 }, // cover solo
+    { kind: 'pair', left: 1, right: null }, // lone interior flushed before the ending
+    { kind: 'pair', left: 2, right: null }, // ending solo verso
+    { kind: 'pair', left: 3, right: 4 }, // fresh interior pair after the ending
   ]);
 });
 
@@ -133,12 +140,12 @@ test('skip cover: an album with no cover starts straight into a paired interior 
     page('mag-06', 2), // interior
     page('mag-20', 3), // ending (solo verso)
   ];
-  // No leading { left: null, right: 0 } cover spread is fabricated — the first
+  // No leading { kind: 'pair', left: null, right: 0 } cover spread is fabricated — the first
   // interior pair is the first spread. The ending still closes solo.
   assert.deepEqual(buildSpreads(pages), [
-    { left: 0, right: 1 }, // interior pair (book opens here, no blank cover page)
-    { left: 2, right: null }, // odd interior flushed before the ending
-    { left: 3, right: null }, // ending solo verso
+    { kind: 'pair', left: 0, right: 1 }, // interior pair (book opens here, no blank cover page)
+    { kind: 'pair', left: 2, right: null }, // odd interior flushed before the ending
+    { kind: 'pair', left: 3, right: null }, // ending solo verso
   ]);
 });
 
@@ -148,11 +155,11 @@ test('skip ending: an album with a cover but no ending closes on a paired interi
     page('mag-03', 1), // interior
     page('mag-05', 2), // interior
   ];
-  // No trailing { left: i, right: null } ending spread is fabricated — the book
+  // No trailing { kind: 'pair', left: i, right: null } ending spread is fabricated — the book
   // just ends on the last interior pair (which here is complete, no blank half).
   assert.deepEqual(buildSpreads(pages), [
-    { left: null, right: 0 }, // cover solo recto
-    { left: 1, right: 2 }, // interior pair closes the book
+    { kind: 'pair', left: null, right: 0 }, // cover solo recto
+    { kind: 'pair', left: 1, right: 2 }, // interior pair closes the book
   ]);
 });
 
@@ -164,8 +171,8 @@ test('skip both: an interior-only album never gets a fabricated blank solo sprea
     page('mag-19', 3),
   ];
   assert.deepEqual(buildSpreads(pages), [
-    { left: 0, right: 1 },
-    { left: 2, right: 3 },
+    { kind: 'pair', left: 0, right: 1 },
+    { kind: 'pair', left: 2, right: 3 },
   ]);
 });
 
@@ -179,14 +186,14 @@ test('empty book: zero pages yields zero spreads (no crash, no blank page)', () 
 // ── solo-page classification (FlipBook single-page render). A cover/ending sits
 // on its own spread and must render as ONE centered page (no blank facing half,
 // no spine). The trap: an interior odd-trailing page has the IDENTICAL shape
-// ({ left: i, right: null }) but its blank half is normal spread whitespace and
+// ({ kind: 'pair', left: i, right: null }) but its blank half is normal spread whitespace and
 // must stay — so isSoloSpread keys off the occupied page's category, never off
 // "a half is null".
 
 test('isSoloSpread: cover-solo (left null, right=cover) is solo', () => {
   const pages = [page(COVER_A!, 0), page('mag-03', 1), page('mag-05', 2)];
   const spreads = buildSpreads(pages);
-  // [{ left: null, right: 0 }, { left: 1, right: 2 }]
+  // [{ kind: 'pair', left: null, right: 0 }, { kind: 'pair', left: 1, right: 2 }]
   assert.equal(isSoloSpread(spreads[0], pages), true);
 });
 
@@ -198,7 +205,7 @@ test('isSoloSpread: ending-solo (left=ending, right null) is solo', () => {
     page('mag-20', 3), // ending (solo verso)
   ];
   const spreads = buildSpreads(pages);
-  const endingSpread = spreads.find((s) => s.left === 3);
+  const endingSpread = spreads.find((s) => s.kind === 'pair' && s.left === 3);
   assert.ok(endingSpread, 'expected an ending spread holding page 3');
   assert.equal(isSoloSpread(endingSpread, pages), true);
 });
@@ -208,8 +215,8 @@ test('isSoloSpread: interior odd-trailing { left:i, right:null } is NOT solo (ke
   // facing half. That blank half is normal whitespace, NOT a solo page.
   const pages = [page('mag-03', 0), page('mag-05', 1), page('mag-06', 2)];
   const spreads = buildSpreads(pages);
-  // [{ left: 0, right: 1 }, { left: 2, right: null }]
-  assert.deepEqual(spreads[1], { left: 2, right: null });
+  // [{ kind: 'pair', left: 0, right: 1 }, { kind: 'pair', left: 2, right: null }]
+  assert.deepEqual(spreads[1], { kind: 'pair', left: 2, right: null });
   assert.equal(
     isSoloSpread(spreads[1], pages),
     false,
@@ -219,12 +226,113 @@ test('isSoloSpread: interior odd-trailing { left:i, right:null } is NOT solo (ke
 
 test('isSoloSpread: a paired interior spread is never solo', () => {
   const pages = [page('mag-03', 0), page('mag-05', 1)];
-  const spreads = buildSpreads(pages); // [{ left: 0, right: 1 }]
+  const spreads = buildSpreads(pages); // [{ kind: 'pair', left: 0, right: 1 }]
   assert.equal(isSoloSpread(spreads[0], pages), false);
 });
 
 test('isSoloSpread: undefined / out-of-range spread is not solo (no crash)', () => {
   const pages = [page(COVER_A!, 0)];
   assert.equal(isSoloSpread(undefined, pages), false);
-  assert.equal(isSoloSpread({ left: 99, right: null }, pages), false);
+  assert.equal(isSoloSpread({ kind: 'pair', left: 99, right: null }, pages), false);
+});
+
+// ── #303 双宽跨页(spread:true)。一个双宽模板 = 一张 1588×1123 的画布,独占一整个
+// 物理跨页,所以它是 { kind: 'full', page } —— 一整张面,不是左右两半。
+//
+// 这里用判别式联合而不是可选的 `full?` 字段,正是因为可选字段让「忘记处理双宽」
+// 不产生编译错误:翻书 / 画板总览 / 拼图 / Live 视频 / 焦点页五个消费者都曾静默把
+// 双宽页降级成一个空白跨页。改成联合后,不先窄化 kind 就读 .left 是类型错误。
+
+test('a spread template owns a whole physical spread (kind: full)', () => {
+  const pages = [
+    page(COVER_A!, 0), // cover — solo recto
+    page('mag-03', 1), // interior
+    page('mag-54', 2), // 双宽 — 独占一整个跨页
+    page('mag-05', 3), // interior
+  ];
+  assert.deepEqual(buildSpreads(pages), [
+    { kind: 'pair', left: null, right: 0 }, // cover solo recto
+    // 双宽页来之前那个落单的内页要先把当前跨页收掉(右半留空),否则双宽页会被
+    // 当成右半塞进去,整本从这里开始错位。
+    { kind: 'pair', left: 1, right: null },
+    { kind: 'full', page: 2 }, // 双宽页独占
+    { kind: 'pair', left: 3, right: null }, // 双宽页之后从新跨页的左半重新起排
+  ]);
+});
+
+test('two adjacent interiors before a spread still pair normally', () => {
+  const pages = [page('mag-03', 0), page('mag-05', 1), page('mag-54', 2)];
+  assert.deepEqual(buildSpreads(pages), [
+    { kind: 'pair', left: 0, right: 1 },
+    { kind: 'full', page: 2 },
+  ]);
+});
+
+test('spreadIndexOfPage finds a full (double-wide) spread by its page index', () => {
+  const pages = [page(COVER_A!, 0), page('mag-03', 1), page('mag-54', 2), page('mag-05', 3)];
+  const spreads = buildSpreads(pages);
+  assert.equal(spreadIndexOfPage(spreads, 2), 2, '双宽页必须能被它的页下标找到');
+  assert.equal(spreadIndexOfPage(spreads, 3), 3);
+  assert.equal(spreadIndexOfPage(spreads, 99), -1);
+});
+
+test('isSoloSpread: a full (double-wide) spread is NOT solo — it keeps the full width', () => {
+  const pages = [page('mag-54', 0)];
+  const spreads = buildSpreads(pages);
+  assert.deepEqual(spreads, [{ kind: 'full', page: 0 }]);
+  // solo = 「单页 leaf」(封面/封尾,容器收窄成单页宽)。双宽页刚好相反:它要占满
+  // 双页宽。若这里回 true,翻书会把它塞进半页宽的容器里。
+  assert.equal(isSoloSpread(spreads[0], pages), false);
+});
+
+test('spreadFullPage / spreadPageIndices expose a full spread as ONE face, not two halves', () => {
+  const pages = [page('mag-03', 0), page('mag-54', 1)];
+  const [pair, full] = buildSpreads(pages);
+  assert.equal(spreadFullPage(full), 1);
+  assert.equal(spreadFullPage(pair), null, '普通跨页不是双宽页');
+  assert.equal(spreadFullPage(undefined), null);
+  // 「这个跨页上有哪些页」—— 双宽页只有一页(它自己),不是两个 null。
+  // I5 回归:authoringFocusPageIndex 取的就是这个列表的第一项;若它是空,AI 改稿会
+  // 回落到 pageIndex 0(封面)—— 写错页。
+  assert.deepEqual(spreadPageIndices(full), [1]);
+  assert.deepEqual(spreadPageIndices(pair), [0]);
+  assert.deepEqual(spreadPageIndices(undefined), []);
+});
+
+test('no-spread regression: an album with no spread template is all kind:pair', () => {
+  const pages = [page(COVER_A!, 0), page('mag-03', 1), page('mag-05', 2), page('mag-20', 3)];
+  const spreads = buildSpreads(pages);
+  assert.ok(
+    spreads.every((s) => s.kind === 'pair'),
+    '不含双宽模板的相册必须逐个跨页与改造前完全一致(全部 pair)',
+  );
+  assert.deepEqual(spreads, [
+    { kind: 'pair', left: null, right: 0 },
+    { kind: 'pair', left: 1, right: 2 },
+    { kind: 'pair', left: 3, right: null },
+  ]);
+});
+
+// ── spreadRenderKind:翻书 / 画板 / 拼图 / Live 视频四个画面共用的三选一分类。
+// 双宽页最容易被误判成 'solo'(两者都「只有一页」),但它们的容器宽度恰好相反:
+// solo 收窄成单页宽,full 撑满双页宽。
+
+test('spreadRenderKind: full > solo > pair, and a full spread is never solo', () => {
+  const pages = [
+    page(COVER_A!, 0), // cover → solo
+    page('mag-03', 1), // 落单内页 → pair(空白半页是正常留白)
+    page('mag-54', 2), // 双宽 → full
+    page('mag-05', 3),
+    page('mag-06', 4),
+    page('mag-20', 5), // ending → solo
+  ];
+  const spreads = buildSpreads(pages);
+  assert.deepEqual(
+    spreads.map((s) => spreadRenderKind(s, pages)),
+    ['solo', 'pair', 'full', 'pair', 'solo'],
+  );
+});
+
+test('spreadRenderKind: a missing spread degrades to pair (no crash)', () => {
+  assert.equal(spreadRenderKind(undefined, []), 'pair');
 });
