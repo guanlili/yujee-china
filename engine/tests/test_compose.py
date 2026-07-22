@@ -437,7 +437,9 @@ def test_chapter_raising_does_not_fail_the_job(monkeypatch):
 
     asyncio.run(compose_flow.run_with_timeout(_compose_request()))
 
-    assert [e.event for e in seen] == ["progress", "completed"]
+    # 逐章心跳后事件序列是 progress×(N+1) + completed;关键是一个 failed 都没有。
+    assert [e.event for e in seen][-1] == "completed"
+    assert not [e for e in seen if e.event == "failed"]
     completed = [e for e in seen if e.event == "completed"]
     assert completed[0].pagesTexts == {1: {"title": "写出来了"}}
     assert completed[0].coverTexts == {"title": "我的书"}
@@ -461,11 +463,93 @@ def test_global_raising_does_not_fail_the_job(monkeypatch):
 
     asyncio.run(compose_flow.run_with_timeout(_compose_request()))
 
-    assert [e.event for e in seen] == ["progress", "completed"]
+    assert [e.event for e in seen][-1] == "completed"
+    assert not [e for e in seen if e.event == "failed"]
     assert [e for e in seen if e.event == "completed"][0].pagesTexts == {
         0: {"title": "有"},
         1: {"title": "有"},
     }
+
+
+def test_每章完成都发一次心跳_共_n_加一次_progress(monkeypatch):
+    """Web 侧靠 progress 心跳判活。只在 t=0 发一次的话,10 章的大书会被 Web 的僵尸
+    扫描当成卡死扫掉,成稿回调回来时 job 已 FAILED,整本书的文案被静默丢弃。"""
+    from src.workflows import compose as compose_flow
+    from src.workflows.core.compose.schema import ComposeChapterResult, ComposeGlobalResult
+
+    seen = _capture_callbacks(monkeypatch)
+
+    async def fake_chapter(chapter, *, language):
+        return ComposeChapterResult(pages_texts={chapter.pages[0].pageIndex: {"title": "有"}})
+
+    async def fake_global(**kwargs):
+        return ComposeGlobalResult()
+
+    monkeypatch.setattr(compose_flow.compose_agent, "compose_chapter", fake_chapter)
+    monkeypatch.setattr(compose_flow.compose_agent, "compose_global", fake_global)
+
+    asyncio.run(compose_flow.run_with_timeout(_compose_request(chapter_count=4)))
+
+    progresses = [e.progress for e in seen if e.event == "progress"]
+    assert len(progresses) == 5  # t=0 起手 + 每章一次
+    assert progresses[0] == 0
+    assert progresses == sorted(progresses)  # 只进不退
+    assert progresses[-1] == 95  # 收尾留给 completed 的 100
+    assert [e.stage for e in seen if e.event == "progress"] == ["compose"] * 5
+
+
+def test_写不出来的章也发心跳(monkeypatch):
+    """掉队的章同样要推进心跳 —— 否则一章卡住就再没有判活信号。"""
+    from src.workflows import compose as compose_flow
+    from src.workflows.core.compose.schema import ComposeChapterResult, ComposeGlobalResult
+
+    seen = _capture_callbacks(monkeypatch)
+
+    async def fake_chapter(chapter, *, language):
+        if chapter.chapterId == "c0":
+            raise RuntimeError("这一章炸了")
+        return ComposeChapterResult(pages_texts={chapter.pages[0].pageIndex: {"title": "有"}})
+
+    async def fake_global(**kwargs):
+        return ComposeGlobalResult()
+
+    monkeypatch.setattr(compose_flow.compose_agent, "compose_chapter", fake_chapter)
+    monkeypatch.setattr(compose_flow.compose_agent, "compose_global", fake_global)
+
+    asyncio.run(compose_flow.run_with_timeout(_compose_request(chapter_count=2)))
+
+    assert len([e for e in seen if e.event == "progress"]) == 3
+    assert len([e for e in seen if e.event == "completed"]) == 1
+
+
+def test_心跳发不出去也不阻断交付(monkeypatch):
+    """失败绝不阻断交付:progress 回调整个挂掉,书照样成稿。"""
+    from src.workflows import compose as compose_flow
+    from src.workflows.core.compose.schema import ComposeChapterResult, ComposeGlobalResult
+
+    seen: list = []
+
+    async def flaky_post(url, envelope):
+        if envelope.event == "progress":
+            raise RuntimeError("callback 挂了")
+        seen.append(envelope)
+        return True
+
+    monkeypatch.setattr(compose_flow.callback, "post", flaky_post)
+
+    async def fake_chapter(chapter, *, language):
+        return ComposeChapterResult(pages_texts={chapter.pages[0].pageIndex: {"title": "有"}})
+
+    async def fake_global(**kwargs):
+        return ComposeGlobalResult()
+
+    monkeypatch.setattr(compose_flow.compose_agent, "compose_chapter", fake_chapter)
+    monkeypatch.setattr(compose_flow.compose_agent, "compose_global", fake_global)
+
+    asyncio.run(compose_flow.run_with_timeout(_compose_request(chapter_count=2)))
+
+    assert [e.event for e in seen] == ["completed"]
+    assert seen[0].pagesTexts == {0: {"title": "有"}, 1: {"title": "有"}}
 
 
 def test_compose_trace_summary_never_carries_base64(monkeypatch):

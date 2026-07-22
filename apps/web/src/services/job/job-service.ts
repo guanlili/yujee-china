@@ -29,6 +29,16 @@ import { bakePagesHtml, type BakeablePage } from '@/services/album/bake-html';
 // 0→100)各自独立,不再共享一行 agent_jobs 用哨兵进度串联。
 
 const ZOMBIE_TIMEOUT_MS = 5 * 60 * 1000;
+// ④ 成稿(compose)是全链路唯一的 AI 调用:按章并发让 Gemini 看真图 + 写全书文案,
+// 10 章的书跑过 5 分钟完全正常。engine 侧后台预算是 background_task_timeout_seconds
+// (600s),这里必须留在它之上再加回调余量,否则 Web 会在成稿回调回来之前把 job 标成
+// FAILED,回调进门第一句就 return,整本书的文案被静默丢弃(重试还撞同一堵墙)。
+const COMPOSE_ZOMBIE_TIMEOUT_MS = 12 * 60 * 1000;
+
+// 僵尸超时按 job kind 分档。engine 侧 compose 有逐章心跳,真卡死照样能在 12 分钟被扫掉。
+export function zombieTimeoutMsFor(kind: string | null | undefined): number {
+  return kind === 'compose' ? COMPOSE_ZOMBIE_TIMEOUT_MS : ZOMBIE_TIMEOUT_MS;
+}
 
 export type GenerationResolution =
   | { kind: 'progress'; stage: string | null; progress: number }
@@ -255,7 +265,7 @@ export const jobService = {
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return null;
 
     const since = job.startedAt ?? job.createdAt;
-    if (now.getTime() - since.getTime() > ZOMBIE_TIMEOUT_MS) {
+    if (now.getTime() - since.getTime() > zombieTimeoutMsFor(job.kind)) {
       const { swept } = await this.sweepStaleJob(job.id, now);
       if (swept) return { kind: 'swept' };
     }
@@ -265,7 +275,8 @@ export const jobService = {
   async sweepStaleJob(
     jobId: string,
     now: Date,
-    timeoutMs: number = ZOMBIE_TIMEOUT_MS,
+    // 不传 = 按 job kind 取默认档(compose 走 12 分钟,其余 5 分钟)。
+    timeoutMs?: number,
   ): Promise<{ swept: boolean; releasedHold: boolean }> {
     return db.transaction(async (tx) => {
       const job = await agentJobRepo.findByIdForUpdate(tx, jobId);
@@ -273,14 +284,18 @@ export const jobService = {
       if (job.status === 'COMPLETED' || job.status === 'FAILED') {
         return { swept: false, releasedHold: false };
       }
+      const effectiveTimeoutMs = timeoutMs ?? zombieTimeoutMsFor(job.kind);
       const since = job.startedAt ?? job.createdAt;
-      if (now.getTime() - since.getTime() <= timeoutMs) {
+      if (now.getTime() - since.getTime() <= effectiveTimeoutMs) {
         return { swept: false, releasedHold: false };
       }
 
       await agentJobRepo.update(tx, job.id, {
         status: 'FAILED',
-        error: { code: 'AGENT_TIMEOUT', message: `${job.status} > ${timeoutMs}ms without callback` },
+        error: {
+          code: 'AGENT_TIMEOUT',
+          message: `${job.status} > ${effectiveTimeoutMs}ms without callback`,
+        },
         completedAt: now,
       });
 

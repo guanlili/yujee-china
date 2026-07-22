@@ -1718,8 +1718,10 @@ export function ChatPanel({
     // 轮询草稿骨架,封面页一出现就派发 `yujee:authoring-pages-ready` 原地刷画板 —— 与
     // waitForLayoutThenRefresh 同一套机制(ChatPanel 不重挂,对话历史不丢)。
     async function waitForComposeThenRefresh(host: HTMLElement, recap?: HTMLElement) {
-      // 兜底封顶:Agent 自身有超时预算,成稿通常 1 分钟内落地。
-      const deadline = Date.now() + 5 * 60 * 1000;
+      // 兜底封顶:与服务端 job-service.COMPOSE_ZOMBIE_TIMEOUT_MS 同档(12 分钟),两处同改。
+      // 10 章的大书按章并发看图写文案,跑过 5 分钟很正常 —— 封顶太短会在书落地前就
+      // 把回执撤掉并谎报失败,几十秒后书又冒出来。
+      const deadline = Date.now() + 12 * 60 * 1000;
       while (!disposed && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 2500));
         if (disposed) return;
@@ -1747,11 +1749,14 @@ export function ChatPanel({
         }
       }
       if (!disposed) {
+        // 轮询到封顶不等于成稿失败:job 可能还在跑(服务端同档超时才判死)。回执卡留着
+        // (撤了不会重建),也不重新给选择卡 —— 只告诉用户还在写,回头再来看。
         settleThinking(host, 'analyzedFeedback');
-        recap?.remove(); // 没成稿:回执撤掉(刷新重进的续跑态没有本地回执),重新给选择卡
-        appendReplyBody(host, aT('设计这步没跑成,稍后再试一下。', 'The design step failed — try again in a moment.'));
-        designOfferShown = false;
-        void offerDesignCard();
+        appendReplyBody(
+          host,
+          aT('还在写呢,这本有点长。稍后回来看看,写好会直接出现在画板上。',
+             'Still writing — this one is a long book. Come back in a bit and it will show up on the canvas.'),
+        );
       }
     }
 

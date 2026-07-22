@@ -28,6 +28,7 @@ import {
 import {
   ComposeRequest,
   Page,
+  V3AnalyzeImageDataUrl,
   V3LayoutTree,
   V3StoryDraft,
   type ImagePos,
@@ -216,6 +217,16 @@ function titleOfChapterPages(pages: V3Page[]): string | undefined {
   return undefined;
 }
 
+// PG 唯一索引冲突(SQLSTATE 23505)。只有它才代表「已经有一条在途 job」,别的 DB 错误
+// (连接断开、序列化失败、枚举值不存在)绝不能被当成幂等成功吞掉。
+function isUniqueViolation(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return false;
+  const record = e as { code?: unknown; cause?: unknown };
+  if (record.code === '23505') return true;
+  // 驱动/ORM 可能把原始错误包一层(drizzle 的 DrizzleQueryError 就挂在 cause 上)。
+  return record.cause ? isUniqueViolation(record.cause) : false;
+}
+
 /**
  * ④ 成稿请求装配(纯函数,便于单测):按章切片 —— 每章带【真实照片 200px 缩略图】+
  * 【用户讲的故事(chapterContext)】+【本章已选定版式的页】,封面/封尾只给文字槽 spec。
@@ -248,7 +259,10 @@ export function buildComposeRequest(input: {
     );
     const photos = (chapter.photos ?? []).flatMap((photo) => {
       const ref200px = input.refs[photo.photoId];
-      if (!ref200px) return [];
+      // 缺 ref 跳过;格式不合法/超 800KB 的 ref 同样只当这一张缺席 —— 否则一张坏图会
+      // 让整个 ComposeRequest 校验失败,用户拿 400、整本书写不出来,与「少一张也照常
+      // 出稿」的硬约束相悖。
+      if (!ref200px || !V3AnalyzeImageDataUrl.safeParse(ref200px).success) return [];
       return [
         {
           photoId: photo.photoId,
@@ -1161,13 +1175,33 @@ export const albumService = {
         });
         await jobService.markRunning(tx, created.id);
       });
-    } catch {
-      // 已有在途成稿:幂等接受(前端继续轮询那一单),不建第二个 job、不重复烧 Gemini,
-      // 也不再追加一条用户气泡。
+    } catch (e) {
+      // 只有唯一索引冲突(23505)才是「已有在途成稿」:幂等接受(前端继续轮询那一单),
+      // 不建第二个 job、不重复烧 Gemini,也不再追加一条用户气泡。
+      // 其余 DB 错误(连接断开、事务序列化失败、迁移没跑导致 agent_job_kind 缺 'compose')
+      // 必须原样抛 —— 吞掉它们等于把「迁移没上」伪装成「模型没写出来」,用户还会拿着
+      // accepted:true 去轮询一个根本不存在的 job。
+      if (!isUniqueViolation(e)) {
+        logger.error({ err: String(e), requestId, albumId }, 'create compose job failed');
+        throw e;
+      }
       return { requestId, accepted: true as const };
     }
 
-    // 先落「用户选了这组封面」这条消息(回放靠 designApplied 标记原位重建回执卡),
+    try {
+      await agentClient.submitComposeV3(payload);
+    } catch (e) {
+      logger.error({ err: String(e), requestId, albumId }, 'agent v3 compose submit failed');
+      await jobService.handleV3Failed(requestId, {
+        code: 'AGENT_INTERNAL_ERROR',
+        message: 'Failed to submit compose to agent',
+      });
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+
+    // submit 成功之后才落「用户选了这组封面」这条消息(回放靠 designApplied 标记原位重建
+    // 回执卡)。放在 submit 之前的话,提交失败会在对话里留下一条孤儿封面回执卡 —— 刷新
+    // 回放能看到「就用这组封面」,却永远等不来成稿。
     // assistant 的成稿回执由回调侧在真成稿后补 —— 失败时对话里不会留下假的「写好了」。
     await albumMessageRepo.create(db, {
       albumId,
@@ -1183,17 +1217,6 @@ export const albumService = {
         },
       },
     });
-
-    try {
-      await agentClient.submitComposeV3(payload);
-    } catch (e) {
-      logger.error({ err: String(e), requestId, albumId }, 'agent v3 compose submit failed');
-      await jobService.handleV3Failed(requestId, {
-        code: 'AGENT_INTERNAL_ERROR',
-        message: 'Failed to submit compose to agent',
-      });
-      throw ERRORS.AGENT_INTERNAL_ERROR();
-    }
 
     return { requestId, accepted: true as const };
   },

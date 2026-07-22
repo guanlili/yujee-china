@@ -57,6 +57,14 @@ async def _emit_progress(job: _Job, stage: V3JobStage, progress: int) -> None:
     await callback.post(str(job.req.callbackUrl), envelope)
 
 
+async def _emit_progress_safe(job: _Job, stage: V3JobStage, progress: int) -> None:
+    """心跳专用:发不出去只记一条 warning。失败绝不阻断交付。"""
+    try:
+        await _emit_progress(job, stage, progress)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("v3_compose.progress_dropped", progress=progress, error=str(exc))
+
+
 async def _emit_failure(
     job: _Job,
     *,
@@ -127,14 +135,37 @@ async def _run_compose(job: _Job) -> None:
         input=_trace_json(_trace_request_summary(req)),
         output="进入 ④ 成稿:按章并发写文案 + 全局封面/字体。",
     )
-    await _emit_progress(job, "compose", 0)
+    await _emit_progress_safe(job, "compose", 0)
 
     # 章节批次与全局批次全部并发,信号量控住同时在飞的 Gemini 调用数。
     semaphore = asyncio.Semaphore(settings.compose_max_concurrency)
 
+    # 逐章心跳:每完成一章(写出来或掉队)发一次 progress。这既是 Web 侧的判活信号
+    # (只在 t=0 发一次的话,大书会被僵尸扫描当卡死扫掉,成稿回调回来时 job 已 FAILED,
+    # 整本书的文案被静默丢弃),也让用户看到真实进度而不是死住的转圈。
+    # 0 → 95 留给 completed 收尾的 100。
+    total_chapters = len(req.chapters)
+    done_chapters = 0
+
+    async def chapter_heartbeat() -> None:
+        nonlocal done_chapters
+        done_chapters += 1
+        if total_chapters <= 0:
+            return
+        await _emit_progress_safe(job, "compose", int(done_chapters * 95 / total_chapters))
+
     async def chapter_task(chapter: Any):
         async with semaphore:
-            return await compose_agent.compose_chapter(chapter, language=req.language)
+            try:
+                result = await compose_agent.compose_chapter(chapter, language=req.language)
+            except asyncio.CancelledError:
+                # 取消(整体超时)不算「这一章跑完」:不发心跳,原样抛给超时分支。
+                raise
+            except BaseException:
+                await chapter_heartbeat()
+                raise
+            await chapter_heartbeat()
+            return result
 
     async def global_task():
         try:
