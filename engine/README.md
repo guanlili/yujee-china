@@ -81,7 +81,7 @@ Important local `.env` fields:
 | `WEB_BASE_URL` | Web origin for callbacks |
 | `AGENT_PIPELINE_MODE` | `mock` or `real` |
 | `ARK_API_KEY` / `OPENAI_API_KEY` | Vision provider slots, depending on settings |
-| `SELECT_LAYOUT_API_KEY` | Gemini layout judge slot; missing/unavailable falls back where code allows |
+| `SELECT_LAYOUT_API_KEY` | The one Gemini slot (name is historical). Its only consumer is ④ `/v3/compose`; `/v3/select-layout` itself is deterministic and needs no key. `mode=real` fails fast without it: compose degrades *silently* (green `completed`, empty `pagesTexts`, book full of template samples). |
 | `PORT` | Defaults to `8001` |
 
 ## Run

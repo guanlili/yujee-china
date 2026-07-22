@@ -99,10 +99,14 @@ class Settings(BaseSettings):
     grouping_clip_secret: str | None = None
     grouping_clip_timeout_seconds: int = 180
 
-    # Stage2 select-layout: Gemini native generateContent. The default base URL
-    # keeps the old `/openai` suffix for env compatibility; the handler strips it.
-    # Missing key is non-fatal for the stage: workflows/select_layout.py catches it
-    # and uses the deterministic skeleton fallback.
+    # 仓里唯一的 Gemini 槽(native generateContent)。名字是历史产物:select-layout
+    # 如今是纯确定性选版、根本不用 key,这把 key 唯一的消费者是 ④ /v3/compose 成稿。
+    # 没改名是因为它在 Fly 上是 out-of-band 设的 secret,改名要跟线上轮换同步做;
+    # 而且这组设置里的 max_images_per_batch 仍归 select-layout 用,不是干净的整组搬迁。
+    # 缺 key 时 compose 只 warning + 交付模板示例文案(静默降级),所以 mode=real 在
+    # src/main.py 启动时就 fail-fast 拦掉。
+    # The default base URL keeps the old `/openai` suffix for env compatibility;
+    # the handler strips it.
     select_layout_api_key: str | None = None
     select_layout_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     select_layout_model: str = "gemini-2.5-flash"

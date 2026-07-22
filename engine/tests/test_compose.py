@@ -139,17 +139,67 @@ def test_chapter_without_writable_slots_skips_the_call(monkeypatch):
     assert result.pages_texts == {} and called == []
 
 
-def test_chapter_without_gemini_key_returns_empty(monkeypatch):
+def test_chapter_without_gemini_key_skips_the_call(monkeypatch):
+    """缺 key 的闸门守卫:必须**一次调用都不发**(不然每章都往 googleapis 打无 key 请求)。
+
+    哨兵只能用计数器,不能靠在 fake 里 raise —— compose_chapter 的兜底是
+    `except Exception`,AssertionError 是它的子类,会被吞掉后照样返回空结果。"""
     monkeypatch.delenv("SELECT_LAYOUT_API_KEY", raising=False)
     from src import settings as s
 
     s.reset_settings_cache()
+    called: list[int] = []
 
     async def fake_generate(**kwargs):
-        raise AssertionError("缺 key 时不该发起调用")
+        called.append(1)
+        return _gemini_response("{}")
 
     monkeypatch.setattr(compose_handler.gemini_client, "generate_content", fake_generate)
-    assert asyncio.run(compose_handler.compose_chapter(_CHAPTER, language="zh")).pages_texts == {}
+    result = asyncio.run(compose_handler.compose_chapter(_CHAPTER, language="zh"))
+    assert result.pages_texts == {} and called == []
+
+
+def test_global_without_gemini_key_skips_the_call(monkeypatch):
+    """全局批次同一道闸门:缺 key 时落确定性兜底,不发调用。"""
+    monkeypatch.delenv("SELECT_LAYOUT_API_KEY", raising=False)
+    from src import settings as s
+
+    s.reset_settings_cache()
+    called: list[int] = []
+
+    async def fake_generate(**kwargs):
+        called.append(1)
+        return _gemini_response("{}")
+
+    monkeypatch.setattr(compose_handler.gemini_client, "generate_content", fake_generate)
+    result = asyncio.run(
+        compose_handler.compose_global(
+            language="zh",
+            album_title="我的书",
+            chapter_titles=["糖色"],
+            chapter_contexts=["海边度假"],
+            cover_slots=_COVER_SLOTS,
+            ending_slots=_ENDING_SLOTS,
+        )
+    )
+    assert called == []
+    assert result.cover_texts == {"title": "我的书"} and result.call_count == 0
+
+
+def test_chapter_with_malformed_item_index_returns_empty_not_raise(monkeypatch):
+    """页面 images 里的 `image[x]` 非数字下标会让 int() 抛 ValueError ——
+    它发生在模型调用之前,兜底的 try 必须从 page_specs 构建就罩住。"""
+    _set_key(monkeypatch)
+
+    async def fake_generate(**kwargs):
+        return _gemini_response('{"pages":[]}')
+
+    monkeypatch.setattr(compose_handler.gemini_client, "generate_content", fake_generate)
+    chapter = {
+        **_CHAPTER,
+        "pages": [{"pageIndex": 0, "templateId": "mag-10", "images": {"image[x]": "p1"}}],
+    }
+    assert asyncio.run(compose_handler.compose_chapter(chapter, language="zh")).pages_texts == {}
 
 
 # ── 全局批次(封面/封尾文案 + 字体) ──────────────────────────────────────────
@@ -364,6 +414,58 @@ def test_one_chapter_failing_does_not_fail_the_job(monkeypatch):
     assert len(completed) == 1
     assert completed[0].pagesTexts == {1: {"title": "写出来了"}}
     assert not [e for e in seen if e.event == "failed"]
+
+
+def test_chapter_raising_does_not_fail_the_job(monkeypatch):
+    """硬约束的最后一道门:章节任务**抛异常**(handler 兜底没罩住的边角)时,
+    也只是这一章掉队 —— 回调里绝不能出现 failed,其余章的文案照常交付。"""
+    from src.workflows import compose as compose_flow
+    from src.workflows.core.compose.schema import ComposeChapterResult, ComposeGlobalResult
+
+    seen = _capture_callbacks(monkeypatch)
+
+    async def fake_chapter(chapter, *, language):
+        if chapter.chapterId == "c0":
+            raise RuntimeError("page_specs 炸了")
+        return ComposeChapterResult(pages_texts={1: {"title": "写出来了"}}, call_count=1)
+
+    async def fake_global(**kwargs):
+        return ComposeGlobalResult(cover_texts={"title": "我的书"})
+
+    monkeypatch.setattr(compose_flow.compose_agent, "compose_chapter", fake_chapter)
+    monkeypatch.setattr(compose_flow.compose_agent, "compose_global", fake_global)
+
+    asyncio.run(compose_flow.run_with_timeout(_compose_request()))
+
+    assert [e.event for e in seen] == ["progress", "completed"]
+    completed = [e for e in seen if e.event == "completed"]
+    assert completed[0].pagesTexts == {1: {"title": "写出来了"}}
+    assert completed[0].coverTexts == {"title": "我的书"}
+
+
+def test_global_raising_does_not_fail_the_job(monkeypatch):
+    """全局批次抛出去同理:封面/字体退回空,书照常成稿。"""
+    from src.workflows import compose as compose_flow
+    from src.workflows.core.compose.schema import ComposeChapterResult
+
+    seen = _capture_callbacks(monkeypatch)
+
+    async def fake_chapter(chapter, *, language):
+        return ComposeChapterResult(pages_texts={chapter.pages[0].pageIndex: {"title": "有"}})
+
+    async def fake_global(**kwargs):
+        raise RuntimeError("global 炸了")
+
+    monkeypatch.setattr(compose_flow.compose_agent, "compose_chapter", fake_chapter)
+    monkeypatch.setattr(compose_flow.compose_agent, "compose_global", fake_global)
+
+    asyncio.run(compose_flow.run_with_timeout(_compose_request()))
+
+    assert [e.event for e in seen] == ["progress", "completed"]
+    assert [e for e in seen if e.event == "completed"][0].pagesTexts == {
+        0: {"title": "有"},
+        1: {"title": "有"},
+    }
 
 
 def test_compose_trace_summary_never_carries_base64(monkeypatch):

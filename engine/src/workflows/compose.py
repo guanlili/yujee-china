@@ -8,7 +8,9 @@
 sample 文案),不发 `failed`。只有整个任务超时/编排层崩了才回 `failed`。
 
 §隐私:照片 base64 只在请求内存里 —— 进模型上下文的那一次 HTTP body,以及经
-`ai_client` 统一脱敏的 trace;日志与 trace 摘要只记「有没有缩略图」。
+`ai_client` 统一脱敏的 trace;日志与 trace 摘要只记「有没有缩略图」。生产永不落盘;
+dev 观测台的 `ai-trace.jsonl` 是例外(`ai_client._write_jsonl` 会写完整 data URL 给
+本地观测台渲染,生产由 `_is_production()` 关掉)。
 """
 
 from __future__ import annotations
@@ -100,6 +102,22 @@ def _trace_request_summary(req: ComposeRequest) -> dict[str, Any]:
     }
 
 
+def _drop_failed_chapter(chapter: Any, result: Any):
+    """章节任务抛了异常 → 降级成空结果(该章保留模板 sample),并留下痕迹。
+
+    取消(CancelledError)不算「这一章写不出来」,原样抛回去交给超时分支处理。"""
+    if isinstance(result, asyncio.CancelledError):
+        raise result
+    if isinstance(result, BaseException):
+        log.warning(
+            "v3_compose.chapter_dropped",
+            chapter_id=str(getattr(chapter, "chapterId", "") or ""),
+            error=str(result),
+        )
+        return compose_agent.ComposeChapterResult()
+    return result
+
+
 async def _run_compose(job: _Job) -> None:
     started = time.monotonic()
     req = job.req
@@ -119,6 +137,13 @@ async def _run_compose(job: _Job) -> None:
             return await compose_agent.compose_chapter(chapter, language=req.language)
 
     async def global_task():
+        try:
+            return await _global_task_inner()
+        except Exception as exc:  # noqa: BLE001 — 全局批次也不许阻断交付
+            log.warning("v3_compose.global_dropped", error=str(exc))
+            return compose_agent.ComposeGlobalResult()
+
+    async def _global_task_inner():
         async with semaphore:
             return await compose_agent.compose_global(
                 language=req.language,
@@ -134,10 +159,19 @@ async def _run_compose(job: _Job) -> None:
                 ),
             )
 
+    # return_exceptions=True 是硬约束的最后一道门:章节任务哪怕抛出去(handler 的
+    # try 覆盖不到的边角、或未来新加的代码),也只让这一章掉队,不能把整本书打成
+    # failed。异常在这里降级成空结果,并带 chapterId 记一条 warning(绝不无声吞)。
     chapter_results, global_result = await asyncio.gather(
-        asyncio.gather(*(chapter_task(chapter) for chapter in req.chapters)),
+        asyncio.gather(
+            *(chapter_task(chapter) for chapter in req.chapters), return_exceptions=True
+        ),
         global_task(),
     )
+    chapter_results = [
+        _drop_failed_chapter(chapter, result)
+        for chapter, result in zip(req.chapters, chapter_results, strict=True)
+    ]
 
     # 页序在整册连续(select-layout 出的),各章之间不会撞 pageIndex。
     pages_texts: dict[int, dict[str, str]] = {}

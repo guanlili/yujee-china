@@ -18,8 +18,9 @@
 字体由代码按 场景×语言 查表填,AI 永不接触字体 id,也就不会选错字体。用户在设计卡里
 已经选过字体时(`user_font_choice`)直接采用用户的选择,连场景菜单都不发给模型。
 
-§隐私:照片 base64 只在请求内存里 —— 只作为 image 部件进这一次 HTTP body,永不落盘、
-永不进日志(trace 走 ai_client 的统一脱敏路径)。
+§隐私:照片 base64 只在请求内存里 —— 只作为 image 部件进这一次 HTTP body,永不进日志
+(trace 走 ai_client 的统一脱敏路径)。生产永不落盘;dev 观测台的 `ai-trace.jsonl` 是
+例外(见 `providers/ai_client._write_jsonl`,生产由 `_is_production()` 关掉)。
 """
 
 from __future__ import annotations
@@ -286,33 +287,35 @@ async def _gemini(messages: list[dict[str, Any]], *, temperature: float) -> tupl
 async def compose_chapter(chapter: Any, *, language: str = "zh") -> ComposeChapterResult:
     """给一章已选定版式的页面写满文案(真图 + 用户故事 → 逐页全部文字槽)。
 
-    没有任何可写文字槽时不调用模型。**任何**失败(缺 key / HTTP / JSON 解析不出)
-    都返回空结果 —— 调用方按「叠加合并」使用,该章页面保留模板 sample 文案。"""
-    page_specs: list[dict[str, Any]] = []
-    for page in _get(chapter, "pages", []) or []:
-        slots = _writable_text_slots(page)
-        if not slots:
-            continue
-        page_index = _get(page, "pageIndex")
-        if not isinstance(page_index, int) or isinstance(page_index, bool):
-            continue
-        page_specs.append(
-            {
-                "pageIndex": page_index,
-                "textSlots": slots,
-                "photoIds": _page_photo_ids(page),
-            }
-        )
-
-    if not page_specs:
-        return _EMPTY_CHAPTER
-
+    没有任何可写文字槽时不调用模型。**任何**失败(缺 key / HTTP / JSON 解析不出 /
+    页面数据畸形)都返回空结果 —— 调用方按「叠加合并」使用,该章页面保留模板 sample
+    文案。所以 try 必须从 page_specs 那一步就罩住:`_writable_text_slots` 会对畸形的
+    `image[x]` 下标抛 ValueError,漏在外面就会把整本书打成 failed。"""
     settings = get_settings()
-    if not settings.select_layout_api_key:
-        log.warning("compose.chapter_slot_unavailable", error="select_layout_api_key missing")
-        return _EMPTY_CHAPTER
-
     try:
+        page_specs: list[dict[str, Any]] = []
+        for page in _get(chapter, "pages", []) or []:
+            slots = _writable_text_slots(page)
+            if not slots:
+                continue
+            page_index = _get(page, "pageIndex")
+            if not isinstance(page_index, int) or isinstance(page_index, bool):
+                continue
+            page_specs.append(
+                {
+                    "pageIndex": page_index,
+                    "textSlots": slots,
+                    "photoIds": _page_photo_ids(page),
+                }
+            )
+
+        if not page_specs:
+            return _EMPTY_CHAPTER
+
+        if not settings.select_layout_api_key:
+            log.warning("compose.chapter_slot_unavailable", error="select_layout_api_key missing")
+            return _EMPTY_CHAPTER
+
         messages = _build_chapter_messages(chapter, page_specs, language=language)
         raw_text, in_tok, out_tok = await _gemini(messages, temperature=0.6)
         pages_texts = _parse_result(raw_text, page_specs)
@@ -361,7 +364,11 @@ def _legal_user_fonts(user_font_choice: Any) -> dict[str, str]:
 
 
 def _slot_texts(parsed: Any, key: str, slots: list[dict[str, Any]]) -> dict[str, str]:
-    """只收模板声明过的槽位,字符串值;缺槽给空串(Web 侧再兜标题=相册标题)。"""
+    """只收模板声明过的槽位,字符串值;缺槽给空串(Web 侧再兜标题=相册标题)。
+
+    注意这跟章节路径的约定相反:章节写不出来就不出现在 `pagesTexts` 里,封面/封尾却
+    把模型漏写的槽带着 `""` 回去。契约上已写明(见 `ComposeCompleted` docstring),
+    Web 侧写回时必须忽略空串。"""
     legal = {slot["id"] for slot in slots}
     raw = parsed.get(key) if isinstance(parsed, dict) else None
     out = {slot_id: "" for slot_id in legal}
@@ -406,46 +413,46 @@ async def compose_global(
                     cover_texts[slot["id"]] = album_title
         return cover_texts
 
-    payload: dict[str, Any] = {
-        "language": language,
-        "albumTitle": album_title,
-        # 章标题与章背景按章序对位;两边长度不齐时缺的补空串(不因为对不齐就整段不发)。
-        "chapters": [
-            {"title": title or "", "chapterContext": context or ""}
-            for title, context in zip_longest(chapter_titles, chapter_contexts, fillvalue="")
-        ],
-        "coverSlots": cover_slots,
-        "endingSlots": ending_slots,
-    }
-    if not fonts_fully_chosen:
-        # 场景菜单:AI 按各章题材匹配一个场景,输出场景名(见 compose_global.md)。
-        # 字体由代码按 场景×语言 查表填,不发字体给 AI。
-        payload["scenes"] = _scene_menu()
-
-    settings = get_settings()
-    if not settings.select_layout_api_key:
-        log.warning("compose.global_slot_unavailable", error="select_layout_api_key missing")
+    def _fallback() -> ComposeGlobalResult:
         return ComposeGlobalResult(
             cover_texts=_with_album_title({slot["id"]: "" for slot in cover_slots}),
             ending_texts={slot["id"]: "" for slot in ending_slots},
             fonts=_fonts(None),
         )
 
-    messages = [
-        {"role": "system", "content": load_prompt(_PROMPT_DIR / "compose_global.md")},
-        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-    ]
-
+    settings = get_settings()
+    # try 从载荷构建就罩住(load_prompt 读文件、payload 拼装都可能抛):
+    # 全局批次抛出去 = 整本书发 failed,而封面/字体本来就有确定性兜底。
     try:
+        payload: dict[str, Any] = {
+            "language": language,
+            "albumTitle": album_title,
+            # 章标题与章背景按章序对位;两边长度不齐时缺的补空串(不因为对不齐就整段不发)。
+            "chapters": [
+                {"title": title or "", "chapterContext": context or ""}
+                for title, context in zip_longest(chapter_titles, chapter_contexts, fillvalue="")
+            ],
+            "coverSlots": cover_slots,
+            "endingSlots": ending_slots,
+        }
+        if not fonts_fully_chosen:
+            # 场景菜单:AI 按各章题材匹配一个场景,输出场景名(见 compose_global.md)。
+            # 字体由代码按 场景×语言 查表填,不发字体给 AI。
+            payload["scenes"] = _scene_menu()
+
+        if not settings.select_layout_api_key:
+            log.warning("compose.global_slot_unavailable", error="select_layout_api_key missing")
+            return _fallback()
+
+        messages = [
+            {"role": "system", "content": load_prompt(_PROMPT_DIR / "compose_global.md")},
+            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+        ]
         raw_text, in_tok, out_tok = await _gemini(messages, temperature=0.7)
         parsed = ai_client.parse_json_loose(raw_text)
     except Exception as exc:  # noqa: BLE001 — 设计/封面绝不阻断交付
         log.warning("compose.global_fallback", error=str(exc))
-        return ComposeGlobalResult(
-            cover_texts=_with_album_title({slot["id"]: "" for slot in cover_slots}),
-            ending_texts={slot["id"]: "" for slot in ending_slots},
-            fonts=_fonts(None),
-        )
+        return _fallback()
 
     scene = parsed.get("scene") if isinstance(parsed, dict) else None
     return ComposeGlobalResult(

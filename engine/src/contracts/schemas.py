@@ -721,7 +721,11 @@ class ComposeCompleted(_V3Strict):
 
     `pagesTexts` 形状是 `{pageIndex: {slotId: 文案}}`(JSON 序列化后 key 是字符串)。
     **只含写出来的页**:某章写不出来 → 该章页面不出现在这里,Web 保留模板 sample 文案,
-    不发 `failed`(成稿是叠加性的一步,绝不阻断交付)。"""
+    不发 `failed`(成稿是叠加性的一步,绝不阻断交付)。
+
+    ⚠️ `coverTexts` / `endingTexts` 跟 `pagesTexts` 的约定**不一样**:它们按封面/封尾
+    模板声明的槽位给全 key,模型没写出来的槽带着**空串**回来(封面 title 槽会兜相册
+    标题,其余就是 `""`)。Web 侧写回时必须**忽略空串**,否则会把模板 sample 洗成空白。"""
 
     requestId: str = Field(min_length=1)
     jobKind: Literal["compose"]
