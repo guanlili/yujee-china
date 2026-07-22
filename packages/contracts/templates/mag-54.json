@@ -1,0 +1,11 @@
+{
+  "id": "mag-54",
+  "category": "interior",
+  "spread": true,
+  "images": [
+    { "id": "image1", "orientation": ["landscape"], "quality": ["hero"] }
+  ],
+  "texts": [
+    { "id": "title", "role": "title", "lang": "user", "variableDecor": true, "sample": "那一天" }
+  ]
+}

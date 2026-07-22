@@ -67,6 +67,7 @@ const EXPECTED_TEMPLATE_IDS = [
   'mag-51',
   'mag-52',
   'mag-53',
+  'mag-54',
   'p01',
 ];
 
