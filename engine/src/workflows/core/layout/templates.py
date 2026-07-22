@@ -64,6 +64,8 @@ class TemplateDef(TypedDict):
     images: list[ImageSlot]
     texts: list[TextSlot]
     pairing: NotRequired[Pairing | None]
+    # 跨页(#303):画布双宽,独占一整个 spread。只在 interior 有效,与 pairing 互斥。
+    spread: NotRequired[bool]
     styles: NotRequired[list[str]]
     svgs: NotRequired[list[SvgSlot]]
     items: NotRequired[Items]
@@ -77,7 +79,7 @@ _TEXT_LANGS = {"user", "en"}
 _CATEGORIES = {"cover", "interior", "toc", "ending"}
 
 _TEMPLATE_KEYS = {
-    "id", "category", "pairing", "styles", "images", "texts", "svgs", "items",
+    "id", "category", "pairing", "spread", "styles", "images", "texts", "svgs", "items",
 }
 _IMAGE_SLOT_KEYS = {"id", "orientation", "quality", "composition"}
 _TEXT_SLOT_KEYS = {"id", "role", "lang", "repeat", "variableDecor", "sample"}
@@ -309,6 +311,15 @@ def _validate_template(value: Any, source: Path) -> TemplateDef:
         if pairing is not None and data["category"] != "interior":
             raise _fail(f"{source}.pairing is only valid on interior templates")
         out["pairing"] = pairing
+    if "spread" in data:
+        spread = data["spread"]
+        if not isinstance(spread, bool):
+            raise _fail(f"{source}.spread must be a boolean")
+        if spread and data["category"] != "interior":
+            raise _fail(f"{source}.spread is only valid on interior templates")
+        if spread and out.get("pairing") is not None:
+            raise _fail(f"{source}.spread and pairing are mutually exclusive")
+        out["spread"] = spread
     if "styles" in data:
         out["styles"] = _optional_string_array(data["styles"], f"{source}.styles")
     if "svgs" in data:

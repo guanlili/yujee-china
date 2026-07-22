@@ -296,3 +296,29 @@ def test_text_slot_without_sample_loads_fine(tmp_path):
     loaded = registry._load_templates_from_dir(tmp_path)
     slot = registry.text_slots(loaded["no-sample"])[0]
     assert slot.get("sample") is None
+
+
+def test_loader_accepts_spread_on_interior(tmp_path):
+    from src.workflows.core.layout import templates
+
+    (tmp_path / "spread-ok.json").write_text(json.dumps({
+        "id": "spread-ok", "category": "interior", "spread": True,
+        "images": [{"id": "image1"}],
+        "texts": [{"id": "title", "role": "title", "lang": "user"}],
+    }), encoding="utf-8")
+
+    loaded = templates._load_templates_from_dir(tmp_path)
+    assert loaded["spread-ok"]["spread"] is True
+
+
+def test_loader_rejects_spread_on_cover(tmp_path):
+    from src.workflows.core.layout import templates
+
+    (tmp_path / "spread-bad.json").write_text(json.dumps({
+        "id": "spread-bad", "category": "cover", "spread": True,
+        "images": [{"id": "image1"}],
+        "texts": [{"id": "title", "role": "title", "lang": "user"}],
+    }), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="spread is only valid on interior"):
+        templates._load_templates_from_dir(tmp_path)
