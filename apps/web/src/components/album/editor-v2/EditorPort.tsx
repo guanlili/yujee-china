@@ -1183,13 +1183,29 @@ function EditorBook({
       if (currentCh >= spreadCount()) currentCh = spreadCount() - 1;
     };
     const spreadCount = () => Math.max(1, spreads.length);
-    const spreadPages = (s: number): [EditorPage | null, EditorPage | null] => {
+    // 一个跨页占的页。返回 kind='full' 时它是**一整张**双宽面(#303),铺满整个跨页,
+    // 不能拆成左右两半;kind='pair' 才是左右各一半(null = 空白半页)。
+    // 所有画面都必须先判 kind —— 早期把双宽当 [null,null] 处理会画出一个空白跨页。
+    type SpreadFaces =
+      | { kind: 'pair'; left: EditorPage | null; right: EditorPage | null }
+      | { kind: 'full'; page: EditorPage | null; index: number };
+    const spreadFaces = (s: number): SpreadFaces => {
       const sp = spreads[s];
-      if (!sp) return [null, null];
-      return [
-        sp.left === null ? null : pagesState[sp.left] ?? null,
-        sp.right === null ? null : pagesState[sp.right] ?? null,
-      ];
+      if (!sp) return { kind: 'pair', left: null, right: null };
+      if (sp.kind === 'full') {
+        return { kind: 'full', page: pagesState[sp.page] ?? null, index: sp.page };
+      }
+      return {
+        kind: 'pair',
+        left: sp.left === null ? null : pagesState[sp.left] ?? null,
+        right: sp.right === null ? null : pagesState[sp.right] ?? null,
+      };
+    };
+    // 该跨页上的真实页(左→右;双宽页就是它自己那一页)。
+    const spreadRealPages = (s: number): EditorPage[] => {
+      const f = spreadFaces(s);
+      const list = f.kind === 'full' ? [f.page] : [f.left, f.right];
+      return list.filter((p): p is EditorPage => p !== null);
     };
     function pageByIndex(idx: number): EditorPage | undefined {
       return pagesState.find((p) => p.pageIndex === idx);
@@ -1199,15 +1215,21 @@ function EditorBook({
     // 双页跨页给出页码区间(第 X–Y 页)。folio 全缺(如残留目录页)回退跨页序号。
     const spreadLabel = (i: number) => {
       const zh = currentLang === 'zh';
-      const [lp, rp] = spreadPages(i);
-      const present = [lp, rp].filter((p): p is EditorPage => p !== null);
+      // 双宽(#303)页也要出页码:它吃两个页号,pageFolioInfos 给的是 {left,right},
+      // 这里把两个号都收进来 —— 于是标签自然落在「第 X–Y 页」分支。
+      const present = spreadRealPages(i);
       const slots = present.map(pageSlot);
       if (slots.includes('cover')) return zh ? '封面' : 'Cover';
       if (slots.includes('ending')) return zh ? '封底' : 'Back cover';
       const folioInfos = folioInfoOfBook();
+      // 双宽页的 folio 是 {left,right}(它吃两个页号,两侧各贴一个),展开成两个数。
       const nums = present
-        .map((p) => folioInfos[pagesState.indexOf(p)]?.folio)
-        .filter((f): f is number => typeof f === 'number');
+        .flatMap((p) => {
+          const folio = folioInfos[pagesState.indexOf(p)]?.folio;
+          if (typeof folio === 'number') return [folio];
+          if (folio && typeof folio === 'object') return [folio.left, folio.right];
+          return [];
+        });
       if (nums.length >= 2) {
         const lo = nums[0];
         const hi = nums[nums.length - 1];
@@ -1364,7 +1386,9 @@ function EditorBook({
       if (bodyEl.classList.contains('overview-on')) {
         const g = byId('ovGrid');
         for (const s of dirtySpreads) {
-          const [lp, rp] = spreadPages(s);
+          const faces = spreadFaces(s);
+          // 双宽(#303)页整张画进左 cell(与 renderOverview/paintOvSpread 同一约定)。
+          const [lp, rp] = faces.kind === 'full' ? [faces.page, null] : [faces.left, faces.right];
           // 画板格全保真(同 renderOverview):它是主编辑表面,不是缩略图。
           paintEl(g?.querySelector(`[data-oface="${s}-l"]`) as HTMLElement | null, lp);
           paintEl(g?.querySelector(`[data-oface="${s}-r"]`) as HTMLElement | null, rp);
@@ -1857,11 +1881,12 @@ function EditorBook({
     function paintSpread(i: number) {
       // 收集态没有版式页;画板走照片网格(renderCollectGrid),不画空版式书。
       if (isCollectMode) return;
-      const fullIdx = spreads[i]?.full ?? null;
+      const faces = spreadFaces(i);
+      const fullIdx = faces.kind === 'full' ? faces.index : null;
       // 双宽页占满整个跨页:它画在左 cell 里(CSS 把左 cell 撑成全宽、右 cell 退场)。
-      const [lp, rp] = fullIdx != null
-        ? [pagesState[fullIdx] ?? null, null]
-        : spreadPages(i);
+      const [lp, rp] = faces.kind === 'full'
+        ? [faces.page, null]
+        : [faces.left, faces.right];
       // Layout MUST be settled BEFORE paintEl. paintEl scales the page to the cell's
       // live clientWidth/height and SKIPS a cell hidden by display:none (offsetParent
       // === null). A solo cover/ending spread narrows the book to single-page width and
@@ -1911,18 +1936,19 @@ function EditorBook({
       // belongs to the spread we're flipping away from).
       clearImageSelection();
       flipping = true;
-      // 双宽(#303)页是一整张连续的跨页图,不是「左右各半」——spreadPages() 对一个
-      // full 跨页返回 [null, null](buildSpreads 把 left/right 都清空,内容全在
-      // fullIdx),没法有意义地拆成翻页动画的 leaf 半页 + 对面 cell 两块。跟
-      // isSoloSpread 一样(那是因为容器宽度会变),这里直接跳过 leaf、切换到位。
-      if (spreads[currentCh]?.full != null || spreads[nextIdx]?.full != null) {
+      // 双宽(#303)页是一整张连续的跨页图,不是「左右各半」,没法有意义地拆成翻页
+      // 动画的 leaf 半页 + 对面 cell 两块。跟 isSoloSpread 一样(那是因为容器宽度会
+      // 变),这里直接跳过 leaf、切换到位。
+      const curFaces = spreadFaces(currentCh);
+      const nxtFaces = spreadFaces(nextIdx);
+      if (curFaces.kind === 'full' || nxtFaces.kind === 'full') {
         currentCh = nextIdx;
         paintSpread(nextIdx);
         flipping = false;
         return;
       }
-      const [curLeft, curRight] = spreadPages(currentCh);
-      const [nxtLeft, nxtRight] = spreadPages(nextIdx);
+      const { left: curLeft, right: curRight } = curFaces;
+      const { left: nxtLeft, right: nxtRight } = nxtFaces;
       // Solo cover/ending pages render in a single-page-width container; the leaf
       // flip geometry is built for the double-width container (flipper left:50%/0%,
       // width:50%), so animating across a width change tears/misaligns the leaf. When
@@ -2201,16 +2227,20 @@ function EditorBook({
       const g = byId('ovGrid');
       if (!g) return;
       g.innerHTML = Array.from({ length: spreadCount() }, (_, i) => {
-        const [lp, rp] = spreadPages(i);
+        const faces = spreadFaces(i);
+        // 双宽(#303)页占满整格:画进左 cell(CSS 的 ov-full 撑满左 cell、右 cell 退场、
+        // 中缝隐藏)—— 和书籍视图的 book-full 同一套处理。
+        const full = faces.kind === 'full';
+        const [lp, rp] = full ? [faces.page, null] : [faces.left, faces.right];
         // #158 follow-up: drop the ov-book surface fill + spine for a solo spread so
         // the empty half reads as empty space, not a white page.
-        const solo = lp === null || rp === null;
+        const solo = !full && (lp === null || rp === null);
         const lpi = lp === null ? '' : String(lp.pageIndex);
         const rpi = rp === null ? '' : String(rp.pageIndex);
         const lSel = lp !== null && lp.pageIndex === selectedPageIndex ? ' ov-page-selected' : '';
         const rSel = rp !== null && rp.pageIndex === selectedPageIndex ? ' ov-page-selected' : '';
         return `<div class="ov-spread${i === currentCh ? ' ov-current' : ''}" data-ovidx="${i}">
-          <div class="ov-book${solo ? ' ov-solo' : ''}"><div class="ov-page ov-left${lp === null ? ' ov-empty' : ''}${lSel}" data-oface="${i}-l" data-page-index="${lpi}"></div><div class="ov-page ov-right${rp === null ? ' ov-empty' : ''}${rSel}" data-oface="${i}-r" data-page-index="${rpi}"></div></div>
+          <div class="ov-book${solo ? ' ov-solo' : ''}${full ? ' ov-full' : ''}"><div class="ov-page ov-left${lp === null ? ' ov-empty' : ''}${lSel}" data-oface="${i}-l" data-page-index="${lpi}"></div><div class="ov-page ov-right${rp === null ? ' ov-empty' : ''}${rSel}" data-oface="${i}-r" data-page-index="${rpi}"></div></div>
           <div class="ov-cap">${spreadLabel(i)}</div>
         </div>`;
       }).join('');
@@ -2220,7 +2250,9 @@ function EditorBook({
       // 编辑工具直接在上面用),必须和书籍视图渲染一致 —— display 派生图 +
       // fitTextBoxes(记忆化命中,近零成本)+ data-editable 标记。
       const paintOvSpread = (i: number) => {
-        const [lp, rp] = spreadPages(i);
+        const faces = spreadFaces(i);
+        // 双宽页整张画进左 cell(右 cell 已被 ov-full 移出布局,paintEl 会跳过它)。
+        const [lp, rp] = faces.kind === 'full' ? [faces.page, null] : [faces.left, faces.right];
         paintEl(g.querySelector(`[data-oface="${i}-l"]`) as HTMLElement | null, lp);
         paintEl(g.querySelector(`[data-oface="${i}-r"]`) as HTMLElement | null, rp);
       };
@@ -3617,8 +3649,9 @@ function EditorBook({
       if (selectedPageIndex != null) return selectedPageIndex;
       // No explicit selection → focus the first real page on the current spread
       // (left, else right). Cover sits alone on spread 0's right slot.
-      const [lp, rp] = spreadPages(currentCh);
-      return (lp ?? rp)?.pageIndex ?? 0;
+      // #303:双宽页是这个跨页上**唯一**的页,spreadRealPages 直接给它 —— 早先的
+      // [lp, rp] 版本对双宽页拿到两个 null,回落成 0(封面),AI 改稿写错页。
+      return spreadRealPages(currentCh)[0]?.pageIndex ?? 0;
     }
     // Apply a kind:'act' write locally (the server already persisted it into
     // draft_json — both pageWrite copy edits and imagePosWrite position/scale moves
