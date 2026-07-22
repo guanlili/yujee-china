@@ -320,7 +320,8 @@ class V3Chapter(_V3Strict):
     分析期为 null 占位,theme 环节填。"""
 
     chapterId: str = Field(min_length=1)
-    # 目录(TOC)专用占位:分析/识图阶段留空,后期写目录环节才填。
+    # 章级文本位:分析期先落确定性章标识(由 EXIF 时间跨度派生,同树内保证不重名),
+    # 后期写目录(TOC)环节再覆盖它。
     description: str = Field(default="", max_length=600)
     # 内容采集(分组后采访)答案:自由文字,给排版/写文案当章节背景。
     # Web 拼「时间:… 地点:…」前缀 + 用户原话;坐标绝不进(仅地名文字,§3 隐私)。

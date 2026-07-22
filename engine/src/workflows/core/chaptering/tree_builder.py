@@ -15,21 +15,73 @@ from ....contracts.schemas import (
 from .schema import GroupingChapter, GroupingResult, UnplacedAssignments
 
 
+# 无任何 EXIF 时间时的章标识回退文案;重名消歧也认这个常量。
+NO_TIME_LABEL = "这一段"
+
+
 def deterministic_chapter_label(
     *, taken_ats: Sequence[str], places: Sequence[str]
 ) -> str:
-    """章标题的确定性派生:最常见地名 + 时间跨度。砍掉豆包识图后章不再有 AI 命名,
-    这是 story 环节聊天卡片和 compose 环节上下文唯一的章标识。"""
+    """章标题的确定性派生:时间跨度(最早日 – 最晚日)+ 最常见地名。
+
+    砍掉豆包识图后章不再有 AI 命名,这是 story 环节聊天卡片和 compose 环节上下文
+    唯一的章标识。写出跨度而非只写年月,是为了让同月的两章天然可区分。
+
+    注意:唯一调用点 `assemble_stage1_tree` 恒传 `places=[]` —— §3 隐私口径下坐标
+    止步于浏览器,分析期拿不到地名,地名要到采访环节才写回 `chapter.place`。这个
+    参数是留给后续拿到地名后重算标签的占位。
+
+    同月同日仍可能撞名(同一天拍的两章),最终去重由 `assemble_stage1_tree` 里的
+    重复标签消歧兜底。
+    """
     place = Counter(p for p in places if p).most_common(1)
     place_part = place[0][0] if place else ""
-    stamps = sorted(t for t in taken_ats if t)
-    if stamps:
-        first = stamps[0][:7].replace("-", " 年 ") + " 月"
-        time_part = first
-    else:
-        time_part = ""
+    time_part = _time_span_label(taken_ats)
     parts = [p for p in (time_part, place_part) if p]
-    return " · ".join(parts) if parts else "这一段"
+    return " · ".join(parts) if parts else NO_TIME_LABEL
+
+
+def _time_span_label(taken_ats: Sequence[str]) -> str:
+    """把一组 ISO 时间戳压成中文日期跨度,如 `2024 年 03 月 11–14 日`。"""
+    stamps = sorted(t for t in taken_ats if t)
+    if not stamps:
+        return ""
+    first, last = stamps[0][:10], stamps[-1][:10]
+    fy, fm, fd = first[:4], first[5:7], first[8:10]
+    ly, lm, ld = last[:4], last[5:7], last[8:10]
+    if first == last:
+        return f"{fy} 年 {fm} 月 {fd} 日"
+    if (fy, fm) == (ly, lm):
+        return f"{fy} 年 {fm} 月 {fd}–{ld} 日"
+    if fy == ly:
+        return f"{fy} 年 {fm} 月 {fd} 日 – {lm} 月 {ld} 日"
+    return f"{fy} 年 {fm} 月 {fd} 日 – {ly} 年 {lm} 月 {ld} 日"
+
+
+def _disambiguate_labels(labels: Sequence[str]) -> list[str]:
+    """给重复的章标识追加序号,保证同一棵树里章标识两两不同。
+
+    首个保持原样,后续依次 `… · 第 2 段`;无时间的回退标识用 `这一段 2`。
+    """
+    used: set[str] = set()
+    seen: Counter[str] = Counter()
+    result: list[str] = []
+    for label in labels:
+        seen[label] += 1
+        ordinal = seen[label]
+        candidate = label if ordinal == 1 else _with_ordinal(label, ordinal)
+        while candidate in used:
+            ordinal += 1
+            candidate = _with_ordinal(label, ordinal)
+        used.add(candidate)
+        result.append(candidate)
+    return result
+
+
+def _with_ordinal(label: str, ordinal: int) -> str:
+    if label == NO_TIME_LABEL:
+        return f"{NO_TIME_LABEL} {ordinal}"
+    return f"{label} · 第 {ordinal} 段"
 
 
 def assemble_stage1_tree(
@@ -108,8 +160,9 @@ def assemble_stage1_tree(
         chapters.append(
             V3Chapter(
                 chapterId=source.chapterId,
-                # 章标识:确定性派生(时间 + 地名)。契约暂无 title 字段,先落在
+                # 章标识:确定性派生(时间跨度 + 地名)。契约暂无 title 字段,先落在
                 # description 这个章级文本位上,后期写目录环节会覆盖它。
+                # 重名(同月/同日、或都没 EXIF)在下面统一消歧。
                 description=deterministic_chapter_label(
                     taken_ats=[p.takenAt or "" for p in photos],
                     # 地名由 Web 采访环节写回 chapter.place,分析期无地名可用(§3 隐私:
@@ -127,6 +180,11 @@ def assemble_stage1_tree(
 
     if not chapters:
         raise ValueError("Stage1 tree produced no non-empty chapters")
+
+    # Web 侧只在 description 为空串时才降级成 `Group N`,重名章会让用户看到一串
+    # 无法区分的标题,所以这里保证同一棵树内章标识两两不同。
+    for chapter, label in zip(chapters, _disambiguate_labels([c.description for c in chapters])):
+        chapter.description = label
     return V3LayoutTree(chapters=chapters)
 
 

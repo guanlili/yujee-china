@@ -23,6 +23,11 @@ def group_unplaced(
     if not grouping.unplacedPhotoIds:
         return UnplacedAssignments(assignments={})
 
+    unknown = sorted(set(grouping.unplacedPhotoIds) - set(photos_by_id))
+    if unknown:
+        # 早失败:否则这些 id 会一路带进 assemble_stage1_tree 才炸成 KeyError。
+        raise ValueError(f"unplaced photo ids are not in photos_by_id: {unknown}")
+
     by_cluster: dict[str, list[str]] = {}
     for index, photo_id in enumerate(grouping.unplacedPhotoIds):
         photo = photos_by_id.get(photo_id)

@@ -238,7 +238,9 @@ def test_analyze_timeout_resets_the_active_stage(monkeypatch, captured_callbacks
 
 def test_analyze_unhandled_error_resets_the_active_stage(monkeypatch, captured_callbacks):
     async def boom(_job):
-        await analyze._emit_progress(_job, "describe", 25)
+        # analyze 只发 group 这一个 stage(describe 已随识图一起砍掉),
+        # 这里测的是通用 reset 机制,所以用真实存在的 stage。
+        await analyze._emit_progress(_job, "group", 25)
         raise RuntimeError("callback-adjacent boom")
 
     class _Budget:
@@ -252,13 +254,13 @@ def test_analyze_unhandled_error_resets_the_active_stage(monkeypatch, captured_c
     failed = [c for c in captured_callbacks if c["event"] == "failed"]
     assert len(failed) == 1, captured_callbacks
     assert failed[0]["error"]["code"] == "AGENT_INTERNAL_ERROR"
-    assert failed[0]["stage"] == "describe"
-    describe_ticks = [
+    assert failed[0]["stage"] == "group"
+    group_ticks = [
         c["progress"]
         for c in captured_callbacks
-        if c["event"] == "progress" and c["stage"] == "describe"
+        if c["event"] == "progress" and c["stage"] == "group"
     ]
-    assert describe_ticks == [25, 0], describe_ticks
+    assert group_ticks == [25, 0], group_ticks
 
 
 def test_analyze_request_rejects_non_http_callback_url():
