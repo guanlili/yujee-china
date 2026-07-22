@@ -14,5 +14,5 @@ export const MAG_54_HTML = `<div data-template="mag-54" style="position:relative
   <div data-image-slot="image1" style="position:absolute;left:0px;top:0px;width:1588px;height:1123px;overflow:hidden">
     <img data-image-slot="image1" src="{{IMG_SRC:image1}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image1|50% 50%}};{{IMG_TF:image1}}" />
   </div>
-  <div data-text-key="title" data-variable-decor style="position:absolute;left:96px;bottom:104px;width:560px;font-family:{{FONT:title|${NOTO_SERIF_SC}}};font-size:56px;line-height:1.28;letter-spacing:0.04em;color:{{COLOR:title|#f7f4ec}};text-shadow:0 2px 24px rgba(0,0,0,.45)">{{TEXT:title}}</div>
+  <div data-text-key="title" data-variable-decor style="position:absolute;left:96px;bottom:104px;width:560px;height:144px;font-family:{{FONT:title|${NOTO_SERIF_SC}}};font-size:56px;line-height:1.28;letter-spacing:0.04em;color:{{COLOR:title|#f7f4ec}};text-shadow:0 2px 24px rgba(0,0,0,.45);overflow:hidden">{{TEXT:title}}</div>
 </div>`;

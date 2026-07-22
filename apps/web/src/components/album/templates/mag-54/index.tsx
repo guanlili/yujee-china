@@ -28,11 +28,12 @@ export function WebMag54({ data, imagePos }: TemplateRenderProps) {
       <div
         data-text-key="title"
         style={{
-          position: 'absolute', left: 96, bottom: 104, width: 560,
+          position: 'absolute', left: 96, bottom: 104, width: 560, height: 144,
           fontFamily: titleTheme.webFontFamily,
           fontSize: 56, lineHeight: 1.28, letterSpacing: '0.04em',
           color: titleTheme.accentColor ?? PAPER,
           textShadow: '0 2px 24px rgba(0,0,0,.45)',
+          overflow: 'hidden',
         }}
       >
         {title}
