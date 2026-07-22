@@ -396,3 +396,26 @@ test('every template HTML passes lint — no declared-but-unrendered slots', () 
   }
   assert.deepEqual(failures, []);
 });
+
+test('spread is accepted on interior templates', () => {
+  const parsed = TemplateDef.safeParse({
+    id: 'x', category: 'interior', spread: true, images: [{ id: 'image1' }], texts: [],
+  });
+  assert.equal(parsed.success, true);
+});
+
+test('spread is rejected on non-interior templates', () => {
+  const parsed = TemplateDef.safeParse({
+    id: 'x', category: 'cover', spread: true, images: [{ id: 'image1' }], texts: [],
+  });
+  assert.equal(parsed.success, false);
+});
+
+test('spread and pairing are mutually exclusive', () => {
+  const parsed = TemplateDef.safeParse({
+    id: 'x', category: 'interior', spread: true,
+    pairing: { forced: true, with: 'y', side: 'left' },
+    images: [{ id: 'image1' }], texts: [],
+  });
+  assert.equal(parsed.success, false);
+});

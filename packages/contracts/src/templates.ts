@@ -102,6 +102,10 @@ export const TemplateDef = z
     // V3:分类(§9),唯一分类字段,替代旧 slot+scene。
     category: TemplateCategory,
     pairing: TemplatePairing.nullable().optional(),
+    // 跨页(#303):该模板画布宽度翻倍(PAGE.width*2),独占一整个 spread,
+    // 大图/大标题可横穿中缝。engine 仍把它当普通一页参与分页,不需要知道左右页。
+    // 只在 interior 有意义;与 pairing 互斥(pairing 是「两个窄模板配对」的另一条路)。
+    spread: z.boolean().optional(),
     styles: z.array(z.string().min(1)).optional(),
     images: z.array(TemplateImageSlot),
     // V3:装饰矢量图槽(可选,§9)。
@@ -118,6 +122,20 @@ export const TemplateDef = z
         code: z.ZodIssueCode.custom,
         message: 'pairing is only valid on interior templates',
         path: ['pairing'],
+      });
+    }
+    if (template.spread && template.category !== 'interior') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'spread is only valid on interior templates',
+        path: ['spread'],
+      });
+    }
+    if (template.spread && template.pairing) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'spread and pairing are mutually exclusive',
+        path: ['spread'],
       });
     }
   });
