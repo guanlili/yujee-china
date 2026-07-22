@@ -108,15 +108,33 @@ function isFlatRegion(ctx: CanvasRenderingContext2D, x: number, y: number, w: nu
   return true;
 }
 
+// #303: the strip uses ONE uniform scale for every page (not a per-page scale) —
+// a spread page genuinely IS twice as wide as a normal page, and a uniform scale is
+// what lets the judge read that relative proportion correctly in the composited image.
+// But the scale *target* driving that uniform factor must be keyed off the NARROWEST
+// page box in the strip, not the widest: picking the widest (a spread page) would drag
+// the whole strip's scale down so the majority — normal pages — render below the
+// PAGE_MAX_EDGE budget above, reintroducing the exact "judge can't tell crops apart"
+// bug that comment already fixed once. Keyed off the narrowest, a spread page simply
+// renders ~2x as wide as a normal page in the output (correct), while normal pages keep
+// their full ~PAGE_MAX_EDGE of detail. `stripBox` (the widest) still drives host/canvas
+// width so nothing clips — only the scale target changes.
+export function computeStripScaleTarget(boxes: Array<{ width: number; height: number }>): number {
+  if (boxes.length === 0) return Math.max(PAGE.width, PAGE.height);
+  let narrowestLongEdge = Infinity;
+  for (const box of boxes) {
+    const longEdge = Math.max(box.width, box.height);
+    if (longEdge < narrowestLongEdge) narrowestLongEdge = longEdge;
+  }
+  return narrowestLongEdge;
+}
+
 function downscaleToJpeg(
   source: HTMLCanvasElement,
   box: { width: number; height: number },
+  pageLongEdgeTarget: number,
 ): { url: string; flat: boolean } | null {
-  // The source canvas renders pages at full page-box dims (#303: box is the widest page
-  // in this candidate's strip — PAGE for every template today), so the per-page long
-  // edge is max(box.width, box.height) no matter how many pages the strip stacks.
-  const pageLongEdge = Math.max(box.width, box.height);
-  const scale = Math.min(1, PAGE_MAX_EDGE / pageLongEdge);
+  const scale = Math.min(1, PAGE_MAX_EDGE / pageLongEdgeTarget);
   const w = Math.max(1, Math.round(source.width * scale));
   const h = Math.max(1, Math.round(source.height * scale));
 
@@ -169,6 +187,9 @@ export async function renderCandidateThumbnail(
           height: Math.max(...pageBoxes.map((b) => b.height)),
         }
       : { width: PAGE.width, height: PAGE.height };
+  // Scale target keyed off the narrowest page (see computeStripScaleTarget) so a spread
+  // page can't shrink the normal pages below their intended detail budget.
+  const stripScaleTarget = computeStripScaleTarget(pageBoxes);
 
   const host = makeOffscreenHost(stripBox.width);
   let root: Root | null = null;
@@ -240,7 +261,7 @@ export async function renderCandidateThumbnail(
         // 动态字体注入克隆文档,评委看到的缩略图词距才和真实渲染一致(clone-document-fonts)。
         onclone: injectDocumentFontsInto,
       });
-      return downscaleToJpeg(canvas, stripBox);
+      return downscaleToJpeg(canvas, stripBox, stripScaleTarget);
     };
 
     let shot = await snapshot();
