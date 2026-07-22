@@ -1,5 +1,5 @@
 import type { AdaptablePage, ResolveImage } from '@/components/album/adapt-layout';
-import { pageFolioNumbers, pageFolioSides } from '@/components/album/page-html-dom';
+import { pageFolioInfos } from '@/components/album/page-html-dom';
 import { buildSpreads, isSoloSpread, type Spread } from '@/components/album/spreads';
 import type { EditorPage } from '@/components/album/types';
 import { PAGE } from '@/components/album/templates/constants';
@@ -183,15 +183,16 @@ export async function renderLiveVideo(
 
   // 逐 face 渲染(缓存)。折页号与画板同源。
   const total = pages.length;
-  const folios = pageFolioNumbers(pages.map((p) => p.templateId));
-  const folioSides = pageFolioSides(pages.map((p) => p.templateId));
+  const folioInfos = pageFolioInfos(pages.map((p) => p.templateId));
   const faceCache = new Map<number, HTMLCanvasElement>();
   async function face(idx: number | null): Promise<HTMLCanvasElement | null> {
     if (idx == null) return null;
     const cached = faceCache.get(idx);
     if (cached) return cached;
     const c = await renderFaceToCanvas(pages[idx]!, resolveImage, {
-      scale: FACE_SCALE, total, folio: folios[idx] ?? null, folioSide: folioSides[idx] ?? 'right',
+      scale: FACE_SCALE, total,
+      folio: folioInfos[idx]?.folio ?? null,
+      folioSide: folioInfos[idx]?.side ?? 'right',
     });
     faceCache.set(idx, c);
     return c;

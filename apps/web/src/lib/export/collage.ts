@@ -1,5 +1,5 @@
 import type { AdaptablePage, ResolveImage } from '@/components/album/adapt-layout';
-import { pageFolioNumbers, pageFolioSides } from '@/components/album/page-html-dom';
+import { pageFolioInfos } from '@/components/album/page-html-dom';
 import { buildSpreads, isSoloSpread, type Spread } from '@/components/album/spreads';
 import type { EditorPage } from '@/components/album/types';
 import { PAGE } from '@/components/album/templates/constants';
@@ -143,8 +143,7 @@ export async function renderCollages(
     else { paintNeutral(ctx); } // 未选 / 预设图缺失 → 中性底
   };
 
-  const folios = pageFolioNumbers(pages.map((p) => p.templateId));
-  const folioSides = pageFolioSides(pages.map((p) => p.templateId));
+  const folioInfos = pageFolioInfos(pages.map((p) => p.templateId));
   const total = pages.length;
 
   // face 渲染缓存 + 进度：以「需渲染的 face 数」为总量。
@@ -161,7 +160,9 @@ export async function renderCollages(
     const cached = faceCache.get(idx);
     if (cached) return cached;
     const canvas = await renderFaceToCanvas(pages[idx]!, resolveImage, {
-      scale: FACE_SCALE, total, folio: folios[idx] ?? null, folioSide: folioSides[idx] ?? 'right',
+      scale: FACE_SCALE, total,
+      folio: folioInfos[idx]?.folio ?? null,
+      folioSide: folioInfos[idx]?.side ?? 'right',
     });
     faceCache.set(idx, canvas);
     done += 1;

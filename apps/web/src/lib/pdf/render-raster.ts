@@ -5,7 +5,7 @@ import {
   type AdaptablePage,
   type ResolveImage,
 } from '@/components/album/adapt-layout';
-import { applyFolioOverlay, fitTextBoxes, pageFolioNumbers, pageFolioSides, resolveDisplayHtml, type FolioSide } from '@/components/album/page-html-dom';
+import { applyFolioOverlay, fitTextBoxes, pageFolioInfos, resolveDisplayHtml, type FolioSide, type PageFolio } from '@/components/album/page-html-dom';
 import { renderPageHtml } from '@/components/album/templates/html/fill-template';
 import { PAGE } from '@/components/album/templates/constants';
 import { getWebTemplate } from '@/components/album/web-registry';
@@ -34,7 +34,7 @@ function renderFaceHtml(
   page: AdaptablePage & { html?: string },
   resolveImage: ResolveImage,
   total: number,
-  folio: number | null = null,
+  folio: PageFolio = null,
   folioSide: FolioSide = 'right',
 ): string {
   if (typeof page.html === 'string' && page.html.length > 0) {
@@ -55,7 +55,7 @@ function renderFaceHtml(
 
 export interface FaceRenderOptions {
   scale?: number; // 截图倍率，默认 3
-  folio?: number | null; // 页码；null=不贴
+  folio?: PageFolio; // 页码；null=不贴，双宽页={left,right}
   folioSide?: FolioSide; // 页码贴左下 / 右下
   total?: number; // 总页数（供 React 回退模板用）
 }
@@ -114,12 +114,12 @@ export async function renderAlbumPdfRaster(
   const doc = new jsPDF({ unit: 'px', format: [PAGE.width, PAGE.height], orientation: 'portrait' });
 
   // 页签按导出页序计算(内页 1..N;封面/封尾/目录 null),与画板同一套覆盖层。
-  const folios = pageFolioNumbers(pages.map((p) => p.templateId));
-  // 页签贴该页外侧下角(左页左下 / 右页右下),与画板同一套推导。
-  const folioSides = pageFolioSides(pages.map((p) => p.templateId));
+  const folioInfos = pageFolioInfos(pages.map((p) => p.templateId));
   for (let i = 0; i < pages.length; i++) {
     const canvas = await renderFaceToCanvas(pages[i]!, resolveImage, {
-      scale, total, folio: folios[i] ?? null, folioSide: folioSides[i] ?? 'right',
+      scale, total,
+      folio: folioInfos[i]?.folio ?? null,
+      folioSide: folioInfos[i]?.side ?? 'right',
     });
     const img = canvas.toDataURL('image/jpeg', jpegQuality);
     if (i > 0) doc.addPage([PAGE.width, PAGE.height], 'portrait');

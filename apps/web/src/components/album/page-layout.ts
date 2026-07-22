@@ -5,6 +5,8 @@ import { isSpreadTemplate } from '@yujee/contracts/render/page-box';
 // 同样的配对逻辑,双份真相 —— 跨页一进来两边都得改且极易漂移,故收敛到这里。
 // 版面模型:cover 单独起右页(recto),ending 单独收左页(verso);其余 interior+toc
 // 顺序两两配;spread 模板独占一整个跨页(side='both')。
+// 未处理:模板契约里的 TemplatePairing(`forced`/`with`/`side`)——某内页要求与
+// 指定邻页强制配对/占固定侧——目前这里完全不看,仍按顺序两两配。
 
 export type PageSide = 'left' | 'right' | 'both';
 

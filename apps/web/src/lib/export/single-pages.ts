@@ -1,5 +1,5 @@
 import type { AdaptablePage, ResolveImage } from '@/components/album/adapt-layout';
-import { pageFolioNumbers, pageFolioSides } from '@/components/album/page-html-dom';
+import { pageFolioInfos } from '@/components/album/page-html-dom';
 import { loadAlbumFonts } from '@/lib/font/album-font-loader';
 import { renderFaceToCanvas } from '@/lib/pdf/render-raster';
 import type { NamedBlob } from './download';
@@ -34,14 +34,15 @@ export async function renderPageJpegs(
   const quality = options.quality ?? 0.92;
   const total = pages.length;
 
-  const folios = pageFolioNumbers(pages.map((p) => p.templateId));
-  const folioSides = pageFolioSides(pages.map((p) => p.templateId));
+  const folioInfos = pageFolioInfos(pages.map((p) => p.templateId));
   const pad = String(total).length;
 
   const out: NamedBlob[] = [];
   for (let i = 0; i < total; i++) {
     const canvas = await renderFaceToCanvas(pages[i]!, resolveImage, {
-      scale, total, folio: folios[i] ?? null, folioSide: folioSides[i] ?? 'right',
+      scale, total,
+      folio: folioInfos[i]?.folio ?? null,
+      folioSide: folioInfos[i]?.side ?? 'right',
     });
     const blob = await canvasToJpegBlob(canvas, quality);
     out.push({ name: `${String(i + 1).padStart(pad, '0')}.jpg`, blob });

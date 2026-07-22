@@ -3,7 +3,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getWebTemplate } from './web-registry';
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
-import { applyFolioOverlay, pageFolioNumbers, pageFolioSides, preferredPageHtml, type FolioSide } from './page-html-dom';
+import { applyFolioOverlay, pageFolioInfos, preferredPageHtml, type FolioSide, type PageFolio } from './page-html-dom';
 import { FittedPageHtml } from './FittedPageHtml';
 import { buildSpreads, isSoloSpread, spreadIndexOfPage } from './spreads';
 import { PAGE } from './templates/constants';
@@ -64,7 +64,7 @@ const PageFace = memo(function PageFace({
   width: number;
   height: number;
   // 展示层页签:按当前页序计算(封面/封尾 null),覆盖模板遗留 folio。
-  folio?: number | null;
+  folio?: PageFolio;
   // 页签贴哪侧下角(左页 left / 右页 right),与物理半页一致。
   folioSide?: FolioSide;
   fitText?: boolean;
@@ -137,16 +137,14 @@ export function FlipBook({
   // two-up. `spreads` holds the array indices on each spread (null = blank half).
   const spreads = useMemo(() => buildSpreads(pages), [pages]);
   // 展示层页签:每次按当前页序自动计算(内页 1..N;封面/目录/封尾 null)。
-  const folios = useMemo(() => pageFolioNumbers(pages.map((p) => p.templateId)), [pages]);
-  // 页签贴该页外侧下角(左页左下 / 右页右下);侧别按真实版面推,不看页码奇偶。
-  const folioSides = useMemo(() => pageFolioSides(pages.map((p) => p.templateId)), [pages]);
+  const folioInfos = useMemo(() => pageFolioInfos(pages.map((p) => p.templateId)), [pages]);
   const folioOf = useCallback(
-    (page: EditorPage | null) => (page ? (folios[pages.indexOf(page)] ?? null) : null),
-    [folios, pages],
+    (page: EditorPage | null): PageFolio => (page ? (folioInfos[pages.indexOf(page)]?.folio ?? null) : null),
+    [folioInfos, pages],
   );
   const folioSideOf = useCallback(
-    (page: EditorPage | null): FolioSide => (page ? (folioSides[pages.indexOf(page)] ?? 'right') : 'right'),
-    [folioSides, pages],
+    (page: EditorPage | null): FolioSide => (page ? (folioInfos[pages.indexOf(page)]?.side ?? 'right') : 'right'),
+    [folioInfos, pages],
   );
   const spreadCount = Math.max(1, spreads.length);
   const spreadOf = useCallback(

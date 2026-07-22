@@ -37,7 +37,7 @@ import { RetryFailedButton } from '../RetryFailedButton';
 import { getWebTemplate } from '../web-registry';
 import { buildSpreads, isSoloSpread, pageSlot, spreadIndexOfPage } from '../spreads';
 import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
-import { applyFolioOverlay, fitTextBoxes, pageFolioNumbers, pageFolioSides, patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle, preferredPageHtml, type FolioSide } from '../page-html-dom';
+import { applyFolioOverlay, fitTextBoxes, pageFolioInfos, patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle, preferredPageHtml, type PageFolioInfo } from '../page-html-dom';
 import { PAGE } from '../templates/constants';
 import { clampZoom, paintDecision } from './zoom-util';
 import {
@@ -1177,8 +1177,7 @@ function EditorBook({
     const rebuildSpreads = () => {
       spreads = buildSpreads(pagesState);
       // pagesState 变了 → 页签缓存作废(模板类别变化会改变内页编号,也会改变左右侧)。
-      foliosCache = null;
-      folioSidesCache = null;
+      folioInfoCache = null;
       // A slot-flip patch can shrink the spread count without changing page
       // count (no remount); clamp the cursor so we never sit on a dropped spread.
       if (currentCh >= spreadCount()) currentCh = spreadCount() - 1;
@@ -1205,10 +1204,10 @@ function EditorBook({
       const slots = present.map(pageSlot);
       if (slots.includes('cover')) return zh ? '封面' : 'Cover';
       if (slots.includes('ending')) return zh ? '封底' : 'Back cover';
-      const folios = foliosOfBook();
+      const folioInfos = folioInfoOfBook();
       const nums = present
-        .map((p) => folios[pagesState.indexOf(p)])
-        .filter((n): n is number => n != null);
+        .map((p) => folioInfos[pagesState.indexOf(p)]?.folio)
+        .filter((f): f is number => typeof f === 'number');
       if (nums.length >= 2) {
         const lo = nums[0];
         const hi = nums[nums.length - 1];
@@ -1230,16 +1229,10 @@ function EditorBook({
     // 展示层页签缓存:faceInner 每页都要 folio,此前每次调用都全量重算
     // (O(页数) map + indexOf → 全量 repaint 时 O(n²))。页序只在 pagesState
     // 重排时变,rebuildSpreads()/replace 处置空缓存。
-    let foliosCache: (number | null)[] | null = null;
-    const foliosOfBook = () => {
-      if (!foliosCache) foliosCache = pageFolioNumbers(pagesState.map((p) => p.templateId));
-      return foliosCache;
-    };
-    // 页签贴该页外侧下角(左页左下 / 右页右下);与页码同一套缓存失效路径。
-    let folioSidesCache: FolioSide[] | null = null;
-    const folioSidesOfBook = () => {
-      if (!folioSidesCache) folioSidesCache = pageFolioSides(pagesState.map((p) => p.templateId));
-      return folioSidesCache;
+    let folioInfoCache: PageFolioInfo[] | null = null;
+    const folioInfoOfBook = () => {
+      if (!folioInfoCache) folioInfoCache = pageFolioInfos(pagesState.map((p) => p.templateId));
+      return folioInfoCache;
     };
 
     // Render a real album page through its web template (the same path the live
@@ -1250,8 +1243,9 @@ function EditorBook({
       // 页面真相 = 存库 html(含 AI/用户手工版面);页签按当前页序展示层计算,
       // 覆盖模板遗留 folio(封面/封尾不编号)。
       const pageIdx = pagesState.indexOf(page);
-      const folio = foliosOfBook()[pageIdx] ?? null;
-      const folioSide = folioSidesOfBook()[pageIdx] ?? 'right';
+      const info = folioInfoOfBook()[pageIdx];
+      const folio = info?.folio ?? null;
+      const folioSide = info?.side ?? 'right';
       const html = preferredPageHtml(page, resolve);
       if (html !== undefined) return applyFolioOverlay(html, folio, folioSide);
       const Template = getWebTemplate(page.templateId);
