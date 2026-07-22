@@ -5,7 +5,7 @@ import { getWebTemplate } from './web-registry';
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
 import { applyFolioOverlay, pageFolioInfos, preferredPageHtml, type FolioSide, type PageFolio } from './page-html-dom';
 import { FittedPageHtml } from './FittedPageHtml';
-import { buildSpreads, isSoloSpread, spreadFullPage, spreadIndexOfPage, spreadPageIndices } from './spreads';
+import { buildSpreads, isSoloSpread, shouldDirectSwitch, spreadFullPage, spreadIndexOfPage, spreadPageIndices } from './spreads';
 import { pageBox } from './templates/constants';
 import type { EditorPage } from './types';
 import { useAlbumFonts } from '@/lib/font/album-font-loader';
@@ -252,7 +252,11 @@ export function FlipBook({
       // safe transition for solo edges (no residue, no blank flash).
       // 双宽(#303)跨页同理:它是一整张连续的双宽面,没有「右半页」可以当叶子转,
       // 也没有对面的半页可以垫在底下。任一端是双宽页就直接切换,不做叶子动画。
-      if (reducedMotion || soloOf(spread) || soloOf(to) || fullIndexOf(spread) >= 0 || fullIndexOf(to) >= 0) {
+      // 五个原因的 OR 逻辑住在 shouldDirectSwitch(spreads.ts,真单测覆盖),这里
+      // 只负责把每个原因当独立的位置参数传进去 —— 不做任何 && / || 的现场拼接。
+      if (
+        shouldDirectSwitch(reducedMotion, soloOf(spread), soloOf(to), fullIndexOf(spread) >= 0, fullIndexOf(to) >= 0)
+      ) {
         setSpread(to);
         return;
       }

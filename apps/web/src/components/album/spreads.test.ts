@@ -5,6 +5,7 @@ import { TEMPLATE_IDS, TEMPLATES } from '@yujee/contracts/templates';
 import {
   buildSpreads,
   isSoloSpread,
+  shouldDirectSwitch,
   spreadFullPage,
   spreadIndexOfPage,
   spreadPageIndices,
@@ -335,4 +336,46 @@ test('spreadRenderKind: full > solo > pair, and a full spread is never solo', ()
 
 test('spreadRenderKind: a missing spread degrades to pair (no crash)', () => {
   assert.equal(spreadRenderKind(undefined, []), 'pair');
+});
+
+// ── shouldDirectSwitch(goToSpread's direct-switch guard, review finding #303).
+// A real behavioral predicate, not a source-text regex — actual boolean inputs
+// drive it, so an operator-precedence slip (`&&` sneaking into an `||` chain)
+// cannot hide the way it could behind a substring-containment check. The plain
+// pair→pair case (all five reasons false) is the must-animate control: if any
+// implementation accidentally ORs in an extra always-true term, this is what
+// catches it.
+
+test('shouldDirectSwitch: plain pair→pair (no reason present) must still animate', () => {
+  assert.equal(shouldDirectSwitch(false, false, false, false, false), false);
+});
+
+test('shouldDirectSwitch: reduced motion alone forces a direct switch', () => {
+  assert.equal(shouldDirectSwitch(true, false, false, false, false), true);
+});
+
+test('shouldDirectSwitch: solo source alone forces a direct switch', () => {
+  // This is the exact case an `&&`-joined solo pair (`soloSource && soloTarget`)
+  // gets wrong: source is a solo cover/ending, target is a plain paired spread —
+  // soloTarget is false, so `soloSource && soloTarget` is false and the buggy
+  // form would fall through to the leaf-flip animation (a half-width leaf flown
+  // across a width change — tear/blank flash). The real OR must catch it.
+  assert.equal(shouldDirectSwitch(false, true, false, false, false), true);
+});
+
+test('shouldDirectSwitch: solo target alone forces a direct switch', () => {
+  // Mirror of the above: target is solo, source is a plain paired spread.
+  assert.equal(shouldDirectSwitch(false, false, true, false, false), true);
+});
+
+test('shouldDirectSwitch: full (double-wide) source alone forces a direct switch', () => {
+  assert.equal(shouldDirectSwitch(false, false, false, true, false), true);
+});
+
+test('shouldDirectSwitch: full (double-wide) target alone forces a direct switch', () => {
+  assert.equal(shouldDirectSwitch(false, false, false, false, true), true);
+});
+
+test('shouldDirectSwitch: multiple reasons at once still direct-switches', () => {
+  assert.equal(shouldDirectSwitch(true, true, false, true, false), true);
 });

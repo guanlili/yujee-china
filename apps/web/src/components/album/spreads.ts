@@ -55,8 +55,14 @@ export function buildSpreads(pages: EditorPage[]): Spread[] {
       return;
     }
     const spread = spreads[placement.spreadIndex]!;
-    // placePages 保证 'both' 独占一个 spreadIndex,故这里必是 pair;防御性收窄。
-    if (spread.kind !== 'pair') return;
+    // placePages 保证 'both' 独占一个 spreadIndex,故这里必是 pair。这个不变式一旦
+    // 被打破,静默 return 会在没有任何测试/告警的情况下把这一页从书里丢掉 ——
+    // 对相册来说,丢页是最差的失败模式,宁可炸掉也不要悄悄漏页。
+    if (spread.kind !== 'pair') {
+      throw new Error(
+        `buildSpreads: page ${pageArrayIndex} expected spread #${placement.spreadIndex} to be 'pair' but found '${spread.kind}' — placePages invariant broken (a 'full' spread must own its spreadIndex exclusively); refusing to silently drop this page`,
+      );
+    }
     if (placement.side === 'left') spread.left = pageArrayIndex;
     else spread.right = pageArrayIndex;
   });
@@ -105,4 +111,24 @@ export type SpreadRenderKind = 'solo' | 'full' | 'pair';
 export function spreadRenderKind(spread: Spread | undefined, pages: EditorPage[]): SpreadRenderKind {
   if (spread?.kind === 'full') return 'full';
   return isSoloSpread(spread, pages) ? 'solo' : 'pair';
+}
+
+// goToSpread(FlipBook.tsx)是否跳过叶子翻页动画,直接切换到目标跨页。五个原因
+// 互相独立、OR 连接:偏好减少动效,或起点/终点任一端是单页 solo(封面/封尾 ——
+// 容器宽度跟普通跨页不同,半宽叶子飞过宽度变化的跨页会撕裂/错位),或起点/终点
+// 任一端是双宽 full(一整张连续面,没有可翻的半页)。
+//
+// review 加固(#303):这条判断原先是写在 FlipBook.tsx 里的一整条布尔表达式,靠
+// 源文本正则 pin 住 —— 正则只能确认五个词都出现,盯不住连接它们的运算符。`&&`
+// 会不声不响地钻进 `||` 链里(`&&` 比 `||` 优先级高),把"单页封面 → 普通跨页"
+// 这类组合悄悄漏判成要走叶子翻页。抽成纯函数后用真实布尔输入直接单测,运算符
+// 错了输入输出就对不上,不存在"正则照样通过"的空子(见 spreads.test.ts)。
+export function shouldDirectSwitch(
+  reducedMotion: boolean,
+  soloSource: boolean,
+  soloTarget: boolean,
+  fullSource: boolean,
+  fullTarget: boolean,
+): boolean {
+  return reducedMotion || soloSource || soloTarget || fullSource || fullTarget;
 }
