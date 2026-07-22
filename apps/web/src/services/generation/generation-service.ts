@@ -7,13 +7,8 @@ import { logger } from '@/lib/log/logger';
 import { albumService } from '@/services/album/album-service';
 import { creditService } from '@/services/credit/credit-service';
 import { jobService } from '@/services/job/job-service';
-import { transientLayoutCandidates } from '@/services/album/layout-candidates';
-import { JudgeLayoutRequest, SelectLayoutRequest, V3LayoutTree, V3StoryDraft } from '@yujee/contracts';
-import type {
-  JudgeLayoutUnit,
-  SelectLayoutCandidateUnit,
-  V3AnalyzeRequest,
-} from '@yujee/contracts';
+import { SelectLayoutRequest, V3LayoutTree, V3StoryDraft } from '@yujee/contracts';
+import type { V3AnalyzeRequest } from '@yujee/contracts';
 
 type V3AnalyzeInput = {
   requestId: string;
@@ -43,20 +38,6 @@ type SelectLayoutInput = {
   // 追加照片(加图增量重跑):只排这些章节;完成回调按 job.meta.appendChapterIds 走
   // 「插入合并」。省略 = 全书排版(替换 draft.pages)。
   chapterIds?: string[];
-};
-
-// P2 phase 2 (docs/agent/contract.md §5.2.1): the browser sends one entry per
-// candidate unit. Each carries the unit's candidates with the browser-rendered
-// thumbnail attached (omitted/empty → Agent falls back to candidate 0). Single-
-// candidate units carry chosenIndex=0 and skip rendering.
-// 浏览器传的 unit:只有 candidates + 缩略图,不带写文素材(photos/chapterContext)——
-// 那些由 Web 从 draft 补进 buildJudgeLayoutRequest。so 浏览器侧类型去掉这两个。
-type BrowserJudgeUnit = Omit<JudgeLayoutUnit, 'photos' | 'chapterContext'>;
-
-type JudgeLayoutInput = {
-  requestId: string;
-  language: 'zh' | 'en';
-  units: BrowserJudgeUnit[];
 };
 
 export const generationService = {
@@ -201,154 +182,7 @@ export const generationService = {
 
     return { albumId, requestId: input.requestId, accepted: true };
   },
-
-  // P2 phase 2 read (docs/agent/contract.md §5.2.1): hand the browser the candidate
-  // STRUCTURES (templateId + slot→photoId) the `candidates` callback stashed, so the
-  // browser can render a thumbnail per candidate. Ownership + job-state checked; the
-  // candidates are transient (in-memory), so a miss (different instance / evicted)
-  // returns ready=false and the browser takes the documented "candidate 0" fallback.
-  async getJudgeCandidates(
-    userId: string,
-    albumId: string,
-    _requestId: string,
-  ): Promise<{ ready: boolean; units: SelectLayoutCandidateUnit[]; requestId: string | null }> {
-    const album = await albumService.findOwned(userId, albumId);
-    // 时序反转:排版期 album 恒为 EDITING(P2 缩略图轮询也在 EDITING 下发生)。放宽以取回候选。
-    if (!(album.status === 'EDITING' || album.status === 'AGENT_RUNNING'))
-      throw ERRORS.ALBUM_NOT_EDITABLE();
-    // 解耦:按 album 定位活跃 layout job,用它真实的 requestId 取候选 —— 浏览器传的 _requestId 是
-    // analyze 的,对不上按 layout-requestId 暂存的候选(gap4)。没在跑 layout job 就 ready=false。
-    // 响应带回 layout job 自己的 requestId:浏览器 phase-2 派发按它去重(每次排版都换)。
-    // 追加照片回归:此前浏览器按 analyze recipe requestId 去重(跨追加不变),首次生成
-    // 派发过 judge 后,追加的增量排版停在 52 被永远挡住 → judge/write_copy 不再触发。
-    const job = await agentJobRepo.findActiveLayoutByAlbum(albumId);
-    if (!job) return { ready: false, units: [], requestId: null };
-    const cached = transientLayoutCandidates.get(job.requestId);
-    if (cached) return { ready: true, units: cached, requestId: job.requestId };
-    // 内存 miss(Vercel 多实例/进程重启):从 agent_jobs.meta 兜底 —— 候选的真相在库里。
-    const meta = job.meta as { candidateUnits?: SelectLayoutCandidateUnit[] } | null;
-    if (meta?.candidateUnits && Array.isArray(meta.candidateUnits) && meta.candidateUnits.length > 0) {
-      return { ready: true, units: meta.candidateUnits, requestId: job.requestId };
-    }
-    return { ready: false, units: [], requestId: job.requestId };
-  },
-
-  // P2 phase 2 dispatch (docs/agent/contract.md §5.2.1): the browser POSTs the
-  // candidates with rendered thumbnails attached. We CAS the job 52→53 (single
-  // dispatch) and forward to Agent /v3/judge-layout, which runs the Gemini judge and
-  // returns final pages through the SAME select-layout `completed` callback. No credit
-  // is reserved here — phase 1's select-layout already holds it (kept single).
-  async submitJudgeLayoutV3(userId: string, albumId: string, input: JudgeLayoutInput) {
-    const album = await albumService.findOwned(userId, albumId);
-    // 解耦:按 album 定位活跃 layout job,用它真实的 requestId 回调引擎(浏览器传的 input.requestId
-    // 是 analyze 的,对不上 gap4)。engine 的 completed 回调靠这个 requestId 落回本 layout job。
-    const job = await agentJobRepo.findActiveLayoutByAlbum(albumId);
-    if (!job) throw ERRORS.JOB_NOT_FOUND();
-    // 时序反转:收集完才排版,此刻 album 恒为 EDITING(不再翻 AGENT_RUNNING);AGENT_RUNNING
-    // 保留以兼容老时序/回退开关。真正的并发闸是下面的 progress 哨兵 + reserve*() CAS,不靠 status。
-    if (
-      !(album.status === 'EDITING' || album.status === 'AGENT_RUNNING') ||
-      job.status !== 'RUNNING' ||
-      job.stage !== 'layout'
-    ) {
-      throw ERRORS.ALBUM_NOT_EDITABLE();
-    }
-    // Not yet at the candidates-ready sentinel (or phase 2 already dispatched / done):
-    // idempotently accept so a retrying browser doesn't error.
-    if (job.progress !== 52) {
-      return { albumId, requestId: job.requestId, accepted: true };
-    }
-
-    const payload = buildJudgeLayoutRequest({
-      requestId: job.requestId,
-      callbackUrl: `${env.WEB_BASE_URL}/api/v3/internal/job-progress`,
-      language: input.language,
-      units: input.units,
-      tree: album.draftJson, // 从 draft 补写文素材(sceneDescription + chapterContext)进 judge 请求
-    });
-
-    const reserved = await agentJobRepo.reserveJudgeLayout(db, job.id);
-    if (!reserved) {
-      return { albumId, requestId: job.requestId, accepted: true };
-    }
-
-    try {
-      await agentClient.submitJudgeLayoutV3(payload);
-    } catch (e) {
-      logger.error(
-        { err: String(e), requestId: job.requestId },
-        'agent v3 judge-layout submit failed, marking job FAILED',
-      );
-      await jobService.handleV3Failed(job.requestId, {
-        code: 'AGENT_INTERNAL_ERROR',
-        message: 'Failed to submit judge-layout to agent',
-      });
-      return { albumId, requestId: job.requestId, accepted: true };
-    }
-
-    // Candidates served their purpose; drop both the memory stash and the DB copy
-    // (keep the rest of meta — e.g. appendChapterIds drives the append merge path).
-    transientLayoutCandidates.clear(job.requestId);
-    const jobMeta = (job.meta && typeof job.meta === 'object' && !Array.isArray(job.meta) ? job.meta : {}) as Record<string, unknown>;
-    if ('candidateUnits' in jobMeta) {
-      const { candidateUnits: _dropped, ...restMeta } = jobMeta;
-      await agentJobRepo.update(db, job.id, { meta: restMeta });
-    }
-    return { albumId, requestId: job.requestId, accepted: true };
-  },
 };
-
-export function buildJudgeLayoutRequest(input: {
-  requestId: string;
-  callbackUrl: string;
-  language: 'zh' | 'en';
-  units: BrowserJudgeUnit[];
-  tree?: unknown; // draft tree:按 chapterId 给每个 unit 补写文素材(评委选完当场写文案)。
-}): JudgeLayoutRequest {
-  // 从 draft tree 建 chapterId → {photos(sceneDescription/takenAt/place), chapterContext} 索引。
-  // 浏览器传的 units 只有 candidates/缩略图,不持 tree —— 写文素材由 Web 从 draft 补(§3 数据归属)。
-  // takenAt 取自树上照片(EXIF);place 是章级城市地名(V3Chapter.place,章不跨 cluster),
-  // 逐照片同值下发给写文案 AI。
-  const byChapter = new Map<
-    string,
-    {
-      photos: { photoId: string; sceneDescription: string; takenAt: string | null; place: string | null }[];
-      chapterContext: string;
-    }
-  >();
-  if (input.tree !== undefined) {
-    const tree = readDraftTree(input.tree);
-    for (const chapter of tree.chapters) {
-      const place = chapter.place?.trim() ? chapter.place.trim() : null;
-      byChapter.set(chapter.chapterId, {
-        chapterContext: chapter.chapterContext ?? '',
-        photos: chapter.photos.map((p) => ({
-          photoId: p.photoId,
-          sceneDescription: p.sceneDescription ?? '',
-          takenAt: p.takenAt ?? null,
-          place,
-        })),
-      });
-    }
-  }
-  const units = input.units.map((unit) => {
-    const extra = byChapter.get(unit.chapterId);
-    return extra ? { ...unit, photos: extra.photos, chapterContext: extra.chapterContext } : unit;
-  });
-  const payload = {
-    requestId: input.requestId,
-    callbackUrl: input.callbackUrl,
-    language: input.language,
-    units,
-  };
-  const parsed = JudgeLayoutRequest.safeParse(payload);
-  if (!parsed.success) {
-    throw ERRORS.VALIDATION_FAILED(
-      parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; '),
-    );
-  }
-  return parsed.data;
-}
 
 function toRefMap(refs: SelectLayoutInput['refs']): Map<string, string> {
   if (Array.isArray(refs)) return new Map(refs.map((item) => [item.photoId, item.ref200px]));

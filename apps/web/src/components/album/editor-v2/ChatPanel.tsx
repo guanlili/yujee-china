@@ -1257,9 +1257,8 @@ export function ChatPanel({
           refs,
         });
         if (disposed) return;
-        // select-layout runs async on the Agent (inline → completed 直接;two-phase →
-        // candidates→judge). Either path lands the finished pages in the server-side
-        // draft. Poll it and, once pages appear, fire yujee:authoring-pages-ready so the
+        // select-layout runs async on the Agent:确定性选版一把出 pages,由 completed 回调
+        // 落进服务端 draft。Poll it and, once pages appear, fire yujee:authoring-pages-ready so the
         // canvas refreshes IN PLACE (EditorPort refetches; only EditorBook remounts).
         // ChatPanel keeps its state — no full reload, so no re-run/duplication.
         void withWorkflowBusy(() => waitForLayoutThenRefresh(working));

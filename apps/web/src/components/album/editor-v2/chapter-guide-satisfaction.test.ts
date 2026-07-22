@@ -59,8 +59,8 @@ test('B: interview collects every chapter first, then triggers layout (writes at
   assert.match(fi![0], /triggerSelectLayout\(\)/, 'finishInterview triggers layout once collection is done');
   assert.doesNotMatch(fi![0], /appendSatisfactionCard\(/, 'per-chapter satisfaction card is gone in the interview step');
 
-  // triggerSelectLayout 触发排版(select-layout),文案在排版时由 judge_layout 写 —— 采访阶段
-  // 不逐章 postWriteChapter(时序反转:收集完 → 排版并一并写全部文案)。
+  // triggerSelectLayout 触发排版(select-layout),文案随排版页一并返回 —— 采访阶段
+  // 不逐章 postWriteChapter(时序反转:收集完 → 排版并一并出文案)。
   const tl = /async function triggerSelectLayout\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(tl, 'triggerSelectLayout() must be parseable');
   assert.match(tl![0], /submitSelectLayoutV3\(/, 'triggerSelectLayout dispatches select-layout');

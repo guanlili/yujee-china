@@ -4,8 +4,7 @@ import { albumRepo } from '@/db/repos/album-repo';
 import { creditService } from '@/services/credit/credit-service';
 import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
-import { transientLayoutCandidates } from '@/services/album/layout-candidates';
-import { Page, V3LayoutTree, V3StoryDraft, type SelectLayoutCandidateUnit } from '@yujee/contracts';
+import { Page, V3LayoutTree, V3StoryDraft } from '@yujee/contracts';
 import {
   countTreePhotos,
   extractDesignFromPages,
@@ -17,9 +16,7 @@ import { sweepCarriers } from '@/services/album/design-apply';
 import { bakePagesHtml, type BakeablePage } from '@/services/album/bake-html';
 
 // 解耦后 analyze 与 layout 是两个独立 job:init job(analyze,0→100)与 layout job(排版,
-// 0→100)各自独立,不再共享一行 agent_jobs 用 50/51/52 哨兵串联。两段式候选流(如重启用)
-// 仍用 candidates-ready 进度标记。
-export const SELECT_LAYOUT_CANDIDATES_READY_PROGRESS = 52;
+// 0→100)各自独立,不再共享一行 agent_jobs 用哨兵进度串联。
 
 const ZOMBIE_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -320,32 +317,6 @@ export const jobService = {
         await creditService.settle(tx, job.userId, album.creditHoldId);
       }
     });
-  },
-
-  // P2 phase 1 (docs/agent/contract.md §5.2.1): the Agent returns candidate
-  // STRUCTURES (not pages) for the browser to render into thumbnails. Stash them in
-  // the transient store and park the job at the candidates-ready sentinel (progress
-  // 52, stage stays 'layout') — does NOT advance album stage, keeps the job/hold
-  // open. The browser polls, sees the sentinel, renders thumbnails, and POSTs phase 2.
-  // CAS-guarded 51→52 so a duplicate callback can't double-stash or regress progress.
-  async handleV3SelectLayoutCandidates(
-    requestId: string,
-    units: SelectLayoutCandidateUnit[],
-    usage: unknown,
-  ) {
-    const job = await agentJobRepo.findByRequestId(requestId);
-    if (!job) return;
-    if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
-    // 解耦后 job 是独立 layout job(不再是共享 init job 的 50/51/52 哨兵)。两段式候选流本地
-    // 未启用(inline judge),此处仅在被调用时暂存候选、不崩;两段式重启用需另行适配。
-    const won = await agentJobRepo.markCandidatesReady(db, job.id, mergeV3Usage(job.usage, usage));
-    if (!won) return;
-    // 候选必须落库(agent_jobs.meta.candidateUnits):Vercel 多实例下回调与轮询
-    // 落在不同实例,内存暂存跨实例不可见 → phase-2 永不触发、job 被僵尸清扫收走
-    // (2026-07-12 线上事故)。内存仅作同实例快路径。
-    const meta = (job.meta && typeof job.meta === 'object' && !Array.isArray(job.meta) ? job.meta : {}) as Record<string, unknown>;
-    await agentJobRepo.update(db, job.id, { meta: { ...meta, candidateUnits: units } });
-    transientLayoutCandidates.set(requestId, units);
   },
 
   async handleV3SelectLayoutCompleted(requestId: string, pages: unknown, usage: unknown) {

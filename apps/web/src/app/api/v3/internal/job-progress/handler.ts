@@ -21,11 +21,6 @@ export async function handleV3JobProgress(req: Request) {
     case 'progress':
       await jobService.handleV3Progress(payload.requestId, payload.stage, payload.progress);
       break;
-    // P2 phase 1 (docs/agent/contract.md §5.2.1): select-layout candidate structures
-    // for the browser to render. Holds the job open, stashes candidates; no stage advance.
-    case 'candidates':
-      await jobService.handleV3SelectLayoutCandidates(payload.requestId, payload.units, payload.usage);
-      break;
     case 'completed':
       if (payload.jobKind === 'analyze') {
         await jobService.handleV3AnalyzeCompleted(payload.requestId, payload.tree, payload.usage);

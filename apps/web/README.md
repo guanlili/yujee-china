@@ -12,7 +12,7 @@ Next.js app for the product UI, auth, billing, album state, V3 orchestration, an
 - Callback handling from Agent.
 - R2 presigned URLs for PDF and thumbnails.
 
-The Web app currently still contains route/client surfaces for the fuller authoring flow (`chapter-chat`, `edit-chat`, `recommend`, `apply-theme`, `cover`, `finalize`). The current Agent route surface is smaller and only exposes analyze/select-layout/judge-layout, so keep Web/Agent compatibility in mind before relying on those later routes end-to-end.
+The Web app currently still contains route/client surfaces for the fuller authoring flow (`chapter-chat`, `edit-chat`, `recommend`, `apply-theme`, `cover`, `finalize`). The current Agent route surface is smaller and only exposes analyze/select-layout/judge-page-template/design, so keep Web/Agent compatibility in mind before relying on those later routes end-to-end.
 
 ## Directory Map
 
@@ -44,21 +44,15 @@ Browser photos
 
 Browser 200px refs
   -> POST /api/v3/albums/[uuid]/select-layout
-  -> Agent /v3/select-layout
-  <- candidates callback
-
-Browser renders thumbnails
-  -> POST /api/v3/albums/[uuid]/judge-layout
-  -> Agent /v3/judge-layout
+  -> Agent /v3/select-layout   (一次确定性选版)
   <- completed callback with Page[]
 ```
 
 Key files:
 
-- `src/lib/generation/client.ts`: browser-side submit/retry/select-layout/judge helpers.
-- `src/services/generation/generation-service.ts`: creates jobs, reserves layout phases, calls Agent.
+- `src/lib/generation/client.ts`: browser-side submit/retry/select-layout helpers.
+- `src/services/generation/generation-service.ts`: creates jobs, reserves the layout job, calls Agent.
 - `src/app/api/v3/internal/job-progress/handler.ts`: Agent callback sink.
-- `src/services/album/layout-candidates.ts`: transient candidate stash for browser thumbnail judging.
 
 ## Browser Data Boundary
 
@@ -66,7 +60,6 @@ Key files:
 - `src/lib/photo/compress.ts` creates upload-sized image data.
 - `src/lib/photo/store.ts` keeps local originals for retry/resume.
 - `src/lib/photo/cluster.ts` derives opaque grouping labels.
-- `src/lib/photo/candidate-thumbnail.tsx` renders real template thumbnails for layout judging.
 - PDF export is browser-side; Web only issues R2 presigned URLs.
 
 ## Page HTML Truth (C 方案)

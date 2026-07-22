@@ -116,13 +116,13 @@ test('getDetail: EDITING album with a running layout job → surfaces layout sta
     await agentJobRepo.update(db, job.id, {
       status: 'RUNNING',
       stage: 'layout',
-      progress: 52,
+      progress: 40,
       startedAt: new Date(), // 刚上报 → 不会被扫僵尸
     });
 
     const detail = await albumService.getDetail(user.id, album.id);
     assert.equal(detail.album.status, 'EDITING');
-    assert.deepEqual(detail.generation, { stage: 'layout', progress: 52 });
+    assert.deepEqual(detail.generation, { stage: 'layout', progress: 40 });
   } finally {
     await cleanupUser(user.id);
   }

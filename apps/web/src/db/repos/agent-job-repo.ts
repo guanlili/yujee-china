@@ -140,51 +140,6 @@ export const agentJobRepo = {
     return rows.length > 0;
   },
 
-  // P2 phase-1 landing (docs/agent/contract.md §5.2.1). The `candidates` callback
-  // parks the job at the candidates-ready sentinel by CAS 51→52 (stage stays
-  // 'layout'), so a duplicate callback can't double-stash candidates or regress.
-  markCandidatesReady: async (
-    tx: DbOrTx,
-    id: string,
-    usage: Record<string, unknown> | null,
-  ): Promise<boolean> => {
-    // 解耦后 select-layout 是独立 layout job(RUNNING, stage=layout, progress=0),不再走旧的
-    // 50→51 哨兵。CAS 只要"仍在 phase-1(progress<52)"就置 candidates-ready 哨兵 52;重复回调
-    // 会看到已是 52(不 <52)从而不匹配 → 不会二次暂存/回退。
-    const rows = await tx
-      .update(agentJobs)
-      .set({ progress: 52, stage: 'layout', usage, startedAt: new Date() })
-      .where(
-        and(
-          eq(agentJobs.id, id),
-          eq(agentJobs.status, 'RUNNING'),
-          lt(agentJobs.progress, 52),
-        ),
-      )
-      .returning({ id: agentJobs.id });
-    return rows.length > 0;
-  },
-
-  // P2 phase-2 reservation (docs/agent/contract.md §5.2.1). The `candidates`
-  // callback parks the job at progress 52 (candidates-ready sentinel, stage stays
-  // 'layout'); this CAS flips 52→53 so exactly one browser dispatch wins judge-layout.
-  // No credit is touched here — the hold was reserved in phase 1's select-layout.
-  reserveJudgeLayout: async (tx: DbOrTx, id: string): Promise<boolean> => {
-    const rows = await tx
-      .update(agentJobs)
-      .set({ progress: 53, startedAt: new Date() })
-      .where(
-        and(
-          eq(agentJobs.id, id),
-          eq(agentJobs.status, 'RUNNING'),
-          eq(agentJobs.stage, 'layout'),
-          eq(agentJobs.progress, 52),
-        ),
-      )
-      .returning({ id: agentJobs.id });
-    return rows.length > 0;
-  },
-
   // Conditional terminal transition: flip status to `to` only if it is currently
   // one of `from`, and report whether *this* call won. The job row is the single
   // arbiter when terminal callback handling and the read-path / daily-cron

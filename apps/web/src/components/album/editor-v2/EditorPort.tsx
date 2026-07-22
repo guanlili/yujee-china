@@ -257,17 +257,15 @@ function EditorLoadingState({ locale }: { locale: Locale }) {
 
 // Human-readable copy for the live generation stage shown in the building
 // loading chat. Falls back to the first-frame analyze line when the stage is
-// null/unknown. Uses the same local
+// null/unknown(第一个 progress 回调到达前的那几百毫秒)。Uses the same local
 // dictionary convention as the rest of EditorPort (no messages/*.json).
 function buildingStageLabel(stage: string | null | undefined, locale: Locale): string {
   const zh = locale === 'zh';
   switch (stage) {
     // V3 分析环节 (五环节状态机, WP1.5/#184): the /v3/analyze job streams these stage
-    // labels via the progress callback (agent V3JobStage: describe→group→template→
-    // preview). 'describe' is the first beat the user sees after the ≤0.5s nav, so it
-    // carries the "正在看照片…" copy the loading chat needs.
-    case 'describe':
-      return zh ? '正在看照片…' : 'Looking at your photos…';
+    // labels via the progress callback. 识图砍掉后 analyze 只发 'group'(0→100),
+    // 所以 'group' 就是用户导航后看到的第一个节拍 —— 它必须扛住整段等待的文案。
+    // (stage 还没回来的头 ≤0.5s 由下面的 default 兜。)
     case 'group':
       return zh ? '正在整理这些瞬间…' : 'Grouping your moments…';
     case 'template':
@@ -286,7 +284,7 @@ function buildingStageLabel(stage: string | null | undefined, locale: Locale): s
     case 'finalize':
       return zh ? '正在生成终稿…' : 'Putting the final touches…';
     default:
-      return zh ? '正在看照片…' : 'Looking at your photos…';
+      return zh ? '正在整理照片…' : 'Getting your photos ready…';
   }
 }
 
