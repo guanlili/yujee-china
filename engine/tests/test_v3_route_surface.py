@@ -22,16 +22,17 @@ def _all_paths(routes) -> set[str]:
 
 
 def test_agent_route_surface_is_recognize_layout_only() -> None:
-    """最小版只暴露 health + 识图 + 排版两段;后续环节端点已剥离。"""
+    """最小版只暴露 health + 识图 + 排版一步;后续环节端点已剥离。"""
     from src.main import app
 
     paths = _all_paths(app.routes)
 
     assert "/health" in paths
-    assert {"/v3/analyze", "/v3/select-layout", "/v3/judge-layout"}.issubset(paths)
+    assert {"/v3/analyze", "/v3/select-layout"}.issubset(paths)
 
-    # 已剥离的后续环节端点不得残留。
+    # 排版改纯确定性后,评委阶段端点已删除。
     removed = {
+        "/v3/judge-layout",
         "/v3/chapter-chat",
         "/v3/edit-chat",
         "/v3/write-chapter",
@@ -45,6 +46,19 @@ def test_agent_route_surface_is_recognize_layout_only() -> None:
     }
     assert removed.isdisjoint(paths)
     assert not any(path.startswith("/" + "v2" + "/album") for path in paths)
+
+
+def test_judge_layout_route_is_gone() -> None:
+    """排版不再有评委阶段:/v3/judge-layout 已删,POST 过去必须 404。"""
+    from src.main import app
+
+    client = TestClient(app)
+    resp = client.post(
+        "/v3/judge-layout",
+        json={"requestId": "r1"},
+        headers={"Authorization": "Bearer test_secret"},
+    )
+    assert resp.status_code == 404
 
 
 def test_select_layout_route_accepts_202_and_background_task(monkeypatch) -> None:

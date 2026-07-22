@@ -4,8 +4,7 @@
 
 - `GET  /health`            健康检查
 - `POST /v3/analyze`        ① 识图分章(async 202 + callback,唯一带原图 base64 的端点)
-- `POST /v3/select-layout`  ② 排版 phase 1:生成候选结构,candidates 回调交回浏览器渲染
-- `POST /v3/judge-layout`   ② 排版 phase 2:浏览器缩略图 → Gemini 评委选赢家 → pages(纯版面,texts 留空)
+- `POST /v3/select-layout`  ② 排版:确定性选版,直接回 pages
 
 编辑 / 主题 / 封面 / finalize 等后续环节已从这个最小版剥离,后面再接。
 
@@ -28,7 +27,6 @@ from ..contracts.schemas import (
     DesignFonts,
     DesignRequest,
     DesignResponse,
-    JudgeLayoutRequest,
     JudgePageTemplateData,
     JudgePageTemplateRequest,
     JudgePageTemplateResponse,
@@ -37,7 +35,7 @@ from ..contracts.schemas import (
     V3AcceptedResponse,
     V3AnalyzeRequest,
 )
-from ..workflows import analyze, judge_layout, select_layout
+from ..workflows import analyze, select_layout
 from ..workflows.core import design as design_agent
 from ..workflows.core.layout import select_layout as select_layout_agent
 from ..settings import get_settings
@@ -86,7 +84,7 @@ async def submit_analyze(
     ).model_dump(mode="json")
 
 
-# ---------- ② 排版 phase 1:候选生成 ------------------------------------------
+# ---------- ② 排版:确定性选版,直接回 pages ---------------------------------
 
 
 @router.post("/v3/select-layout", status_code=202, dependencies=[Depends(require_bearer)])
@@ -100,27 +98,6 @@ async def submit_select_layout(
         language=req.language,
     )
     background_tasks.add_task(select_layout.run_with_timeout, req)
-    return V3AcceptedResponse(
-        ok=True,
-        data=V3AcceptedData(requestId=req.requestId, accepted=True),
-    ).model_dump(mode="json")
-
-
-# ---------- ② 排版 phase 2:评委选赢家 → pages -------------------------------
-
-
-@router.post("/v3/judge-layout", status_code=202, dependencies=[Depends(require_bearer)])
-async def submit_judge_layout(
-    req: JudgeLayoutRequest, background_tasks: BackgroundTasks
-) -> dict[str, Any]:
-    """接收浏览器渲染的候选缩略图,Gemini 评委选赢家,回 completed(纯版面,texts 留空)。"""
-    log.info(
-        "v3_judge_layout.accepted",
-        units=len(req.units),
-        candidates=sum(len(u.candidates) for u in req.units),
-        language=req.language,
-    )
-    background_tasks.add_task(judge_layout.run_with_timeout, req)
     return V3AcceptedResponse(
         ok=True,
         data=V3AcceptedData(requestId=req.requestId, accepted=True),

@@ -1,4 +1,9 @@
-"""V3 `/v3/select-layout` Stage2 async orchestration."""
+"""V3 `/v3/select-layout` Stage2 async orchestration。
+
+排版是纯确定性的一步:逐 unit 用 `candidate_gen_v3` 生成**唯一**候选(count=1,seed
+按 unit 播种可复现)→ `legalize.finalize_candidate_pages` 最终化 → 填模板 sample 文案
+→ 一次 `completed` 回调直接返回 pages。零 AI 调用,没有候选/缩略图/评委阶段。
+"""
 
 from __future__ import annotations
 
@@ -10,13 +15,10 @@ from typing import Any
 
 from ..api import callback
 from ..providers import ai_client
-from .core.layout import candidate_gen_v3
+from .core.layout import candidate_gen_v3, legalize, sample_texts
 from ..logging_config import get_logger, request_id_var
 from ..contracts.schemas import (
-    CandidatePage,
-    LayoutCandidate,
-    SelectLayoutCandidates,
-    SelectLayoutCandidateUnit,
+    SelectLayoutCompleted,
     SelectLayoutRequest,
     V3CallbackError,
     V3FailedEvent,
@@ -151,14 +153,17 @@ def _unit_key(unit: Any) -> str:
 
 
 
-def select_candidates(req: SelectLayoutRequest) -> tuple[list[SelectLayoutCandidateUnit], V3Usage]:
-    """P2 phase 1:逐 unit 代码随机生成候选结构(不调 Gemini),交回浏览器渲染。"""
+def build_pages(req: SelectLayoutRequest) -> tuple[list[dict[str, Any]], V3Usage]:
+    """确定性选版:逐 unit 取唯一候选 → 最终化成页 → 填模板 sample 文案。
+
+    候选生成器按容量拆页、每页照片数 == 模板槽数,所以整册页天然「填满、不重不漏」。
+    全程不调 AI,`geminiCallCount` 恒为 0。
+    """
     started = time.monotonic()
     settings = get_settings()
     units = _layout_units(req.chapters, settings.select_layout_max_images_per_batch)
-    count = int(settings.select_layout_candidate_count)
 
-    out_units: list[SelectLayoutCandidateUnit] = []
+    interior_pages: list[dict[str, Any]] = []
     for unit in units:
         chapter_id = str(getattr(unit, "chapterId", None) or _value(unit, "chapterId"))
         photos = _chapter_photos(unit)
@@ -166,32 +171,25 @@ def select_candidates(req: SelectLayoutRequest) -> tuple[list[SelectLayoutCandid
             continue
         first_pid = _value(photos[0], "photoId") if photos else ""
         unit_seed = f"{req.requestId}#{chapter_id}#{first_pid}"
-        cands = candidate_gen_v3.generate_candidates(photos, seed=unit_seed, count=count)
+        # count=1:确定性选版,不再生成多候选交评委挑。
+        cands = candidate_gen_v3.generate_candidates(photos, seed=unit_seed, count=1)
         if not cands:
             continue
-        out_units.append(
-            SelectLayoutCandidateUnit(
-                unitKey=_unit_key(unit),
-                chapterId=chapter_id,
-                candidates=[
-                    LayoutCandidate(
-                        candidateIndex=idx,
-                        pages=[
-                            CandidatePage(templateId=p["templateId"], images=dict(p["images"]))
-                            for p in cand
-                        ],
-                    )
-                    for idx, cand in enumerate(cands)
-                ],
-            )
+        interior_pages.extend(
+            legalize.finalize_candidate_pages({"chapterId": chapter_id}, cands[0])
         )
+
+    # 整册连续重排 pageIndex(finalize 只在 unit 内编号)。
+    pages = [{**page, "pageIndex": idx} for idx, page in enumerate(interior_pages)]
+    # 模板自带示例文案先填上,用户看到的是有字的版面;compose 环节再逐槽覆盖。
+    pages = sample_texts.fill_sample_texts(pages)
 
     usage = V3Usage(
         durationMs=int((time.monotonic() - started) * 1000),
         geminiCallCount=0,
         models=V3Models(),
     )
-    return out_units, usage
+    return pages, usage
 
 
 async def _run_select_layout(job: _Job) -> None:
@@ -203,29 +201,28 @@ async def _run_select_layout(job: _Job) -> None:
     )
     await _emit_progress(job, "layout", 0)
 
-    # P2 phase 1:生成候选结构,经 candidates 回调交回浏览器去渲染缩略图。
-    # (旧单段内联评委——线框结构判图——已整条移除,排版统一真图缩略图逻辑。)
-    units, usage = select_candidates(job.req)
+    # 纯确定性选版,一把出页(旧的候选回调 → 浏览器缩略图 → 视觉评委三段已整条移除)。
+    pages, usage = build_pages(job.req)
     await callback.post(
         str(job.req.callbackUrl),
-        SelectLayoutCandidates(
-            event="candidates",
+        SelectLayoutCompleted(
+            event="completed",
             jobKind="select-layout",
             requestId=job.req.requestId,
-            units=units,
+            pages=pages,
             usage=usage,
         ),
     )
     ai_client.trace_marker(
-        "select-layout candidates",
-        input=f"requestId={job.req.requestId}; units={len(units)}",
-        output=_trace_json({"units": [u.unitKey for u in units]}),
+        "select-layout completed",
+        input=f"requestId={job.req.requestId}; pages={len(pages)}",
+        output=_trace_json({"templates": [p["templateId"] for p in pages]}),
     )
     log.info(
-        "v3_select_layout.candidates",
+        "v3_select_layout.completed",
         duration_ms=int((time.monotonic() - started) * 1000),
         chapters=len(job.req.chapters),
-        units=len(units),
+        pages=len(pages),
     )
 
 
