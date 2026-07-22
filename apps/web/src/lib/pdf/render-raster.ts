@@ -12,6 +12,7 @@ import { PAGE } from '@/components/album/templates/constants';
 import { getWebTemplate } from '@/components/album/web-registry';
 import { loadAlbumFonts } from '@/lib/font/album-font-loader';
 import { injectDocumentFontsInto } from '@/lib/font/clone-document-fonts';
+import { faceCaptureSpec } from './face-capture';
 import { splitSpreadCanvas } from './split-spread-canvas';
 
 // 栅格 PDF 渲染器（收敛单渲染器）：逐页把「屏幕渲染」离屏渲成 794×1123 → html2canvas
@@ -62,8 +63,10 @@ export interface FaceRenderOptions {
   total?: number; // 总页数（供 React 回退模板用）
 }
 
-// 单个 face → 离屏 html2canvas 截图 → 返回 canvas（794*scale × 1123*scale）。
-// PDF / 单页 JPG / 拼图三条导出路径共用的原语。调用方需先 loadAlbumFonts。
+// 单个 face → 离屏 html2canvas 截图 → 返回 canvas。尺寸由 faceCaptureSpec() 决定：
+// 普通页 794*scale × 1123*scale；双宽(#303)页 1588*scale × 1123*scale —— 调用方若要
+// 纯 A4 输出，自己用 splitSpreadCanvas 切成左右两张（PDF / 单页 JPG 都这么做）。
+// PDF / 单页 JPG / 拼图 / Live 视频四条导出路径共用的原语。调用方需先 loadAlbumFonts。
 export async function renderFaceToCanvas(
   page: AdaptablePage & { html?: string },
   resolveImage: ResolveImage,
@@ -71,11 +74,11 @@ export async function renderFaceToCanvas(
 ): Promise<HTMLCanvasElement> {
   const scale = options.scale ?? 3;
   const { default: html2canvas } = await import('html2canvas-pro');
-  // 离屏 host：固定 794×1123、移出视口，独立于当前缩放/翻页状态。
+  // 离屏 host：按 pageBox() 开盒（普通页 794×1123；双宽页 1588×1123），移出视口，
+  // 独立于当前缩放/翻页状态。#303:此前这里硬编码单页宽，双宽页只截到左半。
+  const capture = faceCaptureSpec(page.templateId);
   const host = document.createElement('div');
-  host.style.cssText =
-    `position:fixed;left:-99999px;top:0;width:${PAGE.width}px;height:${PAGE.height}px;` +
-    `overflow:hidden;background:#fff`;
+  host.style.cssText = capture.cssText;
   host.innerHTML = renderFaceHtml(
     page, resolveImage, options.total ?? 1, options.folio ?? null, options.folioSide ?? 'right',
   );
@@ -86,8 +89,8 @@ export async function renderFaceToCanvas(
     // 字体确定后再做固定高度文字槽的字号自适应,与画板同一 pass,屏幕/导出一致。
     fitTextBoxes(host);
     return await html2canvas(host, {
-      width: PAGE.width,
-      height: PAGE.height,
+      width: capture.width,
+      height: capture.height,
       scale,
       backgroundColor: '#ffffff',
       useCORS: true,

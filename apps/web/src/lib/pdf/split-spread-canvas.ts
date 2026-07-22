@@ -22,14 +22,18 @@ export function splitBox(w: number, h: number): [SliceBox, SliceBox] {
 export function splitSpreadCanvas(
   canvas: HTMLCanvasElement,
 ): [HTMLCanvasElement, HTMLCanvasElement] {
-  const boxes = splitBox(canvas.width, canvas.height);
-  return boxes.map((box) => {
-    const out = document.createElement('canvas');
-    out.width = box.sw;
-    out.height = box.sh;
-    const ctx = out.getContext('2d');
-    if (!ctx) throw new Error('2d context unavailable');
-    ctx.drawImage(canvas, box.sx, box.sy, box.sw, box.sh, 0, 0, box.sw, box.sh);
-    return out;
-  }) as [HTMLCanvasElement, HTMLCanvasElement];
+  const [leftBox, rightBox] = splitBox(canvas.width, canvas.height);
+  // 显式解构成两个具名变量,而不是 map(...) as [A, A] —— 那个断言是没检查的,
+  // splitBox 若哪天返回别的元数,类型系统会闭着眼睛放过去。
+  return [cut(canvas, leftBox), cut(canvas, rightBox)];
+}
+
+function cut(canvas: HTMLCanvasElement, box: SliceBox): HTMLCanvasElement {
+  const out = document.createElement('canvas');
+  out.width = box.sw;
+  out.height = box.sh;
+  const ctx = out.getContext('2d');
+  if (!ctx) throw new Error('2d context unavailable');
+  ctx.drawImage(canvas, box.sx, box.sy, box.sw, box.sh, 0, 0, box.sw, box.sh);
+  return out;
 }
