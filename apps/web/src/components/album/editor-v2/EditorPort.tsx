@@ -1857,7 +1857,11 @@ function EditorBook({
     function paintSpread(i: number) {
       // 收集态没有版式页;画板走照片网格(renderCollectGrid),不画空版式书。
       if (isCollectMode) return;
-      const [lp, rp] = spreadPages(i);
+      const fullIdx = spreads[i]?.full ?? null;
+      // 双宽页占满整个跨页:它画在左 cell 里(CSS 把左 cell 撑成全宽、右 cell 退场)。
+      const [lp, rp] = fullIdx != null
+        ? [pagesState[fullIdx] ?? null, null]
+        : spreadPages(i);
       // Layout MUST be settled BEFORE paintEl. paintEl scales the page to the cell's
       // live clientWidth/height and SKIPS a cell hidden by display:none (offsetParent
       // === null). A solo cover/ending spread narrows the book to single-page width and
@@ -1871,9 +1875,13 @@ function EditorBook({
       // shadow, page-num or click target) and drops the center spine.
       pageLeft.classList.toggle('page-empty', lp === null);
       pageRight.classList.toggle('page-empty', rp === null);
+      // 双宽(#303)页占满整个跨页,由 CSS 的 book-full 隐藏中缝、collapse 空的右 cell。
+      bookEl.classList.toggle('book-full', fullIdx != null);
       // Drop the center spine line when either half is empty so a solo cover/ending
       // page has no stray divider next to blank space; keep it for double spreads.
-      bookEl.classList.toggle('book-solo', lp === null || rp === null);
+      // 双宽页没有中缝可言(它不是「一半是空」),中缝已由上面的 book-full 隐藏,这里
+      // 不应再让 book-solo 重复处理,否则两套 collapse 逻辑会打架。
+      bookEl.classList.toggle('book-solo', fullIdx == null && (lp === null || rp === null));
       // A *true* cover/ending solo (isSoloSpread, keyed off the page category — NOT
       // off "a null half") renders as one centered single-width page: the empty half
       // leaves the layout and the container narrows to single-page aspect. An interior
@@ -1903,6 +1911,16 @@ function EditorBook({
       // belongs to the spread we're flipping away from).
       clearImageSelection();
       flipping = true;
+      // 双宽(#303)页是一整张连续的跨页图,不是「左右各半」——spreadPages() 对一个
+      // full 跨页返回 [null, null](buildSpreads 把 left/right 都清空,内容全在
+      // fullIdx),没法有意义地拆成翻页动画的 leaf 半页 + 对面 cell 两块。跟
+      // isSoloSpread 一样(那是因为容器宽度会变),这里直接跳过 leaf、切换到位。
+      if (spreads[currentCh]?.full != null || spreads[nextIdx]?.full != null) {
+        currentCh = nextIdx;
+        paintSpread(nextIdx);
+        flipping = false;
+        return;
+      }
       const [curLeft, curRight] = spreadPages(currentCh);
       const [nxtLeft, nxtRight] = spreadPages(nextIdx);
       // Solo cover/ending pages render in a single-page-width container; the leaf
