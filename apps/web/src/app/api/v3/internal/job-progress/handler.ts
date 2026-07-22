@@ -31,6 +31,14 @@ export async function handleV3JobProgress(req: Request) {
     case 'failed':
       await jobService.handleV3Failed(payload.requestId, payload.error);
       break;
+    default:
+      // 契约里 event 仍含 'candidates'(下个任务才删)。这条 route 从不处理它 —— Agent
+      // 若回归发出,不能悄悄吞掉当 accepted:true,打 warn 让契约漂移可观测。
+      logger.warn(
+        { requestId: payload.requestId, event: payload.event },
+        'v3 callback event not handled by this dispatcher',
+      );
+      break;
   }
 
   return ok({ accepted: true });

@@ -60,9 +60,10 @@ export const agentJobRepo = {
     return rows[0];
   },
 
-  // 解耦后 select-layout 是独立 layout job(自己的 requestId,浏览器不知道)。两段式 phase-2 靠
-  // album 唯一定位这个活跃 layout job(uq_agent_jobs_album_kind_active 保证每 album 至多一个),
-  // 用它真实的 requestId 取回按 layout-requestId 暂存的候选并回调引擎 —— 不再依赖浏览器传对 requestId。
+  // 解耦后 select-layout 是独立 layout job(自己的 requestId,浏览器不知道)。唯一调用方
+  // album-service.getStoryProgress 靠这个查询判断「排版是否还在跑」(QUEUED/RUNNING 即
+  // running),不取 job 本身的字段 —— uq_agent_jobs_album_kind_active 保证每 album 至多
+  // 一条活跃 layout job,查到即视为在跑。
   findActiveLayoutByAlbum: async (albumId: string): Promise<AgentJob | undefined> => {
     const rows = await db
       .select()

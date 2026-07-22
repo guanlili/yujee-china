@@ -1250,7 +1250,7 @@ export function ChatPanel({
         setThinkingLabel(working, 'Choosing layouts…');
         const refs = await selectLayoutRefsFromStore(recipe.photoIds);
         if (disposed) return;
-        setThinkingLabel(working, 'Writing copy from your stories…');
+        setThinkingLabel(working, 'Laying out your pages…');
         await submitSelectLayoutV3(albumId, {
           requestId: recipe.requestId,
           language: recipe.language,
@@ -1280,11 +1280,10 @@ export function ChatPanel({
         }
       }
     }
-    // 排版是 Agent 异步跑的,完成的页落进服务端 draft(inline / 两段式都如此)。
+    // 排版是 Agent 异步跑的,完成的页落进服务端 draft。
     // 轮询 draft,pages 一出现就派发 `yujee:authoring-pages-ready`:EditorPort 收到后重取
     // 草稿,canvas(按 pages.length key)只重挂自己渲染出版面;ChatPanel(按 album.id key)
-    // 不重挂,保留对话历史 —— 所以不会像整页 reload 那样重复采访/错乱顺序。以 draft.pages
-    // 为准,不依赖具体评委路径。
+    // 不重挂,保留对话历史 —— 所以不会像整页 reload 那样重复采访/错乱顺序。
     async function waitForLayoutThenRefresh(
       host: HTMLElement,
       opts?: { minPages?: number; append?: boolean },

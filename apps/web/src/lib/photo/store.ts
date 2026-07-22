@@ -78,15 +78,6 @@ function cachedUrl(key: string): string | undefined {
   return url;
 }
 
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(fr.result as string);
-    fr.onerror = () => reject(fr.error);
-    fr.readAsDataURL(blob);
-  });
-}
-
 export function fitWithinMaxEdge(
   width: number,
   height: number,
@@ -298,22 +289,6 @@ export const photoStore = {
       }
     };
     await Promise.all(Array.from({ length: 4 }, worker));
-    return out;
-  },
-
-  // Data URL — the PDF export pipeline needs fetchable/data URLs (blob: URLs
-  // are unreliable inside detached render surfaces), so it resolves to these.
-  async getDataUrls(photoIds: string[]): Promise<Record<string, string>> {
-    const out: Record<string, string> = {};
-    await Promise.all(
-      photoIds.map(async (id) => {
-        const blob = await this.getBlob(id);
-        if (blob) {
-          const dataBlob = await prepareImageBlobForBrowserDecode(blob);
-          out[id] = await blobToDataUrl(dataBlob);
-        }
-      }),
-    );
     return out;
   },
 

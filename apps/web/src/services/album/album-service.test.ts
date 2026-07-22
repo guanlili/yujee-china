@@ -95,8 +95,9 @@ test('getDetail: fresh RUNNING job → surfaces live stage/progress, no sweep', 
   }
 });
 
-// 解耦后 select-layout 是独立 layout job,相册仍 EDITING。两段式判图靠 poll 看到 candidates-ready
-// 哨兵(stage=layout,progress=52)驱动 phase 2 —— 所以 EDITING 下也必须透出在跑 layout job 的进度。
+// 解耦后 select-layout 是独立 layout job,相册仍 EDITING;编辑器/轮询靠这里透出的
+// stage=layout 知道排版还在跑,等 completed 落 pages —— 所以 EDITING 下也必须透出在跑
+// layout job 的进度。
 test('getDetail: EDITING album with a running layout job → surfaces layout stage/progress', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');

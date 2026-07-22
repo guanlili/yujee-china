@@ -50,7 +50,6 @@ test('photoStore prepares HEIC originals before browser preview and export decod
 
   assert.match(storeSrc, /prepareImageBlobForBrowserDecode/);
   assert.match(storeSrc, /const displayBlob = await prepareImageBlobForBrowserDecode\(blob\)/);
-  assert.match(storeSrc, /const dataBlob = await prepareImageBlobForBrowserDecode\(blob\)/);
   assert.match(storeSrc, /const pdfBlob = await prepareImageBlobForBrowserDecode\(blob\)/);
 });
 

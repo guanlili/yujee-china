@@ -268,10 +268,6 @@ function buildingStageLabel(stage: string | null | undefined, locale: Locale): s
     // (stage 还没回来的头 ≤0.5s 由下面的 default 兜。)
     case 'group':
       return zh ? '正在整理这些瞬间…' : 'Grouping your moments…';
-    case 'template':
-      return zh ? '正在编排版式…' : 'Laying out the spreads…';
-    case 'preview':
-      return zh ? '正在生成预览…' : 'Building your preview…';
     // V2 stage labels (kept until the v1/v2 teardown, #197).
     case 'vision':
       return zh ? '正在看你的照片…' : 'Looking at your photos…';

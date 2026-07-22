@@ -185,7 +185,7 @@ test('select-layout/completed under EDITING (时序反转) → merges pages + st
   try {
     const { albumId, holdId, requestId } = await seed(user.id);
     // 时序反转:收集完才排版,排版期 album 恒为 EDITING(不再 AGENT_RUNNING)。这是回归本 bug
-    // 的核心用例 —— 完成回调必须在 EDITING 下也接受(靠 job.stage+progress≥51 哨兵,不靠 status)。
+    // 的核心用例 —— 完成回调必须在 EDITING 下也接受(不靠 album.status)。
     await albumRepo.update(db, albumId, {
       status: 'EDITING',
       stage: 'story',
