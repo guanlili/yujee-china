@@ -5,7 +5,7 @@ import { getWebTemplate } from './web-registry';
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
 import { applyFolioOverlay, pageFolioInfos, preferredPageHtml, type FolioSide, type PageFolio } from './page-html-dom';
 import { FittedPageHtml } from './FittedPageHtml';
-import { buildSpreads, isSoloSpread, spreadIndexOfPage } from './spreads';
+import { buildSpreads, isSoloSpread, spreadFullPage, spreadIndexOfPage, spreadPageIndices } from './spreads';
 import { pageBox } from './templates/constants';
 import type { EditorPage } from './types';
 import { useAlbumFonts } from '@/lib/font/album-font-loader';
@@ -155,15 +155,24 @@ export function FlipBook({
     },
     [spreads],
   );
+  // 只对「左右两半」的跨页有意义。双宽(#303)跨页是**一整张**双宽面,不是两半 ——
+  // 它走 fullIndexOf/fullPageOf,这里返回两个空半页只是为了让配对渲染分支安全地
+  // 短路(渲染时先判 fullIndexOf,永远不会拿这两个 null 去画)。
   const pagesOfSpread = useCallback(
     (s: number): [EditorPage | null, EditorPage | null] => {
       const sp = spreads[s];
+      if (!sp || sp.kind === 'full') return [null, null];
       return [
-        sp?.left != null ? pages[sp.left] ?? null : null,
-        sp?.right != null ? pages[sp.right] ?? null : null,
+        sp.left != null ? pages[sp.left] ?? null : null,
+        sp.right != null ? pages[sp.right] ?? null : null,
       ];
     },
     [pages, spreads],
+  );
+  // 双宽跨页:它的页数组下标(不是双宽跨页则 -1)。
+  const fullIndexOf = useCallback(
+    (s: number) => spreadFullPage(spreads[s]) ?? -1,
+    [spreads],
   );
   // Is spread `s` a true cover/ending solo page (render single-page, centered,
   // no blank facing half, no spine)? An interior odd-trailing { left:i, right:null }
@@ -220,8 +229,8 @@ export function FlipBook({
   // active-thumbnail highlight (and any selection-driven UI) tracks the book.
   const syncSelectionToSpread = useCallback(
     (s: number) => {
-      const sp = spreads[s];
-      const idx = sp?.left ?? sp?.right ?? -1;
+      // 该跨页占的第一个真实页(双宽跨页就是它自己那一页)。
+      const idx = spreadPageIndices(spreads[s])[0] ?? -1;
       if (idx >= 0 && idx !== selected) onSelect(idx);
     },
     [spreads, selected, onSelect],
@@ -241,7 +250,9 @@ export function FlipBook({
       // double-page⇄double-page move; a solo page has a different (single-page)
       // width, so a cross-width leaf would tear/misplace. A direct switch is the
       // safe transition for solo edges (no residue, no blank flash).
-      if (reducedMotion || soloOf(spread) || soloOf(to)) {
+      // 双宽(#303)跨页同理:它是一整张连续的双宽面,没有「右半页」可以当叶子转,
+      // 也没有对面的半页可以垫在底下。任一端是双宽页就直接切换,不做叶子动画。
+      if (reducedMotion || soloOf(spread) || soloOf(to) || fullIndexOf(spread) >= 0 || fullIndexOf(to) >= 0) {
         setSpread(to);
         return;
       }
@@ -259,7 +270,7 @@ export function FlipBook({
         timerRef.current = null;
       }, FLIP_MS + 40);
     },
-    [spread, spreadCount, anim, reducedMotion, syncSelectionToSpread, soloOf],
+    [spread, spreadCount, anim, reducedMotion, syncSelectionToSpread, soloOf, fullIndexOf],
   );
 
   // prev/next on the strip move one spread at a time.
@@ -296,8 +307,16 @@ export function FlipBook({
     }
   }
 
-  const onLeftHalf = selected === spreads[spread]?.left;
-  const onRightHalf = selected === spreads[spread]?.right;
+  const here = spreads[spread];
+  const onLeftHalf = here?.kind === 'pair' && selected === here.left;
+  const onRightHalf = here?.kind === 'pair' && selected === here.right;
+
+  // 双宽(#303)跨页:一整张双宽面铺满整个跨页宽,没有中缝、没有对面半页。
+  // goToSpread 对双宽端点直接切换,所以画到这里时 anim 恒为 null。
+  const fullArrayIndex = fullIndexOf(spread);
+  const fullHere = fullArrayIndex >= 0;
+  const fullPage = fullHere ? pages[fullArrayIndex] ?? null : null;
+  const fullActive = fullHere && selected === fullArrayIndex;
 
   // Solo cover/ending: render a single centered page (no blank facing half, no
   // spine). Animation is already suppressed for solo edges in goToSpread, so the
@@ -305,7 +324,7 @@ export function FlipBook({
   // whichever half the spread occupies.
   const soloHere = isSoloSpread(spreads[spread], pages);
   const soloPage = soloHere ? (curLeft ?? curRight) : null;
-  const soloArrayIndex = soloHere ? (spreads[spread]?.left ?? spreads[spread]?.right ?? -1) : -1;
+  const soloArrayIndex = soloHere ? (spreadPageIndices(spreads[spread])[0] ?? -1) : -1;
   const soloActive = soloHere && selected === soloArrayIndex;
 
   const indicator = useMemo(
@@ -328,17 +347,20 @@ export function FlipBook({
     pageArrayIndex,
     side,
     active,
+    // 双宽(#303)页占满整个跨页宽,不是半页;其余情况都是半页宽。
+    width = halfW,
   }: {
     page: EditorPage | null;
     pageArrayIndex: number;
     side: 'left' | 'right';
     active: boolean;
+    width?: number;
   }) => (
     <div
       className="group/half relative"
-      style={{ width: halfW, height: book.h, background: 'var(--surface)' }}
+      style={{ width, height: book.h, background: 'var(--surface)' }}
     >
-      <PageFace page={page} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(page)} folioSide={folioSideOf(page)} />
+      <PageFace page={page} totalPages={totalPages} resolveImage={resolveImage} width={width} height={book.h} folio={folioOf(page)} folioSide={folioSideOf(page)} />
       {page && (
         <>
           <button
@@ -397,7 +419,24 @@ export function FlipBook({
         </div>
       )}
 
-      {book.w > 0 && !soloHere && (
+      {book.w > 0 && !soloHere && fullHere && (
+        // 双宽(#303)页:一整张双宽面铺满跨页宽 —— 无中缝、无对面半页、无翻页叶。
+        <div
+          className="relative flex"
+          style={{
+            width: book.w,
+            height: book.h,
+            borderRadius: 2,
+            background: 'var(--surface)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.08)',
+            overflow: 'hidden',
+          }}
+        >
+          <Half page={fullPage} pageArrayIndex={fullArrayIndex} side="left" active={fullActive} width={book.w} />
+        </div>
+      )}
+
+      {book.w > 0 && !soloHere && !fullHere && (
         <div
           className="relative flex"
           style={{
@@ -411,8 +450,8 @@ export function FlipBook({
           }}
         >
           {/* under layer: the resting spread (target pages slot in beneath the leaf during a flip) */}
-          <Half page={underLeft} pageArrayIndex={spreads[spread]?.left ?? -1} side="left" active={onLeftHalf} />
-          <Half page={underRight} pageArrayIndex={spreads[spread]?.right ?? -1} side="right" active={onRightHalf} />
+          <Half page={underLeft} pageArrayIndex={(here?.kind === 'pair' ? here.left : null) ?? -1} side="left" active={onLeftHalf} />
+          <Half page={underRight} pageArrayIndex={(here?.kind === 'pair' ? here.right : null) ?? -1} side="right" active={onRightHalf} />
 
           {/* center spine shadow */}
           <div
@@ -518,6 +557,9 @@ export function FlipBook({
             // interior odd-trailing spread is NOT solo and keeps its blank half.)
             const solo = soloOf(s);
             const soloThumb = solo ? (tl ?? tr) : null;
+            // 双宽(#303)跨页缩略图:一整格双宽面(仍是 52px 宽的跨页格),无中缝。
+            const fullIdx = fullIndexOf(s);
+            const fullThumb = fullIdx >= 0 ? pages[fullIdx] ?? null : null;
             return (
               <button
                 key={s}
@@ -538,6 +580,10 @@ export function FlipBook({
                   {solo ? (
                     <div className="h-full w-full overflow-hidden">
                       <PageFace page={soloThumb} totalPages={totalPages} resolveImage={thumbResolver} fitText={false} width={26} height={34} />
+                    </div>
+                  ) : fullIdx >= 0 ? (
+                    <div className="h-full w-full overflow-hidden">
+                      <PageFace page={fullThumb} totalPages={totalPages} resolveImage={thumbResolver} fitText={false} width={52} height={34} />
                     </div>
                   ) : (
                     <>

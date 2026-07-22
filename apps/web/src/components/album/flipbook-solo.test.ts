@@ -73,15 +73,22 @@ test('a solo spread renders a single centered page at half width, no spine, one 
   );
 });
 
-test('page-turn into/out of a solo edge skips the cross-width leaf flip (direct switch)', () => {
+test('page-turn into/out of a solo OR full edge skips the cross-width leaf flip (direct switch)', () => {
   const tsx = source('FlipBook.tsx');
   // goToSpread short-circuits to a direct setSpread when either end is solo, so a
   // half-width leaf is never flown across a width change (no tear / blank flash).
-  assert.match(
-    tsx,
-    /if\s*\(reducedMotion\s*\|\|\s*soloOf\(spread\)\s*\|\|\s*soloOf\(to\)\)\s*\{[\s\S]*?setSpread\(to\)/,
-    'goToSpread must jump directly (no leaf anim) when the current or target spread is solo',
-  );
+  // #303 收紧(不是放松):双宽跨页也必须走这条直切路径 —— 它是一整张连续的双宽面,
+  // 没有可以当叶子转的右半页。原正则写死了「恰好三个条件」,这里改成要求四个条件
+  // 都在同一个短路 if 里,漏掉任何一个都会失败。
+  const guard = /\n\s*if \((reducedMotion[^\n]*)\) \{\n\s*setSpread\(to\);\n\s*return;\n/.exec(tsx);
+  assert.ok(guard, 'expected goToSpread to short-circuit with a direct setSpread(to)');
+  const cond = guard![1]!;
+  for (const term of ['reducedMotion', 'soloOf(spread)', 'soloOf(to)', 'fullIndexOf(spread)', 'fullIndexOf(to)']) {
+    assert.ok(
+      cond.includes(term),
+      `goToSpread must jump directly (no leaf anim) when ${term} — condition was: ${cond}`,
+    );
+  }
 });
 
 test('the thumbnail strip renders a solo spread as one page, no spine divider', () => {
