@@ -310,7 +310,7 @@ export const SelectLayoutChapter = z
     chapterId: z.string().min(1),
     photos: z.array(SelectLayoutPhoto).min(1),
     structureHint: z.string().max(600).optional(),
-    // 采访结果:评委据此选贴合基调的版式 + 排版后一次性写文案。跳过采访/老树 => ""。
+    // 采访结果:排版据此选贴合基调的版式;写文案在其后的 /v3/compose。跳过采访/老树 => ""。
     chapterContext: z.string().max(500).default(''),
   })
   .strict();

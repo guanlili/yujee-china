@@ -12,7 +12,7 @@ Next.js app for the product UI, auth, billing, album state, V3 orchestration, an
 - Callback handling from Agent.
 - R2 presigned URLs for PDF and thumbnails.
 
-The Web app currently still contains route/client surfaces for the fuller authoring flow (`chapter-chat`, `edit-chat`, `recommend`, `apply-theme`, `cover`, `finalize`). The current Agent route surface is smaller and only exposes analyze/select-layout/judge-page-template/design, so keep Web/Agent compatibility in mind before relying on those later routes end-to-end.
+The Web app currently still contains route/client surfaces for the fuller authoring flow (`chapter-chat`, `edit-chat`, `recommend`, `apply-theme`, `cover`, `finalize`). The current Agent route surface is smaller and only exposes `/v3/analyze`, `/v3/select-layout` and `/v3/compose`, so keep Web/Agent compatibility in mind before relying on those later routes end-to-end.
 
 ## Directory Map
 

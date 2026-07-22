@@ -910,7 +910,7 @@ test('markChapterDone: after gate opened (stage past story) is a no-op', async (
   }
 });
 
-test('applyDesign: success advances stage story → ready (export gate key; 现行流程选封面发生在 story)', async (t) => {
+test('applyDesign: 派发 compose job(不再同步成稿),回调到达才推 stage story → ready', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
     return;
@@ -918,7 +918,7 @@ test('applyDesign: success advances stage story → ready (export gate key; 现�
   const user = await makeUser('design-stage-ready');
   try {
     const { TEMPLATES } = await import('@yujee/contracts');
-    const templates = Object.values(TEMPLATES) as Array<{ id: string; category?: string }>;
+    const templates = Object.values(TEMPLATES) as Array<{ id: string; category?: string; texts?: unknown[] }>;
     const coverId = templates.find((tp) => tp.category === 'cover')!.id;
     const endingId = templates.find((tp) => tp.category === 'ending')!.id;
 
@@ -947,27 +947,42 @@ test('applyDesign: success advances stage story → ready (export gate key; 现�
         version: 'v3-story',
         tree,
         pages: makePreviewPages(1),
-        // 故意留一章未 done:选定封面(applyDesign)应把现存章节全部记 done,
+        // 故意留一章未 done:成稿回调应把现存章节全部记 done,
         // 导出闸门(allDone && ready)随之打开 —— 用户口径:选完封面导出即可用。
         progress: { currentChapterId: 'c1', doneChapterIds: [] },
       },
     });
 
-    t.mock.method(agentClient, 'designV3', async () => ({
-      fonts: { title: 'Fraunces', body: 'Inter', decoration: 'Caveat' },
-      colors: { title: '#222222', body: '#333333', explain: '#666666' },
-      coverTexts: {},
-      endingTexts: {},
-      usage: { durationMs: 1, models: {} },
-    }));
+    const submitted: unknown[] = [];
+    t.mock.method(agentClient, 'submitComposeV3', async (payload: { requestId: string }) => {
+      submitted.push(payload);
+      return { requestId: payload.requestId };
+    });
 
-    await albumService.applyDesign(user.id, album.id, {
+    const dispatched = await albumService.applyDesign(user.id, album.id, {
       language: 'zh',
       coverTemplateId: coverId,
       coverPhotoId: 'p1',
       endingTemplateId: endingId,
       endingPhotoId: 'p1',
+      refs: { p1: 'data:image/jpeg;base64,AA==' },
     });
+
+    // 派发只建 job + 提交,不组页、不推 stage —— 成稿要几十秒,同步接口撑不住。
+    assert.equal(dispatched.accepted, true);
+    assert.equal(submitted.length, 1);
+    const midway = await albumRepo.findById(album.id);
+    assert.equal(midway?.stage, 'story');
+    const job = await agentJobRepo.findByRequestId(dispatched.requestId);
+    assert.equal(job?.kind, 'compose');
+    assert.equal(job?.status, 'RUNNING');
+
+    // 回调到达 → 组页落库 + stage='ready'(唯一推进点)。
+    await jobService.handleV3ComposeCompleted(
+      dispatched.requestId,
+      { coverTexts: { title: '我的一年' } },
+      { durationMs: 1, models: {} },
+    );
 
     const reloaded = await albumRepo.findById(album.id);
     assert.equal(reloaded?.stage, 'ready'); // 设计完成 = 导出闸门钥匙

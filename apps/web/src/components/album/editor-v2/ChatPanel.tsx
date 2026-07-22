@@ -1539,7 +1539,8 @@ export function ChatPanel({
       }
     }
     // 设计环节:封面组选择卡。规则组(服务端 GET)→ 用户点选一组 → POST /design
-    // (engine 出字体/颜色/封面封尾文案,Web 落 draft)→ 刷画板。幂等:已设计过不再弹。
+    // (服务端派发 engine /v3/compose 一次性成稿,回调落 draft)→ 轮询到封面页即刷画板。
+    // 幂等:已设计过(designed)或成稿在跑(composing)都不再弹。
     let designOfferShown = false;
     // 必选封面步骤:把选择卡盖在输入框上方(#coverDock),并锁住输入——禁用发送 + 置灰输入框。
     function setCoverLock(on: boolean) {
@@ -1555,6 +1556,14 @@ export function ChatPanel({
         const json = await res.json();
         if (!json.ok) return;
         if (json.data.designed || !json.data.hasPages) return;
+        // 成稿正在跑(刷新重进):不重弹选择卡,直接接回轮询等这一单成书。
+        if (json.data.composing) {
+          designOfferShown = true;
+          const resuming = appendThinkingShell();
+          setThinkingLabel(resuming, 'Writing your book…');
+          void withWorkflowBusy(() => waitForComposeThenRefresh(resuming));
+          return;
+        }
         sets = json.data.sets ?? [];
       } catch {
         return; // 拿不到选项就静默不弹,不打断编辑
@@ -1668,26 +1677,30 @@ export function ChatPanel({
       chatBody!.appendChild(recap);
       appendUserText(aT('就用这组封面', 'Use this cover set'));
       const host = appendThinkingShell();
-      setThinkingLabel(host, 'Designing fonts, colors & cover…');
+      setThinkingLabel(host, 'Writing your book…');
       try {
+        // 成稿要让模型**看真实照片**:原图只在浏览器,和排版一样把 200px 缩略图带上。
+        // 本机照片没了也不拦着成书 —— 退化成只凭故事/章标题写(refs 空)。
+        let refs: Record<string, string> = {};
+        const photoIds = albumRecipe.load(albumId)?.photoIds ?? [];
+        if (photoIds.length > 0) {
+          try {
+            refs = await selectLayoutRefsFromStore(photoIds);
+          } catch {
+            refs = {};
+          }
+        }
+        if (disposed) return;
         const res = await fetch(`/api/v3/albums/${albumId}/design`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ language: currentLang === 'zh' ? 'zh' : 'en', ...set, ...(pageBackground ? { pageBackground } : {}) }),
+          body: JSON.stringify({ language: currentLang === 'zh' ? 'zh' : 'en', ...set, ...(pageBackground ? { pageBackground } : {}), refs }),
         });
         const json = await res.json();
         if (!res.ok || !json.ok) throw new Error(json.error?.message ?? 'design failed');
-        settleThinking(host, 'analyzedFeedback');
-        const root = outerRootRef.current;
-        root?.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
-        window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
-        appendReplyBody(
-          host,
-          aT('设计好了:封面封底就位,全书字体和配色也统一刷好了。不满意随时在对话里改。', 'Design done — cover & back cover are in, fonts and colors applied across the book. Ask me here to tweak anything.'),
-        );
-        // 设计完成 = stage 已推进到 ready:同步前端闸门(顶栏导出按钮),并弹导出就绪卡。
-        await loadStoryGate();
-        maybeAppendExportReadyCard();
+        // compose 在 Agent 侧按章并发跑(几十秒起),完成回调才把成书落进服务端 draft。
+        // 这里进轮询态:封面页一出现就原地刷画板(与排版同一套 waitFor… 机制)。
+        void withWorkflowBusy(() => waitForComposeThenRefresh(host, recap));
       } catch (e) {
         settleThinking(host, 'analyzedFeedback');
         if (e instanceof UnauthorizedError) return;
@@ -1698,6 +1711,47 @@ export function ChatPanel({
       } finally {
         setSending(false);
         if (!disposed) { restAwait(); scrollChat(); }
+      }
+    }
+
+    // 成稿是 Agent 异步跑的(按章并发调 Gemini),成书落进服务端 draft 后回调推 stage='ready'。
+    // 轮询草稿骨架,封面页一出现就派发 `yujee:authoring-pages-ready` 原地刷画板 —— 与
+    // waitForLayoutThenRefresh 同一套机制(ChatPanel 不重挂,对话历史不丢)。
+    async function waitForComposeThenRefresh(host: HTMLElement, recap?: HTMLElement) {
+      // 兜底封顶:Agent 自身有超时预算,成稿通常 1 分钟内落地。
+      const deadline = Date.now() + 5 * 60 * 1000;
+      while (!disposed && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2500));
+        if (disposed) return;
+        try {
+          const { draft } = await fetchDraftSkeleton(albumId);
+          if (draft && draft.pages.some((p) => p.kind === 'cover')) {
+            if (disposed) return;
+            settleThinking(host, 'analyzedFeedback');
+            const root = outerRootRef.current;
+            root?.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+            window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+            appendReplyBody(
+              host,
+              aT('写好了:封面封底就位,全书文案、字体和配色也一起刷上了。不满意随时在对话里改。',
+                 'All set — cover & back cover are in, and the whole book now has its copy, fonts and colors. Ask me here to tweak anything.'),
+            );
+            // 成稿完成 = stage 已推进到 ready:同步前端闸门(顶栏导出按钮),并弹导出就绪卡。
+            await loadStoryGate();
+            maybeAppendExportReadyCard();
+            return;
+          }
+        } catch (e) {
+          if (e instanceof UnauthorizedError) return; // 会话没了:停轮询,下一次用户操作会跳登录
+          // 其它瞬时错误:继续轮询到封顶,不把错误灌进对话
+        }
+      }
+      if (!disposed) {
+        settleThinking(host, 'analyzedFeedback');
+        recap?.remove(); // 没成稿:回执撤掉(刷新重进的续跑态没有本地回执),重新给选择卡
+        appendReplyBody(host, aT('设计这步没跑成,稍后再试一下。', 'The design step failed — try again in a moment.'));
+        designOfferShown = false;
+        void offerDesignCard();
       }
     }
 

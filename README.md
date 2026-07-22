@@ -39,7 +39,7 @@ memoir-agent-rebuild/
 3. Agent 分章并回调 tree-only `V3LayoutTree`。
 4. Web 进入采集/排版阶段, Browser 提供 200px refs。
 5. Agent `/v3/select-layout` 一次确定性选版,直接回调 `completed` + `Page[]`(不再有候选/缩略图/评委来回)。
-6. 用户选完设计后,Web 调 Agent `/v3/compose`:一次 Gemini 成稿(按章并发看真实照片 + 读用户讲的故事)回调全书文案 + 封面/封尾文案 + 字体。
+6. 用户选完封面后,Web **异步派发**(`agent_jobs.kind='compose'`)Agent `/v3/compose`:一次 Gemini 成稿(按章并发看真实照片 + 读用户讲的故事)回调全书文案 + 封面/封尾文案 + 字体;Web 在回调里组页落库并把 `stage` 推到 `ready`。
 7. 后续编辑能力不在当前 Agent surface 内。
 
 ## 设计边界

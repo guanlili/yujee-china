@@ -12,7 +12,17 @@ import {
   mergeAppendTree,
   remapAppendChapterIds,
 } from '@/services/album/append-photos';
-import { sweepCarriers } from '@/services/album/design-apply';
+import {
+  DESIGN_COLORS,
+  applyComposePagesTexts,
+  assembleDesignedPages,
+  mergeSlotTexts,
+  normalizeDesignFonts,
+  sampleTexts,
+  sweepCarriers,
+  templateCategory,
+} from '@/services/album/design-apply';
+import { albumMessageRepo } from '@/db/repos/album-message-repo';
 import { bakePagesHtml, type BakeablePage } from '@/services/album/bake-html';
 
 // 解耦后 analyze 与 layout 是两个独立 job:init job(analyze,0→100)与 layout job(排版,
@@ -87,6 +97,111 @@ export function mergeAppendLayoutPages(
       currentChapterId: nextCurrent,
       doneChapterIds: chapterOrder.filter((id) => doneSet.has(id)),
     },
+  };
+}
+
+// ④ 成稿 job(kind='compose')的派发快照:用户选定的封面组 + 书页底色 + 语言。
+// 回调侧据此组页 —— compose 请求发出后 Web 不再需要跟 Agent 对齐任何状态。
+export type ComposeJobMeta = {
+  language: 'zh' | 'en';
+  coverTemplateId: string;
+  coverPhotoId: string;
+  endingTemplateId: string;
+  endingPhotoId: string;
+  extraEndingPhotoIds: string[];
+  pageBackground?: string;
+};
+
+export function readComposeMeta(meta: unknown): ComposeJobMeta | null {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null;
+  const raw = (meta as { compose?: unknown }).compose;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  const str = (key: string): string =>
+    typeof value[key] === 'string' ? (value[key] as string) : '';
+  const cover = str('coverTemplateId');
+  const ending = str('endingTemplateId');
+  if (!cover || !ending) return null;
+  const extras = Array.isArray(value.extraEndingPhotoIds)
+    ? (value.extraEndingPhotoIds as unknown[]).filter((x): x is string => typeof x === 'string')
+    : [];
+  return {
+    language: value.language === 'zh' ? 'zh' : 'en',
+    coverTemplateId: cover,
+    coverPhotoId: str('coverPhotoId'),
+    endingTemplateId: ending,
+    endingPhotoId: str('endingPhotoId'),
+    extraEndingPhotoIds: extras,
+    ...(typeof value.pageBackground === 'string' && value.pageBackground
+      ? { pageBackground: value.pageBackground }
+      : {}),
+  };
+}
+
+/** compose 回调载荷里 Web 真正消费的四块(其余如 usage 走 job 行)。 */
+export type ComposeCompletedPayload = {
+  pagesTexts?: Record<string, Record<string, string>>;
+  coverTexts?: Record<string, string>;
+  endingTexts?: Record<string, string>;
+  fonts?: Record<string, string>;
+};
+
+/**
+ * 成稿落回 draft(纯函数):顺序与旧同步实现(design-apply.assembleDesignedPages)一致 ——
+ * 先把 pagesTexts 逐槽合进内页 texts,再组 cover/ending 页、重排 pageIndex、carrier sweep、
+ * 整书重烘 html、刷书页底色。
+ *
+ * 四个数据坑都在这里兜住:
+ *  · coverTexts/endingTexts 的空串忽略(mergeSlotTexts),模板 sample 不被洗白;
+ *  · pagesTexts 只含真写出来的页,没出现的页 texts 原样保留;
+ *  · compose 不回 colors —— 三色用确定性常量 DESIGN_COLORS;
+ *  · fonts 可能为空 —— normalizeDesignFonts 按语言兜底。
+ */
+export function mergeComposeIntoDraft(
+  draftJson: unknown,
+  meta: ComposeJobMeta,
+  payload: ComposeCompletedPayload,
+) {
+  const parsed = V3StoryDraft.safeParse(draftJson);
+  if (!parsed.success || !parsed.data.pages || parsed.data.pages.length === 0) {
+    throw ERRORS.VALIDATION_FAILED('compose completion requires an existing paged draft');
+  }
+  // 幂等重入:已应用过设计则剔除旧封面/封尾,内页原样保留(与旧 applyDesign 同口径)。
+  const interiorPages = parsed.data.pages.filter(
+    (page) => templateCategory(page.templateId) === 'interior',
+  );
+  const written = applyComposePagesTexts(interiorPages, payload.pagesTexts);
+  const fonts = normalizeDesignFonts(payload.fonts, meta.language);
+  const pages = assembleDesignedPages({
+    interiorPages: written,
+    set: {
+      coverTemplateId: meta.coverTemplateId,
+      coverPhotoId: meta.coverPhotoId,
+      endingTemplateId: meta.endingTemplateId,
+      endingPhotoId: meta.endingPhotoId,
+    },
+    coverTexts: mergeSlotTexts(sampleTexts(meta.coverTemplateId), payload.coverTexts),
+    endingTexts: mergeSlotTexts(sampleTexts(meta.endingTemplateId), payload.endingTexts),
+    fonts,
+    colors: DESIGN_COLORS,
+    extraEndingPhotoIds: meta.extraEndingPhotoIds,
+    ...(meta.pageBackground ? { pageBackground: meta.pageBackground } : {}),
+  });
+
+  // 选定封面 = 故事环节收官:把现存章节全部记 done(与旧同步实现一致)。
+  const doneChapterIds = parsed.data.tree.chapters.map((c) => c.chapterId);
+  return {
+    draftJson: {
+      ...parsed.data,
+      pages,
+      design: {
+        fonts,
+        colors: DESIGN_COLORS,
+        ...(meta.pageBackground ? { pageBackground: meta.pageBackground } : {}),
+      },
+      progress: { currentChapterId: null, doneChapterIds },
+    },
+    pages,
   };
 }
 
@@ -169,9 +284,9 @@ export const jobService = {
         completedAt: now,
       });
 
-      // layout job 卡死:相册留 EDITING(草稿完好),用户重触发排版即可;不标相册 FAILED、不动
-      // 积分。只有 init(analyze)卡死才把相册标 FAILED + 释放 hold。
-      if (job.kind === 'layout') {
+      // layout / compose job 卡死:相册留 EDITING(草稿完好),用户重触发即可;不标相册
+      // FAILED、不动积分。只有 init(analyze)卡死才把相册标 FAILED + 释放 hold。
+      if (job.kind === 'layout' || job.kind === 'compose') {
         return { swept: true, releasedHold: false };
       }
       // 追加卡死:老书完好,释放追加 hold(不扣钱),相册保持 EDITING 可重试。
@@ -214,7 +329,7 @@ export const jobService = {
       userId: string;
       albumId: string;
       requestId: string;
-      kind: 'init' | 'layout' | 'add';
+      kind: 'init' | 'layout' | 'add' | 'compose';
       // layout job 的追加范围标记({ appendChapterIds }),见 schema.agentJobs.meta。
       meta?: Record<string, unknown>;
     },
@@ -361,6 +476,77 @@ export const jobService = {
     });
   },
 
+  // ④ 成稿完成:全书文案一次性回来 → 组页落库 + 推 stage='ready'。
+  // 这里是唯一把 stage 推到 'ready' 的地方(导出闸门钥匙)。
+  async handleV3ComposeCompleted(
+    requestId: string,
+    payload: ComposeCompletedPayload,
+    usage: unknown,
+  ) {
+    const job = await agentJobRepo.findByRequestId(requestId);
+    if (!job) return;
+    if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
+
+    const album = await albumRepo.findById(job.albumId);
+    if (!album) {
+      logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 compose completed');
+      return;
+    }
+    const meta = readComposeMeta(job.meta);
+    if (!meta) {
+      logger.warn({ requestId, albumId: job.albumId }, 'compose job has no cover-set meta');
+      await this.handleV3Failed(requestId, {
+        code: 'AGENT_INVALID_OUTPUT',
+        message: 'compose job lost its cover-set meta',
+      });
+      return;
+    }
+
+    let merged: ReturnType<typeof mergeComposeIntoDraft>;
+    try {
+      merged = mergeComposeIntoDraft(album.draftJson, meta, payload);
+    } catch (e) {
+      logger.error(
+        { err: String(e), requestId, albumId: job.albumId },
+        'compose completed but draft assembly failed',
+      );
+      await this.handleV3Failed(requestId, {
+        code: 'AGENT_INVALID_OUTPUT',
+        message: 'compose result could not be applied to the draft',
+      });
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
+        progress: 100,
+        stage: 'wrap',
+        usage: (usage as Record<string, unknown> | null) ?? null,
+        completedAt: new Date(),
+      });
+      if (!won) return;
+
+      await albumRepo.update(tx, job.albumId, {
+        draftJson: merged.draftJson,
+        pageCount: merged.pages.length,
+        // 设计完成 → 待导出(导出闸门的唯一开门钥匙);幂等重设计时已是 ready 则维持不动。
+        ...(album.stage !== 'ready' ? { stage: 'ready' as const } : {}),
+      });
+
+      // 成稿回执进会话历史(用户消息在派发时已落库,这里补 assistant 回复,只在真成稿后写)。
+      await albumMessageRepo.create(tx, {
+        albumId: job.albumId,
+        userId: job.userId,
+        role: 'assistant',
+        content:
+          meta.language === 'zh'
+            ? '写好了:封面封底就位,全书文案、字体和配色也一起刷上了。不满意随时在对话里改。'
+            : 'All set — cover & back cover are in, and the whole book now has its copy, fonts and colors. Ask me here to tweak anything.',
+      });
+      // 积分已在 analyze 完成时结算,compose job 不挂 hold。
+    });
+  },
+
   async handleV3Failed(requestId: string, error: { code: string; message: string }) {
     const job = await agentJobRepo.findByRequestId(requestId);
     if (!job) return;
@@ -373,9 +559,10 @@ export const jobService = {
         completedAt: new Date(),
       });
       if (!won) return;
-      // layout job 失败:相册已是 EDITING(草稿完好),保持可编辑,用户可重触发排版。不标相册
-      // FAILED、不动积分(积分在 analyze 时已结算,layout job 不挂 hold)。只有 init 失败才失败相册。
-      if (job.kind === 'layout') return;
+      // layout / compose job 失败:相册已是 EDITING(草稿完好),保持可编辑,用户可重触发。
+      // 不标相册 FAILED、不动积分(积分在 analyze 时已结算,这两类 job 不挂 hold)。
+      // 只有 init 失败才失败相册。
+      if (job.kind === 'layout' || job.kind === 'compose') return;
       // 追加失败:老书完好,只释放追加 hold,不标 FAILED;用户重新点「+」再来一次。
       if (job.kind === 'add') {
         await creditService.releaseByAlbum(tx, job.albumId);
