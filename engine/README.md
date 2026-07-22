@@ -26,14 +26,12 @@ Content-Type: application/json
 engine/
 ├── src/routes.py              # Thin HTTP surface
 ├── src/flows/
-│   ├── analyze.py             # Stage1 grouping + chapter description callback
+│   ├── analyze.py             # Stage1 确定性分组 + 建树 callback(无 AI 调用)
 │   ├── select_layout.py       # Layout candidate generation callback
 │   └── judge_layout.py        # Thumbnail judge -> Page[] callback
-├── src/chaptering/            # Deterministic grouping, unplaced refinement, tree builder
+├── src/chaptering/            # Deterministic grouping, unplaced assignment, tree builder
 ├── src/agents/
-│   ├── chapter_describer/     # Vision-backed chapter/photo descriptions
-│   ├── select_layout/         # Gemini layout judging prompts/handler
-│   └── unplaced_refiner/      # Optional AI-assisted unplaced assignment
+│   └── select_layout/         # Gemini layout judging prompts/handler
 ├── src/engine/                # Deterministic candidate/template/legalize helpers
 ├── src/skills/                # Prompt support material
 ├── src/schemas.py             # Pydantic mirror of contracts

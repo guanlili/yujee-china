@@ -328,7 +328,7 @@ class V3Chapter(_V3Strict):
     # 拍摄地点:城市级地名文字(浏览器本地反地理编码,坐标不出浏览器,§3 2026-07 口径)。
     # 章不跨 cluster(#232)故挂章级;采访提交时写回。跳过采访/老树 => ""。
     place: str = Field(default="", max_length=100)
-    # 识图分章关键词(chapter_describer 产物)落树,设计环节当每组内容画像。老树 => []。
+    # 章节关键词,设计环节当每组内容画像。分析期已砍掉识图,恒为 [];老树 => []。
     keywords: list[str] = Field(default_factory=list)
     # Stage1 extracted source color. Distinct from final theme `accentColor`.
     # Migration field: older trees omit it; Stage1 PR249 trees may carry null.

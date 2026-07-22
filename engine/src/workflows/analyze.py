@@ -1,7 +1,7 @@
 """V3 `/v3/analyze` Stage1 tree-only orchestration.
 
 Stage1 now builds only a V3LayoutTree:
-group_photos -> describe_chapters -> refine_unplaced -> accent_of_group.
+group_photos -> group_unplaced -> accent_of_group.
 Template selection, render pages, cover/ending wrapping, and generic copy belong to
 later stages and are not produced by this job.
 """
@@ -12,11 +12,9 @@ import asyncio
 import time
 
 from ..api import callback
-from .core.chaptering.chapter_describer import handler as chapter_describer
-from .core.chaptering.vision_error import VisionError
 from .core.chaptering import grouping as chapter_grouping
-from .core.chaptering import refinement as chapter_refinement
 from .core.chaptering import tree_builder
+from .core.chaptering import unplaced as chapter_unplaced
 from ..logging_config import get_logger, request_id_var
 from ..contracts.schemas import (
     V3AnalyzeCompleted,
@@ -88,7 +86,6 @@ async def _emit_failure(
 async def _run_analyze(job: _Job) -> None:
     req = job.req
     started = time.monotonic()
-    prompt_hint = req.meta.promptHint if req.meta else None
     photos_by_id = {photo.photoId: photo for photo in req.photos}
 
     await _emit_progress(job, "group", 0)
@@ -101,34 +98,12 @@ async def _run_analyze(job: _Job) -> None:
             job, code="AGENT_OUTPUT_VALIDATION", message=str(exc), stage="group"
         )
         return
-    await _emit_progress(job, "group", 100)
 
-    await _emit_progress(job, "describe", 0)
+    # 散落照片走确定性就近归章(按时间/位置),树里的章标识由时间/地点派生:
+    # 分析期不再有任何 AI 调用。
     try:
-        described = await chapter_describer.describe_chapters(
-            grouping,
-            photos_by_id,
-            language=req.language,
-            prompt_hint=prompt_hint,
-        )
-    except VisionError as exc:
-        log.warning("v3_analyze.describe_failed", error=str(exc))
-        await _emit_failure(job, code="AGENT_VISION_FAILED", message=str(exc), stage="describe")
-        return
-    except Exception as exc:  # noqa: BLE001
-        log.exception("v3_analyze.describe_unhandled", error=str(exc))
-        await _emit_failure(job, code="AGENT_VISION_FAILED", message=str(exc), stage="describe")
-        return
-    await _emit_progress(job, "describe", 100)
-
-    await _emit_progress(job, "group", 0)
-    try:
-        assignments = await chapter_refinement.refine_unplaced(
-            grouping, described, photos_by_id, language=req.language
-        )
-        tree = tree_builder.assemble_stage1_tree(
-            grouping, described, assignments, photos_by_id
-        )
+        assignments = chapter_unplaced.group_unplaced(grouping, photos_by_id)
+        tree = tree_builder.assemble_stage1_tree(grouping, assignments, photos_by_id)
     except Exception as exc:  # noqa: BLE001
         log.exception("v3_analyze.regroup_or_assemble_failed", error=str(exc))
         await _emit_failure(
@@ -143,11 +118,8 @@ async def _run_analyze(job: _Job) -> None:
         jobKind="analyze",
         requestId=req.requestId,
         tree=tree,
-        usage=V3Usage(
-            durationMs=duration_ms,
-            visionCallCount=described.call_count,
-            models=V3Models(**({"vision": described.model} if described.model else {})),
-        ),
+        # 分析期已无 AI 调用:识图计数恒为 0,models 不填。
+        usage=V3Usage(durationMs=duration_ms, visionCallCount=0, models=V3Models()),
     )
     await callback.post(str(req.callbackUrl), envelope)
     log.info(

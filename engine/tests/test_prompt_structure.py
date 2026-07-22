@@ -23,9 +23,6 @@ def _prompt_mds():
         yield md
 
 
-CHAPTERING_ROOT = WORKFLOWS_ROOT / "core" / "chaptering"
-
-
 def test_prompt_loader_lives_with_the_workflows_it_serves():
     """加载器在 workflows/ 下,不再是个名不副实的顶层 skills/ 包。"""
     assert (WORKFLOWS_ROOT / "prompts.py").is_file()
@@ -77,17 +74,3 @@ def test_prompt_loader_fills_placeholders_without_breaking_json_examples():
         assert '{"pages":[{"a":1}]}' in out, "JSON 示例的花括号被吃掉了"
     finally:
         fixture.unlink()
-
-
-def test_chapter_describer_and_unplaced_refiner_have_separate_prompts():
-    chapter_prompt = (
-        CHAPTERING_ROOT / "chapter_describer" / "describe_chapters.md"
-    ).read_text(encoding="utf-8")
-    refiner_prompt = (
-        CHAPTERING_ROOT / "unplaced_refiner" / "refine_unplaced.md"
-    ).read_text(encoding="utf-8")
-
-    assert "章节级理解" in chapter_prompt
-    assert "你是补充分章使徒" not in chapter_prompt
-    assert "你是补充分章使徒" in refiner_prompt
-    assert "章节级理解" not in refiner_prompt

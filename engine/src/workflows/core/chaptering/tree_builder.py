@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
+from collections import Counter
+from collections.abc import Mapping, Sequence
 
-from .chapter_describer.schema import DescribeResult
 from ..layout import accent_color
 from ....contracts.schemas import (
     V3AnalyzePhoto,
@@ -16,9 +15,25 @@ from ....contracts.schemas import (
 from .schema import GroupingChapter, GroupingResult, UnplacedAssignments
 
 
+def deterministic_chapter_label(
+    *, taken_ats: Sequence[str], places: Sequence[str]
+) -> str:
+    """章标题的确定性派生:最常见地名 + 时间跨度。砍掉豆包识图后章不再有 AI 命名,
+    这是 story 环节聊天卡片和 compose 环节上下文唯一的章标识。"""
+    place = Counter(p for p in places if p).most_common(1)
+    place_part = place[0][0] if place else ""
+    stamps = sorted(t for t in taken_ats if t)
+    if stamps:
+        first = stamps[0][:7].replace("-", " 年 ") + " 月"
+        time_part = first
+    else:
+        time_part = ""
+    parts = [p for p in (time_part, place_part) if p]
+    return " · ".join(parts) if parts else "这一段"
+
+
 def assemble_stage1_tree(
     grouping: GroupingResult,
-    descriptions: DescribeResult,
     assignments: UnplacedAssignments,
     photos_by_id: Mapping[str, V3AnalyzePhoto],
 ) -> V3LayoutTree:
@@ -26,7 +41,6 @@ def assemble_stage1_tree(
         raise ValueError("Stage1 grouping produced no chapters")
 
     input_index = {photo_id: idx for idx, photo_id in enumerate(photos_by_id)}
-    new_by_id = {chapter.chapterId: chapter for chapter in assignments.newChapters}
     chapter_members = {
         chapter.chapterId: list(chapter.photoIds) for chapter in grouping.chapters
     }
@@ -75,43 +89,35 @@ def assemble_stage1_tree(
         members = chapter_members[source.chapterId]
         if not members:
             continue
-        description = _chapter_description(
-            source.chapterId,
-            descriptions,
-            new_by_id,
-        )
         photos: list[V3ChapterPhoto] = []
         for photo_id in members:
             src = photos_by_id[photo_id]
-            scene = _photo_scene_description(
-                photo_id,
-                source.chapterId,
-                descriptions,
-                new_by_id,
-            )
             photos.append(
                 V3ChapterPhoto(
                     photoId=photo_id,
-                    sceneDescription=scene,
+                    # 砍掉豆包识图后不再有逐图场景描述,分析期恒为空串。
+                    sceneDescription="",
                     width=src.width,
                     height=src.height,
                     orientation=_orientation(src.width, src.height),  # type: ignore[arg-type]
-                    composition=descriptions.imageCompositions.get(photo_id),  # type: ignore[arg-type]
+                    # 构图也是识图产物,没有识图就交给排版按朝向自行匹配。
+                    composition=None,
                     takenAt=src.exif.takenAt if src.exif else None,
                 )
             )
-        # 识图关键词落树:此前 analyze 用完即丢,设计环节(字体/颜色)要用它当内容画像。
-        new_chapter = new_by_id.get(source.chapterId)
-        keywords = (
-            list(new_chapter.chapterKeywords)
-            if new_chapter is not None
-            else list(descriptions.chapterKeywords.get(source.chapterId, []))
-        )
         chapters.append(
             V3Chapter(
                 chapterId=source.chapterId,
-                description=description,
-                keywords=keywords,
+                # 章标识:确定性派生(时间 + 地名)。契约暂无 title 字段,先落在
+                # description 这个章级文本位上,后期写目录环节会覆盖它。
+                description=deterministic_chapter_label(
+                    taken_ats=[p.takenAt or "" for p in photos],
+                    # 地名由 Web 采访环节写回 chapter.place,分析期无地名可用(§3 隐私:
+                    # 坐标止步于浏览器,EXIF 只带 takenAt)。
+                    places=[],
+                ),
+                # 关键词此前来自识图分章,砍掉后分析期为空,设计环节自行降级。
+                keywords=[],
                 extractedColor=accent_color.accent_of_group(members, photos_by_id),
                 accentColor=None,
                 artFont=None,
@@ -130,55 +136,6 @@ def _orientation(width: int, height: int) -> str:
     if height > width * 1.05:
         return "portrait"
     return "square"
-
-
-def _required_text(value: Any, *, field: str, max_len: int) -> str:
-    if not isinstance(value, str):
-        raise ValueError(f"{field} must be a string")
-    text = value.strip()
-    if not text:
-        raise ValueError(f"{field} is required")
-    if len(text) > max_len:
-        raise ValueError(f"{field} exceeds {max_len} chars")
-    return text
-
-
-def _chapter_description(
-    chapter_id: str,
-    descriptions: DescribeResult,
-    new_by_id: Mapping[str, Any],
-) -> str:
-    # 章节 description 是目录(TOC)占位:分析期统一留空,后期写目录环节才填。
-    return ""
-
-
-def _photo_scene_description(
-    photo_id: str,
-    chapter_id: str,
-    descriptions: DescribeResult,
-    new_by_id: Mapping[str, Any],
-) -> str:
-    if photo_id in descriptions.imageDescriptions:
-        return _required_text(
-            descriptions.imageDescriptions.get(photo_id),
-            field=f"{photo_id}.sceneDescription",
-            max_len=300,
-        )
-
-    new_chapter = new_by_id.get(chapter_id)
-    if new_chapter is not None:
-        return _required_text(
-            new_chapter.chapterVisualSummary,
-            field=f"{photo_id}.sceneDescription",
-            max_len=300,
-        )
-
-    fallback = descriptions.chapterVisualSummaries.get(chapter_id)
-    return _required_text(
-        fallback,
-        field=f"{photo_id}.sceneDescription",
-        max_len=300,
-    )
 
 
 def _photo_order(
