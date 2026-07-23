@@ -14,9 +14,15 @@ def _validate_startup_config() -> None:
 
     - AGENT_PIPELINE_MODE must be 'mock' or 'real' (Settings literal enforces this).
     - production env may only run with mode=real.
-    - real mode demands both ARK_API_KEY and DEEPSEEK_API_KEY at startup so the
-      first user request doesn't blow up on credentials we could have detected
+    - real mode demands the API keys at startup so the first user request doesn't
+      blow up (or, worse, silently degrade) on credentials we could have detected
       at boot.
+
+    SELECT_LAYOUT_API_KEY 是**必检**的:名字是历史产物,它是仓里唯一的 Gemini 槽,
+    如今唯一的用途就是 ④ `/v3/compose` 成稿(`/v3/select-layout` 自己是纯确定性的,
+    不用这把 key)。缺它时 compose 不会报错 —— 每章记一条 warning,照常发 `completed`
+    + 空 `pagesTexts`,观测台上一片绿,用户却拿到一本全是模板示例文案的书。这种「静默
+    成功」必须在启动时就拦下。
     """
     settings = get_settings()
     if settings.agent_env == "production" and settings.agent_pipeline_mode != "real":
@@ -30,6 +36,8 @@ def _validate_startup_config() -> None:
             missing.append("ARK_API_KEY")
         if not settings.deepseek_api_key:
             missing.append("DEEPSEEK_API_KEY")
+        if not settings.select_layout_api_key:
+            missing.append("SELECT_LAYOUT_API_KEY")
         if missing:
             raise RuntimeError(
                 "AGENT_PIPELINE_MODE=real requires env vars: " + ", ".join(missing)

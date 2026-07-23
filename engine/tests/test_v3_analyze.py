@@ -1,7 +1,7 @@
 """Stage1 tree-only analyze pipeline tests for PR249/#263.
 
 The analyze job now orchestrates fixed Stage1 primitives:
-group_photos -> describe_chapters -> refine_unplaced -> accent_of_group.
+group_photos -> group_unplaced -> accent_of_group(分析期无 AI 调用)。
 It stores only a V3LayoutTree in the completed callback; layout pages belong to
 Stage2.
 """
@@ -17,12 +17,13 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from src.api import callback as cb_mod
-from src.workflows.core.chaptering.chapter_describer import handler as chapter_describer
-from src.workflows.core.chaptering.chapter_describer.schema import DescribeResult
-from src.workflows.core.chaptering.vision_error import VisionError
 from src.workflows.core.chaptering import grouping as chapter_grouping
-from src.workflows.core.chaptering import refinement as chapter_refinement
-from src.workflows.core.chaptering.schema import GroupingChapter, GroupingResult, UnplacedAssignments
+from src.workflows.core.chaptering import unplaced as chapter_unplaced
+from src.workflows.core.chaptering.schema import (
+    GroupingChapter,
+    GroupingResult,
+    UnplacedAssignments,
+)
 from src.workflows.core.layout import accent_color
 from src.workflows import analyze
 from src.contracts.schemas import (
@@ -89,29 +90,8 @@ def stage1_order(monkeypatch):
             chapters.append(GroupingChapter(chapterId="ch_2", photoIds=ids[2:]))
         return GroupingResult(chapters=chapters, unplacedPhotoIds=[])
 
-    async def fake_describe_chapters(grouping, photos_by_id, *, language, prompt_hint=None):
-        calls.append("describe_chapters")
-        assert language == "en"
-        assert prompt_hint in {"A spring trip", None}
-        image_descriptions = {
-            photo_id: f"scene {photo_id}"
-            for chapter in grouping.chapters
-            for photo_id in chapter.photoIds
-        }
-        return DescribeResult(
-            chapterDescriptions={
-                chapter.chapterId: f"Description for {chapter.chapterId}."
-                for chapter in grouping.chapters
-            },
-            imageDescriptions=image_descriptions,
-            tokens_billed=18,
-            model="gpt-5.5-mini",
-            provider="openai",
-            call_count=1,
-        )
-
-    async def fake_refine_unplaced(grouping, descriptions, photos_by_id, *, language):
-        calls.append("refine_unplaced")
+    def fake_group_unplaced(grouping, photos_by_id):
+        calls.append("group_unplaced")
         return UnplacedAssignments(assignments={})
 
     def fake_accent_of_group(photo_ids, photos_by_id):
@@ -120,8 +100,8 @@ def stage1_order(monkeypatch):
         return "#112233"
 
     monkeypatch.setattr(chapter_grouping, "group_photos", fake_group_photos)
-    monkeypatch.setattr(chapter_describer, "describe_chapters", fake_describe_chapters)
-    monkeypatch.setattr(chapter_refinement, "refine_unplaced", fake_refine_unplaced)
+    monkeypatch.setattr(chapter_unplaced, "group_unplaced", fake_group_unplaced)
+    monkeypatch.setattr(analyze.chapter_unplaced, "group_unplaced", fake_group_unplaced)
     monkeypatch.setattr(accent_color, "accent_of_group", fake_accent_of_group)
     return calls
 
@@ -162,8 +142,7 @@ def test_stage1_analyze_emits_tree_only_in_required_order(
 
     assert stage1_order == [
         "group_photos",
-        "describe_chapters",
-        "refine_unplaced",
+        "group_unplaced",
         "accent_of_group",
         "accent_of_group",
     ]
@@ -173,11 +152,8 @@ def test_stage1_analyze_emits_tree_only_in_required_order(
         for c in captured_callbacks
         if c["event"] == "progress"
     ]
+    # 识图环节已砍掉:只剩分组一段进度。
     assert progress == [
-        ("group", 0),
-        ("group", 100),
-        ("describe", 0),
-        ("describe", 100),
         ("group", 0),
         ("group", 100),
     ]
@@ -186,8 +162,9 @@ def test_stage1_analyze_emits_tree_only_in_required_order(
     assert completed["jobKind"] == "analyze"
     assert completed["requestId"] == "req_v3_analyze"
     assert "pages" not in completed
-    assert completed["usage"]["visionCallCount"] == 1
-    assert completed["usage"]["models"]["vision"] == "gpt-5.5-mini"
+    # 分析期不再调 AI:识图计数归零,models 里没有 vision。
+    assert completed["usage"]["visionCallCount"] == 0
+    assert "vision" not in completed["usage"]["models"]
 
     envelope = V3AnalyzeCompleted(**completed)
     tree = envelope.tree
@@ -199,12 +176,13 @@ def test_stage1_analyze_emits_tree_only_in_required_order(
         assert chapter.extractedColor == "#112233"
         assert chapter.accentColor is None
         assert chapter.artFont is None
-    assert [p.sceneDescription for c in tree.chapters for p in c.photos] == [
-        "scene p1",
-        "scene p2",
-        "scene p3",
-        "scene p4",
-    ]
+    # sceneDescription 恒为空串(契约字段还在,只是不再有识图产物填它)。
+    assert [p.sceneDescription for c in tree.chapters for p in c.photos] == ["", "", "", ""]
+    # 章标识由时间/地点确定性派生,落在 title;description 是写目录环节的位置,分析期留空。
+    for chapter in tree.chapters:
+        assert chapter.title.strip() != ""
+        assert chapter.description == ""
+        assert chapter.keywords == []
 
 
 def test_stage1_analyze_runs_grouping_inside_concurrency_gate(
@@ -234,33 +212,6 @@ def test_stage1_analyze_runs_grouping_inside_concurrency_gate(
     assert any(c["event"] == "completed" for c in captured_callbacks)
 
 
-def test_stage1_describe_failure_resets_describe_stage(monkeypatch, captured_callbacks):
-    def fake_group_photos(photos):
-        return GroupingResult(
-            chapters=[GroupingChapter(chapterId="ch_1", photoIds=[p.photoId for p in photos])],
-            unplacedPhotoIds=[],
-        )
-
-    async def boom(*args, **kwargs):
-        raise VisionError("describe failed")
-
-    monkeypatch.setattr(chapter_grouping, "group_photos", fake_group_photos)
-    monkeypatch.setattr(chapter_describer, "describe_chapters", boom)
-
-    asyncio.run(analyze._run_analyze(analyze._Job(_req(2))))
-
-    failed = [c for c in captured_callbacks if c["event"] == "failed"]
-    assert len(failed) == 1, captured_callbacks
-    assert failed[0]["error"]["code"] == "AGENT_VISION_FAILED"
-    assert failed[0]["stage"] == "describe"
-    describe_ticks = [
-        c["progress"]
-        for c in captured_callbacks
-        if c["event"] == "progress" and c["stage"] == "describe"
-    ]
-    assert describe_ticks == [0, 0], describe_ticks
-
-
 def test_analyze_timeout_resets_the_active_stage(monkeypatch, captured_callbacks):
     async def slow(_job):
         await analyze._emit_progress(_job, "group", 50)
@@ -288,7 +239,9 @@ def test_analyze_timeout_resets_the_active_stage(monkeypatch, captured_callbacks
 
 def test_analyze_unhandled_error_resets_the_active_stage(monkeypatch, captured_callbacks):
     async def boom(_job):
-        await analyze._emit_progress(_job, "describe", 25)
+        # analyze 只发 group 这一个 stage(describe 已随识图一起砍掉),
+        # 这里测的是通用 reset 机制,所以用真实存在的 stage。
+        await analyze._emit_progress(_job, "group", 25)
         raise RuntimeError("callback-adjacent boom")
 
     class _Budget:
@@ -302,13 +255,13 @@ def test_analyze_unhandled_error_resets_the_active_stage(monkeypatch, captured_c
     failed = [c for c in captured_callbacks if c["event"] == "failed"]
     assert len(failed) == 1, captured_callbacks
     assert failed[0]["error"]["code"] == "AGENT_INTERNAL_ERROR"
-    assert failed[0]["stage"] == "describe"
-    describe_ticks = [
+    assert failed[0]["stage"] == "group"
+    group_ticks = [
         c["progress"]
         for c in captured_callbacks
-        if c["event"] == "progress" and c["stage"] == "describe"
+        if c["event"] == "progress" and c["stage"] == "group"
     ]
-    assert describe_ticks == [25, 0], describe_ticks
+    assert group_ticks == [25, 0], group_ticks
 
 
 def test_analyze_request_rejects_non_http_callback_url():

@@ -14,7 +14,9 @@ import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
 import { transientPagePhotoRefs } from './page-photo-refs';
-import { assembleDesignedPages, buildCoverSets, pickHeroPhotos, slotSpecs, templateCategory } from './design-apply';
+import { buildCoverSets, pickHeroPhotos, slotSpecs, templateCategory } from './design-apply';
+import { env } from '@/lib/env';
+import { logger } from '@/lib/log/logger';
 import { isValidPageBackground } from '@/lib/design/page-backgrounds';
 import {
   PHOTO_SNAPSHOT_MAX_COUNT,
@@ -24,7 +26,9 @@ import {
   photoSnapshotUrls,
 } from './photo-snapshot-util';
 import {
+  ComposeRequest,
   Page,
+  V3AnalyzeImageDataUrl,
   V3LayoutTree,
   V3StoryDraft,
   type ImagePos,
@@ -163,6 +167,13 @@ function sliceChapterForChat(
 // browser sends NO chapter overview — Web re-slices it from draft_json here). Maps each
 // V3Chapter to a V3ChapterOverview (chapterId + description + each photo's
 // sceneDescription摘要, ≤12). No base64 (§3 privacy by construction): only text descs.
+// 章节展示名的单一口径:title(分析期确定性派生的章标识)→ description(写目录环节
+// 才填,老树里可能存着旧标题)→ 调用方给的兜底。老相册 draft_json 没有 title 键,
+// zod 的 .default('') 会补空串,所以这两级降级必须留着。
+function chapterLabel(chapter: { title?: string; description?: string }, fallback: string): string {
+  return chapter.title || chapter.description || fallback;
+}
+
 function buildRecommendOverviews(tree: V3LayoutTreeT): V3ChapterOverview[] {
   return tree.chapters.map((chapter) => ({
     chapterId: chapter.chapterId,
@@ -204,6 +215,96 @@ function titleOfChapterPages(pages: V3Page[]): string | undefined {
     if (typeof value === 'string' && value.trim().length > 0) return value.trim();
   }
   return undefined;
+}
+
+// PG 唯一索引冲突(SQLSTATE 23505)。只有它才代表「已经有一条在途 job」,别的 DB 错误
+// (连接断开、序列化失败、枚举值不存在)绝不能被当成幂等成功吞掉。
+function isUniqueViolation(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return false;
+  const record = e as { code?: unknown; cause?: unknown };
+  if (record.code === '23505') return true;
+  // 驱动/ORM 可能把原始错误包一层(drizzle 的 DrizzleQueryError 就挂在 cause 上)。
+  return record.cause ? isUniqueViolation(record.cause) : false;
+}
+
+/**
+ * ④ 成稿请求装配(纯函数,便于单测):按章切片 —— 每章带【真实照片 200px 缩略图】+
+ * 【用户讲的故事(chapterContext)】+【本章已选定版式的页】,封面/封尾只给文字槽 spec。
+ * · 页归章:页里任一图槽的 photoId 属于该章即算该章(与 getDraftSkeleton 同口径);
+ * · 缺 200px ref 的照片跳过(不硬失败:成稿是叠加性的一步,少一张也照常出稿);
+ * · place 是城市级地名文字(§3 允许),坐标绝不出现。
+ */
+export function buildComposeRequest(input: {
+  requestId: string;
+  callbackUrl: string;
+  language: 'zh' | 'en';
+  albumTitle: string;
+  coverTemplateId: string;
+  endingTemplateId: string;
+  chapters: Array<{
+    chapterId?: string;
+    title?: string;
+    chapterContext?: string;
+    place?: string;
+    photos?: Array<{ photoId: string; takenAt?: string | null }>;
+  }>;
+  interiorPages: V3Page[];
+  refs: Record<string, string>;
+}): ComposeRequest {
+  const chapters = input.chapters.flatMap((chapter, i) => {
+    const chapterId = chapter.chapterId ?? `c${i + 1}`;
+    const photoIds = new Set((chapter.photos ?? []).map((p) => p.photoId));
+    const pages = input.interiorPages.filter((page) =>
+      Object.values(page.images).some((pid) => photoIds.has(pid)),
+    );
+    const photos = (chapter.photos ?? []).flatMap((photo) => {
+      const ref200px = input.refs[photo.photoId];
+      // 缺 ref 跳过;格式不合法/超 800KB 的 ref 同样只当这一张缺席 —— 否则一张坏图会
+      // 让整个 ComposeRequest 校验失败,用户拿 400、整本书写不出来,与「少一张也照常
+      // 出稿」的硬约束相悖。
+      if (!ref200px || !V3AnalyzeImageDataUrl.safeParse(ref200px).success) return [];
+      return [
+        {
+          photoId: photo.photoId,
+          ref200px,
+          ...(photo.takenAt ? { takenAt: photo.takenAt } : {}),
+          ...(chapter.place ? { place: chapter.place } : {}),
+        },
+      ];
+    });
+    return [
+      {
+        chapterId,
+        // 章标识优先用树上的确定性 title,老树没有就退回本章页面已写进 title 槽的值。
+        title: (chapter.title || titleOfChapterPages(pages) || '').slice(0, 120),
+        chapterContext: (chapter.chapterContext ?? '').slice(0, 500),
+        photos,
+        pages: pages.map((page) => ({
+          pageIndex: page.pageIndex,
+          templateId: page.templateId,
+          images: page.images,
+        })),
+      },
+    ];
+  });
+
+  const parsed = ComposeRequest.safeParse({
+    requestId: input.requestId,
+    callbackUrl: input.callbackUrl,
+    language: input.language,
+    albumTitle: input.albumTitle,
+    coverTemplateId: input.coverTemplateId,
+    endingTemplateId: input.endingTemplateId,
+    coverSlots: slotSpecs(input.coverTemplateId),
+    endingSlots: slotSpecs(input.endingTemplateId),
+    chapters,
+  });
+  if (!parsed.success) {
+    throw ERRORS.VALIDATION_FAILED(
+      parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; '),
+    );
+  }
+  return parsed.data;
 }
 
 function storyProgressFrom(stage: string, normalized: NormalizedStoryDraft | null): StoryProgressState {
@@ -308,8 +409,8 @@ export const albumService = {
       // stays EDITING with its draft_json intact (no status change, nothing to reload).
       await draftExpirySweeper.sweepAlbumOnRead(albumId);
       // 解耦后 select-layout 是独立 layout job,相册仍是 EDITING。若有在跑的 layout job,把它的
-      // stage/progress 透出 —— 两段式 poll 靠此看到 candidates-ready 哨兵(stage=layout,progress=52)
-      // 并驱动 phase 2(渲染缩略图→judge-layout)。非 layout 的残留 job 不透出。
+      // stage/progress 透出 —— 编辑器/轮询靠此知道排版还在跑(stage=layout),等 completed 落
+      // pages。非 layout 的残留 job 不透出。
       const resolved = await jobService.resolveGeneration(albumId);
       if (resolved?.kind === 'progress' && resolved.stage === 'layout') {
         generation = { stage: resolved.stage, progress: resolved.progress };
@@ -364,7 +465,9 @@ export const albumService = {
     return {
       chapters: normalized.tree.chapters.map((ch, i) => ({
         chapterId: ch.chapterId,
-        label: ch.description || `Group ${i + 1}`,
+        // 章标识优先读 title(分析期确定性派生);老树没有 title,降级 description,
+        // 再兜底 `Group N`。
+        label: chapterLabel(ch, `Group ${i + 1}`),
         role: i === 0 ? 'opening' : i === last ? 'closing' : 'body',
         photoIds: ch.photos.map((photo) => photo.photoId),
         // 采访门槛读取:该章 chapterContext 非空 ⇔ 已采访过(不变式 12:只读派生字段)。
@@ -396,16 +499,18 @@ export const albumService = {
       const query = input.query.trim().toLowerCase();
       const overviews = buildRecommendOverviews(normalized.tree);
       const matches = overviews
-        .map((chapter) => {
+        .map((chapter, i) => {
           const pageIndexes = (normalized.pages ?? [])
             .filter((page) => chapterIdForDraftPage(normalized, page) === chapter.chapterId)
             .map((page) => page.pageIndex);
+          // 检索只认内容文字(目录描述 + 照片描述)。章标识(title)是拍摄日期派生的,
+          // 进 haystack 会让「2024」这种查询命中全书每一章,所以刻意不收。
           const haystack = [chapter.description, ...chapter.photoDescs].join(' ').toLowerCase();
           const score = haystack.split(query).length - 1;
           return {
             chapterId: chapter.chapterId,
             pageIndexes,
-            label: chapter.description || chapter.chapterId,
+            label: chapterLabel(normalized.tree.chapters[i] ?? {}, chapter.chapterId),
             score,
           };
         })
@@ -418,13 +523,13 @@ export const albumService = {
     if (input.type === 'book-tree') {
       const doneSet = new Set(normalized.progress.doneChapterIds);
       const pages = normalized.pages ?? [];
-      const chapters = normalized.tree.chapters.map((chapter) => {
+      const chapters = normalized.tree.chapters.map((chapter, i) => {
         const pageIndexes = pages
           .filter((page) => chapterIdForDraftPage(normalized, page) === chapter.chapterId)
           .map((page) => page.pageIndex);
         return {
           chapterId: chapter.chapterId,
-          label: chapter.description || chapter.chapterId,
+          label: chapterLabel(chapter, chapter.chapterId),
           pageIndexes,
           done: doneSet.has(chapter.chapterId),
         };
@@ -832,7 +937,9 @@ export const albumService = {
       );
       return {
         chapterId: ch.chapterId,
-        label: `Group ${i + 1}`,
+        // 章标识优先用树上的确定性 title(分析期按拍摄时间跨度派生),老树无此键降级
+        // description,都空才 `Group N` —— 与 getChapterSummary 同一条降级链。
+        label: chapterLabel(ch, `Group ${i + 1}`),
         ...(subject ? { subject } : {}),
         role:
           i === 0
@@ -967,12 +1074,16 @@ export const albumService = {
       sets: buildCoverSets(albumId, chapters.map((c) => ({ photos: c.photos ?? [] }))),
       designed,
       hasPages: rawPages.length > 0,
+      // 成稿在跑(异步 compose job 未回调):前端别再弹选择卡,直接进轮询等这一单。
+      composing: !!(await agentJobRepo.findActiveComposeByAlbum(albumId)),
     };
   },
 
-  // 设计环节:用户在对话框选定封面组后调用。engine 出决策(字体/颜色/封面封尾文案),
-  // 这里确定性应用:组封面/封尾页 + carrier sweep + 页序 [cover,...interior,ending]
-  // 重排,落回 draft。幂等:重复调用会先剔除旧 cover/ending 再装新的。
+  // 设计环节:用户在对话框选定封面组后调用。**异步派发**一次性成稿(/v3/compose):
+  // Agent 按章并发让 Gemini 看真实照片 + 读用户讲的故事写满全书文案 + 封面/封尾文案 +
+  // 字体,几十秒起,同步接口撑不住 —— 这里只校验 + 建 kind='compose' 的 job + 提交,
+  // 立即返回;组页落库与 stage='ready' 由回调侧 jobService.handleV3ComposeCompleted 统一做。
+  // 幂等:(album,'compose') 活跃唯一索引挡住重复派发,回调侧重入会先剔旧 cover/ending。
   async applyDesign(
     userId: string,
     albumId: string,
@@ -984,8 +1095,11 @@ export const albumService = {
       endingPhotoId: string;
       // 书页底色(4 色之一,可选;纯白/不传 = 不写,留模板默认)。
       pageBackground?: string;
+      // 浏览器本地的 200px 缩略图(photoId → data URL):compose 让模型**看真实照片**
+      // 写文案,原图只在浏览器,故与 select-layout 同样由前端随请求带上。
+      refs?: Record<string, string>;
     },
-  ): Promise<{ pages: Page[] }> {
+  ): Promise<{ requestId: string; accepted: true }> {
     const album = await this.findOwned(userId, albumId);
     if (album.status !== 'EDITING') throw ERRORS.ALBUM_NOT_EDITABLE();
     if (templateCategory(input.coverTemplateId) !== 'cover')
@@ -998,10 +1112,11 @@ export const albumService = {
     const root = album.draftJson as { tree?: { chapters?: unknown }; pages?: unknown } | null;
     const chapters = Array.isArray((root?.tree as { chapters?: unknown })?.chapters)
       ? ((root!.tree as { chapters: unknown[] }).chapters as Array<{
+          chapterId?: string;
+          title?: string;
           chapterContext?: string;
-          keywords?: string[];
-          extractedColor?: string | null;
-          photos?: Array<{ photoId: string }>;
+          place?: string;
+          photos?: Array<{ photoId: string; takenAt?: string | null }>;
         }>)
       : [];
     const rawPages = Array.isArray(root?.pages) ? (root!.pages as Page[]) : [];
@@ -1012,34 +1127,10 @@ export const albumService = {
     if (!treePhotoIds.has(input.coverPhotoId) || !treePhotoIds.has(input.endingPhotoId))
       throw ERRORS.VALIDATION_FAILED('cover/ending photo not in this album');
 
-    // 幂等重入:已应用过设计则剔除旧封面/封尾,内页原样保留。
+    // 送进 compose 的只有内页(封面/封尾文案走 coverSlots/endingSlots 单独出)。
     const interiorPages = rawPages.filter(
       (page) => templateCategory(page.templateId) === 'interior',
     );
-
-    const design = await agentClient.designV3(albumId, {
-      language: input.language,
-      albumTitle: (album.title ?? '').slice(0, 120),
-      chapterContexts: chapters.map((c) => c.chapterContext ?? ''),
-      // 每章设计画像:章标题(写文案写进本章页面 title 槽的值,titleOfChapterPages
-      // 同章节卡片一个来源)+ 采访背景 + 识图关键词(keywords)+ 分组代码取色
-      // (extractedColor)。design_style 据此贴合照片真实色调/题材选字体颜色;
-      // 老树缺字段则给空/null。
-      chapterProfiles: chapters.map((c) => {
-        const photoIds = new Set((c.photos ?? []).map((p) => p.photoId));
-        const chapterPages = rawPages.filter((page) =>
-          Object.values(page.images).some((pid) => photoIds.has(pid)),
-        );
-        return {
-          title: titleOfChapterPages(chapterPages) ?? '',
-          chapterContext: c.chapterContext ?? '',
-          keywords: Array.isArray(c.keywords) ? c.keywords : [],
-          extractedColor: c.extractedColor ?? null,
-        };
-      }),
-      coverSlots: slotSpecs(input.coverTemplateId),
-      endingSlots: slotSpecs(input.endingTemplateId),
-    });
 
     // 封底可能有多个图槽(mag-22 两图):hero 池按构图排序取前 4,剔除封面/封尾主图后补槽。
     const extraEndingPhotoIds = pickHeroPhotos(
@@ -1047,73 +1138,87 @@ export const albumService = {
       4,
     ).filter((id) => id !== input.endingPhotoId && id !== input.coverPhotoId);
 
-    const pages = assembleDesignedPages({
+    const refs = input.refs ?? {};
+    const requestId = crypto.randomUUID();
+    const payload = buildComposeRequest({
+      requestId,
+      callbackUrl: `${env.WEB_BASE_URL}/api/v3/internal/job-progress`,
+      language: input.language,
+      albumTitle: (album.title ?? '').slice(0, 120),
+      coverTemplateId: input.coverTemplateId,
+      endingTemplateId: input.endingTemplateId,
+      chapters,
       interiorPages,
-      set: {
-        coverTemplateId: input.coverTemplateId,
-        coverPhotoId: input.coverPhotoId,
-        endingTemplateId: input.endingTemplateId,
-        endingPhotoId: input.endingPhotoId,
-      },
-      coverTexts: design.coverTexts,
-      endingTexts: design.endingTexts,
-      fonts: design.fonts,
-      colors: design.colors,
-      extraEndingPhotoIds,
-      pageBackground: input.pageBackground,
+      refs,
     });
 
-    // 选定封面 = 故事环节收官:把现存章节全部记 done(产品口径:选完封面导出即可用)。
-    // allDone 闸门保留 —— 之后追加照片引入未 done 的新章会自动重锁导出,
-    // 追加排版完成(新章记 done)后自动恢复。
-    const doneChapterIds = ((root?.tree as { chapters?: Array<{ chapterId?: string }> } | undefined)?.chapters ?? [])
-      .map((c) => c.chapterId)
-      .filter((id): id is string => typeof id === 'string');
-    await albumRepo.update(db, album.id, {
-      // design 决策快照随 draft 落库:设计对话的书级简报(配色主题)从这里取。
-      draftJson: {
-        ...(root ?? {}),
-        pages,
-        design: { fonts: design.fonts, colors: design.colors, ...(input.pageBackground ? { pageBackground: input.pageBackground } : {}) },
-        progress: { currentChapterId: null, doneChapterIds },
-      },
-      pageCount: pages.length,
-      // 设计完成 → 待导出(导出闸门的唯一开门钥匙)。story 阶段到不了这里(design 要求
-      // 已排版页,入口在 theme 之后);幂等重设计时已是 ready 则维持不动。
-      // 用户选定封面组 = 设计环节完成 ⇒ 推 stage='ready'(导出闸门解锁条件之一)。
-      // 现行流程选封面发生在 story 阶段(排版完即弹卡,不经过旧 theme/cover),
-      // 只要能走到这里(EDITING + 已有排版页)就该进 ready;幂等重入保持 ready。
-      ...(album.stage !== 'ready' ? { stage: 'ready' as const } : {}),
-    });
-    // 封面选择本身进会话历史(seq 追加序):刷新回放时回执卡按真实发生位置原位重建,
-    // 不再靠 stage 推断在末尾补卡(旧行为导致回执卡"跑到最下边")。user 消息带
-    // designApplied 标记(回放识别),assistant 消息与前端实时回复同文案。
-    await db.transaction(async (tx) => {
-      await albumMessageRepo.create(tx, {
-        albumId,
-        userId,
-        role: 'user',
-        content: input.language === 'zh' ? '就用这组封面' : 'Use this cover set',
-        layoutPatch: {
-          designApplied: {
-            coverTemplateId: input.coverTemplateId,
-            coverPhotoId: input.coverPhotoId,
-            endingTemplateId: input.endingTemplateId,
-            endingPhotoId: input.endingPhotoId,
+    // uq_agent_jobs_album_kind_active 兜底「每本至多一个在跑的成稿 job」:撞上 = 已有在途,
+    // 幂等接受(前端继续轮询那一个),不起第二个、也不重复烧 Gemini。
+    try {
+      await db.transaction(async (tx) => {
+        const created = await jobService.createGenerationJob(tx, {
+          userId,
+          albumId,
+          requestId,
+          kind: 'compose',
+          meta: {
+            compose: {
+              language: input.language,
+              coverTemplateId: input.coverTemplateId,
+              coverPhotoId: input.coverPhotoId,
+              endingTemplateId: input.endingTemplateId,
+              endingPhotoId: input.endingPhotoId,
+              extraEndingPhotoIds,
+              ...(input.pageBackground ? { pageBackground: input.pageBackground } : {}),
+            },
           },
+        });
+        await jobService.markRunning(tx, created.id);
+      });
+    } catch (e) {
+      // 只有唯一索引冲突(23505)才是「已有在途成稿」:幂等接受(前端继续轮询那一单),
+      // 不建第二个 job、不重复烧 Gemini,也不再追加一条用户气泡。
+      // 其余 DB 错误(连接断开、事务序列化失败、迁移没跑导致 agent_job_kind 缺 'compose')
+      // 必须原样抛 —— 吞掉它们等于把「迁移没上」伪装成「模型没写出来」,用户还会拿着
+      // accepted:true 去轮询一个根本不存在的 job。
+      if (!isUniqueViolation(e)) {
+        logger.error({ err: String(e), requestId, albumId }, 'create compose job failed');
+        throw e;
+      }
+      return { requestId, accepted: true as const };
+    }
+
+    try {
+      await agentClient.submitComposeV3(payload);
+    } catch (e) {
+      logger.error({ err: String(e), requestId, albumId }, 'agent v3 compose submit failed');
+      await jobService.handleV3Failed(requestId, {
+        code: 'AGENT_INTERNAL_ERROR',
+        message: 'Failed to submit compose to agent',
+      });
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+
+    // submit 成功之后才落「用户选了这组封面」这条消息(回放靠 designApplied 标记原位重建
+    // 回执卡)。放在 submit 之前的话,提交失败会在对话里留下一条孤儿封面回执卡 —— 刷新
+    // 回放能看到「就用这组封面」,却永远等不来成稿。
+    // assistant 的成稿回执由回调侧在真成稿后补 —— 失败时对话里不会留下假的「写好了」。
+    await albumMessageRepo.create(db, {
+      albumId,
+      userId,
+      role: 'user',
+      content: input.language === 'zh' ? '就用这组封面' : 'Use this cover set',
+      layoutPatch: {
+        designApplied: {
+          coverTemplateId: input.coverTemplateId,
+          coverPhotoId: input.coverPhotoId,
+          endingTemplateId: input.endingTemplateId,
+          endingPhotoId: input.endingPhotoId,
         },
-      });
-      await albumMessageRepo.create(tx, {
-        albumId,
-        userId,
-        role: 'assistant',
-        content:
-          input.language === 'zh'
-            ? '设计好了:封面封底就位,全书字体和配色也统一刷好了。不满意随时在对话里改。'
-            : 'Design done — cover & back cover are in, fonts and colors applied across the book. Ask me here to tweak anything.',
-      });
+      },
     });
-    return { pages };
+
+    return { requestId, accepted: true as const };
   },
 
   // Hard delete. FK ON DELETE CASCADE drops pages / messages / jobs / holds in

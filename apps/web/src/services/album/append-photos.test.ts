@@ -30,6 +30,7 @@ function page(pageIndex: number, templateId: string, texts: Record<string, strin
 function chapter(chapterId: string, photoCount = 1) {
   return {
     chapterId,
+    title: '',
     description: '',
     chapterContext: '',
     place: '',

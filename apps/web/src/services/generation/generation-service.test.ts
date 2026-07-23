@@ -7,9 +7,7 @@ import { albumRepo } from '@/db/repos/album-repo';
 import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '@/db/repos/__test__/setup';
 import { agentClient } from '@/lib/agent/agent-client';
 import { jobService } from '@/services/job/job-service';
-import { transientLayoutCandidates } from '@/services/album/layout-candidates';
 import {
-  buildJudgeLayoutRequest,
   buildSelectLayoutRequestFromTree,
   generationService,
 } from './generation-service';
@@ -80,20 +78,42 @@ test('buildSelectLayoutRequestFromTree sends 200px refs and never caller candida
             ref200px: 'data:image/jpeg;base64,AA==',
             orientation: 'landscape',
             takenAt: '2024-03-15T08:30:00',
-            sceneDescription: 'beach',
           },
           {
             photoId: 'p2',
             ref200px: 'data:image/jpeg;base64,BB==',
             orientation: 'portrait',
             takenAt: null,
-            sceneDescription: 'portrait',
           },
         ],
       },
     ],
   });
   assert.equal(JSON.stringify(request).includes('candidates'), false);
+  // 豆包识图已砍:选版式入参不再带照片文字描述。
+  assert.equal(JSON.stringify(request).includes('sceneDescription'), false);
+});
+
+// 章标识搬到 title 之后,description 恢复成「写目录环节才填」:分析期为空 =>
+// 不再把日期串当 structureHint 发给排版(借位 description 时的定时炸弹)。
+test('buildSelectLayoutRequestFromTree: 章标识(title)不当 structureHint 发出', () => {
+  const request = buildSelectLayoutRequestFromTree({
+    requestId: 'layout-r1',
+    callbackUrl: 'https://web.test/api/v3/internal/job-progress',
+    language: 'en',
+    tree: {
+      chapters: [
+        { ...TREE.chapters[0], title: '2024 年 03 月 11–14 日', description: '' },
+      ],
+    },
+    refs: {
+      p1: 'data:image/jpeg;base64,AA==',
+      p2: 'data:image/jpeg;base64,BB==',
+    },
+  });
+
+  assert.equal('structureHint' in request.chapters[0], false);
+  assert.equal(JSON.stringify(request).includes('2024 年 03 月'), false);
 });
 
 test('buildSelectLayoutRequestFromTree requires every tree photo to have a browser 200px ref', () => {
@@ -335,56 +355,6 @@ test('submitSelectLayoutV3 rejects malformed browser refs before reserving or po
   }
 });
 
-// ── P2 two-phase select-layout (docs/agent/contract.md §5.2.1) ──
-
-const CANDIDATE_UNITS = [
-  {
-    unitKey: 'ch_1',
-    chapterId: 'ch_1',
-    candidates: [
-      { candidateIndex: 0, pages: [{ templateId: 'mag-02', images: { image: 'p1' } }] },
-      { candidateIndex: 1, pages: [{ templateId: 'mag-04', images: { image1: 'p1', image2: 'p2' } }] },
-    ],
-  },
-];
-
-const JUDGE_UNITS = [
-  {
-    unitKey: 'ch_1',
-    chapterId: 'ch_1',
-    candidates: [
-      { candidateIndex: 0, thumbnail: 'data:image/jpeg;base64,AA==', pages: [{ templateId: 'mag-02', images: { image: 'p1' } }] },
-      { candidateIndex: 1, thumbnail: 'data:image/jpeg;base64,BB==', pages: [{ templateId: 'mag-04', images: { image1: 'p1', image2: 'p2' } }] },
-    ],
-  },
-];
-
-// Drive a job to the candidates-ready sentinel (progress 52) via phase-1 reserve +
-// the candidates callback, so phase-2 tests start from the real state machine.
-async function seedCandidatesReadyAlbum(userId: string, requestId: string, t: TestContext) {
-  const album = await seedLayoutReadyAlbum(userId, requestId);
-  t.mock.method(agentClient, 'submitSelectLayoutV3', async () => ({ requestId, accepted: true }));
-  await generationService.submitSelectLayoutV3(userId, album.id, { requestId, language: 'en', refs: REFS });
-  await jobService.handleV3SelectLayoutCandidates(requestId, CANDIDATE_UNITS, USAGE);
-  return album;
-}
-
-test('buildJudgeLayoutRequest validates against the strict JudgeLayoutRequest contract', () => {
-  const request = buildJudgeLayoutRequest({
-    requestId: 'judge-r1',
-    callbackUrl: 'https://web.test/api/v3/internal/job-progress',
-    language: 'en',
-    units: JUDGE_UNITS,
-  });
-  assert.equal(request.requestId, 'judge-r1');
-  assert.equal(request.units.length, 1);
-  assert.equal(request.units[0].candidates[0].thumbnail, 'data:image/jpeg;base64,AA==');
-});
-
-// NOTE: 解耦后两段式(candidates 52 / judge 52→53)的 job 哨兵机制不再适用(排版是独立
-// layout job)。本地走 inline judge、不用两段式,故此处移除旧的两段式 job-sentinel 测试;
-// 两段式若重新启用,需按 layout job 模型另行覆盖(见解耦 plan 后续项)。
-
 // ───────────────── 加照片增量重跑(spec §1):submitAddPhotosV3 + append 回调分支 ─────────────────
 
 const APPEND_PHOTOS = [
@@ -540,39 +510,3 @@ test('append 失败:释放 hold、相册保持 EDITING 不标 FAILED', async (t:
   }
 });
 
-test('候选跨实例可见:内存 miss 时从 agent_jobs.meta 兜底(Vercel 多实例回归)', async (t: TestContext) => {
-  if (!(await isDbReachable())) {
-    t.skip('DATABASE_URL is not reachable; skipping');
-    return;
-  }
-  const user = await makeUser('p2-meta-candidates');
-  try {
-    const requestId = crypto.randomUUID();
-    const album = await seedLayoutReadyAlbum(user.id, requestId);
-    // phase-1:layout job 到位并收到 candidates 回调(落内存 + 落 meta)
-    const layoutRequestId = crypto.randomUUID();
-    await jobService.createGenerationJob(db, { userId: user.id, albumId: album.id, requestId: layoutRequestId, kind: 'layout' });
-    const layoutJob = await agentJobRepo.findByRequestId(layoutRequestId);
-    await jobService.markRunning(db, layoutJob!.id);
-    await agentJobRepo.update(db, layoutJob!.id, { stage: 'layout' });
-    const units = [
-      { chapterId: 'c1', unitKey: 'c1', candidates: [
-        { templateId: 'mag-05', pages: [{ pageIndex: 0, templateId: 'mag-05', images: { image: 'p1' }, texts: {} }] },
-        { templateId: 'mag-06', pages: [{ pageIndex: 0, templateId: 'mag-06', images: { image: 'p1' }, texts: {} }] },
-      ] },
-    ] as never[];
-    await jobService.handleV3SelectLayoutCandidates(layoutRequestId, units as never, USAGE);
-
-    // 模拟"另一个实例":清空本进程内存暂存 → 只能靠库
-    transientLayoutCandidates.resetForTest();
-    const result = await generationService.getJudgeCandidates(user.id, album.id, requestId);
-    assert.equal(result.ready, true, '内存 miss 时必须从 meta 兜底(线上 2026-07-12 事故回归)');
-    assert.equal(result.units.length, 1);
-    // 追加照片回归:浏览器 phase-2 派发的去重键必须是「本次 layout job」的 requestId
-    // (每次排版都换),不能是 analyze recipe 的 requestId(跨追加不变 → 第二次排版
-    // 被首次生成的去重记录挡死,judge/write_copy 永不触发)。GET 必须把它带回去。
-    assert.equal(result.requestId, layoutRequestId, 'GET judge-layout 必须返回 layout job 自己的 requestId');
-  } finally {
-    await cleanupUser(user.id);
-  }
-});

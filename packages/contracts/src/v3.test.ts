@@ -115,6 +115,25 @@ test('V3Chapter holds null placeholders for accentColor/artFont at analysis time
   assert.equal(V3Chapter.safeParse({ ...chapter, extractedColor: 'blue' }).success, false);
 });
 
+test('V3Chapter.title 是章标识落点,老树缺这个键仍能解析(向后兼容)', () => {
+  const legacy = {
+    chapterId: 'c1',
+    description: '',
+    accentColor: null,
+    artFont: null,
+    photos: [baseChapterPhoto],
+  };
+  // 老相册的 draft_json 里没有 title 键:必须解析成功并补空串,不能因契约收紧读不出来。
+  const parsedLegacy = V3Chapter.parse(legacy);
+  assert.equal(parsedLegacy.title, '');
+  // 新树把确定性章标识写在 title 上,description 留给写目录环节。
+  const parsed = V3Chapter.parse({ ...legacy, title: '2024 年 03 月 11–14 日' });
+  assert.equal(parsed.title, '2024 年 03 月 11–14 日');
+  assert.equal(parsed.description, '');
+  // 仍然 strict:未知键照样拒。
+  assert.equal(V3Chapter.safeParse({ ...legacy, titel: 'x' }).success, false);
+});
+
 test('test_v3_chapter_carries_extracted_color', () => {
   const chapter = {
     chapterId: 'c1',
@@ -136,17 +155,17 @@ test('V3LayoutTree round-trips through strict parse', () => {
       { chapterId: 'c1', description: 'd', accentColor: null, artFont: null, photos: [baseChapterPhoto] },
     ],
   };
-  // chapterContext / place / keywords 都有 .default()：parse 会补上它们，所以 round-trip 的产物比
-  // 输入多这几个键。这是 schema 的既定行为(缺省章节背景/地点 = 空串，关键词 = 空数组)，不是丢失/污染。
+  // title / chapterContext / place / keywords 都有 .default()：parse 会补上它们，所以 round-trip 的产物比
+  // 输入多这几个键。这是 schema 的既定行为(缺省章标识/章节背景/地点 = 空串，关键词 = 空数组)，不是丢失/污染。
   assert.deepEqual(V3LayoutTree.parse(tree), {
-    chapters: [{ ...tree.chapters[0], chapterContext: '', place: '', keywords: [] }],
+    chapters: [{ ...tree.chapters[0], title: '', chapterContext: '', place: '', keywords: [] }],
   });
-  // 输入里显式给了 chapterContext 时原样保留(默认值不覆盖真实值);place/keywords 仍补默认。
+  // 输入里显式给了 chapterContext 时原样保留(默认值不覆盖真实值);title/place/keywords 仍补默认。
   const withContext = {
     chapters: [{ ...tree.chapters[0], chapterContext: '厦门海边度假' }],
   };
   assert.deepEqual(V3LayoutTree.parse(withContext), {
-    chapters: [{ ...withContext.chapters[0], place: '', keywords: [] }],
+    chapters: [{ ...withContext.chapters[0], title: '', place: '', keywords: [] }],
   });
   assert.equal(V3LayoutTree.safeParse({ chapters: [], extra: 1 }).success, false);
 });
@@ -449,6 +468,19 @@ test('SelectLayoutRequest carries 200px refs and takenAt, and rejects caller can
     }).success,
     false,
   );
+  // 豆包识图已砍,sceneDescription 已从选版式入参里删掉:再送就被 strict 拒。
+  assert.equal(
+    SelectLayoutRequest.safeParse({
+      ...payload,
+      chapters: [
+        {
+          ...payload.chapters[0],
+          photos: [{ ...payload.chapters[0].photos[0], sceneDescription: 'x' }],
+        },
+      ],
+    }).success,
+    false,
+  );
 });
 
 test('internal agent-data schemas cover query parsing and response envelopes', () => {
@@ -634,6 +666,23 @@ test('V3Callback union: analyze progress / analyze completed / select-layout com
       error: { code: 'AGENT_TIMEOUT', message: 'timeout' },
     }).success,
     true,
+  );
+  // 候选缩略图评委整条链路已删:回调联合里不再有 `candidates` 事件分支。
+  assert.equal(
+    V3Callback.safeParse({
+      requestId: 'r1',
+      jobKind: 'select-layout',
+      event: 'candidates',
+      units: [
+        {
+          unitKey: 'ch_1',
+          chapterId: 'ch_1',
+          candidates: [{ candidateIndex: 0, pages: [{ templateId: 'mag-08', images: {} }] }],
+        },
+      ],
+      usage: { durationMs: 1, models: {} },
+    }).success,
+    false,
   );
 });
 

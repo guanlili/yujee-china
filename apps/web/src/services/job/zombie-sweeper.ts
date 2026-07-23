@@ -32,7 +32,14 @@ export const zombieSweeper = {
 
     for (const job of stale) {
       try {
-        const { swept, releasedHold } = await jobService.sweepStaleJob(job.id, now, timeoutMs);
+        // 不透传本地已 default 过的 timeoutMs——那会把所有 kind 摁死在 10 分钟一刀切,
+        // 绕过 sweepStaleJob 内部按 kind 分档(compose 走 12 分钟)。只透传调用方显式传入的
+        // opts.timeoutMs;调用方没传时留 undefined,让 sweepStaleJob 自己按 job.kind 取档。
+        const { swept, releasedHold } = await jobService.sweepStaleJob(
+          job.id,
+          now,
+          opts.timeoutMs,
+        );
         if (swept) {
           failed += 1;
           if (releasedHold) releasedHolds += 1;

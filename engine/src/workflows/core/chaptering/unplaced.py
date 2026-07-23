@@ -1,6 +1,6 @@
 """把 Stage1 未归章照片分配到已有章节。
 
-这个模块目前实现 Stage1 契约要求的确定性无模型兜底逻辑。
+砍掉 AI 补充分章后,这里是散落照片归章的唯一路径:确定性、无模型。
 它保持未归章 cluster 的原子性,并按 EXIF 时间把每个 cluster 分配到最近的已有章节;
 距离相同时按稳定的章节顺序打破平局。
 """
@@ -10,24 +10,24 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import datetime
 
-from .chapter_describer.schema import DescribeResult
 from ....contracts.schemas import V3AnalyzePhoto
 from .schema import GroupingResult, UnplacedAssignments
 
 
 def group_unplaced(
     grouping: GroupingResult,
-    descriptions: DescribeResult,
     photos_by_id: Mapping[str, V3AnalyzePhoto],
-    *,
-    language: str,
 ) -> UnplacedAssignments:
     if not grouping.chapters:
         raise ValueError("regroup_unplaced requires at least one chapter")
     if not grouping.unplacedPhotoIds:
         return UnplacedAssignments(assignments={})
 
-    _ = descriptions, language
+    unknown = sorted(set(grouping.unplacedPhotoIds) - set(photos_by_id))
+    if unknown:
+        # 早失败:否则这些 id 会一路带进 assemble_stage1_tree 才炸成 KeyError。
+        raise ValueError(f"unplaced photo ids are not in photos_by_id: {unknown}")
+
     by_cluster: dict[str, list[str]] = {}
     for index, photo_id in enumerate(grouping.unplacedPhotoIds):
         photo = photos_by_id.get(photo_id)

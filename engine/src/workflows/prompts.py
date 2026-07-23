@@ -1,7 +1,7 @@
 """Prompt loader —— workflow 读自己那份 system prompt 的唯一入口。
 
 每个 workflow 的 prompt 正文就是它自己模块目录下的 `<name>.md`,紧挨着加载它的
-handler(select_layout/judge_thumbnails.md、write_copy/write_copy.md、…)。
+handler(compose/compose_chapter.md、compose/compose_global.md、…)。
 prompt 不集中放,改哪个环节就在哪个环节的目录里改。
 
 这个加载器原本住在 `src/skills/`。那个名字是错的:目录里一个 skill 都没有,只有下面

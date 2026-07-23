@@ -617,6 +617,78 @@
         "category": "interior",
         "imageSlotCount": 3
       }
+    },
+    {
+      "name": "V3Chapter analysis-time full shape (title/place/keywords/extractedColor)",
+      "schema": "V3Chapter",
+      "expectValid": true,
+      "payload": {
+        "chapterId": "ch_1",
+        "title": "2024 年 03 月 11–14 日",
+        "description": "",
+        "chapterContext": "时间:2024 年 03 月 地点:杭州 那几天在西湖边散步。",
+        "place": "杭州",
+        "keywords": ["西湖", "春天"],
+        "extractedColor": "#557EC2",
+        "accentColor": null,
+        "artFont": null,
+        "photos": [
+          {
+            "photoId": "p0",
+            "sceneDescription": "",
+            "width": 800,
+            "height": 600,
+            "orientation": "landscape",
+            "composition": null,
+            "takenAt": "2024-03-11T10:00:00"
+          }
+        ]
+      }
+    },
+    {
+      "name": "V3Callback completed(analyze) real agent tree — non-empty chapters",
+      "schema": "V3Callback",
+      "expectValid": true,
+      "payload": {
+        "requestId": "r1",
+        "jobKind": "analyze",
+        "event": "completed",
+        "tree": {
+          "chapters": [
+            {
+              "chapterId": "ch_1",
+              "title": "2024 年 03 月 11 日",
+              "description": "",
+              "chapterContext": "",
+              "place": "",
+              "keywords": [],
+              "extractedColor": "#557EC2",
+              "accentColor": null,
+              "artFont": null,
+              "photos": [
+                {
+                  "photoId": "p0",
+                  "sceneDescription": "",
+                  "width": 800,
+                  "height": 600,
+                  "orientation": "landscape",
+                  "composition": null,
+                  "takenAt": "2024-03-11T10:00:00"
+                }
+              ]
+            }
+          ]
+        },
+        "usage": {
+          "durationMs": 70,
+          "visionCallCount": 0,
+          "geminiCallCount": 0,
+          "planningInputTokens": 0,
+          "planningOutputTokens": 0,
+          "repairAttempts": 0,
+          "models": {}
+        }
+      }
     }
   ]
 }

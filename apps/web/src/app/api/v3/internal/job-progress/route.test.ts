@@ -20,6 +20,7 @@ const TREE = {
   chapters: [
     {
       chapterId: 'ch_1',
+      title: '',
       description: '',
       chapterContext: '',
       place: '',
@@ -185,7 +186,7 @@ test('select-layout/completed under EDITING (时序反转) → merges pages + st
   try {
     const { albumId, holdId, requestId } = await seed(user.id);
     // 时序反转:收集完才排版,排版期 album 恒为 EDITING(不再 AGENT_RUNNING)。这是回归本 bug
-    // 的核心用例 —— 完成回调必须在 EDITING 下也接受(靠 job.stage+progress≥51 哨兵,不靠 status)。
+    // 的核心用例 —— 完成回调必须在 EDITING 下也接受(不靠 album.status)。
     await albumRepo.update(db, albumId, {
       status: 'EDITING',
       stage: 'story',
@@ -284,114 +285,6 @@ test('select-layout/completed on a terminal (init) job requestId is ignored — 
     const album = await albumRepo.findById(albumId);
     assert.equal(album?.stage, 'story');
     assert.equal((album?.draftJson as { pages?: unknown } | null)?.pages, undefined);
-  } finally {
-    await cleanupUser(user.id);
-  }
-});
-
-test('select-layout/candidates → parks job at 52, no stage advance, hold still held (P2 phase 1)', async (t) => {
-  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
-  const user = await makeUser('v3route-candidates');
-  try {
-    const { albumId, holdId, requestId } = await seed(user.id);
-    await albumRepo.update(db, albumId, {
-      status: 'AGENT_RUNNING',
-      stage: 'analysing',
-      draftJson: {
-        version: 'v3-story',
-        tree: TREE,
-        progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
-      },
-    });
-    const job = await agentJobRepo.findByRequestId(requestId);
-    assert.ok(job);
-    // Phase-1 select-layout dispatched → reserved at progress 51.
-    await agentJobRepo.transitionStatus(db, job.id, 'RUNNING', ['QUEUED'], {
-      stage: 'layout',
-      progress: 51,
-      startedAt: new Date(),
-    });
-
-    const res = await post({
-      requestId,
-      jobKind: 'select-layout',
-      event: 'candidates',
-      units: [
-        {
-          unitKey: 'ch_1',
-          chapterId: 'ch_1',
-          candidates: [
-            { candidateIndex: 0, pages: [{ templateId: 'mag-02', images: { image: 'p1' } }] },
-            { candidateIndex: 1, pages: [{ templateId: 'mag-04', images: { image1: 'p1' } }] },
-          ],
-        },
-      ],
-      usage: USAGE,
-    });
-    assert.equal((await res.json()).data.accepted, true);
-
-    const parked = await agentJobRepo.findByRequestId(requestId);
-    assert.equal(parked?.progress, 52);
-    assert.equal(parked?.stage, 'layout');
-    assert.equal(parked?.status, 'RUNNING');
-
-    // Candidates do NOT advance album stage and keep the credit hold open.
-    const album = await albumRepo.findById(albumId);
-    assert.equal(album?.status, 'AGENT_RUNNING');
-    assert.equal(album?.stage, 'analysing');
-    const hold = await creditHoldRepo.findById(holdId);
-    assert.equal(hold?.status, 'HOLDING');
-  } finally {
-    await cleanupUser(user.id);
-  }
-});
-
-// 解耦后的真实态:相册 EDITING、独立 layout job 刚 markRunning(progress=0,还没到旧的 51 哨兵)。
-// candidates 回调必须仍能把它停到 candidates-ready 哨兵 52(旧 CAS 死要 51 会永不匹配 → 两段式卡死)。
-test('select-layout/candidates → parks a decoupled layout job (EDITING, progress 0) at 52', async (t) => {
-  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
-  const user = await makeUser('v3route-candidates-decoupled');
-  try {
-    const { albumId, requestId } = await seed(user.id);
-    await albumRepo.update(db, albumId, {
-      status: 'EDITING',
-      stage: 'story',
-      draftJson: {
-        version: 'v3-story',
-        tree: TREE,
-        progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
-      },
-    });
-    const job = await agentJobRepo.findByRequestId(requestId);
-    assert.ok(job);
-    // 独立 layout job:RUNNING、stage=layout、progress=0(engine 首个 progress 回调后的态)。
-    await agentJobRepo.transitionStatus(db, job.id, 'RUNNING', ['QUEUED'], {
-      stage: 'layout',
-      progress: 0,
-      startedAt: new Date(),
-    });
-
-    const res = await post({
-      requestId,
-      jobKind: 'select-layout',
-      event: 'candidates',
-      units: [
-        {
-          unitKey: 'ch_1',
-          chapterId: 'ch_1',
-          candidates: [{ candidateIndex: 0, pages: [{ templateId: 'mag-02', images: { image: 'p1' } }] }],
-        },
-      ],
-      usage: USAGE,
-    });
-    assert.equal((await res.json()).data.accepted, true);
-
-    const parked = await agentJobRepo.findByRequestId(requestId);
-    assert.equal(parked?.progress, 52, 'progress=0 的解耦 layout job 也要停到 candidates-ready 哨兵 52');
-    assert.equal(parked?.stage, 'layout');
-    assert.equal(parked?.status, 'RUNNING');
-    const album = await albumRepo.findById(albumId);
-    assert.equal(album?.status, 'EDITING', '候选不推进相册 status');
   } finally {
     await cleanupUser(user.id);
   }
@@ -506,7 +399,7 @@ test('analyze/failed → album FAILED + hold released, stage untouched (失败�
       jobKind: 'analyze',
       event: 'failed',
       error: { code: 'AGENT_VISION_FAILED', message: 'boom' },
-      stage: 'describe',
+      stage: 'group',
     });
     assert.equal((await res.json()).data.accepted, true);
 

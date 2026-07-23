@@ -1,11 +1,19 @@
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildAnalyzeDraftJson, mergeSelectLayoutPages, mergeV3Usage } from './job-service';
+import {
+  buildAnalyzeDraftJson,
+  jobService,
+  mergeSelectLayoutPages,
+  mergeV3Usage,
+  zombieTimeoutMsFor,
+} from './job-service';
+import { agentJobRepo } from '../../db/repos/agent-job-repo';
 
 const TREE = {
   chapters: [
     {
       chapterId: 'ch_1',
+      title: '',
       description: 'A quiet morning.',
       chapterContext: '',
       place: '',
@@ -93,4 +101,81 @@ test('mergeV3Usage keeps Stage1 usage when Stage2 reuses the same job', () => {
       models: { vision: 'doubao', planning: 'gemini-layout' },
     },
   );
+});
+
+// ── 僵尸超时按 job kind 分档 ────────────────────────────────────────────────
+// compose 是全链路唯一的 AI 调用(按章并发看真图 + 写全书文案),10 章的书跑过
+// 5 分钟完全正常。用 init/layout 那档 5 分钟去扫它,会在成稿回调回来之前把 job
+// 标成 FAILED,回调进门第一句就 return —— 整本书的文案静默丢弃。
+
+function runningJob(kind: string, ageMs: number) {
+  return {
+    id: 'job-1',
+    kind,
+    albumId: 'album-1',
+    status: 'RUNNING' as const,
+    stage: 'compose',
+    progress: 12,
+    startedAt: new Date(Date.now() - ageMs),
+    createdAt: new Date(Date.now() - ageMs),
+  };
+}
+
+test('compose 的僵尸超时比 engine 的 600s 后台预算更长,init/layout 仍是 5 分钟', () => {
+  assert.equal(zombieTimeoutMsFor('init'), 5 * 60 * 1000);
+  assert.equal(zombieTimeoutMsFor('layout'), 5 * 60 * 1000);
+  assert.ok(zombieTimeoutMsFor('compose') > 10 * 60 * 1000);
+});
+
+test('resolveGeneration 不扫死跑了 6 分钟的 compose job', async () => {
+  const findMock = mock.method(agentJobRepo, 'findLatestByAlbum', async () =>
+    runningJob('compose', 6 * 60 * 1000),
+  );
+  const sweepMock = mock.method(jobService, 'sweepStaleJob', async () => ({
+    swept: true,
+    releasedHold: false,
+  }));
+  try {
+    const resolved = await jobService.resolveGeneration('album-1');
+    assert.deepEqual(resolved, { kind: 'progress', stage: 'compose', progress: 12 });
+    assert.equal(sweepMock.mock.callCount(), 0);
+  } finally {
+    findMock.mock.restore();
+    sweepMock.mock.restore();
+  }
+});
+
+test('resolveGeneration 扫死跑了 13 分钟的 compose job', async () => {
+  const findMock = mock.method(agentJobRepo, 'findLatestByAlbum', async () =>
+    runningJob('compose', 13 * 60 * 1000),
+  );
+  const sweepMock = mock.method(jobService, 'sweepStaleJob', async () => ({
+    swept: true,
+    releasedHold: false,
+  }));
+  try {
+    const resolved = await jobService.resolveGeneration('album-1');
+    assert.deepEqual(resolved, { kind: 'swept' });
+    assert.equal(sweepMock.mock.callCount(), 1);
+  } finally {
+    findMock.mock.restore();
+    sweepMock.mock.restore();
+  }
+});
+
+test('resolveGeneration 仍在 5 分钟就扫死非 compose 的 job', async () => {
+  const findMock = mock.method(agentJobRepo, 'findLatestByAlbum', async () =>
+    runningJob('layout', 6 * 60 * 1000),
+  );
+  const sweepMock = mock.method(jobService, 'sweepStaleJob', async () => ({
+    swept: true,
+    releasedHold: false,
+  }));
+  try {
+    assert.deepEqual(await jobService.resolveGeneration('album-1'), { kind: 'swept' });
+    assert.equal(sweepMock.mock.callCount(), 1);
+  } finally {
+    findMock.mock.restore();
+    sweepMock.mock.restore();
+  }
 });
