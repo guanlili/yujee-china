@@ -46,6 +46,7 @@ import { MAG_51_HTML } from './mag-51';
 import { MAG_52_HTML } from './mag-52';
 import { MAG_53_HTML } from './mag-53';
 import { MAG_54_HTML } from './mag-54';
+import { MAG_55_HTML } from './mag-55';
 import { P01_HTML } from './p01';
 
 const HTML_TEMPLATE_REGISTRY: Record<string, string> = {
@@ -92,6 +93,7 @@ const HTML_TEMPLATE_REGISTRY: Record<string, string> = {
   'mag-52': MAG_52_HTML,
   'mag-53': MAG_53_HTML,
   'mag-54': MAG_54_HTML,
+  'mag-55': MAG_55_HTML,
   'p01': P01_HTML,
 };
 
