@@ -47,6 +47,7 @@ export const TEMPLATE_IDS = [
   "mag-52",
   "mag-53",
   "mag-54",
+  "mag-55",
   "p01"
 ] as const;
 
@@ -1561,6 +1562,44 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "lang": "user",
         "variableDecor": true,
         "sample": "那一天"
+      }
+    ]
+  },
+  "mag-55": {
+    "id": "mag-55",
+    "category": "interior",
+    "spread": true,
+    "images": [
+      {
+        "id": "image1"
+      },
+      {
+        "id": "image2"
+      },
+      {
+        "id": "image3",
+        "orientation": [
+          "portrait"
+        ],
+        "quality": [
+          "hero"
+        ]
+      }
+    ],
+    "texts": [
+      {
+        "id": "label",
+        "role": "decoration",
+        "lang": "user",
+        "variableDecor": true,
+        "sample": "the slow afternoon"
+      },
+      {
+        "id": "title",
+        "role": "title",
+        "lang": "user",
+        "variableDecor": true,
+        "sample": "Notes from Elsewhere"
       }
     ]
   },

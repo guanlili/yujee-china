@@ -1,0 +1,14 @@
+{
+  "id": "mag-55",
+  "category": "interior",
+  "spread": true,
+  "images": [
+    { "id": "image1" },
+    { "id": "image2" },
+    { "id": "image3", "orientation": ["portrait"], "quality": ["hero"] }
+  ],
+  "texts": [
+    { "id": "label", "role": "decoration", "lang": "user", "variableDecor": true, "sample": "the slow afternoon" },
+    { "id": "title", "role": "title", "lang": "user", "variableDecor": true, "sample": "Notes from Elsewhere" }
+  ]
+}
