@@ -113,9 +113,7 @@ async def test_select_layout_pages_carry_sample_texts(monkeypatch):
 
     pages = events[-1]["pages"]
     assert pages
-    # 交付永不空页:每一页的文字槽都得有 sample(含 items 重复组展开的 explain[i])。
-    assert all(page["texts"] for page in pages)
-    # 更严格的同一条约束:凡是模板声明了带 sample 的文字槽(顶层或 items 重复组),
+    # 交付永不空页:凡是模板声明了带 sample 的文字槽(顶层或 items 重复组),
     # 该页 texts 必须非空。纯图模板(mag-06/33/39… 零文字槽)本就没有文字框,
     # 空 texts 是对的 —— 这条断言把它们排除,免得换 fixture 时误报。
     for page in pages:
