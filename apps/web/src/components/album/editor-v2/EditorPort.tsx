@@ -16,7 +16,6 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
@@ -34,11 +33,11 @@ import { UserMenu } from '@/components/app/UserMenu';
 import { useChromeSession } from '@/components/app/useChromeSession';
 import { YujeeState } from '@/components/app/YujeeState';
 import { RetryFailedButton } from '../RetryFailedButton';
-import { getWebTemplate } from '../web-registry';
 import { buildSpreads, isSoloSpread, pageSlot, spreadIndexOfPage } from '../spreads';
-import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../adapt-layout';
-import { applyFolioOverlay, fitTextBoxes, pageFolioNumbers, pageFolioSides, patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle, preferredPageHtml, type FolioSide } from '../page-html-dom';
+import { collectPhotoIds, type ResolveImage } from '../adapt-layout';
+import { fitTextBoxes, pageFolioNumbers, pageFolioSides, patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle, preferredPageHtml, type FolioSide } from '../page-html-dom';
 import { PAGE } from '../templates/constants';
+import { pageFaceInner, pageFaceHTML, type PageFaceCtx } from './page-face';
 import { clampZoom, paintDecision } from './zoom-util';
 import { resolveDeviceMode, initMobileCanvas } from './mobile-canvas';
 import {
@@ -1243,46 +1242,27 @@ function EditorBook({
       return folioSidesCache;
     };
 
-    // Render a real album page through its web template (the same path the live
-    // editor/PDF use) as static markup we can drop into the imperative book.
-    // HTML 模板已迁移的（如 mag-01）走单一 HTML 渲染器；未迁的回退现有 React 组件。
-    function faceInner(page: EditorPage | null, resolve: ResolveImage = resolveImage): string {
-      if (!page) return '';
-      // 页面真相 = 存库 html(含 AI/用户手工版面);页签按当前页序展示层计算,
-      // 覆盖模板遗留 folio(封面/封尾不编号)。
-      const pageIdx = pagesState.indexOf(page);
-      const folio = foliosOfBook()[pageIdx] ?? null;
-      const folioSide = folioSidesOfBook()[pageIdx] ?? 'right';
-      const html = preferredPageHtml(page, resolve);
-      if (html !== undefined) return applyFolioOverlay(html, folio, folioSide);
-      const Template = getWebTemplate(page.templateId);
-      if (!Template) {
-        return `<div style="padding:24px;font-size:14px">Unknown template: ${page.templateId}</div>`;
-      }
-      const data = adaptPageToTemplateData(
-        { templateId: page.templateId, images: page.imagesJson, texts: page.textsJson },
+    // 页面渲染已抽到共享层 page-face(移动端那棵 UI 树用同一套,见该文件抬头)。
+    // 这里只负责把「页序 → 展示层页签」这份本地缓存喂给它,渲染本身不再有第二份实现。
+    function faceCtx(page: EditorPage | null, resolve: ResolveImage): PageFaceCtx {
+      const pageIdx = page ? pagesState.indexOf(page) : -1;
+      return {
+        folio: foliosOfBook()[pageIdx] ?? null,
+        folioSide: folioSidesOfBook()[pageIdx] ?? 'right',
+        total,
         resolve,
-      );
-      return applyFolioOverlay(
-        renderToStaticMarkup(<Template data={data} totalPages={total} imagePos={page.imagePosJson} />),
-        folio,
-        folioSide,
-      );
+      };
     }
-    // The 794×1123 page scaled to fill the given box (matches FlipBook PageFace).
+    function faceInner(page: EditorPage | null, resolve: ResolveImage = resolveImage): string {
+      return pageFaceInner(page, faceCtx(page, resolve));
+    }
     function faceHTML(
       page: EditorPage | null,
       boxW: number,
       boxH: number,
       resolve: ResolveImage = resolveImage,
     ): string {
-      const scale = Math.min(boxW / PAGE.width, boxH / PAGE.height) || 1;
-      return (
-        `<div style="width:${boxW}px;height:${boxH}px;overflow:hidden;background:#fff">` +
-        `<div style="transform:scale(${scale});transform-origin:top left;width:${PAGE.width}px;height:${PAGE.height}px">` +
-        faceInner(page, resolve) +
-        `</div></div>`
-      );
+      return pageFaceHTML(page, boxW, boxH, faceCtx(page, resolve));
     }
     function normalizedText(value: string | null | undefined) {
       return (value ?? '').replace(/\s+/g, ' ').trim();
