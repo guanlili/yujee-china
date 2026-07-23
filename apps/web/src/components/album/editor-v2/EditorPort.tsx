@@ -49,6 +49,12 @@ import {
   SCALE_MAX,
   type ImagePosValue,
 } from './image-edit-util';
+import {
+  editAnchorId,
+  editAnchorSelector,
+  resolveEditAnchor,
+  type EditAnchorId,
+} from './edit-anchor-util';
 import { computeExportUnlocked } from './export-gate-util';
 import { runExportWithRetry, buildExportFailureLog, ExportError } from './export-retry-util';
 import { logger } from '@/lib/log/logger';
@@ -1342,6 +1348,8 @@ function EditorBook({
       // that slot no longer exists on the page (an AI edit swapped the photo /
       // template), tear the overlay down so it can't point at a detached node.
       reattachImgEdit();
+      // 同理:工具条锚点也会被重绘换成游离节点(且失效是无声的)。见 reattachEditBar。
+      reattachEditBar();
       // 页面内容变了(加图/AI 换图/换模板)→ 书里用到的图集合可能变 → 刷新留存 chip。
       // repaintBook 只在完整初始化之后经各 act/replace 路径调用,backedUpIds 已就绪(无 TDZ)。
       refreshBackupStatus();
@@ -1369,6 +1377,7 @@ function EditorBook({
         }
       }
       reattachImgEdit();
+      reattachEditBar();
     }
     // Re-grab the live <img> for the active image-edit selection after a repaint,
     // or clear the selection if the slot is gone. Centralizes the "innerHTML was
@@ -1403,6 +1412,37 @@ function EditorBook({
       } else {
         clearImageSelection();
       }
+    }
+    // The same "innerHTML was replaced" concern for the element toolbar's anchor.
+    // Unlike the image overlay, a stale text/page anchor fails SILENTLY: a detached
+    // node still satisfies `matches('[data-editable]:not(img)')`, so
+    // selectedTextTargets() kept handing it back and every colour/font/size click
+    // wrote styles into a node that had left the document — no error, no request,
+    // no visible change, while the toolbar stayed on screen looking healthy.
+    // Re-bind by the identity recorded at selection time, or tear the toolbar down
+    // if that slot did not survive the repaint (template swap / slot dropped).
+    function reattachEditBar() {
+      const action = resolveEditAnchor(
+        editBarAnchor,
+        editBarAnchor?.isConnected ?? false,
+        () => {
+          if (!editBarAnchorId) return null;
+          const selector = editAnchorSelector(editBarAnchorId);
+          // 工具条只在画板(overview)模式出现,所以在画板格里找;找不到再退回整个根,
+          // 兼容书籍表面也被重绘到的情形。
+          return (
+            byId('ovGrid')?.querySelector<HTMLElement>(selector) ??
+            bodyEl.querySelector<HTMLElement>(selector)
+          );
+        },
+      );
+      if (action.type === 'keep') return;
+      if (action.type === 'clear') {
+        hideElementToolbar();
+        return;
+      }
+      editBarAnchor = action.node;
+      requestAnimationFrame(positionElementToolbar);
     }
     // ── #165 Phase 3: rasterize the rendered page for the vision diagnosis ──
     // PRIVACY (invariant 1/2): the screenshot contains the user's original photos
@@ -2442,6 +2482,10 @@ function EditorBook({
     const ebColorPanelEl = byId('ebColorPanel');
     if (ebColorPanelEl && ebColorPanelEl.parentElement !== root) root.appendChild(ebColorPanelEl);
     let editBarAnchor: HTMLElement | null = null;
+    // 锚点的「重绘后仍成立」身份(页号 + 文字槽 key)。必须在锚点还活着时记下:
+    // innerHTML 替换会把旧文字节点从 [data-page-index] 宿主下摘走,事后再问它
+    // 自己属于哪一页已经问不出来(closest 走不到宿主)。
+    let editBarAnchorId: EditAnchorId | null = null;
     let editBarMoved = false; // 用户拖动过工具条 → 停止自动贴图层(选新图层时复位)。
     // #elBar / 面板都是 position:fixed,但它们在 .book-stage(perspective:2400px)内 ——
     // perspective 会成为 fixed 的包含块,style.top/left 变成【相对该祖先】而非视口。所有定位/
@@ -2510,6 +2554,12 @@ function EditorBook({
       // 编辑工具条只在画布模式(overview-on)出;书籍(预览)模式只读,不出工具条。
       if (!bodyEl.classList.contains('overview-on')) return;
       editBarAnchor = anchor;
+      // 'photo' 只存在于类型里(无调用点);真实分组只有 page / text。
+      editBarAnchorId = editAnchorId(
+        anchor.closest<HTMLElement>('[data-page-index]')?.dataset.pageIndex,
+        anchor.dataset.textKey,
+        group === 'page' ? 'page' : 'text',
+      );
       // 移动端:文字 / 书页背景走底部弹窗(sheet),不出浮标。图片仍走原浮层。
       if (isMobileEditor() && (group === 'text' || group === 'page')) { openMobileSheet(group); return; }
       setEditBarGroup(group);
@@ -2531,6 +2581,7 @@ function EditorBook({
       // 移动端弹窗开着时,取消选中 = 提交并关闭(先于清 editBarAnchor,mesFinalizeText 要用)。
       if (mesState.open) closeMobileSheet(true);
       editBarAnchor = null;
+      editBarAnchorId = null;
       editBarMoved = false;
       editBar?.classList.remove('show');
       closeEbPanels();
