@@ -19,7 +19,7 @@ def test_loader_reads_shared_template_json_count():
     # test never goes stale when templates are added/removed.
     expected_ids = sorted(path.stem for path in json_files)
 
-    assert len(json_files) == 45
+    assert len(json_files) == 43
     # mag-24 has no JSON, so it is (correctly) absent from the loaded registry.
     assert "mag-24" not in expected_ids
     assert templates.TEMPLATE_IDS == expected_ids

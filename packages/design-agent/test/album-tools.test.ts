@@ -171,11 +171,11 @@ test("update_page_texts 批量中任一页非法则整批拒绝", async () => {
 test("swap_page_template 同类目同图槽数迁移，多余文字槽丢弃并报告", async () => {
 	const { tools, getBook } = createHarness();
 	await run(tools, "update_page_texts", { pageNo: 3, texts: { title: "灶台边", explain: "案板上的五花肉和冰糖。" } });
-	const details = JSON.parse(await run(tools, "swap_page_template", { pageNo: 3, templateId: "mag-53" }));
-	assert.deepEqual(details.operations, ["template:mag-05->mag-53"]);
+	const details = JSON.parse(await run(tools, "swap_page_template", { pageNo: 3, templateId: "mag-51" }));
+	assert.deepEqual(details.operations, ["template:mag-05->mag-51"]);
 	assert.ok(details.notes.some((note: string) => note.includes('"explain"')), "应报告 explain 被移除");
 	const page = getBook().pages.find((candidate) => candidate.pageIndex === 3);
-	assert.equal(page?.templateId, "mag-53");
+	assert.equal(page?.templateId, "mag-51");
 	assert.equal(page?.texts.title, "灶台边");
 	assert.equal(page?.texts.explain, undefined);
 	assert.deepEqual(page?.images, { image: "p-kit-02" });
