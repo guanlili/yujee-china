@@ -51,7 +51,9 @@ import { WebMag55 } from './templates/mag-55';
 import { WebMag56 } from './templates/mag-56';
 import { WebMag57 } from './templates/mag-57';
 import { WebMag58 } from './templates/mag-58';
+import { WebMag59 } from './templates/mag-59';
 export const WEB_TEMPLATE_REGISTRY: Record<string, ComponentType<TemplateRenderProps>> = {
+  'mag-59': WebMag59,
   'mag-58': WebMag58,
   'mag-57': WebMag57,
   'mag-56': WebMag56,

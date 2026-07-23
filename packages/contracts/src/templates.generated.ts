@@ -49,6 +49,7 @@ export const TEMPLATE_IDS = [
   "mag-56",
   "mag-57",
   "mag-58",
+  "mag-59",
   "p01"
 ] as const;
 
@@ -1648,6 +1649,88 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "body",
         "lang": "user",
         "sample": "At twenty-eight I stopped explaining my job to them. Not out of anger. I just ran out of ways to say it."
+      }
+    ]
+  },
+  "mag-59": {
+    "id": "mag-59",
+    "category": "interior",
+    "spread": true,
+    "images": [
+      {
+        "id": "image1",
+        "quality": [
+          "hero"
+        ]
+      },
+      {
+        "id": "image2",
+        "quality": [
+          "detail"
+        ]
+      },
+      {
+        "id": "image3",
+        "quality": [
+          "detail"
+        ]
+      },
+      {
+        "id": "image4",
+        "quality": [
+          "detail"
+        ]
+      }
+    ],
+    "texts": [
+      {
+        "id": "title",
+        "role": "title",
+        "lang": "user",
+        "variableDecor": true,
+        "sample": "PASSION"
+      },
+      {
+        "id": "caption",
+        "role": "body",
+        "lang": "user",
+        "sample": "Six in the morning. She is already the second one in. The same swimsuit for nine years. She will not discuss it."
+      },
+      {
+        "id": "name1",
+        "role": "explain",
+        "lang": "user",
+        "sample": "Yvaine"
+      },
+      {
+        "id": "role1",
+        "role": "explain",
+        "lang": "user",
+        "sample": "photographer tourist"
+      },
+      {
+        "id": "name2",
+        "role": "explain",
+        "lang": "user",
+        "sample": "Steven D.K"
+      },
+      {
+        "id": "role2",
+        "role": "explain",
+        "lang": "user",
+        "sample": "Father Bad Cook"
+      },
+      {
+        "id": "name3",
+        "role": "explain",
+        "lang": "user",
+        "sample": "July Zh"
+      },
+      {
+        "id": "role3",
+        "role": "explain",
+        "lang": "user",
+        "sample": "Editor Swimmer Six in the Morning"
       }
     ]
   },
