@@ -10,7 +10,10 @@ primary_region = "nrt"
   #   fly deploy -c engine/fly.toml --dockerfile engine/Dockerfile .
 
 # Non-secret config only. Secrets are set out-of-band and never committed:
-#   fly secrets set AGENT_SHARED_SECRET=... GROUPING_CLIP_SECRET=... ARK_API_KEY=... DEEPSEEK_API_KEY=...
+#   fly secrets set AGENT_SHARED_SECRET=... GROUPING_CLIP_SECRET=... ARK_API_KEY=... \
+#     DEEPSEEK_API_KEY=... SELECT_LAYOUT_API_KEY=...
+# SELECT_LAYOUT_API_KEY 是 Gemini 的 key(名字是历史产物),④ /v3/compose 成稿靠它;
+# 缺了会启动失败(见 src/main.py),不然线上会静默交付一本全是模板示例文案的书。
 [env]
   PORT = "8001"
   AGENT_ENV = "production"

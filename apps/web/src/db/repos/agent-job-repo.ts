@@ -60,9 +60,10 @@ export const agentJobRepo = {
     return rows[0];
   },
 
-  // 解耦后 select-layout 是独立 layout job(自己的 requestId,浏览器不知道)。两段式 phase-2 靠
-  // album 唯一定位这个活跃 layout job(uq_agent_jobs_album_kind_active 保证每 album 至多一个),
-  // 用它真实的 requestId 取回按 layout-requestId 暂存的候选并回调引擎 —— 不再依赖浏览器传对 requestId。
+  // 解耦后 select-layout 是独立 layout job(自己的 requestId,浏览器不知道)。唯一调用方
+  // album-service.getStoryProgress 靠这个查询判断「排版是否还在跑」(QUEUED/RUNNING 即
+  // running),不取 job 本身的字段 —— uq_agent_jobs_album_kind_active 保证每 album 至多
+  // 一条活跃 layout job,查到即视为在跑。
   findActiveLayoutByAlbum: async (albumId: string): Promise<AgentJob | undefined> => {
     const rows = await db
       .select()
@@ -71,6 +72,25 @@ export const agentJobRepo = {
         and(
           eq(agentJobs.albumId, albumId),
           eq(agentJobs.kind, 'layout'),
+          inArray(agentJobs.status, ['QUEUED', 'RUNNING']),
+        ),
+      )
+      .orderBy(desc(agentJobs.createdAt), desc(agentJobs.id))
+      .limit(1);
+    return rows[0];
+  },
+
+  // 成稿续跑:某 album 是否有在跑的 compose job(QUEUED/RUNNING)。唯一调用方
+  // album-service.listCoverSets 用它判断「成稿还在跑」—— 刷新重进时不重复弹封面选择卡。
+  // uq_agent_jobs_album_kind_active 保证每 album 至多一条活跃 compose job。
+  findActiveComposeByAlbum: async (albumId: string): Promise<AgentJob | undefined> => {
+    const rows = await db
+      .select()
+      .from(agentJobs)
+      .where(
+        and(
+          eq(agentJobs.albumId, albumId),
+          eq(agentJobs.kind, 'compose'),
           inArray(agentJobs.status, ['QUEUED', 'RUNNING']),
         ),
       )
@@ -134,51 +154,6 @@ export const agentJobRepo = {
           eq(agentJobs.status, 'RUNNING'),
           eq(agentJobs.stage, 'layout'),
           eq(agentJobs.progress, 50),
-        ),
-      )
-      .returning({ id: agentJobs.id });
-    return rows.length > 0;
-  },
-
-  // P2 phase-1 landing (docs/agent/contract.md §5.2.1). The `candidates` callback
-  // parks the job at the candidates-ready sentinel by CAS 51→52 (stage stays
-  // 'layout'), so a duplicate callback can't double-stash candidates or regress.
-  markCandidatesReady: async (
-    tx: DbOrTx,
-    id: string,
-    usage: Record<string, unknown> | null,
-  ): Promise<boolean> => {
-    // 解耦后 select-layout 是独立 layout job(RUNNING, stage=layout, progress=0),不再走旧的
-    // 50→51 哨兵。CAS 只要"仍在 phase-1(progress<52)"就置 candidates-ready 哨兵 52;重复回调
-    // 会看到已是 52(不 <52)从而不匹配 → 不会二次暂存/回退。
-    const rows = await tx
-      .update(agentJobs)
-      .set({ progress: 52, stage: 'layout', usage, startedAt: new Date() })
-      .where(
-        and(
-          eq(agentJobs.id, id),
-          eq(agentJobs.status, 'RUNNING'),
-          lt(agentJobs.progress, 52),
-        ),
-      )
-      .returning({ id: agentJobs.id });
-    return rows.length > 0;
-  },
-
-  // P2 phase-2 reservation (docs/agent/contract.md §5.2.1). The `candidates`
-  // callback parks the job at progress 52 (candidates-ready sentinel, stage stays
-  // 'layout'); this CAS flips 52→53 so exactly one browser dispatch wins judge-layout.
-  // No credit is touched here — the hold was reserved in phase 1's select-layout.
-  reserveJudgeLayout: async (tx: DbOrTx, id: string): Promise<boolean> => {
-    const rows = await tx
-      .update(agentJobs)
-      .set({ progress: 53, startedAt: new Date() })
-      .where(
-        and(
-          eq(agentJobs.id, id),
-          eq(agentJobs.status, 'RUNNING'),
-          eq(agentJobs.stage, 'layout'),
-          eq(agentJobs.progress, 52),
         ),
       )
       .returning({ id: agentJobs.id });

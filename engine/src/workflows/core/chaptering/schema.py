@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -16,17 +16,6 @@ class GroupingChapter:
 class GroupingResult:
     chapters: list[GroupingChapter]
     unplacedPhotoIds: list[str]
-
-
-@dataclass(frozen=True)
-class NewChapter:
-    chapterId: str
-    photoIds: list[str]
-    chapterTitleHint: str
-    chapterKeywords: list[str]
-    chapterVisualSummary: str
-    # 目录(TOC)占位:新建章节也不写 description,后期写目录才填。
-    description: str = ""
 
 
 @dataclass(frozen=True)
@@ -71,5 +60,9 @@ class GroupingParams:
 
 @dataclass(frozen=True)
 class UnplacedAssignments:
+    """散图归位结果:photoId → 目标 chapterId。
+
+    曾有 `newChapters`(AI 补充分章可以新开一章),那条链路已删,散图只会落进
+    既有章节,所以这里只剩一张映射表。"""
+
     assignments: dict[str, str]
-    newChapters: list[NewChapter] = field(default_factory=list)

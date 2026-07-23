@@ -265,6 +265,22 @@ class TestV3ChapterTreePrivacy:
         with pytest.raises(ValidationError):
             V3Chapter.model_validate({**chapter, "accentColor": "blue"})
 
+    def test_v3_chapter_title_defaults_for_legacy_trees(self):
+        """章标识落在 `title`;老相册 draft_json 没有这个键,必须降级成空串而不是解析失败。"""
+        legacy = {
+            "chapterId": "c1",
+            "description": "",
+            "accentColor": None,
+            "artFont": None,
+            "photos": [self.base_photo],
+        }
+        assert V3Chapter.model_validate(legacy).title == ""
+        parsed = V3Chapter.model_validate({**legacy, "title": "2024 年 03 月 11–14 日"})
+        assert parsed.title == "2024 年 03 月 11–14 日"
+        assert parsed.description == ""
+        with pytest.raises(ValidationError):
+            V3Chapter.model_validate({**legacy, "titel": "x"})
+
     def test_v3_chapter_carries_extracted_color(self):
         chapter = {
             "chapterId": "c1",
@@ -568,6 +584,24 @@ class TestSelectLayoutRequest:
                                     "photoId": "p1",
                                     "ref200px": "data:image/jpeg;base64,AA==",
                                     "orientation": "landscape",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+        # 豆包识图已砍,sceneDescription 已从选版式入参里删掉:再送就被 strict 拒。
+        with pytest.raises(ValidationError):
+            SelectLayoutRequest.model_validate(
+                {
+                    **payload,
+                    "chapters": [
+                        {
+                            **payload["chapters"][0],
+                            "photos": [
+                                {
+                                    **payload["chapters"][0]["photos"][0],
+                                    "sceneDescription": "x",
                                 }
                             ],
                         }

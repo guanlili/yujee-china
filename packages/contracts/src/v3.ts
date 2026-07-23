@@ -32,11 +32,11 @@ export const V3Language = z.enum(['zh', 'en']);
 export type V3Language = z.infer<typeof V3Language>;
 
 /** V3 async jobs; failures use callback `failed`(§8.3). */
-export const V3JobKind = z.enum(['analyze', 'select-layout']);
+export const V3JobKind = z.enum(['analyze', 'select-layout', 'compose']);
 export type V3JobKind = z.infer<typeof V3JobKind>;
 
 /** analyze 进度子阶段(§4.1 步骤);仅用于 progress 回调展示。 */
-export const V3JobStage = z.enum(['describe', 'group', 'template', 'preview', 'layout', 'legalize', 'wrap']);
+export const V3JobStage = z.enum(['describe', 'group', 'template', 'preview', 'layout', 'legalize', 'compose', 'wrap']);
 export type V3JobStage = z.infer<typeof V3JobStage>;
 
 /** 统一 usage,各 `/v3/*` 端点共用(同 v2.ts Usage 形状)。 */
@@ -301,8 +301,6 @@ export const SelectLayoutPhoto = z
     orientation: PhotoOrientation,
     composition: PhotoComposition.nullable().optional(), // 来自 Stage1 树;排版按朝向×构图匹配槽位
     takenAt: TakenAtDateTime.nullable(),
-    // 照片场景(来自 Stage1 树):排版后一次性写文案时,写作 AI 据它 grounding。旧相册 => ""。
-    sceneDescription: z.string().max(300).default(''),
   })
   .strict();
 export type SelectLayoutPhoto = z.infer<typeof SelectLayoutPhoto>;
@@ -312,7 +310,7 @@ export const SelectLayoutChapter = z
     chapterId: z.string().min(1),
     photos: z.array(SelectLayoutPhoto).min(1),
     structureHint: z.string().max(600).optional(),
-    // 采访结果:评委据此选贴合基调的版式 + 排版后一次性写文案。跳过采访/老树 => ""。
+    // 采访结果:排版据此选贴合基调的版式;写文案在其后的 /v3/compose。跳过采访/老树 => ""。
     chapterContext: z.string().max(500).default(''),
   })
   .strict();
@@ -327,88 +325,6 @@ export const SelectLayoutRequest = z
   })
   .strict();
 export type SelectLayoutRequest = z.infer<typeof SelectLayoutRequest>;
-
-// ── P2 排版评委(rendered-thumbnail judge,two-phase select-layout)──
-// Phase 1:Agent 生成候选结构,经 `candidates` 回调交回浏览器去渲染缩略图。
-// Phase 2:浏览器把渲染好的小缩略图 POST 回 Agent,Agent 调 Gemini 评委选赢家。
-
-// 候选里的单页结构(simpleId 已还原成真 photoId)。
-export const CandidatePage = z
-  .object({
-    templateId: z.string().min(1),
-    images: z.record(z.string(), z.string()), // slotId → photoId
-  })
-  .strict();
-export type CandidatePage = z.infer<typeof CandidatePage>;
-
-// Phase 1 回调里的一个候选(结构,无缩略图)。
-export const LayoutCandidate = z
-  .object({
-    candidateIndex: z.number().int().min(0),
-    pages: z.array(CandidatePage).min(1),
-  })
-  .strict();
-export type LayoutCandidate = z.infer<typeof LayoutCandidate>;
-
-// 一个排版单元(一章,或超大章拆出的一段)的候选集合。
-export const SelectLayoutCandidateUnit = z
-  .object({
-    unitKey: z.string().min(1), // chapterId 或 chapterId#段首photoId(拆段唯一)
-    chapterId: z.string().min(1),
-    candidates: z.array(LayoutCandidate).min(1),
-  })
-  .strict();
-export type SelectLayoutCandidateUnit = z.infer<typeof SelectLayoutCandidateUnit>;
-
-// Phase 2 请求里的一个候选(带渲染缩略图)。
-export const JudgeCandidate = z
-  .object({
-    candidateIndex: z.number().int().min(0),
-    thumbnail: z.string().min(1), // data:image/jpeg;base64,...(下采样、仅图槽、无文字)
-    pages: z.array(CandidatePage).min(1),
-  })
-  .strict();
-export type JudgeCandidate = z.infer<typeof JudgeCandidate>;
-
-// Phase 2 请求里的一个待评单元。chosenIndex 已定(单候选)则不调评委。
-// 写文案素材(评委选完版式后,当场对本章写满文案时用)。只带写作 grounding 需要的
-// 字段:photoId(对回图槽)+ sceneDescription(画面依据)。ref200px 那种重图数据不带。
-export const JudgeCopyPhoto = z
-  .object({
-    photoId: z.string().min(1),
-    sceneDescription: z.string().max(300).default(''),
-    // 拍摄时间(EXIF,来自树)+ 拍摄地点(城市级地名文字,来自 V3Chapter.place,章不跨
-    // cluster 故逐照片同值下发)。写文案 AI 据此把时间/地点写进图注。老客户端不带 => null。
-    takenAt: TakenAtDateTime.nullable().optional(),
-    place: z.string().max(100).nullable().optional(),
-  })
-  .strict();
-export type JudgeCopyPhoto = z.infer<typeof JudgeCopyPhoto>;
-
-export const JudgeLayoutUnit = z
-  .object({
-    unitKey: z.string().min(1),
-    chapterId: z.string().min(1),
-    chosenIndex: z.number().int().min(0).optional(),
-    candidates: z.array(JudgeCandidate).min(1),
-    // 写文案素材:评委选定版式后当场写满本章文案时用。Web 从 draft tree 补(浏览器不持 tree)。
-    // 老客户端不带 => 空,写文案退化为只填页码(与今天行为一致,不破坏)。
-    photos: z.array(JudgeCopyPhoto).default([]),
-    chapterContext: z.string().max(500).default(''),
-  })
-  .strict();
-export type JudgeLayoutUnit = z.infer<typeof JudgeLayoutUnit>;
-
-// POST /v3/judge-layout 请求体(async, 202 + 同一 job-progress 回调)。
-export const JudgeLayoutRequest = z
-  .object({
-    requestId: z.string().min(1),
-    callbackUrl: HttpCallbackUrl,
-    language: V3Language,
-    units: z.array(JudgeLayoutUnit).min(1),
-  })
-  .strict();
-export type JudgeLayoutRequest = z.infer<typeof JudgeLayoutRequest>;
 
 // ───────────── ② 章节故事 — POST /v3/chapter-chat(同步) ─────────────
 //
@@ -516,7 +432,7 @@ export type V3ChapterOverview = z.infer<typeof V3ChapterOverview>;
 
 // ────────────────────────────── async callback envelope ──────────────────────────────
 //
-// 沿用 v2 两级判别思路；V3 已有 analyze/select-layout 两类 completed，
+// 沿用 v2 两级判别思路；V3 已有 analyze/select-layout/compose 三类 completed，
 // 这里按 event + jobKind 组成普通 union。
 
 const V3CallbackError = z.object({ code: z.string().min(1), message: z.string() }).strict();
@@ -556,17 +472,26 @@ export const SelectLayoutCompleted = z
   .strict();
 export type SelectLayoutCompleted = z.infer<typeof SelectLayoutCompleted>;
 
-// P2 phase 1 回调:Agent 把候选结构交回浏览器去渲染缩略图。不推进 stage,挂住 job。
-export const SelectLayoutCandidates = z
+/**
+ * ④ 成稿完成:全书文案一次性回来。
+ * `pagesTexts` 是 `{ [pageIndex]: { [slotId]: 文案 } }`(JSON 里 key 是字符串)。
+ * **只含写出来的页**:某章写不出来 → 该章页面不在这里,Web 保留模板 sample 文案,
+ * 不发 `failed`(成稿是叠加性的一步,绝不阻断交付)。
+ */
+export const ComposeCompleted = z
   .object({
     requestId: z.string().min(1),
-    jobKind: z.literal('select-layout'),
-    event: z.literal('candidates'),
-    units: z.array(SelectLayoutCandidateUnit).min(1),
+    jobKind: z.literal('compose'),
+    event: z.literal('completed'),
+    pagesTexts: z.record(z.string(), z.record(z.string(), z.string())).default({}),
+    coverTexts: z.record(z.string(), z.string()).default({}),
+    endingTexts: z.record(z.string(), z.string()).default({}),
+    // 三款字体 id(title/body/decoration):代码按 场景×语言 查表或用用户的选择填。
+    fonts: z.record(z.string(), z.string()).default({}),
     usage: V3Usage,
   })
   .strict();
-export type SelectLayoutCandidates = z.infer<typeof SelectLayoutCandidates>;
+export type ComposeCompleted = z.infer<typeof ComposeCompleted>;
 
 const V3FailedEvent = z
   .object({
@@ -584,7 +509,7 @@ export const V3Callback = z.union([
   V3FailedEvent,
   V3AnalyzeCompleted,
   SelectLayoutCompleted,
-  SelectLayoutCandidates,
+  ComposeCompleted,
 ]);
 export type V3Callback = z.infer<typeof V3Callback>;
 
@@ -602,61 +527,76 @@ export const V3TemplateCandidate = z
   .strict();
 export type V3TemplateCandidate = z.infer<typeof V3TemplateCandidate>;
 
-// ───────────── ③ 设计环节 — POST /v3/design(同步) ─────────────
+// ───────────── ④ 一次性成稿 — POST /v3/compose(异步 202 + callback) ─────────────
 //
-// 用户选定封面组后调用:engine 只出决策(字体/颜色/封面封尾文案),
-// 应用(carrier sweep/组页/落库)在 Web(状态真相源)。
+// 用户选完设计之后的一把成稿:Agent 按章并发让 Gemini【看真实照片】+【读用户讲的
+// 故事】写满全书文案,并出封面/封尾文案与字体。取代原来的同步 /v3/design。
+// 应用(写回 texts / carrier sweep / 落库)仍在 Web(状态真相源)。
 
-export const V3DesignTextSlotSpec = z
+export const ComposeTextSlotSpec = z
   .object({
     id: z.string().min(1),
     role: z.string().min(1),
+    // sample 是这个槽在版面上的实际长度参考:既当风格示例也当篇幅预算(不设字数上限,
+    // 渲染层 fit-text 负责装下)。
     sample: z.string().max(300).default(''),
   })
   .strict();
-export type V3DesignTextSlotSpec = z.infer<typeof V3DesignTextSlotSpec>;
+export type ComposeTextSlotSpec = z.infer<typeof ComposeTextSlotSpec>;
 
-// 每章的设计画像:采访背景 + 识图关键词(V3Chapter.keywords)+ 分组取色
-// (V3Chapter.extractedColor)。design_style 据此选贴合内容的字体/颜色。
-export const V3DesignChapterProfile = z
+/** 一张照片:200px 缩略图**真图**进模型上下文(§隐私:只在请求内存里,不落盘)。 */
+export const ComposePhoto = z
   .object({
-    // 章标题:写文案环节写进本章页面 title 槽的值(与章节卡片同源)。排版未出/无
-    // title 槽 => ''。
-    title: z.string().max(120).default(''),
-    chapterContext: z.string().max(500).default(''),
-    keywords: z.array(z.string().max(40)).default([]),
-    extractedColor: AccentColor.nullish(),
+    photoId: z.string().min(1),
+    ref200px: V3AnalyzeImageDataUrl,
+    takenAt: TakenAtDateTime.nullish(),
+    // 城市级地名文字(§3 2026-07 口径:地名可出、坐标止步浏览器)。
+    place: z.string().max(120).nullish(),
   })
   .strict();
-export type V3DesignChapterProfile = z.infer<typeof V3DesignChapterProfile>;
+export type ComposePhoto = z.infer<typeof ComposePhoto>;
 
-export const V3DesignRequest = z
+/** 已选定版式的一页;pageIndex 是整册连续页序(select-layout 出的),写回按它对位。 */
+export const ComposePage = z
   .object({
+    pageIndex: z.number().int().nonnegative(),
+    templateId: z.string().min(1),
+    images: z.record(z.string(), z.string()).default({}),
+  })
+  .strict();
+export type ComposePage = z.infer<typeof ComposePage>;
+
+export const ComposeChapter = z
+  .object({
+    chapterId: z.string().min(1),
+    title: z.string().max(120).default(''),
+    // 用户在采访环节讲的原话:成稿的最高优先级素材。跳过采访/老相册 => ''。
+    chapterContext: z.string().max(500).default(''),
+    photos: z.array(ComposePhoto).default([]),
+    pages: z.array(ComposePage).default([]),
+  })
+  .strict();
+export type ComposeChapter = z.infer<typeof ComposeChapter>;
+
+/** 三款字体 id(title/body/decoration)。 */
+export const ComposeFonts = z
+  .object({ title: ArtFontPack, body: ArtFontPack, decoration: ArtFontPack })
+  .strict();
+export type ComposeFonts = z.infer<typeof ComposeFonts>;
+
+export const ComposeRequest = z
+  .object({
+    requestId: z.string().min(1),
+    callbackUrl: HttpCallbackUrl,
     language: V3Language,
     albumTitle: z.string().max(120).default(''),
-    // 兼容字段:老 caller 只送 contexts。新 caller 送 chapterProfiles(带 keywords/
-    // extractedColor),engine 优先用它。
-    chapterContexts: z.array(z.string()).default([]),
-    chapterProfiles: z.array(V3DesignChapterProfile).optional(),
-    coverSlots: z.array(V3DesignTextSlotSpec).default([]),
-    endingSlots: z.array(V3DesignTextSlotSpec).default([]),
+    coverTemplateId: z.string().max(64).default(''),
+    endingTemplateId: z.string().max(64).default(''),
+    coverSlots: z.array(ComposeTextSlotSpec).default([]),
+    endingSlots: z.array(ComposeTextSlotSpec).default([]),
+    // 用户在设计卡里自己选的字体;非空即直接采用,不让模型再选一遍。
+    userFontChoice: ComposeFonts.nullish(),
+    chapters: z.array(ComposeChapter).min(1),
   })
   .strict();
-export type V3DesignRequest = z.infer<typeof V3DesignRequest>;
-
-// postSyncV3 对 `json.data` 做校验,故这里是数据层 schema(与兄弟端点惯例一致)。
-export const V3DesignData = z
-  .object({
-    fonts: z.object({ title: ArtFontPack, body: ArtFontPack, decoration: ArtFontPack }).strict(),
-    colors: z
-      .object({
-        title: z.string().regex(/^#[0-9a-f]{6}$/),
-        body: z.string().regex(/^#[0-9a-f]{6}$/),
-        explain: z.string().regex(/^#[0-9a-f]{6}$/),
-      })
-      .strict(),
-    coverTexts: z.record(z.string(), z.string()),
-    endingTexts: z.record(z.string(), z.string()),
-  })
-  .strict();
-export type V3DesignData = z.infer<typeof V3DesignData>;
+export type ComposeRequest = z.infer<typeof ComposeRequest>;

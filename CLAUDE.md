@@ -21,9 +21,12 @@ Browser -> Web (Next.js) -> Agent (FastAPI)
 
 ## 当前重要现实
 
-- Agent 当前 route surface 是最小识图 + 排版 scaffold: `/v3/analyze`, `/v3/select-layout`, `/v3/judge-layout`。
-- 旧 edit-chat/theme/cover/finalize 等 Agent 能力已经从当前路由层剥离;不要把旧文档或旧假设写成现状。
-- Web 仍可能保留更完整的路由/client 壳。判断端到端能力时必须同时看 Web caller 和 Agent `routes.py`。
+- Agent 当前 route surface **只有四个**:`GET /health`、`POST /v3/analyze`、`POST /v3/select-layout`、`POST /v3/compose`。
+- 已删除的端点:`/v3/judge-layout`、`/v3/judge-page-template`、`/v3/design`。旧 edit-chat/theme/cover/finalize 等 Agent 能力也早已从路由层剥离,且 Web 侧现在同样没有对应路由(只有测试注释和 CSS 注释里的历史残留)。不要把旧文档或旧假设写成现状。
+- 分析是**纯确定性分组**:`/v3/analyze` 走 CLIP/时间/GPS/像素,零 AI 调用、不识图;章标题由拍摄时间跨度确定性派生到 `V3Chapter.title`。
+- 排版是**一次确定性选版**:`/v3/select-layout` 直接回调 `completed` + 完整 `pages`,零 AI 调用,没有候选缩略图/评委来回;文案先填模板 JSON 的 `sample` 示例文案。
+- 全流程只剩**一次** AI 调用:`/v3/compose`(按章并发的 Gemini 成稿,看真实照片 + 读用户故事,外加一次全局封面/封尾/字体)。
+- 判断端到端能力时必须同时看 Web caller 和 Agent `engine/src/api/routes.py`。
 
 ## 动手规则
 

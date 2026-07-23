@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
+from collections import Counter
+from collections.abc import Mapping, Sequence
 
-from .chapter_describer.schema import DescribeResult
 from ..layout import accent_color
 from ....contracts.schemas import (
     V3AnalyzePhoto,
@@ -13,12 +12,94 @@ from ....contracts.schemas import (
     V3ChapterPhoto,
     V3LayoutTree,
 )
-from .schema import GroupingChapter, GroupingResult, UnplacedAssignments
+from .schema import GroupingResult, UnplacedAssignments
+
+
+# 无任何 EXIF 时间时的章标识回退文案;重名消歧也认这个常量。
+NO_TIME_LABEL = "这一段"
+
+# 契约上限:V3Chapter.title 的 max_length=120(Web 侧 zod 同值)。
+_TITLE_MAX_LEN = 120
+# 基础标签的预算:留出消歧序号(`… · 第 N 段`)的余量,免得加完序号又越界。
+MAX_CHAPTER_LABEL_LEN = 100
+
+
+def deterministic_chapter_label(
+    *, taken_ats: Sequence[str], places: Sequence[str]
+) -> str:
+    """章标题的确定性派生:时间跨度(最早日 – 最晚日)+ 最常见地名。
+
+    砍掉豆包识图后章不再有 AI 命名,这是 story 环节聊天卡片和 compose 环节上下文
+    唯一的章标识。写出跨度而非只写年月,是为了让同月的两章天然可区分。
+
+    注意:唯一调用点 `assemble_stage1_tree` 恒传 `places=[]` —— §3 隐私口径下坐标
+    止步于浏览器,分析期拿不到地名,地名要到采访环节才写回 `chapter.place`。这个
+    参数是留给后续拿到地名后重算标签的占位。
+
+    同月同日仍可能撞名(同一天拍的两章),最终去重由 `assemble_stage1_tree` 里的
+    重复标签消歧兜底。
+    """
+    place = Counter(p for p in places if p).most_common(1)
+    place_part = place[0][0] if place else ""
+    time_part = _time_span_label(taken_ats)
+    parts = [p for p in (time_part, place_part) if p]
+    label = " · ".join(parts) if parts else NO_TIME_LABEL
+    # 截断:地名长度不受本模块控制(采访环节写回的 place 上限 100),加上时间跨度
+    # (~40 字)就会顶破 V3Chapter.title 的 max_length=120,而越界的 title 会让 Web 侧
+    # zod 把整个 analyze 回调打回、整本书 failed。
+    return label[:MAX_CHAPTER_LABEL_LEN]
+
+
+def _time_span_label(taken_ats: Sequence[str]) -> str:
+    """把一组 ISO 时间戳压成中文日期跨度,如 `2024 年 03 月 11–14 日`。"""
+    stamps = sorted(t for t in taken_ats if t)
+    if not stamps:
+        return ""
+    first, last = stamps[0][:10], stamps[-1][:10]
+    fy, fm, fd = first[:4], first[5:7], first[8:10]
+    ly, lm, ld = last[:4], last[5:7], last[8:10]
+    if first == last:
+        return f"{fy} 年 {fm} 月 {fd} 日"
+    if (fy, fm) == (ly, lm):
+        return f"{fy} 年 {fm} 月 {fd}–{ld} 日"
+    if fy == ly:
+        return f"{fy} 年 {fm} 月 {fd} 日 – {lm} 月 {ld} 日"
+    return f"{fy} 年 {fm} 月 {fd} 日 – {ly} 年 {lm} 月 {ld} 日"
+
+
+def _disambiguate_labels(labels: Sequence[str]) -> list[str]:
+    """给重复的章标识追加序号,保证同一棵树里章标识两两不同。
+
+    首个保持原样,后续依次 `… · 第 2 段`;无时间的回退标识用 `这一段 2`。
+    """
+    used: set[str] = set()
+    seen: Counter[str] = Counter()
+    result: list[str] = []
+    for label in labels:
+        seen[label] += 1
+        ordinal = seen[label]
+        candidate = label if ordinal == 1 else _with_ordinal(label, ordinal)
+        while candidate in used:
+            ordinal += 1
+            candidate = _with_ordinal(label, ordinal)
+        used.add(candidate)
+        result.append(candidate)
+    return result
+
+
+def _cap_label(label: str) -> str:
+    """基础标签截到 `MAX_CHAPTER_LABEL_LEN`,给消歧序号留余量。"""
+    return label[:MAX_CHAPTER_LABEL_LEN]
+
+
+def _with_ordinal(label: str, ordinal: int) -> str:
+    if label == NO_TIME_LABEL:
+        return f"{NO_TIME_LABEL} {ordinal}"
+    return f"{label} · 第 {ordinal} 段"
 
 
 def assemble_stage1_tree(
     grouping: GroupingResult,
-    descriptions: DescribeResult,
     assignments: UnplacedAssignments,
     photos_by_id: Mapping[str, V3AnalyzePhoto],
 ) -> V3LayoutTree:
@@ -26,14 +107,9 @@ def assemble_stage1_tree(
         raise ValueError("Stage1 grouping produced no chapters")
 
     input_index = {photo_id: idx for idx, photo_id in enumerate(photos_by_id)}
-    new_by_id = {chapter.chapterId: chapter for chapter in assignments.newChapters}
     chapter_members = {
         chapter.chapterId: list(chapter.photoIds) for chapter in grouping.chapters
     }
-    for chapter in assignments.newChapters:
-        if chapter.chapterId in chapter_members:
-            raise ValueError(f"new chapter id conflicts with existing chapter: {chapter.chapterId}")
-        chapter_members[chapter.chapterId] = []
     target_ids = set(chapter_members)
     unplaced = set(grouping.unplacedPhotoIds)
     assigned_ids = set(assignments.assignments)
@@ -67,51 +143,42 @@ def assemble_stage1_tree(
         )
 
     chapters: list[V3Chapter] = []
-    chapter_sources = list(grouping.chapters) + [
-        GroupingChapter(chapterId=chapter.chapterId, photoIds=[])
-        for chapter in assignments.newChapters
-    ]
-    for source in chapter_sources:
+    for source in grouping.chapters:
         members = chapter_members[source.chapterId]
         if not members:
             continue
-        description = _chapter_description(
-            source.chapterId,
-            descriptions,
-            new_by_id,
-        )
         photos: list[V3ChapterPhoto] = []
         for photo_id in members:
             src = photos_by_id[photo_id]
-            scene = _photo_scene_description(
-                photo_id,
-                source.chapterId,
-                descriptions,
-                new_by_id,
-            )
             photos.append(
                 V3ChapterPhoto(
                     photoId=photo_id,
-                    sceneDescription=scene,
+                    # 砍掉豆包识图后不再有逐图场景描述,分析期恒为空串。
+                    sceneDescription="",
                     width=src.width,
                     height=src.height,
                     orientation=_orientation(src.width, src.height),  # type: ignore[arg-type]
-                    composition=descriptions.imageCompositions.get(photo_id),  # type: ignore[arg-type]
+                    # 构图也是识图产物,没有识图就交给排版按朝向自行匹配。
+                    composition=None,
                     takenAt=src.exif.takenAt if src.exif else None,
                 )
             )
-        # 识图关键词落树:此前 analyze 用完即丢,设计环节(字体/颜色)要用它当内容画像。
-        new_chapter = new_by_id.get(source.chapterId)
-        keywords = (
-            list(new_chapter.chapterKeywords)
-            if new_chapter is not None
-            else list(descriptions.chapterKeywords.get(source.chapterId, []))
-        )
         chapters.append(
             V3Chapter(
                 chapterId=source.chapterId,
-                description=description,
-                keywords=keywords,
+                # 章标识:确定性派生(时间跨度 + 地名),落在 title。
+                # 重名(同月/同日、或都没 EXIF)在下面统一消歧。
+                # description 是写目录(TOC)环节的位置,分析期保持默认空串。
+                # 再截一次:`title=` 走的是 pydantic 校验,越界会直接把整次 analyze
+                # 打成 failed,这里不依赖上面那层截断的实现细节。
+                title=_cap_label(deterministic_chapter_label(
+                    taken_ats=[p.takenAt or "" for p in photos],
+                    # 地名由 Web 采访环节写回 chapter.place,分析期无地名可用(§3 隐私:
+                    # 坐标止步于浏览器,EXIF 只带 takenAt)。
+                    places=[],
+                )),
+                # 关键词此前来自识图分章,砍掉后分析期为空,设计环节自行降级。
+                keywords=[],
                 extractedColor=accent_color.accent_of_group(members, photos_by_id),
                 accentColor=None,
                 artFont=None,
@@ -121,6 +188,13 @@ def assemble_stage1_tree(
 
     if not chapters:
         raise ValueError("Stage1 tree produced no non-empty chapters")
+
+    # Web 侧只在 title 为空串时才降级(description → `Group N`),重名章会让用户看到
+    # 一串无法区分的标题,所以这里保证同一棵树内章标识两两不同。
+    for chapter, label in zip(chapters, _disambiguate_labels([c.title for c in chapters])):
+        # 构造后赋值绕过 pydantic(_V3Strict 没开 validate_assignment),契约上限只能
+        # 在这里自己守:越界的 title 会让 Web 侧 zod 把整个 analyze 回调打回。
+        chapter.title = label[:_TITLE_MAX_LEN]
     return V3LayoutTree(chapters=chapters)
 
 
@@ -130,55 +204,6 @@ def _orientation(width: int, height: int) -> str:
     if height > width * 1.05:
         return "portrait"
     return "square"
-
-
-def _required_text(value: Any, *, field: str, max_len: int) -> str:
-    if not isinstance(value, str):
-        raise ValueError(f"{field} must be a string")
-    text = value.strip()
-    if not text:
-        raise ValueError(f"{field} is required")
-    if len(text) > max_len:
-        raise ValueError(f"{field} exceeds {max_len} chars")
-    return text
-
-
-def _chapter_description(
-    chapter_id: str,
-    descriptions: DescribeResult,
-    new_by_id: Mapping[str, Any],
-) -> str:
-    # 章节 description 是目录(TOC)占位:分析期统一留空,后期写目录环节才填。
-    return ""
-
-
-def _photo_scene_description(
-    photo_id: str,
-    chapter_id: str,
-    descriptions: DescribeResult,
-    new_by_id: Mapping[str, Any],
-) -> str:
-    if photo_id in descriptions.imageDescriptions:
-        return _required_text(
-            descriptions.imageDescriptions.get(photo_id),
-            field=f"{photo_id}.sceneDescription",
-            max_len=300,
-        )
-
-    new_chapter = new_by_id.get(chapter_id)
-    if new_chapter is not None:
-        return _required_text(
-            new_chapter.chapterVisualSummary,
-            field=f"{photo_id}.sceneDescription",
-            max_len=300,
-        )
-
-    fallback = descriptions.chapterVisualSummaries.get(chapter_id)
-    return _required_text(
-        fallback,
-        field=f"{photo_id}.sceneDescription",
-        max_len=300,
-    )
 
 
 def _photo_order(

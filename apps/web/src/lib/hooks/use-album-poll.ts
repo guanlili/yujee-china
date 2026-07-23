@@ -2,13 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import type { AlbumDetail } from '@/components/album/types';
-import {
-  fetchJudgeCandidates,
-  PhotosUnavailableError,
-  renderAndSubmitJudgeLayout,
-  UnauthorizedError,
-} from '@/lib/generation/client';
-import { albumRecipe } from '@/lib/generation/draft';
 
 // Album is the source of truth (docs/web/api.md §3.4): we poll GET
 // /api/v1/albums/{uuid} by the addressable, ownership-checked uuid — never a
@@ -74,8 +67,6 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
     let inFlight = false;
     let timer: ReturnType<typeof setInterval> | null = null;
     let transient = 0;
-    let judgeSubmitInFlight = false;
-    const submittedJudgeRequests = new Set<string>();
     const startedAt = Date.now();
 
     const stop = () => {
@@ -96,8 +87,8 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
 
     // 展示同款 state 但**不进终态、不停循环**。authoring 阶段(EDITING 且未定稿)必须用
     // 这个:排版是用户在编辑器里待了几分钟后才触发的,若首个 tick 就把 ready 定为终态,
-    // 循环早死,后面 candidates 停在 52 哨兵时没人取候选/渲染缩略图/派发 phase-2 ——
-    // 排版永远完不成。定稿(layoutJson 落地)后才允许 ready 终态收口。
+    // 循环早死,后面 layout job 完成(pages 落 draft)时没人再拉一次 —— 编辑器看不到成书。
+    // 定稿(layoutJson 落地)后才允许 ready 终态收口。
     // 信号没变就不 setState:15s 一次的存活轮询不该让编辑器整树跟着重渲染。
     let lastLiveSig = '';
     const applyLive = (next: AlbumPollState) => {
@@ -158,49 +149,10 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
         transient = 0;
         const { generation, ...detail } = json.data;
         const status = detail.album.status;
-        // P2 phase 2 (docs/agent/contract.md §5.2.1): the `candidates` callback parked the
-        // 独立 layout job at progress 52(解耦后这发生在相册 EDITING 下,不再是 AGENT_RUNNING)。
-        // 一旦看到 candidates-ready 哨兵(layout,52)就取候选 → 渲染"照片填槽"缩略图 → POST judge-layout。
-        // **必须在状态分支之前驱动**:否则 EDITING 会被下面的 early-return 拦掉,phase-2 永不触发。
-        // 失败非致命:Agent/Web 兜底从候选 0 收尾,继续轮询即可。
-        if (generation?.stage === 'layout' && generation.progress === 52) {
-          const recipe = albumRecipe.load(uuid);
-          if (recipe?.requestId && !judgeSubmitInFlight) {
-            judgeSubmitInFlight = true;
-            const requestId = recipe.requestId;
-            const language = recipe.language;
-            try {
-              // 去重键 = GET 返回的「本次 layout job」requestId(每次排版都换),不能用
-              // recipe.requestId(analyze 的,追加照片后不变):否则首次生成派发过 judge
-              // 后,追加照片的增量排版会被永远挡在 52 —— judge/write_copy(写文案跑在
-              // judge 里)不再触发。重复 POST 由服务端 52→53 CAS 兜底,无害。
-              const { ready, units, requestId: layoutRequestId } = await fetchJudgeCandidates(uuid, requestId);
-              if (
-                ready &&
-                units.length > 0 &&
-                layoutRequestId &&
-                !submittedJudgeRequests.has(layoutRequestId)
-              ) {
-                await renderAndSubmitJudgeLayout(uuid, { requestId, language, units });
-                submittedJudgeRequests.add(layoutRequestId);
-              }
-            } catch (e) {
-              if (e instanceof UnauthorizedError) {
-                return apply({ ...INITIAL, phase: 'unauthorized' });
-              }
-              // Swallow render/dispatch errors — keep polling; the fallback completes.
-            } finally {
-              judgeSubmitInFlight = false;
-            }
-          }
-          // 排版进行中:phase 保持 ready(解耦后用户就在编辑器里,切 running 会闪回
-          // building 壳),但不进终态 —— 循环要活着等 completed 落 draft。
-          return applyLive({ detail, generation, phase: 'ready', error: null });
-        }
         if (status === 'EDITING' || status === 'COMPLETED') {
           const authoring = status === 'EDITING' && detail.album.layoutJson == null;
           if (authoring || generation != null) {
-            // 未定稿(authoring)或仍有活跃 layout job:保持轮询,phase-2 哨兵靠本循环驱动。
+            // 未定稿(authoring)或仍有活跃 layout job:保持轮询,等 completed 落 draft。
             return applyLive({ detail, generation, phase: 'ready', error: null });
           }
           return apply({ detail, generation: null, phase: 'ready', error: null });

@@ -20,7 +20,7 @@ test('create flows persist the analyze requestId for the later select-layout han
 
 test('editor triggers select-layout after story collection (not the poll on progress=50)', () => {
   // 时序反转:analyze 完成(progress=50)不再自动排版。收集完所有章故事后,由编辑器
-  // triggerSelectLayout 手动触发 select-layout(排版时 judge_layout 拿 chapterContext 写全部文案)。
+  // triggerSelectLayout 手动触发 select-layout(一次调用出 pages,文案随页返回)。
   const pollSource = source('src/lib/hooks/use-album-poll.ts');
   const editorSource = source('src/components/album/editor-v2/EditorPort.tsx');
 
@@ -39,22 +39,3 @@ test('editor triggers select-layout after story collection (not the poll on prog
 // 解耦后:排版另起独立 layout job,幂等由 unique(album, layout, active) 约束保证(建重复 job
 // 冲突即幂等接受),不再靠「progress!==50 提前返回」优化。重复触发只派发一次的行为覆盖见
 // generation-service.test.ts 的 duplicate-posts 测试。
-
-test('phase-2 judge dispatch dedupes per LAYOUT job, not per analyze recipe requestId (追加照片回归)', () => {
-  // 追加照片:add-photos 的 analyze 用新随机 requestId,但 recipe.requestId 仍是首次
-  // 生成的旧值。若 poll 的 phase-2 去重键是 recipe.requestId,首次生成派发过 judge 后
-  // 追加的增量排版停在 candidates-ready(52)时会被永远挡住 —— judge / write_copy
-  // (写文案就跑在 judge 里)不再触发。正确键 = GET judge-layout 返回的本次 layout
-  // job requestId(每次排版都换);重复 POST 由服务端 52→53 CAS 兜底,无害。
-  const pollSource = source('src/lib/hooks/use-album-poll.ts');
-  assert.doesNotMatch(
-    pollSource,
-    /submittedJudgeRequests\.has\(recipe\.requestId\)/,
-    'phase-2 dedupe must NOT key on the analyze recipe requestId',
-  );
-  assert.match(
-    pollSource,
-    /submittedJudgeRequests\.has\(layoutRequestId\)/,
-    'phase-2 dedupe must key on the layout requestId returned by GET judge-layout',
-  );
-});

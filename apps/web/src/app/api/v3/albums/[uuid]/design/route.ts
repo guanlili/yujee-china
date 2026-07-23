@@ -6,7 +6,8 @@ import { fromException } from '@/lib/api/from-exception';
 import { albumService } from '@/services/album/album-service';
 
 // 设计环节:用户在对话框选定封面组(封面+封尾模板×照片)后调用。
-// 服务端调 engine /v3/design 拿决策,再确定性应用到 draft(组页+sweep+页序)。
+// 服务端**异步派发** engine /v3/compose(一次性成稿),立即返回 requestId;
+// 组页落库(组封面封尾 + carrier sweep + 烘 html)与 stage='ready' 在回调侧统一做。
 const BodySchema = z
   .object({
     language: z.enum(['zh', 'en']),
@@ -16,11 +17,13 @@ const BodySchema = z
     endingPhotoId: z.string().min(1),
     // 书页底色(4 色之一,可选;具体色值合法性在 albumService.applyDesign 校验)。
     pageBackground: z.string().min(1).optional(),
+    // 200px 缩略图(photoId → data URL):compose 让模型看真实照片写文案,原图只在浏览器。
+    refs: z.record(z.string().min(1), z.string().min(1)).optional(),
   })
   .strict();
 
-// 两次模型调用(字体颜色 + 封面封尾文案)并发,单次同步请求内完成。
-export const maxDuration = 90;
+// 只是派发一个 job(建行 + 转发 202),不再同步等模型。
+export const maxDuration = 60;
 
 export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }> }) {
   try {
@@ -28,7 +31,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
     const { uuid } = await ctx.params;
     const body = await parseBody(BodySchema, req);
     const result = await albumService.applyDesign(user.id, uuid, body);
-    return ok({ pageCount: result.pages.length, pages: result.pages });
+    return ok(result);
   } catch (e) {
     return fromException(e);
   }

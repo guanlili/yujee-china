@@ -5,7 +5,7 @@ import { patchHtmlPageStyle } from '@/components/album/page-html-dom';
 import { PAGE_BACKGROUNDS, isDefaultPageBackground } from '@/lib/design/page-backgrounds';
 
 // 设计环节的确定性应用层(纯函数,零 AI):封面组规则生成、模板文字槽 spec 提取、
-// carrier sweep、成书页序组装。AI 决策(字体/颜色/封面封尾文案)在 engine /v3/design;
+// carrier sweep、成书页序组装。AI 决策(全书文案/封面封尾文案/字体)在 engine /v3/compose;
 // 这里把决策落到 draft pages 上 —— Web 是状态真相源。
 
 export type CoverSet = {
@@ -20,6 +20,79 @@ export type CoverSet = {
 
 export type DesignFonts = { title: string; body: string; decoration: string };
 export type DesignColors = { title: string; body: string; explain: string };
+
+// 三色恒黑:模板自带的文字色就是它(见 html-templates 里的 `{{COLOR:*|#1c1b18}}`)。
+// compose 不再让模型选颜色(旧 /v3/design 出的三色实测也恒是这个值),Web 确定性填。
+export const DESIGN_TEXT_COLOR = '#1c1b18';
+export const DESIGN_COLORS: DesignColors = {
+  title: DESIGN_TEXT_COLOR,
+  body: DESIGN_TEXT_COLOR,
+  explain: DESIGN_TEXT_COLOR,
+};
+
+// 字体兜底(与 engine compose handler `_DEFAULT_FONTS` 同值):compose 极端兜底可能
+// 回空 fonts,carrier sweep 不能因此写空 —— Web 侧自带确定性默认。
+const DEFAULT_FONTS: Record<'zh' | 'en', DesignFonts> = {
+  zh: { title: 'noto-serif-sc', body: 'noto-serif-sc', decoration: 'great-vibes' },
+  en: { title: 'playfair-display', body: 'eb-garamond', decoration: 'great-vibes' },
+};
+
+/** compose 回来的 fonts(可能缺键/空串/整体为空)→ 三键齐全的确定性字体。 */
+export function normalizeDesignFonts(
+  fonts: Record<string, string> | null | undefined,
+  language: 'zh' | 'en',
+): DesignFonts {
+  const fallback = DEFAULT_FONTS[language] ?? DEFAULT_FONTS.en;
+  const pick = (key: keyof DesignFonts): string => {
+    const value = fonts?.[key];
+    return typeof value === 'string' && value.trim() !== '' ? value : fallback[key];
+  };
+  return { title: pick('title'), body: pick('body'), decoration: pick('decoration') };
+}
+
+/**
+ * 逐槽合并文案:只覆盖 incoming 里**非空**的槽,其余保留 base(模板 sample)。
+ * compose 的 coverTexts/endingTexts 会把模型没写出来的槽带着空串回来 —— 无脑写回
+ * 会把封面从 sample 示例文案洗成空白,所以空串一律忽略。
+ */
+export function mergeSlotTexts(
+  base: Record<string, string>,
+  incoming: Record<string, string> | null | undefined,
+): Record<string, string> {
+  const out = { ...base };
+  for (const [slotId, text] of Object.entries(incoming ?? {})) {
+    if (typeof text !== 'string' || text.trim() === '') continue;
+    out[slotId] = text;
+  }
+  return out;
+}
+
+/** 模板自带的示例文案(逐槽 sample):封面/封尾组页的文案底稿,模型没写的槽留它。 */
+export function sampleTexts(templateId: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const slot of templateOf(templateId)?.texts ?? []) {
+    const sample = (slot as { sample?: unknown }).sample;
+    if (typeof sample === 'string' && sample !== '') out[slot.id] = sample;
+  }
+  return out;
+}
+
+/**
+ * compose 的 `pagesTexts`({[pageIndex]: {[slotId]: 文案}})逐槽写回内页。
+ * · 逐槽覆盖,不整页替换 —— 模型没写的槽保留模板 sample;
+ * · 没出现在 pagesTexts 里的页原样保留(某章写不出来也照常成稿,硬约束落点)。
+ */
+export function applyComposePagesTexts(
+  pages: Page[],
+  pagesTexts: Record<string, Record<string, string>> | null | undefined,
+): Page[] {
+  if (!pagesTexts || Object.keys(pagesTexts).length === 0) return pages;
+  return pages.map((page) => {
+    const incoming = pagesTexts[String(page.pageIndex)];
+    if (!incoming) return page;
+    return { ...page, texts: mergeSlotTexts(page.texts, incoming) };
+  });
+}
 
 type TreePhoto = { photoId: string; composition?: string | null };
 type TreeChapter = { photos: TreePhoto[] };

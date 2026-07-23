@@ -156,6 +156,8 @@ export type V3ChapterPhoto = z.infer<typeof V3ChapterPhoto>;
 
 /**
  * 章节(v3-requirements §4.1):一图一章不跨章,五环节全程复用、绝不重生成。
+ *   `title`:章标识,分析期由拍摄时间跨度确定性派生(如「2024 年 03 月 11–14 日」),
+ *     同一棵树内保证不重名。UI 章节卡片/书籍树/检索结果的展示名都读它。
  *   `description`:目录(TOC)专用占位,分析期留空,后期写目录环节才填;
  *     分析/识图阶段不写,也不进下游 AI 上下文(省 token)。
  *   theme 环节填:`accentColor`(取色)+ `artFont`(字体包内选一);分析期为 null 占位。
@@ -164,6 +166,9 @@ export type V3ChapterPhoto = z.infer<typeof V3ChapterPhoto>;
 export const V3Chapter = z
   .object({
     chapterId: z.string().min(1),
+    // 章标识:分析期确定性派生(拍摄时间跨度 + 地名)。迁移字段:老树无此键
+    // (default ""),读取方须降级到 description / `Group N`。
+    title: z.string().max(120).default(""),
     description: z.string().max(600).default(""), // 目录占位,分析期留空,后期写目录才填
     // 内容采集(分组后的采访环节)答案:一段自由文字,给排版/写文案当章节背景。
     // Web 把已知的 EXIF 时间/反地理编码地名拼成前缀(如「时间:… 地点:…」),后接用户原话。

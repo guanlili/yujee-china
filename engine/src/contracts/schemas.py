@@ -177,8 +177,7 @@ class JobError(_Strict):
 # coordinate. §3 privacy red line, 2026-07 revision («地名文字可出、坐标止步浏览器»):
 # coordinates (lat/lng/GPS) in any form stay forbidden; CITY-LEVEL PLACE-NAME
 # STRINGS are allowed (browser-side reverse geocoding; the coordinates themselves
-# never leave the browser). Structured place fields: V3Chapter.place +
-# JudgeCopyPhoto.place only.
+# never leave the browser). Structured place field: V3Chapter.place only.
 # =============================================================================
 
 
@@ -320,7 +319,10 @@ class V3Chapter(_V3Strict):
     分析期为 null 占位,theme 环节填。"""
 
     chapterId: str = Field(min_length=1)
-    # 目录(TOC)专用占位:分析/识图阶段留空,后期写目录环节才填。
+    # 章标识:分析期由 EXIF 时间跨度确定性派生(同树内保证不重名),UI 章节卡片/
+    # 书籍树读它。迁移字段:老树无此键 => ""(读取方降级到 description)。
+    title: str = Field(default="", max_length=120)
+    # 目录(TOC)占位:分析期留空,后期写目录环节才填。
     description: str = Field(default="", max_length=600)
     # 内容采集(分组后采访)答案:自由文字,给排版/写文案当章节背景。
     # Web 拼「时间:… 地点:…」前缀 + 用户原话;坐标绝不进(仅地名文字,§3 隐私)。
@@ -328,7 +330,7 @@ class V3Chapter(_V3Strict):
     # 拍摄地点:城市级地名文字(浏览器本地反地理编码,坐标不出浏览器,§3 2026-07 口径)。
     # 章不跨 cluster(#232)故挂章级;采访提交时写回。跳过采访/老树 => ""。
     place: str = Field(default="", max_length=100)
-    # 识图分章关键词(chapter_describer 产物)落树,设计环节当每组内容画像。老树 => []。
+    # 章节关键词,设计环节当每组内容画像。分析期已砍掉识图,恒为 [];老树 => []。
     keywords: list[str] = Field(default_factory=list)
     # Stage1 extracted source color. Distinct from final theme `accentColor`.
     # Migration field: older trees omit it; Stage1 PR249 trees may carry null.
@@ -455,9 +457,11 @@ class TemplateDef(_V3Strict):
 # ---------- v3.ts: shared -----------------------------------------------------
 
 V3Language = Literal["zh", "en"]
-V3JobKind = Literal["analyze", "select-layout"]
+V3JobKind = Literal["analyze", "select-layout", "compose"]
 # analyze 进度子阶段(§4.1);仅用于 progress 回调展示。
-V3JobStage = Literal["describe", "group", "template", "preview", "layout", "legalize", "wrap"]
+V3JobStage = Literal[
+    "describe", "group", "template", "preview", "layout", "legalize", "compose", "wrap"
+]
 
 
 class V3Models(_V3Strict):
@@ -546,8 +550,6 @@ class SelectLayoutPhoto(_V3Strict):
     # 构图(来自 Stage1 树):排版随机引擎按朝向×构图匹配槽位。旧相册 => None(任意)。
     composition: PhotoComposition | None = None
     takenAt: str | None
-    # 照片场景(来自 Stage1 树):排版后一次性写文案时供写作 AI grounding。旧相册 => ""。
-    sceneDescription: str = Field(default="", max_length=300)
 
     _check_ref200px = field_validator("ref200px")(_validate_v3_analyze_image_data_url)
     _check_taken_at = field_validator("takenAt")(_validate_iso_datetime)
@@ -568,131 +570,68 @@ class SelectLayoutRequest(_V3Strict):
     chapters: list[SelectLayoutChapter] = Field(min_length=1)
 
 
-# ---------- 单页 relayout 视觉判图(sync,编辑器换版式用)------------------------
+# ---------- ④ compose 一次性成稿(async 202 + callback) ------------------------
+# 用户选完设计之后的一把成稿:按章并发让 Gemini【看真实照片】+【读用户讲的故事】写满
+# 全书文案,并出封面/封尾文案与字体。取代原来的 /v3/design(同步只出字体+封面文案)。
 
 
-class JudgePageTemplateCandidate(_V3Strict):
-    """一个候选:浏览器把该页照片按此模板渲染成的真图缩略图(与整书排版评委同款输入)。"""
-
-    templateId: str = Field(min_length=1)
-    thumbnail: str = Field(min_length=1)  # data:image/jpeg;base64,...(照片已排入图槽)
-
-
-class JudgePageTemplateRequest(_V3Strict):
-    # 每候选一张真实渲染缩略图;评委直接看图选最贴合的模板。
-    candidates: list[JudgePageTemplateCandidate] = Field(min_length=1)
-    # 章节背景(可选):评委据此贴合基调。
-    chapterContext: str = Field(default="", max_length=500)
-
-
-class JudgePageTemplateData(_V3Strict):
-    winnerTemplateId: str = Field(min_length=1)
-
-
-class JudgePageTemplateResponse(_V3Strict):
-    ok: bool
-    data: JudgePageTemplateData
-
-
-# ---------- 设计环节(sync,用户选定封面组后) -----------------------------------
-
-
-class DesignTextSlotSpec(_V3Strict):
+class ComposeTextSlotSpec(_V3Strict):
     """封面/封尾模板的一个文字槽规格(Web 从模板 JSON 提取后传入)。"""
 
     id: str = Field(min_length=1)
     role: str = Field(min_length=1)
+    # sample 是这个槽在版面上的实际长度参考,既当风格示例也当篇幅预算(不设字数上限)。
     sample: str = Field(default="", max_length=300)
-    # 模板声明的字数上限(Unicode 字符),给文案模型当预算;可选,缺省=不限。
 
 
-class DesignChapterProfile(_V3Strict):
-    """每章设计画像:章标题 + 采访背景 + 识图关键词 + 分组取色。design_style 选字体/颜色的依据。"""
+class ComposePhoto(_V3Strict):
+    """一张照片:200px 缩略图**真图**进模型上下文(§隐私:只在请求内存里)。"""
 
-    # 章标题(写文案写进本章页面 title 槽的值,与章节卡片同源)。老 caller/排版未出 => ""。
+    photoId: str = Field(min_length=1)
+    ref200px: str = Field(min_length=1)
+    takenAt: str | None = None
+    # 城市级地名文字(§3 privacy 2026-07 口径:地名可出、坐标止步浏览器)。
+    place: str | None = Field(default=None, max_length=120)
+
+    _check_ref200px = field_validator("ref200px")(_validate_v3_analyze_image_data_url)
+    _check_taken_at = field_validator("takenAt")(_validate_iso_datetime)
+
+
+class ComposePage(_V3Strict):
+    """已选定版式的一页:pageIndex 是整册连续页序(select-layout 出的),写回时按它对位。"""
+
+    pageIndex: int = Field(ge=0)
+    templateId: str = Field(min_length=1)
+    images: dict[str, str] = Field(default_factory=dict)
+
+
+class ComposeChapter(_V3Strict):
+    chapterId: str = Field(min_length=1)
     title: str = Field(default="", max_length=120)
+    # 用户在采访环节讲的原话:成稿的最高优先级素材。跳过采访/老相册 => ""。
     chapterContext: str = Field(default="", max_length=500)
-    keywords: list[str] = Field(default_factory=list)
-    extractedColor: AccentColor | None = None
+    photos: list[ComposePhoto] = Field(default_factory=list)
+    pages: list[ComposePage] = Field(default_factory=list)
 
 
-class DesignRequest(_V3Strict):
-    language: V3Language
-    albumTitle: str = Field(default="", max_length=120)
-    # 兼容字段:全书各章背景(与章序一致;跳过采访的章为空串)。
-    chapterContexts: list[str] = Field(default_factory=list)
-    # 新 caller 送这个(带 keywords/extractedColor),优先于 chapterContexts。
-    chapterProfiles: list[DesignChapterProfile] | None = None
-    coverSlots: list[DesignTextSlotSpec] = Field(default_factory=list)
-    endingSlots: list[DesignTextSlotSpec] = Field(default_factory=list)
-
-
-class DesignFonts(_V3Strict):
+class ComposeFonts(_V3Strict):
     title: ArtFontPack
     body: ArtFontPack
     decoration: ArtFontPack
 
 
-class DesignColors(_V3Strict):
-    title: str = Field(pattern=r"^#[0-9a-f]{6}$")
-    body: str = Field(pattern=r"^#[0-9a-f]{6}$")
-    explain: str = Field(pattern=r"^#[0-9a-f]{6}$")
-
-
-class DesignData(_V3Strict):
-    fonts: DesignFonts
-    colors: DesignColors
-    coverTexts: dict[str, str]
-    endingTexts: dict[str, str]
-
-
-class DesignResponse(_V3Strict):
-    ok: bool
-    data: DesignData
-
-
-# ---------- P2 排版评委(rendered-thumbnail judge,two-phase) ------------------
-
-
-class CandidatePage(_V3Strict):
-    templateId: str = Field(min_length=1)
-    images: dict[str, str]  # slotId → photoId
-
-
-class JudgeCandidate(_V3Strict):
-    candidateIndex: int = Field(ge=0)
-    thumbnail: str = Field(min_length=1)  # data:image/jpeg;base64,...(仅图槽、无文字)
-    pages: list[CandidatePage] = Field(min_length=1)
-
-
-class JudgeCopyPhoto(_V3Strict):
-    """写文案素材(评委选完版式后当场写满本章文案时用)。photoId + sceneDescription +
-    拍摄时间/地点(地点是城市级地名文字,§3 2026-07 口径;坐标仍禁)。"""
-
-    photoId: str = Field(min_length=1)
-    sceneDescription: str = Field(default="", max_length=300)
-    takenAt: str | None = None  # EXIF,来自树;老客户端不带 => null
-    place: str | None = Field(default=None, max_length=100)  # 城市级地名文字
-
-    _check_taken_at = field_validator("takenAt")(_validate_iso_datetime)
-
-
-class JudgeLayoutUnit(_V3Strict):
-    unitKey: str = Field(min_length=1)
-    chapterId: str = Field(min_length=1)
-    chosenIndex: int | None = Field(default=None, ge=0)
-    candidates: list[JudgeCandidate] = Field(min_length=1)
-    # 写文案素材:评委选定版式后当场写满本章文案。Web 从 draft tree 补(浏览器不持 tree)。
-    # 老客户端不带 => 空,写文案退化为只填页码(与今天行为一致)。
-    photos: list[JudgeCopyPhoto] = Field(default_factory=list)
-    chapterContext: str = Field(default="", max_length=500)
-
-
-class JudgeLayoutRequest(_V3Strict):
+class ComposeRequest(_V3Strict):
     requestId: str = Field(min_length=1)
     callbackUrl: HttpUrl
     language: V3Language
-    units: list[JudgeLayoutUnit] = Field(min_length=1)
+    albumTitle: str = Field(default="", max_length=120)
+    coverTemplateId: str = Field(default="", max_length=64)
+    endingTemplateId: str = Field(default="", max_length=64)
+    coverSlots: list[ComposeTextSlotSpec] = Field(default_factory=list)
+    endingSlots: list[ComposeTextSlotSpec] = Field(default_factory=list)
+    # 用户在设计卡里自己选的字体;非空即直接采用,不让模型再选一遍。
+    userFontChoice: ComposeFonts | None = None
+    chapters: list[ComposeChapter] = Field(min_length=1)
 
 
 # ---------- v3.ts: ② chapter-chat (sync) --------------------------------------
@@ -783,24 +722,25 @@ class SelectLayoutCompleted(_V3Strict):
     usage: V3Usage
 
 
-class LayoutCandidate(_V3Strict):
-    candidateIndex: int = Field(ge=0)
-    pages: list[CandidatePage] = Field(min_length=1)
+class ComposeCompleted(_V3Strict):
+    """④ 成稿完成:全书文案一次性回来。
 
+    `pagesTexts` 形状是 `{pageIndex: {slotId: 文案}}`(JSON 序列化后 key 是字符串)。
+    **只含写出来的页**:某章写不出来 → 该章页面不出现在这里,Web 保留模板 sample 文案,
+    不发 `failed`(成稿是叠加性的一步,绝不阻断交付)。
 
-class SelectLayoutCandidateUnit(_V3Strict):
-    unitKey: str = Field(min_length=1)
-    chapterId: str = Field(min_length=1)
-    candidates: list[LayoutCandidate] = Field(min_length=1)
-
-
-class SelectLayoutCandidates(_V3Strict):
-    """P2 phase 1 回调:候选结构交回浏览器去渲染。不推进 stage。"""
+    ⚠️ `coverTexts` / `endingTexts` 跟 `pagesTexts` 的约定**不一样**:它们按封面/封尾
+    模板声明的槽位给全 key,模型没写出来的槽带着**空串**回来(封面 title 槽会兜相册
+    标题,其余就是 `""`)。Web 侧写回时必须**忽略空串**,否则会把模板 sample 洗成空白。"""
 
     requestId: str = Field(min_length=1)
-    jobKind: Literal["select-layout"]
-    event: Literal["candidates"]
-    units: list[SelectLayoutCandidateUnit] = Field(min_length=1)
+    jobKind: Literal["compose"]
+    event: Literal["completed"]
+    pagesTexts: dict[int, dict[str, str]] = Field(default_factory=dict)
+    coverTexts: dict[str, str] = Field(default_factory=dict)
+    endingTexts: dict[str, str] = Field(default_factory=dict)
+    # 三款字体 id(title/body/decoration);由代码按 场景×语言 查表或用户选择填。
+    fonts: dict[str, str] = Field(default_factory=dict)
     usage: V3Usage
 
 
@@ -821,7 +761,13 @@ class V3FailedEvent(_V3Strict):
     progress: int = Field(default=None, ge=0, le=100)
 
 
-V3Callback = Union[V3ProgressEvent, V3FailedEvent, V3AnalyzeCompleted, SelectLayoutCompleted]
+V3Callback = Union[
+    V3ProgressEvent,
+    V3FailedEvent,
+    V3AnalyzeCompleted,
+    SelectLayoutCompleted,
+    ComposeCompleted,
+]
 
 
 # ---------- v3.ts: select-template legal candidate (§9 / §6) ------------------

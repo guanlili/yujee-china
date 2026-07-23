@@ -42,8 +42,15 @@ export const agentJobStatusEnum = pgEnum('agent_job_status', [
 // finalize failure → back to EDITING + keep hold), so sweeper/callback branch
 // on this. See docs/agent/rebuild-architecture.md §5.
 // init = 识图分析(建相册时起,analyze 完成即 COMPLETED);layout = 排版(用户采访完主动
-// 触发时另起的独立 job,与 init 解耦,不共用 requestId、不挂积分 hold)。finalize/add 保留。
-export const agentJobKindEnum = pgEnum('agent_job_kind', ['init', 'finalize', 'add', 'layout']);
+// 触发时另起的独立 job,与 init 解耦,不共用 requestId、不挂积分 hold);compose = 一次性
+// 成稿(用户选定封面后派发 /v3/compose,回调统一组页并推 stage='ready')。finalize/add 保留。
+export const agentJobKindEnum = pgEnum('agent_job_kind', [
+  'init',
+  'finalize',
+  'add',
+  'layout',
+  'compose',
+]);
 
 export const creditHoldStatusEnum = pgEnum('credit_hold_status', [
   'HOLDING',

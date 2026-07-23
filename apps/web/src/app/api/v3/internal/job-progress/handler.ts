@@ -21,20 +21,36 @@ export async function handleV3JobProgress(req: Request) {
     case 'progress':
       await jobService.handleV3Progress(payload.requestId, payload.stage, payload.progress);
       break;
-    // P2 phase 1 (docs/agent/contract.md §5.2.1): select-layout candidate structures
-    // for the browser to render. Holds the job open, stashes candidates; no stage advance.
-    case 'candidates':
-      await jobService.handleV3SelectLayoutCandidates(payload.requestId, payload.units, payload.usage);
-      break;
     case 'completed':
+      // completed 有三类(analyze / select-layout / compose),按 jobKind 显式收窄 ——
+      // 不能靠 else 兜底:载荷形状各不相同(compose 没有 pages)。
       if (payload.jobKind === 'analyze') {
         await jobService.handleV3AnalyzeCompleted(payload.requestId, payload.tree, payload.usage);
-      } else {
+      } else if (payload.jobKind === 'select-layout') {
         await jobService.handleV3SelectLayoutCompleted(payload.requestId, payload.pages, payload.usage);
+      } else {
+        await jobService.handleV3ComposeCompleted(
+          payload.requestId,
+          {
+            pagesTexts: payload.pagesTexts,
+            coverTexts: payload.coverTexts,
+            endingTexts: payload.endingTexts,
+            fonts: payload.fonts,
+          },
+          payload.usage,
+        );
       }
       break;
     case 'failed':
       await jobService.handleV3Failed(payload.requestId, payload.error);
+      break;
+    default:
+      // V3Callback 只剩 progress/completed/failed 三类事件,zod 已在解析时挡住其它值,
+      // 这个分支正常永远走不到。保留它是为了将来加事件时不会被悄悄吞成 accepted:true。
+      logger.warn(
+        { requestId: (payload as { requestId: string }).requestId, event: (payload as { event: string }).event },
+        'v3 callback event not handled by this dispatcher',
+      );
       break;
   }
 

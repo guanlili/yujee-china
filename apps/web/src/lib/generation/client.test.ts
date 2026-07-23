@@ -4,8 +4,6 @@ import type { CompressedPhoto } from '@/lib/photo/compress';
 import {
   clusterCompressedPhotos,
   compressedPhotosFromCache,
-  fetchJudgeCandidates,
-  renderAndSubmitJudgeLayout,
   selectLayoutRefsFromCompressed,
   submitSelectLayoutV3,
   submitAnalyzeV3,
@@ -68,57 +66,6 @@ test('submitSelectLayoutV3 posts refs to the browser-facing select-layout route'
       refs: { p1: 'data:image/jpeg;base64,AA==' },
     });
     assert.deepEqual(result, { albumId: 'alb_1', requestId: 'layout-r1', accepted: true });
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test('fetchJudgeCandidates GETs the judge-layout route with the requestId', async () => {
-  const originalFetch = globalThis.fetch;
-  const captured: { url?: string } = {};
-  globalThis.fetch = (async (input: string) => {
-    captured.url = String(input);
-    return Response.json({ ok: true, data: { ready: true, units: [] } });
-  }) as typeof fetch;
-
-  try {
-    const result = await fetchJudgeCandidates('alb_1', 'r 1');
-    assert.equal(captured.url, '/api/v3/albums/alb_1/judge-layout?requestId=r%201');
-    assert.deepEqual(result, { ready: true, units: [] });
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test('renderAndSubmitJudgeLayout sends chosenIndex=0 for single-candidate units (no render)', async () => {
-  const originalFetch = globalThis.fetch;
-  const captured: { url?: string; body?: { units?: unknown[] } } = {};
-  globalThis.fetch = (async (input: string, init?: RequestInit) => {
-    captured.url = String(input);
-    captured.body = init?.body ? JSON.parse(String(init.body)) : undefined;
-    return Response.json({ ok: true, data: { albumId: 'alb_1', requestId: 'r1', accepted: true } });
-  }) as typeof fetch;
-
-  try {
-    await renderAndSubmitJudgeLayout('alb_1', {
-      requestId: 'r1',
-      language: 'en',
-      units: [
-        {
-          unitKey: 'ch_1',
-          chapterId: 'ch_1',
-          candidates: [{ candidateIndex: 0, pages: [{ templateId: 'mag-02', images: { image: 'p1' } }] }],
-        },
-      ],
-    });
-
-    assert.equal(captured.url, '/api/v3/albums/alb_1/judge-layout');
-    const unit = captured.body?.units?.[0] as { chosenIndex?: number; candidates: { thumbnail?: string }[] };
-    // Single-candidate unit: Web fixes the choice and never renders.
-    assert.equal(unit.chosenIndex, 0);
-    // The Agent contract still requires a non-empty thumbnail per candidate.
-    assert.equal(typeof unit.candidates[0].thumbnail, 'string');
-    assert.ok((unit.candidates[0].thumbnail ?? '').length > 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

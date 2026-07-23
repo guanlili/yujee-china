@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { db } from '../../db/client';
 import { agentJobRepo } from '../../db/repos/agent-job-repo';
+import type { NewAgentJob } from '../../db/schema';
 import { albumMessageRepo } from '../../db/repos/album-message-repo';
 import { albumPageRepo } from '../../db/repos/album-page-repo';
 import { albumRepo } from '../../db/repos/album-repo';
@@ -40,7 +41,13 @@ function hasForbiddenLocationKey(value: unknown): boolean {
 
 // Sets up an AGENT_RUNNING album with a held credit and a RUNNING job whose
 // startedAt is `startedAgoMs` in the past. Returns the ids for assertions.
-async function runningAlbumWithJob(userId: string, startedAgoMs: number) {
+// `kind` defaults to 'init' (the only kind that fails the album + releases the
+// hold on sweep); pass 'compose'/'layout'/'add' to exercise the other branches.
+async function runningAlbumWithJob(
+  userId: string,
+  startedAgoMs: number,
+  kind?: NewAgentJob['kind'],
+) {
   const album = await makeAlbum(userId);
   const hold = await creditHoldRepo.create(db, {
     userId,
@@ -55,6 +62,7 @@ async function runningAlbumWithJob(userId: string, startedAgoMs: number) {
     requestId: `album-svc-${Date.now()}-${Math.round(startedAgoMs)}`,
     status: 'QUEUED',
     progress: 0,
+    ...(kind ? { kind } : {}),
   });
   await agentJobRepo.update(db, job.id, {
     status: 'RUNNING',
@@ -95,8 +103,9 @@ test('getDetail: fresh RUNNING job → surfaces live stage/progress, no sweep', 
   }
 });
 
-// 解耦后 select-layout 是独立 layout job,相册仍 EDITING。两段式判图靠 poll 看到 candidates-ready
-// 哨兵(stage=layout,progress=52)驱动 phase 2 —— 所以 EDITING 下也必须透出在跑 layout job 的进度。
+// 解耦后 select-layout 是独立 layout job,相册仍 EDITING;编辑器/轮询靠这里透出的
+// stage=layout 知道排版还在跑,等 completed 落 pages —— 所以 EDITING 下也必须透出在跑
+// layout job 的进度。
 test('getDetail: EDITING album with a running layout job → surfaces layout stage/progress', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
@@ -116,13 +125,13 @@ test('getDetail: EDITING album with a running layout job → surfaces layout sta
     await agentJobRepo.update(db, job.id, {
       status: 'RUNNING',
       stage: 'layout',
-      progress: 52,
+      progress: 40,
       startedAt: new Date(), // 刚上报 → 不会被扫僵尸
     });
 
     const detail = await albumService.getDetail(user.id, album.id);
     assert.equal(detail.album.status, 'EDITING');
-    assert.deepEqual(detail.generation, { stage: 'layout', progress: 52 });
+    assert.deepEqual(detail.generation, { stage: 'layout', progress: 40 });
   } finally {
     await cleanupUser(user.id);
   }
@@ -218,6 +227,66 @@ test('sweepStaleJob: re-check under lock declines a job with a fresh heartbeat',
     assert.deepEqual(res, { swept: false, releasedHold: false });
     assert.equal((await albumRepo.findById(album.id))?.status, 'AGENT_RUNNING');
     assert.equal((await creditHoldRepo.findById(hold.id))?.status, 'HOLDING');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('sweepStaleJob: compose job kind-aware timeout — 6min RUNNING not yet stale (12min compose default)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('sweep-compose-fresh');
+  try {
+    const { job } = await runningAlbumWithJob(user.id, 6 * 60 * 1000, 'compose'); // 6 min ago
+
+    // No timeoutMs passed — must fall back to zombieTimeoutMsFor('compose') = 12 min,
+    // not the 10 min cross-kind default. This is the regression the Important review
+    // finding pinned: zombie-sweeper used to override this with a flat 10 min.
+    const res = await jobService.sweepStaleJob(job.id, new Date());
+
+    assert.deepEqual(res, { swept: false, releasedHold: false });
+    const jobAfter = await agentJobRepo.findByRequestId(job.requestId);
+    assert.equal(jobAfter?.status, 'RUNNING');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('sweepStaleJob: compose job kind-aware timeout — 13min RUNNING is swept (past 12min compose default)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('sweep-compose-stale');
+  try {
+    const { job } = await runningAlbumWithJob(user.id, 13 * 60 * 1000, 'compose'); // 13 min ago
+
+    const res = await jobService.sweepStaleJob(job.id, new Date());
+
+    assert.deepEqual(res, { swept: true, releasedHold: false });
+    const jobAfter = await agentJobRepo.findByRequestId(job.requestId);
+    assert.equal(jobAfter?.status, 'FAILED');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('sweepStaleJob: control — non-compose job kind still uses the 5min default and is swept at 6min', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('sweep-init-6min');
+  try {
+    const { job } = await runningAlbumWithJob(user.id, 6 * 60 * 1000, 'init'); // 6 min ago
+
+    const res = await jobService.sweepStaleJob(job.id, new Date());
+
+    assert.equal(res.swept, true);
+    const jobAfter = await agentJobRepo.findByRequestId(job.requestId);
+    assert.equal(jobAfter?.status, 'FAILED');
   } finally {
     await cleanupUser(user.id);
   }
@@ -412,6 +481,7 @@ async function seedDraftAlbum(userId: string) {
       chapters: [
         {
           chapterId: 'c1',
+          title: '',
           description: 'first',
           accentColor: null,
           artFont: null,
@@ -465,6 +535,7 @@ test('getDraftSkeleton: renders V3 tree+pages draft without dropping preview pag
         chapters: [
           {
             chapterId: 'c1',
+            title: '',
             description: 'first',
             accentColor: null,
             artFont: null,
@@ -475,6 +546,7 @@ test('getDraftSkeleton: renders V3 tree+pages draft without dropping preview pag
           },
           {
             chapterId: 'c2',
+            title: '',
             description: 'second',
             accentColor: null,
             artFont: null,
@@ -530,6 +602,7 @@ test('getDraftSkeleton: V3 body-only preview keeps first/last pages mapped to ch
         chapters: [
           {
             chapterId: 'c1',
+            title: '',
             description: 'first',
             accentColor: null,
             artFont: null,
@@ -540,6 +613,7 @@ test('getDraftSkeleton: V3 body-only preview keeps first/last pages mapped to ch
           },
           {
             chapterId: 'c2',
+            title: '',
             description: 'second',
             accentColor: null,
             artFont: null,
@@ -615,6 +689,7 @@ function makeStoryTree(n: number) {
   return {
     chapters: Array.from({ length: n }, (_, i) => ({
       chapterId: `c${i + 1}`,
+      title: '',
       description: `chapter ${i + 1}`,
       accentColor: null,
       artFont: null,
@@ -903,7 +978,7 @@ test('markChapterDone: after gate opened (stage past story) is a no-op', async (
   }
 });
 
-test('applyDesign: success advances stage story → ready (export gate key; 现行流程选封面发生在 story)', async (t) => {
+test('applyDesign: 派发 compose job(不再同步成稿),回调到达才推 stage story → ready', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
     return;
@@ -911,7 +986,7 @@ test('applyDesign: success advances stage story → ready (export gate key; 现�
   const user = await makeUser('design-stage-ready');
   try {
     const { TEMPLATES } = await import('@yujee/contracts');
-    const templates = Object.values(TEMPLATES) as Array<{ id: string; category?: string }>;
+    const templates = Object.values(TEMPLATES) as Array<{ id: string; category?: string; texts?: unknown[] }>;
     const coverId = templates.find((tp) => tp.category === 'cover')!.id;
     const endingId = templates.find((tp) => tp.category === 'ending')!.id;
 
@@ -920,6 +995,7 @@ test('applyDesign: success advances stage story → ready (export gate key; 现�
       chapters: [
         {
           chapterId: 'c1',
+          title: '',
           description: 'chapter 1',
           accentColor: null,
           artFont: null,
@@ -939,27 +1015,42 @@ test('applyDesign: success advances stage story → ready (export gate key; 现�
         version: 'v3-story',
         tree,
         pages: makePreviewPages(1),
-        // 故意留一章未 done:选定封面(applyDesign)应把现存章节全部记 done,
+        // 故意留一章未 done:成稿回调应把现存章节全部记 done,
         // 导出闸门(allDone && ready)随之打开 —— 用户口径:选完封面导出即可用。
         progress: { currentChapterId: 'c1', doneChapterIds: [] },
       },
     });
 
-    t.mock.method(agentClient, 'designV3', async () => ({
-      fonts: { title: 'Fraunces', body: 'Inter', decoration: 'Caveat' },
-      colors: { title: '#222222', body: '#333333', explain: '#666666' },
-      coverTexts: {},
-      endingTexts: {},
-      usage: { durationMs: 1, models: {} },
-    }));
+    const submitted: unknown[] = [];
+    t.mock.method(agentClient, 'submitComposeV3', async (payload: { requestId: string }) => {
+      submitted.push(payload);
+      return { requestId: payload.requestId };
+    });
 
-    await albumService.applyDesign(user.id, album.id, {
+    const dispatched = await albumService.applyDesign(user.id, album.id, {
       language: 'zh',
       coverTemplateId: coverId,
       coverPhotoId: 'p1',
       endingTemplateId: endingId,
       endingPhotoId: 'p1',
+      refs: { p1: 'data:image/jpeg;base64,AA==' },
     });
+
+    // 派发只建 job + 提交,不组页、不推 stage —— 成稿要几十秒,同步接口撑不住。
+    assert.equal(dispatched.accepted, true);
+    assert.equal(submitted.length, 1);
+    const midway = await albumRepo.findById(album.id);
+    assert.equal(midway?.stage, 'story');
+    const job = await agentJobRepo.findByRequestId(dispatched.requestId);
+    assert.equal(job?.kind, 'compose');
+    assert.equal(job?.status, 'RUNNING');
+
+    // 回调到达 → 组页落库 + stage='ready'(唯一推进点)。
+    await jobService.handleV3ComposeCompleted(
+      dispatched.requestId,
+      { coverTexts: { title: '我的一年' } },
+      { durationMs: 1, models: {} },
+    );
 
     const reloaded = await albumRepo.findById(album.id);
     assert.equal(reloaded?.stage, 'ready'); // 设计完成 = 导出闸门钥匙
@@ -1050,6 +1141,7 @@ async function seedChapterChatAlbum(userId: string) {
     chapters: [
       {
         chapterId: 'c1',
+        title: '',
         description: 'chapter one',
         accentColor: null,
         artFont: null,
@@ -1060,6 +1152,7 @@ async function seedChapterChatAlbum(userId: string) {
       },
       {
         chapterId: 'c2',
+        title: '',
         description: 'chapter two',
         accentColor: null,
         artFont: null,
@@ -1086,6 +1179,59 @@ async function seedChapterChatAlbum(userId: string) {
 
 const chatUsage = { durationMs: 1, models: { planning: 'deepseek-chat' } };
 
+test('章标签优先读 title,老树降级 description,都空才 Group N', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('chapter-label-fallback');
+  try {
+    const album = await makeAlbum(user.id);
+    const photo = {
+      photoId: 'p1',
+      sceneDescription: '',
+      width: 800,
+      height: 600,
+      orientation: 'landscape' as const,
+      takenAt: null,
+    };
+    const base = {
+      accentColor: null,
+      artFont: null,
+      chapterContext: '',
+      place: '',
+      keywords: [],
+    };
+    const draft = {
+      version: 'v3-story',
+      tree: {
+        chapters: [
+          // 新树:章标识落 title,description 是写目录环节的位置(此时为空)。
+          { chapterId: 'c1', title: '2024 年 03 月 11–14 日', description: '', ...base, photos: [photo] },
+          // 老树:draft_json 里根本没有 title 键,只能降级读 description。
+          { chapterId: 'c2', description: '旧章标题', ...base, photos: [{ ...photo, photoId: 'p2' }] },
+          // 两者都空:兜底 Group N。
+          { chapterId: 'c3', description: '', ...base, photos: [{ ...photo, photoId: 'p3' }] },
+        ],
+      },
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+    };
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      stage: 'story',
+      draftJson: draft as unknown as V3StoryDraft,
+    });
+
+    const summary = await albumService.getChapterSummary(user.id, album.id);
+    assert.deepEqual(
+      summary.chapters.map((c) => c.label),
+      ['2024 年 03 月 11–14 日', '旧章标题', 'Group 3'],
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('getInternalAgentData page-info and chapter-search return scoped draft data without location leakage', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
@@ -1100,6 +1246,7 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
         chapters: [
           {
             chapterId: 'c1',
+            title: '2024 年 03 月 02 日',
             description: 'coast morning',
             accentColor: null,
             artFont: null,
@@ -1127,6 +1274,7 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
           },
           {
             chapterId: 'c2',
+            title: '',
             description: 'city gallery',
             accentColor: null,
             artFont: null,
@@ -1187,9 +1335,20 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
     });
     assert.equal(V3InternalAgentDataResponse.safeParse(search).success, true);
     if (search.type !== 'chapter-search') assert.fail(`unexpected response type ${search.type}`);
+    // 命中靠 description + 照片描述;label 展示优先用 title(章标识)。
     assert.deepEqual(search.data.matches, [
-      { chapterId: 'c1', pageIndexes: [1, 2], label: 'coast morning', score: 3 },
+      { chapterId: 'c1', pageIndexes: [1, 2], label: '2024 年 03 月 02 日', score: 3 },
     ]);
+
+    // 章标识是拍摄日期派生的,不能进检索 haystack,否则搜「2024」会命中全部章节。
+    const dateSearch = await albumService.getInternalAgentData({
+      type: 'chapter-search',
+      albumId: album.id,
+      query: '2024',
+      limit: 5,
+    });
+    if (dateSearch.type !== 'chapter-search') assert.fail(`unexpected response type ${dateSearch.type}`);
+    assert.deepEqual(dateSearch.data.matches, []);
 
     const bookTree = await albumService.getInternalAgentData({
       type: 'book-tree',
@@ -1202,7 +1361,8 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
     assert.deepEqual(bookTree.data.progress, { currentChapterId: 'c1', doneChapterIds: [] });
     assert.equal(bookTree.data.focusedPageIndex, 2);
     assert.deepEqual(bookTree.data.chapters, [
-      { chapterId: 'c1', label: 'coast morning', pageIndexes: [1, 2], done: false },
+      { chapterId: 'c1', label: '2024 年 03 月 02 日', pageIndexes: [1, 2], done: false },
+      // c2 是老树形状(无 title):降级读 description。
       { chapterId: 'c2', label: 'city gallery', pageIndexes: [3], done: false },
     ]);
     assert.equal(bookTree.data.allDone, false);
@@ -1227,6 +1387,7 @@ test('getInternalAgentData page-photos returns registered transient refs without
         chapters: [
           {
             chapterId: 'c1',
+            title: '',
             description: 'chapter one',
             accentColor: null,
             artFont: null,
@@ -1261,6 +1422,7 @@ test('getInternalAgentData page-photos returns registered transient refs without
           },
           {
             chapterId: 'c2',
+            title: '',
             description: 'chapter two',
             accentColor: null,
             artFont: null,
@@ -1357,6 +1519,7 @@ async function seedThemeCoverAlbum(userId: string) {
     chapters: [
       {
         chapterId: 'c1',
+        title: '',
         description: 'a sunlit week by the coast',
         extractedColor: '#C8894A',
         accentColor: null,
@@ -1395,6 +1558,7 @@ function twoChapterDraft(): V3StoryDraft {
       chapters: [
         {
           chapterId: 'c1',
+          title: '',
           description: 'coast morning',
           accentColor: null,
           artFont: null,
@@ -1407,6 +1571,7 @@ function twoChapterDraft(): V3StoryDraft {
         },
         {
           chapterId: 'c2',
+          title: '',
           description: 'city gallery',
           accentColor: null,
           artFont: null,

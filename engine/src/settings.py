@@ -86,42 +86,6 @@ class Settings(BaseSettings):
     # extra_body (400 InvalidRequest); the slot helper guarantees that.
     openai_use_json_object: bool = True
 
-    # V3 describe-content failover (architecture §6.8 第 2 条 / v3-impl-plan §6.2):
-    # the recognition model defaults to OPENAI (GPT-5.5 Mini, using the openai_*
-    # endpoint/key). ai_client already retries once on 5xx/timeouts within the
-    # per-call budget, so a 30s budget = 30s + one retry ≈ 60s worst case for the
-    # primary attempt. If the OpenAI slot still 5xx/times-out after that retry, OR
-    # the whole batch hasn't finished within describe_batch_deadline_seconds,
-    # describe-content降级火山 (the ark_* slot). Missing keys and 4xx are config /
-    # request failures, not failover cases. 数值可微调,不改「先 GPT、自动降级火山」语义。
-    describe_openai_model: str = "gpt-5.5-mini"
-    describe_openai_timeout_seconds: int = 30
-    describe_batch_deadline_seconds: int = 90
-    # The unified describe call now emits, in ONE response, per-chapter
-    # description + per-photo scene + per-page photoIds + per-page templateId
-    # (selecting templates / paging folded into the same call). That combined
-    # output is materially larger than the old describe-only reply, so the
-    # output budget needs headroom: a truncated response is non-lossy (the
-    # coverage guard rejects it) but FATAL (hard AGENT_VISION_FAILED, no graceful
-    # degrade — it propagates rather than failing over on the same bad-output
-    # class). 16384 is a conservative headroom bump accepted by both configured
-    # vision models (ark doubao-seed-1-6-vision with thinking disabled, and the
-    # openai describe slot). Route-splitting (#232) remains the primary per-call
-    # output bound; this is just headroom for dense single routes.
-    describe_max_output_tokens: int = 16384
-
-    # V3 describe cluster-aware concurrency (#232 WP-C). When the browser stamps
-    # photos with `clusterId` (EXIF time/GPS-derived), whole clusters are packed
-    # into concurrent describe routes by total photo COUNT — semantic grouping
-    # (the clusters themselves) is never re-cut by count. These thresholds only
-    # set concurrency WIDTH: ≤lo → 1 route, >lo → 2 routes, >hi → 3 routes. A
-    # single oversized cluster still gets its own route (the model sub-chapters
-    # it; the omitted-photo retry net guarantees coverage). All clusterId null →
-    # degrade to the legacy single-batch path. 数值可微调,不改语义。
-    describe_concurrency_threshold_lo: int = 20
-    describe_concurrency_threshold_hi: int = 40
-    describe_max_concurrency: int = 3
-
     # Stage1 本地分章:CLIP 图片 embedding + 灰度/颜色距离。
     # grouping_clip_model_path 支持本地权重;未设置时 open_clip 按 model/pretrained
     # 配置加载。
@@ -135,10 +99,14 @@ class Settings(BaseSettings):
     grouping_clip_secret: str | None = None
     grouping_clip_timeout_seconds: int = 180
 
-    # Stage2 select-layout: Gemini native generateContent. The default base URL
-    # keeps the old `/openai` suffix for env compatibility; the handler strips it.
-    # Missing key is non-fatal for the stage: workflows/select_layout.py catches it
-    # and uses the deterministic skeleton fallback.
+    # 仓里唯一的 Gemini 槽(native generateContent)。名字是历史产物:select-layout
+    # 如今是纯确定性选版、根本不用 key,这把 key 唯一的消费者是 ④ /v3/compose 成稿。
+    # 没改名是因为它在 Fly 上是 out-of-band 设的 secret,改名要跟线上轮换同步做;
+    # 而且这组设置里的 max_images_per_batch 仍归 select-layout 用,不是干净的整组搬迁。
+    # 缺 key 时 compose 只 warning + 交付模板示例文案(静默降级),所以 mode=real 在
+    # src/main.py 启动时就 fail-fast 拦掉。
+    # The default base URL keeps the old `/openai` suffix for env compatibility;
+    # the handler strips it.
     select_layout_api_key: str | None = None
     select_layout_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     select_layout_model: str = "gemini-2.5-flash"
@@ -147,17 +115,25 @@ class Settings(BaseSettings):
     select_layout_use_json_object: bool = True
     select_layout_disable_thinking: bool = True
     select_layout_max_images_per_batch: int = 24
-    select_layout_max_concurrency: int = Field(default=3, ge=1)
-    # 每章代码随机生成多少个候选交给 LLM 评委挑选(P1 新排版逻辑)。
-    select_layout_candidate_count: int = Field(default=3, ge=1)
-    # 批量判图:一次评委会话最多塞多少张候选缩略图(多个小章合并省会话;
-    # 超过按序拆批)。一个 unit 的候选不会跨批。
-    select_layout_judge_batch_max_images: int = Field(default=15, ge=1)
     # Gemini 判图的网络出口:未设=沿用环境代理(HTTPS_PROXY,httpx trust_env 默认);
     # "direct"=强制直连、忽略环境代理(本机能直达 Gemini 但 shell 全局代理出口被
     # Gemini 地区墙拒时用这个);其他值=显式代理 URL(如 http://127.0.0.1:7890)。
     # 只影响 Gemini 判图这一个 httpx client,Ark/DeepSeek 的出口行为不变。
     select_layout_proxy: str | None = None
+
+    # ④ compose(一次性成稿):复用上面那组 Gemini 槽的 endpoint/key/model/出口代理,
+    # 只有输出预算和并发是自己的。
+    #   max_output_tokens:一次要吐出整章逐页多槽的正文(判图只吐几个 index),
+    #     8192 给够余量 —— 被截断的 JSON 解析不出来 = 整章文案作废(退回模板 sample)。
+    #   max_concurrency:章节批次 + 全局批次全部并发跑,信号量限制同时在飞的调用数,
+    #     控住 Gemini 侧速率。默认 4 是「墙钟砍成 1/4」与「不撞限流」之间的折中。
+    #   chapter_timeout_seconds:**每章各自**的预算,不是全书一刀切。单章最坏 =
+    #     2 × select_layout_timeout_seconds(60s 加一次重试)= 120s,留 60s 余量。
+    #     卡住的章按「这一章掉队」处理(保留模板 sample),其余章照常成稿 ——
+    #     外层 background_task_timeout_seconds 只当兜底,不再连坐已写完的章。
+    compose_max_output_tokens: int = 8192
+    compose_max_concurrency: int = Field(default=4, ge=1)
+    compose_chapter_timeout_seconds: float = Field(default=180, gt=0)
 
     # planning + chat-edit (DeepSeek slot; in prod points at Volcano Ark doubao)
     deepseek_api_key: str | None = None
