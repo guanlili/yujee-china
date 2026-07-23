@@ -4,6 +4,8 @@ import { use, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAlbumPoll } from '@/lib/hooks/use-album-poll';
 import { EditorPort } from '@/components/album/editor-v2/EditorPort';
+import { MobileEditorRoot } from '@/components/album/editor-v2/mobile/MobileEditorRoot';
+import { useDeviceMode } from '@/components/album/editor-v2/use-device-mode';
 import type { AlbumDetail } from '@/components/album/types';
 import { defaultLocale, isLocale, type Locale } from '@/lib/i18n/routing';
 
@@ -42,6 +44,7 @@ export default function AlbumPage({
   // the URL. A bookmarked/ready album loads immediately; a dead generation is
   // swept to FAILED server-side and surfaces here instead of spinning forever.
   const { detail, generation, phase, error } = useAlbumPoll(uuid);
+  const device = useDeviceMode();
 
   // Session expired mid-generation → don't spin, send them to sign in and back.
   useEffect(() => {
@@ -92,6 +95,12 @@ export default function AlbumPage({
     // editing(读空的 album_pages),书就「消失」。只按 layoutJson 判:草稿(含导出后的 COMPLETED)
     // 一律走 authoring 读 draft_json;定稿(layoutJson 落地)才走 editing。
     const mode = detail.album.layoutJson == null ? 'authoring' : 'editing';
+    // 设备分流只发生在这一支:editing 才挂真画布,也只有画布的交互在手机与电脑上
+    // 天差地别。loading/building/authoring/error 仍走同一套 EditorPort —— 接管面
+    // 越小,风险面越小。两棵树互不共用 DOM,详见 mobile/MobileEditor.tsx 抬头。
+    if (mode === 'editing' && device === 'mobile') {
+      return <MobileEditorRoot detail={detail} locale={locale} />;
+    }
     return <EditorPort detail={detail} locale={locale} mode={mode} />;
   }
 

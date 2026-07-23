@@ -1,0 +1,117 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   移动端编辑器样式。
+
+   注意这里**一个媒体查询都没有** —— 这棵树只在手机上挂(见 use-device-mode),
+   桌面永远走 EditorPort。旧实现要靠 27 个 @media(max-width:767px) 把一套 DOM
+   掰成两种形态,那正是要拆掉的东西。
+   ════════════════════════════════════════════════════════════════════════════ */
+
+.mobile-editor {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f5f3ef;
+  overscroll-behavior: none;
+  /* 画布不滚不缩:手机上「滚动的画布」和「滚动的页面内容」永远抢手指。 */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ── 顶栏 ───────────────────────────────────────────────────────────────── */
+.mobile-editor .mtopbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 52px;
+  padding: 0 8px;
+  padding-top: env(safe-area-inset-top);
+  box-sizing: content-box;
+  background: #fff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.mobile-editor .mtopbar-back {
+  /* HIG/Material 的最小触点:44pt / 48dp。 */
+  width: 44px;
+  height: 44px;
+  font-size: 26px;
+  line-height: 1;
+  border: 0;
+  background: none;
+  color: #1c1b19;
+}
+
+.mobile-editor .mtopbar-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1c1b19;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 画板 ───────────────────────────────────────────────────────────────── */
+.mobile-editor .mboard {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px; /* 与 MobileEditor 的 GAP 常量一致 */
+  padding: 10px;
+  background: #e9e5dd;
+}
+
+.mobile-editor .mspread {
+  display: flex;
+  flex: none; /* 尺寸由 JS 的 fitBox 算好写在 style 上,不让 flex 再拉伸 */
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+}
+
+.mobile-editor .mpage {
+  height: 100%;
+  overflow: hidden;
+  background: #fff;
+}
+
+.mobile-editor .mpage-face {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── 底部 dock(位置条 + 密度) ──────────────────────────────────────────── */
+.mobile-editor .mdock {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding: 0 12px;
+  padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: content-box;
+  background: #fff;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.mobile-editor .mdens {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1c1b19;
+}
+
+.mobile-editor .mfolio {
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: #6b6659;
+}
