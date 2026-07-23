@@ -1610,13 +1610,6 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "body",
         "lang": "user",
         "sample": "I had rules. I did not answer the first message for four hours, and then I answered the second one in nine seconds."
-      },
-      {
-        "id": "label",
-        "role": "decoration",
-        "lang": "en",
-        "variableDecor": true,
-        "sample": "A RECORD OF LOSING · 2026"
       }
     ]
   },
