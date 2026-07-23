@@ -18,3 +18,8 @@ test('a spread template doubles the page box width (mag-54, #303 first spread te
   assert.deepEqual(pageBox('mag-54'), { width: PAGE.width * 2, height: PAGE.height });
   assert.equal(isSpreadTemplate('mag-54'), true);
 });
+
+test('a spread template doubles the page box width (mag-55, #303 second spread template)', () => {
+  assert.deepEqual(pageBox('mag-55'), { width: PAGE.width * 2, height: PAGE.height });
+  assert.equal(isSpreadTemplate('mag-55'), true);
+});
