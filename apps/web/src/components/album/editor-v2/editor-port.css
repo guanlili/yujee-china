@@ -1789,19 +1789,34 @@
     transform:none; transition:none; z-index:20;
   }
   .editor-port .book-stage{
-    padding:20px 12px 220px;
+    /* 顶部 58px = 原 20px 内边距 + 新位置条(subbar)的 38px 高度,让画布让开位置条
+       (位置条是 fixed 定位叠在 pane-center 之上,不占文档流,得靠这里手动让位)。 */
+    padding:58px 12px calc(var(--dock-h, 0px) + env(safe-area-inset-bottom, 0px));
   }
   .editor-port .canvas-hint{
     top:10px; max-width:calc(100vw - 28px);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
-  /* 底部固定的高弹窗:底边钉死,高度可拖(拖手柄 = 折叠/展开面板本身的高度,不整体位移)。
-     默认 ~46vh,最高 90vh,最低 150px(仍露手柄+输入框)。高度由 JS 写 inline;拖动时无过渡。 */
+  /* 移动画板接管后(.mc-on):隐藏旧桌面浮层 —— 视图切换竖排(ctrl-dock)、
+     缩放/翻页 pill(zoom-ctrl)、「切换到编辑模式」提示(canvas-hint)。
+     它们被新的左下角密度/背景钮 + 点页进编辑取代,浮在画布上会挡点击。 */
+  .editor-port.mc-on .canvas-hint,
+  .editor-port.mc-on .ctrl-dock,
+  .editor-port.mc-on .zoom-ctrl{ display:none !important; }
+  /* AI 对话 = 标准移动弹窗,放最顶层(#304 用户反馈):底部 sheet,底边钉死、高度可拖,
+     z-index 高于编辑器全部移动 chrome(mc-l1/mc-ai-fab/mc-dens 等 z95-100、mes z140),
+     打开时它们不再戳在对话上面。展开时铺一层半透明遮罩(::before)压暗背后画布,
+     像原生 App 的 bottom sheet。默认 ~46vh,最高 90vh,最低 150px。 */
   .editor-port .pane-chat-col{
     position:fixed; left:10px; right:10px; bottom:10px;
     width:auto !important; height:46vh; max-height:90vh; min-height:150px;
-    z-index:80; padding:0; display:flex;
+    z-index:300; padding:0; display:flex;
     transition:height var(--motion-base) var(--ease);
+  }
+  /* 遮罩:只在对话展开(非 chat-collapsed)时出;固定全屏、压暗背后,点它不穿透到画布。 */
+  .editor-port:not(.chat-collapsed) .pane-chat-col::before{
+    content:''; position:fixed; inset:0; z-index:-1;
+    background:rgba(20,22,28,.42); pointer-events:auto;
   }
   .editor-port.chat-dragging .pane-chat-col{ transition:none; }
   .editor-port .pane-right{
@@ -1825,9 +1840,20 @@
     margin:10px;
   }
 
-  /* ── 顶栏「保存」按钮:移动端收成纯图标方块(省空间,和导出/头像并排) ── */
-  .editor-port .save-btn{ padding:0; width:38px; height:38px; justify-content:center; gap:0; }
-  .editor-port .save-btn .save-label{ display:none !important; }
+  /* ── 顶栏精简(#304 Task13):移动端右侧只留 分享 + 导出,份量对齐(都是 44×44 图标触点)。
+     保存(.save-btn)和头像(UserMenu)整个隐藏。UserMenu 组件根 div 只有通用的
+     className="relative"(见 UserMenu.tsx),不是稳定选择器;它在 EditorPort.tsx 里是
+     .top-right 下最后一个直接子节点(save-btn / share-btn / btn-glow[导出] 之后),
+     故退而用 .top-right > *:last-child 选中,不改 UserMenu 组件本身。 ── */
+  .editor-port .save-btn{ display:none; }
+  .editor-port .top-right > *:last-child{ display:none; }
+  /* 导出(.btn-primary)降为图标:去黑底 pill,和分享同尺寸同份量,图标继承 currentColor。
+     JSX 已有 SVG 图标 + 隐藏文案(data-i18n),这里只调外观,不动结构。 */
+  .editor-port .btn-primary{
+    background:transparent; color:var(--fg); box-shadow:none;
+    padding:0; width:44px; height:44px; justify-content:center;
+  }
+  .editor-port .share-btn{ width:44px; height:44px; padding:0; justify-content:center; }
 
   /* ── 视图切换(预览 / 画板总览):右侧竖排,浮在对话上方,加大点触区(item 4/5) ── */
   .editor-port .ctrl-dock{
@@ -1898,6 +1924,9 @@
   /* 桌面的拖动/缩放手柄在移动端无意义,藏掉(否则右下角露出残角) */
   .editor-port .chat-resize{ display:none !important; }
   .editor-port .chat-drag{ display:none !important; }
+  /* 移动端改用品牌渐变 AI 气泡(见下方 mc-* 移动端画板区块)取代通用黑色收起气泡,
+     避免两个气泡同时并存右下角(#304 Task11)。 */
+  .editor-port.chat-collapsed .chat-fold-expand{ display:none; }
 }
 
 /* ═══ 平板(768–1024):桌面浮动对话在这个宽度偏挤 —— 收窄对话卡、给画布让位 ═══ */
@@ -2200,4 +2229,120 @@
     transform:translateY(16px);
   }
   .editor-port #boardBgModal.open .modal-card{ transform:none; }
+}
+
+/* 移动端:浏览态 —— 书按密度居中显示,画布不上下滚,左下角密度/背景钮 + 底部缩略条跳屏。 */
+@media (max-width:767px){
+  /* 浏览态 = 固定预览,开页(spread)竖排、缩放贴合可视高度、不滚动。
+     密度 1 单页 / 2 一个开页 / 4 两个开页 —— 可见的 .ov-spread 由 JS(applyWindow)
+     控制(1~2 个),这里只管布局:单列 flex 居中,每个开页按可视高度缩放贴合。 */
+  .editor-port.mc-on .book-overview .ov-grid{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    height:100%; gap:12px; min-height:0; padding:0 10px; box-sizing:border-box;
+  }
+  /* 开页(.ov-book)填满可用宽度,高度由 aspect-ratio(1.414:1 横向)自动定 —— 桌面靠 grid
+     给宽,移动 flex 布局要显式给宽,否则缩成内容最小尺寸(就是之前那个巴掌大的卡片)。 */
+  .editor-port.mc-on .book-overview .ov-spread{ width:100%; max-width:100%; display:flex; }
+  .editor-port.mc-on .book-overview .ov-book{ width:100%; }
+  /* 4 档两个开页竖排 → 单个缩到 68% 宽,两个 + 间距刚好贴合竖向可视区。 */
+  .editor-port.mc-on .book-overview[data-mobile-density="4"] .ov-spread{ width:68%; }
+  /* 左下角两钮:密度循环(数字自身当图标)+ 画板背景(复用现有 openBoardBgModal)。 */
+  .editor-port .mc-dens,
+  .editor-port .mc-board-bg{
+    position:fixed; left:12px; z-index:100; width:38px; height:38px;
+    display:flex; align-items:center; justify-content:center;
+    border:none; border-radius:var(--radius-pill);
+    background:var(--surface); color:var(--fg);
+    box-shadow:var(--shadow-card); cursor:pointer;
+  }
+  .editor-port .mc-dens{ bottom:calc(86px + env(safe-area-inset-bottom, 0px)); font-weight:700; }
+  .editor-port .mc-board-bg{ bottom:calc(130px + env(safe-area-inset-bottom, 0px)); }
+
+  /* 编辑态单页 = 定死尺寸,缩放贴合可视区、不滚不拖不缩放(#304 用户: 书页不许动来动去)。
+     目标页所在开页(.ov-book)按可视高度缩放贴合(单页竖版:高度占满、宽度按比例、
+     两侧留白),整块不溢出 → 无需滚动。 */
+  .editor-port.mc-on .book-overview[data-mobile-edit="1"] .ov-grid{
+    display:flex; align-items:center; justify-content:center; height:100%; padding:8px 10px; box-sizing:border-box;
+  }
+  .editor-port.mc-on .book-overview[data-mobile-edit="1"] .ov-spread{ height:100%; display:flex; align-items:center; justify-content:center; }
+  .editor-port.mc-on .book-overview[data-mobile-edit="1"] .ov-book{ height:100%; width:auto; max-width:100%; }
+  .editor-port .ov-page.mc-edit-fill{ width:100%; }
+  /* 编辑态也定死:touch-action:none 锁一切手势(不滚/不拖/不缩放)。 */
+  .editor-port .book-overview[data-mobile-edit="1"]{ touch-action:none; }
+  /* 编辑态顶部:返回钮(位置条见段末 .mc-subbar,两态统一显示章节+页码)。 */
+  .editor-port .mc-back{
+    position:fixed; top:calc(12px + env(safe-area-inset-top, 0px)); left:12px; z-index:100;
+    width:38px; height:38px; display:flex; align-items:center; justify-content:center;
+    border:none; border-radius:var(--radius-pill);
+    background:var(--surface); color:var(--fg);
+    box-shadow:var(--shadow-card); cursor:pointer;
+  }
+
+  /* 编辑态一级栏:背景/图片/文字三格(#304 Task10,覆盖1搁置删除)。「背景」直出
+     现有 openMobileSheet('page');「图片」/「文字」只切高亮态,真正选中交给现有
+     surfaceClick。 */
+  .editor-port .mc-l1{
+    position:fixed; left:0; right:0; bottom:0; z-index:95;
+    display:flex; padding:7px 4px calc(14px + env(safe-area-inset-bottom, 0px));
+    background:var(--surface); border-top:1px solid var(--border-soft);
+    box-shadow:var(--shadow-card-hover);
+  }
+  .editor-port .mc-l1 button{
+    flex:1; border:none; background:transparent; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    font-size:10.5px; color:var(--fg-2); padding:4px 0; border-radius:var(--radius-md);
+  }
+  .editor-port .mc-l1 button.mc-l1-active{ color:var(--accent); }
+  /* 图片/文字选取态 affordance:只是虚线框提示"可点这些",不拦截点击。 */
+  .editor-port .ov-page .mc-pickable{ outline:1.5px dashed var(--accent); outline-offset:3px; }
+
+  /* AI 气泡:右下角固定,两态同位(浏览/编辑),品牌渐变引用 --grad-*(禁硬编码 hex)。
+     点击经 ctx.openChat() 展开现有可变高对话面板(mobile-canvas.ts);显隐纯 CSS —— 对话
+     收起(.chat-collapsed)才显示,对话升起时隐藏,不用 JS 监听(#304 Task11)。 */
+  .editor-port .mc-ai-fab{
+    position:fixed; right:12px; z-index:100; width:52px; height:52px;
+    display:flex; align-items:center; justify-content:center;
+    border:none; border-radius:var(--radius-pill); overflow:hidden;
+    background:var(--surface); box-shadow:var(--shadow-card-hover);
+    cursor:pointer;
+  }
+  /* 产品小水母:与休息态 .await-jelly 同一呈现(contain + multiply + 轻浮动),不自造图标 */
+  .editor-port .mc-ai-fab .mc-fab-jelly{
+    width:38px; height:38px; object-fit:contain; mix-blend-mode:multiply;
+    animation:ep-jelly-float 3.2s ease-in-out infinite;
+  }
+  /* 浏览态让开底部缩略条 / 编辑态让开一级栏 */
+  .editor-port .mc-ai-fab.mc-fab-browse{ bottom:calc(86px + env(safe-area-inset-bottom, 0px)); }
+  .editor-port .mc-ai-fab.mc-fab-edit{ bottom:calc(82px + env(safe-area-inset-bottom, 0px)); }
+  /* 对话展开时(无 chat-collapsed)隐藏气泡,收起时显示 —— 两者互斥不叠。 */
+  .editor-port:not(.chat-collapsed) .mc-ai-fab{ display:none; }
+  /* AI 对话是顶层模态弹窗:展开时把编辑器移动 chrome 一并藏掉(否则一级栏/密度钮/位置条
+     会从遮罩下透出来),只留对话弹窗 + 压暗的画布,像原生 App 弹窗那样干净。 */
+  .editor-port:not(.chat-collapsed) .mc-l1,
+  .editor-port:not(.chat-collapsed) .mc-dens,
+  .editor-port:not(.chat-collapsed) .mc-board-bg,
+  .editor-port:not(.chat-collapsed) .mc-back,
+  .editor-port:not(.chat-collapsed) .mc-subbar{ display:none !important; }
+
+  /* 位置条(#304 Task14):顶栏正下方,章节 chips + 当前/总数,浏览/编辑两态都显示
+     (取代原先仅编辑态浮层的 mc-folio,不重复造页码)。--dock-h 由 mobile-canvas.ts
+     实时写入(参照 ChatPanel.tsx 的 --canvas-inset 维护法),这里只吃现成变量。 */
+  .editor-port .mc-subbar{
+    position:fixed; top:56px; left:0; right:0; z-index:90;
+    height:38px; display:flex; align-items:center; gap:7px; padding:0 10px;
+    background:var(--surface); border-bottom:1px solid var(--border-soft);
+  }
+  .editor-port .mc-subbar-chips{
+    display:flex; align-items:center; gap:6px; flex:1;
+    overflow-x:auto; -webkit-overflow-scrolling:touch;
+  }
+  .editor-port .mc-subbar .mc-chip{
+    flex:0 0 auto; font-size:11.5px; padding:3px 10px; border-radius:var(--radius-pill);
+    background:var(--bg); color:var(--fg-2); white-space:nowrap;
+  }
+  .editor-port .mc-subbar .mc-chip.on{ background:var(--fg); color:var(--surface); }
+  .editor-port .mc-subbar-folio{
+    flex:0 0 auto; margin-left:auto; padding-left:8px;
+    font-size:12px; color:var(--meta); font-variant-numeric:tabular-nums;
+  }
 }

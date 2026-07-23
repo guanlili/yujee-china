@@ -40,6 +40,7 @@ import { adaptPageToTemplateData, collectPhotoIds, type ResolveImage } from '../
 import { applyFolioOverlay, fitTextBoxes, pageFolioNumbers, pageFolioSides, patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle, preferredPageHtml, type FolioSide } from '../page-html-dom';
 import { PAGE } from '../templates/constants';
 import { clampZoom, paintDecision } from './zoom-util';
+import { resolveDeviceMode, initMobileCanvas } from './mobile-canvas';
 import {
   clampImagePos,
   dragToImagePos,
@@ -2527,7 +2528,7 @@ function EditorBook({
       // 移动端:工具条做成浮动条,【抬到对话气泡上方】—— 气泡常驻右下(bottom:16 高 46,顶到
       // 视口底 62px),工具条底边抬到 76px 正好压在气泡之上、留 14px 空档不打架。左右各留 10px。
       // #elBar 已上提到 .editor-port 根,无 perspective 祖先,fixedContainerOffset 返回 0。
-      if (window.matchMedia('(max-width: 767px)').matches) {
+      if (resolveDeviceMode(window.innerWidth) === 'mobile') {
         const off = fixedContainerOffset(editBar);
         const inset = 10;
         const bottomGap = 76;
@@ -2804,7 +2805,7 @@ function EditorBook({
       const bar = editBar.getBoundingClientRect();
       const pw = panel.offsetWidth, ph = panel.offsetHeight;
       const M = 10;
-      if (window.matchMedia('(max-width: 767px)').matches) {
+      if (resolveDeviceMode(window.innerWidth) === 'mobile') {
         // 取色器在移动端 = 全宽底部大弹窗(参考稿),定位交给 CSS(fixed 贴底满宽);清掉
         // 可能残留的 inline 定位,别让桌面坐标把它顶歪。
         if (panel.id === 'ebColorPanel') {
@@ -3061,7 +3062,7 @@ function EditorBook({
     // 复用桌面浮标的全部套用逻辑(applyColorToSelection/applyFontToSelection/
     // applyFontSizeToSelection/applyTextToolbarAction/colorContext),只换外壳与触发方式:
     // 移动端把「文字编辑 / 书页背景色」从浮标改成底部弹窗。所有操作在 sheet 内完成。
-    const isMobileEditor = () => window.matchMedia('(max-width: 767px)').matches;
+    const isMobileEditor = () => resolveDeviceMode(window.innerWidth) === 'mobile';
     type MesMode = 'text' | 'page';
     type MesView = 'main' | 'color' | 'font';
     const mesState: {
@@ -4476,6 +4477,11 @@ function EditorBook({
             spread: computeChapterSpread(c.photoIds),
           }));
           renderRail();
+          // editing 模式的章节数据到这里才第一次落地(initMobileCanvas 挂载时首帧渲染跑
+          // 在这个 fetch resolve 之前,当时 chapters 还是空数组,chips 会被判空隐藏)。
+          // 光调 renderRail() 只刷新桌面 rail,移动端位置条不会自己重渲 —— 补这一行触发
+          // 它的刷新钩子,否则主线(打开已生成相册去编辑)下 chips 永远不出现(#304 Important fix2)。
+          mobileCanvas.refreshChapters();
         })
         .catch(() => {});
     }
@@ -4541,7 +4547,43 @@ function EditorBook({
       exportPdf,
     };
 
+    // ── 移动端双态画板挂载(桌面为 no-op) ──
+    // 移动画板挂载。initMobileCanvas 只在移动宽度建 DOM;桌面为 no-op。
+    // 用 let + resize 重挂:跨 767px 边界(旋屏 / 浏览器响应式模式拖尺寸 / 地址栏收展)
+    // 时 teardown 旧的、重建新的 —— 否则桌面宽度加载后切到手机宽度画板永不出现。
+    const makeMobileCanvas = () => initMobileCanvas({
+      root,
+      getWidth: () => window.innerWidth,
+      enterEdit: (pi) => { selectedPageIndex = pi; paintSpread(currentCh); },
+      exitEdit: () => { selectedPageIndex = null; },
+      openBoardBg: () => openBoardBgModal(),
+      totalPages: () => pagesState.length,
+      renderGrid: () => renderOverview(),
+      openPageBg: () => openMobileSheet('page'),
+      openChat: () => root.classList.remove('chat-collapsed'),
+      isEditingPhase: () => mode === 'editing',
+      chapters: () => chapters,
+      spreadOfPage: (i) => spreadIndexOfPage(spreads, i),
+    });
+    let mobileCanvas = makeMobileCanvas();
+    let mobileCanvasMode = resolveDeviceMode(window.innerWidth);
+    let mobileReinitTimer: number | null = null;
+    const onMobileResize = () => {
+      if (mobileReinitTimer !== null) window.clearTimeout(mobileReinitTimer);
+      mobileReinitTimer = window.setTimeout(() => {
+        const next = resolveDeviceMode(window.innerWidth);
+        if (next === mobileCanvasMode) return; // 未跨边界,不重建
+        mobileCanvasMode = next;
+        mobileCanvas.teardown();
+        mobileCanvas = makeMobileCanvas();
+      }, 200);
+    };
+    window.addEventListener('resize', onMobileResize);
+
     return () => {
+        window.removeEventListener('resize', onMobileResize);
+        if (mobileReinitTimer !== null) window.clearTimeout(mobileReinitTimer);
+        mobileCanvas.teardown();
         stage?.removeEventListener('wheel', onWheel);
       stage?.removeEventListener('pointerdown', onCanvasPointerDown);
       stage?.removeEventListener('pointermove', onCanvasPointerMove);
