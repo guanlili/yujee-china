@@ -1,0 +1,13 @@
+{
+  "id": "mag-57",
+  "category": "interior",
+  "spread": true,
+  "images": [
+    { "id": "image1", "orientation": ["portrait"], "quality": ["hero"] }
+  ],
+  "texts": [
+    { "id": "title", "role": "title", "lang": "user", "variableDecor": true, "sample": "When He Comes, I Lose" },
+    { "id": "body", "role": "body", "lang": "user", "sample": "I had rules. I did not answer the first message for four hours, and then I answered the second one in nine seconds." },
+    { "id": "label", "role": "decoration", "lang": "en", "variableDecor": true, "sample": "A RECORD OF LOSING · 2026" }
+  ]
+}
