@@ -1,9 +1,9 @@
 // mag-55 HTML 模板（外观真相源，镜像自 templates/mag-55/index.tsx 的 WebMag55）。
 // #303 第二个真跨页模板（category: interior，3 图 + 2 字）。来源 Figma A4-7 通栏跨页
-// （fileKey 5uKJQlCURRrrCBU1pd1QT6 / node 11:271，1190×842 ×1.3344）。mag-52/53 是这同一张
-// Figma 当年被手工拆成的左右两张假跨页 A4；mag-52 里那段手写矢量 furniture（node 11:331）
-// 在 Figma 里已被替换成可编辑文字节点 28:55 "the slow afternoon" —— 这里按现状还原成真
-// 文字槽（label，role: decoration），不内联那段 HANDWRITING_SVG。
+// （fileKey 5uKJQlCURRrrCBU1pd1QT6 / node 11:271，1190×842 ×1.3344）。mag-52/53（已退役）
+// 曾是这同一张 Figma 当年被手工拆成的左右两张假跨页 A4；mag-52 里那段手写矢量 furniture
+// （node 11:331）在 Figma 里已被替换成可编辑文字节点 28:55 "the slow afternoon" —— 这里按
+// 现状还原成真文字槽（label，role: decoration），不内联那段 HANDWRITING_SVG。
 // 画布 1588×1123（双宽，PAGE.width*2）：中缝落在 x=794，装订会吃掉附近一点；大图
 // （image3）与大标题（title）按 Figma 原坐标故意跨中缝渲染（image3 spans x∈[614,1521]，
 // title spans x∈[491,1237]）——这正是跨页的意义，不回避 x∈[750,840]。

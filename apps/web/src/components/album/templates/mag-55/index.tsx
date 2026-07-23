@@ -5,11 +5,11 @@ import { resolveThemeCarrier } from '../theme-carrier';
 import { contractRole } from '../contract-role';
 
 // mag-55(#303 第二个真跨页模板):来源 Figma A4-7 通栏跨页(fileKey 5uKJQlCURRrrCBU1pd1QT6 /
-// node 11:271,1190×842 ×1.3344)。mag-52/53 是这同一张 Figma 当年被手工拆成的左右两张假跨页
-// A4;mag-52 组件里那段手写矢量 furniture(node 11:331)在 Figma 里已被替换成可编辑文字节点
-// 28:55 "the slow afternoon" —— 这里按现状还原成一个真文字槽(label,role: decoration),不
-// 内联那段 HANDWRITING_SVG。画布 1588×1123(双宽),中缝在 x=794:大图(image3)与大标题
-// (title)按 Figma 原坐标故意跨中缝渲染,这正是跨页的意义。
+// node 11:271,1190×842 ×1.3344)。mag-52/53(已退役)曾是这同一张 Figma 当年被手工拆成的
+// 左右两张假跨页 A4;mag-52 组件里那段手写矢量 furniture(node 11:331)在 Figma 里已被替换成
+// 可编辑文字节点 28:55 "the slow afternoon" —— 这里按现状还原成一个真文字槽(label,role:
+// decoration),不内联那段 HANDWRITING_SVG。画布 1588×1123(双宽),中缝在 x=794:大图
+// (image3)与大标题(title)按 Figma 原坐标故意跨中缝渲染,这正是跨页的意义。
 const BOX = pageBox('mag-55');
 const LABEL_INK = '#111';
 const TITLE_INK = '#262626';
