@@ -64,7 +64,7 @@
   align-items: center;
   justify-content: center;
   gap: 10px; /* 与 MobileEditor 的 GAP 常量一致 */
-  padding: 10px;
+  /* 四周留白由 JS 的 INSET 单点控制(fitBox 前扣掉),这里不再叠加 padding。 */
   background: #e9e5dd;
 }
 

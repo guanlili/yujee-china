@@ -36,6 +36,9 @@ export type MobileEditorProps = {
 
 /** 屏与屏之间、开页与开页之间的缝(px)。 */
 const GAP = 10;
+/** 书页四周露出的垫底背景(px)。书居中浮在背景上,不顶满可视区
+ *  (MOBILE-CANVAS-DESIGN:浏览态书居中,四周露背景)。 */
+const INSET = 24;
 /** iOS 左缘返回手势让位:起手落在这条带里就不抢(MOBILE-CANVAS-DESIGN 手势契约)。 */
 const EDGE_GUARD = 20;
 /** 判定为横滑的最小位移。 */
@@ -51,8 +54,8 @@ export function MobileEditor({ pages, resolve, boardBackground, title, onBack }:
   const folios = useMemo(() => pageFolioNumbers(pages.map((p) => p.templateId)), [pages]);
   const folioSides = useMemo(() => pageFolioSides(pages.map((p) => p.templateId)), [pages]);
   const screen = useMemo(
-    () => browseScreen(spreads, startPage, density),
-    [spreads, startPage, density],
+    () => browseScreen(spreads, pages, startPage, density),
+    [spreads, pages, startPage, density],
   );
 
   // 只量一次板子;每页多大由 fitBox 算出来,不靠 CSS 比例硬凑(会被 max-width 夹破)。
@@ -73,8 +76,11 @@ export function MobileEditor({ pages, resolve, boardBackground, title, onBack }:
     return () => ro.disconnect();
   }, []);
 
+  // 先从可视区四周扣掉一圈 inset,页面在剩余空间里贴合 → 四周始终露背景。
+  const availW = Math.max(0, area.w - INSET * 2);
+  const availH = Math.max(0, area.h - INSET * 2);
   const rows = Math.max(1, screen.spreadIndices.length);
-  const rowH = (area.h - GAP * (rows - 1)) / rows;
+  const rowH = (availH - GAP * (rows - 1)) / rows;
 
   const ctxOf = (pageIdx: number): PageFaceCtx => ({
     folio: folios[pageIdx] ?? null,
@@ -97,7 +103,7 @@ export function MobileEditor({ pages, resolve, boardBackground, title, onBack }:
     const dx = e.clientX - from.x;
     const dy = e.clientY - from.y;
     if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) <= Math.abs(dy)) return; // 不够横 / 更像竖滑
-    setStartPage((cur) => stepScreen(spreads, cur, density, dx < 0 ? 1 : -1));
+    setStartPage((cur) => stepScreen(spreads, pages, cur, density, dx < 0 ? 1 : -1));
   };
 
   return (
@@ -126,7 +132,7 @@ export function MobileEditor({ pages, resolve, boardBackground, title, onBack }:
               : solo
                 ? [sp.left ?? sp.right ?? null]
                 : [sp.left, sp.right];
-          const box = fitBox(area.w, rowH, spreadAspect(halves.length));
+          const box = fitBox(availW, rowH, spreadAspect(halves.length));
           return (
             <div
               className="mspread"

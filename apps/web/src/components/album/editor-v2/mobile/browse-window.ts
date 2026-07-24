@@ -7,24 +7,56 @@
 
    开页表复用桌面同一份 buildSpreads —— 封面开在右手页、封底收在左手页这类规则
    只能有一份实现,移动端另写一套迟早会和桌面漂移。
+
+   分屏规则:密度是【开页】单位(1=单页 / 2=一个开页 / 4=两个开页竖排),但
+   **封面、封底(独页 solo)在任何密度下都单页独占一屏** —— 否则密度 4 会把一个
+   窄独页和一个宽对页塞进同一屏,又小又不齐。分屏一次算清,浏览/翻页/跳页三处共用,
+   自动保持一致。
    ════════════════════════════════════════════════════════════════════════════ */
 
-import { spreadIndexOfPage, type Spread } from '../../spreads';
+import { spreadIndexOfPage, isSoloSpread, type Spread } from '../../spreads';
+import type { EditorPage } from '../../types';
 import type { Density } from '../mobile-canvas';
 
 export type BrowseScreen = {
-  /** 本屏要渲染的开页序号(密度 4 时最多两个;末尾不足则短返回)。 */
+  /** 本屏要渲染的开页序号(密度 4 时最多两个;独页/末尾则更少)。 */
   spreadIndices: number[];
   /** 密度 1 时开页内只留这一页;2/4 为 null(整开页都显示)。 */
   onlyPage: number | null;
 };
+
+function isSolo(spreads: Spread[], pages: EditorPage[], i: number): boolean {
+  return isSoloSpread(spreads[i], pages);
+}
 
 /** 一屏放几个开页:密度 1/2 各一个开页格,4 是两个竖排。 */
 function spreadsPerScreen(density: Density): number {
   return density === 4 ? 2 : 1;
 }
 
-/** 书里最后一页的下标(开页表推得出,不必另传总页数)。空书返回 -1。 */
+/** 把所有开页切成一屏一屏(仅密度 2/4 的开页单位用)。独页永远独占一屏。 */
+function spreadScreens(spreads: Spread[], pages: EditorPage[], density: Density): number[][] {
+  const per = spreadsPerScreen(density);
+  const screens: number[][] = [];
+  let i = 0;
+  while (i < spreads.length) {
+    if (isSolo(spreads, pages, i)) {
+      screens.push([i]); // 封面/封底:单页独占,不与任何开页同屏
+      i += 1;
+      continue;
+    }
+    const group = [i];
+    i += 1;
+    while (group.length < per && i < spreads.length && !isSolo(spreads, pages, i)) {
+      group.push(i);
+      i += 1;
+    }
+    screens.push(group);
+  }
+  return screens;
+}
+
+/** 书里最后一页的下标。空书返回 -1。 */
 function lastPageIndex(spreads: Spread[]): number {
   let max = -1;
   for (const s of spreads) {
@@ -47,49 +79,58 @@ function spreadOf(spreads: Spread[], pageIdx: number): number {
   return si < 0 ? 0 : si;
 }
 
+/** 游标所在的屏(密度 2/4);返回该屏在 screens 里的 index 与内容。 */
+function screenOf(screens: number[][], targetSpread: number): { idx: number; group: number[] } {
+  const idx = screens.findIndex((g) => g.includes(targetSpread));
+  if (idx < 0) return { idx: 0, group: screens[0] ?? [] };
+  return { idx, group: screens[idx] };
+}
+
 export function browseScreen(
   spreads: Spread[],
+  pages: EditorPage[],
   startPageIdx: number,
   density: Density,
 ): BrowseScreen {
   if (spreads.length === 0) return { spreadIndices: [], onlyPage: null };
-  const first = spreadOf(spreads, startPageIdx);
-  const indices: number[] = [];
-  for (let i = first; i < first + spreadsPerScreen(density) && i < spreads.length; i++) {
-    indices.push(i);
+  if (density === 1) {
+    // 密度 1 是单页单位:开页内只留游标那一页。
+    return { spreadIndices: [spreadOf(spreads, startPageIdx)], onlyPage: startPageIdx };
   }
-  return { spreadIndices: indices, onlyPage: density === 1 ? startPageIdx : null };
+  const screens = spreadScreens(spreads, pages, density);
+  const { group } = screenOf(screens, spreadOf(spreads, startPageIdx));
+  return { spreadIndices: group, onlyPage: null };
 }
 
 /** 左右滑/点翻页:从当前屏往 dir 方向翻一屏,返回新的页游标。到头到尾夹住。 */
 export function stepScreen(
   spreads: Spread[],
+  pages: EditorPage[],
   startPageIdx: number,
   density: Density,
   dir: 1 | -1,
 ): number {
   if (spreads.length === 0) return 0;
   if (density === 1) {
-    // 密度 1 是单页单位,逐页走。
     const last = lastPageIndex(spreads);
     return Math.max(0, Math.min(startPageIdx + dir, last));
   }
-  const si = spreadOf(spreads, startPageIdx);
-  const next = Math.max(0, Math.min(si + spreadsPerScreen(density) * dir, spreads.length - 1));
-  return firstPageOfSpread(spreads, next);
+  const screens = spreadScreens(spreads, pages, density);
+  const { idx } = screenOf(screens, spreadOf(spreads, startPageIdx));
+  const nextIdx = Math.max(0, Math.min(idx + dir, screens.length - 1));
+  return firstPageOfSpread(spreads, screens[nextIdx][0]);
 }
 
 /** 跳到某页(位置条/章节 chip)时,把游标对齐到该页所在那一屏的起点。 */
 export function screenStartOfPage(
   spreads: Spread[],
+  pages: EditorPage[],
   pageIdx: number,
   density: Density,
 ): number {
   if (spreads.length === 0) return 0;
   if (density === 1) return pageIdx;
-  const si = spreadOf(spreads, pageIdx);
-  const per = spreadsPerScreen(density);
-  // 密度 4:开页两两成屏,对齐到屏起点,免得同一页因来路不同落在两种画面里。
-  const aligned = Math.floor(si / per) * per;
-  return firstPageOfSpread(spreads, aligned);
+  const screens = spreadScreens(spreads, pages, density);
+  const { group } = screenOf(screens, spreadOf(spreads, pageIdx));
+  return firstPageOfSpread(spreads, group[0]);
 }
