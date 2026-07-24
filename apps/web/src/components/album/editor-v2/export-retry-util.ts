@@ -31,6 +31,36 @@ export class ExportError extends Error {
   }
 }
 
+// 失败归类的**封闭词表**(#307):`render_failed` 这一个 reason 说明不了任何问题
+// (2026-07-24 生产事故:线上导出连挂 3 次,日志里只有 render_failed,无从下手)。
+// §3 隐私仍是硬红线,所以**绝不**把 message 原文或"脱敏后的原文"写进日志 ——
+// 地名/坐标不可预测,正则兜不住。改成把 message 匹配成下面这几个固定 code:
+// 词表封闭 ⇒ 用户数据在结构上就不可能泄漏,同时线上一眼能看出是哪一类失败。
+// 认不出的一律 'other'(绝不回落成原文)。新增类别请只加常量,别改成透传。
+export type ExportFailureCode =
+  | 'canvas_unavailable'
+  | 'image_decode_failed'
+  | 'canvas_too_large'
+  | 'photo_missing'
+  | 'network'
+  | 'other';
+
+const FAILURE_PATTERNS: [RegExp, ExportFailureCode][] = [
+  [/canvas context unavailable/i, 'canvas_unavailable'],
+  [/could not decode stored photo|decode failed|bitmap decode/i, 'image_decode_failed'],
+  [/exceeds the maximum|canvas (area|size)|out of memory|allocation (failed|size)/i, 'canvas_too_large'],
+  [/photo (not found|missing)|no such photo/i, 'photo_missing'],
+  [/network|fetch failed|load failed|ERR_/i, 'network'],
+];
+
+export function classifyExportFailure(err: unknown): ExportFailureCode {
+  const message = err instanceof Error ? err.message : '';
+  for (const [pattern, code] of FAILURE_PATTERNS) {
+    if (pattern.test(message)) return code;
+  }
+  return 'other';
+}
+
 // 把任意错误规整成「只含非敏感字段」的日志负载。刻意只保留枚举/状态码/相册 id/
 // 白名单 reason/次数 —— 永不展开原始对象或 message(避免 base64 / GPS / place 混入,§3)。
 export function buildExportFailureLog(
@@ -43,6 +73,7 @@ export function buildExportFailureLog(
   status?: number;
   attempts: number;
   reason: string;
+  failureCode: ExportFailureCode;
 } {
   const phase: ExportFailurePhase | 'unknown' =
     err instanceof ExportError ? err.phase : 'unknown';
@@ -60,6 +91,7 @@ export function buildExportFailureLog(
     ...(status !== undefined ? { status } : {}),
     attempts: ctx.attempts,
     reason,
+    failureCode: classifyExportFailure(err),
   };
 }
 

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  classifyExportFailure,
   runExportWithRetry,
   buildExportFailureLog,
   ExportError,
@@ -154,5 +155,49 @@ test('不碰积分:retry/日志模块零 creditService 依赖(源码静态自证
     .replace(/^\s*\/\/.*$/gm, ''); // 行注释
   for (const banned of ['creditService', 'creditsService', '.settle(', '.release(', '.cost(', '.charge(']) {
     assert.ok(!code.includes(banned), `导出重试模块不得出现积分调用: ${banned}`);
+  }
+});
+
+// ── 失败日志必须可诊断(#307 生产事故:reason=render_failed 什么也说明不了)──
+// §3 隐私是硬红线:message 里可能混进 base64 / 地名 / 坐标,所以**永不**把自由文本
+// 写进日志。改用**有界白名单**把错误归类成固定 code —— 词表封闭,用户数据不可能泄漏,
+// 但线上一看就知道是哪一类失败。
+
+test('classifyExportFailure: canvas 上下文不可用', () => {
+  assert.equal(
+    classifyExportFailure(new ExportError('render', 'PDF image canvas context unavailable')),
+    'canvas_unavailable',
+  );
+});
+
+test('classifyExportFailure: 照片解码失败', () => {
+  assert.equal(
+    classifyExportFailure(new ExportError('render', 'could not decode stored photo image')),
+    'image_decode_failed',
+  );
+});
+
+test('classifyExportFailure: 画布尺寸/内存超限', () => {
+  assert.equal(
+    classifyExportFailure(new ExportError('render', 'Canvas area exceeds the maximum limit')),
+    'canvas_too_large',
+  );
+});
+
+test('classifyExportFailure: 认不出的错误归 other,绝不回落成原文', () => {
+  const code = classifyExportFailure(new ExportError('render', 'place=Eiffel Tower lat=48.8584'));
+  assert.equal(code, 'other');
+});
+
+test('日志带 failureCode,且词表封闭(不含任何原始 message 片段)', () => {
+  const log = buildExportFailureLog(
+    new ExportError('render', 'could not decode stored photo image at place=Eiffel Tower'),
+    { albumId: 'a1', attempts: 3 },
+  );
+  assert.equal(log.reason, 'render_failed');
+  assert.equal(log.failureCode, 'image_decode_failed');
+  const serialized = JSON.stringify(log);
+  for (const sensitive of ['Eiffel', 'place', '48.8584']) {
+    assert.ok(!serialized.includes(sensitive), `日志不得包含原始片段: ${sensitive}`);
   }
 });
