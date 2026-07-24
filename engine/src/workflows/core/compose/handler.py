@@ -120,10 +120,16 @@ def _writable_text_slots(page: Any) -> list[dict[str, Any]]:
     def _spec(slot: Mapping[str, Any], slot_id: str) -> dict[str, Any]:
         # lang 是槽的硬约束(契约里必填):'user' = 用用户语言写,'en' = 保持英文
         # (日期/编号/标签这类装饰默认 en)。不发的话,标 en 的槽会被 AI 用中文写。
+        #
+        # 标题一律英文(#307):产品决定所有标题/大标题走英文(杂志感),正文与图注
+        # 跟随用户语言。模板 JSON 里 39 个 title 槽有 37 个声明的是 'user',但那些
+        # JSON 是用户手维护的真值源 —— 所以在这里按 role 覆盖,不去批量改模板。
+        role = slot["role"]
+        lang = "en" if role == "title" else slot.get("lang", "user")
         spec: dict[str, Any] = {
             "id": slot_id,
-            "role": slot["role"],
-            "lang": slot.get("lang", "user"),
+            "role": role,
+            "lang": lang,
         }
         sample = slot.get("sample")
         if sample:

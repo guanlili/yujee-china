@@ -646,3 +646,21 @@ def test_slow_chapter_times_out_alone_and_the_rest_still_complete(monkeypatch):
     assert len(completed) == 1
     # 写完的第 0 章在;超时的第 1 章缺席(Web 保留模板 sample)。
     assert completed[0].pagesTexts == {0: {"title": "章 0"}}
+
+
+# ── 标题走英文、正文跟用户语言(#307) ──────────────────────────────────────────
+
+
+def test_title_slots_are_forced_to_english_body_follows_user_language():
+    """标题类槽一律英文,正文/图注跟用户语言。
+
+    模板 JSON 里 39 个 title 槽有 37 个声明 lang="user";产品决定标题统一走英文
+    (杂志感),所以在 payload 构建处按 role 覆盖,而不是去改用户手维护的模板 JSON。
+    """
+    page = {"pageIndex": 0, "templateId": "mag-01", "images": {}}
+    specs = {s["id"]: s for s in compose_handler._writable_text_slots(page)}
+
+    assert specs["title"]["role"] == "title"
+    assert specs["title"]["lang"] == "en", "title 槽必须被强制成 en"
+    # 正文保持模板声明的 user,跟随用户系统语言
+    assert specs["body"]["lang"] == "user", "body 槽必须保持 user"
