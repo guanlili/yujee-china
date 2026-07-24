@@ -664,3 +664,30 @@ def test_title_slots_are_forced_to_english_body_follows_user_language():
     assert specs["title"]["lang"] == "en", "title 槽必须被强制成 en"
     # 正文保持模板声明的 user,跟随用户系统语言
     assert specs["body"]["lang"] == "user", "body 槽必须保持 user"
+
+
+def test_chapter_payload_sent_to_gemini_marks_title_en_body_user(monkeypatch):
+    """端到端:真正发给 Gemini 的请求体里,title 槽 lang=en、body 槽 lang=user。
+
+    只测 _writable_text_slots 不够 —— 要确认覆盖后的 lang 真的进了请求体。
+    用户消息是 parts 列表,第一个 text part 就是载荷 JSON(字符串,需再解一层)。
+    """
+    captured: dict = {}
+
+    async def fake_generate(**kwargs):
+        captured.update(kwargs)
+        return _gemini_response('{"pages":[]}')
+
+    _run(monkeypatch, fake_generate)
+
+    user_msg = next(m for m in captured["messages"] if m["role"] == "user")
+    payload = json.loads(user_msg["content"][0]["text"])
+    specs = {
+        spec["id"]: spec
+        for page in payload["pages"]
+        for spec in page["textSlots"]
+    }
+    assert specs["title"]["lang"] == "en", f"title 应为 en,实际 {specs['title']}"
+    assert specs["body"]["lang"] == "user", f"body 应为 user,实际 {specs['body']}"
+    # decoration 保持模板声明(mag-01 的 label 本就是 en),不被标题规则波及
+    assert specs["label"]["role"] == "decoration"
