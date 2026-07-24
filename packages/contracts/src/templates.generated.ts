@@ -44,8 +44,12 @@ export const TEMPLATE_IDS = [
   "mag-48",
   "mag-49",
   "mag-51",
-  "mag-52",
-  "mag-53",
+  "mag-54",
+  "mag-55",
+  "mag-56",
+  "mag-57",
+  "mag-58",
+  "mag-59",
   "p01"
 ] as const;
 
@@ -1496,9 +1500,35 @@ export const TEMPLATES: Record<string, TemplateDef> = {
       }
     ]
   },
-  "mag-52": {
-    "id": "mag-52",
+  "mag-54": {
+    "id": "mag-54",
     "category": "interior",
+    "spread": true,
+    "images": [
+      {
+        "id": "image1",
+        "orientation": [
+          "landscape"
+        ],
+        "quality": [
+          "hero"
+        ]
+      }
+    ],
+    "texts": [
+      {
+        "id": "title",
+        "role": "title",
+        "lang": "user",
+        "variableDecor": true,
+        "sample": "那一天"
+      }
+    ]
+  },
+  "mag-55": {
+    "id": "mag-55",
+    "category": "interior",
+    "spread": true,
     "images": [
       {
         "id": "image1"
@@ -1507,25 +1537,66 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "id": "image2"
       },
       {
-        "id": "image3"
+        "id": "image3",
+        "orientation": [
+          "portrait"
+        ],
+        "quality": [
+          "hero"
+        ]
       }
     ],
     "texts": [
+      {
+        "id": "label",
+        "role": "decoration",
+        "lang": "user",
+        "variableDecor": true,
+        "sample": "the slow afternoon"
+      },
       {
         "id": "title",
         "role": "title",
         "lang": "user",
         "variableDecor": true,
-        "sample": "No"
+        "sample": "Notes from Elsewhere"
       }
     ]
   },
-  "mag-53": {
-    "id": "mag-53",
+  "mag-56": {
+    "id": "mag-56",
     "category": "interior",
+    "spread": true,
     "images": [
       {
-        "id": "image"
+        "id": "image1",
+        "quality": [
+          "hero"
+        ]
+      }
+    ],
+    "texts": [
+      {
+        "id": "body",
+        "role": "body",
+        "lang": "user",
+        "sample": "And then we went home, a little different. The photos are here. The rest stays with me. Until the next somewhere."
+      }
+    ]
+  },
+  "mag-57": {
+    "id": "mag-57",
+    "category": "interior",
+    "spread": true,
+    "images": [
+      {
+        "id": "image1",
+        "orientation": [
+          "portrait"
+        ],
+        "quality": [
+          "hero"
+        ]
       }
     ],
     "texts": [
@@ -1534,7 +1605,132 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "title",
         "lang": "user",
         "variableDecor": true,
-        "sample": "Elsewhere"
+        "sample": "When He Comes, I Lose"
+      },
+      {
+        "id": "body",
+        "role": "body",
+        "lang": "user",
+        "sample": "I had rules. I did not answer the first message for four hours, and then I answered the second one in nine seconds."
+      }
+    ]
+  },
+  "mag-58": {
+    "id": "mag-58",
+    "category": "interior",
+    "spread": true,
+    "images": [
+      {
+        "id": "image1",
+        "orientation": [
+          "portrait"
+        ],
+        "quality": [
+          "hero"
+        ]
+      },
+      {
+        "id": "image2",
+        "quality": [
+          "detail"
+        ]
+      }
+    ],
+    "texts": [
+      {
+        "id": "title",
+        "role": "title",
+        "lang": "user",
+        "variableDecor": true,
+        "sample": "No Sentence Stopped Explaining"
+      },
+      {
+        "id": "body",
+        "role": "body",
+        "lang": "user",
+        "sample": "At twenty-eight I stopped explaining my job to them. Not out of anger. I just ran out of ways to say it."
+      }
+    ]
+  },
+  "mag-59": {
+    "id": "mag-59",
+    "category": "interior",
+    "spread": true,
+    "images": [
+      {
+        "id": "image1",
+        "quality": [
+          "hero"
+        ]
+      },
+      {
+        "id": "image2",
+        "quality": [
+          "detail"
+        ]
+      },
+      {
+        "id": "image3",
+        "quality": [
+          "detail"
+        ]
+      },
+      {
+        "id": "image4",
+        "quality": [
+          "detail"
+        ]
+      }
+    ],
+    "texts": [
+      {
+        "id": "title",
+        "role": "title",
+        "lang": "user",
+        "variableDecor": true,
+        "sample": "PASSION"
+      },
+      {
+        "id": "caption",
+        "role": "body",
+        "lang": "user",
+        "sample": "Six in the morning. She is already the second one in. The same swimsuit for nine years. She will not discuss it."
+      },
+      {
+        "id": "name1",
+        "role": "explain",
+        "lang": "user",
+        "sample": "Yvaine"
+      },
+      {
+        "id": "role1",
+        "role": "explain",
+        "lang": "user",
+        "sample": "photographer tourist"
+      },
+      {
+        "id": "name2",
+        "role": "explain",
+        "lang": "user",
+        "sample": "Steven D.K"
+      },
+      {
+        "id": "role2",
+        "role": "explain",
+        "lang": "user",
+        "sample": "Father Bad Cook"
+      },
+      {
+        "id": "name3",
+        "role": "explain",
+        "lang": "user",
+        "sample": "July Zh"
+      },
+      {
+        "id": "role3",
+        "role": "explain",
+        "lang": "user",
+        "sample": "Editor Swimmer Six in the Morning"
       }
     ]
   },

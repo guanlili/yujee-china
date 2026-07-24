@@ -73,14 +73,37 @@ test('a solo spread renders a single centered page at half width, no spine, one 
   );
 });
 
-test('page-turn into/out of a solo edge skips the cross-width leaf flip (direct switch)', () => {
+test('page-turn into/out of a solo OR full edge skips the cross-width leaf flip (direct switch)', () => {
   const tsx = source('FlipBook.tsx');
   // goToSpread short-circuits to a direct setSpread when either end is solo, so a
   // half-width leaf is never flown across a width change (no tear / blank flash).
+  // #303 收紧(不是放松):双宽跨页也必须走这条直切路径 —— 它是一整张连续的双宽面,
+  // 没有可以当叶子转的右半页。
+  //
+  // review 加固(repeat-offense fix): a prior version pinned this via
+  // `cond.includes(term)` substring checks across five terms — substring
+  // containment says nothing about the operator JOINING those terms, so
+  // `reducedMotion || soloOf(spread) && soloOf(to) || ...` (an `&&` slipped in,
+  // which binds tighter than `||` and silently skips the leaf-flip guard for a
+  // solo-source/paired-target move) would still pass. The OR logic now lives in
+  // shouldDirectSwitch — a real, exported, unit-tested pure predicate (see
+  // spreads.test.ts, which drives actual boolean inputs through it and cannot be
+  // fooled by operator precedence at all). This test only pins the WIRING: each
+  // of the five reasons must be its own positional argument, not folded into a
+  // combined boolean expression before being handed to shouldDirectSwitch.
   assert.match(
     tsx,
-    /if\s*\(reducedMotion\s*\|\|\s*soloOf\(spread\)\s*\|\|\s*soloOf\(to\)\)\s*\{[\s\S]*?setSpread\(to\)/,
-    'goToSpread must jump directly (no leaf anim) when the current or target spread is solo',
+    /import\s*\{[^}]*\bshouldDirectSwitch\b[^}]*\}\s*from\s*'\.\/spreads'/,
+    'FlipBook must import shouldDirectSwitch from ./spreads (the shared, unit-tested direct-switch predicate)',
+  );
+  const guard =
+    /\n\s*if \(\s*\n\s*shouldDirectSwitch\(([\s\S]*?)\)\s*\n\s*\) \{\n\s*setSpread\(to\);\n\s*return;\n/.exec(tsx);
+  assert.ok(guard, 'expected goToSpread to short-circuit via shouldDirectSwitch(...) with a direct setSpread(to)');
+  const args = guard![1]!.split(',').map((s) => s.trim());
+  assert.deepEqual(
+    args,
+    ['reducedMotion', 'soloOf(spread)', 'soloOf(to)', 'fullIndexOf(spread) >= 0', 'fullIndexOf(to) >= 0'],
+    `each reason must be its own positional argument to shouldDirectSwitch (never combined with && or ||) — args were: ${guard![1]}`,
   );
 });
 

@@ -155,6 +155,8 @@ def build_pages(req: SelectLayoutRequest) -> tuple[list[dict[str, Any]], V3Usage
     units = _layout_units(req.chapters, settings.select_layout_max_images_per_batch)
 
     interior_pages: list[dict[str, Any]] = []
+    # 整本书迄今用过的模板:够拍就不重复(#303)。跨章累加,让整册版式尽量不撞。
+    book_used: set[str] = set()
     for unit in units:
         chapter_id = str(getattr(unit, "chapterId", None) or _value(unit, "chapterId"))
         photos = _chapter_photos(unit)
@@ -163,12 +165,16 @@ def build_pages(req: SelectLayoutRequest) -> tuple[list[dict[str, Any]], V3Usage
         first_pid = _value(photos[0], "photoId") if photos else ""
         unit_seed = f"{req.requestId}#{chapter_id}#{first_pid}"
         # count=1:确定性选版,不再生成多候选交评委挑。
-        cands = candidate_gen_v3.generate_candidates(photos, seed=unit_seed, count=1)
+        # book_used:整册去重起点,该图槽数下还有没用过的模板时就不再选重复的。
+        cands = candidate_gen_v3.generate_candidates(
+            photos, seed=unit_seed, count=1, used_templates=book_used
+        )
         if not cands:
             # 不变式:每张照片必须恰好出现在一页的一个图槽里。这里静默 continue 会
             # 一声不响吞掉整个 unit 的照片(用户表现为「照片凭空消失」),所以显式炸掉,
             # 由 run_with_timeout 转成 AGENT_OUTPUT_VALIDATION 失败回调。
             raise RuntimeError(f"候选生成器对非空 unit 返回空:chapterId={chapter_id}")
+        book_used.update(p["templateId"] for p in cands[0])
         interior_pages.extend(
             legalize.finalize_candidate_pages({"chapterId": chapter_id}, cands[0])
         )

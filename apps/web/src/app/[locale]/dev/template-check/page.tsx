@@ -18,6 +18,7 @@ import {
 import { type AdaptablePage, type ResolveImage } from '@/components/album/adapt-layout';
 import { renderPageHtml } from '@/components/album/templates/html/fill-template';
 import { PAGE } from '@/components/album/templates/constants';
+import { pageBox } from '@yujee/contracts/render/page-box';
 import { fitTextBoxes } from '@/components/album/page-html-dom';
 
 // 图槽一律灰色占位（不用带颜色的照片），只看版式几何。
@@ -671,6 +672,9 @@ export default function TemplateWallPage() {
               {sectionPages.map((page) => {
                 const html = renderPageHtml(page, resolveImage);
                 const currentCategory = (TEMPLATES[page.templateId]?.category ?? 'interior') as Category;
+                // #303 跨页模板的画布是双宽(1588×1123):卡片必须按 pageBox() 开盒,
+                // 否则右半被裁掉 —— 这里正是人工验收看版面的地方。
+                const box = pageBox(page.templateId);
                 return (
                   <figure key={page.templateId} style={{ margin: 0 }}>
                     <figcaption
@@ -711,8 +715,8 @@ export default function TemplateWallPage() {
                     <div
                       data-tpl={page.templateId}
                       style={{
-                        width: PAGE.width * cardScale,
-                        height: PAGE.height * cardScale,
+                        width: box.width * cardScale,
+                        height: box.height * cardScale,
                         overflow: 'hidden',
                         background: '#fff',
                         boxShadow: '0 2px 12px rgba(0,0,0,.1)',
@@ -720,7 +724,7 @@ export default function TemplateWallPage() {
                     >
                       {html ? (
                         <div
-                          style={{ transform: `scale(${cardScale})`, transformOrigin: 'top left', width: PAGE.width, height: PAGE.height }}
+                          style={{ transform: `scale(${cardScale})`, transformOrigin: 'top left', width: box.width, height: box.height }}
                           dangerouslySetInnerHTML={{ __html: html }}
                         />
                       ) : (

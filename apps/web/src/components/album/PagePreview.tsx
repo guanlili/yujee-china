@@ -1,7 +1,7 @@
 'use client';
 
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
-import { PAGE } from './templates/constants';
+import { pageBox } from './templates/constants';
 import { preferredPageHtml } from './page-html-dom';
 import { FittedPageHtml } from './FittedPageHtml';
 import type { EditorPage } from './types';
@@ -30,12 +30,14 @@ export function PagePreview({ page, totalPages, resolveImage, scale = 0.46 }: Pr
         )
       : null;
 
+  const box = pageBox(page.templateId);
+
   return (
     <div
       data-album-fonts-ready={fontsReady}
       style={{
-        width: PAGE.width * scale,
-        height: PAGE.height * scale,
+        width: box.width * scale,
+        height: box.height * scale,
         overflow: 'hidden',
         background: '#fff',
         boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
@@ -45,8 +47,8 @@ export function PagePreview({ page, totalPages, resolveImage, scale = 0.46 }: Pr
         style={{
           transform: `scale(${scale})`,
           transformOrigin: 'top left',
-          width: PAGE.width,
-          height: PAGE.height,
+          width: box.width,
+          height: box.height,
         }}
       >
         {html !== undefined ? (

@@ -1,21 +1,25 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { COLORS, PAGE, WEB_FONTS } from './constants';
+import { COLORS, PAGE, WEB_FONTS, pageBox } from './constants';
 
 interface WebPageProps {
   children: ReactNode;
   dark?: boolean;
   fontFamily?: string;
   className?: string;
+  // 跨页(#303):传入则按该模板的画布尺寸开盒(spread 模板双宽)。
+  // 不传 = A4,与改动前逐像素一致 —— 现有模板一律不传。
+  templateId?: string;
 }
 
-export function WebPage({ children, dark, fontFamily, className }: WebPageProps) {
+export function WebPage({ children, dark, fontFamily, className, templateId }: WebPageProps) {
+  const box = templateId ? pageBox(templateId) : { width: PAGE.width, height: PAGE.height };
   return (
     <div
       className={className}
       style={{
         position: 'relative',
-        width: PAGE.width,
-        height: PAGE.height,
+        width: box.width,
+        height: box.height,
         background: dark ? COLORS.ink : '#FFFFFF',
         color: dark ? COLORS.paper : COLORS.ink,
         overflow: 'hidden',

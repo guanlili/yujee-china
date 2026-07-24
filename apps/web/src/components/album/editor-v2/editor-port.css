@@ -173,6 +173,12 @@
    interior odd-trailing blank half (which never gets .book-single) keeps its space. */
 .editor-port .book.book-single .page.page-empty{ display:none; }
 
+/* 跨页(#303):双宽模板占满整个跨页。paintSpread 把它画进左 cell 并让右 cell 变
+   page-empty —— 这里让空的那半退场,左 cell 的 flex:1 自动撑满全宽(与 book-single
+   同一手法)。中缝线(.book::before)必须隐藏:版面本来就是连续的一张,中间不该有分隔。 */
+.editor-port .book.book-full .page.page-empty{ display:none; }
+.editor-port .book.book-full::before{ display:none; }
+
 /* ─── COLLECT BOARD (排版前收集态) ───
    authoring 且 pages 为空时,画板不画版式书,改显示当前采访章的照片平铺网格。
    .collect-on 挂在 editor-port 根上(bodyEl):隐藏版式书 chrome(#book / 缩略图条 /
@@ -387,6 +393,10 @@
    surface + spine so its empty half reads as empty space. */
 .editor-port .ov-book.ov-solo{ background:transparent; box-shadow:none; }
 .editor-port .ov-book.ov-solo::before{ display:none; }
+/* #303 双宽页占满整格:右 cell 退场(左 cell flex:1 自动撑满)、中缝线隐藏 ——
+   与书籍视图的 .book-full 同一套 collapse。 */
+.editor-port .ov-book.ov-full .ov-page.ov-empty{ display:none; }
+.editor-port .ov-book.ov-full::before{ display:none; }
 /* WP4.2 / §4.4: the blank half of a solo cover/ending overview spread (or any
    skipped page) must read as truly empty — drop the .ov-left/.ov-right content
    padding so the empty cell carries no inset surface, matching the empty .page /

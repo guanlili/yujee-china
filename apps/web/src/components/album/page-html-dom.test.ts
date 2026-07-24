@@ -1,24 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyFolioOverlay, pageFolioNumbers, pageFolioSides, patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle, resolveDisplayHtml } from './page-html-dom';
+import { applyFolioOverlay, patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle, resolveDisplayHtml } from './page-html-dom';
 
-test('pageFolioNumbers:内页从 1 连续编号,封面/封尾/目录为 null', () => {
-  // p01=cover, mag-05/mag-06=interior, mag-02=toc, mag-20=ending
-  assert.deepEqual(pageFolioNumbers(['p01', 'mag-05', 'mag-02', 'mag-06', 'mag-20']), [null, 1, null, 2, null]);
-});
-
-test('pageFolioSides:左页贴左下、右页贴右下(与物理半页一致)', () => {
-  // cover 是右单页;之后 mag-05 落左页(左下)、mag-06 落右页(右下)、ending 左单页。
-  assert.deepEqual(pageFolioSides(['p01', 'mag-05', 'mag-06', 'mag-20']), ['right', 'left', 'right', 'left']);
-});
-
-test('pageFolioSides:目录页整体错位一位 → 侧别按真实版面而非页码奇偶', () => {
-  // 多一张 toc 后,页码 1 的 mag-05 从左页变右页(贴右下),证明不能只看奇偶。
-  assert.deepEqual(
-    pageFolioSides(['p01', 'mag-02', 'mag-05', 'mag-06', 'mag-20']),
-    ['right', 'left', 'right', 'left', 'left'],
-  );
-});
+// pageFolioNumbers/pageFolioSides 的覆盖(内页编号、左右贴边、目录错位)已随 #303
+// 合并进 pageFolioInfos,搬去 page-folio.test.ts;这里只留 applyFolioOverlay 本身
+// 的回归(单页签名 = PageFolio 的 number 分支,字节级不变)。
 
 test('applyFolioOverlay:右页(side=right)页码贴右下角', () => {
   const html = `<div data-template="mag-06"><h1 data-text-key="title">T</h1></div>`;

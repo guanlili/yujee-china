@@ -427,6 +427,8 @@ class TemplateDef(_V3Strict):
     # 分类(§9):唯一分类字段,必填。
     category: TemplateCategory
     pairing: TemplatePairing | None = None
+    # 跨页(#303):画布双宽,独占一整个 spread。mirrors TS TemplateDef.spread。
+    spread: bool = None
     styles: list[str] = None
     images: list[TemplateImageSlot]
     # V3:装饰矢量图槽(可选,§9)。
@@ -446,6 +448,10 @@ class TemplateDef(_V3Strict):
         # pairing 只在 interior 有意义(mirrors TS superRefine)。
         if self.pairing is not None and self.category != "interior":
             raise ValueError("pairing is only valid on interior templates")
+        if self.spread and self.category != "interior":
+            raise ValueError("spread is only valid on interior templates")
+        if self.spread and self.pairing is not None:
+            raise ValueError("spread and pairing are mutually exclusive")
 
 
 # ---------- v3.ts: shared -----------------------------------------------------
