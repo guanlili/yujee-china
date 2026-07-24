@@ -1,9 +1,13 @@
 /* ════════════════════════════════════════════════════════════════════════════
    移动端编辑器样式。
 
-   注意这里**一个媒体查询都没有** —— 这棵树只在手机上挂(见 use-device-mode),
-   桌面永远走 EditorPort。旧实现要靠 27 个 @media(max-width:767px) 把一套 DOM
-   掰成两种形态,那正是要拆掉的东西。
+   两条硬规矩:
+   1. **配色/圆角/阴影/字体/动效一律走 editor-tokens 的变量**,不在这里发明第二套
+      视觉语言 —— 移动端改的是布局与交互,不是产品长相。
+      (删除色 #c44 取自桌面 .eb-btn.danger,同理不自创。)
+   2. **一个媒体查询都没有** —— 这棵树只在手机上挂(见 use-device-mode),桌面永远
+      走 EditorPort。旧实现要靠 27 个 @media(max-width:767px) 把一套 DOM 掰成两种
+      形态,那正是要拆掉的东西。
    ════════════════════════════════════════════════════════════════════════════ */
 
 .mobile-editor {
@@ -11,52 +15,72 @@
   inset: 0;
   display: flex;
   flex-direction: column;
-  background: #f5f3ef;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
-  /* 画布不滚不缩:手机上「滚动的画布」和「滚动的页面内容」永远抢手指。 */
+  /* 书不做自由缩放,画布也不滚:手机上「滚动的画布」和「滚动的页面内容」永远抢手指。 */
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
 }
 
-/* ── 顶栏 ───────────────────────────────────────────────────────────────── */
+.mobile-editor * {
+  box-sizing: border-box;
+}
+
+.mobile-editor button {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* ── 顶栏:返回 / 标题 / 分享 · 导出 · 更多 ──────────────────────────────── */
 .mobile-editor .mtopbar {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 4px;
   height: 52px;
-  padding: 0 8px;
+  padding: 0 4px;
   padding-top: env(safe-area-inset-top);
   box-sizing: content-box;
-  background: #fff;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-soft);
 }
 
-.mobile-editor .mtopbar-back {
-  /* HIG/Material 的最小触点:44pt / 48dp。 */
+.mobile-editor .mtb-btn {
+  /* HIG 44pt / Material 48dp 最小触点 */
+  flex: none;
   width: 44px;
   height: 44px;
-  font-size: 26px;
-  line-height: 1;
+  display: grid;
+  place-items: center;
   border: 0;
   background: none;
-  color: #1c1b19;
+}
+
+.mobile-editor .mtb-ic {
+  width: 21px;
+  height: 21px;
 }
 
 .mobile-editor .mtopbar-title {
   flex: 1;
   min-width: 0;
-  font-size: 15px;
-  font-weight: 600;
-  color: #1c1b19;
+  padding: 0 4px;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* ── 画板 ───────────────────────────────────────────────────────────────── */
+/* ── 画板:书居中浮在垫底背景上 ─────────────────────────────────────────── */
 .mobile-editor .mboard {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -64,20 +88,20 @@
   align-items: center;
   justify-content: center;
   gap: 10px; /* 与 MobileEditor 的 GAP 常量一致 */
-  /* 四周留白由 JS 的 INSET 单点控制(fitBox 前扣掉),这里不再叠加 padding。 */
-  background: #e9e5dd;
+  /* 四周留白由 JS 的 INSET 单点控制(fitBox 前扣掉),这里不叠加 padding。 */
+  background: var(--bg);
 }
 
 .mobile-editor .mspread {
   display: flex;
   flex: none; /* 尺寸由 JS 的 fitBox 算好写在 style 上,不让 flex 再拉伸 */
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+  box-shadow: var(--shadow-card-hover);
 }
 
 .mobile-editor .mpage {
   height: 100%;
   overflow: hidden;
-  background: #fff;
+  background: var(--surface);
 }
 
 .mobile-editor .mpage-face {
@@ -85,33 +109,159 @@
   height: 100%;
 }
 
-/* ── 底部 dock(位置条 + 密度) ──────────────────────────────────────────── */
-.mobile-editor .mdock {
-  flex: none;
+/* ── 画板左下角:画板背景 / 一屏几页(「这屏怎么看」,不进导航栏) ─────────── */
+.mobile-editor .mfab-col {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 52px;
-  padding: 0 12px;
-  padding-bottom: env(safe-area-inset-bottom);
-  box-sizing: content-box;
-  background: #fff;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  flex-direction: column;
+  gap: 10px;
 }
 
-.mobile-editor .mdens {
+.mobile-editor .mfab {
   width: 44px;
   height: 44px;
-  border-radius: 12px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  background: #fff;
-  font-size: 15px;
-  font-weight: 600;
-  color: #1c1b19;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  transition: transform var(--motion-fast) var(--ease);
 }
 
-.mobile-editor .mfolio {
-  font-size: 13px;
-  letter-spacing: 0.06em;
-  color: #6b6659;
+.mobile-editor .mfab:active {
+  transform: scale(0.94);
+}
+
+.mobile-editor .mfab-ic {
+  width: 20px;
+  height: 20px;
+}
+
+.mobile-editor .mfab-num {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* ── AI 气泡:品牌渐变(同桌面 .brand-mark 的 logo 渐变),不是通用聊天气泡 ── */
+.mobile-editor .mai {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--surface);
+  background: radial-gradient(
+    circle at 30% 30%,
+    var(--grad-green),
+    var(--grad-purple) 50%,
+    var(--grad-lime) 80%
+  );
+  box-shadow: var(--shadow-card-hover);
+  transition: transform var(--motion-fast) var(--ease);
+}
+
+.mobile-editor .mai:active {
+  transform: scale(0.94);
+}
+
+.mobile-editor .mai-ic {
+  width: 24px;
+  height: 24px;
+}
+
+/* ── 书册预览栏(浏览态底部):整本书一条横排,当前页描框 ──────────────────── */
+.mobile-editor .mstrip {
+  flex: none;
+  padding: 10px 12px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--border-soft);
+}
+
+.mobile-editor .mstrip-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* 预览栏自己可以横向拖 —— 它不是画布 */
+  touch-action: pan-x;
+  scrollbar-width: none;
+}
+
+.mobile-editor .mstrip-track::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-editor .mstrip-cell {
+  /* 尺寸与 MobileStrip 的 STRIP_CELL_W/H 常量一致(794:1123) */
+  flex: none;
+  width: 40px;
+  height: 57px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  transition: transform var(--motion-fast) var(--ease);
+}
+
+/* 真实版面塞进格子:内容由 page-face 渲成缩略档,这里只负责裁切 */
+.mobile-editor .mstrip-face {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.mobile-editor .mstrip-cell[data-current='1'] {
+  border: 2px solid var(--fg);
+  transform: scale(1.1);
+}
+
+/* ── 编辑态一级栏:背景 · 图片 · 文字 · 删除 ─────────────────────────────── */
+.mobile-editor .ml1 {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  height: 60px;
+  padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: content-box;
+  background: var(--surface);
+  border-top: 1px solid var(--border-soft);
+}
+
+.mobile-editor .ml1-cell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.mobile-editor .ml1-cell:active {
+  background: var(--border-soft);
+}
+
+.mobile-editor .ml1-ic {
+  width: 22px;
+  height: 22px;
+}
+
+/* 删除:取桌面 .eb-btn.danger 的同一支红,不自创 */
+.mobile-editor .ml1-cell[data-danger='1'] {
+  color: #c44;
 }

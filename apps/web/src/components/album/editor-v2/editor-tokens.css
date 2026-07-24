@@ -1,0 +1,36 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   editor-tokens —— 编辑器的设计 token,桌面树与移动树共用同一份。
+
+   两棵 UI 树不共用任何 DOM,但**必须共用同一套设计系统**:配色、圆角、阴影、字体、
+   动效曲线只能有一个真值源,否则移动端迟早长成另一个产品。
+
+   值逐字取自 editor-port.css 的 .editor-port token 段(那边保持原样不动,零风险)。
+   两处值一旦漂移,editor-tokens.test.ts 会红。
+   ════════════════════════════════════════════════════════════════════════════ */
+
+.editor-port,
+.mobile-editor {
+  --bg: #f5f5f5;
+  --surface: #ffffff;
+  --fg: #111111;
+  --fg-2: #333333;
+  --muted: #888888;
+  --meta: #aaaaaa;
+  --border: #e0e0e0;
+  --border-soft: #ebebeb;
+  --accent: #13B8A6;
+  --grad-green: #13B8A6;
+  --grad-purple: #8C5EF4;
+  --grad-lime: #DAF45E;
+  --font-display: 'Bricolage Grotesque', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', Menlo, monospace;
+  --motion-fast: 180ms;
+  --motion-base: 300ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --shadow-card-hover: 0 2px 6px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, .04), 0 4px 16px rgba(0, 0, 0, .06);
+  --radius-pill: 9999px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+}

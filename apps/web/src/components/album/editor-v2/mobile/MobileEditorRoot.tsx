@@ -10,7 +10,7 @@
    本地没有时回落服务器压缩快照(photo-snapshot §5.3)。
    ════════════════════════════════════════════════════════════════════════════ */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { photoStore } from '@/lib/photo/store';
@@ -20,12 +20,25 @@ import { collectPhotoIds, type ResolveImage } from '../../adapt-layout';
 import { extractPhotoIds, type AlbumDetail } from '../../types';
 import { MobileEditor } from './MobileEditor';
 // 样式在容器里引:展示层保持无副作用 import,才能在 node 测试里直接渲染断言。
+// token 与桌面共用同一份(共享设计系统,不共享 DOM)。
+import '../editor-tokens.css';
 import './mobile-editor.css';
 
-export function MobileEditorRoot({ detail, locale }: { detail: AlbumDetail; locale: Locale }) {
+export function MobileEditorRoot({
+  detail,
+  locale,
+  onBack,
+}: {
+  detail: AlbumDetail;
+  locale: Locale;
+  /** 顶栏返回。默认回「我的相册」;dev 预览页覆盖它,免得一点就被踢出预览。 */
+  onBack?: () => void;
+}) {
   const router = useRouter();
   const pages = detail.pages;
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  // 缩略档单独取:书册预览栏一条几十页,用主画布的 display 档会拖垮解码与滚动。
+  const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
   const [uploadBgUrl, setUploadBgUrl] = useState<string | null>(null);
 
   const photoIds = useMemo(
@@ -44,6 +57,9 @@ export function MobileEditorRoot({ detail, locale }: { detail: AlbumDetail; loca
     let cancelled = false;
     void photoStore.getTierUrls(photoIds, 'display').then((urls) => {
       if (!cancelled) setImageUrls(urls);
+    });
+    void photoStore.getTierUrls(photoIds, 'thumb').then((urls) => {
+      if (!cancelled) setThumbUrls(urls);
     });
     return () => {
       cancelled = true;
@@ -73,8 +89,19 @@ export function MobileEditorRoot({ detail, locale }: { detail: AlbumDetail; loca
     };
   }, [boardBg]);
 
-  const snapshotUrls = detail.album.photoSnapshotUrls ?? {};
-  const resolve: ResolveImage = (id) => imageUrls[id] ?? snapshotUrls[id];
+  const snapshotUrls = useMemo(
+    () => detail.album.photoSnapshotUrls ?? {},
+    [detail.album.photoSnapshotUrls],
+  );
+  // 两档都要稳定引用:缩略条按 ctx 引用做 memo,每帧新函数会让整条重渲。
+  const resolve: ResolveImage = useCallback(
+    (id) => imageUrls[id] ?? snapshotUrls[id],
+    [imageUrls, snapshotUrls],
+  );
+  const resolveThumb: ResolveImage = useCallback(
+    (id) => thumbUrls[id] ?? imageUrls[id] ?? snapshotUrls[id],
+    [thumbUrls, imageUrls, snapshotUrls],
+  );
 
   const boardBackground =
     boardBg == null
@@ -91,9 +118,10 @@ export function MobileEditorRoot({ detail, locale }: { detail: AlbumDetail; loca
     <MobileEditor
       pages={pages}
       resolve={resolve}
+      resolveThumb={resolveThumb}
       boardBackground={boardBackground}
       title={detail.album.title}
-      onBack={() => router.push(`/${locale}/my-albums`)}
+      onBack={onBack ?? (() => router.push(`/${locale}/my-albums`))}
     />
   );
 }

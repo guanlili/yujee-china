@@ -32,23 +32,52 @@ function render(pages = BOOK) {
   );
 }
 
-test('首帧就有完整骨架:顶栏 / 画板 / dock,默认密度 2(对页)', () => {
+test('首帧就有完整骨架:顶栏 / 画板 / 书册预览栏,默认密度 2(对页)', () => {
   const html = render();
-  assert.match(html, /class="mobile-editor" data-density="2"/);
+  assert.match(html, /data-mode="browse" data-density="2"/);
   assert.match(html, /class="mtopbar"/);
   assert.match(html, /class="mboard"/);
-  assert.match(html, /class="mdock"/);
+  assert.match(html, /class="mstrip"/);
   assert.match(html, /厦门三日游/);
 });
 
-test('位置条显示「当前页 / 总页数」', () => {
-  assert.match(render(), /1 \/ 8/);
+test('顶栏:返回 + 分享 · 导出 · 更多(头像与画布控件都不进导航栏)', () => {
+  const html = render();
+  assert.match(html, /aria-label="返回"/);
+  assert.match(html, /aria-label="分享"/);
+  assert.match(html, /aria-label="导出"/);
+  assert.match(html, /aria-label="更多"/);
 });
 
-test('空书不炸:不渲染任何开页,页码留空', () => {
+test('按设计稿去掉位置条那一行(章节 chips + 页码)', () => {
+  const html = render();
+  assert.doesNotMatch(html, /1 \/ 8/, '页码行已删');
+  assert.doesNotMatch(html, /class="mfolio"/, '位置条已删');
+});
+
+test('画布控件落在画板左下角:画板背景 + 一屏几页', () => {
+  const html = render();
+  assert.match(html, /aria-label="画板背景"/);
+  assert.match(html, /aria-label="一屏几页"/);
+  assert.match(html, /class="mfab-num">2</, '密度钮显示当前档位');
+});
+
+test('AI 气泡在画板右下角(两态同一位置)', () => {
+  assert.match(render(), /class="mai"/);
+});
+
+test('书册预览栏:整本书每页一格,当前页描框', () => {
+  const html = render();
+  const cells = html.match(/class="mstrip-cell"/g) ?? [];
+  assert.equal(cells.length, BOOK.length, '每页一格');
+  assert.match(html, /data-current="1"/, '当前页描框');
+  assert.match(html, /data-slot="cover"/, '封面在条上可辨');
+});
+
+test('空书不炸:不渲染任何开页,预览栏为空', () => {
   const html = render([]);
   assert.doesNotMatch(html, /class="mspread"/);
-  assert.match(html, /class="mfolio"><\/span>/);
+  assert.doesNotMatch(html, /class="mstrip-cell"/);
 });
 
 test('默认密度 2 渲染一个开页;封面是独页(只有一页,没有对开的空白半边)', () => {
@@ -64,7 +93,11 @@ test('默认密度 2 渲染一个开页;封面是独页(只有一页,没有对�
 /* ── 架构守卫:这两条是本次重构的存在理由,破了就等于回到老路 ────────────────── */
 
 test('架构守卫:移动端这棵树不碰任何桌面 DOM(无 document/querySelector/innerHTML 拼装)', () => {
-  const src = source('MobileEditor.tsx');
+  const src =
+    source('MobileEditor.tsx') +
+    source('MobileTopbar.tsx') +
+    source('MobileStrip.tsx') +
+    source('icons.tsx');
   assert.doesNotMatch(src, /\bdocument\./, '不许直接摸 document —— 节点归 React 所有');
   assert.doesNotMatch(src, /querySelector/, '不许去桌面树上找节点');
   assert.doesNotMatch(src, /createElement\(['"]/, '不许手搓 DOM 贴到别人的树上');
