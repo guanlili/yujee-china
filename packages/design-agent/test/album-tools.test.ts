@@ -287,3 +287,30 @@ test("pageNo 寻址在 pageIndex 重复时仍然可用（真实管线按章节�
 
 	await assert.rejects(run(tools, "read_page", { pageNo: 3 }), /内页 1\.\.2/);
 });
+
+// ── read_page 的 html 改成显式 opt-in(#307 省 token)──────────────────────
+// 整页 HTML 是上下文大头(模板平均 ~7K 字符,mag-42 单页 35K)。读全书一次能上到
+// 十几万 token。改颜色/字体/换版式/改文字都用不到 html,只有整页改版(write_page_html)
+// 才需要 —— 所以默认不发,要显式 includeHtml 才给。
+
+test("read_page 默认不返回 html", async () => {
+	const { tools } = createHarness();
+	const page = JSON.parse(await run(tools, "read_page", { pageNo: 1 })).pages[0];
+	assert.equal(page.html, undefined, "默认不该带 html");
+	// 其余页面语境照常给,模型仍能判断改什么
+	assert.equal(page.templateId, "mag-05");
+	assert.ok(page.textSlotDefs.length > 0);
+});
+
+test("read_page includeHtml=true 才返回 html", async () => {
+	const { tools } = createHarness();
+	const page = JSON.parse(await run(tools, "read_page", { pageNo: 1, includeHtml: true })).pages[0];
+	assert.equal(typeof page.html, "string");
+	assert.ok(page.html.length > 0);
+});
+
+test("read_page 读全书时 html 同样默认不给", async () => {
+	const { tools } = createHarness();
+	const result = JSON.parse(await run(tools, "read_page", {}));
+	assert.ok(result.pages.every((p: { html?: string }) => p.html === undefined), "读全书更不该带 html");
+});

@@ -24,6 +24,7 @@ export function buildAlbumSystemPrompt(context: DesignSystemPromptContext): stri
 		"- 没有界面上下文且用户需求不明确时可询问，想改哪页，哪里不满意",
 	    "- 分析用户意图，判断任务类型",
 		"- 需要同时读取页面和 skill 时，在同一轮并行调用读取工具；不要拆成多轮读取。",
+		"- read_page 默认不返回整页 HTML，也不要习惯性去要：改文字、改颜色、改字体、换模板、换图都不需要看 HTML，直接用对应写入工具。只有当你确实要用 write_page_html 整页重排版面时，才对那一页传 includeHtml=true。",
 		"- 调用写入工具时，同时输出一句简短的用户可见回复，例如说明你改了什么。",
 		"- 综合 tools和 skills 摘要决定决定工具调用/skills 加载",
 		"- 完成任务并回复用户",
