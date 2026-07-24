@@ -38,6 +38,7 @@ export class ExportError extends Error {
 // 词表封闭 ⇒ 用户数据在结构上就不可能泄漏,同时线上一眼能看出是哪一类失败。
 // 认不出的一律 'other'(绝不回落成原文)。新增类别请只加常量,别改成透传。
 export type ExportFailureCode =
+  | 'stale_bundle'
   | 'canvas_unavailable'
   | 'image_decode_failed'
   | 'canvas_too_large'
@@ -46,6 +47,9 @@ export type ExportFailureCode =
   | 'other';
 
 const FAILURE_PATTERNS: [RegExp, ExportFailureCode][] = [
+  // 必须排在 network 前面:两者措辞重叠("failed to fetch..."),但补救办法完全不同 ——
+  // 陈旧构建包要的是提示用户刷新,重试再多次也没用(旧 chunk 不会回到 CDN)。
+  [/dynamically imported module|importing a module script|chunkloaderror|loading chunk .* failed/i, 'stale_bundle'],
   [/canvas context unavailable/i, 'canvas_unavailable'],
   [/could not decode stored photo|decode failed|bitmap decode/i, 'image_decode_failed'],
   [/exceeds the maximum|canvas (area|size)|out of memory|allocation (failed|size)/i, 'canvas_too_large'],

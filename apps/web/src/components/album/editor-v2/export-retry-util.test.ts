@@ -201,3 +201,31 @@ test('日志带 failureCode,且词表封闭(不含任何原始 message 片段)',
     assert.ok(!serialized.includes(sensitive), `日志不得包含原始片段: ${sensitive}`);
   }
 });
+
+// ── 陈旧构建包(#307 生产事故真凶)────────────────────────────────────────
+// 导出模块是懒加载的(`await import('@/lib/pdf/render-raster')`,避免把
+// html2canvas/jspdf 打进主包)。用户页面开在部署之前时,新版上线会让旧 chunk
+// 从 CDN 消失 → 动态 import 失败 → 3 次重试全挂(chunk 不会回来,重试没意义)。
+// 这不是代码 bug,补救办法也完全不同(提示刷新,而不是查渲染逻辑),必须能一眼认出。
+
+test('classifyExportFailure: 动态 import 拉不到 chunk → stale_bundle', () => {
+  for (const msg of [
+    'Failed to fetch dynamically imported module: https://yujeeai.com/_next/static/chunks/abc.js',
+    'Importing a module script failed.',
+    'ChunkLoadError: Loading chunk 123 failed.',
+  ]) {
+    assert.equal(
+      classifyExportFailure(new ExportError('render', msg)),
+      'stale_bundle',
+      `应识别为 stale_bundle: ${msg}`,
+    );
+  }
+});
+
+test('stale_bundle 优先于 network(两者措辞重叠,但补救办法不同)', () => {
+  const log = buildExportFailureLog(
+    new ExportError('render', 'Failed to fetch dynamically imported module'),
+    { albumId: 'a1', attempts: 3 },
+  );
+  assert.equal(log.failureCode, 'stale_bundle');
+});
