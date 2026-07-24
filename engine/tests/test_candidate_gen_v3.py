@@ -81,3 +81,55 @@ def test_matcher_degrades_to_sequential_when_no_attr_fit():
     r = matcher.match_photos_to_template("mag-04", photos)
     assert r is not None
     assert sorted(r.values()) == ["p0", "p1"]
+
+
+# ── #303:够拍就不选重复模板 ─────────────────────────────────────────────
+from src.workflows.core.layout import candidate_gen_v3 as _gen
+from src.workflows.core.layout import skeleton_v3 as _sk
+
+
+def test_prefer_unused_excludes_used_when_alternatives_exist():
+    pool = ["a", "b", "c"]
+    assert _gen._prefer_unused(pool, {"a"}) == ["b", "c"]
+    assert _gen._prefer_unused(pool, {"a", "b"}) == ["c"]
+
+
+def test_prefer_unused_falls_back_to_full_pool_when_exhausted():
+    pool = ["a", "b"]
+    # 全用光 -> 允许重复(退回完整池,保持原顺序)
+    assert _gen._prefer_unused(pool, {"a", "b"}) == ["a", "b"]
+    assert _gen._prefer_unused(pool, {"a", "b", "z"}) == ["a", "b"]
+
+
+def test_no_repeat_within_candidate_while_pool_allows():
+    """够拍就不重复:每个图槽数下,用到的不同模板数 == min(该尺寸页数, 该尺寸池大小)。"""
+    photos = _photos(20)
+    for seed in ("d1", "d2", "d3", "d7", "d9"):
+        cand = _gen.generate_candidates(photos, seed=seed, count=1)[0]
+        by_size: dict[int, list[str]] = {}
+        for p in cand:
+            by_size.setdefault(len(p["images"]), []).append(p["templateId"])
+        for size, tids in by_size.items():
+            pool = len(_sk.candidate_ids("interior", size))
+            distinct = len(set(tids))
+            assert distinct == min(len(tids), pool), (
+                f"seed={seed} size={size}: {len(tids)} 页用了 {distinct} 种模板,"
+                f"池大小 {pool},应为 {min(len(tids), pool)} 种(够拍不该重复)"
+            )
+
+
+def test_used_templates_param_threads_book_wide_diversity():
+    """跨章:传入 used_templates,已用模板在有替代时不再被选。"""
+    photos = _photos(3, orientation="portrait", composition="focal")
+    # 先拿一版看它选了啥
+    base = _gen.generate_candidates(photos, seed="bookwide", count=1)[0]
+    used = {p["templateId"] for p in base}
+    # 把这些标记为已用,同 seed 再来一版:只要对应尺寸池还有替代,就不该再出现已用的
+    again = _gen.generate_candidates(photos, seed="bookwide", count=1, used_templates=used)[0]
+    for p in again:
+        size = len(p["images"])
+        pool = set(_sk.candidate_ids("interior", size))
+        if pool - used:  # 该尺寸还有没用过的
+            assert p["templateId"] not in used, (
+                f"size={size} 池里还有替代 {pool - used},却仍选了已用的 {p['templateId']}"
+            )
