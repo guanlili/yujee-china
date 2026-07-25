@@ -168,10 +168,16 @@ Defaults live in `src/lib/env.ts`. Common fields:
 | `CREEM_*` | Billing |
 | `R2_*` | PDF/thumbnail storage |
 
-`NODE_ENV=production` 下,密钥类变量(`DATABASE_URL` / `AGENT_SHARED_SECRET` /
-`BETTER_AUTH_SECRET` / `DESIGN_AGENT_BASE_URL` …)**不再有 dev 兜底默认值,缺失即启动失败**。
+**真生产**下,这七个变量必须显式提供,缺任何一个当场抛(一次报全):
+`DATABASE_URL` · `WEB_BASE_URL` · `BETTER_AUTH_SECRET` · `AGENT_BASE_URL` ·
+`AGENT_SHARED_SECRET` · `DESIGN_AGENT_BASE_URL` · `DESIGN_AGENT_SHARED_SECRET`。
 这是刻意的:漏配一个 Vercel 变量应该当场崩,而不是带着 `dev_secret_replace_me` 静默上线。
-本地 dev/test 的默认值不受影响。
+
+「真生产」的判定是 `VERCEL_ENV === 'production'`,**不是 `NODE_ENV`** —— Vercel 的
+preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV 会让每个 PR
+预览构建都炸(Preview 环境本就缺 `DATABASE_URL`)。没有 `VERCEL_ENV` 时(Fly/Docker
+自托管)才回落到 `NODE_ENV`。本地 dev/test 完全不受影响,零配置仍然起得来。
+实现与测试:`src/lib/env.ts` 的 `assertProductionEnv` / `src/lib/env.test.ts`。
 
 ## Change Notes
 
@@ -185,6 +191,6 @@ Defaults live in `src/lib/env.ts`. Common fields:
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 98d40cb8
+checked-at: 37c98cac
 -->
 

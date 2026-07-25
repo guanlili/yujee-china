@@ -146,6 +146,6 @@ cd apps/web && pnpm test        # 或 pnpm --filter @yujee/web test
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 98d40cb8
+checked-at: 37c98cac
 -->
 
