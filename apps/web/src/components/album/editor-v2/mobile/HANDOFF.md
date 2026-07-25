@@ -130,11 +130,19 @@ select id, title, jsonb_array_length(draft_json->'pages') n
 from albums where status='EDITING' and layout_json is null order by created_at desc;
 ```
 
-**改任何相册数据前先备份**（这次踩过：备份取晚了，一个封面槽的原文案没救回来）：
+**改任何相册数据前先备份，跑完立刻恢复。** 这条是血的教训：备份取晚了，自测把 4 页
+文案写脏，其中 3 处原值永久丢失（`draft_json` 没有版本历史，`album_file_snapshots` 是空的，
+compose job 的 `meta` 只有 337 字节不含页面内容）。
 
 ```bash
-psql "$DATABASE_URL" -t -A -c "select draft_json from albums where id='<uuid>'" > backup.json
+# 跑之前
+psql "$DATABASE_URL" -t -A -c "select draft_json from albums where id='<uuid>'" > snap.json
+# 跑之后（psql 的 \set + :'var' 才能安全塞进 jsonb，别用 -c 拼字符串）
+printf "\\\\set d \`cat snap.json\`\nupdate albums set draft_json = :'d'::jsonb where id='<uuid>';\n" > restore.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f restore.sql
 ```
+
+更好的做法：**别拿用户的相册当靶子**。自测脚本应该先复制一行 album 出来打，跑完删掉。
 
 ## 测试守卫（改的时候别踩红，它们是有意的）
 

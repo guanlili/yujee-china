@@ -203,12 +203,22 @@ export function MobileEditor({
     }, FLIP_MS + FLIP_SETTLE_MS);
   };
 
-  // 只量一次板子;每页多大由 fitBox 算出来,不靠 CSS 比例硬凑(会被 max-width 夹破)。
+  // 量板子;每页多大由 fitBox 算出来,不靠 CSS 比例硬凑(会被 max-width 夹破)。
+  //
+  // 依赖必须带上 browsing:进编辑态时这棵子树整个 return 成 EditView,浏览态的 .mboard
+  // **被卸载**。若依赖是 []:①effect 不重跑,②RO 还盯着那个已脱离文档的旧节点。返回浏览态
+  // 挂的是新节点,却永远量不到 → area 停在 0 → fitBox(0) → 整页渲染成空串 → 书全白且
+  // 再也回不来。这是真实事故「从编辑返回内容被清空」的根因。
+  const browsing = editPage == null;
   useLayoutEffect(() => {
+    if (!browsing) return;
     const el = boardRef.current;
     if (!el) return;
     const measure = () => {
       const r = el.getBoundingClientRect();
+      // 0×0 一律不收:节点被卸载/藏起来时 RO 会报 0,拿它覆盖掉好的测量值就是上面那个事故。
+      // 留着上一次的好尺寸,返回时首帧就能正确渲染,不闪白。
+      if (r.width < 1 || r.height < 1) return;
       setArea((prev) =>
         Math.abs(prev.w - r.width) < 0.5 && Math.abs(prev.h - r.height) < 0.5
           ? prev // 同尺寸不重渲,避免 ResizeObserver 自激
@@ -219,7 +229,7 @@ export function MobileEditor({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [browsing]);
 
   const ctxOf = (pageIdx: number): PageFaceCtx => ({
     folio: folios[pageIdx] ?? null,

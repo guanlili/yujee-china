@@ -127,6 +127,42 @@ test('书脊中缝的条件是「真摆了两页」,不是「非独页」(密度
   );
 });
 
+/* ── 从编辑态返回:位置要保持、内容不许被清空 ─────────────────────────────────
+   真实事故:返回浏览态后整本书渲染成空白,而且再也回不来。根因是量画板的
+   ResizeObserver 生命周期 —— 进编辑态时浏览态的 .mboard 被卸载,RO 对脱离文档的节点
+   上报 0×0,把 area 写成 0;返回时挂的是新节点,而 effect 依赖 [] 不重跑、RO 还盯着
+   旧节点 → area 永远 0 → fitBox(0) → 整页渲染成空串。 */
+
+test('量画板的 effect 必须跟着浏览/编辑态重挂(否则返回后量不到新节点)', () => {
+  const src = source('MobileEditor.tsx');
+  assert.match(src, /const browsing = editPage == null/, '要有 browsing 这个判据');
+  assert.match(
+    src,
+    /new ResizeObserver\(measure\)[\s\S]{0,160}\}, \[browsing\]\)/,
+    '测量 effect 的依赖必须带 browsing —— 依赖 [] 时返回浏览态永远量不到新的 .mboard',
+  );
+});
+
+test('0×0 一律不收:节点卸载时 RO 会报 0,收了就把书渲染成空白', () => {
+  for (const f of ['MobileEditor.tsx', 'EditView.tsx']) {
+    const src = source(f);
+    assert.match(
+      src,
+      /if \(r\.width < 1 \|\| r\.height < 1\) return;/,
+      `${f} 必须丢弃 0×0 的测量结果(留住上一次的好尺寸,返回时首帧就正确)`,
+    );
+  }
+});
+
+test('返回浏览态要对齐到刚编辑那页所在的屏(不是跳回开头)', () => {
+  const src = source('MobileEditor.tsx');
+  assert.match(
+    src,
+    /setStartPage\(screenStartOfPage\(spreads, pages, editPage, density\)\)[\s\S]{0,80}onExitEdit/,
+    '退出编辑前必须把浏览游标对齐到 editPage 所在的屏',
+  );
+});
+
 test('翻纸:目标屏的半边必须从目标屏自己取(拿当前屏的开页序号去查 = 正反面画同一屏)', () => {
   // 真实 bug(真机抓到、单测抓不到):halvesOf 读的是 spreads[si],把**当前屏**的 si
   // 传给目标屏,查回来还是当前那个开页 → 纸片正反面是同一屏,「翻了但没换页」。

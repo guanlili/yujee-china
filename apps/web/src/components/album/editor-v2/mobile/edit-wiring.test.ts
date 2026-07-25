@@ -106,6 +106,23 @@ test('预览与落库共用同一套 patcher(所见即所存)', () => {
   assert.match(edit, /from '\.\.\/\.\.\/page-html-dom'/, 'page-edit 必须复用共享 patcher');
 });
 
+test('传给移动端的页数组引用必须稳定(否则父层一重渲就把本地改动冲回加载时的草稿)', () => {
+  // 真实事故(偶发,时序相关):EditorAuthoring 每次渲染都新建 pages 数组 →
+  // MobileEditorRoot 的 useEffect(依赖 incomingPages)把本地副本整体换回服务端那份 →
+  // 「改完返回,偶尔变回旧文案」。skeleton 已由 draftFingerprintRef 保证内容没变就不换引用,
+  // 所以按 skeleton 记忆化即等价于「只在草稿真的变了时才换」。
+  const port = read('..', 'EditorPort.tsx');
+  assert.match(
+    port,
+    /const pages: EditorPage\[\] = useMemo\(/,
+    'authoring 的 pages 必须 useMemo,引用不能每次渲染都变',
+  );
+  assert.match(port, /\[skeleton\],\s*\n\s*\);/, 'pages 应按 skeleton 记忆化');
+  // Root 侧那条「服务端真相变了就整体换掉」的 effect 仍在(它靠上面的稳定引用才安全)
+  const root = code('MobileEditorRoot.tsx');
+  assert.match(root, /useEffect\(\(\) => setPages\(incomingPages\), \[incomingPages\]\)/);
+});
+
 test('换页/退出编辑时清掉选中(高亮框的 rect 是那一刻算的,换页就不对了)', () => {
   const root = read('MobileEditorRoot.tsx');
   assert.match(root, /onEnterEdit=\{[\s\S]{0,260}setSelection\(null\)/);

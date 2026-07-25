@@ -15,7 +15,7 @@
    Styling lives in ./editor-port.css (the HTML <style> block, values unchanged).
    ════════════════════════════════════════════════════════════════════════════ */
 
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
@@ -290,6 +290,24 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
   // 内容没变时跳过「换 objectUrl + epoch 重挂」,消除采访/确认阶段画板一闪一闪。
   const draftFingerprintRef = useRef<string | null>(null);
 
+  // 页数组按 skeleton 记忆化。**引用必须稳定**:移动端容器(MobileEditorRoot)拿它当
+  // 「服务端真相变了」的信号(useEffect 依赖它来整体换掉本地副本)。若每次渲染都新建数组,
+  // 父层任何一次重渲都会把用户的本地改动冲回加载时的草稿 —— 而且是时序相关的偶发,
+  // 表现为「改完返回,偶尔变回旧文案」。skeleton 本身已由 draftFingerprintRef 保证
+  // 内容没变就不换引用,所以按它记忆化即等价于「只在草稿真的变了时才换」。
+  const pages: EditorPage[] = useMemo(
+    () =>
+      (skeleton?.pages ?? []).map((p) => ({
+        pageIndex: p.pageIndex,
+        templateId: p.templateId,
+        imagesJson: { ...p.imagesJson },
+        textsJson: { ...p.textsJson },
+        imagePosJson: { ...(p.imagePosJson ?? {}) },
+        htmlJson: p.htmlJson,
+      })),
+    [skeleton],
+  );
+
   useEffect(() => {
     let cancelled = false;
     draftFingerprintRef.current = null; // 换相册/换阶段重置,首次必加载
@@ -368,14 +386,6 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
   // NOTE: the canvas (EditorBook) is keyed by pages.length inside the shell, so a
   // layout completion (pages 0→N) remounts ONLY the canvas — the stable ChatPanel
   // (keyed by album.id) keeps its history/interview state.
-  const pages: EditorPage[] = skeleton.pages.map((p) => ({
-    pageIndex: p.pageIndex,
-    templateId: p.templateId,
-    imagesJson: { ...p.imagesJson },
-    textsJson: { ...p.textsJson },
-    imagePosJson: { ...(p.imagePosJson ?? {}) },
-    htmlJson: p.htmlJson,
-  }));
   // 设备分流落在这里,而不是 page.tsx 的 editing 分支:V3 的真实相册永远
   // layoutJson==null → 一直是 authoring,书住在草稿里(pages 带 htmlJson = 页面真相,
   // 落库时服务端 updatePage 也走 draft 分支、认 textStyles/pageStyle)。挂在 editing 上

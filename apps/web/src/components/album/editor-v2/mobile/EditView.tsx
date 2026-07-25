@@ -120,6 +120,8 @@ export function EditView({
     const measure = () => {
       const r = el.getBoundingClientRect();
       const vh = window.innerHeight;
+      // 0×0 一律不收(理由同 MobileEditor:节点卸载时 RO 会报 0,收了就把页面渲染成空)。
+      if (r.width < 1 || r.height < 1) return;
       setArea((prev) =>
         Math.abs(prev.w - r.width) < 0.5 &&
         Math.abs(prev.h - r.height) < 0.5 &&
