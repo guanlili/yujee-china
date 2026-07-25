@@ -411,10 +411,15 @@
 
 @keyframes mai-fade { from { opacity: 0; } to { opacity: 1; } }
 
+/* 高度:底边钉死、可拖。默认 50vh,下限 150px、上限 90vh —— 与桌面 .pane-chat-col
+   同一口径(那边是 46vh/150px/90vh)。拖动中的具体高度由 JS 写在 style 上,
+   这里的 height 只是默认值(见 modals/AiChatSheet.tsx)。 */
 .mai-sheet {
   width: 100%;
   max-width: 560px;
-  max-height: 78vh;
+  height: 50vh;
+  min-height: 150px;
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -427,9 +432,26 @@
   animation: mai-up 0.22s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
+/* 拖动中不要任何入场动画/过渡插手,否则跟手会一顿一顿的(同桌面 .chat-dragging)。 */
+.mai-sheet[data-dragging='1'] {
+  animation: none;
+  transition: none;
+}
+
 @keyframes mai-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
-.mai-sheet-grab { display: flex; justify-content: center; padding: 10px 0 4px; }
+/* 把手:既是拖高度的抓手,也是轻点收起的按钮 → 触点要够大,且不能让浏览器
+   把这一下当成页面滚动/下拉刷新(touch-action:none)。 */
+.mai-sheet-grab {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 28px;
+  touch-action: none;
+  cursor: grab;
+}
+.mai-sheet[data-dragging='1'] .mai-sheet-grab { cursor: grabbing; }
 .mai-sheet-grab span {
   width: 36px; height: 4px; border-radius: 9999px;
   background: var(--border);

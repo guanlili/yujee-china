@@ -173,6 +173,39 @@ test('架构守卫:宿主样式不许再用 pointer-events 放行名单(曾漏�
   );
 });
 
+test('AI 对话弹窗是可拖高度的:默认 50vh、下限 150px、上限 90vh', () => {
+  const css = readFileSync(join(here, '..', 'mobile-editor.css'), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  );
+  const at = css.indexOf('.mai-sheet {');
+  assert.ok(at >= 0);
+  const sheet = css.slice(at, css.indexOf('}', at));
+  assert.match(sheet, /height:\s*50vh/, '默认高度 50vh(不是把内容撑到多高就多高)');
+  assert.match(sheet, /min-height:\s*150px/, '下限 150px(同桌面 .pane-chat-col)');
+  assert.match(sheet, /max-height:\s*90vh/, '上限 90vh(同桌面)');
+  assert.doesNotMatch(sheet, /max-height:\s*78vh/, '78vh 是改之前那个过高的值');
+  // 把手要够大、且不能被浏览器当成页面滚动/下拉刷新
+  const gAt = css.indexOf('.mai-sheet-grab {');
+  const grab = css.slice(gAt, css.indexOf('}', gAt));
+  assert.match(grab, /touch-action:\s*none/, '把手必须 touch-action:none,否则手机上拖不动');
+  assert.match(grab, /cursor:\s*grab/);
+  // 拖动中不许有过渡/动画插手,否则不跟手
+  assert.match(css, /\.mai-sheet\[data-dragging='1'\]\s*\{[^}]*animation:\s*none/);
+});
+
+test('AI 对话把手真的接了拖拽(不是画个把手当装饰)', () => {
+  const src = readFileSync(join(here, 'AiChatSheet.tsx'), 'utf8');
+  assert.match(src, /onPointerDown=\{onGrabDown\}/);
+  assert.match(src, /onPointerMove=\{onGrabMove\}/);
+  assert.match(src, /onPointerUp=\{onGrabUp\}/);
+  assert.match(src, /setPointerCapture/, '用指针捕获,手指滑出把手也不该断');
+  // 底边钉死:高度 = 起始高度 - 位移
+  assert.match(src, /d\.startH - d\.dy/, '底边钉死,下拉变矮');
+  // 轻点把手 = 收起(与桌面同一语义)
+  assert.match(src, /Math\.abs\(d\.dy\) <= TAP_SLOP[\s\S]{0,120}onClose\(\)/);
+});
+
 test('AI 是「浮标黑 / 弹窗浅」,别再搞反(曾做成白浮标 + 黑弹窗)', () => {
   // 既有设计(桌面 editor-port.css 的 .chat-fold-expand + ≤767 对话面板):
   // 收起时是一枚**黑色胶囊**浮标,展开的对话面板是**浅色**卡片 + 压暗遮罩。

@@ -11,7 +11,7 @@
    休息态 await-jelly 同一素材)。真正的 AI 收发是后续切片(3e)接;现在输入框可打字,
    发送先给反馈。 */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 export type AiChatSheetProps = {
   open: boolean;
@@ -20,8 +20,23 @@ export type AiChatSheetProps = {
   onClose: () => void;
 };
 
+/* 高度口径逐条对齐桌面(ChatPanel 的 onSheetDown + editor-port.css 的 .pane-chat-col):
+   底边钉死、高度可拖,下限 150px、上限 90vh。默认高度用户定的 50%(线上那份是 46vh)。 */
+const MIN_H = 150;
+const MAX_VH = 0.9;
+/** 位移在此以内算「轻点把手」= 收起(与桌面同一语义)。 */
+const TAP_SLOP = 6;
+/** 拖到明显低于下限 → 意图是整个收起,不是留在最小高度。 */
+const COLLAPSE_SLOP = 28;
+
 export function AiChatSheet({ open, zh, onSend, onClose }: AiChatSheetProps) {
   const [text, setText] = useState('');
+  // null = 没手动拖过,走 CSS 的默认 50vh。拖出来的高度记住,下次展开还是它(同桌面)。
+  const [height, setHeight] = useState<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ startY: number; startH: number; dy: number; collapse: boolean } | null>(null);
+
   if (!open) return null;
 
   const send = () => {
@@ -31,6 +46,47 @@ export function AiChatSheet({ open, zh, onSend, onClose }: AiChatSheetProps) {
     setText('');
   };
 
+  // 拖把手改高度。用 setPointerCapture 把后续 move/up 都收到把手上 —— 不必往 window
+  // 挂监听,手指滑出把手也不会断。
+  const onGrabDown = (e: React.PointerEvent) => {
+    if (!e.isPrimary) return;
+    const el = sheetRef.current;
+    if (!el) return;
+    e.preventDefault();
+    drag.current = {
+      startY: e.clientY,
+      startH: el.getBoundingClientRect().height,
+      dy: 0,
+      collapse: false,
+    };
+    setDragging(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onGrabMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    d.dy = e.clientY - d.startY;
+    const raw = d.startH - d.dy; // 底边钉死:下拉(dy>0)高度变小
+    d.collapse = raw < MIN_H - COLLAPSE_SLOP;
+    setHeight(Math.min(window.innerHeight * MAX_VH, Math.max(MIN_H, raw)));
+  };
+
+  const onGrabUp = (e: React.PointerEvent) => {
+    const d = drag.current;
+    drag.current = null;
+    setDragging(false);
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    if (!d) return;
+    if (Math.abs(d.dy) <= TAP_SLOP) {
+      setHeight(d.startH); // 轻点把手 = 收起,高度留着,下次展开还是这么高
+      onClose();
+    } else if (d.collapse) {
+      setHeight(null); // 拖没了 = 收起并回落默认 50vh
+      onClose();
+    }
+  };
+
   return (
     <div
       className="mai-sheet-overlay"
@@ -38,8 +94,25 @@ export function AiChatSheet({ open, zh, onSend, onClose }: AiChatSheetProps) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="mai-sheet" role="dialog" aria-modal="true" aria-label={zh ? 'AI 助手' : 'AI assistant'}>
-        <div className="mai-sheet-grab" aria-hidden="true">
+      <div
+        ref={sheetRef}
+        className="mai-sheet"
+        data-dragging={dragging ? '1' : undefined}
+        style={height != null ? { height } : undefined}
+        role="dialog"
+        aria-modal="true"
+        aria-label={zh ? 'AI 助手' : 'AI assistant'}
+      >
+        <div
+          className="mai-sheet-grab"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label={zh ? '拖动调整高度,轻点收起' : 'Drag to resize, tap to collapse'}
+          onPointerDown={onGrabDown}
+          onPointerMove={onGrabMove}
+          onPointerUp={onGrabUp}
+          onPointerCancel={onGrabUp}
+        >
           <span />
         </div>
         <div className="mai-sheet-head">
