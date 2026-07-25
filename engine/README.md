@@ -187,3 +187,8 @@ CLIP embedding worker 是另一个 app(`engine/fly.clip.toml` → `yujee-agent-c
 - Put deterministic transforms under `workflows/core/`。
 - Put provider/SDK boundaries under `providers/`。
 - Do not document removed endpoints as active until they exist again in `api/routes.py` and tests.
+
+<!-- doc-scope
+paths: engine/src/**, engine/fly*.toml, engine/pyproject.toml
+checked-at: 98d40cb8
+-->

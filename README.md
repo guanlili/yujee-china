@@ -2,34 +2,46 @@
 
 AI 人生纪念册 Web 应用,面向海外市场。用户选择照片后进入编辑器,系统完成分章、排版、用户编辑和浏览器导出 PDF。
 
-`docs/` 已删除。仓根 README 只放大的框架;Web 和 Agent 的内部实现分别看子目录 README。
+仓根 README 只放大的框架;各服务的内部实现分别看子目录 README。
+设计文档和实施计划放 `docs/specs/` 与 `docs/plans/`(按 issue 归档,不再扩张成大 docs 树)。
 
 ## 系统框架
 
+线上是**四个部署单元**:
+
 ```text
-Browser -> Web (Next.js) -> Agent (FastAPI)
-             |
-             v
-       Postgres + Cloudflare R2
+Browser
+   |
+   v
+Web (Next.js, Vercel: yujee-web)
+   |-- POST /v3/*  --> Agent        (FastAPI, Fly: yujee-agent)       生成主链路
+   |                                    `-- 远程 CLIP (Fly: yujee-agent-clip)
+   |-- POST /api/* --> Design Agent (Node,    Fly: yujee-design-agent) 对话式改书
+   v
+Postgres + Cloudflare R2
 ```
 
 | 部分 | 主要职责 |
 |---|---|
 | Browser | 持有原图, 压缩/缓存照片, 读取 EXIF, 为 `/v3/select-layout` 和 `/v3/compose` 随请求带上 200px 缩略图 refs, 渲染编辑器, 本地生成 PDF 后直传 R2 |
 | Web | 登录、支付、积分、相册状态、`draft_json`、V3 API 编排、Agent callback 合并、R2 presign |
-| Agent | 确定性分章(零 AI)、确定性排版(一次出 pages)、一次性成稿 `/v3/compose`(全流程唯一的 AI 调用)。编辑/主题/封面/finalize 等后续能力不在当前 route surface |
+| Agent | 确定性分章(零 AI)、确定性排版(一次出 pages)、一次性成稿 `/v3/compose`(生成链路唯一的 AI 调用) |
+| Design Agent | 生成**之后**的对话式改书(六个写工具改文字/HTML/换版/换图/配色/字体)。独立 base URL 与鉴权,**必须单机**(session 在进程内存) |
 | contracts | Web 和 Agent 共用的 Zod 契约、模板 JSON、生成类型和 fixtures |
 
 ## 仓库入口
 
 ```text
 memoir-agent-rebuild/
-├── README.md                    # 系统总框架
-├── AGENTS.md / CLAUDE.md        # agent 起手约束
+├── README.md                       # 系统总框架
+├── CLAUDE.md                       # agent 起手约束(AGENTS.md 是指向它的符号链接)
+├── docs/specs/ · docs/plans/       # 按 issue 归档的设计与实施计划
 ├── apps/
-│   └── web/README.md            # Web 内部结构、状态、API、运行命令
-├── engine/README.md             # Agent 当前 route/workflow/provider/测试
-└── packages/contracts/          # 跨服务契约和模板
+│   └── web/README.md               # Web 内部结构、状态、API、运行命令
+├── engine/README.md                # 生成 Agent 的 route/workflow/provider/测试
+└── packages/
+    ├── contracts/                  # 跨服务契约和模板
+    └── design-agent/README.md      # 对话式改书 Agent(部署约束见其 fly.toml)
 ```
 
 ## 当前工作流
@@ -50,8 +62,10 @@ memoir-agent-rebuild/
    与字体(缺字体时 Web 侧确定性兜底);逐章发 progress 心跳。回调后 Web 组页落库并把
    `stage` 推到 `ready`。**这是全链路唯一的 AI 调用。**
 
-后续编辑能力不在当前 Agent surface 内。Agent 对外只有四个端点:`GET /health`、
-`POST /v3/analyze`、`POST /v3/select-layout`、`POST /v3/compose`。
+生成 Agent 对外只有四个端点:`GET /health`、`POST /v3/analyze`、`POST /v3/select-layout`、
+`POST /v3/compose`。**生成之后的编辑走另一条链路** —— 用户在编辑器里对话改书,由 Web 的
+`/api/v3/albums/[uuid]/design-chat` 转给 Design Agent(`POST /api/book` + `POST /api/chat`),
+与上面七步无关。别把它和生成链路混为一谈。
 
 ## 设计边界
 
@@ -62,40 +76,59 @@ memoir-agent-rebuild/
 - **页面真相 = HTML**:每页 draft 存完整 794×1123 HTML(`Page.html`),画板/PDF/设计对话
   都消费它;锚点契约 `data-text-key`/`data-image-slot`,图片 src 一律 `{{IMG_SRC:slotId}}`
   token(渲染时解析,base64 绝不落库)。槽位字段(templateId/images/texts)保留:photo
-  引用、换排版重生成、装书校验的依据;texts 由 html 派生。渲染簇与 48 个 HTML 模板在
-  `packages/contracts/src/render/`。
+  引用、换排版重生成、装书校验的依据;texts 由 html 派生。渲染簇与 47 个 HTML 模板在
+  `packages/contracts/src/render/`(模板数以 `packages/contracts/templates/*.json` 为准,
+  别在文档里手抄计数)。
 - 模板 JSON 在 `packages/contracts/templates/*.json`;生成文件不要手改。
+- 渲染注册表的**唯一真相**是 `apps/web/src/components/album/web-registry.ts`。
 - 新增顶层目录、跨服务协议、数据库 schema、外部 API 或依赖前,先说明影响面。
 
 ## 本地命令
 
+跑通全流程要起**三个**服务,少一个 design-chat 直接 502:
+
 ```bash
 pnpm install
-pnpm web:dev
-pnpm agent:dev
-pnpm typecheck
-pnpm test
+pnpm web:dev      # 3000
+pnpm agent:dev    # 8001
+pnpm design:dev   # 8787  ← 漏了它 = design-chat 502
 ```
 
-Agent 测试从仓根跑更稳:
+验证:
+
+```bash
+pnpm typecheck    # 含 contracts + web,不含 engine
+pnpm docs:check   # 文档时效(已挂进 typecheck)
+pnpm test         # 见下方陷阱
+```
+
+Agent(Python)测试单独跑:
 
 ```bash
 PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests
 ```
 
-Web 测试**必须在 `apps/web` 目录下跑**(从仓根跑加载不到 `apps/web/.env`,真库集成测试
-会假跳过):
+Web 测试单跑:
 
 ```bash
-cd apps/web && pnpm test
+cd apps/web && pnpm test        # 或 pnpm --filter @yujee/web test
 ```
+
+### 验证陷阱
+
+- 仓根 `pnpm test` 是 `pnpm -r test`,**撞到第一个失败的包就中断**,后面的包一个都不跑。
+  看到红不代表只坏了那一处;看到绿要先确认 scope 覆盖了你改的包。
+- `pnpm typecheck` **不含 engine**,改 Python 必须另跑 pytest。
+- 没有 CI。所有验证都靠本地自觉执行 —— 别声称跑过没跑过的东西。
 
 ## 上线注意
 
-- **Web 与 Agent 必须同版本部署。** 这一版是契约变更:删了 `/v3/judge-layout`、
-  `/v3/judge-page-template`、`/v3/design` 三个端点,新增 `/v3/compose`,`V3Chapter` 加了
-  `title`。只部署一边会当场契约漂移。Web 走 Vercel 自动部署,Agent 要**手动**
-  `flyctl deploy`。
+- **Web 与 Agent 必须同版本部署。** 跨服务契约(`packages/contracts/src/v3.ts` 与
+  `engine/src/contracts/schemas.py`)是**手工镜像,没有 codegen**,只部署一边会当场
+  契约漂移。Web 走 Vercel 自动部署,Agent 要**手动** `flyctl deploy`。
+- **Design Agent 也要手动部署,且必须保持单机**:
+  `fly deploy -c packages/design-agent/fly.toml --dockerfile packages/design-agent/Dockerfile --ha=false .`
+  session 在进程内存,扩到两台会掉正在进行的编辑会话。
 - **`flyctl deploy` 之前先确认 Fly 上 `yujee-agent` 有 `SELECT_LAYOUT_API_KEY`**
   (compose 的 Gemini key)。缺它时 `mode=real` 会 fail-fast 启动失败 —— 这是刻意的,
   详见 [`engine/README.md`](engine/README.md)。
@@ -106,5 +139,13 @@ cd apps/web && pnpm test
 ## 继续阅读
 
 - Web: [`apps/web/README.md`](apps/web/README.md)
-- Agent: [`engine/README.md`](engine/README.md)
+- 生成 Agent: [`engine/README.md`](engine/README.md)
+- 设计 Agent: [`packages/design-agent/README.md`](packages/design-agent/README.md)
 - Contracts/templates: [`packages/contracts/templates/README.md`](packages/contracts/templates/README.md)
+- Agent 起手约束与文档时效规则: [`CLAUDE.md`](CLAUDE.md)
+
+<!-- doc-scope
+paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json, engine/fly*.toml, packages/design-agent/fly.toml
+checked-at: 98d40cb8
+-->
+
