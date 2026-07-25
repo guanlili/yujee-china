@@ -118,8 +118,26 @@ cd apps/web && pnpm test        # 或 pnpm --filter @yujee/web test
 
 - 仓根 `pnpm test` 是 `pnpm -r test`,**撞到第一个失败的包就中断**,后面的包一个都不跑。
   看到红不代表只坏了那一处;看到绿要先确认 scope 覆盖了你改的包。
+  要全量结论就逐包单独跑,别用它。
 - `pnpm typecheck` **不含 engine**,改 Python 必须另跑 pytest。
+- **design-agent 测试前必须先 `pnpm design:build`。** 它依赖 `packages/agent` /
+  `packages/ai` 的 `dist/` 构建产物,新克隆或新 worktree 里没有。缺了会
+  `ERR_MODULE_NOT_FOUND`,而且**整个测试文件加载失败、里面的用例根本不计数** ——
+  实测未构建时报「96 tests」,构建后是「115 tests」,19 个用例静默消失了。
+  测试总数比预期少要当心,那是文件没加载,不是用例变少。
 - 没有 CI。所有验证都靠本地自觉执行 —— 别声称跑过没跑过的东西。
+
+全量跑一遍(2026-07-25 实测 1483 个用例):
+
+```bash
+pnpm docs:check && pnpm typecheck
+pnpm --filter @yujee/contracts test
+pnpm --filter @yujee/web test
+pnpm design:build && pnpm --filter @smalldog/design-agent test
+pnpm --filter @earendil-works/pi-ai test
+pnpm --filter @earendil-works/pi-agent-core test
+PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
+```
 
 ## 上线注意
 
