@@ -66,6 +66,12 @@ const readPagesSchema = Type.Object({
 			description: "要读取的页码数组。省略或空数组 = 读取全书所有页（用于了解全书）。",
 		}),
 	),
+	includeHtml: Type.Optional(
+		Type.Boolean({
+			description:
+				"是否返回整页 HTML。默认 false。整页 HTML 很长，只有你确实要用 write_page_html 整页改版面时才传 true；改文字/颜色/字体/换模板都不需要它。",
+		}),
+	),
 });
 
 const searchBookSchema = Type.Object({
@@ -162,7 +168,12 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 	];
 }
 
-function readPagePayload(options: AlbumToolsOptions, state: AlbumBookState, internalNo: number): Record<string, unknown> {
+function readPagePayload(
+	options: AlbumToolsOptions,
+	state: AlbumBookState,
+	internalNo: number,
+	includeHtml = false,
+): Record<string, unknown> {
 	const page = requirePage(options, state, internalNo);
 	const template = requireTemplate(options.catalog, page.templateId);
 	// chapter 概念不进 AI 上下文(分簇/写文案的内部工具);AI 的全局语境走书级
@@ -189,9 +200,11 @@ function readPagePayload(options: AlbumToolsOptions, state: AlbumBookState, inte
 		texts: page.texts,
 		textSlotDefs: template.textSlotIds.map((slotId) => describeTextSlot(template, slotId)),
 		repeatTextSlotBases: template.repeatTextSlotBases.map((base) => `${base}[n]`),
-		// 页面真相:完整 HTML(C 方案)。改版面/内容优先用 write_page_html 整页交回;
-		// 只改文字用 update_page_texts 更省。图片 src 是 {{IMG_SRC:slotId}} token,别动。
-		html: ensureAlbumPageHtml(page),
+		// 页面真相:完整 HTML(C 方案)。**默认不发**(#307):整页 HTML 是上下文大头
+		// (模板平均 ~7K 字符,mag-42 单页 35K),读全书能上到十几万 token。改文字/
+		// 颜色/字体/换模板都用不到它,只有 write_page_html 整页改版才需要 —— 那时
+		// 显式传 includeHtml=true。图片 src 是 {{IMG_SRC:slotId}} token,别动。
+		...(includeHtml ? { html: ensureAlbumPageHtml(page) } : {}),
 	};
 }
 
@@ -200,22 +213,23 @@ function createReadPagesTool(options: AlbumToolsOptions): AgentTool<typeof readP
 		name: "read_page",
 		label: "读取页面",
 		description:
-			"读取一页或多页的完整内容（图片 + 文字 + 该页所属分组背景）：传 pageNos 指定多页；省略 pageNos = 读取全书所有页（用于了解全书）。",
+			"读取一页或多页的内容（图片 + 文字 + 槽位定义）：传 pageNos 指定多页；省略 pageNos = 读取全书所有页（用于了解全书）。默认不含整页 HTML —— 改文字/颜色/字体/换模板都不需要 HTML；只有要用 write_page_html 整页改版面时，才对那一页传 includeHtml=true。",
 		parameters: readPagesSchema,
 		prepareArguments(args: unknown): ReadPagesInput {
 			if (!isRecord(args)) return {};
+			const includeHtml = args.includeHtml === true;
 			// 兼容单页/别名：pageNos 数组优先；否则 pageNo/pageIndex 单值包成数组；都没有 = 全书。
 			// 入参是用户口径页码(数字=内页序号,"cover"/"toc"/"ending"=封面/目录/封尾),此处转内部页位。
 			// 无效引用保留为 -1 透传:requirePage 会带可用页码清单报错,绝不静默回退成读全书。
 			const rawList = Array.isArray(args.pageNos) ? args.pageNos : undefined;
 			if (rawList && rawList.length > 0) {
-				return { pageNos: rawList.map((entry) => resolveRefToInternal(options, entry)) };
+				return { pageNos: rawList.map((entry) => resolveRefToInternal(options, entry)), includeHtml };
 			}
 			const rawSingle = args.pageNo ?? args.pageIndex;
 			if (rawSingle !== undefined && rawSingle !== null) {
-				return { pageNos: [resolveRefToInternal(options, rawSingle)] };
+				return { pageNos: [resolveRefToInternal(options, rawSingle)], includeHtml };
 			}
-			return {};
+			return { includeHtml };
 		},
 		async execute(_toolCallId: string, params: ReadPagesInput): Promise<AgentToolResult<{ pageNos: number[] }>> {
 			const state = options.getBookState();
@@ -223,7 +237,7 @@ function createReadPagesTool(options: AlbumToolsOptions): AgentTool<typeof readP
 				params.pageNos && params.pageNos.length > 0
 					? params.pageNos.map(Number)
 					: state.pages.map((_, index) => index + 1);
-			const pages = pageNos.map((pageNo) => readPagePayload(options, state, pageNo));
+			const pages = pageNos.map((pageNo) => readPagePayload(options, state, pageNo, params.includeHtml === true));
 			return {
 				content: [{ type: "text", text: JSON.stringify({ pages }, null, 1) }],
 				details: { pageNos },

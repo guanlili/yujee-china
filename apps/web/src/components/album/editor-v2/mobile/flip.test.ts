@@ -28,24 +28,58 @@ test('时长与缓动照搬 FlipBook,不自己定', () => {
 
 // ── 什么时候能翻、什么时候只能硬切 ──────────────────────────────────────────
 
+/** 普通内页对开(pair):一屏一个开页、两张面。 */
+const pair = (rows = 1) => ({ rows, faces: 2, solo: false, full: false });
+/** 密度 1 压成一页看:仍是普通内页,不是封面独页、也不是双宽页。 */
+const single = () => ({ rows: 1, faces: 1, solo: false, full: false });
+/** 封面/封尾独页。 */
+const solo = () => ({ rows: 1, faces: 1, solo: true, full: false });
+/** 双宽跨页(#303):一张连续面,容器仍是两页宽。 */
+const full = () => ({ rows: 1, faces: 1, solo: false, full: true });
+
 test('对开↔对开 / 单页↔单页 可以翻纸', () => {
-  assert.equal(canFlip({ rows: 1, halves: 2 }, { rows: 1, halves: 2 }, false), true);
-  assert.equal(canFlip({ rows: 1, halves: 1 }, { rows: 1, halves: 1 }, false), true);
+  assert.equal(canFlip(pair(), pair(), false), true);
+  assert.equal(canFlip(single(), single(), false), true);
 });
 
-test('几何一变就只能硬切(独页↔对开:纸片宽度会变,跨宽度会撕裂)', () => {
-  assert.equal(canFlip({ rows: 1, halves: 1 }, { rows: 1, halves: 2 }, false), false);
-  assert.equal(canFlip({ rows: 1, halves: 2 }, { rows: 1, halves: 1 }, false), false);
+test('面数一变就只能硬切(纸片宽度会变,跨宽度会撕裂)', () => {
+  assert.equal(canFlip(single(), pair(), false), false);
+  assert.equal(canFlip(pair(), single(), false), false);
 });
 
 test('一屏多个开页(密度 4)没有单一的「那张纸」→ 硬切', () => {
-  assert.equal(canFlip({ rows: 2, halves: 2 }, { rows: 2, halves: 2 }, false), false);
-  assert.equal(canFlip({ rows: 1, halves: 2 }, { rows: 2, halves: 2 }, false), false);
+  assert.equal(canFlip(pair(2), pair(2), false), false);
+  assert.equal(canFlip(pair(1), pair(2), false), false);
 });
 
 test('用户要求减弱动效 → 一律硬切(无障碍,同 FlipBook)', () => {
-  assert.equal(canFlip({ rows: 1, halves: 2 }, { rows: 1, halves: 2 }, true), false);
-  assert.equal(canFlip({ rows: 1, halves: 1 }, { rows: 1, halves: 1 }, true), false);
+  assert.equal(canFlip(pair(), pair(), true), false);
+  assert.equal(canFlip(single(), single(), true), false);
+});
+
+test('封面/封尾独页任一端 → 硬切(容器宽度不同,半宽纸片会撕裂)', () => {
+  assert.equal(canFlip(solo(), single(), false), false);
+  assert.equal(canFlip(single(), solo(), false), false);
+  assert.equal(canFlip(solo(), solo(), false), false);
+});
+
+test('双宽跨页任一端 → 硬切(一整张连续面,没有可翻的半页)#303', () => {
+  assert.equal(canFlip(full(), pair(), false), false);
+  assert.equal(canFlip(pair(), full(), false), false);
+  assert.equal(canFlip(full(), full(), false), false, '双宽↔双宽也没有半页可翻');
+});
+
+test('共用的那三条理由必须走 spreads.ts 的 shouldDirectSwitch,不在移动端重写', () => {
+  const src = readFileSync(join(here, 'flip.ts'), 'utf8');
+  assert.match(src, /import \{ shouldDirectSwitch \} from '\.\.\/\.\.\/spreads'/);
+  assert.match(src, /shouldDirectSwitch\(reducedMotion, from\.solo, to\.solo, from\.full, to\.full\)/);
+  // 不许在这里自己再写一遍那几个 || —— #303 就是因为运算符钻空子漏判过
+  const body = src.slice(src.indexOf('export function canFlip'));
+  assert.doesNotMatch(
+    body.slice(0, body.indexOf('\n}')),
+    /reducedMotion \|\|/,
+    'reducedMotion 的判断归 shouldDirectSwitch,别在这里并列写 ||',
+  );
 });
 
 // ── 纸片几何 ────────────────────────────────────────────────────────────────

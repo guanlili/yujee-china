@@ -26,7 +26,8 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type { EditorPage } from '../../types';
 import { pageFaceHTML, type PageFaceCtx } from '../page-face';
-import { pageFolioNumbers, pageFolioSides } from '../../page-html-dom';
+import { pageFolioInfos } from '../../page-html-dom';
+import { isSpreadTemplate } from '../../templates/constants';
 import type { ResolveImage } from '../../adapt-layout';
 import { fitBox, spreadAspect } from './fit-box';
 import { MobileTopbar } from './MobileTopbar';
@@ -111,8 +112,7 @@ export function EditView({
   const boardRef = useRef<HTMLDivElement>(null);
   const spreadRef = useRef<HTMLDivElement>(null);
 
-  const folios = useMemo(() => pageFolioNumbers(pages.map((p) => p.templateId)), [pages]);
-  const folioSides = useMemo(() => pageFolioSides(pages.map((p) => p.templateId)), [pages]);
+  const folioInfos = useMemo(() => pageFolioInfos(pages.map((p) => p.templateId)), [pages]);
 
   useLayoutEffect(() => {
     const el = boardRef.current;
@@ -139,15 +139,17 @@ export function EditView({
 
   const page = pages[editPage] ?? null;
   const ctx: PageFaceCtx = {
-    folio: folios[editPage] ?? null,
-    folioSide: folioSides[editPage] ?? 'right',
+    folio: folioInfos[editPage]?.folio ?? null,
+    folioSide: folioInfos[editPage]?.side ?? 'right',
     total: pages.length,
     resolve,
   };
+  // 双宽跨页(#303)在编辑态也得按两页宽摆,否则整张跨页被压成半宽。
+  const wide = page && isSpreadTemplate(page.templateId) ? 2 : 1;
   const box = fitBox(
     Math.max(0, area.w - INSET * 2),
     Math.max(0, area.h - INSET * 2),
-    spreadAspect(1),
+    spreadAspect(wide),
   );
 
   // 书在画板里是居中的 → 开页顶边相对画板的偏移。

@@ -1,0 +1,13 @@
+{
+  "id": "mag-58",
+  "category": "interior",
+  "spread": true,
+  "images": [
+    { "id": "image1", "orientation": ["portrait"], "quality": ["hero"] },
+    { "id": "image2", "quality": ["detail"] }
+  ],
+  "texts": [
+    { "id": "title", "role": "title", "lang": "user", "variableDecor": true, "sample": "No Sentence Stopped Explaining" },
+    { "id": "body", "role": "body", "lang": "user", "sample": "At twenty-eight I stopped explaining my job to them. Not out of anger. I just ran out of ways to say it." }
+  ]
+}

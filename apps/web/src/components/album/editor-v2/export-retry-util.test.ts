@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  classifyExportFailure,
   runExportWithRetry,
   buildExportFailureLog,
   ExportError,
@@ -155,4 +156,76 @@ test('不碰积分:retry/日志模块零 creditService 依赖(源码静态自证
   for (const banned of ['creditService', 'creditsService', '.settle(', '.release(', '.cost(', '.charge(']) {
     assert.ok(!code.includes(banned), `导出重试模块不得出现积分调用: ${banned}`);
   }
+});
+
+// ── 失败日志必须可诊断(#307 生产事故:reason=render_failed 什么也说明不了)──
+// §3 隐私是硬红线:message 里可能混进 base64 / 地名 / 坐标,所以**永不**把自由文本
+// 写进日志。改用**有界白名单**把错误归类成固定 code —— 词表封闭,用户数据不可能泄漏,
+// 但线上一看就知道是哪一类失败。
+
+test('classifyExportFailure: canvas 上下文不可用', () => {
+  assert.equal(
+    classifyExportFailure(new ExportError('render', 'PDF image canvas context unavailable')),
+    'canvas_unavailable',
+  );
+});
+
+test('classifyExportFailure: 照片解码失败', () => {
+  assert.equal(
+    classifyExportFailure(new ExportError('render', 'could not decode stored photo image')),
+    'image_decode_failed',
+  );
+});
+
+test('classifyExportFailure: 画布尺寸/内存超限', () => {
+  assert.equal(
+    classifyExportFailure(new ExportError('render', 'Canvas area exceeds the maximum limit')),
+    'canvas_too_large',
+  );
+});
+
+test('classifyExportFailure: 认不出的错误归 other,绝不回落成原文', () => {
+  const code = classifyExportFailure(new ExportError('render', 'place=Eiffel Tower lat=48.8584'));
+  assert.equal(code, 'other');
+});
+
+test('日志带 failureCode,且词表封闭(不含任何原始 message 片段)', () => {
+  const log = buildExportFailureLog(
+    new ExportError('render', 'could not decode stored photo image at place=Eiffel Tower'),
+    { albumId: 'a1', attempts: 3 },
+  );
+  assert.equal(log.reason, 'render_failed');
+  assert.equal(log.failureCode, 'image_decode_failed');
+  const serialized = JSON.stringify(log);
+  for (const sensitive of ['Eiffel', 'place', '48.8584']) {
+    assert.ok(!serialized.includes(sensitive), `日志不得包含原始片段: ${sensitive}`);
+  }
+});
+
+// ── 陈旧构建包(#307 生产事故真凶)────────────────────────────────────────
+// 导出模块是懒加载的(`await import('@/lib/pdf/render-raster')`,避免把
+// html2canvas/jspdf 打进主包)。用户页面开在部署之前时,新版上线会让旧 chunk
+// 从 CDN 消失 → 动态 import 失败 → 3 次重试全挂(chunk 不会回来,重试没意义)。
+// 这不是代码 bug,补救办法也完全不同(提示刷新,而不是查渲染逻辑),必须能一眼认出。
+
+test('classifyExportFailure: 动态 import 拉不到 chunk → stale_bundle', () => {
+  for (const msg of [
+    'Failed to fetch dynamically imported module: https://yujeeai.com/_next/static/chunks/abc.js',
+    'Importing a module script failed.',
+    'ChunkLoadError: Loading chunk 123 failed.',
+  ]) {
+    assert.equal(
+      classifyExportFailure(new ExportError('render', msg)),
+      'stale_bundle',
+      `应识别为 stale_bundle: ${msg}`,
+    );
+  }
+});
+
+test('stale_bundle 优先于 network(两者措辞重叠,但补救办法不同)', () => {
+  const log = buildExportFailureLog(
+    new ExportError('render', 'Failed to fetch dynamically imported module'),
+    { albumId: 'a1', attempts: 3 },
+  );
+  assert.equal(log.failureCode, 'stale_bundle');
 });

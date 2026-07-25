@@ -69,5 +69,44 @@ const EnvSchema = z.object({
   R2_PUBLIC_BASE_URL: z.string().url().default('https://cdn.yujeeai.com'),
 });
 
+// 下面这些变量在 schema 里都带 dev 兜底默认值(localhost / dev_secret_replace_me 之类),
+// 好处是本地零配置起得来,代价是**生产漏配一个变量不会崩,会带着占位值静默上线** ——
+// 封面预览那次事故就是这个形状。所以真生产环境下要求它们必须由环境显式提供。
+//
+// 只在「真生产」生效:
+//   - Vercel:  VERCEL_ENV === 'production'(preview/development 保留 dev 默认值,
+//              否则每个 PR 预览构建都会因为 Preview 环境本就缺 DATABASE_URL 而炸)
+//   - 自托管:  NODE_ENV === 'production' 且没有 VERCEL_ENV(Fly/Docker 等)
+const PRODUCTION_REQUIRED = [
+  'DATABASE_URL',
+  'WEB_BASE_URL',
+  'BETTER_AUTH_SECRET',
+  'AGENT_BASE_URL',
+  'AGENT_SHARED_SECRET',
+  'DESIGN_AGENT_BASE_URL',
+  'DESIGN_AGENT_SHARED_SECRET',
+] as const;
+
+type RawEnv = Record<string, string | undefined>;
+
+export function isRealProduction(raw: RawEnv): boolean {
+  if (raw.VERCEL_ENV) return raw.VERCEL_ENV === 'production';
+  return raw.NODE_ENV === 'production';
+}
+
+export function assertProductionEnv(raw: RawEnv): void {
+  if (!isRealProduction(raw)) return;
+  const missing = PRODUCTION_REQUIRED.filter((key) => !raw[key]?.trim());
+  if (missing.length > 0) {
+    throw new Error(
+      `生产环境缺少必需的环境变量: ${missing.join(', ')}。` +
+        '这些变量在开发环境有占位默认值,生产环境必须显式设置 —— ' +
+        '带着占位值启动会静默连错数据库/错服务。',
+    );
+  }
+}
+
+assertProductionEnv(process.env);
+
 export const env = EnvSchema.parse(process.env);
 export type Env = z.infer<typeof EnvSchema>;

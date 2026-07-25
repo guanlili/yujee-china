@@ -20,9 +20,10 @@ __pycache__/
 *.egg-info/
 
 # LLM I/O 调试追踪(dev 默认常开,本地产物,绝不入库)
-llm-trace.txt
-apps/agent/llm-trace.txt
-apps/agent/llm-trace*.txt
+# 用通配覆盖 .prev/.1 等轮转后缀 —— 之前只忽略了 llm-trace.txt,
+# engine/llm-trace.prev.txt 就这么被提交进了仓库。
+llm-trace*.txt
+**/llm-trace*.txt
 
 # Local agent/Claude workspace metadata
 .claude/

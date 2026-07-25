@@ -1,16 +1,19 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { isSpreadTemplate } from '@yujee/contracts/render';
 import {
   adaptPageToTemplateData,
   type AdaptablePage,
   type ResolveImage,
 } from '@/components/album/adapt-layout';
-import { applyFolioOverlay, fitTextBoxes, pageFolioNumbers, pageFolioSides, resolveDisplayHtml, type FolioSide } from '@/components/album/page-html-dom';
+import { applyFolioOverlay, fitTextBoxes, pageFolioInfos, resolveDisplayHtml, type FolioSide, type PageFolio } from '@/components/album/page-html-dom';
 import { renderPageHtml } from '@/components/album/templates/html/fill-template';
 import { PAGE } from '@/components/album/templates/constants';
 import { getWebTemplate } from '@/components/album/web-registry';
 import { loadAlbumFonts } from '@/lib/font/album-font-loader';
 import { injectDocumentFontsInto } from '@/lib/font/clone-document-fonts';
+import { faceCaptureSpec } from './face-capture';
+import { splitSpreadCanvas } from './split-spread-canvas';
 
 // 栅格 PDF 渲染器（收敛单渲染器）：逐页把「屏幕渲染」离屏渲成 794×1123 → html2canvas
 // 高倍截图 → jsPDF 每页贴图。PDF 因此与屏幕像素级一致，index↔pdf 两套渲染器的分歧
@@ -34,7 +37,7 @@ function renderFaceHtml(
   page: AdaptablePage & { html?: string },
   resolveImage: ResolveImage,
   total: number,
-  folio: number | null = null,
+  folio: PageFolio = null,
   folioSide: FolioSide = 'right',
 ): string {
   if (typeof page.html === 'string' && page.html.length > 0) {
@@ -55,13 +58,15 @@ function renderFaceHtml(
 
 export interface FaceRenderOptions {
   scale?: number; // 截图倍率，默认 3
-  folio?: number | null; // 页码；null=不贴
+  folio?: PageFolio; // 页码；null=不贴，双宽页={left,right}
   folioSide?: FolioSide; // 页码贴左下 / 右下
   total?: number; // 总页数（供 React 回退模板用）
 }
 
-// 单个 face → 离屏 html2canvas 截图 → 返回 canvas（794*scale × 1123*scale）。
-// PDF / 单页 JPG / 拼图三条导出路径共用的原语。调用方需先 loadAlbumFonts。
+// 单个 face → 离屏 html2canvas 截图 → 返回 canvas。尺寸由 faceCaptureSpec() 决定：
+// 普通页 794*scale × 1123*scale；双宽(#303)页 1588*scale × 1123*scale —— 调用方若要
+// 纯 A4 输出，自己用 splitSpreadCanvas 切成左右两张（PDF / 单页 JPG 都这么做）。
+// PDF / 单页 JPG / 拼图 / Live 视频四条导出路径共用的原语。调用方需先 loadAlbumFonts。
 export async function renderFaceToCanvas(
   page: AdaptablePage & { html?: string },
   resolveImage: ResolveImage,
@@ -69,11 +74,11 @@ export async function renderFaceToCanvas(
 ): Promise<HTMLCanvasElement> {
   const scale = options.scale ?? 3;
   const { default: html2canvas } = await import('html2canvas-pro');
-  // 离屏 host：固定 794×1123、移出视口，独立于当前缩放/翻页状态。
+  // 离屏 host：按 pageBox() 开盒（普通页 794×1123；双宽页 1588×1123），移出视口，
+  // 独立于当前缩放/翻页状态。#303:此前这里硬编码单页宽，双宽页只截到左半。
+  const capture = faceCaptureSpec(page.templateId);
   const host = document.createElement('div');
-  host.style.cssText =
-    `position:fixed;left:-99999px;top:0;width:${PAGE.width}px;height:${PAGE.height}px;` +
-    `overflow:hidden;background:#fff`;
+  host.style.cssText = capture.cssText;
   host.innerHTML = renderFaceHtml(
     page, resolveImage, options.total ?? 1, options.folio ?? null, options.folioSide ?? 'right',
   );
@@ -84,8 +89,8 @@ export async function renderFaceToCanvas(
     // 字体确定后再做固定高度文字槽的字号自适应,与画板同一 pass,屏幕/导出一致。
     fitTextBoxes(host);
     return await html2canvas(host, {
-      width: PAGE.width,
-      height: PAGE.height,
+      width: capture.width,
+      height: capture.height,
       scale,
       backgroundColor: '#ffffff',
       useCORS: true,
@@ -114,16 +119,23 @@ export async function renderAlbumPdfRaster(
   const doc = new jsPDF({ unit: 'px', format: [PAGE.width, PAGE.height], orientation: 'portrait' });
 
   // 页签按导出页序计算(内页 1..N;封面/封尾/目录 null),与画板同一套覆盖层。
-  const folios = pageFolioNumbers(pages.map((p) => p.templateId));
-  // 页签贴该页外侧下角(左页左下 / 右页右下),与画板同一套推导。
-  const folioSides = pageFolioSides(pages.map((p) => p.templateId));
+  const folioInfos = pageFolioInfos(pages.map((p) => p.templateId));
+  let first = true;
   for (let i = 0; i < pages.length; i++) {
-    const canvas = await renderFaceToCanvas(pages[i]!, resolveImage, {
-      scale, total, folio: folios[i] ?? null, folioSide: folioSides[i] ?? 'right',
+    const page = pages[i]!;
+    const canvas = await renderFaceToCanvas(page, resolveImage, {
+      scale, total,
+      folio: folioInfos[i]?.folio ?? null,
+      folioSide: folioInfos[i]?.side ?? 'right',
     });
-    const img = canvas.toDataURL('image/jpeg', jpegQuality);
-    if (i > 0) doc.addPage([PAGE.width, PAGE.height], 'portrait');
-    doc.addImage(img, 'JPEG', 0, 0, PAGE.width, PAGE.height);
+    // 双宽页切成左右两张 A4 依次写入 —— PDF 保持纯竖版,可直送印刷。
+    const faces = isSpreadTemplate(page.templateId) ? splitSpreadCanvas(canvas) : [canvas];
+    for (const face of faces) {
+      const img = face.toDataURL('image/jpeg', jpegQuality);
+      if (!first) doc.addPage([PAGE.width, PAGE.height], 'portrait');
+      first = false;
+      doc.addImage(img, 'JPEG', 0, 0, PAGE.width, PAGE.height);
+    }
     options.onProgress?.(i + 1, total);
   }
 

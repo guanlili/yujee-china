@@ -65,10 +65,26 @@ test('book-solo / page-empty stay keyed off a null half (unchanged for interior 
   const tsx = source('EditorPort.tsx');
   // The pre-existing #158 behaviour (transparent blank half + dropped spine) is what an
   // interior odd-trailing page relies on, and it must remain keyed off a null half.
+  // #303 added a `fullIdx == null &&` guard so a double-wide spread page (which is
+  // painted as { left: page, right: null } but is NOT "one half empty" — it has no
+  // gutter at all, hidden separately by book-full) doesn't also trip book-solo's
+  // gutter-drop. The null-half discriminator itself (lp === null || rp === null) is
+  // unchanged — book-solo still must not regress to isSoloSpread's category key.
+  // The parens around `lp === null || rp === null` are load-bearing, not incidental: without
+  // them `&&` binds tighter than `||`, so `fullIdx == null && lp === null || rp === null`
+  // would parse as `(fullIdx == null && lp === null) || rp === null` — and since a full-spread
+  // page always has rp === null, book-solo would then fire on EVERY full-spread page right
+  // alongside book-full, the exact "two gutter-hiding mechanisms fighting" bug #303 warned
+  // about. So the grouping parens must be required here, not optional.
   assert.match(
     tsx,
-    /classList\.toggle\(\s*'book-solo'\s*,\s*lp === null \|\| rp === null\s*\)/,
+    /classList\.toggle\(\s*'book-solo'\s*,\s*fullIdx\s*==\s*null\s*&&\s*\(\s*lp === null \|\| rp === null\s*\)\s*\)/,
     'book-solo must stay keyed off a null half so interior odd-trailing pages keep their transparent blank half',
+  );
+  assert.doesNotMatch(
+    tsx,
+    /classList\.toggle\(\s*'book-solo'\s*,\s*isSoloSpread/,
+    "'book-solo' must not key off isSoloSpread (that is book-single's discriminator, not book-solo's)",
   );
   assert.match(tsx, /classList\.toggle\('page-empty', lp === null\)/);
   assert.match(tsx, /classList\.toggle\('page-empty', rp === null\)/);

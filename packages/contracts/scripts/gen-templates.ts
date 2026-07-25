@@ -70,6 +70,7 @@ const TemplateDef = z
     id: z.string().min(1),
     category: TemplateCategory,
     pairing: TemplatePairing.nullable().optional(),
+    spread: z.boolean().optional(),
     styles: z.array(z.string().min(1)).optional(),
     images: z.array(TemplateImageSlot),
     svgs: z.array(TemplateSvgSlot).optional(),
@@ -83,6 +84,20 @@ const TemplateDef = z
         code: z.ZodIssueCode.custom,
         message: 'pairing is only valid on interior templates',
         path: ['pairing'],
+      });
+    }
+    if (template.spread && template.category !== 'interior') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'spread is only valid on interior templates',
+        path: ['spread'],
+      });
+    }
+    if (template.spread && template.pairing) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'spread and pairing are mutually exclusive',
+        path: ['spread'],
       });
     }
   });

@@ -33,9 +33,10 @@ function book(): EditorPage[] {
 
 test('开页表就是桌面那套 buildSpreads —— 封面/封底天然独页,不用另写一套', () => {
   const spreads = buildSpreads(book());
-  assert.deepEqual(spreads[0], { left: null, right: 0 }, '封面开在右手页');
-  assert.deepEqual(spreads[1], { left: 1, right: 2 }, '内页成对');
-  assert.deepEqual(spreads.at(-1), { left: 7, right: null }, '封底收在左手页');
+  // #303 起 Spread 是判别式联合(kind:'pair' | 'full'),配对语义不变。
+  assert.deepEqual(spreads[0], { kind: 'pair', left: null, right: 0 }, '封面开在右手页');
+  assert.deepEqual(spreads[1], { kind: 'pair', left: 1, right: 2 }, '内页成对');
+  assert.deepEqual(spreads.at(-1), { kind: 'pair', left: 7, right: null }, '封底收在左手页');
 });
 
 test('密度 1:只显示游标那一页,同开页的另一页不显示', () => {

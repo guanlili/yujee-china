@@ -116,15 +116,26 @@ test('双页开页有书脊中缝;单页(密度 1 / 独页 / 编辑态)没有', 
   assert.match(spine, /pointer-events:\s*none/, '中缝不许拦点击(会挡住选中文字)');
 });
 
-test('书脊中缝的条件是「真摆了两页」,不是「非独页」(密度 1 会踩这个坑)', () => {
+test('书脊中缝的条件是「真摆了两张面」,不是「非独页」(密度 1 / 双宽页都会踩这个坑)', () => {
   const src = source('MobileEditor.tsx');
-  assert.match(src, /data-halves=\{halves\.length\}/, '半边数必须如实透出给 CSS');
+  assert.match(src, /data-halves=\{faces\.length\}/, '面数必须如实透出给 CSS');
   const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.doesNotMatch(
     css,
     /\.mspread:not\(\[data-solo\]\)::before/,
-    '按 solo 判会给密度 1 的单页也画中缝 —— 必须按 data-halves',
+    '按 solo 判会给密度 1 的单页、以及双宽跨页也画中缝 —— 必须按 data-halves',
   );
+});
+
+test('双宽跨页(#303):一张面 + 两页宽容器,不许缩成半宽、不许画中缝', () => {
+  const src = source('MobileEditor.tsx');
+  // 容器宽按 wide 算,不按面数算
+  assert.match(src, /fitBox\(availW, rowH, spreadAspect\(resting\.wide\)\)/,
+    '容器宽度必须按 wide 算 —— 按面数算会把双宽页压成半宽');
+  assert.match(src, /sp\.kind === 'full'[\s\S]{0,80}wide: 2/, 'full 必须是「一张面 + 两页宽」');
+  // 编辑态同样要按双宽摆
+  const edit = source('EditView.tsx');
+  assert.match(edit, /isSpreadTemplate\(page\.templateId\) \? 2 : 1/, '编辑态也要认双宽页');
 });
 
 /* ── 从编辑态返回:位置要保持、内容不许被清空 ─────────────────────────────────
@@ -163,17 +174,17 @@ test('返回浏览态要对齐到刚编辑那页所在的屏(不是跳回开头)
   );
 });
 
-test('翻纸:目标屏的半边必须从目标屏自己取(拿当前屏的开页序号去查 = 正反面画同一屏)', () => {
-  // 真实 bug(真机抓到、单测抓不到):halvesOf 读的是 spreads[si],把**当前屏**的 si
+test('翻纸:目标屏的面必须从目标屏自己取(拿当前屏的开页序号去查 = 正反面画同一屏)', () => {
+  // 真实 bug(真机抓到、单测抓不到):layoutOf 读的是 spreads[si],把**当前屏**的 si
   // 传给目标屏,查回来还是当前那个开页 → 纸片正反面是同一屏,「翻了但没换页」。
   const src = source('MobileEditor.tsx');
   assert.doesNotMatch(
     src,
-    /halvesOf\(\s*browseScreen\([^)]*\)\s*,\s*si\s*\)/,
-    '不许拿当前屏的 si 去查目标屏 —— 走 soleHalves(它从屏自己的 spreadIndices 取)',
+    /layoutOf\(\s*browseScreen\([^)]*\)\s*,\s*si\s*\)/,
+    '不许拿当前屏的 si 去查目标屏 —— 走 soleLayout(它从屏自己的 spreadIndices 取)',
   );
-  assert.match(src, /const soleHalves = useCallback/, 'soleHalves 是那个防呆口子,别删');
-  assert.match(src, /soleHalves\(toScreen\)/, '目标屏半边必须经 soleHalves 取');
+  assert.match(src, /const soleLayout = useCallback/, 'soleLayout 是那个防呆口子,别删');
+  assert.match(src, /soleLayout\(toScreen\)/, '目标屏的面必须经 soleLayout 取');
 });
 
 test('翻纸:时长/缓动/景深都取自 FlipBook,不自己定', () => {

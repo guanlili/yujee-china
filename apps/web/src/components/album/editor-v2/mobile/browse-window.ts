@@ -14,7 +14,7 @@
    自动保持一致。
    ════════════════════════════════════════════════════════════════════════════ */
 
-import { spreadIndexOfPage, isSoloSpread, type Spread } from '../../spreads';
+import { spreadIndexOfPage, isSoloSpread, spreadPageIndices, type Spread } from '../../spreads';
 import type { EditorPage } from '../../types';
 import type { Density } from '../mobile-canvas';
 
@@ -56,21 +56,20 @@ function spreadScreens(spreads: Spread[], pages: EditorPage[], density: Density)
   return screens;
 }
 
-/** 书里最后一页的下标。空书返回 -1。 */
+/** 书里最后一页的下标。空书返回 -1。
+ *  一律经 spreadPageIndices 取 —— 它同时处理普通对开与双宽跨页(#303 的判别式联合),
+ *  直接读 .left/.right 会漏掉 kind==='full' 那一整页。 */
 function lastPageIndex(spreads: Spread[]): number {
   let max = -1;
   for (const s of spreads) {
-    if (s.left != null && s.left > max) max = s.left;
-    if (s.right != null && s.right > max) max = s.right;
+    for (const idx of spreadPageIndices(s)) if (idx > max) max = idx;
   }
   return max;
 }
 
-/** 开页的起始页(左页优先;封面这类只有右页的开页取右页)。 */
+/** 开页的起始页(左→右顺序的第一页;封面这类只有右页的开页取右页;双宽页取它本身)。 */
 function firstPageOfSpread(spreads: Spread[], spreadIdx: number): number {
-  const s = spreads[spreadIdx];
-  if (!s) return 0;
-  return s.left ?? s.right ?? 0;
+  return spreadPageIndices(spreads[spreadIdx])[0] ?? 0;
 }
 
 /** 游标所在的开页序号;越界/找不到时回落到第一个开页。 */

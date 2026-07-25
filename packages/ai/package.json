@@ -88,7 +88,6 @@
 		"@smithy/types": "4.15.1",
 		"@types/node": "24.12.4",
 		"@typescript/native-preview": "7.0.0-dev.20260120.1",
-		"canvas": "3.2.3",
 		"shx": "0.4.0",
 		"vitest": "4.1.9"
 	}

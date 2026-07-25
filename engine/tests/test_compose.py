@@ -646,3 +646,48 @@ def test_slow_chapter_times_out_alone_and_the_rest_still_complete(monkeypatch):
     assert len(completed) == 1
     # 写完的第 0 章在;超时的第 1 章缺席(Web 保留模板 sample)。
     assert completed[0].pagesTexts == {0: {"title": "章 0"}}
+
+
+# ── 标题走英文、正文跟用户语言(#307) ──────────────────────────────────────────
+
+
+def test_title_slots_are_forced_to_english_body_follows_user_language():
+    """标题类槽一律英文,正文/图注跟用户语言。
+
+    模板 JSON 里 39 个 title 槽有 37 个声明 lang="user";产品决定标题统一走英文
+    (杂志感),所以在 payload 构建处按 role 覆盖,而不是去改用户手维护的模板 JSON。
+    """
+    page = {"pageIndex": 0, "templateId": "mag-01", "images": {}}
+    specs = {s["id"]: s for s in compose_handler._writable_text_slots(page)}
+
+    assert specs["title"]["role"] == "title"
+    assert specs["title"]["lang"] == "en", "title 槽必须被强制成 en"
+    # 正文保持模板声明的 user,跟随用户系统语言
+    assert specs["body"]["lang"] == "user", "body 槽必须保持 user"
+
+
+def test_chapter_payload_sent_to_gemini_marks_title_en_body_user(monkeypatch):
+    """端到端:真正发给 Gemini 的请求体里,title 槽 lang=en、body 槽 lang=user。
+
+    只测 _writable_text_slots 不够 —— 要确认覆盖后的 lang 真的进了请求体。
+    用户消息是 parts 列表,第一个 text part 就是载荷 JSON(字符串,需再解一层)。
+    """
+    captured: dict = {}
+
+    async def fake_generate(**kwargs):
+        captured.update(kwargs)
+        return _gemini_response('{"pages":[]}')
+
+    _run(monkeypatch, fake_generate)
+
+    user_msg = next(m for m in captured["messages"] if m["role"] == "user")
+    payload = json.loads(user_msg["content"][0]["text"])
+    specs = {
+        spec["id"]: spec
+        for page in payload["pages"]
+        for spec in page["textSlots"]
+    }
+    assert specs["title"]["lang"] == "en", f"title 应为 en,实际 {specs['title']}"
+    assert specs["body"]["lang"] == "user", f"body 应为 user,实际 {specs['body']}"
+    # decoration 保持模板声明(mag-01 的 label 本就是 en),不被标题规则波及
+    assert specs["label"]["role"] == "decoration"

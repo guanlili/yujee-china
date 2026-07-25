@@ -1,7 +1,4 @@
 // 纯类型迁至 @yujee/contracts/render;React 组件类型留在 web。
-import type { ComponentType } from 'react';
-import type { TemplateRenderProps } from '@yujee/contracts/render';
-
 export type {
   TemplateDataValue,
   TemplateArrayItem,
@@ -12,9 +9,6 @@ export type {
   GridCell,
 } from '@yujee/contracts/render';
 
-// 矢量 PDF 渲染器已退役(C 方案:页面真相 = HTML,导出走栅格截屏),条目只剩 web 组件。
-export interface TemplateEntry {
-  id: string;
-  label: string;
-  WebTemplate: ComponentType<TemplateRenderProps>;
-}
+// 渲染注册表的唯一真相是 `components/album/web-registry.ts`(WEB_TEMPLATE_REGISTRY)。
+// 这里曾有一个 TemplateEntry 形状供第二套注册表使用,该注册表已随矢量 PDF 渲染器一同
+// 退役删除;不要再在 templates/ 下新建注册表。

@@ -19,7 +19,7 @@ def test_loader_reads_shared_template_json_count():
     # test never goes stale when templates are added/removed.
     expected_ids = sorted(path.stem for path in json_files)
 
-    assert len(json_files) == 43
+    assert len(json_files) == 47
     # mag-24 has no JSON, so it is (correctly) absent from the loaded registry.
     assert "mag-24" not in expected_ids
     assert templates.TEMPLATE_IDS == expected_ids
@@ -296,3 +296,43 @@ def test_text_slot_without_sample_loads_fine(tmp_path):
     loaded = registry._load_templates_from_dir(tmp_path)
     slot = registry.text_slots(loaded["no-sample"])[0]
     assert slot.get("sample") is None
+
+
+def test_loader_accepts_spread_on_interior(tmp_path):
+    from src.workflows.core.layout import templates
+
+    (tmp_path / "spread-ok.json").write_text(json.dumps({
+        "id": "spread-ok", "category": "interior", "spread": True,
+        "images": [{"id": "image1"}],
+        "texts": [{"id": "title", "role": "title", "lang": "user"}],
+    }), encoding="utf-8")
+
+    loaded = templates._load_templates_from_dir(tmp_path)
+    assert loaded["spread-ok"]["spread"] is True
+
+
+def test_loader_rejects_spread_on_cover(tmp_path):
+    from src.workflows.core.layout import templates
+
+    (tmp_path / "spread-bad.json").write_text(json.dumps({
+        "id": "spread-bad", "category": "cover", "spread": True,
+        "images": [{"id": "image1"}],
+        "texts": [{"id": "title", "role": "title", "lang": "user"}],
+    }), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="spread is only valid on interior"):
+        templates._load_templates_from_dir(tmp_path)
+
+
+def test_loader_rejects_spread_with_pairing(tmp_path):
+    from src.workflows.core.layout import templates
+
+    (tmp_path / "spread-pairing-bad.json").write_text(json.dumps({
+        "id": "spread-pairing-bad", "category": "interior", "spread": True,
+        "pairing": {"forced": True, "with": "some-other-id", "side": "left"},
+        "images": [{"id": "image1"}],
+        "texts": [{"id": "title", "role": "title", "lang": "user"}],
+    }), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="spread and pairing are mutually exclusive"):
+        templates._load_templates_from_dir(tmp_path)

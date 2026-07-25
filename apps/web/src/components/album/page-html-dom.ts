@@ -225,69 +225,81 @@ export function fitTextBoxes(root: HTMLElement): void {
 }
 
 // ── 页签(folio)覆盖层 ─────────────────────────────────────────────────────
-// 页码不再依赖烘进 html 的 folio 槽(重排页序后必然过期):展示层每次按当前页序
-// 计算,统一小样式固定右下角;封面/目录/封尾不编号。模板遗留的 folio 槽元素在
-// 展示时隐藏(存库 html 不动,锚点契约不受影响)。
+// 页签不再依赖烘进 html 的 folio 槽(重排页序后必然过期):展示层每次按当前页序
+// 计算。封面/目录/封尾不编号。页签贴该页所在物理半页的外侧下角(左页→左下,
+// 右页→右下);双宽(spread)页占满整个跨页,故一页吃掉两个号、左下右下各贴一个。
+// 侧别一律按 placePages 的真实版面推 ——「奇偶」不等于左右,有没有目录页会整体
+// 错位一位。
 
 import { getTemplate } from '@yujee/contracts/templates';
+import { placePages } from './page-layout';
 
 const NON_FOLIO_CATEGORIES = new Set(['cover', 'toc', 'ending']);
 
-/** 按当前页序给每页算页签:内页从 1 连续编号,封面/目录/封尾为 null。 */
-export function pageFolioNumbers(templateIds: string[]): (number | null)[] {
-  let n = 0;
-  return templateIds.map((id) => {
-    const category = getTemplate(id)?.category;
-    if (category && NON_FOLIO_CATEGORIES.has(category)) return null;
-    n += 1;
-    return n;
-  });
-}
-
-// 页签贴该页所在物理半页的外侧下角:左页→左下,右页→右下。侧别按 buildSpreads 的两两
-// 配对推出(与 spreads.ts 一致:cover 右单页/ending 左单页都单独成对、不参与配对,其余
-// interior+toc 顺序两两配),所以「奇偶」不等于左右——有没有目录页会整体错位一位,必须
-// 按真实版面推,不能只看页码奇偶。
 export type FolioSide = 'left' | 'right';
 
-/** 每页页签该贴哪侧,与该页物理半页一致(左页→left/左下,右页→right/右下)。 */
-export function pageFolioSides(templateIds: string[]): FolioSide[] {
-  // 默认 left(左下):左页/末尾落单页(buildSpreads 把它当左页)/兜底都按左页。
-  const sides: FolioSide[] = templateIds.map(() => 'left');
-  let pendingLeft: number | null = null;
-  templateIds.forEach((id, i) => {
+/** 一页的页码:null=不编号;number=单页一个号;{left,right}=双宽页吃掉的两个号。 */
+export type PageFolio = null | number | { left: number; right: number };
+
+export interface PageFolioInfo {
+  folio: PageFolio;
+  /** 单页页贴哪一侧;双宽页(folio 为对象)时该值无意义,两侧都贴。 */
+  side: FolioSide;
+}
+
+/** 按当前页序算出每页的页码与贴边。左右页配对走 placePages(唯一真相)。 */
+export function pageFolioInfos(templateIds: string[]): PageFolioInfo[] {
+  const placements = placePages(templateIds);
+  let n = 0;
+  return templateIds.map((id, i) => {
+    const placement = placements[i]!;
     const category = getTemplate(id)?.category;
-    if (category === 'cover' || category === 'ending') {
-      pendingLeft = null; // 单页:cover 是右单页,ending 是左单页(见 buildSpreads)
-      sides[i] = category === 'cover' ? 'right' : 'left';
-      return;
+    const side: FolioSide = placement.side === 'right' ? 'right' : 'left';
+    if (category && NON_FOLIO_CATEGORIES.has(category)) {
+      return { folio: null, side };
     }
-    if (pendingLeft === null) {
-      pendingLeft = i; // 左页 → 保持 'left'
-    } else {
-      sides[i] = 'right'; // 右页 → 右下
-      pendingLeft = null;
+    if (placement.side === 'both') {
+      const left = n + 1;
+      const right = n + 2;
+      n += 2;
+      return { folio: { left, right }, side };
     }
+    n += 1;
+    return { folio: n, side };
   });
-  return sides;
 }
 
 const FOLIO_ANCHOR_OPEN_RE = /<([a-z0-9]+)((?:[^>]*?)data-text-key="folio(?:\[\d+\])?"[^>]*)>/gi;
 
-/** 展示层页签:隐藏模板遗留 folio 元素;folio 非 null 时在该页对应侧下角注入统一页码。 */
-export function applyFolioOverlay(html: string, folio: number | null, side: FolioSide = 'right'): string {
+function folioMarkup(value: number, side: FolioSide): string {
+  const edge = side === 'left' ? 'left:36px' : 'right:36px';
+  return (
+    `<div data-page-folio="true" style="position:absolute;${edge};bottom:26px;` +
+    `font-size:12px;letter-spacing:0.12em;color:#a09b8e;` +
+    `font-family:'Inter','Noto Sans SC',sans-serif;pointer-events:none">${value}</div>`
+  );
+}
+
+/** 展示层页签:隐藏模板遗留 folio 元素;folio 非 null 时在对应侧下角注入统一页码。
+ *  双宽页(folio 为 {left,right})左下右下各注入一个。 */
+export function applyFolioOverlay(
+  html: string,
+  folio: PageFolio,
+  side: FolioSide = 'right',
+): string {
   let out = html.replace(FOLIO_ANCHOR_OPEN_RE, (_full, tag: string, attrs: string) => {
     const nextAttrs = attrs.includes('style="')
       ? attrs.replace('style="', 'style="display:none;')
       : `${attrs} style="display:none"`;
     return `<${tag}${nextAttrs}>`;
   });
-  if (folio !== null) {
-    const edge = side === 'left' ? 'left:36px' : 'right:36px';
-    const overlay =
-      `<div data-page-folio="true" style="position:absolute;${edge};bottom:26px;` +
-      `font-size:12px;letter-spacing:0.12em;color:#a09b8e;` +
-      `font-family:'Inter','Noto Sans SC',sans-serif;pointer-events:none">${folio}</div>`;
+  const overlay =
+    folio === null
+      ? ''
+      : typeof folio === 'number'
+        ? folioMarkup(folio, side)
+        : folioMarkup(folio.left, 'left') + folioMarkup(folio.right, 'right');
+  if (overlay) {
     const closeAt = out.lastIndexOf('</div>');
     if (closeAt >= 0) out = out.slice(0, closeAt) + overlay + out.slice(closeAt);
   }

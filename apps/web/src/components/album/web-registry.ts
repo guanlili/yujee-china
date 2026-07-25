@@ -46,11 +46,19 @@ import { WebMag47 } from './templates/mag-47';
 import { WebMag48 } from './templates/mag-48';
 import { WebMag49 } from './templates/mag-49';
 import { WebMag51 } from './templates/mag-51';
-import { WebMag52 } from './templates/mag-52';
-import { WebMag53 } from './templates/mag-53';
+import { WebMag54 } from './templates/mag-54';
+import { WebMag55 } from './templates/mag-55';
+import { WebMag56 } from './templates/mag-56';
+import { WebMag57 } from './templates/mag-57';
+import { WebMag58 } from './templates/mag-58';
+import { WebMag59 } from './templates/mag-59';
 export const WEB_TEMPLATE_REGISTRY: Record<string, ComponentType<TemplateRenderProps>> = {
-  'mag-53': WebMag53,
-  'mag-52': WebMag52,
+  'mag-59': WebMag59,
+  'mag-58': WebMag58,
+  'mag-57': WebMag57,
+  'mag-56': WebMag56,
+  'mag-55': WebMag55,
+  'mag-54': WebMag54,
   'mag-51': WebMag51,
   'mag-49': WebMag49,
   'mag-48': WebMag48,

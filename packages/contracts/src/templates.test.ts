@@ -65,8 +65,12 @@ const EXPECTED_TEMPLATE_IDS = [
   'mag-48',
   'mag-49',
   'mag-51',
-  'mag-52',
-  'mag-53',
+  'mag-54',
+  'mag-55',
+  'mag-56',
+  'mag-57',
+  'mag-58',
+  'mag-59',
   'p01',
 ];
 
@@ -395,4 +399,27 @@ test('every template HTML passes lint — no declared-but-unrendered slots', () 
     failures.push(...lintTemplateHtml(tpl, html));
   }
   assert.deepEqual(failures, []);
+});
+
+test('spread is accepted on interior templates', () => {
+  const parsed = TemplateDef.safeParse({
+    id: 'x', category: 'interior', spread: true, images: [{ id: 'image1' }], texts: [],
+  });
+  assert.equal(parsed.success, true);
+});
+
+test('spread is rejected on non-interior templates', () => {
+  const parsed = TemplateDef.safeParse({
+    id: 'x', category: 'cover', spread: true, images: [{ id: 'image1' }], texts: [],
+  });
+  assert.equal(parsed.success, false);
+});
+
+test('spread and pairing are mutually exclusive', () => {
+  const parsed = TemplateDef.safeParse({
+    id: 'x', category: 'interior', spread: true,
+    pairing: { forced: true, with: 'y', side: 'left' },
+    images: [{ id: 'image1' }], texts: [],
+  });
+  assert.equal(parsed.success, false);
 });

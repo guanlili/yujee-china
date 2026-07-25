@@ -110,11 +110,23 @@ def _weighted_pick_template(
     return rng.choices(list(template_ids), weights=weights, k=1)[0]
 
 
+def _prefer_unused(template_ids: Sequence[str], used: set[str]) -> list[str]:
+    """够拍就不重复(#303):池里还有没用过的模板时,只从没用过的里选;用光了才退回
+    完整池允许重复。返回子集保持原顺序,不破坏加权随机的确定性。"""
+    avail = [tid for tid in template_ids if tid not in used]
+    return avail if avail else list(template_ids)
+
+
 def _build_one_candidate(
     photos: Sequence[Any],
     rng: random.Random,
+    used_templates: set[str] | None = None,
 ) -> list[dict[str, Any]] | None:
-    """生成一个整章方案:随机切页 + 每页随机选模板 + 匹配填槽。失败返回 None。"""
+    """生成一个整章方案:随机切页 + 每页随机选模板 + 匹配填槽。失败返回 None。
+
+    `used_templates`:整本书迄今已用过的模板 id(跨章去重的起点)。本章内新选的也
+    并入,后续页在同一图槽数下够拍就不再重复(见 `_prefer_unused`)。
+    """
     max_cap = skeleton_v3.max_capacity(_CATEGORY)
     usable_caps = _capacities_with_templates(max_cap)
     if not usable_caps:
@@ -123,6 +135,7 @@ def _build_one_candidate(
     ordered = list(photos)  # 章内顺序为时序基准
     sizes = _random_page_sizes(len(ordered), rng, usable_caps)
 
+    used: set[str] = set(used_templates or ())
     pages: list[dict[str, Any]] = []
     cursor = 0
     for size in sizes:
@@ -133,7 +146,10 @@ def _build_one_candidate(
             return None
         # 软偏好:按"照片适配度"加权随机选模板,而不是瞎选再硬塞。适配高(朝向/构图
         # 都合槽位)的模板权重大,但低分也留小概率,保留版式多样性、不死板。
-        template_id = _weighted_pick_template(template_ids, page_photos, rng)
+        # 够拍就不重复:先剔掉已用过的模板(该图槽数下还有替代时),用光了才允许重复。
+        pick_pool = _prefer_unused(template_ids, used)
+        template_id = _weighted_pick_template(pick_pool, page_photos, rng)
+        used.add(template_id)
         # 页内照片顺序也打乱,让构图/朝向匹配有随机性(匹配器本身确定性)。
         shuffled = list(page_photos)
         rng.shuffle(shuffled)
@@ -163,11 +179,15 @@ def generate_candidates(
     *,
     seed: str,
     count: int = DEFAULT_CANDIDATE_COUNT,
+    used_templates: set[str] | None = None,
 ) -> list[list[dict[str, Any]]]:
     """为一章生成最多 `count` 个不同的整章排版候选(确定性随机,seed 播种)。
 
     返回候选列表,每个候选是 pages[](pageIndex/templateId/images/texts)。
     至少返回 1 个(只要 photos 非空)。同 seed+photos 输出可复现。
+
+    `used_templates`:整本书迄今已用过的模板 id。每个候选各自从这个起点开始去重
+    (变体之间互不累加),让跨章也够拍就不重复(#303)。
     """
     if not photos:
         return []
@@ -177,7 +197,7 @@ def generate_candidates(
     attempt = 0
     while len(candidates) < count and attempt < count + _MAX_VARIANT_ATTEMPTS:
         rng = random.Random(f"{seed}#{attempt}")
-        pages = _build_one_candidate(photos, rng)
+        pages = _build_one_candidate(photos, rng, used_templates)
         attempt += 1
         if pages is None:
             continue

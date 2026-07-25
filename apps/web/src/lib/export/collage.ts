@@ -1,6 +1,6 @@
 import type { AdaptablePage, ResolveImage } from '@/components/album/adapt-layout';
-import { pageFolioNumbers, pageFolioSides } from '@/components/album/page-html-dom';
-import { buildSpreads, isSoloSpread, type Spread } from '@/components/album/spreads';
+import { pageFolioInfos } from '@/components/album/page-html-dom';
+import { buildSpreads, isSoloSpread, spreadPageIndices, type Spread } from '@/components/album/spreads';
 import type { EditorPage } from '@/components/album/types';
 import { PAGE } from '@/components/album/templates/constants';
 import { loadAlbumFonts } from '@/lib/font/album-font-loader';
@@ -77,10 +77,8 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement): void {
 }
 
 // 把一个跨页画到 (x,y,w,h)：白底页 + 软阴影 + 左右 face + 中缝。
-function drawSpread(
+function drawSpreadBase(
   ctx: CanvasRenderingContext2D,
-  left: HTMLCanvasElement | null,
-  right: HTMLCanvasElement | null,
   x: number,
   y: number,
   w: number,
@@ -93,9 +91,21 @@ function drawSpread(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(x, y, w, h);
   ctx.restore();
-
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
+}
+
+// 左右两半 face + 中缝。
+function drawPairSpread(
+  ctx: CanvasRenderingContext2D,
+  left: HTMLCanvasElement | null,
+  right: HTMLCanvasElement | null,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
+  drawSpreadBase(ctx, x, y, w, h);
   const halfW = w / 2;
   if (left) ctx.drawImage(left, x, y, halfW, h);
   if (right) ctx.drawImage(right, x + halfW, y, halfW, h);
@@ -107,6 +117,19 @@ function drawSpread(
   ctx.moveTo(x + halfW, y);
   ctx.lineTo(x + halfW, y + h);
   ctx.stroke();
+}
+
+// 双宽(#303)页：一整张双宽 face 铺满整格，没有中缝可画（画面是连续的）。
+function drawFullSpread(
+  ctx: CanvasRenderingContext2D,
+  face: HTMLCanvasElement | null,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
+  drawSpreadBase(ctx, x, y, w, h);
+  if (face) ctx.drawImage(face, x, y, w, h);
 }
 
 function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
@@ -143,17 +166,13 @@ export async function renderCollages(
     else { paintNeutral(ctx); } // 未选 / 预设图缺失 → 中性底
   };
 
-  const folios = pageFolioNumbers(pages.map((p) => p.templateId));
-  const folioSides = pageFolioSides(pages.map((p) => p.templateId));
+  const folioInfos = pageFolioInfos(pages.map((p) => p.templateId));
   const total = pages.length;
 
   // face 渲染缓存 + 进度：以「需渲染的 face 数」为总量。
   const faceCache = new Map<number, HTMLCanvasElement>();
   const neededFaces = new Set<number>();
-  for (const s of spreads) {
-    if (s.left != null) neededFaces.add(s.left);
-    if (s.right != null) neededFaces.add(s.right);
-  }
+  for (const s of spreads) for (const idx of spreadPageIndices(s)) neededFaces.add(idx);
   const totalFaces = neededFaces.size;
   let done = 0;
   async function face(idx: number | null): Promise<HTMLCanvasElement | null> {
@@ -161,7 +180,9 @@ export async function renderCollages(
     const cached = faceCache.get(idx);
     if (cached) return cached;
     const canvas = await renderFaceToCanvas(pages[idx]!, resolveImage, {
-      scale: FACE_SCALE, total, folio: folios[idx] ?? null, folioSide: folioSides[idx] ?? 'right',
+      scale: FACE_SCALE, total,
+      folio: folioInfos[idx]?.folio ?? null,
+      folioSide: folioInfos[idx]?.side ?? 'right',
     });
     faceCache.set(idx, canvas);
     done += 1;
@@ -204,8 +225,13 @@ export async function renderCollages(
       const row = i % rows;
       const x = startX + col * (cellW + gapX);
       const y = startY + row * (cellH + gapY);
-      const [l, r] = await Promise.all([face(s.left), face(s.right)]);
-      drawSpread(ctx, l, r, x, y, cellW, cellH);
+      if (s.kind === 'full') {
+        // 双宽页占满整格：一张 face 铺满，不切两半、不画中缝。
+        drawFullSpread(ctx, await face(s.page), x, y, cellW, cellH);
+      } else {
+        const [l, r] = await Promise.all([face(s.left), face(s.right)]);
+        drawPairSpread(ctx, l, r, x, y, cellW, cellH);
+      }
     }
     blobs.push(await canvasToJpegBlob(out, quality));
   }

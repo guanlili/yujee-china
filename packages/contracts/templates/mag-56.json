@@ -1,0 +1,11 @@
+{
+  "id": "mag-56",
+  "category": "interior",
+  "spread": true,
+  "images": [
+    { "id": "image1", "quality": ["hero"] }
+  ],
+  "texts": [
+    { "id": "body", "role": "body", "lang": "user", "sample": "And then we went home, a little different. The photos are here. The rest stays with me. Until the next somewhere." }
+  ]
+}

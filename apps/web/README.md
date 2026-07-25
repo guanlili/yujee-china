@@ -12,12 +12,24 @@ Next.js app for the product UI, auth, billing, album state, V3 orchestration, an
 - Callback handling from Agent.
 - R2 presigned URLs for PDF and thumbnails.
 
-Agent 对外只有四个端点:`GET /health`、`POST /v3/analyze`、`POST /v3/select-layout`、
-`POST /v3/compose`。`src/lib/agent/agent-client.ts` 也只剩对应的三个 submit 方法
-(`submitAnalyzeV3` / `submitSelectLayoutV3` / `submitComposeV3`)。旧的
-`chapter-chat` / `edit-chat` / `recommend` / `apply-theme` / `cover` / `finalize` 都已经
-没有 Web 路由,残留的只是测试文件与 CSS 里的历史注释。改动任何调 Agent 的 Web 路由前,
-先看 `engine/src/api/routes.py`;已删的 Agent 路由不要当成在用的行为写进文档。
+Web 调**两个**后端服务,别混:
+
+| | 生成 Agent | 设计 Agent |
+|---|---|---|
+| 客户端 | `src/lib/agent/agent-client.ts` | `src/lib/agent/design-agent-client.ts` |
+| 环境变量 | `AGENT_BASE_URL` / `AGENT_SHARED_SECRET` | `DESIGN_AGENT_BASE_URL` / `DESIGN_AGENT_SHARED_SECRET` |
+| 响应信封 | `{ok,data}` | 直接 JSON |
+| 端点 | `/health`、`/v3/analyze`、`/v3/select-layout`、`/v3/compose` | `/health`、`/api/book`、`/api/chat`、`/api/albums\|traces\|state` |
+| Web 侧入口 | `src/app/api/v3/albums/**`(生成编排) | `src/app/api/v3/albums/[uuid]/design-chat/route.ts` |
+
+`agent-client.ts` 只剩三个 submit 方法(`submitAnalyzeV3` / `submitSelectLayoutV3` /
+`submitComposeV3`)。旧的 `chapter-chat` / `edit-chat` / `recommend` / `apply-theme` /
+`cover` / `finalize` 确实已经没有 Web 路由,残留的只是测试文件与 CSS 里的历史注释 ——
+**但"对话改书"这个能力没有消失,它搬到了 design-chat + 设计 Agent 上**,不要因为旧端点
+被删就认定该能力不存在。
+
+改动任何调后端的 Web 路由前,先看对应服务的真实 surface:
+`engine/src/api/routes.py` 或 `packages/design-agent/src/web/album-server.ts`。
 
 ## Directory Map
 
@@ -126,16 +138,19 @@ pnpm --filter @yujee/web db:generate
 pnpm --filter @yujee/web db:migrate
 ```
 
-**跑测试必须 `cd apps/web` 之后再跑**:
+跑 Web 测试(两种等价,`--filter` 会把 cwd 设成本包目录,env 照常加载):
 
 ```bash
 cd apps/web && pnpm test
+pnpm --filter @yujee/web test    # 从仓根跑,等价
 ```
 
-从仓根跑(`pnpm test` / `pnpm --filter @yujee/web test`)加载不到 `apps/web/.env`,
-`DATABASE_URL` 拿不到,`src/db/repos/*.test.ts` 这类真库集成测试会**假跳过** ——
-输出一片绿,实际一条 DB 断言都没跑。看到大量 `DATABASE_URL is not reachable; skipping`
-就是踩了这个坑。
+**真正要小心的是仓根的 `pnpm test`**(即 `pnpm -r test`):它撞到第一个失败的包就中断,
+后面的包一个都不跑。contracts 先失败时,web 这 700+ 个测试根本没机会执行,而输出看起来
+"只坏了一处"。改了 web 就明确跑上面两条之一,别拿仓根 `pnpm test` 的结果替代。
+
+如果确实看到大量 `DATABASE_URL is not reachable; skipping`,那是本地缺 `apps/web/.env.local`
+或库没起,不是跑法问题 —— 那种情况下真库集成测试会假跳过,输出一片绿但一条 DB 断言都没跑。
 
 ## Environment
 
@@ -144,18 +159,38 @@ Defaults live in `src/lib/env.ts`. Common fields:
 | Name | Purpose |
 |---|---|
 | `DATABASE_URL` | Postgres connection |
-| `AGENT_BASE_URL` | Agent base URL, default `http://localhost:8001` |
-| `AGENT_SHARED_SECRET` | Bearer secret shared with Agent |
+| `AGENT_BASE_URL` | 生成 Agent base URL, default `http://localhost:8001` |
+| `AGENT_SHARED_SECRET` | Bearer secret shared with 生成 Agent |
+| `DESIGN_AGENT_BASE_URL` | 设计 Agent base URL, default `http://localhost:8787` |
+| `DESIGN_AGENT_SHARED_SECRET` | Bearer secret shared with 设计 Agent(未设则不带鉴权头) |
 | `WEB_BASE_URL` | Web origin used in callbacks |
 | `BETTER_AUTH_SECRET` | Auth signing secret |
 | `CREEM_*` | Billing |
 | `R2_*` | PDF/thumbnail storage |
+
+**真生产**下,这七个变量必须显式提供,缺任何一个当场抛(一次报全):
+`DATABASE_URL` · `WEB_BASE_URL` · `BETTER_AUTH_SECRET` · `AGENT_BASE_URL` ·
+`AGENT_SHARED_SECRET` · `DESIGN_AGENT_BASE_URL` · `DESIGN_AGENT_SHARED_SECRET`。
+这是刻意的:漏配一个 Vercel 变量应该当场崩,而不是带着 `dev_secret_replace_me` 静默上线。
+
+「真生产」的判定是 `VERCEL_ENV === 'production'`,**不是 `NODE_ENV`** —— Vercel 的
+preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV 会让每个 PR
+预览构建都炸(Preview 环境本就缺 `DATABASE_URL`)。没有 `VERCEL_ENV` 时(Fly/Docker
+自托管)才回落到 `NODE_ENV`。本地 dev/test 完全不受影响,零配置仍然起得来。
+实现与测试:`src/lib/env.ts` 的 `assertProductionEnv` / `src/lib/env.test.ts`。
 
 ## Change Notes
 
 - Keep browser-only photo/GPS logic out of server services.
 - Do not store base64 image payloads in Postgres or R2.
 - Keep Web as the owner of album/job persistence and callback merging.
-- When changing a Web route that calls Agent, check `engine/src/api/routes.py` first; removed Agent routes should not be described as active behavior.
-- Web 与 Agent 必须同版本部署:这一版删了三个 Agent 端点、新增 `/v3/compose`、
-  `V3Chapter` 加了 `title`。Web 走 Vercel 自动部署,Agent 要手动 `flyctl deploy`。
+- 改动调后端的 Web 路由前,先看对应服务的真实 surface(`engine/src/api/routes.py` 或
+  `packages/design-agent/src/web/album-server.ts`);已删的端点不要当成在用的行为写进文档。
+- Web 与两个 Agent 必须同版本部署。跨服务契约是手工镜像、无 codegen,只部署一边会契约漂移。
+  Web 走 Vercel 自动部署,两个 Agent 都要**手动** `flyctl deploy`。
+
+<!-- doc-scope
+paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
+checked-at: 37c98cac
+-->
+

@@ -22,9 +22,9 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type { EditorPage } from '../../types';
-import { buildSpreads, isSoloSpread } from '../../spreads';
+import { buildSpreads, isSoloSpread, spreadPageIndices, spreadRenderKind } from '../../spreads';
 import { pageFaceHTML, type PageFaceCtx } from '../page-face';
-import { pageFolioNumbers, pageFolioSides } from '../../page-html-dom';
+import { pageFolioInfos } from '../../page-html-dom';
 import type { ResolveImage } from '../../adapt-layout';
 import { cycleDensity, type Density } from '../mobile-canvas';
 import { browseScreen, stepScreen, screenStartOfPage, type BrowseScreen } from './browse-window';
@@ -38,6 +38,7 @@ import {
   leafLayers,
   leafShading,
   type FlipDir,
+  type ScreenShape,
 } from './flip';
 import { EditView, type TextHit } from './EditView';
 import { MobileTopbar } from './MobileTopbar';
@@ -142,20 +143,30 @@ export function MobileEditor({
   );
 
   const spreads = useMemo(() => buildSpreads(pages), [pages]);
-  const folios = useMemo(() => pageFolioNumbers(pages.map((p) => p.templateId)), [pages]);
-  const folioSides = useMemo(() => pageFolioSides(pages.map((p) => p.templateId)), [pages]);
+  const folioInfos = useMemo(() => pageFolioInfos(pages.map((p) => p.templateId)), [pages]);
   const screen = useMemo(
     () => browseScreen(spreads, pages, startPage, density),
     [spreads, pages, startPage, density],
   );
 
-  /** 一个开页在本屏里实际摆出来的半边(密度 1 只留游标那页;独页只留有内容那半)。 */
-  const halvesOf = useCallback(
-    (scr: BrowseScreen, si: number): (number | null)[] => {
+  /** 一个开页在本屏里实际摆出来的「面」。
+   *  三种画法与桌面共用同一套分类(spreadRenderKind):
+   *    solo 封面/封尾 → 单页宽容器,一张面
+   *    full 双宽跨页(#303)→ **双页宽**容器,仍只有一张面(画面本就连续,无中缝)
+   *    pair 普通内页 → 双页宽容器,左右各一半(null = 空白半页)
+   *  返回 faces 与 wide:wide 决定容器按几页宽算,faces.length 决定摆几张面。
+   *  两者必须分开 —— full 是「一张面 + 双页宽」,把它当 halves.length===1 会缩成半宽。 */
+  const layoutOf = useCallback(
+    (scr: BrowseScreen, si: number): { faces: (number | null)[]; wide: 1 | 2 } => {
       const sp = spreads[si];
-      if (!sp) return [];
-      if (scr.onlyPage !== null) return [scr.onlyPage];
-      return isSoloSpread(sp, pages) ? [sp.left ?? sp.right ?? null] : [sp.left, sp.right];
+      if (!sp) return { faces: [], wide: 1 };
+      // 在 sp.kind 上窄化(不是在 spreadRenderKind 的返回值上)—— 这样读 .left/.right
+      // 才是类型安全的,也正是 #303 把 Spread 改成判别式联合要达到的效果。
+      if (sp.kind === 'full') return { faces: [sp.page], wide: 2 };
+      // 密度 1:开页内只留游标那一页(双宽页不适用 —— 它没有半页可留)
+      if (scr.onlyPage !== null) return { faces: [scr.onlyPage], wide: 1 };
+      if (isSoloSpread(sp, pages)) return { faces: spreadPageIndices(sp), wide: 1 };
+      return { faces: [sp.left, sp.right], wide: 2 };
     },
     [spreads, pages],
   );
@@ -164,10 +175,29 @@ export function MobileEditor({
    *  翻纸两端都必须经这个口子取 —— 曾经拿**当前屏的开页序号**去查目标屏,
    *  halvesOf 读的是 spreads[si],于是查回来还是当前那个开页:纸片正反面画的是同一屏,
    *  看起来「翻了但没换页」。单测抓不到(纯函数本身是对的),只有真机能看出来。 */
-  const soleHalves = useCallback(
-    (scr: BrowseScreen): (number | null)[] | null =>
-      scr.spreadIndices.length === 1 ? halvesOf(scr, scr.spreadIndices[0]!) : null,
-    [halvesOf],
+  const soleLayout = useCallback(
+    (scr: BrowseScreen): { faces: (number | null)[]; wide: 1 | 2 } | null =>
+      scr.spreadIndices.length === 1 ? layoutOf(scr, scr.spreadIndices[0]!) : null,
+    [layoutOf],
+  );
+
+  /** 一屏的形状,喂给 flip.ts 判断能不能翻纸。 */
+  const shapeOf = useCallback(
+    (scr: BrowseScreen): ScreenShape | null => {
+      const si = scr.spreadIndices[0];
+      const lay = soleLayout(scr);
+      if (lay == null || si == null) return null;
+      const kind = spreadRenderKind(spreads[si], pages);
+      return {
+        rows: scr.spreadIndices.length,
+        faces: lay.faces.length,
+        // 密度 1 把对开压成一页看,但它既不是封面独页也不是双宽页 —— 那两个标记按
+        // 开页本身的类别取,不受密度影响(否则密度 1 会被误判成 solo 而永远硬切)。
+        solo: kind === 'solo',
+        full: kind === 'full',
+      };
+    },
+    [soleLayout, spreads, pages],
   );
 
   /** 翻一屏。几何允许就走翻纸动效,否则直接切(见 flip.ts 的 canFlip)。 */
@@ -176,16 +206,10 @@ export function MobileEditor({
     const toStart = stepScreen(spreads, pages, startPage, density, dir);
     if (toStart === startPage) return; // 已在夹边
     const to = browseScreen(spreads, pages, toStart, density);
-    const fromHalves = soleHalves(screen);
-    const toHalves = soleHalves(to);
+    const fromShape = shapeOf(screen);
+    const toShape = shapeOf(to);
     const ok =
-      fromHalves != null &&
-      toHalves != null &&
-      canFlip(
-        { rows: screen.spreadIndices.length, halves: fromHalves.length },
-        { rows: to.spreadIndices.length, halves: toHalves.length },
-        reducedMotion,
-      );
+      fromShape != null && toShape != null && canFlip(fromShape, toShape, reducedMotion);
     if (!ok) {
       setStartPage(toStart);
       return;
@@ -194,7 +218,7 @@ export function MobileEditor({
     setAnim({ dir: d, toStart });
     setLeafAngle(0);
     // 下一帧才给终止角,transition 才会跑(同 FlipBook)。
-    requestAnimationFrame(() => setLeafAngle(leafGeometry(d, fromHalves.length).endAngle));
+    requestAnimationFrame(() => setLeafAngle(leafGeometry(d, fromShape.faces).endAngle));
     flipTimer.current = window.setTimeout(() => {
       setStartPage(toStart);
       setAnim(null);
@@ -232,8 +256,8 @@ export function MobileEditor({
   }, [browsing]);
 
   const ctxOf = (pageIdx: number): PageFaceCtx => ({
-    folio: folios[pageIdx] ?? null,
-    folioSide: folioSides[pageIdx] ?? 'right',
+    folio: folioInfos[pageIdx]?.folio ?? null,
+    folioSide: folioInfos[pageIdx]?.side ?? 'right',
     total: pages.length,
     resolve,
   });
@@ -241,12 +265,12 @@ export function MobileEditor({
   // 缩略条的 ctx 必须是稳定引用:它是整条 useMemo 的依赖,每帧新函数 = 每帧重渲几十页。
   const thumbCtxOf = useCallback(
     (pageIdx: number): PageFaceCtx => ({
-      folio: folios[pageIdx] ?? null,
-      folioSide: folioSides[pageIdx] ?? 'right',
+      folio: folioInfos[pageIdx]?.folio ?? null,
+      folioSide: folioInfos[pageIdx]?.side ?? 'right',
       total: pages.length,
       resolve: resolveThumb ?? resolve,
     }),
-    [folios, folioSides, pages.length, resolveThumb, resolve],
+    [folioInfos, pages.length, resolveThumb, resolve],
   );
 
   // 单指左右滑翻屏;轻点进编辑。竖滑不响应 —— 浏览态画布不滚(手机上「滚动的画布」
@@ -336,46 +360,49 @@ export function MobileEditor({
         onPointerCancel={() => (swipe.current = null)}
       >
         {screen.spreadIndices.map((si) => {
-          const sp = spreads[si];
-          const solo = isSoloSpread(sp, pages);
-          const resting = halvesOf(screen, si);
+          const kind = spreadRenderKind(spreads[si], pages);
+          const resting = layoutOf(screen, si);
           // 翻纸中:底层画的是「原屏 + 目标屏」拼出来的那一层(见 flip.ts 的 leafLayers),
           // 纸片转过 90° 后露出来的就是它。翻纸只发生在一屏一个开页时,故 anim 时必为这一格。
-          // 目标屏的半边必须经 soleHalves 从**目标屏自己**取(理由见 soleHalves 抬头)。
-          const toHalves = toScreen ? soleHalves(toScreen) : null;
+          // 目标屏的面必须经 soleLayout 从**目标屏自己**取(理由见 soleLayout 抬头)。
+          const toLayout = toScreen ? soleLayout(toScreen) : null;
           const layers =
-            anim != null && toHalves != null
-              ? leafLayers(anim.dir, resting.length, resting, toHalves)
+            anim != null && toLayout != null
+              ? leafLayers(anim.dir, resting.faces.length, resting.faces, toLayout.faces)
               : null;
-          const halves: (number | null)[] = layers ? layers.under : resting;
-          const box = fitBox(availW, rowH, spreadAspect(halves.length));
+          const faces: (number | null)[] = layers ? layers.under : resting.faces;
+          // 容器按 wide 算宽(双宽跨页是「一张面 + 两页宽」),不按面数算 ——
+          // 否则 full 会被缩成半宽。
+          const box = fitBox(availW, rowH, spreadAspect(resting.wide));
           const face = (pi: number | null, w: number) =>
             box.w > 0
               ? pageFaceHTML(pi == null ? null : (pages[pi] ?? null), w, box.h, ctxOf(pi ?? -1))
               : '';
-          const geo = layers && anim ? leafGeometry(anim.dir, halves.length) : null;
+          const geo = layers && anim ? leafGeometry(anim.dir, faces.length) : null;
           return (
             <div
               className="mspread"
               key={si}
-              data-solo={solo ? '1' : undefined}
-              // 书脊中缝只在**真的摆了两页**时才画。判据是渲染出的半边数,不是 solo:
-              // 密度 1 时 onlyPage 只留一页(那个开页并不 solo),按 solo 判会给单页画中缝。
-              data-halves={halves.length}
+              data-solo={kind === 'solo' ? '1' : undefined}
+              data-kind={kind}
+              // 书脊中缝只在**真的摆了两张面**时才画。判据是渲染出的面数,不是 solo:
+              // 密度 1 时 onlyPage 只留一页(那个开页并不 solo),按 solo 判会给单页画中缝;
+              // 双宽跨页(full)也只有一张面 —— 画面本就连续,同样不该有中缝。
+              data-halves={faces.length}
               style={{ width: box.w, height: box.h }}
             >
-              {halves.map((pi, half) => (
+              {faces.map((pi, half) => (
                 <div
                   className="mpage"
                   key={half}
                   data-page-index={pi ?? undefined}
-                  style={{ width: box.w / halves.length }}
+                  style={{ width: box.w / faces.length }}
                 >
                   {/* 页面内容天生是 HTML 字符串(模板产出)。这个节点由本组件独占,
                       没有第二方会重建它 —— 与旧实现的根本区别。 */}
                   <div
                     className="mpage-face"
-                    dangerouslySetInnerHTML={{ __html: face(pi, box.w / halves.length) }}
+                    dangerouslySetInnerHTML={{ __html: face(pi, box.w / faces.length) }}
                   />
                 </div>
               ))}

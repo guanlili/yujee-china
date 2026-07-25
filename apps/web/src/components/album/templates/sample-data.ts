@@ -303,14 +303,4 @@ export const SAMPLE_DATA: Record<string, TemplateData> = {
     image: SAMPLE_PORTRAIT,
     title: 'NORWAY',
   },
-  'mag-52': {
-    image1: SAMPLE_LANDSCAPE,
-    image2: SAMPLE_LANDSCAPE,
-    image3: SAMPLE_PORTRAIT,
-    title: 'Notes from\nElsewhere',
-  },
-  'mag-53': {
-    image: SAMPLE_LANDSCAPE,
-    title: 'Notes from Elsewhere',
-  },
 };

@@ -171,11 +171,11 @@ test("update_page_texts 批量中任一页非法则整批拒绝", async () => {
 test("swap_page_template 同类目同图槽数迁移，多余文字槽丢弃并报告", async () => {
 	const { tools, getBook } = createHarness();
 	await run(tools, "update_page_texts", { pageNo: 3, texts: { title: "灶台边", explain: "案板上的五花肉和冰糖。" } });
-	const details = JSON.parse(await run(tools, "swap_page_template", { pageNo: 3, templateId: "mag-53" }));
-	assert.deepEqual(details.operations, ["template:mag-05->mag-53"]);
+	const details = JSON.parse(await run(tools, "swap_page_template", { pageNo: 3, templateId: "mag-51" }));
+	assert.deepEqual(details.operations, ["template:mag-05->mag-51"]);
 	assert.ok(details.notes.some((note: string) => note.includes('"explain"')), "应报告 explain 被移除");
 	const page = getBook().pages.find((candidate) => candidate.pageIndex === 3);
-	assert.equal(page?.templateId, "mag-53");
+	assert.equal(page?.templateId, "mag-51");
 	assert.equal(page?.texts.title, "灶台边");
 	assert.equal(page?.texts.explain, undefined);
 	assert.deepEqual(page?.images, { image: "p-kit-02" });
@@ -286,4 +286,31 @@ test("pageNo 寻址在 pageIndex 重复时仍然可用（真实管线按章节�
 	assert.equal(book.pages[1]?.pageIndex, 0, "原始 pageIndex 字段保持不变");
 
 	await assert.rejects(run(tools, "read_page", { pageNo: 3 }), /内页 1\.\.2/);
+});
+
+// ── read_page 的 html 改成显式 opt-in(#307 省 token)──────────────────────
+// 整页 HTML 是上下文大头(模板平均 ~7K 字符,mag-42 单页 35K)。读全书一次能上到
+// 十几万 token。改颜色/字体/换版式/改文字都用不到 html,只有整页改版(write_page_html)
+// 才需要 —— 所以默认不发,要显式 includeHtml 才给。
+
+test("read_page 默认不返回 html", async () => {
+	const { tools } = createHarness();
+	const page = JSON.parse(await run(tools, "read_page", { pageNo: 1 })).pages[0];
+	assert.equal(page.html, undefined, "默认不该带 html");
+	// 其余页面语境照常给,模型仍能判断改什么
+	assert.equal(page.templateId, "mag-05");
+	assert.ok(page.textSlotDefs.length > 0);
+});
+
+test("read_page includeHtml=true 才返回 html", async () => {
+	const { tools } = createHarness();
+	const page = JSON.parse(await run(tools, "read_page", { pageNo: 1, includeHtml: true })).pages[0];
+	assert.equal(typeof page.html, "string");
+	assert.ok(page.html.length > 0);
+});
+
+test("read_page 读全书时 html 同样默认不给", async () => {
+	const { tools } = createHarness();
+	const result = JSON.parse(await run(tools, "read_page", {}));
+	assert.ok(result.pages.every((p: { html?: string }) => p.html === undefined), "读全书更不该带 html");
 });

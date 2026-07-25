@@ -8,6 +8,8 @@
    全部纯函数、零 DOM:能被 node 直接测(仓里没有 jsdom)。
    ════════════════════════════════════════════════════════════════════════════ */
 
+import { shouldDirectSwitch } from '../../spreads';
+
 /** 与 FlipBook 的 FLIP_MS 一致(它对齐 editor.html 的 .flipper transition)。 */
 export const FLIP_MS = 900;
 /** 与 FlipBook 的纸片 transition 一致。 */
@@ -17,23 +19,35 @@ export const FLIP_SETTLE_MS = 40;
 
 export type FlipDir = 'next' | 'prev';
 
-/** 一屏的形状:摆了几个开页(rows)、每个开页摆了几页(halves)。 */
-export type ScreenShape = { rows: number; halves: number };
+/** 一屏的形状。solo/full 与桌面同一套分类(spreadRenderKind)。 */
+export type ScreenShape = {
+  /** 一屏摆了几个开页(密度 4 是两个)。 */
+  rows: number;
+  /** 那个开页摆了几张面(pair=2,solo/full=1)。 */
+  faces: number;
+  /** 封面/封尾单页 —— 容器宽度与普通跨页不同。 */
+  solo: boolean;
+  /** 双宽跨页(#303)—— 一整张连续面,没有可翻的半页。 */
+  full: boolean;
+};
 
 /**
  * 这一步能不能做翻纸动效。
  *
- * 不能的三种情形,一律直接切屏(与 FlipBook 对 solo 边界的处置同一理由:
- * 跨宽度的纸片会撕裂/错位,宁可硬切也不要残影和闪白):
- *   · 用户要求减弱动效(prefers-reduced-motion)
+ * 与桌面共用的那三条理由(减弱动效 / 任一端是单页 solo / 任一端是双宽 full)
+ * **一律走 spreads.ts 的 shouldDirectSwitch**,不在这里重写 —— 那条判断在 #303 被
+ * 专门抽成纯函数并单测过(原先写成一整条布尔表达式时 `&&` 钻进 `||` 链里漏判过),
+ * 移动端再抄一遍就等于又造一个会漂移的第二真相。
+ *
+ * 这里只加移动端独有的两条:
  *   · 一屏摆了多个开页(密度 4)—— 没有单一的「那张纸」可翻
- *   · 前后两屏几何不同(独页↔对开)—— 纸片宽度会变
+ *   · 前后两屏摆的面数不同 —— 纸片宽度会变,跨宽度会撕裂
  */
 export function canFlip(from: ScreenShape, to: ScreenShape, reducedMotion: boolean): boolean {
-  if (reducedMotion) return false;
+  if (shouldDirectSwitch(reducedMotion, from.solo, to.solo, from.full, to.full)) return false;
   if (from.rows !== 1 || to.rows !== 1) return false;
-  if (from.halves !== to.halves) return false;
-  return from.halves === 1 || from.halves === 2;
+  if (from.faces !== to.faces) return false;
+  return from.faces === 1 || from.faces === 2;
 }
 
 /** 纸片的几何:贴在哪半边、多宽、绕哪条边转、转到多少度。 */

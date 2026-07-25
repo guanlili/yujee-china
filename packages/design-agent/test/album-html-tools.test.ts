@@ -11,8 +11,9 @@ import {
 import { loadTemplateCatalog } from "../src/core/album/templates-catalog.ts";
 import { type AlbumToolsOptions, createAlbumTools } from "../src/core/album/tools.ts";
 
-// C 方案工具面:read_page 带 html、write_page_html 守门写入、update_page_texts
-// 原位 patch html、swap_page_template 重烘 html。
+// C 方案工具面:read_page 显式 includeHtml 才带 html(#307 默认不发,省 token)、
+// write_page_html 守门写入、update_page_texts 原位 patch html、swap_page_template
+// 重烘 html。本文件测的都是「确实要动 html」的链路,所以一律显式 includeHtml:true。
 
 const fixturePath = fileURLToPath(new URL("../fixtures/sample-book.json", import.meta.url));
 
@@ -44,7 +45,7 @@ async function run(tools: Map<string, AgentTool>, name: string, input: unknown):
 
 test("read_page 返回页面 html(存量页现场烘)", async () => {
 	const { tools } = createHarness();
-	const text = await run(tools, "read_page", { pageNos: ["cover"] });
+	const text = await run(tools, "read_page", { pageNos: ["cover"], includeHtml: true });
 	const payload = JSON.parse(text) as { pages: Array<{ html?: string; templateId: string }> };
 	const page = payload.pages[0]!;
 	assert.equal(typeof page.html, "string");
@@ -54,7 +55,7 @@ test("read_page 返回页面 html(存量页现场烘)", async () => {
 
 test("write_page_html:合法整页改写落库,texts 从 html 派生", async () => {
 	const { tools, getBook } = createHarness();
-	const read = JSON.parse(await run(tools, "read_page", { pageNos: ["cover"] })) as {
+	const read = JSON.parse(await run(tools, "read_page", { pageNos: ["cover"], includeHtml: true })) as {
 		pages: Array<{ html: string }>;
 	};
 	const custom = read.pages[0]!.html
@@ -74,7 +75,7 @@ test("write_page_html:合法整页改写落库,texts 从 html 派生", async () 
 
 test("write_page_html:删锚点被拒且不改状态", async () => {
 	const { tools, getBook } = createHarness();
-	const read = JSON.parse(await run(tools, "read_page", { pageNos: ["cover"] })) as {
+	const read = JSON.parse(await run(tools, "read_page", { pageNos: ["cover"], includeHtml: true })) as {
 		pages: Array<{ html: string }>;
 	};
 	const before = JSON.stringify(getBook().pages[0]);
@@ -88,7 +89,7 @@ test("write_page_html:删锚点被拒且不改状态", async () => {
 
 test("update_page_texts:原位 patch html,保留手工版面标记", async () => {
 	const { tools, getBook } = createHarness();
-	const read = JSON.parse(await run(tools, "read_page", { pageNos: ["cover"] })) as {
+	const read = JSON.parse(await run(tools, "read_page", { pageNos: ["cover"], includeHtml: true })) as {
 		pages: Array<{ html: string }>;
 	};
 	const custom = read.pages[0]!.html.replace(
