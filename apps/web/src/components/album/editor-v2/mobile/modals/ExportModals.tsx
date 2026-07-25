@@ -107,7 +107,8 @@ export function CollageModal({
   spreadCount: number;
   density: number | null;
   onPickDensity: (n: number) => void;
-  onConfirm?: () => void;
+  /** 确认必填 —— 同 PhotoPickerModal:可选 + 父层漏传 = 亮着的死按钮。 */
+  onConfirm: () => void;
   onClose: () => void;
 }) {
   return (

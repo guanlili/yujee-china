@@ -93,9 +93,30 @@
 }
 
 .mobile-editor .mspread {
+  position: relative; /* 选中高亮框的定位参照(它是 React 拥有的兄弟节点) */
   display: flex;
   flex: none; /* 尺寸由 JS 的 fitBox 算好写在 style 上,不让 flex 再拉伸 */
   box-shadow: var(--shadow-card-hover);
+  /* 面板升起时整本书上移让出位置(EditView 算 lift);只有位移,没有缩放。 */
+  transition: transform var(--motion-base) var(--ease);
+}
+
+/* ── 选中高亮:不往页面 innerHTML 里塞节点、也不改它的样式 ──────────────────
+   页面内容那些节点 React 不拥有(pageFaceHTML 产出的字符串),移动端又不许
+   querySelector。所以高亮是一个独立的兄弟节点,位置由点击那一刻的 rect 算出来。
+   描边色取桌面 [data-editable] 悬停态的同一支 accent,不自创。 */
+.mobile-editor .msel {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  border: 2px solid var(--accent);
+  border-radius: 3px;
+  animation: msel-in var(--motion-fast) var(--ease) both;
+}
+
+@keyframes msel-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .mobile-editor .mpage {
@@ -286,6 +307,14 @@
   height: auto;
   background: none;
   overflow: visible;
+}
+
+/* 「无背景」那一格的斜杠是 ::after + position:absolute;inset:0。桌面把它挂在
+   .bbg-swatch 上,那个类自带 position:relative;页面底色面板复用的是 .mes-sw(取色格
+   的通用尺寸),它没有定位上下文 —— 斜杠于是逃到弹窗卡片上铺满整块,把后面所有颜色格
+   全盖住、一个都点不动。补一个定位上下文即可(只作用于移动端宿主,editor-port.css 不动)。 */
+.mobile-modal-host .mes-sw.bbg-none {
+  position: relative;
 }
 
 /* ── 未实现功能的轻反馈 toast(见 MobileToast.tsx) ───────────────────────── */

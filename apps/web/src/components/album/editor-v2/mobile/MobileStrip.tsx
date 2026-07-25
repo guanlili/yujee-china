@@ -17,6 +17,7 @@ export const STRIP_CELL_H = Math.round((STRIP_CELL_W * 1123) / 794);
 
 export type MobileStripProps = {
   pages: EditorPage[];
+  zh: boolean;
   /** 当前屏起始页,用来描高亮框。 */
   currentPage: number;
   /** 缩略档的渲染上下文(照片走 thumb tier)。引用必须稳定,否则每帧重渲整条。 */
@@ -24,7 +25,7 @@ export type MobileStripProps = {
   onJump: (pageIndex: number) => void;
 };
 
-export function MobileStrip({ pages, currentPage, thumbCtxOf, onJump }: MobileStripProps) {
+export function MobileStrip({ pages, zh, currentPage, thumbCtxOf, onJump }: MobileStripProps) {
   // 整条只在书或缩略图 URL 变化时重算 —— 翻页/切密度不该重渲缩略条。
   const faces = useMemo(
     () => pages.map((p, i) => pageFaceHTML(p, STRIP_CELL_W, STRIP_CELL_H, thumbCtxOf(i))),
@@ -32,7 +33,7 @@ export function MobileStrip({ pages, currentPage, thumbCtxOf, onJump }: MobileSt
   );
 
   return (
-    <nav className="mstrip" aria-label="书册预览">
+    <nav className="mstrip" aria-label={zh ? '书册预览' : 'Book preview'}>
       <div className="mstrip-track">
         {pages.map((p, i) => (
           <button
@@ -41,7 +42,7 @@ export function MobileStrip({ pages, currentPage, thumbCtxOf, onJump }: MobileSt
             className="mstrip-cell"
             data-current={i === currentPage ? '1' : undefined}
             data-slot={pageSlot(p)}
-            aria-label={`第 ${i + 1} 页`}
+            aria-label={zh ? `第 ${i + 1} 页` : `Page ${i + 1}`}
             aria-current={i === currentPage ? 'true' : undefined}
             onClick={() => onJump(i)}
           >

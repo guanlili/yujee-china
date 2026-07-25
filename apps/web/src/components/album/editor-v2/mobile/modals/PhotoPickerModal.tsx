@@ -26,7 +26,8 @@ export type PhotoPickerModalProps = {
   confirmLabel?: string;
   onSelect: (photoId: string) => void;
   onUpload?: (file: File) => void;
-  onConfirm?: () => void;
+  /** 确认必填 —— 曾因它是可选、父层漏传,导致选中照片后按钮亮着却点不动(死按钮)。 */
+  onConfirm: () => void;
   onClose: () => void;
 };
 

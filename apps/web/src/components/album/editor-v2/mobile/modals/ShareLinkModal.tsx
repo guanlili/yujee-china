@@ -15,8 +15,10 @@ export type ShareLinkModalProps = {
   /** 上传/生成进行中:确认按钮禁用。 */
   busy?: boolean;
   hint?: string;
-  onConfirm?: () => void;
-  onCopy?: () => void;
+  /** 动作必填 —— 可选 + 父层漏传 = 亮着却点不动的死按钮(见 click-wiring.test)。 */
+  onConfirm: () => void;
+  /** 复制只在第二步(link != null)出现;链接是父层给的,所以它和 link 一起必填。 */
+  onCopy: () => void;
   onClose: () => void;
 };
 

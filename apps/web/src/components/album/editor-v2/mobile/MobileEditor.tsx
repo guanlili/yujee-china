@@ -29,10 +29,11 @@ import type { ResolveImage } from '../../adapt-layout';
 import { cycleDensity, type Density } from '../mobile-canvas';
 import { browseScreen, stepScreen, screenStartOfPage } from './browse-window';
 import { fitBox, spreadAspect } from './fit-box';
-import { EditView } from './EditView';
+import { EditView, type TextHit } from './EditView';
 import { MobileTopbar } from './MobileTopbar';
 import { MobileStrip } from './MobileStrip';
 import { IconBoardBg } from './icons';
+import type { SelRect } from './page-edit';
 
 export type MobileEditorProps = {
   pages: EditorPage[];
@@ -42,7 +43,19 @@ export type MobileEditorProps = {
   /** 垫底画板背景的 CSS background 值(相册级),无则走网页端默认底(--bg)。 */
   boardBackground?: string | null;
   title: string;
+  zh: boolean;
   onBack?: () => void;
+  /** 正在编辑的页(null = 浏览态)。**由父层持有** —— 弹窗与落库都住在
+     MobileEditorRoot,它必须知道用户在编哪一页,否则任何页级改动无处可落。 */
+  editPage: number | null;
+  onEnterEdit: (pageIndex: number) => void;
+  onExitEdit: (pageIndex: number) => void;
+  /** 编辑态的选中态(同样由父层持有:面板要绑到被选中的槽上)。 */
+  selection: { slotId: string; rect: SelRect } | null;
+  sheetOpen: boolean;
+  onSelectText: (hit: TextHit) => void;
+  onSelectImage: () => void;
+  onClearSelection: () => void;
   /** 交互 handler 一律必填 —— 「可选」等于「可以不接」,漏一个就是死按钮。
      必填后:谁漏传谁编译不过(见 MobileEditorRoot)。 */
   onShare: () => void;
@@ -73,7 +86,16 @@ export function MobileEditor({
   resolveThumb,
   boardBackground,
   title,
+  zh,
   onBack,
+  editPage,
+  onEnterEdit,
+  onExitEdit,
+  selection,
+  sheetOpen,
+  onSelectText,
+  onSelectImage,
+  onClearSelection,
   onShare,
   onExport,
   onMore,
@@ -86,7 +108,6 @@ export function MobileEditor({
 }: MobileEditorProps) {
   const [density, setDensity] = useState<Density>(2);
   const [startPage, setStartPage] = useState(0);
-  const [editPage, setEditPage] = useState<number | null>(null);
   const [area, setArea] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const boardRef = useRef<HTMLDivElement>(null);
 
@@ -150,19 +171,11 @@ export function MobileEditor({
     if (Math.abs(dx) < TAP_MAX && Math.abs(dy) < TAP_MAX) {
       const host = (e.target as HTMLElement).closest<HTMLElement>('[data-page-index]');
       const pi = host?.dataset.pageIndex;
-      if (pi != null && pi !== '') setEditPage(Number(pi));
+      if (pi != null && pi !== '') onEnterEdit(Number(pi));
       return;
     }
     if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) <= Math.abs(dy)) return; // 不够横 / 更像竖滑
     setStartPage((cur) => stepScreen(spreads, pages, cur, density, dx < 0 ? 1 : -1));
-  };
-
-  // 退出编辑态:浏览游标对齐到刚编辑那页所在的屏,回来不迷路。
-  const exitEdit = () => {
-    setEditPage((cur) => {
-      if (cur != null) setStartPage(screenStartOfPage(spreads, pages, cur, density));
-      return null;
-    });
   };
 
   if (editPage != null) {
@@ -171,11 +184,19 @@ export function MobileEditor({
         pages={pages}
         resolve={resolve}
         boardBackground={boardBackground}
+        zh={zh}
         editPage={editPage}
-        onExit={exitEdit}
-        onStep={(dir) =>
-          setEditPage((cur) => (cur == null ? cur : stepScreen(spreads, pages, cur, 1, dir)))
-        }
+        selection={selection}
+        sheetOpen={sheetOpen}
+        onExit={() => {
+          // 浏览游标对齐到刚编辑那页所在的屏,回来不迷路。
+          setStartPage(screenStartOfPage(spreads, pages, editPage, density));
+          onExitEdit(editPage);
+        }}
+        onStep={(dir) => onEnterEdit(stepScreen(spreads, pages, editPage, 1, dir))}
+        onSelectText={onSelectText}
+        onSelectImage={onSelectImage}
+        onClearSelection={onClearSelection}
         onShare={onShare}
         onExport={onExport}
         onMore={onMore}
@@ -202,8 +223,9 @@ export function MobileEditor({
     >
       <MobileTopbar
         title={title}
+        zh={zh}
         onBack={onBack ?? (() => {})}
-        backLabel="返回"
+        backLabel={zh ? '返回' : 'Back'}
         onShare={onShare}
         onExport={onExport}
         onMore={onMore}
@@ -264,26 +286,37 @@ export function MobileEditor({
 
         {/* 画布状态类控件落在左下角 —— 导航栏是「离开这屏去哪」,这里是「这屏怎么看」 */}
         <div className="mfab-col">
-          <button type="button" className="mfab" aria-label="画板背景" onClick={onBoardBg}>
+          <button
+            type="button"
+            className="mfab"
+            aria-label={zh ? '画板背景' : 'Board background'}
+            onClick={onBoardBg}
+          >
             <IconBoardBg className="mfab-ic" />
           </button>
           <button
             type="button"
             className="mfab"
-            aria-label="一屏几页"
+            aria-label={zh ? '一屏几页' : 'Pages per screen'}
             onClick={() => setDensity((d) => cycleDensity(d))}
           >
             <span className="mfab-num">{density}</span>
           </button>
         </div>
 
-        <button type="button" className="mai" aria-label="AI 助手" onClick={onOpenChat}>
+        <button
+          type="button"
+          className="mai"
+          aria-label={zh ? 'AI 助手' : 'AI assistant'}
+          onClick={onOpenChat}
+        >
           <img className="mai-jelly" src="/jellyfish-icon.png" alt="" />
         </button>
       </div>
 
       <MobileStrip
         pages={pages}
+        zh={zh}
         currentPage={startPage}
         thumbCtxOf={thumbCtxOf}
         onJump={(pi) => setStartPage(screenStartOfPage(spreads, pages, pi, density))}

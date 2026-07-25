@@ -18,6 +18,7 @@ export default function DevMobilePreview({ params }: { params: Promise<{ locale:
   return (
     <MobileEditorRoot
       detail={SAMPLE_DETAIL}
+      pages={SAMPLE_DETAIL.pages}
       locale={locale}
       onBack={() => window.history.back()}
     />

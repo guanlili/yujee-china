@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -68,6 +68,53 @@ test('未实现功能不做死按钮:更多 / 删除接「即将上线」,AI 打
   assert.match(root, /onDeletePage=\{\(\) => soon\(/);
   // AI 气泡打开黑底小水母对话弹框,不再是 toast。
   assert.match(root, /onOpenChat=\{\(\) => setAiChatOpen\(true\)\}/);
+});
+
+/* ── 上面那三条只守住了「组件 props 必填」。真实事故里还有另外两类漏法,
+      它们从 props 那一侧看不出来,得单独盯: ────────────────────────────────── */
+
+/** mobile/ 下所有 .tsx(含 modals/)。 */
+function allSources(): { file: string; src: string }[] {
+  const out: { file: string; src: string }[] = [];
+  for (const dir of ['.', 'modals']) {
+    for (const f of readdirSync(join(here, dir))) {
+      if (!f.endsWith('.tsx')) continue;
+      out.push({ file: join(dir, f), src: readFileSync(join(here, dir, f), 'utf8') });
+    }
+  }
+  return out;
+}
+
+test('漏法一:组件内部的空 onClick —— 画着能点、点了什么都不发生', () => {
+  // 真实事故:TextPanel 的「更多颜色」曾是 onClick={() => { /* 待接 */ }}。
+  // props 那一侧完全看不出来,因为它压根没有 handler prop。
+  for (const { file, src } of allSources()) {
+    // onClick={() => {}} / onClick={() => { 只有注释 }} / onClick={noop}
+    assert.doesNotMatch(
+      src,
+      /onClick=\{\(\)\s*=>\s*\{\s*(\/\/[^\n]*\n\s*)*\}\}/,
+      `${file} 有空 onClick —— 未实现就把 handler 提成必填 prop,由父层给反馈`,
+    );
+  }
+});
+
+test('漏法二:行为型可选 handler —— 父层漏传就是亮着的死按钮', () => {
+  // 真实事故:PhotoPickerModal 的 onConfirm 与 CollageModal 的 onConfirm 都是可选,
+  // MobileEditorRoot 两个都没传 → 选完照片/选完密度后按钮亮起,点了没反应。
+  // 「确认/发送/提交」这类**动作**不许可选;onUpload 这类附加能力可以。
+  const ACTIONS = /\b(onConfirm|onDone|onSend|onSubmit|onApply)\?:/;
+  for (const { file, src } of allSources()) {
+    assert.doesNotMatch(src, ACTIONS, `${file} 的动作 handler 不许可选(可选 = 可以不接 = 死按钮)`);
+  }
+});
+
+test('漏法三:传下去的 handler 不许是空函数(等于没接)', () => {
+  const root = read('MobileEditorRoot.tsx');
+  assert.doesNotMatch(
+    root,
+    /on[A-Z]\w*=\{\(\)\s*=>\s*\{\s*\}\}/,
+    'MobileEditorRoot 里出现 on…={() => {}} —— 那是死按钮的另一种写法',
+  );
 });
 
 test('AI 气泡用产品小水母素材,不用自造星芒', () => {

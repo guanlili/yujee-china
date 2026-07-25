@@ -28,12 +28,18 @@ const BOOK: EditorPage[] = [
   page('mag-20'),
 ];
 
-function render(pages = BOOK) {
+function render(pages = BOOK, zh = true) {
   return renderToStaticMarkup(
     createElement(MobileEditor, {
       pages,
       resolve: () => undefined,
       title: '厦门三日游',
+      zh,
+      // 编辑焦点由父层持有(见 MobileEditorRoot):浏览态 = null。
+      editPage: null,
+      onEnterEdit: noop, onExitEdit: noop,
+      selection: null, sheetOpen: false,
+      onSelectText: noop, onSelectImage: noop, onClearSelection: noop,
       onShare: noop, onExport: noop, onMore: noop, onBoardBg: noop, onOpenChat: noop,
       onPageBg: noop, onPickImage: noop, onPickText: noop, onDeletePage: noop,
     }),
@@ -72,6 +78,21 @@ test('画布控件落在画板左下角:画板背景 + 一屏几页', () => {
 
 test('AI 气泡在画板右下角(两态同一位置)', () => {
   assert.match(render(), /class="mai"/);
+});
+
+test('i18n:英文 locale 下 chrome 不留中文(硬编码中文 = 英文用户看到中英混排)', () => {
+  const html = render(BOOK, false);
+  assert.match(html, /aria-label="Back"/);
+  assert.match(html, /aria-label="Share"/);
+  assert.match(html, /aria-label="Board background"/);
+  assert.match(html, /aria-label="Pages per screen"/);
+  assert.match(html, /aria-label="AI assistant"/);
+  assert.match(html, /aria-label="Book preview"/);
+  assert.match(html, /aria-label="Page 1"/, '预览栏每格的页码也要翻');
+  // 只查界面文案:书名与页面内容都是数据(模板自带的示例文案里有中文),不参与 i18n。
+  const labels = [...html.matchAll(/aria-label="([^"]*)"/g)].map((m) => m[1]!);
+  const offenders = labels.filter((l) => /[一-龥]/.test(l));
+  assert.deepEqual(offenders, [], `英文界面残留中文标签: ${offenders.join(', ')}`);
 });
 
 test('书册预览栏:整本书每页一格,当前页描框', () => {

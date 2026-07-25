@@ -27,14 +27,23 @@ const BOOK: EditorPage[] = [
   page('mag-20'),
 ];
 
-function render(editPage: number) {
+type Sel = { slotId: string; rect: { left: number; top: number; width: number; height: number } };
+
+function render(
+  editPage: number,
+  opts: { zh?: boolean; selection?: Sel | null; sheetOpen?: boolean } = {},
+) {
   return renderToStaticMarkup(
     createElement(EditView, {
       pages: BOOK,
       resolve: () => undefined,
+      zh: opts.zh ?? true,
       editPage,
+      selection: opts.selection ?? null,
+      sheetOpen: opts.sheetOpen ?? false,
       onExit: noop,
       onStep: noop,
+      onSelectText: noop, onSelectImage: noop, onClearSelection: noop,
       onShare: noop, onExport: noop, onMore: noop, onOpenChat: noop,
       onPageBg: noop, onPickImage: noop, onPickText: noop, onDeletePage: noop,
     }),
@@ -76,11 +85,73 @@ test('编辑态有 AI 气泡(两态同一位置,右下角)', () => {
   assert.match(render(2), /class="mai"/);
 });
 
+/* ── 选中链路 ─────────────────────────────────────────────────────────────── */
+
+test('没选中时不画高亮框', () => {
+  assert.doesNotMatch(render(2), /class="msel"/);
+});
+
+test('选中时画一个 React 拥有的高亮框(不往页面 innerHTML 里塞节点)', () => {
+  const html = render(2, {
+    selection: { slotId: 'title', rect: { left: 12, top: 34, width: 200, height: 56 } },
+  });
+  assert.match(html, /class="msel"/);
+  // 位置来自点击那一刻的 rect;框是 .mspread 的兄弟节点,不是页面内容的一部分
+  assert.match(html, /left:12px/);
+  assert.match(html, /top:34px/);
+  assert.match(html, /width:200px/);
+  assert.match(html, /height:56px/);
+  assert.match(html, /aria-hidden="true"/);
+});
+
+test('面板升起且选中的元素靠下时,书整体上移让出位置(只有位移,没有缩放)', () => {
+  // renderToStaticMarkup 里量不到尺寸(area 全 0)→ lift 必为 0,这里守住「没量到就不乱移」。
+  const html = render(2, {
+    selection: { slotId: 'title', rect: { left: 0, top: 900, width: 100, height: 40 } },
+    sheetOpen: true,
+  });
+  assert.doesNotMatch(html, /scale\(/, '书不做自由缩放 —— 让位只能靠 translateY');
+});
+
+test('i18n:英文 locale 下编辑态不留中文', () => {
+  const html = render(3, { zh: false });
+  assert.match(html, /Page 4/);
+  assert.match(html, /aria-label="Back to browsing"/);
+  assert.match(html, /aria-label="AI assistant"/);
+  assert.match(html, /aria-label="Editing tools"/);
+  for (const label of ['Background', 'Photo', 'Text', 'Delete']) {
+    assert.ok(html.includes(`>${label}</span>`), `一级栏缺英文「${label}」`);
+  }
+  // 只查界面文案:页面内容是数据(模板自带示例文案含中文),不参与 i18n。
+  const labels = [...html.matchAll(/aria-label="([^"]*)"/g)].map((m) => m[1]!);
+  const offenders = labels.filter((l) => /[一-龥]/.test(l));
+  assert.deepEqual(offenders, [], `英文界面残留中文标签: ${offenders.join(', ')}`);
+  const cells = [...html.matchAll(/<span>([^<]*)<\/span>/g)].map((m) => m[1]!);
+  assert.deepEqual(
+    cells.filter((c) => /[一-龥]/.test(c)),
+    [],
+    '一级栏还有中文格',
+  );
+});
+
 /* ── 架构守卫:编辑态这棵子树同样不许碰桌面 DOM ─────────────────────────────── */
 test('架构守卫:EditView 不碰任何桌面 DOM', () => {
-  const src = source('EditView.tsx');
+  // 先剥注释:抬头说明里就写着「不许碰 document/querySelector」,那是文字不是代码。
+  const src = source('EditView.tsx')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
   assert.doesNotMatch(src, /\bdocument\./);
   assert.doesNotMatch(src, /querySelector/);
   assert.doesNotMatch(src, /createElement\(['"]/);
   assert.doesNotMatch(src, /#ovGrid|ov-page|ov-spread/);
+});
+
+test('架构守卫:选中只用事件里的 target(不去树上找节点、不改别人的节点)', () => {
+  const src = source('EditView.tsx');
+  // 命中靠 closest,不靠选择器查询
+  assert.match(src, /target\.closest/, '命中应从 e.target 往上找');
+  // 高亮是自己渲染的兄弟节点,不是给页面节点加类/改 style
+  assert.doesNotMatch(src, /\.classList\./, '不许给页面里的节点加类');
+  assert.doesNotMatch(src, /\.style\.[a-z]/i, '不许直接改页面里节点的 style');
+  assert.doesNotMatch(src, /setAttribute/, '不许往页面节点上写属性');
 });

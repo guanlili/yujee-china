@@ -8,15 +8,18 @@ import { IconBack, IconShare, IconExport, IconMore } from './icons';
 
 export type MobileTopbarProps = {
   title: string;
+  zh: boolean;
   onBack: () => void;
   backLabel: string;
-  onShare?: () => void;
-  onExport?: () => void;
-  onMore?: () => void;
+  /** 动作 handler 必填 —— 「可选」等于「可以不接」,漏一个就是死按钮。 */
+  onShare: () => void;
+  onExport: () => void;
+  onMore: () => void;
 };
 
 export function MobileTopbar({
   title,
+  zh,
   onBack,
   backLabel,
   onShare,
@@ -29,13 +32,23 @@ export function MobileTopbar({
         <IconBack className="mtb-ic" />
       </button>
       <span className="mtopbar-title">{title}</span>
-      <button type="button" className="mtb-btn" onClick={onShare} aria-label="分享">
+      <button
+        type="button"
+        className="mtb-btn"
+        onClick={onShare}
+        aria-label={zh ? '分享' : 'Share'}
+      >
         <IconShare className="mtb-ic" />
       </button>
-      <button type="button" className="mtb-btn" onClick={onExport} aria-label="导出">
+      <button
+        type="button"
+        className="mtb-btn"
+        onClick={onExport}
+        aria-label={zh ? '导出' : 'Export'}
+      >
         <IconExport className="mtb-ic" />
       </button>
-      <button type="button" className="mtb-btn" onClick={onMore} aria-label="更多">
+      <button type="button" className="mtb-btn" onClick={onMore} aria-label={zh ? '更多' : 'More'}>
         <IconMore className="mtb-ic" />
       </button>
     </header>

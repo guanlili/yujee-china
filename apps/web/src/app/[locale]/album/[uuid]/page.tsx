@@ -95,11 +95,12 @@ export default function AlbumPage({
     // editing(读空的 album_pages),书就「消失」。只按 layoutJson 判:草稿(含导出后的 COMPLETED)
     // 一律走 authoring 读 draft_json;定稿(layoutJson 落地)才走 editing。
     const mode = detail.album.layoutJson == null ? 'authoring' : 'editing';
-    // 设备分流只发生在这一支:editing 才挂真画布,也只有画布的交互在手机与电脑上
-    // 天差地别。loading/building/authoring/error 仍走同一套 EditorPort —— 接管面
-    // 越小,风险面越小。两棵树互不共用 DOM,详见 mobile/MobileEditor.tsx 抬头。
-    if (mode === 'editing' && device === 'mobile') {
-      return <MobileEditorRoot detail={detail} locale={locale} />;
+    // 设备分流只发生在「有书可看/可改」的时候,也只有画布的交互在手机与电脑上天差地别。
+    // authoring 那一支的分流在 EditorPort 内部(EditorAuthoring)——书住在草稿里,要先
+    // 等 GET /draft 回来才知道有没有页;这里的 editing 是 v1 遗留路径(layoutJson 落地过
+    // 的老相册),detail.pages 直接可用。两棵树互不共用 DOM,详见 mobile/MobileEditor.tsx。
+    if (mode === 'editing' && device === 'mobile' && detail.pages.length > 0) {
+      return <MobileEditorRoot detail={detail} pages={detail.pages} locale={locale} />;
     }
     return <EditorPort detail={detail} locale={locale} mode={mode} />;
   }

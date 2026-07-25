@@ -40,6 +40,8 @@ import { PAGE } from '../templates/constants';
 import { pageFaceInner, pageFaceHTML, type PageFaceCtx } from './page-face';
 import { clampZoom, paintDecision } from './zoom-util';
 import { resolveDeviceMode, initMobileCanvas } from './mobile-canvas';
+import { useDeviceMode } from './use-device-mode';
+import { MobileEditorRoot } from './mobile/MobileEditorRoot';
 import {
   clampImagePos,
   dragToImagePos,
@@ -277,6 +279,7 @@ function BuildingCanvasState({ locale }: { locale: Locale }) {
 
 // ── authoring: resolve the draft skeleton + originals, then mount EditorBook ──
 function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Locale }) {
+  const device = useDeviceMode();
   const [skeleton, setSkeleton] = useState<DraftSkeleton | null>(null);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error' | 'gone'>('loading');
@@ -373,6 +376,14 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
     imagePosJson: { ...(p.imagePosJson ?? {}) },
     htmlJson: p.htmlJson,
   }));
+  // 设备分流落在这里,而不是 page.tsx 的 editing 分支:V3 的真实相册永远
+  // layoutJson==null → 一直是 authoring,书住在草稿里(pages 带 htmlJson = 页面真相,
+  // 落库时服务端 updatePage 也走 draft 分支、认 textStyles/pageStyle)。挂在 editing 上
+  // 的移动端一次都不会出现,而且那边的 pages 没有 html 可打补丁 —— 样式改动刷新即丢。
+  // 排版前 pages 为空(还在收集故事),那阶段不是「看/改书」,仍走桌面那套采访面板。
+  if (device === 'mobile' && pages.length > 0) {
+    return <MobileEditorRoot detail={detail} pages={pages} locale={locale} />;
+  }
   return (
     <EditorShell
       mode="authoring"

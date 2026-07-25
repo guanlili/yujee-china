@@ -58,7 +58,14 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
     name: 'ShareLinkModal 分享链接',
     render: (open) =>
       renderToStaticMarkup(
-        createElement(ShareLinkModal, { open, zh: true, link: null, onClose: noop }),
+        createElement(ShareLinkModal, {
+          open,
+          zh: true,
+          link: null,
+          onConfirm: noop,
+          onCopy: noop,
+          onClose: noop,
+        }),
       ),
     closeHint: /export-cancel/,
   },
@@ -78,6 +85,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
           spreadCount: 4,
           density: null,
           onPickDensity: noop,
+          onConfirm: noop,
           onClose: noop,
         }),
       ),
@@ -98,6 +106,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
           zh: true,
           photos: [],
           onSelect: noop,
+          onConfirm: noop,
           onClose: noop,
         }),
       ),
@@ -161,6 +170,26 @@ test('架构守卫:宿主样式不许再用 pointer-events 放行名单(曾漏�
     hostBlock,
     /pointer-events\s*:\s*none/,
     '宿主一旦 pointer-events:none,就得逐个类名放行 —— 漏一个就是「弹窗关不掉」',
+  );
+});
+
+test('「无背景」格必须有定位上下文,否则它的斜杠层会铺满整块面板挡住所有颜色', () => {
+  // 真实 bug(真机自测抓到):桌面把斜杠 ::after(position:absolute;inset:0)挂在
+  // .bbg-swatch 上,那个类自带 position:relative。页面底色面板复用的是 .mes-sw ——
+  // 它没有定位上下文,于是斜杠逃到弹窗卡片上铺满整块,颜色格一个都点不动。
+  const panel = readFileSync(join(here, 'PageBgPanel.tsx'), 'utf8');
+  const usesMesSw = /className=\{`mes-sw bbg-none/.test(panel);
+  if (!usesMesSw) return; // 换了别的类就不适用了
+  const css = readFileSync(join(here, '..', 'mobile-editor.css'), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  );
+  const at = css.indexOf('.mes-sw.bbg-none');
+  assert.ok(at >= 0, '缺少给 .mes-sw.bbg-none 补定位上下文的规则 —— 底色面板会点不动');
+  assert.match(
+    css.slice(at, css.indexOf('}', at)),
+    /position:\s*relative/,
+    '.mes-sw.bbg-none 必须 position:relative,把斜杠层关在这一格里',
   );
 });
 

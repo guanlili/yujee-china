@@ -10,16 +10,10 @@
 
 import { COLOR_PRESETS } from '@/lib/board-bg/presets';
 import { EDITOR_FONTS } from '../../editor-fonts';
+// 面板状态的定义住在 page-edit(改动怎么落到页面上的那一层)—— 面板只是它的一张脸。
+import type { TextStyleState } from '../page-edit';
 
-export type TextStyleState = {
-  text: string;
-  fontSize: number | null;
-  fontId: string | null;
-  color: string | null;
-  bold: boolean;
-  italic: boolean;
-  align: 'left' | 'center' | 'right' | null;
-};
+export type { TextStyleState };
 
 export type TextPanelProps = {
   zh: boolean;
@@ -28,6 +22,8 @@ export type TextPanelProps = {
   onChange: (patch: Partial<TextStyleState>) => void;
   onOpenFontList: () => void;
   onBackToMain: () => void;
+  /** 完整取色器未做 —— handler 必填,由父层给反馈,不留空 onClick(那就是死按钮)。 */
+  onMoreColors: () => void;
 };
 
 const svgProps = {
@@ -69,6 +65,7 @@ export function TextPanel({
   onChange,
   onOpenFontList,
   onBackToMain,
+  onMoreColors,
 }: TextPanelProps) {
   if (view === 'font') {
     const group = (label: string, script: 'cjk' | 'latin') => {
@@ -210,9 +207,7 @@ export function TextPanel({
           type="button"
           className="mes-sw mes-sw-more"
           aria-label={zh ? '更多颜色' : 'More colors'}
-          onClick={() => {
-            // 完整取色器(HSV 拾色/hex)随取色行为一起接;先让常用色可用。
-          }}
+          onClick={onMoreColors}
         />
       </div>
 
