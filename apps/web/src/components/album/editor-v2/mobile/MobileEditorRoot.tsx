@@ -27,14 +27,24 @@ import { photoStore } from '@/lib/photo/store';
 import { presetImageUrl, type BoardBackground } from '@/lib/board-bg/presets';
 import { photoStore as _photoStoreForBg } from '@/lib/photo/store';
 import { BoardBgSheet } from './modals/BoardBgSheet';
-import { ExportMenuModal, CollageModal } from './modals/ExportModals';
+import {
+  ExportMenuModal,
+  CollageModal,
+  ExportProgressModal,
+  ExportFailModal,
+} from './modals/ExportModals';
 import { ShareLinkModal } from './modals/ShareLinkModal';
-import { PhotoPickerModal } from './modals/PhotoPickerModal';
+import { MoreSheet, NoticeModal } from './modals/MoreSheet';
+import { useExport } from './use-export';
+import { useShareLink } from './use-share-link';
+import { usePhotoBackup } from './use-photo-backup';
 import { ElementSheet } from './modals/ElementSheet';
 import { TextPanel } from './modals/TextPanel';
 import { PageBgPanel } from './modals/PageBgPanel';
 import type { Locale } from '@/lib/i18n/routing';
 import { collectPhotoIds, type ResolveImage } from '../../adapt-layout';
+import { interiorSpreads } from '@/lib/export/collage';
+import { computeExportUnlocked } from '../export-gate-util';
 import { extractPhotoIds, type AlbumDetail, type EditorPage } from '../../types';
 import { MobileEditor } from './MobileEditor';
 import { MobileToast } from './MobileToast';
@@ -92,8 +102,7 @@ export function MobileEditorRoot({
   const [collageOpen, setCollageOpen] = useState(false);
   const [collageDensity, setCollageDensity] = useState<number | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
-  const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
-  const [pickedPhoto, setPickedPhoto] = useState<string | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // ── 编辑焦点 ──────────────────────────────────────────────────────────────
   const [editPage, setEditPage] = useState<number | null>(null);
@@ -269,6 +278,55 @@ export function MobileEditorRoot({
       .then(() => applyBoardBg({ kind: 'upload', key }))
       .catch(() => undefined);
   };
+
+  // ── 导出 / 分享 / 照片备份 ───────────────────────────────────────────────────
+  // 渲染与上传全部复用桌面那批库(见 use-export / use-share-link / use-photo-backup),
+  // 这里只负责把它们接到移动端的弹窗上。
+  const exporter = useExport({
+    albumId: detail.album.id,
+    title: detail.album.title,
+    zh,
+    pages,
+    background: boardBg,
+  });
+  const backup = usePhotoBackup(
+    detail.album.id,
+    // 已备份过的那些不重传(声明顺序:snapshotUrls 在下面才 memo,这里直接读 detail)
+    Object.keys(detail.album.photoSnapshotUrls ?? {}),
+  );
+  const share = useShareLink(detail.album.id, locale, zh);
+
+  // 导出闸门(与桌面 computeExportUnlocked 同口径):没到 ready / 故事没写完不给导出。
+  // allDone 要问 story-progress —— detail 里只有 stage。
+  const [storyAllDone, setStoryAllDone] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`/api/v3/albums/${detail.album.id}/story-progress`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled) setStoryAllDone(Boolean(j?.data?.allDone));
+      })
+      .catch(() => {
+        if (!cancelled) setStoryAllDone(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [detail.album.id]);
+  // 还没问回来时不拦(null):宁可让用户点一下看到提示,也不要把按钮无声禁掉。
+  const exportUnlocked =
+    storyAllDone == null || computeExportUnlocked(detail.album.stage, storyAllDone);
+
+  /** 书里用到的照片(备份/分享要的就是这一批)。 */
+  const bookPhotoIds = photoIds;
+
+  const openExport = () => {
+    if (!exportUnlocked) {
+      say(zh ? '故事还没写完,写完才能导出' : 'Finish your story first, then you can export');
+      return;
+    }
+    setExportMenuOpen(true);
+  };
   useEffect(() => {
     if (boardBg?.kind !== 'upload') {
       setUploadBgUrl(null);
@@ -348,8 +406,11 @@ export function MobileEditorRoot({
         if (sheetKind == null) setSelection(null);
       }}
       onBoardBg={() => setBgSheetOpen(true)}
-      onExport={() => setExportMenuOpen(true)}
-      onShare={() => setShareOpen(true)}
+      onExport={openExport}
+      onShare={() => {
+        share.reset();
+        setShareOpen(true);
+      }}
       onPageBg={openPageBgSheet}
       onPickImage={() => soon('图片编辑', 'Photo editing')}
       onPickText={() => {
@@ -361,7 +422,7 @@ export function MobileEditorRoot({
           say(zh ? '点页面上的文字来选中它' : 'Tap the text on the page to select it');
         }
       }}
-      onMore={() => soon('「更多」', 'More')}
+      onMore={() => setMoreOpen(true)}
       onOpenChat={() => setAiChatOpen(true)}
       onDeletePage={() => soon('删除页面', 'Delete page')}
     />
@@ -385,48 +446,91 @@ export function MobileEditorRoot({
       onClose={() => setExportMenuOpen(false)}
       onCollage={() => {
         setExportMenuOpen(false);
-        setCollageOpen(true);
+        setCollageOpen(true); // 拼图要先问一张图放几个跨页
+      }}
+      onLive={() => {
+        setExportMenuOpen(false);
+        void exporter.exportLive();
+      }}
+      onSinglePages={() => {
+        setExportMenuOpen(false);
+        void exporter.exportSinglePages();
+      }}
+      onPdf={() => {
+        setExportMenuOpen(false);
+        void exporter.exportPdf();
       }}
     />
     <CollageModal
       open={collageOpen}
       zh={zh}
-      spreadCount={Math.max(0, Math.ceil(pages.length / 2))}
+      spreadCount={interiorSpreads(pages).length}
       density={collageDensity}
       onPickDensity={setCollageDensity}
       onClose={() => setCollageOpen(false)}
       onConfirm={() => {
+        const d = collageDensity;
         setCollageOpen(false);
-        soon('拼图导出', 'Collage export');
+        if (d == null) return;
+        void exporter.exportCollage(d as 1 | 2 | 3 | 6);
+      }}
+    />
+    <ExportProgressModal
+      open={exporter.progress != null}
+      zh={zh}
+      label={
+        exporter.progress == null
+          ? ''
+          : exporter.progress.total > 0
+            ? `${exporter.progress.done} / ${exporter.progress.total}`
+            : '…'
+      }
+      percent={exporter.progress?.percent ?? 0}
+    />
+    <ExportFailModal
+      open={exporter.failed}
+      zh={zh}
+      onClose={exporter.dismissFailed}
+      onRetry={() => {
+        exporter.dismissFailed();
+        void exporter.exportPdf();
+      }}
+    />
+    <NoticeModal
+      open={exporter.liveUnsupported != null}
+      zh={zh}
+      title={zh ? '这台设备导不了视频' : 'Video export unavailable'}
+      message={exporter.liveUnsupported ?? ''}
+      onClose={exporter.dismissLiveUnsupported}
+    />
+    <MoreSheet
+      open={moreOpen}
+      zh={zh}
+      backupState={backup.state}
+      backupProgress={backup.progress}
+      onClose={() => setMoreOpen(false)}
+      onBackupPhotos={() => {
+        void backup.backup(bookPhotoIds).then(({ missing, uploaded }) => {
+          if (missing === 0) say(zh ? '照片已全部备份' : 'All photos backed up');
+          else if (uploaded > 0)
+            say(
+              zh
+                ? `备份了 ${uploaded} 张,还差 ${missing} 张(原图可能不在这台设备)`
+                : `Backed up ${uploaded}, ${missing} still missing (originals may be on another device)`,
+            );
+          else say(zh ? '备份失败,请重试' : 'Backup failed — please retry');
+        });
       }}
     />
     <ShareLinkModal
       open={shareOpen}
       zh={zh}
-      link={null}
-      onConfirm={() => {
-        setShareOpen(false);
-        soon('分享链接', 'Share links');
-      }}
-      onCopy={() => soon('分享链接', 'Share links')}
+      link={share.state.link}
+      busy={share.state.stage === 'uploading' || share.state.stage === 'creating'}
+      hint={share.state.hint ?? undefined}
+      onConfirm={() => void share.create(bookPhotoIds, backup.backup)}
+      onCopy={() => void share.copy()}
       onClose={() => setShareOpen(false)}
-    />
-    <PhotoPickerModal
-      open={photoPickerOpen}
-      zh={zh}
-      subtitle={zh ? '选一张替换当前图槽的照片。' : 'Pick a photo to replace this slot.'}
-      photos={photoIds.map((id) => ({ id, url: thumbUrls[id] ?? imageUrls[id] }))}
-      selectedId={pickedPhoto}
-      onSelect={setPickedPhoto}
-      onConfirm={() => {
-        setPhotoPickerOpen(false);
-        setPickedPhoto(null);
-        soon('换照片', 'Photo swap');
-      }}
-      onClose={() => {
-        setPhotoPickerOpen(false);
-        setPickedPhoto(null);
-      }}
     />
     {sheetKind != null && (
       <ElementSheet

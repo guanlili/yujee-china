@@ -29,10 +29,11 @@ export function ExportMenuModal({
   open: boolean;
   zh: boolean;
   onClose: () => void;
-  onCollage?: () => void;
-  onLive?: () => void;
-  onSinglePages?: () => void;
-  onPdf?: () => void;
+  /** 四条格式的动作一律必填 —— 可选 + 父层漏传 = 亮着的死按钮(见 click-wiring.test)。 */
+  onCollage: () => void;
+  onLive: () => void;
+  onSinglePages: () => void;
+  onPdf: () => void;
 }) {
   return (
     <ModalHost
@@ -216,7 +217,8 @@ export function ExportFailModal({
   open: boolean;
   zh: boolean;
   onClose: () => void;
-  onRetry?: () => void;
+  /** 「再试一次」必填 —— 可选就会漏传成死按钮(见 click-wiring.test)。 */
+  onRetry: () => void;
 }) {
   return (
     <ModalHost open={open} onClose={onClose} labelledBy="mExportFailTitle" testId="export-fail-modal">

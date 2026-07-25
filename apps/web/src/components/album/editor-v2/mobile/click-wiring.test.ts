@@ -62,12 +62,42 @@ test('MobileEditorRoot:每个必填 handler 都真的传下去了(不是空占)'
   }
 });
 
-test('未实现功能不做死按钮:更多 / 删除接「即将上线」,AI 打开对话弹框', () => {
+test('入口都接到真东西上;仍未实现的(删除页)才给「即将上线」', () => {
   const root = read('MobileEditorRoot.tsx');
-  assert.match(root, /onMore=\{\(\) => soon\(/);
-  assert.match(root, /onDeletePage=\{\(\) => soon\(/);
-  // AI 气泡打开黑底小水母对话弹框,不再是 toast。
+  // 导出/分享/更多 现在都是真功能,不再是 toast。
+  assert.match(root, /onExport=\{openExport\}/, '导出接闸门 + 导出菜单');
+  assert.match(root, /onMore=\{\(\) => setMoreOpen\(true\)\}/, '「更多」打开菜单(里面是照片备份)');
+  assert.match(root, /onShare=\{\(\) => \{[\s\S]{0,80}setShareOpen\(true\)/, '分享打开分享弹窗');
   assert.match(root, /onOpenChat=\{\(\) => setAiChatOpen\(true\)\}/);
+  // 删除页线上也没有,仍是占位 —— 但必须有反馈,不许是死按钮。
+  assert.match(root, /onDeletePage=\{\(\) => soon\(/);
+});
+
+test('导出四条格式全部接到真渲染上(不许只开菜单不干活)', () => {
+  const root = read('MobileEditorRoot.tsx');
+  assert.match(root, /onLive=\{[\s\S]{0,120}exporter\.exportLive\(\)/);
+  assert.match(root, /onSinglePages=\{[\s\S]{0,120}exporter\.exportSinglePages\(\)/);
+  assert.match(root, /onPdf=\{[\s\S]{0,120}exporter\.exportPdf\(\)/);
+  // 拼图要先问密度,确认时才真导
+  assert.match(root, /onCollage=\{[\s\S]{0,140}setCollageOpen\(true\)/);
+  assert.match(root, /onConfirm=\{[\s\S]{0,200}exporter\.exportCollage\(/);
+});
+
+test('分享接的是真链路(备份照片 → 生成 token),不是 toast', () => {
+  const root = read('MobileEditorRoot.tsx');
+  assert.match(root, /onConfirm=\{\(\) => void share\.create\(bookPhotoIds, backup\.backup\)\}/);
+  assert.match(root, /onCopy=\{\(\) => void share\.copy\(\)\}/);
+  assert.match(root, /link=\{share\.state\.link\}/, '链接要从 hook 出,不许硬写 null');
+  assert.doesNotMatch(root, /link=\{null\}/, 'link={null} 意味着第二步永远到不了');
+});
+
+test('「更多」里的照片备份接的是真上传(线上顶栏「保存」那条)', () => {
+  const root = read('MobileEditorRoot.tsx');
+  assert.match(root, /onBackupPhotos=\{[\s\S]{0,120}backup\.backup\(bookPhotoIds\)/);
+  const hook = read('use-photo-backup.ts');
+  assert.match(hook, /signPhotoSnapshotUpload/, '走与桌面同一批快照客户端');
+  assert.match(hook, /putSnapshotBlob/);
+  assert.match(hook, /confirmPhotoSnapshot/);
 });
 
 /* ── 上面那三条只守住了「组件 props 必填」。真实事故里还有另外两类漏法,

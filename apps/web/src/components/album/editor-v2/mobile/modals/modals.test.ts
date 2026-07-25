@@ -14,13 +14,13 @@ import { ModalHost } from './ModalHost';
 import { ElementSheet } from './ElementSheet';
 import { BoardBgSheet } from './BoardBgSheet';
 import { ShareLinkModal } from './ShareLinkModal';
-import { PhotoPickerModal } from './PhotoPickerModal';
 import {
   ExportMenuModal,
   CollageModal,
   ExportProgressModal,
   ExportFailModal,
 } from './ExportModals';
+import { MoreSheet, NoticeModal } from './MoreSheet';
 import { AiChatSheet } from './AiChatSheet';
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -72,7 +72,12 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
   {
     name: 'ExportMenuModal 导出菜单',
     render: (open) =>
-      renderToStaticMarkup(createElement(ExportMenuModal, { open, zh: true, onClose: noop })),
+      renderToStaticMarkup(
+        createElement(ExportMenuModal, {
+          open, zh: true, onClose: noop,
+          onCollage: noop, onLive: noop, onSinglePages: noop, onPdf: noop,
+        }),
+      ),
     closeHint: /export-cancel/,
   },
   {
@@ -94,23 +99,39 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
   {
     name: 'ExportFailModal 导出失败',
     render: (open) =>
-      renderToStaticMarkup(createElement(ExportFailModal, { open, zh: true, onClose: noop })),
+      renderToStaticMarkup(
+        createElement(ExportFailModal, { open, zh: true, onClose: noop, onRetry: noop }),
+      ),
     closeHint: /知道了/,
   },
   {
-    name: 'PhotoPickerModal 换照片',
+    name: 'MoreSheet 更多',
     render: (open) =>
       renderToStaticMarkup(
-        createElement(PhotoPickerModal, {
+        createElement(MoreSheet, {
           open,
           zh: true,
-          photos: [],
-          onSelect: noop,
-          onConfirm: noop,
+          backupState: 'idle' as const,
+          backupProgress: null,
+          onClose: noop,
+          onBackupPhotos: noop,
+        }),
+      ),
+    closeHint: /export-cancel/,
+  },
+  {
+    name: 'NoticeModal 告知',
+    render: (open) =>
+      renderToStaticMarkup(
+        createElement(NoticeModal, {
+          open,
+          zh: true,
+          title: '标题',
+          message: '一句话',
           onClose: noop,
         }),
       ),
-    closeHint: /取消/,
+    closeHint: /知道了/,
   },
   {
     name: 'AiChatSheet AI对话',
@@ -264,13 +285,14 @@ test('完整性:modals 目录下每个弹窗组件都进了本文件的用例表
     .map((f) => f.replace('.tsx', ''));
   // ExportModals 一个文件里含四个弹窗,单独记账
   const covered = new Set(
-    CASES.map((c) => c.name.split(' ')[0]).concat(['ExportMenuModal', 'ExportProgressModal']),
+    CASES.map((c) => c.name.split(' ')[0]).concat(['ExportMenuModal', 'ExportProgressModal', 'MoreSheet']),
   );
   for (const f of files) {
     const ok =
       covered.has(f) ||
       PANELS_NOT_MODALS.has(f) ||
-      (f === 'ExportModals' && covered.has('ExportMenuModal'));
+      (f === 'ExportModals' && covered.has('ExportMenuModal')) ||
+      (f === 'MoreSheet' && covered.has('NoticeModal'));
     assert.ok(
       ok,
       `${f}.tsx 未归类 —— 弹窗要补进 CASES(必须能关),面板要进 PANELS_NOT_MODALS`,
