@@ -27,8 +27,18 @@ import { pageFaceHTML, type PageFaceCtx } from '../page-face';
 import { pageFolioNumbers, pageFolioSides } from '../../page-html-dom';
 import type { ResolveImage } from '../../adapt-layout';
 import { cycleDensity, type Density } from '../mobile-canvas';
-import { browseScreen, stepScreen, screenStartOfPage } from './browse-window';
+import { browseScreen, stepScreen, screenStartOfPage, type BrowseScreen } from './browse-window';
 import { fitBox, spreadAspect } from './fit-box';
+import {
+  FLIP_EASE,
+  FLIP_MS,
+  FLIP_SETTLE_MS,
+  canFlip,
+  leafGeometry,
+  leafLayers,
+  leafShading,
+  type FlipDir,
+} from './flip';
 import { EditView, type TextHit } from './EditView';
 import { MobileTopbar } from './MobileTopbar';
 import { MobileStrip } from './MobileStrip';
@@ -111,6 +121,26 @@ export function MobileEditor({
   const [area, setArea] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const boardRef = useRef<HTMLDivElement>(null);
 
+  // 翻纸动效:anim 非 null = 正在翻,toStart 是翻完之后的游标。
+  const [anim, setAnim] = useState<{ dir: FlipDir; toStart: number } | null>(null);
+  const [leafAngle, setLeafAngle] = useState(0);
+  const flipTimer = useRef<number | null>(null);
+  // 无障碍:系统设了减弱动效就不翻纸,直接切(同 FlipBook)。渲染期不读 matchMedia。
+  const [reducedMotion, setReducedMotion] = useState(false);
+  useLayoutEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const read = () => setReducedMotion(mq.matches);
+    read();
+    mq.addEventListener('change', read);
+    return () => mq.removeEventListener('change', read);
+  }, []);
+  useLayoutEffect(
+    () => () => {
+      if (flipTimer.current != null) window.clearTimeout(flipTimer.current);
+    },
+    [],
+  );
+
   const spreads = useMemo(() => buildSpreads(pages), [pages]);
   const folios = useMemo(() => pageFolioNumbers(pages.map((p) => p.templateId)), [pages]);
   const folioSides = useMemo(() => pageFolioSides(pages.map((p) => p.templateId)), [pages]);
@@ -118,6 +148,60 @@ export function MobileEditor({
     () => browseScreen(spreads, pages, startPage, density),
     [spreads, pages, startPage, density],
   );
+
+  /** 一个开页在本屏里实际摆出来的半边(密度 1 只留游标那页;独页只留有内容那半)。 */
+  const halvesOf = useCallback(
+    (scr: BrowseScreen, si: number): (number | null)[] => {
+      const sp = spreads[si];
+      if (!sp) return [];
+      if (scr.onlyPage !== null) return [scr.onlyPage];
+      return isSoloSpread(sp, pages) ? [sp.left ?? sp.right ?? null] : [sp.left, sp.right];
+    },
+    [spreads, pages],
+  );
+
+  /** 一屏只有一个开页时它的半边,否则 null。
+   *  翻纸两端都必须经这个口子取 —— 曾经拿**当前屏的开页序号**去查目标屏,
+   *  halvesOf 读的是 spreads[si],于是查回来还是当前那个开页:纸片正反面画的是同一屏,
+   *  看起来「翻了但没换页」。单测抓不到(纯函数本身是对的),只有真机能看出来。 */
+  const soleHalves = useCallback(
+    (scr: BrowseScreen): (number | null)[] | null =>
+      scr.spreadIndices.length === 1 ? halvesOf(scr, scr.spreadIndices[0]!) : null,
+    [halvesOf],
+  );
+
+  /** 翻一屏。几何允许就走翻纸动效,否则直接切(见 flip.ts 的 canFlip)。 */
+  const goScreen = (dir: 1 | -1) => {
+    if (anim) return; // 翻纸过程中不接新的翻页(同 FlipBook)
+    const toStart = stepScreen(spreads, pages, startPage, density, dir);
+    if (toStart === startPage) return; // 已在夹边
+    const to = browseScreen(spreads, pages, toStart, density);
+    const fromHalves = soleHalves(screen);
+    const toHalves = soleHalves(to);
+    const ok =
+      fromHalves != null &&
+      toHalves != null &&
+      canFlip(
+        { rows: screen.spreadIndices.length, halves: fromHalves.length },
+        { rows: to.spreadIndices.length, halves: toHalves.length },
+        reducedMotion,
+      );
+    if (!ok) {
+      setStartPage(toStart);
+      return;
+    }
+    const d: FlipDir = dir === 1 ? 'next' : 'prev';
+    setAnim({ dir: d, toStart });
+    setLeafAngle(0);
+    // 下一帧才给终止角,transition 才会跑(同 FlipBook)。
+    requestAnimationFrame(() => setLeafAngle(leafGeometry(d, fromHalves.length).endAngle));
+    flipTimer.current = window.setTimeout(() => {
+      setStartPage(toStart);
+      setAnim(null);
+      setLeafAngle(0);
+      flipTimer.current = null;
+    }, FLIP_MS + FLIP_SETTLE_MS);
+  };
 
   // 只量一次板子;每页多大由 fitBox 算出来,不靠 CSS 比例硬凑(会被 max-width 夹破)。
   useLayoutEffect(() => {
@@ -169,13 +253,14 @@ export function MobileEditor({
     const dx = e.clientX - from.x;
     const dy = e.clientY - from.y;
     if (Math.abs(dx) < TAP_MAX && Math.abs(dy) < TAP_MAX) {
+      if (anim) return; // 翻纸过程中点到的是正在飞的纸,不当作选页
       const host = (e.target as HTMLElement).closest<HTMLElement>('[data-page-index]');
       const pi = host?.dataset.pageIndex;
       if (pi != null && pi !== '') onEnterEdit(Number(pi));
       return;
     }
     if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) <= Math.abs(dy)) return; // 不够横 / 更像竖滑
-    setStartPage((cur) => stepScreen(spreads, pages, cur, density, dx < 0 ? 1 : -1));
+    goScreen(dx < 0 ? 1 : -1);
   };
 
   if (editPage != null) {
@@ -213,6 +298,8 @@ export function MobileEditor({
   const availH = Math.max(0, area.h - INSET * 2);
   const rows = Math.max(1, screen.spreadIndices.length);
   const rowH = (availH - GAP * (rows - 1)) / rows;
+  // 翻纸中的目标屏(整屏算一次,不在 map 里反复算)。
+  const toScreen = anim ? browseScreen(spreads, pages, anim.toStart, density) : null;
 
   return (
     <div
@@ -241,13 +328,22 @@ export function MobileEditor({
         {screen.spreadIndices.map((si) => {
           const sp = spreads[si];
           const solo = isSoloSpread(sp, pages);
-          const halves: (number | null)[] =
-            screen.onlyPage !== null
-              ? [screen.onlyPage] // 密度 1:开页内只留游标那一页
-              : solo
-                ? [sp.left ?? sp.right ?? null]
-                : [sp.left, sp.right];
+          const resting = halvesOf(screen, si);
+          // 翻纸中:底层画的是「原屏 + 目标屏」拼出来的那一层(见 flip.ts 的 leafLayers),
+          // 纸片转过 90° 后露出来的就是它。翻纸只发生在一屏一个开页时,故 anim 时必为这一格。
+          // 目标屏的半边必须经 soleHalves 从**目标屏自己**取(理由见 soleHalves 抬头)。
+          const toHalves = toScreen ? soleHalves(toScreen) : null;
+          const layers =
+            anim != null && toHalves != null
+              ? leafLayers(anim.dir, resting.length, resting, toHalves)
+              : null;
+          const halves: (number | null)[] = layers ? layers.under : resting;
           const box = fitBox(availW, rowH, spreadAspect(halves.length));
+          const face = (pi: number | null, w: number) =>
+            box.w > 0
+              ? pageFaceHTML(pi == null ? null : (pages[pi] ?? null), w, box.h, ctxOf(pi ?? -1))
+              : '';
+          const geo = layers && anim ? leafGeometry(anim.dir, halves.length) : null;
           return (
             <div
               className="mspread"
@@ -269,20 +365,40 @@ export function MobileEditor({
                       没有第二方会重建它 —— 与旧实现的根本区别。 */}
                   <div
                     className="mpage-face"
-                    dangerouslySetInnerHTML={{
-                      __html:
-                        box.w > 0
-                          ? pageFaceHTML(
-                              pi == null ? null : (pages[pi] ?? null),
-                              box.w / halves.length,
-                              box.h,
-                              ctxOf(pi ?? -1),
-                            )
-                          : '',
-                    }}
+                    dangerouslySetInnerHTML={{ __html: face(pi, box.w / halves.length) }}
                   />
                 </div>
               ))}
+
+              {/* 翻动中的那张纸:正面是翻走的页(带书脊侧受光),背面是翻进来的页。
+                  几何/受光/时长全部取自 FlipBook 的 page-turn。 */}
+              {geo && layers && anim && (
+                <div
+                  className="mleaf"
+                  aria-hidden="true"
+                  style={{
+                    left: box.w * geo.leftFrac,
+                    width: box.w * geo.widthFrac,
+                    transformOrigin: geo.origin,
+                    transform: `rotateY(${leafAngle}deg)`,
+                    transition: `transform ${FLIP_MS}ms ${FLIP_EASE}`,
+                  }}
+                >
+                  <div className="mleaf-face">
+                    <div
+                      className="mpage-face"
+                      dangerouslySetInnerHTML={{ __html: face(layers.front, box.w * geo.widthFrac) }}
+                    />
+                    <div className="mleaf-shade" style={{ background: leafShading(anim.dir) }} />
+                  </div>
+                  <div className="mleaf-face mleaf-back">
+                    <div
+                      className="mpage-face"
+                      dangerouslySetInnerHTML={{ __html: face(layers.back, box.w * geo.widthFrac) }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
@@ -335,7 +451,9 @@ export function MobileEditor({
       <MobileStrip
         pages={pages}
         zh={zh}
-        currentPage={startPage}
+        // 翻纸一开始就把预览栏的高亮挪到目标页 —— 导航状态跟着「要去哪」走,
+        // 不等 900ms 动画结束(同桌面 goToSpread 里先 syncSelectionToSpread)。
+        currentPage={anim ? anim.toStart : startPage}
         thumbCtxOf={thumbCtxOf}
         onJump={(pi) => setStartPage(screenStartOfPage(spreads, pages, pi, density))}
       />

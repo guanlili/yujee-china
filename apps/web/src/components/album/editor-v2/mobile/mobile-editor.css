@@ -90,15 +90,53 @@
   justify-content: center;
   gap: 10px; /* 与 MobileEditor 的 GAP 常量一致 */
   /* 四周留白由 JS 的 INSET 单点控制(fitBox 前扣掉),这里不叠加 padding。 */
+  /* 翻纸动效要的 3D 景深,值同 FlipBook 的 stage(perspective:2400)。 */
+  perspective: 2400px;
 }
 
 .mobile-editor .mspread {
-  position: relative; /* 选中高亮框 + 书脊中缝的定位参照 */
+  position: relative; /* 选中高亮框 + 书脊中缝 + 翻动纸片的定位参照 */
   display: flex;
   flex: none; /* 尺寸由 JS 的 fitBox 算好写在 style 上,不让 flex 再拉伸 */
   box-shadow: var(--shadow-card-hover);
   /* 面板升起时整本书上移让出位置(EditView 算 lift);只有位移,没有缩放。 */
   transition: transform var(--motion-base) var(--ease);
+  /* 纸片要在 3D 里真的翻过去,不能被扁平化(同 FlipBook 的 .book)。 */
+  transform-style: preserve-3d;
+}
+
+/* ── 翻动中的那张纸 ────────────────────────────────────────────────────────
+   结构与 FlipBook 的 turning leaf 一一对应:两张背对背的面绕书脊那条边 rotateY,
+   正面朝外时看到翻走的页、转过 90° 后看到翻进来的页(背面),底下垫着目标屏。
+   位置/宽度/origin/角度/时长/缓动全部由 JS 按 flip.ts 算好写在 style 上。 */
+.mobile-editor .mleaf {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 6; /* 压过书脊中缝(5),纸片是在书页之上翻动的 */
+  transform-style: preserve-3d;
+  pointer-events: none; /* 翻的过程中别把点击吃掉 */
+}
+
+.mobile-editor .mleaf-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--surface);
+  /* 背面朝观众时不显示 —— 两张面才能背对背当一张纸 */
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.mobile-editor .mleaf-back {
+  transform: rotateY(180deg);
+}
+
+/* 翻页受光:靠书脊那侧压暗一点(渐变值由 JS 给,取自 FlipBook)。 */
+.mobile-editor .mleaf-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 /* ── 书脊中缝:两页之间那道竖向阴影 ────────────────────────────────────────

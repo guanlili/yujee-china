@@ -127,6 +127,39 @@ test('书脊中缝的条件是「真摆了两页」,不是「非独页」(密度
   );
 });
 
+test('翻纸:目标屏的半边必须从目标屏自己取(拿当前屏的开页序号去查 = 正反面画同一屏)', () => {
+  // 真实 bug(真机抓到、单测抓不到):halvesOf 读的是 spreads[si],把**当前屏**的 si
+  // 传给目标屏,查回来还是当前那个开页 → 纸片正反面是同一屏,「翻了但没换页」。
+  const src = source('MobileEditor.tsx');
+  assert.doesNotMatch(
+    src,
+    /halvesOf\(\s*browseScreen\([^)]*\)\s*,\s*si\s*\)/,
+    '不许拿当前屏的 si 去查目标屏 —— 走 soleHalves(它从屏自己的 spreadIndices 取)',
+  );
+  assert.match(src, /const soleHalves = useCallback/, 'soleHalves 是那个防呆口子,别删');
+  assert.match(src, /soleHalves\(toScreen\)/, '目标屏半边必须经 soleHalves 取');
+});
+
+test('翻纸:时长/缓动/景深都取自 FlipBook,不自己定', () => {
+  const src = source('MobileEditor.tsx');
+  assert.match(src, /FLIP_MS/, '时长走 flip.ts 的常量(它对齐 FlipBook)');
+  assert.match(src, /FLIP_EASE/);
+  assert.doesNotMatch(src, /transition: `transform \d+ms/, '不许在组件里写死时长');
+  const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /perspective:\s*2400px/, '景深 2400px,同 FlipBook 的 stage');
+  const at = css.indexOf('.mobile-editor .mleaf {');
+  assert.ok(at >= 0, '翻动纸片的规则被删了');
+  const leaf = css.slice(at, css.indexOf('}', at));
+  assert.match(leaf, /transform-style:\s*preserve-3d/, '不 preserve-3d 纸片会被压平');
+  assert.match(leaf, /pointer-events:\s*none/, '翻的过程中纸片不许吃掉点击');
+});
+
+test('翻纸中不接新翻页、不误触进编辑', () => {
+  const src = source('MobileEditor.tsx');
+  assert.match(src, /if \(anim\) return;[\s\S]{0,80}stepScreen/, '翻纸中再滑要被挡掉');
+  assert.match(src, /if \(anim\) return;[\s\S]{0,120}data-page-index/, '翻纸中轻点不该进编辑态');
+});
+
 test('底部翻页条 + 书浮在画板上:两样都不许去掉', () => {
   const html = render();
   assert.match(html, /class="mstrip"/, '底部翻页条不许去掉');
