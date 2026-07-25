@@ -14,6 +14,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MobileEditor } from './MobileEditor';
 import type { EditorPage } from '../../types';
 
+const noop = () => {};
+
 const here = dirname(fileURLToPath(import.meta.url));
 const source = (f: string) => readFileSync(join(here, f), 'utf8');
 
@@ -28,7 +30,13 @@ const BOOK: EditorPage[] = [
 
 function render(pages = BOOK) {
   return renderToStaticMarkup(
-    createElement(MobileEditor, { pages, resolve: () => undefined, title: '厦门三日游' }),
+    createElement(MobileEditor, {
+      pages,
+      resolve: () => undefined,
+      title: '厦门三日游',
+      onShare: noop, onExport: noop, onMore: noop, onBoardBg: noop, onOpenChat: noop,
+      onPageBg: noop, onPickImage: noop, onPickText: noop, onDeletePage: noop,
+    }),
   );
 }
 

@@ -22,7 +22,7 @@ import { pageFolioNumbers, pageFolioSides } from '../../page-html-dom';
 import type { ResolveImage } from '../../adapt-layout';
 import { fitBox, spreadAspect } from './fit-box';
 import { MobileTopbar } from './MobileTopbar';
-import { IconPageBg, IconImage, IconText, IconTrash, IconSparkle } from './icons';
+import { IconPageBg, IconImage, IconText, IconTrash } from './icons';
 
 export type EditViewProps = {
   pages: EditorPage[];
@@ -34,15 +34,15 @@ export type EditViewProps = {
   onExit: () => void;
   /** 左右滑翻页:+1 下一页 / -1 上一页(夹边由父层的 stepScreen 处理)。 */
   onStep: (dir: 1 | -1) => void;
-  onShare?: () => void;
-  onExport?: () => void;
-  onMore?: () => void;
-  onOpenChat?: () => void;
-  /** 一级栏四格(后续切片接现有成品弹窗)。 */
-  onPageBg?: () => void;
-  onPickImage?: () => void;
-  onPickText?: () => void;
-  onDeletePage?: () => void;
+  /** 交互 handler 一律必填(理由同 MobileEditor):漏接 = 死按钮 = 编译不过。 */
+  onShare: () => void;
+  onExport: () => void;
+  onMore: () => void;
+  onOpenChat: () => void;
+  onPageBg: () => void;
+  onPickImage: () => void;
+  onPickText: () => void;
+  onDeletePage: () => void;
 };
 
 /** 编辑态页面四周留白:比浏览态更满(单页受宽本就左右留白,这里只给一点呼吸)。 */
@@ -151,7 +151,7 @@ export function EditView({
         </div>
 
         <button type="button" className="mai" aria-label="AI 助手" onClick={onOpenChat}>
-          <IconSparkle className="mai-ic" />
+          <img className="mai-jelly" src="/jellyfish-icon.png" alt="" />
         </button>
       </div>
 

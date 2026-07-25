@@ -32,7 +32,7 @@ import { fitBox, spreadAspect } from './fit-box';
 import { EditView } from './EditView';
 import { MobileTopbar } from './MobileTopbar';
 import { MobileStrip } from './MobileStrip';
-import { IconBoardBg, IconSparkle } from './icons';
+import { IconBoardBg } from './icons';
 
 export type MobileEditorProps = {
   pages: EditorPage[];
@@ -43,17 +43,17 @@ export type MobileEditorProps = {
   boardBackground?: string | null;
   title: string;
   onBack?: () => void;
-  /** 以下动作接现有成品弹窗(分享/导出/更多/画板背景),后续切片接线。 */
-  onShare?: () => void;
-  onExport?: () => void;
-  onMore?: () => void;
-  onBoardBg?: () => void;
-  onOpenChat?: () => void;
-  /** 编辑态一级栏四格。 */
-  onPageBg?: () => void;
-  onPickImage?: () => void;
-  onPickText?: () => void;
-  onDeletePage?: () => void;
+  /** 交互 handler 一律必填 —— 「可选」等于「可以不接」,漏一个就是死按钮。
+     必填后:谁漏传谁编译不过(见 MobileEditorRoot)。 */
+  onShare: () => void;
+  onExport: () => void;
+  onMore: () => void;
+  onBoardBg: () => void;
+  onOpenChat: () => void;
+  onPageBg: () => void;
+  onPickImage: () => void;
+  onPickText: () => void;
+  onDeletePage: () => void;
 };
 
 /** 开页与开页之间的缝(px)。 */
@@ -278,7 +278,7 @@ export function MobileEditor({
         </div>
 
         <button type="button" className="mai" aria-label="AI 助手" onClick={onOpenChat}>
-          <IconSparkle className="mai-ic" />
+          <img className="mai-jelly" src="/jellyfish-icon.png" alt="" />
         </button>
       </div>
 

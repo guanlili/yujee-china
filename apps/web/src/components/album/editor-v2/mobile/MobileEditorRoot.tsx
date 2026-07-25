@@ -27,6 +27,8 @@ import type { Locale } from '@/lib/i18n/routing';
 import { collectPhotoIds, type ResolveImage } from '../../adapt-layout';
 import { extractPhotoIds, type AlbumDetail } from '../../types';
 import { MobileEditor } from './MobileEditor';
+import { MobileToast } from './MobileToast';
+import { AiChatSheet } from './modals/AiChatSheet';
 // 样式在容器里引:展示层保持无副作用 import,才能在 node 测试里直接渲染断言。
 // token 与桌面共用同一份(共享设计系统,不共享 DOM)。
 import '../editor-tokens.css';
@@ -73,6 +75,15 @@ export function MobileEditorRoot({
     align: null,
   });
   const [pageBg, setPageBg] = useState<string | null>(null);
+  // 未实现功能(AI 对话 / 更多 / 删除)的统一反馈:点了给一句「即将上线」,不做死按钮。
+  const [toast, setToast] = useState<string | null>(null);
+  const [aiChatOpen, setAiChatOpen] = useState(false);
+  const soon = (label: string) => {
+    setToast(label);
+    // 3 秒后自动消失(用 setTimeout,与桌面 alert 不同,不阻塞)。
+    window.setTimeout(() => setToast((cur) => (cur === label ? null : cur)), 3000);
+  };
+  const zh = locale === 'zh';
   // 画板背景是相册级视觉属性:本地先落地(立刻可见),再 PATCH 持久化(与桌面同一通道)。
   const [boardBgOverride, setBoardBgOverride] = useState<BoardBackground | null | undefined>(
     undefined,
@@ -185,6 +196,9 @@ export function MobileEditorRoot({
       onPageBg={() => setSheetKind('pagebg')}
       onPickImage={() => setPhotoPickerOpen(true)}
       onPickText={() => setSheetKind('text')}
+      onMore={() => soon(zh ? '「更多」即将上线' : 'More — coming soon')}
+      onOpenChat={() => setAiChatOpen(true)}
+      onDeletePage={() => soon(zh ? '删除页面即将上线' : 'Delete page — coming soon')}
     />
     <BoardBgSheet
       open={bgSheetOpen}
@@ -270,6 +284,13 @@ export function MobileEditorRoot({
         )}
       </ElementSheet>
     )}
+    <AiChatSheet
+      open={aiChatOpen}
+      zh={zh}
+      onClose={() => setAiChatOpen(false)}
+      onSend={() => soon(zh ? 'AI 对话即将接入' : 'AI chat — coming soon')}
+    />
+    <MobileToast text={toast} />
     </>
   );
 }

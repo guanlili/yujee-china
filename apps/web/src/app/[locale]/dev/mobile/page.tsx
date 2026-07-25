@@ -13,5 +13,13 @@ import { SAMPLE_DETAIL } from './sample';
 export default function DevMobilePreview({ params }: { params: Promise<{ locale: string }> }) {
   const { locale: raw } = use(params);
   const locale: Locale = isLocale(raw) ? raw : defaultLocale;
-  return <MobileEditorRoot detail={SAMPLE_DETAIL} locale={locale} onBack={() => {}} />;
+  // dev 预览没有「来处」可返回,用 history.back 兜底 —— 至少点了有反应(真实相册里
+  // onBack 走默认的回相册列表)。
+  return (
+    <MobileEditorRoot
+      detail={SAMPLE_DETAIL}
+      locale={locale}
+      onBack={() => window.history.back()}
+    />
+  );
 }

@@ -21,6 +21,7 @@ import {
   ExportProgressModal,
   ExportFailModal,
 } from './ExportModals';
+import { AiChatSheet } from './AiChatSheet';
 
 /* ════════════════════════════════════════════════════════════════════════════
    移动端弹窗的完整性守卫。
@@ -103,6 +104,14 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
     closeHint: /取消/,
   },
   {
+    name: 'AiChatSheet AI对话',
+    render: (open) =>
+      renderToStaticMarkup(
+        createElement(AiChatSheet, { open, zh: true, onSend: noop, onClose: noop }),
+      ),
+    closeHint: /mai-sheet-close/,
+  },
+  {
     name: 'ElementSheet 元素编辑',
     render: (open) =>
       renderToStaticMarkup(
@@ -145,7 +154,9 @@ test('架构守卫:宿主样式不许再用 pointer-events 放行名单(曾漏�
     /\/\*[\s\S]*?\*\//g,
     '',
   );
-  const hostBlock = css.slice(css.indexOf('.mobile-modal-host'));
+  // 只查宿主那一个规则块(到第一个 } 为止),别扫到无关的 .mtoast 等。
+  const at = css.indexOf('.mobile-modal-host');
+  const hostBlock = css.slice(at, css.indexOf('}', at) + 1);
   assert.doesNotMatch(
     hostBlock,
     /pointer-events\s*:\s*none/,

@@ -13,6 +13,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { EditView } from './EditView';
 import type { EditorPage } from '../../types';
 
+const noop = () => {};
+
 const here = dirname(fileURLToPath(import.meta.url));
 const source = (f: string) => readFileSync(join(here, f), 'utf8');
 
@@ -31,8 +33,10 @@ function render(editPage: number) {
       pages: BOOK,
       resolve: () => undefined,
       editPage,
-      onExit: () => {},
-      onStep: () => {},
+      onExit: noop,
+      onStep: noop,
+      onShare: noop, onExport: noop, onMore: noop, onOpenChat: noop,
+      onPageBg: noop, onPickImage: noop, onPickText: noop, onDeletePage: noop,
     }),
   );
 }
