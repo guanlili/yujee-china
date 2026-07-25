@@ -167,34 +167,58 @@
   font-weight: 700;
 }
 
-/* ── AI 气泡:品牌渐变(同桌面 .brand-mark 的 logo 渐变),不是通用聊天气泡 ── */
+/* ── AI 浮标:**黑色胶囊**,小水母从左上角探出来 ─────────────────────────────
+   逐条对齐桌面 .chat-fold-expand(editor-port.css 的 ≤767 段)——「浮标黑、弹窗浅」
+   是既有设计,别搞反:早先做成了白浮标 + 黑弹窗,两处都错。
+
+   水母为什么必须探出胶囊外:它是 mix-blend-mode:multiply(与桌面 await-jelly 同一
+   呈现)。multiply 压在黑底上结果就是黑 —— 水母会直接消失。桌面把它绝对定位到
+   top:-23px/left:-13px 探到浅色画布上,正是为此。 */
 .mobile-editor .mai {
   position: absolute;
   right: 14px;
-  bottom: 14px;
-  width: 54px;
-  height: 54px;
-  display: grid;
-  place-items: center;
+  bottom: 16px;
+  height: 46px;
+  /* 左边多留出来的是给探出来的水母让位(同桌面 padding:0 16px 0 34px) */
+  padding: 0 16px 0 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   border: 0;
   border-radius: var(--radius-pill);
-  overflow: hidden;
-  background: var(--surface);
-  box-shadow: var(--shadow-card-hover);
+  /* 不能 overflow:hidden —— 会把探出来的水母裁掉 */
+  overflow: visible;
+  background: var(--fg);
+  color: var(--surface);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24), 0 2px 6px rgba(0, 0, 0, 0.16);
   transition: transform var(--motion-fast) var(--ease);
 }
 
 .mobile-editor .mai:active {
-  transform: scale(0.94);
+  transform: scale(0.96);
 }
 
-/* 产品小水母:与桌面 await-jelly / mc-ai-fab 同一呈现(contain + multiply + 轻浮动) */
+/* 产品小水母:与桌面 .chat-fold-expand .fab-jelly 逐条一致 */
 .mobile-editor .mai-jelly {
-  width: 38px;
-  height: 38px;
+  position: absolute;
+  top: -23px;
+  left: -13px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
   mix-blend-mode: multiply;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.12));
   animation: mai-float 3.2s ease-in-out infinite;
+}
+
+.mobile-editor .mai-chat-ic {
+  width: 18px;
+  height: 18px;
 }
 
 @keyframes mai-float {
@@ -340,7 +364,10 @@
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
-/* ── AI 对话弹框:黑底 + 小水母的 bottom sheet(见 modals/AiChatSheet.tsx) ──── */
+/* ── AI 对话弹框:**浅色** bottom sheet(见 modals/AiChatSheet.tsx) ───────────
+   对齐桌面 ≤767 的对话面板(.pane-chat-col + .pane-right):浅底卡片、24px 大圆角、
+   上方投影,外面一层 rgba(20,22,28,.42) 遮罩压暗画布。
+   黑色只属于收起时的那枚浮标(.mai),弹窗不是黑的 —— 早先做反了。 */
 .mai-sheet-overlay {
   position: fixed;
   inset: 0;
@@ -348,7 +375,7 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.42);
+  background: rgba(20, 22, 28, 0.42); /* 与桌面 .pane-chat-col::before 同一支遮罩 */
   animation: mai-fade 0.18s ease both;
 }
 
@@ -360,10 +387,12 @@
   max-height: 78vh;
   display: flex;
   flex-direction: column;
-  background: var(--ai-surface);
-  color: var(--ai-fg);
-  border-radius: 22px 22px 0 0;
-  box-shadow: 0 -14px 44px rgba(0, 0, 0, 0.4);
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 0;
+  border-radius: 24px 24px 0 0;
+  box-shadow: 0 -18px 46px rgba(0, 0, 0, 0.16);
   padding-bottom: calc(10px + env(safe-area-inset-bottom));
   animation: mai-up 0.22s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
@@ -373,7 +402,7 @@
 .mai-sheet-grab { display: flex; justify-content: center; padding: 10px 0 4px; }
 .mai-sheet-grab span {
   width: 36px; height: 4px; border-radius: 9999px;
-  background: var(--ai-line);
+  background: var(--border);
 }
 
 .mai-sheet-head {
@@ -382,17 +411,22 @@
   gap: 12px;
   padding: 6px 16px 14px;
 }
-.mai-sheet-jelly { width: 40px; height: 40px; object-fit: contain; flex: none; }
+/* 浅底上水母走 multiply(与桌面 await-jelly 同一呈现);黑底才不能用 */
+.mai-sheet-jelly {
+  width: 40px; height: 40px; flex: none;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+}
 .mai-sheet-titles { flex: 1; min-width: 0; }
 .mai-sheet-title {
   font-family: var(--font-display);
   font-size: 16px; font-weight: 700; letter-spacing: -0.01em;
 }
-.mai-sheet-sub { font-size: 12.5px; color: var(--ai-fg-dim); margin-top: 1px; }
+.mai-sheet-sub { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
 .mai-sheet-close {
   width: 36px; height: 36px; flex: none;
   display: grid; place-items: center;
-  border: 0; background: none; color: var(--ai-fg-dim);
+  border: 0; background: none; color: var(--muted);
 }
 .mai-sheet-close svg { width: 20px; height: 20px; }
 
@@ -406,10 +440,10 @@
   max-width: 88%;
   padding: 11px 14px;
   border-radius: 4px 16px 16px 16px;
-  background: var(--ai-line);
+  background: var(--bg);
   font-size: 14px;
   line-height: 1.55;
-  color: var(--ai-fg);
+  color: var(--fg);
 }
 
 .mai-sheet-composer {
@@ -419,7 +453,8 @@
   margin: 0 12px;
   padding: 8px 8px 8px 14px;
   border-radius: 22px;
-  background: var(--ai-line);
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
 }
 .mai-sheet-input {
   flex: 1;
@@ -427,20 +462,23 @@
   max-height: 96px;
   border: 0;
   background: none;
-  color: var(--ai-fg);
+  color: var(--fg);
   font-family: inherit;
   font-size: 16px; /* 16px 防 iOS 聚焦缩放 */
   line-height: 1.4;
   resize: none;
   outline: none;
 }
-.mai-sheet-input::placeholder { color: var(--ai-fg-dim); }
+.mai-sheet-input::placeholder { color: var(--muted); }
+/* 配色/图标照搬桌面 .send-btn(黑底白箭头 + disabled 40%)。只有尺寸按手机放大:
+   桌面是 32px,这里给到 38px —— 全文件统一的 44pt 触点口径,不是自创视觉。 */
 .mai-sheet-send {
   width: 38px; height: 38px; flex: none;
   display: grid; place-items: center;
   border: 0; border-radius: 9999px;
-  background: var(--ai-fg); color: var(--ai-surface);
+  background: var(--fg); color: var(--surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
   transition: opacity 0.15s ease;
 }
-.mai-sheet-send:disabled { opacity: 0.35; }
-.mai-sheet-send svg { width: 18px; height: 18px; }
+.mai-sheet-send:disabled { opacity: 0.4; }
+.mai-sheet-send svg { width: 17px; height: 17px; }

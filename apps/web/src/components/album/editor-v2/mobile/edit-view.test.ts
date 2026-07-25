@@ -117,7 +117,7 @@ test('i18n:英文 locale 下编辑态不留中文', () => {
   const html = render(3, { zh: false });
   assert.match(html, /Page 4/);
   assert.match(html, /aria-label="Back to browsing"/);
-  assert.match(html, /aria-label="AI assistant"/);
+  assert.match(html, /aria-label="Expand chat"/);
   assert.match(html, /aria-label="Editing tools"/);
   for (const label of ['Background', 'Photo', 'Text', 'Delete']) {
     assert.ok(html.includes(`>${label}</span>`), `一级栏缺英文「${label}」`);

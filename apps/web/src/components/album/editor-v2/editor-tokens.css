@@ -34,11 +34,4 @@
   --radius-pill: 9999px;
   --radius-md: 12px;
   --radius-lg: 16px;
-
-  /* AI 对话是深色反转配色(黑底白字)。值取自桌面深色模式的 --surface(#1e1e22),
-     不新造颜色 —— 移动端 AI sheet 与它同源。 */
-  --ai-surface: #1e1e22;
-  --ai-fg: #ffffff;
-  --ai-fg-dim: rgba(255, 255, 255, 0.55);
-  --ai-line: rgba(255, 255, 255, 0.1);
 }

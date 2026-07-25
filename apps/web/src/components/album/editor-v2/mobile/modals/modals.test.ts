@@ -173,6 +173,33 @@ test('架构守卫:宿主样式不许再用 pointer-events 放行名单(曾漏�
   );
 });
 
+test('AI 是「浮标黑 / 弹窗浅」,别再搞反(曾做成白浮标 + 黑弹窗)', () => {
+  // 既有设计(桌面 editor-port.css 的 .chat-fold-expand + ≤767 对话面板):
+  // 收起时是一枚**黑色胶囊**浮标,展开的对话面板是**浅色**卡片 + 压暗遮罩。
+  const css = readFileSync(join(here, '..', 'mobile-editor.css'), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  );
+  const block = (sel: string) => {
+    const at = css.indexOf(sel + ' {');
+    assert.ok(at >= 0, `找不到 ${sel} 规则`);
+    return css.slice(at, css.indexOf('}', at));
+  };
+  // 浮标:黑底白字
+  const fab = block('.mobile-editor .mai');
+  assert.match(fab, /background:\s*var\(--fg\)/, 'AI 浮标必须是黑色胶囊(var(--fg))');
+  assert.match(fab, /color:\s*var\(--surface\)/, '黑胶囊上的字必须是浅色');
+  // 弹窗:浅底深字
+  const sheet = block('.mai-sheet');
+  assert.match(sheet, /background:\s*var\(--surface\)/, '对话弹窗是浅色卡片,不是黑的');
+  assert.match(sheet, /color:\s*var\(--fg\)/);
+  // 水母是 multiply:压在黑底上会消失,所以必须探出胶囊(负偏移)且胶囊不许裁切
+  const jelly = block('.mobile-editor .mai-jelly');
+  assert.match(jelly, /mix-blend-mode:\s*multiply/);
+  assert.match(jelly, /top:\s*-\d/, '水母必须探出胶囊上边(multiply 压黑底会消失)');
+  assert.doesNotMatch(fab, /overflow:\s*hidden/, '浮标不许 overflow:hidden,会裁掉探出的水母');
+});
+
 test('「无背景」格必须有定位上下文,否则它的斜杠层会铺满整块面板挡住所有颜色', () => {
   // 真实 bug(真机自测抓到):桌面把斜杠 ::after(position:absolute;inset:0)挂在
   // .bbg-swatch 上,那个类自带 position:relative。页面底色面板复用的是 .mes-sw ——

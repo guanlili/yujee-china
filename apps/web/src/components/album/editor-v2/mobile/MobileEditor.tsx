@@ -304,13 +304,28 @@ export function MobileEditor({
           </button>
         </div>
 
+        {/* AI 浮标:黑色胶囊 + 小水母从左上角探出来(逐条对齐桌面 .chat-fold-expand)。
+            水母是 mix-blend-mode:multiply —— 必须**探出到胶囊外面**,压在黑底上会直接消失。 */}
         <button
           type="button"
           className="mai"
-          aria-label={zh ? 'AI 助手' : 'AI assistant'}
+          aria-label={zh ? '展开对话' : 'Expand chat'}
           onClick={onOpenChat}
         >
           <img className="mai-jelly" src="/jellyfish-icon.png" alt="" />
+          <svg
+            className="mai-chat-ic"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.9"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          <span>{zh ? '对话' : 'Chat'}</span>
         </button>
       </div>
 

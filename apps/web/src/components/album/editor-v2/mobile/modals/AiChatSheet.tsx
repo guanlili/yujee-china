@@ -1,6 +1,9 @@
 'use client';
 
-/* AI 对话弹框(移动端)—— 黑底 + 产品小水母的 bottom sheet。
+/* AI 对话弹框(移动端)—— 浅色 bottom sheet + 产品小水母。
+
+   配色对齐桌面 ≤767 的对话面板(.pane-chat-col/.pane-right):浅底卡片 + 压暗遮罩。
+   **黑色只属于收起时那枚浮标**(.mai,对齐桌面 .chat-fold-expand);弹窗不是黑的。
 
    为什么不直接挂桌面 ChatPanel:它深度依赖桌面画布协调器(ChatCoordinatorContext,
    由 EditorBook 挂载时填充),移动端这棵独立树没有那套上下文,整体挂进来会炸。
@@ -76,9 +79,18 @@ export function AiChatSheet({ open, zh, onSend, onClose }: AiChatSheetProps) {
             onClick={send}
             aria-label={zh ? '发送' : 'Send'}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13" />
-              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            {/* 上箭头,逐条照搬桌面 ChatPanel 的 .send-btn 图标(strokeWidth 2 / 17px)。
+                原先用的纸飞机在 18px 描边下糊成一个「N」,而且桌面也不是那个图标。 */}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="12" y1="19" x2="12" y2="5" />
+              <polyline points="5 12 12 5 19 12" />
             </svg>
           </button>
         </div>

@@ -86,7 +86,7 @@ test('i18n:英文 locale 下 chrome 不留中文(硬编码中文 = 英文用户�
   assert.match(html, /aria-label="Share"/);
   assert.match(html, /aria-label="Board background"/);
   assert.match(html, /aria-label="Pages per screen"/);
-  assert.match(html, /aria-label="AI assistant"/);
+  assert.match(html, /aria-label="Expand chat"/);
   assert.match(html, /aria-label="Book preview"/);
   assert.match(html, /aria-label="Page 1"/, '预览栏每格的页码也要翻');
   // 只查界面文案:书名与页面内容都是数据(模板自带的示例文案里有中文),不参与 i18n。
