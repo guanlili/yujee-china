@@ -160,7 +160,14 @@ test('editor motion and toolbar controls are functional, not empty chrome', () =
   assert.match(editorPort, /data-edit-action="color-open"/, 'toolbar should expose the custom color popover trigger');
   assert.match(editorPort, /function buildColorPanel\(\)/, 'color popover (SV + hue/alpha + swatches + hex) should be built');
   assert.match(editorPort, /function positionEbPanel\(panel: HTMLElement\)/, 'dropdown panels should be positioned above the toolbar within the viewport');
-  assert.match(editorPort, /const EDITOR_FONTS: EditorFont\[\]/, 'font picker should list all project catalog fonts');
+  // 字体表已抽到 editor-fonts(移动端弹窗同用一份)。契约不变:必须列全项目目录字体,
+  // 且桌面用的就是那一份 —— 两边各列一套迟早漂移。
+  assert.match(
+    readFileSync(join(here, 'editor-fonts.ts'), 'utf8'),
+    /export const EDITOR_FONTS: EditorFont\[\]/,
+    'font picker should list all project catalog fonts (now in editor-fonts.ts)',
+  );
+  assert.match(editorPort, /from '\.\/editor-fonts'/, 'EditorPort must consume the shared font table');
   assert.match(editorPort, /function applyFontToSelection\(font: EditorFont\)/, 'selecting a font should apply its web stack + patch html');
   assert.match(editorPort, /data-edit-action="font-open"/, 'font trigger should open the searchable font panel');
   assert.match(editorPort, /data-edit-action="edit-text"/, 'text toolbar should include the edit text control from the design');

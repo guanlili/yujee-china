@@ -118,7 +118,11 @@ export function EditView({
   };
 
   return (
-    <div className="mobile-editor" data-mode="edit">
+    <div
+      className="mobile-editor"
+      data-mode="edit"
+      style={boardBackground ? { background: boardBackground } : undefined}
+    >
       <MobileTopbar
         title={`第 ${editPage + 1} 页`}
         onBack={onExit}
@@ -131,7 +135,6 @@ export function EditView({
       <div
         ref={boardRef}
         className="mboard"
-        style={boardBackground ? { background: boardBackground } : undefined}
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
         onPointerCancel={() => (swipe.current = null)}

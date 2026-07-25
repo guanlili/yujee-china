@@ -78,7 +78,8 @@
   white-space: nowrap;
 }
 
-/* ── 画板:书居中浮在垫底背景上 ─────────────────────────────────────────── */
+/* ── 画板:垫底背景挂在根节点上(顶栏是白底,盖住它;画板与预览栏之下透出来),
+      不再多套一层 stage —— 少一层 DOM 少一处塌高的机会。 ──────────────────── */
 .mobile-editor .mboard {
   position: relative;
   flex: 1;
@@ -89,7 +90,6 @@
   justify-content: center;
   gap: 10px; /* 与 MobileEditor 的 GAP 常量一致 */
   /* 四周留白由 JS 的 INSET 单点控制(fitBox 前扣掉),这里不叠加 padding。 */
-  background: var(--bg);
 }
 
 .mobile-editor .mspread {
@@ -177,13 +177,15 @@
   height: 24px;
 }
 
-/* ── 书册预览栏(浏览态底部):整本书一条横排,当前页描框 ──────────────────── */
+/* ── 书册预览栏:一张浮在画板上的条卡(不是通栏分割条 —— 那样和整体不搭) ──── */
 .mobile-editor .mstrip {
   flex: none;
-  padding: 10px 12px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  margin: 0 12px 12px;
+  margin-bottom: calc(12px + env(safe-area-inset-bottom));
+  padding: 8px 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
-  border-top: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-card-hover);
 }
 
 .mobile-editor .mstrip-track {
@@ -264,4 +266,20 @@
 /* 删除:取桌面 .eb-btn.danger 的同一支红,不自创 */
 .mobile-editor .ml1-cell[data-danger='1'] {
   color: #c44;
+}
+
+/* ── 弹窗宿主:借用桌面成品弹窗的样式(见 modals/ModalHost.tsx) ─────────────
+   宿主带 .editor-port 类只为让那 165 条弹窗规则命中,它自身的页面级属性
+   (底色/满高/overflow)必须中和掉,否则会盖住移动端界面。
+
+   **不要在这里做 pointer-events:none + 逐个类名放行** —— 曾因放行名单漏掉
+   .mes-overlay,导致文字弹窗连取消/完成都点不动、开了关不掉。宿主只在有弹窗时
+   才渲染(无弹窗时组件返回 null),它存在即应接管事件,遮罩本就该挡住底下。 */
+.mobile-modal-host {
+  position: fixed;
+  inset: 0;
+  z-index: 400; /* 压过移动端全部 chrome(AI 气泡 / 预览栏 / 一级栏) */
+  height: auto;
+  background: none;
+  overflow: visible;
 }

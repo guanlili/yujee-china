@@ -49,6 +49,11 @@ export type MobileEditorProps = {
   onMore?: () => void;
   onBoardBg?: () => void;
   onOpenChat?: () => void;
+  /** 编辑态一级栏四格。 */
+  onPageBg?: () => void;
+  onPickImage?: () => void;
+  onPickText?: () => void;
+  onDeletePage?: () => void;
 };
 
 /** 开页与开页之间的缝(px)。 */
@@ -74,6 +79,10 @@ export function MobileEditor({
   onMore,
   onBoardBg,
   onOpenChat,
+  onPageBg,
+  onPickImage,
+  onPickText,
+  onDeletePage,
 }: MobileEditorProps) {
   const [density, setDensity] = useState<Density>(2);
   const [startPage, setStartPage] = useState(0);
@@ -171,6 +180,10 @@ export function MobileEditor({
         onExport={onExport}
         onMore={onMore}
         onOpenChat={onOpenChat}
+        onPageBg={onPageBg}
+        onPickImage={onPickImage}
+        onPickText={onPickText}
+        onDeletePage={onDeletePage}
       />
     );
   }
@@ -181,7 +194,12 @@ export function MobileEditor({
   const rowH = (availH - GAP * (rows - 1)) / rows;
 
   return (
-    <div className="mobile-editor" data-mode="browse" data-density={density}>
+    <div
+      className="mobile-editor"
+      data-mode="browse"
+      data-density={density}
+      style={boardBackground ? { background: boardBackground } : undefined}
+    >
       <MobileTopbar
         title={title}
         onBack={onBack ?? (() => {})}
@@ -194,7 +212,6 @@ export function MobileEditor({
       <div
         ref={boardRef}
         className="mboard"
-        style={boardBackground ? { background: boardBackground } : undefined}
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
         onPointerCancel={() => (swipe.current = null)}
