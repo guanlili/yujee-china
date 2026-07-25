@@ -95,6 +95,53 @@ test('i18n:英文 locale 下 chrome 不留中文(硬编码中文 = 英文用户�
   assert.deepEqual(offenders, [], `英文界面残留中文标签: ${offenders.join(', ')}`);
 });
 
+/* ── 书之所以像本书:书脊中缝 + 底部翻页条 + 书浮在画板上 ─────────────────────
+   这三样是产品既有效果,不是可省的装饰(用户明确要求别动)。 */
+
+test('双页开页有书脊中缝;单页(密度 1 / 独页 / 编辑态)没有', () => {
+  const html = render(); // 默认密度 2,游标在封面(独页)
+  assert.match(html, /data-halves="1"/, '封面独页只摆一页');
+  assert.doesNotMatch(
+    html,
+    /data-solo="1"[^>]*data-halves="2"/,
+    '独页不该摆两页',
+  );
+  // 中缝本身是 CSS ::before,按 data-halves="2" 命中 —— 守住那条规则还在
+  const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const at = css.indexOf(".mspread[data-halves='2']::before");
+  assert.ok(at >= 0, '书脊中缝规则被删了 —— 两页之间那道竖向阴影是书的关键');
+  const spine = css.slice(at, css.indexOf('}', at));
+  assert.match(spine, /left:\s*50%/, '中缝要在正中');
+  assert.match(spine, /rgba\(0,\s*0,\s*0,\s*0\.14\)/, '中心那道最深的阴影(取自 FlipBook)不许改淡');
+  assert.match(spine, /pointer-events:\s*none/, '中缝不许拦点击(会挡住选中文字)');
+});
+
+test('书脊中缝的条件是「真摆了两页」,不是「非独页」(密度 1 会踩这个坑)', () => {
+  const src = source('MobileEditor.tsx');
+  assert.match(src, /data-halves=\{halves\.length\}/, '半边数必须如实透出给 CSS');
+  const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(
+    css,
+    /\.mspread:not\(\[data-solo\]\)::before/,
+    '按 solo 判会给密度 1 的单页也画中缝 —— 必须按 data-halves',
+  );
+});
+
+test('底部翻页条 + 书浮在画板上:两样都不许去掉', () => {
+  const html = render();
+  assert.match(html, /class="mstrip"/, '底部翻页条不许去掉');
+  assert.match(html, /class="mstrip-track"/);
+  assert.match(html, /class="mboard"/, '画板不许去掉');
+  assert.match(html, /class="mspread"/, '书要浮在画板上');
+  const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const at = css.indexOf('.mobile-editor .mspread {');
+  assert.match(
+    css.slice(at, css.indexOf('}', at)),
+    /box-shadow/,
+    '书要有投影才像浮在画板上',
+  );
+});
+
 test('书册预览栏:整本书每页一格,当前页描框', () => {
   const html = render();
   const cells = html.match(/class="mstrip-cell"/g) ?? [];

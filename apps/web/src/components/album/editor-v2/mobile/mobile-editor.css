@@ -93,12 +93,42 @@
 }
 
 .mobile-editor .mspread {
-  position: relative; /* 选中高亮框的定位参照(它是 React 拥有的兄弟节点) */
+  position: relative; /* 选中高亮框 + 书脊中缝的定位参照 */
   display: flex;
   flex: none; /* 尺寸由 JS 的 fitBox 算好写在 style 上,不让 flex 再拉伸 */
   box-shadow: var(--shadow-card-hover);
   /* 面板升起时整本书上移让出位置(EditView 算 lift);只有位移,没有缩放。 */
   transition: transform var(--motion-base) var(--ease);
+}
+
+/* ── 书脊中缝:两页之间那道竖向阴影 ────────────────────────────────────────
+   这是「书」之所以看起来是本书的关键,不是可省的装饰。渐变值逐字取自
+   FlipBook.tsx 的 center spine shadow(24px 宽,中心 .14 向两侧收到 0)——
+   那是产品里既有的书脊,不自创。
+
+   只在**真的摆了两页**时出现(data-halves="2"):
+     · 密度 1 一屏只留一页 → 无中缝
+     · 封面/封底独页 → 无中缝(同 FlipBook 的 solo 分支)
+     · 编辑态满屏单页 → 无中缝
+   判据用渲染出的半边数而不是 solo:密度 1 的开页并不 solo,按 solo 判会给单页画中缝。 */
+.mobile-editor .mspread[data-halves='2']::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 24px;
+  transform: translateX(-50%);
+  z-index: 5;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.1) 45%,
+    rgba(0, 0, 0, 0.14) 50%,
+    rgba(0, 0, 0, 0.1) 55%,
+    rgba(0, 0, 0, 0) 100%
+  );
 }
 
 /* ── 选中高亮:不往页面 innerHTML 里塞节点、也不改它的样式 ──────────────────

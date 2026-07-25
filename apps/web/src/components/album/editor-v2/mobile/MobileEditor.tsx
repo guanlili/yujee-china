@@ -253,6 +253,9 @@ export function MobileEditor({
               className="mspread"
               key={si}
               data-solo={solo ? '1' : undefined}
+              // 书脊中缝只在**真的摆了两页**时才画。判据是渲染出的半边数,不是 solo:
+              // 密度 1 时 onlyPage 只留一页(那个开页并不 solo),按 solo 判会给单页画中缝。
+              data-halves={halves.length}
               style={{ width: box.w, height: box.h }}
             >
               {halves.map((pi, half) => (

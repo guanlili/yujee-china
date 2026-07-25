@@ -252,6 +252,8 @@ export function EditView({
         <div
           ref={spreadRef}
           className="mspread"
+          // 编辑态永远是满屏单页 → 没有中缝(与 FlipBook 的 solo 分支同口径)。
+          data-halves={1}
           style={{
             width: box.w,
             height: box.h,
