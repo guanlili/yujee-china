@@ -21,28 +21,23 @@ test('PDF export image sizing caps long edge and never upscales', async () => {
 });
 
 test('PDF export uses bounded PDF data URLs, not raw original data URLs', () => {
-  const albumEditor = readFileSync(
-    join(srcRoot, 'components/album/AlbumEditor.tsx'),
-    'utf8',
-  );
   const editorPort = readFileSync(
     join(srcRoot, 'components/album/editor-v2/EditorPort.tsx'),
     'utf8',
   );
 
-  for (const [name, src] of [
-    ['AlbumEditor', albumEditor],
-    ['EditorPort', editorPort],
-  ] as const) {
-    // 栅格导出（html2canvas 高倍截图）需要更高的上限,但仍必须走有界的
-    // getPdfDataUrls 通道,绝不直接喂原图 data URL。
-    assert.match(
-      src,
-      /photoStore\.getPdfDataUrls\(ids, RASTER_PDF_IMAGE_MAX_EDGE\)/,
-      `${name} must use PDF-sized images`,
-    );
-    assert.doesNotMatch(src, /photoStore\.getDataUrls\(ids\)/, `${name} must not export raw originals`);
-  }
+  // 栅格导出（html2canvas 高倍截图）需要更高的上限,但仍必须走有界的
+  // getPdfDataUrls 通道,绝不直接喂原图 data URL。
+  assert.match(
+    editorPort,
+    /photoStore\.getPdfDataUrls\(ids, RASTER_PDF_IMAGE_MAX_EDGE\)/,
+    'EditorPort must use PDF-sized images',
+  );
+  assert.doesNotMatch(
+    editorPort,
+    /photoStore\.getDataUrls\(ids\)/,
+    'EditorPort must not export raw originals',
+  );
 });
 
 test('photoStore prepares HEIC originals before browser preview and export decode', () => {
@@ -54,16 +49,11 @@ test('photoStore prepares HEIC originals before browser preview and export decod
 });
 
 test('PDF export checks both HTTP and JSON success before accepting cloud confirm', () => {
-  const albumEditor = readFileSync(
-    join(srcRoot, 'components/album/AlbumEditor.tsx'),
-    'utf8',
-  );
   const editorPort = readFileSync(
     join(srcRoot, 'components/album/editor-v2/EditorPort.tsx'),
     'utf8',
   );
 
-  assert.match(albumEditor, /if \(!notifyRes\.ok \|\| notifyJson\.ok !== true\)/);
   assert.match(editorPort, /if \(!confirmRes\.ok \|\| confirmJson\.ok !== true\)/);
 });
 

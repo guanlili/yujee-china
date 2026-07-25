@@ -12,10 +12,9 @@
     "design:test": "pnpm --filter @earendil-works/pi-ai test && pnpm --filter @earendil-works/pi-agent-core test && pnpm --filter @smalldog/design-agent test",
     "templates:generate": "pnpm --filter @yujee/contracts templates:generate",
     "templates:check": "pnpm --filter @yujee/contracts templates:check",
-    "template-previews:check": "pnpm --filter @yujee/web template-previews:check",
-    "template-previews:test": "pnpm --filter @yujee/web template-previews:test",
+    "docs:check": "node scripts/docs-check.mjs",
     "test": "pnpm -r test",
-    "typecheck": "pnpm templates:check && pnpm template-previews:check && pnpm --filter @yujee/contracts typecheck && pnpm --filter @yujee/web typecheck"
+    "typecheck": "pnpm docs:check && pnpm templates:check && pnpm --filter @yujee/contracts typecheck && pnpm --filter @yujee/web typecheck"
   },
   "devDependencies": {
     "tsx": "^4.19.2",

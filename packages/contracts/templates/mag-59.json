@@ -10,12 +10,12 @@
   ],
   "texts": [
     { "id": "title", "role": "title", "lang": "user", "variableDecor": true, "sample": "PASSION" },
-    { "id": "caption", "role": "body", "lang": "user", "sample": "Six in the morning. She is already the second one in. The same swimsuit for nine years. She will not discuss it." },
-    { "id": "name1", "role": "explain", "lang": "user", "sample": "Yvaine" },
-    { "id": "role1", "role": "explain", "lang": "user", "sample": "photographer tourist" },
-    { "id": "name2", "role": "explain", "lang": "user", "sample": "Steven D.K" },
-    { "id": "role2", "role": "explain", "lang": "user", "sample": "Father Bad Cook" },
-    { "id": "name3", "role": "explain", "lang": "user", "sample": "July Zh" },
-    { "id": "role3", "role": "explain", "lang": "user", "sample": "Editor Swimmer Six in the Morning" }
+    { "id": "body", "role": "body", "lang": "user", "sample": "Six in the morning. She is already the second one in. The same swimsuit for nine years. She will not discuss it." },
+    { "id": "explain", "role": "explain", "lang": "user", "sample": "Yvaine" },
+    { "id": "explain2", "role": "explain", "lang": "user", "sample": "photographer tourist" },
+    { "id": "explain3", "role": "explain", "lang": "user", "sample": "Steven D.K" },
+    { "id": "explain4", "role": "explain", "lang": "user", "sample": "Father Bad Cook" },
+    { "id": "explain5", "role": "explain", "lang": "user", "sample": "July Zh" },
+    { "id": "explain6", "role": "explain", "lang": "user", "sample": "Editor Swimmer Six in the Morning" }
   ]
 }

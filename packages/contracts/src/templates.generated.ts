@@ -1691,43 +1691,43 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "sample": "PASSION"
       },
       {
-        "id": "caption",
+        "id": "body",
         "role": "body",
         "lang": "user",
         "sample": "Six in the morning. She is already the second one in. The same swimsuit for nine years. She will not discuss it."
       },
       {
-        "id": "name1",
+        "id": "explain",
         "role": "explain",
         "lang": "user",
         "sample": "Yvaine"
       },
       {
-        "id": "role1",
+        "id": "explain2",
         "role": "explain",
         "lang": "user",
         "sample": "photographer tourist"
       },
       {
-        "id": "name2",
+        "id": "explain3",
         "role": "explain",
         "lang": "user",
         "sample": "Steven D.K"
       },
       {
-        "id": "role2",
+        "id": "explain4",
         "role": "explain",
         "lang": "user",
         "sample": "Father Bad Cook"
       },
       {
-        "id": "name3",
+        "id": "explain5",
         "role": "explain",
         "lang": "user",
         "sample": "July Zh"
       },
       {
-        "id": "role3",
+        "id": "explain6",
         "role": "explain",
         "lang": "user",
         "sample": "Editor Swimmer Six in the Morning"
