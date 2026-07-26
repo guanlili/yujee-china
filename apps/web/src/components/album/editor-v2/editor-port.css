@@ -900,6 +900,23 @@
 .editor-port .collage-confirm:hover:not(:disabled){ transform:translateY(-1px); }
 .editor-port .collage-confirm:disabled{ opacity:.4; cursor:not-allowed; }
 
+.editor-port .nine-grid-options{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.editor-port .nine-grid-options fieldset{ min-width:0; }
+.editor-port .nine-grid-options legend{
+  margin-bottom:8px; font-size:12px; font-weight:600; color:var(--muted);
+}
+.editor-port .nine-grid-choice{
+  display:flex; padding:3px; gap:3px; border-radius:12px; background:var(--bg);
+}
+.editor-port .nine-grid-choice button{
+  flex:1; min-width:0; padding:9px 8px; border-radius:9px;
+  font-size:12.5px; font-weight:600; color:var(--muted); cursor:pointer;
+  transition:background var(--motion-fast) var(--ease),color var(--motion-fast) var(--ease),box-shadow var(--motion-fast) var(--ease);
+}
+.editor-port .nine-grid-choice button.selected{
+  color:var(--fg); background:var(--surface); box-shadow:0 1px 4px rgba(0,0,0,.1);
+}
+
 .editor-port .export-progress-card{ width:min(360px,100%); }
 .editor-port .exp-bar{ width:100%; height:8px; border-radius:999px; background:var(--bg); overflow:hidden; }
 .editor-port .exp-bar-fill{ height:100%; width:0%; border-radius:999px; background:var(--fg); transition: width 180ms var(--ease); }
@@ -960,6 +977,7 @@
 @media (max-width:520px){
   .editor-port .export-sheet, .editor-port .collage-card, .editor-port .export-progress-card{ width:100%; }
   .editor-port .collage-density{ gap:10px; }
+  .editor-port .nine-grid-options{ grid-template-columns:1fr; }
 }
 
 .editor-port .pick-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }

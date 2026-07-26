@@ -681,6 +681,10 @@ function EditorModals({ locale }: { locale: Locale }) {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="14" height="12" rx="2" /><path d="m22 8-6 4 6 4V8Z" /></svg>
               <span>{zh ? 'Live 图 · MP4' : 'Live · MP4'}</span>
             </button>
+            <button className="export-opt" data-action="openNineGrid" data-testid="export-opt-nine-grid">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M7 4v3M17 4v3" /><circle cx="7" cy="4" r="1.5" /><circle cx="17" cy="4" r="1.5" /><rect x="3" y="7" width="8" height="6" rx="1" /><rect x="13" y="7" width="8" height="6" rx="1" /><rect x="3" y="15" width="8" height="6" rx="1" /><rect x="13" y="15" width="8" height="6" rx="1" /></svg>
+              <span>{zh ? '图钉九宫格 · 视频' : 'Pinned photo grid · Video'}</span>
+            </button>
             <button className="export-opt" data-action="exportSinglePages" data-testid="export-opt-pages">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.5-3.5L9 20" /></svg>
               <span>{zh ? '单页 JPG' : 'Single pages · JPG'}</span>
@@ -749,6 +753,38 @@ function EditorModals({ locale }: { locale: Locale }) {
           </div>
           <div className="px-6 py-6">
             <button className="collage-confirm" data-action="confirmCollage" data-testid="collage-confirm" disabled>{zh ? '确认导出' : 'Export'}</button>
+          </div>
+        </div>
+      </div>
+
+      {/* 图钉九宫格:取相册中按页面顺序首次出现的 1–12 张照片。 */}
+      <div className="modal-overlay" id="nineGridModal" data-overlay-close>
+        <div className="modal-card collage-card" role="dialog" aria-modal="true" aria-labelledby="nineGridTitle" data-testid="nine-grid-modal">
+          <button className="collage-close" data-action="closeNineGrid" aria-label="close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+          <div className="px-6 pt-6">
+            <h3 id="nineGridTitle" className="font-display text-[18px] font-bold">{zh ? '图钉九宫格' : 'Pinned photo grid'}</h3>
+            <p className="text-[13px] text-muted mt-1.5">{zh ? '按书中顺序使用前 12 张照片,导出 4.4 秒动效。' : 'Uses the first 12 photos in book order and exports a 4.4-second animation.'}</p>
+          </div>
+          <div className="nine-grid-options px-6 pt-5">
+            <fieldset>
+              <legend>{zh ? '画幅' : 'Format'}</legend>
+              <div className="nine-grid-choice">
+                <button className="selected" data-nine-grid-aspect="3:4">3:4</button>
+                <button data-nine-grid-aspect="9:16">9:16</button>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>{zh ? '边框' : 'Frame'}</legend>
+              <div className="nine-grid-choice">
+                <button className="selected" data-nine-grid-frame="full">{zh ? '满版直角' : 'Full bleed'}</button>
+                <button data-nine-grid-frame="framed">{zh ? '留白圆角' : 'Rounded frame'}</button>
+              </div>
+            </fieldset>
+          </div>
+          <div className="px-6 py-6">
+            <button className="collage-confirm" data-action="confirmNineGrid" data-testid="nine-grid-confirm">{zh ? '导出视频' : 'Export video'}</button>
           </div>
         </div>
       </div>
@@ -3760,6 +3796,8 @@ function EditorBook({
     function openExportMenu() { if (exportGateLocked) return; byId('exportMenuModal')?.classList.add('open'); }
     function closeExportMenu() { byId('exportMenuModal')?.classList.remove('open'); }
     let collageDensity: 1 | 2 | 3 | 6 | null = null;
+    let nineGridAspect: '9:16' | '3:4' = '3:4';
+    let nineGridFrame: 'full' | 'framed' = 'full';
     function openCollageModal() {
       closeExportMenu();
       collageDensity = null;
@@ -3772,6 +3810,11 @@ function EditorBook({
       byId('collageModal')?.classList.add('open');
     }
     function closeCollageModal() { byId('collageModal')?.classList.remove('open'); }
+    function openNineGridModal() {
+      closeExportMenu();
+      byId('nineGridModal')?.classList.add('open');
+    }
+    function closeNineGridModal() { byId('nineGridModal')?.classList.remove('open'); }
     function showExportProgress(title: string) {
       const t = byId('expTitle'); if (t) t.textContent = title;
       setExportProgress(0, 0);
@@ -3792,7 +3835,7 @@ function EditorBook({
       }));
       const ids = collectPhotoIds(adaptable);
       const dataUrls = await photoStore.getPdfDataUrls(ids, RASTER_PDF_IMAGE_MAX_EDGE);
-      return { adaptable, resolveImage: (id: string) => dataUrls[id] };
+      return { adaptable, photoIds: ids, resolveImage: (id: string) => dataUrls[id] };
     }
 
     let exportingImages = false;
@@ -3864,6 +3907,45 @@ function EditorBook({
         }
       } catch (e) {
         logger.error(buildExportFailureLog(e, { albumId, attempts: 1 }), 'live export failed');
+        openExportFailModal();
+      } finally {
+        hideExportProgress();
+        exportingImages = false;
+      }
+    }
+
+    async function exportNineGrid() {
+      if (exportingImages || exportingPdf) return;
+      exportingImages = true;
+      closeNineGridModal();
+      showExportProgress(aT('正在导出图钉九宫格…', 'Exporting pinned photo grid…'));
+      try {
+        const { photoIds, resolveImage } = await buildExportInput();
+        const sources = photoIds.slice(0, 12).map(resolveImage).filter((src): src is string => Boolean(src));
+        if (sources.length === 0) {
+          alert(aT('书中还没有可导出的照片', 'There are no photos to export'));
+          return;
+        }
+        const { renderNineGridVideo, NineGridUnsupportedError } = await import('@/lib/export/nine-grid-motion');
+        try {
+          const blob = await renderNineGridVideo(sources, {
+            aspect: nineGridAspect,
+            frameStyle: nineGridFrame,
+            background: boardBg?.kind === 'color' ? boardBg.color : '#c9c5b9',
+            onProgress: setExportProgress,
+          });
+          const { downloadBlob, safeFileStem } = await import('@/lib/export/download');
+          const extension = blob.type.includes('mp4') ? 'mp4' : 'webm';
+          downloadBlob(blob, `${safeFileStem(currentTitle)}-nine-grid.${extension}`);
+        } catch (e) {
+          if (e instanceof NineGridUnsupportedError) {
+            alert(aT('当前浏览器不支持导出该视频,请使用最新版 Chrome 或 Safari。', 'This browser cannot export the video. Please use the latest Chrome or Safari.'));
+            return;
+          }
+          throw e;
+        }
+      } catch (e) {
+        logger.error(buildExportFailureLog(e, { albumId, attempts: 1 }), 'nine-grid export failed');
         openExportFailModal();
       } finally {
         hideExportProgress();
@@ -4335,6 +4417,9 @@ function EditorBook({
       openCollage: openCollageModal,
       closeCollage: closeCollageModal,
       confirmCollage: () => { if (collageDensity == null) return; closeCollageModal(); void exportCollage(collageDensity); },
+      openNineGrid: openNineGridModal,
+      closeNineGrid: closeNineGridModal,
+      confirmNineGrid: () => void exportNineGrid(),
       exportSinglePages: () => void exportSinglePages(),
       exportLive: () => void exportLive(),
       openBoardBg: openBoardBgModal,
@@ -4370,7 +4455,7 @@ function EditorBook({
       actionHandlers.push({ el: exportFailOverlay, fn });
     }
     // 导出菜单/拼图弹窗/垫底背景:点背景关闭(进度浮层不给关,渲染中)。
-    [['exportMenuModal', closeExportMenu], ['collageModal', closeCollageModal], ['boardBgModal', closeBoardBgModal], ['shareLinkModal', () => byId('shareLinkModal')?.classList.remove('open')]].forEach(([id, close]) => {
+    [['exportMenuModal', closeExportMenu], ['collageModal', closeCollageModal], ['nineGridModal', closeNineGridModal], ['boardBgModal', closeBoardBgModal], ['shareLinkModal', () => byId('shareLinkModal')?.classList.remove('open')]].forEach(([id, close]) => {
       const ov = byId(id as string);
       if (!ov) return;
       const fn = (e: Event) => { if (e.target === ov) (close as () => void)(); };
@@ -4384,6 +4469,22 @@ function EditorBook({
         root.querySelectorAll('[data-collage-density]').forEach((o) => o.classList.toggle('selected', o === el));
         const confirm = byId('collageModal')?.querySelector('[data-action="confirmCollage"]') as HTMLButtonElement | null;
         if (confirm) confirm.disabled = false;
+      };
+      el.addEventListener('click', fn);
+      actionHandlers.push({ el, fn });
+    });
+    root.querySelectorAll('[data-nine-grid-aspect]').forEach((el) => {
+      const fn = () => {
+        nineGridAspect = el.getAttribute('data-nine-grid-aspect') as '9:16' | '3:4';
+        root.querySelectorAll('[data-nine-grid-aspect]').forEach((option) => option.classList.toggle('selected', option === el));
+      };
+      el.addEventListener('click', fn);
+      actionHandlers.push({ el, fn });
+    });
+    root.querySelectorAll('[data-nine-grid-frame]').forEach((el) => {
+      const fn = () => {
+        nineGridFrame = el.getAttribute('data-nine-grid-frame') as 'full' | 'framed';
+        root.querySelectorAll('[data-nine-grid-frame]').forEach((option) => option.classList.toggle('selected', option === el));
       };
       el.addEventListener('click', fn);
       actionHandlers.push({ el, fn });
