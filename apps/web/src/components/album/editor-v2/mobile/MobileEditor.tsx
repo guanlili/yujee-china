@@ -40,11 +40,12 @@ import {
   type FlipDir,
   type ScreenShape,
 } from './flip';
-import { EditView, type TextHit } from './EditView';
+import { EditView, type TextHit, type ImageHit } from './EditView';
 import { MobileTopbar } from './MobileTopbar';
 import { MobileStrip } from './MobileStrip';
 import { IconBoardBg } from './icons';
 import type { SelRect } from './page-edit';
+import type { ImagePosValue } from '../image-edit-util';
 
 export type MobileEditorProps = {
   pages: EditorPage[];
@@ -63,9 +64,13 @@ export type MobileEditorProps = {
   onExitEdit: (pageIndex: number) => void;
   /** 编辑态的选中态(同样由父层持有:面板要绑到被选中的槽上)。 */
   selection: { slotId: string; rect: SelRect } | null;
+  /** 选中的是图片时它当前的位置/缩放(拖动/捏合的起点)。 */
+  imagePos: ImagePosValue | null;
   sheetOpen: boolean;
   onSelectText: (hit: TextHit) => void;
-  onSelectImage: () => void;
+  onSelectImage: (hit: ImageHit) => void;
+  onImagePos: (pos: ImagePosValue) => void;
+  onImagePosCommit: () => void;
   onClearSelection: () => void;
   /** 交互 handler 一律必填 —— 「可选」等于「可以不接」,漏一个就是死按钮。
      必填后:谁漏传谁编译不过(见 MobileEditorRoot)。 */
@@ -103,9 +108,12 @@ export function MobileEditor({
   onEnterEdit,
   onExitEdit,
   selection,
+  imagePos,
   sheetOpen,
   onSelectText,
   onSelectImage,
+  onImagePos,
+  onImagePosCommit,
   onClearSelection,
   onShare,
   onExport,
@@ -306,6 +314,7 @@ export function MobileEditor({
         zh={zh}
         editPage={editPage}
         selection={selection}
+        imagePos={imagePos}
         sheetOpen={sheetOpen}
         onExit={() => {
           // 浏览游标对齐到刚编辑那页所在的屏,回来不迷路。
@@ -315,6 +324,8 @@ export function MobileEditor({
         onStep={(dir) => onEnterEdit(stepScreen(spreads, pages, editPage, 1, dir))}
         onSelectText={onSelectText}
         onSelectImage={onSelectImage}
+        onImagePos={onImagePos}
+        onImagePosCommit={onImagePosCommit}
         onClearSelection={onClearSelection}
         onShare={onShare}
         onExport={onExport}

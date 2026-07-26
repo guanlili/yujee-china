@@ -40,6 +40,8 @@ function render(pages = BOOK, zh = true) {
       onEnterEdit: noop, onExitEdit: noop,
       selection: null, sheetOpen: false,
       onSelectText: noop, onSelectImage: noop, onClearSelection: noop,
+      imagePos: null,
+      onImagePos: noop, onImagePosCommit: noop,
       onShare: noop, onExport: noop, onMore: noop, onBoardBg: noop, onOpenChat: noop,
       onPageBg: noop, onPickImage: noop, onPickText: noop, onDeletePage: noop,
     }),

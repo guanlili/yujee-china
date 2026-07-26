@@ -44,6 +44,8 @@ function render(
       onExit: noop,
       onStep: noop,
       onSelectText: noop, onSelectImage: noop, onClearSelection: noop,
+      imagePos: null,
+      onImagePos: noop, onImagePosCommit: noop,
       onShare: noop, onExport: noop, onMore: noop, onOpenChat: noop,
       onPageBg: noop, onPickImage: noop, onPickText: noop, onDeletePage: noop,
     }),

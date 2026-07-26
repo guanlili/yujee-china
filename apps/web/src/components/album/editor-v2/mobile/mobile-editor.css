@@ -409,6 +409,60 @@
   position: relative;
 }
 
+/* 图片编辑要「面板开着的同时用手指在页面上拖那张图」。.mes-overlay 是 inset:0 铺满整屏的,
+   不放行手势的话面板一开、图就锁死了(真机抓到:滑块能调、怎么拖都不动)。
+   只放行**遮罩**;卡片自身仍接管事件,所以取消/完成照常可点 ——
+   与那次「宿主整体 pointer-events:none + 类名放行名单」的事故不是一回事。 */
+.mobile-modal-host .mes-overlay[data-passthrough='1'] {
+  pointer-events: none;
+}
+.mobile-modal-host .mes-overlay[data-passthrough='1'] .mes-card {
+  pointer-events: auto;
+}
+
+/* ── 图片面板(缩放滑块 / 复位)。类名沿用 .mes-*,视觉与文字面板同一套 ────────
+   只在移动端宿主内生效,editor-port.css 一行不动。 */
+.mobile-modal-host .mes-hint {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 2px 0 10px;
+}
+
+.mobile-modal-host .mes-zoom-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mobile-modal-host .mes-zoom {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+  /* 滑块本身要能拖:它在 .mobile-editor 的 touch-action:none 之外(弹窗宿主里),
+     但宿主也继承不到那条 —— 这里显式给回横向手势。 */
+  touch-action: pan-x;
+}
+
+.mobile-modal-host .mes-zoom-val {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 56px;
+  text-align: right;
+}
+
+.mobile-modal-host .mes-reset {
+  height: 38px;
+  padding: 0 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 /* ── 未实现功能的轻反馈 toast(见 MobileToast.tsx) ───────────────────────── */
 .mtoast {
   position: fixed;

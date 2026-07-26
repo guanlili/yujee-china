@@ -5,12 +5,15 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
 import {
+  applyImagePos,
   applyPageBg,
   applyTextEdit,
   matchFontId,
   normalizeColor,
   pageBgPatchBody,
+  imagePosPatchBody,
   probeToState,
+  readImagePos,
   readPageBg,
   styleDiff,
   textPatchBody,
@@ -227,4 +230,31 @@ test('架构守卫:page-edit 是纯函数层,不碰 DOM', () => {
   assert.doesNotMatch(src, /querySelector/);
   assert.doesNotMatch(src, /getComputedStyle/);
   assert.doesNotMatch(src, /\bwindow\./);
+});
+
+// ── 图片位置/缩放 ───────────────────────────────────────────────────────────
+
+test('applyImagePos:html 与数据层必须同时写(只写一边 = 刷新回退 或 导出不一致)', () => {
+  const next = applyImagePos(page(), 'p1', { x: 30, y: 40, scale: 1.5 });
+  assert.deepEqual(next.imagePosJson?.p1, { x: 30, y: 40, scale: 1.5 }, '数据层要写');
+  assert.match(String(next.htmlJson), /object-position:30% 40%/, 'html 也要写');
+  assert.match(String(next.htmlJson), /transform:scale\(1\.5\)/);
+});
+
+test('applyImagePos:越界值被夹进合法区间(scale≥1 是「不出白边」的硬不变式)', () => {
+  const a = applyImagePos(page(), 'p1', { x: -20, y: 999, scale: 0.2 });
+  assert.deepEqual(a.imagePosJson?.p1, { x: 0, y: 100, scale: 1 });
+  const b = applyImagePos(page(), 'p1', { x: 50, y: 50, scale: 99 });
+  assert.equal(b.imagePosJson?.p1?.scale, 2, 'scale 上限 2');
+});
+
+test('readImagePos:没设过就是默认(居中、不放大)', () => {
+  assert.deepEqual(readImagePos(page(), 'p1'), { x: 50, y: 50, scale: 1 });
+  const moved = applyImagePos(page(), 'p1', { x: 10, y: 20, scale: 1.2 });
+  assert.deepEqual(readImagePos(moved, 'p1'), { x: 10, y: 20, scale: 1.2 });
+});
+
+test('imagePosPatchBody:落库发的是整张 imagePosJson', () => {
+  const moved = applyImagePos(page(), 'p1', { x: 10, y: 20, scale: 1.2 });
+  assert.deepEqual(imagePosPatchBody(moved), { imagePosJson: { p1: { x: 10, y: 20, scale: 1.2 } } });
 });

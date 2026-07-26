@@ -20,7 +20,7 @@
    本地没有时回落服务器压缩快照(photo-snapshot §5.3)。
    ════════════════════════════════════════════════════════════════════════════ */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { photoStore } from '@/lib/photo/store';
@@ -50,16 +50,21 @@ import { MobileEditor } from './MobileEditor';
 import { MobileToast } from './MobileToast';
 import { AiChatSheet } from './modals/AiChatSheet';
 import {
+  applyImagePos,
   applyPageBg,
   applyTextEdit,
+  imagePosPatchBody,
   pageBgPatchBody,
   probeToState,
+  readImagePos,
   readPageBg,
   textPatchBody,
   type SelRect,
   type TextStyleState,
 } from './page-edit';
-import type { TextHit } from './EditView';
+import { DEFAULT_IMAGE_POS, type ImagePosValue } from '../image-edit-util';
+import { ImagePanel } from './modals/ImagePanel';
+import type { TextHit, ImageHit } from './EditView';
 // 样式在容器里引:展示层保持无副作用 import,才能在 node 测试里直接渲染断言。
 // token 与桌面共用同一份(共享设计系统,不共享 DOM)。
 import '../editor-tokens.css';
@@ -68,8 +73,12 @@ import './mobile-editor.css';
 // 展示层保持无副作用 import,才能在 node 测试里直接渲染断言。
 import '../editor-port.css';
 
-/** 选中态:哪个槽、框在哪、以及打开面板那一刻它的真实样式(取消要回到这里)。 */
-type Selection = { slotId: string; rect: SelRect; base: TextStyleState };
+/** 选中态。文字与图片共用一个高亮框,靠 kind 区分后续用哪个面板/落哪条库。
+ *  文字带 base(打开面板那一刻的真实样式,取消要回到这里);图片不需要 ——
+ *  它的「原状」在 draftBase 那张整页快照里。 */
+type Selection =
+  | { kind: 'text'; slotId: string; rect: SelRect; base: TextStyleState }
+  | { kind: 'image'; slotId: string; rect: SelRect };
 
 export function MobileEditorRoot({
   detail,
@@ -108,7 +117,7 @@ export function MobileEditorRoot({
   const [editPage, setEditPage] = useState<number | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
   // 元素编辑 sheet:'text' = 文字,'pagebg' = 页面底色。null = 关。
-  const [sheetKind, setSheetKind] = useState<'text' | 'pagebg' | null>(null);
+  const [sheetKind, setSheetKind] = useState<'text' | 'pagebg' | 'image' | null>(null);
   // mes 的三视图之一:main / font(完整字体列表)。取色器完整版随取色行为一起接。
   const [sheetView, setSheetView] = useState<'main' | 'font'>('main');
   // 面板打开那一刻的整页快照:每次改动都从它重算,取消就是把它放回去。
@@ -197,7 +206,10 @@ export function MobileEditorRoot({
     setPages((prev) => prev.map((p, i) => (i === editPage ? next : p)));
   };
 
-  const openTextSheet = (sel: Selection, page: EditorPage) => {
+  const openTextSheet = (
+    sel: Extract<Selection, { kind: 'text' }>,
+    page: EditorPage,
+  ) => {
     setSelection(sel);
     setDraftBase(page);
     setTextState(sel.base);
@@ -209,18 +221,21 @@ export function MobileEditorRoot({
     if (editPage == null) return;
     const page = pages[editPage];
     if (!page) return;
-    openTextSheet({ slotId: hit.slotId, rect: hit.rect, base: probeToState(hit.probe) }, page);
+    openTextSheet(
+      { kind: 'text', slotId: hit.slotId, rect: hit.rect, base: probeToState(hit.probe) },
+      page,
+    );
   };
 
   const onTextChange = (patch: Partial<TextStyleState>) => {
-    if (!selection || !textState || !draftBase) return;
+    if (selection?.kind !== 'text' || !textState || !draftBase) return;
     const next = { ...textState, ...patch };
     setTextState(next);
     previewPage(applyTextEdit(draftBase, selection.slotId, next, selection.base).page);
   };
 
   const onTextDone = () => {
-    if (!selection || !textState || !draftBase || editPage == null) {
+    if (selection?.kind !== 'text' || !textState || !draftBase || editPage == null) {
       closeSheet();
       return;
     }
@@ -228,6 +243,45 @@ export function MobileEditorRoot({
     previewPage(page);
     persistPage(page.pageIndex, textPatchBody(page, selection.slotId, props));
     closeSheet();
+  };
+
+  // ── 图片:拖动平移 / 捏合缩放 / 复位(线上就这三件) ──────────────────────────
+  const [imagePos, setImagePos] = useState<ImagePosValue | null>(null);
+  // 落库要读「此刻最新的位置」,而 setState 是异步的:同一个事件里先 live 再 commit 时,
+  // commit 读到的 state 还是旧值 —— 结果是用旧位置把刚预览的新位置覆盖回去,
+  // 表现为「滑块动了、图没动、还落了个错的库」。所以真值走 ref,state 只管渲染。
+  const imagePosRef = useRef<ImagePosValue | null>(null);
+
+  const onSelectImage = (hit: ImageHit) => {
+    if (editPage == null) return;
+    const page = pages[editPage];
+    if (!page) return;
+    const pos = readImagePos(page, hit.slotId);
+    setSelection({ kind: 'image', slotId: hit.slotId, rect: hit.rect });
+    setDraftBase(page);
+    imagePosRef.current = pos;
+    setImagePos(pos);
+    setSheetView('main');
+    setSheetKind('image');
+  };
+
+  /** 手指还在动:只即时打进书,不落库(与文字面板同一「所见即所存但未存」的口径)。 */
+  const onImagePosLive = (pos: ImagePosValue) => {
+    if (selection?.kind !== 'image' || !draftBase) return;
+    imagePosRef.current = pos;
+    setImagePos(pos);
+    previewPage(applyImagePos(draftBase, selection.slotId, pos));
+  };
+
+  /** 松手即存(同桌面):把这一刻的位置落库。 */
+  const onImagePosCommit = () => {
+    const pos = imagePosRef.current;
+    if (selection?.kind !== 'image' || !draftBase || pos == null || editPage == null) return;
+    const page = applyImagePos(draftBase, selection.slotId, pos);
+    previewPage(page);
+    persistPage(page.pageIndex, imagePosPatchBody(page));
+    // 落完把快照推进到当前状态,下一次拖动从这里起算(否则会从最初那次重新算)。
+    setDraftBase(page);
   };
 
   const openPageBgSheet = () => {
@@ -398,9 +452,12 @@ export function MobileEditorRoot({
         closeSheet();
       }}
       selection={selection}
+      imagePos={selection?.kind === 'image' ? imagePos : null}
       sheetOpen={sheetKind != null}
       onSelectText={onSelectText}
-      onSelectImage={() => soon('图片编辑', 'Photo editing')}
+      onSelectImage={onSelectImage}
+      onImagePos={onImagePosLive}
+      onImagePosCommit={onImagePosCommit}
       onClearSelection={() => {
         // 面板开着时点页面空白不该悄悄取消选中(面板正绑在那个槽上)。
         if (sheetKind == null) setSelection(null);
@@ -412,11 +469,22 @@ export function MobileEditorRoot({
         setShareOpen(true);
       }}
       onPageBg={openPageBgSheet}
-      onPickImage={() => soon('图片编辑', 'Photo editing')}
+      onPickImage={() => {
+        if (selection?.kind === 'image' && editPage != null && pages[editPage]) {
+          const pos = readImagePos(pages[editPage]!, selection.slotId);
+          setDraftBase(pages[editPage]!);
+          imagePosRef.current = pos;
+          setImagePos(pos);
+          setSheetView('main');
+          setSheetKind('image');
+        } else {
+          say(zh ? '点页面上的照片来选中它' : 'Tap a photo on the page to select it');
+        }
+      }}
       onPickText={() => {
         // 一级栏的「文字」不代表某个具体槽 —— 有选中就把面板叫回来,没选中就告诉
         // 用户怎么选(不做「打开一个不知道在编谁的面板」这种假入口)。
-        if (selection && editPage != null && pages[editPage]) {
+        if (selection?.kind === 'text' && editPage != null && pages[editPage]) {
           openTextSheet(selection, pages[editPage]!);
         } else {
           say(zh ? '点页面上的文字来选中它' : 'Tap the text on the page to select it');
@@ -541,10 +609,24 @@ export function MobileEditorRoot({
             ? zh ? '字体' : 'Font'
             : sheetKind === 'text'
               ? zh ? '文字' : 'Text'
-              : zh ? '书页背景' : 'Page background'
+              : sheetKind === 'image'
+                ? zh ? '图片' : 'Photo'
+                : zh ? '书页背景' : 'Page background'
         }
+        // 图片面板要放行卡片以上的手势,否则拖不动那张图(见 ElementSheet 的说明)。
+        passThrough={sheetKind === 'image'}
         onCancel={cancelSheet}
-        onDone={sheetKind === 'text' ? onTextDone : onPageBgDone}
+        onDone={
+          sheetKind === 'text'
+            ? onTextDone
+            : sheetKind === 'image'
+              ? () => {
+                  // 图片是「松手即存」,到这里已经落过库了,「完成」只收面板。
+                  onImagePosCommit();
+                  closeSheet();
+                }
+              : onPageBgDone
+        }
       >
         {sheetKind === 'text' && textState != null ? (
           <TextPanel
@@ -555,6 +637,19 @@ export function MobileEditorRoot({
             onOpenFontList={() => setSheetView('font')}
             onBackToMain={() => setSheetView('main')}
             onMoreColors={() => soon('完整取色器', 'Full color picker')}
+          />
+        ) : sheetKind === 'image' && imagePos != null ? (
+          <ImagePanel
+            zh={zh}
+            pos={imagePos}
+            onChange={(p) => {
+              onImagePosLive(p);
+              onImagePosCommit(); // 滑块/按钮是离散动作,改完即存
+            }}
+            onReset={() => {
+              onImagePosLive(DEFAULT_IMAGE_POS);
+              onImagePosCommit();
+            }}
           />
         ) : (
           <PageBgPanel zh={zh} value={pageBg} onChange={onPageBgChange} />

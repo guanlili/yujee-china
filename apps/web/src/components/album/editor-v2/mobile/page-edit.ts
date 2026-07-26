@@ -10,8 +10,15 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 import type { EditorPage } from '../../types';
-import { patchHtmlText, patchHtmlTextStyle, patchHtmlPageStyle } from '../../page-html-dom';
+import {
+  patchHtmlText,
+  patchHtmlTextStyle,
+  patchHtmlPageStyle,
+  patchHtmlImagePos,
+} from '../../page-html-dom';
 import { EDITOR_FONTS } from '../editor-fonts';
+// 图片平移/缩放的几何与夹取全部复用桌面那份(已单测:白边/溢出的不变式都在注释里)。
+import { clampImagePos, DEFAULT_IMAGE_POS, type ImagePosValue } from '../image-edit-util';
 
 /** 选中的文字槽在画板上的位置(相对 .mspread 左上角,已含页面缩放)。 */
 export type SelRect = { left: number; top: number; width: number; height: number };
@@ -144,6 +151,32 @@ export function applyTextEdit(
 export function applyPageBg(base: EditorPage, color: string | null): EditorPage {
   const props = { 'background-color': color };
   return { ...base, htmlJson: patched(base.htmlJson, (h) => patchHtmlPageStyle(h, props)) };
+}
+
+/** 图片位置/缩放 → 新的一页。html 与数据层都要写:
+ *  html 是画板即时看到的真相,imagePosJson 是落库与重烘时的真相,两边必须同步
+ *  (只写一边:要么刷新回退,要么导出/AI 看到的和屏幕不一致)。 */
+export function applyImagePos(
+  base: EditorPage,
+  slotId: string,
+  pos: ImagePosValue,
+): EditorPage {
+  const next = clampImagePos(pos);
+  return {
+    ...base,
+    imagePosJson: { ...(base.imagePosJson ?? {}), [slotId]: next },
+    htmlJson: patched(base.htmlJson, (h) => patchHtmlImagePos(h, slotId, next)),
+  };
+}
+
+/** 读回某个图槽当前的位置/缩放;没设过就是默认(居中、不放大)。 */
+export function readImagePos(page: EditorPage, slotId: string): ImagePosValue {
+  return clampImagePos(page.imagePosJson?.[slotId] ?? DEFAULT_IMAGE_POS);
+}
+
+/** 图片位置的落库 payload。服务端按 patchHtmlImagePos 打进存库 html。 */
+export function imagePosPatchBody(page: EditorPage): Record<string, unknown> {
+  return { imagePosJson: page.imagePosJson ?? {} };
 }
 
 /** 读回当前页底色(页根 data-template 元素的行内 background-color)。

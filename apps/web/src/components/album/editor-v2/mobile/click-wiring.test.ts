@@ -163,3 +163,35 @@ test('dev 预览返回键有反馈(不是 () => {} 空操作)', () => {
   assert.doesNotMatch(dev, /onBack=\{\(\) => \{\}\}/, 'dev 返回键不许是空操作');
   assert.match(dev, /window\.history\.back\(\)/, 'dev 返回键至少 history.back 有反馈');
 });
+
+test('图片编辑接的是真几何(复用桌面 image-edit-util,不自己算)', () => {
+  const view = read('EditView.tsx');
+  assert.match(view, /from '\.\.\/image-edit-util'/, '几何走桌面那份(已单测的夹取/拖动映射)');
+  assert.match(view, /dragToImagePos\(/, '平移走 dragToImagePos');
+  assert.match(view, /clampImagePos\(/, '捏合缩放要夹进合法区间');
+  const root = read('MobileEditorRoot.tsx');
+  assert.match(root, /applyImagePos\(/);
+  assert.match(root, /imagePosPatchBody\(/, '松手要落库');
+  // 落库读 ref 不读 state:同一事件里先 live 再 commit,读 state 会拿到旧值把新位置覆盖回去
+  assert.match(root, /const pos = imagePosRef\.current;/,
+    '落库必须读 ref —— 读 state 会用旧位置覆盖刚预览的新位置(真机抓到过)');
+});
+
+test('图片面板开着时画板放行手势,否则拖不动那张图', () => {
+  const root = read('MobileEditorRoot.tsx');
+  assert.match(root, /passThrough=\{sheetKind === 'image'\}/);
+  const sheet = readFileSync(join(here, 'modals', 'ElementSheet.tsx'), 'utf8');
+  assert.match(sheet, /data-passthrough=\{passThrough \? '1' : undefined\}/);
+  // 放行只作用在遮罩上,卡片仍要能点(否则又是「弹窗关不掉」)
+  const css = readFileSync(join(here, 'mobile-editor.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /\.mes-overlay\[data-passthrough='1'\]\s*\{\s*pointer-events:\s*none/);
+  assert.match(css, /\.mes-overlay\[data-passthrough='1'\] \.mes-card\s*\{\s*pointer-events:\s*auto/);
+});
+
+test('线上没有的功能不许造:换图入口不存在', () => {
+  const files = readdirSync(join(here, 'modals'));
+  assert.ok(!files.includes('PhotoPickerModal.tsx'),
+    '桌面 PICK_PHOTOS 是硬编码占位、confirm 只关弹窗 —— 线上没有换图,移动端不该有');
+  const root = read('MobileEditorRoot.tsx');
+  assert.doesNotMatch(root, /PhotoPickerModal/);
+});

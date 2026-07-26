@@ -33,9 +33,14 @@ import { fitBox, spreadAspect } from './fit-box';
 import { MobileTopbar } from './MobileTopbar';
 import { IconPageBg, IconImage, IconText, IconTrash } from './icons';
 import type { ComputedProbe, SelRect } from './page-edit';
+import { clampImagePos, dragToImagePos, type ImagePosValue } from '../image-edit-util';
 
 /** 点中一个文字槽后交给父层的全部信息(父层据此开面板、落库)。 */
 export type TextHit = { slotId: string; rect: SelRect; probe: ComputedProbe };
+
+/** 点中一个图片槽。rect 用的是**图框**(overflow:hidden 的外框)而不是 img 本身 ——
+ *  scale>1 时 img 的 rect 是放大后被裁掉的那个尺寸,拿它画高亮会跑到框外。 */
+export type ImageHit = { slotId: string; rect: SelRect };
 
 export type EditViewProps = {
   pages: EditorPage[];
@@ -44,8 +49,10 @@ export type EditViewProps = {
   zh: boolean;
   /** 正在编辑的页 index。 */
   editPage: number;
-  /** 当前选中的文字槽(父层持有;null = 没选中)。 */
+  /** 当前选中的槽(父层持有;null = 没选中)。文字与图片共用这一个高亮。 */
   selection: { slotId: string; rect: SelRect } | null;
+  /** 选中的是图片时:当前的位置/缩放(拖动/捏合以它为起点)。 */
+  imagePos: ImagePosValue | null;
   /** 面板是否升起 —— 决定要不要把书上移让出位置。 */
   sheetOpen: boolean;
   /** 顶栏返回:退回浏览态。 */
@@ -54,8 +61,12 @@ export type EditViewProps = {
   onStep: (dir: 1 | -1) => void;
   /** 点中文字槽。 */
   onSelectText: (hit: TextHit) => void;
-  /** 点中图片槽(本版不接图片编辑 → 父层给反馈,不做死区)。 */
-  onSelectImage: () => void;
+  /** 点中图片槽 → 选中它并开图片面板。 */
+  onSelectImage: (hit: ImageHit) => void;
+  /** 拖动/捏合过程中的实时位置(父层即时打进书,不落库)。 */
+  onImagePos: (pos: ImagePosValue) => void;
+  /** 手指离开 = 一次调整结束(父层落库,与桌面「松手即存」同口径)。 */
+  onImagePosCommit: () => void;
   /** 点页面空白处:取消选中。 */
   onClearSelection: () => void;
   /** 交互 handler 一律必填(理由同 MobileEditor):漏接 = 死按钮 = 编译不过。 */
@@ -87,11 +98,14 @@ export function EditView({
   zh,
   editPage,
   selection,
+  imagePos,
   sheetOpen,
   onExit,
   onStep,
   onSelectText,
   onSelectImage,
+  onImagePos,
+  onImagePosCommit,
   onClearSelection,
   onShare,
   onExport,
@@ -174,12 +188,101 @@ export function EditView({
   const swipe = useRef<{ x: number; y: number } | null>(null);
   // 滑动收尾浏览器还会补一记 click —— 不吞掉的话一次翻页会顺手改掉选中。
   const moved = useRef(false);
+
+  /* ── 选中图片后的手势:单指拖 = 平移画面,双指捏 = 缩放 ──────────────────────
+     只在**已选中那张图**上生效;没选中时手指落在图上仍然是翻页,不然一进编辑态
+     就再也翻不了页了。几何全部走 image-edit-util(与桌面同一份、已单测)。 */
+  const imgDrag = useRef<{
+    start: ImagePosValue;
+    x: number;
+    y: number;
+    boxW: number;
+    boxH: number;
+  } | null>(null);
+  const pinch = useRef<{ start: ImagePosValue; dist: number } | null>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+
+  /** 图片槽的命中(仅用于「点一下选中它」)。用 `[data-image-slot]` 而不是
+   *  `img[data-image-slot]`:模板把图片包在同样带该属性的 overflow:hidden 外框里。 */
+  const imageSlotAt = (target: EventTarget | null): HTMLElement | null =>
+    (target as HTMLElement | null)?.closest?.<HTMLElement>('[data-image-slot]') ?? null;
+
+  /**
+   * 图片面板开着 = 现在整块画板都在为「挪这张图」服务:随便从哪儿拖都是平移,双指就是缩放。
+   *
+   * 为什么不做成「必须精确拖在那张图上」:模板经常在图上叠装饰层(边框/色块/文字),
+   * 真机上手指落点十有八九命中的是装饰而不是图槽,表现为「选得中、拖不动」;面板升起时
+   * 书还会整体上移,更难对准。面板已经开着、选中框也画着,意图没有歧义,不必再赌落点。
+   * 代价是这期间横滑不翻页 —— 正在编这张图,本来也不该翻页。
+   */
+  const imageEditing = imagePos != null && sheetOpen;
+
+  const twoFingerDist = (): number => {
+    const [a, b] = [...pointers.current.values()];
+    if (!a || !b) return 0;
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    // 第二根手指落下 → 进入捏合,取消单指平移与翻页
+    if (pointers.current.size === 2 && imageEditing && imagePos) {
+      swipe.current = null;
+      imgDrag.current = null;
+      pinch.current = { start: imagePos, dist: twoFingerDist() };
+      return;
+    }
     if (!e.isPrimary) return;
     moved.current = false;
+    if (imageEditing && imagePos && selection) {
+      // dragToImagePos 要的是 img 的**渲染后**尺寸(含缩放)。图铺满外框、再整体 scale,
+      // 所以 渲染后尺寸 = 外框尺寸 × scale。外框尺寸用选中那一刻记下的 rect ——
+      // 它一定存在,也不用去 DOM 里找那个 <img>(移动端不许 querySelector)。
+      imgDrag.current = {
+        start: imagePos,
+        x: e.clientX,
+        y: e.clientY,
+        boxW: selection.rect.width * imagePos.scale,
+        boxH: selection.rect.height * imagePos.scale,
+      };
+      swipe.current = null; // 这一下不是翻页
+      return;
+    }
     swipe.current = e.clientX <= EDGE_GUARD ? null : { x: e.clientX, y: e.clientY };
   };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (pointers.current.has(e.pointerId)) {
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    const pz = pinch.current;
+    if (pz && pointers.current.size >= 2) {
+      const d = twoFingerDist();
+      if (pz.dist > 0 && d > 0) {
+        onImagePos(clampImagePos({ ...pz.start, scale: pz.start.scale * (d / pz.dist) }));
+      }
+      return;
+    }
+    const dr = imgDrag.current;
+    if (dr) {
+      moved.current = true;
+      onImagePos(dragToImagePos(dr.start, e.clientX - dr.x, e.clientY - dr.y, dr.boxW, dr.boxH));
+    }
+  };
+
+  const endImageGesture = () => {
+    const had = imgDrag.current != null || pinch.current != null;
+    imgDrag.current = null;
+    pinch.current = null;
+    if (had) onImagePosCommit(); // 松手即存(同桌面)
+  };
+
   const onPointerUp = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    if (imgDrag.current || pinch.current) {
+      if (pointers.current.size === 0) endImageGesture();
+      return;
+    }
     const from = swipe.current;
     swipe.current = null;
     if (!from) return;
@@ -198,8 +301,19 @@ export function EditView({
     const host = spreadRef.current;
     if (!host) return;
     const target = e.target as HTMLElement;
-    if (target.closest('img[data-image-slot]')) {
-      onSelectImage();
+    const hit = imageSlotAt(target);
+    const imgSlot = hit?.getAttribute('data-image-slot');
+    if (hit && imgSlot) {
+      // 高亮贴**图框**(overflow:hidden 的外框)而不是 img:scale>1 时 img 的 rect
+      // 是放大后被裁掉的尺寸,拿它画框会跑到槽外面去。
+      // 命中的可能是 img 本身,也可能就是外框 —— 是 img 就取它父级。
+      const frame = hit.tagName === 'IMG' ? (hit.parentElement ?? hit) : hit;
+      const fr = frame.getBoundingClientRect();
+      const s = host.getBoundingClientRect();
+      onSelectImage({
+        slotId: imgSlot,
+        rect: { left: fr.left - s.left, top: fr.top - s.top, width: fr.width, height: fr.height },
+      });
       return;
     }
     // [data-text-key] 是文字槽的权威标记(与桌面同口径)。隐藏的 folio 槽是
@@ -250,8 +364,13 @@ export function EditView({
         ref={boardRef}
         className="mboard"
         onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={() => (swipe.current = null)}
+        onPointerCancel={(e) => {
+          pointers.current.delete(e.pointerId);
+          swipe.current = null;
+          endImageGesture();
+        }}
       >
         <div
           ref={spreadRef}

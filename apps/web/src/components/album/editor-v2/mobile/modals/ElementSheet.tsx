@@ -15,13 +15,28 @@ export type ElementSheetProps = {
   zh: boolean;
   title: string;
   children: ReactNode;
+  /** 卡片以上的区域是否放行手势(默认不放行 = 普通模态)。
+   *
+   *  图片编辑要的是「面板开着,同时用手指在页面上拖动/捏合那张图」。而 .mes-overlay 是
+   *  inset:0 铺满整屏的,不放行的话手指永远碰不到图 —— 面板一开图就锁死了。
+   *  放行只作用在**遮罩**上,卡片自身仍然 pointer-events:auto,所以取消/完成照常可点
+   *  (那次「弹窗关不掉」的事故是宿主整体 pointer-events:none + 类名放行名单,不是这个)。 */
+  passThrough?: boolean;
   /** 取消:放弃本次改动(快照还原)。 */
   onCancel: () => void;
   /** 完成:落库并重绘。 */
   onDone: () => void;
 };
 
-export function ElementSheet({ open, zh, title, children, onCancel, onDone }: ElementSheetProps) {
+export function ElementSheet({
+  open,
+  zh,
+  title,
+  children,
+  passThrough,
+  onCancel,
+  onDone,
+}: ElementSheetProps) {
   // 关着就不渲染宿主 —— 宿主存在即接管事件(见 mobile-editor.css 的说明)。
   if (!open) return null;
   return (
@@ -29,8 +44,10 @@ export function ElementSheet({ open, zh, title, children, onCancel, onDone }: El
       <div
         className="mes-overlay"
         data-open="1"
+        data-passthrough={passThrough ? '1' : undefined}
         onClick={(e) => {
           // 点遮罩 = 取消,与桌面弹窗一致;点卡片内部不关。
+          // 放行模式下遮罩收不到事件,这条自然不触发(取消走卡片上的按钮)。
           if (e.target === e.currentTarget) onCancel();
         }}
       >
