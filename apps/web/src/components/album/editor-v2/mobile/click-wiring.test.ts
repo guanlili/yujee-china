@@ -68,7 +68,7 @@ test('入口都接到真东西上;仍未实现的(删除页)才给「即将上�
   assert.match(root, /onExport=\{openExport\}/, '导出接闸门 + 导出菜单');
   assert.match(root, /onMore=\{\(\) => setMoreOpen\(true\)\}/, '「更多」打开菜单(里面是照片备份)');
   assert.match(root, /onShare=\{\(\) => \{[\s\S]{0,80}setShareOpen\(true\)/, '分享打开分享弹窗');
-  assert.match(root, /onOpenChat=\{\(\) => setAiChatOpen\(true\)\}/);
+  assert.match(root, /onOpenChat=\{[\s\S]{0,160}setAiChatOpen\(true\)/, 'AI 气泡打开对话弹窗');
   // 删除页线上也没有,仍是占位 —— 但必须有反馈,不许是死按钮。
   assert.match(root, /onDeletePage=\{\(\) => soon\(/);
 });
@@ -194,4 +194,42 @@ test('线上没有的功能不许造:换图入口不存在', () => {
     '桌面 PICK_PHOTOS 是硬编码占位、confirm 只关弹窗 —— 线上没有换图,移动端不该有');
   const root = read('MobileEditorRoot.tsx');
   assert.doesNotMatch(root, /PhotoPickerModal/);
+});
+
+test('AI 对话接的是真端点(design-chat 流式),不是 toast', () => {
+  const root = read('MobileEditorRoot.tsx');
+  assert.match(root, /messages=\{chat\.messages\}/, '消息要从 hook 出');
+  assert.match(root, /status=\{chat\.status\}/);
+  assert.match(root, /onSend=\{\(text\) =>[\s\S]{0,80}chat\.send\(text, editPage/,
+    '发送要把当前页带上(消解「这页」类指代)');
+  assert.doesNotMatch(root, /onSend=\{\(\) => soon\(/, 'onSend 不许再是「即将上线」');
+  const hook = read('use-design-chat.ts');
+  assert.match(hook, /design-chat\?stream=1/, '走流式 —— 一轮可能 120s,非流式就是一片死寂');
+  assert.match(hook, /\/messages\?limit=/, '打开时要拉历史(与桌面同一张表)');
+});
+
+test('AI 改完书要原地换页,并收掉过期的选中', () => {
+  const root = read('MobileEditorRoot.tsx');
+  assert.match(root, /setPages\(nextPages\)/, 'committed 的 pages 直接换上,不重拉草稿');
+  assert.match(root, /setPages\(nextPages\);[\s\S]{0,160}setSelection\(null\)/,
+    '换书后选中框的 rect 不再对得上,必须收掉');
+  const hook = read('use-design-chat.ts');
+  assert.match(hook, /if \(committed && Array\.isArray\(r\.pages\)\)/,
+    '只有 committed 才换书(未提交的轮次不该动书)');
+});
+
+test('AI 流断了没收到 done 必须报错,不许装作成功', () => {
+  const hook = read('use-design-chat.ts');
+  assert.match(hook, /if \(!done\) throw new Error\('stream ended without done'\)/);
+  assert.match(hook, /kind: 'error'/, '出错要给用户一句人话');
+});
+
+test('AI 一轮结束必须有反馈,哪怕它只动手不说话', () => {
+  // 真机抓到:那一轮 AI 改完了但没写文字,而当时只在「有文字」时才加气泡 ——
+  // 用户看到的是「发出去了、状态没了、屏幕上什么都没多」,分不清成功还是石沉大海。
+  const hook = read('use-design-chat.ts');
+  assert.match(hook, /const text =\s*\n?\s*reply \|\|/, '没文字要有兜底文案');
+  assert.match(hook, /committed[\s\S]{0,120}已经按你说的改好了/);
+  assert.match(hook, /这次没有改动/);
+  assert.doesNotMatch(hook, /if \(reply\) setMessages/, '不许退回「有文字才加气泡」');
 });

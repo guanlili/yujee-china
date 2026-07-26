@@ -11,11 +11,17 @@
    休息态 await-jelly 同一素材)。真正的 AI 收发是后续切片(3e)接;现在输入框可打字,
    发送先给反馈。 */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+import type { ChatMessage, ChatStatus } from '../use-design-chat';
 
 export type AiChatSheetProps = {
   open: boolean;
   zh: boolean;
+  /** 这一册的对话(含历史回放)。 */
+  messages: ChatMessage[];
+  /** 在跑时给一句「正在…」;出错给一句人话。 */
+  status: ChatStatus;
   onSend: (text: string) => void;
   onClose: () => void;
 };
@@ -29,19 +35,25 @@ const TAP_SLOP = 6;
 /** 拖到明显低于下限 → 意图是整个收起,不是留在最小高度。 */
 const COLLAPSE_SLOP = 28;
 
-export function AiChatSheet({ open, zh, onSend, onClose }: AiChatSheetProps) {
+export function AiChatSheet({ open, zh, messages, status, onSend, onClose }: AiChatSheetProps) {
   const [text, setText] = useState('');
   // null = 没手动拖过,走 CSS 的默认 50vh。拖出来的高度记住,下次展开还是它(同桌面)。
   const [height, setHeight] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // 新消息/状态变化时滚到底 —— 否则回复到了却停在上面,看着像没反应。
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length, status]);
   const drag = useRef<{ startY: number; startH: number; dy: number; collapse: boolean } | null>(null);
 
   if (!open) return null;
 
   const send = () => {
     const t = text.trim();
-    if (!t) return;
+    if (!t || status.kind === 'busy') return;
     onSend(t);
     setText('');
   };
@@ -129,12 +141,30 @@ export function AiChatSheet({ open, zh, onSend, onClose }: AiChatSheetProps) {
           </button>
         </div>
 
-        <div className="mai-sheet-body">
-          <div className="mai-msg">
-            {zh
-              ? '想让这段回忆更完整,可以告诉我那天的天气、和谁同行、当时的心情,我会把它们融进文字里。'
-              : "Tell me the weather, who you were with, how you felt — I'll weave it into the words."}
-          </div>
+        <div className="mai-sheet-body" ref={bodyRef}>
+          {messages.length === 0 && (
+            <div className="mai-msg">
+              {zh
+                ? '想让这段回忆更完整,可以告诉我那天的天气、和谁同行、当时的心情,我会把它们融进文字里。'
+                : "Tell me the weather, who you were with, how you felt — I'll weave it into the words."}
+            </div>
+          )}
+          {messages.map((m) => (
+            <div key={m.id} className="mai-msg" data-role={m.role}>
+              {m.text}
+            </div>
+          ))}
+          {status.kind === 'busy' && (
+            <div className="mai-msg mai-msg-status" aria-live="polite">
+              <img className="mai-think-jelly" src="/jellyfish-icon.png" alt="" />
+              {status.label}
+            </div>
+          )}
+          {status.kind === 'error' && (
+            <div className="mai-msg mai-msg-error" role="alert">
+              {status.message}
+            </div>
+          )}
         </div>
 
         <div className="mai-sheet-composer">
@@ -148,7 +178,7 @@ export function AiChatSheet({ open, zh, onSend, onClose }: AiChatSheetProps) {
           <button
             type="button"
             className="mai-sheet-send"
-            disabled={!text.trim()}
+            disabled={!text.trim() || status.kind === 'busy'}
             onClick={send}
             aria-label={zh ? '发送' : 'Send'}
           >

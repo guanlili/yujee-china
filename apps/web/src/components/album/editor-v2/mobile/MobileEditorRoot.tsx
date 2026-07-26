@@ -38,6 +38,7 @@ import { MoreSheet, NoticeModal } from './modals/MoreSheet';
 import { useExport } from './use-export';
 import { useShareLink } from './use-share-link';
 import { usePhotoBackup } from './use-photo-backup';
+import { useDesignChat } from './use-design-chat';
 import { ElementSheet } from './modals/ElementSheet';
 import { TextPanel } from './modals/TextPanel';
 import { PageBgPanel } from './modals/PageBgPanel';
@@ -351,6 +352,8 @@ export function MobileEditorRoot({
     Object.keys(detail.album.photoSnapshotUrls ?? {}),
   );
   const share = useShareLink(detail.album.id, locale, zh);
+  // AI 对话:瘦客户端直连 design-chat(桌面那套 ChatPanel 依赖协调器上下文,移动端没有)。
+  const chat = useDesignChat(detail.album.id, zh);
 
   // 导出闸门(与桌面 computeExportUnlocked 同口径):没到 ready / 故事没写完不给导出。
   // allDone 要问 story-progress —— detail 里只有 stage。
@@ -496,7 +499,10 @@ export function MobileEditorRoot({
         }
       }}
       onMore={() => setMoreOpen(true)}
-      onOpenChat={() => setAiChatOpen(true)}
+      onOpenChat={() => {
+        void chat.loadHistory(); // 打开时拉一次历史,两端看到同一段对话
+        setAiChatOpen(true);
+      }}
       onDeletePage={() => soon('删除页面', 'Delete page')}
     />
     <BoardBgSheet
@@ -680,8 +686,18 @@ export function MobileEditorRoot({
     <AiChatSheet
       open={aiChatOpen}
       zh={zh}
+      messages={chat.messages}
+      status={chat.status}
       onClose={() => setAiChatOpen(false)}
-      onSend={() => soon('AI 对话', 'AI chat')}
+      onSend={(text) =>
+        void chat.send(text, editPage, (nextPages) => {
+          // AI 改完书:committed 的 pages 直接换上,画板原地反映(不重拉草稿、不闪屏)。
+          // 同时把编辑焦点收掉 —— 选中框的 rect 是按旧版面算的,换书后不再对得上。
+          setPages(nextPages);
+          setSelection(null);
+          closeSheet();
+        })
+      }
     />
     <MobileToast text={toast} />
     </>

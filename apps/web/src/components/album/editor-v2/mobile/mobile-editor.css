@@ -695,12 +695,50 @@
 }
 .mai-msg {
   max-width: 88%;
+  margin-bottom: 8px;
   padding: 11px 14px;
   border-radius: 4px 16px 16px 16px;
   background: var(--bg);
   font-size: 14px;
   line-height: 1.55;
   color: var(--fg);
+  white-space: pre-wrap; /* AI 回复常带换行,不保留就挤成一坨 */
+  word-break: break-word;
+}
+
+/* 自己说的话靠右、深底浅字(与 AI 的回复一眼分得开) */
+.mai-msg[data-role='user'] {
+  margin-left: auto;
+  border-radius: 16px 4px 16px 16px;
+  background: var(--fg);
+  color: var(--surface);
+}
+
+/* 「正在…」:小水母 + 一句话。它不是消息,是状态,所以底色更淡、不占气泡形 */
+.mai-msg-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  padding-left: 2px;
+}
+
+.mai-think-jelly {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+  animation: mai-float 3.2s ease-in-out infinite;
+}
+
+/* 出错:用删除格那支红(#c44 取自桌面 .eb-btn.danger),不自创第二支红 */
+.mai-msg-error {
+  background: none;
+  color: #c44;
+  font-size: 13px;
+  padding-left: 2px;
 }
 
 .mai-sheet-composer {

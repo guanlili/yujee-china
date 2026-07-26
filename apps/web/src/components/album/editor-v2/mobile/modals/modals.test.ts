@@ -137,7 +137,10 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
     name: 'AiChatSheet AI对话',
     render: (open) =>
       renderToStaticMarkup(
-        createElement(AiChatSheet, { open, zh: true, onSend: noop, onClose: noop }),
+        createElement(AiChatSheet, {
+          open, zh: true, messages: [], status: { kind: 'idle' as const },
+          onSend: noop, onClose: noop,
+        }),
       ),
     closeHint: /mai-sheet-close/,
   },
