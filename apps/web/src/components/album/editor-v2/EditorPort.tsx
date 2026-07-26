@@ -66,6 +66,7 @@ import { loadAlbumFonts, loadFontSubset, useAlbumFonts } from '@/lib/font/album-
 import { isCjkFontId, type CjkFontId } from '@/services/font/font-manifest';
 import { FONT_CATALOG } from '@yujee/contracts/render';
 import { EDITOR_FONTS, CJK_PREVIEW_SAMPLE, type EditorFont } from './editor-fonts';
+import { clamp01, hsvToRgb, rgbToHsv, hexToRgb, toHex, rgbToHex } from './color-util';
 import {
   extractPhotoIds,
   applyPatchToPages,
@@ -96,34 +97,7 @@ import './editor-port.css';
 // 预设色 = 项目文字用色(黑为主 + 品牌青/紫)。
 // 吸色工具与画板垫底背景共用同一套常用色板(保持一致)。
 const COLOR_SWATCHES = COLOR_PRESETS;
-function clamp01(x: number) { return Math.min(1, Math.max(0, x)); }
-function hsvToRgb(h: number, s: number, v: number) {
-  h = ((h % 360) + 360) % 360;
-  const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
-  let r = 0, g = 0, b = 0;
-  if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; } else if (h < 180) { g = c; b = x; }
-  else if (h < 240) { g = x; b = c; } else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
-  return { r: Math.round((r + m) * 255), g: Math.round((g + m) * 255), b: Math.round((b + m) * 255) };
-}
-function rgbToHsv(r: number, g: number, b: number) {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
-  let h = 0;
-  if (d) {
-    if (max === r) h = 60 * ((((g - b) / d) % 6 + 6) % 6);
-    else if (max === g) h = 60 * ((b - r) / d + 2);
-    else h = 60 * ((r - g) / d + 4);
-  }
-  return { h, s: max ? d / max : 0, v: max };
-}
-function hexToRgb(hex: string) {
-  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
-  if (!m) return null;
-  const n = parseInt(m[1]!, 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
-function toHex(n: number) { return Math.round(n).toString(16).padStart(2, '0'); }
-function rgbToHex(r: number, g: number, b: number) { return `#${toHex(r)}${toHex(g)}${toHex(b)}`; }
+// 颜色换算已抽到共享层 color-util(移动端取色器用同一份,不留第二份真相)。
 function hslToHex(h: number, s: number, l: number) {
   s /= 100; l /= 100;
   const k = (n: number) => (n + h / 30) % 12;

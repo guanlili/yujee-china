@@ -16,6 +16,7 @@ import {
 } from '@/lib/board-bg/presets';
 import { IMAGE_INPUT_ACCEPT } from '@/lib/photo/heic';
 import { ModalHost } from './ModalHost';
+import { ColorPicker } from './ColorPicker';
 
 export type BoardBgSheetProps = {
   open: boolean;
@@ -23,6 +24,10 @@ export type BoardBgSheetProps = {
   current: BoardBackground | null;
   onClose: () => void;
   onPick: (bg: BoardBackground | null) => void;
+  /** 'main' = 色板 + 图片;'color' = 完整取色器(与文字/页面底色同一个组件)。 */
+  view?: 'main' | 'color';
+  onOpenPicker?: () => void;
+  onBackToMain?: () => void;
   /** 上传本地图:调用方负责存进 photoStore 并回传 key。 */
   onUpload: (file: File) => void;
 };
@@ -33,6 +38,9 @@ export function BoardBgSheet({
   current,
   onClose,
   onPick,
+  view = 'main',
+  onOpenPicker,
+  onBackToMain,
   onUpload,
 }: BoardBgSheetProps) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -64,6 +72,19 @@ export function BoardBgSheet({
         </button>
       </div>
 
+      {view === 'color' ? (
+        <div className="board-bg-body" data-bbg-view="color">
+          <button type="button" className="mes-back" onClick={onBackToMain}>
+            ‹ {zh ? '返回' : 'Back'}
+          </button>
+          <ColorPicker
+            zh={zh}
+            value={current?.kind === 'color' ? current.color : null}
+            withAlpha={false}
+            onChange={(css) => onPick({ kind: 'color', color: css })}
+          />
+        </div>
+      ) : (
       <div className="board-bg-body" data-bbg-view="main">
         <div className="bbg-main">
           <div className="bbg-swatches">
@@ -88,6 +109,16 @@ export function BoardBgSheet({
                 onClick={() => onPick({ kind: 'color', color: c })}
               />
             ))}
+            {/* 自定义取色:与文字/书页底色同一个取色器(桌面也是「一个取色器服务三处」) */}
+            {onOpenPicker && (
+              <button
+                className="bbg-swatch mes-sw-more"
+                data-testid="bbg-more"
+                title={zh ? '更多颜色' : 'More colors'}
+                aria-label={zh ? '更多颜色' : 'More colors'}
+                onClick={onOpenPicker}
+              />
+            )}
           </div>
 
           <p className="bbg-section-label">{zh ? '图片' : 'Images'}</p>
@@ -132,6 +163,7 @@ export function BoardBgSheet({
           </div>
         </div>
       </div>
+      )}
     </ModalHost>
   );
 }

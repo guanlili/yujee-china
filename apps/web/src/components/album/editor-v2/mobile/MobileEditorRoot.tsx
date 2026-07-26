@@ -106,6 +106,8 @@ export function MobileEditorRoot({
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
   const [uploadBgUrl, setUploadBgUrl] = useState<string | null>(null);
   const [bgSheetOpen, setBgSheetOpen] = useState(false);
+  // 画板背景弹窗的两视图:色板 / 完整取色器(与文字、书页底色同一个取色器组件)。
+  const [bgSheetView, setBgSheetView] = useState<'main' | 'color'>('main');
   // 弹窗开关。行为(导出渲染 / 分享上传)后续接线,这里先让 UI 可开可核对。
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [collageOpen, setCollageOpen] = useState(false);
@@ -119,7 +121,7 @@ export function MobileEditorRoot({
   // 元素编辑 sheet:'text' = 文字,'pagebg' = 页面底色。null = 关。
   const [sheetKind, setSheetKind] = useState<'text' | 'pagebg' | 'image' | null>(null);
   // mes 的三视图之一:main / font(完整字体列表)。取色器完整版随取色行为一起接。
-  const [sheetView, setSheetView] = useState<'main' | 'font'>('main');
+  const [sheetView, setSheetView] = useState<'main' | 'font' | 'color'>('main');
   // 面板打开那一刻的整页快照:每次改动都从它重算,取消就是把它放回去。
   const [draftBase, setDraftBase] = useState<EditorPage | null>(null);
   const [textState, setTextState] = useState<TextStyleState | null>(null);
@@ -462,7 +464,10 @@ export function MobileEditorRoot({
         // 面板开着时点页面空白不该悄悄取消选中(面板正绑在那个槽上)。
         if (sheetKind == null) setSelection(null);
       }}
-      onBoardBg={() => setBgSheetOpen(true)}
+      onBoardBg={() => {
+        setBgSheetView('main');
+        setBgSheetOpen(true);
+      }}
       onExport={openExport}
       onShare={() => {
         share.reset();
@@ -498,10 +503,17 @@ export function MobileEditorRoot({
       open={bgSheetOpen}
       zh={zh}
       current={boardBg}
-      onClose={() => setBgSheetOpen(false)}
+      view={bgSheetView}
+      onOpenPicker={() => setBgSheetView('color')}
+      onBackToMain={() => setBgSheetView('main')}
+      onClose={() => {
+        setBgSheetOpen(false);
+        setBgSheetView('main');
+      }}
       onPick={(bg) => {
         applyBoardBg(bg);
-        setBgSheetOpen(false);
+        // 取色器里连续调色不该每动一下就把弹窗关掉;色板/图片是一次性选择,选完即关。
+        if (bgSheetView !== 'color') setBgSheetOpen(false);
       }}
       onUpload={(f) => {
         uploadBoardBg(f);
@@ -607,6 +619,8 @@ export function MobileEditorRoot({
         title={
           sheetView === 'font'
             ? zh ? '字体' : 'Font'
+            : sheetView === 'color'
+            ? zh ? '颜色' : 'Color'
             : sheetKind === 'text'
               ? zh ? '文字' : 'Text'
               : sheetKind === 'image'
@@ -636,7 +650,7 @@ export function MobileEditorRoot({
             onChange={onTextChange}
             onOpenFontList={() => setSheetView('font')}
             onBackToMain={() => setSheetView('main')}
-            onMoreColors={() => soon('完整取色器', 'Full color picker')}
+            onMoreColors={() => setSheetView('color')}
           />
         ) : sheetKind === 'image' && imagePos != null ? (
           <ImagePanel
@@ -652,7 +666,14 @@ export function MobileEditorRoot({
             }}
           />
         ) : (
-          <PageBgPanel zh={zh} value={pageBg} onChange={onPageBgChange} />
+          <PageBgPanel
+            zh={zh}
+            value={pageBg}
+            view={sheetView === 'color' ? 'color' : 'main'}
+            onChange={onPageBgChange}
+            onOpenPicker={() => setSheetView('color')}
+            onBackToMain={() => setSheetView('main')}
+          />
         )}
       </ElementSheet>
     )}

@@ -188,6 +188,16 @@ export function EditView({
   const swipe = useRef<{ x: number; y: number } | null>(null);
   // 滑动收尾浏览器还会补一记 click —— 不吞掉的话一次翻页会顺手改掉选中。
   const moved = useRef(false);
+  /**
+   * 只认「本视图自己按下去的那一记」click。
+   *
+   * 浏览态是 pointerup 里 onEnterEdit 切进编辑态的,而那一次触摸的 **click 事件随后才派发**
+   * —— 那时页面已经换成编辑态了,click 就落在刚挂上的书页上,于是「点一页进编辑」会顺手
+   * 选中落点下的元素、直接弹出面板(真机表现:一进编辑态就自己开了图片面板,而且怎么点
+   * 文字都还是图片面板)。这一记 click 前面没有属于本视图的 pointerdown,据此丢掉它。
+   * 用「有没有自己的 pointerdown」判,而不是拿时间窗去猜。
+   */
+  const armed = useRef(false);
 
   /* ── 选中图片后的手势:单指拖 = 平移画面,双指捏 = 缩放 ──────────────────────
      只在**已选中那张图**上生效;没选中时手指落在图上仍然是翻页,不然一进编辑态
@@ -202,10 +212,36 @@ export function EditView({
   const pinch = useRef<{ start: ImagePosValue; dist: number } | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
 
-  /** 图片槽的命中(仅用于「点一下选中它」)。用 `[data-image-slot]` 而不是
-   *  `img[data-image-slot]`:模板把图片包在同样带该属性的 overflow:hidden 外框里。 */
+  /** 图片槽的命中。用 `[data-image-slot]` 而不是 `img[data-image-slot]`:
+   *  模板把图片包在同样带该属性的 overflow:hidden 外框里。 */
   const imageSlotAt = (target: EventTarget | null): HTMLElement | null =>
     (target as HTMLElement | null)?.closest?.<HTMLElement>('[data-image-slot]') ?? null;
+
+  /**
+   * 点中了哪个槽 —— 按**这一点上的 z 序**判定,谁在最上层就是谁。
+   *
+   * 为什么不只看 e.target:真机抓到,模板里文字与图片互相叠压时,click 的 target 常常是
+   * 底下那个 <img>(而同一坐标 elementFromPoint 给的是文字)。只认 target 的话,
+   * 这类页面上的文字**一个都选不中**,点哪儿都开图片面板。
+   *
+   * elementsFromPoint 返回的就是「从上到下都有谁」,取第一个能归到槽的即可 ——
+   * 用户看到谁在上面,点中的就是谁,不用猜。
+   */
+  const slotAtPoint = (
+    x: number,
+    y: number,
+    doc: Document,
+  ): { kind: 'text'; el: HTMLElement } | { kind: 'image'; el: HTMLElement } | null => {
+    for (const node of doc.elementsFromPoint(x, y)) {
+      const text = (node as HTMLElement).closest?.<HTMLElement>('[data-text-key]');
+      if (text?.dataset.textKey) return { kind: 'text', el: text };
+      const img = (node as HTMLElement).closest?.<HTMLElement>('[data-image-slot]');
+      if (img?.getAttribute('data-image-slot')) return { kind: 'image', el: img };
+      // 走到 .mpage-face 还没归到任何槽 → 这一点就是空白,别再往外找
+      if ((node as HTMLElement).classList?.contains('mpage-face')) return null;
+    }
+    return null;
+  };
 
   /**
    * 图片面板开着 = 现在整块画板都在为「挪这张图」服务:随便从哪儿拖都是平移,双指就是缩放。
@@ -224,6 +260,7 @@ export function EditView({
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
+    armed.current = true; // 这一记是本视图自己按下的,随后的 click 才作数
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     // 第二根手指落下 → 进入捏合,取消单指平移与翻页
     if (pointers.current.size === 2 && imageEditing && imagePos) {
@@ -294,6 +331,9 @@ export function EditView({
   };
 
   const onFaceClick = (e: React.MouseEvent) => {
+    // 不是本视图按下去的那一记(见 armed 的说明:从浏览态切进来时会补一记 click)
+    if (!armed.current) return;
+    armed.current = false;
     if (moved.current) {
       moved.current = false;
       return;
@@ -301,29 +341,28 @@ export function EditView({
     const host = spreadRef.current;
     if (!host) return;
     const target = e.target as HTMLElement;
-    const hit = imageSlotAt(target);
-    const imgSlot = hit?.getAttribute('data-image-slot');
-    if (hit && imgSlot) {
+    const hit = slotAtPoint(e.clientX, e.clientY, target.ownerDocument);
+    if (!hit) {
+      onClearSelection();
+      return;
+    }
+    const s0 = host.getBoundingClientRect();
+    if (hit.kind === 'image') {
       // 高亮贴**图框**(overflow:hidden 的外框)而不是 img:scale>1 时 img 的 rect
       // 是放大后被裁掉的尺寸,拿它画框会跑到槽外面去。
       // 命中的可能是 img 本身,也可能就是外框 —— 是 img 就取它父级。
-      const frame = hit.tagName === 'IMG' ? (hit.parentElement ?? hit) : hit;
+      const frame = hit.el.tagName === 'IMG' ? (hit.el.parentElement ?? hit.el) : hit.el;
       const fr = frame.getBoundingClientRect();
-      const s = host.getBoundingClientRect();
       onSelectImage({
-        slotId: imgSlot,
-        rect: { left: fr.left - s.left, top: fr.top - s.top, width: fr.width, height: fr.height },
+        slotId: hit.el.getAttribute('data-image-slot')!,
+        rect: { left: fr.left - s0.left, top: fr.top - s0.top, width: fr.width, height: fr.height },
       });
       return;
     }
     // [data-text-key] 是文字槽的权威标记(与桌面同口径)。隐藏的 folio 槽是
-    // display:none、folio 覆盖层是 pointer-events:none,都点不到。
-    const el = target.closest<HTMLElement>('[data-text-key]');
-    const slotId = el?.dataset.textKey;
-    if (!el || !slotId) {
-      onClearSelection();
-      return;
-    }
+    // display:none、folio 覆盖层是 pointer-events:none,都命不中。
+    const el = hit.el;
+    const slotId = el.dataset.textKey!;
     const t = el.getBoundingClientRect();
     const s = host.getBoundingClientRect();
     // rect 取的是**缩放后**的视觉尺寸(页面整体 transform:scale)→ 高亮框天然贴合;

@@ -277,7 +277,7 @@ test('「无背景」格必须有定位上下文,否则它的斜杠层会铺满�
 /* 面板 ≠ 弹窗:面板是塞进 ElementSheet 里的**内容**(没有 open/关闭的概念,
    由外层 sheet 负责开关),因此不受「必须能关」的约束。豁免必须显式列在这里 ——
    新增文件要么补进 CASES(弹窗),要么进这张表(面板),不允许悄悄溜过。 */
-const PANELS_NOT_MODALS = new Set(['TextPanel', 'PageBgPanel', 'ImagePanel']);
+const PANELS_NOT_MODALS = new Set(['TextPanel', 'PageBgPanel', 'ImagePanel', 'ColorPicker']);
 
 test('完整性:modals 目录下每个弹窗组件都进了本文件的用例表', () => {
   const files = readdirSync(here)

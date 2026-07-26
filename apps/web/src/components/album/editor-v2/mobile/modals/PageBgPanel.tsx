@@ -6,15 +6,30 @@
    类名沿用 .mes-sw / .mes-label,与文字面板的颜色行同一套视觉。 */
 
 import { COLOR_PRESETS } from '@/lib/board-bg/presets';
+import { ColorPicker } from './ColorPicker';
 
 export type PageBgPanelProps = {
   zh: boolean;
   /** 当前页底色;null = 无背景(透出纸白)。 */
   value: string | null;
+  /** 'main' = 色板 + 「更多」;'color' = 完整取色器。 */
+  view: 'main' | 'color';
   onChange: (color: string | null) => void;
+  onOpenPicker: () => void;
+  onBackToMain: () => void;
 };
 
-export function PageBgPanel({ zh, value, onChange }: PageBgPanelProps) {
+export function PageBgPanel({ zh, value, view, onChange, onOpenPicker, onBackToMain }: PageBgPanelProps) {
+  if (view === 'color') {
+    return (
+      <>
+        <button type="button" className="mes-back" onClick={onBackToMain}>
+          ‹ {zh ? '返回' : 'Back'}
+        </button>
+        <ColorPicker zh={zh} value={value} onChange={onChange} />
+      </>
+    );
+  }
   return (
     <>
       <div className="mes-label">{zh ? '页面底色' : 'Page background'}</div>
@@ -38,6 +53,13 @@ export function PageBgPanel({ zh, value, onChange }: PageBgPanelProps) {
             onClick={() => onChange(c)}
           />
         ))}
+        <button
+          type="button"
+          className="mes-sw mes-sw-more"
+          aria-label={zh ? '更多颜色' : 'More colors'}
+          title={zh ? '更多颜色' : 'More colors'}
+          onClick={onOpenPicker}
+        />
       </div>
     </>
   );

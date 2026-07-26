@@ -10,6 +10,7 @@
 
 import { COLOR_PRESETS } from '@/lib/board-bg/presets';
 import { EDITOR_FONTS } from '../../editor-fonts';
+import { ColorPicker } from './ColorPicker';
 // 面板状态的定义住在 page-edit(改动怎么落到页面上的那一层)—— 面板只是它的一张脸。
 import type { TextStyleState } from '../page-edit';
 
@@ -17,7 +18,7 @@ export type { TextStyleState };
 
 export type TextPanelProps = {
   zh: boolean;
-  view: 'main' | 'font';
+  view: 'main' | 'font' | 'color';
   state: TextStyleState;
   onChange: (patch: Partial<TextStyleState>) => void;
   onOpenFontList: () => void;
@@ -67,6 +68,17 @@ export function TextPanel({
   onBackToMain,
   onMoreColors,
 }: TextPanelProps) {
+  if (view === 'color') {
+    return (
+      <>
+        <button type="button" className="mes-back" onClick={onBackToMain}>
+          ‹ {zh ? '返回' : 'Back'}
+        </button>
+        <ColorPicker zh={zh} value={state.color} onChange={(css) => onChange({ color: css })} />
+      </>
+    );
+  }
+
   if (view === 'font') {
     const group = (label: string, script: 'cjk' | 'latin') => {
       const list = EDITOR_FONTS.filter((f) => f.script === script);

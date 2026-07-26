@@ -463,6 +463,119 @@
   font-weight: 600;
 }
 
+/* ── 完整取色器(见 modals/ColorPicker.tsx) ────────────────────────────────
+   构件与桌面「填充」面板一一对应(SV 方块 + 色相轨 + 透明度轨 + hex),
+   只把触点按拇指放大 —— 桌面那套是给鼠标的,直接照搬在手机上细到点不准。
+   棋盘格用 conic-gradient 现画,不引外部图。 */
+.mobile-modal-host .mcp {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mobile-modal-host .mcp-sv {
+  position: relative;
+  height: 180px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.mobile-modal-host .mcp-sv-white,
+.mobile-modal-host .mcp-sv-black {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.mobile-modal-host .mcp-sv-white {
+  background: linear-gradient(90deg, #fff, rgba(255, 255, 255, 0));
+}
+.mobile-modal-host .mcp-sv-black {
+  background: linear-gradient(0deg, #000, rgba(0, 0, 0, 0));
+}
+
+.mobile-modal-host .mcp-track {
+  position: relative;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  touch-action: none;
+}
+
+.mobile-modal-host .mcp-hue {
+  background: linear-gradient(
+    90deg,
+    #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%
+  );
+}
+
+/* 透明度轨:底下先铺棋盘格,上面再叠「透明 → 当前色」的渐变 */
+.mobile-modal-host .mcp-alpha {
+  background-color: var(--surface);
+  background-image:
+    conic-gradient(var(--border-soft) 0 25%, transparent 0 50%, var(--border-soft) 0 75%, transparent 0);
+  background-size: 12px 12px;
+}
+.mobile-modal-host .mcp-alpha-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.mobile-modal-host .mcp-dot,
+.mobile-modal-host .mcp-thumb {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  border: 2px solid var(--surface);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.mobile-modal-host .mcp-thumb {
+  top: 50%;
+}
+
+.mobile-modal-host .mcp-fields {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mobile-modal-host .mcp-hex,
+.mobile-modal-host .mcp-alpha-field {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted);
+}
+.mobile-modal-host .mcp-hex { flex: 1; min-width: 0; }
+.mobile-modal-host .mcp-alpha-field { width: 92px; }
+
+.mobile-modal-host .mcp-hex-input,
+.mobile-modal-host .mcp-alpha-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  font-family: inherit;
+  /* 16px 防 iOS 聚焦时整页缩放(与 .mes-textarea 同一处置) */
+  font-size: 16px;
+  color: var(--fg);
+  text-transform: uppercase;
+}
+.mobile-modal-host .mcp-alpha-input { text-align: right; text-transform: none; }
+
 /* ── 未实现功能的轻反馈 toast(见 MobileToast.tsx) ───────────────────────── */
 .mtoast {
   position: fixed;

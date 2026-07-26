@@ -148,12 +148,17 @@ test('架构守卫:EditView 不碰任何桌面 DOM', () => {
   assert.doesNotMatch(src, /#ovGrid|ov-page|ov-spread/);
 });
 
-test('架构守卫:选中只用事件里的 target(不去树上找节点、不改别人的节点)', () => {
+test('架构守卫:选中只做命中判定,不去改别人的节点', () => {
   const src = source('EditView.tsx');
-  // 命中靠 closest,不靠选择器查询
-  assert.match(src, /target\.closest/, '命中应从 e.target 往上找');
+  // 命中按「这一点上的 z 序」判定 —— 只看 e.target 会让叠压页面的文字全都选不中
+  // (真机抓到:click 的 target 是底下的 <img>,而同坐标最上层其实是文字)。
+  assert.match(src, /elementsFromPoint\(/, '命中走 elementsFromPoint(按 z 序)');
+  assert.match(src, /closest/, '再用 closest 归到具体槽');
   // 高亮是自己渲染的兄弟节点,不是给页面节点加类/改 style
-  assert.doesNotMatch(src, /\.classList\./, '不许给页面里的节点加类');
+  assert.doesNotMatch(src, /\.classList\.(add|remove|toggle)/, '不许给页面里的节点加类');
   assert.doesNotMatch(src, /\.style\.[a-z]/i, '不许直接改页面里节点的 style');
   assert.doesNotMatch(src, /setAttribute/, '不许往页面节点上写属性');
+  // 只允许「读这一点上有谁」这一处;不许拿 document 去别处捞节点
+  assert.doesNotMatch(src, /document\.querySelector/, '不许用 querySelector 到处找节点');
+  assert.doesNotMatch(src, /#ovGrid|ov-page|ov-spread/, '不许依赖桌面画布的 DOM 契约');
 });

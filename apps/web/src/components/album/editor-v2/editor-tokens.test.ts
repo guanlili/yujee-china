@@ -47,7 +47,11 @@ test('共享 token 与桌面 editor-port 的原始声明逐条一致(值不许�
 });
 
 test('移动端样式不自造颜色:除既有 danger 红外,一律走 token 变量', () => {
-  const css = read('mobile/mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  let css = read('mobile/mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  // 取色器(.mcp-*)整体豁免:色相条按定义就是**全色谱**,SV 方块的白/黑蒙版也是取色
+  // 数学的一部分 —— 它们不是「产品配色」,是被选取的颜色空间本身,没法用 token 表达。
+  // 豁免只限这几条规则,别的地方照旧不许出现硬编码色。
+  css = css.replace(/\.mobile-modal-host \.mcp[^{]*\{[^}]*\}/g, '');
   const hexes = [...css.matchAll(/#[0-9a-f]{3,8}\b/gi)].map((m) => m[0].toLowerCase());
   // #c44 是桌面 .eb-btn.danger 的同一支红(删除格),显式放行;其余硬编码色都算违规。
   const offenders = hexes.filter((h) => h !== '#c44');
