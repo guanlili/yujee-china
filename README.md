@@ -91,8 +91,12 @@ memoir-agent-rebuild/
 pnpm install
 pnpm web:dev      # 3000
 pnpm agent:dev    # 8001
-pnpm design:dev   # 8787  ← 漏了它 = design-chat 502
+pnpm design:album # 8787  ← 生产同款 album-server;漏了它 = design-chat 502
 ```
+
+`design:album` 启动 `packages/design-agent/src/web/album-server.ts`,提供完整的
+`/health`、`/api/book`、`/api/albums` 与 `/api/chat` surface。`design:dev` 启动的是
+精简调试入口 `src/web/server.ts`,不能用于本地全流程联调。
 
 验证:
 
@@ -164,6 +168,5 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 2d0f870d
+checked-at: 7f8d657c
 -->
-

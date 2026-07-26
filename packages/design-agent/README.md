@@ -54,8 +54,11 @@ fly secrets set ARK_API_KEY=... DESIGN_AGENT_SHARED_SECRET=... -a yujee-design-a
 ## 本地
 
 ```bash
-pnpm design:dev     # :8787 —— 起 web/agent 时漏了它,design-chat 直接 502
+pnpm design:album   # :8787 —— 生产同款 album-server;起 web/agent 时漏了它,design-chat 直接 502
 ```
+
+`design:dev` 只启动 `src/web/server.ts` 的精简调试 surface,没有 `/health`、`/api/book`
+或 `/api/albums`,不能替代完整产品链路使用的 `design:album`。
 
 ## 代码边界
 
@@ -65,5 +68,5 @@ print/RPC/interactive 三种模式。**通用 agent loop 在 `packages/agent`**,
 
 <!-- doc-scope
 paths: packages/design-agent/src/**, packages/design-agent/fly.toml, apps/web/src/lib/agent/design-agent-client.ts
-checked-at: 37c98cac
+checked-at: 7f8d657c
 -->
