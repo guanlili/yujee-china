@@ -757,7 +757,7 @@ function EditorModals({ locale }: { locale: Locale }) {
         </div>
       </div>
 
-      {/* 图钉九宫格:取相册中按页面顺序出现的前 12 个单页或对页排版。 */}
+      {/* 图钉九宫格:按页面顺序取全部排版画面,每组最多 9 个。 */}
       <div className="modal-overlay" id="nineGridModal" data-overlay-close>
         <div className="modal-card collage-card" role="dialog" aria-modal="true" aria-labelledby="nineGridTitle" data-testid="nine-grid-modal">
           <button className="collage-close" data-action="closeNineGrid" aria-label="close">
@@ -765,7 +765,7 @@ function EditorModals({ locale }: { locale: Locale }) {
           </button>
           <div className="px-6 pt-6">
             <h3 id="nineGridTitle" className="font-display text-[18px] font-bold">{zh ? '图钉九宫格' : 'Pinned photo grid'}</h3>
-            <p className="text-[13px] text-muted mt-1.5">{zh ? '按书中顺序使用前 12 个排版画面,导出 4.4 秒动效。' : 'Uses the first 12 designed layouts in book order and exports a 4.4-second animation.'}</p>
+            <p className="text-[13px] text-muted mt-1.5">{zh ? '按书中顺序排列,每组最多 9 个画面,每组播放 4.4 秒。' : 'Uses up to 9 layouts per scene in book order. Each scene plays for 4.4 seconds.'}</p>
           </div>
           <div className="nine-grid-options px-6 pt-5">
             <fieldset>

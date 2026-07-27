@@ -32,7 +32,7 @@ const HEIGHTS: Record<NineGridAspect, number> = { '9:16': 1920, '3:4': 1440 };
 const SWING_CYCLES = [4.65, 5.05, 4.8, 5.25, 4.7, 5.12, 4.9, 5.2, 4.75, 5, 4.85, 5.15];
 const SWING_PHASES = [-0.16, 0.09, 0.2, -0.08, 0.13, -0.19, 0.05, 0.18, -0.12, 0.02, -0.06, 0.15];
 const SWING_AMPLITUDES = [0.94, 1.05, 0.98, 1.08, 0.92, 1.02, 1, 0.96, 1.06, 0.95, 1.03, 0.99];
-const MAX_LAYOUTS = 12;
+const LAYOUTS_PER_SCENE = 9;
 
 export class NineGridUnsupportedError extends Error {
   constructor() {
@@ -122,17 +122,16 @@ export async function renderNineGridLayoutSources(
 
   const sources: string[] = [];
   if (mode === 'single') {
-    const workTotal = Math.min(
-      MAX_LAYOUTS,
-      pages.reduce((count, page) => count + (isSpreadTemplate(page.templateId) ? 2 : 1), 0),
+    const workTotal = pages.reduce(
+      (count, page) => count + (isSpreadTemplate(page.templateId) ? 2 : 1),
+      0,
     );
-    for (let index = 0; index < pages.length && sources.length < MAX_LAYOUTS; index += 1) {
+    for (let index = 0; index < pages.length; index += 1) {
       const canvas = await face(index);
       const physicalPages = isSpreadTemplate(pages[index]!.templateId)
         ? splitSpreadCanvas(canvas)
         : [canvas];
       for (const physicalPage of physicalPages) {
-        if (sources.length >= MAX_LAYOUTS) break;
         sources.push(canvasSource(physicalPage));
         onProgress?.(sources.length, workTotal);
       }
@@ -141,7 +140,7 @@ export async function renderNineGridLayoutSources(
   }
 
   const editorPages = pages as unknown as EditorPage[];
-  const spreads = buildSpreads(editorPages).slice(0, MAX_LAYOUTS);
+  const spreads = buildSpreads(editorPages);
   for (let index = 0; index < spreads.length; index += 1) {
     const spread = spreads[index]!;
     if (spread.kind === 'full') {
@@ -331,7 +330,7 @@ export async function renderNineGridVideo(
     fps: 30,
     ...partial,
   };
-  const images = await Promise.all(imageSources.slice(0, MAX_LAYOUTS).map(loadImage));
+  const images = await Promise.all(imageSources.map(loadImage));
   if (images.length === 0) throw new Error('no photos to render');
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;
@@ -359,12 +358,22 @@ export async function renderNineGridVideo(
     };
     recorder.start(100);
     const startedAt = performance.now();
-    const totalFrames = Math.ceil(options.duration * options.fps);
+    const sceneCount = Math.ceil(images.length / LAYOUTS_PER_SCENE);
+    const totalDuration = sceneCount * options.duration;
+    const totalFrames = Math.ceil(totalDuration * options.fps);
     const tick = (now: number) => {
-      const seconds = Math.min(options.duration, (now - startedAt) / 1000);
-      renderFrame(canvas, images, seconds, options);
+      const seconds = Math.min(totalDuration, (now - startedAt) / 1000);
+      const sceneIndex = Math.min(sceneCount - 1, Math.floor(seconds / options.duration));
+      const sceneSeconds = sceneIndex === sceneCount - 1 && seconds === totalDuration
+        ? options.duration
+        : seconds - sceneIndex * options.duration;
+      const sceneImages = images.slice(
+        sceneIndex * LAYOUTS_PER_SCENE,
+        (sceneIndex + 1) * LAYOUTS_PER_SCENE,
+      );
+      renderFrame(canvas, sceneImages, sceneSeconds, options);
       options.onProgress?.(Math.min(totalFrames, Math.round(seconds * options.fps)), totalFrames);
-      if (seconds < options.duration) requestAnimationFrame(tick);
+      if (seconds < totalDuration) requestAnimationFrame(tick);
       else setTimeout(() => recorder.stop(), 120);
     };
     requestAnimationFrame(tick);

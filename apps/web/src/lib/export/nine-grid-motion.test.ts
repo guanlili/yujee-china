@@ -15,3 +15,11 @@ test('nine-grid spread mode keeps solo, full-width, and paired layouts distinct'
   assert.match(source, /isSoloSpread\(spread, editorPages\)/, 'cover and ending pages should remain solo');
   assert.match(source, /pairCanvas\(left, right\)/, 'ordinary facing pages should be combined into one layout frame');
 });
+
+test('nine-grid video paginates every nine layouts without dropping overflow', () => {
+  assert.match(source, /const LAYOUTS_PER_SCENE = 9;/, 'each motion scene should contain at most nine layouts');
+  assert.match(source, /Math\.ceil\(images\.length \/ LAYOUTS_PER_SCENE\)/, 'overflow layouts should create another scene');
+  assert.match(source, /sceneCount \* options\.duration/, 'every scene should keep the configured 4.4-second duration');
+  assert.doesNotMatch(source, /imageSources\.slice\(0,/, 'video input should not discard layouts after an old global limit');
+  assert.doesNotMatch(source, /buildSpreads\(editorPages\)\.slice/, 'spread mode should render every book spread');
+});
