@@ -37,3 +37,9 @@ test('mixed single-page and spread cards preserve their own aspect ratios', () =
   assert.match(source, /const card = fitCardSize\(image, cellWidth, cellHeight\)/, 'both portrait and landscape cards should fit within neutral grid cells');
   assert.doesNotMatch(source, /const firstRatio =/, 'the first portrait cover must not force every spread into portrait cards');
 });
+
+test('video starts with a complete still cover before motion begins', () => {
+  assert.match(source, /const COVER_HOLD_SECONDS = 0\.8;/, 'video cover should remain visible long enough for thumbnail extraction');
+  assert.match(source, /if \(seconds < COVER_HOLD_SECONDS\) \{\s*renderCoverFrame\(/, 'the first recorded frames should paint the complete cover');
+  assert.match(source, /COVER_HOLD_SECONDS \+ sceneCount \* options\.duration/, 'cover hold should not shorten any motion scene');
+});

@@ -33,6 +33,7 @@ const SWING_CYCLES = [4.65, 5.05, 4.8, 5.25, 4.7, 5.12, 4.9, 5.2, 4.75, 5, 4.85,
 const SWING_PHASES = [-0.16, 0.09, 0.2, -0.08, 0.13, -0.19, 0.05, 0.18, -0.12, 0.02, -0.06, 0.15];
 const SWING_AMPLITUDES = [0.94, 1.05, 0.98, 1.08, 0.92, 1.02, 1, 0.96, 1.06, 0.95, 1.03, 0.99];
 const LAYOUTS_PER_SCENE = 9;
+const COVER_HOLD_SECONDS = 0.8;
 
 export class NineGridUnsupportedError extends Error {
   constructor() {
@@ -246,6 +247,22 @@ export async function renderNineGridCover(
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;
   canvas.height = HEIGHTS['3:4'];
+  renderCoverFrame(canvas, images, background);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('cover canvas.toBlob returned null'))),
+      'image/jpeg',
+      0.92,
+    );
+  });
+}
+
+function renderCoverFrame(
+  canvas: HTMLCanvasElement,
+  images: LoadedImage[],
+  background: string,
+): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('2d canvas is unavailable');
   ctx.fillStyle = background;
@@ -276,14 +293,6 @@ export async function renderNineGridCover(
       1,
       1,
       0,
-    );
-  });
-
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error('cover canvas.toBlob returned null'))),
-      'image/jpeg',
-      0.92,
     );
   });
 }
@@ -421,19 +430,24 @@ export async function renderNineGridVideo(
     recorder.start(100);
     const startedAt = performance.now();
     const sceneCount = Math.ceil(images.length / LAYOUTS_PER_SCENE);
-    const totalDuration = sceneCount * options.duration;
+    const totalDuration = COVER_HOLD_SECONDS + sceneCount * options.duration;
     const totalFrames = Math.ceil(totalDuration * options.fps);
     const tick = (now: number) => {
       const seconds = Math.min(totalDuration, (now - startedAt) / 1000);
-      const sceneIndex = Math.min(sceneCount - 1, Math.floor(seconds / options.duration));
-      const sceneSeconds = sceneIndex === sceneCount - 1 && seconds === totalDuration
-        ? options.duration
-        : seconds - sceneIndex * options.duration;
-      const sceneImages = images.slice(
-        sceneIndex * LAYOUTS_PER_SCENE,
-        (sceneIndex + 1) * LAYOUTS_PER_SCENE,
-      );
-      renderFrame(canvas, sceneImages, sceneSeconds, options);
+      if (seconds < COVER_HOLD_SECONDS) {
+        renderCoverFrame(canvas, images.slice(0, LAYOUTS_PER_SCENE), options.background);
+      } else {
+        const motionSeconds = seconds - COVER_HOLD_SECONDS;
+        const sceneIndex = Math.min(sceneCount - 1, Math.floor(motionSeconds / options.duration));
+        const sceneSeconds = sceneIndex === sceneCount - 1 && seconds === totalDuration
+          ? options.duration
+          : motionSeconds - sceneIndex * options.duration;
+        const sceneImages = images.slice(
+          sceneIndex * LAYOUTS_PER_SCENE,
+          (sceneIndex + 1) * LAYOUTS_PER_SCENE,
+        );
+        renderFrame(canvas, sceneImages, sceneSeconds, options);
+      }
       options.onProgress?.(Math.min(totalFrames, Math.round(seconds * options.fps)), totalFrames);
       if (seconds < totalDuration) requestAnimationFrame(tick);
       else setTimeout(() => recorder.stop(), 120);
