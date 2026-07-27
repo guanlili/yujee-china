@@ -776,8 +776,9 @@ function EditorModals({ locale }: { locale: Locale }) {
               </div>
             </fieldset>
           </div>
-          <div className="px-6 py-6">
+          <div className="nine-grid-actions px-6 py-6">
             <button className="collage-confirm" data-action="confirmNineGrid" data-testid="nine-grid-confirm">{zh ? '导出视频' : 'Export video'}</button>
+            <button className="collage-confirm secondary" data-action="confirmNineGridLive" data-testid="nine-grid-live-confirm">{zh ? '导出 Live 图包' : 'Export Live bundle'}</button>
           </div>
         </div>
       </div>
@@ -3911,7 +3912,7 @@ function EditorBook({
       }
     }
 
-    async function exportNineGrid() {
+    async function exportNineGrid(bundle: 'video' | 'live' = 'video') {
       if (exportingImages || exportingPdf) return;
       exportingImages = true;
       closeNineGridModal();
@@ -3920,6 +3921,7 @@ function EditorBook({
         const { adaptable, resolveImage } = await buildExportInput();
         const {
           renderNineGridLayoutSources,
+          renderNineGridCover,
           renderNineGridVideo,
           NineGridUnsupportedError,
         } = await import('@/lib/export/nine-grid-motion');
@@ -3940,9 +3942,22 @@ function EditorBook({
             background: boardBg?.kind === 'color' ? boardBg.color : '#c9c5b9',
             onProgress: setExportProgress,
           });
-          const { downloadBlob, safeFileStem } = await import('@/lib/export/download');
+          const { createZipBlob, downloadBlob, safeFileStem } = await import('@/lib/export/download');
           const extension = blob.type.includes('mp4') ? 'mp4' : 'webm';
-          downloadBlob(blob, `${safeFileStem(currentTitle)}-nine-grid.${extension}`);
+          const stem = safeFileStem(currentTitle);
+          if (bundle === 'live') {
+            const cover = await renderNineGridCover(
+              sources,
+              boardBg?.kind === 'color' ? boardBg.color : '#c9c5b9',
+            );
+            const zip = await createZipBlob([
+              { name: `${stem}-cover.jpg`, blob: cover },
+              { name: `${stem}-motion.${extension}`, blob },
+            ]);
+            downloadBlob(zip, `${stem}-live-bundle.zip`);
+          } else {
+            downloadBlob(blob, `${stem}-nine-grid.${extension}`);
+          }
         } catch (e) {
           if (e instanceof NineGridUnsupportedError) {
             alert(aT('当前浏览器不支持导出该视频,请使用最新版 Chrome 或 Safari。', 'This browser cannot export the video. Please use the latest Chrome or Safari.'));
@@ -4426,6 +4441,7 @@ function EditorBook({
       openNineGrid: openNineGridModal,
       closeNineGrid: closeNineGridModal,
       confirmNineGrid: () => void exportNineGrid(),
+      confirmNineGridLive: () => void exportNineGrid('live'),
       exportSinglePages: () => void exportSinglePages(),
       exportLive: () => void exportLive(),
       openBoardBg: openBoardBgModal,

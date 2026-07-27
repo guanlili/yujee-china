@@ -20,6 +20,13 @@ test('nine-grid video paginates every nine layouts without dropping overflow', (
   assert.match(source, /const LAYOUTS_PER_SCENE = 9;/, 'each motion scene should contain at most nine layouts');
   assert.match(source, /Math\.ceil\(images\.length \/ LAYOUTS_PER_SCENE\)/, 'overflow layouts should create another scene');
   assert.match(source, /sceneCount \* options\.duration/, 'every scene should keep the configured 4.4-second duration');
-  assert.doesNotMatch(source, /imageSources\.slice\(0,/, 'video input should not discard layouts after an old global limit');
+  assert.match(source, /const images = await Promise\.all\(imageSources\.map\(loadImage\)\);/, 'video input should load every layout without an old global limit');
   assert.doesNotMatch(source, /buildSpreads\(editorPages\)\.slice/, 'spread mode should render every book spread');
+});
+
+test('Live bundle cover is a stable, orderly 3 by 3 layout', () => {
+  assert.match(source, /renderNineGridCover\(/, 'a still cover renderer should be exported');
+  assert.match(source, /imageSources\.slice\(0, LAYOUTS_PER_SCENE\)/, 'cover should use the first scene of up to nine layouts');
+  assert.match(source, /const columns = 3;/, 'cover should use three columns');
+  assert.match(source, /drawCard\([\s\S]*?1,\s*1,\s*0,/, 'cover cards should be fully visible, unscaled, and unrotated');
 });

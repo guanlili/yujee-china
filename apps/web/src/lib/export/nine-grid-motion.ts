@@ -222,6 +222,56 @@ function drawCard(
   ctx.restore();
 }
 
+export async function renderNineGridCover(
+  imageSources: string[],
+  background = '#c9c5b9',
+): Promise<Blob> {
+  const images = await Promise.all(imageSources.slice(0, LAYOUTS_PER_SCENE).map(loadImage));
+  if (images.length === 0) throw new Error('no layouts to render');
+  const canvas = document.createElement('canvas');
+  canvas.width = WIDTH;
+  canvas.height = HEIGHTS['3:4'];
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('2d canvas is unavailable');
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const columns = 3;
+  const rows = Math.ceil(images.length / columns);
+  const gapX = 20;
+  const gapY = 22;
+  const cardWidth = 286;
+  const cardHeight = 352;
+  const gridWidth = columns * cardWidth + (columns - 1) * gapX;
+  const gridHeight = rows * cardHeight + (rows - 1) * gapY;
+  const startX = (canvas.width - gridWidth) / 2;
+  const startY = (canvas.height - gridHeight) / 2;
+
+  images.forEach((image, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    drawCard(
+      ctx,
+      image,
+      startX + column * (cardWidth + gapX) + cardWidth / 2,
+      startY + row * (cardHeight + gapY) + cardHeight / 2,
+      cardWidth,
+      cardHeight,
+      1,
+      1,
+      0,
+    );
+  });
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('cover canvas.toBlob returned null'))),
+      'image/jpeg',
+      0.92,
+    );
+  });
+}
+
 function renderFrame(
   canvas: HTMLCanvasElement,
   images: LoadedImage[],

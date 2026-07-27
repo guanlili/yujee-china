@@ -916,6 +916,10 @@
 .editor-port .nine-grid-choice button.selected{
   color:var(--fg); background:var(--surface); box-shadow:0 1px 4px rgba(0,0,0,.1);
 }
+.editor-port .nine-grid-actions{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.editor-port .collage-confirm.secondary{
+  color:var(--fg); background:var(--surface); box-shadow:inset 0 0 0 1px var(--border);
+}
 
 .editor-port .export-progress-card{ width:min(360px,100%); }
 .editor-port .exp-bar{ width:100%; height:8px; border-radius:999px; background:var(--bg); overflow:hidden; }
@@ -978,6 +982,7 @@
   .editor-port .export-sheet, .editor-port .collage-card, .editor-port .export-progress-card{ width:100%; }
   .editor-port .collage-density{ gap:10px; }
   .editor-port .nine-grid-options{ grid-template-columns:1fr; }
+  .editor-port .nine-grid-actions{ grid-template-columns:1fr; }
 }
 
 .editor-port .pick-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
