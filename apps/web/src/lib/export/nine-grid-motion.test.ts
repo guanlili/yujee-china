@@ -30,3 +30,10 @@ test('Live bundle cover is a stable, orderly 3 by 3 layout', () => {
   assert.match(source, /const columns = 3;/, 'cover should use three columns');
   assert.match(source, /drawCard\([\s\S]*?1,\s*1,\s*0,/, 'cover cards should be fully visible, unscaled, and unrotated');
 });
+
+test('mixed single-page and spread cards preserve their own aspect ratios', () => {
+  assert.match(source, /function fitCardSize\(/, 'card sizing should be derived per layout');
+  assert.match(source, /const ratio = clampRatio\(image\.width \/ image\.height\)/, 'each card should use its own source ratio');
+  assert.match(source, /const card = fitCardSize\(image, cellWidth, cellHeight\)/, 'both portrait and landscape cards should fit within neutral grid cells');
+  assert.doesNotMatch(source, /const firstRatio =/, 'the first portrait cover must not force every spread into portrait cards');
+});

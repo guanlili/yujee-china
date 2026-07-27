@@ -222,6 +222,21 @@ function drawCard(
   ctx.restore();
 }
 
+function fitCardSize(
+  image: LoadedImage,
+  maxWidth: number,
+  maxHeight: number,
+): { width: number; height: number } {
+  const ratio = clampRatio(image.width / image.height);
+  let width = maxWidth;
+  let height = width / ratio;
+  if (height > maxHeight) {
+    height = maxHeight;
+    width = height * ratio;
+  }
+  return { width, height };
+}
+
 export async function renderNineGridCover(
   imageSources: string[],
   background = '#c9c5b9',
@@ -240,23 +255,24 @@ export async function renderNineGridCover(
   const rows = Math.ceil(images.length / columns);
   const gapX = 20;
   const gapY = 22;
-  const cardWidth = 286;
-  const cardHeight = 352;
-  const gridWidth = columns * cardWidth + (columns - 1) * gapX;
-  const gridHeight = rows * cardHeight + (rows - 1) * gapY;
+  const cellWidth = 286;
+  const cellHeight = 352;
+  const gridWidth = columns * cellWidth + (columns - 1) * gapX;
+  const gridHeight = rows * cellHeight + (rows - 1) * gapY;
   const startX = (canvas.width - gridWidth) / 2;
   const startY = (canvas.height - gridHeight) / 2;
 
   images.forEach((image, index) => {
     const column = index % columns;
     const row = Math.floor(index / columns);
+    const card = fitCardSize(image, cellWidth, cellHeight);
     drawCard(
       ctx,
       image,
-      startX + column * (cardWidth + gapX) + cardWidth / 2,
-      startY + row * (cardHeight + gapY) + cardHeight / 2,
-      cardWidth,
-      cardHeight,
+      startX + column * (cellWidth + gapX) + cellWidth / 2,
+      startY + row * (cellHeight + gapY) + cellHeight / 2,
+      card.width,
+      card.height,
       1,
       1,
       0,
@@ -309,8 +325,7 @@ function renderFrame(
     return;
   }
 
-  const firstRatio = clampRatio(images[0]!.width / images[0]!.height);
-  const columns = count <= 2 ? count : count <= 4 ? 2 : firstRatio > 1.15 ? 2 : 3;
+  const columns = count <= 2 ? count : count <= 4 ? 2 : 3;
   const rows = Math.ceil(count / columns);
   const gapX = 20;
   const gapY = 22;
@@ -318,14 +333,10 @@ function renderFrame(
     ? (columns === 3 ? 780 : columns === 2 ? 820 : 560)
     : (columns === 3 ? 880 : columns === 2 ? 906 : 734);
   const availableHeight = height * (options.frameStyle === 'framed' ? 0.6875 : 0.792);
-  let cardWidth = (availableWidth - gapX * (columns - 1)) / columns;
-  let cardHeight = cardWidth / firstRatio;
-  if (rows * cardHeight + (rows - 1) * gapY > availableHeight) {
-    cardHeight = (availableHeight - gapY * (rows - 1)) / rows;
-    cardWidth = cardHeight * firstRatio;
-  }
-  const gridWidth = columns * cardWidth + (columns - 1) * gapX;
-  const gridHeight = rows * cardHeight + (rows - 1) * gapY;
+  const cellWidth = (availableWidth - gapX * (columns - 1)) / columns;
+  const cellHeight = (availableHeight - gapY * (rows - 1)) / rows;
+  const gridWidth = columns * cellWidth + (columns - 1) * gapX;
+  const gridHeight = rows * cellHeight + (rows - 1) * gapY;
   const originX = (WIDTH - gridWidth) / 2;
   const originY = (height - gridHeight) / 2;
   const localEnter = Math.min(0.1, options.duration * 0.03);
@@ -342,8 +353,9 @@ function renderFrame(
   images.forEach((image, index) => {
     const row = Math.floor(index / columns);
     const column = index % columns;
-    const x = originX + column * (cardWidth + gapX) + cardWidth / 2;
-    const y = originY + row * (cardHeight + gapY) + cardHeight / 2;
+    const x = originX + column * (cellWidth + gapX) + cellWidth / 2;
+    const y = originY + row * (cellHeight + gapY) + cellHeight / 2;
+    const card = fitCardSize(image, cellWidth, cellHeight);
     const enter = clamp01((seconds - index * enterStagger) / localEnter);
     const exit = clamp01((seconds - exitStart - index * exitStagger) / localExit);
     const opacity = easeInOut(enter) * (1 - easeInOut(exit));
@@ -360,7 +372,7 @@ function renderFrame(
         groupProgress * Math.PI * 2 * SWING_CYCLES[index % SWING_CYCLES.length]!
         + SWING_PHASES[index % SWING_PHASES.length]!,
       );
-    drawCard(ctx, image, x, y, cardWidth, cardHeight, opacity, scale, groupActive ? groupSwing : localSwing);
+    drawCard(ctx, image, x, y, card.width, card.height, opacity, scale, groupActive ? groupSwing : localSwing);
   });
   ctx.restore();
 }
