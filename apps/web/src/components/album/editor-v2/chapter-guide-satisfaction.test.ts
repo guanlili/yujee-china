@@ -112,6 +112,23 @@ test('interview history is fully reconstructable: separate bubbles + chapter car
   );
 });
 
+test('对话面板载入:历史请求与 storyGate 并行发,不再串成一条', () => {
+  const src = readFileSync(join(here, 'ChatPanel.tsx'), 'utf8');
+  // 渲染顺序仍然是 storyGate → loadHistory(章节卡片重建依赖 chapterMetaById),
+  // 但**请求**不该跟着串:原先 loadStoryGate().then(() => loadHistory()) 要等
+  // story-progress 整个回来才开始取消息,两个往返耗时相加,面板就空在那儿。
+  const sites = src.match(/void loadStoryGate\(\)\.then\(\(\) => loadHistory\(\)\)/g) ?? [];
+  assert.ok(sites.length > 0, 'loadStoryGate → loadHistory 的渲染顺序应当保留');
+  for (const m of src.matchAll(/void loadStoryGate\(\)\.then\(\(\) => loadHistory\(\)\)/g)) {
+    const before = src.slice(Math.max(0, m.index - 200), m.index);
+    assert.match(
+      before,
+      /void primeHistoryFetch\(\);/,
+      '每个 loadStoryGate→loadHistory 站点前都要先把历史请求发出去,否则又串回去了',
+    );
+  }
+});
+
 test('history replay is idempotent across StrictMode mount replays', () => {
   const src = source('EditorPort.tsx');
   const lh = /async function loadHistory\(\): Promise<number> \{[\s\S]*?\n {4}\}/.exec(src);
@@ -132,10 +149,23 @@ test('history replay is idempotent across StrictMode mount replays', () => {
     /const replaySeq = \+\+historyReplaySeqRef\.current;/,
     'each loadHistory run must claim a new replay sequence',
   );
+  // 去重那一句搬进了 primeHistoryFetch(把「发请求」与 storyGate 并行、只让「渲染」
+  // 继续等它 —— 原先串行,两个网络往返耗时相加,面板载入明显发慢)。守的东西不变:
+  // 跨 StrictMode 重挂必须复用同一个在飞请求,且 loadHistory 必须走它、不许自己再发一次。
+  assert.match(
+    src,
+    /function primeHistoryFetch\(\)[\s\S]{0,400}?historyFetchPromiseRef\.current \?\?=/,
+    'the in-flight history fetch must still be deduped at component scope',
+  );
   assert.match(
     lh![0],
-    /historyFetchPromiseRef\.current \?\?=/,
-    'loadHistory must reuse an in-flight history fetch across effect replays',
+    /await primeHistoryFetch\(\)/,
+    'loadHistory must consume the shared in-flight fetch, not issue its own',
+  );
+  assert.doesNotMatch(
+    lh![0],
+    /fetch\(`\/api\/v1\/albums/,
+    'loadHistory 不许自己再发一次历史请求(那会绕过去重)',
   );
   assert.match(
     lh![0],

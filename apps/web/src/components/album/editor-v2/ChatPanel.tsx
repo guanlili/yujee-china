@@ -339,27 +339,39 @@ export function ChatPanel({
       };
       return set.coverTemplateId || set.endingTemplateId ? set : null;
     }
+    /** 只把历史消息**请求**发出去(顺带排好序),不碰 DOM。
+     *
+     *  渲染必须等 storyGate —— 历史回放要按 chapterMetaById 补插章节卡片。但「等它」
+     *  指的是等**渲染**,不是等**请求**:原先写成 loadStoryGate().then(() => loadHistory()),
+     *  两个网络往返被串成了一条,面板要等 story-progress 回来才开始取消息,耗时直接相加
+     *  (dev 上首次编译时两边各好几秒,面板就空在那儿)。
+     *  这里把请求提前发出去与 storyGate 并行跑,loadHistory 里 ??= 会直接拿到同一个
+     *  promise —— 渲染顺序一点没变,省掉的是纯等待。 */
+    function primeHistoryFetch(): Promise<HistoryMessage[]> {
+      historyFetchPromiseRef.current ??= fetch(`/api/v1/albums/${albumId}/messages?limit=50`)
+        .then(async (res) => {
+          const j = await res.json();
+          if (!j?.ok) return [];
+          const msgs = (j.data?.messages ?? []) as HistoryMessage[];
+          // 按追加序 seq 回放(写入顺序 = 用户操作顺序);seq 缺省时退回 createdAt。
+          msgs.sort((a, b) =>
+            a.seq != null && b.seq != null
+              ? a.seq - b.seq
+              : String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')),
+          );
+          return msgs;
+        })
+        .catch(() => {
+          historyFetchPromiseRef.current = null;
+          return [];
+        });
+      return historyFetchPromiseRef.current;
+    }
+
     async function loadHistory(): Promise<number> {
       const replaySeq = ++historyReplaySeqRef.current;
       try {
-        historyFetchPromiseRef.current ??= fetch(`/api/v1/albums/${albumId}/messages?limit=50`)
-          .then(async (res) => {
-            const j = await res.json();
-            if (!j?.ok) return [];
-            const msgs = (j.data?.messages ?? []) as HistoryMessage[];
-            // 按追加序 seq 回放(写入顺序 = 用户操作顺序);seq 缺省时退回 createdAt。
-            msgs.sort((a, b) =>
-              a.seq != null && b.seq != null
-                ? a.seq - b.seq
-                : String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')),
-            );
-            return msgs;
-          })
-          .catch(() => {
-            historyFetchPromiseRef.current = null;
-            return [];
-          });
-        const msgs = await historyFetchPromiseRef.current;
+        const msgs = await primeHistoryFetch();
         if (disposed || replaySeq !== historyReplaySeqRef.current) return 0;
         chatBody?.querySelectorAll('[data-history-replay]').forEach((n) => n.remove());
         historyHadCoverRecap = false;
@@ -2283,6 +2295,7 @@ export function ChatPanel({
       restAwait();
       // 先 loadStoryGate 再 loadHistory:历史重建要补插章节卡片(appendChapterCard 依赖
       // chapterMetaById→storyGate/draftSkel);storyGate 未就绪时卡片会插不出来。
+      void primeHistoryFetch(); // 与 storyGate 并行取,渲染仍等 storyGate(见上)
       void loadStoryGate().then(() => loadHistory()).then((shown) => {
         if (disposed) return;
         restAwait();
@@ -2293,6 +2306,7 @@ export function ChatPanel({
       $('.authoring-finish-bar')?.remove();
       setChatState(3);
       updateAuthInputPlaceholder();
+      void primeHistoryFetch(); // 与 storyGate 并行取,渲染仍等 storyGate(见上)
       void loadStoryGate().then(() => loadHistory()).then((shown) => {
         // dev 双挂载/快速路由切换:被清理实例的异步链在这之后还会 resolve,
         // 不拦会把回执卡/导出卡追加到新实例的 DOM 里(实测出现重复卡)。
