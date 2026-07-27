@@ -33,7 +33,9 @@ const SWING_CYCLES = [4.65, 5.05, 4.8, 5.25, 4.7, 5.12, 4.9, 5.2, 4.75, 5, 4.85,
 const SWING_PHASES = [-0.16, 0.09, 0.2, -0.08, 0.13, -0.19, 0.05, 0.18, -0.12, 0.02, -0.06, 0.15];
 const SWING_AMPLITUDES = [0.94, 1.05, 0.98, 1.08, 0.92, 1.02, 1, 0.96, 1.06, 0.95, 1.03, 0.99];
 const LAYOUTS_PER_SCENE = 9;
-const COVER_HOLD_SECONDS = 0.8;
+// 视频容器没有跨平台通用的独立 poster 字段。仅保留约一帧完整画面供系统抓缩略图，
+// 播放时不形成用户可感知的封面停留。
+const COVER_FRAME_SECONDS = 1 / 30;
 
 export class NineGridUnsupportedError extends Error {
   constructor() {
@@ -430,14 +432,14 @@ export async function renderNineGridVideo(
     recorder.start(100);
     const startedAt = performance.now();
     const sceneCount = Math.ceil(images.length / LAYOUTS_PER_SCENE);
-    const totalDuration = COVER_HOLD_SECONDS + sceneCount * options.duration;
+    const totalDuration = COVER_FRAME_SECONDS + sceneCount * options.duration;
     const totalFrames = Math.ceil(totalDuration * options.fps);
     const tick = (now: number) => {
       const seconds = Math.min(totalDuration, (now - startedAt) / 1000);
-      if (seconds < COVER_HOLD_SECONDS) {
+      if (seconds < COVER_FRAME_SECONDS) {
         renderCoverFrame(canvas, images.slice(0, LAYOUTS_PER_SCENE), options.background);
       } else {
-        const motionSeconds = seconds - COVER_HOLD_SECONDS;
+        const motionSeconds = seconds - COVER_FRAME_SECONDS;
         const sceneIndex = Math.min(sceneCount - 1, Math.floor(motionSeconds / options.duration));
         const sceneSeconds = sceneIndex === sceneCount - 1 && seconds === totalDuration
           ? options.duration

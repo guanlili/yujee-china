@@ -39,7 +39,7 @@ test('mixed single-page and spread cards preserve their own aspect ratios', () =
 });
 
 test('video starts with a complete still cover before motion begins', () => {
-  assert.match(source, /const COVER_HOLD_SECONDS = 0\.8;/, 'video cover should remain visible long enough for thumbnail extraction');
-  assert.match(source, /if \(seconds < COVER_HOLD_SECONDS\) \{\s*renderCoverFrame\(/, 'the first recorded frames should paint the complete cover');
-  assert.match(source, /COVER_HOLD_SECONDS \+ sceneCount \* options\.duration/, 'cover hold should not shorten any motion scene');
+  assert.match(source, /const COVER_FRAME_SECONDS = 1 \/ 30;/, 'video cover should last only one frame instead of appearing as a scene');
+  assert.match(source, /if \(seconds < COVER_FRAME_SECONDS\) \{\s*renderCoverFrame\(/, 'the first recorded frame should still provide a thumbnail');
+  assert.match(source, /COVER_FRAME_SECONDS \+ sceneCount \* options\.duration/, 'thumbnail frame should not shorten any motion scene');
 });
