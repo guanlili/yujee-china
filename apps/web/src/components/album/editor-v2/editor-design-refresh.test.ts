@@ -148,6 +148,8 @@ test('nine-grid export modal actions are wired inside the modal scope', () => {
   assert.doesNotMatch(editorPort, /data-nine-grid-frame=/, 'fixed full-bleed output should not expose a frame control');
   assert.match(editorPort, /renderNineGridLayoutSources\([\s\S]*?nineGridLayout/, 'video sources should come from the rendered book layouts');
   assert.match(editorPort, /aspect: '3:4',\s*frameStyle: 'full'/, 'nine-grid output should stay fixed at 3:4 full bleed');
+  assert.match(editorPort, /columns: nineGridLayout === 'spread' \? 2 : 3/, 'spread mode should use two cards per row');
+  assert.match(editorPort, /layoutsPerScene: nineGridLayout === 'spread' \? 8 : 9/, 'spread mode should cap each scene at eight cards');
   assert.match(editorPort, /data-action="confirmNineGridLive"/, 'nine-grid modal should offer a Live bundle');
   assert.match(editorPort, /renderNineGridCover\(/, 'Live bundle should include a generated still cover');
   assert.match(editorPort, /createZipBlob\(/, 'Live cover and motion should download as one bundle');

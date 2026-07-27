@@ -18,6 +18,8 @@ export interface NineGridMotionOptions {
   background: string;
   duration: number;
   fps: number;
+  columns: number;
+  layoutsPerScene: number;
   onProgress?: (done: number, total: number) => void;
 }
 
@@ -242,14 +244,17 @@ function fitCardSize(
 
 export async function renderNineGridCover(
   imageSources: string[],
-  background = '#c9c5b9',
+  partial: { background?: string; columns?: number; maxLayouts?: number } = {},
 ): Promise<Blob> {
-  const images = await Promise.all(imageSources.slice(0, LAYOUTS_PER_SCENE).map(loadImage));
+  const background = partial.background ?? '#c9c5b9';
+  const columns = partial.columns ?? 3;
+  const maxLayouts = partial.maxLayouts ?? LAYOUTS_PER_SCENE;
+  const images = await Promise.all(imageSources.slice(0, maxLayouts).map(loadImage));
   if (images.length === 0) throw new Error('no layouts to render');
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;
   canvas.height = HEIGHTS['3:4'];
-  renderCoverFrame(canvas, images, background);
+  renderCoverFrame(canvas, images, background, columns);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -264,18 +269,20 @@ function renderCoverFrame(
   canvas: HTMLCanvasElement,
   images: LoadedImage[],
   background: string,
+  columns: number,
 ): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('2d canvas is unavailable');
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const columns = 3;
   const rows = Math.ceil(images.length / columns);
   const gapX = 20;
   const gapY = 22;
-  const cellWidth = 286;
-  const cellHeight = 352;
+  const availableWidth = 900;
+  const availableHeight = 1100;
+  const cellWidth = (availableWidth - gapX * (columns - 1)) / columns;
+  const cellHeight = (availableHeight - gapY * (rows - 1)) / rows;
   const gridWidth = columns * cellWidth + (columns - 1) * gapX;
   const gridHeight = rows * cellHeight + (rows - 1) * gapY;
   const startX = (canvas.width - gridWidth) / 2;
@@ -336,7 +343,7 @@ function renderFrame(
     return;
   }
 
-  const columns = count <= 2 ? count : count <= 4 ? 2 : 3;
+  const columns = Math.min(options.columns, count);
   const rows = Math.ceil(count / columns);
   const gapX = 20;
   const gapY = 22;
@@ -401,6 +408,8 @@ export async function renderNineGridVideo(
     background: '#c9c5b9',
     duration: 4.4,
     fps: 30,
+    columns: 3,
+    layoutsPerScene: LAYOUTS_PER_SCENE,
     ...partial,
   };
   const images = await Promise.all(imageSources.map(loadImage));
@@ -431,13 +440,18 @@ export async function renderNineGridVideo(
     };
     recorder.start(100);
     const startedAt = performance.now();
-    const sceneCount = Math.ceil(images.length / LAYOUTS_PER_SCENE);
+    const sceneCount = Math.ceil(images.length / options.layoutsPerScene);
     const totalDuration = COVER_FRAME_SECONDS + sceneCount * options.duration;
     const totalFrames = Math.ceil(totalDuration * options.fps);
     const tick = (now: number) => {
       const seconds = Math.min(totalDuration, (now - startedAt) / 1000);
       if (seconds < COVER_FRAME_SECONDS) {
-        renderCoverFrame(canvas, images.slice(0, LAYOUTS_PER_SCENE), options.background);
+        renderCoverFrame(
+          canvas,
+          images.slice(0, options.layoutsPerScene),
+          options.background,
+          options.columns,
+        );
       } else {
         const motionSeconds = seconds - COVER_FRAME_SECONDS;
         const sceneIndex = Math.min(sceneCount - 1, Math.floor(motionSeconds / options.duration));
@@ -445,8 +459,8 @@ export async function renderNineGridVideo(
           ? options.duration
           : motionSeconds - sceneIndex * options.duration;
         const sceneImages = images.slice(
-          sceneIndex * LAYOUTS_PER_SCENE,
-          (sceneIndex + 1) * LAYOUTS_PER_SCENE,
+          sceneIndex * options.layoutsPerScene,
+          (sceneIndex + 1) * options.layoutsPerScene,
         );
         renderFrame(canvas, sceneImages, sceneSeconds, options);
       }

@@ -765,7 +765,7 @@ function EditorModals({ locale }: { locale: Locale }) {
           </button>
           <div className="px-6 pt-6">
             <h3 id="nineGridTitle" className="font-display text-[18px] font-bold">{zh ? '图钉九宫格' : 'Pinned photo grid'}</h3>
-            <p className="text-[13px] text-muted mt-1.5">{zh ? '按书中顺序排列,每组最多 9 个画面,每组播放 4.4 秒。' : 'Uses up to 9 layouts per scene in book order. Each scene plays for 4.4 seconds.'}</p>
+            <p className="text-[13px] text-muted mt-1.5">{zh ? '单页每组最多 9 张;对页每组最多 8 张。每组播放 4.4 秒。' : 'Up to 9 single pages or 8 spreads per scene. Each scene plays for 4.4 seconds.'}</p>
           </div>
           <div className="nine-grid-options px-6 pt-5">
             <fieldset>
@@ -3940,6 +3940,8 @@ function EditorBook({
             aspect: '3:4',
             frameStyle: 'full',
             background: boardBg?.kind === 'color' ? boardBg.color : '#c9c5b9',
+            columns: nineGridLayout === 'spread' ? 2 : 3,
+            layoutsPerScene: nineGridLayout === 'spread' ? 8 : 9,
             onProgress: setExportProgress,
           });
           const { createZipBlob, downloadBlob, safeFileStem } = await import('@/lib/export/download');
@@ -3948,7 +3950,11 @@ function EditorBook({
           if (bundle === 'live') {
             const cover = await renderNineGridCover(
               sources,
-              boardBg?.kind === 'color' ? boardBg.color : '#c9c5b9',
+              {
+                background: boardBg?.kind === 'color' ? boardBg.color : '#c9c5b9',
+                columns: nineGridLayout === 'spread' ? 2 : 3,
+                maxLayouts: nineGridLayout === 'spread' ? 8 : 9,
+              },
             );
             const zip = await createZipBlob([
               { name: `${stem}-cover.jpg`, blob: cover },
