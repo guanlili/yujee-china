@@ -1137,6 +1137,7 @@ function EditorBook({
       add(byId('exportMenuModal'));
       add(byId('shareLinkModal'));
       add(byId('collageModal'));
+      add(byId('nineGridModal'));
       add(byId('boardBgModal'));
       return out;
     };

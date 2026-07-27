@@ -139,6 +139,11 @@ test('chat collapse button is clickable inside the draggable header', () => {
   );
 });
 
+test('nine-grid export modal actions are wired inside the modal scope', () => {
+  assert.match(editorPort, /add\(byId\('nineGridModal'\)\)/, 'nine-grid modal must be included when binding data-action controls');
+  assert.match(editorPort, /confirmNineGrid:\s*\(\) => void exportNineGrid\(\)/, 'export button must invoke the nine-grid exporter');
+});
+
 test('editor motion and toolbar controls are functional, not empty chrome', () => {
   assert.match(chatPanel, /function resetForViewport\(\) \{\s*if \(!desktop\(\)\) resetChatPos\(\);/s, 'desktop drag inline styles should clear when resizing to mobile');
   assert.match(chatPanel, /window\.addEventListener\('resize', resetForViewport\)/, 'chat motion should observe viewport changes');
