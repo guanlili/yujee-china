@@ -1176,13 +1176,22 @@
 }
 .editor-port .img-edit-hint{ color:var(--muted); }
 .editor-port .img-edit-zoom{ width:96px; accent-color:var(--accent); cursor:pointer; }
-.editor-port .img-edit-reset{
+/* 浮层里的三枚按钮(换图 / 复位 / 删除)共用一套胶囊样式;删除单独走危险色,
+   免得和「复位」看着一样、点错就把图清了。 */
+.editor-port .img-edit-reset,
+.editor-port .img-edit-swap,
+.editor-port .img-edit-del{
   border:1px solid var(--border-soft); background:var(--bg);
   color:var(--fg); border-radius:9999px; padding:3px 10px;
   font-size:12px; cursor:pointer;
-  transition:background var(--motion-fast) var(--ease);
+  transition:background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
 }
-.editor-port .img-edit-reset:hover{ background:var(--border-soft); }
+.editor-port .img-edit-reset:hover,
+.editor-port .img-edit-swap:hover{ background:var(--border-soft); }
+/* #c44 与移动端 .mimg-btn[data-danger] 同一枚(--danger 那个 token 是灰阶的,
+   当错误色不可读,见 #2053 附近同样的绕行)。 */
+.editor-port .img-edit-del{ color:#c44; }
+.editor-port .img-edit-del:hover{ background:#fef2f2; color:#c44; }
 
 /* ─── ③ palette-card (主题/配色选择,对话流内,缺口#20 / Stage4) ───
    Stage4: one row per book theme option; applying a row expands that option into
@@ -1816,10 +1825,13 @@
   /* AI 对话 = 标准移动弹窗,放最顶层(#304 用户反馈):底部 sheet,底边钉死、高度可拖,
      z-index 高于编辑器全部移动 chrome(mc-l1/mc-ai-fab/mc-dens 等 z95-100、mes z140),
      打开时它们不再戳在对话上面。展开时铺一层半透明遮罩(::before)压暗背后画布,
-     像原生 App 的 bottom sheet。默认 ~46vh,最高 90vh,最低 150px。 */
+     像原生 App 的 bottom sheet。默认 75vh,最高 90vh,最低 150px。
+     默认从 46vh 提到 75vh:选封面卡(cv-pick-card,四套竖排 + 卡头两行说明)挂在这栏里,
+     46vh 装不下,得先拖高才看得全 —— 而那一步是**必选、不能跳过**的。桌面那份仍是
+     46vh(上面 min-width:768px 的规则),两栏并排时对话不该吃掉大半屏。 */
   .editor-port .pane-chat-col{
     position:fixed; left:10px; right:10px; bottom:10px;
-    width:auto !important; height:46vh; max-height:90vh; min-height:150px;
+    width:auto !important; height:75vh; max-height:90vh; min-height:150px;
     z-index:300; padding:0; display:flex;
     transition:height var(--motion-base) var(--ease);
   }

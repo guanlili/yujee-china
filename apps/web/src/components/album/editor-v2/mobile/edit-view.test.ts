@@ -46,6 +46,8 @@ function render(
       onSelectText: noop, onSelectImage: noop, onClearSelection: noop,
       imagePos: null,
       onImagePos: noop, onImagePosCommit: noop,
+      onSave: noop, backupState: 'idle' as const, backupProgress: null,
+      onReplaceImage: noop, onClearImage: noop, onResetImagePos: noop,
       onShare: noop, onExport: noop, onMore: noop, onOpenChat: noop,
       onPageBg: noop, onPickImage: noop, onPickText: noop, onDeletePage: noop,
     }),

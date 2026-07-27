@@ -69,7 +69,19 @@ export function patchHtmlText(html: string, slotId: string, value: string): stri
 // 编辑器(本地即时同步)与 albumService.updatePage(落库)共用的唯一实现。
 
 const STYLE_PROP_RE = /^[a-z-]+$/;
-const STYLE_VALUE_BAN = /[;{}<>"]/; // 允许单引号:font-family 栈里的 'Segoe UI' 等多词字体名需要它
+// `;{}<>` 能截断 CSS 声明或开新标签,转义兜不住,一律拒。**双引号不在此列**:
+// WEB_FONTS 每条字体栈都是双引号形态(constants.ts serifCn = '"Noto Serif SC", …'),
+// 拒掉它等于选字体必失败 —— 而调用方对 null 的兜底是「放弃整页 html 真相」,于是那一页
+// 回落模板重烘、改动不上屏,且这页 html 没了之后连改颜色/字号也一起预览不出来。
+// 写入时统一实体化成 &quot;(存库 html 本来就是这个形态),值就逃不出 style 属性。
+const STYLE_VALUE_BAN = /[;{}<>]/;
+
+/** 写进 style="" 的值:双引号必须实体化,否则裸 `"` 会提前闭合属性、撑开标签结构。
+ *  只对新传入的值做 —— 从已有 html 解析出的声明本来就已是实体形态,二次转义会变成
+ *  &amp;quot; 把字体栈写坏。 */
+function escapeStyleValue(value: string): string {
+  return value.replace(/"/g, '&quot;');
+}
 
 // 存库 html 的 style 属性值里,字体名的 `"` 被转义成了 HTML 实体 `&quot;`(否则和属性
 // 外层引号冲突)。而实体末尾的 `;` 不是 CSS 声明分隔符 —— 直接 split(';') 会把
@@ -97,7 +109,7 @@ function upsertStyleAttr(openTag: string, props: Record<string, string | null>):
   }
   for (const [prop, value] of Object.entries(props)) {
     if (value === null) decls.delete(prop);
-    else decls.set(prop, value);
+    else decls.set(prop, escapeStyleValue(value));
   }
   const nextStyle = [...decls.entries()].map(([k, v]) => `${k}:${v}`).join(';');
   if (styleMatch) return openTag.replace(styleMatch[0], `style="${nextStyle}"`);

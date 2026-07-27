@@ -105,6 +105,27 @@ export function IconTrash({ className }: IconProps) {
   );
 }
 
+/** 顶栏「保存」= 备份照片到云端。图形取自桌面 save-btn 的同一个软盘,不自创。 */
+export function IconSave({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+      <polyline points="17 21 17 13 7 13 7 21" />
+      <polyline points="7 3 7 8 15 8" />
+    </svg>
+  );
+}
+
+/** 图片工具栏的「复位」:回到居中、不放大 */
+export function IconReset({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <polyline points="3 4 3 9 8 9" />
+    </svg>
+  );
+}
+
 /** AI 气泡里的星芒(设计稿:不是通用聊天气泡) */
 export function IconSparkle({ className }: IconProps) {
   return (

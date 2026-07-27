@@ -5,7 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
 import {
+  applyImageClear,
   applyImagePos,
+  applyImageSwap,
+  imagesPatchBody,
   applyPageBg,
   applyTextEdit,
   matchFontId,
@@ -144,6 +147,91 @@ test('applyTextEdit:改样式写进那个槽的行内 style,不碰别的槽', ()
   assert.deepEqual(props, { 'font-size': '40px' });
   assert.match(String(next.htmlJson), /font-size:40px/);
   assert.match(String(next.htmlJson), /data-image-slot="p1"/, '图片槽必须原样留着');
+});
+
+// ── 换图 / 清空图槽 ─────────────────────────────────────────────────────────
+
+test('applyImageSwap:只改数据层,html 的 IMG_SRC token 一个字不动', () => {
+  const before = page();
+  const next = applyImageSwap(before, 'p1', 'photo-9');
+  assert.equal(next.imagesJson.p1, 'photo-9');
+  assert.equal(next.htmlJson, before.htmlJson, 'html 不该被碰 —— token 靠 images 现查现解析');
+  assert.match(String(next.htmlJson), /\{\{IMG_SRC:p1\}\}/, 'token 必须原样留着');
+  assert.notEqual(next.imagesJson, before.imagesJson, '不许原地改 base(预览要能取消还原)');
+  assert.equal(before.imagesJson.p1, 'photo-1', 'base 必须没被改');
+});
+
+test('applyImageSwap:换图保留该槽的位置/缩放(换的是内容不是版面)', () => {
+  const withPos = { ...page(), imagePosJson: { p1: { x: 10, y: -5, scale: 1.4 } } };
+  const next = applyImageSwap(withPos, 'p1', 'photo-9');
+  assert.deepEqual(next.imagePosJson?.p1, { x: 10, y: -5, scale: 1.4 });
+});
+
+test('applyImageClear:删掉 key 而不是置空串(空串会在数据里留假记录)', () => {
+  const next = applyImageClear(page(), 'p1');
+  assert.equal('p1' in next.imagesJson, false, '必须删 key');
+  assert.equal(next.imagesJson.p1, undefined);
+});
+
+test('applyImageClear:版式不变 —— html 与 token 原样保留,框还占着位', () => {
+  const before = page();
+  const next = applyImageClear(before, 'p1');
+  assert.equal(next.htmlJson, before.htmlJson);
+  assert.match(String(next.htmlJson), /\{\{IMG_SRC:p1\}\}/, '槽还在,以后放张图回去就复原');
+});
+
+test('applyImageClear:连该槽的位置/缩放一起抹掉(否则新图会继承上一张的平移)', () => {
+  const withPos = { ...page(), imagePosJson: { p1: { x: 10, y: -5, scale: 1.4 }, p2: { x: 1, y: 2, scale: 1 } } };
+  const next = applyImageClear(withPos, 'p1');
+  assert.equal(next.imagePosJson?.p1, undefined, 'p1 的位置要一起清');
+  assert.deepEqual(next.imagePosJson?.p2, { x: 1, y: 2, scale: 1 }, '别的槽不许动');
+});
+
+test('applyImageClear:不动别的图槽', () => {
+  const two = { ...page(), imagesJson: { p1: 'photo-1', p2: 'photo-2' } };
+  const next = applyImageClear(two, 'p1');
+  assert.deepEqual(next.imagesJson, { p2: 'photo-2' });
+});
+
+test('imagesPatchBody:发全量 imagesJson(服务端整体替换,单键会把别的槽抹掉)', () => {
+  const two = { ...page(), imagesJson: { p1: 'photo-1', p2: 'photo-2' } };
+  const body = imagesPatchBody(applyImageSwap(two, 'p1', 'photo-9'));
+  assert.deepEqual(body.imagesJson, { p1: 'photo-9', p2: 'photo-2' });
+  assert.ok('imagePosJson' in body, '位置要一起发 —— 清空时靠它把那槽的位置抹掉');
+});
+
+test('imagesPatchBody:清空后发出去的全量里确实没有那个 key', () => {
+  const two = { ...page(), imagesJson: { p1: 'photo-1', p2: 'photo-2' } };
+  const body = imagesPatchBody(applyImageClear(two, 'p1'));
+  assert.deepEqual(body.imagesJson, { p2: 'photo-2' });
+});
+
+test('applyTextEdit:换字体后 htmlJson 必须还在(丢了就等于预览全废)', () => {
+  // 回归 #304:字体栈是双引号形态,曾被 patcher 的注入护栏判为非法 → 返回 null →
+  // patched() 把 htmlJson 置 undefined。后果不只是「字体不上屏」:这一页 html 真相
+  // 一丢,下次开面板 draftBase.htmlJson 已是 undefined,改颜色/字号也全预览不出来,
+  // 用户看到的就是「颜色、字体全都不可用,只有刷新才显示」。
+  const base = probeToState(PROBE);
+  for (const f of EDITOR_FONTS) {
+    const { page: next, props } = applyTextEdit(page(), 'title', { ...base, fontId: f.id }, base);
+    assert.equal(props['font-family'], f.stack);
+    assert.equal(typeof next.htmlJson, 'string', `字体 ${f.id} 让 htmlJson 变成了 ${typeof next.htmlJson}`);
+    // 字体栈以实体形态落在那个槽上,且裸双引号不许出现(会截断 style 属性)。
+    assert.doesNotMatch(String(next.htmlJson), /style="[^"]*font-family:"/);
+    assert.match(String(next.htmlJson), /data-text-key="title"[^>]*font-family:/);
+  }
+});
+
+test('applyTextEdit:换字体后再改颜色/字号仍能继续打补丁(级联不失效)', () => {
+  const base = probeToState(PROBE);
+  const f = EDITOR_FONTS[0]!;
+  const afterFont = applyTextEdit(page(), 'title', { ...base, fontId: f.id }, base).page;
+  assert.equal(typeof afterFont.htmlJson, 'string');
+  // 把「换过字体的那一页」当成新的 base(等价于关掉面板再打开),继续改颜色。
+  const afterColor = applyTextEdit(afterFont, 'title', { ...base, color: '#13b8a6' }, base).page;
+  assert.equal(typeof afterColor.htmlJson, 'string', '第二次改动不该丢 html');
+  assert.match(String(afterColor.htmlJson), /color:#13b8a6/);
+  assert.match(String(afterColor.htmlJson), /font-family:&quot;/, '字体栈要保住');
 });
 
 test('applyTextEdit:文字被转义,html 不可注入', () => {

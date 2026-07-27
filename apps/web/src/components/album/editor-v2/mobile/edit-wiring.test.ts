@@ -34,10 +34,12 @@ const code = (...p: string[]) =>
 test('移动端挂在 authoring(书住在草稿里)—— 不是只挂在 layoutJson 落地的遗留分支上', () => {
   const port = read('..', 'EditorPort.tsx');
   assert.match(port, /import \{ MobileEditorRoot \}/, 'EditorAuthoring 必须能挂移动端');
-  // EditorAuthoring 里那句分流:拿的是草稿 skeleton 出来的 pages(带 htmlJson)
+  // EditorAuthoring 里那句分流:拿的是草稿 skeleton 出来的 pages(带 htmlJson)。
+  // 判据本身已抽到 design-gate-util(还要求「已选过封面组」,否则留在 ChatPanel 选主题),
+  // 这里只管它仍挂在 authoring 且交出去的是草稿 pages —— 条件怎么算由那边的单测盯。
   assert.match(
     port,
-    /device === 'mobile' && pages\.length > 0[\s\S]{0,200}<MobileEditorRoot[\s\S]{0,120}pages=\{pages\}/,
+    /shouldMountMobileEditor\(device, pages\)[\s\S]{0,320}<MobileEditorRoot[\s\S]{0,120}pages=\{pages\}/,
     'authoring 分支必须把草稿 pages(带 htmlJson = 页面真相)交给移动端',
   );
 });

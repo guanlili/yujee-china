@@ -31,7 +31,11 @@ import { isSpreadTemplate } from '../../templates/constants';
 import type { ResolveImage } from '../../adapt-layout';
 import { fitBox, spreadAspect } from './fit-box';
 import { MobileTopbar } from './MobileTopbar';
-import { IconPageBg, IconImage, IconText, IconTrash } from './icons';
+import { IconPageBg, IconImage, IconText, IconTrash, IconReset } from './icons';
+
+/** 图片工具栏的高度与离图的间距 —— 用来判断挂图下方还是翻到上方(与 CSS 保持一致)。 */
+const IMG_BAR_H = 40;
+const IMG_BAR_GAP = 8;
 import type { ComputedProbe, SelRect } from './page-edit';
 import { clampImagePos, dragToImagePos, type ImagePosValue } from '../image-edit-util';
 
@@ -61,15 +65,25 @@ export type EditViewProps = {
   onStep: (dir: 1 | -1) => void;
   /** 点中文字槽。 */
   onSelectText: (hit: TextHit) => void;
-  /** 点中图片槽 → 选中它并开图片面板。 */
+  /** 点中图片槽 → 选中它(缩放/平移直接用手势,不开面板)。 */
   onSelectImage: (hit: ImageHit) => void;
   /** 拖动/捏合过程中的实时位置(父层即时打进书,不落库)。 */
   onImagePos: (pos: ImagePosValue) => void;
   /** 手指离开 = 一次调整结束(父层落库,与桌面「松手即存」同口径)。 */
   onImagePosCommit: () => void;
+  /** 图片工具栏:换一张(开本册照片选择器)。 */
+  onReplaceImage: () => void;
+  /** 图片工具栏:清空这个图槽(版式不变,框还在)。 */
+  onClearImage: () => void;
+  /** 图片工具栏:位置/缩放复位。 */
+  onResetImagePos: () => void;
   /** 点页面空白处:取消选中。 */
   onClearSelection: () => void;
   /** 交互 handler 一律必填(理由同 MobileEditor):漏接 = 死按钮 = 编译不过。 */
+  /** 顶栏「保存」= 备份照片到云端(同桌面那枚),透传给 MobileTopbar。 */
+  onSave: () => void;
+  backupState: 'idle' | 'backing-up' | 'backed-up' | 'failed';
+  backupProgress: { done: number; total: number } | null;
   onShare: () => void;
   onExport: () => void;
   onMore: () => void;
@@ -106,7 +120,13 @@ export function EditView({
   onSelectImage,
   onImagePos,
   onImagePosCommit,
+  onReplaceImage,
+  onClearImage,
+  onResetImagePos,
   onClearSelection,
+  onSave,
+  backupState,
+  backupProgress,
   onShare,
   onExport,
   onMore,
@@ -247,11 +267,15 @@ export function EditView({
    * 图片面板开着 = 现在整块画板都在为「挪这张图」服务:随便从哪儿拖都是平移,双指就是缩放。
    *
    * 为什么不做成「必须精确拖在那张图上」:模板经常在图上叠装饰层(边框/色块/文字),
-   * 真机上手指落点十有八九命中的是装饰而不是图槽,表现为「选得中、拖不动」;面板升起时
-   * 书还会整体上移,更难对准。面板已经开着、选中框也画着,意图没有歧义,不必再赌落点。
+   * 真机上手指落点十有八九命中的是装饰而不是图槽,表现为「选得中、拖不动」。
+   * 选中框已经画着,意图没有歧义,不必再赌落点。
    * 代价是这期间横滑不翻页 —— 正在编这张图,本来也不该翻页。
+   *
+   * 判据只看 imagePos:Root 传下来的就是 `selection.kind === 'image' ? imagePos : null`,
+   * 非空即「当前选中的是图槽」。**不要再 && sheetOpen** —— 缩放/平移已经改成直接在画布上
+   * 捏合拖动、不开弹窗了(换图/删除走选中框旁的小工具栏),再挂着弹窗条件就等于手势永远不生效。
    */
-  const imageEditing = imagePos != null && sheetOpen;
+  const imageEditing = imagePos != null;
 
   const twoFingerDist = (): number => {
     const [a, b] = [...pointers.current.values()];
@@ -394,6 +418,9 @@ export function EditView({
         zh={zh}
         onBack={onExit}
         backLabel={zh ? '返回浏览' : 'Back to browsing'}
+        onSave={onSave}
+        backupState={backupState}
+        backupProgress={backupProgress}
         onShare={onShare}
         onExport={onExport}
         onMore={onMore}
@@ -442,6 +469,40 @@ export function EditView({
                 height: selection.rect.height,
               }}
             />
+          )}
+
+          {/* 图片工具栏:只有「换图 / 复位 / 删除」三件。缩放和平移不放这儿 ——
+              那两件直接在图上捏合、拖动(见 imageEditing),弹窗里放滑杆是多此一举。
+              贴着选中框走:优先挂在图下方,下面装不下就翻到上方(长图/贴底的图)。 */}
+          {selection && imagePos && (
+            <div
+              className="mimg-bar"
+              style={{
+                // 水平**居中于画布**而不是跟着图槽走:跟随的话,贴右缘的图槽会把工具栏
+                // 顶出画布外(真机上「删除」直接被裁掉一半)。要跟随就得测出自身宽度再夹取,
+                // 而宽度随语言变(中/英按钮文案不等长)。选中框已经说明在编哪个了,
+                // 工具栏只要够得着就行,不必再指一次。
+                left: box.w / 2,
+                // 垂直仍跟着图走:优先挂图下方,下面装不下就翻到上方。
+                top:
+                  selection.rect.top + selection.rect.height + IMG_BAR_GAP + IMG_BAR_H <= box.h
+                    ? selection.rect.top + selection.rect.height + IMG_BAR_GAP
+                    : Math.max(IMG_BAR_GAP, selection.rect.top - IMG_BAR_GAP - IMG_BAR_H),
+              }}
+            >
+              <button type="button" className="mimg-btn" onClick={onReplaceImage}>
+                <IconImage className="mimg-ic" />
+                <span>{zh ? '换图' : 'Replace'}</span>
+              </button>
+              <button type="button" className="mimg-btn" onClick={onResetImagePos}>
+                <IconReset className="mimg-ic" />
+                <span>{zh ? '复位' : 'Reset'}</span>
+              </button>
+              <button type="button" className="mimg-btn" data-danger="1" onClick={onClearImage}>
+                <IconTrash className="mimg-ic" />
+                <span>{zh ? '删除' : 'Delete'}</span>
+              </button>
+            </div>
           )}
         </div>
 

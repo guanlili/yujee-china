@@ -86,6 +86,51 @@ test("patchHtmlTextStyle:font-family 栈里的单引号放行('Segoe UI' 这类�
   assert.match(out, /'Segoe UI'/);
 });
 
+test('patchHtmlTextStyle:写入真实字体栈(双引号)必须成功,不能被注入护栏当非法值拒掉(回归)', () => {
+  // WEB_FONTS 里每条字体栈都是双引号形态(constants.ts:
+  // serifCn = '"Noto Serif SC", "Source Han Serif SC", "Songti SC", serif'),
+  // 而护栏曾禁双引号 → 选字体时 patcher 返回 null → 调用方把 htmlJson 置 undefined
+  // → 那一页回落「模板+数据」重烘,**改动不上屏**;更糟的是这一页 html 真相已丢,
+  // 之后改颜色/字号也一并预览不出来(表现为「颜色、字体全都不可用」)。
+  const html = '<div data-text-key="title" style="color:#1c1b18">HI</div>';
+  const stack = '"Noto Serif SC", "Source Han Serif SC", "Songti SC", serif';
+  const out = patchHtmlTextStyle(html, 'title', { 'font-family': stack });
+  assert.ok(out, '真实字体栈不能被拒(返回 null 会让整页 html 真相丢掉)');
+  // 写进 style="" 属性里必须是实体形态,否则裸 " 会截断属性、毁掉标签结构。
+  assert.equal(out.includes('font-family:"'), false, '裸双引号会截断 style 属性');
+  assert.match(out, /font-family:&quot;Noto Serif SC&quot;, &quot;Source Han Serif SC&quot;/);
+  assert.match(out, /color:#1c1b18/, '原有声明保留');
+  // 存库形态可被自己读回:再打一次补丁,字体栈仍完整(不被 split 切碎)。
+  const again = patchHtmlTextStyle(out, 'title', { color: '#13b8a6' });
+  assert.ok(again);
+  assert.match(again, /font-family:&quot;Noto Serif SC&quot;/, '二次打补丁不能损坏字体栈');
+});
+
+test('patchHtmlTextStyle:含双引号的值转义后无法逃出 style 属性(放行双引号的安全前提)', () => {
+  const html = '<div data-text-key="title" style="color:#1c1b18">HI</div>';
+  // 双引号一律实体化,所以「闭合属性再挂事件处理器」这条路走不通:落地的是
+  // onload=&quot; 这样的纯文本,不是真属性。拒绝反而会丢掉整页 html 真相(本 bug 的成因)。
+  const out = patchHtmlTextStyle(html, 'title', { 'font-family': 'a" onload="x' });
+  assert.ok(out, '不该整页放弃');
+  assert.equal(/\sonload="/.test(out), false, '不能生成真的 onload 属性');
+  assert.match(out, /font-family:a&quot; onload=&quot;x/);
+  // 标签仍只有一个 style 属性,结构没被撑开。
+  assert.equal((out.match(/style="/g) ?? []).length, 1);
+
+  // 带尖括号/分号/花括号的仍旧拒绝:它们能开标签或截断 CSS 声明,不是转义能兜住的。
+  assert.equal(patchHtmlTextStyle(html, 'title', { 'font-family': 'a"><script>y' }), null);
+  assert.equal(patchHtmlTextStyle(html, 'title', { color: 'red;} <b>' }), null);
+  assert.equal(patchHtmlTextStyle(html, 'title', { 'font-size"': '12px' }), null);
+});
+
+test('patchHtmlPageStyle:页根写入含双引号的值同样走实体转义', () => {
+  const html = '<div data-template="mag-01" style="background:#fff">x</div>';
+  const out = patchHtmlPageStyle(html, { 'font-family': '"Inter", sans-serif' });
+  assert.ok(out);
+  assert.equal(out.includes('font-family:"'), false);
+  assert.match(out, /font-family:&quot;Inter&quot;, sans-serif/);
+});
+
 test('patchHtmlTextStyle:改样式不切碎已有 &quot; 转义的 font-family 字体栈(回归)', () => {
   // 存库 html 的 style 值里字体名的 " 转义成 HTML 实体 &quot;(末尾就是分号)。此前
   // upsertStyleAttr 用 split(';') 解析,会把字体栈从每个 &quot; 的分号处切碎、丢掉无冒号

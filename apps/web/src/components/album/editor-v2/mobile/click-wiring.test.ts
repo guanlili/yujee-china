@@ -91,9 +91,11 @@ test('分享接的是真链路(备份照片 → 生成 token),不是 toast', () 
   assert.doesNotMatch(root, /link=\{null\}/, 'link={null} 意味着第二步永远到不了');
 });
 
-test('「更多」里的照片备份接的是真上传(线上顶栏「保存」那条)', () => {
+test('照片备份接的是真上传(顶栏「保存」与「更多」共用那条)', () => {
   const root = read('MobileEditorRoot.tsx');
-  assert.match(root, /onBackupPhotos=\{[\s\S]{0,120}backup\.backup\(bookPhotoIds\)/);
+  // 备份逻辑抽成了 runBackup(顶栏「保存」与「更多」共用),不再内联在 onBackupPhotos 上,
+  // 所以这里盯 runBackup 里真调了上传,而不是盯某个 prop 后面跟着什么。
+  assert.match(root, /const runBackup = useCallback\([\s\S]{0,200}backup\.backup\(bookPhotoIds\)/);
   const hook = read('use-photo-backup.ts');
   assert.match(hook, /signPhotoSnapshotUpload/, '走与桌面同一批快照客户端');
   assert.match(hook, /putSnapshotBlob/);
@@ -177,23 +179,60 @@ test('图片编辑接的是真几何(复用桌面 image-edit-util,不自己算)'
     '落库必须读 ref —— 读 state 会用旧位置覆盖刚预览的新位置(真机抓到过)');
 });
 
-test('图片面板开着时画板放行手势,否则拖不动那张图', () => {
+test('图片编辑不靠弹窗:选中即可在画布上捏合/拖动', () => {
+  // 旧实现是「开图片面板 + 遮罩 passThrough 放行手势」,绕一大圈才够得着那张图。
+  // 现在缩放/平移直接在画布上做,面板整个去掉了 —— 判据只看选中。
+  const view = read('EditView.tsx');
+  assert.match(
+    view,
+    /const imageEditing = imagePos != null;/,
+    '手势判据只看「选中的是图槽」',
+  );
+  assert.doesNotMatch(
+    view,
+    /imagePos != null && sheetOpen/,
+    '再挂 sheetOpen 就等于手势永远不生效(没有图片面板了)',
+  );
   const root = read('MobileEditorRoot.tsx');
-  assert.match(root, /passThrough=\{sheetKind === 'image'\}/);
-  const sheet = readFileSync(join(here, 'modals', 'ElementSheet.tsx'), 'utf8');
-  assert.match(sheet, /data-passthrough=\{passThrough \? '1' : undefined\}/);
-  // 放行只作用在遮罩上,卡片仍要能点(否则又是「弹窗关不掉」)
-  const css = readFileSync(join(here, 'mobile-editor.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.match(css, /\.mes-overlay\[data-passthrough='1'\]\s*\{\s*pointer-events:\s*none/);
-  assert.match(css, /\.mes-overlay\[data-passthrough='1'\] \.mes-card\s*\{\s*pointer-events:\s*auto/);
+  assert.doesNotMatch(root, /setSheetKind\('image'\)/, '图片不该再开面板');
+  assert.ok(
+    !readdirSync(join(here, 'modals')).includes('ImagePanel.tsx'),
+    '图片面板已废弃,不留死代码',
+  );
 });
 
-test('线上没有的功能不许造:换图入口不存在', () => {
-  const files = readdirSync(join(here, 'modals'));
-  assert.ok(!files.includes('PhotoPickerModal.tsx'),
-    '桌面 PICK_PHOTOS 是硬编码占位、confirm 只关弹窗 —— 线上没有换图,移动端不该有');
+test('换图必须接本册真照片,不许再造一个硬编码占位', () => {
+  // 这条原本是「换图入口不存在」:桌面 PICK_PHOTOS 是 8 条写死的 unsplash URL、
+  // confirm 只关弹窗,那是个假功能,所以当时禁止移动端照抄一个。
+  // 现在移动端先行做了**真**换图(用户拍板):照片取自本册 photoIds + photoStore 缩略图,
+  // 选完只改 imagesJson 并落库(html 的 {{IMG_SRC}} token 不动)。守卫因此改为盯住
+  // 「不许再出现假的」—— 桌面那份占位仍未清理,别让它被抄过来。
+  const picker = readFileSync(join(here, 'modals', 'PhotoPickerSheet.tsx'), 'utf8');
+  assert.doesNotMatch(picker, /unsplash|https?:\/\//i, '不许硬编码图片 URL');
+  assert.match(picker, /photoIds/, '照片必须来自本册');
   const root = read('MobileEditorRoot.tsx');
-  assert.doesNotMatch(root, /PhotoPickerModal/);
+  assert.match(root, /applyImageSwap\(/, '换图要真改数据层');
+  assert.match(root, /imagesPatchBody\(/, '换图要真落库,不能只关弹窗');
+});
+
+test('顶栏「保存」= 备份照片到云端,与「更多」里那条同一个 handler', () => {
+  // 桌面顶栏一直有这枚(EditorPort 的 save-btn / data-action="backupPhotos"),移动端原先
+  // 只藏在「更多」里,两端不齐。照片只存在本地(invariant 1),不备份换设备就是空白页,
+  // 这个入口不该要点两次才找得到。
+  const bar = readFileSync(join(here, 'MobileTopbar.tsx'), 'utf8');
+  assert.match(bar, /onClick=\{onSave\}/, '顶栏必须有保存按钮');
+  assert.match(bar, /data-backup-state=\{backupState\}/, '备份态要长在按钮上,别让人不知道有没有传完');
+  assert.match(bar, /disabled=\{backupState === 'backing-up'\}/, '备份中要禁点');
+
+  const root = read('MobileEditorRoot.tsx');
+  assert.match(root, /const runBackup = useCallback/, '两个入口必须共用一份 handler');
+  assert.match(root, /onSave=\{runBackup\}/, '顶栏接的是它');
+  assert.match(root, /onBackupPhotos=\{runBackup\}/, '「更多」接的也是它');
+  assert.doesNotMatch(
+    root,
+    /onBackupPhotos=\{\(\) =>/,
+    '别把备份逻辑再内联一份 —— 改口径时必漏一处',
+  );
 });
 
 test('AI 对话接的是真端点(design-chat 流式),不是 toast', () => {

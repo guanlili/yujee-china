@@ -171,14 +171,17 @@ test('editor motion and toolbar controls are functional, not empty chrome', () =
   assert.match(editorPort, /function applyFontToSelection\(font: EditorFont\)/, 'selecting a font should apply its web stack + patch html');
   assert.match(editorPort, /data-edit-action="font-open"/, 'font trigger should open the searchable font panel');
   assert.match(editorPort, /data-edit-action="edit-text"/, 'text toolbar should include the edit text control from the design');
-  // 图片编辑精简(用户拍板):只保留 调整尺寸(缩放滑块) + 位置(拖动平移) + 复位,全在浮层;
-  // 换照片 / 删除 / 黑白滤镜全部去掉;选中「页」不弹工具条,选中文字/图片才出工具。
+  // 图片编辑全在浮层里:缩放滑块 + 拖动平移 + 复位 + 换图 + 删除。旧的 el-bar 照片工具条
+  // (data-edit-action="replace-photo"/"delete-photo")与黑白滤镜仍然不该回来 —— 换图/删除
+  // 是浮层里的 img-edit-swap / img-edit-del,与移动端选中框旁那条 .mimg-bar 同一组动作。
   assert.match(editorPort, /\.className = 'img-edit-zoom'/, 'photo editing keeps the zoom (size) slider in the overlay');
   assert.match(editorPort, /\.className = 'img-edit-reset'/, 'photo editing keeps a reset (position + zoom) control');
+  assert.match(editorPort, /\.className = 'img-edit-swap'/, 'photo overlay must expose replace-photo (parity with mobile)');
+  assert.match(editorPort, /\.className = 'img-edit-del'/, 'photo overlay must expose delete-photo (parity with mobile)');
   assert.doesNotMatch(editorPort, /data-edit-action="photo-filter"/, 'black & white filter should be removed');
   assert.doesNotMatch(editorPort, /toggleSelectedPhotoFilter/, 'black & white filter code should be removed');
-  assert.doesNotMatch(editorPort, /data-edit-action="delete-photo"/, 'delete-photo should be removed');
-  assert.doesNotMatch(editorPort, /data-edit-action="replace-photo"/, 'replace-photo should be removed');
+  assert.doesNotMatch(editorPort, /data-edit-action="delete-photo"/, 'delete-photo should not come back to the el-bar');
+  assert.doesNotMatch(editorPort, /data-edit-action="replace-photo"/, 'replace-photo should not come back to the el-bar');
   // 单独编辑不联动:只改被选中的那一个文字节点,不 querySelectorAll 整页文字。
   assert.match(editorPort, /return editBarAnchor\.matches\('\[data-editable\]:not\(img\)'\) \? \[editBarAnchor\] : \[\];/, 'style tools must target only the selected text, never the whole page');
   assert.match(editorPort, /editBar\?\.addEventListener\('change', onEditBarChange\)/, 'select controls should wire change events');

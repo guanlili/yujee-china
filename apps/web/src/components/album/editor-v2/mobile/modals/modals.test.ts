@@ -12,6 +12,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { ModalHost } from './ModalHost';
 import { ElementSheet } from './ElementSheet';
+import { PhotoPickerSheet } from './PhotoPickerSheet';
 import { BoardBgSheet } from './BoardBgSheet';
 import { ShareLinkModal } from './ShareLinkModal';
 import {
@@ -39,6 +40,22 @@ const noop = () => {};
 
 /** 每个弹窗:给一份关着的 props 和一份开着的 props。 */
 const CASES: { name: string; render: (open: boolean) => string; closeHint: RegExp }[] = [
+  {
+    name: 'PhotoPickerSheet 换图',
+    render: (open) =>
+      renderToStaticMarkup(
+        createElement(PhotoPickerSheet, {
+          open,
+          zh: true,
+          photoIds: ['photo-1', 'photo-2'],
+          urls: { 'photo-1': 'blob:x' },
+          currentPhotoId: 'photo-1',
+          onPick: noop,
+          onClose: noop,
+        }),
+      ),
+    closeHint: /mes-cancel/,
+  },
   {
     name: 'BoardBgSheet 画板背景',
     render: (open) =>
@@ -173,6 +190,25 @@ for (const c of CASES) {
   });
 }
 
+test('借用桌面样式的弹窗必须套 .editor-port 宿主(漏了样式一条都不命中)', () => {
+  // 真机事故:PhotoPickerSheet 直接从 .mes-overlay 写起,漏了宿主那层。而 .mes-*/.modal-*
+  // 借用的是桌面成品样式(定义在 editor-port.css,选择器带 .editor-port 祖先),于是遮罩、
+  // 卡片底、定位全部失效 —— 照片网格裸奔铺满整屏盖住画布,标题被压成一个字。
+  //
+  // 判据按「用没用桌面那套类」来定,不是一刀切:AiChatSheet 走自有的 .mai-*
+  // (就定义在 mobile-editor.css、无 .editor-port 前缀),它不需要这层宿主。
+  for (const c of CASES) {
+    const html = c.render(true);
+    if (!/class="[^"]*\b(mes-|modal-)/.test(html)) continue; // 自有样式体系,豁免
+    assert.match(
+      html,
+      /^<div class="editor-port mobile-modal-host"/,
+      `${c.name} 用了 .mes-*/.modal-* 却没套宿主 —— 那套样式带 .editor-port 祖先,一条都不会命中`,
+    );
+  }
+});
+
+
 test('导出进度弹窗:渲染中不可关是有意为之,但必须显示进度', () => {
   const html = renderToStaticMarkup(
     createElement(ExportProgressModal, { open: true, zh: true, label: '3 / 8', percent: 40 }),
@@ -197,7 +233,7 @@ test('架构守卫:宿主样式不许再用 pointer-events 放行名单(曾漏�
   );
 });
 
-test('AI 对话弹窗是可拖高度的:默认 50vh、下限 150px、上限 90vh', () => {
+test('AI 对话弹窗是可拖高度的:默认 75vh、下限 150px、上限 90vh', () => {
   const css = readFileSync(join(here, '..', 'mobile-editor.css'), 'utf8').replace(
     /\/\*[\s\S]*?\*\//g,
     '',
@@ -205,7 +241,8 @@ test('AI 对话弹窗是可拖高度的:默认 50vh、下限 150px、上限 90vh
   const at = css.indexOf('.mai-sheet {');
   assert.ok(at >= 0);
   const sheet = css.slice(at, css.indexOf('}', at));
-  assert.match(sheet, /height:\s*50vh/, '默认高度 50vh(不是把内容撑到多高就多高)');
+  // height 必须写死一个 vh 值:靠内容撑高会让空对话只有一条气泡那么高,拖把手也没处拖。
+  assert.match(sheet, /(?<!max-|min-)height:\s*75vh/, '默认高度 75vh —— 90vh 时选封面卡看不全');
   assert.match(sheet, /min-height:\s*150px/, '下限 150px(同桌面 .pane-chat-col)');
   assert.match(sheet, /max-height:\s*90vh/, '上限 90vh(同桌面)');
   assert.doesNotMatch(sheet, /max-height:\s*78vh/, '78vh 是改之前那个过高的值');
@@ -280,7 +317,7 @@ test('「无背景」格必须有定位上下文,否则它的斜杠层会铺满�
 /* 面板 ≠ 弹窗:面板是塞进 ElementSheet 里的**内容**(没有 open/关闭的概念,
    由外层 sheet 负责开关),因此不受「必须能关」的约束。豁免必须显式列在这里 ——
    新增文件要么补进 CASES(弹窗),要么进这张表(面板),不允许悄悄溜过。 */
-const PANELS_NOT_MODALS = new Set(['TextPanel', 'PageBgPanel', 'ImagePanel', 'ColorPicker']);
+const PANELS_NOT_MODALS = new Set(['TextPanel', 'PageBgPanel', 'ColorPicker']);
 
 test('完整性:modals 目录下每个弹窗组件都进了本文件的用例表', () => {
   const files = readdirSync(here)

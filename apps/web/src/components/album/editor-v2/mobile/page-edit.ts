@@ -179,6 +179,41 @@ export function imagePosPatchBody(page: EditorPage): Record<string, unknown> {
   return { imagePosJson: page.imagePosJson ?? {} };
 }
 
+/* ── 换图 / 清空图槽 ────────────────────────────────────────────────────────
+   这两件**只动数据层,html 一个字不改**:存库 html 的图片位是 {{IMG_SRC:slot}} token,
+   显示时 resolveDisplayHtml 按 imagesJson 现查现解析(查不到就渲成空 src)。服务端
+   updatePage 的 images 分支同口径(整体替换 page.images,注释就写着「换图/删图只动数据层」)。
+   所以别在这儿碰 htmlJson —— 碰了反而会把 token 烘死成某张具体照片,以后换不动。 */
+
+/** 换图:把某个图槽指到另一张照片。位置/缩放留着(换的是内容不是版面)。 */
+export function applyImageSwap(base: EditorPage, slotId: string, photoId: string): EditorPage {
+  return {
+    ...base,
+    imagesJson: { ...base.imagesJson, [slotId]: photoId },
+  };
+}
+
+/** 清空图槽:删掉这个 key(不是置空串)。
+ *  服务端 zod 是 z.record(z.string(), z.string()),空串虽然也能过、渲染也当 falsy,
+ *  但会在数据里留一条指向「空照片」的假记录,collectPhotoIds 之类的读侧还得再判一次。
+ *  删 key = 这个槽从来没配过图,与模板初始态同形,读侧零特判。版式不受影响:
+ *  token 还在 html 里,框还占着位,以后放张图回去就复原。 */
+export function applyImageClear(base: EditorPage, slotId: string): EditorPage {
+  const nextImages = { ...base.imagesJson };
+  delete nextImages[slotId];
+  const nextPos = { ...(base.imagePosJson ?? {}) };
+  // 位置/缩放是绑在「那张图」上的,图都没了就不该留 —— 否则下次放新图进来会
+  // 继承上一张的平移缩放,看着像放歪了。
+  delete nextPos[slotId];
+  return { ...base, imagesJson: nextImages, imagePosJson: nextPos };
+}
+
+/** 换图/清空的落库 payload。服务端整体替换 page.images,所以必须发全量而不是单键
+ *  (与 textPatchBody 同口径);imagePosJson 一起发,清空时要把那槽的位置也抹掉。 */
+export function imagesPatchBody(page: EditorPage): Record<string, unknown> {
+  return { imagesJson: page.imagesJson, imagePosJson: page.imagePosJson ?? {} };
+}
+
 /** 读回当前页底色(页根 data-template 元素的行内 background-color)。
  *  底色面板是从一级栏打开的、没有点击目标可探,只能从 html 真相里读。
  *  没写过覆写 → null(= 无背景,透出纸白)。 */

@@ -78,6 +78,25 @@
   white-space: nowrap;
 }
 
+/* 顶栏「保存」= 备份照片到云端。备份态长在按钮上,不另弹提示(同桌面 save-btn):
+   备份中转圈并禁点、成功绿点、失败红点。小圆点叠在图标右上角,不额外占宽 ——
+   顶栏已经四枚 44pt,再加文字标题就没地方了。 */
+.mobile-editor .mtb-save { position: relative; }
+.mobile-editor .mtb-save:disabled { opacity: 0.55; }
+.mobile-editor .mtb-dot {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: transparent;
+}
+.mobile-editor .mtb-save[data-backup-state='backing-up'] .mtb-dot { background: var(--muted); }
+.mobile-editor .mtb-save[data-backup-state='backed-up'] .mtb-dot { background: var(--accent); }
+/* 失败红:取自桌面 .eb-btn.danger 的 #c44,不自创第二支红。 */
+.mobile-editor .mtb-save[data-backup-state='failed'] .mtb-dot { background: #c44; }
+
 /* ── 画板:垫底背景挂在根节点上(顶栏是白底,盖住它;画板与预览栏之下透出来),
       不再多套一层 stage —— 少一层 DOM 少一处塌高的机会。 ──────────────────── */
 .mobile-editor .mboard {
@@ -185,6 +204,80 @@
 @keyframes msel-in {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* 图片工具栏:贴着选中框的一小条,只有换图/复位/删除。缩放平移走手势,不占这里的位置。
+   z-index 要压过 .msel(2),否则选中框的描边会盖在按钮上;它自己要能点,所以
+   pointer-events 必须是 auto —— .msel 是 none,别跟着抄。
+   高度与 EditView 的 IMG_BAR_H 保持一致(那边靠它算挂上方还是下方)。 */
+.mobile-editor .mimg-bar {
+  position: absolute;
+  z-index: 3;
+  transform: translateX(-50%);
+  /* 兜底:极窄屏 + 长文案时也不许顶出画布(left 已居中,这里只防溢出) */
+  max-width: calc(100% - 16px);
+  height: 40px;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px -6px rgba(20, 40, 38, 0.32), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  animation: msel-in var(--motion-fast) var(--ease) both;
+  /* 手指在工具栏上滑动不该翻页/拖图 */
+  touch-action: none;
+}
+
+.mobile-editor .mimg-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mobile-editor .mimg-btn:active { background: var(--surface-2, rgba(0, 0, 0, 0.05)); }
+.mobile-editor .mimg-btn[data-danger='1'] { color: #c44; }
+.mobile-editor .mimg-ic { width: 15px; height: 15px; flex-shrink: 0; }
+
+/* 换图:本册照片网格。**两列**大格,点一张即换即关。
+   三列时每格只有约 115px,手机上又小又难点准;两列翻到约 170px,一屏仍能看 4 张,
+   浏览效率没丢多少但触点舒服得多。格子按 4:3 而不是正方形 —— 照片多是横构图,
+   正方裁切会把两边切掉,认不出是哪张。 */
+.mpick-card { max-height: 82vh; }
+.mpick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.mpick-cell {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--surface-2, rgba(0, 0, 0, 0.05));
+  cursor: pointer;
+}
+.mpick-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mpick-ph { display: block; width: 100%; height: 100%; }
+/* 当前这张:描边标出来,点它等于不换 */
+.mpick-cell[data-active='1'] { box-shadow: inset 0 0 0 4px var(--accent); }
+.mpick-empty {
+  padding: 28px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .mobile-editor .mpage {
@@ -616,13 +709,14 @@
 
 @keyframes mai-fade { from { opacity: 0; } to { opacity: 1; } }
 
-/* 高度:底边钉死、可拖。默认 50vh,下限 150px、上限 90vh —— 与桌面 .pane-chat-col
-   同一口径(那边是 46vh/150px/90vh)。拖动中的具体高度由 JS 写在 style 上,
-   这里的 height 只是默认值(见 modals/AiChatSheet.tsx)。 */
+/* 高度:底边钉死、可拖。默认 75vh —— 铺到 90vh(=上限)时选封面卡会被顶出可视区看不全,
+   留一截给上方内容。下限 150px、上限 90vh(想看更多自己往上拖)。桌面 .pane-chat-col 是 46vh/150px/90vh,那边对话与画布并排、
+   不该吃满屏,所以默认值两端不同口径 —— 上下限仍一致。拖动中的具体高度由 JS 写在
+   style 上,这里的 height 只是默认值(见 modals/AiChatSheet.tsx)。 */
 .mai-sheet {
   width: 100%;
   max-width: 560px;
-  height: 50vh;
+  height: 75vh;
   min-height: 150px;
   max-height: 90vh;
   display: flex;

@@ -42,6 +42,7 @@ import { PAGE, pageBox } from '../templates/constants';
 import { pageFaceInner, pageFaceHTML, type PageFaceCtx } from './page-face';
 import { clampZoom, paintDecision } from './zoom-util';
 import { resolveDeviceMode, initMobileCanvas } from './mobile-canvas';
+import { shouldMountMobileEditor } from './design-gate-util';
 import { useDeviceMode } from './use-device-mode';
 import { MobileEditorRoot } from './mobile/MobileEditorRoot';
 import {
@@ -367,7 +368,11 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
   // 落库时服务端 updatePage 也走 draft 分支、认 textStyles/pageStyle)。挂在 editing 上
   // 的移动端一次都不会出现,而且那边的 pages 没有 html 可打补丁 —— 样式改动刷新即丢。
   // 排版前 pages 为空(还在收集故事),那阶段不是「看/改书」,仍走桌面那套采访面板。
-  if (device === 'mobile' && pages.length > 0) {
+  // **选封面主题这一步也留在那套**:排版跑完就有 pages 了,但封面组还没选,而「选择封面 &
+  // 封尾」那张必选卡是 ChatPanel 弹的(条件 hasPages)。只看 pages.length 分流的话,
+  // 移动端一有页面就整体切进这棵没有 ChatPanel 的树,卡再也弹不出来 —— 手机上没法选主题,
+  // 书永远停在没封面没文案。判据见 design-gate-util.ts(与服务端 designed 同口径)。
+  if (shouldMountMobileEditor(device, pages)) {
     return <MobileEditorRoot detail={detail} pages={pages} locale={locale} />;
   }
   return (
@@ -607,6 +612,30 @@ function EditorModals({ locale }: { locale: Locale }) {
                 </button>
               </span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 换图选择器:选中某张照片后,图片浮层的「换图」打开它。列本册已有的照片
+          (照片只在浏览器本地,不走上传链路),点一张即换即关 —— 换图是可逆的
+          (再点一张就换回来),为可逆动作加一道「确定」只是多一次点击。所以这里
+          没有确认按钮,只有取消。与移动端 PhotoPickerSheet 同一交互口径。 */}
+      <div className="modal-overlay" id="photoSwapModal" data-overlay-close>
+        <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="photoSwapTitle">
+          <div className="px-6 pt-5 pb-4 border-b border-bdsoft shrink-0">
+            <div className="flex items-center justify-between">
+              <h3 id="photoSwapTitle" className="font-display text-[17px] font-bold" data-i18n="swapTitle">换一张</h3>
+              <button className="w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg transition-colors" data-action="closePhotoSwap" aria-label="close">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
+            <p className="text-[12.5px] text-muted mt-1" data-i18n="swapSub">点一张照片换掉这个位置上的图。位置和缩放会保留。</p>
+          </div>
+          <div className="px-6 py-5 overflow-y-auto flex-1">
+            <div className="pick-grid" id="swapGrid" />
+          </div>
+          <div className="px-6 py-4 border-t border-bdsoft shrink-0 flex items-center justify-end">
+            <button className="px-5 py-2.5 rounded-pill text-[13px] font-medium text-fg2 border border-bd transition-colors hover:bg-bg" data-action="closePhotoSwap" data-i18n="swapCancel">取消</button>
           </div>
         </div>
       </div>
@@ -1065,6 +1094,7 @@ function EditorBook({
       add(byId('paneCenter'));
       add(root.querySelector('.chat-fold-expand'));
       add(byId('photoModal'));
+      add(byId('photoSwapModal'));
       add(byId('exportFailModal'));
       add(byId('exportMenuModal'));
       add(byId('shareLinkModal'));
@@ -1666,12 +1696,34 @@ function EditorBook({
         if (imgEditSlider) imgEditSlider.value = String(imgEdit.pos.scale);
         commitImagePos();
       });
+      // 换图 / 删除(#304 起移动端已有,桌面补齐)。两件都**只动数据层**:存库 html 的
+      // 图片位是 {{IMG_SRC:slot}} token,显示时按 imagesJson 现查现解析,所以换图/删图
+      // 不需要(也不该)改 html —— 改了反而会把 token 烘死成某张具体照片,以后换不动。
+      // 服务端 updatePage 的 images 分支同口径(注释就写着「换图/删图只动数据层」)。
+      const swap = document.createElement('button');
+      swap.type = 'button';
+      swap.className = 'img-edit-swap';
+      swap.textContent = aT('换图', 'Replace');
+      swap.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openPhotoSwap();
+      });
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'img-edit-del';
+      del.textContent = aT('删除', 'Delete');
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        clearImageSlot();
+      });
       const hint = document.createElement('span');
       hint.className = 'img-edit-hint';
       hint.textContent = aT('拖动平移', 'Drag to pan');
       ov.appendChild(hint);
       ov.appendChild(slider);
+      ov.appendChild(swap);
       ov.appendChild(reset);
+      ov.appendChild(del);
       // Clicks on the controls must not bubble to the page (which would deselect).
       ov.addEventListener('click', (e) => e.stopPropagation());
       ov.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -1755,6 +1807,97 @@ function EditorBook({
         body: JSON.stringify({ imagePosJson: page.imagePosJson }),
       }).catch(() => {});
     }
+
+    // ── 换图 / 删图(#304 移动端已有,桌面补齐)────────────────────────────────
+    // 落库通道与位置一样是单页 PATCH,但发的是 images(整体替换,与服务端 updatePage
+    // 的 images 分支同口径 —— 那边直接 `page.images = patch.imagesJson`,所以必须发全量)。
+
+    /** 换图选择器里列的照片:本册全部照片(章节里的原始分组)+ 书里已用到的。
+     *  两者取并集去重 —— 章节是照片的来源真相,但 AI 换过模板/补过图的页可能引用
+     *  章节之外的 id,漏掉它们会让「当前这张」在选择器里没有对应格子(打不上勾)。
+     *  URL 从 resolveImage 现取(装载时已按同一集合解好 display 派生图)。 */
+    function albumPhotoIds(): string[] {
+      const ids = new Set<string>();
+      for (const ch of draftSkel?.chapters ?? []) for (const id of ch.photoIds ?? []) if (id) ids.add(id);
+      for (const p of pagesState) for (const id of Object.values(p.imagesJson)) if (id) ids.add(id);
+      return [...ids];
+    }
+    function buildSwapGrid() {
+      const grid = byId('swapGrid');
+      if (!grid || !imgEdit) return;
+      grid.innerHTML = '';
+      const page = pageByIndex(imgEdit.pageIndex);
+      const currentId = page?.imagesJson[imgEdit.slotId];
+      const ids = albumPhotoIds();
+      if (ids.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'text-[13px] text-muted';
+        empty.textContent = t('swapEmpty');
+        grid.appendChild(empty);
+        return;
+      }
+      for (const id of ids) {
+        const url = resolveImage(id);
+        const cell = document.createElement('div');
+        cell.className = 'pick-photo';
+        // 解不出 URL 的那张仍然渲染占位格,不静默消失(与移动端选择器同口径)。
+        if (url) cell.style.backgroundImage = `url("${url}")`;
+        // 当前这张打勾:点它等于不换。复用 .sel 的选中视觉(勾角标 + 内描边)。
+        if (id === currentId) cell.classList.add('sel');
+        cell.innerHTML =
+          '<span class="pick-check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>';
+        cell.addEventListener('click', () => swapImage(id));
+        grid.appendChild(cell);
+      }
+    }
+    function openPhotoSwap() {
+      if (!imgEdit) return;
+      buildSwapGrid();
+      byId('photoSwapModal')?.classList.add('open');
+    }
+    function closePhotoSwap() {
+      byId('photoSwapModal')?.classList.remove('open');
+    }
+    /** 换图:把这个图槽指到另一张照片。**位置/缩放留着** —— 换的是内容不是版面,
+     *  新图沿用当前构图(与移动端 applyImageSwap 同口径)。html 一个字不改:
+     *  {{IMG_SRC:slot}} token 会在下一次 repaint 时解析到新照片。 */
+    function swapImage(photoId: string) {
+      closePhotoSwap();
+      if (!imgEdit) return;
+      const { pageIndex, slotId } = imgEdit;
+      const page = pageByIndex(pageIndex);
+      if (!page || page.imagesJson[slotId] === photoId) return;
+      page.imagesJson = { ...page.imagesJson, [slotId]: photoId };
+      repaintPages([pageIndex]); // reattachImgEdit 会把浮层接到重绘出来的新 <img> 上
+      // 落库走与改字/改样式同一条单页 PATCH(images 整体替换,服务端 updatePage 同口径)。
+      persistPagePatch(page);
+    }
+    /** 删除:清空这个图槽 —— **版式不变**,框还占着位(token 还在 html 里),
+     *  以后放张图回去就复原。删 key 而不是置空串:空串会在数据里留一条指向
+     *  「空照片」的假记录,读侧(collectPhotoIds 之类)还得再判一次。
+     *
+     *  位置/缩放一并复位:那两个值是绑在「刚被删掉的那张图」上的,留着的话下次
+     *  放新图进来会继承上一张的平移缩放,看着像放歪了。这里必须**发 DEFAULT 而不是
+     *  删 key** —— 展示用的框位读的是 html 里烘好的行内 style,不是 imagePosJson;
+     *  只删 key 的话服务端那侧 `patchHtmlImagePos` 根本不会被调到(它只遍历 patch 里
+     *  出现的槽),旧的 object-position/transform 会一直留在 html 里。 */
+    function clearImageSlot() {
+      if (!imgEdit) return;
+      const { pageIndex, slotId } = imgEdit;
+      const page = pageByIndex(pageIndex);
+      if (!page) return;
+      const nextImages = { ...page.imagesJson };
+      delete nextImages[slotId];
+      page.imagesJson = nextImages;
+      page.imagePosJson = { ...(page.imagePosJson ?? {}), [slotId]: { ...DEFAULT_IMAGE_POS } };
+      syncPageHtml(page, (html) => patchHtmlImagePos(html, slotId, DEFAULT_IMAGE_POS));
+      // 图没了就没什么可平移缩放的了 —— 先收浮层,再重绘(重绘里的 reattachImgEdit
+      // 会看到一个 src 为空的 <img> 并把浮层接回去,那正是我们不想要的)。
+      clearImageSelection();
+      repaintPages([pageIndex]);
+      persistPagePatch(page);
+    }
+
     // Pointer drag → pan. Bound on each host; only acts when an image on that
     // host is the active selection.
     let dragStart = { x: 0, y: 0 };
@@ -4270,6 +4413,9 @@ function EditorBook({
       resetZoom,
       openPhotoPicker,
       closePhotoPicker,
+      // 换图选择器只由图片浮层的「换图」打开(openPhotoSwap 需要一个选中的图槽),
+      // 所以这里只登记关闭出口。
+      closePhotoSwap,
       // WP5.3 / §4.5d: 安抚弹框的两个出口。「再试一次」关弹框后重跑导出;「知道了」只关弹框。
       closeExportFail: closeExportFailModal,
       retryExportPdf: () => { closeExportFailModal(); void exportPdf(); },
@@ -4319,7 +4465,7 @@ function EditorBook({
       actionHandlers.push({ el: exportFailOverlay, fn });
     }
     // 导出菜单/拼图弹窗/垫底背景:点背景关闭(进度浮层不给关,渲染中)。
-    [['exportMenuModal', closeExportMenu], ['collageModal', closeCollageModal], ['boardBgModal', closeBoardBgModal], ['shareLinkModal', () => byId('shareLinkModal')?.classList.remove('open')]].forEach(([id, close]) => {
+    [['exportMenuModal', closeExportMenu], ['collageModal', closeCollageModal], ['boardBgModal', closeBoardBgModal], ['shareLinkModal', () => byId('shareLinkModal')?.classList.remove('open')], ['photoSwapModal', closePhotoSwap]].forEach(([id, close]) => {
       const ov = byId(id as string);
       if (!ov) return;
       const fn = (e: Event) => { if (e.target === ov) (close as () => void)(); };

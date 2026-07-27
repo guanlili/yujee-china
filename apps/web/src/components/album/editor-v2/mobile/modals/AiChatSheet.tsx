@@ -37,7 +37,7 @@ const COLLAPSE_SLOP = 28;
 
 export function AiChatSheet({ open, zh, messages, status, onSend, onClose }: AiChatSheetProps) {
   const [text, setText] = useState('');
-  // null = 没手动拖过,走 CSS 的默认 50vh。拖出来的高度记住,下次展开还是它(同桌面)。
+  // null = 没手动拖过,走 CSS 的默认 75vh。拖出来的高度记住,下次展开还是它(同桌面)。
   const [height, setHeight] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -94,7 +94,7 @@ export function AiChatSheet({ open, zh, messages, status, onSend, onClose }: AiC
       setHeight(d.startH); // 轻点把手 = 收起,高度留着,下次展开还是这么高
       onClose();
     } else if (d.collapse) {
-      setHeight(null); // 拖没了 = 收起并回落默认 50vh
+      setHeight(null); // 拖没了 = 收起并回落默认 75vh
       onClose();
     }
   };

@@ -5,17 +5,30 @@ import type { AlbumDetail, EditorPage } from '@/components/album/types';
 
 const PALETTE = ['#13B8A6', '#8C5EF4', '#EF6F53', '#3B82F6', '#E4B04A', '#DB5A8B'];
 
+/* 锚点契约不是装饰:根节点的 data-template 是 readPageBg/applyPageBg 定位页根的唯一
+   依据,文字 div 的 data-text-key 是 EditView 命中点击的唯一依据
+   (e.target.closest('[data-text-key]'))。少了它们,这页能进编辑态但点文字选不中、
+   底色也 patch 不到 —— 编辑态就白验收了。守卫见 mobile/dev-sample.test.ts。
+   槽名沿用真实模板的语义口径(label/title),别自造。 */
 function card(pageIndex: number, templateId: string, kicker: string, title: string): EditorPage {
   const bg = PALETTE[pageIndex % PALETTE.length];
   const html =
-    `<div style="width:794px;height:1123px;box-sizing:border-box;position:relative;` +
+    `<div data-template="${templateId}" style="width:794px;height:1123px;box-sizing:border-box;position:relative;` +
     `background:linear-gradient(160deg,${bg},#1c1b19);color:#fff;` +
     `font-family:'Noto Sans SC',sans-serif;overflow:hidden">` +
-    `<div style="position:absolute;top:80px;left:64px;font-size:26px;letter-spacing:.3em;opacity:.7">${kicker}</div>` +
-    `<div style="position:absolute;top:150px;left:64px;right:64px;font-size:76px;font-weight:800;line-height:1.15">${title}</div>` +
+    `<div data-text-key="label" style="position:absolute;top:80px;left:64px;font-size:26px;letter-spacing:.3em;opacity:.7">${kicker}</div>` +
+    `<div data-text-key="title" style="position:absolute;top:150px;left:64px;right:64px;font-size:76px;font-weight:800;line-height:1.15">${title}</div>` +
+    // 页码是装饰层(真实模板里由 applyFolioOverlay 覆盖上去),不做可编辑槽。
     `<div style="position:absolute;bottom:60px;right:64px;font-size:200px;font-weight:800;opacity:.16">${pageIndex}</div>` +
     `</div>`;
-  return { pageIndex, templateId, imagesJson: {}, textsJson: {}, htmlJson: html };
+  // 数据层跟 html 对齐:改文字时 textPatchBody 发的是 textsJson 全量,空着会把原文案抹掉。
+  return {
+    pageIndex,
+    templateId,
+    imagesJson: {},
+    textsJson: { label: kicker, title },
+    htmlJson: html,
+  };
 }
 
 export const SAMPLE_PAGES: EditorPage[] = [

@@ -71,9 +71,17 @@ export type MobileEditorProps = {
   onSelectImage: (hit: ImageHit) => void;
   onImagePos: (pos: ImagePosValue) => void;
   onImagePosCommit: () => void;
+  /** 图片工具栏三件(透传给 EditView)。 */
+  onReplaceImage: () => void;
+  onClearImage: () => void;
+  onResetImagePos: () => void;
   onClearSelection: () => void;
   /** 交互 handler 一律必填 —— 「可选」等于「可以不接」,漏一个就是死按钮。
      必填后:谁漏传谁编译不过(见 MobileEditorRoot)。 */
+  /** 顶栏「保存」= 备份照片到云端(同桌面那枚),透传给 MobileTopbar。 */
+  onSave: () => void;
+  backupState: 'idle' | 'backing-up' | 'backed-up' | 'failed';
+  backupProgress: { done: number; total: number } | null;
   onShare: () => void;
   onExport: () => void;
   onMore: () => void;
@@ -114,7 +122,13 @@ export function MobileEditor({
   onSelectImage,
   onImagePos,
   onImagePosCommit,
+  onReplaceImage,
+  onClearImage,
+  onResetImagePos,
   onClearSelection,
+  onSave,
+  backupState,
+  backupProgress,
   onShare,
   onExport,
   onMore,
@@ -316,6 +330,9 @@ export function MobileEditor({
         selection={selection}
         imagePos={imagePos}
         sheetOpen={sheetOpen}
+        onReplaceImage={onReplaceImage}
+        onClearImage={onClearImage}
+        onResetImagePos={onResetImagePos}
         onExit={() => {
           // 浏览游标对齐到刚编辑那页所在的屏,回来不迷路。
           setStartPage(screenStartOfPage(spreads, pages, editPage, density));
@@ -327,6 +344,9 @@ export function MobileEditor({
         onImagePos={onImagePos}
         onImagePosCommit={onImagePosCommit}
         onClearSelection={onClearSelection}
+        onSave={onSave}
+        backupState={backupState}
+        backupProgress={backupProgress}
         onShare={onShare}
         onExport={onExport}
         onMore={onMore}
@@ -358,6 +378,9 @@ export function MobileEditor({
         zh={zh}
         onBack={onBack ?? (() => {})}
         backLabel={zh ? '返回' : 'Back'}
+        onSave={onSave}
+        backupState={backupState}
+        backupProgress={backupProgress}
         onShare={onShare}
         onExport={onExport}
         onMore={onMore}
