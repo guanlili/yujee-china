@@ -900,7 +900,7 @@
 .editor-port .collage-confirm:hover:not(:disabled){ transform:translateY(-1px); }
 .editor-port .collage-confirm:disabled{ opacity:.4; cursor:not-allowed; }
 
-.editor-port .nine-grid-options{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.editor-port .nine-grid-options{ display:grid; grid-template-columns:1fr; gap:16px; }
 .editor-port .nine-grid-options fieldset{ min-width:0; }
 .editor-port .nine-grid-options legend{
   margin-bottom:8px; font-size:12px; font-weight:600; color:var(--muted);

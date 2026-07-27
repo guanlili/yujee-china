@@ -1,5 +1,16 @@
+import { isSpreadTemplate } from '@yujee/contracts/render';
+import type { AdaptablePage, ResolveImage } from '@/components/album/adapt-layout';
+import { pageFolioInfos } from '@/components/album/page-html-dom';
+import { buildSpreads, isSoloSpread, spreadPageIndices } from '@/components/album/spreads';
+import type { EditorPage } from '@/components/album/types';
+import { PAGE } from '@/components/album/templates/constants';
+import { loadAlbumFonts } from '@/lib/font/album-font-loader';
+import { renderFaceToCanvas } from '@/lib/pdf/render-raster';
+import { splitSpreadCanvas } from '@/lib/pdf/split-spread-canvas';
+
 export type NineGridAspect = '9:16' | '3:4';
 export type NineGridFrameStyle = 'full' | 'framed';
+export type NineGridLayoutMode = 'single' | 'spread';
 
 export interface NineGridMotionOptions {
   aspect: NineGridAspect;
@@ -21,6 +32,7 @@ const HEIGHTS: Record<NineGridAspect, number> = { '9:16': 1920, '3:4': 1440 };
 const SWING_CYCLES = [4.65, 5.05, 4.8, 5.25, 4.7, 5.12, 4.9, 5.2, 4.75, 5, 4.85, 5.15];
 const SWING_PHASES = [-0.16, 0.09, 0.2, -0.08, 0.13, -0.19, 0.05, 0.18, -0.12, 0.02, -0.06, 0.15];
 const SWING_AMPLITUDES = [0.94, 1.05, 0.98, 1.08, 0.92, 1.02, 1, 0.96, 1.06, 0.95, 1.03, 0.99];
+const MAX_LAYOUTS = 12;
 
 export class NineGridUnsupportedError extends Error {
   constructor() {
@@ -58,6 +70,95 @@ function loadImage(src: string): Promise<LoadedImage> {
     image.onerror = () => reject(new Error('nine-grid image load failed'));
     image.src = src;
   });
+}
+
+function canvasSource(canvas: HTMLCanvasElement): string {
+  return canvas.toDataURL('image/jpeg', 0.9);
+}
+
+function pairCanvas(
+  left: HTMLCanvasElement | null,
+  right: HTMLCanvasElement | null,
+): HTMLCanvasElement {
+  const out = document.createElement('canvas');
+  out.width = PAGE.width * 2;
+  out.height = PAGE.height;
+  const ctx = out.getContext('2d');
+  if (!ctx) throw new Error('2d canvas is unavailable');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, out.width, out.height);
+  if (left) ctx.drawImage(left, 0, 0, PAGE.width, PAGE.height);
+  if (right) ctx.drawImage(right, PAGE.width, 0, PAGE.width, PAGE.height);
+  return out;
+}
+
+/**
+ * 把网站当前的真实排版离屏截图成九宫格素材。
+ * single = 逐个物理单页（双宽模板拆左右页）；spread = 按画板的单页封面/跨页/封底组合。
+ */
+export async function renderNineGridLayoutSources(
+  pages: (AdaptablePage & { html?: string })[],
+  resolveImage: ResolveImage,
+  mode: NineGridLayoutMode,
+  onProgress?: (done: number, total: number) => void,
+): Promise<string[]> {
+  await loadAlbumFonts(pages).catch(() => undefined);
+  const total = pages.length;
+  const folios = pageFolioInfos(pages.map((page) => page.templateId));
+  const faceCache = new Map<number, HTMLCanvasElement>();
+
+  async function face(index: number): Promise<HTMLCanvasElement> {
+    const cached = faceCache.get(index);
+    if (cached) return cached;
+    const canvas = await renderFaceToCanvas(pages[index]!, resolveImage, {
+      scale: 1,
+      total,
+      folio: folios[index]?.folio ?? null,
+      folioSide: folios[index]?.side ?? 'right',
+    });
+    faceCache.set(index, canvas);
+    return canvas;
+  }
+
+  const sources: string[] = [];
+  if (mode === 'single') {
+    const workTotal = Math.min(
+      MAX_LAYOUTS,
+      pages.reduce((count, page) => count + (isSpreadTemplate(page.templateId) ? 2 : 1), 0),
+    );
+    for (let index = 0; index < pages.length && sources.length < MAX_LAYOUTS; index += 1) {
+      const canvas = await face(index);
+      const physicalPages = isSpreadTemplate(pages[index]!.templateId)
+        ? splitSpreadCanvas(canvas)
+        : [canvas];
+      for (const physicalPage of physicalPages) {
+        if (sources.length >= MAX_LAYOUTS) break;
+        sources.push(canvasSource(physicalPage));
+        onProgress?.(sources.length, workTotal);
+      }
+    }
+    return sources;
+  }
+
+  const editorPages = pages as unknown as EditorPage[];
+  const spreads = buildSpreads(editorPages).slice(0, MAX_LAYOUTS);
+  for (let index = 0; index < spreads.length; index += 1) {
+    const spread = spreads[index]!;
+    if (spread.kind === 'full') {
+      sources.push(canvasSource(await face(spread.page)));
+    } else if (isSoloSpread(spread, editorPages)) {
+      const pageIndex = spreadPageIndices(spread)[0]!;
+      sources.push(canvasSource(await face(pageIndex)));
+    } else {
+      const [left, right] = await Promise.all([
+        spread.left == null ? null : face(spread.left),
+        spread.right == null ? null : face(spread.right),
+      ]);
+      sources.push(canvasSource(pairCanvas(left, right)));
+    }
+    onProgress?.(index + 1, spreads.length);
+  }
+  return sources;
 }
 
 function drawPin(ctx: CanvasRenderingContext2D, y: number) {
@@ -230,7 +331,7 @@ export async function renderNineGridVideo(
     fps: 30,
     ...partial,
   };
-  const images = await Promise.all(imageSources.slice(0, 12).map(loadImage));
+  const images = await Promise.all(imageSources.slice(0, MAX_LAYOUTS).map(loadImage));
   if (images.length === 0) throw new Error('no photos to render');
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;

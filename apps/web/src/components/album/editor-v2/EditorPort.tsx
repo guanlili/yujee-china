@@ -757,7 +757,7 @@ function EditorModals({ locale }: { locale: Locale }) {
         </div>
       </div>
 
-      {/* 图钉九宫格:取相册中按页面顺序首次出现的 1–12 张照片。 */}
+      {/* 图钉九宫格:取相册中按页面顺序出现的前 12 个单页或对页排版。 */}
       <div className="modal-overlay" id="nineGridModal" data-overlay-close>
         <div className="modal-card collage-card" role="dialog" aria-modal="true" aria-labelledby="nineGridTitle" data-testid="nine-grid-modal">
           <button className="collage-close" data-action="closeNineGrid" aria-label="close">
@@ -765,21 +765,14 @@ function EditorModals({ locale }: { locale: Locale }) {
           </button>
           <div className="px-6 pt-6">
             <h3 id="nineGridTitle" className="font-display text-[18px] font-bold">{zh ? '图钉九宫格' : 'Pinned photo grid'}</h3>
-            <p className="text-[13px] text-muted mt-1.5">{zh ? '按书中顺序使用前 12 张照片,导出 4.4 秒动效。' : 'Uses the first 12 photos in book order and exports a 4.4-second animation.'}</p>
+            <p className="text-[13px] text-muted mt-1.5">{zh ? '按书中顺序使用前 12 个排版画面,导出 4.4 秒动效。' : 'Uses the first 12 designed layouts in book order and exports a 4.4-second animation.'}</p>
           </div>
           <div className="nine-grid-options px-6 pt-5">
             <fieldset>
-              <legend>{zh ? '画幅' : 'Format'}</legend>
+              <legend>{zh ? '排版画面' : 'Layout view'}</legend>
               <div className="nine-grid-choice">
-                <button className="selected" data-nine-grid-aspect="3:4">3:4</button>
-                <button data-nine-grid-aspect="9:16">9:16</button>
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend>{zh ? '边框' : 'Frame'}</legend>
-              <div className="nine-grid-choice">
-                <button className="selected" data-nine-grid-frame="full">{zh ? '满版直角' : 'Full bleed'}</button>
-                <button data-nine-grid-frame="framed">{zh ? '留白圆角' : 'Rounded frame'}</button>
+                <button className="selected" data-nine-grid-layout="single">{zh ? '单页' : 'Single pages'}</button>
+                <button data-nine-grid-layout="spread">{zh ? '对页' : 'Spreads'}</button>
               </div>
             </fieldset>
           </div>
@@ -3797,8 +3790,7 @@ function EditorBook({
     function openExportMenu() { if (exportGateLocked) return; byId('exportMenuModal')?.classList.add('open'); }
     function closeExportMenu() { byId('exportMenuModal')?.classList.remove('open'); }
     let collageDensity: 1 | 2 | 3 | 6 | null = null;
-    let nineGridAspect: '9:16' | '3:4' = '3:4';
-    let nineGridFrame: 'full' | 'framed' = 'full';
+    let nineGridLayout: 'single' | 'spread' = 'single';
     function openCollageModal() {
       closeExportMenu();
       collageDensity = null;
@@ -3813,6 +3805,10 @@ function EditorBook({
     function closeCollageModal() { byId('collageModal')?.classList.remove('open'); }
     function openNineGridModal() {
       closeExportMenu();
+      nineGridLayout = 'single';
+      $$('[data-nine-grid-layout]').forEach((el) => {
+        el.classList.toggle('selected', el.getAttribute('data-nine-grid-layout') === 'single');
+      });
       byId('nineGridModal')?.classList.add('open');
     }
     function closeNineGridModal() { byId('nineGridModal')?.classList.remove('open'); }
@@ -3921,17 +3917,26 @@ function EditorBook({
       closeNineGridModal();
       showExportProgress(aT('正在导出图钉九宫格…', 'Exporting pinned photo grid…'));
       try {
-        const { photoIds, resolveImage } = await buildExportInput();
-        const sources = photoIds.slice(0, 12).map(resolveImage).filter((src): src is string => Boolean(src));
+        const { adaptable, resolveImage } = await buildExportInput();
+        const {
+          renderNineGridLayoutSources,
+          renderNineGridVideo,
+          NineGridUnsupportedError,
+        } = await import('@/lib/export/nine-grid-motion');
+        const sources = await renderNineGridLayoutSources(
+          adaptable,
+          resolveImage,
+          nineGridLayout,
+          setExportProgress,
+        );
         if (sources.length === 0) {
-          alert(aT('书中还没有可导出的照片', 'There are no photos to export'));
+          alert(aT('书中还没有可导出的排版', 'There are no layouts to export'));
           return;
         }
-        const { renderNineGridVideo, NineGridUnsupportedError } = await import('@/lib/export/nine-grid-motion');
         try {
           const blob = await renderNineGridVideo(sources, {
-            aspect: nineGridAspect,
-            frameStyle: nineGridFrame,
+            aspect: '3:4',
+            frameStyle: 'full',
             background: boardBg?.kind === 'color' ? boardBg.color : '#c9c5b9',
             onProgress: setExportProgress,
           });
@@ -4474,18 +4479,10 @@ function EditorBook({
       el.addEventListener('click', fn);
       actionHandlers.push({ el, fn });
     });
-    root.querySelectorAll('[data-nine-grid-aspect]').forEach((el) => {
+    root.querySelectorAll('[data-nine-grid-layout]').forEach((el) => {
       const fn = () => {
-        nineGridAspect = el.getAttribute('data-nine-grid-aspect') as '9:16' | '3:4';
-        root.querySelectorAll('[data-nine-grid-aspect]').forEach((option) => option.classList.toggle('selected', option === el));
-      };
-      el.addEventListener('click', fn);
-      actionHandlers.push({ el, fn });
-    });
-    root.querySelectorAll('[data-nine-grid-frame]').forEach((el) => {
-      const fn = () => {
-        nineGridFrame = el.getAttribute('data-nine-grid-frame') as 'full' | 'framed';
-        root.querySelectorAll('[data-nine-grid-frame]').forEach((option) => option.classList.toggle('selected', option === el));
+        nineGridLayout = el.getAttribute('data-nine-grid-layout') as 'single' | 'spread';
+        root.querySelectorAll('[data-nine-grid-layout]').forEach((option) => option.classList.toggle('selected', option === el));
       };
       el.addEventListener('click', fn);
       actionHandlers.push({ el, fn });

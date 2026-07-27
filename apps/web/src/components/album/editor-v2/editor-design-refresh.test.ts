@@ -142,6 +142,12 @@ test('chat collapse button is clickable inside the draggable header', () => {
 test('nine-grid export modal actions are wired inside the modal scope', () => {
   assert.match(editorPort, /add\(byId\('nineGridModal'\)\)/, 'nine-grid modal must be included when binding data-action controls');
   assert.match(editorPort, /confirmNineGrid:\s*\(\) => void exportNineGrid\(\)/, 'export button must invoke the nine-grid exporter');
+  assert.match(editorPort, /data-nine-grid-layout="single"/, 'nine-grid export should offer designed single pages');
+  assert.match(editorPort, /data-nine-grid-layout="spread"/, 'nine-grid export should offer designed spreads');
+  assert.doesNotMatch(editorPort, /data-nine-grid-aspect=/, 'fixed 3:4 output should not expose a format control');
+  assert.doesNotMatch(editorPort, /data-nine-grid-frame=/, 'fixed full-bleed output should not expose a frame control');
+  assert.match(editorPort, /renderNineGridLayoutSources\([\s\S]*?nineGridLayout/, 'video sources should come from the rendered book layouts');
+  assert.match(editorPort, /aspect: '3:4',\s*frameStyle: 'full'/, 'nine-grid output should stay fixed at 3:4 full bleed');
 });
 
 test('editor motion and toolbar controls are functional, not empty chrome', () => {
