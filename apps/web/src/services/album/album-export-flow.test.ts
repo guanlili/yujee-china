@@ -11,6 +11,7 @@ process.env.R2_PUBLIC_BASE_URL ??= 'https://cdn.yujeeai.test';
 
 const { db } = await import('../../db/client');
 const { albumRepo } = await import('../../db/repos/album-repo');
+const { albumPageRepo } = await import('../../db/repos/album-page-repo');
 const { albumService } = await import('./album-service');
 const { cleanupUser, isDbReachable, makeAlbum, makeUser } = await import(
   '../../db/repos/__test__/setup'
@@ -178,5 +179,79 @@ test('cover thumbnail confirmation is bound to an immutable album revision', asy
   } finally {
     await cleanupUser(user.id);
     await cleanupUser(otherUser.id);
+  }
+});
+
+test('non-draft cover page edits invalidate signed and confirmed cover thumbnails', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('cover-thumb-page-race');
+  try {
+    const album = await makeAlbum(user.id, { photoCount: 2 });
+    await albumPageRepo.bulkInsert(db, [
+      {
+        albumId: album.id,
+        pageIndex: 0,
+        templateId: 'mag-01',
+        imagesJson: { hero: 'cover-a' },
+        textsJson: { title: 'Cover A' },
+        imagePosJson: { hero: { x: 50, y: 50, scale: 1 } },
+      },
+      {
+        albumId: album.id,
+        pageIndex: 1,
+        templateId: 'mag-02',
+        imagesJson: { image: 'interior-a' },
+        textsJson: { title: 'Interior A' },
+        imagePosJson: {},
+      },
+    ]);
+
+    const signedA = await albumService.signCoverThumbnailUpload(user.id, album.id, {
+      contentType: 'image/jpeg',
+      size: 48 * 1024,
+    });
+    await albumService.updatePage(user.id, album.id, 0, {
+      imagesJson: { hero: 'cover-b' },
+      textsJson: { title: 'Cover B' },
+      imagePosJson: { hero: { x: 45, y: 55, scale: 1.1 } },
+    });
+
+    await assert.rejects(
+      () => albumService.confirmCoverThumbnail(user.id, album.id, {
+        r2Key: signedA.r2Key,
+        coverRevision: signedA.coverRevision,
+      }),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+      'a cover-page edit serializes with confirmation and rejects stale A',
+    );
+    let current = await albumRepo.findById(album.id);
+    assert.equal(current?.coverThumbnailR2Key, null);
+    assert.equal(current?.coverThumbnailUrl, null);
+
+    const signedB = await albumService.signCoverThumbnailUpload(user.id, album.id, {
+      contentType: 'image/jpeg',
+      size: 48 * 1024,
+    });
+    assert.notEqual(signedB.coverRevision, signedA.coverRevision);
+    assert.notEqual(signedB.r2Key, signedA.r2Key);
+    await albumService.confirmCoverThumbnail(user.id, album.id, {
+      r2Key: signedB.r2Key,
+      coverRevision: signedB.coverRevision,
+    });
+
+    await albumService.updatePage(user.id, album.id, 1, {
+      textsJson: { title: 'Interior B' },
+    });
+    current = await albumRepo.findById(album.id);
+    assert.equal(current?.coverThumbnailR2Key, signedB.r2Key, 'non-cover edits retain a valid cover');
+
+    await albumService.updatePage(user.id, album.id, 0, {
+      imagesJson: { hero: 'cover-c' },
+    });
+    current = await albumRepo.findById(album.id);
+    assert.equal(current?.coverThumbnailR2Key, null, 'cover-page edits clear the persisted thumbnail');
+    assert.equal(current?.coverThumbnailUrl, null);
+  } finally {
+    await cleanupUser(user.id);
   }
 });

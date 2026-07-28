@@ -61,10 +61,32 @@ function canonicalJson(value: unknown): string {
   return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
 }
 
-function coverThumbnailRevision(album: { photoFilter: PhotoFilterState | null; updatedAt: Date }): string {
+async function coverThumbnailRevision(
+  tx: DbOrTx,
+  album: {
+    id: string;
+    draftJson: unknown;
+    photoFilter: PhotoFilterState | null;
+    updatedAt: Date;
+  },
+): Promise<string> {
+  const draft = readStoryDraft(album.draftJson);
+  const draftCoverPage = draft?.pages?.find((page) => page.pageIndex === 0);
+  const storedCoverPage = draft?.pages?.length
+    ? null
+    : await albumPageRepo.findOne(tx, album.id, 0);
   const state = canonicalJson({
     photoFilter: normalizePhotoFilterState(album.photoFilter),
     updatedAt: album.updatedAt.toISOString(),
+    coverPage: draftCoverPage ?? (storedCoverPage
+      ? {
+          pageIndex: storedCoverPage.pageIndex,
+          templateId: storedCoverPage.templateId,
+          imagesJson: storedCoverPage.imagesJson,
+          textsJson: storedCoverPage.textsJson,
+          imagePosJson: storedCoverPage.imagePosJson,
+        }
+      : null),
   });
   return createHash('sha256').update(state).digest('hex');
 }
@@ -1292,30 +1314,29 @@ export const albumService = {
       pageStyle?: Record<string, string | null>;
     },
   ): Promise<{ updated: true }> {
-    const album = await this.findOwned(userId, albumId);
-    const hasDraft = !!readStoryDraft(album.draftJson)?.pages?.length;
-
-    if (!hasDraft) {
-      await db.transaction(async (tx) => {
+    await db.transaction(async (tx) => {
+      const latest = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
+      if (latest.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+      const current = readStoryDraft(latest.draftJson);
+      const hasDraft = !!current?.pages?.length;
+      if (!hasDraft) {
         await albumPageRepo.updateOne(tx, albumId, pageIndex, {
           imagesJson: patch.imagesJson,
           textsJson: patch.textsJson,
           imagePosJson: patch.imagePosJson,
         });
-        // 编辑一本已 COMPLETED 的书 → 退回 EDITING(photo-snapshot §5.5):导出即完成、但
-        // 不锁编辑;一旦改动,旧 PDF 不再代表当前内容,状态回 EDITING。pdfUrl 保留(那份
-        // 旧 PDF 仍可下载),重新导出时覆盖。
-        if (album.status === 'COMPLETED') {
-          await albumRepo.update(tx, albumId, { status: 'EDITING' });
-        }
-      });
-      return { updated: true };
-    }
-
-    await db.transaction(async (tx) => {
-      const latest = await albumRepo.findByIdForUpdate(tx, albumId);
-      if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
-      const current = readStoryDraft(latest.draftJson);
+        // Touch the album in the same lock order as confirmation so every
+        // non-draft page edit advances the revision snapshot. Page 0 also
+        // invalidates the stored browser-derived cover immediately.
+        await albumRepo.update(tx, albumId, {
+          ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
+          ...(pageIndex === 0
+            ? { coverThumbnailUrl: null, coverThumbnailR2Key: null }
+            : {}),
+        });
+        return;
+      }
       const pages = current?.pages ? [...current.pages] : null;
       const existing = pages?.[pageIndex];
       if (!current || !pages || !existing) {
@@ -1378,7 +1399,10 @@ export const albumService = {
       await albumRepo.update(tx, albumId, {
         draftJson: nextDraft,
         // 编辑已 COMPLETED 的书 → 退回 EDITING(photo-snapshot §5.5,同上)。
-        ...(album.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
+        ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
+        ...(pageIndex === 0
+          ? { coverThumbnailUrl: null, coverThumbnailR2Key: null }
+          : {}),
       });
     });
     return { updated: true };
@@ -1490,10 +1514,16 @@ export const albumService = {
       throw ERRORS.VALIDATION_FAILED('cover thumbnail must be <= 512KB');
     }
 
-    const album = await this.findOwned(userId, albumId);
-
-    const coverRevision = coverThumbnailRevision(album);
-    const r2Key = `cover-thumbs/${userId}/${albumId}/${coverRevision}.jpg`;
+    const { coverRevision, r2Key } = await db.transaction(async (tx) => {
+      const album = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+      if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+      const coverRevision = await coverThumbnailRevision(tx, album);
+      return {
+        coverRevision,
+        r2Key: `cover-thumbs/${userId}/${albumId}/${coverRevision}.jpg`,
+      };
+    });
     const putUrl = await r2.signPutUrl(r2Key, input.contentType, 300);
     return { putUrl, r2Key, publicUrl: r2.publicUrl(r2Key), coverRevision };
   },
@@ -1512,7 +1542,7 @@ export const albumService = {
       if (!album) throw ERRORS.ALBUM_NOT_FOUND();
       if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
 
-      const currentRevision = coverThumbnailRevision(album);
+      const currentRevision = await coverThumbnailRevision(tx, album);
       if (input.coverRevision !== currentRevision) {
         throw ERRORS.VALIDATION_FAILED('cover thumbnail revision is stale');
       }

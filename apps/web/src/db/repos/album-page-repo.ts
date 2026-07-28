@@ -11,6 +11,19 @@ export const albumPageRepo = {
       .where(eq(albumPages.albumId, albumId))
       .orderBy(asc(albumPages.pageIndex)),
 
+  findOne: async (
+    tx: DbOrTx,
+    albumId: string,
+    pageIndex: number,
+  ): Promise<AlbumPage | undefined> => {
+    const rows = await tx
+      .select()
+      .from(albumPages)
+      .where(and(eq(albumPages.albumId, albumId), eq(albumPages.pageIndex, pageIndex)))
+      .limit(1);
+    return rows[0];
+  },
+
   findFirstByAlbumIds: async (
     albumIds: string[],
   ): Promise<Pick<AlbumPage, 'albumId' | 'pageIndex' | 'templateId' | 'imagesJson' | 'textsJson' | 'imagePosJson'>[]> => {

@@ -1729,7 +1729,13 @@ test('updatePage(draft 相册):文本/图位/样式全部落 draft_json,且同�
       ],
       progress: { currentChapterId: null, doneChapterIds: ['c1'] },
     };
-    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      stage: 'story',
+      draftJson: wrapped,
+      coverThumbnailR2Key: `cover-thumbs/${user.id}/${album.id}/old.jpg`,
+      coverThumbnailUrl: 'https://cdn.yujee.test/old.jpg',
+    });
 
     await albumService.updatePage(user.id, album.id, 0, {
       textsJson: { title: '新标题' },
@@ -1750,6 +1756,8 @@ test('updatePage(draft 相册):文本/图位/样式全部落 draft_json,且同�
     assert.match(page.html!, /object-position:30% 70%/);
     assert.match(page.html!, /transform:scale\(1\.4\)/);
     assert.match(page.html!, /\{\{IMG_SRC:image\}\}/, 'IMG_SRC token 保留,显示时才解析');
+    assert.equal(after?.coverThumbnailR2Key, null, 'draft cover page edits clear the stale cover key');
+    assert.equal(after?.coverThumbnailUrl, null, 'draft cover page edits clear the stale cover URL');
   } finally {
     await cleanupUser(user.id);
   }
