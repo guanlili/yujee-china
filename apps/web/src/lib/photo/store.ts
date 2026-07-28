@@ -2,6 +2,7 @@
 
 import { prepareImageBlobForBrowserDecode } from './heic';
 import {
+  LutIdSchema,
   quantizeStrength,
   resolveEffectiveFilter,
   type PhotoFilterRef,
@@ -34,8 +35,17 @@ export const TIER_MAX_EDGE: Record<PhotoTier, number> = { thumb: 240, display: 1
 const TIER_QUALITY: Record<PhotoTier, number> = { thumb: 0.75, display: 0.82 };
 const FILTERED_VARIANT_LIMIT = 2;
 
+const SIMPLE_PHOTO_ID = /^[A-Za-z0-9_-]+$/;
+
+function filteredPhotoNamespace(photoId: string): string {
+  // Preserve planned readable keys for normal UUID/opaque ids. Unsafe ids use
+  // an injective length-prefixed namespace whose leading "~" cannot collide
+  // with the simple branch.
+  return SIMPLE_PHOTO_ID.test(photoId) ? photoId : `~${photoId.length}:${photoId}`;
+}
+
 export function filteredVariantPrefix(photoId: string, tier: PhotoTier): string {
-  return `${photoId}@${tier}@pf-v1@`;
+  return `${filteredPhotoNamespace(photoId)}@${tier}@pf-v1@`;
 }
 
 export function derivedCacheKey(
@@ -94,22 +104,29 @@ async function putDerivedValue(key: string, value: unknown): Promise<void> {
   await asPromise((await tx('readwrite', DERIVED_STORE)).put(value, key));
 }
 
-async function deleteDerivedValue(key: string): Promise<void> {
-  await asPromise((await tx('readwrite', DERIVED_STORE)).delete(key));
-}
-
-async function getDerivedKeys(): Promise<string[]> {
-  const keys = await asPromise((await tx('readonly', DERIVED_STORE)).getAllKeys());
-  return keys.filter((key): key is string => typeof key === 'string');
-}
-
 interface FilteredVariantRecency {
   version: 1;
   keys: string[];
 }
 
 function filteredVariantRecencyKey(photoId: string, tier: PhotoTier): string {
-  return `${photoId}@${tier}@pf-recency-v1`;
+  return `${filteredPhotoNamespace(photoId)}@${tier}@pf-recency-v1`;
+}
+
+function isFilteredVariantKey(key: string, prefix: string): boolean {
+  if (!key.startsWith(prefix)) return false;
+  const suffix = key.slice(prefix.length);
+  const separator = suffix.lastIndexOf('@');
+  if (separator <= 0) return false;
+  const lutId = suffix.slice(0, separator);
+  const strengthText = suffix.slice(separator + 1);
+  const strength = Number(strengthText);
+  return LutIdSchema.safeParse(lutId).success
+    && Number.isInteger(strength)
+    && strength >= 5
+    && strength <= 100
+    && strength % 5 === 0
+    && String(strength) === strengthText;
 }
 
 function parseFilteredVariantRecency(value: unknown): string[] {
@@ -126,41 +143,112 @@ function parseFilteredVariantRecency(value: unknown): string[] {
   );
 }
 
-async function touchFilteredVariant(
+function transactionFailure(
+  transaction: IDBTransaction,
+  capturedError: unknown,
+): Error {
+  if (capturedError instanceof Error) return capturedError;
+  if (transaction.error) return transaction.error;
+  return new Error('Filtered derived-cache transaction aborted');
+}
+
+async function maintainFilteredVariant(
   photoId: string,
   tier: PhotoTier,
   key: string,
+  newBlob?: Blob,
 ): Promise<void> {
   const prefix = filteredVariantPrefix(photoId, tier);
   const metadataKey = filteredVariantRecencyKey(photoId, tier);
-  const [allKeys, metadata] = await Promise.all([
-    getDerivedKeys(),
-    getDerivedValue(metadataKey),
-  ]);
-  const variantKeys = allKeys.filter((candidate) => candidate.startsWith(prefix));
-  const existing = new Set(variantKeys);
-  const ordered = parseFilteredVariantRecency(metadata).filter(
-    (candidate) => candidate !== key && existing.has(candidate),
-  );
-  const retained = [...ordered, key].slice(-FILTERED_VARIANT_LIMIT);
-  const retainedSet = new Set(retained);
+  const db = await openDb();
 
-  await putDerivedValue(metadataKey, {
-    version: 1,
-    keys: retained,
-  } satisfies FilteredVariantRecency);
-  await Promise.all(
-    variantKeys
-      .filter((candidate) => !retainedSet.has(candidate))
-      .map(async (candidate) => {
-        try {
-          await deleteDerivedValue(candidate);
-        } catch {
-          // Cache eviction is best-effort. A later touch retries the same
-          // prefix without risking base bytes or another photo/tier.
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(DERIVED_STORE, 'readwrite');
+    const store = transaction.objectStore(DERIVED_STORE);
+    let capturedError: unknown;
+    let allKeys: IDBValidKey[] | undefined;
+    let metadata: unknown;
+    let metadataReady = false;
+    let mutationsQueued = false;
+
+    const captureRequestError = <T,>(request: IDBRequest<T>) => {
+      request.onerror = () => {
+        capturedError = request.error ?? new Error('Filtered derived-cache request failed');
+      };
+    };
+
+    const abortFor = (error: unknown) => {
+      capturedError = error;
+      try {
+        transaction.abort();
+      } catch {
+        reject(transactionFailure(transaction, capturedError));
+      }
+    };
+
+    const queueMutations = () => {
+      if (mutationsQueued || !allKeys || !metadataReady) return;
+      mutationsQueued = true;
+      try {
+        const variantKeys = allKeys.filter(
+          (candidate): candidate is string =>
+            typeof candidate === 'string' && isFilteredVariantKey(candidate, prefix),
+        );
+        if (newBlob) {
+          if (!variantKeys.includes(key)) variantKeys.push(key);
+        } else if (!variantKeys.includes(key)) {
+          throw new Error(`Filtered cache hit disappeared before MRU touch: ${key}`);
         }
-      }),
-  );
+
+        const existing = new Set(variantKeys);
+        const orderedPrior = parseFilteredVariantRecency(metadata).filter(
+          (candidate) => candidate !== key && existing.has(candidate),
+        );
+        // If metadata is missing/corrupt/stale, preserve one deterministic
+        // actual prior entry rather than discarding every recoverable variant.
+        const prior = orderedPrior.at(-1)
+          ?? variantKeys.filter((candidate) => candidate !== key).sort()[0];
+        const retained = prior ? [prior, key] : [key];
+        const retainedSet = new Set(retained.slice(-FILTERED_VARIANT_LIMIT));
+
+        if (newBlob) {
+          captureRequestError(store.put(newBlob, key));
+        }
+        captureRequestError(store.put({
+          version: 1,
+          keys: [...retainedSet],
+        } satisfies FilteredVariantRecency, metadataKey));
+        for (const candidate of variantKeys) {
+          if (!retainedSet.has(candidate)) {
+            captureRequestError(store.delete(candidate));
+          }
+        }
+      } catch (error) {
+        abortFor(error);
+      }
+    };
+
+    const keysRequest = store.getAllKeys();
+    keysRequest.onsuccess = () => {
+      allKeys = keysRequest.result;
+      queueMutations();
+    };
+    captureRequestError(keysRequest);
+
+    const metadataRequest = store.get(metadataKey);
+    metadataRequest.onsuccess = () => {
+      metadata = metadataRequest.result;
+      metadataReady = true;
+      queueMutations();
+    };
+    captureRequestError(metadataRequest);
+
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => {
+      capturedError ??= transaction.error;
+    };
+    transaction.onabort = () => reject(transactionFailure(transaction, capturedError));
+  });
 }
 
 // blob: URL 缓存带 LRU 上限:超限就 revoke 最久未用的,防止长会话/大相册把
@@ -389,9 +477,13 @@ async function getTierBlobResult(
   const cached = await getDerivedValue(key);
   if (cached instanceof Blob) {
     try {
-      await touchFilteredVariant(photoId, tier, key);
-    } catch {
-      // Recency bookkeeping must never make a usable cached variant fail.
+      await maintainFilteredVariant(photoId, tier, key);
+    } catch (error) {
+      console.warn('Filtered cache transaction failed during MRU touch', {
+        photoId,
+        tier,
+        key,
+      }, error);
     }
     return { blob: cached, filteredFallback: false };
   }
@@ -409,15 +501,13 @@ async function getTierBlobResult(
   }
 
   try {
-    await putDerivedValue(key, filtered);
-  } catch {
-    return { blob: filtered, filteredFallback: false };
-  }
-  try {
-    await touchFilteredVariant(photoId, tier, key);
-  } catch {
-    // The rendered bytes remain usable even if recency metadata cannot be
-    // updated. A later access retries bounded-cache maintenance.
+    await maintainFilteredVariant(photoId, tier, key, filtered);
+  } catch (error) {
+    console.warn('Filtered cache transaction failed; using in-memory rendered Blob', {
+      photoId,
+      tier,
+      key,
+    }, error);
   }
   return { blob: filtered, filteredFallback: false };
 }
@@ -488,7 +578,20 @@ export const photoStore = {
     const ref = effectiveFilter(photoFilter, photoId);
     const key = derivedCacheKey(photoId, tier, ref);
     const cached = cachedUrl(key);
-    if (cached) return cached;
+    if (cached) {
+      if (ref) {
+        try {
+          await maintainFilteredVariant(photoId, tier, key);
+        } catch (error) {
+          console.warn('Filtered cache transaction failed during URL-cache MRU touch', {
+            photoId,
+            tier,
+            key,
+          }, error);
+        }
+      }
+      return cached;
+    }
     try {
       const result = await getTierBlobResult(this, photoId, tier, photoFilter);
       if (!result.blob) return undefined;

@@ -203,6 +203,47 @@ test('filtered PDF LUT failure reads the exact downsized base JPEG', async () =>
   }
 });
 
+test('PDF omitted, null, and quantized-zero filters preserve the legacy data URL path', async () => {
+  const restore = installBrowserImageMocks({
+    contextFactory: () => ({
+      fillStyle: '',
+      fillRect() {},
+      drawImage() {},
+    }),
+  });
+  const originalApply = lutEngine.applyToBlob;
+  let lutCalls = 0;
+  try {
+    const store = Object.create(photoStore) as typeof photoStore;
+    store.getBlob = async () => new Blob(['original'], { type: 'image/jpeg' });
+    lutEngine.applyToBlob = async (blob) => {
+      lutCalls += 1;
+      return blob;
+    };
+
+    const omitted = await store.getPdfDataUrls(['same'], 900);
+    const explicitNull = await store.getPdfDataUrls(['same'], 900, null);
+    const quantizedZero = await store.getPdfDataUrls(
+      ['same'],
+      900,
+      { default: { lutId: 'cloudy-cool', strength: 2 } },
+    );
+
+    assert.deepEqual(explicitNull, omitted);
+    assert.deepEqual(quantizedZero, omitted);
+    assert.equal(omitted.same, 'data:image/jpeg;900x675');
+    assert.equal(lutCalls, 0);
+    assert.equal(restore.order.includes('downsize'), false);
+    assert.equal(
+      restore.order.filter((entry) => entry === 'toDataURL').length,
+      3,
+    );
+  } finally {
+    lutEngine.applyToBlob = originalApply;
+    restore();
+  }
+});
+
 test('PDF export data URL generation fails clearly when canvas context is unavailable', async () => {
   const restore = installBrowserImageMocks({ contextFactory: () => null });
   try {
