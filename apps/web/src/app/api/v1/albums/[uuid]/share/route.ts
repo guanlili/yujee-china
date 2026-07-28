@@ -6,7 +6,7 @@ import { fromException } from '@/lib/api/from-exception';
 import { shareService } from '@/services/album/share-service';
 
 // 生成/重新生成相册分享链接(免登只读)。已登录 + 归属校验在 shareService 里。
-// 前置:浏览器已把该相册照片全量传成公开快照(缺的图会在分享页里空)。
+// 前置:浏览器已按当前滤镜版本备份所有页面引用照片;缺少精确版本时拒绝创建新分享。
 const Schema = z.object({ locale: z.string().min(2).max(10).default('zh') });
 type RouteCtx = { params: Promise<{ uuid: string }> };
 
