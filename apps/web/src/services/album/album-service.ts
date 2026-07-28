@@ -1,4 +1,5 @@
 import { bakePageHtml, bakePagesHtml, type BakeablePage } from './bake-html';
+import { createHash } from 'node:crypto';
 import { normalizeBoardBackground, type BoardBackground } from '@/lib/board-bg/presets';
 import { patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle } from '@/components/album/page-html-dom';
 import { db, type DbOrTx } from '@/db/client';
@@ -52,6 +53,21 @@ const PDF_MAX_BYTES = 50 * 1024 * 1024; // 50MB — docs/web/api.md §3.6
 const COVER_THUMB_CONTENT_TYPE = 'image/jpeg';
 const COVER_THUMB_MAX_BYTES = 512 * 1024;
 const PHOTO_SNAPSHOT_CONTENT_TYPE = 'image/jpeg';
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
+}
+
+function coverThumbnailRevision(album: { photoFilter: PhotoFilterState | null; updatedAt: Date }): string {
+  const state = canonicalJson({
+    photoFilter: normalizePhotoFilterState(album.photoFilter),
+    updatedAt: album.updatedAt.toISOString(),
+  });
+  return createHash('sha256').update(state).digest('hex');
+}
 
 type AlbumCoverPage = {
   pageIndex: number;
@@ -1466,7 +1482,7 @@ export const albumService = {
     userId: string,
     albumId: string,
     input: { contentType: string; size: number },
-  ): Promise<{ putUrl: string; r2Key: string; publicUrl: string }> {
+  ): Promise<{ putUrl: string; r2Key: string; publicUrl: string; coverRevision: string }> {
     if (input.contentType !== COVER_THUMB_CONTENT_TYPE) {
       throw ERRORS.VALIDATION_FAILED('contentType must be image/jpeg');
     }
@@ -1474,26 +1490,40 @@ export const albumService = {
       throw ERRORS.VALIDATION_FAILED('cover thumbnail must be <= 512KB');
     }
 
-    await this.findOwned(userId, albumId);
+    const album = await this.findOwned(userId, albumId);
 
-    const r2Key = `cover-thumbs/${userId}/${albumId}.jpg`;
+    const coverRevision = coverThumbnailRevision(album);
+    const r2Key = `cover-thumbs/${userId}/${albumId}/${coverRevision}.jpg`;
     const putUrl = await r2.signPutUrl(r2Key, input.contentType, 300);
-    return { putUrl, r2Key, publicUrl: r2.publicUrl(r2Key) };
+    return { putUrl, r2Key, publicUrl: r2.publicUrl(r2Key), coverRevision };
   },
 
   async confirmCoverThumbnail(
     userId: string,
     albumId: string,
-    r2Key: string,
+    input: { r2Key: string; coverRevision: string },
   ): Promise<{ coverThumbnailUrl: string }> {
-    await this.findOwned(userId, albumId);
-    const expected = `cover-thumbs/${userId}/${albumId}.jpg`;
-    if (r2Key !== expected) throw ERRORS.VALIDATION_FAILED('r2Key does not match album');
-
-    const coverThumbnailUrl = `${r2.publicUrl(r2Key)}?v=${Date.now()}`;
+    if (!/^[a-f0-9]{64}$/.test(input.coverRevision)) {
+      throw ERRORS.VALIDATION_FAILED('coverRevision is invalid');
+    }
+    let coverThumbnailUrl = '';
     await db.transaction(async (tx) => {
+      const album = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+      if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+
+      const currentRevision = coverThumbnailRevision(album);
+      if (input.coverRevision !== currentRevision) {
+        throw ERRORS.VALIDATION_FAILED('cover thumbnail revision is stale');
+      }
+      const expected = `cover-thumbs/${userId}/${albumId}/${currentRevision}.jpg`;
+      if (input.r2Key !== expected) throw ERRORS.VALIDATION_FAILED('r2Key does not match album');
+
+      // The immutable revision is already the cache buster; legacy stored URLs
+      // remain readable while new confirmations never depend on Date.now().
+      coverThumbnailUrl = r2.publicUrl(input.r2Key);
       await albumRepo.update(tx, albumId, {
-        coverThumbnailR2Key: r2Key,
+        coverThumbnailR2Key: input.r2Key,
         coverThumbnailUrl,
       });
     });

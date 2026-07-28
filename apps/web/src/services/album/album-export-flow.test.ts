@@ -87,9 +87,10 @@ test('v3 export gate: PDF sign/confirm reject until all story chapters are done'
   }
 });
 
-test('cover photo thumbnail flow: browser uploads derived JPEG only and confirms namespaced key', async (t) => {
+test('cover thumbnail confirmation is bound to an immutable album revision', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('cover-thumb');
+  const otherUser = await makeUser('cover-thumb-other');
   try {
     const album = await makeAlbum(user.id, { photoCount: 2 });
 
@@ -99,26 +100,83 @@ test('cover photo thumbnail flow: browser uploads derived JPEG only and confirms
     });
 
     assert.match(sign.putUrl, /^https?:\/\//, 'a presigned PUT URL is issued');
+    assert.match(sign.coverRevision, /^[a-f0-9]{64}$/, 'revision is opaque and deterministic');
     assert.equal(
       sign.r2Key,
-      `cover-thumbs/${user.id}/${album.id}.jpg`,
-      'key is bound to {userId}/{albumId}',
+      `cover-thumbs/${user.id}/${album.id}/${sign.coverRevision}.jpg`,
+      'key is bound to the signed immutable revision',
     );
 
     await assert.rejects(
-      () => albumService.confirmCoverThumbnail(user.id, album.id, `cover-thumbs/${user.id}/other.jpg`),
+      () => albumService.confirmCoverThumbnail(user.id, album.id, {
+        r2Key: `cover-thumbs/${user.id}/other.jpg`,
+        coverRevision: sign.coverRevision,
+      }),
       (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
       'a forged cover thumbnail key is rejected',
     );
 
-    const { coverThumbnailUrl } = await albumService.confirmCoverThumbnail(user.id, album.id, sign.r2Key);
-    assert.ok(coverThumbnailUrl.includes(sign.r2Key));
+    await assert.rejects(
+      () => albumService.signCoverThumbnailUpload(otherUser.id, album.id, {
+        contentType: 'image/jpeg',
+        size: 48 * 1024,
+      }),
+      (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
+      'another user cannot sign a thumbnail for this album',
+    );
+
+    await albumService.updatePhotoFilter(user.id, album.id, {
+      default: { lutId: 'fuji-portrait', strength: 80 },
+    });
+    await assert.rejects(
+      () => albumService.confirmCoverThumbnail(user.id, album.id, {
+        r2Key: sign.r2Key,
+        coverRevision: sign.coverRevision,
+      }),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+      'a stale signed upload cannot restore a cover after the filter changed',
+    );
+    const staleAlbum = await albumRepo.findById(album.id);
+    assert.equal(staleAlbum?.coverThumbnailR2Key, null);
+    assert.equal(staleAlbum?.coverThumbnailUrl, null);
+
+    const replacement = await albumService.signCoverThumbnailUpload(user.id, album.id, {
+      contentType: 'image/jpeg',
+      size: 48 * 1024,
+    });
+    assert.notEqual(replacement.coverRevision, sign.coverRevision);
+    assert.notEqual(replacement.r2Key, sign.r2Key);
+
+    await assert.rejects(
+      () => albumService.confirmCoverThumbnail(user.id, album.id, {
+        r2Key: replacement.r2Key,
+        coverRevision: 'not-the-current-revision',
+      }),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+      'a mismatched opaque revision is rejected',
+    );
+
+    await assert.rejects(
+      () => albumService.confirmCoverThumbnail(otherUser.id, album.id, {
+        r2Key: replacement.r2Key,
+        coverRevision: replacement.coverRevision,
+      }),
+      (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
+      'another user cannot confirm a signed thumbnail',
+    );
+
+    const { coverThumbnailUrl } = await albumService.confirmCoverThumbnail(user.id, album.id, {
+      r2Key: replacement.r2Key,
+      coverRevision: replacement.coverRevision,
+    });
+    assert.equal(coverThumbnailUrl, `https://cdn.yujeeai.test/${replacement.r2Key}`);
 
     const finalAlbum = await albumRepo.findById(album.id);
-    assert.equal(finalAlbum?.coverThumbnailR2Key, sign.r2Key);
+    assert.equal(finalAlbum?.coverThumbnailR2Key, replacement.r2Key);
     assert.equal(finalAlbum?.coverThumbnailUrl, coverThumbnailUrl);
     assert.equal(finalAlbum?.status, 'AGENT_RUNNING', 'cover thumbnail confirm never changes album status');
   } finally {
     await cleanupUser(user.id);
+    await cleanupUser(otherUser.id);
   }
 });

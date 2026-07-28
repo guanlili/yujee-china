@@ -112,3 +112,8 @@ test('my-albums derives uploaded cover thumbnails from exact current display pix
   assert.match(page, /isCurrentCoverThumbnailState\(album\.id, coverStateKey\)/, 'stale filter or cover-detail work should be guarded before upload');
   assert.match(page, /console\.error\('Cover thumbnail upload failed', e\)/, 'existing upload diagnostic should remain available for retry investigation');
 });
+
+test('my-albums preserves the server-issued cover revision through upload confirmation', () => {
+  assert.match(page, /const \{ putUrl, r2Key, coverRevision \} = signJson\.data/, 'signing should retain the opaque revision');
+  assert.match(page, /body: JSON\.stringify\(\{ r2Key, coverRevision \}\)/, 'confirmation should return the exact signed revision');
+});

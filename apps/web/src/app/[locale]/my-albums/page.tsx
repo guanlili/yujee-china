@@ -185,7 +185,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
             throw new Error(signJson.error?.message ?? 'cover thumbnail sign failed');
           }
 
-          const { putUrl, r2Key } = signJson.data as { putUrl: string; r2Key: string };
+          const { putUrl, r2Key, coverRevision } = signJson.data;
           if (!isCurrentCoverThumbnailState(album.id, coverStateKey)) return;
           const putRes = await fetch(putUrl, {
             method: 'PUT',
@@ -198,7 +198,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           const confirmRes = await fetch(`/api/v1/albums/${album.id}/cover-thumbnail`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ r2Key }),
+            body: JSON.stringify({ r2Key, coverRevision }),
           });
           const confirmJson = await confirmRes.json();
           if (!confirmRes.ok || confirmJson.ok !== true) {
