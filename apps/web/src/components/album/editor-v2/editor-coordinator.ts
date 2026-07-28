@@ -21,6 +21,7 @@ import { createContext, type MutableRefObject } from 'react';
 import type { EditorPage } from '../types';
 import type { DraftEditResult } from '@/lib/album/authoring-client';
 import type { LayoutPatchEntry } from '../types';
+import type { PhotoFilterState } from '@/lib/photo/filter-state';
 
 // What EditorBook applied for a draft-edit act (so ChatPanel can narrate it without
 // owning pagesState). Mirrors the two branches of the old applyDraftAct.
@@ -49,6 +50,7 @@ export type ChatCoordinator = {
   coverOptionHTML: (templateId: string, photoId: string | null, boxW?: number, boxH?: number, pageBackground?: string) => string;
   bookPhotoIds: () => string[];
   imageUrl: (id: string) => string | undefined;
+  reloadPhotoFilter: (state: PhotoFilterState | null) => Promise<void>;
   // ── UI hooks ──
   setExportGateUi: (locked: boolean) => void;
   // ── export ──

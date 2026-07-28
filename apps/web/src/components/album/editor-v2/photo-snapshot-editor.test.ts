@@ -45,8 +45,9 @@ test('Save button carries the backup state on itself and reverts to idle', () =>
   // 旧的顶栏静态徽标彻底移除(状态只在按钮上)
   assert.doesNotMatch(editorPort, /className="save-badge/, 'the separate top-left save-badge must be gone');
   assert.doesNotMatch(editorPort, /data-i18n="saved">已保存/, 'the misleading static 已保存 badge must be gone');
-  // 只备份尚未备份的(增量),confirm 只登记 PUT 成功的
-  assert.match(editorPort, /bookPhotoIds\(\)\.filter\(\(id\) => !backedUpIds\.has\(id\)\)/, 'backup only uploads not-yet-backed photoIds');
+  // 按精确渲染版本增量备份,confirm 只登记 PUT 成功的 entry
+  assert.match(editorPort, /filterSnapshotMismatches\(entries, snapshotRenderVersions\)/, 'backup uploads exact render-version mismatches');
+  assert.match(editorPort, /getTierBlobStatus\(entry\.photoId, 'display', currentPhotoFilter\)/, 'backup observes filtered fallback status');
   assert.match(editorPort, /confirmPhotoSnapshot\(albumId, uploaded\)/, 'confirm registers only successfully uploaded ids');
 });
 

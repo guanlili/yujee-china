@@ -32,7 +32,7 @@ test('PDF export uses bounded PDF data URLs, not raw original data URLs', () => 
   // getPdfDataUrls 通道,绝不直接喂原图 data URL。
   assert.match(
     editorPort,
-    /photoStore\.getPdfDataUrls\(ids, RASTER_PDF_IMAGE_MAX_EDGE\)/,
+    /photoStore\.getPdfDataUrls\(\s*ids,\s*RASTER_PDF_IMAGE_MAX_EDGE,\s*currentPhotoFilter/,
     'EditorPort must use PDF-sized images',
   );
   assert.doesNotMatch(

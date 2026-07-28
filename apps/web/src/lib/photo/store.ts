@@ -454,7 +454,7 @@ async function getBaseTierBlob(
   return derived;
 }
 
-interface TierBlobResult {
+export interface TierBlobResult {
   blob: Blob | undefined;
   filteredFallback: boolean;
 }
@@ -565,6 +565,17 @@ export const photoStore = {
     photoFilter?: PhotoFilterState | null,
   ): Promise<Blob | undefined> {
     return (await getTierBlobResult(this, photoId, tier, photoFilter)).blob;
+  },
+
+  // Snapshot uploads need to distinguish an exact filtered render from the
+  // deliberate on-screen fallback to the base image. Never label fallback bytes
+  // with a filtered immutable renderVersion.
+  async getTierBlobStatus(
+    photoId: string,
+    tier: PhotoTier,
+    photoFilter?: PhotoFilterState | null,
+  ): Promise<TierBlobResult> {
+    return getTierBlobResult(this, photoId, tier, photoFilter);
   },
 
   // 屏显派生图:降采样 JPEG 的 blob: URL。首次生成后持久化进 IndexedDB(derived

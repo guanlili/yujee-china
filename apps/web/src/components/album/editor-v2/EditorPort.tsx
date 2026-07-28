@@ -15,10 +15,12 @@
    Styling lives in ./editor-port.css (the HTML <style> block, values unchanged).
    ════════════════════════════════════════════════════════════════════════════ */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
+import { lutEngine } from '@/lib/photo/lut/engine';
+import type { PhotoFilterState } from '@/lib/photo/filter-state';
 import { IMAGE_INPUT_ACCEPT, prepareImageBlobForBrowserDecode } from '@/lib/photo/heic';
 import { isDefaultPageBackground } from '@/lib/design/page-backgrounds';
 import { interiorSpreads } from '@/lib/export/collage';
@@ -27,6 +29,7 @@ import {
   signPhotoSnapshotUpload,
   confirmPhotoSnapshot,
   putSnapshotBlob,
+  type SnapshotEntry,
 } from '@/lib/album/photo-snapshot-client';
 import { UserAvatar } from '@/components/app/UserAvatar';
 import { UserMenu } from '@/components/app/UserMenu';
@@ -69,7 +72,6 @@ import { FONT_CATALOG } from '@yujee/contracts/render';
 import { EDITOR_FONTS, CJK_PREVIEW_SAMPLE, type EditorFont } from './editor-fonts';
 import { clamp01, hsvToRgb, rgbToHsv, hexToRgb, toHex, rgbToHex } from './color-util';
 import {
-  extractPhotoIds,
   applyPatchToPages,
   type AlbumDetail,
   type EditorPage,
@@ -83,6 +85,11 @@ import {
 } from '@/lib/album/authoring-client';
 import { getTemplate, TEMPLATE_IDS } from '@yujee/contracts/templates';
 import { ChatPanel, type ChatMode } from './ChatPanel';
+import { FilterBar } from './FilterBar';
+import {
+  collectSnapshotEntries,
+  filterSnapshotMismatches,
+} from './filter-controller';
 import {
   ChatCoordinatorContext,
   chatI18n,
@@ -307,7 +314,11 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
         for (const p of draft.pages) for (const id of Object.values(p.imagesJson)) if (id) ids.add(id);
         // 排版前 pages 为空,照片来自章节(收集面板的章节卡片 + 画板照片平铺都要它)。
         for (const ch of draft.chapters) for (const id of ch.photoIds ?? []) if (id) ids.add(id);
-        const urls = await photoStore.getTierUrls([...ids], 'display');
+        const urls = await photoStore.getTierUrls(
+          [...ids],
+          'display',
+          detail.album.photoFilter ?? null,
+        );
         if (cancelled) return;
         draftFingerprintRef.current = fingerprint;
         setImageUrls(urls);
@@ -420,6 +431,79 @@ function EditorShell({
   const coordinator = useRef<ChatCoordinator | null>(null);
   const [storyProgress, setStoryProgress] = useState<StoryProgress | null>(null);
   const [, setStoryProgressLoading] = useState(mode === 'authoring');
+  const [photoFilter, setPhotoFilter] = useState<PhotoFilterState | null>(
+    detail.album.photoFilter ?? null,
+  );
+  const [filterScope, setFilterScope] = useState<'book' | 'photo'>('book');
+  const [filterPhotoId, setFilterPhotoId] = useState<string | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterPersistError, setFilterPersistError] = useState<string | null>(null);
+  const [filterPersistRetry, setFilterPersistRetry] = useState(0);
+  const filterPersistGeneration = useRef(0);
+  const lastPersistedFilter = useRef(JSON.stringify(detail.album.photoFilter ?? null));
+  const lutSupported = useMemo(() => lutEngine.isSupported(), []);
+
+  const openBookFilter = useCallback(() => {
+    if (!lutSupported) return;
+    setFilterScope('book');
+    setFilterPhotoId(coordinator.current?.bookPhotoIds()[0] ?? null);
+    setFilterOpen(true);
+  }, [coordinator, lutSupported]);
+  const openPhotoFilter = useCallback((scope: 'photo', photoId: string) => {
+    if (!lutSupported) return;
+    setFilterScope(scope);
+    setFilterPhotoId(photoId);
+    setFilterOpen(true);
+  }, [lutSupported]);
+
+  // Reload every display surface through the imperative editor. Its coordinator
+  // owns the generation token because that is where the live image URL map lives.
+  useEffect(() => {
+    void coordinator.current?.reloadPhotoFilter(photoFilter);
+  }, [photoFilter, coordinator]);
+
+  // Persist only the filter field after 180 ms idle. Every state/retry change
+  // invalidates the prior response; AbortController also avoids wasted work.
+  useEffect(() => {
+    const serialized = JSON.stringify(photoFilter);
+    if (serialized === lastPersistedFilter.current && filterPersistRetry === 0) return;
+    const mine = ++filterPersistGeneration.current;
+    const abort = new AbortController();
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const response = await fetch(`/api/v1/albums/${detail.album.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ photoFilter }),
+            signal: abort.signal,
+          });
+          const json = (await response.json().catch(() => null)) as {
+            ok?: boolean;
+            data?: { photoFilter?: PhotoFilterState | null };
+            error?: { message?: string };
+          } | null;
+          if (!response.ok || !json?.ok) {
+            throw new Error(json?.error?.message ?? `filter PATCH failed (${response.status})`);
+          }
+          if (mine !== filterPersistGeneration.current) return;
+          const normalized = json.data?.photoFilter ?? photoFilter;
+          lastPersistedFilter.current = JSON.stringify(normalized);
+          setFilterPersistError(null);
+          setFilterPersistRetry(0);
+          if (JSON.stringify(normalized) !== serialized) setPhotoFilter(normalized);
+        } catch (error) {
+          if (abort.signal.aborted || mine !== filterPersistGeneration.current) return;
+          setFilterPersistError(error instanceof Error ? error.message : String(error));
+        }
+      })();
+    }, 180);
+    return () => {
+      window.clearTimeout(timer);
+      abort.abort();
+      filterPersistGeneration.current += 1;
+    };
+  }, [detail.album.id, filterPersistRetry, photoFilter]);
 
   const breadcrumbStage = storyProgress?.stage ?? detail.album.stage ?? 'analysing';
   // §4.2: chapter confirmation moved off the breadcrumb into the in-flow satisfaction
@@ -446,7 +530,13 @@ function EditorShell({
         data-screen-label="02 Yujee Editor"
       >
         <div className="page-glow" aria-hidden="true" />
-        <EditorTopbar locale={locale} exportUnlocked={exportUnlocked} coordinator={coordinator} />
+        <EditorTopbar
+          locale={locale}
+          exportUnlocked={exportUnlocked}
+          coordinator={coordinator}
+          lutSupported={lutSupported}
+          openBookFilter={openBookFilter}
+        />
 
         <div className="workspace flex-1 overflow-hidden relative md:flex" style={{ height: 'calc(100vh - 56px)' }}>
           <button className="chat-fold-expand" data-action="toggleChat" data-i18n-title="expandChat" title="展开对话" aria-label="展开对话">
@@ -465,8 +555,11 @@ function EditorShell({
             initialPages={initialPages}
             draftChapters={draftChapters}
             initialImageUrls={initialImageUrls}
+            initialPhotoFilter={photoFilter}
             outerRootRef={outerRootRef}
             coordinator={coordinator}
+            lutSupported={lutSupported}
+            openPhotoFilter={openPhotoFilter}
           />
 
           {/* Stable chat rail: keyed by album.id so an EditorBook remount doesn't
@@ -487,6 +580,31 @@ function EditorShell({
         </div>
 
         <EditorModals locale={locale} />
+        {lutSupported && filterOpen && (
+          <FilterBar
+            locale={locale}
+            state={photoFilter}
+            scope={filterScope}
+            photoId={filterPhotoId}
+            persistError={filterPersistError}
+            onChange={setPhotoFilter}
+            onRetry={() => setFilterPersistRetry((value) => value + 1)}
+            onClose={() => setFilterOpen(false)}
+          />
+        )}
+        {filterPersistError && !filterOpen && (
+          <button
+            type="button"
+            className="filter-save-toast"
+            role="alert"
+            onClick={() => {
+              setFilterOpen(true);
+              setFilterPersistRetry((value) => value + 1);
+            }}
+          >
+            {locale === 'zh' ? '风格保存失败，点此重试' : 'Style failed to save. Click to retry.'}
+          </button>
+        )}
       </div>
     </ChatCoordinatorContext.Provider>
   );
@@ -500,10 +618,14 @@ function EditorTopbar({
   locale,
   exportUnlocked,
   coordinator,
+  lutSupported,
+  openBookFilter,
 }: {
   locale: Locale;
   exportUnlocked: boolean;
   coordinator: RefObject<ChatCoordinator | null>;
+  lutSupported: boolean;
+  openBookFilter: () => void;
 }) {
   void coordinator; // the export button's data-action is wired by EditorBook via the shared root
   // 账户菜单统一为 <UserMenu>(与 landing / my-albums 同一组件):真实姓名/邮箱、
@@ -529,6 +651,16 @@ function EditorTopbar({
         </span>
       </div>
       <div className="top-right flex items-center gap-1 sm:gap-2 shrink-0">
+        {lutSupported && (
+          <button
+            type="button"
+            className="filter-topbar-btn inline-flex items-center px-4 py-2.5 rounded-pill text-[13px] font-semibold text-fg2 border border-bd"
+            onClick={openBookFilter}
+            aria-label={locale === 'zh' ? '设置全书风格' : 'Set whole-book style'}
+          >
+            {locale === 'zh' ? '风格' : 'Style'}
+          </button>
+        )}
         {/* 保存到云端(photo-snapshot):备份照片压缩图,换设备/清缓存也能看到内页。默认只
             图标;点击后按钮上短暂显示「备份中… → 绿点已备份 / 红点备份失败」再回到默认。
             data-action 由 EditorBook 的效果绑到 backupPhotos;备份态由 setSaveState 命令式更新。 */}
@@ -1105,8 +1237,11 @@ function EditorBook({
   initialPages,
   draftChapters,
   initialImageUrls,
+  initialPhotoFilter,
   outerRootRef,
   coordinator,
+  lutSupported,
+  openPhotoFilter,
 }: {
   detail: AlbumDetail;
   locale: Locale;
@@ -1114,8 +1249,11 @@ function EditorBook({
   initialPages: EditorPage[];
   draftChapters: DraftSkeleton | null;
   initialImageUrls: Record<string, string>;
+  initialPhotoFilter: PhotoFilterState | null;
   outerRootRef: RefObject<HTMLDivElement | null>;
   coordinator: RefObject<ChatCoordinator | null>;
+  lutSupported: boolean;
+  openPhotoFilter: (scope: 'photo', photoId: string) => void;
 }) {
   useEffect(() => {
     // The canvas effect scopes to the SHARED outer root (created by the stable shell)
@@ -1285,6 +1423,9 @@ function EditorBook({
     // 用 display 派生图(~1600px),缩略图条/总览格用 thumb 派生图(~240px);原图只
     // 留给 PDF 导出。thumb 还没解出来时回退 display,绝不回退原图。
     let imageUrls: Record<string, string> = { ...initialImageUrls };
+    let currentPhotoFilter: PhotoFilterState | null = initialPhotoFilter;
+    let displayReloadGeneration = 0;
+    let effectDisposed = false;
     // 服务器压缩图回退(photo-snapshot §5.3):本地原图/派生没有时,用备份过的服务器
     // 压缩图,换设备/清缓存后内页不空白。备份过才有;都没有则空槽(版面文字仍在)。
     const snapshotUrls: Record<string, string> = detail.album.photoSnapshotUrls ?? {};
@@ -1392,8 +1533,17 @@ function EditorBook({
       // 同理:工具条锚点也会被重绘换成游离节点(且失效是无声的)。见 reattachEditBar。
       reattachEditBar();
       // 页面内容变了(加图/AI 换图/换模板)→ 书里用到的图集合可能变 → 刷新留存 chip。
-      // repaintBook 只在完整初始化之后经各 act/replace 路径调用,backedUpIds 已就绪(无 TDZ)。
+      // repaintBook 只在完整初始化之后经各 act/replace 路径调用,版本表已就绪(无 TDZ)。
       refreshBackupStatus();
+    }
+    async function reloadPhotoFilter(state: PhotoFilterState | null): Promise<void> {
+      currentPhotoFilter = state;
+      const mine = ++displayReloadGeneration;
+      const ids = albumPhotoIds();
+      const urls = await photoStore.getTierUrls(ids, 'display', state);
+      if (effectDisposed || mine !== displayReloadGeneration) return;
+      imageUrls = urls;
+      repaintBook();
     }
     // 脏页重绘:单页编辑(改字/换图/挪图)只重画受影响 spread 的画布格+缩略图格
     // (+总览格),不再全书 innerHTML 重建 —— 20+ 页时全量 repaint 是主卡顿源之一。
@@ -1752,6 +1902,18 @@ function EditorBook({
         e.stopPropagation();
         openPhotoSwap();
       });
+      const style = document.createElement('button');
+      style.type = 'button';
+      style.className = 'img-edit-style';
+      style.textContent = aT('风格', 'Style');
+      style.setAttribute('aria-label', aT('设置当前照片风格', 'Set current photo style'));
+      style.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!imgEdit) return;
+        const page = pageByIndex(imgEdit.pageIndex);
+        const photoId = page?.imagesJson[imgEdit.slotId];
+        if (photoId) openPhotoFilter('photo', photoId);
+      });
       const del = document.createElement('button');
       del.type = 'button';
       del.className = 'img-edit-del';
@@ -1766,6 +1928,7 @@ function EditorBook({
       ov.appendChild(hint);
       ov.appendChild(slider);
       ov.appendChild(swap);
+      if (lutSupported) ov.appendChild(style);
       ov.appendChild(reset);
       ov.appendChild(del);
       // Clicks on the controls must not bubble to the page (which would deselect).
@@ -3939,7 +4102,11 @@ function EditorBook({
         html: p.htmlJson,
       }));
       const ids = collectPhotoIds(adaptable);
-      const dataUrls = await photoStore.getPdfDataUrls(ids, RASTER_PDF_IMAGE_MAX_EDGE);
+      const dataUrls = await photoStore.getPdfDataUrls(
+        ids,
+        RASTER_PDF_IMAGE_MAX_EDGE,
+        currentPhotoFilter,
+      );
       return { adaptable, photoIds: ids, resolveImage: (id: string) => dataUrls[id] };
     }
 
@@ -4307,7 +4474,14 @@ function EditorBook({
        用户点顶栏「保存」→ 把书里用到、本地有、尚未备份的照片的 display 档压缩图直传 R2。
        原图仍不上传。备份状态直接显示在「保存」按钮上:备份中 → 绿点「已备份」/ 红点
        「备份失败」,短暂展示后按钮回到默认(只图标)。点色由 CSS 按 data-backup-state 出。 */
-    const backedUpIds = new Set(Object.keys(snapshotUrls));
+    const snapshotRenderVersions: Record<string, string> = {
+      ...(detail.album.photoSnapshotRenderVersions ?? {}),
+    };
+    const isBackedUp = (photoId: string) =>
+      filterSnapshotMismatches(
+        collectSnapshotEntries([photoId], currentPhotoFilter),
+        snapshotRenderVersions,
+      ).length === 0;
     type BackupState = 'idle' | 'backing-up' | 'backed-up' | 'failed';
     let saveRevertTimer: ReturnType<typeof setTimeout> | null = null;
     function setSaveState(state: BackupState) {
@@ -4333,7 +4507,7 @@ function EditorBook({
     }
     // 相册留存状态 chip(breadcrumb 处):只讲图片安危 —— 书的文字/排版一直在云端,
     // 不会丢;有风险的是图片(未备份则仅在本机 IndexedDB)。三态按「书里用到的图」与
-    // 「已备份集合 backedUpIds」的包含关系推导。挂载 / 备份完成 / 加图重绘时刷新。
+    // 「精确渲染版本表」的包含关系推导。挂载 / 备份完成 / 加图重绘时刷新。
     type BookStatus = 'none' | 'local' | 'cloud' | 'partial';
     function refreshBackupStatus() {
       const chip = $('.book-status') as HTMLElement | null;
@@ -4342,7 +4516,7 @@ function EditorBook({
       let state: BookStatus;
       if (ids.length === 0) state = 'none';
       else {
-        const backed = ids.filter((id) => backedUpIds.has(id)).length;
+        const backed = ids.filter(isBackedUp).length;
         state = backed === 0 ? 'local' : backed === ids.length ? 'cloud' : 'partial';
       }
       chip.dataset.bookStatus = state;
@@ -4372,33 +4546,46 @@ function EditorBook({
     let backingUp = false;
     async function backupPhotos() {
       if (backingUp) return;
-      const todo = bookPhotoIds().filter((id) => !backedUpIds.has(id));
+      const entries = collectSnapshotEntries(bookPhotoIds(), currentPhotoFilter);
+      const todo = filterSnapshotMismatches(entries, snapshotRenderVersions);
       if (todo.length === 0) return setSaveState('backed-up');
       backingUp = true;
       setSaveState('backing-up');
       try {
-        // 只备份本地有的:getTierBlob 为空 = 原图不在本机,跳过(那些只能在有原图的设备上备份)。
-        const pairs: { photoId: string; blob: Blob }[] = [];
-        for (const id of todo) {
-          const blob = await photoStore.getTierBlob(id, 'display').catch(() => undefined);
-          if (blob) pairs.push({ photoId: id, blob });
+        // Missing local originals remain retryable. A filtered base fallback must
+        // never be uploaded under the filtered immutable renderVersion.
+        const pairs: { entry: SnapshotEntry; blob: Blob }[] = [];
+        for (const entry of todo) {
+          const result = await photoStore
+            .getTierBlobStatus(entry.photoId, 'display', currentPhotoFilter)
+            .catch(() => undefined);
+          if (!result?.blob) continue;
+          if (result.filteredFallback) {
+            logger.error({
+              albumId,
+              photoId: entry.photoId,
+              renderVersion: entry.renderVersion,
+            }, 'snapshot filtered render failed; refusing versioned upload');
+            continue;
+          }
+          pairs.push({ entry, blob: result.blob });
         }
         // 一张本地都没有(比如换了设备)→ 没法备份,当失败提示。
         if (pairs.length === 0) return setSaveState('failed');
-        const signed = await signPhotoSnapshotUpload(albumId, pairs.map((p) => p.photoId));
+        const signed = await signPhotoSnapshotUpload(albumId, pairs.map((p) => p.entry));
         const urlById = new Map(signed.map((s) => [s.photoId, s.putUrl]));
-        const uploaded: string[] = [];
+        const uploaded: SnapshotEntry[] = [];
         const queue = [...pairs];
         // 限并发 4 直传;单张失败不阻断其余,confirm 只登记成功的(不谎报全备份)。
         const worker = async () => {
           for (;;) {
             const item = queue.shift();
             if (!item) return;
-            const putUrl = urlById.get(item.photoId);
+            const putUrl = urlById.get(item.entry.photoId);
             if (!putUrl) continue;
             try {
               await putSnapshotBlob(putUrl, item.blob);
-              uploaded.push(item.photoId);
+              uploaded.push(item.entry);
             } catch {
               /* skip; reported as failed below if none succeed */
             }
@@ -4407,8 +4594,13 @@ function EditorBook({
         await Promise.all(Array.from({ length: 4 }, worker));
         if (uploaded.length === 0) return setSaveState('failed');
         await confirmPhotoSnapshot(albumId, uploaded);
-        uploaded.forEach((id) => backedUpIds.add(id));
-        const remaining = bookPhotoIds().filter((id) => !backedUpIds.has(id));
+        uploaded.forEach((entry) => {
+          snapshotRenderVersions[entry.photoId] = entry.renderVersion;
+        });
+        const remaining = filterSnapshotMismatches(
+          collectSnapshotEntries(bookPhotoIds(), currentPhotoFilter),
+          snapshotRenderVersions,
+        );
         setSaveState(remaining.length === 0 ? 'backed-up' : 'failed');
       } catch {
         setSaveState('failed');
@@ -4442,7 +4634,10 @@ function EditorBook({
       try {
         if (hint) hint.textContent = aT('正在上传照片…', 'Uploading photos…');
         await backupPhotos();
-        const missing = bookPhotoIds().filter((id) => !backedUpIds.has(id));
+        const missing = filterSnapshotMismatches(
+          collectSnapshotEntries(bookPhotoIds(), currentPhotoFilter),
+          snapshotRenderVersions,
+        );
         if (missing.length > 0) {
           if (hint) hint.textContent = aT(
             `还有 ${missing.length} 张照片没上传成功,先不生成链接。请重试;若原图不在这台设备,先去有原图的设备点「保存」备份。`,
@@ -4788,20 +4983,7 @@ function EditorBook({
       updateThumbUI(currentCh);
       if (bodyEl.classList.contains('overview-on')) renderOverview();
     } else {
-      const photoIds = [
-        ...new Set([
-          ...extractPhotoIds(detail.album.layoutJson),
-          ...collectPhotoIds(
-            detail.pages.map((p) => ({ templateId: p.templateId, images: p.imagesJson, texts: p.textsJson })),
-          ),
-        ]),
-      ];
-      void photoStore.getTierUrls(photoIds, 'display').then((urls) => {
-        imageUrls = urls;
-        paintSpread(currentCh);
-        updateThumbUI(currentCh);
-        if (bodyEl.classList.contains('overview-on')) renderOverview();
-      });
+      void reloadPhotoFilter(currentPhotoFilter);
     }
     // 挂载/重挂(加图后 EditorBook 会按 epoch 重挂,effect 重跑)时按当前书算一次留存态。
     refreshBackupStatus();
@@ -4824,6 +5006,7 @@ function EditorBook({
       coverOptionHTML,
       bookPhotoIds,
       imageUrl: (id: string) => imageUrls[id],
+      reloadPhotoFilter,
       setExportGateUi,
       exportPdf,
     };
@@ -4862,6 +5045,8 @@ function EditorBook({
     window.addEventListener('resize', onMobileResize);
 
     return () => {
+        effectDisposed = true;
+        displayReloadGeneration += 1;
         window.removeEventListener('resize', onMobileResize);
         if (mobileReinitTimer !== null) window.clearTimeout(mobileReinitTimer);
         mobileCanvas.teardown();
