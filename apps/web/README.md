@@ -10,7 +10,7 @@ Next.js app for the product UI, auth, billing, album state, V3 orchestration, an
 - Album/job persistence in Postgres via Drizzle.
 - Browser -> Web -> Agent orchestration for V3 generation.
 - Callback handling from Agent.
-- R2 presigned URLs for PDF and thumbnails.
+- R2 presigned URLs for PDF, thumbnails, and immutable versioned display-photo snapshots.
 
 Web 调**两个**后端服务,别混:
 
@@ -191,5 +191,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 4aab1213
+checked-at: 2d39795c
 -->
