@@ -3,9 +3,11 @@ import { createHash } from 'node:crypto';
 import {
   copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -15,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
 
 import { LUT_DEFINITIONS } from '../src/lib/photo/filter-state.ts';
-import { buildLuts, downsample33To17, parseCube33, parseSourceArgument } from './build-luts.ts';
+import { buildLuts, buildLutsForTest, downsample33To17, parseCube33, parseSourceArgument } from './build-luts.ts';
 
 const CUBE_SIZE = 33;
 const CUBE_BYTES = CUBE_SIZE ** 3 * 3;
@@ -162,6 +164,81 @@ test('a failed compile leaves prior output bytes unchanged', () => {
 
   assert.throws(() => buildLuts(sourceDirectory, outputDirectory), /expected 35937 samples/);
   assert.equal(outputHashManifest(outputDirectory), before);
+});
+
+test('leaves a predictable pre-existing backup collision untouched', () => {
+  const parent = temporaryDirectory('yujee-lut-output-parent-');
+  const outputDirectory = resolve(parent, 'luts');
+  const sourceDirectory = approvedSourceCopy();
+  buildLuts(sourceDirectory, outputDirectory);
+  const collision = resolve(parent, `.luts-backup-${process.pid}-424242`);
+  mkdirSync(collision);
+  writeFileSync(resolve(collision, 'sentinel.txt'), 'pre-existing collision');
+
+  const originalNow = Date.now;
+  Date.now = () => 424242;
+  try {
+    buildLuts(sourceDirectory, outputDirectory);
+  } finally {
+    Date.now = originalNow;
+  }
+
+  assert.equal(readFileSync(resolve(collision, 'sentinel.txt'), 'utf8'), 'pre-existing collision');
+});
+
+test('restores the previous output when publication second rename fails', () => {
+  const outputDirectory = resolve(temporaryDirectory('yujee-lut-output-parent-'), 'luts');
+  const sourceDirectory = approvedSourceCopy();
+  buildLuts(sourceDirectory, outputDirectory);
+  const before = outputHashManifest(outputDirectory);
+  let renameCount = 0;
+
+  assert.throws(
+    () => buildLutsForTest(sourceDirectory, outputDirectory, {
+      renameSync(from, to) {
+        renameCount++;
+        if (renameCount === 2) throw new Error('injected second rename failure');
+        renameSync(from, to);
+      },
+    }),
+    /injected second rename failure/,
+  );
+  assert.equal(renameCount, 3);
+  assert.equal(outputHashManifest(outputDirectory), before);
+});
+
+test('preserves owned backup and reports its safe path when restoration fails', () => {
+  const parent = temporaryDirectory('yujee-lut-output-parent-');
+  const outputDirectory = resolve(parent, 'luts');
+  const sourceDirectory = approvedSourceCopy();
+  buildLuts(sourceDirectory, outputDirectory);
+  const before = outputHashManifest(outputDirectory);
+  let renameCount = 0;
+  let preservedBackup = '';
+  let thrown: Error | undefined;
+
+  try {
+    buildLutsForTest(sourceDirectory, outputDirectory, {
+      renameSync(from, to) {
+        renameCount++;
+        if (renameCount === 2) throw new Error('injected second rename failure');
+        if (renameCount === 3) {
+          preservedBackup = from.toString();
+          throw new Error('injected restoration failure');
+        }
+        renameSync(from, to);
+      },
+    });
+  } catch (caught) {
+    thrown = caught instanceof Error ? caught : new Error(String(caught));
+  }
+
+  assert.equal(renameCount, 3);
+  assert.ok(thrown);
+  assert.match(thrown.message, /restoration failed/);
+  assert.match(thrown.message, new RegExp(preservedBackup.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.equal(existsSync(outputDirectory), false);
+  assert.equal(outputHashManifest(preservedBackup), before);
 });
 
 test('builds deterministic, ordered payloads and hash-verified provenance', () => {

@@ -49,6 +49,10 @@ type CompiledLuts = {
   thumbs: Uint8Array;
 };
 
+export type BuildLutsTestHooks = {
+  renameSync?: typeof renameSync;
+};
+
 function error(message: string): never {
   throw new Error(`LUT build: ${message}`);
 }
@@ -306,14 +310,26 @@ function compileLuts(sourceDirectory: string): CompiledLuts {
   return { provenance, fullResources, thumbs: gzip(thumbs) };
 }
 
-function replaceOutputTree(outputDirectory: string, compiled: CompiledLuts): void {
+function errorMessage(caught: unknown): string {
+  return caught instanceof Error ? caught.message : String(caught);
+}
+
+function replaceOutputTree(
+  outputDirectory: string,
+  compiled: CompiledLuts,
+  hooks: BuildLutsTestHooks = {},
+): void {
   const target = resolve(outputDirectory);
   if (basename(target) !== 'luts') error('output target must be a luts directory');
   const parent = dirname(target);
   mkdirSync(parent, { recursive: true });
   const stage = mkdtempSync(resolve(parent, '.luts-stage-'));
-  const backup = resolve(parent, `.luts-backup-${process.pid}-${Date.now()}`);
+  const rename = hooks.renameSync ?? renameSync;
+  let backupReservation: string | undefined;
+  let backup: string | undefined;
   let movedExisting = false;
+  let published = false;
+  let restored = false;
 
   try {
     const stagedFullDirectory = resolve(stage, 'full');
@@ -324,26 +340,57 @@ function replaceOutputTree(outputDirectory: string, compiled: CompiledLuts): voi
     writeFileSync(resolve(stage, 'README.md'), readme());
 
     if (existsSync(target)) {
-      renameSync(target, backup);
+      backupReservation = mkdtempSync(resolve(parent, '.luts-backup-'));
+      backup = resolve(backupReservation, 'previous-output');
+      rename(target, backup);
       movedExisting = true;
     }
-    renameSync(stage, target);
+    rename(stage, target);
+    published = true;
   } catch (caught) {
-    if (movedExisting && !existsSync(target) && existsSync(backup)) renameSync(backup, target);
+    if (movedExisting && backup && !existsSync(target) && existsSync(backup)) {
+      try {
+        rename(backup, target);
+        restored = true;
+      } catch (restoreCaught) {
+        throw new Error(
+          `LUT build: publication failed (${errorMessage(caught)}); restoration failed (${errorMessage(restoreCaught)}); previous output preserved at ${backup}`,
+        );
+      }
+    }
     throw caught;
   } finally {
     if (existsSync(stage)) rmSync(stage, { recursive: true, force: true });
-    if (existsSync(backup)) rmSync(backup, { recursive: true, force: true });
+    if (backupReservation && (!movedExisting || published || restored) && existsSync(backupReservation)) {
+      rmSync(backupReservation, { recursive: true, force: true });
+    }
   }
 }
 
-export function buildLuts(sourceDirectory: string, outputDirectory = OUTPUT_DIRECTORY): Provenance {
+function buildLutsWithHooks(
+  sourceDirectory: string,
+  outputDirectory: string,
+  hooks: BuildLutsTestHooks = {},
+): Provenance {
   const target = resolve(outputDirectory);
   const expectedFullNames = new Set(LUT_DEFINITIONS.map(({ id }) => `${id}.bin.gz`));
   assertOutputDirectoryIsUnambiguous(target, expectedFullNames);
   const compiled = compileLuts(sourceDirectory);
-  replaceOutputTree(target, compiled);
+  replaceOutputTree(target, compiled, hooks);
   return compiled.provenance;
+}
+
+export function buildLuts(sourceDirectory: string, outputDirectory = OUTPUT_DIRECTORY): Provenance {
+  return buildLutsWithHooks(sourceDirectory, outputDirectory);
+}
+
+/** Narrow test-only entry point for deterministic publication-failure coverage. */
+export function buildLutsForTest(
+  sourceDirectory: string,
+  outputDirectory: string,
+  hooks: BuildLutsTestHooks,
+): Provenance {
+  return buildLutsWithHooks(sourceDirectory, outputDirectory, hooks);
 }
 
 function main(): void {
