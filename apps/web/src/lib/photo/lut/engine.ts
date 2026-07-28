@@ -1,4 +1,4 @@
-import type { LutId, PhotoFilterRef } from '../filter-state';
+import { quantizeStrength, type LutId, type PhotoFilterRef } from '../filter-state';
 import {
   FULL_LUT_SIZE,
   THUMB_LUT_SIZE,
@@ -35,7 +35,10 @@ interface LutBitmap {
 export interface LutCanvas {
   width: number;
   height: number;
-  getContext(kind: 'webgl2'): WebGL2RenderingContext | null;
+  getContext(
+    kind: 'webgl2',
+    attributes: WebGLContextAttributes,
+  ): WebGL2RenderingContext | null;
   encode(type: string): Promise<Blob>;
   dispose(): void;
   onContextLost?(handler: () => void): void;
@@ -96,11 +99,18 @@ uniform float uN;
 uniform float uStrength;
 out vec4 frag;
 void main(){
-  vec3 c = clamp(texture(uImage, vUV).rgb, 0.0, 1.0);
+  vec4 source = texture(uImage, vUV);
+  vec3 c = clamp(source.rgb, 0.0, 1.0);
   vec3 co = (c*(uN-1.0)+0.5)/uN;
   vec3 g = texture(uLUT, co).rgb;
-  frag = vec4(mix(c, g, uStrength), 1.0);
+  frag = vec4(mix(c, g, uStrength), source.a);
 }`;
+
+const WEBGL_CONTEXT_ATTRIBUTES: WebGLContextAttributes = {
+  alpha: true,
+  preserveDrawingBuffer: true,
+  premultipliedAlpha: false,
+};
 
 function createLutEngine(dependencies: LutEngineDependencies): LutEngine {
   const serial = createSerialExecutor();
@@ -127,7 +137,7 @@ function createLutEngine(dependencies: LutEngineDependencies): LutEngine {
       try {
         canvas = createCanvas();
         if (!canvas) continue;
-        const gl = canvas.getContext('webgl2');
+        const gl = canvas.getContext('webgl2', WEBGL_CONTEXT_ATTRIBUTES);
         if (!gl) {
           canvas.dispose();
           continue;
@@ -149,7 +159,8 @@ function createLutEngine(dependencies: LutEngineDependencies): LutEngine {
     filter: PhotoFilterRef,
     tier: LutTier = 'full',
   ): Promise<Blob> {
-    if (filter.strength <= 0) return original;
+    const strength = clampStrength(quantizeStrength(filter.strength));
+    if (strength <= 0) return original;
 
     return serial(async () => {
       const state = ensureContext();
@@ -186,6 +197,7 @@ function createLutEngine(dependencies: LutEngineDependencies): LutEngine {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         gl.texImage2D(
           gl.TEXTURE_2D,
           0,
@@ -200,7 +212,7 @@ function createLutEngine(dependencies: LutEngineDependencies): LutEngine {
         gl.bindTexture(gl.TEXTURE_3D, lutTexture);
         gl.uniform1i(program.lutLocation, 1);
         gl.uniform1f(program.sizeLocation, tier === 'thumb' ? THUMB_LUT_SIZE : FULL_LUT_SIZE);
-        gl.uniform1f(program.strengthLocation, clampStrength(filter.strength) / 100);
+        gl.uniform1f(program.strengthLocation, strength / 100);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         assertUsableContext(state, activeContext);
@@ -411,7 +423,10 @@ function defaultDecodeBlob(blob: Blob): Promise<LutBitmap> {
   if (typeof globalThis.createImageBitmap !== 'function') {
     return Promise.reject(new Error('LUT rendering requires browser createImageBitmap support'));
   }
-  return globalThis.createImageBitmap(blob, { imageOrientation: 'from-image' });
+  return globalThis.createImageBitmap(blob, {
+    imageOrientation: 'from-image',
+    premultiplyAlpha: 'none',
+  });
 }
 
 function createOffscreenCanvasAdapter(): LutCanvas | null {
@@ -430,11 +445,8 @@ function createOffscreenCanvasAdapter(): LutCanvas | null {
     set height(value: number) {
       canvas.height = value;
     },
-    getContext() {
-      return canvas.getContext('webgl2', {
-        preserveDrawingBuffer: true,
-        premultipliedAlpha: false,
-      }) as WebGL2RenderingContext | null;
+    getContext(_kind, attributes) {
+      return canvas.getContext('webgl2', attributes) as WebGL2RenderingContext | null;
     },
     encode(type) {
       return canvas.convertToBlob({
@@ -479,11 +491,8 @@ function createDomCanvasAdapter(): LutCanvas | null {
     set height(value: number) {
       canvas.height = value;
     },
-    getContext() {
-      return canvas.getContext('webgl2', {
-        preserveDrawingBuffer: true,
-        premultipliedAlpha: false,
-      });
+    getContext(_kind, attributes) {
+      return canvas.getContext('webgl2', attributes);
     },
     encode(type) {
       return new Promise<Blob>((resolve, reject) => {

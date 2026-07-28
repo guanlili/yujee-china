@@ -93,23 +93,51 @@ async function fetchAndDecompress(
   url: string,
   expectedLength: number,
 ): Promise<Uint8Array> {
-  const response = await fetchImpl(url);
+  let response: Response;
+  try {
+    response = await fetchImpl(url);
+  } catch (cause) {
+    throw resourceFailure(url, 'fetch failed', cause);
+  }
   if (!response.ok) {
-    throw new Error(`LUT resource ${url} failed with HTTP ${response.status}`);
+    throw resourceFailure(
+      url,
+      `failed with HTTP ${response.status}`,
+      new Error(`HTTP ${response.status}`),
+    );
+  }
+  if (!response.body) {
+    throw resourceFailure(url, 'returned no response body', new Error('response body is null'));
   }
   if (typeof globalThis.DecompressionStream !== 'function') {
-    throw new Error('LUT resources require browser DecompressionStream(gzip) support');
+    throw resourceFailure(
+      url,
+      'requires browser DecompressionStream(gzip) support',
+      new Error('DecompressionStream is unavailable'),
+    );
   }
-  if (!response.body) throw new Error(`LUT resource ${url} returned no response body`);
 
-  const stream = response.body.pipeThrough(new DecompressionStream('gzip'));
-  const decoded = new Uint8Array(await new Response(stream).arrayBuffer());
+  let decoded: Uint8Array;
+  try {
+    const stream = response.body.pipeThrough(new DecompressionStream('gzip'));
+    decoded = new Uint8Array(await new Response(stream).arrayBuffer());
+  } catch (cause) {
+    throw resourceFailure(url, 'gzip decompression failed', cause);
+  }
   if (decoded.byteLength !== expectedLength) {
-    throw new Error(
-      `LUT resource ${url} decoded length ${decoded.byteLength}; expected ${expectedLength}`,
+    throw resourceFailure(
+      url,
+      `decoded length ${decoded.byteLength}; expected ${expectedLength}`,
+      new Error(`decoded length ${decoded.byteLength}`),
     );
   }
   return decoded;
+}
+
+function resourceFailure(url: string, detail: string, cause: unknown): Error {
+  const errorCause = cause instanceof Error ? cause : new Error(String(cause));
+  const causeDetail = errorCause.message ? `: ${errorCause.message}` : '';
+  return new Error(`LUT resource ${url} ${detail}${causeDetail}`, { cause: errorCause });
 }
 
 const defaultLoader = createLutResourceLoader((input, init) => fetch(input, init));
