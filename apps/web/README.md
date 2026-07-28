@@ -99,6 +99,21 @@ Key files:
 - `src/lib/photo/cluster.ts` derives opaque grouping labels.
 - PDF export is browser-side; Web only issues R2 presigned URLs.
 
+## Public Share Snapshots
+
+`POST /api/v1/albums/[uuid]/share` freezes a new public share from one consistent
+album state. The service holds the album row lock while checking ownership, reading
+the current draft/final pages, comparing every referenced photo's recorded snapshot
+version with its effective filter render version, and upserting `album_shares`.
+Frozen `photoUrls` contain only page-referenced photos and always use immutable
+versioned R2 keys.
+
+If any referenced photo lacks the exact current version, the endpoint returns
+`409 PHOTO_SNAPSHOT_VERSION_MISSING`; its message is only the numeric missing count
+(never photo IDs or render versions). Desktop and mobile translate that code/count
+to localized backup guidance. The failed attempt does not replace an existing share
+token or snapshot, and public reads never mutate already-frozen shares.
+
 ## Page HTML Truth (C 方案)
 
 - 排版/设计落库时每页烘成 HTML(`services/album/bake-html.ts`),draft 页的 `html`
@@ -191,5 +206,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 5797fe50
+checked-at: b9758dc5
 -->
