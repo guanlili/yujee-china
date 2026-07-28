@@ -187,7 +187,7 @@ export async function runFilterPreviewGeneration({
         strength: normalizedStrength,
       });
       if (!owner.isCurrent(generation)) return { status: 'stale' };
-      if (blob === base) {
+      if (normalizedStrength > 0 && blob === base) {
         owner.invalidate(generation);
         return { status: 'error' };
       }

@@ -142,10 +142,11 @@ test('preview exact-base failure revokes partial URLs and retry can succeed', as
   owner.dispose();
 });
 
-test('preview treats an exact base Blob as failure even at zero strength', async () => {
+test('preview accepts exact base Blobs at zero strength and reaches ready', async () => {
   const revoked: string[] = [];
   const owner = createOwnedUrlController((url) => revoked.push(url));
   const base = new Blob(['base']);
+  let urlNo = 0;
   const result = await runFilterPreviewGeneration({
     photoId: 'p1',
     strength: 0,
@@ -153,10 +154,12 @@ test('preview treats an exact base Blob as failure even at zero strength', async
     owner,
     getBase: async () => base,
     applyPreview: async () => base,
-    createUrl: () => 'blob:original',
+    createUrl: () => `blob:${++urlNo}`,
   });
-  assert.equal(result.status, 'error');
-  assert.deepEqual(revoked, ['blob:original']);
+  assert.equal(result.status, 'ready');
+  assert.equal(result.status === 'ready' ? Object.keys(result.urls).length : 0, 27);
+  assert.deepEqual(revoked, []);
+  owner.dispose();
 });
 
 test('stale preview selection immediately cleans partial URLs and never commits', async () => {
