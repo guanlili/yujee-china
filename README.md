@@ -23,8 +23,8 @@ Postgres + Cloudflare R2
 
 | 部分 | 主要职责 |
 |---|---|
-| Browser | 持有原图, 压缩/缓存照片, 读取 EXIF, 为 `/v3/select-layout` 和 `/v3/compose` 随请求带上 200px 缩略图 refs, 渲染编辑器, 本地生成 PDF 后直传 R2 |
-| Web | 登录、支付、积分、相册状态、`draft_json`、V3 API 编排、Agent callback 合并、R2 presign |
+| Browser | 持有原图, 压缩/缓存照片, 读取 EXIF, 用浏览器 WebGL 引擎应用照片滤镜, 为 `/v3/select-layout` 和 `/v3/compose` 随请求带上 200px 缩略图 refs, 渲染编辑器, 本地生成 PDF 后直传 R2 |
+| Web | 登录、支付、积分、相册状态、`draft_json`、`photo_filter`、V3 API 编排、Agent callback 合并、R2 presign |
 | Agent | 确定性分章(零 AI)、确定性排版(一次出 pages)、一次性成稿 `/v3/compose`(生成链路唯一的 AI 调用) |
 | Design Agent | 生成**之后**的对话式改书(六个写工具改文字/HTML/换版/换图/配色/字体)。独立 base URL 与鉴权,**必须单机**(session 在进程内存) |
 | contracts | Web 和 Agent 共用的 Zod 契约、模板 JSON、生成类型和 fixtures |
@@ -71,6 +71,13 @@ memoir-agent-rebuild/
 
 - Web 是 album 和 job 状态的真相源;Agent 不推进 Web 的 `stage`。
 - 原图由 Browser 持有;Web/Agent 不把 base64 落库、落 R2 或写日志。
+- 照片滤镜状态落在 `albums.photo_filter`:一本书可设默认 LUT,每张照片可覆盖或显式回到原片,
+  强度按 5% 量化。26 个确定性 LUT 以生成的 17³ 缩略资源和 33³ 完整资源随 Web 发布;
+  `.cube` 源文件不进仓。滤镜只在浏览器处理派生图,IndexedDB 里的原图永不改写。
+- 改滤镜会使现有 PDF/封面派生物失效。照片云快照按
+  `photo-snapshots/{userId}/{albumId}/{photoId}/{renderVersion}.jpg` 保存不可变版本;
+  新分享只冻结页面引用照片的精确当前版本,缺任一版本就以 409 拒绝创建。封面缩略图同样使用
+  绑定滤镜状态、相册更新时间和第 0 页状态的不可变 revision key,签名后的旧状态不能确认覆盖。
 - 跨服务字段先看 `packages/contracts/src/v3.ts` 和 `packages/contracts/src/layout.ts`,
   Python 镜像在 `engine/src/contracts/schemas.py`。
 - **页面真相 = HTML**:每页 draft 存完整 794×1123 HTML(`Page.html`),画板/PDF/设计对话
@@ -168,5 +175,5 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 42b543ad
+checked-at: 00393655
 -->

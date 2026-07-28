@@ -8,6 +8,7 @@ Next.js app for the product UI, auth, billing, album state, V3 orchestration, an
 - Auth through `better-auth`.
 - Billing/credits through Creem and the credit ledger.
 - Album/job persistence in Postgres via Drizzle.
+- Album-level default and per-photo override filter persistence in `albums.photo_filter`.
 - Browser -> Web -> Agent orchestration for V3 generation.
 - Callback handling from Agent.
 - R2 presigned URLs for PDF, thumbnails, and immutable versioned display-photo snapshots.
@@ -95,9 +96,31 @@ Key files:
 
 - Original photos stay in the browser.
 - `src/lib/photo/compress.ts` creates upload-sized image data.
-- `src/lib/photo/store.ts` keeps local originals for retry/resume.
+- `src/lib/photo/store.ts` keeps local originals for retry/resume and stores bounded
+  filter-derived display/thumb variants without mutating those originals.
 - `src/lib/photo/cluster.ts` derives opaque grouping labels.
-- PDF export is browser-side; Web only issues R2 presigned URLs.
+- `src/lib/photo/lut/engine.ts` is browser-only. Unsupported WebGL/resource/render
+  failures keep the exact original/base blob and log a diagnostic warning; Web and
+  both Agents never process photo-filter pixels.
+- PDF/JPG/Live exports, manual snapshots, and cover thumbnails all resolve the same
+  effective filter in the browser; Web only persists state and issues R2 presigned URLs.
+
+## Photo Filters and Derived Artifacts
+
+`albums.photo_filter` stores one normalized book default plus optional per-photo
+overrides; an explicit `null` override means original. Strength is quantized to 5%
+steps, and `effectiveRenderVersion` produces one stable `pf-v1` version per photo.
+The closed 26-LUT manifest lives in `src/lib/photo/filter-state.ts`. Generated static
+assets are deterministic: one combined 17³ thumbnail payload plus 26 individual 33³
+full payloads under `public/luts/`; source `.cube` files are intentionally not tracked.
+
+Changing the filter row-locks the album, persists only normalized filter state,
+invalidates stored PDF and cover-thumbnail metadata, and moves a `COMPLETED` album
+back to `EDITING`. Cover thumbnail signing returns an opaque SHA-256
+`coverRevision` bound to normalized filter state, album `updatedAt`, and page 0.
+The immutable key is
+`cover-thumbs/{userId}/{albumId}/{coverRevision}.jpg`; confirmation re-locks and
+recomputes the revision, so a stale upload cannot replace a newer cover state.
 
 ## Public Share Snapshots
 
@@ -107,6 +130,13 @@ the current draft/final pages, comparing every referenced photo's recorded snaps
 version with its effective filter render version, and upserting `album_shares`.
 Frozen `photoUrls` contain only page-referenced photos and always use immutable
 versioned R2 keys.
+
+Both snapshot endpoints accept only
+`{ entries: [{ photoId, renderVersion }, ...] }`. The browser PUTs exact filtered
+display JPEGs to
+`photo-snapshots/{userId}/{albumId}/{photoId}/{renderVersion}.jpg`; confirmation
+records only successful entries. Legacy unversioned rows remain readable for album
+fallback display, but they never satisfy creation of a new share.
 
 If any referenced photo lacks the exact current version, the endpoint returns
 `409 PHOTO_SNAPSHOT_VERSION_MISSING`; its message is only the numeric missing count
@@ -131,7 +161,8 @@ Drizzle schema lives in `src/db/schema.ts`.
 
 Core tables:
 
-- `albums`: album status, stage, draft/final layout JSON, PDF metadata.
+- `albums`: album status, stage, draft/final layout JSON, normalized `photo_filter`,
+  versioned photo-snapshot metadata, PDF/cover derivative metadata.
 - `album_pages`: finalized page rows.
 - `album_messages`: conversation/history rows where still used by Web.
 - `agent_jobs`: async Agent job state and callback progress。`kind` 枚举在迁移 `0020` 里
@@ -206,5 +237,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: b9758dc5
+checked-at: 0f082958
 -->

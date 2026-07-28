@@ -60,6 +60,17 @@ Postgres + Cloudflare R2
 - 渲染注册表的**唯一真相**是 `apps/web/src/components/album/web-registry.ts`。
   不要在 `components/album/templates/` 下再建第二套注册表(2026-07 已删过一次)。
 
+### 照片滤镜与派生物
+
+- `albums.photo_filter` 是全书默认 + 单张覆盖的持久化真相;显式 `null` 覆盖表示原片。
+  26 个确定性 LUT 只以生成后的 17³/33³ 二进制资源随 Web 发布,`.cube` 源文件不进仓。
+- 滤镜引擎只在 Browser 运行,只生成缓存/导出/上传用的派生像素;IndexedDB 原图不改写,
+  Web/Agent 不做服务端滤镜处理。
+- 每张备份快照使用不可变 `photoId/renderVersion` R2 key。新分享必须在 album 行锁内确认
+  页面引用照片都有精确当前版本,否则以 409 拒绝,不会生成带空图的分享。
+- 改滤镜会清 PDF/封面派生元数据。封面签名/确认是 CAS:revision 绑定规范化滤镜、
+  album `updatedAt` 和第 0 页状态;旧签名不能覆盖新状态。
+
 ## 验证陷阱(先读再声称通过)
 
 - 仓根 `pnpm test` 是 `pnpm -r test`,**撞到第一个失败的包就中断**,后面的包一个都不跑。
@@ -92,5 +103,5 @@ Postgres + Cloudflare R2
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 42b543ad
+checked-at: 00393655
 -->
