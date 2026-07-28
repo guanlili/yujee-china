@@ -139,20 +139,27 @@ test('chat collapse button is clickable inside the draggable header', () => {
   );
 });
 
-test('nine-grid export modal actions are wired inside the modal scope', () => {
+test('motion-image exports share one category and nine-grid stays single-page only', () => {
   assert.match(editorPort, /add\(byId\('nineGridModal'\)\)/, 'nine-grid modal must be included when binding data-action controls');
-  assert.match(editorPort, /confirmNineGrid:\s*\(\) => void exportNineGrid\(\)/, 'export button must invoke the nine-grid exporter');
-  assert.match(editorPort, /data-nine-grid-layout="single"/, 'nine-grid export should offer designed single pages');
-  assert.match(editorPort, /data-nine-grid-layout="spread"/, 'nine-grid export should offer designed spreads');
+  assert.match(editorPort, /动态图片/, 'the pure-web export category should avoid promising a native Live Photo');
+  assert.match(editorPort, /翻页动效/, 'the original page-flip export should use a motion label');
+  assert.match(editorPort, /九宫格动效/, 'the nine-grid export should use a motion label');
+  assert.match(editorPort, /motion-example-flip/, 'page-flip choice should include a visual motion example');
+  assert.match(editorPort, /motion-example-grid/, 'nine-grid choice should include a visual motion example');
+  assert.match(editorPort, /aria-pressed="true"/, 'the selected example should expose its pressed state');
+  assert.match(editorPort, /data-live-style="flip"/, 'Live modal should offer the page-flip animation');
+  assert.match(editorPort, /data-live-style="nine-grid"/, 'Live modal should offer the nine-grid animation');
+  assert.match(editorPort, /liveStyle === 'flip' \? exportLive\(\) : exportNineGrid\(\)/, 'the selected Live style should invoke its exporter');
+  assert.doesNotMatch(editorPort, /data-nine-grid-layout="spread"/, 'nine-grid export must not offer spread mode');
   assert.doesNotMatch(editorPort, /data-nine-grid-aspect=/, 'fixed 3:4 output should not expose a format control');
   assert.doesNotMatch(editorPort, /data-nine-grid-frame=/, 'fixed full-bleed output should not expose a frame control');
-  assert.match(editorPort, /renderNineGridLayoutSources\([\s\S]*?nineGridLayout/, 'video sources should come from the rendered book layouts');
+  assert.match(editorPort, /renderNineGridLayoutSources\([\s\S]*?'single'/, 'nine-grid video sources should use rendered single pages');
   assert.match(editorPort, /aspect: '3:4',\s*frameStyle: 'full'/, 'nine-grid output should stay fixed at 3:4 full bleed');
-  assert.match(editorPort, /columns: nineGridLayout === 'spread' \? 2 : 3/, 'spread mode should use two cards per row');
-  assert.match(editorPort, /layoutsPerScene: nineGridLayout === 'spread' \? 8 : 9/, 'spread mode should cap each scene at eight cards');
-  assert.match(editorPort, /data-action="confirmNineGridLive"/, 'nine-grid modal should offer a Live bundle');
+  assert.match(editorPort, /columns: 3,\s*layoutsPerScene: 9/, 'nine-grid mode should use three columns and nine pages per scene');
   assert.match(editorPort, /renderNineGridCover\(/, 'Live bundle should include a generated still cover');
-  assert.match(editorPort, /createZipBlob\(/, 'Live cover and motion should download as one bundle');
+  assert.match(editorPort, /navigator\.share/, 'Apple devices should prefer the system share sheet');
+  assert.match(editorPort, /downloadBlobs\(/, 'other devices should receive both MP4 and JPG files');
+  assert.doesNotMatch(editorPort, /即将打开苹果系统分享|当前浏览器不能共享成对素材/, 'Live delivery should not interrupt users with platform guidance');
 });
 
 test('editor motion and toolbar controls are functional, not empty chrome', () => {
