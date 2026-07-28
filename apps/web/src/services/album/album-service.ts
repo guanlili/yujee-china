@@ -1561,9 +1561,9 @@ export const albumService = {
   },
 
   // Manual photo backup (photo-snapshot-design.md). Returns one signed PUT per
-  // photoId so the browser uploads the display-tier compressed JPEG (~1600px)
-  // straight to R2 —原图仍不上传,invariant 4 沿用(Web 不碰字节)。photoId 进 key
-  // 前必须校验字符集,防路径穿越 / 跨 {userId}/{albumId} 命名空间。
+  // exact photoId/renderVersion so the browser uploads the current display-tier
+  // derived JPEG straight to immutable R2 keys. 原图仍不上传,invariant 4 沿用
+  // (Web 不碰字节);both key components are validated before derivation.
   async signPhotoSnapshotUpload(
     userId: string,
     albumId: string,

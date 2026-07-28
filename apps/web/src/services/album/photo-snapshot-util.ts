@@ -49,7 +49,8 @@ export const SnapshotEntriesBodySchema = z.object({
   entries: SnapshotEntriesSchema,
 }).strict();
 
-// R2 key 约定,mirror `cover-thumbs/{userId}/{albumId}.jpg`。
+// New writes use immutable per-render keys. The optional legacy branch exists only
+// for historical rows confirmed before renderVersions were recorded.
 export function photoSnapshotKey(
   userId: string,
   albumId: string,

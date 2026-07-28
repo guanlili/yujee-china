@@ -240,8 +240,8 @@ export const albums = pgTable(
     coverThumbnailR2Key: text('cover_thumbnail_r2_key'),
     coverThumbnailUrl: text('cover_thumbnail_url'),
     // 手动照片备份(photo-snapshot-design.md):用户主动「保存」后,把书里用到照片的
-    // display 档压缩图直传 R2 存下的 photoId 集合 + 更新时间。null = 从未备份。原图仍
-    // 只在浏览器;这里只记哪些 photoId 有 R2 压缩图,URL 按约定 key 推导。
+    // 当前 display 派生图直传 R2,记录 photoId + 精确 renderVersion + 更新时间。
+    // null = 从未备份。原图仍只在浏览器;旧行可没有 renderVersions。
     photoSnapshot: jsonb('photo_snapshot').$type<{
       photoIds: string[];
       renderVersions?: Record<string, string>;
