@@ -23,6 +23,7 @@ import {
 } from './ExportModals';
 import { MoreSheet, NoticeModal } from './MoreSheet';
 import { AiChatSheet } from './AiChatSheet';
+import { FilterSheet } from './FilterSheet';
 
 /* ════════════════════════════════════════════════════════════════════════════
    移动端弹窗的完整性守卫。
@@ -40,6 +41,24 @@ const noop = () => {};
 
 /** 每个弹窗:给一份关着的 props 和一份开着的 props。 */
 const CASES: { name: string; render: (open: boolean) => string; closeHint: RegExp }[] = [
+  {
+    name: 'FilterSheet 照片风格',
+    render: (open) =>
+      renderToStaticMarkup(
+        createElement(FilterSheet, {
+          open,
+          locale: 'zh',
+          state: null,
+          scope: 'book',
+          photoId: 'photo-1',
+          persistError: null,
+          onChange: noop,
+          onRetry: noop,
+          onClose: noop,
+        }),
+      ),
+    closeHint: /关闭风格面板/,
+  },
   {
     name: 'PhotoPickerSheet 换图',
     render: (open) =>
@@ -130,8 +149,10 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
           zh: true,
           backupState: 'idle' as const,
           backupProgress: null,
+          lutSupported: true,
           onClose: noop,
           onBackupPhotos: noop,
+          onPhotoFilter: noop,
         }),
       ),
     closeHint: /export-cancel/,

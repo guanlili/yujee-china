@@ -46,6 +46,7 @@ import { MobileStrip } from './MobileStrip';
 import { IconBoardBg } from './icons';
 import type { SelRect } from './page-edit';
 import type { ImagePosValue } from '../image-edit-util';
+import type { PhotoFilterState } from '@/lib/photo/filter-state';
 
 export type MobileEditorProps = {
   pages: EditorPage[];
@@ -66,6 +67,9 @@ export type MobileEditorProps = {
   selection: { slotId: string; rect: SelRect } | null;
   /** 选中的是图片时它当前的位置/缩放(拖动/捏合的起点)。 */
   imagePos: ImagePosValue | null;
+  photoFilter: PhotoFilterState | null;
+  selectedPhotoId: string | null;
+  lutSupported: boolean;
   sheetOpen: boolean;
   onSelectText: (hit: TextHit) => void;
   onSelectImage: (hit: ImageHit) => void;
@@ -75,6 +79,7 @@ export type MobileEditorProps = {
   onReplaceImage: () => void;
   onClearImage: () => void;
   onResetImagePos: () => void;
+  onPhotoFilter: () => void;
   onClearSelection: () => void;
   /** 交互 handler 一律必填 —— 「可选」等于「可以不接」,漏一个就是死按钮。
      必填后:谁漏传谁编译不过(见 MobileEditorRoot)。 */
@@ -117,6 +122,9 @@ export function MobileEditor({
   onExitEdit,
   selection,
   imagePos,
+  photoFilter,
+  selectedPhotoId,
+  lutSupported,
   sheetOpen,
   onSelectText,
   onSelectImage,
@@ -125,6 +133,7 @@ export function MobileEditor({
   onReplaceImage,
   onClearImage,
   onResetImagePos,
+  onPhotoFilter,
   onClearSelection,
   onSave,
   backupState,
@@ -329,10 +338,14 @@ export function MobileEditor({
         editPage={editPage}
         selection={selection}
         imagePos={imagePos}
+        photoFilter={photoFilter}
+        selectedPhotoId={selectedPhotoId}
+        lutSupported={lutSupported}
         sheetOpen={sheetOpen}
         onReplaceImage={onReplaceImage}
         onClearImage={onClearImage}
         onResetImagePos={onResetImagePos}
+        onPhotoFilter={onPhotoFilter}
         onExit={() => {
           // 浏览游标对齐到刚编辑那页所在的屏,回来不迷路。
           setStartPage(screenStartOfPage(spreads, pages, editPage, density));

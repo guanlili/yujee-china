@@ -26,6 +26,7 @@ import type { BoardBackground } from '@/lib/board-bg/presets';
 import type { EditorPage } from '../../types';
 import { runExportWithRetry, buildExportFailureLog, ExportError } from '../export-retry-util';
 import { logger } from '@/lib/log/logger';
+import type { PhotoFilterState } from '@/lib/photo/filter-state';
 
 export type ExportKind = 'collage' | 'live' | 'pages' | 'pdf';
 
@@ -40,9 +41,17 @@ export type ExportDeps = {
   /** 画板垫底背景(**BoardBackground 原对象**,不是 CSS 字符串)——
    *  拼图/Live 的渲染器自己按 kind 解析,与画布同一份视觉。 */
   background: BoardBackground | null;
+  photoFilter: PhotoFilterState | null;
 };
 
-export function useExport({ albumId, title, zh, pages, background }: ExportDeps) {
+export function useExport({
+  albumId,
+  title,
+  zh,
+  pages,
+  background,
+  photoFilter,
+}: ExportDeps) {
   const [progress, setProgress] = useState<ExportProgress>(null);
   const [failed, setFailed] = useState(false);
   const busy = useRef(false);
@@ -58,9 +67,13 @@ export function useExport({ albumId, title, zh, pages, background }: ExportDeps)
       html: p.htmlJson,
     }));
     const ids = collectPhotoIds(adaptable);
-    const dataUrls = await photoStore.getPdfDataUrls(ids, RASTER_PDF_IMAGE_MAX_EDGE);
+    const dataUrls = await photoStore.getPdfDataUrls(
+      ids,
+      RASTER_PDF_IMAGE_MAX_EDGE,
+      photoFilter,
+    );
     return { adaptable, resolveImage: (id: string) => dataUrls[id] };
-  }, [pages]);
+  }, [pages, photoFilter]);
 
   // 渲染库的回调口径是 (done, total)(见桌面 setExportProgress),不是百分比 ——
   // 百分比在这里算,标签沿用当前那一条,不被进度覆盖掉。

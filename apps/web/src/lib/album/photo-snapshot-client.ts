@@ -3,7 +3,6 @@
 // 手动照片备份(photo-snapshot-design.md)的浏览器侧封装:签名 → 直传 R2 → confirm。
 // 原图不上传;上传的是 display 档压缩图(photoStore.getTierBlob)。mirror PDF/封面直传。
 
-import { effectiveRenderVersion } from '@/lib/photo/filter-state';
 import type { SnapshotEntry } from '@/services/album/photo-snapshot-util';
 
 export type { SnapshotEntry };
@@ -32,33 +31,10 @@ async function postJson(url: string, body: unknown): Promise<unknown> {
   return json.data;
 }
 
-function normalizeSnapshotEntries(
-  entriesOrLegacyPhotoIds: SnapshotEntry[] | string[],
-): SnapshotEntry[] {
-  return entriesOrLegacyPhotoIds.map((entry) => (
-    typeof entry === 'string'
-      ? {
-          photoId: entry,
-          renderVersion: effectiveRenderVersion(null, entry),
-        }
-      : entry
-  ));
-}
-
 export function signPhotoSnapshotUpload(
   albumId: string,
   entries: SnapshotEntry[],
-): Promise<SignedSnapshotUpload[]>;
-/** @deprecated Task 7/8 caller bridge; pass SnapshotEntry[] instead. */
-export function signPhotoSnapshotUpload(
-  albumId: string,
-  photoIds: string[],
-): Promise<SignedSnapshotUpload[]>;
-export function signPhotoSnapshotUpload(
-  albumId: string,
-  entriesOrLegacyPhotoIds: SnapshotEntry[] | string[],
 ): Promise<SignedSnapshotUpload[]> {
-  const entries = normalizeSnapshotEntries(entriesOrLegacyPhotoIds);
   return postJson(`/api/v1/albums/${albumId}/photo-snapshot-upload-url`, { entries }) as Promise<
     SignedSnapshotUpload[]
   >;
@@ -67,17 +43,7 @@ export function signPhotoSnapshotUpload(
 export function confirmPhotoSnapshot(
   albumId: string,
   entries: SnapshotEntry[],
-): Promise<ConfirmedPhotoSnapshot>;
-/** @deprecated Task 7/8 caller bridge; pass SnapshotEntry[] instead. */
-export function confirmPhotoSnapshot(
-  albumId: string,
-  photoIds: string[],
-): Promise<ConfirmedPhotoSnapshot>;
-export function confirmPhotoSnapshot(
-  albumId: string,
-  entriesOrLegacyPhotoIds: SnapshotEntry[] | string[],
 ): Promise<ConfirmedPhotoSnapshot> {
-  const entries = normalizeSnapshotEntries(entriesOrLegacyPhotoIds);
   return postJson(`/api/v1/albums/${albumId}/photo-snapshot`, { entries }) as Promise<
     ConfirmedPhotoSnapshot
   >;

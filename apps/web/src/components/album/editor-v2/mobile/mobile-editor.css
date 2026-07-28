@@ -502,6 +502,37 @@
   position: relative;
 }
 
+/* FilterBar 在桌面是右上角 fixed 浮层;放进移动 ModalHost 后改成卡片内容本身。
+   预览较多,整张卡滚动,底部安全区留白。 */
+.editor-port .mobile-filter-sheet {
+  width: min(560px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.editor-port .mobile-filter-sheet .filter-bar {
+  position: static;
+  width: 100%;
+  max-height: none;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+.mobile-filter-save-toast {
+  position: fixed;
+  z-index: 450;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  max-width: calc(100vw - 32px);
+  padding: 11px 15px;
+  border-radius: 9999px;
+  background: #c44;
+  color: var(--surface);
+  font-size: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2);
+}
+
 /* 图片编辑要「面板开着的同时用手指在页面上拖那张图」。.mes-overlay 是 inset:0 铺满整屏的,
    不放行手势的话面板一开、图就锁死了(真机抓到:滑块能调、怎么拖都不动)。
    只放行**遮罩**;卡片自身仍接管事件,所以取消/完成照常可点 ——

@@ -31,7 +31,11 @@ import { isSpreadTemplate } from '../../templates/constants';
 import type { ResolveImage } from '../../adapt-layout';
 import { fitBox, spreadAspect } from './fit-box';
 import { MobileTopbar } from './MobileTopbar';
-import { IconPageBg, IconImage, IconText, IconTrash, IconReset } from './icons';
+import { IconPageBg, IconFilter, IconImage, IconText, IconTrash, IconReset } from './icons';
+import {
+  resolveEffectiveFilter,
+  type PhotoFilterState,
+} from '@/lib/photo/filter-state';
 
 /** 图片工具栏的高度与离图的间距 —— 用来判断挂图下方还是翻到上方(与 CSS 保持一致)。 */
 const IMG_BAR_H = 40;
@@ -57,6 +61,9 @@ export type EditViewProps = {
   selection: { slotId: string; rect: SelRect } | null;
   /** 选中的是图片时:当前的位置/缩放(拖动/捏合以它为起点)。 */
   imagePos: ImagePosValue | null;
+  photoFilter: PhotoFilterState | null;
+  selectedPhotoId: string | null;
+  lutSupported: boolean;
   /** 面板是否升起 —— 决定要不要把书上移让出位置。 */
   sheetOpen: boolean;
   /** 顶栏返回:退回浏览态。 */
@@ -77,6 +84,7 @@ export type EditViewProps = {
   onClearImage: () => void;
   /** 图片工具栏:位置/缩放复位。 */
   onResetImagePos: () => void;
+  onPhotoFilter: () => void;
   /** 点页面空白处:取消选中。 */
   onClearSelection: () => void;
   /** 交互 handler 一律必填(理由同 MobileEditor):漏接 = 死按钮 = 编译不过。 */
@@ -113,6 +121,9 @@ export function EditView({
   editPage,
   selection,
   imagePos,
+  photoFilter,
+  selectedPhotoId,
+  lutSupported,
   sheetOpen,
   onExit,
   onStep,
@@ -123,6 +134,7 @@ export function EditView({
   onReplaceImage,
   onClearImage,
   onResetImagePos,
+  onPhotoFilter,
   onClearSelection,
   onSave,
   backupState,
@@ -172,6 +184,9 @@ export function EditView({
   }, []);
 
   const page = pages[editPage] ?? null;
+  const selectedFilter = selectedPhotoId
+    ? resolveEffectiveFilter(photoFilter, selectedPhotoId)
+    : null;
   const ctx: PageFaceCtx = {
     folio: folioInfos[editPage]?.folio ?? null,
     folioSide: folioInfos[editPage]?.side ?? 'right',
@@ -471,7 +486,7 @@ export function EditView({
             />
           )}
 
-          {/* 图片工具栏:只有「换图 / 复位 / 删除」三件。缩放和平移不放这儿 ——
+          {/* 图片工具栏:风格能力可用时加「风格」;缩放和平移不放这儿 ——
               那两件直接在图上捏合、拖动(见 imageEditing),弹窗里放滑杆是多此一举。
               贴着选中框走:优先挂在图下方,下面装不下就翻到上方(长图/贴底的图)。 */}
           {selection && imagePos && (
@@ -498,6 +513,17 @@ export function EditView({
                 <IconReset className="mimg-ic" />
                 <span>{zh ? '复位' : 'Reset'}</span>
               </button>
+              {lutSupported && selectedPhotoId && (
+                <button
+                  type="button"
+                  className="mimg-btn"
+                  aria-pressed={selectedFilter != null}
+                  onClick={onPhotoFilter}
+                >
+                  <IconFilter className="mimg-ic" />
+                  <span>{zh ? '风格' : 'Style'}</span>
+                </button>
+              )}
               <button type="button" className="mimg-btn" data-danger="1" onClick={onClearImage}>
                 <IconTrash className="mimg-ic" />
                 <span>{zh ? '删除' : 'Delete'}</span>

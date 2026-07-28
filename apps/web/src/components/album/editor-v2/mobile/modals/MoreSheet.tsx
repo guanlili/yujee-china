@@ -25,15 +25,19 @@ export function MoreSheet({
   zh,
   backupState,
   backupProgress,
+  lutSupported,
   onClose,
   onBackupPhotos,
+  onPhotoFilter,
 }: {
   open: boolean;
   zh: boolean;
   backupState: BackupState;
   backupProgress: { done: number; total: number } | null;
+  lutSupported: boolean;
   onClose: () => void;
   onBackupPhotos: () => void;
+  onPhotoFilter: () => void;
 }) {
   const backupLabel = () => {
     if (backupState === 'backing-up') {
@@ -66,6 +70,23 @@ export function MoreSheet({
         </p>
       </div>
       <div className="px-5 py-4 flex flex-col gap-2.5">
+        {lutSupported && (
+          <button
+            className="export-opt"
+            onClick={onPhotoFilter}
+            data-testid="more-photo-filter"
+          >
+            <svg {...stroke}>
+              <path d="M4 6h16" />
+              <path d="M4 12h16" />
+              <path d="M4 18h16" />
+              <circle cx="9" cy="6" r="2" fill="currentColor" />
+              <circle cx="15" cy="12" r="2" fill="currentColor" />
+              <circle cx="11" cy="18" r="2" fill="currentColor" />
+            </svg>
+            <span>{zh ? '全书照片风格' : 'Whole-book photo style'}</span>
+          </button>
+        )}
         <button
           className="export-opt"
           onClick={onBackupPhotos}

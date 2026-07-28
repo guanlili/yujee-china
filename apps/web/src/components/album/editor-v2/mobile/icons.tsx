@@ -126,6 +126,20 @@ export function IconReset({ className }: IconProps) {
   );
 }
 
+/** 照片风格/LUT。三条调节轨与「强度」语义一致。 */
+export function IconFilter({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M4 6h16" />
+      <path d="M4 12h16" />
+      <path d="M4 18h16" />
+      <circle cx="9" cy="6" r="2" fill="currentColor" />
+      <circle cx="15" cy="12" r="2" fill="currentColor" />
+      <circle cx="11" cy="18" r="2" fill="currentColor" />
+    </svg>
+  );
+}
+
 /** AI 气泡里的星芒(设计稿:不是通用聊天气泡) */
 export function IconSparkle({ className }: IconProps) {
   return (

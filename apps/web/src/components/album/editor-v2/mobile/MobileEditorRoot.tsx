@@ -70,7 +70,17 @@ import {
 } from './page-edit';
 import { DEFAULT_IMAGE_POS, type ImagePosValue } from '../image-edit-util';
 import { PhotoPickerSheet } from './modals/PhotoPickerSheet';
+import { FilterSheet } from './modals/FilterSheet';
 import type { TextHit, ImageHit } from './EditView';
+import {
+  normalizePhotoFilterState,
+  type PhotoFilterState,
+} from '@/lib/photo/filter-state';
+import { lutEngine } from '@/lib/photo/lut/engine';
+import {
+  createFilterSaveController,
+  createLatestCommit,
+} from '../filter-controller';
 // 样式在容器里引:展示层保持无副作用 import,才能在 node 测试里直接渲染断言。
 // token 与桌面共用同一份(共享设计系统,不共享 DOM)。
 import '../editor-tokens.css';
@@ -116,6 +126,14 @@ export function MobileEditorRoot({
   // 服务端真相变了(草稿重载)→ 以服务端为准整体换掉。
   const [pages, setPages] = useState<EditorPage[]>(incomingPages);
   useEffect(() => setPages(incomingPages), [incomingPages]);
+  const [photoFilter, setPhotoFilter] = useState<PhotoFilterState | null>(
+    () => normalizePhotoFilterState(detail.album.photoFilter),
+  );
+  const [filterPersistError, setFilterPersistError] = useState<string | null>(null);
+  const lastPersistedFilter = useRef(
+    JSON.stringify(normalizePhotoFilterState(detail.album.photoFilter)),
+  );
+  const lutSupported = useMemo(() => lutEngine.isSupported(), []);
 
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   // 缩略档单独取:书册预览栏一条几十页,用主画布的 display 档会拖垮解码与滚动。
@@ -133,6 +151,9 @@ export function MobileEditorRoot({
   const [liveStyle, setLiveStyle] = useState<'flip' | 'nine-grid' | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterScope, setFilterScope] = useState<'book' | 'photo'>('book');
+  const [filterPhotoId, setFilterPhotoId] = useState<string | null>(null);
   // 换图:本册照片选择器。点一张即换即关,不做「选中+完成」两步。
   const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
 
@@ -148,6 +169,10 @@ export function MobileEditorRoot({
   const [draftBase, setDraftBase] = useState<EditorPage | null>(null);
   const [textState, setTextState] = useState<TextStyleState | null>(null);
   const [pageBg, setPageBg] = useState<string | null>(null);
+  const selectedPhotoId =
+    selection?.kind === 'image' && editPage != null
+      ? pages[editPage]?.imagesJson[selection.slotId] ?? null
+      : null;
 
   // 未实现功能的统一反馈:点了给一句「即将上线」,不做死按钮。
   const [toast, setToast] = useState<string | null>(null);
@@ -178,20 +203,73 @@ export function MobileEditorRoot({
     [detail.album.layoutJson, pages],
   );
 
+  const displayCommit = useMemo(
+    () => createLatestCommit<Record<string, string>>(setImageUrls),
+    [],
+  );
+  const thumbCommit = useMemo(
+    () => createLatestCommit<Record<string, string>>(setThumbUrls),
+    [],
+  );
   useEffect(() => {
-    let cancelled = false;
-    void photoStore.getTierUrls(photoIds, 'display').then((urls) => {
-      if (!cancelled) setImageUrls(urls);
-    });
-    void photoStore.getTierUrls(photoIds, 'thumb').then((urls) => {
-      if (!cancelled) setThumbUrls(urls);
-    });
-  return () => {
-      cancelled = true;
+    void displayCommit.run(() =>
+      photoStore.getTierUrls(photoIds, 'display', photoFilter).catch(() => ({})),
+    );
+    void thumbCommit.run(() =>
+      photoStore.getTierUrls(photoIds, 'thumb', photoFilter).catch(() => ({})),
+    );
+    return () => {
+      displayCommit.invalidate();
+      thumbCommit.invalidate();
     };
-  }, [photoIds]);
+  }, [photoIds, photoFilter, displayCommit, thumbCommit]);
+  useEffect(
+    () => () => {
+      displayCommit.dispose();
+      thumbCommit.dispose();
+    },
+    [displayCommit, thumbCommit],
+  );
 
-
+  const filterSaver = useMemo(
+    () =>
+      createFilterSaveController({
+        save: async (state, signal) => {
+          const response = await fetch(`/api/v1/albums/${detail.album.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ photoFilter: state }),
+            signal,
+          });
+          const json = (await response.json().catch(() => null)) as {
+            ok?: boolean;
+            data?: { photoFilter?: PhotoFilterState | null };
+            error?: { message?: string };
+          } | null;
+          if (!response.ok || !json?.ok) {
+            throw new Error(
+              json?.error?.message ?? `filter PATCH failed (${response.status})`,
+            );
+          }
+          return normalizePhotoFilterState(json.data?.photoFilter ?? state);
+        },
+        onSuccess: (normalized) => {
+          const serialized = JSON.stringify(normalized);
+          lastPersistedFilter.current = serialized;
+          setFilterPersistError(null);
+          setPhotoFilter((current) =>
+            JSON.stringify(current) === serialized ? current : normalized,
+          );
+        },
+        onError: (error) => setFilterPersistError(error.message),
+      }),
+    [detail.album.id],
+  );
+  useEffect(() => {
+    const serialized = JSON.stringify(photoFilter);
+    if (serialized !== lastPersistedFilter.current) filterSaver.schedule(photoFilter);
+  }, [filterSaver, photoFilter]);
+  useEffect(() => () => filterSaver.dispose(), [filterSaver]);
 
   // ── 落库:与桌面同一通道(PATCH /api/v1/albums/{id}/pages/{index})。 ────────
   // 服务端按同一批 patcher 把改动打进存库 html,前端不重复实现落库侧写回。
@@ -412,11 +490,12 @@ export function MobileEditorRoot({
     zh,
     pages,
     background: boardBg,
+    photoFilter,
   });
   const backup = usePhotoBackup(
     detail.album.id,
-    // 已备份过的那些不重传(声明顺序:snapshotUrls 在下面才 memo,这里直接读 detail)
-    Object.keys(detail.album.photoSnapshotUrls ?? {}),
+    photoFilter,
+    detail.album.photoSnapshotRenderVersions ?? {},
   );
   const share = useShareLink(detail.album.id, locale, zh);
   // AI 对话:瘦客户端直连 design-chat(桌面那套 ChatPanel 依赖协调器上下文,移动端没有)。
@@ -445,6 +524,19 @@ export function MobileEditorRoot({
 
   /** 书里用到的照片(备份/分享要的就是这一批)。 */
   const bookPhotoIds = photoIds;
+  const openBookFilter = useCallback(() => {
+    if (!lutSupported) return;
+    setMoreOpen(false);
+    setFilterScope('book');
+    setFilterPhotoId(bookPhotoIds[0] ?? null);
+    setFilterOpen(true);
+  }, [bookPhotoIds, lutSupported]);
+  const openSelectedPhotoFilter = useCallback(() => {
+    if (!lutSupported || !selectedPhotoId) return;
+    setFilterScope('photo');
+    setFilterPhotoId(selectedPhotoId);
+    setFilterOpen(true);
+  }, [lutSupported, selectedPhotoId]);
 
   /** 备份照片到云端。顶栏「保存」与「更多」里那条走同一份 —— 两个入口一个行为,
    *  免得日后改文案/口径只改一处。备份态显示在顶栏按钮上,这里只补一句结果提示。 */
@@ -543,6 +635,9 @@ export function MobileEditorRoot({
       }}
       selection={selection}
       imagePos={selection?.kind === 'image' ? imagePos : null}
+      photoFilter={photoFilter}
+      selectedPhotoId={selectedPhotoId}
+      lutSupported={lutSupported}
       sheetOpen={sheetKind != null}
       onSelectText={onSelectText}
       onSelectImage={onSelectImage}
@@ -551,6 +646,7 @@ export function MobileEditorRoot({
       onReplaceImage={onReplaceImage}
       onClearImage={onClearImage}
       onResetImagePos={onResetImagePos}
+      onPhotoFilter={openSelectedPhotoFilter}
       onClearSelection={() => {
         // 面板开着时点页面空白不该悄悄取消选中(面板正绑在那个槽上)。
         if (sheetKind == null) setSelection(null);
@@ -693,9 +789,37 @@ export function MobileEditorRoot({
       zh={zh}
       backupState={backup.state}
       backupProgress={backup.progress}
+      lutSupported={lutSupported}
       onClose={() => setMoreOpen(false)}
       onBackupPhotos={runBackup}
+      onPhotoFilter={openBookFilter}
     />
+    {lutSupported && filterOpen && (
+      <FilterSheet
+        open
+        locale={locale}
+        state={photoFilter}
+        scope={filterScope}
+        photoId={filterPhotoId}
+        persistError={filterPersistError}
+        onChange={setPhotoFilter}
+        onRetry={() => filterSaver.retry()}
+        onClose={() => setFilterOpen(false)}
+      />
+    )}
+    {filterPersistError && !filterOpen && (
+      <button
+        type="button"
+        className="mobile-filter-save-toast"
+        role="alert"
+        onClick={() => {
+          setFilterOpen(true);
+          filterSaver.retry();
+        }}
+      >
+        {zh ? '风格保存失败，点此重试' : 'Style failed to save. Tap to retry.'}
+      </button>
+    )}
     <ShareLinkModal
       open={shareOpen}
       zh={zh}

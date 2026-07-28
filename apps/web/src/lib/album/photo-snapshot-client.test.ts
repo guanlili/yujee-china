@@ -35,26 +35,3 @@ test('snapshot client sends SnapshotEntry arrays and preserves version correlati
   });
   assert.deepEqual(requests.map(({ body }) => body), [{ entries }, { entries }]);
 });
-
-test('deprecated photoId[] bridge normalizes locally to exact original entries', async (t) => {
-  const requests: unknown[] = [];
-  t.mock.method(globalThis, 'fetch', (async (_input: string | URL, init?: RequestInit) => {
-    requests.push(JSON.parse(String(init?.body)) as unknown);
-    return new Response(JSON.stringify({
-      ok: true,
-      data: [{ photoId: 'photo-1', renderVersion: 'pf-v1__original' }],
-    }), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    });
-  }) as typeof fetch);
-
-  // @deprecated compatibility for the two Task 7/8 editor callers only.
-  await signPhotoSnapshotUpload('album-1', ['photo-1']);
-  await confirmPhotoSnapshot('album-1', ['photo-1']);
-
-  const expected = {
-    entries: [{ photoId: 'photo-1', renderVersion: 'pf-v1__original' }],
-  };
-  assert.deepEqual(requests, [expected, expected]);
-});

@@ -24,6 +24,7 @@ export type ModalHostProps = {
   /** 传给 .modal-card 的额外类(如 export-sheet / board-bg-sheet)。 */
   cardClassName?: string;
   labelledBy?: string;
+  ariaLabel?: string;
   testId?: string;
 };
 
@@ -33,6 +34,7 @@ export function ModalHost({
   children,
   cardClassName = '',
   labelledBy,
+  ariaLabel,
   testId,
 }: ModalHostProps) {
   if (!open) return null;
@@ -52,6 +54,7 @@ export function ModalHost({
           role="dialog"
           aria-modal="true"
           aria-labelledby={labelledBy}
+          aria-label={ariaLabel}
           data-testid={testId}
         >
           {children}
