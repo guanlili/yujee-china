@@ -37,6 +37,10 @@ export const ERRORS = {
   PHOTO_TOO_LARGE:       () => new AppError('PHOTO_TOO_LARGE',       'Each photo > 800KB',          413),
   PROMPT_TOO_LONG:       () => new AppError('PROMPT_TOO_LONG',       'Prompt > 500 chars',          400),
   VALIDATION_FAILED:     (m: string) => new AppError('VALIDATION_FAILED', m,                        400),
+  // Share creation deliberately exposes only the number of page photos whose
+  // immutable render snapshot is absent/stale. Never include photo IDs or versions.
+  PHOTO_SNAPSHOT_VERSION_MISSING: (count: number) =>
+    new AppError('PHOTO_SNAPSHOT_VERSION_MISSING', String(count), 409),
 
   AGENT_TIMEOUT:         () => new AppError('AGENT_TIMEOUT',         'Agent timed out',             504),
   AGENT_VISION_FAILED:   () => new AppError('AGENT_VISION_FAILED',   'Vision API failed',           502),

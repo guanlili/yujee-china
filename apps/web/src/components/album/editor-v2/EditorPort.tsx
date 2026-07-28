@@ -105,6 +105,7 @@ import {
   prepareSnapshotBlobs,
   uploadCorrelatedSnapshots,
 } from './filter-controller';
+import { photoSnapshotVersionMissingHint } from './share-error';
 import {
   ChatCoordinatorContext,
   chatI18n,
@@ -4686,9 +4687,24 @@ function EditorBook({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ locale }),
         });
-        const json = (await res.json().catch(() => null)) as { ok?: boolean; data?: { token?: string } } | null;
+        const json = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          data?: { token?: string };
+          error?: { code?: unknown; message?: unknown };
+        } | null;
         const token = json?.data?.token;
-        if (!res.ok || !json?.ok || !token) throw new Error('share failed');
+        if (!res.ok || !json?.ok || !token) {
+          const versionHint = photoSnapshotVersionMissingHint(
+            json?.error,
+            currentLang === 'zh',
+          );
+          if (versionHint) {
+            if (hint) hint.textContent = versionHint;
+            if (btn) btn.disabled = false;
+            return;
+          }
+          throw new Error('share failed');
+        }
         const url = `${window.location.origin}/${locale}/s/${token}`;
         byId('shareLinkConfirm')?.classList.add('hidden');
         byId('shareLinkResult')?.classList.remove('hidden');

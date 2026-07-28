@@ -30,13 +30,13 @@ test('albumPageRepo: bulkInsert + findByAlbum + updateOne', async (t) => {
       },
     ]);
 
-    const pages = await albumPageRepo.findByAlbum(album.id);
+    const pages = await albumPageRepo.findByAlbum(db, album.id);
     assert.equal(pages.length, 2);
     assert.equal(pages[0]!.pageIndex, 0);
     assert.equal(pages[1]!.templateId, 'mag-02');
 
     await albumPageRepo.updateOne(db, album.id, 0, { textsJson: { title: 'Renamed' } });
-    const after = await albumPageRepo.findByAlbum(album.id);
+    const after = await albumPageRepo.findByAlbum(db, album.id);
     assert.deepEqual(after[0]!.textsJson, { title: 'Renamed' });
   } finally {
     await cleanupUser(user.id);

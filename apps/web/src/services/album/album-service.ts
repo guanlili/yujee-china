@@ -462,7 +462,7 @@ export const albumService = {
       }
     }
 
-    const pages = await albumPageRepo.findByAlbum(albumId);
+    const pages = await albumPageRepo.findByAlbum(db, albumId);
     return {
       album: {
         id: album.id,

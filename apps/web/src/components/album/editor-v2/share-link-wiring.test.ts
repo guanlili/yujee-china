@@ -6,6 +6,7 @@ import { test } from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const port = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+const mobile = readFileSync(join(here, 'mobile/use-share-link.ts'), 'utf8');
 
 // 分享链接弹窗的 data-action 按钮(closeShareLink/confirmShareLink/copyShareLink)只有在
 // canvasScopes() 把 shareLinkModal 纳入扫描范围时才会被 $$scoped('[data-action]') 绑上 click。
@@ -43,4 +44,14 @@ test('shareLinkModal DOM 内确有生成/复制/关闭三个 data-action 按钮'
   assert.match(modal, /data-action="confirmShareLink"/, '生成按钮在弹窗内');
   assert.match(modal, /data-action="copyShareLink"/, '复制按钮在弹窗内');
   assert.match(modal, /data-action="closeShareLink"/, '关闭按钮在弹窗内');
+});
+
+test('desktop and mobile both route server snapshot-version errors through the shared mapper', () => {
+  for (const [name, source] of [['desktop', port], ['mobile', mobile]] as const) {
+    assert.match(
+      source,
+      /photoSnapshotVersionMissingHint\(\s*json\?\.error,/,
+      `${name} share flow must map the stable server error`,
+    );
+  }
 });

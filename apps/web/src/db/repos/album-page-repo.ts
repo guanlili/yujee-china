@@ -4,8 +4,8 @@ import { albumPages, type NewAlbumPage, type AlbumPage } from '../schema';
 
 
 export const albumPageRepo = {
-  findByAlbum: async (albumId: string): Promise<AlbumPage[]> =>
-    db
+  findByAlbum: async (tx: DbOrTx, albumId: string): Promise<AlbumPage[]> =>
+    tx
       .select()
       .from(albumPages)
       .where(eq(albumPages.albumId, albumId))

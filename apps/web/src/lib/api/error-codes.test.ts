@@ -32,3 +32,11 @@ test('mapAgentErrorCode: the mapped target is a real error-codes.ts code', () =>
 test('mapAgentErrorCode: unknown code is returned verbatim (no swallowing)', () => {
   assert.equal(mapAgentErrorCode('SOMETHING_NEW'), 'SOMETHING_NEW');
 });
+
+test('PHOTO_SNAPSHOT_VERSION_MISSING exposes a stable code and numeric count only', () => {
+  const error = ERRORS.PHOTO_SNAPSHOT_VERSION_MISSING(3);
+  assert.equal(error.code, 'PHOTO_SNAPSHOT_VERSION_MISSING');
+  assert.equal(error.message, '3');
+  assert.equal(error.status, 409);
+  assert.doesNotMatch(error.message, /photo|pf-v1|[a-f0-9-]{8}/i);
+});

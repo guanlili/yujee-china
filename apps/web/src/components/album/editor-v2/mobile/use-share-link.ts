@@ -13,6 +13,7 @@
 import { useCallback, useState } from 'react';
 
 import type { Locale } from '@/lib/i18n/routing';
+import { photoSnapshotVersionMissingHint } from '../share-error';
 
 export type ShareStage = 'idle' | 'uploading' | 'creating' | 'ready' | 'failed';
 
@@ -65,10 +66,25 @@ export function useShareLink(albumId: string, locale: Locale, zh: boolean) {
           body: JSON.stringify({ locale }),
         });
         const json = (await res.json().catch(() => null)) as
-          | { ok?: boolean; data?: { token?: string } }
+          | {
+              ok?: boolean;
+              data?: { token?: string };
+              error?: { code?: unknown; message?: unknown };
+            }
           | null;
         const token = json?.data?.token;
-        if (!res.ok || !json?.ok || !token) throw new Error('share failed');
+        if (!res.ok || !json?.ok || !token) {
+          const versionHint = photoSnapshotVersionMissingHint(json?.error, zh);
+          if (versionHint) {
+            setState({
+              stage: 'failed',
+              link: null,
+              hint: versionHint,
+            });
+            return;
+          }
+          throw new Error('share failed');
+        }
         const link = `${window.location.origin}/${locale}/s/${token}`;
         // 复制失败不算失败:链接已经有了,显示出来让用户自己复制。
         let copied = false;
