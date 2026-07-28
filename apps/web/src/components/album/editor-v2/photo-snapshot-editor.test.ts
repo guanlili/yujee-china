@@ -46,8 +46,9 @@ test('Save button carries the backup state on itself and reverts to idle', () =>
   assert.doesNotMatch(editorPort, /className="save-badge/, 'the separate top-left save-badge must be gone');
   assert.doesNotMatch(editorPort, /data-i18n="saved">已保存/, 'the misleading static 已保存 badge must be gone');
   // 按精确渲染版本增量备份,confirm 只登记 PUT 成功的 entry
-  assert.match(editorPort, /filterSnapshotMismatches\(entries, snapshotRenderVersions\)/, 'backup uploads exact render-version mismatches');
-  assert.match(editorPort, /getTierBlobStatus\(entry\.photoId, 'display', currentPhotoFilter\)/, 'backup observes filtered fallback status');
+  assert.match(editorPort, /createFrozenBackupPlan\(\s*bookPhotoIds\(\),\s*currentPhotoFilter,\s*snapshotRenderVersions/, 'backup freezes exact render-version mismatches');
+  assert.match(editorPort, /getTierBlobStatus\(entry\.photoId, 'display', frozenState\)/, 'backup observes filtered fallback status from one frozen state');
+  assert.match(editorPort, /correlateSignedSnapshotUploads\(requestedEntries, signed\)/, 'backup correlates signatures by exact entry before PUT');
   assert.match(editorPort, /confirmPhotoSnapshot\(albumId, uploaded\)/, 'confirm registers only successfully uploaded ids');
 });
 

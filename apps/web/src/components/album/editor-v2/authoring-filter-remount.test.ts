@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import test from 'node:test';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const source = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+
+test('authoring draft refresh reads the lifted current filter, never stale album detail state', () => {
+  assert.match(source, /function EditorAuthoring\(\{[\s\S]*?photoFilter[\s\S]*?\}\)/);
+  assert.match(source, /photoFilterRef\.current\s*=\s*photoFilter/);
+  assert.match(source, /getTierUrls\([\s\S]*?photoFilterRef\.current/);
+  assert.doesNotMatch(
+    source.slice(source.indexOf('function EditorAuthoring'), source.indexOf('function EditorShell')),
+    /getTierUrls\([\s\S]{0,160}detail\.album\.photoFilter/,
+  );
+});
+
+test('every EditorBook remount asks the latest-commit reload for current shell state', () => {
+  assert.match(source, /useEffect\(\(\) => \{\s*void coordinator\.current\?\.reloadPhotoFilter\(photoFilter\);[\s\S]*?\[photoFilter,\s*canvasEpoch/);
+  assert.match(source, /const displayReload = createLatestCommit/);
+  assert.match(source, /displayReload\.run\(\(\) => photoStore\.getTierUrls\(ids,\s*'display',\s*state\)\)/);
+  assert.match(source, /displayReload\.dispose\(\)/);
+});

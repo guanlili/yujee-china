@@ -15,7 +15,17 @@
    Styling lives in ./editor-port.css (the HTML <style> block, values unchanged).
    ════════════════════════════════════════════════════════════════════════════ */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type RefObject,
+  type SetStateAction,
+} from 'react';
 import { type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
@@ -29,7 +39,6 @@ import {
   signPhotoSnapshotUpload,
   confirmPhotoSnapshot,
   putSnapshotBlob,
-  type SnapshotEntry,
 } from '@/lib/album/photo-snapshot-client';
 import { UserAvatar } from '@/components/app/UserAvatar';
 import { UserMenu } from '@/components/app/UserMenu';
@@ -88,7 +97,13 @@ import { ChatPanel, type ChatMode } from './ChatPanel';
 import { FilterBar } from './FilterBar';
 import {
   collectSnapshotEntries,
+  correlateSignedSnapshotUploads,
+  createFilterSaveController,
+  createFrozenBackupPlan,
+  createLatestCommit,
   filterSnapshotMismatches,
+  prepareSnapshotBlobs,
+  uploadCorrelatedSnapshots,
 } from './filter-controller';
 import {
   ChatCoordinatorContext,
@@ -161,6 +176,9 @@ export function EditorPort({
   errorKind?: EditorErrorKind;
   errorMessage?: string | null;
 }) {
+  const [photoFilter, setPhotoFilter] = useState<PhotoFilterState | null>(
+    detail.album.photoFilter ?? null,
+  );
   // loading: UI/editor resources are not ready yet. Do not show half-loaded canvas
   // or chat chrome; those appear only after the resource load resolves.
   if (mode === 'loading') {
@@ -187,7 +205,14 @@ export function EditorPort({
   // authoring: the draft skeleton is async (GET /draft) and the originals resolve
   // from IndexedDB, so we resolve everything first, then mount the stable shell.
   if (mode === 'authoring') {
-    return <EditorAuthoring detail={detail} locale={locale} />;
+    return (
+      <EditorAuthoring
+        detail={detail}
+        locale={locale}
+        photoFilter={photoFilter}
+        setPhotoFilter={setPhotoFilter}
+      />
+    );
   }
   // editing: the original finalized editor, fed straight from detail.pages, through
   // the same stable shell (canvas EditorBook + stable ChatPanel).
@@ -199,6 +224,8 @@ export function EditorPort({
       initialPages={detail.pages}
       draftChapters={null}
       initialImageUrls={{}}
+      photoFilter={photoFilter}
+      setPhotoFilter={setPhotoFilter}
     />
   );
 }
@@ -262,7 +289,17 @@ function BuildingCanvasState({ locale }: { locale: Locale }) {
 }
 
 // ── authoring: resolve the draft skeleton + originals, then mount EditorBook ──
-function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Locale }) {
+function EditorAuthoring({
+  detail,
+  locale,
+  photoFilter,
+  setPhotoFilter,
+}: {
+  detail: AlbumDetail;
+  locale: Locale;
+  photoFilter: PhotoFilterState | null;
+  setPhotoFilter: Dispatch<SetStateAction<PhotoFilterState | null>>;
+}) {
   const device = useDeviceMode();
   const [skeleton, setSkeleton] = useState<DraftSkeleton | null>(null);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
@@ -273,6 +310,8 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
   // 已加载草稿的内容指纹:pages-ready 事件来源很多(storyProgress 每次变化都会派发),
   // 内容没变时跳过「换 objectUrl + epoch 重挂」,消除采访/确认阶段画板一闪一闪。
   const draftFingerprintRef = useRef<string | null>(null);
+  const photoFilterRef = useRef(photoFilter);
+  photoFilterRef.current = photoFilter;
 
   // 页数组按 skeleton 记忆化。**引用必须稳定**:移动端容器(MobileEditorRoot)拿它当
   // 「服务端真相变了」的信号(useEffect 依赖它来整体换掉本地副本)。若每次渲染都新建数组,
@@ -317,7 +356,7 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
         const urls = await photoStore.getTierUrls(
           [...ids],
           'display',
-          detail.album.photoFilter ?? null,
+          photoFilterRef.current,
         );
         if (cancelled) return;
         draftFingerprintRef.current = fingerprint;
@@ -395,6 +434,8 @@ function EditorAuthoring({ detail, locale }: { detail: AlbumDetail; locale: Loca
       draftChapters={skeleton}
       initialImageUrls={imageUrls}
       canvasEpoch={canvasEpoch}
+      photoFilter={photoFilter}
+      setPhotoFilter={setPhotoFilter}
     />
   );
 }
@@ -417,6 +458,8 @@ function EditorShell({
   draftChapters,
   initialImageUrls,
   canvasEpoch,
+  photoFilter,
+  setPhotoFilter,
 }: {
   detail: AlbumDetail;
   locale: Locale;
@@ -425,23 +468,53 @@ function EditorShell({
   draftChapters: DraftSkeleton | null;
   initialImageUrls: Record<string, string>;
   canvasEpoch?: number;
+  photoFilter: PhotoFilterState | null;
+  setPhotoFilter: Dispatch<SetStateAction<PhotoFilterState | null>>;
 }) {
   const fontsReady = useAlbumFonts(initialPages.map((page) => ({ texts: page.textsJson })));
   const outerRootRef = useRef<HTMLDivElement>(null);
   const coordinator = useRef<ChatCoordinator | null>(null);
   const [storyProgress, setStoryProgress] = useState<StoryProgress | null>(null);
   const [, setStoryProgressLoading] = useState(mode === 'authoring');
-  const [photoFilter, setPhotoFilter] = useState<PhotoFilterState | null>(
-    detail.album.photoFilter ?? null,
-  );
   const [filterScope, setFilterScope] = useState<'book' | 'photo'>('book');
   const [filterPhotoId, setFilterPhotoId] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterPersistError, setFilterPersistError] = useState<string | null>(null);
-  const [filterPersistRetry, setFilterPersistRetry] = useState(0);
-  const filterPersistGeneration = useRef(0);
   const lastPersistedFilter = useRef(JSON.stringify(detail.album.photoFilter ?? null));
   const lutSupported = useMemo(() => lutEngine.isSupported(), []);
+  const filterSaver = useMemo(
+    () => createFilterSaveController({
+      save: async (state, signal) => {
+        const response = await fetch(`/api/v1/albums/${detail.album.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ photoFilter: state }),
+          signal,
+        });
+        const json = (await response.json().catch(() => null)) as {
+          ok?: boolean;
+          data?: { photoFilter?: PhotoFilterState | null };
+          error?: { message?: string };
+        } | null;
+        if (!response.ok || !json?.ok) {
+          throw new Error(json?.error?.message ?? `filter PATCH failed (${response.status})`);
+        }
+        return json.data?.photoFilter ?? state;
+      },
+      onSuccess: (normalized) => {
+        const serialized = JSON.stringify(normalized);
+        lastPersistedFilter.current = serialized;
+        setFilterPersistError(null);
+        setPhotoFilter((current) =>
+          JSON.stringify(current) === serialized ? current : normalized,
+        );
+      },
+      onError: (error) => {
+        setFilterPersistError(error.message);
+      },
+    }),
+    [detail.album.id, setPhotoFilter],
+  );
 
   const openBookFilter = useCallback(() => {
     if (!lutSupported) return;
@@ -460,50 +533,15 @@ function EditorShell({
   // owns the generation token because that is where the live image URL map lives.
   useEffect(() => {
     void coordinator.current?.reloadPhotoFilter(photoFilter);
-  }, [photoFilter, coordinator]);
+  }, [photoFilter, canvasEpoch, initialPages.length, coordinator]);
 
-  // Persist only the filter field after 180 ms idle. Every state/retry change
-  // invalidates the prior response; AbortController also avoids wasted work.
+  // Persist only the filter field after 180 ms idle. The production controller
+  // coalesces drafts, aborts in-flight saves, and suppresses stale/unmounted results.
   useEffect(() => {
     const serialized = JSON.stringify(photoFilter);
-    if (serialized === lastPersistedFilter.current && filterPersistRetry === 0) return;
-    const mine = ++filterPersistGeneration.current;
-    const abort = new AbortController();
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const response = await fetch(`/api/v1/albums/${detail.album.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ photoFilter }),
-            signal: abort.signal,
-          });
-          const json = (await response.json().catch(() => null)) as {
-            ok?: boolean;
-            data?: { photoFilter?: PhotoFilterState | null };
-            error?: { message?: string };
-          } | null;
-          if (!response.ok || !json?.ok) {
-            throw new Error(json?.error?.message ?? `filter PATCH failed (${response.status})`);
-          }
-          if (mine !== filterPersistGeneration.current) return;
-          const normalized = json.data?.photoFilter ?? photoFilter;
-          lastPersistedFilter.current = JSON.stringify(normalized);
-          setFilterPersistError(null);
-          setFilterPersistRetry(0);
-          if (JSON.stringify(normalized) !== serialized) setPhotoFilter(normalized);
-        } catch (error) {
-          if (abort.signal.aborted || mine !== filterPersistGeneration.current) return;
-          setFilterPersistError(error instanceof Error ? error.message : String(error));
-        }
-      })();
-    }, 180);
-    return () => {
-      window.clearTimeout(timer);
-      abort.abort();
-      filterPersistGeneration.current += 1;
-    };
-  }, [detail.album.id, filterPersistRetry, photoFilter]);
+    if (serialized !== lastPersistedFilter.current) filterSaver.schedule(photoFilter);
+  }, [filterSaver, photoFilter]);
+  useEffect(() => () => filterSaver.dispose(), [filterSaver]);
 
   const breadcrumbStage = storyProgress?.stage ?? detail.album.stage ?? 'analysing';
   // §4.2: chapter confirmation moved off the breadcrumb into the in-flow satisfaction
@@ -588,7 +626,7 @@ function EditorShell({
             photoId={filterPhotoId}
             persistError={filterPersistError}
             onChange={setPhotoFilter}
-            onRetry={() => setFilterPersistRetry((value) => value + 1)}
+            onRetry={() => filterSaver.retry()}
             onClose={() => setFilterOpen(false)}
           />
         )}
@@ -599,7 +637,7 @@ function EditorShell({
             role="alert"
             onClick={() => {
               setFilterOpen(true);
-              setFilterPersistRetry((value) => value + 1);
+              filterSaver.retry();
             }}
           >
             {locale === 'zh' ? '风格保存失败，点此重试' : 'Style failed to save. Click to retry.'}
@@ -1424,8 +1462,10 @@ function EditorBook({
     // 留给 PDF 导出。thumb 还没解出来时回退 display,绝不回退原图。
     let imageUrls: Record<string, string> = { ...initialImageUrls };
     let currentPhotoFilter: PhotoFilterState | null = initialPhotoFilter;
-    let displayReloadGeneration = 0;
-    let effectDisposed = false;
+    const displayReload = createLatestCommit<Record<string, string>>((urls) => {
+      imageUrls = urls;
+      repaintBook();
+    });
     // 服务器压缩图回退(photo-snapshot §5.3):本地原图/派生没有时,用备份过的服务器
     // 压缩图,换设备/清缓存后内页不空白。备份过才有;都没有则空槽(版面文字仍在)。
     const snapshotUrls: Record<string, string> = detail.album.photoSnapshotUrls ?? {};
@@ -1538,12 +1578,8 @@ function EditorBook({
     }
     async function reloadPhotoFilter(state: PhotoFilterState | null): Promise<void> {
       currentPhotoFilter = state;
-      const mine = ++displayReloadGeneration;
       const ids = albumPhotoIds();
-      const urls = await photoStore.getTierUrls(ids, 'display', state);
-      if (effectDisposed || mine !== displayReloadGeneration) return;
-      imageUrls = urls;
-      repaintBook();
+      await displayReload.run(() => photoStore.getTierUrls(ids, 'display', state));
     }
     // 脏页重绘:单页编辑(改字/换图/挪图)只重画受影响 spread 的画布格+缩略图格
     // (+总览格),不再全书 innerHTML 重建 —— 20+ 页时全量 repaint 是主卡顿源之一。
@@ -4546,61 +4582,59 @@ function EditorBook({
     let backingUp = false;
     async function backupPhotos() {
       if (backingUp) return;
-      const entries = collectSnapshotEntries(bookPhotoIds(), currentPhotoFilter);
-      const todo = filterSnapshotMismatches(entries, snapshotRenderVersions);
-      if (todo.length === 0) return setSaveState('backed-up');
+      // Capture one immutable, normalized filter snapshot before any await. Every
+      // photo render and renderVersion in this batch is derived from that same object.
+      const plan = createFrozenBackupPlan(
+        bookPhotoIds(),
+        currentPhotoFilter,
+        snapshotRenderVersions,
+      );
+      if (plan.pending.length === 0) return setSaveState('backed-up');
       backingUp = true;
       setSaveState('backing-up');
       try {
         // Missing local originals remain retryable. A filtered base fallback must
         // never be uploaded under the filtered immutable renderVersion.
-        const pairs: { entry: SnapshotEntry; blob: Blob }[] = [];
-        for (const entry of todo) {
-          const result = await photoStore
-            .getTierBlobStatus(entry.photoId, 'display', currentPhotoFilter)
-            .catch(() => undefined);
-          if (!result?.blob) continue;
-          if (result.filteredFallback) {
-            logger.error({
+        const prepared = await prepareSnapshotBlobs(
+          plan,
+          (entry, frozenState) =>
+            photoStore.getTierBlobStatus(entry.photoId, 'display', frozenState),
+        );
+        for (const entry of prepared.failures) {
+          logger.error(
+            {
               albumId,
               photoId: entry.photoId,
               renderVersion: entry.renderVersion,
-            }, 'snapshot filtered render failed; refusing versioned upload');
-            continue;
-          }
-          pairs.push({ entry, blob: result.blob });
+            },
+            'snapshot render unavailable; refusing versioned upload',
+          );
         }
         // 一张本地都没有(比如换了设备)→ 没法备份,当失败提示。
-        if (pairs.length === 0) return setSaveState('failed');
-        const signed = await signPhotoSnapshotUpload(albumId, pairs.map((p) => p.entry));
-        const urlById = new Map(signed.map((s) => [s.photoId, s.putUrl]));
-        const uploaded: SnapshotEntry[] = [];
-        const queue = [...pairs];
-        // 限并发 4 直传;单张失败不阻断其余,confirm 只登记成功的(不谎报全备份)。
-        const worker = async () => {
-          for (;;) {
-            const item = queue.shift();
-            if (!item) return;
-            const putUrl = urlById.get(item.entry.photoId);
-            if (!putUrl) continue;
-            try {
-              await putSnapshotBlob(putUrl, item.blob);
-              uploaded.push(item.entry);
-            } catch {
-              /* skip; reported as failed below if none succeed */
-            }
-          }
-        };
-        await Promise.all(Array.from({ length: 4 }, worker));
+        if (prepared.ready.length === 0) return setSaveState('failed');
+        const requestedEntries = prepared.ready.map((item) => item.entry);
+        const signed = await signPhotoSnapshotUpload(albumId, requestedEntries);
+        // Reject missing, duplicate, unexpected, or version-mismatched signatures
+        // before the first PUT. Correlation is by photoId + renderVersion.
+        const correlated = correlateSignedSnapshotUploads(requestedEntries, signed);
+        const uploaded = await uploadCorrelatedSnapshots(
+          correlated.map((item, index) => ({
+            ...item,
+            blob: prepared.ready[index]!.blob,
+          })),
+          putSnapshotBlob,
+        );
         if (uploaded.length === 0) return setSaveState('failed');
+        // Confirm only the exact entries whose PUTs succeeded.
         await confirmPhotoSnapshot(albumId, uploaded);
         uploaded.forEach((entry) => {
           snapshotRenderVersions[entry.photoId] = entry.renderVersion;
         });
-        const remaining = filterSnapshotMismatches(
-          collectSnapshotEntries(bookPhotoIds(), currentPhotoFilter),
+        const remaining = createFrozenBackupPlan(
+          bookPhotoIds(),
+          currentPhotoFilter,
           snapshotRenderVersions,
-        );
+        ).pending;
         setSaveState(remaining.length === 0 ? 'backed-up' : 'failed');
       } catch {
         setSaveState('failed');
@@ -5045,8 +5079,7 @@ function EditorBook({
     window.addEventListener('resize', onMobileResize);
 
     return () => {
-        effectDisposed = true;
-        displayReloadGeneration += 1;
+        displayReload.dispose();
         window.removeEventListener('resize', onMobileResize);
         if (mobileReinitTimer !== null) window.clearTimeout(mobileReinitTimer);
         mobileCanvas.teardown();

@@ -14,6 +14,7 @@ import {
   clearPhotoOverride,
   createOwnedUrlController,
   currentScopeFilter,
+  runFilterPreviewGeneration,
   setBookFilter,
   setPhotoOverride,
 } from './filter-controller';
@@ -44,6 +45,7 @@ export function FilterBar({
   const strength = current?.strength ?? 100;
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [previewState, setPreviewState] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
+  const [previewRetry, setPreviewRetry] = useState(0);
   const generationRef = useRef(0);
   const urlOwnerRef = useRef<ReturnType<typeof createOwnedUrlController> | null>(null);
   if (!urlOwnerRef.current) {
@@ -62,33 +64,23 @@ export function FilterBar({
         if (mine === generationRef.current) setPreviewState('missing');
         return;
       }
-      try {
-        // Preview inputs are always the unfiltered cached thumb. This prevents
-        // stacking the next LUT on top of the currently selected one.
-        const base = await photoStore.getTierBlob(photoId, 'thumb', null);
-        if (!base) {
-          if (mine === generationRef.current) setPreviewState('missing');
-          return;
-        }
-        const next: Record<string, string> = {};
-        const originalUrl = URL.createObjectURL(base);
-        if (!owner.own(mine, originalUrl)) return;
-        next.original = originalUrl;
-        for (const definition of LUT_DEFINITIONS) {
-          const blob = await lutEngine.applyPreview(base, {
-            lutId: definition.id,
-            strength: quantizeStrength(strength),
-          });
-          const url = URL.createObjectURL(blob);
-          if (!owner.own(mine, url)) return;
-          next[definition.id] = url;
-          if (!owner.isCurrent(mine)) return;
-        }
-        if (!owner.isCurrent(mine)) return;
-        setPreviews(next);
+      // Preview inputs are always the unfiltered cached thumb. This prevents
+      // stacking the next LUT on top of the currently selected one.
+      const result = await runFilterPreviewGeneration({
+        photoId,
+        strength,
+        generation: mine,
+        owner,
+        getBase: (id) => photoStore.getTierBlob(id, 'thumb', null),
+        applyPreview: (base, filter) => lutEngine.applyPreview(base, filter),
+        createUrl: (blob) => URL.createObjectURL(blob),
+      });
+      if (mine !== generationRef.current || result.status === 'stale') return;
+      if (result.status === 'ready') {
+        setPreviews(result.urls);
         setPreviewState('ready');
-      } catch {
-        if (owner.isCurrent(mine)) setPreviewState('error');
+      } else {
+        setPreviewState(result.status);
       }
     })();
 
@@ -96,7 +88,7 @@ export function FilterBar({
       owner.invalidate(mine);
       generationRef.current += 1;
     };
-  }, [photoId, strength]);
+  }, [photoId, previewRetry, strength]);
 
   const apply = (ref: PhotoFilterRef | null) => {
     if (scope === 'photo' && photoId) onChange(setPhotoOverride(state, photoId, ref));
@@ -143,7 +135,14 @@ export function FilterBar({
 
       {previewState === 'loading' && <p className="filter-state" role="status">{zh ? '正在生成预览…' : 'Generating previews…'}</p>}
       {previewState === 'missing' && <p className="filter-state filter-error" role="status">{zh ? '这张照片的原图不在本机' : 'This photo is unavailable on this device'}</p>}
-      {previewState === 'error' && <p className="filter-state filter-error" role="alert">{zh ? '预览生成失败，请重试' : 'Preview generation failed. Try again.'}</p>}
+      {previewState === 'error' && (
+        <p className="filter-state filter-error" role="alert">
+          {zh ? '预览生成失败。' : 'Preview generation failed.'}
+          <button type="button" onClick={() => setPreviewRetry((value) => value + 1)}>
+            {zh ? '重试' : 'Retry'}
+          </button>
+        </p>
+      )}
 
       <div className="filter-grid" aria-busy={previewState === 'loading'}>
         <button

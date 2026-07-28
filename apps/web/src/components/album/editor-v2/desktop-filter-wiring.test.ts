@@ -10,8 +10,9 @@ const bar = readFileSync(join(here, 'FilterBar.tsx'), 'utf8');
 
 test('FilterBar uses the exact manifest and unfiltered thumb previews with cleanup guards', () => {
   assert.match(bar, /LUT_DEFINITIONS\.map/);
-  assert.match(bar, /getTierBlob\(photoId,\s*'thumb',\s*null\)/);
+  assert.match(bar, /getTierBlob\(id,\s*'thumb',\s*null\)/);
   assert.match(bar, /lutEngine\.applyPreview/);
+  assert.match(bar, /runFilterPreviewGeneration/);
   assert.match(bar, /URL\.revokeObjectURL/);
   assert.match(bar, /generationRef/);
   assert.match(bar, /type="range"/);
@@ -27,16 +28,18 @@ test('desktop controls are support-gated and selected-image action resolves the 
 });
 
 test('filter persistence is a photoFilter-only 180ms PATCH with stale-response protection', () => {
-  assert.match(editor, /setTimeout\([\s\S]*?180\)/);
-  assert.match(editor, /JSON\.stringify\(\{\s*photoFilter\s*\}\)/);
-  assert.match(editor, /filterPersistGeneration/);
-  assert.match(editor, /normalized.*photoFilter|photoFilter.*normalized/);
+  assert.match(editor, /createFilterSaveController/);
+  assert.match(editor, /JSON\.stringify\(\{\s*photoFilter:\s*state\s*\}\)/);
+  assert.match(editor, /filterSaver\.schedule\(photoFilter\)/);
+  assert.match(editor, /filterSaver\.dispose\(\)/);
+  assert.match(editor, /onSuccess:\s*\(normalized\)[\s\S]*?setPhotoFilter/);
   assert.doesNotMatch(editor, /JSON\.stringify\(\{\s*photoFilter[\s\S]{0,100}(title|boardBackground)/);
 });
 
 test('display reload and every desktop export consume the current filter state', () => {
   assert.match(editor, /getTierUrls\(ids,\s*'display',\s*state\)/);
-  assert.match(editor, /displayReloadGeneration/);
+  assert.match(editor, /createLatestCommit/);
+  assert.match(editor, /displayReload\.dispose\(\)/);
   assert.match(
     editor,
     /getPdfDataUrls\(\s*ids,\s*RASTER_PDF_IMAGE_MAX_EDGE,\s*currentPhotoFilter/,
@@ -49,11 +52,12 @@ test('display reload and every desktop export consume the current filter state',
 });
 
 test('desktop backup signs and confirms exact mismatch SnapshotEntry arrays only', () => {
-  assert.match(editor, /collectSnapshotEntries\(bookPhotoIds\(\),\s*currentPhotoFilter\)/);
-  assert.match(editor, /filterSnapshotMismatches/);
-  assert.match(editor, /getTierBlobStatus\(entry\.photoId,\s*'display',\s*currentPhotoFilter\)/);
-  assert.match(editor, /filteredFallback/);
-  assert.match(editor, /signPhotoSnapshotUpload\(albumId,\s*pairs\.map\(\(p\) => p\.entry\)\)/);
+  assert.match(editor, /createFrozenBackupPlan\(\s*bookPhotoIds\(\),\s*currentPhotoFilter/);
+  assert.match(editor, /prepareSnapshotBlobs\(/);
+  assert.match(editor, /getTierBlobStatus\(entry\.photoId,\s*'display',\s*frozenState\)/);
+  assert.match(editor, /correlateSignedSnapshotUploads\(requestedEntries,\s*signed\)/);
+  assert.match(editor, /uploadCorrelatedSnapshots\(/);
+  assert.match(editor, /signPhotoSnapshotUpload\(albumId,\s*requestedEntries\)/);
   assert.match(editor, /confirmPhotoSnapshot\(albumId,\s*uploaded\)/);
   assert.match(editor, /snapshotRenderVersions\[entry\.photoId\]\s*=\s*entry\.renderVersion/);
 });
