@@ -1388,13 +1388,15 @@ export const albumService = {
     albumId: string,
     state: PhotoFilterState | null,
   ): Promise<{ photoFilter: PhotoFilterState | null }> {
-    const album = await this.findOwned(userId, albumId);
     const normalized =
       state === null
         ? null
         : normalizePhotoFilterState(PhotoFilterStateSchema.parse(state));
 
     await db.transaction(async (tx) => {
+      const album = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+      if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
       await albumRepo.update(tx, albumId, {
         photoFilter: normalized,
         pdfUrl: null,

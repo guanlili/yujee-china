@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 
 const { db } = await import('../../db/client');
 const { albumRepo } = await import('../../db/repos/album-repo');
@@ -40,5 +40,62 @@ test('updating photo filters persists normalized state and invalidates completed
     assert.deepEqual(list.find((item) => item.id === album.id)?.photoFilter, result.photoFilter);
   } finally {
     await cleanupUser(user.id);
+  }
+});
+
+test('updatePhotoFilter locks the owned row and preserves a concurrent non-COMPLETED status', async () => {
+  const tx = { marker: 'photo-filter-tx' };
+  let writtenPatch: Record<string, unknown> | undefined;
+  const staleRead = mock.method(albumRepo, 'findById', async () => ({
+    id: 'album-atomic',
+    userId: 'user-atomic',
+    status: 'COMPLETED',
+  }) as never);
+  const lockedRead = mock.method(
+    albumRepo,
+    'findByIdForUpdate',
+    async (actualTx: unknown, albumId: string) => {
+      assert.equal(actualTx, tx);
+      assert.equal(albumId, 'album-atomic');
+      return {
+        id: albumId,
+        userId: 'user-atomic',
+        status: 'FAILED',
+      } as never;
+    },
+  );
+  const transaction = mock.method(
+    db,
+    'transaction',
+    (async (fn: (actualTx: unknown) => Promise<unknown>) => fn(tx)) as never,
+  );
+  const update = mock.method(
+    albumRepo,
+    'update',
+    async (actualTx: unknown, albumId: string, patch: Record<string, unknown>) => {
+      assert.equal(actualTx, tx);
+      assert.equal(albumId, 'album-atomic');
+      writtenPatch = patch;
+    },
+  );
+
+  try {
+    const result = await albumService.updatePhotoFilter('user-atomic', 'album-atomic', {
+      default: { lutId: 'fuji-portrait', strength: 82 },
+    });
+
+    assert.equal(staleRead.mock.callCount(), 0);
+    assert.equal(lockedRead.mock.callCount(), 1);
+    assert.equal(result.photoFilter?.default?.strength, 80);
+    assert.equal(writtenPatch?.status, undefined);
+    assert.equal(writtenPatch?.pdfUrl, null);
+    assert.equal(writtenPatch?.pdfR2Key, null);
+    assert.equal(writtenPatch?.coverThumbnailUrl, null);
+    assert.equal(writtenPatch?.coverThumbnailR2Key, null);
+  } finally {
+    update.mock.restore();
+    transaction.mock.restore();
+    lockedRead.mock.restore();
+    staleRead.mock.restore();
   }
 });
