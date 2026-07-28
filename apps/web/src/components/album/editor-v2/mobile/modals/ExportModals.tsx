@@ -170,6 +170,104 @@ export function CollageModal({
   );
 }
 
+/* ── Live 样式:翻页 / 九宫格 ──────────────────────────────────────────────
+   与桌面 nineGridModal 同一步骤(菜单 → 选样式 → 导出),两端心智一致。
+   复用拼图那套 collage-* 类名与结构,视觉不额外造一套。 */
+export function LiveStyleModal({
+  open,
+  zh,
+  style,
+  onPickStyle,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  zh: boolean;
+  style: 'flip' | 'nine-grid' | null;
+  onPickStyle: (s: 'flip' | 'nine-grid') => void;
+  /** 确认必填 —— 同 CollageModal:可选 + 父层漏传 = 亮着的死按钮。 */
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const options: { id: 'flip' | 'nine-grid'; title: string; copy: string }[] = [
+    {
+      id: 'flip',
+      title: zh ? '翻页 Live' : 'Page-flip Live',
+      copy: zh ? '像翻书一样逐页播放' : 'Pages turn like a physical book',
+    },
+    {
+      id: 'nine-grid',
+      title: zh ? '九宫格 Live' : 'Nine-grid Live',
+      copy: zh ? '每组 9 页整齐切换' : 'Nine pages switch as a neat grid',
+    },
+  ];
+  return (
+    <ModalHost
+      open={open}
+      onClose={onClose}
+      cardClassName="collage-card"
+      labelledBy="mLiveStyleTitle"
+      testId="live-style-modal"
+    >
+      <button className="collage-close" onClick={onClose} aria-label="close">
+        <svg {...stroke}>
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+      <div className="px-6 pt-6 text-center">
+        <h3 id="mLiveStyleTitle" className="font-display text-[18px] font-bold">
+          {zh ? 'Live 图' : 'Live video'}
+        </h3>
+        <p className="text-[13px] text-muted mt-1.5">
+          {zh ? '选一种样式,导出一段 Live 视频,可直接发社交平台。' : 'Pick a style and export a Live video you can post anywhere.'}
+        </p>
+      </div>
+      {/* 类名逐条复用桌面那套(nine-grid-choice / motion-*),不另造一份 ——
+          ModalHost 就是为吃桌面样式表而存在的(见其抬头),所以这里零新增 CSS,
+          两端的示意图连翻页/网格动画都是同一批 keyframes,不会漂移。 */}
+      <div className="nine-grid-choice px-6 pt-5">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            className={style === o.id ? 'selected' : undefined}
+            data-testid={`live-style-${o.id}`}
+            aria-pressed={style === o.id}
+            onClick={() => onPickStyle(o.id)}
+          >
+            <span className={`motion-example motion-example-${o.id === 'flip' ? 'flip' : 'grid'}`} aria-hidden="true">
+              {o.id === 'flip' ? (
+                <span className="motion-book">
+                  <span className="motion-page motion-page-left" />
+                  <span className="motion-page motion-page-right" />
+                  <span className="motion-page motion-page-turn" />
+                </span>
+              ) : (
+                <span className="motion-grid">
+                  {Array.from({ length: 9 }).map((_, i) => <span key={i} />)}
+                </span>
+              )}
+            </span>
+            <span className="motion-option-title">{o.title}</span>
+            <span className="motion-option-copy">{o.copy}</span>
+          </button>
+        ))}
+      </div>
+      <div className="px-6 py-6">
+        <button
+          className="collage-confirm"
+          data-testid="live-style-confirm"
+          disabled={style == null}
+          onClick={onConfirm}
+        >
+          {zh ? '继续导出' : 'Continue'}
+        </button>
+      </div>
+    </ModalHost>
+  );
+}
+
 /* ── 导出进度(渲染期间不可关闭) ──────────────────────────────────────────── */
 export function ExportProgressModal({
   open,

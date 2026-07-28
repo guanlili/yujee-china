@@ -676,7 +676,7 @@ function EditorModals({ locale }: { locale: Locale }) {
             </button>
             <button className="export-opt" data-action="openNineGrid" data-testid="export-opt-live">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="14" height="12" rx="2" /><path d="m22 8-6 4 6 4V8Z" /></svg>
-              <span>{zh ? '动态图片' : 'Motion image'}</span>
+              <span>{zh ? 'Live 图' : 'Live video'}</span>
             </button>
             <button className="export-opt" data-action="exportSinglePages" data-testid="export-opt-pages">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.5-3.5L9 20" /></svg>
@@ -750,19 +750,19 @@ function EditorModals({ locale }: { locale: Locale }) {
         </div>
       </div>
 
-      {/* 动态图片:翻页动效 / 单页九宫格动效共用一个出口。 */}
+      {/* Live 图:翻页 / 九宫格两种样式共用一个出口。 */}
       <div className="modal-overlay" id="nineGridModal" data-overlay-close>
         <div className="modal-card collage-card" role="dialog" aria-modal="true" aria-labelledby="nineGridTitle" data-testid="nine-grid-modal">
           <button className="collage-close" data-action="closeNineGrid" aria-label="close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
           <div className="px-6 pt-6">
-            <h3 id="nineGridTitle" className="font-display text-[18px] font-bold">{zh ? '动态图片' : 'Motion image'}</h3>
-            <p className="text-[13px] text-muted mt-1.5">{zh ? '选择一种动效,导出视频和封面图,可用于社交平台发布。' : 'Choose a motion style and export a video with its cover image for social sharing.'}</p>
+            <h3 id="nineGridTitle" className="font-display text-[18px] font-bold">{zh ? 'Live 图' : 'Live video'}</h3>
+            <p className="text-[13px] text-muted mt-1.5">{zh ? '选一种样式,导出一段 Live 视频,可直接发社交平台。' : 'Pick a style and export a Live video you can post anywhere.'}</p>
           </div>
           <div className="nine-grid-options px-6 pt-5">
             <fieldset>
-              <legend>{zh ? '动效样式' : 'Motion style'}</legend>
+              <legend>{zh ? 'Live 样式' : 'Live style'}</legend>
               <div className="nine-grid-choice">
                 <button className="selected" data-live-style="flip" aria-pressed="true">
                   <span className="motion-example motion-example-flip" aria-hidden="true">
@@ -772,7 +772,7 @@ function EditorModals({ locale }: { locale: Locale }) {
                       <span className="motion-page motion-page-turn" />
                     </span>
                   </span>
-                  <span className="motion-option-title">{zh ? '翻页动效' : 'Page-flip motion'}</span>
+                  <span className="motion-option-title">{zh ? '翻页 Live' : 'Page-flip Live'}</span>
                   <span className="motion-option-copy">{zh ? '像翻书一样逐页播放' : 'Pages turn like a physical book'}</span>
                 </button>
                 <button data-live-style="nine-grid" aria-pressed="false">
@@ -781,7 +781,7 @@ function EditorModals({ locale }: { locale: Locale }) {
                       {Array.from({ length: 9 }).map((_, index) => <span key={index} />)}
                     </span>
                   </span>
-                  <span className="motion-option-title">{zh ? '九宫格动效' : 'Nine-grid motion'}</span>
+                  <span className="motion-option-title">{zh ? '九宫格 Live' : 'Nine-grid Live'}</span>
                   <span className="motion-option-copy">{zh ? '每组 9 页整齐切换' : 'Nine pages switch as a neat grid'}</span>
                 </button>
               </div>
@@ -3991,30 +3991,8 @@ function EditorBook({
       }
     }
 
-    function isAppleMobileDevice(): boolean {
-      const platform = navigator.platform || '';
-      return /iPad|iPhone|iPod/.test(navigator.userAgent)
-        || (platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    }
-
-    async function deliverLiveAssets(video: Blob, cover: Blob, stem: string, suffix: string): Promise<void> {
-      const { downloadBlobs } = await import('@/lib/export/download');
-      const extension = video.type.includes('mp4') ? 'mp4' : 'webm';
-      const files = [
-        new File([cover], `${stem}-${suffix}-cover.jpg`, { type: 'image/jpeg' }),
-        new File([video], `${stem}-${suffix}-motion.${extension}`, { type: video.type || 'video/mp4' }),
-      ];
-      const shareData = { files, title: `${stem} Motion` };
-      if (isAppleMobileDevice() && navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
-        try {
-          await navigator.share(shareData);
-          return;
-        } catch (error) {
-          if (error instanceof DOMException && error.name === 'AbortError') return;
-        }
-      }
-      await downloadBlobs(files.map((file) => ({ name: file.name, blob: file })));
-    }
+    // Live 交付(iOS 分享面板 / 其余单文件下载)抽到了共享层 —— 移动端 use-export
+    // 用的是同一份,规则不能两边各写(见 lib/export/live-delivery 抬头的三条)。
 
     async function exportLive() {
       if (exportingImages || exportingPdf) return;
@@ -4030,6 +4008,7 @@ function EditorBook({
           const covers = await renderPageJpegs(adaptable.slice(0, 1), resolveImage);
           if (!covers[0]) throw new Error('Live cover rendering returned no page');
           const { safeFileStem } = await import('@/lib/export/download');
+          const { deliverLiveAssets } = await import('@/lib/export/live-delivery');
           await deliverLiveAssets(blob, covers[0].blob, safeFileStem(currentTitle), 'page-flip');
         } catch (e) {
           if (e instanceof LiveUnsupportedError) {
@@ -4074,7 +4053,9 @@ function EditorBook({
           const blob = await renderNineGridVideo(sources, {
             aspect: '3:4',
             frameStyle: 'full',
-            background: boardBg?.kind === 'color' ? boardBg.color : '#c9c5b9',
+            // 传整个 boardBg(与拼图导出同口径):此前只认纯色,选了预设图/上传图会
+            // 静默回落写死的 #c9c5b9,用户选的背景根本没进成片。
+            background: boardBg,
             columns: 3,
             layoutsPerScene: 9,
             onProgress: setExportProgress,
@@ -4084,11 +4065,12 @@ function EditorBook({
           const cover = await renderNineGridCover(
             sources,
             {
-              background: boardBg?.kind === 'color' ? boardBg.color : '#c9c5b9',
+              background: boardBg,
               columns: 3,
               maxLayouts: 9,
             },
           );
+          const { deliverLiveAssets } = await import('@/lib/export/live-delivery');
           await deliverLiveAssets(blob, cover, stem, 'nine-grid');
         } catch (e) {
           if (e instanceof NineGridUnsupportedError) {

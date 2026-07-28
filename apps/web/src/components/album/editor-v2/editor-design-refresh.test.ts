@@ -139,11 +139,20 @@ test('chat collapse button is clickable inside the draggable header', () => {
   );
 });
 
-test('motion-image exports share one category and nine-grid stays single-page only', () => {
+test('Live 图导出共用一个出口,九宫格只出单页', () => {
   assert.match(editorPort, /add\(byId\('nineGridModal'\)\)/, 'nine-grid modal must be included when binding data-action controls');
-  assert.match(editorPort, /动态图片/, 'the pure-web export category should avoid promising a native Live Photo');
-  assert.match(editorPort, /翻页动效/, 'the original page-flip export should use a motion label');
-  assert.match(editorPort, /九宫格动效/, 'the nine-grid export should use a motion label');
+  // 术语按产品要求统一成「Live」——「动态图片 / motion」用户看不懂。
+  // 这里原本钉的是「动态图片」,理由是「桌面导出的是普通视频、不是苹果原生 Live Photo,
+  // 叫 Live 会过度承诺」。那个顾虑是真的,但产品拍板用 Live:文案里只说「Live 视频」、
+  // 不说「Live Photo」,不宣称能直接生成苹果原生格式;iOS 那条走分享面板给出 jpg + 视频
+  // 成对素材,用户自己合成 Live Photo。改文案时请守住这条边界。
+  assert.match(editorPort, /Live 图/, 'Live 图导出应当用 Live 这个词,不再用「动态图片」');
+  assert.doesNotMatch(editorPort, /动态图片|Motion image/, '「动态图片 / Motion image」这套旧术语不该回来');
+  // 只查用户可见文案 —— 注释里讨论 Live Photo 是可以的(iOS 那条本来就在拼它)。
+  const copy = editorPort.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(copy, /Live Photo/, '不要宣称直接产出苹果原生 Live Photo —— 桌面拿到的是视频');
+  assert.match(editorPort, /翻页 Live/, 'the original page-flip export should use a Live label');
+  assert.match(editorPort, /九宫格 Live/, 'the nine-grid export should use a Live label');
   assert.match(editorPort, /motion-example-flip/, 'page-flip choice should include a visual motion example');
   assert.match(editorPort, /motion-example-grid/, 'nine-grid choice should include a visual motion example');
   assert.match(editorPort, /aria-pressed="true"/, 'the selected example should expose its pressed state');
@@ -157,8 +166,18 @@ test('motion-image exports share one category and nine-grid stays single-page on
   assert.match(editorPort, /aspect: '3:4',\s*frameStyle: 'full'/, 'nine-grid output should stay fixed at 3:4 full bleed');
   assert.match(editorPort, /columns: 3,\s*layoutsPerScene: 9/, 'nine-grid mode should use three columns and nine pages per scene');
   assert.match(editorPort, /renderNineGridCover\(/, 'Live bundle should include a generated still cover');
-  assert.match(editorPort, /navigator\.share/, 'Apple devices should prefer the system share sheet');
-  assert.match(editorPort, /downloadBlobs\(/, 'other devices should receive both MP4 and JPG files');
+  // 分享面板与「桌面只下一个文件」的规则已抽到 lib/export/live-delivery(移动端同用一份),
+  // 这里只管调用侧接上了它;规则本身守在 export-download-wiring.test.ts。
+  assert.match(editorPort, /import\('@\/lib\/export\/live-delivery'\)/, 'Live 交付应当走共享实现');
+  // 这条原本钉的是 downloadBlobs(「其他设备应当同时拿到 MP4 和 JPG」)—— 那正是线上事故:
+  // 连续两次自动下载会被桌面 Chrome 的站点级「自动下载多个文件」权限拦掉,拦掉之后**静默**
+  // 失效,表现为「第一次能下、之后进度跑完但没文件」。桌面因此只交付视频(封面已经是视频
+  // 第一帧,单独给是冗余)。
+  // 不在这里断言 downloadBlobs 的存废 —— 单页图/拼图导出的产物天然就是 N 个文件,那条路径
+  // 该用它。这条不变量只属于 Live 交付,按函数体精确守在 export-download-wiring.test.ts。
+  // 背景必须用用户在画板上选的那个,与拼图导出同口径 —— 不能只认纯色、其余回落写死色值。
+  assert.match(editorPort, /background: boardBg,/, 'Live 导出应当吃完整的相册垫底背景');
+  assert.doesNotMatch(copy, /#c9c5b9/, '写死的兜底底色不该再出现在调用侧(注释里复盘它可以)');
   assert.doesNotMatch(editorPort, /即将打开苹果系统分享|当前浏览器不能共享成对素材/, 'Live delivery should not interrupt users with platform guidance');
 });
 

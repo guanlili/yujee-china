@@ -5,17 +5,9 @@ import type { EditorPage } from '@/components/album/types';
 import { PAGE } from '@/components/album/templates/constants';
 import { loadAlbumFonts } from '@/lib/font/album-font-loader';
 import { renderFaceToCanvas } from '@/lib/pdf/render-raster';
-import { presetImageUrl, type BoardBackground } from '@/lib/board-bg/presets';
-import { photoStore } from '@/lib/photo/store';
-
-// 上传的垫底背景只存本地(photoStore):取 blob → 同源 objectURL → 载入(不污染导出画布)。
-// 载入完成即撤 URL(位图已解码,后续 drawImage 仍有效)。缺失(换设备)返回 null → 回落中性底。
-async function loadBoardUpload(key: string, load: (src: string) => Promise<HTMLImageElement>): Promise<HTMLImageElement | null> {
-  const blob = await photoStore.getBlob(key).catch(() => undefined);
-  if (!blob) return null;
-  const url = URL.createObjectURL(blob);
-  try { return await load(url); } catch { return null; } finally { URL.revokeObjectURL(url); }
-}
+import { type BoardBackground } from '@/lib/board-bg/presets';
+// 垫底背景的画法与 Live 导出共用一份(见该模块抬头:三处必须是同一个底)。
+import { resolveBoardBgPainter } from './board-bg-canvas';
 
 // 多跨页拼图导出：把内页跨页（spread）等宽缩放、竖向堆叠到内置装饰背景上，
 // 输出小红书竖图 3:4（2160×2880 @2x）。density k∈{1,2,3} = 一张图放几个跨页，
@@ -47,33 +39,6 @@ function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    // 内置预设图是同源(/board-bg/*)，同源不会污染 canvas，无需 crossOrigin。
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('bg image load failed: ' + src));
-    img.src = src;
-  });
-}
-
-// 中性底(未选背景时)：一层柔和的竖向浅灰渐变，不喧宾夺主。
-function paintNeutral(ctx: CanvasRenderingContext2D): void {
-  const g = ctx.createLinearGradient(0, 0, 0, OUT_H);
-  g.addColorStop(0, '#eef1f3');
-  g.addColorStop(1, '#f5f4f1');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, OUT_W, OUT_H);
-}
-
-// cover 铺满 OUT_W×OUT_H，居中裁切。
-function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement): void {
-  const scale = Math.max(OUT_W / img.width, OUT_H / img.height);
-  const w = img.width * scale;
-  const h = img.height * scale;
-  ctx.drawImage(img, (OUT_W - w) / 2, (OUT_H - h) / 2, w, h);
 }
 
 // 把一个跨页画到 (x,y,w,h)：白底页 + 软阴影 + 左右 face + 中缝。
@@ -152,19 +117,9 @@ export async function renderCollages(
   const spreads = interiorSpreads(pages);
   if (spreads.length === 0) return [];
 
-  // 解析垫底背景一次(预设图先载好)。与预览同一来源。
-  const bg = options.background ?? null;
-  let bgImage: HTMLImageElement | null = null;
-  if (bg?.kind === 'preset') {
-    bgImage = await loadImage(presetImageUrl(bg.presetId)).catch(() => null);
-  } else if (bg?.kind === 'upload') {
-    bgImage = await loadBoardUpload(bg.key, loadImage);
-  }
-  const paintBackground = (ctx: CanvasRenderingContext2D) => {
-    if (bg?.kind === 'color') { ctx.fillStyle = bg.color; ctx.fillRect(0, 0, OUT_W, OUT_H); }
-    else if (bgImage) { drawCover(ctx, bgImage); }
-    else { paintNeutral(ctx); } // 未选 / 预设图缺失 → 中性底
-  };
+  // 解析垫底背景一次(预设图先载好)。与预览、Live 导出同一来源、同一画法。
+  const paintBoardBg = await resolveBoardBgPainter(options.background);
+  const paintBackground = (ctx: CanvasRenderingContext2D) => paintBoardBg(ctx, 0, 0, OUT_W, OUT_H);
 
   const folioInfos = pageFolioInfos(pages.map((p) => p.templateId));
   const total = pages.length;

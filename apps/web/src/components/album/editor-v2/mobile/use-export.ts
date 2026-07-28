@@ -4,7 +4,8 @@
    导出 —— 移动端那一份。四条格式与桌面完全同源:
 
      多跨页拼图 JPG   lib/export/collage       renderCollages
-     Live 图 MP4      lib/export/live-video    renderLiveVideo
+     Live 视频 MP4    lib/export/live-video       renderLiveVideo(翻页)
+                      lib/export/nine-grid-motion renderNineGridVideo(九宫格)
      单页 JPG         lib/export/single-pages  renderPageJpegs
      整本 PDF         lib/pdf/render-raster    renderAlbumPdfRaster + 上传 R2
 
@@ -128,22 +129,66 @@ export function useExport({ albumId, title, zh, pages, background }: ExportDeps)
     [runImageExport, t, onProgress, stem],
   );
 
-  /** Live MP4。设备/浏览器不支持时给一句明确的话,不当成导出失败(与桌面同口径)。 */
+  /** Live 视频。设备/浏览器不支持时给一句明确的话,不当成导出失败(与桌面同口径)。 */
   const [liveUnsupported, setLiveUnsupported] = useState<string | null>(null);
+
+  /** 翻页 Live:整本逐页翻。 */
   const exportLive = useCallback(
     () =>
       runImageExport(t('正在导出 Live 视频…', 'Exporting Live video…'), async ({ adaptable, resolveImage }) => {
         const { renderLiveVideo, LiveUnsupportedError } = await import('@/lib/export/live-video');
         try {
           const blob = await renderLiveVideo(adaptable, resolveImage, { background, onProgress });
-          const { downloadBlob } = await import('@/lib/export/download');
-          downloadBlob(blob, (await stem()) + '.mp4');
+          // 封面用首页静帧 —— iOS 分享面板要 jpg + 视频成对才能合成 Live Photo。
+          const { renderPageJpegs } = await import('@/lib/export/single-pages');
+          const covers = await renderPageJpegs(adaptable.slice(0, 1), resolveImage);
+          if (!covers[0]) throw new ExportError('render', 'live cover rendering returned no page');
+          const { deliverLiveAssets } = await import('@/lib/export/live-delivery');
+          await deliverLiveAssets(blob, covers[0].blob, await stem(), 'page-flip');
         } catch (e) {
           if (e instanceof LiveUnsupportedError) {
             setLiveUnsupported(
               t('这台设备的浏览器不支持导出视频,换电脑或换浏览器再试。', "This browser can't export video — try another browser or a computer."),
             );
             return; // 不是导出失败,不弹安抚框
+          }
+          throw e;
+        }
+      }),
+    [runImageExport, t, background, onProgress, stem],
+  );
+
+  /** 九宫格 Live:每组 9 页整齐切换。参数与桌面逐条一致(3:4 满版、三列、每组 9 页),
+   *  渲染器也是同一份 —— 移动端不重写任何渲染。 */
+  const exportNineGrid = useCallback(
+    () =>
+      runImageExport(t('正在导出九宫格 Live…', 'Exporting nine-grid Live…'), async ({ adaptable, resolveImage }) => {
+        const {
+          renderNineGridLayoutSources,
+          renderNineGridCover,
+          renderNineGridVideo,
+          NineGridUnsupportedError,
+        } = await import('@/lib/export/nine-grid-motion');
+        const sources = await renderNineGridLayoutSources(adaptable, resolveImage, 'single', onProgress);
+        if (sources.length === 0) throw new ExportError('render', 'no layouts to export');
+        try {
+          const blob = await renderNineGridVideo(sources, {
+            aspect: '3:4',
+            frameStyle: 'full',
+            background,
+            columns: 3,
+            layoutsPerScene: 9,
+            onProgress,
+          });
+          const cover = await renderNineGridCover(sources, { background, columns: 3, maxLayouts: 9 });
+          const { deliverLiveAssets } = await import('@/lib/export/live-delivery');
+          await deliverLiveAssets(blob, cover, await stem(), 'nine-grid');
+        } catch (e) {
+          if (e instanceof NineGridUnsupportedError) {
+            setLiveUnsupported(
+              t('这台设备的浏览器不支持导出视频,换电脑或换浏览器再试。', "This browser can't export video — try another browser or a computer."),
+            );
+            return; // 同上:能力缺失不是导出失败
           }
           throw e;
         }
@@ -208,6 +253,7 @@ export function useExport({ albumId, title, zh, pages, background }: ExportDeps)
     exportCollage,
     exportSinglePages,
     exportLive,
+    exportNineGrid,
     exportPdf,
   };
 }

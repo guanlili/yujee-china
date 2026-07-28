@@ -75,7 +75,10 @@ test('入口都接到真东西上;仍未实现的(删除页)才给「即将上�
 
 test('导出四条格式全部接到真渲染上(不许只开菜单不干活)', () => {
   const root = read('MobileEditorRoot.tsx');
-  assert.match(root, /onLive=\{[\s\S]{0,120}exporter\.exportLive\(\)/);
+  // Live 与拼图同形:先选样式(翻页/九宫格)再导 —— 与桌面同一步骤,不在菜单里直接开跑。
+  assert.match(root, /onLive=\{[\s\S]{0,160}setLiveStyleOpen\(true\)/);
+  assert.match(root, /picked === 'nine-grid'\) void exporter\.exportNineGrid\(\)/, '九宫格样式要接到九宫格导出');
+  assert.match(root, /else if \(picked === 'flip'\) void exporter\.exportLive\(\)/, '翻页样式要接到翻页导出');
   assert.match(root, /onSinglePages=\{[\s\S]{0,120}exporter\.exportSinglePages\(\)/);
   assert.match(root, /onPdf=\{[\s\S]{0,120}exporter\.exportPdf\(\)/);
   // 拼图要先问密度,确认时才真导

@@ -5,6 +5,10 @@ import { buildSpreads, isSoloSpread, spreadPageIndices } from '@/components/albu
 import type { EditorPage } from '@/components/album/types';
 import { PAGE } from '@/components/album/templates/constants';
 import { loadAlbumFonts } from '@/lib/font/album-font-loader';
+import { type BoardBackground } from '@/lib/board-bg/presets';
+// 垫底背景与拼图导出、画板预览共用同一份画法(见 board-bg-canvas 抬头)。
+// 此前这里只认纯色、其余一律回落写死的 #c9c5b9 —— 用户选的预设图/上传图根本没进成片。
+import { resolveBoardBgPainter, type BoardBgPainter } from './board-bg-canvas';
 import { renderFaceToCanvas } from '@/lib/pdf/render-raster';
 import { splitSpreadCanvas } from '@/lib/pdf/split-spread-canvas';
 
@@ -15,7 +19,8 @@ export type NineGridLayoutMode = 'single' | 'spread';
 export interface NineGridMotionOptions {
   aspect: NineGridAspect;
   frameStyle: NineGridFrameStyle;
-  background: string;
+  /** 相册垫底背景(与画板预览同源)。null / 省略 = 中性底。 */
+  background?: BoardBackground | null;
   duration: number;
   fps: number;
   columns: number;
@@ -244,9 +249,9 @@ function fitCardSize(
 
 export async function renderNineGridCover(
   imageSources: string[],
-  partial: { background?: string; columns?: number; maxLayouts?: number } = {},
+  partial: { background?: BoardBackground | null; columns?: number; maxLayouts?: number } = {},
 ): Promise<Blob> {
-  const background = partial.background ?? '#c9c5b9';
+  const paintBg = await resolveBoardBgPainter(partial.background);
   const columns = partial.columns ?? 3;
   const maxLayouts = partial.maxLayouts ?? LAYOUTS_PER_SCENE;
   const images = await Promise.all(imageSources.slice(0, maxLayouts).map(loadImage));
@@ -254,7 +259,7 @@ export async function renderNineGridCover(
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;
   canvas.height = HEIGHTS['3:4'];
-  renderCoverFrame(canvas, images, background, columns);
+  renderCoverFrame(canvas, images, paintBg, columns);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -268,13 +273,12 @@ export async function renderNineGridCover(
 function renderCoverFrame(
   canvas: HTMLCanvasElement,
   images: LoadedImage[],
-  background: string,
+  paintBg: BoardBgPainter,
   columns: number,
 ): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('2d canvas is unavailable');
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  paintBg(ctx, 0, 0, canvas.width, canvas.height);
 
   const rows = Math.ceil(images.length / columns);
   const gapX = 20;
@@ -311,6 +315,7 @@ function renderFrame(
   images: LoadedImage[],
   seconds: number,
   options: NineGridMotionOptions,
+  paintBg: BoardBgPainter,
 ) {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('2d canvas is unavailable');
@@ -330,8 +335,7 @@ function renderFrame(
   const frameY = options.frameStyle === 'framed' ? 38 : 0;
   const frameWidth = options.frameStyle === 'framed' ? WIDTH - 72 : WIDTH;
   const frameHeight = options.frameStyle === 'framed' ? height - 76 : height;
-  ctx.fillStyle = options.background;
-  ctx.fillRect(frameX, frameY, frameWidth, frameHeight);
+  paintBg(ctx, frameX, frameY, frameWidth, frameHeight);
   const vignette = ctx.createLinearGradient(0, 0, 0, height);
   vignette.addColorStop(0, 'rgba(255,255,255,.2)');
   vignette.addColorStop(0.7, 'rgba(255,255,255,0)');
@@ -405,7 +409,7 @@ export async function renderNineGridVideo(
   const options: NineGridMotionOptions = {
     aspect: '3:4',
     frameStyle: 'full',
-    background: '#c9c5b9',
+    background: null,
     duration: 4.4,
     fps: 30,
     columns: 3,
@@ -414,6 +418,9 @@ export async function renderNineGridVideo(
   };
   const images = await Promise.all(imageSources.map(loadImage));
   if (images.length === 0) throw new Error('no photos to render');
+  // 背景在开录之前解析完(该载的图先载好):下面的 rAF 逐帧循环里不能 await,
+  // 一 await 就掉帧,录出来的视频会顿。
+  const paintBg = await resolveBoardBgPainter(options.background);
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;
   canvas.height = HEIGHTS[options.aspect];
@@ -449,7 +456,7 @@ export async function renderNineGridVideo(
         renderCoverFrame(
           canvas,
           images.slice(0, options.layoutsPerScene),
-          options.background,
+          paintBg,
           options.columns,
         );
       } else {
@@ -462,7 +469,7 @@ export async function renderNineGridVideo(
           sceneIndex * options.layoutsPerScene,
           (sceneIndex + 1) * options.layoutsPerScene,
         );
-        renderFrame(canvas, sceneImages, sceneSeconds, options);
+        renderFrame(canvas, sceneImages, sceneSeconds, options, paintBg);
       }
       options.onProgress?.(Math.min(totalFrames, Math.round(seconds * options.fps)), totalFrames);
       if (seconds < totalDuration) requestAnimationFrame(tick);

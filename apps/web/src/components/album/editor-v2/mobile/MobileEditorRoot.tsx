@@ -30,6 +30,7 @@ import { BoardBgSheet } from './modals/BoardBgSheet';
 import {
   ExportMenuModal,
   CollageModal,
+  LiveStyleModal,
   ExportProgressModal,
   ExportFailModal,
 } from './modals/ExportModals';
@@ -127,6 +128,9 @@ export function MobileEditorRoot({
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [collageOpen, setCollageOpen] = useState(false);
   const [collageDensity, setCollageDensity] = useState<number | null>(null);
+  // Live 样式(翻页 / 九宫格):与桌面同一步骤 —— 菜单点「Live 图」先选样式再导出。
+  const [liveStyleOpen, setLiveStyleOpen] = useState(false);
+  const [liveStyle, setLiveStyle] = useState<'flip' | 'nine-grid' | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   // 换图:本册照片选择器。点一张即换即关,不做「选中+完成」两步。
@@ -617,7 +621,8 @@ export function MobileEditorRoot({
       }}
       onLive={() => {
         setExportMenuOpen(false);
-        void exporter.exportLive();
+        setLiveStyle(null); // 每次重新选,不带上次的残留
+        setLiveStyleOpen(true);
       }}
       onSinglePages={() => {
         setExportMenuOpen(false);
@@ -640,6 +645,19 @@ export function MobileEditorRoot({
         setCollageOpen(false);
         if (d == null) return;
         void exporter.exportCollage(d as 1 | 2 | 3 | 6);
+      }}
+    />
+    <LiveStyleModal
+      open={liveStyleOpen}
+      zh={zh}
+      style={liveStyle}
+      onPickStyle={setLiveStyle}
+      onClose={() => setLiveStyleOpen(false)}
+      onConfirm={() => {
+        const picked = liveStyle;
+        setLiveStyleOpen(false);
+        if (picked === 'nine-grid') void exporter.exportNineGrid();
+        else if (picked === 'flip') void exporter.exportLive();
       }}
     />
     <ExportProgressModal
