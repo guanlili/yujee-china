@@ -6,6 +6,7 @@ import { test } from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const page = readFileSync(join(here, '[locale]', 'my-albums', 'page.tsx'), 'utf8');
+const coverPreview = readFileSync(join(here, '..', 'components', 'album', 'AlbumCoverPreview.tsx'), 'utf8');
 
 const getRunningBranch = () => {
   const match = page.match(/if \(a\.status === 'AGENT_RUNNING'\) \{([\s\S]*?)\n    if \(a\.status === 'FAILED'\)/);
@@ -89,4 +90,25 @@ test('my-albums keeps album generation failures separate from global page errors
   assert.match(failedBranch, /<RetryFailedButton albumId=\{a\.id\} variant="card" \/>/, 'failed album cards should keep retry wired to the failed album');
   assert.doesNotMatch(failedBranch, /YujeeState/, 'album generation failures must not use the global error-state component');
   assert.doesNotMatch(failedBranch, /variant="error"/, 'album generation failures must not use the global page error illustration');
+});
+
+test('my-albums keeps list and live cover previews on the normalized photo filter', () => {
+  assert.match(page, /import\s*\{\s*normalizePhotoFilterState,\s*type PhotoFilterState\s*\}\s*from '@\/lib\/photo\/filter-state'/, 'list client should normalize the API filter state before using it');
+  assert.match(page, /photoFilter:\s*PhotoFilterState \| null/, 'album list entries should carry the photo filter type');
+  assert.match(page, /photoFilter:\s*normalizePhotoFilterState\(item\.photoFilter\)/, 'list client should retain normalized filter state');
+  assert.match(page, /<AlbumCoverPreview[\s\S]*photoFilter=\{a\.photoFilter\}/, 'cover previews should receive each album filter state');
+
+  assert.match(coverPreview, /photoFilter:\s*PhotoFilterState \| null/, 'cover preview props should accept filter state');
+  assert.match(coverPreview, /photoStore\.getTierUrls\(photoKey \? photoKey\.split\(','\) : \[\], 'display', photoFilter\)/, 'cover preview display URLs should be filtered');
+  assert.match(coverPreview, /\}, \[photoKey, photoFilter\]\);/, 'a filter change should cancel and replace an in-flight preview URL request');
+});
+
+test('my-albums derives uploaded cover thumbnails from exact current display pixels', () => {
+  assert.match(page, /const \{ blob: displayBlob, filteredFallback \} = await photoStore\.getTierBlobStatus\(\s*photoId,\s*'display',\s*photoFilter,\s*\)/, 'thumbnail generation should request the filtered display blob with status');
+  assert.match(page, /if \(!displayBlob\) continue;/, 'missing local display pixels should keep trying compatible fallback candidates');
+  assert.match(page, /if \(filteredFallback\) \{[\s\S]*continue;/, 'positive-filter fallback bytes must never be uploaded as a current filtered cover');
+  assert.match(page, /createCoverThumbnailJpeg\(displayBlob\)/, 'thumbnail JPEG should be encoded from display pixels, never the original');
+  assert.match(page, /const coverStateKey = coverThumbnailStateKey\(album, candidatePhotoIds\);/, 'each thumbnail attempt should capture the normalized cover state');
+  assert.match(page, /isCurrentCoverThumbnailState\(album\.id, coverStateKey\)/, 'stale filter or cover-detail work should be guarded before upload');
+  assert.match(page, /console\.error\('Cover thumbnail upload failed', e\)/, 'existing upload diagnostic should remain available for retry investigation');
 });

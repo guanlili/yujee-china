@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { photoStore } from '@/lib/photo/store';
+import type { PhotoFilterState } from '@/lib/photo/filter-state';
 import { collectPhotoIds } from './adapt-layout';
 import { PagePreview } from './PagePreview';
 import { PAGE } from './templates/constants';
@@ -15,13 +16,20 @@ export type AlbumCoverPage = Pick<
 interface Props {
   coverPage: AlbumCoverPage | null;
   coverThumbnailUrl?: string | null;
+  photoFilter: PhotoFilterState | null;
   pageCount: number;
   fallback: ReactNode;
 }
 
 const THUMBNAIL_PADDING = 12;
 
-export function AlbumCoverPreview({ coverPage, coverThumbnailUrl, pageCount, fallback }: Props) {
+export function AlbumCoverPreview({
+  coverPage,
+  coverThumbnailUrl,
+  photoFilter,
+  pageCount,
+  fallback,
+}: Props) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [scale, setScale] = useState(0.1);
@@ -47,13 +55,13 @@ export function AlbumCoverPreview({ coverPage, coverThumbnailUrl, pageCount, fal
     let cancelled = false;
     (async () => {
       // 相册卡片封面:display 派生图(~1600px)足够,不解码原图。
-      const urls = await photoStore.getTierUrls(photoKey ? photoKey.split(',') : [], 'display');
+      const urls = await photoStore.getTierUrls(photoKey ? photoKey.split(',') : [], 'display', photoFilter);
       if (!cancelled) setImageUrls(urls);
     })();
     return () => {
       cancelled = true;
     };
-  }, [photoKey]);
+  }, [photoKey, photoFilter]);
 
   const resolveImage = useCallback((photoId: string) => imageUrls[photoId], [imageUrls]);
 

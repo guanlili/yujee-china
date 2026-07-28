@@ -13,6 +13,7 @@ import { YujeeState } from '@/components/app/YujeeState';
 import { AlbumCoverPreview, type AlbumCoverPage } from '@/components/album/AlbumCoverPreview';
 import { RetryFailedButton } from '@/components/album/RetryFailedButton';
 import { photoStore } from '@/lib/photo/store';
+import { normalizePhotoFilterState, type PhotoFilterState } from '@/lib/photo/filter-state';
 import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
 import { IMAGE_INPUT_ACCEPT } from '@/lib/photo/heic';
 import {
@@ -35,6 +36,7 @@ type Album = {
   pageCount: number;
   pdfUrl: string | null;
   coverThumbnailUrl: string | null;
+  photoFilter: PhotoFilterState | null;
   createdAt: string;
   coverPage: AlbumCoverPage | null;
   // 无封面页时的兜底:项目里的照片 id(草稿排版页图槽优先,其次章节原图),
@@ -51,6 +53,14 @@ const POLL_MS = 4000;
 const POSTER_CARD_CLASS =
   'album-poster-card group relative flex h-full min-w-0 flex-col overflow-hidden rounded-[18px] bg-[var(--surface)] shadow-[var(--elev-card)] transition duration-300 hover:-translate-y-1 hover:shadow-[var(--elev-card-hover)]';
 
+function coverThumbnailStateKey(album: Album, candidatePhotoIds: string[]): string {
+  return JSON.stringify({
+    photoFilter: normalizePhotoFilterState(album.photoFilter),
+    coverPage: album.coverPage,
+    candidatePhotoIds,
+  });
+}
+
 export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = use(params);
   const t = getMessages(locale).dashboard;
@@ -62,6 +72,9 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
   const [deleting, setDeleting] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const coverThumbnailAttemptsRef = useRef<Set<string>>(new Set());
+  const coverThumbnailTasksRef = useRef<Map<string, Promise<void>>>(new Map());
+  const albumsRef = useRef<Album[] | null>(null);
+  albumsRef.current = albums;
   const mountedRef = useRef(true);
 
   const load = async () => {
@@ -76,7 +89,10 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         setAlbums([]);
         return;
       }
-      setAlbums(json.data);
+      setAlbums((json.data as Album[]).map((item) => ({
+        ...item,
+        photoFilter: normalizePhotoFilterState(item.photoFilter),
+      })));
     } catch {
       setErr(locale === 'zh' ? '网络异常，检查网络' : 'Network error. Check your connection.');
       setErrKind('network');
@@ -110,6 +126,15 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
   useEffect(() => {
     if (!albums) return;
 
+    const isCurrentCoverThumbnailState = (albumId: string, coverStateKey: string) => {
+      const current = albumsRef.current?.find((item) => item.id === albumId);
+      if (!current || current.coverThumbnailUrl) return false;
+      const currentCandidatePhotoIds = current.coverPage
+        ? Object.values(current.coverPage.imagesJson ?? {}).filter(Boolean)
+        : (current.fallbackPhotoIds ?? []);
+      return coverThumbnailStateKey(current, currentCandidatePhotoIds) === coverStateKey;
+    };
+
     for (const album of albums) {
       if (album.coverThumbnailUrl) continue;
       // 有封面页用封面页图槽;没有(未定稿的草稿相册)用项目里的照片兜底,
@@ -118,15 +143,35 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         ? Object.values(album.coverPage.imagesJson ?? {}).filter(Boolean)
         : (album.fallbackPhotoIds ?? []);
       if (candidatePhotoIds.length === 0) continue;
-      if (coverThumbnailAttemptsRef.current.has(album.id)) continue;
-      coverThumbnailAttemptsRef.current.add(album.id);
+      const coverStateKey = coverThumbnailStateKey(album, candidatePhotoIds);
+      const attemptKey = `${album.id}:${coverStateKey}`;
+      if (coverThumbnailAttemptsRef.current.has(attemptKey)) continue;
+      coverThumbnailAttemptsRef.current.add(attemptKey);
+      const photoFilter = normalizePhotoFilterState(album.photoFilter);
+      const previousTask = coverThumbnailTasksRef.current.get(album.id) ?? Promise.resolve();
 
-      void (async () => {
+      const task = previousTask.catch(() => undefined).then(async () => {
+        if (!isCurrentCoverThumbnailState(album.id, coverStateKey)) return;
         for (const photoId of candidatePhotoIds) {
-          const original = await photoStore.getBlob(photoId);
-          if (!original) continue;
+          const { blob: displayBlob, filteredFallback } = await photoStore.getTierBlobStatus(
+            photoId,
+            'display',
+            photoFilter,
+          );
+          if (!displayBlob) continue;
+          if (filteredFallback) {
+            // A positive LUT failed and display intentionally fell back to base pixels.
+            // Keep the live preview fallback, but never persist it as this album's filter.
+            console.warn('Cover thumbnail skipped: filtered display render unavailable', {
+              albumId: album.id,
+              photoId,
+            });
+            continue;
+          }
+          if (!isCurrentCoverThumbnailState(album.id, coverStateKey)) return;
 
-          const thumbnail = await createCoverThumbnailJpeg(original);
+          const thumbnail = await createCoverThumbnailJpeg(displayBlob);
+          if (!isCurrentCoverThumbnailState(album.id, coverStateKey)) return;
           const signRes = await fetch(`/api/v1/albums/${album.id}/cover-thumbnail-upload-url`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -141,6 +186,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           }
 
           const { putUrl, r2Key } = signJson.data as { putUrl: string; r2Key: string };
+          if (!isCurrentCoverThumbnailState(album.id, coverStateKey)) return;
           const putRes = await fetch(putUrl, {
             method: 'PUT',
             headers: { 'Content-Type': COVER_THUMBNAIL_CONTENT_TYPE },
@@ -148,6 +194,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           });
           if (!putRes.ok) throw new Error(`cover thumbnail R2 PUT ${putRes.status}`);
 
+          if (!isCurrentCoverThumbnailState(album.id, coverStateKey)) return;
           const confirmRes = await fetch(`/api/v1/albums/${album.id}/cover-thumbnail`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -159,7 +206,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           }
 
           const coverThumbnailUrl = confirmJson.data?.coverThumbnailUrl;
-          if (!coverThumbnailUrl || !mountedRef.current) return;
+          if (!coverThumbnailUrl || !mountedRef.current || !isCurrentCoverThumbnailState(album.id, coverStateKey)) return;
           setAlbums((prev) =>
             prev?.map((item) =>
               item.id === album.id ? { ...item, coverThumbnailUrl } : item,
@@ -167,7 +214,14 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           );
           return;
         }
-      })().catch((e) => {
+      });
+      coverThumbnailTasksRef.current.set(album.id, task);
+      void task.finally(() => {
+        if (coverThumbnailTasksRef.current.get(album.id) === task) {
+          coverThumbnailTasksRef.current.delete(album.id);
+        }
+      }).catch((e) => {
+        coverThumbnailAttemptsRef.current.delete(attemptKey);
         console.error('Cover thumbnail upload failed', e);
       });
     }
@@ -367,6 +421,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
             <AlbumCoverPreview
               coverPage={a.coverPage}
               coverThumbnailUrl={a.coverThumbnailUrl}
+              photoFilter={a.photoFilter}
               pageCount={a.pageCount}
               fallback={coverDecor()}
             />
