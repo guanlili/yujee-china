@@ -1,0 +1,162 @@
+{
+  "version": "pf-v1",
+  "sourceDirectoryLabel": "精选26色LUT",
+  "entries": [
+    {
+      "lutId": "cloudy-cool",
+      "source": "阴天清冷-709.cube",
+      "sourceSha256": "e219ca429cde16ff87efcf4b198fcee1453b4419e097d36dd4daa95e2d7e1e7a",
+      "fullSha256": "2e71b902a2cc11878e7ebaf0df8ef17f94677fb7d5405a4a1baa32941858b9f7"
+    },
+    {
+      "lutId": "street-negative",
+      "source": "街拍负片-709.cube",
+      "sourceSha256": "1fedba7360fd87ab0161a14dfb22df46e70138d7d451fe4dccf92434bd468bdf",
+      "fullSha256": "a49b14179b0022c8875c69c4cbbee8b7f5f5cd7719fc994d9ee907adc33232e9"
+    },
+    {
+      "lutId": "airy-japanese",
+      "source": "清透日系-709.cube",
+      "sourceSha256": "2f00167cef48fc189cb0bdcd8d6ddd0c5c9a899bbd32b6d8082b38cb6b7d35e3",
+      "fullSha256": "e64baa3a12ecc06cad82e958aa994a20ab844532f0f5d164799c0790c7d4cd94"
+    },
+    {
+      "lutId": "travel-cinematic",
+      "source": "旅行大片-709.cube",
+      "sourceSha256": "c92afae32ec05a116f1ddad50fb981dd32e1dc32d2f1c67c3a526d4fa1c94f1c",
+      "fullSha256": "5e571e258f8b9d5f37215e4dbfefd75852fa56dae1febc4f3f3304f62b8f542d"
+    },
+    {
+      "lutId": "city-street",
+      "source": "城市街头-709.cube",
+      "sourceSha256": "0c2b81c74e3d1146e47c90aa7eaa580ee420c32a8f9e7b0044f884fdb4856eae",
+      "fullSha256": "5f8a8a10b43023089f1b12c8f3fd98c60a85127bc8a196e310d06e2f6bb4ef1b"
+    },
+    {
+      "lutId": "daily-soft",
+      "source": "日常淡雅-709.cube",
+      "sourceSha256": "303c8a6f09cd0b18d628bddec276fe6613b9ad4fbc5f2d53593512037e1898fe",
+      "fullSha256": "04e5e22ea54281bce916b6ba4e975236260788058aaaa8b435289dc47887991f"
+    },
+    {
+      "lutId": "teal-orange-outdoor",
+      "source": "青橙外景-709.cube",
+      "sourceSha256": "1a4294db25c70b4e72c1258c6a29c17c8eaa144457db0febd58a1094937fb0e5",
+      "fullSha256": "13cbb1c865e5eb0a643305b2e98f75823e588a665cd388b8d49a5e84b0df4f84"
+    },
+    {
+      "lutId": "cool-cyan",
+      "source": "冷青氛围-709.cube",
+      "sourceSha256": "25490635ad57a2a21a8cd458a2346a7e05b4291bc86e19f4522e4c1d2011c0a6",
+      "fullSha256": "cad594b1003bd17ba312afc0c0aea0a3846c5bee6ce1b207a53b56a8c1c77600"
+    },
+    {
+      "lutId": "rich-teal-orange",
+      "source": "浓郁青橙-709.cube",
+      "sourceSha256": "1f6cda7502d0787df35caf40162e96a8a7c63cedc83375d34d4d49aaac1fa9d5",
+      "fullSha256": "1ad96fb7cf205ed25e400df8748d69bd94f58d04656ed146613ff765556d8114"
+    },
+    {
+      "lutId": "fuji-portrait",
+      "source": "富士人像-709.cube",
+      "sourceSha256": "507b3a68b5c57708a6641dbbdd1cf6680b3e61f407979140461203fe6a24fa85",
+      "fullSha256": "1f1c9c744e2282c3bc667c3fcc5381f6f75c8bc77d17a85a0434487a153487d3"
+    },
+    {
+      "lutId": "night-film",
+      "source": "夜景胶片-709.cube",
+      "sourceSha256": "bcbfc24d72ba6d838785ff7134279314df0d2f5e3a15f9b50963bd08eba8bbc5",
+      "fullSha256": "17d5520ae7d50ea09c0543fbf968a29fbcd6d90f40f28843a91b7599dbd02177"
+    },
+    {
+      "lutId": "forest-green",
+      "source": "森系绿调-709.cube",
+      "sourceSha256": "546c071a9902560febccf22c5f2b091949c8a4f28462a3656fab55f493fbea31",
+      "fullSha256": "d6a55ec99ed03e0177d520728e363f90651a5ac8728c1e15577a944d68bb4239"
+    },
+    {
+      "lutId": "retro-film",
+      "source": "复古胶片-709.cube",
+      "sourceSha256": "01393a6a2d6c4d52c02bc693578d5712b33f3983367e3f71f5d48505e234993b",
+      "fullSha256": "be2bfece580d721c4c3e584757d52fecf3509b52f92ed3f14032d0d9add0a670"
+    },
+    {
+      "lutId": "fuji-clear",
+      "source": "富士清透-709.cube",
+      "sourceSha256": "bbb82cfb912f7d7787fbdb7c4e015f8c23947d630061bb4210c73a0fea9f6afe",
+      "fullSha256": "27ee62be10f78380d43e1c94130551ca1e3bef7be2c83ae512a5e0278abe8ea2"
+    },
+    {
+      "lutId": "dark-cool-cinema",
+      "source": "暗调冷电影-709.cube",
+      "sourceSha256": "6c3f400fc22552008c402673a81c3304a1a86ea29d070ae79f9543cf15c9c660",
+      "fullSha256": "c451dc99ce0480aa67675c4aba5fd4e9f0d25000dc0f228cae1398d80bc93362"
+    },
+    {
+      "lutId": "kodak-daylight",
+      "source": "柯达日光胶片-709.cube",
+      "sourceSha256": "b92565a58de72cdbcc77b8a0a86f357b58fe93e8251078057472dd082e52a32d",
+      "fullSha256": "d325b281e19ae7125cb82c787a921b007f517b69e144666ea97b7242e0da638c"
+    },
+    {
+      "lutId": "eighties-retro",
+      "source": "八十年代复古-709.cube",
+      "sourceSha256": "90133aa0ee0467ac5e1d714eeaf0fe44b6babe90aafc025d4d258335131878ef",
+      "fullSha256": "c490179f9ca6402a0a34ec8b2efba47852ebfa9195b65c25a9d02e77c0389356"
+    },
+    {
+      "lutId": "sunny-soft",
+      "source": "暖阳淡雅-709.cube",
+      "sourceSha256": "ecd5ba02f45192c652eb998cbf2f509166ca1223b04af311cff8ac0836460fc2",
+      "fullSha256": "e922b76364fe72536f79c5e70a19c9793e897051ad48af8069b60a0fb8b13f12"
+    },
+    {
+      "lutId": "autumn-warm",
+      "source": "秋日暖调-709.cube",
+      "sourceSha256": "536ed1d3d9cc2b238998ff9765924818a918cb8fa545f371f3adac7ed57b6be7",
+      "fullSha256": "64a6258db798a635259f6c7dfbdde3fc2d10d107a59eec9be692b093ef341c48"
+    },
+    {
+      "lutId": "altay-wilderness",
+      "source": "阿勒泰旷野-709.cube",
+      "sourceSha256": "a6b4cb148ab82667e79df50762de9d86993d2fede1339bb1071f72aeb02bf57e",
+      "fullSha256": "6ffde51b9f5c65c88ef336123bf4c22d311aac3de80b2b7022b65dc5801f8e3c"
+    },
+    {
+      "lutId": "warm-cinema-film",
+      "source": "暖调电影胶片-709.cube",
+      "sourceSha256": "06e22518edeccc38574b5033b271d649e1ff3a249220e4f33526da951ed1370b",
+      "fullSha256": "af3d2abe6801a51f15dbe8684e2e7500dd7d22d1a9f79414adc44b5d2fedd4db"
+    },
+    {
+      "lutId": "muted-cinema",
+      "source": "低饱和电影-709.cube",
+      "sourceSha256": "46990f41c30ce02934088990663dea5dede37cbf76ee7c5c06d3a0d2f1cad405",
+      "fullSha256": "e2fba2beb05f111704bfe98a50f2c6566fa17d285627b2a0493ef4781c9ae975"
+    },
+    {
+      "lutId": "nostalgic-film",
+      "source": "怀旧胶片-709.cube",
+      "sourceSha256": "7d0c7c1984f6fef51a2ee8d4ffe1d1b93ec32794e61719be8a2a1b3f7490ff64",
+      "fullSha256": "2eaaa764ad6ad94c040744d835821f1e558e80bb2389ebea4817b47d91643699"
+    },
+    {
+      "lutId": "kodak-2383",
+      "source": "影院质感2383-709.cube",
+      "sourceSha256": "9d4be832794fe3843e932c6b74173c809961fcd4df7fce477eac60e9b35e7210",
+      "fullSha256": "02ab623dbbbffb1a4760f4d2816f68afc353702fda1c9fb7a35a49299d27669e"
+    },
+    {
+      "lutId": "fresh-clear",
+      "source": "清新通透-709.cube",
+      "sourceSha256": "92ac8e795e9e78e3f36971cb43f0a364d68aba6ecf26ce9bfdd0da1797443633",
+      "fullSha256": "7e7706de41ff473aded5b0c41640df9cc28a0402da5c0af66b1e8ec18a9489e4"
+    },
+    {
+      "lutId": "green-book",
+      "source": "绿皮书质感:复古:雪山:人像:风光.cube",
+      "sourceSha256": "4798b84ae9c3f5f0c4bf2a33cd5a9542452b4003d8a0d841e18dfa094f89ff69",
+      "fullSha256": "f99f5ad83ea29acc085fdce7ef0958d0b9151cb60fb78af0cc8544c85d28a19c"
+    }
+  ]
+}
