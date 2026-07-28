@@ -8,6 +8,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const editorPort = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
 const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
 const client = readFileSync(join(here, '..', '..', '..', 'lib', 'album', 'photo-snapshot-client.ts'), 'utf8');
+const albumTypes = readFileSync(join(here, '..', 'types.ts'), 'utf8');
+
+test('album detail types expose per-photo snapshot render versions', () => {
+  assert.match(
+    albumTypes,
+    /photoSnapshotRenderVersions\?:\s*Record<string,\s*string>/,
+  );
+});
 
 test('resolveImage falls back to server snapshot when local is missing', () => {
   // 本地优先,本地没有用服务器压缩图,都没有则空槽(photo-snapshot §5.3)。

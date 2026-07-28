@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 // R2 signing needs credentials; set them BEFORE importing anything that reads env
@@ -20,8 +20,11 @@ const { cleanupUser, isDbReachable, makeAlbum, makeUser } = await import(
 const P1 = '550e8400-e29b-41d4-a716-446655440001';
 const P2 = '550e8400-e29b-41d4-a716-446655440002';
 const P3 = '550e8400-e29b-41d4-a716-446655440003';
+const V1 = 'pf-v1__original';
+const V2 = 'pf-v1__fuji-portrait__80';
+const V3 = 'pf-v1__daily-soft__60';
 
-test('photo-snapshot sign: rejects empty / oversized / invalid photoIds, signs per-photo PUTs', async (t) => {
+test('photo-snapshot sign: rejects empty / oversized / invalid entries, signs versioned PUTs', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('photo-snap-sign');
   try {
@@ -33,22 +36,48 @@ test('photo-snapshot sign: rejects empty / oversized / invalid photoIds, signs p
     );
     // 路径穿越 / 跨命名空间的 photoId 必须被拒
     await assert.rejects(
-      () => albumService.signPhotoSnapshotUpload(user.id, album.id, ['../evil']),
+      () => albumService.signPhotoSnapshotUpload(user.id, album.id, [
+        { photoId: '../evil', renderVersion: V1 },
+      ]),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+    await assert.rejects(
+      () => albumService.signPhotoSnapshotUpload(user.id, album.id, [
+        { photoId: P1, renderVersion: '../evil' },
+      ]),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+    await assert.rejects(
+      () => albumService.signPhotoSnapshotUpload(user.id, album.id, [
+        { photoId: P1, renderVersion: V1 },
+        { photoId: P1, renderVersion: V2 },
+      ]),
       (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
     );
 
-    const signed = await albumService.signPhotoSnapshotUpload(user.id, album.id, [P1, P2]);
+    const signed = await albumService.signPhotoSnapshotUpload(user.id, album.id, [
+      { photoId: P1, renderVersion: V1 },
+      { photoId: P2, renderVersion: V2 },
+    ]);
     assert.equal(signed.length, 2);
     assert.equal(signed[0]!.photoId, P1);
-    assert.equal(signed[0]!.r2Key, `photo-snapshots/${user.id}/${album.id}/${P1}.jpg`);
+    assert.equal(signed[0]!.renderVersion, V1);
+    assert.equal(
+      signed[0]!.r2Key,
+      `photo-snapshots/${user.id}/${album.id}/${P1}/${V1}.jpg`,
+    );
     assert.ok(signed[0]!.putUrl.startsWith('https://'));
-    assert.ok(signed[0]!.publicUrl.endsWith(`photo-snapshots/${user.id}/${album.id}/${P1}.jpg`));
+    assert.ok(
+      signed[0]!.publicUrl.endsWith(
+        `photo-snapshots/${user.id}/${album.id}/${P1}/${V1}.jpg`,
+      ),
+    );
   } finally {
     await cleanupUser(user.id);
   }
 });
 
-test('photo-snapshot confirm: merges photoIds and getDetail exposes photoSnapshotUrls', async (t) => {
+test('photo-snapshot confirm: partial merges versions and detail exposes URLs plus versions', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const user = await makeUser('photo-snap-confirm');
   try {
@@ -57,25 +86,106 @@ test('photo-snapshot confirm: merges photoIds and getDetail exposes photoSnapsho
     // detail 起手为空(未备份)
     const before = await albumService.getDetail(user.id, album.id);
     assert.deepEqual(before.album.photoSnapshotUrls, {});
+    assert.deepEqual(before.album.photoSnapshotRenderVersions, {});
 
-    await albumService.confirmPhotoSnapshot(user.id, album.id, [P1, P2]);
-    // 再存一次(含重复 + 新增)→ 去重合并
-    const merged = await albumService.confirmPhotoSnapshot(user.id, album.id, [P2, P3]);
+    await albumService.confirmPhotoSnapshot(user.id, album.id, [
+      { photoId: P1, renderVersion: V1 },
+      { photoId: P2, renderVersion: V2 },
+    ]);
+    // 再存一次:更新 P2 的版本 + 新增 P3,不丢 untouched P1。
+    const merged = await albumService.confirmPhotoSnapshot(user.id, album.id, [
+      { photoId: P2, renderVersion: V3 },
+      { photoId: P3, renderVersion: V1 },
+    ]);
     assert.deepEqual(new Set(merged.photoIds), new Set([P1, P2, P3]));
+    assert.deepEqual(merged.renderVersions, { [P1]: V1, [P2]: V3, [P3]: V1 });
 
     const row = await albumRepo.findById(album.id);
     assert.deepEqual(new Set(row?.photoSnapshot?.photoIds ?? []), new Set([P1, P2, P3]));
+    assert.deepEqual(row?.photoSnapshot?.renderVersions, {
+      [P1]: V1,
+      [P2]: V3,
+      [P3]: V1,
+    });
     assert.ok(row?.photoSnapshot?.updatedAt);
 
     const after = await albumService.getDetail(user.id, album.id);
     assert.ok(
       after.album.photoSnapshotUrls?.[P1]?.endsWith(
-        `photo-snapshots/${user.id}/${album.id}/${P1}.jpg`,
+        `photo-snapshots/${user.id}/${album.id}/${P1}/${V1}.jpg`,
       ),
     );
     assert.equal(Object.keys(after.album.photoSnapshotUrls ?? {}).length, 3);
+    assert.deepEqual(after.album.photoSnapshotRenderVersions, {
+      [P1]: V1,
+      [P2]: V3,
+      [P3]: V1,
+    });
   } finally {
     await cleanupUser(user.id);
+  }
+});
+
+test('photo-snapshot confirm locks before merge and preserves untouched legacy/versioned state', async () => {
+  const tx = { marker: 'snapshot-tx' };
+  let writtenSnapshot: Record<string, unknown> | undefined;
+  const staleRead = mock.method(albumRepo, 'findById', async () => {
+    throw new Error('confirm must not merge from a stale read');
+  });
+  const lockedRead = mock.method(
+    albumRepo,
+    'findByIdForUpdate',
+    async (actualTx: unknown, albumId: string) => {
+      assert.equal(actualTx, tx);
+      assert.equal(albumId, 'album-atomic');
+      return {
+        id: albumId,
+        userId: 'user-atomic',
+        photoSnapshot: {
+          photoIds: [P1, P2],
+          renderVersions: { [P2]: V2 },
+          updatedAt: '2026-07-01T00:00:00.000Z',
+        },
+      } as never;
+    },
+  );
+  const transaction = mock.method(
+    db,
+    'transaction',
+    (async (fn: (actualTx: unknown) => Promise<unknown>) => fn(tx)) as never,
+  );
+  const update = mock.method(
+    albumRepo,
+    'update',
+    async (_actualTx: unknown, albumId: string, patch: { photoSnapshot?: Record<string, unknown> }) => {
+      assert.equal(albumId, 'album-atomic');
+      writtenSnapshot = patch.photoSnapshot;
+    },
+  );
+
+  try {
+    const merged = await albumService.confirmPhotoSnapshot('user-atomic', 'album-atomic', [
+      { photoId: P2, renderVersion: V3 },
+      { photoId: P3, renderVersion: V1 },
+    ]);
+
+    assert.equal(staleRead.mock.callCount(), 0);
+    assert.equal(lockedRead.mock.callCount(), 1);
+    assert.deepEqual(merged, {
+      photoIds: [P1, P2, P3],
+      renderVersions: { [P2]: V3, [P3]: V1 },
+    });
+    assert.deepEqual(writtenSnapshot, {
+      photoIds: [P1, P2, P3],
+      renderVersions: { [P2]: V3, [P3]: V1 },
+      updatedAt: writtenSnapshot?.updatedAt,
+    });
+    assert.equal(typeof writtenSnapshot?.updatedAt, 'string');
+  } finally {
+    update.mock.restore();
+    transaction.mock.restore();
+    lockedRead.mock.restore();
+    staleRead.mock.restore();
   }
 });
 

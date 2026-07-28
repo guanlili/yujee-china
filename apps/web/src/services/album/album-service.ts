@@ -25,10 +25,12 @@ import {
 } from '@/lib/photo/filter-state';
 import {
   PHOTO_SNAPSHOT_MAX_COUNT,
-  isValidPhotoId,
-  mergeSnapshotPhotoIds,
+  SnapshotEntriesSchema,
+  mergePhotoSnapshot,
   photoSnapshotKey,
+  photoSnapshotRenderVersions,
   photoSnapshotUrls,
+  type SnapshotEntry,
 } from './photo-snapshot-util';
 import {
   ComposeRequest,
@@ -439,7 +441,17 @@ export const albumService = {
         coverThumbnailUrl: album.coverThumbnailUrl,
         // 手动备份过的照片的服务器压缩图 URL(photoId→url)。resolveImage 在本地原图
         // 缺失时回退到它,让换设备/清缓存后内页不空白。未备份 → {}。
-        photoSnapshotUrls: photoSnapshotUrls(userId, album.id, album.photoSnapshot?.photoIds, r2.publicUrl),
+        photoSnapshotUrls: photoSnapshotUrls(
+          userId,
+          album.id,
+          album.photoSnapshot?.photoIds,
+          r2.publicUrl,
+          album.photoSnapshot?.renderVersions,
+        ),
+        photoSnapshotRenderVersions: photoSnapshotRenderVersions(
+          album.photoSnapshot?.photoIds,
+          album.photoSnapshot?.renderVersions,
+        ),
         // 预览垫底背景(相册级);编辑器读它铺画板、导出拼图也读它。null = 无。
         boardBackground: album.boardBackground ?? null,
         photoFilter: album.photoFilter ?? null,
@@ -1495,50 +1507,82 @@ export const albumService = {
   async signPhotoSnapshotUpload(
     userId: string,
     albumId: string,
-    photoIds: string[],
-  ): Promise<{ photoId: string; putUrl: string; r2Key: string; publicUrl: string }[]> {
+    entries: SnapshotEntry[],
+  ): Promise<
+    {
+      photoId: string;
+      renderVersion: string;
+      putUrl: string;
+      r2Key: string;
+      publicUrl: string;
+    }[]
+  > {
     await this.findOwned(userId, albumId);
-    if (!Array.isArray(photoIds) || photoIds.length === 0) {
-      throw ERRORS.VALIDATION_FAILED('photoIds must be a non-empty array');
+    if (!Array.isArray(entries) || entries.length === 0) {
+      throw ERRORS.VALIDATION_FAILED('entries must be a non-empty array');
     }
-    if (photoIds.length > PHOTO_SNAPSHOT_MAX_COUNT) {
-      throw ERRORS.VALIDATION_FAILED(`photoIds must be <= ${PHOTO_SNAPSHOT_MAX_COUNT}`);
+    if (entries.length > PHOTO_SNAPSHOT_MAX_COUNT) {
+      throw ERRORS.VALIDATION_FAILED(`entries must be <= ${PHOTO_SNAPSHOT_MAX_COUNT}`);
     }
-    const out: { photoId: string; putUrl: string; r2Key: string; publicUrl: string }[] = [];
-    for (const photoId of photoIds) {
-      if (!isValidPhotoId(photoId)) throw ERRORS.VALIDATION_FAILED(`invalid photoId: ${photoId}`);
-      const r2Key = photoSnapshotKey(userId, albumId, photoId);
+    const parsed = SnapshotEntriesSchema.safeParse(entries);
+    if (!parsed.success) throw ERRORS.VALIDATION_FAILED('invalid photo snapshot entries');
+
+    const out: {
+      photoId: string;
+      renderVersion: string;
+      putUrl: string;
+      r2Key: string;
+      publicUrl: string;
+    }[] = [];
+    for (const { photoId, renderVersion } of parsed.data) {
+      const r2Key = photoSnapshotKey(userId, albumId, photoId, renderVersion);
       const putUrl = await r2.signPutUrl(r2Key, PHOTO_SNAPSHOT_CONTENT_TYPE, 300);
-      out.push({ photoId, putUrl, r2Key, publicUrl: r2.publicUrl(r2Key) });
+      out.push({
+        photoId,
+        renderVersion,
+        putUrl,
+        r2Key,
+        publicUrl: r2.publicUrl(r2Key),
+      });
     }
     return out;
   },
 
-  // Browser has finished the direct R2 PUTs; merge the backed-up photoIds into
-  // albums.photo_snapshot. Idempotent: photoId 不变、去重合并,重复保存无副作用。
+  // Browser has finished the direct R2 PUTs; merge successful immutable versions
+  // into albums.photo_snapshot under a row lock so partial confirmations cannot
+  // drop versions confirmed concurrently.
   // 客户端只把「确实 PUT 成功的」传进来,故这里登记的即真实已备份的。
   async confirmPhotoSnapshot(
     userId: string,
     albumId: string,
-    photoIds: string[],
-  ): Promise<{ photoIds: string[] }> {
-    const album = await this.findOwned(userId, albumId);
-    if (!Array.isArray(photoIds) || photoIds.length === 0) {
-      throw ERRORS.VALIDATION_FAILED('photoIds must be a non-empty array');
-    }
-    if (photoIds.length > PHOTO_SNAPSHOT_MAX_COUNT) {
-      throw ERRORS.VALIDATION_FAILED(`photoIds must be <= ${PHOTO_SNAPSHOT_MAX_COUNT}`);
-    }
-    for (const photoId of photoIds) {
-      if (!isValidPhotoId(photoId)) throw ERRORS.VALIDATION_FAILED(`invalid photoId: ${photoId}`);
-    }
-    const merged = mergeSnapshotPhotoIds(album.photoSnapshot?.photoIds, photoIds);
-    await db.transaction(async (tx) => {
+    entries: SnapshotEntry[],
+  ): Promise<{ photoIds: string[]; renderVersions: Record<string, string> }> {
+    return db.transaction(async (tx) => {
+      const album = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+      if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+      if (!Array.isArray(entries) || entries.length === 0) {
+        throw ERRORS.VALIDATION_FAILED('entries must be a non-empty array');
+      }
+      if (entries.length > PHOTO_SNAPSHOT_MAX_COUNT) {
+        throw ERRORS.VALIDATION_FAILED(`entries must be <= ${PHOTO_SNAPSHOT_MAX_COUNT}`);
+      }
+      const parsed = SnapshotEntriesSchema.safeParse(entries);
+      if (!parsed.success) throw ERRORS.VALIDATION_FAILED('invalid photo snapshot entries');
+
+      const merged = mergePhotoSnapshot(
+        album.photoSnapshot?.photoIds,
+        album.photoSnapshot?.renderVersions,
+        parsed.data,
+      );
       await albumRepo.update(tx, albumId, {
-        photoSnapshot: { photoIds: merged, updatedAt: new Date().toISOString() },
+        photoSnapshot: {
+          ...merged,
+          updatedAt: new Date().toISOString(),
+        },
       });
+      return merged;
     });
-    return { photoIds: merged };
   },
 
   async getPdfUrl(userId: string, albumId: string): Promise<{ pdfUrl: string | null }> {

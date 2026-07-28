@@ -38,6 +38,8 @@ export interface AlbumInfo {
   // 手动备份过的照片的服务器压缩图 URL(photoId→url)。本地原图缺失时 resolveImage
   // 回退到它。未备份 / building stub → 省略或 {}。
   photoSnapshotUrls?: Record<string, string>;
+  // 对应 URL 当前记录的已校验不可变渲染版本。旧快照没有版本时为空。
+  photoSnapshotRenderVersions?: Record<string, string>;
   // 预览垫底背景(相册级):书页浮在其上的画板底。null/省略 = 无。
   boardBackground?: BoardBackground | null;
   photoFilter?: PhotoFilterState | null;

@@ -242,7 +242,11 @@ export const albums = pgTable(
     // 手动照片备份(photo-snapshot-design.md):用户主动「保存」后,把书里用到照片的
     // display 档压缩图直传 R2 存下的 photoId 集合 + 更新时间。null = 从未备份。原图仍
     // 只在浏览器;这里只记哪些 photoId 有 R2 压缩图,URL 按约定 key 推导。
-    photoSnapshot: jsonb('photo_snapshot').$type<{ photoIds: string[]; updatedAt: string }>(),
+    photoSnapshot: jsonb('photo_snapshot').$type<{
+      photoIds: string[];
+      renderVersions?: Record<string, string>;
+      updatedAt: string;
+    }>(),
     // 预览「垫底背景」(相册级):书页浮在其上的画板底。纯色 / 内置实拍预设 / 用户上传图。
     // upload.key 是本地 blob 引用(只存本地,服务端不落图,换设备解析为空)。
     // null = 无(默认中性画板)。导出多跨页拼图也读它,保证所见即所分享。
