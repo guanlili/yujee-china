@@ -113,6 +113,12 @@ const SHEET_VH = 0.66;
 /** 被编辑元素与面板顶边之间留的呼吸。 */
 const LIFT_PAD = 12;
 
+/** 工具栏住在画板里面,但它自己的横向滚动和按钮不能冒泡成图片拖动。 */
+export function shouldStartBoardGesture(target: EventTarget | null): boolean {
+  const element = target as Element | null;
+  return typeof element?.closest !== 'function' || element.closest('.mimg-bar') === null;
+}
+
 export function EditView({
   pages,
   resolve,
@@ -299,6 +305,7 @@ export function EditView({
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
+    if (!shouldStartBoardGesture(e.target)) return;
     armed.current = true; // 这一记是本视图自己按下的,随后的 click 才作数
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     // 第二根手指落下 → 进入捏合,取消单指平移与翻页

@@ -10,9 +10,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 // tsx classic JSX transform → 组件产物引用全局 React(同 mag-02-toc-render.test.ts)。
 (globalThis as { React?: typeof React }).React = React;
 
-import { EditView } from './EditView';
+import * as EditViewModule from './EditView';
 import type { EditorPage } from '../../types';
 
+const { EditView } = EditViewModule;
 const noop = () => {};
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -108,6 +109,48 @@ test('选中时画一个 React 拥有的高亮框(不往页面 innerHTML 里塞�
   assert.match(html, /width:200px/);
   assert.match(html, /height:56px/);
   assert.match(html, /aria-hidden="true"/);
+});
+
+test('图片工具栏内的嵌套目标不启动画板手势,普通图片目标仍启动', () => {
+  type FakeElement = {
+    className: string;
+    parentElement: FakeElement | null;
+    closest: (selector: string) => FakeElement | null;
+  };
+  const element = (className: string, parentElement: FakeElement | null = null): FakeElement => {
+    const node: FakeElement = {
+      className,
+      parentElement,
+      closest(selector) {
+        if (selector !== '.mimg-bar') return null;
+        for (let current: FakeElement | null = node; current; current = current.parentElement) {
+          if (current.className.split(/\s+/).includes('mimg-bar')) return current;
+        }
+        return null;
+      },
+    };
+    return node;
+  };
+  const toolbar = element('mimg-bar');
+  const button = element('mimg-btn', toolbar);
+  const icon = element('mimg-ic', button);
+  const selectedImage = element('selected-image');
+  const shouldStart = (
+    EditViewModule as typeof EditViewModule & {
+      shouldStartBoardGesture?: (target: EventTarget | null) => boolean;
+    }
+  ).shouldStartBoardGesture;
+
+  assert.equal(typeof shouldStart, 'function', 'EditView must expose the production gesture guard');
+  assert.equal(shouldStart!(icon as unknown as EventTarget), false);
+  assert.equal(shouldStart!(selectedImage as unknown as EventTarget), true);
+  assert.equal(shouldStart!({} as EventTarget), true, 'non-Element targets must be safe');
+  assert.equal(shouldStart!(null), true);
+  assert.match(
+    source('EditView.tsx'),
+    /onPointerDown[\s\S]*shouldStartBoardGesture\(e\.target\)/,
+    'the board pointerdown handler must use the tested guard',
+  );
 });
 
 test('面板升起且选中的元素靠下时,书整体上移让出位置(只有位移,没有缩放)', () => {
