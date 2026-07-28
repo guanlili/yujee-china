@@ -1,9 +1,13 @@
 import { createHash } from 'node:crypto';
 import {
+  existsSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -20,6 +24,13 @@ const FULL_BYTES = FULL_SIZE ** 3 * CHANNELS;
 const THUMB_BYTES = THUMB_SIZE ** 3 * CHANNELS;
 const OUTPUT_DIRECTORY = resolve(dirname(fileURLToPath(import.meta.url)), '../public/luts');
 const SOURCE_DIRECTORY_LABEL = '精选26色LUT';
+const DECIMAL_TOKEN = /^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?$/;
+const LOG_COMPANION_IDS = new Set<string>([
+  'cloudy-cool', 'airy-japanese', 'travel-cinematic', 'daily-soft', 'teal-orange-outdoor',
+  'cool-cyan', 'rich-teal-orange', 'night-film', 'forest-green', 'retro-film', 'fuji-clear',
+  'dark-cool-cinema', 'kodak-daylight', 'sunny-soft', 'autumn-warm', 'altay-wilderness',
+  'warm-cinema-film', 'muted-cinema', 'kodak-2383', 'fresh-clear', 'green-book',
+]);
 
 type Provenance = {
   version: 'pf-v1';
@@ -32,11 +43,18 @@ type Provenance = {
   }>;
 };
 
+type CompiledLuts = {
+  provenance: Provenance;
+  fullResources: Array<{ name: string; bytes: Uint8Array }>;
+  thumbs: Uint8Array;
+};
+
 function error(message: string): never {
   throw new Error(`LUT build: ${message}`);
 }
 
 function parseFiniteNumber(value: string, description: string): number {
+  if (!DECIMAL_TOKEN.test(value)) error(`${description} must be a decimal or scientific number`);
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) error(`${description} must be finite`);
   return parsed;
@@ -142,6 +160,18 @@ function validateManifest(): void {
   }
 }
 
+function logCompanionName(sourceName: string): string {
+  return sourceName.replace(/(?:-709)?\.cube$/, '-LOG.cube');
+}
+
+function expectedSourceCubeNames(): Set<string> {
+  const names: Set<string> = new Set(LUT_DEFINITIONS.map(({ source }) => source));
+  for (const definition of LUT_DEFINITIONS) {
+    if (LOG_COMPANION_IDS.has(definition.id)) names.add(logCompanionName(definition.source));
+  }
+  return names;
+}
+
 function resolveManifestSource(sourceDirectory: string, sourceName: string): string {
   const candidate = resolve(sourceDirectory, sourceName);
   if (relative(sourceDirectory, candidate).startsWith('..')) error(`unsafe source resolution: ${sourceName}`);
@@ -160,7 +190,7 @@ function resolveManifestSource(sourceDirectory: string, sourceName: string): str
   return sourcePath;
 }
 
-function parseSourceArgument(argv: string[]): string {
+export function parseSourceArgument(argv: string[]): string {
   if (argv.length !== 4 || argv[2] !== '--source' || !isAbsolute(argv[3])) {
     error('usage: tsx scripts/build-luts.ts --source <absolute-dir>');
   }
@@ -169,16 +199,50 @@ function parseSourceArgument(argv: string[]): string {
   return sourceDirectory;
 }
 
-function assertOutputDirectoryIsUnambiguous(expectedFullNames: Set<string>): void {
-  const fullDirectory = resolve(OUTPUT_DIRECTORY, 'full');
-  try {
-    const existingNames = readdirSync(fullDirectory);
-    for (const name of existingNames) {
-      if (!expectedFullNames.has(name)) error(`unexpected existing full resource: ${name}`);
+function assertExpectedRegularFile(path: string, description: string): void {
+  if (!statSync(path).isFile()) error(`${description} is not a regular file`);
+}
+
+function validateSourceDirectory(sourceDirectory: string): Map<string, string> {
+  validateManifest();
+  const expectedCubeNames = expectedSourceCubeNames();
+  for (const entry of readdirSync(sourceDirectory, { withFileTypes: true })) {
+    if (entry.name.endsWith('.cube') && !expectedCubeNames.has(entry.name)) {
+      error(`unexpected source cube: ${entry.name}`);
     }
-  } catch (caught) {
-    if (caught instanceof Error && 'code' in caught && caught.code === 'ENOENT') return;
-    throw caught;
+  }
+
+  const selectedSources = new Map<string, string>();
+  for (const definition of LUT_DEFINITIONS) {
+    selectedSources.set(definition.source, resolveManifestSource(sourceDirectory, definition.source));
+  }
+  return selectedSources;
+}
+
+function assertOutputDirectoryIsUnambiguous(outputDirectory: string, expectedFullNames: Set<string>): void {
+  if (!existsSync(outputDirectory)) return;
+  if (!statSync(outputDirectory).isDirectory()) error('output target must be a directory');
+
+  const expectedRootNames = new Set(['README.md', 'provenance.json', 'thumbs.bin.gz', 'full']);
+  const rootNames = readdirSync(outputDirectory);
+  for (const name of rootNames) {
+    if (!expectedRootNames.has(name)) error(`unexpected output artifact: ${name}`);
+  }
+  for (const name of expectedRootNames) {
+    if (!rootNames.includes(name)) error(`missing output artifact: ${name}`);
+  }
+  assertExpectedRegularFile(resolve(outputDirectory, 'README.md'), 'README.md');
+  assertExpectedRegularFile(resolve(outputDirectory, 'provenance.json'), 'provenance.json');
+  assertExpectedRegularFile(resolve(outputDirectory, 'thumbs.bin.gz'), 'thumbs.bin.gz');
+
+  const fullDirectory = resolve(outputDirectory, 'full');
+  if (!statSync(fullDirectory).isDirectory()) error('full output directory is not a directory');
+  for (const name of readdirSync(fullDirectory)) {
+    if (!expectedFullNames.has(name)) error(`unexpected output artifact: full/${name}`);
+    assertExpectedRegularFile(resolve(fullDirectory, name), `full/${name}`);
+  }
+  for (const name of expectedFullNames) {
+    if (!existsSync(resolve(fullDirectory, name))) error(`missing output artifact: full/${name}`);
   }
 }
 
@@ -196,6 +260,10 @@ function readme(): string {
     '- `full/<lut-id>.bin.gz` contains one 33³ RGB LUT per manifest ID.',
     '- `provenance.json` records the original source-byte SHA-256 and emitted full-resource SHA-256 for each manifest entry.',
     '',
+    '## Green Book 709 provenance',
+    '',
+    'The original LUT tool’s embedded `LUT_MANIFEST` identifies `绿皮书质感:复古:雪山:人像:风光` with distinct `o709`/`l709` and `oLOG`/`lLOG` slots. The unsuffixed source selected here is the original tool’s 709 slot; its `-LOG.cube` companion is deliberately excluded.',
+    '',
     '## Licensing provenance',
     '',
     'The supplied source directory included LUT files and a scene-name mapping, but no license or copyright statement. This repository asserts no license for the LUT data. Before redistributing or using these generated resources beyond the authorized project, verify permission with the original LUT rights holder.',
@@ -203,28 +271,25 @@ function readme(): string {
   ].join('\n');
 }
 
-export function buildLuts(sourceDirectory: string): Provenance {
-  validateManifest();
+function compileLuts(sourceDirectory: string): CompiledLuts {
   const sourceRoot = realpathSync(sourceDirectory);
   if (!statSync(sourceRoot).isDirectory()) error('--source must name a directory');
-
-  const expectedFullNames = new Set(LUT_DEFINITIONS.map(({ id }) => `${id}.bin.gz`));
-  assertOutputDirectoryIsUnambiguous(expectedFullNames);
-  const fullDirectory = resolve(OUTPUT_DIRECTORY, 'full');
-  mkdirSync(fullDirectory, { recursive: true });
+  const selectedSources = validateSourceDirectory(sourceRoot);
 
   const thumbs = new Uint8Array(LUT_DEFINITIONS.length * THUMB_BYTES);
   const entries: Provenance['entries'] = [];
+  const fullResources: CompiledLuts['fullResources'] = [];
 
   for (const [index, definition] of LUT_DEFINITIONS.entries()) {
-    const sourcePath = resolveManifestSource(sourceRoot, definition.source);
+    const sourcePath = selectedSources.get(definition.source);
+    if (!sourcePath) error(`missing manifest source: ${definition.source}`);
     const sourceBytes = Uint8Array.from(readFileSync(sourcePath));
     const fullData = parseCube33(new TextDecoder().decode(sourceBytes));
     const fullGzip = gzip(fullData);
     const thumbData = downsample33To17(fullData);
 
     thumbs.set(thumbData, index * THUMB_BYTES);
-    writeFileSync(resolve(fullDirectory, `${definition.id}.bin.gz`), fullGzip);
+    fullResources.push({ name: `${definition.id}.bin.gz`, bytes: fullGzip });
     entries.push({
       lutId: definition.id,
       source: definition.source,
@@ -233,15 +298,52 @@ export function buildLuts(sourceDirectory: string): Provenance {
     });
   }
 
-  writeFileSync(resolve(OUTPUT_DIRECTORY, 'thumbs.bin.gz'), gzip(thumbs));
   const provenance: Provenance = {
     version: 'pf-v1',
     sourceDirectoryLabel: SOURCE_DIRECTORY_LABEL,
     entries,
   };
-  writeFileSync(resolve(OUTPUT_DIRECTORY, 'provenance.json'), `${JSON.stringify(provenance, null, 2)}\n`);
-  writeFileSync(resolve(OUTPUT_DIRECTORY, 'README.md'), readme());
-  return provenance;
+  return { provenance, fullResources, thumbs: gzip(thumbs) };
+}
+
+function replaceOutputTree(outputDirectory: string, compiled: CompiledLuts): void {
+  const target = resolve(outputDirectory);
+  if (basename(target) !== 'luts') error('output target must be a luts directory');
+  const parent = dirname(target);
+  mkdirSync(parent, { recursive: true });
+  const stage = mkdtempSync(resolve(parent, '.luts-stage-'));
+  const backup = resolve(parent, `.luts-backup-${process.pid}-${Date.now()}`);
+  let movedExisting = false;
+
+  try {
+    const stagedFullDirectory = resolve(stage, 'full');
+    mkdirSync(stagedFullDirectory);
+    for (const resource of compiled.fullResources) writeFileSync(resolve(stagedFullDirectory, resource.name), resource.bytes);
+    writeFileSync(resolve(stage, 'thumbs.bin.gz'), compiled.thumbs);
+    writeFileSync(resolve(stage, 'provenance.json'), `${JSON.stringify(compiled.provenance, null, 2)}\n`);
+    writeFileSync(resolve(stage, 'README.md'), readme());
+
+    if (existsSync(target)) {
+      renameSync(target, backup);
+      movedExisting = true;
+    }
+    renameSync(stage, target);
+  } catch (caught) {
+    if (movedExisting && !existsSync(target) && existsSync(backup)) renameSync(backup, target);
+    throw caught;
+  } finally {
+    if (existsSync(stage)) rmSync(stage, { recursive: true, force: true });
+    if (existsSync(backup)) rmSync(backup, { recursive: true, force: true });
+  }
+}
+
+export function buildLuts(sourceDirectory: string, outputDirectory = OUTPUT_DIRECTORY): Provenance {
+  const target = resolve(outputDirectory);
+  const expectedFullNames = new Set(LUT_DEFINITIONS.map(({ id }) => `${id}.bin.gz`));
+  assertOutputDirectoryIsUnambiguous(target, expectedFullNames);
+  const compiled = compileLuts(sourceDirectory);
+  replaceOutputTree(target, compiled);
+  return compiled.provenance;
 }
 
 function main(): void {

@@ -10,6 +10,10 @@ Rebuild from the approved source directory:
 - `full/<lut-id>.bin.gz` contains one 33³ RGB LUT per manifest ID.
 - `provenance.json` records the original source-byte SHA-256 and emitted full-resource SHA-256 for each manifest entry.
 
+## Green Book 709 provenance
+
+The original LUT tool’s embedded `LUT_MANIFEST` identifies `绿皮书质感:复古:雪山:人像:风光` with distinct `o709`/`l709` and `oLOG`/`lLOG` slots. The unsuffixed source selected here is the original tool’s 709 slot; its `-LOG.cube` companion is deliberately excluded.
+
 ## Licensing provenance
 
 The supplied source directory included LUT files and a scene-name mapping, but no license or copyright statement. This repository asserts no license for the LUT data. Before redistributing or using these generated resources beyond the authorized project, verify permission with the original LUT rights holder.
