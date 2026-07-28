@@ -718,10 +718,100 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
         html { scroll-behavior: smooth; }
         .landing-redesign .wrap { max-width: 1320px; margin: 0 auto; padding: 0 20px; }
         @media (min-width: 768px) { .landing-redesign .wrap { padding: 0 32px; } }
-        .nav-wrap { position: fixed; top: 0; left: 0; right: 0; z-index: 50; display: flex; justify-content: center; padding: 0 16px; transition: padding .35s ease; }
-        .nav-wrap.scrolled { padding: 10px 16px; }
-        .nav-pill { width: 100%; max-width: 1320px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border: 1px solid transparent; background: transparent; transition: max-width .4s ease, padding .35s ease, border-radius .35s ease, background .35s ease, box-shadow .35s ease, border-color .35s ease; }
-        .nav-wrap.scrolled .nav-pill { max-width: 1120px; padding: 8px 12px 8px 18px; border-radius: 9999px; background: rgba(255,255,255,.72); backdrop-filter: blur(22px) saturate(180%); box-shadow: 0 4px 24px rgba(0,0,0,.08), inset 0 1px 0 rgba(255,255,255,.9); border-color: rgba(0,0,0,.05); }
+        /* ── 导航:悬浮液态玻璃胶囊。**顶部即为玻璃**(不再是滚动后才显形),
+           滚动后收窄并加深磨砂。玻璃质感由四件叠出来,少任何一件都会塌成普通半透明色块:
+           ① backdrop-filter 的 saturate/brightness —— 只 blur 会发灰,提饱和+提亮才像玻璃透光;
+           ② 四条内缘 inset 高光 —— 玻璃的「厚度」全靠边缘吃光,上缘最亮、下缘次之、左右留微光;
+           ③ ::before 的 mask-composite 镶边 —— 挖空中心只留 1.6px 描边,形成全周高光圈;
+           ④ ::after 的上缘反光薄条 —— 70% 处淡出,不压正文对比度。
+           ::before/::after 都不裁剪(不加 overflow:hidden),否则会切掉语言下拉与移动抽屉。 ── */
+        .nav-wrap { position: fixed; top: 0; left: 0; right: 0; z-index: 50; display: flex; justify-content: center; padding: 12px 16px; transition: padding .4s cubic-bezier(.4,0,.2,1); }
+        .nav-wrap.scrolled { padding: 9px 16px; }
+        .nav-pill {
+          position: relative;
+          width: 100%; max-width: 1320px;
+          display: flex; align-items: center; justify-content: space-between; gap: 10px;
+          padding: 10px 16px 10px 18px; border-radius: 9999px;
+          background: rgba(255,255,255,.42); border: 0;
+          -webkit-backdrop-filter: blur(8px) saturate(205%) brightness(1.06);
+          backdrop-filter: blur(8px) saturate(205%) brightness(1.06) url(#navGlass);
+          box-shadow:
+            0 8px 30px rgba(0,0,0,.09),
+            0 1px 2px rgba(0,0,0,.05),
+            0 0 0 .5px rgba(0,0,0,.045),
+            inset 0 1.5px 1.5px rgba(255,255,255,.95),
+            inset 0 -1.5px 2px rgba(255,255,255,.55),
+            inset 1.5px 0 2px rgba(255,255,255,.4),
+            inset -1.5px 0 2px rgba(255,255,255,.4);
+          transition: max-width .45s cubic-bezier(.4,0,.2,1), padding .4s ease,
+                      background .35s ease, box-shadow .4s ease,
+                      -webkit-backdrop-filter .35s ease, backdrop-filter .35s ease;
+        }
+        .nav-pill::before {
+          content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.6px;
+          background: linear-gradient(180deg,
+            rgba(255,255,255,1) 0%,
+            rgba(255,255,255,.45) 20%,
+            rgba(255,255,255,.06) 40%,
+            rgba(255,255,255,.06) 60%,
+            rgba(255,255,255,.4) 80%,
+            rgba(255,255,255,.95) 100%);
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor; mask-composite: exclude;
+          pointer-events: none;
+        }
+        .nav-pill::after {
+          content: ''; position: absolute; left: 1.6px; right: 1.6px; top: 1.6px; height: 44%;
+          border-radius: 9999px 9999px 40px 40px;
+          background: linear-gradient(180deg, rgba(255,255,255,.32), rgba(255,255,255,0) 70%);
+          pointer-events: none;
+        }
+        .nav-wrap.scrolled .nav-pill {
+          max-width: 1120px; padding: 8px 12px 8px 18px;
+          background: rgba(255,255,255,.52);
+          -webkit-backdrop-filter: blur(10px) saturate(215%) brightness(1.08);
+          backdrop-filter: blur(10px) saturate(215%) brightness(1.08) url(#navGlass);
+          box-shadow:
+            0 10px 34px rgba(0,0,0,.12),
+            0 1px 2px rgba(0,0,0,.06),
+            0 0 0 .5px rgba(0,0,0,.05),
+            inset 0 1.5px 1.5px rgba(255,255,255,1),
+            inset 0 -1.5px 2px rgba(255,255,255,.6),
+            inset 1.5px 0 2px rgba(255,255,255,.45),
+            inset -1.5px 0 2px rgba(255,255,255,.45);
+        }
+        /* 左侧悬浮菜单胶囊:与导航同款液态玻璃(四缘内高光 + 全周镶边 + 同一枚真折射滤镜)。
+           同样不加 overflow:hidden —— 否则会裁掉 hover 时从右侧探出的图标提示气泡。 */
+        .glass-dock {
+          background: rgba(255,255,255,.42);
+          -webkit-backdrop-filter: blur(8px) saturate(205%) brightness(1.06);
+          backdrop-filter: blur(8px) saturate(205%) brightness(1.06) url(#navGlass);
+          box-shadow:
+            0 8px 30px rgba(0,0,0,.09),
+            0 1px 2px rgba(0,0,0,.05),
+            0 0 0 .5px rgba(0,0,0,.045),
+            inset 0 1.5px 1.5px rgba(255,255,255,.95),
+            inset 0 -1.5px 2px rgba(255,255,255,.55),
+            inset 1.5px 0 2px rgba(255,255,255,.4),
+            inset -1.5px 0 2px rgba(255,255,255,.4);
+        }
+        .glass-dock::before {
+          content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.6px;
+          background: linear-gradient(180deg,
+            rgba(255,255,255,1) 0%, rgba(255,255,255,.45) 20%,
+            rgba(255,255,255,.06) 40%, rgba(255,255,255,.06) 60%,
+            rgba(255,255,255,.4) 80%, rgba(255,255,255,.95) 100%);
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor; mask-composite: exclude;
+          pointer-events: none;
+        }
+        /* 不支持 backdrop-filter 的浏览器:回落成近乎不透明的白,保证文字可读 ——
+           半透明 + 不模糊会让背后内容直接透出来糊在导航文字上。 */
+        @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+          .nav-pill { background: rgba(255,255,255,.92); }
+          .nav-wrap.scrolled .nav-pill { background: rgba(255,255,255,.96); }
+          .glass-dock { background: rgba(255,255,255,.92); }
+        }
         .nav-link { display: inline-flex; align-items: center; gap: 4px; color: #333; font-size: 14px; font-weight: 500; padding: 8px 12px; border-radius: 9999px; transition: background .18s ease, color .18s ease; white-space: nowrap; background: none; border: 0; cursor: pointer; }
         .nav-link:hover { background: rgba(0,0,0,.05); color: #111; }
         .chev { transition: transform .2s ease; }
@@ -793,7 +883,19 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
         @media (min-width: 768px) { .footer-glow { left: 0; right: 0; bottom: 0; height: 680px; filter: blur(42px); } }
       `}</style>
 
-      <aside className="fixed z-[70] flex items-center gap-1 rounded-full bg-white/45 p-1.5 shadow-[0_1px_4px_rgba(0,0,0,.06),0_4px_12px_rgba(0,0,0,.04)] backdrop-blur-xl bottom-4 left-1/2 -translate-x-1/2 md:bottom-auto md:left-4 md:top-1/2 md:translate-x-0 md:-translate-y-1/2 md:flex-col">
+      {/* 液态玻璃的「真折射」:低频平滑噪声 → feDisplacementMap 把导航背后的内容轻微扭曲,
+          玻璃才不只是磨砂、而是有厚度的透镜。只挂在**无前缀** backdrop-filter 上 ——
+          Safari 的 -webkit- 那条不支持 url() 滤镜,写进去整条 backdrop-filter 会整体失效、
+          玻璃当场变成一块半透明白板。所以上面每处都是「-webkit- 纯磨砂 + 无前缀带 url()」两行并列。 */}
+      <svg width="0" height="0" aria-hidden="true" focusable="false" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
+        <filter id="navGlass" x="-120%" y="-160%" width="340%" height="420%" colorInterpolationFilters="sRGB">
+          <feTurbulence type="fractalNoise" baseFrequency="0.014 0.018" numOctaves={2} seed={7} result="n" />
+          <feGaussianBlur in="n" stdDeviation="0.5" result="ns" />
+          <feDisplacementMap in="SourceGraphic" in2="ns" scale={138} xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </svg>
+
+      <aside className="glass-dock fixed z-[70] flex items-center gap-1 rounded-full p-1.5 bottom-4 left-1/2 -translate-x-1/2 md:bottom-auto md:left-4 md:top-1/2 md:translate-x-0 md:-translate-y-1/2 md:flex-col">
         <Link href={home} aria-label={c.sideHome} className="group relative grid h-9 w-9 place-items-center rounded-full bg-black/[.08] text-[var(--fg)]">
           <Icon name="home" />
           <span className="pointer-events-none absolute left-[calc(100%+10px)] hidden whitespace-nowrap rounded-full bg-[var(--fg)] px-2.5 py-1 text-xs font-medium text-white opacity-0 transition-all group-hover:opacity-100 md:block">{c.sideHome}</span>
