@@ -273,9 +273,9 @@ test('createShare treats stale, corrupt, legacy, and unrecorded original version
   }
 });
 
-test('createShare honors per-photo original/filter overrides and ignores invalid empty slots', async () => {
+test('createShare honors per-photo original/filter overrides and ignores empty slots', async () => {
   const pages = [
-    page(0, { original: P1, empty: '', corrupt: '../not-a-photo' }),
+    page(0, { original: P1, empty: '' }),
     page(1, { filtered: P2, duplicate: P2 }),
   ];
   const state = mockFrozenShareState(
@@ -301,6 +301,28 @@ test('createShare honors per-photo original/filter overrides and ignores invalid
     assert.deepEqual(Object.keys(photoUrls).sort(), [P1, P2]);
     assert.match(photoUrls[P1]!, new RegExp(`/${P1}/${ORIGINAL}\\.jpg$`));
     assert.match(photoUrls[P2]!, new RegExp(`/${P2}/pf-v1__daily-soft__60\\.jpg$`));
+  } finally {
+    state.restore();
+  }
+});
+
+test('createShare rejects a non-empty invalid photo reference before atomic upsert', async () => {
+  const state = mockFrozenShareState(
+    albumFixture(),
+    [page(0, { valid: P1, corrupt: '../not-a-photo' })],
+  );
+
+  try {
+    await assert.rejects(
+      () => shareService.createShare(USER_ID, ALBUM_ID, 'zh'),
+      (error: { code?: string; message?: string; status?: number }) => {
+        assert.equal(error.code, 'VALIDATION_FAILED');
+        assert.equal(error.status, 400);
+        assert.doesNotMatch(error.message ?? '', /\.\.\/|550e8400/);
+        return true;
+      },
+    );
+    assert.equal(state.calls.upsert.mock.callCount(), 0);
   } finally {
     state.restore();
   }

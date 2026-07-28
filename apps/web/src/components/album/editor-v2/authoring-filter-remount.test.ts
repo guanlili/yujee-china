@@ -26,7 +26,7 @@ test('every EditorBook remount asks the latest-commit reload for current shell s
 
 test('responsive desktop/mobile shell switches keep one lifted filter state', () => {
   const editorBody = source.slice(
-    source.indexOf('export function EditorPort'),
+    source.indexOf('function ReadyEditor'),
     source.indexOf('function EditorLoadingState'),
   );
   const authoringBody = source.slice(
@@ -44,4 +44,19 @@ test('responsive desktop/mobile shell switches keep one lifted filter state', ()
     authoringBody,
     /shouldMountMobileEditor\(device, pages\)[\s\S]*?<MobileEditorRoot[\s\S]*?photoFilter=\{photoFilter\}[\s\S]*?setPhotoFilter=\{setPhotoFilter\}/,
   );
+});
+
+test('the real album owns filter state only after loading/building placeholders unmount', () => {
+  const portBody = source.slice(
+    source.indexOf('export function EditorPort'),
+    source.indexOf('function ReadyEditor'),
+  );
+  const readyBody = source.slice(
+    source.indexOf('function ReadyEditor'),
+    source.indexOf('function EditorLoadingState'),
+  );
+
+  assert.doesNotMatch(portBody, /useState<PhotoFilterState/);
+  assert.match(portBody, /<ReadyEditor key=\{detail\.album\.id\}/);
+  assert.match(readyBody, /useState<PhotoFilterState \| null>\(\s*detail\.album\.photoFilter/);
 });

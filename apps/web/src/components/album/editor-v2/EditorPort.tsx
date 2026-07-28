@@ -180,10 +180,6 @@ export function EditorPort({
   errorKind?: EditorErrorKind;
   errorMessage?: string | null;
 }) {
-  const device = useDeviceMode();
-  const [photoFilter, setPhotoFilter] = useState<PhotoFilterState | null>(
-    detail.album.photoFilter ?? null,
-  );
   // loading: UI/editor resources are not ready yet. Do not show half-loaded canvas
   // or chat chrome; those appear only after the resource load resolves.
   if (mode === 'loading') {
@@ -207,6 +203,26 @@ export function EditorPort({
   if (mode === 'building') {
     return <BuildingShell detail={detail} locale={locale} generation={generation} />;
   }
+  return <ReadyEditor key={detail.album.id} detail={detail} locale={locale} mode={mode} />;
+}
+
+// Own live filter state only after the real album detail exists. EditorPort itself
+// can survive loading/building STUB_DETAIL frames; keeping state in this ready-only
+// child prevents that placeholder null from later being persisted over a real
+// filter. This component remains mounted while its desktop/mobile shell switches.
+function ReadyEditor({
+  detail,
+  locale,
+  mode,
+}: {
+  detail: AlbumDetail;
+  locale: Locale;
+  mode: Extract<EditorMode, 'authoring' | 'editing'>;
+}) {
+  const device = useDeviceMode();
+  const [photoFilter, setPhotoFilter] = useState<PhotoFilterState | null>(
+    detail.album.photoFilter ?? null,
+  );
   // authoring: the draft skeleton is async (GET /draft) and the originals resolve
   // from IndexedDB, so we resolve everything first, then mount the stable shell.
   if (mode === 'authoring') {

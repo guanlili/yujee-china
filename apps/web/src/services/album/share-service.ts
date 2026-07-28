@@ -28,7 +28,11 @@ function referencedPhotoIds(pages: AlbumShare['snapshotJson']['pages']): string[
   const ids = new Set<string>();
   for (const page of pages) {
     for (const value of Object.values(page.imagesJson)) {
-      if (isValidPhotoId(value)) ids.add(value);
+      if (value === '') continue;
+      if (!isValidPhotoId(value)) {
+        throw ERRORS.VALIDATION_FAILED('相册页面包含无效照片引用');
+      }
+      ids.add(value);
     }
   }
   return [...ids];
