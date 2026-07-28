@@ -38,3 +38,15 @@ export function shouldMountMobileEditor(
 ): boolean {
   return device === 'mobile' && pages.length > 0 && isDesigned(pages);
 }
+
+/**
+ * Finalized legacy albums already completed the authoring/design gate. Preserve
+ * their historical mobile routing rule while keeping the decision inside
+ * EditorPort, where desktop and mobile can share live editor state.
+ */
+export function shouldMountLegacyMobileEditor(
+  device: string,
+  pages: readonly PageLike[],
+): boolean {
+  return device === 'mobile' && pages.length > 0;
+}

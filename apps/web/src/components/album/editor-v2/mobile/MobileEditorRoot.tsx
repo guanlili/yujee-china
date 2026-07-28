@@ -20,7 +20,15 @@
    本地没有时回落服务器压缩快照(photo-snapshot §5.3)。
    ════════════════════════════════════════════════════════════════════════════ */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import { useRouter } from 'next/navigation';
 
 import { photoStore } from '@/lib/photo/store';
@@ -101,6 +109,8 @@ export function MobileEditorRoot({
   pages: incomingPages,
   locale,
   onBack,
+  photoFilter: controlledPhotoFilter,
+  setPhotoFilter: controlledSetPhotoFilter,
 }: {
   detail: AlbumDetail;
   /** 书页。**由调用方给** —— 真实相册的书住在草稿(authoring)里,那边的 pages
@@ -109,6 +119,9 @@ export function MobileEditorRoot({
   locale: Locale;
   /** 顶栏返回。默认回「我的相册」;dev 预览页覆盖它,免得一点就被踢出预览。 */
   onBack?: () => void;
+  /** EditorPort 提供时跨桌面/移动壳共享；独立预览页不提供时使用本地状态。 */
+  photoFilter?: PhotoFilterState | null;
+  setPhotoFilter?: Dispatch<SetStateAction<PhotoFilterState | null>>;
 }) {
   const router = useRouter();
   const zh = locale === 'zh';
@@ -126,9 +139,12 @@ export function MobileEditorRoot({
   // 服务端真相变了(草稿重载)→ 以服务端为准整体换掉。
   const [pages, setPages] = useState<EditorPage[]>(incomingPages);
   useEffect(() => setPages(incomingPages), [incomingPages]);
-  const [photoFilter, setPhotoFilter] = useState<PhotoFilterState | null>(
+  const [localPhotoFilter, setLocalPhotoFilter] = useState<PhotoFilterState | null>(
     () => normalizePhotoFilterState(detail.album.photoFilter),
   );
+  const photoFilter =
+    controlledPhotoFilter === undefined ? localPhotoFilter : controlledPhotoFilter;
+  const setPhotoFilter = controlledSetPhotoFilter ?? setLocalPhotoFilter;
   const [filterPersistError, setFilterPersistError] = useState<string | null>(null);
   const lastPersistedFilter = useRef(
     JSON.stringify(normalizePhotoFilterState(detail.album.photoFilter)),

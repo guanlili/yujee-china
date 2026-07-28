@@ -4,8 +4,6 @@ import { use, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAlbumPoll } from '@/lib/hooks/use-album-poll';
 import { EditorPort } from '@/components/album/editor-v2/EditorPort';
-import { MobileEditorRoot } from '@/components/album/editor-v2/mobile/MobileEditorRoot';
-import { useDeviceMode } from '@/components/album/editor-v2/use-device-mode';
 import type { AlbumDetail } from '@/components/album/types';
 import { defaultLocale, isLocale, type Locale } from '@/lib/i18n/routing';
 
@@ -44,7 +42,6 @@ export default function AlbumPage({
   // the URL. A bookmarked/ready album loads immediately; a dead generation is
   // swept to FAILED server-side and surfaces here instead of spinning forever.
   const { detail, generation, phase, error } = useAlbumPoll(uuid);
-  const device = useDeviceMode();
 
   // Session expired mid-generation → don't spin, send them to sign in and back.
   useEffect(() => {
@@ -95,13 +92,8 @@ export default function AlbumPage({
     // editing(读空的 album_pages),书就「消失」。只按 layoutJson 判:草稿(含导出后的 COMPLETED)
     // 一律走 authoring 读 draft_json;定稿(layoutJson 落地)才走 editing。
     const mode = detail.album.layoutJson == null ? 'authoring' : 'editing';
-    // 设备分流只发生在「有书可看/可改」的时候,也只有画布的交互在手机与电脑上天差地别。
-    // authoring 那一支的分流在 EditorPort 内部(EditorAuthoring)——书住在草稿里,要先
-    // 等 GET /draft 回来才知道有没有页;这里的 editing 是 v1 遗留路径(layoutJson 落地过
-    // 的老相册),detail.pages 直接可用。两棵树互不共用 DOM,详见 mobile/MobileEditor.tsx。
-    if (mode === 'editing' && device === 'mobile' && detail.pages.length > 0) {
-      return <MobileEditorRoot detail={detail} pages={detail.pages} locale={locale} />;
-    }
+    // 桌面/移动分流统一放在 EditorPort 内，让两棵壳共享实时的相册级编辑状态。
+    // authoring 仍会先等草稿回来再决定是否挂移动端；legacy editing 直接用 detail.pages。
     return <EditorPort detail={detail} locale={locale} mode={mode} />;
   }
 

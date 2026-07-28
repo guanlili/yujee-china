@@ -6,7 +6,11 @@ import { test } from 'node:test';
 
 import { TEMPLATES } from '@yujee/contracts';
 
-import { isDesigned, shouldMountMobileEditor } from './design-gate-util';
+import {
+  isDesigned,
+  shouldMountLegacyMobileEditor,
+  shouldMountMobileEditor,
+} from './design-gate-util';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const page = (templateId: string) => ({ templateId });
@@ -64,6 +68,13 @@ test('shouldMountMobileEditor:桌面视口一律不接管,不受封面状态影�
   const designed = [page(COVER_IDS[0]!), ...INTERIOR_IDS.slice(0, 3).map(page)];
   assert.equal(shouldMountMobileEditor('desktop', designed), false);
   assert.equal(shouldMountMobileEditor('desktop', INTERIOR_IDS.slice(0, 3).map(page)), false);
+});
+
+test('legacy finalized albums keep their existing mobile pages-only routing', () => {
+  const interiorOnly = INTERIOR_IDS.slice(0, 2).map(page);
+  assert.equal(shouldMountLegacyMobileEditor('mobile', interiorOnly), true);
+  assert.equal(shouldMountLegacyMobileEditor('desktop', interiorOnly), false);
+  assert.equal(shouldMountLegacyMobileEditor('mobile', []), false);
 });
 
 test('EditorPort:分流必须走 shouldMountMobileEditor,不许退回只看 pages.length(回归)', () => {

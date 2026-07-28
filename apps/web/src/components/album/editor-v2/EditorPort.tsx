@@ -54,7 +54,10 @@ import { PAGE, pageBox } from '../templates/constants';
 import { pageFaceInner, pageFaceHTML, type PageFaceCtx } from './page-face';
 import { clampZoom, paintDecision } from './zoom-util';
 import { resolveDeviceMode, initMobileCanvas } from './mobile-canvas';
-import { shouldMountMobileEditor } from './design-gate-util';
+import {
+  shouldMountLegacyMobileEditor,
+  shouldMountMobileEditor,
+} from './design-gate-util';
 import { useDeviceMode } from './use-device-mode';
 import { MobileEditorRoot } from './mobile/MobileEditorRoot';
 import {
@@ -177,6 +180,7 @@ export function EditorPort({
   errorKind?: EditorErrorKind;
   errorMessage?: string | null;
 }) {
+  const device = useDeviceMode();
   const [photoFilter, setPhotoFilter] = useState<PhotoFilterState | null>(
     detail.album.photoFilter ?? null,
   );
@@ -210,13 +214,26 @@ export function EditorPort({
       <EditorAuthoring
         detail={detail}
         locale={locale}
+        device={device}
         photoFilter={photoFilter}
         setPhotoFilter={setPhotoFilter}
       />
     );
   }
   // editing: the original finalized editor, fed straight from detail.pages, through
-  // the same stable shell (canvas EditorBook + stable ChatPanel).
+  // the same lifted state. Keeping the responsive split here prevents a mobile
+  // remount from reseeding a stale detail.album.photoFilter value.
+  if (shouldMountLegacyMobileEditor(device, detail.pages)) {
+    return (
+      <MobileEditorRoot
+        detail={detail}
+        pages={detail.pages}
+        locale={locale}
+        photoFilter={photoFilter}
+        setPhotoFilter={setPhotoFilter}
+      />
+    );
+  }
   return (
     <EditorShell
       mode="editing"
@@ -293,15 +310,16 @@ function BuildingCanvasState({ locale }: { locale: Locale }) {
 function EditorAuthoring({
   detail,
   locale,
+  device,
   photoFilter,
   setPhotoFilter,
 }: {
   detail: AlbumDetail;
   locale: Locale;
+  device: string;
   photoFilter: PhotoFilterState | null;
   setPhotoFilter: Dispatch<SetStateAction<PhotoFilterState | null>>;
 }) {
-  const device = useDeviceMode();
   const [skeleton, setSkeleton] = useState<DraftSkeleton | null>(null);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error' | 'gone'>('loading');
@@ -424,7 +442,15 @@ function EditorAuthoring({
   // 移动端一有页面就整体切进这棵没有 ChatPanel 的树,卡再也弹不出来 —— 手机上没法选主题,
   // 书永远停在没封面没文案。判据见 design-gate-util.ts(与服务端 designed 同口径)。
   if (shouldMountMobileEditor(device, pages)) {
-    return <MobileEditorRoot detail={detail} pages={pages} locale={locale} />;
+    return (
+      <MobileEditorRoot
+        detail={detail}
+        pages={pages}
+        locale={locale}
+        photoFilter={photoFilter}
+        setPhotoFilter={setPhotoFilter}
+      />
+    );
   }
   return (
     <EditorShell

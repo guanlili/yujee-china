@@ -64,6 +64,8 @@ test('standalone FilterBar retains dialog semantics', async () => {
 test('mobile root owns normalized filter persistence and registers both filter scopes', () => {
   const root = read('MobileEditorRoot.tsx');
   assert.match(root, /normalizePhotoFilterState\(detail\.album\.photoFilter\)/);
+  assert.match(root, /controlledPhotoFilter === undefined \? localPhotoFilter : controlledPhotoFilter/);
+  assert.match(root, /controlledSetPhotoFilter \?\? setLocalPhotoFilter/);
   assert.match(root, /createFilterSaveController/);
   assert.match(root, /JSON\.stringify\(\{\s*photoFilter:\s*state\s*\}\)/);
   assert.match(root, /filterSaver\.schedule\(photoFilter\)/);

@@ -23,3 +23,25 @@ test('every EditorBook remount asks the latest-commit reload for current shell s
   assert.match(source, /displayReload\.run\(\(\) => photoStore\.getTierUrls\(ids,\s*'display',\s*state\)\)/);
   assert.match(source, /displayReload\.dispose\(\)/);
 });
+
+test('responsive desktop/mobile shell switches keep one lifted filter state', () => {
+  const editorBody = source.slice(
+    source.indexOf('export function EditorPort'),
+    source.indexOf('function EditorLoadingState'),
+  );
+  const authoringBody = source.slice(
+    source.indexOf('function EditorAuthoring'),
+    source.indexOf('// ════════════════════════════════════════════════════════════════════════════\n// EditorShell'),
+  );
+
+  assert.match(editorBody, /const \[photoFilter, setPhotoFilter\] = useState/);
+  assert.match(editorBody, /shouldMountLegacyMobileEditor\(device, detail\.pages\)/);
+  assert.match(
+    editorBody,
+    /<MobileEditorRoot[\s\S]*?photoFilter=\{photoFilter\}[\s\S]*?setPhotoFilter=\{setPhotoFilter\}/,
+  );
+  assert.match(
+    authoringBody,
+    /shouldMountMobileEditor\(device, pages\)[\s\S]*?<MobileEditorRoot[\s\S]*?photoFilter=\{photoFilter\}[\s\S]*?setPhotoFilter=\{setPhotoFilter\}/,
+  );
+});
