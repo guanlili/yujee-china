@@ -1,6 +1,13 @@
 'use client';
 
 import { prepareImageBlobForBrowserDecode } from './heic';
+import {
+  quantizeStrength,
+  resolveEffectiveFilter,
+  type PhotoFilterRef,
+  type PhotoFilterState,
+} from './filter-state';
+import { lutEngine } from './lut/engine';
 
 // Original photos live only in the browser (architecture invariant 1). They are
 // kept in IndexedDB keyed by a globally-unique photoId so the editor and PDF
@@ -25,6 +32,31 @@ const PDF_IMAGE_QUALITY = 0.82;
 export type PhotoTier = 'thumb' | 'display';
 export const TIER_MAX_EDGE: Record<PhotoTier, number> = { thumb: 240, display: 1600 };
 const TIER_QUALITY: Record<PhotoTier, number> = { thumb: 0.75, display: 0.82 };
+const FILTERED_VARIANT_LIMIT = 2;
+
+export function filteredVariantPrefix(photoId: string, tier: PhotoTier): string {
+  return `${photoId}@${tier}@pf-v1@`;
+}
+
+export function derivedCacheKey(
+  photoId: string,
+  tier: PhotoTier,
+  ref: PhotoFilterRef | null | undefined,
+): string {
+  const strength = ref ? quantizeStrength(ref.strength) : 0;
+  if (!ref || strength <= 0) return `${photoId}@${tier}`;
+  return `${filteredVariantPrefix(photoId, tier)}${ref.lutId}@${strength}`;
+}
+
+function effectiveFilter(
+  state: PhotoFilterState | null | undefined,
+  photoId: string,
+): PhotoFilterRef | null {
+  const ref = resolveEffectiveFilter(state, photoId);
+  if (!ref) return null;
+  const strength = quantizeStrength(ref.strength);
+  return strength > 0 ? { ...ref, strength } : null;
+}
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -54,8 +86,85 @@ function asPromise<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
+async function getDerivedValue(key: string): Promise<unknown> {
+  return asPromise((await tx('readonly', DERIVED_STORE)).get(key));
+}
+
+async function putDerivedValue(key: string, value: unknown): Promise<void> {
+  await asPromise((await tx('readwrite', DERIVED_STORE)).put(value, key));
+}
+
+async function deleteDerivedValue(key: string): Promise<void> {
+  await asPromise((await tx('readwrite', DERIVED_STORE)).delete(key));
+}
+
+async function getDerivedKeys(): Promise<string[]> {
+  const keys = await asPromise((await tx('readonly', DERIVED_STORE)).getAllKeys());
+  return keys.filter((key): key is string => typeof key === 'string');
+}
+
+interface FilteredVariantRecency {
+  version: 1;
+  keys: string[];
+}
+
+function filteredVariantRecencyKey(photoId: string, tier: PhotoTier): string {
+  return `${photoId}@${tier}@pf-recency-v1`;
+}
+
+function parseFilteredVariantRecency(value: unknown): string[] {
+  if (
+    typeof value !== 'object'
+    || value === null
+    || (value as Partial<FilteredVariantRecency>).version !== 1
+    || !Array.isArray((value as Partial<FilteredVariantRecency>).keys)
+  ) {
+    return [];
+  }
+  return (value as FilteredVariantRecency).keys.filter(
+    (key): key is string => typeof key === 'string',
+  );
+}
+
+async function touchFilteredVariant(
+  photoId: string,
+  tier: PhotoTier,
+  key: string,
+): Promise<void> {
+  const prefix = filteredVariantPrefix(photoId, tier);
+  const metadataKey = filteredVariantRecencyKey(photoId, tier);
+  const [allKeys, metadata] = await Promise.all([
+    getDerivedKeys(),
+    getDerivedValue(metadataKey),
+  ]);
+  const variantKeys = allKeys.filter((candidate) => candidate.startsWith(prefix));
+  const existing = new Set(variantKeys);
+  const ordered = parseFilteredVariantRecency(metadata).filter(
+    (candidate) => candidate !== key && existing.has(candidate),
+  );
+  const retained = [...ordered, key].slice(-FILTERED_VARIANT_LIMIT);
+  const retainedSet = new Set(retained);
+
+  await putDerivedValue(metadataKey, {
+    version: 1,
+    keys: retained,
+  } satisfies FilteredVariantRecency);
+  await Promise.all(
+    variantKeys
+      .filter((candidate) => !retainedSet.has(candidate))
+      .map(async (candidate) => {
+        try {
+          await deleteDerivedValue(candidate);
+        } catch {
+          // Cache eviction is best-effort. A later touch retries the same
+          // prefix without risking base bytes or another photo/tier.
+        }
+      }),
+  );
+}
+
 // blob: URL 缓存带 LRU 上限:超限就 revoke 最久未用的,防止长会话/大相册把
-// 解码位图和 blob 句柄越攒越多(此前只增不减)。key = `${photoId}@${tier}`。
+// 解码位图和 blob 句柄越攒越多(此前只增不减)。key 与持久化派生版本 key 一致。
 const URL_CACHE_MAX = 600;
 const urlCache = new Map<string, string>();
 
@@ -177,6 +286,46 @@ async function blobToPdfDataUrl(blob: Blob, maxEdge = PDF_IMAGE_MAX_EDGE): Promi
   }
 }
 
+async function blobToPdfJpegBlob(blob: Blob, maxEdge: number): Promise<Blob> {
+  const pdfBlob = await prepareImageBlobForBrowserDecode(blob);
+  const img = await decodeBlob(pdfBlob);
+  let canvas: HTMLCanvasElement | null = null;
+  try {
+    const { w, h } = fitWithinMaxEdge(img.width, img.height, maxEdge);
+    canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('PDF image canvas context unavailable');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    const out = await new Promise<Blob | null>((resolve) =>
+      canvas!.toBlob(resolve, 'image/jpeg', PDF_IMAGE_QUALITY),
+    );
+    if (!out) throw new Error('PDF image toBlob failed');
+    return out;
+  } finally {
+    if (canvas) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+    img.close?.();
+  }
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') resolve(reader.result);
+      else reject(new Error('PDF image FileReader returned a non-string result'));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('PDF image FileReader failed'));
+    reader.readAsDataURL(blob);
+  });
+}
+
 // Safari/WebKit cannot reliably store file-backed File/Blob objects (as handed
 // out by <input type=file>, especially iOS photo-library temp copies) in
 // IndexedDB: the transaction commit re-reads the source file and can throw
@@ -190,6 +339,87 @@ async function toMemoryBackedBlob(blob: Blob): Promise<Blob> {
   return typeof name === 'string' && name
     ? new File([bytes], name, { type: blob.type })
     : new Blob([bytes], { type: blob.type });
+}
+
+interface OriginalBlobReader {
+  getBlob(photoId: string): Promise<Blob | undefined>;
+}
+
+async function getBaseTierBlob(
+  owner: OriginalBlobReader,
+  photoId: string,
+  tier: PhotoTier,
+): Promise<Blob | undefined> {
+  const key = derivedCacheKey(photoId, tier, null);
+  let derived = (await getDerivedValue(key)) as Blob | undefined;
+  if (!derived) {
+    const original = await owner.getBlob(photoId);
+    if (!original) return undefined;
+    derived = await downscaleToJpeg(original, TIER_MAX_EDGE[tier], TIER_QUALITY[tier]);
+    // 持久化失败不致命(隐私无新增面:派生图和原图同库同生命周期)。
+    try {
+      await putDerivedValue(key, derived);
+    } catch {
+      /* keep the in-memory blob */
+    }
+  }
+  return derived;
+}
+
+interface TierBlobResult {
+  blob: Blob | undefined;
+  filteredFallback: boolean;
+}
+
+async function getTierBlobResult(
+  owner: OriginalBlobReader,
+  photoId: string,
+  tier: PhotoTier,
+  photoFilter?: PhotoFilterState | null,
+): Promise<TierBlobResult> {
+  const ref = effectiveFilter(photoFilter, photoId);
+  if (!ref) {
+    return {
+      blob: await getBaseTierBlob(owner, photoId, tier),
+      filteredFallback: false,
+    };
+  }
+
+  const key = derivedCacheKey(photoId, tier, ref);
+  const cached = await getDerivedValue(key);
+  if (cached instanceof Blob) {
+    try {
+      await touchFilteredVariant(photoId, tier, key);
+    } catch {
+      // Recency bookkeeping must never make a usable cached variant fail.
+    }
+    return { blob: cached, filteredFallback: false };
+  }
+
+  const base = await getBaseTierBlob(owner, photoId, tier);
+  if (!base) return { blob: undefined, filteredFallback: false };
+  const filtered = await lutEngine.applyToBlob(base, ref, 'full');
+  if (filtered === base) {
+    console.warn('Filtered tier render returned the base Blob; variant not cached', {
+      photoId,
+      tier,
+      key,
+    });
+    return { blob: base, filteredFallback: true };
+  }
+
+  try {
+    await putDerivedValue(key, filtered);
+  } catch {
+    return { blob: filtered, filteredFallback: false };
+  }
+  try {
+    await touchFilteredVariant(photoId, tier, key);
+  } catch {
+    // The rendered bytes remain usable even if recency metadata cannot be
+    // updated. A later access retries bounded-cache maintenance.
+  }
+  return { blob: filtered, filteredFallback: false };
 }
 
 export const photoStore = {
@@ -239,37 +469,36 @@ export const photoStore = {
   // 屏显派生图的降采样 JPEG blob:先读 derived 表,缺失则从原图生成并回存。原图不在
   // 本机(getBlob 为空)→ undefined。手动备份(photo-snapshot)复用它拿要上传 R2 的
   // 压缩字节 —— 与屏显同一份派生图,不重复编码。IndexedDB/解码异常向上抛,由调用方处理。
-  async getTierBlob(photoId: string, tier: PhotoTier): Promise<Blob | undefined> {
-    const key = `${photoId}@${tier}`;
-    let derived = (await asPromise((await tx('readonly', DERIVED_STORE)).get(key))) as
-      | Blob
-      | undefined;
-    if (!derived) {
-      const original = await this.getBlob(photoId);
-      if (!original) return undefined;
-      derived = await downscaleToJpeg(original, TIER_MAX_EDGE[tier], TIER_QUALITY[tier]);
-      // 持久化失败不致命(隐私无新增面:派生图和原图同库同生命周期)。
-      try {
-        await asPromise((await tx('readwrite', DERIVED_STORE)).put(derived, key));
-      } catch {
-        /* keep the in-memory blob */
-      }
-    }
-    return derived;
+  async getTierBlob(
+    photoId: string,
+    tier: PhotoTier,
+    photoFilter?: PhotoFilterState | null,
+  ): Promise<Blob | undefined> {
+    return (await getTierBlobResult(this, photoId, tier, photoFilter)).blob;
   },
 
   // 屏显派生图:降采样 JPEG 的 blob: URL。首次生成后持久化进 IndexedDB(derived
   // 表),之后直接读缓存。任何一步失败(无 canvas 的环境/解码失败)回退原图 URL,
   // 绝不因为派生失败白屏。
-  async getTierUrl(photoId: string, tier: PhotoTier): Promise<string | undefined> {
-    const key = `${photoId}@${tier}`;
+  async getTierUrl(
+    photoId: string,
+    tier: PhotoTier,
+    photoFilter?: PhotoFilterState | null,
+  ): Promise<string | undefined> {
+    const ref = effectiveFilter(photoFilter, photoId);
+    const key = derivedCacheKey(photoId, tier, ref);
     const cached = cachedUrl(key);
     if (cached) return cached;
     try {
-      const derived = await this.getTierBlob(photoId, tier);
-      if (!derived) return undefined;
-      const url = URL.createObjectURL(derived);
-      cacheUrl(key, url);
+      const result = await getTierBlobResult(this, photoId, tier, photoFilter);
+      if (!result.blob) return undefined;
+      const urlKey = result.filteredFallback
+        ? derivedCacheKey(photoId, tier, null)
+        : key;
+      const existing = cachedUrl(urlKey);
+      if (existing) return existing;
+      const url = URL.createObjectURL(result.blob);
+      cacheUrl(urlKey, url);
       return url;
     } catch {
       return this.getObjectUrl(photoId);
@@ -277,14 +506,18 @@ export const photoStore = {
   },
 
   // 批量派生:限制并发(逐张解码原图是内存峰值来源,100 张 Promise.all 会爆)。
-  async getTierUrls(photoIds: string[], tier: PhotoTier): Promise<Record<string, string>> {
+  async getTierUrls(
+    photoIds: string[],
+    tier: PhotoTier,
+    photoFilter?: PhotoFilterState | null,
+  ): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
     const queue = [...photoIds];
     const worker = async () => {
       for (;;) {
         const id = queue.shift();
         if (id === undefined) return;
-        const url = await this.getTierUrl(id, tier);
+        const url = await this.getTierUrl(id, tier, photoFilter);
         if (url) out[id] = url;
       }
     };
@@ -300,11 +533,27 @@ export const photoStore = {
   async getPdfDataUrls(
     photoIds: string[],
     maxEdge = PDF_IMAGE_MAX_EDGE,
+    photoFilter?: PhotoFilterState | null,
   ): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
     for (const id of photoIds) {
       const blob = await this.getBlob(id);
-      if (blob) out[id] = await blobToPdfDataUrl(blob, maxEdge);
+      if (!blob) continue;
+      const ref = effectiveFilter(photoFilter, id);
+      if (!ref) {
+        out[id] = await blobToPdfDataUrl(blob, maxEdge);
+        continue;
+      }
+
+      const base = await blobToPdfJpegBlob(blob, maxEdge);
+      const filtered = await lutEngine.applyToBlob(base, ref, 'full');
+      if (filtered === base) {
+        console.warn('PDF filtered render returned the exact downsized base Blob', {
+          photoId: id,
+          ref,
+        });
+      }
+      out[id] = await blobToDataUrl(filtered);
     }
     return out;
   },

@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
+import type { PhotoFilterState } from './filter-state';
+import { lutEngine } from './lut/engine';
 import { photoStore } from './store';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -102,6 +104,105 @@ test('PDF export data URLs honor EXIF orientation and release image/canvas buffe
   }
 });
 
+test('filtered PDF export stays sequential and downsizes before the same effective full LUT ref', async () => {
+  const restore = installBrowserImageMocks({
+    contextFactory: () => ({
+      fillStyle: '',
+      fillRect() {},
+      drawImage() {},
+    }),
+  });
+  const restoreReader = installFileReaderMock(restore.order);
+  const originalApply = lutEngine.applyToBlob;
+  const state: PhotoFilterState = {
+    default: { lutId: 'cloudy-cool', strength: 52 },
+  };
+  try {
+    const store = Object.create(photoStore) as typeof photoStore;
+    store.getBlob = async (id: string) => {
+      restore.order.push(`get:${id}`);
+      return new Blob([id], { type: 'image/jpeg' });
+    };
+    lutEngine.applyToBlob = async (base, ref, tier) => {
+      const source = await base.text();
+      restore.order.push(`filter:${source}:${ref.lutId}:${ref.strength}:${tier}`);
+      restore.order.push('encode');
+      return new Blob([`filtered-${source}`], { type: 'image/jpeg' });
+    };
+
+    const out = await store.getPdfDataUrls(['a', 'b'], 1000, state);
+
+    assert.deepEqual(out, {
+      a: 'data:image/jpeg;mock,filtered-1000x750',
+      b: 'data:image/jpeg;mock,filtered-1000x750',
+    });
+    assert.deepEqual(restore.order, [
+      'get:a',
+      'decode',
+      'downsize',
+      'close',
+      'filter:1000x750:cloudy-cool:50:full',
+      'encode',
+      'read',
+      'get:b',
+      'decode',
+      'downsize',
+      'close',
+      'filter:1000x750:cloudy-cool:50:full',
+      'encode',
+      'read',
+    ]);
+    assert.equal(restore.canvases[0]?.width, 0);
+    assert.equal(restore.canvases[0]?.height, 0);
+    assert.equal(restore.canvases[1]?.width, 0);
+    assert.equal(restore.canvases[1]?.height, 0);
+  } finally {
+    lutEngine.applyToBlob = originalApply;
+    restoreReader();
+    restore();
+  }
+});
+
+test('filtered PDF LUT failure reads the exact downsized base JPEG', async () => {
+  const restore = installBrowserImageMocks({
+    contextFactory: () => ({
+      fillStyle: '',
+      fillRect() {},
+      drawImage() {},
+    }),
+  });
+  const restoreReader = installFileReaderMock(restore.order);
+  const originalApply = lutEngine.applyToBlob;
+  const originalWarn = console.warn;
+  let filteredInput: Blob | undefined;
+  const warnings: unknown[][] = [];
+  console.warn = (...args: unknown[]) => warnings.push(args);
+  try {
+    const store = Object.create(photoStore) as typeof photoStore;
+    store.getBlob = async () => new Blob(['original'], { type: 'image/jpeg' });
+    lutEngine.applyToBlob = async (base) => {
+      filteredInput = base;
+      return base;
+    };
+
+    const out = await store.getPdfDataUrls(
+      ['fallback'],
+      800,
+      { default: { lutId: 'street-negative', strength: 75 } },
+    );
+
+    assert.equal(await filteredInput?.text(), '800x600');
+    assert.equal(out.fallback, 'data:image/jpeg;mock,800x600');
+    assert.equal(warnings.length, 1);
+    assert.match(String(warnings[0]?.[0]), /PDF.*base/i);
+  } finally {
+    console.warn = originalWarn;
+    lutEngine.applyToBlob = originalApply;
+    restoreReader();
+    restore();
+  }
+});
+
 test('PDF export data URL generation fails clearly when canvas context is unavailable', async () => {
   const restore = installBrowserImageMocks({ contextFactory: () => null });
   try {
@@ -144,7 +245,40 @@ interface MockCanvas {
   width: number;
   height: number;
   getContext(type: '2d'): unknown;
+  toBlob(callback: (blob: Blob | null) => void, type: string, quality?: number): void;
   toDataURL(type: string, quality?: number): string;
+}
+
+function installFileReaderMock(order: string[]): () => void {
+  const originalFileReader = globalThis.FileReader;
+  const hadFileReader = 'FileReader' in globalThis;
+  Object.defineProperty(globalThis, 'FileReader', {
+    configurable: true,
+    value: class FakeFileReader {
+      result: string | ArrayBuffer | null = null;
+      error: DOMException | null = null;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+
+      readAsDataURL(blob: Blob): void {
+        order.push('read');
+        void blob.text().then((value) => {
+          this.result = `data:${blob.type};mock,${value}`;
+          this.onload?.();
+        }, () => this.onerror?.());
+      }
+    },
+  });
+  return () => {
+    if (hadFileReader) {
+      Object.defineProperty(globalThis, 'FileReader', {
+        configurable: true,
+        value: originalFileReader,
+      });
+    } else {
+      delete (globalThis as { FileReader?: unknown }).FileReader;
+    }
+  };
 }
 
 function installBrokenImageFallbackMocks(): () => void {
@@ -228,6 +362,12 @@ function installBrowserImageMocks({
           width: 0,
           height: 0,
           getContext: () => contextFactory(),
+          toBlob: (callback: (blob: Blob | null) => void, type: string, quality?: number) => {
+            assert.equal(type, 'image/jpeg');
+            assert.equal(quality, 0.82);
+            order.push('downsize');
+            callback(new Blob([`${canvas.width}x${canvas.height}`], { type }));
+          },
           toDataURL: (type: string, quality?: number) => {
             assert.equal(type, 'image/jpeg');
             assert.equal(quality, 0.82);
