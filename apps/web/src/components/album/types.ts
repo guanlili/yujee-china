@@ -1,4 +1,5 @@
 import type { BoardBackground } from '@/lib/board-bg/presets';
+import type { PhotoFilterState } from '@/lib/photo/filter-state';
 
 // Per-image render override (#165), keyed by the same slotId as imagesJson.
 // Absent slot => renderer defaults to objectPosition 50% 50%, no zoom.
@@ -39,6 +40,7 @@ export interface AlbumInfo {
   photoSnapshotUrls?: Record<string, string>;
   // 预览垫底背景(相册级):书页浮在其上的画板底。null/省略 = 无。
   boardBackground?: BoardBackground | null;
+  photoFilter?: PhotoFilterState | null;
   errorMessage: string | null;
   createdAt: string;
 }

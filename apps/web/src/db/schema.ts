@@ -1,4 +1,5 @@
 import { AlbumStage } from '@yujee/contracts';
+import type { PhotoFilterState } from '@/lib/photo/filter-state';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -248,6 +249,7 @@ export const albums = pgTable(
     boardBackground: jsonb('board_background').$type<
       { kind: 'color'; color: string } | { kind: 'preset'; presetId: string } | { kind: 'upload'; key: string }
     >(),
+    photoFilter: jsonb('photo_filter').$type<PhotoFilterState>(),
     creditHoldId: text('credit_hold_id'),
     errorMessage: text('error_message'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -1,26 +1,9 @@
-import { z } from 'zod';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
 import { albumService } from '@/services/album/album-service';
-
-// title 与 boardBackground 各自可选(至少给一项)。boardBackground: null = 清除垫底背景。
-const BoardBackgroundSchema = z.union([
-  z.object({ kind: z.literal('color'), color: z.string().max(9) }),
-  z.object({ kind: z.literal('preset'), presetId: z.string().max(40) }),
-  // 上传图:只存本地 blob 的 key(不上服务器);服务端只存这个字符串引用。
-  z.object({ kind: z.literal('upload'), key: z.string().max(64) }),
-  z.null(),
-]);
-const PatchSchema = z
-  .object({
-    title: z.string().min(1).max(120).optional(),
-    boardBackground: BoardBackgroundSchema.optional(),
-  })
-  .refine((b) => b.title !== undefined || b.boardBackground !== undefined, {
-    message: 'nothing to update',
-  });
+import { AlbumPatchSchema } from './schema';
 type RouteCtx = { params: Promise<{ uuid: string }> };
 async function withAlbum<T>(
   req: Request,
@@ -42,7 +25,10 @@ export function GET(req: Request, ctx: RouteCtx) {
 
 export function PATCH(req: Request, ctx: RouteCtx) {
   return withAlbum(req, ctx, async (userId, uuid) => {
-    const body = await parseBody(PatchSchema, req);
+    const body = await parseBody(AlbumPatchSchema, req);
+    if (body.photoFilter !== undefined) {
+      return albumService.updatePhotoFilter(userId, uuid, body.photoFilter);
+    }
     if (body.boardBackground !== undefined) {
       return albumService.updateBoardBackground(userId, uuid, body.boardBackground);
     }

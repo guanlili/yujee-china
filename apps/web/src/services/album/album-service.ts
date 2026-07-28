@@ -19,6 +19,11 @@ import { env } from '@/lib/env';
 import { logger } from '@/lib/log/logger';
 import { isValidPageBackground } from '@/lib/design/page-backgrounds';
 import {
+  PhotoFilterStateSchema,
+  normalizePhotoFilterState,
+  type PhotoFilterState,
+} from '@/lib/photo/filter-state';
+import {
   PHOTO_SNAPSHOT_MAX_COUNT,
   isValidPhotoId,
   mergeSnapshotPhotoIds,
@@ -437,6 +442,7 @@ export const albumService = {
         photoSnapshotUrls: photoSnapshotUrls(userId, album.id, album.photoSnapshot?.photoIds, r2.publicUrl),
         // 预览垫底背景(相册级);编辑器读它铺画板、导出拼图也读它。null = 无。
         boardBackground: album.boardBackground ?? null,
+        photoFilter: album.photoFilter ?? null,
         errorMessage: album.errorMessage,
         createdAt: album.createdAt,
       },
@@ -1048,6 +1054,7 @@ export const albumService = {
         pageCount: a.pageCount,
         pdfUrl: a.pdfUrl,
         coverThumbnailUrl: a.coverThumbnailUrl ?? null,
+        photoFilter: a.photoFilter ?? null,
         createdAt: a.createdAt,
         coverPage,
         // 已有封面页或已存缩略图就不用兜底,省掉无谓的 draft 解析与线上负载。
@@ -1374,6 +1381,30 @@ export const albumService = {
       await albumRepo.update(tx, albumId, { boardBackground: normalized });
     });
     return { boardBackground: normalized };
+  },
+
+  async updatePhotoFilter(
+    userId: string,
+    albumId: string,
+    state: PhotoFilterState | null,
+  ): Promise<{ photoFilter: PhotoFilterState | null }> {
+    const album = await this.findOwned(userId, albumId);
+    const normalized =
+      state === null
+        ? null
+        : normalizePhotoFilterState(PhotoFilterStateSchema.parse(state));
+
+    await db.transaction(async (tx) => {
+      await albumRepo.update(tx, albumId, {
+        photoFilter: normalized,
+        pdfUrl: null,
+        pdfR2Key: null,
+        coverThumbnailUrl: null,
+        coverThumbnailR2Key: null,
+        ...(album.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
+      });
+    });
+    return { photoFilter: normalized };
   },
 
   // Returns { putUrl, r2Key, publicUrl } so the browser can PUT a PDF directly
