@@ -35,6 +35,7 @@ export function FilterSheet({
       testId="filter-sheet"
     >
       <FilterBar
+        embedded
         locale={locale}
         state={state}
         scope={scope}

@@ -917,6 +917,25 @@ test('omitted, null, and quantized-zero filters are equivalent across tier blob/
   assert.equal(lutCalls, 0);
 });
 
+test('getTierBlobStatus treats zero-strength LUT state as exact base bytes without LUT work', async () => {
+  const photoId = 'backup-zero-filter-status';
+  const base = new Blob(['base'], { type: 'image/jpeg' });
+  fakeDb.derived.set(`${photoId}@display`, base);
+  const state = filterState('cloudy-cool', 0);
+  let lutCalls = 0;
+
+  await withFakeLut(async (blob) => {
+    lutCalls += 1;
+    return blob;
+  }, async () => {
+    const status = await photoStore.getTierBlobStatus(photoId, 'display', state);
+    assert.equal(status.blob, base);
+    assert.equal(status.filteredFallback, false);
+  });
+
+  assert.equal(lutCalls, 0);
+});
+
 test('getTierBlobStatus exposes exact filtered success versus base fallback', async () => {
   const photoId = 'backup-filter-status';
   const base = new Blob(['base'], { type: 'image/jpeg' });

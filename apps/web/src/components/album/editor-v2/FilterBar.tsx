@@ -30,6 +30,7 @@ export function FilterBar({
   onChange,
   onRetry,
   onClose,
+  embedded = false,
 }: {
   locale: string;
   state: PhotoFilterState | null;
@@ -39,6 +40,7 @@ export function FilterBar({
   onChange: (state: PhotoFilterState) => void;
   onRetry: () => void;
   onClose: () => void;
+  embedded?: boolean;
 }) {
   const zh = locale === 'zh';
   const current = currentScopeFilter(state, scope, photoId);
@@ -97,7 +99,11 @@ export function FilterBar({
   const select = (lutId: LutId) => apply({ lutId, strength: quantizeStrength(strength) });
 
   return (
-    <aside className="filter-bar" role="dialog" aria-label={zh ? '照片风格' : 'Photo style'}>
+    <aside
+      className="filter-bar"
+      role={embedded ? undefined : 'dialog'}
+      aria-label={zh ? '照片风格' : 'Photo style'}
+    >
       <div className="filter-bar-head">
         <div>
           <strong>{zh ? '风格' : 'Style'}</strong>

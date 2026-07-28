@@ -32,11 +32,33 @@ test('FilterSheet registers through ModalHost with accessible shared FilterBar c
   }));
 
   assert.match(html, /aria-modal="true"/);
+  assert.equal(
+    (html.match(/role="dialog"/g) ?? []).length,
+    1,
+    'ModalHost must be the only dialog when FilterBar is embedded in the sheet',
+  );
   assert.match(html, /aria-label="Photo style"/);
   assert.match(html, /Current photo/);
   assert.match(html, /Follow book style/);
   assert.match(html, /aria-label="Filter strength"/);
   assert.match(html, /Style failed to save/);
+});
+
+test('standalone FilterBar retains dialog semantics', async () => {
+  const { FilterBar } = await import('../FilterBar');
+  const html = renderToStaticMarkup(createElement(FilterBar, {
+    locale: 'en',
+    state: null,
+    scope: 'book',
+    photoId: null,
+    persistError: null,
+    onChange: () => undefined,
+    onRetry: () => undefined,
+    onClose: () => undefined,
+  }));
+
+  assert.equal((html.match(/role="dialog"/g) ?? []).length, 1);
+  assert.match(html, /aria-label="Photo style"/);
 });
 
 test('mobile root owns normalized filter persistence and registers both filter scopes', () => {
@@ -86,6 +108,28 @@ test('filter entry points are hidden when LUT rendering is unsupported', () => {
   assert.match(editor, /lutSupported=\{lutSupported\}/);
   assert.match(editView, /\{lutSupported && selectedPhotoId && \(/);
   assert.match(editView, /onPhotoFilter/);
+});
+
+test('selected-photo toolbar keeps all four actions reachable on narrow viewports', () => {
+  const css = read('mobile-editor.css');
+  const editView = read('EditView.tsx');
+  const toolbarRule = css.match(/\.mobile-editor \.mimg-bar\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+  const buttonRule = css.match(/\.mobile-editor \.mimg-btn\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+
+  assert.match(toolbarRule, /box-sizing:\s*border-box/);
+  assert.match(toolbarRule, /width:\s*max-content/);
+  assert.match(toolbarRule, /max-width:\s*calc\(100% - 16px\)/);
+  assert.match(toolbarRule, /height:\s*40px/);
+  assert.match(toolbarRule, /overflow-x:\s*auto/);
+  assert.match(toolbarRule, /touch-action:\s*pan-x/);
+  assert.match(toolbarRule, /scrollbar-width:\s*none/);
+  assert.match(css, /\.mobile-editor \.mimg-bar::-webkit-scrollbar\s*\{[^}]*display:\s*none/);
+  assert.match(buttonRule, /flex:\s*0 0 auto/);
+  assert.equal(
+    (editView.match(/className="mimg-btn"/g) ?? []).length,
+    4,
+    'replace, reset, filter, and delete actions must remain in the scrollable toolbar',
+  );
 });
 
 test('mobile export build input passes the current filter to every export format', () => {

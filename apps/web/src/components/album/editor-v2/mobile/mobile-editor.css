@@ -214,22 +214,33 @@
   position: absolute;
   z-index: 3;
   transform: translateX(-50%);
-  /* 兜底:极窄屏 + 长文案时也不许顶出画布(left 已居中,这里只防溢出) */
+  box-sizing: border-box;
+  /* 保留四个操作的完整宽度;极窄屏时把外框限制在画布内并横向滚动。 */
+  width: max-content;
   max-width: calc(100% - 16px);
   height: 40px;
   display: flex;
   align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
   gap: 2px;
   padding: 4px;
   border-radius: 12px;
   background: var(--surface);
   box-shadow: 0 6px 20px -6px rgba(20, 40, 38, 0.32), 0 0 0 1px rgba(0, 0, 0, 0.05);
   animation: msel-in var(--motion-fast) var(--ease) both;
-  /* 手指在工具栏上滑动不该翻页/拖图 */
-  touch-action: none;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  /* 工具栏允许横向滑动,同时继续阻止翻页和拖图接管手势。 */
+  touch-action: pan-x;
 }
 
+.mobile-editor .mimg-bar::-webkit-scrollbar { display: none; }
+
 .mobile-editor .mimg-btn {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 5px;

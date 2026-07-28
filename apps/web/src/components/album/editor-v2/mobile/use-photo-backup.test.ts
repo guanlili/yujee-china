@@ -116,6 +116,54 @@ test('backup refuses missing local and filtered-fallback bytes', async () => {
   assert.deepEqual(result.renderVersions, {});
 });
 
+test('zero-strength backup uploads exact base bytes under the zero-strength render version', async () => {
+  const runPhotoBackup = await runner();
+  const base = new Blob(['exact base bytes'], { type: 'image/jpeg' });
+  const signedEntries: SnapshotEntry[][] = [];
+  const confirmed: SnapshotEntry[][] = [];
+  const uploads: Array<{ url: string; blob: Blob }> = [];
+  const seenStates: Array<PhotoFilterState | null> = [];
+
+  const result = await runPhotoBackup({
+    albumId: 'album',
+    photoIds: ['zero'],
+    photoFilter: { default: { lutId: 'cloudy-cool', strength: 0 } },
+    currentVersions: {},
+    deps: {
+      getTierBlobStatus: async (_photoId, state) => {
+        seenStates.push(state);
+        return { blob: base, filteredFallback: false };
+      },
+      sign: async (entries) => {
+        signedEntries.push(entries);
+        return signed(entries);
+      },
+      put: async (url, blob) => {
+        uploads.push({ url, blob });
+      },
+      confirm: async (entries) => {
+        confirmed.push(entries);
+      },
+    },
+  });
+
+  const zeroEntry = {
+    photoId: 'zero',
+    renderVersion: 'pf-v1__cloudy-cool__0',
+  };
+  assert.deepEqual(signedEntries, [[zeroEntry]]);
+  assert.deepEqual(confirmed, [[zeroEntry]]);
+  assert.equal(seenStates[0]?.default?.strength, 0);
+  assert.equal(uploads.length, 1);
+  assert.equal(uploads[0]?.blob, base);
+  assert.equal(await uploads[0]?.blob.text(), 'exact base bytes');
+  assert.equal(result.missing, 0);
+  assert.equal(result.uploaded, 1);
+  assert.deepEqual(result.renderVersions, {
+    zero: 'pf-v1__cloudy-cool__0',
+  });
+});
+
 test('backup rejects signed version mismatch before PUT', async () => {
   const runPhotoBackup = await runner();
   let puts = 0;
