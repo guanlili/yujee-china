@@ -33,9 +33,27 @@ test('desktop filter panel and cards use the shared editor radius tokens', () =>
 
 test('desktop controls are support-gated and selected-image action resolves the actual slot photo', () => {
   assert.match(editor, /lutEngine\.isSupported\(\)/);
-  assert.match(editor, /lutSupported\s*&&[\s\S]*?openBookFilter/);
+  assert.match(editor, /if \(lutSupported\) ov\.appendChild\(style\)/);
   assert.match(editor, /page\.imagesJson\[slotId\]/);
   assert.match(editor, /openPhotoFilter\('photo'/);
+});
+
+test('desktop Style lives in selected-image resources, not the global top bar', () => {
+  const topbarStart = editor.indexOf('function EditorTopbar(');
+  const topbarEnd = editor.indexOf('\nfunction EditorModals(', topbarStart);
+  assert.ok(topbarStart >= 0 && topbarEnd > topbarStart);
+  const topbar = editor.slice(topbarStart, topbarEnd);
+  assert.doesNotMatch(topbar, /openBookFilter/);
+  assert.doesNotMatch(topbar, /filter-topbar-btn/);
+
+  assert.match(editor, /style\.className = 'img-edit-style'/);
+  assert.match(editor, /<FilterBar[\s\S]*?onScopeChange=\{setFilterScope\}/);
+  assert.doesNotMatch(editor, /const openBookFilter = useCallback/);
+
+  const imageButtonRule = css.match(
+    /\.editor-port \.img-edit-reset,[\s\S]*?\{([\s\S]*?)\}/,
+  )?.[0] ?? '';
+  assert.match(imageButtonRule, /\.editor-port \.img-edit-style/);
 });
 
 test('filter persistence is a photoFilter-only 180ms PATCH with stale-response protection', () => {

@@ -559,12 +559,6 @@ function EditorShell({
     [detail.album.id, setPhotoFilter],
   );
 
-  const openBookFilter = useCallback(() => {
-    if (!lutSupported) return;
-    setFilterScope('book');
-    setFilterPhotoId(coordinator.current?.bookPhotoIds()[0] ?? null);
-    setFilterOpen(true);
-  }, [coordinator, lutSupported]);
   const openPhotoFilter = useCallback((scope: 'photo', photoId: string) => {
     if (!lutSupported) return;
     setFilterScope(scope);
@@ -615,8 +609,6 @@ function EditorShell({
           locale={locale}
           exportUnlocked={exportUnlocked}
           coordinator={coordinator}
-          lutSupported={lutSupported}
-          openBookFilter={openBookFilter}
         />
 
         <div className="workspace flex-1 overflow-hidden relative md:flex" style={{ height: 'calc(100vh - 56px)' }}>
@@ -669,6 +661,7 @@ function EditorShell({
             photoId={filterPhotoId}
             persistError={filterPersistError}
             onChange={setPhotoFilter}
+            onScopeChange={setFilterScope}
             onRetry={() => filterSaver.retry()}
             onClose={() => setFilterOpen(false)}
           />
@@ -699,14 +692,10 @@ function EditorTopbar({
   locale,
   exportUnlocked,
   coordinator,
-  lutSupported,
-  openBookFilter,
 }: {
   locale: Locale;
   exportUnlocked: boolean;
   coordinator: RefObject<ChatCoordinator | null>;
-  lutSupported: boolean;
-  openBookFilter: () => void;
 }) {
   void coordinator; // the export button's data-action is wired by EditorBook via the shared root
   // 账户菜单统一为 <UserMenu>(与 landing / my-albums 同一组件):真实姓名/邮箱、
@@ -732,16 +721,6 @@ function EditorTopbar({
         </span>
       </div>
       <div className="top-right flex items-center gap-1 sm:gap-2 shrink-0">
-        {lutSupported && (
-          <button
-            type="button"
-            className="filter-topbar-btn inline-flex items-center px-4 py-2.5 rounded-pill text-[13px] font-semibold text-fg2 border border-bd"
-            onClick={openBookFilter}
-            aria-label={locale === 'zh' ? '设置全书风格' : 'Set whole-book style'}
-          >
-            {locale === 'zh' ? '风格' : 'Style'}
-          </button>
-        )}
         {/* 保存到云端(photo-snapshot):备份照片压缩图,换设备/清缓存也能看到内页。默认只
             图标;点击后按钮上短暂显示「备份中… → 绿点已备份 / 红点备份失败」再回到默认。
             data-action 由 EditorBook 的效果绑到 backupPhotos;备份态由 setSaveState 命令式更新。 */}

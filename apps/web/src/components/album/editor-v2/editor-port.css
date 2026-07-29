@@ -1256,6 +1256,7 @@
    免得和「复位」看着一样、点错就把图清了。 */
 .editor-port .img-edit-reset,
 .editor-port .img-edit-swap,
+.editor-port .img-edit-style,
 .editor-port .img-edit-del{
   border:1px solid var(--border-soft); background:var(--bg);
   color:var(--fg); border-radius:9999px; padding:3px 10px;
@@ -1263,7 +1264,8 @@
   transition:background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
 }
 .editor-port .img-edit-reset:hover,
-.editor-port .img-edit-swap:hover{ background:var(--border-soft); }
+.editor-port .img-edit-swap:hover,
+.editor-port .img-edit-style:hover{ background:var(--border-soft); }
 /* #c44 与移动端 .mimg-btn[data-danger] 同一枚(--danger 那个 token 是灰阶的,
    当错误色不可读,见 #2053 附近同样的绕行)。 */
 .editor-port .img-edit-del{ color:#c44; }
@@ -2444,7 +2446,6 @@
     font-size:12px; color:var(--meta); font-variant-numeric:tabular-nums;
   }
 }
-.editor-port .filter-topbar-btn:hover{ background: var(--bg); transform: translateY(-1px); }
 .editor-port .filter-bar{
   position:fixed; z-index:90; top:68px; right:18px; width:min(560px,calc(100vw - 36px));
   max-height:calc(100vh - 86px); overflow:auto; padding:16px; border:1px solid var(--border);
