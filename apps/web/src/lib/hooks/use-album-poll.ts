@@ -52,6 +52,19 @@ function isTerminal(phase: AlbumPollPhase): boolean {
   return phase !== 'loading' && phase !== 'running';
 }
 
+export function albumLiveSignature(state: AlbumPollState): string {
+  const album = state.detail?.album;
+  return [
+    state.phase,
+    album?.status ?? '',
+    album?.layoutJson == null ? 'draft' : 'final',
+    state.generation?.stage ?? '',
+    state.generation?.progress ?? '',
+    JSON.stringify(album?.photoSnapshotUrls ?? {}),
+    JSON.stringify(album?.photoSnapshotRenderVersions ?? {}),
+  ].join('|');
+}
+
 export function useAlbumPoll(uuid: string): AlbumPollState {
   const [state, setState] = useState<AlbumPollState>(INITIAL);
 
@@ -93,14 +106,7 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
     let lastLiveSig = '';
     const applyLive = (next: AlbumPollState) => {
       if (stopped || settled) return;
-      const album = next.detail?.album;
-      const sig = [
-        next.phase,
-        album?.status ?? '',
-        album?.layoutJson == null ? 'draft' : 'final',
-        next.generation?.stage ?? '',
-        next.generation?.progress ?? '',
-      ].join('|');
+      const sig = albumLiveSignature(next);
       if (sig === lastLiveSig) return;
       lastLiveSig = sig;
       setState(next);
@@ -112,7 +118,7 @@ export function useAlbumPoll(uuid: string): AlbumPollState {
       try {
         let res: Response;
         try {
-          res = await fetch(`/api/v1/albums/${uuid}`);
+          res = await fetch(`/api/v1/albums/${uuid}`, { cache: 'no-store' });
         } catch {
           // Network blip — bounded retry, not silent-forever.
           if (++transient > MAX_TRANSIENT) {
