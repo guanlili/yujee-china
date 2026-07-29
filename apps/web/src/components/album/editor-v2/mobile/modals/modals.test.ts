@@ -242,19 +242,50 @@ test('照片风格和画板背景共用同一套底部抽屉规范', () => {
     /\/\*[\s\S]*?\*\//g,
     '',
   );
-  const overlayAt = css.indexOf('.editor-port .mobile-bottom-sheet-overlay {');
+  const overlayAt = css.indexOf('.mobile-bottom-sheet-overlay {');
   assert.ok(overlayAt >= 0, '缺少共用的底部抽屉遮罩规则');
   const overlayRule = css.slice(overlayAt, css.indexOf('}', overlayAt));
   assert.match(overlayRule, /align-items:\s*flex-end/);
   assert.match(overlayRule, /padding:\s*0/);
 
-  const sheetAt = css.indexOf('.editor-port .mobile-bottom-sheet {');
+  const sheetAt = css.indexOf('.mobile-bottom-sheet {');
   assert.ok(sheetAt >= 0, '缺少共用的底部抽屉卡片规则');
   const sheetRule = css.slice(sheetAt, css.indexOf('}', sheetAt));
   assert.match(sheetRule, /width:\s*100%/);
   assert.match(sheetRule, /height:\s*66vh/);
   assert.match(sheetRule, /max-height:\s*66vh/);
   assert.match(sheetRule, /border-radius:\s*22px 22px 0 0/);
+});
+
+test('底部抽屉规则必须压过后加载的桌面居中弹窗规则', () => {
+  const root = readFileSync(join(here, '..', 'MobileEditorRoot.tsx'), 'utf8');
+  assert.ok(
+    root.indexOf("import './mobile-editor.css'") < root.indexOf("import '../editor-port.css'"),
+    '这个回归只在真实的移动 CSS → 桌面 CSS 加载顺序下成立',
+  );
+
+  const css = readFileSync(join(here, '..', 'mobile-editor.css'), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  );
+  const selectorFor = (className: string) => {
+    const match = css.match(new RegExp(`([^{}]+\\.${className}[^{}]*)\\{`));
+    assert.ok(match, `找不到 .${className} 选择器`);
+    return match[1].trim();
+  };
+  const classSpecificity = (selector: string) =>
+    (selector.match(/\.[A-Za-z_-][\w-]*/g) ?? []).length;
+
+  assert.ok(
+    classSpecificity(selectorFor('mobile-bottom-sheet-overlay'))
+      > classSpecificity('.editor-port .modal-overlay'),
+    '后加载的 .editor-port .modal-overlay 会把抽屉从底部覆盖回居中',
+  );
+  assert.ok(
+    classSpecificity(selectorFor('mobile-bottom-sheet'))
+      > classSpecificity('.editor-port .modal-card'),
+    '后加载的 .editor-port .modal-card 会覆盖抽屉宽高和圆角',
+  );
 });
 
 

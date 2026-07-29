@@ -515,12 +515,12 @@
 
 /* 照片风格与垫底背景共用同一套移动底部抽屉。ModalHost 只在这两个入口显式
    选择 bottom-sheet variant，其他确认类弹窗继续保持居中卡片。 */
-.editor-port .mobile-bottom-sheet-overlay {
+.editor-port.mobile-modal-host .modal-overlay.mobile-bottom-sheet-overlay {
   align-items: flex-end;
   padding: 0;
 }
 
-.editor-port .mobile-bottom-sheet {
+.editor-port.mobile-modal-host .modal-card.mobile-bottom-sheet {
   width: 100%;
   max-width: 560px;
   height: 66vh;
@@ -530,7 +530,7 @@
   box-shadow: 0 -14px 44px rgba(0, 0, 0, 0.22);
 }
 
-.editor-port .mobile-bottom-sheet-overlay.open .mobile-bottom-sheet {
+.editor-port.mobile-modal-host .mobile-bottom-sheet-overlay.open .mobile-bottom-sheet {
   transform: none;
 }
 
