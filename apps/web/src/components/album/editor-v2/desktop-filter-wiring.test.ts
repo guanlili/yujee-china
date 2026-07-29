@@ -7,6 +7,7 @@ import test from 'node:test';
 const here = dirname(fileURLToPath(import.meta.url));
 const editor = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
 const bar = readFileSync(join(here, 'FilterBar.tsx'), 'utf8');
+const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
 
 test('FilterBar uses the exact manifest and unfiltered thumb previews with cleanup guards', () => {
   assert.match(bar, /LUT_DEFINITIONS\.map/);
@@ -18,6 +19,16 @@ test('FilterBar uses the exact manifest and unfiltered thumb previews with clean
   assert.match(bar, /type="range"/);
   assert.match(bar, /全书/);
   assert.match(bar, /当前照片/);
+  assert.match(bar, /onScopeChange\?:\s*\(scope:\s*FilterScope\)\s*=>\s*void/);
+  assert.doesNotMatch(bar, /disabled=\{previewState !== 'ready'\}/);
+});
+
+test('desktop filter panel and cards use the shared editor radius tokens', () => {
+  const panelRule = css.match(/\.editor-port \.filter-bar\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+  const cardRule = css.match(/\.editor-port \.filter-card\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+  assert.match(panelRule, /border-radius:\s*var\(--radius-lg\)/);
+  assert.match(cardRule, /border-radius:\s*var\(--radius-md\)/);
+  assert.match(css, /\.editor-port \.filter-scope-switch\s*\{/);
 });
 
 test('desktop controls are support-gated and selected-image action resolves the actual slot photo', () => {

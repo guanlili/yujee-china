@@ -64,6 +64,30 @@ test('standalone FilterBar retains dialog semantics', async () => {
   assert.match(html, /aria-label="Photo style"/);
 });
 
+test('FilterBar can switch photo/book scope and never blocks selection on preview loading', async () => {
+  const { FilterBar } = await import('../FilterBar');
+  const html = renderToStaticMarkup(createElement(FilterBar, {
+    locale: 'en',
+    state: { default: null },
+    scope: 'photo',
+    photoId: 'selected',
+    persistError: null,
+    onChange: () => undefined,
+    onScopeChange: () => undefined,
+    onRetry: () => undefined,
+    onClose: () => undefined,
+  }));
+
+  assert.match(html, /class="filter-scope-switch"/);
+  assert.match(html, /class="filter-scope-option"[^>]*aria-pressed="true"[^>]*>Current photo/);
+  assert.match(html, /class="filter-scope-option"[^>]*aria-pressed="false"[^>]*>Whole book/);
+  const filterButtons = html.match(/<button[^>]*class="filter-card"[^>]*>/g) ?? [];
+  assert.equal(filterButtons.length, 27);
+  for (const button of filterButtons) {
+    assert.doesNotMatch(button, /\bdisabled\b/, 'preview loading must not disable direct filter selection');
+  }
+});
+
 test('mobile root owns normalized filter persistence and registers both filter scopes', () => {
   const root = read('MobileEditorRoot.tsx');
   assert.match(root, /normalizePhotoFilterState\(detail\.album\.photoFilter\)/);

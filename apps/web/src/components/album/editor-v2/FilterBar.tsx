@@ -28,6 +28,7 @@ export function FilterBar({
   photoId,
   persistError,
   onChange,
+  onScopeChange,
   onRetry,
   onClose,
   embedded = false,
@@ -38,6 +39,7 @@ export function FilterBar({
   photoId: string | null;
   persistError: string | null;
   onChange: (state: PhotoFilterState) => void;
+  onScopeChange?: (scope: FilterScope) => void;
   onRetry: () => void;
   onClose: () => void;
   embedded?: boolean;
@@ -112,6 +114,27 @@ export function FilterBar({
         <button type="button" onClick={onClose} aria-label={zh ? '关闭风格面板' : 'Close style panel'}>×</button>
       </div>
 
+      {onScopeChange && (
+        <div className="filter-scope-switch" role="group" aria-label={zh ? '风格应用范围' : 'Style scope'}>
+          <button
+            type="button"
+            className="filter-scope-option"
+            aria-pressed={scope === 'photo'}
+            onClick={() => onScopeChange('photo')}
+          >
+            {zh ? '当前照片' : 'Current photo'}
+          </button>
+          <button
+            type="button"
+            className="filter-scope-option"
+            aria-pressed={scope === 'book'}
+            onClick={() => onScopeChange('book')}
+          >
+            {zh ? '全书' : 'Whole book'}
+          </button>
+        </div>
+      )}
+
       {scope === 'photo' && (
         <button
           type="button"
@@ -156,9 +179,10 @@ export function FilterBar({
           className="filter-card"
           aria-pressed={current === null}
           onClick={() => apply(null)}
-          disabled={previewState !== 'ready'}
         >
-          {previews.original && <img src={previews.original} alt="" />}
+          <div className="filter-card-preview">
+            {previews.original && <img src={previews.original} alt="" />}
+          </div>
           <span>{zh ? '原片' : 'Original'}</span>
         </button>
         {LUT_DEFINITIONS.map((definition) => (
@@ -168,9 +192,10 @@ export function FilterBar({
             key={definition.id}
             aria-pressed={current?.lutId === definition.id}
             onClick={() => select(definition.id)}
-            disabled={previewState !== 'ready'}
           >
-            {previews[definition.id] && <img src={previews[definition.id]} alt="" />}
+            <div className="filter-card-preview">
+              {previews[definition.id] && <img src={previews[definition.id]} alt="" />}
+            </div>
             <span>{zh ? definition.nameZh : definition.id}</span>
           </button>
         ))}
