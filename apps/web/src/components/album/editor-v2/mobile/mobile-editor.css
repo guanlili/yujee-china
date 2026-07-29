@@ -513,22 +513,64 @@
   position: relative;
 }
 
+/* 照片风格与垫底背景共用同一套移动底部抽屉。ModalHost 只在这两个入口显式
+   选择 bottom-sheet variant，其他确认类弹窗继续保持居中卡片。 */
+.editor-port .mobile-bottom-sheet-overlay {
+  align-items: flex-end;
+  padding: 0;
+}
+
+.editor-port .mobile-bottom-sheet {
+  width: 100%;
+  max-width: 560px;
+  height: 66vh;
+  max-height: 66vh;
+  border-radius: 22px 22px 0 0;
+  transform: translateY(16px);
+  box-shadow: 0 -14px 44px rgba(0, 0, 0, 0.22);
+}
+
+.editor-port .mobile-bottom-sheet-overlay.open .mobile-bottom-sheet {
+  transform: none;
+}
+
+.mobile-sheet-grab {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  padding: 11px 0 4px;
+}
+
+.mobile-sheet-grab span {
+  width: 44px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+}
+
 /* FilterBar 在桌面是右上角 fixed 浮层;放进移动 ModalHost 后改成卡片内容本身。
-   预览较多,整张卡滚动,底部安全区留白。 */
+   抽屉把手固定在外层,FilterBar 自己承担纵向滚动和底部安全区。 */
 .editor-port .mobile-filter-sheet {
-  width: min(560px, 100%);
-  max-height: 88vh;
-  overflow-y: auto;
+  overflow: hidden;
 }
 .editor-port .mobile-filter-sheet .filter-bar {
   position: static;
+  flex: 1 1 auto;
+  min-height: 0;
   width: 100%;
   max-height: none;
-  overflow: visible;
+  overflow-y: auto;
   border: 0;
   border-radius: 0;
   box-shadow: none;
   padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+.editor-port .mobile-filter-sheet .filter-bar-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding-bottom: 8px;
+  background: var(--surface);
 }
 .mobile-filter-save-toast {
   position: fixed;

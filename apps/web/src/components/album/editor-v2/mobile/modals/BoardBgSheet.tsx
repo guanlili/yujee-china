@@ -49,6 +49,7 @@ export function BoardBgSheet({
     <ModalHost
       open={open}
       onClose={onClose}
+      variant="bottom-sheet"
       cardClassName="board-bg-sheet"
       labelledBy="mBoardBgTitle"
       testId="board-bg-modal"

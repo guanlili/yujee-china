@@ -30,6 +30,7 @@ export function FilterSheet({
     <ModalHost
       open={open}
       onClose={onClose}
+      variant="bottom-sheet"
       cardClassName="mobile-filter-sheet"
       ariaLabel={zh ? '照片风格' : 'Photo style'}
       testId="filter-sheet"

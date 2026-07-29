@@ -229,6 +229,34 @@ test('借用桌面样式的弹窗必须套 .editor-port 宿主(漏了样式一�
   }
 });
 
+test('照片风格和画板背景共用同一套底部抽屉规范', () => {
+  const filterHtml = CASES.find((item) => item.name.startsWith('FilterSheet'))!.render(true);
+  const backgroundHtml = CASES.find((item) => item.name.startsWith('BoardBgSheet'))!.render(true);
+  for (const html of [filterHtml, backgroundHtml]) {
+    assert.match(html, /mobile-bottom-sheet-overlay/);
+    assert.match(html, /mobile-bottom-sheet/);
+    assert.match(html, /mobile-sheet-grab/);
+  }
+
+  const css = readFileSync(join(here, '..', 'mobile-editor.css'), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  );
+  const overlayAt = css.indexOf('.editor-port .mobile-bottom-sheet-overlay {');
+  assert.ok(overlayAt >= 0, '缺少共用的底部抽屉遮罩规则');
+  const overlayRule = css.slice(overlayAt, css.indexOf('}', overlayAt));
+  assert.match(overlayRule, /align-items:\s*flex-end/);
+  assert.match(overlayRule, /padding:\s*0/);
+
+  const sheetAt = css.indexOf('.editor-port .mobile-bottom-sheet {');
+  assert.ok(sheetAt >= 0, '缺少共用的底部抽屉卡片规则');
+  const sheetRule = css.slice(sheetAt, css.indexOf('}', sheetAt));
+  assert.match(sheetRule, /width:\s*100%/);
+  assert.match(sheetRule, /height:\s*66vh/);
+  assert.match(sheetRule, /max-height:\s*66vh/);
+  assert.match(sheetRule, /border-radius:\s*22px 22px 0 0/);
+});
+
 
 test('导出进度弹窗:渲染中不可关是有意为之,但必须显示进度', () => {
   const html = renderToStaticMarkup(

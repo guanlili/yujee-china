@@ -21,6 +21,7 @@ export type ModalHostProps = {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
+  variant?: 'center' | 'bottom-sheet';
   /** 传给 .modal-card 的额外类(如 export-sheet / board-bg-sheet)。 */
   cardClassName?: string;
   labelledBy?: string;
@@ -32,6 +33,7 @@ export function ModalHost({
   open,
   onClose,
   children,
+  variant = 'center',
   cardClassName = '',
   labelledBy,
   ariaLabel,
@@ -43,20 +45,23 @@ export function ModalHost({
       {/* .open 是桌面那套弹窗的显隐约定(JS 加类),这里由 React 的挂载与否决定,
           挂上就直接带 open,过渡动画照旧。 */}
       <div
-        className="modal-overlay open"
+        className={`modal-overlay open${variant === 'bottom-sheet' ? ' mobile-bottom-sheet-overlay' : ''}`}
         onClick={(e) => {
           // 点遮罩关闭 —— 对齐桌面的 data-overlay-close 行为
           if (e.target === e.currentTarget) onClose();
         }}
       >
         <div
-          className={`modal-card ${cardClassName}`}
+          className={`modal-card ${cardClassName}${variant === 'bottom-sheet' ? ' mobile-bottom-sheet' : ''}`}
           role="dialog"
           aria-modal="true"
           aria-labelledby={labelledBy}
           aria-label={ariaLabel}
           data-testid={testId}
         >
+          {variant === 'bottom-sheet' && (
+            <div className="mobile-sheet-grab" aria-hidden="true"><span /></div>
+          )}
           {children}
         </div>
       </div>

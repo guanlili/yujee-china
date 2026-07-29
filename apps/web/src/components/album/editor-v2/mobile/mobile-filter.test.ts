@@ -38,6 +38,9 @@ test('FilterSheet registers through ModalHost with accessible shared FilterBar c
     'ModalHost must be the only dialog when FilterBar is embedded in the sheet',
   );
   assert.match(html, /aria-label="Photo style"/);
+  assert.match(html, /mobile-bottom-sheet-overlay/);
+  assert.match(html, /mobile-bottom-sheet/);
+  assert.match(html, /mobile-sheet-grab/);
   assert.match(html, /Current photo/);
   assert.match(html, /Follow book style/);
   assert.match(html, /aria-label="Filter strength"/);
