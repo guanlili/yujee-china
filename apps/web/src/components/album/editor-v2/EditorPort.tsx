@@ -60,6 +60,7 @@ import {
 } from './design-gate-util';
 import { useDeviceMode } from './use-device-mode';
 import { MobileEditorRoot } from './mobile/MobileEditorRoot';
+import { runPhotoBackup } from './mobile/use-photo-backup';
 import {
   clampImagePos,
   dragToImagePos,
@@ -365,6 +366,36 @@ function EditorAuthoring({
       })),
     [skeleton],
   );
+  const autoBackupSignature = useRef('');
+  useEffect(() => {
+    if (pages.length === 0) return;
+    const photoIds = collectPhotoIds(
+      pages.map((page) => ({
+        templateId: page.templateId,
+        images: page.imagesJson,
+        texts: page.textsJson,
+      })),
+    );
+    if (photoIds.length === 0) return;
+    const signature = JSON.stringify({
+      photoIds,
+      photoFilter,
+      versions: detail.album.photoSnapshotRenderVersions ?? {},
+    });
+    if (signature === autoBackupSignature.current) return;
+    autoBackupSignature.current = signature;
+    void runPhotoBackup({
+      albumId: detail.album.id,
+      photoIds,
+      photoFilter,
+      currentVersions: detail.album.photoSnapshotRenderVersions ?? {},
+    }).catch(() => undefined);
+  }, [
+    detail.album.id,
+    detail.album.photoSnapshotRenderVersions,
+    pages,
+    photoFilter,
+  ]);
 
   useEffect(() => {
     let cancelled = false;

@@ -4,6 +4,12 @@ import { assignClusterIds, type ClusterInput } from '@/lib/photo/cluster';
 import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
 import { representativePlaceForGroup } from '@/lib/photo/geocode';
 import { photoStore } from '@/lib/photo/store';
+import {
+  confirmPhotoSnapshot,
+  putSnapshotBlob,
+  signPhotoSnapshotUpload,
+  type SnapshotEntry,
+} from '@/lib/album/photo-snapshot-client';
 
 // Browser-side client for the generation endpoints. Owns the two billing-aware
 // flows BILL-1 defines so /create (UI-2) and /my-albums + /album (UI-4) consume
@@ -244,13 +250,68 @@ async function postJobs(path: string, body: unknown): Promise<SubmitResult> {
   return json.data as SubmitResult;
 }
 
-export function submitAnalyzeV3(input: {
+function jpegDataUrlToBlob(dataUrl: string): Blob {
+  const match = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+  if (!match) throw new Error('generation preview must be a JPEG data URL');
+  const decoded = atob(match[1]!);
+  const bytes = Uint8Array.from(decoded, (char) => char.charCodeAt(0));
+  return new Blob([bytes], { type: 'image/jpeg' });
+}
+
+async function backupGenerationPreviews(
+  albumId: string,
+  photos: GenerationPhoto[],
+): Promise<void> {
+  const entries: SnapshotEntry[] = photos.map(({ photoId }) => ({
+    photoId,
+    renderVersion: 'pf-v1__original',
+  }));
+  if (entries.length === 0) return;
+
+  const signed = await signPhotoSnapshotUpload(albumId, entries);
+  const blobs = new Map(photos.map((photo) => [photo.photoId, jpegDataUrlToBlob(photo.base64)]));
+  const signedByPhoto = new Map(signed.map((item) => [item.photoId, item]));
+  if (
+    signedByPhoto.size !== entries.length ||
+    entries.some((entry) => signedByPhoto.get(entry.photoId)?.renderVersion !== entry.renderVersion)
+  ) {
+    throw new Error('photo snapshot signatures did not match generation previews');
+  }
+
+  const uploaded: SnapshotEntry[] = [];
+  const queue = [...entries];
+  const worker = async () => {
+    for (;;) {
+      const entry = queue.shift();
+      if (!entry) return;
+      const target = signedByPhoto.get(entry.photoId)!;
+      const blob = blobs.get(entry.photoId)!;
+      try {
+        await putSnapshotBlob(target.putUrl, blob);
+        uploaded.push(entry);
+      } catch {
+        // Partial cloud backup is still useful; confirm only successful PUTs.
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, entries.length) }, worker));
+  if (uploaded.length > 0) await confirmPhotoSnapshot(albumId, uploaded);
+}
+
+export async function submitAnalyzeV3(input: {
   requestId: string;
   language: 'zh' | 'en';
   promptHint?: string;
   photos: GenerationPhoto[];
 }): Promise<SubmitResult> {
-  return postJobs('/api/v3/albums', input);
+  const result = await postJobs('/api/v3/albums', input);
+  try {
+    await backupGenerationPreviews(result.albumId, input.photos);
+  } catch {
+    // The album/Agent job already exists. A cloud-backup outage must not make the
+    // user retry creation and accidentally create or charge for a second album.
+  }
+  return result;
 }
 
 // 加照片增量重跑(spec §1):只发新照片,服务端 hold 积分并转发 analyze;后续采访/

@@ -38,6 +38,78 @@ test('submitAnalyzeV3 throws UnauthorizedError for unauthorized responses', asyn
   }
 });
 
+test('submitAnalyzeV3 backs uploaded previews to cloud before returning the album', async (t) => {
+  const requests: Array<{ url: string; method: string; body: unknown }> = [];
+  const entry = { photoId: 'photo-1', renderVersion: 'pf-v1__original' };
+  t.mock.method(globalThis, 'fetch', (async (input: string | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? 'GET';
+    const body =
+      typeof init?.body === 'string'
+        ? JSON.parse(init.body)
+        : init?.body;
+    requests.push({ url, method, body });
+
+    if (url === '/api/v3/albums') {
+      return Response.json({
+        ok: true,
+        data: { albumId: 'album-1', requestId: 'request-1' },
+      });
+    }
+    if (url.endsWith('/photo-snapshot-upload-url')) {
+      return Response.json({
+        ok: true,
+        data: [{
+          ...entry,
+          putUrl: 'https://put.test/photo-1',
+          r2Key: 'photo-snapshots/user/album-1/photo-1/pf-v1__original.jpg',
+          publicUrl: 'https://cdn.test/photo-1/pf-v1__original.jpg',
+        }],
+      });
+    }
+    if (url === 'https://put.test/photo-1') return new Response(null, { status: 200 });
+    if (url.endsWith('/photo-snapshot')) {
+      return Response.json({
+        ok: true,
+        data: {
+          photoIds: ['photo-1'],
+          renderVersions: { 'photo-1': 'pf-v1__original' },
+        },
+      });
+    }
+    return new Response(null, { status: 404 });
+  }) as typeof fetch);
+
+  const result = await submitAnalyzeV3({
+    requestId: 'request-1',
+    language: 'en',
+    photos: [{
+      photoId: 'photo-1',
+      base64: 'data:image/jpeg;base64,cHJldmlldy1ieXRlcw==',
+      width: 800,
+      height: 600,
+    }],
+  });
+
+  assert.deepEqual(result, { albumId: 'album-1', requestId: 'request-1' });
+  assert.deepEqual(
+    requests.map(({ url, method }) => ({ url, method })),
+    [
+      { url: '/api/v3/albums', method: 'POST' },
+      {
+        url: '/api/v1/albums/album-1/photo-snapshot-upload-url',
+        method: 'POST',
+      },
+      { url: 'https://put.test/photo-1', method: 'PUT' },
+      { url: '/api/v1/albums/album-1/photo-snapshot', method: 'POST' },
+    ],
+  );
+  assert.deepEqual(requests[1]!.body, { entries: [entry] });
+  assert.ok(requests[2]!.body instanceof Blob);
+  assert.equal(await (requests[2]!.body as Blob).text(), 'preview-bytes');
+  assert.deepEqual(requests[3]!.body, { entries: [entry] });
+});
+
 test('submitSelectLayoutV3 posts refs to the browser-facing select-layout route', async () => {
   const originalFetch = globalThis.fetch;
   const captured: { url?: string; method?: string; body?: unknown } = {};

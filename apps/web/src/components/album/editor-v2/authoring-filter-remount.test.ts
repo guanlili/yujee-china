@@ -60,3 +60,17 @@ test('the real album owns filter state only after loading/building placeholders 
   assert.match(portBody, /<ReadyEditor key=\{detail\.album\.id\}/);
   assert.match(readyBody, /useState<PhotoFilterState \| null>\(\s*detail\.album\.photoFilter/);
 });
+
+test('opening a legacy authoring album auto-backs missing local photos for mobile recovery', () => {
+  const authoringBody = source.slice(
+    source.indexOf('function EditorAuthoring'),
+    source.indexOf('// ════════════════════════════════════════════════════════════════════════════\n// EditorShell'),
+  );
+
+  assert.match(source, /import \{ runPhotoBackup \} from '\.\/mobile\/use-photo-backup'/);
+  assert.match(authoringBody, /collectPhotoIds\(/);
+  assert.match(
+    authoringBody,
+    /runPhotoBackup\(\{[\s\S]*?albumId:\s*detail\.album\.id[\s\S]*?photoIds[\s\S]*?photoFilter[\s\S]*?currentVersions:\s*detail\.album\.photoSnapshotRenderVersions\s*\?\?\s*\{\}[\s\S]*?\}\)\.catch\(\(\)\s*=>\s*undefined\)/,
+  );
+});
