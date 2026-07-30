@@ -71,3 +71,36 @@ test('「已更新」彩色条在移动端也回放(designOps 已经落库,别�
   const src = code('modals/AiChatSheet.tsx');
   assert.match(src, /changes/, 'AiChatSheet 要消费 ChatHistoryItem.changes,把改了哪几类显示出来');
 });
+
+/* ── 用户气泡配色两端同源 ──
+   移动端把用户说的话渲成纯黑底白字(background:var(--fg)),桌面是浅色渐变卡 + 深色字。
+   同一段对话在两棵壳里长得不一样,而黑色在这套设计里另有所指 —— AiChatSheet 的文件头
+   就写着「黑色只属于收起时那枚浮标(.mai),弹窗不是黑的」。移动端违背了自己的注释。 */
+
+test('用户气泡不是纯黑底白字(黑色在这套设计里只属于收起浮标)', () => {
+  const css = read('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const at = css.indexOf(".mai-msg[data-role='user']");
+  assert.ok(at >= 0, '应该有用户气泡规则');
+  const rule = css.slice(at, css.indexOf('}', at));
+  assert.doesNotMatch(rule, /background:\s*var\(--fg\)/, '纯黑底是收起浮标的专属');
+  assert.doesNotMatch(rule, /color:\s*var\(--surface\)/, '白字跟着黑底一起走');
+});
+
+test('两端用户气泡走同一个共享 token,不各写一份渐变', () => {
+  const shared = read('..', 'editor-tokens.css');
+  assert.match(shared, /--chat-user-bubble\s*:/, '气泡底色要进共享 token');
+  const mobile = read('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const at = mobile.indexOf(".mai-msg[data-role='user']");
+  assert.match(
+    mobile.slice(at, mobile.indexOf('}', at)),
+    /var\(--chat-user-bubble\)/,
+    '移动端用 token,不复制一份渐变字面量',
+  );
+  const desktop = read('..', 'editor-port.css');
+  const dAt = desktop.indexOf('.editor-port .msg.user .bubble{');
+  assert.match(
+    desktop.slice(dAt, desktop.indexOf('}', dAt)),
+    /var\(--chat-user-bubble\)/,
+    '桌面也改用同一个 token —— 否则改一边忘一边又漂移',
+  );
+});

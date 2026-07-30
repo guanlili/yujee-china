@@ -901,12 +901,15 @@
   word-break: break-word;
 }
 
-/* 自己说的话靠右、深底浅字(与 AI 的回复一眼分得开) */
+/* 自己说的话靠右。配色与桌面 .msg.user .bubble 同一个 token —— 早先是纯黑底白字,
+   但黑色在这套设计里只属于对话收起时那枚浮标(.mai),不该出现在气泡上。
+   靠右 + 右上角切角已经足够和 AI 的回复分开,不必靠反色。 */
 .mai-msg[data-role='user'] {
   margin-left: auto;
   border-radius: 16px 4px 16px 16px;
-  background: var(--fg);
-  color: var(--surface);
+  background: var(--chat-user-bubble);
+  border: 1px solid var(--border-soft);
+  color: var(--fg);
 }
 
 /* AI 回复走 markdown(renderMarkdownSafe,与桌面同一个函数),已经是真的块级元素了 ——

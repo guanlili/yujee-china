@@ -18,6 +18,9 @@
   --shadow-card-hover: 0 2px 6px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.08);
   --shadow-card: 0 1px 3px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);
   --radius-pill:9999px; --radius-md:12px; --radius-lg:16px;
+  /* 用户气泡底:青紫双径向渐变叠在 --bg 上。两棵 UI 树共用(见 editor-tokens.css)——
+     移动端曾把它写成纯黑底白字,而黑色在这套设计里只属于对话收起时那枚浮标。 */
+  --chat-user-bubble: radial-gradient(58% 78% at 0% 0%, rgba(19,184,166,.11), transparent 60%),radial-gradient(58% 78% at 100% 100%, rgba(140,94,244,.10), transparent 60%),var(--bg);
 
   font-family: var(--font-body);
   background: var(--bg);
@@ -490,10 +493,7 @@
 /* ─── CHAT message structure ─── */
 .editor-port .msg.user{display:flex; justify-content:flex-end;}
 .editor-port .msg.user .bubble{
-  background:
-    radial-gradient(58% 78% at 0% 0%, rgba(19,184,166,.11), transparent 60%),
-    radial-gradient(58% 78% at 100% 100%, rgba(140,94,244,.10), transparent 60%),
-    var(--bg);
+  background: var(--chat-user-bubble);
   border:1px solid var(--border-soft);
   color: var(--fg);
   border-radius: 16px 4px 16px 16px;
