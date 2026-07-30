@@ -31,6 +31,13 @@ import { CreditsPurchaseModal } from './CreditsPurchaseModal';
 import { IMAGE_INPUT_ACCEPT } from '@/lib/photo/heic';
 import { renderMarkdownSafe } from '@/lib/markdown/render';
 import {
+  designChangeCategoryOf,
+  designOpCategories,
+  orderedChangeCategories,
+  readDesignOps,
+  type DesignChangeCategory,
+} from './chat-history';
+import {
   chatI18n,
   type ChatCoordinator,
 } from './editor-coordinator';
@@ -750,18 +757,9 @@ export function ChatPanel({
     // 了的:字体/颜色/页面);④终稿总结回复置于最底。committed 时把新页原地重绘;done 时 pages 已
     // 写回 draft_json。
     //
-    // 写类工具 → 更新类别。本次只做字体/颜色/页面三类;封面、整体设计两类用户明确 defer,不做。
-    // set_text_fonts 与 write_page_html 也纳入(它们过去不在写工具集里,漏了会少报字体/HTML 更新)。
-    type DesignChangeCategory = 'fonts' | 'colors' | 'pages';
-    const DESIGN_CHANGE_CATEGORY: Record<string, DesignChangeCategory> = {
-      set_text_fonts: 'fonts',
-      set_text_colors: 'colors',
-      update_page_texts: 'pages',
-      swap_page_template: 'pages',
-      update_page_images: 'pages',
-      write_page_html: 'pages',
-    };
-    const DESIGN_CHANGE_ORDER: readonly DesignChangeCategory[] = ['fonts', 'colors', 'pages'];
+    // 写类工具 → 更新类别的口径在 ./chat-history(移动端 AiChatSheet 用同一份)。
+    // 那边是唯一真相:两棵壳的历史回放必须折出同样的类别,否则同一段对话在手机和电脑上
+    // 长得不一样 —— 用户在响应式分叉点两侧来回一次就以为历史丢了。这里只留展示用的词。
     const DESIGN_CHANGE_LABEL: Record<DesignChangeCategory, [string, string]> = {
       fonts: ['字体', 'Fonts'],
       colors: ['颜色', 'Colors'],
@@ -770,20 +768,6 @@ export function ChatPanel({
     function designChangeLabel(cat: DesignChangeCategory): string {
       const label = DESIGN_CHANGE_LABEL[cat];
       return aT(label[0], label[1]);
-    }
-    // 类别去重 + 固定顺序(字体 → 颜色 → 页面)。
-    function orderedChangeCategories(cats: Iterable<DesignChangeCategory>): DesignChangeCategory[] {
-      const set = cats instanceof Set ? cats : new Set(cats);
-      return DESIGN_CHANGE_ORDER.filter((c) => set.has(c));
-    }
-    // 一批 toolName → 去重后的类别列表(历史回放用;非写/未知工具跳过)。
-    function designOpCategories(toolNames: Iterable<string>): DesignChangeCategory[] {
-      const set = new Set<DesignChangeCategory>();
-      for (const name of toolNames) {
-        const cat = DESIGN_CHANGE_CATEGORY[name];
-        if (cat) set.add(cat);
-      }
-      return orderedChangeCategories(set);
     }
     // 「更新了什么」的对勾图标(op-ic 内,青紫渐变底)。
     const OP_DONE_SVG =
@@ -805,15 +789,6 @@ export function ChatPanel({
       return card;
     }
     // 从落库的 layout_patch 里解析 design chat 写操作（{ designOps: [{toolName, input}] }）。
-    function readDesignOps(layoutPatch: unknown): Array<{ toolName: string; input: unknown }> {
-      if (!layoutPatch || typeof layoutPatch !== 'object') return [];
-      const ops = (layoutPatch as { designOps?: unknown }).designOps;
-      if (!Array.isArray(ops)) return [];
-      return ops.filter(
-        (op): op is { toolName: string; input: unknown } =>
-          !!op && typeof op === 'object' && typeof (op as { toolName?: unknown }).toolName === 'string',
-      );
-    }
 
     // 底部钉着水母的单条进度面板。整回合只一条笼统「使用工具中」状态条:不逐工具、不报工具名;
     // 工具跑完随水母收掉(settle)。开场白气泡(showOpening)插在进度条上方,顶在整回合最上。
@@ -938,7 +913,7 @@ export function ChatPanel({
           } else if (event.type === 'tool_call' && typeof event.toolName === 'string') {
             // ②进度:整回合一条笼统状态条(不报工具名)。写类工具先记下待确认类别。
             stream.markToolRunning();
-            const cat = DESIGN_CHANGE_CATEGORY[event.toolName];
+            const cat = designChangeCategoryOf(event.toolName);
             if (cat && toolCallId) pendingWriteCat.set(toolCallId, cat);
           } else if (event.type === 'tool_result' && typeof event.toolName === 'string') {
             // 写类工具成功执行(非 error)才算"真的改了",计入更新类别。

@@ -13,7 +13,17 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { renderMarkdownSafe } from '@/lib/markdown/render';
+
+import type { DesignChangeCategory } from '../../chat-history';
 import type { ChatMessage, ChatStatus } from '../use-design-chat';
+
+/** 「已更新」条的类别标签。与桌面 DESIGN_CHANGE_LABEL 同一批词。 */
+const CHANGE_LABEL: Record<DesignChangeCategory, [string, string]> = {
+  fonts: ['字体', 'Fonts'],
+  colors: ['颜色', 'Colors'],
+  pages: ['页面', 'Pages'],
+};
 
 export type AiChatSheetProps = {
   open: boolean;
@@ -150,8 +160,31 @@ export function AiChatSheet({ open, zh, messages, status, onSend, onClose }: AiC
             </div>
           )}
           {messages.map((m) => (
-            <div key={m.id} className="mai-msg" data-role={m.role}>
-              {m.text}
+            <div key={m.id}>
+              {/* 「已更新」条:与桌面回放同序,贴在这条 AI 回复之前。 */}
+              {m.changes.length > 0 && (
+                <div className="mai-msg-changes">
+                  <span className="mai-changes-kicker">{zh ? '已更新' : 'Updated'}</span>
+                  {m.changes.map((c) => (
+                    <span key={c} className="mai-changes-tag">
+                      {zh ? CHANGE_LABEL[c][0] : CHANGE_LABEL[c][1]}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {/* AI 文本走 markdown(renderMarkdownSafe 已消毒,与桌面同一个函数);
+                  用户气泡保持纯文本 —— 用户输入永远不进 innerHTML。 */}
+              {m.role === 'assistant' ? (
+                <div
+                  className="mai-msg"
+                  data-role={m.role}
+                  dangerouslySetInnerHTML={{ __html: renderMarkdownSafe(m.text) }}
+                />
+              ) : (
+                <div className="mai-msg" data-role={m.role}>
+                  {m.text}
+                </div>
+              )}
             </div>
           ))}
           {status.kind === 'busy' && (

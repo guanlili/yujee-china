@@ -892,6 +892,44 @@
   color: var(--surface);
 }
 
+/* AI 回复走 markdown(renderMarkdownSafe,与桌面同一个函数),已经是真的块级元素了 ——
+   再叠 pre-wrap 会把 <p> 之间的换行又算一遍,段落中间多出一整行空白。 */
+.mai-msg[data-role='assistant'] { white-space: normal; }
+.mai-msg[data-role='assistant'] > :first-child { margin-top: 0; }
+.mai-msg[data-role='assistant'] > :last-child { margin-bottom: 0; }
+.mai-msg[data-role='assistant'] p { margin: 0 0 8px; }
+.mai-msg[data-role='assistant'] ul,
+.mai-msg[data-role='assistant'] ol { margin: 0 0 8px; padding-left: 20px; }
+.mai-msg[data-role='assistant'] li { margin-bottom: 3px; }
+.mai-msg[data-role='assistant'] strong { font-weight: 600; }
+.mai-msg[data-role='assistant'] a { color: inherit; text-decoration: underline; }
+.mai-msg[data-role='assistant'] code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface);
+  font-size: 0.92em;
+}
+
+/* 「已更新」条:这一轮改了哪几类。贴在 AI 回复之前,与桌面 op-card-change 同序同词。
+   它不是消息,不占气泡形 —— 与「正在…」一样是回合的旁注。 */
+.mai-msg-changes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding-left: 2px;
+}
+.mai-changes-kicker { font-size: 12px; color: var(--muted); }
+.mai-changes-tag {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--grad-green), var(--grad-purple));
+  color: var(--surface);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 /* 「正在…」:小水母 + 一句话。它不是消息,是状态,所以底色更淡、不占气泡形 */
 .mai-msg-status {
   display: flex;

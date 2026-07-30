@@ -9,6 +9,9 @@ import { test } from 'node:test';
 // ChatPanel.tsx 当字符串,对四段的载重不变量下断言。
 const here = dirname(fileURLToPath(import.meta.url));
 const chatSrc = readFileSync(join(here, 'ChatPanel.tsx'), 'utf8');
+// 写工具→类别的映射 2026-07 搬进了 chat-history.ts:移动端 AiChatSheet 要用同一份口径,
+// 留在 ChatPanel 里就会变成两份真相(那正是「手机上历史样式全丢」那个 bug 的成因)。
+const historySrc = readFileSync(join(here, 'chat-history.ts'), 'utf8');
 const routeSrc = readFileSync(
   join(here, '..', '..', '..', 'app', 'api', 'v3', 'albums', '[uuid]', 'design-chat', 'route.ts'),
   'utf8',
@@ -47,7 +50,7 @@ test('更新条:彩色摘要按类别去重,字体/颜色/页面三类,含 set_t
     'update_page_images',
     'write_page_html',
   ]) {
-    assert.ok(chatSrc.includes(tool), `类别映射应含 ${tool}`);
+    assert.ok(historySrc.includes(tool), `类别映射应含 ${tool}`);
   }
   // 三类中文标签。
   assert.match(chatSrc, /字体/);
@@ -60,7 +63,7 @@ test('更新条:彩色摘要按类别去重,字体/颜色/页面三类,含 set_t
   // 彩色更新条贴进 host,位于终稿回复之前。
   assert.match(chatSrc, /stream\.host\.appendChild\(buildDesignChangeCard\(/);
   // 封面/整体设计两类本次 defer:类别映射里不得出现封面/主题类工具。
-  const catBlock = /const DESIGN_CHANGE_CATEGORY[\s\S]*?\n {4}\};/.exec(chatSrc)?.[0] ?? '';
+  const catBlock = /const DESIGN_CHANGE_CATEGORY[\s\S]*?\n\};/.exec(historySrc)?.[0] ?? '';
   assert.ok(catBlock.length > 0, 'DESIGN_CHANGE_CATEGORY 映射块应存在');
   assert.doesNotMatch(catBlock, /cover|theme|封面|set_cover|apply_theme/i);
 });
