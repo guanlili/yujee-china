@@ -101,6 +101,41 @@ export function browseScreen(
   return { spreadIndices: group, onlyPage: null };
 }
 
+/** 缩略条的一格 = 画布的一屏。 */
+export type BrowseUnit = {
+  /** 这一格里的页(密度 1 = 一页;2 = 一个开页;4 = 两个开页)。 */
+  pageIndices: number[];
+  /** 点这一格时把游标设成它 —— 等于 screenStartOfPage(本格任一页)。 */
+  startPage: number;
+};
+
+/**
+ * 把全书切成缩略条的格子。
+ *
+ * 为什么必须和画布同一套分屏:缩略条原本一页一格,而点击走 screenStartOfPage 会把游标
+ * 吸到所在屏的起点。密度 2 下每个开页的**右页**于是成了死格 —— 点它游标回到左页,高亮
+ * 不落在你点的那一格,再点还是没反应。用户看到的就是「UI 上一页一页换,实际只能两页一跳」。
+ *
+ * 治法不是改吸附(那会让画布和缩略条各有一套单位),是让缩略条按屏出格:格子与屏一一对应,
+ * 死格在构造上就不可能存在。
+ */
+export function browseUnits(
+  spreads: Spread[],
+  pages: EditorPage[],
+  density: Density,
+): BrowseUnit[] {
+  if (spreads.length === 0) return [];
+  if (density === 1) {
+    // 密度 1 本来就是单页单位,逐页出格是对的。
+    const last = lastPageIndex(spreads);
+    return Array.from({ length: last + 1 }, (_, i) => ({ pageIndices: [i], startPage: i }));
+  }
+  return spreadScreens(spreads, pages, density).map((group) => ({
+    pageIndices: group.flatMap((si) => spreadPageIndices(spreads[si])),
+    startPage: firstPageOfSpread(spreads, group[0]),
+  }));
+}
+
 /** 左右滑/点翻页:从当前屏往 dir 方向翻一屏,返回新的页游标。到头到尾夹住。 */
 export function stepScreen(
   spreads: Spread[],

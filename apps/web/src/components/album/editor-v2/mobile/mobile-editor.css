@@ -424,10 +424,12 @@
   display: none;
 }
 
+/* 一格 = 一屏。data-span 是这一屏几页:封面/封底 1,内页开页 2,密度 4 时 4。
+   宽度按页数长,格与格之间的间距由 track 的 gap 管 —— 这样一眼能看出哪两页是一个开页。 */
 .mobile-editor .mstrip-cell {
-  /* 尺寸与 MobileStrip 的 STRIP_CELL_W/H 常量一致(794:1123) */
+  /* 单页尺寸与 MobileStrip 的 STRIP_CELL_W/H 常量一致(794:1123) */
   flex: none;
-  width: 40px;
+  display: flex;
   height: 57px;
   padding: 0;
   overflow: hidden;
@@ -437,12 +439,19 @@
   transition: transform var(--motion-fast) var(--ease);
 }
 
-/* 真实版面塞进格子:内容由 page-face 渲成缩略档,这里只负责裁切 */
+/* 真实版面塞进格子:内容由 page-face 渲成缩略档,这里只负责裁切。
+   一格里并排几页就有几个 face,各占 40px —— 不用百分比,免得开页和独页宽窄不一。 */
 .mobile-editor .mstrip-face {
   display: block;
-  width: 100%;
+  flex: none;
+  width: 40px;
   height: 100%;
   pointer-events: none;
+}
+
+/* 开页内两页之间一条细缝,读作书脊;没有它两页会糊成一张宽图。 */
+.mobile-editor .mstrip-face + .mstrip-face {
+  border-left: 1px solid var(--border);
 }
 
 .mobile-editor .mstrip-cell[data-current='1'] {

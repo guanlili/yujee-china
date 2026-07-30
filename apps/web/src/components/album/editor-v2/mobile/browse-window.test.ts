@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { browseScreen, stepScreen, screenStartOfPage } from './browse-window';
+import { browseScreen, browseUnits, stepScreen, screenStartOfPage } from './browse-window';
 import { buildSpreads } from '../../spreads';
 import type { EditorPage } from '../../types';
 
@@ -118,4 +118,59 @@ test('screenStartOfPage:跳到某页时,游标对齐到该页所在屏的起点'
   assert.equal(screenStartOfPage(spreads, b, 4, 1), 4);
   // 密度 4:开页1+2 同屏(封面已独占),页 4 在开页2 → 该屏起点是页 1
   assert.equal(screenStartOfPage(spreads, b, 4, 4), 1);
+});
+
+/* ── 缩略条的单位必须和画布的单位一致(用户反馈:「UI 上一页一页换,实际只能两页一跳」)──
+   缩略条原本一页一格,但 onJump 走 screenStartOfPage 会把游标吸到所在屏的起点。密度 2 下
+   每个开页的**右页**因此成了死格:点它 → 游标回到左页 → 高亮不落在你点的那一格,再点还是
+   没反应。8 页的书有 3 个死格。根治办法不是改吸附,是让缩略条按【屏】出格。 */
+
+test('缩略条按屏出格:密度 2 下封面独占一格,内页两页一格', () => {
+  const b = book();
+  const units = browseUnits(buildSpreads(b), b, 2);
+  assert.deepEqual(
+    units.map((u) => u.pageIndices),
+    [[0], [1, 2], [3, 4], [5, 6], [7]],
+    '封面/封底独页各占一格,中间三个开页各两页一格',
+  );
+});
+
+test('没有死格:每一格里的任意一页,吸附后都落回这一格的起点', () => {
+  const b = book();
+  const spreads = buildSpreads(b);
+  for (const density of [1, 2, 4] as const) {
+    const units = browseUnits(spreads, b, density);
+    for (const u of units) {
+      for (const p of u.pageIndices) {
+        assert.equal(
+          screenStartOfPage(spreads, b, p, density),
+          u.startPage,
+          `密度 ${density}:第 ${p} 页吸附后应落在本格起点 ${u.startPage}`,
+        );
+      }
+    }
+  }
+});
+
+test('每一格的起点互不相同 —— 两格指向同一屏就等于其中一格永远点不亮', () => {
+  const b = book();
+  for (const density of [1, 2, 4] as const) {
+    const starts = browseUnits(buildSpreads(b), b, density).map((u) => u.startPage);
+    assert.equal(new Set(starts).size, starts.length, `密度 ${density} 出现了重复起点`);
+  }
+});
+
+test('全书每一页恰好属于一格,不重不漏', () => {
+  const b = book();
+  for (const density of [1, 2, 4] as const) {
+    const all = browseUnits(buildSpreads(b), b, density).flatMap((u) => u.pageIndices);
+    assert.deepEqual([...all].sort((x, y) => x - y), b.map((_, i) => i), `密度 ${density} 页覆盖不全`);
+    assert.equal(new Set(all).size, all.length, `密度 ${density} 有页出现在两格里`);
+  }
+});
+
+test('密度 1:一页一格(此时逐页换页是对的,不该被并成开页)', () => {
+  const b = book();
+  const units = browseUnits(buildSpreads(b), b, 1);
+  assert.deepEqual(units.map((u) => u.pageIndices), b.map((_, i) => [i]));
 });

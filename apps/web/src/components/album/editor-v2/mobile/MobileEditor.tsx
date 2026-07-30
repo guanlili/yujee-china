@@ -27,7 +27,7 @@ import { pageFaceHTML, type PageFaceCtx } from '../page-face';
 import { pageFolioInfos } from '../../page-html-dom';
 import type { ResolveImage } from '../../adapt-layout';
 import { cycleDensity, type Density } from '../mobile-canvas';
-import { browseScreen, stepScreen, screenStartOfPage, type BrowseScreen } from './browse-window';
+import { browseScreen, browseUnits, stepScreen, screenStartOfPage, type BrowseScreen } from './browse-window';
 import { fitBox, spreadAspect } from './fit-box';
 import {
   FLIP_EASE,
@@ -178,6 +178,11 @@ export function MobileEditor({
   const screen = useMemo(
     () => browseScreen(spreads, pages, startPage, density),
     [spreads, pages, startPage, density],
+  );
+  /* 缩略条的格子。**不依赖 startPage** —— 翻页只挪高亮,不该让整条重新分组。 */
+  const stripUnits = useMemo(
+    () => browseUnits(spreads, pages, density),
+    [spreads, pages, density],
   );
 
   /** 一个开页在本屏里实际摆出来的「面」。
@@ -534,12 +539,14 @@ export function MobileEditor({
 
       <MobileStrip
         pages={pages}
+        units={stripUnits}
         zh={zh}
         // 翻纸一开始就把预览栏的高亮挪到目标页 —— 导航状态跟着「要去哪」走,
         // 不等 900ms 动画结束(同桌面 goToSpread 里先 syncSelectionToSpread)。
         currentPage={anim ? anim.toStart : startPage}
         thumbCtxOf={thumbCtxOf}
-        onJump={(pi) => setStartPage(screenStartOfPage(spreads, pages, pi, density))}
+        // 格子起点已经是屏起点,不必再过 screenStartOfPage 吸附一次。
+        onJump={setStartPage}
       />
     </div>
   );

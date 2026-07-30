@@ -228,12 +228,16 @@ test('底部翻页条 + 书浮在画板上:两样都不许去掉', () => {
   );
 });
 
-test('书册预览栏:整本书每页一格,当前页描框', () => {
+test('书册预览栏:一格 = 一屏(不是一页),当前格描框', () => {
+  // 早先是一页一格,但点击走 screenStartOfPage 会吸到屏起点 —— 密度 2 下每个开页的
+  // 右页成了死格(点了弹回左页)。格子改成按屏出:封面独占 + 三个开页 + 封底 = 5 格。
   const html = render();
   const cells = html.match(/class="mstrip-cell"/g) ?? [];
-  assert.equal(cells.length, BOOK.length, '每页一格');
-  assert.match(html, /data-current="1"/, '当前页描框');
+  assert.equal(cells.length, 5, '8 页的书在密度 2 下是 5 屏');
+  assert.ok(cells.length < BOOK.length, '格子数必须少于页数,否则又退回逐页出格');
+  assert.match(html, /data-current="1"/, '当前格描框');
   assert.match(html, /data-slot="cover"/, '封面在条上可辨');
+  assert.match(html, /data-span="2"/, '内页开页一格两页');
 });
 
 test('空书不炸:不渲染任何开页,预览栏为空', () => {
@@ -274,4 +278,33 @@ test('架构守卫:移动端样式里没有媒体查询(这棵树只在手机上
     /@media[^{]*max-width/,
     '有媒体查询就说明又在拿一套样式掰两种形态 —— 那正是要拆掉的东西',
   );
+});
+
+/* ── 缩略条按屏出格(用户反馈:「UI 上一页一页换,实际只能两页一跳」)── */
+
+test('MobileStrip 消费 browseUnits,不再自己按 pages 逐页出格', () => {
+  const src = readFileSync(join(here, 'MobileStrip.tsx'), 'utf8');
+  assert.match(src, /BrowseUnit/, '缩略条的格子单位必须来自 browse-window,不自造');
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.match(code, /units\.map\(/, '格子由 units 出');
+  assert.doesNotMatch(
+    code,
+    /\{pages\.map\(/,
+    '逐页出格正是死格的来源:密度 2 下每个开页的右页点了会弹回左页',
+  );
+});
+
+test('MobileEditor 把 units 传给缩略条,且 onJump 直接用格子的 startPage', () => {
+  const src = readFileSync(join(here, 'MobileEditor.tsx'), 'utf8');
+  assert.match(src, /browseUnits\(/, 'MobileEditor 要算出格子');
+  assert.match(src, /units=\{/, '并传给 MobileStrip');
+});
+
+test('缩略条格子宽度跟页数走,开页内有书脊细缝', () => {
+  const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const at = css.indexOf('.mobile-editor .mstrip-cell {');
+  const rule = css.slice(at, css.indexOf('}', at));
+  assert.match(rule, /display:\s*flex/, '一格里要能并排放多页');
+  assert.doesNotMatch(rule, /width:\s*40px/, '格宽不再是死的单页宽');
+  assert.match(css, /\.mstrip-face \+ \.mstrip-face \{[^}]*border-left/, '开页两页之间要有书脊缝');
 });
