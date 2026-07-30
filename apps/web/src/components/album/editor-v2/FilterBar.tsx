@@ -1,5 +1,19 @@
 'use client';
 
+/* 风格(滤镜)面板。桌面与移动共用这一个组件 —— 桌面是钉在画布底部的短浮层,移动是
+   bottom-sheet(见 mobile/modals/FilterSheet),骨架同一套:范围二选一 → 横滑一排卡片
+   → 强度(按需)。
+
+   ── 这次收敛掉了什么 ──
+   改之前有三个控件在回答同一个问题「这个风格作用于谁」:标题右边的 scope 标签、scope
+   二选一胶囊、还有一条「跟随全书风格」下划线链接。而且那条链接掩盖了一个真实的语义差:
+     · overrides[photoId] 不存在   = 跟随全书
+     · overrides[photoId] === null = 这张明确不要滤镜(原片)
+   两个不同状态,一个做成下划线链接、一个做成卡片,看起来毫不相干。
+
+   现在「跟随全书」是卡片网格里的第一张,与「原片」「27 个滤镜」并列 —— 它们本来就是
+   同一维度的选择:这张图用什么。三个控件塌成一个。 */
+
 import { useEffect, useRef, useState } from 'react';
 import {
   LUT_DEFINITIONS,
@@ -20,6 +34,16 @@ import {
 } from './filter-controller';
 
 type FilterScope = 'book' | 'photo';
+
+/**
+ * 缩略图一律按满强度生成。
+ *
+ * 缩略图要回答的是「这个滤镜是什么调子」,不是「70% 强度下什么样」。早先跟着当前 strength
+ * 生成,于是 strength 进了 effect 依赖 —— 滑块每动一格(step=5)就销毁 28 个 objectURL、
+ * 把 27 个 LUT 重新过一遍 WebGL,整排卡片还会闪回骨架态。强度的实时反馈本来就在画布上
+ * (reloadPhotoFilter),缩略图不必也不该跟着抖。
+ */
+const PREVIEW_STRENGTH = 100;
 
 export function FilterBar({
   locale,
@@ -47,6 +71,9 @@ export function FilterBar({
   const zh = locale === 'zh';
   const current = currentScopeFilter(state, scope, photoId);
   const strength = current?.strength ?? 100;
+  /** 这张图正在跟随全书 = 没有自己的 override(与 override === null 是两回事)。 */
+  const following =
+    scope === 'photo' && photoId != null && state?.overrides?.[photoId] === undefined;
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [previewState, setPreviewState] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [previewRetry, setPreviewRetry] = useState(0);
@@ -72,7 +99,7 @@ export function FilterBar({
       // stacking the next LUT on top of the currently selected one.
       const result = await runFilterPreviewGeneration({
         photoId,
-        strength,
+        strength: PREVIEW_STRENGTH,
         generation: mine,
         owner,
         getBase: (id) => photoStore.getTierBlob(id, 'thumb', null),
@@ -92,13 +119,15 @@ export function FilterBar({
       owner.invalidate(mine);
       generationRef.current += 1;
     };
-  }, [photoId, previewRetry, strength]);
+  }, [photoId, previewRetry]);
 
   const apply = (ref: PhotoFilterRef | null) => {
     if (scope === 'photo' && photoId) onChange(setPhotoOverride(state, photoId, ref));
     else onChange(setBookFilter(state, ref));
   };
   const select = (lutId: LutId) => apply({ lutId, strength: quantizeStrength(strength) });
+  /** 全书当前风格 —— 「跟随全书」那张卡的缩略图用它,让用户看到跟随的结果长什么样。 */
+  const bookLutId = state?.default?.lutId ?? null;
 
   return (
     <aside
@@ -107,99 +136,118 @@ export function FilterBar({
       aria-label={zh ? '照片风格' : 'Photo style'}
     >
       <div className="filter-bar-head">
-        <div>
-          <strong>{zh ? '风格' : 'Style'}</strong>
-          <span>{scope === 'book' ? (zh ? '全书' : 'Whole book') : (zh ? '当前照片' : 'Current photo')}</span>
-        </div>
-        <button type="button" onClick={onClose} aria-label={zh ? '关闭风格面板' : 'Close style panel'}>×</button>
+        <strong>{zh ? '风格' : 'Style'}</strong>
+        {/* scope 只在一个地方表达。桌面给了切换器 → 切换器自己就说明了当前在哪一档;
+            移动端不给(scope 由入口决定:选中照片 / 更多→全书风格)→ 退回静态标签。
+            两者互斥 —— 早先是「标签 + 切换器 + 跟随链接」三份并存。 */}
+        {onScopeChange ? (
+          <div className="filter-scope-switch" role="group" aria-label={zh ? '风格应用范围' : 'Style scope'}>
+            <button
+              type="button"
+              className="filter-scope-option"
+              aria-pressed={scope === 'photo'}
+              onClick={() => onScopeChange('photo')}
+            >
+              {zh ? '这张照片' : 'This photo'}
+            </button>
+            <button
+              type="button"
+              className="filter-scope-option"
+              aria-pressed={scope === 'book'}
+              onClick={() => onScopeChange('book')}
+            >
+              {zh ? '整本书' : 'Whole book'}
+            </button>
+          </div>
+        ) : (
+          <span className="filter-scope-label">
+            {scope === 'book' ? (zh ? '整本书' : 'Whole book') : (zh ? '这张照片' : 'This photo')}
+          </span>
+        )}
+        <button type="button" className="filter-bar-close" onClick={onClose} aria-label={zh ? '关闭风格面板' : 'Close style panel'}>×</button>
       </div>
 
-      {onScopeChange && (
-        <div className="filter-scope-switch" role="group" aria-label={zh ? '风格应用范围' : 'Style scope'}>
-          <button
-            type="button"
-            className="filter-scope-option"
-            aria-pressed={scope === 'photo'}
-            onClick={() => onScopeChange('photo')}
-          >
-            {zh ? '当前照片' : 'Current photo'}
-          </button>
-          <button
-            type="button"
-            className="filter-scope-option"
-            aria-pressed={scope === 'book'}
-            onClick={() => onScopeChange('book')}
-          >
-            {zh ? '全书' : 'Whole book'}
-          </button>
-        </div>
-      )}
-
-      {scope === 'photo' && (
-        <button
-          type="button"
-          className="filter-follow-book"
-          onClick={() => photoId && onChange(clearPhotoOverride(state, photoId))}
-        >
-          {zh ? '跟随全书风格' : 'Follow book style'}
-        </button>
-      )}
-
-      <label className="filter-strength">
-        <span>{zh ? '强度' : 'Strength'} {Math.round(strength)}%</span>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          step="5"
-          value={strength}
-          disabled={!current}
-          aria-label={zh ? '滤镜强度' : 'Filter strength'}
-          onChange={(event) => current && apply({
-            ...current,
-            strength: Number(event.currentTarget.value),
-          })}
-        />
-      </label>
-
-      {previewState === 'loading' && <p className="filter-state" role="status">{zh ? '正在生成预览…' : 'Generating previews…'}</p>}
-      {previewState === 'missing' && <p className="filter-state filter-error" role="status">{zh ? '这张照片的原图不在本机' : 'This photo is unavailable on this device'}</p>}
-      {previewState === 'error' && (
+      {previewState === 'missing' ? (
+        <p className="filter-state" role="status">
+          {zh ? '这张照片的原图不在本机,换个设备或先备份照片' : 'The original is not on this device'}
+        </p>
+      ) : previewState === 'error' ? (
         <p className="filter-state filter-error" role="alert">
           {zh ? '预览生成失败。' : 'Preview generation failed.'}
           <button type="button" onClick={() => setPreviewRetry((value) => value + 1)}>
             {zh ? '重试' : 'Retry'}
           </button>
         </p>
-      )}
-
-      <div className="filter-grid" aria-busy={previewState === 'loading'}>
-        <button
-          type="button"
-          className="filter-card"
-          aria-pressed={current === null}
-          onClick={() => apply(null)}
+      ) : (
+        <div
+          className="filter-grid"
+          role="group"
+          aria-label={zh ? '选择风格' : 'Choose a style'}
+          aria-busy={previewState === 'loading'}
         >
-          <div className="filter-card-preview">
-            {previews.original && <img src={previews.original} alt="" />}
-          </div>
-          <span>{zh ? '原片' : 'Original'}</span>
-        </button>
-        {LUT_DEFINITIONS.map((definition) => (
+          {/* 跟随全书:与「原片」并列的一个选择,不是附属操作。book scope 下无意义。 */}
+          {scope === 'photo' && photoId && (
+            <button
+              type="button"
+              className="filter-card filter-card-follow"
+              aria-pressed={following}
+              onClick={() => onChange(clearPhotoOverride(state, photoId))}
+            >
+              <div className="filter-card-preview">
+                {(bookLutId ? previews[bookLutId] : previews.original) && (
+                  <img src={bookLutId ? previews[bookLutId] : previews.original} alt="" />
+                )}
+              </div>
+              <span>{zh ? '跟随全书' : 'Follow book'}</span>
+            </button>
+          )}
           <button
             type="button"
             className="filter-card"
-            key={definition.id}
-            aria-pressed={current?.lutId === definition.id}
-            onClick={() => select(definition.id)}
+            aria-pressed={!following && current === null}
+            onClick={() => apply(null)}
           >
             <div className="filter-card-preview">
-              {previews[definition.id] && <img src={previews[definition.id]} alt="" />}
+              {previews.original && <img src={previews.original} alt="" />}
             </div>
-            <span>{zh ? definition.nameZh : definition.id}</span>
+            <span>{zh ? '原片' : 'Original'}</span>
           </button>
-        ))}
-      </div>
+          {LUT_DEFINITIONS.map((definition) => (
+            <button
+              type="button"
+              className="filter-card"
+              key={definition.id}
+              aria-pressed={!following && current?.lutId === definition.id}
+              onClick={() => select(definition.id)}
+            >
+              <div className="filter-card-preview">
+                {previews[definition.id] && <img src={previews[definition.id]} alt="" />}
+              </div>
+              <span>{zh ? definition.nameZh : definition.id}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 强度只在「当前这一层真的有滤镜」时存在。原片 / 跟随全书 下没有强度可调,
+          早先用 disabled 灰着占位 —— 一个永远点不动的控件比没有更让人困惑。 */}
+      {current && !following && (
+        <label className="filter-strength">
+          <span>{zh ? '强度' : 'Strength'} {Math.round(strength)}%</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="5"
+            value={strength}
+            aria-label={zh ? '滤镜强度' : 'Filter strength'}
+            onChange={(event) => apply({
+              ...current,
+              strength: Number(event.currentTarget.value),
+            })}
+          />
+        </label>
+      )}
 
       {persistError && (
         <p className="filter-state filter-error" role="alert">

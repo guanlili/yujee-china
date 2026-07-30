@@ -21,7 +21,8 @@ test('FilterSheet registers through ModalHost with accessible shared FilterBar c
     locale: 'en',
     state: {
       default: { lutId: 'cloudy-cool', strength: 80 },
-      overrides: { selected: null },
+      // 给这张一个真滤镜:收敛后「明确不要滤镜」状态下强度行不再挂载(无强度可调)。
+      overrides: { selected: { lutId: 'retro-film', strength: 60 } },
     },
     scope: 'photo',
     photoId: 'selected',
@@ -41,8 +42,10 @@ test('FilterSheet registers through ModalHost with accessible shared FilterBar c
   assert.match(html, /mobile-bottom-sheet-overlay/);
   assert.match(html, /mobile-bottom-sheet/);
   assert.match(html, /mobile-sheet-grab/);
-  assert.match(html, /Current photo/);
-  assert.match(html, /Follow book style/);
+  assert.match(html, /filter-scope-label/); // 移动端 scope 由入口决定,标题给静态标签
+  assert.match(html, /This photo/);
+  assert.match(html, /filter-card-follow/); // 「跟随全书」从下划线链接变成网格第一张卡
+  assert.match(html, /Follow book/);
   assert.match(html, /aria-label="Filter strength"/);
   assert.match(html, /Style failed to save/);
 });
@@ -79,7 +82,7 @@ test('FilterBar can switch photo/book scope and never blocks selection on previe
   }));
 
   assert.match(html, /class="filter-scope-switch"/);
-  assert.match(html, /class="filter-scope-option"[^>]*aria-pressed="true"[^>]*>Current photo/);
+  assert.match(html, /class="filter-scope-option"[^>]*aria-pressed="true"[^>]*>This photo/);
   assert.match(html, /class="filter-scope-option"[^>]*aria-pressed="false"[^>]*>Whole book/);
   const filterButtons = html.match(/<button[^>]*class="filter-card"[^>]*>/g) ?? [];
   assert.equal(filterButtons.length, 27);

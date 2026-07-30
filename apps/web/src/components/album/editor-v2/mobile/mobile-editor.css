@@ -534,6 +534,14 @@
   transform: none;
 }
 
+/* 风格抽屉跟内容走,不占 2/3 屏。
+   27 张卡收成横滑一排后它只有 ~260px 高 —— 调滤镜时看得见图才调得准,把屏幕让出来。
+   垫底背景抽屉仍是共享的 66vh(色板 + 预设行 + 上传,内容本来就多)。 */
+.editor-port.mobile-modal-host .modal-card.mobile-bottom-sheet.mobile-filter-sheet {
+  height: auto;
+  max-height: min(70vh, 420px);
+}
+
 .mobile-sheet-grab {
   flex: 0 0 auto;
   display: flex;

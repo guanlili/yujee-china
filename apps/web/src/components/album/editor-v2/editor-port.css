@@ -2446,39 +2446,76 @@
     font-size:12px; color:var(--meta); font-variant-numeric:tabular-nums;
   }
 }
+/* 风格面板:桌面钉在**画布区域**底部居中的短浮层。
+   不用 top:68px 右上角那种高浮层了 —— 27 张卡横滑成一排后面板只有 ~260px 高,
+   放底部离选中的图更近、也不再遮住画布。宽度不铺满视口:左侧对话面板要留着。 */
 .editor-port .filter-bar{
-  position:fixed; z-index:90; top:68px; right:18px; width:min(560px,calc(100vw - 36px));
-  max-height:calc(100vh - 86px); overflow:auto; padding:16px; border:1px solid var(--border);
+  position:fixed; z-index:90; bottom:18px;
+  /* 让开左侧那条 360px 的对话栏(.pane-chat-col md:w-[360px]),在**画布区域**内居中 ——
+     不是视口居中。left+right+margin-inline:auto 就够,不必像 canvasLeftBound() 那样量 DOM。
+     对话收起(.chat-collapsed 把它压成 0 宽)后画布铺满,左边界跟着回到 18px。 */
+  left:378px; right:18px; margin-inline:auto; width:auto; max-width:720px;
+  padding:14px 4px 14px 16px; border:1px solid var(--border);
   border-radius:var(--radius-lg); background:var(--surface); box-shadow:0 18px 60px rgba(0,0,0,.16);
 }
-.editor-port .filter-bar-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
-.editor-port .filter-bar-head>div{ display:flex; align-items:baseline; gap:10px; }
-.editor-port .filter-bar-head strong{ font-size:16px; }
-.editor-port .filter-bar-head span,.editor-port .filter-state{ color:var(--muted); font-size:12px; }
-.editor-port .filter-bar-head button{ width:30px; height:30px; border-radius:999px; font-size:20px; }
+.editor-port.chat-collapsed .filter-bar{ left:18px; }
+@media (max-width:767px){
+  /* 手机上这块由 mobile ModalHost 的 bottom-sheet 接管(见 mobile-editor.css),
+     这里只负责把桌面那套 fixed 定位让开。 */
+  .editor-port .filter-bar{ left:12px; right:12px; bottom:12px; }
+}
+.editor-port .filter-bar-head{ display:flex; align-items:center; gap:12px; padding-right:12px; }
+.editor-port .filter-bar-head strong{ flex:0 0 auto; font-size:15px; }
+.editor-port .filter-state{ color:var(--muted); font-size:12px; }
+/* 没有切换器时(移动端)的静态 scope 标签 —— 与切换器互斥,不会两份并存。 */
+.editor-port .filter-scope-label{
+  padding:4px 12px; border-radius:var(--radius-pill); background:var(--bg);
+  color:var(--muted); font-size:12px; font-weight:600;
+}
+.editor-port .filter-bar-close{
+  flex:0 0 auto; margin-left:auto; width:30px; height:30px;
+  border-radius:999px; font-size:20px; color:var(--muted);
+}
+.editor-port .filter-bar-close:hover{ background:var(--bg); color:var(--fg); }
 .editor-port .filter-scope-switch{
-  display:grid; grid-template-columns:1fr 1fr; gap:3px; margin-top:12px; padding:3px;
+  display:flex; gap:3px; padding:3px;
   border-radius:var(--radius-pill); background:var(--bg);
 }
 .editor-port .filter-scope-option{
-  min-height:32px; padding:5px 12px; border:none; border-radius:var(--radius-pill);
+  min-height:30px; padding:4px 14px; border:none; border-radius:var(--radius-pill);
   background:transparent; color:var(--muted); font-size:12px; font-weight:600; cursor:pointer;
 }
 .editor-port .filter-scope-option[aria-pressed="true"]{
   background:var(--surface); color:var(--fg); box-shadow:var(--shadow-card);
 }
-.editor-port .filter-follow-book{ margin-top:10px; color:var(--accent); font-size:12px; text-decoration:underline; }
-.editor-port .filter-strength{ display:flex; align-items:center; gap:12px; margin:14px 0; font-size:12px; }
-.editor-port .filter-strength span{ min-width:82px; }
-.editor-port .filter-strength input{ flex:1; accent-color:var(--accent); }
-.editor-port .filter-grid{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; }
-.editor-port .filter-card{ overflow:hidden; padding:0 0 7px; border:1px solid var(--border); border-radius:var(--radius-md); text-align:left; font-size:11px; }
+/* 横滑一排。滤镜是「滑着试」的东西,不是一面墙 —— 面板高度因此从吃满屏降到一条。 */
+.editor-port .filter-grid{
+  display:flex; gap:9px; margin:12px 0 0; padding:2px 16px 8px 0;
+  overflow-x:auto; overflow-y:hidden;
+  scroll-snap-type:x proximity; scrollbar-width:thin;
+  overscroll-behavior-x:contain;
+}
+.editor-port .filter-card{
+  flex:0 0 auto; width:84px; overflow:hidden; padding:0 0 7px; scroll-snap-align:start;
+  border:1px solid var(--border); border-radius:var(--radius-md); text-align:left; font-size:11px;
+}
 .editor-port .filter-card[aria-pressed="true"]{ border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 24%,transparent); }
 .editor-port .filter-card-preview{ width:100%; aspect-ratio:4/3; margin-bottom:6px; background:var(--bg); }
+/* 生成中:卡片自身的骨架态。早先是面板里一行「正在生成预览…」常驻文案。 */
+.editor-port .filter-grid[aria-busy="true"] .filter-card-preview{
+  background:linear-gradient(90deg,var(--bg) 25%,var(--surface) 37%,var(--bg) 63%);
+  background-size:400% 100%; animation:filter-skeleton 1.3s ease-in-out infinite;
+}
+@keyframes filter-skeleton{ 0%{ background-position:100% 0; } 100%{ background-position:0 0; } }
 .editor-port .filter-card img{ width:100%; height:100%; object-fit:cover; display:block; }
 .editor-port .filter-card span{ display:block; overflow:hidden; padding:0 7px; white-space:nowrap; text-overflow:ellipsis; }
+/* 「跟随全书」与「原片」并列,但用虚线边框点出它是「继承」而不是「指定」。 */
+.editor-port .filter-card-follow{ border-style:dashed; }
+.editor-port .filter-card-follow[aria-pressed="true"]{ border-style:solid; }
+.editor-port .filter-strength{ display:flex; align-items:center; gap:12px; margin:4px 16px 0 0; font-size:12px; }
+.editor-port .filter-strength span{ min-width:82px; }
+.editor-port .filter-strength input{ flex:1; accent-color:var(--accent); }
 .editor-port .filter-error{ color:#b42318; }
 .editor-port .filter-error button{ margin-left:6px; text-decoration:underline; }
 .editor-port .filter-save-toast{ position:fixed; z-index:95; right:18px; bottom:18px; padding:10px 14px; border-radius:999px; background:#b42318; color:#fff; font-size:12px; }
 .editor-port .img-edit-style{ color:var(--accent); }
-@media (max-width:767px){ .editor-port .filter-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
