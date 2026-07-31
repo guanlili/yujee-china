@@ -42,7 +42,9 @@ test('FilterSheet registers through ModalHost with accessible shared FilterBar c
   assert.match(html, /mobile-bottom-sheet-overlay/);
   assert.match(html, /mobile-bottom-sheet/);
   assert.match(html, /mobile-sheet-grab/);
-  assert.match(html, /filter-scope-label/); // 移动端 scope 由入口决定,标题给静态标签
+  // 这一例没传 onScopeChange = 「更多 → 全书风格」那条入口的形态:只给静态标签。
+  // 从选中的照片进来时是**有**切换器的(可以改成整本书),见 filter-pager-and-scope.test.ts。
+  assert.match(html, /filter-scope-label/);
   assert.match(html, /This photo/);
   assert.match(html, /filter-card-follow/); // 「跟随全书」从下划线链接变成网格第一张卡
   assert.match(html, /Follow book/);
@@ -117,7 +119,11 @@ test('display and thumb loads carry filter state and use latest-only commits wit
   assert.match(root, /getTierUrls\(photoIds,\s*'display',\s*photoFilter\)/);
   assert.match(root, /getTierUrls\(photoIds,\s*'thumb',\s*photoFilter\)/);
   assert.match(root, /\[photoIds,\s*photoFilter/);
-  assert.match(root, /\.invalidate\(\)/);
+  // 提交器改成在 effect 内建、cleanup 里 dispose(dispose 已含 invalidate 的 generation++)。
+  // 早先是 useMemo([]) + 独立 dispose effect —— 那个形状会被 StrictMode 的模拟卸载
+  // 永久废掉,整本书没有图。见 mobile-image-urls.test.ts。
+  assert.match(root, /const display = createLatestCommit/);
+  assert.match(root, /display\.dispose\(\);/);
   assert.doesNotMatch(
     root,
     /revokeObjectURL\([^)]*(imageUrls|thumbUrls)/,
@@ -167,11 +173,12 @@ test('selected-photo toolbar keeps all four actions reachable on narrow viewport
 test('mobile export build input passes the current filter to every export format', () => {
   const hook = read('use-export.ts');
   assert.match(hook, /photoFilter:\s*PhotoFilterState \| null/);
+  // 第四个参数是服务器备份回落(本地没原图时用它),见 lib/photo/export-backup-fallback.test.ts。
   assert.match(
     hook,
-    /getPdfDataUrls\(\s*ids,\s*RASTER_PDF_IMAGE_MAX_EDGE,\s*photoFilter,?\s*\)/,
+    /getPdfDataUrls\(\s*ids,\s*RASTER_PDF_IMAGE_MAX_EDGE,\s*photoFilter,\s*snapshotUrls,?\s*\)/,
   );
-  assert.match(hook, /\[pages,\s*photoFilter\]/);
+  assert.match(hook, /\[pages,\s*photoFilter,\s*snapshotUrls\]/);
   for (const name of [
     'exportCollage',
     'exportSinglePages',

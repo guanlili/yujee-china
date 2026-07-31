@@ -237,6 +237,37 @@
   to { opacity: 1; }
 }
 
+/* ── 长按拖拽交换图片 ──────────────────────────────────────────────────────
+   落点提示与 .msel 同层同形,只是换个色调,让「这一格会被换掉」看得出来。 */
+.mobile-editor .mswap-target {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  border: 3px solid var(--accent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* 跟手的幽灵。fixed + 视口坐标(EditView 直接给 clientX/clientY),translate(-50%,-50%)
+   把它对在指尖上。pointer-events:none 是硬要求 —— 它盖在手指底下,不放行的话
+   elementsFromPoint 只会命中它自己,落点判定当场失灵。 */
+.mobile-editor .mswap-ghost {
+  position: fixed;
+  z-index: 400;
+  width: 92px;
+  height: 70px;
+  margin: 0;
+  transform: translate(-50%, -50%) rotate(-2deg);
+  pointer-events: none;
+  border-radius: var(--radius-md);
+  background-color: var(--bg);
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+  outline: 2px solid var(--surface);
+  opacity: 0.92;
+}
+
 /* 图片工具栏:贴着选中框的一小条,只有换图/复位/删除。缩放平移走手势,不占这里的位置。
    z-index 要压过 .msel(2),否则选中框的描边会盖在按钮上;它自己要能点,所以
    pointer-events 必须是 auto —— .msel 是 none,别跟着抄。
@@ -666,7 +697,28 @@
    垫底背景抽屉仍是共享的 66vh(色板 + 预设行 + 上传,内容本来就多)。 */
 .editor-port.mobile-modal-host .modal-card.mobile-bottom-sheet.mobile-filter-sheet {
   height: auto;
-  max-height: min(70vh, 420px);
+  /* 三排卡(~250px)+ 标题行 + 强度行,给到这个高度刚好不出现纵向滚动。 */
+  max-height: min(74vh, 480px);
+}
+
+/* 手机上卡片排三排、整体左右滑。
+   桌面一排是因为鼠标横滑一屏就能扫完 27 个;手机屏窄,一排只露得出三四张,要滑七八次
+   才看得完 —— 一次露九张、滑三下扫完,试滤镜这件事才不累。
+   grid-auto-flow:column + 三行 = 先填满一列的三格再开下一列,所以横向滚动的方向就是
+   「下一批滤镜」,与用户的手势直觉一致(按行填会变成上下找,横滑就没意义了)。 */
+.editor-port .mobile-filter-sheet .filter-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(3, auto);
+  grid-auto-columns: 84px;
+  align-content: start;
+}
+/* 三排之后横滑条自己就高了,箭头正常居中即可(桌面那 -10px 是为一排卡下方的名字留的)。 */
+.editor-port .mobile-filter-sheet .filter-page {
+  top: 50%;
+}
+.editor-port .mobile-filter-sheet .filter-page-prev {
+  left: 2px;
 }
 
 .mobile-sheet-grab {

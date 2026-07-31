@@ -25,6 +25,7 @@ import type { EditorPage } from '../../types';
 import { buildSpreads, isSoloSpread, pageSlot, spreadPageIndices, spreadRenderKind } from '../../spreads';
 import { pageFaceHTML, type PageFaceCtx } from '../page-face';
 import { pageFolioInfos } from '../../page-html-dom';
+import { useFitTextBoxes } from '../../use-fit-text-boxes';
 import type { ResolveImage } from '../../adapt-layout';
 import type { Density } from '../mobile-canvas';
 import { browseScreen, browseUnits, stepScreen, screenStartOfPage, type BrowseScreen } from './browse-window';
@@ -50,10 +51,14 @@ import { MobileStrip } from './MobileStrip';
 import { IconBoardBg } from './icons';
 import type { SelRect } from './page-edit';
 import type { ImagePosValue } from '../image-edit-util';
+import type { SwapSlotRef } from '../image-swap';
 import type { PhotoFilterState } from '@/lib/photo/filter-state';
 
 export type MobileEditorProps = {
   pages: EditorPage[];
+  /** 相册子集字体是否已注册(见 MobileEditorRoot 的 useAlbumFonts)。
+   *  字体到货会改变换行 → 文字槽的字号自适应必须据此重跑一遍。 */
+  fontsReady: boolean;
   resolve: ResolveImage;
   /** 缩略档(thumb tier)解析器,给书册预览栏用;缺省回落主画布那档。 */
   resolveThumb?: ResolveImage;
@@ -79,6 +84,8 @@ export type MobileEditorProps = {
   onSelectImage: (hit: ImageHit) => void;
   onImagePos: (pos: ImagePosValue) => void;
   onImagePosCommit: () => void;
+  /** 长按拾起一张图拖到另一个图槽 → 两个槽对调(可跨页)。 */
+  onSwapImage: (from: SwapSlotRef, to: SwapSlotRef) => void;
   /** 图片工具栏三件(透传给 EditView)。 */
   onReplaceImage: () => void;
   onClearImage: () => void;
@@ -115,6 +122,7 @@ const TAP_MAX = 10;
 
 export function MobileEditor({
   pages,
+  fontsReady,
   resolve,
   resolveThumb,
   boardBackground,
@@ -134,6 +142,7 @@ export function MobileEditor({
   onSelectImage,
   onImagePos,
   onImagePosCommit,
+  onSwapImage,
   onReplaceImage,
   onClearImage,
   onResetImagePos,
@@ -314,6 +323,15 @@ export function MobileEditor({
     return () => ro.disconnect();
   }, [browsing]);
 
+  // 文字槽的字号自适应(实现与「字体到货后再收一次」都在 useFitTextBoxes)。
+  // 模板把文字槽写死成固定高度、页根又是 overflow:hidden —— 不收字号,溢出的部分就被
+  // **裁掉**。桌面在 paintEl、导出在 render-raster 都跑这一步,移动端曾经整棵树都没跑,
+  // 这正是「手机上文字被切掉一截」的根因之一(另一半是没加载子集字体)。
+  //
+  // 挂在 .mboard 上跑一次即可:那一步是对 root 内所有 [data-text-key] 的遍历,一屏里的
+  // 两张面、翻纸时的正反面都在这个容器内,不必逐个 face 各挂一遍。幂等且带记忆化。
+  useFitTextBoxes(boardRef, browsing);
+
   const ctxOf = (pageIdx: number): PageFaceCtx => ({
     folio: folioInfos[pageIdx]?.folio ?? null,
     folioSide: folioInfos[pageIdx]?.side ?? 'right',
@@ -360,6 +378,7 @@ export function MobileEditor({
     return (
       <EditView
         pages={pages}
+        fontsReady={fontsReady}
         resolve={resolve}
         boardBackground={boardBackground}
         zh={zh}
@@ -384,6 +403,7 @@ export function MobileEditor({
         onSelectImage={onSelectImage}
         onImagePos={onImagePos}
         onImagePosCommit={onImagePosCommit}
+        onSwapImage={onSwapImage}
         onClearSelection={onClearSelection}
         onSave={onSave}
         backupState={backupState}
@@ -411,11 +431,15 @@ export function MobileEditor({
     : null;
   const restingSoloRole = anim == null ? shapeOf(screen)?.soloRole ?? null : null;
 
+  // data-album-fonts-ready 与桌面 EditorPort / FlipBook / PagePreview 同一个标记,同时也是
+  // fontsReady 唯一的用处:子集字体到货 → 这棵子树收到新 prop → commit → useFitTextBoxes
+  // 自然重收一次字号(那个 hook 每次 commit 都跑,不绑依赖数组)。
   return (
     <div
       className="mobile-editor"
       data-mode="browse"
       data-density={MOBILE_BROWSE_DENSITY}
+      data-album-fonts-ready={fontsReady}
       style={boardBackground ? { background: boardBackground } : undefined}
     >
       <MobileTopbar

@@ -40,8 +40,9 @@ export type PhotoBackupDependencies = {
 };
 
 const DEFAULT_DEPENDENCIES: PhotoBackupDependencies = {
+  // 上传档(3400)而不是屏显档(1600),与桌面同口径 —— 换设备后导出拿它当源图。
   getTierBlobStatus: (photoId, state) =>
-    photoStore.getTierBlobStatus(photoId, 'display', state),
+    photoStore.getTierBlobStatus(photoId, 'backup', state),
   sign: () => Promise.reject(new Error('albumId-bound signer is required')),
   put: putSnapshotBlob,
   confirm: () => Promise.reject(new Error('albumId-bound confirmer is required')),
@@ -59,6 +60,7 @@ export async function runPhotoBackup({
   currentVersions,
   onProgress,
   deps,
+  force = false,
 }: {
   albumId: string;
   photoIds: string[];
@@ -66,6 +68,9 @@ export async function runPhotoBackup({
   currentVersions: Record<string, string>;
   onProgress?: (progress: { done: number; total: number }) => void;
   deps?: Partial<PhotoBackupDependencies>;
+  /** 整本重传一遍(忽略「已备份过同一版本」)。用来把存量 1600 的备份升到 3400 ——
+   *  档位不进 renderVersion(进了会把存量分享全打成 409),所以升档只能靠这条。 */
+  force?: boolean;
 }): Promise<BackupResult> {
   const dependencies: PhotoBackupDependencies = {
     ...DEFAULT_DEPENDENCIES,
@@ -75,7 +80,7 @@ export async function runPhotoBackup({
   };
   // Capture once before the first await. createFrozenBackupPlan normalizes,
   // deduplicates, freezes, and selects render-version mismatches only.
-  const plan = createFrozenBackupPlan(photoIds, photoFilter, currentVersions);
+  const plan = createFrozenBackupPlan(photoIds, photoFilter, currentVersions, force);
   const nextVersions = { ...currentVersions };
   if (plan.pending.length === 0) {
     return { missing: 0, uploaded: 0, renderVersions: nextVersions };
@@ -147,7 +152,7 @@ export function usePhotoBackup(
   const running = useRef(false);
 
   const backup = useCallback(
-    async (bookPhotoIds: string[]): Promise<BackupResult> => {
+    async (bookPhotoIds: string[], force = false): Promise<BackupResult> => {
       if (running.current) {
         const pending = createFrozenBackupPlan(
           bookPhotoIds,
@@ -170,6 +175,7 @@ export function usePhotoBackup(
           photoFilter,
           currentVersions: versionRef.current,
           onProgress: setProgress,
+          force,
         });
         versionRef.current = result.renderVersions;
         setRenderVersions(result.renderVersions);

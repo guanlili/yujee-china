@@ -1,8 +1,8 @@
 'use client';
 
 /* 风格(滤镜)面板。桌面与移动共用这一个组件 —— 桌面是钉在画布底部的短浮层,移动是
-   bottom-sheet(见 mobile/modals/FilterSheet),骨架同一套:范围二选一 → 横滑一排卡片
-   → 强度(按需)。
+   bottom-sheet(见 mobile/modals/FilterSheet),骨架同一套:范围二选一 → 横滑卡片列表
+   (桌面一排、移动三排,两端各挂一枚翻页箭头)→ 强度(按需)。
 
    ── 这次收敛掉了什么 ──
    改之前有三个控件在回答同一个问题「这个风格作用于谁」:标题右边的 scope 标签、scope
@@ -14,7 +14,7 @@
    现在「跟随全书」是卡片网格里的第一张,与「原片」「27 个滤镜」并列 —— 它们本来就是
    同一维度的选择:这张图用什么。三个控件塌成一个。 */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   LUT_DEFINITIONS,
   quantizeStrength,
@@ -77,6 +77,14 @@ export function FilterBar({
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [previewState, setPreviewState] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [previewRetry, setPreviewRetry] = useState(0);
+  /* 卡片横滑一排(移动端是三排)。手指能滑,鼠标不好滑 —— 而且「右边还有没有卡」横滑条
+     自己不会说。所以两端各挂一枚翻页箭头,点一下滚一屏。
+     箭头按**那个方向还能不能滚**决定出不出,不灰着占位:一个永远点不动的控件比没有更
+     让人困惑(与强度滑块按需挂载同一条口径)。
+     初值给 right:true —— 27 个滤镜在任何视口都滚得动,首帧就该有右箭头;真实值等卡片
+     就位后由 syncPager 量出来纠正。 */
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [pager, setPager] = useState({ left: false, right: true });
   const generationRef = useRef(0);
   const urlOwnerRef = useRef<ReturnType<typeof createOwnedUrlController> | null>(null);
   if (!urlOwnerRef.current) {
@@ -121,6 +129,33 @@ export function FilterBar({
     };
   }, [photoId, previewRetry]);
 
+  /** 量一次「左右还能不能滚」。滚动中、卡片就位后、面板尺寸变了都要重量。 */
+  const syncPager = useCallback(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    // 1px 容差:分数像素会让 scrollLeft 永远差一点点到不了 max,右箭头就永远消不掉。
+    setPager((prev) => {
+      const next = { left: el.scrollLeft > 1, right: el.scrollLeft < max - 1 };
+      return prev.left === next.left && prev.right === next.right ? prev : next;
+    });
+  }, []);
+  useEffect(() => {
+    syncPager();
+    const el = gridRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    // 面板宽度会变(桌面折叠对话栏、移动端旋屏),能滚的方向跟着变。
+    const ro = new ResizeObserver(syncPager);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [syncPager, previewState, scope, photoId]);
+  /** 翻一屏,留 15% 重叠 —— 刚扫到的那张不至于被翻过去就找不回来。 */
+  const pageBy = (direction: 1 | -1) => {
+    const el = gridRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction * Math.max(120, el.clientWidth * 0.85), behavior: 'smooth' });
+  };
+
   const apply = (ref: PhotoFilterRef | null) => {
     if (scope === 'photo' && photoId) onChange(setPhotoOverride(state, photoId, ref));
     else onChange(setBookFilter(state, ref));
@@ -137,9 +172,11 @@ export function FilterBar({
     >
       <div className="filter-bar-head">
         <strong>{zh ? '风格' : 'Style'}</strong>
-        {/* scope 只在一个地方表达。桌面给了切换器 → 切换器自己就说明了当前在哪一档;
-            移动端不给(scope 由入口决定:选中照片 / 更多→全书风格)→ 退回静态标签。
-            两者互斥 —— 早先是「标签 + 切换器 + 跟随链接」三份并存。 */}
+        {/* scope 只在一个地方表达。给了切换器 → 切换器自己就说明了当前在哪一档;
+            没给 → 退回静态标签。两者互斥 —— 早先是「标签 + 切换器 + 跟随链接」三份并存。
+            谁给谁不给:桌面永远给(它只有「点选中的图 → 风格」一个入口);移动端只在
+            **从选中的照片**进来时给 —— 从「更多 → 全书风格」进来时 photoId 只是拿来生成
+            缩略图的第一张,切到「这张照片」等于在改一张用户没选过的图(见 FilterSheet)。 */}
         {onScopeChange ? (
           <div className="filter-scope-switch" role="group" aria-label={zh ? '风格应用范围' : 'Style scope'}>
             <button
@@ -179,53 +216,78 @@ export function FilterBar({
           </button>
         </p>
       ) : (
-        <div
-          className="filter-grid"
-          role="group"
-          aria-label={zh ? '选择风格' : 'Choose a style'}
-          aria-busy={previewState === 'loading'}
-        >
-          {/* 跟随全书:与「原片」并列的一个选择,不是附属操作。book scope 下无意义。 */}
-          {scope === 'photo' && photoId && (
+        <div className="filter-strip">
+          {/* 左右翻页:绝对定位压在横滑条两端,出现/消失不推动卡片(没有布局跳动)。 */}
+          {pager.left && (
             <button
               type="button"
-              className="filter-card filter-card-follow"
-              aria-pressed={following}
-              onClick={() => onChange(clearPhotoOverride(state, photoId))}
+              className="filter-page filter-page-prev"
+              aria-label={zh ? '上一屏风格' : 'Previous styles'}
+              onClick={() => pageBy(-1)}
             >
-              <div className="filter-card-preview">
-                {(bookLutId ? previews[bookLutId] : previews.original) && (
-                  <img src={bookLutId ? previews[bookLutId] : previews.original} alt="" />
-                )}
-              </div>
-              <span>{zh ? '跟随全书' : 'Follow book'}</span>
+              ‹
             </button>
           )}
-          <button
-            type="button"
-            className="filter-card"
-            aria-pressed={!following && current === null}
-            onClick={() => apply(null)}
+          {pager.right && (
+            <button
+              type="button"
+              className="filter-page filter-page-next"
+              aria-label={zh ? '下一屏风格' : 'Next styles'}
+              onClick={() => pageBy(1)}
+            >
+              ›
+            </button>
+          )}
+          <div
+            className="filter-grid"
+            ref={gridRef}
+            onScroll={syncPager}
+            role="group"
+            aria-label={zh ? '选择风格' : 'Choose a style'}
+            aria-busy={previewState === 'loading'}
           >
-            <div className="filter-card-preview">
-              {previews.original && <img src={previews.original} alt="" />}
-            </div>
-            <span>{zh ? '原片' : 'Original'}</span>
-          </button>
-          {LUT_DEFINITIONS.map((definition) => (
+            {/* 跟随全书:与「原片」并列的一个选择,不是附属操作。book scope 下无意义。 */}
+            {scope === 'photo' && photoId && (
+              <button
+                type="button"
+                className="filter-card filter-card-follow"
+                aria-pressed={following}
+                onClick={() => onChange(clearPhotoOverride(state, photoId))}
+              >
+                <div className="filter-card-preview">
+                  {(bookLutId ? previews[bookLutId] : previews.original) && (
+                    <img src={bookLutId ? previews[bookLutId] : previews.original} alt="" />
+                  )}
+                </div>
+                <span>{zh ? '跟随全书' : 'Follow book'}</span>
+              </button>
+            )}
             <button
               type="button"
               className="filter-card"
-              key={definition.id}
-              aria-pressed={!following && current?.lutId === definition.id}
-              onClick={() => select(definition.id)}
+              aria-pressed={!following && current === null}
+              onClick={() => apply(null)}
             >
               <div className="filter-card-preview">
-                {previews[definition.id] && <img src={previews[definition.id]} alt="" />}
+                {previews.original && <img src={previews.original} alt="" />}
               </div>
-              <span>{zh ? definition.nameZh : definition.id}</span>
+              <span>{zh ? '原片' : 'Original'}</span>
             </button>
-          ))}
+            {LUT_DEFINITIONS.map((definition) => (
+              <button
+                type="button"
+                className="filter-card"
+                key={definition.id}
+                aria-pressed={!following && current?.lutId === definition.id}
+                onClick={() => select(definition.id)}
+              >
+                <div className="filter-card-preview">
+                  {previews[definition.id] && <img src={previews[definition.id]} alt="" />}
+                </div>
+                <span>{zh ? definition.nameZh : definition.id}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

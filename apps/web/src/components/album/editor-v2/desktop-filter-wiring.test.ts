@@ -83,7 +83,8 @@ test('display reload and every desktop export consume the current filter state',
 test('desktop backup signs and confirms exact mismatch SnapshotEntry arrays only', () => {
   assert.match(editor, /createFrozenBackupPlan\(\s*bookPhotoIds\(\),\s*currentPhotoFilter/);
   assert.match(editor, /prepareSnapshotBlobs\(/);
-  assert.match(editor, /getTierBlobStatus\(entry\.photoId,\s*'display',\s*frozenState\)/);
+  // 上传档 'backup'(3400) 而非屏显 'display'(1600),见 store.ts TIER_MAX_EDGE。
+  assert.match(editor, /getTierBlobStatus\(entry\.photoId,\s*'backup',\s*frozenState\)/);
   assert.match(editor, /correlateSignedSnapshotUploads\(requestedEntries,\s*signed\)/);
   assert.match(editor, /uploadCorrelatedSnapshots\(/);
   assert.match(editor, /signPhotoSnapshotUpload\(albumId,\s*requestedEntries\)/);

@@ -84,6 +84,23 @@ export function filterSnapshotMismatches(
   );
 }
 
+/**
+ * 点在这儿算不算「点到别处」—— 是就该收起风格面板。
+ *
+ * 两类必须放过,否则面板会自己跟自己打架:
+ *   · 面板内部(.filter-bar):选滤镜、拖强度、点翻页箭头都在里面,收了就没法用
+ *   · 打开它的那枚按钮(.img-edit-style):不放过的话,一次点击先被这里收起、
+ *     再被按钮打开(或反过来),表现是「点风格没反应」
+ * 其余一律收起 —— 包括点另一张照片:用户的注意力已经移走了,面板赖着不走就是遮挡。
+ */
+export function shouldDismissFilterPanel(target: EventTarget | null): boolean {
+  const el = target as Element | null;
+  if (typeof el?.closest !== 'function') return true;
+  if (el.closest('.filter-bar')) return false;
+  if (el.closest('.img-edit-style')) return false;
+  return true;
+}
+
 export function createLatestCommit<T>(commit: (value: T) => void) {
   let generation = 0;
   let disposed = false;
@@ -308,10 +325,21 @@ export interface FrozenBackupPlan {
   readonly pending: readonly SnapshotEntry[];
 }
 
+/**
+ * @param force 忽略「已备份过同一个版本」的判断,整本重传一遍。
+ *
+ *   为什么需要它:renderVersion **只编滤镜**(`pf-v1__{lutId}__{strength}`),不编上传
+ *   档位 —— 档位一进版本号,存量备份当场全变「过期」,分享闸门
+ *   (`recordedVersions[id] === effectiveRenderVersion(...)`)会直接 409,而且只有在
+ *   还留着原图的那台设备上重传才修得好。代价是:上传档从 1600 提到 3400 之后,
+ *   **存量备份不会自动升级**(版本号没变 → filterSnapshotMismatches 认为没事可做)。
+ *   所以升档要靠用户主动触发这一条:同 key、同版本、更好的字节,零 409 风险。
+ */
 export function createFrozenBackupPlan(
   photoIds: string[],
   state: PhotoFilterState | null | undefined,
   currentVersions: Record<string, string> | null | undefined,
+  force = false,
 ): FrozenBackupPlan {
   const photoFilter = freezeFilterState(state);
   const entries = Object.freeze(
@@ -319,7 +347,7 @@ export function createFrozenBackupPlan(
       .map((entry) => Object.freeze({ ...entry })),
   );
   const pending = Object.freeze(
-    filterSnapshotMismatches([...entries], currentVersions),
+    force ? [...entries] : filterSnapshotMismatches([...entries], currentVersions),
   );
   return Object.freeze({ photoFilter, entries, pending });
 }

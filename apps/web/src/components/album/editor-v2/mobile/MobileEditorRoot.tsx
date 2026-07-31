@@ -78,6 +78,7 @@ import {
   type TextStyleState,
 } from './page-edit';
 import { DEFAULT_IMAGE_POS, type ImagePosValue } from '../image-edit-util';
+import { swapImageSlots, type SwapSlotRef } from '../image-swap';
 import { PhotoPickerSheet } from './modals/PhotoPickerSheet';
 import { FilterSheet } from './modals/FilterSheet';
 import type { TextHit, ImageHit } from './EditView';
@@ -86,6 +87,7 @@ import {
   type PhotoFilterState,
 } from '@/lib/photo/filter-state';
 import { lutEngine } from '@/lib/photo/lut/engine';
+import { useAlbumFonts } from '@/lib/font/album-font-loader';
 import {
   createFilterSaveController,
   createLatestCommit,
@@ -140,6 +142,12 @@ export function MobileEditorRoot({
   // 服务端真相变了(草稿重载)→ 以服务端为准整体换掉。
   const [pages, setPages] = useState<EditorPage[]>(incomingPages);
   useEffect(() => setPages(incomingPages), [incomingPages]);
+  // 中文字体走 /api/v1/fonts/subset 按需子集,**必须在浏览器里动态注册才存在**。
+  // 桌面在 EditorPort、导出在 render-raster/single-pages 都加载了;移动端这棵树曾经
+  // 一次都没调 —— 版面里写的 "Noto Serif SC" 等家族根本不存在,整本回退到系统字
+  // (PingFang / Songti),字宽字高全变,文字随即溢出固定高度的槽被页根裁掉。
+  // fontsReady 往下传:字体到货会改变换行,下游要据此重跑一遍 fitTextBoxes。
+  const fontsReady = useAlbumFonts(pages.map((page) => ({ texts: page.textsJson })));
   const [localPhotoFilter, setLocalPhotoFilter] = useState<PhotoFilterState | null>(
     () => normalizePhotoFilterState(detail.album.photoFilter),
   );
@@ -171,6 +179,10 @@ export function MobileEditorRoot({
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterScope, setFilterScope] = useState<'book' | 'photo'>('book');
   const [filterPhotoId, setFilterPhotoId] = useState<string | null>(null);
+  /** 这次是不是「从某张选中的照片」进来的。是 → 弹窗里给 scope 切换器,可以改成整本书;
+   *  否(从「更多 → 全书风格」进来)→ 只有静态标签:那时的 filterPhotoId 只是拿来生成
+   *  缩略图的第一张照片,切到「这张照片」等于在改一张用户根本没选过的图。 */
+  const [filterPhotoScoped, setFilterPhotoScoped] = useState(false);
   // 换图:本册照片选择器。点一张即换即关,不做「选中+完成」两步。
   const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
 
@@ -220,33 +232,32 @@ export function MobileEditorRoot({
     [detail.album.layoutJson, pages],
   );
 
-  const displayCommit = useMemo(
-    () => createLatestCommit<Record<string, string>>(setImageUrls),
-    [],
-  );
-  const thumbCommit = useMemo(
-    () => createLatestCommit<Record<string, string>>(setThumbUrls),
-    [],
-  );
+  /* 屏显两档的 URL。
+     提交器**必须在 effect 内部创建**。早先是 useMemo([]) 建一次 + 一个独立 effect 的
+     cleanup 调 dispose() —— 而 dispose 是不可逆的(disposed 没有任何地方改回 false)。
+     React StrictMode(Next dev 默认开)会「装作卸载一次再重新挂载」,于是:
+       挂载 → 建提交器 → run() → **模拟卸载** → dispose() 永久置位 → 再 run() 直接空转
+     提交器活在 useMemo 里、同一个组件实例的模拟重挂不会重建它,结果是 imageUrls 永远
+     停在 {},整本书 20 个图槽全部渲染成透明占位 gif —— 真机症状就是「桌面有照片,
+     一缩到移动宽度全没了」。桌面免疫是因为那条路(EditorAuthoring)用朴素 cancelled
+     标志解析首帧、把结果当 prop 传下去,压根不走这个提交器。
+     建在 effect 内:模拟卸载 dispose 掉的是那一对,重跑时新建一对。真卸载同样正确,
+     而且不再需要 invalidate —— dispose 已经含了它(generation += 1)。
+     守卫见 mobile-image-urls.test.ts。 */
   useEffect(() => {
-    void displayCommit.run(() =>
+    const display = createLatestCommit<Record<string, string>>(setImageUrls);
+    const thumb = createLatestCommit<Record<string, string>>(setThumbUrls);
+    void display.run(() =>
       photoStore.getTierUrls(photoIds, 'display', photoFilter).catch(() => ({})),
     );
-    void thumbCommit.run(() =>
+    void thumb.run(() =>
       photoStore.getTierUrls(photoIds, 'thumb', photoFilter).catch(() => ({})),
     );
     return () => {
-      displayCommit.invalidate();
-      thumbCommit.invalidate();
+      display.dispose();
+      thumb.dispose();
     };
-  }, [photoIds, photoFilter, displayCommit, thumbCommit]);
-  useEffect(
-    () => () => {
-      displayCommit.dispose();
-      thumbCommit.dispose();
-    },
-    [displayCommit, thumbCommit],
-  );
+  }, [photoIds, photoFilter]);
 
   const filterSaver = useMemo(
     () =>
@@ -430,6 +441,23 @@ export function MobileEditorRoot({
     setDraftBase(page);
   };
 
+  /** 长按拖拽交换两个图槽(可跨页)。交换语义与「为什么是长按」都在 image-swap.ts。
+   *  只动数据层,html 不碰;两页各发一次单页 PATCH(与换图同一条通道)。 */
+  const onSwapImage = (from: SwapSlotRef, to: SwapSlotRef) => {
+    const result = swapImageSlots(pages, from, to);
+    if (!result) return;
+    setPages(result.pages);
+    for (const pageIndex of result.touched) {
+      const next = result.pages.find((p) => p.pageIndex === pageIndex);
+      if (next) persistPage(pageIndex, imagesPatchBody(next));
+    }
+    // 选中的那个槽内容变了,面板快照跟着走;选中框本身(位置)没变,不必重选。
+    if (selection?.kind === 'image' && editPage != null) {
+      const current = result.pages[editPage];
+      if (current) setDraftBase(current);
+    }
+  };
+
   /** 手指还在动:只即时打进书,不落库(与文字面板同一「所见即所存但未存」的口径)。 */
   const onImagePosLive = (pos: ImagePosValue) => {
     if (selection?.kind !== 'image' || !draftBase) return;
@@ -501,6 +529,15 @@ export function MobileEditorRoot({
   // ── 导出 / 分享 / 照片备份 ───────────────────────────────────────────────────
   // 渲染与上传全部复用桌面那批库(见 use-export / use-share-link / use-photo-backup),
   // 这里只负责把它们接到移动端的弹窗上。
+  /** 已备份到服务器的压缩图(photoId→URL)。本地没有原图时的回落。
+   *  **展示与导出共用这一份** —— 早先只有展示层接了它,导出自建 resolver 没接,
+   *  换设备/清缓存后导出出来是一本空图(见 lib/photo/export-backup-fallback.test.ts)。
+   *  声明必须在 useExport 之前:它是 const,放在后面就是 TDZ。 */
+  const snapshotUrls = useMemo(
+    () => detail.album.photoSnapshotUrls ?? {},
+    [detail.album.photoSnapshotUrls],
+  );
+
   const exporter = useExport({
     albumId: detail.album.id,
     title: detail.album.title,
@@ -508,6 +545,8 @@ export function MobileEditorRoot({
     pages,
     background: boardBg,
     photoFilter,
+    // 展示层与导出层用**同一份**备份表:本地没有原图时都回落到它。
+    snapshotUrls,
   });
   const backup = usePhotoBackup(
     detail.album.id,
@@ -545,18 +584,31 @@ export function MobileEditorRoot({
     if (!lutSupported) return;
     setMoreOpen(false);
     setFilterScope('book');
+    setFilterPhotoScoped(false);
     setFilterPhotoId(bookPhotoIds[0] ?? null);
     setFilterOpen(true);
   }, [bookPhotoIds, lutSupported]);
   const openSelectedPhotoFilter = useCallback(() => {
     if (!lutSupported || !selectedPhotoId) return;
     setFilterScope('photo');
+    setFilterPhotoScoped(true);
     setFilterPhotoId(selectedPhotoId);
     setFilterOpen(true);
   }, [lutSupported, selectedPhotoId]);
 
   /** 备份照片到云端。顶栏「保存」与「更多」里那条走同一份 —— 两个入口一个行为,
    *  免得日后改文案/口径只改一处。备份态显示在顶栏按钮上,这里只补一句结果提示。 */
+  /** 整本重传:把存量的老档备份覆盖成当前上传档(3400)。同 key、同 renderVersion,
+   *  所以不会把已有分享打成 409;只是字节更好了。 */
+  const rebackup = useCallback(() => {
+    setMoreOpen(false);
+    say(zh ? '正在重新备份…' : 'Re-backing up…');
+    void backup.backup(bookPhotoIds, true).then(({ missing, uploaded }) => {
+      if (missing === 0) say(zh ? `已重新备份 ${uploaded} 张` : `Re-backed up ${uploaded}`);
+      else say(zh ? `还差 ${missing} 张(原图可能不在这台设备)` : `${missing} still missing (originals may be on another device)`);
+    });
+  }, [backup, bookPhotoIds, say, zh]);
+
   const runBackup = useCallback(() => {
     void backup.backup(bookPhotoIds).then(({ missing, uploaded }) => {
       if (missing === 0) say(zh ? '照片已全部备份' : 'All photos backed up');
@@ -598,10 +650,6 @@ export function MobileEditorRoot({
     };
   }, [boardBg]);
 
-  const snapshotUrls = useMemo(
-    () => detail.album.photoSnapshotUrls ?? {},
-    [detail.album.photoSnapshotUrls],
-  );
   // 两档都要稳定引用:缩略条按 ctx 引用做 memo,每帧新函数会让整条重渲。
   const resolve: ResolveImage = useCallback(
     (id) => imageUrls[id] ?? snapshotUrls[id],
@@ -627,6 +675,7 @@ export function MobileEditorRoot({
     <>
     <MobileEditor
       pages={pages}
+      fontsReady={fontsReady}
       resolve={resolve}
       resolveThumb={resolveThumb}
       boardBackground={boardBackground}
@@ -660,6 +709,7 @@ export function MobileEditorRoot({
       onSelectImage={onSelectImage}
       onImagePos={onImagePosLive}
       onImagePosCommit={onImagePosCommit}
+      onSwapImage={onSwapImage}
       onReplaceImage={onReplaceImage}
       onClearImage={onClearImage}
       onResetImagePos={onResetImagePos}
@@ -789,14 +839,18 @@ export function MobileEditorRoot({
       open={exporter.exportReady}
       zh={zh}
       label={exporter.exportReadyLabel}
+      manualFiles={exporter.exportManualFiles}
       onClose={exporter.dismissExportReady}
       onSave={() => {
         void exporter.deliverExport().then((result) => {
           if (result === 'shared') say(zh ? '已打开系统分享' : 'Opened system sharing');
           else if (result === 'downloaded')
             say(zh ? '文件已开始下载' : 'File download started');
+          else if (result === 'manual')
+            say(zh ? '这台手机打不开系统分享，改成逐张保存' : 'No share sheet here — save them one by one');
         });
       }}
+      onSaveFile={(i) => exporter.saveExportFile(i)}
     />
     <ExportFailModal
       open={exporter.failed}
@@ -822,6 +876,7 @@ export function MobileEditorRoot({
       lutSupported={lutSupported}
       onClose={() => setMoreOpen(false)}
       onBackupPhotos={runBackup}
+      onRebackupPhotos={rebackup}
       onPhotoFilter={openBookFilter}
     />
     {lutSupported && filterOpen && (
@@ -833,6 +888,7 @@ export function MobileEditorRoot({
         photoId={filterPhotoId}
         persistError={filterPersistError}
         onChange={setPhotoFilter}
+        onScopeChange={filterPhotoScoped ? setFilterScope : undefined}
         onRetry={() => filterSaver.retry()}
         onClose={() => setFilterOpen(false)}
       />

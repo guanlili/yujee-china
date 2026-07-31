@@ -28,13 +28,10 @@ import { runExportWithRetry, buildExportFailureLog, ExportError } from '../expor
 import { logger } from '@/lib/log/logger';
 import type { PhotoFilterState } from '@/lib/photo/filter-state';
 import { deliverLiveAssets } from '@/lib/export/live-delivery';
-import {
-  createZipBlob,
-  safeFileStem,
-  type NamedBlob,
-} from '@/lib/export/download';
+import { safeFileStem, type NamedBlob } from '@/lib/export/download';
 import {
   deliverMobileExportAssets,
+  saveExportFileAt,
   type MobileDeliveryResult,
 } from '@/lib/export/mobile-delivery';
 
@@ -56,7 +53,6 @@ type ExportReadyAsset =
       kind: 'files';
       label: string;
       files: NamedBlob[];
-      fallback: NamedBlob;
     };
 
 export type ExportDeps = {
@@ -68,6 +64,10 @@ export type ExportDeps = {
    *  拼图/Live 的渲染器自己按 kind 解析,与画布同一份视觉。 */
   background: BoardBackground | null;
   photoFilter: PhotoFilterState | null;
+  /** 已备份到服务器的压缩图(photoId→URL)。**本地没有原图时的回落** ——
+   *  与展示层 `imageUrls[id] ?? snapshotUrls[id]` 同一份表、同一条规则。
+   *  漏了它,换设备/清缓存后导出的就是一本空图(见 export-backup-fallback.test.ts)。 */
+  snapshotUrls: Record<string, string>;
 };
 
 export function useExport({
@@ -77,10 +77,14 @@ export function useExport({
   pages,
   background,
   photoFilter,
+  snapshotUrls,
 }: ExportDeps) {
   const [progress, setProgress] = useState<ExportProgress>(null);
   const [failed, setFailed] = useState(false);
   const [exportReady, setExportReady] = useState<ExportReadyAsset | null>(null);
+  /** 非空 = 已确认这台设备打不开系统分享,弹窗切成「逐张保存」列表(见 deliverExport)。
+   *  新一轮导出必须先清掉,否则新产物的弹窗会挂着上一轮的旧文件名。 */
+  const [manualFiles, setManualFiles] = useState<NamedBlob[] | null>(null);
   const busy = useRef(false);
   const t = useCallback((cn: string, en: string) => (zh ? cn : en), [zh]);
 
@@ -98,9 +102,10 @@ export function useExport({
       ids,
       RASTER_PDF_IMAGE_MAX_EDGE,
       photoFilter,
+      snapshotUrls,
     );
     return { adaptable, resolveImage: (id: string) => dataUrls[id] };
-  }, [pages, photoFilter]);
+  }, [pages, photoFilter, snapshotUrls]);
 
   // 渲染库的回调口径是 (done, total)(见桌面 setExportProgress),不是百分比 ——
   // 百分比在这里算,标签沿用当前那一条,不被进度覆盖掉。
@@ -117,6 +122,7 @@ export function useExport({
     async (label: string, run: (input: Awaited<ReturnType<typeof buildInput>>) => Promise<void>) => {
       if (busy.current) return;
       busy.current = true;
+      setManualFiles(null); // 新一轮导出:上一轮的「逐张保存」列表作废
       setProgress({ label, done: 0, total: 0, percent: 0 });
       try {
         await run(await buildInput());
@@ -133,19 +139,13 @@ export function useExport({
 
   const stem = useCallback(() => safeFileStem(title), [title]);
 
-  // 多文件下载在手机上经常只落一份甚至完全被吞。渲染阶段先准备好 zip 兜底，
-  // 真正交付时优先分享原始文件；系统分享不可用也只需触发一次下载。
-  const stageExportFiles = useCallback(
-    async (label: string, files: NamedBlob[], fallbackName: string) => {
-      if (files.length === 0) throw new ExportError('render', 'export returned no files');
-      const fallback =
-        files.length === 1
-          ? files[0]!
-          : { name: fallbackName, blob: await createZipBlob(files) };
-      setExportReady({ kind: 'files', label, files, fallback });
-    },
-    [],
-  );
+  // 渲染完只是「产物就绪」,交付要等用户那一记明确点击(见 deliverExport)。
+  // 这里**不打包**:zip 在手机上存不进相册、看不了图,等于没导出(见 export-no-zip.test)。
+  // 多文件的交付方式是系统分享面板;分享走不通就由用户逐张点着存。
+  const stageExportFiles = useCallback((label: string, files: NamedBlob[]) => {
+    if (files.length === 0) throw new ExportError('render', 'export returned no files');
+    setExportReady({ kind: 'files', label, files });
+  }, []);
 
   const exportCollage = useCallback(
     (perImage: 1 | 2 | 3 | 6) =>
@@ -165,7 +165,7 @@ export function useExport({
               : `${s}-${String(i + 1).padStart(2, '0')}.jpg`,
           blob,
         }));
-        await stageExportFiles(t('拼图', 'Collage'), files, `${s}-collage.zip`);
+        stageExportFiles(t('拼图', 'Collage'), files);
       }),
     [runImageExport, t, background, onProgress, stem, stageExportFiles],
   );
@@ -176,10 +176,9 @@ export function useExport({
         const { renderPageJpegs } = await import('@/lib/export/single-pages');
         const files = await renderPageJpegs(adaptable, resolveImage, { onProgress });
         const s = stem();
-        await stageExportFiles(
+        stageExportFiles(
           t('单页图片', 'Page images'),
           files.map((f) => ({ name: `${s}-${f.name}`, blob: f.blob })),
-          `${s}-pages.zip`,
         );
       }),
     [runImageExport, t, onProgress, stem, stageExportFiles],
@@ -267,6 +266,7 @@ export function useExport({
   /** 必须从保存按钮的 click handler 里直接调用,让 navigator.share 保有瞬时用户授权。 */
   const deliverExport = useCallback((): Promise<MobileDeliveryResult> => {
     if (!exportReady) return Promise.resolve('cancelled');
+    const files = exportReady.kind === 'files' ? exportReady.files : null;
     const delivery =
       exportReady.kind === 'live'
         ? deliverLiveAssets(
@@ -275,17 +275,38 @@ export function useExport({
             exportReady.stem,
             exportReady.suffix,
           )
-        : deliverMobileExportAssets(exportReady.files, exportReady.fallback);
+        : deliverMobileExportAssets(exportReady.files);
     return delivery.then((result) => {
       // 用户取消系统分享时保留弹窗,方便再次点击;真正交付后才释放大 Blob。
-      if (result !== 'cancelled') setExportReady(null);
+      if (result === 'cancelled') return result;
+      // 分享不可用的多文件导出:不打包、不连发,改成列出来让用户逐张点着存。
+      // 弹窗留着(列表就长在它上面),Blob 也必须留着 —— 用户还没拿到东西。
+      if (result === 'manual' && files) {
+        setManualFiles(files);
+        return result;
+      }
+      setExportReady(null);
       return result;
     });
   }, [exportReady]);
 
+  /** 逐张保存:一记点击落一个文件(共享交付层实现,两端同一条规则)。 */
+  const saveExportFile = useCallback(
+    (index: number) => {
+      if (manualFiles) saveExportFileAt(manualFiles, index);
+    },
+    [manualFiles],
+  );
+
+  const dismissExportReady = useCallback(() => {
+    setExportReady(null);
+    setManualFiles(null);
+  }, []);
+
   const exportPdf = useCallback(async () => {
     if (busy.current) return;
     busy.current = true;
+    setManualFiles(null); // 同 runImageExport:新一轮导出作废上一轮的逐张保存列表
     setProgress({ label: t('正在导出 PDF…', 'Exporting PDF…'), done: 0, total: 0, percent: 0 });
     try {
       let blob: Blob | null = null;
@@ -312,12 +333,7 @@ export function useExport({
       if (!rendered.ok || blob == null) return;
       const renderedBlob = blob;
       const name = `${stem()}.pdf`;
-      setExportReady({
-        kind: 'files',
-        label: 'PDF',
-        files: [{ name, blob: renderedBlob }],
-        fallback: { name, blob: renderedBlob },
-      });
+      setExportReady({ kind: 'files', label: 'PDF', files: [{ name, blob: renderedBlob }] });
       // 本地保存入口已经就绪。云端上传在后台重试,失败**完全静默**(只落日志,不弹框)。
       void runExportWithRetry(() => uploadPdf(albumId, renderedBlob), {
         onExhausted: (lastError, attempts) => {
@@ -341,8 +357,11 @@ export function useExport({
     dismissLiveUnsupported: () => setLiveUnsupported(null),
     exportReady: exportReady != null,
     exportReadyLabel: exportReady?.label ?? '',
-    dismissExportReady: () => setExportReady(null),
+    /** 非空 = 弹窗切到「逐张保存」列表(分享走不通的多文件导出)。 */
+    exportManualFiles: manualFiles?.map((f) => f.name) ?? null,
+    dismissExportReady,
     deliverExport,
+    saveExportFile,
     exportCollage,
     exportSinglePages,
     exportLive,

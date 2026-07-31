@@ -32,6 +32,7 @@ function render(pages = BOOK, zh = true) {
   return renderToStaticMarkup(
     createElement(MobileEditor, {
       pages,
+      fontsReady: true,
       resolve: () => undefined,
       title: '厦门三日游',
       zh,
@@ -42,7 +43,7 @@ function render(pages = BOOK, zh = true) {
       photoFilter: null, selectedPhotoId: null, lutSupported: false,
       onSelectText: noop, onSelectImage: noop, onClearSelection: noop,
       imagePos: null,
-      onImagePos: noop, onImagePosCommit: noop,
+      onImagePos: noop, onImagePosCommit: noop, onSwapImage: noop,
       onSave: noop, backupState: 'idle' as const, backupProgress: null,
       onReplaceImage: noop, onClearImage: noop, onResetImagePos: noop,
       onPhotoFilter: noop,

@@ -30,9 +30,17 @@ const PDF_IMAGE_QUALITY = 0.82;
 
 // 屏显派生分级:thumb 给缩略图条/总览格(几十 px 显示),display 给主画布/翻页叶
 // (页面上图槽最大 ~794px,1600 留了 2x 余量)。
-export type PhotoTier = 'thumb' | 'display';
-export const TIER_MAX_EDGE: Record<PhotoTier, number> = { thumb: 240, display: 1600 };
-const TIER_QUALITY: Record<PhotoTier, number> = { thumb: 0.75, display: 0.82 };
+//
+// backup 是**上传档**,不是屏显档:它只在用户点「保存到云端」时生成一次,直传 R2。
+// 尺寸对齐 RASTER_PDF_IMAGE_MAX_EDGE(3400)—— 换设备之后导出要拿它当源图,而满页
+// 图槽在 scale 3 下要 ~3369px;早先备份传的是 1600 的 display 档,填进 3369 的槽等于
+// 放大 2.1 倍,导出必糊。一张手机照片按这一档大约 1–2MB(display 档约 0.2–0.4MB)。
+export type PhotoTier = 'thumb' | 'display' | 'backup';
+export const TIER_MAX_EDGE: Record<PhotoTier, number> = { thumb: 240, display: 1600, backup: 3400 };
+const TIER_QUALITY: Record<PhotoTier, number> = { thumb: 0.75, display: 0.82, backup: 0.82 };
+/** 只生成一次就直传走的档位不进本地派生缓存 —— 3400 的 JPEG 一张 1–2MB,
+ *  一本 100 张的书会白吃 100+MB IndexedDB,而它在本机没有任何渲染用途。 */
+const UNCACHED_TIERS: ReadonlySet<PhotoTier> = new Set<PhotoTier>(['backup']);
 const FILTERED_VARIANT_LIMIT = 2;
 
 const SIMPLE_PHOTO_ID = /^[A-Za-z0-9_-]+$/;
@@ -445,10 +453,13 @@ async function getBaseTierBlob(
     if (!original) return undefined;
     derived = await downscaleToJpeg(original, TIER_MAX_EDGE[tier], TIER_QUALITY[tier]);
     // 持久化失败不致命(隐私无新增面:派生图和原图同库同生命周期)。
-    try {
-      await putDerivedValue(key, derived);
-    } catch {
-      /* keep the in-memory blob */
+    // 上传档(backup)不落盘:见 UNCACHED_TIERS。
+    if (!UNCACHED_TIERS.has(tier)) {
+      try {
+        await putDerivedValue(key, derived);
+      } catch {
+        /* keep the in-memory blob */
+      }
     }
   }
   return derived;
@@ -500,16 +511,38 @@ async function getTierBlobResult(
     return { blob: base, filteredFallback: true };
   }
 
-  try {
-    await maintainFilteredVariant(photoId, tier, key, filtered);
-  } catch (error) {
-    console.warn('Filtered cache transaction failed; using in-memory rendered Blob', {
-      photoId,
-      tier,
-      key,
-    }, error);
+  // 上传档同样不落盘(见 UNCACHED_TIERS):带滤镜这条路才是备份的常态,
+  // 只堵住无滤镜那条等于没堵。
+  if (!UNCACHED_TIERS.has(tier)) {
+    try {
+      await maintainFilteredVariant(photoId, tier, key, filtered);
+    } catch (error) {
+      console.warn('Filtered cache transaction failed; using in-memory rendered Blob', {
+        photoId,
+        tier,
+        key,
+      }, error);
+    }
   }
   return { blob: filtered, filteredFallback: false };
+}
+
+/** 取一张已备份的服务器压缩图。取不到就是 undefined —— 单张缺图只影响这一张,
+ *  绝不能把整本导出拖垮(与 getTierUrls 里「逐张隔离」同一条口径)。
+ *  失败原因写进 warn:跨域没开 CORS、快照被清、离线,现场只能靠这条日志区分。 */
+async function fetchBackupBlob(url: string | undefined, photoId: string): Promise<Blob | undefined> {
+  if (!url) return undefined;
+  try {
+    const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+    if (!res.ok) {
+      console.warn('[photo] backup snapshot fetch failed', { photoId, status: res.status });
+      return undefined;
+    }
+    return await res.blob();
+  } catch (error) {
+    console.warn('[photo] backup snapshot fetch threw', { photoId, url }, error);
+    return undefined;
+  }
 }
 
 export const photoStore = {
@@ -657,15 +690,28 @@ export const photoStore = {
   // so peak memory stays bounded before the PDF is assembled.
   // maxEdge：栅格导出（html2canvas 高倍截图）传 RASTER_PDF_IMAGE_MAX_EDGE，
   // 否则源图被降到默认 1600 后放大 3-4 倍会糊。
+  //
+  // backupUrls:已备份到服务器的压缩图(photoId→URL,即 album.photoSnapshotUrls)。
+  // **本地没有原图时的回落**,与展示层 `imageUrls[id] ?? snapshotUrls[id]` 同一条规则 ——
+  // 早先这条规则只做在展示层,导出自建 resolver 没接上,于是「已备份 + 本地没原图」
+  // (换设备/清缓存)屏幕上看得见、导出出来是空图。见 export-backup-fallback.test.ts。
   async getPdfDataUrls(
     photoIds: string[],
     maxEdge = PDF_IMAGE_MAX_EDGE,
     photoFilter?: PhotoFilterState | null,
+    backupUrls?: Record<string, string> | null,
   ): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
     for (const id of photoIds) {
       const blob = await this.getBlob(id);
-      if (!blob) continue;
+      if (!blob) {
+        // 备份的字节是 display 档、**滤镜已经烘进去**的(上传的就是
+        // getTierBlobStatus(id,'display',frozenState),renderVersion 也是拿滤镜算的)。
+        // 所以这里只做尺寸夹取,不再套一次当前滤镜 —— 套了就是同一个 LUT 叠两遍。
+        const backup = await fetchBackupBlob(backupUrls?.[id], id);
+        if (backup) out[id] = await blobToPdfDataUrl(backup, maxEdge);
+        continue;
+      }
       const ref = effectiveFilter(photoFilter, id);
       if (!ref) {
         out[id] = await blobToPdfDataUrl(blob, maxEdge);

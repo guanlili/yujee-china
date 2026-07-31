@@ -71,6 +71,13 @@ import {
   type ImagePosValue,
 } from './image-edit-util';
 import {
+  SWAP_LONG_PRESS_MS,
+  exceedsLongPressSlop,
+  sameSwapSlot,
+  swapImageSlots,
+  type SwapSlotRef,
+} from './image-swap';
+import {
   editAnchorId,
   editAnchorSelector,
   resolveEditAnchor,
@@ -106,6 +113,7 @@ import {
   createFrozenBackupPlan,
   createLatestCommit,
   filterSnapshotMismatches,
+  shouldDismissFilterPanel,
   prepareSnapshotBlobs,
   uploadCorrelatedSnapshots,
 } from './filter-controller';
@@ -590,6 +598,28 @@ function EditorShell({
     [detail.album.id, setPhotoFilter],
   );
 
+  /* 选完滤镜、鼠标点到别处 → 面板自己收起。
+     早先只有 × 能关,面板就一直钉在画布底部挡视线。移动端那份是 bottom-sheet,
+     ModalHost 早就有「点遮罩关闭」,这里是把桌面补齐到同一口径。
+     用 pointerdown 的**捕获**阶段:画布上不少处理器会 stopPropagation(选页、选图、
+     工具条),挂冒泡阶段会被它们吃掉,表现是「点某些地方能收、点另一些不能」。
+     放行判据在 shouldDismissFilterPanel(面板内部 + 打开它的那枚按钮)。 */
+  useEffect(() => {
+    if (!filterOpen) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      if (shouldDismissFilterPanel(e.target)) setFilterOpen(false);
+    };
+    const onDocKeydown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFilterOpen(false);
+    };
+    document.addEventListener('pointerdown', onDocPointerDown, true);
+    document.addEventListener('keydown', onDocKeydown, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDocPointerDown, true);
+      document.removeEventListener('keydown', onDocKeydown, true);
+    };
+  }, [filterOpen]);
+
   const openPhotoFilter = useCallback((scope: 'photo', photoId: string) => {
     if (!lutSupported) return;
     setFilterScope(scope);
@@ -892,7 +922,7 @@ function EditorModals({ locale }: { locale: Locale }) {
             <h3 id="exportMenuTitle" className="font-display text-[18px] font-bold">{zh ? '导出' : 'Export'}</h3>
             <p className="text-[13px] text-muted mt-1">{zh ? '选一种格式导出' : 'Pick a format to export'}</p>
           </div>
-          <div className="px-5 py-4 flex flex-col gap-2.5">
+          <div className="px-5 py-4 flex flex-col gap-2.5" data-export-opts>
             <button className="export-opt" data-action="openCollage" data-testid="export-opt-collage">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
               <span>{zh ? '多跨页拼图 · JPG' : 'Spread collage · JPG'}</span>
@@ -2247,6 +2277,222 @@ function EditorBook({
       if (wheelCommitTimer) clearTimeout(wheelCommitTimer);
       wheelCommitTimer = setTimeout(() => commitImagePos(), 320);
     };
+    // ── 长按拖拽交换图片 ────────────────────────────────────────────────────
+    // 语义与阈值在 image-swap.ts(与移动端同一份;那边还带着「为什么是长按」的理由)。
+    // 桌面的画板是全书页面的网格,所以**跨页交换天然成立**:拖到别的格子上松手即可,
+    // 不需要额外的翻页动作。
+    type SwapPick = { ref: SwapSlotRef; frame: HTMLElement; img: HTMLImageElement | null };
+    /** 一个 DOM 节点 → 它属于哪个图槽。命中不到(点在空白/文字上)返回 null。 */
+    function swapPickAt(node: EventTarget | null): SwapPick | null {
+      const slotEl = (node as HTMLElement | null)?.closest?.<HTMLElement>('[data-image-slot]');
+      const slotId = slotEl?.getAttribute('data-image-slot');
+      if (!slotEl || !slotId) return null;
+      const host = slotEl.closest<HTMLElement>('[data-page-index]');
+      const pi = host?.dataset.pageIndex;
+      if (pi === undefined || pi === '') return null;
+      // 高亮/幽灵都贴**图框**(overflow:hidden 的外框)而不是 img —— scale>1 时 img 的
+      // rect 是放大后被裁掉的尺寸(与 positionImgEditOverlay 同一理由)。
+      const img = slotEl.tagName === 'IMG' ? (slotEl as HTMLImageElement) : slotEl.querySelector('img');
+      const frame = slotEl.tagName === 'IMG' ? (slotEl.parentElement ?? slotEl) : slotEl;
+      return { ref: { pageIndex: Number(pi), slotId }, frame, img };
+    }
+    /** 按下之后、真正拾起之前的候选态。
+     *  immediate = 鼠标:**一动就拾起**,不要求按住。触屏才走长按计时。 */
+    let swapPending:
+      | { pointerId: number; x: number; y: number; timer: number; pick: SwapPick; immediate: boolean }
+      | null = null;
+    let swapDrag: {
+      pointerId: number;
+      from: SwapSlotRef;
+      sourceFrame: HTMLElement;
+      ghost: HTMLElement;
+      target: SwapPick | null;
+    } | null = null;
+    function cancelSwapPending() {
+      if (!swapPending) return;
+      clearTimeout(swapPending.timer);
+      swapPending = null;
+    }
+    function highlightSwapTarget(next: SwapPick | null) {
+      if (!swapDrag) return;
+      if (swapDrag.target?.frame === next?.frame) return;
+      swapDrag.target?.frame.classList.remove('img-swap-target');
+      next?.frame.classList.add('img-swap-target');
+      swapDrag.target = next;
+    }
+    function moveSwapGhost(x: number, y: number) {
+      if (!swapDrag) return;
+      // 幽灵是 pointer-events:none 的,所以 elementFromPoint 看得见它底下的图槽。
+      setFixedPos(swapDrag.ghost, x - swapDrag.ghost.offsetWidth / 2, y - swapDrag.ghost.offsetHeight / 2);
+    }
+    /** 扫掉任何游离的幽灵/残留态。
+     *
+     *  幽灵是命令式 append 上去的裸 DOM,**只有 swapDrag 这一个引用**。所以只要
+     *  swapDrag 在没走 endSwapDrag 的情况下被覆盖或丢掉,那个节点就再也没人删得掉,
+     *  会一直浮在画布上(真机撞到过:长按几次就堆几张带白描边的小图)。
+     *  「收不到 pointerup」不是理论情形:鼠标拖出窗口才松手、切走标签页、
+     *  pointercancel 没派发,都会走到那里。所以这里按**类名**兜底扫,不靠引用。 */
+    function sweepSwapArtifacts() {
+      const stage = bookEl.parentElement ?? bookEl;
+      stage.querySelectorAll('.img-swap-ghost').forEach((el) => el.remove());
+      bodyEl.classList.remove('swap-dragging');
+      bodyEl.querySelectorAll('.img-swap-source').forEach((el) => el.classList.remove('img-swap-source'));
+      bodyEl.querySelectorAll('.img-swap-target').forEach((el) => el.classList.remove('img-swap-target'));
+    }
+    function beginSwapDrag(pick: SwapPick, x: number, y: number, pointerId: number) {
+      swapPending = null;
+      // 上一次拖动要是还挂着(没收到 pointerup),先规规矩矩收掉再开新的 ——
+      // 直接覆盖 swapDrag 就等于把上一个幽灵永久漏在画布上。
+      if (swapDrag) endSwapDrag(false);
+      sweepSwapArtifacts();
+      // 拾起的这一刻画布不该再跟着手指跑(用户按下时可能已经越过 ov 平移阈值)。
+      ovPanning = false;
+      const ghost = document.createElement('div');
+      ghost.className = 'img-swap-ghost';
+      const src = pick.img?.currentSrc || pick.img?.src;
+      if (src) ghost.style.backgroundImage = `url("${src}")`;
+      (bookEl.parentElement ?? bookEl).appendChild(ghost);
+      // 拖动期间整个编辑器禁选文字 + 抓手光标:鼠标长按后拖会顺手框选页面上的文案,
+      // 拖完满屏蓝底。这条只在拖动期间挂着,松手即摘。
+      bodyEl.classList.add('swap-dragging');
+      pick.frame.classList.add('img-swap-source');
+      swapDrag = { pointerId, from: pick.ref, sourceFrame: pick.frame, ghost, target: null };
+      moveSwapGhost(x, y);
+      // 拖动期间不要同时进入「平移这张图」的编辑态,否则松手会既交换又提交一次位移。
+      clearImageSelection();
+    }
+    /* 交换收尾浏览器还会补一记 click —— 不吞掉的话松手会顺手选中/取消选中落点那张图。
+       用「一次性捕获监听 + 下一次 pointerdown 解除」而不是一个布尔标记:标记要靠某个
+       click 处理器把它清掉,而拖到画板外松手时那记 click 可能根本落不到画板上,标记就
+       会一直挂着,吃掉之后某次真实点击。新手势一定以 pointerdown 开头,据此解除才封闭。 */
+    let swallowClick: ((ev: MouseEvent) => void) | null = null;
+    function disarmClickSwallow() {
+      if (!swallowClick) return;
+      window.removeEventListener('click', swallowClick, true);
+      swallowClick = null;
+    }
+    function armClickSwallow() {
+      disarmClickSwallow();
+      swallowClick = (ev: MouseEvent) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        disarmClickSwallow();
+      };
+      window.addEventListener('click', swallowClick, true);
+    }
+    function endSwapDrag(commit: boolean) {
+      const drag = swapDrag;
+      if (!drag) return;
+      swapDrag = null;
+      bodyEl.classList.remove('swap-dragging');
+      drag.sourceFrame.classList.remove('img-swap-source');
+      drag.target?.frame.classList.remove('img-swap-target');
+      drag.ghost.remove();
+      // 引用路径删完再按类名扫一遍:前面漏下的、或者并发出来的第二个,一并收干净。
+      sweepSwapArtifacts();
+      if (commit && drag.target) applySlotSwap(drag.from, drag.target.ref);
+    }
+    /** 落地:两个槽对调 → 脏页重绘 → 每页各发一次单页 PATCH(与换图同一条通道)。 */
+    function applySlotSwap(from: SwapSlotRef, to: SwapSlotRef) {
+      const result = swapImageSlots(pagesState, from, to);
+      if (!result) return;
+      for (const pi of result.touched) {
+        const next = result.pages.find((p) => p.pageIndex === pi);
+        const live = pageByIndex(pi);
+        if (next && live) live.imagesJson = next.imagesJson;
+      }
+      // 用整本重绘,不用 repaintPages 那条「只重画脏页」的快路。
+      //
+      // 换图(swapImage)只动一页一个槽,脏页重绘够用;交换动的是**两页两个槽**,而且
+      // 两页可能落在不同跨页、不同画板格里。真机上这条快路重绘不出来(数据换好了、
+      // 屏幕不变,刷新一次才显示),源码层面没读出是哪一步吞掉的 —— 与其留一个我没能
+      // 解释的优化,不如用 repaintBook:它的抬头注释写的就是「一次编辑之后,把所有
+      // 显示页面内容的表面都重画一遍」,画布模式下会整体 renderOverview。
+      // 交换是用户一次明确的拖放,不是逐帧的高频操作,整本重绘的代价可以接受。
+      repaintBook();
+      for (const pi of result.touched) {
+        const live = pageByIndex(pi);
+        if (live) persistPagePatch(live);
+      }
+    }
+    const onSwapPointerDown = (e: PointerEvent) => {
+      if (!bodyEl.classList.contains('overview-on')) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      cancelSwapPending();
+      const pick = swapPickAt(e.target);
+      if (!pick) return;
+      // 空框拾不起来(拖一个空框出去没有任何意义);空框作为**落点**是允许的 ——
+      // 那就是「把这张挪过去」,原槽变空(见 image-swap.ts)。
+      if (!pageByIndex(pick.ref.pageIndex)?.imagesJson[pick.ref.slotId]) return;
+      const { clientX: x, clientY: y, pointerId } = e;
+      // 鼠标不需要「按住」这道门:桌面上「按住图往外拖 = 挪这张图」本来就是最自然的
+      // 手势,画布平移从空白处拖即可。长按只留给触屏 —— 那边直接拖已经被翻页/平移占了
+      // (理由见 image-swap.ts)。早先两端一律长按,鼠标用户按住图一拖就被判成「想平移」,
+      // 表现是怎么拖都没反应。
+      const immediate = e.pointerType === 'mouse';
+      swapPending = {
+        pointerId,
+        x,
+        y,
+        pick,
+        immediate,
+        timer: immediate
+          ? 0
+          : window.setTimeout(() => beginSwapDrag(pick, x, y, pointerId), SWAP_LONG_PRESS_MS),
+      };
+    };
+    const onSwapPointerMove = (e: PointerEvent) => {
+      if (swapPending && swapPending.pointerId === e.pointerId) {
+        const pending = swapPending;
+        const moved = exceedsLongPressSlop(e.clientX - pending.x, e.clientY - pending.y);
+        if (!moved) return;
+        // 鼠标:越过阈值就是「开拖」;触屏:越过阈值说明是平移/翻页,放弃拾起。
+        if (pending.immediate) beginSwapDrag(pending.pick, e.clientX, e.clientY, pending.pointerId);
+        else cancelSwapPending();
+        return;
+      }
+      if (!swapDrag || swapDrag.pointerId !== e.pointerId) return;
+      e.preventDefault();
+      moveSwapGhost(e.clientX, e.clientY);
+      // 按**这一点上的 z 序**找落点,不是只看最上面那一个:模板常在图上叠装饰层/文字,
+      // 只取 elementFromPoint 的话,这类页面的图槽一个都放不下去(与移动端同一判据)。
+      let pick: SwapPick | null = null;
+      for (const node of document.elementsFromPoint(e.clientX, e.clientY)) {
+        pick = swapPickAt(node);
+        if (pick) break;
+        if ((node as HTMLElement).classList?.contains('ov-page')) break; // 到页边框还没归到槽 = 空白
+      }
+      highlightSwapTarget(pick && !sameSwapSlot(pick.ref, swapDrag.from) ? pick : null);
+    };
+    const onSwapPointerUp = (e: PointerEvent) => {
+      if (swapPending?.pointerId === e.pointerId) cancelSwapPending();
+      if (swapDrag?.pointerId === e.pointerId) {
+        armClickSwallow();
+        endSwapDrag(true);
+      }
+    };
+    const onSwapPointerCancel = (e: PointerEvent) => {
+      if (swapPending?.pointerId === e.pointerId) cancelSwapPending();
+      if (swapDrag?.pointerId === e.pointerId) endSwapDrag(false);
+    };
+    /** 「这一拖再也不会有 pointerup 了」的兜底出口。
+     *  窗口失焦(拖出窗口松手)、标签页切走、指针捕获丢失 —— 三条都会让 pointerup
+     *  永远不到,而幽灵还挂在画布上。收到任意一条就当这次拖动作废。 */
+    const abortSwapDrag = () => {
+      cancelSwapPending();
+      if (swapDrag) endSwapDrag(false);
+      else sweepSwapArtifacts();
+    };
+    /** Esc 放弃这次交换(拾起后发现拖错了,不必找个空白处松手)。 */
+    const onSwapKeydown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      cancelSwapPending();
+      if (swapDrag) {
+        e.stopPropagation();
+        endSwapDrag(false);
+      }
+    };
+
     // A click anywhere on a selected page: if it's on an editable image, enter
     // image-edit mode for that slot; otherwise fall through to page select/deselect.
     const surfaceClick = (hostEl: HTMLElement, e: MouseEvent) => {
@@ -2298,6 +2544,7 @@ function EditorBook({
       hostEl.addEventListener('pointermove', onImgPointerMove);
       hostEl.addEventListener('pointerup', onImgPointerUp);
       hostEl.addEventListener('wheel', onImgWheel, { passive: false });
+      hostEl.addEventListener('pointerdown', onSwapPointerDown);
     }
 
     function paintSpread(i: number) {
@@ -2805,7 +3052,7 @@ function EditorBook({
       );
     const onOvPointerDown = (e: PointerEvent) => {
       if (!bodyEl.classList.contains('overview-on')) return;
-      if (dragging) return; // 图片拖动进行中,画布不动
+      if (dragging || swapDrag) return; // 图片拖动 / 长按交换进行中,画布不动
       if (ovInteractive(e.target as HTMLElement | null)) return;
       ovPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (ovPointers.size === 2) {
@@ -2842,6 +3089,11 @@ function EditorBook({
         return;
       }
       if (!ovPanning) return;
+      // 长按拾起还在候选中(手指按在某张图上、位移没超过 slop):先别平移画布。
+      // 这段最长只有 SWAP_LONG_PRESS_MS,而且一旦抖过 slop,onSwapPointerMove
+      // (绑在更内层的 #ovGrid 上,先于本处理器跑)当场取消候选,平移立刻接上 ——
+      // ovPanOrigin 记的是 pointerdown 那一刻,所以接上时不会跳。
+      if (swapPending) return;
       if (!ovPanMoved && (Math.abs(e.clientX - ovPanOrigin.x) > 3 || Math.abs(e.clientY - ovPanOrigin.y) > 3)) {
         // 真的开始拖了:此刻才抓指针 + 上 panning 态(子级 pointer-events:none),
         // 保证拖出元素也能继续平移。单纯点击到不了这里,click 照常选页/编辑。
@@ -2896,6 +3148,19 @@ function EditorBook({
     ovGridEl?.addEventListener('pointermove', onImgPointerMove);
     ovGridEl?.addEventListener('pointerup', onImgPointerUp);
     ovGridEl?.addEventListener('wheel', onImgWheel, { passive: false });
+    // 长按交换的**按下**挂在画板上(要拿到落点是哪个图槽);移动/松手挂 window 的
+    // **捕获**阶段 —— 两个理由:
+    //   · 手指会拖出格子、拖到另一页的格子上,挂在格子上会中途断掉;
+    //   · 捕获阶段先于任何冒泡处理器跑,所以「抖过 slop 就取消候选」一定发生在
+    //     onOvPointerMove 判 swapPending 之前,平移能在同一帧无缝接上。
+    ovGridEl?.addEventListener('pointerdown', onSwapPointerDown);
+    window.addEventListener('pointermove', onSwapPointerMove, { capture: true, passive: false });
+    window.addEventListener('pointerup', onSwapPointerUp, true);
+    window.addEventListener('pointercancel', onSwapPointerCancel, true);
+    window.addEventListener('pointerdown', disarmClickSwallow, true);
+    window.addEventListener('keydown', onSwapKeydown, true);
+    window.addEventListener('blur', abortSwapDrag);
+    document.addEventListener('visibilitychange', abortSwapDrag);
     // 取消「双击跨页 → 跳回书籍预览」的逃生门:用户在画布(编辑)模式双击想放大/聚焦
     // 跨页,却被弹回预览,体验割裂。要回预览走底部的「预览模式」切换按钮即可,画布模式
     // 内不再因双击而切视图。
@@ -4145,7 +4410,41 @@ function EditorBook({
     function closeExportFailModal() { byId('exportFailModal')?.classList.remove('open'); }
 
     // ─── 导出格式弹窗 + 拼图二级弹窗 + 进度浮层 ───
-    function openExportMenu() { if (exportGateLocked) return; byId('exportMenuModal')?.classList.add('open'); }
+    /** 「本机没原图 → 这几张要走云端备份图」的实情。null = 全都有本地原图,不必说。
+     *  由下面那段异步探测填(§5.4 口径改动),导出菜单打开时如实告知一次。 */
+    let exportSourceNotice: { fromBackup: number; missing: number } | null = null;
+    let exportNoticeShown = false;
+    /** 在导出菜单顶部挂一条说明。只说一次:每次点开都弹会变成噪音。 */
+    function showExportSourceNotice() {
+      const notice = exportSourceNotice;
+      if (!notice || exportNoticeShown) return;
+      exportNoticeShown = true;
+      const host = byId('exportMenuModal')?.querySelector('[data-export-opts]');
+      if (!host) return;
+      const el = document.createElement('p');
+      el.className = 'export-source-notice';
+      el.setAttribute('role', 'status');
+      const parts: string[] = [];
+      if (notice.fromBackup > 0) {
+        parts.push(aT(
+          `${notice.fromBackup} 张用的是云端备份图,会比在存着原图的设备上导出略糊`,
+          `${notice.fromBackup} photo(s) use the cloud backup — slightly softer than exporting where the originals are`,
+        ));
+      }
+      if (notice.missing > 0) {
+        parts.push(aT(
+          `${notice.missing} 张既不在本机也没备份,导出来是空的`,
+          `${notice.missing} photo(s) are neither on this device nor backed up — they will export blank`,
+        ));
+      }
+      el.textContent = parts.join(aT(';', '; '));
+      host.prepend(el);
+    }
+    function openExportMenu() {
+      if (exportGateLocked) return;
+      showExportSourceNotice();
+      byId('exportMenuModal')?.classList.add('open');
+    }
     function closeExportMenu() { byId('exportMenuModal')?.classList.remove('open'); }
     let collageDensity: 1 | 2 | 3 | 6 | null = null;
     let liveStyle: 'flip' | 'nine-grid' = 'flip';
@@ -4191,10 +4490,16 @@ function EditorBook({
         html: p.htmlJson,
       }));
       const ids = collectPhotoIds(adaptable);
+      // 本地没有原图时回落到已备份的服务器压缩图 —— 与上面画布用的
+      // `imageUrls[id] ?? snapshotUrls[id]` 同一份表、同一条规则。这条早先只做在
+      // 展示层,导出自建 resolver 没接,于是换设备/清缓存后导出出来是一本空图
+      // (见 lib/photo/export-backup-fallback.test.ts)。
+      const snapshotUrls = detail.album.photoSnapshotUrls ?? {};
       const dataUrls = await photoStore.getPdfDataUrls(
         ids,
         RASTER_PDF_IMAGE_MAX_EDGE,
         currentPhotoFilter,
+        snapshotUrls,
       );
       return { adaptable, photoIds: ids, resolveImage: (id: string) => dataUrls[id] };
     }
@@ -4650,8 +4955,10 @@ function EditorBook({
         // never be uploaded under the filtered immutable renderVersion.
         const prepared = await prepareSnapshotBlobs(
           plan,
+          // 上传档(3400)而不是屏显档(1600):换设备后导出要拿它当源图,满页图槽
+          // 在 scale 3 下要 ~3369px。见 store.ts 的 TIER_MAX_EDGE 注释。
           (entry, frozenState) =>
-            photoStore.getTierBlobStatus(entry.photoId, 'display', frozenState),
+            photoStore.getTierBlobStatus(entry.photoId, 'backup', frozenState),
         );
         for (const entry of prepared.failures) {
           logger.error(
@@ -4779,42 +5086,28 @@ function EditorBook({
       void navigator.clipboard.writeText(input.value).catch(() => {});
     }
 
-    /* ─── 只读姿态(photo-snapshot §5.4)───
-       本书任一用到照片的原图不在本机 → 出不了高清 PDF。把顶栏「导出」改成「下载 PDF」
-       (下之前已导出的那份 pdfUrl);连 PDF 都没有则禁用并提示。异步探测,不阻塞挂载。 */
+    /* ─── 备份回落之后,「本机没原图」不再等于「不能导出」(§5.4 改口径)───
+       原先:本机缺任一原图 → 把顶栏「导出」换成「下载 PDF」,连 PDF 都没有就禁用。
+       那是因为当时导出只读本地原图,缺图导出来必然是空的,不如直接挡住。
+
+       现在导出会回落到已备份的服务器图(getPdfDataUrls 的 backupUrls),所以能导了 ——
+       闸门撤掉,改成**导出前如实说一句**:这本有几张走的是云端备份图。
+       仍然一张都没有(既无本地原图、也没备份)的那几张,导出来还是空的,所以照实说。
+       与移动端同一口径:两端都能导,都告知。 */
     void (async () => {
       const ids = bookPhotoIds();
       if (ids.length === 0) return;
-      let anyMissing = false;
+      const snapshotUrls = detail.album.photoSnapshotUrls ?? {};
+      let fromBackup = 0;
+      let missing = 0;
       for (const id of ids) {
         const blob = await photoStore.getBlob(id).catch(() => undefined);
-        if (!blob) { anyMissing = true; break; }
+        if (blob) continue;
+        if (snapshotUrls[id]) fromBackup += 1;
+        else missing += 1;
       }
-      if (!anyMissing) return;
-      const exportBtn = $('[data-action="openExportMenu"]') as HTMLButtonElement | null;
-      if (!exportBtn) return;
-      const labelEl = exportBtn.querySelector('[data-i18n="exportPdf"]') as HTMLElement | null;
-      const pdfUrl = detail.album.pdfUrl;
-      if (pdfUrl) {
-        if (labelEl) labelEl.textContent = aT('下载 PDF', 'Download PDF');
-        exportBtn.disabled = false;
-        exportBtn.removeAttribute('aria-disabled');
-        exportBtn.title = aT('本机没有原图,下载之前导出的 PDF', 'Originals not on this device — download the exported PDF');
-        // 捕获阶段拦截,stopImmediatePropagation 挡掉冒泡阶段的 exportPdf 处理器。
-        exportBtn.addEventListener(
-          'click',
-          (e) => {
-            e.stopImmediatePropagation();
-            e.preventDefault();
-            window.open(pdfUrl, '_blank', 'noopener');
-          },
-          true,
-        );
-      } else {
-        exportBtn.disabled = true;
-        exportBtn.setAttribute('aria-disabled', 'true');
-        exportBtn.title = aT('本机没有原图,请在有原图的设备上导出', 'Originals not on this device — export where the photos are');
-      }
+      if (fromBackup === 0 && missing === 0) return;
+      exportSourceNotice = { fromBackup, missing };
     })();
 
     /* ─── Wire the canvas/topbar/modal data-action handlers ───
@@ -5173,7 +5466,20 @@ function EditorBook({
         hostEl.removeEventListener('pointermove', onImgPointerMove);
         hostEl.removeEventListener('pointerup', onImgPointerUp);
         hostEl.removeEventListener('wheel', onImgWheel);
+        hostEl.removeEventListener('pointerdown', onSwapPointerDown);
       }
+      // 长按交换:卸载前把定时器和还挂在画布上的幽灵/高亮一起收掉。
+      cancelSwapPending();
+      endSwapDrag(false);
+      disarmClickSwallow();
+      window.removeEventListener('pointermove', onSwapPointerMove, true);
+      window.removeEventListener('pointerup', onSwapPointerUp, true);
+      window.removeEventListener('pointercancel', onSwapPointerCancel, true);
+      window.removeEventListener('pointerdown', disarmClickSwallow, true);
+      window.removeEventListener('keydown', onSwapKeydown, true);
+      window.removeEventListener('blur', abortSwapDrag);
+      document.removeEventListener('visibilitychange', abortSwapDrag);
+      sweepSwapArtifacts();
       imgEditOverlay?.remove();
       // On remount the coordinator will be repopulated; clear it so a torn-down canvas
       // isn't left addressable via stale closures.

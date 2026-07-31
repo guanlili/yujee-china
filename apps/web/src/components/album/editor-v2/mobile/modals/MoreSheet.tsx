@@ -28,6 +28,7 @@ export function MoreSheet({
   lutSupported,
   onClose,
   onBackupPhotos,
+  onRebackupPhotos,
   onPhotoFilter,
 }: {
   open: boolean;
@@ -37,6 +38,9 @@ export function MoreSheet({
   lutSupported: boolean;
   onClose: () => void;
   onBackupPhotos: () => void;
+  /** 整本重传一遍。上传档从 1600 提到 3400 之后,存量备份不会自动升级 ——
+   *  档位不进 renderVersion(进了会把存量分享全打成 409),升档只能靠用户点这一条。 */
+  onRebackupPhotos: () => void;
   onPhotoFilter: () => void;
 }) {
   const backupLabel = () => {
@@ -101,6 +105,21 @@ export function MoreSheet({
           </svg>
           <span>{backupLabel()}</span>
         </button>
+        {/* 只在「已经备份过」时出现:没备份过的书点上面那条就够了,这条会是多余的第二个入口。
+            存量备份是老的 1600 档,导出会糊;重传一遍覆盖成 3400。 */}
+        {backupState === 'backed-up' && (
+          <button
+            className="export-opt"
+            onClick={onRebackupPhotos}
+            data-testid="more-rebackup"
+          >
+            <svg {...stroke}>
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+            <span>{zh ? '重新备份(提升导出画质)' : 'Re-back up (better export quality)'}</span>
+          </button>
+        )}
       </div>
       <div className="px-5 pb-5">
         <button className="export-cancel" onClick={onClose}>

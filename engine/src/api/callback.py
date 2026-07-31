@@ -18,6 +18,18 @@ log = get_logger("callback")
 _TIMEOUT_SECONDS = 10
 _RETRY_BACKOFFS = (1, 4)
 
+
+def _describe_exc(exc: BaseException) -> str:
+    """回调失败的可诊断描述。
+
+    **别退回 str(exc)**:httpx 的超时/连接异常没带 message,str() 是空字符串
+    (ReadTimeout('') → ''),日志会变成 {"error": ""} —— 三次重试加一条 giveup 全是空的,
+    看不出是 Web 慢到超时还是根本连不上,而这两者的处置完全不同。类型名必须留下。
+    """
+    name = type(exc).__name__
+    message = str(exc)
+    return f"{name}: {message}" if message else name
+
 # All envelopes share the duck-typed contract this poster relies on: `.event`
 # (for logging), `.requestId` (for the giveup log), and a pydantic `model_dump`.
 # V3 async jobs post to the Web callback URL supplied by the request.
@@ -80,7 +92,7 @@ async def post(callback_url: str, envelope: Envelope) -> bool:
                 return True
             log.warning("callback.5xx", status=resp.status_code, attempt=attempt)
         except (httpx.HTTPError, asyncio.TimeoutError) as exc:
-            log.warning("callback.error", error=str(exc), attempt=attempt)
+            log.warning("callback.error", error=_describe_exc(exc), attempt=attempt)
         if attempt <= len(_RETRY_BACKOFFS):
             await asyncio.sleep(_RETRY_BACKOFFS[attempt - 1])
     log.error("callback.giveup", cb_event=envelope.event, request_id=envelope.requestId)

@@ -47,7 +47,9 @@ test('Save button carries the backup state on itself and reverts to idle', () =>
   assert.doesNotMatch(editorPort, /data-i18n="saved">已保存/, 'the misleading static 已保存 badge must be gone');
   // 按精确渲染版本增量备份,confirm 只登记 PUT 成功的 entry
   assert.match(editorPort, /createFrozenBackupPlan\(\s*bookPhotoIds\(\),\s*currentPhotoFilter,\s*snapshotRenderVersions/, 'backup freezes exact render-version mismatches');
-  assert.match(editorPort, /getTierBlobStatus\(entry\.photoId, 'display', frozenState\)/, 'backup observes filtered fallback status from one frozen state');
+  // 上传档是 'backup'(3400)而不是屏显的 'display'(1600):换设备后导出要拿它当源图,
+  // 满页图槽在 scale 3 下要 ~3369px。见 store.ts TIER_MAX_EDGE 注释。
+  assert.match(editorPort, /getTierBlobStatus\(entry\.photoId, 'backup', frozenState\)/, 'backup observes filtered fallback status from one frozen state');
   assert.match(editorPort, /correlateSignedSnapshotUploads\(requestedEntries, signed\)/, 'backup correlates signatures by exact entry before PUT');
   assert.match(editorPort, /confirmPhotoSnapshot\(albumId, uploaded\)/, 'confirm registers only successfully uploaded ids');
 });
@@ -64,11 +66,22 @@ test('Export + Save are icon-only, and the Save hover animation exists', () => {
   assert.match(css, /\.editor-port \.save-btn\[data-backup-state="failed"\] \.backup-dot\{ background: #e5484d/, 'failed shows a red dot');
 });
 
-test('read-only posture swaps Export for Download PDF when local originals are missing', () => {
-  assert.match(editorPort, /photoStore\.getBlob\(id\)/, 'detects missing local originals via getBlob');
-  assert.match(editorPort, /Download PDF'\)/, 'export button becomes Download PDF when originals missing');
-  assert.match(editorPort, /stopImmediatePropagation\(\)/, 'download override blocks the exportPdf handler');
-  assert.match(editorPort, /window\.open\(pdfUrl/, 'download opens the already-exported pdfUrl');
+/* §5.4 口径变了:从「本机没原图 → 不给导出」改成「照导 + 如实告知」。
+   变的理由:导出取数已经会回落到已备份的服务器图(getPdfDataUrls 的 backupUrls),
+   缺图导出来不再必然是空的,那道闸就成了纯挡路 —— 何况移动端从来没实现它,
+   两端行为本就不一致。现在两端统一为「能导 + 告知」。
+   仍然一张都没有(既无本地原图也没备份)的那几张导出来还是空的,所以照实说。 */
+test('本机缺原图时:照导,但导出前如实告知(不再换成「下载 PDF」)', () => {
+  assert.match(editorPort, /photoStore\.getBlob\(id\)/, '仍然靠 getBlob 探测本机有没有原图');
+  assert.match(editorPort, /exportSourceNotice/, '探测结果要落到一条告知上');
+  assert.match(editorPort, /fromBackup/, '要分清「走云端备份图」和「彻底没有」');
+  assert.match(editorPort, /missing/);
+  assert.match(editorPort, /showExportSourceNotice\(\)/, '导出菜单打开时说一次');
+  assert.doesNotMatch(
+    editorPort,
+    /labelEl\.textContent = aT\('下载 PDF'/,
+    '那道闸已经撤掉 —— 留着就又回到「桌面挡着、移动放开」的打架状态',
+  );
 });
 
 test('photo-snapshot client posts to the sign/confirm routes and PUTs jpeg', () => {

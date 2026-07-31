@@ -17,6 +17,8 @@
      · 位置:target 与 .mspread 的 rect 相减 → 画一个 React 拥有的高亮框
      · 初值:getComputedStyle(target) 读当前字号/颜色/对齐,面板打开即显示真实样式
    一个 querySelector 都不需要,高亮也不是往别人的 DOM 里塞节点。
+   长按拖拽交换图片走的是同一条路子:跟手的幽灵和落点高亮都是本组件渲染的兄弟节点,
+   落点判定同样只靠「这一点上有谁」(见 imageSlotAtPoint)。
 
    面板升起时会盖住屏幕下 2/3(.mes-card 是 66vh)。若选中的元素正落在被盖住的
    区域,把书整体上移到面板之上 —— 这是「让被编辑的东西看得见」,不是自由缩放。
@@ -27,6 +29,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { EditorPage } from '../../types';
 import { pageFaceHTML, type PageFaceCtx } from '../page-face';
 import { pageFolioInfos } from '../../page-html-dom';
+import { useFitTextBoxes } from '../../use-fit-text-boxes';
 import { isSpreadTemplate } from '../../templates/constants';
 import type { ResolveImage } from '../../adapt-layout';
 import { fitBox, spreadAspect } from './fit-box';
@@ -42,6 +45,14 @@ const IMG_BAR_H = 40;
 const IMG_BAR_GAP = 8;
 import type { ComputedProbe, SelRect } from './page-edit';
 import { clampImagePos, dragToImagePos, type ImagePosValue } from '../image-edit-util';
+import {
+  SWAP_EDGE_FLIP_MS,
+  SWAP_LONG_PRESS_MS,
+  edgeFlipDirection,
+  exceedsLongPressSlop,
+  sameSwapSlot,
+  type SwapSlotRef,
+} from '../image-swap';
 
 /** 点中一个文字槽后交给父层的全部信息(父层据此开面板、落库)。 */
 export type TextHit = { slotId: string; rect: SelRect; probe: ComputedProbe };
@@ -52,6 +63,9 @@ export type ImageHit = { slotId: string; rect: SelRect };
 
 export type EditViewProps = {
   pages: EditorPage[];
+  /** 相册子集字体是否已注册(见 MobileEditorRoot 的 useAlbumFonts)。字体到货换行会变,
+   *  文字槽的字号自适应必须据此重跑。 */
+  fontsReady: boolean;
   resolve: ResolveImage;
   boardBackground?: string | null;
   zh: boolean;
@@ -85,6 +99,8 @@ export type EditViewProps = {
   /** 图片工具栏:位置/缩放复位。 */
   onResetImagePos: () => void;
   onPhotoFilter: () => void;
+  /** 长按拾起一张图、拖到另一个图槽松手 → 两个槽对调(可跨页,见 image-swap.ts)。 */
+  onSwapImage: (from: SwapSlotRef, to: SwapSlotRef) => void;
   /** 点页面空白处:取消选中。 */
   onClearSelection: () => void;
   /** 交互 handler 一律必填(理由同 MobileEditor):漏接 = 死按钮 = 编译不过。 */
@@ -121,6 +137,7 @@ export function shouldStartBoardGesture(target: EventTarget | null): boolean {
 
 export function EditView({
   pages,
+  fontsReady,
   resolve,
   boardBackground,
   zh,
@@ -137,6 +154,7 @@ export function EditView({
   onSelectImage,
   onImagePos,
   onImagePosCommit,
+  onSwapImage,
   onReplaceImage,
   onClearImage,
   onResetImagePos,
@@ -226,6 +244,11 @@ export function EditView({
         )
       : 0;
 
+  // 文字槽的字号自适应(理由同 MobileEditor:模板文字槽是写死的固定高度,页根
+  // overflow:hidden —— 不收字号,溢出的部分直接被裁掉)。编辑态每次重绘页面之后都要跑:
+  // 换页、改文案、改字体、改画板尺寸都会改变换行。
+  useFitTextBoxes(spreadRef);
+
   const swipe = useRef<{ x: number; y: number } | null>(null);
   // 滑动收尾浏览器还会补一记 click —— 不吞掉的话一次翻页会顺手改掉选中。
   const moved = useRef(false);
@@ -304,19 +327,105 @@ export function EditView({
     return Math.hypot(a.x - b.x, a.y - b.y);
   };
 
+  /* ── 长按拾起 → 拖到另一个图槽松手 = 两张图对调 ─────────────────────────────
+     直接拖已经有主人了(没选中是翻页、选中是平移画面),所以交换要一个明确的进入动作:
+     按住 SWAP_LONG_PRESS_MS 把图拾起来。理由与阈值都在 image-swap.ts。
+
+     跟手的幽灵和落点高亮都是**本组件渲染的兄弟节点**,不往页面 DOM 里加类/改样式 ——
+     与选中高亮同一条路子(见抬头「选中链路」)。 */
+  const swapPress = useRef<{ pointerId: number; x: number; y: number; timer: number } | null>(null);
+  const [swap, setSwap] = useState<{
+    from: SwapSlotRef;
+    src: string | null;
+    /** 幽灵跟的是**视口**坐标(它是 fixed);落点高亮用相对 .mspread 的坐标。 */
+    x: number;
+    y: number;
+    target: { ref: SwapSlotRef; rect: SelRect } | null;
+  } | null>(null);
+  const swapRef = useRef<typeof swap>(null);
+  swapRef.current = swap;
+  /** 边缘自动翻页的计时器与当前方向(拖到画板左右缘停住就一页页往前/往后翻)。 */
+  const edgeFlip = useRef<{ dir: 1 | -1; timer: number } | null>(null);
+  /** onStep 每次渲染都是新函数,而自动翻页跑在定时器里 —— 走 ref 才不会翻第二页时用到旧的。 */
+  const stepRef = useRef(onStep);
+  stepRef.current = onStep;
+
+  /** 这一点最上层的图槽(文字盖在图上时也要能放下 —— 落点看的是图,不是装饰)。 */
+  const imageSlotAtPoint = (x: number, y: number, doc: Document): HTMLElement | null => {
+    for (const node of doc.elementsFromPoint(x, y)) {
+      const img = (node as HTMLElement).closest?.<HTMLElement>('[data-image-slot]');
+      if (img?.getAttribute('data-image-slot')) return img;
+      if ((node as HTMLElement).classList?.contains('mpage-face')) return null;
+    }
+    return null;
+  };
+
+  const cancelSwapPress = () => {
+    if (!swapPress.current) return;
+    window.clearTimeout(swapPress.current.timer);
+    swapPress.current = null;
+  };
+  const stopEdgeFlip = () => {
+    if (!edgeFlip.current) return;
+    window.clearInterval(edgeFlip.current.timer);
+    edgeFlip.current = null;
+  };
+  const endSwap = (pointerId?: number) => {
+    cancelSwapPress();
+    stopEdgeFlip();
+    if (pointerId != null && boardRef.current?.hasPointerCapture?.(pointerId)) {
+      boardRef.current.releasePointerCapture(pointerId);
+    }
+    swapRef.current = null;
+    setSwap(null);
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     if (!shouldStartBoardGesture(e.target)) return;
     armed.current = true; // 这一记是本视图自己按下的,随后的 click 才作数
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    // 第二根手指落下 → 进入捏合,取消单指平移与翻页
+    // 第二根手指落下 → 进入捏合,取消单指平移与翻页(顺带放弃长按拾起:两指不是长按)
     if (pointers.current.size === 2 && imageEditing && imagePos) {
       swipe.current = null;
       imgDrag.current = null;
+      cancelSwapPress();
       pinch.current = { start: imagePos, dist: twoFingerDist() };
       return;
     }
     if (!e.isPrimary) return;
     moved.current = false;
+    // 长按候选:手指按在一个**有照片**的图槽上就起表。空框拾不起来(拖个空框出去没意义);
+    // 空框作为落点是允许的,那是「把这张挪过去」。
+    cancelSwapPress();
+    const pressed = imageSlotAtPoint(
+      e.clientX,
+      e.clientY,
+      (e.target as HTMLElement).ownerDocument,
+    );
+    const pressedSlot = pressed?.getAttribute('data-image-slot') ?? null;
+    const pressedPhoto = pressedSlot && page ? page.imagesJson[pressedSlot] : undefined;
+    if (pressedSlot && pressedPhoto && page) {
+      const from: SwapSlotRef = { pageIndex: page.pageIndex, slotId: pressedSlot };
+      const { clientX: px, clientY: py, pointerId } = e;
+      swapPress.current = {
+        pointerId,
+        x: px,
+        y: py,
+        timer: window.setTimeout(() => {
+          swapPress.current = null;
+          // 拾起的这一刻,其它手势全部让位:这一拖不再是平移画面,也不再是翻页。
+          imgDrag.current = null;
+          swipe.current = null;
+          moved.current = true; // 松手那记 click 不该改选中
+          // 抓住指针:松手可能落在画板外(一级栏、顶栏),不抓的话 pointerup 收不到,
+          // 幽灵就会一直挂着。抓在画板自己身上,坐标判定(elementsFromPoint)不受影响。
+          boardRef.current?.setPointerCapture?.(pointerId);
+          const next = { from, src: resolve(pressedPhoto) ?? null, x: px, y: py, target: null };
+          swapRef.current = next;
+          setSwap(next);
+        }, SWAP_LONG_PRESS_MS),
+      };
+    }
     if (imageEditing && imagePos && selection) {
       // dragToImagePos 要的是 img 的**渲染后**尺寸(含缩放)。图铺满外框、再整体 scale,
       // 所以 渲染后尺寸 = 外框尺寸 × scale。外框尺寸用选中那一刻记下的 rect ——
@@ -337,6 +446,53 @@ export function EditView({
   const onPointerMove = (e: React.PointerEvent) => {
     if (pointers.current.has(e.pointerId)) {
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    const press = swapPress.current;
+    if (press && press.pointerId === e.pointerId) {
+      // 拾起前抖超阈值 = 用户本来就想平移/翻页,取消候选。
+      if (exceedsLongPressSlop(e.clientX - press.x, e.clientY - press.y)) cancelSwapPress();
+    }
+    const dragging = swapRef.current;
+    if (dragging) {
+      moved.current = true;
+      const doc = (e.target as HTMLElement).ownerDocument;
+      const hostRect = spreadRef.current?.getBoundingClientRect();
+      const hit = imageSlotAtPoint(e.clientX, e.clientY, doc);
+      const slotId = hit?.getAttribute('data-image-slot') ?? null;
+      let target: { ref: SwapSlotRef; rect: SelRect } | null = null;
+      if (hit && slotId && page && hostRect) {
+        const ref: SwapSlotRef = { pageIndex: page.pageIndex, slotId };
+        if (!sameSwapSlot(ref, dragging.from)) {
+          // 高亮贴**图框**而不是 img(scale>1 时 img 的 rect 是放大后被裁掉的尺寸)。
+          const frame = hit.tagName === 'IMG' ? (hit.parentElement ?? hit) : hit;
+          const r = frame.getBoundingClientRect();
+          target = {
+            ref,
+            rect: {
+              left: r.left - hostRect.left,
+              top: r.top - hostRect.top,
+              width: r.width,
+              height: r.height,
+            },
+          };
+        }
+      }
+      const next = { ...dragging, x: e.clientX, y: e.clientY, target };
+      swapRef.current = next;
+      setSwap(next);
+      // 编辑态一屏只有一页,跨页交换靠「拖到边缘停住 → 自动翻页 → 继续拖」。
+      const board = boardRef.current?.getBoundingClientRect();
+      const dir = board ? edgeFlipDirection(e.clientX, board) : null;
+      if (dir !== (edgeFlip.current?.dir ?? null)) {
+        stopEdgeFlip();
+        if (dir) {
+          edgeFlip.current = {
+            dir,
+            timer: window.setInterval(() => stepRef.current(dir), SWAP_EDGE_FLIP_MS),
+          };
+        }
+      }
+      return;
     }
     const pz = pinch.current;
     if (pz && pointers.current.size >= 2) {
@@ -362,6 +518,13 @@ export function EditView({
 
   const onPointerUp = (e: React.PointerEvent) => {
     pointers.current.delete(e.pointerId);
+    cancelSwapPress();
+    const dragging = swapRef.current;
+    if (dragging) {
+      endSwap(e.pointerId);
+      if (dragging.target) onSwapImage(dragging.from, dragging.target.ref);
+      return;
+    }
     if (imgDrag.current || pinch.current) {
       if (pointers.current.size === 0) endImageGesture();
       return;
@@ -429,10 +592,12 @@ export function EditView({
     });
   };
 
+  // data-album-fonts-ready:同 MobileEditor —— 标记 + 让字体到货真的触发一次 commit。
   return (
     <div
       className="mobile-editor"
       data-mode="edit"
+      data-album-fonts-ready={fontsReady}
       style={boardBackground ? { background: boardBackground } : undefined}
     >
       <MobileTopbar
@@ -457,6 +622,7 @@ export function EditView({
         onPointerCancel={(e) => {
           pointers.current.delete(e.pointerId);
           swipe.current = null;
+          endSwap(e.pointerId);
           endImageGesture();
         }}
       >
@@ -489,6 +655,20 @@ export function EditView({
                 top: selection.rect.top,
                 width: selection.rect.width,
                 height: selection.rect.height,
+              }}
+            />
+          )}
+
+          {/* 交换的落点提示。与 .msel 同一条路子:自己渲染的兄弟节点,不去给页面节点加类。 */}
+          {swap?.target && (
+            <div
+              className="mswap-target"
+              aria-hidden="true"
+              style={{
+                left: swap.target.rect.left,
+                top: swap.target.rect.top,
+                width: swap.target.rect.width,
+                height: swap.target.rect.height,
               }}
             />
           )}
@@ -560,6 +740,21 @@ export function EditView({
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
         </button>
+
+        {/* 跟手的幽灵。fixed + 视口坐标,所以挂在哪一层都不影响;pointer-events:none
+            是硬要求 —— 它盖在手指底下,不放行的话 elementsFromPoint 只会命中它自己,
+            落点判定当场失灵。 */}
+        {swap && (
+          <div
+            className="mswap-ghost"
+            aria-hidden="true"
+            style={{
+              left: swap.x,
+              top: swap.y,
+              ...(swap.src ? { backgroundImage: `url("${swap.src}")` } : {}),
+            }}
+          />
+        )}
       </div>
 
       {/* 一级栏:背景是页面级入口;图片/文字是「点页面上的元素来选中」的提示入口。 */}

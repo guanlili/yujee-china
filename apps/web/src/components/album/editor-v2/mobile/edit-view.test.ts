@@ -37,6 +37,7 @@ function render(
   return renderToStaticMarkup(
     createElement(EditView, {
       pages: BOOK,
+      fontsReady: true,
       resolve: () => undefined,
       zh: opts.zh ?? true,
       editPage,
@@ -47,7 +48,7 @@ function render(
       onStep: noop,
       onSelectText: noop, onSelectImage: noop, onClearSelection: noop,
       imagePos: null,
-      onImagePos: noop, onImagePosCommit: noop,
+      onImagePos: noop, onImagePosCommit: noop, onSwapImage: noop,
       onSave: noop, backupState: 'idle' as const, backupProgress: null,
       onReplaceImage: noop, onClearImage: noop, onResetImagePos: noop,
       onPhotoFilter: noop,

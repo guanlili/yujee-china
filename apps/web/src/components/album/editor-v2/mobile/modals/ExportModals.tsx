@@ -305,48 +305,82 @@ export function ExportProgressModal({
   );
 }
 
-/* ── 导出已生成:用一次新的明确点击触发系统分享/下载 ──────────────────────── */
+/* ── 导出已生成:用一次新的明确点击触发系统分享/下载 ────────────────────────
+   manualFiles 非 null = 这台设备的系统分享走不通,切成「逐张保存」列表。
+   不打包成 zip(手机上存不进相册),也不自动连发多个下载(会被静默拦截)——
+   每一张都由用户的一记真实点击落地。理由见 mobile/export-no-zip.test。 */
 export function ExportReadyModal({
   open,
   zh,
   label,
+  manualFiles,
   onClose,
   onSave,
+  onSaveFile,
 }: {
   open: boolean;
   zh: boolean;
   label: string;
+  /** 文件名列表;null = 还没进入逐张保存模式。 */
+  manualFiles: string[] | null;
   onClose: () => void;
   onSave: () => void;
+  /** 逐张保存必填 —— 可选 + 父层漏传 = 用户永远拿不到文件(同 CollageModal 那条)。 */
+  onSaveFile: (index: number) => void;
 }) {
+  const manual = manualFiles != null;
   return (
     <ModalHost open={open} onClose={onClose} labelledBy="mExportReadyTitle" testId="export-ready-modal">
       <div className="px-6 pt-6 pb-3 shrink-0">
         <h3 id="mExportReadyTitle" className="font-display text-[17px] font-bold">
-          {zh ? `${label}已生成` : `${label} is ready`}
+          {manual
+            ? zh ? `逐张保存${label}` : `Save ${label} one by one`
+            : zh ? `${label}已生成` : `${label} is ready`}
         </h3>
         <p className="text-[13px] text-muted mt-3 leading-relaxed">
-          {zh
-            ? '点击“保存 / 分享”完成保存，手机会打开系统分享面板。'
-            : 'Tap “Save / Share” to finish. Your phone will open the system share sheet.'}
+          {manual
+            ? zh
+              ? `这台手机打不开系统分享面板，点每一行的“保存”逐张存下来，共 ${manualFiles.length} 个文件。`
+              : `This phone can't open the system share sheet — tap “Save” on each row (${manualFiles.length} files).`
+            : zh
+              ? '点击“保存 / 分享”完成保存，手机会打开系统分享面板。'
+              : 'Tap “Save / Share” to finish. Your phone will open the system share sheet.'}
         </p>
       </div>
+      {manual && (
+        <div className="px-6 pb-2 min-h-0 overflow-y-auto flex flex-col gap-1.5" data-testid="export-manual-list">
+          {manualFiles.map((name, i) => (
+            <div key={name} className="flex items-center gap-3 py-1.5 border-b border-bd last:border-0">
+              <span className="flex-1 min-w-0 truncate text-[13px] text-fg2">{name}</span>
+              <button
+                className="shrink-0 px-3.5 py-1.5 rounded-pill text-[12px] font-medium text-fg2 border border-bd transition-colors hover:bg-bg"
+                data-testid={`export-save-file-${i}`}
+                onClick={() => onSaveFile(i)}
+              >
+                {zh ? '保存' : 'Save'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="px-6 py-4 shrink-0 flex items-center justify-end gap-2">
         <button
           className="px-5 py-2.5 rounded-pill text-[13px] font-medium text-fg2 border border-bd transition-colors hover:bg-bg"
           onClick={onClose}
         >
-          {zh ? '稍后' : 'Later'}
+          {manual ? (zh ? '完成' : 'Done') : zh ? '稍后' : 'Later'}
         </button>
-        <span className="btn-glow">
-          <button
-            className="px-5 py-2.5 rounded-pill text-[13px] font-semibold bg-fg text-white transition-transform hover:-translate-y-px"
-            data-testid="export-ready-save"
-            onClick={onSave}
-          >
-            {zh ? '保存 / 分享' : 'Save / Share'}
-          </button>
-        </span>
+        {!manual && (
+          <span className="btn-glow">
+            <button
+              className="px-5 py-2.5 rounded-pill text-[13px] font-semibold bg-fg text-white transition-transform hover:-translate-y-px"
+              data-testid="export-ready-save"
+              onClick={onSave}
+            >
+              {zh ? '保存 / 分享' : 'Save / Share'}
+            </button>
+          </span>
+        )}
       </div>
     </ModalHost>
   );

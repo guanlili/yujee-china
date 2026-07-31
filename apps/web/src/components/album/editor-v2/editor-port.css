@@ -1342,6 +1342,27 @@
 .editor-port .img-edit-del{ color:#c44; }
 .editor-port .img-edit-del:hover{ background:#fef2f2; color:#c44; }
 
+/* ── 长按拖拽交换图片 ──────────────────────────────────────────────────────
+   幽灵是**唯一**跟着手指跑的东西:原图留在原位并变半透明,用户能一直看见「从哪儿
+   拿的」。pointer-events:none 是硬要求 —— 幽灵盖在指针底下,不放行的话
+   elementFromPoint 永远只命中幽灵自己,落点判定当场失灵。 */
+.editor-port .img-swap-ghost{
+  position:fixed; z-index:120; pointer-events:none;
+  width:104px; height:78px; border-radius:var(--radius-md);
+  background-color:var(--bg); background-size:cover; background-position:center;
+  box-shadow:0 12px 32px rgba(0,0,0,.28); outline:2px solid var(--surface);
+  opacity:.92; transform:rotate(-2deg);
+}
+.editor-port .img-swap-source{ opacity:.4; }
+/* 拖动期间禁选:鼠标长按后拖会顺手框选页面文案,拖完满屏蓝底。 */
+.editor-port.swap-dragging{ cursor:grabbing; user-select:none; }
+.editor-port.swap-dragging *{ cursor:grabbing !important; }
+/* 落点提示画在**图框**上(不是 img):scale>1 时 img 的 rect 是放大后被裁掉的尺寸。 */
+.editor-port .img-swap-target{
+  outline:3px solid var(--accent); outline-offset:-3px;
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 22%,transparent);
+}
+
 /* ─── ③ palette-card (主题/配色选择,对话流内,缺口#20 / Stage4) ───
    Stage4: one row per book theme option; applying a row expands that option into
    per-chapter apply-theme choices. ─── */
@@ -2559,6 +2580,20 @@
 .editor-port .filter-scope-option[aria-pressed="true"]{
   background:var(--surface); color:var(--fg); box-shadow:var(--shadow-card);
 }
+/* 横滑条 + 压在两端的翻页箭头。箭头 absolute 定位在这一层上,所以它出现/消失
+   不会推动卡片(button 参与 flex 排版的话,滚到头箭头一消失整排卡就会横跳一下)。 */
+.editor-port .filter-strip{ position:relative; }
+.editor-port .filter-page{
+  position:absolute; z-index:2; top:calc(50% - 10px); transform:translateY(-50%);
+  display:flex; align-items:center; justify-content:center;
+  width:28px; height:44px; padding:0;
+  border:1px solid var(--border); border-radius:var(--radius-pill);
+  background:var(--surface); color:var(--fg); font-size:18px; line-height:1; cursor:pointer;
+  box-shadow:0 2px 10px rgba(0,0,0,.14);
+}
+.editor-port .filter-page:hover{ background:var(--bg); }
+.editor-port .filter-page-prev{ left:-6px; }
+.editor-port .filter-page-next{ right:6px; }
 /* 横滑一排。滤镜是「滑着试」的东西,不是一面墙 —— 面板高度因此从吃满屏降到一条。 */
 .editor-port .filter-grid{
   display:flex; gap:9px; margin:12px 0 0; padding:2px 16px 8px 0;
@@ -2590,3 +2625,11 @@
 .editor-port .filter-error button{ margin-left:6px; text-decoration:underline; }
 .editor-port .filter-save-toast{ position:fixed; z-index:95; right:18px; bottom:18px; padding:10px 14px; border-radius:999px; background:#b42318; color:#fff; font-size:12px; }
 .editor-port .img-edit-style{ color:var(--accent); }
+
+/* 导出前的如实告知(§5.4 口径改动):本机缺原图时哪几张走云端备份图、哪几张会空。
+   不是错误,所以用中性的说明色,不用危险红。 */
+.editor-port .export-source-notice{
+  margin:0 0 4px; padding:9px 11px;
+  border:1px solid var(--border); border-radius:var(--radius-md);
+  background:var(--bg); color:var(--muted); font-size:12px; line-height:1.5;
+}
