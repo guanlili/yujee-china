@@ -7,8 +7,9 @@ import { locales } from '@/lib/i18n/routing';
 import { getFaqEntries } from './faq';
 import { buildLlmsTxt } from './llms';
 import { INDEXABLE_ROUTES, NOINDEX_ROUTES } from './routes';
-import { faqPageSchema, organizationSchema, softwareApplicationSchema } from './schema';
+import { articleSchema, faqPageSchema, organizationSchema, softwareApplicationSchema } from './schema';
 import { absoluteUrl, SITE_URL } from './site';
+import { getMarketingMessages } from '@/messages/marketing';
 
 function disallowedPaths(): string[] {
   const { rules } = robots();
@@ -38,6 +39,51 @@ test('indexable routes exclude every auth/app route', () => {
   assert.ok(INDEXABLE_ROUTES.includes('/'));
   assert.ok(INDEXABLE_ROUTES.includes('/privacy'));
   assert.ok(INDEXABLE_ROUTES.includes('/terms'));
+  assert.ok(INDEXABLE_ROUTES.includes('/story'));
+});
+
+test('the founder story exists in both locales and is real prose, not markup', () => {
+  for (const locale of locales) {
+    const s = getMarketingMessages(locale).story;
+    assert.ok(s.metaTitle.length > 0 && s.metaDesc.length > 0);
+    assert.ok(s.lede.length > 0, `${locale} story needs an opening`);
+    assert.ok(s.sections.length >= 6, `${locale} story lost sections`);
+
+    for (const section of s.sections) {
+      assert.ok(section.h.length > 0);
+      assert.ok(section.paras.length > 0, `section "${section.h}" has no body`);
+      // The page renders these as text nodes. Markdown emphasis or HTML here
+      // would ship to the user literally.
+      for (const p of [...section.paras, ...(section.bullets ?? []), section.pull ?? '']) {
+        assert.ok(!p.includes('**'), `"${p.slice(0, 40)}" still carries markdown emphasis`);
+        assert.ok(!p.includes('<'), `"${p.slice(0, 40)}" carries markup`);
+      }
+    }
+  }
+});
+
+test('the story page is reachable from every page, or nothing links to it', () => {
+  // A page absent from the sitemap-linked navigation is an orphan: crawlers can
+  // only reach it via the sitemap, and Google discounts pages nothing links to.
+  for (const locale of locales) {
+    const { footer } = getMarketingMessages(locale);
+    const hrefs = [...footer.productItems, ...footer.legalItems].map((i) => i.href);
+    assert.ok(hrefs.includes('/story'), `${locale} footer does not link the story`);
+  }
+});
+
+test('articleSchema describes the story page with a real author and date', () => {
+  for (const locale of locales) {
+    const schema = articleSchema(locale);
+    assert.equal(schema['@type'], 'Article');
+    assert.equal(schema.url, absoluteUrl(`/${locale}/story`));
+    assert.equal(schema.author['@type'], 'Person');
+    assert.ok(schema.author.name.length > 0);
+    // Google drops Article rich results without a parseable ISO date.
+    assert.match(schema.datePublished, /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(schema.publisher.name, 'Yujee');
+    assert.equal(schema.headline, getMarketingMessages(locale).story.title);
+  }
 });
 
 test('login and register are explicitly marked noindex', () => {

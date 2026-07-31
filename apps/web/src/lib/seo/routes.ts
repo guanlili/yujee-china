@@ -7,7 +7,7 @@
  *   - /my-albums, /credits, /settings, /admin — middleware 307s anonymous
  *     requests to /login, so a crawler can never reach them.
  */
-export const INDEXABLE_ROUTES: readonly string[] = ['/', '/privacy', '/terms'];
+export const INDEXABLE_ROUTES: readonly string[] = ['/', '/story', '/privacy', '/terms'];
 
 /**
  * Routes whose pages must emit `robots: NOINDEX`. Not consumed by robots.txt on
@@ -20,12 +20,18 @@ export const NOINDEX_ROUTES: readonly string[] = ['/login', '/register'];
 /** Pages that change often enough to be worth re-crawling frequently. */
 export const CHANGE_FREQUENCY: Record<string, 'weekly' | 'yearly'> = {
   '/': 'weekly',
+  // A founder story is written once. Claiming it changes weekly teaches Google
+  // to ignore the signal on the pages where it is true.
+  '/story': 'yearly',
   '/privacy': 'yearly',
   '/terms': 'yearly',
 };
 
 export const ROUTE_PRIORITY: Record<string, number> = {
   '/': 1,
+  // Below the landing page, well above the legal pages: it is the only page
+  // carrying original first-person content, which is what earns rankings.
+  '/story': 0.7,
   '/privacy': 0.3,
   '/terms': 0.3,
 };

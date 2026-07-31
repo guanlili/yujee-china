@@ -60,6 +60,45 @@ export interface OrganizationSchema {
   description: string;
 }
 
+export interface ArticleSchema {
+  '@context': 'https://schema.org';
+  '@type': 'Article';
+  headline: string;
+  description: string;
+  url: string;
+  datePublished: string;
+  author: { '@type': 'Person'; name: string };
+  publisher: { '@type': 'Organization'; name: string; logo: string };
+}
+
+/** The founder story was published once and is not a running blog. */
+export const STORY_AUTHOR = 'yvaine';
+export const STORY_PUBLISHED = '2026-07-31';
+
+/**
+ * Article JSON-LD for /story.
+ *
+ * This is the one page on the site with a named human author, a date, and a
+ * first-person account — exactly the experience signal Google's E-E-A-T
+ * guidance rewards, and the reason the page is worth having at all. No
+ * `dateModified`: it would have to be the build timestamp, which is the same
+ * lie `sitemap.ts` deliberately refuses to tell.
+ */
+export function articleSchema(locale: Locale): ArticleSchema {
+  const m = getMarketingMessages(locale).story;
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: m.title,
+    description: m.metaDesc,
+    url: absoluteUrl(localizePath('/story', locale)),
+    datePublished: STORY_PUBLISHED,
+    author: { '@type': 'Person', name: STORY_AUTHOR },
+    publisher: { '@type': 'Organization', name: 'Yujee', logo: absoluteUrl('/icon.png') },
+  };
+}
+
 export function organizationSchema(): OrganizationSchema {
   return {
     '@context': 'https://schema.org',

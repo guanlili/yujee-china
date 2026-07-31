@@ -41,6 +41,23 @@ export interface MarketingMessages {
     sections: { h: string; body: string }[];
     contactLine: string;
   };
+  // The founder story. Long-form prose, so unlike privacy/terms it carries
+  // structure: an opening, per-section paragraphs, an optional pull quote, and
+  // one bulleted list. Plain text only — the page renders these as text nodes,
+  // so markdown emphasis would ship literally. Prose is deliberately duplicated
+  // per locale rather than translated key-by-key: the Chinese is the original
+  // voice and the English is a rewrite, not a translation.
+  story: {
+    metaTitle: string;
+    metaDesc: string;
+    title: string;
+    lede: string[];
+    sections: { h: string; paras: string[]; pull?: string; bullets?: string[] }[];
+    closing: string;
+    dateline: string;
+    ctaLabel: string;
+    disclaimer: string;
+  };
   footer: {
     tagline: string;
     productHead: string;
@@ -184,12 +201,111 @@ const en: MarketingMessages = {
     ],
     contactLine: 'Questions? Email support@yujeeai.com.',
   },
+  story: {
+    metaTitle: 'Our Story — Why I built Yujee',
+    metaDesc:
+      'I lived with depression for more than a decade, worked as an astrology counselor, then spent a year building an AI counselor. Here is what I learned, and why Yujee turns your life into a book instead.',
+    title: 'After Getting Out of Depression, I Built a Tool Just for Myself',
+    lede: [
+      'My name is yvaine.',
+      'I lived with depression for more than a decade. I have worked as a software product designer, then as an astrology counselor. Now I build Yujee.',
+      'Yujee is a tool that helps you understand yourself, and turn that into a book.',
+      'Here is why it exists.',
+    ],
+    sections: [
+      {
+        h: 'More than ten years in the dark',
+        paras: [
+          'I had severe depression and bipolar disorder.',
+          'From primary school into adulthood, because of things at home, I was the withdrawn kid, the isolated one, the one with no confidence.',
+          'The light only started coming in after I finished college.',
+          'After graduation I moved into software product design, and for the first time I felt the pleasure of solving something with logic and design together. But one question stayed with me the whole time. What is a person actually living for.',
+        ],
+        pull: 'More than ten years without daylight. I stood at that edge more times than I can count.',
+      },
+      {
+        h: 'Astrology gave me somewhere to stand',
+        paras: [
+          'I had done plenty of therapy and counseling. Almost none of it worked on me.',
+          'Later I got into divination. I asked astrologers, BaZi readers, Zi Wei readers. Not one of them could answer that question.',
+          'Curiosity pushed me to go learn astrology myself. I learned it while using it, and somewhere along the way I became an astrology counselor.',
+          'The deeper I went, the more I understood where my own depression came from. I made peace with a childhood that was poor and miserable.',
+          'I am not here to sell you astrology. What actually helped me was that it gave me somewhere to stand, an angle from which I could look at myself from the outside. The North Node is what that means to me.',
+          'Later I used astrology and psychology together to help people around me, and it worked better than I expected. Give a person somewhere to stand, and they can move their own life.',
+        ],
+      },
+      {
+        h: 'The 13-year-old girl',
+        paras: [
+          'I met a 13-year-old girl. Her parents had worked far from home for years, she had been left behind with relatives, and she had stopped going to school.',
+          'I wanted to help her. I grew up the same way.',
+          'I did not take the case. Pulling someone out of that takes an enormous amount of time and energy. I was buried in work, I had my own bills, and I could not do it.',
+          'That one stayed with me. Most kids like her cannot afford a counselor, and cannot bring themselves to open up to a real person anyway.',
+        ],
+      },
+      {
+        h: 'I built an AI counselor',
+        paras: [
+          'Those were the years ChatGPT and Claude arrived. I found that with careful tuning, an AI could work as a junior to intermediate astrology counselor, with both counseling and astrology skills. Everything I had learned in software design finally had somewhere to go.',
+          'In 2024 I met CC, who was building AI tarot, through social media. In 2025 I joined the team and spent a full year tuning an AI into a counselor that was cheap enough, patient enough to stay for the long run, and free of personal bias.',
+          'We shipped it.',
+          'But after watching closely for a year how people and that AI counselor treated each other, I saw something else.',
+          'A beautiful imagined future gives the brain its dopamine. But if nothing lands, if nothing moves forward, you end up carrying water in a basket. The emptiness after that hurts more than before.',
+          'So it has to land somewhere.',
+        ],
+        pull: 'Counseling is not the answer, and it is not the destination. When someone stays lost long enough, counseling can turn into another drug. The kind you slowly get hooked on.',
+      },
+      {
+        h: 'Why a book',
+        paras: [
+          'I went through a lot of research on psychological treatment. Art therapy and expressive writing have a clear effect on depression and on feeling lost. Writing and drawing with your hands pull you out of the loop your thoughts keep spinning in, and put you back into your body.',
+          'In plain words, making things helps with pain, and it does real work for rebuilding a sense of self.',
+          'Across all those consultations I saw something else. A lot of people stay with someone they do not like, doing work they do not like, lost and hurting for years, and underneath it they do not know who they actually are. What they want, what they cannot stand, what they are good at, what they value. None of it is clear to them.',
+          'That kind of knowing does not arrive in a flash one afternoon. It takes rounds of shaping, finding, tearing down, and testing again.',
+          'And when it comes to making something, I cannot think of anything more compelling than a book that belongs only to you.',
+          'It makes your life visible. And years from now you open it and find that along the way there were so many moments that mattered. Good ones, ones you grew from, ones that hurt.',
+          'What you actually lived through is the most valuable fruit on the tree of your life.',
+        ],
+      },
+      {
+        h: 'What Yujee is',
+        paras: [
+          'By 2026 I could not sit on it anymore.',
+          'I wanted to build a product that was genuinely for the person using it. No retention games, no hooks. One job. Help someone know themselves, and keep it.',
+          'That is where Yujee came from. In Chinese it means meeting yourself, and also steering yourself.',
+          'The way it works is concrete. It turns your scattered photos and words into a book you can open. And in the act of choosing and arranging your own life, you see who you are again.',
+          'What Yujee does today:',
+        ],
+        bullets: [
+          'Sorts your photos automatically and groups the similar ones',
+          'Lays out the book for you, no dragging things around',
+          'Helps you write, turning fragments into a story that holds together',
+          'Shares in one click, so the people who matter can read it',
+        ],
+      },
+      {
+        h: 'Built by one person',
+        paras: [
+          'Yujee was built entirely by me working with Claude Code, learning and shipping at the same time. The systems architecture I picked up years ago doing system integration still holds up. Ask me again later.',
+          'For two months I barely slept, and put out the first demo I considered usable. In July, 20 early users sent feedback, and I kept going.',
+          'Doing the whole thing alone is not easy. But I wanted to get this one thing right, badly.',
+          'What Yujee is today is still a very small version. It may not change anything for you right away. I still want to put this stubbornness into it.',
+        ],
+      },
+    ],
+    closing: 'And I hope you get to hold on to your own tree of life, and find the self that sits deepest inside you.',
+    dateline: 'yvaine, July 31, 2026',
+    ctaLabel: 'Start your own book',
+    disclaimer:
+      'Yujee is not a medical product and is not a replacement for therapy. If you are in danger right now, please reach out to a doctor or a crisis line first.',
+  },
   footer: {
     tagline: 'Turn scattered photos into a magazine worth keeping.',
     productHead: 'Product',
     productItems: [
       { label: 'Create a memoir', href: '#homepage-composer' },
       { label: 'Pricing', href: '#pricing' },
+      { label: 'Our story', href: '/story' },
     ],
     legalHead: 'Legal',
     legalItems: [
@@ -333,12 +449,110 @@ const zh: MarketingMessages = {
     ],
     contactLine: '如有疑问，请发邮件至 support@yujeeai.com。',
   },
+  story: {
+    metaTitle: '创始故事 — 我为什么做 Yujee',
+    metaDesc:
+      '我曾被抑郁困住十几年，后来成了占星咨询师，又花一年把 AI 调教成咨询师。这是我看到的问题，以及 Yujee 为什么选择把人生做成一本书。',
+    title: '从抑郁里爬出来之后，我做了一个只为自己的工具',
+    lede: [
+      '我叫 yvaine。',
+      '做过十几年的抑郁症患者，做过软件产品设计师，做过占星咨询师，现在在做 Yujee。',
+      'Yujee 是一个帮人认识自己、并且把自己做成一本书的工具。',
+      '下面是它为什么存在。',
+    ],
+    sections: [
+      {
+        h: '十几年的黑暗',
+        paras: [
+          '我曾经有很严重的抑郁和双相情感障碍。',
+          '从小学到成年，因为家庭的原因，我一直是那种自闭、孤僻、自卑的问题小孩。',
+          '阳光是大学毕业以后才慢慢照进来的。',
+          '毕业后我转行做了软件产品设计，第一次尝到用逻辑加设计去解决问题的乐趣。但那几年我始终想不明白一件事：人活着到底是为了什么。',
+        ],
+        pull: '十几年暗无天日，无数次走到过结束自己的那个路口。',
+      },
+      {
+        h: '占星给了我一个支点',
+        paras: [
+          '心理咨询和治疗我做过不少，对我几乎没用。',
+          '后来开始接触命理，占星、八字、紫微都问过，没有一个人能回答我那个问题。好奇心逼着我自己去学占星，边学边用，一不小心成了占星咨询师。',
+          '在深入学的过程中，我慢慢搞明白了自己的抑郁从哪来，也跟那个又穷又惨的童年和解了。',
+          '我不打算在这里推销占星。真正让我受益的是它给了我一个支点，一个能站在外面看自己的角度。北交点这类东西对我的意义就在这。',
+          '后来我用占星加心理学的方法帮身边的人，效果比想象中好一些。有了支点，一个人是能撬动自己的生命的。',
+        ],
+      },
+      {
+        h: '那个 13 岁的女孩',
+        paras: [
+          '我遇到过一个 13 岁的女孩。父母常年在外，她被留在老家，不肯再去上学。',
+          '我特别想帮她。我自己就是那样长大的。',
+          '但我没有接下这个案子。把一个人从泥里拉出来要耗掉大量的时间和精力，那时候我工作太忙，生活也有压力，我做不到。',
+          '这件事我记了很久。世界上像她一样的小孩，大部分请不起咨询师，也不好意思对着一个真人开口。',
+        ],
+      },
+      {
+        h: '我去做了一个 AI 咨询师',
+        paras: [
+          '那两年 ChatGPT 和 Claude 出现。我发现 AI 经过专业调教是可以做初中级占星咨询师的，同时具备心理咨询和占星的能力，而我在软件设计上积累的东西刚好能派上用场。',
+          '2024 年我通过社交平台认识了做 AI 塔罗的 CC。2025 年我加入了他们的团队，花了整整一年，把 AI 调教成一个价格足够低、能长期陪伴、不带个人色彩的咨询师。',
+          '它做出来了。',
+          '但高强度地看了一年 AI 咨询师和用户怎么相处，我看到了另一件事。',
+          '美好的想象会让大脑分泌多巴胺，可是没有落地，没有往前走，到头来还是竹篮打水。那种巨大的虚无反而更疼。',
+          '所以必须落地。',
+        ],
+        pull: '咨询不是答案，也不是终点。如果一个人长期找不到自己，咨询可能只是另一味毒药，一味让人慢慢上瘾的毒药。',
+      },
+      {
+        h: '为什么是做一本书',
+        paras: [
+          '我翻了很多心理治疗的资料。艺术疗法和表达性写作对抑郁、迷茫这类状态有明确作用：动手写、动手画，能把人从反复空转的念头里拽出来，重新落回身体和手上。',
+          '说人话就是，表达和创造能缓解痛苦，而且对重新建立自我很有用。',
+          '在海量的咨询里我还看到，很多人跟不喜欢的人待在一起，做不喜欢的工作，长期痛苦迷茫，根子上是不认识真实的自己。想要什么，讨厌什么，擅长什么，看重什么，都说不清楚。',
+          '这种认识不会靠某天的灵光一闪出现。它需要打磨，发现，推翻，再验证，来回很多轮。',
+          '而在表达创造这件事上，我想不出比做一本只属于自己的书更有吸引力的形式。',
+          '它让你的人生变得可以被看见。也让若干年后的你翻开它，发现原来自己一路走来，有过那么多有意义的瞬间。美好的，成长的，或者痛苦的。',
+          '这些亲身活过的东西，是生命这棵树上最贵的果实。',
+        ],
+      },
+      {
+        h: 'Yujee 是什么',
+        paras: [
+          '2026 年，那股躁动我按不住了。',
+          '我要做一个真正为自己的产品。不看留存，不做钩子，只做一件事：让人认识自己，然后把它留下来。',
+          'Yujee 由此诞生。在中文里它是遇见自己，也是驾驭自己。',
+          '它的做法很具体：把你散落的照片和文字，变成一本能翻开的书。你在挑选和排列自己人生的过程里，会重新看见自己是谁。',
+          '今天的 Yujee 能做的事：',
+        ],
+        bullets: [
+          '自动整理照片，同类的会被归到一起',
+          '自动排版成书，不用手动拖拽',
+          '辅助写作，把零碎的片段连成完整的故事',
+          '一键分享，把做好的书给重要的人',
+        ],
+      },
+      {
+        h: '一个人做的',
+        paras: [
+          'Yujee 是我全程用 Claude Code 做出来的，一边学一边干。早年做系统集成攒下的架构知识现在还够用，以后就不知道了。',
+          '那两个月我基本没怎么睡，发出了第一个自己认为能用的 demo。7 月，20 个种子用户给了反馈，我接着改。',
+          '一个人把全套做完不容易。但我实在太想太想，把找自己这件事做好。',
+          '现在的 Yujee 还只是一个很小的版本。它未必立刻改变什么，我还是想把这份执着放进去。',
+        ],
+      },
+    ],
+    closing: '也祝你，能握住自己那棵生命树，找到心里最深的那个自己。',
+    dateline: 'yvaine 2026.07.31',
+    ctaLabel: '开始做自己的书',
+    disclaimer:
+      'Yujee 不是医疗产品，也不能替代心理治疗。如果你正处在危险的状态里，请先联系专业医生或者心理援助热线。',
+  },
   footer: {
     tagline: '把散落的照片，变成一本可以收藏的杂志。',
     productHead: '产品',
     productItems: [
       { label: '创建纪念册', href: '#homepage-composer' },
       { label: '定价', href: '#pricing' },
+      { label: '创始故事', href: '/story' },
     ],
     legalHead: '法律',
     legalItems: [
