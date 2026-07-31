@@ -18,6 +18,9 @@
   --shadow-card-hover: 0 2px 6px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.08);
   --shadow-card: 0 1px 3px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);
   --radius-pill:9999px; --radius-md:12px; --radius-lg:16px;
+  /* 用户气泡底:青紫双径向渐变叠在 --bg 上。两棵 UI 树共用(见 editor-tokens.css)——
+     移动端曾把它写成纯黑底白字,而黑色在这套设计里只属于对话收起时那枚浮标。 */
+  --chat-user-bubble: radial-gradient(58% 78% at 0% 0%, rgba(19,184,166,.11), transparent 60%),radial-gradient(58% 78% at 100% 100%, rgba(140,94,244,.10), transparent 60%),var(--bg);
 
   font-family: var(--font-body);
   background: var(--bg);
@@ -105,18 +108,46 @@
 /* ─── BOOK / SPREAD 3D ─── */
 .editor-port .book-stage{ perspective: 2400px; position:relative; z-index:1; }
 .editor-port .book{
-  border-radius: 2px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.08);
+  border-radius:3px;
+  box-shadow:
+    0 1px 2px rgba(20,24,23,.16),
+    0 10px 24px rgba(20,24,23,.13),
+    0 28px 58px rgba(20,24,23,.10);
   width: min(94%, calc(80vh * 1.414), 1010px);
   aspect-ratio: 1.414 / 1;
   transform-style: preserve-3d;
 }
 .editor-port .book::before{
-  content:''; position:absolute;
-  top:0; bottom:0; left:50%;
-  width: 1px; transform: translateX(-50%);
-  background: var(--border-soft);
-  z-index:5; pointer-events:none;
+  content:'';
+  position:absolute;
+  top:0;
+  bottom:0;
+  left:50%;
+  width:clamp(26px,3.8vw,44px);
+  transform:translateX(-50%);
+  z-index:5;
+  pointer-events:none;
+  background:linear-gradient(90deg,
+    rgba(255,255,255,.10) 0%,
+    rgba(0,0,0,.04) 24%,
+    rgba(0,0,0,.16) 46%,
+    rgba(0,0,0,.24) 50%,
+    rgba(255,255,255,.13) 54%,
+    rgba(0,0,0,.05) 76%,
+    rgba(255,255,255,.08) 100%);
+}
+.editor-port .book::after{
+  content:'';
+  position:absolute;
+  top:0;
+  bottom:0;
+  left:50%;
+  width:1px;
+  transform:translateX(-50%);
+  z-index:5;
+  pointer-events:none;
+  background:rgba(16,20,19,.28);
+  box-shadow:-1px 0 rgba(255,255,255,.12),1px 0 rgba(0,0,0,.08);
 }
 .editor-port .page{
   /* #155: NO padding. paintEl injects the full 794×1123 scaled page sized to
@@ -135,6 +166,30 @@
      光标而非 pointer(编辑发生在画布模式的 .ov-page)。子级 [data-editable] 会继承此值。 */
   cursor:default;
 }
+.editor-port .page::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  z-index:5;
+  pointer-events:none;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.32),
+    inset 0 0 0 1.5px rgba(24,28,27,.04);
+}
+.editor-port .book:not(.book-solo):not(.book-full) .page-left::before,
+.editor-port .book:not(.book-solo):not(.book-full) .page-right::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  z-index:4;
+  pointer-events:none;
+}
+.editor-port .book:not(.book-solo):not(.book-full) .page-left::before{
+  background:linear-gradient(90deg,transparent 72%,rgba(255,255,255,.06) 86%,rgba(0,0,0,.13) 100%);
+}
+.editor-port .book:not(.book-solo):not(.book-full) .page-right::before{
+  background:linear-gradient(90deg,rgba(0,0,0,.12) 0%,rgba(255,255,255,.07) 14%,transparent 28%);
+}
 /* W11: the page the user selected to talk to the AI about ("change this page").
    An INSET box-shadow gets painted over by full-bleed page content; an OUTSIDE
    outline gets clipped by the parent .leaf/.book overflow:hidden. Both fail.
@@ -150,12 +205,16 @@
    renders as empty space, not a white page: no surface, shadow, border, page-num,
    and not clickable/selectable. */
 .editor-port .page.page-empty{ background:transparent; box-shadow:none; cursor:default; }
+.editor-port .page.page-empty::after{ display:none; }
 .editor-port .page.page-empty.page-selected{ box-shadow:none; }
 .editor-port .page.page-empty.page-selected::after{ display:none; }
 .editor-port .page.page-empty .page-num{ display:none; }
 /* Solo spread (cover/ending): drop the parent backing + spine next to the empty half. */
 .editor-port .book.book-solo{ background:transparent; }
-.editor-port .book.book-solo::before{ display:none; }
+.editor-port .book.book-solo::before{display:none;}
+.editor-port .book.book-solo::after{display:none;}
+.editor-port .book.book-full::before{display:none;}
+.editor-port .book.book-full::after{display:none;}
 
 /* WP/#158-cover: a TRUE cover/ending solo (isSoloSpread, category-keyed in
    paintSpread/flipTo — NOT just "a null half", so interior odd-trailing pages are
@@ -177,7 +236,6 @@
    page-empty —— 这里让空的那半退场,左 cell 的 flex:1 自动撑满全宽(与 book-single
    同一手法)。中缝线(.book::before)必须隐藏:版面本来就是连续的一张,中间不该有分隔。 */
 .editor-port .book.book-full .page.page-empty{ display:none; }
-.editor-port .book.book-full::before{ display:none; }
 
 /* ─── COLLECT BOARD (排版前收集态) ───
    authoring 且 pages 为空时,画板不画版式书,改显示当前采访章的照片平铺网格。
@@ -238,11 +296,27 @@
   padding: 0;
   overflow:hidden;
   backface-visibility: hidden;
+  box-shadow:0 12px 14px rgba(20,24,23,.20);
+}
+.editor-port .leaf::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  z-index:4;
+  pointer-events:none;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.22);
+}
+.editor-port .leaf.front::before{
+  background:linear-gradient(90deg,rgba(0,0,0,.13),transparent 24%,rgba(255,255,255,.07));
+}
+.editor-port .leaf.back::before{
+  background:linear-gradient(90deg,rgba(255,255,255,.08),transparent 70%,rgba(0,0,0,.15));
 }
 .editor-port .leaf.front{transform: rotateY(0deg);}
 .editor-port .leaf.back{transform: rotateY(180deg);}
 /* #158 follow-up: a flip leaf showing a null half is empty, not a white surface. */
-.editor-port .leaf.leaf-empty{ background:transparent; }
+.editor-port .leaf.leaf-empty{ background:transparent; box-shadow:none; }
+.editor-port .leaf.leaf-empty::before{ display:none; }
 .editor-port .flipper::after{
   content:''; position:absolute; inset:0;
   background: linear-gradient(90deg, rgba(0,0,0,.08), transparent 30%);
@@ -490,10 +564,7 @@
 /* ─── CHAT message structure ─── */
 .editor-port .msg.user{display:flex; justify-content:flex-end;}
 .editor-port .msg.user .bubble{
-  background:
-    radial-gradient(58% 78% at 0% 0%, rgba(19,184,166,.11), transparent 60%),
-    radial-gradient(58% 78% at 100% 100%, rgba(140,94,244,.10), transparent 60%),
-    var(--bg);
+  background: var(--chat-user-bubble);
   border:1px solid var(--border-soft);
   color: var(--fg);
   border-radius: 16px 4px 16px 16px;
@@ -2446,39 +2517,76 @@
     font-size:12px; color:var(--meta); font-variant-numeric:tabular-nums;
   }
 }
+/* 风格面板:桌面钉在**画布区域**底部居中的短浮层。
+   不用 top:68px 右上角那种高浮层了 —— 27 张卡横滑成一排后面板只有 ~260px 高,
+   放底部离选中的图更近、也不再遮住画布。宽度不铺满视口:左侧对话面板要留着。 */
 .editor-port .filter-bar{
-  position:fixed; z-index:90; top:68px; right:18px; width:min(560px,calc(100vw - 36px));
-  max-height:calc(100vh - 86px); overflow:auto; padding:16px; border:1px solid var(--border);
+  position:fixed; z-index:90; bottom:18px;
+  /* 让开左侧那条 360px 的对话栏(.pane-chat-col md:w-[360px]),在**画布区域**内居中 ——
+     不是视口居中。left+right+margin-inline:auto 就够,不必像 canvasLeftBound() 那样量 DOM。
+     对话收起(.chat-collapsed 把它压成 0 宽)后画布铺满,左边界跟着回到 18px。 */
+  left:378px; right:18px; margin-inline:auto; width:auto; max-width:720px;
+  padding:14px 4px 14px 16px; border:1px solid var(--border);
   border-radius:var(--radius-lg); background:var(--surface); box-shadow:0 18px 60px rgba(0,0,0,.16);
 }
-.editor-port .filter-bar-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
-.editor-port .filter-bar-head>div{ display:flex; align-items:baseline; gap:10px; }
-.editor-port .filter-bar-head strong{ font-size:16px; }
-.editor-port .filter-bar-head span,.editor-port .filter-state{ color:var(--muted); font-size:12px; }
-.editor-port .filter-bar-head button{ width:30px; height:30px; border-radius:999px; font-size:20px; }
+.editor-port.chat-collapsed .filter-bar{ left:18px; }
+@media (max-width:767px){
+  /* 手机上这块由 mobile ModalHost 的 bottom-sheet 接管(见 mobile-editor.css),
+     这里只负责把桌面那套 fixed 定位让开。 */
+  .editor-port .filter-bar{ left:12px; right:12px; bottom:12px; }
+}
+.editor-port .filter-bar-head{ display:flex; align-items:center; gap:12px; padding-right:12px; }
+.editor-port .filter-bar-head strong{ flex:0 0 auto; font-size:15px; }
+.editor-port .filter-state{ color:var(--muted); font-size:12px; }
+/* 没有切换器时(移动端)的静态 scope 标签 —— 与切换器互斥,不会两份并存。 */
+.editor-port .filter-scope-label{
+  padding:4px 12px; border-radius:var(--radius-pill); background:var(--bg);
+  color:var(--muted); font-size:12px; font-weight:600;
+}
+.editor-port .filter-bar-close{
+  flex:0 0 auto; margin-left:auto; width:30px; height:30px;
+  border-radius:999px; font-size:20px; color:var(--muted);
+}
+.editor-port .filter-bar-close:hover{ background:var(--bg); color:var(--fg); }
 .editor-port .filter-scope-switch{
-  display:grid; grid-template-columns:1fr 1fr; gap:3px; margin-top:12px; padding:3px;
+  display:flex; gap:3px; padding:3px;
   border-radius:var(--radius-pill); background:var(--bg);
 }
 .editor-port .filter-scope-option{
-  min-height:32px; padding:5px 12px; border:none; border-radius:var(--radius-pill);
+  min-height:30px; padding:4px 14px; border:none; border-radius:var(--radius-pill);
   background:transparent; color:var(--muted); font-size:12px; font-weight:600; cursor:pointer;
 }
 .editor-port .filter-scope-option[aria-pressed="true"]{
   background:var(--surface); color:var(--fg); box-shadow:var(--shadow-card);
 }
-.editor-port .filter-follow-book{ margin-top:10px; color:var(--accent); font-size:12px; text-decoration:underline; }
-.editor-port .filter-strength{ display:flex; align-items:center; gap:12px; margin:14px 0; font-size:12px; }
-.editor-port .filter-strength span{ min-width:82px; }
-.editor-port .filter-strength input{ flex:1; accent-color:var(--accent); }
-.editor-port .filter-grid{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; }
-.editor-port .filter-card{ overflow:hidden; padding:0 0 7px; border:1px solid var(--border); border-radius:var(--radius-md); text-align:left; font-size:11px; }
+/* 横滑一排。滤镜是「滑着试」的东西,不是一面墙 —— 面板高度因此从吃满屏降到一条。 */
+.editor-port .filter-grid{
+  display:flex; gap:9px; margin:12px 0 0; padding:2px 16px 8px 0;
+  overflow-x:auto; overflow-y:hidden;
+  scroll-snap-type:x proximity; scrollbar-width:thin;
+  overscroll-behavior-x:contain;
+}
+.editor-port .filter-card{
+  flex:0 0 auto; width:84px; overflow:hidden; padding:0 0 7px; scroll-snap-align:start;
+  border:1px solid var(--border); border-radius:var(--radius-md); text-align:left; font-size:11px;
+}
 .editor-port .filter-card[aria-pressed="true"]{ border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 24%,transparent); }
 .editor-port .filter-card-preview{ width:100%; aspect-ratio:4/3; margin-bottom:6px; background:var(--bg); }
+/* 生成中:卡片自身的骨架态。早先是面板里一行「正在生成预览…」常驻文案。 */
+.editor-port .filter-grid[aria-busy="true"] .filter-card-preview{
+  background:linear-gradient(90deg,var(--bg) 25%,var(--surface) 37%,var(--bg) 63%);
+  background-size:400% 100%; animation:filter-skeleton 1.3s ease-in-out infinite;
+}
+@keyframes filter-skeleton{ 0%{ background-position:100% 0; } 100%{ background-position:0 0; } }
 .editor-port .filter-card img{ width:100%; height:100%; object-fit:cover; display:block; }
 .editor-port .filter-card span{ display:block; overflow:hidden; padding:0 7px; white-space:nowrap; text-overflow:ellipsis; }
+/* 「跟随全书」与「原片」并列,但用虚线边框点出它是「继承」而不是「指定」。 */
+.editor-port .filter-card-follow{ border-style:dashed; }
+.editor-port .filter-card-follow[aria-pressed="true"]{ border-style:solid; }
+.editor-port .filter-strength{ display:flex; align-items:center; gap:12px; margin:4px 16px 0 0; font-size:12px; }
+.editor-port .filter-strength span{ min-width:82px; }
+.editor-port .filter-strength input{ flex:1; accent-color:var(--accent); }
 .editor-port .filter-error{ color:#b42318; }
 .editor-port .filter-error button{ margin-left:6px; text-decoration:underline; }
 .editor-port .filter-save-toast{ position:fixed; z-index:95; right:18px; bottom:18px; padding:10px 14px; border-radius:999px; background:#b42318; color:#fff; font-size:12px; }
 .editor-port .img-edit-style{ color:var(--accent); }
-@media (max-width:767px){ .editor-port .filter-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); } }

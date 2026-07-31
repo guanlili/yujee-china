@@ -19,6 +19,7 @@ import {
   ExportMenuModal,
   CollageModal,
   ExportProgressModal,
+  ExportReadyModal,
   ExportFailModal,
 } from './ExportModals';
 import { MoreSheet, NoticeModal } from './MoreSheet';
@@ -131,6 +132,20 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
         }),
       ),
     closeHint: /collage-close/,
+  },
+  {
+    name: 'ExportReadyModal 导出保存',
+    render: (open) =>
+      renderToStaticMarkup(
+        createElement(ExportReadyModal, {
+          open,
+          zh: true,
+          label: 'PDF',
+          onClose: noop,
+          onSave: noop,
+        }),
+      ),
+    closeHint: /稍后/,
   },
   {
     name: 'ExportFailModal 导出失败',
@@ -347,9 +362,8 @@ test('AI 对话把手真的接了拖拽(不是画个把手当装饰)', () => {
   assert.match(src, /Math\.abs\(d\.dy\) <= TAP_SLOP[\s\S]{0,120}onClose\(\)/);
 });
 
-test('AI 是「浮标黑 / 弹窗浅」,别再搞反(曾做成白浮标 + 黑弹窗)', () => {
-  // 既有设计(桌面 editor-port.css 的 .chat-fold-expand + ≤767 对话面板):
-  // 收起时是一枚**黑色胶囊**浮标,展开的对话面板是**浅色**卡片 + 压暗遮罩。
+test('AI 是「圆形图标浮标 / 弹窗浅」,水母稳定浮在按钮上层', () => {
+  // 收起时是一枚黑色图标浮标,展开的对话面板是浅色卡片 + 压暗遮罩。
   const css = readFileSync(join(here, '..', 'mobile-editor.css'), 'utf8').replace(
     /\/\*[\s\S]*?\*\//g,
     '',
@@ -359,18 +373,23 @@ test('AI 是「浮标黑 / 弹窗浅」,别再搞反(曾做成白浮标 + 黑弹
     assert.ok(at >= 0, `找不到 ${sel} 规则`);
     return css.slice(at, css.indexOf('}', at));
   };
-  // 浮标:黑底白字
+  // 浮标:44px 黑色圆形图标按钮
   const fab = block('.mobile-editor .mai');
-  assert.match(fab, /background:\s*var\(--fg\)/, 'AI 浮标必须是黑色胶囊(var(--fg))');
-  assert.match(fab, /color:\s*var\(--surface\)/, '黑胶囊上的字必须是浅色');
+  assert.match(fab, /width:\s*44px/, 'AI 浮标宽度必须收成 44px');
+  assert.match(fab, /height:\s*44px/, 'AI 浮标高度必须收成 44px');
+  assert.match(fab, /padding:\s*0/, '图标按钮不应再给文字预留空间');
+  assert.match(fab, /border-radius:\s*50%/, 'AI 浮标应为圆形');
+  assert.match(fab, /background:\s*var\(--fg\)/, 'AI 浮标必须是黑色(var(--fg))');
+  assert.match(fab, /color:\s*var\(--surface\)/, '黑色按钮上的图标必须是浅色');
   // 弹窗:浅底深字
   const sheet = block('.mai-sheet');
   assert.match(sheet, /background:\s*var\(--surface\)/, '对话弹窗是浅色卡片,不是黑的');
   assert.match(sheet, /color:\s*var\(--fg\)/);
-  // 水母是 multiply:压在黑底上会消失,所以必须探出胶囊(负偏移)且胶囊不许裁切
+  // 水母不能再用 multiply:压在深色页面/黑色按钮上会发暗,看起来像掉到下层。
   const jelly = block('.mobile-editor .mai-jelly');
-  assert.match(jelly, /mix-blend-mode:\s*multiply/);
-  assert.match(jelly, /top:\s*-\d/, '水母必须探出胶囊上边(multiply 压黑底会消失)');
+  assert.match(jelly, /mix-blend-mode:\s*normal/);
+  assert.match(jelly, /z-index:\s*2/, '水母必须明确浮在按钮底色上层');
+  assert.match(jelly, /top:\s*-\d/, '水母应从圆形按钮左上方探出');
   assert.doesNotMatch(fab, /overflow:\s*hidden/, '浮标不许 overflow:hidden,会裁掉探出的水母');
 });
 

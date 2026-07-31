@@ -27,11 +27,37 @@ import type { EditorPage } from '../../types';
 import { runExportWithRetry, buildExportFailureLog, ExportError } from '../export-retry-util';
 import { logger } from '@/lib/log/logger';
 import type { PhotoFilterState } from '@/lib/photo/filter-state';
+import { deliverLiveAssets } from '@/lib/export/live-delivery';
+import {
+  createZipBlob,
+  safeFileStem,
+  type NamedBlob,
+} from '@/lib/export/download';
+import {
+  deliverMobileExportAssets,
+  type MobileDeliveryResult,
+} from '@/lib/export/mobile-delivery';
 
 export type ExportKind = 'collage' | 'live' | 'pages' | 'pdf';
 
 /** 进度浮层要的两样:一句在做什么 + 「done / total」。 */
 export type ExportProgress = { label: string; done: number; total: number; percent: number } | null;
+
+type ExportReadyAsset =
+  | {
+      kind: 'live';
+      label: string;
+      video: Blob;
+      cover: Blob;
+      stem: string;
+      suffix: 'page-flip' | 'nine-grid';
+    }
+  | {
+      kind: 'files';
+      label: string;
+      files: NamedBlob[];
+      fallback: NamedBlob;
+    };
 
 export type ExportDeps = {
   albumId: string;
@@ -54,6 +80,7 @@ export function useExport({
 }: ExportDeps) {
   const [progress, setProgress] = useState<ExportProgress>(null);
   const [failed, setFailed] = useState(false);
+  const [exportReady, setExportReady] = useState<ExportReadyAsset | null>(null);
   const busy = useRef(false);
   const t = useCallback((cn: string, en: string) => (zh ? cn : en), [zh]);
 
@@ -104,10 +131,21 @@ export function useExport({
     [albumId, buildInput],
   );
 
-  const stem = useCallback(async () => {
-    const { safeFileStem } = await import('@/lib/export/download');
-    return safeFileStem(title);
-  }, [title]);
+  const stem = useCallback(() => safeFileStem(title), [title]);
+
+  // 多文件下载在手机上经常只落一份甚至完全被吞。渲染阶段先准备好 zip 兜底，
+  // 真正交付时优先分享原始文件；系统分享不可用也只需触发一次下载。
+  const stageExportFiles = useCallback(
+    async (label: string, files: NamedBlob[], fallbackName: string) => {
+      if (files.length === 0) throw new ExportError('render', 'export returned no files');
+      const fallback =
+        files.length === 1
+          ? files[0]!
+          : { name: fallbackName, blob: await createZipBlob(files) };
+      setExportReady({ kind: 'files', label, files, fallback });
+    },
+    [],
+  );
 
   const exportCollage = useCallback(
     (perImage: 1 | 2 | 3 | 6) =>
@@ -118,16 +156,18 @@ export function useExport({
           background,
           onProgress,
         });
-        const { downloadBlob, downloadBlobs } = await import('@/lib/export/download');
-        const s = await stem();
+        const s = stem();
         if (blobs.length === 0) throw new ExportError('render', 'no interior pages to collage');
-        if (blobs.length === 1) downloadBlob(blobs[0]!, s + '.jpg');
-        else
-          await downloadBlobs(
-            blobs.map((b, i) => ({ name: `${s}-${String(i + 1).padStart(2, '0')}.jpg`, blob: b })),
-          );
+        const files = blobs.map((blob, i) => ({
+          name:
+            blobs.length === 1
+              ? `${s}.jpg`
+              : `${s}-${String(i + 1).padStart(2, '0')}.jpg`,
+          blob,
+        }));
+        await stageExportFiles(t('拼图', 'Collage'), files, `${s}-collage.zip`);
       }),
-    [runImageExport, t, background, onProgress, stem],
+    [runImageExport, t, background, onProgress, stem, stageExportFiles],
   );
 
   const exportSinglePages = useCallback(
@@ -135,11 +175,14 @@ export function useExport({
       runImageExport(t('正在导出单页图…', 'Exporting pages…'), async ({ adaptable, resolveImage }) => {
         const { renderPageJpegs } = await import('@/lib/export/single-pages');
         const files = await renderPageJpegs(adaptable, resolveImage, { onProgress });
-        const { downloadBlobs } = await import('@/lib/export/download');
-        const s = await stem();
-        await downloadBlobs(files.map((f) => ({ name: `${s}-${f.name}`, blob: f.blob })));
+        const s = stem();
+        await stageExportFiles(
+          t('单页图片', 'Page images'),
+          files.map((f) => ({ name: `${s}-${f.name}`, blob: f.blob })),
+          `${s}-pages.zip`,
+        );
       }),
-    [runImageExport, t, onProgress, stem],
+    [runImageExport, t, onProgress, stem, stageExportFiles],
   );
 
   /** Live 视频。设备/浏览器不支持时给一句明确的话,不当成导出失败(与桌面同口径)。 */
@@ -156,8 +199,14 @@ export function useExport({
           const { renderPageJpegs } = await import('@/lib/export/single-pages');
           const covers = await renderPageJpegs(adaptable.slice(0, 1), resolveImage);
           if (!covers[0]) throw new ExportError('render', 'live cover rendering returned no page');
-          const { deliverLiveAssets } = await import('@/lib/export/live-delivery');
-          await deliverLiveAssets(blob, covers[0].blob, await stem(), 'page-flip');
+          setExportReady({
+            kind: 'live',
+            label: t('Live 视频', 'Live video'),
+            video: blob,
+            cover: covers[0].blob,
+            stem: stem(),
+            suffix: 'page-flip',
+          });
         } catch (e) {
           if (e instanceof LiveUnsupportedError) {
             setLiveUnsupported(
@@ -194,8 +243,14 @@ export function useExport({
             onProgress,
           });
           const cover = await renderNineGridCover(sources, { background, columns: 3, maxLayouts: 9 });
-          const { deliverLiveAssets } = await import('@/lib/export/live-delivery');
-          await deliverLiveAssets(blob, cover, await stem(), 'nine-grid');
+          setExportReady({
+            kind: 'live',
+            label: t('九宫格 Live', 'Nine-grid Live'),
+            video: blob,
+            cover,
+            stem: stem(),
+            suffix: 'nine-grid',
+          });
         } catch (e) {
           if (e instanceof NineGridUnsupportedError) {
             setLiveUnsupported(
@@ -209,14 +264,32 @@ export function useExport({
     [runImageExport, t, background, onProgress, stem],
   );
 
+  /** 必须从保存按钮的 click handler 里直接调用,让 navigator.share 保有瞬时用户授权。 */
+  const deliverExport = useCallback((): Promise<MobileDeliveryResult> => {
+    if (!exportReady) return Promise.resolve('cancelled');
+    const delivery =
+      exportReady.kind === 'live'
+        ? deliverLiveAssets(
+            exportReady.video,
+            exportReady.cover,
+            exportReady.stem,
+            exportReady.suffix,
+          )
+        : deliverMobileExportAssets(exportReady.files, exportReady.fallback);
+    return delivery.then((result) => {
+      // 用户取消系统分享时保留弹窗,方便再次点击;真正交付后才释放大 Blob。
+      if (result !== 'cancelled') setExportReady(null);
+      return result;
+    });
+  }, [exportReady]);
+
   const exportPdf = useCallback(async () => {
     if (busy.current) return;
     busy.current = true;
     setProgress({ label: t('正在导出 PDF…', 'Exporting PDF…'), done: 0, total: 0, percent: 0 });
-    let downloaded = false;
     try {
       let blob: Blob | null = null;
-      // render 段:出 PDF + 本地下载,自动重试 ≤3 次。连续 3 次失败才是真·导出失败。
+      // render 段:生成 PDF,自动重试 ≤3 次。连续 3 次失败才是真·导出失败。
       const rendered = await runExportWithRetry(
         async () => {
           const { adaptable, resolveImage } = await buildInput();
@@ -226,11 +299,6 @@ export function useExport({
             b = await renderAlbumPdfRaster(adaptable, resolveImage, { scale: 3, onProgress });
           } catch (e) {
             throw new ExportError('render', e instanceof Error ? e.message : String(e));
-          }
-          if (!downloaded) {
-            downloaded = true;
-            const { downloadBlob } = await import('@/lib/export/download');
-            downloadBlob(b, (await stem()) + '.pdf');
           }
           blob = b;
         },
@@ -242,8 +310,16 @@ export function useExport({
         },
       );
       if (!rendered.ok || blob == null) return;
-      // 用户已拿到 PDF = 导出成功。云端上传解耦,失败**完全静默**(只落日志,不弹框)。
-      await runExportWithRetry(() => uploadPdf(albumId, blob!), {
+      const renderedBlob = blob;
+      const name = `${stem()}.pdf`;
+      setExportReady({
+        kind: 'files',
+        label: 'PDF',
+        files: [{ name, blob: renderedBlob }],
+        fallback: { name, blob: renderedBlob },
+      });
+      // 本地保存入口已经就绪。云端上传在后台重试,失败**完全静默**(只落日志,不弹框)。
+      void runExportWithRetry(() => uploadPdf(albumId, renderedBlob), {
         onExhausted: (lastError, attempts) => {
           logger.error(
             buildExportFailureLog(lastError, { albumId, attempts }),
@@ -263,6 +339,10 @@ export function useExport({
     dismissFailed: () => setFailed(false),
     liveUnsupported,
     dismissLiveUnsupported: () => setLiveUnsupported(null),
+    exportReady: exportReady != null,
+    exportReadyLabel: exportReady?.label ?? '',
+    dismissExportReady: () => setExportReady(null),
+    deliverExport,
     exportCollage,
     exportSinglePages,
     exportLive,

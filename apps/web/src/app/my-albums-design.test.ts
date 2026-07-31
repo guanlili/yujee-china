@@ -117,3 +117,26 @@ test('my-albums preserves the server-issued cover revision through upload confir
   assert.match(page, /const \{ putUrl, r2Key, coverRevision \} = signJson\.data/, 'signing should retain the opaque revision');
   assert.match(page, /body: JSON\.stringify\(\{ r2Key, coverRevision \}\)/, 'confirmation should return the exact signed revision');
 });
+
+// middleware 的 hasSessionCookie 只看 cookie 存不存在,不验有效性(edge 上没法查库)。
+// 所以残留/过期的 better-auth.session_token 会把未登录用户放进 /my-albums,列表
+// 接口随即返回 401 UNAUTHORIZED。此时页面必须把人引到登录页 —— 而不是渲染
+// 「Something went wrong」这种死胡同。跳转要和 middleware 走同一套 from 约定。
+test('my-albums 把 401 引导到登录页,不当成通用错误', () => {
+  assert.match(page, /from '@\/lib\/auth\/redirect'/, '登录跳转应复用既有的 redirect 约定,不另造一套');
+  assert.match(
+    page,
+    /json\.error\?\.code === 'UNAUTHORIZED'/,
+    '未登录必须按 error code 单独识别,不能混进通用错误分支',
+  );
+  assert.match(
+    page,
+    /router\.replace\(\s*authHrefWithFrom\(/,
+    '应当 replace 而非 push —— 否则返回键会把用户弹回这个进不去的页面',
+  );
+  assert.doesNotMatch(
+    page,
+    /json\.error\?\.code === 'UNAUTHORIZED'[\s\S]{0,200}?setErrKind\('other'\)/,
+    '未登录不应再落到 errKind other 的错误态',
+  );
+});

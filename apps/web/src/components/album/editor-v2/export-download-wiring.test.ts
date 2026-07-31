@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -29,6 +29,7 @@ const editorPort = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
 const mobileExport = readFileSync(join(here, 'mobile/use-export.ts'), 'utf8');
 // 交付规则住在共享层:桌面与移动端各自 import 它,两端不许再各写一份。
 const delivery = readFileSync(join(here, '../../../lib/export/live-delivery.ts'), 'utf8');
+const mobileDeliveryPath = join(here, '../../../lib/export/mobile-delivery.ts');
 
 /** 取 deliverLiveAssets 的函数体。 */
 function deliverLiveAssetsBody(): string {
@@ -66,9 +67,44 @@ test('iOS 仍走 navigator.share 分享原始文件,不打包', () => {
   );
 });
 
+test('Live 交付从保存按钮同步进入分享/下载,不先 await 丢掉移动端用户授权', () => {
+  const body = deliverLiveAssetsBody();
+  const shareAt = body.indexOf('navigator.share(');
+  assert.ok(shareAt >= 0, '缺少系统分享调用');
+  // 调用本身写成 `await navigator.share(...)` 没问题;要禁止的是它**之前**先等别的异步任务。
+  const beforeShareCall = body.slice(0, shareAt).replace(/\bawait\s*$/, '');
+  assert.doesNotMatch(
+    beforeShareCall,
+    /\bawait\b/,
+    'navigator.share 前一旦 await,保存按钮带来的瞬时用户授权可能已经失效',
+  );
+});
+
+test('普通移动端导出也从保存按钮同步进入系统分享,且兜底只下载一次', () => {
+  assert.ok(existsSync(mobileDeliveryPath), '缺少统一的移动端导出交付模块');
+  const mobileDelivery = readFileSync(mobileDeliveryPath, 'utf8');
+  const match = mobileDelivery.match(/export async function deliverMobileExportAssets\([\s\S]*?\n\}/);
+  assert.ok(match, '缺少统一的移动端导出交付函数');
+  const body = match[0];
+  const shareAt = body.indexOf('navigator.share(');
+  assert.ok(shareAt >= 0, '普通导出也应优先使用移动端系统分享');
+  const beforeShareCall = body.slice(0, shareAt).replace(/\bawait\s*$/, '');
+  assert.doesNotMatch(
+    beforeShareCall,
+    /\bawait\b/,
+    '系统分享前不能先 await,否则会丢失保存按钮的用户授权',
+  );
+  assert.equal(
+    (body.match(/downloadBlob\(/g) ?? []).length,
+    1,
+    '分享不可用时只能兜底发起一次下载',
+  );
+  assert.doesNotMatch(body, /downloadBlobs\(/, '移动端不能连续发起多个自动下载');
+});
+
 test('两端都用共享的交付实现,不各写一份', () => {
   // 这条规则是踩出来的(见抬头),两端各写一份就会各踩一次。
-  // 两端都是按需动态 import(导出链路整条都懒加载,别把编码器拖进首屏包)。
+  // 桌面端可按需加载;移动端必须静态加载,才能让保存按钮同步进入 navigator.share。
   const usesShared = /(from|import\()\s*'@\/lib\/export\/live-delivery'/;
   assert.match(editorPort, usesShared, '桌面必须用共享交付');
   assert.match(mobileExport, usesShared, '移动端必须用共享交付');

@@ -19,14 +19,18 @@
 import { useCallback, useRef, useState } from 'react';
 
 import type { EditorPage } from '../../types';
+import {
+  buildChatHistory,
+  designOpCategories,
+  mergeChatHistory,
+  type ChatHistoryItem,
+  type ChatRole,
+} from '../chat-history';
 
-export type ChatRole = 'user' | 'assistant';
+export type { ChatRole };
 
-export type ChatMessage = {
-  id: string;
-  role: ChatRole;
-  text: string;
-};
+/** 与桌面回放同一形状(见 ../chat-history):渲染各写各的,口径共用一份。 */
+export type ChatMessage = ChatHistoryItem;
 
 export type ChatStatus =
   /** 空闲。 */
@@ -59,29 +63,38 @@ const nextId = () => `local-${(localSeq += 1)}`;
 export function useDesignChat(albumId: string, zh: boolean) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<ChatStatus>({ kind: 'idle' });
-  const [historyLoaded, setHistoryLoaded] = useState(false);
   const busy = useRef(false);
+  /** 「在飞中」守卫。防的是连点两下气泡打两次请求,**不是**永久闸门 —— 早先那版用
+   *  load-once,于是桌面/另一棵壳里后来聊的内容在手机上永远看不到。 */
+  const loadingHistory = useRef(false);
 
-  /** 打开对话时拉一次历史(与桌面同一张表,两端看到的是同一段对话)。 */
+  /**
+   * 每次打开对话都拉一次历史(与桌面同一张表,两端看到的是同一段对话)。
+   *
+   * 合并而不是覆盖:design chat 一轮可能跑到 120s,落库在 done 事件。这期间本地那条
+   * 「刚发出去的话」还没进库,整体覆盖会让它当场消失。判重口径见 mergeChatHistory。
+   */
   const loadHistory = useCallback(async () => {
-    if (historyLoaded) return;
+    if (loadingHistory.current) return;
+    loadingHistory.current = true;
     try {
       const res = await fetch(`/api/v1/albums/${albumId}/messages?limit=50`);
       const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; data?: { messages?: { id: string; role: string; content: string }[] } }
+        | {
+            ok?: boolean;
+            data?: {
+              messages?: { id: string; role: string; content: string; layoutPatch?: unknown }[];
+            };
+          }
         | null;
-      const rows = json?.data?.messages ?? [];
-      setMessages(
-        rows
-          .filter((m) => m.role === 'user' || m.role === 'assistant')
-          .map((m) => ({ id: m.id, role: m.role as ChatRole, text: m.content })),
-      );
+      const server = buildChatHistory(json?.data?.messages ?? []);
+      setMessages((local) => mergeChatHistory(server, local));
     } catch {
       /* 历史拉不到不该挡住发新消息 —— 静默,下次打开再试 */
     } finally {
-      setHistoryLoaded(true);
+      loadingHistory.current = false;
     }
-  }, [albumId, historyLoaded]);
+  }, [albumId]);
 
   /**
    * 发一轮。
@@ -96,8 +109,11 @@ export function useDesignChat(albumId: string, zh: boolean) {
       const body = text.trim();
       if (!body || busy.current) return;
       busy.current = true;
-      setMessages((m) => [...m, { id: nextId(), role: 'user', text: body }]);
+      setMessages((m) => [...m, { id: nextId(), role: 'user', text: body, changes: [] }]);
       setStatus({ kind: 'busy', label: zh ? '正在思考…' : 'Thinking…' });
+      // 这一轮成功跑过的写工具。落库时路由自己也收一份进 layout_patch.designOps;
+      // 这里收是为了**实时**那条回复就带上「已更新」条,不必等下次回放才长出来。
+      const writeTools: string[] = [];
       try {
         const res = await fetch(`/api/v3/albums/${albumId}/design-chat?stream=1`, {
           method: 'POST',
@@ -123,6 +139,7 @@ export function useDesignChat(albumId: string, zh: boolean) {
             return; // 半行/噪声,忽略
           }
           if (ev.type === 'tool_call' && typeof ev.toolName === 'string') {
+            writeTools.push(ev.toolName);
             setStatus({ kind: 'busy', label: toolLabel(ev.toolName, zh) });
             return;
           }
@@ -150,7 +167,16 @@ export function useDesignChat(albumId: string, zh: boolean) {
                 : zh
                   ? '这次没有改动。'
                   : 'No changes this time.');
-            setMessages((m) => [...m, { id: nextId(), role: 'assistant', text }]);
+            setMessages((m) => [
+              ...m,
+              {
+                id: nextId(),
+                role: 'assistant',
+                text,
+                // 只有真改了东西才有「已更新」条;read_page / read_book 折不出类别,自然为空。
+                changes: committed ? designOpCategories(writeTools) : [],
+              },
+            ]);
             // committed 才带 pages;原地换书,画板立刻反映 AI 的改动。
             if (committed && Array.isArray(r.pages)) {
               onPages(

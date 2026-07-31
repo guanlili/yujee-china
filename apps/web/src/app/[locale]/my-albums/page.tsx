@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
+import { authHrefWithFrom } from '@/lib/auth/redirect';
 import { Brand } from '@/components/app/Brand';
 import { ChromeStatusBar } from '@/components/app/ChromeStatusBar';
 import { PendingInviteRedeemer } from '@/components/app/PendingInviteRedeemer';
@@ -84,6 +85,14 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
       const res = await fetch('/api/v1/albums');
       const json = await res.json();
       if (!json.ok) {
+        // 未登录不是「出错了」,是「还没登录」。middleware 的 hasSessionCookie 只看
+        // cookie 在不在(edge 上验不了会话),残留/过期的 token 会把人放进这一页,再
+        // 被列表接口 401 —— 那时候只有这里知道真相。跳登录用 middleware 同一套
+        // from 约定,登完回到这一页;replace 是为了别让返回键把人弹回这个死胡同。
+        if (json.error?.code === 'UNAUTHORIZED') {
+          router.replace(authHrefWithFrom(`/${locale}/login`, `/${locale}/my-albums`));
+          return; // albums 保持 null → 停在 loading 态,不闪一下错误再跳走
+        }
         setErr(json.error?.message ?? t.common.error);
         setErrKind('other');
         setAlbums([]);

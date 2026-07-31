@@ -615,7 +615,14 @@ export const photoStore = {
       cacheUrl(urlKey, url);
       return url;
     } catch {
-      return this.getObjectUrl(photoId);
+      // 回退本身也会抛:原图是 HEIC 且 wasm 转不出来时,getObjectUrl 一样走
+      // prepareImageBlobForBrowserDecode。让它抛出去就违背了本方法「绝不白屏」的
+      // 契约,而且会顺着 getTierUrls 的 Promise.all 把同批其它照片一起带走。
+      try {
+        return await this.getObjectUrl(photoId);
+      } catch {
+        return undefined;
+      }
     }
   },
 
@@ -631,8 +638,14 @@ export const photoStore = {
       for (;;) {
         const id = queue.shift();
         if (id === undefined) return;
-        const url = await this.getTierUrl(id, tier, photoFilter);
-        if (url) out[id] = url;
+        // 逐张隔离:单张失败只是这张缺图,绝不能让 Promise.all 整批 reject —— 调用方
+        // (MobileEditorRoot 的 .catch(() => ({})))会把整本书的照片一起抹空。
+        try {
+          const url = await this.getTierUrl(id, tier, photoFilter);
+          if (url) out[id] = url;
+        } catch (error) {
+          console.warn('[photo] tier url failed for one photo', { photoId: id, tier }, error);
+        }
       }
     };
     await Promise.all(Array.from({ length: 4 }, worker));

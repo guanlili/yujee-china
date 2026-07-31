@@ -17,8 +17,8 @@ test('FilterBar uses the exact manifest and unfiltered thumb previews with clean
   assert.match(bar, /URL\.revokeObjectURL/);
   assert.match(bar, /generationRef/);
   assert.match(bar, /type="range"/);
-  assert.match(bar, /全书/);
-  assert.match(bar, /当前照片/);
+  assert.match(bar, /整本书/);
+  assert.match(bar, /这张照片/); // 收敛后的文案(原「当前照片」),见 filter-panel-redesign.test.ts
   assert.match(bar, /onScopeChange\?:\s*\(scope:\s*FilterScope\)\s*=>\s*void/);
   assert.doesNotMatch(bar, /disabled=\{previewState !== 'ready'\}/);
 });

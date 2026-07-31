@@ -12,12 +12,21 @@ import { shouldDirectSwitch } from '../../spreads';
 
 /** 与 FlipBook 的 FLIP_MS 一致(它对齐 editor.html 的 .flipper transition)。 */
 export const FLIP_MS = 900;
+/** 封皮开合比正文翻页更短，减少整书位移的拖沓感。 */
+export const EDGE_FLIP_MS = 700;
 /** 与 FlipBook 的纸片 transition 一致。 */
 export const FLIP_EASE = 'cubic-bezier(.45,.05,.2,1)';
 /** 收尾定格的余量(同 FlipBook:FLIP_MS + 40)。 */
 export const FLIP_SETTLE_MS = 40;
 
 export type FlipDir = 'next' | 'prev';
+export type SoloRole = 'cover' | 'ending' | null;
+export type FlipTransition =
+  | 'spread'
+  | 'cover-open'
+  | 'cover-close'
+  | 'ending-close'
+  | 'ending-open';
 
 /** 一屏的形状。solo/full 与桌面同一套分类(spreadRenderKind)。 */
 export type ScreenShape = {
@@ -25,8 +34,8 @@ export type ScreenShape = {
   rows: number;
   /** 那个开页摆了几张面(pair=2,solo/full=1)。 */
   faces: number;
-  /** 封面/封尾单页 —— 容器宽度与普通跨页不同。 */
-  solo: boolean;
+  /** 封面/封尾单页的明确角色；特殊边缘翻页靠它决定方向。 */
+  soloRole: SoloRole;
   /** 双宽跨页(#303)—— 一整张连续面,没有可翻的半页。 */
   full: boolean;
 };
@@ -43,11 +52,56 @@ export type ScreenShape = {
  *   · 一屏摆了多个开页(密度 4)—— 没有单一的「那张纸」可翻
  *   · 前后两屏摆的面数不同 —— 纸片宽度会变,跨宽度会撕裂
  */
-export function canFlip(from: ScreenShape, to: ScreenShape, reducedMotion: boolean): boolean {
-  if (shouldDirectSwitch(reducedMotion, from.solo, to.solo, from.full, to.full)) return false;
-  if (from.rows !== 1 || to.rows !== 1) return false;
-  if (from.faces !== to.faces) return false;
-  return from.faces === 1 || from.faces === 2;
+export function flipTransition(
+  from: ScreenShape,
+  to: ScreenShape,
+  dir: FlipDir,
+  reducedMotion: boolean,
+): FlipTransition | null {
+  if (from.rows !== 1 || to.rows !== 1) return null;
+  if (shouldDirectSwitch(reducedMotion, false, false, from.full, to.full)) return null;
+
+  const fromRole = from.soloRole;
+  const toRole = to.soloRole;
+
+  if (
+    fromRole === 'cover' &&
+    toRole === null &&
+    to.faces === 2 &&
+    dir === 'next'
+  ) {
+    return 'cover-open';
+  }
+  if (
+    fromRole === null &&
+    from.faces === 2 &&
+    toRole === 'cover' &&
+    dir === 'prev'
+  ) {
+    return 'cover-close';
+  }
+  if (
+    fromRole === null &&
+    from.faces === 2 &&
+    toRole === 'ending' &&
+    dir === 'next'
+  ) {
+    return 'ending-close';
+  }
+  if (
+    fromRole === 'ending' &&
+    toRole === null &&
+    to.faces === 2 &&
+    dir === 'prev'
+  ) {
+    return 'ending-open';
+  }
+
+  const sourceSolo = fromRole !== null;
+  const targetSolo = toRole !== null;
+  if (shouldDirectSwitch(false, sourceSolo, targetSolo, false, false)) return null;
+  if (from.faces !== to.faces) return null;
+  return from.faces === 1 || from.faces === 2 ? 'spread' : null;
 }
 
 /** 纸片的几何:贴在哪半边、多宽、绕哪条边转、转到多少度。 */
@@ -62,6 +116,13 @@ export type LeafGeometry = {
   endAngle: number;
 };
 
+export type EdgeMotion = LeafGeometry & {
+  startAngle: number;
+  startShiftPct: number;
+  endShiftPct: number;
+  opening: boolean;
+};
+
 export function leafGeometry(dir: FlipDir, halves: number): LeafGeometry {
   // 对开:翻下一页 = 右半页绕书脊(中线)往左扫,落到左半边。
   // 翻上一页是镜像。几何逐条对齐 FlipBook 的 turning leaf。
@@ -74,6 +135,58 @@ export function leafGeometry(dir: FlipDir, halves: number): LeafGeometry {
   return dir === 'next'
     ? { leftFrac: 0, widthFrac: 1, origin: 'left center', endAngle: -180 }
     : { leftFrac: 0, widthFrac: 1, origin: 'right center', endAngle: 180 };
+}
+
+/** 封皮始终占半本书，书体位移与旋转一起把独页和双页坐标系接起来。 */
+export function edgeMotion(
+  transition: Exclude<FlipTransition, 'spread'>,
+): EdgeMotion {
+  switch (transition) {
+    case 'cover-open':
+      return {
+        leftFrac: 0.5,
+        widthFrac: 0.5,
+        origin: 'left center',
+        startAngle: 0,
+        endAngle: -180,
+        startShiftPct: -25,
+        endShiftPct: 0,
+        opening: true,
+      };
+    case 'cover-close':
+      return {
+        leftFrac: 0.5,
+        widthFrac: 0.5,
+        origin: 'left center',
+        startAngle: -180,
+        endAngle: 0,
+        startShiftPct: 0,
+        endShiftPct: -25,
+        opening: false,
+      };
+    case 'ending-close':
+      return {
+        leftFrac: 0,
+        widthFrac: 0.5,
+        origin: 'right center',
+        startAngle: 180,
+        endAngle: 0,
+        startShiftPct: 0,
+        endShiftPct: 25,
+        opening: false,
+      };
+    case 'ending-open':
+      return {
+        leftFrac: 0,
+        widthFrac: 0.5,
+        origin: 'right center',
+        startAngle: 0,
+        endAngle: 180,
+        startShiftPct: 25,
+        endShiftPct: 0,
+        opening: true,
+      };
+  }
 }
 
 /** 翻纸过程中三层各画哪一页(页数组下标;null = 那半边空着)。 */
@@ -104,6 +217,25 @@ export function leafLayers(
       : { under: [to[0] ?? null, from[1] ?? null], front: from[0] ?? null, back: to[1] ?? null };
   }
   return { under: [to[0] ?? null], front: from[0] ?? null, back: to[0] ?? null };
+}
+
+/**
+ * 封皮开合始终把正文跨页垫在底下；封皮背面复用它最终覆盖的正文页，
+ * 这样叶片在 ±180° 的起止帧与底层完全重合，不会闪出一张空白纸。
+ */
+export function edgeLayers(
+  transition: Exclude<FlipTransition, 'spread'>,
+  from: (number | null)[],
+  to: (number | null)[],
+): LeafLayers {
+  const opening = transition === 'cover-open' || transition === 'ending-open';
+  const body = opening ? to : from;
+  const solo = opening ? from[0] ?? null : to[0] ?? null;
+  const back =
+    transition === 'cover-open' || transition === 'cover-close'
+      ? body[0] ?? null
+      : body[1] ?? null;
+  return { under: body, front: solo, back };
 }
 
 /** 纸片正面的翻页受光:靠书脊那侧压暗一点。取自 FlipBook 的 page-turn shading。 */

@@ -11,9 +11,9 @@
    手势、chrome、面板全部各写各的 —— 手机和电脑本来就该不一样。
 
    浏览态布局(按设计稿):顶栏(返回/书名/分享·导出·更多) + 画板(书居中浮在垫底
-   背景上,底色由相册的画板背景属性决定、默认走网页端同款 --bg;左下角画板背景与
-   密度两枚圆钮、右下角 AI 气泡) + 底部书册预览栏(渲染真实版面,照片走 thumb 档)。
-   **书不做自由缩放**:密度是离散档位,尺寸由 fitBox 算好重绘,不用 transform 拉伸。
+   背景上,底色由相册的画板背景属性决定、默认走网页端同款 --bg;左下角画板背景
+   圆钮、右下角 AI 气泡) + 底部书册预览栏(渲染真实版面,照片走 thumb 档)。
+   **书不做自由缩放**:浏览态固定双页,尺寸由 fitBox 算好重绘,不用 transform 拉伸。
 
    本文件刻意不 import photoStore / fetch 之类的副作用:数据加载在 MobileEditorRoot,
    这样这棵树能被 renderToStaticMarkup 直接断言(仓里无 jsdom)。
@@ -22,22 +22,26 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type { EditorPage } from '../../types';
-import { buildSpreads, isSoloSpread, spreadPageIndices, spreadRenderKind } from '../../spreads';
+import { buildSpreads, isSoloSpread, pageSlot, spreadPageIndices, spreadRenderKind } from '../../spreads';
 import { pageFaceHTML, type PageFaceCtx } from '../page-face';
 import { pageFolioInfos } from '../../page-html-dom';
 import type { ResolveImage } from '../../adapt-layout';
-import { cycleDensity, type Density } from '../mobile-canvas';
-import { browseScreen, stepScreen, screenStartOfPage, type BrowseScreen } from './browse-window';
+import type { Density } from '../mobile-canvas';
+import { browseScreen, browseUnits, stepScreen, screenStartOfPage, type BrowseScreen } from './browse-window';
 import { fitBox, spreadAspect } from './fit-box';
 import {
+  EDGE_FLIP_MS,
   FLIP_EASE,
   FLIP_MS,
   FLIP_SETTLE_MS,
-  canFlip,
+  edgeLayers,
+  edgeMotion,
+  flipTransition,
   leafGeometry,
   leafLayers,
   leafShading,
   type FlipDir,
+  type FlipTransition,
   type ScreenShape,
 } from './flip';
 import { EditView, type TextHit, type ImageHit } from './EditView';
@@ -98,10 +102,10 @@ export type MobileEditorProps = {
   onDeletePage: () => void;
 };
 
-/** 开页与开页之间的缝(px)。 */
-const GAP = 10;
 /** 书页四周露出的垫底背景(px):书居中浮起,不顶满可视区。 */
 const INSET = 24;
+/** 移动浏览只保留一个双页跨页；共享 Density 仍保留 1/4 给其他旧调用方。 */
+const MOBILE_BROWSE_DENSITY = 2 as const satisfies Density;
 /** iOS 左缘返回手势让位。 */
 const EDGE_GUARD = 20;
 /** 判定为横滑的最小位移。 */
@@ -148,14 +152,18 @@ export function MobileEditor({
   onPickText,
   onDeletePage,
 }: MobileEditorProps) {
-  const [density, setDensity] = useState<Density>(2);
   const [startPage, setStartPage] = useState(0);
   const [area, setArea] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const boardRef = useRef<HTMLDivElement>(null);
 
   // 翻纸动效:anim 非 null = 正在翻,toStart 是翻完之后的游标。
-  const [anim, setAnim] = useState<{ dir: FlipDir; toStart: number } | null>(null);
+  const [anim, setAnim] = useState<{
+    dir: FlipDir;
+    toStart: number;
+    transition: FlipTransition;
+  } | null>(null);
   const [leafAngle, setLeafAngle] = useState(0);
+  const [bookShiftPct, setBookShiftPct] = useState(0);
   const flipTimer = useRef<number | null>(null);
   // 无障碍:系统设了减弱动效就不翻纸,直接切(同 FlipBook)。渲染期不读 matchMedia。
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -176,8 +184,13 @@ export function MobileEditor({
   const spreads = useMemo(() => buildSpreads(pages), [pages]);
   const folioInfos = useMemo(() => pageFolioInfos(pages.map((p) => p.templateId)), [pages]);
   const screen = useMemo(
-    () => browseScreen(spreads, pages, startPage, density),
-    [spreads, pages, startPage, density],
+    () => browseScreen(spreads, pages, startPage, MOBILE_BROWSE_DENSITY),
+    [spreads, pages, startPage],
+  );
+  /* 缩略条的格子。**不依赖 startPage** —— 翻页只挪高亮,不该让整条重新分组。 */
+  const stripUnits = useMemo(
+    () => browseUnits(spreads, pages, MOBILE_BROWSE_DENSITY),
+    [spreads, pages],
   );
 
   /** 一个开页在本屏里实际摆出来的「面」。
@@ -219,43 +232,58 @@ export function MobileEditor({
       const lay = soleLayout(scr);
       if (lay == null || si == null) return null;
       const kind = spreadRenderKind(spreads[si], pages);
+      const pageIndex = spreadPageIndices(spreads[si])[0];
+      const slot =
+        kind === 'solo' && pageIndex != null && pages[pageIndex]
+          ? pageSlot(pages[pageIndex]!)
+          : null;
       return {
         rows: scr.spreadIndices.length,
         faces: lay.faces.length,
-        // 密度 1 把对开压成一页看,但它既不是封面独页也不是双宽页 —— 那两个标记按
-        // 开页本身的类别取,不受密度影响(否则密度 1 会被误判成 solo 而永远硬切)。
-        solo: kind === 'solo',
+        soloRole: slot === 'cover' || slot === 'ending' ? slot : null,
         full: kind === 'full',
       };
     },
     [soleLayout, spreads, pages],
   );
 
-  /** 翻一屏。几何允许就走翻纸动效,否则直接切(见 flip.ts 的 canFlip)。 */
+  /** 翻一屏。纯函数同时决定普通跨页、封面左翻、封尾右翻或安全直切。 */
   const goScreen = (dir: 1 | -1) => {
     if (anim) return; // 翻纸过程中不接新的翻页(同 FlipBook)
-    const toStart = stepScreen(spreads, pages, startPage, density, dir);
+    const toStart = stepScreen(spreads, pages, startPage, MOBILE_BROWSE_DENSITY, dir);
     if (toStart === startPage) return; // 已在夹边
-    const to = browseScreen(spreads, pages, toStart, density);
+    const to = browseScreen(spreads, pages, toStart, MOBILE_BROWSE_DENSITY);
     const fromShape = shapeOf(screen);
     const toShape = shapeOf(to);
-    const ok =
-      fromShape != null && toShape != null && canFlip(fromShape, toShape, reducedMotion);
-    if (!ok) {
+    const d: FlipDir = dir === 1 ? 'next' : 'prev';
+    const transition =
+      fromShape != null && toShape != null
+        ? flipTransition(fromShape, toShape, d, reducedMotion)
+        : null;
+    if (!transition) {
       setStartPage(toStart);
       return;
     }
-    const d: FlipDir = dir === 1 ? 'next' : 'prev';
-    setAnim({ dir: d, toStart });
-    setLeafAngle(0);
+    const edge = transition === 'spread' ? null : edgeMotion(transition);
+    setLeafAngle(edge?.startAngle ?? 0);
+    setBookShiftPct(edge?.startShiftPct ?? 0);
+    setAnim({ dir: d, toStart, transition });
     // 下一帧才给终止角,transition 才会跑(同 FlipBook)。
-    requestAnimationFrame(() => setLeafAngle(leafGeometry(d, fromShape.faces).endAngle));
+    requestAnimationFrame(() => {
+      setLeafAngle(
+        transition === 'spread'
+          ? leafGeometry(d, fromShape!.faces).endAngle
+          : edge!.endAngle,
+      );
+      setBookShiftPct(edge?.endShiftPct ?? 0);
+    });
     flipTimer.current = window.setTimeout(() => {
       setStartPage(toStart);
       setAnim(null);
       setLeafAngle(0);
+      setBookShiftPct(0);
       flipTimer.current = null;
-    }, FLIP_MS + FLIP_SETTLE_MS);
+    }, (edge ? EDGE_FLIP_MS : FLIP_MS) + FLIP_SETTLE_MS);
   };
 
   // 量板子;每页多大由 fitBox 算出来,不靠 CSS 比例硬凑(会被 max-width 夹破)。
@@ -348,7 +376,7 @@ export function MobileEditor({
         onPhotoFilter={onPhotoFilter}
         onExit={() => {
           // 浏览游标对齐到刚编辑那页所在的屏,回来不迷路。
-          setStartPage(screenStartOfPage(spreads, pages, editPage, density));
+          setStartPage(screenStartOfPage(spreads, pages, editPage, MOBILE_BROWSE_DENSITY));
           onExitEdit(editPage);
         }}
         onStep={(dir) => onEnterEdit(stepScreen(spreads, pages, editPage, 1, dir))}
@@ -374,16 +402,20 @@ export function MobileEditor({
 
   const availW = Math.max(0, area.w - INSET * 2);
   const availH = Math.max(0, area.h - INSET * 2);
-  const rows = Math.max(1, screen.spreadIndices.length);
-  const rowH = (availH - GAP * (rows - 1)) / rows;
+  // 全书只算一套物理纸张尺寸：正文用完整双页盒，封面/封尾取它的一半宽。
+  // 若独页自己按单页比例 fit，它会在同一画板里长得比正文单页更大。
+  const bookBox = fitBox(availW, availH, spreadAspect(2));
   // 翻纸中的目标屏(整屏算一次,不在 map 里反复算)。
-  const toScreen = anim ? browseScreen(spreads, pages, anim.toStart, density) : null;
+  const toScreen = anim
+    ? browseScreen(spreads, pages, anim.toStart, MOBILE_BROWSE_DENSITY)
+    : null;
+  const restingSoloRole = anim == null ? shapeOf(screen)?.soloRole ?? null : null;
 
   return (
     <div
       className="mobile-editor"
       data-mode="browse"
-      data-density={density}
+      data-density={MOBILE_BROWSE_DENSITY}
       style={boardBackground ? { background: boardBackground } : undefined}
     >
       <MobileTopbar
@@ -413,43 +445,76 @@ export function MobileEditor({
           // 纸片转过 90° 后露出来的就是它。翻纸只发生在一屏一个开页时,故 anim 时必为这一格。
           // 目标屏的面必须经 soleLayout 从**目标屏自己**取(理由见 soleLayout 抬头)。
           const toLayout = toScreen ? soleLayout(toScreen) : null;
+          const activeEdgeMotion =
+            anim != null && anim.transition !== 'spread' ? edgeMotion(anim.transition) : null;
           const layers =
             anim != null && toLayout != null
-              ? leafLayers(anim.dir, resting.faces.length, resting.faces, toLayout.faces)
+              ? anim.transition === 'spread'
+                ? leafLayers(anim.dir, resting.faces.length, resting.faces, toLayout.faces)
+                : edgeLayers(anim.transition, resting.faces, toLayout.faces)
               : null;
           const faces: (number | null)[] = layers ? layers.under : resting.faces;
-          // 容器按 wide 算宽(双宽跨页是「一张面 + 两页宽」),不按面数算 ——
-          // 否则 full 会被缩成半宽。
-          const box = fitBox(availW, rowH, spreadAspect(resting.wide));
+          // 封面/封尾静止与开合都保留完整双页坐标系：纸仍是半宽，但书体本身
+          // 只靠 translateX 在单页居中位和双页中缝位之间移动，不再瞬间扩容。
+          const box =
+            restingSoloRole != null || activeEdgeMotion != null
+              ? bookBox
+              : resting.wide === 1
+                ? { w: bookBox.w / 2, h: bookBox.h }
+                : bookBox;
+          const faceWidth = restingSoloRole != null ? bookBox.w / 2 : box.w / faces.length;
           const face = (pi: number | null, w: number) =>
             box.w > 0
               ? pageFaceHTML(pi == null ? null : (pages[pi] ?? null), w, box.h, ctxOf(pi ?? -1))
               : '';
-          const geo = layers && anim ? leafGeometry(anim.dir, faces.length) : null;
+          const geo =
+            layers && anim
+              ? anim.transition === 'spread'
+                ? leafGeometry(anim.dir, resting.faces.length)
+                : edgeMotion(anim.transition)
+              : null;
+          const restingShiftPct =
+            restingSoloRole === 'cover' ? -25 : restingSoloRole === 'ending' ? 25 : 0;
           return (
             <div
               className="mspread"
               key={si}
               data-solo={kind === 'solo' ? '1' : undefined}
               data-kind={kind}
+              data-edge-motion={activeEdgeMotion ? '1' : undefined}
+              data-edge-opening={activeEdgeMotion?.opening ? '1' : undefined}
+              data-edge-closing={activeEdgeMotion && !activeEdgeMotion.opening ? '1' : undefined}
+              data-resting-solo={restingSoloRole ? '1' : undefined}
               // 书脊中缝只在**真的摆了两张面**时才画。判据是渲染出的面数,不是 solo:
               // 密度 1 时 onlyPage 只留一页(那个开页并不 solo),按 solo 判会给单页画中缝;
               // 双宽跨页(full)也只有一张面 —— 画面本就连续,同样不该有中缝。
               data-halves={faces.length}
-              style={{ width: box.w, height: box.h }}
+              data-paper-spine={faces.length === 2 && faces.every((pageIndex) => pageIndex != null) ? '1' : undefined}
+              style={{
+                width: box.w,
+                height: box.h,
+                transform: `translateX(${activeEdgeMotion ? bookShiftPct : restingShiftPct}%)`,
+                transition: activeEdgeMotion
+                  ? `transform ${EDGE_FLIP_MS}ms ${FLIP_EASE}`
+                  : undefined,
+              }}
             >
               {faces.map((pi, half) => (
                 <div
                   className="mpage"
                   key={half}
                   data-page-index={pi ?? undefined}
-                  style={{ width: box.w / faces.length }}
+                  style={{
+                    width: faceWidth,
+                    marginLeft:
+                      restingSoloRole === 'cover' && half === 0 ? bookBox.w / 2 : undefined,
+                  }}
                 >
                   {/* 页面内容天生是 HTML 字符串(模板产出)。这个节点由本组件独占,
                       没有第二方会重建它 —— 与旧实现的根本区别。 */}
                   <div
                     className="mpage-face"
-                    dangerouslySetInnerHTML={{ __html: face(pi, box.w / faces.length) }}
+                    dangerouslySetInnerHTML={{ __html: face(pi, faceWidth) }}
                   />
                 </div>
               ))}
@@ -465,7 +530,9 @@ export function MobileEditor({
                     width: box.w * geo.widthFrac,
                     transformOrigin: geo.origin,
                     transform: `rotateY(${leafAngle}deg)`,
-                    transition: `transform ${FLIP_MS}ms ${FLIP_EASE}`,
+                    transition: `transform ${
+                      anim.transition === 'spread' ? FLIP_MS : EDGE_FLIP_MS
+                    }ms ${FLIP_EASE}`,
                   }}
                 >
                   <div className="mleaf-face">
@@ -487,7 +554,7 @@ export function MobileEditor({
           );
         })}
 
-        {/* 画布状态类控件落在左下角 —— 导航栏是「离开这屏去哪」,这里是「这屏怎么看」 */}
+        {/* 画布背景属于当前画板状态,留在左下角,不塞进顶栏导航。 */}
         <div className="mfab-col">
           <button
             type="button"
@@ -497,18 +564,9 @@ export function MobileEditor({
           >
             <IconBoardBg className="mfab-ic" />
           </button>
-          <button
-            type="button"
-            className="mfab"
-            aria-label={zh ? '一屏几页' : 'Pages per screen'}
-            onClick={() => setDensity((d) => cycleDensity(d))}
-          >
-            <span className="mfab-num">{density}</span>
-          </button>
         </div>
 
-        {/* AI 浮标:黑色胶囊 + 小水母从左上角探出来(逐条对齐桌面 .chat-fold-expand)。
-            水母是 mix-blend-mode:multiply —— 必须**探出到胶囊外面**,压在黑底上会直接消失。 */}
+        {/* AI 浮标:紧凑的圆形图标按钮,小水母稳定浮在左上层。 */}
         <button
           type="button"
           className="mai"
@@ -528,18 +586,19 @@ export function MobileEditor({
           >
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
-          <span>{zh ? '对话' : 'Chat'}</span>
         </button>
       </div>
 
       <MobileStrip
         pages={pages}
+        units={stripUnits}
         zh={zh}
         // 翻纸一开始就把预览栏的高亮挪到目标页 —— 导航状态跟着「要去哪」走,
         // 不等 900ms 动画结束(同桌面 goToSpread 里先 syncSelectionToSpread)。
         currentPage={anim ? anim.toStart : startPage}
         thumbCtxOf={thumbCtxOf}
-        onJump={(pi) => setStartPage(screenStartOfPage(spreads, pages, pi, density))}
+        // 格子起点已经是屏起点,不必再过 screenStartOfPage 吸附一次。
+        onJump={setStartPage}
       />
     </div>
   );

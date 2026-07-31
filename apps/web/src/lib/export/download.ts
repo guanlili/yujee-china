@@ -39,12 +39,12 @@ function zipHeader(size: number): DataView {
 }
 
 /**
- * 轻量 ZIP（store / 无压缩）：用于把封面 JPG 与视频作为一个 Live 图素材包下载。
- * 文件本身已经是 JPEG/MP4/WebM，再压缩收益很小，因此不引入额外压缩依赖。
+ * 轻量 ZIP（store / 无压缩）：把多文件导出预先合成一个移动端下载兜底。
+ * 图片/视频本身已经压缩，再压缩收益很小，因此不引入额外压缩依赖。
  */
 export async function createZipBlob(files: NamedBlob[]): Promise<Blob> {
   const encoder = new TextEncoder();
-  const localParts: ArrayBuffer[] = [];
+  const localParts: BlobPart[] = [];
   const centralParts: ArrayBuffer[] = [];
   let offset = 0;
 
@@ -52,7 +52,6 @@ export async function createZipBlob(files: NamedBlob[]): Promise<Blob> {
     const name = encoder.encode(file.name);
     const bytes = new Uint8Array(await file.blob.arrayBuffer());
     const nameBuffer = name.slice().buffer as ArrayBuffer;
-    const bytesBuffer = bytes.slice().buffer as ArrayBuffer;
     const crc = crc32(bytes);
     const local = zipHeader(30);
     local.setUint32(0, 0x04034b50, true);
@@ -63,7 +62,8 @@ export async function createZipBlob(files: NamedBlob[]): Promise<Blob> {
     local.setUint32(18, bytes.byteLength, true);
     local.setUint32(22, bytes.byteLength, true);
     local.setUint16(26, name.byteLength, true);
-    localParts.push(local.buffer as ArrayBuffer, nameBuffer, bytesBuffer);
+    // 直接复用原 Blob 作为 ZIP part，不把所有高清图再复制一份长期留在内存里。
+    localParts.push(local.buffer as ArrayBuffer, nameBuffer, file.blob);
 
     const central = zipHeader(46);
     central.setUint32(0, 0x02014b50, true);

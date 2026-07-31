@@ -7,6 +7,10 @@ build/
 .env
 .env.local
 .env.*.local
+# .env 的任何副本/备份(.env.local.bak、.env.local.pre-https.bak …)。上面三条都是
+# 精确匹配,盖不住带后缀的备份 —— wt-cleanup 里那个 .env.local.bak 就这么漏出来过。
+.env*.bak
+.env.local.*
 # Deploy secrets (Fly shared secret etc.) — never commit
 docs/deploy/secrets.local.env
 *.log
@@ -37,3 +41,6 @@ llm-trace*.txt
 .gstack/
 .vercel
 ai-trace*.jsonl
+
+# 本地 HTTPS 自签证书(移动端真机调试要用 next dev --experimental-https)。含私钥。
+certificates/

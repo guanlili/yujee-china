@@ -195,3 +195,20 @@ test('patchHtml*:槽位不存在返回 null(调用方回退整页重烘)', () =>
   // 注入护栏:非法值/属性名被拒
   assert.equal(patchHtmlPageStyle('<div data-template="m">x</div>', { 'background-color': '#000;} <x>' }), null);
 });
+
+// 本机没有这张照片时(换设备、清缓存,或 origin 变了 —— IndexedDB 按 origin 隔离,
+// http://localhost:3000 与 https://localhost:3000 是两套库),resolveImage 返回
+// undefined。此前填空串,产出 <img src="">:浏览器会把空 src 当成「拿当前页面地址
+// 当图片」,必然失败 → 图槽显示成碎图标,还会原样印进导出的 PDF。
+// 契约:解析不到就是「空图槽」,渲染上必须真的什么都不显示。
+test('resolveDisplayHtml:解析不到照片时给出空图槽,不是 src="" 的碎图', () => {
+  const html = '<div data-template="mag-01"><img data-image-slot="image" src="{{IMG_SRC:image}}"/></div>';
+
+  const missing = resolveDisplayHtml(html, { image: 'p1' }, () => undefined);
+  assert.equal(missing.includes('src=""'), false, '空 src 会被浏览器渲染成碎图标');
+  assert.ok(/src="data:image\/(gif|png);base64,/.test(missing), '应回退到透明占位像素');
+
+  // 槽位压根没配照片时,同样不能留空 src。
+  const unslotted = resolveDisplayHtml(html, {}, () => 'blob:x');
+  assert.equal(unslotted.includes('src=""'), false);
+});

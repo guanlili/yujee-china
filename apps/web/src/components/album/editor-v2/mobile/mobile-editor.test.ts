@@ -52,7 +52,7 @@ function render(pages = BOOK, zh = true) {
   );
 }
 
-test('首帧就有完整骨架:顶栏 / 画板 / 书册预览栏,默认密度 2(对页)', () => {
+test('首帧就有完整骨架:顶栏 / 画板 / 书册预览栏,固定密度 2(对页)', () => {
   const html = render();
   assert.match(html, /data-mode="browse" data-density="2"/);
   assert.match(html, /class="mtopbar"/);
@@ -75,11 +75,11 @@ test('按设计稿去掉位置条那一行(章节 chips + 页码)', () => {
   assert.doesNotMatch(html, /class="mfolio"/, '位置条已删');
 });
 
-test('画布控件落在画板左下角:画板背景 + 一屏几页', () => {
+test('画布控件落在画板左下角:只保留画板背景', () => {
   const html = render();
   assert.match(html, /aria-label="画板背景"/);
-  assert.match(html, /aria-label="一屏几页"/);
-  assert.match(html, /class="mfab-num">2</, '密度钮显示当前档位');
+  assert.doesNotMatch(html, /aria-label="一屏几页"/);
+  assert.doesNotMatch(html, /class="mfab-num"/);
 });
 
 test('AI 气泡在画板右下角(两态同一位置)', () => {
@@ -91,7 +91,7 @@ test('i18n:英文 locale 下 chrome 不留中文(硬编码中文 = 英文用户�
   assert.match(html, /aria-label="Back"/);
   assert.match(html, /aria-label="Share"/);
   assert.match(html, /aria-label="Board background"/);
-  assert.match(html, /aria-label="Pages per screen"/);
+  assert.doesNotMatch(html, /aria-label="Pages per screen"/);
   assert.match(html, /aria-label="Expand chat"/);
   assert.match(html, /aria-label="Book preview"/);
   assert.match(html, /aria-label="Page 1"/, '预览栏每格的页码也要翻');
@@ -112,13 +112,13 @@ test('双页开页有书脊中缝;单页(密度 1 / 独页 / 编辑态)没有', 
     /data-solo="1"[^>]*data-halves="2"/,
     '独页不该摆两页',
   );
-  // 中缝本身是 CSS ::before,按 data-halves="2" 命中 —— 守住那条规则还在
+  // 中缝本身是 CSS ::before,只按 data-paper-spine="1" 命中 —— 空半边不许画书脊。
   const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
-  const at = css.indexOf(".mspread[data-halves='2']::before");
+  const at = css.indexOf(".mspread[data-paper-spine='1']::before");
   assert.ok(at >= 0, '书脊中缝规则被删了 —— 两页之间那道竖向阴影是书的关键');
   const spine = css.slice(at, css.indexOf('}', at));
   assert.match(spine, /left:\s*50%/, '中缝要在正中');
-  assert.match(spine, /rgba\(0,\s*0,\s*0,\s*0\.14\)/, '中心那道最深的阴影(取自 FlipBook)不许改淡');
+  assert.match(spine, /rgba\(0,0,0,\.24\)/, '中心那道纸张折痕必须保留最深的明暗层');
   assert.match(spine, /pointer-events:\s*none/, '中缝不许拦点击(会挡住选中文字)');
 });
 
@@ -129,15 +129,16 @@ test('书脊中缝的条件是「真摆了两张面」,不是「非独页」(密
   assert.doesNotMatch(
     css,
     /\.mspread:not\(\[data-solo\]\)::before/,
-    '按 solo 判会给密度 1 的单页、以及双宽跨页也画中缝 —— 必须按 data-halves',
+    '按 solo 判会给密度 1 的单页、以及双宽跨页也画中缝 —— 必须按 data-paper-spine',
   );
 });
 
 test('双宽跨页(#303):一张面 + 两页宽容器,不许缩成半宽、不许画中缝', () => {
   const src = source('MobileEditor.tsx');
-  // 容器宽按 wide 算,不按面数算
-  assert.match(src, /fitBox\(availW, rowH, spreadAspect\(resting\.wide\)\)/,
-    '容器宽度必须按 wide 算 —— 按面数算会把双宽页压成半宽');
+  // 容器先按双页书盒统一 fit；full 与 solo 都使用完整坐标系，纸张自身再取半宽。
+  assert.match(src, /const bookBox = fitBox\(availW, availH, spreadAspect\(2\)\)/);
+  assert.match(src, /restingSoloRole != null[\s\S]{0,160}\? bookBox/,
+    '独页必须保留完整双页坐标系，书体平移时才能连续');
   assert.match(src, /sp\.kind === 'full'[\s\S]{0,80}wide: 2/, 'full 必须是「一张面 + 两页宽」');
   // 编辑态同样要按双宽摆
   const edit = source('EditView.tsx');
@@ -175,7 +176,7 @@ test('返回浏览态要对齐到刚编辑那页所在的屏(不是跳回开头)
   const src = source('MobileEditor.tsx');
   assert.match(
     src,
-    /setStartPage\(screenStartOfPage\(spreads, pages, editPage, density\)\)[\s\S]{0,80}onExitEdit/,
+    /setStartPage\(screenStartOfPage\(spreads, pages, editPage, MOBILE_BROWSE_DENSITY\)\)[\s\S]{0,80}onExitEdit/,
     '退出编辑前必须把浏览游标对齐到 editPage 所在的屏',
   );
 });
@@ -200,7 +201,7 @@ test('翻纸:时长/缓动/景深都取自 FlipBook,不自己定', () => {
   assert.doesNotMatch(src, /transition: `transform \d+ms/, '不许在组件里写死时长');
   const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(css, /perspective:\s*2400px/, '景深 2400px,同 FlipBook 的 stage');
-  const at = css.indexOf('.mobile-editor .mleaf {');
+  const at = css.indexOf('.mobile-editor .mleaf{');
   assert.ok(at >= 0, '翻动纸片的规则被删了');
   const leaf = css.slice(at, css.indexOf('}', at));
   assert.match(leaf, /transform-style:\s*preserve-3d/, '不 preserve-3d 纸片会被压平');
@@ -213,6 +214,49 @@ test('翻纸中不接新翻页、不误触进编辑', () => {
   assert.match(src, /if \(anim\) return;[\s\S]{0,120}data-page-index/, '翻纸中轻点不该进编辑态');
 });
 
+test('封面和封尾通过角色明确的特殊翻页接入现有纸片层', () => {
+  const src = source('MobileEditor.tsx');
+  assert.match(src, /pageSlot\(/);
+  assert.match(src, /flipTransition\(fromShape, toShape, d, reducedMotion\)/);
+  assert.match(src, /edgeMotion\(anim\.transition\)/);
+  assert.match(src, /edgeLayers\(anim\.transition,\s*resting\.faces,\s*toLayout\.faces\)/);
+  assert.match(src, /data-edge-motion=/);
+});
+
+test('封面封尾静止居中，动画时整本书与封皮同步移动', () => {
+  const src = source('MobileEditor.tsx');
+  assert.match(src, /restingSoloRole === 'cover' \? -25/);
+  assert.match(src, /restingSoloRole === 'ending' \? 25/);
+  assert.match(src, /transform:\s*`translateX\(\$\{activeEdgeMotion \? bookShiftPct : restingShiftPct\}%\)`/);
+  assert.match(src, /EDGE_FLIP_MS/);
+});
+
+test('纸张具有接触投影、环境投影、纸边高光和翻页投影', () => {
+  const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const spreadAt = css.indexOf('.mobile-editor .mspread{');
+  const spreadRule = css.slice(spreadAt, css.indexOf('}', spreadAt));
+  assert.match(spreadRule, /0 1px 2px/);
+  assert.match(spreadRule, /0 9px 22px/);
+  assert.match(spreadRule, /0 24px 48px/);
+  const pageAt = css.indexOf('.mobile-editor .mpage {');
+  const pageRule = css.slice(pageAt, css.indexOf('}', pageAt));
+  assert.match(pageRule, /inset 0 0 0 1px/);
+  const edgeAt = css.indexOf('.mobile-editor .mpage::after {');
+  const edgeRule = css.slice(edgeAt, css.indexOf('}', edgeAt));
+  assert.ok(edgeAt >= 0, '纸边高光要有独立覆盖层,否则会被页面 HTML 盖住');
+  assert.match(edgeRule, /pointer-events:\s*none/, '纸边覆盖层不能挡页面点击');
+  const leafAt = css.indexOf('.mobile-editor .mleaf-face{');
+  const leafRule = css.slice(leafAt, css.indexOf('}', leafAt));
+  assert.match(leafRule, /box-shadow:\s*0 12px 14px/);
+});
+
+test('封皮打开时正文延后渐入，闭合时书脊和整书阴影渐出', () => {
+  const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /\[data-edge-opening='1'\][\s\S]{0,180}210ms/);
+  assert.match(css, /\[data-edge-closing='1'\] \.mpage,[\s\S]{0,180}medge-under-out/);
+  assert.match(css, /\[data-resting-solo='1'\][\s\S]{0,120}box-shadow:\s*none/);
+});
+
 test('底部翻页条 + 书浮在画板上:两样都不许去掉', () => {
   const html = render();
   assert.match(html, /class="mstrip"/, '底部翻页条不许去掉');
@@ -220,7 +264,7 @@ test('底部翻页条 + 书浮在画板上:两样都不许去掉', () => {
   assert.match(html, /class="mboard"/, '画板不许去掉');
   assert.match(html, /class="mspread"/, '书要浮在画板上');
   const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
-  const at = css.indexOf('.mobile-editor .mspread {');
+  const at = css.indexOf('.mobile-editor .mspread{');
   assert.match(
     css.slice(at, css.indexOf('}', at)),
     /box-shadow/,
@@ -228,12 +272,16 @@ test('底部翻页条 + 书浮在画板上:两样都不许去掉', () => {
   );
 });
 
-test('书册预览栏:整本书每页一格,当前页描框', () => {
+test('书册预览栏:一格 = 一屏(不是一页),当前格描框', () => {
+  // 早先是一页一格,但点击走 screenStartOfPage 会吸到屏起点 —— 密度 2 下每个开页的
+  // 右页成了死格(点了弹回左页)。格子改成按屏出:封面独占 + 三个开页 + 封底 = 5 格。
   const html = render();
   const cells = html.match(/class="mstrip-cell"/g) ?? [];
-  assert.equal(cells.length, BOOK.length, '每页一格');
-  assert.match(html, /data-current="1"/, '当前页描框');
+  assert.equal(cells.length, 5, '8 页的书在密度 2 下是 5 屏');
+  assert.ok(cells.length < BOOK.length, '格子数必须少于页数,否则又退回逐页出格');
+  assert.match(html, /data-current="1"/, '当前格描框');
   assert.match(html, /data-slot="cover"/, '封面在条上可辨');
+  assert.match(html, /data-span="2"/, '内页开页一格两页');
 });
 
 test('空书不炸:不渲染任何开页,预览栏为空', () => {
@@ -250,6 +298,26 @@ test('默认密度 2 渲染一个开页;封面是独页(只有一页,没有对�
   const pagesInScreen = html.match(/class="mpage"/g) ?? [];
   assert.equal(pagesInScreen.length, 1, '封面独页不该带一个空白对开半边');
   assert.match(html, /data-solo="1"/);
+});
+
+test('浏览态固定双页:不再渲染 1/2/4 密度按钮', () => {
+  const html = render();
+  assert.equal(html.includes('aria-label="一屏几页"'), false);
+  assert.equal(html.includes('aria-label="Pages per screen"'), false);
+  const src = source('MobileEditor.tsx');
+  assert.match(src, /const MOBILE_BROWSE_DENSITY = 2 as const/);
+  assert.doesNotMatch(src, /cycleDensity|setDensity|useState<Density>/);
+});
+
+test('封面封尾与正文共用同一个物理单页尺寸', () => {
+  const src = source('MobileEditor.tsx');
+  assert.match(src, /const bookBox = fitBox\(availW, availH, spreadAspect\(2\)\)/);
+  assert.match(src, /const faceWidth = restingSoloRole != null \? bookBox\.w \/ 2/);
+  assert.doesNotMatch(
+    src,
+    /fitBox\(availW,\s*rowH,\s*spreadAspect\(resting\.wide\)\)/,
+    '按每屏宽度各自 fit 会让独页比正文单页更大',
+  );
 });
 
 /* ── 架构守卫:这两条是本次重构的存在理由,破了就等于回到老路 ────────────────── */
@@ -274,4 +342,33 @@ test('架构守卫:移动端样式里没有媒体查询(这棵树只在手机上
     /@media[^{]*max-width/,
     '有媒体查询就说明又在拿一套样式掰两种形态 —— 那正是要拆掉的东西',
   );
+});
+
+/* ── 缩略条按屏出格(用户反馈:「UI 上一页一页换,实际只能两页一跳」)── */
+
+test('MobileStrip 消费 browseUnits,不再自己按 pages 逐页出格', () => {
+  const src = readFileSync(join(here, 'MobileStrip.tsx'), 'utf8');
+  assert.match(src, /BrowseUnit/, '缩略条的格子单位必须来自 browse-window,不自造');
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.match(code, /units\.map\(/, '格子由 units 出');
+  assert.doesNotMatch(
+    code,
+    /\{pages\.map\(/,
+    '逐页出格正是死格的来源:密度 2 下每个开页的右页点了会弹回左页',
+  );
+});
+
+test('MobileEditor 把 units 传给缩略条,且 onJump 直接用格子的 startPage', () => {
+  const src = readFileSync(join(here, 'MobileEditor.tsx'), 'utf8');
+  assert.match(src, /browseUnits\(/, 'MobileEditor 要算出格子');
+  assert.match(src, /units=\{/, '并传给 MobileStrip');
+});
+
+test('缩略条格子宽度跟页数走,开页内有书脊细缝', () => {
+  const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const at = css.indexOf('.mobile-editor .mstrip-cell {');
+  const rule = css.slice(at, css.indexOf('}', at));
+  assert.match(rule, /display:\s*flex/, '一格里要能并排放多页');
+  assert.doesNotMatch(rule, /width:\s*40px/, '格宽不再是死的单页宽');
+  assert.match(css, /\.mstrip-face \+ \.mstrip-face \{[^}]*border-left/, '开页两页之间要有书脊缝');
 });

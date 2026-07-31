@@ -86,6 +86,51 @@ test('导出四条格式全部接到真渲染上(不许只开菜单不干活)', 
   assert.match(root, /onConfirm=\{[\s\S]{0,200}exporter\.exportCollage\(/);
 });
 
+test('移动端 Live 生成完成后必须出现保存入口,由第二次点击触发系统交付', () => {
+  const root = read('MobileEditorRoot.tsx');
+  const hook = read('use-export.ts');
+
+  assert.match(
+    hook,
+    /setExportReady\(\{[\s\S]{0,100}kind: 'live'[\s\S]{0,180}video:/,
+    '视频生成完应先暂存为待保存产物',
+  );
+  assert.match(hook, /deliverExport/, 'hook 必须暴露由保存按钮调用的交付动作');
+  assert.match(root, /<ExportReadyModal/, '生成结束必须显示明确的保存弹窗');
+  assert.match(root, /open=\{exporter\.exportReady\}/);
+  assert.match(root, /onSave=\{[\s\S]{0,180}exporter\.deliverExport\(\)/);
+});
+
+test('移动端所有导出格式都先生成待保存产物,再由明确点击统一交付', () => {
+  const root = read('MobileEditorRoot.tsx');
+  const hook = read('use-export.ts');
+
+  assert.match(hook, /type ExportReadyAsset/, '待保存状态不能只服务 Live');
+  assert.match(
+    hook,
+    /const exportCollage[\s\S]{0,1800}stageExportFiles\(/,
+    '拼图必须进入待保存状态',
+  );
+  assert.match(
+    hook,
+    /const exportSinglePages[\s\S]{0,1000}stageExportFiles\(/,
+    '单页图片必须进入待保存状态',
+  );
+  assert.match(
+    hook,
+    /const exportPdf[\s\S]{0,2200}setExportReady\(\{/,
+    'PDF 必须进入待保存状态',
+  );
+  assert.doesNotMatch(
+    hook,
+    /\bdownloadBlobs?\(/,
+    '异步渲染结束后直接伪造下载点击会被移动端静默拦截',
+  );
+  assert.match(root, /<ExportReadyModal/, '所有格式生成结束后都应显示统一保存入口');
+  assert.match(root, /open=\{exporter\.exportReady\}/);
+  assert.match(root, /onSave=\{[\s\S]{0,180}exporter\.deliverExport\(\)/);
+});
+
 test('分享接的是真链路(备份照片 → 生成 token),不是 toast', () => {
   const root = read('MobileEditorRoot.tsx');
   assert.match(root, /onConfirm=\{\(\) => void share\.create\(bookPhotoIds, backup\.backup\)\}/);

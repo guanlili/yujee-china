@@ -760,6 +760,23 @@ test('getTierUrls returns a map and skips unknown photoIds', async () => {
   assert.equal(map['missing-id'], undefined);
 });
 
+// iOS Safari 现场:相册里全是 HEIC,只要有一张 wasm 转不出来(10-bit/超时/内存),
+// 那一张的派生和原图回退都会抛。契约是「坏的那张空着,其余照常显示」——批量取图
+// 必须逐张隔离,否则移动端 MobileEditorRoot 的 .catch(() => ({})) 会把整本书的
+// 照片一起抹成空,正是「进了排版页一张图都没有」。
+test('getTierUrls isolates a photo whose derivation AND original fallback both throw', async () => {
+  await photoStore.put('batch-ok', new File([new Uint8Array([7])], 'ok.jpg', { type: 'image/jpeg' }));
+  await photoStore.put(
+    'batch-bad',
+    new File([new Uint8Array([8])], 'broken.heic', { type: 'image/heic' }),
+  );
+
+  const map = await photoStore.getTierUrls(['batch-ok', 'batch-bad'], 'display');
+
+  assert.ok(map['batch-ok'], 'a decodable photo must survive a neighbour that cannot be decoded');
+  assert.equal(map['batch-bad'], undefined);
+});
+
 test('getTierUrl versions URL cache by effective filter and retries exact-base LUT fallbacks', async () => {
   const photoId = 'url-version';
   const base = new Blob(['base'], { type: 'image/jpeg' });

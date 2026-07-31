@@ -539,8 +539,7 @@ export function EditView({
           )}
         </div>
 
-        {/* AI 浮标:黑色胶囊 + 小水母从左上角探出来(逐条对齐桌面 .chat-fold-expand)。
-            水母是 mix-blend-mode:multiply —— 必须**探出到胶囊外面**,压在黑底上会直接消失。 */}
+        {/* AI 浮标:紧凑的圆形图标按钮,小水母稳定浮在左上层。 */}
         <button
           type="button"
           className="mai"
@@ -560,7 +559,6 @@ export function EditView({
           >
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
-          <span>{zh ? '对话' : 'Chat'}</span>
         </button>
       </div>
 

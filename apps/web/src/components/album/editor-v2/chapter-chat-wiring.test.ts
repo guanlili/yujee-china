@@ -73,7 +73,10 @@ test('conversation chat does not render fake message timestamps', () => {
 });
 
 test('conversation chapter prompt card keeps the supplied editor.html sizing', () => {
-  assert.match(css, /\.editor-port \.msg\.user \.bubble\{[\s\S]*?radial-gradient\(58% 78% at 0% 0%, rgba\(19,184,166,\.11\), transparent 60%\)/);
+  // 渐变本身 2026-07 搬进了 --chat-user-bubble token(移动端气泡要用同一份,见
+  // mobile/chat-replay-wiring.test.ts)。守的还是同一件事:这个值不许漂。
+  assert.match(css, /--chat-user-bubble:\s*radial-gradient\(58% 78% at 0% 0%, rgba\(19,184,166,\.11\), transparent 60%\)/);
+  assert.match(css, /\.editor-port \.msg\.user \.bubble\{[\s\S]*?background: var\(--chat-user-bubble\)/);
   assert.match(css, /\.editor-port \.msg\.user \.bubble\{[\s\S]*?border-radius: 16px 4px 16px 16px;/);
   assert.match(css, /\.editor-port \.chap-card\{[\s\S]*?border:1px solid var\(--border-soft\); border-radius:16px;/);
   assert.match(css, /\.editor-port \.chap-card\{[\s\S]*?box-shadow:0 1px 3px rgba\(0,0,0,\.04\); max-width:100%;/);

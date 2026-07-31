@@ -5194,7 +5194,7 @@ function EditorBook({
         <div className="canvas-hint" data-i18n="canvasHint">
           {locale === 'zh' ? '切换到编辑模式，点击可手动编辑' : 'Switch to edit mode · click to edit manually'}
         </div>
-        <div className="book bg-surface flex relative overflow-hidden" id="book">
+        <div className="book bg-surface flex relative" id="book">
           <div className="page page-left bg-surface" id="pageLeft" />
           <div className="page page-right bg-surface" id="pageRight" />
           <div className="flipper" id="flipper">

@@ -113,11 +113,15 @@
   perspective: 2400px;
 }
 
-.mobile-editor .mspread {
+.mobile-editor .mspread{
   position: relative; /* 选中高亮框 + 书脊中缝 + 翻动纸片的定位参照 */
   display: flex;
   flex: none; /* 尺寸由 JS 的 fitBox 算好写在 style 上,不让 flex 再拉伸 */
-  box-shadow: var(--shadow-card-hover);
+  border-radius:2px;
+  box-shadow:
+    0 1px 2px rgba(20,24,23,.18),
+    0 9px 22px rgba(20,24,23,.14),
+    0 24px 48px rgba(20,24,23,.12);
   /* 面板升起时整本书上移让出位置(EditView 算 lift);只有位移,没有缩放。 */
   transition: transform var(--motion-base) var(--ease);
   /* 纸片要在 3D 里真的翻过去,不能被扁平化(同 FlipBook 的 .book)。 */
@@ -128,7 +132,7 @@
    结构与 FlipBook 的 turning leaf 一一对应:两张背对背的面绕书脊那条边 rotateY,
    正面朝外时看到翻走的页、转过 90° 后看到翻进来的页(背面),底下垫着目标屏。
    位置/宽度/origin/角度/时长/缓动全部由 JS 按 flip.ts 算好写在 style 上。 */
-.mobile-editor .mleaf {
+.mobile-editor .mleaf{
   position: absolute;
   top: 0;
   bottom: 0;
@@ -137,7 +141,7 @@
   pointer-events: none; /* 翻的过程中别把点击吃掉 */
 }
 
-.mobile-editor .mleaf-face {
+.mobile-editor .mleaf-face{
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -145,10 +149,25 @@
   /* 背面朝观众时不显示 —— 两张面才能背对背当一张纸 */
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
+  box-shadow:0 12px 14px rgba(20,24,23,.22);
 }
 
-.mobile-editor .mleaf-back {
+.mobile-editor .mleaf-face::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  z-index:2;
+  pointer-events:none;
+  background:linear-gradient(90deg,rgba(0,0,0,.12),transparent 26%,rgba(255,255,255,.07));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.22);
+}
+
+.mobile-editor .mleaf-back{
   transform: rotateY(180deg);
+}
+
+.mobile-editor .mleaf-back::after{
+  background:linear-gradient(90deg,rgba(255,255,255,.08),transparent 70%,rgba(0,0,0,.15));
 }
 
 /* 翻页受光:靠书脊那侧压暗一点(渐变值由 JS 给,取自 FlipBook)。 */
@@ -158,34 +177,46 @@
   pointer-events: none;
 }
 
-/* ── 书脊中缝:两页之间那道竖向阴影 ────────────────────────────────────────
-   这是「书」之所以看起来是本书的关键,不是可省的装饰。渐变值逐字取自
-   FlipBook.tsx 的 center spine shadow(24px 宽,中心 .14 向两侧收到 0)——
-   那是产品里既有的书脊,不自创。
+/* ── 书脊中缝:两页之间的响应式折痕和竖向阴影 ─────────────────────────────
+   这是「书」之所以像本书的关键,不是可省的装饰；宽度随窄屏与宽屏收放。
 
-   只在**真的摆了两页**时出现(data-halves="2"):
+   只在**两半都是真实页面**时出现(data-paper-spine="1"):
      · 密度 1 一屏只留一页 → 无中缝
      · 封面/封底独页 → 无中缝(同 FlipBook 的 solo 分支)
      · 编辑态满屏单页 → 无中缝
-   判据用渲染出的半边数而不是 solo:密度 1 的开页并不 solo,按 solo 判会给单页画中缝。 */
-.mobile-editor .mspread[data-halves='2']::before {
+   data-halves 仍保留给已有布局判断；书脊另验两半都非 null，避免空半边也画折痕。 */
+.mobile-editor .mspread[data-paper-spine='1']::before{
   content: '';
   position: absolute;
   top: 0;
   bottom: 0;
   left: 50%;
-  width: 24px;
+  width:clamp(18px,6vw,30px);
   transform: translateX(-50%);
   z-index: 5;
   pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    rgba(0, 0, 0, 0) 0%,
-    rgba(0, 0, 0, 0.1) 45%,
-    rgba(0, 0, 0, 0.14) 50%,
-    rgba(0, 0, 0, 0.1) 55%,
-    rgba(0, 0, 0, 0) 100%
-  );
+  background:linear-gradient(90deg,
+    rgba(255,255,255,.10) 0%,
+    rgba(0,0,0,.04) 23%,
+    rgba(0,0,0,.16) 46%,
+    rgba(0,0,0,.24) 50%,
+    rgba(255,255,255,.14) 54%,
+    rgba(0,0,0,.05) 77%,
+    rgba(255,255,255,.08) 100%);
+}
+
+.mobile-editor .mspread[data-paper-spine='1']::after{
+  content:'';
+  position:absolute;
+  top:0;
+  bottom:0;
+  left:50%;
+  width:1px;
+  transform:translateX(-50%);
+  z-index:5;
+  pointer-events:none;
+  background:rgba(16,20,19,.30);
+  box-shadow:-1px 0 rgba(255,255,255,.13),1px 0 rgba(0,0,0,.08);
 }
 
 /* ── 选中高亮:不往页面 innerHTML 里塞节点、也不改它的样式 ──────────────────
@@ -292,9 +323,52 @@
 }
 
 .mobile-editor .mpage {
+  position: relative;
   height: 100%;
   overflow: hidden;
   background: var(--surface);
+  /* 极轻的纸边高光/暗边,只画预览容器,不进入页面 HTML 或导出。 */
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.32),
+    inset 0 0 0 1.5px rgba(24, 28, 27, 0.04);
+}
+
+.mobile-editor .mpage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32);
+}
+
+.mobile-editor .mspread[data-paper-spine='1'] .mpage::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  z-index:1;
+  pointer-events:none;
+}
+
+.mobile-editor .mspread[data-paper-spine='1'] .mpage:first-of-type::before{
+  background:linear-gradient(90deg,transparent 70%,rgba(255,255,255,.06) 86%,rgba(0,0,0,.14) 100%);
+}
+
+.mobile-editor .mspread[data-paper-spine='1'] .mpage:nth-of-type(2)::before{
+  background:linear-gradient(90deg,rgba(0,0,0,.13) 0%,rgba(255,255,255,.07) 14%,transparent 30%);
+}
+
+.mobile-editor .mspread[data-resting-solo='1'] {
+  /* 完整双页盒只提供坐标系，静止时只有真实的半宽封皮产生投影。 */
+  box-shadow: none;
+}
+
+.mobile-editor .mspread[data-resting-solo='1'] .mpage {
+  box-shadow:
+    0 2px 5px rgba(24, 28, 27, 0.18),
+    0 18px 42px rgba(24, 28, 27, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.32),
+    inset 0 0 0 1.5px rgba(24, 28, 27, 0.04);
 }
 
 .mobile-editor .mpage-face {
@@ -302,7 +376,62 @@
   height: 100%;
 }
 
-/* ── 画板左下角:画板背景 / 一屏几页(「这屏怎么看」,不进导航栏) ─────────── */
+/* 封皮打开先保持独页，正文与书脊在 30% 进度后才显现；闭合则做镜像渐隐。 */
+.mobile-editor .mspread[data-edge-opening='1'] .mpage,
+.mobile-editor .mspread[data-edge-opening='1'][data-paper-spine='1']::before {
+  animation: medge-under-in 200ms var(--ease) 210ms both;
+}
+
+.mobile-editor .mspread[data-edge-opening='1'][data-paper-spine='1']::after{
+  animation:medge-under-in 200ms var(--ease) 210ms both;
+}
+
+.mobile-editor .mspread[data-edge-closing='1'] .mpage,
+.mobile-editor .mspread[data-edge-closing='1'][data-paper-spine='1']::before {
+  animation: medge-under-out 180ms var(--ease) 350ms both;
+}
+
+.mobile-editor .mspread[data-edge-closing='1'][data-paper-spine='1']::after{
+  animation:medge-under-out 180ms var(--ease) 350ms both;
+}
+
+.mobile-editor .mspread[data-edge-opening='1'] {
+  animation: medge-shadow-in 700ms var(--ease) both;
+}
+
+.mobile-editor .mspread[data-edge-closing='1'] {
+  animation: medge-shadow-out 700ms var(--ease) both;
+}
+
+@keyframes medge-under-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes medge-under-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes medge-shadow-in {
+  from { box-shadow: 0 0 0 rgba(24, 28, 27, 0); }
+  to {
+    box-shadow:
+      0 2px 5px rgba(24, 28, 27, 0.18),
+      0 18px 42px rgba(24, 28, 27, 0.16);
+  }
+}
+
+@keyframes medge-shadow-out {
+  from {
+    box-shadow:
+      0 2px 5px rgba(24, 28, 27, 0.18),
+      0 18px 42px rgba(24, 28, 27, 0.16);
+  }
+  to { box-shadow: 0 0 0 rgba(24, 28, 27, 0); }
+}
+
+/* ── 画板左下角:只保留画板背景(「这屏怎么看」,不进导航栏) ───────────────── */
 .mobile-editor .mfab-col {
   position: absolute;
   left: 12px;
@@ -333,39 +462,25 @@
   height: 20px;
 }
 
-.mobile-editor .mfab-num {
-  font-family: var(--font-display);
-  font-size: 16px;
-  font-weight: 700;
-}
-
-/* ── AI 浮标:**黑色胶囊**,小水母从左上角探出来 ─────────────────────────────
-   逐条对齐桌面 .chat-fold-expand(editor-port.css 的 ≤767 段)——「浮标黑、弹窗浅」
-   是既有设计,别搞反:早先做成了白浮标 + 黑弹窗,两处都错。
-
-   水母为什么必须探出胶囊外:它是 mix-blend-mode:multiply(与桌面 await-jelly 同一
-   呈现)。multiply 压在黑底上结果就是黑 —— 水母会直接消失。桌面把它绝对定位到
-   top:-23px/left:-13px 探到浅色画布上,正是为此。 */
+/* ── AI 浮标:黑色圆形图标按钮,小水母从左上角探出来 ────────────────────────
+   水母不使用混合模式:浮标会跨在浅色画布与深色页面之间,multiply 会让它在深色
+   内容上突然发黑,看起来像掉到了页面下层。明确的层级让两种背景上都保持一致。 */
 .mobile-editor .mai {
   position: absolute;
   right: 14px;
   bottom: 16px;
-  height: 46px;
-  /* 左边多留出来的是给探出来的水母让位(同桌面 padding:0 16px 0 34px) */
-  padding: 0 16px 0 34px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
   border: 0;
-  border-radius: var(--radius-pill);
+  border-radius: 50%;
   /* 不能 overflow:hidden —— 会把探出来的水母裁掉 */
   overflow: visible;
   background: var(--fg);
   color: var(--surface);
-  font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 600;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24), 0 2px 6px rgba(0, 0, 0, 0.16);
   transition: transform var(--motion-fast) var(--ease);
 }
@@ -374,21 +489,24 @@
   transform: scale(0.96);
 }
 
-/* 产品小水母:与桌面 .chat-fold-expand .fab-jelly 逐条一致 */
+/* 水母在按钮上层、图标左上方,不受下面页面明暗影响。 */
 .mobile-editor .mai-jelly {
   position: absolute;
-  top: -23px;
-  left: -13px;
-  width: 40px;
-  height: 40px;
+  z-index: 2;
+  top: -20px;
+  left: -18px;
+  width: 36px;
+  height: 36px;
   object-fit: contain;
-  mix-blend-mode: multiply;
+  mix-blend-mode: normal;
   pointer-events: none;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.12));
   animation: mai-float 3.2s ease-in-out infinite;
 }
 
 .mobile-editor .mai-chat-ic {
+  position: relative;
+  z-index: 3;
   width: 18px;
   height: 18px;
 }
@@ -424,10 +542,12 @@
   display: none;
 }
 
+/* 一格 = 一屏。data-span 是这一屏几页:封面/封底 1,内页开页 2,密度 4 时 4。
+   宽度按页数长,格与格之间的间距由 track 的 gap 管 —— 这样一眼能看出哪两页是一个开页。 */
 .mobile-editor .mstrip-cell {
-  /* 尺寸与 MobileStrip 的 STRIP_CELL_W/H 常量一致(794:1123) */
+  /* 单页尺寸与 MobileStrip 的 STRIP_CELL_W/H 常量一致(794:1123) */
   flex: none;
-  width: 40px;
+  display: flex;
   height: 57px;
   padding: 0;
   overflow: hidden;
@@ -437,12 +557,19 @@
   transition: transform var(--motion-fast) var(--ease);
 }
 
-/* 真实版面塞进格子:内容由 page-face 渲成缩略档,这里只负责裁切 */
+/* 真实版面塞进格子:内容由 page-face 渲成缩略档,这里只负责裁切。
+   一格里并排几页就有几个 face,各占 40px —— 不用百分比,免得开页和独页宽窄不一。 */
 .mobile-editor .mstrip-face {
   display: block;
-  width: 100%;
+  flex: none;
+  width: 40px;
   height: 100%;
   pointer-events: none;
+}
+
+/* 开页内两页之间一条细缝,读作书脊;没有它两页会糊成一张宽图。 */
+.mobile-editor .mstrip-face + .mstrip-face {
+  border-left: 1px solid var(--border);
 }
 
 .mobile-editor .mstrip-cell[data-current='1'] {
@@ -532,6 +659,14 @@
 
 .editor-port.mobile-modal-host .mobile-bottom-sheet-overlay.open .mobile-bottom-sheet {
   transform: none;
+}
+
+/* 风格抽屉跟内容走,不占 2/3 屏。
+   27 张卡收成横滑一排后它只有 ~260px 高 —— 调滤镜时看得见图才调得准,把屏幕让出来。
+   垫底背景抽屉仍是共享的 66vh(色板 + 预设行 + 上传,内容本来就多)。 */
+.editor-port.mobile-modal-host .modal-card.mobile-bottom-sheet.mobile-filter-sheet {
+  height: auto;
+  max-height: min(70vh, 420px);
 }
 
 .mobile-sheet-grab {
@@ -884,12 +1019,53 @@
   word-break: break-word;
 }
 
-/* 自己说的话靠右、深底浅字(与 AI 的回复一眼分得开) */
+/* 自己说的话靠右。配色与桌面 .msg.user .bubble 同一个 token —— 早先是纯黑底白字,
+   但黑色在这套设计里只属于对话收起时那枚浮标(.mai),不该出现在气泡上。
+   靠右 + 右上角切角已经足够和 AI 的回复分开,不必靠反色。 */
 .mai-msg[data-role='user'] {
   margin-left: auto;
   border-radius: 16px 4px 16px 16px;
-  background: var(--fg);
+  background: var(--chat-user-bubble);
+  border: 1px solid var(--border-soft);
+  color: var(--fg);
+}
+
+/* AI 回复走 markdown(renderMarkdownSafe,与桌面同一个函数),已经是真的块级元素了 ——
+   再叠 pre-wrap 会把 <p> 之间的换行又算一遍,段落中间多出一整行空白。 */
+.mai-msg[data-role='assistant'] { white-space: normal; }
+.mai-msg[data-role='assistant'] > :first-child { margin-top: 0; }
+.mai-msg[data-role='assistant'] > :last-child { margin-bottom: 0; }
+.mai-msg[data-role='assistant'] p { margin: 0 0 8px; }
+.mai-msg[data-role='assistant'] ul,
+.mai-msg[data-role='assistant'] ol { margin: 0 0 8px; padding-left: 20px; }
+.mai-msg[data-role='assistant'] li { margin-bottom: 3px; }
+.mai-msg[data-role='assistant'] strong { font-weight: 600; }
+.mai-msg[data-role='assistant'] a { color: inherit; text-decoration: underline; }
+.mai-msg[data-role='assistant'] code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface);
+  font-size: 0.92em;
+}
+
+/* 「已更新」条:这一轮改了哪几类。贴在 AI 回复之前,与桌面 op-card-change 同序同词。
+   它不是消息,不占气泡形 —— 与「正在…」一样是回合的旁注。 */
+.mai-msg-changes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding-left: 2px;
+}
+.mai-changes-kicker { font-size: 12px; color: var(--muted); }
+.mai-changes-tag {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--grad-green), var(--grad-purple));
   color: var(--surface);
+  font-size: 11px;
+  line-height: 1.6;
 }
 
 /* 「正在…」:小水母 + 一句话。它不是消息,是状态,所以底色更淡、不占气泡形 */
