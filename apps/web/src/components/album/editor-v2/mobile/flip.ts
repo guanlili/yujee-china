@@ -18,6 +18,8 @@ export const FLIP_EASE = 'cubic-bezier(.45,.05,.2,1)';
 export const FLIP_SETTLE_MS = 40;
 
 export type FlipDir = 'next' | 'prev';
+export type SoloRole = 'cover' | 'ending' | null;
+export type FlipTransition = 'spread' | 'cover-open' | 'ending-open';
 
 /** 一屏的形状。solo/full 与桌面同一套分类(spreadRenderKind)。 */
 export type ScreenShape = {
@@ -25,8 +27,10 @@ export type ScreenShape = {
   rows: number;
   /** 那个开页摆了几张面(pair=2,solo/full=1)。 */
   faces: number;
-  /** 封面/封尾单页 —— 容器宽度与普通跨页不同。 */
-  solo: boolean;
+  /** 封面/封尾单页的明确角色；特殊边缘翻页靠它决定方向。 */
+  soloRole?: SoloRole;
+  /** Task 3 接完新角色前的组件兼容字段；最终调用方应提供 soloRole。 */
+  solo?: boolean;
   /** 双宽跨页(#303)—— 一整张连续面,没有可翻的半页。 */
   full: boolean;
 };
@@ -43,11 +47,45 @@ export type ScreenShape = {
  *   · 一屏摆了多个开页(密度 4)—— 没有单一的「那张纸」可翻
  *   · 前后两屏摆的面数不同 —— 纸片宽度会变,跨宽度会撕裂
  */
+export function flipTransition(
+  from: ScreenShape,
+  to: ScreenShape,
+  dir: FlipDir,
+  reducedMotion: boolean,
+): FlipTransition | null {
+  if (from.rows !== 1 || to.rows !== 1) return null;
+  if (shouldDirectSwitch(reducedMotion, false, false, from.full, to.full)) return null;
+
+  const fromRole = from.soloRole ?? null;
+  const toRole = to.soloRole ?? null;
+
+  if (
+    fromRole === 'cover' &&
+    toRole === null &&
+    to.faces === 2 &&
+    dir === 'next'
+  ) {
+    return 'cover-open';
+  }
+  if (
+    fromRole === 'ending' &&
+    toRole === null &&
+    to.faces === 2 &&
+    dir === 'prev'
+  ) {
+    return 'ending-open';
+  }
+
+  const sourceSolo = fromRole !== null || from.solo === true;
+  const targetSolo = toRole !== null || to.solo === true;
+  if (shouldDirectSwitch(false, sourceSolo, targetSolo, false, false)) return null;
+  if (from.faces !== to.faces) return null;
+  return from.faces === 1 || from.faces === 2 ? 'spread' : null;
+}
+
+/** Task 3 切换调用方前保留的兼容布尔口；新代码应直接读取 flipTransition 的模式。 */
 export function canFlip(from: ScreenShape, to: ScreenShape, reducedMotion: boolean): boolean {
-  if (shouldDirectSwitch(reducedMotion, from.solo, to.solo, from.full, to.full)) return false;
-  if (from.rows !== 1 || to.rows !== 1) return false;
-  if (from.faces !== to.faces) return false;
-  return from.faces === 1 || from.faces === 2;
+  return flipTransition(from, to, 'next', reducedMotion) === 'spread';
 }
 
 /** 纸片的几何:贴在哪半边、多宽、绕哪条边转、转到多少度。 */
@@ -74,6 +112,15 @@ export function leafGeometry(dir: FlipDir, halves: number): LeafGeometry {
   return dir === 'next'
     ? { leftFrac: 0, widthFrac: 1, origin: 'left center', endAngle: -180 }
     : { leftFrac: 0, widthFrac: 1, origin: 'right center', endAngle: 180 };
+}
+
+/** 居中独页占双页书盒的一半；封面左翻、封尾右翻。 */
+export function centeredSoloGeometry(
+  transition: Exclude<FlipTransition, 'spread'>,
+): LeafGeometry {
+  return transition === 'cover-open'
+    ? { leftFrac: 0.25, widthFrac: 0.5, origin: 'left center', endAngle: -180 }
+    : { leftFrac: 0.25, widthFrac: 0.5, origin: 'right center', endAngle: 180 };
 }
 
 /** 翻纸过程中三层各画哪一页(页数组下标;null = 那半边空着)。 */
@@ -104,6 +151,14 @@ export function leafLayers(
       : { under: [to[0] ?? null, from[1] ?? null], front: from[0] ?? null, back: to[1] ?? null };
   }
   return { under: [to[0] ?? null], front: from[0] ?? null, back: to[0] ?? null };
+}
+
+/** 独页翻开时正文跨页完整垫底，独页只作为纸片正面。 */
+export function centeredSoloLayers(
+  from: (number | null)[],
+  to: (number | null)[],
+): LeafLayers {
+  return { under: to, front: from[0] ?? null, back: null };
 }
 
 /** 纸片正面的翻页受光:靠书脊那侧压暗一点。取自 FlipBook 的 page-turn shading。 */

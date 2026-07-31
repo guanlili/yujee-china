@@ -7,7 +7,9 @@ import { test } from 'node:test';
 import {
   FLIP_EASE,
   FLIP_MS,
-  canFlip,
+  centeredSoloGeometry,
+  centeredSoloLayers,
+  flipTransition,
   leafGeometry,
   leafLayers,
   leafShading,
@@ -29,52 +31,74 @@ test('时长与缓动照搬 FlipBook,不自己定', () => {
 // ── 什么时候能翻、什么时候只能硬切 ──────────────────────────────────────────
 
 /** 普通内页对开(pair):一屏一个开页、两张面。 */
-const pair = (rows = 1) => ({ rows, faces: 2, solo: false, full: false });
+const pair = (rows = 1) => ({ rows, faces: 2, soloRole: null, full: false });
 /** 密度 1 压成一页看:仍是普通内页,不是封面独页、也不是双宽页。 */
-const single = () => ({ rows: 1, faces: 1, solo: false, full: false });
-/** 封面/封尾独页。 */
-const solo = () => ({ rows: 1, faces: 1, solo: true, full: false });
+const single = () => ({ rows: 1, faces: 1, soloRole: null, full: false });
+/** 封面独页。 */
+const cover = () => ({ rows: 1, faces: 1, soloRole: 'cover' as const, full: false });
+/** 封尾独页。 */
+const ending = () => ({ rows: 1, faces: 1, soloRole: 'ending' as const, full: false });
 /** 双宽跨页(#303):一张连续面,容器仍是两页宽。 */
-const full = () => ({ rows: 1, faces: 1, solo: false, full: true });
+const full = () => ({ rows: 1, faces: 1, soloRole: null, full: true });
 
 test('对开↔对开 / 单页↔单页 可以翻纸', () => {
-  assert.equal(canFlip(pair(), pair(), false), true);
-  assert.equal(canFlip(single(), single(), false), true);
+  assert.equal(flipTransition(pair(), pair(), 'next', false), 'spread');
+  assert.equal(flipTransition(pair(), pair(), 'prev', false), 'spread');
+  assert.equal(flipTransition(single(), single(), 'next', false), 'spread');
 });
 
 test('面数一变就只能硬切(纸片宽度会变,跨宽度会撕裂)', () => {
-  assert.equal(canFlip(single(), pair(), false), false);
-  assert.equal(canFlip(pair(), single(), false), false);
+  assert.equal(flipTransition(single(), pair(), 'next', false), null);
+  assert.equal(flipTransition(pair(), single(), 'next', false), null);
 });
 
 test('一屏多个开页(密度 4)没有单一的「那张纸」→ 硬切', () => {
-  assert.equal(canFlip(pair(2), pair(2), false), false);
-  assert.equal(canFlip(pair(1), pair(2), false), false);
+  assert.equal(flipTransition(pair(2), pair(2), 'next', false), null);
+  assert.equal(flipTransition(pair(1), pair(2), 'next', false), null);
 });
 
 test('用户要求减弱动效 → 一律硬切(无障碍,同 FlipBook)', () => {
-  assert.equal(canFlip(pair(), pair(), true), false);
-  assert.equal(canFlip(single(), single(), true), false);
+  assert.equal(flipTransition(pair(), pair(), 'next', true), null);
+  assert.equal(flipTransition(single(), single(), 'next', true), null);
 });
 
-test('封面/封尾独页任一端 → 硬切(容器宽度不同,半宽纸片会撕裂)', () => {
-  assert.equal(canFlip(solo(), single(), false), false);
-  assert.equal(canFlip(single(), solo(), false), false);
-  assert.equal(canFlip(solo(), solo(), false), false);
+test('封面只在前进到正文时向左翻', () => {
+  assert.equal(flipTransition(cover(), pair(), 'next', false), 'cover-open');
+  assert.equal(flipTransition(cover(), pair(), 'prev', false), null);
+  assert.equal(flipTransition(pair(), cover(), 'prev', false), null);
+});
+
+test('封尾只在返回正文时向右翻', () => {
+  assert.equal(flipTransition(ending(), pair(), 'prev', false), 'ending-open');
+  assert.equal(flipTransition(ending(), pair(), 'next', false), null);
+  assert.equal(flipTransition(pair(), ending(), 'next', false), null);
+});
+
+test('独页特殊翻页仍尊重减弱动效和双宽页边界', () => {
+  assert.equal(flipTransition(cover(), pair(), 'next', true), null);
+  assert.equal(flipTransition(ending(), pair(), 'prev', true), null);
+  assert.equal(flipTransition(cover(), full(), 'next', false), null);
 });
 
 test('双宽跨页任一端 → 硬切(一整张连续面,没有可翻的半页)#303', () => {
-  assert.equal(canFlip(full(), pair(), false), false);
-  assert.equal(canFlip(pair(), full(), false), false);
-  assert.equal(canFlip(full(), full(), false), false, '双宽↔双宽也没有半页可翻');
+  assert.equal(flipTransition(full(), pair(), 'next', false), null);
+  assert.equal(flipTransition(pair(), full(), 'next', false), null);
+  assert.equal(flipTransition(full(), full(), 'next', false), null, '双宽↔双宽也没有半页可翻');
 });
 
 test('共用的那三条理由必须走 spreads.ts 的 shouldDirectSwitch,不在移动端重写', () => {
   const src = readFileSync(join(here, 'flip.ts'), 'utf8');
   assert.match(src, /import \{ shouldDirectSwitch \} from '\.\.\/\.\.\/spreads'/);
-  assert.match(src, /shouldDirectSwitch\(reducedMotion, from\.solo, to\.solo, from\.full, to\.full\)/);
+  assert.match(
+    src,
+    /shouldDirectSwitch\(reducedMotion, false, false, from\.full, to\.full\)/,
+  );
+  assert.match(
+    src,
+    /shouldDirectSwitch\(false, sourceSolo, targetSolo, false, false\)/,
+  );
   // 不许在这里自己再写一遍那几个 || —— #303 就是因为运算符钻空子漏判过
-  const body = src.slice(src.indexOf('export function canFlip'));
+  const body = src.slice(src.indexOf('export function flipTransition'));
   assert.doesNotMatch(
     body.slice(0, body.indexOf('\n}')),
     /reducedMotion \|\|/,
@@ -110,6 +134,21 @@ test('单页:整页就是那张纸,两向都是整宽', () => {
   assert.equal(leafGeometry('prev', 1).origin, 'right center');
 });
 
+test('居中独页保持半本书宽,封面向左、封尾向右', () => {
+  assert.deepEqual(centeredSoloGeometry('cover-open'), {
+    leftFrac: 0.25,
+    widthFrac: 0.5,
+    origin: 'left center',
+    endAngle: -180,
+  });
+  assert.deepEqual(centeredSoloGeometry('ending-open'), {
+    leftFrac: 0.25,
+    widthFrac: 0.5,
+    origin: 'right center',
+    endAngle: 180,
+  });
+});
+
 test('起始角一律 0,终止角只有 ±180(不出现半途停住的角度)', () => {
   for (const halves of [1, 2]) {
     for (const dir of ['next', 'prev'] as const) {
@@ -139,6 +178,14 @@ test('单页:正面原页、背面目标页、底层目标页(转过 90° 就露
   assert.deepEqual(l.under, [4]);
   assert.equal(l.front, 3);
   assert.equal(l.back, 4);
+});
+
+test('独页翻开时正文跨页在底层,独页本身是纸片正面', () => {
+  assert.deepEqual(centeredSoloLayers([0], [1, 2]), {
+    under: [1, 2],
+    front: 0,
+    back: null,
+  });
 });
 
 test('空半边(封面那侧没有页)不炸,如实给 null', () => {
