@@ -117,7 +117,6 @@
   position: relative; /* 选中高亮框 + 书脊中缝 + 翻动纸片的定位参照 */
   display: flex;
   flex: none; /* 尺寸由 JS 的 fitBox 算好写在 style 上,不让 flex 再拉伸 */
-  isolation:isolate;
   border-radius:2px;
   box-shadow:
     0 1px 2px rgba(20,24,23,.18),
@@ -140,7 +139,6 @@
   z-index: 6; /* 压过书脊中缝(5),纸片是在书页之上翻动的 */
   transform-style: preserve-3d;
   pointer-events: none; /* 翻的过程中别把点击吃掉 */
-  filter:drop-shadow(0 12px 14px rgba(20,24,23,.22));
 }
 
 .mobile-editor .mleaf-face{
@@ -151,6 +149,7 @@
   /* 背面朝观众时不显示 —— 两张面才能背对背当一张纸 */
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
+  box-shadow:0 12px 14px rgba(20,24,23,.22);
 }
 
 .mobile-editor .mleaf-face::after{

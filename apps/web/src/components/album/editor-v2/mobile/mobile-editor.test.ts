@@ -245,9 +245,9 @@ test('纸张具有接触投影、环境投影、纸边高光和翻页投影', ()
   const edgeRule = css.slice(edgeAt, css.indexOf('}', edgeAt));
   assert.ok(edgeAt >= 0, '纸边高光要有独立覆盖层,否则会被页面 HTML 盖住');
   assert.match(edgeRule, /pointer-events:\s*none/, '纸边覆盖层不能挡页面点击');
-  const leafAt = css.indexOf('.mobile-editor .mleaf{');
+  const leafAt = css.indexOf('.mobile-editor .mleaf-face{');
   const leafRule = css.slice(leafAt, css.indexOf('}', leafAt));
-  assert.match(leafRule, /filter:\s*drop-shadow/);
+  assert.match(leafRule, /box-shadow:\s*0 12px 14px/);
 });
 
 test('封皮打开时正文延后渐入，闭合时书脊和整书阴影渐出', () => {
