@@ -136,7 +136,9 @@ cd apps/web && pnpm test        # 或 pnpm --filter @yujee/web test
   `ERR_MODULE_NOT_FOUND`,而且**整个测试文件加载失败、里面的用例根本不计数** ——
   实测未构建时报「96 tests」,构建后是「115 tests」,19 个用例静默消失了。
   测试总数比预期少要当心,那是文件没加载,不是用例变少。
-- 没有 CI。所有验证都靠本地自觉执行 —— 别声称跑过没跑过的东西。
+- **CI 只部署,不跑测试。** `.github/workflows/` 下只有两个 Fly 部署 workflow;
+  没有任何自动化在合并前跑 typecheck/test。所有验证仍靠本地自觉执行 ——
+  别把「CI 绿了」当成验证过,更别声称跑过没跑过的东西。
 
 全量跑一遍(2026-07-25 实测 1483 个用例):
 
@@ -184,5 +186,5 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 0d7209eb
+checked-at: 08f3c185
 -->
