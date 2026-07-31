@@ -4,6 +4,7 @@ import robots from '@/app/robots';
 import sitemap from '@/app/sitemap';
 import { ADDON_PACKS, FREE_PLAN_CREDITS, PAGES_PER_CREDIT_LABEL, PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { locales } from '@/lib/i18n/routing';
+import { SOCIAL_LINKS } from '@/config/social';
 import { getFaqEntries } from './faq';
 import { buildLlmsTxt } from './llms';
 import { INDEXABLE_ROUTES, NOINDEX_ROUTES } from './routes';
@@ -39,7 +40,7 @@ test('indexable routes exclude every auth/app route', () => {
   assert.ok(INDEXABLE_ROUTES.includes('/'));
   assert.ok(INDEXABLE_ROUTES.includes('/privacy'));
   assert.ok(INDEXABLE_ROUTES.includes('/terms'));
-  assert.ok(INDEXABLE_ROUTES.includes('/story'));
+  assert.ok(INDEXABLE_ROUTES.includes('/about/story'));
 });
 
 test('the founder story exists in both locales and is real prose, not markup', () => {
@@ -67,8 +68,38 @@ test('the story page is reachable from every page, or nothing links to it', () =
   // only reach it via the sitemap, and Google discounts pages nothing links to.
   for (const locale of locales) {
     const { footer } = getMarketingMessages(locale);
-    const hrefs = [...footer.productItems, ...footer.legalItems].map((i) => i.href);
-    assert.ok(hrefs.includes('/story'), `${locale} footer does not link the story`);
+    const hrefs = [...footer.productItems, ...footer.aboutItems, ...footer.legalItems].map((i) => i.href);
+    assert.ok(hrefs.includes('/about/story'), `${locale} footer does not link the story`);
+  }
+});
+
+test('the story sits in the About group, not Product — the footer groups carry meaning', () => {
+  // Group headings are the cheapest on-page signal about what a page IS. A
+  // founder story filed under "Product" reads to a crawler as a feature page.
+  for (const locale of locales) {
+    const { footer } = getMarketingMessages(locale);
+    assert.ok(footer.aboutHead.length > 0, `${locale} has no About heading`);
+    assert.ok(
+      footer.aboutItems.some((i) => i.href === '/about/story'),
+      `${locale} story is not in the About group`,
+    );
+    assert.ok(
+      !footer.productItems.some((i) => i.href === '/about/story'),
+      `${locale} still lists the story under Product`,
+    );
+  }
+});
+
+test('every footer link target is a real route, never a dead path', () => {
+  // A footer ships on every page, so one dead href is a sitewide broken link.
+  const known = new Set([...INDEXABLE_ROUTES, '/about']);
+  for (const locale of locales) {
+    const { footer } = getMarketingMessages(locale);
+    for (const item of [...footer.productItems, ...footer.aboutItems, ...footer.legalItems]) {
+      if (item.href.startsWith('#')) continue;
+      const path = item.href.split('#')[0];
+      assert.ok(known.has(path), `${locale} footer links ${item.href}, which is not a route`);
+    }
   }
 });
 
@@ -76,7 +107,7 @@ test('articleSchema describes the story page with a real author and date', () =>
   for (const locale of locales) {
     const schema = articleSchema(locale);
     assert.equal(schema['@type'], 'Article');
-    assert.equal(schema.url, absoluteUrl(`/${locale}/story`));
+    assert.equal(schema.url, absoluteUrl(`/${locale}/about/story`));
     assert.equal(schema.author['@type'], 'Person');
     assert.ok(schema.author.name.length > 0);
     // Google drops Article rich results without a parseable ISO date.
@@ -152,6 +183,15 @@ test('organizationSchema points at the apex and names the brand in both scripts'
   assert.equal(schema.url, SITE_URL);
   assert.ok(schema.name.includes('Yujee'));
   assert.ok(schema.logo.startsWith(SITE_URL));
+});
+
+test('organizationSchema sameAs mirrors the live social accounts, never an empty href', () => {
+  const live = SOCIAL_LINKS.filter((s) => s.href).map((s) => s.href);
+  const schema = organizationSchema();
+  assert.deepEqual(schema.sameAs ?? [], live);
+  for (const url of schema.sameAs ?? []) {
+    assert.ok(url.startsWith('https://'), `sameAs entry ${url} is not an absolute https URL`);
+  }
 });
 
 test('robots.txt must NOT Disallow the noindex routes', () => {

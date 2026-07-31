@@ -58,10 +58,17 @@ export interface MarketingMessages {
     ctaLabel: string;
     disclaimer: string;
   };
+  // Three groups, not two. The heading a link sits under is the cheapest signal
+  // about what the page is: a founder story filed under "Product" reads as a
+  // feature page. Deliberately absent: a reciprocal "friend links" block —
+  // Google treats link exchanges at scale as a link scheme, and there is nothing
+  // real to exchange yet.
   footer: {
     tagline: string;
     productHead: string;
     productItems: { label: string; href: string }[];
+    aboutHead: string;
+    aboutItems: { label: string; href: string }[];
     legalHead: string;
     legalItems: { label: string; href: string }[];
     copy: string;
@@ -305,7 +312,12 @@ const en: MarketingMessages = {
     productItems: [
       { label: 'Create a memoir', href: '#homepage-composer' },
       { label: 'Pricing', href: '#pricing' },
-      { label: 'Our story', href: '/story' },
+    ],
+    aboutHead: 'About',
+    aboutItems: [
+      // Anchor text carries the query, not just the label. "Our story" says
+      // nothing; this names the product and what the page is about.
+      { label: 'Why we built Yujee', href: '/about/story' },
     ],
     legalHead: 'Legal',
     legalItems: [
@@ -552,8 +564,9 @@ const zh: MarketingMessages = {
     productItems: [
       { label: '创建纪念册', href: '#homepage-composer' },
       { label: '定价', href: '#pricing' },
-      { label: '创始故事', href: '/story' },
     ],
+    aboutHead: '关于',
+    aboutItems: [{ label: '我们为什么做 Yujee', href: '/about/story' }],
     legalHead: '法律',
     legalItems: [
       { label: '隐私政策', href: '/privacy' },

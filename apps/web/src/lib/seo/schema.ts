@@ -1,4 +1,5 @@
 import { ADDON_PACKS, FREE_PLAN_CREDITS } from '@/config/pricing';
+import { SOCIAL_LINKS } from '@/config/social';
 import { type Locale, localizePath } from '@/lib/i18n/routing';
 import { getMarketingMessages } from '@/messages/marketing';
 import { getFaqEntries } from './faq';
@@ -58,6 +59,7 @@ export interface OrganizationSchema {
   url: string;
   logo: string;
   description: string;
+  sameAs?: string[];
 }
 
 export interface ArticleSchema {
@@ -92,7 +94,7 @@ export function articleSchema(locale: Locale): ArticleSchema {
     '@type': 'Article',
     headline: m.title,
     description: m.metaDesc,
-    url: absoluteUrl(localizePath('/story', locale)),
+    url: absoluteUrl(localizePath('/about/story', locale)),
     datePublished: STORY_PUBLISHED,
     author: { '@type': 'Person', name: STORY_AUTHOR },
     publisher: { '@type': 'Organization', name: 'Yujee', logo: absoluteUrl('/icon.png') },
@@ -100,6 +102,13 @@ export function articleSchema(locale: Locale): ArticleSchema {
 }
 
 export function organizationSchema(): OrganizationSchema {
+  // `sameAs` is what ties these accounts to the Yujee entity rather than
+  // leaving them as unrelated profiles that happen to share a name. Derived
+  // from SOCIAL_LINKS so a new account cannot land in the footer while the
+  // schema still claims Yujee has none — and so an account with no href yet
+  // (`href: ''`) never ships as an empty string here.
+  const sameAs = SOCIAL_LINKS.filter((s) => s.href).map((s) => s.href);
+
   return {
     '@context': 'https://schema.org',
     '@type': 'Organization',
@@ -109,6 +118,7 @@ export function organizationSchema(): OrganizationSchema {
     logo: absoluteUrl('/icon.png'),
     description:
       'Yujee turns your photos and stories into a magazine-style keepsake memoir, laid out by AI and exported as a print-ready PDF.',
+    ...(sameAs.length > 0 ? { sameAs } : {}),
   };
 }
 

@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
   const m = getMarketingMessages(locale).story;
-  return publicPageMetadata('/story', locale, m.metaTitle, m.metaDesc);
+  return publicPageMetadata('/about/story', locale, m.metaTitle, m.metaDesc);
 }
 
 export default async function StoryPage({ params }: Props) {
@@ -25,7 +25,7 @@ export default async function StoryPage({ params }: Props) {
   const m = getMarketingMessages(locale as Locale).story;
 
   return (
-    <MarketingChrome locale={locale as Locale} pathname="/story">
+    <MarketingChrome locale={locale as Locale} pathname="/about/story">
       <JsonLd data={articleSchema(locale as Locale)} />
       <article className="max-w-2xl mx-auto px-6 md:px-8 pt-16 pb-24">
         <header className="mb-12">
