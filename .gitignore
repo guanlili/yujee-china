@@ -42,6 +42,5 @@ llm-trace*.txt
 .vercel
 ai-trace*.jsonl
 
-# 本地 HTTPS 自签证书(移动端真机调试用,mkcert 生成)。含私钥,绝不入库。
+# 本地 HTTPS 自签证书(移动端真机调试要用 next dev --experimental-https)。含私钥。
 certificates/
-*.pem
