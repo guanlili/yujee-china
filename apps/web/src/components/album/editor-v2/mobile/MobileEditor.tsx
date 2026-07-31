@@ -33,8 +33,8 @@ import {
   FLIP_EASE,
   FLIP_MS,
   FLIP_SETTLE_MS,
-  centeredSoloGeometry,
   centeredSoloLayers,
+  edgeSoloGeometry,
   flipTransition,
   leafGeometry,
   leafLayers,
@@ -269,7 +269,7 @@ export function MobileEditor({
       const geometry =
         transition === 'spread'
           ? leafGeometry(d, fromShape!.faces)
-          : centeredSoloGeometry(transition);
+          : edgeSoloGeometry(transition);
       setLeafAngle(geometry.endAngle);
     });
     flipTimer.current = window.setTimeout(() => {
@@ -439,6 +439,10 @@ export function MobileEditor({
           // 目标屏的面必须经 soleLayout 从**目标屏自己**取(理由见 soleLayout 抬头)。
           const toLayout = toScreen ? soleLayout(toScreen) : null;
           const soloTransition = anim != null && anim.transition !== 'spread';
+          // 独页静止时占真实书本页位：封面在右、封尾在左。半本书宽的外边距
+          // 与纸张一起组成完整 bookBox 宽的 margin box，所以整本书仍在画板中居中。
+          const restingSoloRole =
+            !soloTransition && kind === 'solo' ? shapeOf(screen)?.soloRole ?? null : null;
           const layers =
             anim != null && toLayout != null
               ? anim.transition === 'spread'
@@ -460,7 +464,7 @@ export function MobileEditor({
             layers && anim
               ? anim.transition === 'spread'
                 ? leafGeometry(anim.dir, resting.faces.length)
-                : centeredSoloGeometry(anim.transition)
+                : edgeSoloGeometry(anim.transition)
               : null;
           return (
             <div
@@ -473,7 +477,12 @@ export function MobileEditor({
               // 密度 1 时 onlyPage 只留一页(那个开页并不 solo),按 solo 判会给单页画中缝;
               // 双宽跨页(full)也只有一张面 —— 画面本就连续,同样不该有中缝。
               data-halves={faces.length}
-              style={{ width: box.w, height: box.h }}
+              style={{
+                width: box.w,
+                height: box.h,
+                marginLeft: restingSoloRole === 'cover' ? bookBox.w / 2 : undefined,
+                marginRight: restingSoloRole === 'ending' ? bookBox.w / 2 : undefined,
+              }}
             >
               {faces.map((pi, half) => (
                 <div

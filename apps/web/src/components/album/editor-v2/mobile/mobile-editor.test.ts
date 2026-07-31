@@ -218,9 +218,16 @@ test('封面和封尾通过角色明确的特殊翻页接入现有纸片层', ()
   const src = source('MobileEditor.tsx');
   assert.match(src, /pageSlot\(/);
   assert.match(src, /flipTransition\(fromShape, toShape, d, reducedMotion\)/);
-  assert.match(src, /centeredSoloGeometry\(anim\.transition\)/);
+  assert.match(src, /edgeSoloGeometry\(anim\.transition\)/);
   assert.match(src, /centeredSoloLayers\(resting\.faces, toLayout\.faces\)/);
   assert.match(src, /data-solo-transition=/);
+});
+
+test('封面停右页位、封尾停左页位，不再居中', () => {
+  const src = source('MobileEditor.tsx');
+  assert.match(src, /marginLeft:\s*restingSoloRole === 'cover' \? bookBox\.w \/ 2/);
+  assert.match(src, /marginRight:\s*restingSoloRole === 'ending' \? bookBox\.w \/ 2/);
+  assert.doesNotMatch(src, /centeredSoloGeometry/);
 });
 
 test('纸张具有接触投影、环境投影、纸边高光和翻页投影', () => {

@@ -107,13 +107,13 @@ export function leafGeometry(dir: FlipDir, halves: number): LeafGeometry {
     : { leftFrac: 0, widthFrac: 1, origin: 'right center', endAngle: 180 };
 }
 
-/** 居中独页占双页书盒的一半；封面左翻、封尾右翻。 */
-export function centeredSoloGeometry(
+/** 独页占双页书盒的一半并贴住中缝：封面在右、封尾在左。 */
+export function edgeSoloGeometry(
   transition: Exclude<FlipTransition, 'spread'>,
 ): LeafGeometry {
   return transition === 'cover-open'
-    ? { leftFrac: 0.25, widthFrac: 0.5, origin: 'left center', endAngle: -180 }
-    : { leftFrac: 0.25, widthFrac: 0.5, origin: 'right center', endAngle: 180 };
+    ? { leftFrac: 0.5, widthFrac: 0.5, origin: 'left center', endAngle: -180 }
+    : { leftFrac: 0, widthFrac: 0.5, origin: 'right center', endAngle: 180 };
 }
 
 /** 翻纸过程中三层各画哪一页(页数组下标;null = 那半边空着)。 */

@@ -7,8 +7,8 @@ import { test } from 'node:test';
 import {
   FLIP_EASE,
   FLIP_MS,
-  centeredSoloGeometry,
   centeredSoloLayers,
+  edgeSoloGeometry,
   flipTransition,
   leafGeometry,
   leafLayers,
@@ -134,15 +134,15 @@ test('单页:整页就是那张纸,两向都是整宽', () => {
   assert.equal(leafGeometry('prev', 1).origin, 'right center');
 });
 
-test('居中独页保持半本书宽,封面向左、封尾向右', () => {
-  assert.deepEqual(centeredSoloGeometry('cover-open'), {
-    leftFrac: 0.25,
+test('独页贴着真实书脊：封面占右页位，封尾占左页位', () => {
+  assert.deepEqual(edgeSoloGeometry('cover-open'), {
+    leftFrac: 0.5,
     widthFrac: 0.5,
     origin: 'left center',
     endAngle: -180,
   });
-  assert.deepEqual(centeredSoloGeometry('ending-open'), {
-    leftFrac: 0.25,
+  assert.deepEqual(edgeSoloGeometry('ending-open'), {
+    leftFrac: 0,
     widthFrac: 0.5,
     origin: 'right center',
     endAngle: 180,
