@@ -16,6 +16,9 @@ on:
       - 'packages/design-agent/**'
       - 'packages/contracts/**'
       - '.github/workflows/deploy-design-agent.yml'
+      # 纯文档改动不该重发生产。GitHub 按文件求值:只要有一个未被排除的文件命中
+      # 上面的 paths 就会触发,所以「README + 模板 JSON」一起改仍然会部署。
+      - '!**/*.md'
   workflow_dispatch:
 
 # 串行:两次部署重叠会让单机服务被来回替换。不取消进行中的那次 —— 部署到一半被

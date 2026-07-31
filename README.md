@@ -152,13 +152,22 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
 ## 上线注意
 
-- **Web 与 Agent 必须同版本部署。** 跨服务契约(`packages/contracts/src/v3.ts` 与
-  `engine/src/contracts/schemas.py`)是**手工镜像,没有 codegen**,只部署一边会当场
-  契约漂移。Web 走 Vercel 自动部署,Agent 要**手动** `flyctl deploy`。
-- **Design Agent 也要手动部署,且必须保持单机**:
-  `fly deploy -c packages/design-agent/fly.toml --dockerfile packages/design-agent/Dockerfile --ha=false .`
-  session 在进程内存,扩到两台会掉正在进行的编辑会话。
-- **`flyctl deploy` 之前先确认 Fly 上 `yujee-agent` 有 `SELECT_LAYOUT_API_KEY`**
+- **三条链路都是自动部署,但它们互相独立、不排序。** Web → Vercel;
+  `yujee-agent` 和 `yujee-design-agent` → GitHub Actions
+  (`.github/workflows/deploy-agent.yml` / `deploy-design-agent.yml`),
+  在 `engine/**`、`packages/design-agent/**`、`packages/contracts/**` 变动时触发,
+  也可 `gh workflow run deploy-design-agent.yml --ref main` 手动跑。
+  跨服务契约(`packages/contracts/src/v3.ts` 与 `engine/src/contracts/schemas.py`)是
+  **手工镜像,没有 codegen**,只部署一边会当场契约漂移 —— 自动部署消除了「忘记部署」,
+  但**不保证谁先到**,破坏性契约变更仍要人工控顺序(见下条)。
+- **破坏性契约变更要先算方向再上线。** 两个方向后果不对称:新 web + 老 agent 通常只是
+  新端点 404(降级);老 web + 新 agent 则是老端点已删立即 404、且新回调字段被 strict
+  校验 400 拒收,册子卡在第一步、用户扣了积分还卡死。上线前 `git show main:<contract>`
+  与 HEAD 逐个 schema 对比请求/回调形状,别凭感觉。必要时先停掉自动触发、手工排序。
+- **`yujee-agent-clip` 没有纳入自动部署**,它仍需手动 `flyctl deploy`。
+- **Design Agent 必须保持单机**(CI 里带 `--ha=false`):session 在进程内存,
+  扩到两台会掉正在进行的编辑会话。
+- **部署前先确认 Fly 上 `yujee-agent` 有 `SELECT_LAYOUT_API_KEY`**
   (compose 的 Gemini key)。缺它时 `mode=real` 会 fail-fast 启动失败 —— 这是刻意的,
   详见 [`engine/README.md`](engine/README.md)。
 - **数据库迁移 `0020` 要单独一批部署。** 它给 `agent_jobs.kind` 枚举加了 `'compose'`;
