@@ -41,6 +41,66 @@ export default function PhotoCheckPage() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [note, setNote] = useState<string>('');
+  const [writeProbe, setWriteProbe] = useState<string[]>([]);
+
+  // 写入自测:两个上传口都把 photoStore.put 的失败 console.warn 掉了,iOS 上看不到。
+  // 这里当场跑一次真实写入 + 读回,把异常的 name/message 原样打在屏幕上 —— 这是
+  // 「originals 表为什么是空的」唯一能在真机上取到的直接证据。
+  // 同时用一条「裸 IndexedDB 写入」做对照:若裸写成功而 photoStore.put 失败,
+  // 问题就锁死在 store.ts 的事务用法上,而不是 Safari 不让写。
+  const probeWrite = useCallback(async () => {
+    const log: string[] = [];
+    const id = `diag-${Date.now()}`;
+    const blob = new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'image/jpeg' });
+
+    // A:走真实的 photoStore.put(上传口用的就是它)
+    try {
+      await photoStore.put(id, blob);
+      const back = await photoStore.getBlob(id);
+      log.push(back ? `A. photoStore.put → 成功,读回 ${back.size} 字节` : 'A. photoStore.put 未报错,但读回是 undefined');
+    } catch (e) {
+      const err = e as { name?: string; message?: string };
+      log.push(`A. photoStore.put → 失败: ${err?.name ?? 'Error'}: ${err?.message ?? String(e)}`);
+    }
+
+    // B:对照组 —— 事务创建后立刻发请求,中间不跨 await
+    try {
+      const db = await new Promise<IDBDatabase>((res, rej) => {
+        const r = indexedDB.open('yujee-photos', 2);
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      });
+      await new Promise<void>((res, rej) => {
+        const t = db.transaction('originals', 'readwrite');
+        const req = t.objectStore('originals').put(blob, `${id}-raw`);
+        req.onsuccess = () => res();
+        req.onerror = () => rej(req.error);
+        t.onabort = () => rej(t.error ?? new Error('transaction aborted'));
+      });
+      db.close();
+      log.push('B. 裸 IndexedDB 写入(不跨 await) → 成功');
+    } catch (e) {
+      const err = e as { name?: string; message?: string };
+      log.push(`B. 裸 IndexedDB 写入 → 失败: ${err?.name ?? 'Error'}: ${err?.message ?? String(e)}`);
+    }
+
+    // C:配额,Safari 会按站点配额直接拒绝写入
+    try {
+      const est = await navigator.storage?.estimate?.();
+      log.push(
+        est
+          ? `C. 存储配额: 已用 ${((est.usage ?? 0) / 1048576).toFixed(1)} MB / 上限 ${((est.quota ?? 0) / 1048576).toFixed(0)} MB`
+          : 'C. 该浏览器不支持 storage.estimate()',
+      );
+      const persisted = await navigator.storage?.persisted?.();
+      log.push(`C. 持久化存储: ${persisted ? '已授予' : '未授予(Safari 可能按需清理)'}`);
+    } catch {
+      log.push('C. 配额查询失败');
+    }
+
+    setWriteProbe(log);
+    void run();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = useCallback(async () => {
     setRows(null);
@@ -152,13 +212,39 @@ export default function PhotoCheckPage() {
         用法:<code>/zh/dev/photo-check?album=&lt;相册 uuid&gt;</code>。必须在**上传照片的那台设备、那个浏览器**上打开。
       </p>
 
-      <button
-        type="button"
-        onClick={() => void run()}
-        style={{ marginBottom: 16, padding: '6px 14px', borderRadius: 6, border: '1px solid #ccc', cursor: 'pointer' }}
-      >
-        重新检查
-      </button>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={() => void run()}
+          style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #ccc', cursor: 'pointer' }}
+        >
+          重新检查
+        </button>
+        <button
+          type="button"
+          onClick={() => void probeWrite()}
+          style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #111', background: '#111', color: '#fff', cursor: 'pointer' }}
+        >
+          写入自测
+        </button>
+      </div>
+
+      {writeProbe.length > 0 && (
+        <pre
+          style={{
+            background: '#0f172a',
+            color: '#e2e8f0',
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 20,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            fontSize: 12,
+          }}
+        >
+          {writeProbe.join('\n')}
+        </pre>
+      )}
 
       {note && <p style={{ color: '#b45309', marginBottom: 12 }}>{note}</p>}
 
