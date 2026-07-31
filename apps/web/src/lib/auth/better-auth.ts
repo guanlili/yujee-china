@@ -18,11 +18,21 @@ type BetterAuthSchema = {
 };
 
 const requiredTableExports = ['users', 'sessions', 'accounts', 'verifications'] as const;
+// 本地开发的可信来源。**https 变体必须一起列**:移动端真机调试要走
+// `next dev --experimental-https`(iOS 上非 secure context 连 crypto.randomUUID
+// 都没有),页面因此是 https://localhost:3000。而 better-auth 只在请求带 cookie 时
+// 强制 CSRF origin 校验 —— 于是「干净浏览器能登、有过期 cookie 的浏览器 403」,
+// 报错还只写在服务端日志里,前端看着就是「点了登录没反应」。之前只列 http,
+// 一开 https 本地登录就废。
 const LOCAL_TRUSTED_ORIGINS = [
   'http://localhost:3000',
+  'https://localhost:3000',
   'http://127.0.0.1:3000',
+  'https://127.0.0.1:3000',
   'http://localhost:3210',
+  'https://localhost:3210',
   'http://127.0.0.1:3210',
+  'https://127.0.0.1:3210',
 ];
 
 export function getBetterAuthSchema(schemaModule: Partial<SchemaModule>): BetterAuthSchema {

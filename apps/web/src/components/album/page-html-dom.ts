@@ -18,6 +18,15 @@ export interface HtmlPage {
 
 const IMG_SRC_TOKEN_RE = /\{\{IMG_SRC:([^}|]+)\}\}/g;
 
+// 空图槽的 src。**不能用空串**:`<img src="">` 会让浏览器拿当前页面地址当图片去
+// 加载,必然失败并渲染成碎图标 —— 还会原样印进 html2canvas 截图和导出的 PDF。
+// 1×1 全透明 GIF 才是真正的「什么都不显示」。
+// 会走到这里的日常情形:照片不在本机(换设备/清缓存),或 origin 变了 —— IndexedDB
+// 按 origin 隔离,协议算在 origin 里,http://localhost:3000 和 https://localhost:3000
+// 是两套互不可见的库。
+const EMPTY_IMAGE_SLOT_SRC =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
 export function resolveDisplayHtml(
   html: string,
   images: Record<string, string>,
@@ -26,7 +35,7 @@ export function resolveDisplayHtml(
   return html.replace(IMG_SRC_TOKEN_RE, (_full, slotRaw: string) => {
     const slot = slotRaw.trim();
     const photoId = images[slot];
-    return photoId ? (resolveImage(photoId) ?? '') : '';
+    return (photoId ? resolveImage(photoId) : undefined) ?? EMPTY_IMAGE_SLOT_SRC;
   });
 }
 
