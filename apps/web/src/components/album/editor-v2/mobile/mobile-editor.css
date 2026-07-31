@@ -411,33 +411,25 @@
   height: 20px;
 }
 
-/* ── AI 浮标:**黑色胶囊**,小水母从左上角探出来 ─────────────────────────────
-   逐条对齐桌面 .chat-fold-expand(editor-port.css 的 ≤767 段)——「浮标黑、弹窗浅」
-   是既有设计,别搞反:早先做成了白浮标 + 黑弹窗,两处都错。
-
-   水母为什么必须探出胶囊外:它是 mix-blend-mode:multiply(与桌面 await-jelly 同一
-   呈现)。multiply 压在黑底上结果就是黑 —— 水母会直接消失。桌面把它绝对定位到
-   top:-23px/left:-13px 探到浅色画布上,正是为此。 */
+/* ── AI 浮标:黑色圆形图标按钮,小水母从左上角探出来 ────────────────────────
+   水母不使用混合模式:浮标会跨在浅色画布与深色页面之间,multiply 会让它在深色
+   内容上突然发黑,看起来像掉到了页面下层。明确的层级让两种背景上都保持一致。 */
 .mobile-editor .mai {
   position: absolute;
   right: 14px;
   bottom: 16px;
-  height: 46px;
-  /* 左边多留出来的是给探出来的水母让位(同桌面 padding:0 16px 0 34px) */
-  padding: 0 16px 0 34px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
   border: 0;
-  border-radius: var(--radius-pill);
+  border-radius: 50%;
   /* 不能 overflow:hidden —— 会把探出来的水母裁掉 */
   overflow: visible;
   background: var(--fg);
   color: var(--surface);
-  font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 600;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24), 0 2px 6px rgba(0, 0, 0, 0.16);
   transition: transform var(--motion-fast) var(--ease);
 }
@@ -446,21 +438,24 @@
   transform: scale(0.96);
 }
 
-/* 产品小水母:与桌面 .chat-fold-expand .fab-jelly 逐条一致 */
+/* 水母在按钮上层、图标左上方,不受下面页面明暗影响。 */
 .mobile-editor .mai-jelly {
   position: absolute;
-  top: -23px;
-  left: -13px;
-  width: 40px;
-  height: 40px;
+  z-index: 2;
+  top: -20px;
+  left: -18px;
+  width: 36px;
+  height: 36px;
   object-fit: contain;
-  mix-blend-mode: multiply;
+  mix-blend-mode: normal;
   pointer-events: none;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.12));
   animation: mai-float 3.2s ease-in-out infinite;
 }
 
 .mobile-editor .mai-chat-ic {
+  position: relative;
+  z-index: 3;
   width: 18px;
   height: 18px;
 }

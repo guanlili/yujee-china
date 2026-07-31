@@ -88,8 +88,11 @@ test('编辑态一级栏四格:背景 · 图片 · 文字 · 删除(删除走 da
   assert.match(html, /data-danger="1"/, '删除格标记为危险动作');
 });
 
-test('编辑态有 AI 气泡(两态同一位置,右下角)', () => {
-  assert.match(render(2), /class="mai"/);
+test('编辑态 AI 浮标只保留图标,不再显示「对话」文字', () => {
+  const html = render(2);
+  assert.match(html, /class="mai"/);
+  assert.match(html, /class="mai-chat-ic"/);
+  assert.doesNotMatch(html, />对话<\/span>/);
 });
 
 /* ── 选中链路 ─────────────────────────────────────────────────────────────── */
