@@ -1,4 +1,5 @@
 import type { Locale } from '@/lib/i18n/routing';
+import { SUPPORT_EMAIL } from '@/config/social';
 
 export interface MarketingMessages {
   nav: {
@@ -58,19 +59,22 @@ export interface MarketingMessages {
     ctaLabel: string;
     disclaimer: string;
   };
-  // Three groups, not two. The heading a link sits under is the cheapest signal
-  // about what the page is: a founder story filed under "Product" reads as a
-  // feature page. Deliberately absent: a reciprocal "friend links" block —
-  // Google treats link exchanges at scale as a link scheme, and there is nothing
-  // real to exchange yet.
+  // An open list of groups rather than fixed product/about/legal keys, so a new
+  // group is one entry here instead of a type change plus a JSX change.
+  //
+  // The heading a link sits under is the cheapest signal about what the page is:
+  // a founder story filed under "Product" reads to a crawler as a feature page.
+  // Anchor text carries the query too — "Our story" contains nothing anyone
+  // searches for.
+  //
+  // Every href must resolve. Locale-relative paths get the /{locale} prefix;
+  // `#anchor` targets a section on the landing page; `mailto:` is passed
+  // through untouched. Deliberately absent: a reciprocal "friend links" block —
+  // Google treats link exchanges at scale as a link scheme, and there is no real
+  // partner to exchange with yet.
   footer: {
     tagline: string;
-    productHead: string;
-    productItems: { label: string; href: string }[];
-    aboutHead: string;
-    aboutItems: { label: string; href: string }[];
-    legalHead: string;
-    legalItems: { label: string; href: string }[];
+    groups: { head: string; items: { label: string; href: string }[] }[];
     copy: string;
   };
 }
@@ -308,21 +312,34 @@ const en: MarketingMessages = {
   },
   footer: {
     tagline: 'Turn scattered photos into a magazine worth keeping.',
-    productHead: 'Product',
-    productItems: [
-      { label: 'Create a memoir', href: '#homepage-composer' },
-      { label: 'Pricing', href: '#pricing' },
-    ],
-    aboutHead: 'About',
-    aboutItems: [
-      // Anchor text carries the query, not just the label. "Our story" says
-      // nothing; this names the product and what the page is about.
-      { label: 'Why we built Yujee', href: '/about/story' },
-    ],
-    legalHead: 'Legal',
-    legalItems: [
-      { label: 'Privacy', href: '/privacy' },
-      { label: 'Terms', href: '/terms' },
+    groups: [
+      {
+        head: 'Product',
+        items: [
+          { label: 'Create a photo book', href: '#homepage-composer' },
+          { label: 'How it works', href: '#features' },
+          { label: 'What you get', href: '#outputs' },
+          { label: 'Pricing', href: '#pricing' },
+        ],
+      },
+      {
+        head: 'Support',
+        items: [
+          { label: 'FAQ', href: '#faq' },
+          { label: 'Contact us', href: `mailto:${SUPPORT_EMAIL}` },
+        ],
+      },
+      {
+        head: 'About',
+        items: [{ label: 'Why we built Yujee', href: '/about/story' }],
+      },
+      {
+        head: 'Legal',
+        items: [
+          { label: 'Privacy', href: '/privacy' },
+          { label: 'Terms', href: '/terms' },
+        ],
+      },
     ],
     copy: '© 2026 Yujee. All rights reserved.',
   },
@@ -560,17 +577,34 @@ const zh: MarketingMessages = {
   },
   footer: {
     tagline: '把散落的照片，变成一本可以收藏的杂志。',
-    productHead: '产品',
-    productItems: [
-      { label: '创建纪念册', href: '#homepage-composer' },
-      { label: '定价', href: '#pricing' },
-    ],
-    aboutHead: '关于',
-    aboutItems: [{ label: '我们为什么做 Yujee', href: '/about/story' }],
-    legalHead: '法律',
-    legalItems: [
-      { label: '隐私政策', href: '/privacy' },
-      { label: '服务条款', href: '/terms' },
+    groups: [
+      {
+        head: '产品',
+        items: [
+          { label: '做一本照片书', href: '#homepage-composer' },
+          { label: '怎么用', href: '#features' },
+          { label: '能做出什么', href: '#outputs' },
+          { label: '定价', href: '#pricing' },
+        ],
+      },
+      {
+        head: '支持',
+        items: [
+          { label: '常见问题', href: '#faq' },
+          { label: '联系我们', href: `mailto:${SUPPORT_EMAIL}` },
+        ],
+      },
+      {
+        head: '关于',
+        items: [{ label: '我们为什么做 Yujee', href: '/about/story' }],
+      },
+      {
+        head: '法律',
+        items: [
+          { label: '隐私政策', href: '/privacy' },
+          { label: '服务条款', href: '/terms' },
+        ],
+      },
     ],
     copy: '© 2026 Yujee. 保留所有权利。',
   },

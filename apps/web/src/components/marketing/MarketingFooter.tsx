@@ -8,6 +8,31 @@ interface Props {
   locale: Locale;
 }
 
+const LINK_CLASS = 'block text-sm text-[var(--meta)] hover:text-[var(--fg)] py-1';
+
+/**
+ * One footer link.
+ *
+ * `mailto:` must not get the /{locale} prefix — prefixing it produced
+ * `/zh/mailto:support@…`, a 404 dressed up as a contact link. Anything else is
+ * a locale-relative path or a landing-page anchor and does get the prefix.
+ */
+function FooterLink({ locale, href, label }: { locale: Locale; href: string; label: string }) {
+  if (href.startsWith('mailto:')) {
+    return (
+      <a href={href} className={LINK_CLASS}>
+        {label}
+      </a>
+    );
+  }
+
+  return (
+    <Link href={`/${locale}${href}`} className={LINK_CLASS}>
+      {label}
+    </Link>
+  );
+}
+
 // Shared site footer. Rendered by MarketingChrome (landing, pricing, legal) and
 // opted into by the logged-in home (/create) so the page reads as a complete
 // surface rather than a bare composer.
@@ -22,22 +47,12 @@ export function MarketingFooter({ locale }: Props) {
           <p className="text-sm leading-relaxed text-[var(--meta)]">{m.footer.tagline}</p>
           <MarketingSocials />
         </div>
-        <div className="flex flex-wrap gap-x-14 gap-y-10">
-          {[
-            { head: m.footer.productHead, items: m.footer.productItems },
-            { head: m.footer.aboutHead, items: m.footer.aboutItems },
-            { head: m.footer.legalHead, items: m.footer.legalItems },
-          ].map((group) => (
+        <div className="grid grid-cols-2 gap-x-10 gap-y-10 sm:flex sm:flex-wrap sm:gap-x-14">
+          {m.footer.groups.map((group) => (
             <div key={group.head}>
               <h4 className="text-sm font-semibold text-[var(--fg)] mb-4 tracking-wide">{group.head}</h4>
               {group.items.map((item) => (
-                <Link
-                  key={item.href}
-                  href={`/${locale}${item.href}`}
-                  className="block text-sm text-[var(--meta)] hover:text-[var(--fg)] py-1"
-                >
-                  {item.label}
-                </Link>
+                <FooterLink key={item.href} locale={locale} href={item.href} label={item.label} />
               ))}
             </div>
           ))}

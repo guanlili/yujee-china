@@ -63,12 +63,14 @@ test('the founder story exists in both locales and is real prose, not markup', (
   }
 });
 
+const footerItems = (locale: (typeof locales)[number]) =>
+  getMarketingMessages(locale).footer.groups.flatMap((g) => g.items);
+
 test('the story page is reachable from every page, or nothing links to it', () => {
   // A page absent from the sitemap-linked navigation is an orphan: crawlers can
   // only reach it via the sitemap, and Google discounts pages nothing links to.
   for (const locale of locales) {
-    const { footer } = getMarketingMessages(locale);
-    const hrefs = [...footer.productItems, ...footer.aboutItems, ...footer.legalItems].map((i) => i.href);
+    const hrefs = footerItems(locale).map((i) => i.href);
     assert.ok(hrefs.includes('/about/story'), `${locale} footer does not link the story`);
   }
 });
@@ -77,30 +79,55 @@ test('the story sits in the About group, not Product — the footer groups carry
   // Group headings are the cheapest on-page signal about what a page IS. A
   // founder story filed under "Product" reads to a crawler as a feature page.
   for (const locale of locales) {
-    const { footer } = getMarketingMessages(locale);
-    assert.ok(footer.aboutHead.length > 0, `${locale} has no About heading`);
+    const { groups } = getMarketingMessages(locale).footer;
+    const owner = groups.find((g) => g.items.some((i) => i.href === '/about/story'));
+    assert.ok(owner, `${locale} footer does not link the story at all`);
+    assert.equal(owner.items.length, 1, 'the About group should not accumulate unrelated links');
+    const product = groups[0];
     assert.ok(
-      footer.aboutItems.some((i) => i.href === '/about/story'),
-      `${locale} story is not in the About group`,
-    );
-    assert.ok(
-      !footer.productItems.some((i) => i.href === '/about/story'),
-      `${locale} still lists the story under Product`,
+      !product.items.some((i) => i.href === '/about/story'),
+      `${locale} still lists the story under the first (product) group`,
     );
   }
 });
 
-test('every footer link target is a real route, never a dead path', () => {
+test('every footer link target is a real route, a real anchor, or a mailto', () => {
   // A footer ships on every page, so one dead href is a sitewide broken link.
-  const known = new Set([...INDEXABLE_ROUTES, '/about']);
+  // Landing anchors are checked against the ids the landing actually renders —
+  // the nav already ships a `#how` that no section answers to.
+  const routes = new Set([...INDEXABLE_ROUTES, '/about']);
+  const anchors = new Set(['#homepage-composer', '#features', '#outputs', '#pricing', '#faq']);
+
   for (const locale of locales) {
-    const { footer } = getMarketingMessages(locale);
-    for (const item of [...footer.productItems, ...footer.aboutItems, ...footer.legalItems]) {
-      if (item.href.startsWith('#')) continue;
-      const path = item.href.split('#')[0];
-      assert.ok(known.has(path), `${locale} footer links ${item.href}, which is not a route`);
+    for (const { href } of footerItems(locale)) {
+      if (href.startsWith('mailto:')) {
+        assert.match(href, /^mailto:[^@\s]+@[^@\s]+$/, `${locale} footer has a malformed mailto: ${href}`);
+        continue;
+      }
+      if (href.startsWith('#')) {
+        assert.ok(anchors.has(href), `${locale} footer links ${href}, which no landing section renders`);
+        continue;
+      }
+      assert.ok(routes.has(href.split('#')[0]), `${locale} footer links ${href}, which is not a route`);
     }
   }
+});
+
+test('footer groups are non-empty and uniquely headed in both locales', () => {
+  for (const locale of locales) {
+    const { groups } = getMarketingMessages(locale).footer;
+    assert.ok(groups.length >= 4, `${locale} footer lost a group`);
+    const heads = groups.map((g) => g.head);
+    assert.equal(new Set(heads).size, heads.length, `${locale} footer has duplicate group headings`);
+    for (const g of groups) {
+      assert.ok(g.head.length > 0 && g.items.length > 0, `${locale} group "${g.head}" is empty`);
+      for (const i of g.items) assert.ok(i.label.length > 0, `${locale} group "${g.head}" has an unlabeled link`);
+    }
+  }
+  // Both locales must offer the same set of destinations, or one language
+  // quietly loses a page.
+  const [en, zh] = locales.map((l) => footerItems(l).map((i) => i.href).sort());
+  assert.deepEqual(en, zh, 'en and zh footers point at different places');
 });
 
 test('articleSchema describes the story page with a real author and date', () => {
