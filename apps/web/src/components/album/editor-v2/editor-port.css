@@ -108,18 +108,47 @@
 /* ─── BOOK / SPREAD 3D ─── */
 .editor-port .book-stage{ perspective: 2400px; position:relative; z-index:1; }
 .editor-port .book{
-  border-radius: 2px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.08);
+  isolation:isolate;
+  border-radius:3px;
+  box-shadow:
+    0 1px 2px rgba(20,24,23,.16),
+    0 10px 24px rgba(20,24,23,.13),
+    0 28px 58px rgba(20,24,23,.10);
   width: min(94%, calc(80vh * 1.414), 1010px);
   aspect-ratio: 1.414 / 1;
   transform-style: preserve-3d;
 }
 .editor-port .book::before{
-  content:''; position:absolute;
-  top:0; bottom:0; left:50%;
-  width: 1px; transform: translateX(-50%);
-  background: var(--border-soft);
-  z-index:5; pointer-events:none;
+  content:'';
+  position:absolute;
+  top:0;
+  bottom:0;
+  left:50%;
+  width:clamp(26px,3.8vw,44px);
+  transform:translateX(-50%);
+  z-index:5;
+  pointer-events:none;
+  background:linear-gradient(90deg,
+    rgba(255,255,255,.10) 0%,
+    rgba(0,0,0,.04) 24%,
+    rgba(0,0,0,.16) 46%,
+    rgba(0,0,0,.24) 50%,
+    rgba(255,255,255,.13) 54%,
+    rgba(0,0,0,.05) 76%,
+    rgba(255,255,255,.08) 100%);
+}
+.editor-port .book::after{
+  content:'';
+  position:absolute;
+  top:0;
+  bottom:0;
+  left:50%;
+  width:1px;
+  transform:translateX(-50%);
+  z-index:5;
+  pointer-events:none;
+  background:rgba(16,20,19,.28);
+  box-shadow:-1px 0 rgba(255,255,255,.12),1px 0 rgba(0,0,0,.08);
 }
 .editor-port .page{
   /* #155: NO padding. paintEl injects the full 794×1123 scaled page sized to
@@ -137,6 +166,20 @@
   /* 预览(书籍)模式只读:书页只用于查看,不再是「点一下能编辑」的目标,故用默认
      光标而非 pointer(编辑发生在画布模式的 .ov-page)。子级 [data-editable] 会继承此值。 */
   cursor:default;
+}
+.editor-port .book:not(.book-solo):not(.book-full) .page-left::before,
+.editor-port .book:not(.book-solo):not(.book-full) .page-right::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  z-index:4;
+  pointer-events:none;
+}
+.editor-port .book:not(.book-solo):not(.book-full) .page-left::before{
+  background:linear-gradient(90deg,transparent 72%,rgba(255,255,255,.06) 86%,rgba(0,0,0,.13) 100%);
+}
+.editor-port .book:not(.book-solo):not(.book-full) .page-right::before{
+  background:linear-gradient(90deg,rgba(0,0,0,.12) 0%,rgba(255,255,255,.07) 14%,transparent 28%);
 }
 /* W11: the page the user selected to talk to the AI about ("change this page").
    An INSET box-shadow gets painted over by full-bleed page content; an OUTSIDE
@@ -158,7 +201,10 @@
 .editor-port .page.page-empty .page-num{ display:none; }
 /* Solo spread (cover/ending): drop the parent backing + spine next to the empty half. */
 .editor-port .book.book-solo{ background:transparent; }
-.editor-port .book.book-solo::before{ display:none; }
+.editor-port .book.book-solo::before{display:none;}
+.editor-port .book.book-solo::after{display:none;}
+.editor-port .book.book-full::before{display:none;}
+.editor-port .book.book-full::after{display:none;}
 
 /* WP/#158-cover: a TRUE cover/ending solo (isSoloSpread, category-keyed in
    paintSpread/flipTo — NOT just "a null half", so interior odd-trailing pages are
@@ -180,7 +226,6 @@
    page-empty —— 这里让空的那半退场,左 cell 的 flex:1 自动撑满全宽(与 book-single
    同一手法)。中缝线(.book::before)必须隐藏:版面本来就是连续的一张,中间不该有分隔。 */
 .editor-port .book.book-full .page.page-empty{ display:none; }
-.editor-port .book.book-full::before{ display:none; }
 
 /* ─── COLLECT BOARD (排版前收集态) ───
    authoring 且 pages 为空时,画板不画版式书,改显示当前采访章的照片平铺网格。
@@ -220,6 +265,7 @@
   pointer-events:none;
   transition: transform .9s cubic-bezier(.45,.05,.2,1);
   transform: rotateY(0deg);
+  filter:drop-shadow(0 12px 14px rgba(20,24,23,.20));
   /* The flipper is a transient flip-animation overlay. At rest its blank white
      front leaf sits over the right-hand page (left:50%, width:50%) and would
      occlude whatever real page renders there — which is exactly where the cover
@@ -241,6 +287,20 @@
   padding: 0;
   overflow:hidden;
   backface-visibility: hidden;
+}
+.editor-port .leaf::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  z-index:4;
+  pointer-events:none;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.22);
+}
+.editor-port .leaf.front::before{
+  background:linear-gradient(90deg,rgba(0,0,0,.13),transparent 24%,rgba(255,255,255,.07));
+}
+.editor-port .leaf.back::before{
+  background:linear-gradient(90deg,rgba(255,255,255,.08),transparent 70%,rgba(0,0,0,.15));
 }
 .editor-port .leaf.front{transform: rotateY(0deg);}
 .editor-port .leaf.back{transform: rotateY(180deg);}
