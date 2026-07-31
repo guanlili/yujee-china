@@ -117,7 +117,10 @@
   position: relative; /* 选中高亮框 + 书脊中缝 + 翻动纸片的定位参照 */
   display: flex;
   flex: none; /* 尺寸由 JS 的 fitBox 算好写在 style 上,不让 flex 再拉伸 */
-  box-shadow: var(--shadow-card-hover);
+  /* 接触阴影 + 环境投影:前者把纸压在画板上,后者给整本书留出悬浮深度。 */
+  box-shadow:
+    0 2px 5px rgba(24, 28, 27, 0.18),
+    0 18px 42px rgba(24, 28, 27, 0.16);
   /* 面板升起时整本书上移让出位置(EditView 算 lift);只有位移,没有缩放。 */
   transition: transform var(--motion-base) var(--ease);
   /* 纸片要在 3D 里真的翻过去,不能被扁平化(同 FlipBook 的 .book)。 */
@@ -135,6 +138,7 @@
   z-index: 6; /* 压过书脊中缝(5),纸片是在书页之上翻动的 */
   transform-style: preserve-3d;
   pointer-events: none; /* 翻的过程中别把点击吃掉 */
+  filter: drop-shadow(0 10px 12px rgba(24, 28, 27, 0.18));
 }
 
 .mobile-editor .mleaf-face {
@@ -295,6 +299,10 @@
   height: 100%;
   overflow: hidden;
   background: var(--surface);
+  /* 极轻的纸边高光/暗边,只画预览容器,不进入页面 HTML 或导出。 */
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.32),
+    inset 0 0 0 1.5px rgba(24, 28, 27, 0.04);
 }
 
 .mobile-editor .mpage-face {
@@ -302,7 +310,17 @@
   height: 100%;
 }
 
-/* ── 画板左下角:画板背景 / 一屏几页(「这屏怎么看」,不进导航栏) ─────────── */
+/* 独页翻开的一瞬间,正文跨页作为底层淡入,避免在居中封面两侧突然闪现。 */
+.mobile-editor .mspread[data-solo-transition='1'] .mpage {
+  animation: msolo-under-in 220ms var(--ease) both;
+}
+
+@keyframes msolo-under-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── 画板左下角:只保留画板背景(「这屏怎么看」,不进导航栏) ───────────────── */
 .mobile-editor .mfab-col {
   position: absolute;
   left: 12px;
@@ -331,12 +349,6 @@
 .mobile-editor .mfab-ic {
   width: 20px;
   height: 20px;
-}
-
-.mobile-editor .mfab-num {
-  font-family: var(--font-display);
-  font-size: 16px;
-  font-weight: 700;
 }
 
 /* ── AI 浮标:**黑色胶囊**,小水母从左上角探出来 ─────────────────────────────

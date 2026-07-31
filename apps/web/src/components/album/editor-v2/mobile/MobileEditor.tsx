@@ -22,7 +22,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type { EditorPage } from '../../types';
-import { buildSpreads, isSoloSpread, spreadPageIndices, spreadRenderKind } from '../../spreads';
+import { buildSpreads, isSoloSpread, pageSlot, spreadPageIndices, spreadRenderKind } from '../../spreads';
 import { pageFaceHTML, type PageFaceCtx } from '../page-face';
 import { pageFolioInfos } from '../../page-html-dom';
 import type { ResolveImage } from '../../adapt-layout';
@@ -33,11 +33,14 @@ import {
   FLIP_EASE,
   FLIP_MS,
   FLIP_SETTLE_MS,
-  canFlip,
+  centeredSoloGeometry,
+  centeredSoloLayers,
+  flipTransition,
   leafGeometry,
   leafLayers,
   leafShading,
   type FlipDir,
+  type FlipTransition,
   type ScreenShape,
 } from './flip';
 import { EditView, type TextHit, type ImageHit } from './EditView';
@@ -153,7 +156,11 @@ export function MobileEditor({
   const boardRef = useRef<HTMLDivElement>(null);
 
   // 翻纸动效:anim 非 null = 正在翻,toStart 是翻完之后的游标。
-  const [anim, setAnim] = useState<{ dir: FlipDir; toStart: number } | null>(null);
+  const [anim, setAnim] = useState<{
+    dir: FlipDir;
+    toStart: number;
+    transition: FlipTransition;
+  } | null>(null);
   const [leafAngle, setLeafAngle] = useState(0);
   const flipTimer = useRef<number | null>(null);
   // 无障碍:系统设了减弱动效就不翻纸,直接切(同 FlipBook)。渲染期不读 matchMedia。
@@ -223,19 +230,22 @@ export function MobileEditor({
       const lay = soleLayout(scr);
       if (lay == null || si == null) return null;
       const kind = spreadRenderKind(spreads[si], pages);
+      const pageIndex = spreadPageIndices(spreads[si])[0];
+      const slot =
+        kind === 'solo' && pageIndex != null && pages[pageIndex]
+          ? pageSlot(pages[pageIndex]!)
+          : null;
       return {
         rows: scr.spreadIndices.length,
         faces: lay.faces.length,
-        // 密度 1 把对开压成一页看,但它既不是封面独页也不是双宽页 —— 那两个标记按
-        // 开页本身的类别取,不受密度影响(否则密度 1 会被误判成 solo 而永远硬切)。
-        solo: kind === 'solo',
+        soloRole: slot === 'cover' || slot === 'ending' ? slot : null,
         full: kind === 'full',
       };
     },
     [soleLayout, spreads, pages],
   );
 
-  /** 翻一屏。几何允许就走翻纸动效,否则直接切(见 flip.ts 的 canFlip)。 */
+  /** 翻一屏。纯函数同时决定普通跨页、封面左翻、封尾右翻或安全直切。 */
   const goScreen = (dir: 1 | -1) => {
     if (anim) return; // 翻纸过程中不接新的翻页(同 FlipBook)
     const toStart = stepScreen(spreads, pages, startPage, MOBILE_BROWSE_DENSITY, dir);
@@ -243,17 +253,25 @@ export function MobileEditor({
     const to = browseScreen(spreads, pages, toStart, MOBILE_BROWSE_DENSITY);
     const fromShape = shapeOf(screen);
     const toShape = shapeOf(to);
-    const ok =
-      fromShape != null && toShape != null && canFlip(fromShape, toShape, reducedMotion);
-    if (!ok) {
+    const d: FlipDir = dir === 1 ? 'next' : 'prev';
+    const transition =
+      fromShape != null && toShape != null
+        ? flipTransition(fromShape, toShape, d, reducedMotion)
+        : null;
+    if (!transition) {
       setStartPage(toStart);
       return;
     }
-    const d: FlipDir = dir === 1 ? 'next' : 'prev';
-    setAnim({ dir: d, toStart });
+    setAnim({ dir: d, toStart, transition });
     setLeafAngle(0);
     // 下一帧才给终止角,transition 才会跑(同 FlipBook)。
-    requestAnimationFrame(() => setLeafAngle(leafGeometry(d, fromShape.faces).endAngle));
+    requestAnimationFrame(() => {
+      const geometry =
+        transition === 'spread'
+          ? leafGeometry(d, fromShape!.faces)
+          : centeredSoloGeometry(transition);
+      setLeafAngle(geometry.endAngle);
+    });
     flipTimer.current = window.setTimeout(() => {
       setStartPage(toStart);
       setAnim(null);
@@ -420,28 +438,37 @@ export function MobileEditor({
           // 纸片转过 90° 后露出来的就是它。翻纸只发生在一屏一个开页时,故 anim 时必为这一格。
           // 目标屏的面必须经 soleLayout 从**目标屏自己**取(理由见 soleLayout 抬头)。
           const toLayout = toScreen ? soleLayout(toScreen) : null;
+          const soloTransition = anim != null && anim.transition !== 'spread';
           const layers =
             anim != null && toLayout != null
-              ? leafLayers(anim.dir, resting.faces.length, resting.faces, toLayout.faces)
+              ? anim.transition === 'spread'
+                ? leafLayers(anim.dir, resting.faces.length, resting.faces, toLayout.faces)
+                : centeredSoloLayers(resting.faces, toLayout.faces)
               : null;
           const faces: (number | null)[] = layers ? layers.under : resting.faces;
           // 容器按 wide 算宽(双宽跨页是「一张面 + 两页宽」),不按面数算 ——
           // 否则 full 会被缩成半宽。
           const box =
-            resting.wide === 1
+            !soloTransition && resting.wide === 1
               ? { w: bookBox.w / 2, h: bookBox.h }
               : bookBox;
           const face = (pi: number | null, w: number) =>
             box.w > 0
               ? pageFaceHTML(pi == null ? null : (pages[pi] ?? null), w, box.h, ctxOf(pi ?? -1))
               : '';
-          const geo = layers && anim ? leafGeometry(anim.dir, faces.length) : null;
+          const geo =
+            layers && anim
+              ? anim.transition === 'spread'
+                ? leafGeometry(anim.dir, resting.faces.length)
+                : centeredSoloGeometry(anim.transition)
+              : null;
           return (
             <div
               className="mspread"
               key={si}
               data-solo={kind === 'solo' ? '1' : undefined}
               data-kind={kind}
+              data-solo-transition={soloTransition ? '1' : undefined}
               // 书脊中缝只在**真的摆了两张面**时才画。判据是渲染出的面数,不是 solo:
               // 密度 1 时 onlyPage 只留一页(那个开页并不 solo),按 solo 判会给单页画中缝;
               // 双宽跨页(full)也只有一张面 —— 画面本就连续,同样不该有中缝。

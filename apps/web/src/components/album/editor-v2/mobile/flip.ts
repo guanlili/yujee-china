@@ -28,9 +28,7 @@ export type ScreenShape = {
   /** 那个开页摆了几张面(pair=2,solo/full=1)。 */
   faces: number;
   /** 封面/封尾单页的明确角色；特殊边缘翻页靠它决定方向。 */
-  soloRole?: SoloRole;
-  /** Task 3 接完新角色前的组件兼容字段；最终调用方应提供 soloRole。 */
-  solo?: boolean;
+  soloRole: SoloRole;
   /** 双宽跨页(#303)—— 一整张连续面,没有可翻的半页。 */
   full: boolean;
 };
@@ -56,8 +54,8 @@ export function flipTransition(
   if (from.rows !== 1 || to.rows !== 1) return null;
   if (shouldDirectSwitch(reducedMotion, false, false, from.full, to.full)) return null;
 
-  const fromRole = from.soloRole ?? null;
-  const toRole = to.soloRole ?? null;
+  const fromRole = from.soloRole;
+  const toRole = to.soloRole;
 
   if (
     fromRole === 'cover' &&
@@ -76,16 +74,11 @@ export function flipTransition(
     return 'ending-open';
   }
 
-  const sourceSolo = fromRole !== null || from.solo === true;
-  const targetSolo = toRole !== null || to.solo === true;
+  const sourceSolo = fromRole !== null;
+  const targetSolo = toRole !== null;
   if (shouldDirectSwitch(false, sourceSolo, targetSolo, false, false)) return null;
   if (from.faces !== to.faces) return null;
   return from.faces === 1 || from.faces === 2 ? 'spread' : null;
-}
-
-/** Task 3 切换调用方前保留的兼容布尔口；新代码应直接读取 flipTransition 的模式。 */
-export function canFlip(from: ScreenShape, to: ScreenShape, reducedMotion: boolean): boolean {
-  return flipTransition(from, to, 'next', reducedMotion) === 'spread';
 }
 
 /** 纸片的几何:贴在哪半边、多宽、绕哪条边转、转到多少度。 */

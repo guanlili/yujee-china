@@ -214,6 +214,29 @@ test('翻纸中不接新翻页、不误触进编辑', () => {
   assert.match(src, /if \(anim\) return;[\s\S]{0,120}data-page-index/, '翻纸中轻点不该进编辑态');
 });
 
+test('封面和封尾通过角色明确的特殊翻页接入现有纸片层', () => {
+  const src = source('MobileEditor.tsx');
+  assert.match(src, /pageSlot\(/);
+  assert.match(src, /flipTransition\(fromShape, toShape, d, reducedMotion\)/);
+  assert.match(src, /centeredSoloGeometry\(anim\.transition\)/);
+  assert.match(src, /centeredSoloLayers\(resting\.faces, toLayout\.faces\)/);
+  assert.match(src, /data-solo-transition=/);
+});
+
+test('纸张具有接触投影、环境投影、纸边高光和翻页投影', () => {
+  const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const spreadAt = css.indexOf('.mobile-editor .mspread {');
+  const spreadRule = css.slice(spreadAt, css.indexOf('}', spreadAt));
+  assert.match(spreadRule, /0 2px 5px/);
+  assert.match(spreadRule, /0 18px 42px/);
+  const pageAt = css.indexOf('.mobile-editor .mpage {');
+  const pageRule = css.slice(pageAt, css.indexOf('}', pageAt));
+  assert.match(pageRule, /inset 0 0 0 1px/);
+  const leafAt = css.indexOf('.mobile-editor .mleaf {');
+  const leafRule = css.slice(leafAt, css.indexOf('}', leafAt));
+  assert.match(leafRule, /filter:\s*drop-shadow/);
+});
+
 test('底部翻页条 + 书浮在画板上:两样都不许去掉', () => {
   const html = render();
   assert.match(html, /class="mstrip"/, '底部翻页条不许去掉');
