@@ -86,6 +86,17 @@ test('导出四条格式全部接到真渲染上(不许只开菜单不干活)', 
   assert.match(root, /onConfirm=\{[\s\S]{0,200}exporter\.exportCollage\(/);
 });
 
+test('移动端 Live 生成完成后必须出现保存入口,由第二次点击触发系统交付', () => {
+  const root = read('MobileEditorRoot.tsx');
+  const hook = read('use-export.ts');
+
+  assert.match(hook, /setLiveReady\(\{[\s\S]{0,180}video:/, '视频生成完应先暂存为待保存产物');
+  assert.match(hook, /deliverLive/, 'hook 必须暴露由保存按钮调用的交付动作');
+  assert.match(root, /<LiveReadyModal/, '生成结束必须显示明确的保存弹窗');
+  assert.match(root, /open=\{exporter\.liveReady\}/);
+  assert.match(root, /onSave=\{[\s\S]{0,160}exporter\.deliverLive\(\)/);
+});
+
 test('分享接的是真链路(备份照片 → 生成 token),不是 toast', () => {
   const root = read('MobileEditorRoot.tsx');
   assert.match(root, /onConfirm=\{\(\) => void share\.create\(bookPhotoIds, backup\.backup\)\}/);

@@ -19,6 +19,7 @@ import {
   ExportMenuModal,
   CollageModal,
   ExportProgressModal,
+  LiveReadyModal,
   ExportFailModal,
 } from './ExportModals';
 import { MoreSheet, NoticeModal } from './MoreSheet';
@@ -131,6 +132,19 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
         }),
       ),
     closeHint: /collage-close/,
+  },
+  {
+    name: 'LiveReadyModal Live 保存',
+    render: (open) =>
+      renderToStaticMarkup(
+        createElement(LiveReadyModal, {
+          open,
+          zh: true,
+          onClose: noop,
+          onSave: noop,
+        }),
+      ),
+    closeHint: /稍后/,
   },
   {
     name: 'ExportFailModal 导出失败',

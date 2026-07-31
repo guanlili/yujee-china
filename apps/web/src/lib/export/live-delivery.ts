@@ -15,6 +15,8 @@
 // ③ 唯一需要成对素材的是 iOS:Live Photo 要 jpg + 视频**成对**进相册。那条走系统
 //    分享面板,分享面板本来就收多文件、也不受 ① 的限制。
 
+import { downloadBlob } from './download';
+
 /** iPad 从 iOS 13 起 UA 伪装成桌面 Safari,platform 仍是 MacIntel —— 只看 UA 会把
  *  iPad 当桌面,于是拿不到分享面板。加 maxTouchPoints 判据补上。 */
 export function isAppleMobileDevice(): boolean {
@@ -36,8 +38,7 @@ export async function deliverLiveAssets(
   cover: Blob,
   stem: string,
   suffix: string,
-): Promise<void> {
-  const { downloadBlob } = await import('./download');
+): Promise<'shared' | 'downloaded' | 'cancelled'> {
   const extension = video.type.includes('mp4') ? 'mp4' : 'webm';
   const files = [
     new File([cover], `${stem}-${suffix}-cover.jpg`, { type: 'image/jpeg' }),
@@ -47,12 +48,13 @@ export async function deliverLiveAssets(
   if (isAppleMobileDevice() && navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
     try {
       await navigator.share(shareData);
-      return;
+      return 'shared';
     } catch (error) {
       // 用户主动取消 = 已经做出选择,不要再自作主张塞一个下载给他。
-      if (error instanceof DOMException && error.name === 'AbortError') return;
+      if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled';
       // 其余失败(不支持/权限)才回落下载。
     }
   }
   downloadBlob(video, `${stem}-${suffix}-live.${extension}`);
+  return 'downloaded';
 }

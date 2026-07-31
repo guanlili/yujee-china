@@ -305,6 +305,51 @@ export function ExportProgressModal({
   );
 }
 
+/* ── Live 已生成:用一次新的明确点击触发系统分享/下载 ──────────────────────── */
+export function LiveReadyModal({
+  open,
+  zh,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  zh: boolean;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <ModalHost open={open} onClose={onClose} labelledBy="mLiveReadyTitle" testId="live-ready-modal">
+      <div className="px-6 pt-6 pb-3 shrink-0">
+        <h3 id="mLiveReadyTitle" className="font-display text-[17px] font-bold">
+          {zh ? 'Live 已生成' : 'Your Live video is ready'}
+        </h3>
+        <p className="text-[13px] text-muted mt-3 leading-relaxed">
+          {zh
+            ? '点击“保存 / 分享”完成保存；iPhone 和 iPad 会打开系统分享面板。'
+            : 'Tap “Save / Share” to finish. iPhone and iPad will open the system share sheet.'}
+        </p>
+      </div>
+      <div className="px-6 py-4 shrink-0 flex items-center justify-end gap-2">
+        <button
+          className="px-5 py-2.5 rounded-pill text-[13px] font-medium text-fg2 border border-bd transition-colors hover:bg-bg"
+          onClick={onClose}
+        >
+          {zh ? '稍后' : 'Later'}
+        </button>
+        <span className="btn-glow">
+          <button
+            className="px-5 py-2.5 rounded-pill text-[13px] font-semibold bg-fg text-white transition-transform hover:-translate-y-px"
+            data-testid="live-ready-save"
+            onClick={onSave}
+          >
+            {zh ? '保存 / 分享' : 'Save / Share'}
+          </button>
+        </span>
+      </div>
+    </ModalHost>
+  );
+}
+
 /* ── 导出失败安抚 ─────────────────────────────────────────────────────────── */
 export function ExportFailModal({
   open,

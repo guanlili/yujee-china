@@ -40,6 +40,7 @@ import {
   CollageModal,
   LiveStyleModal,
   ExportProgressModal,
+  LiveReadyModal,
   ExportFailModal,
 } from './modals/ExportModals';
 import { ShareLinkModal } from './modals/ShareLinkModal';
@@ -783,6 +784,18 @@ export function MobileEditorRoot({
             : '…'
       }
       percent={exporter.progress?.percent ?? 0}
+    />
+    <LiveReadyModal
+      open={exporter.liveReady}
+      zh={zh}
+      onClose={exporter.dismissLiveReady}
+      onSave={() => {
+        void exporter.deliverLive().then((result) => {
+          if (result === 'shared') say(zh ? '已打开系统分享' : 'Opened system sharing');
+          else if (result === 'downloaded')
+            say(zh ? 'Live 视频已开始下载' : 'Live video download started');
+        });
+      }}
     />
     <ExportFailModal
       open={exporter.failed}

@@ -27,11 +27,19 @@ import type { EditorPage } from '../../types';
 import { runExportWithRetry, buildExportFailureLog, ExportError } from '../export-retry-util';
 import { logger } from '@/lib/log/logger';
 import type { PhotoFilterState } from '@/lib/photo/filter-state';
+import { deliverLiveAssets } from '@/lib/export/live-delivery';
 
 export type ExportKind = 'collage' | 'live' | 'pages' | 'pdf';
 
 /** 进度浮层要的两样:一句在做什么 + 「done / total」。 */
 export type ExportProgress = { label: string; done: number; total: number; percent: number } | null;
+
+type LiveReadyAsset = {
+  video: Blob;
+  cover: Blob;
+  stem: string;
+  suffix: 'page-flip' | 'nine-grid';
+};
 
 export type ExportDeps = {
   albumId: string;
@@ -144,6 +152,9 @@ export function useExport({
 
   /** Live 视频。设备/浏览器不支持时给一句明确的话,不当成导出失败(与桌面同口径)。 */
   const [liveUnsupported, setLiveUnsupported] = useState<string | null>(null);
+  // 视频生成可能要几十秒。生成结束后不能直接 navigator.share:移动浏览器要求分享由
+  // 一次新的用户点击同步触发。先暂存产物,再由「保存 / 分享」按钮完成交付。
+  const [liveReady, setLiveReady] = useState<LiveReadyAsset | null>(null);
 
   /** 翻页 Live:整本逐页翻。 */
   const exportLive = useCallback(
@@ -156,8 +167,12 @@ export function useExport({
           const { renderPageJpegs } = await import('@/lib/export/single-pages');
           const covers = await renderPageJpegs(adaptable.slice(0, 1), resolveImage);
           if (!covers[0]) throw new ExportError('render', 'live cover rendering returned no page');
-          const { deliverLiveAssets } = await import('@/lib/export/live-delivery');
-          await deliverLiveAssets(blob, covers[0].blob, await stem(), 'page-flip');
+          setLiveReady({
+            video: blob,
+            cover: covers[0].blob,
+            stem: await stem(),
+            suffix: 'page-flip',
+          });
         } catch (e) {
           if (e instanceof LiveUnsupportedError) {
             setLiveUnsupported(
@@ -194,8 +209,12 @@ export function useExport({
             onProgress,
           });
           const cover = await renderNineGridCover(sources, { background, columns: 3, maxLayouts: 9 });
-          const { deliverLiveAssets } = await import('@/lib/export/live-delivery');
-          await deliverLiveAssets(blob, cover, await stem(), 'nine-grid');
+          setLiveReady({
+            video: blob,
+            cover,
+            stem: await stem(),
+            suffix: 'nine-grid',
+          });
         } catch (e) {
           if (e instanceof NineGridUnsupportedError) {
             setLiveUnsupported(
@@ -208,6 +227,21 @@ export function useExport({
       }),
     [runImageExport, t, background, onProgress, stem],
   );
+
+  /** 必须从保存按钮的 click handler 里直接调用,让 navigator.share 保有瞬时用户授权。 */
+  const deliverLive = useCallback(() => {
+    if (!liveReady) return Promise.resolve<'cancelled'>('cancelled');
+    return deliverLiveAssets(
+      liveReady.video,
+      liveReady.cover,
+      liveReady.stem,
+      liveReady.suffix,
+    ).then((result) => {
+      // 用户取消系统分享时保留弹窗,方便再次点击;真正交付后才释放大 Blob。
+      if (result !== 'cancelled') setLiveReady(null);
+      return result;
+    });
+  }, [liveReady]);
 
   const exportPdf = useCallback(async () => {
     if (busy.current) return;
@@ -263,6 +297,9 @@ export function useExport({
     dismissFailed: () => setFailed(false),
     liveUnsupported,
     dismissLiveUnsupported: () => setLiveUnsupported(null),
+    liveReady: liveReady != null,
+    dismissLiveReady: () => setLiveReady(null),
+    deliverLive,
     exportCollage,
     exportSinglePages,
     exportLive,

@@ -66,9 +66,22 @@ test('iOS 仍走 navigator.share 分享原始文件,不打包', () => {
   );
 });
 
+test('Live 交付从保存按钮同步进入分享/下载,不先 await 丢掉移动端用户授权', () => {
+  const body = deliverLiveAssetsBody();
+  const shareAt = body.indexOf('navigator.share(');
+  assert.ok(shareAt >= 0, '缺少系统分享调用');
+  // 调用本身写成 `await navigator.share(...)` 没问题;要禁止的是它**之前**先等别的异步任务。
+  const beforeShareCall = body.slice(0, shareAt).replace(/\bawait\s*$/, '');
+  assert.doesNotMatch(
+    beforeShareCall,
+    /\bawait\b/,
+    'navigator.share 前一旦 await,保存按钮带来的瞬时用户授权可能已经失效',
+  );
+});
+
 test('两端都用共享的交付实现,不各写一份', () => {
   // 这条规则是踩出来的(见抬头),两端各写一份就会各踩一次。
-  // 两端都是按需动态 import(导出链路整条都懒加载,别把编码器拖进首屏包)。
+  // 桌面端可按需加载;移动端必须静态加载,才能让保存按钮同步进入 navigator.share。
   const usesShared = /(from|import\()\s*'@\/lib\/export\/live-delivery'/;
   assert.match(editorPort, usesShared, '桌面必须用共享交付');
   assert.match(mobileExport, usesShared, '移动端必须用共享交付');
