@@ -129,7 +129,7 @@ test('书脊中缝的条件是「真摆了两张面」,不是「非独页」(密
   assert.doesNotMatch(
     css,
     /\.mspread:not\(\[data-solo\]\)::before/,
-    '按 solo 判会给密度 1 的单页、以及双宽跨页也画中缝 —— 必须按 data-halves',
+    '按 solo 判会给密度 1 的单页、以及双宽跨页也画中缝 —— 必须按 data-paper-spine',
   );
 });
 
