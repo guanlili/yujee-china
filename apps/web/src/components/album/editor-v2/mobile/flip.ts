@@ -12,6 +12,8 @@ import { shouldDirectSwitch } from '../../spreads';
 
 /** 与 FlipBook 的 FLIP_MS 一致(它对齐 editor.html 的 .flipper transition)。 */
 export const FLIP_MS = 900;
+/** 封皮开合比正文翻页更短，减少整书位移的拖沓感。 */
+export const EDGE_FLIP_MS = 700;
 /** 与 FlipBook 的纸片 transition 一致。 */
 export const FLIP_EASE = 'cubic-bezier(.45,.05,.2,1)';
 /** 收尾定格的余量(同 FlipBook:FLIP_MS + 40)。 */
@@ -19,7 +21,12 @@ export const FLIP_SETTLE_MS = 40;
 
 export type FlipDir = 'next' | 'prev';
 export type SoloRole = 'cover' | 'ending' | null;
-export type FlipTransition = 'spread' | 'cover-open' | 'ending-open';
+export type FlipTransition =
+  | 'spread'
+  | 'cover-open'
+  | 'cover-close'
+  | 'ending-close'
+  | 'ending-open';
 
 /** 一屏的形状。solo/full 与桌面同一套分类(spreadRenderKind)。 */
 export type ScreenShape = {
@@ -66,6 +73,22 @@ export function flipTransition(
     return 'cover-open';
   }
   if (
+    fromRole === null &&
+    from.faces === 2 &&
+    toRole === 'cover' &&
+    dir === 'prev'
+  ) {
+    return 'cover-close';
+  }
+  if (
+    fromRole === null &&
+    from.faces === 2 &&
+    toRole === 'ending' &&
+    dir === 'next'
+  ) {
+    return 'ending-close';
+  }
+  if (
     fromRole === 'ending' &&
     toRole === null &&
     to.faces === 2 &&
@@ -93,6 +116,13 @@ export type LeafGeometry = {
   endAngle: number;
 };
 
+export type EdgeMotion = LeafGeometry & {
+  startAngle: number;
+  startShiftPct: number;
+  endShiftPct: number;
+  opening: boolean;
+};
+
 export function leafGeometry(dir: FlipDir, halves: number): LeafGeometry {
   // 对开:翻下一页 = 右半页绕书脊(中线)往左扫,落到左半边。
   // 翻上一页是镜像。几何逐条对齐 FlipBook 的 turning leaf。
@@ -107,13 +137,56 @@ export function leafGeometry(dir: FlipDir, halves: number): LeafGeometry {
     : { leftFrac: 0, widthFrac: 1, origin: 'right center', endAngle: 180 };
 }
 
-/** 独页占双页书盒的一半并贴住中缝：封面在右、封尾在左。 */
-export function edgeSoloGeometry(
+/** 封皮始终占半本书，书体位移与旋转一起把独页和双页坐标系接起来。 */
+export function edgeMotion(
   transition: Exclude<FlipTransition, 'spread'>,
-): LeafGeometry {
-  return transition === 'cover-open'
-    ? { leftFrac: 0.5, widthFrac: 0.5, origin: 'left center', endAngle: -180 }
-    : { leftFrac: 0, widthFrac: 0.5, origin: 'right center', endAngle: 180 };
+): EdgeMotion {
+  switch (transition) {
+    case 'cover-open':
+      return {
+        leftFrac: 0.5,
+        widthFrac: 0.5,
+        origin: 'left center',
+        startAngle: 0,
+        endAngle: -180,
+        startShiftPct: -25,
+        endShiftPct: 0,
+        opening: true,
+      };
+    case 'cover-close':
+      return {
+        leftFrac: 0.5,
+        widthFrac: 0.5,
+        origin: 'left center',
+        startAngle: -180,
+        endAngle: 0,
+        startShiftPct: 0,
+        endShiftPct: -25,
+        opening: false,
+      };
+    case 'ending-close':
+      return {
+        leftFrac: 0,
+        widthFrac: 0.5,
+        origin: 'right center',
+        startAngle: 180,
+        endAngle: 0,
+        startShiftPct: 0,
+        endShiftPct: 25,
+        opening: false,
+      };
+    case 'ending-open':
+      return {
+        leftFrac: 0,
+        widthFrac: 0.5,
+        origin: 'right center',
+        startAngle: 0,
+        endAngle: 180,
+        startShiftPct: 25,
+        endShiftPct: 0,
+        opening: true,
+      };
+  }
 }
 
 /** 翻纸过程中三层各画哪一页(页数组下标;null = 那半边空着)。 */
@@ -146,12 +219,23 @@ export function leafLayers(
   return { under: [to[0] ?? null], front: from[0] ?? null, back: to[0] ?? null };
 }
 
-/** 独页翻开时正文跨页完整垫底，独页只作为纸片正面。 */
-export function centeredSoloLayers(
+/**
+ * 封皮开合始终把正文跨页垫在底下；封皮背面复用它最终覆盖的正文页，
+ * 这样叶片在 ±180° 的起止帧与底层完全重合，不会闪出一张空白纸。
+ */
+export function edgeLayers(
+  transition: Exclude<FlipTransition, 'spread'>,
   from: (number | null)[],
   to: (number | null)[],
 ): LeafLayers {
-  return { under: to, front: from[0] ?? null, back: null };
+  const opening = transition === 'cover-open' || transition === 'ending-open';
+  const body = opening ? to : from;
+  const solo = opening ? from[0] ?? null : to[0] ?? null;
+  const back =
+    transition === 'cover-open' || transition === 'cover-close'
+      ? body[0] ?? null
+      : body[1] ?? null;
+  return { under: body, front: solo, back };
 }
 
 /** 纸片正面的翻页受光:靠书脊那侧压暗一点。取自 FlipBook 的 page-turn shading。 */

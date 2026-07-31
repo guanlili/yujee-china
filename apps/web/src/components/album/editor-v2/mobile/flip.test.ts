@@ -5,10 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
 import {
+  EDGE_FLIP_MS,
   FLIP_EASE,
   FLIP_MS,
-  centeredSoloLayers,
-  edgeSoloGeometry,
+  edgeLayers,
+  edgeMotion,
   flipTransition,
   leafGeometry,
   leafLayers,
@@ -62,16 +63,16 @@ test('用户要求减弱动效 → 一律硬切(无障碍,同 FlipBook)', () => 
   assert.equal(flipTransition(single(), single(), 'next', true), null);
 });
 
-test('封面只在前进到正文时向左翻', () => {
+test('封面打开与闭合都有镜像动画', () => {
   assert.equal(flipTransition(cover(), pair(), 'next', false), 'cover-open');
   assert.equal(flipTransition(cover(), pair(), 'prev', false), null);
-  assert.equal(flipTransition(pair(), cover(), 'prev', false), null);
+  assert.equal(flipTransition(pair(), cover(), 'prev', false), 'cover-close');
 });
 
-test('封尾只在返回正文时向右翻', () => {
+test('封尾闭合与打开都有镜像动画', () => {
   assert.equal(flipTransition(ending(), pair(), 'prev', false), 'ending-open');
   assert.equal(flipTransition(ending(), pair(), 'next', false), null);
-  assert.equal(flipTransition(pair(), ending(), 'next', false), null);
+  assert.equal(flipTransition(pair(), ending(), 'next', false), 'ending-close');
 });
 
 test('独页特殊翻页仍尊重减弱动效和双宽页边界', () => {
@@ -134,18 +135,47 @@ test('单页:整页就是那张纸,两向都是整宽', () => {
   assert.equal(leafGeometry('prev', 1).origin, 'right center');
 });
 
-test('独页贴着真实书脊：封面占右页位，封尾占左页位', () => {
-  assert.deepEqual(edgeSoloGeometry('cover-open'), {
+test('边缘动画用700ms，并让书体平移与封皮旋转同时连续发生', () => {
+  assert.equal(EDGE_FLIP_MS, 700);
+  assert.deepEqual(edgeMotion('cover-open'), {
     leftFrac: 0.5,
     widthFrac: 0.5,
     origin: 'left center',
+    startAngle: 0,
     endAngle: -180,
+    startShiftPct: -25,
+    endShiftPct: 0,
+    opening: true,
   });
-  assert.deepEqual(edgeSoloGeometry('ending-open'), {
+  assert.deepEqual(edgeMotion('cover-close'), {
+    leftFrac: 0.5,
+    widthFrac: 0.5,
+    origin: 'left center',
+    startAngle: -180,
+    endAngle: 0,
+    startShiftPct: 0,
+    endShiftPct: -25,
+    opening: false,
+  });
+  assert.deepEqual(edgeMotion('ending-close'), {
     leftFrac: 0,
     widthFrac: 0.5,
     origin: 'right center',
+    startAngle: 180,
+    endAngle: 0,
+    startShiftPct: 0,
+    endShiftPct: 25,
+    opening: false,
+  });
+  assert.deepEqual(edgeMotion('ending-open'), {
+    leftFrac: 0,
+    widthFrac: 0.5,
+    origin: 'right center',
+    startAngle: 0,
     endAngle: 180,
+    startShiftPct: 25,
+    endShiftPct: 0,
+    opening: true,
   });
 });
 
@@ -180,11 +210,26 @@ test('单页:正面原页、背面目标页、底层目标页(转过 90° 就露
   assert.equal(l.back, 4);
 });
 
-test('独页翻开时正文跨页在底层,独页本身是纸片正面', () => {
-  assert.deepEqual(centeredSoloLayers([0], [1, 2]), {
+test('封皮背面复用相邻正文页，开合起止都不会闪出空白纸', () => {
+  assert.deepEqual(edgeLayers('cover-open', [0], [1, 2]), {
     under: [1, 2],
     front: 0,
-    back: null,
+    back: 1,
+  });
+  assert.deepEqual(edgeLayers('cover-close', [1, 2], [0]), {
+    under: [1, 2],
+    front: 0,
+    back: 1,
+  });
+  assert.deepEqual(edgeLayers('ending-close', [5, 6], [7]), {
+    under: [5, 6],
+    front: 7,
+    back: 6,
+  });
+  assert.deepEqual(edgeLayers('ending-open', [7], [5, 6]), {
+    under: [5, 6],
+    front: 7,
+    back: 6,
   });
 });
 

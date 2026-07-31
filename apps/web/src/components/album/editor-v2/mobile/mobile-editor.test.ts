@@ -135,10 +135,10 @@ test('书脊中缝的条件是「真摆了两张面」,不是「非独页」(密
 
 test('双宽跨页(#303):一张面 + 两页宽容器,不许缩成半宽、不许画中缝', () => {
   const src = source('MobileEditor.tsx');
-  // 容器先按双页书盒统一 fit；full 取整盒、solo 取半盒。
+  // 容器先按双页书盒统一 fit；full 与 solo 都使用完整坐标系，纸张自身再取半宽。
   assert.match(src, /const bookBox = fitBox\(availW, availH, spreadAspect\(2\)\)/);
-  assert.match(src, /resting\.wide === 1[\s\S]{0,120}bookBox\.w \/ 2/,
-    '独页必须取双页书盒的一半，full/普通对页取整盒');
+  assert.match(src, /restingSoloRole != null[\s\S]{0,160}\? bookBox/,
+    '独页必须保留完整双页坐标系，书体平移时才能连续');
   assert.match(src, /sp\.kind === 'full'[\s\S]{0,80}wide: 2/, 'full 必须是「一张面 + 两页宽」');
   // 编辑态同样要按双宽摆
   const edit = source('EditView.tsx');
@@ -218,16 +218,17 @@ test('封面和封尾通过角色明确的特殊翻页接入现有纸片层', ()
   const src = source('MobileEditor.tsx');
   assert.match(src, /pageSlot\(/);
   assert.match(src, /flipTransition\(fromShape, toShape, d, reducedMotion\)/);
-  assert.match(src, /edgeSoloGeometry\(anim\.transition\)/);
-  assert.match(src, /centeredSoloLayers\(resting\.faces, toLayout\.faces\)/);
-  assert.match(src, /data-solo-transition=/);
+  assert.match(src, /edgeMotion\(anim\.transition\)/);
+  assert.match(src, /edgeLayers\(anim\.transition,\s*resting\.faces,\s*toLayout\.faces\)/);
+  assert.match(src, /data-edge-motion=/);
 });
 
-test('封面停右页位、封尾停左页位，不再居中', () => {
+test('封面封尾静止居中，动画时整本书与封皮同步移动', () => {
   const src = source('MobileEditor.tsx');
-  assert.match(src, /marginLeft:\s*restingSoloRole === 'cover' \? bookBox\.w \/ 2/);
-  assert.match(src, /marginRight:\s*restingSoloRole === 'ending' \? bookBox\.w \/ 2/);
-  assert.doesNotMatch(src, /centeredSoloGeometry/);
+  assert.match(src, /restingSoloRole === 'cover' \? -25/);
+  assert.match(src, /restingSoloRole === 'ending' \? 25/);
+  assert.match(src, /transform:\s*`translateX\(\$\{activeEdgeMotion \? bookShiftPct : restingShiftPct\}%\)`/);
+  assert.match(src, /EDGE_FLIP_MS/);
 });
 
 test('纸张具有接触投影、环境投影、纸边高光和翻页投影', () => {
@@ -246,6 +247,13 @@ test('纸张具有接触投影、环境投影、纸边高光和翻页投影', ()
   const leafAt = css.indexOf('.mobile-editor .mleaf {');
   const leafRule = css.slice(leafAt, css.indexOf('}', leafAt));
   assert.match(leafRule, /filter:\s*drop-shadow/);
+});
+
+test('封皮打开时正文延后渐入，闭合时书脊和整书阴影渐出', () => {
+  const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /\[data-edge-opening='1'\][\s\S]{0,180}210ms/);
+  assert.match(css, /\[data-edge-closing='1'\] \.mpage,[\s\S]{0,180}medge-under-out/);
+  assert.match(css, /\[data-resting-solo='1'\][\s\S]{0,120}box-shadow:\s*none/);
 });
 
 test('底部翻页条 + 书浮在画板上:两样都不许去掉', () => {
@@ -303,7 +311,7 @@ test('浏览态固定双页:不再渲染 1/2/4 密度按钮', () => {
 test('封面封尾与正文共用同一个物理单页尺寸', () => {
   const src = source('MobileEditor.tsx');
   assert.match(src, /const bookBox = fitBox\(availW, availH, spreadAspect\(2\)\)/);
-  assert.match(src, /resting\.wide === 1[\s\S]{0,120}bookBox\.w \/ 2/);
+  assert.match(src, /const faceWidth = restingSoloRole != null \? bookBox\.w \/ 2/);
   assert.doesNotMatch(
     src,
     /fitBox\(availW,\s*rowH,\s*spreadAspect\(resting\.wide\)\)/,

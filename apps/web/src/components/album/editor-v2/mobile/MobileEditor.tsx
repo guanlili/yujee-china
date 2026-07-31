@@ -30,11 +30,12 @@ import type { Density } from '../mobile-canvas';
 import { browseScreen, browseUnits, stepScreen, screenStartOfPage, type BrowseScreen } from './browse-window';
 import { fitBox, spreadAspect } from './fit-box';
 import {
+  EDGE_FLIP_MS,
   FLIP_EASE,
   FLIP_MS,
   FLIP_SETTLE_MS,
-  centeredSoloLayers,
-  edgeSoloGeometry,
+  edgeLayers,
+  edgeMotion,
   flipTransition,
   leafGeometry,
   leafLayers,
@@ -162,6 +163,7 @@ export function MobileEditor({
     transition: FlipTransition;
   } | null>(null);
   const [leafAngle, setLeafAngle] = useState(0);
+  const [bookShiftPct, setBookShiftPct] = useState(0);
   const flipTimer = useRef<number | null>(null);
   // 无障碍:系统设了减弱动效就不翻纸,直接切(同 FlipBook)。渲染期不读 matchMedia。
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -262,22 +264,26 @@ export function MobileEditor({
       setStartPage(toStart);
       return;
     }
+    const edge = transition === 'spread' ? null : edgeMotion(transition);
+    setLeafAngle(edge?.startAngle ?? 0);
+    setBookShiftPct(edge?.startShiftPct ?? 0);
     setAnim({ dir: d, toStart, transition });
-    setLeafAngle(0);
     // 下一帧才给终止角,transition 才会跑(同 FlipBook)。
     requestAnimationFrame(() => {
-      const geometry =
+      setLeafAngle(
         transition === 'spread'
-          ? leafGeometry(d, fromShape!.faces)
-          : edgeSoloGeometry(transition);
-      setLeafAngle(geometry.endAngle);
+          ? leafGeometry(d, fromShape!.faces).endAngle
+          : edge!.endAngle,
+      );
+      setBookShiftPct(edge?.endShiftPct ?? 0);
     });
     flipTimer.current = window.setTimeout(() => {
       setStartPage(toStart);
       setAnim(null);
       setLeafAngle(0);
+      setBookShiftPct(0);
       flipTimer.current = null;
-    }, FLIP_MS + FLIP_SETTLE_MS);
+    }, (edge ? EDGE_FLIP_MS : FLIP_MS) + FLIP_SETTLE_MS);
   };
 
   // 量板子;每页多大由 fitBox 算出来,不靠 CSS 比例硬凑(会被 max-width 夹破)。
@@ -403,6 +409,7 @@ export function MobileEditor({
   const toScreen = anim
     ? browseScreen(spreads, pages, anim.toStart, MOBILE_BROWSE_DENSITY)
     : null;
+  const restingSoloRole = anim == null ? shapeOf(screen)?.soloRole ?? null : null;
 
   return (
     <div
@@ -438,24 +445,24 @@ export function MobileEditor({
           // 纸片转过 90° 后露出来的就是它。翻纸只发生在一屏一个开页时,故 anim 时必为这一格。
           // 目标屏的面必须经 soleLayout 从**目标屏自己**取(理由见 soleLayout 抬头)。
           const toLayout = toScreen ? soleLayout(toScreen) : null;
-          const soloTransition = anim != null && anim.transition !== 'spread';
-          // 独页静止时占真实书本页位：封面在右、封尾在左。半本书宽的外边距
-          // 与纸张一起组成完整 bookBox 宽的 margin box，所以整本书仍在画板中居中。
-          const restingSoloRole =
-            !soloTransition && kind === 'solo' ? shapeOf(screen)?.soloRole ?? null : null;
+          const activeEdgeMotion =
+            anim != null && anim.transition !== 'spread' ? edgeMotion(anim.transition) : null;
           const layers =
             anim != null && toLayout != null
               ? anim.transition === 'spread'
                 ? leafLayers(anim.dir, resting.faces.length, resting.faces, toLayout.faces)
-                : centeredSoloLayers(resting.faces, toLayout.faces)
+                : edgeLayers(anim.transition, resting.faces, toLayout.faces)
               : null;
           const faces: (number | null)[] = layers ? layers.under : resting.faces;
-          // 容器按 wide 算宽(双宽跨页是「一张面 + 两页宽」),不按面数算 ——
-          // 否则 full 会被缩成半宽。
+          // 封面/封尾静止与开合都保留完整双页坐标系：纸仍是半宽，但书体本身
+          // 只靠 translateX 在单页居中位和双页中缝位之间移动，不再瞬间扩容。
           const box =
-            !soloTransition && resting.wide === 1
-              ? { w: bookBox.w / 2, h: bookBox.h }
-              : bookBox;
+            restingSoloRole != null || activeEdgeMotion != null
+              ? bookBox
+              : resting.wide === 1
+                ? { w: bookBox.w / 2, h: bookBox.h }
+                : bookBox;
+          const faceWidth = restingSoloRole != null ? bookBox.w / 2 : box.w / faces.length;
           const face = (pi: number | null, w: number) =>
             box.w > 0
               ? pageFaceHTML(pi == null ? null : (pages[pi] ?? null), w, box.h, ctxOf(pi ?? -1))
@@ -464,15 +471,20 @@ export function MobileEditor({
             layers && anim
               ? anim.transition === 'spread'
                 ? leafGeometry(anim.dir, resting.faces.length)
-                : edgeSoloGeometry(anim.transition)
+                : edgeMotion(anim.transition)
               : null;
+          const restingShiftPct =
+            restingSoloRole === 'cover' ? -25 : restingSoloRole === 'ending' ? 25 : 0;
           return (
             <div
               className="mspread"
               key={si}
               data-solo={kind === 'solo' ? '1' : undefined}
               data-kind={kind}
-              data-solo-transition={soloTransition ? '1' : undefined}
+              data-edge-motion={activeEdgeMotion ? '1' : undefined}
+              data-edge-opening={activeEdgeMotion?.opening ? '1' : undefined}
+              data-edge-closing={activeEdgeMotion && !activeEdgeMotion.opening ? '1' : undefined}
+              data-resting-solo={restingSoloRole ? '1' : undefined}
               // 书脊中缝只在**真的摆了两张面**时才画。判据是渲染出的面数,不是 solo:
               // 密度 1 时 onlyPage 只留一页(那个开页并不 solo),按 solo 判会给单页画中缝;
               // 双宽跨页(full)也只有一张面 —— 画面本就连续,同样不该有中缝。
@@ -480,8 +492,10 @@ export function MobileEditor({
               style={{
                 width: box.w,
                 height: box.h,
-                marginLeft: restingSoloRole === 'cover' ? bookBox.w / 2 : undefined,
-                marginRight: restingSoloRole === 'ending' ? bookBox.w / 2 : undefined,
+                transform: `translateX(${activeEdgeMotion ? bookShiftPct : restingShiftPct}%)`,
+                transition: activeEdgeMotion
+                  ? `transform ${EDGE_FLIP_MS}ms ${FLIP_EASE}`
+                  : undefined,
               }}
             >
               {faces.map((pi, half) => (
@@ -489,13 +503,17 @@ export function MobileEditor({
                   className="mpage"
                   key={half}
                   data-page-index={pi ?? undefined}
-                  style={{ width: box.w / faces.length }}
+                  style={{
+                    width: faceWidth,
+                    marginLeft:
+                      restingSoloRole === 'cover' && half === 0 ? bookBox.w / 2 : undefined,
+                  }}
                 >
                   {/* 页面内容天生是 HTML 字符串(模板产出)。这个节点由本组件独占,
                       没有第二方会重建它 —— 与旧实现的根本区别。 */}
                   <div
                     className="mpage-face"
-                    dangerouslySetInnerHTML={{ __html: face(pi, box.w / faces.length) }}
+                    dangerouslySetInnerHTML={{ __html: face(pi, faceWidth) }}
                   />
                 </div>
               ))}
@@ -511,7 +529,9 @@ export function MobileEditor({
                     width: box.w * geo.widthFrac,
                     transformOrigin: geo.origin,
                     transform: `rotateY(${leafAngle}deg)`,
-                    transition: `transform ${FLIP_MS}ms ${FLIP_EASE}`,
+                    transition: `transform ${
+                      anim.transition === 'spread' ? FLIP_MS : EDGE_FLIP_MS
+                    }ms ${FLIP_EASE}`,
                   }}
                 >
                   <div className="mleaf-face">

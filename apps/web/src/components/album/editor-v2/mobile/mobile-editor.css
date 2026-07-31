@@ -315,19 +315,69 @@
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32);
 }
 
+.mobile-editor .mspread[data-resting-solo='1'] {
+  /* 完整双页盒只提供坐标系，静止时只有真实的半宽封皮产生投影。 */
+  box-shadow: none;
+}
+
+.mobile-editor .mspread[data-resting-solo='1'] .mpage {
+  box-shadow:
+    0 2px 5px rgba(24, 28, 27, 0.18),
+    0 18px 42px rgba(24, 28, 27, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.32),
+    inset 0 0 0 1.5px rgba(24, 28, 27, 0.04);
+}
+
 .mobile-editor .mpage-face {
   width: 100%;
   height: 100%;
 }
 
-/* 独页翻开的一瞬间,正文跨页作为底层淡入,避免在居中封面两侧突然闪现。 */
-.mobile-editor .mspread[data-solo-transition='1'] .mpage {
-  animation: msolo-under-in 220ms var(--ease) both;
+/* 封皮打开先保持独页，正文与书脊在 30% 进度后才显现；闭合则做镜像渐隐。 */
+.mobile-editor .mspread[data-edge-opening='1'] .mpage,
+.mobile-editor .mspread[data-edge-opening='1'][data-halves='2']::before {
+  animation: medge-under-in 200ms var(--ease) 210ms both;
 }
 
-@keyframes msolo-under-in {
+.mobile-editor .mspread[data-edge-closing='1'] .mpage,
+.mobile-editor .mspread[data-edge-closing='1'][data-halves='2']::before {
+  animation: medge-under-out 180ms var(--ease) 350ms both;
+}
+
+.mobile-editor .mspread[data-edge-opening='1'] {
+  animation: medge-shadow-in 700ms var(--ease) both;
+}
+
+.mobile-editor .mspread[data-edge-closing='1'] {
+  animation: medge-shadow-out 700ms var(--ease) both;
+}
+
+@keyframes medge-under-in {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+@keyframes medge-under-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes medge-shadow-in {
+  from { box-shadow: 0 0 0 rgba(24, 28, 27, 0); }
+  to {
+    box-shadow:
+      0 2px 5px rgba(24, 28, 27, 0.18),
+      0 18px 42px rgba(24, 28, 27, 0.16);
+  }
+}
+
+@keyframes medge-shadow-out {
+  from {
+    box-shadow:
+      0 2px 5px rgba(24, 28, 27, 0.18),
+      0 18px 42px rgba(24, 28, 27, 0.16);
+  }
+  to { box-shadow: 0 0 0 rgba(24, 28, 27, 0); }
 }
 
 /* ── 画板左下角:只保留画板背景(「这屏怎么看」,不进导航栏) ───────────────── */
