@@ -30,7 +30,23 @@ const BodySchema = z
   .strict();
 
 // 多工具轮次（读页 + 写入 + 模型往返）可能超过 60s。
-export const maxDuration = 120;
+//
+// 这个预算必须放得下**顺序累加**的整条链路：prepareDesignChat 的 loadBook(15s)
+// → 对话轮次(240s) → done 之后的 persistDesignChat 落库。不变量由
+// design-agent-client.test.ts 锁住，别只盯着单个超时值改。
+//
+// 倒挂（客户端等待 ≥ 本预算）时的后果，2026-07-31 线上故障就是这个形状：
+// Vercel 在 maxDuration 处直接杀掉函数，流断在半路；因为响应头在流开始时就已发出，
+// 这条请求在 Vercel 日志里记成 200，错误只藏在日志条目的 logs 字段里，几乎查不出来。
+// 更糟的是 persistDesignChat 跟 done 事件在同一次调用里，函数被杀会让 AI 说了"改好了"
+// 而写库丢失。
+//
+// 注意别误解客户端超时的落点：AbortSignal.timeout 传给 fetch 会连响应体一起中断，
+// 所以流式路径上超时是在下面的 reader.read() 抛出、被转成流内 error 事件的，
+// 走不到 chatStream 的 catch —— AGENT_TIMEOUT/504 只对非流式路径生效。
+//
+// 300 是本项目 Vercel Fluid compute 的上限（项目 API: functionDefaultTimeout=300）。
+export const maxDuration = 300;
 
 export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }> }) {
   try {
