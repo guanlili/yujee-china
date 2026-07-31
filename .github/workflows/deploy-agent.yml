@@ -1,0 +1,60 @@
+# 生成 Agent(Fly: yujee-agent)自动部署。
+#
+# 和 design-agent 同一个理由:engine 的镜像同样烤着 packages/contracts/templates
+# (从仓根构建,Dockerfile 要 COPY engine 和 packages/contracts/templates),
+# 选版/成稿都按模板 JSON 填文案。contracts 变了不重新部署,它就会和另外那个服务
+# 对不上 —— 一边按新模板生产数据、一边按旧模板校验。
+#
+# 注意这两个服务是**分别**部署的:漏掉任何一个都会造成漂移,所以两个 workflow 的
+# paths 都包含 packages/contracts/**。
+name: Deploy agent (Fly)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'engine/**'
+      - 'packages/contracts/**'
+      - '.github/workflows/deploy-agent.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-agent
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # 从仓根构建(最后那个 . 是 build context),这样 Dockerfile 才能同时 COPY
+      # engine 和 packages/contracts/templates —— engine/fly.toml 注释里写明了。
+      #
+      # --ha=false:保持当前单机拓扑不变。这个 workflow 的职责是消除模板漂移,
+      # 不是顺手改容量;要扩容应该是一次单独的、有意识的决定。
+      - name: Deploy
+        run: |
+          flyctl deploy \
+            --config engine/fly.toml \
+            --dockerfile engine/Dockerfile \
+            --ha=false \
+            --depot=false \
+            --local-only \
+            .
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_DEPLOY_TOKEN_AGENT }}
+
+      - name: Verify health
+        run: |
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+              https://yujee-agent.fly.dev/health || echo 000)
+            echo "attempt $i: http=$code"
+            [ "$code" = "200" ] && exit 0
+            sleep 6
+          done
+          echo "健康探针始终不是 200,部署可能没真正生效"
+          exit 1
