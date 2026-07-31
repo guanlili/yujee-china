@@ -67,7 +67,7 @@ export const designAgentClient = {
         },
         // currentPageIndex:用户在编辑器里停留的页,供 agent 消解"这页"类指代。
         body: JSON.stringify({ albumId, message, currentPageIndex }),
-        signal: AbortSignal.timeout(180_000),
+        signal: AbortSignal.timeout(240_000),
       });
     } catch (e) {
       if (e instanceof Error && e.name === 'TimeoutError') throw ERRORS.AGENT_TIMEOUT();
@@ -91,7 +91,7 @@ export const designAgentClient = {
     message: string,
     currentPageIndex?: number,
   ): Promise<DesignAgentChatResult> {
-    const raw = await postDesign('/api/chat', { albumId, message, currentPageIndex }, 180_000);
+    const raw = await postDesign('/api/chat', { albumId, message, currentPageIndex }, 240_000);
     const assistant = raw.assistant as { text?: unknown } | undefined;
     const book = raw.book as { pages?: unknown; version?: unknown } | undefined;
     if (typeof assistant?.text !== 'string' || !Array.isArray(book?.pages)) {
