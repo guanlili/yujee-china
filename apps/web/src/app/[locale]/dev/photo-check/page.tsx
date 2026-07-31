@@ -49,6 +49,8 @@ export default function PhotoCheckPage() {
   // 同时用一条「裸 IndexedDB 写入」做对照:若裸写成功而 photoStore.put 失败,
   // 问题就锁死在 store.ts 的事务用法上,而不是 Safari 不让写。
   const probeWrite = useCallback(async () => {
+    // 立刻给一行反馈:否则「没点着」和「跑了但失败」在屏幕上长得一模一样。
+    setWriteProbe(['运行中…']);
     const log: string[] = [];
     const id = `diag-${Date.now()}`;
     const blob = new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'image/jpeg' });
@@ -206,7 +208,18 @@ export default function PhotoCheckPage() {
   }, [run]);
 
   return (
-    <div style={{ padding: 20, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 13, lineHeight: 1.7 }}>
+    // iPhone 上内容顶到屏幕最上沿会被灵动岛/状态栏盖住,盖住的那块点不到 ——
+    // 按钮排在页首时会表现成「点了没反应」。留出安全区。
+    <div
+      style={{
+        padding: 20,
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 72px)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 120px)',
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        fontSize: 13,
+        lineHeight: 1.7,
+      }}
+    >
       <h1 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>本地照片自查</h1>
       <p style={{ color: '#666', marginBottom: 16 }}>
         用法:<code>/zh/dev/photo-check?album=&lt;相册 uuid&gt;</code>。必须在**上传照片的那台设备、那个浏览器**上打开。
@@ -223,9 +236,20 @@ export default function PhotoCheckPage() {
         <button
           type="button"
           onClick={() => void probeWrite()}
-          style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #111', background: '#111', color: '#fff', cursor: 'pointer' }}
+          style={{
+            padding: '16px 28px',
+            borderRadius: 10,
+            border: '1px solid #111',
+            background: '#111',
+            color: '#fff',
+            fontSize: 16,
+            fontWeight: 700,
+            cursor: 'pointer',
+            flex: '1 1 auto',
+            minWidth: 180,
+          }}
         >
-          写入自测
+          ▶ 写入自测（点这个）
         </button>
       </div>
 
