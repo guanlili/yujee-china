@@ -37,11 +37,22 @@ Web 侧客户端:`apps/web/src/lib/agent/design-agent-client.ts`。
 每册的 session / trace / 书状态**在进程内存里**,而 Web 每轮先 `POST /api/book`
 再 `POST /api/chat` —— 这两个请求必须命中同一台机器。Fly 的多机负载均衡会直接打断编辑。
 
+部署由 `.github/workflows/deploy-design-agent.yml` 自动完成(main 上
+`packages/design-agent/**` 或 `packages/contracts/**` 变动时触发,CI 里带 `--ha=false`)。
+要手动补一次:
+
 ```bash
-fly deploy -c packages/design-agent/fly.toml \
-  --dockerfile packages/design-agent/Dockerfile --ha=false .
+gh workflow run deploy-design-agent.yml --ref main
 fly scale count 1 -a yujee-design-agent    # 保持 1,不要开 HA
 ```
+
+**不要在本机跑 `flyctl deploy`**,这台开发机上它已经跑不通(原因见 `engine/README.md`)。
+
+**镜像里烤着 `packages/contracts/templates`**(Dockerfile 是 `COPY . .`,运行时从磁盘读),
+所以 contracts 一变它就必须重新部署 —— 这正是 workflow 的 paths 包含
+`packages/contracts/**` 的原因。2026-07-25 漏了这一步:模板改动比部署晚 2 小时,
+之后 6 天没再部署,导致 mag-59 槽位漂移、任何用到该模板的册子对话改书 100% 失败
+(`422 book 契约不合法`)。
 
 `auto_stop_machines = false`(停机会丢正在进行的会话)。完整理由写在 `fly.toml` 注释里。
 
@@ -68,5 +79,5 @@ print/RPC/interactive 三种模式。**通用 agent loop 在 `packages/agent`**,
 
 <!-- doc-scope
 paths: packages/design-agent/src/**, packages/design-agent/fly.toml, apps/web/src/lib/agent/design-agent-client.ts
-checked-at: 0d7209eb
+checked-at: 08f3c185
 -->

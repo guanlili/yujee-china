@@ -2,8 +2,14 @@
 # Region nrt (Tokyo): low latency to the Volcano Ark API (cn-beijing) the model
 # provider depends on — same as the engine (yujee-agent). Create with:
 #   fly launch --no-deploy   (or: fly apps create yujee-design-agent)
-# Deploy from repo root (pass --ha=false: this service is SINGLE-MACHINE — see below):
-#   fly deploy -c packages/design-agent/fly.toml --dockerfile packages/design-agent/Dockerfile --ha=false .
+# Deployed by CI, not by hand: .github/workflows/deploy-design-agent.yml fires on
+# main whenever packages/design-agent/** or packages/contracts/** changes (the
+# image bakes in packages/contracts/templates, so a template change without a
+# redeploy silently drifts — that cost us 6 days in 2026-07). To force one:
+#   gh workflow run deploy-design-agent.yml --ref main
+# Do NOT run `flyctl deploy` from the dev machine — it no longer works there
+# (WireGuard tunnel fails, then the wireguardless path dies on the docker socket).
+# The workflow passes --ha=false: this service is SINGLE-MACHINE — see below.
 #
 # SINGLE MACHINE ONLY. Per-album sessions/trace/book live in process memory, and
 # the web caller does POST /api/book then POST /api/chat per turn — those two

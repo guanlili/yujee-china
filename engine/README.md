@@ -155,12 +155,21 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests/test_vision_gro
 
 ## Deploy
 
-Agent 不走自动部署,合并后要**手动** `flyctl deploy`(从干净的 `origin/main` worktree,
-带 `--depot=false`):
+Agent **走自动部署**(2026-07-31 起):`.github/workflows/deploy-agent.yml` 在 main 上
+`engine/**` 或 `packages/contracts/**` 变动时自动 `flyctl deploy`。要手动补一次:
 
 ```bash
-fly deploy -c engine/fly.toml --dockerfile engine/Dockerfile --depot=false .
+gh workflow run deploy-agent.yml --ref main
 ```
+
+**不要在本机跑 `flyctl deploy`。** 这台开发机上它已经跑不通:WireGuard 隧道建不起来
+(`ssh: can't build tunnel`),flyctl 退化到 wireguardless 路径后撞上
+`failed to parse daemon host "unix:///var/run/docker.sock"`;换 depot 则是
+`failed to list workers: authentication handshake failed: EOF`。摘掉 `HTTP_PROXY`
+和升级 flyctl 都试过,无效。CI 里 runner 自带 Docker,用 `--local-only --depot=false`
+绕开了整条链路。
+
+`engine/fly.clip.toml`(`yujee-agent-clip`)**没有**纳入自动部署,仍需手动处理。
 
 上线前置动作,顺序不要跳:
 
@@ -190,5 +199,5 @@ CLIP embedding worker 是另一个 app(`engine/fly.clip.toml` → `yujee-agent-c
 
 <!-- doc-scope
 paths: engine/src/**, engine/fly*.toml, engine/pyproject.toml
-checked-at: bf899f76
+checked-at: 08f3c185
 -->

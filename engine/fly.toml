@@ -5,9 +5,13 @@ app = "yujee-agent"
 primary_region = "nrt"
 
 [build]
-  # Deploy from repo root so the Dockerfile can COPY engine and
-  # packages/contracts/templates:
-  #   fly deploy -c engine/fly.toml --dockerfile engine/Dockerfile .
+  # Build context is the repo root so the Dockerfile can COPY engine and
+  # packages/contracts/templates. Deployed by CI, not by hand:
+  # .github/workflows/deploy-agent.yml fires on main whenever engine/** or
+  # packages/contracts/** changes. To force one:
+  #   gh workflow run deploy-agent.yml --ref main
+  # Do NOT run `flyctl deploy` from the dev machine — it no longer works there
+  # (WireGuard tunnel fails, then the wireguardless path dies on the docker socket).
 
 # Non-secret config only. Secrets are set out-of-band and never committed:
 #   fly secrets set AGENT_SHARED_SECRET=... GROUPING_CLIP_SECRET=... ARK_API_KEY=... \
