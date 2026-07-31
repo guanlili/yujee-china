@@ -10,6 +10,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { photoStore } from '@/lib/photo/store';
+// 直接导入今天新增的常量:浏览器里显示成什么值,就是它实际加载到的代码。
+// 这比看部署面板可靠 —— 面板绿灯只说明服务端发了新包,说明不了这台设备在跑什么。
+import { EDGE_FLIP_MS, FLIP_EASE } from '@/components/album/editor-v2/mobile/flip';
+import { resolveDeviceMode } from '@/components/album/editor-v2/mobile-canvas';
 
 type Row = {
   photoId: string;
@@ -22,6 +26,12 @@ type Summary = {
   origin: string;
   secureContext: string;
   randomUUID: string;
+  代码版本_EDGE_FLIP_MS: string;
+  代码版本_FLIP_EASE: string;
+  视口宽度_innerWidth: string;
+  设备判定_deviceMode: string;
+  请求桌面网站嫌疑: string;
+  userAgent: string;
   idbOpen: string;
   idbTotalKeys: string;
   draftPhotoIds: number;
@@ -40,10 +50,26 @@ export default function PhotoCheckPage() {
     const albumId = params.get('album') ?? '';
 
     // ── 环境层:iOS 上非 secure context 连 crypto.randomUUID 都没有,上传第一行就抛。
+    const width = window.innerWidth;
+    const device = resolveDeviceMode(width);
     const env: Summary = {
       origin: window.location.origin,
       secureContext: String(window.isSecureContext),
       randomUUID: typeof crypto?.randomUUID === 'function' ? 'available' : 'MISSING',
+      // 这两行是「这台设备到底加载了哪份代码」的直接证据。期望值见常量定义。
+      代码版本_EDGE_FLIP_MS: `${EDGE_FLIP_MS} (期望 700)`,
+      代码版本_FLIP_EASE: `${FLIP_EASE}`,
+      视口宽度_innerWidth: `${width}px (screen ${window.screen?.width ?? '?'}px, dpr ${window.devicePixelRatio})`,
+      // ≤767 才会挂今天那套移动画板;判成 desktop 就会看到上一代的桌面壳。
+      设备判定_deviceMode: device === 'mobile' ? 'mobile ✓' : `${device} ← 不会挂移动画板`,
+      // iOS Safari 的「请求桌面网站」会把视口撑到 ~980,是最常见的元凶。
+      请求桌面网站嫌疑:
+        /iPhone|iPod/.test(navigator.userAgent) && width > 767
+          ? '高度可疑:iPhone 却报出桌面级宽度 → 去 aA 菜单关掉「请求桌面网站」'
+          : /iPad/.test(navigator.userAgent) && width > 767
+            ? 'iPad 宽屏,按桌面渲染属正常'
+            : '无',
+      userAgent: navigator.userAgent,
       idbOpen: '…',
       idbTotalKeys: '…',
       draftPhotoIds: 0,
