@@ -7,6 +7,7 @@ import { test } from 'node:test';
 const here = dirname(fileURLToPath(import.meta.url));
 const desktop = readFileSync(join(here, 'editor-port.css'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
+const desktopComponent = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
 const mobile = readFileSync(join(here, 'mobile/mobile-editor.css'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
 
@@ -52,6 +53,16 @@ test('desktop fold is absent on solo and continuous double-wide states', () => {
 
 test('desktop 3D book avoids isolation that flattens turning leaves', () => {
   assert.doesNotMatch(ruleBody(desktop, '.editor-port .book'), /\bisolation\s*:\s*isolate\b/);
+});
+
+test('desktop 3D book JSX avoids grouping overflow utilities that flatten turning leaves', () => {
+  const bookClasses = /<div className="([^"]*\bbook\b[^"]*)" id="book">/.exec(desktopComponent)?.[1];
+  assert.ok(bookClasses, 'missing the real desktop #book JSX class list');
+  assert.doesNotMatch(
+    bookClasses,
+    /\boverflow(?:-[xy])?-(?:hidden|auto|scroll)\b/,
+    'the preserve-3d book must leave clipping to terminal page and leaf faces',
+  );
 });
 
 test('desktop 3D flipper avoids filters that flatten its leaf faces', () => {
