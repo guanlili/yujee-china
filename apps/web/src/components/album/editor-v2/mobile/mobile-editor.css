@@ -113,14 +113,16 @@
   perspective: 2400px;
 }
 
-.mobile-editor .mspread {
+.mobile-editor .mspread{
   position: relative; /* 选中高亮框 + 书脊中缝 + 翻动纸片的定位参照 */
   display: flex;
   flex: none; /* 尺寸由 JS 的 fitBox 算好写在 style 上,不让 flex 再拉伸 */
-  /* 接触阴影 + 环境投影:前者把纸压在画板上,后者给整本书留出悬浮深度。 */
+  isolation:isolate;
+  border-radius:2px;
   box-shadow:
-    0 2px 5px rgba(24, 28, 27, 0.18),
-    0 18px 42px rgba(24, 28, 27, 0.16);
+    0 1px 2px rgba(20,24,23,.18),
+    0 9px 22px rgba(20,24,23,.14),
+    0 24px 48px rgba(20,24,23,.12);
   /* 面板升起时整本书上移让出位置(EditView 算 lift);只有位移,没有缩放。 */
   transition: transform var(--motion-base) var(--ease);
   /* 纸片要在 3D 里真的翻过去,不能被扁平化(同 FlipBook 的 .book)。 */
@@ -131,17 +133,17 @@
    结构与 FlipBook 的 turning leaf 一一对应:两张背对背的面绕书脊那条边 rotateY,
    正面朝外时看到翻走的页、转过 90° 后看到翻进来的页(背面),底下垫着目标屏。
    位置/宽度/origin/角度/时长/缓动全部由 JS 按 flip.ts 算好写在 style 上。 */
-.mobile-editor .mleaf {
+.mobile-editor .mleaf{
   position: absolute;
   top: 0;
   bottom: 0;
   z-index: 6; /* 压过书脊中缝(5),纸片是在书页之上翻动的 */
   transform-style: preserve-3d;
   pointer-events: none; /* 翻的过程中别把点击吃掉 */
-  filter: drop-shadow(0 10px 12px rgba(24, 28, 27, 0.18));
+  filter:drop-shadow(0 12px 14px rgba(20,24,23,.22));
 }
 
-.mobile-editor .mleaf-face {
+.mobile-editor .mleaf-face{
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -151,8 +153,22 @@
   -webkit-backface-visibility: hidden;
 }
 
-.mobile-editor .mleaf-back {
+.mobile-editor .mleaf-face::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  z-index:2;
+  pointer-events:none;
+  background:linear-gradient(90deg,rgba(0,0,0,.12),transparent 26%,rgba(255,255,255,.07));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.22);
+}
+
+.mobile-editor .mleaf-back{
   transform: rotateY(180deg);
+}
+
+.mobile-editor .mleaf-back::after{
+  background:linear-gradient(90deg,rgba(255,255,255,.08),transparent 70%,rgba(0,0,0,.15));
 }
 
 /* 翻页受光:靠书脊那侧压暗一点(渐变值由 JS 给,取自 FlipBook)。 */
@@ -162,34 +178,46 @@
   pointer-events: none;
 }
 
-/* ── 书脊中缝:两页之间那道竖向阴影 ────────────────────────────────────────
-   这是「书」之所以看起来是本书的关键,不是可省的装饰。渐变值逐字取自
-   FlipBook.tsx 的 center spine shadow(24px 宽,中心 .14 向两侧收到 0)——
-   那是产品里既有的书脊,不自创。
+/* ── 书脊中缝:两页之间的响应式折痕和竖向阴影 ─────────────────────────────
+   这是「书」之所以像本书的关键,不是可省的装饰；宽度随窄屏与宽屏收放。
 
-   只在**真的摆了两页**时出现(data-halves="2"):
+   只在**两半都是真实页面**时出现(data-paper-spine="1"):
      · 密度 1 一屏只留一页 → 无中缝
      · 封面/封底独页 → 无中缝(同 FlipBook 的 solo 分支)
      · 编辑态满屏单页 → 无中缝
-   判据用渲染出的半边数而不是 solo:密度 1 的开页并不 solo,按 solo 判会给单页画中缝。 */
-.mobile-editor .mspread[data-halves='2']::before {
+   data-halves 仍保留给已有布局判断；书脊另验两半都非 null，避免空半边也画折痕。 */
+.mobile-editor .mspread[data-paper-spine='1']::before{
   content: '';
   position: absolute;
   top: 0;
   bottom: 0;
   left: 50%;
-  width: 24px;
+  width:clamp(18px,6vw,30px);
   transform: translateX(-50%);
   z-index: 5;
   pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    rgba(0, 0, 0, 0) 0%,
-    rgba(0, 0, 0, 0.1) 45%,
-    rgba(0, 0, 0, 0.14) 50%,
-    rgba(0, 0, 0, 0.1) 55%,
-    rgba(0, 0, 0, 0) 100%
-  );
+  background:linear-gradient(90deg,
+    rgba(255,255,255,.10) 0%,
+    rgba(0,0,0,.04) 23%,
+    rgba(0,0,0,.16) 46%,
+    rgba(0,0,0,.24) 50%,
+    rgba(255,255,255,.14) 54%,
+    rgba(0,0,0,.05) 77%,
+    rgba(255,255,255,.08) 100%);
+}
+
+.mobile-editor .mspread[data-paper-spine='1']::after{
+  content:'';
+  position:absolute;
+  top:0;
+  bottom:0;
+  left:50%;
+  width:1px;
+  transform:translateX(-50%);
+  z-index:5;
+  pointer-events:none;
+  background:rgba(16,20,19,.30);
+  box-shadow:-1px 0 rgba(255,255,255,.13),1px 0 rgba(0,0,0,.08);
 }
 
 /* ── 选中高亮:不往页面 innerHTML 里塞节点、也不改它的样式 ──────────────────
@@ -315,6 +343,22 @@
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32);
 }
 
+.mobile-editor .mspread[data-paper-spine='1'] .mpage::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  z-index:1;
+  pointer-events:none;
+}
+
+.mobile-editor .mspread[data-paper-spine='1'] .mpage:first-of-type::before{
+  background:linear-gradient(90deg,transparent 70%,rgba(255,255,255,.06) 86%,rgba(0,0,0,.14) 100%);
+}
+
+.mobile-editor .mspread[data-paper-spine='1'] .mpage:nth-of-type(2)::before{
+  background:linear-gradient(90deg,rgba(0,0,0,.13) 0%,rgba(255,255,255,.07) 14%,transparent 30%);
+}
+
 .mobile-editor .mspread[data-resting-solo='1'] {
   /* 完整双页盒只提供坐标系，静止时只有真实的半宽封皮产生投影。 */
   box-shadow: none;
@@ -335,13 +379,21 @@
 
 /* 封皮打开先保持独页，正文与书脊在 30% 进度后才显现；闭合则做镜像渐隐。 */
 .mobile-editor .mspread[data-edge-opening='1'] .mpage,
-.mobile-editor .mspread[data-edge-opening='1'][data-halves='2']::before {
+.mobile-editor .mspread[data-edge-opening='1'][data-paper-spine='1']::before {
   animation: medge-under-in 200ms var(--ease) 210ms both;
 }
 
+.mobile-editor .mspread[data-edge-opening='1'][data-paper-spine='1']::after{
+  animation:medge-under-in 200ms var(--ease) 210ms both;
+}
+
 .mobile-editor .mspread[data-edge-closing='1'] .mpage,
-.mobile-editor .mspread[data-edge-closing='1'][data-halves='2']::before {
+.mobile-editor .mspread[data-edge-closing='1'][data-paper-spine='1']::before {
   animation: medge-under-out 180ms var(--ease) 350ms both;
+}
+
+.mobile-editor .mspread[data-edge-closing='1'][data-paper-spine='1']::after{
+  animation:medge-under-out 180ms var(--ease) 350ms both;
 }
 
 .mobile-editor .mspread[data-edge-opening='1'] {

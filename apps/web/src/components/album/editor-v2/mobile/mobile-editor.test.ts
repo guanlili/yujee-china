@@ -112,13 +112,13 @@ test('双页开页有书脊中缝;单页(密度 1 / 独页 / 编辑态)没有', 
     /data-solo="1"[^>]*data-halves="2"/,
     '独页不该摆两页',
   );
-  // 中缝本身是 CSS ::before,按 data-halves="2" 命中 —— 守住那条规则还在
+  // 中缝本身是 CSS ::before,只按 data-paper-spine="1" 命中 —— 空半边不许画书脊。
   const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
-  const at = css.indexOf(".mspread[data-halves='2']::before");
+  const at = css.indexOf(".mspread[data-paper-spine='1']::before");
   assert.ok(at >= 0, '书脊中缝规则被删了 —— 两页之间那道竖向阴影是书的关键');
   const spine = css.slice(at, css.indexOf('}', at));
   assert.match(spine, /left:\s*50%/, '中缝要在正中');
-  assert.match(spine, /rgba\(0,\s*0,\s*0,\s*0\.14\)/, '中心那道最深的阴影(取自 FlipBook)不许改淡');
+  assert.match(spine, /rgba\(0,0,0,\.24\)/, '中心那道纸张折痕必须保留最深的明暗层');
   assert.match(spine, /pointer-events:\s*none/, '中缝不许拦点击(会挡住选中文字)');
 });
 
@@ -201,7 +201,7 @@ test('翻纸:时长/缓动/景深都取自 FlipBook,不自己定', () => {
   assert.doesNotMatch(src, /transition: `transform \d+ms/, '不许在组件里写死时长');
   const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(css, /perspective:\s*2400px/, '景深 2400px,同 FlipBook 的 stage');
-  const at = css.indexOf('.mobile-editor .mleaf {');
+  const at = css.indexOf('.mobile-editor .mleaf{');
   assert.ok(at >= 0, '翻动纸片的规则被删了');
   const leaf = css.slice(at, css.indexOf('}', at));
   assert.match(leaf, /transform-style:\s*preserve-3d/, '不 preserve-3d 纸片会被压平');
@@ -233,10 +233,11 @@ test('封面封尾静止居中，动画时整本书与封皮同步移动', () =>
 
 test('纸张具有接触投影、环境投影、纸边高光和翻页投影', () => {
   const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
-  const spreadAt = css.indexOf('.mobile-editor .mspread {');
+  const spreadAt = css.indexOf('.mobile-editor .mspread{');
   const spreadRule = css.slice(spreadAt, css.indexOf('}', spreadAt));
-  assert.match(spreadRule, /0 2px 5px/);
-  assert.match(spreadRule, /0 18px 42px/);
+  assert.match(spreadRule, /0 1px 2px/);
+  assert.match(spreadRule, /0 9px 22px/);
+  assert.match(spreadRule, /0 24px 48px/);
   const pageAt = css.indexOf('.mobile-editor .mpage {');
   const pageRule = css.slice(pageAt, css.indexOf('}', pageAt));
   assert.match(pageRule, /inset 0 0 0 1px/);
@@ -244,7 +245,7 @@ test('纸张具有接触投影、环境投影、纸边高光和翻页投影', ()
   const edgeRule = css.slice(edgeAt, css.indexOf('}', edgeAt));
   assert.ok(edgeAt >= 0, '纸边高光要有独立覆盖层,否则会被页面 HTML 盖住');
   assert.match(edgeRule, /pointer-events:\s*none/, '纸边覆盖层不能挡页面点击');
-  const leafAt = css.indexOf('.mobile-editor .mleaf {');
+  const leafAt = css.indexOf('.mobile-editor .mleaf{');
   const leafRule = css.slice(leafAt, css.indexOf('}', leafAt));
   assert.match(leafRule, /filter:\s*drop-shadow/);
 });
@@ -263,7 +264,7 @@ test('底部翻页条 + 书浮在画板上:两样都不许去掉', () => {
   assert.match(html, /class="mboard"/, '画板不许去掉');
   assert.match(html, /class="mspread"/, '书要浮在画板上');
   const css = source('mobile-editor.css').replace(/\/\*[\s\S]*?\*\//g, '');
-  const at = css.indexOf('.mobile-editor .mspread {');
+  const at = css.indexOf('.mobile-editor .mspread{');
   assert.match(
     css.slice(at, css.indexOf('}', at)),
     /box-shadow/,

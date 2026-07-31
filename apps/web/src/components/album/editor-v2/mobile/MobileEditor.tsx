@@ -489,6 +489,7 @@ export function MobileEditor({
               // 密度 1 时 onlyPage 只留一页(那个开页并不 solo),按 solo 判会给单页画中缝;
               // 双宽跨页(full)也只有一张面 —— 画面本就连续,同样不该有中缝。
               data-halves={faces.length}
+              data-paper-spine={faces.length === 2 && faces.every((pageIndex) => pageIndex != null) ? '1' : undefined}
               style={{
                 width: box.w,
                 height: box.h,
