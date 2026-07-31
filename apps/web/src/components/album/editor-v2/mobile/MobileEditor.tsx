@@ -11,9 +11,9 @@
    手势、chrome、面板全部各写各的 —— 手机和电脑本来就该不一样。
 
    浏览态布局(按设计稿):顶栏(返回/书名/分享·导出·更多) + 画板(书居中浮在垫底
-   背景上,底色由相册的画板背景属性决定、默认走网页端同款 --bg;左下角画板背景与
-   密度两枚圆钮、右下角 AI 气泡) + 底部书册预览栏(渲染真实版面,照片走 thumb 档)。
-   **书不做自由缩放**:密度是离散档位,尺寸由 fitBox 算好重绘,不用 transform 拉伸。
+   背景上,底色由相册的画板背景属性决定、默认走网页端同款 --bg;左下角画板背景
+   圆钮、右下角 AI 气泡) + 底部书册预览栏(渲染真实版面,照片走 thumb 档)。
+   **书不做自由缩放**:浏览态固定双页,尺寸由 fitBox 算好重绘,不用 transform 拉伸。
 
    本文件刻意不 import photoStore / fetch 之类的副作用:数据加载在 MobileEditorRoot,
    这样这棵树能被 renderToStaticMarkup 直接断言(仓里无 jsdom)。
@@ -26,7 +26,7 @@ import { buildSpreads, isSoloSpread, spreadPageIndices, spreadRenderKind } from 
 import { pageFaceHTML, type PageFaceCtx } from '../page-face';
 import { pageFolioInfos } from '../../page-html-dom';
 import type { ResolveImage } from '../../adapt-layout';
-import { cycleDensity, type Density } from '../mobile-canvas';
+import type { Density } from '../mobile-canvas';
 import { browseScreen, browseUnits, stepScreen, screenStartOfPage, type BrowseScreen } from './browse-window';
 import { fitBox, spreadAspect } from './fit-box';
 import {
@@ -98,10 +98,10 @@ export type MobileEditorProps = {
   onDeletePage: () => void;
 };
 
-/** 开页与开页之间的缝(px)。 */
-const GAP = 10;
 /** 书页四周露出的垫底背景(px):书居中浮起,不顶满可视区。 */
 const INSET = 24;
+/** 移动浏览只保留一个双页跨页；共享 Density 仍保留 1/4 给其他旧调用方。 */
+const MOBILE_BROWSE_DENSITY = 2 as const satisfies Density;
 /** iOS 左缘返回手势让位。 */
 const EDGE_GUARD = 20;
 /** 判定为横滑的最小位移。 */
@@ -148,7 +148,6 @@ export function MobileEditor({
   onPickText,
   onDeletePage,
 }: MobileEditorProps) {
-  const [density, setDensity] = useState<Density>(2);
   const [startPage, setStartPage] = useState(0);
   const [area, setArea] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const boardRef = useRef<HTMLDivElement>(null);
@@ -176,13 +175,13 @@ export function MobileEditor({
   const spreads = useMemo(() => buildSpreads(pages), [pages]);
   const folioInfos = useMemo(() => pageFolioInfos(pages.map((p) => p.templateId)), [pages]);
   const screen = useMemo(
-    () => browseScreen(spreads, pages, startPage, density),
-    [spreads, pages, startPage, density],
+    () => browseScreen(spreads, pages, startPage, MOBILE_BROWSE_DENSITY),
+    [spreads, pages, startPage],
   );
   /* 缩略条的格子。**不依赖 startPage** —— 翻页只挪高亮,不该让整条重新分组。 */
   const stripUnits = useMemo(
-    () => browseUnits(spreads, pages, density),
-    [spreads, pages, density],
+    () => browseUnits(spreads, pages, MOBILE_BROWSE_DENSITY),
+    [spreads, pages],
   );
 
   /** 一个开页在本屏里实际摆出来的「面」。
@@ -239,9 +238,9 @@ export function MobileEditor({
   /** 翻一屏。几何允许就走翻纸动效,否则直接切(见 flip.ts 的 canFlip)。 */
   const goScreen = (dir: 1 | -1) => {
     if (anim) return; // 翻纸过程中不接新的翻页(同 FlipBook)
-    const toStart = stepScreen(spreads, pages, startPage, density, dir);
+    const toStart = stepScreen(spreads, pages, startPage, MOBILE_BROWSE_DENSITY, dir);
     if (toStart === startPage) return; // 已在夹边
-    const to = browseScreen(spreads, pages, toStart, density);
+    const to = browseScreen(spreads, pages, toStart, MOBILE_BROWSE_DENSITY);
     const fromShape = shapeOf(screen);
     const toShape = shapeOf(to);
     const ok =
@@ -353,7 +352,7 @@ export function MobileEditor({
         onPhotoFilter={onPhotoFilter}
         onExit={() => {
           // 浏览游标对齐到刚编辑那页所在的屏,回来不迷路。
-          setStartPage(screenStartOfPage(spreads, pages, editPage, density));
+          setStartPage(screenStartOfPage(spreads, pages, editPage, MOBILE_BROWSE_DENSITY));
           onExitEdit(editPage);
         }}
         onStep={(dir) => onEnterEdit(stepScreen(spreads, pages, editPage, 1, dir))}
@@ -379,16 +378,19 @@ export function MobileEditor({
 
   const availW = Math.max(0, area.w - INSET * 2);
   const availH = Math.max(0, area.h - INSET * 2);
-  const rows = Math.max(1, screen.spreadIndices.length);
-  const rowH = (availH - GAP * (rows - 1)) / rows;
+  // 全书只算一套物理纸张尺寸：正文用完整双页盒，封面/封尾取它的一半宽。
+  // 若独页自己按单页比例 fit，它会在同一画板里长得比正文单页更大。
+  const bookBox = fitBox(availW, availH, spreadAspect(2));
   // 翻纸中的目标屏(整屏算一次,不在 map 里反复算)。
-  const toScreen = anim ? browseScreen(spreads, pages, anim.toStart, density) : null;
+  const toScreen = anim
+    ? browseScreen(spreads, pages, anim.toStart, MOBILE_BROWSE_DENSITY)
+    : null;
 
   return (
     <div
       className="mobile-editor"
       data-mode="browse"
-      data-density={density}
+      data-density={MOBILE_BROWSE_DENSITY}
       style={boardBackground ? { background: boardBackground } : undefined}
     >
       <MobileTopbar
@@ -425,7 +427,10 @@ export function MobileEditor({
           const faces: (number | null)[] = layers ? layers.under : resting.faces;
           // 容器按 wide 算宽(双宽跨页是「一张面 + 两页宽」),不按面数算 ——
           // 否则 full 会被缩成半宽。
-          const box = fitBox(availW, rowH, spreadAspect(resting.wide));
+          const box =
+            resting.wide === 1
+              ? { w: bookBox.w / 2, h: bookBox.h }
+              : bookBox;
           const face = (pi: number | null, w: number) =>
             box.w > 0
               ? pageFaceHTML(pi == null ? null : (pages[pi] ?? null), w, box.h, ctxOf(pi ?? -1))
@@ -492,7 +497,7 @@ export function MobileEditor({
           );
         })}
 
-        {/* 画布状态类控件落在左下角 —— 导航栏是「离开这屏去哪」,这里是「这屏怎么看」 */}
+        {/* 画布背景属于当前画板状态,留在左下角,不塞进顶栏导航。 */}
         <div className="mfab-col">
           <button
             type="button"
@@ -501,14 +506,6 @@ export function MobileEditor({
             onClick={onBoardBg}
           >
             <IconBoardBg className="mfab-ic" />
-          </button>
-          <button
-            type="button"
-            className="mfab"
-            aria-label={zh ? '一屏几页' : 'Pages per screen'}
-            onClick={() => setDensity((d) => cycleDensity(d))}
-          >
-            <span className="mfab-num">{density}</span>
           </button>
         </div>
 

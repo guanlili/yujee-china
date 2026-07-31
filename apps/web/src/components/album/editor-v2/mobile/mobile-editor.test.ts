@@ -52,7 +52,7 @@ function render(pages = BOOK, zh = true) {
   );
 }
 
-test('首帧就有完整骨架:顶栏 / 画板 / 书册预览栏,默认密度 2(对页)', () => {
+test('首帧就有完整骨架:顶栏 / 画板 / 书册预览栏,固定密度 2(对页)', () => {
   const html = render();
   assert.match(html, /data-mode="browse" data-density="2"/);
   assert.match(html, /class="mtopbar"/);
@@ -75,11 +75,11 @@ test('按设计稿去掉位置条那一行(章节 chips + 页码)', () => {
   assert.doesNotMatch(html, /class="mfolio"/, '位置条已删');
 });
 
-test('画布控件落在画板左下角:画板背景 + 一屏几页', () => {
+test('画布控件落在画板左下角:只保留画板背景', () => {
   const html = render();
   assert.match(html, /aria-label="画板背景"/);
-  assert.match(html, /aria-label="一屏几页"/);
-  assert.match(html, /class="mfab-num">2</, '密度钮显示当前档位');
+  assert.doesNotMatch(html, /aria-label="一屏几页"/);
+  assert.doesNotMatch(html, /class="mfab-num"/);
 });
 
 test('AI 气泡在画板右下角(两态同一位置)', () => {
@@ -91,7 +91,7 @@ test('i18n:英文 locale 下 chrome 不留中文(硬编码中文 = 英文用户�
   assert.match(html, /aria-label="Back"/);
   assert.match(html, /aria-label="Share"/);
   assert.match(html, /aria-label="Board background"/);
-  assert.match(html, /aria-label="Pages per screen"/);
+  assert.doesNotMatch(html, /aria-label="Pages per screen"/);
   assert.match(html, /aria-label="Expand chat"/);
   assert.match(html, /aria-label="Book preview"/);
   assert.match(html, /aria-label="Page 1"/, '预览栏每格的页码也要翻');
@@ -135,9 +135,10 @@ test('书脊中缝的条件是「真摆了两张面」,不是「非独页」(密
 
 test('双宽跨页(#303):一张面 + 两页宽容器,不许缩成半宽、不许画中缝', () => {
   const src = source('MobileEditor.tsx');
-  // 容器宽按 wide 算,不按面数算
-  assert.match(src, /fitBox\(availW, rowH, spreadAspect\(resting\.wide\)\)/,
-    '容器宽度必须按 wide 算 —— 按面数算会把双宽页压成半宽');
+  // 容器先按双页书盒统一 fit；full 取整盒、solo 取半盒。
+  assert.match(src, /const bookBox = fitBox\(availW, availH, spreadAspect\(2\)\)/);
+  assert.match(src, /resting\.wide === 1[\s\S]{0,120}bookBox\.w \/ 2/,
+    '独页必须取双页书盒的一半，full/普通对页取整盒');
   assert.match(src, /sp\.kind === 'full'[\s\S]{0,80}wide: 2/, 'full 必须是「一张面 + 两页宽」');
   // 编辑态同样要按双宽摆
   const edit = source('EditView.tsx');
@@ -175,7 +176,7 @@ test('返回浏览态要对齐到刚编辑那页所在的屏(不是跳回开头)
   const src = source('MobileEditor.tsx');
   assert.match(
     src,
-    /setStartPage\(screenStartOfPage\(spreads, pages, editPage, density\)\)[\s\S]{0,80}onExitEdit/,
+    /setStartPage\(screenStartOfPage\(spreads, pages, editPage, MOBILE_BROWSE_DENSITY\)\)[\s\S]{0,80}onExitEdit/,
     '退出编辑前必须把浏览游标对齐到 editPage 所在的屏',
   );
 });
@@ -254,6 +255,26 @@ test('默认密度 2 渲染一个开页;封面是独页(只有一页,没有对�
   const pagesInScreen = html.match(/class="mpage"/g) ?? [];
   assert.equal(pagesInScreen.length, 1, '封面独页不该带一个空白对开半边');
   assert.match(html, /data-solo="1"/);
+});
+
+test('浏览态固定双页:不再渲染 1/2/4 密度按钮', () => {
+  const html = render();
+  assert.equal(html.includes('aria-label="一屏几页"'), false);
+  assert.equal(html.includes('aria-label="Pages per screen"'), false);
+  const src = source('MobileEditor.tsx');
+  assert.match(src, /const MOBILE_BROWSE_DENSITY = 2 as const/);
+  assert.doesNotMatch(src, /cycleDensity|setDensity|useState<Density>/);
+});
+
+test('封面封尾与正文共用同一个物理单页尺寸', () => {
+  const src = source('MobileEditor.tsx');
+  assert.match(src, /const bookBox = fitBox\(availW, availH, spreadAspect\(2\)\)/);
+  assert.match(src, /resting\.wide === 1[\s\S]{0,120}bookBox\.w \/ 2/);
+  assert.doesNotMatch(
+    src,
+    /fitBox\(availW,\s*rowH,\s*spreadAspect\(resting\.wide\)\)/,
+    '按每屏宽度各自 fit 会让独页比正文单页更大',
+  );
 });
 
 /* ── 架构守卫:这两条是本次重构的存在理由,破了就等于回到老路 ────────────────── */
