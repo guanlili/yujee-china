@@ -8,6 +8,31 @@ interface Props {
   locale: Locale;
 }
 
+const LINK_CLASS = 'block text-sm text-[var(--meta)] hover:text-[var(--fg)] py-1';
+
+/**
+ * One footer link.
+ *
+ * `mailto:` must not get the /{locale} prefix — prefixing it produced
+ * `/zh/mailto:support@…`, a 404 dressed up as a contact link. Anything else is
+ * a locale-relative path or a landing-page anchor and does get the prefix.
+ */
+function FooterLink({ locale, href, label }: { locale: Locale; href: string; label: string }) {
+  if (href.startsWith('mailto:')) {
+    return (
+      <a href={href} className={LINK_CLASS}>
+        {label}
+      </a>
+    );
+  }
+
+  return (
+    <Link href={`/${locale}${href}`} className={LINK_CLASS}>
+      {label}
+    </Link>
+  );
+}
+
 // Shared site footer. Rendered by MarketingChrome (landing, pricing, legal) and
 // opted into by the logged-in home (/create) so the page reads as a complete
 // surface rather than a bare composer.
@@ -22,31 +47,15 @@ export function MarketingFooter({ locale }: Props) {
           <p className="text-sm leading-relaxed text-[var(--meta)]">{m.footer.tagline}</p>
           <MarketingSocials />
         </div>
-        <div className="flex gap-14">
-          <div>
-            <h4 className="text-sm font-semibold text-[var(--fg)] mb-4 tracking-wide">{m.footer.productHead}</h4>
-            {m.footer.productItems.map((item) => (
-              <Link
-                key={item.href}
-                href={`/${locale}${item.href}`}
-                className="block text-sm text-[var(--meta)] hover:text-[var(--fg)] py-1"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-          <div>
-            <h4 className="text-sm font-semibold text-[var(--fg)] mb-4 tracking-wide">{m.footer.legalHead}</h4>
-            {m.footer.legalItems.map((item) => (
-              <Link
-                key={item.href}
-                href={`/${locale}${item.href}`}
-                className="block text-sm text-[var(--meta)] hover:text-[var(--fg)] py-1"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
+        <div className="grid grid-cols-2 gap-x-10 gap-y-10 sm:flex sm:flex-wrap sm:gap-x-14">
+          {m.footer.groups.map((group) => (
+            <div key={group.head}>
+              <h4 className="text-sm font-semibold text-[var(--fg)] mb-4 tracking-wide">{group.head}</h4>
+              {group.items.map((item) => (
+                <FooterLink key={item.href} locale={locale} href={item.href} label={item.label} />
+              ))}
+            </div>
+          ))}
         </div>
       </div>
       <div className="max-w-[1100px] mx-auto px-6 md:px-8 pb-8 pt-6 border-t border-[var(--border-soft)] text-xs text-[var(--meta)]">

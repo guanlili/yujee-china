@@ -46,6 +46,7 @@ type Copy = {
   navExamples: string;
   navPricing: string;
   navFaq: string;
+  footerStory: string;
   login: string;
   menu: string;
   createTitle: string;
@@ -120,6 +121,7 @@ const copies: Record<Locale, Copy> = {
     navExamples: 'Examples',
     navPricing: 'Pricing',
     navFaq: 'FAQ',
+    footerStory: 'Our story',
     login: 'Log in',
     menu: 'Menu',
     createTitle: 'Turn your scattered photos into a magazine you can read, touch, and keep',
@@ -179,7 +181,7 @@ const copies: Record<Locale, Copy> = {
     footerTagline: 'Turn your photos into a beautifully designed album.',
     footerProduct: 'Product',
     footerResources: 'Resources',
-    footerCompany: 'Company',
+    footerCompany: 'About',
     footerAccount: 'Account',
     footerPrivacy: 'Privacy',
     footerTerms: 'Terms',
@@ -265,6 +267,7 @@ const copies: Record<Locale, Copy> = {
     navExamples: '示例',
     navPricing: '定价',
     navFaq: '常见问题',
+    footerStory: '创始故事',
     login: '登录',
     menu: '菜单',
     createTitle: '把散落的照片，做成一本能读、能摸、能留的杂志',
@@ -321,7 +324,7 @@ const copies: Record<Locale, Copy> = {
     footerTagline: '把照片做成一本设计好的相册。',
     footerProduct: '产品',
     footerResources: '资源',
-    footerCompany: '公司',
+    footerCompany: '关于',
     footerAccount: '账户',
     footerPrivacy: '隐私政策',
     footerTerms: '服务条款',
@@ -1148,14 +1151,18 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
                 [c.heroCta, composerHref],
                 [c.navPricing, '#pricing'],
               ]} />
-              {/* Only link to surfaces that exist. "使用指南" / "模板库" / "关于" used to
-                  sit here pointing at #features / #outputs — the pages were never built, so
-                  clicking "关于" just scrolled back to "它能做什么". Worse than a 404, which
-                  at least tells the truth. Re-add each label the day its page ships. */}
+              {/* Only link to surfaces that exist. "使用指南" / "模板库" used to sit here
+                  pointing at #features / #outputs — the pages were never built, so clicking
+                  them just scrolled back to "它能做什么". Worse than a 404, which at least
+                  tells the truth. Re-add each label the day its page ships. */}
               <FooterColumn title={c.footerResources} links={[
                 [c.navFaq, '#faq'],
               ]} />
+              {/* "关于" is back, and this time it goes somewhere: the founder story
+                  shipped. It leads the column because it is the only entry here a
+                  reader would open on purpose. */}
               <FooterColumn title={c.footerCompany} links={[
+                [c.footerStory, `/${locale}/about/story`],
                 [c.footerPrivacy, `/${locale}/privacy`],
                 [c.footerTerms, `/${locale}/terms`],
               ]} />

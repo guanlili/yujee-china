@@ -4,11 +4,13 @@ import robots from '@/app/robots';
 import sitemap from '@/app/sitemap';
 import { ADDON_PACKS, FREE_PLAN_CREDITS, PAGES_PER_CREDIT_LABEL, PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { locales } from '@/lib/i18n/routing';
+import { SOCIAL_LINKS } from '@/config/social';
 import { getFaqEntries } from './faq';
 import { buildLlmsTxt } from './llms';
 import { INDEXABLE_ROUTES, NOINDEX_ROUTES } from './routes';
-import { faqPageSchema, organizationSchema, softwareApplicationSchema } from './schema';
+import { articleSchema, faqPageSchema, organizationSchema, softwareApplicationSchema } from './schema';
 import { absoluteUrl, SITE_URL } from './site';
+import { getMarketingMessages } from '@/messages/marketing';
 
 function disallowedPaths(): string[] {
   const { rules } = robots();
@@ -38,6 +40,108 @@ test('indexable routes exclude every auth/app route', () => {
   assert.ok(INDEXABLE_ROUTES.includes('/'));
   assert.ok(INDEXABLE_ROUTES.includes('/privacy'));
   assert.ok(INDEXABLE_ROUTES.includes('/terms'));
+  assert.ok(INDEXABLE_ROUTES.includes('/about/story'));
+});
+
+test('the founder story exists in both locales and is real prose, not markup', () => {
+  for (const locale of locales) {
+    const s = getMarketingMessages(locale).story;
+    assert.ok(s.metaTitle.length > 0 && s.metaDesc.length > 0);
+    assert.ok(s.lede.length > 0, `${locale} story needs an opening`);
+    assert.ok(s.sections.length >= 6, `${locale} story lost sections`);
+
+    for (const section of s.sections) {
+      assert.ok(section.h.length > 0);
+      assert.ok(section.paras.length > 0, `section "${section.h}" has no body`);
+      // The page renders these as text nodes. Markdown emphasis or HTML here
+      // would ship to the user literally.
+      for (const p of [...section.paras, ...(section.bullets ?? []), section.pull ?? '']) {
+        assert.ok(!p.includes('**'), `"${p.slice(0, 40)}" still carries markdown emphasis`);
+        assert.ok(!p.includes('<'), `"${p.slice(0, 40)}" carries markup`);
+      }
+    }
+  }
+});
+
+const footerItems = (locale: (typeof locales)[number]) =>
+  getMarketingMessages(locale).footer.groups.flatMap((g) => g.items);
+
+test('the story page is reachable from every page, or nothing links to it', () => {
+  // A page absent from the sitemap-linked navigation is an orphan: crawlers can
+  // only reach it via the sitemap, and Google discounts pages nothing links to.
+  for (const locale of locales) {
+    const hrefs = footerItems(locale).map((i) => i.href);
+    assert.ok(hrefs.includes('/about/story'), `${locale} footer does not link the story`);
+  }
+});
+
+test('the story sits in the About group, not Product — the footer groups carry meaning', () => {
+  // Group headings are the cheapest on-page signal about what a page IS. A
+  // founder story filed under "Product" reads to a crawler as a feature page.
+  for (const locale of locales) {
+    const { groups } = getMarketingMessages(locale).footer;
+    const owner = groups.find((g) => g.items.some((i) => i.href === '/about/story'));
+    assert.ok(owner, `${locale} footer does not link the story at all`);
+    assert.equal(owner.items.length, 1, 'the About group should not accumulate unrelated links');
+    const product = groups[0];
+    assert.ok(
+      !product.items.some((i) => i.href === '/about/story'),
+      `${locale} still lists the story under the first (product) group`,
+    );
+  }
+});
+
+test('every footer link target is a real route, a real anchor, or a mailto', () => {
+  // A footer ships on every page, so one dead href is a sitewide broken link.
+  // Landing anchors are checked against the ids the landing actually renders —
+  // the nav already ships a `#how` that no section answers to.
+  const routes = new Set([...INDEXABLE_ROUTES, '/about']);
+  const anchors = new Set(['#homepage-composer', '#features', '#outputs', '#pricing', '#faq']);
+
+  for (const locale of locales) {
+    for (const { href } of footerItems(locale)) {
+      if (href.startsWith('mailto:')) {
+        assert.match(href, /^mailto:[^@\s]+@[^@\s]+$/, `${locale} footer has a malformed mailto: ${href}`);
+        continue;
+      }
+      if (href.startsWith('#')) {
+        assert.ok(anchors.has(href), `${locale} footer links ${href}, which no landing section renders`);
+        continue;
+      }
+      assert.ok(routes.has(href.split('#')[0]), `${locale} footer links ${href}, which is not a route`);
+    }
+  }
+});
+
+test('footer groups are non-empty and uniquely headed in both locales', () => {
+  for (const locale of locales) {
+    const { groups } = getMarketingMessages(locale).footer;
+    assert.ok(groups.length >= 4, `${locale} footer lost a group`);
+    const heads = groups.map((g) => g.head);
+    assert.equal(new Set(heads).size, heads.length, `${locale} footer has duplicate group headings`);
+    for (const g of groups) {
+      assert.ok(g.head.length > 0 && g.items.length > 0, `${locale} group "${g.head}" is empty`);
+      for (const i of g.items) assert.ok(i.label.length > 0, `${locale} group "${g.head}" has an unlabeled link`);
+    }
+  }
+  // Both locales must offer the same set of destinations, or one language
+  // quietly loses a page.
+  const [en, zh] = locales.map((l) => footerItems(l).map((i) => i.href).sort());
+  assert.deepEqual(en, zh, 'en and zh footers point at different places');
+});
+
+test('articleSchema describes the story page with a real author and date', () => {
+  for (const locale of locales) {
+    const schema = articleSchema(locale);
+    assert.equal(schema['@type'], 'Article');
+    assert.equal(schema.url, absoluteUrl(`/${locale}/about/story`));
+    assert.equal(schema.author['@type'], 'Person');
+    assert.ok(schema.author.name.length > 0);
+    // Google drops Article rich results without a parseable ISO date.
+    assert.match(schema.datePublished, /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(schema.publisher.name, 'Yujee');
+    assert.equal(schema.headline, getMarketingMessages(locale).story.title);
+  }
 });
 
 test('login and register are explicitly marked noindex', () => {
@@ -106,6 +210,15 @@ test('organizationSchema points at the apex and names the brand in both scripts'
   assert.equal(schema.url, SITE_URL);
   assert.ok(schema.name.includes('Yujee'));
   assert.ok(schema.logo.startsWith(SITE_URL));
+});
+
+test('organizationSchema sameAs mirrors the live social accounts, never an empty href', () => {
+  const live = SOCIAL_LINKS.filter((s) => s.href).map((s) => s.href);
+  const schema = organizationSchema();
+  assert.deepEqual(schema.sameAs ?? [], live);
+  for (const url of schema.sameAs ?? []) {
+    assert.ok(url.startsWith('https://'), `sameAs entry ${url} is not an absolute https URL`);
+  }
 });
 
 test('robots.txt must NOT Disallow the noindex routes', () => {

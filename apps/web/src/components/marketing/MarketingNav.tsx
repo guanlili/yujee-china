@@ -40,7 +40,10 @@ export function MarketingNav({ locale, m }: Props) {
     ...(user
       ? [{ key: 'myProjects', label: m.nav.myProjects, href: `/${locale}/my-albums`, active: false }]
       : []),
-    { key: 'how', label: m.nav.howItWorks, href: homeSectionHref('how'), active: false },
+    // 'features', not 'how': the landing renders id="features". This linked to
+    // #how for as long as it existed, and #how matches no section, so the item
+    // was dead on click.
+    { key: 'how', label: m.nav.howItWorks, href: homeSectionHref('features'), active: false },
     { key: 'pricing', label: m.nav.pricing, href: homeSectionHref('pricing'), active: false },
   ];
 

@@ -25,6 +25,15 @@ const nextConfig = {
         destination: "https://yujeeai.com/:path*",
         permanent: true,
       },
+      // /about is a grouping segment, not a page. Without this it 404s, which
+      // is what a crawler (and anyone who truncates the URL) hits first. 307,
+      // not 308: if a real About page is written later this must stop
+      // redirecting, and a permanent redirect stays cached in browsers.
+      {
+        source: "/:locale(en|zh)/about",
+        destination: "/:locale/about/story",
+        permanent: false,
+      },
     ];
   },
 };
