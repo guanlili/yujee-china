@@ -78,6 +78,13 @@ import {
   type SwapSlotRef,
 } from './image-swap';
 import {
+  buildSwapPermutation,
+  canSwapUnits,
+  pairUnitOfPage,
+  swapUnitOfPage,
+  type PageSwapUnit,
+} from './page-swap';
+import {
   editAnchorId,
   editAnchorSelector,
   resolveEditAnchor,
@@ -2423,6 +2430,7 @@ function EditorBook({
     }
     const onSwapPointerDown = (e: PointerEvent) => {
       if (!bodyEl.classList.contains('overview-on')) return;
+      if (pageSwapOn) return; // 页序模式内,照片级手势整体让路
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       cancelSwapPending();
       const pick = swapPickAt(e.target);
@@ -2486,15 +2494,117 @@ function EditorBook({
       if (swapDrag) endSwapDrag(false);
       else sweepSwapArtifacts();
     };
-    /** Esc 放弃这次交换(拾起后发现拖错了,不必找个空白处松手)。 */
+    /** Esc 放弃这次交换(拾起后发现拖错了,不必找个空白处松手);再按退出页序模式。 */
     const onSwapKeydown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       cancelSwapPending();
       if (swapDrag) {
         e.stopPropagation();
         endSwapDrag(false);
+        return;
+      }
+      if (pageSwapOn) {
+        e.stopPropagation();
+        setPageSwapMode(false);
       }
     };
+
+    // ── 整页交换:「调整页序」模式(2026-08-01 设计)──────────────────────────
+    // 交互是「选中 → 点目标」,不占用拖拽手势 —— 画布的平移/缩放照旧。合法性与
+    // 置换全部来自 page-swap.ts(与移动端同一份);落库走原子 reorder 端点,失败
+    // 按逆置换回滚本地,不留半交换态。模式内照片级手势(选图/pan/图片交换)让路。
+    let pageSwapOn = false;
+    let pageSwapSel: PageSwapUnit | null = null;
+    /** 选中态下,点这一页对应哪个合法落点单元。单页选中 → 单页;大页选中 →
+     *  大页或**完整**对页(设计表:选中单页时大页置灰,想换整对先选大页)。 */
+    function pageSwapTargetUnit(i: number): PageSwapUnit | null {
+      if (!pageSwapSel) return null;
+      const single = swapUnitOfPage(pagesState, i);
+      if (!single) return null;
+      if (canSwapUnits(pageSwapSel, single)) return single;
+      if (pageSwapSel.kind === 'full') {
+        const pair = pairUnitOfPage(pagesState, i);
+        if (pair && canSwapUnits(pageSwapSel, pair)) return pair;
+      }
+      return null;
+    }
+    /** 把选中/置灰状态刷到画布格子上。renderOverview 整体重建 innerHTML,
+     *  所以状态不存在 DOM 里 —— 每次重建后重刷一遍(幂等)。 */
+    function applyPageSwapMarks() {
+      const grid = byId('ovGrid');
+      if (!grid) return;
+      grid.querySelectorAll<HTMLElement>('.ov-page[data-page-index]').forEach((el) => {
+        el.classList.remove('pswap-sel', 'pswap-dim');
+        if (!pageSwapOn || el.dataset.pageIndex === '') return;
+        const i = Number(el.dataset.pageIndex);
+        if (pageSwapSel) {
+          if (pageSwapSel.indices.includes(i)) el.classList.add('pswap-sel');
+          else if (!pageSwapTargetUnit(i)) el.classList.add('pswap-dim');
+        } else if (!swapUnitOfPage(pagesState, i)) {
+          el.classList.add('pswap-dim');
+        }
+      });
+    }
+    function setPageSwapMode(on: boolean) {
+      if (pageSwapOn === on) return;
+      pageSwapOn = on;
+      pageSwapSel = null;
+      if (on) {
+        // 进入前清掉照片/文字编辑残留;半途的图片交换候选/拖动一并作废。
+        selectedPageIndex = null;
+        clearImageSelection();
+        hideElementToolbar();
+        updateSelectionHighlight();
+        cancelSwapPending();
+        if (swapDrag) endSwapDrag(false);
+      }
+      bodyEl.classList.toggle('page-swap-on', on);
+      byId('pageSwapBtn')?.classList.toggle('active', on);
+      applyPageSwapMarks();
+    }
+    function onPageSwapClick(i: number) {
+      if (!pageSwapSel) {
+        const unit = swapUnitOfPage(pagesState, i);
+        if (!unit) return; // 锚定页/越界:不可选
+        pageSwapSel = unit;
+        applyPageSwapMarks();
+        return;
+      }
+      if (pageSwapSel.indices.includes(i)) {
+        // 再点选中单元 = 取消选择,留在模式内
+        pageSwapSel = null;
+        applyPageSwapMarks();
+        return;
+      }
+      const target = pageSwapTargetUnit(i);
+      if (!target) return; // 非法落点:置灰的格子点了也不响应
+      void commitPageSwap(pageSwapSel, target);
+    }
+    /** 乐观落地:本地按置换重排 + 整本重绘,后台发原子 reorder;失败回滚。
+     *  与图片交换同理不走脏页快路 —— 这是一次明确的低频操作,整本重绘代价可接受。 */
+    async function commitPageSwap(a: PageSwapUnit, b: PageSwapUnit) {
+      const perm = buildSwapPermutation(pagesState.length, a, b);
+      if (!perm) return;
+      const prev = pagesState;
+      pagesState = perm.map((oldIdx, newIdx) => ({ ...prev[oldIdx]!, pageIndex: newIdx }));
+      pageSwapSel = null; // 保持在模式内,可连续交换
+      rebuildSpreads();
+      repaintBook();
+      try {
+        const res = await fetch(`/api/v1/albums/${albumId}/pages/reorder`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ permutation: perm }),
+        });
+        if (!res.ok) throw new Error(`reorder ${res.status}`);
+      } catch {
+        // 服务端没存上,本地不能装作换成了 —— 回滚到旧引用(pageIndex 原样)重绘。
+        pagesState = prev;
+        rebuildSpreads();
+        repaintBook();
+        alert(t('pageSwapFailed'));
+      }
+    }
 
     // A click anywhere on a selected page: if it's on an editable image, enter
     // image-edit mode for that slot; otherwise fall through to page select/deselect.
@@ -2946,6 +3056,8 @@ function EditorBook({
       // 点击不再「跳回书籍视图」:画板就是工作面,选中/编辑全部就地发生
       // (委托绑定在 #ovGrid 上,见下方 canvas editing 段)。双击跨页仍可进书籍
       // 视图翻页 —— 那是逃生门,不是主路径。
+      // innerHTML 整体重建把页序模式的选中/置灰类冲掉了,按模式态重刷(幂等)。
+      applyPageSwapMarks();
     }
     function enterOverview() {
       // Show the overview container *before* rendering: while .book-overview is
@@ -2960,6 +3072,8 @@ function EditorBook({
       applyOvTransform();
     }
     function exitOverview() {
+      // 页序模式是画布专属:切回预览前先退出,别把置灰/选中态带进书籍视图。
+      setPageSwapMode(false);
       bodyEl.classList.remove('overview-on');
       // 默认进画板后 #book 一直是 display:none —— 里面的页从未按真实尺寸画过(paintEl 在
       // offsetParent===null / 0×0 时会跳过),直接切预览会是空白。现在它变可见了,先 force
@@ -3137,6 +3251,17 @@ function EditorBook({
       const host = (e.target as HTMLElement).closest<HTMLElement>(
         '.ov-page[data-page-index]:not(.ov-empty)',
       );
+      // 页序模式:点击是「选中 → 点目标」的状态机,不进入普通选页/编辑链路。
+      // 点空白不退出模式(退出走 Esc / 再点按钮),只清掉半途的选中。
+      if (pageSwapOn) {
+        if (host && host.dataset.pageIndex !== '') {
+          onPageSwapClick(Number(host.dataset.pageIndex));
+        } else if (pageSwapSel) {
+          pageSwapSel = null;
+          applyPageSwapMarks();
+        }
+        return;
+      }
       if (host && host.dataset.pageIndex !== '') {
         surfaceClick(host, e);
         return;
@@ -5154,6 +5279,7 @@ function EditorBook({
       exportSinglePages: () => void exportSinglePages(),
       openBoardBg: openBoardBgModal,
       closeBoardBg: closeBoardBgModal,
+      togglePageSwap: () => setPageSwapMode(!pageSwapOn),
       uploadStub: () => alert(t('alertUploadStub')),
       confirmNewChapter,
     };
@@ -5572,6 +5698,19 @@ function EditorBook({
               aria-label={locale === 'zh' ? '垫底背景' : 'Board background'}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></svg>
+            </button>
+            {/* 整页交换:进入「调整页序」模式(选中一页/大页 → 点合法目标对调)。
+                只在画布模式有意义(exitOverview 会强制退出)。左右换位箭头符号。 */}
+            <button
+              className="zoom-btn view-btn"
+              id="pageSwapBtn"
+              data-action="togglePageSwap"
+              data-testid="page-swap-btn"
+              data-tip={locale === 'zh' ? '调整页序' : 'Reorder pages'}
+              data-i18n-tip="pageSwap"
+              aria-label={locale === 'zh' ? '调整页序' : 'Reorder pages'}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg>
             </button>
           </div>
         </div>
