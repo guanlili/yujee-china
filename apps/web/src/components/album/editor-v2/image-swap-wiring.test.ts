@@ -37,19 +37,31 @@ test('两端共用同一份交换语义,不各写一套', () => {
   assert.match(editView, /exceedsLongPressSlop\(/);
 });
 
-test('桌面鼠标:按住图一拖就拾起,不要求先按住 —— 长按只留给触屏', () => {
-  // 早先两端一律长按 350ms。鼠标用户「按住图往外拖」在 350ms 内就越过了 slop,
-  // 被判成「想平移画布」→ 拾起取消 → 表现是怎么拖都没反应。桌面上「拖图 = 挪图」
-  // 本来就是最自然的手势,画布平移从空白处拖即可。
-  assert.match(editor, /const immediate = e\.pointerType === 'mouse'/);
-  assert.match(
-    editor,
-    /if \(pending\.immediate\) beginSwapDrag\(/,
-    '鼠标越过阈值就开拖',
-  );
-  assert.match(editor, /else cancelSwapPending\(\)/, '触屏越过阈值仍然是放弃拾起');
-  // 触屏那条计时路径必须还在
-  assert.match(editor, /window\.setTimeout\(\(\) => beginSwapDrag\([^)]*\),\s*SWAP_LONG_PRESS_MS\)/);
+test('两端统一长按拾起:快拖回落 pan/平移,按住不动才是交换(2026-08-01 拍板)', () => {
+  // bf899f76 曾给鼠标开过「一动就拾起」的快路(理由是拖图=挪图更顺手),代价当时
+  // 没看见:拾起时 beginSwapDrag 清选中态,pan 的 `!imgEdit` 守卫当场失效 ——
+  // 选中照片后的拖动调位(pan)被整个劫走,桌面鼠标 pan 等于死了。pan 是构图微调的
+  // 唯一入口,优先级高于交换的顺手程度;桌面回到与触屏同一条长按计时路径,
+  // 快拖(350ms 内越过 slop)一律取消拾起,回落普通手势(选中 → pan,未选中 → 画布平移)。
+  assert.doesNotMatch(editor, /immediate = e\.pointerType/, '鼠标立即拾起的快路不许回来');
+  assert.doesNotMatch(editor, /pending\.immediate/, 'pending 不再有 immediate 分支');
+  // 两端同一条计时路径
+  assert.match(editor, /timer: window\.setTimeout\(\(\) => beginSwapDrag\([^)]*\),\s*SWAP_LONG_PRESS_MS\)/);
+  // 越过 slop 一律放弃拾起
+  assert.match(editor, /if \(!moved\) return;\n\s*\/\/[^\n]*\n\s*cancelSwapPending\(\);/);
+});
+
+test('桌面:拾起交换时,把 pan 没提交的 live 位移放回已提交位置', () => {
+  // 长按目标可能正是当前选中图:pan 的位移阈值只有 2px、commit 在松手,350ms 内
+  // ≤slop 的微动已经画到 <img> 上了。拾起走的是交换,不该顺手留下一笔没提交的位移。
+  const start = editor.indexOf('function beginSwapDrag(');
+  assert.ok(start > 0);
+  const body = editor.slice(start, editor.indexOf('function endSwapDrag(', start));
+  const revert = body.indexOf('applyLiveImagePos(');
+  const clear = body.indexOf('clearImageSelection()');
+  assert.ok(revert > 0, '拾起时要按 imagePosJson 回放 live 样式');
+  assert.match(body, /currentImagePos\(/, '回放的是已提交位置,不是丢着不管');
+  assert.ok(clear > revert, '回放必须发生在清选中态之前(清完就拿不到 imgEdit 了)');
 });
 
 test('桌面:画布平移与长按拾起不打架', () => {

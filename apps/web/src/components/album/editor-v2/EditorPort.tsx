@@ -2296,10 +2296,9 @@ function EditorBook({
       const frame = slotEl.tagName === 'IMG' ? (slotEl.parentElement ?? slotEl) : slotEl;
       return { ref: { pageIndex: Number(pi), slotId }, frame, img };
     }
-    /** 按下之后、真正拾起之前的候选态。
-     *  immediate = 鼠标:**一动就拾起**,不要求按住。触屏才走长按计时。 */
+    /** 按下之后、真正拾起之前的候选态。鼠标与触屏同一条长按计时路径(2026-08-01)。 */
     let swapPending:
-      | { pointerId: number; x: number; y: number; timer: number; pick: SwapPick; immediate: boolean }
+      | { pointerId: number; x: number; y: number; timer: number; pick: SwapPick }
       | null = null;
     let swapDrag: {
       pointerId: number;
@@ -2359,6 +2358,13 @@ function EditorBook({
       swapDrag = { pointerId, from: pick.ref, sourceFrame: pick.frame, ghost, target: null };
       moveSwapGhost(x, y);
       // 拖动期间不要同时进入「平移这张图」的编辑态,否则松手会既交换又提交一次位移。
+      // 长按目标可能正是当前选中图:pan 的位移阈值只有 2px、commit 在松手,350ms 内
+      // ≤slop 的微动已经画到 <img> 上了。拾起走的是交换,不该顺手留下一笔没提交的
+      // 位移 —— 先按已提交的 imagePosJson 把 live 样式放回去,再清选中态。
+      if (imgEdit) {
+        const imgPage = pageByIndex(imgEdit.pageIndex);
+        if (imgPage) applyLiveImagePos(imgEdit.imgEl, currentImagePos(imgPage, imgEdit.slotId));
+      }
       clearImageSelection();
     }
     /* 交换收尾浏览器还会补一记 click —— 不吞掉的话松手会顺手选中/取消选中落点那张图。
@@ -2425,20 +2431,18 @@ function EditorBook({
       // 那就是「把这张挪过去」,原槽变空(见 image-swap.ts)。
       if (!pageByIndex(pick.ref.pageIndex)?.imagesJson[pick.ref.slotId]) return;
       const { clientX: x, clientY: y, pointerId } = e;
-      // 鼠标不需要「按住」这道门:桌面上「按住图往外拖 = 挪这张图」本来就是最自然的
-      // 手势,画布平移从空白处拖即可。长按只留给触屏 —— 那边直接拖已经被翻页/平移占了
-      // (理由见 image-swap.ts)。早先两端一律长按,鼠标用户按住图一拖就被判成「想平移」,
-      // 表现是怎么拖都没反应。
-      const immediate = e.pointerType === 'mouse';
+      // 鼠标也要「按住」这道门(2026-08-01 拍板)。bf899f76 曾给鼠标开过「一动就拾起」
+      // 的快路(拖图=挪图更顺手),代价当时没看见:拾起时 beginSwapDrag 清选中态,
+      // pan 的 `!imgEdit` 守卫当场失效 —— 选中照片后的拖动调位被整个劫走,桌面鼠标
+      // pan 等于死了。pan 是构图微调的唯一入口,优先级高于交换的顺手程度;两端统一
+      // 长按计时,快拖回落普通手势(选中 → pan,未选中 → 画布平移)。桌面的发现性靠
+      // 光标补:悬停可拾起的图是 grab,拾起后全局 grabbing(editor-port.css #168 段)。
       swapPending = {
         pointerId,
         x,
         y,
         pick,
-        immediate,
-        timer: immediate
-          ? 0
-          : window.setTimeout(() => beginSwapDrag(pick, x, y, pointerId), SWAP_LONG_PRESS_MS),
+        timer: window.setTimeout(() => beginSwapDrag(pick, x, y, pointerId), SWAP_LONG_PRESS_MS),
       };
     };
     const onSwapPointerMove = (e: PointerEvent) => {
@@ -2446,9 +2450,8 @@ function EditorBook({
         const pending = swapPending;
         const moved = exceedsLongPressSlop(e.clientX - pending.x, e.clientY - pending.y);
         if (!moved) return;
-        // 鼠标:越过阈值就是「开拖」;触屏:越过阈值说明是平移/翻页,放弃拾起。
-        if (pending.immediate) beginSwapDrag(pending.pick, e.clientX, e.clientY, pending.pointerId);
-        else cancelSwapPending();
+        // 350ms 内越过阈值 = 用户想 pan/平移,不是想拾起 —— 放弃这次长按。
+        cancelSwapPending();
         return;
       }
       if (!swapDrag || swapDrag.pointerId !== e.pointerId) return;
