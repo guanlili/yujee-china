@@ -35,7 +35,9 @@ pan 与交换的监听器绑在同一元素([EditorPort.tsx:3147](../../apps/web
    `EditView.tsx:451` 的既有逻辑)。
 3. pan 复活验证:选中照片后拖动全程走 `onImgPointerDown/Move/Up`,不再被交换打断;
    滚轮缩放不受影响。
-4. 指针样式:`editor-port.css` 悬停 `grab` / 拖拽中 `grabbing`。
+4. 指针样式:悬停 `grab` / 拖拽中 `grabbing` —— 实施时发现 #168/bf899f76 已把这两条
+   写进 `editor-port.css`(`.page-selected img[data-image-slot]` 与 `.swap-dragging`),
+   无需改动。
 
 ## 二、整页交换
 
