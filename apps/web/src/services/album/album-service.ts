@@ -1408,6 +1408,85 @@ export const albumService = {
     return { updated: true };
   },
 
+  // ── 整页交换的原子落库(2026-08-01 设计:docs/specs/2026-08-01-swap-gesture-
+  // and-page-swap-design.md)。逐页 PATCH 表达不了它:body 不收 templateId/html,
+  // 且大页↔对页的块对调会让中间每一页 pageIndex 平移,逐页写既不原子又会在中间态
+  // 撞 html 逐笔 patch 的语义。所以是一份完整置换、一个事务。
+  //
+  // permutation[newIndex] = oldIndex。整条页记录(templateId/images/texts/
+  // imagePos/html)原样跟着走 —— 交换的是页的**位置**,页内一切不变,html 一个
+  // 字不碰(与图片交换只动 imagesJson 刻意不同,见 page-swap.ts 抬头)。
+  async reorderPages(
+    userId: string,
+    albumId: string,
+    permutation: number[],
+  ): Promise<{ updated: true }> {
+    await db.transaction(async (tx) => {
+      const latest = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
+      if (latest.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+
+      const current = readStoryDraft(latest.draftJson);
+      const draftPages = current?.pages;
+      const hasDraft = !!draftPages?.length;
+      const legacyRows = hasDraft ? null : await albumPageRepo.findByAlbum(tx, albumId);
+      const n = hasDraft ? draftPages!.length : legacyRows!.length;
+
+      // 完整双射校验:长度一致、每个 0..n-1 恰好出现一次。
+      if (permutation.length !== n) {
+        throw ERRORS.VALIDATION_FAILED(`permutation length ${permutation.length} != page count ${n}`);
+      }
+      const seen = new Set(permutation);
+      if (seen.size !== n || permutation.some((i) => !Number.isInteger(i) || i < 0 || i >= n)) {
+        throw ERRORS.VALIDATION_FAILED('permutation must be a bijection of 0..n-1');
+      }
+      // 锚定页(cover/toc/ending)不许动 —— 服务端二次把关,不只靠前端置灰。
+      const templateIdAt = (i: number): string =>
+        hasDraft ? draftPages![i]!.templateId : legacyRows![i]!.templateId;
+      for (let newIdx = 0; newIdx < n; newIdx++) {
+        const oldIdx = permutation[newIdx]!;
+        if (oldIdx === newIdx) continue;
+        const category = getTemplate(templateIdAt(oldIdx))?.category;
+        if (category === 'cover' || category === 'toc' || category === 'ending') {
+          throw ERRORS.VALIDATION_FAILED(`page ${oldIdx} (${category}) is anchored and cannot move`);
+        }
+      }
+      const touchesCover = permutation[0] !== 0;
+
+      if (hasDraft) {
+        const nextDraft: V3StoryDraft = {
+          version: 'v3-story',
+          tree: current!.tree,
+          pages: permutation.map((oldIdx, newIdx) => ({ ...draftPages![oldIdx]!, pageIndex: newIdx })),
+          progress: current!.progress,
+        };
+        await albumRepo.update(tx, albumId, {
+          draftJson: nextDraft,
+          ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
+          // 防御:类目校验已经挡住封面移动,万一 0 号位真被换了,过期封面缩略图不能留。
+          ...(touchesCover ? { coverThumbnailUrl: null, coverThumbnailR2Key: null } : {}),
+        });
+        return;
+      }
+
+      // 存量路径(album_pages 行):表上有 unique(albumId, pageIndex),原地互写会撞
+      // 索引 —— 与 add-photos 同法 delete-then-bulkInsert(见 deleteByAlbum 注释)。
+      await albumPageRepo.deleteByAlbum(tx, albumId);
+      await albumPageRepo.bulkInsert(
+        tx,
+        permutation.map((oldIdx, newIdx) => {
+          const { id: _id, updatedAt: _u, ...row } = legacyRows![oldIdx]!;
+          return { ...row, pageIndex: newIdx };
+        }),
+      );
+      await albumRepo.update(tx, albumId, {
+        ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
+        ...(touchesCover ? { coverThumbnailUrl: null, coverThumbnailR2Key: null } : {}),
+      });
+    });
+    return { updated: true };
+  },
+
   // Editor renames the album from the topbar (docs/web/api.md §1 — PATCH base
   // fields). Only the title is mutable here; layout/status are owned by
   // generation/chat/pdf flows. Ownership is enforced before the write.

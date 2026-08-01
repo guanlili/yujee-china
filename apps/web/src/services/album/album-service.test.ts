@@ -1844,3 +1844,115 @@ test('updatePage(draft 相册):html 锚点失配 → 整页重烘,新文本仍�
     await cleanupUser(user.id);
   }
 });
+
+// ── reorderPages:整页交换的原子落库(2026-08-01 整页交换设计)──────────────────
+// 逐页 PATCH 表达不了整页交换:body 不收 templateId/html,且大↔对页的块对调会让
+// 中间每一页平移,逐页写既不原子又会在中间态撞 html 逐笔 patch。所以是一个端点、
+// 一个事务、一份完整置换(perm[newIndex] = oldIndex)。
+
+function reorderFixturePage(pageIndex: number, templateId: string, mark: string): Page {
+  return {
+    pageIndex,
+    templateId,
+    images: {},
+    texts: { title: mark },
+    html: `<div data-template="${templateId}"><div data-text-key="title">${mark}</div></div>`,
+  } as Page;
+}
+
+test('reorderPages(draft 相册):按置换重排 draft_json.pages,pageIndex 重写 0..n-1,整条记录跟着走', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-reorder-draft');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'A'),
+        reorderFixturePage(2, 'mag-05', 'B'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'COMPLETED', stage: 'story', draftJson: wrapped });
+
+    await albumService.reorderPages(user.id, album.id, [0, 2, 1]);
+
+    const after = await albumRepo.findById(album.id);
+    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
+    assert.deepEqual(
+      draft.pages.map((p) => [p.pageIndex, p.texts.title]),
+      [
+        [0, 'COVER'],
+        [1, 'B'],
+        [2, 'A'],
+      ],
+      '顺序按置换重排,pageIndex 重写连续',
+    );
+    // 整页交换搬整条记录:html 原样跟着走,不重烘、不逐字段拆搬。
+    assert.match(draft.pages[1]!.html!, />B</);
+    assert.match(draft.pages[2]!.html!, /A/);
+    assert.equal(after?.status, 'EDITING', '重排是一次编辑,COMPLETED 须退回 EDITING');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('reorderPages:置换校验 —— 长度不符/非双射/移动 cover 类目页,一律 VALIDATION_FAILED', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-reorder-invalid');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'A'),
+        reorderFixturePage(2, 'mag-05', 'B'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+
+    const rejects = (perm: number[]) =>
+      assert.rejects(
+        albumService.reorderPages(user.id, album.id, perm),
+        (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+      );
+    await rejects([0, 1]); // 长度不符
+    await rejects([0, 1, 1]); // 非双射
+    await rejects([2, 1, 0]); // mag-01 是 cover:锚定页不许动(服务端二次把关,不只靠前端置灰)
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('reorderPages(无 draft 存量相册):album_pages 行按置换重写 pageIndex', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-reorder-legacy');
+  try {
+    const album = await makeAlbum(user.id);
+    await albumPageRepo.bulkInsert(db, [
+      { albumId: album.id, pageIndex: 0, templateId: 'mag-01', imagesJson: {}, textsJson: { title: 'COVER' } },
+      { albumId: album.id, pageIndex: 1, templateId: 'mag-03', imagesJson: { a: 'p1' }, textsJson: { title: 'A' } },
+      { albumId: album.id, pageIndex: 2, templateId: 'mag-05', imagesJson: {}, textsJson: { title: 'B' } },
+    ]);
+
+    await albumService.reorderPages(user.id, album.id, [0, 2, 1]);
+
+    const rows = await albumPageRepo.findByAlbum(db, album.id);
+    assert.deepEqual(
+      rows.map((r) => [r.pageIndex, (r.textsJson as Record<string, string>).title]),
+      [
+        [0, 'COVER'],
+        [1, 'B'],
+        [2, 'A'],
+      ],
+    );
+    assert.deepEqual(rows[2]!.imagesJson, { a: 'p1' }, '整行内容原样跟着走');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
