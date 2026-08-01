@@ -8,6 +8,7 @@ export interface MarketingMessages {
     myProjects: string;
     howItWorks: string;
     pricing: string;
+    about: string;
     menuToggle: string;
     login: string;
     getStarted: string;
@@ -56,6 +57,9 @@ export interface MarketingMessages {
     sections: { h: string; paras: string[]; pull?: string; bullets?: string[] }[];
     closing: string;
     dateline: string;
+    /** Byline under the title: author, date, reading time. */
+    byline: { author: string; date: string; readingTime: string };
+    tocHead: string;
     ctaLabel: string;
     disclaimer: string;
   };
@@ -86,6 +90,7 @@ const en: MarketingMessages = {
     myProjects: 'My Projects',
     howItWorks: 'How it works',
     pricing: 'Pricing',
+    about: 'About',
     menuToggle: 'Toggle navigation menu',
     login: 'Log in',
     getStarted: 'Get started',
@@ -306,6 +311,8 @@ const en: MarketingMessages = {
     ],
     closing: 'And I hope you get to hold on to your own tree of life, and find the self that sits deepest inside you.',
     dateline: 'yvaine, July 31, 2026',
+    byline: { author: 'yvaine', date: 'July 31, 2026', readingTime: '8 min read' },
+    tocHead: 'Contents',
     ctaLabel: 'Start your own book',
     disclaimer:
       'Yujee is not a medical product and is not a replacement for therapy. If you are in danger right now, please reach out to a doctor or a crisis line first.',
@@ -331,7 +338,7 @@ const en: MarketingMessages = {
       },
       {
         head: 'About',
-        items: [{ label: 'Why we built Yujee', href: '/about/story' }],
+        items: [{ label: 'Our story', href: '/about/story' }],
       },
       {
         head: 'Legal',
@@ -352,6 +359,7 @@ const zh: MarketingMessages = {
     myProjects: '我的项目',
     howItWorks: '玩法',
     pricing: '定价',
+    about: '关于',
     menuToggle: '打开导航菜单',
     login: '登录',
     getStarted: '开始创作',
@@ -571,6 +579,8 @@ const zh: MarketingMessages = {
     ],
     closing: '也祝你，能握住自己那棵生命树，找到心里最深的那个自己。',
     dateline: 'yvaine 2026.07.31',
+    byline: { author: 'yvaine', date: '2026 年 7 月 31 日', readingTime: '约 8 分钟读完' },
+    tocHead: '目录',
     ctaLabel: '开始做自己的书',
     disclaimer:
       'Yujee 不是医疗产品，也不能替代心理治疗。如果你正处在危险的状态里，请先联系专业医生或者心理援助热线。',
@@ -596,7 +606,7 @@ const zh: MarketingMessages = {
       },
       {
         head: '关于',
-        items: [{ label: '我们为什么做 Yujee', href: '/about/story' }],
+        items: [{ label: '创始故事', href: '/about/story' }],
       },
       {
         head: '法律',

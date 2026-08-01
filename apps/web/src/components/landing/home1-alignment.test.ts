@@ -40,16 +40,22 @@ test('marketing nav restores the Home 1 centered desktop menu and mobile menu', 
     /const homeSectionHref = \(id: string\) => \(isHome \? `#\$\{id\}` : `\$\{homePath\}#\$\{id\}`\)/,
     'section links should use Home 1 same-page hashes on home and localized landing hashes elsewhere',
   );
+  // 'features', not 'how'. This assertion used to pin homeSectionHref('how'),
+  // which froze a dead link in place: the landing renders id="features" and no
+  // section has ever answered to #how, so the nav item did nothing on click.
   assert.match(
     marketingNav,
-    /\{ key: 'how', label: m\.nav\.howItWorks, href: homeSectionHref\('how'\), active: false \}/,
-    'How it works should route through the section href helper',
+    /\{ key: 'how', label: m\.nav\.howItWorks, href: homeSectionHref\('features'\), active: false \}/,
+    'How it works should point at the section id the landing actually renders',
   );
   assert.match(
     marketingNav,
     /\{ key: 'pricing', label: m\.nav\.pricing, href: homeSectionHref\('pricing'\), active: false \}/,
     'Pricing should route through the section href helper',
   );
+  // About belongs in the footer, not the menu bar. The top nav is for the few
+  // things a visitor came to do; a founder story is not one of them.
+  assert.doesNotMatch(marketingNav, /about\/story/, 'About must not sit in the top nav');
   assert.match(marketingNav, /\/my-albums/, 'My Projects should point at the logged-in albums route');
   assert.match(marketingNav, /\buser\b/, 'My Projects should be gated by the same session state as chrome controls');
   assert.match(marketingNav, /md:hidden/, 'mobile nav should expose a hamburger/menu surface');
@@ -62,6 +68,23 @@ test('HeroComposer stays embedded in the landing redesign shell and keeps send b
   const heroComposer = component('landing/HeroComposer.tsx');
   const landingClient = component('landing/YujeeLandingHomeClient.tsx');
   const composerShellClass = landingClient.match(/<div className="composer-shell ([^"]+)">/)?.[1] ?? '';
+
+  // The landing renders its OWN footer, so the story link added to
+  // MarketingFooter is invisible on the one page most visitors ever see. It
+  // belongs in the footer and nowhere else: exactly one occurrence, and not in
+  // the header pill or the mobile menu sheet.
+  assert.equal(
+    (landingClient.match(/about\/story/g) ?? []).length,
+    1,
+    'landing should link the story exactly once, from the footer',
+  );
+  assert.match(
+    landingClient,
+    /\[c\.footerStory, `\/\$\{locale\}\/about\/story`\]/,
+    'the story should be a footer column entry',
+  );
+  assert.match(landingClient, /footerCompany: '关于'/, 'the footer column should be titled 关于');
+  assert.match(landingClient, /footerCompany: 'About'/, 'the footer column should be titled About');
 
   assert.match(landingClient, /\{composer\}/, 'redesigned landing shell should render the real composer');
   assert.match(composerShellClass, /px-5/, 'composer shell should keep mobile horizontal padding');
