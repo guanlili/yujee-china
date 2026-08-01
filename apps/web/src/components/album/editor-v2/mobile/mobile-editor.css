@@ -608,6 +608,30 @@
   transform: scale(1.1);
 }
 
+/* ── 整页交换:「调整页序」模式(2026-08-01)────────────────────────────────
+   常态下 face 是 pointer-events:none(点击落在格子按钮上走跳页);模式开着时
+   face 带 data-pswap 三态,必须放开 pointer-events 才收得到点击(onPick 里会
+   stopPropagation,不会串到跳页)。压暗的格子仍可点(JS 里不响应),不关
+   pointer-events —— 关了点击会穿到格子按钮,变成一次莫名的跳页。 */
+.mobile-editor .mstrip-face[data-pswap] {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.mobile-editor .mstrip-face[data-pswap='sel'] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.mobile-editor .mstrip-face[data-pswap='dim'] {
+  opacity: 0.35;
+}
+/* 模式开关浮钮的按下态:与取色/备份沿用同一 accent 语汇。 */
+.mobile-editor .mfab[data-active='1'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
 /* ── 编辑态一级栏:背景 · 图片 · 文字 · 删除 ─────────────────────────────── */
 .mobile-editor .ml1 {
   flex: none;

@@ -79,6 +79,13 @@ import {
 } from './page-edit';
 import { DEFAULT_IMAGE_POS, type ImagePosValue } from '../image-edit-util';
 import { swapImageSlots, type SwapSlotRef } from '../image-swap';
+import {
+  buildSwapPermutation,
+  canSwapUnits,
+  pairUnitOfPage,
+  swapUnitOfPage,
+  type PageSwapUnit,
+} from '../page-swap';
 import { PhotoPickerSheet } from './modals/PhotoPickerSheet';
 import { FilterSheet } from './modals/FilterSheet';
 import type { TextHit, ImageHit } from './EditView';
@@ -458,6 +465,72 @@ export function MobileEditorRoot({
     }
   };
 
+  // ── 整页交换:「调整页序」模式(2026-08-01 设计,与桌面同一状态机)──────────
+  // 交互在底部预览栏上「选中 → 点目标」;合法性/置换来自共享 page-swap.ts,
+  // 落库走原子 reorder 端点,失败回滚本地并 toast。模式态住容器层(React state,
+  // 不碰 document —— 这棵子树的架构守卫),展示层只拿计算结果。
+  const [pageSwapOn, setPageSwapOn] = useState(false);
+  const [pageSwapSel, setPageSwapSel] = useState<PageSwapUnit | null>(null);
+  const onPageSwapToggle = () => {
+    setPageSwapOn((on) => !on);
+    setPageSwapSel(null);
+  };
+  /** 选中态下这一页对应的合法落点单元(同桌面:单页选中 → 单页;大页选中 →
+   *  大页或完整对页。想换整对先选大页 —— 设计表的既定不对称)。 */
+  const pageSwapTargetUnit = (i: number): PageSwapUnit | null => {
+    if (!pageSwapSel) return null;
+    const single = swapUnitOfPage(pages, i);
+    if (!single) return null;
+    if (canSwapUnits(pageSwapSel, single)) return single;
+    if (pageSwapSel.kind === 'full') {
+      const pair = pairUnitOfPage(pages, i);
+      if (pair && canSwapUnits(pageSwapSel, pair)) return pair;
+    }
+    return null;
+  };
+  /** 预览栏每一格的三态:选中 / 可点 / 压暗。展示层直接渲成 data-pswap 属性。 */
+  const pageSwapFaceState = (i: number): 'sel' | 'ok' | 'dim' => {
+    if (pageSwapSel?.indices.includes(i)) return 'sel';
+    if (!pageSwapSel) return swapUnitOfPage(pages, i) ? 'ok' : 'dim';
+    return pageSwapTargetUnit(i) ? 'ok' : 'dim';
+  };
+  const commitPageSwap = (a: PageSwapUnit, b: PageSwapUnit) => {
+    const perm = buildSwapPermutation(pages.length, a, b);
+    if (!perm) return;
+    // 乐观落地:本地按置换重排(书立刻变),后台发原子 reorder;失败回滚 + toast,
+    // 不留半交换态(与桌面 commitPageSwap 同口径)。
+    const prev = pages;
+    setPages(perm.map((oldIdx, newIdx) => ({ ...prev[oldIdx]!, pageIndex: newIdx })));
+    setPageSwapSel(null);
+    void fetch(`/api/v1/albums/${detail.album.id}/pages/reorder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ permutation: perm }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`reorder ${res.status}`);
+      })
+      .catch(() => {
+        setPages(prev);
+        say(zh ? '交换没有存上，已恢复原页序，请重试' : 'Swap not saved; order restored — please retry');
+      });
+  };
+  const onPageSwapPick = (i: number) => {
+    if (!pageSwapSel) {
+      const unit = swapUnitOfPage(pages, i);
+      if (!unit) return; // 锚定页(封面/目录/封底):不可选
+      setPageSwapSel(unit);
+      return;
+    }
+    if (pageSwapSel.indices.includes(i)) {
+      setPageSwapSel(null); // 再点选中单元 = 取消选择,留在模式内
+      return;
+    }
+    const target = pageSwapTargetUnit(i);
+    if (!target) return; // 压暗的格子点了不响应
+    commitPageSwap(pageSwapSel, target);
+  };
+
   /** 手指还在动:只即时打进书,不落库(与文字面板同一「所见即所存但未存」的口径)。 */
   const onImagePosLive = (pos: ImagePosValue) => {
     if (selection?.kind !== 'image' || !draftBase) return;
@@ -710,6 +783,8 @@ export function MobileEditorRoot({
       onImagePos={onImagePosLive}
       onImagePosCommit={onImagePosCommit}
       onSwapImage={onSwapImage}
+      pageSwap={pageSwapOn ? { faceState: pageSwapFaceState, onPick: onPageSwapPick } : null}
+      onPageSwapToggle={onPageSwapToggle}
       onReplaceImage={onReplaceImage}
       onClearImage={onClearImage}
       onResetImagePos={onResetImagePos}
