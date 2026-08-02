@@ -1089,8 +1089,15 @@ test('boardbg- prefixed keys and ids failing the photoId shape never trigger the
     return new Blob(['x'], { type: 'image/jpeg' });
   });
   try {
-    // originals store 与画板背景共用:boardbg- 前缀即便字符集合法也必须被挡在外面。
+    // 字符集本身就不合法(含 '.'),isValidPhotoId 一步就会拒 —— 这一条不能单独
+    // 证明前缀守卫在起作用。
     assert.equal(await photoStore.getBlob('boardbg-album1-2048-cover.png'), undefined);
+    assert.equal(calls, 0);
+
+    // 字符集合法(纯 alnum + hyphen、长度达标),isValidPhotoId 单独看会放行 ——
+    // 只有 boardbg- 前缀检查还在,这一条才会被挡。删掉 store.ts 里的
+    // startsWith(BOARD_BACKGROUND_KEY_PREFIX) 守卫,这一条会变红。
+    assert.equal(await photoStore.getBlob('boardbg-abc123'), undefined);
     assert.equal(calls, 0);
 
     // 不匹配 isValidPhotoId 形状的 key(非 alnum/hyphen 字符、超长)同样被挡。
