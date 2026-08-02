@@ -1285,10 +1285,19 @@ export const albumService = {
   // removing it strands no credit. album_photos is still deleted explicitly
   // (belt-and-suspenders alongside the FK cascade, same as the rest of this
   // method relying on cascade for album_pages etc).
+  //
+  // Row-locked (findByIdForUpdate) rather than a plain findOwned: photo-original
+  // confirm() takes the same albums row lock before reading/writing album_photos,
+  // so locking here too serializes delete against a concurrent confirm instead of
+  // racing an unlocked deleteByAlbum against confirm's read-then-upsert.
   async delete(userId: string, albumId: string): Promise<void> {
-    await this.findOwned(userId, albumId);
-    await albumPhotoRepo.deleteByAlbum(db, albumId);
-    await albumRepo.delete(db, albumId);
+    await db.transaction(async (tx) => {
+      const album = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+      if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+      await albumPhotoRepo.deleteByAlbum(tx, albumId);
+      await albumRepo.delete(tx, albumId);
+    });
   },
 
   // Editor saves a single page (docs/web/api.md §3.5). The whole layout_json is

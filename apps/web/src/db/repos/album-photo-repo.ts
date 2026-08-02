@@ -11,8 +11,12 @@ export type AlbumPhotoUpsert = {
 };
 
 export const albumPhotoRepo = {
-  findByAlbum: async (albumId: string): Promise<AlbumPhoto[]> =>
-    db.select().from(albumPhotos).where(eq(albumPhotos.albumId, albumId)),
+  // Defaults to the top-level `db` so existing unscoped callers are unchanged;
+  // pass the open `tx` explicitly to read inside a transaction (e.g. after a
+  // row lock on `albums`, so the read is guaranteed current — see
+  // photo-original-service.ts confirm()).
+  findByAlbum: async (albumId: string, tx: DbOrTx = db): Promise<AlbumPhoto[]> =>
+    tx.select().from(albumPhotos).where(eq(albumPhotos.albumId, albumId)),
 
   // Upsert on the (albumId, photoId) composite PK. A 'missing' upsert must
   // never downgrade an already-'uploaded' row (nor clobber its

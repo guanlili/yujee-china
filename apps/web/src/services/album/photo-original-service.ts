@@ -71,11 +71,15 @@ export const photoOriginalService = {
       const parsed = PhotoOriginalConfirmBodySchema.safeParse(input);
       if (!parsed.success) throw ERRORS.VALIDATION_FAILED(validationMessage(parsed.error));
 
-      // Read-committed, outside `tx`, but the album row lock above already
-      // serializes concurrent confirms: a second confirm can't get past
-      // findByIdForUpdate until the first one commits, so this plain read
-      // always reflects the latest committed state for this album.
-      const existing = await albumPhotoRepo.findByAlbum(albumId);
+      // Read inside `tx` — not just for confirm-vs-confirm ordering (which the
+      // album row lock alone would provide), but because album-service.delete
+      // now also takes that same row lock before running an UNLOCKED
+      // deleteByAlbum(db, albumId) on this table. Reading via a separate,
+      // unlocked `db` connection here could observe stale rows mid-delete (or
+      // race a delete that runs between the read and the upsert below); reading
+      // through `tx` keeps this entire read-then-write on the one locked
+      // session, serialized against both concurrent confirms and delete.
+      const existing = await albumPhotoRepo.findByAlbum(albumId, tx);
       const statusById = new Map(existing.map((r) => [r.photoId, r.status]));
 
       const entryRows: AlbumPhotoUpsert[] = (parsed.data.entries ?? []).map((e) => ({
