@@ -61,6 +61,10 @@ type StripDrag = {
   startY: number;
   timer: ReturnType<typeof setTimeout> | null;
   lifted: boolean;
+  /** 拾起后真的拖动过(位移超 slop)。**没动过的长按 = 普通点击**:不吞 click、
+   *  不算落点 —— 否则「瞄准小格子按久一点」就成了什么都不发生的死区
+   *  (2026-08-03 真机回归:中间页点不中,封面因是锚定页不进机器反而幸免)。 */
+  moved: boolean;
   gap: number | null;
   x: number;
   y: number;
@@ -79,7 +83,10 @@ export function MobileStrip({ pages, units, zh, currentPage, thumbCtxOf, onJump,
   // face 节点按 pageIndex 记 ref:这棵树的节点归 React 所有,量自己的节点走 ref,
   // 不走选择器查找(架构守卫盯着,见 mobile-editor.test.ts)。
   const faceEls = useRef<(HTMLElement | null)[]>([]);
-  const suppressClickRef = useRef(false);
+  /** 拖拽尾巴的 click 抑制窗(时间戳):真拖之后浏览器**不一定**补发 click
+   *  (移动超阈就不发),用「下一次 click 消费」的布尔标记会一直挂着、吞掉之后
+   *  一次无辜点按 —— 改用短时间窗,过期自动失效。 */
+  const suppressUntilRef = useRef(0);
 
   // 拾起后拦掉浏览器横向平移(见文件头)。React 的 onTouchMove 是 passive,
   // preventDefault 无效,必须原生挂 {passive:false} —— 挂在 track 自己身上,
@@ -107,8 +114,9 @@ export function MobileStrip({ pages, units, zh, currentPage, thumbCtxOf, onJump,
     if (!d) return;
     if (d.timer) clearTimeout(d.timer);
     dragRef.current = null;
-    if (d.lifted) suppressClickRef.current = true; // 松手的冒泡 click 不该变成跳页
-    if (commitMove && d.lifted && d.gap !== null) {
+    // 只有真的拖动过才吞 click —— 原地松手(哪怕拾起过)回落为普通点击,照常跳页。
+    if (d.lifted && d.moved) suppressUntilRef.current = Date.now() + 350;
+    if (commitMove && d.lifted && d.moved && d.gap !== null) {
       const perm = buildInsertPermutation(applyMove(pages.map((_, i) => i), d.from, d.gap));
       if (perm) onReorder(perm);
     }
@@ -125,14 +133,22 @@ export function MobileStrip({ pages, units, zh, currentPage, thumbCtxOf, onJump,
       startY: e.clientY,
       timer: null,
       lifted: false,
+      moved: false,
       gap: null,
       x: e.clientX,
       y: e.clientY,
     };
     d.timer = setTimeout(() => {
       d.timer = null;
+      // 指针可能早已在格外松掉(endDrag 没机会跑):capture 会抛 —— 那就不是
+      // 一次拖拽,整个作废,不留下吞点击的僵尸。
+      try {
+        target.setPointerCapture(d.pointerId);
+      } catch {
+        if (dragRef.current === d) dragRef.current = null;
+        return;
+      }
       d.lifted = true;
-      target.setPointerCapture(d.pointerId);
       bump((n) => n + 1);
     }, SWAP_LONG_PRESS_MS);
     dragRef.current = d;
@@ -150,6 +166,9 @@ export function MobileStrip({ pages, units, zh, currentPage, thumbCtxOf, onJump,
       }
       return;
     }
+    // 拾起后同样过 slop 才算「在拖」:手指的天然抖动不该吞点击,更不该凑出落点。
+    if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) <= SWAP_LONG_PRESS_SLOP) return;
+    d.moved = true;
     const track = trackRef.current;
     if (track) {
       const tr = track.getBoundingClientRect();
@@ -211,8 +230,8 @@ export function MobileStrip({ pages, units, zh, currentPage, thumbCtxOf, onJump,
               aria-label={label(u)}
               aria-current={active ? 'true' : undefined}
               onClick={() => {
-                if (suppressClickRef.current) {
-                  suppressClickRef.current = false;
+                if (Date.now() < suppressUntilRef.current) {
+                  suppressUntilRef.current = 0; // 拖拽尾巴,消费即失效
                   return;
                 }
                 onJump(u.startPage);
