@@ -29,6 +29,25 @@ test('planPhotoOriginalSync: 空输入与全量已上传', () => {
   assert.deepEqual(planPhotoOriginalSync(['a', 'b'], new Set(['a', 'b'])), []);
 });
 
+test('planPhotoOriginalSync(I3): boardbg- 前缀键与不合法形状的 id 被挡在差集输出之外', () => {
+  const dirty = ['boardbg-abc', '../bad', 'p1', 'p1'];
+  // 'boardbg-abc' 字符集本身合法(纯 alnum+hyphen),只有前缀排除才会挡它;
+  // '../bad' 字符集直接不合法。两者都不该出现在输出里,合法的 p1 正常保留、去重。
+  assert.deepEqual(planPhotoOriginalSync(dirty, new Set()), ['p1']);
+});
+
+test('probeServerUploaded(I3): 非法 id 不出现在任何一次探测请求里', async () => {
+  const dirty = ['boardbg-abc', '../bad', 'p1'];
+  const calls: string[][] = [];
+  const fetchUrls = async (_albumId: string, ids: string[]) => {
+    calls.push(ids);
+    return {};
+  };
+  await probeServerUploaded('album-1', dirty, fetchUrls);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], ['p1']);
+});
+
 test('probeServerUploaded: urls 端点只对已上传的 id 返回 URL —— 响应的 key 集合即 serverUploaded', async () => {
   const calls: { albumId: string; photoIds: string[] }[] = [];
   const fetchUrls = async (albumId: string, photoIds: string[]) => {
@@ -266,4 +285,84 @@ test('runPhotoOriginalSync: photoIds 全部已 uploaded —— 零网络调用',
 
   assert.deepEqual(result, { uploaded: 0, missingLocal: 0 });
   assert.equal(calls, 0);
+});
+
+test('runPhotoOriginalSync(I1): 350 张本地全部缺失 —— 最后一次性 confirm({missing}) 按 300 分批,两次调用,计数汇总', async () => {
+  const photoIds = Array.from({ length: 350 }, (_, i) => `p${i}`);
+  const confirmCalls: { entries?: PhotoOriginalUploadEntry[]; missing?: string[] }[] = [];
+
+  const deps: PhotoOriginalSyncDeps = {
+    // 全部本地缺失:不会进入 sign/put 批次,只会走最后的 missing confirm。
+    getCanonicalUploadBlob: async () => undefined,
+    sign: async () => {
+      throw new Error('sign must not be called when every candidate is locally absent');
+    },
+    put: async () => {
+      throw new Error('put must not be called when every candidate is locally absent');
+    },
+    confirm: async (_albumId, input) => {
+      confirmCalls.push(input);
+      return { uploaded: input.entries?.length ?? 0, missing: input.missing?.length ?? 0 };
+    },
+  };
+
+  const result = await runPhotoOriginalSync({
+    albumId: 'album-1',
+    photoIds,
+    serverUploaded: new Set(),
+    deps,
+  });
+
+  // 350 个 missing 一次性 confirm 会违反 PhotoOriginalConfirmBodySchema 的合计上限
+  // (300);必须按 300 分批 —— 两次调用,300 + 50,总数汇总回 350。
+  assert.equal(confirmCalls.length, 2);
+  assert.equal(confirmCalls[0]!.missing!.length, 300);
+  assert.equal(confirmCalls[1]!.missing!.length, 50);
+  assert.deepEqual(
+    [...confirmCalls[0]!.missing!, ...confirmCalls[1]!.missing!].sort(),
+    [...photoIds].sort(),
+  );
+  assert.deepEqual(result, { uploaded: 0, missingLocal: 350 });
+});
+
+test('runPhotoOriginalSync(I3): boardbg- 前缀键与不合法形状的 id 全程不出现在 sign/put/confirm 的任何一次调用里', async () => {
+  const dirty = ['boardbg-abc', '../bad', 'p1', 'p2'];
+  const localBlobs: Record<string, { blob: Blob; width: number; height: number }> = {
+    p1: { blob: fakeBlob(10), width: 100, height: 100 },
+    p2: { blob: fakeBlob(20), width: 200, height: 200 },
+  };
+  const seenPhotoIds = new Set<string>();
+
+  const deps: PhotoOriginalSyncDeps = {
+    getCanonicalUploadBlob: async (photoId) => {
+      seenPhotoIds.add(photoId);
+      return localBlobs[photoId];
+    },
+    sign: async (_albumId, entries) => {
+      for (const e of entries) seenPhotoIds.add(e.photoId);
+      return entries.map((e): SignedPhotoOriginalUpload => ({
+        photoId: e.photoId,
+        putUrl: `https://put.test/${e.photoId}`,
+        r2Key: `photo-originals/${e.photoId}.jpg`,
+      }));
+    },
+    put: async () => {},
+    confirm: async (_albumId, input) => {
+      for (const e of input.entries ?? []) seenPhotoIds.add(e.photoId);
+      for (const id of input.missing ?? []) seenPhotoIds.add(id);
+      return { uploaded: input.entries?.length ?? 0, missing: input.missing?.length ?? 0 };
+    },
+  };
+
+  const result = await runPhotoOriginalSync({
+    albumId: 'album-1',
+    photoIds: dirty,
+    serverUploaded: new Set(),
+    deps,
+  });
+
+  assert.deepEqual(result, { uploaded: 2, missingLocal: 0 });
+  // 非法 id 从没被任何一个注入的依赖看见过 —— 不在 getCanonicalUploadBlob 的探
+  // 询里,不在 sign 的 payload 里,不在 confirm 的 entries/missing 里。
+  assert.deepEqual([...seenPhotoIds].sort(), ['p1', 'p2']);
 });

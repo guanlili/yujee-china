@@ -982,7 +982,9 @@ test('getTierBlobStatus exposes exact filtered success versus base fallback', as
 // (下次直接命中)。回退只认合法照片 id —— boardbg-* 画板背景与 originals 共用同一个
 // object store,绝不能被当成照片去远端下载。
 
-function installCanonicalUploadImageMocks(): (() => void) & {
+function installCanonicalUploadImageMocks(
+  source: { width: number; height: number } = { width: 4000, height: 3000 },
+): (() => void) & {
   toBlobCalls: { width: number; height: number; type: string; quality: number | undefined }[];
 } {
   const globals = globalThis as Record<string, unknown>;
@@ -994,7 +996,7 @@ function installCanonicalUploadImageMocks(): (() => void) & {
 
   Object.defineProperty(globals, 'createImageBitmap', {
     configurable: true,
-    value: async () => ({ width: 4000, height: 3000, close() {} }),
+    value: async () => ({ width: source.width, height: source.height, close() {} }),
   });
   Object.defineProperty(globals, 'document', {
     configurable: true,
@@ -1166,6 +1168,37 @@ test('getCanonicalUploadBlob downsizes the local original to the backup tier wit
     assert.equal(fetcherCalls, 0, 'getCanonicalUploadBlob must never trigger the remote fetcher');
   } finally {
     photoStore.setRemoteOriginalFetcher(null);
+    restoreImageMocks();
+  }
+});
+
+test('getCanonicalUploadBlob force-reencodes even when the source already fits the backup tier', async () => {
+  // 源图 2000x1500,已经在 backup 档(TIER_MAX_EDGE.backup=3400)以内 ——
+  // downscaleToJpeg 默认会走「已经不比目标大就直接返回可解码 blob」的早退分支
+  // (省一次重编码)。getCanonicalUploadBlob 是 R2 真相源,必须绕开这条早退,总是
+  // 强制走 canvas 重编码:剥掉 EXIF/GPS,并保证产出真的是 image/jpeg 字节,不能
+  // 把原始相机文件的字节原样直传出去(review finding I2)。
+  const photoId = 'canonical-upload-already-small';
+  const originalBytes = new Uint8Array([9, 9, 9]);
+  await photoStore.put(
+    photoId,
+    new File([originalBytes], 'orig.jpg', { type: 'image/jpeg' }),
+  );
+  const restoreImageMocks = installCanonicalUploadImageMocks({ width: 2000, height: 1500 });
+
+  try {
+    const result = await photoStore.getCanonicalUploadBlob(photoId);
+    assert.ok(result, 'a local original must yield a canonical upload blob');
+    assert.equal(result!.width, 2000);
+    assert.equal(result!.height, 1500);
+    // canvas.toBlob 被调用了一次(强制重编码走了 canvas 路径,不是早退直通)。
+    assert.deepEqual(restoreImageMocks.toBlobCalls, [
+      { width: 2000, height: 1500, type: 'image/jpeg', quality: 0.82 },
+    ]);
+    // 产出是 canvas mock 编造的新字节,不是原始源字节的直通引用/内容。
+    assert.equal(await result!.blob.text(), '2000x1500');
+    assert.notDeepEqual(new Uint8Array(await result!.blob.arrayBuffer()), originalBytes);
+  } finally {
     restoreImageMocks();
   }
 });

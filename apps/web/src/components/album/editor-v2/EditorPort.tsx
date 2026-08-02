@@ -1419,7 +1419,6 @@ function EditorBook({
     photoIds: collectPhotoIds(
       initialPages.map((page) => ({ templateId: page.templateId, images: page.imagesJson, texts: page.textsJson })),
     ),
-    photoOriginals: detail.album.photoOriginals,
     enabled: true,
   });
   useEffect(() => {

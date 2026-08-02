@@ -580,7 +580,6 @@ export function MobileEditorRoot({
   usePhotoOriginalSync({
     albumId: detail.album.id,
     photoIds,
-    photoOriginals: detail.album.photoOriginals,
     enabled: true,
   });
   const share = useShareLink(detail.album.id, locale, zh);

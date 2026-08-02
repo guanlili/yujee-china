@@ -4,8 +4,8 @@
 // photo-original-sync.ts(可单测),这里只做两件事:
 //   1) 挂载起接管 photoStore 的远端原图 fetcher(本地未命中时的唯一回退源),
 //      卸载/换相册必须收回 —— 它是模块级单例槽位,残留旧 fetcher 会替错的相册答题。
-//   2) 每 (albumId + photoIds 签名) 触发一次补传:本机 IndexedDB 里有、但服务端
-//      album.photoOriginals 覆盖不全的原图,补传一遍。
+//   2) 每 (albumId + photoIds 签名) 探测一次服务端已上传集合并补传:本机 IndexedDB
+//      里有、但服务端还没确认的原图,补传一遍。
 
 import { useEffect, useRef } from 'react';
 
@@ -21,12 +21,10 @@ import { photoStore } from '@/lib/photo/store';
 export function usePhotoOriginalSync({
   albumId,
   photoIds,
-  photoOriginals,
   enabled,
 }: {
   albumId: string;
   photoIds: string[];
-  photoOriginals?: { uploaded: number; missing: number };
   enabled: boolean;
 }): void {
   // 远端原图 fetcher:单张 fetchPhotoOriginalUrls + fetch(url) → blob。任何一步失败
@@ -52,14 +50,18 @@ export function usePhotoOriginalSync({
   }, [albumId]);
 
   // 补传对账:签名(albumId + 去重排序后的 photoIds)相同则只跑一次 —— 无论
-  // photoIds 引用是否每次渲染都重新算出(调用方不强制 useMemo)。
+  // photoIds 引用是否每次渲染都重新算出(调用方不强制 useMemo)。**不**用相册级
+  // 聚合计数(album.photoOriginals 的 uploaded+missing)做「覆盖已完整」的早退
+  // 判断:album_photos 的行从不 GC,书换过照片之后(比如 {A,B} 都已确认上传,
+  // 书后来变成 {A,C})聚合数字(2)仍然 ≥ 当前书的去重张数(2),会把 C 永远
+  // 漏掉 —— C 既不会被上传,也不会被标记为 missing。签名一新就总是跑一次探测;
+  // 探测 + planPhotoOriginalSync 在「真的都传过」时天然零成本空转(不会有
+  // sign/PUT/confirm 调用),多付出的只是每个新签名一次 /photo-originals/urls
+  // 探测请求,这个成本是可接受的(review finding C1)。
   const ranSignatureRef = useRef<string | null>(null);
   useEffect(() => {
     if (!enabled || !albumId || photoIds.length === 0) return;
     const uniquePhotoIds = [...new Set(photoIds)];
-    const uploaded = photoOriginals?.uploaded ?? 0;
-    const missing = photoOriginals?.missing ?? 0;
-    if (uploaded + missing >= uniquePhotoIds.length) return;
     const signature = `${albumId}::${[...uniquePhotoIds].sort().join(',')}`;
     if (ranSignatureRef.current === signature) return;
     ranSignatureRef.current = signature;
@@ -82,5 +84,5 @@ export function usePhotoOriginalSync({
         },
       });
     })();
-  }, [albumId, photoIds, photoOriginals?.uploaded, photoOriginals?.missing, enabled]);
+  }, [albumId, photoIds, enabled]);
 }

@@ -337,18 +337,27 @@ interface DownscaledJpeg {
 // 原图 → 降采样 JPEG blob(屏显派生 + 规范上传档共用)。HEIC 先转可解码格式,
 // 再 canvas 缩放。连同解码出的实际像素尺寸一并返回(getCanonicalUploadBlob 要报
 // 给调用方,重新解码一遍产出的 blob 反而更贵也更脆)。
+//
+// forceReencode:跳过「已经不比目标大就直接返回可解码 blob」的早退分支,总是走一遍
+// canvas 绘制 + toBlob。只有 getCanonicalUploadBlob(规范上传档,R2 真相源)传 true——
+// canvas 往返会剥掉 EXIF/GPS 元数据,并保证产出真的是 image/jpeg 字节(源图若已经
+// ≤3400 且不是 HEIC,原本会把原始相机文件的字节原样直传出去,PNG 源甚至会把 PNG
+// 字节裹上 image/jpeg 的 content-type)。屏显派生缓存(getBaseTierBlob 走的默认档)
+// 和「手动备份/photo-snapshots」那条路都不传 —— 维持原有的省一次重编码画质损失。
 async function downscaleToJpeg(
   blob: Blob,
   maxEdge: number,
   quality: number,
+  options: { forceReencode?: boolean } = {},
 ): Promise<DownscaledJpeg> {
   const decodable = await prepareImageBlobForBrowserDecode(blob);
   const img = await decodeBlob(decodable);
   let canvas: HTMLCanvasElement | null = null;
   try {
     const { w, h } = fitWithinMaxEdge(img.width, img.height, maxEdge);
-    // 已经不比目标大:直接用可解码 blob,省一次重编码画质损失。
-    if (w >= img.width && h >= img.height) {
+    // 已经不比目标大:直接用可解码 blob,省一次重编码画质损失 —— 除非调用方要求
+    // 强制重编码。
+    if (!options.forceReencode && w >= img.width && h >= img.height) {
       return { blob: decodable, width: img.width, height: img.height };
     }
     canvas = document.createElement('canvas');
@@ -654,12 +663,19 @@ export const photoStore = {
   // 本地原图(HEIC 先转)按 backup 档位(3400/0.82)降采样成 JPEG。绝不读远端:
   // 本地原本就没有原图时上传等于把刚从 R2 下载的字节又传回 R2,纯粹浪费带宽,
   // 这种情况直接留给下一轮对账处理本机重新拿到原图之后再补。
+  // forceReencode:true —— 源图哪怕已经 ≤3400 也强制走一遍 canvas 重编码,不吃
+  // downscaleToJpeg 默认的「已经够小就直通原始字节」优化。这是 R2 真相源,原始
+  // 相机文件(连同 EXIF/GPS)绝不能不出浏览器就直传上去;canvas 往返顺带保证
+  // 产出确实是 image/jpeg 字节,不会把非 JPEG 源的原始字节裹上 jpeg 的
+  // content-type 传出去。
   async getCanonicalUploadBlob(
     photoId: string,
   ): Promise<{ blob: Blob; width: number; height: number } | undefined> {
     const original = await readLocalOriginalBlob(photoId);
     if (!original) return undefined;
-    return downscaleToJpeg(original, TIER_MAX_EDGE.backup, TIER_QUALITY.backup);
+    return downscaleToJpeg(original, TIER_MAX_EDGE.backup, TIER_QUALITY.backup, {
+      forceReencode: true,
+    });
   },
 
   // Cached blob: URL of the ORIGINAL — only for surfaces that truly need full

@@ -6,10 +6,35 @@
 // photoId 幂等:同一张重复经过这条流水线(sign→put→confirm)服务端应当接受为覆盖,
 // 所以断点续传天然成立 —— 这次没传成的下次对账差集里还在,不需要额外的重试状态机。
 
+import { isValidPhotoId } from '@/services/album/photo-snapshot-util';
+
 import type {
   PhotoOriginalUploadEntry,
   SignedPhotoOriginalUpload,
 } from './photo-original-client';
+
+// originals 表是 boardbg-*(画板背景,见 store.ts/MobileEditorRoot.tsx)和照片原图
+// 共用的同一个 IndexedDB object store,同一条排除口径搬到这里:补传对账只认照片。
+const BOARD_BACKGROUND_KEY_PREFIX = 'boardbg-';
+
+function isSyncablePhotoId(id: string): boolean {
+  return !id.startsWith(BOARD_BACKGROUND_KEY_PREFIX) && isValidPhotoId(id);
+}
+
+// 保序去重 + 过滤掉画板背景键 / 不合法形状的 id。一个非法 id(比如 '../bad')混进
+// sign/probe/confirm 的批里,服务端 zod 会拒绝整批(结构性校验,不是逐条筛),
+// 连同批里其余本来合法的 id 一起被吞掉 —— 这里在离开这个模块之前先挡掉,不给它
+// 机会污染任何一个批次。
+export function sanitizePhotoIds(photoIds: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of photoIds) {
+    if (!id || seen.has(id) || !isSyncablePhotoId(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
 
 export type PhotoOriginalSyncDeps = {
   getCanonicalUploadBlob: (
@@ -26,7 +51,11 @@ export type PhotoOriginalSyncDeps = {
   ) => Promise<{ uploaded: number; missing: number }>;
 };
 
-const PROBE_BATCH_SIZE = 300; // /photo-originals/urls 端点单次最多接受 300 个 photoId。
+// 服务端 /photo-originals/urls 的单批 photoId 上限,以及 /photo-originals confirm
+// 端点 entries+missing 合计的单批上限 —— 两个端点巧合地用了同一个值(services/
+// album/photo-original-util.ts 的 PHOTO_ORIGINAL_MAX_COUNT)。这里不跨层导入那个
+// 服务端模块(保持这个文件纯客户端、零依赖),就地镜像同一个数字,两处分批都用它。
+const SERVER_BATCH_CAP = 300;
 
 // 探测服务端已确认上传的 photoId 集合 —— 断点续传能生效的前提。/photo-originals/urls
 // 只对 status='uploaded' 的 id 返回 URL,响应里出现的 key 集合就是 serverUploaded;
@@ -35,15 +64,18 @@ const PROBE_BATCH_SIZE = 300; // /photo-originals/urls 端点单次最多接受 
 // serverUploaded 传给 runPhotoOriginalSync」这一步,发生在 runPhotoOriginalSync
 // 之前,不是它内部的上传流程)。任何一批探测失败都吞掉、退化为「这批当作没查到、
 // 照常进候选重试」——安全但更费流量,绝不因为探测失败而跳过整次补传或抛出。
+//
+// 输入先经 sanitizePhotoIds 过滤(去掉 boardbg- 前缀键和不合法形状的 id)—— 一个
+// 非法 id 混进批里,服务端整批 400,连同批里其余合法 id 一起被拒,探测全军覆没。
 export async function probeServerUploaded(
   albumId: string,
   photoIds: string[],
   fetchUrls: (albumId: string, photoIds: string[]) => Promise<Record<string, string>>,
 ): Promise<ReadonlySet<string>> {
-  const unique = [...new Set(photoIds.filter(Boolean))];
+  const unique = sanitizePhotoIds(photoIds);
   const uploaded = new Set<string>();
-  for (let i = 0; i < unique.length; i += PROBE_BATCH_SIZE) {
-    const chunk = unique.slice(i, i + PROBE_BATCH_SIZE);
+  for (let i = 0; i < unique.length; i += SERVER_BATCH_CAP) {
+    const chunk = unique.slice(i, i + SERVER_BATCH_CAP);
     try {
       const urls = await fetchUrls(albumId, chunk);
       for (const photoId of Object.keys(urls)) uploaded.add(photoId);
@@ -55,20 +87,14 @@ export async function probeServerUploaded(
   return uploaded;
 }
 
-// 差集,保序去重:排除服务端已确认上传的;服务端记为 missing 的(不在
-// serverUploaded 里)不排除 —— 本机这次可能重新拿到了原图,值得再试一次。
+// 差集,保序去重(先经 sanitizePhotoIds 挡掉 boardbg- 键和不合法形状的 id):排除
+// 服务端已确认上传的;服务端记为 missing 的(不在 serverUploaded 里)不排除 ——
+// 本机这次可能重新拿到了原图,值得再试一次。
 export function planPhotoOriginalSync(
   bookPhotoIds: string[],
   serverUploaded: ReadonlySet<string>,
 ): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const id of bookPhotoIds) {
-    if (!id || seen.has(id) || serverUploaded.has(id)) continue;
-    seen.add(id);
-    out.push(id);
-  }
-  return out;
+  return sanitizePhotoIds(bookPhotoIds).filter((id) => !serverUploaded.has(id));
 }
 
 const UPLOAD_BATCH_SIZE = 50;
@@ -174,12 +200,17 @@ export async function runPhotoOriginalSync(input: {
     }
   }
 
-  // ── 最后一次性上报本地缺失(genuinely local-absent + 上面各种失败落入的)。
-  if (missing.length > 0) {
+  // ── 最后上报本地缺失(genuinely local-absent + 上面各种失败落入的),按
+  // SERVER_BATCH_CAP 分批 —— confirm 端点对 entries+missing 合计有上限,一次性发
+  // 超过上限的 missing 会被 PhotoOriginalConfirmBodySchema 整体拒绝、这次「缺失」
+  // 就完全没落地(而不是缺一部分)。每批独立 try/catch,一批失败不影响其余批次,
+  // 不中断,函数依旧绝不抛出。
+  for (let i = 0; i < missing.length; i += SERVER_BATCH_CAP) {
+    const chunk = missing.slice(i, i + SERVER_BATCH_CAP);
     try {
-      await deps.confirm(albumId, { missing });
+      await deps.confirm(albumId, { missing: chunk });
     } catch {
-      // 吞掉:这次没能把「缺失」计入服务端统计,不影响本次运行结果的真实性 ——
+      // 吞掉:这一批没能把「缺失」计入服务端统计,不影响本次运行结果的真实性 ——
       // 下一轮对账会重新尝试(仍然差集里),runPhotoOriginalSync 本身绝不抛出。
     }
   }
