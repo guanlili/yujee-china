@@ -61,3 +61,25 @@ test('albumPhotoRepo: upsertMany + findByAlbum + missing 不覆盖 uploaded', as
     await cleanupUser(user.id);
   }
 });
+
+test('albumPhotoRepo: countByStatus aggregates uploaded/missing without a full-row fetch', async (t) => {
+  if (!(await isDbReachable())) { t.skip('DATABASE_URL is not reachable; skipping'); return; }
+  const user = await makeUser('album-photo-count');
+  try {
+    const album = await makeAlbum(user.id);
+
+    // No rows yet — both statuses default to 0, not undefined.
+    assert.deepEqual(await albumPhotoRepo.countByStatus(album.id), { uploaded: 0, missing: 0 });
+
+    await db.transaction(async (tx) => {
+      await albumPhotoRepo.upsertMany(tx, album.id, [
+        { photoId: 'p1', status: 'uploaded', width: 100, height: 80, bytes: 1234 },
+        { photoId: 'p2', status: 'uploaded', width: 200, height: 160, bytes: 5678 },
+        { photoId: 'p3', status: 'missing' },
+      ]);
+    });
+    assert.deepEqual(await albumPhotoRepo.countByStatus(album.id), { uploaded: 2, missing: 1 });
+  } finally {
+    await cleanupUser(user.id);
+  }
+});

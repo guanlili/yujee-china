@@ -18,6 +18,23 @@ export const albumPhotoRepo = {
   findByAlbum: async (albumId: string, tx: DbOrTx = db): Promise<AlbumPhoto[]> =>
     tx.select().from(albumPhotos).where(eq(albumPhotos.albumId, albumId)),
 
+  // Aggregate-only count for callers that just need the two totals (e.g.
+  // getDetail's polling-hot-path projection) — a GROUP BY instead of
+  // fetching every row+column and reducing in JS. Missing statuses (no rows
+  // yet, or all rows are one status) default to 0.
+  countByStatus: async (albumId: string): Promise<{ uploaded: number; missing: number }> => {
+    const rows = await db
+      .select({ status: albumPhotos.status, count: sql<number>`count(*)::int` })
+      .from(albumPhotos)
+      .where(eq(albumPhotos.albumId, albumId))
+      .groupBy(albumPhotos.status);
+    const byStatus = new Map(rows.map((r) => [r.status, r.count]));
+    return {
+      uploaded: byStatus.get('uploaded') ?? 0,
+      missing: byStatus.get('missing') ?? 0,
+    };
+  },
+
   // Upsert on the (albumId, photoId) composite PK. A 'missing' upsert must
   // never downgrade an already-'uploaded' row (nor clobber its
   // width/height/bytes): the gate is on the INCOMING (excluded) status, not

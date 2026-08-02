@@ -463,18 +463,10 @@ export const albumService = {
       }
     }
 
-    const [pages, photoRows] = await Promise.all([
+    const [pages, photoOriginals] = await Promise.all([
       albumPageRepo.findByAlbum(db, albumId),
-      albumPhotoRepo.findByAlbum(albumId),
+      albumPhotoRepo.countByStatus(albumId),
     ]);
-    const photoOriginals = photoRows.reduce(
-      (acc, row) => {
-        if (row.status === 'uploaded') acc.uploaded++;
-        else acc.missing++;
-        return acc;
-      },
-      { uploaded: 0, missing: 0 },
-    );
     return {
       album: {
         id: album.id,
