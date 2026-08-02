@@ -9,6 +9,7 @@ import {
 	parseAlbumBookInput,
 } from "../src/core/album/book-state.ts";
 import { loadAlbumSkills, parseSkillMarkdown } from "../src/core/album/skills-loader.ts";
+import { createDefaultAlbumSkills } from "../src/core/album/skills.ts";
 import { loadTemplateCatalog } from "../src/core/album/templates-catalog.ts";
 import { type AlbumToolsOptions, createAlbumTools } from "../src/core/album/tools.ts";
 
@@ -28,16 +29,29 @@ function createHarness() {
 	return { tools, getBook: () => book, catalog };
 }
 
-test("文件化 skills 从 skills/ 目录加载四个技能", () => {
+test("文件化 skills 从 skills/ 目录加载五个技能", () => {
 	const skills = loadAlbumSkills();
 	const names = skills.map((skill) => skill.name).sort();
-	assert.deepEqual(names, ["相册字体", "相册排版", "相册文案", "相册配色"].sort());
+	assert.deepEqual(names, ["页面HTML编辑", "相册字体", "相册排版", "相册文案", "相册配色"].sort());
+	const pageHtml = skills.find((skill) => skill.name === "页面HTML编辑");
+	assert.ok(pageHtml?.content.includes("write_page_html"), "HTML 编辑技能应指向 write_page_html 工具");
+	assert.ok(pageHtml?.filePath.endsWith("SKILL.md"));
 	const color = skills.find((skill) => skill.name === "相册配色");
 	assert.ok(color?.content.includes("set_text_colors"), "配色技能应指向 set_text_colors 工具");
 	assert.ok(color?.filePath.endsWith("SKILL.md"));
 	const font = skills.find((skill) => skill.name === "相册字体");
 	assert.ok(font?.content.includes("set_text_fonts"), "字体技能应指向 set_text_fonts 工具");
 	assert.ok(font?.filePath.endsWith("SKILL.md"));
+});
+
+test("内置兜底技能在 skills/ 目录都有对应文件(防止代码加技能漏建 SKILL.md)", () => {
+	const fileSkillNames = new Set(loadAlbumSkills().map((skill) => skill.name));
+	for (const fallback of createDefaultAlbumSkills()) {
+		assert.ok(
+			fileSkillNames.has(fallback.name),
+			`内置技能「${fallback.name}」缺少 contracts/skills/<name>/SKILL.md,生产环境永远加载不到它`,
+		);
+	}
 });
 
 test("SKILL.md frontmatter 解析：缺字段/无 frontmatter 返回 undefined", () => {
