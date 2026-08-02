@@ -1411,14 +1411,14 @@ export const albumService = {
     return { updated: true };
   },
 
-  // ── 整页交换的原子落库(2026-08-01 设计:docs/specs/2026-08-01-swap-gesture-
-  // and-page-swap-design.md)。逐页 PATCH 表达不了它:body 不收 templateId/html,
-  // 且大页↔对页的块对调会让中间每一页 pageIndex 平移,逐页写既不原子又会在中间态
-  // 撞 html 逐笔 patch 的语义。所以是一份完整置换、一个事务。
+  // ── 页序重排的原子落库(2026-08-01 设计引入,2026-08-02 页序弹窗沿用:
+  // docs/specs/2026-08-02-page-reorder-modal-design.md)。逐页 PATCH 表达不了它:
+  // body 不收 templateId/html,且插入/块移会让中间每一页 pageIndex 平移,逐页写
+  // 既不原子又会在中间态撞 html 逐笔 patch 的语义。所以是一份完整置换、一个事务。
   //
   // permutation[newIndex] = oldIndex。整条页记录(templateId/images/texts/
-  // imagePos/html)原样跟着走 —— 交换的是页的**位置**,页内一切不变,html 一个
-  // 字不碰(与图片交换只动 imagesJson 刻意不同,见 page-swap.ts 抬头)。
+  // imagePos/html)原样跟着走 —— 变的是页的**位置**,页内一切不变,html 一个
+  // 字不碰(与图片交换只动 imagesJson 刻意不同,见 page-reorder.ts 抬头)。
   async reorderPages(
     userId: string,
     albumId: string,
