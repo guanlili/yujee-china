@@ -40,6 +40,9 @@ export interface AlbumInfo {
   photoSnapshotUrls?: Record<string, string>;
   // 对应 URL 当前记录的已校验不可变渲染版本。旧快照没有版本时为空。
   photoSnapshotRenderVersions?: Record<string, string>;
+  // album_photos 里 uploaded/missing 的行数(照片真相迁 R2 Phase 0)。省略/无行 →
+  // 视同 {uploaded:0,missing:0}。
+  photoOriginals?: { uploaded: number; missing: number };
   // 预览垫底背景(相册级):书页浮在其上的画板底。null/省略 = 无。
   boardBackground?: BoardBackground | null;
   photoFilter?: PhotoFilterState | null;

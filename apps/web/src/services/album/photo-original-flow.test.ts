@@ -11,6 +11,7 @@ process.env.R2_PUBLIC_BASE_URL ??= 'https://cdn.yujeeai.test';
 
 const { photoOriginalService } = await import('./photo-original-service');
 const { albumPhotoRepo } = await import('../../db/repos/album-photo-repo');
+const { albumService } = await import('./album-service');
 const { cleanupUser, isDbReachable, makeAlbum, makeUser } = await import(
   '../../db/repos/__test__/setup'
 );
@@ -118,6 +119,23 @@ test('photo-original getUrls: only uploaded photoIds get a signed GET; missing/u
     assert.deepEqual(Object.keys(urls), [P1]);
     assert.ok(urls[P1]!.includes('X-Amz-Signature'));
     assert.ok(urls[P1]!.includes(`photo-originals/${album.id}/${P1}.jpg`));
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('getDetail projects photoOriginals counts', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('photo-orig-detail');
+  try {
+    const album = await makeAlbum(user.id, { photoCount: 2 });
+    await photoOriginalService.confirm(user.id, album.id, {
+      entries: [entry(P1)],
+      missing: [P2],
+    });
+
+    const detail = await albumService.getDetail(user.id, album.id);
+    assert.deepEqual(detail.album.photoOriginals, { uploaded: 1, missing: 1 });
   } finally {
     await cleanupUser(user.id);
   }

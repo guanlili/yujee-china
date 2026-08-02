@@ -463,7 +463,18 @@ export const albumService = {
       }
     }
 
-    const pages = await albumPageRepo.findByAlbum(db, albumId);
+    const [pages, photoRows] = await Promise.all([
+      albumPageRepo.findByAlbum(db, albumId),
+      albumPhotoRepo.findByAlbum(albumId),
+    ]);
+    const photoOriginals = photoRows.reduce(
+      (acc, row) => {
+        if (row.status === 'uploaded') acc.uploaded++;
+        else acc.missing++;
+        return acc;
+      },
+      { uploaded: 0, missing: 0 },
+    );
     return {
       album: {
         id: album.id,
@@ -491,6 +502,9 @@ export const albumService = {
           album.photoSnapshot?.photoIds,
           album.photoSnapshot?.renderVersions,
         ),
+        // album_photos 里 uploaded/missing 的行数(照片真相迁 R2 Phase 0)。无行 →
+        // {uploaded:0,missing:0},让上传面板知道还差多少张原图没落地。
+        photoOriginals,
         // 预览垫底背景(相册级);编辑器读它铺画板、导出拼图也读它。null = 无。
         boardBackground: album.boardBackground ?? null,
         photoFilter: album.photoFilter ?? null,

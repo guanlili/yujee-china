@@ -62,6 +62,8 @@ export function albumLiveSignature(state: AlbumPollState): string {
     state.generation?.progress ?? '',
     JSON.stringify(album?.photoSnapshotUrls ?? {}),
     JSON.stringify(album?.photoSnapshotRenderVersions ?? {}),
+    album?.photoOriginals?.uploaded ?? 0,
+    album?.photoOriginals?.missing ?? 0,
   ].join('|');
 }
 
