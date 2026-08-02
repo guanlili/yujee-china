@@ -1834,11 +1834,18 @@ export function ChatPanel({
           if (state.composing) continue;
           settleThinking(host, 'analyzedFeedback');
           window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
-          appendReplyBody(host, state.lastComposeStatus === 'COMPLETED'
-            ? aT('新页面的文案写好了,和全书一个声音。不合口味随时在对话里改。',
-                 'The new pages now have their copy, in the same voice as the rest of the book. Ask me here to tweak anything.')
-            : aT('新照片排进去了,但文案没写上。在对话里跟我说「给新页写文案」,我来补。',
-                 "The new photos are in, but their copy didn't come through. Tell me here to write it and I'll fill them in."));
+          // COMPLETED 不等于「真写出来了」:整章掉队时(pagesTexts 全空,或被 F1 的章
+          // 归属守卫全数跳过)job 依旧 COMPLETED,只有 lastComposeWrote===false 才知道
+          // 这次没写出东西 —— 这里改走与回调侧(job-service)同款的诚实文案,不再当场
+          // 报假成功。lastComposeWrote 为 true 或 null(非追加单/信息缺失)时维持成功文案。
+          appendReplyBody(host, state.lastComposeStatus === 'COMPLETED' && state.lastComposeWrote === false
+            ? aT('新照片排进书里了,但这次文案没写出来。在对话里跟我说「给新页写文案」,我来补。',
+                 "The new photos are in, but their copy didn't come through this time. Tell me here to write it and I'll fill them in.")
+            : state.lastComposeStatus === 'COMPLETED'
+              ? aT('新页面的文案写好了,和全书一个声音。不合口味随时在对话里改。',
+                   'The new pages now have their copy, in the same voice as the rest of the book. Ask me here to tweak anything.')
+              : aT('新照片排进去了,但文案没写上。在对话里跟我说「给新页写文案」,我来补。',
+                   "The new photos are in, but their copy didn't come through. Tell me here to write it and I'll fill them in."));
           await loadStoryGate();
           maybeAppendExportReadyCard();
           return;

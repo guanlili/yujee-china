@@ -7,7 +7,7 @@ import { albumRepo } from '@/db/repos/album-repo';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
-import { jobService } from '@/services/job/job-service';
+import { jobService, readComposeAppendMeta } from '@/services/job/job-service';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
 import { agentClient } from '@/lib/agent/agent-client';
 import { designAgentClient } from '@/lib/agent/design-agent-client';
@@ -1129,6 +1129,15 @@ export const albumService = {
     const rawPages = Array.isArray(root?.pages) ? (root!.pages as Page[]) : [];
     const designed = rawPages.some((page) => templateCategory(page.templateId) === 'cover');
     const latestCompose = await agentJobRepo.findLatestComposeByAlbum(albumId);
+    // COMPLETED 不等于「真写出来了」:整章掉队时 pagesTexts 全空也是 COMPLETED(回调回执
+    // 诚实,但没有这个字段轮询侧只看得到 status)。writtenPages 是回调完成时回填进
+    // job.meta.composeAppend 的实际合并页数(已按 F1 的章归属守卫过滤)——非追加单或
+    // 追加单还没回填(未完成)一律 null,只有确定完成后才是 true/false。
+    const latestComposeAppendMeta = readComposeAppendMeta(latestCompose?.meta);
+    const lastComposeWrote =
+      latestComposeAppendMeta?.writtenPages !== undefined
+        ? latestComposeAppendMeta.writtenPages > 0
+        : null;
     return {
       sets: buildCoverSets(albumId, chapters.map((c) => ({ photos: c.photos ?? [] }))),
       designed,
@@ -1137,6 +1146,8 @@ export const albumService = {
       composing: latestCompose?.status === 'QUEUED' || latestCompose?.status === 'RUNNING',
       // 追加范围成稿的完成信号:前端轮询它从 RUNNING 走到 COMPLETED/FAILED。
       lastComposeStatus: latestCompose?.status ?? null,
+      // 追加范围成稿是否真写出了页(见上);非追加单/还未回填 → null。
+      lastComposeWrote,
     };
   },
 
@@ -1345,12 +1356,24 @@ export const albumService = {
         await jobService.markRunning(tx, created.id);
       });
     } catch (e) {
-      // 唯一索引冲突 = 已有在途成稿(全书或追加):幂等接受,不起第二单。
       if (!isUniqueViolation(e)) {
         logger.error({ err: String(e), requestId, albumId }, 'create append compose job failed');
         throw e;
       }
-      return { accepted: true, composed: true };
+      // 唯一索引冲突:已有一条活跃 (album,'compose') job,但不一定是同一批章的重入 ——
+      // 也可能是全书成稿,或范围完全不同的另一批追加章,那样无条件 composed:true 会把
+      // 本批章无声吞掉(用户以为写了,其实那条在途单根本不认识这些 chapterId)。
+      // 只有在途单确实是 composeAppend 且其 chapterIds 覆盖本次请求的全部 chapterIds
+      // 时才是真幂等重入;否则诚实拒绝,前端 catch 会给「没能开始写」的气泡。
+      const inFlight = await agentJobRepo.findLatestComposeByAlbum(albumId);
+      const inFlightActive = inFlight?.status === 'QUEUED' || inFlight?.status === 'RUNNING';
+      const inFlightAppendMeta = inFlight ? readComposeAppendMeta(inFlight.meta) : null;
+      const sameOrWiderScope =
+        !!inFlightAppendMeta && input.chapterIds.every((id) => inFlightAppendMeta.chapterIds.includes(id));
+      if (inFlightActive && sameOrWiderScope) {
+        return { accepted: true, composed: true };
+      }
+      throw ERRORS.VALIDATION_FAILED('append compose scope conflicts with an in-flight compose job');
     }
 
     try {
