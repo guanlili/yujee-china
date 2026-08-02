@@ -20,12 +20,18 @@ test('#168 web image: overflow-hidden wrapper, inner img fills 100% with cover',
   // the caller style (slot geometry) is spread onto a wrapper that clips overflow,
   // after stripping the paint-only objectFit/objectPosition off it
   assert.match(webSource, /const \{ objectFit: _of, objectPosition: _op, \.\.\.frame \} = style;/);
-  assert.match(webSource, /<div\s+style=\{\{\s*\.\.\.frame,\s*overflow: 'hidden',\s*\}\}\s*>/s);
-  // inner <img> fills the frame and keeps cover + computed objectPosition + zoom
+  // 2026-08-02 rotate:wrapper 仍是「frame 展开 + overflow:hidden」,旋转分支只在
+  // wrapper 未声明 position 时补 relative(绝对定位 img 的包含块)。
   assert.match(
     webSource,
-    /width: '100%',\s*height: '100%',\s*objectFit: 'cover',\s*objectPosition,\s*\.\.\.zoom,/s,
+    /<div\s+style=\{\{\s*\.\.\.frame,\s*overflow: 'hidden',\s*\.\.\.\(rotated && !frame\.position \? \{ position: 'relative' \} : \{\}\),\s*\}\}\s*>/s,
   );
+  // inner <img>(未旋转分支)fills the frame and keeps cover + objectPosition + zoom
+  assert.match(
+    webSource,
+    /objectFit: 'cover',\s*objectPosition,/s,
+  );
+  assert.match(webSource, /\{ width: '100%', height: '100%', \.\.\.zoom \}/, '未旋转分支 100%×100% 原样');
   // scale>1 applies the transform zoom (anchored at focal point) on the INNER img
   assert.match(webSource, /position\.scale > 1/);
   assert.match(webSource, /transform: `scale\(\$\{position\.scale\}\)`/);

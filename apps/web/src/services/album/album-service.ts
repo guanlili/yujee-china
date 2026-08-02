@@ -1367,7 +1367,7 @@ export const albumService = {
         const before = page.imagePos ?? {};
         for (const [slot, pos] of Object.entries(patch.imagePosJson)) {
           const prev = before[slot];
-          if (html !== null && (!prev || prev.x !== pos.x || prev.y !== pos.y || prev.scale !== pos.scale)) {
+          if (html !== null && (!prev || prev.x !== pos.x || prev.y !== pos.y || prev.scale !== pos.scale || prev.rotate !== pos.rotate)) {
             html = patchHtmlImagePos(html, slot, pos);
           }
         }

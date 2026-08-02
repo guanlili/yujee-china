@@ -4,7 +4,10 @@ import {
   clampImagePos,
   coverCropFraction,
   dragToImagePos,
+  normalizeRotate,
   previewDragToImagePos,
+  rotateDragDelta,
+  rotateImagePos,
   zoomImagePos,
   DEFAULT_IMAGE_POS,
   SCALE_MIN,
@@ -151,4 +154,37 @@ test('previewDragToImagePos: 越界拖动被 clamp 在 0..100', () => {
   const crop = coverCropFraction(200, 100, 100, 100, { x: 50, y: 50, scale: 1 })!;
   assert.equal(previewDragToImagePos({ x: 50, y: 50, scale: 1 }, 999, 0, 200, 100, crop).x, 0);
   assert.equal(previewDragToImagePos({ x: 50, y: 50, scale: 1 }, -999, 0, 200, 100, crop).x, 100);
+});
+
+// ── rotate:归一化 / 转一步 / 拖动补偿(2026-08-02 图片旋转)──────────────────
+
+test('normalizeRotate: 吸附 90 倍数,0/360 归一为 undefined(不落库)', () => {
+  assert.equal(normalizeRotate(undefined), undefined);
+  assert.equal(normalizeRotate(0), undefined);
+  assert.equal(normalizeRotate(360), undefined);
+  assert.equal(normalizeRotate(90), 90);
+  assert.equal(normalizeRotate(450), 90);
+  assert.equal(normalizeRotate(-90), 270);
+  assert.equal(normalizeRotate(NaN), undefined);
+});
+
+test('rotateImagePos: 顺时针循环 0→90→180→270→0,x/y/scale 原样保留', () => {
+  let pos: ImagePosValue = { x: 30, y: 70, scale: 1.4 };
+  pos = rotateImagePos(pos);
+  assert.deepEqual(pos, { x: 30, y: 70, scale: 1.4, rotate: 90 });
+  pos = rotateImagePos(rotateImagePos(rotateImagePos(pos)));
+  assert.deepEqual(pos, { x: 30, y: 70, scale: 1.4 }, '转满一圈回到无 rotate');
+});
+
+test('clampImagePos: rotate 随位置一起归一;非法角度吸附', () => {
+  assert.deepEqual(clampImagePos({ x: 50, y: 50, scale: 1, rotate: 180 }).rotate, 180);
+  assert.equal(clampImagePos({ x: 50, y: 50, scale: 1, rotate: 0 }).rotate, undefined);
+  assert.equal(clampImagePos({ x: 50, y: 50, scale: 1 }).rotate, undefined);
+});
+
+test('rotateDragDelta: image = R(-θ)·screen,未旋转时逐像素恒等', () => {
+  assert.deepEqual(rotateDragDelta(undefined, 10, 4), { dx: 10, dy: 4 });
+  assert.deepEqual(rotateDragDelta(90, 10, 4), { dx: 4, dy: -10 });
+  assert.deepEqual(rotateDragDelta(180, 10, 4), { dx: -10, dy: -4 });
+  assert.deepEqual(rotateDragDelta(270, 10, 4), { dx: -4, dy: 10 });
 });

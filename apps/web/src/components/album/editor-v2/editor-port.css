@@ -1355,6 +1355,7 @@
 /* 浮层里的三枚按钮(换图 / 复位 / 删除)共用一套胶囊样式;删除单独走危险色,
    免得和「复位」看着一样、点错就把图清了。 */
 .editor-port .img-edit-reset,
+.editor-port .img-edit-rotate,
 .editor-port .img-edit-swap,
 .editor-port .img-edit-style,
 .editor-port .img-edit-del{
@@ -1364,6 +1365,7 @@
   transition:background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
 }
 .editor-port .img-edit-reset:hover,
+.editor-port .img-edit-rotate:hover,
 .editor-port .img-edit-swap:hover,
 .editor-port .img-edit-style:hover{ background:var(--border-soft); }
 /* #c44 与移动端 .mimg-btn[data-danger] 同一枚(--danger 那个 token 是灰阶的,

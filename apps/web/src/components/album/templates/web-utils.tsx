@@ -37,7 +37,8 @@ interface WebImageProps {
   placeholder?: string;
   style: CSSProperties;
   // #165 per-slot override. Absent => centered cover, no zoom (pre-#165 default).
-  position?: { x: number; y: number; scale: number };
+  // rotate(2026-08-02):顺时针 90 的倍数,缺省即 0;渲染用「盒交换」,见下。
+  position?: { x: number; y: number; scale: number; rotate?: number };
   // #168: the page's image-slot key (same key as imagePos[slotId]). Emitted as
   // data-image-slot so the editor's manual pan/zoom overlay can map a clicked
   // <img> back to its slot and persist the move into imagePosJson[slotId].
@@ -67,11 +68,26 @@ export function WebImage({ src, placeholder, style, position, slotId }: WebImage
     // `objectFit`/`objectPosition` belong to the img, never the wrapper: strip them
     // out of the wrapper style (some templates inline objectFit:'cover' in `style`).
     const { objectFit: _of, objectPosition: _op, ...frame } = style;
+    // ── 旋转:盒交换(2026-08-02,与 page-html-dom.patchHtmlImagePos 同一模型)──
+    // 90/270 时 img 的盒尺寸换成图框转置尺寸再绕中心 rotate:cover 在转置盒上按
+    // 最小缩放覆盖,白边不变式照旧;不做按宽高比的补偿放大。图框尺寸解析不出
+    // (百分比布局)→ 按未旋转渲染,宁可方向不对也不出白边。
+    const rotate = position?.rotate ? ((Math.round(position.rotate / 90) * 90) % 360 + 360) % 360 : 0;
+    const px = (v: CSSProperties['width']): number | null => {
+      if (typeof v === 'number') return v > 0 ? v : null;
+      if (typeof v === 'string' && /^[\d.]+px$/.test(v)) return parseFloat(v) || null;
+      return null;
+    };
+    const fw = px(frame.width);
+    const fh = px(frame.height);
+    const rotated = rotate !== 0 && fw !== null && fh !== null;
+    const swap = rotated && rotate % 180 !== 0;
     return (
       <div
         style={{
           ...frame,
           overflow: 'hidden',
+          ...(rotated && !frame.position ? { position: 'relative' } : {}),
         }}
       >
         <img
@@ -80,11 +96,18 @@ export function WebImage({ src, placeholder, style, position, slotId }: WebImage
           data-image-slot={slotId}
           style={{
             display: 'block',
-            width: '100%',
-            height: '100%',
             objectFit: 'cover',
             objectPosition,
-            ...zoom,
+            ...(rotated
+              ? {
+                  position: 'absolute',
+                  left: '50%',
+                  top: '50%',
+                  width: `${swap ? fh! : fw!}px`,
+                  height: `${swap ? fw! : fh!}px`,
+                  transform: `translate(-50%, -50%) rotate(${rotate}deg)${position && position.scale > 1 ? ` scale(${position.scale})` : ''}`,
+                }
+              : { width: '100%', height: '100%', ...zoom }),
           }}
         />
       </div>

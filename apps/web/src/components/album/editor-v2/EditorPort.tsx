@@ -64,7 +64,10 @@ import { runPhotoBackup } from './mobile/use-photo-backup';
 import {
   clampImagePos,
   coverCropFraction,
+  normalizeRotate,
   previewDragToImagePos,
+  rotateDragDelta,
+  rotateImagePos,
   zoomImagePos,
   DEFAULT_IMAGE_POS,
   SCALE_MIN,
@@ -1997,15 +2000,40 @@ function EditorBook({
       return p ? clampImagePos(p) : { ...DEFAULT_IMAGE_POS };
     }
     // Paint a working position onto the live <img> only (instant, no repaint).
+    // rotate 用「盒交换」(与 patchHtmlImagePos/WebImage 同一模型):90/270 时 img
+    // 盒尺寸换成图框转置尺寸再绕中心 rotate。offsetWidth 不受 CSS transform 影响,
+    // 读到的就是 wrapper 坐标系里的 px,与行内 width/height 同一空间。
     function applyLiveImagePos(imgEl: HTMLImageElement, pos: ImagePosValue) {
+      const rotate = normalizeRotate(pos.rotate) ?? 0;
       imgEl.style.objectPosition = `${pos.x}% ${pos.y}%`;
-      if (pos.scale > 1) {
-        imgEl.style.transform = `scale(${pos.scale})`;
-        imgEl.style.transformOrigin = `${pos.x}% ${pos.y}%`;
-      } else {
-        imgEl.style.transform = '';
-        imgEl.style.transformOrigin = '';
+      if (!rotate) {
+        imgEl.style.position = '';
+        imgEl.style.left = '';
+        imgEl.style.top = '';
+        // 写回 100% 而不是清空:live 节点的行内 width 可能就是唯一的尺寸声明。
+        imgEl.style.width = '100%';
+        imgEl.style.height = '100%';
+        if (pos.scale > 1) {
+          imgEl.style.transform = `scale(${pos.scale})`;
+          imgEl.style.transformOrigin = `${pos.x}% ${pos.y}%`;
+        } else {
+          imgEl.style.transform = '';
+          imgEl.style.transformOrigin = '';
+        }
+        return;
       }
+      const frame = imgEl.parentElement;
+      const fw = frame?.offsetWidth ?? 0;
+      const fh = frame?.offsetHeight ?? 0;
+      if (!(fw > 0 && fh > 0)) return;
+      const swap = rotate % 180 !== 0;
+      imgEl.style.position = 'absolute';
+      imgEl.style.left = '50%';
+      imgEl.style.top = '50%';
+      imgEl.style.width = `${swap ? fh : fw}px`;
+      imgEl.style.height = `${swap ? fw : fh}px`;
+      imgEl.style.transform = `translate(-50%, -50%) rotate(${rotate}deg)${pos.scale > 1 ? ` scale(${pos.scale})` : ''}`;
+      imgEl.style.transformOrigin = '';
     }
     function buildImgEditOverlay(): HTMLElement {
       if (imgEditOverlay) return imgEditOverlay;
@@ -2044,6 +2072,21 @@ function EditorBook({
       // 图片位是 {{IMG_SRC:slot}} token,显示时按 imagesJson 现查现解析,所以换图/删图
       // 不需要(也不该)改 html —— 改了反而会把 token 烘死成某张具体照片,以后换不动。
       // 服务端 updatePage 的 images 分支同口径(注释就写着「换图/删图只动数据层」)。
+      // 旋转:顺时针 90° 一步,点击即存(与复位同一口径)。数据进 imagePosJson.rotate,
+      // 渲染的盒交换模型见 image-edit-util/patchHtmlImagePos。
+      const rotateBtn = document.createElement('button');
+      rotateBtn.type = 'button';
+      rotateBtn.className = 'img-edit-rotate';
+      rotateBtn.textContent = aT('旋转', 'Rotate');
+      rotateBtn.setAttribute('aria-label', aT('顺时针旋转 90 度', 'Rotate 90° clockwise'));
+      rotateBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!imgEdit) return;
+        imgEdit.pos = rotateImagePos(imgEdit.pos);
+        applyLiveImagePos(imgEdit.imgEl, imgEdit.pos);
+        renderImgEditPreview();
+        commitImagePos();
+      });
       const swap = document.createElement('button');
       swap.type = 'button';
       swap.className = 'img-edit-swap';
@@ -2090,17 +2133,19 @@ function EditorBook({
       preview.appendChild(previewImg);
       preview.appendChild(cropBox);
       let previewDrag:
-        | { pointerId: number; x: number; y: number; start: ImagePosValue; crop: CropFraction; pw: number; ph: number }
+        | { pointerId: number; x: number; y: number; start: ImagePosValue; crop: CropFraction; pw: number; ph: number; rot: number }
         | null = null;
       preview.addEventListener('pointerdown', (e) => {
         if (!imgEdit) return;
         const frameEl = imgEdit.imgEl.parentElement ?? imgEdit.imgEl;
         const fr = frameEl.getBoundingClientRect();
+        const rot = normalizeRotate(imgEdit.pos.rotate) ?? 0;
+        const [efw, efh] = rot % 180 !== 0 ? [fr.height, fr.width] : [fr.width, fr.height];
         const crop = coverCropFraction(
           imgEdit.imgEl.naturalWidth,
           imgEdit.imgEl.naturalHeight,
-          fr.width,
-          fr.height,
+          efw,
+          efh,
           imgEdit.pos,
         );
         if (!crop) return;
@@ -2115,16 +2160,20 @@ function EditorBook({
           crop,
           pw: preview.clientWidth,
           ph: preview.clientHeight,
+          rot,
         };
         preview.setPointerCapture?.(e.pointerId);
         imgEditDragActive = true;
       });
       preview.addEventListener('pointermove', (e) => {
         if (!previewDrag || previewDrag.pointerId !== e.pointerId || !imgEdit) return;
+        // 旋转补偿:预览图按原方向展示,而画布上的图转了 —— 把屏幕位移旋回图像轴,
+        // 拖动手感与画布视觉一致(image = R(-θ)·screen,见 rotateDragDelta 单测)。
+        const delta = rotateDragDelta(previewDrag.rot, e.clientX - previewDrag.x, e.clientY - previewDrag.y);
         imgEdit.pos = previewDragToImagePos(
           previewDrag.start,
-          e.clientX - previewDrag.x,
-          e.clientY - previewDrag.y,
+          delta.dx,
+          delta.dy,
           previewDrag.pw,
           previewDrag.ph,
           previewDrag.crop,
@@ -2159,6 +2208,7 @@ function EditorBook({
       zoomRow.appendChild(slider);
       const actions = document.createElement('div');
       actions.className = 'img-edit-actions';
+      actions.appendChild(rotateBtn);
       actions.appendChild(swap);
       if (lutSupported) actions.appendChild(style);
       actions.appendChild(reset);
@@ -2199,7 +2249,11 @@ function EditorBook({
       const fr = frameEl.getBoundingClientRect();
       const src = imgEdit.imgEl.currentSrc || imgEdit.imgEl.src;
       if (imgEditPreviewImg.getAttribute('src') !== src) imgEditPreviewImg.src = src;
-      const crop = coverCropFraction(natW, natH, fr.width, fr.height, imgEdit.pos);
+      // 盒交换下旋转 90/270 的有效图框 = 转置尺寸;预览图本身保持原方向展示,
+      // 亮框标的是「框里现在露的是图的这一块」(几何精确,旋转反馈看画布本体)。
+      const rot = normalizeRotate(imgEdit.pos.rotate) ?? 0;
+      const [efw, efh] = rot % 180 !== 0 ? [fr.height, fr.width] : [fr.width, fr.height];
+      const crop = coverCropFraction(natW, natH, efw, efh, imgEdit.pos);
       if (!crop) {
         imgEditPreview.style.display = 'none';
         return;

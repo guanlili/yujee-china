@@ -127,6 +127,10 @@ class ImagePos(_Strict):
 
     x, y: object-position percentages clamped [0, 100] (default 50/50).
     scale: zoom factor clamped [1, 2] (default 1; applied in BOTH web and PDF render).
+    rotate: clockwise rotation, 90-degree steps only; 0 is never persisted
+    (absent == 0, so pre-rotation data needs no migration). Web-only feature
+    (2026-08-02 editor rotate button); engine neither writes nor renders it,
+    the field exists solely to keep the strict mirrors in lockstep.
     The schema guards the full clamp range so a hand-rolled tree can't ship an
     out-of-range value through finalize."""
 
@@ -135,6 +139,7 @@ class ImagePos(_Strict):
     x: float = Field(ge=0, le=100)
     y: float = Field(ge=0, le=100)
     scale: float = Field(ge=1, le=2)
+    rotate: Literal[90, 180, 270] | None = None
 
 
 class Page(_Strict):

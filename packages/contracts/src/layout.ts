@@ -66,6 +66,10 @@ export const ImagePos = z.object({
   x: z.number().min(0).max(100),
   y: z.number().min(0).max(100),
   scale: z.number().min(1).max(2),
+  // 顺时针旋转(2026-08-02 编辑器图片旋转):只允许 90 的倍数,0 不落库(缺省即 0,
+  // 存量数据零迁移)。渲染用「盒交换」:90/270 时 <img> 尺寸换成图框转置尺寸再
+  // rotate,object-fit:cover 的白边不变式照旧成立(见 page-html-dom.patchHtmlImagePos)。
+  rotate: z.union([z.literal(90), z.literal(180), z.literal(270)]).optional(),
 }).strict();
 export type ImagePos = z.infer<typeof ImagePos>;
 

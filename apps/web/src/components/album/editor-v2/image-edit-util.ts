@@ -39,9 +39,43 @@ export interface ImagePosValue {
   x: number;
   y: number;
   scale: number;
+  /** 顺时针旋转,只允许 90 的倍数;0 不落库(缺省即 0)。渲染用「盒交换」:90/270
+   *  时 <img> 尺寸换成图框转置尺寸再 rotate,cover 白边不变式照旧成立。 */
+  rotate?: number;
 }
 
 export const DEFAULT_IMAGE_POS: ImagePosValue = { x: 50, y: 50, scale: 1 };
+
+/** 归一化 rotate:吸附到 90 的倍数、折进 [0,360),0 归一为 undefined(不落库)。 */
+export function normalizeRotate(rotate: number | undefined): 90 | 180 | 270 | undefined {
+  if (!rotate || Number.isNaN(rotate)) return undefined;
+  const snapped = ((Math.round(rotate / 90) * 90) % 360 + 360) % 360;
+  return snapped === 0 ? undefined : (snapped as 90 | 180 | 270);
+}
+
+/** 顺时针转一步(编辑卡「旋转」按钮):0→90→180→270→0。 */
+export function rotateImagePos(current: ImagePosValue): ImagePosValue {
+  return clampImagePos({ ...current, rotate: ((current.rotate ?? 0) + 90) % 360 });
+}
+
+/** 屏幕位移 → 图像轴位移(预览拖动的旋转补偿):image = R(-θ)·screen。
+ *  没有旋转时原样返回,拖动手感与 2026-08-02 之前逐像素一致。 */
+export function rotateDragDelta(
+  rotate: number | undefined,
+  dxPx: number,
+  dyPx: number,
+): { dx: number; dy: number } {
+  switch (normalizeRotate(rotate)) {
+    case 90:
+      return { dx: dyPx, dy: -dxPx };
+    case 180:
+      return { dx: -dxPx, dy: -dyPx };
+    case 270:
+      return { dx: -dyPx, dy: dxPx };
+    default:
+      return { dx: dxPx, dy: dyPx };
+  }
+}
 
 function clamp(n: number, min: number, max: number): number {
   if (Number.isNaN(n)) return min;
@@ -57,10 +91,12 @@ function round1(n: number): number {
 // Clamp a candidate position into the contract-legal, white-edge-free range.
 // scale is rounded to 2 decimals (slider/wheel step granularity); x,y to 1.
 export function clampImagePos(pos: ImagePosValue): ImagePosValue {
+  const rotate = normalizeRotate(pos.rotate);
   return {
     x: round1(clamp(pos.x, 0, 100)),
     y: round1(clamp(pos.y, 0, 100)),
     scale: Math.round(clamp(pos.scale, SCALE_MIN, SCALE_MAX) * 100) / 100,
+    ...(rotate ? { rotate } : {}),
   };
 }
 

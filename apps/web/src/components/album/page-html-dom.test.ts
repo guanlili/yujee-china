@@ -212,3 +212,61 @@ test('resolveDisplayHtml:解析不到照片时给出空图槽,不是 src="" 的�
   const unslotted = resolveDisplayHtml(html, {}, () => 'blob:x');
   assert.equal(unslotted.includes('src=""'), false);
 });
+
+// ── patchHtmlImagePos + rotate:盒交换烘焙(2026-08-02 图片旋转)────────────────
+
+const ROTATE_HTML =
+  '<div style="position:absolute;left:40px;top:60px;width:300px;height:200px;overflow:hidden">' +
+  '<img data-image-slot="image" src="{{IMG_SRC:image}}" style="display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%" />' +
+  '</div>';
+
+test('patchHtmlImagePos rotate=90:img 盒换成图框转置尺寸,绕中心 rotate', () => {
+  const out = patchHtmlImagePos(ROTATE_HTML, 'image', { x: 50, y: 50, scale: 1, rotate: 90 });
+  assert.ok(out);
+  assert.match(out, /width:200px/, '盒宽 = 图框高');
+  assert.match(out, /height:300px/, '盒高 = 图框宽');
+  assert.match(out, /position:absolute;left:50%;top:50%/);
+  assert.match(out, /transform:translate\(-50%, -50%\) rotate\(90deg\)/);
+  assert.match(out, /\{\{IMG_SRC:image\}\}/, 'token 原样保留');
+  // wrapper 已声明 position:absolute,不重复补 relative
+  assert.doesNotMatch(out, /position:relative/);
+});
+
+test('patchHtmlImagePos rotate=180:盒不转置;scale>1 时缩放拼在 rotate 之后', () => {
+  const out = patchHtmlImagePos(ROTATE_HTML, 'image', { x: 40, y: 60, scale: 1.5, rotate: 180 });
+  assert.ok(out);
+  assert.match(out, /width:300px/);
+  assert.match(out, /height:200px/);
+  assert.match(out, /transform:translate\(-50%, -50%\) rotate\(180deg\) scale\(1\.5\)/);
+  assert.match(out, /object-position:40% 60%/);
+});
+
+test('patchHtmlImagePos:旋转后回到 0 → 绝对定位复位,尺寸写回 100%', () => {
+  const rotated = patchHtmlImagePos(ROTATE_HTML, 'image', { x: 50, y: 50, scale: 1, rotate: 90 })!;
+  const back = patchHtmlImagePos(rotated, 'image', { x: 50, y: 50, scale: 1 });
+  assert.ok(back);
+  assert.match(back, /width:100%/);
+  assert.match(back, /height:100%/);
+  assert.doesNotMatch(back, /left:50%/);
+  assert.doesNotMatch(back, /rotate\(/);
+});
+
+test('patchHtmlImagePos:图框尺寸解析不出(百分比布局)→ null,调用方走整页重烘', () => {
+  const pctHtml =
+    '<div style="position:absolute;width:50%;height:30%">' +
+    '<img data-image-slot="image" src="{{IMG_SRC:image}}" style="width:100%;height:100%" />' +
+    '</div>';
+  assert.equal(patchHtmlImagePos(pctHtml, 'image', { x: 50, y: 50, scale: 1, rotate: 90 }), null);
+  // 不旋转时照常可 patch(尺寸无关)
+  assert.ok(patchHtmlImagePos(pctHtml, 'image', { x: 30, y: 70, scale: 1 }));
+});
+
+test('patchHtmlImagePos:wrapper 没声明 position 时补 relative(绝对定位 img 的包含块)', () => {
+  const staticHtml =
+    '<div style="width:300px;height:200px;overflow:hidden">' +
+    '<img data-image-slot="image" src="{{IMG_SRC:image}}" style="width:100%;height:100%" />' +
+    '</div>';
+  const out = patchHtmlImagePos(staticHtml, 'image', { x: 50, y: 50, scale: 1, rotate: 270 });
+  assert.ok(out);
+  assert.match(out, /<div style="width:300px;height:200px;overflow:hidden;position:relative">/);
+});

@@ -159,22 +159,83 @@ export function patchHtmlPageStyle(
 
 /** 图片位置/缩放固化(IMG_POS/IMG_TF 烘制后是具体值,必须回写)。与编辑器
  *  applyLiveImagePos 写的 CSS 逐字一致:objectPosition + scale>1 时 transform。 */
+/** img 的直接父级就是图框 wrapper(WebImage 渲染模型:wrapper>img,中间无其他节点)。
+ *  旋转的「盒交换」需要图框的 px 尺寸 —— 从 wrapper 行内 style 里读。拿不到(百分比
+ *  布局/结构意外)→ null,调用方回落整页重烘(bakePageHtml 知道模板几何)。 */
+function imageWrapperOpenTag(
+  html: string,
+  imgIndex: number,
+): { start: number; tag: string; width: number; height: number } | null {
+  const start = html.lastIndexOf('<div', imgIndex);
+  if (start < 0) return null;
+  const open = /^<div\b[^>]*>/.exec(html.slice(start, imgIndex));
+  const style = open ? /style="([^"]*)"/.exec(open[0])?.[1] : undefined;
+  if (!open || !style) return null;
+  const width = /(?:^|;)\s*width:\s*([\d.]+)px/.exec(style)?.[1];
+  const height = /(?:^|;)\s*height:\s*([\d.]+)px/.exec(style)?.[1];
+  if (!width || !height) return null;
+  const w = parseFloat(width);
+  const h = parseFloat(height);
+  return w > 0 && h > 0 ? { start, tag: open[0], width: w, height: h } : null;
+}
+
 export function patchHtmlImagePos(
   html: string,
   slotId: string,
-  pos: { x: number; y: number; scale: number },
+  pos: { x: number; y: number; scale: number; rotate?: number },
 ): string | null {
   const escapedSlot = slotId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const openRe = new RegExp(`<img\\b[^>]*data-image-slot="${escapedSlot}"[^>]*>`, 'i');
   const m = openRe.exec(html);
   if (!m) return null;
+  const rotate = pos.rotate ? ((Math.round(pos.rotate / 90) * 90) % 360 + 360) % 360 : 0;
+  if (!rotate) {
+    const patched = upsertStyleAttr(m[0], {
+      // 从旋转态回来时,盒交换写过的绝对定位/转置尺寸要一并复位(width/height 写回
+      // WebImage 的默认 100%,不能删 —— 删了 img 就没有尺寸了)。从未旋转过的图,
+      // 这几笔是同值覆写/删除不存在的键,逐字节无感。
+      position: null,
+      left: null,
+      top: null,
+      width: '100%',
+      height: '100%',
+      'object-position': `${pos.x}% ${pos.y}%`,
+      transform: pos.scale > 1 ? `scale(${pos.scale})` : null,
+      'transform-origin': pos.scale > 1 ? `${pos.x}% ${pos.y}%` : null,
+    });
+    if (patched === null) return null;
+    return html.slice(0, m.index) + patched + html.slice(m.index + m[0].length);
+  }
+  // ── 旋转:盒交换(2026-08-02)────────────────────────────────────────────────
+  // 90/270 时把 img 的盒尺寸换成图框的转置尺寸再绕中心 rotate:object-fit:cover
+  // 在转置盒上按最小缩放覆盖,白边不变式照旧成立,不需要按宽高比做补偿放大。
+  // 旋转下缩放绕中心(焦点缩放在旋转坐标系里不成立),object-position 仍在图像
+  // 自身轴上滑动 —— 编辑侧的拖动补偿见 image-edit-util.rotateDragDelta。
+  const wrapper = imageWrapperOpenTag(html, m.index);
+  if (!wrapper) return null;
+  const swap = rotate % 180 !== 0;
+  const w = swap ? wrapper.height : wrapper.width;
+  const h = swap ? wrapper.width : wrapper.height;
   const patched = upsertStyleAttr(m[0], {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    width: `${w}px`,
+    height: `${h}px`,
     'object-position': `${pos.x}% ${pos.y}%`,
-    transform: pos.scale > 1 ? `scale(${pos.scale})` : null,
-    'transform-origin': pos.scale > 1 ? `${pos.x}% ${pos.y}%` : null,
+    transform: `translate(-50%, -50%) rotate(${rotate}deg)${pos.scale > 1 ? ` scale(${pos.scale})` : ''}`,
+    'transform-origin': null,
   });
   if (patched === null) return null;
-  return html.slice(0, m.index) + patched + html.slice(m.index + m[0].length);
+  // wrapper 必须是包含块(绝对定位的 img 以它定位)。模板槽位几乎都是 absolute,
+  // 万一是流式布局,补一笔 position:relative(已声明 position 的不动)。
+  let out = html.slice(0, m.index) + patched + html.slice(m.index + m[0].length);
+  if (!/(?:^|;)\s*position:/.test(/style="([^"]*)"/.exec(wrapper.tag)?.[1] ?? '')) {
+    const wrapperPatched = upsertStyleAttr(wrapper.tag, { position: 'relative' });
+    if (wrapperPatched === null) return null;
+    out = out.slice(0, wrapper.start) + wrapperPatched + out.slice(wrapper.start + wrapper.tag.length);
+  }
+  return out;
 }
 
 // ── 文字自适应(fit-text)展示层 pass ──────────────────────────────────────
