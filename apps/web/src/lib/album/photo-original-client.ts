@@ -1,7 +1,7 @@
 'use client';
 
 // 照片原图上传的浏览器侧封装:签名 → 直传 R2 → confirm。
-// photo-original-r2.md 中的 HTTP 端点实现(Task 4)的封装。
+// docs/plans/2026-08-02-photo-originals-r2.md 中的 HTTP 端点实现(Task 4)的封装。
 
 export type PhotoOriginalUploadEntry = {
   photoId: string;

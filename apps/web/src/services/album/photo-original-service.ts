@@ -73,12 +73,14 @@ export const photoOriginalService = {
 
       // Read inside `tx` — not just for confirm-vs-confirm ordering (which the
       // album row lock alone would provide), but because album-service.delete
-      // now also takes that same row lock before running an UNLOCKED
-      // deleteByAlbum(db, albumId) on this table. Reading via a separate,
-      // unlocked `db` connection here could observe stale rows mid-delete (or
-      // race a delete that runs between the read and the upsert below); reading
-      // through `tx` keeps this entire read-then-write on the one locked
-      // session, serialized against both concurrent confirms and delete.
+      // now also takes that same row lock (findByIdForUpdate) before running
+      // deleteByAlbum(tx, albumId) on this table, inside that same locked
+      // transaction. Reading via a separate, unlocked `db` connection here
+      // would fall outside that lock ordering and could observe stale rows
+      // mid-delete (or race a delete that runs between the read and the
+      // upsert below); reading through `tx` keeps this entire read-then-write
+      // on the one locked session, serialized against both concurrent
+      // confirms and delete by the shared album row lock.
       const existing = await albumPhotoRepo.findByAlbum(albumId, tx);
       const statusById = new Map(existing.map((r) => [r.photoId, r.status]));
 

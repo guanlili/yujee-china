@@ -3,8 +3,9 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '@/lib/env';
 import { ERRORS } from '@/lib/api/error-codes';
 
-// Cloudflare R2 is S3-compatible. We only ever sign PUTs from server →
-// browser uploads direct, so the Web tier never proxies PDF bytes.
+// Cloudflare R2 is S3-compatible. The server only ever hands out presigned URLs
+// (PUT for direct browser uploads, GET for private reads like photo-originals) —
+// the Web tier never proxies the actual bytes either direction.
 let _client: S3Client | null = null;
 function client(): S3Client {
   if (!env.R2_ACCOUNT_ID || !env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY) {
