@@ -342,3 +342,31 @@ export function submitSelectLayoutV3(
 ): Promise<SubmitResult> {
   return postJobs(`/api/v3/albums/${albumId}/select-layout`, input);
 }
+
+// 追加范围成稿:加图增量排版落地后,只为新章内页写文案。composed:false = 书未设计,
+// 新页文案等选封面时随全书成稿一起写。
+export async function composeAppendV3(
+  albumId: string,
+  input: { language: 'zh' | 'en'; chapterIds: string[]; refs: Record<string, string> },
+): Promise<{ accepted: true; composed: boolean; requestId?: string }> {
+  const res = await fetch(`/api/v3/albums/${albumId}/compose-append`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (res.status === 401) throw new UnauthorizedError();
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error?.message ?? 'append compose failed');
+  return json.data;
+}
+
+// /design 轻量状态(追加成稿轮询用):composing + 最近一单 compose 的最终状态。
+export async function fetchDesignState(
+  albumId: string,
+): Promise<{ composing: boolean; lastComposeStatus: string | null }> {
+  const res = await fetch(`/api/v3/albums/${albumId}/design`);
+  if (res.status === 401) throw new UnauthorizedError();
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error?.message ?? 'design state failed');
+  return { composing: !!json.data.composing, lastComposeStatus: json.data.lastComposeStatus ?? null };
+}

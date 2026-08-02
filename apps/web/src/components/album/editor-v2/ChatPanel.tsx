@@ -66,6 +66,8 @@ import {
   selectLayoutRefsFromStore,
   submitAddPhotosV3,
   submitSelectLayoutV3,
+  composeAppendV3,
+  fetchDesignState,
   PhotosUnavailableError,
 } from '@/lib/generation/client';
 import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
@@ -1208,7 +1210,15 @@ export function ChatPanel({
     }
 
     // 加照片增量重跑(spec §1):追加范围 —— 采访链尽头据此转向增量排版而非全书重排。
-    let appendScope: { chapterIds: string[]; photoIds: string[]; prevPageCount: number } | null = null;
+    let appendScope: {
+      chapterIds: string[];
+      photoIds: string[];
+      prevPageCount: number;
+      // 增量排版实际范围(fresh ∪ 滞留章)与其照片:triggerAppendSelectLayout 填,
+      // 追加成稿(triggerAppendCompose)按同一范围写文案 —— 两者必须同源。
+      layoutChapterIds?: string[];
+      refsPhotoIds?: string[];
+    } | null = null;
     let appendInFlight = false;
 
     let selectLayoutTriggered = false;
@@ -1293,15 +1303,30 @@ export function ChatPanel({
             window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
             if (opts?.append) {
               // 追加完成:新章已被服务端记 done,闸门随 allDone 恢复;设计过的书样式已继承。
+              const scope = appendScope;
               appendScope = null;
               appendInFlight = false;
-              appendReplyBody(
-                host,
-                aT('新照片排进书里了,样式跟全书保持一致。想调整就在对话里告诉我。',
-                   'The new photos are in — styled to match the rest of the book. Ask me here to tweak anything.'),
-              );
               await loadStoryGate();
-              maybeAppendExportReadyCard();
+              const designed = draft.pages.some((p) => p.kind === 'cover');
+              if (!designed || !scope?.layoutChapterIds?.length) {
+                // 书还没设计:新页文案等选封面时随全书成稿一起写,保持既有收尾。
+                appendReplyBody(
+                  host,
+                  aT('新照片排进书里了,样式跟全书保持一致。想调整就在对话里告诉我。',
+                     'The new photos are in — styled to match the rest of the book. Ask me here to tweak anything.'),
+                );
+                maybeAppendExportReadyCard();
+              } else {
+                appendReplyBody(
+                  host,
+                  aT('新照片排进书里了。我再给新页面写上文案,稍等片刻。',
+                     'The new photos are in — now writing their copy, one moment.'),
+                );
+                await triggerAppendCompose({
+                  chapterIds: scope.layoutChapterIds,
+                  photoIds: scope.refsPhotoIds ?? scope.photoIds,
+                });
+              }
             } else {
               appendReplyBody(
                 host,
@@ -1357,6 +1382,7 @@ export function ChatPanel({
         const refsPhotoIds = [...new Set([...scope.photoIds, ...chapterPhotoIds])];
         const refs = await selectLayoutRefsFromStore(refsPhotoIds);
         if (disposed) return;
+        appendScope = { ...scope, layoutChapterIds, refsPhotoIds };
         await submitSelectLayoutV3(albumId, {
           requestId: albumRecipe.load(albumId)?.requestId ?? crypto.randomUUID(),
           language: currentLang === 'zh' ? 'zh' : 'en',
@@ -1753,6 +1779,78 @@ export function ChatPanel({
           aT('还在写呢,这本有点长。稍后回来看看,写好会直接出现在画板上。',
              'Still writing — this one is a long book. Come back in a bit and it will show up on the canvas.'),
         );
+      }
+    }
+
+    // 追加范围成稿:排版落地后只为新章写文案(服务端派发 engine /v3/compose 空槽单)。
+    async function triggerAppendCompose(scope: { chapterIds: string[]; photoIds: string[] }) {
+      if (disposed) return;
+      const host = appendThinkingShell();
+      setThinkingLabel(host, 'Writing copy for the new pages…');
+      setSending(true);
+      try {
+        let refs: Record<string, string> = {};
+        try {
+          refs = await selectLayoutRefsFromStore(scope.photoIds);
+        } catch {
+          // 原图不在本设备也照写:模型少看图,文案仍从章节上下文出。
+        }
+        if (disposed) return;
+        const res = await composeAppendV3(albumId, {
+          language: currentLang === 'zh' ? 'zh' : 'en',
+          chapterIds: scope.chapterIds,
+          refs,
+        });
+        if (disposed) return;
+        if (!res.composed) {
+          settleThinking(host, 'analyzedFeedback');
+          maybeAppendExportReadyCard();
+          return;
+        }
+        void withWorkflowBusy(() => waitForAppendComposeThenRefresh(host));
+      } catch (e) {
+        settleThinking(host, 'analyzedFeedback');
+        if (!authErr(host, e)) {
+          appendReplyBody(host, aT(
+            '新照片排进去了,但文案没能开始写。在对话里跟我说「给新页写文案」,我来补。',
+            "The new photos are in, but I couldn't start writing their copy. Tell me here to write it and I'll fill them in.",
+          ));
+          maybeAppendExportReadyCard();
+        }
+      } finally {
+        setSending(false);
+        if (!disposed) { restAwait(); scrollChat(); }
+      }
+    }
+
+    // 轮询 /design 等追加成稿收尾:RUNNING → COMPLETED/FAILED。封顶与全书成稿同档 12 分钟。
+    async function waitForAppendComposeThenRefresh(host: HTMLElement) {
+      const deadline = Date.now() + 12 * 60 * 1000;
+      while (!disposed && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2500));
+        if (disposed) return;
+        try {
+          const state = await fetchDesignState(albumId);
+          if (state.composing) continue;
+          settleThinking(host, 'analyzedFeedback');
+          window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+          appendReplyBody(host, state.lastComposeStatus === 'COMPLETED'
+            ? aT('新页面的文案写好了,和全书一个声音。不合口味随时在对话里改。',
+                 'The new pages now have their copy, in the same voice as the rest of the book. Ask me here to tweak anything.')
+            : aT('新照片排进去了,但文案没写上。在对话里跟我说「给新页写文案」,我来补。',
+                 "The new photos are in, but their copy didn't come through. Tell me here to write it and I'll fill them in."));
+          await loadStoryGate();
+          maybeAppendExportReadyCard();
+          return;
+        } catch (e) {
+          if (e instanceof UnauthorizedError) return;
+          // 其它瞬时错误:继续轮询到封顶,不把错误灌进对话
+        }
+      }
+      if (!disposed) {
+        settleThinking(host, 'analyzedFeedback');
+        appendReplyBody(host, aT('还在写新页面的文案,稍后回来看看,写好会直接出现在画板上。',
+          'Still writing the new pages — come back in a bit and the copy will show up on the canvas.'));
       }
     }
 
