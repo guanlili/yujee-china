@@ -1302,13 +1302,11 @@
   .editor-port.chat-collapsed .chat-fold-expand{ display:flex; }
 }
 
-/* ── #168: manual in-frame image pan + zoom ──
-   The selected page's photos get a "grab" affordance; the actively-edited image
-   shows a focus ring and a grabbing cursor. The control overlay (drag hint +
-   zoom slider + reset) floats just below the image, inside the book so it tracks
-   the spread. The book is CSS-zoomed, so the overlay is positioned in book-local
-   px (the JS divides screen px by `zoom`). */
-.editor-port .page.page-selected img[data-image-slot]{ cursor:grab; }
+/* ── #168 → 2026-08-02: manual image edit ──
+   照片悬停一律普通指针(pointer,来自 .ov-page):悬停不承诺任何拖拽 —— grab
+   会误导成「按住就能拖动换位置」,而照片上的语义只有单击(弹编辑卡)与长按 1s
+   (拾起交换,拾起后才全局 grabbing)。位置调整在编辑卡的预览里拖(那里才是
+   grab)。The overlay floats near the image; the JS positions it in viewport px. */
 .editor-port img.img-editing{
   outline:2px solid var(--accent); outline-offset:-2px;
 }

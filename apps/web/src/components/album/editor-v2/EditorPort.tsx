@@ -2561,11 +2561,12 @@ function EditorBook({
       // 那就是「把这张挪过去」,原槽变空(见 image-swap.ts)。
       if (!pageByIndex(pick.ref.pageIndex)?.imagesJson[pick.ref.slotId]) return;
       const { clientX: x, clientY: y, pointerId } = e;
-      // 长按 350ms 拾起,快拖(>8px)回落画布平移(2026-08-02 定稿)。此前 pan 还
-      // 住在画布上时,这里试过两版分流(鼠标立即拾起 → pan 被劫走;时间门 8px/350ms
-      // → 微调中的停顿被误判为长按),都失败 —— 根因是同一块画布同时住着两个拖拽
-      // 语义。现在位置调整整体搬进浮层预览(.img-edit-preview),画布上按下只剩
-      // 「平移画布」和「长按交换」,选中与否都可以长按拾起,不再需要任何让路 guard。
+      // 长按 1s 拾起(2026-08-02 定稿)。此前 pan 还住在画布上时,这里试过两版分流
+      // (鼠标立即拾起 → pan 被劫走;时间门 8px/350ms → 微调中的停顿被误判为长按),
+      // 都失败 —— 根因是同一块画布同时住着两个拖拽语义。现在位置调整整体搬进浮层
+      // 预览(.img-edit-preview),照片上只剩「单击弹卡」和「长按交换」两个语义,
+      // 选中与否都可以长按拾起,不需要任何让路 guard。悬停不给 grab —— 那会误导成
+      // 「按住就能拖」;抓手光标只在拾起之后出现(.swap-dragging)。
       swapPending = {
         pointerId,
         x,
