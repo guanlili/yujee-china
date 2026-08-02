@@ -14,7 +14,7 @@
 | 议题 | 决策 |
 |---|---|
 | 拖拽语义 | **拖到缝隙 → 插入重排**(非对调) |
-| 适用端 | 桌面 + 移动端,同一个弹窗 |
+| 适用端 | 桌面 + 移动端,**各自的弹窗**(两端弹窗规范不同,不共用组件;共享的只有纯逻辑与缩略渲染缝) |
 | 移动端入口 | 主菜单(MoreSheet「更多」)新增「调整页面顺序」条目 |
 | 桌面入口 | 工具栏原「调整页序」按钮改为打开弹窗 |
 | 保存时机 | 弹窗内只改本地工作序;点「完成」合成**一个**置换、发**一次** reorder;取消/遮罩/Esc 直接丢弃,**不加二次确认** |
@@ -50,57 +50,65 @@
 双宽页(full)在插入语义下就是**一条普通记录**,无需块单位概念;配对由
 `placePages` 顺序贪心重推,单边尾巴(奇数内容页)是布局本来就容忍的形态。
 
-## 三、共享弹窗组件 `PageReorderModal`
+## 三、两端各自的弹窗(不共用组件)
 
-一个自包含的 React 组件(网格 + 拖拽 + 页脚),两端各自套自家弹窗壳。
+两端弹窗规范不同,**不做共享弹窗组件**——这也贴合仓里"移动端与桌面是两棵
+独立 UI 树,不共享任何 UI/DOM/手势"的既定架构(page-face.tsx 头注)。两端
+共享的只有:§二的纯逻辑 `page-reorder.ts`(工作序/缝隙/置换/指针几何全在
+这里,两端零重复)和缩略渲染缝 `pageFaceHTML`(页面真相 = HTML,与预览栏/
+画布同一渲染)。
 
-**网格**:全书缩略图按工作序排列换行、纵向滚动。缩略渲染复用
-`pageFaceHTML`(与预览栏/画布同一渲染缝,页面真相 = HTML)。单页 A4 比例
-(宽约 96-120px),双宽页占双倍宽;封面/目录/封尾压暗 + 锁标,不可拖起、
-不响应指针。
+**两端一致的行为语义**(实现各写各的,语义必须对齐):
 
-**拖拽手势**(pointer events + setPointerCapture,不用 HTML5 DnD——触屏不可用):
-
-- 鼠标:按下后移动超 8px 立即拾起(对齐 763fecb6"按住一拖立即拾起"的
-  既定手感;弹窗内没有 pan 竞争,无需长按仲裁)。
-- 触屏:长按 350ms 拾起(对齐全仓 `SWAP_LONG_PRESS_MS`;期间移动超 8px
-  取消计时回落滚动,不劫持网格滚动)。
+- 网格:全书缩略图按工作序排列换行、纵向滚动;单页 A4 比例,双宽页占
+  双倍宽;封面/目录/封尾压暗 + 锁标,不可拖起、不响应指针。
+- 实时角标:每次落下后按工作序用 `pageFolioNumbers` / `pageFolioSides`
+  (page-html-dom 既有导出)重算展示页码与左右归属;角标贴在缩略图
+  **左下 = 左页、右下 = 右页**,用位置本身告诉用户"插入后下游翻面了"。
+  缩略图内部 HTML 里烙死的旧页签不重渲(缩略尺寸下不可辨,提交后全书
+  repaint 自然更新)。
 - 拖动中:幽灵缩略图跟随指针,源格压暗;最近**合法**缝隙显示插入条,
   指针落在非法区(锁定区内/源位置本身)无插入条;贴近网格上下边缘自动滚动。
-- 松手:有合法缝隙 → `applyMove` 更新工作序,网格重排;无 → 原位弹回,零变化。
-
-**实时角标**:每次落下后按工作序用 `pageFolioNumbers` / `pageFolioSides`
-(page-html-dom 既有导出)重算展示页码与左右归属;角标贴在缩略图**左下 =
-左页、右下 = 右页**,用位置本身告诉用户"插入后下游翻面了"。缩略图内部
-HTML 里烙死的旧页签不重渲(缩略尺寸下不可辨,提交后全书 repaint 自然更新)。
-
-**页脚**:
-
+  松手:有合法缝隙 → `applyMove` 更新工作序重排;无 → 原位弹回,零变化。
 - 「完成」:`buildInsertPermutation` 恒等 → 直接关窗零请求;否则乐观提交
-  (本地按置换重排全书 + 关窗 + POST reorder;失败回滚 + toast),与被删的
-  swap 提交同口径。提交前若发现当前 `pages.length` 与打开时不一致(外部改动,
-  如设计对话改了书),提示后关窗不提交——服务端双射校验反正也会拒。
-- 「取消」/点遮罩/Esc:直接丢弃,不加二次确认(用户拍板)。
+  (本地按置换重排全书 + 关窗 + POST reorder;失败回滚 + 提示),与被删的
+  swap 提交同口径。提交前若发现当前 `pages.length` 与打开时不一致(外部
+  改动),提示后关窗不提交——服务端双射校验反正也会拒。
+- 「取消」/点遮罩/Esc(桌面):直接丢弃,不加二次确认(用户拍板)。
 
-**样式**:写进 `editor-port.css` 新段(`.preorder-*` 前缀)。移动端经
-`ModalHost` 的 `.editor-port` 宿主命中同一套规则——这正是 ModalHost 存在的
-目的,零复制。
+### 3a. 桌面 `PageReorderModal.tsx`(editor-v2/)
+
+- 弹窗壳走桌面既有规范:`.modal-overlay` / `.modal-card`(同
+  CreditsPurchaseModal 一族),网格区样式在 `editor-port.css` 新段
+  (`.preorder-*` 前缀);React `useState` 挂载。
+- 手势只做鼠标口径:按下后移动超 8px 立即拾起(对齐 763fecb6"按住一拖
+  立即拾起"的既定手感;弹窗内没有 pan 竞争,无需长按仲裁)。pointer events
+  + `setPointerCapture`,不用 HTML5 DnD。
+- 缩略宽 ~120px,Esc 可关。
+
+### 3b. 移动端 `ReorderSheet.tsx`(mobile/modals/)
+
+- 弹窗壳走移动端既有规范:`ModalHost` 宿主 + `mobile/modals/` 目录族,
+  布局样式进 `mobile-editor.css`;子树守则照旧——不碰 `document`,状态住
+  容器层。
+- 手势只做触屏口径:长按 350ms 拾起(对齐全仓 `SWAP_LONG_PRESS_MS`;期间
+  移动超 8px 取消计时回落滚动,不劫持网格滚动)。
+- 缩略宽随屏幕自适应(约 3-4 列),无 Esc 语义,点遮罩/「取消」丢弃。
 
 ## 四、两端接线
 
 **桌面(EditorPort)**:
 
-- 工具栏按钮 `pageSwapBtn` 改为 `data-action="openPageReorder"`,打开弹窗
-  (React `useState`,同 CreditsPurchaseModal 的挂载模式;tooltip 文案沿用
-  「调整页序 / Reorder pages」)。
+- 工具栏按钮 `pageSwapBtn` 改为 `data-action="openPageReorder"`,打开
+  `PageReorderModal`(tooltip 文案沿用「调整页序 / Reorder pages」)。
 - `onCommit(perm)`:复用现有整体替换路径——按置换重排本地 pages、
   `replacePages` + 全量 `repaintBook`(对齐"图片/整页交换刻意不走 dirty-page
   快路径"的先例),POST 失败回滚 + 提示。
 
 **移动端(MobileEditorRoot)**:
 
-- MoreSheet 新增「调整页面顺序 / Reorder pages」条目(带 props 透传);
-  MobileEditorRoot 持 `open` 态,`ModalHost` 包同一个 `PageReorderModal`。
+- MoreSheet 新增「调整页面顺序 / Reorder pages」条目;MobileEditorRoot 持
+  `open` 态,渲染 `ReorderSheet`。
 - `onCommit(perm)`:`setPages` 乐观重排 + POST + 失败回滚 + `say` toast
   (沿用被删的 `commitPageSwap` 的口径,函数体迁移改造)。
 
@@ -122,9 +130,12 @@ HTML 里烙死的旧页签不重渲(缩略尺寸下不可辨,提交后全书 rep
 - `page-reorder.test.ts`(纯逻辑):锚定区识别(含书中间出现锚定页的防御
   用例)、`legalGaps` 边界、`applyMove` 连拖复合、置换双射性与
   `perm[newIndex]=oldIndex` 语义、恒等短路、`gapFromPointer` 几何。
-- 接线测试(source-regex 风格,对齐仓内先例):桌面按钮开弹窗且旧模式代码
-  不复存在;MoreSheet 有新条目;MobileStrip 无 pageSwap 残留;「完成」只发
-  一次 reorder、「取消」零请求。
+- 接线测试(source-regex 风格,对齐仓内先例,两端各测各的):桌面按钮开
+  `PageReorderModal` 且旧模式代码不复存在;MoreSheet 有新条目、
+  MobileEditorRoot 渲染 `ReorderSheet`;MobileStrip 无 pageSwap 残留;
+  两端「完成」都只发一次 reorder、「取消」零请求;两端手势口径各自验证
+  (桌面 8px 即拾、移动端长按 350ms)。行为语义的一致性靠共享纯逻辑保证,
+  不靠复制组件。
 - 验证命令:`pnpm --filter @yujee/web test`;涉及文档核对后跑 `pnpm typecheck`
   (含 docs:check)。
 
