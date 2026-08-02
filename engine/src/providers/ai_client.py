@@ -258,11 +258,117 @@ class AIRequestError(Exception):
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
 
+_JSON_NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?")
+
+
+def _repair_truncated_json(text: str) -> Any | None:
+    """坏 JSON 的最后一救:截断(maxOutputTokens/网络掐断)或差一个闭合括号。
+
+    JSON 模式下的 LLM 也会这样翻车(实测 gemini-2.5-flash 写多槽长文案时少一个 `}`),
+    而一个字符的差错不该报废整章已写好的文案。做法:单遍扫描找到「最后一个刚好写完的
+    值」,砍掉其后的残尾(半截字符串/错配的闭合符),再按当时的容器栈补齐闭合。
+    写了一半的字符串值宁可丢弃也不修 —— 半句话进书比缺一句更糟。
+    修不出合法 JSON → None,调用方维持原报错路径。"""
+    stack: list[str] = []  # '{' / '['
+    expect = "value"  # value | key | colon | comma(逗号或本层闭合)
+    # (切点(不含), 当时栈深):值刚写完的位置。栈在该深度以下再变浅时必然又是一次
+    # 值完成(容器闭合),last_good 会随之更新,所以 stack[:深度] 到收尾都保持有效。
+    last_good: tuple[int, int] | None = None
+    i, n = 0, len(text)
+
+    def _end_of_string(start: int) -> int | None:
+        j = start + 1
+        while j < n:
+            c = text[j]
+            if c == "\\":
+                j += 2
+                continue
+            if c == '"':
+                return j + 1
+            j += 1
+        return None  # 字符串没写完(截断)
+
+    while i < n:
+        c = text[i]
+        if c in " \t\r\n":
+            i += 1
+            continue
+        if expect == "value":
+            if c == '"':
+                end = _end_of_string(i)
+                if end is None:
+                    break
+                i = end
+                last_good, expect = (i, len(stack)), "comma"
+            elif c == "{":
+                stack.append("{")
+                i, expect = i + 1, "key"
+            elif c == "[":
+                stack.append("[")
+                i, expect = i + 1, "value"
+            elif c == "]" and stack and stack[-1] == "[":  # 空数组 []
+                stack.pop()
+                i += 1
+                last_good, expect = (i, len(stack)), "comma"
+            elif m := _JSON_NUMBER_RE.match(text, i):
+                if m.end() == n:
+                    break  # 数字顶着 EOF:可能只写了一半,不算完成
+                i = m.end()
+                last_good, expect = (i, len(stack)), "comma"
+            elif text.startswith(("true", "false", "null"), i):
+                length = 4 if text[i] in "tn" else 5
+                if i + length == n:
+                    break
+                i += length
+                last_good, expect = (i, len(stack)), "comma"
+            else:
+                break
+        elif expect == "key":
+            if c == '"':
+                end = _end_of_string(i)
+                if end is None:
+                    break
+                i, expect = end, "colon"
+            elif c == "}" and stack and stack[-1] == "{":  # 空对象 {}
+                stack.pop()
+                i += 1
+                last_good, expect = (i, len(stack)), "comma"
+            else:
+                break
+        elif expect == "colon":
+            if c == ":":
+                i, expect = i + 1, "value"
+            else:
+                break
+        else:  # comma
+            if c == ",":
+                i, expect = i + 1, ("key" if stack and stack[-1] == "{" else "value")
+            elif c == "}" and stack and stack[-1] == "{":
+                stack.pop()
+                i += 1
+                last_good = (i, len(stack))
+            elif c == "]" and stack and stack[-1] == "[":
+                stack.pop()
+                i += 1
+                last_good = (i, len(stack))
+            else:
+                break  # 错配的闭合符/意外字符:后面全当残尾
+
+    if last_good is None:
+        return None
+    cut, depth = last_good
+    closers = "".join("}" if opener == "{" else "]" for opener in reversed(stack[:depth]))
+    try:
+        return json.loads(text[:cut] + closers)
+    except json.JSONDecodeError:
+        return None
+
 
 def parse_json_loose(raw: str) -> Any:
     """Tolerant JSON parser. Strips markdown code fences and falls back to the
     first balanced {…} or […] in the text — common with chat models that wrap
-    their JSON in prose despite a strict prompt."""
+    their JSON in prose despite a strict prompt. As a last resort, repairs
+    truncated / one-brace-short output (see `_repair_truncated_json`)."""
     if not raw:
         raise ValueError("empty model response")
     text = raw.strip()
@@ -285,6 +391,11 @@ def parse_json_loose(raw: str) -> Any:
                 return json.loads(chunk)
             except json.JSONDecodeError:
                 continue
+
+    if text and text[0] in "{[":
+        repaired = _repair_truncated_json(text)
+        if repaired is not None:
+            return repaired
     raise ValueError("model response did not contain valid JSON")
 
 

@@ -335,8 +335,22 @@ async def compose_chapter(chapter: Any, *, language: str = "zh") -> ComposeChapt
             return _EMPTY_CHAPTER
 
         messages = _build_chapter_messages(chapter, page_specs, language=language)
-        raw_text, in_tok, out_tok = await _gemini(messages, temperature=0.6)
-        pages_texts = _parse_result(raw_text, page_specs)
+        calls = 1
+        try:
+            raw_text, in_tok, out_tok = await _gemini(messages, temperature=0.6)
+            pages_texts = _parse_result(raw_text, page_specs)
+        except Exception as exc:  # noqa: BLE001
+            # 一次瞬时失败(网络抖动/空正文/解析不出)不值一整章 sample:重试一次。
+            # 实测 2026-07-31 多个本地单子:章节调用单次失败 → 整章文案静默回退 sample,
+            # 用户看到「没写文案」。第二次仍失败才走外层兜底。
+            log.warning(
+                "compose.chapter_retry",
+                chapter_id=str(_get(chapter, "chapterId", "") or ""),
+                error=str(exc),
+            )
+            calls = 2
+            raw_text, in_tok, out_tok = await _gemini(messages, temperature=0.6)
+            pages_texts = _parse_result(raw_text, page_specs)
     except Exception as exc:  # noqa: BLE001 — 写文案绝不能抛出去搞崩成稿
         log.warning(
             "compose.chapter_failed",
@@ -347,7 +361,7 @@ async def compose_chapter(chapter: Any, *, language: str = "zh") -> ComposeChapt
 
     return ComposeChapterResult(
         pages_texts=pages_texts,
-        call_count=1,
+        call_count=calls,
         input_tokens=in_tok,
         output_tokens=out_tok,
         model=settings.select_layout_model,
@@ -466,8 +480,15 @@ async def compose_global(
             {"role": "system", "content": load_prompt(_PROMPT_DIR / "compose_global.md")},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
         ]
-        raw_text, in_tok, out_tok = await _gemini(messages, temperature=0.7)
-        parsed = ai_client.parse_json_loose(raw_text)
+        calls = 1
+        try:
+            raw_text, in_tok, out_tok = await _gemini(messages, temperature=0.7)
+            parsed = ai_client.parse_json_loose(raw_text)
+        except Exception as exc:  # noqa: BLE001 — 与章节批次同款:瞬时失败重试一次
+            log.warning("compose.global_retry", error=str(exc))
+            calls = 2
+            raw_text, in_tok, out_tok = await _gemini(messages, temperature=0.7)
+            parsed = ai_client.parse_json_loose(raw_text)
     except Exception as exc:  # noqa: BLE001 — 设计/封面绝不阻断交付
         log.warning("compose.global_fallback", error=str(exc))
         return _fallback()
@@ -477,7 +498,7 @@ async def compose_global(
         cover_texts=_with_album_title(_slot_texts(parsed, "coverTexts", cover_slots)),
         ending_texts=_slot_texts(parsed, "endingTexts", ending_slots),
         fonts=_fonts(scene if isinstance(scene, str) else None),
-        call_count=1,
+        call_count=calls,
         input_tokens=in_tok,
         output_tokens=out_tok,
         model=settings.select_layout_model,

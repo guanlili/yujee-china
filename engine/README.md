@@ -84,8 +84,10 @@ Agent -> callback completed: pagesTexts + coverTexts/endingTexts + fonts
 
 `/v3/compose` 是全流程**唯一**的 AI 成稿调用:一章一次 Gemini(照片以真图进上下文、
 `chapterContext` 是最高优先级素材),外加一次全局调用出封面/封尾文案与字体
-(AI 只输出场景名,字体由代码按 场景×语言 查表填)。失败绝不阻断交付 —— 某章写不出来,
-该章页面就保留模板 sample 文案,不发 `failed`。**超时同理**:预算是按章的
+(AI 只输出场景名,字体由代码按 场景×语言 查表填)。失败绝不阻断交付 —— 章/全局批次
+单次失败先原地重试一次(瞬时网络抖动、空正文、JSON 解析不出都在此列;截断/少括号的
+输出会先走 `parse_json_loose` 的修复兜底),仍写不出来该章页面才保留模板 sample 文案,
+不发 `failed`。**超时同理**:预算是按章的
 (`COMPOSE_CHAPTER_TIMEOUT_SECONDS`,默认 180s),卡住的章按「这一章掉队」处理,已经写完
 的章照常成稿;外层只留一个按「章数 ÷ 并发」摊开的兜底(封顶 11 分钟,压在 Web 侧 compose
 僵尸超时 12 分钟之内)。

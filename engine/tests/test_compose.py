@@ -69,6 +69,59 @@ def test_chapter_batch_failure_returns_empty_not_raise(monkeypatch):
     assert _run(monkeypatch, boom).pages_texts == {}
 
 
+def test_chapter_malformed_json_missing_brace_is_salvaged(monkeypatch):
+    """真实事故(315f6769,含 mag-59 的章):模型输出只少一个闭合括号,
+    过去整章两页文案全被丢弃、页面回退 sample —— 必须能修复并保住两页。"""
+    two_pages = {
+        **_CHAPTER,
+        "pages": [
+            {"pageIndex": 0, "templateId": "mag-01", "images": {"image": "p1"}},
+            {"pageIndex": 1, "templateId": "mag-01", "images": {"image": "p1"}},
+        ],
+    }
+
+    async def fake_generate(*args, **kwargs):
+        # 第二页对象缺 `}`:`…"}]}` 应为 `…"}}]}`,与线上 trace 同形。
+        return _gemini_response(
+            '{"pages":[{"pageIndex":0,"texts":{"title":"A"}},'
+            '{"pageIndex":1,"texts":{"title":"B"}]}'
+        )
+
+    _set_key(monkeypatch)
+    monkeypatch.setattr(compose_handler.gemini_client, "generate_content", fake_generate)
+    result = asyncio.run(compose_handler.compose_chapter(two_pages, language="zh"))
+    assert result.pages_texts == {0: {"title": "A"}, 1: {"title": "B"}}
+
+
+def test_chapter_retries_once_then_succeeds(monkeypatch):
+    """瞬时失败(网络抖动/空正文)不值一整章 sample:失败后重试一次。"""
+    calls: list[int] = []
+
+    async def flaky(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("transient")
+        return _gemini_response('{"pages":[{"pageIndex":0,"texts":{"title":"糖色"}}]}')
+
+    result = _run(monkeypatch, flaky)
+    assert result.pages_texts == {0: {"title": "糖色"}}
+    assert len(calls) == 2
+    # usage 口径:两次调用都算次数,token 记成功那次的。
+    assert result.call_count == 2
+
+
+def test_chapter_retry_also_fails_returns_empty(monkeypatch):
+    """重试仍失败 → 维持既有兜底:空结果、不抛、恰好两次调用。"""
+    calls: list[int] = []
+
+    async def boom(*args, **kwargs):
+        calls.append(1)
+        raise RuntimeError("gemini down")
+
+    assert _run(monkeypatch, boom).pages_texts == {}
+    assert len(calls) == 2
+
+
 def test_slot_ids_outside_template_are_dropped(monkeypatch):
     async def fake_generate(*args, **kwargs):
         return _gemini_response('{"pages":[{"pageIndex":0,"texts":{"title":"ok","nope":"x"}}]}')
@@ -250,6 +303,21 @@ def test_global_drops_slot_ids_outside_the_template(monkeypatch):
         return _gemini_response('{"coverTexts":{"title":"A","hacker":"B"},"endingTexts":{}}')
 
     assert _run_global(monkeypatch, fake_generate).cover_texts == {"title": "A"}
+
+
+def test_global_retries_once_then_succeeds(monkeypatch):
+    """全局批次同章节批次:一次瞬时失败重试一次,而不是封面/封尾直接落兜底。"""
+    calls: list[int] = []
+
+    async def flaky(**kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("transient")
+        return _gemini_response('{"coverTexts":{"title":"海边的夏天"},"endingTexts":{}}')
+
+    result = _run_global(monkeypatch, flaky)
+    assert result.cover_texts == {"title": "海边的夏天"}
+    assert len(calls) == 2 and result.call_count == 2
 
 
 def test_global_user_font_choice_wins_and_scene_menu_is_not_sent(monkeypatch):
