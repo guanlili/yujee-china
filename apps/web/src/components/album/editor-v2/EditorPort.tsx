@@ -4601,6 +4601,7 @@ function EditorBook({
       if (action === 'font-open') { toggleFontPanel(); return; }
       if (action === 'font-size-open') { toggleSizePanel(); return; }
       if (action === 'color-open') { toggleColorPanel(); return; }
+      if (action === 'reorder-open') { closeEbPanels(); openPageReorder(); return; }
       if (action === 'font-size-input') return; // 交给 input/change
       closeEbPanels(); // 其它按钮点击 → 收起面板
       if (action === 'edit-text') {
@@ -5636,7 +5637,6 @@ function EditorBook({
       exportSinglePages: () => void exportSinglePages(),
       openBoardBg: openBoardBgModal,
       closeBoardBg: closeBoardBgModal,
-      openPageReorder,
       closePageReorder,
       confirmPageReorder: () => void confirmPageReorder(),
       uploadStub: () => alert(t('alertUploadStub')),
@@ -6061,19 +6061,8 @@ function EditorBook({
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></svg>
             </button>
-            {/* 页序弹窗入口(2026-08-02 设计):打开「调整页面顺序」弹窗拖拽插入重排。
-                左右换位箭头符号。 */}
-            <button
-              className="zoom-btn view-btn"
-              id="pageReorderBtn"
-              data-action="openPageReorder"
-              data-testid="page-reorder-btn"
-              data-tip={locale === 'zh' ? '调整页序' : 'Reorder pages'}
-              data-i18n-tip="pageSwap"
-              aria-label={locale === 'zh' ? '调整页序' : 'Reorder pages'}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg>
-            </button>
+            {/* 页序弹窗入口已迁进选中页气泡(elBar page 组,2026-08-02 迭代),
+                工具栏不再放常驻按钮。 */}
           </div>
         </div>
 
@@ -6120,6 +6109,14 @@ function EditorBook({
               </button>
             </span>
             <span className="eb-page-label">{locale === 'zh' ? '背景色' : 'Background'}</span>
+            {/* 页序弹窗入口(2026-08-02 迭代):挪进选中页气泡,与背景色并排 ——
+                功能作用于「这本书的页」,气泡是选中页的上下文位。 */}
+            <span className="eb-ctrl">
+              <button type="button" className="eb-btn" data-edit-action="reorder-open" data-testid="eb-page-reorder" title={locale === 'zh' ? '调整页序' : 'Reorder pages'} aria-label={locale === 'zh' ? '调整页序' : 'Reorder pages'}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg>
+              </button>
+            </span>
+            <span className="eb-page-label">{locale === 'zh' ? '调整页序' : 'Reorder'}</span>
           </div>
           {/* 图片编辑不再用 el-bar:选中图片=拖动平移(前后左右)+ 滑块/滚轮缩放 + 复位,
               全在图片浮层(img-edit-overlay)里完成。换照片/黑白已去掉。 */}

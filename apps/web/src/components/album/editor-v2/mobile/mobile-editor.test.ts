@@ -43,7 +43,7 @@ function render(pages = BOOK, zh = true) {
       photoFilter: null, selectedPhotoId: null, lutSupported: false,
       onSelectText: noop, onSelectImage: noop, onClearSelection: noop,
       imagePos: null,
-      onImagePos: noop, onImagePosCommit: noop, onSwapImage: noop,
+      onImagePos: noop, onImagePosCommit: noop, onSwapImage: noop, onReorder: noop,
       onSave: noop, backupState: 'idle' as const, backupProgress: null,
       onReplaceImage: noop, onClearImage: noop, onResetImagePos: noop,
       onPhotoFilter: noop,

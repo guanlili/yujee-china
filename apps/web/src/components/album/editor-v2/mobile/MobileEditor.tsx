@@ -35,14 +35,17 @@ import {
   FLIP_EASE,
   FLIP_MS,
   FLIP_SETTLE_MS,
+  edgeBackHalf,
   edgeLayers,
   edgeMotion,
   flipTransition,
   leafGeometry,
+  leafHalves,
   leafLayers,
   leafShading,
   type FlipDir,
   type FlipTransition,
+  type LeafHalf,
   type ScreenShape,
 } from './flip';
 import { EditView, type TextHit, type ImageHit } from './EditView';
@@ -86,6 +89,8 @@ export type MobileEditorProps = {
   onImagePosCommit: () => void;
   /** 长按拾起一张图拖到另一个图槽 → 两个槽对调(可跨页)。 */
   onSwapImage: (from: SwapSlotRef, to: SwapSlotRef) => void;
+  /** 预览栏长按拖拽换序(2026-08-02):非恒等置换即拖即存,落库在容器层。 */
+  onReorder: (permutation: number[]) => void;
   /** 图片工具栏三件(透传给 EditView)。 */
   onReplaceImage: () => void;
   onClearImage: () => void;
@@ -143,6 +148,7 @@ export function MobileEditor({
   onImagePos,
   onImagePosCommit,
   onSwapImage,
+  onReorder,
   onReplaceImage,
   onClearImage,
   onResetImagePos,
@@ -205,17 +211,17 @@ export function MobileEditor({
   /** 一个开页在本屏里实际摆出来的「面」。
    *  三种画法与桌面共用同一套分类(spreadRenderKind):
    *    solo 封面/封尾 → 单页宽容器,一张面
-   *    full 双宽跨页(#303)→ **双页宽**容器,仍只有一张面(画面本就连续,无中缝)
+   *    full 双宽跨页(#303)→ 双页宽容器,**同一页摆两次**(左半裁/右半裁)——
+   *      装订在一起的两个半页:有中缝、各带页码角、各自参与翻页(位置即半边)
    *    pair 普通内页 → 双页宽容器,左右各一半(null = 空白半页)
-   *  返回 faces 与 wide:wide 决定容器按几页宽算,faces.length 决定摆几张面。
-   *  两者必须分开 —— full 是「一张面 + 双页宽」,把它当 halves.length===1 会缩成半宽。 */
+   *  返回 faces 与 wide:wide 决定容器按几页宽算,faces.length 决定摆几张面。 */
   const layoutOf = useCallback(
     (scr: BrowseScreen, si: number): { faces: (number | null)[]; wide: 1 | 2 } => {
       const sp = spreads[si];
       if (!sp) return { faces: [], wide: 1 };
       // 在 sp.kind 上窄化(不是在 spreadRenderKind 的返回值上)—— 这样读 .left/.right
       // 才是类型安全的,也正是 #303 把 Spread 改成判别式联合要达到的效果。
-      if (sp.kind === 'full') return { faces: [sp.page], wide: 2 };
+      if (sp.kind === 'full') return { faces: [sp.page, sp.page], wide: 2 };
       // 密度 1:开页内只留游标那一页(双宽页不适用 —— 它没有半页可留)
       if (scr.onlyPage !== null) return { faces: [scr.onlyPage], wide: 1 };
       if (isSoloSpread(sp, pages)) return { faces: spreadPageIndices(sp), wide: 1 };
@@ -487,9 +493,10 @@ export function MobileEditor({
                 ? { w: bookBox.w / 2, h: bookBox.h }
                 : bookBox;
           const faceWidth = restingSoloRole != null ? bookBox.w / 2 : box.w / faces.length;
-          const face = (pi: number | null, w: number) =>
+          // half:双宽页(#303)按位置裁半(0 左 1 右);普通页 pageFaceHTML 自动忽略。
+          const face = (pi: number | null, w: number, half?: LeafHalf) =>
             box.w > 0
-              ? pageFaceHTML(pi == null ? null : (pages[pi] ?? null), w, box.h, ctxOf(pi ?? -1))
+              ? pageFaceHTML(pi == null ? null : (pages[pi] ?? null), w, box.h, ctxOf(pi ?? -1), half)
               : '';
           const geo =
             layers && anim
@@ -538,13 +545,21 @@ export function MobileEditor({
                       没有第二方会重建它 —— 与旧实现的根本区别。 */}
                   <div
                     className="mpage-face"
-                    dangerouslySetInnerHTML={{ __html: face(pi, faceWidth) }}
+                    dangerouslySetInnerHTML={{
+                      __html: face(
+                        pi,
+                        faceWidth,
+                        faces.length === 2 ? (half === 0 ? 'left' : 'right') : undefined,
+                      ),
+                    }}
                   />
                 </div>
               ))}
 
               {/* 翻动中的那张纸:正面是翻走的页(带书脊侧受光),背面是翻进来的页。
-                  几何/受光/时长全部取自 FlipBook 的 page-turn。 */}
+                  几何/受光/时长全部取自 FlipBook 的 page-turn。
+                  双宽页(#303)按 flip.ts 的半边语义裁半:spread 翻页走 leafHalves,
+                  封皮开合正面是封面/封尾(从不双宽),背面走 edgeBackHalf。 */}
               {geo && layers && anim && (
                 <div
                   className="mleaf"
@@ -562,14 +577,28 @@ export function MobileEditor({
                   <div className="mleaf-face">
                     <div
                       className="mpage-face"
-                      dangerouslySetInnerHTML={{ __html: face(layers.front, box.w * geo.widthFrac) }}
+                      dangerouslySetInnerHTML={{
+                        __html: face(
+                          layers.front,
+                          box.w * geo.widthFrac,
+                          anim.transition === 'spread' ? leafHalves(anim.dir).front : undefined,
+                        ),
+                      }}
                     />
                     <div className="mleaf-shade" style={{ background: leafShading(anim.dir) }} />
                   </div>
                   <div className="mleaf-face mleaf-back">
                     <div
                       className="mpage-face"
-                      dangerouslySetInnerHTML={{ __html: face(layers.back, box.w * geo.widthFrac) }}
+                      dangerouslySetInnerHTML={{
+                        __html: face(
+                          layers.back,
+                          box.w * geo.widthFrac,
+                          anim.transition === 'spread'
+                            ? leafHalves(anim.dir).back
+                            : edgeBackHalf(anim.transition),
+                        ),
+                      }}
                     />
                   </div>
                 </div>
@@ -623,6 +652,7 @@ export function MobileEditor({
         thumbCtxOf={thumbCtxOf}
         // 格子起点已经是屏起点,不必再过 screenStartOfPage 吸附一次。
         onJump={setStartPage}
+        onReorder={onReorder}
       />
     </div>
   );
