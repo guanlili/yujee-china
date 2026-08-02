@@ -616,14 +616,14 @@ async function handleLoadBook(
 		// 兼容两种形态：{albumId, book: {...}} 或直接就是书对象。
 		const bookInput = isRecord(parsed.book) ? parsed.book : parsed;
 		const { book, warnings } = parseAlbumBookInput(bookInput);
-		// 文案一律原样装书，不做任何字数校验（模板已不声明字数上限）。版面装不下由渲染层
-		// 的 fit-text 解决（固定高度的文字框自动缩字号），而不是砍掉用户/AI 写的字。
-		// 结构性错误仍硬失败。
-		const errors = validateAlbumBook(book, catalog);
-		if (errors.length > 0) {
-			sendJson(response, 422, { error: "book 契约不合法", details: errors });
-			return;
-		}
+		// 装书对目录漂移必须宽容:Web/Postgres 是书的唯一真相,模板目录演进(删槽/改槽名/
+		// 退役模板)后,存量书带着旧键装书,整本 422 会把这些册子永久挡在设计对话外
+		// (2026-08-02 线上:mag-33 哑槽清除后老书 texts 的 body/label/title 触发硬拒)。
+		// 体检结果降级进 warnings 原样装入 —— 页面真相是 HTML,过期键不影响渲染;
+		// 严格校验留在写工具层(validateTextsPatch/validateImagesMap 逐次拦 AI 的写入,
+		// 使其可自我纠正)。字数也不校验(模板已不声明上限,版面靠渲染层 fit-text)。
+		// 结构性损坏(parseAlbumBookInput 抛错,如 pages 不是数组)仍走 catch 的 400 硬失败。
+		warnings.push(...validateAlbumBook(book, catalog));
 		await manager.loadBook(albumId, book);
 		sendJson(response, 200, {
 			ok: true,

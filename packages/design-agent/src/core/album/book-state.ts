@@ -284,7 +284,8 @@ export function validateImagesMap(
 	}
 	// 空槽是合法状态：编辑器删图就是删 key（image-swap / applyImageClear 同口径），
 	// Web 对空槽渲染浅灰「缺少图片」占位。这里若坚持「所有图槽必须填满」，用户删一张图
-	// 后进设计对话就会被 /api/book 422 挡在门外 —— 所以不校验槽位齐全。
+	// 后 AI 的每次写入都会被拦 —— 所以不校验槽位齐全。（装书入口对整本书的体检另有
+	// 宽容：结果只降级为 warnings，见 album-server handleLoadBook。）
 	// 同一张照片允许出现在同一页的多个槽 —— 用户可能就是想重复用同一张。故也不校验
 	// 「一页内 photoId 重复」。只校验槽 id 合法、photoId 非空且存在于本书。
 	for (const [slotId, photoId] of Object.entries(images)) {
