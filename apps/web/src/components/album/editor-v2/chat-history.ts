@@ -9,9 +9,9 @@ const INSPECTION_PREFIX = '[inspection of page';
 export type ChatRole = 'user' | 'assistant';
 
 /** design chat 写类操作折成的用户可读类别。 */
-export type DesignChangeCategory = 'fonts' | 'colors' | 'pages';
+export type DesignChangeCategory = 'fonts' | 'colors' | 'pages' | 'order';
 
-/** 六个写工具 → 类别。与 design-chat 路由落库 designOps 的工具名一一对应。 */
+/** 七个写工具 → 类别。与 design-chat 路由落库 designOps 的工具名一一对应。 */
 const DESIGN_CHANGE_CATEGORY: Record<string, DesignChangeCategory> = {
   set_text_fonts: 'fonts',
   set_text_colors: 'colors',
@@ -19,10 +19,11 @@ const DESIGN_CHANGE_CATEGORY: Record<string, DesignChangeCategory> = {
   swap_page_template: 'pages',
   update_page_images: 'pages',
   write_page_html: 'pages',
+  move_pages: 'order',
 };
 
 /** 固定展示顺序,不随工具调用顺序抖动。 */
-const DESIGN_CHANGE_ORDER: readonly DesignChangeCategory[] = ['fonts', 'colors', 'pages'];
+const DESIGN_CHANGE_ORDER: readonly DesignChangeCategory[] = ['fonts', 'colors', 'pages', 'order'];
 
 /** 类别去重 + 固定顺序。 */
 export function orderedChangeCategories(

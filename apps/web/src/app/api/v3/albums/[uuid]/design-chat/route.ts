@@ -16,6 +16,7 @@ const DESIGN_WRITE_TOOLS = new Set([
   'update_page_images',
   'set_text_colors',
   'set_text_fonts',
+  'move_pages',
 ]);
 
 // 设计 Agent 全书对话。默认同步 JSON；?stream=1 时把 8787 的 NDJSON 事件流逐行

@@ -23,6 +23,7 @@ const CHANGE_LABEL: Record<DesignChangeCategory, [string, string]> = {
   fonts: ['字体', 'Fonts'],
   colors: ['颜色', 'Colors'],
   pages: ['页面', 'Pages'],
+  order: ['页序', 'Order'],
 };
 
 export type AiChatSheetProps = {
