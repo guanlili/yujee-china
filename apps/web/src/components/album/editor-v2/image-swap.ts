@@ -25,6 +25,10 @@ import type { EditorPage } from '../types';
 
 /** 按住多久算「拾起」。350ms:比 iOS 长按菜单(~500ms)短,比误触阈值(~200ms)长。 */
 export const SWAP_LONG_PRESS_MS = 350;
+/** 桌面的拾起阈值单独放宽到 1s(2026-08-02 用户拍板):单击已经承担「弹编辑卡」,
+ *  350ms 会把慢一点的点击误判成拾起;桌面没有系统长按手势要避,可以尽管加长。
+ *  移动端保持 350ms —— 那边要抢在 iOS 长按菜单(~500ms)之前,不能跟着放宽。 */
+export const SWAP_LONG_PRESS_DESKTOP_MS = 1000;
 /** 拾起前允许的手指抖动。超过就认定是平移/翻页,不是长按。 */
 export const SWAP_LONG_PRESS_SLOP = 8;
 /** 移动端:拖到离画板左右边缘多少 px 以内算「想翻页」。 */

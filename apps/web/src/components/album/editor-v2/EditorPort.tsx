@@ -73,7 +73,7 @@ import {
   type ImagePosValue,
 } from './image-edit-util';
 import {
-  SWAP_LONG_PRESS_MS,
+  SWAP_LONG_PRESS_DESKTOP_MS,
   exceedsLongPressSlop,
   sameSwapSlot,
   swapImageSlots,
@@ -2214,12 +2214,33 @@ function EditorBook({
       const frameEl = imgEdit.imgEl.parentElement ?? imgEdit.imgEl;
       const r = frameEl.getBoundingClientRect();
       const w = ov.offsetWidth, h = ov.offsetHeight;
-      // Centered on the frame, anchored inside its lower edge (8px inset), then
-      // clamped into the viewport (and clear of the chat rail on the left).
-      let left = r.left + r.width / 2 - w / 2;
-      let top = r.bottom - h - 8;
-      left = Math.min(window.innerWidth - w - 8, Math.max(canvasLeftBound(), left));
-      top = Math.min(window.innerHeight - h - 8, Math.max(r.top + 4, top));
+      // 2026-08-02:卡片长高之后**绝不许压在照片上** —— 盖住的区域既看不到调位
+      // 效果,长按(交换)也落不到照片。落位优先级:下方 → 上方 → 右侧 → 左侧,
+      // 全都塞不下(极小视口)才允许贴着下边压进来。
+      const gap = 10;
+      const edge = 8;
+      const minLeft = canvasLeftBound();
+      let left = Math.min(
+        window.innerWidth - w - edge,
+        Math.max(minLeft, r.left + r.width / 2 - w / 2),
+      );
+      let top: number;
+      if (r.bottom + gap + h <= window.innerHeight - edge) {
+        top = r.bottom + gap;
+      } else if (r.top - gap - h >= edge) {
+        top = r.top - gap - h;
+      } else {
+        const sideTop = Math.min(window.innerHeight - h - edge, Math.max(edge, r.top));
+        if (r.right + gap + w <= window.innerWidth - edge) {
+          left = r.right + gap;
+          top = sideTop;
+        } else if (r.left - gap - w >= minLeft) {
+          left = r.left - gap - w;
+          top = sideTop;
+        } else {
+          top = Math.min(window.innerHeight - h - edge, Math.max(edge, r.bottom + gap));
+        }
+      }
       setFixedPos(ov, left, top);
     }
     function selectImage(hostEl: HTMLElement, imgEl: HTMLImageElement, slotId: string) {
@@ -2547,7 +2568,7 @@ function EditorBook({
         x,
         y,
         pick,
-        timer: window.setTimeout(() => beginSwapDrag(pick, x, y, pointerId), SWAP_LONG_PRESS_MS),
+        timer: window.setTimeout(() => beginSwapDrag(pick, x, y, pointerId), SWAP_LONG_PRESS_DESKTOP_MS),
       };
     };
     const onSwapPointerMove = (e: PointerEvent) => {
@@ -3296,7 +3317,7 @@ function EditorBook({
       }
       if (!ovPanning) return;
       // 长按拾起还在候选中(手指按在某张图上、位移没超过 slop):先别平移画布。
-      // 这段最长只有 SWAP_LONG_PRESS_MS,而且一旦抖过 slop,onSwapPointerMove
+      // 这段最长只有 SWAP_LONG_PRESS_DESKTOP_MS,而且一旦抖过 slop,onSwapPointerMove
       // (绑在更内层的 #ovGrid 上,先于本处理器跑)当场取消候选,平移立刻接上 ——
       // ovPanOrigin 记的是 pointerdown 那一刻,所以接上时不会跳。
       if (swapPending) return;

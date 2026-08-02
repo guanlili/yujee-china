@@ -37,18 +37,28 @@ test('两端共用同一份交换语义,不各写一套', () => {
   assert.match(editView, /exceedsLongPressSlop\(/);
 });
 
-test('两端统一长按拾起:快拖回落 pan/平移,按住不动才是交换(2026-08-01 拍板)', () => {
-  // bf899f76 曾给鼠标开过「一动就拾起」的快路(理由是拖图=挪图更顺手),代价当时
-  // 没看见:拾起时 beginSwapDrag 清选中态,pan 的 `!imgEdit` 守卫当场失效 ——
-  // 选中照片后的拖动调位(pan)被整个劫走,桌面鼠标 pan 等于死了。pan 是构图微调的
-  // 唯一入口,优先级高于交换的顺手程度;桌面回到与触屏同一条长按计时路径,
-  // 快拖(350ms 内越过 slop)一律取消拾起,回落普通手势(选中 → pan,未选中 → 画布平移)。
+test('长按拾起:桌面 1s / 移动 350ms,快拖一律回落普通手势', () => {
+  // bf899f76 曾给鼠标开过「一动就拾起」的快路,拾起时清选中态把编辑手势整个劫走 ——
+  // 立即拾起不许回来。阈值两端分开(2026-08-02 拍板):桌面单击已经承担「弹编辑卡」,
+  // 350ms 会把慢一点的点击误判成拾起,放宽到 1s(桌面没有系统长按手势要避);
+  // 移动端保持 350ms,要抢在 iOS 长按菜单(~500ms)之前。
   assert.doesNotMatch(editor, /immediate = e\.pointerType/, '鼠标立即拾起的快路不许回来');
   assert.doesNotMatch(editor, /pending\.immediate/, 'pending 不再有 immediate 分支');
-  // 两端同一条计时路径
-  assert.match(editor, /timer: window\.setTimeout\(\(\) => beginSwapDrag\([^)]*\),\s*SWAP_LONG_PRESS_MS\)/);
+  assert.match(editor, /timer: window\.setTimeout\(\(\) => beginSwapDrag\([^)]*\),\s*SWAP_LONG_PRESS_DESKTOP_MS\)/);
+  assert.doesNotMatch(editor, /beginSwapDrag\([^)]*\),\s*SWAP_LONG_PRESS_MS\)/, '桌面不许用移动端的 350ms');
   // 越过 slop 一律放弃拾起
   assert.match(editor, /if \(!moved\) return;\n\s*\/\/[^\n]*\n\s*cancelSwapPending\(\);/);
+});
+
+test('桌面:编辑卡绝不压在照片上 —— 下/上/右/左依次找空位(2026-08-02 用户复测)', () => {
+  // 卡片长高后压在图上,被盖住的区域既看不到调位效果,长按(交换)也落不到照片。
+  const start = editor.indexOf('function positionImgEditOverlay(');
+  assert.ok(start > 0);
+  const body = editor.slice(start, editor.indexOf('function selectImage(', start));
+  assert.match(body, /r\.bottom \+ gap/, '首选图框下方');
+  assert.match(body, /r\.top - gap - h/, '下方不够放上方');
+  assert.match(body, /r\.right \+ gap/, '上下都不够放右侧');
+  assert.match(body, /r\.left - gap - w/, '再不够放左侧');
 });
 
 test('桌面:画布上不再有照片拖拽调位 —— 位置调整住进浮层预览(2026-08-02 定稿)', () => {
