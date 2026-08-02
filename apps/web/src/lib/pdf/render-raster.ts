@@ -48,7 +48,10 @@ function renderFaceHtml(
     { templateId: page.templateId, images: page.images, texts: page.texts, imagePos: page.imagePos },
     resolveImage,
   );
-  if (html !== undefined) return applyFolioOverlay(html, folio, folioSide);
+  // 空槽在即时渲染里保留 {{IMG_SRC:slot}} token(fill-template 契约),再解析一遍
+  // 渲成缺图占位 —— 与画板同脸,导出不出碎图标。
+  if (html !== undefined)
+    return applyFolioOverlay(resolveDisplayHtml(html, page.images, resolveImage), folio, folioSide);
   const Template = getWebTemplate(page.templateId);
   if (!Template) return `<div style="padding:24px;font-size:14px">Unknown template: ${page.templateId}</div>`;
   const data = adaptPageToTemplateData(page, resolveImage);

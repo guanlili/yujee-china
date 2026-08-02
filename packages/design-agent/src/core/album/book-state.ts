@@ -268,7 +268,7 @@ export function validateTextsPatch(
 	return errors;
 }
 
-/** 校验整页图片槽映射是否对模板合法（槽位齐全、不重复、照片存在）。 */
+/** 校验整页图片槽映射是否对模板合法（槽 id 存在、photoId 非空且在本书）。 */
 export function validateImagesMap(
 	template: TemplateCatalogEntry,
 	images: Record<string, string>,
@@ -282,12 +282,11 @@ export function validateImagesMap(
 			errors.push(`模板 ${template.id} 没有图片槽 "${slotId}"。可用槽：${template.imageSlotIds.join(", ") || "(无)"}`);
 		}
 	}
-	for (const slotId of template.imageSlotIds) {
-		if (!(slotId in images)) errors.push(`缺少图片槽 "${slotId}"（模板 ${template.id} 的所有图槽都必须填充）`);
-	}
-	// 同一张照片允许出现在同一页的多个槽 —— 用户可能就是想重复用同一张。故这里不再校验
-	// 「一页内 photoId 重复」;真正需要的合法性(槽齐全 / photoId 存在)由本函数其余部分 +
-	// 排版 workflow 负责。只校验槽合法、齐全、photoId 非空且存在于本书。
+	// 空槽是合法状态：编辑器删图就是删 key（image-swap / applyImageClear 同口径），
+	// Web 对空槽渲染浅灰「缺少图片」占位。这里若坚持「所有图槽必须填满」，用户删一张图
+	// 后进设计对话就会被 /api/book 422 挡在门外 —— 所以不校验槽位齐全。
+	// 同一张照片允许出现在同一页的多个槽 —— 用户可能就是想重复用同一张。故也不校验
+	// 「一页内 photoId 重复」。只校验槽 id 合法、photoId 非空且存在于本书。
 	for (const [slotId, photoId] of Object.entries(images)) {
 		if (typeof photoId !== "string" || photoId.length === 0) {
 			errors.push(`图片槽 "${slotId}" 的 photoId 必须是非空字符串`);

@@ -58,7 +58,7 @@ export function createDefaultAlbumSkills(): Skill[] {
 				"- 换模板必须同类目（cover/toc/interior/ending）且图槽数一致；先 list_templates 过滤候选，再 swap_page_template。",
 				"- 选模板时参考 structureDescription 与照片的朝向/构图匹配度：横图配横槽为主的模板，人像特写适合大图槽。",
 				"- 换模板后检查文字槽迁移结果（工具会报告截断/丢弃），必要时补写。",
-				"- 调整图片用 update_page_images 整页替换：模板所有图槽必须填满、同页照片不重复、照片必须来自本书章节。",
+				"- 调整图片用 update_page_images 整页替换：照片必须来自本书章节；未列出的槽会被清空成缺图占位（空槽合法，用户删过的图就是空槽），除非用户要求留空，否则填满所有图槽。",
 				"- 连续多页避免使用相同模板造成单调，但同章节内保持风格接近。",
 			].join("\n"),
 		},

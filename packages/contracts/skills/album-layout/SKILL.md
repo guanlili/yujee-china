@@ -10,7 +10,7 @@ description: 用于更换页面模板、调整图片槽位分配或全书版式�
 ## 硬规则（工具会校验，违反直接打回）
 
 - 换模板必须**同类目**（cover / toc / interior / ending）且**图槽数一致**：先 `list_templates` 按 `category` + `imageSlotCount` 过滤候选，再 `swap_page_template`。
-- 调整图片用 `update_page_images` 整页替换：模板所有图槽必须填满、同页照片不重复、照片必须来自本书章节。
+- 调整图片用 `update_page_images` 整页替换：照片必须来自本书章节；未列出的槽会被清空成缺图占位（空槽合法——用户删过图的槽就是空的），除非用户明确要留空，否则把所有图槽填满。
 
 ## 选版方法论
 

@@ -181,7 +181,7 @@ export function imagePosPatchBody(page: EditorPage): Record<string, unknown> {
 
 /* ── 换图 / 清空图槽 ────────────────────────────────────────────────────────
    这两件**只动数据层,html 一个字不改**:存库 html 的图片位是 {{IMG_SRC:slot}} token,
-   显示时 resolveDisplayHtml 按 imagesJson 现查现解析(查不到就渲成空 src)。服务端
+   显示时 resolveDisplayHtml 按 imagesJson 现查现解析(空槽渲成浅灰缺图占位)。服务端
    updatePage 的 images 分支同口径(整体替换 page.images,注释就写着「换图/删图只动数据层」)。
    所以别在这儿碰 htmlJson —— 碰了反而会把 token 烘死成某张具体照片,以后换不动。 */
 

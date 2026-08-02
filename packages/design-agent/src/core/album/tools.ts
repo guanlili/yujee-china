@@ -102,7 +102,7 @@ const updatePageImagesSchema = Type.Object({
 		Type.Object({
 			pageNo: PageRefSchema,
 			images: Type.Record(Type.String(), Type.String(), {
-				description: "完整的槽 id → photoId 映射（整页替换）：模板所有图槽都要填，照片必须存在于本书章节。",
+				description: "完整的槽 id → photoId 映射（整页替换）：未列出的槽会被清空（显示为缺图占位），照片必须存在于本书章节。",
 			}),
 		}),
 		{ description: "一次可提交多页的图片替换。" },
@@ -197,6 +197,11 @@ function readPagePayload(
 				];
 			}),
 		),
+		// 空槽显式列出（用户删过图的槽，页面上渲成浅灰缺图占位）。不列出来 AI 就看不见
+		// 它们，答不了「这页缺图吗」，也想不到用 update_page_images 补图。
+		...(template.imageSlotIds.some((slotId) => !(slotId in page.images))
+			? { emptyImageSlots: template.imageSlotIds.filter((slotId) => !(slotId in page.images)) }
+			: {}),
 		texts: page.texts,
 		textSlotDefs: template.textSlotIds.map((slotId) => describeTextSlot(template, slotId)),
 		repeatTextSlotBases: template.repeatTextSlotBases.map((base) => `${base}[n]`),
@@ -523,7 +528,7 @@ function createUpdatePageImagesTool(
 		name: "update_page_images",
 		label: "调整页面图片",
 		description:
-			"整页替换图片槽映射（槽 id → photoId）：模板所有图槽必须填满、照片必须来自本书章节、同页不能重复。用于调换图片顺序或替换照片。",
+			"整页替换图片槽映射（槽 id → photoId）：照片必须来自本书章节；未列出的槽会被清空（页面上显示浅灰缺图占位），除非用户明确要留空/删图，否则应把所有图槽填满。用于调换图片顺序或替换照片。",
 		parameters: updatePageImagesSchema,
 		prepareArguments(args: unknown): UpdatePageImagesInput {
 			return { updates: readImageUpdates(options, args) };

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { TEMPLATES } from '../templates';
+import { ITEMS_GRID_CAPACITY, TEMPLATES } from '../templates';
 import { renderPageHtml } from './fill-template';
 import { getHtmlTemplate } from './html-templates/registry';
 import { lintTemplateHtml } from './html-template-lint';
@@ -23,6 +23,14 @@ for (const tpl of registered) {
     for (const slot of tpl.texts) texts[slot.id] = slot.sample ?? `示例${slot.id}`;
     const images: Record<string, string> = {};
     for (const slot of tpl.images) images[slot.id] = `photo-${slot.id}`;
+    // items 栅格模板(如 mag-10)的图槽是 image[0..N] bracket 路径,不填的话空槽会按
+    // 契约保留 token(显示层渲成缺图占位),这里是「填满无残留」冒烟,所以要填齐。
+    const gridImage = tpl.items?.images?.[0];
+    const gridSlots: string[] = [];
+    if (gridImage) {
+      for (let i = 0; i < ITEMS_GRID_CAPACITY; i += 1) gridSlots.push(`${gridImage.id}[${i}]`);
+      for (const slotKey of gridSlots) images[slotKey] = `photo-${slotKey}`;
+    }
 
     const filled = renderPageHtml(
       { templateId: tpl.id, images, texts },
@@ -34,6 +42,9 @@ for (const tpl of registered) {
     assert.ok(filled!.length < 65536, '填充后超 64KB');
     for (const slot of tpl.images) {
       assert.ok(filled!.includes(`resolved://photo-${slot.id}`), `图槽 ${slot.id} src 未解析`);
+    }
+    for (const slotKey of gridSlots) {
+      assert.ok(filled!.includes(`resolved://photo-${slotKey}`), `栅格图槽 ${slotKey} src 未解析`);
     }
   });
 }

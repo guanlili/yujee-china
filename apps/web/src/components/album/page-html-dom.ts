@@ -18,14 +18,29 @@ export interface HtmlPage {
 
 const IMG_SRC_TOKEN_RE = /\{\{IMG_SRC:([^}|]+)\}\}/g;
 
-// 空图槽的 src。**不能用空串**:`<img src="">` 会让浏览器拿当前页面地址当图片去
-// 加载,必然失败并渲染成碎图标 —— 还会原样印进 html2canvas 截图和导出的 PDF。
+// 「照片不在本机」的 src。**不能用空串**:`<img src="">` 会让浏览器拿当前页面地址当
+// 图片去加载,必然失败并渲染成碎图标 —— 还会原样印进 html2canvas 截图和导出的 PDF。
 // 1×1 全透明 GIF 才是真正的「什么都不显示」。
 // 会走到这里的日常情形:照片不在本机(换设备/清缓存),或 origin 变了 —— IndexedDB
 // 按 origin 隔离,协议算在 origin 里,http://localhost:3000 和 https://localhost:3000
-// 是两套互不可见的库。
+// 是两套互不可见的库。这类槽有 photoId、只是像素暂时取不到(有轮询在补),所以保持
+// 透明,不打「缺图」标。
 const EMPTY_IMAGE_SLOT_SRC =
   'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+// 空槽(用户删了图,images 里没有这个 key)的 src:浅灰底 + 图片图标占位,明确告诉
+// 用户这里缺一张图。与「照片不在本机」是两回事 —— 空槽是用户主动删出来的持久状态,
+// 不会被轮询补上,必须可见。所有渲染路径(编辑器画布/翻书/卡片/导出)同一张脸,
+// 所见即所得。图标不带文字:产品面向海外多语言,img src 里没法过 i18n。
+const MISSING_IMAGE_SLOT_SRC = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">' +
+    '<rect width="400" height="400" fill="#ECEDEF"/>' +
+    '<g transform="translate(164,164)" fill="none" stroke="#B6BAC1" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">' +
+    '<rect x="0" y="0" width="72" height="72" rx="10"/>' +
+    '<circle cx="24" cy="24" r="8"/>' +
+    '<path d="M0 54 L22 34 L38 48 L52 36 L72 54"/>' +
+    '</g></svg>',
+)}`;
 
 export function resolveDisplayHtml(
   html: string,
@@ -35,7 +50,8 @@ export function resolveDisplayHtml(
   return html.replace(IMG_SRC_TOKEN_RE, (_full, slotRaw: string) => {
     const slot = slotRaw.trim();
     const photoId = images[slot];
-    return (photoId ? resolveImage(photoId) : undefined) ?? EMPTY_IMAGE_SLOT_SRC;
+    if (!photoId) return MISSING_IMAGE_SLOT_SRC;
+    return resolveImage(photoId) ?? EMPTY_IMAGE_SLOT_SRC;
   });
 }
 
@@ -43,7 +59,7 @@ export function preferredPageHtml(page: HtmlPage, resolveImage: ResolveImage): s
   if (typeof page.htmlJson === 'string' && page.htmlJson.length > 0) {
     return resolveDisplayHtml(page.htmlJson, page.imagesJson, resolveImage);
   }
-  return renderPageHtml(
+  const html = renderPageHtml(
     {
       templateId: page.templateId,
       images: page.imagesJson,
@@ -52,6 +68,9 @@ export function preferredPageHtml(page: HtmlPage, resolveImage: ResolveImage): s
     },
     resolveImage,
   );
+  // 即时渲染对空槽会保留 {{IMG_SRC:slot}} token(fill-template 的契约),这里再走一遍
+  // 解析把它渲成缺图占位;已填槽在上一步就解析成真实 src 了,这一步不会再碰到。
+  return html === undefined ? undefined : resolveDisplayHtml(html, page.imagesJson, resolveImage);
 }
 
 function escapeHtmlText(value: string): string {

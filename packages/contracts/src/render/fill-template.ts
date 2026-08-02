@@ -69,8 +69,15 @@ export function fillTemplateHtml(templateHtml: string, page: FillablePage, resol
         const carrier = resolveThemeCarrier(data, slot, roleFor(slot));
         return escapeAttr(carrier.webFontFamily ?? fallback);
       }
-      case 'IMG_SRC':
-        return escapeAttr(stringOf(data[slot]));
+      case 'IMG_SRC': {
+        // 空槽（用户删了图）或 resolveImage 解析不到时保留 token 原样:
+        // 「图片 src 一律 token」是页面真相契约,烘焙器(web bake-html / design-agent
+        // page-html)靠它把空槽也烘成 token;直接展示的调用方(page-html-dom /
+        // render-raster)再把残留 token 解析成缺图占位。烘成 src="" 会让浏览器拿
+        // 页面地址当图加载,渲成碎图标。
+        const src = stringOf(data[slot]);
+        return src ? escapeAttr(src) : `{{IMG_SRC:${slot}}}`;
+      }
       case 'FIT_SIZE': {
         // 展示级大标题自适应字号:{{FIT_SIZE:slotId|boxWidth,maxSize,minSize}} → px 数值。
         // 与 React 版 fitDisplayFontSize 同一函数,web/PDF 两端字号一致。

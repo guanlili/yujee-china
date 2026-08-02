@@ -187,7 +187,7 @@ test("swap_page_template 拒绝跨类目与图槽数不匹配", async () => {
 	await assert.rejects(run(tools, "swap_page_template", { pageNo: 1, templateId: "mag-10" }), /图槽数不匹配/);
 });
 
-test("update_page_images 整页替换并校验槽位齐全/照片存在(同页可重复用同一张)", async () => {
+test("update_page_images 整页替换并校验槽位合法/照片存在(同页可重复用同一张)", async () => {
 	const { tools, getBook } = createHarness();
 	await run(tools, "update_page_images", {
 		pageNo: 2,
@@ -196,10 +196,10 @@ test("update_page_images 整页替换并校验槽位齐全/照片存在(同页�
 	const page = getBook().pages.find((candidate) => candidate.pageIndex === 2);
 	assert.equal(page?.images["image[0]"], "p-sea-04");
 
-	await assert.rejects(
-		run(tools, "update_page_images", { pageNo: 2, images: { "image[0]": "p-sea-04" } }),
-		/缺少图片槽/,
-	);
+	// 空槽合法:部分映射 = 未列出的槽被清空(用户删图后的书就长这样,不能拒收)。
+	await run(tools, "update_page_images", { pageNo: 2, images: { "image[0]": "p-sea-04" } });
+	const partialPage = getBook().pages.find((candidate) => candidate.pageIndex === 2);
+	assert.deepEqual(partialPage?.images, { "image[0]": "p-sea-04" });
 	// 同一张照片允许出现在同一页的多个槽(用户可能就想重复用)—— 不再拒绝,校验通过、写入生效。
 	await run(tools, "update_page_images", {
 		pageNo: 2,
