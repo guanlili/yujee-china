@@ -1763,6 +1763,10 @@ function EditorBook({
         hideElementToolbar();
         return;
       }
+      // innerHTML 重建把旧锚点上的文字选中框冲掉了 —— 新节点补回(页锚点不带)。
+      if (action.node.matches('[data-editable]:not(img)')) {
+        action.node.classList.add('el-text-selected');
+      }
       editBarAnchor = action.node;
       requestAnimationFrame(positionElementToolbar);
     }
@@ -1915,9 +1919,18 @@ function EditorBook({
     // page's index in data-page-index (set by paintSpread).
     let selectedPageIndex: number | null = null;
     function updateSelectionHighlight() {
+      // 三态分离(2026-08-02):图层(图/文字)选中时,页框让位 —— 屏幕上同时出现
+      // 「页的 teal 框 + 图层自己的框」会让人分不清选中的是谁。页框只在「页本身
+      // 是当前选择」(点空白选页)时出现;取消图层选中后页框自动回来(页选中态
+      // 一直都在,只是显示上让位)。
+      const layerActive =
+        imgEdit != null || (editBarAnchor?.matches?.('[data-editable]:not(img)') ?? false);
       for (const el of [pageLeft, pageRight]) {
         const pi = el.dataset.pageIndex;
-        el.classList.toggle('page-selected', pi !== undefined && Number(pi) === selectedPageIndex);
+        el.classList.toggle(
+          'page-selected',
+          !layerActive && pi !== undefined && Number(pi) === selectedPageIndex,
+        );
       }
       // 画板(overview)上的同一页也要亮:画板即工作面,选中态两边同步。
       // ⚠️ 空白半页的 data-page-index="",而 Number("")===0 —— 选中封面(pageIndex 0)
@@ -1929,7 +1942,7 @@ function EditorBook({
           const pi = el.dataset.pageIndex;
           el.classList.toggle(
             'ov-page-selected',
-            pi !== undefined && pi !== '' && Number(pi) === selectedPageIndex,
+            !layerActive && pi !== undefined && pi !== '' && Number(pi) === selectedPageIndex,
           );
         });
     }
@@ -2244,6 +2257,9 @@ function EditorBook({
       setFixedPos(ov, left, top);
     }
     function selectImage(hostEl: HTMLElement, imgEl: HTMLImageElement, slotId: string) {
+      // 交换拖动(含万一漏网的僵尸拖动)存在期间,点击不得打开编辑卡 —— 否则会出现
+      // 「幽灵 + 编辑卡同框」的精神分裂态(2026-08-02 真机截图)。
+      if (swapDrag) return;
       const pi = hostEl.dataset.pageIndex;
       if (pi === undefined) return;
       const page = pageByIndex(Number(pi));
@@ -2262,15 +2278,20 @@ function EditorBook({
       ov.style.display = '';
       renderImgEditPreview();
       positionImgEditOverlay();
+      updateSelectionHighlight(); // 图层选中 → 页框让位(三态分离)
       // 图片调整 = 预览内拖动(位置)+ 滑块/滚轮缩放(尺寸)+ 复位,全在浮层里;
       // 不再弹 el-bar 照片工具条(换照片/黑白已按用户拍板去掉)。先收掉可能开着的文字工具条。
       hideElementToolbar();
     }
     function clearImageSelection() {
+      const hadSelection = imgEdit != null;
       if (imgEdit) imgEdit.imgEl.classList.remove('img-editing');
       imgEdit = null;
       imgEditDragActive = false;
       if (imgEditOverlay) imgEditOverlay.style.display = 'none';
+      // 图层选中解除 → 页框(若页仍选中)回来。没图层选中时跳过,免得初始化阶段
+      // 和高频路径白刷一遍 DOM。
+      if (hadSelection) updateSelectionHighlight();
     }
     // Commit the working position into imagePosJson + persist (松手即存). Repaints
     // the whole book so thumbnails/overview reflect the move.
@@ -2492,6 +2513,9 @@ function EditorBook({
         if (imgPage) applyLiveImagePos(imgEdit.imgEl, currentImagePos(imgPage, imgEdit.slotId));
       }
       clearImageSelection();
+      // 文字工具条同样让位:拾起 = 进入交换,画布上不许留任何编辑面(1️⃣ 实测)。
+      hideElementToolbar();
+      updateSelectionHighlight();
     }
     /* 交换收尾浏览器还会补一记 click —— 不吞掉的话松手会顺手选中/取消选中落点那张图。
        用「一次性捕获监听 + 下一次 pointerdown 解除」而不是一个布尔标记:标记要靠某个
@@ -3187,6 +3211,8 @@ function EditorBook({
       // 视图翻页 —— 那是逃生门,不是主路径。
       // innerHTML 整体重建把页序模式的选中/置灰类冲掉了,按模式态重刷(幂等)。
       applyPageSwapMarks();
+      // 模板里烘的 ov-page-selected 不知道「图层选中时页框让位」—— 重刷一遍对齐。
+      updateSelectionHighlight();
     }
     function enterOverview() {
       // Show the overview container *before* rendering: while .book-overview is
@@ -3311,11 +3337,15 @@ function EditorBook({
         };
         ovPanning = false;
       } else if (ovPointers.size === 1 && (e.pointerType !== 'mouse' || e.button === 0)) {
-        // 照片上的按下也武装平移(2026-08-02 定稿,Figma 同款):快拖 = 平移画布,
-        // 按住不动 1s = 拾起交换,单击 = 弹编辑卡。与长按候选的协调在 move 侧 ——
-        // 候选期间(≤8px)画布先不动,抖过 slop 取消候选、平移按原点无缝接上;
-        // 拾起的一刻 beginSwapDrag 把 ovPanning 按下。曾试过「照片按下不平移」:
-        // 快拖变成彻底死区(画布不动照片也不动),比协调更糟,不要回去。
+        // 画布平移只在「什么都没选中」时武装(2026-08-02 用户定稿):选中了页/图/
+        // 文字之后,拖动一律不再移动画板 —— 选中态下的拖动语义属于该选中对象
+        // (长按交换、弹窗预览调位),画板跟着动只会把交换拖动搅黄。想平移:先点
+        // 空白取消选中。没选中时照旧:快拖平移(照片上也一样,Figma 同款),
+        // 按住不动 1s 拾起交换 —— 协调在 move 侧(候选期 ≤8px 画布不动,抖过
+        // slop 取消候选无缝接上,拾起时 ovPanning 被按下)。
+        const nothingSelected =
+          selectedPageIndex == null && imgEdit == null && editBarAnchor == null;
+        if (!nothingSelected) return;
         ovPanning = true;
         ovPanMoved = false;
         ovPanOrigin = { x: e.clientX, y: e.clientY, panX: ovPanX, panY: ovPanY };
@@ -3517,6 +3547,9 @@ function EditorBook({
       if (!editBar) return;
       // 编辑工具条只在画布模式(overview-on)出;书籍(预览)模式只读,不出工具条。
       if (!bodyEl.classList.contains('overview-on')) return;
+      // 文字选中框(三态分离):亮在被选中的那个文字节点上,换锚点先摘旧的。
+      editBarAnchor?.classList.remove('el-text-selected');
+      if (group === 'text') anchor.classList.add('el-text-selected');
       editBarAnchor = anchor;
       // 'photo' 只存在于类型里(无调用点);真实分组只有 page / text。
       editBarAnchorId = editAnchorId(
@@ -3539,16 +3572,21 @@ function EditorBook({
         const init = pageColorContext.initial();
         if (init) { setColorFromCss(init); updateColorDot(); }
       }
+      updateSelectionHighlight(); // 文字图层选中 → 页框让位(三态分离);页组无影响
       requestAnimationFrame(positionElementToolbar);
     }
     function hideElementToolbar() {
       // 移动端弹窗开着时,取消选中 = 提交并关闭(先于清 editBarAnchor,mesFinalizeText 要用)。
       if (mesState.open) closeMobileSheet(true);
+      const hadTextAnchor = editBarAnchor?.classList.contains('el-text-selected') ?? false;
+      editBarAnchor?.classList.remove('el-text-selected');
       editBarAnchor = null;
       editBarAnchorId = null;
       editBarMoved = false;
       editBar?.classList.remove('show');
       closeEbPanels();
+      // 文字图层选中解除 → 页框(若页仍选中)回来(三态分离)。
+      if (hadTextAnchor) updateSelectionHighlight();
     }
     function selectedTextTargets(): HTMLElement[] {
       if (!editBarAnchor || imgEdit) return [];

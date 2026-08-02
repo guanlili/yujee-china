@@ -20,6 +20,11 @@
   --border: #e0e0e0;
   --border-soft: #ebebeb;
   --accent: #13B8A6;
+  /* 三种选中态各一色(2026-08-02 用户拍板「选中效果要分开」):
+     页 = --accent(teal,沿用);图片图层 = 蓝;文字图层 = 品牌紫(--grad-purple 同源)。
+     同一时刻画布上最多一页框 + 一个图层框,颜色即身份,不靠线型猜。 */
+  --sel-image: #4D7FEF;
+  --sel-text: #8C5EF4;
   --grad-green: #13B8A6;
   --grad-purple: #8C5EF4;
   --grad-lime: #DAF45E;

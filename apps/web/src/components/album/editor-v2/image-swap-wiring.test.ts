@@ -109,15 +109,39 @@ test('桌面:画布平移与长按拾起不打架', () => {
   assert.match(editor, /if \(swapDrag\) return;/);
   // 拾起的一刻把已经起步的画布平移按下
   assert.match(editor, /ovPanning = false;/);
-  // 照片上的按下**也**武装平移(2026-08-02 定稿,Figma 同款):快拖 = 平移画布,
-  // 按住不动 1s = 拾起交换。曾试过「照片按下不平移」—— 快拖变成彻底死区(画布
-  // 不动照片也不动),比协调更糟。协调点全在 move 侧:候选期间画布不动(上面的
-  // swapPending pin),抖过 slop 取消候选平移接上,拾起时 ovPanning 按下。
+  // 画布平移只在「什么都没选中」时武装(2026-08-02 用户定稿):选中了页/图/文字后,
+  // 拖动语义属于选中对象(长按交换/预览调位),画板跟着动只会把交换拖动搅黄。
+  // 没选中时照片上快拖照样平移(死区教训:按目标分流会把快拖变成什么都不动)。
   const down = editor.slice(
     editor.indexOf('const onOvPointerDown ='),
     editor.indexOf('const onOvPointerMove ='),
   );
-  assert.doesNotMatch(down, /swapPickAt/, '按下侧不许再按目标分流平移(死区教训)');
+  assert.match(down, /selectedPageIndex == null && imgEdit == null && editBarAnchor == null/);
+  assert.doesNotMatch(down, /swapPickAt/, '按下侧不许按目标分流平移(死区教训)');
+});
+
+test('桌面:拾起交换清场所有编辑面;拖动存续期间点击打不开编辑卡', () => {
+  // 真机截图(2026-08-02):幽灵和编辑卡同框。两头都堵:拾起时收掉图片卡 + 文字
+  // 工具条;万一还有(僵尸)拖动挂着,selectImage 直接拒绝。
+  const begin = editor.slice(
+    editor.indexOf('function beginSwapDrag('),
+    editor.indexOf('let swallowClick'),
+  );
+  assert.match(begin, /clearImageSelection\(\)/);
+  assert.match(begin, /hideElementToolbar\(\)/);
+  const sel = editor.slice(
+    editor.indexOf('function selectImage('),
+    editor.indexOf('function clearImageSelection('),
+  );
+  assert.match(sel, /if \(swapDrag\) return;/);
+});
+
+test('桌面:三态选中视觉分离 —— 页 teal / 图 --sel-image / 文字 --sel-text,图层选中时页框让位', () => {
+  assert.match(desktopCss, /img\.img-editing\{\s*outline:3px solid var\(--sel-image\)/);
+  assert.match(desktopCss, /\.el-text-selected\{[^}]*var\(--sel-text\)/);
+  // 图层选中时页框让位:同屏永远只有一个主选中框,不用猜「现在选的是页还是图」。
+  assert.match(editor, /const layerActive =/);
+  assert.match(editor, /!layerActive && pi !== undefined/);
 });
 
 test('桌面:移动/松手挂 window 捕获阶段 —— 拖出格子、拖到另一页都要跟手', () => {
