@@ -528,7 +528,7 @@ function createUpdatePageImagesTool(
 		name: "update_page_images",
 		label: "调整页面图片",
 		description:
-			"整页替换图片槽映射（槽 id → photoId）：照片必须来自本书章节；未列出的槽会被清空（页面上显示浅灰缺图占位），除非用户明确要留空/删图，否则应把所有图槽填满。用于调换图片顺序或替换照片。",
+			"整页替换图片槽映射（槽 id → photoId）：未列出的槽会被清空，除非用户明确要留空/删图，否则应把所有图槽填满。用于调换图片顺序或替换照片。",
 		parameters: updatePageImagesSchema,
 		prepareArguments(args: unknown): UpdatePageImagesInput {
 			return { updates: readImageUpdates(options, args) };
