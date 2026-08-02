@@ -3305,14 +3305,11 @@ function EditorBook({
         };
         ovPanning = false;
       } else if (ovPointers.size === 1 && (e.pointerType !== 'mouse' || e.button === 0)) {
-        // 照片上的按下不启动画布平移(2026-08-02 复测拍板):拖照片曾是调位/交换的
-        // 入口,肌肉记忆按住照片一拖却把整个画布拖走,看起来就像手势还在打架 ——
-        // 而且它和长按 1s 的拾起候选同时进行,更添乱。画布平移从空白/文字处拖;
-        // 照片上只剩两个语义:单击(弹编辑卡)、长按 1s(收卡拾起交换)。
-        // 空图槽没有别的手势认领,仍可拖动平移。指针照常入 ovPointers:它还要
-        // 给双指捏合当第二根手指。
-        const pick = swapPickAt(e.target);
-        if (pick && pageByIndex(pick.ref.pageIndex)?.imagesJson[pick.ref.slotId]) return;
+        // 照片上的按下也武装平移(2026-08-02 定稿,Figma 同款):快拖 = 平移画布,
+        // 按住不动 1s = 拾起交换,单击 = 弹编辑卡。与长按候选的协调在 move 侧 ——
+        // 候选期间(≤8px)画布先不动,抖过 slop 取消候选、平移按原点无缝接上;
+        // 拾起的一刻 beginSwapDrag 把 ovPanning 按下。曾试过「照片按下不平移」:
+        // 快拖变成彻底死区(画布不动照片也不动),比协调更糟,不要回去。
         ovPanning = true;
         ovPanMoved = false;
         ovPanOrigin = { x: e.clientX, y: e.clientY, panX: ovPanX, panY: ovPanY };

@@ -109,16 +109,15 @@ test('桌面:画布平移与长按拾起不打架', () => {
   assert.match(editor, /if \(swapDrag\) return;/);
   // 拾起的一刻把已经起步的画布平移按下
   assert.match(editor, /ovPanning = false;/);
-  // 照片上的按下根本不启动画布平移(2026-08-02 复测):照片上只有单击(弹编辑卡)
-  // 与长按 1s(收卡拾起交换)两个语义,拖照片把画布拖走看起来就像手势还在打架。
+  // 照片上的按下**也**武装平移(2026-08-02 定稿,Figma 同款):快拖 = 平移画布,
+  // 按住不动 1s = 拾起交换。曾试过「照片按下不平移」—— 快拖变成彻底死区(画布
+  // 不动照片也不动),比协调更糟。协调点全在 move 侧:候选期间画布不动(上面的
+  // swapPending pin),抖过 slop 取消候选平移接上,拾起时 ovPanning 按下。
   const down = editor.slice(
     editor.indexOf('const onOvPointerDown ='),
     editor.indexOf('const onOvPointerMove ='),
   );
-  const guard = down.indexOf('const pick = swapPickAt(e.target)');
-  const panStart = down.indexOf('ovPanning = true');
-  assert.ok(guard > 0, '按下要先问「这是不是一张照片」');
-  assert.ok(panStart > guard, '照片判定必须发生在启动平移之前');
+  assert.doesNotMatch(down, /swapPickAt/, '按下侧不许再按目标分流平移(死区教训)');
 });
 
 test('桌面:移动/松手挂 window 捕获阶段 —— 拖出格子、拖到另一页都要跟手', () => {
