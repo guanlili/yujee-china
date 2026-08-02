@@ -2,7 +2,7 @@ import type { AlbumPage } from "./book-state.ts";
 
 /** 页序操作(内部 1 基位置,全部按调用前页序解析;寻址解析在工具层)。 */
 export type PageMoveOperation =
-	| { type: "move"; page: number; before?: number; after?: number }
+	| { type: "move"; pageNo: number; before?: number; after?: number }
 	| { type: "swap"; a: number; b: number };
 
 /**
@@ -40,8 +40,8 @@ export function applyPageMoves(
 		if ((op.before === undefined) === (op.after === undefined))
 			throw new Error("move 的 before/after 必须恰好给一个");
 		const anchorNo = op.before ?? op.after!;
-		if (anchorNo === op.page) throw new Error("move 的锚点不能是自己");
-		const source = requireInterior(op.page);
+		if (anchorNo === op.pageNo) throw new Error("move 的锚点不能是自己");
+		const source = requireInterior(op.pageNo);
 		const anchor = byOriginal(anchorNo);
 		working.splice(working.indexOf(source), 1);
 		const at = working.indexOf(anchor) + (op.after !== undefined ? 1 : 0);
