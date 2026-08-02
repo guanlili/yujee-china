@@ -6,6 +6,7 @@ import {
   type AdaptablePage,
   type ResolveImage,
 } from '@/components/album/adapt-layout';
+import { coverContentBox } from '@/components/album/editor-v2/image-edit-util';
 import { applyFolioOverlay, fitTextBoxes, pageFolioInfos, resolveDisplayHtml, type FolioSide, type PageFolio } from '@/components/album/page-html-dom';
 import { renderPageHtml } from '@/components/album/templates/html/fill-template';
 import { PAGE } from '@/components/album/templates/constants';
@@ -56,6 +57,64 @@ function renderFaceHtml(
   );
 }
 
+/** 截图前的 cover 摊平 pass(2026-08-02)。
+ *
+ *  为什么存在:html2canvas-pro@2.0.4 渲染 object-fit:cover 的 <img> 时**忽略
+ *  object-position**(同图不同 position 输出逐像素相同 —— 真实 Chrome 对照实验
+ *  坐实,scratchpad h2c-objpos-repro)。屏幕是浏览器画的(对),导出是它复刻画的
+ *  (丢位置)。修不了它,就把语义降级成它一定画对的形态:
+ *
+ *  把每个 cover img 的「object-fit + object-position + scale」换算成明确的
+ *  width/height/left/top px(coverContentBox,与屏幕渲染同一套 cover 推导,
+ *  单测钉死与 coverCropFraction 互逆)。旋转过的图(盒交换,transform 带 rotate)
+ *  改为把内容偏移折进 transform 链尾的局部 translate —— html2canvas 的 transform
+ *  支持是完好的(对照实验里 scale 组输出正确)。
+ *
+ *  只动离屏 host 里的节点,屏幕 DOM 与存库 html 一个字不碰。 */
+async function flattenCoverImagesForCapture(host: HTMLElement): Promise<void> {
+  const imgs = Array.from(host.querySelectorAll<HTMLImageElement>('img[data-image-slot]'));
+  // 摊平要读 naturalWidth:先等解码(失败的图跳过,保持原样交给 html2canvas)。
+  await Promise.all(imgs.map((img) => img.decode().catch(() => undefined)));
+  for (const img of imgs) {
+    if (getComputedStyle(img).objectFit !== 'cover') continue;
+    const natW = img.naturalWidth;
+    const natH = img.naturalHeight;
+    const boxW = img.offsetWidth; // 盒交换后就是转置盒 —— cover 的参照系本来就是它
+    const boxH = img.offsetHeight;
+    // 位置一律读行内(烘焙/模板渲染都写行内);缺省 = 50% 50%。
+    const posMatch = /^([\d.]+)%\s+([\d.]+)%$/.exec(img.style.objectPosition ?? '');
+    const x = posMatch ? parseFloat(posMatch[1]!) : 50;
+    const y = posMatch ? parseFloat(posMatch[2]!) : 50;
+    const scale = parseFloat(/scale\(([\d.]+)\)/.exec(img.style.transform ?? '')?.[1] ?? '1') || 1;
+    const rotate = parseInt(/rotate\((\d+)deg\)/.exec(img.style.transform ?? '')?.[1] ?? '0', 10) || 0;
+    const box = coverContentBox(natW, natH, boxW, boxH, { x, y, scale });
+    if (!box) continue;
+    const wrapper = img.parentElement;
+    if (wrapper && !getComputedStyle(wrapper).position.match(/absolute|relative|fixed/)) {
+      wrapper.style.position = 'relative';
+    }
+    img.style.objectFit = 'fill';
+    img.style.objectPosition = '';
+    img.style.width = `${box.width}px`;
+    img.style.height = `${box.height}px`;
+    img.style.position = 'absolute';
+    if (!rotate) {
+      img.style.left = `${box.left}px`;
+      img.style.top = `${box.top}px`;
+      img.style.transform = '';
+      img.style.transformOrigin = '';
+    } else {
+      // 盒交换的居中锚不变;内容偏移折进 rotate 之后的局部 translate(旋转坐标系)。
+      const ox = (0.5 - x / 100) * (box.width - boxW);
+      const oy = (0.5 - y / 100) * (box.height - boxH);
+      img.style.left = '50%';
+      img.style.top = '50%';
+      img.style.transform = `translate(-50%, -50%) rotate(${rotate}deg) translate(${ox}px, ${oy}px)`;
+      img.style.transformOrigin = '';
+    }
+  }
+}
+
 export interface FaceRenderOptions {
   scale?: number; // 截图倍率，默认 3
   folio?: PageFolio; // 页码；null=不贴，双宽页={left,right}
@@ -88,6 +147,10 @@ export async function renderFaceToCanvas(
     await documentFontsReady();
     // 字体确定后再做固定高度文字槽的字号自适应,与画板同一 pass,屏幕/导出一致。
     fitTextBoxes(host);
+    // 截图前把 cover 语义摊平成纯几何:html2canvas-pro 会忽略 <img> 的
+    // object-position(2026-08-02 真实浏览器对照实验坐实),用户调过的照片位置
+    // 在导出里全部回到默认。摊平后与屏幕逐像素等价,它想忽略也没得忽略。
+    await flattenCoverImagesForCapture(host);
     return await html2canvas(host, {
       width: capture.width,
       height: capture.height,

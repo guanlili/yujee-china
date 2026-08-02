@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   clampImagePos,
+  coverContentBox,
   coverCropFraction,
   dragToImagePos,
   normalizeRotate,
@@ -187,4 +188,32 @@ test('rotateDragDelta: image = R(-θ)·screen,未旋转时逐像素恒等', () =
   assert.deepEqual(rotateDragDelta(90, 10, 4), { dx: 4, dy: -10 });
   assert.deepEqual(rotateDragDelta(180, 10, 4), { dx: -10, dy: -4 });
   assert.deepEqual(rotateDragDelta(270, 10, 4), { dx: -4, dy: 10 });
+});
+
+// ── coverContentBox:导出摊平几何(2026-08-02,html2canvas 忽略 object-position 的绕行)──
+
+test('coverContentBox: 与 coverCropFraction 互逆 —— content 偏移 = -crop.left × content 宽', () => {
+  const pos: ImagePosValue = { x: 30, y: 80, scale: 1.5 };
+  const box = coverContentBox(200, 100, 100, 100, pos)!;
+  const crop = coverCropFraction(200, 100, 100, 100, pos)!;
+  // crop 是「图框露出内容的哪一段」,content box 是「内容摆在图框的哪里」,同一几何
+  assert.ok(Math.abs(box.left + crop.left * box.width) < 1e-9);
+  assert.ok(Math.abs(box.top + crop.top * box.height) < 1e-9);
+  // 图框恰好被盖满:内容尺寸 × 可见比例 = 图框尺寸
+  assert.ok(Math.abs(box.width * crop.width - 100) < 1e-9);
+  assert.ok(Math.abs(box.height * crop.height - 100) < 1e-9);
+});
+
+test('coverContentBox: 居中缺省位 = 溢出轴均分,满幅轴零偏移', () => {
+  // 200×100 图 cover 进 100×100 框:k=1,内容 200×100,水平溢出 100 → 居中各让 50
+  const box = coverContentBox(200, 100, 100, 100, { x: 50, y: 50, scale: 1 })!;
+  assert.equal(box.width, 200);
+  assert.equal(box.height, 100);
+  assert.equal(box.left, -50);
+  assert.equal(Math.abs(box.top), 0);
+});
+
+test('coverContentBox: 尺寸非法 → null', () => {
+  assert.equal(coverContentBox(0, 100, 100, 100, DEFAULT_IMAGE_POS), null);
+  assert.equal(coverContentBox(200, 100, 100, 0, DEFAULT_IMAGE_POS), null);
 });

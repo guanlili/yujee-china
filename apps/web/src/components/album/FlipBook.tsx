@@ -18,6 +18,40 @@ import { useAlbumFonts } from '@/lib/font/album-font-loader';
 
 const FLIP_MS = 900; // matches .flipper transition in editor.html
 
+// 高仿真书体投影:三层(贴地 1px / 近影 / 远影),与 editor-port .book 同一配方。
+// 分享页与编辑器书籍模式必须是同一本书的质感,改这里要连 editor-port.css 一起改。
+const BOOK_SHADOW =
+  '0 1px 2px rgba(20,24,23,.16), 0 10px 24px rgba(20,24,23,.13), 0 28px 58px rgba(20,24,23,.10)';
+
+// 书口纸张堆叠(页缘):细竖线模拟叠起来的纸芯边缘。放在书体矩形之外、书影之上,
+// 上下各缩一点 —— 纸芯比封面略短,才像真书。strip 本身不可点、不进无障碍树。
+function PaperEdges({ sides, width }: { sides: readonly ('left' | 'right')[]; width: number }) {
+  return (
+    <>
+      {sides.map((side) => (
+        <div
+          key={side}
+          aria-hidden
+          className="pointer-events-none absolute"
+          style={{
+            top: '0.8%',
+            bottom: '0.6%',
+            width,
+            [side]: -width,
+            background:
+              'repeating-linear-gradient(90deg, #fcfbf8 0px, #fcfbf8 1.6px, #d9d4ca 1.6px, #d9d4ca 2.4px)',
+            borderRadius: side === 'left' ? '2px 0 0 2px' : '0 2px 2px 0',
+            boxShadow:
+              side === 'left'
+                ? 'inset -1px 0 0 rgba(24,28,27,.10), 0 1px 2px rgba(20,24,23,.12)'
+                : 'inset 1px 0 0 rgba(24,28,27,.10), 0 1px 2px rgba(20,24,23,.12)',
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
 interface Strings {
   prevPage: string;
   nextPage: string;
@@ -224,6 +258,10 @@ export function FlipBook({
   }, []);
 
   const halfW = book.w / 2;
+  // 书脊沟槽宽随书宽走(editor-port 用 clamp(26px,3.8vw,44px);这里书宽是实测 px)。
+  const spineW = Math.max(26, Math.min(44, Math.round(book.w * 0.038)));
+  // 书口纸叠宽:约书宽 1.1%,最少 6px(太窄看不出纸线)。
+  const edgeW = Math.max(6, Math.round(book.w * 0.011));
 
   // Sync the parent selection to a page belonging to the given spread so the
   // active-thumbnail highlight (and any selection-driven UI) tracks the book.
@@ -408,104 +446,152 @@ export function FlipBook({
         // Solo cover/ending: one centered page, half-width container, no facing
         // blank half, no center spine, no leaf. The page-turn into/out of here is
         // a direct switch (see goToSpread), so anim is always null while solo.
-        <div
-          className="relative flex"
-          style={{
-            width: halfW,
-            height: book.h,
-            borderRadius: 2,
-            background: 'var(--surface)',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.08)',
-            overflow: 'hidden',
-          }}
-        >
-          <Half page={soloPage} pageArrayIndex={soloArrayIndex} side="left" active={soloActive} />
+        // 高仿真:合上的书 —— 书口纸叠只出现在开口侧(封面朝右、封尾朝左)。
+        <div className="relative" style={{ width: halfW, height: book.h }}>
+          <PaperEdges sides={[spread === 0 ? 'right' : 'left']} width={edgeW} />
+          <div
+            className="relative flex h-full w-full"
+            style={{
+              borderRadius: 3,
+              background: 'var(--surface)',
+              boxShadow: BOOK_SHADOW,
+              overflow: 'hidden',
+            }}
+          >
+            <Half page={soloPage} pageArrayIndex={soloArrayIndex} side="left" active={soloActive} />
+          </div>
         </div>
       )}
 
       {book.w > 0 && !soloHere && fullHere && (
         // 双宽(#303)页:一整张双宽面铺满跨页宽 —— 无中缝、无对面半页、无翻页叶。
-        <div
-          className="relative flex"
-          style={{
-            width: book.w,
-            height: book.h,
-            borderRadius: 2,
-            background: 'var(--surface)',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.08)',
-            overflow: 'hidden',
-          }}
-        >
-          <Half page={fullPage} pageArrayIndex={fullArrayIndex} side="left" active={fullActive} width={book.w} />
+        // 高仿真只加书体外观(投影 + 两侧书口纸叠);画面连续,中间不加任何分隔。
+        <div className="relative" style={{ width: book.w, height: book.h }}>
+          <PaperEdges sides={['left', 'right']} width={edgeW} />
+          <div
+            className="relative flex h-full w-full"
+            style={{
+              borderRadius: 3,
+              background: 'var(--surface)',
+              boxShadow: BOOK_SHADOW,
+              overflow: 'hidden',
+            }}
+          >
+            <Half page={fullPage} pageArrayIndex={fullArrayIndex} side="left" active={fullActive} width={book.w} />
+          </div>
         </div>
       )}
 
       {book.w > 0 && !soloHere && !fullHere && (
-        <div
-          className="relative flex"
-          style={{
-            width: book.w,
-            height: book.h,
-            borderRadius: 2,
-            background: 'var(--surface)',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.08)',
-            transformStyle: 'preserve-3d',
-            overflow: 'hidden',
-          }}
-        >
-          {/* under layer: the resting spread (target pages slot in beneath the leaf during a flip) */}
-          <Half page={underLeft} pageArrayIndex={(here?.kind === 'pair' ? here.left : null) ?? -1} side="left" active={onLeftHalf} />
-          <Half page={underRight} pageArrayIndex={(here?.kind === 'pair' ? here.right : null) ?? -1} side="right" active={onRightHalf} />
-
-          {/* center spine shadow */}
+        <div className="relative" style={{ width: book.w, height: book.h }}>
+          {/* 书口纸张堆叠:摊开的书两侧都露纸芯 */}
+          <PaperEdges sides={['left', 'right']} width={edgeW} />
           <div
-            aria-hidden
-            className="pointer-events-none absolute inset-y-0 left-1/2 z-[5] -translate-x-1/2"
+            className="relative flex h-full w-full"
             style={{
-              width: 24,
-              background:
-                'linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.10) 45%, rgba(0,0,0,0.14) 50%, rgba(0,0,0,0.10) 55%, rgba(0,0,0,0) 100%)',
+              borderRadius: 3,
+              background: 'var(--surface)',
+              boxShadow: BOOK_SHADOW,
+              transformStyle: 'preserve-3d',
+              overflow: 'hidden',
             }}
-          />
+          >
+            {/* under layer: the resting spread (target pages slot in beneath the leaf during a flip) */}
+            <Half page={underLeft} pageArrayIndex={(here?.kind === 'pair' ? here.left : null) ?? -1} side="left" active={onLeftHalf} />
+            <Half page={underRight} pageArrayIndex={(here?.kind === 'pair' ? here.right : null) ?? -1} side="right" active={onRightHalf} />
 
-          {/* turning leaf */}
-          {anim && (
+            {/* 左右半页向书脊的弧面明暗(与 editor-port .page-left/.page-right::before 同配方) */}
             <div
               aria-hidden
-              className="pointer-events-none absolute top-0 bottom-0 z-[6]"
+              className="pointer-events-none absolute inset-y-0 left-0 z-[4]"
               style={{
                 width: halfW,
-                left: anim.dir === 'next' ? '50%' : 0,
-                transformStyle: 'preserve-3d',
-                transformOrigin: anim.dir === 'next' ? 'left center' : 'right center',
-                transform: `rotateY(${leafAngle}deg)`,
-                transition: `transform ${FLIP_MS}ms cubic-bezier(.45,.05,.2,1)`,
+                background: 'linear-gradient(90deg, transparent 72%, rgba(255,255,255,.06) 86%, rgba(0,0,0,.13) 100%)',
               }}
-            >
+            />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 z-[4]"
+              style={{
+                left: halfW,
+                width: halfW,
+                background: 'linear-gradient(90deg, rgba(0,0,0,.12) 0%, rgba(255,255,255,.07) 14%, transparent 28%)',
+              }}
+            />
+
+            {/* center spine shadow:书脊沟槽(宽渐变折光带)+ 1px 接缝(与 editor-port .book::before/::after 同配方) */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 left-1/2 z-[5] -translate-x-1/2"
+              style={{
+                width: spineW,
+                background:
+                  'linear-gradient(90deg, rgba(255,255,255,.10) 0%, rgba(0,0,0,.04) 24%, rgba(0,0,0,.16) 46%, rgba(0,0,0,.24) 50%, rgba(255,255,255,.13) 54%, rgba(0,0,0,.05) 76%, rgba(255,255,255,.08) 100%)',
+              }}
+            />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 left-1/2 z-[5] -translate-x-1/2"
+              style={{
+                width: 1,
+                background: 'rgba(16,20,19,.28)',
+                boxShadow: '-1px 0 rgba(255,255,255,.12), 1px 0 rgba(0,0,0,.08)',
+              }}
+            />
+
+            {/* turning leaf */}
+            {anim && (
               <div
-                className="absolute inset-0"
-                style={{ backfaceVisibility: 'hidden', background: 'var(--surface)' }}
+                aria-hidden
+                className="pointer-events-none absolute top-0 bottom-0 z-[6]"
+                style={{
+                  width: halfW,
+                  left: anim.dir === 'next' ? '50%' : 0,
+                  transformStyle: 'preserve-3d',
+                  transformOrigin: anim.dir === 'next' ? 'left center' : 'right center',
+                  transform: `rotateY(${leafAngle}deg)`,
+                  transition: `transform ${FLIP_MS}ms cubic-bezier(.45,.05,.2,1)`,
+                  // 翻动中的纸自己带一片移动投影(box-shadow 随叶片一起转;不能用
+                  // filter —— 会把 preserve-3d 的两面拍扁,editor 侧同款教训)。
+                  boxShadow: '0 14px 28px rgba(20,24,23,.18)',
+                }}
               >
-                <PageFace page={leafFront} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(leafFront)} folioSide={folioSideOf(leafFront)} />
-                {/* page-turn shading on the leaf front */}
                 <div
                   className="absolute inset-0"
-                  style={{
-                    background:
-                      anim.dir === 'next'
-                        ? 'linear-gradient(90deg, transparent 70%, rgba(0,0,0,.08))'
-                        : 'linear-gradient(90deg, rgba(0,0,0,.08), transparent 30%)',
-                  }}
-                />
+                  style={{ backfaceVisibility: 'hidden', background: 'var(--surface)' }}
+                >
+                  <PageFace page={leafFront} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(leafFront)} folioSide={folioSideOf(leafFront)} />
+                  {/* page-turn shading on the leaf front */}
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      background:
+                        anim.dir === 'next'
+                          ? 'linear-gradient(90deg, transparent 70%, rgba(0,0,0,.08))'
+                          : 'linear-gradient(90deg, rgba(0,0,0,.08), transparent 30%)',
+                    }}
+                  />
+                </div>
+                <div
+                  className="absolute inset-0"
+                  style={{ backfaceVisibility: 'hidden', background: 'var(--surface)', transform: 'rotateY(180deg)' }}
+                >
+                  <PageFace page={leafBack} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(leafBack)} folioSide={folioSideOf(leafBack)} />
+                  {/* page-turn shading on the leaf back(落地后它是靠书脊的那半;
+                      面已 rotateY(180°) 镜像,所以 div 的左即视觉上的右) */}
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      background:
+                        anim.dir === 'next'
+                          ? 'linear-gradient(90deg, rgba(0,0,0,.08), transparent 30%)'
+                          : 'linear-gradient(90deg, transparent 70%, rgba(0,0,0,.08))',
+                    }}
+                  />
+                </div>
               </div>
-              <div
-                className="absolute inset-0"
-                style={{ backfaceVisibility: 'hidden', background: 'var(--surface)', transform: 'rotateY(180deg)' }}
-              >
-                <PageFace page={leafBack} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(leafBack)} folioSide={folioSideOf(leafBack)} />
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 

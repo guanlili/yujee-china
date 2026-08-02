@@ -163,6 +163,30 @@ export function coverCropFraction(
   };
 }
 
+/** cover 内容盒:object-fit:cover + object-position + scale 换算成盒内的**纯几何**
+ *  (内容尺寸 + 相对图框的偏移,px)。导出截图前用它把 img 摊平 —— html2canvas-pro
+ *  会忽略 object-position(2026-08-02 真实浏览器对照实验坐实:同图不同 position
+ *  输出逐像素相同),摊成明确的 width/height/left/top 它就画得对。
+ *  与 coverCropFraction 是同一套推导的互逆面:content = 1/crop。 */
+export function coverContentBox(
+  natW: number,
+  natH: number,
+  boxW: number,
+  boxH: number,
+  pos: ImagePosValue,
+): { width: number; height: number; left: number; top: number } | null {
+  if (!(natW > 0) || !(natH > 0) || !(boxW > 0) || !(boxH > 0)) return null;
+  const k = Math.max(boxW / natW, boxH / natH) * Math.max(pos.scale, SCALE_MIN);
+  const width = natW * k;
+  const height = natH * k;
+  return {
+    width,
+    height,
+    left: -(pos.x / 100) * (width - boxW),
+    top: -(pos.y / 100) * (height - boxH),
+  };
+}
+
 /**
  * 预览内拖动 → 新 ImagePos。方向语义与画布时代的 dragToImagePos 一致:把图往右
  * 拖(dx>0)= 露出图的左侧 = x 减小。预览里整图宽 previewW px,水平可滑余量 =
