@@ -39,9 +39,27 @@ export const PhotoOriginalEntriesBodySchema = z.object({
   entries: PhotoOriginalEntriesSchema,
 }).strict();
 
+// Variant for ConfirmBodySchema: allows empty array (min 0) to enable semantics where
+// only missing is required when entries is omitted or empty.
+const PhotoOriginalEntriesSchemaForConfirm = z.array(PhotoOriginalEntrySchema)
+  .max(PHOTO_ORIGINAL_MAX_COUNT)
+  .superRefine((entries, ctx) => {
+    const seen = new Set<string>();
+    entries.forEach((entry, index) => {
+      if (seen.has(entry.photoId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index, 'photoId'],
+          message: 'duplicate photoId',
+        });
+      }
+      seen.add(entry.photoId);
+    });
+  });
+
 export const PhotoOriginalConfirmBodySchema = z.object({
-  entries: PhotoOriginalEntriesSchema.optional(),
-  missing: z.array(z.string()).optional(),
+  entries: PhotoOriginalEntriesSchemaForConfirm.optional(),
+  missing: z.array(z.string().refine(isValidPhotoId, 'invalid photoId')).optional(),
 }).strict().superRefine((data, ctx) => {
   // At least one of entries or missing must be non-empty
   const hasEntries = data.entries && data.entries.length > 0;
