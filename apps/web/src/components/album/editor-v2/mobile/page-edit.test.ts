@@ -336,6 +336,15 @@ test('applyImagePos:越界值被夹进合法区间(scale≥1 是「不出白边�
   assert.equal(b.imagePosJson?.p1?.scale, 2, 'scale 上限 2');
 });
 
+test('applyImagePos:patch 失败(锚点缺失)保留原 html,绝不丢整页真相', () => {
+  // 图片位置是纯装饰性行内样式;patch 不上只是这一笔不上屏。走 patched 的默认口径
+  // 丢整页 html,会连手工背景/字色一起毁掉(2026-08-02 用户上报的导出丢样式)。
+  const base = page();
+  const next = applyImagePos(base, 'no-such-slot', { x: 30, y: 40, scale: 1.5 });
+  assert.equal(next.htmlJson, base.htmlJson, 'html 必须原样保留');
+  assert.deepEqual(next.imagePosJson?.['no-such-slot'], { x: 30, y: 40, scale: 1.5 }, '数据层照常写');
+});
+
 test('readImagePos:没设过就是默认(居中、不放大)', () => {
   assert.deepEqual(readImagePos(page(), 'p1'), { x: 50, y: 50, scale: 1 });
   const moved = applyImagePos(page(), 'p1', { x: 10, y: 20, scale: 1.2 });

@@ -8,6 +8,7 @@ import {
   normalizeRotate,
   previewDragToImagePos,
   rotateDragDelta,
+  rotatedCoverTranslate,
   rotateImagePos,
   zoomImagePos,
   DEFAULT_IMAGE_POS,
@@ -216,4 +217,45 @@ test('coverContentBox: 居中缺省位 = 溢出轴均分,满幅轴零偏移', ()
 test('coverContentBox: 尺寸非法 → null', () => {
   assert.equal(coverContentBox(0, 100, 100, 100, DEFAULT_IMAGE_POS), null);
   assert.equal(coverContentBox(200, 100, 100, 0, DEFAULT_IMAGE_POS), null);
+});
+
+// ── rotatedCoverTranslate:旋转图摊平的中心缩放模型(2026-08-02 导出错位修复)──
+// 旋转态屏幕渲染是 `translate(-50%,-50%) rotate(θ) scale(s)`(origin=元素中心):
+// cover 内容先按 scale=1 + object-position 摆进转置盒,再整体绕盒中心放大 s。
+// 摊平时的内容中心偏移必须按这个模型算 —— 直接用 coverContentBox 的焦点模型
+// left/top(transform-origin: x% y% 的语义)会整体错位。
+
+test('rotatedCoverTranslate: 与屏幕模型独立推导一致(scale=1 摆位 + 绕中心放大)', () => {
+  const [natW, natH, boxW, boxH] = [800, 500, 460, 660];
+  const pos: ImagePosValue = { x: 30, y: 20, scale: 1.4, rotate: 90 };
+  const box = coverContentBox(natW, natH, boxW, boxH, pos)!;
+  // 独立模拟屏幕:scale=1 的 cover 摆位 → 内容中心相对盒中心 → 绕中心放大 s 倍
+  const k0 = Math.max(boxW / natW, boxH / natH);
+  const [cw0, ch0] = [natW * k0, natH * k0];
+  const dx0 = -(pos.x / 100) * (cw0 - boxW);
+  const dy0 = -(pos.y / 100) * (ch0 - boxH);
+  const expected = {
+    ox: pos.scale * (dx0 + (cw0 - boxW) / 2),
+    oy: pos.scale * (dy0 + (ch0 - boxH) / 2),
+  };
+  const got = rotatedCoverTranslate(box, boxW, boxH, pos);
+  assert.ok(Math.abs(got.ox - expected.ox) < 1e-9, `ox ${got.ox} ≠ ${expected.ox}`);
+  assert.ok(Math.abs(got.oy - expected.oy) < 1e-9, `oy ${got.oy} ≠ ${expected.oy}`);
+});
+
+test('rotatedCoverTranslate: scale=1 时与焦点模型重合(两模型此时等价)', () => {
+  const pos: ImagePosValue = { x: 30, y: 80, scale: 1, rotate: 90 };
+  const box = coverContentBox(800, 500, 460, 660, pos)!;
+  const got = rotatedCoverTranslate(box, 460, 660, pos);
+  // 焦点模型的内容中心偏移 = left + width/2 - boxW/2
+  assert.ok(Math.abs(got.ox - (box.left + box.width / 2 - 460 / 2)) < 1e-9);
+  assert.ok(Math.abs(got.oy - (box.top + box.height / 2 - 660 / 2)) < 1e-9);
+});
+
+test('rotatedCoverTranslate: 居中(50/50)任意 scale 下零偏移(对称性)', () => {
+  const pos: ImagePosValue = { x: 50, y: 50, scale: 1.8, rotate: 270 };
+  const box = coverContentBox(640, 480, 300, 200, pos)!;
+  const got = rotatedCoverTranslate(box, 300, 200, pos);
+  assert.ok(Math.abs(got.ox) < 1e-9);
+  assert.ok(Math.abs(got.oy) < 1e-9);
 });

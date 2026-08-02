@@ -12,7 +12,7 @@ export interface HtmlPage {
   templateId: string;
   imagesJson: Record<string, string>;
   textsJson: Record<string, string>;
-  imagePosJson?: Record<string, { x: number; y: number; scale: number }>;
+  imagePosJson?: Record<string, { x: number; y: number; scale: number; rotate?: number }>;
   htmlJson?: string;
 }
 
@@ -55,6 +55,20 @@ export function resolveDisplayHtml(
   });
 }
 
+/** 模板即时渲染只填 IMG_POS/IMG_TF(不含 rotate;fill-template 是纯 token 替换,
+ *  够不到 wrapper 几何)。旋转的盒交换在渲染后用 patchHtmlImagePos 补 —— 与存库
+ *  html 的烘焙(bakePageHtml)同一原语。patch 不动(失败/无旋转)则原样返回。 */
+export function applyImageRotatePatches(
+  html: string,
+  imagePos: HtmlPage['imagePosJson'],
+): string {
+  let out = html;
+  for (const [slot, pos] of Object.entries(imagePos ?? {})) {
+    if (pos.rotate) out = patchHtmlImagePos(out, slot, pos) ?? out;
+  }
+  return out;
+}
+
 export function preferredPageHtml(page: HtmlPage, resolveImage: ResolveImage): string | undefined {
   if (typeof page.htmlJson === 'string' && page.htmlJson.length > 0) {
     return resolveDisplayHtml(page.htmlJson, page.imagesJson, resolveImage);
@@ -68,9 +82,11 @@ export function preferredPageHtml(page: HtmlPage, resolveImage: ResolveImage): s
     },
     resolveImage,
   );
+  if (html === undefined) return undefined;
   // 即时渲染对空槽会保留 {{IMG_SRC:slot}} token(fill-template 的契约),这里再走一遍
   // 解析把它渲成缺图占位;已填槽在上一步就解析成真实 src 了,这一步不会再碰到。
-  return html === undefined ? undefined : resolveDisplayHtml(html, page.imagesJson, resolveImage);
+  // 旋转过的槽同样是即时渲染补不上的(IMG_TF 不含 rotate),渲染后补盒交换。
+  return resolveDisplayHtml(applyImageRotatePatches(html, page.imagePosJson), page.imagesJson, resolveImage);
 }
 
 function escapeHtmlText(value: string): string {
@@ -179,23 +195,42 @@ export function patchHtmlPageStyle(
 /** 图片位置/缩放固化(IMG_POS/IMG_TF 烘制后是具体值,必须回写)。与编辑器
  *  applyLiveImagePos 写的 CSS 逐字一致:objectPosition + scale>1 时 transform。 */
 /** img 的直接父级就是图框 wrapper(WebImage 渲染模型:wrapper>img,中间无其他节点)。
- *  旋转的「盒交换」需要图框的 px 尺寸 —— 从 wrapper 行内 style 里读。拿不到(百分比
- *  布局/结构意外)→ null,调用方回落整页重烘(bakePageHtml 知道模板几何)。 */
+ *  旋转的「盒交换」优先要图框的 px 尺寸(width/height 缺省 undefined);拿不到 px 时
+ *  报告两轴是否「确定尺寸」(width/height 数值,或 left+right / top+bottom 对拉)——
+ *  确定尺寸的 wrapper 可走容器查询单位盒交换(见 patchHtmlImagePos)。 */
 function imageWrapperOpenTag(
   html: string,
   imgIndex: number,
-): { start: number; tag: string; width: number; height: number } | null {
+): {
+  start: number;
+  tag: string;
+  width?: number;
+  height?: number;
+  definiteW: boolean;
+  definiteH: boolean;
+} | null {
   const start = html.lastIndexOf('<div', imgIndex);
   if (start < 0) return null;
   const open = /^<div\b[^>]*>/.exec(html.slice(start, imgIndex));
   const style = open ? /style="([^"]*)"/.exec(open[0])?.[1] : undefined;
   if (!open || !style) return null;
-  const width = /(?:^|;)\s*width:\s*([\d.]+)px/.exec(style)?.[1];
-  const height = /(?:^|;)\s*height:\s*([\d.]+)px/.exec(style)?.[1];
-  if (!width || !height) return null;
-  const w = parseFloat(width);
-  const h = parseFloat(height);
-  return w > 0 && h > 0 ? { start, tag: open[0], width: w, height: h } : null;
+  const px = (prop: 'width' | 'height'): number | undefined => {
+    const v = new RegExp(`(?:^|;)\\s*${prop}:\\s*([\\d.]+)px`).exec(style)?.[1];
+    const n = v ? parseFloat(v) : NaN;
+    return n > 0 ? n : undefined;
+  };
+  const has = (prop: string): boolean =>
+    new RegExp(`(?:^|;)\\s*${prop}:\\s*[\\d.]`).test(style);
+  const width = px('width');
+  const height = px('height');
+  return {
+    start,
+    tag: open[0],
+    width,
+    height,
+    definiteW: width !== undefined || has('width') || (has('left') && has('right')),
+    definiteH: height !== undefined || has('height') || (has('top') && has('bottom')),
+  };
 }
 
 export function patchHtmlImagePos(
@@ -230,17 +265,33 @@ export function patchHtmlImagePos(
   // 在转置盒上按最小缩放覆盖,白边不变式照旧成立,不需要按宽高比做补偿放大。
   // 旋转下缩放绕中心(焦点缩放在旋转坐标系里不成立),object-position 仍在图像
   // 自身轴上滑动 —— 编辑侧的拖动补偿见 image-edit-util.rotateDragDelta。
+  //
+  // 盒尺寸分两档:wrapper 行内有 px 直接写转置 px;没有 px 但两轴尺寸确定
+  // (width/height 数值,或 left+right / top+bottom 对拉,如 mag-03 的 left/right
+  // 定宽、mag-10 的 grid 列 width:100%)时,写容器查询单位 —— wrapper 升级为
+  // container-type:size,img 的转置盒 = 100cqh×100cqw,由浏览器代为转置(与 px
+  // 路径逐像素一致,Chromium 实测)。两档都不行(auto 尺寸/结构意外)才返回 null;
+  // 调用方对 imagePos 的 null 一律**保留原 html**,绝不为一笔位置微调丢整页真相。
   const wrapper = imageWrapperOpenTag(html, m.index);
   if (!wrapper) return null;
   const swap = rotate % 180 !== 0;
-  const w = swap ? wrapper.height : wrapper.width;
-  const h = swap ? wrapper.width : wrapper.height;
+  const hasPx = wrapper.width !== undefined && wrapper.height !== undefined;
+  const useCq = !hasPx;
+  if (useCq && !(wrapper.definiteW && wrapper.definiteH)) return null;
+  const sizeProps = hasPx
+    ? {
+        width: `${swap ? wrapper.height : wrapper.width}px`,
+        height: `${swap ? wrapper.width : wrapper.height}px`,
+      }
+    : {
+        width: swap ? '100cqh' : '100cqw',
+        height: swap ? '100cqw' : '100cqh',
+      };
   const patched = upsertStyleAttr(m[0], {
     position: 'absolute',
     left: '50%',
     top: '50%',
-    width: `${w}px`,
-    height: `${h}px`,
+    ...sizeProps,
     'object-position': `${pos.x}% ${pos.y}%`,
     transform: `translate(-50%, -50%) rotate(${rotate}deg)${pos.scale > 1 ? ` scale(${pos.scale})` : ''}`,
     'transform-origin': null,
@@ -248,9 +299,16 @@ export function patchHtmlImagePos(
   if (patched === null) return null;
   // wrapper 必须是包含块(绝对定位的 img 以它定位)。模板槽位几乎都是 absolute,
   // 万一是流式布局,补一笔 position:relative(已声明 position 的不动)。
+  // cq 路径还要把 wrapper 升级为 size 容器(固定尺寸的图框上 contain:size 无副作用;
+  // 回正到 rotate=0 时这笔残留同样无害,不清)。
   let out = html.slice(0, m.index) + patched + html.slice(m.index + m[0].length);
-  if (!/(?:^|;)\s*position:/.test(/style="([^"]*)"/.exec(wrapper.tag)?.[1] ?? '')) {
-    const wrapperPatched = upsertStyleAttr(wrapper.tag, { position: 'relative' });
+  const wrapperStyle = /style="([^"]*)"/.exec(wrapper.tag)?.[1] ?? '';
+  const wrapperProps: Record<string, string | null> = {
+    ...(/(?:^|;)\s*position:/.test(wrapperStyle) ? {} : { position: 'relative' }),
+    ...(useCq ? { 'container-type': 'size' } : {}),
+  };
+  if (Object.keys(wrapperProps).length > 0) {
+    const wrapperPatched = upsertStyleAttr(wrapper.tag, wrapperProps);
     if (wrapperPatched === null) return null;
     out = out.slice(0, wrapper.start) + wrapperPatched + out.slice(wrapper.start + wrapper.tag.length);
   }

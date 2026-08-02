@@ -165,7 +165,9 @@ export function applyImagePos(
   return {
     ...base,
     imagePosJson: { ...(base.imagePosJson ?? {}), [slotId]: next },
-    htmlJson: patched(base.htmlJson, (h) => patchHtmlImagePos(h, slotId, next)),
+    // patch 失败保留原 html(?? h):图片位置是纯装饰性行内样式,失败只是这一笔不上屏;
+    // 走 patched 的默认口径丢整页 html 会连手工背景/字色一起毁掉(与桌面同口径)。
+    htmlJson: patched(base.htmlJson, (h) => patchHtmlImagePos(h, slotId, next) ?? h),
   };
 }
 

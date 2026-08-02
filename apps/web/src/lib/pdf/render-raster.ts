@@ -6,8 +6,8 @@ import {
   type AdaptablePage,
   type ResolveImage,
 } from '@/components/album/adapt-layout';
-import { coverContentBox } from '@/components/album/editor-v2/image-edit-util';
-import { applyFolioOverlay, fitTextBoxes, pageFolioInfos, resolveDisplayHtml, type FolioSide, type PageFolio } from '@/components/album/page-html-dom';
+import { coverContentBox, rotatedCoverTranslate } from '@/components/album/editor-v2/image-edit-util';
+import { applyFolioOverlay, applyImageRotatePatches, fitTextBoxes, pageFolioInfos, resolveDisplayHtml, type FolioSide, type PageFolio } from '@/components/album/page-html-dom';
 import { renderPageHtml } from '@/components/album/templates/html/fill-template';
 import { PAGE } from '@/components/album/templates/constants';
 import { getWebTemplate } from '@/components/album/web-registry';
@@ -49,9 +49,14 @@ function renderFaceHtml(
     resolveImage,
   );
   // 空槽在即时渲染里保留 {{IMG_SRC:slot}} token(fill-template 契约),再解析一遍
-  // 渲成缺图占位 —— 与画板同脸,导出不出碎图标。
+  // 渲成缺图占位 —— 与画板同脸,导出不出碎图标。旋转槽即时渲染也补不上
+  // (IMG_TF 不含 rotate),渲染后补盒交换,与 preferredPageHtml 同口径。
   if (html !== undefined)
-    return applyFolioOverlay(resolveDisplayHtml(html, page.images, resolveImage), folio, folioSide);
+    return applyFolioOverlay(
+      resolveDisplayHtml(applyImageRotatePatches(html, page.imagePos), page.images, resolveImage),
+      folio,
+      folioSide,
+    );
   const Template = getWebTemplate(page.templateId);
   if (!Template) return `<div style="padding:24px;font-size:14px">Unknown template: ${page.templateId}</div>`;
   const data = adaptPageToTemplateData(page, resolveImage);
@@ -108,8 +113,10 @@ async function flattenCoverImagesForCapture(host: HTMLElement): Promise<void> {
       img.style.transformOrigin = '';
     } else {
       // 盒交换的居中锚不变;内容偏移折进 rotate 之后的局部 translate(旋转坐标系)。
-      const ox = (0.5 - x / 100) * (box.width - boxW);
-      const oy = (0.5 - y / 100) * (box.height - boxH);
+      // 旋转态的 scale 是**绕盒中心**(transform 链 scale 在 rotate 之后、origin=中心),
+      // 不是非旋转态的焦点缩放 —— 偏移必须用 rotatedCoverTranslate 的中心模型算,
+      // 直接套 coverContentBox 的 left/top 会整体错位(2026-08-02 导出实测)。
+      const { ox, oy } = rotatedCoverTranslate(box, boxW, boxH, { x, y, scale });
       img.style.left = '50%';
       img.style.top = '50%';
       img.style.transform = `translate(-50%, -50%) rotate(${rotate}deg) translate(${ox}px, ${oy}px)`;

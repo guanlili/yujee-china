@@ -64,8 +64,8 @@ test('删图清 key + 把框位抹回默认(必须发 DEFAULT,不能只删 key)'
   );
   assert.match(
     clear,
-    /syncPageHtml\(page, \(html\) => patchHtmlImagePos\(html, slotId, DEFAULT_IMAGE_POS\)\)/,
-    '本地 html 真相也要同步复位,否则重绘当场把旧框位画回来',
+    /syncPageHtml\(page, \(html\) => patchHtmlImagePos\(html, slotId, DEFAULT_IMAGE_POS\) \?\? html\)/,
+    '本地 html 真相也要同步复位(patch 失败保留原 html,不丢整页真相),否则重绘当场把旧框位画回来',
   );
   assert.match(clear, /clearImageSelection\(\);\n\s*repaintPages/, '先收浮层再重绘 —— 否则 reattachImgEdit 会把浮层接回一个空 <img>');
   assert.match(clear, /persistPagePatch\(page\)/, '落库走与改字同一条单页 PATCH');

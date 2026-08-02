@@ -1368,7 +1368,10 @@ export const albumService = {
         for (const [slot, pos] of Object.entries(patch.imagePosJson)) {
           const prev = before[slot];
           if (html !== null && (!prev || prev.x !== pos.x || prev.y !== pos.y || prev.scale !== pos.scale || prev.rotate !== pos.rotate)) {
-            html = patchHtmlImagePos(html, slot, pos);
+            // patch 失败保留原 html(?? html):图片位置是装饰性行内样式,失败只是
+            // 这一笔不生效;置 null 走整页重烘会把用户手工背景/字色和 AI 配色一起
+            // 从库里抹掉(2026-08-02 用户上报「导出丢手工样式」的根因)。
+            html = patchHtmlImagePos(html, slot, pos) ?? html;
           }
         }
         page.imagePos = patch.imagePosJson;

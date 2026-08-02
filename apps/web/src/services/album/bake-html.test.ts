@@ -38,3 +38,18 @@ test('lenient 模式:未注册模板跳过不抛(迁移过渡期)', () => {
   const [page] = bakePagesHtml([{ ...PAGE, templateId: 'mag-does-not-exist' }], { strict: false });
   assert.equal(page.html, undefined);
 });
+
+test('烘焙保留旋转:imagePos.rotate 烘完补盒交换(fill-template 的 IMG_TF 够不到)', () => {
+  // 整页重烘是 imagePos patch 失配时的兜底;重烘丢 rotate 的话,用户存过的旋转
+  // 会在兜底后静默消失(2026-08-02 图片旋转)。
+  const [page] = bakePagesHtml([
+    { ...PAGE, imagePos: { image: { x: 40, y: 60, scale: 1.3, rotate: 90 } } },
+  ]);
+  assert.ok(page.html);
+  assert.match(page.html!, /rotate\(90deg\)/, '旋转必须烘进 html');
+  assert.match(page.html!, /translate\(-50%, -50%\)/, '盒交换居中锚');
+  assert.ok(page.html!.includes('{{IMG_SRC:image}}'), '补旋转不动 src token');
+  // 未旋转的页逐字节不变(applyImageRotatePatches 对无 rotate 槽是恒等)
+  const [plain] = bakePagesHtml([{ ...PAGE, imagePos: { image: { x: 40, y: 60, scale: 1.3 } } }]);
+  assert.doesNotMatch(plain.html!, /rotate\(/);
+});

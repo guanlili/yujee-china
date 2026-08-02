@@ -251,14 +251,57 @@ test('patchHtmlImagePos:旋转后回到 0 → 绝对定位复位,尺寸写回 10
   assert.doesNotMatch(back, /rotate\(/);
 });
 
-test('patchHtmlImagePos:图框尺寸解析不出(百分比布局)→ null,调用方走整页重烘', () => {
+test('patchHtmlImagePos rotate:图框无 px 但尺寸确定(百分比)→ 容器查询单位盒交换', () => {
   const pctHtml =
     '<div style="position:absolute;width:50%;height:30%">' +
     '<img data-image-slot="image" src="{{IMG_SRC:image}}" style="width:100%;height:100%" />' +
     '</div>';
-  assert.equal(patchHtmlImagePos(pctHtml, 'image', { x: 50, y: 50, scale: 1, rotate: 90 }), null);
+  const out = patchHtmlImagePos(pctHtml, 'image', { x: 50, y: 50, scale: 1, rotate: 90 });
+  assert.ok(out, '确定尺寸的 wrapper 不允许 null —— null 兜底曾把整页手工样式一起毁掉');
+  assert.match(out, /width:100cqh/, '盒宽 = 图框高(浏览器代为转置)');
+  assert.match(out, /height:100cqw/, '盒高 = 图框宽');
+  assert.match(out, /container-type:size/, 'wrapper 升级为 size 容器,cq 单位才有参照');
   // 不旋转时照常可 patch(尺寸无关)
   assert.ok(patchHtmlImagePos(pctHtml, 'image', { x: 30, y: 70, scale: 1 }));
+});
+
+test('patchHtmlImagePos rotate:left/right 对拉定宽(mag-03 形态)→ cq 盒交换,不丢 html', () => {
+  // mag-03/05/11/13 的真实图框形态:没有 width,靠 left+right 对拉;height 有 px。
+  // 2026-08-02 用户上报「导出丢手工背景/字色」的根因:这类图框上点旋转 → 旧实现
+  // 返回 null → 调用方丢弃整页 html 真相 → 手工样式全没。
+  const magHtml =
+    '<div style="position:absolute;top:80px;left:50px;right:50px;height:925px;overflow:hidden">' +
+    '<img data-image-slot="image" src="{{IMG_SRC:image}}" style="display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%" />' +
+    '</div>';
+  const out = patchHtmlImagePos(magHtml, 'image', { x: 40, y: 60, scale: 1.2, rotate: 90 });
+  assert.ok(out);
+  assert.match(out, /width:100cqh/);
+  assert.match(out, /height:100cqw/);
+  assert.match(out, /container-type:size/);
+  assert.match(out, /transform:translate\(-50%, -50%\) rotate\(90deg\) scale\(1\.2\)/);
+});
+
+test('patchHtmlImagePos rotate:grid 列 width:100%(mag-10 形态)→ cq 盒交换;180 不转置', () => {
+  const gridHtml =
+    '<div style="display:block;width:100%;height:280px;overflow:hidden">' +
+    '<img data-image-slot="image[0]" src="{{IMG_SRC:image[0]}}" style="display:block;width:100%;height:100%;object-fit:cover" />' +
+    '</div>';
+  const out = patchHtmlImagePos(gridHtml, 'image[0]', { x: 50, y: 50, scale: 1, rotate: 90 });
+  assert.ok(out);
+  assert.match(out, /width:100cqh/);
+  // 180°:盒不转置,cq 轴也不交换
+  const out180 = patchHtmlImagePos(gridHtml, 'image[0]', { x: 50, y: 50, scale: 1, rotate: 180 });
+  assert.ok(out180);
+  assert.match(out180, /width:100cqw/);
+  assert.match(out180, /height:100cqh/);
+});
+
+test('patchHtmlImagePos rotate:两轴都定不下来(auto 尺寸)才 null', () => {
+  const autoHtml =
+    '<div style="position:relative;overflow:hidden">' +
+    '<img data-image-slot="image" src="{{IMG_SRC:image}}" style="width:100%;height:100%" />' +
+    '</div>';
+  assert.equal(patchHtmlImagePos(autoHtml, 'image', { x: 50, y: 50, scale: 1, rotate: 90 }), null);
 });
 
 test('patchHtmlImagePos:wrapper 没声明 position 时补 relative(绝对定位 img 的包含块)', () => {

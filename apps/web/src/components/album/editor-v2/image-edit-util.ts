@@ -187,6 +187,31 @@ export function coverContentBox(
   };
 }
 
+/** 旋转图摊平时,内容中心相对图框中心的偏移(旋转坐标系,px)。
+ *
+ *  旋转态的屏幕渲染是「绕盒中心缩放」:transform 链
+ *  `translate(-50%,-50%) rotate(θ) scale(s)`(patchHtmlImagePos / applyLiveImagePos,
+ *  transform-origin 默认=元素中心),即 cover 内容先按 scale=1 + object-position 摆进
+ *  转置盒,再整体绕盒中心放大 s。与非旋转态的「焦点缩放」(transform-origin: x% y%)
+ *  是**两个不同模型** —— coverContentBox 的 left/top 是焦点模型,直接用在旋转分支会
+ *  把内容拉去错误的位置(2026-08-02 导出实测:旋转+缩放的图整体错位)。
+ *
+ *  推导:scale=1 时内容宽 cw0=cw/s,盒内偏移 dx0=-(x/100)(cw0-boxW);绕中心放大后
+ *  内容中心偏移 = s·(dx0+(cw0-boxW)/2) = (0.5-x/100)(cw - s·boxW)。s=1 时与焦点模型
+ *  重合(此时两个模型本就等价)。 */
+export function rotatedCoverTranslate(
+  content: { width: number; height: number },
+  boxW: number,
+  boxH: number,
+  pos: ImagePosValue,
+): { ox: number; oy: number } {
+  const s = Math.max(pos.scale, SCALE_MIN);
+  return {
+    ox: (0.5 - pos.x / 100) * (content.width - s * boxW),
+    oy: (0.5 - pos.y / 100) * (content.height - s * boxH),
+  };
+}
+
 /**
  * 预览内拖动 → 新 ImagePos。方向语义与画布时代的 dragToImagePos 一致:把图往右
  * 拖(dx>0)= 露出图的左侧 = x 减小。预览里整图宽 previewW px,水平可滑余量 =

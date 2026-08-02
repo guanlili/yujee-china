@@ -1,4 +1,5 @@
 import { renderPageHtml } from '@yujee/contracts/render';
+import { applyImageRotatePatches } from '@/components/album/page-html-dom';
 import { ERRORS } from '@/lib/api/error-codes';
 
 // C 方案(页面真相 = HTML):排版合并 / 设计应用落库前,把每页烘成完整 HTML。
@@ -13,7 +14,7 @@ export interface BakeablePage {
   templateId: string;
   images: Record<string, string>;
   texts: Record<string, string>;
-  imagePos?: Record<string, { x: number; y: number; scale: number }> | null;
+  imagePos?: Record<string, { x: number; y: number; scale: number; rotate?: number }> | null;
   html?: string;
   [key: string]: unknown;
 }
@@ -46,7 +47,10 @@ export function bakePageHtml(page: BakeablePage, options: BakeOptions = {}): Bak
     if (options.strict === false) return page;
     throw ERRORS.VALIDATION_FAILED(`模板 ${page.templateId} 没有注册 HTML 模板,无法烘制页面`);
   }
-  return { ...page, html };
+  // fill-template 的 IMG_TF 是纯 token 替换,够不到 wrapper 几何,rotate 只能烘完再
+  // 用 patchHtmlImagePos 补盒交换 —— 否则整页重烘(如 imagePos patch 失配的兜底)
+  // 会静默丢掉用户已保存的旋转。
+  return { ...page, html: applyImageRotatePatches(html, page.imagePos ?? undefined) };
 }
 
 export function bakePagesHtml(pages: BakeablePage[], options: BakeOptions = {}): BakeablePage[] {

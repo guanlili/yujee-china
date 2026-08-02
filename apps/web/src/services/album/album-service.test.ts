@@ -1763,6 +1763,55 @@ test('updatePage(draft 相册):文本/图位/样式全部落 draft_json,且同�
   }
 });
 
+// imagePos patch 失配(槽锚点不在 html 里等)不允许触发整页重烘:重烘会把手工
+// 背景/字色和 AI 配色从库里一起抹掉(2026-08-02 用户上报「导出丢手工样式」的根因)。
+// 图片位置是装饰性行内样式,失配只是这一笔不生效,html 真相必须原样保留。
+test('updatePage(draft 相册):imagePos patch 失配保留 html 真相,不整页重烘', async () => {
+  const user = await makeUser('wp-updatepage-imagepos-null');
+  try {
+    const album = await makeAlbum(user.id);
+    const tree = makeStoryTree(1);
+    // 手工痕迹:页根背景色 + 标题字色 —— 重烘会丢的东西。
+    const html =
+      '<div data-template="mag-01" style="background-color:#f3ead8">' +
+      '<img data-image-slot="image" src="{{IMG_SRC:image}}" style="object-fit:cover" />' +
+      '<div data-text-key="title" style="color:#8b2f2f">TITLE</div>' +
+      '</div>';
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree,
+      pages: [
+        {
+          pageIndex: 0,
+          templateId: 'mag-01',
+          images: { image: 'p1' },
+          texts: { title: 'TITLE' },
+          html,
+        } as Page,
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      stage: 'story',
+      draftJson: wrapped,
+    });
+
+    // 'ghost' 槽在 html 里没有对应 <img> 锚点 → patchHtmlImagePos 必然失配。
+    await albumService.updatePage(user.id, album.id, 0, {
+      imagePosJson: { ghost: { x: 10, y: 20, scale: 1.5 } },
+    });
+
+    const after = await albumRepo.findById(album.id);
+    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
+    const page = draft.pages[0]!;
+    assert.equal(page.html, html, 'html 真相必须原样保留(手工背景/字色不能因一笔图位失配被重烘抹掉)');
+    assert.deepEqual(page.imagePos, { ghost: { x: 10, y: 20, scale: 1.5 } }, '数据层照常落库');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('updatePage(draft 相册):pageStyle 把书页背景色写进页根 html + COMPLETED→EDITING', async () => {
   const user = await makeUser('wp-updatepage-pagebg');
   try {

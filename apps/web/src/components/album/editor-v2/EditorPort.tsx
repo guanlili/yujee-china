@@ -2359,7 +2359,10 @@ function EditorBook({
       page.imagePosJson = { ...(page.imagePosJson ?? {}), [slotId]: clamped };
       // 位置固化进 html 真相(必须在 repaint 之前 —— repaint 走 preferredPageHtml,
       // html 不更新的话这一笔拖动当场回退)。服务端 updatePage 对 draft 做同样 patch。
-      syncPageHtml(page, (html) => patchHtmlImagePos(html, slotId, clamped));
+      // patch 失败保留原 html(?? html):图片位置是纯装饰性行内样式,失败只是这一笔
+      // 调整不上屏;跟着 syncPageHtml 的默认口径丢整页 html 会连手工背景/字色一起
+      // 毁掉(2026-08-02 用户上报的导出丢样式就是这条链)。
+      syncPageHtml(page, (html) => patchHtmlImagePos(html, slotId, clamped) ?? html);
       // 脏页重绘替换全书重绘;reattachImgEdit(在里面跑)re-binds overlay。
       repaintPages([pageIndex]);
       // Persist via the same single-page PATCH channel as inline text edits.
@@ -2452,7 +2455,8 @@ function EditorBook({
       delete nextImages[slotId];
       page.imagesJson = nextImages;
       page.imagePosJson = { ...(page.imagePosJson ?? {}), [slotId]: { ...DEFAULT_IMAGE_POS } };
-      syncPageHtml(page, (html) => patchHtmlImagePos(html, slotId, DEFAULT_IMAGE_POS));
+      // 同 commitImagePos:imagePos patch 失败保留原 html,不丢整页真相。
+      syncPageHtml(page, (html) => patchHtmlImagePos(html, slotId, DEFAULT_IMAGE_POS) ?? html);
       // 图没了就没什么可平移缩放的了 —— 先收浮层,再重绘(重绘里的 reattachImgEdit
       // 会看到一个 src 为空的 <img> 并把浮层接回去,那正是我们不想要的)。
       clearImageSelection();
